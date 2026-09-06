@@ -2,6 +2,7 @@
 
 pub mod cancel;
 pub mod claude;
+pub mod framing;
 pub mod gemini;
 pub mod ollama;
 pub mod openai;
@@ -31,6 +32,83 @@ pub enum LlmError {
     Cancelled,
     #[error("Invalid base_url '{0}': must start with http:// or https://")]
     InvalidBaseUrl(String),
+    /// issue 264 — a record the stream protocol does not allow (invalid UTF-8,
+    /// an over-long record, unparsable JSON). The stream is abandoned at the
+    /// first one: continuing would present truncated output as a success.
+    #[error("malformed stream from {provider} (request {request_id}): {detail}")]
+    MalformedStream {
+        provider: &'static str,
+        request_id: String,
+        detail: String,
+    },
+    /// The provider answered inside the stream with an error record instead of
+    /// text (quota, overload, bad request).
+    #[error("{provider} reported an error (request {request_id}): {message}")]
+    ProviderError {
+        provider: &'static str,
+        request_id: String,
+        message: String,
+    },
+    /// The connection ended before the provider's terminal record. Whatever
+    /// tokens arrived are on screen already; the frontend must not be told the
+    /// completion finished.
+    #[error("stream from {provider} ended before its terminal record, after {tokens} tokens (request {request_id})")]
+    IncompleteStream {
+        provider: &'static str,
+        request_id: String,
+        tokens: u32,
+    },
+}
+
+/// A framing failure with the provider and request it belongs to.
+pub(crate) fn map_framing_error(
+    provider: &'static str,
+    request_id: &str,
+    error: framing::FramingError,
+) -> LlmError {
+    LlmError::MalformedStream {
+        provider,
+        request_id: request_id.to_string(),
+        detail: error.to_string(),
+    }
+}
+
+/// A parser refusal with the provider and request it belongs to.
+pub(crate) fn map_parse_failure(
+    provider: &'static str,
+    request_id: &str,
+    failure: framing::ParseFailure,
+) -> LlmError {
+    match failure {
+        framing::ParseFailure::Malformed(detail) => LlmError::MalformedStream {
+            provider,
+            request_id: request_id.to_string(),
+            detail,
+        },
+        framing::ParseFailure::Provider(message) => LlmError::ProviderError {
+            provider,
+            request_id: request_id.to_string(),
+            message,
+        },
+    }
+}
+
+/// `llm:token` for one piece of generated text.
+pub(crate) fn emit_token(app_handle: &tauri::AppHandle, request_id: &str, token: &str) {
+    use tauri::Emitter;
+    let _ = app_handle.emit(
+        "llm:token",
+        serde_json::json!({ "requestId": request_id, "token": token }),
+    );
+}
+
+/// `llm:done` once the provider's terminal record arrived.
+pub(crate) fn emit_done(app_handle: &tauri::AppHandle, request_id: &str, total_tokens: u32) {
+    use tauri::Emitter;
+    let _ = app_handle.emit(
+        "llm:done",
+        serde_json::json!({ "requestId": request_id, "totalTokens": total_tokens }),
+    );
 }
 
 /// Validate that a user-supplied base URL uses only http/https schemes.
@@ -349,6 +427,11 @@ mod tests {
         let err = LlmError::UnknownProvider("foo".to_string());
         assert!(err.to_string().contains("Unknown provider"));
         assert!(err.to_string().contains("foo"));
+
+        // llm_complete passes this Display through as the IPC error string,
+        // and the frontend recognises a cancelled request by it
+        // (LLM_CANCELLED_REJECTION in src/ipc/llm.ts). Change both or neither.
+        assert_eq!(LlmError::Cancelled.to_string(), "Request cancelled");
     }
 
     // --- Privacy header tests ---
@@ -487,6 +570,359 @@ mod tests {
         let json = r#"{"models":[]}"#;
         let resp: ollama::OllamaTagsResponse = serde_json::from_str(json).unwrap();
         assert!(resp.models.is_empty());
+    }
+
+    // --- issue 264: framing conformance shared by the four providers ---
+
+    use super::framing::{LineDecoder, LineEvent, ParseFailure};
+
+    type Parser = fn(&str) -> Result<Vec<LineEvent>, ParseFailure>;
+
+    const TOKENS: [&str; 4] = ["한", "글", "🙂", "한글🙂"];
+
+    /// Feeds `bytes` in the given chunks through a decoder and a parser; the
+    /// EOF remainder is parsed only when `ndjson` (SSE never promotes it).
+    fn run(
+        bytes: &[u8],
+        chunks: impl Iterator<Item = std::ops::Range<usize>>,
+        parse: Parser,
+        ndjson: bool,
+    ) -> Result<(Vec<String>, bool), String> {
+        let mut decoder = LineDecoder::default();
+        let mut tokens = Vec::new();
+        let mut done = false;
+        fn handle(
+            parse: Parser,
+            line: &str,
+            tokens: &mut Vec<String>,
+            done: &mut bool,
+        ) -> Result<(), String> {
+            for ev in parse(line).map_err(|f| format!("{f:?}"))? {
+                match ev {
+                    LineEvent::Token(t) => tokens.push(t),
+                    LineEvent::Done => *done = true,
+                }
+            }
+            Ok(())
+        }
+        for r in chunks {
+            decoder.push(&bytes[r]).map_err(|e| e.to_string())?;
+            while let Some(line) = decoder.next_line() {
+                let line = line.map_err(|e| e.to_string())?;
+                handle(parse, line, &mut tokens, &mut done)?;
+            }
+        }
+        if ndjson {
+            if let Some(rest) = decoder.finish() {
+                let rest = rest.map_err(|e| e.to_string())?;
+                handle(parse, rest, &mut tokens, &mut done)?;
+            }
+        }
+        Ok((tokens, done))
+    }
+
+    fn assert_every_split(bytes: &[u8], parse: Parser, ndjson: bool, expected: &[&str]) {
+        for split in 0..=bytes.len() {
+            let (tokens, done) = run(
+                bytes,
+                [0..split, split..bytes.len()].into_iter(),
+                parse,
+                ndjson,
+            )
+            .unwrap_or_else(|e| panic!("split at {split}: {e}"));
+            assert_eq!(tokens, expected, "split at byte {split}");
+            assert!(done, "split at byte {split}: no terminal record seen");
+        }
+        let (tokens, done) = run(bytes, (0..bytes.len()).map(|i| i..i + 1), parse, ndjson).unwrap();
+        assert_eq!(tokens, expected, "one byte at a time");
+        assert!(done);
+    }
+
+    fn claude_transcript() -> Vec<u8> {
+        let mut s = String::from("event: message_start\ndata: {\"type\":\"message_start\"}\n\n");
+        for t in TOKENS {
+            s.push_str(&format!(
+                "event: content_block_delta\ndata: {{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{{\"type\":\"text_delta\",\"text\":\"{t}\"}}}}\n\n"
+            ));
+        }
+        s.push_str(": keepalive\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n");
+        s.into_bytes()
+    }
+
+    fn openai_transcript() -> Vec<u8> {
+        // An extension field before the first record, as a proxy might add.
+        let mut s = String::from("x-metadata: 1\n");
+        for t in &TOKENS[..3] {
+            s.push_str(&format!(
+                "data: {{\"choices\":[{{\"delta\":{{\"content\":\"{t}\"}}}}]}}\n\n"
+            ));
+        }
+        // Content AND the finish reason in the same final chunk: the text
+        // must not be dropped (the old loop checked the finish first).
+        s.push_str(&format!(
+            "data: {{\"choices\":[{{\"delta\":{{\"content\":\"{}\"}},\"finish_reason\":\"stop\"}}]}}\n\ndata: [DONE]\n\n",
+            TOKENS[3]
+        ));
+        s.into_bytes()
+    }
+
+    fn gemini_transcript() -> Vec<u8> {
+        let mut s = String::new();
+        for t in &TOKENS[..3] {
+            s.push_str(&format!(
+                "data: {{\"candidates\":[{{\"content\":{{\"parts\":[{{\"text\":\"{t}\"}}]}}}}]}}\r\n\r\n"
+            ));
+        }
+        s.push_str(&format!(
+            "data: {{\"candidates\":[{{\"content\":{{\"parts\":[{{\"text\":\"{}\"}}]}},\"finishReason\":\"STOP\"}}]}}\r\n\r\n",
+            TOKENS[3]
+        ));
+        s.into_bytes()
+    }
+
+    fn ollama_transcript() -> Vec<u8> {
+        let mut s = String::new();
+        for t in TOKENS {
+            s.push_str(&format!("{{\"response\":\"{t}\",\"done\":false}}\n"));
+        }
+        // No trailing newline: the terminal record is the EOF remainder.
+        s.push_str("{\"response\":\"\",\"done\":true}");
+        s.into_bytes()
+    }
+
+    #[test]
+    fn claude_stream_survives_a_split_at_every_byte() {
+        assert_every_split(&claude_transcript(), claude::parse_line, false, &TOKENS);
+    }
+
+    #[test]
+    fn openai_stream_survives_a_split_at_every_byte_and_keeps_the_final_chunks_text() {
+        assert_every_split(&openai_transcript(), openai::parse_line, false, &TOKENS);
+    }
+
+    #[test]
+    fn gemini_stream_with_crlf_survives_a_split_at_every_byte() {
+        assert_every_split(&gemini_transcript(), gemini::parse_line, false, &TOKENS);
+    }
+
+    #[test]
+    fn ollama_stream_without_a_trailing_newline_survives_a_split_at_every_byte() {
+        assert_every_split(&ollama_transcript(), ollama::parse_line, true, &TOKENS);
+    }
+
+    #[test]
+    fn provider_error_envelopes_are_refusals_not_silence() {
+        let cases: [(Parser, &str); 4] = [
+            (
+                claude::parse_line,
+                r#"data: {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"#,
+            ),
+            (
+                openai::parse_line,
+                r#"data: {"error":{"message":"Rate limit reached","type":"rate_limit_error"}}"#,
+            ),
+            (
+                gemini::parse_line,
+                r#"data: {"error":{"code":429,"message":"Quota exceeded"}}"#,
+            ),
+            (ollama::parse_line, r#"{"error":"model 'x' not found"}"#),
+        ];
+        for (parse, line) in cases {
+            match parse(line) {
+                Err(ParseFailure::Provider(msg)) => assert!(!msg.is_empty()),
+                other => panic!("expected a provider refusal, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn malformed_data_records_are_errors_that_do_not_quote_the_record() {
+        let secret = "data: {\"choices\":[{\"delta\":{\"content\":\"비밀 문장\"}}";
+        for parse in [claude::parse_line, openai::parse_line, gemini::parse_line] {
+            match parse(secret) {
+                Err(ParseFailure::Malformed(detail)) => {
+                    assert!(detail.contains("bytes"), "{detail}");
+                    assert!(!detail.contains("비밀"), "record body leaked: {detail}");
+                }
+                other => panic!("expected malformed, got {other:?}"),
+            }
+        }
+        match ollama::parse_line("{\"response\":\"비밀") {
+            Err(ParseFailure::Malformed(detail)) => assert!(!detail.contains("비밀")),
+            other => panic!("expected malformed, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_type_error_does_not_echo_the_rejected_value() {
+        // serde's Display for a type mismatch quotes the value it saw. That
+        // value can be the user's text; the detail must not carry it.
+        let secret = r#"data: {"choices":"비밀 문장"}"#;
+        match openai::parse_line(secret) {
+            Err(ParseFailure::Malformed(detail)) => {
+                assert!(detail.contains("data error"), "{detail}");
+                assert!(!detail.contains("비밀"), "leaked: {detail}");
+            }
+            other => panic!("expected malformed, got {other:?}"),
+        }
+        match gemini::parse_line(r#"data: {"candidates":"비밀"}"#) {
+            Err(ParseFailure::Malformed(detail)) => assert!(!detail.contains("비밀")),
+            other => panic!("expected malformed, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn every_gemini_finish_reason_is_terminal() {
+        for reason in ["STOP", "MAX_TOKENS"] {
+            let line = format!(r#"data: {{"candidates":[{{"finishReason":"{reason}"}}]}}"#);
+            assert_eq!(
+                gemini::parse_line(&line).unwrap(),
+                vec![LineEvent::Done],
+                "{reason}"
+            );
+        }
+        for reason in [
+            "SAFETY",
+            "RECITATION",
+            "BLOCKLIST",
+            "PROHIBITED_CONTENT",
+            "SPII",
+            "LANGUAGE",
+            "OTHER",
+        ] {
+            let line = format!(r#"data: {{"candidates":[{{"finishReason":"{reason}"}}]}}"#);
+            match gemini::parse_line(&line) {
+                Err(ParseFailure::Provider(msg)) => assert!(msg.contains(reason), "{msg}"),
+                other => panic!("{reason}: expected a provider refusal, got {other:?}"),
+            }
+        }
+        // Not a termination at all.
+        let line = r#"data: {"candidates":[{"finishReason":"FINISH_REASON_UNSPECIFIED"}]}"#;
+        assert_eq!(gemini::parse_line(line).unwrap(), Vec::<LineEvent>::new());
+    }
+
+    #[test]
+    fn a_blocked_gemini_prompt_says_why_instead_of_ending_incomplete() {
+        // The documented shape: blockReason set, no candidates. Before, this
+        // record produced no event and EOF became IncompleteStream.
+        for reason in [
+            "SAFETY",
+            "OTHER",
+            "BLOCKLIST",
+            "PROHIBITED_CONTENT",
+            "IMAGE_SAFETY",
+        ] {
+            let line = format!(
+                r#"data: {{"promptFeedback":{{"blockReason":"{reason}","safetyRatings":[]}}}}"#
+            );
+            match gemini::parse_line(&line) {
+                Err(ParseFailure::Provider(msg)) => assert!(msg.contains(reason), "{msg}"),
+                other => panic!("{reason}: expected a provider refusal, got {other:?}"),
+            }
+        }
+        // promptFeedback without a block reason (safety ratings only) is
+        // routine and carries no event.
+        let line = r#"data: {"promptFeedback":{"safetyRatings":[{"category":"HARM_CATEGORY_HATE_SPEECH","probability":"NEGLIGIBLE"}]}}"#;
+        assert_eq!(gemini::parse_line(line).unwrap(), Vec::<LineEvent>::new());
+        let line = r#"data: {"promptFeedback":{"blockReason":"BLOCK_REASON_UNSPECIFIED"}}"#;
+        assert_eq!(gemini::parse_line(line).unwrap(), Vec::<LineEvent>::new());
+    }
+
+    #[test]
+    fn a_claude_streaming_refusal_is_a_provider_failure_not_a_completion() {
+        // Documented shape: the classifier stops the message with
+        // stop_reason "refusal" on message_delta (stop_details alongside),
+        // and message_stop still follows. Everything streamed before it is a
+        // declined completion — the stream must fail, not emit llm:done.
+        let mut s = claude_transcript();
+        let stop = b"event: message_stop";
+        let at = s.windows(stop.len()).position(|w| w == stop).unwrap();
+        s.splice(
+            at..at,
+            br#"event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"refusal","stop_sequence":null,"stop_details":{"type":"refusal","category":null,"explanation":null}},"usage":{"output_tokens":4}}
+
+"#
+            .iter()
+            .copied(),
+        );
+        for split in 0..=s.len() {
+            let result = run(
+                &s,
+                [0..split, split..s.len()].into_iter(),
+                claude::parse_line,
+                false,
+            );
+            match result {
+                Err(msg) => assert!(msg.contains("refusal"), "split at {split}: {msg}"),
+                Ok((tokens, done)) => {
+                    panic!("split at {split}: refusal reported as a completion ({tokens:?}, done={done})")
+                }
+            }
+        }
+        // The other stop reasons end normally at message_stop.
+        for reason in [
+            "end_turn",
+            "max_tokens",
+            "stop_sequence",
+            "model_context_window_exceeded",
+        ] {
+            let line = format!(
+                r#"data: {{"type":"message_delta","delta":{{"stop_reason":"{reason}"}},"usage":{{"output_tokens":4}}}}"#
+            );
+            assert_eq!(
+                claude::parse_line(&line).unwrap(),
+                Vec::<LineEvent>::new(),
+                "{reason}"
+            );
+        }
+        // A message_delta carrying only usage (stop_reason null) is routine.
+        let line = r#"data: {"type":"message_delta","delta":{"stop_reason":null,"stop_sequence":null},"usage":{"output_tokens":4}}"#;
+        assert_eq!(claude::parse_line(line).unwrap(), Vec::<LineEvent>::new());
+    }
+
+    #[test]
+    fn openai_finish_reasons_end_the_stream_and_content_filter_is_a_refusal() {
+        for reason in ["stop", "length", "tool_calls"] {
+            let line = format!(r#"data: {{"choices":[{{"finish_reason":"{reason}"}}]}}"#);
+            assert_eq!(
+                openai::parse_line(&line).unwrap(),
+                vec![LineEvent::Done],
+                "{reason}"
+            );
+        }
+        let line = r#"data: {"choices":[{"finish_reason":"content_filter"}]}"#;
+        assert!(matches!(
+            openai::parse_line(line),
+            Err(ParseFailure::Provider(_))
+        ));
+    }
+
+    #[test]
+    fn sse_lines_other_than_data_carry_no_event_including_extension_fields() {
+        // The SSE grammar ignores fields the client does not know; a proxy or
+        // compatible server adding `x-metadata:` must not abort the stream.
+        for parse in [claude::parse_line, openai::parse_line, gemini::parse_line] {
+            for line in [
+                "",
+                ": keepalive",
+                "event: ping",
+                "id: 7",
+                "retry: 3000",
+                "x-metadata: 1",
+                "not sse at all",
+            ] {
+                assert_eq!(parse(line).unwrap(), Vec::<LineEvent>::new(), "{line:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_data_field_without_the_space_is_still_data() {
+        assert_eq!(
+            openai::parse_line("data:[DONE]").unwrap(),
+            vec![LineEvent::Done]
+        );
     }
 }
 // test

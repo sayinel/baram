@@ -3,10 +3,10 @@
 use futures::StreamExt;
 use reqwest::header::{HeaderValue, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};
-use tauri::Emitter;
 use tokio::sync::oneshot;
 
-use super::{LlmError, ModelInfo};
+use super::framing::{LineDecoder, LineEvent, ParseFailure};
+use super::{emit_done, emit_token, map_framing_error, map_parse_failure, LlmError, ModelInfo};
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct OllamaTagsResponse {
@@ -80,6 +80,34 @@ pub(crate) struct OllamaResponse {
     pub response: String,
     #[serde(default)]
     pub done: bool,
+    /// `{"error":"…"}` — a well-formed record that used to read as an empty
+    /// response and vanish.
+    #[serde(default)]
+    pub error: Option<String>,
+}
+
+const PROVIDER: &str = "ollama";
+
+/// One complete NDJSON line → what it means (issue 264). A blank line is
+/// nothing; `response` is a token; `done: true` ends the stream; `error` is
+/// the provider refusing.
+pub(crate) fn parse_line(line: &str) -> Result<Vec<LineEvent>, ParseFailure> {
+    if line.is_empty() {
+        return Ok(Vec::new());
+    }
+    let resp: OllamaResponse =
+        serde_json::from_str(line).map_err(|e| super::framing::malformed_json(line, &e))?;
+    if let Some(message) = resp.error {
+        return Err(ParseFailure::Provider(message));
+    }
+    let mut events = Vec::new();
+    if !resp.response.is_empty() {
+        events.push(LineEvent::Token(resp.response));
+    }
+    if resp.done {
+        events.push(LineEvent::Done);
+    }
+    Ok(events)
 }
 
 /// Ollama NDJSON streaming call (local inference, no auth required).
@@ -129,7 +157,7 @@ pub async fn complete_stream(
     }
 
     let mut stream = response.bytes_stream();
-    let mut buffer = String::new();
+    let mut decoder = LineDecoder::default();
     let mut token_count: u32 = 0;
 
     loop {
@@ -142,36 +170,25 @@ pub async fn complete_stream(
                     break;
                 };
                 let chunk = chunk.map_err(|e| LlmError::RequestFailed(e.to_string()))?;
-                let text = String::from_utf8_lossy(&chunk);
-                buffer.push_str(&text);
-
-                // Parse NDJSON lines from buffer
-                while let Some(line_end) = buffer.find('\n') {
-                    let line = buffer[..line_end].trim_end_matches('\r').to_string();
-                    buffer = buffer[line_end + 1..].to_string();
-
-                    if line.is_empty() {
-                        continue;
-                    }
-
-                    if let Ok(resp) = serde_json::from_str::<OllamaResponse>(&line) {
-                        if resp.done {
-                            let _ = app_handle.emit(
-                                "llm:done",
-                                serde_json::json!({ "requestId": request_id, "totalTokens": token_count }),
-                            );
-                            return Ok(());
-                        }
-
-                        if !resp.response.is_empty() {
-                            token_count += 1;
-                            let _ = app_handle.emit(
-                                "llm:token",
-                                serde_json::json!({
-                                    "requestId": request_id,
-                                    "token": resp.response,
-                                }),
-                            );
+                // issue 264: bytes in, complete lines out — a chunk boundary can
+                // no longer cut a character in half (framing.rs).
+                decoder
+                    .push(&chunk)
+                    .map_err(|e| map_framing_error(PROVIDER, request_id, e))?;
+                while let Some(line) = decoder.next_line() {
+                    let line = line.map_err(|e| map_framing_error(PROVIDER, request_id, e))?;
+                    let events =
+                        parse_line(line).map_err(|f| map_parse_failure(PROVIDER, request_id, f))?;
+                    for event in events {
+                        match event {
+                            LineEvent::Token(token) => {
+                                token_count += 1;
+                                emit_token(app_handle, request_id, &token);
+                            }
+                            LineEvent::Done => {
+                                emit_done(app_handle, request_id, token_count);
+                                return Ok(());
+                            }
                         }
                     }
                 }
@@ -179,13 +196,31 @@ pub async fn complete_stream(
         }
     }
 
-    // Stream ended without explicit done:true
-    let _ = app_handle.emit(
-        "llm:done",
-        serde_json::json!({ "requestId": request_id, "totalTokens": token_count }),
-    );
-
-    Ok(())
+    // issue 264: NDJSON may omit the final newline — the remainder is a whole
+    // record, and a `done:true` there still ends the stream properly.
+    if let Some(rest) = decoder.finish() {
+        let rest = rest.map_err(|e| map_framing_error(PROVIDER, request_id, e))?;
+        let events = parse_line(rest).map_err(|f| map_parse_failure(PROVIDER, request_id, f))?;
+        for event in events {
+            match event {
+                LineEvent::Token(token) => {
+                    token_count += 1;
+                    emit_token(app_handle, request_id, &token);
+                }
+                LineEvent::Done => {
+                    emit_done(app_handle, request_id, token_count);
+                    return Ok(());
+                }
+            }
+        }
+    }
+    // The connection ended before `done:true`; the tokens that arrived are on
+    // screen, but the completion did not finish — say so.
+    Err(LlmError::IncompleteStream {
+        provider: PROVIDER,
+        request_id: request_id.to_string(),
+        tokens: token_count,
+    })
 }
 
 #[cfg(test)]

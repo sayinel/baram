@@ -3,10 +3,10 @@
 use futures::StreamExt;
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};
-use tauri::Emitter;
 use tokio::sync::oneshot;
 
-use super::{LlmError, ModelInfo};
+use super::framing::{LineDecoder, LineEvent, ParseFailure};
+use super::{emit_done, emit_token, map_framing_error, map_parse_failure, LlmError, ModelInfo};
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct ClaudeModelsResponse {
@@ -92,6 +92,17 @@ pub(crate) struct SseEvent {
     pub event_type: String,
     #[serde(default)]
     pub delta: Option<SseDelta>,
+    /// Present on `type: "error"` events (overloaded, rate limit, bad request).
+    #[serde(default)]
+    pub error: Option<SseErrorBody>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub(crate) struct SseErrorBody {
+    #[serde(default, rename = "type")]
+    pub error_type: String,
+    #[serde(default)]
+    pub message: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -101,6 +112,55 @@ pub(crate) struct SseDelta {
     pub delta_type: String,
     #[serde(default)]
     pub text: String,
+    /// On a `message_delta`: why the message stopped. `refusal` is the
+    /// streaming classifier declining mid-stream — a 200 with text, not an
+    /// `error` event (docs: handle-streaming-refusals).
+    #[serde(default)]
+    pub stop_reason: Option<String>,
+}
+
+const PROVIDER: &str = "claude";
+
+/// One complete SSE line → what it means (issue 264). Protocol lines carry no
+/// event; `[DONE]` and `message_stop` end the stream; a `text_delta` is a
+/// token; an `error` event is the provider refusing, not text — and so is a
+/// `message_delta` whose `stop_reason` is `refusal`: the text streamed before
+/// it is a declined completion, not one to insert or cache. The other stop
+/// reasons (end_turn, max_tokens, stop_sequence, model_context_window_exceeded)
+/// end normally at the `message_stop` that follows, as OpenAI's `length` and
+/// Gemini's `MAX_TOKENS` do.
+pub(crate) fn parse_line(line: &str) -> Result<Vec<LineEvent>, ParseFailure> {
+    let Some(data) = super::framing::sse_data(line) else {
+        return Ok(Vec::new());
+    };
+    if data == "[DONE]" {
+        return Ok(vec![LineEvent::Done]);
+    }
+    let event: SseEvent =
+        serde_json::from_str(data).map_err(|e| super::framing::malformed_json(data, &e))?;
+    match event.event_type.as_str() {
+        "error" => {
+            let body = event.error.unwrap_or_default();
+            Err(ParseFailure::Provider(format!(
+                "{}: {}",
+                body.error_type, body.message
+            )))
+        }
+        "content_block_delta" => Ok(event
+            .delta
+            .filter(|d| d.delta_type == "text_delta" && !d.text.is_empty())
+            .map(|d| vec![LineEvent::Token(d.text)])
+            .unwrap_or_default()),
+        "message_stop" => Ok(vec![LineEvent::Done]),
+        "message_delta" => match event.delta.and_then(|d| d.stop_reason) {
+            Some(reason) if reason == "refusal" => Err(ParseFailure::Provider(
+                "generation stopped: stop_reason refusal".to_string(),
+            )),
+            _ => Ok(Vec::new()),
+        },
+        // message_start, content_block_start/stop, ping
+        _ => Ok(Vec::new()),
+    }
 }
 
 /// Claude API SSE streaming call.
@@ -165,7 +225,7 @@ pub async fn complete_stream(
     }
 
     let mut stream = response.bytes_stream();
-    let mut buffer = String::new();
+    let mut decoder = LineDecoder::default();
     let mut token_count: u32 = 0;
 
     loop {
@@ -178,42 +238,23 @@ pub async fn complete_stream(
                     break;
                 };
                 let chunk = chunk.map_err(|e| LlmError::RequestFailed(e.to_string()))?;
-                let text = String::from_utf8_lossy(&chunk);
-                buffer.push_str(&text);
-
-                // Parse SSE lines from buffer
-                while let Some(line_end) = buffer.find('\n') {
-                    let line = buffer[..line_end].trim_end_matches('\r').to_string();
-                    buffer = buffer[line_end + 1..].to_string();
-
-                    if let Some(data) = line.strip_prefix("data: ") {
-                        if data == "[DONE]" {
-                            let _ = app_handle.emit(
-                                "llm:done",
-                                serde_json::json!({ "requestId": request_id, "totalTokens": token_count }),
-                            );
-                            return Ok(());
-                        }
-
-                        if let Ok(event) = serde_json::from_str::<SseEvent>(data) {
-                            if event.event_type == "content_block_delta" {
-                                if let Some(delta) = &event.delta {
-                                    if delta.delta_type == "text_delta" && !delta.text.is_empty() {
-                                        token_count += 1;
-                                        let _ = app_handle.emit(
-                                            "llm:token",
-                                            serde_json::json!({
-                                                "requestId": request_id,
-                                                "token": delta.text,
-                                            }),
-                                        );
-                                    }
-                                }
-                            } else if event.event_type == "message_stop" {
-                                let _ = app_handle.emit(
-                                    "llm:done",
-                                    serde_json::json!({ "requestId": request_id, "totalTokens": token_count }),
-                                );
+                // issue 264: bytes in, complete lines out — a chunk boundary can
+                // no longer cut a character in half (framing.rs).
+                decoder
+                    .push(&chunk)
+                    .map_err(|e| map_framing_error(PROVIDER, request_id, e))?;
+                while let Some(line) = decoder.next_line() {
+                    let line = line.map_err(|e| map_framing_error(PROVIDER, request_id, e))?;
+                    let events =
+                        parse_line(line).map_err(|f| map_parse_failure(PROVIDER, request_id, f))?;
+                    for event in events {
+                        match event {
+                            LineEvent::Token(token) => {
+                                token_count += 1;
+                                emit_token(app_handle, request_id, &token);
+                            }
+                            LineEvent::Done => {
+                                emit_done(app_handle, request_id, token_count);
                                 return Ok(());
                             }
                         }
@@ -223,13 +264,14 @@ pub async fn complete_stream(
         }
     }
 
-    // Stream ended without explicit message_stop
-    let _ = app_handle.emit(
-        "llm:done",
-        serde_json::json!({ "requestId": request_id, "totalTokens": token_count }),
-    );
-
-    Ok(())
+    // issue 264: the connection ended before the provider's terminal record.
+    // An unterminated last SSE line is not an event; whatever it held went
+    // with the connection. Say so instead of reporting a finished completion.
+    Err(LlmError::IncompleteStream {
+        provider: PROVIDER,
+        request_id: request_id.to_string(),
+        tokens: token_count,
+    })
 }
 
 #[cfg(test)]

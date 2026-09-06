@@ -3,10 +3,10 @@
 use futures::StreamExt;
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};
-use tauri::Emitter;
 use tokio::sync::oneshot;
 
-use super::{LlmError, ModelInfo};
+use super::framing::{LineDecoder, LineEvent, ParseFailure};
+use super::{emit_done, emit_token, map_framing_error, map_parse_failure, LlmError, ModelInfo};
 
 /// Redact the API key from error messages to prevent accidental leakage.
 fn redact_api_key(msg: &str, api_key: &str) -> String {
@@ -141,6 +141,29 @@ struct GeminiGenerationConfig {
 pub(crate) struct GeminiSseChunk {
     #[serde(default)]
     pub candidates: Vec<GeminiCandidate>,
+    /// A top-level error envelope — well-formed JSON with no candidates, which
+    /// used to deserialise to nothing and vanish.
+    #[serde(default)]
+    pub error: Option<GeminiError>,
+    /// A blocked PROMPT: `blockReason` set and no candidates at all (docs:
+    /// GenerateContentResponse.promptFeedback). Also well-formed JSON that
+    /// used to deserialise to nothing, so the stream ended as "incomplete"
+    /// instead of saying why.
+    #[serde(default, rename = "promptFeedback")]
+    pub prompt_feedback: Option<GeminiPromptFeedback>,
+}
+#[derive(Debug, Default, Deserialize)]
+pub(crate) struct GeminiPromptFeedback {
+    #[serde(default, rename = "blockReason")]
+    pub block_reason: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub(crate) struct GeminiError {
+    #[serde(default)]
+    pub code: u32,
+    #[serde(default)]
+    pub message: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -155,6 +178,63 @@ pub(crate) struct GeminiCandidate {
 pub(crate) struct GeminiCandidateContent {
     #[serde(default)]
     pub parts: Vec<GeminiPart>,
+}
+
+const PROVIDER: &str = "gemini";
+
+/// One complete SSE line → what it means (issue 264). A candidate's parts are
+/// tokens. Any finish reason ends the stream after them: STOP and MAX_TOKENS
+/// as a normal end, every other documented reason (SAFETY, RECITATION,
+/// BLOCKLIST, PROHIBITED_CONTENT, SPII, LANGUAGE, OTHER, …) as the provider
+/// refusing — Gemini then closes the response, and treating those as "no
+/// terminal record" would report a valid termination as a broken stream.
+pub(crate) fn parse_line(line: &str) -> Result<Vec<LineEvent>, ParseFailure> {
+    let Some(data) = super::framing::sse_data(line) else {
+        return Ok(Vec::new());
+    };
+    let chunk: GeminiSseChunk =
+        serde_json::from_str(data).map_err(|e| super::framing::malformed_json(data, &e))?;
+    if let Some(err) = chunk.error {
+        return Err(ParseFailure::Provider(format!(
+            "{}: {}",
+            err.code, err.message
+        )));
+    }
+    if let Some(reason) = chunk
+        .prompt_feedback
+        .and_then(|f| f.block_reason)
+        .filter(|r| !r.is_empty() && r != "BLOCK_REASON_UNSPECIFIED")
+    {
+        return Err(ParseFailure::Provider(format!(
+            "prompt blocked: blockReason {reason}"
+        )));
+    }
+    let mut events = Vec::new();
+    let mut finished = false;
+    let mut refused: Option<String> = None;
+    for candidate in chunk.candidates {
+        if let Some(content) = candidate.content {
+            for part in content.parts {
+                if !part.text.is_empty() {
+                    events.push(LineEvent::Token(part.text));
+                }
+            }
+        }
+        match candidate.finish_reason.as_deref() {
+            None | Some("") | Some("FINISH_REASON_UNSPECIFIED") => {}
+            Some("STOP" | "MAX_TOKENS") => finished = true,
+            Some(reason) => refused = Some(reason.to_string()),
+        }
+    }
+    if let Some(reason) = refused {
+        return Err(ParseFailure::Provider(format!(
+            "generation stopped: finishReason {reason}"
+        )));
+    }
+    if finished {
+        events.push(LineEvent::Done);
+    }
+    Ok(events)
 }
 
 /// Gemini API SSE streaming call.
@@ -233,7 +313,7 @@ pub async fn complete_stream(
     }
 
     let mut stream = response.bytes_stream();
-    let mut buffer = String::new();
+    let mut decoder = LineDecoder::default();
     let mut token_count: u32 = 0;
 
     loop {
@@ -246,46 +326,24 @@ pub async fn complete_stream(
                     break;
                 };
                 let chunk = chunk.map_err(|e| LlmError::RequestFailed(redact_api_key(&e.to_string(), api_key)))?;
-                let text = String::from_utf8_lossy(&chunk);
-                buffer.push_str(&text);
-
-                // Parse SSE lines from buffer
-                while let Some(line_end) = buffer.find('\n') {
-                    let line = buffer[..line_end].trim_end_matches('\r').to_string();
-                    buffer = buffer[line_end + 1..].to_string();
-
-                    if line.is_empty() {
-                        continue;
-                    }
-
-                    if let Some(data) = line.strip_prefix("data: ") {
-                        if let Ok(chunk) = serde_json::from_str::<GeminiSseChunk>(data) {
-                            for candidate in &chunk.candidates {
-                                // Extract token from content.parts
-                                if let Some(content) = &candidate.content {
-                                    for part in &content.parts {
-                                        if !part.text.is_empty() {
-                                            token_count += 1;
-                                            let _ = app_handle.emit(
-                                                "llm:token",
-                                                serde_json::json!({
-                                                    "requestId": request_id,
-                                                    "token": part.text,
-                                                }),
-                                            );
-                                        }
-                                    }
-                                }
-                                // Check finish reason
-                                if let Some(reason) = &candidate.finish_reason {
-                                    if reason == "STOP" || reason == "MAX_TOKENS" {
-                                        let _ = app_handle.emit(
-                                            "llm:done",
-                                            serde_json::json!({ "requestId": request_id, "totalTokens": token_count }),
-                                        );
-                                        return Ok(());
-                                    }
-                                }
+                // issue 264: bytes in, complete lines out — a chunk boundary can
+                // no longer cut a character in half (framing.rs).
+                decoder
+                    .push(&chunk)
+                    .map_err(|e| map_framing_error(PROVIDER, request_id, e))?;
+                while let Some(line) = decoder.next_line() {
+                    let line = line.map_err(|e| map_framing_error(PROVIDER, request_id, e))?;
+                    let events =
+                        parse_line(line).map_err(|f| map_parse_failure(PROVIDER, request_id, f))?;
+                    for event in events {
+                        match event {
+                            LineEvent::Token(token) => {
+                                token_count += 1;
+                                emit_token(app_handle, request_id, &token);
+                            }
+                            LineEvent::Done => {
+                                emit_done(app_handle, request_id, token_count);
+                                return Ok(());
                             }
                         }
                     }
@@ -294,13 +352,14 @@ pub async fn complete_stream(
         }
     }
 
-    // Stream ended without explicit finish reason
-    let _ = app_handle.emit(
-        "llm:done",
-        serde_json::json!({ "requestId": request_id, "totalTokens": token_count }),
-    );
-
-    Ok(())
+    // issue 264: the connection ended before the provider's terminal record.
+    // An unterminated last SSE line is not an event; whatever it held went
+    // with the connection. Say so instead of reporting a finished completion.
+    Err(LlmError::IncompleteStream {
+        provider: PROVIDER,
+        request_id: request_id.to_string(),
+        tokens: token_count,
+    })
 }
 
 #[cfg(test)]
