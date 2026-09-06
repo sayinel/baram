@@ -10,7 +10,10 @@ import { NodeViewWrapper } from "@tiptap/react";
 import { useContextStore } from "../../stores/context/context";
 import { useZettelIndexStore } from "../../stores/zettelkasten/zettel-index";
 import { isDateString } from "../../utils/journal/journal";
-import { isZettelId } from "../../utils/zettelkasten/parse-note-title";
+import {
+  capNoteTitle,
+  isZettelId,
+} from "../../utils/zettelkasten/parse-note-title";
 
 export function WikilinkView({ node, selected, extension }: NodeViewProps) {
   const { target, display, heading, vaultAlias } = node.attrs as {
@@ -31,8 +34,17 @@ export function WikilinkView({ node, selected, extension }: NodeViewProps) {
 
   // Display text priority: index title (zettel id only) > display > heading > target
   // §87 Cross-vault: include alias:: prefix in display text
+  //
+  // §99 인덱스 제목만 캡을 받는다. fleeting 노트의 제목은 사용자가 정한 이름이
+  // 아니라 캡처 본문 첫 줄이라 문단 길이일 수 있고, `.wikilink`에는 CSS 절단이
+  // 없어(max-width를 주려면 display:inline-block이 필요한데 그러면 **모든**
+  // 위키링크의 줄바꿈이 바뀐다) 그대로 두면 점선 밑줄 달린 문단이 된다.
+  // `display`/`heading`/`target` 경로는 사용자가 적은 것이라 손대지 않는다.
+  const cappedZettelTitle =
+    zettelTitle === undefined ? undefined : capNoteTitle(zettelTitle);
   const baseText =
-    zettelTitle ?? (display || (heading ? `${target} > ${heading}` : target));
+    cappedZettelTitle ??
+    (display || (heading ? `${target} > ${heading}` : target));
   const text = vaultAlias ? `${vaultAlias}::${baseText}` : baseText;
 
   const isDate = isDateString(target);
@@ -71,6 +83,13 @@ export function WikilinkView({ node, selected, extension }: NodeViewProps) {
       className={`wikilink ${selected ? "wikilink-selected" : ""} ${isDate ? "wikilink-date" : ""} ${isDangling ? "wikilink--dangling" : ""}`}
       data-target={target}
       onClick={handleClick}
+      // §99 캡이 실제로 잘랐을 때만 전문을 툴팁으로 남긴다 — 자르지 않았다면
+      // 툴팁이 화면의 글자를 그대로 반복할 뿐이다.
+      title={
+        cappedZettelTitle !== zettelTitle && zettelTitle !== undefined
+          ? zettelTitle
+          : undefined
+      }
     >
       {vaultAlias && vaultInfo && (
         <span
