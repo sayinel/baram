@@ -9,6 +9,7 @@ import { useShallow } from "zustand/shallow";
 import { useTranslation } from "../../i18n/useTranslation";
 import { installAppUpdate } from "../../services/app-update";
 import { useAppUpdateStore } from "../../stores/system/app-update";
+import MarkdownRenderer from "../ai/MarkdownRenderer";
 
 export function UpdateDialog() {
   const { t } = useTranslation();
@@ -91,7 +92,15 @@ export function UpdateDialog() {
             .replace("{current}", currentVersion)
             .replace("{available}", availableVersion ?? "")}
         </div>
-        {notes && <pre className="update-dialog-notes">{notes}</pre>}
+        {notes && (
+          <div className="update-dialog-notes">
+            {/* ‼️ Left at the DEFAULT trust ("untrusted"). The minisign signature
+                in latest.json covers the update ARCHIVE, not the JSON around it,
+                so these notes are unsigned text from an HTTPS endpoint — raw
+                HTML in them must not reach the DOM. */}
+            <MarkdownRenderer content={notes} />
+          </div>
+        )}
         {status === "error" && (
           <div className="update-dialog-error">
             <div className="update-dialog-error-title">
