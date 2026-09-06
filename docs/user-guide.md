@@ -1967,13 +1967,15 @@ To build your own plugin, see the [Plugin Development Guide](plugin-development.
 
 ## Help Menu
 
-The **Help** menu opens this guide, the keyboard shortcut reference, and the FAQ in your browser — there is no in-app panel:
+The **Help** menu opens this guide, the keyboard shortcut reference, and the FAQ in your browser, plus links to the project homepage and issue tracker — there is no in-app panel:
 
-| Menu item              | Opens                                   |
-| ----------------------- | ---------------------------------------- |
-| **User Guide**          | This guide                              |
-| **Keyboard Shortcuts**  | Complete keyboard shortcut reference    |
-| **FAQ**                 | Frequently asked questions and answers  |
+| Menu item | Opens |
+| --------- | ----- |
+| **User Guide** | This guide |
+| **Keyboard Shortcuts** | Complete keyboard shortcut reference |
+| **FAQ** | Frequently asked questions and answers |
+| **Baram Homepage** | The project homepage |
+| **Report Issue...** | GitHub Issues |
 
 ---
 

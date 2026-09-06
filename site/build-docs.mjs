@@ -30,8 +30,7 @@ export function slugify(text) {
     // GitHub replaces each space with one hyphen, so "## Vault & Context System" is
     // #vault--context-system there, while the line above collapses the whitespace run
     // that dropping "&" left behind. Running both the id and the href through this
-    // same function is the only reason the two spellings meet — the Help panel
-    // normalizes both sides for exactly this reason (HelpPanel.tsx `slugify`).
+    // same function is the only reason the two spellings meet.
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "");
 }
