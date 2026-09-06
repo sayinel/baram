@@ -1,0 +1,22 @@
+{
+  "_comment": "앱↔사이트 URL 계약의 단일 출처. 소비자 셋: (1) astro.config.mjs 의 구 URL 스텁, (2) 앱의 src/utils/help-urls.ts 를 검증하는 테스트, (3) 산출물 검증(scripts/check-dist.mjs). 리터럴을 앱과 사이트 양쪽에 복제하면 사이트 경로가 바뀔 때 앱만 조용히 404가 된다.",
+  "origin": "https://sayinel.github.io",
+  "base": "/baram",
+  "defaultLocale": "en",
+  "locales": ["en", "ko"],
+  "docsPrefix": "docs/",
+
+  "_entries": "앱 Help 메뉴 세 항목의 착지 slug. IA 트리(site/ia-tree.mjs)의 slug 와 같아야 하며 check-dist.mjs 가 대조한다.",
+  "entries": {
+    "guide": "getting-started",
+    "shortcuts": "customization/keyboard-shortcuts",
+    "faq": "faq/general"
+  },
+
+  "_legacy": "구 단일 페이지 URL → entries 키. 목적지 URL을 여기 적지 않는다 — entries 를 복제하면 갈라진다. v0.7.0 이하에는 이 URL을 여는 코드가 없으므로(help-urls.ts 는 v0.7.0 이후 커밋) 외부 링크·검색 결과만을 위한 것이다.",
+  "legacy": {
+    "/docs/user-guide.html": "guide",
+    "/docs/keyboard-shortcuts.html": "shortcuts",
+    "/docs/faq.html": "faq"
+  }
+}
