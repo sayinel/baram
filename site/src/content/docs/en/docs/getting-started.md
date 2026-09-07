@@ -14,7 +14,7 @@ Download the latest release for your platform from the [Releases](https://github
 | Windows (x64 / ARM)           | `.msi`, `.exe`      |
 | Linux (x64)                   | `.deb`, `.AppImage` |
 
-Alternatively, [build from source](../README.md#build-from-source).
+Alternatively, [build from source](https://github.com/sayinel/baram#build-from-source).
 
 ### First Launch
 

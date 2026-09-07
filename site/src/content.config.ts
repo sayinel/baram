@@ -19,5 +19,14 @@ export const collections = {
       }),
     }),
   }),
-  i18n: defineCollection({ loader: i18nLoader(), schema: i18nSchema() }),
+  i18n: defineCollection({
+    loader: i18nLoader(),
+    schema: i18nSchema({
+      // 낡은 번역 배너의 문구. Starlight 기본 사전에 없는 키라 두 로케일이 직접 낸다.
+      extend: z.object({
+        "translation.stale": z.string().optional(),
+        "translation.viewSource": z.string().optional(),
+      }),
+    }),
+  }),
 };

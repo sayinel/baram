@@ -1,0 +1,61 @@
+---
+// §4.2 Starlight `components.Banner` 오버라이드.
+//
+// 두 가지를 낸다: 페이지가 프론트매터로 지정한 배너(Starlight 기본 동작)와,
+// `src/routeData.ts` 가 판정한 **낡은 번역** 알림.
+//
+// ‼️ 게이트가 붙잡는 것은 문구가 아니라 `data-stale-translation` 속성이다.
+//    번역된 산문을 단정하면 문구를 다듬는 순간 게이트가 깨진다.
+// ‼️ 컴포넌트를 갈아끼우면 Starlight 기본 배너의 스코프 스타일도 함께 사라진다 —
+//    그래서 `.sl-banner` 를 여기서 다시 칠한다.
+import { readStaleTranslation } from "../lib/source-hash.ts";
+
+const route = Astro.locals.starlightRoute;
+const { banner } = route.entry.data;
+const stale = readStaleTranslation(route);
+---
+
+{banner && <div class="sl-banner" data-pagefind-ignore set:html={banner.content} />}
+
+{
+  stale && (
+    <div class="stale-translation" data-pagefind-ignore data-stale-translation>
+      <span>{Astro.locals.t("translation.stale")}</span>{" "}
+      <a href={stale.sourceUrl}>{Astro.locals.t("translation.viewSource")}</a>
+    </div>
+  )
+}
+
+<style>
+  @layer starlight.core {
+    .sl-banner {
+      --__sl-banner-text: var(--sl-color-banner-text, var(--sl-color-text-invert));
+      padding: var(--sl-nav-pad-y) var(--sl-nav-pad-x);
+      background-color: var(--sl-color-banner-bg, var(--sl-color-bg-accent));
+      color: var(--__sl-banner-text);
+      line-height: var(--sl-line-height-headings);
+      text-align: center;
+      text-wrap: balance;
+      box-shadow: var(--sl-shadow-sm);
+    }
+    .sl-banner :global(a) {
+      color: var(--__sl-banner-text);
+    }
+
+    /* 경고 계열(aside caution 과 같은 색)로 낸다 — 공지가 아니라 신뢰도 경고다. */
+    .stale-translation {
+      padding: var(--sl-nav-pad-y) var(--sl-nav-pad-x);
+      border-block-end: 1px solid var(--sl-color-orange);
+      background-color: var(--sl-color-orange-low);
+      color: var(--sl-color-white);
+      line-height: var(--sl-line-height-headings);
+      text-align: center;
+      text-wrap: balance;
+    }
+    .stale-translation a {
+      color: var(--sl-color-orange-high);
+      text-underline-offset: 0.2em;
+      white-space: nowrap;
+    }
+  }
+</style>

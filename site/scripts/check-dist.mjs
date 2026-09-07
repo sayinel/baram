@@ -9,10 +9,16 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PAGES } from "../ia-tree.mjs";
-import { absolute, BASE, legacyTargets, withBase } from "../routes.mjs";
+import { absolute, BASE, docPath, legacyTargets, withBase } from "../routes.mjs";
+import {
+  frontmatterSourceHash,
+  hashSourceFile,
+  splitFrontmatter,
+  translationState,
+} from "../src/lib/source-hash.ts";
+import { EN_DOCS, KO_DOCS, pageFile, slugsOn } from "./docs-fs.mjs";
 
 const DIST = join(dirname(fileURLToPath(import.meta.url)), "..", "dist");
-const CONTENT = join(dirname(fileURLToPath(import.meta.url)), "..", "src/content/docs");
 
 const problems = [];
 const pending = [];
@@ -23,10 +29,7 @@ if (!existsSync(DIST)) {
 }
 
 /** 그 IA slug 의 영문 원본이 실제로 있는가 (3단계 이주 진행도) */
-function migrated(slug) {
-  const rel = slug === "index" ? "docs/index" : `docs/${slug}`;
-  return ["md", "mdx"].some((ext) => existsSync(join(CONTENT, "en", `${rel}.${ext}`)));
-}
+const migrated = (slug) => pageFile(EN_DOCS, slug) !== null;
 
 /** base 붙은 URL 경로가 dist 안에서 가리키는 파일 */
 function resolveInDist(urlPath) {
@@ -95,6 +98,46 @@ for (const page of enPages) {
 }
 for (const page of koPages) {
   if (!enPages.includes(page)) problems.push(`[고아 번역] ko/${page} 에 대응하는 en 페이지가 없다`);
+}
+
+// ── 4. 낡음 판정이 **두 곳에서 같은가** (§4.2)
+//
+// ‼️ 이것이 이 기능의 핵심 단정이다. 해시를 내는 곳이 둘이다 — 스탬프 도구는 디스크에서
+//    프론트매터를 잘라 계산하고, 빌드는 Astro 가 파싱한 `entry.body`/`entry.data.title`
+//    로 계산한다. 둘이 갈리면 스탬프를 찍자마자 낡음으로 뜨거나(과잉) 영영 안 뜬다(침묵).
+//    소스만 보는 단위 테스트로는 절대 못 잡는다 — **디스크 판정 vs 렌더된 배너**를
+//    산출물에서 맞대야 한다.
+const koOnDisk = slugsOn(KO_DOCS);
+if (!koOnDisk.length) {
+  console.log("ℹ️ ko 페이지가 없어 낡음 판정 대조를 건너뜁니다 (단정이 공허해진다)");
+}
+for (const slug of koOnDisk) {
+  const enFile = pageFile(EN_DOCS, slug);
+  if (!enFile) continue; // 고아는 3번이 이미 신고했다
+  const parts = splitFrontmatter(readFileSync(pageFile(KO_DOCS, slug), "utf8"));
+  const expected = hashSourceFile(readFileSync(enFile, "utf8"), `en/${slug}`);
+  const state = translationState(expected, parts ? frontmatterSourceHash(parts.frontmatter) : undefined);
+
+  const built = resolveInDist(withBase(docPath(slug, "ko")));
+  if (!built) { problems.push(`[산출물 없음] ko/${slug} 가 dist 에 없다`); continue; }
+  const shown = readFileSync(built, "utf8").includes("data-stale-translation");
+  if (state === "stale" && !shown) {
+    problems.push(`[판정 불일치] ko/${slug} — 디스크는 낡음인데 배너가 없다 (두 해시 계산이 갈렸다)`);
+  }
+  if (state === "current" && shown) {
+    problems.push(`[판정 불일치] ko/${slug} — 디스크는 최신인데 배너가 떴다 (두 해시 계산이 갈렸다)`);
+  }
+}
+
+// 미번역(폴백) 페이지는 절대 낡음 배너를 달면 안 된다.
+// ‼️ 폴백 라우트는 `id` 가 `ko/...` 인데 `entry` 는 **en 엔트리**다(Starlight 실측).
+//    판정을 `route.id` 로 갈랐다면 미번역 56페이지가 전부 여기서 걸렸을 것이다.
+for (const slug of slugsOn(EN_DOCS)) {
+  if (koOnDisk.includes(slug)) continue;
+  const built = resolveInDist(withBase(docPath(slug, "ko")));
+  if (built && readFileSync(built, "utf8").includes("data-stale-translation")) {
+    problems.push(`[폴백에 배너] ko/${slug} 는 미번역인데 낡음 배너가 붙었다`);
+  }
 }
 
 const total = PAGES.length;

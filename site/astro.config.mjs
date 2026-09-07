@@ -74,9 +74,26 @@ export default defineConfig({
         ko: { label: "한국어", lang: "ko" },
       },
       customCss: ["./src/styles/starlight-tokens.css"],
+      // 낡은 번역 판정(routeData)과 그 표시(Banner). 판정은 렌더와 분리해 둔다 —
+      // 고아 번역을 빌드 실패로 만드는 일이 컴포넌트가 렌더되는지에 달리면 안 된다.
+      routeMiddleware: "./src/routeData.ts",
+      components: { Banner: "./src/components/Banner.astro" },
       sidebar: buildSidebar(),
       social: [{ icon: "github", label: "GitHub", href: "https://github.com/sayinel/baram" }],
-      plugins: [starlightLinksValidator({ errorOnRelativeLinks: false })],
+      plugins: [
+        starlightLinksValidator({
+          // ‼️ `errorOnFallbackPages` 기본값 true 는 **미번역 페이지로 가는 링크를 전부
+          //    무효로 본다** — 번역된 ko 페이지가 아직 번역 안 된 ko 페이지를 가리키면
+          //    실제로는 폴백으로 멀쩡히 열리는데 빌드가 실패한다(ko 첫 페이지에서 15건 실측).
+          //    끈다고 검증이 약해지지 않는다: 플러그인은 기본 로케일 짝을 찾아 앵커까지
+          //    그쪽으로 검사하고, 그 짝도 없으면 여전히 무효로 신고한다.
+          errorOnFallbackPages: false,
+          // ‼️ 되켰다. 이걸 끄고 있던 동안 **죽은 상대 링크 8개가 실제로 배포돼 있었다** —
+          //    `../README.md#build-from-source`, `../examples/plugins/...` 처럼 원래
+          //    리포 안 경로였던 것들이 사이트로 옮겨지면서 전부 404 가 됐다. 절대 URL 로
+          //    바꿨으니 이제 상대 링크는 0건이고, 켜 두면 같은 부류가 다시 못 들어온다.
+        }),
+      ],
     }),
   ],
 });

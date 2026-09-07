@@ -8,14 +8,15 @@
 //
 // ‼️ 번역이 이 파일들을 편집한다. 생성기로 덮어쓰면 번역이 사라진다 —
 //    그래서 split-docs.mjs 는 이주 후 다시 돌리지 않는다.
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { dirname, join, relative } from "node:path";
-import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
 import { GROUPS, groupOf, PAGES, TITLES } from "../ia-tree.mjs";
-
-const HERE = dirname(fileURLToPath(import.meta.url));
-const EN = join(HERE, "..", "src/content/docs/en/docs");
-const KO = join(HERE, "..", "src/content/docs/ko/docs");
+import {
+  frontmatterSourceHash,
+  hashSourceFile,
+  splitFrontmatter,
+  translationState,
+} from "../src/lib/source-hash.ts";
+import { EN_DOCS as EN, KO_DOCS as KO, pageFile, slugsOn } from "./docs-fs.mjs";
 
 const FLOOR = 40;
 const CEIL = 200;
@@ -30,21 +31,6 @@ const SIZE_EXCEPTIONS = new Set([
 
 const problems = [];
 
-/** 그 디렉터리 아래 모든 `.md`/`.mdx` 를 slug 로 (로케일·docs 접두어 제거) */
-function slugsOn(dir) {
-  if (!existsSync(dir)) return [];
-  const out = [];
-  const walk = (d) => {
-    for (const name of readdirSync(d)) {
-      const p = join(d, name);
-      if (statSync(p).isDirectory()) walk(p);
-      else if (/\.mdx?$/.test(name)) out.push(relative(dir, p).replace(/\.mdx?$/, ""));
-    }
-  };
-  walk(dir);
-  return out;
-}
-
 const declared = new Set(PAGES.map((p) => p.slug));
 const onDisk = slugsOn(EN);
 
@@ -58,8 +44,7 @@ for (const slug of onDisk) {
 
 // ── 2. 제목·프론트매터
 for (const slug of onDisk) {
-  const file = [`${slug}.md`, `${slug}.mdx`].map((f) => join(EN, f)).find(existsSync);
-  const raw = readFileSync(file, "utf8");
+  const raw = readFileSync(pageFile(EN, slug), "utf8");
   const fm = /^---\n([\s\S]*?)\n---\n/.exec(raw);
   if (!fm) { problems.push(`[프론트매터 없음] ${slug}`); continue; }
   if (!/^title:/m.test(fm[1])) problems.push(`[title 없음] ${slug}`);
@@ -74,7 +59,7 @@ for (const slug of onDisk) {
 // ── 3. 죽은 예외: 규칙을 만족하는데 예외로 남아 있으면 다음 사람이 오해한다
 for (const slug of SIZE_EXCEPTIONS) {
   if (!declared.has(slug)) { problems.push(`[고아 예외] ${slug} — 그런 페이지가 없다`); continue; }
-  const file = [`${slug}.md`, `${slug}.mdx`].map((f) => join(EN, f)).find(existsSync);
+  const file = pageFile(EN, slug);
   if (!file) continue;
   const raw = readFileSync(file, "utf8");
   const body = raw.slice(/^---\n[\s\S]*?\n---\n/.exec(raw)?.[0].length ?? 0).split("\n").length;
@@ -97,8 +82,32 @@ for (const key of Object.keys(GROUPS)) {
   if (![...declared].some((s) => groupOf(s) === key)) problems.push(`[죽은 그룹] GROUPS.${key}`);
 }
 
+// ── 6. 번역 스탬프 (§4.2)
+//
+// 스탬프가 없는 번역은 **낡음을 판정할 수 없다**. 판정할 수 없는 번역은 배너 없이
+// 조용히 신뢰받으므로, 사용자에게 보이는 상태 공간을 {번역됨·낡음·미번역} 셋으로
+// 닫는다 — 넷째 상태(모름)는 저자의 실수이지 사용자에게 보일 상태가 아니다.
+// 낡음 자체는 결함이 아니라 **알려진 상태**다: 배너가 알리고 여기서는 세기만 한다.
+let stale = 0;
+for (const slug of koSlugs) {
+  if (!onDisk.includes(slug)) continue; // 고아는 4번이 이미 신고했다
+  const parts = splitFrontmatter(readFileSync(pageFile(KO, slug), "utf8"));
+  if (!parts) { problems.push(`[프론트매터 없음] ko/${slug}`); continue; }
+  const expected = hashSourceFile(readFileSync(pageFile(EN, slug), "utf8"), `en/${slug}`);
+  const state = translationState(expected, frontmatterSourceHash(parts.frontmatter));
+  if (state === "unstamped") {
+    problems.push(`[미스탬프] ko/${slug} — sourceHash 가 없다. \`npm run i18n:stamp\``);
+  } else if (state === "stale") stale += 1;
+}
+for (const slug of onDisk) {
+  const parts = splitFrontmatter(readFileSync(pageFile(EN, slug), "utf8"));
+  if (parts && frontmatterSourceHash(parts.frontmatter)) {
+    problems.push(`[원문에 스탬프] en/${slug} — sourceHash 는 번역본에만 찍는다`);
+  }
+}
+
 console.log(`선언 ${declared.size} · en ${onDisk.length} · ko ${koSlugs.length} · 크기 예외 ${SIZE_EXCEPTIONS.size}`);
-console.log(`번역 진행: ${koSlugs.length}/${onDisk.length} 페이지`);
+console.log(`번역 진행: ${koSlugs.length}/${onDisk.length} 페이지 · 낡음 ${stale}개 (결함 아님 — 배너가 알린다)`);
 console.log();
 if (!problems.length) console.log("✅ 문제 없음");
 else { console.log(`❌ ${problems.length}건`); for (const p of problems) console.log("  " + p); }
