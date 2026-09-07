@@ -42,10 +42,18 @@ const stale = readStaleTranslation(route);
       color: var(--__sl-banner-text);
     }
 
-    /* 경고 계열(aside caution 과 같은 색)로 낸다 — 공지가 아니라 신뢰도 경고다. */
+    /* 경고 계열(aside caution 과 같은 색)로 낸다 — 공지가 아니라 신뢰도 경고다.
+     *
+     * ‼️ 테두리는 `--sl-color-orange` 가 아니라 **`-high`** 다. 라이트 테마에서
+     *    `orange-low` 배경은 흰 페이지와 대비가 **1.18**, `orange` 테두리는 1.48 로
+     *    띠와 경계가 둘 다 사실상 안 보인다 — 경고가 눈에 띄지 않으면 없는 것과 같다.
+     *    `-high` 로 올리면 라이트 6.02(배너)·7.11(페이지), 다크 8.32·14.61 이다.
+     *    본문·링크는 두 테마 모두 AA 를 넘는다(본문 10.08/14.98 · 링크 8.32/6.02) —
+     *    `--sl-color-white` 는 리터럴 흰색이 아니라 Starlight 이 테마마다 뒤집는
+     *    "배경 대비 최대" 토큰이라서 라이트에서도 읽힌다. */
     .stale-translation {
       padding: var(--sl-nav-pad-y) var(--sl-nav-pad-x);
-      border-block-end: 1px solid var(--sl-color-orange);
+      border-block-end: 1px solid var(--sl-color-orange-high);
       background-color: var(--sl-color-orange-low);
       color: var(--sl-color-white);
       line-height: var(--sl-line-height-headings);
