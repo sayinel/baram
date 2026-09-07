@@ -56,7 +56,7 @@ fixture to the public registry.
 
 To exercise the marketplace UI without a live registry, point the app at the
 repo's own committed seed instead of the default:
-[`registry/index.json`](../registry/index.json).
+[`registry/index.json`](https://github.com/sayinel/baram/blob/main/registry/index.json).
 
 > ⚠️ **The old procedure no longer works.** Earlier versions of this page said
 > to close the app and edit `state.registryUrl` inside

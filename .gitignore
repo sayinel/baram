@@ -581,6 +581,12 @@ blob-report/
 # Astro 생성 타입 (site/) — 빌드 산출물이므로 커밋하지 않는다
 .astro/
 
+# ‼️ 위쪽 Python boilerplate 의 `lib/` 규칙(.Python·eggs/·sdist/ 옆)이 사이트의 공유
+#    모듈 디렉터리까지 삼킨다. 로컬에는 파일이 있으니 빌드가 초록이고 **CI 만** "모듈
+#    없음"으로 죽는 종류의 사고라서 좁게 되살린다. (다른 `lib/` 매치는 전부
+#    `src-tauri/target/` 아래 Rust 빌드 산출물이다.)
+!site/src/lib/
+
 # Internal development docs — managed locally, not published
 /dev/
 .docs/

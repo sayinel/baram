@@ -38,14 +38,14 @@ go with it. Exporting one there is dead code that reads like a lifecycle hook �
 Author against the generated public type declarations rather than Baram's
 internal source:
 
-- [`examples/plugins/plugin-api.d.ts`](../examples/plugins/plugin-api.d.ts) —
+- [`examples/plugins/plugin-api.d.ts`](https://github.com/sayinel/baram/blob/main/examples/plugins/plugin-api.d.ts) —
   generated from `src/plugins/public-api.ts` via `npm run types:plugin`
   (`tsc -p tsconfig.plugin-api.json`); re-exports every public interface
   (`ExtensionContext`, `AIAPI`, `NetworkAPI`, `StorageAPI`, `UIAPI`,
   `CommandsAPI`, `EditorAPI`, `EventsAPI`, `FilesAPI`,
   `PluginManifest`/`PluginCapability`/`PluginEventName`, and the option/model
   types) as type-only declarations.
-- [`examples/plugins/types.d.ts`](../examples/plugins/types.d.ts) — a small
+- [`examples/plugins/types.d.ts`](https://github.com/sayinel/baram/blob/main/examples/plugins/types.d.ts) — a small
   sibling `.d.ts` the barrel depends on.
 
 Copy both files next to your plugin's source (both example plugins'

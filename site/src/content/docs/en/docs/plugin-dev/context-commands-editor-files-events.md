@@ -6,7 +6,7 @@ title: "Context: commands, editor, files, events"
 The `context` object passed to `activate()` exposes these APIs, each gated by
 the capability (or capabilities) declared in the manifest. Signatures below
 are taken verbatim from `src/plugins/types.ts` (published as
-[`examples/plugins/plugin-api.d.ts`](../examples/plugins/plugin-api.d.ts)).
+[`examples/plugins/plugin-api.d.ts`](https://github.com/sayinel/baram/blob/main/examples/plugins/plugin-api.d.ts)).
 
 ## `context.commands` (requires `commands`)
 
