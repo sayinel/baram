@@ -1,5 +1,7 @@
-use crate::context::{ContextInfo, ContextManager};
+use crate::context::manager::{resolve_canonical, Registered};
+use crate::context::ContextManager;
 use crate::index::{IndexStats, LinkIndex};
+use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 
 use super::keys::buildable;
@@ -24,6 +26,11 @@ const INDEX_BUILD_INVALIDATED: &str =
 /// until the path is registered again, whose own refresh then follows.
 pub(super) const INDEX_LOOKUP_INVALIDATED: &str =
     "The context of this link index root was removed while resolving it.";
+
+/// The root's spelling stopped naming the directory it was registered for
+/// between the lookup and the scan (a symlink retargeted): the scan would
+/// index an unrelated directory under this vault's key.
+const INDEX_ROOT_MOVED: &str = "The link index root no longer names its registered directory.";
 
 /// Outside the build lock only (tests): a build is already reading this key.
 pub(super) const INDEX_BUILD_PENDING: &str =
@@ -54,16 +61,22 @@ pub(super) enum IndexBuildError {
 pub(super) async fn ensure_indexes(
     state: &LinkIndexState,
     ctx_mgr: &ContextManager,
-    contexts: &[ContextInfo],
+    contexts: &[Registered],
 ) -> Result<(), String> {
     for ctx in buildable(contexts) {
-        if state.with_index(&ctx.path, |idx| idx.is_some()).await {
+        // An index counts only if it was published for THIS registration: one
+        // left from an earlier registration of the same path (its `forget`
+        // still pending) says nothing about the directory as registered now.
+        if state
+            .with_index_for(&ctx.info.path, ctx.incarnation, |idx| idx.is_some())
+            .await
+        {
             continue;
         }
-        let target = prepare_index_build(state, ctx_mgr, &ctx.path)
+        let target = prepare_index_build(state, ctx_mgr, &ctx.info.path)
             .await
             .map_err(|e| e.to_string())?;
-        match rebuild_and_publish(state, &target, &ctx.path, true).await {
+        match rebuild_and_publish(state, &target, &ctx.info.path, true).await {
             Ok(_) => {}
             Err(IndexBuildError::Invalidated) => return Err(INDEX_NOT_READY.to_string()),
             Err(IndexBuildError::Failed(e)) => return Err(e),
@@ -72,28 +85,33 @@ pub(super) async fn ensure_indexes(
     Ok(())
 }
 
-/// Read `f` from every index in `keys`, concatenated. A key whose index is
-/// gone — removed under the caller since `ensure_indexes` — is a refusal,
-/// never a silent "no references".
+/// Read `f` from the index of every directory context in `contexts`,
+/// concatenated. An index that is gone — or not the one published for that
+/// registration — is a refusal, never a silent "no references".
 pub(super) async fn read_indexes<T>(
     state: &LinkIndexState,
-    keys: &[String],
+    contexts: &[Registered],
     f: impl Fn(&LinkIndex) -> Vec<T>,
 ) -> Result<Vec<T>, String> {
     let mut out = Vec::new();
-    for key in keys {
-        let found = state.with_index(key, |idx| idx.map(&f)).await;
+    for ctx in contexts {
+        let found = state
+            .with_index_for(&ctx.info.path, ctx.incarnation, |idx| idx.map(&f))
+            .await;
         out.extend(found.ok_or(INDEX_NOT_READY)?);
     }
     Ok(out)
 }
 
 /// A build's destination: the registration's key, the generation it may
-/// publish into and the incarnation it belongs to.
+/// publish into, the incarnation it belongs to, and the canonical directory
+/// the root named when it was approved — checked again before the scan and
+/// before publishing.
 pub(super) struct BuildTarget {
     pub(super) key: String,
     pub(super) generation: u64,
     incarnation: u64,
+    pub(super) canonical: PathBuf,
 }
 
 /// Resolve the registration a root names and the generation a build may
@@ -110,22 +128,23 @@ pub(super) async fn prepare_index_build(
     root_path: &str,
 ) -> Result<BuildTarget, IndexBuildError> {
     let before = state.removals.load(Ordering::SeqCst);
-    let (info, incarnation) = ctx_mgr
+    let registered = ctx_mgr
         .context_registered_at(root_path)
         .await
         .ok_or_else(|| {
             IndexBuildError::Failed(format!("{root_path} is not a registered context root"))
         })?;
-    let version = state.version(&info.path).await;
+    let version = state.version(&registered.info.path).await;
     if version.removed_at > before {
         return Err(IndexBuildError::Failed(
             INDEX_LOOKUP_INVALIDATED.to_string(),
         ));
     }
     Ok(BuildTarget {
-        key: info.path,
+        key: registered.info.path,
         generation: version.generation,
-        incarnation,
+        incarnation: registered.incarnation,
+        canonical: registered.canonical_path,
     })
 }
 
@@ -154,10 +173,18 @@ pub(super) async fn rebuild_and_publish(
     let lock = state.build_lock(key).await;
     let _building = lock.lock().await;
     if coalesce {
-        if let Some(stats) = state.published_since(key, &requested).await {
+        if let Some(stats) = state
+            .published_since(key, &requested, target.incarnation)
+            .await
+        {
             return Ok(stats);
         }
     }
+    // The root was approved by what it canonicalised to at the lookup; the
+    // scan reads the spelling. If the spelling names another directory now
+    // (a symlink retargeted while this waited), scanning it would publish an
+    // unrelated tree under this vault's key.
+    still_the_registered_directory(root_path, target)?;
     let token = state
         .begin_build(key, &requested, root_path, target.incarnation)
         .await?;
@@ -169,7 +196,21 @@ pub(super) async fn rebuild_and_publish(
             return Err(IndexBuildError::Failed(e.to_string()));
         }
     };
+    if let Err(e) = still_the_registered_directory(root_path, target) {
+        state.abort_build(key, token).await;
+        return Err(e);
+    }
     publish_built_index(state, key, token, new_index, stats).await
+}
+
+fn still_the_registered_directory(
+    root_path: &str,
+    target: &BuildTarget,
+) -> Result<(), IndexBuildError> {
+    match resolve_canonical(root_path) {
+        Ok(canonical) if canonical == target.canonical => Ok(()),
+        _ => Err(IndexBuildError::Failed(INDEX_ROOT_MOVED.to_string())),
+    }
 }
 
 /// The publication step of a build (the caller holds the key's build lock).

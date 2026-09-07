@@ -1,3 +1,4 @@
+use crate::context::manager::{resolve_canonical, Registered};
 use crate::context::ContextManager;
 use crate::index::{
     collect_md_files, replace_block_id_refs, replace_wikilink_target, rewrite_relative_wikilinks,
@@ -39,6 +40,15 @@ async fn keys_covering(ctx_mgr: &ContextManager, keys: &[String], path: &str) ->
         .collect()
 }
 
+/// Whether a canonical path lies under one of these directory contexts. The
+/// renames confine every path they write to the file's own contexts: a
+/// destination outside them, or a "referring file" an index names that now
+/// resolves elsewhere (a symlink planted after the scan), is never written.
+fn confined_by(canonical: &Path, dirs: &[Registered]) -> bool {
+    dirs.iter()
+        .any(|d| canonical.starts_with(&d.canonical_path))
+}
+
 /// Queue `mutation` for every key in `keys`. Spelling is decided later, per
 /// index (`Mutation::apply_to`).
 fn push_for_keys(
@@ -69,7 +79,28 @@ pub(crate) async fn rename_file_with_links_inner(
         return Err(format!("{old_path} is not inside any registered context"));
     }
     ensure_indexes(state, ctx_mgr, &contexts).await?;
-    let keys = keys_of(&buildable(&contexts));
+    let dirs = buildable(&contexts);
+    let keys = keys_of(&dirs);
+    // The destination stays inside the file's contexts: under one of its
+    // directory contexts, or — for a file opened on its own — in the same
+    // directory. A rename that would carry the file out of every context is
+    // refused before anything is written (fs_cmd's rename validates both ends
+    // the same way).
+    let old_identity = resolve_canonical(old_path)?;
+    let renamed_identity = resolve_canonical(new_path)?;
+    let allowed = if dirs.is_empty() {
+        renamed_identity.parent() == old_identity.parent()
+    } else {
+        confined_by(&renamed_identity, &dirs)
+    };
+    if !allowed {
+        return Err(format!("{new_path} is outside the contexts of {old_path}"));
+    }
+    // `fs::rename` replaces an existing destination on Unix; a rename is not a
+    // way to overwrite another note.
+    if Path::new(new_path).exists() {
+        return Err(format!("{new_path} already exists"));
+    }
     let old_target = Path::new(old_path)
         .file_stem()
         .map(|s| s.to_string_lossy().to_string())
@@ -83,17 +114,25 @@ pub(crate) async fn rename_file_with_links_inner(
     //    reads) — a reference from outside a nested root is known only to the
     //    enclosing index. An index gone since the gate is a refusal.
     let mut referring_files =
-        read_indexes(state, &keys, |i| i.get_files_linking_to(&old_target)).await?;
+        read_indexes(state, &dirs, |i| i.get_files_linking_to(&old_target)).await?;
     referring_files.sort();
     referring_files.dedup();
 
-    // Canonical identities of the file being renamed, resolved before it moves
-    // (the new path does not exist yet: resolve_canonical builds it on its
-    // existing parent).
-    let remove_old = Mutation::remove(old_path)?;
-    let renamed_identity = crate::context::manager::resolve_canonical(new_path)?;
+    // The canonical identity of the file being renamed, resolved before it
+    // moves (the new path does not exist yet: resolve_canonical builds it on
+    // its existing parent).
+    let remove_old = Mutation::Remove { path: old_identity };
 
-    // 2. Read and update each referring file (async I/O, outside lock)
+    // 2. Rename the actual file — the one step that can still fail. It comes
+    //    BEFORE the reference rewrites so that an `Err` from this command
+    //    always means nothing was changed; the frontend treats it that way.
+    crate::fs::rename_file(old_path, new_path)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // 3. Read and update each referring file (async I/O, outside lock). The
+    //    file has moved, so a failure here is logged and the file skipped,
+    //    never reported as a failed rename.
     let mut updated_files = Vec::new();
     let mut updated_contents: Vec<(PathBuf, String)> = Vec::new();
 
@@ -109,20 +148,23 @@ pub(crate) async fn rename_file_with_links_inner(
 
         let new_content = replace_wikilink_target(&content, &old_target, &new_target);
         if new_content != content {
-            let identity = crate::context::manager::resolve_canonical(file_path)?;
+            let Ok(identity) = resolve_canonical(file_path) else {
+                continue;
+            };
+            if !confined_by(&identity, &dirs) {
+                continue;
+            }
             // Atomic write (§3.6: tmp → rename)
-            crate::fs::write_file(file_path, &new_content)
-                .await
-                .map_err(|e| e.to_string())?;
+            if let Err(e) = crate::fs::write_file(file_path, &new_content).await {
+                log::warn!(
+                    "§33 rename_file_with_links: {old_path} moved, but {file_path} could not be rewritten: {e}"
+                );
+                continue;
+            }
             updated_files.push(file_path.clone());
             updated_contents.push((identity, new_content));
         }
     }
-
-    // 3. Rename the actual file
-    crate::fs::rename_file(old_path, new_path)
-        .await
-        .map_err(|e| e.to_string())?;
 
     // 4. Update every containing index: drop the old entry, re-index the
     //    referring files from the content we already have — each into the
@@ -171,11 +213,12 @@ pub(crate) async fn rename_block_id_inner(
         return Err(format!("{file_path} is not inside any registered context"));
     }
     ensure_indexes(state, ctx_mgr, &contexts).await?;
-    let keys = keys_of(&buildable(&contexts));
+    let dirs = buildable(&contexts);
+    let keys = keys_of(&dirs);
 
     // 1. Get referring files from every containing index (block_id == old_id,
     //    target == this file). An index gone since the gate is a refusal.
-    let mut referring_files: Vec<String> = read_indexes(state, &keys, |index| {
+    let mut referring_files: Vec<String> = read_indexes(state, &dirs, |index| {
         index
             .get_backlinks(file_path)
             .iter()
@@ -201,7 +244,10 @@ pub(crate) async fn rename_block_id_inner(
         };
         let new_content = replace_block_id_refs(&content, old_id, new_id);
         if new_content != content {
-            let identity = crate::context::manager::resolve_canonical(ref_path)?;
+            let identity = resolve_canonical(ref_path)?;
+            if !confined_by(&identity, &dirs) {
+                continue;
+            }
             crate::fs::write_file(ref_path, &new_content)
                 .await
                 .map_err(|e| e.to_string())?;
@@ -243,11 +289,28 @@ pub(crate) async fn rename_namespace_inner(
     let target = prepare_index_build(state, ctx_mgr, root_path)
         .await
         .map_err(|e| e.to_string())?;
+    // Both ends of the move stay under the root that authorised it — the root
+    // itself is not a namespace to rename. (`resolve_canonical` walks to an
+    // existing ancestor, so a not-yet-existing new_dir resolves too.)
+    let old_canonical = resolve_canonical(old_dir)?;
+    let new_canonical = resolve_canonical(new_dir)?;
+    if old_canonical == target.canonical
+        || !old_canonical.starts_with(&target.canonical)
+        || !new_canonical.starts_with(&target.canonical)
+    {
+        return Err(format!(
+            "{old_dir} -> {new_dir} is not a move inside {root_path}"
+        ));
+    }
+    if Path::new(new_dir).exists() {
+        return Err(format!("{new_dir} already exists"));
+    }
     let committed = commit_namespace_rename(old_dir, new_dir, root_path).await?;
     // Full rebuild (many files moved), under the same key every lookup derives,
     // never coalesced onto a publication that may predate the move.
     let rebuilt = rebuild_and_publish(state, &target, root_path, false).await;
-    committed_namespace_result(committed, rebuilt)
+    settle_namespace_rebuild(state, &target.key, rebuilt).await;
+    Ok(committed)
 }
 
 /// The filesystem half of a namespace rename: rewrite the relative wikilinks
@@ -309,16 +372,24 @@ pub(super) async fn commit_namespace_rename(
     })
 }
 
-/// What a namespace rename reports once its files have moved: success, also
-/// when the rebuild was invalidated by the context's removal (the files moved;
-/// whoever registers the path next builds their own index) — a real rebuild
-/// failure is still a failure.
-pub(super) fn committed_namespace_result(
-    committed: NamespaceRenameResult,
+/// Once a namespace rename has moved its files, the command reports the move
+/// whatever the rebuild did — an `Err` from it means nothing was changed, and
+/// the frontend relies on that. A rebuild invalidated by the context's removal
+/// leaves the index to whoever registers the path next. A rebuild that FAILED
+/// leaves an index describing the old layout: that index is dropped (the next
+/// rename rebuilds through the gate) rather than trusted.
+pub(super) async fn settle_namespace_rebuild(
+    state: &LinkIndexState,
+    key: &str,
     rebuilt: Result<IndexStats, IndexBuildError>,
-) -> Result<NamespaceRenameResult, String> {
+) {
     match rebuilt {
-        Ok(_) | Err(IndexBuildError::Invalidated) => Ok(committed),
-        Err(e) => Err(e.to_string()),
+        Ok(_) | Err(IndexBuildError::Invalidated) => {}
+        Err(IndexBuildError::Failed(e)) => {
+            log::warn!(
+                "§61 rename_namespace: files moved, but the index rebuild failed ({e}); the stale index under {key} is dropped"
+            );
+            state.drop_index(key).await;
+        }
     }
 }

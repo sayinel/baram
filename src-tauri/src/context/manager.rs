@@ -27,6 +27,26 @@ pub struct ContextState {
     pub incarnation: u64,
 }
 
+/// What the link index needs to know about a registration (issue 263): the
+/// public info, the incarnation an index must have been built for to count,
+/// and the canonical root every path it touches must stay under.
+#[derive(Debug, Clone)]
+pub struct Registered {
+    pub info: ContextInfo,
+    pub incarnation: u64,
+    pub canonical_path: PathBuf,
+}
+
+impl ContextState {
+    fn registered(&self) -> Registered {
+        Registered {
+            info: self.info.clone(),
+            incarnation: self.incarnation,
+            canonical_path: self.canonical_path.clone(),
+        }
+    }
+}
+
 // ── ContextManager ─────────────────────────────────────────────────────────────
 
 /// Thread-safe registry of vault/folder/file contexts.
@@ -183,12 +203,10 @@ impl ContextManager {
             .map(|s| (s.canonical_path.clone(), s.info.context_type.clone()))
     }
 
-    /// The path a context was registered with — the key the link index uses
-    /// (commands/index_cmd.rs). A direct lookup: `list()` clones and sorts the
-    /// whole registry, and this runs on every save.
-    pub async fn registered_path(&self, context_id: &str) -> Option<String> {
+    /// A context by id, as the link index sees it.
+    pub async fn registered(&self, context_id: &str) -> Option<Registered> {
         let map = self.contexts.read().await;
-        map.get(context_id).map(|s| s.info.path.clone())
+        map.get(context_id).map(ContextState::registered)
     }
 
     /// The registered path and incarnation of a context — what `remove_context`
@@ -204,7 +222,7 @@ impl ContextManager {
     /// parent. A link index is built only from a registration (issue 263): a
     /// root that merely lies inside one would rebuild the parent's index from a
     /// subtree. `add` dedups by canonical path, so there is at most one.
-    pub async fn context_registered_at(&self, path: &str) -> Option<(ContextInfo, u64)> {
+    pub async fn context_registered_at(&self, path: &str) -> Option<Registered> {
         let canonical = resolve_canonical(path).ok()?;
         let map = self.contexts.read().await;
         map.values()
@@ -214,7 +232,7 @@ impl ContextManager {
                     ContextType::Vault | ContextType::Folder
                 ) && s.canonical_path == canonical
             })
-            .map(|s| (s.info.clone(), s.incarnation))
+            .map(ContextState::registered)
     }
 
     async fn registered_for(&self, canonical: &Path) -> Option<ContextInfo> {
@@ -231,7 +249,7 @@ impl ContextManager {
     /// file must reach all of them. When no directory context contains the
     /// path, a `File` context (§89 single-file mode) registered for that very
     /// file is the only entry. Empty when no registered context contains it.
-    pub async fn contexts_containing(&self, path: &str) -> Vec<ContextInfo> {
+    pub async fn contexts_containing(&self, path: &str) -> Vec<Registered> {
         let Ok(canonical) = resolve_canonical(path) else {
             return Vec::new();
         };
@@ -251,12 +269,15 @@ impl ContextManager {
                 .filter(|s| {
                     s.info.context_type == ContextType::File && canonical == s.canonical_path
                 })
-                .map(|s| s.info.clone())
+                .map(ContextState::registered)
                 .take(1)
                 .collect();
         }
         directories.sort_by_key(|s| std::cmp::Reverse(s.canonical_path.as_os_str().len()));
-        directories.into_iter().map(|s| s.info.clone()).collect()
+        directories
+            .into_iter()
+            .map(ContextState::registered)
+            .collect()
     }
 
     // ── Listing ────────────────────────────────────────────────────────────────
@@ -806,12 +827,13 @@ mod tests {
         mgr.add(make_info("ctx", &root, ContextType::Folder))
             .await
             .unwrap();
-        let (found, incarnation) = mgr
+        let found = mgr
             .context_registered_at(&format!("{root}/"))
             .await
             .unwrap();
-        assert_eq!(found.path, root);
-        assert_eq!(incarnation, 1);
+        assert_eq!(found.info.path, root);
+        assert_eq!(found.incarnation, 1);
+        assert_eq!(found.canonical_path, dir.path().canonicalize().unwrap());
         assert!(mgr
             .context_registered_at(&format!("{root}/sub"))
             .await

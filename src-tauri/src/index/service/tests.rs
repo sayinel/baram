@@ -58,7 +58,7 @@ async fn staged_build(
     let incarnation = ctx
         .context_registered_at(root)
         .await
-        .map_or(0, |(_, incarnation)| incarnation);
+        .map_or(0, |r| r.incarnation);
     let requested = state.version(key).await;
     let token = state
         .begin_build(key, &requested, root, incarnation)
@@ -498,7 +498,10 @@ async fn an_in_flight_build_cannot_resurrect_a_forgotten_registration() {
         None
     );
     assert!(state.with_index(&key, |idx| idx.is_none()).await);
-    assert!(state.published_since(&key, &new_request).await.is_none());
+    assert!(state
+        .published_since(&key, &new_request, incarnation_of(&ctx, "ctx-new").await)
+        .await
+        .is_none());
 
     // Nor make the rename gate read it: with no live index under the new
     // registration the gate builds one — behind the build lock the old
@@ -854,7 +857,8 @@ async fn a_committed_namespace_rename_survives_a_forget_between_build_and_publis
     let rejected = publish_built_index(&state, &key, token, snapshot, stats).await;
     assert!(matches!(&rejected, Err(IndexBuildError::Invalidated)));
     // The rename still reports what it did.
-    let result = committed_namespace_result(committed, rejected).unwrap();
+    settle_namespace_rebuild(&state, &key, rejected).await;
+    let result = committed;
     assert_eq!(result.files_moved, 1);
     assert_eq!(result.updated_files, vec![format!("{root}/a.md")]);
     assert!(!dir.path().join("ns").exists());
@@ -865,7 +869,11 @@ async fn a_committed_namespace_rename_survives_a_forget_between_build_and_publis
     );
     assert!(state.with_index(&key, |idx| idx.is_none()).await);
     assert!(state
-        .published_since(&new_key, &new_request)
+        .published_since(
+            &new_key,
+            &new_request,
+            incarnation_of(&ctx, "ctx-namespace").await,
+        )
         .await
         .is_none());
 
@@ -901,7 +909,8 @@ async fn a_committed_namespace_rename_survives_a_forget_before_its_rebuild_start
     state.forget(&key, old_incarnation).await;
     let rebuilt = rebuild_and_publish(&state, &target, &root, false).await;
     assert!(matches!(&rebuilt, Err(IndexBuildError::Invalidated)));
-    let result = committed_namespace_result(committed, rebuilt).unwrap();
+    settle_namespace_rebuild(&state, &key, rebuilt).await;
+    let result = committed;
     assert_eq!(result.files_moved, 1);
     assert!(!dir.path().join("ns").exists());
     assert!(dir.path().join("ns2/c.md").exists());
@@ -909,23 +918,28 @@ async fn a_committed_namespace_rename_survives_a_forget_before_its_rebuild_start
 }
 
 #[tokio::test]
-async fn a_committed_namespace_rename_does_not_hide_a_real_rebuild_failure() {
+async fn a_committed_namespace_rename_reports_the_move_and_drops_an_index_it_could_not_rebuild() {
     let ctx = ContextManager::new();
-    let (_dir, root, old_dir, new_dir) = namespace_fixture(&ctx).await;
+    let (dir, root, old_dir, new_dir) = namespace_fixture(&ctx).await;
     let state = LinkIndexState::new();
+    // A live index describing the OLD layout.
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
     let target = prepare_index_build(&state, &ctx, &root).await.unwrap();
     let key = target.key.clone();
     let committed = commit_namespace_rename(&old_dir, &new_dir, &root)
         .await
         .unwrap();
-    // A build left pending (models a failure that is not a removal).
+    // A build left pending (models a rebuild failure that is not a removal).
     let (token, _snapshot, _stats) = staged_build(&state, &ctx, &key, &root).await;
     let rebuilt = rebuild_and_publish(&state, &target, &root, false).await;
     assert!(matches!(&rebuilt, Err(IndexBuildError::Failed(_))));
-    assert_eq!(
-        committed_namespace_result(committed, rebuilt).unwrap_err(),
-        INDEX_BUILD_PENDING
-    );
+    // The move is reported as what it is — done — and the index that still
+    // describes the old layout is dropped instead of trusted; the next rename
+    // rebuilds it through the gate.
+    settle_namespace_rebuild(&state, &key, rebuilt).await;
+    assert_eq!(committed.files_moved, 1);
+    assert!(dir.path().join("ns2/c.md").exists());
+    assert!(state.with_index(&key, |idx| idx.is_none()).await);
     state.abort_build(&key, token).await;
 }
 
@@ -1174,4 +1188,252 @@ async fn a_stale_forget_does_not_wipe_the_index_of_a_newer_registration() {
         .await;
     assert!(state.with_index(&root, |idx| idx.is_none()).await);
     assert_eq!(state.version(&root).await.generation, 1);
+}
+
+#[tokio::test]
+async fn a_rename_destination_outside_the_files_contexts_is_refused() {
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-abc", true).await;
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    let elsewhere = tempfile::tempdir().unwrap();
+    let outside = format!("{}/taken.md", elsewhere.path().to_str().unwrap());
+    // The source is in a vault; the destination would carry it out of every
+    // context. Refused before a reference or the file is touched.
+    let err = rename_file_with_links_inner(&state, &ctx, &format!("{root}/b.md"), &outside)
+        .await
+        .unwrap_err();
+    assert!(err.contains("outside the contexts"), "{err}");
+    assert!(dir.path().join("b.md").exists());
+    assert!(!std::path::Path::new(&outside).exists());
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("a.md")).unwrap(),
+        "see [[b]]"
+    );
+    // A file opened on its own may only be renamed within its directory.
+    let note = format!("{}/note.md", elsewhere.path().to_str().unwrap());
+    std::fs::write(&note, "n").unwrap();
+    ctx.add(info("ctx-file", &note, ContextType::File))
+        .await
+        .unwrap();
+    let err = rename_file_with_links_inner(&state, &ctx, &note, &format!("{root}/moved.md"))
+        .await
+        .unwrap_err();
+    assert!(err.contains("outside the contexts"), "{err}");
+    assert!(std::path::Path::new(&note).exists());
+}
+
+#[tokio::test]
+async fn a_namespace_rename_is_confined_to_its_root() {
+    let ctx = ContextManager::new();
+    let (dir, root, old_dir, new_dir) = namespace_fixture(&ctx).await;
+    let state = LinkIndexState::new();
+    let elsewhere = tempfile::tempdir().unwrap();
+    let outside_dir = format!("{}/ns", elsewhere.path().to_str().unwrap());
+    std::fs::create_dir(&outside_dir).unwrap();
+    // A directory outside the root cannot be moved on the root's authority…
+    let err = rename_namespace_inner(
+        &state,
+        &ctx,
+        &outside_dir,
+        &format!("{}/ns2", elsewhere.path().to_str().unwrap()),
+        &root,
+    )
+    .await
+    .unwrap_err();
+    assert!(err.contains("not a move inside"), "{err}");
+    assert!(std::path::Path::new(&outside_dir).exists());
+    // …nor can one inside it be moved out…
+    let err = rename_namespace_inner(
+        &state,
+        &ctx,
+        &old_dir,
+        &format!("{}/escaped", elsewhere.path().to_str().unwrap()),
+        &root,
+    )
+    .await
+    .unwrap_err();
+    assert!(err.contains("not a move inside"), "{err}");
+    assert!(dir.path().join("ns/c.md").exists());
+    // …nor the root itself. A move inside the root goes through as before.
+    assert!(
+        rename_namespace_inner(&state, &ctx, &root, &format!("{root}-renamed"), &root)
+            .await
+            .is_err()
+    );
+    let result = rename_namespace_inner(&state, &ctx, &old_dir, &new_dir, &root)
+        .await
+        .unwrap();
+    assert_eq!(result.files_moved, 1);
+    assert!(dir.path().join("ns2/c.md").exists());
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_referring_file_that_resolves_outside_the_vault_is_not_rewritten() {
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-abc", true).await;
+    let state = LinkIndexState::new();
+    // The index learned that a.md links to b.md…
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    // …then a.md was replaced by a symlink to a file outside the vault. The
+    // index still names a.md; the rename must not write through it.
+    let elsewhere = tempfile::tempdir().unwrap();
+    let outside = elsewhere.path().join("outside.md");
+    std::fs::write(&outside, "see [[b]]").unwrap();
+    std::fs::remove_file(dir.path().join("a.md")).unwrap();
+    std::os::unix::fs::symlink(&outside, dir.path().join("a.md")).unwrap();
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/b.md"),
+        &format!("{root}/c.md"),
+    )
+    .await
+    .unwrap();
+    assert!(result.updated_files.is_empty());
+    assert_eq!(std::fs::read_to_string(&outside).unwrap(), "see [[b]]");
+    assert!(dir.path().join("c.md").exists());
+}
+
+#[tokio::test]
+async fn an_index_built_for_an_older_registration_does_not_satisfy_the_gate() {
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-old", true).await;
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    // The context is removed and the same path registered again; the old
+    // registration's `forget` has not run yet, so its index is still live —
+    // and the directory changed meanwhile: a new file links to b.md.
+    ctx.remove("ctx-old").await.unwrap();
+    std::fs::write(dir.path().join("z.md"), "also [[b]]").unwrap();
+    ctx.add(info("ctx-new", &root, ContextType::Folder))
+        .await
+        .unwrap();
+    ctx.set_active("ctx-new").await.unwrap();
+    assert!(state.with_index(&root, |idx| idx.is_some()).await);
+    // The gate does not trust the old index: it rebuilds for the new
+    // registration and the rename sees z.md. (With the old index, z.md would
+    // have been left pointing at a file that no longer exists.)
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/b.md"),
+        &format!("{root}/c.md"),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        result.updated_files,
+        vec![format!("{root}/a.md"), format!("{root}/z.md")]
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("z.md")).unwrap(),
+        "also [[c]]"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_root_symlink_retargeted_after_the_lookup_is_not_scanned() {
+    let target_a = tempfile::tempdir().unwrap();
+    std::fs::write(target_a.path().join("a.md"), "see [[b]]").unwrap();
+    std::fs::write(target_a.path().join("b.md"), "b").unwrap();
+    let target_b = tempfile::tempdir().unwrap();
+    std::fs::write(target_b.path().join("elsewhere.md"), "not this vault").unwrap();
+    let holder = tempfile::tempdir().unwrap();
+    let alias_path = holder.path().join("vault");
+    std::os::unix::fs::symlink(target_a.path(), &alias_path).unwrap();
+    let alias = alias_path.to_str().unwrap().to_string();
+    let ctx = ContextManager::new();
+    ctx.add(info("ctx-alias", &alias, ContextType::Folder))
+        .await
+        .unwrap();
+    let state = LinkIndexState::new();
+    let target = prepare_index_build(&state, &ctx, &alias).await.unwrap();
+    // Between the lookup and the scan the symlink is pointed elsewhere.
+    std::fs::remove_file(&alias_path).unwrap();
+    std::os::unix::fs::symlink(target_b.path(), &alias_path).unwrap();
+    let err = rebuild_and_publish(&state, &target, &alias, true)
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("no longer names"), "{err}");
+    assert!(state.with_index(&alias, |idx| idx.is_none()).await);
+}
+
+#[tokio::test]
+async fn a_rename_onto_an_existing_file_or_directory_is_refused() {
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-abc", true).await;
+    let state = LinkIndexState::new();
+    // b.md exists; renaming a.md onto it would overwrite it (Unix `rename`
+    // replaces). Refused, and a.md's references are untouched.
+    let err = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/a.md"),
+        &format!("{root}/b.md"),
+    )
+    .await
+    .unwrap_err();
+    assert!(err.contains("already exists"), "{err}");
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("b.md")).unwrap(),
+        "target"
+    );
+    assert!(dir.path().join("a.md").exists());
+    // The same for a directory.
+    std::fs::create_dir(dir.path().join("ns")).unwrap();
+    std::fs::create_dir(dir.path().join("taken")).unwrap();
+    let err = rename_namespace_inner(
+        &state,
+        &ctx,
+        &format!("{root}/ns"),
+        &format!("{root}/taken"),
+        &root,
+    )
+    .await
+    .unwrap_err();
+    assert!(err.contains("already exists"), "{err}");
+    assert!(dir.path().join("ns").exists());
+}
+
+#[tokio::test]
+async fn a_query_does_not_read_an_index_left_by_an_earlier_registration() {
+    let ctx = ContextManager::new();
+    let (_dir, root) = vault_with_a_link(&ctx, "ctx-old", true).await;
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    assert!(!get_backlinks_inner(&state, &ctx, &format!("{root}/b.md"))
+        .await
+        .unwrap()
+        .is_empty());
+    // Removed and registered again, the old forget still pending: the old
+    // index is live under the key but was published for another registration.
+    ctx.remove("ctx-old").await.unwrap();
+    ctx.add(info("ctx-new", &root, ContextType::Folder))
+        .await
+        .unwrap();
+    ctx.set_active("ctx-new").await.unwrap();
+    assert!(state.with_index(&root, |idx| idx.is_some()).await);
+    assert!(get_backlinks_inner(&state, &ctx, &format!("{root}/b.md"))
+        .await
+        .unwrap()
+        .is_empty());
+    assert!(get_link_index_inner(&state, &ctx, None)
+        .await
+        .unwrap()
+        .edges
+        .is_empty());
+    assert!(
+        outgoing_links_for(&state, &active_registration(&ctx).await.unwrap())
+            .await
+            .is_empty()
+    );
+    // Its own refresh makes the index count again.
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    assert!(!get_backlinks_inner(&state, &ctx, &format!("{root}/b.md"))
+        .await
+        .unwrap()
+        .is_empty());
 }

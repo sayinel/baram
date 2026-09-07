@@ -3,7 +3,7 @@ use crate::index::{BacklinkResult, LinkGraph, LinkIndex};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use super::keys::{active_index_key, keys_of, owning_contexts, owning_index_key};
+use super::keys::{active_registration, keys_of, owning_contexts, owning_registration};
 use super::state::{LinkIndexState, Mutation};
 
 /// Whether `file_path` is spelled under `root`: component-wise, so `/x/Vault`
@@ -21,17 +21,19 @@ pub(crate) async fn get_backlinks_inner(
 ) -> Result<Vec<BacklinkResult>, String> {
     // A path in no context, or one whose index is not built yet, has no
     // backlinks to report — an empty answer, not an error the panel would
-    // render as one.
-    let keys = keys_of(&owning_contexts(ctx_mgr, file_path).await);
+    // render as one. Only an index published for the CURRENT registration of
+    // each context counts (`with_index_for`): one left by an earlier
+    // registration of the same path could describe another directory.
+    let contexts = owning_contexts(ctx_mgr, file_path).await;
     let mut answered: Vec<(String, Vec<BacklinkResult>)> = Vec::new();
-    for key in &keys {
+    for ctx in &contexts {
         let found = state
-            .with_index(key, |idx| {
+            .with_index_for(&ctx.info.path, ctx.incarnation, |idx| {
                 idx.map(|i| i.get_backlinks(file_path)).unwrap_or_default()
             })
             .await;
         if !found.is_empty() {
-            answered.push((key.clone(), found));
+            answered.push((ctx.info.path.clone(), found));
         }
     }
     // The common case — one index answered (no nested roots, or only one of
@@ -82,12 +84,12 @@ pub(crate) async fn get_link_index_inner(
 ) -> Result<LinkGraph, String> {
     // §87 An explicit root (multi-vault graph merge) names a context in
     // whatever spelling the frontend holds; otherwise the active context.
-    let key = match root_path {
-        Some(p) if !p.is_empty() => owning_index_key(ctx_mgr, &p).await?,
-        _ => active_index_key(ctx_mgr).await?,
+    let registered = match root_path {
+        Some(p) if !p.is_empty() => owning_registration(ctx_mgr, &p).await?,
+        _ => active_registration(ctx_mgr).await?,
     };
     Ok(state
-        .with_index(&key, |idx| {
+        .with_index_for(&registered.info.path, registered.incarnation, |idx| {
             idx.map(LinkIndex::get_link_graph).unwrap_or_default()
         })
         .await)

@@ -84,6 +84,11 @@ pub(super) struct Slot {
     /// incarnation is stale — the path was re-registered and rebuilt before it
     /// arrived — and is ignored.
     incarnation: u64,
+    /// The incarnation the live index was published for (0: none). An index
+    /// counts for a registration only if this matches its incarnation: after a
+    /// remove/re-add of the same path, the old index is not evidence about the
+    /// new registration's directory (`with_index_for`).
+    published_incarnation: u64,
     /// Bumped by every publication and every mutation.
     epoch: u64,
     /// The epoch value at the last publication (0: never published).
@@ -114,12 +119,6 @@ impl Mutation {
         Ok(Self::Update {
             path: crate::context::manager::resolve_canonical(path)?,
             content,
-        })
-    }
-
-    pub(super) fn remove(path: &str) -> Result<Self, String> {
-        Ok(Self::Remove {
-            path: crate::context::manager::resolve_canonical(path)?,
         })
     }
 
@@ -173,8 +172,10 @@ impl LinkIndexState {
         }
     }
 
-    /// Read the index under `key` while holding the lock. `f` is synchronous,
-    /// so nothing can await inside the critical section.
+    /// Read whatever index is live under `key` while holding the lock — the
+    /// tests' view; production reads go through `with_index_for`. `f` is
+    /// synchronous, so nothing can await inside the critical section.
+    #[cfg(test)]
     pub(super) async fn with_index<R>(
         &self,
         key: &str,
@@ -182,6 +183,22 @@ impl LinkIndexState {
     ) -> R {
         let map = self.slots.lock().await;
         f(map.get(key).and_then(|s| s.index.as_ref()))
+    }
+
+    /// Read the index under `key` only if it was published for `incarnation`
+    /// — the gate's and the renames' view. `None` for a missing index and for
+    /// one an earlier registration of the same path published.
+    pub(super) async fn with_index_for<R>(
+        &self,
+        key: &str,
+        incarnation: u64,
+        f: impl FnOnce(Option<&LinkIndex>) -> R,
+    ) -> R {
+        let map = self.slots.lock().await;
+        f(map
+            .get(key)
+            .filter(|s| s.published_incarnation == incarnation)
+            .and_then(|s| s.index.as_ref()))
     }
 
     /// Apply mutations under `key` while holding the lock; same discipline.
@@ -295,7 +312,11 @@ impl LinkIndexState {
     ) -> Option<usize> {
         let mut map = self.slots.lock().await;
         let slot = map.get_mut(key)?;
+        // A build for an older registration than the slot's newest is stale
+        // even when the generation still matches (the removal's `forget` has
+        // not run yet): it must not become the newer registration's index.
         if slot.generation != token.generation
+            || slot.incarnation > token.incarnation
             || !slot.pending.as_ref().is_some_and(|p| p.token == token)
         {
             return None;
@@ -307,10 +328,26 @@ impl LinkIndexState {
         }
         slot.epoch += 1;
         slot.published_at = slot.epoch;
+        slot.published_incarnation = token.incarnation;
         slot.index = Some(index);
         slot.stats = Some(stats);
         slot.root = Some(pending.root);
         Some(replayed)
+    }
+
+    /// Drop the live index under `key` without touching its registration: a
+    /// namespace rename moved the files but could not rebuild, so what is
+    /// published describes the old layout — better no index (the gate rebuilds
+    /// on the next rename) than a trusted stale one.
+    pub(super) async fn drop_index(&self, key: &str) {
+        let mut map = self.slots.lock().await;
+        if let Some(slot) = map.get_mut(key) {
+            slot.index = None;
+            slot.stats = None;
+            slot.root = None;
+            slot.published_incarnation = 0;
+            slot.epoch += 1;
+        }
     }
 
     /// The root spelling the live index under `key` was built from, if any.
@@ -363,10 +400,15 @@ impl LinkIndexState {
         &self,
         key: &str,
         requested: &RegistrationVersion,
+        incarnation: u64,
     ) -> Option<IndexStats> {
         let map = self.slots.lock().await;
         map.get(key)
-            .filter(|s| s.generation == requested.generation && s.published_at > requested.epoch)
+            .filter(|s| {
+                s.generation == requested.generation
+                    && s.published_at > requested.epoch
+                    && s.published_incarnation == incarnation
+            })
             .and_then(|s| s.stats.clone())
     }
 

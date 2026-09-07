@@ -63,7 +63,11 @@
 // space registered without being opened, a nested folder restored from the
 // last session); the first rename there waits for one scan. Renaming before
 // an index existed used to rename the file and rewrite none of its
-// references, silently.
+// references, silently. The renames confine what they write: the destination
+// stays inside the file's contexts (a file opened on its own may only be
+// renamed within its directory), a namespace move stays inside the root that
+// authorised it, and a referring file the index names is rewritten only if it
+// still resolves inside those contexts.
 //
 // An index holds paths in the spelling of the root it was built from. A nested
 // root can be registered — and built — under another spelling of the same
@@ -77,7 +81,13 @@
 // refresh cannot coalesce onto an old publication. Each build records its
 // registration's INCARNATION, so a removal that arrives after the same path
 // was re-registered and rebuilt (the command removes from the ContextManager
-// first and forgets here after an await) is stale and ignored.
+// first and forgets here after an await) is stale and ignored — and an index
+// counts for a registration only if it was published for that registration's
+// incarnation, so one left by an earlier registration of the same path does
+// not satisfy the gate. A build re-checks, after taking the build lock and
+// again before publishing, that the root's spelling still names the directory
+// it was approved as: a symlink retargeted meanwhile cannot publish an
+// unrelated tree under a vault's key.
 
 mod build;
 mod keys;
@@ -92,7 +102,7 @@ pub use rename::{NamespaceRenameResult, RenameResult};
 pub use state::LinkIndexState;
 
 pub(crate) use build::refresh_index_inner;
-pub(crate) use keys::{active_index_key, outgoing_links};
+pub(crate) use keys::{active_registration, outgoing_links_for};
 pub(crate) use query::{get_backlinks_inner, get_link_index_inner, update_file_index_inner};
 pub(crate) use rename::{
     rename_block_id_inner, rename_file_with_links_inner, rename_namespace_inner,
