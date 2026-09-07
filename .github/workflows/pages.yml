@@ -7,11 +7,17 @@ on:
       - "site/**"
       - "docs/**"
       - ".github/workflows/pages.yml"
+      # ‼️ 사이트 밖이지만 사이트 게이트의 **입력**이다. check-glossary.mjs 가 한국어 제품
+      #    용어를 이 파일에서 파생 검증하므로, 여기 없으면 앱이 용어를 바꿀 때 이 워크플로가
+      #    돌지 않고 ci.yml 은 사이트를 보지 않아 **두 워크플로가 모두 초록인 채로 사전이
+      #    낡는다.** site/tests/workflow-inputs.test.mjs 가 이 목록을 게이트에서 파생시킨다.
+      - "src/i18n/ko.json"
   pull_request:
     paths:
       - "site/**"
       - "docs/**"
       - ".github/workflows/pages.yml"
+      - "src/i18n/ko.json"
   workflow_dispatch:
 
 permissions:
