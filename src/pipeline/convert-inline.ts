@@ -218,5 +218,19 @@ function convertInlineNode(
     }
   }
 
+  // issue 546 — a reference that reached the converter unresolved (md-to-pm's
+  // resolveReferenceLinks turns every reference with a definition into a
+  // link/image first, so this is a reference WITHOUT one: not a link at all).
+  // Its text is the user's text — keep it. Before, both fell through to the
+  // empty return below and vanished together with their words.
+  if (node.type === "linkReference") {
+    const ref = node as { children: PhrasingContent[] };
+    return convertInlineChildren(ref.children, schema, parentMarks);
+  }
+  if (node.type === "imageReference") {
+    const ref = node as { alt?: null | string };
+    return ref.alt ? [schema.text(ref.alt, parentMarks)] : [];
+  }
+
   return [];
 }

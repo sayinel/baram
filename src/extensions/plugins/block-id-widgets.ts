@@ -13,10 +13,13 @@ import type { EditorView } from "@tiptap/pm/view";
 
 import { PluginKey } from "@tiptap/pm/state";
 
+import { type Locale, t } from "../../i18n";
 import { readFile, renameBlockId, updateFileIndex } from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useLinkStore } from "../../stores/editor/link";
 import { useFileStore } from "../../stores/file/file";
+import { useSettingsStore } from "../../stores/settings/store";
+import { useUIStore } from "../../stores/ui/ui";
 import { logger } from "../../utils/logger";
 
 export const blockIdDecoKey = new PluginKey<BlockIdDecoState>(
@@ -212,26 +215,51 @@ export function commitBlockIdEdit(
     const activeTab = tabs.find((t) => t.id === activeTabId);
     const filePath = activeTab?.filePath;
     if (filePath) {
-      renameBlockId(filePath, oldId, newId)
-        .then(async (result) => {
-          if (result.updatedFiles.length === 0) return;
-          // Reload updated files in the file store cache so tab switches show new content
-          const { openFiles, setFileContent } = useFileStore.getState();
-          for (const updatedPath of result.updatedFiles) {
-            if (openFiles.has(updatedPath)) {
-              try {
-                const content = await readFile(updatedPath);
-                setFileContent(updatedPath, content);
-              } catch {
-                // file may have been deleted
+      // issue 263: `.then(onFulfilled, onRejected)`, NOT `.then(...).catch(...)`.
+      // A trailing `.catch` also catches whatever the success body throws, and
+      // the failure toast below says the cross-file references were not
+      // updated — which by then is the opposite of the truth.
+      renameBlockId(filePath, oldId, newId).then(
+        async (result) => {
+          try {
+            if (result.updatedFiles.length === 0) return;
+            // Reload updated files in the file store cache so tab switches show new content
+            const { openFiles, setFileContent } = useFileStore.getState();
+            for (const updatedPath of result.updatedFiles) {
+              if (openFiles.has(updatedPath)) {
+                try {
+                  const content = await readFile(updatedPath);
+                  setFileContent(updatedPath, content);
+                } catch {
+                  // file may have been deleted
+                }
               }
+              // Re-index the updated file
+              updateFileIndex(updatedPath).catch(() => {});
             }
-            // Re-index the updated file
-            updateFileIndex(updatedPath).catch(() => {});
+            useLinkStore.getState().invalidate();
+          } catch (e) {
+            // The backend already rewrote the references; only the local cache
+            // refresh failed. Log it — this body owns its own errors because
+            // nobody holds the promise `.then(f, r)` returns, so an escape here
+            // would be an unhandled rejection rather than a caught one.
+            logger.error("[blockId] refreshing renamed references failed:", e);
           }
-          useLinkStore.getState().invalidate();
-        })
-        .catch((e) => logger.error(e));
+        },
+        (e) => {
+          logger.error(e);
+          // issue 263: the local edit is already in the document; when the
+          // backend refuses the cross-file update (link index still being
+          // built) the user must hear it, or other files keep the old ID.
+          const { locale } = useSettingsStore.getState();
+          useUIStore.getState().showToast(
+            t("blockId.rename.failed.toast", locale as Locale, {
+              message: String(e),
+            }),
+            "error",
+          );
+        },
+      );
     }
   }
 }

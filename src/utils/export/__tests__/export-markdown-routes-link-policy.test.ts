@@ -28,12 +28,15 @@ import { exportBinaryFile, exportPandoc } from "../../../ipc/invoke";
 import { markdownToProsemirror } from "../../../pipeline/md-to-pm";
 import { exportForNotion, exportWithPandoc } from "../export";
 
-// Inline links only: the editor pipeline does not carry reference-style
-// links or definitions through a load/serialize cycle, so they cannot reach
-// either route from a live document. (The pipeline behaviour itself is pinned
-// in export-markdown-links.test.ts for strings that arrive by other means.)
+// Inline links, and (issue 546) a reference-style link: the editor resolves
+// `[bad][r]` + `[r]: …` to an inline link at load, so a document AUTHORED with
+// references reaches both routes as inline links and meets the same policy.
+// (The pass itself is pinned in export-markdown-links.test.ts for strings that
+// arrive by other means, definitions included.)
 const DOC =
   "[bad](javascript:alert(document.domain)) and [good](https://example.com/a)\n\nsee <vbscript:x> too\n";
+const REFERENCE_DOC =
+  "[bad][r] and [good](https://example.com/a)\n\nsee <vbscript:x> too\n\n[r]: javascript:alert(document.domain)\n";
 
 const editors: Editor[] = [];
 
@@ -70,6 +73,17 @@ describe("the markdown that reaches pandoc", () => {
 
     expect(vi.mocked(exportPandoc)).toHaveBeenCalledTimes(1);
     expectPolicyApplied(vi.mocked(exportPandoc).mock.calls[0][0]);
+  });
+
+  it("applies to a document authored with a reference-style link too (issue 546)", async () => {
+    const editor = loadEditor(REFERENCE_DOC);
+    await exportWithPandoc(editor, "t", "docx");
+
+    expect(vi.mocked(exportPandoc)).toHaveBeenCalledTimes(1);
+    const markdown = vi.mocked(exportPandoc).mock.calls[0][0];
+    expectPolicyApplied(markdown);
+    // The definition itself is gone with the reference it served.
+    expect(markdown).not.toContain("[r]:");
   });
 });
 

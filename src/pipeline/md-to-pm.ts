@@ -6,6 +6,7 @@
 //   convert-list.ts              — list node conversion
 //   convert-block-special.ts     — toggle, definition list, block ID extraction
 //   convert-table-colwidths.ts   — colwidths HTML comment → table cell attrs
+//   reference-links.ts           — issue 546 reference resolution
 //
 import type { Node as PmNode, Schema } from "@tiptap/pm/model";
 import type { Content, PhrasingContent, Root, Text } from "mdast";
@@ -23,6 +24,7 @@ import { convertListNode } from "./convert-list";
 import { applyColwidthsToTable, COLWIDTHS_RE } from "./convert-table-colwidths";
 import { parseMdastAsync } from "./parse-async";
 import { enrichWithEmptyParagraphs, parseMdast } from "./parse-mdast";
+import { resolveReferenceLinks } from "./reference-links";
 import { nodeTransformers } from "./transformers";
 import { parseCalloutHeader } from "./transformers/callout-transformer";
 import {
@@ -84,6 +86,7 @@ export async function markdownToProsemirrorAsync(
 
 /** §perf-large-file C2: Convert mdast blocks to PM node array (for progressive loading). */
 export function mdastBlocksToPmNodes(root: Root, schema: Schema): PmNode[] {
+  resolveReferenceLinks(root);
   const nodes = convertBlockChildren(root.children, schema);
   if (nodes.length === 0) {
     nodes.push(schema.nodes.paragraph.create());
@@ -93,6 +96,7 @@ export function mdastBlocksToPmNodes(root: Root, schema: Schema): PmNode[] {
 
 /** Convert mdast tree to ProseMirror document */
 export function mdastToProsemirror(root: Root, schema: Schema): PmNode {
+  resolveReferenceLinks(root);
   const children = convertBlockChildren(root.children, schema);
   // Ensure at least one block node (doc content spec is "block+")
   if (children.length === 0) {
