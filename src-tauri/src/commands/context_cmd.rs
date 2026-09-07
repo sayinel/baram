@@ -84,8 +84,16 @@ pub async fn remove_context(
     context_id: String,
     state: tauri::State<'_, ContextManager>,
     vault_root: tauri::State<'_, crate::VaultRootState>,
+    link_index: tauri::State<'_, super::index_cmd::LinkIndexState>,
 ) -> Result<(), String> {
+    let registration = state.registration(&context_id).await;
     state.remove(&context_id).await?;
+    // issue 263: the link index of a removed context must not outlive it — a
+    // re-registration of the same path builds its own. The incarnation lets
+    // the index ignore this call if that re-registration already happened.
+    if let Some((path, incarnation)) = registration {
+        link_index.forget(&path, incarnation).await;
+    }
 
     // §81 Update VaultRootState to the new active context (or clear if none)
     match state.active_id().await {

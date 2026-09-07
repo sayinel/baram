@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use tokio::sync::RwLock;
@@ -19,6 +20,11 @@ pub struct ContextState {
     pub canonical_path: PathBuf,
     /// VaultConfig loaded from `.baram/config.json` (only for Vault contexts).
     pub config: Option<VaultConfig>,
+    /// issue 263: which registration this is — a counter that only grows, so a
+    /// path registered, removed and registered again gets a larger number.
+    /// The link index (commands/index_cmd.rs) records the incarnation it was
+    /// built for and ignores a stale `forget` from an earlier one.
+    pub incarnation: u64,
 }
 
 // ── ContextManager ─────────────────────────────────────────────────────────────
@@ -30,6 +36,8 @@ pub struct ContextManager {
     active_id: Arc<RwLock<Option<String>>>,
     /// alias → context id
     aliases: Arc<RwLock<HashMap<String, String>>>,
+    /// Source of `ContextState::incarnation`.
+    next_incarnation: Arc<AtomicU64>,
 }
 
 impl ContextManager {
@@ -39,6 +47,7 @@ impl ContextManager {
             contexts: Arc::new(RwLock::new(HashMap::new())),
             active_id: Arc::new(RwLock::new(None)),
             aliases: Arc::new(RwLock::new(HashMap::new())),
+            next_incarnation: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -58,15 +67,23 @@ impl ContextManager {
         if !canonical.exists() {
             return Err(format!("Path does not exist: {}", info.path));
         }
+        // issue 263: a directory context is a link-index build root
+        // (`LinkIndex::build` reads the directory); a File context never is.
+        // The wrong kind would hand the rename gate a key no build can fill.
+        match info.context_type {
+            ContextType::Vault | ContextType::Folder if !canonical.is_dir() => {
+                return Err(format!("Not a directory: {}", info.path));
+            }
+            ContextType::File if !canonical.is_file() => {
+                return Err(format!("Not a file: {}", info.path));
+            }
+            _ => {}
+        }
 
         // §88 Dedup: return existing context if one already covers this path
-        {
-            let contexts = self.contexts.read().await;
-            for state in contexts.values() {
-                if state.canonical_path == canonical {
-                    return Ok(state.info.clone());
-                }
-            }
+        // (fast path, before the config read below).
+        if let Some(existing) = self.registered_for(&canonical).await {
+            return Ok(existing);
         }
 
         let vault_config = if info.context_type == ContextType::Vault {
@@ -75,15 +92,24 @@ impl ContextManager {
             None
         };
 
-        let state = ContextState {
-            info: info.clone(),
-            canonical_path: canonical,
-            config: vault_config,
-        };
-
         {
+            // The dedup check again, under the write lock that inserts: two
+            // concurrent adds of one directory must not both insert — the link
+            // index keys by registered path and needs at most one context per
+            // canonical directory (issue 263).
             let mut map = self.contexts.write().await;
-            map.insert(info.id.clone(), state);
+            if let Some(existing) = map.values().find(|s| s.canonical_path == canonical) {
+                return Ok(existing.info.clone());
+            }
+            map.insert(
+                info.id.clone(),
+                ContextState {
+                    info: info.clone(),
+                    canonical_path: canonical,
+                    config: vault_config,
+                    incarnation: self.next_incarnation.fetch_add(1, Ordering::SeqCst) + 1,
+                },
+            );
         }
 
         if let Some(alias) = &info.alias {
@@ -155,6 +181,82 @@ impl ContextManager {
         let map = self.contexts.read().await;
         map.get(context_id)
             .map(|s| (s.canonical_path.clone(), s.info.context_type.clone()))
+    }
+
+    /// The path a context was registered with — the key the link index uses
+    /// (commands/index_cmd.rs). A direct lookup: `list()` clones and sorts the
+    /// whole registry, and this runs on every save.
+    pub async fn registered_path(&self, context_id: &str) -> Option<String> {
+        let map = self.contexts.read().await;
+        map.get(context_id).map(|s| s.info.path.clone())
+    }
+
+    /// The registered path and incarnation of a context — what `remove_context`
+    /// hands the link index so a stale `forget` cannot wipe a newer registration.
+    pub async fn registration(&self, context_id: &str) -> Option<(String, u64)> {
+        let map = self.contexts.read().await;
+        map.get(context_id)
+            .map(|s| (s.info.path.clone(), s.incarnation))
+    }
+
+    /// The directory context registered for exactly this directory, in any
+    /// spelling (trailing slash, symlink) — unlike `contexts_containing`, never a
+    /// parent. A link index is built only from a registration (issue 263): a
+    /// root that merely lies inside one would rebuild the parent's index from a
+    /// subtree. `add` dedups by canonical path, so there is at most one.
+    pub async fn context_registered_at(&self, path: &str) -> Option<(ContextInfo, u64)> {
+        let canonical = resolve_canonical(path).ok()?;
+        let map = self.contexts.read().await;
+        map.values()
+            .find(|s| {
+                matches!(
+                    s.info.context_type,
+                    ContextType::Vault | ContextType::Folder
+                ) && s.canonical_path == canonical
+            })
+            .map(|s| (s.info.clone(), s.incarnation))
+    }
+
+    async fn registered_for(&self, canonical: &Path) -> Option<ContextInfo> {
+        let map = self.contexts.read().await;
+        map.values()
+            .find(|s| s.canonical_path == canonical)
+            .map(|s| s.info.clone())
+    }
+
+    /// Every directory context whose root contains `path` — a file inside a
+    /// vault, or the vault root itself in any spelling (trailing slash, symlink;
+    /// both sides are canonical, like `validate_path_any`) — deepest first.
+    /// Nested roots each scan the file, so callers that mutate or ask about a
+    /// file must reach all of them. When no directory context contains the
+    /// path, a `File` context (§89 single-file mode) registered for that very
+    /// file is the only entry. Empty when no registered context contains it.
+    pub async fn contexts_containing(&self, path: &str) -> Vec<ContextInfo> {
+        let Ok(canonical) = resolve_canonical(path) else {
+            return Vec::new();
+        };
+        let map = self.contexts.read().await;
+        let mut directories: Vec<&ContextState> = map
+            .values()
+            .filter(|s| {
+                matches!(
+                    s.info.context_type,
+                    ContextType::Vault | ContextType::Folder
+                ) && canonical.starts_with(&s.canonical_path)
+            })
+            .collect();
+        if directories.is_empty() {
+            return map
+                .values()
+                .filter(|s| {
+                    s.info.context_type == ContextType::File && canonical == s.canonical_path
+                })
+                .map(|s| s.info.clone())
+                .take(1)
+                .collect();
+        }
+        directories.sort_by_key(|s| std::cmp::Reverse(s.canonical_path.as_os_str().len()));
+        directories.into_iter().map(|s| s.info.clone()).collect()
     }
 
     // ── Listing ────────────────────────────────────────────────────────────────
@@ -646,5 +748,104 @@ mod tests {
             .validate_path_any(other_file.to_str().unwrap())
             .await
             .is_err());
+    }
+
+    #[tokio::test]
+    async fn add_refuses_a_directory_context_on_a_file_and_a_file_context_on_a_directory() {
+        let dir = TempDir::new().unwrap();
+        let file = dir.path().join("note.md");
+        std::fs::write(&file, "x").unwrap();
+        let mgr = ContextManager::new();
+        let err = mgr
+            .add(make_info("f", file.to_str().unwrap(), ContextType::Folder))
+            .await
+            .unwrap_err();
+        assert!(err.contains("Not a directory"), "{err}");
+        let err = mgr
+            .add(make_info(
+                "v",
+                dir.path().to_str().unwrap(),
+                ContextType::File,
+            ))
+            .await
+            .unwrap_err();
+        assert!(err.contains("Not a file"), "{err}");
+        assert!(mgr.list().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn concurrent_adds_of_one_directory_register_it_once() {
+        use std::future::Future;
+        let dir = TempDir::new().unwrap();
+        let root = dir.path().to_str().unwrap().to_string();
+        let mgr = ContextManager::new();
+        let mut a = Box::pin(mgr.add(make_info("ctx-a", &root, ContextType::Folder)));
+        let mut b = Box::pin(mgr.add(make_info("ctx-b", &root, ContextType::Folder)));
+        // Park both behind the registry lock, so neither has inserted when the
+        // other passes its fast-path dedup check.
+        let guard = mgr.contexts.write().await;
+        {
+            let mut task = std::task::Context::from_waker(futures::task::noop_waker_ref());
+            assert!(a.as_mut().poll(&mut task).is_pending());
+            assert!(b.as_mut().poll(&mut task).is_pending());
+        }
+        drop(guard);
+        let (a, b) = tokio::join!(a, b);
+        let (a, b) = (a.unwrap(), b.unwrap());
+        assert_eq!(a.id, b.id);
+        assert_eq!(mgr.list().await.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn context_registered_at_matches_only_the_registered_directory_itself() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path().to_str().unwrap().to_string();
+        std::fs::create_dir(dir.path().join("sub")).unwrap();
+        std::fs::write(dir.path().join("n.md"), "x").unwrap();
+        let mgr = ContextManager::new();
+        mgr.add(make_info("ctx", &root, ContextType::Folder))
+            .await
+            .unwrap();
+        let (found, incarnation) = mgr
+            .context_registered_at(&format!("{root}/"))
+            .await
+            .unwrap();
+        assert_eq!(found.path, root);
+        assert_eq!(incarnation, 1);
+        assert!(mgr
+            .context_registered_at(&format!("{root}/sub"))
+            .await
+            .is_none());
+        assert!(mgr
+            .context_registered_at(dir.path().parent().unwrap().to_str().unwrap())
+            .await
+            .is_none());
+        // A File context registered for a file inside is not a build root.
+        let note = dir.path().join("n.md");
+        mgr.add(make_info("f", note.to_str().unwrap(), ContextType::File))
+            .await
+            .unwrap();
+        assert!(mgr
+            .context_registered_at(note.to_str().unwrap())
+            .await
+            .is_none());
+    }
+
+    #[tokio::test]
+    async fn a_re_registration_gets_a_larger_incarnation() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path().to_str().unwrap().to_string();
+        let mgr = ContextManager::new();
+        mgr.add(make_info("ctx", &root, ContextType::Folder))
+            .await
+            .unwrap();
+        let (_, first) = mgr.registration("ctx").await.unwrap();
+        mgr.remove("ctx").await.unwrap();
+        mgr.add(make_info("ctx", &root, ContextType::Folder))
+            .await
+            .unwrap();
+        let (path, second) = mgr.registration("ctx").await.unwrap();
+        assert_eq!(path, root);
+        assert!(second > first);
     }
 }

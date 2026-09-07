@@ -264,9 +264,7 @@ pub fn run() {
             std::collections::HashMap::new(),
         )))
         .manage(context::ContextManager::new())
-        .manage(index_cmd::LinkIndexState(tokio::sync::Mutex::new(
-            std::collections::HashMap::new(),
-        )))
+        .manage(index_cmd::LinkIndexState::new())
         .manage(llm::cancel::CancelRegistry::new())
         .manage(embedding_cmd::EmbeddingState::new())
         .manage(plugin::PluginAuthorizer::new())

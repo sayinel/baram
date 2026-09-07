@@ -85,6 +85,13 @@ pub async fn search_knowledge(
     base_url: Option<String>,
 ) -> Result<Vec<SearchResultPayload>, String> {
     let k = top_k.unwrap_or(5);
+    // issue 263: the graph term reads the active context's index. Resolve that
+    // key before any paid embedding request, by the same derivation as every
+    // index query — this used to look the map up by the context ID, a
+    // guaranteed miss. No active context is not an error here: the chunk index
+    // is in memory regardless, so the search answers with the graph term empty
+    // (ranked by BM25 + vector alone), as it did before.
+    let index_key = super::index_cmd::active_index_key(&ctx_mgr).await.ok();
     let client = reqwest::Client::new();
     let config = EmbedConfig {
         model,
@@ -133,22 +140,11 @@ pub async fn search_knowledge(
     }
     drop(chunk_index);
 
-    // Build outgoing link map from LinkIndex for graph proximity
-    let outgoing = {
-        let key = ctx_mgr.active_id().await.unwrap_or_default();
-        let map = link_state.0.lock().await;
-        let graph = map
-            .get(&key)
-            .map(|idx| idx.get_link_graph())
-            .unwrap_or_default();
-        let mut out_map: HashMap<String, Vec<String>> = HashMap::new();
-        for edge in &graph.edges {
-            out_map
-                .entry(edge.from.clone())
-                .or_default()
-                .push(edge.to.clone());
-        }
-        out_map
+    // Outgoing link map for graph proximity, from the index resolved above;
+    // empty when nothing is active (no edges, every hop distance unknown).
+    let outgoing = match &index_key {
+        Some(key) => super::index_cmd::outgoing_links(&link_state, key).await,
+        None => HashMap::new(),
     };
 
     // Apply hybrid ranking: BM25 + vector + graph → combined score → diversity
