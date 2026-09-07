@@ -127,6 +127,22 @@ for (const term of terms) {
   if (term.avoidAnyway?.length && !term.avoidAnywayWhy) {
     problems.push(`[면제에 근거 없음] ${en}: avoidAnyway 에는 avoidAnywayWhy 가 필요하다`);
   }
+  // ‼️ `requireKo` 는 "영어형이 남아 있으면 번역을 빼먹은 것" 이라고 가정한다. 그런데
+  //    **앱 자신이 영어로 부르는 것**이면 그 가정이 거짓이다 — `Zettel` 이 그랬다: 앱은
+  //    공간·분류를 영어 `Zettel` 로, 노트를 `제텔` 로 부른다. 그래서 "Zettel 허브" 라는
+  //    옳은 문장이 걸렸다. 이것도 판단이 아니라 앱에서 파생시킨다.
+  if (term.requireKo) {
+    const enWord = new RegExp(`(^|[^A-Za-z])${en}([^A-Za-z]|$)`);
+    const inApp = Object.entries(app).filter(([, v]) => typeof v === "string" && enWord.test(v));
+    if (inApp.length && !term.requireKoAnywayWhy) {
+      problems.push(
+        `[영어형을 앱이 쓴다] ${en}: 앱이 ${inApp.length}곳에서 영어 그대로 쓴다 ` +
+          `(예: ${inApp[0][0]} = "${inApp[0][1].slice(0, 24)}") — requireKo 를 빼거나, ` +
+          `그래도 요구할 근거를 requireKoAnywayWhy 에 적을 것`,
+      );
+    }
+  }
+
   for (const bad of term.avoid ?? []) {
     const used = Object.entries(app).filter(([, v]) => typeof v === "string" && v.includes(bad));
     if (used.length) {
