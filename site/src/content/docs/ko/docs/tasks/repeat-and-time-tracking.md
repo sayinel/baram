@@ -1,6 +1,6 @@
 ---
 title: "반복 규칙과 시간 기록"
-sourceHash: "58f5cfd78efc"
+sourceHash: "2a9f08c8f015"
 ---
 
 ## 슬래시 명령

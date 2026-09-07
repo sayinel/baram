@@ -1,6 +1,6 @@
 ---
 title: "개요와 권한"
-sourceHash: "bf9b01372ce1"
+sourceHash: "aba4bc4bdc08"
 ---
 
 ## 개요

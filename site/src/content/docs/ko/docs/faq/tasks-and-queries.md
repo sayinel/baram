@@ -1,6 +1,6 @@
 ---
 title: "태스크와 쿼리 블록"
-sourceHash: "48d8b6256cdb"
+sourceHash: "88c51e314d38"
 ---
 
 ## 태스크

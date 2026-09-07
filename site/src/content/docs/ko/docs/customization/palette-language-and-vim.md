@@ -1,6 +1,6 @@
 ---
 title: "명령 팔레트, 언어, Vim 모드"
-sourceHash: "d068cf920949"
+sourceHash: "9d42a38b8397"
 ---
 
 ## 명령 팔레트

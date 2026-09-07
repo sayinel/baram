@@ -1,6 +1,6 @@
 ---
 title: "템플릿, 명령어, Skills"
-sourceHash: "cbd857bd7550"
+sourceHash: "4f231ebc8a2a"
 ---
 
 ## 스마트 템플릿

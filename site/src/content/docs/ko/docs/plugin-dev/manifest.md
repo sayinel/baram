@@ -1,6 +1,6 @@
 ---
 title: "플러그인 매니페스트"
-sourceHash: "350818d60309"
+sourceHash: "6e64df4d6765"
 ---
 
 
