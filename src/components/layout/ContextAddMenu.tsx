@@ -101,14 +101,14 @@ export function ContextAddMenu({ onClose, anchorRef }: Props) {
   return (
     <div className="context-add-menu" ref={menuRef} style={style}>
       <button className="context-add-menu__item" onClick={handleOpenFolder}>
-        Open Folder…
+        {t("contextAdd.openFolder")}
       </button>
       <button className="context-add-menu__item" onClick={handleOpenFile}>
-        Open File…
+        {t("contextAdd.openFile")}
       </button>
       <div className="context-add-menu__sep" />
       <button className="context-add-menu__item" onClick={handleInitVault}>
-        Initialize as Vault…
+        {t("contextAdd.initVault")}
       </button>
 
       {hasRecents && <div className="context-add-menu__sep" />}

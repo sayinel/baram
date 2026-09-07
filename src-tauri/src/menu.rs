@@ -351,7 +351,7 @@ pub fn build_menu(
         .build(app)?;
 
     // Inline elements
-    let insert_wikilink = MenuItemBuilder::new("Wiki Link")
+    let insert_wikilink = MenuItemBuilder::new("Wikilink")
         .id("insert_wikilink")
         .build(app)?;
     let insert_footnote = MenuItemBuilder::new("Footnote")
@@ -438,12 +438,12 @@ pub fn build_menu(
         .id("workspace_zettel")
         .accelerator("Alt+CmdOrCtrl+3")
         .build(app)?;
-    let workspace_skills = MenuItemBuilder::new("Skills Editing")
+    let workspace_skills = MenuItemBuilder::new("Skills")
         .id("workspace_skills")
         .accelerator("Alt+CmdOrCtrl+4")
         .build(app)?;
 
-    let workspace_menu = SubmenuBuilder::new(app, "Workspace")
+    let workspace_menu = SubmenuBuilder::new(app, "Perspective")
         .item(&workspace_writing)
         .item(&workspace_journal)
         .item(&workspace_zettel)
@@ -547,6 +547,7 @@ pub fn build_menu(
     menu_items.insert("view_tags".into(), view_tags);
     menu_items.insert("view_version_history".into(), view_version_history);
     menu_items.insert("view_skills_gallery".into(), view_skills_gallery);
+    menu_items.insert("view_inline_ai".into(), view_inline_ai);
     menu_items.insert("view_ai_chat".into(), view_ai_chat);
     menu_items.insert("insert_h1".into(), insert_h1);
     menu_items.insert("insert_h2".into(), insert_h2);

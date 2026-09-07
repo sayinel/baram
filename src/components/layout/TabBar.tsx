@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ExternalLink, Pin } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
+import { useTranslation } from "../../i18n/useTranslation";
 import { switchContext } from "../../services/vault-context-loader";
 import { useContextStore } from "../../stores/context/context";
 import {
@@ -23,6 +24,7 @@ interface ContextMenuState {
 }
 
 export function TabBar() {
+  const { t } = useTranslation();
   const {
     tabs,
     activeTabId,
@@ -280,7 +282,7 @@ export function TabBar() {
     <div className="tab-bar">
       {canScrollLeft && (
         <button
-          aria-label="Scroll tabs left"
+          aria-label={t("tabBar.scrollLeft")}
           className="tab-scroll-btn tab-scroll-left"
           onClick={() => scroll(-1)}
         >
@@ -318,7 +320,10 @@ export function TabBar() {
                 {tab.isPinned && <Pin className="tab-pin-icon" size={12} />}
                 {isFileTab(tab) &&
                   getContextForPath(tab.filePath)?.contextType === "file" && (
-                    <span className="tab-external-icon" title="External file">
+                    <span
+                      className="tab-external-icon"
+                      title={t("tabBar.externalFile")}
+                    >
                       <ExternalLink size={11} />
                     </span>
                   )}
@@ -354,7 +359,7 @@ export function TabBar() {
                     e.stopPropagation();
                     handleClose(tab.id);
                   }}
-                  title="Close tab"
+                  title={t("tabBar.close")}
                 >
                   {"\u00D7"}
                 </button>
@@ -372,7 +377,7 @@ export function TabBar() {
       </div>
       {canScrollRight && (
         <button
-          aria-label="Scroll tabs right"
+          aria-label={t("tabBar.scrollRight")}
           className="tab-scroll-btn tab-scroll-right"
           onClick={() => scroll(1)}
         >
@@ -398,7 +403,7 @@ export function TabBar() {
                   setContextMenu(null);
                 }}
               >
-                {tab.isPinned ? "Unpin Tab" : "Pin Tab"}
+                {tab.isPinned ? t("tabBar.unpin") : t("tabBar.pin")}
               </div>
               <div
                 className={`tab-context-item ${tab.isPinned ? "tab-context-item--disabled" : ""}`}
@@ -409,7 +414,7 @@ export function TabBar() {
                   setContextMenu(null);
                 }}
               >
-                Close Tab
+                {t("tabBar.closeTab")}
               </div>
               <div
                 className="tab-context-item"
@@ -418,7 +423,7 @@ export function TabBar() {
                   setContextMenu(null);
                 }}
               >
-                Close Other Tabs
+                {t("tabBar.closeOthers")}
               </div>
               <div
                 className="tab-context-item"
@@ -427,7 +432,7 @@ export function TabBar() {
                   setContextMenu(null);
                 }}
               >
-                Close Tabs to the Right
+                {t("tabBar.closeToRight")}
               </div>
             </div>
           );

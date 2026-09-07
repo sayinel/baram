@@ -16,6 +16,7 @@ import { useShallow } from "zustand/shallow";
 
 import { useResolvedSettings } from "../../hooks/use-resolved-settings";
 import { useTranslation } from "../../i18n/useTranslation";
+import { formatKeyForDisplay } from "../../keybindings/key-utils";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import {
@@ -44,13 +45,27 @@ import { PluginStatusBarItems } from "./PluginStatusBarItems";
 import "../../styles/zettelkasten.css";
 import { VimSearchInput } from "./VimSearchInput";
 
-const MODE_LABELS: Record<EditorMode, string> = {
-  graph: "Graph",
-  plugin: "Plugin",
-  preview: "Preview",
-  source: "Source",
-  wysiwyg: "WYSIWYG",
+/**
+ * i18n key per editor mode, not the label itself.
+ *
+ * `Record<EditorMode, string>` is the point: a new mode fails to compile until it has a key,
+ * which is what kept the five labels complete while they were hardcoded English.
+ */
+const MODE_LABEL_KEYS: Record<EditorMode, string> = {
+  graph: "statusbar.mode.graph",
+  plugin: "statusbar.mode.plugin",
+  preview: "statusbar.mode.preview",
+  source: "statusbar.mode.source",
+  wysiwyg: "statusbar.mode.wysiwyg",
 };
+
+// ⌘0 on macOS, Ctrl+0 elsewhere. `use-zoom.ts` accepts EITHER Meta or Ctrl on every
+// platform, so both readings are true — but the tooltip said "Cmd+0" everywhere, which is
+// the wrong half on Windows and Linux. Derived, not spelled out.
+const ZOOM_RESET_KEY = formatKeyForDisplay(
+  "Mod+0",
+  navigator.platform.includes("Mac"),
+);
 
 /**
  * Modes whose surface is a text document the shared editor holds.
@@ -289,7 +304,7 @@ export function StatusBar({ editor, mode }: StatusBarProps) {
             </div>
           )}
         </div>
-        <span className="status-mode">{MODE_LABELS[mode]}</span>
+        <span className="status-mode">{t(MODE_LABEL_KEYS[mode])}</span>
         {/* §298 vim S3 — only in source mode AND with a live vim session:
             the store is reset on toggle-off/unmount, and the mode gate
             defends against any stale value (Codex plan review). */}
@@ -323,7 +338,14 @@ export function StatusBar({ editor, mode }: StatusBarProps) {
         {isRepo && branch && (
           <span
             className={`status-git-branch ${hasChanges ? "status-git-dirty" : ""}`}
-            title={`Branch: ${branch}${hasChanges ? ` (${changes.length} changes)` : ""}`}
+            title={
+              hasChanges
+                ? t("statusbar.git.branchWithChanges", {
+                    branch,
+                    count: String(changes.length),
+                  })
+                : t("statusbar.git.branch", { branch })
+            }
           >
             ⎇ {branch}
             {hasChanges && <span className="status-git-dot" />}
@@ -333,14 +355,18 @@ export function StatusBar({ editor, mode }: StatusBarProps) {
           <span
             className="status-privacy"
             data-testid="privacy-indicator"
-            title="Privacy Mode: Only local models (Ollama) allowed"
+            title={t("statusbar.privacy.title")}
           >
-            Privacy
+            {t("statusbar.privacy")}
           </span>
         )}
         {activeNoteId && (
           <button
-            aria-label={isFavoriteNote ? "Unfavorite" : "Favorite"}
+            aria-label={
+              isFavoriteNote
+                ? t("zettel.hub.unfavorite")
+                : t("zettel.hub.favorite")
+            }
             className={[
               "status-fav-btn",
               "btn-unstyled",
@@ -354,7 +380,9 @@ export function StatusBar({ editor, mode }: StatusBarProps) {
                 void toggleFavorite(zettelDir, activeNoteId).catch(() => {});
             }}
             title={
-              isFavoriteNote ? "Remove from favorites" : "Add to favorites"
+              isFavoriteNote
+                ? t("statusbar.favorite.remove")
+                : t("statusbar.favorite.add")
             }
           >
             <Star
@@ -390,7 +418,10 @@ export function StatusBar({ editor, mode }: StatusBarProps) {
           <>
             {/* Only a separator when something precedes it. */}
             {showDocumentStats && <span className="status-separator">|</span>}
-            <span className="status-zoom" title="Cmd+0 to reset zoom">
+            <span
+              className="status-zoom"
+              title={t("statusbar.zoom.reset", { key: ZOOM_RESET_KEY })}
+            >
               {zoomPercent}%
             </span>
           </>

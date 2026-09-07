@@ -8,13 +8,15 @@
       "ko": "명령 팔레트",
       "appKey": "keybindings.view.commandPalette",
       "avoid": [
+        "커맨드 팔레트",
         "커맨드팔레트"
       ],
-      "avoidAnyway": [
-        "커맨드 팔레트"
-      ],
-      "avoidAnywayWhy": "앱이 스스로 갈려 있다 — home.shortcut.commandPalette 만 '커맨드 팔레트'이고 메뉴·키바인딩 3곳은 '명령 팔레트'다. 문서는 다수·권위 있는 쪽을 따르므로 앱이 쓰는 말이어도 금지한다. 앱 정리는 별건.",
-      "requireKo": true
+      "requireKo": true,
+      "alsoKeys": [
+        "home.shortcut.commandPalette",
+        "menu.go.palette",
+        "menu.view.palette"
+      ]
     },
     {
       "en": "Quick Switcher",
@@ -117,7 +119,15 @@
       "ko": "강조",
       "appKey": "keybindings.formatting.highlight",
       "avoid": [],
-      "note": "‼️ 동형이의어라 avoid 를 둘 수 없다. 영어 highlight 가 두 기능이다 — 서식 마크(`==…==`)와 PDF 주석. 앱은 PDF 쪽 전체(pdfHighlight.*, pdfSidePanel.highlights)와 settings.markdown.highlight 에서 '하이라이트' 를 쓰고, '강조' 는 menu/keybindings 2곳뿐이다. **규칙**: 메뉴·단축키 이름을 부를 때는 '강조', PDF 주석은 '하이라이트'."
+      "note": "‼️ 동형이의어라 avoid 를 둘 수 없다. 영어 highlight 가 두 기능이다 — 서식 마크(`==…==`)와 PDF 주석. **규칙**: 서식 마크는 '강조', PDF 주석은 '하이라이트'. 서식 쪽 키는 appKey 와 alsoKeys 가 열거하고, 그 집합 안에서 avoidIn 이 PDF 쪽 말을 금지한다 — 수렴과 배타성을 둘 다 파생 검증한다. 어느 키가 PDF 쪽인지는 여기 적지 않는다(적으면 낡는다).",
+      "alsoKeys": [
+        "menu.insert.highlight",
+        "settings.markdown.highlight",
+        "settings.markdown.highlight.desc"
+      ],
+      "avoidIn": [
+        "하이라이트"
+      ]
     },
     {
       "en": "Strikethrough",
@@ -238,12 +248,15 @@
       "en": "Wikilink",
       "ko": "위키링크",
       "appKey": "settings.vault.extension.wikilink",
-      "avoid": [],
-      "avoidAnyway": [
+      "avoid": [
         "위키 링크"
       ],
-      "avoidAnywayWhy": "앱이 갈려 있다 — menu.insert.wikilink 만 '위키 링크'이고 설정·확장 2곳은 '위키링크'다. 문서는 붙여 쓰는 쪽을 따르므로 앱이 쓰는 말이어도 금지한다. 앱 정리는 별건.",
-      "requireKo": true
+      "requireKo": true,
+      "alsoKeys": [
+        "backlinks.linkify.title",
+        "menu.insert.wikilink",
+        "settings.vault.markdownWikilinks"
+      ]
     },
     {
       "en": "Vault",
@@ -330,12 +343,14 @@
       "appKey": "plugin.marketplace.refresh",
       "appMode": "contains",
       "appWhy": "앱 값이 '↻ 새로고침' 이라 아이콘이 붙어 있다",
-      "avoid": [],
-      "note": "‼️ 앱 안에서 갈려 있다 — plugin/keybindings/menu/tasks 는 '새로고침', journal.stats.refresh 만 '새로 고침'. 다수를 따른다.",
-      "avoidAnyway": [
+      "avoid": [
         "새로 고침"
       ],
-      "avoidAnywayWhy": "앱이 갈려 있다 — plugin·keybindings·menu·tasks 는 '새로고침'(붙여 씀), journal.stats.refresh 만 '통계 새로 고침'(띄어 씀). 문서는 다수를 따르므로 앱이 쓰는 말이어도 금지한다. 저널 통계 새로고침을 문서화할 일이 생기면 이 항목을 다시 볼 것."
+      "note": "‼️ 앱 값이 '↻ 새로고침' 처럼 아이콘을 달고 오는 자리가 있어 appMode 가 contains 다. '새로 고침'(띄어 씀)은 avoid 에 있으므로 앱이 그 표기로 돌아가면 이 게이트가 실패한다.",
+      "alsoKeys": [
+        "journal.stats.refresh",
+        "journal.stats.refresh.aria"
+      ]
     }
   ],
   "_limits": "‼️ 열거된 금지 목록의 한계 — 가장 그럴듯한 오역이 앱의 다른 기능 어휘라서 금지할 수 없는 경우가 있다: `작업`(Task, 앱은 AI 작업·작업 기록에 쓴다) · `저장소`(Vault, 앱은 플러그인 저장소·git 저장소에 쓴다) · `즐겨찾기`(Bookmarks, 앱은 제텔 허브 즐겨찾기에 쓴다) · `내부 링크`(Wikilink, 앱은 링크 형식 설정에 쓴다) · `소스 보기`(Source Mode, 앱은 저널 블록 동작에 쓴다) · `레이아웃`(Perspective, 앱은 '현재 레이아웃 저장'에 쓴다). `requireKo` 의 조건부 검사가 그 구멍의 한쪽(영어를 그대로 둔 것)을 메운다.",

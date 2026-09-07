@@ -23,6 +23,7 @@ import { EditorContent, useEditor } from "@tiptap/react";
 import { createBaramExtensions } from "../../extensions";
 import { useAutoSave } from "../../hooks/use-auto-save";
 import { useSettingsEffects } from "../../hooks/use-settings-effects";
+import { useTranslation } from "../../i18n/useTranslation";
 import { readFile, watchDir, writeFile } from "../../ipc/invoke";
 import { mergeTexts } from "../../ipc/snapshot";
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
@@ -48,6 +49,7 @@ interface FileEditorLayoutProps {
 }
 
 export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<null | string>(null);
   const [isDirty, setIsDirty] = useState(false);
@@ -345,22 +347,22 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
       {externalChange !== null && (
         <div className="file-editor-conflict" role="alert">
           <span className="file-editor-conflict__msg">
-            This file was modified externally.
+            {t("fileEditor.conflict.msg")}
           </span>
           <button
             className="file-editor-conflict__btn"
             onClick={handleReloadExternal}
           >
-            Reload
+            {t("fileEditor.conflict.reload")}
           </button>
           <button
             className="file-editor-conflict__btn"
             onClick={handleKeepLocal}
           >
-            Keep Local
+            {t("fileEditor.conflict.keepLocal")}
           </button>
           <button className="file-editor-conflict__btn" onClick={handleMerge}>
-            Merge
+            {t("fileEditor.conflict.merge")}
           </button>
         </div>
       )}
@@ -374,7 +376,7 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
       )}
       <div className="file-editor-content">
         {loading ? (
-          <div className="file-editor-loading">Loading...</div>
+          <div className="file-editor-loading">{t("fileEditor.loading")}</div>
         ) : isSourceMode ? (
           <Suspense fallback={null}>
             <SourceCodeEditor
