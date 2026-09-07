@@ -84,7 +84,7 @@ pub async fn remove_context(
     context_id: String,
     state: tauri::State<'_, ContextManager>,
     vault_root: tauri::State<'_, crate::VaultRootState>,
-    link_index: tauri::State<'_, super::index_cmd::LinkIndexState>,
+    link_index: tauri::State<'_, crate::index::service::LinkIndexState>,
 ) -> Result<(), String> {
     let registration = state.registration(&context_id).await;
     state.remove(&context_id).await?;

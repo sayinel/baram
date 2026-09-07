@@ -75,7 +75,7 @@ pub async fn embed_text(
 #[allow(clippy::too_many_arguments)]
 pub async fn search_knowledge(
     state: tauri::State<'_, EmbeddingState>,
-    link_state: tauri::State<'_, super::index_cmd::LinkIndexState>,
+    link_state: tauri::State<'_, crate::index::service::LinkIndexState>,
     ctx_mgr: tauri::State<'_, crate::context::ContextManager>,
     query: String,
     top_k: Option<usize>,
@@ -91,7 +91,7 @@ pub async fn search_knowledge(
     // guaranteed miss. No active context is not an error here: the chunk index
     // is in memory regardless, so the search answers with the graph term empty
     // (ranked by BM25 + vector alone), as it did before.
-    let index_key = super::index_cmd::active_index_key(&ctx_mgr).await.ok();
+    let index_key = crate::index::service::active_index_key(&ctx_mgr).await.ok();
     let client = reqwest::Client::new();
     let config = EmbedConfig {
         model,
@@ -143,7 +143,7 @@ pub async fn search_knowledge(
     // Outgoing link map for graph proximity, from the index resolved above;
     // empty when nothing is active (no edges, every hop distance unknown).
     let outgoing = match &index_key {
-        Some(key) => super::index_cmd::outgoing_links(&link_state, key).await,
+        Some(key) => crate::index::service::outgoing_links(&link_state, key).await,
         None => HashMap::new(),
     };
 

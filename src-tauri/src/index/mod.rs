@@ -5,12 +5,13 @@
 
 mod extractor;
 mod normalizer;
+pub mod service;
 
 use serde::Serialize;
 use std::collections::HashMap;
 use thiserror::Error;
 
-// Re-export public API consumed by commands/index_cmd.rs
+// Re-export public API consumed by `service/` and the IPC layer
 pub use extractor::{
     collect_all_files, collect_md_files, find_unlinked_mentions, replace_block_id_refs,
     replace_wikilink_target, rewrite_relative_wikilinks, UnlinkedMentionResult,
