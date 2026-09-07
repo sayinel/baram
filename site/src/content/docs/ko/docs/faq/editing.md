@@ -32,7 +32,7 @@ Baram이 **편집**하는 것은 표준 마크다운 파일(`.md`, `.markdown`)�
 - **HTML**(`.html`, `.htm`) — 미리보기 / 소스 전환이 있는 렌더된 실시간 미리보기. 소스는 편집할 수 있고 평범하게 저장됩니다.
 - **이미지**(`.png`, `.jpg`, `.jpeg`, `.gif`, `.bmp`, `.ico`, `.webp`, `.avif`) **와 SVG**(`.svg`) — 확대·축소가 되는 읽기 전용 뷰어.
 
-사용 설명서의 [다른 종류의 파일 보기](/baram/ko/docs/workspace/external-files-and-perspectives/#다른-종류의-파일-보기)를 보십시오. 플러그인이 더 많은 파일 종류의 뷰어를 더할 수 있습니다.
+사용 설명서의 [다른 종류의 파일 보기](/ko/docs/workspace/external-files-and-perspectives/#다른-종류의-파일-보기)를 보십시오. 플러그인이 더 많은 파일 종류의 뷰어를 더할 수 있습니다.
 
 ## 표를 어떻게 넣나요?
 

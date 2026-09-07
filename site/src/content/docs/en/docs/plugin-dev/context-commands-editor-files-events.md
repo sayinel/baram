@@ -27,7 +27,7 @@ execute(id: string, ...args: unknown[]): Promise<unknown>;
 
 Registering a command with `opts.paletteVisible === true` or any `opts.title`
 surfaces it in the Command Palette — see
-[Command Palette integration](/baram/en/docs/plugin-dev/commands-and-tiptap-extensions/#command-palette-integration).
+[Command Palette integration](/en/docs/plugin-dev/commands-and-tiptap-extensions/#command-palette-integration).
 
 ## `context.editor` (requires `editor` or `editor:readonly`)
 

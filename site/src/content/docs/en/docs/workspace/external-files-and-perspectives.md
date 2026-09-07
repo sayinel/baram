@@ -28,7 +28,7 @@ them to another application. Click one in the file tree, or use **File > Open Fi
 
 | Type | Extensions | What you get |
 | ---- | ---------- | ------------ |
-| **PDF** | `.pdf` | A reader with page navigation, find, zoom, a page/highlight side panel, and text & area highlighting you can reference from your notes. The PDF file itself is never modified. See [PDF Reading & Highlights](/baram/en/docs/pdf/toolbar-zoom-and-find/). |
+| **PDF** | `.pdf` | A reader with page navigation, find, zoom, a page/highlight side panel, and text & area highlighting you can reference from your notes. The PDF file itself is never modified. See [PDF Reading & Highlights](/en/docs/pdf/toolbar-zoom-and-find/). |
 | **HTML** | `.html`, `.htm` | A rendered live preview by default, with a **Preview / Source** toggle in the corner. Switch to Source to edit the markup with syntax highlighting; saving works as it does for any file. The preview is sandboxed, so scripts in the file cannot reach your vault or the app. |
 | **Images** | `.png`, `.jpg`, `.jpeg`, `.gif`, `.bmp`, `.ico`, `.webp`, `.avif` | A viewer that fits the image to the window without upscaling small ones. |
 | **SVG** | `.svg` | The same viewer, rendered as vector — it stays sharp at any zoom. Scripts inside an SVG do not execute. |
@@ -36,7 +36,7 @@ them to another application. Click one in the file tree, or use **File > Open Fi
 Images and SVG are handled by **Media Viewer**, a plugin that ships with Baram. It is built on the
 same public `viewer` extension point third-party plugins use, so a plugin can add a viewer for a
 file type Baram does not handle itself — see the
-[Plugin Development Guide](/baram/en/docs/plugin-dev/overview-and-capabilities/).
+[Plugin Development Guide](/en/docs/plugin-dev/overview-and-capabilities/).
 
 ## Tab Tear-Off (Separate Window)
 

@@ -9,7 +9,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { GROUPS, groupOf, PAGES, TITLES } from "../../ia-tree.mjs";
-import { ROUTES } from "../../routes.mjs";
+import { docPath, ROUTES } from "../../routes.mjs";
 import { buildAnchorIndex, rewriteLinks } from "./link-map.mjs";
 import { plan, readSource, reheading } from "./split-plan.mjs";
 
@@ -37,7 +37,7 @@ function indexBody(intro) {
     const target = group ? PAGES.find((p) => groupOf(p.slug) === group)?.slug : page.slug;
     if (!label || seen.has(label)) continue;
     seen.add(label);
-    out.push(`- [${label}](/baram/en/docs/${target}/)`);
+    out.push(`- [${label}](${docPath(target, "en")})`);
   }
   return out;
 }

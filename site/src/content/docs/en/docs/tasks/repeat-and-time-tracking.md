@@ -15,7 +15,7 @@ With the cursor on a task line:
 | `/repeat`      | Set a repeat rule — the **only** way to enter one, because its value contains spaces |
 | `/cancel-task` | Mark the task cancelled, keeping the line                   |
 
-`/extract-tasks` (**Extract Action Items**) works anywhere, not just on a task line — see [AI Features](/baram/en/docs/ai/templates-commands-and-skills/#extract-action-items).
+`/extract-tasks` (**Extract Action Items**) works anywhere, not just on a task line — see [AI Features](/en/docs/ai/templates-commands-and-skills/#extract-action-items).
 
 The date dialogs carry a three-layer calendar: click the centre label to widen from days to months to years, pick a cell to narrow back down. Typing in the text field returns you to the day view. Picking a month or a year only moves the view — only choosing a day sets the value.
 

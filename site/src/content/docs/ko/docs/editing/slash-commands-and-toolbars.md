@@ -29,7 +29,7 @@ sourceHash: "fc15838d7074"
 - `/image` — 이미지 넣기
 - `/link` — 링크 넣기
 
-입력하면 메뉴 항목이 걸러집니다. AI 명령도 슬래시 메뉴에서 쓸 수 있습니다([AI 기능](/baram/ko/docs/ai/setup-inline-and-ghost-text/) 참조).
+입력하면 메뉴 항목이 걸러집니다. AI 명령도 슬래시 메뉴에서 쓸 수 있습니다([AI 기능](/ko/docs/ai/setup-inline-and-ghost-text/) 참조).
 
 ## 플로팅 툴바
 

@@ -93,7 +93,7 @@ limit: 10
 ```
 ````
 
-필드와 연산자 표 전체는 [사용 설명서](/baram/ko/docs/rich-content/query-blocks/#쿼리-블록)에 있습니다.
+필드와 연산자 표 전체는 [사용 설명서](/ko/docs/rich-content/query-blocks/#쿼리-블록)에 있습니다.
 
 ### 쿼리가 왜 아무것도 안 내나요?
 

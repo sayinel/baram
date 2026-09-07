@@ -46,7 +46,7 @@ Baram shows a conflict warning with the name of the command that already uses th
 
 Yes — **Settings > Editor > Vim Keybindings**, off by default. One switch covers the WYSIWYG editor, Source Mode, and code blocks inside a document. Source Mode and code blocks get full vim (text objects, `.` repeat, `/` search, macros, registers); WYSIWYG has motions, operators with counts, `f`/`t`, `/` search, visual mode, and `:w` / `:q` / `:N` line jumps, but not yet text objects, `.` repeat, or marks. The status bar shows the mode and doubles as the `:` and `/` command line.
 
-Vim commands work with the Korean IME active: in normal mode keys resolve by physical position, so `j` moves down even when it would type `ㅓ`. Vim key sequences are a separate layer and are not remappable in Settings > Keybindings. See the [full command list](/baram/en/docs/customization/keyboard-shortcuts/#vim-mode).
+Vim commands work with the Korean IME active: in normal mode keys resolve by physical position, so `j` moves down even when it would type `ㅓ`. Vim key sequences are a separate layer and are not remappable in Settings > Keybindings. See the [full command list](/en/docs/customization/keyboard-shortcuts/#vim-mode).
 
 ### How do I reset a shortcut to its default?
 
@@ -97,7 +97,7 @@ Approvals are kept by Baram in its own application data directory, not inside yo
 
 **Settings > Vault > Approved locations** lists every approved folder and file, each with a **Revoke** button. Revoking removes the approval and closes that vault's tab; it takes full effect after a restart.
 
-> On macOS this is separate from the system's own Files and Folders prompt — see [macOS asks for folder access](/baram/en/docs/faq/plugins-and-troubleshooting/#macos-asks-for-folder-access).
+> On macOS this is separate from the system's own Files and Folders prompt — see [macOS asks for folder access](/en/docs/faq/plugins-and-troubleshooting/#macos-asks-for-folder-access).
 
 ### How do I link files across vaults?
 

@@ -19,7 +19,7 @@ title: "Dates, block references, and navigation"
 
 **Clicking a date chip opens the calendar and changes the date in place.** It does not navigate — a date mention names a day, it does not point at a document.
 
-**To open that day's journal entry, link it instead:** `[[2026-02-27]]`. See [Journal / Daily Notes](/baram/en/docs/journal/daily-notes/) for how date links resolve.
+**To open that day's journal entry, link it instead:** `[[2026-02-27]]`. See [Journal / Daily Notes](/en/docs/journal/daily-notes/) for how date links resolve.
 
 **Dates vs. wikilinks:**
 
@@ -47,7 +47,7 @@ Block references appear as inline chips that you can `Cmd+click` to navigate to 
 PDF reader. They render as the quoted sentence, or as the cropped region for an area highlight,
 and take an optional width — `((target#^id|w=60))`, an integer percentage from 10 to 100 — which
 you can also set by dragging the reference's right edge. See
-[PDF Reading & Highlights](/baram/en/docs/pdf/toolbar-zoom-and-find/).
+[PDF Reading & Highlights](/en/docs/pdf/toolbar-zoom-and-find/).
 
 ## Backlinks
 

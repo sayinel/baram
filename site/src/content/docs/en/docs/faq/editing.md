@@ -31,7 +31,7 @@ It also **opens** several other types in place, so you do not have to leave the 
 - **HTML** (`.html`, `.htm`) — rendered live preview with a Preview / Source toggle; the source is editable and saves normally.
 - **Images** (`.png`, `.jpg`, `.jpeg`, `.gif`, `.bmp`, `.ico`, `.webp`, `.avif`) **and SVG** (`.svg`) — read-only viewer with zoom.
 
-See [Viewing Other File Types](/baram/en/docs/workspace/external-files-and-perspectives/#viewing-other-file-types) in the User Guide. Plugins
+See [Viewing Other File Types](/en/docs/workspace/external-files-and-perspectives/#viewing-other-file-types) in the User Guide. Plugins
 can add viewers for further file types.
 
 ## How do I insert a table?

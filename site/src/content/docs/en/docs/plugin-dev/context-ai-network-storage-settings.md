@@ -19,7 +19,7 @@ listModels(): Promise<AIModel[]>;
 `complete`/`stream`/`listModels` all use the **user's own configured AI
 provider, model, and API key** (whatever is set in Settings → AI) — a plugin
 cannot supply its own key or provider. See
-[Trust model & security](/baram/en/docs/plugin-dev/trust-model-and-errors/#trust-model--security) for what privacy mode does
+[Trust model & security](/en/docs/plugin-dev/trust-model-and-errors/#trust-model--security) for what privacy mode does
 and does not gate here.
 
 ## `context.network` (requires `network`)
@@ -44,7 +44,7 @@ restrictions), **not** the browser `fetch`. Only `http`/`https` URLs are
 allowed; the response body is always a UTF-8 string (binary responses are
 lossily decoded, not usable as bytes); duplicate response headers collapse
 to whichever value `reqwest` iterates last. See
-[Trust model & security](/baram/en/docs/plugin-dev/trust-model-and-errors/#trust-model--security) for the full egress and
+[Trust model & security](/en/docs/plugin-dev/trust-model-and-errors/#trust-model--security) for the full egress and
 size/timeout policy.
 
 ## `context.storage` (requires `storage`)
@@ -57,7 +57,7 @@ remove(key: string): Promise<void>;
 ```
 
 A simple string key/value store, one directory per plugin. See
-[Trust model & security](/baram/en/docs/plugin-dev/trust-model-and-errors/#trust-model--security) for where it lives and its
+[Trust model & security](/en/docs/plugin-dev/trust-model-and-errors/#trust-model--security) for where it lives and its
 guarantees (or lack thereof).
 
 ## `context.settings` (requires `settings`)

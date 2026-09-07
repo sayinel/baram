@@ -24,14 +24,14 @@ Every plugin declares one of two tiers in its manifest, and the tier decides wha
   limiting anything. Installing one requires an explicit acknowledgement of exactly that.
 
 Write sandboxed unless you are contributing a Tiptap extension or DOM-mounted UI. See
-[Trust model & security](/baram/en/docs/plugin-dev/trust-model-and-errors/#trust-model--security) before installing or authoring anything
+[Trust model & security](/en/docs/plugin-dev/trust-model-and-errors/#trust-model--security) before installing or authoring anything
 sensitive.
 
 ## Capabilities
 
 Plugins must declare every capability they need in the manifest. Users
 approve these at install time (registry installs) or implicitly by choosing
-to load a dev folder (see [Trust model & security](/baram/en/docs/plugin-dev/trust-model-and-errors/#trust-model--security)).
+to load a dev folder (see [Trust model & security](/en/docs/plugin-dev/trust-model-and-errors/#trust-model--security)).
 Accessing an API whose capability was not declared throws a clear error
 ("Plugin requires `"X"` capability to access …") instead of silently no-oping
 — the context hands back a denied proxy for any ungranted API.
@@ -53,7 +53,7 @@ Accessing an API whose capability was not declared throws a clear error
 | `viewer`          | Register custom file-type viewers       |               |
 
 `ai` and `network` are the highest-sensitivity capabilities — see
-[Trust model & security](/baram/en/docs/plugin-dev/trust-model-and-errors/#trust-model--security) for exactly what they allow.
+[Trust model & security](/en/docs/plugin-dev/trust-model-and-errors/#trust-model--security) for exactly what they allow.
 `files` and `storage` are also flagged because they touch data outside the
 plugin's own memory (vault files / a persistent on-disk store), even though
 they're vault- or plugin-scoped rather than globally unrestricted.

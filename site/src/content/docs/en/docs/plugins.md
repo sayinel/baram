@@ -50,6 +50,6 @@ Baram tells you when it cannot rely on that list: if the list has never been rec
 not be signature-verified, or has not been updated in a long time, it says so rather than quietly
 implying that everything you have is fine.
 
-To build your own plugin, see the [Plugin Development Guide](/baram/en/docs/plugin-dev/overview-and-capabilities/) for the manifest format, the `ExtensionContext` API, and bundling/publishing.
+To build your own plugin, see the [Plugin Development Guide](/en/docs/plugin-dev/overview-and-capabilities/) for the manifest format, the `ExtensionContext` API, and bundling/publishing.
 
 ---

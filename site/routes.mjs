@@ -15,6 +15,14 @@ export const ROUTES = ROUTES_JSON;
 export const BASE = ROUTES.base.replace(/\/$/, "");
 export const ORIGIN = ROUTES.origin;
 
+/**
+ * Astro 설정에 넣는 base. 커스텀 도메인에서는 `BASE` 가 빈 문자열인데, Astro 의 base 는
+ * 슬래시로 시작하는 경로를 기대하므로 루트를 `"/"` 로 되살린다.
+ *
+ * ‼️ 링크 조립에는 `BASE`/`withBase` 를 쓴다. 이 값을 이어붙이면 루트에서 `//en/docs/` 가 된다.
+ */
+export const ASTRO_BASE = BASE || "/";
+
 /** IA slug → base 없는 사이트 경로. `("getting-started","en")` → `/en/docs/getting-started/` */
 export function docPath(slug, locale = ROUTES.defaultLocale) {
   const tail = slug === "index" ? "" : `${slug}/`;

@@ -7,8 +7,8 @@
 // 프로젝트이고, 그 경계를 코드가 넘으면 앱 빌드가 사이트 구조에 묶인다.
 import type { Locale } from "../i18n";
 
-/** GitHub Pages 홈페이지 루트. 끝의 `/`는 문서 URL 조립에 쓰이므로 유지한다. */
-export const BARAM_HOMEPAGE = "https://sayinel.github.io/baram/";
+/** 홈페이지 루트. 끝의 `/`는 문서 URL 조립에 쓰이므로 유지한다. */
+export const BARAM_HOMEPAGE = "https://baram.ing/";
 
 export type HelpDoc = "faq" | "guide" | "shortcuts";
 

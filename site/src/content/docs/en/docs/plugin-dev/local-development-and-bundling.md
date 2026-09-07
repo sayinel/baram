@@ -24,7 +24,7 @@ packaging or installing it:
 Dev-loaded plugins **skip checksum verification** (there is no download URL
 or checksum for a local folder) — this is a deliberate local-trust
 shortcut, not a security check that was accidentally missed. See
-[Trust model & security](/baram/en/docs/plugin-dev/trust-model-and-errors/#trust-model--security).
+[Trust model & security](/en/docs/plugin-dev/trust-model-and-errors/#trust-model--security).
 
 ## Bundling
 

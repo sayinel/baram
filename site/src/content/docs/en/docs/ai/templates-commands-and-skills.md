@@ -35,9 +35,9 @@ Type `/` in the editor to access AI commands:
 3. Review the proposed task lines in the AI diff preview
 4. **Accept** to insert them, or **Reject** to discard
 
-Nothing is written to the document until you accept. The extracted lines are ordinary task lines, so date and priority fields can be added afterwards the usual way — see [Tasks](/baram/en/docs/tasks/anatomy-and-typing/).
+Nothing is written to the document until you accept. The extracted lines are ordinary task lines, so date and priority fields can be added afterwards the usual way — see [Tasks](/en/docs/tasks/anatomy-and-typing/).
 
-It needs a configured AI model, and it respects [Privacy Mode](/baram/en/docs/ai/setup-inline-and-ghost-text/#privacy-mode): with privacy on and no local model available, it declines rather than sending your notes to a cloud provider.
+It needs a configured AI model, and it respects [Privacy Mode](/en/docs/ai/setup-inline-and-ghost-text/#privacy-mode): with privacy on and no local model available, it declines rather than sending your notes to a cloud provider.
 
 ## Custom AI Commands
 

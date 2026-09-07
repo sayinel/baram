@@ -47,7 +47,7 @@ You can also assign a **global capture shortcut** (**Settings > General > Tasks*
 
 ## Tasks in a query block
 
-A ` ```query ` block with `source: tasks` embeds any slice of your task list into a note, and the results stay checkable. See [Query Blocks](/baram/en/docs/rich-content/query-blocks/#query-blocks) for the full field and operator reference.
+A ` ```query ` block with `source: tasks` embeds any slice of your task list into a note, and the results stay checkable. See [Query Blocks](/en/docs/rich-content/query-blocks/#query-blocks) for the full field and operator reference.
 
 ## Task settings
 

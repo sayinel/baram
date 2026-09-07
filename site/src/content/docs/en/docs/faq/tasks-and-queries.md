@@ -92,7 +92,7 @@ limit: 10
 ```
 ````
 
-The full field and operator tables are in the [User Guide](/baram/en/docs/rich-content/query-blocks/#query-blocks).
+The full field and operator tables are in the [User Guide](/en/docs/rich-content/query-blocks/#query-blocks).
 
 ### Why does my query return nothing?
 
