@@ -4,7 +4,7 @@
 import { docPath, withBase } from "../../routes.mjs";
 import logoDark from "../assets/baram-logo-dark.png";
 import logoLight from "../assets/baram-logo.png";
-import { LOCALE_LABELS, otherLocale, useTranslations, type Locale } from "../i18n";
+import { LOCALE_LABELS, LOCALES, otherLocale, useTranslations, type Locale } from "../i18n";
 import "../styles/site.css";
 
 interface Props {
@@ -71,22 +71,72 @@ const ogImage = new URL(withBase("/assets/hero.png"), Astro.site).href;
           <img class="logo-light" src={logoLight.src} width={logoLight.width} height={logoLight.height} alt="Baram" />
           <img class="logo-dark" src={logoDark.src} width={logoDark.width} height={logoDark.height} alt="Baram" />
         </a>
-        <nav class="nav-links">
-          <a href="#features">{t("nav.features")}</a>
-          <a href="#shortcuts">{t("nav.shortcuts")}</a>
-          <a href="#plugins">{t("nav.plugins")}</a>
-          <a href="#install">{t("nav.install")}</a>
-          <a href="#faq">{t("nav.faq")}</a>
-          <a href={docsHome}>{t("nav.docs")}</a>
-        </nav>
-        <div class="nav-actions">
-          <a class="lang-toggle" href={withBase(`/${other}/`)} hreflang={other} lang={other}>
-            {LOCALE_LABELS[other]}
-          </a>
-          <button id="theme-toggle" class="lang-toggle" type="button" aria-label="Toggle theme">◐</button>
-          <a class="github-badge" href="https://github.com/sayinel/baram" aria-label="Star Baram on GitHub">
-            ★ <span id="github-stars">GitHub</span>
-          </a>
+        <button
+          id="nav-toggle"
+          class="nav-toggle"
+          type="button"
+          aria-expanded="false"
+          aria-controls="nav-panel"
+        >
+          <svg class="icon-open" aria-hidden="true" viewBox="0 0 24 24"
+            ><path d="M3 8h18a1 1 0 1 0 0-2H3a1 1 0 0 0 0 2Zm18 8H3a1 1 0 0 0 0 2h18a1 1 0 0 0 0-2Zm0-5H3a1 1 0 0 0 0 2h18a1 1 0 0 0 0-2Z"
+          /></svg>
+          <svg class="icon-close" aria-hidden="true" viewBox="0 0 24 24"
+            ><path d="m13.41 12 6.3-6.29a1.004 1.004 0 1 0-1.42-1.42L12 10.59l-6.29-6.3a1.004 1.004 0 0 0-1.42 1.42l6.3 6.29-6.3 6.29a1 1 0 0 0 0 1.42.998.998 0 0 0 1.42 0l6.29-6.3 6.29 6.3a.999.999 0 0 0 1.42 0 1 1 0 0 0 0-1.42L13.41 12Z"
+          /></svg>
+          <span class="sr-only">{t("nav.menu")}</span>
+        </button>
+        <div id="nav-panel" class="nav-panel">
+          <nav class="nav-links">
+            <a href="#features">{t("nav.features")}</a>
+            <a href="#shortcuts">{t("nav.shortcuts")}</a>
+            <a href="#plugins">{t("nav.plugins")}</a>
+            <a href="#install">{t("nav.install")}</a>
+            <a href="#faq">{t("nav.faq")}</a>
+            <a href={docsHome}>{t("nav.docs")}</a>
+          </nav>
+          <div class="nav-actions">
+            <a class="nav-control" href="https://github.com/sayinel/baram">
+              <svg aria-hidden="true" viewBox="0 0 24 24"
+                ><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 0-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.2.5-2.3 1.3-3.1-.2-.4-.6-1.6.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.7 1.6.2 2.8.1 3.2.8.8 1.3 1.9 1.3 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3Z"
+              /></svg>
+              <span class="sr-only">GitHub</span>
+              <span id="github-stars"></span>
+            </a>
+            {/* ‼️ 3-상태다(자동·밝은·어두운). 문서 헤더와 **같은 선택지**여야 한다 —
+                2-상태 토글이던 동안에는 랜딩에서 "시스템 따라가기"로 되돌아갈 길이
+                없었고, 다크 시스템에서 첫 클릭이 아무 일도 하지 않았다. */}
+            <label class="nav-control">
+              <span class="sr-only">{t("theme.select")}</span>
+              <svg aria-hidden="true" viewBox="0 0 24 24"
+                ><path d="M21 14h-1V7a3 3 0 0 0-3-3H7a3 3 0 0 0-3 3v7H3a1 1 0 0 0-1 1v2a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-2a1 1 0 0 0-1-1ZM6 7a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v7H6V7Zm14 10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-1h16v1Z"
+              /></svg>
+              <select id="theme-select" autocomplete="off">
+                <option value="dark">{t("theme.dark")}</option>
+                <option value="light">{t("theme.light")}</option>
+                <option value="auto" selected>{t("theme.auto")}</option>
+              </select>
+              <svg class="caret" aria-hidden="true" viewBox="0 0 24 24"
+                ><path d="M17 9.17a1 1 0 0 0-1.41 0L12 12.71 8.46 9.17a1 1 0 1 0-1.41 1.42l4.24 4.24a1.002 1.002 0 0 0 1.42 0L17 10.59a1.002 1.002 0 0 0 0-1.42Z"
+              /></svg>
+            </label>
+            {/* 문서 헤더와 같은 의미: **현재** 언어를 보여 주고 고르면 옮긴다.
+                옛 버튼은 "갈 곳"(다른 언어)을 보여 줘서 두 표면이 반대로 읽혔다. */}
+            <label class="nav-control">
+              <span class="sr-only">{t("lang.select")}</span>
+              <svg aria-hidden="true" viewBox="0 0 24 24"
+                ><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm7.94 9h-3.02a15.6 15.6 0 0 0-1.2-5.42A8.03 8.03 0 0 1 19.94 11ZM12 4.04c.83 1.2 1.65 3.3 1.87 6.96h-3.74C10.35 7.34 11.17 5.24 12 4.04ZM8.28 5.58A15.6 15.6 0 0 0 7.08 11H4.06a8.03 8.03 0 0 1 4.22-5.42ZM4.06 13h3.02c.1 2.02.5 3.87 1.2 5.42A8.03 8.03 0 0 1 4.06 13Zm6.07 0h3.74c-.22 3.66-1.04 5.76-1.87 6.96-.83-1.2-1.65-3.3-1.87-6.96Zm5.59 5.42c.7-1.55 1.1-3.4 1.2-5.42h3.02a8.03 8.03 0 0 1-4.22 5.42Z"
+              /></svg>
+              <select id="lang-select" autocomplete="off">
+                {LOCALES.map((l) => (
+                  <option value={withBase(`/${l}/`)} selected={l === locale}>{LOCALE_LABELS[l]}</option>
+                ))}
+              </select>
+              <svg class="caret" aria-hidden="true" viewBox="0 0 24 24"
+                ><path d="M17 9.17a1 1 0 0 0-1.41 0L12 12.71 8.46 9.17a1 1 0 1 0-1.41 1.42l4.24 4.24a1.002 1.002 0 0 0 1.42 0L17 10.59a1.002 1.002 0 0 0 0-1.42Z"
+              /></svg>
+            </label>
+          </div>
         </div>
       </div>
     </header>

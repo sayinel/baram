@@ -5,8 +5,9 @@ import {
   detectOS,
   formatStarCount,
   isDownloadableAsset,
-  nextTheme,
   pickPrimaryAsset,
+  storedTheme,
+  themePreference,
 } from "../src/scripts/landing.ts";
 
 test("detectOS maps platform strings", () => {
@@ -50,9 +51,32 @@ test("formatStarCount formats counts compactly", () => {
   assert.equal(formatStarCount(Number.NaN), null);
 });
 
-test("nextTheme toggles both ways, and treats absent as light-to-dark", () => {
-  assert.equal(nextTheme("dark"), "light");
-  assert.equal(nextTheme("light"), "dark");
-  // data-theme 가 아직 없을 때(시스템 설정 따라감) 첫 클릭은 다크로 간다
-  assert.equal(nextTheme(null), "dark");
+// ── 테마 선호 ↔ 저장값 (§ Starlight 규약 공유)
+//
+// ‼️ 두 표면이 `localStorage["starlight-theme"]` 하나를 공유한다. 이 왕복이 갈리면
+//    문서에서 고른 테마가 랜딩에서 다르게 읽힌다 — 화면을 봐서는 알기 어려운 종류다.
+
+test("themePreference reads Starlight's convention, empty string included", () => {
+  assert.equal(themePreference("dark"), "dark");
+  assert.equal(themePreference("light"), "light");
+  // Starlight 이 auto 를 적는 값이 빈 문자열이다 — 이것을 auto 로 읽지 못하면
+  // 문서에서 '자동'을 고른 방문자가 랜딩에서 '어두운 테마'로 표시된다.
+  assert.equal(themePreference(""), "auto");
+  assert.equal(themePreference(null), "auto");
+  assert.equal(themePreference(undefined), "auto");
+  assert.equal(themePreference("nonsense"), "auto");
+});
+
+test("storedTheme round-trips every preference through themePreference", () => {
+  for (const pref of ["auto", "dark", "light"]) {
+    assert.equal(themePreference(storedTheme(pref)), pref, `${pref} 왕복이 깨졌다`);
+  }
+});
+
+test("storedTheme writes auto as the empty string, not the word", () => {
+  // "auto" 를 그대로 적으면 Starlight 쪽 파서가 그것을 auto 로 읽기는 하나,
+  // 두 표면이 같은 바이트를 적는다는 계약이 조용히 깨진다.
+  assert.equal(storedTheme("auto"), "");
+  assert.equal(storedTheme("dark"), "dark");
+  assert.equal(storedTheme("light"), "light");
 });
