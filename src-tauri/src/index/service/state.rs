@@ -361,6 +361,10 @@ impl LinkIndexState {
             slot.stats = None;
             slot.root = None;
             slot.published_incarnation = 0;
+            // A build that is reading right now read the layout this drop
+            // invalidates; cancelling its token means `publish` rejects it
+            // (the move it did not see is not a journaled mutation).
+            slot.pending = None;
             slot.epoch += 1;
         }
     }

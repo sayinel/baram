@@ -116,9 +116,18 @@ pub(crate) async fn update_file_index_inner(
     // live and pending root spelling while holding the map lock.
     let mutation = match tokio::fs::read_to_string(file_path).await {
         Ok(content) => Mutation::update(file_path, content)?,
-        Err(e) => {
-            log::warn!("§29 update_file_index: {file_path} could not be read, removing it from the index: {e}");
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            log::warn!("§29 update_file_index: {file_path} is gone, removing it from the index");
             Mutation::remove(file_path)?
+        }
+        Err(e) => {
+            // Present but unreadable right now (permissions, a transient I/O
+            // error, invalid UTF-8): the index keeps what it knew — neither an
+            // empty file nor a removal is the truth — and the next save retries.
+            log::warn!(
+                "§29 update_file_index: {file_path} could not be read, index left unchanged: {e}"
+            );
+            return Ok(());
         }
     };
     for key in &keys {

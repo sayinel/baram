@@ -1639,3 +1639,193 @@ fn the_slot_map_is_locked_only_inside_state_rs() {
     }
     assert!(include_str!("state.rs").contains(&needle));
 }
+
+#[tokio::test]
+async fn a_namespace_rename_drops_the_index_of_a_context_that_holds_the_destination() {
+    // /v and /v/dest registered and indexed; /v/src/ns moves INTO /v/dest. The
+    // /v/dest index never covered the moved files and must not stay live
+    // (it would say the moved referrers do not exist).
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-parent", true).await;
+    std::fs::create_dir_all(dir.path().join("src/ns")).unwrap();
+    std::fs::create_dir_all(dir.path().join("dest")).unwrap();
+    std::fs::write(dir.path().join("src/ns/c.md"), "target").unwrap();
+    std::fs::write(dir.path().join("dest/d.md"), "plain").unwrap();
+    let dest = format!("{root}/dest");
+    ctx.add(info("ctx-dest", &dest, ContextType::Folder))
+        .await
+        .unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    refresh_index_inner(&state, &ctx, &dest).await.unwrap();
+    let dest_incarnation = incarnation_of(&ctx, "ctx-dest").await;
+    rename_namespace_inner(
+        &state,
+        &ctx,
+        &format!("{root}/src/ns"),
+        &format!("{dest}/ns"),
+        &root,
+    )
+    .await
+    .unwrap();
+    assert!(dir.path().join("dest/ns/c.md").exists());
+    assert!(
+        state
+            .with_index_for(&dest, dest_incarnation, |i| i.is_none())
+            .await
+    );
+}
+
+#[tokio::test]
+async fn a_build_that_read_before_a_namespace_move_cannot_publish_after_the_drop() {
+    // The child's build has read the OLD layout and is paused before publish;
+    // the parent-rooted move drops the child's index. The paused build must
+    // not reinstall its pre-move snapshot.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-parent", true).await;
+    std::fs::create_dir_all(dir.path().join("sub/ns")).unwrap();
+    std::fs::write(dir.path().join("sub/ns/c.md"), "target").unwrap();
+    let sub = format!("{root}/sub");
+    ctx.add(info("ctx-child", &sub, ContextType::Folder))
+        .await
+        .unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    let (token, snapshot, stats) = staged_build(&state, &ctx, &sub, &sub).await;
+    rename_namespace_inner(
+        &state,
+        &ctx,
+        &format!("{sub}/ns"),
+        &format!("{sub}/ns2"),
+        &root,
+    )
+    .await
+    .unwrap();
+    assert_eq!(state.publish(&sub, token, snapshot, stats).await, None);
+    assert!(state.with_index(&sub, |i| i.is_none()).await);
+}
+
+#[tokio::test]
+async fn a_reserved_subtree_refuses_registrations_until_the_move_is_over() {
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-parent", true).await;
+    std::fs::create_dir_all(dir.path().join("ns/inner")).unwrap();
+    let ns_canonical = dir.path().join("ns").canonicalize().unwrap();
+    {
+        let _reservation = ctx.reserve_subtree(&ns_canonical).await.unwrap();
+        let err = ctx
+            .add(info(
+                "ctx-late",
+                &format!("{root}/ns/inner"),
+                ContextType::Folder,
+            ))
+            .await
+            .unwrap_err();
+        assert!(err.contains("being renamed"), "{err}");
+        let err = ctx
+            .add(info(
+                "ctx-late2",
+                &format!("{root}/ns"),
+                ContextType::Folder,
+            ))
+            .await
+            .unwrap_err();
+        assert!(err.contains("being renamed"), "{err}");
+        // A sibling is unaffected.
+        std::fs::create_dir_all(dir.path().join("other")).unwrap();
+        ctx.add(info(
+            "ctx-other",
+            &format!("{root}/other"),
+            ContextType::Folder,
+        ))
+        .await
+        .unwrap();
+    }
+    // Released on drop.
+    ctx.add(info(
+        "ctx-late",
+        &format!("{root}/ns/inner"),
+        ContextType::Folder,
+    ))
+    .await
+    .unwrap();
+    // And a subtree that already holds a registration cannot be reserved.
+    assert!(ctx.reserve_subtree(&ns_canonical).await.is_err());
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_symlinked_directory_is_not_renamed_as_a_namespace() {
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-parent", true).await;
+    std::fs::create_dir_all(dir.path().join("real")).unwrap();
+    std::os::unix::fs::symlink(dir.path().join("real"), dir.path().join("alias")).unwrap();
+    let state = LinkIndexState::new();
+    let err = rename_namespace_inner(
+        &state,
+        &ctx,
+        &format!("{root}/alias"),
+        &format!("{root}/alias2"),
+        &root,
+    )
+    .await
+    .unwrap_err();
+    assert!(err.contains("symlink"), "{err}");
+    assert!(dir.path().join("alias").exists());
+    assert!(dir.path().join("real").exists());
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn an_unreadable_but_present_file_leaves_the_index_unchanged() {
+    use std::os::unix::fs::PermissionsExt;
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-abc", true).await;
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    let a = dir.path().join("a.md");
+    std::fs::set_permissions(&a, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let readable = std::fs::read_to_string(&a).is_ok(); // true only as root
+    update_file_index_inner(&state, &ctx, &format!("{root}/a.md"))
+        .await
+        .unwrap();
+    std::fs::set_permissions(&a, std::fs::Permissions::from_mode(0o644)).unwrap();
+    if !readable {
+        // Not gone, not emptied: the index still knows a.md links to b.md.
+        assert_eq!(
+            sources(
+                &get_backlinks_inner(&state, &ctx, &format!("{root}/b.md"))
+                    .await
+                    .unwrap()
+            ),
+            vec![format!("{root}/a.md")]
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_renamed_files_content_is_indexed_under_its_new_path() {
+    // Read before the move, so the index never loses the file between the old
+    // path's removal and a read-back of the new one.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-abc", true).await;
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/a.md"),
+        &format!("{root}/renamed.md"),
+    )
+    .await
+    .unwrap();
+    assert!(dir.path().join("renamed.md").exists());
+    assert_eq!(
+        sources(
+            &get_backlinks_inner(&state, &ctx, &format!("{root}/b.md"))
+                .await
+                .unwrap()
+        ),
+        vec![format!("{root}/renamed.md")]
+    );
+}

@@ -73,7 +73,7 @@ pub(super) async fn owning_index_key(
 /// "Active context with no index built yet" is a different, legitimate state
 /// (indexes are built in the background when a vault opens): queries answer
 /// empty and knowledge search ranks without a graph term.
-pub(super) async fn active_registration(ctx_mgr: &ContextManager) -> Result<Registered, String> {
+pub(crate) async fn active_registration(ctx_mgr: &ContextManager) -> Result<Registered, String> {
     let id = ctx_mgr.active_id().await.ok_or("No active context")?;
     ctx_mgr
         .registered(&id)
@@ -92,14 +92,25 @@ pub(super) async fn active_index_key(ctx_mgr: &ContextManager) -> Result<String,
 /// an error here — the chunk index is in memory regardless — but an empty
 /// map: the search ranks by BM25 and vector alone, as it did before issue 263
 /// made this lookup hit at all.
-pub(crate) async fn graph_term_for_active(
+pub(crate) async fn graph_term_for(
+    state: &LinkIndexState,
+    registered: Option<&Registered>,
+) -> HashMap<String, Vec<String>> {
+    match registered {
+        Some(registered) => outgoing_links_for(state, registered).await,
+        None => HashMap::new(),
+    }
+}
+
+/// The graph term of the active context in one step (tests; the search
+/// command resolves the registration before its network request and reads the
+/// graph after it, so a save during the request is not missed).
+#[cfg(test)]
+pub(super) async fn graph_term_for_active(
     state: &LinkIndexState,
     ctx_mgr: &ContextManager,
 ) -> HashMap<String, Vec<String>> {
-    match active_registration(ctx_mgr).await {
-        Ok(registered) => outgoing_links_for(state, &registered).await,
-        Err(_) => HashMap::new(),
-    }
+    graph_term_for(state, active_registration(ctx_mgr).await.ok().as_ref()).await
 }
 
 /// `Err` unless `root_path` is inside a registered directory context — the

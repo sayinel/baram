@@ -91,7 +91,11 @@ pub async fn search_knowledge(
     // guaranteed miss. No active context is not an error here: the chunk index
     // is in memory regardless, so the search answers with the graph term empty
     // (ranked by BM25 + vector alone), as it did before.
-    let outgoing = crate::index::service::graph_term_for_active(&link_state, &ctx_mgr).await;
+    // Resolved before the paid embedding request; the graph itself is read
+    // after it (below), so a save or rename that lands meanwhile is seen.
+    let registration = crate::index::service::active_registration(&ctx_mgr)
+        .await
+        .ok();
     let client = reqwest::Client::new();
     let config = EmbedConfig {
         model,
@@ -139,6 +143,10 @@ pub async fn search_knowledge(
         }
     }
     drop(chunk_index);
+
+    // The graph term, from the index resolved above; empty without an active
+    // context (no edges, every hop distance unknown).
+    let outgoing = crate::index::service::graph_term_for(&link_state, registration.as_ref()).await;
 
     // Apply hybrid ranking: BM25 + vector + graph → combined score → diversity
     let final_results = hybrid_ranker::hybrid_rank(
