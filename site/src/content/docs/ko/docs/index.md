@@ -12,7 +12,7 @@ sourceHash: "124bd765abd2"
 - [편집](/baram/ko/docs/editing/files-and-tabs/)
 - [리치 콘텐츠](/baram/ko/docs/rich-content/callouts-and-toggles/)
 - [링크와 탐색](/baram/ko/docs/linking/wikilinks-and-tags/)
-- [Vault와 작업 공간](/baram/ko/docs/workspace/vaults-and-approval/)
+- [볼트와 워크스페이스](/baram/ko/docs/workspace/vaults-and-approval/)
 - [태스크](/baram/ko/docs/tasks/anatomy-and-typing/)
 - [PDF 읽기](/baram/ko/docs/pdf/toolbar-zoom-and-find/)
 - [AI 기능](/baram/ko/docs/ai/setup-inline-and-ghost-text/)
