@@ -1437,3 +1437,92 @@ async fn a_query_does_not_read_an_index_left_by_an_earlier_registration() {
         .unwrap()
         .is_empty());
 }
+
+#[tokio::test]
+async fn a_namespace_rename_drops_the_indexes_of_nested_contexts_it_moved_through() {
+    // /v and /v/sub both registered and indexed; /v/sub/ns is renamed with /v as
+    // the root. /v is rebuilt by the rename; /v/sub's index described the old
+    // layout and must not survive as a live index the gate would trust.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-parent", true).await;
+    std::fs::create_dir_all(dir.path().join("sub/ns")).unwrap();
+    std::fs::write(dir.path().join("sub/ns/c.md"), "target").unwrap();
+    std::fs::write(dir.path().join("sub/a.md"), "see [[./ns/c]]").unwrap();
+    let sub = format!("{root}/sub");
+    ctx.add(info("ctx-child", &sub, ContextType::Folder))
+        .await
+        .unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    refresh_index_inner(&state, &ctx, &sub).await.unwrap();
+    let child = incarnation_of(&ctx, "ctx-child").await;
+    assert!(state.with_index_for(&sub, child, |i| i.is_some()).await);
+
+    rename_namespace_inner(
+        &state,
+        &ctx,
+        &format!("{sub}/ns"),
+        &format!("{sub}/ns2"),
+        &root,
+    )
+    .await
+    .unwrap();
+    assert!(dir.path().join("sub/ns2/c.md").exists());
+    // The parent's index is fresh, the child's is gone…
+    assert!(!outgoing_links(&state, &root)
+        .await
+        .values()
+        .flatten()
+        .any(|t| t.contains("/ns/")));
+    assert!(state.with_index_for(&sub, child, |i| i.is_none()).await);
+    // …and the next rename inside the child rebuilds it through the gate.
+    rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{sub}/ns2/c.md"),
+        &format!("{sub}/ns2/d.md"),
+    )
+    .await
+    .unwrap();
+    assert!(state.with_index_for(&sub, child, |i| i.is_some()).await);
+    assert!(!outgoing_links(&state, &sub)
+        .await
+        .values()
+        .flatten()
+        .any(|t| t.contains("/ns/")));
+}
+
+#[tokio::test]
+async fn a_namespace_rename_refuses_to_move_a_registered_folder_or_one_that_holds_one() {
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-parent", true).await;
+    std::fs::create_dir_all(dir.path().join("outer/sub")).unwrap();
+    std::fs::write(dir.path().join("outer/sub/n.md"), "n").unwrap();
+    let sub = format!("{root}/outer/sub");
+    ctx.add(info("ctx-child", &sub, ContextType::Folder))
+        .await
+        .unwrap();
+    let state = LinkIndexState::new();
+    // The registered folder itself…
+    let err = rename_namespace_inner(&state, &ctx, &sub, &format!("{root}/outer/sub2"), &root)
+        .await
+        .unwrap_err();
+    assert!(err.contains("registered folder"), "{err}");
+    assert!(dir.path().join("outer/sub/n.md").exists());
+    // …and a directory that holds one.
+    let err = rename_namespace_inner(
+        &state,
+        &ctx,
+        &format!("{root}/outer"),
+        &format!("{root}/outer2"),
+        &root,
+    )
+    .await
+    .unwrap_err();
+    assert!(err.contains("registered folder"), "{err}");
+    assert!(dir.path().join("outer/sub/n.md").exists());
+    assert_eq!(
+        ctx.registration("ctx-child").await.map(|r| r.0),
+        Some(sub.clone())
+    );
+}

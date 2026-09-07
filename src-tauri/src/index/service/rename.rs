@@ -170,11 +170,11 @@ pub(crate) async fn rename_file_with_links_inner(
     //    referring files from the content we already have — each into the
     //    indexes that cover it — then the renamed file. Each index spells the
     //    paths its own way (Mutation::apply_to).
+    let mut per_key: HashMap<String, Vec<Mutation>> = HashMap::new();
+    push_for_keys(&mut per_key, &keys, &remove_old);
     let renamed_content = tokio::fs::read_to_string(new_path)
         .await
         .unwrap_or_default();
-    let mut per_key: HashMap<String, Vec<Mutation>> = HashMap::new();
-    push_for_keys(&mut per_key, &keys, &remove_old);
     for (identity, content) in updated_contents {
         let covering = keys_covering(ctx_mgr, &keys, &identity.to_string_lossy()).await;
         push_for_keys(
@@ -305,11 +305,39 @@ pub(crate) async fn rename_namespace_inner(
     if Path::new(new_dir).exists() {
         return Err(format!("{new_dir} already exists"));
     }
+    // A directory that IS a registered context, or holds one, is not a
+    // namespace to move: the registration would keep pointing at the old path
+    // and its index would describe files that are no longer there (issue 591).
+    // The user closes that context first.
+    if ctx_mgr.context_registered_at(old_dir).await.is_some()
+        || !ctx_mgr.contexts_under(&old_canonical).await.is_empty()
+    {
+        return Err(format!(
+            "{old_dir} is (or contains) a registered folder; close it before renaming"
+        ));
+    }
+    // Every other directory context whose index covers the moved files —
+    // nested roots between this root and old_dir — must not keep the old
+    // layout as a live index (issue 591). Resolved before the move, while
+    // old_dir still exists.
+    let others: Vec<String> = ctx_mgr
+        .contexts_containing(old_dir)
+        .await
+        .into_iter()
+        .map(|c| c.info.path)
+        .filter(|k| *k != target.key)
+        .collect();
     let committed = commit_namespace_rename(old_dir, new_dir, root_path).await?;
     // Full rebuild (many files moved), under the same key every lookup derives,
     // never coalesced onto a publication that may predate the move.
     let rebuilt = rebuild_and_publish(state, &target, root_path, false).await;
     settle_namespace_rebuild(state, &target.key, rebuilt).await;
+    // The other covering indexes are dropped rather than rebuilt here: the
+    // rename gate rebuilds each the next time it is needed, from its own
+    // registered path.
+    for key in &others {
+        state.drop_index(key).await;
+    }
     Ok(committed)
 }
 

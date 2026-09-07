@@ -67,7 +67,10 @@
 // stays inside the file's contexts (a file opened on its own may only be
 // renamed within its directory), a namespace move stays inside the root that
 // authorised it, and a referring file the index names is rewritten only if it
-// still resolves inside those contexts.
+// still resolves inside those contexts. A namespace move refuses a directory
+// that is, or holds, a registered context (its registration would dangle), and
+// drops the indexes of the other contexts whose scan covered the moved files —
+// the gate rebuilds each when next needed (issue 591).
 //
 // An index holds paths in the spelling of the root it was built from. A nested
 // root can be registered — and built — under another spelling of the same

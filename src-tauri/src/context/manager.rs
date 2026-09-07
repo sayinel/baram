@@ -235,6 +235,23 @@ impl ContextManager {
             .map(ContextState::registered)
     }
 
+    /// Directory contexts registered strictly BELOW `canonical` (their root
+    /// lies inside it). A directory that holds one cannot be moved as a
+    /// namespace: the registration would dangle (issue 591).
+    pub async fn contexts_under(&self, canonical: &Path) -> Vec<Registered> {
+        let map = self.contexts.read().await;
+        map.values()
+            .filter(|s| {
+                matches!(
+                    s.info.context_type,
+                    ContextType::Vault | ContextType::Folder
+                ) && s.canonical_path != canonical
+                    && s.canonical_path.starts_with(canonical)
+            })
+            .map(ContextState::registered)
+            .collect()
+    }
+
     async fn registered_for(&self, canonical: &Path) -> Option<ContextInfo> {
         let map = self.contexts.read().await;
         map.values()
