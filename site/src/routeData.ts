@@ -39,11 +39,22 @@ function splitId(id: string): { locale: string; rest: string } | null {
 /**
  * 엔트리 id 의 뒷부분 → IA slug.
  * 문서 홈은 Astro 가 `index` 를 떼어 `en/docs` 로 주므로 `docs` 자체가 그 페이지다.
+ *
+ * ‼️ 이 함수는 모든 콘텐츠가 `<locale>/docs/**` 아래 있다고 가정한다 — `docPath()` 가
+ *    그 접두어를 다시 붙이기 때문이다. 훗날 `<locale>/blog/**` 같은 섹션이 생기면
+ *    원문 링크가 `/en/docs/blog/post/`(404)로 **조용히** 틀리게 나온다. 링크가 조용히
+ *    틀리는 것보다 빌드가 시끄럽게 죽는 편이 낫다.
  */
 function slugOf(rest: string): string {
   const prefix = ROUTES.docsPrefix.replace(/\/$/, "");
   if (rest === prefix) return "index";
-  return rest.startsWith(`${prefix}/`) ? rest.slice(prefix.length + 1) : rest;
+  if (!rest.startsWith(`${prefix}/`)) {
+    throw new Error(
+      `routeData: "${rest}" 가 "${prefix}/" 아래에 없습니다. 새 섹션을 추가했다면 ` +
+        `원문 URL 조립(routes.mjs 의 docPath)을 먼저 그 섹션에 맞게 넓히십시오.`,
+    );
+  }
+  return rest.slice(prefix.length + 1);
 }
 
 // ‼️ 아래 판정은 전부 id 모양에 기댄다. Astro 가 id 생성 규칙을 바꾸면 조건이 조용히
