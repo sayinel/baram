@@ -306,7 +306,6 @@ dependencies = [
  "base64 0.23.1",
  "chromiumoxide",
  "chromiumoxide_cdp",
- "diffy",
  "futures",
  "git2",
  "http-range",
@@ -1024,15 +1023,6 @@ dependencies = [
  "quote",
  "rustc_version",
  "syn 2.0.115",
-]
-
-[[package]]
-name = "diffy"
-version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3e3dc2f773b6aaa63b1a7684b8589f670a8a0146a510b74d23a401c882364b49"
-dependencies = [
- "hashbrown 0.17.1",
 ]
 
 [[package]]
@@ -1990,15 +1980,6 @@ name = "hashbrown"
 version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "841d1cc9bed7f9236f321df977030373f4a4163ae1a7dbfe1a51a2c1a51d9100"
-
-[[package]]
-name = "hashbrown"
-version = "0.17.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
-dependencies = [
- "foldhash 0.2.0",
-]
 
 [[package]]
 name = "heck"

@@ -70,7 +70,6 @@ shlex = "2.0"
 percent-encoding = "2"
 http-range = "0.1"
 log = "0.4"
-diffy = "0.5.0"
 # §56d Photo Gallery thumbnails (thumbnail/mod.rs).
 #
 # ‼️ default-features = false is a binary-size setting (target: <15MB, Part 8 §8.4). The
