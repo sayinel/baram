@@ -58,6 +58,27 @@ pub struct ContextManager {
     aliases: Arc<RwLock<HashMap<String, String>>>,
     /// Source of `ContextState::incarnation`.
     next_incarnation: Arc<AtomicU64>,
+    /// Canonical directories a namespace rename is moving right now (issue
+    /// 591). `add` refuses to register at or below one while it is held, so a
+    /// registration cannot slip in between the rename's check and its move and
+    /// be left pointing at a path that is gone. Std mutex: released from `Drop`.
+    reserved: Arc<std::sync::Mutex<Vec<PathBuf>>>,
+}
+
+/// A subtree reservation (`ContextManager::reserve_subtree`); released on drop.
+pub struct SubtreeReservation {
+    canonical: PathBuf,
+    reserved: Arc<std::sync::Mutex<Vec<PathBuf>>>,
+}
+
+impl Drop for SubtreeReservation {
+    fn drop(&mut self) {
+        if let Ok(mut list) = self.reserved.lock() {
+            if let Some(i) = list.iter().position(|p| *p == self.canonical) {
+                list.swap_remove(i);
+            }
+        }
+    }
 }
 
 impl ContextManager {
@@ -68,7 +89,38 @@ impl ContextManager {
             active_id: Arc::new(RwLock::new(None)),
             aliases: Arc::new(RwLock::new(HashMap::new())),
             next_incarnation: Arc::new(AtomicU64::new(0)),
+            reserved: Arc::new(std::sync::Mutex::new(Vec::new())),
         }
+    }
+
+    /// Reserve `canonical` and everything below it for a namespace move:
+    /// `Err` if a directory context is registered at or below it (moving that
+    /// would leave the registration dangling — close it first), otherwise no
+    /// `add` may register there until the returned guard is dropped. Checked
+    /// and recorded under the registry's write lock, the same lock `add`
+    /// inserts under, so the two cannot interleave.
+    pub async fn reserve_subtree(&self, canonical: &Path) -> Result<SubtreeReservation, String> {
+        let map = self.contexts.write().await;
+        if map.values().any(|s| {
+            matches!(
+                s.info.context_type,
+                ContextType::Vault | ContextType::Folder
+            ) && s.canonical_path.starts_with(canonical)
+        }) {
+            return Err(format!(
+                "{} is (or contains) a registered folder; close it before renaming",
+                canonical.display()
+            ));
+        }
+        self.reserved
+            .lock()
+            .map_err(|_| "reservation list poisoned".to_string())?
+            .push(canonical.to_path_buf());
+        drop(map);
+        Ok(SubtreeReservation {
+            canonical: canonical.to_path_buf(),
+            reserved: Arc::clone(&self.reserved),
+        })
     }
 
     // ── Registration ───────────────────────────────────────────────────────────
@@ -120,6 +172,18 @@ impl ContextManager {
             let mut map = self.contexts.write().await;
             if let Some(existing) = map.values().find(|s| s.canonical_path == canonical) {
                 return Ok(existing.info.clone());
+            }
+            if self
+                .reserved
+                .lock()
+                .map_err(|_| "reservation list poisoned".to_string())?
+                .iter()
+                .any(|r| canonical.starts_with(r))
+            {
+                return Err(format!(
+                    "{} is being renamed; try again when the rename has finished",
+                    info.path
+                ));
             }
             map.insert(
                 info.id.clone(),

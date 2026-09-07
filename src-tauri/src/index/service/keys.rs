@@ -87,10 +87,45 @@ pub(super) async fn active_index_key(ctx_mgr: &ContextManager) -> Result<String,
     Ok(active_registration(ctx_mgr).await?.info.path)
 }
 
-/// Outgoing edges (source → targets) of the index published for `registered`,
-/// for hybrid ranking's graph proximity (embedding_cmd). No index for this
-/// registration yet: no edges.
-pub(crate) async fn outgoing_links_for(
+/// Hybrid ranking's graph term (embedding_cmd): the outgoing edges of the
+/// active context's index. No active context, or no index for it yet, is not
+/// an error here — the chunk index is in memory regardless — but an empty
+/// map: the search ranks by BM25 and vector alone, as it did before issue 263
+/// made this lookup hit at all.
+pub(crate) async fn graph_term_for(
+    state: &LinkIndexState,
+    registered: Option<&Registered>,
+) -> HashMap<String, Vec<String>> {
+    match registered {
+        Some(registered) => outgoing_links_for(state, registered).await,
+        None => HashMap::new(),
+    }
+}
+
+/// The graph term of the active context in one step (tests; the search
+/// command resolves the registration before its network request and reads the
+/// graph after it, so a save during the request is not missed).
+#[cfg(test)]
+pub(super) async fn graph_term_for_active(
+    state: &LinkIndexState,
+    ctx_mgr: &ContextManager,
+) -> HashMap<String, Vec<String>> {
+    graph_term_for(state, active_registration(ctx_mgr).await.ok().as_ref()).await
+}
+
+/// `Err` unless `root_path` is inside a registered directory context — the
+/// gate for the one read-only command that walks a directory the webview
+/// names (`get_unlinked_mentions`).
+pub(crate) async fn require_registered_root(
+    ctx_mgr: &ContextManager,
+    root_path: &str,
+) -> Result<(), String> {
+    owning_registration(ctx_mgr, root_path).await.map(|_| ())
+}
+
+/// Outgoing edges (source → targets) of the index published for `registered`.
+/// No index for this registration yet: no edges.
+pub(super) async fn outgoing_links_for(
     state: &LinkIndexState,
     registered: &Registered,
 ) -> HashMap<String, Vec<String>> {

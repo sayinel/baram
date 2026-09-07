@@ -30,10 +30,12 @@
 // knowledge search degrades to an empty graph term when nothing is active.
 //
 // The lock is never held across an await — by construction, not by review: the
-// map is private and reachable only through this type's own async methods,
-// each of which does only synchronous work under the guard (a read takes a
-// synchronous closure). Every command derives its key BEFORE touching the map,
-// so the ContextManager's own locks are never awaited while this one is held.
+// map is private to state.rs (a scan test keeps every other file in this tree
+// from taking the lock) and reachable only through the state's own async
+// methods, each of which does only synchronous work under the guard (a read
+// takes a synchronous closure). Every command derives its key BEFORE touching
+// the map, so the ContextManager's own locks are never awaited while this one
+// is held.
 //
 // A rebuild reads the vault's files over time, outside the map lock, and a
 // save or rename can land on the live index meanwhile. Those mutations are
@@ -67,7 +69,10 @@
 // stays inside the file's contexts (a file opened on its own may only be
 // renamed within its directory), a namespace move stays inside the root that
 // authorised it, and a referring file the index names is rewritten only if it
-// still resolves inside those contexts.
+// still resolves inside those contexts. A namespace move refuses a directory
+// that is, or holds, a registered context (its registration would dangle), and
+// drops the indexes of the other contexts whose scan covered the moved files —
+// the gate rebuilds each when next needed (issue 591).
 //
 // An index holds paths in the spelling of the root it was built from. A nested
 // root can be registered — and built — under another spelling of the same
@@ -102,7 +107,7 @@ pub use rename::{NamespaceRenameResult, RenameResult};
 pub use state::LinkIndexState;
 
 pub(crate) use build::refresh_index_inner;
-pub(crate) use keys::{active_registration, outgoing_links_for};
+pub(crate) use keys::{active_registration, graph_term_for, require_registered_root};
 pub(crate) use query::{get_backlinks_inner, get_link_index_inner, update_file_index_inner};
 pub(crate) use rename::{
     rename_block_id_inner, rename_file_with_links_inner, rename_namespace_inner,

@@ -3,7 +3,7 @@ use crate::index::{BacklinkResult, LinkGraph, LinkIndex};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use super::keys::{active_registration, keys_of, owning_contexts, owning_registration};
+use super::keys::{active_registration, buildable, keys_of, owning_contexts, owning_registration};
 use super::state::{LinkIndexState, Mutation};
 
 /// Whether `file_path` is spelled under `root`: component-wise, so `/x/Vault`
@@ -101,20 +101,35 @@ pub(crate) async fn update_file_index_inner(
     file_path: &str,
 ) -> Result<(), String> {
     // A save of a file no context knows is nothing to the index: a no-op, so
-    // the caller's `.then(invalidate)` still runs.
-    let keys = keys_of(&owning_contexts(ctx_mgr, file_path).await);
+    // the caller's `.then(invalidate)` still runs. Only directory contexts
+    // hold an index; a File context's key would only grow an empty slot.
+    let keys = keys_of(&buildable(&owning_contexts(ctx_mgr, file_path).await));
     if keys.is_empty() {
         return Ok(());
     }
     // Read outside the lock. With no index yet this only bumps the epoch, so
     // the initial build that is still reading cannot publish a state older
-    // than this save; it will read again.
-    let content = tokio::fs::read_to_string(file_path)
-        .await
-        .unwrap_or_default();
-    // One canonical identity; each slot projects it into its own live and
-    // pending root spelling while holding the map lock.
-    let mutation = Mutation::update(file_path, content)?;
+    // than this save; it will read again. A file that cannot be read (deleted
+    // between the save and this call, unreadable) leaves the index instead of
+    // being recorded as a file without links; the next save brings it back.
+    // One canonical identity either way; each slot projects it into its own
+    // live and pending root spelling while holding the map lock.
+    let mutation = match tokio::fs::read_to_string(file_path).await {
+        Ok(content) => Mutation::update(file_path, content)?,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            log::warn!("§29 update_file_index: {file_path} is gone, removing it from the index");
+            Mutation::remove(file_path)?
+        }
+        Err(e) => {
+            // Present but unreadable right now (permissions, a transient I/O
+            // error, invalid UTF-8): the index keeps what it knew — neither an
+            // empty file nor a removal is the truth — and the next save retries.
+            log::warn!(
+                "§29 update_file_index: {file_path} could not be read, index left unchanged: {e}"
+            );
+            return Ok(());
+        }
+    };
     for key in &keys {
         state.apply(key, vec![mutation.clone()]).await;
     }

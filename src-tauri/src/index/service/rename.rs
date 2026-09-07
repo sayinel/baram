@@ -123,6 +123,13 @@ pub(crate) async fn rename_file_with_links_inner(
     // its existing parent).
     let remove_old = Mutation::Remove { path: old_identity };
 
+    // The file's own content, read BEFORE it moves: it is what the index will
+    // hold under the new path. Unreadable here means nothing has changed yet,
+    // so this is an honest `Err` (not a file that vanishes from the index).
+    let renamed_content = tokio::fs::read_to_string(old_path)
+        .await
+        .map_err(|e| format!("{old_path} could not be read: {e}"))?;
+
     // 2. Rename the actual file — the one step that can still fail. It comes
     //    BEFORE the reference rewrites so that an `Err` from this command
     //    always means nothing was changed; the frontend treats it that way.
@@ -170,9 +177,6 @@ pub(crate) async fn rename_file_with_links_inner(
     //    referring files from the content we already have — each into the
     //    indexes that cover it — then the renamed file. Each index spells the
     //    paths its own way (Mutation::apply_to).
-    let renamed_content = tokio::fs::read_to_string(new_path)
-        .await
-        .unwrap_or_default();
     let mut per_key: HashMap<String, Vec<Mutation>> = HashMap::new();
     push_for_keys(&mut per_key, &keys, &remove_old);
     for (identity, content) in updated_contents {
@@ -305,11 +309,49 @@ pub(crate) async fn rename_namespace_inner(
     if Path::new(new_dir).exists() {
         return Err(format!("{new_dir} already exists"));
     }
+    // A symlink is not a namespace: moving the link entry moves none of the
+    // files its target holds, while the checks below would reason about the
+    // target. Rename the target directory instead.
+    if std::fs::symlink_metadata(old_dir)
+        .map(|m| m.file_type().is_symlink())
+        .unwrap_or(false)
+    {
+        return Err(format!(
+            "{old_dir} is a symlink; rename the directory it points to"
+        ));
+    }
+    // A directory that IS a registered context, or holds one, is not a
+    // namespace to move: the registration would keep pointing at the old path
+    // and its index would describe files that are no longer there (issue 591).
+    // The user closes that context first. The reservation also keeps a
+    // registration from landing at or below old_dir while the files move.
+    let _reserved = ctx_mgr.reserve_subtree(&old_canonical).await?;
+    // Every other directory context whose index covers the moved files —
+    // nested roots that hold old_dir, and those that hold the destination and
+    // will hold them from now on — must not keep the old layout as a live
+    // index (issue 591). Resolved before the move, while old_dir exists (the
+    // destination resolves on its existing parent).
+    let mut others: Vec<String> = ctx_mgr
+        .contexts_containing(old_dir)
+        .await
+        .into_iter()
+        .chain(ctx_mgr.contexts_containing(new_dir).await)
+        .map(|c| c.info.path)
+        .filter(|k| *k != target.key)
+        .collect();
+    others.sort();
+    others.dedup();
     let committed = commit_namespace_rename(old_dir, new_dir, root_path).await?;
     // Full rebuild (many files moved), under the same key every lookup derives,
     // never coalesced onto a publication that may predate the move.
     let rebuilt = rebuild_and_publish(state, &target, root_path, false).await;
     settle_namespace_rebuild(state, &target.key, rebuilt).await;
+    // The other covering indexes are dropped rather than rebuilt here: the
+    // rename gate rebuilds each the next time it is needed, from its own
+    // registered path.
+    for key in &others {
+        state.drop_index(key).await;
+    }
     Ok(committed)
 }
 
