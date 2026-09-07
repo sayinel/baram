@@ -41,7 +41,7 @@ const NOT_PROSE: RegExp[] = [
   /^[a-z][a-zA-Z0-9]*(?:\.[a-zA-Z0-9]+)+\.$/, // i18n key prefix: `tasks.bucket.${…}`
   /^\.[a-z][a-z0-9-]*$/, // file extension or class selector: .md, .tag-suggest-item
   /^[a-z][a-z0-9]*-$/, // React key prefix fragment: `pad-${i}`
-  /^(Alt|Cmd|Ctrl|Meta|Mod|Shift)\+/, // keybinding chord
+  /^(Alt|Cmd|Ctrl|Meta|Mod|Shift)\+\S+$/, // keybinding chord — ONE token, no spaces
   /^[a-z-]+\($/, // CSS function opening fragment: `repeat(${n}, 10px)`
   /^,?\s*[\d.]+(px|rem|em|%|fr|vh|vw)\)$/, // …and its closing fragment
   /^T\d{2}:\d{2}:\d{2}$/, // ISO time suffix appended to a date
@@ -136,6 +136,11 @@ function proseChildren(code: string, keys: Set<string>, allowed: Set<string>) {
     if (/^\)\s*:/.test(text)) continue;
     if (/=>|===|\breturn\b|\bconst\b|\bfunction\b|^new [A-Z]/.test(text))
       continue;
+    // Code caught between a generic's closing `>` and the next `<`:
+    // `boolean>>;\n  setPdfFindOpen: Dispatch<`. A statement separator or a boolean operator
+    // never appears in a label, so this dismisses the fragment by FORM — listing the fragments
+    // themselves in a caller's `allowed` set would make that test fail on any nearby edit.
+    if (/;|\|\||&&/.test(text)) continue;
     if (keys.has(text) || allowed.has(text)) continue;
     found.push(text);
   }

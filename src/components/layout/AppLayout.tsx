@@ -92,7 +92,9 @@ export function AppLayout({ children, statusBar }: AppLayoutProps) {
 
   return (
     <div className="app-layout">
-      {/* §82 Context Tab Bar — hidden when single context */}
+      {/* §82 Context Tab Bar — hidden only when NO vault/folder context is open.
+          It stays up for a single one so the "+" that adds the next is reachable;
+          `ContextTabBar` returns null on `visibleContexts.length === 0`. */}
       <ContextTabBar />
       {/* Body: sidebar + main + right panel */}
       <div className="app-layout-body">

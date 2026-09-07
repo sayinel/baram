@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 
 import type { EditorTab } from "../../stores/editor/editor";
 
+import { useTranslation } from "../../i18n/useTranslation";
 import { isTabUnsaved, useEditorStore } from "../../stores/editor/editor";
 
 interface TabSwitcherProps {
@@ -11,6 +12,7 @@ interface TabSwitcherProps {
 }
 
 export function TabSwitcher({ mruTabs, selectedIndex }: TabSwitcherProps) {
+  const { t } = useTranslation();
   // §82 소스 모드 편집은 `isDirty`를 세우지 않는다 — 점의 판정은 한 곳에서.
   const sourceEditedTabs = useEditorStore((s) => s.sourceEditedTabs);
   const selectedRef = useRef<HTMLDivElement>(null);
@@ -25,7 +27,7 @@ export function TabSwitcher({ mruTabs, selectedIndex }: TabSwitcherProps) {
   return (
     <div className="tab-switcher-overlay">
       <div className="tab-switcher-panel">
-        <div className="tab-switcher-header">Open Tabs</div>
+        <div className="tab-switcher-header">{t("tabSwitcher.title")}</div>
         <div className="tab-switcher-list">
           {mruTabs.map((tab, i) => (
             <div

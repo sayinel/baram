@@ -5,12 +5,14 @@ import { Plus, X } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
 import { requestCloseContexts } from "../../hooks/use-close-guard";
+import { useTranslation } from "../../i18n/useTranslation";
 import { switchContext } from "../../services/vault-context-loader";
 import { useContextStore } from "../../stores/context/context";
 import "../../styles/context-tab-bar.css";
 import { ContextAddMenu } from "./ContextAddMenu";
 
 export function ContextTabBar() {
+  const { t } = useTranslation();
   const { contexts, activeContextId } = useContextStore(
     useShallow((s) => ({
       contexts: s.contexts,
@@ -203,7 +205,7 @@ export function ContextTabBar() {
           <span
             className="context-tab__close"
             onClick={(e) => handleClose(e, ctx.id)}
-            title="Close"
+            title={t("common.close")}
           >
             <X size={12} />
           </span>
@@ -214,7 +216,7 @@ export function ContextTabBar() {
         className="context-tab context-tab--add"
         onClick={() => setShowAddMenu((v) => !v)}
         ref={addBtnRef}
-        title="Open folder"
+        title={t("contextTab.openFolder")}
       >
         <Plus size={14} />
       </button>
@@ -262,6 +264,7 @@ function ContextTabContextMenu({
   x: number;
   y: number;
 }) {
+  const { t } = useTranslation();
   const menuRef = useRef<HTMLDivElement>(null);
   const [renaming, setRenaming] = useState(false);
   const [editingAlias, setEditingAlias] = useState(false);
@@ -356,27 +359,28 @@ function ContextTabContextMenu({
             if (e.key === "Enter") handleAliasSubmit(e.currentTarget.value);
             if (e.key === "Escape") onClose();
           }}
-          placeholder="vault alias"
+          placeholder={t("contextTab.aliasPlaceholder")}
           ref={aliasInputRef}
         />
       ) : (
         <>
           <button className="context-ctx-menu__item" onClick={handleRename}>
-            Rename
+            {t("contextTab.rename")}
           </button>
           {ctx.contextType === "vault" && (
             <button
               className="context-ctx-menu__item"
               onClick={handleEditAlias}
             >
-              Edit Alias{ctx.alias ? ` (${ctx.alias})` : ""}
+              {t("contextTab.editAlias")}
+              {ctx.alias ? ` (${ctx.alias})` : ""}
             </button>
           )}
           <button
             className="context-ctx-menu__item"
             onClick={() => setShowColors((v) => !v)}
           >
-            Change Color
+            {t("contextTab.changeColor")}
           </button>
           {showColors && (
             <div className="context-ctx-menu__colors">
@@ -392,14 +396,14 @@ function ContextTabContextMenu({
           )}
           <div className="context-ctx-menu__sep" />
           <button className="context-ctx-menu__item" onClick={handleCloseCtx}>
-            Close
+            {t("common.close")}
           </button>
           {useContextStore.getState().contexts.length > 1 && (
             <button
               className="context-ctx-menu__item"
               onClick={handleCloseOthers}
             >
-              Close Others
+              {t("contextTab.closeOthers")}
             </button>
           )}
         </>

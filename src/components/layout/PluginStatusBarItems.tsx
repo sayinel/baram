@@ -3,6 +3,7 @@ import type { PluginStatusBarItem } from "../../plugins/plugin-ui-store";
 
 import { useShallow } from "zustand/shallow";
 
+import { useTranslation } from "../../i18n/useTranslation";
 import { executePluginCommand } from "../../plugins/extension-context";
 import { usePluginUIStore } from "../../plugins/plugin-ui-store";
 import { logger } from "../../utils/logger";
@@ -12,6 +13,7 @@ export function PluginStatusBarItems({
 }: {
   align: PluginStatusBarItem["align"];
 }) {
+  const { t } = useTranslation();
   const items = usePluginUIStore(
     useShallow((s) => s.statusBarItems.filter((i) => i.align === align)),
   );
@@ -53,7 +55,7 @@ export function PluginStatusBarItems({
                 );
               });
             }}
-            title={item.pending ? "Plugin is still starting…" : item.tooltip}
+            title={item.pending ? t("plugin.statusbar.pending") : item.tooltip}
             type="button"
           >
             {item.text}

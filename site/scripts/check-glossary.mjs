@@ -62,6 +62,31 @@ const PARTICLES = [
 
 const problems = [];
 
+/**
+ * 항목이 가질 수 있는 필드 전부.
+ *
+ * ‼️ 닫힌 집합인 이유: 이 스크립트는 없는 필드를 **조용히 무시**한다. `alsoKeys` 를
+ * `alsokeys` 로 적으면 검사 하나가 사라지고 게이트는 초록으로 남는다 — 요약줄의 숫자만
+ * 조용히 줄어든다. 오타를 숫자로 알아채길 기대하지 말고 실패시킨다.
+ * `avoidAnyway`·`requireKoAnywayWhy` 는 지금 쓰는 항목이 없지만 **문서화된 탈출구**다
+ * (앱이 정당하게 다르게 부를 때) — 아래 검사들이 그것을 계속 읽으므로 목록에 남긴다.
+ */
+const TERM_FIELDS = new Set([
+  "alsoKeys",
+  "appKey",
+  "appMode",
+  "appWhy",
+  "avoid",
+  "avoidAnyway",
+  "avoidAnywayWhy",
+  "avoidIn",
+  "en",
+  "ko",
+  "note",
+  "requireKo",
+  "requireKoAnywayWhy",
+]);
+
 const app = JSON.parse(readFileSync(APP_KO, "utf8"));
 const { terms } = JSON.parse(readFileSync(GLOSSARY, "utf8"));
 
@@ -92,6 +117,11 @@ function usedAsWord(value, ko) {
 // ── 1·2. 사전 ↔ 앱
 for (const term of terms) {
   const { appKey, appMode = "equals", appWhy, en, ko } = term;
+  for (const field of Object.keys(term)) {
+    if (!TERM_FIELDS.has(field)) {
+      problems.push(`[모르는 필드] ${en ?? "?"}: "${field}" — 오타인가, TERM_FIELDS 에 더할 것인가`);
+    }
+  }
   if (!en || !ko || !appKey) {
     problems.push(`[항목 불완전] ${JSON.stringify(term).slice(0, 60)} — en·ko·appKey 는 필수다`);
     continue;
@@ -119,6 +149,57 @@ for (const term of terms) {
     }
   } else {
     problems.push(`[모르는 appMode] ${en}: "${appMode}"`);
+  }
+
+  // ‼️ 같은 기능을 부르는 **다른 앱 키**도 같은 말을 쓰는가.
+  //    `avoid` 는 앱 전체에서 금지 표기를 찾으므로 앱이 갈라지는 것을 이미 잡는다 — 단
+  //    동형이의어에는 `avoid` 를 둘 수 없다(`Highlight`: 서식 마크 ↔ PDF 주석). 그때
+  //    갈라짐을 잡는 것은 이 목록뿐이다. 실제로 `settings.markdown.highlight` 만
+  //    PDF 쪽 말('하이라이트')을 쓰고 있었고, 그 표면만 조용히 다른 기능처럼 보였다.
+  //    리터럴이 아니라 canonical `ko` 에서 파생 검증하므로 용어가 바뀌면 함께 움직인다.
+  if (term.alsoKeys !== undefined) {
+    if (!Array.isArray(term.alsoKeys) || term.alsoKeys.length === 0) {
+      problems.push(`[빈 alsoKeys] ${en}: 지목할 키가 없으면 필드를 빼라`);
+    }
+    for (const key of term.alsoKeys ?? []) {
+      const other = app[key];
+      if (other === undefined) {
+        problems.push(`[없는 앱 키] ${en}: alsoKeys 의 ${key} 가 src/i18n/ko.json 에 없다`);
+        // `usedAsWord` 는 미포함도 false 로 돌린다 — `!other.includes(ko) ||` 를 앞에
+        // 두면 어떤 판정도 바꾸지 않는 죽은 절이 된다(변형 테스트로 확인).
+      } else if (!usedAsWord(other, ko)) {
+        problems.push(
+          `[같은 기능을 다르게 부른다] ${en}: ${key} = "${other.slice(0, 40)}" 안에 ` +
+            `canonical "${ko}" 가 낱말로 없다 — ${appKey} 와 같은 말을 써야 한다`,
+        );
+      }
+    }
+  }
+
+  // ‼️ `alsoKeys` 는 canonical 의 **존재**만 본다 — 그 값이 canonical 과 다른 기능의
+  //    말을 **동시에** 가져도 통과한다. 실측으로 확인했다: `.desc` 를
+  //    `==강조== 구문 활성화 (하이라이트 마크)` 로 바꾸면 게이트가 초록이었다.
+  //    동형이의어에는 `avoid`(앱 전체 금지)를 쓸 수 없으니 그 부재를 볼 검사가 어디에도
+  //    없었다. `avoidIn` 은 **`appKey` ∪ `alsoKeys` 의 값 안에서만** 금지한다 — 키 집합이
+  //    열거돼 있으므로 같은 영어 낱말을 쓰는 다른 기능(PDF 주석)의 어휘는 건드리지 않는다.
+  if (term.avoidIn !== undefined) {
+    if (!Array.isArray(term.avoidIn) || term.avoidIn.length === 0) {
+      problems.push(`[빈 avoidIn] ${en}: 금지할 말이 없으면 필드를 빼라`);
+    }
+    for (const bad of term.avoidIn ?? []) {
+      if (ko.includes(bad)) {
+        problems.push(`[자기 부정] ${en}: canonical "${ko}" 가 avoidIn "${bad}" 를 포함한다`);
+      }
+      for (const key of [appKey, ...(term.alsoKeys ?? [])]) {
+        const value = app[key];
+        if (value !== undefined && value.includes(bad)) {
+          problems.push(
+            `[다른 기능의 말이 섞였다] ${en}: ${key} = "${value.slice(0, 40)}" 가 ` +
+              `"${bad}" 를 쓴다 — 이 키 집합은 "${ko}" 만 쓴다`,
+          );
+        }
+      }
+    }
   }
 
   // canonical 을 스스로 금지하면 그 용어는 영구히 실패하거나 옳은 페이지를 잘못 신고한다.
@@ -244,8 +325,10 @@ if (labels.length !== expectedLabels) {
 }
 
 const enforced = terms.filter((t) => forbidden(t).length || t.requireKo).length;
+// 항목마다 appKey 하나 + alsoKeys — 리터럴 33 이 아니라 실제로 대조한 키 수를 적는다.
+const appKeyChecks = terms.reduce((n, t) => n + 1 + (t.alsoKeys?.length ?? 0), 0);
 console.log(
-  `용어 ${terms.length}개 · 앱 키 대조 ${terms.length}건 · 본문에서 강제 ${enforced}개 · ` +
+  `용어 ${terms.length}개 · 앱 키 대조 ${appKeyChecks}건 · 본문에서 강제 ${enforced}개 · ` +
     `번역 페이지 ${pages.length}개 · UI 라벨 ${labels.length}개 · 랜딩 문자열 ${landing.length}개 스캔`,
 );
 // ‼️ 열린 채 실패하면 안 된다. 로케일 설정이 흔들리면 스캔 전체가 공허해지는데 종료

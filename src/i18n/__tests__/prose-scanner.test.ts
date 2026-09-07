@@ -73,6 +73,17 @@ describe("what counts as prose", () => {
     ["a setError argument", 'setError("This plugin is not in the registry.");'],
     ["an array of labels", 'const T = ["Browse", "Installed", "Updates"];'],
     ["a single-quoted attribute", "<b title='Install now' />"],
+    // The code-shape dismissal above is written about `;`, `||` and `&&`. Prose that merely
+    // sits next to code must survive it, or the rule would silence a whole file's worth.
+    [
+      "a JSX child after a statement",
+      "doWork();\n<span>Nothing here yet</span>",
+    ],
+    // ‼️ The chord rule used to dismiss anything STARTING with a chord, so a whole sentence
+    // hid behind it: `title="Cmd+0 to reset zoom"` sat in `StatusBar.tsx` while this scan
+    // was green. A chord is one token; prose is not. Found by a second, independent
+    // measurement (grep for hardcoded attributes), not by this guard.
+    ["prose that begins with a chord", '<span title="Cmd+0 to reset zoom" />'],
   ])("catches %s", (_label, source) => {
     const { children, literals } = scanForProse(source, NO_KEYS);
     expect(literals.length + children.length).toBeGreaterThan(0);
@@ -93,6 +104,19 @@ describe("what counts as prose", () => {
     ["a BCP-47 tag", 'new Intl.DateTimeFormat("ko-KR");'],
     ["an ISO time suffix", 'new Date(day + "T00:00:00");'],
     ["a bare wrapper tag", 'const html = "<p>" + text + "</p>";'],
+    // The children scan matches anything between a `>` and the next `<`, so a generic type
+    // argument list reads as a JSX text child. Found when the guard was pointed at
+    // `components/layout`, where 6 of the 7 reported "children" were this.
+    [
+      "a type annotation between two generics",
+      "interface P {\n  open: Dispatch<SetStateAction<boolean>>;\n  setOpen: Dispatch<void>;\n}",
+    ],
+    [
+      // Verbatim from `TabBar.tsx`, where it was reported as a text child.
+      "two statements between two comparisons",
+      "setCanScrollLeft(el.scrollLeft > 0);\nsetCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 1);",
+    ],
+    ["a boolean expression between comparisons", "const out = a > b || c < d;"],
   ])("does not flag %s", (_label, source) => {
     expect(scanForProse(source, NO_KEYS)).toEqual({
       children: [],
