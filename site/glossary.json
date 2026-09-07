@@ -1,78 +1,118 @@
 {
   "_comment": "한국어 문서의 제품 용어 사전. 설계(2026-09-06-docs-site-i18n-restructure-design.md '# Starlight UI 문자열')가 요구하는 것 — 앱과 문서가 같은 기능을 다르게 부르면 안 된다. 5단계 번역은 여러 PR·여러 세션에 걸치므로, 사람의 기억이 아니라 게이트가 이것을 지켜야 한다.",
-
   "_appKey": "그 용어의 출처인 앱 i18n 키(src/i18n/ko.json). check-glossary.mjs 가 `ko` 값을 **그 키의 값에서 파생 검증**한다 — 여기 리터럴을 적어 두기만 하면 앱이 용어를 바꿀 때 사전만 조용히 낡는다. mode=contains 는 앱 값이 문장이라 정확히 같을 수 없는 경우이며 why 를 함께 적는다.",
   "_avoid": "그 용어의 흔한 오역·변형. ko 페이지 본문에 나타나면 게이트가 실패한다. '반드시 이 말을 쓸 것'을 강제하지는 않는다(모든 페이지가 모든 용어를 언급하지 않는다) — 대신 **다르게 부르는 것**을 막는다.",
-
   "terms": [
     {
       "en": "Command Palette",
       "ko": "명령 팔레트",
       "appKey": "keybindings.view.commandPalette",
-      "avoid": ["커맨드팔레트"],
-      "avoidAnyway": ["커맨드 팔레트"],
-      "avoidAnywayWhy": "앱이 스스로 갈려 있다 — home.shortcut.commandPalette 만 '커맨드 팔레트'이고 메뉴·키바인딩 3곳은 '명령 팔레트'다. 문서는 다수·권위 있는 쪽을 따르므로 앱이 쓰는 말이어도 금지한다. 앱 정리는 별건."
+      "avoid": [
+        "커맨드팔레트"
+      ],
+      "avoidAnyway": [
+        "커맨드 팔레트"
+      ],
+      "avoidAnywayWhy": "앱이 스스로 갈려 있다 — home.shortcut.commandPalette 만 '커맨드 팔레트'이고 메뉴·키바인딩 3곳은 '명령 팔레트'다. 문서는 다수·권위 있는 쪽을 따르므로 앱이 쓰는 말이어도 금지한다. 앱 정리는 별건.",
+      "requireKo": true
     },
     {
       "en": "Quick Switcher",
       "ko": "빠른 전환",
       "appKey": "keybindings.view.quickSwitcher",
-      "avoid": ["퀵 스위처", "퀵스위처", "빠른 전환기"]
+      "avoid": [
+        "퀵 스위처",
+        "퀵스위처",
+        "빠른 전환기"
+      ],
+      "requireKo": true
     },
     {
       "en": "Source Mode",
       "ko": "소스 모드",
       "appKey": "keybindings.view.sourceMode",
-      "avoid": ["소스 편집 모드", "원본 모드"]
+      "avoid": [
+        "소스 편집 모드",
+        "원본 모드"
+      ]
     },
     {
       "en": "Find & Replace",
       "ko": "찾기 및 바꾸기",
       "appKey": "keybindings.edit.findReplace",
-      "avoid": ["찾기 및 교체", "찾기/바꾸기", "검색 및 바꾸기"]
+      "avoid": [
+        "검색 및 바꾸기",
+        "찾기 및 교체",
+        "찾기/바꾸기",
+        "치환"
+      ]
     },
     {
       "en": "Undo",
       "ko": "실행 취소",
       "appKey": "menu.edit.undo",
-      "avoid": ["언두"],
+      "avoid": [
+        "언두"
+      ],
       "note": "'되돌리기' 는 avoid 에 넣지 않는다 — 앱의 settings.vault.revert('폴더로 되돌리기')가 쓰는 **다른 동작**의 어휘다. 금지하면 그 기능을 설명하는 페이지가 걸린다."
     },
     {
       "en": "Redo",
       "ko": "실행 복귀",
       "appKey": "menu.edit.redo",
-      "avoid": ["다시 실행", "재실행", "리두"]
+      "avoid": [
+        "리두"
+      ],
+      "note": "'다시 실행'·'재실행' 은 avoid 에 넣지 않는다 — 일반어라 \"앱을 다시 실행하세요\" 같은 문장을 잘못 신고한다. Redo 의 한국어(실행 복귀)는 흔치 않으므로 requireKo 로 지킨다.",
+      "requireKo": true
     },
     {
       "en": "Bullet List",
       "ko": "글머리 기호 목록",
       "appKey": "keybindings.formatting.bulletList",
-      "avoid": ["불릿 목록", "순서 없는 목록", "점 목록"]
+      "avoid": [
+        "불릿 목록",
+        "순서 없는 목록",
+        "점 목록"
+      ]
     },
     {
       "en": "Ordered List",
       "ko": "번호 매기기 목록",
       "appKey": "keybindings.formatting.orderedList",
-      "avoid": ["순서 있는 목록", "번호 목록", "정렬 목록"]
+      "avoid": [
+        "순서 있는 목록",
+        "번호 목록",
+        "정렬 목록"
+      ]
     },
     {
       "en": "Task List",
       "ko": "할 일 목록",
       "appKey": "keybindings.formatting.taskList",
-      "avoid": ["태스크 목록", "체크리스트 목록"]
+      "avoid": [
+        "태스크 목록",
+        "체크리스트 목록"
+      ]
     },
     {
       "en": "Blockquote",
       "ko": "인용문",
       "appKey": "keybindings.formatting.blockquote",
-      "avoid": ["인용 블록", "블록 인용"]
+      "avoid": [
+        "인용 블록",
+        "블록 인용"
+      ]
     },
     {
       "en": "Horizontal Rule",
       "ko": "가로줄",
       "appKey": "menu.insert.hr",
-      "avoid": ["수평선", "수평 구분선"]
+      "avoid": [
+        "구분선",
+        "수평 구분선",
+        "수평선"
+      ]
     },
     {
       "en": "Highlight",
@@ -85,94 +125,149 @@
       "en": "Strikethrough",
       "ko": "취소선",
       "appKey": "keybindings.formatting.strikethrough",
-      "avoid": ["취소 선", "스트라이크스루"]
+      "avoid": [
+        "취소 선",
+        "스트라이크스루"
+      ]
     },
     {
       "en": "Superscript",
       "ko": "위 첨자",
       "appKey": "menu.insert.superscript",
-      "avoid": ["윗첨자", "상단 첨자"]
+      "avoid": [
+        "상단 첨자",
+        "위첨자",
+        "윗첨자"
+      ]
     },
     {
       "en": "Subscript",
       "ko": "아래 첨자",
       "appKey": "menu.insert.subscript",
-      "avoid": ["아랫첨자", "하단 첨자"]
+      "avoid": [
+        "아래첨자",
+        "아랫첨자",
+        "하단 첨자"
+      ]
     },
     {
       "en": "Table of Contents",
       "ko": "목차",
       "appKey": "menu.insert.toc",
-      "avoid": ["내용 목차", "콘텐츠 목록"]
+      "avoid": [
+        "내용 목차",
+        "차례",
+        "콘텐츠 목록"
+      ]
     },
     {
       "en": "Callout",
       "ko": "콜아웃",
       "appKey": "menu.insert.callout",
-      "avoid": ["알림 상자", "강조 상자"]
+      "avoid": [
+        "강조 상자",
+        "알림 상자",
+        "콜 아웃"
+      ]
     },
     {
       "en": "Table",
       "ko": "표",
       "appKey": "menu.insert.table",
-      "avoid": ["테이블"]
+      "avoid": [
+        "테이블"
+      ]
     },
     {
       "en": "Code Block",
       "ko": "코드 블록",
       "appKey": "keybindings.formatting.codeBlock",
-      "avoid": ["코드블록", "소스 블록"]
+      "avoid": [
+        "코드블록",
+        "소스 블록"
+      ]
     },
     {
       "en": "Math Block",
       "ko": "수식 블록",
       "appKey": "keybindings.formatting.mathBlock",
-      "avoid": ["math 블록", "수학 블록"]
+      "avoid": [
+        "math 블록",
+        "수학 블록"
+      ]
     },
     {
       "en": "Outline",
       "ko": "개요",
       "appKey": "menu.view.outline",
-      "avoid": ["아웃라인", "문서 구조"]
+      "avoid": [
+        "아웃라인",
+        "문서 구조"
+      ]
     },
     {
       "en": "Backlinks",
       "ko": "백링크",
       "appKey": "backlinks.title",
-      "avoid": ["역링크", "뒤 링크"]
+      "avoid": [
+        "뒤 링크",
+        "백 링크",
+        "역링크",
+        "역방향 링크"
+      ]
     },
     {
       "en": "Bookmarks",
       "ko": "북마크",
       "appKey": "settings.panels.bookmarks",
-      "avoid": ["즐겨찾기 목록", "책갈피"]
+      "avoid": [
+        "즐겨찾기 목록",
+        "책갈피"
+      ]
     },
     {
       "en": "Perspective",
       "ko": "화면구성",
       "appKey": "statusbar.perspective",
-      "avoid": ["퍼스펙티브", "화면 구성"],
-      "note": "설계 문서가 제품 용어 예시로 '퍼스펙티브'를 들었지만 앱은 '화면구성'이다. 앱이 canonical."
+      "avoid": [
+        "관점",
+        "퍼스펙티브",
+        "화면 구성"
+      ],
+      "note": "설계 문서가 제품 용어 예시로 '퍼스펙티브'를 들었지만 앱은 '화면구성'이다. 앱이 canonical.",
+      "requireKo": true
     },
     {
       "en": "Wikilink",
       "ko": "위키링크",
       "appKey": "settings.vault.extension.wikilink",
       "avoid": [],
-      "avoidAnyway": ["위키 링크"],
-      "avoidAnywayWhy": "앱이 갈려 있다 — menu.insert.wikilink 만 '위키 링크'이고 설정·확장 2곳은 '위키링크'다. 문서는 붙여 쓰는 쪽을 따르므로 앱이 쓰는 말이어도 금지한다. 앱 정리는 별건."
+      "avoidAnyway": [
+        "위키 링크"
+      ],
+      "avoidAnywayWhy": "앱이 갈려 있다 — menu.insert.wikilink 만 '위키 링크'이고 설정·확장 2곳은 '위키링크'다. 문서는 붙여 쓰는 쪽을 따르므로 앱이 쓰는 말이어도 금지한다. 앱 정리는 별건.",
+      "requireKo": true
     },
     {
       "en": "Vault",
       "ko": "볼트",
       "appKey": "settings.vault.type.vault",
-      "avoid": ["보관함", "금고"]
+      "avoid": [
+        "금고",
+        "보관소",
+        "보관함"
+      ],
+      "requireKo": true
     },
     {
       "en": "Zettel",
       "ko": "제텔",
       "appKey": "menu.workspace.zettel",
-      "avoid": ["제텔카스텐 노트", "쪽지"]
+      "avoid": [
+        "제텔카스텐 노트",
+        "쪽지"
+      ],
+      "requireKo": true
     },
     {
       "en": "Sidebar",
@@ -180,7 +275,11 @@
       "appKey": "keybindings.view.toggleSidebar",
       "appMode": "contains",
       "appWhy": "앱 값이 '사이드바 토글' 이라 정확히 같을 수 없다",
-      "avoid": ["측면 패널", "사이드 바"]
+      "avoid": [
+        "사이드 바",
+        "좌측 패널",
+        "측면 패널"
+      ]
     },
     {
       "en": "Status Bar",
@@ -188,7 +287,12 @@
       "appKey": "plugin.capability.statusbar",
       "appMode": "contains",
       "appWhy": "앱 값이 문장이다 — '상태바에 항목을 표시할 수 있습니다'",
-      "avoid": ["상태 바", "스테이터스 바"]
+      "avoid": [
+        "상태 바",
+        "상태 표시줄",
+        "상태표시줄",
+        "스테이터스 바"
+      ]
     },
     {
       "en": "Task",
@@ -196,7 +300,24 @@
       "appKey": "keybindings.tasks.taskInput",
       "appMode": "contains",
       "appWhy": "'태스크' 단독 키가 없다 — 이 키의 값이 '태스크 입력 …' 으로 시작한다",
-      "avoid": ["작업 항목", "할일"]
+      "avoid": [
+        "작업 항목",
+        "할일"
+      ]
+    },
+    {
+      "en": "Workspace",
+      "ko": "워크스페이스",
+      "appKey": "menu.file.closeFolder",
+      "appMode": "contains",
+      "appWhy": "'워크스페이스' 단독 키가 없다 — 이 키의 값이 '워크스페이스 닫기' 다",
+      "avoid": [
+        "작업 공간",
+        "작업공간"
+      ],
+      "requireKo": true,
+      "note": "사전에서 아예 빠져 있었고, 그래서 문서 4곳이 '작업 공간' 으로 갈렸다 — 앱 메뉴는 '워크스페이스 닫기' 다. 열거하지 않은 용어는 게이트가 지키지 못한다."
     }
-  ]
+  ],
+  "_limits": "‼️ 열거된 금지 목록의 한계 — 가장 그럴듯한 오역이 앱의 다른 기능 어휘라서 금지할 수 없는 경우가 있다: `작업`(Task, 앱은 AI 작업·작업 기록에 쓴다) · `저장소`(Vault, 앱은 플러그인 저장소·git 저장소에 쓴다) · `즐겨찾기`(Bookmarks, 앱은 제텔 허브 즐겨찾기에 쓴다) · `내부 링크`(Wikilink, 앱은 링크 형식 설정에 쓴다) · `소스 보기`(Source Mode, 앱은 저널 블록 동작에 쓴다) · `레이아웃`(Perspective, 앱은 '현재 레이아웃 저장'에 쓴다). `requireKo` 의 조건부 검사가 그 구멍의 한쪽(영어를 그대로 둔 것)을 메운다."
 }

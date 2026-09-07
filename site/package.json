@@ -14,7 +14,7 @@
     "i18n:status": "node scripts/i18n.mjs status",
     "preview": "astro preview",
     "test": "node --test tests/*.test.mjs",
-    "verify": "npm run build && npm run check:dist && npm run check:pages && npm run check:glossary && npm test && astro check"
+    "verify": "npm run check:glossary && npm run build && npm run check:dist && npm run check:pages && npm test && astro check"
   },
   "dependencies": {
     "@astrojs/starlight": "0.42.0",

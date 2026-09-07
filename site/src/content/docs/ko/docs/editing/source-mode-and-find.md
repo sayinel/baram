@@ -10,7 +10,7 @@ sourceHash: "d6c22f3ec7b4"
 소스 모드에서는 CodeMirror 6 에디터로 원본 마크다운을 직접 편집합니다.
 
 - 구문 강조
-- 마크다운 원본 전체가 보인다
+- 마크다운 원본 전체 표시
 - 실행 취소·실행 복귀(`Cmd+Z` / `Cmd+Shift+Z`)
 - 줄 번호(설정 > 에디터에서 조정)
 - **Vim 키 바인딩** 선택 가능(설정 > 에디터 > Vim 키 바인딩) — 스위치 하나로 소스 모드·WYSIWYG 에디터·코드 블록 안에서 모달 편집이 켜지고, `/` 검색과 `:w`·`:q`·`:N` ex 명령, 한글 IME를 지원합니다(macOS에서 확인했고 Windows·Linux는 아직 검증하지 않았습니다). [키보드 단축키](/baram/ko/docs/customization/keyboard-shortcuts/#vim-mode) 참조
