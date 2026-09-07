@@ -87,10 +87,10 @@ registerFileViewer(opts: PluginFileViewerOptions): Disposable;
   }
   ```
 
-- **CSS 사용자 속성은 shadow 경계를 넘어 상속됩니다.** 앱의 디자인 토큰
+- **CSS 커스텀 속성은 shadow 경계를 넘어 상속됩니다.** 앱의 디자인 토큰
   변수(`var(--color-text-default)`, `var(--color-border-default)`, `var(--color-bg-subtle)` 등)가
   여러분의 shadow root 안에서도 보이므로, 토큰 값을 복제하지 않고 살아 있는 앱 테마에 맞춰 패널을
-  꾸밀 수 있습니다. 상속된 사용자 속성만으로 전부 꾸미는 완전한 예는
+  꾸밀 수 있습니다. 상속된 커스텀 속성만으로 전부 꾸미는 완전한 예는
   `examples/plugins/ai-summary/src/index.ts`를 보십시오.
 - `onMount(el)`은 `ShadowRoot` 객체 자체가 아니라 shadow root의 내부 내용 `<div>`를 받습니다
   (`ShadowRoot`에는 `.style`/`.classList`가 없습니다). `onUnmount(el)`이 있으면 호스트가 하위

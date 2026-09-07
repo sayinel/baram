@@ -49,8 +49,9 @@ Two further things the seed is **not**:
    that means the first-party registry only: Baram fetches a fixed URL and a
    self-hosted `index.json` cannot be pointed at (see *How Baram loads the
    registry*), so an entry in your own index reaches no users. Until community
-   submissions open, distribute by having users load the folder through the
-   **Developer** section of **Settings → Plugins**. (First-party plugins in
+   submissions open, the only way to hand someone a plugin is the **Developer**
+   section of **Settings → Plugins** — which is development-builds only, so a
+   user on a release build cannot load it at all. (First-party plugins in
    this repo don't add entries by hand: pushing a `plugin-<dir>-v<version>` tag
    drives [`sayinel/baram-plugins`](https://github.com/sayinel/baram-plugins)'
    `index.json` automatically, as described above.)

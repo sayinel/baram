@@ -21,7 +21,7 @@ context.commands.register("summarize", () => summarize(), {
 
 ## Tiptap 확장 플러그인
 
-플러그인이 사용자 Tiptap(ProseMirror) 확장을 제공할 수 있습니다. 매니페스트에 선언하십시오.
+플러그인이 커스텀 Tiptap(ProseMirror) 확장을 제공할 수 있습니다. 매니페스트에 선언하십시오.
 
 ```json
 {

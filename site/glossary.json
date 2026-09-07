@@ -313,6 +313,29 @@
       ],
       "requireKo": true,
       "note": "사전에서 아예 빠져 있었고, 그래서 문서 4곳이 '작업 공간' 으로 갈렸다 — 앱 메뉴는 '워크스페이스 닫기' 다. 열거하지 않은 용어는 게이트가 지키지 못한다."
+    },
+    {
+      "en": "Browse",
+      "ko": "둘러보기",
+      "appKey": "plugin.marketplace.tab.browse",
+      "avoid": [
+        "찾아보기 탭",
+        "\"찾아보기\" 탭"
+      ],
+      "note": "‼️ 동형이의어다. 앱의 `common.browse` = '찾아보기' 는 **폴더 선택 버튼**이고 `plugin.marketplace.tab.browse` = '둘러보기' 는 **마켓플레이스 탭**이다. 그래서 맨 낱말을 금지할 수 없다 — 저널·Zettel 설정 페이지의 '찾아보기를 눌러 폴더를 고릅니다' 는 옳은 문장이다. 금지어는 탭을 지목하는 구로 좁혔다. 이 낱말이 사전에 없어 탭 이름이 4곳에서 갈려 있었다."
+    },
+    {
+      "en": "Refresh",
+      "ko": "새로고침",
+      "appKey": "plugin.marketplace.refresh",
+      "appMode": "contains",
+      "appWhy": "앱 값이 '↻ 새로고침' 이라 아이콘이 붙어 있다",
+      "avoid": [],
+      "note": "‼️ 앱 안에서 갈려 있다 — plugin/keybindings/menu/tasks 는 '새로고침', journal.stats.refresh 만 '새로 고침'. 다수를 따른다.",
+      "avoidAnyway": [
+        "새로 고침"
+      ],
+      "avoidAnywayWhy": "앱이 갈려 있다 — plugin·keybindings·menu·tasks 는 '새로고침'(붙여 씀), journal.stats.refresh 만 '통계 새로 고침'(띄어 씀). 문서는 다수를 따르므로 앱이 쓰는 말이어도 금지한다. 저널 통계 새로고침을 문서화할 일이 생기면 이 항목을 다시 볼 것."
     }
   ],
   "_limits": "‼️ 열거된 금지 목록의 한계 — 가장 그럴듯한 오역이 앱의 다른 기능 어휘라서 금지할 수 없는 경우가 있다: `작업`(Task, 앱은 AI 작업·작업 기록에 쓴다) · `저장소`(Vault, 앱은 플러그인 저장소·git 저장소에 쓴다) · `즐겨찾기`(Bookmarks, 앱은 제텔 허브 즐겨찾기에 쓴다) · `내부 링크`(Wikilink, 앱은 링크 형식 설정에 쓴다) · `소스 보기`(Source Mode, 앱은 저널 블록 동작에 쓴다) · `레이아웃`(Perspective, 앱은 '현재 레이아웃 저장'에 쓴다). `requireKo` 의 조건부 검사가 그 구멍의 한쪽(영어를 그대로 둔 것)을 메운다.",

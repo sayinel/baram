@@ -30,7 +30,12 @@ Practical consequences for you as a plugin author:
   discarded when the app rehydrates.
 - Distributing outside the registry means the **Developer** section at the
   bottom of **Settings → Plugins**: a user picks your plugin's folder and loads
-  it directly. That path is available in release builds, not only dev ones.
+  it directly. **That path is development-builds only.** Side-loading a folder
+  skips the checksum, the registry listing and the install consent record all
+  at once, so it stayed a dev-build affordance for plugin authors — a packaged
+  build refuses it (`dev_plugin_loading_enabled()` is `cfg!(debug_assertions)`).
+  Until community submissions open there is therefore no way to reach a user on
+  a release build.
 
 The registry lives at
 [`sayinel/baram-plugins`](https://github.com/sayinel/baram-plugins) — a

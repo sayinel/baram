@@ -99,7 +99,7 @@ npx tsx scripts/validate-registry-assets.ts path/to/registry-checkout
 
 ### `trust`와 `capabilities`는 설치가 검증하는 주장입니다
 
-`trust`는 **필수**입니다. 그것이 없는 항목은 "Legacy" 배지와 함께 표시되고 설치 버튼이 비활성화됩니다 —
+`trust`는 **필수**입니다. 그것이 없는 항목은 **레거시 — 재검증 필요** 배지와 함께 표시되고 설치 버튼이 비활성화됩니다 —
 ZIP 안의 매니페스트가 티어를 선언해야 하므로, 설치를 제안하는 것은 먼저 내려받고 뒤에 실패하는 일밖에
 되지 않습니다.
 

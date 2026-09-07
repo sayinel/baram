@@ -47,7 +47,7 @@ Tiptap 확장이나 DOM에 붙는 UI를 기여하는 경우가 아니면 sandbox
 | `ai`              | AI/LLM 기능 접근                         | **민감**      |
 | `network`         | 네트워크 요청                            | **민감**      |
 | `storage`         | 플러그인 전용 키/값 저장소 사용          | 민감          |
-| `viewer`          | 사용자 파일 형식 뷰어 등록               |               |
+| `viewer`          | 파일 형식별 커스텀 뷰어 등록             |               |
 
 `ai`와 `network`가 가장 민감한 권한입니다 — 정확히 무엇을 허용하는지는
 [신뢰 모델과 보안](/baram/ko/docs/plugin-dev/trust-model-and-errors/#신뢰-모델과-보안)을 보십시오.
