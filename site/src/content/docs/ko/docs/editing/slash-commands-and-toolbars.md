@@ -1,6 +1,6 @@
 ---
 title: "슬래시 명령과 툴바"
-sourceHash: "fc15838d7074"
+sourceHash: "8627d48152bd"
 ---
 
 ## 슬래시 명령

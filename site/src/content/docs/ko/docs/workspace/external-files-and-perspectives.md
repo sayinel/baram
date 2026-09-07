@@ -1,6 +1,6 @@
 ---
 title: "외부 파일과 화면구성"
-sourceHash: "d4395d189cbf"
+sourceHash: "ab6206d46d4f"
 ---
 
 ## 볼트 간 위키링크

@@ -1,6 +1,6 @@
 ---
 title: "저널과 제텔카스텐"
-sourceHash: "f18fe62074a4"
+sourceHash: "b23384b5b377"
 ---
 
 ## Zettel (제텔카스텐 노트)
