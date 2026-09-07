@@ -83,7 +83,7 @@ To turn any folder into a vault, open it in Baram, then go to **Settings > Vault
 
 ### Can I use multiple vaults simultaneously?
 
-Yes. Each vault (or plain folder) you open appears as a tab in the **Context Tab Bar** at the top of the left sidebar. Click any tab to switch between contexts. Each context has its own file tree, tab history, and settings.
+Yes. Each vault (or plain folder) you open appears as a tab in the **Context Tab Bar** across the top of the window. Click any tab to switch between contexts. Each context has its own file tree, tab history, and settings.
 
 ### Why does Baram ask permission before opening a folder?
 

@@ -46,7 +46,11 @@ export const GROUPS = {
   editing: { en: "Editing", ko: "편집" },
   "rich-content": { en: "Rich content", ko: "리치 콘텐츠" },
   linking: { en: "Linking & navigation", ko: "링크와 탐색" },
-  workspace: { en: "Vaults & workspace", ko: "Vault와 작업 공간" },
+  // ‼️ ko 라벨은 용어 사전(glossary.json)을 따른다 — `작업 공간` 은 `Workspace` 의
+  //    금지 변형이고(canonical `워크스페이스`), `Vault` 는 requireKo 라 영어형을
+  //    남길 수 없다. 이 라벨은 페이지 밖이라 오래 검사 밖에 있었고 실제로 둘 다
+  //    위반했다 — 지금은 check-glossary.mjs 가 GROUPS 의 ko 라벨도 스캔한다.
+  workspace: { en: "Vaults & workspace", ko: "볼트와 워크스페이스" },
   tasks: { en: "Tasks", ko: "태스크" },
   pdf: { en: "Reading PDFs", ko: "PDF 읽기" },
   ai: { en: "AI features", ko: "AI 기능" },

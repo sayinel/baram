@@ -1,6 +1,6 @@
 ---
 title: "시작하기"
-sourceHash: "c6810331a804"
+sourceHash: "3107d3a3964a"
 ---
 
 ## 시작하기
@@ -28,26 +28,45 @@ Baram을 처음 열면 시작 화면이 두 가지 선택지를 보여 줍니다
 
 Baram은 3열 레이아웃을 씁니다.
 
-```
-┌──────────┬──────────────────────────────┬─────────────┐
-│          │           탭 바              │             │
-│  왼쪽    │                              │   오른쪽    │
-│ 사이드바 │        메인 에디터           │  사이드바   │
-│          │        (WYSIWYG)             │             │
-│파일 트리 │                              │    개요     │
-│  백링크  │                              │             │
-│  북마크  │                              │             │
-├──────────┴──────────────────────────────┴─────────────┤
-│                       상태바                          │
-└───────────────────────────────────────────────────────┘
-```
+<figure class="ui-map not-content">
+  <div class="ui-map-frame">
+    <div class="ui-map-chrome" aria-hidden="true"><i></i><i></i><i></i></div>
+    <div class="ui-map-cell ui-map-contexts">
+      <strong>컨텍스트 탭 바</strong>
+      <span>볼트·폴더마다 탭 하나</span>
+    </div>
+    <div class="ui-map-cell ui-map-rail" aria-label="활동 표시줄">
+      <span class="ui-map-icons" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+      <strong>활동 표시줄</strong>
+    </div>
+    <div class="ui-map-cell ui-map-left">
+      <strong>왼쪽 사이드바</strong>
+      <span>파일 트리 · 백링크 · 검색</span>
+    </div>
+    <div class="ui-map-center">
+      <div class="ui-map-cell"><strong>문서 탭 바</strong></div>
+      <div class="ui-map-cell ui-map-editor">
+        <strong>메인 에디터</strong>
+        <span>WYSIWYG</span>
+      </div>
+    </div>
+    <div class="ui-map-cell ui-map-right">
+      <strong>오른쪽 사이드바</strong>
+      <span>개요 · AI 채팅</span>
+    </div>
+    <div class="ui-map-cell ui-map-status"><strong>상태바</strong></div>
+  </div>
+</figure>
 
+- **컨텍스트 탭 바** — 열어 둔 볼트·폴더마다 탭 하나입니다. 창 **맨 위 전체 폭**을 차지하고, 볼트나 폴더가 하나도 열려 있지 않으면 숨습니다.
+- **활동 표시줄** — 왼쪽 사이드바와 오른쪽 패널에 무엇을 띄울지 고르는 아이콘 띠입니다. **설정 > 활동 표시줄**에서 어떤 아이콘을 어떤 순서로 둘지 정합니다. 폴더를 열지 않았으면 숨습니다.
 - **왼쪽 사이드바** — 파일 트리, 백링크 패널, 북마크, 전체 검색, Git 소스 제어, 버전 히스토리. `Cmd+Shift+L`(macOS) / `Ctrl+Shift+L`(Windows·Linux)로 접고 펼칩니다.
+- **문서 탭 바** — 지금 컨텍스트에서 열어 둔 문서들입니다. 탭을 탭 바 밖으로 끌면 별도 창으로 떼어낼 수 있습니다.
 - **메인 에디터** — 글을 쓰는 WYSIWYG 편집 영역입니다.
 - **오른쪽 사이드바** — 제목 구조를 보여 주는 문서 개요, 또는 AI 채팅 패널입니다.
 - **상태바** — 단어 수, 줄 수, 커서 위치를 표시합니다.
 
-> 글쓰기 공간을 최대한 넓게 두려고 두 사이드바는 기본적으로 숨어 있습니다. 에디터는 **최소한의 인터페이스** 원칙을 따릅니다 — 필요한 것만, 필요할 때만 보여 줍니다.
+> 왼쪽 사이드바는 워크스페이스를 열면 함께 열리고 오른쪽은 닫힌 채로 시작하므로, 창은 대부분 글쓰기 공간으로 남습니다. 에디터는 **최소한의 인터페이스** 원칙을 따릅니다 — 필요한 것만, 필요할 때만 보여 줍니다.
 
 ---
 

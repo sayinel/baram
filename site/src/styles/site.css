@@ -29,6 +29,19 @@ code, kbd { font-family: var(--font-mono); font-size: 0.9em; }
   flex-wrap: wrap; padding-top: 0.6rem; padding-bottom: 0.6rem;
 }
 .nav-logo img { display: block; height: 26px; width: auto; }
+
+/* 로고 명암 교체 — tokens.css 와 **같은 3-상태 모양**을 쓴다
+   (라이트 기본 · prefers-color-scheme · [data-theme]). 미디어 쿼리만 쓰면
+   테마 토글이 로고를 못 바꾸고, `[data-theme]` 만 쓰면 토글을 누른 적 없는
+   방문자가 시스템 다크에서 라이트 로고를 본다. */
+.nav-logo .logo-light { display: block; }
+.nav-logo .logo-dark { display: none; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .nav-logo .logo-light { display: none; }
+  :root:not([data-theme="light"]) .nav-logo .logo-dark { display: block; }
+}
+:root[data-theme="dark"] .nav-logo .logo-light { display: none; }
+:root[data-theme="dark"] .nav-logo .logo-dark { display: block; }
 .nav-links { display: flex; gap: 1rem; flex-wrap: wrap; flex: 1; }
 .nav-links a, .nav-github { color: var(--color-text-secondary); font-size: 0.95rem; }
 .nav-links a:hover, .nav-github:hover { color: var(--color-text-primary); }

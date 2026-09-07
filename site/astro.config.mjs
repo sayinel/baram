@@ -60,6 +60,14 @@ export default defineConfig({
     legacyRedirects({ absolute, targets: legacyTargets(), withBase }),
     starlight({
       title: "Baram",
+      // 사이드바 머리의 워드마크. 랜딩 nav 와 **같은 파일**을 쓴다 —
+      // `src/` 아래여야 Astro 가 import 로 해석하므로 public/ 에서 옮겨 왔다.
+      // `replacesTitle` 은 워드마크에 이미 "Baram" 이 그려져 있어서다.
+      logo: {
+        light: "./src/assets/baram-logo.png",
+        dark: "./src/assets/baram-logo-dark.png",
+        replacesTitle: true,
+      },
       description: "A lightweight, beautiful WYSIWYG markdown editor with AI integration.",
       // 로케일 대칭 — root locale 을 쓰지 않는다.
       // 근거: 현 사이트의 브라우저 언어 감지를 보존하고, 원문↔번역 짝이
@@ -69,7 +77,8 @@ export default defineConfig({
       //    그 로케일에서 **조용히 꺼진다** — routeData 의 `LOCALES` 에 없으니 스탬프도
       //    안 요구하고 고아도 안 잡는다. 그래서 help-routes.json 에서 파생시킨다.
       locales: starlightLocales(),
-      customCss: ["./src/styles/starlight-tokens.css"],
+      // 토큰 매핑과 문서 페이지 컴포넌트 스타일을 나눈다 — 앞은 이름만 잇는 파일이다.
+      customCss: ["./src/styles/starlight-tokens.css", "./src/styles/docs.css"],
       // 낡은 번역 판정(routeData)과 그 표시(Banner). 판정은 렌더와 분리해 둔다 —
       // 고아 번역을 빌드 실패로 만드는 일이 컴포넌트가 렌더되는지에 달리면 안 된다.
       routeMiddleware: "./src/routeData.ts",

@@ -24,7 +24,6 @@ const CEIL = 200;
 
 /** 하한·상한 예외. 이유는 IA 문서가 싣는다. */
 const SIZE_EXCEPTIONS = new Set([
-  "index", // 문서 홈은 그룹으로 보내는 내비게이션 페이지다 — 짧은 것이 미덕이다
   "editing/source-mode-and-find", // 유일한 병합 대상이 성격이 무관하다
   "versioning/git", // Git 과 파일 스냅샷은 서로 다른 버전 관리 시스템이다
   "customization/keyboard-shortcuts", // 단축키 레퍼런스는 한 화면에서 훑는 것이 본질이다
@@ -131,6 +130,37 @@ for (const slug of onDisk) {
     problems.push(`[원문에 스탬프] en/${slug} — sourceHash 는 번역본에만 찍는다`);
   }
 }
+// ── 7. 손으로 세운 도해에는 `not-content` 가 붙어 있어야 한다
+//
+// ‼️ `markdown.css` 의 flow 규칙이 형제 요소마다 위쪽 여백을 넣는데 제외 목록에 `div` 도
+//    `i` 도 없다. 그래서 마크다운 안에 CSS 격자를 세우면 셀이 밀려 내려가고 창 머리 점이
+//    계단이 된다 — 실제로 그렇게 배포될 뻔했고, 게이트는 전부 초록이었다(찾은 것은 렌더한
+//    스크린샷 하나다). `not-content` 가 Starlight 의 정식 제외이므로 그것을 여기서 요구한다.
+//    주석만으로는 다음 도해가 같은 실수를 반복한다.
+// ‼️ 클래스는 **토큰으로** 비교한다. `\bui-map\b` 는 하이픈이 낱말 경계라서
+//    `ui-map-cell`·`ui-map-status` 까지 잡아 셀마다 오검출이 났다(실측 8건).
+const CLASS_ATTR = /class="([^"]*)"/g;
+const hasClass = (classes, name) => classes.trim().split(/\s+/).includes(name);
+let uiMaps = 0;
+for (const { dir, locale } of [{ dir: EN, locale: "en" }, ...translations]) {
+  for (const slug of slugsOn(dir)) {
+    for (const [, classes] of readFileSync(pageFile(dir, slug), "utf8").matchAll(CLASS_ATTR)) {
+      if (!hasClass(classes, "ui-map")) continue;
+      uiMaps += 1;
+      if (!hasClass(classes, "not-content")) {
+        problems.push(
+          `[도해에 not-content 없음] ${locale}/${slug} — class="${classes}" 에 not-content 가 없다`,
+        );
+      }
+    }
+  }
+}
+// ‼️ 하나도 못 찾으면 위 단정이 공허하다. 도해를 정말로 없앴다면 이 절도 함께 지우는 것이
+//    맞고, 클래스 이름만 바꿨다면 여기가 알려 준다.
+if (!uiMaps) {
+  problems.push("[도해 0건] `ui-map` 도해를 못 찾았다 — 7번 단정이 공허하다 (클래스 이름이 바뀌었나)");
+}
+
 const koCount = translations.reduce((n, t) => n + t.slugs.length, 0);
 
 const localeSummary = translations.map((t) => `${t.locale} ${t.slugs.length}`).join(" · ");

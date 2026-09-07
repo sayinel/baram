@@ -13,7 +13,7 @@ To initialize a folder as a vault, go to **Settings > Vault** and click **Initia
 
 ## Context Types
 
-Baram has three context types, shown as tabs in the **Context Tab Bar** at the top of the left sidebar:
+Baram has three context types, shown as tabs in the **Context Tab Bar** across the top of the window:
 
 | Context | Icon | Description |
 | ------- | ---- | ----------- |
@@ -26,7 +26,7 @@ Each context is independent — it has its own file tree, settings, and tab hist
 ## Opening and Switching Vaults
 
 - **Open a vault**: Use **File > Open Folder** (`Cmd+Shift+O` / `Ctrl+Shift+O`) and select a folder. If it contains `.baram/config.json`, it opens as a vault context.
-- **Switch between contexts**: Click the tabs in the Context Tab Bar at the top of the left sidebar. Each tab shows the vault/folder name and its context icon.
+- **Switch between contexts**: Click the tabs in the Context Tab Bar across the top of the window. Each tab shows the vault/folder name and its context icon.
 - **Close a context**: Right-click a context tab and select **Close**.
 
 Multiple vaults can be open simultaneously, each as its own tab in the Context Tab Bar.

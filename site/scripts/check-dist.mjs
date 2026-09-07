@@ -8,8 +8,8 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { PAGES } from "../ia-tree.mjs";
-import { absolute, BASE, docPath, legacyTargets, withBase } from "../routes.mjs";
+import { groupOf, PAGES } from "../ia-tree.mjs";
+import { absolute, BASE, docPath, legacyTargets, ROUTES, withBase } from "../routes.mjs";
 import {
   frontmatterSourceHash,
   hashSourceFile,
@@ -159,9 +159,78 @@ if (!compared) {
   console.log("ℹ️ 번역 페이지가 없어 낡음 판정 대조를 건너뜁니다 (단정이 공허해진다)");
 }
 
+// ── 5. 문서 홈의 주제 카드 — **컴포넌트가 만든 링크**다
+//
+// ‼️ `starlightLinksValidator` 는 마크다운·MDX 본문의 링크만 본다. 이 카드들은
+//    `DocsHome.astro` 가 PAGES·GROUPS 에서 조립하므로 그 검사 밖이고, check-pages 는
+//    매니페스트↔디스크만 본다. 즉 카드 링크가 전부 404 여도 모든 게이트가 초록이다 —
+//    이 파일이 존재하는 이유가 정확히 그 부류다(구 URL 스텁의 base 누락을 잡은 단정과
+//    같은 질문). 여기서 묻는 것 셋: 개수가 파생값과 같은가, 링크가 dist 안에 실재하는가,
+//    로케일 사이에 대칭인가.
+const TOPIC_GRID = '<div class="docs-home-topics">';
+/**
+ * 그 로케일의 문서 홈에 있어야 할 카드 링크 — **순서까지** 그대로.
+ *
+ * ‼️ 개수만 세면 안 된다. 개수 단정은 `DocsHome` 이 그룹의 **마지막** 페이지로 착지하게
+ *    바뀌어도 통과한다(15개 그대로 · 전부 실재 · 로케일 대칭) — 모든 카드가 엉뚱한 곳을
+ *    가리키는데 초록이다. 그래서 목록을 파생시켜 그대로 맞댄다.
+ * ‼️ `migrated` 필터는 컴포넌트와 같은 판정이다(그쪽은 컬렉션에, 여기는 디스크에 묻는다).
+ *    빼면 en 원문이 아직 없는 slug 를 매니페스트에 넣은 날 "카드 개수" 로 신고되는데,
+ *    진짜 원인은 check-pages 의 `[파일 없음]` 이라 엉뚱한 곳을 보게 만든다.
+ */
+function expectedCardHrefs(locale) {
+  const out = [];
+  const seen = new Set();
+  for (const page of PAGES) {
+    if (page.slug === "index" || !migrated(page.slug)) continue;
+    const key = groupOf(page.slug) ?? page.slug;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(withBase(docPath(page.slug, locale)));
+  }
+  return out;
+}
+let cardLocales = 0;
+for (const locale of ROUTES.locales) {
+  const built = resolveInDist(withBase(docPath("index", locale)));
+  if (!built) { problems.push(`[문서 홈 없음] ${locale} — dist 에 문서 홈이 없다`); continue; }
+  const html = readFileSync(built, "utf8");
+  const at = html.indexOf(TOPIC_GRID);
+  if (at < 0) {
+    problems.push(`[주제 카드 없음] ${locale} 문서 홈에 ${TOPIC_GRID} 가 없다 — DocsHome 이 렌더되지 않았다`);
+    continue;
+  }
+  // 격자 다음 H2 까지가 카드 구역이다. 뒤의 "자주 찾는 것" 목록 링크까지 세면 안 된다.
+  const nextHeading = html.indexOf("<h2", at);
+  const section = html.slice(at, nextHeading < 0 ? undefined : nextHeading);
+  // ‼️ `href` 가 첫 속성이라고 가정하지 않는다. LinkCard 가 지금은 `href` 만 펼치지만,
+  //    Starlight·Astro 가 앞에 속성 하나(`data-astro-prefetch` 등)를 끼우면 좁은 정규식은
+  //    **0건을 매치**한다 — 아래 단정이 잡아 주기는 하지만 엉뚱한 진단이 된다.
+  const hrefs = [...section.matchAll(/<a\s[^>]*href="([^"]+)"/g)].map((m) => m[1]);
+  const want = expectedCardHrefs(locale);
+  cardLocales += 1;
+  if (hrefs.join("\n") !== want.join("\n")) {
+    const at0 = hrefs.findIndex((h, i) => h !== want[i]);
+    problems.push(
+      `[카드 링크] ${locale} 문서 홈의 카드 링크가 PAGES·GROUPS 에서 파생한 목록과 다르다 ` +
+        `(카드 ${hrefs.length}개 / 기대 ${want.length}개` +
+        (at0 >= 0 ? `, ${at0}번째: "${hrefs[at0] ?? "(없음)"}" ≠ "${want[at0] ?? "(없음)"}"` : "") +
+        `)`,
+    );
+  }
+  // 목록이 맞아도 그 목적지가 실재하는지는 별개다 — 이 파일이 존재하는 이유가 그 질문이다.
+  for (const href of hrefs) {
+    if (!resolveInDist(href)) problems.push(`[카드 링크 부재] ${locale} 문서 홈 → ${href} 가 dist 안에 없다`);
+  }
+}
+if (!cardLocales) problems.push("[문서 홈 0개] 카드 단정이 한 로케일에서도 돌지 않았다");
+
 const total = PAGES.length;
 const done = PAGES.filter((p) => migrated(p.slug)).length;
-console.log(`이주 ${done}/${total} 페이지 · en ${enPages.length}개 · ko ${koPages.length}개 · 구 URL 스텁 ${legacy.length}개`);
+console.log(
+  `이주 ${done}/${total} 페이지 · en ${enPages.length}개 · ko ${koPages.length}개 · ` +
+    `구 URL 스텁 ${legacy.length}개 · 문서 홈 주제 카드 ${expectedCardHrefs(ROUTES.defaultLocale).length}개 × ${cardLocales}로케일`,
+);
 if (pending.length) {
   console.log(`\n⏳ 이주 대기 ${pending.length}건 (결함 아님)`);
   for (const p of pending) console.log("  " + p);

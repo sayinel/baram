@@ -1,0 +1,120 @@
+---
+/**
+ * 문서 홈의 주제 카드 격자.
+ *
+ * ‼️ 제목·순서·링크를 **페이지에 적지 않는다.** 옛 `index.md` 는 15줄을 손으로 베낀
+ *    목록이었고 사이드바는 `ia-tree.mjs` 에서 생성되므로, 둘은 이미 갈라져 있었다 —
+ *    같은 그룹을 사이드바는 "Vault와 작업 공간", 목록은 "볼트와 워크스페이스" 라고
+ *    불렀다(용어 사전 기준으로 목록이 맞았다). 그래서 여기서는 사이드바와 **같은
+ *    출처**에서 파생시킨다: 그룹 라벨은 `GROUPS`, 단독 페이지 제목은 그 페이지 자신의
+ *    프론트매터, 순서와 착지면은 `PAGES`.
+ *
+ * 페이지가 넘기는 것은 **설명 문구뿐**이다(`blurbs`). 산문이 페이지에 남아야 번역이
+ * 페이지에서 이뤄지고, 용어 게이트(`check-glossary.mjs`)의 스캔 범위 안에 들어온다.
+ */
+import { CardGrid, LinkCard } from "@astrojs/starlight/components";
+import { getCollection } from "astro:content";
+
+import { GROUPS, groupOf, PAGES } from "../../ia-tree.mjs";
+import { docPath, ROUTES, withBase } from "../../routes.mjs";
+
+interface Props {
+  /** 카드 키(그룹 키 또는 단독 페이지 slug) → 한 줄 설명. */
+  blurbs: Record<string, string>;
+}
+
+const { blurbs } = Astro.props;
+
+/** `.mjs` 매니페스트는 타입이 없다 — 인덱싱 자리에서만 좁혀 쓴다. */
+const groups = GROUPS as Record<string, Record<string, string>>;
+
+const DEFAULT_LOCALE: string = ROUTES.defaultLocale;
+const DOCS = ROUTES.docsPrefix.replace(/\/$/, "");
+const locale: string = Astro.locals.starlightRoute.locale ?? DEFAULT_LOCALE;
+
+// ‼️ 페이지 존재 여부를 fs 로 묻지 않는다 — Starlight 이 라우팅하는 **바로 그 컬렉션**에
+//    묻는다. 사이드바(`buildSidebar`)가 없는 페이지를 건너뛰는 것과 같은 판정이어야
+//    카드와 사이드바가 같은 집합을 보여 준다.
+const entries = await getCollection("docs");
+const titles = new Map(entries.map((entry) => [entry.id, entry.data.title]));
+
+/** IA slug → 컬렉션 엔트리 id 의 로케일 뒷부분. 홈은 Astro 가 `index` 를 떼어 낸다. */
+const restOf = (slug: string) => (slug === "index" ? DOCS : `${DOCS}/${slug}`);
+
+/** 그 페이지의 제목 — 그 로케일에, 없으면 원문. 사이드바와 같은 폴백이다. */
+const titleOf = (slug: string) =>
+  titles.get(`${locale}/${restOf(slug)}`) ??
+  titles.get(`${DEFAULT_LOCALE}/${restOf(slug)}`) ??
+  slug;
+
+interface Card {
+  href: string;
+  key: string;
+  title: string;
+}
+
+const cards: Card[] = [];
+const seen = new Set<string>();
+for (const page of PAGES) {
+  if (page.slug === "index") continue;
+  if (!titles.has(`${DEFAULT_LOCALE}/${restOf(page.slug)}`)) continue;
+  const group = groupOf(page.slug);
+  const key = group ?? page.slug;
+  // ‼️ 단독 페이지 slug 가 그룹 키와 같으면 그 페이지는 **카드를 못 얻는다** — 그룹이 이미
+  //    `seen` 에 있어 아래에서 건너뛴다. 그리고 `check-dist` §5 도 같은 규칙으로 기대 목록을
+  //    파생시키므로 목록까지 일치해 **아무 게이트도 그것을 못 본다.** 여기서 크게 실패시킨다.
+  if (group === null && key in groups) {
+    throw new Error(
+      `DocsHome: 단독 페이지 "${page.slug}" 의 slug 가 그룹 키와 같습니다. 그 페이지는 주제 ` +
+        `카드를 얻지 못하고 어떤 게이트도 알려 주지 않습니다 — slug 를 바꾸거나 그 페이지를 ` +
+        `그룹 안(\`${page.slug}/…\`)으로 옮기십시오.`,
+    );
+  }
+  if (seen.has(key)) continue; // 그룹의 첫 페이지가 그 그룹의 착지면이다
+  seen.add(key);
+  cards.push({
+    href: withBase(docPath(page.slug, locale)),
+    key,
+    title: group ? (groups[group][locale] ?? groups[group][DEFAULT_LOCALE]) : titleOf(page.slug),
+  });
+}
+
+// ── 설명과 카드가 서로 소진되는가.
+//
+// ‼️ 빌드를 실패시킨다. 통과시키면 그룹을 새로 넣은 사람이 설명 없는 카드(또는 아무
+//    카드도 안 붙는 죽은 설명)를 배포하게 되고, 그 페이지는 아무 게이트에도 안 걸린다 —
+//    카드는 컴포넌트가 만들므로 링크 검사기도 페이지 게이트도 이것을 못 본다.
+if (!cards.length) {
+  throw new Error(
+    `DocsHome(${locale}): 카드가 0개입니다 — 컬렉션 엔트리 id 모양이 바뀌었는지 ` +
+      `확인하십시오(예: ${entries.slice(0, 3).map((e) => e.id).join(", ")}).`,
+  );
+}
+const missing = cards.filter((card) => !(card.key in blurbs)).map((card) => card.key);
+const extra = Object.keys(blurbs).filter((key) => !seen.has(key));
+if (missing.length || extra.length) {
+  throw new Error(
+    `DocsHome(${locale}): blurbs 키가 카드 집합과 다릅니다. ` +
+      (missing.length ? `[설명 없는 카드] ${missing.join(", ")}. ` : "") +
+      (extra.length ? `[카드 없는 설명] ${extra.join(", ")}. ` : "") +
+      `카드는 ia-tree.mjs 의 PAGES·GROUPS 에서 파생됩니다 — 그룹이나 단독 페이지를 ` +
+      `더했다면 이 페이지에도 한 줄 설명을 더하십시오.`,
+  );
+}
+---
+
+<!--
+  ‼️ `docs-home-topics` 는 스타일이 아니라 **`check-dist.mjs` 의 앵커**다. 카드는 이
+     컴포넌트가 만들므로 `starlightLinksValidator` 가 그 링크를 보지 못한다 — 게이트는
+     산출물에서 이 클래스로 카드 구역을 찾아 개수·목적지·로케일 대칭을 단정한다.
+     클래스 이름을 바꾸거나 지우면 그 단정이 조용히 죽는 것이 아니라 실패한다.
+
+     격자는 Starlight 기본(2열)을 그대로 쓴다. 15개를 3열로 좁혀 봤더니 카드가 185px 이
+     되어 설명이 세 줄로 쪼개졌고, 본문 폭 `--sl-content-width` 를 음수 마진으로 밀어내는
+     것은 우회다.
+-->
+<div class="docs-home-topics">
+  <CardGrid>
+    {cards.map((card) => <LinkCard href={card.href} title={card.title} description={blurbs[card.key]} />)}
+  </CardGrid>
+</div>
