@@ -55,7 +55,7 @@ sourceHash: "7ac359e0460f"
 
 ### 플러그인을 어떻게 만드나요?
 
-[플러그인 개발 가이드](/baram/ko/docs/plugin-dev/overview-and-capabilities/)를 보십시오. 플러그인은 `baram-plugin.json` 매니페스트와 ESM 진입점을 가진 디렉터리이고, `ExtensionContext` API로 명령·Tiptap 확장·UI 등을 더합니다.
+[플러그인 개발 가이드](/ko/docs/plugin-dev/overview-and-capabilities/)를 보십시오. 플러그인은 `baram-plugin.json` 매니페스트와 ESM 진입점을 가진 디렉터리이고, `ExtensionContext` API로 명령·Tiptap 확장·UI 등을 더합니다.
 
 ---
 
@@ -75,7 +75,7 @@ macOS는 앱이 보호된 위치 — **서류, 데스크탑, 다운로드, iClou
 
 v0.6.0 이후에도 물음이 반복되면 **시스템 설정 > 개인정보 보호 및 보안**에서 **전체 디스크 접근 권한**을 부여하거나, 볼트를 보호된 폴더 밖에 두십시오(예: `~/Notes`).
 
-이것은 Baram이 아니라 macOS가 묻는 것입니다. Baram은 열려는 폴더에 대해 자기 승인을 따로 갖고 있습니다 — [폴더를 열 때 왜 권한을 묻나요?](/baram/ko/docs/faq/appearance-and-workspace/#폴더를-열-때-왜-권한을-묻나요)를 보십시오.
+이것은 Baram이 아니라 macOS가 묻는 것입니다. Baram은 열려는 폴더에 대해 자기 승인을 따로 갖고 있습니다 — [폴더를 열 때 왜 권한을 묻나요?](/ko/docs/faq/appearance-and-workspace/#폴더를-열-때-왜-권한을-묻나요)를 보십시오.
 
 ### 에디터가 느립니다
 
@@ -118,4 +118,4 @@ Baram은 돌면서 평범한 텍스트 로그를 씁니다. 버그 보고에 붙
 
 ---
 
-더 알아보려면 [사용 설명서](/baram/ko/docs/getting-started/)와 [키보드 단축키](/baram/ko/docs/customization/keyboard-shortcuts/)를 보십시오.
+더 알아보려면 [사용 설명서](/ko/docs/getting-started/)와 [키보드 단축키](/ko/docs/customization/keyboard-shortcuts/)를 보십시오.

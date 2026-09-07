@@ -145,4 +145,4 @@ my-plugin/
 
 5. Dev-load the plugin without packaging anything: **Settings → Plugins →
    Developer → Load dev plugin folder**, then point the folder picker at your
-   plugin directory. See [Local development loop](/baram/en/docs/plugin-dev/local-development-and-bundling/#local-development-loop).
+   plugin directory. See [Local development loop](/en/docs/plugin-dev/local-development-and-bundling/#local-development-loop).

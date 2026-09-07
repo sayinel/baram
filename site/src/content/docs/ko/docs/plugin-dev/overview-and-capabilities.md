@@ -22,13 +22,13 @@ Baram 플러그인은 매니페스트(`baram-plugin.json`)와 ESM 번들 하나(
   설치할 때 정확히 그 점을 명시적으로 확인받습니다.
 
 Tiptap 확장이나 DOM에 붙는 UI를 기여하는 경우가 아니면 sandboxed로 쓰십시오. 민감한 것을 설치하거나
-만들기 전에 [신뢰 모델과 보안](/baram/ko/docs/plugin-dev/trust-model-and-errors/#신뢰-모델과-보안)을 보십시오.
+만들기 전에 [신뢰 모델과 보안](/ko/docs/plugin-dev/trust-model-and-errors/#신뢰-모델과-보안)을 보십시오.
 
 ## 권한
 
 플러그인은 필요한 모든 권한을 매니페스트에 선언해야 합니다. 사용자는 설치 시점에(레지스트리
 설치) 또는 개발 폴더를 불러오기로 고름으로써 암묵적으로 그것을 승인합니다
-([신뢰 모델과 보안](/baram/ko/docs/plugin-dev/trust-model-and-errors/#신뢰-모델과-보안) 참조).
+([신뢰 모델과 보안](/ko/docs/plugin-dev/trust-model-and-errors/#신뢰-모델과-보안) 참조).
 선언하지 않은 권한의 API에 닿으면 조용히 아무 일도 하지 않는 대신 분명한 오류를 던집니다
 ("Plugin requires `"X"` capability to access …") — 컨텍스트가 부여되지 않은 API에 대해
 거부 프록시를 돌려줍니다.
@@ -50,6 +50,6 @@ Tiptap 확장이나 DOM에 붙는 UI를 기여하는 경우가 아니면 sandbox
 | `viewer`          | 파일 형식별 커스텀 뷰어 등록             |               |
 
 `ai`와 `network`가 가장 민감한 권한입니다 — 정확히 무엇을 허용하는지는
-[신뢰 모델과 보안](/baram/ko/docs/plugin-dev/trust-model-and-errors/#신뢰-모델과-보안)을 보십시오.
+[신뢰 모델과 보안](/ko/docs/plugin-dev/trust-model-and-errors/#신뢰-모델과-보안)을 보십시오.
 `files`와 `storage`도 표시해 두었습니다. 볼트·플러그인 범위로 한정돼 있고 무제한은 아니지만,
 플러그인 자신의 메모리 밖 데이터(볼트 파일 / 디스크에 남는 저장소)에 닿기 때문입니다.

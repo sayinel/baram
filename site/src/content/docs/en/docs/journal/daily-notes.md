@@ -30,7 +30,7 @@ There are three ways to create or open a daily note:
 2. Click it to open that day's entry; if none exists yet, Baram asks before creating it
 3. From **inside** the journal a bare date link resolves to the entry directly. From another vault, name the space: `[[Journal::2026-02-27]]`
 
-To write a date *without* linking to its entry, use `@` — see [@Dates](/baram/en/docs/linking/dates-references-and-navigation/#dates). Clicking an `@` chip opens a calendar to change the date, not the journal.
+To write a date *without* linking to its entry, use `@` — see [@Dates](/en/docs/linking/dates-references-and-navigation/#dates). Clicking an `@` chip opens a calendar to change the date, not the journal.
 
 **Auto-creation on startup:**
 When "Open today's journal" is enabled in settings, Baram automatically creates and opens today's entry every time you launch the app.

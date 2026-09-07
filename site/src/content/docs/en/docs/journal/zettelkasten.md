@@ -34,7 +34,7 @@ Press `Cmd+Shift+N` (or the `/capture` slash command) to open Quick Capture — 
 - **Source** takes an optional URL. Written as `Title https://…` it becomes a link. (Task mode hides this field: a task is a single line with nowhere to carry a source.)
 - The **tags** field decides where the capture goes — see below.
 
-> Quick Capture also has a task mode (`Cmd+Alt+T`) that appends a task line to your capture file instead of writing a note. See [Capturing tasks](/baram/en/docs/tasks/panel-and-queries/#capturing-tasks).
+> Quick Capture also has a task mode (`Cmd+Alt+T`) that appends a task line to your capture file instead of writing a note. See [Capturing tasks](/en/docs/tasks/panel-and-queries/#capturing-tasks).
 
 ## Where a capture lands
 

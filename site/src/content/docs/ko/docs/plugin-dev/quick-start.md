@@ -137,4 +137,4 @@ my-plugin/
 
 5. 아무것도 패키징하지 않고 플러그인을 개발 모드로 불러옵니다 — **설정 → 플러그인 →
    개발자 → 개발 플러그인 폴더 불러오기**를 누르고 폴더 선택기로 플러그인 디렉터리를 가리킵니다.
-   [로컬 개발 루프](/baram/ko/docs/plugin-dev/local-development-and-bundling/#로컬-개발-루프) 참조.
+   [로컬 개발 루프](/ko/docs/plugin-dev/local-development-and-bundling/#로컬-개발-루프) 참조.

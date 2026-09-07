@@ -90,5 +90,5 @@ Baram은 3열 레이아웃을 씁니다.
 - **명령 팔레트** (`Cmd+P` 또는 `Cmd+Shift+P`) — 모든 기능을 검색합니다
 - **빠른 전환** (`Cmd+K`) — 파일을 빠르게 열고 제목으로 이동합니다
 - **슬래시 명령** (`/`) — 블록을 빠르게 삽입합니다
-- [**FAQ**](/baram/ko/docs/faq/general/) — 자주 묻는 질문
+- [**FAQ**](/ko/docs/faq/general/) — 자주 묻는 질문
 - [**GitHub Issues**](https://github.com/sayinel/baram/issues) — 버그 신고나 기능 요청

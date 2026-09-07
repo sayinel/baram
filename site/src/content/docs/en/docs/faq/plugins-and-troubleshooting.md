@@ -55,7 +55,7 @@ This applies once, to plugins installed before v0.5.0. Anything installed since 
 
 ### How do I build a plugin?
 
-See the [Plugin Development Guide](/baram/en/docs/plugin-dev/overview-and-capabilities/). A plugin is a directory with a `baram-plugin.json` manifest and an ESM entry point, using the `ExtensionContext` API to add commands, Tiptap extensions, UI, and more.
+See the [Plugin Development Guide](/en/docs/plugin-dev/overview-and-capabilities/). A plugin is a directory with a `baram-plugin.json` manifest and an ESM entry point, using the `ExtensionContext` API to add commands, Tiptap extensions, UI, and more.
 
 ---
 
@@ -75,7 +75,7 @@ macOS shows a system permission prompt the first time an app reads files in a pr
 
 If the prompt still repeats on v0.6.0 or later, grant **Full Disk Access** under **System Settings > Privacy & Security**, or keep your vault outside the protected folders (e.g. `~/Notes`).
 
-This is macOS asking, not Baram. Baram has a separate approval of its own for the folder you opened — see [Why does Baram ask permission before opening a folder?](/baram/en/docs/faq/appearance-and-workspace/#why-does-baram-ask-permission-before-opening-a-folder).
+This is macOS asking, not Baram. Baram has a separate approval of its own for the folder you opened — see [Why does Baram ask permission before opening a folder?](/en/docs/faq/appearance-and-workspace/#why-does-baram-ask-permission-before-opening-a-folder).
 
 ### The editor feels slow
 
@@ -118,4 +118,4 @@ The log holds Baram's own diagnostics — a file it could not read, a plugin it 
 
 ---
 
-See the [User Guide](/baram/en/docs/getting-started/) and [Keyboard Shortcuts](/baram/en/docs/customization/keyboard-shortcuts/) for more information.
+See the [User Guide](/en/docs/getting-started/) and [Keyboard Shortcuts](/en/docs/customization/keyboard-shortcuts/) for more information.

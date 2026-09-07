@@ -29,7 +29,7 @@ The status bar shows the current mode (`-- NORMAL --`, `-- INSERT --`, `-- VISUA
 
 Vim key sequences are a separate layer from app shortcuts and are not remappable in Settings > Keybindings.
 
-> 📖 The full command list is in the [Keyboard Shortcuts reference](/baram/en/docs/customization/keyboard-shortcuts/#vim-mode).
+> 📖 The full command list is in the [Keyboard Shortcuts reference](/en/docs/customization/keyboard-shortcuts/#vim-mode).
 
 ## Keyboard Shortcuts
 
@@ -43,6 +43,6 @@ All keyboard shortcuts can be customized in **Settings > Keybindings**:
 
 Use **Reset All** at the bottom to restore all shortcuts to defaults.
 
-See the full [Keyboard Shortcuts Reference](/baram/en/docs/customization/keyboard-shortcuts/) for all available shortcuts.
+See the full [Keyboard Shortcuts Reference](/en/docs/customization/keyboard-shortcuts/) for all available shortcuts.
 
 ---

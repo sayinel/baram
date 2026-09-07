@@ -28,7 +28,7 @@ Type `/` at the beginning of an empty line to open the slash command menu. This 
 - `/image` — Insert an image
 - `/link` — Insert a link
 
-Type to filter the menu items. AI commands are also available from the slash menu (see [AI Features](/baram/en/docs/ai/setup-inline-and-ghost-text/)).
+Type to filter the menu items. AI commands are also available from the slash menu (see [AI Features](/en/docs/ai/setup-inline-and-ghost-text/)).
 
 ## Floating Toolbar
 

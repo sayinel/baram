@@ -64,7 +64,7 @@ test("the app opens exactly the three documented surfaces", () => {
   assert.deepEqual(Object.keys(ROUTES.entries).sort(), ["faq", "guide", "shortcuts"]);
   assert.equal(
     absolute(docPath(entrySlug("guide"), "en")),
-    "https://sayinel.github.io/baram/en/docs/getting-started/",
+    "https://baram.ing/en/docs/getting-started/",
   );
 });
 

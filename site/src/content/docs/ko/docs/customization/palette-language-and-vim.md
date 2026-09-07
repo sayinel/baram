@@ -30,7 +30,7 @@ Baram은 영어와 한국어 인터페이스를 지원합니다.
 
 Vim 키 시퀀스는 앱 단축키와 별개 계층이고 설정 > 키 바인딩에서 재지정할 수 없습니다.
 
-> 📖 전체 명령 목록은 [키보드 단축키 레퍼런스](/baram/ko/docs/customization/keyboard-shortcuts/#vim-모드)에 있습니다.
+> 📖 전체 명령 목록은 [키보드 단축키 레퍼런스](/ko/docs/customization/keyboard-shortcuts/#vim-모드)에 있습니다.
 
 ## 키보드 단축키
 
@@ -44,6 +44,6 @@ Vim 키 시퀀스는 앱 단축키와 별개 계층이고 설정 > 키 바인딩
 
 아래쪽의 **모두 초기화**로 전체 단축키를 기본값으로 되돌립니다.
 
-쓸 수 있는 단축키 전체는 [키보드 단축키 레퍼런스](/baram/ko/docs/customization/keyboard-shortcuts/)를 보십시오.
+쓸 수 있는 단축키 전체는 [키보드 단축키 레퍼런스](/ko/docs/customization/keyboard-shortcuts/)를 보십시오.
 
 ---

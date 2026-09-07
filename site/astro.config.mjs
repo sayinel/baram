@@ -5,7 +5,7 @@ import starlight from "@astrojs/starlight";
 import { defineConfig } from "astro/config";
 import starlightLinksValidator from "starlight-links-validator";
 import { GROUPS, groupOf, PAGES } from "./ia-tree.mjs";
-import { ROUTES, absolute, BASE, legacyTargets, ORIGIN, starlightLocales, withBase } from "./routes.mjs";
+import { ROUTES, absolute, ASTRO_BASE, legacyTargets, ORIGIN, starlightLocales, withBase } from "./routes.mjs";
 import { EN_DOCS, pageFile } from "./scripts/docs-fs.mjs";
 import { legacyRedirects } from "./src/integrations/legacy-redirects.mjs";
 
@@ -52,9 +52,10 @@ function buildSidebar() {
 }
 
 export default defineConfig({
-  // GitHub Pages는 리포 이름 아래로 서빙한다 — base 를 빼면 모든 링크가 깨진다.
+  // 커스텀 도메인(baram.ing)이므로 사이트는 도메인 루트에서 서빙된다 — base 는 `"/"` 다.
+  // 리포명 아래로 서빙되는 기본 도메인으로 되돌린다면 help-routes.json 의 `base` 만 바꾼다.
   site: ORIGIN,
-  base: BASE,
+  base: ASTRO_BASE,
   trailingSlash: "always",
   integrations: [
     legacyRedirects({ absolute, targets: legacyTargets(), withBase }),

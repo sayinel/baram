@@ -6,7 +6,7 @@ title: "Reading a PDF"
 Baram opens `.pdf` files in a built-in reader. You cannot edit the PDF — but you can read it,
 search it, and highlight it, and every highlight can become a reference inside your markdown
 notes. **The PDF file itself is never written to.** Highlights are stored alongside it in
-your vault as plain files (see [Where highlights are stored](/baram/en/docs/pdf/managing-highlights/#where-highlights-are-stored)).
+your vault as plain files (see [Where highlights are stored](/en/docs/pdf/managing-highlights/#where-highlights-are-stored)).
 
 > Highlighting requires a vault, because the highlight has to be stored somewhere. Open a PDF
 > outside a vault — through **File > Open File** — and you still get the reader, find, zoom, and
@@ -49,6 +49,6 @@ The panel button opens a rail on the left of the PDF with two tabs:
 
 - **Pages** — Thumbnails of every page, rendered lazily as you scroll. Click one to jump there.
 - **Highlights** — Every highlight in this PDF, in page order. Click one to jump to it and flash
-  it. This tab has **Active** and **Deleted** sub-tabs (see [Deleting](/baram/en/docs/pdf/managing-highlights/#deleting-restoring-and-purging)).
+  it. This tab has **Active** and **Deleted** sub-tabs (see [Deleting](/en/docs/pdf/managing-highlights/#deleting-restoring-and-purging)).
 
 Drag the panel's inner edge to resize it. The width is remembered per install.

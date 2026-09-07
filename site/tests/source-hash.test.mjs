@@ -133,8 +133,8 @@ test("hashSourceFile throws instead of silently skipping a malformed page", () =
 
 test("readStaleTranslation narrows the route-data index signature", () => {
   assert.deepEqual(
-    readStaleTranslation({ [STALE_ROUTE_KEY]: { sourceUrl: "/baram/en/docs/" } }),
-    { sourceUrl: "/baram/en/docs/" },
+    readStaleTranslation({ [STALE_ROUTE_KEY]: { sourceUrl: "/en/docs/" } }),
+    { sourceUrl: "/en/docs/" },
   );
   assert.equal(readStaleTranslation({}), null);
   assert.equal(readStaleTranslation({ [STALE_ROUTE_KEY]: "문자열" }), null);

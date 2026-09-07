@@ -258,7 +258,7 @@ vim 모드는 그것을 아예 보지 못하므로(그쪽에서 `Cmd`는 vim의 
 PDF 탭에서 `Cmd+F`는 에디터의 찾기 표시줄이 아니라 **PDF에서 찾기**를 엽니다. `Alt`를 누른 채
 끌면 툴바를 영역 모드로 바꾸지 않고도 영역 하이라이트를 그립니다. 페이지 이동, 사이드 패널,
 두 하이라이트 모드는 툴바 버튼입니다 —
-[사용 설명서](/baram/ko/docs/pdf/toolbar-zoom-and-find/)를 보십시오.
+[사용 설명서](/ko/docs/pdf/toolbar-zoom-and-find/)를 보십시오.
 
 ## 파일 트리
 
@@ -368,4 +368,4 @@ vim 레지스터는 앱 전체에서 공유되고(클립보드처럼) 디스크�
 
 ---
 
-기능 설명은 [사용 설명서](/baram/ko/docs/getting-started/) 전체를 보십시오.
+기능 설명은 [사용 설명서](/ko/docs/getting-started/) 전체를 보십시오.

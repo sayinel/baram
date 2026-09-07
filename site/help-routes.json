@@ -1,7 +1,8 @@
 {
   "_comment": "앱↔사이트 URL 계약의 단일 출처. 소비자 셋: (1) astro.config.mjs 의 구 URL 스텁, (2) 앱의 src/utils/help-urls.ts 를 검증하는 테스트, (3) 산출물 검증(scripts/check-dist.mjs). 리터럴을 앱과 사이트 양쪽에 복제하면 사이트 경로가 바뀔 때 앱만 조용히 404가 된다.",
-  "origin": "https://sayinel.github.io",
-  "base": "/baram",
+  "origin": "https://baram.ing",
+  "_base": "커스텀 도메인은 사이트를 도메인 루트에서 서빙한다 — 프로젝트 페이지의 리포명 세그먼트가 사라지므로 base 는 빈 문자열이다. 소비자는 routes.mjs 하나이고, 거기서 astro 설정용으로 \"/\" 로 되살린다.",
+  "base": "",
   "defaultLocale": "en",
   "locales": ["en", "ko"],
   "_localeLabels": "Starlight 언어 선택기에 뜨는 이름. astro.config.mjs 의 locales 를 여기서 파생시키므로 로케일 목록이 두 벌이 되지 않는다 — 설정에만 로케일을 더하면 번역 신선도 판정이 그 로케일에서 조용히 꺼진다.",

@@ -38,14 +38,14 @@ title: "The plugin manifest"
 | `license`       | string    | SPDX license identifier                                                    |
 | `main`          | string    | Entry point file, relative to the plugin directory (e.g. `dist/index.mjs`) |
 | `engines.baram` | string    | Minimum Baram version, written `>=X.Y.Z` — see [Version floor](#version-floor)  |
-| `capabilities`  | string\[] | Required permissions — see [Capabilities](/baram/en/docs/plugin-dev/overview-and-capabilities/#capabilities)                   |
+| `capabilities`  | string\[] | Required permissions — see [Capabilities](/en/docs/plugin-dev/overview-and-capabilities/#capabilities)                   |
 
 ## Optional Fields
 
 | Field              | Type      | Description                                                                                           |
 | ------------------ | --------- | ----------------------------------------------------------------------------------------------------- |
 | `dependencies`     | string\[] | Other plugin IDs this plugin depends on                                                               |
-| `tiptapExtensions` | object\[] | Tiptap extensions exported by this plugin — see [Tiptap Extension plugins](/baram/en/docs/plugin-dev/commands-and-tiptap-extensions/#tiptap-extension-plugins) |
+| `tiptapExtensions` | object\[] | Tiptap extensions exported by this plugin — see [Tiptap Extension plugins](/en/docs/plugin-dev/commands-and-tiptap-extensions/#tiptap-extension-plugins) |
 | `repository`       | string    | Source code URL                                                                                       |
 | `homepage`         | string    | Documentation URL                                                                                     |
 | `icon`             | string    | Emoji icon for the marketplace/dev-list                                                               |

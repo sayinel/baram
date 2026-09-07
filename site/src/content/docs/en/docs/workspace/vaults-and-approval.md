@@ -51,4 +51,4 @@ Approvals are recorded by Baram itself, in its application data directory — no
 
 **Settings > Vault > Approved locations** lists everything you have approved and lets you **Revoke** any of it. Revoking removes the approval and closes that vault's tab; it takes full effect after a restart.
 
-> On macOS this is separate from the system's own **Files and Folders** permission prompt, which is macOS asking on behalf of every app. You may see both once: macOS deciding whether Baram may touch Documents or Desktop at all, and Baram deciding which folder you meant to open. See the [FAQ](/baram/en/docs/faq/general/) if a folder opens but shows no files.
+> On macOS this is separate from the system's own **Files and Folders** permission prompt, which is macOS asking on behalf of every app. You may see both once: macOS deciding whether Baram may touch Documents or Desktop at all, and Baram deciding which folder you meant to open. See the [FAQ](/en/docs/faq/general/) if a folder opens but shows no files.

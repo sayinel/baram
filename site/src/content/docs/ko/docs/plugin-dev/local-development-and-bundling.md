@@ -19,7 +19,7 @@ sourceHash: "984b7f1e8b6f"
 
 개발 모드로 불러온 플러그인은 **체크섬 검증을 건너뜁니다**(로컬 폴더에는 내려받기 URL도 체크섬도
 없습니다) — 실수로 빠뜨린 보안 검사가 아니라 의도한 로컬 신뢰 단축입니다.
-[신뢰 모델과 보안](/baram/ko/docs/plugin-dev/trust-model-and-errors/#신뢰-모델과-보안)을 보십시오.
+[신뢰 모델과 보안](/ko/docs/plugin-dev/trust-model-and-errors/#신뢰-모델과-보안)을 보십시오.
 
 ## 번들링
 

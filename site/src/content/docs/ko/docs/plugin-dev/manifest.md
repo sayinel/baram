@@ -39,14 +39,14 @@ sourceHash: "350818d60309"
 | `license`       | string    | SPDX 라이선스 식별자                                                       |
 | `main`          | string    | 진입점 파일. 플러그인 디렉터리 기준 상대 경로(예: `dist/index.mjs`)        |
 | `engines.baram` | string    | 최소 Baram 버전. `>=X.Y.Z` 로 씁니다 — [버전 하한](#버전-하한) 참조         |
-| `capabilities`  | string\[] | 필요한 권한 — [권한](/baram/ko/docs/plugin-dev/overview-and-capabilities/#권한) 참조 |
+| `capabilities`  | string\[] | 필요한 권한 — [권한](/ko/docs/plugin-dev/overview-and-capabilities/#권한) 참조 |
 
 ## 선택 필드
 
 | 필드               | 타입      | 설명                                                                                                  |
 | ------------------ | --------- | ----------------------------------------------------------------------------------------------------- |
 | `dependencies`     | string\[] | 이 플러그인이 의존하는 다른 플러그인 ID                                                               |
-| `tiptapExtensions` | object\[] | 이 플러그인이 내보내는 Tiptap 확장 — [Tiptap 확장 플러그인](/baram/ko/docs/plugin-dev/commands-and-tiptap-extensions/#tiptap-확장-플러그인) 참조 |
+| `tiptapExtensions` | object\[] | 이 플러그인이 내보내는 Tiptap 확장 — [Tiptap 확장 플러그인](/ko/docs/plugin-dev/commands-and-tiptap-extensions/#tiptap-확장-플러그인) 참조 |
 | `repository`       | string    | 소스 코드 URL                                                                                         |
 | `homepage`         | string    | 문서 URL                                                                                              |
 | `icon`             | string    | 마켓플레이스·개발 목록용 이모지 아이콘                                                                |

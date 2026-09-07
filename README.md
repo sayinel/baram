@@ -29,15 +29,15 @@
 </p>
 
 <p align="center">
-  <a href="https://sayinel.github.io/baram/">Homepage</a> &nbsp;|&nbsp;
+  <a href="https://baram.ing/">Homepage</a> &nbsp;|&nbsp;
   <a href="#installation">Installation</a> &nbsp;|&nbsp;
   <a href="#features">Features</a> &nbsp;|&nbsp;
   <a href="#keyboard-shortcuts">Shortcuts</a> &nbsp;|&nbsp;
   <a href="#ai-integration">AI</a> &nbsp;|&nbsp;
   <a href="#build-from-source">Build</a> &nbsp;|&nbsp;
-  <a href="https://sayinel.github.io/baram/en/docs/getting-started/">User Guide</a> &nbsp;|&nbsp;
-  <a href="https://sayinel.github.io/baram/en/docs/customization/keyboard-shortcuts/">Shortcut Reference</a> &nbsp;|&nbsp;
-  <a href="https://sayinel.github.io/baram/en/docs/faq/general/">FAQ</a>
+  <a href="https://baram.ing/en/docs/getting-started/">User Guide</a> &nbsp;|&nbsp;
+  <a href="https://baram.ing/en/docs/customization/keyboard-shortcuts/">Shortcut Reference</a> &nbsp;|&nbsp;
+  <a href="https://baram.ing/en/docs/faq/general/">FAQ</a>
 </p>
 
 <p align="center">
@@ -112,13 +112,13 @@ Baram pairs a **beautiful WYSIWYG** editor with **lossless markdown**, **AI-nati
 - **Tasks** — Any `- [ ]` checkbox anywhere in the vault is indexed. Four states (`[ ]` `[/]` `[x]` `[-]`), due/scheduled/start dates, priority, repeat rules, and optional time tracking — written as Obsidian-compatible emoji fields you never have to type. An agenda sidebar buckets everything by Overdue / Today / This week / Later, and AI can pull action items out of a meeting note.
 - **Graph view & global search** — Visual map of your connections, plus vault-wide full-text search with regex and replace.
 - **PDF reading & highlights** — Read PDFs in place with find, zoom, and a page/highlight side panel. Highlight text or draw a box around a figure, then paste a **reference** into any note: it renders as the quoted sentence, or as the cropped region of the page, and `Cmd+click` jumps back to the source. Highlights are stored beside the PDF as plain markdown and JSON — the PDF is never modified.
-- **Query blocks** — Embed a saved search in a note as a ` ```query ` block and get a live list of matching **notes or tasks**, built with a visual filter/sort/display builder. Task results stay checkable in place. [See the guide →](https://sayinel.github.io/baram/en/docs/rich-content/query-blocks/)
+- **Query blocks** — Embed a saved search in a note as a ` ```query ` block and get a live list of matching **notes or tasks**, built with a visual filter/sort/display builder. Task results stay checkable in place. [See the guide →](https://baram.ing/en/docs/rich-content/query-blocks/)
 
 ### Workspaces
 
 - **Vaults & multi-context** — Open multiple vaults, folders, and files at once, each with its own tree, tabs, and settings; link across vaults with `[[alias::file]]`. Baram reads and writes only where you allowed it: every location is approved once, listed in Settings, and revocable.
 - **Journal & Zettelkasten** — A diary-focused daily-notes space (calendar, photos, streaks, templates) and an atomic-notes space (`[[id]]` links, fleeting→permanent promotion, MOCs).
-- **Capture into hub notes** — Quick Capture is a full WYSIWYG window, and its **tags are addresses**: `#Inspiration` appends what you wrote to the top of that note's `## Captures` section, stamped with a date and a referenceable block ID. Tag nothing and it falls back to the inbox. One keystroke from anywhere, filed the moment you write it. [See the guide →](https://sayinel.github.io/baram/en/docs/journal/zettelkasten/#where-a-capture-lands)
+- **Capture into hub notes** — Quick Capture is a full WYSIWYG window, and its **tags are addresses**: `#Inspiration` appends what you wrote to the top of that note's `## Captures` section, stamped with a date and a referenceable block ID. Tag nothing and it falls back to the inbox. One keystroke from anywhere, filed the moment you write it. [See the guide →](https://baram.ing/en/docs/journal/zettelkasten/#where-a-capture-lands)
 - **Version history** — Automatic file snapshots with timeline, diff, and selective restore — independent of Git.
 - **Git integration** — Stage, commit, diff, branch, stash, and push/pull from the sidebar.
 
@@ -130,7 +130,7 @@ Baram pairs a **beautiful WYSIWYG** editor with **lossless markdown**, **AI-nati
 - **Keyboard-first & i18n** — Command palette, quick switcher, slash commands, fully customizable shortcuts, and English/Korean UI.
 - **Vim mode** — Optional modal editing with normal/insert/visual modes, motions, operators, counts, `/` search, and `:w`/`:q` — in the WYSIWYG surface, Source mode, and inside code blocks. Works with the Korean IME.
 
-> 📖 See the [**User Guide**](https://sayinel.github.io/baram/en/docs/getting-started/) for detailed usage of every feature.
+> 📖 See the [**User Guide**](https://baram.ing/en/docs/getting-started/) for detailed usage of every feature.
 
 ## AI Integration
 
@@ -228,7 +228,7 @@ Create your own slash commands in **Settings > AI > Custom Commands**. Use varia
 | Toggle Sidebar              | `Cmd+Shift+L`               |
 | Settings                    | `Cmd+,`                     |
 
-> 📖 See the full [**Keyboard Shortcuts reference**](https://sayinel.github.io/baram/en/docs/customization/keyboard-shortcuts/) for every binding.
+> 📖 See the full [**Keyboard Shortcuts reference**](https://baram.ing/en/docs/customization/keyboard-shortcuts/) for every binding.
 
 ## User Interface
 
@@ -279,7 +279,7 @@ See [**CONTRIBUTING.md**](CONTRIBUTING.md) for how to set up your development en
 
 - 🐛 **Found a bug or have a feature request?** Open an [issue](https://github.com/sayinel/baram/issues).
 - 💬 **Questions or ideas?** Start a [discussion](https://github.com/sayinel/baram/discussions).
-- 📖 **Documentation** — [User Guide](https://sayinel.github.io/baram/en/docs/getting-started/) · [Keyboard Shortcuts](https://sayinel.github.io/baram/en/docs/customization/keyboard-shortcuts/) · [FAQ](https://sayinel.github.io/baram/en/docs/faq/general/)
+- 📖 **Documentation** — [User Guide](https://baram.ing/en/docs/getting-started/) · [Keyboard Shortcuts](https://baram.ing/en/docs/customization/keyboard-shortcuts/) · [FAQ](https://baram.ing/en/docs/faq/general/)
 
 ## Support
 

@@ -256,7 +256,7 @@ These work on a focused row in the **Tasks panel** and in the **Weekly review** 
 `Cmd+F` in a PDF tab opens **Find in PDF** rather than the editor's find bar. Holding `Alt` while
 dragging draws an area highlight without switching the toolbar into area mode. Page navigation,
 the side panel, and the two highlight modes are toolbar buttons — see the
-[User Guide](/baram/en/docs/pdf/toolbar-zoom-and-find/).
+[User Guide](/en/docs/pdf/toolbar-zoom-and-find/).
 
 ## File Tree
 
@@ -366,4 +366,4 @@ All keyboard shortcuts can be remapped in **Settings > Keybindings**. Search for
 
 ---
 
-See the full [User Guide](/baram/en/docs/getting-started/) for detailed feature descriptions.
+See the full [User Guide](/en/docs/getting-started/) for detailed feature descriptions.

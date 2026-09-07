@@ -47,6 +47,6 @@ Baram은 플러그인으로 확장할 수 있고, **설정 > 플러그인**에�
 검증할 수 없었거나, 오래 갱신되지 않았으면 — 지금 가진 것이 다 괜찮다고 조용히 암시하지 않고
 그 사실을 밝힙니다.
 
-직접 플러그인을 만들려면 매니페스트 형식, `ExtensionContext` API, 번들·배포를 다루는 [플러그인 개발 가이드](/baram/ko/docs/plugin-dev/overview-and-capabilities/)를 보십시오.
+직접 플러그인을 만들려면 매니페스트 형식, `ExtensionContext` API, 번들·배포를 다루는 [플러그인 개발 가이드](/ko/docs/plugin-dev/overview-and-capabilities/)를 보십시오.
 
 ---

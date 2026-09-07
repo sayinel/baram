@@ -18,7 +18,7 @@ Press `Cmd+Shift+N` (or type `/capture`) to open Quick Capture. The body is the 
 
 While you type, a line under the tag field shows where the capture will land; after you save, a toast names the note and offers **Open**.
 
-Note that a tag matching no note is reported to you but **not written into the file** — in this workflow a tag is an address, not a classification. See [Where a capture lands](/baram/en/docs/journal/zettelkasten/#where-a-capture-lands) in the User Guide.
+Note that a tag matching no note is reported to you but **not written into the file** — in this workflow a tag is an address, not a classification. See [Where a capture lands](/en/docs/journal/zettelkasten/#where-a-capture-lands) in the User Guide.
 
 ### How do I turn an inbox note into a permanent note?
 

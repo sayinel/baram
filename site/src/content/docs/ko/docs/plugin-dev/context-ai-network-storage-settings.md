@@ -20,7 +20,7 @@ listModels(): Promise<AIModel[]>;
 `complete`·`stream`·`listModels`는 모두 **사용자가 직접 설정한 AI 프로바이더·모델·API
 키**(설정 → AI에 정해진 것)를 씁니다 — 플러그인이 자기 키나 프로바이더를 넣을 수는 없습니다.
 개인정보 보호 모드가 여기서 무엇을 막고 무엇을 막지 않는지는
-[신뢰 모델과 보안](/baram/ko/docs/plugin-dev/trust-model-and-errors/#신뢰-모델과-보안)을 보십시오.
+[신뢰 모델과 보안](/ko/docs/plugin-dev/trust-model-and-errors/#신뢰-모델과-보안)을 보십시오.
 
 ## `context.network` (`network` 필요)
 
@@ -43,7 +43,7 @@ fetch(url: string, init?: PluginFetchInit): Promise<PluginFetchResponse>;
 **아닙니다**. `http`/`https` URL만 허용되고, 응답 본문은 항상 UTF-8 문자열입니다(바이너리 응답은
 손실 있게 디코드되어 바이트로 쓸 수 없습니다). 중복된 응답 헤더는 `reqwest`가 마지막으로 순회한
 값으로 접힙니다. 전체 유출·크기·타임아웃 정책은
-[신뢰 모델과 보안](/baram/ko/docs/plugin-dev/trust-model-and-errors/#신뢰-모델과-보안)을 보십시오.
+[신뢰 모델과 보안](/ko/docs/plugin-dev/trust-model-and-errors/#신뢰-모델과-보안)을 보십시오.
 
 ## `context.storage` (`storage` 필요)
 
@@ -56,7 +56,7 @@ remove(key: string): Promise<void>;
 
 단순한 문자열 키/값 저장소이고, 플러그인마다 디렉터리 하나입니다. 어디에 사는지와 무엇을
 보장하는지(또는 보장하지 않는지)는
-[신뢰 모델과 보안](/baram/ko/docs/plugin-dev/trust-model-and-errors/#신뢰-모델과-보안)을 보십시오.
+[신뢰 모델과 보안](/ko/docs/plugin-dev/trust-model-and-errors/#신뢰-모델과-보안)을 보십시오.
 
 ## `context.settings` (`settings` 필요)
 

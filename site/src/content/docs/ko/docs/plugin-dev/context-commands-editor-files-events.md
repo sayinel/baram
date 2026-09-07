@@ -26,7 +26,7 @@ execute(id: string, ...args: unknown[]): Promise<unknown>;
 ```
 
 `opts.paletteVisible === true`이거나 `opts.title`이 있으면 그 명령이 명령 팔레트에 나타납니다 —
-[명령 팔레트 연동](/baram/ko/docs/plugin-dev/commands-and-tiptap-extensions/#명령-팔레트-연동) 참조.
+[명령 팔레트 연동](/ko/docs/plugin-dev/commands-and-tiptap-extensions/#명령-팔레트-연동) 참조.
 
 ## `context.editor` (`editor` 또는 `editor:readonly` 필요)
 

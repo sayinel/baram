@@ -89,5 +89,5 @@ The **Help** menu opens this guide, the keyboard shortcut reference, and the FAQ
 - **Command Palette** (`Cmd+P` or `Cmd+Shift+P`) — Search for any feature
 - **Quick Switcher** (`Cmd+K`) — Quickly open files and jump to headings
 - **Slash Commands** (`/`) — Quick block insertion
-- [**FAQ**](/baram/en/docs/faq/general/) — Frequently asked questions
+- [**FAQ**](/en/docs/faq/general/) — Frequently asked questions
 - [**GitHub Issues**](https://github.com/sayinel/baram/issues) — Report bugs or request features
