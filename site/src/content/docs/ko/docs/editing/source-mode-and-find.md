@@ -13,7 +13,7 @@ sourceHash: "d6c22f3ec7b4"
 - 마크다운 원본 전체 표시
 - 실행 취소·실행 복귀(`Cmd+Z` / `Cmd+Shift+Z`)
 - 줄 번호(설정 > 에디터에서 조정)
-- **Vim 키 바인딩** 선택 가능(설정 > 에디터 > Vim 키 바인딩) — 스위치 하나로 소스 모드·WYSIWYG 에디터·코드 블록 안에서 모달 편집이 켜지고, `/` 검색과 `:w`·`:q`·`:N` ex 명령, 한글 IME를 지원합니다(macOS에서 확인했고 Windows·Linux는 아직 검증하지 않았습니다). [키보드 단축키](/baram/ko/docs/customization/keyboard-shortcuts/#vim-mode) 참조
+- **Vim 키 바인딩** 선택 가능(설정 > 에디터 > Vim 키 바인딩) — 스위치 하나로 소스 모드·WYSIWYG 에디터·코드 블록 안에서 모달 편집이 켜지고, `/` 검색과 `:w`·`:q`·`:N` ex 명령, 한글 IME를 지원합니다(macOS에서 확인했고 Windows·Linux는 아직 검증하지 않았습니다). [키보드 단축키](/baram/ko/docs/customization/keyboard-shortcuts/#vim-모드) 참조
 - 모드를 바꾸면 모든 변경이 WYSIWYG 모드로 그대로 반영됩니다
 
 마크다운을 정확히 손봐야 할 때나 서식이 이상할 때 원인을 찾는 데 좋습니다.

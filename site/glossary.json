@@ -264,9 +264,9 @@
       "ko": "제텔",
       "appKey": "menu.workspace.zettel",
       "avoid": [
-        "제텔카스텐 노트",
         "쪽지"
       ],
+      "note": "'제텔카스텐' 은 avoid 에 넣지 않는다 — 방법론(Zettelkasten)의 이름이고 앱의 공간 이름(제텔)과 다른 말이다. 처음엔 '제텔카스텐 노트' 를 넣었다가, 원문의 'atomic Zettelkasten notes' 를 옮긴 정확한 문장이 걸려서 뺐다. **금지어는 그 용어의 그럴듯한 오역이어야 하고, 인접한 다른 개념의 정확한 이름이면 안 된다.**",
       "requireKo": true
     },
     {
