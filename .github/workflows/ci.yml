@@ -70,6 +70,15 @@ jobs:
       - name: Lint (prettier + eslint + stylelint + typecheck + knip)
         run: npm run lint
 
+      # ‼️ The rust job runs `npm run build` too — this is NOT its duplicate.
+      # rust skips on any PR touching no rust path, which is exactly the shape
+      # this covers: a frontend-only or dependency-only change. Before this
+      # step, `vite build` had never run on PRs like #566 (tests only) or
+      # #578/#581 (the tiptap and vitest bumps). `npm run lint` already runs
+      # tsc, so what this adds over typecheck is the bundle itself.
+      - name: Production build (vite bundle)
+        run: npm run build
+
   # ── Security: Secret Detection (all events) ────────────────────────
   security:
     runs-on: ubuntu-24.04
