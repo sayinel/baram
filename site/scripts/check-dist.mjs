@@ -225,6 +225,26 @@ for (const locale of ROUTES.locales) {
 }
 if (!cardLocales) problems.push("[문서 홈 0개] 카드 단정이 한 로케일에서도 돌지 않았다");
 
+// ── 6. robots.txt — 크롤러에게 주는 **유일한 절대 URL**
+//
+// ‼️ 파생시켰다는 것과 산출물이 옳다는 것은 다른 말이다. 엔드포인트가 빌드에서 빠지거나
+//    (`src/pages/` 밖으로 옮기면 그렇게 된다) sitemap 파일 이름이 바뀌어도 다른 게이트는
+//    전부 초록이다 — 이 파일이 존재하는 이유가 정확히 그 부류다. 그래서 셋을 묻는다:
+//    파일이 났는가, 그 URL 이 routes 가 조립한 것과 같은가, 가리키는 대상이 dist 에 있는가.
+const robotsFile = join(DIST, "robots.txt");
+const wantSitemap = absolute("/sitemap-index.xml");
+if (!existsSync(robotsFile)) {
+  problems.push("[robots.txt 없음] 크롤러가 sitemap 을 못 찾는다");
+} else {
+  const declared = /^Sitemap:\s*(\S+)$/m.exec(readFileSync(robotsFile, "utf8"))?.[1];
+  if (!declared) problems.push("[robots.txt] Sitemap 줄이 없다");
+  else if (declared !== wantSitemap) {
+    problems.push(`[robots.txt] Sitemap ${declared} (기대 ${wantSitemap})`);
+  } else if (!resolveInDist(withBase("/sitemap-index.xml"))) {
+    problems.push(`[robots.txt] 가리키는 ${wantSitemap} 가 dist 안에 없다`);
+  }
+}
+
 const total = PAGES.length;
 const done = PAGES.filter((p) => migrated(p.slug)).length;
 console.log(
