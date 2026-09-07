@@ -27,26 +27,45 @@ When you first open Baram, a Welcome screen greets you with two options:
 
 Baram uses a 3-column layout:
 
-```
-┌──────────┬──────────────────────────────┬─────────────┐
-│          │         Tab Bar              │             │
-│  Left    │                              │   Right     │
-│ Sidebar  │       Main Editor            │  Sidebar    │
-│          │       (WYSIWYG)              │             │
-│ File Tree│                              │  Outline    │
-│ Backlinks│                              │             │
-│ Bookmarks│                              │             │
-├──────────┴──────────────────────────────┴─────────────┤
-│                     Status Bar                        │
-└───────────────────────────────────────────────────────┘
-```
+<figure class="ui-map not-content">
+  <div class="ui-map-frame">
+    <div class="ui-map-chrome" aria-hidden="true"><i></i><i></i><i></i></div>
+    <div class="ui-map-cell ui-map-contexts">
+      <strong>Context Tab Bar</strong>
+      <span>one tab per vault or folder</span>
+    </div>
+    <div class="ui-map-cell ui-map-rail" aria-label="Activity Bar">
+      <span class="ui-map-icons" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+      <strong>Activity Bar</strong>
+    </div>
+    <div class="ui-map-cell ui-map-left">
+      <strong>Left Sidebar</strong>
+      <span>File tree · Backlinks · Search</span>
+    </div>
+    <div class="ui-map-center">
+      <div class="ui-map-cell"><strong>Document Tab Bar</strong></div>
+      <div class="ui-map-cell ui-map-editor">
+        <strong>Main Editor</strong>
+        <span>WYSIWYG</span>
+      </div>
+    </div>
+    <div class="ui-map-cell ui-map-right">
+      <strong>Right Sidebar</strong>
+      <span>Outline · AI chat</span>
+    </div>
+    <div class="ui-map-cell ui-map-status"><strong>Status Bar</strong></div>
+  </div>
+</figure>
 
+- **Context Tab Bar** — one tab for every vault or folder you have open. It spans the full width at the very top of the window, and hides when no vault or folder is open.
+- **Activity Bar** — the icon strip that chooses what the left sidebar and the right panel show. Pick which icons appear, and in what order, under **Settings > Activity Bar**. It hides when no folder is open.
 - **Left Sidebar** — File tree, backlinks panel, bookmarks, global search, Git source control, and version history. Toggle with `Cmd+Shift+L` (macOS) / `Ctrl+Shift+L` (Windows/Linux).
+- **Document Tab Bar** — the documents open in the current context. Drag a tab out of the bar to tear it off into its own window.
 - **Main Editor** — The WYSIWYG editing area where you write.
 - **Right Sidebar** — Document outline showing heading structure, or AI Chat panel.
 - **Status Bar** — Shows word count, line count, and cursor position.
 
-> By default, both sidebars are hidden to maximize writing space. The editor follows the principle of **minimal interface** — only showing what you need, when you need it.
+> The left sidebar opens with a workspace and the right one starts closed, so the window stays mostly writing space. The editor follows the principle of **minimal interface** — only showing what you need, when you need it.
 
 ---
 

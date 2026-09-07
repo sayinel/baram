@@ -1,0 +1,173 @@
+/* 문서 페이지 안에서 쓰는 컴포넌트 스타일.
+   `starlight-tokens.css` 와 나눠 둔다 — 그쪽은 Baram 토큰을 Starlight 변수에 잇는
+   **이름만 있는 파일**이고, 여기는 실제로 무언가를 그리는 규칙이 온다.
+
+   색은 전부 `--sl-color-*` 로 낸다. 그 이름들이 이미 8개 테마에서 해소되므로
+   여기서 테마별로 또 나누면 갈라진다. */
+
+/* ── 화면 둘러보기 도해 (getting-started)
+ *
+ * ‼️ 원래 코드 펜스 안 ASCII 도해였다. 상자 문자는 폭이 1인 글자를 가정하는데 한국어
+ *    라벨은 2를 차지해서 **라인이 어긋났고**, 문서의 첫 페이지에서 가장 먼저 보이는
+ *    그림이 그랬다. CSS 격자로 그리면 어긋날 수가 없고, 테마를 따라가고, 라벨이
+ *    번역 가능한 텍스트로 남아 용어 게이트의 스캔 안에 들어온다. */
+.ui-map {
+  margin: 1.5rem 0;
+}
+
+/* ‼️ 이 도해를 담은 `<figure>` 는 `not-content` 클래스를 **반드시** 함께 달아야 한다.
+ *    `markdown.css` 의 flow 규칙
+ *      `.sl-markdown-content :not(a,strong,em,del,span,input,code,br)
+ *       + :not(a,…, :where(.not-content *)) { margin-top: var(--sl-content-gap-y) }`
+ *    이 `div` 도 `i` 도 제외하지 않아서, **형제 요소마다 위쪽 여백**이 붙는다 —
+ *    격자 셀이 아래로 밀리고 창 머리 점 세 개가 계단처럼 어긋났다. 게이트는 전부
+ *    초록이었고 이것을 찾은 것은 렌더한 스크린샷 하나였다.
+ *
+ *    `not-content` 는 그 선택자 안에 이미 제외로 들어 있는 Starlight 의 정식 탈출구다
+ *    (markdown.css 의 49개 규칙이 존중한다). 여기서 `.ui-map * { margin: 0 }` 으로
+ *    되돌리는 방법도 되지만 그것은 **레이어 밖이라서** 이기는 것이다 — 특정도로는
+ *    (0,1,0) 대 (0,1,2) 로 지므로, Starlight 이 `@layer starlight.content` 를 걷는 날
+ *    조용히 다시 깨진다. */
+
+.ui-map-frame {
+  display: grid;
+  /* 창 크롬을 위에서 아래로: 컨텍스트 탭 바는 창 **전체 폭**이다(AppLayout 의
+     `.app-layout` 이 column flex 이고 ContextTabBar 가 그 첫 자식이다 — 왼쪽
+     사이드바 위가 아니다). 활동 표시줄은 그 아래 몸통의 맨 왼쪽 세로 띠다. */
+  grid-template-areas:
+    "chrome   chrome   chrome chrome"
+    "contexts contexts contexts contexts"
+    "rail     left     center right"
+    "status   status   status status";
+  grid-template-columns: auto minmax(0, 0.85fr) minmax(0, 2.1fr) minmax(0, 1fr);
+  /* gap 을 배경색이 채워 격자선이 된다 — 테두리를 셀마다 그리면 이중선이 생긴다 */
+  gap: 1px;
+  border: 1px solid var(--sl-color-hairline);
+  border-radius: 0.75rem;
+  background: var(--sl-color-hairline);
+  overflow: hidden;
+  box-shadow: var(--sl-shadow-sm);
+  font-size: var(--sl-text-sm);
+  line-height: 1.45;
+}
+
+.ui-map-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.7rem 0.85rem;
+  background: var(--sl-color-bg);
+}
+
+.ui-map-cell strong {
+  color: var(--sl-color-white);
+  font-weight: 600;
+}
+
+.ui-map-cell span {
+  color: var(--sl-color-gray-3);
+  font-size: var(--sl-text-xs);
+  /* 좁은 칸에서 한국어가 낱말 중간에서 끊기는 것을 막는다 (`북마` / `크`) */
+  word-break: keep-all;
+}
+
+/* 창처럼 보이게 하는 머리 — 순전히 장식이라 aria-hidden 이다 */
+.ui-map-chrome {
+  display: flex;
+  gap: 0.35rem;
+  grid-area: chrome;
+  padding: 0.6rem 0.85rem;
+  background: var(--sl-color-gray-6);
+}
+
+.ui-map-chrome i {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--sl-color-gray-4);
+}
+
+/* 컨텍스트 탭 바 — 얇은 줄이라 이름과 설명을 나란히 둔다 */
+.ui-map-contexts {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 0.5rem;
+  grid-area: contexts;
+}
+
+/* 활동 표시줄 — 실제로는 아이콘만 있는 좁은 세로 띠다. 아이콘을 흉내 낸 사각형
+   넷은 장식이고(aria-hidden), 이름은 두 줄로 접혀 들어간다. */
+.ui-map-rail {
+  align-items: center;
+  gap: 0.4rem;
+  grid-area: rail;
+  padding-inline: 0.6rem;
+  background: var(--sl-color-gray-6);
+  text-align: center;
+}
+
+.ui-map-icons {
+  display: flex;
+  flex-direction: column;
+  gap: 0.22rem;
+}
+
+.ui-map-icons i {
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 3px;
+  background: var(--sl-color-gray-4);
+}
+
+.ui-map-left { grid-area: left; }
+.ui-map-right { grid-area: right; }
+
+.ui-map-center {
+  display: flex;
+  flex-direction: column;
+  /* 안쪽 구분선도 같은 방식 — 탭 바와 에디터 사이 */
+  gap: 1px;
+  grid-area: center;
+  background: var(--sl-color-hairline);
+}
+
+.ui-map-editor {
+  flex: 1;
+  /* 도해 전체 높이를 사실상 이 값이 정한다 — 좌우 칸이 가운데 열에 맞춰 늘어난다.
+     실제 창만큼 키울 필요는 없지만, 너무 낮으면 에디터가 주인공으로 안 보인다. */
+  min-height: 9.5rem;
+}
+
+.ui-map-status {
+  grid-area: status;
+  background: var(--sl-color-gray-6);
+}
+
+/* 좁은 화면에서는 3열이 의미를 잃는다 — 위에서 아래로 읽는 목록이 된다 */
+@media (max-width: 40rem) {
+  .ui-map-frame {
+    grid-template-areas:
+      "chrome"
+      "contexts"
+      "rail"
+      "left"
+      "center"
+      "right"
+      "status";
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ui-map-editor {
+    min-height: 5rem;
+  }
+
+  .ui-map-rail {
+    flex-direction: row;
+    justify-content: flex-start;
+    text-align: start;
+  }
+
+  .ui-map-icons {
+    flex-direction: row;
+  }
+}

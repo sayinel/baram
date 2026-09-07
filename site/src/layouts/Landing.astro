@@ -2,6 +2,8 @@
 // 랜딩 페이지 셸 — nav · footer · head. Starlight 레이아웃 밖이다(디자인 자유도).
 // 언어는 URL 이 정한다 — 옛 `localStorage` + `data-i18n` 치환은 폐기했다.
 import { docPath, withBase } from "../../routes.mjs";
+import logoDark from "../assets/baram-logo-dark.png";
+import logoLight from "../assets/baram-logo.png";
 import { LOCALE_LABELS, otherLocale, useTranslations, type Locale } from "../i18n";
 import "../styles/site.css";
 
@@ -13,7 +15,10 @@ const { locale } = Astro.props;
 const t = useTranslations(locale);
 const other = otherLocale(locale);
 
-const guide = withBase(docPath("getting-started", locale));
+// nav·푸터의 "문서" 는 **문서 홈**으로 보낸다 — 거기가 시작 경로·주제 카드·자주
+// 찾는 것을 한자리에 놓은 안내면이다. 앱 도움말의 "사용 설명서" 는 이것과 별개로
+// help-routes.json 의 entries.guide 가 정하고, 그쪽은 시작하기 페이지로 직행한다.
+const docsHome = withBase(docPath("index", locale));
 
 const title = "Baram — Lightweight WYSIWYG Markdown Editor";
 const description = t("hero.sub");
@@ -57,10 +62,14 @@ const ogImage = new URL(withBase("/assets/hero.png"), Astro.site).href;
     <header class="nav">
       <div class="container nav-inner">
         <a class="nav-logo" href={withBase(`/${locale}/`)}>
-          <picture>
-            <source media="(prefers-color-scheme: dark)" srcset={withBase("/assets/baram-logo-dark.png")} />
-            <img src={withBase("/assets/baram-logo.png")} alt="Baram" />
-          </picture>
+          {/* ‼️ `<picture media="(prefers-color-scheme: dark)">` 이었다. `<picture>` 의 선택은
+              OS 설정만 보고 `[data-theme]` 을 보지 않는데, 이 사이트의 테마는 3-상태다
+              (기본 · prefers-color-scheme · [data-theme]). 그래서 OS 가 라이트인데 토글(◐)로
+              다크를 고르면 **어두운 잉크 워드마크가 어두운 nav 에 올라가 글자가 거의 안 보였다** —
+              옛 마크업을 실제 페이지에 되돌려 렌더해 확인한 증상이다. 둘 다 내고 CSS 가
+              고르게 한다(site.css 의 3-상태 규칙) — Starlight 이 자기 로고에 쓰는 방식. */}
+          <img class="logo-light" src={logoLight.src} width={logoLight.width} height={logoLight.height} alt="Baram" />
+          <img class="logo-dark" src={logoDark.src} width={logoDark.width} height={logoDark.height} alt="Baram" />
         </a>
         <nav class="nav-links">
           <a href="#features">{t("nav.features")}</a>
@@ -68,7 +77,7 @@ const ogImage = new URL(withBase("/assets/hero.png"), Astro.site).href;
           <a href="#plugins">{t("nav.plugins")}</a>
           <a href="#install">{t("nav.install")}</a>
           <a href="#faq">{t("nav.faq")}</a>
-          <a href={guide}>{t("nav.docs")}</a>
+          <a href={docsHome}>{t("nav.docs")}</a>
         </nav>
         <div class="nav-actions">
           <a class="lang-toggle" href={withBase(`/${other}/`)} hreflang={other} lang={other}>
@@ -90,7 +99,7 @@ const ogImage = new URL(withBase("/assets/hero.png"), Astro.site).href;
         <nav>
           <a href="https://github.com/sayinel/baram">GitHub</a>
           <a href="https://github.com/sayinel/baram/releases">{t("footer.releases")}</a>
-          <a href={guide}>{t("footer.docs")}</a>
+          <a href={docsHome}>{t("footer.docs")}</a>
         </nav>
       </div>
     </footer>

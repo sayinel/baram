@@ -15,9 +15,16 @@
 //
 // ‼️ **스캔 범위가 이 게이트의 전부다.** 한 번 좁게 잡았다가 프론트매터의 `title` 이
 //    빠졌다 — 그 페이지에서 가장 눈에 띄는 문자열(h1·사이드바 라벨·브라우저 탭·meta)이
-//    정확히 검사 밖이었다. 코드 펜스도 그랬다: `getting-started` 의 3열 화면 도해는 펜스
-//    안이지만 사용자가 입력하는 리터럴이 아니라 **읽는 산문**이고, 패널 이름이 한자리에
-//    모여 있는 곳이다. 지금은 프론트매터의 사람이 읽는 필드와 펜스를 모두 본다.
+//    정확히 검사 밖이었다. 코드 펜스도 그랬다: 펜스 안이라고 다 사용자가 입력하는
+//    리터럴이 아니고 **읽는 산문**이 섞인다(`plugin-dev/quick-start` 의 프로젝트 트리는
+//    주석이 한국어다). 지금은 프론트매터의 사람이 읽는 필드와 펜스를 모두 본다.
+//    새어 나간 세 번째·네 번째는 **페이지 밖에 있는 번역문**이다. (3) 사이드바 그룹
+//    이름은 `ia-tree.mjs` 에 있어서 안 보였고 `Vault와 작업 공간` 이 금지 변형
+//    (`작업 공간`)과 requireKo 위반(`Vault`)을 동시에 갖고 배포돼 있었다. (4) **한국어
+//    랜딩 전체**(`src/i18n/ko.json`, 89키)도 안 보였고 위반 **6건**이 살아 있었다 —
+//    `Vault & 퍼스펙티브` 는 (3)을 고치게 만든 것과 정확히 같은 짝이었다.
+//    ‼️ 그러니 "스캔이 넓어졌다" 를 주장으로 적지 말 것. 이 목록에 **무엇이 들어 있는지**로
+//       적고, 새로 번역되는 표면이 생기면 그때 이 목록에 더한다.
 //
 // ‼️ 이 게이트는 열거된 금지 목록이다 — 열린 집합을 덮지 못한다. `작업`(Task)·
 //    `저장소`(Vault) 처럼 가장 그럴듯한 오역이 앱의 다른 기능 어휘라서 금지할 수 없다.
@@ -30,6 +37,8 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { GROUPS } from "../ia-tree.mjs";
+import { translationLocales } from "../routes.mjs";
 import { pageFile, slugsOn, TRANSLATION_DIRS } from "./docs-fs.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -179,41 +188,79 @@ function scannable(markdown) {
 }
 
 // ── 3·4. 번역 ↔ 사전
-let scanned = 0;
-for (const { dir, locale } of TRANSLATION_DIRS) {
-  for (const slug of slugsOn(dir)) {
-    const text = scannable(readFileSync(pageFile(dir, slug), "utf8"));
-    scanned += 1;
-    for (const term of terms) {
-      for (const bad of forbidden(term)) {
-        if (text.includes(bad)) {
-          problems.push(
-            `[용어] ${locale}/${slug}: "${bad}" → "${term.ko}" (${term.en}, 앱 ${term.appKey})`,
-          );
-        }
+//
+// 스캔 대상은 **사용자가 읽는 번역된 문자열 전부**다 — 페이지 본문과, 페이지 밖에 있는
+// UI 라벨. 둘을 한 목록으로 모아 같은 판정을 걸어야 한쪽만 검사받는 일이 없다.
+const pages = TRANSLATION_DIRS.flatMap(({ dir, locale }) =>
+  slugsOn(dir).map((slug) => ({
+    name: `${locale}/${slug}`,
+    text: scannable(readFileSync(pageFile(dir, slug), "utf8")),
+  })),
+);
+
+// 사이드바 그룹 라벨. 문서 홈의 주제 카드도 같은 값을 쓰므로(DocsHome.astro) 이 라벨
+// 하나가 사이드바와 카드 두 곳에 뜬다.
+const labels = Object.entries(GROUPS).flatMap(([key, byLocale]) =>
+  translationLocales().flatMap((locale) =>
+    byLocale[locale] ? [{ name: `ia-tree.mjs GROUPS.${key}.${locale}`, text: byLocale[locale] }] : [],
+  ),
+);
+
+// 사이트 자신의 랜딩 문자열. 페이지도 아니고 IA 라벨도 아니라 두 목록 어디에도 없었다.
+const landing = translationLocales().flatMap((locale) => {
+  const file = join(HERE, "..", "src/i18n", `${locale}.json`);
+  return Object.entries(JSON.parse(readFileSync(file, "utf8")))
+    .filter(([, value]) => typeof value === "string")
+    .map(([key, value]) => ({ name: `src/i18n/${locale}.json ${key}`, text: value }));
+});
+
+for (const { name, text } of [...pages, ...labels, ...landing]) {
+  for (const term of terms) {
+    for (const bad of forbidden(term)) {
+      if (text.includes(bad)) {
+        problems.push(`[용어] ${name}: "${bad}" → "${term.ko}" (${term.en}, 앱 ${term.appKey})`);
       }
-      // 영어를 그대로 둔 것. 금지 목록은 부재를 못 잡는다.
-      if (term.requireKo) {
-        const left = new RegExp(`(^|[^A-Za-z])${term.en}([^A-Za-z]|$)`).test(text);
-        if (left && !text.includes(term.ko)) {
-          problems.push(
-            `[영어 그대로] ${locale}/${slug}: "${term.en}" 를 두고 "${term.ko}" 가 없다`,
-          );
-        }
+    }
+    // 영어를 그대로 둔 것. 금지 목록은 부재를 못 잡는다.
+    if (term.requireKo) {
+      const left = new RegExp(`(^|[^A-Za-z])${term.en}([^A-Za-z]|$)`).test(text);
+      if (left && !text.includes(term.ko)) {
+        problems.push(`[영어 그대로] ${name}: "${term.en}" 를 두고 "${term.ko}" 가 없다`);
       }
     }
   }
 }
 
+// ‼️ 라벨은 **개수를 파생시켜 소진을 단정한다.** 개수만 세면 `ko: ""` 로 빈 문자열을 둔
+//    그룹이 스캔에서 조용히 빠지는데(`byLocale[locale]` 이 falsy) 총계는 11개로 여전히
+//    0보다 크므로 통과한다 — 그 그룹은 사이드바와 주제 카드에 **빈 이름**으로 뜬다.
+//    (완전히 없는 키는 Starlight 의 zod 가 `astro sync` 에서 걸지만 메시지가 엉뚱하다.)
+const expectedLabels = Object.keys(GROUPS).length * translationLocales().length;
+if (labels.length !== expectedLabels) {
+  problems.push(
+    `[라벨 누락] 번역된 그룹 라벨이 ${labels.length}개 — GROUPS ${Object.keys(GROUPS).length}개 × ` +
+      `번역 로케일 ${translationLocales().length}개 = ${expectedLabels}개여야 한다. 빈 문자열이나 없는 키를 찾을 것`,
+  );
+}
+
 const enforced = terms.filter((t) => forbidden(t).length || t.requireKo).length;
 console.log(
-  `용어 ${terms.length}개 · 앱 키 대조 ${terms.length}건 · ` +
-    `본문에서 강제 ${enforced}개 · 번역 페이지 ${scanned}개 스캔`,
+  `용어 ${terms.length}개 · 앱 키 대조 ${terms.length}건 · 본문에서 강제 ${enforced}개 · ` +
+    `번역 페이지 ${pages.length}개 · UI 라벨 ${labels.length}개 · 랜딩 문자열 ${landing.length}개 스캔`,
 );
-// ‼️ 열린 채 실패하면 안 된다. 로케일 설정이 흔들리면 본문 스캔 전체가 공허해지는데
-//    종료 코드는 0이 된다 — 신선도 판정이 조용히 꺼지는 것과 같은 형태다.
-if (!scanned) {
+// ‼️ 열린 채 실패하면 안 된다. 로케일 설정이 흔들리면 스캔 전체가 공허해지는데 종료
+//    코드는 0이 된다 — 신선도 판정이 조용히 꺼지는 것과 같은 형태다.
+//    **두 부류를 따로 센다.** 합계만 보면 라벨이 0이 돼도 페이지 57개가 그것을 가린다.
+if (!pages.length) {
   console.error("❌ 번역 페이지를 하나도 못 찾았습니다 — 본문 스캔이 공허하다 (경로·로케일 설정 확인)");
+  process.exit(1);
+}
+if (!labels.length) {
+  console.error("❌ 번역된 UI 라벨을 하나도 못 찾았습니다 — ia-tree.mjs 의 GROUPS 모양을 확인하십시오");
+  process.exit(1);
+}
+if (!landing.length) {
+  console.error("❌ 번역된 랜딩 문자열을 하나도 못 찾았습니다 — src/i18n/<locale>.json 을 확인하십시오");
   process.exit(1);
 }
 console.log();
