@@ -21,13 +21,23 @@ import {
 
 const DEFAULT_LOCALE: string = ROUTES.defaultLocale;
 const LOCALES = new Set<string>(ROUTES.locales);
+const DOCS_PREFIX = ROUTES.docsPrefix.replace(/\/$/, "");
+
+/**
+ * 번역 신선도를 묻지 않는 페이지.
+ *
+ * 404 는 문서가 아니라 크롬이다. 한 문장짜리 페이지에 "원문보다 낡음" 이야기는 없고,
+ * 무엇보다 **원문 짝이 `en/404` 가 아니라 컬렉션 루트의 `404`** 다(Starlight 의
+ * 로케일별 404 규약). 그대로 두면 번역된 404 가 "고아" 로 오진돼 빌드가 죽는다.
+ */
+const UNVERSIONED = new Set(["404"]);
 
 const docs = await getCollection("docs");
 const byId = new Map(docs.map((entry) => [entry.id, entry]));
 
 /**
  * `en/docs/getting-started` → `{ locale: "en", rest: "docs/getting-started" }`.
- * 로케일 디렉터리 밖의 엔트리(`404`)는 `null`.
+ * 로케일 디렉터리 밖의 엔트리(루트 `404`)는 `null`.
  */
 function splitId(id: string): { locale: string; rest: string } | null {
   const slash = id.indexOf("/");
@@ -39,29 +49,26 @@ function splitId(id: string): { locale: string; rest: string } | null {
 /**
  * 엔트리 id 의 뒷부분 → IA slug.
  * 문서 홈은 Astro 가 `index` 를 떼어 `en/docs` 로 주므로 `docs` 자체가 그 페이지다.
- *
- * ‼️ 이 함수는 모든 콘텐츠가 `<locale>/docs/**` 아래 있다고 가정한다 — `docPath()` 가
- *    그 접두어를 다시 붙이기 때문이다. 훗날 `<locale>/blog/**` 같은 섹션이 생기면
- *    원문 링크가 `/en/docs/blog/post/`(404)로 **조용히** 틀리게 나온다. 링크가 조용히
- *    틀리는 것보다 빌드가 시끄럽게 죽는 편이 낫다.
  */
 function slugOf(rest: string): string {
-  const prefix = ROUTES.docsPrefix.replace(/\/$/, "");
-  if (rest === prefix) return "index";
-  if (!rest.startsWith(`${prefix}/`)) {
-    throw new Error(
-      `routeData: "${rest}" 가 "${prefix}/" 아래에 없습니다. 새 섹션을 추가했다면 ` +
-        `원문 URL 조립(routes.mjs 의 docPath)을 먼저 그 섹션에 맞게 넓히십시오.`,
-    );
-  }
-  return rest.slice(prefix.length + 1);
+  return rest === DOCS_PREFIX ? "index" : rest.slice(DOCS_PREFIX.length + 1);
 }
 
-// ‼️ 아래 판정은 전부 id 모양에 기댄다. Astro 가 id 생성 규칙을 바꾸면 조건이 조용히
-//    거짓이 되어 **모든 페이지가 판정을 건너뛴다**. 그러면 낡은 번역이 영영 안 잡히므로
-//    여기서 한 번 크게 실패시킨다.
+/** 신선도를 묻지 않기로 한 페이지인가 (`UNVERSIONED`). */
+const isExempt = (rest: string): boolean => UNVERSIONED.has(rest);
+
+/** `docPath()` 가 URL을 조립할 수 있는 자리에 있는가. */
+const isUnderDocs = (rest: string): boolean =>
+  rest === DOCS_PREFIX || rest.startsWith(`${DOCS_PREFIX}/`);
+
+// ── 모듈 적재 시 한 번, 컬렉션 전체를 검사한다.
+//
+// ‼️ 이 검사를 미들웨어 안에 두면 **낡은 페이지가 생기는 날에야** 발동한다(판정이
+//    `state === "current"` 뒤에 있으므로). 여기로 올려 두면 새 섹션을 넣는 순간
+//    실패한다 — 링크가 조용히 틀리는 것보다 빌드가 시끄럽게 죽는 편이 낫다.
 const localeEntries = docs.filter((entry) => splitId(entry.id) !== null);
 if (localeEntries.length < docs.length / 2) {
+  // id 모양이 바뀌면 아래 판정 전체가 조용히 건너뛰어진다.
   throw new Error(
     `routeData: 콘텐츠 엔트리 id 모양이 예상과 다릅니다 (로케일 접두어를 가진 것 ` +
       `${localeEntries.length}/${docs.length}). 예: ${docs
@@ -69,6 +76,16 @@ if (localeEntries.length < docs.length / 2) {
         .map((e) => e.id)
         .join(", ")}`,
   );
+}
+for (const entry of localeEntries) {
+  const { rest } = splitId(entry.id)!;
+  if (!isExempt(rest) && !isUnderDocs(rest)) {
+    throw new Error(
+      `routeData: "${entry.id}" 가 "${DOCS_PREFIX}/" 아래에 없습니다. 새 섹션을 ` +
+        `추가했다면 원문 URL 조립(routes.mjs 의 docPath)을 그 섹션에 맞게 넓히고, ` +
+        `신선도를 묻지 않을 페이지라면 UNVERSIONED 에 넣으십시오.`,
+    );
+  }
 }
 
 export const onRequest = defineRouteMiddleware((context) => {
@@ -79,6 +96,7 @@ export const onRequest = defineRouteMiddleware((context) => {
 
   const parts = splitId(route.entry.id);
   if (!parts || parts.locale === DEFAULT_LOCALE) return;
+  if (isExempt(parts.rest)) return; // 404 같은 크롬 — 위 UNVERSIONED 주석 참조
 
   const sourceId = `${DEFAULT_LOCALE}/${parts.rest}`;
   const source = byId.get(sourceId);
@@ -98,8 +116,8 @@ export const onRequest = defineRouteMiddleware((context) => {
   if (state === "unstamped") {
     throw new Error(
       `스탬프 없는 번역: ${route.entry.id} 에 sourceHash 가 없습니다. ` +
-        `\`npm run i18n:stamp\` 로 찍으십시오 — 스탬프가 없으면 낡음을 판정할 수 없고, ` +
-        `판정할 수 없는 번역은 조용히 신뢰받습니다.`,
+        `\`npm run i18n:stamp -- ${parts.locale}/${slugOf(parts.rest)}\` 로 찍으십시오 — 스탬프가 ` +
+        `없으면 낡음을 판정할 수 없고, 판정할 수 없는 번역은 조용히 신뢰받습니다.`,
     );
   }
 

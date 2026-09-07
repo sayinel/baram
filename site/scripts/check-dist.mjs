@@ -16,7 +16,7 @@ import {
   splitFrontmatter,
   translationState,
 } from "../src/lib/source-hash.ts";
-import { EN_DOCS, KO_DOCS, pageFile, slugsOn } from "./docs-fs.mjs";
+import { EN_DOCS, pageFile, slugsOn, TRANSLATION_DIRS } from "./docs-fs.mjs";
 
 const DIST = join(dirname(fileURLToPath(import.meta.url)), "..", "dist");
 
@@ -107,37 +107,56 @@ for (const page of koPages) {
 //    로 계산한다. 둘이 갈리면 스탬프를 찍자마자 낡음으로 뜨거나(과잉) 영영 안 뜬다(침묵).
 //    소스만 보는 단위 테스트로는 절대 못 잡는다 — **디스크 판정 vs 렌더된 배너**를
 //    산출물에서 맞대야 한다.
-const koOnDisk = slugsOn(KO_DOCS);
-if (!koOnDisk.length) {
-  console.log("ℹ️ ko 페이지가 없어 낡음 판정 대조를 건너뜁니다 (단정이 공허해진다)");
-}
-for (const slug of koOnDisk) {
-  const enFile = pageFile(EN_DOCS, slug);
-  if (!enFile) continue; // 고아는 3번이 이미 신고했다
-  const parts = splitFrontmatter(readFileSync(pageFile(KO_DOCS, slug), "utf8"));
-  const expected = hashSourceFile(readFileSync(enFile, "utf8"), `en/${slug}`);
-  const state = translationState(expected, parts ? frontmatterSourceHash(parts.frontmatter) : undefined);
+const enOnDisk = slugsOn(EN_DOCS);
+let compared = 0;
+for (const { dir, locale } of TRANSLATION_DIRS) {
+  const onDisk = slugsOn(dir);
+  for (const slug of onDisk) {
+    const enFile = pageFile(EN_DOCS, slug);
+    if (!enFile) continue; // 고아는 3번이 이미 신고했다
+    const parts = splitFrontmatter(readFileSync(pageFile(dir, slug), "utf8"));
+    const expected = hashSourceFile(readFileSync(enFile, "utf8"), `en/${slug}`);
+    const state = translationState(expected, parts ? frontmatterSourceHash(parts.frontmatter) : undefined);
 
-  const built = resolveInDist(withBase(docPath(slug, "ko")));
-  if (!built) { problems.push(`[산출물 없음] ko/${slug} 가 dist 에 없다`); continue; }
-  const shown = readFileSync(built, "utf8").includes("data-stale-translation");
-  if (state === "stale" && !shown) {
-    problems.push(`[판정 불일치] ko/${slug} — 디스크는 낡음인데 배너가 없다 (두 해시 계산이 갈렸다)`);
+    const built = resolveInDist(withBase(docPath(slug, locale)));
+    if (!built) { problems.push(`[산출물 없음] ${locale}/${slug} 가 dist 에 없다`); continue; }
+    const html = readFileSync(built, "utf8");
+    const shown = html.includes("data-stale-translation");
+    compared += 1;
+    if (state === "stale" && !shown) {
+      problems.push(`[판정 불일치] ${locale}/${slug} — 디스크는 낡음인데 배너가 없다 (두 해시 계산이 갈렸다)`);
+    }
+    if (state === "current" && shown) {
+      problems.push(`[판정 불일치] ${locale}/${slug} — 디스크는 최신인데 배너가 떴다 (두 해시 계산이 갈렸다)`);
+    }
+    // ‼️ 배너가 **있다**는 것만으로는 부족하다. 그 안의 "원문 보기" href 는 우리가
+    //    조립한 것이고 `starlightLinksValidator` 는 컴포넌트가 만든 href 를 못 본다.
+    //    이 파일이 존재하는 이유가 바로 그 부류다 — 스텁의 목적지가 dist 안에 실재하는지
+    //    묻는 단정 하나가 base 누락을 잡았다. 같은 질문을 배너에도 한다.
+    if (shown) {
+      // 마커 뒤 첫 링크를 잡는다 — 속성 순서나 클래스에 기대지 않는다.
+      const after = html.slice(html.indexOf("data-stale-translation"));
+      const href = /<a href="([^"]+)"/.exec(after)?.[1];
+      if (!href) problems.push(`[배너 링크 없음] ${locale}/${slug} — 배너에 원문 링크가 없다`);
+      else if (!resolveInDist(href)) {
+        problems.push(`[배너 링크 부재] ${locale}/${slug} → ${href} 가 dist 안에 없다`);
+      }
+    }
   }
-  if (state === "current" && shown) {
-    problems.push(`[판정 불일치] ko/${slug} — 디스크는 최신인데 배너가 떴다 (두 해시 계산이 갈렸다)`);
+
+  // 미번역(폴백) 페이지는 절대 낡음 배너를 달면 안 된다.
+  // ‼️ 폴백 라우트는 `id` 가 `ko/...` 인데 `entry` 는 **en 엔트리**다(Starlight 실측).
+  //    판정을 `route.id` 로 갈랐다면 미번역 페이지가 전부 여기서 걸렸을 것이다.
+  for (const slug of enOnDisk) {
+    if (onDisk.includes(slug)) continue;
+    const built = resolveInDist(withBase(docPath(slug, locale)));
+    if (built && readFileSync(built, "utf8").includes("data-stale-translation")) {
+      problems.push(`[폴백에 배너] ${locale}/${slug} 는 미번역인데 낡음 배너가 붙었다`);
+    }
   }
 }
-
-// 미번역(폴백) 페이지는 절대 낡음 배너를 달면 안 된다.
-// ‼️ 폴백 라우트는 `id` 가 `ko/...` 인데 `entry` 는 **en 엔트리**다(Starlight 실측).
-//    판정을 `route.id` 로 갈랐다면 미번역 56페이지가 전부 여기서 걸렸을 것이다.
-for (const slug of slugsOn(EN_DOCS)) {
-  if (koOnDisk.includes(slug)) continue;
-  const built = resolveInDist(withBase(docPath(slug, "ko")));
-  if (built && readFileSync(built, "utf8").includes("data-stale-translation")) {
-    problems.push(`[폴백에 배너] ko/${slug} 는 미번역인데 낡음 배너가 붙었다`);
-  }
+if (!compared) {
+  console.log("ℹ️ 번역 페이지가 없어 낡음 판정 대조를 건너뜁니다 (단정이 공허해진다)");
 }
 
 const total = PAGES.length;

@@ -15,8 +15,9 @@ import {
   hashSourceFile,
   splitFrontmatter,
   translationState,
+  SOURCE_HASH_LENGTH,
 } from "../src/lib/source-hash.ts";
-import { EN_DOCS as EN, KO_DOCS as KO, pageFile, slugsOn } from "./docs-fs.mjs";
+import { EN_DOCS as EN, pageFile, slugsOn, TRANSLATION_DIRS } from "./docs-fs.mjs";
 
 const FLOOR = 40;
 const CEIL = 200;
@@ -48,8 +49,17 @@ for (const slug of onDisk) {
   const fm = /^---\n([\s\S]*?)\n---\n/.exec(raw);
   if (!fm) { problems.push(`[프론트매터 없음] ${slug}`); continue; }
   if (!/^title:/m.test(fm[1])) problems.push(`[title 없음] ${slug}`);
-  if (TITLES[slug] && !fm[1].includes(JSON.stringify(TITLES[slug]))) {
-    problems.push(`[제목 불일치] ${slug} — 파일과 TITLES 가 다르다`);
+  // ‼️ **줄 전체**를 고정한다. 예전의 `fm[1].includes(JSON.stringify(...))` 는 프론트매터
+  //    블록 어디에 그 문자열이 있으면 통과하는 substring 검사였고, `title:` 줄의 모양은
+  //    전혀 제약하지 않았다. 그런데 `source-hash.ts` 의 `frontmatterTitle` 은 YAML 파서를
+  //    쓰지 않는 근거로 **바로 이 게이트**를 든다. 접힌 스칼라(`>-`)·앵커(`&t`)·여러 줄
+  //    값이면 regex 와 실제 YAML 이 서로 다른 제목을 내고, 그러면 디스크 해시와 빌드 해시가
+  //    갈려 그 페이지가 번역되는 날 "판정 불일치"로만 드러난다.
+  if (TITLES[slug]) {
+    const want = `title: ${JSON.stringify(TITLES[slug])}`;
+    if (!fm[1].split("\n").includes(want)) {
+      problems.push(`[제목 줄 불일치] ${slug} — \`${want}\` 인 줄이 없다 (TITLES 와 정확히 같아야 한다)`);
+    }
   }
   const body = raw.slice(fm[0].length).split("\n").length;
   if (body < FLOOR && !SIZE_EXCEPTIONS.has(slug)) problems.push(`[하한] ${slug}: ${body}줄 < ${FLOOR}`);
@@ -66,10 +76,18 @@ for (const slug of SIZE_EXCEPTIONS) {
   if (body >= FLOOR && body <= CEIL) problems.push(`[불필요한 예외] ${slug}: ${body}줄 — 예외에서 지울 것`);
 }
 
-// ── 4. 로케일 대칭: ko 는 없어도 되지만(폴백), ko 에만 있으면 고아다
-const koSlugs = slugsOn(KO);
-for (const slug of koSlugs) {
-  if (!onDisk.includes(slug)) problems.push(`[고아 번역] ko/${slug} — 대응하는 en 페이지가 없다`);
+// ── 4. 로케일 대칭: 번역은 없어도 되지만(폴백), 번역에만 있으면 고아다
+const translations = TRANSLATION_DIRS.map(({ dir, locale }) => ({
+  dir,
+  locale,
+  slugs: slugsOn(dir),
+}));
+for (const { locale, slugs } of translations) {
+  for (const slug of slugs) {
+    if (!onDisk.includes(slug)) {
+      problems.push(`[고아 번역] ${locale}/${slug} — 대응하는 en 페이지가 없다`);
+    }
+  }
 }
 
 // ── 5. 그룹 정합
@@ -88,16 +106,24 @@ for (const key of Object.keys(GROUPS)) {
 // 조용히 신뢰받으므로, 사용자에게 보이는 상태 공간을 {번역됨·낡음·미번역} 셋으로
 // 닫는다 — 넷째 상태(모름)는 저자의 실수이지 사용자에게 보일 상태가 아니다.
 // 낡음 자체는 결함이 아니라 **알려진 상태**다: 배너가 알리고 여기서는 세기만 한다.
+const STAMP_RE = new RegExp(`^[0-9a-f]{${SOURCE_HASH_LENGTH}}$`);
 let stale = 0;
-for (const slug of koSlugs) {
-  if (!onDisk.includes(slug)) continue; // 고아는 4번이 이미 신고했다
-  const parts = splitFrontmatter(readFileSync(pageFile(KO, slug), "utf8"));
-  if (!parts) { problems.push(`[프론트매터 없음] ko/${slug}`); continue; }
-  const expected = hashSourceFile(readFileSync(pageFile(EN, slug), "utf8"), `en/${slug}`);
-  const state = translationState(expected, frontmatterSourceHash(parts.frontmatter));
-  if (state === "unstamped") {
-    problems.push(`[미스탬프] ko/${slug} — sourceHash 가 없다. \`npm run i18n:stamp\``);
-  } else if (state === "stale") stale += 1;
+for (const { dir, locale, slugs } of translations) {
+  for (const slug of slugs) {
+    if (!onDisk.includes(slug)) continue; // 고아는 4번이 이미 신고했다
+    const parts = splitFrontmatter(readFileSync(pageFile(dir, slug), "utf8"));
+    if (!parts) { problems.push(`[프론트매터 없음] ${locale}/${slug}`); continue; }
+    const stamped = frontmatterSourceHash(parts.frontmatter);
+    const expected = hashSourceFile(readFileSync(pageFile(EN, slug), "utf8"), `en/${slug}`);
+    const state = translationState(expected, stamped);
+    if (state === "unstamped") {
+      problems.push(`[미스탬프] ${locale}/${slug} — sourceHash 가 없다. \`npm run i18n:stamp\``);
+    } else if (!STAMP_RE.test(stamped)) {
+      // 오타 난 스탬프는 어떤 원문과도 일치하지 않아 낡음으로 **영구히** 뜨고,
+      // 아래 집계는 그것을 "결함 아님"으로 센다. 여기서 파일 이름을 댄다.
+      problems.push(`[스탬프 모양] ${locale}/${slug} — "${stamped}" 는 16진수 ${SOURCE_HASH_LENGTH}자리가 아니다`);
+    } else if (state === "stale") stale += 1;
+  }
 }
 for (const slug of onDisk) {
   const parts = splitFrontmatter(readFileSync(pageFile(EN, slug), "utf8"));
@@ -105,9 +131,11 @@ for (const slug of onDisk) {
     problems.push(`[원문에 스탬프] en/${slug} — sourceHash 는 번역본에만 찍는다`);
   }
 }
+const koCount = translations.reduce((n, t) => n + t.slugs.length, 0);
 
-console.log(`선언 ${declared.size} · en ${onDisk.length} · ko ${koSlugs.length} · 크기 예외 ${SIZE_EXCEPTIONS.size}`);
-console.log(`번역 진행: ${koSlugs.length}/${onDisk.length} 페이지 · 낡음 ${stale}개 (결함 아님 — 배너가 알린다)`);
+const localeSummary = translations.map((t) => `${t.locale} ${t.slugs.length}`).join(" · ");
+console.log(`선언 ${declared.size} · en ${onDisk.length} · ${localeSummary} · 크기 예외 ${SIZE_EXCEPTIONS.size}`);
+console.log(`번역 진행: ${koCount}/${onDisk.length * translations.length} 페이지 · 낡음 ${stale}개 (결함 아님 — 배너가 알린다)`);
 console.log();
 if (!problems.length) console.log("✅ 문제 없음");
 else { console.log(`❌ ${problems.length}건`); for (const p of problems) console.log("  " + p); }

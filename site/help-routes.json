@@ -4,6 +4,8 @@
   "base": "/baram",
   "defaultLocale": "en",
   "locales": ["en", "ko"],
+  "_localeLabels": "Starlight 언어 선택기에 뜨는 이름. astro.config.mjs 의 locales 를 여기서 파생시키므로 로케일 목록이 두 벌이 되지 않는다 — 설정에만 로케일을 더하면 번역 신선도 판정이 그 로케일에서 조용히 꺼진다.",
+  "localeLabels": { "en": "English", "ko": "한국어" },
   "docsPrefix": "docs/",
 
   "_entries": "앱 Help 메뉴 세 항목의 착지 slug. IA 트리(site/ia-tree.mjs)의 slug 와 같아야 하며 check-dist.mjs 가 대조한다.",

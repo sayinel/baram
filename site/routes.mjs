@@ -9,7 +9,7 @@
 //    정적 import 는 두 컨텍스트 모두에서 번들러가 해결한다.
 import ROUTES_JSON from "./help-routes.json" with { type: "json" };
 
-/** @type {{origin:string, base:string, defaultLocale:string, locales:string[], docsPrefix:string, entries:Record<string,string>, legacy:Record<string,string>}} */
+/** @type {{origin:string, base:string, defaultLocale:string, locales:string[], localeLabels:Record<string,string>, docsPrefix:string, entries:Record<string,string>, legacy:Record<string,string>}} */
 export const ROUTES = ROUTES_JSON;
 
 export const BASE = ROUTES.base.replace(/\/$/, "");
@@ -42,4 +42,32 @@ export function legacyTargets() {
     slug: entrySlug(key),
     to: docPath(entrySlug(key), ROUTES.defaultLocale),
   }));
+}
+
+/**
+ * 원문이 아닌 로케일. 번역 신선도 판정과 번역 도구가 도는 대상이다.
+ * `["ko"]`
+ */
+export const translationLocales = () =>
+  ROUTES.locales.filter((l) => l !== ROUTES.defaultLocale);
+
+/**
+ * Starlight `locales` 설정을 여기서 조립한다.
+ *
+ * ‼️ 설정에 로케일을 직접 적으면 `ROUTES.locales` 와 갈라진다. 그러면 번역 신선도
+ *    판정이 그 로케일에서 **조용히 꺼진다** — 스탬프도 요구하지 않고, 고아도 안 잡고,
+ *    낡음 배너도 안 뜬다. 라벨이 없으면 여기서 크게 실패시킨다.
+ */
+export function starlightLocales() {
+  return Object.fromEntries(
+    ROUTES.locales.map((locale) => {
+      const label = ROUTES.localeLabels?.[locale];
+      if (!label) {
+        throw new Error(
+          `help-routes.json localeLabels 에 "${locale}" 이 없습니다 — 로케일을 더할 때 라벨도 함께 더하십시오`,
+        );
+      }
+      return [locale, { label, lang: locale }];
+    }),
+  );
 }
