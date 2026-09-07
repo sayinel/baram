@@ -11,13 +11,10 @@ import { Editor } from "@tiptap/core";
 import { describe, expect, it } from "vitest";
 
 import { createBaramExtensions } from "../../extensions";
-import {
-  markdownToProsemirror,
-  mdastBlocksToPmNodes,
-  resolveReferenceLinks,
-} from "../md-to-pm";
+import { markdownToProsemirror, mdastBlocksToPmNodes } from "../md-to-pm";
 import { parseMdast } from "../parse-mdast";
 import { prosemirrorToMarkdown } from "../pm-to-md";
+import { resolveReferenceLinks } from "../reference-links";
 
 const editor = new Editor({ content: "", extensions: createBaramExtensions() });
 const schema = editor.schema;
