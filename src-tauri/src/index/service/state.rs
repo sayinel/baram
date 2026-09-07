@@ -122,6 +122,14 @@ impl Mutation {
         })
     }
 
+    /// A file that is gone (or unreadable) under `path` — canonicalised outside
+    /// any lock, on the existing ancestor when the file itself is gone.
+    pub(super) fn remove(path: &str) -> Result<Self, String> {
+        Ok(Self::Remove {
+            path: crate::context::manager::resolve_canonical(path)?,
+        })
+    }
+
     fn apply_to(&self, index: &mut LinkIndex, root: &IndexRoot) {
         let canonical_path = match self {
             Self::Update { path, .. } | Self::Remove { path } => path,
@@ -140,7 +148,7 @@ impl Mutation {
 /// registered path (see the header). Private on purpose — the closure API below
 /// is the only way in.
 pub struct LinkIndexState {
-    pub(super) slots: Mutex<HashMap<String, Slot>>,
+    slots: Mutex<HashMap<String, Slot>>,
     /// One build at a time per key (`rebuild_and_publish`). A per-key lock held
     /// across the build's file I/O — never the map lock.
     builds: Mutex<HashMap<String, Arc<Mutex<()>>>>,
@@ -170,6 +178,13 @@ impl LinkIndexState {
             builds: Mutex::new(HashMap::new()),
             removals: AtomicU64::new(0),
         }
+    }
+
+    /// Hold the map lock (tests only): to park other tasks behind it and pin
+    /// an ordering. Production code never gets a guard out of this type.
+    #[cfg(test)]
+    pub(super) async fn hold_slots(&self) -> tokio::sync::MutexGuard<'_, HashMap<String, Slot>> {
+        self.slots.lock().await
     }
 
     /// Read whatever index is live under `key` while holding the lock — the

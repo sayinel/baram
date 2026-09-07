@@ -11,8 +11,8 @@
 use crate::context::ContextManager;
 use crate::index::service::{
     get_backlinks_inner, get_link_index_inner, refresh_index_inner, rename_block_id_inner,
-    rename_file_with_links_inner, rename_namespace_inner, update_file_index_inner, LinkIndexState,
-    NamespaceRenameResult, RenameResult,
+    rename_file_with_links_inner, rename_namespace_inner, require_registered_root,
+    update_file_index_inner, LinkIndexState, NamespaceRenameResult, RenameResult,
 };
 use crate::index::{
     find_unlinked_mentions, BacklinkResult, IndexStats, LinkGraph, UnlinkedMentionResult,
@@ -60,7 +60,11 @@ pub async fn update_file_index(
 pub async fn get_unlinked_mentions(
     file_path: String,
     root_path: String,
+    ctx_mgr: State<'_, ContextManager>,
 ) -> Result<Vec<UnlinkedMentionResult>, String> {
+    // The one command here that walks a directory the webview names without
+    // touching the index: it still may not walk outside a registered context.
+    require_registered_root(&ctx_mgr, &root_path).await?;
     find_unlinked_mentions(&file_path, &root_path)
         .await
         .map_err(|e| e.to_string())

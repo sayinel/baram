@@ -172,9 +172,17 @@ pub(crate) async fn rename_file_with_links_inner(
     //    paths its own way (Mutation::apply_to).
     let mut per_key: HashMap<String, Vec<Mutation>> = HashMap::new();
     push_for_keys(&mut per_key, &keys, &remove_old);
-    let renamed_content = tokio::fs::read_to_string(new_path)
-        .await
-        .unwrap_or_default();
+    // A file that cannot be read back is left out of the index rather than
+    // indexed as a file without links; the next save re-indexes it.
+    let renamed_content = match tokio::fs::read_to_string(new_path).await {
+        Ok(content) => Some(content),
+        Err(e) => {
+            log::warn!(
+                "§33 rename_file_with_links: {new_path} moved but could not be read back: {e}"
+            );
+            None
+        }
+    };
     for (identity, content) in updated_contents {
         let covering = keys_covering(ctx_mgr, &keys, &identity.to_string_lossy()).await;
         push_for_keys(
@@ -186,14 +194,16 @@ pub(crate) async fn rename_file_with_links_inner(
             },
         );
     }
-    push_for_keys(
-        &mut per_key,
-        &keys,
-        &Mutation::Update {
-            path: renamed_identity,
-            content: renamed_content,
-        },
-    );
+    if let Some(content) = renamed_content {
+        push_for_keys(
+            &mut per_key,
+            &keys,
+            &Mutation::Update {
+                path: renamed_identity,
+                content,
+            },
+        );
+    }
     for (key, list) in per_key {
         state.apply(&key, list).await;
     }

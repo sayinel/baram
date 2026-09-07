@@ -761,7 +761,7 @@ async fn forget_before_version_cannot_be_adopted_by_an_old_refresh() {
 
     // Hold the slots lock so both park on it: forget first (FIFO), then the
     // refresh — which has already resolved its owning key by then.
-    let map = state.slots.lock().await;
+    let map = state.hold_slots().await;
     {
         let mut task = std::task::Context::from_waker(futures::task::noop_waker_ref());
         assert!(removal.as_mut().poll(&mut task).is_pending());
@@ -1122,7 +1122,7 @@ async fn an_unrelated_removal_during_the_lookup_does_not_refuse_the_refresh() {
     let mut refresh = Box::pin(refresh_index_inner(&state, &ctx, &root_a));
     // Same harness as `forget_before_version_…`: both park on the slots
     // lock, the removal first (FIFO), the refresh having resolved its key.
-    let map = state.slots.lock().await;
+    let map = state.hold_slots().await;
     {
         let mut task = std::task::Context::from_waker(futures::task::noop_waker_ref());
         assert!(removal.as_mut().poll(&mut task).is_pending());
@@ -1425,11 +1425,7 @@ async fn a_query_does_not_read_an_index_left_by_an_earlier_registration() {
         .unwrap()
         .edges
         .is_empty());
-    assert!(
-        outgoing_links_for(&state, &active_registration(&ctx).await.unwrap())
-            .await
-            .is_empty()
-    );
+    assert!(graph_term_for_active(&state, &ctx).await.is_empty());
     // Its own refresh makes the index count again.
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
     assert!(!get_backlinks_inner(&state, &ctx, &format!("{root}/b.md"))
@@ -1525,4 +1521,121 @@ async fn a_namespace_rename_refuses_to_move_a_registered_folder_or_one_that_hold
         ctx.registration("ctx-child").await.map(|r| r.0),
         Some(sub.clone())
     );
+}
+
+#[tokio::test]
+async fn the_graph_term_reaches_hybrid_ranking_and_changes_the_order() {
+    use crate::embedding::hybrid_ranker::{hybrid_rank, RankedChunk};
+    use std::collections::HashMap;
+    // The shape of issue 263: an id nothing like the path. The graph term comes
+    // from the real index and moves the linked file up.
+    let ctx = ContextManager::new();
+    let (_dir, root) = vault_with_a_link(&ctx, "ctx-abc", true).await;
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    let outgoing = graph_term_for_active(&state, &ctx).await;
+    assert_eq!(
+        outgoing.get(&format!("{root}/a.md")),
+        Some(&vec![format!("{root}/b.md")])
+    );
+    let chunks = |names: &[&str]| -> Vec<RankedChunk> {
+        names
+            .iter()
+            .enumerate()
+            .map(|(i, name)| RankedChunk {
+                id: format!("c{i}"),
+                file_path: format!("{root}/{name}.md"),
+                score: 0.9 - 0.01 * i as f32,
+            })
+            .collect()
+    };
+    // Five candidates, BM25 tied, vector similarity descending; b.md (the file
+    // a.md links to) sits third by vector alone.
+    let scores = [0.9f32, 0.89, 0.88, 0.87, 0.86];
+    let contents: HashMap<String, String> = (0..5)
+        .map(|i| (format!("c{i}"), "lorem ipsum".to_string()))
+        .collect();
+    let current = format!("{root}/a.md");
+    let names = ["x", "y", "b", "z", "w"];
+    let without = hybrid_rank(
+        "release checklist",
+        chunks(&names),
+        &scores,
+        &contents,
+        Some(&current),
+        &HashMap::new(),
+        5,
+    );
+    let with = hybrid_rank(
+        "release checklist",
+        chunks(&names),
+        &scores,
+        &contents,
+        Some(&current),
+        &outgoing,
+        5,
+    );
+    assert_eq!(without[0].file_path, format!("{root}/x.md"));
+    assert_eq!(with[0].file_path, format!("{root}/b.md"));
+    // No active context: the term is empty, not an error.
+    ctx.remove("ctx-abc").await.unwrap();
+    assert!(graph_term_for_active(&state, &ctx).await.is_empty());
+}
+
+#[tokio::test]
+async fn a_saved_file_that_cannot_be_read_leaves_the_index_instead_of_losing_its_links() {
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-abc", true).await;
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    assert_eq!(
+        sources(
+            &get_backlinks_inner(&state, &ctx, &format!("{root}/b.md"))
+                .await
+                .unwrap()
+        ),
+        vec![format!("{root}/a.md")]
+    );
+    // a.md vanishes between the save and the re-index call.
+    std::fs::remove_file(dir.path().join("a.md")).unwrap();
+    update_file_index_inner(&state, &ctx, &format!("{root}/a.md"))
+        .await
+        .unwrap();
+    // Removed from the index: no node, no backlink — rather than a node with
+    // zero links standing in for a file that is not there.
+    assert!(get_backlinks_inner(&state, &ctx, &format!("{root}/b.md"))
+        .await
+        .unwrap()
+        .is_empty());
+    assert!(!outgoing_links(&state, &root)
+        .await
+        .contains_key(&format!("{root}/a.md")));
+    assert!(!get_link_index_inner(&state, &ctx, None)
+        .await
+        .unwrap()
+        .nodes
+        .contains(&format!("{root}/a.md")));
+}
+
+#[test]
+fn the_slot_map_is_locked_only_inside_state_rs() {
+    // The header's "by construction" claim: the map is private to state.rs and
+    // every critical section there is synchronous. This pins the first half —
+    // no other file in the service takes the lock (a new file could otherwise
+    // hold it across an await unnoticed).
+    let needle = ["slots", ".lock("].concat();
+    for (name, src) in [
+        ("build.rs", include_str!("build.rs")),
+        ("keys.rs", include_str!("keys.rs")),
+        ("query.rs", include_str!("query.rs")),
+        ("rename.rs", include_str!("rename.rs")),
+        ("mod.rs", include_str!("mod.rs")),
+        ("tests.rs", include_str!("tests.rs")),
+    ] {
+        assert!(
+            !src.contains(&needle),
+            "{name} takes the slot lock directly"
+        );
+    }
+    assert!(include_str!("state.rs").contains(&needle));
 }
