@@ -10,7 +10,7 @@ export default defineConfig(async () => ({
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "src"),
+      "@": path.resolve(import.meta.dirname, "src"),
     },
   },
 
@@ -23,8 +23,8 @@ export default defineConfig(async () => ({
       // entry point (src/sandbox/sandbox-entry.ts). "main" must stay listed so
       // index.html still emits at the dist root (Tauri frontendDist needs it).
       input: {
-        main: path.resolve(__dirname, "index.html"),
-        sandbox: path.resolve(__dirname, "sandbox.html"),
+        main: path.resolve(import.meta.dirname, "index.html"),
+        sandbox: path.resolve(import.meta.dirname, "sandbox.html"),
       },
       output: {
         codeSplitting: {
