@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
+import { useTranslation } from "../../../i18n/useTranslation";
+
 interface BlockCaptionProps {
   /** Whether the caption is in edit mode — controlled by the parent so the
    *  block's hover toolbar (Caption button) can trigger editing. */
@@ -8,6 +10,7 @@ interface BlockCaptionProps {
   onCommit: (text: string) => void;
   /** Request an editing-state change (enter on toolbar/click, leave on commit). */
   onEditingChange: (editing: boolean) => void;
+  /** Defaults to the shared "Add caption…" — pass one only to say something else. */
   placeholder?: string;
   value: null | string;
 }
@@ -24,9 +27,10 @@ export function BlockCaption({
   editing,
   onCommit,
   onEditingChange,
-  placeholder = "Add caption…",
+  placeholder,
   value,
 }: BlockCaptionProps): null | React.ReactElement {
+  const { t } = useTranslation();
   const [text, setText] = useState(value ?? "");
   const inputRef = useRef<HTMLInputElement>(null);
   // Read latest value at the moment editing turns on without re-seeding the
@@ -90,7 +94,7 @@ export function BlockCaption({
               onEditingChange(false);
             }
           }}
-          placeholder={placeholder}
+          placeholder={placeholder ?? t("blockChrome.captionPlaceholder")}
           ref={inputRef}
           value={text}
         />

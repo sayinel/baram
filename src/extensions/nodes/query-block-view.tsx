@@ -13,6 +13,7 @@ import { NodeSelection } from "@tiptap/pm/state";
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 
 import { TaskQueryResults } from "../../components/tasks/TaskQueryResults";
+import { Tooltip } from "../../components/Tooltip";
 import { openZettelHubNote } from "../../components/zettelkasten/open-hub-note";
 import { resultCount, useQueryBlock } from "../../hooks/use-query-block";
 import { useTranslation } from "../../i18n/useTranslation";
@@ -550,13 +551,11 @@ function FilterRow({
           value={filter.value}
         />
       )}
-      <button
-        className="qb-btn qb-remove"
-        onClick={() => onRemove(index)}
-        title={t("query.removeFilter")}
-      >
-        ×
-      </button>
+      <Tooltip label={t("query.removeFilter")} placement="top">
+        <button className="qb-btn qb-remove" onClick={() => onRemove(index)}>
+          ×
+        </button>
+      </Tooltip>
     </div>
   );
 }

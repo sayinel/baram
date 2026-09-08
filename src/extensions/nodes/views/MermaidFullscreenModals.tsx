@@ -10,8 +10,9 @@
 import React from "react";
 import { createPortal } from "react-dom";
 
+import { useTranslation } from "../../../i18n/useTranslation";
 import { isInNativeTextControl } from "../../../utils/editor/native-text-control";
-import { MERMAID_TEMPLATES } from "../../../utils/markdown/mermaid-utils";
+import { mermaidTypeLabel } from "../../../utils/markdown/mermaid-utils";
 import { useInnerHtml } from "./use-inner-html";
 
 interface MermaidEditFullscreenModalProps {
@@ -45,6 +46,7 @@ export function MermaidViewFullscreenModal({
   pending = false,
   svgHtml,
 }: MermaidViewFullscreenModalProps): React.ReactPortal {
+  const { t } = useTranslation();
   const svgMarkup = useInnerHtml(svgHtml);
   return createPortal(
     <div
@@ -74,7 +76,7 @@ export function MermaidViewFullscreenModal({
           <span className="mermaid-block-label">mermaid</span>
           {detectedType && (
             <span className="mermaid-fullscreen-type">
-              {MERMAID_TEMPLATES[detectedType]?.label || detectedType}
+              {mermaidTypeLabel(t, detectedType)}
             </span>
           )}
           <button
@@ -82,7 +84,7 @@ export function MermaidViewFullscreenModal({
             onClick={onClose}
             onMouseDown={(e) => e.preventDefault()}
           >
-            Close
+            {t("common.close")}
           </button>
         </div>
         <div className="mermaid-view-fullscreen-body">
@@ -94,9 +96,11 @@ export function MermaidViewFullscreenModal({
           ) : error ? (
             <div className="mermaid-block-error">{error}</div>
           ) : pending ? (
-            <div className="mermaid-block-empty">Rendering…</div>
+            <div className="mermaid-block-empty">
+              {t("mermaidBlock.rendering")}
+            </div>
           ) : (
-            <div className="mermaid-block-empty">Empty diagram</div>
+            <div className="mermaid-block-empty">{t("mermaidBlock.empty")}</div>
           )}
         </div>
       </div>
@@ -116,6 +120,7 @@ export function MermaidEditFullscreenModal({
   onClose,
   onDiscard,
 }: MermaidEditFullscreenModalProps): React.ReactPortal {
+  const { t } = useTranslation();
   const fullscreenMarkup = useInnerHtml(fullscreenSvg);
   return createPortal(
     <div
@@ -142,18 +147,21 @@ export function MermaidEditFullscreenModal({
           <span className="mermaid-block-label">mermaid</span>
           {detectedType && (
             <span className="mermaid-fullscreen-type">
-              {MERMAID_TEMPLATES[detectedType]?.label || detectedType}
+              {mermaidTypeLabel(t, detectedType)}
             </span>
           )}
           <button
             className="mermaid-fullscreen-close"
             onClick={onDiscard}
-            title="Leave without saving"
+            // ‼️ A native `title`, not the app pill: this overlay is z-index 9999
+            // (mermaid.css) and the pill is --z-tooltip (1060), so a pill here would paint
+            // BEHIND the modal. Both buttons carry visible text anyway.
+            title={t("blockChrome.discardHint")}
           >
-            Discard
+            {t("blockChrome.discard")}
           </button>
           <button className="mermaid-fullscreen-close" onClick={onClose}>
-            Close
+            {t("common.close")}
           </button>
         </div>
         <div className="mermaid-fullscreen-body">

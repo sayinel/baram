@@ -19,6 +19,7 @@ import {
   isRemoteOrData,
   resolveMediaSrc,
 } from "../../utils/media-src";
+import { MediaResizeHandle } from "./views/MediaResizeHandle";
 import { MediaToolbar, MediaToolbarButton } from "./views/MediaToolbar";
 import { useMediaResize } from "./views/use-media-resize";
 
@@ -236,14 +237,8 @@ export function VideoView({ node, updateAttributes, selected }: NodeViewProps) {
 
         {!isEmbed && !failed && (
           <>
-            <div
-              className="media-resize-handle media-resize-handle-left"
-              onMouseDown={startResize}
-            />
-            <div
-              className="media-resize-handle media-resize-handle-right"
-              onMouseDown={startResize}
-            />
+            <MediaResizeHandle onMouseDown={startResize} side="left" />
+            <MediaResizeHandle onMouseDown={startResize} side="right" />
             {dragPct != null && (
               <div className="media-resize-label">{dragPct}%</div>
             )}
@@ -253,8 +248,8 @@ export function VideoView({ node, updateAttributes, selected }: NodeViewProps) {
         <MediaToolbar>
           <MediaToolbarButton
             active={editingCaption}
+            label={t("blockChrome.caption")}
             onClick={startCaptionEdit}
-            title={t("video.caption")}
           >
             <Captions size={16} strokeWidth={2} />
           </MediaToolbarButton>
@@ -265,8 +260,8 @@ export function VideoView({ node, updateAttributes, selected }: NodeViewProps) {
               before a file's controls exist. */}
           {!isEmbed && !failed && fullscreenSupported && (
             <MediaToolbarButton
+              label={t("video.fullscreen")}
               onClick={handleFullscreen}
-              title={t("video.fullscreen")}
             >
               <Maximize size={16} strokeWidth={2} />
             </MediaToolbarButton>

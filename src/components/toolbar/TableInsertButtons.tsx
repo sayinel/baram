@@ -9,6 +9,7 @@ import { chainWithVimExternalEdit } from "../../extensions/plugins/vim/vim-keys"
 import { useTranslation } from "../../i18n/useTranslation";
 import { activeEditorScrollContainer } from "../../utils/editor/active-scroll-container";
 import { getEditorZoom } from "../../utils/zoom-coords";
+import { Tooltip } from "../Tooltip";
 import {
   computeInsertButtonStyle,
   findTableNearPoint,
@@ -397,35 +398,41 @@ export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
   );
 
   return (
-    <button
-      className="table-insert-btn"
-      onClick={handleClick}
-      onMouseEnter={() => {
-        hoveringBtnRef.current = true;
-        cancelHide();
-      }}
-      onMouseLeave={() => {
-        hoveringBtnRef.current = false;
-        scheduleHide();
-      }}
-      style={style}
-      title={
+    // Outward from the edge it sits on: a column button is above the table, a row button
+    // beside it, so the pill goes the same way and never covers the cells.
+    <Tooltip
+      label={
         isCol ? t("tableHandles.insertColumn") : t("tableHandles.insertRow")
       }
+      placement={isCol ? "top" : "left"}
     >
-      <svg
-        fill="none"
-        height="12"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeWidth="1.8"
-        viewBox="0 0 12 12"
-        width="12"
-        xmlns="http://www.w3.org/2000/svg"
+      <button
+        className="table-insert-btn"
+        onClick={handleClick}
+        onMouseEnter={() => {
+          hoveringBtnRef.current = true;
+          cancelHide();
+        }}
+        onMouseLeave={() => {
+          hoveringBtnRef.current = false;
+          scheduleHide();
+        }}
+        style={style}
       >
-        <line x1="6" x2="6" y1="2" y2="10" />
-        <line x1="2" x2="10" y1="6" y2="6" />
-      </svg>
-    </button>
+        <svg
+          fill="none"
+          height="12"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeWidth="1.8"
+          viewBox="0 0 12 12"
+          width="12"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <line x1="6" x2="6" y1="2" y2="10" />
+          <line x1="2" x2="10" y1="6" y2="6" />
+        </svg>
+      </button>
+    </Tooltip>
   );
 }

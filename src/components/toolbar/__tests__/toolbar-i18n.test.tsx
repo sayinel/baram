@@ -34,6 +34,10 @@ vi.mock("@tauri-apps/api/core", () => ({
 import type { Translate } from "../../../i18n/useTranslation";
 
 import { createBaramExtensions } from "../../../extensions";
+import {
+  scanForNativeTitles,
+  titleHitId,
+} from "../../../i18n/__tests__/native-title-scan";
 import { scanForProse } from "../../../i18n/__tests__/prose-scanner";
 import en from "../../../i18n/en.json";
 import { t as tr } from "../../../i18n/index";
@@ -119,6 +123,31 @@ describe("no toolbar widget hardcodes user-facing English", () => {
       children: [],
       literals: [],
     });
+  });
+});
+
+describe("toolbar copy goes to the app's pill, not a native title", () => {
+  // ‼️ These bars are the case the pill exists for, more than any block's chrome is. A
+  // floating toolbar is on screen only while text is selected and the table toolbar only while
+  // the caret is in a table, and both are rows of two-character glyphs — `Q`, `UL`, `X₂` — so
+  // the label IS the affordance. A native `title`'s ~1s WebKit delay arrived after the pointer
+  // had already committed to a guess about which glyph meant what.
+  //
+  // The rule is `i18n/__tests__/native-title-scan.ts`, shared with the block-chrome guard —
+  // see that file for why it counts rather than pattern-matches. The count is ZERO here, with
+  // no budget at all: unlike the diagram blocks, no toolbar sits under a z-index 9999 overlay,
+  // and none of these controls shows the document's own words, so there is no value a native
+  // `title` would be the right home for.
+  //
+  // ‼️ Zero is what a pattern could not have given. Nine of these labels were
+  // `title={commandLabel("formatting.bold")}` — translated copy reached through a helper — and
+  // a mutation putting one of them back SURVIVED the `t("literal")` version of this check.
+  it.each(files)("%s", (file) => {
+    const hits = scanForNativeTitles(file, readFileSync(file, "utf8"));
+    expect(hits.count).toBe(0);
+    expect(hits.literals).toEqual([]);
+    expect(hits.imperative).toEqual([]);
+    expect(hits.translated.map(titleHitId)).toEqual([]);
   });
 });
 

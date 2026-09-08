@@ -6,7 +6,11 @@ import type { NodeViewProps } from "@tiptap/react";
 
 import { NodeViewContent, NodeViewWrapper } from "@tiptap/react";
 
+import { Tooltip } from "../../components/Tooltip";
+import { useTranslation } from "../../i18n/useTranslation";
+
 export function FootnoteDefinitionView({ node, editor }: NodeViewProps) {
+  const { t } = useTranslation();
   const identifier = node.attrs.identifier as string;
   const displayNumber = getFootnoteNumber(editor, identifier);
 
@@ -41,23 +45,25 @@ export function FootnoteDefinitionView({ node, editor }: NodeViewProps) {
       data-identifier={identifier}
       data-type="footnote-definition"
     >
-      <span
-        className="footnote-definition-label"
-        contentEditable={false}
-        onClick={handleBack}
-        title="Go to reference"
-      >
-        {displayNumber || identifier}.
-      </span>
+      <Tooltip label={t("footnote.goToReference")} placement="top">
+        <span
+          className="footnote-definition-label"
+          contentEditable={false}
+          onClick={handleBack}
+        >
+          {displayNumber || identifier}.
+        </span>
+      </Tooltip>
       <NodeViewContent className="footnote-definition-body" />
-      <button
-        className="footnote-definition-back"
-        contentEditable={false}
-        onClick={handleBack}
-        title="Go to reference"
-      >
-        ↩
-      </button>
+      <Tooltip label={t("footnote.goToReference")} placement="top">
+        <button
+          className="footnote-definition-back"
+          contentEditable={false}
+          onClick={handleBack}
+        >
+          ↩
+        </button>
+      </Tooltip>
     </NodeViewWrapper>
   );
 }

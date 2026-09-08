@@ -2,6 +2,7 @@
 // Uses a plain ProseMirror NodeView (not React) to properly handle
 // setSelection(), which is critical for CM ↔ PM focus coordination.
 
+import type { Locale } from "../../../i18n";
 import type { ViewUpdate } from "@codemirror/view";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { NodeView, EditorView as PMView } from "@tiptap/pm/view";
@@ -9,6 +10,8 @@ import type { NodeView, EditorView as PMView } from "@tiptap/pm/view";
 import { EditorState as CMState, Compartment } from "@codemirror/state";
 import { EditorView as CMView } from "@codemirror/view";
 
+import { attachTooltip } from "../../../components/tooltip-core";
+import { t } from "../../../i18n";
 import { useSettingsStore } from "../../../stores/settings/store";
 import { showNodeViewAIMenu } from "../../../utils/nodeview-ai-menu";
 import { withVimExternalEdit } from "../../plugins/vim/vim-keys";
@@ -29,6 +32,7 @@ export class CodeBlockNodeView implements NodeView {
   private cmInitialized = false;
   private cmView: CMView | null = null;
   private destroyed = false;
+  private detachAiTooltip: (() => void) | null = null;
   private getPos: () => number | undefined;
   private initGeneration = 0;
   private langGeneration = 0;
@@ -123,8 +127,18 @@ export class CodeBlockNodeView implements NodeView {
     aiBtn.classList.add("nodeview-ai-btn", "code-block-ai-btn");
     aiBtn.innerHTML =
       '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/></svg>';
-    aiBtn.title = "AI Commands";
     aiBtn.contentEditable = "false";
+    // ‼️ The app's pill, not `title` — and via `attachTooltip` because this NodeView is plain
+    // DOM (CodeMirror lives inside it), so the React `<Tooltip>` has nothing to wrap. Sharing
+    // `tooltip-core`'s state is what keeps this button's label from co-existing with a React
+    // one: the two would otherwise both be on screen when the pointer crosses between them.
+    //
+    // The label is read at every show rather than captured here: this view is not rebuilt when
+    // the locale changes.
+    this.detachAiTooltip = attachTooltip(aiBtn, {
+      label: () =>
+        t("toolbar.ai.commands", useSettingsStore.getState().locale as Locale),
+    });
     aiBtn.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -222,6 +236,10 @@ export class CodeBlockNodeView implements NodeView {
     if (this.settingsUnsub) {
       this.settingsUnsub();
       this.settingsUnsub = null;
+    }
+    if (this.detachAiTooltip) {
+      this.detachAiTooltip();
+      this.detachAiTooltip = null;
     }
     this.teardownCM();
     this.vimIsland.destroy();

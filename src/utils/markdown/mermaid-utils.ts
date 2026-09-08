@@ -68,56 +68,88 @@ export function sanitizeMermaidSvg(svg: string): string {
   return sanitizeSvg(svg);
 }
 
-/** Diagram type templates for Phase 2 supported types */
+import type { Translate } from "../../i18n/useTranslation";
+
+/**
+ * Diagram type templates for Phase 2 supported types.
+ *
+ * ‼️ `label` is an i18n KEY, not a display string — the type badge and the template menu are
+ * UI. Four sites render it (`MermaidBlockHeader`, and both fullscreen modals); a consumer that
+ * paints `label` raw puts `mermaidBlock.type.pie` on screen. `MERMAID_TYPE_LABEL_KEYS` below
+ * is what `label-key-coverage.test.ts` checks against the catalogues.
+ */
 export const MERMAID_TEMPLATES: Record<
   string,
   { code: string; label: string }
 > = {
   flowchart: {
-    label: "Flowchart",
+    label: "mermaidBlock.type.flowchart",
     code: "flowchart LR\n  A[Start] --> B{Decision}\n  B -->|Yes| C[OK]\n  B -->|No| D[End]",
   },
   sequence: {
-    label: "Sequence Diagram",
+    label: "mermaidBlock.type.sequence",
     code: "sequenceDiagram\n  Alice->>Bob: Hello Bob\n  Bob-->>Alice: Hi Alice",
   },
   class: {
-    label: "Class Diagram",
+    label: "mermaidBlock.type.class",
     code: "classDiagram\n  class Animal {\n    +String name\n    +makeSound()\n  }\n  class Dog {\n    +fetch()\n  }\n  Animal <|-- Dog",
   },
   state: {
-    label: "State Diagram",
+    label: "mermaidBlock.type.state",
     code: "stateDiagram-v2\n  [*] --> Idle\n  Idle --> Running : start\n  Running --> Idle : stop\n  Running --> [*] : finish",
   },
   er: {
-    label: "ER Diagram",
+    label: "mermaidBlock.type.er",
     code: "erDiagram\n  CUSTOMER ||--o{ ORDER : places\n  ORDER ||--|{ LINE_ITEM : contains\n  CUSTOMER {\n    string name\n    string email\n  }",
   },
   gantt: {
-    label: "Gantt Chart",
+    label: "mermaidBlock.type.gantt",
     code: "gantt\n  title Project Plan\n  dateFormat YYYY-MM-DD\n  section Phase 1\n    Task A :a1, 2024-01-01, 30d\n    Task B :after a1, 20d",
   },
   pie: {
-    label: "Pie Chart",
+    label: "mermaidBlock.type.pie",
     code: 'pie title Distribution\n  "Category A" : 40\n  "Category B" : 30\n  "Category C" : 20\n  "Category D" : 10',
   },
   mindmap: {
-    label: "Mind Map",
+    label: "mermaidBlock.type.mindmap",
     code: "mindmap\n  root((Topic))\n    Branch A\n      Leaf 1\n      Leaf 2\n    Branch B\n      Leaf 3",
   },
   timeline: {
-    label: "Timeline",
+    label: "mermaidBlock.type.timeline",
     code: "timeline\n  title History\n  2024 : Event A\n  2025 : Event B\n  2026 : Event C",
   },
   journey: {
-    label: "User Journey",
+    label: "mermaidBlock.type.journey",
     code: "journey\n  title User Journey\n  section Sign Up\n    Visit page: 5: User\n    Fill form: 3: User\n    Submit: 5: User",
   },
   gitgraph: {
-    label: "Git Graph",
+    label: "mermaidBlock.type.gitgraph",
     code: "gitGraph\n  commit\n  branch develop\n  commit\n  checkout main\n  merge develop\n  commit",
   },
 };
+
+/**
+ * Every i18n key {@link MERMAID_TEMPLATES} can hand a renderer, DERIVED from the table.
+ *
+ * Derived, not enumerated: a hand-written list would stay green while a twelfth diagram
+ * type shipped with an untranslated badge.
+ */
+export const MERMAID_TYPE_LABEL_KEYS: readonly string[] = Object.values(
+  MERMAID_TEMPLATES,
+).map((template) => template.label);
+
+/**
+ * The diagram type badge, translated.
+ *
+ * Lives beside the table because the FALLBACK is the part that needs the table:
+ * `detectMermaidType` recognises diagram kinds that have no template entry (and so no key),
+ * and for those the raw mermaid name is the honest label. `t()` on a missing key would print
+ * the key.
+ */
+export function mermaidTypeLabel(t: Translate, detectedType: string): string {
+  const key = MERMAID_TEMPLATES[detectedType]?.label;
+  return key ? t(key) : detectedType;
+}
 
 /** Rasterize Mermaid source to PNG and copy to the OS clipboard (SVG labels).
  *  Rejects when the source does not render or the clipboard refuses — the

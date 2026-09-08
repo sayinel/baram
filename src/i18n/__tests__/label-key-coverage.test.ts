@@ -12,6 +12,7 @@
 // verbatim left the Code Block and Mermaid Block rows in English under a Korean locale.
 import { describe, expect, it } from "vitest";
 
+import { CALLOUT_LABEL_KEYS } from "../../extensions/nodes/callout-types";
 import registry from "../../extensions/registry.json";
 import {
   CATEGORY_LABELS,
@@ -20,6 +21,7 @@ import {
 } from "../../keybindings/keybinding-registry";
 import { DEFAULT_ACTIVITY_BAR_CONFIG } from "../../stores/settings/activity-bar-config";
 import { AI_ACTION_LABEL_KEYS } from "../../utils/contextual-ai-actions";
+import { MERMAID_TYPE_LABEL_KEYS } from "../../utils/markdown/mermaid-utils";
 import { TURN_INTO_LABEL_KEYS } from "../../utils/toolbar/block-turn-into";
 import en from "../en.json";
 import ko from "../ko.json";
@@ -241,4 +243,55 @@ describe("the toolbar's satellite label tables", () => {
     );
     expect(orphaned).toEqual([]);
   });
+});
+
+describe("a block's own label tables", () => {
+  // §5.5 / §5.9 — the Mermaid diagram-type badge and the callout type picker are built from
+  // tables whose `label` fields are i18n keys now, exactly like the toolbar's two above.
+  //
+  // ‼️ Both are read through a helper (`mermaidTypeLabel`, `calloutTypeLabel`) whose whole
+  // reason to exist is a FALLBACK: `[!anything]` is valid callout markdown and
+  // `detectMermaidType` recognises diagram kinds no template covers, so an unknown type has no
+  // key at all and prints its raw name. That fallback means a MISSING key does not print the
+  // key — it silently prints the mermaid identifier — which is precisely why the resolution
+  // check has to live here rather than being left to something noticing on screen.
+  it("has enough entries for the checks below to bite", () => {
+    expect(MERMAID_TYPE_LABEL_KEYS.length).toBeGreaterThan(10);
+    expect(CALLOUT_LABEL_KEYS.length).toBeGreaterThan(12);
+  });
+
+  it.each(LOCALES)(
+    "defines every diagram type label in %s",
+    (_name, locale) => {
+      const missing = MERMAID_TYPE_LABEL_KEYS.filter((k) => !(k in locale));
+      expect(missing).toEqual([]);
+    },
+  );
+
+  it.each(LOCALES)(
+    "defines every callout type label in %s",
+    (_name, locale) => {
+      const missing = CALLOUT_LABEL_KEYS.filter((k) => !(k in locale));
+      expect(missing).toEqual([]);
+    },
+  );
+
+  // The reverse direction, in both catalogues — a key added to ko alone and referenced by
+  // nothing escapes an EN-only scan.
+  it.each(LOCALES)(
+    "has no orphaned block type label in %s",
+    (_name, locale) => {
+      const referenced = new Set([
+        ...MERMAID_TYPE_LABEL_KEYS,
+        ...CALLOUT_LABEL_KEYS,
+      ]);
+      const orphaned = Object.keys(locale).filter(
+        (k) =>
+          (k.startsWith("mermaidBlock.type.") ||
+            k.startsWith("callout.type.")) &&
+          !referenced.has(k),
+      );
+      expect(orphaned).toEqual([]);
+    },
+  );
 });

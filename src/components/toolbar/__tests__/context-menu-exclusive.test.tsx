@@ -21,6 +21,10 @@ import { Editor } from "@tiptap/core";
 import { EditorContent } from "@tiptap/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+// Names come from the catalogue, not from literals here: they are display copy a wording
+// pass may change, and the behaviour under test is not about the words.
+import en from "../../../i18n/en.json";
+
 vi.mock("@tauri-apps/api/core", () => ({
   convertFileSrc: (p: string) => `asset://localhost/${p}`,
   invoke: vi.fn(async () => undefined),
@@ -188,7 +192,7 @@ describe("one context menu at a time (issue 521)", () => {
     await openMenuOnEditingA(editor, wrapperA);
     expect(menus(".mermaid-context-menu")).toHaveLength(1);
     const captionButton = wrapperB.querySelector<HTMLElement>(
-      'button[title="Caption"]',
+      `button[aria-label="${en["blockChrome.caption"]}"]`,
     );
     if (!captionButton) throw new Error("caption button did not mount");
     fireEvent.click(captionButton);

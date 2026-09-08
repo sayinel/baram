@@ -1,58 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { NodeViewProps } from "@tiptap/react";
-import type { LucideIcon } from "lucide-react";
 
 // §5.9 Callout NodeView — React component for rendering callout blocks
 import { NodeViewContent, NodeViewWrapper } from "@tiptap/react";
-import {
-  AlertTriangle,
-  Bug,
-  CheckSquare,
-  CircleCheck,
-  CircleHelp,
-  CircleX,
-  ClipboardList,
-  Info,
-  Lightbulb,
-  List,
-  OctagonAlert,
-  Pencil,
-  Quote,
-  Sparkles,
-} from "lucide-react";
+import { Sparkles } from "lucide-react";
 
+import { Tooltip } from "../../components/Tooltip";
 import { useEditorChrome } from "../../hooks/use-editor-chrome";
+import { useTranslation } from "../../i18n/useTranslation";
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
 import {
   canUseEditorChrome,
   updateNodeAttributesWithVim,
 } from "../plugins/vim/vim-keys";
-
-/** Callout type definition with Lucide icon and display label */
-interface CalloutTypeDef {
-  color: string;
-  icon: LucideIcon;
-  label: string;
-}
-
-const CALLOUT_TYPES: Record<string, CalloutTypeDef> = {
-  tip: { color: "#10b981", icon: Lightbulb, label: "Tip" },
-  info: { color: "#3b82f6", icon: Info, label: "Info" },
-  warning: { color: "#f59e0b", icon: AlertTriangle, label: "Warning" },
-  danger: { color: "#ef4444", icon: OctagonAlert, label: "Danger" },
-  note: { color: "#6b7280", icon: Pencil, label: "Note" },
-  abstract: { color: "#8b5cf6", icon: ClipboardList, label: "Abstract" },
-  todo: { color: "#06b6d4", icon: CheckSquare, label: "Todo" },
-  example: { color: "#14b8a6", icon: List, label: "Example" },
-  quote: { color: "#9ca3af", icon: Quote, label: "Quote" },
-  bug: { color: "#ef4444", icon: Bug, label: "Bug" },
-  success: { color: "#22c55e", icon: CircleCheck, label: "Success" },
-  failure: { color: "#ef4444", icon: CircleX, label: "Failure" },
-  question: { color: "#eab308", icon: CircleHelp, label: "Question" },
-};
-
-const CALLOUT_TYPE_KEYS = Object.keys(CALLOUT_TYPES);
+import {
+  CALLOUT_TYPE_KEYS,
+  CALLOUT_TYPES,
+  calloutTypeLabel,
+} from "./callout-types";
 
 export function CalloutView({
   editor,
@@ -60,6 +26,7 @@ export function CalloutView({
   node,
   updateAttributes,
 }: NodeViewProps) {
+  const { t } = useTranslation();
   const type = (node.attrs.type as string) || "info";
   const title = (node.attrs.title as string) || "";
   const collapsed = node.attrs.collapsed as boolean;
@@ -169,14 +136,15 @@ export function CalloutView({
         data-vim-suspend=""
       >
         <div className="callout-icon-wrapper" ref={pickerRef}>
-          <button
-            className="callout-icon-btn"
-            onClick={handleIconClick}
-            title="Change callout type"
-            type="button"
-          >
-            <CalloutIcon type={type} />
-          </button>
+          <Tooltip label={t("callout.changeType")} placement="bottom">
+            <button
+              className="callout-icon-btn"
+              onClick={handleIconClick}
+              type="button"
+            >
+              <CalloutIcon type={type} />
+            </button>
+          </Tooltip>
 
           {canEdit && isPickerOpen && (
             <div className="callout-type-picker">
@@ -189,11 +157,10 @@ export function CalloutView({
                       .join(" ")}
                     key={key}
                     onClick={() => handleTypeSelect(key)}
-                    title={def.label}
                     type="button"
                   >
                     <CalloutIcon size={16} type={key} />
-                    <span className="callout-type-label">{def.label}</span>
+                    <span className="callout-type-label">{t(def.label)}</span>
                   </button>
                 );
               })}
@@ -217,36 +184,43 @@ export function CalloutView({
             className="callout-title"
             onDoubleClick={handleTitleDoubleClick}
           >
-            {title || type.charAt(0).toUpperCase() + type.slice(1)}
+            {title || calloutTypeLabel(t, type)}
           </span>
         )}
 
-        <button
-          className="callout-ai-btn"
-          onClick={(e) => {
-            e.stopPropagation();
-            const text = node.textContent || "";
-            if (!text.trim()) return;
-            const pos = getPos();
-            if (typeof pos !== "number") return;
-            showNodeViewAIMenu(e.currentTarget, "text", text, editor, pos);
-          }}
-          ref={(el) => {
-            if (el) el.onmousedown = (e) => e.stopPropagation();
-          }}
-          title="AI Commands"
-          type="button"
+        <Tooltip label={t("toolbar.ai.commands")} placement="bottom">
+          <button
+            className="callout-ai-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              const text = node.textContent || "";
+              if (!text.trim()) return;
+              const pos = getPos();
+              if (typeof pos !== "number") return;
+              showNodeViewAIMenu(e.currentTarget, "text", text, editor, pos);
+            }}
+            ref={(el) => {
+              if (el) el.onmousedown = (e) => e.stopPropagation();
+            }}
+            type="button"
+          >
+            <Sparkles size={14} />
+          </button>
+        </Tooltip>
+        <Tooltip
+          label={
+            collapsed ? t("blockChrome.expand") : t("blockChrome.collapse")
+          }
+          placement="bottom"
         >
-          <Sparkles size={14} />
-        </button>
-        <button
-          className="callout-collapse-btn"
-          onClick={toggleCollapsed}
-          title={collapsed ? "Expand" : "Collapse"}
-          type="button"
-        >
-          {collapsed ? "▶" : "▼"}
-        </button>
+          <button
+            className="callout-collapse-btn"
+            onClick={toggleCollapsed}
+            type="button"
+          >
+            {collapsed ? "▶" : "▼"}
+          </button>
+        </Tooltip>
       </div>
 
       <NodeViewContent

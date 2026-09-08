@@ -9,6 +9,10 @@ import { Editor } from "@tiptap/core";
 import { EditorContent } from "@tiptap/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// Names come from the catalogue, not from literals here: they are display copy a wording
+// pass may change, and the behaviour under test is not about the words.
+import en from "../../i18n/en.json";
+
 vi.mock("@tauri-apps/api/core", () => ({
   convertFileSrc: (p: string) => `asset://localhost/${p}`,
   invoke: vi.fn(async () => undefined),
@@ -89,7 +93,7 @@ async function openFullscreen() {
   });
   await flush();
 
-  fireEvent.click(view.getByTitle("Edit full-screen"));
+  fireEvent.click(view.getByLabelText(en["blockChrome.editFullscreen"]));
   await flush();
   const textarea = document.body.querySelector<HTMLTextAreaElement>(
     ".mermaid-fullscreen-editor textarea",
@@ -150,7 +154,7 @@ describe("Mermaid fullscreen close (issue 531)", () => {
       view.container.querySelector<HTMLTextAreaElement>("textarea");
     if (!inline) throw new Error("inline textarea did not mount");
     fireEvent.change(inline, { target: { value: INLINE } });
-    fireEvent.click(view.getByTitle("Edit full-screen"));
+    fireEvent.click(view.getByLabelText(en["blockChrome.editFullscreen"]));
     await flush();
     const fullscreen = document.body.querySelector<HTMLTextAreaElement>(
       ".mermaid-fullscreen-editor textarea",

@@ -6,7 +6,12 @@
 
 import React from "react";
 
-import { MERMAID_TEMPLATES } from "../../../utils/markdown/mermaid-utils";
+import { Tooltip } from "../../../components/Tooltip";
+import { useTranslation } from "../../../i18n/useTranslation";
+import {
+  MERMAID_TEMPLATES,
+  mermaidTypeLabel,
+} from "../../../utils/markdown/mermaid-utils";
 
 interface MermaidBlockHeaderProps {
   applyTemplate: (key: string) => void;
@@ -23,23 +28,25 @@ export function MermaidBlockHeader({
   setShowTemplates,
   showTemplates,
 }: MermaidBlockHeaderProps): React.ReactElement {
+  const { t } = useTranslation();
   return (
     <div className="mermaid-block-header">
       <span className="mermaid-block-label">mermaid</span>
       {detectedType && (
         <span className="mermaid-block-type-badge">
-          {MERMAID_TEMPLATES[detectedType]?.label || detectedType}
+          {mermaidTypeLabel(t, detectedType)}
         </span>
       )}
       <div className="mermaid-block-actions">
         <div className="mermaid-template-wrapper">
-          <button
-            className="mermaid-template-btn"
-            onClick={() => setShowTemplates(!showTemplates)}
-            title="Diagram templates"
-          >
-            Template ▾
-          </button>
+          <Tooltip label={t("mermaidBlock.templates")} placement="bottom">
+            <button
+              className="mermaid-template-btn"
+              onClick={() => setShowTemplates(!showTemplates)}
+            >
+              {t("mermaidBlock.template")} ▾
+            </button>
+          </Tooltip>
           {showTemplates && (
             <div className="mermaid-template-dropdown">
               {Object.entries(MERMAID_TEMPLATES).map(([key, tmpl]) => (
@@ -53,19 +60,20 @@ export function MermaidBlockHeader({
                   key={key}
                   onClick={() => applyTemplate(key)}
                 >
-                  {tmpl.label}
+                  {t(tmpl.label)}
                 </button>
               ))}
             </div>
           )}
         </div>
-        <button
-          className="mermaid-fullscreen-btn"
-          onClick={onOpenEditFullscreen}
-          title="Edit full-screen"
-        >
-          Expand
-        </button>
+        <Tooltip label={t("blockChrome.editFullscreen")} placement="bottom">
+          <button
+            className="mermaid-fullscreen-btn"
+            onClick={onOpenEditFullscreen}
+          >
+            {t("blockChrome.expandEditor")}
+          </button>
+        </Tooltip>
       </div>
     </div>
   );

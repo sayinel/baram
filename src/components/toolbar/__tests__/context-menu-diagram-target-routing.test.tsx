@@ -25,6 +25,10 @@ import { Editor } from "@tiptap/core";
 import { EditorContent } from "@tiptap/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+// Names come from the catalogue, not from literals here: they are display copy a wording
+// pass may change, and the behaviour under test is not about the words.
+import en from "../../../i18n/en.json";
+
 vi.mock("@tauri-apps/api/core", () => ({
   convertFileSrc: (p: string) => `asset://localhost/${p}`,
   invoke: vi.fn(async () => undefined),
@@ -131,7 +135,7 @@ function localMenu(selector: string): HTMLElement | null {
 async function openCaptionInput(
   view: ReturnType<typeof render>,
 ): Promise<HTMLInputElement> {
-  fireEvent.click(view.getByTitle("Caption"));
+  fireEvent.click(view.getByLabelText(en["blockChrome.caption"]));
   await flush();
   const input = view.container.querySelector<HTMLInputElement>(
     "input.block-caption-input",
@@ -200,7 +204,7 @@ describe("mermaid block: right-click ownership by target", () => {
       ...document.body.querySelectorAll<HTMLElement>(
         ".mermaid-context-menu-item",
       ),
-    ].find((b) => b.textContent === "Edit Fullscreen");
+    ].find((b) => b.textContent === en["blockChrome.editFullscreen"]);
     fireEvent.click(required(edit ?? null, "Edit Fullscreen item"));
     await flush();
 
@@ -268,7 +272,7 @@ describe("mermaid block: right-click ownership by target", () => {
     // (Reload) does not appear either; only its textarea keeps a native menu.
     const { editor, view } = await mountMermaid();
     await enterEditing(editor);
-    fireEvent.click(view.getByTitle("Edit full-screen"));
+    fireEvent.click(view.getByLabelText(en["blockChrome.editFullscreen"]));
     await flush();
     const fullscreenPreview = required(
       document.body.querySelector<HTMLElement>(".mermaid-fullscreen-preview"),
@@ -418,7 +422,7 @@ describe("svg block: right-click ownership by target", () => {
       type: "svgBlock",
     });
     await enterEditing(editor);
-    fireEvent.click(view.getByTitle("Edit full-screen"));
+    fireEvent.click(view.getByLabelText(en["blockChrome.editFullscreen"]));
     await flush();
     const fullscreenPreview = required(
       document.body.querySelector<HTMLElement>(".svg-fullscreen-preview"),
@@ -485,7 +489,7 @@ describe("svg block: right-click ownership by target", () => {
     await flush();
     const edit = [
       ...document.body.querySelectorAll<HTMLElement>(".svg-context-menu-item"),
-    ].find((b) => b.textContent === "Edit Fullscreen");
+    ].find((b) => b.textContent === en["blockChrome.editFullscreen"]);
     fireEvent.click(required(edit ?? null, "Edit Fullscreen item"));
     await flush();
 

@@ -4,6 +4,9 @@
 // whether they are useful: the delay (about a second on WebKit), the placement, and the look.
 // On an icon-only rail the delay is the whole problem — by the time the label arrives the
 // pointer has usually moved on. This owns the timing and the pill; the words stay in i18n.
+//
+// The timing itself lives in `tooltip-core.ts`, shared with the imperative `attachTooltip` —
+// see that file's header for why sharing is not optional.
 import { cloneElement, useCallback, useEffect, useRef, useState } from "react";
 import type {
   FocusEvent,
@@ -16,60 +19,14 @@ import { createPortal } from "react-dom";
 
 import type { Placement } from "@floating-ui/dom";
 
-import { computePosition, flip, offset, shift } from "@floating-ui/dom";
-
-/** How long the pointer rests on a trigger before its label appears. */
-const SHOW_DELAY_MS = 150;
-
-/**
- * How long after one label hides the next one opens instantly.
- *
- * Without it, sweeping down a column of icons re-pays the delay at every stop, and a rail of
- * fifteen unlabeled icons stays unreadable no matter how short that delay is. With it the
- * label reads as one thing that re-titles itself as the pointer moves — which is what the
- * editors this bar is modelled on do.
- */
-const WARM_WINDOW_MS = 500;
-
-/** Gap between the trigger and the pill. */
-const OFFSET_PX = 8;
-
-/**
- * When the last visible tooltip hid, shared by every instance — the warm window is a property
- * of the pointer's journey across the app, not of one trigger.
- */
-let lastHiddenAt = 0;
-
-/**
- * The one instance currently showing a pill, so a second one can evict it.
- *
- * Shared because the defect it fixes is inherently cross-instance: focus an icon with the
- * keyboard and then hover a different one, and the focused trigger receives neither `blur` nor
- * `pointerleave` — nothing local to it can know it should stop. Two pills then paint in the same
- * column about 44px apart, which reads as a rendering bug rather than as two labels.
- */
-let currentOwner: null | { hide: () => void; token: object } = null;
-
-/**
- * Claim the slot at the moment a pill actually appears.
- *
- * ‼️ NOT at schedule time. Evicting the previous owner when the timer is armed would blank the
- * label the pointer is leaving 150ms before the next one arrives — a flash of nothing on every
- * cold move, which is the exact feeling {@link WARM_WINDOW_MS} exists to remove.
- */
-function claim(token: object, hide: () => void): void {
-  if (currentOwner && currentOwner.token !== token) currentOwner.hide();
-  currentOwner = { hide, token };
-}
-
-/**
- * ‼️ Compare-and-clear, never an unconditional clear. An earlier instance's late hide (Escape,
- * a delayed blur, an unmount) would otherwise wipe the NEWER owner's slot, after which the next
- * show evicts nobody and two pills are back — intermittently, which is the worst version.
- */
-function release(token: object): void {
-  if (currentOwner?.token === token) currentOwner = null;
-}
+import {
+  claimPill,
+  isWarm,
+  placePill,
+  releasePill,
+  SHOW_DELAY_MS,
+  stampHidden,
+} from "./tooltip-core";
 
 /** Props {@link Tooltip} sets on its child. Composed with the child's own, never replacing them. */
 interface TriggerProps {
@@ -139,14 +96,14 @@ export function Tooltip({
     cancelPending();
     if (visibleRef.current) {
       visibleRef.current = false;
-      lastHiddenAt = Date.now();
+      stampHidden();
     }
-    release(tokenRef.current);
+    releasePill(tokenRef.current);
     setVisible(false);
   }, [cancelPending]);
 
   const reveal = useCallback(() => {
-    claim(tokenRef.current, hide);
+    claimPill(tokenRef.current, hide);
     visibleRef.current = true;
     setVisible(true);
   }, [hide]);
@@ -154,7 +111,7 @@ export function Tooltip({
   const show = useCallback(() => {
     if (pressedRef.current || !label) return;
     cancelPending();
-    if (Date.now() - lastHiddenAt < WARM_WINDOW_MS) {
+    if (isWarm()) {
       reveal();
       return;
     }
@@ -179,7 +136,7 @@ export function Tooltip({
       // So no two-pill defect is reachable through it, and no test in this file can fail without
       // this line. What it does prevent is the module holding a closure over an unmounted
       // component's refs until the next show happens — small, real, and invisible to RTL.
-      release(tokenRef.current);
+      releasePill(tokenRef.current);
     },
     [cancelPending],
   );
@@ -212,30 +169,13 @@ export function Tooltip({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [visible, hide]);
 
-  // Placed after mount rather than in CSS: the pill starts transparent at the origin, so a
-  // frame at (0, 0) is never painted, and the same property that hides it fades it in.
+  // Measured after mount, not in CSS — `placePill` explains why the fade rides along.
   useEffect(() => {
     if (!visible) return;
     const trigger = triggerRef.current;
     const floating = floatingRef.current;
     if (!trigger || !floating) return;
-
-    let cancelled = false;
-    void computePosition(trigger, floating, {
-      middleware: [offset(OFFSET_PX), flip(), shift({ padding: OFFSET_PX })],
-      placement,
-      // Must match `position: fixed` in tooltip.css. Left at the default "absolute", floating-ui
-      // resolves the offset parent to the window and ADDS window scroll to the result — inert
-      // only while base.css keeps html/body/#root at overflow: hidden.
-      strategy: "fixed",
-    }).then(({ x, y }) => {
-      if (cancelled || !floatingRef.current) return;
-      floatingRef.current.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`;
-      floatingRef.current.style.opacity = "1";
-    });
-    return () => {
-      cancelled = true;
-    };
+    return placePill(trigger, floating, placement);
   }, [visible, placement, label]);
 
   const childProps = children.props;

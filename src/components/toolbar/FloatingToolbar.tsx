@@ -30,33 +30,49 @@ import {
 } from "../../utils/editor/mutation-tasks";
 import { showFieldDialog } from "../../utils/field-dialog";
 import { extractActionItems } from "../../utils/tasks/extract-action-items";
+import { Tooltip } from "../Tooltip";
 
 interface FloatingToolbarProps {
   editor: Editor;
 }
 
 interface ToolbarButtonProps {
+  /** The glyph on the button — `B`, `H1`, `X²`. Deliberately not translated. */
+  glyph: string;
   isActive: boolean;
+  /**
+   * The hover label, already translated. Named `label` rather than `title` because it is no
+   * longer a `title` attribute — the app's pill shows it, and a leftover native `title` would
+   * double up with the browser's own arriving a second later underneath.
+   */
   label: string;
   onClick: () => void;
-  title: string;
 }
 
+/**
+ * ‼️ The pill, not `title`. These buttons are two-character glyphs — `Q`, `UL`, `X₂` — so the
+ * label IS the affordance, and a ~1s WebKit delay on a bar that only exists while text is
+ * selected means it arrived after the pointer had already committed to a guess.
+ *
+ * Above, because the bar itself sits above the selection: a pill below would cover the very
+ * text the button is about to act on.
+ */
 function ToolbarButton({
+  glyph,
   label,
-  title,
   isActive,
   onClick,
 }: ToolbarButtonProps) {
   return (
-    <button
-      className={`floating-toolbar-btn ${isActive ? "floating-toolbar-btn-active" : ""}`}
-      onClick={onClick}
-      onMouseDown={(e) => e.preventDefault()}
-      title={title}
-    >
-      {label}
-    </button>
+    <Tooltip label={label} placement="top">
+      <button
+        className={`floating-toolbar-btn ${isActive ? "floating-toolbar-btn-active" : ""}`}
+        onClick={onClick}
+        onMouseDown={(e) => e.preventDefault()}
+      >
+        {glyph}
+      </button>
+    </Tooltip>
   );
 }
 
@@ -220,64 +236,65 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
       shouldShow={shouldShow}
     >
       <ToolbarButton
+        glyph="B"
         isActive={editor.isActive("bold")}
-        label="B"
+        label={commandLabel("formatting.bold")}
         onClick={() =>
           chainWithVimExternalEdit(editor).focus().toggleBold().run()
         }
-        title={commandLabel("formatting.bold")}
       />
       <ToolbarButton
+        glyph="I"
         isActive={editor.isActive("italic")}
-        label="I"
+        label={commandLabel("formatting.italic")}
         onClick={() =>
           chainWithVimExternalEdit(editor).focus().toggleItalic().run()
         }
-        title={commandLabel("formatting.italic")}
       />
       <ToolbarButton
+        glyph="S"
         isActive={editor.isActive("strike")}
-        label="S"
+        label={commandLabel("formatting.strikethrough")}
         onClick={() =>
           chainWithVimExternalEdit(editor).focus().toggleStrike().run()
         }
-        title={commandLabel("formatting.strikethrough")}
       />
       <ToolbarButton
+        glyph="H"
         isActive={editor.isActive("highlight")}
-        label="H"
+        label={commandLabel("formatting.highlight")}
         onClick={() =>
           chainWithVimExternalEdit(editor).focus().toggleHighlight().run()
         }
-        title={commandLabel("formatting.highlight")}
       />
       <ToolbarButton
+        glyph="X²"
         isActive={editor.isActive("superscript")}
-        label="X²"
+        label={t("menu.insert.superscript")}
         onClick={() =>
           chainWithVimExternalEdit(editor).focus().toggleSuperscript().run()
         }
-        title={t("menu.insert.superscript")}
       />
       <ToolbarButton
+        glyph="X₂"
         isActive={editor.isActive("subscript")}
-        label="X₂"
+        label={t("menu.insert.subscript")}
         onClick={() =>
           chainWithVimExternalEdit(editor).focus().toggleSubscript().run()
         }
-        title={t("menu.insert.subscript")}
       />
       <ToolbarButton
+        glyph="<>"
         isActive={editor.isActive("code")}
-        label="<>"
+        label={commandLabel("formatting.inlineCode")}
         onClick={() =>
           chainWithVimExternalEdit(editor).focus().toggleCode().run()
         }
-        title={commandLabel("formatting.inlineCode")}
       />
       <ToolbarButton
+        glyph="Lk"
         isActive={editor.isActive("link")}
-        label="Lk"
+        label={t("toolbar.link")}
         onClick={async () => {
           if (editor.isActive("link")) {
             chainWithVimExternalEdit(editor).focus().unsetLink().run();
@@ -306,65 +323,65 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
             .setLink({ href: result.url })
             .run();
         }}
-        title={t("toolbar.link")}
       />
       <div className="floating-toolbar-separator" />
       <ToolbarButton
+        glyph="H1"
         isActive={editor.isActive("heading", { level: 1 })}
-        label="H1"
+        label={commandLabel("formatting.heading1")}
         onClick={() =>
           chainWithVimExternalEdit(editor)
             .focus()
             .toggleHeading({ level: 1 })
             .run()
         }
-        title={commandLabel("formatting.heading1")}
       />
       <ToolbarButton
+        glyph="H2"
         isActive={editor.isActive("heading", { level: 2 })}
-        label="H2"
+        label={commandLabel("formatting.heading2")}
         onClick={() =>
           chainWithVimExternalEdit(editor)
             .focus()
             .toggleHeading({ level: 2 })
             .run()
         }
-        title={commandLabel("formatting.heading2")}
       />
       <div className="floating-toolbar-separator" />
       <ToolbarButton
+        glyph="Q"
         isActive={editor.isActive("blockquote")}
-        label="Q"
+        label={commandLabel("formatting.blockquote")}
         onClick={() =>
           chainWithVimExternalEdit(editor).focus().toggleBlockquote().run()
         }
-        title={commandLabel("formatting.blockquote")}
       />
       <ToolbarButton
+        glyph="UL"
         isActive={editor.isActive("bulletList")}
-        label="UL"
+        label={commandLabel("formatting.bulletList")}
         onClick={() =>
           chainWithVimExternalEdit(editor).focus().toggleBulletList().run()
         }
-        title={commandLabel("formatting.bulletList")}
       />
       <ToolbarButton
+        glyph="OL"
         isActive={editor.isActive("orderedList")}
-        label="OL"
+        label={commandLabel("formatting.orderedList")}
         onClick={() =>
           chainWithVimExternalEdit(editor).focus().toggleOrderedList().run()
         }
-        title={commandLabel("formatting.orderedList")}
       />
       <div className="floating-toolbar-separator" />
       <div className="floating-toolbar-ai-wrapper" ref={aiRef}>
-        <button
-          className={`floating-toolbar-btn ${aiOpen ? "floating-toolbar-btn-active" : ""}`}
-          onClick={handleAIOpen}
-          title={t("toolbar.ai.commands")}
-        >
-          <Sparkles size={14} />
-        </button>
+        <Tooltip label={t("toolbar.ai.commands")} placement="top">
+          <button
+            className={`floating-toolbar-btn ${aiOpen ? "floating-toolbar-btn-active" : ""}`}
+            onClick={handleAIOpen}
+          >
+            <Sparkles size={14} />
+          </button>
+        </Tooltip>
         {aiOpen && (
           <div
             className={`floating-toolbar-ai-dropdown ${dropUp ? "floating-toolbar-ai-dropdown-up" : ""}`}

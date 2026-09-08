@@ -8,6 +8,7 @@ import { GripVertical, Plus } from "lucide-react";
 import { chainWithVimExternalEdit } from "../../extensions/plugins/vim/vim-keys";
 import { useTranslation } from "../../i18n/useTranslation";
 import { getEditorZoom } from "../../utils/zoom-coords";
+import { Tooltip } from "../Tooltip";
 import { BlockHandleMenu } from "./BlockHandleMenu";
 import { useBlockDrag } from "./use-block-drag";
 import { useBlockHandlePosition } from "./use-block-handle-position";
@@ -67,35 +68,39 @@ export function BlockHandle({ editor }: BlockHandleProps) {
         {/* §4.8 Add a block below and open the slash menu to pick its type
             (Notion-style): insert an empty paragraph, then type "/" so the
             SlashCommands suggestion opens on the fresh block. */}
-        <button
-          className="block-handle-add-btn"
-          onClick={() => {
-            const node = editor.state.doc.nodeAt(handle.pos);
-            if (!node) return;
-            const insertAt = handle.pos + node.nodeSize;
-            chainWithVimExternalEdit(editor)
-              .focus()
-              .insertContentAt(insertAt, { type: "paragraph" })
-              .setTextSelection(insertAt + 1)
-              .insertContent("/")
-              .run();
-            setHandle(null);
-          }}
-          title={t("blockHandle.addBelow")}
-        >
-          <Plus size={12} strokeWidth={2} />
-        </button>
-        <button
-          className="block-handle-btn"
-          onClick={() => {
-            if (isDragging) return; // a drag just ended — don't toggle the menu
-            setMenuOpen(!menuOpen);
-          }}
-          onMouseDown={(e) => startDrag(e, handle.pos)}
-          title={t("blockHandle.drag")}
-        >
-          <GripVertical size={16} strokeWidth={2} />
-        </button>
+        {/* Left of the block, so the pill goes left too — above would cover the line the
+            handle belongs to, which is the one thing the user is aiming at. */}
+        <Tooltip label={t("blockHandle.addBelow")} placement="left">
+          <button
+            className="block-handle-add-btn"
+            onClick={() => {
+              const node = editor.state.doc.nodeAt(handle.pos);
+              if (!node) return;
+              const insertAt = handle.pos + node.nodeSize;
+              chainWithVimExternalEdit(editor)
+                .focus()
+                .insertContentAt(insertAt, { type: "paragraph" })
+                .setTextSelection(insertAt + 1)
+                .insertContent("/")
+                .run();
+              setHandle(null);
+            }}
+          >
+            <Plus size={12} strokeWidth={2} />
+          </button>
+        </Tooltip>
+        <Tooltip label={t("blockHandle.drag")} placement="left">
+          <button
+            className="block-handle-btn"
+            onClick={() => {
+              if (isDragging) return; // a drag just ended — don't toggle the menu
+              setMenuOpen(!menuOpen);
+            }}
+            onMouseDown={(e) => startDrag(e, handle.pos)}
+          >
+            <GripVertical size={16} strokeWidth={2} />
+          </button>
+        </Tooltip>
       </div>
 
       {menuOpen && (

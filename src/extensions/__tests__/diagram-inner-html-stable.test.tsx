@@ -30,6 +30,10 @@ import { Editor } from "@tiptap/core";
 import { EditorContent } from "@tiptap/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+// Names come from the catalogue, not from literals here: they are display copy a wording
+// pass may change, and the behaviour under test is not about the words.
+import en from "../../i18n/en.json";
+
 vi.mock("@tauri-apps/api/core", () => ({
   convertFileSrc: (p: string) => `asset://localhost/${p}`,
   invoke: vi.fn(async () => undefined),
@@ -242,7 +246,12 @@ describe("diagram svg DOM survives an unrelated re-render (issue 549)", () => {
 
   it("svg block: the fullscreen viewer's <svg>", async () => {
     const { wrapper } = await mountSvg();
-    fireEvent.click(required(wrapper, 'button[title="Fullscreen view"]'));
+    fireEvent.click(
+      required(
+        wrapper,
+        `button[aria-label="${en["blockChrome.viewFullscreen"]}"]`,
+      ),
+    );
     await flush();
     // The portal lives in the block's React tree: a re-render of the view is a
     // re-render of the modal.
@@ -257,7 +266,7 @@ describe("diagram svg DOM survives an unrelated re-render (issue 549)", () => {
       editor.commands.setNodeSelection(0);
     });
     await flush();
-    fireEvent.click(view.getByTitle("Edit full-screen"));
+    fireEvent.click(view.getByLabelText(en["blockChrome.editFullscreen"]));
     await flush();
     const preview = required(document.body, ".svg-fullscreen-preview");
     await expectStable(preview, wrapper, "svg-context-menu");
@@ -288,7 +297,12 @@ describe("diagram svg DOM survives an unrelated re-render (issue 549)", () => {
 
   it("mermaid block: the fullscreen viewer's <svg>", async () => {
     const { wrapper } = await mountMermaid();
-    fireEvent.click(required(wrapper, 'button[title="Fullscreen view"]'));
+    fireEvent.click(
+      required(
+        wrapper,
+        `button[aria-label="${en["blockChrome.viewFullscreen"]}"]`,
+      ),
+    );
     await flush();
     const body = required(document.body, ".mermaid-view-fullscreen-body");
     await expectStable(body, wrapper, "mermaid-context-menu");
@@ -297,7 +311,9 @@ describe("diagram svg DOM survives an unrelated re-render (issue 549)", () => {
   it("mermaid block: the fullscreen editor's preview <svg>", async () => {
     const { wrapper } = await mountMermaid();
     await reRenderByRightClick(wrapper, "mermaid-context-menu");
-    fireEvent.click(menuItem("mermaid-context-menu", "Edit Fullscreen"));
+    fireEvent.click(
+      menuItem("mermaid-context-menu", en["blockChrome.editFullscreen"]),
+    );
     await flush();
     const preview = required(document.body, ".mermaid-fullscreen-preview");
     await expectStable(preview, wrapper, "mermaid-context-menu");

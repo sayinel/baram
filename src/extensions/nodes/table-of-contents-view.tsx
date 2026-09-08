@@ -5,6 +5,8 @@ import type { NodeViewProps } from "@tiptap/react";
 
 import { NodeViewWrapper } from "@tiptap/react";
 
+import { useTranslation } from "../../i18n/useTranslation";
+
 interface TocEntry {
   level: number;
   pos: number;
@@ -12,6 +14,7 @@ interface TocEntry {
 }
 
 export function TableOfContentsView({ editor, selected }: NodeViewProps) {
+  const { t } = useTranslation();
   const [entries, setEntries] = useState<TocEntry[]>([]);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -61,9 +64,9 @@ export function TableOfContentsView({ editor, selected }: NodeViewProps) {
       className={`table-of-contents ${selected ? "table-of-contents-selected" : ""}`}
       contentEditable={false}
     >
-      <div className="table-of-contents-header">Table of Contents</div>
+      <div className="table-of-contents-header">{t("toc.title")}</div>
       {entries.length === 0 ? (
-        <div className="table-of-contents-empty">No headings</div>
+        <div className="table-of-contents-empty">{t("toc.empty")}</div>
       ) : (
         <ul className="table-of-contents-list">
           {entries.map((entry, i) => (
@@ -76,7 +79,7 @@ export function TableOfContentsView({ editor, selected }: NodeViewProps) {
                 className="table-of-contents-link"
                 onClick={() => handleClick(entry.pos)}
               >
-                {entry.text || "(empty)"}
+                {entry.text || t("common.empty")}
               </button>
             </li>
           ))}

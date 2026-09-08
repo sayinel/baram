@@ -7,6 +7,7 @@ import type { NodeViewProps } from "@tiptap/react";
 import { NodeViewWrapper } from "@tiptap/react";
 
 import { useEmbedSync } from "../../hooks/use-embed-sync";
+import { useTranslation } from "../../i18n/useTranslation";
 import { isWysiwygVimModal } from "../plugins/vim/vim-keys";
 import { useAtomBlockBehavior } from "./views/use-atom-block-behavior";
 import { useTextareaAutoResize } from "./views/use-textarea-auto-resize";
@@ -18,6 +19,7 @@ export function BlockEmbedView({
   editor,
   getPos,
 }: NodeViewProps) {
+  const { t } = useTranslation();
   const { target, blockId } = node.attrs as {
     blockId: string;
     target: string;
@@ -144,26 +146,30 @@ export function BlockEmbedView({
       </div>
       <div className="block-embed-content" onClick={handleContentClick}>
         {status === "loading" && (
-          <span style={{ color: "var(--color-text-muted)" }}>Loading…</span>
+          <span style={{ color: "var(--color-text-muted)" }}>
+            {t("blockEmbed.loading")}
+          </span>
         )}
         {status === "ready" && content}
         {status === "file-not-found" && (
           <span
             style={{ color: "var(--color-text-muted)", fontStyle: "italic" }}
           >
-            File &ldquo;{target}&rdquo; not found — open a folder first
+            {t("blockEmbed.fileNotFound", { target })}
           </span>
         )}
         {status === "block-not-found" && (
           <span
             style={{ color: "var(--color-text-muted)", fontStyle: "italic" }}
           >
-            Block ^{blockId} not found{target ? ` in ${target}` : ""}
+            {target
+              ? t("blockEmbed.blockNotFoundIn", { id: blockId, target })
+              : t("blockEmbed.blockNotFound", { id: blockId })}
           </span>
         )}
         {status === "error" && (
           <span style={{ color: "#dc2626", fontStyle: "italic" }}>
-            Failed to load embed
+            {t("blockEmbed.failed")}
           </span>
         )}
       </div>

@@ -12,6 +12,7 @@ import type { Editor } from "@tiptap/react";
 import { useTranslation } from "../../i18n/useTranslation";
 import { activeEditorScrollContainer } from "../../utils/editor/active-scroll-container";
 import { getEditorZoom } from "../../utils/zoom-coords";
+import { Tooltip } from "../Tooltip";
 import { findTableNearPoint } from "./table-insert-coords";
 import {
   axisHasSpan,
@@ -249,50 +250,55 @@ export function TableSelectionHandles({ editor }: { editor: Editor }) {
   return (
     <>
       {handle && (
-        <button
-          className={`table-select-handle table-select-handle-${handle.axis}`}
-          onClick={() => {
-            if (isDragging) return; // a drag just ended
-            if (handle.axis === "col") selectColumn(editor, handle.cellPos);
-            else selectRow(editor, handle.cellPos);
-          }}
-          onMouseDown={(e) => {
-            if (axisHasSpan(editor, handle.tablePos, handle.axis)) return; // merged → click-only
-            const info = collectEdges(handle);
-            if (!info) return;
-            startDrag(e, {
-              axis: handle.axis,
-              from: handle.index,
-              tablePos: handle.tablePos,
-              edges: info.edges,
-              tableRect: info.tableRect,
-            });
-          }}
-          onMouseEnter={() => {
-            hoveringRef.current = true;
-            cancelHide();
-          }}
-          onMouseLeave={() => {
-            hoveringRef.current = false;
-            scheduleHide();
-          }}
-          style={computeHandleStyle(handle, getEditorZoom())}
-          title={
+        // Outward from the edge the grip sits on, for the same reason as the insert buttons.
+        <Tooltip
+          label={
             handle.axis === "col"
               ? t("tableHandles.selectColumn")
               : t("tableHandles.selectRow")
           }
-          type="button"
+          placement={handle.axis === "col" ? "top" : "left"}
         >
-          <svg fill="currentColor" height="10" viewBox="0 0 10 10" width="10">
-            <circle cx="2.5" cy="2.5" r="1" />
-            <circle cx="5" cy="2.5" r="1" />
-            <circle cx="7.5" cy="2.5" r="1" />
-            <circle cx="2.5" cy="7.5" r="1" />
-            <circle cx="5" cy="7.5" r="1" />
-            <circle cx="7.5" cy="7.5" r="1" />
-          </svg>
-        </button>
+          <button
+            className={`table-select-handle table-select-handle-${handle.axis}`}
+            onClick={() => {
+              if (isDragging) return; // a drag just ended
+              if (handle.axis === "col") selectColumn(editor, handle.cellPos);
+              else selectRow(editor, handle.cellPos);
+            }}
+            onMouseDown={(e) => {
+              if (axisHasSpan(editor, handle.tablePos, handle.axis)) return; // merged → click-only
+              const info = collectEdges(handle);
+              if (!info) return;
+              startDrag(e, {
+                axis: handle.axis,
+                from: handle.index,
+                tablePos: handle.tablePos,
+                edges: info.edges,
+                tableRect: info.tableRect,
+              });
+            }}
+            onMouseEnter={() => {
+              hoveringRef.current = true;
+              cancelHide();
+            }}
+            onMouseLeave={() => {
+              hoveringRef.current = false;
+              scheduleHide();
+            }}
+            style={computeHandleStyle(handle, getEditorZoom())}
+            type="button"
+          >
+            <svg fill="currentColor" height="10" viewBox="0 0 10 10" width="10">
+              <circle cx="2.5" cy="2.5" r="1" />
+              <circle cx="5" cy="2.5" r="1" />
+              <circle cx="7.5" cy="2.5" r="1" />
+              <circle cx="2.5" cy="7.5" r="1" />
+              <circle cx="5" cy="7.5" r="1" />
+              <circle cx="7.5" cy="7.5" r="1" />
+            </svg>
+          </button>
+        </Tooltip>
       )}
       {indicator && (
         <div
