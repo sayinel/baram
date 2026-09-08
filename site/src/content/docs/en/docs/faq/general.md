@@ -45,6 +45,12 @@ Two cases fall back to opening the releases page for a manual download instead:
 > and the version performing an update is the one you are updating *from* — so v0.6.x asks
 > you to download it by hand, and v0.7.0 onward installs on its own.
 
+> **On v0.7.0, the update dialog opens behind the Settings window.** Same reason: the fix
+> is in v0.7.1, but the version performing an update is the one you are updating *from*.
+> Press **Update to v0.7.1**, then click the dimmed area outside the Settings panel to
+> close Settings — the dialog is waiting behind it. Escape closes the dialog rather than
+> Settings, so use the click. From v0.7.1 onward it appears on top.
+
 ---
 
 ## Language
