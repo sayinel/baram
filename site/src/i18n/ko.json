@@ -61,10 +61,12 @@
   "install.s3": "Baram을 실행하고 아무 폴더나 마크다운 파일을 여세요 — 계정도, 설정도 필요 없습니다.",
   "install.title": "요구 사항 & 설치",
   "install.winReq": "Windows 10 이상 · x64",
+  "lang.select": "언어 선택",
   "nav.docs": "문서",
   "nav.faq": "FAQ",
   "nav.features": "기능",
   "nav.install": "설치",
+  "nav.menu": "메뉴",
   "nav.plugins": "플러그인",
   "nav.shortcuts": "단축키",
   "plugins.desc": "권한 제어형 내장 마켓플레이스에서 커뮤니티 플러그인을 찾아보세요 — 테마, 도구, 에디터 확장을 클릭 한 번으로 설치합니다. 직접 만들고 싶다면 개발 가이드로 시작하세요.",
@@ -87,5 +89,9 @@
   "support.desc": "Baram은 Apache-2.0 라이선스의 무료 오픈소스입니다. 글쓰기가 가벼워졌다면, 바람이 계속 불도록 응원해 주세요.",
   "support.kofi": "Ko-fi로 후원하기 ☕",
   "support.star": "GitHub에 Star 남기기",
-  "support.title": "Baram 후원하기"
+  "support.title": "Baram 후원하기",
+  "theme.auto": "자동",
+  "theme.dark": "어두운 테마",
+  "theme.light": "밝은 테마",
+  "theme.select": "테마 선택"
 }

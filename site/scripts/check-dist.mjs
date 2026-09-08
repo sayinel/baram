@@ -245,6 +245,51 @@ if (!existsSync(robotsFile)) {
   }
 }
 
+// ── 7. 랜딩 헤더의 컨트롤 — **이 리포가 직접 조립한** 값들이다
+//
+// ‼️ 문서 헤더는 Starlight 이 만들고 그쪽 게이트가 지키지만, 랜딩 헤더는 우리 것이다.
+//    언어 select 의 값은 `withBase` 로 만든 경로라 base 가 빠지면 그대로 404 가 되는데
+//    링크 검사기는 마크다운 본문만 본다 — 구 URL 스텁이 정확히 그렇게 깨졌다.
+//    테마 선택지는 Starlight 과 **같은 3-상태**여야 두 표면의 저장값이 갈리지 않는다.
+const THEME_VALUES = "dark,light,auto";
+let landings = 0;
+for (const locale of ROUTES.locales) {
+  const file = join(DIST, locale, "index.html");
+  if (!existsSync(file)) {
+    problems.push(`[랜딩 없음] ${locale}/index.html 이 dist 에 없다`);
+    continue;
+  }
+  const html = readFileSync(file, "utf8");
+  landings += 1;
+
+  if (!html.includes('id="nav-toggle"')) {
+    problems.push(`[모바일 토글 없음] ${locale} 랜딩 — 좁은 화면에서 nav 를 접을 수 없다`);
+  }
+
+  const themeAt = html.indexOf('id="theme-select"');
+  const themeBlock = themeAt < 0 ? "" : html.slice(themeAt, html.indexOf("</select>", themeAt));
+  const themeValues = [...themeBlock.matchAll(/<option value="([^"]+)"/g)].map((m) => m[1]).join(",");
+  if (themeValues !== THEME_VALUES) {
+    problems.push(`[테마 선택지] ${locale} 랜딩 → "${themeValues}" (기대 "${THEME_VALUES}")`);
+  }
+
+  const langAt = html.indexOf('id="lang-select"');
+  const langBlock = langAt < 0 ? "" : html.slice(langAt, html.indexOf("</select>", langAt));
+  const langOptions = [...langBlock.matchAll(/<option value="([^"]+)"( selected)?/g)];
+  if (langOptions.length !== ROUTES.locales.length) {
+    problems.push(`[언어 선택지 개수] ${locale} 랜딩 → ${langOptions.length}개 (기대 ${ROUTES.locales.length}개)`);
+  }
+  for (const [, href] of langOptions) {
+    if (!resolveInDist(href)) problems.push(`[언어 링크 부재] ${locale} 랜딩 → ${href} 가 dist 안에 없다`);
+  }
+  // 문서 헤더와 같은 의미인가 — **현재** 언어가 선택돼 있어야 한다(갈 곳이 아니라).
+  const selected = langOptions.find((m) => m[2])?.[1];
+  if (selected !== withBase(`/${locale}/`)) {
+    problems.push(`[현재 언어 표시] ${locale} 랜딩 → ${selected ?? "(없음)"} (기대 ${withBase(`/${locale}/`)})`);
+  }
+}
+if (!landings) problems.push("[랜딩 0개] 헤더 단정이 한 로케일에서도 돌지 않았다");
+
 const total = PAGES.length;
 const done = PAGES.filter((p) => migrated(p.slug)).length;
 console.log(

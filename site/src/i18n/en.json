@@ -61,10 +61,12 @@
   "install.s3": "Launch Baram and open any folder or markdown file — no account, no setup.",
   "install.title": "Requirements & Install",
   "install.winReq": "Windows 10+ · x64",
+  "lang.select": "Select language",
   "nav.docs": "Docs",
   "nav.faq": "FAQ",
   "nav.features": "Features",
   "nav.install": "Install",
+  "nav.menu": "Menu",
   "nav.plugins": "Plugins",
   "nav.shortcuts": "Shortcuts",
   "plugins.desc": "Browse community plugins in the built-in, capability-gated marketplace — themes, tools, and editor extensions installed in one click. Want to build your own? Start with the development guide.",
@@ -87,5 +89,9 @@
   "support.desc": "Baram is free and open source under Apache-2.0. If it makes your writing lighter, you can help keep it flying.",
   "support.kofi": "Support on Ko-fi ☕",
   "support.star": "Star on GitHub",
-  "support.title": "Support Baram"
+  "support.title": "Support Baram",
+  "theme.auto": "Auto",
+  "theme.dark": "Dark",
+  "theme.light": "Light",
+  "theme.select": "Select theme"
 }
