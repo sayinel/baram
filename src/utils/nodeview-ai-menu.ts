@@ -1,8 +1,11 @@
+import type { Locale } from "../i18n";
 import type { ContentMode } from "./content-type-detector";
 // §11.2.3 NodeView AI Menu — DOM-based AI action dropdown for NodeViews
 // Works in both React NodeViews and plain ProseMirror NodeViews
 import type { Editor } from "@tiptap/core";
 
+import { t } from "../i18n";
+import { useSettingsStore } from "../stores/settings/store";
 import {
   dispatchAIAction,
   dispatchCustomInstruction,
@@ -27,6 +30,17 @@ export function showNodeViewAIMenu(
   const existing = document.querySelector(".nodeview-ai-menu");
   if (existing) existing.remove();
 
+  // ‼️ The store, not `useTranslation`: this builds DOM directly so it can serve plain
+  // ProseMirror NodeViews as well as React ones, and a hook has no meaning here. The
+  // pattern is `field-dialog.ts`'s.
+  //
+  // ‼️ THIS IS THE THIRD RENDER SITE for `getActionsForMode`. The other two are
+  // `FloatingToolbar` and `BlockHandleMenu`; `AIAction.label` became an i18n key when the
+  // table moved into the catalogues, and a consumer left painting `action.label` raw shows
+  // `ai.action.improve` on screen. Seven NodeViews reach this menu (image, mermaid, math,
+  // svg, callout, code block, table toolbar), so add `t()` at any new one.
+  const locale = useSettingsStore.getState().locale as Locale;
+
   const actions = getActionsForMode(mode);
   const menu = document.createElement("div");
   menu.className = "nodeview-ai-menu";
@@ -34,7 +48,7 @@ export function showNodeViewAIMenu(
   for (const action of actions) {
     const btn = document.createElement("button");
     btn.className = "nodeview-ai-menu-item";
-    btn.textContent = action.label;
+    btn.textContent = t(action.label, locale);
     btn.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -53,7 +67,7 @@ export function showNodeViewAIMenu(
 
   const customBtn = document.createElement("button");
   customBtn.className = "nodeview-ai-menu-item";
-  customBtn.textContent = "Custom Instruction";
+  customBtn.textContent = t("blockMenu.customInstruction", locale);
   customBtn.addEventListener("click", (e) => {
     e.preventDefault();
     e.stopPropagation();

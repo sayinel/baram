@@ -19,6 +19,8 @@ import {
   KEYBINDING_REGISTRY,
 } from "../../keybindings/keybinding-registry";
 import { DEFAULT_ACTIVITY_BAR_CONFIG } from "../../stores/settings/activity-bar-config";
+import { AI_ACTION_LABEL_KEYS } from "../../utils/contextual-ai-actions";
+import { TURN_INTO_LABEL_KEYS } from "../../utils/toolbar/block-turn-into";
 import en from "../en.json";
 import ko from "../ko.json";
 
@@ -192,6 +194,50 @@ describe("activity bar item labels", () => {
     const referenced = new Set(activityBarItemKeys());
     const orphaned = Object.keys(locale).filter(
       (k) => k.startsWith("settings.activitybar.item.") && !referenced.has(k),
+    );
+    expect(orphaned).toEqual([]);
+  });
+});
+
+describe("the toolbar's satellite label tables", () => {
+  // §4.7 / §4.8 — the Ask AI dropdown and the "Turn into" submenu are built from tables in
+  // `src/utils/`, and their `label` fields are i18n keys now.
+  //
+  // ‼️ They need a guard HERE rather than a wider prose scan. The shared scanner
+  // (`prose-scanner.ts`) is what catches hardcoded English in the toolbar's components, but
+  // every consumer of it reads `.tsx` only — these two tables are `.ts`, so they fell through
+  // the extension, not the directory. Pointing a scan at them would also be the wrong
+  // question: the labels are no longer prose, they are keys, and the way a key fails is by
+  // resolving to itself on screen.
+  it("has enough entries for the checks below to bite", () => {
+    expect(AI_ACTION_LABEL_KEYS.length).toBeGreaterThan(25);
+    expect(TURN_INTO_LABEL_KEYS.length).toBeGreaterThan(10);
+  });
+
+  it.each(LOCALES)(
+    "defines every Ask AI action label in %s",
+    (_name, locale) => {
+      const missing = AI_ACTION_LABEL_KEYS.filter((k) => !(k in locale));
+      expect(missing).toEqual([]);
+    },
+  );
+
+  it.each(LOCALES)("defines every Turn into label in %s", (_name, locale) => {
+    const missing = TURN_INTO_LABEL_KEYS.filter((k) => !(k in locale));
+    expect(missing).toEqual([]);
+  });
+
+  // The reverse direction, in both catalogues — same reasoning as the activity bar's orphan
+  // check: a key added to ko alone and referenced by nothing escapes an EN-only scan.
+  it.each(LOCALES)("has no orphaned toolbar label in %s", (_name, locale) => {
+    const referenced = new Set([
+      ...AI_ACTION_LABEL_KEYS,
+      ...TURN_INTO_LABEL_KEYS,
+    ]);
+    const orphaned = Object.keys(locale).filter(
+      (k) =>
+        (k.startsWith("ai.action.") || k.startsWith("turnInto.")) &&
+        !referenced.has(k),
     );
     expect(orphaned).toEqual([]);
   });

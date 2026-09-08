@@ -9,6 +9,8 @@ import { Sparkles } from "lucide-react";
 
 // §4.7 Floating Toolbar — BubbleMenu on text selection
 import { chainWithVimExternalEdit } from "../../extensions/plugins/vim/vim-keys";
+import { useTranslation } from "../../i18n/useTranslation";
+import { useCommandLabel } from "../../keybindings/use-command-label";
 import {
   executeAICommand,
   getSelectedText,
@@ -61,29 +63,46 @@ function ToolbarButton({
 // §6.2 / §11.2.3 Selection-based contextual AI commands in FloatingToolbar dropdown
 const AFTER_SEL = { afterSelection: true } as const;
 
-/** Contextual AI actions that ask for one value before running. */
+/**
+ * Contextual AI actions that ask for one value before running.
+ *
+ * `label` and `presetKeys` are i18n keys; `presets` are literals.
+ *
+ * ‼️ The distinction is not style. A preset is BOTH what the user reads and what gets
+ * substituted into `token` and sent to the model, so translating one changes the prompt.
+ * Tones and human languages are translated (a Korean user picking `한국어` should get
+ * Korean); programming-language names are not — they are proper nouns, and `Python` is the
+ * value the model needs either way.
+ */
 const CONTEXTUAL_PROMPTS: Record<
   string,
-  { label: string; presets: string[]; token: string }
+  { label: string; presetKeys?: string[]; presets?: string[]; token: string }
 > = {
   "convert-lang": {
-    label: "Target language:",
+    label: "toolbar.ai.targetLanguage",
     presets: ["Python", "JavaScript", "TypeScript", "Rust"],
     token: "{language}",
   },
   tone: {
-    label: "Select tone:",
-    presets: ["Formal", "Casual", "Professional", "Friendly"],
+    label: "toolbar.ai.selectTone",
+    presetKeys: [
+      "toolbar.ai.tone.formal",
+      "toolbar.ai.tone.casual",
+      "toolbar.ai.tone.professional",
+      "toolbar.ai.tone.friendly",
+    ],
     token: "{tone}",
   },
   translate: {
-    label: "Target language:",
-    presets: ["English", "Korean"],
+    label: "toolbar.ai.targetLanguage",
+    presetKeys: ["toolbar.lang.english", "toolbar.lang.korean"],
     token: "{language}",
   },
 };
 
 export function FloatingToolbar({ editor }: FloatingToolbarProps) {
+  const { t } = useTranslation();
+  const commandLabel = useCommandLabel();
   const [aiOpen, setAiOpen] = useState(false);
   const [dropUp, setDropUp] = useState(false);
   const [dropReady, setDropReady] = useState(false);
@@ -163,7 +182,13 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
       // insert the answer into the replacing document.
       void awaitBoundToEditor(
         editor.view,
-        showPrompt(spec.label, "", { presets: spec.presets }),
+        showPrompt(t(spec.label), "", {
+          // ‼️ `presetKeys` 는 번역하고 `presets` 는 그대로 쓴다 — 프리셋은 사용자가 읽는
+          //    글자이면서 `token` 에 치환돼 모델로 가는 값이다(위 CONTEXTUAL_PROMPTS 주석).
+          presets: spec.presetKeys
+            ? spec.presetKeys.map((k) => t(k))
+            : spec.presets,
+        }),
       ).then((value) => {
         if (!value) return; // cancelled, or the document was replaced
         executeAICommand(
@@ -174,7 +199,7 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
         );
       });
     },
-    [editor],
+    [editor, t],
   );
 
   const shouldShow = useCallback(() => {
@@ -200,7 +225,7 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
         onClick={() =>
           chainWithVimExternalEdit(editor).focus().toggleBold().run()
         }
-        title="Bold (Cmd+B)"
+        title={commandLabel("formatting.bold")}
       />
       <ToolbarButton
         isActive={editor.isActive("italic")}
@@ -208,7 +233,7 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
         onClick={() =>
           chainWithVimExternalEdit(editor).focus().toggleItalic().run()
         }
-        title="Italic (Cmd+I)"
+        title={commandLabel("formatting.italic")}
       />
       <ToolbarButton
         isActive={editor.isActive("strike")}
@@ -216,7 +241,7 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
         onClick={() =>
           chainWithVimExternalEdit(editor).focus().toggleStrike().run()
         }
-        title="Strikethrough (Cmd+Shift+X)"
+        title={commandLabel("formatting.strikethrough")}
       />
       <ToolbarButton
         isActive={editor.isActive("highlight")}
@@ -224,7 +249,7 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
         onClick={() =>
           chainWithVimExternalEdit(editor).focus().toggleHighlight().run()
         }
-        title="Highlight (Cmd+Shift+H)"
+        title={commandLabel("formatting.highlight")}
       />
       <ToolbarButton
         isActive={editor.isActive("superscript")}
@@ -232,7 +257,7 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
         onClick={() =>
           chainWithVimExternalEdit(editor).focus().toggleSuperscript().run()
         }
-        title="Superscript"
+        title={t("menu.insert.superscript")}
       />
       <ToolbarButton
         isActive={editor.isActive("subscript")}
@@ -240,7 +265,7 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
         onClick={() =>
           chainWithVimExternalEdit(editor).focus().toggleSubscript().run()
         }
-        title="Subscript"
+        title={t("menu.insert.subscript")}
       />
       <ToolbarButton
         isActive={editor.isActive("code")}
@@ -248,7 +273,7 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
         onClick={() =>
           chainWithVimExternalEdit(editor).focus().toggleCode().run()
         }
-        title="Inline Code (Cmd+E)"
+        title={commandLabel("formatting.inlineCode")}
       />
       <ToolbarButton
         isActive={editor.isActive("link")}
@@ -261,8 +286,14 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
           // §12-9b: dialog resolution is an async gap (design §5c)
           const task = registerEditorMutationTask(editor.view);
           const result = await showFieldDialog({
-            title: "Insert Link",
-            fields: [{ key: "url", label: "URL", placeholder: "https://..." }],
+            title: t("toolbar.link.insert"),
+            fields: [
+              {
+                key: "url",
+                label: t("toolbar.link.url"),
+                placeholder: "https://...",
+              },
+            ],
           });
           const live = task.isLive();
           task.finish();
@@ -275,7 +306,7 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
             .setLink({ href: result.url })
             .run();
         }}
-        title="Link"
+        title={t("toolbar.link")}
       />
       <div className="floating-toolbar-separator" />
       <ToolbarButton
@@ -287,7 +318,7 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
             .toggleHeading({ level: 1 })
             .run()
         }
-        title="Heading 1"
+        title={commandLabel("formatting.heading1")}
       />
       <ToolbarButton
         isActive={editor.isActive("heading", { level: 2 })}
@@ -298,7 +329,7 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
             .toggleHeading({ level: 2 })
             .run()
         }
-        title="Heading 2"
+        title={commandLabel("formatting.heading2")}
       />
       <div className="floating-toolbar-separator" />
       <ToolbarButton
@@ -307,7 +338,7 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
         onClick={() =>
           chainWithVimExternalEdit(editor).focus().toggleBlockquote().run()
         }
-        title="Blockquote"
+        title={commandLabel("formatting.blockquote")}
       />
       <ToolbarButton
         isActive={editor.isActive("bulletList")}
@@ -315,7 +346,7 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
         onClick={() =>
           chainWithVimExternalEdit(editor).focus().toggleBulletList().run()
         }
-        title="Unordered List"
+        title={commandLabel("formatting.bulletList")}
       />
       <ToolbarButton
         isActive={editor.isActive("orderedList")}
@@ -323,14 +354,14 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
         onClick={() =>
           chainWithVimExternalEdit(editor).focus().toggleOrderedList().run()
         }
-        title="Ordered List"
+        title={commandLabel("formatting.orderedList")}
       />
       <div className="floating-toolbar-separator" />
       <div className="floating-toolbar-ai-wrapper" ref={aiRef}>
         <button
           className={`floating-toolbar-btn ${aiOpen ? "floating-toolbar-btn-active" : ""}`}
           onClick={handleAIOpen}
-          title="AI Commands"
+          title={t("toolbar.ai.commands")}
         >
           <Sparkles size={14} />
         </button>
@@ -346,7 +377,7 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
                 key={action.id}
                 onClick={() => handleContextualAction(action)}
               >
-                {action.label}
+                {t(action.label)}
               </button>
             ))}
           </div>

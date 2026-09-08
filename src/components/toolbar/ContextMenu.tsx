@@ -11,6 +11,7 @@ import {
 } from "../../extensions/plugins/block-id-decoration";
 // §4.8 Context Menu — right-click with node-type detection
 import { chainWithVimExternalEdit } from "../../extensions/plugins/vim/vim-keys";
+import { useTranslation } from "../../i18n/useTranslation";
 import { closeAllContextMenus } from "../../utils/editor/context-menu-exclusive";
 import {
   isInNativeSelect,
@@ -25,6 +26,7 @@ interface ContextMenuProps {
 }
 
 export function ContextMenu({ editor }: ContextMenuProps) {
+  const { t } = useTranslation();
   const [position, setPosition] = useState<null | { x: number; y: number }>(
     null,
   );
@@ -67,19 +69,19 @@ export function ContextMenu({ editor }: ContextMenuProps) {
       const node = resolved.parent;
       const baseItems: MenuItem[] = [
         {
-          label: "Cut",
+          label: t("menu.edit.cut"),
           action: () => {
             document.execCommand("cut");
           },
         },
         {
-          label: "Copy",
+          label: t("menu.edit.copy"),
           action: () => {
             document.execCommand("copy");
           },
         },
         {
-          label: "Paste",
+          label: t("menu.edit.paste"),
           action: () => {
             document.execCommand("paste");
           },
@@ -87,12 +89,12 @@ export function ContextMenu({ editor }: ContextMenuProps) {
       ];
 
       // Table-specific items
-      const tableMenu = buildTableMenu(editor, resolved, baseItems);
+      const tableMenu = buildTableMenu(editor, resolved, baseItems, t);
       if (tableMenu) return tableMenu;
 
       // Math block items
       if (node.type.name === "mathBlock") {
-        return buildMathBlockMenu(editor, pos);
+        return buildMathBlockMenu(editor, pos, t);
       }
 
       // Code block items
@@ -101,7 +103,7 @@ export function ContextMenu({ editor }: ContextMenuProps) {
           ...baseItems,
           { label: "", action: () => {}, separator: true },
           {
-            label: "Select All in Block",
+            label: t("contextMenu.selectAllInBlock"),
             action: () => {
               const blockPos = resolved.before();
               const blockNode = editor.state.doc.nodeAt(blockPos);
@@ -127,21 +129,21 @@ export function ContextMenu({ editor }: ContextMenuProps) {
           if (existingId) {
             blockIdItems.push(
               {
-                label: `Edit Block ID (^${existingId})`,
+                label: t("blockId.edit", { id: existingId }),
                 action: () => editBlockId(editor.view, blockPos),
               },
               {
-                label: "Copy Block ID",
+                label: t("blockId.copy"),
                 action: () => copyBlockId(existingId),
               },
               {
-                label: "Remove Block ID",
+                label: t("blockId.remove"),
                 action: () => removeBlockId(editor.view, blockPos),
               },
             );
           } else {
             blockIdItems.push({
-              label: "Add Block ID",
+              label: t("blockId.add"),
               action: () => addBlockId(editor.view, blockPos),
             });
           }
@@ -153,29 +155,29 @@ export function ContextMenu({ editor }: ContextMenuProps) {
         ...baseItems,
         { label: "", action: () => {}, separator: true },
         {
-          label: "Bold",
+          label: t("menu.insert.bold"),
           action: () =>
             chainWithVimExternalEdit(editor).focus().toggleBold().run(),
         },
         {
-          label: "Italic",
+          label: t("menu.insert.italic"),
           action: () =>
             chainWithVimExternalEdit(editor).focus().toggleItalic().run(),
         },
         {
-          label: "Strikethrough",
+          label: t("menu.insert.strikethrough"),
           action: () =>
             chainWithVimExternalEdit(editor).focus().toggleStrike().run(),
         },
         {
-          label: "Inline Code",
+          label: t("menu.insert.inlineCode"),
           action: () =>
             chainWithVimExternalEdit(editor).focus().toggleCode().run(),
         },
         ...blockIdItems,
       ];
     },
-    [editor],
+    [editor, t],
   );
 
   useEffect(() => {
@@ -213,7 +215,7 @@ export function ContextMenu({ editor }: ContextMenuProps) {
       closeAllContextMenus();
 
       if (specialType === "mathInline") {
-        setItems(buildMathInlineMenu(editor, e.target as HTMLElement));
+        setItems(buildMathInlineMenu(editor, e.target as HTMLElement, t));
         setPosition({ x: e.clientX, y: e.clientY });
         return;
       }
@@ -225,7 +227,7 @@ export function ContextMenu({ editor }: ContextMenuProps) {
       if (!pos) return;
 
       if (specialType === "mathBlock") {
-        setItems(buildMathBlockMenu(editor, pos.pos));
+        setItems(buildMathBlockMenu(editor, pos.pos, t));
       } else {
         setItems(buildMenuItems(pos.pos));
       }
@@ -235,7 +237,7 @@ export function ContextMenu({ editor }: ContextMenuProps) {
     document.addEventListener("contextmenu", handleContextMenu);
 
     return () => document.removeEventListener("contextmenu", handleContextMenu);
-  }, [editor, buildMenuItems, findSpecialNode]);
+  }, [editor, buildMenuItems, findSpecialNode, t]);
 
   if (!position) return null;
 

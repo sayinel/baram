@@ -25,7 +25,7 @@ export interface AIAction {
  */
 export const EXTRACT_TASKS_ACTION: AIAction = {
   id: "extract-tasks",
-  label: "Extract Action Items",
+  label: "ai.action.extractTasks",
   mode: "tasks",
   systemPrompt: "",
 };
@@ -33,42 +33,42 @@ export const EXTRACT_TASKS_ACTION: AIAction = {
 const TEXT_ACTIONS: AIAction[] = [
   {
     id: "improve",
-    label: "Improve",
+    label: "ai.action.improve",
     mode: "replace",
     systemPrompt:
       "Improve the following text for clarity, grammar, and flow. Output only the improved text.",
   },
   {
     id: "shorten",
-    label: "Shorten",
+    label: "ai.action.shorten",
     mode: "replace",
     systemPrompt:
       "Make the following text more concise while preserving meaning. Output only the shortened text.",
   },
   {
     id: "expand",
-    label: "Expand",
+    label: "ai.action.expand",
     mode: "replace",
     systemPrompt:
       "Expand the following text with more detail and explanation. Output only the expanded text.",
   },
   {
     id: "translate",
-    label: "Translate",
+    label: "ai.action.translate",
     mode: "replace",
     systemPrompt:
       "Translate the following text to {language}. Output only the translation.",
   },
   {
     id: "tone",
-    label: "Tone Change",
+    label: "ai.action.tone",
     mode: "replace",
     systemPrompt:
       "Rewrite the following text in a {tone} tone. Output only the rewritten text.",
   },
   {
     id: "explain",
-    label: "Explain",
+    label: "ai.action.explain",
     mode: "generate",
     systemPrompt:
       "Explain the following text in simple terms. Output only the explanation.",
@@ -78,35 +78,35 @@ const TEXT_ACTIONS: AIAction[] = [
 const CODE_ACTIONS: AIAction[] = [
   {
     id: "add-comments",
-    label: "Add Comments",
+    label: "ai.action.addComments",
     mode: "replace",
     systemPrompt:
       "Add clear, concise comments to the following code. Output only the commented code.",
   },
   {
     id: "optimize",
-    label: "Optimize",
+    label: "ai.action.optimize",
     mode: "replace",
     systemPrompt:
       "Optimize the following code for performance and readability. Output only the optimized code.",
   },
   {
     id: "find-bugs",
-    label: "Find Bugs",
+    label: "ai.action.findBugs",
     mode: "generate",
     systemPrompt:
       "Analyze the following code for potential bugs and issues. List each bug with explanation.",
   },
   {
     id: "convert-lang",
-    label: "Convert",
+    label: "ai.action.convert",
     mode: "generate",
     systemPrompt:
       "Convert the following code to {language}. Output only the converted code.",
   },
   {
     id: "gen-tests",
-    label: "Generate Tests",
+    label: "ai.action.genTests",
     mode: "generate",
     systemPrompt:
       "Generate unit tests for the following code. Output only the test code.",
@@ -116,28 +116,28 @@ const CODE_ACTIONS: AIAction[] = [
 const MATH_ACTIONS: AIAction[] = [
   {
     id: "solve-steps",
-    label: "Show Steps",
+    label: "ai.action.solveSteps",
     mode: "generate",
     systemPrompt:
       "Show step-by-step solution for the following LaTeX expression.",
   },
   {
     id: "fix-latex",
-    label: "Fix LaTeX",
+    label: "ai.action.fixLatex",
     mode: "replace",
     systemPrompt:
       "Fix any LaTeX syntax errors in the following expression. Output only corrected LaTeX.",
   },
   {
     id: "explain-math",
-    label: "Explain",
+    label: "ai.action.explain",
     mode: "generate",
     systemPrompt:
       "Explain the following mathematical expression in plain language.",
   },
   {
     id: "related-formulas",
-    label: "Related Formulas",
+    label: "ai.action.relatedFormulas",
     mode: "generate",
     systemPrompt:
       "List related formulas and identities for the following expression.",
@@ -147,27 +147,27 @@ const MATH_ACTIONS: AIAction[] = [
 const TABLE_ACTIONS: AIAction[] = [
   {
     id: "analyze-data",
-    label: "Analyze Data",
+    label: "ai.action.analyzeData",
     mode: "generate",
     systemPrompt:
       "Analyze the following markdown table data and provide insights.",
   },
   {
     id: "fill-cells",
-    label: "Fill Cells",
+    label: "ai.action.fillCells",
     mode: "generate",
     systemPrompt:
       "Fill in empty cells in the following table based on patterns in existing data.",
   },
   {
     id: "suggest-rows",
-    label: "Suggest Rows",
+    label: "ai.action.suggestRows",
     mode: "generate",
     systemPrompt: "Suggest additional rows or columns for the following table.",
   },
   {
     id: "to-csv",
-    label: "To CSV",
+    label: "ai.action.toCsv",
     mode: "generate",
     systemPrompt: "Convert the following markdown table to CSV format.",
   },
@@ -176,26 +176,26 @@ const TABLE_ACTIONS: AIAction[] = [
 const STRUCTURE_ACTIONS: AIAction[] = [
   {
     id: "gen-toc",
-    label: "Generate TOC",
+    label: "ai.action.genToc",
     mode: "generate",
     systemPrompt:
       "Generate a table of contents for the following document structure.",
   },
   {
     id: "improve-structure",
-    label: "Improve Structure",
+    label: "ai.action.improveStructure",
     mode: "generate",
     systemPrompt: "Suggest improvements to the document structure.",
   },
   {
     id: "split-sections",
-    label: "Split Sections",
+    label: "ai.action.splitSections",
     mode: "generate",
     systemPrompt: "Suggest how to split this content into separate sections.",
   },
   {
     id: "summarize",
-    label: "Summarize",
+    label: "ai.action.summarize",
     mode: "generate",
     systemPrompt: "Summarize the following document section.",
   },
@@ -204,35 +204,35 @@ const STRUCTURE_ACTIONS: AIAction[] = [
 const DIAGRAM_ACTIONS: AIAction[] = [
   {
     id: "improve-diagram",
-    label: "Improve Diagram",
+    label: "ai.action.improveDiagram",
     mode: "replace",
     systemPrompt:
       "Improve the following Mermaid diagram for clarity and readability. Output only the improved Mermaid code.",
   },
   {
     id: "explain-diagram",
-    label: "Explain",
+    label: "ai.action.explain",
     mode: "generate",
     systemPrompt:
       "Explain the following Mermaid diagram in plain language. Describe the flow, entities, and relationships.",
   },
   {
     id: "add-nodes",
-    label: "Suggest Nodes",
+    label: "ai.action.addNodes",
     mode: "replace",
     systemPrompt:
       "Suggest additional nodes or connections for the following Mermaid diagram. Output only the improved Mermaid code.",
   },
   {
     id: "change-style",
-    label: "Change Style",
+    label: "ai.action.changeStyle",
     mode: "replace",
     systemPrompt:
       "Add styling (colors, shapes, line styles) to the following Mermaid diagram. Output only the styled Mermaid code.",
   },
   {
     id: "convert-diagram",
-    label: "Convert Type",
+    label: "ai.action.convertDiagram",
     mode: "replace",
     systemPrompt:
       "Convert the following Mermaid diagram to a {diagramType} diagram type. Output only the converted Mermaid code.",
@@ -242,28 +242,28 @@ const DIAGRAM_ACTIONS: AIAction[] = [
 const SVG_ACTIONS: AIAction[] = [
   {
     id: "improve-svg",
-    label: "Improve SVG",
+    label: "ai.action.improveSvg",
     mode: "replace",
     systemPrompt:
       "Improve the following SVG markup for visual clarity and correctness while preserving its intent. Output only the raw SVG markup, no explanation, no code fences.",
   },
   {
     id: "explain-svg",
-    label: "Explain",
+    label: "ai.action.explain",
     mode: "generate",
     systemPrompt:
       "Explain what the following SVG markup renders in plain language. Describe the shapes, colors, and layout.",
   },
   {
     id: "modify-svg",
-    label: "Modify",
+    label: "ai.action.modifySvg",
     mode: "replace",
     systemPrompt:
       "Apply the requested change to the following SVG markup. Output only the raw SVG markup, no explanation, no code fences.",
   },
   {
     id: "change-style",
-    label: "Change Style",
+    label: "ai.action.changeStyle",
     mode: "replace",
     systemPrompt:
       "Restyle the following SVG markup (colors, strokes, fills) for a cleaner look while keeping the same shapes. Output only the raw SVG markup, no explanation, no code fences.",
@@ -273,21 +273,21 @@ const SVG_ACTIONS: AIAction[] = [
 const IMAGE_ACTIONS: AIAction[] = [
   {
     id: "gen-alt",
-    label: "Generate Alt Text",
+    label: "ai.action.genAlt",
     mode: "generate",
     systemPrompt:
       "Generate a concise, descriptive alt text for an image with this context. Output only the alt text.",
   },
   {
     id: "gen-caption",
-    label: "Generate Caption",
+    label: "ai.action.genCaption",
     mode: "generate",
     systemPrompt:
       "Write a descriptive caption for an image with this context. Output only the caption.",
   },
   {
     id: "describe-image",
-    label: "Describe",
+    label: "ai.action.describeImage",
     mode: "generate",
     systemPrompt:
       "Describe the content and context of this image based on available metadata. Provide a detailed description.",
@@ -304,6 +304,21 @@ const MODE_ACTIONS: Record<ContentMode, AIAction[]> = {
   table: TABLE_ACTIONS,
   text: TEXT_ACTIONS,
 };
+
+/**
+ * Every i18n key an action can carry, across every mode.
+ *
+ * Derived from MODE_ACTIONS rather than listed: `label-key-coverage.test.ts` checks these
+ * resolve in both catalogues, and an enumeration there would go stale the moment a mode gains
+ * an action — the defect class `settings.activitybar.item.tasks` shipped with.
+ */
+export const AI_ACTION_LABEL_KEYS: readonly string[] = [
+  ...new Set(
+    [...Object.values(MODE_ACTIONS).flat(), EXTRACT_TASKS_ACTION].map(
+      (a) => a.label,
+    ),
+  ),
+];
 
 /**
  * §314 추출을 붙이는 모드. 회의록·논의 메모는 산문이므로 산문 모드에만 둔다 — 수식이나

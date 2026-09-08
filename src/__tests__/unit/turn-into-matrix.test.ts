@@ -3,20 +3,27 @@
 // container in place or nested the target inside it.
 import { afterEach, describe, expect, it } from "vitest";
 
+import en from "../../i18n/en.json";
 import { buildTurnIntoItems } from "../../utils/toolbar/block-turn-into";
 import { makeTestEditor } from "../helpers/make-test-editor";
 
+// ‼️ Keyed by i18n KEY, not by the English label. `TurnIntoItem.label` used to be the item's
+// display string and this file used it as the item's identity; once the labels became keys
+// (`turnInto.*`) every `find` here missed, `?.run()` no-opped, and all 98 cases failed with
+// "expected toggle, received taskList" — a conversion that never ran, not a broken conversion.
+// The test names still read in English, resolved from the catalogue rather than spelled out.
 const TYPE_OF: Record<string, string> = {
-  Callout: "callout",
-  "Heading 1": "heading",
-  "Ordered List": "orderedList",
-  Quote: "blockquote",
-  Text: "paragraph",
-  "To-do List": "taskList",
-  Toggle: "toggle",
-  "Unordered List": "bulletList",
+  "turnInto.callout": "callout",
+  "turnInto.heading1": "heading",
+  "turnInto.orderedList": "orderedList",
+  "turnInto.quote": "blockquote",
+  "turnInto.taskList": "taskList",
+  "turnInto.text": "paragraph",
+  "turnInto.toggle": "toggle",
+  "turnInto.unorderedList": "bulletList",
 };
 const LABELS = Object.keys(TYPE_OF);
+const named = (key: string) => (en as Record<string, string>)[key];
 
 const editors: ReturnType<typeof makeTestEditor>[] = [];
 function makeEditor(html: string) {
@@ -28,19 +35,22 @@ afterEach(() => {
   for (const e of editors.splice(0)) e.destroy();
 });
 
-function turnInto(editor: ReturnType<typeof makeTestEditor>, label: string) {
-  buildTurnIntoItems(editor, 0)
-    .find((i) => i.label === label)
-    ?.run();
+function turnInto(editor: ReturnType<typeof makeTestEditor>, key: string) {
+  const item = buildTurnIntoItems(editor, 0).find((i) => i.label === key);
+  // Throwing, not `?.run()`: an item this file cannot find used to look exactly like a
+  // conversion that ran and did the wrong thing, which is what hid the rename above.
+  if (!item) throw new Error(`no "Turn into" item labelled ${key}`);
+  item.run();
 }
 
 describe("Turn into: full source → target matrix", () => {
   for (const source of LABELS) {
     for (const target of LABELS) {
       if (source === target) continue;
-      it(`${source} → ${target}`, () => {
+      it(`${named(source)} → ${named(target)}`, () => {
         const editor = makeEditor("<p>X</p>");
-        if (source !== "Text") turnInto(editor, source); // build the source block
+        // A paragraph is what the fixture already is, and `turnInto.text` on it is a no-op.
+        if (source !== "turnInto.text") turnInto(editor, source);
         expect(editor.state.doc.firstChild!.type.name).toBe(TYPE_OF[source]);
 
         turnInto(editor, target);
@@ -58,9 +68,9 @@ describe("Turn into: full source → target matrix", () => {
 // the source type is left behind (the bug was [target, leftover-list]).
 describe("Turn into: multi-item list converts the whole list", () => {
   const LIST_SOURCES = [
-    { item: "listItem", label: "Unordered List", type: "bulletList" },
-    { item: "listItem", label: "Ordered List", type: "orderedList" },
-    { item: "taskItem", label: "To-do List", type: "taskList" },
+    { item: "listItem", label: "turnInto.unorderedList", type: "bulletList" },
+    { item: "listItem", label: "turnInto.orderedList", type: "orderedList" },
+    { item: "taskItem", label: "turnInto.taskList", type: "taskList" },
   ];
 
   function buildList(itemType: string, listType: string) {
@@ -79,7 +89,7 @@ describe("Turn into: multi-item list converts the whole list", () => {
   for (const src of LIST_SOURCES) {
     for (const target of LABELS) {
       if (src.label === target) continue;
-      it(`2-item ${src.label} → ${target}`, () => {
+      it(`2-item ${named(src.label)} → ${named(target)}`, () => {
         const editor = buildList(src.item, src.type);
         expect(editor.state.doc.firstChild!.type.name).toBe(src.type);
 
@@ -120,7 +130,7 @@ describe("Turn into: multi-item list converts the whole list", () => {
   for (const src of LIST_SOURCES) {
     for (const target of LABELS) {
       if (src.label === target) continue;
-      it(`${src.label} → ${target} leaves the following paragraph untouched`, () => {
+      it(`${named(src.label)} → ${named(target)} leaves the paragraph after it untouched`, () => {
         const editor = buildListThenParagraph(src.item, src.type);
         turnInto(editor, target); // handle is on the list at pos 0
 

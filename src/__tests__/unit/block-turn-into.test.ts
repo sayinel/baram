@@ -22,7 +22,7 @@ describe("buildTurnIntoItems", () => {
   it("converts a paragraph to Heading 1", () => {
     const editor = makeEditor("<p>Hello</p>");
     const items = buildTurnIntoItems(editor, 0);
-    const h1 = items.find((i) => i.label === "Heading 1")!;
+    const h1 = items.find((i) => i.label === "turnInto.heading1")!;
     expect(h1).toBeTruthy();
     h1.run();
     expect(editor.state.doc.firstChild!.type.name).toBe("heading");
@@ -32,14 +32,18 @@ describe("buildTurnIntoItems", () => {
   it("marks the current type active", () => {
     const editor = makeEditor("<h2>Title</h2>");
     const items = buildTurnIntoItems(editor, 0);
-    expect(items.find((i) => i.label === "Heading 2")!.isActive).toBe(true);
-    expect(items.find((i) => i.label === "Text")!.isActive).toBe(false);
+    expect(items.find((i) => i.label === "turnInto.heading2")!.isActive).toBe(
+      true,
+    );
+    expect(items.find((i) => i.label === "turnInto.text")!.isActive).toBe(
+      false,
+    );
   });
 
   it("is a no-op when converting to the already-active type", () => {
     const editor = makeEditor("<h2>Title</h2>");
     const items = buildTurnIntoItems(editor, 0);
-    items.find((i) => i.label === "Heading 2")!.run();
+    items.find((i) => i.label === "turnInto.heading2")!.run();
     expect(editor.state.doc.firstChild!.type.name).toBe("heading");
     expect(editor.state.doc.firstChild!.attrs.level).toBe(2);
   });
@@ -47,7 +51,7 @@ describe("buildTurnIntoItems", () => {
   it.each([4, 5, 6])("converts a paragraph to Heading %i", (level) => {
     const editor = makeEditor("<p>Hello</p>");
     const item = buildTurnIntoItems(editor, 0).find(
-      (i) => i.label === `Heading ${level}`,
+      (i) => i.label === `turnInto.heading${level}`,
     )!;
     expect(item).toBeTruthy();
     item.run();
@@ -58,7 +62,7 @@ describe("buildTurnIntoItems", () => {
   it("converts a paragraph to a Toggle, keeping its text as the summary", () => {
     const editor = makeEditor("<p>Hello</p>");
     const toggle = buildTurnIntoItems(editor, 0).find(
-      (i) => i.label === "Toggle",
+      (i) => i.label === "turnInto.toggle",
     )!;
     expect(toggle).toBeTruthy();
     toggle.run();
@@ -71,18 +75,20 @@ describe("buildTurnIntoItems", () => {
   it("marks Toggle active when the block is already a toggle", () => {
     const editor = makeEditor("<p>Hello</p>");
     buildTurnIntoItems(editor, 0)
-      .find((i) => i.label === "Toggle")!
+      .find((i) => i.label === "turnInto.toggle")!
       .run();
     // After wrapping, the top-level block at pos 0 is the toggle itself.
     const items = buildTurnIntoItems(editor, 0);
-    expect(items.find((i) => i.label === "Toggle")!.isActive).toBe(true);
+    expect(items.find((i) => i.label === "turnInto.toggle")!.isActive).toBe(
+      true,
+    );
   });
 
   /** Wrap a paragraph into a toggle and return the editor (toggle at pos 0). */
   function makeToggleEditor() {
     const editor = makeEditor("<p>Hello</p>");
     buildTurnIntoItems(editor, 0)
-      .find((i) => i.label === "Toggle")!
+      .find((i) => i.label === "turnInto.toggle")!
       .run();
     expect(editor.state.doc.firstChild!.type.name).toBe("toggle");
     return editor;
@@ -91,7 +97,7 @@ describe("buildTurnIntoItems", () => {
   it("converts a Toggle to Text by unwrapping it", () => {
     const editor = makeToggleEditor();
     buildTurnIntoItems(editor, 0)
-      .find((i) => i.label === "Text")!
+      .find((i) => i.label === "turnInto.text")!
       .run();
     // The toggle wrapper is gone; the summary becomes a top-level paragraph.
     expect(editor.state.doc.firstChild!.type.name).toBe("paragraph");
@@ -101,7 +107,7 @@ describe("buildTurnIntoItems", () => {
   it("converts a Toggle to Heading 1 using the summary text", () => {
     const editor = makeToggleEditor();
     buildTurnIntoItems(editor, 0)
-      .find((i) => i.label === "Heading 1")!
+      .find((i) => i.label === "turnInto.heading1")!
       .run();
     expect(editor.state.doc.firstChild!.type.name).toBe("heading");
     expect(editor.state.doc.firstChild!.attrs.level).toBe(1);
@@ -111,7 +117,7 @@ describe("buildTurnIntoItems", () => {
   it("converts a paragraph to a Callout, keeping its text", () => {
     const editor = makeEditor("<p>Hello</p>");
     buildTurnIntoItems(editor, 0)
-      .find((i) => i.label === "Callout")!
+      .find((i) => i.label === "turnInto.callout")!
       .run();
     const first = editor.state.doc.firstChild!;
     expect(first.type.name).toBe("callout");
@@ -121,11 +127,11 @@ describe("buildTurnIntoItems", () => {
   it("converts a Callout to Text by unwrapping it", () => {
     const editor = makeEditor("<p>Hello</p>");
     buildTurnIntoItems(editor, 0)
-      .find((i) => i.label === "Callout")!
+      .find((i) => i.label === "turnInto.callout")!
       .run();
     expect(editor.state.doc.firstChild!.type.name).toBe("callout");
     buildTurnIntoItems(editor, 0)
-      .find((i) => i.label === "Text")!
+      .find((i) => i.label === "turnInto.text")!
       .run();
     expect(editor.state.doc.firstChild!.type.name).toBe("paragraph");
     expect(editor.state.doc.firstChild!.textContent).toBe("Hello");
@@ -134,7 +140,7 @@ describe("buildTurnIntoItems", () => {
   it("converts a paragraph to a Math block using its text as the formula", () => {
     const editor = makeEditor("<p>E=mc^2</p>");
     buildTurnIntoItems(editor, 0)
-      .find((i) => i.label === "Math")!
+      .find((i) => i.label === "turnInto.math")!
       .run();
     const first = editor.state.doc.firstChild!;
     expect(first.type.name).toBe("mathBlock");
