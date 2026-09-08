@@ -91,6 +91,18 @@ export function createEditWidget(
     }
   });
 
+  // One outcome per widget. Enter commits and moves focus back to the editor,
+  // which can blur this input while it is still in the DOM — and blur commits
+  // too. With the commit now waiting on the backend (issue 594) the block
+  // still carries the old ID at that moment, so a second commit would be a
+  // second IPC call for the same rename. The first outcome wins.
+  let settled = false;
+  const settle = (outcome: () => void): void => {
+    if (settled) return;
+    settled = true;
+    outcome();
+  };
+
   input.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
@@ -98,22 +110,22 @@ export function createEditWidget(
       const newId = input.value.trim();
       if (!newId) {
         // Empty → remove block ID
-        commitBlockIdEdit(view, nodePos, null);
+        settle(() => commitBlockIdEdit(view, nodePos, null));
       } else if (!isValidBlockId(newId)) {
         input.classList.add("block-id-input-invalid");
       } else if (isDuplicateBlockId(view.state.doc, newId, nodePos)) {
         input.classList.add("block-id-input-invalid");
       } else {
-        commitBlockIdEdit(view, nodePos, newId);
+        settle(() => commitBlockIdEdit(view, nodePos, newId));
       }
     } else if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
-      cancelBlockIdEdit(view);
+      settle(() => cancelBlockIdEdit(view));
     } else if (e.key === "Backspace" && input.value === "") {
       e.preventDefault();
       e.stopPropagation();
-      commitBlockIdEdit(view, nodePos, null);
+      settle(() => commitBlockIdEdit(view, nodePos, null));
     }
     // Prevent ProseMirror from handling the event
     e.stopPropagation();
@@ -122,14 +134,14 @@ export function createEditWidget(
   input.addEventListener("blur", () => {
     const newId = input.value.trim();
     if (!newId) {
-      commitBlockIdEdit(view, nodePos, null);
+      settle(() => commitBlockIdEdit(view, nodePos, null));
     } else if (
       isValidBlockId(newId) &&
       !isDuplicateBlockId(view.state.doc, newId, nodePos)
     ) {
-      commitBlockIdEdit(view, nodePos, newId);
+      settle(() => commitBlockIdEdit(view, nodePos, newId));
     } else {
-      cancelBlockIdEdit(view);
+      settle(() => cancelBlockIdEdit(view));
     }
   });
 
@@ -175,6 +187,21 @@ export function cancelBlockIdEdit(view: EditorView): void {
   view.focus();
 }
 
+/**
+ * Commit an edited block ID.
+ *
+ * A change of one ID to another is a rename that other files may have to
+ * follow (`((file#^id))` references), and the backend decides whether it can
+ * do that — it refuses when the file is outside every context or the link
+ * index cannot be read. issue 594: the document changes only AFTER the backend
+ * has said yes. Applying it first (as this used to) left the document on the
+ * new ID and every other file on the old one when the backend refused, with
+ * no way to retry: the old ID was gone. Now a refusal leaves the document as
+ * it was, and the same edit can simply be made again.
+ *
+ * Adding an ID, removing one, or committing it unchanged involves no other
+ * file and applies at once.
+ */
 export function commitBlockIdEdit(
   view: EditorView,
   nodePos: number,
@@ -184,10 +211,101 @@ export function commitBlockIdEdit(
   if (!node) return;
 
   const oldId = node.attrs.blockId as null | string;
+  const isRename = oldId !== null && newId !== null && oldId !== newId;
+  const filePath = isRename ? activeFilePath() : null;
+  if (!isRename || filePath === null) {
+    // Nothing elsewhere refers to this block by a path (no rename, or a tab
+    // that has no file yet): apply here and be done.
+    applyBlockId(view, nodePos, oldId, newId);
+    view.focus();
+    return;
+  }
+
+  // Close the input now — the widget must not wait on the IPC round trip —
+  // and keep the block focused, still showing the old ID.
+  const closing = view.state.tr;
+  closing.setMeta(blockIdDecoKey, {
+    focusedBlockPos: nodePos,
+    editingBlockPos: null,
+  });
+  view.dispatch(closing);
+  view.focus();
+
+  // issue 263: `.then(onFulfilled, onRejected)`, NOT `.then(...).catch(...)`.
+  // A trailing `.catch` also catches whatever the success body throws, and
+  // the failure toast below says the ID was not changed — which by then
+  // would be the opposite of the truth.
+  renameBlockId(filePath, oldId, newId).then(
+    async (result) => {
+      applyRenamedBlockId(view, filePath, oldId, newId);
+      try {
+        // Reload updated files in the file store cache so tab switches show
+        // new content, and re-index each.
+        const { openFiles, setFileContent } = useFileStore.getState();
+        for (const updatedPath of result.updatedFiles) {
+          if (openFiles.has(updatedPath)) {
+            try {
+              const content = await readFile(updatedPath);
+              setFileContent(updatedPath, content);
+            } catch {
+              // file may have been deleted
+            }
+          }
+          updateFileIndex(updatedPath).catch(() => {});
+        }
+        if (result.updatedFiles.length > 0) {
+          useLinkStore.getState().invalidate();
+        }
+      } catch (e) {
+        // The backend already rewrote the references; only the local cache
+        // refresh failed. Log it — this body owns its own errors because
+        // nobody holds the promise `.then(f, r)` returns, so an escape here
+        // would be an unhandled rejection rather than a caught one.
+        logger.error("[blockId] refreshing renamed references failed:", e);
+      }
+      // issue 594: referrers the backend could not rewrite still say the old
+      // ID. That is in the result, not in an `Err`, and the user hears it.
+      if (result.skippedFiles.length > 0) {
+        logger.warn(
+          "[blockId] renamed, but these referring files could not be updated:",
+          result.skippedFiles,
+        );
+        toast("blockId.rename.skipped.toast", "warning", {
+          count: String(result.skippedFiles.length),
+        });
+      }
+    },
+    (e) => {
+      logger.error(e);
+      // The document still carries the old ID: nothing to undo, the edit can
+      // be made again once the reason is gone.
+      toast("blockId.rename.failed.toast", "error", { message: String(e) });
+    },
+  );
+}
+
+/** The file behind the active tab, if it has one. */
+function activeFilePath(): null | string {
+  const { activeTabId, tabs } = useEditorStore.getState();
+  return tabs.find((t) => t.id === activeTabId)?.filePath ?? null;
+}
+
+/**
+ * Set `newId` on the block at `nodePos` and, for a rename, on the same-
+ * document `blockReference`/`blockEmbed` nodes that pointed at `oldId`
+ * (§30a-2). Closes the edit widget and leaves the block focused. Does not move
+ * focus: the caller decides whether the editor should take it.
+ */
+function applyBlockId(
+  view: EditorView,
+  nodePos: number,
+  oldId: null | string,
+  newId: null | string,
+): void {
+  const node = view.state.doc.nodeAt(nodePos);
+  if (!node) return;
   const { tr } = view.state;
   tr.setNodeMarkup(nodePos, undefined, { ...node.attrs, blockId: newId });
-
-  // §30a-2: Update same-document blockReference/blockEmbed nodes
   if (oldId && newId && oldId !== newId) {
     view.state.doc.descendants((child, pos) => {
       if (
@@ -200,66 +318,64 @@ export function commitBlockIdEdit(
       return true;
     });
   }
-
   tr.setMeta(blockIdDecoKey, {
     focusedBlockPos: nodePos,
     editingBlockPos: null,
   });
   view.dispatch(tr);
-  view.focus();
+}
 
-  // §30a-2: Update cross-file references via IPC
-  if (oldId && newId && oldId !== newId) {
-    const activeTabId = useEditorStore.getState().activeTabId;
-    const tabs = useEditorStore.getState().tabs;
-    const activeTab = tabs.find((t) => t.id === activeTabId);
-    const filePath = activeTab?.filePath;
-    if (filePath) {
-      // issue 263: `.then(onFulfilled, onRejected)`, NOT `.then(...).catch(...)`.
-      // A trailing `.catch` also catches whatever the success body throws, and
-      // the failure toast below says the cross-file references were not
-      // updated — which by then is the opposite of the truth.
-      renameBlockId(filePath, oldId, newId).then(
-        async (result) => {
-          try {
-            if (result.updatedFiles.length === 0) return;
-            // Reload updated files in the file store cache so tab switches show new content
-            const { openFiles, setFileContent } = useFileStore.getState();
-            for (const updatedPath of result.updatedFiles) {
-              if (openFiles.has(updatedPath)) {
-                try {
-                  const content = await readFile(updatedPath);
-                  setFileContent(updatedPath, content);
-                } catch {
-                  // file may have been deleted
-                }
-              }
-              // Re-index the updated file
-              updateFileIndex(updatedPath).catch(() => {});
-            }
-            useLinkStore.getState().invalidate();
-          } catch (e) {
-            // The backend already rewrote the references; only the local cache
-            // refresh failed. Log it — this body owns its own errors because
-            // nobody holds the promise `.then(f, r)` returns, so an escape here
-            // would be an unhandled rejection rather than a caught one.
-            logger.error("[blockId] refreshing renamed references failed:", e);
-          }
-        },
-        (e) => {
-          logger.error(e);
-          // issue 263: the local edit is already in the document; when the
-          // backend refuses the cross-file update (link index still being
-          // built) the user must hear it, or other files keep the old ID.
-          const { locale } = useSettingsStore.getState();
-          useUIStore.getState().showToast(
-            t("blockId.rename.failed.toast", locale as Locale, {
-              message: String(e),
-            }),
-            "error",
-          );
-        },
-      );
-    }
+/**
+ * The backend has renamed `oldId` to `newId` in the other files of `filePath`;
+ * now the document follows. It is found again by its ID, not by the position
+ * the edit started at: the user may have typed above it while the IPC was in
+ * flight. If the editor no longer shows that file, or the block no longer
+ * carries `oldId`, the document is left alone and the user is told — the
+ * other files already say `newId`, and making the same edit again finishes
+ * the job (the backend then finds nothing left to rewrite).
+ */
+function applyRenamedBlockId(
+  view: EditorView,
+  filePath: string,
+  oldId: string,
+  newId: string,
+): void {
+  const pos =
+    !view.isDestroyed && activeFilePath() === filePath
+      ? findBlockPosById(view.state.doc, oldId)
+      : null;
+  if (pos === null) {
+    logger.warn(
+      `[blockId] ${filePath}: references now say ^${newId}, but the block ^${oldId} is no longer in the editor`,
+    );
+    toast("blockId.rename.stale.toast", "warning", { newId });
+    return;
   }
+  applyBlockId(view, pos, oldId, newId);
+}
+
+/** Position of the paragraph/heading carrying `blockId`, or null. */
+function findBlockPosById(doc: PmNode, blockId: string): null | number {
+  let found: null | number = null;
+  doc.descendants((node, pos) => {
+    if (found !== null) return false;
+    if (
+      (node.type.name === "paragraph" || node.type.name === "heading") &&
+      node.attrs.blockId === blockId
+    ) {
+      found = pos;
+      return false;
+    }
+    return true;
+  });
+  return found;
+}
+
+function toast(
+  key: string,
+  type: "error" | "warning",
+  params?: Record<string, string>,
+): void {
+  const { locale } = useSettingsStore.getState();
+  useUIStore.getState().showToast(t(key, locale as Locale, params), type);
 }
