@@ -36,6 +36,8 @@ import { logger } from "../../logger";
 import {
   awaitBlockIdRenames,
   drainPendingBlockIdRenames,
+  hasBlockIdRenamesInFlight,
+  isBlockIdRenameInFlight,
   landCommittedBlockIdRename,
   prunePendingBlockIdRenames,
   trackBlockIdRename,
@@ -197,15 +199,19 @@ describe("landing in the view that asked", () => {
     expect(setFileContent).not.toHaveBeenCalled();
   });
 
-  it("refreshes the outgoing tab's cache and text when the tab has already left the view behind", async () => {
+  it("does not write into the shared view once the tab is on its way out — the cache is the destination", async () => {
     // Tab switch in progress: activeTabId flipped to t2, saveOutgoingTab has
-    // cached t1's state and serialized it, but the shared view still holds t1.
-    const { view } = makeView(makeState());
+    // cached t1's state, and the shared view still holds t1 until the
+    // deferred install. A transaction into that view would be attributed by
+    // the auto-save to t2 — and could write t1's document to t2's file.
+    const { dispatched, view } = makeView(makeState());
     useEditorStore.setState({ activeTabId: "t2" } as never);
     cache.set("t1", view.state);
 
-    await expect(landCommittedBlockIdRename(OP, view)).resolves.toBe("view");
+    await expect(landCommittedBlockIdRename(OP, view)).resolves.toBe("cache");
 
+    expect(dispatched).toHaveLength(0);
+    expect(idsOf(view.state)).toEqual(["old", null, "old", "old"]);
     expect(idsOf(cache.get("t1")!)).toEqual(RENAMED);
     expect(setFileContent).toHaveBeenCalledWith(
       "/vault/note.md",
@@ -214,13 +220,20 @@ describe("landing in the view that asked", () => {
     expect(markDirty).toHaveBeenCalledWith("t1", true);
   });
 
-  it("a keep-alive view owns its document whatever tab is active", async () => {
+  it("a keep-alive view owns its document whatever tab is active, and publishes when hidden", async () => {
     const { view } = makeView(makeState(), true);
     useEditorStore.setState({ activeTabId: "t2" } as never);
     vi.mocked(loadedTabId).mockReturnValue("t2");
 
     await expect(landCommittedBlockIdRename(OP, view)).resolves.toBe("view");
     expect(idsOf(view.state)).toEqual(RENAMED);
+    // Hidden pooled editor: no auto-save sees its update, so the landing
+    // publishes the text and the dirty flag itself.
+    expect(setFileContent).toHaveBeenCalledWith(
+      "/vault/note.md",
+      "md:fresh,,fresh,old",
+    );
+    expect(markDirty).toHaveBeenCalledWith("t1", true);
   });
 
   it("does not touch a shared view that has since been given another document", async () => {
@@ -362,7 +375,7 @@ describe("landing behind another tab", () => {
     );
   });
 
-  it("does not trust an incomplete keep-alive entry", async () => {
+  it("does not trust an incomplete keep-alive entry, and lands in it once the load marks it complete", async () => {
     pooled = makeView(makeState());
     pooledComplete = false;
     useFileStore.setState({
@@ -376,6 +389,12 @@ describe("landing behind another tab", () => {
       "/vault/note.md",
       "hello ^fresh\n",
     );
+
+    // The cold load finishes: `markComplete` comes BEFORE the content-loaded
+    // notification (load-tab-content.ts), so the drain trusts the document.
+    pooledComplete = true;
+    drainPendingBlockIdRenames("t1");
+    expect(idsOf(pooled.state)).toEqual(RENAMED);
   });
 
   it("rewrites a source-mode tab's buffer and marks it edited", async () => {
@@ -486,7 +505,14 @@ describe("in-flight renames and the save paths", () => {
     const chain = new Promise<void>((r) => {
       finish = r;
     });
-    trackBlockIdRename("t1", chain);
+    expect(hasBlockIdRenamesInFlight("t1")).toBe(false);
+    trackBlockIdRename("t1", { newId: "fresh", oldId: "old" }, chain);
+    expect(hasBlockIdRenamesInFlight("t1")).toBe(true);
+    expect(hasBlockIdRenamesInFlight()).toBe(true);
+    expect(isBlockIdRenameInFlight("t1", "old")).toBe(true);
+    expect(isBlockIdRenameInFlight("t1", "fresh")).toBe(true);
+    expect(isBlockIdRenameInFlight("t1", "other")).toBe(false);
+    expect(isBlockIdRenameInFlight("t2", "old")).toBe(false);
     let settled = false;
     const waiting = awaitBlockIdRenames("t1").then(() => {
       settled = true;
@@ -496,8 +522,10 @@ describe("in-flight renames and the save paths", () => {
     finish();
     await waiting;
     expect(settled).toBe(true);
-    // Forgotten once settled: the next wait is immediate.
+    // Forgotten once settled: the next wait is immediate, the lock is gone.
     await expect(awaitBlockIdRenames("t1")).resolves.toBeUndefined();
+    expect(isBlockIdRenameInFlight("t1", "old")).toBe(false);
+    expect(hasBlockIdRenamesInFlight("t1")).toBe(false);
   });
 
   it("awaits nothing for a tab with no rename in flight", async () => {

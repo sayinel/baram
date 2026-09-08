@@ -120,7 +120,7 @@ export function useKeybindingActions({
     });
 
     // View
-    registerAction("view.reload", () => requestReload());
+    registerAction("view.reload", () => void requestReload());
     registerAction("view.sourceMode", () => toggleSourceMode());
     registerAction("view.toggleSidebar", () => toggleSidebar());
     registerAction("view.commandPalette", () => toggleCommandPalette());

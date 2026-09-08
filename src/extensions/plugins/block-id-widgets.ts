@@ -21,10 +21,12 @@ import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
 import {
+  isBlockIdRenameInFlight,
   landCommittedBlockIdRename,
   trackBlockIdRename,
 } from "../../utils/editor/block-id-rename-landing";
 import { logger } from "../../utils/logger";
+import { syncOpenSurfacesAfterFileRewrite } from "../../utils/tasks/sync-open-surfaces";
 
 export const blockIdDecoKey = new PluginKey<BlockIdDecoState>(
   "blockIdDecoration",
@@ -240,6 +242,18 @@ export function commitBlockIdEdit(
   view.dispatch(closing);
   view.focus();
 
+  // One rename of a block at a time (issue 594): the block still shows its
+  // old ID while the first is in flight, so a second edit would start a
+  // second backend rename of the same references, and the two would finish
+  // in an order nobody controls.
+  if (
+    isBlockIdRenameInFlight(tab.id, oldId) ||
+    isBlockIdRenameInFlight(tab.id, newId)
+  ) {
+    toast("blockId.rename.busy.toast", "warning");
+    return;
+  }
+
   // issue 263: `.then(onFulfilled, onRejected)`, NOT `.then(...).catch(...)`.
   // A trailing `.catch` also catches whatever the success body throws, and
   // the failure toast below says the ID was not changed — which by then
@@ -260,14 +274,20 @@ export function commitBlockIdEdit(
         toast("blockId.rename.stale.toast", "warning", { newId });
       }
       try {
-        // Reload updated files in the file store cache so tab switches show
-        // new content, and re-index each.
-        const { openFiles, setFileContent } = useFileStore.getState();
+        // The referrers the backend rewrote: bring every open surface of each
+        // in line with the disk — the active view patched in place, clean
+        // background tabs flagged to reload — and re-index each. A DIRTY
+        // background referrer keeps its cached document and takes the
+        // conflict path when its file's change arrives, as any external
+        // write would.
+        const { openFiles } = useFileStore.getState();
+        const shared =
+          useEditorStore.getState().documentSurfaceAccess?.editor ?? null;
         for (const updatedPath of result.updatedFiles) {
           if (openFiles.has(updatedPath)) {
             try {
               const content = await readFile(updatedPath);
-              setFileContent(updatedPath, content);
+              syncOpenSurfacesAfterFileRewrite(updatedPath, content, shared);
             } catch {
               // file may have been deleted
             }
@@ -306,7 +326,7 @@ export function commitBlockIdEdit(
   // A save of this tab waits for the whole chain (issue 594): serializing a
   // document whose rename is still in flight would write the old ID, and if
   // that save is a Save & Close nothing would write the new one.
-  trackBlockIdRename(tab.id, chain);
+  trackBlockIdRename(tab.id, { newId, oldId }, chain);
 }
 
 /** The active tab and the file behind it, if it has one. */

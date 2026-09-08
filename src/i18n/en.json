@@ -82,6 +82,7 @@
   "blockId.copy": "Copy Block ID",
   "blockId.edit": "Edit Block ID (^{id})",
   "blockId.remove": "Remove Block ID",
+  "blockId.rename.busy.toast": "This block's ID is still being renamed. Try again in a moment.",
   "blockId.rename.failed.toast": "The block ID was not changed: its references in other files could not be updated: {message}",
   "blockId.rename.skipped.toast": "Block ID renamed, but {count} referring file(s) could not be updated.",
   "blockId.rename.stale.toast": "Other files now point to ^{newId}, but this block could not be found to rename it here. Make the same edit again to finish.",

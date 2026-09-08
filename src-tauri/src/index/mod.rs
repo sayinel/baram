@@ -13,7 +13,7 @@ use thiserror::Error;
 
 // Re-export public API consumed by `service/` and the IPC layer
 pub use extractor::{
-    collect_all_files, collect_md_files, find_unlinked_mentions, replace_block_id_refs,
+    collect_all_files, collect_md_files, find_unlinked_mentions, replace_block_id_refs_to,
     replace_wikilink_target, rewrite_relative_wikilinks, UnlinkedMentionResult,
 };
 
@@ -21,6 +21,19 @@ use extractor::{extract_file_tags, extract_links};
 use normalizer::{
     extract_id_from_stem, is_id_target, normalize_file_path, normalize_target, resolve_target,
 };
+
+/// The keys under which references TO `file_path` are filed in `incoming`:
+/// its normalized stem, and the zettel id inside that stem if it has one.
+/// `get_backlinks` reads them; the block-ID rename uses the same keys to
+/// decide which references in a referrer point at this file (issue 594).
+pub(crate) fn backlink_keys(file_path: &str) -> Vec<String> {
+    let stem = normalize_file_path(file_path);
+    let mut keys = vec![stem.clone()];
+    if let Some(id) = extract_id_from_stem(&stem) {
+        keys.push(id);
+    }
+    keys
+}
 
 #[derive(Error, Debug)]
 pub enum IndexError {
@@ -220,11 +233,7 @@ impl LinkIndex {
 
     /// Get backlinks for a given file path
     pub fn get_backlinks(&self, file_path: &str) -> Vec<BacklinkResult> {
-        let stem = normalize_file_path(file_path);
-        let mut keys = vec![stem.clone()];
-        if let Some(id) = extract_id_from_stem(&stem) {
-            keys.push(id);
-        }
+        let keys = backlink_keys(file_path);
 
         let mut seen = std::collections::HashSet::new();
         let mut results = Vec::new();

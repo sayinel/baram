@@ -1,11 +1,11 @@
 use crate::context::manager::{resolve_canonical, Registered};
 use crate::context::ContextManager;
 use crate::index::{
-    collect_md_files, replace_block_id_refs, replace_wikilink_target, rewrite_relative_wikilinks,
-    IndexStats,
+    backlink_keys, collect_md_files, replace_block_id_refs_to, replace_wikilink_target,
+    rewrite_relative_wikilinks, IndexStats,
 };
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use super::build::{
@@ -161,7 +161,7 @@ pub(crate) async fn rename_file_with_links_inner(
     //    file has moved, so a failure here is never a failed rename: the
     //    referrer is skipped and REPORTED (issue 594) — its links still spell
     //    the old name, and only the user can do something about that.
-    let rewritten = rewrite_referrers(&referring_files, old_path, &dirs, |content| {
+    let rewritten = rewrite_referrers(&referring_files, old_path, &dirs, |content, _| {
         replace_wikilink_target(content, &old_target, &new_target)
     })
     .await;
@@ -217,26 +217,36 @@ pub(crate) async fn rename_block_id_inner(
     let keys = keys_of(&dirs);
 
     // 1. Get referring files from every containing index (block_id == old_id,
-    //    target == this file). An index gone since the gate is a refusal.
-    let mut referring_files: Vec<String> = read_indexes(state, &dirs, |index| {
+    //    target == this file), with the LINES the index saw the reference on.
+    //    An index gone since the gate is a refusal. A referrer may also hold
+    //    `((other#^old_id))` — another note's block with the same ID — which
+    //    must not change: the rewrite is confined to those lines and, on them,
+    //    to references whose target is this file (issue 594).
+    let mut referring_lines: HashMap<String, HashSet<u32>> = HashMap::new();
+    for (source, line) in read_indexes(state, &dirs, |index| {
         index
             .get_backlinks(file_path)
             .iter()
             .filter(|b| b.block_id.as_deref() == Some(old_id))
-            .map(|b| b.source_path.clone())
-            .collect()
+            .map(|b| (b.source_path.clone(), b.line))
+            .collect::<Vec<_>>()
     })
-    .await?;
+    .await?
+    {
+        referring_lines.entry(source).or_default().insert(line);
+    }
+    let mut referring_files: Vec<String> = referring_lines.keys().cloned().collect();
     referring_files.sort();
-    referring_files.dedup();
+    let target_keys = backlink_keys(file_path);
 
     // 2. Read + replace + write (outside lock). The first referrer written is
     //    this command's point of no return: a later one that cannot be
     //    rewritten is skipped and reported, not turned into an `Err` that
     //    would claim nothing changed while some files already say `new_id`
     //    (issue 594).
-    let rewritten = rewrite_referrers(&referring_files, file_path, &dirs, |content| {
-        replace_block_id_refs(content, old_id, new_id)
+    let rewritten = rewrite_referrers(&referring_files, file_path, &dirs, |content, ref_path| {
+        let lines = referring_lines.get(ref_path).cloned().unwrap_or_default();
+        replace_block_id_refs_to(content, &lines, &target_keys, old_id, new_id)
     })
     .await;
 
@@ -280,7 +290,7 @@ async fn rewrite_referrers(
     referring_files: &[String],
     own_path: &str,
     dirs: &[Registered],
-    rewrite: impl Fn(&str) -> String,
+    rewrite: impl Fn(&str, &str) -> String,
 ) -> Rewritten {
     let mut result = Rewritten {
         updated: Vec::new(),
@@ -301,7 +311,7 @@ async fn rewrite_referrers(
                 continue;
             }
         };
-        let new_content = rewrite(&content);
+        let new_content = rewrite(&content, ref_path);
         if new_content == content {
             continue;
         }

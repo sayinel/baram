@@ -60,6 +60,12 @@ export type Landing =
   | "source"
   | "view";
 
+interface InFlight {
+  chain: Promise<unknown>;
+  newId: string;
+  oldId: string;
+}
+
 /**
  * A save must not capture a document while a rename it will have to carry is
  * still in flight: `handleSave` serializes and then awaits the write, and a
@@ -67,11 +73,34 @@ export type Landing =
  * write. Save paths await the tab's renames here first.
  */
 export function awaitBlockIdRenames(tabId?: string): Promise<void> {
-  const chains =
+  const chains = (
     tabId === undefined
       ? [...inFlight.values()].flat()
-      : (inFlight.get(tabId) ?? []);
+      : (inFlight.get(tabId) ?? [])
+  ).map((entry) => entry.chain);
   return Promise.all(chains).then(() => undefined);
+}
+
+/** Whether any rename is in flight for the tab (or at all, without a tab). */
+export function hasBlockIdRenamesInFlight(tabId?: string): boolean {
+  return tabId === undefined
+    ? inFlight.size > 0
+    : (inFlight.get(tabId)?.length ?? 0) > 0;
+}
+
+/**
+ * Whether a rename touching `blockId` (as its old or its new ID) is still in
+ * flight for the tab. Two overlapping renames of one block would each read
+ * the same backlinks and rewrite the same files in an order nobody controls;
+ * the second waits for the first to settle.
+ */
+export function isBlockIdRenameInFlight(
+  tabId: string,
+  blockId: string,
+): boolean {
+  return (inFlight.get(tabId) ?? []).some(
+    (entry) => entry.oldId === blockId || entry.newId === blockId,
+  );
 }
 
 /**
@@ -180,19 +209,21 @@ export function prunePendingBlockIdRenames(
  */
 export function trackBlockIdRename(
   tabId: string,
+  ids: Pick<CommittedBlockIdRename, "newId" | "oldId">,
   chain: Promise<unknown>,
 ): void {
-  const chains = inFlight.get(tabId) ?? [];
-  chains.push(chain);
-  inFlight.set(tabId, chains);
+  const entry: InFlight = { chain, newId: ids.newId, oldId: ids.oldId };
+  const entries = inFlight.get(tabId) ?? [];
+  entries.push(entry);
+  inFlight.set(tabId, entries);
   void chain.finally(() => {
-    const remaining = (inFlight.get(tabId) ?? []).filter((c) => c !== chain);
+    const remaining = (inFlight.get(tabId) ?? []).filter((e) => e !== entry);
     if (remaining.length === 0) inFlight.delete(tabId);
     else inFlight.set(tabId, remaining);
   });
 }
 
-const inFlight = new Map<string, Promise<unknown>[]>();
+const inFlight = new Map<string, InFlight[]>();
 const pending = new Map<string, CommittedBlockIdRename[]>();
 
 subscribeContentLoaded(drainPendingBlockIdRenames);
@@ -260,21 +291,26 @@ async function land(
       !access.isKeepaliveComplete(op.tabId));
   if (textOnly) return landInText(op, draining);
 
-  // 3. The view the edit was made in, if it still holds this tab's document.
+  // 3. The view the edit was made in, if it still holds this tab's document
+  //    AND is still the right place to write it. A keep-alive view is: it
+  //    owns its document. The shared view is only while the tab is still
+  //    active: once the tab is on its way out, `saveOutgoingTab` has cached
+  //    the state the rename must go into (route 5), and a transaction here
+  //    would be attributed by the auto-save to the INCOMING tab — the
+  //    outgoing document written to the incoming file.
   if (view && viewHoldsTab(view, op.tabId)) {
-    const tr = buildBlockIdRenameTransaction(view.state, op);
-    if (!tr) return dropped(op, "the document in the editor has no such block");
-    view.dispatch(tr);
-    // The tab may already be on its way out: `saveOutgoingTab` has cached
-    // its state and serialized it BEFORE this landed. Refresh both, or the
-    // deferred restore brings the old ID back.
-    if (editorStore.activeTabId !== op.tabId) {
-      if (access?.editorStateCache.has(op.tabId)) {
-        access.editorStateCache.set(op.tabId, view.state);
+    const keepalive = isKeepaliveView(view);
+    if (keepalive || editorStore.activeTabId === op.tabId) {
+      const tr = buildBlockIdRenameTransaction(view.state, op);
+      if (!tr)
+        return dropped(op, "the document in the editor has no such block");
+      view.dispatch(tr);
+      // A hidden keep-alive editor's update reaches no auto-save.
+      if (keepalive && editorStore.activeTabId !== op.tabId) {
+        publishBackgroundChange(op, view.state);
       }
-      publishBackgroundChange(op, view.state);
+      return "view";
     }
-    return "view";
   }
 
   // 4. A large document's keep-alive editor: live, but hidden while its tab is
@@ -393,7 +429,11 @@ function publishBackgroundChange(
  */
 function viewHoldsTab(view: EditorView, tabId: string): boolean {
   if (view.isDestroyed) return false;
+  return isKeepaliveView(view) || loadedTabId() === tabId;
+}
+
+/** The pooled editor's DOM sits under the keep-alive marker (MarkdownSurface). */
+function isKeepaliveView(view: EditorView): boolean {
   const dom = (view as { dom?: HTMLElement }).dom;
-  if (dom?.closest("[data-keepalive-editor]")) return true;
-  return loadedTabId() === tabId;
+  return dom?.closest("[data-keepalive-editor]") !== null && dom !== undefined;
 }

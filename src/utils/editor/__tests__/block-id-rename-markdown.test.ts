@@ -48,6 +48,41 @@ describe("renameBlockIdInMarkdown — the definition", () => {
     );
   });
 
+  it("renames a paragraph nested in a list item — indentation alone is not code", () => {
+    expect(rename("- item\n\n    child ^old\n")).toBe(
+      "- item\n\n    child ^fresh\n",
+    );
+  });
+
+  it("leaves a fence inside a blockquote or a list alone, and a code span across lines", () => {
+    const md =
+      "> ```\n> ((#^old))\n> ```\n\n- ```\n  x ^old\n  ```\n\nsee `a\nb ((#^old))` and ((#^old))\n";
+    expect(rename(md)).toBe(
+      "> ```\n> ((#^old))\n> ```\n\n- ```\n  x ^old\n  ```\n\nsee `a\nb ((#^old))` and ((#^fresh))\n",
+    );
+  });
+
+  it("leaves raw HTML, math and front matter alone", () => {
+    const md =
+      "---\ntitle: x ^old\n---\n\n<div>((#^old))</div>\n\n$$\n((#^old))\n$$\n\nreal ^old\n";
+    expect(rename(md)).toBe(
+      "---\ntitle: x ^old\n---\n\n<div>((#^old))</div>\n\n$$\n((#^old))\n$$\n\nreal ^fresh\n",
+    );
+  });
+
+  it("renames to an ID of a different length without losing its bearings", () => {
+    expect(
+      renameBlockIdInMarkdown(
+        "a ^old\n`((#^old))`\n((#^old)) ((#^old))\n",
+        FILE,
+        "old",
+        "much-longer-id",
+      ),
+    ).toBe(
+      "a ^much-longer-id\n`((#^old))`\n((#^much-longer-id)) ((#^much-longer-id))\n",
+    );
+  });
+
   it("leaves fenced code alone, whichever fence character and length", () => {
     const md =
       "x ^old\n```\ncode ^old\n((#^old))\n```\ny ^old\n~~~~\nmore ^old\n~~~~\n";

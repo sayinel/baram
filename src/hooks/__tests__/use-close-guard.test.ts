@@ -228,7 +228,7 @@ describe("isTabUnsaved", () => {
 });
 
 describe("requestCloseWorkspace with a source-edited tab", () => {
-  it("prompts instead of discarding the buffer", () => {
+  it("prompts instead of discarding the buffer", async () => {
     const tab = fileTab({ id: "src", isDirty: false });
     useEditorStore.setState({
       activeTabId: "src",
@@ -236,7 +236,7 @@ describe("requestCloseWorkspace with a source-edited tab", () => {
       tabs: [tab],
     });
 
-    requestCloseWorkspace();
+    await requestCloseWorkspace();
 
     expect(useUIStore.getState().unsavedModal).toEqual({
       intent: "closeWorkspace",
@@ -404,25 +404,25 @@ describe("requestReload", () => {
     });
   });
 
-  it("reloads immediately when no file tab is dirty", () => {
+  it("reloads immediately when no file tab is dirty", async () => {
     useEditorStore.setState({
       activeTabId: "t1",
       tabs: [fileTab({ isDirty: false })],
     });
 
-    requestReload();
+    await requestReload();
 
     expect(reload).toHaveBeenCalledOnce();
     expect(useUIStore.getState().unsavedModal).toBeNull();
   });
 
-  it("opens the unsaved-changes modal (intent reload) when a file tab is dirty", () => {
+  it("opens the unsaved-changes modal (intent reload) when a file tab is dirty", async () => {
     useEditorStore.setState({
       activeTabId: "t1",
       tabs: [fileTab({ isDirty: true })],
     });
 
-    requestReload();
+    await requestReload();
 
     expect(useUIStore.getState().unsavedModal).toEqual({ intent: "reload" });
     expect(reload).not.toHaveBeenCalled();

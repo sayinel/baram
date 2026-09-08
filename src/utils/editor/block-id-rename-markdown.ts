@@ -9,7 +9,15 @@
 // transaction would have produced once serialized — so the same rule for
 // "which references belong to this document" lives here and is shared with
 // the transaction builder (`refersToThisDocument`), and code is left alone the
-// way the parser leaves it alone.
+// way the parser leaves it alone: the very parser the pipeline uses says where
+// the code is (fenced or indented, inside a list or a quote, a code span across
+// lines), and those stretches are never touched.
+import remarkFrontmatter from "remark-frontmatter";
+import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import remarkParse from "remark-parse";
+import { unified } from "unified";
+
 import { BLOCK_REF_RE, unescapeBlockRefTarget } from "../../pipeline/block-id";
 import { basename, dirname } from "../path-utils";
 
@@ -50,10 +58,10 @@ export function refersToThisDocument(
 
 /**
  * Rename the definition ` ^oldId` and this document's own references to it.
- * Byte-identical when nothing matches. Left alone, as the parser leaves them:
- * fenced code, indented code, and inline code spans — a ` ^id` at the end of a
- * code line is text, not a block ID. The definition must end the line exactly
- * (`BLOCK_ID_SUFFIX_RE`): trailing spaces make it text too.
+ * Byte-identical when nothing matches. Code — fenced, indented, code spans,
+ * raw HTML, math, front matter — is left alone wherever the parser finds it.
+ * The definition must end its line exactly (`BLOCK_ID_SUFFIX_RE`): trailing
+ * spaces make it text.
  */
 export function renameBlockIdInMarkdown(
   markdown: string,
@@ -61,52 +69,78 @@ export function renameBlockIdInMarkdown(
   oldId: string,
   newId: string,
 ): string {
-  if (oldId === newId) return markdown;
-  const definition = new RegExp(` \\^${escapeRegExp(oldId)}$`);
+  if (oldId === newId || !markdown.includes(oldId)) return markdown;
+  const protectedRanges = literalRanges(markdown);
+  const isFree = (start: number, end: number): boolean =>
+    !protectedRanges.some(([from, to]) => start < to && end > from);
+
+  const definition = new RegExp(` \\^${escapeRegExp(oldId)}(?=\\r?\\n|$)`, "g");
   const reference = new RegExp(BLOCK_REF_RE.source, "g");
-  const renameRefs = (text: string): string =>
-    text.replace(reference, (whole, target: string, id: string) =>
-      id === oldId && refersToThisDocument(target, filePath)
+
+  let out = markdown.replace(definition, (whole, offset: number) =>
+    isFree(offset, offset + whole.length) ? ` ^${newId}` : whole,
+  );
+  // Offsets are unchanged so far only if the IDs have the same length; take
+  // the ranges again against the current text when they differ.
+  const ranges =
+    oldId.length === newId.length ? protectedRanges : literalRanges(out);
+  const free = (start: number, end: number): boolean =>
+    !ranges.some(([from, to]) => start < to && end > from);
+  out = out.replace(
+    reference,
+    (whole, target: string, id: string, _display, offset: number) =>
+      id === oldId &&
+      refersToThisDocument(target, filePath) &&
+      free(offset, offset + whole.length)
         ? whole.replace(`#^${oldId}`, `#^${newId}`)
         : whole,
-    );
-  // Keep the separators: split on them but capture them back.
-  const parts = markdown.split(/(\r?\n)/);
-  let fence: null | { char: string; length: number } = null;
-  for (let i = 0; i < parts.length; i += 2) {
-    const line = parts[i]!;
-    const fenceLine = FENCE_RE.exec(line);
-    if (fence !== null) {
-      if (
-        fenceLine &&
-        fenceLine[1]!.startsWith(fence.char) &&
-        fenceLine[1]!.length >= fence.length &&
-        fenceLine[2]!.trim() === ""
-      ) {
-        fence = null;
-      }
-      continue;
-    }
-    if (fenceLine) {
-      fence = { char: fenceLine[1]![0]!, length: fenceLine[1]!.length };
-      continue;
-    }
-    if (INDENTED_CODE_RE.test(line)) continue;
-    const renamed = line.replace(definition, ` ^${newId}`);
-    parts[i] = outsideInlineCode(renamed, renameRefs);
-  }
-  return parts.join("");
+  );
+  return out;
 }
 
-/** A fence line: up to three spaces, three or more of ``` or ~~~, then the rest. */
-const FENCE_RE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
-/** An indented code line: a tab or four spaces before any text. */
-const INDENTED_CODE_RE = /^(?: {4}|\t)\S/;
-/** A code span: a run of backticks, anything, the same run again. */
-const CODE_SPAN_RE = /(`+)[\s\S]*?\1/g;
+/** The pipeline's own reader (see `pipeline/parse-mdast.ts`). */
+const parser = unified()
+  .use(remarkParse)
+  .use(remarkGfm, { singleTilde: false })
+  .use(remarkMath)
+  .use(remarkFrontmatter, ["yaml"]);
+
+/** Node types whose text is literal — never a block ID, never a reference. */
+const LITERAL_TYPES = new Set([
+  "code",
+  "html",
+  "inlineCode",
+  "inlineMath",
+  "math",
+  "yaml",
+]);
 
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** `[start, end)` offsets of every literal node in `markdown`. */
+function literalRanges(markdown: string): [number, number][] {
+  const ranges: [number, number][] = [];
+  const visit = (node: {
+    children?: unknown[];
+    position?: { end: { offset?: number }; start: { offset?: number } };
+    type: string;
+  }): void => {
+    const start = node.position?.start.offset;
+    const end = node.position?.end.offset;
+    if (
+      LITERAL_TYPES.has(node.type) &&
+      start !== undefined &&
+      end !== undefined
+    ) {
+      ranges.push([start, end]);
+      return;
+    }
+    for (const child of node.children ?? []) visit(child as typeof node);
+  };
+  visit(parser.parse(markdown) as unknown as Parameters<typeof visit>[0]);
+  return ranges;
 }
 
 /** Collapse `.` and `..` segments of a `/`-joined path. */
@@ -118,20 +152,6 @@ function normalizePath(path: string): string {
     else out.push(segment);
   }
   return `${path.startsWith("/") ? "/" : ""}${out.join("/")}`;
-}
-
-/** Apply `transform` to the stretches of `line` that are not inline code. */
-function outsideInlineCode(
-  line: string,
-  transform: (text: string) => string,
-): string {
-  let out = "";
-  let last = 0;
-  for (const span of line.matchAll(CODE_SPAN_RE)) {
-    out += transform(line.slice(last, span.index)) + span[0];
-    last = span.index + span[0].length;
-  }
-  return out + transform(line.slice(last));
 }
 
 /** Strip a `.md` / `.markdown` extension, case-insensitively. */

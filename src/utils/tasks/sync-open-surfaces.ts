@@ -79,7 +79,10 @@ export function syncOpenSurfacesAfterDiskWrite(
 export function syncOpenSurfacesAfterFileRewrite(
   path: string,
   content: string,
-  editor: Editor | null,
+  // Only the view is needed here (the shared editor, or whatever holds it) —
+  // the block-ID rename landing calls this from outside React with the
+  // editor it finds in `documentSurfaceAccess` (issue 594).
+  editor: null | Pick<Editor, "view">,
 ): void {
   const { activeTabId, markContentStale, sourceModeTabs, tabs } =
     useEditorStore.getState();

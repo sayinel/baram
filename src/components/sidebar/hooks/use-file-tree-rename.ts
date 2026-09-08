@@ -17,6 +17,7 @@ import { useFileStore } from "../../../stores/file/file";
 import { useSettingsStore } from "../../../stores/settings/store";
 import { useUIStore } from "../../../stores/ui/ui";
 import { logger } from "../../../utils/logger";
+import { syncOpenSurfacesAfterFileRewrite } from "../../../utils/tasks/sync-open-surfaces";
 
 interface UseFileTreeRenameReturn {
   handleCancelRename: () => void;
@@ -112,12 +113,17 @@ export function useFileTreeRename(
         // `renameFileEntry` re-keys openFiles (`rekeyOpenFilesPrefix`,
         // stores/file/file-tree-ops.ts). Read the map after it.
         const { openFiles } = useFileStore.getState();
-        // Reload content for files that had wikilinks updated
+        // The referrers the backend rewrote: every open surface of each
+        // follows the disk — the active view patched in place, clean
+        // background tabs flagged to reload (issue 594). A dirty background
+        // referrer keeps its edits and takes the conflict path.
+        const shared =
+          useEditorStore.getState().documentSurfaceAccess?.editor ?? null;
         for (const updatedFile of result.updatedFiles) {
           if (openFiles.has(updatedFile)) {
             try {
               const newContent = await readFile(updatedFile);
-              useFileStore.getState().setFileContent(updatedFile, newContent);
+              syncOpenSurfacesAfterFileRewrite(updatedFile, newContent, shared);
             } catch {
               /* ignore */
             }

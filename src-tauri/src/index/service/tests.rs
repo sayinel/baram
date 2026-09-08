@@ -2006,3 +2006,33 @@ async fn a_namespace_rename_reports_a_file_it_could_not_read_apart_from_a_referr
     }
     assert_eq!(result.unchecked_files, vec![format!("{root}/unrelated.md")]);
 }
+
+#[tokio::test]
+async fn a_block_id_rename_leaves_another_notes_block_with_the_same_id_alone() {
+    // issue 594: `x.md` refers to target's ^b1 AND to other's ^b1, on one line
+    // and on separate lines. Only the references to target change; the
+    // reference to `other` keeps its ID, and so does a self-reference.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-abc", true).await;
+    std::fs::write(dir.path().join("target.md"), "para ^b1").unwrap();
+    std::fs::write(dir.path().join("other.md"), "para ^b1").unwrap();
+    std::fs::write(
+        dir.path().join("x.md"),
+        "((target#^b1)) and ((other#^b1))\n((other#^b1)) alone\n((#^b1)) mine ^b1\n((Target.md#^b1|label))",
+    )
+    .unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    let result = rename_block_id_inner(&state, &ctx, &format!("{root}/target.md"), "b1", "b2")
+        .await
+        .unwrap();
+    assert_eq!(result.updated_files, vec![format!("{root}/x.md")]);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("x.md")).unwrap(),
+        "((target#^b2)) and ((other#^b1))\n((other#^b1)) alone\n((#^b1)) mine ^b1\n((Target.md#^b2|label))"
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("other.md")).unwrap(),
+        "para ^b1"
+    );
+}

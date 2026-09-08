@@ -422,6 +422,41 @@ describe("commitBlockIdEdit — the document follows the backend (issue 594)", (
   });
 });
 
+describe("commitBlockIdEdit — one rename of a block at a time", () => {
+  it("refuses a second rename of the same block while the first is in flight", async () => {
+    let resolve!: (r: {
+      skippedFiles: string[];
+      updatedFiles: string[];
+    }) => void;
+    vi.mocked(renameBlockId).mockReturnValue(
+      new Promise((r) => {
+        resolve = r;
+      }),
+    );
+    const { view } = makeView();
+    commitBlockIdEdit(view, 0, "fresh");
+    // The block still shows ^old; the user opens the widget again and commits
+    // another ID before the backend has answered.
+    commitBlockIdEdit(view, 0, "another");
+    expect(renameBlockId).toHaveBeenCalledTimes(1);
+    expect(showToast).toHaveBeenCalledTimes(1);
+    expect(showToast.mock.calls[0]![1]).toBe("warning");
+
+    resolve({ skippedFiles: [], updatedFiles: [] });
+    await flush();
+    expect(blockIds(view)).toEqual(["fresh", null, "fresh"]);
+    // Settled: a new rename goes through.
+    vi.mocked(renameBlockId).mockResolvedValue({
+      skippedFiles: [],
+      updatedFiles: [],
+    });
+    commitBlockIdEdit(view, 0, "another");
+    await flush();
+    expect(renameBlockId).toHaveBeenCalledTimes(2);
+    expect(blockIds(view)).toEqual(["another", null, "another"]);
+  });
+});
+
 describe("commitBlockIdEdit — edits no other file can see apply at once", () => {
   it("removes an ID without asking the backend", () => {
     const { dispatched, view } = makeView();
