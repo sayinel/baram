@@ -1,0 +1,44 @@
+# Assign new issues and pull requests to the person who opened them, and hand
+# Dependabot's pull requests to the maintainer.
+#
+# Why a workflow and not `reviewers:` in dependabot.yml: GitHub has deprecated
+# that key (2025) in favour of CODEOWNERS — which would request a review on
+# EVERY pull request, including the maintainer's own. This asks only for the
+# bot's.
+#
+# `pull_request_target` runs in the base repository's context, so the token can
+# write assignees and reviewers for pull requests from forks and from
+# Dependabot. Nothing from the pull request is checked out or executed here —
+# the job only calls the GitHub API with the event's metadata.
+name: Assign author
+
+on:
+  issues:
+    types: [opened]
+  pull_request_target:
+    types: [opened]
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  assign:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
+      AUTHOR: ${{ github.event.issue.user.login || github.event.pull_request.user.login }}
+      KIND: ${{ github.event_name == 'issues' && 'issue' || 'pr' }}
+    steps:
+      # A bot cannot be an assignee, so its issues and pull requests are left
+      # to the maintainer step below.
+      - name: Assign the author
+        if: github.event.sender.type == 'User'
+        run: gh "$KIND" edit "$NUMBER" --add-assignee "$AUTHOR"
+
+      - name: Hand a Dependabot pull request to the maintainer
+        if: github.event_name == 'pull_request_target' && github.event.pull_request.user.login == 'dependabot[bot]'
+        run: gh pr edit "$NUMBER" --add-assignee sayinel --add-reviewer sayinel
