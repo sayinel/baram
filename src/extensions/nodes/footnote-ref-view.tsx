@@ -7,6 +7,8 @@ import type { NodeViewProps } from "@tiptap/react";
 
 import { NodeViewWrapper } from "@tiptap/react";
 
+import { useTranslation } from "../../i18n/useTranslation";
+
 // §perf-large-file: Shared cache — one doc walk per doc change, all instances read from it.
 // §perf-large-file C3.4: keyed by editor instance via WeakMap so two concurrent editor
 // instances (C3.5 dual-editor) never share a cache entry.
@@ -17,6 +19,7 @@ interface FootnoteCache {
 const _footnoteCache = new WeakMap<Editor, FootnoteCache>();
 
 export function FootnoteRefView({ node, editor, selected }: NodeViewProps) {
+  const { t } = useTranslation();
   const identifier = node.attrs.identifier as string;
   const displayNumber = getFootnoteNumber(editor, identifier);
   const [tooltipText, setTooltipText] = useState<null | string>(null);
@@ -39,8 +42,8 @@ export function FootnoteRefView({ node, editor, selected }: NodeViewProps) {
         return false;
       }
     });
-    return text || "(empty)";
-  }, [editor, identifier]);
+    return text || t("common.empty");
+  }, [editor, identifier, t]);
 
   // Click → scroll to footnote definition
   const handleClick = useCallback(

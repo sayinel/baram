@@ -10,6 +10,7 @@ import React, {
 import { NodeSelection } from "@tiptap/pm/state";
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 
+import { useTranslation } from "../../i18n/useTranslation";
 import { activeFileDir } from "../../utils/active-file-dir";
 import { focusEditorView } from "../../utils/editor/focus-editor-view";
 import { sanitizeHtmlBlock } from "../../utils/markdown/html-sanitize";
@@ -25,6 +26,7 @@ export function HtmlBlockView({
   editor,
   getPos,
 }: NodeViewProps): React.ReactElement {
+  const { t } = useTranslation();
   const content = (node.attrs.content as string) || "";
   const [localContent, setLocalContent] = useState(content);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -247,7 +249,7 @@ export function HtmlBlockView({
       ) : sanitizedHtml ? (
         <HtmlBlockRender className="html-block-render" html={sanitizedHtml} />
       ) : (
-        <div className="html-block-empty">Empty HTML block</div>
+        <div className="html-block-empty">{t("htmlBlock.empty")}</div>
       )}
     </NodeViewWrapper>
   );

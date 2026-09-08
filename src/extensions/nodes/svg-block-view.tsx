@@ -12,6 +12,8 @@ import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 // hover toolbar (AI / copy / download PNG / fullscreen) + right-click menu.
 import { Captions, Copy, Download, Maximize2, Sparkles } from "lucide-react";
 
+import { Tooltip } from "../../components/Tooltip";
+import { useTranslation } from "../../i18n/useTranslation";
 import { isInNativeTextControl } from "../../utils/editor/native-text-control";
 import {
   copySvgAsPng,
@@ -31,6 +33,7 @@ import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
 import { updateNodeAttributesWithVim } from "../plugins/vim/vim-keys";
 import { svgBlockEntryKey } from "./svg-block";
 import { BlockCaption } from "./views/BlockCaption";
+import { MediaResizeHandle } from "./views/MediaResizeHandle";
 import { MediaToolbar, MediaToolbarButton } from "./views/MediaToolbar";
 import { runBlockAction } from "./views/run-block-action";
 import { useAtomBlockBehavior } from "./views/use-atom-block-behavior";
@@ -48,6 +51,7 @@ export function SvgBlockView({
   editor,
   getPos,
 }: NodeViewProps): React.ReactElement {
+  const { t } = useTranslation();
   const code = (node.attrs.code as string) || "";
   const [localCode, setLocalCode] = useState(code);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -170,9 +174,7 @@ export function SvgBlockView({
       code: fullscreenCode,
     });
     if (!committed) {
-      refusedCommit.announce(
-        "Read-only editor — fullscreen changes were not saved",
-      );
+      refusedCommit.announce(t("blockChrome.changesNotSaved"));
       return;
     }
     refusedCommit.settle();
@@ -182,7 +184,7 @@ export function SvgBlockView({
     // local value over an Undo or external update (review S5/S6-R4).
     clearDirty();
     setFullscreen(false);
-  }, [fullscreenCode, editor, getPos, clearDirty, refusedCommit]);
+  }, [fullscreenCode, editor, getPos, clearDirty, refusedCommit, t]);
 
   /** Leave fullscreen without committing; localCode and the dirty flag are
    *  untouched, so the inline session continues exactly as it was. */
@@ -257,7 +259,7 @@ export function SvgBlockView({
                 onClick={closeViewFullscreen}
                 onMouseDown={(e) => e.preventDefault()}
               >
-                Close
+                {t("common.close")}
               </button>
             </div>
             <div className="svg-view-fullscreen-body">
@@ -267,7 +269,9 @@ export function SvgBlockView({
                   dangerouslySetInnerHTML={svgMarkup}
                 />
               ) : (
-                <div className="svg-block-empty">Empty SVG</div>
+                <div className="svg-block-empty">
+                  {t("svgBlock.emptyPreview")}
+                </div>
               )}
             </div>
           </div>
@@ -305,15 +309,18 @@ export function SvgBlockView({
               <button
                 className="svg-fullscreen-close"
                 onClick={discardFullscreen}
-                title="Leave without saving"
+                // ‼️ A native `title`, not the app pill: this modal's overlay is z-index
+                // 9999 (svg-block.css) and the pill is --z-tooltip (1060), so a pill here
+                // would paint BEHIND the modal. The button has visible text anyway.
+                title={t("blockChrome.discardHint")}
               >
-                Discard
+                {t("blockChrome.discard")}
               </button>
               <button
                 className="svg-fullscreen-close"
                 onClick={closeFullscreen}
               >
-                Close
+                {t("common.close")}
               </button>
             </div>
             <div className="svg-fullscreen-body">
@@ -338,7 +345,9 @@ export function SvgBlockView({
                     dangerouslySetInnerHTML={fullscreenMarkup}
                   />
                 ) : (
-                  <div className="svg-block-empty">Empty SVG</div>
+                  <div className="svg-block-empty">
+                    {t("svgBlock.emptyPreview")}
+                  </div>
                 )}
               </div>
             </div>
@@ -370,13 +379,14 @@ export function SvgBlockView({
         <div className="svg-block-header">
           <span className="svg-block-label">svg</span>
           <div className="svg-block-actions">
-            <button
-              className="svg-fullscreen-btn"
-              onClick={() => openEditFullscreen(localCode)}
-              title="Edit full-screen"
-            >
-              Expand
-            </button>
+            <Tooltip label={t("blockChrome.editFullscreen")} placement="bottom">
+              <button
+                className="svg-fullscreen-btn"
+                onClick={() => openEditFullscreen(localCode)}
+              >
+                {t("blockChrome.expandEditor")}
+              </button>
+            </Tooltip>
           </div>
         </div>
       )}
@@ -432,17 +442,15 @@ export function SvgBlockView({
                     className="media-resize-content"
                     dangerouslySetInnerHTML={svgMarkup}
                   />
-                  <div
-                    className="media-resize-handle media-resize-handle-left"
+                  <MediaResizeHandle
                     onClick={(e) => e.stopPropagation()}
                     onMouseDown={startResize}
-                    title="Drag to resize"
+                    side="left"
                   />
-                  <div
-                    className="media-resize-handle media-resize-handle-right"
+                  <MediaResizeHandle
                     onClick={(e) => e.stopPropagation()}
                     onMouseDown={startResize}
-                    title="Drag to resize"
+                    side="right"
                   />
                   {dragPct != null && (
                     <div className="media-resize-label">{dragPct}%</div>
@@ -457,7 +465,7 @@ export function SvgBlockView({
               />
             </>
           ) : (
-            <div className="svg-block-empty">Empty SVG block</div>
+            <div className="svg-block-empty">{t("svgBlock.empty")}</div>
           )}
 
           {/* Hover toolbar */}
@@ -465,40 +473,40 @@ export function SvgBlockView({
             <MediaToolbar>
               <MediaToolbarButton
                 active={editingCaption}
+                label={t("blockChrome.caption")}
                 onClick={() => setEditingCaption(true)}
-                title="Caption"
               >
                 <Captions size={16} strokeWidth={2} />
               </MediaToolbarButton>
               <MediaToolbarButton
+                label={t("toolbar.ai.commands")}
                 onClick={(e) => runAI(e.currentTarget)}
-                title="AI Commands"
               >
                 <Sparkles size={14} />
               </MediaToolbarButton>
               <MediaToolbarButton
+                label={t("blockChrome.copySource")}
                 onClick={() =>
-                  runBlockAction("SVG block", "copy source", () =>
+                  runBlockAction("SVG block", "blockChrome.copySource", () =>
                     copySvgSource(activeSource),
                   )
                 }
-                title="Copy SVG source"
               >
                 <Copy size={16} strokeWidth={2} />
               </MediaToolbarButton>
               <MediaToolbarButton
+                label={t("blockChrome.downloadPng")}
                 onClick={() =>
-                  runBlockAction("SVG block", "download PNG", () =>
+                  runBlockAction("SVG block", "blockChrome.downloadPng", () =>
                     downloadSvgAsPng(svgHtml),
                   )
                 }
-                title="Download as PNG"
               >
                 <Download size={16} strokeWidth={2} />
               </MediaToolbarButton>
               <MediaToolbarButton
+                label={t("blockChrome.viewFullscreen")}
                 onClick={() => setViewFullscreen(true)}
-                title="Fullscreen view"
               >
                 <Maximize2 size={16} strokeWidth={2} />
               </MediaToolbarButton>
@@ -533,50 +541,50 @@ export function SvgBlockView({
             <button
               className="svg-context-menu-item"
               onClick={() => {
-                runBlockAction("SVG block", "copy source", () =>
+                runBlockAction("SVG block", "blockChrome.copySource", () =>
                   copySvgSource(activeSource),
                 );
                 closeBlockMenu();
               }}
             >
-              Copy SVG
+              {t("blockChrome.copySource")}
             </button>
             {svgHtml && (
               <>
                 <button
                   className="svg-context-menu-item"
                   onClick={() => {
-                    runBlockAction("SVG block", "copy PNG", () =>
+                    runBlockAction("SVG block", "blockChrome.copyPng", () =>
                       copySvgAsPng(svgHtml),
                     );
                     closeBlockMenu();
                   }}
                 >
-                  Copy as PNG
+                  {t("blockChrome.copyPng")}
                 </button>
                 <button
                   className="svg-context-menu-item"
                   onClick={() => {
-                    runBlockAction("SVG block", "download PNG", () =>
+                    runBlockAction("SVG block", "blockChrome.downloadPng", () =>
                       downloadSvgAsPng(svgHtml),
                     );
                     closeBlockMenu();
                   }}
                 >
-                  Download PNG
+                  {t("blockChrome.downloadPng")}
                 </button>
               </>
             )}
             <button
               className="svg-context-menu-item"
               onClick={() => {
-                runBlockAction("SVG block", "download SVG", () =>
+                runBlockAction("SVG block", "blockChrome.downloadSvg", () =>
                   downloadSvg(activeSource),
                 );
                 closeBlockMenu();
               }}
             >
-              Download SVG
+              {t("blockChrome.downloadSvg")}
             </button>
             <div className="svg-context-menu-divider" />
             <button
@@ -586,7 +594,7 @@ export function SvgBlockView({
                 closeBlockMenu();
               }}
             >
-              View Fullscreen
+              {t("blockChrome.viewFullscreen")}
             </button>
             <button
               className="svg-context-menu-item"
@@ -595,7 +603,7 @@ export function SvgBlockView({
                 closeBlockMenu();
               }}
             >
-              Edit Fullscreen
+              {t("blockChrome.editFullscreen")}
             </button>
             <button
               className="svg-context-menu-item svg-context-menu-danger"
@@ -604,7 +612,7 @@ export function SvgBlockView({
                 closeBlockMenu();
               }}
             >
-              Delete
+              {t("common.delete")}
             </button>
           </div>,
           document.body,

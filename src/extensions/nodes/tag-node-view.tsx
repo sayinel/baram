@@ -6,6 +6,8 @@ import type { NodeViewProps } from "@tiptap/react";
 
 import { NodeViewWrapper } from "@tiptap/react";
 
+import { Tooltip } from "../../components/Tooltip";
+import { useTranslation } from "../../i18n/useTranslation";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
 
@@ -15,6 +17,7 @@ export function TagNodeView({
   updateAttributes,
   editor,
 }: NodeViewProps) {
+  const { t } = useTranslation();
   const tag = (node.attrs.tag as string) || "";
   const tagColor = useSettingsStore((s) => s.tagColors)[tag];
   const [isEditing, setIsEditing] = useState(false);
@@ -127,16 +130,20 @@ export function TagNodeView({
   }
 
   return (
-    <NodeViewWrapper
-      as="span"
-      className={`tag-node ${selected ? "tag-node-selected" : ""}`}
-      data-tag={tag}
-      onMouseDown={handleMouseDown}
-      style={{ color: tagColor || undefined }}
-      title={`#${tag} — 더블 클릭으로 편집`}
-    >
-      <span className="tag-node-hash">#</span>
-      {tag}
-    </NodeViewWrapper>
+    // The wrapper IS the trigger: it forwards `ref` and spreads props (tiptap's
+    // NodeViewWrapper is a forwardRef), and the pill portals to <body>, so the element tiptap
+    // checks for `data-node-view-wrapper` is still this Fragment's first child.
+    <Tooltip label={t("tag.editHint", { tag })} placement="top">
+      <NodeViewWrapper
+        as="span"
+        className={`tag-node ${selected ? "tag-node-selected" : ""}`}
+        data-tag={tag}
+        onMouseDown={handleMouseDown}
+        style={{ color: tagColor || undefined }}
+      >
+        <span className="tag-node-hash">#</span>
+        {tag}
+      </NodeViewWrapper>
+    </Tooltip>
   );
 }

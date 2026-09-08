@@ -19,6 +19,9 @@ import { Editor } from "@tiptap/core";
 import { EditorContent } from "@tiptap/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+// Names come from the catalogue, not from literals here.
+import en from "../../../i18n/en.json";
+
 vi.mock("@tauri-apps/api/core", () => ({
   convertFileSrc: (p: string) => `asset://localhost/${p}`,
   invoke: vi.fn(async () => undefined),
@@ -77,7 +80,11 @@ async function mountTableWithToolbar() {
     editor.commands.setTextSelection(cellTextPos + 1);
   });
   await flush();
-  const more = await waitFor(() => view.getByTitle("More"));
+  // By accessible name: the bar's buttons carry the app's pill now, and this one names
+  // itself more fully for assistive tech than the pill does on screen.
+  const more = await waitFor(() =>
+    view.getByLabelText(en["tableToolbar.moreOptions"]),
+  );
   return { editor, more, view };
 }
 

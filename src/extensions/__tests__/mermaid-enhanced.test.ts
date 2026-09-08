@@ -2,6 +2,7 @@
 import { Schema } from "@tiptap/pm/model";
 import { describe, expect, it } from "vitest";
 
+import en from "../../i18n/en.json";
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
 import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
 import {
@@ -25,9 +26,11 @@ describe("Mermaid Templates", () => {
     expect(Object.keys(MERMAID_TEMPLATES)).toHaveLength(11);
   });
 
-  it("each template has label and non-empty code", () => {
+  it("each template has a resolvable label key and non-empty code", () => {
     for (const [key, value] of Object.entries(MERMAID_TEMPLATES)) {
-      expect(value.label).toBeTruthy();
+      // The label is an i18n key now, so "truthy" is not the question — "does it name a
+      // string a reader will actually see" is.
+      expect(en).toHaveProperty(value.label);
       expect(value.code.length).toBeGreaterThan(0);
       // Template code should start with a valid mermaid keyword
       expect(detectMermaidType(value.code)).toBe(key);
@@ -36,7 +39,10 @@ describe("Mermaid Templates", () => {
 
   it("mindmap template exists", () => {
     expect(MERMAID_TEMPLATES.mindmap).toBeDefined();
-    expect(MERMAID_TEMPLATES.mindmap.label).toBe("Mind Map");
+    expect(MERMAID_TEMPLATES.mindmap.label).toBe("mermaidBlock.type.mindmap");
+    expect(en[MERMAID_TEMPLATES.mindmap.label as keyof typeof en]).toBe(
+      "Mind Map",
+    );
   });
 
   it("timeline template exists", () => {

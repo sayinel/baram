@@ -5,7 +5,9 @@ import type { NodeViewProps } from "@tiptap/react";
 
 import { NodeViewContent, NodeViewWrapper } from "@tiptap/react";
 
+import { Tooltip } from "../../components/Tooltip";
 import { useEditorChrome } from "../../hooks/use-editor-chrome";
+import { useTranslation } from "../../i18n/useTranslation";
 import { useSettingsStore } from "../../stores/settings/store";
 import {
   canUseEditorChrome,
@@ -21,6 +23,7 @@ type TagMutationOrigin = "chrome" | "island";
 type TagsFormat = "block" | "inline" | "none";
 
 export function FrontmatterView({ node, editor, getPos }: NodeViewProps) {
+  const { t } = useTranslation();
   const [inputValue, setInputValue] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const tagColors = useSettingsStore((s) => s.tagColors);
@@ -114,46 +117,53 @@ export function FrontmatterView({ node, editor, getPos }: NodeViewProps) {
       <NodeViewContent className="frontmatter-code" />
       {showTagBar && (
         <div className="fm-tag-bar" contentEditable={false}>
-          <span className="fm-tag-label">Tags</span>
+          <span className="fm-tag-label">{t("frontmatter.tags")}</span>
           {tags.map((tag) => {
             const pillColor = tagColors[tag];
             return (
-              <span
-                className="fm-tag-pill"
+              <Tooltip
                 key={tag}
-                onClick={() => handleTagClick(tag)}
-                style={
-                  pillColor
-                    ? { color: pillColor, borderColor: pillColor }
-                    : undefined
-                }
-                title={`Search for #${tag}`}
+                label={t("frontmatter.searchTag", { tag })}
+                placement="bottom"
               >
-                #{tag}
-                {canEdit && (
-                  <button
-                    aria-label={`Remove tag ${tag}`}
-                    className="fm-tag-pill-remove"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      removeTag(tag, "chrome");
-                    }}
-                    title="Remove tag"
-                  >
-                    ×
-                  </button>
-                )}
-              </span>
+                <span
+                  className="fm-tag-pill"
+                  onClick={() => handleTagClick(tag)}
+                  style={
+                    pillColor
+                      ? { color: pillColor, borderColor: pillColor }
+                      : undefined
+                  }
+                >
+                  #{tag}
+                  {canEdit && (
+                    <Tooltip
+                      label={t("frontmatter.removeTagOf", { tag })}
+                      placement="bottom"
+                    >
+                      <button
+                        className="fm-tag-pill-remove"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeTag(tag, "chrome");
+                        }}
+                      >
+                        ×
+                      </button>
+                    </Tooltip>
+                  )}
+                </span>
+              </Tooltip>
             );
           })}
           {canEdit && (
             <input
-              aria-label="Add tag"
+              aria-label={t("frontmatter.addTag")}
               className="fm-tag-input"
               data-vim-suspend=""
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Add tag..."
+              placeholder={t("frontmatter.addTagPlaceholder")}
               ref={inputRef}
               value={inputValue}
             />

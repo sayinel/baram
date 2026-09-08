@@ -15,6 +15,7 @@
 // - §5b provenance: remove pill (chrome) dispatches tagged; input island
 //   add stays untagged.
 
+import type { RenderResult } from "@testing-library/react";
 import type { Editor } from "@tiptap/core";
 import type { Transaction } from "@tiptap/pm/state";
 
@@ -26,6 +27,9 @@ import { EditorContent } from "@tiptap/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { useEditorChrome } from "../../../../hooks/use-editor-chrome";
+// Names come from the catalogue, not from literals here: they are display copy a wording
+// pass may change, and the behaviour under test is not about the words.
+import en from "../../../../i18n/en.json";
 import { setEditorEditable } from "../../../../utils/editor/editor-editable";
 import { createBaramExtensions } from "../../../index";
 import {
@@ -247,12 +251,34 @@ describe("CalloutView type picker (§12-⑩ wiring)", () => {
     return found;
   }
 
+  /**
+   * The picker's own row for the Warning type.
+   *
+   * ‼️ Scoped to `.callout-type-option`, not a bare text query. The row is named by its visible
+   * text now (the redundant `title` repeating that text is gone), and the callout HEADER shows
+   * the same word once that type is selected — so a document-wide query would find the header
+   * and these assertions would stop meaning "the picker is open".
+   */
+  function pickerOption(view: RenderResult): HTMLElement | null {
+    return (
+      [
+        ...view.container.querySelectorAll<HTMLElement>(".callout-type-option"),
+      ].find((b) => b.textContent === en["callout.type.warning"]) ?? null
+    );
+  }
+
+  function requirePickerOption(view: RenderResult): HTMLElement {
+    const option = pickerOption(view);
+    if (!option) throw new Error("the callout type picker did not open");
+    return option;
+  }
+
   it("selecting a type works while capability holds (control)", async () => {
     const { editor, view } = setupCallout();
     await flush();
 
-    fireEvent.click(view.getByTitle("Change callout type"));
-    fireEvent.click(view.getByTitle("Warning"));
+    fireEvent.click(view.getByLabelText(en["callout.changeType"]));
+    fireEvent.click(requirePickerOption(view));
     expect(calloutType(editor)).toBe("warning");
   });
 
@@ -263,32 +289,32 @@ describe("CalloutView type picker (§12-⑩ wiring)", () => {
     act(() => setEditorEditable(editor, false));
     await flush();
 
-    fireEvent.click(view.getByTitle("Change callout type"));
-    expect(view.queryByTitle("Warning")).toBeNull();
+    fireEvent.click(view.getByLabelText(en["callout.changeType"]));
+    expect(pickerOption(view)).toBeNull();
   });
 
   it("a reactive lock CLOSES an already-open picker (impl review R1)", async () => {
     const { editor, view } = setupCallout();
     await flush();
 
-    fireEvent.click(view.getByTitle("Change callout type"));
-    expect(view.getByTitle("Warning")).toBeTruthy();
+    fireEvent.click(view.getByLabelText(en["callout.changeType"]));
+    expect(requirePickerOption(view)).toBeTruthy();
 
     act(() => setEditorEditable(editor, false));
     await flush();
-    expect(view.queryByTitle("Warning")).toBeNull();
+    expect(pickerOption(view)).toBeNull();
   });
 
   it("v7.5 ⓑ: the guard blocks a stale open picker by itself", async () => {
     const { editor, view } = setupCallout();
     await flush();
 
-    fireEvent.click(view.getByTitle("Change callout type"));
+    fireEvent.click(view.getByLabelText(en["callout.changeType"]));
     // Silent lock while the picker is already open — it stays open (stale).
     act(() => editor.setEditable(false, false));
-    expect(view.getByTitle("Warning")).toBeTruthy();
+    expect(requirePickerOption(view)).toBeTruthy();
 
-    fireEvent.click(view.getByTitle("Warning"));
+    fireEvent.click(requirePickerOption(view));
     expect(calloutType(editor)).toBe("tip");
   });
 });
@@ -500,7 +526,7 @@ describe("CalloutView collapse button (§12-⑩ wiring, issue 375)", () => {
   it("toggles while capability holds (control)", async () => {
     const { editor, view } = setupCallout();
     await flush();
-    fireEvent.click(view.getByTitle("Collapse"));
+    fireEvent.click(view.getByLabelText(en["blockChrome.collapse"]));
     expect(collapsedOf(editor)).toBe(true);
   });
 
@@ -510,7 +536,7 @@ describe("CalloutView collapse button (§12-⑩ wiring, issue 375)", () => {
     act(() => editor.setEditable(false, false));
     const before = editor.state.doc;
 
-    fireEvent.click(view.getByTitle("Collapse"));
+    fireEvent.click(view.getByLabelText(en["blockChrome.collapse"]));
 
     expect(editor.state.doc.eq(before)).toBe(true);
     expect(collapsedOf(editor)).toBe(false);
@@ -520,7 +546,7 @@ describe("CalloutView collapse button (§12-⑩ wiring, issue 375)", () => {
     const { editor, view } = setupCallout();
     await flush();
     enableVimNormal(editor);
-    fireEvent.click(view.getByTitle("Collapse"));
+    fireEvent.click(view.getByLabelText(en["blockChrome.collapse"]));
     expect(collapsedOf(editor)).toBe(true);
   });
 });

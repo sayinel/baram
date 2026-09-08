@@ -15,6 +15,10 @@ import { Editor } from "@tiptap/core";
 import { EditorContent } from "@tiptap/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+// Names come from the catalogue, not from literals here: they are display copy a wording
+// pass may change, and the behaviour under test is not about the words.
+import en from "../../i18n/en.json";
+
 vi.mock("@tauri-apps/api/core", () => ({
   convertFileSrc: (p: string) => `asset://localhost/${p}`,
   invoke: vi.fn(async () => undefined),
@@ -90,7 +94,7 @@ describe("a viewBox-only svg block", () => {
     await flush();
     expect(renderedRoot(view.container).getAttribute("width")).toBe("160");
 
-    fireEvent.click(view.getByTitle("Edit full-screen"));
+    fireEvent.click(view.getByLabelText(en["blockChrome.editFullscreen"]));
     await flush();
     const modal = document.body.querySelector(".svg-fullscreen-modal");
     if (!modal) throw new Error("fullscreen editor did not open");

@@ -7,6 +7,8 @@ import type { NodeViewProps } from "@tiptap/react";
 
 import { NodeViewWrapper } from "@tiptap/react";
 
+import { Tooltip } from "../../components/Tooltip";
+import { useTranslation } from "../../i18n/useTranslation";
 import { useContextStore } from "../../stores/context/context";
 import { useZettelIndexStore } from "../../stores/zettelkasten/zettel-index";
 import { isDateString } from "../../utils/journal/journal";
@@ -16,6 +18,7 @@ import {
 } from "../../utils/zettelkasten/parse-note-title";
 
 export function WikilinkView({ node, selected, extension }: NodeViewProps) {
+  const { t } = useTranslation();
   const { target, display, heading, vaultAlias } = node.attrs as {
     display: null | string;
     heading: null | string;
@@ -92,17 +95,23 @@ export function WikilinkView({ node, selected, extension }: NodeViewProps) {
       }
     >
       {vaultAlias && vaultInfo && (
-        <span
-          className={`wikilink-vault-badge ${isDangling ? "wikilink-vault-badge--dangling" : ""}`}
-          style={
-            vaultInfo.color ? { backgroundColor: vaultInfo.color } : undefined
-          }
-          title={
+        // The badge is a bare colour chip — no text at all — so the native `title`'s ~1s delay
+        // was the whole difference between "which vault is this" being answerable and not.
+        <Tooltip
+          label={
             vaultInfo.open
-              ? `${vaultAlias} vault`
-              : `'${vaultAlias}' vault is not open`
+              ? t("wikilink.vault", { alias: vaultAlias })
+              : t("wikilink.vaultNotOpen", { alias: vaultAlias })
           }
-        />
+          placement="top"
+        >
+          <span
+            className={`wikilink-vault-badge ${isDangling ? "wikilink-vault-badge--dangling" : ""}`}
+            style={
+              vaultInfo.color ? { backgroundColor: vaultInfo.color } : undefined
+            }
+          />
+        </Tooltip>
       )}
       {isDate && <span className="wikilink-date-icon">📅</span>}
       {text}

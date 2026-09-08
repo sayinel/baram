@@ -3,6 +3,10 @@
 // `import("mermaid")` call site; vi.mock("mermaid") in tests matches by
 // module specifier, so mocking is unaffected by which file does the import.
 
+import type { Locale } from "../../../i18n";
+
+import { t } from "../../../i18n";
+import { useSettingsStore } from "../../../stores/settings/store";
 import {
   MERMAID_THEME,
   MERMAID_THEME_VARIABLES,
@@ -50,6 +54,13 @@ export async function renderMermaid(
     // `max-width` cap so the resize frame controls the size (§5.5).
     onSuccess(normalizeMermaidSvgSize(sanitizeMermaidSvg(svg)));
   } catch (err) {
-    onError(err instanceof Error ? err.message : "Mermaid rendering error");
+    onError(
+      err instanceof Error
+        ? err.message
+        : t(
+            "mermaidBlock.renderError",
+            useSettingsStore.getState().locale as Locale,
+          ),
+    );
   }
 }

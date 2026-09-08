@@ -7,6 +7,8 @@ import type { Node as PmNode } from "@tiptap/pm/model";
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 import { Sparkles } from "lucide-react";
 
+import { Tooltip } from "../../components/Tooltip";
+import { useTranslation } from "../../i18n/useTranslation";
 import { preprocessNotionFormula } from "../../utils/export/notion-katex-compat";
 import { parseKaTeXError } from "../../utils/katex/katex-error";
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
@@ -26,6 +28,7 @@ export function MathBlockView({
   editor,
   getPos,
 }: NodeViewProps) {
+  const { t } = useTranslation();
   const formula = (node.attrs.formula as string) || "";
   const mathSize = (node.attrs.mathSize as string) || "normal";
   const [localFormula, setLocalFormula] = useState(formula);
@@ -132,7 +135,7 @@ export function MathBlockView({
     const el = previewRef.current;
 
     if (!f.trim()) {
-      el.textContent = editing ? "" : "Empty math block";
+      el.textContent = editing ? "" : t("mathBlock.empty");
       el.className = "math-block-katex math-block-katex-empty";
       setError(null);
       return;
@@ -166,7 +169,7 @@ export function MathBlockView({
     // sessionOpenRef is a stable ref object (see use-atom-edit-session.ts) —
     // listing it is safe and never re-triggers this effect; only a change to
     // one of the OTHER deps does that.
-  }, [localFormula, formula, selected, isVisible, sessionOpenRef]);
+  }, [localFormula, formula, selected, isVisible, sessionOpenRef, t]);
 
   const eqLabel = `(${eqNumber})`;
 
@@ -222,7 +225,7 @@ export function MathBlockView({
             markDirty();
             setLocalFormula(e.target.value);
           }}
-          placeholder="LaTeX formula..."
+          placeholder={t("mathBlock.placeholder")}
           ref={textareaRef}
           rows={1}
           spellCheck={false}
@@ -246,15 +249,18 @@ export function MathBlockView({
             </div>
           )
         : formula.trim() && (
-            <button
-              className="nodeview-ai-btn"
-              contentEditable={false}
-              onClick={handleAIClick}
-              ref={aiButtonRef}
-              title="AI Commands"
-            >
-              <Sparkles size={14} />
-            </button>
+            // Below, not above: the button is pinned to the block's top-right corner, so a
+            // pill above it would sit over the previous block.
+            <Tooltip label={t("toolbar.ai.commands")} placement="bottom">
+              <button
+                className="nodeview-ai-btn"
+                contentEditable={false}
+                onClick={handleAIClick}
+                ref={aiButtonRef}
+              >
+                <Sparkles size={14} />
+              </button>
+            </Tooltip>
           )}
     </NodeViewWrapper>
   );

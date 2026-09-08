@@ -19,6 +19,7 @@ import type { NodeViewProps } from "@tiptap/react";
 import { NodeViewWrapper } from "@tiptap/react";
 
 import { usePdfHighlightRefPreview } from "../../components/editor/pdf/use-pdf-highlight-ref-preview";
+import { MediaResizeHandle } from "./views/MediaResizeHandle";
 import { isInsideTableCell } from "./views/table-cell-position";
 import { useInlineResize } from "./views/use-inline-resize";
 
@@ -153,11 +154,7 @@ export function BlockReferenceView({
               reference sits in, so a left handle could only move the crop, not
               size it. A <span>, not the <div> the media blocks use — this is
               inline content inside a paragraph. */}
-          <span
-            className="media-resize-handle media-resize-handle-right"
-            onMouseDown={startResize}
-            title="Drag to resize"
-          />
+          <MediaResizeHandle as="span" onMouseDown={startResize} side="right" />
           {dragPct != null && (
             <span className="media-resize-label">{dragPct}%</span>
           )}

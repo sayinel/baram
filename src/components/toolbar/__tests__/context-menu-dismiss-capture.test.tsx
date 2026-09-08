@@ -19,6 +19,10 @@ import { Editor } from "@tiptap/core";
 import { EditorContent } from "@tiptap/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+// Names come from the catalogue, not from literals here: they are display copy a wording
+// pass may change, and the behaviour under test is not about the words.
+import en from "../../../i18n/en.json";
+
 vi.mock("@tauri-apps/api/core", () => ({
   convertFileSrc: (p: string) => `asset://localhost/${p}`,
   invoke: vi.fn(async () => undefined),
@@ -113,9 +117,16 @@ async function openBlockMenu(wrapper: HTMLElement) {
   return menu;
 }
 
-function toolbarButton(wrapper: HTMLElement, title: string): HTMLElement {
-  const button = wrapper.querySelector<HTMLElement>(`button[title="${title}"]`);
-  if (!button) throw new Error(`toolbar button ${title} did not mount`);
+/**
+ * By accessible name, not by `title`: the hover toolbar's buttons carry the app's own pill
+ * instead of a native tooltip, and their name is the `aria-label` the pill leaves behind.
+ */
+function toolbarButton(wrapper: HTMLElement, key: string): HTMLElement {
+  const label = en[key as keyof typeof en];
+  const button = wrapper.querySelector<HTMLElement>(
+    `button[aria-label="${label}"]`,
+  );
+  if (!button) throw new Error(`toolbar button ${label} did not mount`);
   return button;
 }
 
@@ -126,7 +137,9 @@ describe("a block menu and the controls that stop their mousedown (issue 542)", 
 
     // MediaToolbar's native onmousedown stops propagation — a bubble-phase
     // dismiss never saw this.
-    fireEvent.mouseDown(toolbarButton(wrapper, "Caption"), { button: 0 });
+    fireEvent.mouseDown(toolbarButton(wrapper, "blockChrome.caption"), {
+      button: 0,
+    });
     await flush();
 
     expect(blockMenuOpen()).toBe(false);
@@ -134,7 +147,7 @@ describe("a block menu and the controls that stop their mousedown (issue 542)", 
 
   it("closes on a mousedown on the caption", async () => {
     const { wrapper } = await mountBlock();
-    fireEvent.click(toolbarButton(wrapper, "Caption"));
+    fireEvent.click(toolbarButton(wrapper, "blockChrome.caption"));
     await flush();
     const input = wrapper.querySelector<HTMLInputElement>(
       "input.block-caption-input",
@@ -185,7 +198,9 @@ describe("a block menu and the controls that stop their mousedown (issue 542)", 
     await flush();
     expect(documentMenuOpen()).toBe(true);
 
-    fireEvent.mouseDown(toolbarButton(wrapper, "Caption"), { button: 0 });
+    fireEvent.mouseDown(toolbarButton(wrapper, "blockChrome.caption"), {
+      button: 0,
+    });
     await flush();
 
     expect(documentMenuOpen()).toBe(false);

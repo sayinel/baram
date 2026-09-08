@@ -5,6 +5,7 @@
 import React from "react";
 import { createPortal } from "react-dom";
 
+import { useTranslation } from "../../../i18n/useTranslation";
 import {
   copyMermaidPng,
   copyMermaidSource,
@@ -44,6 +45,7 @@ export function MermaidBlockContextMenu({
   svgHtml,
   svgUnavailableReason,
 }: MermaidBlockContextMenuProps): React.ReactPortal {
+  const { t } = useTranslation();
   const svgItems = svgHtml !== "" || svgUnavailableReason !== undefined;
   const svgDisabled = svgHtml === "";
   const svgTitle = svgDisabled ? svgUnavailableReason : undefined;
@@ -82,33 +84,33 @@ export function MermaidBlockContextMenu({
             }}
             title={svgTitle}
           >
-            Copy as SVG
+            {t("blockChrome.copySvg")}
           </button>
           <button
             className="mermaid-context-menu-item"
             disabled={svgDisabled}
             onClick={() => {
-              runBlockAction("Mermaid block", "copy as PNG", () =>
+              runBlockAction("Mermaid block", "blockChrome.copyPng", () =>
                 copyMermaidPng(code),
               );
               onClose();
             }}
             title={svgTitle}
           >
-            Copy as PNG
+            {t("blockChrome.copyPng")}
           </button>
           <button
             className="mermaid-context-menu-item"
             disabled={svgDisabled}
             onClick={() => {
-              runBlockAction("Mermaid block", "download PNG", () =>
+              runBlockAction("Mermaid block", "blockChrome.downloadPng", () =>
                 downloadMermaidPng(code),
               );
               onClose();
             }}
             title={svgTitle}
           >
-            Download PNG
+            {t("blockChrome.downloadPng")}
           </button>
         </>
       )}
@@ -119,7 +121,7 @@ export function MermaidBlockContextMenu({
           onClose();
         }}
       >
-        Copy Source
+        {t("blockChrome.copySource")}
       </button>
       <div className="mermaid-context-menu-divider" />
       <button
@@ -129,7 +131,7 @@ export function MermaidBlockContextMenu({
           onClose();
         }}
       >
-        View Fullscreen
+        {t("blockChrome.viewFullscreen")}
       </button>
       <button
         className="mermaid-context-menu-item"
@@ -138,7 +140,7 @@ export function MermaidBlockContextMenu({
           onClose();
         }}
       >
-        Edit Fullscreen
+        {t("blockChrome.editFullscreen")}
       </button>
       <button
         className="mermaid-context-menu-item mermaid-context-menu-danger"
@@ -147,7 +149,7 @@ export function MermaidBlockContextMenu({
           onClose();
         }}
       >
-        Delete
+        {t("common.delete")}
       </button>
     </div>,
     document.body,

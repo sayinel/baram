@@ -5,6 +5,7 @@ import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 // §50 Enhanced: template picker + full-screen edit
 import { Captions, Copy, Download, Maximize2, Sparkles } from "lucide-react";
 
+import { useTranslation } from "../../i18n/useTranslation";
 import {
   copyMermaidSource,
   detectMermaidType,
@@ -16,6 +17,7 @@ import { updateNodeAttributesWithVim } from "../plugins/vim/vim-keys";
 import { mermaidBlockEntryKey } from "./mermaid-block";
 import { BlockCaption } from "./views/BlockCaption";
 import { onFirstVisible } from "./views/lazy-visible";
+import { MediaResizeHandle } from "./views/MediaResizeHandle";
 import { MediaToolbar, MediaToolbarButton } from "./views/MediaToolbar";
 import { renderMermaid } from "./views/mermaid-render";
 import { MermaidBlockContextMenu } from "./views/MermaidBlockContextMenu";
@@ -40,6 +42,7 @@ export function MermaidBlockView({
   editor,
   getPos,
 }: NodeViewProps) {
+  const { t } = useTranslation();
   const code = (node.attrs.code as string) || "";
   const [localCode, setLocalCode] = useState(code);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -224,12 +227,16 @@ export function MermaidBlockView({
   // items and the fullscreen viewer rather than by hiding them, so the menu
   // does not reshape when a render lands. Undefined for an empty source —
   // nothing to offer at all.
+  // ‼️ A boolean, not `reason === "Rendering…"`. That comparison read the DISPLAY string as
+  // its discriminator, so translating the label would have silently made `pending` always
+  // false — the fullscreen viewer would say "empty diagram" over a diagram still rendering.
+  const svgPending = !freshSvgHtml && !error && activeSource.trim() !== "";
   const svgUnavailableReason = freshSvgHtml
     ? undefined
     : error
-      ? "Diagram does not render"
-      : activeSource.trim()
-        ? "Rendering…"
+      ? t("mermaidBlock.noRender")
+      : svgPending
+        ? t("mermaidBlock.rendering")
         : undefined;
 
   // issue 521: the block's own right-click menu — ownership by target, one
@@ -333,9 +340,7 @@ export function MermaidBlockView({
       code: fullscreenCode,
     });
     if (!committed) {
-      refusedCommit.announce(
-        "Read-only editor — fullscreen changes were not saved",
-      );
+      refusedCommit.announce(t("blockChrome.changesNotSaved"));
       return;
     }
     refusedCommit.settle();
@@ -346,7 +351,7 @@ export function MermaidBlockView({
     // local value over an Undo or external update (review S5/S6-R4).
     clearDirty();
     setFullscreen(false);
-  }, [fullscreenCode, editor, getPos, clearDirty, refusedCommit]);
+  }, [fullscreenCode, editor, getPos, clearDirty, refusedCommit, t]);
 
   /** Leave fullscreen without committing; localCode and the dirty flag are
    *  untouched, so the inline session continues exactly as it was. */
@@ -377,7 +382,7 @@ export function MermaidBlockView({
       detectedType={detectedType}
       error={error}
       onClose={closeViewFullscreen}
-      pending={svgUnavailableReason === "Rendering…"}
+      pending={svgPending}
       svgHtml={freshSvgHtml}
     />
   ) : null;
@@ -488,17 +493,15 @@ export function MermaidBlockView({
                     className="media-resize-content"
                     dangerouslySetInnerHTML={svgMarkup}
                   />
-                  <div
-                    className="media-resize-handle media-resize-handle-left"
+                  <MediaResizeHandle
                     onClick={(e) => e.stopPropagation()}
                     onMouseDown={startResize}
-                    title="Drag to resize"
+                    side="left"
                   />
-                  <div
-                    className="media-resize-handle media-resize-handle-right"
+                  <MediaResizeHandle
                     onClick={(e) => e.stopPropagation()}
                     onMouseDown={startResize}
-                    title="Drag to resize"
+                    side="right"
                   />
                   {dragPct != null && (
                     <div className="media-resize-label">{dragPct}%</div>
@@ -515,19 +518,20 @@ export function MermaidBlockView({
           ) : error ? (
             <div className="mermaid-block-error">{error}</div>
           ) : (
-            <div className="mermaid-block-empty">Empty diagram</div>
+            <div className="mermaid-block-empty">{t("mermaidBlock.empty")}</div>
           )}
           {/* Hover toolbar — appears on mouse hover */}
           {svgHtml && (
             <MediaToolbar>
               <MediaToolbarButton
                 active={editingCaption}
+                label={t("blockChrome.caption")}
                 onClick={() => setEditingCaption(true)}
-                title="Caption"
               >
                 <Captions size={16} strokeWidth={2} />
               </MediaToolbarButton>
               <MediaToolbarButton
+                label={t("toolbar.ai.commands")}
                 onClick={(e) => {
                   if (!code.trim()) return;
                   const pos = getPos();
@@ -540,29 +544,30 @@ export function MermaidBlockView({
                     pos,
                   );
                 }}
-                title="AI Commands"
               >
                 <Sparkles size={14} />
               </MediaToolbarButton>
               <MediaToolbarButton
+                label={t("blockChrome.copySource")}
                 onClick={() => copyMermaidSource(activeSource)}
-                title="Copy source code"
               >
                 <Copy size={16} strokeWidth={2} />
               </MediaToolbarButton>
               <MediaToolbarButton
+                label={t("blockChrome.downloadPng")}
                 onClick={() =>
-                  runBlockAction("Mermaid block", "download PNG", () =>
-                    downloadMermaidPng(activeSource),
+                  runBlockAction(
+                    "Mermaid block",
+                    "blockChrome.downloadPng",
+                    () => downloadMermaidPng(activeSource),
                   )
                 }
-                title="Download as PNG"
               >
                 <Download size={16} strokeWidth={2} />
               </MediaToolbarButton>
               <MediaToolbarButton
+                label={t("blockChrome.viewFullscreen")}
                 onClick={() => setViewFullscreen(true)}
-                title="Fullscreen view"
               >
                 <Maximize2 size={16} strokeWidth={2} />
               </MediaToolbarButton>

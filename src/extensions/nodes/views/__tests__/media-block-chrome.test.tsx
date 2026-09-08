@@ -1,9 +1,18 @@
 // Shared media-block chrome (§5.1/§5.5/§3.3): the unified hover toolbar
 // (MediaToolbar) and the parent-controlled caption (BlockCaption). These are
 // plain React components, so they render without an editor host.
-import { fireEvent, render } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
+import en from "../../../../i18n/en.json";
 import { BlockCaption } from "../BlockCaption";
 import { MediaToolbar, MediaToolbarButton } from "../MediaToolbar";
 
@@ -116,11 +125,28 @@ describe("BlockCaption", () => {
 });
 
 describe("MediaToolbar", () => {
+  // The warm window is module state in tooltip-core, so a pill left showing by one test
+  // would open the next one instantly and make its delay assertion vacuous. Jumping the
+  // clock forward is enough — and the fake clock is installed ONCE, because
+  // `vi.useFakeTimers()` resets "now" to the real time and would send it BACKWARDS past a
+  // stamp an earlier test left (a negative age reads as warm). See tooltip.test.tsx.
+  beforeAll(() => {
+    vi.useFakeTimers();
+  });
+
+  afterAll(() => {
+    vi.useRealTimers();
+  });
+
+  beforeEach(() => {
+    vi.setSystemTime(Date.now() + 60_000);
+  });
+
   it("renders its buttons and fires onClick", () => {
     const onClick = vi.fn();
     const { container } = render(
       <MediaToolbar>
-        <MediaToolbarButton onClick={onClick} title="AI Commands">
+        <MediaToolbarButton label={en["toolbar.ai.commands"]} onClick={onClick}>
           ai
         </MediaToolbarButton>
       </MediaToolbar>,
@@ -128,15 +154,48 @@ describe("MediaToolbar", () => {
     const toolbar = container.querySelector(".media-toolbar");
     expect(toolbar).not.toBeNull();
     const btn = container.querySelector(".media-toolbar-btn") as HTMLElement;
-    expect(btn.getAttribute("title")).toBe("AI Commands");
+    // The label is the button's accessible name at ALL times, not only while the pill is
+    // up: an icon-only button would otherwise be nameless to a screen reader whenever it
+    // is not hovered.
+    expect(btn.getAttribute("aria-label")).toBe(en["toolbar.ai.commands"]);
+    // ‼️ And NOT a native `title`. Both at once means the browser's own label arrives a
+    // second late, underneath the pill already on screen.
+    expect(btn.getAttribute("title")).toBeNull();
     fireEvent.click(btn);
     expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the app's own pill on hover, not a browser tooltip", () => {
+    const { container } = render(
+      <MediaToolbar>
+        <MediaToolbarButton label={en["blockChrome.caption"]} onClick={vi.fn()}>
+          cap
+        </MediaToolbarButton>
+      </MediaToolbar>,
+    );
+    const btn = container.querySelector(".media-toolbar-btn") as HTMLElement;
+    fireEvent.pointerEnter(btn);
+    // Nothing yet: resting is what asks for a label. This is the assertion the native
+    // `title` could never satisfy either way — its delay was the browser's to pick.
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    act(() => {
+      vi.advanceTimersByTime(150);
+    });
+    expect(screen.getByRole("tooltip").textContent).toBe(
+      en["blockChrome.caption"],
+    );
+    fireEvent.pointerLeave(btn);
+    expect(screen.queryByRole("tooltip")).toBeNull();
   });
 
   it("marks an active button with media-toolbar-btn-active", () => {
     const { container } = render(
       <MediaToolbar>
-        <MediaToolbarButton active onClick={vi.fn()} title="Caption">
+        <MediaToolbarButton
+          active
+          label={en["blockChrome.caption"]}
+          onClick={vi.fn()}
+        >
           cap
         </MediaToolbarButton>
       </MediaToolbar>,

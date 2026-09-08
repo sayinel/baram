@@ -21,6 +21,7 @@ import {
   serializeDetachedDoc,
 } from "../../utils/editor/serialize-live-doc";
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
+import { Tooltip } from "../Tooltip";
 import { buildTableOverflowItems } from "./context-menu-table";
 import { MenuList } from "./MenuList";
 import { computeToolbarTop } from "./table-toolbar-position";
@@ -285,114 +286,134 @@ export function TableToolbar({ editor }: TableToolbarProps) {
         ref={toolbarRef}
         style={{ top: position.top, left: position.left }}
       >
-        <button
-          className={`table-toolbar-btn icon-btn ${currentAlign === "left" ? "table-toolbar-btn-active" : ""}`}
-          onClick={() => setAlign(currentAlign === "left" ? null : "left")}
-          title={t("tableToolbar.alignLeft")}
-        >
-          <AlignLeft {...TABLE_ICON} />
-        </button>
-        <button
-          className={`table-toolbar-btn ${currentAlign === "center" ? "table-toolbar-btn-active" : ""}`}
-          onClick={() => setAlign(currentAlign === "center" ? null : "center")}
-          title={t("tableToolbar.alignCenter")}
-        >
-          <AlignCenter {...TABLE_ICON} />
-        </button>
-        <button
-          className={`table-toolbar-btn ${currentAlign === "right" ? "table-toolbar-btn-active" : ""}`}
-          onClick={() => setAlign(currentAlign === "right" ? null : "right")}
-          title={t("tableToolbar.alignRight")}
-        >
-          <AlignRight {...TABLE_ICON} />
-        </button>
+        <Tooltip label={t("tableToolbar.alignLeft")} placement="top">
+          <button
+            className={`table-toolbar-btn icon-btn ${currentAlign === "left" ? "table-toolbar-btn-active" : ""}`}
+            onClick={() => setAlign(currentAlign === "left" ? null : "left")}
+          >
+            <AlignLeft {...TABLE_ICON} />
+          </button>
+        </Tooltip>
+        <Tooltip label={t("tableToolbar.alignCenter")} placement="top">
+          <button
+            className={`table-toolbar-btn ${currentAlign === "center" ? "table-toolbar-btn-active" : ""}`}
+            onClick={() =>
+              setAlign(currentAlign === "center" ? null : "center")
+            }
+          >
+            <AlignCenter {...TABLE_ICON} />
+          </button>
+        </Tooltip>
+        <Tooltip label={t("tableToolbar.alignRight")} placement="top">
+          <button
+            className={`table-toolbar-btn ${currentAlign === "right" ? "table-toolbar-btn-active" : ""}`}
+            onClick={() => setAlign(currentAlign === "right" ? null : "right")}
+          >
+            <AlignRight {...TABLE_ICON} />
+          </button>
+        </Tooltip>
         {isSelection && (
           <>
             <div className="table-toolbar-separator" />
-            <button
-              className="table-toolbar-btn"
-              disabled={!editor.can().mergeCells()}
-              onClick={() =>
-                chainWithVimExternalEdit(editor).focus().mergeCells().run()
-              }
-              title={commandLabel("formatting.tableMerge")}
+            <Tooltip
+              label={commandLabel("formatting.tableMerge")}
+              placement="top"
             >
-              <MergeCellsIcon />
-            </button>
-            <button
-              className="table-toolbar-btn"
-              disabled={!editor.can().splitCell()}
-              onClick={() =>
-                chainWithVimExternalEdit(editor).focus().splitCell().run()
-              }
-              title={t("tableToolbar.splitCell")}
-            >
-              <SplitCellsIcon />
-            </button>
+              <button
+                className="table-toolbar-btn"
+                disabled={!editor.can().mergeCells()}
+                onClick={() =>
+                  chainWithVimExternalEdit(editor).focus().mergeCells().run()
+                }
+              >
+                <MergeCellsIcon />
+              </button>
+            </Tooltip>
+            <Tooltip label={t("tableToolbar.splitCell")} placement="top">
+              <button
+                className="table-toolbar-btn"
+                disabled={!editor.can().splitCell()}
+                onClick={() =>
+                  chainWithVimExternalEdit(editor).focus().splitCell().run()
+                }
+              >
+                <SplitCellsIcon />
+              </button>
+            </Tooltip>
           </>
         )}
         <div className="table-toolbar-separator" />
-        <button
-          className="table-toolbar-btn table-toolbar-btn-danger"
-          onClick={() =>
-            chainWithVimExternalEdit(editor).focus().deleteRow().run()
-          }
-          title={t("tableToolbar.deleteRow")}
-        >
-          <DeleteRowIcon />
-        </button>
-        <button
-          className="table-toolbar-btn table-toolbar-btn-danger"
-          onClick={() =>
-            chainWithVimExternalEdit(editor).focus().deleteColumn().run()
-          }
-          title={t("tableToolbar.deleteColumn")}
-        >
-          <DeleteColIcon />
-        </button>
-        <div className="table-toolbar-separator" />
-        <button
-          className="table-toolbar-btn table-toolbar-btn-ai"
-          onClick={(e) => {
-            const table = findTable(editor);
-            if (!table || !table.node) return;
-            // §384: read the CANONICAL table node — if a mark/link/wikilink is
-            // mid-expansion inside a cell, the raw `table.node` still holds the
-            // literal delimiter text and would corrupt this copy.
-            const canonicalTable = canonicalNodeAt(
-              editor.state,
-              table.pos,
-              "table",
-            );
-            if (!canonicalTable) return;
-            const tempDoc = editor.schema.nodes.doc.create(null, [
-              canonicalTable,
-            ]);
-            const md = serializeDetachedDoc(tempDoc).trim();
-            if (!md) return;
-            showNodeViewAIMenu(e.currentTarget, "table", md, editor, table.pos);
-          }}
-          title={t("toolbar.ai.commands")}
-        >
-          <Sparkles size={14} />
-        </button>
-        <div className="table-toolbar-separator" />
-        <button
-          aria-label={t("tableToolbar.moreOptions")}
-          className="table-toolbar-btn"
-          onClick={(e) => {
-            if (overflow) {
-              setOverflow(null);
-              return;
+        <Tooltip label={t("tableToolbar.deleteRow")} placement="top">
+          <button
+            className="table-toolbar-btn table-toolbar-btn-danger"
+            onClick={() =>
+              chainWithVimExternalEdit(editor).focus().deleteRow().run()
             }
-            const r = e.currentTarget.getBoundingClientRect();
-            setOverflow({ x: r.left, y: r.bottom + 4 });
-          }}
-          ref={overflowToggleRef}
-          title={t("tableToolbar.more")}
-        >
-          <MoreIcon />
-        </button>
+          >
+            <DeleteRowIcon />
+          </button>
+        </Tooltip>
+        <Tooltip label={t("tableToolbar.deleteColumn")} placement="top">
+          <button
+            className="table-toolbar-btn table-toolbar-btn-danger"
+            onClick={() =>
+              chainWithVimExternalEdit(editor).focus().deleteColumn().run()
+            }
+          >
+            <DeleteColIcon />
+          </button>
+        </Tooltip>
+        <div className="table-toolbar-separator" />
+        <Tooltip label={t("toolbar.ai.commands")} placement="top">
+          <button
+            className="table-toolbar-btn table-toolbar-btn-ai"
+            onClick={(e) => {
+              const table = findTable(editor);
+              if (!table || !table.node) return;
+              // §384: read the CANONICAL table node — if a mark/link/wikilink is
+              // mid-expansion inside a cell, the raw `table.node` still holds the
+              // literal delimiter text and would corrupt this copy.
+              const canonicalTable = canonicalNodeAt(
+                editor.state,
+                table.pos,
+                "table",
+              );
+              if (!canonicalTable) return;
+              const tempDoc = editor.schema.nodes.doc.create(null, [
+                canonicalTable,
+              ]);
+              const md = serializeDetachedDoc(tempDoc).trim();
+              if (!md) return;
+              showNodeViewAIMenu(
+                e.currentTarget,
+                "table",
+                md,
+                editor,
+                table.pos,
+              );
+            }}
+          >
+            <Sparkles size={14} />
+          </button>
+        </Tooltip>
+        <div className="table-toolbar-separator" />
+        <Tooltip label={t("tableToolbar.more")} placement="top">
+          <button
+            aria-label={t("tableToolbar.moreOptions")}
+            className="table-toolbar-btn"
+            onClick={(e) => {
+              if (overflow) {
+                setOverflow(null);
+                return;
+              }
+              const r = e.currentTarget.getBoundingClientRect();
+              setOverflow({ x: r.left, y: r.bottom + 4 });
+            }}
+            ref={overflowToggleRef}
+          >
+            <MoreIcon />
+          </button>
+        </Tooltip>
       </div>
       {overflow && (
         <MenuList

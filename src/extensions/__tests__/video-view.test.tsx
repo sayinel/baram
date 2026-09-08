@@ -5,6 +5,10 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+// Names come from the catalogue, not from literals here: they are display copy a wording
+// pass may change, and the behaviour under test is not about the words.
+import en from "../../i18n/en.json";
+
 vi.mock("@tauri-apps/api/core", () => ({
   convertFileSrc: (p: string) => `asset://localhost/${p}`,
 }));
@@ -419,33 +423,37 @@ describe("VideoView embed iframe carries data-video-src for export (§294 M2)", 
 describe("VideoView fullscreen button (§296)", () => {
   it("renders when fullscreen is supported, for a local file", () => {
     isFullscreenSupported.mockReturnValue(true);
-    const { getByTitle } = renderVideo({ src: "assets/clip.mp4" });
-    expect(getByTitle("Fullscreen")).toBeInTheDocument();
+    const { getByLabelText } = renderVideo({ src: "assets/clip.mp4" });
+    expect(getByLabelText(en["video.fullscreen"])).toBeInTheDocument();
   });
 
   it("does not render when fullscreen is unsupported — a dead button is worse than none", () => {
     isFullscreenSupported.mockReturnValue(false);
-    const { queryByTitle } = renderVideo({ src: "assets/clip.mp4" });
-    expect(queryByTitle("Fullscreen")).toBeNull();
+    const { queryByLabelText } = renderVideo({ src: "assets/clip.mp4" });
+    expect(queryByLabelText(en["video.fullscreen"])).toBeNull();
   });
 
   it("does not render on the embed branch even when fullscreen is supported", () => {
     isFullscreenSupported.mockReturnValue(true);
-    const { queryByTitle } = renderVideo({ src: "https://youtu.be/abc123" });
-    expect(queryByTitle("Fullscreen")).toBeNull();
+    const { queryByLabelText } = renderVideo({
+      src: "https://youtu.be/abc123",
+    });
+    expect(queryByLabelText(en["video.fullscreen"])).toBeNull();
   });
 
   it("does not render once the file has errored — nothing left to fullscreen", () => {
     isFullscreenSupported.mockReturnValue(true);
-    const { container, queryByTitle } = renderVideo({ src: "missing.mp4" });
+    const { container, queryByLabelText } = renderVideo({ src: "missing.mp4" });
     fireEvent.error(container.querySelector("video")!);
-    expect(queryByTitle("Fullscreen")).toBeNull();
+    expect(queryByLabelText(en["video.fullscreen"])).toBeNull();
   });
 
   it("calls requestVideoFullscreen with the actual <video> element on click", () => {
     isFullscreenSupported.mockReturnValue(true);
-    const { container, getByTitle } = renderVideo({ src: "assets/clip.mp4" });
-    fireEvent.click(getByTitle("Fullscreen"));
+    const { container, getByLabelText } = renderVideo({
+      src: "assets/clip.mp4",
+    });
+    fireEvent.click(getByLabelText(en["video.fullscreen"]));
     expect(requestVideoFullscreen).toHaveBeenCalledTimes(1);
     expect(requestVideoFullscreen).toHaveBeenCalledWith(
       container.querySelector("video"),

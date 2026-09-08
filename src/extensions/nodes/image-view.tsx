@@ -5,9 +5,11 @@ import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 import { Captions, Maximize2, Sparkles } from "lucide-react";
 
 import { ImageOriginalView } from "../../components/editor/ImageOriginalView";
+import { useTranslation } from "../../i18n/useTranslation";
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
 // §3.3 Image NodeView — edge-drag resize, caption editing, AI menu
 import { updateNodeAttributesWithVim } from "../plugins/vim/vim-keys";
+import { MediaResizeHandle } from "./views/MediaResizeHandle";
 import { MediaToolbar, MediaToolbarButton } from "./views/MediaToolbar";
 import { originalImageUrl, useImagePreview } from "./views/use-image-preview";
 import { useMediaResize } from "./views/use-media-resize";
@@ -19,6 +21,7 @@ export function ImageView({
   editor,
   getPos,
 }: NodeViewProps) {
+  const { t } = useTranslation();
   const rawSrc = node.attrs.src as string;
   const alt = (node.attrs.alt as string) || "";
   const title = (node.attrs.title as string) || "";
@@ -126,16 +129,8 @@ export function ImageView({
         )}
 
         {/* Edge resize handles */}
-        <div
-          className="media-resize-handle media-resize-handle-left"
-          onMouseDown={startResize}
-          title="Drag to resize"
-        />
-        <div
-          className="media-resize-handle media-resize-handle-right"
-          onMouseDown={startResize}
-          title="Drag to resize"
-        />
+        <MediaResizeHandle onMouseDown={startResize} side="left" />
+        <MediaResizeHandle onMouseDown={startResize} side="right" />
         {dragPct != null && (
           <div className="media-resize-label">{dragPct}%</div>
         )}
@@ -144,21 +139,24 @@ export function ImageView({
         <MediaToolbar>
           <MediaToolbarButton
             active={editingCaption}
+            label={t("blockChrome.caption")}
             onClick={startCaptionEdit}
-            title="Caption"
           >
             <Captions size={16} strokeWidth={2} />
           </MediaToolbarButton>
           {/* §3.3 본문은 프리뷰를 그리므로 원본을 볼 통로가 필요하다 — SVG/Mermaid의
               Fullscreen view와 같은 자리, 같은 아이콘. */}
           <MediaToolbarButton
+            label={t("blockChrome.viewOriginal")}
             onClick={() => setViewingOriginal(true)}
-            title="View original"
           >
             <Maximize2 size={16} strokeWidth={2} />
           </MediaToolbarButton>
           <MediaToolbarButton
+            label={t("toolbar.ai.commands")}
             onClick={(e) => {
+              // ‼️ English on purpose: this is the PROMPT the model reads, not UI. Labelling
+              // the fields in the user's language would put two languages in one prompt.
               const context =
                 [
                   alt && `Alt: ${alt}`,
@@ -177,7 +175,6 @@ export function ImageView({
                 pos,
               );
             }}
-            title="AI Commands"
           >
             <Sparkles size={14} />
           </MediaToolbarButton>
@@ -192,7 +189,7 @@ export function ImageView({
               onBlur={handleCaptionSave}
               onChange={(e) => setCaptionText(e.target.value)}
               onKeyDown={handleCaptionKeyDown}
-              placeholder="Add caption..."
+              placeholder={t("blockChrome.captionPlaceholder")}
               ref={captionRef}
               value={captionText}
             />
@@ -211,7 +208,7 @@ export function ImageView({
             contentEditable={false}
             onClick={startCaptionEdit}
           >
-            캡션 추가...
+            {t("blockChrome.captionPlaceholder")}
           </figcaption>
         ) : null}
       </figure>

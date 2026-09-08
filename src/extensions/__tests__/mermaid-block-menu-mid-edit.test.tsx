@@ -21,6 +21,10 @@ import { Editor } from "@tiptap/core";
 import { EditorContent } from "@tiptap/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// Menu item names come from the catalogue, not from literals here: they are display copy
+// that a wording pass is allowed to change without breaking what this file is about.
+import en from "../../i18n/en.json";
+
 vi.mock("@tauri-apps/api/core", () => ({
   convertFileSrc: (p: string) => `asset://localhost/${p}`,
   invoke: vi.fn(async () => undefined),
@@ -49,6 +53,8 @@ vi.mock("../../utils/markdown/mermaid-utils", async (importOriginal) => ({
   }),
 }));
 
+import ko from "../../i18n/ko.json";
+import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
 import { createBaramExtensions } from "../index";
 
@@ -64,6 +70,7 @@ const editors: Editor[] = [];
 afterEach(() => {
   cleanup();
   for (const e of editors.splice(0)) e.destroy();
+  useSettingsStore.setState({ locale: "en" });
 });
 
 beforeEach(() => {
@@ -138,16 +145,18 @@ describe("mermaid block menu, mid-edit (issue 521)", () => {
     fireEvent.contextMenu(preview, { clientX: 20, clientY: 80 });
     await flush();
 
-    const item = menuItem("Copy as SVG") as HTMLButtonElement | undefined;
+    const item = menuItem(en["blockChrome.copySvg"]) as
+      HTMLButtonElement | undefined;
     if (!item) throw new Error("Copy as SVG item did not render");
     expect(item.disabled).toBe(true);
-    expect(item.title).toBe("Rendering…");
-    expect(menuItem("Copy Source")).toBeDefined();
+    expect(item.title).toBe(en["mermaidBlock.rendering"]);
+    expect(menuItem(en["blockChrome.copySource"])).toBeDefined();
     // Once the render catches up with the source, the item enables in
     // place — the open menu re-renders, nothing moves.
     await waitFor(() => {
       expect(
-        (menuItem("Copy as SVG") as HTMLButtonElement | undefined)?.disabled,
+        (menuItem(en["blockChrome.copySvg"]) as HTMLButtonElement | undefined)
+          ?.disabled,
       ).toBe(false);
     });
   });
@@ -164,7 +173,8 @@ describe("mermaid block menu, mid-edit (issue 521)", () => {
     fireEvent.contextMenu(preview, { clientX: 20, clientY: 80 });
     await flush();
 
-    const item = menuItem("Copy as SVG") as HTMLButtonElement | undefined;
+    const item = menuItem(en["blockChrome.copySvg"]) as
+      HTMLButtonElement | undefined;
     if (!item) throw new Error("Copy as SVG item did not render");
     expect(item.disabled).toBe(true);
     expect(item.title).toBe("Diagram does not render");
@@ -178,7 +188,7 @@ describe("mermaid block menu, mid-edit (issue 521)", () => {
     const { preview } = await mountEditing();
     fireEvent.contextMenu(preview, { clientX: 20, clientY: 80 });
     await flush();
-    const item = menuItem("Copy as PNG");
+    const item = menuItem(en["blockChrome.copyPng"]);
     if (!item) throw new Error("Copy as PNG item did not render");
 
     fireEvent.click(item);
@@ -197,8 +207,8 @@ describe("mermaid block menu, mid-edit (issue 521)", () => {
     expect(document.activeElement).toBe(textarea);
     fireEvent.contextMenu(preview, { clientX: 20, clientY: 80 });
     await flush();
-    const item = menuItem("View Fullscreen");
-    if (!item) throw new Error("View Fullscreen item did not render");
+    const item = menuItem(en["blockChrome.viewFullscreen"]);
+    if (!item) throw new Error("the fullscreen item did not render");
     fireEvent.click(item);
     await flush();
     const close = document.body.querySelector<HTMLElement>(
@@ -244,8 +254,8 @@ describe("mermaid block menu, mid-edit (issue 521)", () => {
     await flush();
     fireEvent.contextMenu(preview, { clientX: 20, clientY: 80 });
     await flush();
-    const item = menuItem("View Fullscreen");
-    if (!item) throw new Error("View Fullscreen item did not render");
+    const item = menuItem(en["blockChrome.viewFullscreen"]);
+    if (!item) throw new Error("the fullscreen item did not render");
 
     fireEvent.click(item);
     await flush();
@@ -257,7 +267,7 @@ describe("mermaid block menu, mid-edit (issue 521)", () => {
     ).toBeNull();
     // ...and it says a render is coming, not that the diagram is empty.
     expect(document.body.querySelector(body)?.textContent).toContain(
-      "Rendering",
+      en["mermaidBlock.rendering"],
     );
     await waitFor(() => {
       expect(
@@ -265,6 +275,31 @@ describe("mermaid block menu, mid-edit (issue 521)", () => {
       ).not.toBeNull();
     });
   });
+  it("still says a render is coming in another locale", async () => {
+    // ‼️ The point of this test is the DISCRIMINATOR, not the words. `pending` used to be
+    // computed as `reason === "Rendering…"` — a comparison against the string on screen — so
+    // translating that label would have made it permanently false, and the viewer would tell a
+    // Korean user the diagram is EMPTY while a render was on its way. The English test above
+    // cannot see that: under en the comparison still matches.
+    useSettingsStore.setState({ locale: "ko" });
+    const { preview, textarea } = await mountEditing();
+    fireEvent.change(textarea, { target: { value: EDITED } });
+    await flush();
+    fireEvent.contextMenu(preview, { clientX: 20, clientY: 80 });
+    await flush();
+    const item = menuItem(ko["blockChrome.viewFullscreen"]);
+    if (!item) throw new Error("the fullscreen item did not render");
+
+    fireEvent.click(item);
+    await flush();
+
+    const text =
+      document.body.querySelector(".mermaid-view-fullscreen-body")
+        ?.textContent ?? "";
+    expect(text).toContain(ko["mermaidBlock.rendering"]);
+    expect(text).not.toContain(ko["mermaidBlock.empty"]);
+  });
+
   it("a source change under an open menu closes it instead of reshaping it", async () => {
     // The svg items are gated on a fresh render, so typing (or an undo from
     // the Edit menu) while the menu is open would make them vanish and slide
