@@ -50,7 +50,6 @@ jobs:
               - '.cargo/**'
               - '.github/workflows/ci.yml'
               - '.github/actions/setup-node/**'
-              - '.github/actions/verify-macos-sdk/**'
       - name: Determine rust job necessity
         id: decide
         shell: bash
@@ -180,31 +179,35 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ''
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
 
-  # ── macOS build (the release leg's only rehearsal) ─────────────────
+  # ── macOS Rust (the Darwin half of the crate, on every rust change) ─
   # ‼️ WHY THIS EXISTS. Every other job here runs on ubuntu, so until v0.7.1 the
-  # macOS half of the release — the runner label, the Darwin-only Rust, and the
-  # SDK the binary ends up linked against — was first exercised on release day.
-  # v0.7.0 shipped an opaque light titlebar because the matrix was on macos-15,
-  # and nothing before the release could have said so.
+  # macOS half of the release was first exercised on release day. v0.7.0 shipped
+  # an opaque light titlebar because the matrix was on macos-15, and nothing
+  # before the release could have said so.
   #
-  # Three things only this job can answer:
+  # What THIS job answers — all three depend on the diff, which is why they are
+  # gated on the rust path filter and run per PR:
   #   1. `macos-26` still resolves to a runner (a label is not a guarantee)
   #   2. the `cfg(target_os = "macos")` code in lib.rs / menu.rs /
   #      plugin/storage.rs compiles at all — ubuntu never sees it
-  #   3. the built binary is linked against SDK 26+, which depends on the runner
-  #      IMAGE and can therefore regress with no change to this repository
+  #   3. the tests still mean something on a case-INSENSITIVE filesystem
   #
-  # (3) is why the job is not PR-only: on a main push `changes` reports rust=true
-  # unconditionally, so every merge re-checks the image.
+  # ‼️ The SDK assertion is NOT here — it lives in macos-sdk.yml. That rule is a
+  # property of the runner IMAGE, not of our source: a rust diff cannot change
+  # it, and it can regress with no change to this repository at all. Gating it
+  # on rust paths cost ~12 minutes of `tauri build` on every rust PR to re-ask a
+  # question the PR could not have affected, and still went blind through any
+  # week without a rust merge. It is a daily schedule now, which is both cheaper
+  # and strictly faster to notice. Do not move it back here.
   #
-  # Deliberately NOT a universal build and NOT notarized — that is the release
-  # leg's job and takes 24 minutes. Native arch and an ad-hoc signature are
-  # enough to answer all three questions.
+  # No `tauri build` here for the same reason the ubuntu rust job has none
+  # outside a release call: nothing in a PR exercises the release profile, on
+  # either platform. Clippy already compiles --all-targets.
   macos:
     needs: [changes]
     if: needs.changes.outputs.rust == 'true'
     runs-on: macos-26
-    timeout-minutes: 45
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-node
@@ -216,9 +219,13 @@ jobs:
           toolchain: stable
           components: clippy
 
+      # `shared-key` (rather than the default, which keys on the job id) is what
+      # lets macos-sdk.yml's read-only restore hit this cache — mainly the cargo
+      # registry and git checkouts, since that job builds the other profile.
       - uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: src-tauri -> target
+          shared-key: macos
 
       - name: Build frontend (required for Rust compilation)
         run: npm run build
@@ -235,17 +242,6 @@ jobs:
       # compiled --all-targets, so this is the run, not another build.
       - name: Cargo test
         run: npm run rust:_test
-
-      # `--bundles app` rather than `--no-bundle`: the SDK check reads a Mach-O
-      # load command off the binary inside Baram.app, so the bundle has to exist.
-      # It also puts the Info.plist generation and the ad-hoc signing on the same
-      # path the release takes, for seconds of extra work. No signing secrets are
-      # needed — tauri.conf.json's macOS signingIdentity is "-", and the release
-      # config that asks for a Developer ID is only passed by release.yml.
-      - name: Tauri build (app bundle, native arch)
-        run: npm run tauri build -- --bundles app
-
-      - uses: ./.github/actions/verify-macos-sdk
 
   # ── CI Gate ────────────────────────────────────────────────────────
   ci-pass:
@@ -282,8 +278,9 @@ jobs:
           fi
           # macos is gated on the same filter as rust, so it earns the same single
           # exemption and no other. Anything else — a cancelled job, a runner that
-          # never came up — is a red light, because this job is the only rehearsal
-          # the release's macOS leg gets.
+          # never came up — is a red light: this is the only place the Darwin half
+          # of the crate is compiled and run before release day. (The SDK rule is
+          # not gated here at all; macos-sdk.yml owns it on a schedule.)
           if [[ "$MACOS" != "success" ]]; then
             [[ "$EVENT" == "pull_request" && "$RUST_NEEDED" == "false" && "$MACOS" == "skipped" ]] \
               || fail "macos: $MACOS (event=$EVENT, rust-needed=$RUST_NEEDED)"
