@@ -14,11 +14,13 @@ Advanced syntax:
 - `[[page#^block-id]]` — Link to a specific block
 - `[[paper.pdf]]` — Link to a non-markdown file Baram can view
 
-A wikilink can also point at a file Baram opens in place — a PDF, an HTML file, an image or SVG —
-by writing its extension. The autocomplete offers those files and labels each with its type, so
-`report.pdf` is distinguishable from `report.md` before you pick. Plain markdown links such as
-`[the paper](papers/attention.pdf)` open in Baram too, and all of these are indexed like ordinary
-links, so they appear in backlinks and in the Graph View.
+A wikilink can also point at a file Baram opens as a document — a PDF, an HTML file, a code file
+or plain text — by writing its extension. The autocomplete offers those files and labels each with
+its type, so `report.pdf` is distinguishable from `report.md` before you pick; images and SVG are
+not offered, since markdown embeds those with `![](…)`. Plain markdown links such as
+`[the paper](papers/attention.pdf)` open in Baram too — but only `[[…]]` links are collected into
+the link index, so a markdown link produces no backlink and no graph edge. A wikilink to the same
+PDF does.
 
 ## What are backlinks?
 

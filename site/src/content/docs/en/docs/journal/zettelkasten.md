@@ -9,7 +9,7 @@ The **Zettel** space is a dedicated home for atomic, densely-linked notes. Unlik
 
 1. Open **Settings** (`Cmd+,`) → **General** → **Zettel**
 2. Enable the **Zettel** toggle and **Browse** for a directory (absolute path)
-3. Open the space from the space menu (status bar), the Command Palette ("Open Zettel"), or `Cmd+Alt+2`. Baram creates the `inbox/` and `notes/` folders automatically.
+3. Open the space from the space menu (status bar), the Command Palette (**Zettel Perspective**), or `Cmd+Alt+2`. Baram creates the `inbox/` and `notes/` folders automatically.
 
 > If you select the Zettel space before enabling it or setting a directory, Baram shows a hint instead of switching into an empty space.
 

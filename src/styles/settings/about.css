@@ -3,7 +3,11 @@
 .about-overlay {
   position: fixed;
   inset: 0;
-  z-index: 110;
+
+  /* Above `.settings-overlay` (1000), for the same reason as the update dialog:
+     the Help menu opens About through `use-menu-event-handler.ts`, which is not
+     gated on Settings being closed, so the two overlays can be up together. */
+  z-index: 1010;
   display: flex;
   align-items: center;
   justify-content: center;

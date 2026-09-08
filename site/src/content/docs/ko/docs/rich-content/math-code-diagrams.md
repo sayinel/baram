@@ -1,6 +1,6 @@
 ---
 title: "수식, 코드, 다이어그램"
-sourceHash: "4527c226218d"
+sourceHash: "3328c18876cf"
 ---
 
 ## 수식 (KaTeX)
@@ -27,7 +27,7 @@ $$
 
 Baram은 코드 블록마다 완전한 CodeMirror 6 에디터를 넣습니다.
 
-- **지원 언어 14종**: JavaScript, TypeScript, Python, Rust, Go, Java, C++, HTML, CSS, JSON, SQL, PHP, XML, YAML
+- **지원 언어 21종**: C, C++, CSS, Go, HTML, Java, JavaScript, JSON, Kotlin, LaTeX, Markdown, PHP, Python, Ruby, Rust, Shell, SQL, Swift, TypeScript, XML, YAML
 - 블록 위쪽에 언어 선택 드롭다운
 - 구문 강조
 - 언어는 성능을 위해 필요할 때 불러옵니다

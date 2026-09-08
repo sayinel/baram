@@ -28,8 +28,9 @@ Yes. Baram is free and open source software, licensed under the Apache License 2
 
 Baram checks GitHub Releases for a new version 15 seconds after startup and once a day
 after that. Turn that off with **Settings > General > Updates > Check for Updates
-Automatically**; **Check Now** in the same place always checks on demand, whether the
-automatic check is on or off.
+Automatically**; **Check Now** in the same place checks on demand whether or not the
+automatic check is on. Once an update has been found, that same button becomes **Update to
+v0.7.2** and opens the dialog rather than checking again.
 
 When a version is found you get a dialog with the release notes and an **Install & Restart**
 button. Baram downloads the update, replaces itself, and restarts — on macOS, Windows, and
@@ -44,6 +45,12 @@ Two cases fall back to opening the releases page for a manual download instead:
 > **Updating to v0.7.0 on macOS is still manual.** In-place installing arrived *in* v0.7.0,
 > and the version performing an update is the one you are updating *from* — so v0.6.x asks
 > you to download it by hand, and v0.7.0 onward installs on its own.
+
+> **On v0.7.0, the update dialog opens behind the Settings window.** Same reason: the fix
+> is in v0.7.1, but the version performing an update is the one you are updating *from*.
+> Press **Update to v0.7.1**, then click the dimmed area outside the Settings panel to
+> close Settings — the dialog is waiting behind it. Escape closes the dialog rather than
+> Settings, so use the click. From v0.7.1 onward it appears on top.
 
 ---
 

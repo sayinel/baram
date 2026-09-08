@@ -22,8 +22,8 @@ Baram supports GFM (GitHub Flavored Markdown) pipe tables.
 
 **Merging and Splitting Cells:**
 
-- **Merge Cells** — Select multiple cells, then press `Cmd+M` (macOS) / `Ctrl+M` (Windows/Linux), or right-click and select "Merge Cells"
-- **Split Cell** — Place your cursor in a merged cell, then press `Cmd+M` again, or right-click and select "Split Cell"
+- **Merge Cells** — Select multiple cells, then press `Cmd+M` (macOS) / `Ctrl+M` (Windows/Linux), or right-click and select **Merge Table Cells**
+- **Split Cell** — Place your cursor in a merged cell, then press `Cmd+M` again, or right-click and select **Split Cell**
 - **Persistence** — Cell merges are preserved across source mode toggle (`Cmd+/`) and file reopen. Baram uses `<` and `^` markers inside the pipe table to encode colspan and rowspan information:
 
 ```markdown

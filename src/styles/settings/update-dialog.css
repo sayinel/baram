@@ -3,7 +3,15 @@
 .update-dialog-overlay {
   position: fixed;
   inset: 0;
-  z-index: 110;
+
+  /* ‼️ Above `.settings-overlay` (1000). This dialog's ONLY open paths are the
+     "Check Now" and "Update to vX" buttons in Settings > General > Updates, so it
+     is always raised over an open Settings modal. At 110 it painted UNDERNEATH it
+     and the update was simply unreachable from the UI — the button worked, the
+     dialog mounted, and nothing appeared. Below `.plugin-consent-overlay` (1100),
+     which has to stay the topmost surface. Ordering pinned by
+     `styles/__tests__/settings-dialog-layering.test.ts`. */
+  z-index: 1010;
   display: flex;
   align-items: center;
   justify-content: center;

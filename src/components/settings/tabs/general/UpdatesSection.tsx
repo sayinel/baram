@@ -33,6 +33,15 @@ export function UpdatesSection() {
     );
   const [appVersion, setAppVersion] = useState("");
 
+  // §206 ONE button, not two. A background check (15s after launch, then daily)
+  // only raises a toast, so Settings still has to show that an update is
+  // waiting — but a second button beside "Check Now" duplicated what the first
+  // one already does when an update exists, and it appeared before the user had
+  // pressed anything, which reads as a bug rather than as state. The single
+  // button carries the state in its label and does what that label says.
+  const updateReady =
+    updateStatus === "available" && updateAvailableVersion !== null;
+
   useEffect(() => {
     let cancelled = false;
     getVersion()
@@ -71,6 +80,10 @@ export function UpdatesSection() {
             className="settings-key-toggle"
             disabled={updateStatus === "checking"}
             onClick={() => {
+              if (updateReady) {
+                openUpdateDialog();
+                return;
+              }
               checkForAppUpdate(true).catch(() => {
                 /* errors are surfaced via the store's error status */
               });
@@ -78,16 +91,13 @@ export function UpdatesSection() {
           >
             {updateStatus === "checking"
               ? t("settings.general.updates.checking")
-              : t("settings.general.updates.checkNow")}
+              : updateReady
+                ? t("settings.general.updates.available").replace(
+                    "{version}",
+                    updateAvailableVersion,
+                  )
+                : t("settings.general.updates.checkNow")}
           </button>
-          {updateStatus === "available" && (
-            <button className="settings-key-toggle" onClick={openUpdateDialog}>
-              {t("settings.general.updates.available").replace(
-                "{version}",
-                updateAvailableVersion ?? "",
-              )}
-            </button>
-          )}
         </div>
       </SettingsRow>
     </>
