@@ -26,7 +26,7 @@ import {
   trackBlockIdRename,
 } from "../../utils/editor/block-id-rename-landing";
 import { logger } from "../../utils/logger";
-import { syncOpenSurfacesAfterFileRewrite } from "../../utils/tasks/sync-open-surfaces";
+import { syncCleanSurfacesAfterReferrerRewrite } from "../../utils/tasks/sync-open-surfaces";
 
 export const blockIdDecoKey = new PluginKey<BlockIdDecoState>(
   "blockIdDecoration",
@@ -274,20 +274,17 @@ export function commitBlockIdEdit(
         toast("blockId.rename.stale.toast", "warning", { newId });
       }
       try {
-        // The referrers the backend rewrote: bring every open surface of each
-        // in line with the disk — the active view patched in place, clean
-        // background tabs flagged to reload — and re-index each. A DIRTY
-        // background referrer keeps its cached document and takes the
-        // conflict path when its file's change arrives, as any external
-        // write would.
+        // The referrers the backend rewrote: every CLEAN open surface of each
+        // follows the disk (the editor holding it patched in place, a clean
+        // background tab flagged to reload); a referrer with unsaved work is
+        // left alone and takes the conflict path, as for any external write.
+        // Then re-index each.
         const { openFiles } = useFileStore.getState();
-        const shared =
-          useEditorStore.getState().documentSurfaceAccess?.editor ?? null;
         for (const updatedPath of result.updatedFiles) {
           if (openFiles.has(updatedPath)) {
             try {
               const content = await readFile(updatedPath);
-              syncOpenSurfacesAfterFileRewrite(updatedPath, content, shared);
+              syncCleanSurfacesAfterReferrerRewrite(updatedPath, content);
             } catch {
               // file may have been deleted
             }

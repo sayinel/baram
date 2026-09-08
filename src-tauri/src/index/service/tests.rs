@@ -2018,7 +2018,10 @@ async fn a_block_id_rename_leaves_another_notes_block_with_the_same_id_alone() {
     std::fs::write(dir.path().join("other.md"), "para ^b1").unwrap();
     std::fs::write(
         dir.path().join("x.md"),
-        "((target#^b1)) and ((other#^b1))\n((other#^b1)) alone\n((#^b1)) mine ^b1\n((Target.md#^b1|label))",
+        // The last line pairs a wikilink and a block reference to the same
+        // file: `get_backlinks` keeps one entry per (source, line) and would
+        // have hidden the block reference behind the wikilink.
+        "((target#^b1)) and ((other#^b1))\n((other#^b1)) alone\n((#^b1)) mine ^b1\n((Target.md#^b1|label))\n[[target]] ((target#^b1))",
     )
     .unwrap();
     let state = LinkIndexState::new();
@@ -2029,7 +2032,7 @@ async fn a_block_id_rename_leaves_another_notes_block_with_the_same_id_alone() {
     assert_eq!(result.updated_files, vec![format!("{root}/x.md")]);
     assert_eq!(
         std::fs::read_to_string(dir.path().join("x.md")).unwrap(),
-        "((target#^b2)) and ((other#^b1))\n((other#^b1)) alone\n((#^b1)) mine ^b1\n((Target.md#^b2|label))"
+        "((target#^b2)) and ((other#^b1))\n((other#^b1)) alone\n((#^b1)) mine ^b1\n((Target.md#^b2|label))\n[[target]] ((target#^b2))"
     );
     assert_eq!(
         std::fs::read_to_string(dir.path().join("other.md")).unwrap(),

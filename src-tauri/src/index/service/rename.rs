@@ -224,12 +224,7 @@ pub(crate) async fn rename_block_id_inner(
     //    to references whose target is this file (issue 594).
     let mut referring_lines: HashMap<String, HashSet<u32>> = HashMap::new();
     for (source, line) in read_indexes(state, &dirs, |index| {
-        index
-            .get_backlinks(file_path)
-            .iter()
-            .filter(|b| b.block_id.as_deref() == Some(old_id))
-            .map(|b| (b.source_path.clone(), b.line))
-            .collect::<Vec<_>>()
+        index.block_reference_lines(file_path, old_id)
     })
     .await?
     {

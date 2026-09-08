@@ -231,6 +231,27 @@ impl LinkIndex {
         self.file_tags.remove(file_path);
     }
 
+    /// The `(source_path, line)` pairs that refer to `file_path`'s block
+    /// `block_id`, for the block-ID rename (issue 594). Unlike
+    /// `get_backlinks`, nothing is deduplicated by `(source, line)` BEFORE the
+    /// block filter — a line holding `[[note]] ((note#^id))` has two entries,
+    /// and the wikilink must not hide the block reference.
+    pub fn block_reference_lines(&self, file_path: &str, block_id: &str) -> Vec<(String, u32)> {
+        let mut out = Vec::new();
+        for key in backlink_keys(file_path) {
+            if let Some(entries) = self.incoming.get(&key) {
+                for e in entries {
+                    if e.block_id.as_deref() == Some(block_id) {
+                        out.push((e.source_path.clone(), e.line));
+                    }
+                }
+            }
+        }
+        out.sort();
+        out.dedup();
+        out
+    }
+
     /// Get backlinks for a given file path
     pub fn get_backlinks(&self, file_path: &str) -> Vec<BacklinkResult> {
         let keys = backlink_keys(file_path);

@@ -20,7 +20,9 @@ import type { Editor } from "@tiptap/react";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { patchEditorContent } from "../editor/patch-editor-content";
+import { loadedTabId } from "../editor/programmatic-update";
 import { serializeLiveDoc } from "../editor/serialize-live-doc";
+import { logger } from "../logger";
 import { isSameLine, lineAt, spliceLine } from "./line-splice";
 
 /**
@@ -79,10 +81,7 @@ export function syncOpenSurfacesAfterDiskWrite(
 export function syncOpenSurfacesAfterFileRewrite(
   path: string,
   content: string,
-  // Only the view is needed here (the shared editor, or whatever holds it) —
-  // the block-ID rename landing calls this from outside React with the
-  // editor it finds in `documentSurfaceAccess` (issue 594).
-  editor: null | Pick<Editor, "view">,
+  editor: Editor | null,
 ): void {
   const { activeTabId, markContentStale, sourceModeTabs, tabs } =
     useEditorStore.getState();
@@ -131,4 +130,50 @@ function spliceMatchingLine(
   const current = lineAt(content, task.line);
   if (current === null || !isSameLine(current, task.raw)) return null;
   return spliceLine(content, task.line, newRaw);
+}
+
+/**
+ * issue 594: a rename rewrote `path` on disk — it is a REFERRER whose links
+ * to a renamed file or block now spell the new name. Its open surfaces follow
+ * the disk, but only if none of them holds unsaved work: a dirty or
+ * source-edited tab keeps its document untouched and its `openFiles` snapshot
+ * intact (the close guard writes THAT for a background tab), and takes the
+ * conflict flow when the file's change reaches it, as for any external write.
+ * Clean surfaces: the editor that actually holds the tab — the keep-alive
+ * editor, or the shared one while the tab is installed in it — is patched in
+ * place; a clean background tab is flagged to reload its text.
+ *
+ * @returns whether the surfaces were updated (false: a dirty tab kept them)
+ */
+export function syncCleanSurfacesAfterReferrerRewrite(
+  path: string,
+  content: string,
+): boolean {
+  const store = useEditorStore.getState();
+  const tabs = store.tabs.filter((t) => t.filePath === path);
+  const unsaved = tabs.some(
+    (t) => t.isDirty || store.sourceEditedTabs.includes(t.id),
+  );
+  if (unsaved) {
+    logger.warn(
+      "[referrer] a tab holds unsaved work; its links stay as they are until it is saved:",
+      path,
+    );
+    return false;
+  }
+  useFileStore.getState().setFileContent(path, content);
+  const access = store.documentSurfaceAccess;
+  for (const tab of tabs) {
+    // 소스 모드 탭의 권위 있는 텍스트는 CodeMirror 버퍼다 — 여기서 손댈 것이 없다.
+    if (store.sourceModeTabs.includes(tab.id)) continue;
+    const holder =
+      access?.keepaliveEditor(tab.id) ??
+      (loadedTabId() === tab.id ? access?.editor : null);
+    if (holder && !holder.isDestroyed) {
+      patchEditorContent(holder.view, content);
+    } else {
+      store.markContentStale(tab.id);
+    }
+  }
+  return true;
 }

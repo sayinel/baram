@@ -291,19 +291,21 @@ async function land(
       !access.isKeepaliveComplete(op.tabId));
   if (textOnly) return landInText(op, draining);
 
-  // 3. The view the edit was made in, if it still holds this tab's document
-  //    AND is still the right place to write it. A keep-alive view is: it
-  //    owns its document. The shared view is only while the tab is still
-  //    active: once the tab is on its way out, `saveOutgoingTab` has cached
-  //    the state the rename must go into (route 5), and a transaction here
-  //    would be attributed by the auto-save to the INCOMING tab — the
-  //    outgoing document written to the incoming file.
+  // 3. The view the edit was made in, if it still holds this tab's document.
+  //    A keep-alive view owns its document; the shared view holds this tab's
+  //    while the tab is installed in it. Once the tab is on its way OUT — the
+  //    active tab has moved on, the install of the next has not happened —
+  //    the document is still here, but a dispatched transaction would be
+  //    attributed by the auto-save to the incoming tab (it reads the active
+  //    tab at event time) and could write this document to that tab's file.
+  //    So the state is updated WITHOUT an event: `saveOutgoingTab` then caches
+  //    and serializes the renamed state, and the cache entry and text that
+  //    may already exist are refreshed here as well.
   if (view && viewHoldsTab(view, op.tabId)) {
+    const tr = buildBlockIdRenameTransaction(view.state, op);
+    if (!tr) return dropped(op, "the document in the editor has no such block");
     const keepalive = isKeepaliveView(view);
     if (keepalive || editorStore.activeTabId === op.tabId) {
-      const tr = buildBlockIdRenameTransaction(view.state, op);
-      if (!tr)
-        return dropped(op, "the document in the editor has no such block");
       view.dispatch(tr);
       // A hidden keep-alive editor's update reaches no auto-save.
       if (keepalive && editorStore.activeTabId !== op.tabId) {
@@ -311,6 +313,12 @@ async function land(
       }
       return "view";
     }
+    view.updateState(view.state.apply(tr));
+    if (access?.editorStateCache.has(op.tabId)) {
+      access.editorStateCache.set(op.tabId, view.state);
+    }
+    publishBackgroundChange(op, view.state);
+    return "view";
   }
 
   // 4. A large document's keep-alive editor: live, but hidden while its tab is

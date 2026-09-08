@@ -114,6 +114,11 @@ function makeView(state: EditorState, keepalive = false): FakeView {
     get state() {
       return holder.state;
     },
+    // `updateState` is ProseMirror's event-less way in: no `dispatch`, so no
+    // Tiptap `update`, so no auto-save attribution.
+    updateState: (state: EditorState) => {
+      holder.state = state;
+    },
   } as unknown as EditorView;
   return holder;
 }
@@ -199,19 +204,21 @@ describe("landing in the view that asked", () => {
     expect(setFileContent).not.toHaveBeenCalled();
   });
 
-  it("does not write into the shared view once the tab is on its way out — the cache is the destination", async () => {
-    // Tab switch in progress: activeTabId flipped to t2, saveOutgoingTab has
-    // cached t1's state, and the shared view still holds t1 until the
-    // deferred install. A transaction into that view would be attributed by
-    // the auto-save to t2 — and could write t1's document to t2's file.
+  it("updates an outgoing shared view WITHOUT an event, and refreshes its cache and text", async () => {
+    // Tab switch in progress: activeTabId flipped to t2, saveOutgoingTab may
+    // or may not have run yet, the shared view still holds t1. A dispatched
+    // transaction would be attributed by the auto-save to t2 — and could
+    // write t1's document to t2's file — so the state is set directly; the
+    // cache entry (if any) and the text follow, and saveOutgoingTab, if it
+    // runs afterwards, caches the renamed state.
     const { dispatched, view } = makeView(makeState());
     useEditorStore.setState({ activeTabId: "t2" } as never);
     cache.set("t1", view.state);
 
-    await expect(landCommittedBlockIdRename(OP, view)).resolves.toBe("cache");
+    await expect(landCommittedBlockIdRename(OP, view)).resolves.toBe("view");
 
     expect(dispatched).toHaveLength(0);
-    expect(idsOf(view.state)).toEqual(["old", null, "old", "old"]);
+    expect(idsOf(view.state)).toEqual(RENAMED);
     expect(idsOf(cache.get("t1")!)).toEqual(RENAMED);
     expect(setFileContent).toHaveBeenCalledWith(
       "/vault/note.md",

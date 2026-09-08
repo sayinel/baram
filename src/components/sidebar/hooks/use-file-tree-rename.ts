@@ -17,7 +17,7 @@ import { useFileStore } from "../../../stores/file/file";
 import { useSettingsStore } from "../../../stores/settings/store";
 import { useUIStore } from "../../../stores/ui/ui";
 import { logger } from "../../../utils/logger";
-import { syncOpenSurfacesAfterFileRewrite } from "../../../utils/tasks/sync-open-surfaces";
+import { syncCleanSurfacesAfterReferrerRewrite } from "../../../utils/tasks/sync-open-surfaces";
 
 interface UseFileTreeRenameReturn {
   handleCancelRename: () => void;
@@ -113,17 +113,14 @@ export function useFileTreeRename(
         // `renameFileEntry` re-keys openFiles (`rekeyOpenFilesPrefix`,
         // stores/file/file-tree-ops.ts). Read the map after it.
         const { openFiles } = useFileStore.getState();
-        // The referrers the backend rewrote: every open surface of each
-        // follows the disk — the active view patched in place, clean
-        // background tabs flagged to reload (issue 594). A dirty background
-        // referrer keeps its edits and takes the conflict path.
-        const shared =
-          useEditorStore.getState().documentSurfaceAccess?.editor ?? null;
+        // The referrers the backend rewrote: every CLEAN open surface of each
+        // follows the disk (issue 594); a referrer with unsaved work keeps its
+        // edits and takes the conflict path, as for any external write.
         for (const updatedFile of result.updatedFiles) {
           if (openFiles.has(updatedFile)) {
             try {
               const newContent = await readFile(updatedFile);
-              syncOpenSurfacesAfterFileRewrite(updatedFile, newContent, shared);
+              syncCleanSurfacesAfterReferrerRewrite(updatedFile, newContent);
             } catch {
               /* ignore */
             }

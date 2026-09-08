@@ -21,6 +21,8 @@ import { unified } from "unified";
 import { BLOCK_REF_RE, unescapeBlockRefTarget } from "../../pipeline/block-id";
 import { basename, dirname } from "../path-utils";
 
+type Range = [start: number, end: number];
+
 /**
  * Whether a block reference's `target` names `filePath`'s own document.
  *
@@ -40,12 +42,14 @@ export function refersToThisDocument(
   filePath: string,
 ): boolean {
   if (target === "") return true;
-  const raw = unescapeBlockRefTarget(target);
-  const here = withoutExtension(filePath).toLowerCase();
+  // Tauri hands out native paths — `C:\vault\note.md` on Windows; the
+  // helpers below speak `/`.
+  const raw = unescapeBlockRefTarget(target).replaceAll("\\", "/");
+  const here = withoutExtension(filePath.replaceAll("\\", "/")).toLowerCase();
   if (raw.startsWith("./") || raw.startsWith("../")) {
     return (
       normalizePath(
-        `${dirname(filePath)}/${withoutExtension(raw)}`,
+        `${dirname(filePath.replaceAll("\\", "/"))}/${withoutExtension(raw)}`,
       ).toLowerCase() === here
     );
   }
@@ -70,28 +74,31 @@ export function renameBlockIdInMarkdown(
   newId: string,
 ): string {
   if (oldId === newId || !markdown.includes(oldId)) return markdown;
-  const protectedRanges = literalRanges(markdown);
-  const isFree = (start: number, end: number): boolean =>
-    !protectedRanges.some(([from, to]) => start < to && end > from);
-
-  const definition = new RegExp(` \\^${escapeRegExp(oldId)}(?=\\r?\\n|$)`, "g");
-  const reference = new RegExp(BLOCK_REF_RE.source, "g");
-
-  let out = markdown.replace(definition, (whole, offset: number) =>
-    isFree(offset, offset + whole.length) ? ` ^${newId}` : whole,
-  );
-  // Offsets are unchanged so far only if the IDs have the same length; take
-  // the ranges again against the current text when they differ.
-  const ranges =
-    oldId.length === newId.length ? protectedRanges : literalRanges(out);
-  const free = (start: number, end: number): boolean =>
+  const outside = (ranges: Range[], start: number, end: number): boolean =>
     !ranges.some(([from, to]) => start < to && end > from);
+
+  // A definition is a block's trailing ` ^id` — of a paragraph or heading.
+  // The converter never reads one off a table cell (md-to-pm's table branch
+  // builds cell paragraphs directly), so table rows are off limits for the
+  // definition, while a reference inside a cell is a real blockReference.
+  const before = parsedRanges(markdown);
+  const definition = new RegExp(` \\^${escapeRegExp(oldId)}(?=\\r?\\n|$)`, "g");
+  let out = markdown.replace(definition, (whole, offset: number) =>
+    outside(before.literal, offset, offset + whole.length) &&
+    outside(before.table, offset, offset + whole.length)
+      ? ` ^${newId}`
+      : whole,
+  );
+
+  // Offsets moved if the IDs differ in length: take the ranges again.
+  const after = oldId.length === newId.length ? before : parsedRanges(out);
+  const reference = new RegExp(BLOCK_REF_RE.source, "g");
   out = out.replace(
     reference,
     (whole, target: string, id: string, _display, offset: number) =>
       id === oldId &&
       refersToThisDocument(target, filePath) &&
-      free(offset, offset + whole.length)
+      outside(after.literal, offset, offset + whole.length)
         ? whole.replace(`#^${oldId}`, `#^${newId}`)
         : whole,
   );
@@ -105,10 +112,16 @@ const parser = unified()
   .use(remarkMath)
   .use(remarkFrontmatter, ["yaml"]);
 
-/** Node types whose text is literal — never a block ID, never a reference. */
+/**
+ * Node types whose text is literal — never a block ID, never a reference. An
+ * image's alt text and a reference-style link definition are attributes on
+ * the PM side, not text a blockReference could live in.
+ */
 const LITERAL_TYPES = new Set([
   "code",
+  "definition",
   "html",
+  "image",
   "inlineCode",
   "inlineMath",
   "math",
@@ -119,9 +132,10 @@ function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/** `[start, end)` offsets of every literal node in `markdown`. */
-function literalRanges(markdown: string): [number, number][] {
-  const ranges: [number, number][] = [];
+/** `[start, end)` offsets of the literal nodes and of the tables in `markdown`. */
+function parsedRanges(markdown: string): { literal: Range[]; table: Range[] } {
+  const literal: Range[] = [];
+  const table: Range[] = [];
   const visit = (node: {
     children?: unknown[];
     position?: { end: { offset?: number }; start: { offset?: number } };
@@ -129,18 +143,17 @@ function literalRanges(markdown: string): [number, number][] {
   }): void => {
     const start = node.position?.start.offset;
     const end = node.position?.end.offset;
-    if (
-      LITERAL_TYPES.has(node.type) &&
-      start !== undefined &&
-      end !== undefined
-    ) {
-      ranges.push([start, end]);
-      return;
+    if (start !== undefined && end !== undefined) {
+      if (LITERAL_TYPES.has(node.type)) {
+        literal.push([start, end]);
+        return;
+      }
+      if (node.type === "table") table.push([start, end]);
     }
     for (const child of node.children ?? []) visit(child as typeof node);
   };
   visit(parser.parse(markdown) as unknown as Parameters<typeof visit>[0]);
-  return ranges;
+  return { literal, table };
 }
 
 /** Collapse `.` and `..` segments of a `/`-joined path. */

@@ -405,6 +405,14 @@ export function useFileOperations({
       // and close without a prompt (Cmd+W keeps its quick save-and-close flow).
       handleSave().then(
         () => {
+          // issue 594: `handleSave` gives up — resolving normally — when the
+          // tab changed while a block ID rename was landing (a Save As can be
+          // cancelled the same way). A tab that is still dirty was NOT saved
+          // and stays open with its work; only a clean one closes.
+          const after = useEditorStore
+            .getState()
+            .tabs.find((t) => t.id === tabId);
+          if (after?.isDirty) return;
           useEditorStore.getState().closeTab(tabId);
         },
         () => {

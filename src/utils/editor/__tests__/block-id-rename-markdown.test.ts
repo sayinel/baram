@@ -154,4 +154,32 @@ describe("refersToThisDocument", () => {
   it("rejects another stem", () => {
     expect(refersToThisDocument("other", FILE)).toBe(false);
   });
+
+  it("understands a native Windows path for this file", () => {
+    const win = "C:\\vault\\notes\\note.md";
+    expect(refersToThisDocument("note", win)).toBe(true);
+    expect(refersToThisDocument("notes/note", win)).toBe(true);
+    expect(refersToThisDocument("./note", win)).toBe(true);
+    expect(refersToThisDocument("../notes/note", win)).toBe(true);
+    expect(refersToThisDocument("other", win)).toBe(false);
+    expect(refersToThisDocument("elsewhere/note", win)).toBe(false);
+  });
+});
+
+describe("renameBlockIdInMarkdown — what the converter would not read as a block ID", () => {
+  it("leaves a table cell's trailing ^id alone but renames a reference inside a cell", () => {
+    const md =
+      "| a | b |\n| - | - |\n| value ^old | ((#^old)) |\n| tail ^old\n\nreal ^old\n";
+    expect(rename(md)).toBe(
+      "| a | b |\n| - | - |\n| value ^old | ((#^fresh)) |\n| tail ^old\n\nreal ^fresh\n",
+    );
+  });
+
+  it("leaves image alt text and reference-style link definitions alone", () => {
+    const md =
+      "![alt ^old](pic.png)\n\n[ref]: https://x/((#^old))\n\nreal ^old\n";
+    expect(rename(md)).toBe(
+      "![alt ^old](pic.png)\n\n[ref]: https://x/((#^old))\n\nreal ^fresh\n",
+    );
+  });
 });
