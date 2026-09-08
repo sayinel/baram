@@ -102,6 +102,7 @@ export function useFileTreeRename(
       // The file is already renamed on disk by now. Reporting a local-state
       // failure as "Rename failed" would tell the user the opposite of what
       // happened, so this half only logs.
+      let referrersHeldBack = 0;
       try {
         renameFileEntry(oldPath, newPath, newName);
         if (isNamespaceRename) {
@@ -120,7 +121,10 @@ export function useFileTreeRename(
           if (openFiles.has(updatedFile)) {
             try {
               const newContent = await readFile(updatedFile);
-              syncCleanSurfacesAfterReferrerRewrite(updatedFile, newContent);
+              if (
+                !syncCleanSurfacesAfterReferrerRewrite(updatedFile, newContent)
+              )
+                referrersHeldBack += 1;
             } catch {
               /* ignore */
             }
@@ -137,7 +141,11 @@ export function useFileTreeRename(
       // issue 594: what the backend could not finish AFTER the move is in the
       // result, not in an `Err` — and it has to reach the user the same way a
       // refusal does. Warnings, not errors: the rename itself is done.
-      reportPostRenameOutcomes(result, isNamespaceRename ? rootPath : null);
+      reportPostRenameOutcomes(
+        result,
+        isNamespaceRename ? rootPath : null,
+        referrersHeldBack,
+      );
     },
     [treeRef, renameFileEntry, renameTab, fileTree, rootPath],
   );
@@ -164,9 +172,17 @@ export function useFileTreeRename(
 function reportPostRenameOutcomes(
   result: NamespaceRenameResult | RenameResult,
   rebuildRoot: null | string,
+  referrersHeldBack: number,
 ): void {
   const { locale } = useSettingsStore.getState();
   const sentences: string[] = [];
+  if (referrersHeldBack > 0) {
+    sentences.push(
+      t("fileTree.rename.referrersUnsaved.toast", locale as Locale, {
+        count: String(referrersHeldBack),
+      }),
+    );
+  }
   if (result.skippedFiles.length > 0) {
     logger.warn(
       "[FileTree] Renamed, but these referring files could not be updated:",

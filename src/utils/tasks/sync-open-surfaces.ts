@@ -135,15 +135,17 @@ function spliceMatchingLine(
 /**
  * issue 594: a rename rewrote `path` on disk — it is a REFERRER whose links
  * to a renamed file or block now spell the new name. Its open surfaces follow
- * the disk, but only if none of them holds unsaved work: a dirty or
- * source-edited tab keeps its document untouched and its `openFiles` snapshot
- * intact (the close guard writes THAT for a background tab), and takes the
- * conflict flow when the file's change reaches it, as for any external write.
- * Clean surfaces: the editor that actually holds the tab — the keep-alive
- * editor, or the shared one while the tab is installed in it — is patched in
- * place; a clean background tab is flagged to reload its text.
+ * the disk, but only if none of them holds unsaved work. A dirty or
+ * source-edited tab is left entirely alone — document, buffer and `openFiles`
+ * snapshot (the close guard writes THAT for a background tab) — and the caller
+ * tells the user: the rename was the app's own write, so the watcher stays
+ * quiet and nothing else will bring that tab in line; its links show the old
+ * name until it is reloaded. Clean surfaces: the editor that actually holds
+ * the tab — the keep-alive editor, or the shared one while the tab is
+ * installed in it — is patched in place; a clean source-mode buffer takes the
+ * text; a clean background tab is flagged to reload.
  *
- * @returns whether the surfaces were updated (false: a dirty tab kept them)
+ * @returns whether the surfaces were updated (false: unsaved work kept them)
  */
 export function syncCleanSurfacesAfterReferrerRewrite(
   path: string,
@@ -156,7 +158,7 @@ export function syncCleanSurfacesAfterReferrerRewrite(
   );
   if (unsaved) {
     logger.warn(
-      "[referrer] a tab holds unsaved work; its links stay as they are until it is saved:",
+      "[referrer] a tab holds unsaved work; its links show the old name until it is reloaded:",
       path,
     );
     return false;
@@ -164,8 +166,12 @@ export function syncCleanSurfacesAfterReferrerRewrite(
   useFileStore.getState().setFileContent(path, content);
   const access = store.documentSurfaceAccess;
   for (const tab of tabs) {
-    // 소스 모드 탭의 권위 있는 텍스트는 CodeMirror 버퍼다 — 여기서 손댈 것이 없다.
-    if (store.sourceModeTabs.includes(tab.id)) continue;
+    // A source-mode tab's authoritative text is its CodeMirror buffer; clean,
+    // it simply takes the new text (the surface re-reads its buffer).
+    if (store.sourceModeTabs.includes(tab.id)) {
+      store.sourceBufferAccess?.setSourceBuffer(tab.id, content);
+      continue;
+    }
     const holder =
       access?.keepaliveEditor(tab.id) ??
       (loadedTabId() === tab.id ? access?.editor : null);

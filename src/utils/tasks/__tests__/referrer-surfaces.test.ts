@@ -47,6 +47,7 @@ beforeEach(() => {
   setFileContent.mockReset();
   markContentStale.mockReset();
   useEditorStore.setState({
+    sourceBufferAccess: null,
     documentSurfaceAccess: {
       editor: { isDestroyed: false, view: sharedView },
       editorStateCache: new Map(),
@@ -103,6 +104,19 @@ describe("syncCleanSurfacesAfterReferrerRewrite", () => {
     expect(syncCleanSurfacesAfterReferrerRewrite(PATH, "new")).toBe(false);
     expect(setFileContent).not.toHaveBeenCalled();
     warns.mockRestore();
+  });
+
+  it("gives a clean source-mode tab's buffer the new text", () => {
+    const setSourceBuffer = vi.fn();
+    tabs({ id: "t1" });
+    useEditorStore.setState({
+      sourceBufferAccess: { getSourceBuffer: () => "old", setSourceBuffer },
+      sourceModeTabs: ["t1"],
+    } as never);
+    expect(syncCleanSurfacesAfterReferrerRewrite(PATH, "new")).toBe(true);
+    expect(setSourceBuffer).toHaveBeenCalledWith("t1", "new");
+    expect(patchEditorContent).not.toHaveBeenCalled();
+    expect(setFileContent).toHaveBeenCalledWith(PATH, "new");
   });
 
   it("ignores tabs of other files", () => {

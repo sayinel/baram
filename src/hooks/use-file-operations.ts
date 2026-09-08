@@ -9,7 +9,11 @@ import { pickApprovedDir, pickApprovedFile } from "../ipc/approval";
 import { readFile, updateFileIndex, writeFile } from "../ipc/invoke";
 import { notifyFileSave } from "../plugins/plugin-lifecycle";
 import { openFolder } from "../services/vault-context-loader";
-import { isFileTab, useEditorStore } from "../stores/editor/editor";
+import {
+  isFileTab,
+  isTabUnsaved,
+  useEditorStore,
+} from "../stores/editor/editor";
 import { useLinkStore } from "../stores/editor/link";
 import { useSnapshotStore } from "../stores/editor/snapshot";
 import { useFileStore } from "../stores/file/file";
@@ -397,10 +401,19 @@ export function useFileOperations({
   }, [editor, sourceModeTabs, getSourceBuffer, setFileContent, markDirty]);
 
   const handleCloseTab = useCallback(() => {
-    const { activeTabId: tabId, tabs } = useEditorStore.getState();
+    const {
+      activeTabId: tabId,
+      sourceEditedTabs,
+      tabs,
+    } = useEditorStore.getState();
     if (!tabId) return;
     const tab = tabs.find((t) => t.id === tabId);
-    if (tab?.isDirty && tab.filePath) {
+    // "Unsaved" lives in two places (§82): `isDirty` for the WYSIWYG document,
+    // `sourceEditedTabs` for a source-mode buffer — which a block ID rename
+    // landing in source mode sets (issue 594). Cmd+W used to read only the
+    // first and closed a source-edited tab without saving it.
+    const unsaved = isTabUnsaved(tab, sourceEditedTabs);
+    if (unsaved && tab?.filePath) {
       // §close-guard: file-backed tab — auto-save may not have fired yet; flush
       // and close without a prompt (Cmd+W keeps its quick save-and-close flow).
       handleSave().then(
@@ -409,10 +422,10 @@ export function useFileOperations({
           // tab changed while a block ID rename was landing (a Save As can be
           // cancelled the same way). A tab that is still dirty was NOT saved
           // and stays open with its work; only a clean one closes.
-          const after = useEditorStore
-            .getState()
-            .tabs.find((t) => t.id === tabId);
-          if (after?.isDirty) return;
+          const { sourceEditedTabs: editedAfter, tabs: tabsAfter } =
+            useEditorStore.getState();
+          const after = tabsAfter.find((t) => t.id === tabId);
+          if (!after || isTabUnsaved(after, editedAfter)) return;
           useEditorStore.getState().closeTab(tabId);
         },
         () => {
@@ -421,7 +434,7 @@ export function useFileOperations({
       );
       return;
     }
-    if (tab?.isDirty && !tab.filePath) {
+    if (unsaved && !tab?.filePath) {
       // §close-guard: Untitled tab has no file to auto-save to — use the shared
       // 3-button modal (identical UI to app quit and the tab X-button).
       useUIStore.getState().openUnsavedModal({ intent: "closeTab", tabId });

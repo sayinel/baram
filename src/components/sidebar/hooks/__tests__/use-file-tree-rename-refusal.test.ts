@@ -186,6 +186,29 @@ describe("post-commit outcomes reach the user as warnings (issue 594)", () => {
     expect(refreshIndex).toHaveBeenCalledTimes(1);
   });
 
+  it("says so when a referrer with unsaved changes could not be brought in line on screen", async () => {
+    vi.mocked(renameFileWithLinks).mockResolvedValue({
+      skippedFiles: [],
+      updatedFiles: ["/vault/a.md"],
+    });
+    // a.md is open and dirty: its links changed on disk, not on screen.
+    useFileStore.setState({
+      openFiles: new Map([["/vault/a.md", "see [[b]]"]]),
+    } as never);
+    useEditorStore.setState({
+      activeTabId: "t2",
+      tabs: [
+        { filePath: "/vault/a.md", id: "t2", isDirty: true, type: "file" },
+      ],
+    } as never);
+    await rename();
+
+    expect(showToast).toHaveBeenCalledTimes(1);
+    const [message, type] = showToast.mock.calls[0]!;
+    expect(type).toBe("warning");
+    expect(message).toContain("unsaved");
+  });
+
   it("CONTROL: a directory rename whose index was rebuilt toasts nothing and rebuilds nothing", async () => {
     vi.mocked(renameNamespace).mockResolvedValue({
       filesMoved: 3,

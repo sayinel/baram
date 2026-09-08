@@ -280,16 +280,23 @@ export function commitBlockIdEdit(
         // left alone and takes the conflict path, as for any external write.
         // Then re-index each.
         const { openFiles } = useFileStore.getState();
+        let heldBack = 0;
         for (const updatedPath of result.updatedFiles) {
           if (openFiles.has(updatedPath)) {
             try {
               const content = await readFile(updatedPath);
-              syncCleanSurfacesAfterReferrerRewrite(updatedPath, content);
+              if (!syncCleanSurfacesAfterReferrerRewrite(updatedPath, content))
+                heldBack += 1;
             } catch {
               // file may have been deleted
             }
           }
           updateFileIndex(updatedPath).catch(() => {});
+        }
+        if (heldBack > 0) {
+          toast("blockId.rename.referrersUnsaved.toast", "warning", {
+            count: String(heldBack),
+          });
         }
         if (result.updatedFiles.length > 0) {
           useLinkStore.getState().invalidate();
