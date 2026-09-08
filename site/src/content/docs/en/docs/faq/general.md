@@ -28,8 +28,9 @@ Yes. Baram is free and open source software, licensed under the Apache License 2
 
 Baram checks GitHub Releases for a new version 15 seconds after startup and once a day
 after that. Turn that off with **Settings > General > Updates > Check for Updates
-Automatically**; **Check Now** in the same place always checks on demand, whether the
-automatic check is on or off.
+Automatically**; **Check Now** in the same place checks on demand whether or not the
+automatic check is on. Once an update has been found, that same button becomes **Update to
+v0.7.2** and opens the dialog rather than checking again.
 
 When a version is found you get a dialog with the release notes and an **Install & Restart**
 button. Baram downloads the update, replaces itself, and restarts — on macOS, Windows, and
