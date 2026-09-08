@@ -1,6 +1,9 @@
 // 랜딩의 클라이언트 로직. 옛 `site/main.js` 에서 이주했다.
 // 언어 전환은 여기 없다 — URL 라우팅이 대신한다(옛 localStorage 토글 폐기).
 
+// 별 배지는 문서 헤더와 공유한다 — 두 표면의 개수·폴백이 갈리지 않게 한 모듈에 둔다.
+import { initStarBadges } from "./github-stars.ts";
+
 const PRIMARY_ASSET_PATTERNS: Record<string, RegExp[]> = {
   mac: [/_universal\.dmg$/, /_aarch64\.dmg$/],
   win: [/_x64-setup\.exe$/, /\.msi$/],
@@ -35,12 +38,6 @@ export function pickPrimaryAsset(assets: ReleaseAsset[] | undefined, os: string)
 /** `.sig` 와 `latest.json` 은 업데이터 전용이라 사람이 내려받을 것이 아니다. */
 export function isDownloadableAsset(name: string): boolean {
   return !/\.sig$/.test(name) && name !== "latest.json";
-}
-
-export function formatStarCount(count: unknown): string | null {
-  if (typeof count !== "number" || !Number.isFinite(count)) return null;
-  if (count >= 1000) return `${(count / 1000).toFixed(1).replace(/\.0$/, "")}k`;
-  return String(count);
 }
 
 export type ThemePreference = "auto" | "dark" | "light";
@@ -159,25 +156,10 @@ async function initDownload(): Promise<void> {
   }
 }
 
-async function initStarBadge(): Promise<void> {
-  const el = document.getElementById("github-stars");
-  if (!el) return;
-  try {
-    const res = await fetch("https://api.github.com/repos/sayinel/baram");
-    if (!res.ok) return; // "GitHub" 폴백 텍스트 유지
-    const repo = await res.json();
-    const formatted = formatStarCount(repo.stargazers_count);
-    // 실패하면 비운 채로 둔다 — 그러면 문서 헤더처럼 GitHub 아이콘만 남는다.
-    if (formatted) el.textContent = `★ ${formatted}`;
-  } catch {
-    /* 네트워크 실패 — 폴백 텍스트 유지 */
-  }
-}
-
 export function initLanding(): void {
   initNavMenu();
   initTheme();
   initLangSelect();
   void initDownload();
-  void initStarBadge();
+  void initStarBadges();
 }

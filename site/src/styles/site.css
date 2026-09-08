@@ -62,8 +62,9 @@ code, kbd { font-family: var(--font-mono); font-size: 0.9em; }
 }
 .nav-control:hover, .nav-control:focus-within { color: var(--color-text-primary); }
 .nav-control svg { display: block; width: 1em; height: 1em; fill: currentColor; flex: none; }
-/* 별 개수는 fetch 가 성공해야 채워진다. 비어 있으면 아이콘만 남겨 문서 헤더와 같아진다. */
-#github-stars:empty { display: none; }
+/* 별 개수는 fetch 가 성공해야 채워진다. 비어 있으면 아이콘만 남는다 — 문서 헤더도
+   같은 훅(`[data-github-stars]`)을 쓰므로 두 표면이 같은 모양으로 비워진다. */
+.star-count:empty { display: none; }
 /* ‼️ `appearance: none` 이라야 껍데기가 보인다. 그러지 않으면 OS 가 자기 테두리를
    덧그려 문서 헤더와 높이가 어긋난다. 목록 자체는 계속 네이티브로 열린다. */
 .nav-control select {
@@ -72,7 +73,6 @@ code, kbd { font-family: var(--font-mono); font-size: 0.9em; }
 }
 .nav-control select:focus-visible { outline: 2px solid var(--color-accent-default); outline-offset: 2px; }
 
-/* 햄버거. 데스크톱에서는 없고, 열림 상태는 두 아이콘 중 하나만 보인다. */
 /* 셀렉트 껍데기(테마·언어)는 **흐름에 `<select>` 하나만** 두고, 아이콘·캐럿을 그 좌우
    padding 자리 위에 겹쳐 놓는다 — 문서 헤더(Starlight `Select.astro`)와 같은 구조다.
    ‼️ 아이콘을 flex 형제로 두면 **아이콘·캐럿 위 클릭이 select 에 닿지 않는다**. 그때
@@ -88,6 +88,7 @@ code, kbd { font-family: var(--font-mono); font-size: 0.9em; }
    덮어야 하므로 클래스 두 개로 특정성을 올린다(순서에 의존하지 않는다). */
 .nav-control.nav-select select { padding: 0 calc(1em + 0.3rem); }
 
+/* 햄버거. 데스크톱에서는 없고, 열림 상태는 두 아이콘 중 하나만 보인다. */
 .nav-toggle {
   display: none; margin-left: auto; cursor: pointer;
   border: 1px solid var(--color-border-default);

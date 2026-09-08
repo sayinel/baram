@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   detectOS,
-  formatStarCount,
   isDownloadableAsset,
   pickPrimaryAsset,
   storedTheme,
@@ -40,15 +39,6 @@ test("isDownloadableAsset filters updater artifacts", () => {
   assert.equal(isDownloadableAsset("Baram_0.7.0_universal.dmg"), true);
   assert.equal(isDownloadableAsset("Baram_0.7.0_universal.dmg.sig"), false);
   assert.equal(isDownloadableAsset("latest.json"), false);
-});
-
-test("formatStarCount formats counts compactly", () => {
-  assert.equal(formatStarCount(0), "0");
-  assert.equal(formatStarCount(999), "999");
-  assert.equal(formatStarCount(1000), "1k");
-  assert.equal(formatStarCount(1500), "1.5k");
-  assert.equal(formatStarCount("nope"), null);
-  assert.equal(formatStarCount(Number.NaN), null);
 });
 
 // ── 테마 선호 ↔ 저장값 (§ Starlight 규약 공유)
