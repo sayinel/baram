@@ -238,9 +238,18 @@ export interface ModelInfo {
   name: string;
 }
 
-// §61 Namespace rename result
+// §61 Namespace rename result. `Err` from the command means nothing changed on
+// disk; what fails after the move is reported here (issue 594).
 export interface NamespaceRenameResult {
   filesMoved: number;
+  /** false: the files moved, but the link index under the root was not
+   *  rebuilt (dropped after a failed rebuild, or the context was removed
+   *  meanwhile). Backlinks read empty until the next build. */
+  indexRebuilt: boolean;
+  /** Referring files whose links could not be rewritten (unreadable,
+   *  unwritable, or resolving outside the contexts); they still spell the
+   *  old name. */
+  skippedFiles: string[];
   updatedFiles: string[];
 }
 
@@ -294,8 +303,10 @@ export interface RecentMenuEntry {
   label?: string; // present for kind:"item"
 }
 
-// §33 Rename result
+// §33 Rename result (file rename, block ID rename). See NamespaceRenameResult
+// for the contract behind `skippedFiles`.
 export interface RenameResult {
+  skippedFiles: string[];
   updatedFiles: string[];
 }
 

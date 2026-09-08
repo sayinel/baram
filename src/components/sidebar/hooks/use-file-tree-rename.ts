@@ -1,11 +1,13 @@
 // §33 Inline rename with wikilink auto-update
 import { useCallback, useState } from "react";
 
+import type { NamespaceRenameResult, RenameResult } from "../../../ipc/types";
 import type { FileEntry } from "../../../stores/file/file";
 
 import { type Locale, t } from "../../../i18n";
 import {
   readFile,
+  refreshIndex,
   renameFileWithLinks,
   renameNamespace,
 } from "../../../ipc/invoke";
@@ -74,7 +76,7 @@ export function useFileTreeRename(
       // issue 263: ONLY the IPC call belongs inside the try whose catch says
       // the rename failed. A throw from here means nothing happened on disk,
       // and that is the only case in which "Rename failed" is true.
-      let result: { updatedFiles: string[] };
+      let result: NamespaceRenameResult | RenameResult;
       try {
         result = isNamespaceRename
           ? await renameNamespace(oldPath, newPath, rootPath)
@@ -128,6 +130,11 @@ export function useFileTreeRename(
           err,
         );
       }
+
+      // issue 594: what the backend could not finish AFTER the move is in the
+      // result, not in an `Err` — and it has to reach the user the same way a
+      // refusal does. Warnings, not errors: the rename itself is done.
+      reportPostRenameOutcomes(result, isNamespaceRename ? rootPath : null);
     },
     [treeRef, renameFileEntry, renameTab, fileTree, rootPath],
   );
@@ -139,4 +146,48 @@ export function useFileTreeRename(
     handleCancelRename,
     handleConfirmRename,
   };
+}
+
+/**
+ * issue 594: a rename's result names the referring files it could not rewrite
+ * (their links still say the old name) and, for a directory, whether the link
+ * index was rebuilt. Neither is an `Err` — the files have moved — so they
+ * arrive here, as warnings the user can act on. A dropped index gets one
+ * rebuild attempt right away; if the context was removed meanwhile that
+ * attempt is refused, which only the log needs to know.
+ */
+function reportPostRenameOutcomes(
+  result: NamespaceRenameResult | RenameResult,
+  rebuildRoot: null | string,
+): void {
+  const { locale } = useSettingsStore.getState();
+  const { showToast } = useUIStore.getState();
+  if (result.skippedFiles.length > 0) {
+    logger.warn(
+      "[FileTree] Renamed, but these referring files could not be updated:",
+      result.skippedFiles,
+    );
+    showToast(
+      t("fileTree.rename.skipped.toast", locale as Locale, {
+        count: String(result.skippedFiles.length),
+      }),
+      "warning",
+    );
+  }
+  if (
+    rebuildRoot !== null &&
+    "indexRebuilt" in result &&
+    !result.indexRebuilt
+  ) {
+    logger.warn(
+      "[FileTree] Directory renamed, but the link index was not rebuilt; requesting a rebuild",
+    );
+    showToast(
+      t("fileTree.rename.indexNotRebuilt.toast", locale as Locale),
+      "warning",
+    );
+    refreshIndex(rebuildRoot).catch((err: unknown) => {
+      logger.warn("[FileTree] Link index rebuild after rename refused:", err);
+    });
+  }
 }

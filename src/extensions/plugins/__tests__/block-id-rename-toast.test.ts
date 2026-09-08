@@ -125,6 +125,7 @@ describe("commitBlockIdEdit — the toast belongs to the IPC rejection only", ()
     // references by then — a failure toast here would be a lie.
     const errors = vi.spyOn(logger, "error").mockImplementation(() => {});
     vi.mocked(renameBlockId).mockResolvedValue({
+      skippedFiles: [],
       updatedFiles: ["/vault/other.md"],
     });
     invalidate.mockImplementation(() => {
@@ -147,6 +148,7 @@ describe("commitBlockIdEdit — the toast belongs to the IPC rejection only", ()
     // change — `readFile` + `setFileContent` have their own "file may have been
     // deleted" catch — so this pins that swallow rather than the new one.
     vi.mocked(renameBlockId).mockResolvedValue({
+      skippedFiles: [],
       updatedFiles: ["/vault/other.md"],
     });
     setFileContent.mockImplementation(() => {
@@ -162,6 +164,7 @@ describe("commitBlockIdEdit — the toast belongs to the IPC rejection only", ()
 
   it("CONTROL: a clean rename refreshes the cache and toasts nothing", async () => {
     vi.mocked(renameBlockId).mockResolvedValue({
+      skippedFiles: [],
       updatedFiles: ["/vault/other.md"],
     });
 

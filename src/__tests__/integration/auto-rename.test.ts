@@ -1,5 +1,7 @@
 // §33 링크 자동 갱신 통합 테스트
 // Tests the rename flow contract: FileTree rename → IPC → wikilink update
+import type { RenameResult } from "../../ipc/types";
+
 import { describe, expect, it } from "vitest";
 
 /**
@@ -105,11 +107,16 @@ describe("§33 Auto-rename wikilink update", () => {
     expect(extractStem("/path/.hidden")).toBe(".hidden");
   });
 
-  it("RenameResult contract: updatedFiles is string array", () => {
-    // Verify the shape of RenameResult matches IPC types
-    const mockResult = { updatedFiles: ["/docs/a.md", "/docs/b.md"] };
+  it("RenameResult contract: updatedFiles and skippedFiles are string arrays", () => {
+    // Verify the shape of RenameResult matches IPC types (issue 594 added
+    // skippedFiles: referrers whose links could not be rewritten).
+    const mockResult: RenameResult = {
+      skippedFiles: ["/docs/locked.md"],
+      updatedFiles: ["/docs/a.md", "/docs/b.md"],
+    };
     expect(Array.isArray(mockResult.updatedFiles)).toBe(true);
     expect(mockResult.updatedFiles).toHaveLength(2);
     expect(typeof mockResult.updatedFiles[0]).toBe("string");
+    expect(mockResult.skippedFiles).toEqual(["/docs/locked.md"]);
   });
 });

@@ -159,6 +159,8 @@
   "fileTree.rename.failed.toast": "Rename failed: {message}",
   "followUp.ask": "Get follow-up questions",
   "followUp.dismiss": "Dismiss",
+  "fileTree.rename.indexNotRebuilt.toast": "Renamed, but the link index could not be rebuilt. Backlinks may be incomplete until it is rebuilt.",
+  "fileTree.rename.skipped.toast": "Renamed, but {count} file(s) referring to it could not be updated.",
   "followUp.insert": "Write answer",
   "followUp.loading": "Thinking...",
   "footnote.goToReference": "Go to reference",

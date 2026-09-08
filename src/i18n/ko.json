@@ -159,6 +159,8 @@
   "fileTree.rename.failed.toast": "이름을 바꾸지 못했습니다: {message}",
   "followUp.ask": "심화 질문 받기",
   "followUp.dismiss": "무시",
+  "fileTree.rename.indexNotRebuilt.toast": "이름은 바꿨지만 링크 색인을 다시 만들지 못했습니다. 다시 만들어질 때까지 백링크가 비어 보일 수 있습니다.",
+  "fileTree.rename.skipped.toast": "이름은 바꿨지만 참조하는 파일 {count}개를 갱신하지 못했습니다.",
   "followUp.insert": "답변 작성하기",
   "followUp.loading": "생각 중...",
   "footnote.goToReference": "참조로 이동",
