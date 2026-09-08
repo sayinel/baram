@@ -50,6 +50,7 @@ jobs:
               - '.cargo/**'
               - '.github/workflows/ci.yml'
               - '.github/actions/setup-node/**'
+              - '.github/actions/verify-macos-sdk/**'
       - name: Determine rust job necessity
         id: decide
         shell: bash
@@ -179,10 +180,77 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ''
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
 
+  # ── macOS build (the release leg's only rehearsal) ─────────────────
+  # ‼️ WHY THIS EXISTS. Every other job here runs on ubuntu, so until v0.7.1 the
+  # macOS half of the release — the runner label, the Darwin-only Rust, and the
+  # SDK the binary ends up linked against — was first exercised on release day.
+  # v0.7.0 shipped an opaque light titlebar because the matrix was on macos-15,
+  # and nothing before the release could have said so.
+  #
+  # Three things only this job can answer:
+  #   1. `macos-26` still resolves to a runner (a label is not a guarantee)
+  #   2. the `cfg(target_os = "macos")` code in lib.rs / menu.rs /
+  #      plugin/storage.rs compiles at all — ubuntu never sees it
+  #   3. the built binary is linked against SDK 26+, which depends on the runner
+  #      IMAGE and can therefore regress with no change to this repository
+  #
+  # (3) is why the job is not PR-only: on a main push `changes` reports rust=true
+  # unconditionally, so every merge re-checks the image.
+  #
+  # Deliberately NOT a universal build and NOT notarized — that is the release
+  # leg's job and takes 24 minutes. Native arch and an ad-hoc signature are
+  # enough to answer all three questions.
+  macos:
+    needs: [changes]
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-node
+
+      # Pin must be a master-history SHA (release-branch SHAs can be GC'd);
+      # the toolchain is selected via the input, not the ref name.
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master
+        with:
+          toolchain: stable
+          components: clippy
+
+      - uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Build frontend (required for Rust compilation)
+        run: npm run build
+
+      # The Darwin-only code paths, linted where they actually compile.
+      - name: Clippy
+        run: npm run rust:_clippy
+
+      # Not a duplicate of the ubuntu run. macOS mounts a case-INSENSITIVE
+      # filesystem by default, and this crate is mostly paths — vault roots,
+      # registered contexts, link-index keys. A test that distinguishes `Notes`
+      # from `notes` passes on ubuntu and is meaningless here, which is the kind
+      # of difference only running them on both can show. Clippy above already
+      # compiled --all-targets, so this is the run, not another build.
+      - name: Cargo test
+        run: npm run rust:_test
+
+      # `--bundles app` rather than `--no-bundle`: the SDK check reads a Mach-O
+      # load command off the binary inside Baram.app, so the bundle has to exist.
+      # It also puts the Info.plist generation and the ad-hoc signing on the same
+      # path the release takes, for seconds of extra work. No signing secrets are
+      # needed — tauri.conf.json's macOS signingIdentity is "-", and the release
+      # config that asks for a Developer ID is only passed by release.yml.
+      - name: Tauri build (app bundle, native arch)
+        run: npm run tauri build -- --bundles app
+
+      - uses: ./.github/actions/verify-macos-sdk
+
   # ── CI Gate ────────────────────────────────────────────────────────
   ci-pass:
     if: always()
-    needs: [changes, lint, security, deny, test, rust]
+    needs: [changes, lint, security, deny, test, rust, macos]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -196,6 +264,7 @@ jobs:
           DENY: ${{ needs.deny.result }}
           TEST: ${{ needs.test.result }}
           RUST: ${{ needs.rust.result }}
+          MACOS: ${{ needs.macos.result }}
         run: |
           fail() { echo "::error::$1"; exit 1; }
           # These must succeed on every event — a skip here means something
@@ -210,5 +279,13 @@ jobs:
           if [[ "$RUST" != "success" ]]; then
             [[ "$EVENT" == "pull_request" && "$RUST_NEEDED" == "false" && "$RUST" == "skipped" ]] \
               || fail "rust: $RUST (event=$EVENT, rust-needed=$RUST_NEEDED)"
+          fi
+          # macos is gated on the same filter as rust, so it earns the same single
+          # exemption and no other. Anything else — a cancelled job, a runner that
+          # never came up — is a red light, because this job is the only rehearsal
+          # the release's macOS leg gets.
+          if [[ "$MACOS" != "success" ]]; then
+            [[ "$EVENT" == "pull_request" && "$RUST_NEEDED" == "false" && "$MACOS" == "skipped" ]] \
+              || fail "macos: $MACOS (event=$EVENT, rust-needed=$RUST_NEEDED)"
           fi
           echo "All checks passed."
