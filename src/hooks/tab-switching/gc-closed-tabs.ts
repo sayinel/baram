@@ -2,6 +2,7 @@ import type { TabSwitchContext } from "./types";
 
 // §298 split-review §2 — original use-tab-switching.ts:623-639.
 import { useEditorStore } from "../../stores/editor/editor";
+import { prunePendingBlockIdRenames } from "../../utils/editor/block-id-rename-landing";
 import { logCacheEvent } from "../../utils/editor/perf-trace";
 
 /**
@@ -17,6 +18,10 @@ import { logCacheEvent } from "../../utils/editor/perf-trace";
 export function gcClosedTabs(ctx: TabSwitchContext): void {
   const { tabs } = useEditorStore.getState();
   const openTabIds = new Set(tabs.map((t) => t.id));
+  // issue 594: a rename still waiting for a closed tab's document to install
+  // has nothing to wait for (a closed tab's file is reached through the disk
+  // route at landing time, not from here).
+  prunePendingBlockIdRenames(openTabIds);
   for (const cachedId of ctx.editorStateCache.current.keys()) {
     if (!openTabIds.has(cachedId)) {
       logCacheEvent("delete", cachedId);

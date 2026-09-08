@@ -13,6 +13,7 @@
 // from the success body cannot be reported as "the backend refused".
 import type { Transaction } from "@tiptap/pm/state";
 
+import { history, undo } from "@tiptap/pm/history";
 import { Schema } from "@tiptap/pm/model";
 import { EditorState } from "@tiptap/pm/state";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -23,6 +24,15 @@ vi.mock("../../../ipc/invoke", async (importOriginal) => ({
   renameBlockId: vi.fn(),
   updateFileIndex: vi.fn(async () => undefined),
 }));
+vi.mock(
+  "../../../utils/editor/programmatic-update",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("../../../utils/editor/programmatic-update")
+    >()),
+    loadedTabId: vi.fn(() => "t1"),
+  }),
+);
 
 import type { EditorView } from "@tiptap/pm/view";
 
@@ -31,6 +41,7 @@ import { useEditorStore } from "../../../stores/editor/editor";
 import { useLinkStore } from "../../../stores/editor/link";
 import { useFileStore } from "../../../stores/file/file";
 import { useUIStore } from "../../../stores/ui/ui";
+import { loadedTabId } from "../../../utils/editor/programmatic-update";
 import { logger } from "../../../utils/logger";
 import {
   blockIdDecoKey,
@@ -113,6 +124,9 @@ function makeView(): TestView {
         schema.node("blockReference", { blockId: "old" }),
       ]),
     ]),
+    // The real history plugin: the undo cases below are about what Undo
+    // does to a rename the backend has already applied elsewhere.
+    plugins: [history()],
     schema,
   });
   const dispatched: Transaction[] = [];
@@ -137,6 +151,8 @@ const setFileContent = vi.fn();
 
 beforeEach(() => {
   vi.mocked(renameBlockId).mockReset();
+  vi.mocked(loadedTabId).mockReturnValue("t1");
+  useEditorStore.setState({ documentSurfaceAccess: null } as never);
   // ‼️ mockReset, not mockClear — two cases install a THROWING implementation
   // and `mockClear` keeps it, so the later cases would inherit the throw and
   // pass for the wrong reason (they did, against the unfixed source).
@@ -195,7 +211,7 @@ describe("commitBlockIdEdit — the document follows the backend (issue 594)", (
     await flush();
 
     expect(blockIds(view)).toEqual(["fresh", null, "fresh"]);
-    // Closing transaction, then the one that changes the doc — one undo step.
+    // Closing transaction, then the one that changes the doc.
     expect(dispatched.map((tr) => tr.docChanged)).toEqual([false, true]);
     // Focus moved back to the editor when the input closed, not a second time
     // when the backend answered (the user may have gone elsewhere meanwhile).
@@ -231,8 +247,10 @@ describe("commitBlockIdEdit — the document follows the backend (issue 594)", (
     expect(blockIds(view)).toEqual([null, "fresh", null, "fresh"]);
   });
 
-  it("does not touch a different document that is showing by the time the backend answers", async () => {
-    const warns = vi.spyOn(logger, "warn").mockImplementation(() => {});
+  it("lands in the tab's cached document when another tab is showing by the time the backend answers", async () => {
+    // The editor is one view for every tab: switching tabs swaps its doc and
+    // caches the outgoing one. A block `^old` in the OTHER file must not be
+    // renamed; the cached document of OUR tab must.
     let resolve!: (r: {
       skippedFiles: string[];
       updatedFiles: string[];
@@ -243,21 +261,89 @@ describe("commitBlockIdEdit — the document follows the backend (issue 594)", (
       }),
     );
     const { dispatched, view } = makeView();
+    const cache = new Map([["t1", view.state]]);
+    useEditorStore.setState({
+      documentSurfaceAccess: {
+        editor: { isDestroyed: false, view } as never,
+        editorStateCache: cache,
+        keepaliveEditor: () => null,
+      },
+      markDirty: vi.fn(),
+    } as never);
 
     commitBlockIdEdit(view, 0, "fresh");
-    // The editor is one view for every tab: switching tabs swaps its doc. A
-    // block `^old` in the OTHER file must not be renamed.
     activeTab("/vault/elsewhere.md");
+    vi.mocked(loadedTabId).mockReturnValue("t2");
     resolve({ skippedFiles: [], updatedFiles: [] });
     await flush();
 
+    // The view (now the other file) is untouched; the cache entry moved on.
     expect(blockIds(view)).toEqual(["old", null, "old"]);
     expect(dispatched).toHaveLength(1);
-    expect(showToast).toHaveBeenCalledTimes(1);
-    const [message, type] = showToast.mock.calls[0]!;
-    expect(message).toContain("^fresh");
-    expect(type).toBe("warning");
-    warns.mockRestore();
+    const cached = cache.get("t1")!;
+    const ids: (null | string)[] = [];
+    cached.doc.descendants((n) => {
+      if (n.type.name === "paragraph" || n.type.name === "blockReference") {
+        ids.push(n.attrs.blockId as null | string);
+      }
+      return true;
+    });
+    expect(ids).toEqual(["fresh", null, "fresh"]);
+    expect(showToast).not.toHaveBeenCalled();
+  });
+
+  it("waits for the content to be installed, not for the active tab id to flip", async () => {
+    // A tab switch changes `activeTabId` first and installs the document a
+    // moment later. In between, the active tab is another file while the view
+    // still holds ours — the rename must still land here, not be refused.
+    let resolve!: (r: {
+      skippedFiles: string[];
+      updatedFiles: string[];
+    }) => void;
+    vi.mocked(renameBlockId).mockReturnValue(
+      new Promise((r) => {
+        resolve = r;
+      }),
+    );
+    const { view } = makeView();
+
+    commitBlockIdEdit(view, 0, "fresh");
+    activeTab("/vault/elsewhere.md"); // activeTabId flipped…
+    vi.mocked(loadedTabId).mockReturnValue("t1"); // …but our doc is still in
+    resolve({ skippedFiles: [], updatedFiles: [] });
+    await flush();
+
+    expect(blockIds(view)).toEqual(["fresh", null, "fresh"]);
+    expect(showToast).not.toHaveBeenCalled();
+  });
+
+  it("a keep-alive editor keeps its own document — the rename lands even while its tab is in the background", async () => {
+    let resolve!: (r: {
+      skippedFiles: string[];
+      updatedFiles: string[];
+    }) => void;
+    vi.mocked(renameBlockId).mockReturnValue(
+      new Promise((r) => {
+        resolve = r;
+      }),
+    );
+    const { view } = makeView();
+    // The pooled editor's DOM sits under the keep-alive marker
+    // (MarkdownSurface.tsx); the shared editor's does not.
+    const host = document.createElement("div");
+    host.setAttribute("data-keepalive-editor", "");
+    const dom = document.createElement("div");
+    host.appendChild(dom);
+    (view as unknown as { dom: HTMLElement }).dom = dom;
+
+    commitBlockIdEdit(view, 0, "fresh");
+    activeTab("/vault/elsewhere.md");
+    vi.mocked(loadedTabId).mockReturnValue("t2");
+    resolve({ skippedFiles: [], updatedFiles: [] });
+    await flush();
+
+    expect(blockIds(view)).toEqual(["fresh", null, "fresh"]);
+    expect(showToast).not.toHaveBeenCalled();
   });
 
   it("warns when the block no longer carries the old ID by the time the backend answers", async () => {
@@ -284,6 +370,36 @@ describe("commitBlockIdEdit — the document follows the backend (issue 594)", (
     expect(showToast).toHaveBeenCalledTimes(1);
     expect(showToast.mock.calls[0]![1]).toBe("warning");
     warns.mockRestore();
+  });
+
+  it("keeps a backend-committed rename out of the undo history — the other files cannot be undone from here", async () => {
+    vi.mocked(renameBlockId).mockResolvedValue({
+      skippedFiles: [],
+      updatedFiles: ["/vault/other.md"],
+    });
+    const { view } = makeView();
+    // A real edit first, so there IS something on the undo stack.
+    view.dispatch(view.state.tr.insertText("!", 6));
+    expect(view.state.doc.child(0).textContent).toBe("hello!");
+
+    commitBlockIdEdit(view, 0, "fresh");
+    await flush();
+    expect(blockIds(view)).toEqual(["fresh", null, "fresh"]);
+
+    // Undo takes back the typed "!" — not the rename.
+    expect(undo(view.state, view.dispatch)).toBe(true);
+    expect(view.state.doc.child(0).textContent).toBe("hello");
+    expect(blockIds(view)).toEqual(["fresh", null, "fresh"]);
+    // Nothing older to undo: the rename left no entry of its own.
+    expect(undo(view.state, view.dispatch)).toBe(false);
+  });
+
+  it("CONTROL: an edit no other file can see stays undoable", () => {
+    const { view } = makeView();
+    commitBlockIdEdit(view, 0, null);
+    expect(blockIds(view)).toEqual([null, null, "old"]);
+    expect(undo(view.state, view.dispatch)).toBe(true);
+    expect(blockIds(view)).toEqual(["old", null, "old"]);
   });
 
   it("applies the rename but warns about referring files the backend could not rewrite", async () => {

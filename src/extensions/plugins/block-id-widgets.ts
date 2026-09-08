@@ -20,6 +20,7 @@ import { useLinkStore } from "../../stores/editor/link";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
+import { landCommittedBlockIdRename } from "../../utils/editor/block-id-rename-landing";
 import { logger } from "../../utils/logger";
 
 export const blockIdDecoKey = new PluginKey<BlockIdDecoState>(
@@ -176,6 +177,11 @@ export function createHintWidget(blockId: string): HTMLElement {
 
 // ── Commit / Cancel ──────────────────────────────────────────────────
 
+interface FileTab {
+  filePath: string;
+  id: string;
+}
+
 export function cancelBlockIdEdit(view: EditorView): void {
   const state = blockIdDecoKey.getState(view.state);
   const { tr } = view.state;
@@ -212,8 +218,8 @@ export function commitBlockIdEdit(
 
   const oldId = node.attrs.blockId as null | string;
   const isRename = oldId !== null && newId !== null && oldId !== newId;
-  const filePath = isRename ? activeFilePath() : null;
-  if (!isRename || filePath === null) {
+  const tab = isRename ? activeFileTab() : null;
+  if (!isRename || tab === null) {
     // Nothing elsewhere refers to this block by a path (no rename, or a tab
     // that has no file yet): apply here and be done.
     applyBlockId(view, nodePos, oldId, newId);
@@ -235,9 +241,21 @@ export function commitBlockIdEdit(
   // A trailing `.catch` also catches whatever the success body throws, and
   // the failure toast below says the ID was not changed — which by then
   // would be the opposite of the truth.
-  renameBlockId(filePath, oldId, newId).then(
+  renameBlockId(tab.filePath, oldId, newId).then(
     async (result) => {
-      applyRenamedBlockId(view, filePath, oldId, newId);
+      // The document follows — wherever it is by now (issue 594): still in
+      // this view, in a keep-alive editor, cached behind another tab, in a
+      // source-mode buffer, or only on disk if the tab was closed. It is found
+      // by its ID, not by the position the edit started at.
+      const landing = await landCommittedBlockIdRename(
+        { filePath: tab.filePath, newId, oldId, tabId: tab.id },
+        view,
+      );
+      if (landing === "dropped") {
+        // The block ^oldId is nowhere the document could be — deleted or
+        // renamed again meanwhile. The other files already say ^newId.
+        toast("blockId.rename.stale.toast", "warning", { newId });
+      }
       try {
         // Reload updated files in the file store cache so tab switches show
         // new content, and re-index each.
@@ -284,17 +302,21 @@ export function commitBlockIdEdit(
   );
 }
 
-/** The file behind the active tab, if it has one. */
-function activeFilePath(): null | string {
+/** The active tab and the file behind it, if it has one. */
+function activeFileTab(): FileTab | null {
   const { activeTabId, tabs } = useEditorStore.getState();
-  return tabs.find((t) => t.id === activeTabId)?.filePath ?? null;
+  const tab = tabs.find((t) => t.id === activeTabId);
+  return tab?.filePath ? { filePath: tab.filePath, id: tab.id } : null;
 }
 
 /**
- * Set `newId` on the block at `nodePos` and, for a rename, on the same-
- * document `blockReference`/`blockEmbed` nodes that pointed at `oldId`
- * (§30a-2). Closes the edit widget and leaves the block focused. Does not move
- * focus: the caller decides whether the editor should take it.
+ * Set `newId` on the block at `nodePos` — an edit no other file can see
+ * (adding an ID, removing one, an untitled tab) — and, should it be a rename
+ * after all, on the same-document `blockReference`/`blockEmbed` nodes that
+ * pointed at `oldId` (§30a-2). Closes the edit widget and leaves the block
+ * focused. Does not move focus: the caller decides whether the editor should
+ * take it. A rename the backend has committed goes through
+ * `landCommittedBlockIdRename` instead, which keeps it out of the undo history.
  */
 function applyBlockId(
   view: EditorView,
@@ -323,52 +345,6 @@ function applyBlockId(
     editingBlockPos: null,
   });
   view.dispatch(tr);
-}
-
-/**
- * The backend has renamed `oldId` to `newId` in the other files of `filePath`;
- * now the document follows. It is found again by its ID, not by the position
- * the edit started at: the user may have typed above it while the IPC was in
- * flight. If the editor no longer shows that file, or the block no longer
- * carries `oldId`, the document is left alone and the user is told — the
- * other files already say `newId`, and making the same edit again finishes
- * the job (the backend then finds nothing left to rewrite).
- */
-function applyRenamedBlockId(
-  view: EditorView,
-  filePath: string,
-  oldId: string,
-  newId: string,
-): void {
-  const pos =
-    !view.isDestroyed && activeFilePath() === filePath
-      ? findBlockPosById(view.state.doc, oldId)
-      : null;
-  if (pos === null) {
-    logger.warn(
-      `[blockId] ${filePath}: references now say ^${newId}, but the block ^${oldId} is no longer in the editor`,
-    );
-    toast("blockId.rename.stale.toast", "warning", { newId });
-    return;
-  }
-  applyBlockId(view, pos, oldId, newId);
-}
-
-/** Position of the paragraph/heading carrying `blockId`, or null. */
-function findBlockPosById(doc: PmNode, blockId: string): null | number {
-  let found: null | number = null;
-  doc.descendants((node, pos) => {
-    if (found !== null) return false;
-    if (
-      (node.type.name === "paragraph" || node.type.name === "heading") &&
-      node.attrs.blockId === blockId
-    ) {
-      found = pos;
-      return false;
-    }
-    return true;
-  });
-  return found;
 }
 
 function toast(

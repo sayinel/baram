@@ -84,7 +84,7 @@
   "blockId.remove": "Remove Block ID",
   "blockId.rename.failed.toast": "The block ID was not changed: its references in other files could not be updated: {message}",
   "blockId.rename.skipped.toast": "Block ID renamed, but {count} referring file(s) could not be updated.",
-  "blockId.rename.stale.toast": "Other files now point to ^{newId}, but this document changed before the block ID could follow. Make the same edit again to finish.",
+  "blockId.rename.stale.toast": "Other files now point to ^{newId}, but this block could not be found to rename it here. Make the same edit again to finish.",
   "blockMenu.askAI": "Ask AI",
   "blockMenu.copyLink": "Copy link",
   "blockMenu.copyRef": "Copy block ref",

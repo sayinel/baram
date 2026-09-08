@@ -5,6 +5,7 @@ import type { Editor } from "@tiptap/core";
 import type { EditorState } from "@tiptap/pm/state";
 
 import { notifyFileOpen } from "../../plugins/plugin-lifecycle";
+import { drainPendingBlockIdRenames } from "../../utils/editor/block-id-rename-landing";
 import { markContentLoaded } from "../../utils/editor/programmatic-update";
 
 /**
@@ -70,4 +71,7 @@ export interface TabSwitchContext {
 export function installContent(tabId: string, filePath: string): void {
   markContentLoaded(tabId);
   if (filePath) notifyFileOpen(filePath);
+  // issue 594: a block ID rename the backend committed while this document was
+  // between editors is re-landed now that the document is in one.
+  drainPendingBlockIdRenames(tabId);
 }
