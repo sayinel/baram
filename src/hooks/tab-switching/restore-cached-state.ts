@@ -26,8 +26,13 @@ export function restoreCachedState(
 
   // Defer updateState outside React commit phase
   setTimeout(() => {
+    // issue 594: read the cache again HERE. A block ID rename the backend
+    // committed between scheduling and firing lands in the cache entry, and the
+    // `cachedState` captured above would put the old ID back on screen — then
+    // the next switch would cache that over it.
+    const state = ctx.editorStateCache.current.get(activeTabId) ?? cachedState;
     timePhase("tabSwitch:restore", () =>
-      replaceEditorStateWithVim(ctx.editor.view, cachedState, "cached-restore"),
+      replaceEditorStateWithVim(ctx.editor.view, state, "cached-restore"),
     );
     ctx.installContent(activeTabId, incomingTab.filePath);
     // §313 ‼️ 복원 **뒤에** 부른다. 이 분기는 캐시된 상태를 이 setTimeout에 미뤄

@@ -20,7 +20,9 @@ import type { Editor } from "@tiptap/react";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { patchEditorContent } from "../editor/patch-editor-content";
+import { loadedTabId } from "../editor/programmatic-update";
 import { serializeLiveDoc } from "../editor/serialize-live-doc";
+import { logger } from "../logger";
 import { isSameLine, lineAt, spliceLine } from "./line-splice";
 
 /**
@@ -128,4 +130,56 @@ function spliceMatchingLine(
   const current = lineAt(content, task.line);
   if (current === null || !isSameLine(current, task.raw)) return null;
   return spliceLine(content, task.line, newRaw);
+}
+
+/**
+ * issue 594: a rename rewrote `path` on disk — it is a REFERRER whose links
+ * to a renamed file or block now spell the new name. Its open surfaces follow
+ * the disk, but only if none of them holds unsaved work. A dirty or
+ * source-edited tab is left entirely alone — document, buffer and `openFiles`
+ * snapshot (the close guard writes THAT for a background tab) — and the caller
+ * tells the user: the rename was the app's own write, so the watcher stays
+ * quiet and nothing else will bring that tab in line; its links show the old
+ * name until it is reloaded. Clean surfaces: the editor that actually holds
+ * the tab — the keep-alive editor, or the shared one while the tab is
+ * installed in it — is patched in place; a clean source-mode buffer takes the
+ * text; a clean background tab is flagged to reload.
+ *
+ * @returns whether the surfaces were updated (false: unsaved work kept them)
+ */
+export function syncCleanSurfacesAfterReferrerRewrite(
+  path: string,
+  content: string,
+): boolean {
+  const store = useEditorStore.getState();
+  const tabs = store.tabs.filter((t) => t.filePath === path);
+  const unsaved = tabs.some(
+    (t) => t.isDirty || store.sourceEditedTabs.includes(t.id),
+  );
+  if (unsaved) {
+    logger.warn(
+      "[referrer] a tab holds unsaved work; its links show the old name until it is reloaded:",
+      path,
+    );
+    return false;
+  }
+  useFileStore.getState().setFileContent(path, content);
+  const access = store.documentSurfaceAccess;
+  for (const tab of tabs) {
+    // A source-mode tab's authoritative text is its CodeMirror buffer; clean,
+    // it simply takes the new text (the surface re-reads its buffer).
+    if (store.sourceModeTabs.includes(tab.id)) {
+      store.sourceBufferAccess?.setSourceBuffer(tab.id, content);
+      continue;
+    }
+    const holder =
+      access?.keepaliveEditor(tab.id) ??
+      (loadedTabId() === tab.id ? access?.editor : null);
+    if (holder && !holder.isDestroyed) {
+      patchEditorContent(holder.view, content);
+    } else {
+      store.markContentStale(tab.id);
+    }
+  }
+  return true;
 }

@@ -200,25 +200,25 @@ describe("requestCloseWorkspace — asks before discarding unsaved work", () => 
     useFileStore.setState({ rootPath: "/vault/a" } as never);
   });
 
-  it("closes immediately when nothing is dirty", () => {
+  it("closes immediately when nothing is dirty", async () => {
     useEditorStore.setState({
       activeTabId: null,
       tabs: [tab("clean")],
     } as never);
 
-    requestCloseWorkspace();
+    await requestCloseWorkspace();
 
     expect(useFileStore.getState().rootPath).toBeNull();
     expect(useUIStore.getState().unsavedModal).toBeNull();
   });
 
-  it("prompts and leaves the workspace ALONE when a tab is dirty", () => {
+  it("prompts and leaves the workspace ALONE when a tab is dirty", async () => {
     useEditorStore.setState({
       activeTabId: "d",
       tabs: [tab("clean"), tab("d", { isDirty: true })],
     } as never);
 
-    requestCloseWorkspace();
+    await requestCloseWorkspace();
 
     // The discriminating half: a prompt that fires while the workspace is already
     // gone would be theatre. Nothing may be closed until the user answers.
@@ -229,13 +229,13 @@ describe("requestCloseWorkspace — asks before discarding unsaved work", () => 
     });
   });
 
-  it("ignores a dirty non-file tab — there is nothing on disk to save", () => {
+  it("ignores a dirty non-file tab — there is nothing on disk to save", async () => {
     useEditorStore.setState({
       activeTabId: "g",
       tabs: [tab("g", { filePath: "", isDirty: true, type: "graph" })],
     } as never);
 
-    requestCloseWorkspace();
+    await requestCloseWorkspace();
 
     expect(useFileStore.getState().rootPath).toBeNull();
     expect(useUIStore.getState().unsavedModal).toBeNull();

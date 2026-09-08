@@ -349,7 +349,7 @@ export function useMenuEventHandler({
           break;
         }
         case "view_reload":
-          requestReload();
+          void requestReload();
           break;
 
         case "view_sidebar":

@@ -109,13 +109,16 @@ export function loadTabContent(
           ctx.appendHandleRef.current = null;
         }
         setTabLoading(activeTabId, false);
-        ctx.installContent(activeTabId, incomingTab.filePath);
-
         // [NEW-CRITICAL-B] Mark the pool entry as complete so
-        // switch-back uses it rather than discarding it.
+        // switch-back uses it rather than discarding it. BEFORE the install
+        // notification: the block-ID rename landing drains its queue on that
+        // notification and trusts the pooled document only once complete
+        // (issue 594) — the other order made it fall back to the text and
+        // drop the rename.
         if (isLargeDoc) {
           ctx.keepalive.markComplete(activeTabId);
         }
+        ctx.installContent(activeTabId, incomingTab.filePath);
 
         afterDocLoad(ctx, targetEditor, incomingTab.filePath, content);
         // ‼️ One identity for the whole load: install, notify, post-load work, and

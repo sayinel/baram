@@ -9,12 +9,21 @@ import { pickApprovedDir, pickApprovedFile } from "../ipc/approval";
 import { readFile, updateFileIndex, writeFile } from "../ipc/invoke";
 import { notifyFileSave } from "../plugins/plugin-lifecycle";
 import { openFolder } from "../services/vault-context-loader";
-import { isFileTab, useEditorStore } from "../stores/editor/editor";
+import {
+  isFileTab,
+  isTabUnsaved,
+  useEditorStore,
+} from "../stores/editor/editor";
 import { useLinkStore } from "../stores/editor/link";
 import { useSnapshotStore } from "../stores/editor/snapshot";
 import { useFileStore } from "../stores/file/file";
 import { useSettingsStore } from "../stores/settings/store";
 import { useUIStore } from "../stores/ui/ui";
+import {
+  awaitBlockIdRenames,
+  hasBlockIdRenamesInFlight,
+} from "../utils/editor/block-id-rename-landing";
+import { loadedTabId } from "../utils/editor/programmatic-update";
 import { serializeLiveDoc } from "../utils/editor/serialize-live-doc";
 import { isBinaryViewerFile, isMarkdownFile } from "../utils/file-type";
 import { isJournalPath } from "../utils/journal/journal";
@@ -251,6 +260,11 @@ export function useFileOperations({
     // another tab's text) into a .pdf would destroy the binary.
     if (isBinaryViewerFile(saveTab.filePath)) return;
 
+    // issue 594: a block ID rename of this tab still in flight lands in the
+    // document a moment from now; serializing before it does would write the
+    // old ID — and on a Save & Close, nothing would ever write the new one.
+    if (!(await renamesLandedWithoutATabSwitch(saveTab.id))) return;
+
     const isCode = saveTab.filePath && !isMarkdownFile(saveTab.filePath);
     const md =
       isCode || sourceModeTabs.has(saveTab.id)
@@ -341,6 +355,9 @@ export function useFileOperations({
     if (!isFileTab(saveAsTab)) return;
     // PDF tabs are read-only viewers — Save As would write text, not the PDF.
     if (isBinaryViewerFile(saveAsTab.filePath)) return;
+    // issue 594: same barrier as `handleSave` — a rename landing while the
+    // dialog is open would otherwise be snapshotted out of the copy.
+    if (!(await renamesLandedWithoutATabSwitch(saveAsTab.id))) return;
 
     const isCode = saveAsTab.filePath && !isMarkdownFile(saveAsTab.filePath);
     const md =
@@ -384,14 +401,31 @@ export function useFileOperations({
   }, [editor, sourceModeTabs, getSourceBuffer, setFileContent, markDirty]);
 
   const handleCloseTab = useCallback(() => {
-    const { activeTabId: tabId, tabs } = useEditorStore.getState();
+    const {
+      activeTabId: tabId,
+      sourceEditedTabs,
+      tabs,
+    } = useEditorStore.getState();
     if (!tabId) return;
     const tab = tabs.find((t) => t.id === tabId);
-    if (tab?.isDirty && tab.filePath) {
+    // "Unsaved" lives in two places (§82): `isDirty` for the WYSIWYG document,
+    // `sourceEditedTabs` for a source-mode buffer — which a block ID rename
+    // landing in source mode sets (issue 594). Cmd+W used to read only the
+    // first and closed a source-edited tab without saving it.
+    const unsaved = isTabUnsaved(tab, sourceEditedTabs);
+    if (unsaved && tab?.filePath) {
       // §close-guard: file-backed tab — auto-save may not have fired yet; flush
       // and close without a prompt (Cmd+W keeps its quick save-and-close flow).
       handleSave().then(
         () => {
+          // issue 594: `handleSave` gives up — resolving normally — when the
+          // tab changed while a block ID rename was landing (a Save As can be
+          // cancelled the same way). A tab that is still dirty was NOT saved
+          // and stays open with its work; only a clean one closes.
+          const { sourceEditedTabs: editedAfter, tabs: tabsAfter } =
+            useEditorStore.getState();
+          const after = tabsAfter.find((t) => t.id === tabId);
+          if (!after || isTabUnsaved(after, editedAfter)) return;
           useEditorStore.getState().closeTab(tabId);
         },
         () => {
@@ -400,7 +434,7 @@ export function useFileOperations({
       );
       return;
     }
-    if (tab?.isDirty && !tab.filePath) {
+    if (unsaved && !tab?.filePath) {
       // §close-guard: Untitled tab has no file to auto-save to — use the shared
       // 3-button modal (identical UI to app quit and the tab X-button).
       useUIStore.getState().openUnsavedModal({ intent: "closeTab", tabId });
@@ -451,7 +485,7 @@ export function useFileOperations({
   // Routed through the close guard so unsaved work gets the same Save / Don't Save /
   // Cancel prompt quit and reload give, instead of being dropped by `closeAllTabs`.
   const handleCloseFolder = useCallback(() => {
-    requestCloseWorkspace();
+    void requestCloseWorkspace();
   }, []);
 
   return {
@@ -522,4 +556,30 @@ function syncSourceBuffers(
     sourceBufferAccess.setSourceBuffer(tab.id, freshContent);
   }
   return kept;
+}
+
+/**
+ * issue 594: wait for the tab's in-flight block ID renames — only when there
+ * are any, so a plain save never yields — and report whether the shared
+ * editor still shows what it showed before the wait. If the user switched
+ * tabs meanwhile, the editor holds ANOTHER document, and serializing it would
+ * write that document over this tab's file; the caller gives up and the tab
+ * stays dirty for a later save.
+ */
+async function renamesLandedWithoutATabSwitch(tabId: string): Promise<boolean> {
+  if (!hasBlockIdRenamesInFlight(tabId)) return true;
+  const before = {
+    active: useEditorStore.getState().activeTabId,
+    loaded: loadedTabId(),
+  };
+  await awaitBlockIdRenames(tabId);
+  const after = useEditorStore.getState().activeTabId;
+  const unchanged = after === before.active && loadedTabId() === before.loaded;
+  if (!unchanged) {
+    logger.warn(
+      "[save] the tab changed while a block ID rename was landing; not writing another document to",
+      tabId,
+    );
+  }
+  return unchanged;
 }

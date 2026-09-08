@@ -10,8 +10,11 @@ import { EditorState } from "@tiptap/pm/state";
 import { replaceEditorStateWithVim } from "../extensions/plugins/vim/replace-editor-state";
 import { markdownToProsemirror } from "../pipeline/md-to-pm";
 import { notifyFileOpen } from "../plugins/plugin-lifecycle";
-import { isFileTab } from "../stores/editor/editor";
-import { useEditorStore } from "../stores/editor/editor";
+import {
+  type DocumentSurfaceAccess,
+  isFileTab,
+  useEditorStore,
+} from "../stores/editor/editor";
 import { useFileStore } from "../stores/file/file";
 import { useNavigationStore } from "../stores/ui/navigation";
 import { setTabLoading } from "../utils/editor/programmatic-update";
@@ -78,6 +81,29 @@ export function useTabSwitching({
 
   // Track previously active tab to save its content on switch
   const prevTabRef = useRef<null | string>(null);
+  const registerDocumentSurfaceAccess = useEditorStore(
+    (s) => s.registerDocumentSurfaceAccess,
+  );
+
+  // issue 594: publish where a background tab's document lives, for the block
+  // ID rename landing (`utils/editor/block-id-rename-landing.ts`). Same
+  // lifetime rule as the source-buffer access: clear only what is ours — a
+  // re-mount may register the new instance before the old one cleans up.
+  useEffect(() => {
+    if (!editor) return;
+    const access: DocumentSurfaceAccess = {
+      editor,
+      editorStateCache: editorStateCache.current,
+      isKeepaliveComplete: (tabId) => keepalive.isComplete(tabId),
+      keepaliveEditor: (tabId) => keepalive.get(tabId),
+    };
+    registerDocumentSurfaceAccess(access);
+    return () => {
+      if (useEditorStore.getState().documentSurfaceAccess === access) {
+        registerDocumentSurfaceAccess(null);
+      }
+    };
+  }, [editor, editorStateCache, keepalive, registerDocumentSurfaceAccess]);
   // §perf-large-file B2/C2: Loading state for async parse + progressive loading
   const progressiveLoadRef = useRef<{ cancelled: boolean }>({
     cancelled: false,

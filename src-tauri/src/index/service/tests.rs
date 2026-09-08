@@ -315,7 +315,7 @@ async fn rename_namespace_rebuilds_under_the_same_key_the_lookups_read() {
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
     std::fs::create_dir(dir.path().join("ns")).unwrap();
     std::fs::write(dir.path().join("ns/c.md"), "see [[b]]").unwrap();
-    rename_namespace_inner(
+    let result = rename_namespace_inner(
         &state,
         &ctx,
         &format!("{root}/ns"),
@@ -324,6 +324,9 @@ async fn rename_namespace_rebuilds_under_the_same_key_the_lookups_read() {
     )
     .await
     .unwrap();
+    assert!(result.index_rebuilt);
+    assert!(result.skipped_files.is_empty());
+    assert!(result.unchecked_files.is_empty());
     let key = active_index_key(&ctx).await.unwrap();
     let outgoing = outgoing_links(&state, &key).await;
     assert!(outgoing.contains_key(&format!("{root}/ns2/c.md")));
@@ -856,8 +859,8 @@ async fn a_committed_namespace_rename_survives_a_forget_between_build_and_publis
 
     let rejected = publish_built_index(&state, &key, token, snapshot, stats).await;
     assert!(matches!(&rejected, Err(IndexBuildError::Invalidated)));
-    // The rename still reports what it did.
-    settle_namespace_rebuild(&state, &key, rejected).await;
+    // The rename still reports what it did — and that the index is not there.
+    assert!(!settle_namespace_rebuild(&state, &key, rejected).await);
     let result = committed;
     assert_eq!(result.files_moved, 1);
     assert_eq!(result.updated_files, vec![format!("{root}/a.md")]);
@@ -909,7 +912,7 @@ async fn a_committed_namespace_rename_survives_a_forget_before_its_rebuild_start
     state.forget(&key, old_incarnation).await;
     let rebuilt = rebuild_and_publish(&state, &target, &root, false).await;
     assert!(matches!(&rebuilt, Err(IndexBuildError::Invalidated)));
-    settle_namespace_rebuild(&state, &key, rebuilt).await;
+    assert!(!settle_namespace_rebuild(&state, &key, rebuilt).await);
     let result = committed;
     assert_eq!(result.files_moved, 1);
     assert!(!dir.path().join("ns").exists());
@@ -935,8 +938,9 @@ async fn a_committed_namespace_rename_reports_the_move_and_drops_an_index_it_cou
     assert!(matches!(&rebuilt, Err(IndexBuildError::Failed(_))));
     // The move is reported as what it is — done — and the index that still
     // describes the old layout is dropped instead of trusted; the next rename
-    // rebuilds it through the gate.
-    settle_namespace_rebuild(&state, &key, rebuilt).await;
+    // rebuilds it through the gate. The result says the index is gone (issue
+    // 594): the frontend warns and asks for a rebuild.
+    assert!(!settle_namespace_rebuild(&state, &key, rebuilt).await);
     assert_eq!(committed.files_moved, 1);
     assert!(dir.path().join("ns2/c.md").exists());
     assert!(state.with_index(&key, |idx| idx.is_none()).await);
@@ -1827,5 +1831,211 @@ async fn a_renamed_files_content_is_indexed_under_its_new_path() {
                 .unwrap()
         ),
         vec![format!("{root}/renamed.md")]
+    );
+}
+
+/// A directory nobody can create files in. `fs::write_file` writes a tmp file
+/// beside its target and renames it over, so a read-only FILE does not stop
+/// it — a read-only PARENT does. Returns whether the lock took (it does not
+/// as root); the caller restores the mode before the TempDir is dropped.
+#[cfg(unix)]
+fn lock_directory(dir: &std::path::Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o555)).unwrap();
+    std::fs::write(dir.join("probe.tmp"), "").is_err()
+}
+
+#[cfg(unix)]
+fn unlock_directory(dir: &std::path::Path) {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_file_rename_reports_the_referrer_it_could_not_rewrite() {
+    // issue 594: the file has moved by the time a referrer fails to write, so
+    // the rename is not a failure — but the referrer's links still say the
+    // old name, and that reaches the result instead of only the log.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-abc", true).await;
+    std::fs::create_dir(dir.path().join("ro")).unwrap();
+    std::fs::write(dir.path().join("ro/ref.md"), "also [[b]]").unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    let locked = lock_directory(&dir.path().join("ro"));
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/b.md"),
+        &format!("{root}/c.md"),
+    )
+    .await;
+    unlock_directory(&dir.path().join("ro"));
+    let result = result.unwrap();
+    assert!(dir.path().join("c.md").exists());
+    assert_eq!(result.updated_files, vec![format!("{root}/a.md")]);
+    if !locked {
+        return; // root: every write succeeds, nothing to report
+    }
+    assert_eq!(result.skipped_files, vec![format!("{root}/ro/ref.md")]);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("ro/ref.md")).unwrap(),
+        "also [[b]]"
+    );
+    // The index followed the files: a.md now links to c, ref.md still to b.
+    let backlinks = get_backlinks_inner(&state, &ctx, &format!("{root}/c.md"))
+        .await
+        .unwrap();
+    assert_eq!(sources(&backlinks), vec![format!("{root}/a.md")]);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_block_id_rename_past_its_first_write_reports_instead_of_failing() {
+    // issue 594: once one referrer has been rewritten there is no "nothing
+    // changed" to fall back to. The second referrer's failure used to come
+    // back as `Err` — with the first already saying `b2` and the index never
+    // told. Now the command finishes what it can and names what it could not.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-abc", true).await;
+    std::fs::write(dir.path().join("target.md"), "para ^b1").unwrap();
+    std::fs::write(dir.path().join("x.md"), "see ((target#^b1))").unwrap();
+    std::fs::create_dir(dir.path().join("ro")).unwrap();
+    std::fs::write(dir.path().join("ro/y.md"), "see ((target#^b1))").unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    let locked = lock_directory(&dir.path().join("ro"));
+    let result =
+        rename_block_id_inner(&state, &ctx, &format!("{root}/target.md"), "b1", "b2").await;
+    unlock_directory(&dir.path().join("ro"));
+    let result = result.unwrap();
+    assert_eq!(result.updated_files, vec![format!("{root}/x.md")]);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("x.md")).unwrap(),
+        "see ((target#^b2))"
+    );
+    if !locked {
+        return;
+    }
+    assert_eq!(result.skipped_files, vec![format!("{root}/ro/y.md")]);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("ro/y.md")).unwrap(),
+        "see ((target#^b1))"
+    );
+    // The index knows the file that WAS rewritten under its new id.
+    let backlinks = get_backlinks_inner(&state, &ctx, &format!("{root}/target.md"))
+        .await
+        .unwrap();
+    let ids: Vec<(&str, Option<&str>)> = backlinks
+        .iter()
+        .map(|b| (b.source_path.as_str(), b.block_id.as_deref()))
+        .collect();
+    assert!(
+        ids.contains(&(format!("{root}/x.md").as_str(), Some("b2"))),
+        "{ids:?}"
+    );
+    assert!(
+        ids.contains(&(format!("{root}/ro/y.md").as_str(), Some("b1"))),
+        "{ids:?}"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_namespace_rename_moves_the_directory_before_it_writes_any_referrer() {
+    // issue 594: the referrer rewrites used to come BEFORE the move, so a
+    // referrer that could not be written left the earlier ones pointing at a
+    // directory that did not exist, under an `Err` that claimed nothing had
+    // changed. Now the move is the last step that can fail; a referrer that
+    // cannot be written afterwards is reported.
+    let ctx = ContextManager::new();
+    let (dir, root, old_dir, new_dir) = namespace_fixture(&ctx).await;
+    std::fs::create_dir(dir.path().join("ro")).unwrap();
+    std::fs::write(dir.path().join("ro/d.md"), "see [[../ns/c]]").unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    let locked = lock_directory(&dir.path().join("ro"));
+    let result = rename_namespace_inner(&state, &ctx, &old_dir, &new_dir, &root).await;
+    unlock_directory(&dir.path().join("ro"));
+    let result = result.unwrap();
+    assert!(!dir.path().join("ns").exists());
+    assert!(dir.path().join("ns2/c.md").exists());
+    assert_eq!(result.files_moved, 1);
+    assert_eq!(result.updated_files, vec![format!("{root}/a.md")]);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("a.md")).unwrap(),
+        "see [[./ns2/c]]"
+    );
+    assert!(result.index_rebuilt);
+    if !locked {
+        return;
+    }
+    assert_eq!(result.skipped_files, vec![format!("{root}/ro/d.md")]);
+    assert!(result.unchecked_files.is_empty());
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("ro/d.md")).unwrap(),
+        "see [[../ns/c]]"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_namespace_rename_reports_a_file_it_could_not_read_apart_from_a_referrer_it_could_not_write(
+) {
+    // issue 594: the namespace path scans every file outside the directory,
+    // so a file that cannot be READ is not known to refer to it at all. It is
+    // reported as unchecked, not accused of holding stale links.
+    use std::os::unix::fs::PermissionsExt;
+    let ctx = ContextManager::new();
+    let (dir, root, old_dir, new_dir) = namespace_fixture(&ctx).await;
+    std::fs::write(dir.path().join("unrelated.md"), "nothing to do with ns").unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    let unrelated = dir.path().join("unrelated.md");
+    std::fs::set_permissions(&unrelated, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let readable = std::fs::read_to_string(&unrelated).is_ok(); // true only as root
+    let result = rename_namespace_inner(&state, &ctx, &old_dir, &new_dir, &root).await;
+    std::fs::set_permissions(&unrelated, std::fs::Permissions::from_mode(0o644)).unwrap();
+    let result = result.unwrap();
+    assert!(dir.path().join("ns2/c.md").exists());
+    assert_eq!(result.updated_files, vec![format!("{root}/a.md")]);
+    assert!(result.skipped_files.is_empty());
+    if readable {
+        return;
+    }
+    assert_eq!(result.unchecked_files, vec![format!("{root}/unrelated.md")]);
+}
+
+#[tokio::test]
+async fn a_block_id_rename_leaves_another_notes_block_with_the_same_id_alone() {
+    // issue 594: `x.md` refers to target's ^b1 AND to other's ^b1, on one line
+    // and on separate lines. Only the references to target change; the
+    // reference to `other` keeps its ID, and so does a self-reference.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-abc", true).await;
+    std::fs::write(dir.path().join("target.md"), "para ^b1").unwrap();
+    std::fs::write(dir.path().join("other.md"), "para ^b1").unwrap();
+    std::fs::write(
+        dir.path().join("x.md"),
+        // The last line pairs a wikilink and a block reference to the same
+        // file: `get_backlinks` keeps one entry per (source, line) and would
+        // have hidden the block reference behind the wikilink.
+        "((target#^b1)) and ((other#^b1))\n((other#^b1)) alone\n((#^b1)) mine ^b1\n((Target.md#^b1|label))\n[[target]] ((target#^b1))",
+    )
+    .unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    let result = rename_block_id_inner(&state, &ctx, &format!("{root}/target.md"), "b1", "b2")
+        .await
+        .unwrap();
+    assert_eq!(result.updated_files, vec![format!("{root}/x.md")]);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("x.md")).unwrap(),
+        "((target#^b2)) and ((other#^b1))\n((other#^b1)) alone\n((#^b1)) mine ^b1\n((Target.md#^b2|label))\n[[target]] ((target#^b2))"
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("other.md")).unwrap(),
+        "para ^b1"
     );
 }

@@ -1,5 +1,6 @@
 // §3.5 에디터 상태 스토어
 import type { Editor } from "@tiptap/core";
+import type { EditorState as PmEditorState } from "@tiptap/pm/state";
 
 import { create } from "zustand";
 
@@ -71,6 +72,26 @@ export interface SourceBufferAccess {
   setSourceBuffer: (tabId: string, content: string) => void;
 }
 
+/**
+ * issue 594: where a markdown tab's document lives when it is NOT the one in
+ * the shared editor — the keep-alive pool (a large document keeps its own live
+ * editor while its tab is in the background) and the per-tab EditorState cache
+ * (an ordinary tab's document while it is in the background). Registered by
+ * `useTabSwitching`, read outside React by the block-ID rename landing
+ * (`utils/editor/block-id-rename-landing.ts`), which has to put a rename the
+ * backend has already committed into that document wherever it is. Same shape,
+ * same lifetime rule as `sourceBufferAccess`: stable references only, cleared
+ * by whoever registered them.
+ */
+export interface DocumentSurfaceAccess {
+  /** The shared editor — holds the document of `loadedTabId()`. */
+  editor: Editor;
+  editorStateCache: Map<string, PmEditorState>;
+  /** Whether the pool's entry for the tab holds the WHOLE document. */
+  isKeepaliveComplete: (tabId: string) => boolean;
+  keepaliveEditor: (tabId: string) => Editor | null;
+}
+
 interface EditorState {
   activeTabId: null | string;
   /** §324-e Live capture-dialog editor access, or `null` when it is closed */
@@ -123,6 +144,8 @@ interface EditorState {
 
   /** §44 Current editor selection text (for @selection reference) */
   currentSelection: string;
+  /** issue 594 — see `DocumentSurfaceAccess`. */
+  documentSurfaceAccess: DocumentSurfaceAccess | null;
   /** §39 Get next/previous tab in MRU order (wraps around). Returns null if ≤1 tab. */
   getNextMruTab: (
     currentId: string,
@@ -156,6 +179,7 @@ interface EditorState {
   pinTab: (tabId: string) => void;
   /** §324-e Publish (or clear with `null`) the open capture dialog's editor access */
   registerCaptureDropAccess: (access: CaptureDropAccess | null) => void;
+  registerDocumentSurfaceAccess: (access: DocumentSurfaceAccess | null) => void;
   /** §312 Publish (or clear with `null`) the mounted source surface's buffer accessors */
   registerSourceBufferAccess: (access: null | SourceBufferAccess) => void;
   /**
@@ -293,6 +317,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   sourceModeTabs: [],
   sourceBufferAccess: null,
   captureDropAccess: null,
+  documentSurfaceAccess: null,
 
   setActiveTab: (tabId) => {
     set({ activeTabId: tabId });
@@ -732,6 +757,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       state.sourceBufferAccess === access
         ? state
         : { sourceBufferAccess: access },
+    ),
+
+  registerDocumentSurfaceAccess: (access) =>
+    set((state) =>
+      state.documentSurfaceAccess === access
+        ? state
+        : { documentSurfaceAccess: access },
     ),
 
   requestContentRefresh: (mode = "fresh", path = null) =>

@@ -312,29 +312,64 @@ pub fn replace_wikilink_target(content: &str, old_target: &str, new_target: &str
 /// §30a Replace block ID references in file content.
 /// Updates ((target#^oldId)), ((target#^oldId|display)), ((#^oldId)),
 /// and {{embed ((target#^oldId))}} patterns.
-pub fn replace_block_id_refs(content: &str, old_id: &str, new_id: &str) -> String {
-    let step1 = EMBED_REPLACE_RE.replace_all(content, |caps: &regex::Captures| {
-        let target = caps.get(1).map(|m| m.as_str()).unwrap_or("");
-        let id = caps.get(2).map(|m| m.as_str()).unwrap_or("");
-        if id == old_id {
-            format!("{{{{embed (({target}#^{new_id}))}}}}")
-        } else {
-            caps[0].to_string()
+/// §30a Rename `^old_id` → `^new_id` in the references a file makes TO ONE
+/// target — the file whose block is being renamed — and nowhere else. Two notes
+/// may carry the same block ID; a referrer that says `((target#^id))` and
+/// `((other#^id))` must change only the first (issue 594). The index already
+/// decided which of this file's lines refer to the target (`lines`, 1-based,
+/// from `get_backlinks`); within those lines a reference is rewritten only if
+/// its target normalizes to one of the target's keys (`backlink_keys`) — an
+/// empty target names the referrer itself, never the target.
+pub fn replace_block_id_refs_to(
+    content: &str,
+    lines: &std::collections::HashSet<u32>,
+    target_keys: &[String],
+    old_id: &str,
+    new_id: &str,
+) -> String {
+    let refers_to_target = |raw_target: &str| {
+        let t = raw_target.trim();
+        !t.is_empty() && target_keys.contains(&super::normalizer::normalize_file_path(t))
+    };
+    let mut out = String::with_capacity(content.len());
+    // Split keeps the separators so the output is byte-identical elsewhere.
+    let mut line_no: u32 = 0;
+    let mut rest = content;
+    while !rest.is_empty() {
+        line_no += 1;
+        let (line, sep) = match rest.find('\n') {
+            Some(i) => (&rest[..i], &rest[i..i + 1]),
+            None => (rest, ""),
+        };
+        rest = &rest[line.len() + sep.len()..];
+        if !lines.contains(&line_no) {
+            out.push_str(line);
+            out.push_str(sep);
+            continue;
         }
-    });
-
-    REF_REPLACE_RE
-        .replace_all(&step1, |caps: &regex::Captures| {
+        let step1 = EMBED_REPLACE_RE.replace_all(line, |caps: &regex::Captures| {
+            let target = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+            let id = caps.get(2).map(|m| m.as_str()).unwrap_or("");
+            if id == old_id && refers_to_target(target) {
+                format!("{{{{embed (({target}#^{new_id}))}}}}")
+            } else {
+                caps[0].to_string()
+            }
+        });
+        let step2 = REF_REPLACE_RE.replace_all(&step1, |caps: &regex::Captures| {
             let target = caps.get(1).map(|m| m.as_str()).unwrap_or("");
             let id = caps.get(2).map(|m| m.as_str()).unwrap_or("");
             let display = caps.get(3).map(|m| m.as_str()).unwrap_or("");
-            if id == old_id {
+            if id == old_id && refers_to_target(target) {
                 format!("(({target}#^{new_id}{display}))")
             } else {
                 caps[0].to_string()
             }
-        })
-        .to_string()
+        });
+        out.push_str(&step2);
+        out.push_str(sep);
+    }
+    out
 }
 
 /// Replace [[...]] wikilink blocks with spaces of the same byte length.
@@ -639,57 +674,77 @@ mod tests {
         assert!(stripped.contains("bar"));
     }
 
-    // §30a replace_block_id_refs tests
-    #[test]
-    fn test_replace_block_id_refs_basic() {
-        let content = "See ((notes#^abc123)) for details.";
-        let result = replace_block_id_refs(content, "abc123", "xyz789");
-        assert_eq!(result, "See ((notes#^xyz789)) for details.");
+    // §30a replace_block_id_refs_to tests
+    fn lines(list: &[u32]) -> std::collections::HashSet<u32> {
+        list.iter().copied().collect()
+    }
+    fn keys(list: &[&str]) -> Vec<String> {
+        list.iter().map(|k| k.to_string()).collect()
     }
 
     #[test]
-    fn test_replace_block_id_refs_with_display() {
-        let content = "See ((notes#^abc123|my label)) here.";
-        let result = replace_block_id_refs(content, "abc123", "xyz789");
-        assert_eq!(result, "See ((notes#^xyz789|my label)) here.");
-    }
-
-    #[test]
-    fn test_replace_block_id_refs_self_ref() {
-        let content = "See ((#^abc123)) here.";
-        let result = replace_block_id_refs(content, "abc123", "xyz789");
-        assert_eq!(result, "See ((#^xyz789)) here.");
-    }
-
-    #[test]
-    fn test_replace_block_id_refs_embed() {
-        let content = "{{embed ((notes#^abc123))}}";
-        let result = replace_block_id_refs(content, "abc123", "xyz789");
-        assert_eq!(result, "{{embed ((notes#^xyz789))}}");
-    }
-
-    #[test]
-    fn test_replace_block_id_refs_no_match() {
-        let content = "See ((notes#^other)) and {{embed ((notes#^other))}}";
-        let result = replace_block_id_refs(content, "abc123", "xyz789");
-        assert_eq!(result, content);
-    }
-
-    #[test]
-    fn test_replace_block_id_refs_multiple() {
-        let content = "((a#^id1)) and ((b#^id1)) and ((c#^id2))";
-        let result = replace_block_id_refs(content, "id1", "newId");
-        assert_eq!(result, "((a#^newId)) and ((b#^newId)) and ((c#^id2))");
-    }
-
-    #[test]
-    fn test_replace_block_id_refs_mixed() {
-        let content = "ref: ((notes#^abc)) embed: {{embed ((notes#^abc))}} other: ((notes#^def))";
-        let result = replace_block_id_refs(content, "abc", "xyz");
+    fn test_replace_block_id_refs_to_basic_display_embed() {
+        let content =
+            "See ((notes#^abc123)) and ((notes#^abc123|my label)).\n{{embed ((notes#^abc123))}}";
+        let result = replace_block_id_refs_to(
+            content,
+            &lines(&[1, 2]),
+            &keys(&["notes"]),
+            "abc123",
+            "xyz789",
+        );
         assert_eq!(
             result,
-            "ref: ((notes#^xyz)) embed: {{embed ((notes#^xyz))}} other: ((notes#^def))"
+            "See ((notes#^xyz789)) and ((notes#^xyz789|my label)).\n{{embed ((notes#^xyz789))}}"
         );
+    }
+
+    #[test]
+    fn test_replace_block_id_refs_to_leaves_other_targets_with_the_same_id() {
+        // issue 594: two notes carry ^id1; only the reference to `a` changes.
+        let content = "((a#^id1)) and ((b#^id1)) and ((a#^id2))";
+        let result = replace_block_id_refs_to(content, &lines(&[1]), &keys(&["a"]), "id1", "newId");
+        assert_eq!(result, "((a#^newId)) and ((b#^id1)) and ((a#^id2))");
+    }
+
+    #[test]
+    fn test_replace_block_id_refs_to_never_touches_a_self_reference() {
+        // `((#^id))` in a referrer names the referrer's own block.
+        let content = "See ((#^abc123)) and ((notes#^abc123)).";
+        let result =
+            replace_block_id_refs_to(content, &lines(&[1]), &keys(&["notes"]), "abc123", "xyz789");
+        assert_eq!(result, "See ((#^abc123)) and ((notes#^xyz789)).");
+    }
+
+    #[test]
+    fn test_replace_block_id_refs_to_only_on_the_lines_the_index_named() {
+        let content = "((notes#^abc)) first\n((notes#^abc)) second\n((notes#^abc)) third";
+        let result =
+            replace_block_id_refs_to(content, &lines(&[2]), &keys(&["notes"]), "abc", "xyz");
+        assert_eq!(
+            result,
+            "((notes#^abc)) first\n((notes#^xyz)) second\n((notes#^abc)) third"
+        );
+    }
+
+    #[test]
+    fn test_replace_block_id_refs_to_matches_the_target_the_way_the_index_does() {
+        // Case, extension and a path prefix normalize away, as `get_backlinks` keys do.
+        let content = "((Notes#^abc)) ((dir/notes.md#^abc)) ((other#^abc))";
+        let result =
+            replace_block_id_refs_to(content, &lines(&[1]), &keys(&["notes"]), "abc", "xyz");
+        assert_eq!(
+            result,
+            "((Notes#^xyz)) ((dir/notes.md#^xyz)) ((other#^abc))"
+        );
+    }
+
+    #[test]
+    fn test_replace_block_id_refs_to_no_match_is_byte_identical() {
+        let content = "See ((notes#^other)) and {{embed ((notes#^other))}}\r\nend";
+        let result =
+            replace_block_id_refs_to(content, &lines(&[1, 2]), &keys(&["notes"]), "abc", "xyz");
+        assert_eq!(result, content);
     }
 
     // §33 replace_wikilink_target tests

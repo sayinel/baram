@@ -1,11 +1,11 @@
 use crate::context::manager::{resolve_canonical, Registered};
 use crate::context::ContextManager;
 use crate::index::{
-    collect_md_files, replace_block_id_refs, replace_wikilink_target, rewrite_relative_wikilinks,
-    IndexStats,
+    backlink_keys, collect_md_files, replace_block_id_refs_to, replace_wikilink_target,
+    rewrite_relative_wikilinks, IndexStats,
 };
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use super::build::{
@@ -14,11 +14,20 @@ use super::build::{
 use super::keys::{buildable, keys_of, owning_contexts};
 use super::state::{LinkIndexState, Mutation};
 
-/// §33 Result of renaming a file with wikilink updates
+/// §33 Result of renaming a file (or a block ID) with wikilink updates.
+///
+/// An `Err` from these commands means nothing on disk changed. Everything that
+/// fails AFTER the point of no return (the file has moved, a first referrer has
+/// been rewritten) is reported here instead — the log is not a channel the
+/// user can see (issue 594).
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenameResult {
     pub updated_files: Vec<String>,
+    /// Referring files the index named that could not be rewritten: unreadable,
+    /// unwritable, or resolving outside the file's contexts. Their references
+    /// still spell the old name.
+    pub skipped_files: Vec<String>,
 }
 
 /// §61 Result of renaming a namespace (directory) with wikilink updates
@@ -26,7 +35,18 @@ pub struct RenameResult {
 #[serde(rename_all = "camelCase")]
 pub struct NamespaceRenameResult {
     pub updated_files: Vec<String>,
+    /// See [`RenameResult::skipped_files`] — here, only files whose rewrite
+    /// was attempted and failed.
+    pub skipped_files: Vec<String>,
+    /// Files outside the moved directory that could not be read, so whether
+    /// they refer to it was never checked. Their links MAY still spell the old
+    /// directory.
+    pub unchecked_files: Vec<String>,
     pub files_moved: u32,
+    /// `false`: the files moved, but the index under the root was not rebuilt —
+    /// the rebuild failed and the stale index was dropped, or the context was
+    /// removed while it ran. Backlinks read empty until the next build.
+    pub index_rebuilt: bool,
 }
 
 /// Which of `keys` (containing indexes) cover `path`: a reference file outside
@@ -138,40 +158,13 @@ pub(crate) async fn rename_file_with_links_inner(
         .map_err(|e| e.to_string())?;
 
     // 3. Read and update each referring file (async I/O, outside lock). The
-    //    file has moved, so a failure here is logged and the file skipped,
-    //    never reported as a failed rename.
-    let mut updated_files = Vec::new();
-    let mut updated_contents: Vec<(PathBuf, String)> = Vec::new();
-
-    for file_path in &referring_files {
-        // Skip the file being renamed itself
-        if file_path == old_path {
-            continue;
-        }
-        let content = match tokio::fs::read_to_string(file_path).await {
-            Ok(c) => c,
-            Err(_) => continue,
-        };
-
-        let new_content = replace_wikilink_target(&content, &old_target, &new_target);
-        if new_content != content {
-            let Ok(identity) = resolve_canonical(file_path) else {
-                continue;
-            };
-            if !confined_by(&identity, &dirs) {
-                continue;
-            }
-            // Atomic write (§3.6: tmp → rename)
-            if let Err(e) = crate::fs::write_file(file_path, &new_content).await {
-                log::warn!(
-                    "§33 rename_file_with_links: {old_path} moved, but {file_path} could not be rewritten: {e}"
-                );
-                continue;
-            }
-            updated_files.push(file_path.clone());
-            updated_contents.push((identity, new_content));
-        }
-    }
+    //    file has moved, so a failure here is never a failed rename: the
+    //    referrer is skipped and REPORTED (issue 594) — its links still spell
+    //    the old name, and only the user can do something about that.
+    let rewritten = rewrite_referrers(&referring_files, old_path, &dirs, |content, _| {
+        replace_wikilink_target(content, &old_target, &new_target)
+    })
+    .await;
 
     // 4. Update every containing index: drop the old entry, re-index the
     //    referring files from the content we already have — each into the
@@ -179,7 +172,7 @@ pub(crate) async fn rename_file_with_links_inner(
     //    paths its own way (Mutation::apply_to).
     let mut per_key: HashMap<String, Vec<Mutation>> = HashMap::new();
     push_for_keys(&mut per_key, &keys, &remove_old);
-    for (identity, content) in updated_contents {
+    for (identity, content) in rewritten.contents {
         let covering = keys_covering(ctx_mgr, &keys, &identity.to_string_lossy()).await;
         push_for_keys(
             &mut per_key,
@@ -202,7 +195,10 @@ pub(crate) async fn rename_file_with_links_inner(
         state.apply(&key, list).await;
     }
 
-    Ok(RenameResult { updated_files })
+    Ok(RenameResult {
+        updated_files: rewritten.updated,
+        skipped_files: rewritten.skipped,
+    })
 }
 
 pub(crate) async fn rename_block_id_inner(
@@ -221,49 +217,38 @@ pub(crate) async fn rename_block_id_inner(
     let keys = keys_of(&dirs);
 
     // 1. Get referring files from every containing index (block_id == old_id,
-    //    target == this file). An index gone since the gate is a refusal.
-    let mut referring_files: Vec<String> = read_indexes(state, &dirs, |index| {
-        index
-            .get_backlinks(file_path)
-            .iter()
-            .filter(|b| b.block_id.as_deref() == Some(old_id))
-            .map(|b| b.source_path.clone())
-            .collect()
+    //    target == this file), with the LINES the index saw the reference on.
+    //    An index gone since the gate is a refusal. A referrer may also hold
+    //    `((other#^old_id))` — another note's block with the same ID — which
+    //    must not change: the rewrite is confined to those lines and, on them,
+    //    to references whose target is this file (issue 594).
+    let mut referring_lines: HashMap<String, HashSet<u32>> = HashMap::new();
+    for (source, line) in read_indexes(state, &dirs, |index| {
+        index.block_reference_lines(file_path, old_id)
     })
-    .await?;
-    referring_files.sort();
-    referring_files.dedup();
-
-    // 2. Read + replace + write (outside lock)
-    let mut updated_files = Vec::new();
-    let mut updated_contents: Vec<(PathBuf, String)> = Vec::new();
-
-    for ref_path in &referring_files {
-        if ref_path == file_path {
-            continue;
-        }
-        let content = match tokio::fs::read_to_string(ref_path).await {
-            Ok(c) => c,
-            Err(_) => continue,
-        };
-        let new_content = replace_block_id_refs(&content, old_id, new_id);
-        if new_content != content {
-            let identity = resolve_canonical(ref_path)?;
-            if !confined_by(&identity, &dirs) {
-                continue;
-            }
-            crate::fs::write_file(ref_path, &new_content)
-                .await
-                .map_err(|e| e.to_string())?;
-            updated_files.push(ref_path.clone());
-            updated_contents.push((identity, new_content));
-        }
+    .await?
+    {
+        referring_lines.entry(source).or_default().insert(line);
     }
+    let mut referring_files: Vec<String> = referring_lines.keys().cloned().collect();
+    referring_files.sort();
+    let target_keys = backlink_keys(file_path);
+
+    // 2. Read + replace + write (outside lock). The first referrer written is
+    //    this command's point of no return: a later one that cannot be
+    //    rewritten is skipped and reported, not turned into an `Err` that
+    //    would claim nothing changed while some files already say `new_id`
+    //    (issue 594).
+    let rewritten = rewrite_referrers(&referring_files, file_path, &dirs, |content, ref_path| {
+        let lines = referring_lines.get(ref_path).cloned().unwrap_or_default();
+        replace_block_id_refs_to(content, &lines, &target_keys, old_id, new_id)
+    })
+    .await;
 
     // 3. Update the containing indexes — each rewritten file goes into the
     //    indexes that cover it, spelled each index's way.
     let mut per_key: HashMap<String, Vec<Mutation>> = HashMap::new();
-    for (identity, content) in updated_contents {
+    for (identity, content) in rewritten.contents {
         let covering = keys_covering(ctx_mgr, &keys, &identity.to_string_lossy()).await;
         push_for_keys(
             &mut per_key,
@@ -278,7 +263,78 @@ pub(crate) async fn rename_block_id_inner(
         state.apply(&key, list).await;
     }
 
-    Ok(RenameResult { updated_files })
+    Ok(RenameResult {
+        updated_files: rewritten.updated,
+        skipped_files: rewritten.skipped,
+    })
+}
+
+/// What rewriting a set of referring files produced: the files rewritten (and
+/// their new content, for the index), and the files that could not be.
+struct Rewritten {
+    updated: Vec<String>,
+    skipped: Vec<String>,
+    contents: Vec<(PathBuf, String)>,
+}
+
+/// Rewrite every referring file with `rewrite`, skipping `own_path` (the file
+/// whose links are being renamed). A referrer that cannot be read, resolves
+/// outside `dirs`, or cannot be written is reported in `skipped`; nothing here
+/// fails the rename, because the caller is past its point of no return.
+async fn rewrite_referrers(
+    referring_files: &[String],
+    own_path: &str,
+    dirs: &[Registered],
+    rewrite: impl Fn(&str, &str) -> String,
+) -> Rewritten {
+    let mut result = Rewritten {
+        updated: Vec::new(),
+        skipped: Vec::new(),
+        contents: Vec::new(),
+    };
+    for ref_path in referring_files {
+        if ref_path == own_path {
+            continue;
+        }
+        let content = match tokio::fs::read_to_string(ref_path).await {
+            Ok(c) => c,
+            Err(e) => {
+                log::warn!(
+                    "rename: {ref_path} could not be read, its links are left as they are: {e}"
+                );
+                result.skipped.push(ref_path.clone());
+                continue;
+            }
+        };
+        let new_content = rewrite(&content, ref_path);
+        if new_content == content {
+            continue;
+        }
+        // A referrer the index names that cannot be resolved, or that now
+        // resolves elsewhere (a symlink planted after the scan), is never
+        // written — and the user hears that its links were not updated,
+        // without being told why.
+        let confined = resolve_canonical(ref_path)
+            .map(|identity| confined_by(&identity, dirs).then_some(identity))
+            .ok()
+            .flatten();
+        let Some(identity) = confined else {
+            log::warn!("rename: {ref_path} does not resolve inside the file's contexts, its links are left as they are");
+            result.skipped.push(ref_path.clone());
+            continue;
+        };
+        // Atomic write (§3.6: tmp → rename)
+        if let Err(e) = crate::fs::write_file(ref_path, &new_content).await {
+            log::warn!(
+                "rename: {ref_path} could not be rewritten, its links are left as they are: {e}"
+            );
+            result.skipped.push(ref_path.clone());
+            continue;
+        }
+        result.updated.push(ref_path.clone());
+        result.contents.push((identity, new_content));
+    }
+    result
 }
 
 pub(crate) async fn rename_namespace_inner(
@@ -341,11 +397,11 @@ pub(crate) async fn rename_namespace_inner(
         .collect();
     others.sort();
     others.dedup();
-    let committed = commit_namespace_rename(old_dir, new_dir, root_path).await?;
+    let mut committed = commit_namespace_rename(old_dir, new_dir, root_path).await?;
     // Full rebuild (many files moved), under the same key every lookup derives,
     // never coalesced onto a publication that may predate the move.
     let rebuilt = rebuild_and_publish(state, &target, root_path, false).await;
-    settle_namespace_rebuild(state, &target.key, rebuilt).await;
+    committed.index_rebuilt = settle_namespace_rebuild(state, &target.key, rebuilt).await;
     // The other covering indexes are dropped rather than rebuilt here: the
     // rename gate rebuilds each the next time it is needed, from its own
     // registered path.
@@ -355,8 +411,17 @@ pub(crate) async fn rename_namespace_inner(
     Ok(committed)
 }
 
-/// The filesystem half of a namespace rename: rewrite the relative wikilinks
-/// that point into the directory, then move it.
+/// The filesystem half of a namespace rename: move the directory, then rewrite
+/// the relative wikilinks that point into it.
+///
+/// The move comes FIRST, so that an `Err` from here still means nothing
+/// changed; the referrers are then read, rewritten and written one at a time,
+/// straight from what is on disk at that moment. A referrer that cannot be
+/// written once the directory has moved is reported in `skipped_files`, never
+/// left pointing at a `new_dir` that does not exist, and never held as a
+/// snapshot that a write would later stamp over someone else's edit
+/// (issue 594). The files outside `old_dir` are unaffected by the move, which
+/// is what makes reading them afterwards correct.
 pub(super) async fn commit_namespace_rename(
     old_dir: &str,
     new_dir: &str,
@@ -379,8 +444,19 @@ pub(super) async fn commit_namespace_rename(
         .filter(|f| f.starts_with(&old_dir_slash))
         .count() as u32;
 
-    // 2. Find and update files outside old_dir that have relative wikilinks pointing into old_dir
+    // 2. Rename the directory — the last step that may fail with nothing done.
+    crate::fs::rename_file(old_dir, new_dir)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // 3. Rewrite the relative wikilinks of every file outside old_dir that
+    //    point into it. Each file is read and written in turn; failures are
+    //    reported, not returned. A file that cannot be READ was never
+    //    inspected — it may or may not refer to the directory — so it is
+    //    reported apart from a referrer whose rewrite failed.
     let mut updated_files = Vec::new();
+    let mut skipped_files = Vec::new();
+    let mut unchecked_files = Vec::new();
 
     for file_path in &all_files {
         // Skip files inside the directory being renamed (they move with it)
@@ -390,27 +466,36 @@ pub(super) async fn commit_namespace_rename(
 
         let content = match tokio::fs::read_to_string(file_path).await {
             Ok(c) => c,
-            Err(_) => continue,
+            Err(e) => {
+                log::warn!(
+                    "§61 rename_namespace: {file_path} could not be read, so its links were not checked: {e}"
+                );
+                unchecked_files.push(file_path.clone());
+                continue;
+            }
         };
 
         let new_content = rewrite_relative_wikilinks(&content, file_path, old_dir, new_dir);
-
-        if new_content != content {
-            crate::fs::write_file(file_path, &new_content)
-                .await
-                .map_err(|e| e.to_string())?;
-            updated_files.push(file_path.clone());
+        if new_content == content {
+            continue;
         }
+        if let Err(e) = crate::fs::write_file(file_path, &new_content).await {
+            log::warn!(
+                "§61 rename_namespace: {old_dir} moved, but {file_path} could not be rewritten: {e}"
+            );
+            skipped_files.push(file_path.clone());
+            continue;
+        }
+        updated_files.push(file_path.clone());
     }
-
-    // 3. Rename the directory
-    crate::fs::rename_file(old_dir, new_dir)
-        .await
-        .map_err(|e| e.to_string())?;
 
     Ok(NamespaceRenameResult {
         updated_files,
+        skipped_files,
+        unchecked_files,
         files_moved,
+        // Decided by `settle_namespace_rebuild` once the rebuild has run.
+        index_rebuilt: false,
     })
 }
 
@@ -420,18 +505,24 @@ pub(super) async fn commit_namespace_rename(
 /// leaves the index to whoever registers the path next. A rebuild that FAILED
 /// leaves an index describing the old layout: that index is dropped (the next
 /// rename rebuilds through the gate) rather than trusted.
+///
+/// Returns whether the index under `key` now describes the new layout, for the
+/// result's `index_rebuilt` (issue 594): `false` for both failure kinds, since
+/// in neither case is there a live index to read.
 pub(super) async fn settle_namespace_rebuild(
     state: &LinkIndexState,
     key: &str,
     rebuilt: Result<IndexStats, IndexBuildError>,
-) {
+) -> bool {
     match rebuilt {
-        Ok(_) | Err(IndexBuildError::Invalidated) => {}
+        Ok(_) => true,
+        Err(IndexBuildError::Invalidated) => false,
         Err(IndexBuildError::Failed(e)) => {
             log::warn!(
                 "§61 rename_namespace: files moved, but the index rebuild failed ({e}); the stale index under {key} is dropped"
             );
             state.drop_index(key).await;
+            false
         }
     }
 }

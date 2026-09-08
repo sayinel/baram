@@ -14,6 +14,7 @@ import { isTabUnsaved, useEditorStore } from "../stores/editor/editor";
 import { useLinkStore } from "../stores/editor/link";
 import { useFileStore } from "../stores/file/file";
 import { useUIStore } from "../stores/ui/ui";
+import { awaitBlockIdRenames } from "../utils/editor/block-id-rename-landing";
 import { isMarkdownFile } from "../utils/file-type";
 import { basename } from "../utils/path-utils";
 
@@ -113,6 +114,9 @@ export async function saveDirtyTab(
 
   // Non-active file tab — write the cached content.
   if (tab.filePath) {
+    // issue 594: a block ID rename of this tab still in flight lands in its
+    // cached content a moment from now; write after it, not before.
+    await awaitBlockIdRenames(tab.id);
     // ‼️ §82 A tab edited in source mode holds its text in the source buffer, NOT in
     // `openFiles`. Writing the cache here would save the pre-edit content and then
     // report success — the silent loss this guard exists to stop, dressed up as a
@@ -181,7 +185,10 @@ export async function saveDirtyTab(
  * than just the active one. No dirty tab → reload immediately; otherwise
  * open the shared modal (intent "reload") so the user can save first.
  */
-export function requestReload(): void {
+export async function requestReload(): Promise<void> {
+  // issue 594: same barrier as quit — a block ID rename still in flight
+  // marks its tab dirty only once it lands.
+  await awaitBlockIdRenames();
   if (unsavedTabs().length === 0) {
     window.location.reload();
     return;
@@ -202,7 +209,9 @@ export function requestReload(): void {
  * cached `openFiles` content for a non-active tab, which is not what that buffer
  * holds. One gap, shared by three paths; it closes in the save path, not here.
  */
-export function requestCloseWorkspace(): void {
+export async function requestCloseWorkspace(): Promise<void> {
+  // issue 594: same barrier as quit and reload.
+  await awaitBlockIdRenames();
   if (unsavedTabs().length === 0) {
     useFileStore.getState().closeFolder();
     return;
@@ -231,6 +240,9 @@ export async function requestCloseContexts(
 ): Promise<void> {
   if (contextIds.length === 0) return;
   const wanted = new Set(contextIds);
+  // issue 594: a block ID rename still in flight marks its tab dirty when it
+  // lands; decide "nothing unsaved" only after it has.
+  await awaitBlockIdRenames();
   if (unsavedTabs((t) => wanted.has(t.contextId)).length === 0) {
     await closeContexts(contextIds);
     return;
@@ -248,6 +260,10 @@ export function useCloseGuard(): void {
   useEffect(() => {
     const unlisten = listen<void>("app://close-requested", () => {
       void (async () => {
+        // issue 594: a block ID rename still in flight lands — and marks its
+        // tab dirty — a moment from now; quitting before it would leave the
+        // other files renamed and this document not.
+        await awaitBlockIdRenames();
         if (unsavedTabs().length === 0) {
           await confirmQuit();
           return;
