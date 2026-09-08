@@ -8,11 +8,11 @@ title: "Getting started"
 
 Download the latest release for your platform from the [Releases](https://github.com/sayinel/baram/releases) page.
 
-| Platform                      | Format              |
-| ----------------------------- | ------------------- |
-| macOS (Apple Silicon / Intel) | `.dmg`              |
-| Windows (x64 / ARM)           | `.msi`, `.exe`      |
-| Linux (x64)                   | `.deb`, `.AppImage` |
+| Platform                      | Format                      |
+| ----------------------------- | --------------------------- |
+| macOS (Apple Silicon / Intel) | `.dmg`                      |
+| Windows (x64)                 | `.msi`, `.exe`              |
+| Linux (x64)                   | `.deb`, `.rpm`, `.AppImage` |
 
 Alternatively, [build from source](https://github.com/sayinel/baram#build-from-source).
 

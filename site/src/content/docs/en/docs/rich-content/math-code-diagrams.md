@@ -26,7 +26,7 @@ Type `$formula$` to create an inline equation. When your cursor is inside the fo
 
 Baram embeds a full CodeMirror 6 editor for each code block:
 
-- **14 supported languages**: JavaScript, TypeScript, Python, Rust, Go, Java, C++, HTML, CSS, JSON, SQL, PHP, XML, YAML
+- **21 supported languages**: C, C++, CSS, Go, HTML, Java, JavaScript, JSON, Kotlin, LaTeX, Markdown, PHP, Python, Ruby, Rust, Shell, SQL, Swift, TypeScript, XML, YAML
 - Language selection dropdown at the top of each block
 - Syntax highlighting
 - Languages are lazy-loaded for performance

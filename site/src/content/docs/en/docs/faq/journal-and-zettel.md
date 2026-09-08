@@ -30,7 +30,7 @@ Zettel notes are addressed by a timestamp `id`, so links are stored as `[[id]]`.
 
 ### How do I enable it?
 
-Go to **Settings > General > Zettel**, toggle it on, and choose a directory. Then open the space from the space menu (status bar), the Command Palette ("Open Zettel"), or `Cmd+Alt+2`.
+Go to **Settings > General > Zettel**, toggle it on, and choose a directory. Then open the space from the space menu (status bar), the Command Palette (**Zettel Perspective**), or `Cmd+Alt+2`.
 
 ---
 

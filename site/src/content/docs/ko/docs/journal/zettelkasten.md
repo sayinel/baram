@@ -1,6 +1,6 @@
 ---
 title: "제텔카스텐 노트"
-sourceHash: "0b9314accdee"
+sourceHash: "ae5de4e7d7e9"
 ---
 
 
@@ -10,7 +10,7 @@ sourceHash: "0b9314accdee"
 
 1. **설정**(`Cmd+,`) → **일반** → **Zettel**을 엽니다
 2. **Zettel** 토글을 켜고 **찾아보기**로 디렉터리를 고릅니다(절대 경로)
-3. 공간 메뉴(상태바), 명령 팔레트("Open Zettel"), 또는 `Cmd+Alt+2`로 공간을 엽니다. Baram이 `inbox/`와 `notes/` 폴더를 자동으로 만듭니다.
+3. 공간 메뉴(상태바), 명령 팔레트의 **Zettel Perspective**(화면구성 항목은 팔레트에서 영어로 표시됩니다), 또는 `Cmd+Alt+2`로 공간을 엽니다. Baram이 `inbox/`와 `notes/` 폴더를 자동으로 만듭니다.
 
 > 켜거나 디렉터리를 정하기 전에 Zettel 공간을 고르면, Baram이 빈 공간으로 전환하지 않고 안내를 보여 줍니다.
 

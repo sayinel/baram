@@ -21,14 +21,16 @@ Connect your notes using `[[wikilinks]]`:
 | `[[page#^block-id]]`     | Link to a specific block      |
 | `[[paper.pdf]]`          | Link to a non-markdown file Baram can view |
 
-**Linking to other file types:** A wikilink can name any file Baram opens in place — PDFs, HTML,
-images, SVG — by writing the extension: `[[diagram.svg]]`, `[[paper.pdf]]`. The autocomplete
-offers these files alongside your notes and labels each one with its type, so you can tell a
-`report.pdf` from a `report.md` before you pick. Plain markdown links work too: `[the paper](papers/attention.pdf)`
+**Linking to other file types:** A wikilink can name any file Baram opens as a document — PDFs,
+HTML, code files, and plain text (`.txt`, `.csv`, `.tsv`, `.log`) — by writing the extension:
+`[[paper.pdf]]`, `[[schema.sql]]`. The autocomplete offers these alongside your notes and labels
+each one with its type, so you can tell a `report.pdf` from a `report.md` before you pick. Images
+and SVG are not offered, because markdown embeds those with `![](…)` — but `[[diagram.svg]]` still
+resolves if you write it yourself. Plain markdown links work too: `[the paper](papers/attention.pdf)`
 opens in Baram rather than handing the file to your operating system.
 
-These links are indexed the same way links between notes are, so a PDF you cite appears in
-backlinks and as a node in the Graph View.
+Only `[[…]]` links are collected into the link index, so a wikilink to a PDF you cite appears in
+backlinks and as a node in the Graph View — a plain markdown link to the same file does not.
 
 **Hover Preview:** Hover over any wikilink to see a preview of the target document's content without navigating away.
 

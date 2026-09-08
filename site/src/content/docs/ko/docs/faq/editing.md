@@ -1,6 +1,6 @@
 ---
 title: "편집"
-sourceHash: "23607676b50c"
+sourceHash: "aa5f44aff835"
 ---
 
 
@@ -48,7 +48,7 @@ Baram이 **편집**하는 것은 표준 마크다운 파일(`.md`, `.markdown`)�
 ## 표 셀을 어떻게 병합하나요?
 
 1. 병합할 셀들을 클릭한 채 끌어 선택합니다
-2. `Cmd+M`(macOS) / `Ctrl+M`(Windows/Linux)을 누르거나, 우클릭해 **Merge Cells**를 고릅니다
+2. `Cmd+M`(macOS) / `Ctrl+M`(Windows/Linux)을 누르거나, 우클릭해 **표 셀 병합**을 고릅니다
 3. 병합된 셀을 다시 나누려면 그 안에 커서를 두고 `Cmd+M`을 다시 누릅니다
 
 **유지:** 셀 병합은 파이프 표 안의 `<`(colspan)와 `^`(rowspan) 표시로 마크다운 파일에 저장됩니다. 그래서 소스 모드 전환(`Cmd+/`), 파일 닫고 다시 열기를 견디고 Obsidian Sheets Extended와 호환됩니다. 지원하지 않는 마크다운 뷰어에서는 그 표시가 그냥 셀 텍스트로 보입니다.

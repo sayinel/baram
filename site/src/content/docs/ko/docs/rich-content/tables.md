@@ -1,6 +1,6 @@
 ---
 title: "표와 목차"
-sourceHash: "e10a7f8f2e63"
+sourceHash: "10b6d0648461"
 ---
 
 ## 표
@@ -23,8 +23,8 @@ Baram은 GFM(GitHub Flavored Markdown) 파이프 표를 지원합니다.
 
 **셀 병합과 분할:**
 
-- **셀 병합** — 여러 셀을 선택하고 `Cmd+M`(macOS) / `Ctrl+M`(Windows/Linux)을 누르거나, 우클릭해 "Merge Cells"를 선택합니다
-- **셀 분할** — 병합된 셀에 커서를 두고 `Cmd+M`을 다시 누르거나, 우클릭해 "Split Cell"을 선택합니다
+- **셀 병합** — 여러 셀을 선택하고 `Cmd+M`(macOS) / `Ctrl+M`(Windows/Linux)을 누르거나, 우클릭해 **표 셀 병합**을 선택합니다
+- **셀 분할** — 병합된 셀에 커서를 두고 `Cmd+M`을 다시 누르거나, 우클릭해 **셀 나누기**를 선택합니다
 - **유지** — 셀 병합은 소스 모드 전환(`Cmd+/`)과 파일 재열기 후에도 유지됩니다. Baram은 파이프 표 안에 `<`와 `^` 표시를 써서 colspan·rowspan 정보를 담습니다:
 
 ```markdown

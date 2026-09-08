@@ -1,6 +1,6 @@
 ---
 title: "시작하기"
-sourceHash: "b978705e2292"
+sourceHash: "383756c5bb2e"
 ---
 
 ## 시작하기
@@ -9,11 +9,11 @@ sourceHash: "b978705e2292"
 
 [Releases](https://github.com/sayinel/baram/releases) 페이지에서 사용하는 플랫폼의 최신 릴리스를 내려받습니다.
 
-| 플랫폼                        | 형식                |
-| ----------------------------- | ------------------- |
-| macOS (Apple Silicon / Intel) | `.dmg`              |
-| Windows (x64 / ARM)           | `.msi`, `.exe`      |
-| Linux (x64)                   | `.deb`, `.AppImage` |
+| 플랫폼                        | 형식                        |
+| ----------------------------- | --------------------------- |
+| macOS (Apple Silicon / Intel) | `.dmg`                      |
+| Windows (x64)                 | `.msi`, `.exe`              |
+| Linux (x64)                   | `.deb`, `.rpm`, `.AppImage` |
 
 또는 [소스에서 직접 빌드](https://github.com/sayinel/baram#build-from-source)할 수 있습니다.
 

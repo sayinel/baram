@@ -1,6 +1,6 @@
 ---
 title: "플러그인과 문제 해결"
-sourceHash: "f2d0bad7bb44"
+sourceHash: "630ede3d78c7"
 ---
 
 ## 플러그인
@@ -95,6 +95,8 @@ Baram은 무손실 왕복 충실성으로 마크다운을 보존합니다. 무�
 
 - 줄 끝 공백이 정규화됐다
 - 그 파일이 Baram이 지원하지 않는 비표준 마크다운 문법을 썼다
+- **참조 스타일 링크가 인라인으로 바뀌었다.** `[label][ref]`와 따로 적은 `[ref]: url` 정의는 그것이
+  가리키는 링크로 열리고 `[label](url)`로 저장된다 — 목적지와 글자는 남지만 참조 형태는 남지 않는다
 
 왕복 결함이라고 생각되면 [GitHub에 알려 주십시오](https://github.com/sayinel/baram/issues).
 

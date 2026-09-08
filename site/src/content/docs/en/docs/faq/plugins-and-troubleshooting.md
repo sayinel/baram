@@ -95,6 +95,9 @@ Baram preserves your markdown with lossless roundtrip fidelity. If something loo
 
 - Trailing whitespace was normalized
 - The file used non-standard markdown syntax that Baram doesn't support
+- **A reference-style link was rewritten inline.** `[label][ref]` with a `[ref]: url` definition
+  elsewhere loads as the link it names and saves as `[label](url)` — the destination and the words
+  survive, the reference form does not
 
 If you believe there's a roundtrip bug, please [report it on GitHub](https://github.com/sayinel/baram/issues).
 
