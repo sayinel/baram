@@ -1,0 +1,57 @@
+---
+// Starlight `components.SocialIcons` 오버라이드 — 문서 헤더의 GitHub 링크에 랜딩 nav 와
+// **같은 별 배지**를 붙인다. 두 표면의 개수·폴백은 `src/scripts/github-stars.ts` 하나가 정한다.
+//
+// 링크 집합은 기본 구현과 **같은 출처**(astro.config 의 `social`)에서 온다 — 여기에 URL 을
+// 다시 적으면 설정과 화면이 갈린다.
+// ‼️ 컴포넌트를 갈아끼우면 기본 구현의 스코프 스타일도 함께 사라진다(Banner 와 같은 사정) —
+//    그래서 링크 색·여백(`padding .5em / margin -.5em`)을 여기서 다시 칠한다.
+import { Icon } from "@astrojs/starlight/components";
+import config from "virtual:starlight/user-config";
+
+const links = config.social ?? [];
+---
+
+{
+  links.map(({ href, icon, label }) => (
+    <a {href} rel="me" class="sl-flex">
+      <span class="sr-only">{label}</span>
+      <Icon name={icon} />
+      {icon === "github" && <span class="star-count" data-github-stars />}
+    </a>
+  ))
+}
+
+<script>
+  import { initStarBadges } from "../scripts/github-stars.ts";
+
+  void initStarBadges();
+</script>
+
+<style>
+  @layer starlight.core {
+    a {
+      align-items: center;
+      gap: 0.25rem;
+      color: var(--sl-color-text-accent);
+      padding: 0.5em;
+      margin: -0.5em;
+      /* ‼️ 문서 쪽에는 `a` 의 밑줄을 지우는 전역 규칙이 없다(랜딩은 site.css 가 지운다).
+         기본 구현의 링크는 아이콘 + `sr-only` 텍스트뿐이라 UA 기본 밑줄이 보일 일이
+         없었는데, 별 개수를 눈에 보이게 넣자 "★ 3" 아래 밑줄이 그어졌다. */
+      text-decoration: none;
+    }
+    a:hover {
+      color: var(--sl-color-white);
+    }
+    /* 별 개수는 fetch 가 성공해야 채워진다. 비어 있으면 아이콘만 남아 옛 헤더와 같아진다. */
+    .star-count {
+      font-size: var(--sl-text-xs);
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+    }
+    .star-count:empty {
+      display: none;
+    }
+  }
+</style>

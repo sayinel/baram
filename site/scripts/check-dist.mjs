@@ -266,6 +266,11 @@ for (const locale of ROUTES.locales) {
     problems.push(`[모바일 토글 없음] ${locale} 랜딩 — 좁은 화면에서 nav 를 접을 수 없다`);
   }
 
+  // 별 배지 훅. 개수는 런타임 fetch 라 여기서 잴 수 없지만, 훅이 사라지면 배지도 사라진다.
+  if (!html.includes("data-github-stars")) {
+    problems.push(`[별 배지 훅 없음] ${locale} 랜딩 — GitHub 껍데기에 개수 자리가 없다`);
+  }
+
   const themeAt = html.indexOf('id="theme-select"');
   const themeBlock = themeAt < 0 ? "" : html.slice(themeAt, html.indexOf("</select>", themeAt));
   const themeValues = [...themeBlock.matchAll(/<option value="([^"]+)"/g)].map((m) => m[1]).join(",");
@@ -289,6 +294,17 @@ for (const locale of ROUTES.locales) {
   }
 }
 if (!landings) problems.push("[랜딩 0개] 헤더 단정이 한 로케일에서도 돌지 않았다");
+
+// 문서 헤더도 **같은 배지**를 낸다. Starlight 기본 `SocialIcons` 는 아이콘만 내므로,
+// 오버라이드(astro.config 의 `components.SocialIcons`) 가 빠지면 조용히 옛 모양으로
+// 돌아가 두 헤더가 다시 갈린다 — 설정 한 줄이라 사라지기 쉽다.
+for (const locale of ROUTES.locales) {
+  const file = resolveInDist(withBase(docPath("index", locale)));
+  if (!file) continue; // 문서 홈 부재는 위 단정들이 잡는다
+  if (!readFileSync(file, "utf8").includes("data-github-stars")) {
+    problems.push(`[별 배지 훅 없음] ${locale} 문서 헤더 — SocialIcons 오버라이드가 빠졌다`);
+  }
+}
 
 const total = PAGES.length;
 const done = PAGES.filter((p) => migrated(p.slug)).length;

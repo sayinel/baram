@@ -83,7 +83,12 @@ export default defineConfig({
       // 낡은 번역 판정(routeData)과 그 표시(Banner). 판정은 렌더와 분리해 둔다 —
       // 고아 번역을 빌드 실패로 만드는 일이 컴포넌트가 렌더되는지에 달리면 안 된다.
       routeMiddleware: "./src/routeData.ts",
-      components: { Banner: "./src/components/Banner.astro" },
+      // 오버라이드. SocialIcons 는 GitHub 링크에 별 개수를 붙이려고 덮는다 —
+      // 기본 구현은 아이콘만 내고, 랜딩 nav 에는 배지가 있어 두 헤더가 달라 보였다.
+      components: {
+        Banner: "./src/components/Banner.astro",
+        SocialIcons: "./src/components/SocialIcons.astro",
+      },
       sidebar: buildSidebar(),
       social: [{ icon: "github", label: "GitHub", href: "https://github.com/sayinel/baram" }],
       plugins: [
