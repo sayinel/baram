@@ -20,7 +20,10 @@ import { useLinkStore } from "../../stores/editor/link";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
-import { landCommittedBlockIdRename } from "../../utils/editor/block-id-rename-landing";
+import {
+  landCommittedBlockIdRename,
+  trackBlockIdRename,
+} from "../../utils/editor/block-id-rename-landing";
 import { logger } from "../../utils/logger";
 
 export const blockIdDecoKey = new PluginKey<BlockIdDecoState>(
@@ -241,7 +244,7 @@ export function commitBlockIdEdit(
   // A trailing `.catch` also catches whatever the success body throws, and
   // the failure toast below says the ID was not changed — which by then
   // would be the opposite of the truth.
-  renameBlockId(tab.filePath, oldId, newId).then(
+  const chain = renameBlockId(tab.filePath, oldId, newId).then(
     async (result) => {
       // The document follows — wherever it is by now (issue 594): still in
       // this view, in a keep-alive editor, cached behind another tab, in a
@@ -300,6 +303,10 @@ export function commitBlockIdEdit(
       toast("blockId.rename.failed.toast", "error", { message: String(e) });
     },
   );
+  // A save of this tab waits for the whole chain (issue 594): serializing a
+  // document whose rename is still in flight would write the old ID, and if
+  // that save is a Save & Close nothing would write the new one.
+  trackBlockIdRename(tab.id, chain);
 }
 
 /** The active tab and the file behind it, if it has one. */

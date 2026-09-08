@@ -20,12 +20,32 @@ describe("renameBlockIdInMarkdown — the definition", () => {
     );
   });
 
-  it("keeps CRLF line endings and trailing spaces exactly", () => {
-    expect(rename("a ^old  \r\nb\r\n")).toBe("a ^fresh  \r\nb\r\n");
+  it("keeps CRLF line endings", () => {
+    expect(rename("a ^old\r\nb\r\n")).toBe("a ^fresh\r\nb\r\n");
+  });
+
+  it("leaves an ID followed by trailing spaces alone — the parser does not read it as a block ID", () => {
+    expect(rename("a ^old  \n")).toBe("a ^old  \n");
   });
 
   it("does not touch a longer ID that starts the same way, or one mid-line", () => {
     expect(rename("a ^old2\nb ^old c\n")).toBe("a ^old2\nb ^old c\n");
+  });
+
+  it("does not close a fence on a line that carries an info string, and needs the same character", () => {
+    // ```md is an opener, never a closer; ~~~ does not close ```.
+    const md = "```\nx ^old\n```md\ny ^old\n~~~\nz ^old\n```\nafter ^old\n";
+    expect(rename(md)).toBe(
+      "```\nx ^old\n```md\ny ^old\n~~~\nz ^old\n```\nafter ^fresh\n",
+    );
+  });
+
+  it("leaves indented code and inline code spans alone", () => {
+    const md =
+      "    code ^old\n\tmore ((#^old))\nsee `((#^old))` and ((#^old))\n";
+    expect(rename(md)).toBe(
+      "    code ^old\n\tmore ((#^old))\nsee `((#^old))` and ((#^fresh))\n",
+    );
   });
 
   it("leaves fenced code alone, whichever fence character and length", () => {
@@ -51,15 +71,23 @@ describe("renameBlockIdInMarkdown — this document's references", () => {
     );
   });
 
-  it("renames a reference that names this file by stem, however it spells the path", () => {
-    expect(rename("((note#^old)) ((notes/note#^old)) ((note.md#^old))\n")).toBe(
-      "((note#^fresh)) ((notes/note#^fresh)) ((note.md#^fresh))\n",
+  it("renames a reference that names this file, however it spells the path", () => {
+    expect(
+      rename(
+        "((note#^old)) ((Note#^old)) ((notes/note#^old)) ((note.md#^old)) ((./note#^old)) ((../notes/note.markdown#^old))\n",
+      ),
+    ).toBe(
+      "((note#^fresh)) ((Note#^fresh)) ((notes/note#^fresh)) ((note.md#^fresh)) ((./note#^fresh)) ((../notes/note.markdown#^fresh))\n",
     );
   });
 
-  it("leaves a reference to another file's block alone, even with the same ID", () => {
-    expect(rename("((other#^old)) ((dir/other#^old))\n")).toBe(
-      "((other#^old)) ((dir/other#^old))\n",
+  it("leaves a reference to another file's block alone, even with the same ID or stem", () => {
+    expect(
+      rename(
+        "((other#^old)) ((dir/other#^old)) ((elsewhere/note#^old)) ((../note#^old))\n",
+      ),
+    ).toBe(
+      "((other#^old)) ((dir/other#^old)) ((elsewhere/note#^old)) ((../note#^old))\n",
     );
   });
 
@@ -71,11 +99,21 @@ describe("renameBlockIdInMarkdown — this document's references", () => {
 });
 
 describe("refersToThisDocument", () => {
-  it("accepts the empty target and stem matches, percent-escaped too", () => {
+  it("accepts the empty target and case-insensitive stem matches, percent-escaped too", () => {
     expect(refersToThisDocument("", FILE)).toBe(true);
     expect(refersToThisDocument("note", FILE)).toBe(true);
-    expect(refersToThisDocument("Note", FILE)).toBe(false);
+    expect(refersToThisDocument("Note", FILE)).toBe(true);
+    expect(refersToThisDocument("note.markdown", FILE)).toBe(true);
     expect(refersToThisDocument("a%29b", "/v/a)b.md")).toBe(true);
+  });
+
+  it("resolves relative and path-qualified targets against this file's path", () => {
+    expect(refersToThisDocument("./note", FILE)).toBe(true);
+    expect(refersToThisDocument("../notes/note", FILE)).toBe(true);
+    expect(refersToThisDocument("notes/note", FILE)).toBe(true);
+    expect(refersToThisDocument("/vault/notes/note", FILE)).toBe(true);
+    expect(refersToThisDocument("../note", FILE)).toBe(false);
+    expect(refersToThisDocument("elsewhere/note", FILE)).toBe(false);
   });
 
   it("rejects another stem", () => {

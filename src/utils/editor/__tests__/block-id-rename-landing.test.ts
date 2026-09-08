@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../../../ipc/invoke", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../ipc/invoke")>()),
   readFile: vi.fn(),
+  updateFileIndex: vi.fn(async () => ({ fileCount: 0, linkCount: 0 })),
   writeFile: vi.fn(async () => undefined),
 }));
 vi.mock("../programmatic-update", async (importOriginal) => ({
@@ -25,7 +26,7 @@ vi.mock("../serialize-live-doc", () => ({
   serializeEditorState: (state: EditorState) => `md:${idsOf(state).join(",")}`,
 }));
 
-import { readFile, writeFile } from "../../../ipc/invoke";
+import { readFile, updateFileIndex, writeFile } from "../../../ipc/invoke";
 import {
   type DocumentSurfaceAccess,
   useEditorStore,
@@ -33,9 +34,11 @@ import {
 import { useFileStore } from "../../../stores/file/file";
 import { logger } from "../../logger";
 import {
+  awaitBlockIdRenames,
   drainPendingBlockIdRenames,
   landCommittedBlockIdRename,
   prunePendingBlockIdRenames,
+  trackBlockIdRename,
 } from "../block-id-rename-landing";
 import { isTabLoading, loadedTabId } from "../programmatic-update";
 
@@ -126,6 +129,7 @@ const markSourceEdited = vi.fn();
 const setFileContent = vi.fn();
 let cache: Map<string, EditorState>;
 let pooled: FakeView | null;
+let pooledComplete = true;
 let access: DocumentSurfaceAccess;
 
 beforeEach(() => {
@@ -138,10 +142,12 @@ beforeEach(() => {
   setFileContent.mockReset();
   cache = new Map();
   pooled = null;
+  pooledComplete = true;
   const shared = makeView(makeState());
   access = {
     editor: { isDestroyed: false, view: shared.view } as never,
     editorStateCache: cache,
+    isKeepaliveComplete: () => pooledComplete,
     keepaliveEditor: (tabId) =>
       tabId === "t1" && pooled
         ? ({
@@ -160,6 +166,7 @@ beforeEach(() => {
     markSourceEdited,
     sourceBufferAccess: null,
     sourceModeTabs: [],
+    staleContentTabs: [],
     tabs: [
       { filePath: "/vault/note.md", id: "t1", isDirty: false, type: "file" },
       { filePath: "/vault/other.md", id: "t2", isDirty: false, type: "file" },
@@ -230,21 +237,50 @@ describe("landing in the view that asked", () => {
     expect(dispatched).toHaveLength(0);
   });
 
-  it("queues a rename whose block a progressive load has not appended yet", async () => {
-    const { view } = makeView(
-      EditorState.create({
-        doc: schema.node("doc", null, [schema.node("paragraph")]),
-        schema,
-      }),
-    );
+  it("does not dispatch into a document still loading — even if the block is already in — but queues", async () => {
+    // The first chunk holds the block; the rest is still appending. A
+    // transaction now would sit in a partial document that the pool may
+    // release, and `saveOutgoingTab` never caches a loading tab.
+    const { dispatched, view } = makeView(makeState());
     vi.mocked(isTabLoading).mockReturnValue(true);
-    await expect(landCommittedBlockIdRename(OP, view)).resolves.toBe("pending");
-    // The load finishes with the block in place; installContent drains.
-    const loaded = makeView(makeState());
-    (access.editor as { view: EditorView }).view = loaded.view;
+    useFileStore.setState({
+      openFiles: new Map([["/vault/note.md", "hello ^old\n"]]),
+      setFileContent,
+    } as never);
+
+    await expect(landCommittedBlockIdRename(OP, view)).resolves.toBe("content");
+    expect(dispatched).toHaveLength(0);
+    expect(setFileContent).toHaveBeenCalledWith(
+      "/vault/note.md",
+      "hello ^fresh\n",
+    );
+    // The load finishes; the content-loaded notification drains the queue
+    // into the now complete document.
     vi.mocked(isTabLoading).mockReturnValue(false);
+    (access.editor as { view: EditorView }).view = view;
     drainPendingBlockIdRenames("t1");
-    expect(idsOf(loaded.view.state)).toEqual(RENAMED);
+    expect(idsOf(view.state)).toEqual(RENAMED);
+  });
+
+  it("goes to the buffer, not the still-alive ProseMirror document, once the tab is in source mode", async () => {
+    // Entering source mode copies the document into a CodeMirror buffer and
+    // leaves the PM document in the shared view. The buffer is the truth now.
+    const { dispatched, view } = makeView(makeState());
+    let buffer = "hello ^old\n\n((#^old))\n";
+    useEditorStore.setState({
+      sourceBufferAccess: {
+        getSourceBuffer: () => buffer,
+        setSourceBuffer: (_tabId: string, content: string) => {
+          buffer = content;
+        },
+      },
+      sourceModeTabs: ["t1"],
+    } as never);
+
+    await expect(landCommittedBlockIdRename(OP, view)).resolves.toBe("source");
+    expect(dispatched).toHaveLength(0);
+    expect(buffer).toBe("hello ^fresh\n\n((#^fresh))\n");
+    expect(markSourceEdited).toHaveBeenCalledWith("t1", true);
   });
 
   it("reports a block that is simply gone", async () => {
@@ -306,6 +342,42 @@ describe("landing behind another tab", () => {
     expect(markDirty).toHaveBeenCalledWith("t1", true);
   });
 
+  it("does not trust the cached document of a tab flagged stale — the text is the authority", async () => {
+    // The file changed on disk while the tab was in the background (a task
+    // write, a sync); openFiles has that newer text and the cache is dropped
+    // on return. Applying to the cache and serializing it would stamp the old
+    // document over the newer text.
+    cache.set("t1", makeState());
+    useEditorStore.setState({ staleContentTabs: ["t1"] } as never);
+    useFileStore.setState({
+      openFiles: new Map([["/vault/note.md", "newer text ^old\n"]]),
+      setFileContent,
+    } as never);
+
+    await expect(landCommittedBlockIdRename(OP)).resolves.toBe("content");
+    expect(idsOf(cache.get("t1")!)).toEqual(["old", null, "old", "old"]);
+    expect(setFileContent).toHaveBeenCalledWith(
+      "/vault/note.md",
+      "newer text ^fresh\n",
+    );
+  });
+
+  it("does not trust an incomplete keep-alive entry", async () => {
+    pooled = makeView(makeState());
+    pooledComplete = false;
+    useFileStore.setState({
+      openFiles: new Map([["/vault/note.md", "hello ^old\n"]]),
+      setFileContent,
+    } as never);
+
+    await expect(landCommittedBlockIdRename(OP)).resolves.toBe("content");
+    expect(pooled.dispatched).toHaveLength(0);
+    expect(setFileContent).toHaveBeenCalledWith(
+      "/vault/note.md",
+      "hello ^fresh\n",
+    );
+  });
+
   it("rewrites a source-mode tab's buffer and marks it edited", async () => {
     let buffer = "hello ^old\n\n((#^old)) ((other#^old))\n";
     useEditorStore.setState({
@@ -360,13 +432,15 @@ describe("landing on disk", () => {
     vi.mocked(loadedTabId).mockReturnValue("t2");
   });
 
-  it("rewrites the saved file of a tab that was closed within the round trip", async () => {
+  it("rewrites the saved file of a tab that was closed within the round trip, and re-indexes it", async () => {
     vi.mocked(readFile).mockResolvedValue("hello ^old\n\n((#^old))\n");
     await expect(landCommittedBlockIdRename(OP)).resolves.toBe("disk");
     expect(writeFile).toHaveBeenCalledWith(
       "/vault/note.md",
       "hello ^fresh\n\n((#^fresh))\n",
     );
+    // The app's own write keeps the watcher quiet, so the index is told here.
+    expect(updateFileIndex).toHaveBeenCalledWith("/vault/note.md");
   });
 
   it("writes nothing when the file no longer has the block", async () => {
@@ -403,5 +477,31 @@ describe("the pending queue", () => {
     vi.mocked(isTabLoading).mockReturnValue(false);
     drainPendingBlockIdRenames("t1");
     expect(loaded.dispatched).toHaveLength(0);
+  });
+});
+
+describe("in-flight renames and the save paths", () => {
+  it("awaitBlockIdRenames resolves once the tab's tracked chains have settled", async () => {
+    let finish!: () => void;
+    const chain = new Promise<void>((r) => {
+      finish = r;
+    });
+    trackBlockIdRename("t1", chain);
+    let settled = false;
+    const waiting = awaitBlockIdRenames("t1").then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    finish();
+    await waiting;
+    expect(settled).toBe(true);
+    // Forgotten once settled: the next wait is immediate.
+    await expect(awaitBlockIdRenames("t1")).resolves.toBeUndefined();
+  });
+
+  it("awaits nothing for a tab with no rename in flight", async () => {
+    await expect(awaitBlockIdRenames("t9")).resolves.toBeUndefined();
+    await expect(awaitBlockIdRenames()).resolves.toBeUndefined();
   });
 });

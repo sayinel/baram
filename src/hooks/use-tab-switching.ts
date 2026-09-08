@@ -94,6 +94,7 @@ export function useTabSwitching({
     const access: DocumentSurfaceAccess = {
       editor,
       editorStateCache: editorStateCache.current,
+      isKeepaliveComplete: (tabId) => keepalive.isComplete(tabId),
       keepaliveEditor: (tabId) => keepalive.get(tabId),
     };
     registerDocumentSurfaceAccess(access);

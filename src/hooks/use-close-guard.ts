@@ -14,6 +14,7 @@ import { isTabUnsaved, useEditorStore } from "../stores/editor/editor";
 import { useLinkStore } from "../stores/editor/link";
 import { useFileStore } from "../stores/file/file";
 import { useUIStore } from "../stores/ui/ui";
+import { awaitBlockIdRenames } from "../utils/editor/block-id-rename-landing";
 import { isMarkdownFile } from "../utils/file-type";
 import { basename } from "../utils/path-utils";
 
@@ -113,6 +114,9 @@ export async function saveDirtyTab(
 
   // Non-active file tab — write the cached content.
   if (tab.filePath) {
+    // issue 594: a block ID rename of this tab still in flight lands in its
+    // cached content a moment from now; write after it, not before.
+    await awaitBlockIdRenames(tab.id);
     // ‼️ §82 A tab edited in source mode holds its text in the source buffer, NOT in
     // `openFiles`. Writing the cache here would save the pre-edit content and then
     // report success — the silent loss this guard exists to stop, dressed up as a

@@ -15,6 +15,7 @@ import { useSnapshotStore } from "../stores/editor/snapshot";
 import { useFileStore } from "../stores/file/file";
 import { useSettingsStore } from "../stores/settings/store";
 import { useUIStore } from "../stores/ui/ui";
+import { awaitBlockIdRenames } from "../utils/editor/block-id-rename-landing";
 import { serializeLiveDoc } from "../utils/editor/serialize-live-doc";
 import { isBinaryViewerFile, isMarkdownFile } from "../utils/file-type";
 import { isJournalPath } from "../utils/journal/journal";
@@ -250,6 +251,11 @@ export function useFileOperations({
     // PDF tabs are read-only viewers — writing the source buffer (which holds
     // another tab's text) into a .pdf would destroy the binary.
     if (isBinaryViewerFile(saveTab.filePath)) return;
+
+    // issue 594: a block ID rename of this tab still in flight lands in the
+    // document a moment from now; serializing before it does would write the
+    // old ID — and on a Save & Close, nothing would ever write the new one.
+    await awaitBlockIdRenames(saveTab.id);
 
     const isCode = saveTab.filePath && !isMarkdownFile(saveTab.filePath);
     const md =

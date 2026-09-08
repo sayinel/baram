@@ -4,24 +4,35 @@
 // `rename_block_id` rewrites `((file#^old))` in every OTHER file and leaves
 // the defining document to the editor, which owns it. The editor commits its
 // half only after the backend has said yes — and by then the user may have
-// switched or closed the tab. The document is then not in the view that asked:
-// it is a live keep-alive editor, a cached EditorState, a source-mode buffer,
-// the `openFiles` snapshot, or only the file on disk. This module knows every
-// one of those places and puts the rename into the one the document is in.
-// A toast is a receipt, not a destination.
+// switched or closed the tab, entered source mode, or still be loading a large
+// file. The document is then not (only) in the view that asked: it is a
+// source-mode buffer, a live keep-alive editor, a cached EditorState, the
+// `openFiles` snapshot, or only the file on disk. This module knows every one
+// of those places, knows which of them is the AUTHORITY at the moment, and
+// puts the rename there. A toast is a receipt, not a destination.
+//
+// Authority, in order: a source-mode tab's buffer (its ProseMirror document is
+// still alive but stale); the text (`openFiles`) for a tab whose document
+// objects are not to be trusted — flagged stale, still loading, or an
+// incomplete keep-alive entry; then the document objects themselves.
 import type { Node as PmNode } from "@tiptap/pm/model";
 import type { EditorState, Transaction } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 
-import { readFile, writeFile } from "../../ipc/invoke";
+import { readFile, updateFileIndex, writeFile } from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor/editor";
+import { useLinkStore } from "../../stores/editor/link";
 import { useFileStore } from "../../stores/file/file";
 import { logger } from "../logger";
 import {
   refersToThisDocument,
   renameBlockIdInMarkdown,
 } from "./block-id-rename-markdown";
-import { isTabLoading, loadedTabId } from "./programmatic-update";
+import {
+  isTabLoading,
+  loadedTabId,
+  subscribeContentLoaded,
+} from "./programmatic-update";
 import { serializeEditorState } from "./serialize-live-doc";
 
 export interface CommittedBlockIdRename {
@@ -35,8 +46,9 @@ export interface CommittedBlockIdRename {
 /**
  * Where the rename landed. `dropped`: the block `^oldId` is nowhere the
  * document could be — deleted or renamed again meanwhile, or the disk write
- * failed — and the caller tells the user. `pending`: the document is still
- * being installed; the queue is drained by `installContent`.
+ * failed — and the caller tells the user. `pending`: the document is between
+ * places; the queue is drained when content is installed. `content`: the text
+ * changed and the queue re-checks the document once it is installed.
  */
 export type Landing =
   | "cache"
@@ -47,6 +59,20 @@ export type Landing =
   | "pending"
   | "source"
   | "view";
+
+/**
+ * A save must not capture a document while a rename it will have to carry is
+ * still in flight: `handleSave` serializes and then awaits the write, and a
+ * rename landing in between is written by nothing — the tab may close on that
+ * write. Save paths await the tab's renames here first.
+ */
+export function awaitBlockIdRenames(tabId?: string): Promise<void> {
+  const chains =
+    tabId === undefined
+      ? [...inFlight.values()].flat()
+      : (inFlight.get(tabId) ?? []);
+  return Promise.all(chains).then(() => undefined);
+}
 
 /**
  * The transaction that renames the block and this document's own references
@@ -85,6 +111,30 @@ export function buildBlockIdRenameTransaction(
   return tr;
 }
 
+/**
+ * Called when a tab's content has been installed in an editor (every load
+ * path passes `markContentLoaded`): renames that arrived while the document
+ * was between places, or that only reached its text, are re-landed against the
+ * real document. Idempotent — a document that already says `newId` has no
+ * `oldId` block, and the entry is dropped quietly.
+ */
+export function drainPendingBlockIdRenames(tabId: string): void {
+  const ops = pending.get(tabId);
+  if (!ops) return;
+  pending.delete(tabId);
+  const access = useEditorStore.getState().documentSurfaceAccess;
+  for (const op of ops) {
+    const editor =
+      access?.keepaliveEditor(tabId) ??
+      (loadedTabId() === tabId ? access?.editor : null);
+    void land(
+      op,
+      editor && !editor.isDestroyed ? editor.view : undefined,
+      true,
+    );
+  }
+}
+
 /** Position of the paragraph/heading carrying `blockId`, or null. */
 export function findBlockPosById(doc: PmNode, blockId: string): null | number {
   let found: null | number = null;
@@ -105,36 +155,13 @@ export function findBlockPosById(doc: PmNode, blockId: string): null | number {
 /**
  * Put a committed rename into its document. `view` is the editor the edit was
  * made in, if the caller still has it. Synchronous for every destination but
- * the disk; the promise settles when that write has too.
+ * the disk; the promise settles when that write (and its index refresh) has.
  */
 export async function landCommittedBlockIdRename(
   op: CommittedBlockIdRename,
   view?: EditorView,
 ): Promise<Landing> {
   return land(op, view, false);
-}
-
-/**
- * `installContent` calls this once a tab's document is in an editor: renames
- * that arrived while it was being installed (or that only reached its text)
- * are re-landed against the real document. Idempotent — a document that
- * already says `newId` has no `oldId` block, and the entry is dropped quietly.
- */
-export function drainPendingBlockIdRenames(tabId: string): void {
-  const ops = pending.get(tabId);
-  if (!ops) return;
-  pending.delete(tabId);
-  const access = useEditorStore.getState().documentSurfaceAccess;
-  for (const op of ops) {
-    const editor =
-      access?.keepaliveEditor(tabId) ??
-      (loadedTabId() === tabId ? access?.editor : null);
-    void land(
-      op,
-      editor && !editor.isDestroyed ? editor.view : undefined,
-      true,
-    );
-  }
 }
 
 /** Forget the queued renames of tabs that are no longer open. */
@@ -146,7 +173,29 @@ export function prunePendingBlockIdRenames(
   }
 }
 
+/**
+ * Register a rename's whole chain — IPC, landing, cache refresh — as in
+ * flight for `tabId`, for `awaitBlockIdRenames`. The chain must never reject
+ * (the commit path owns its errors); it is forgotten once settled.
+ */
+export function trackBlockIdRename(
+  tabId: string,
+  chain: Promise<unknown>,
+): void {
+  const chains = inFlight.get(tabId) ?? [];
+  chains.push(chain);
+  inFlight.set(tabId, chains);
+  void chain.finally(() => {
+    const remaining = (inFlight.get(tabId) ?? []).filter((c) => c !== chain);
+    if (remaining.length === 0) inFlight.delete(tabId);
+    else inFlight.set(tabId, remaining);
+  });
+}
+
+const inFlight = new Map<string, Promise<unknown>[]>();
 const pending = new Map<string, CommittedBlockIdRename[]>();
+
+subscribeContentLoaded(drainPendingBlockIdRenames);
 
 function dropped(op: CommittedBlockIdRename, why: string): "dropped" {
   logger.warn(
@@ -170,35 +219,19 @@ async function land(
   const { documentSurfaceAccess: access, sourceBufferAccess } = editorStore;
   const tab = editorStore.tabs.find((t) => t.id === op.tabId);
 
-  // 1. The view the edit was made in, if it still holds this tab's document.
-  if (view && viewHoldsTab(view, op.tabId)) {
-    const tr = buildBlockIdRenameTransaction(view.state, op);
-    if (tr) {
-      view.dispatch(tr);
-      // The tab may already be on its way out: `saveOutgoingTab` has cached
-      // its state and serialized it BEFORE this landed. Refresh both, or the
-      // deferred restore brings the old ID back.
-      if (editorStore.activeTabId !== op.tabId) {
-        if (access?.editorStateCache.has(op.tabId)) {
-          access.editorStateCache.set(op.tabId, view.state);
-        }
-        publishBackgroundChange(op, view.state);
-      }
-      return "view";
-    }
-    if (isTabLoading(op.tabId) && !draining) {
-      // A progressive load is still appending blocks; ours may be among them.
-      enqueue(op);
-      return "pending";
-    }
-    return dropped(op, "the document in the editor has no such block");
-  }
-
   // The tab is gone: only the file on disk is left to hold the definition.
   if (!tab) return landOnDisk(op);
 
-  // 2. A source-mode tab: its buffer is the authoritative text.
-  if (editorStore.sourceModeTabs.includes(op.tabId) && sourceBufferAccess) {
+  // 1. A source-mode tab: its buffer is the authoritative text. Its
+  //    ProseMirror document is still alive in the shared view — and stale;
+  //    a transaction there would be lost when the buffer is parsed back, and
+  //    would wake the auto-save for a document that is not the truth.
+  if (editorStore.sourceModeTabs.includes(op.tabId)) {
+    if (!sourceBufferAccess) {
+      if (draining) return dropped(op, "the source buffer is not reachable");
+      enqueue(op);
+      return "pending";
+    }
     const buffer = sourceBufferAccess.getSourceBuffer(op.tabId);
     const next = renameBlockIdInMarkdown(
       buffer,
@@ -213,9 +246,39 @@ async function land(
     return "source";
   }
 
-  // 3. A large document's keep-alive editor: live, but hidden while its tab is
+  // 2. Document objects that must not be trusted: a tab flagged stale (its
+  //    file changed while it was in the background; the cache is dropped on
+  //    return and the text re-parsed), a load still appending blocks, or a
+  //    keep-alive entry the load never completed. The text is the authority;
+  //    a document object gets the rename once one is installed for real.
+  const pooled = access?.keepaliveEditor(op.tabId) ?? null;
+  const textOnly =
+    editorStore.staleContentTabs.includes(op.tabId) ||
+    isTabLoading(op.tabId) ||
+    (pooled !== null &&
+      access !== null &&
+      !access.isKeepaliveComplete(op.tabId));
+  if (textOnly) return landInText(op, draining);
+
+  // 3. The view the edit was made in, if it still holds this tab's document.
+  if (view && viewHoldsTab(view, op.tabId)) {
+    const tr = buildBlockIdRenameTransaction(view.state, op);
+    if (!tr) return dropped(op, "the document in the editor has no such block");
+    view.dispatch(tr);
+    // The tab may already be on its way out: `saveOutgoingTab` has cached
+    // its state and serialized it BEFORE this landed. Refresh both, or the
+    // deferred restore brings the old ID back.
+    if (editorStore.activeTabId !== op.tabId) {
+      if (access?.editorStateCache.has(op.tabId)) {
+        access.editorStateCache.set(op.tabId, view.state);
+      }
+      publishBackgroundChange(op, view.state);
+    }
+    return "view";
+  }
+
+  // 4. A large document's keep-alive editor: live, but hidden while its tab is
   //    in the background, so nothing else marks it dirty for us.
-  const pooled = access?.keepaliveEditor(op.tabId);
   if (pooled && !pooled.isDestroyed) {
     const tr = buildBlockIdRenameTransaction(pooled.state, op);
     if (!tr) return dropped(op, "the keep-alive editor has no such block");
@@ -224,7 +287,7 @@ async function land(
     return "keepalive";
   }
 
-  // 4. An ordinary background tab: its document is a cached EditorState (undo
+  // 5. An ordinary background tab: its document is a cached EditorState (undo
   //    history included), restored when the tab comes back.
   const cached = access?.editorStateCache.get(op.tabId);
   if (access && cached) {
@@ -236,35 +299,47 @@ async function land(
     return "cache";
   }
 
-  // 5. No document object anywhere, only text: a tab flagged stale (its cache
-  //    was dropped) or one still being installed. Rename the text — it is what
-  //    the next load parses — and re-check once a document is in.
-  const content = useFileStore.getState().openFiles.get(op.filePath);
-  if (content !== undefined) {
-    const next = renameBlockIdInMarkdown(
-      content,
-      op.filePath,
-      op.oldId,
-      op.newId,
-    );
-    if (next !== content) {
-      useFileStore.getState().setFileContent(op.filePath, next);
-      editorStore.markDirty(op.tabId, true);
-    }
-    if (!draining) {
-      enqueue(op);
-      return "content";
-    }
-    return next !== content
-      ? "content"
-      : dropped(op, "the cached text has no such block");
-  }
-  if (draining) return dropped(op, "the document never became available");
-  enqueue(op);
-  return "pending";
+  // 6. No document object anywhere — only text, or nothing yet.
+  return landInText(op, draining);
 }
 
-/** The tab was closed within the round trip: the saved file is the document. */
+/**
+ * Rename the text in `openFiles` — what the next load parses — and, unless
+ * this is already the re-check, queue a re-check against the document once
+ * one is installed. Without any text either, only the queue is left.
+ */
+function landInText(op: CommittedBlockIdRename, draining: boolean): Landing {
+  const content = useFileStore.getState().openFiles.get(op.filePath);
+  if (content === undefined) {
+    if (draining) return dropped(op, "the document never became available");
+    enqueue(op);
+    return "pending";
+  }
+  const next = renameBlockIdInMarkdown(
+    content,
+    op.filePath,
+    op.oldId,
+    op.newId,
+  );
+  if (next !== content) {
+    useFileStore.getState().setFileContent(op.filePath, next);
+    useEditorStore.getState().markDirty(op.tabId, true);
+  }
+  if (!draining) {
+    enqueue(op);
+    return "content";
+  }
+  return next !== content
+    ? "content"
+    : dropped(op, "the cached text has no such block");
+}
+
+/**
+ * The tab was closed within the round trip: the saved file is the document.
+ * `writeFile` is the app's atomic write and keeps the watcher quiet, so the
+ * index is refreshed here; a failure of that leaves the file right and only
+ * the backlinks stale, which is logged apart from a failed write.
+ */
 async function landOnDisk(op: CommittedBlockIdRename): Promise<Landing> {
   try {
     const content = await readFile(op.filePath);
@@ -277,10 +352,18 @@ async function landOnDisk(op: CommittedBlockIdRename): Promise<Landing> {
     if (next === content)
       return dropped(op, "the file on disk has no such block");
     await writeFile(op.filePath, next);
-    return "disk";
   } catch (e) {
     return dropped(op, `the file on disk could not be updated: ${String(e)}`);
   }
+  try {
+    await updateFileIndex(op.filePath);
+    useLinkStore.getState().invalidate();
+  } catch (e) {
+    logger.warn(
+      `[blockId] ${op.filePath} renamed on disk, but its index entry could not be refreshed: ${String(e)}`,
+    );
+  }
+  return "disk";
 }
 
 /**

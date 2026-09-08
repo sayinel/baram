@@ -87,6 +87,8 @@ export interface DocumentSurfaceAccess {
   /** The shared editor — holds the document of `loadedTabId()`. */
   editor: Editor;
   editorStateCache: Map<string, PmEditorState>;
+  /** Whether the pool's entry for the tab holds the WHOLE document. */
+  isKeepaliveComplete: (tabId: string) => boolean;
   keepaliveEditor: (tabId: string) => Editor | null;
 }
 
