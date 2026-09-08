@@ -1,3 +1,4 @@
+import type { Translate } from "../../i18n/useTranslation";
 import type { MenuItem } from "./context-menu-types";
 // §4.8 Context Menu — table menu builder
 import type { Editor } from "@tiptap/react";
@@ -11,11 +12,15 @@ import {
 /**
  * Build context menu items for a table cell, prepended with `baseItems`.
  * Returns null if the resolved position is not inside a table cell.
+ *
+ * ‼️ `t` is a parameter, not a module-level import: `MenuItem.label` is what MenuList paints,
+ * so the label has to be resolved here, and a locale-bound `t` only exists inside a component.
  */
 export function buildTableMenu(
   editor: Editor,
   resolved: ReturnType<typeof editor.state.doc.resolve>,
   baseItems: MenuItem[],
+  t: Translate,
 ): MenuItem[] | null {
   // Walk up from resolved pos to find cell
   let tableCell = null;
@@ -34,28 +39,28 @@ export function buildTableMenu(
     ...baseItems,
     { label: "", action: () => {}, separator: true },
     {
-      label: "Add Row Above",
+      label: t("tableMenu.addRowAbove"),
       action: () =>
         chainWithVimExternalEdit(editor).focus().addRowBefore().run(),
     },
     {
-      label: "Add Row Below",
+      label: t("tableMenu.addRowBelow"),
       action: () =>
         chainWithVimExternalEdit(editor).focus().addRowAfter().run(),
     },
     {
-      label: "Add Column Left",
+      label: t("tableMenu.addColumnLeft"),
       action: () =>
         chainWithVimExternalEdit(editor).focus().addColumnBefore().run(),
     },
     {
-      label: "Add Column Right",
+      label: t("tableMenu.addColumnRight"),
       action: () =>
         chainWithVimExternalEdit(editor).focus().addColumnAfter().run(),
     },
     { label: "", action: () => {}, separator: true },
     {
-      label: `Align Left${currentAlign === "left" ? " \u2713" : ""}`,
+      label: `${t("tableToolbar.alignLeft")}${currentAlign === "left" ? " \u2713" : ""}`,
       action: () =>
         chainWithVimExternalEdit(editor)
           .focus()
@@ -63,7 +68,7 @@ export function buildTableMenu(
           .run(),
     },
     {
-      label: `Align Center${currentAlign === "center" ? " \u2713" : ""}`,
+      label: `${t("tableToolbar.alignCenter")}${currentAlign === "center" ? " \u2713" : ""}`,
       action: () =>
         chainWithVimExternalEdit(editor)
           .focus()
@@ -71,7 +76,7 @@ export function buildTableMenu(
           .run(),
     },
     {
-      label: `Align Right${currentAlign === "right" ? " \u2713" : ""}`,
+      label: `${t("tableToolbar.alignRight")}${currentAlign === "right" ? " \u2713" : ""}`,
       action: () =>
         chainWithVimExternalEdit(editor)
           .focus()
@@ -79,7 +84,7 @@ export function buildTableMenu(
           .run(),
     },
     {
-      label: `No Alignment${currentAlign === null ? " \u2713" : ""}`,
+      label: `${t("tableMenu.noAlignment")}${currentAlign === null ? " \u2713" : ""}`,
       action: () =>
         chainWithVimExternalEdit(editor)
           .focus()
@@ -92,7 +97,7 @@ export function buildTableMenu(
     ...(editor.can().mergeCells()
       ? [
           {
-            label: "Merge Cells",
+            label: t("keybindings.formatting.tableMerge"),
             action: () =>
               chainWithVimExternalEdit(editor).focus().mergeCells().run(),
           },
@@ -101,7 +106,7 @@ export function buildTableMenu(
     ...(editor.can().splitCell()
       ? [
           {
-            label: "Split Cell",
+            label: t("tableToolbar.splitCell"),
             action: () =>
               chainWithVimExternalEdit(editor).focus().splitCell().run(),
           },
@@ -109,32 +114,32 @@ export function buildTableMenu(
       : []),
     { label: "", action: () => {}, separator: true },
     {
-      label: "Delete Row",
+      label: t("tableToolbar.deleteRow"),
       action: () => chainWithVimExternalEdit(editor).focus().deleteRow().run(),
     },
     {
-      label: "Delete Column",
+      label: t("tableToolbar.deleteColumn"),
       action: () =>
         chainWithVimExternalEdit(editor).focus().deleteColumn().run(),
     },
     {
-      label: "Delete Table",
+      label: t("tableMenu.deleteTable"),
       action: () =>
         chainWithVimExternalEdit(editor).focus().deleteTable().run(),
     },
     { label: "", action: () => {}, separator: true },
     {
-      label: "Toggle Header Row",
+      label: t("tableMenu.toggleHeaderRow"),
       action: () =>
         chainWithVimExternalEdit(editor).focus().toggleHeaderRow().run(),
     },
     {
-      label: "Toggle Header Column",
+      label: t("tableMenu.toggleHeaderColumn"),
       action: () =>
         chainWithVimExternalEdit(editor).focus().toggleHeaderColumn().run(),
     },
     {
-      label: "Copy as Markdown",
+      label: t("tableMenu.copyAsMarkdown"),
       action: () => {
         const table = findTableAtCursor(editor);
         if (!table || !table.node) return;
@@ -152,7 +157,7 @@ export function buildTableMenu(
       },
     },
     {
-      label: "Copy as HTML",
+      label: t("tableMenu.copyAsHtml"),
       action: () => {
         const table = findTableAtCursor(editor);
         if (!table) return;
@@ -170,21 +175,24 @@ export function buildTableMenu(
  * lower-frequency commands kept out of the compact primary toolbar row. Rendered
  * by the shared MenuList, same as the right-click context menu.
  */
-export function buildTableOverflowItems(editor: Editor): MenuItem[] {
+export function buildTableOverflowItems(
+  editor: Editor,
+  t: Translate,
+): MenuItem[] {
   return [
     {
-      label: "Toggle Header Row",
+      label: t("tableMenu.toggleHeaderRow"),
       action: () =>
         chainWithVimExternalEdit(editor).focus().toggleHeaderRow().run(),
     },
     {
-      label: "Toggle Header Column",
+      label: t("tableMenu.toggleHeaderColumn"),
       action: () =>
         chainWithVimExternalEdit(editor).focus().toggleHeaderColumn().run(),
     },
     { label: "", action: () => {}, separator: true },
     {
-      label: "Copy as Markdown",
+      label: t("tableMenu.copyAsMarkdown"),
       action: () => {
         const table = findTableAtCursor(editor);
         if (!table || !table.node) return;
@@ -200,7 +208,7 @@ export function buildTableOverflowItems(editor: Editor): MenuItem[] {
       },
     },
     {
-      label: "Copy as HTML",
+      label: t("tableMenu.copyAsHtml"),
       action: () => {
         const table = findTableAtCursor(editor);
         if (!table) return;
@@ -212,7 +220,7 @@ export function buildTableOverflowItems(editor: Editor): MenuItem[] {
     },
     { label: "", action: () => {}, separator: true },
     {
-      label: "Delete Table",
+      label: t("tableMenu.deleteTable"),
       action: () =>
         chainWithVimExternalEdit(editor).focus().deleteTable().run(),
     },

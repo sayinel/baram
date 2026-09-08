@@ -14,6 +14,8 @@ import { AlignCenter, AlignLeft, AlignRight, Sparkles } from "lucide-react";
 
 // §5.5 Table Toolbar — floating toolbar shown when cursor is in a table cell
 import { chainWithVimExternalEdit } from "../../extensions/plugins/vim/vim-keys";
+import { useTranslation } from "../../i18n/useTranslation";
+import { useCommandLabel } from "../../keybindings/use-command-label";
 import {
   canonicalNodeAt,
   serializeDetachedDoc,
@@ -141,6 +143,8 @@ interface TableToolbarProps {
 }
 
 export function TableToolbar({ editor }: TableToolbarProps) {
+  const { t } = useTranslation();
+  const commandLabel = useCommandLabel();
   const [visible, setVisible] = useState(false);
   const [position, setPosition] = useState<{ left: number; top: number }>({
     top: 0,
@@ -284,21 +288,21 @@ export function TableToolbar({ editor }: TableToolbarProps) {
         <button
           className={`table-toolbar-btn icon-btn ${currentAlign === "left" ? "table-toolbar-btn-active" : ""}`}
           onClick={() => setAlign(currentAlign === "left" ? null : "left")}
-          title="Align Left"
+          title={t("tableToolbar.alignLeft")}
         >
           <AlignLeft {...TABLE_ICON} />
         </button>
         <button
           className={`table-toolbar-btn ${currentAlign === "center" ? "table-toolbar-btn-active" : ""}`}
           onClick={() => setAlign(currentAlign === "center" ? null : "center")}
-          title="Align Center"
+          title={t("tableToolbar.alignCenter")}
         >
           <AlignCenter {...TABLE_ICON} />
         </button>
         <button
           className={`table-toolbar-btn ${currentAlign === "right" ? "table-toolbar-btn-active" : ""}`}
           onClick={() => setAlign(currentAlign === "right" ? null : "right")}
-          title="Align Right"
+          title={t("tableToolbar.alignRight")}
         >
           <AlignRight {...TABLE_ICON} />
         </button>
@@ -311,7 +315,7 @@ export function TableToolbar({ editor }: TableToolbarProps) {
               onClick={() =>
                 chainWithVimExternalEdit(editor).focus().mergeCells().run()
               }
-              title="Merge Cells (⌘M)"
+              title={commandLabel("formatting.tableMerge")}
             >
               <MergeCellsIcon />
             </button>
@@ -321,7 +325,7 @@ export function TableToolbar({ editor }: TableToolbarProps) {
               onClick={() =>
                 chainWithVimExternalEdit(editor).focus().splitCell().run()
               }
-              title="Split Cell"
+              title={t("tableToolbar.splitCell")}
             >
               <SplitCellsIcon />
             </button>
@@ -333,7 +337,7 @@ export function TableToolbar({ editor }: TableToolbarProps) {
           onClick={() =>
             chainWithVimExternalEdit(editor).focus().deleteRow().run()
           }
-          title="Delete Row"
+          title={t("tableToolbar.deleteRow")}
         >
           <DeleteRowIcon />
         </button>
@@ -342,7 +346,7 @@ export function TableToolbar({ editor }: TableToolbarProps) {
           onClick={() =>
             chainWithVimExternalEdit(editor).focus().deleteColumn().run()
           }
-          title="Delete Column"
+          title={t("tableToolbar.deleteColumn")}
         >
           <DeleteColIcon />
         </button>
@@ -368,13 +372,13 @@ export function TableToolbar({ editor }: TableToolbarProps) {
             if (!md) return;
             showNodeViewAIMenu(e.currentTarget, "table", md, editor, table.pos);
           }}
-          title="AI Commands"
+          title={t("toolbar.ai.commands")}
         >
           <Sparkles size={14} />
         </button>
         <div className="table-toolbar-separator" />
         <button
-          aria-label="More table options"
+          aria-label={t("tableToolbar.moreOptions")}
           className="table-toolbar-btn"
           onClick={(e) => {
             if (overflow) {
@@ -385,14 +389,14 @@ export function TableToolbar({ editor }: TableToolbarProps) {
             setOverflow({ x: r.left, y: r.bottom + 4 });
           }}
           ref={overflowToggleRef}
-          title="More"
+          title={t("tableToolbar.more")}
         >
           <MoreIcon />
         </button>
       </div>
       {overflow && (
         <MenuList
-          items={buildTableOverflowItems(editor)}
+          items={buildTableOverflowItems(editor, t)}
           onClose={() => setOverflow(null)}
           toggleRef={overflowToggleRef}
           x={overflow.x}

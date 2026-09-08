@@ -28,6 +28,7 @@ import {
 // §4.8 Block Handle menu — item list + submenus, mounted only while open
 // §11.2.3 BlockHandle AI submenu — contextual AI actions per block type
 import { chainWithVimExternalEdit } from "../../extensions/plugins/vim/vim-keys";
+import { useTranslation } from "../../i18n/useTranslation";
 import { useEditorStore } from "../../stores/editor/editor";
 import {
   dispatchAIAction,
@@ -74,6 +75,7 @@ export function BlockHandleMenu({
   left,
   onClose,
 }: BlockHandleMenuProps) {
+  const { t } = useTranslation();
   const [aiSubOpen, setAiSubOpen] = useState(false);
   const [turnIntoOpen, setTurnIntoOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -163,7 +165,7 @@ export function BlockHandleMenu({
     const existingId = node.attrs.blockId as null | string;
     if (existingId) {
       return {
-        label: `Edit Block ID (^${existingId})`,
+        label: t("blockId.edit", { id: existingId }),
         separator: true,
         icon: <Hash size={ICON_SIZE} />,
         action: () => {
@@ -173,7 +175,7 @@ export function BlockHandleMenu({
       };
     }
     return {
-      label: "Add Block ID",
+      label: t("blockId.add"),
       separator: true,
       icon: <Hash size={ICON_SIZE} />,
       action: () => {
@@ -193,12 +195,12 @@ export function BlockHandleMenu({
       return [];
     return [
       {
-        label: "Copy link",
+        label: t("blockMenu.copyLink"),
         icon: <Link size={ICON_SIZE} />,
         action: () => copyBlockLink("wikilink"),
       },
       {
-        label: "Copy block ref",
+        label: t("blockMenu.copyRef"),
         icon: <Hash size={ICON_SIZE} />,
         action: () => copyBlockLink("ref"),
       },
@@ -207,7 +209,7 @@ export function BlockHandleMenu({
 
   const menuItems: DropdownItem[] = [
     {
-      label: "Duplicate",
+      label: t("blockMenu.duplicate"),
       icon: <Copy size={ICON_SIZE} />,
       action: () => {
         const node = editor.state.doc.nodeAt(pos);
@@ -222,7 +224,7 @@ export function BlockHandleMenu({
     },
     ...copyLinkItems,
     {
-      label: "Move Up",
+      label: t("blockMenu.moveUp"),
       separator: true,
       icon: <ArrowUp size={ICON_SIZE} />,
       action: () => {
@@ -241,7 +243,7 @@ export function BlockHandleMenu({
       },
     },
     {
-      label: "Move Down",
+      label: t("blockMenu.moveDown"),
       icon: <ArrowDown size={ICON_SIZE} />,
       action: () => {
         const node = editor.state.doc.nodeAt(pos);
@@ -260,7 +262,7 @@ export function BlockHandleMenu({
       },
     },
     {
-      label: "Delete",
+      label: t("common.delete"),
       icon: <Trash2 size={ICON_SIZE} />,
       action: () => {
         const node = editor.state.doc.nodeAt(pos);
@@ -294,7 +296,7 @@ export function BlockHandleMenu({
           <button className="block-handle-menu-item block-handle-ai-item">
             <span className="block-handle-item-left">
               <Replace size={ICON_SIZE} />
-              <span>Turn into</span>
+              <span>{t("blockMenu.turnInto")}</span>
             </span>
             <span className="block-handle-ai-arrow">{"▸"}</span>
           </button>
@@ -307,7 +309,7 @@ export function BlockHandleMenu({
                     className="block-handle-menu-item"
                     onClick={() => handleMenuAction(() => item.run())}
                   >
-                    {item.isActive ? `✓ ${item.label}` : item.label}
+                    {item.isActive ? `✓ ${t(item.label)}` : t(item.label)}
                   </button>
                 </Fragment>
               ))}
@@ -342,7 +344,7 @@ export function BlockHandleMenu({
             <button className="block-handle-menu-item block-handle-ai-item">
               <span className="block-handle-item-left">
                 <Sparkles size={ICON_SIZE} />
-                <span>Ask AI</span>
+                <span>{t("blockMenu.askAI")}</span>
               </span>
               <span className="block-handle-ai-arrow">{"▸"}</span>
             </button>
@@ -355,7 +357,7 @@ export function BlockHandleMenu({
                     key={action.id}
                     onClick={() => handleAIAction(action)}
                   >
-                    {action.label}
+                    {t(action.label)}
                   </button>
                 ))}
                 <div className="block-handle-separator" />
@@ -363,7 +365,7 @@ export function BlockHandleMenu({
                   className="block-handle-menu-item"
                   onClick={handleCustomInstruction}
                 >
-                  Custom Instruction
+                  {t("blockMenu.customInstruction")}
                 </button>
               </div>
             )}

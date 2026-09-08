@@ -54,61 +54,61 @@ function runMath(editor: Editor, pos: number): void {
 // divider starting each group.
 const SPECS: Spec[] = [
   {
-    label: "Text",
+    label: "turnInto.text",
     isActive: (n) => n.type.name === "paragraph",
     // setNode (core command) instead of setParagraph: Baram's Paragraph
     // extension doesn't declare a setParagraph command on ChainedCommands.
     run: (e) => chainWithVimExternalEdit(e).focus().setNode("paragraph").run(),
   },
   {
-    label: "Heading 1",
+    label: "turnInto.heading1",
     isActive: (n) => n.type.name === "heading" && n.attrs.level === 1,
     run: (e) =>
       chainWithVimExternalEdit(e).focus().toggleHeading({ level: 1 }).run(),
   },
   {
-    label: "Heading 2",
+    label: "turnInto.heading2",
     isActive: (n) => n.type.name === "heading" && n.attrs.level === 2,
     run: (e) =>
       chainWithVimExternalEdit(e).focus().toggleHeading({ level: 2 }).run(),
   },
   {
-    label: "Heading 3",
+    label: "turnInto.heading3",
     isActive: (n) => n.type.name === "heading" && n.attrs.level === 3,
     run: (e) =>
       chainWithVimExternalEdit(e).focus().toggleHeading({ level: 3 }).run(),
   },
   {
-    label: "Heading 4",
+    label: "turnInto.heading4",
     isActive: (n) => n.type.name === "heading" && n.attrs.level === 4,
     run: (e) =>
       chainWithVimExternalEdit(e).focus().toggleHeading({ level: 4 }).run(),
   },
   {
-    label: "Heading 5",
+    label: "turnInto.heading5",
     isActive: (n) => n.type.name === "heading" && n.attrs.level === 5,
     run: (e) =>
       chainWithVimExternalEdit(e).focus().toggleHeading({ level: 5 }).run(),
   },
   {
-    label: "Heading 6",
+    label: "turnInto.heading6",
     isActive: (n) => n.type.name === "heading" && n.attrs.level === 6,
     run: (e) =>
       chainWithVimExternalEdit(e).focus().toggleHeading({ level: 6 }).run(),
   },
   {
-    label: "To-do List",
+    label: "turnInto.taskList",
     separator: true,
     isActive: (n) => n.type.name === "taskList",
     run: (e) => chainWithVimExternalEdit(e).focus().toggleTaskList().run(),
   },
   {
-    label: "Unordered List",
+    label: "turnInto.unorderedList",
     isActive: (n) => n.type.name === "bulletList",
     run: (e) => chainWithVimExternalEdit(e).focus().toggleBulletList().run(),
   },
   {
-    label: "Ordered List",
+    label: "turnInto.orderedList",
     isActive: (n) => n.type.name === "orderedList",
     run: (e) => chainWithVimExternalEdit(e).focus().toggleOrderedList().run(),
   },
@@ -116,35 +116,47 @@ const SPECS: Spec[] = [
     // §5.1 Toggle (collapsible). wrapIn keeps the block's content as the
     // toggle's summary (first child); setToggle would insert a new empty toggle,
     // losing the current text.
-    label: "Toggle",
+    label: "turnInto.toggle",
     separator: true,
     isActive: (n) => n.type.name === "toggle",
     run: (e) => chainWithVimExternalEdit(e).focus().wrapIn("toggle").run(),
   },
   {
-    label: "Quote",
+    label: "turnInto.quote",
     separator: true,
     isActive: (n) => n.type.name === "blockquote",
     run: (e) => chainWithVimExternalEdit(e).focus().toggleBlockquote().run(),
   },
   {
     // §5.9 Callout. wrapIn keeps the block as the callout's body (like Toggle).
-    label: "Callout",
+    label: "turnInto.callout",
     isActive: (n) => n.type.name === "callout",
     run: (e) => chainWithVimExternalEdit(e).focus().wrapIn("callout").run(),
   },
   {
-    label: "Code",
+    label: "turnInto.code",
     isActive: (n) => n.type.name === "codeBlock",
     run: (e) => chainWithVimExternalEdit(e).focus().toggleCodeBlock().run(),
   },
   {
     // §5.3 Math block (atom). Converts the block's text into the formula.
-    label: "Math",
+    label: "turnInto.math",
     isActive: (n) => n.type.name === "mathBlock",
     run: (e, pos) => runMath(e, pos),
   },
 ];
+
+/**
+ * Every i18n key a "Turn into" item can carry.
+ *
+ * Derived from SPECS, not copied: `label-key-coverage.test.ts` checks these resolve in both
+ * catalogues, and a hand-written list there would pass for the labels it happens to name and
+ * let the next spec added here escape untranslated — which is how `settings.activitybar.item.tasks`
+ * shipped as a raw key.
+ */
+export const TURN_INTO_LABEL_KEYS: readonly string[] = SPECS.map(
+  (s) => s.label,
+);
 
 /** §4.8 Build "Turn into" items for the block at `pos`. */
 export function buildTurnIntoItems(

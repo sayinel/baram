@@ -6,6 +6,7 @@ import { GripVertical, Plus } from "lucide-react";
 
 // §4.8 Block Handle — drag handle + menu on block hover
 import { chainWithVimExternalEdit } from "../../extensions/plugins/vim/vim-keys";
+import { useTranslation } from "../../i18n/useTranslation";
 import { getEditorZoom } from "../../utils/zoom-coords";
 import { BlockHandleMenu } from "./BlockHandleMenu";
 import { useBlockDrag } from "./use-block-drag";
@@ -16,6 +17,7 @@ interface BlockHandleProps {
 }
 
 export function BlockHandle({ editor }: BlockHandleProps) {
+  const { t } = useTranslation();
   const [menuOpen, setMenuOpen] = useState(false);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
   const { handle, setHandle, cancelHideTimeout, scheduleHide } =
@@ -79,7 +81,7 @@ export function BlockHandle({ editor }: BlockHandleProps) {
               .run();
             setHandle(null);
           }}
-          title="Add block below"
+          title={t("blockHandle.addBelow")}
         >
           <Plus size={12} strokeWidth={2} />
         </button>
@@ -90,7 +92,7 @@ export function BlockHandle({ editor }: BlockHandleProps) {
             setMenuOpen(!menuOpen);
           }}
           onMouseDown={(e) => startDrag(e, handle.pos)}
-          title="Drag to move · click for menu"
+          title={t("blockHandle.drag")}
         >
           <GripVertical size={16} strokeWidth={2} />
         </button>

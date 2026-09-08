@@ -2,24 +2,29 @@
 
 import type { AuthorshipStats } from "../../utils/authorship-tracker";
 
+import { useTranslation } from "../../i18n/useTranslation";
+
 interface AuthorshipPanelProps {
   stats: AuthorshipStats;
 }
 
 export function AuthorshipPanel({ stats }: AuthorshipPanelProps) {
+  const { t } = useTranslation();
   return (
     <div className="authorship-panel">
       <div className="authorship-stats">
         <div className="authorship-stat">
-          <span className="authorship-label">Human</span>
+          <span className="authorship-label">{t("authorship.human")}</span>
           <span className="authorship-value">{stats.humanPercent}%</span>
         </div>
         <div className="authorship-stat">
-          <span className="authorship-label">AI Generated</span>
+          <span className="authorship-label">
+            {t("authorship.aiGenerated")}
+          </span>
           <span className="authorship-value">{stats.aiGeneratedPercent}%</span>
         </div>
         <div className="authorship-stat">
-          <span className="authorship-label">AI Modified</span>
+          <span className="authorship-label">{t("authorship.aiModified")}</span>
           <span className="authorship-value">{stats.aiModifiedPercent}%</span>
         </div>
       </div>

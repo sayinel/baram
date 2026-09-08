@@ -9,6 +9,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { Editor } from "@tiptap/react";
 
+import { useTranslation } from "../../i18n/useTranslation";
 import { activeEditorScrollContainer } from "../../utils/editor/active-scroll-container";
 import { getEditorZoom } from "../../utils/zoom-coords";
 import { findTableNearPoint } from "./table-insert-coords";
@@ -40,6 +41,7 @@ interface HandleState extends HandleAnchor {
 }
 
 export function TableSelectionHandles({ editor }: { editor: Editor }) {
+  const { t } = useTranslation();
   const [handle, setHandle] = useState<HandleState | null>(null);
   const rafRef = useRef(0);
   const latestEventRef = useRef<MouseEvent | null>(null);
@@ -277,8 +279,8 @@ export function TableSelectionHandles({ editor }: { editor: Editor }) {
           style={computeHandleStyle(handle, getEditorZoom())}
           title={
             handle.axis === "col"
-              ? "Select or drag column"
-              : "Select or drag row"
+              ? t("tableHandles.selectColumn")
+              : t("tableHandles.selectRow")
           }
           type="button"
         >

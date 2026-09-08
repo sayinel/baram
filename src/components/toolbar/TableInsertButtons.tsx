@@ -6,6 +6,7 @@ import { TextSelection } from "@tiptap/pm/state";
 
 // §5.5 Table Insert Buttons — hover ⊕ buttons for row/column insertion
 import { chainWithVimExternalEdit } from "../../extensions/plugins/vim/vim-keys";
+import { useTranslation } from "../../i18n/useTranslation";
 import { activeEditorScrollContainer } from "../../utils/editor/active-scroll-container";
 import { getEditorZoom } from "../../utils/zoom-coords";
 import {
@@ -57,6 +58,7 @@ const DETECT_OUTER = 32; // px outside the table edge (wider for zoom tolerance)
 const DETECT_INNER = 16; // px inside the table edge
 
 export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
+  const { t } = useTranslation();
   const [button, setButton] = useState<ButtonState | null>(null);
   const rafRef = useRef(0);
   // Latest mousemove event — the rAF below reads this rather than the event
@@ -407,7 +409,9 @@ export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
         scheduleHide();
       }}
       style={style}
-      title={isCol ? "Insert column" : "Insert row"}
+      title={
+        isCol ? t("tableHandles.insertColumn") : t("tableHandles.insertRow")
+      }
     >
       <svg
         fill="none"

@@ -1,3 +1,4 @@
+import type { Translate } from "../../i18n/useTranslation";
 import type { MenuItem } from "./context-menu-types";
 // §4.8 Context Menu — math node menu builders
 import type { Editor } from "@tiptap/react";
@@ -5,8 +6,17 @@ import type { Editor } from "@tiptap/react";
 import { withVimExternalEdit } from "../../extensions/plugins/vim/vim-keys";
 import { copyMathToPNG } from "../../utils/katex/katex-to-png";
 
-/** Build context menu items for a mathBlock node at `pos`. */
-export function buildMathBlockMenu(editor: Editor, pos: number): MenuItem[] {
+/**
+ * Build context menu items for a mathBlock node at `pos`.
+ *
+ * ‼️ `t` is a parameter for the same reason as in `context-menu-table.ts`: `MenuItem.label` is
+ * the string MenuList paints, and a locale-bound `t` only exists inside a component.
+ */
+export function buildMathBlockMenu(
+  editor: Editor,
+  pos: number,
+  t: Translate,
+): MenuItem[] {
   const resolved = editor.state.doc.resolve(pos);
   // atom:true — find the mathBlock node via nodeAt or nodeAfter
   let mathNode = editor.state.doc.nodeAt(pos);
@@ -25,18 +35,18 @@ export function buildMathBlockMenu(editor: Editor, pos: number): MenuItem[] {
 
   return [
     {
-      label: "Copy LaTeX Source",
+      label: t("mathMenu.copyLatex"),
       action: () => navigator.clipboard.writeText(formula),
     },
     {
-      label: "Copy as Image",
+      label: t("mathMenu.copyAsImage"),
       action: () => {
         copyMathToPNG(formula, true);
       },
     },
     { label: "", action: () => {}, separator: true },
     {
-      label: `Size: Small${currentSize === "small" ? " \u2713" : ""}`,
+      label: `${t("mathMenu.sizeSmall")}${currentSize === "small" ? " \u2713" : ""}`,
       action: () => {
         const tr = editor.state.tr;
         tr.setNodeMarkup(mathPos, undefined, {
@@ -47,7 +57,7 @@ export function buildMathBlockMenu(editor: Editor, pos: number): MenuItem[] {
       },
     },
     {
-      label: `Size: Normal${currentSize === "normal" ? " \u2713" : ""}`,
+      label: `${t("mathMenu.sizeNormal")}${currentSize === "normal" ? " \u2713" : ""}`,
       action: () => {
         const tr = editor.state.tr;
         tr.setNodeMarkup(mathPos, undefined, {
@@ -58,7 +68,7 @@ export function buildMathBlockMenu(editor: Editor, pos: number): MenuItem[] {
       },
     },
     {
-      label: `Size: Large${currentSize === "large" ? " \u2713" : ""}`,
+      label: `${t("mathMenu.sizeLarge")}${currentSize === "large" ? " \u2713" : ""}`,
       action: () => {
         const tr = editor.state.tr;
         tr.setNodeMarkup(mathPos, undefined, {
@@ -70,7 +80,7 @@ export function buildMathBlockMenu(editor: Editor, pos: number): MenuItem[] {
     },
     { label: "", action: () => {}, separator: true },
     {
-      label: "Convert to Inline Math",
+      label: t("mathMenu.toInline"),
       action: () => {
         const tr = editor.state.tr;
         const mathInlineType = editor.schema.nodes.mathInline;
@@ -81,7 +91,7 @@ export function buildMathBlockMenu(editor: Editor, pos: number): MenuItem[] {
       },
     },
     {
-      label: "Delete Equation",
+      label: t("mathMenu.delete"),
       action: () => {
         const tr = editor.state.tr;
         tr.delete(mathPos, mathPos + mathNode.nodeSize);
@@ -95,6 +105,7 @@ export function buildMathBlockMenu(editor: Editor, pos: number): MenuItem[] {
 export function buildMathInlineMenu(
   editor: Editor,
   target: HTMLElement,
+  t: Translate,
 ): MenuItem[] {
   // Find the inline math node by walking the DOM to get ProseMirror position
   const nodeViewWrapper = target.closest(
@@ -115,18 +126,18 @@ export function buildMathInlineMenu(
 
   return [
     {
-      label: "Copy LaTeX Source",
+      label: t("mathMenu.copyLatex"),
       action: () => navigator.clipboard.writeText(formula),
     },
     {
-      label: "Copy as Image",
+      label: t("mathMenu.copyAsImage"),
       action: () => {
         copyMathToPNG(formula, false);
       },
     },
     { label: "", action: () => {}, separator: true },
     {
-      label: `Size: Small${currentSize === "small" ? " \u2713" : ""}`,
+      label: `${t("mathMenu.sizeSmall")}${currentSize === "small" ? " \u2713" : ""}`,
       action: () => {
         const tr = editor.state.tr;
         tr.setNodeMarkup(nodePos, undefined, {
@@ -137,7 +148,7 @@ export function buildMathInlineMenu(
       },
     },
     {
-      label: `Size: Normal${currentSize === "normal" ? " \u2713" : ""}`,
+      label: `${t("mathMenu.sizeNormal")}${currentSize === "normal" ? " \u2713" : ""}`,
       action: () => {
         const tr = editor.state.tr;
         tr.setNodeMarkup(nodePos, undefined, {
@@ -148,7 +159,7 @@ export function buildMathInlineMenu(
       },
     },
     {
-      label: `Size: Large${currentSize === "large" ? " \u2713" : ""}`,
+      label: `${t("mathMenu.sizeLarge")}${currentSize === "large" ? " \u2713" : ""}`,
       action: () => {
         const tr = editor.state.tr;
         tr.setNodeMarkup(nodePos, undefined, {
@@ -160,7 +171,7 @@ export function buildMathInlineMenu(
     },
     { label: "", action: () => {}, separator: true },
     {
-      label: "Convert to Block Math",
+      label: t("mathMenu.toBlock"),
       action: () => {
         const tr = editor.state.tr;
         const mathBlockType = editor.schema.nodes.mathBlock;
@@ -172,7 +183,7 @@ export function buildMathInlineMenu(
       },
     },
     {
-      label: "Delete Equation",
+      label: t("mathMenu.delete"),
       action: () => {
         const tr = editor.state.tr;
         tr.delete(nodePos, nodePos + mathNode.nodeSize);
