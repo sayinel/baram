@@ -326,6 +326,7 @@ async fn rename_namespace_rebuilds_under_the_same_key_the_lookups_read() {
     .unwrap();
     assert!(result.index_rebuilt);
     assert!(result.skipped_files.is_empty());
+    assert!(result.unchecked_files.is_empty());
     let key = active_index_key(&ctx).await.unwrap();
     let outgoing = outgoing_links(&state, &key).await;
     assert!(outgoing.contains_key(&format!("{root}/ns2/c.md")));
@@ -1971,8 +1972,37 @@ async fn a_namespace_rename_moves_the_directory_before_it_writes_any_referrer() 
         return;
     }
     assert_eq!(result.skipped_files, vec![format!("{root}/ro/d.md")]);
+    assert!(result.unchecked_files.is_empty());
     assert_eq!(
         std::fs::read_to_string(dir.path().join("ro/d.md")).unwrap(),
         "see [[../ns/c]]"
     );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_namespace_rename_reports_a_file_it_could_not_read_apart_from_a_referrer_it_could_not_write(
+) {
+    // issue 594: the namespace path scans every file outside the directory,
+    // so a file that cannot be READ is not known to refer to it at all. It is
+    // reported as unchecked, not accused of holding stale links.
+    use std::os::unix::fs::PermissionsExt;
+    let ctx = ContextManager::new();
+    let (dir, root, old_dir, new_dir) = namespace_fixture(&ctx).await;
+    std::fs::write(dir.path().join("unrelated.md"), "nothing to do with ns").unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    let unrelated = dir.path().join("unrelated.md");
+    std::fs::set_permissions(&unrelated, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let readable = std::fs::read_to_string(&unrelated).is_ok(); // true only as root
+    let result = rename_namespace_inner(&state, &ctx, &old_dir, &new_dir, &root).await;
+    std::fs::set_permissions(&unrelated, std::fs::Permissions::from_mode(0o644)).unwrap();
+    let result = result.unwrap();
+    assert!(dir.path().join("ns2/c.md").exists());
+    assert_eq!(result.updated_files, vec![format!("{root}/a.md")]);
+    assert!(result.skipped_files.is_empty());
+    if readable {
+        return;
+    }
+    assert_eq!(result.unchecked_files, vec![format!("{root}/unrelated.md")]);
 }

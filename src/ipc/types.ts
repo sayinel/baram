@@ -246,10 +246,13 @@ export interface NamespaceRenameResult {
    *  rebuilt (dropped after a failed rebuild, or the context was removed
    *  meanwhile). Backlinks read empty until the next build. */
   indexRebuilt: boolean;
-  /** Referring files whose links could not be rewritten (unreadable,
-   *  unwritable, or resolving outside the contexts); they still spell the
-   *  old name. */
+  /** Referring files whose rewrite was attempted and failed; they still
+   *  spell the old directory. */
   skippedFiles: string[];
+  /** Files outside the moved directory that could not be read, so whether
+   *  they refer to it was never checked. They MAY still spell the old
+   *  directory. */
+  uncheckedFiles: string[];
   updatedFiles: string[];
 }
 

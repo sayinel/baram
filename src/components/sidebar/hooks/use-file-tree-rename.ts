@@ -150,28 +150,40 @@ export function useFileTreeRename(
 
 /**
  * issue 594: a rename's result names the referring files it could not rewrite
- * (their links still say the old name) and, for a directory, whether the link
- * index was rebuilt. Neither is an `Err` — the files have moved — so they
- * arrive here, as warnings the user can act on. A dropped index gets one
- * rebuild attempt right away; if the context was removed meanwhile that
- * attempt is refused, which only the log needs to know.
+ * (their links still say the old name), for a directory the files it could
+ * not even read, and whether the link index was rebuilt. None of that is an
+ * `Err` — the files have moved — so it arrives here, as ONE warning the user
+ * can act on: the UI store holds a single toast, so two calls would show only
+ * the second. A dropped index gets one rebuild attempt right away; if the
+ * context was removed meanwhile that attempt is refused, which only the log
+ * needs to know.
  */
 function reportPostRenameOutcomes(
   result: NamespaceRenameResult | RenameResult,
   rebuildRoot: null | string,
 ): void {
   const { locale } = useSettingsStore.getState();
-  const { showToast } = useUIStore.getState();
+  const sentences: string[] = [];
   if (result.skippedFiles.length > 0) {
     logger.warn(
       "[FileTree] Renamed, but these referring files could not be updated:",
       result.skippedFiles,
     );
-    showToast(
+    sentences.push(
       t("fileTree.rename.skipped.toast", locale as Locale, {
         count: String(result.skippedFiles.length),
       }),
-      "warning",
+    );
+  }
+  if ("uncheckedFiles" in result && result.uncheckedFiles.length > 0) {
+    logger.warn(
+      "[FileTree] Directory renamed, but these files could not be read, so their links were not checked:",
+      result.uncheckedFiles,
+    );
+    sentences.push(
+      t("fileTree.rename.unchecked.toast", locale as Locale, {
+        count: String(result.uncheckedFiles.length),
+      }),
     );
   }
   if (
@@ -182,12 +194,14 @@ function reportPostRenameOutcomes(
     logger.warn(
       "[FileTree] Directory renamed, but the link index was not rebuilt; requesting a rebuild",
     );
-    showToast(
+    sentences.push(
       t("fileTree.rename.indexNotRebuilt.toast", locale as Locale),
-      "warning",
     );
     refreshIndex(rebuildRoot).catch((err: unknown) => {
       logger.warn("[FileTree] Link index rebuild after rename refused:", err);
     });
+  }
+  if (sentences.length > 0) {
+    useUIStore.getState().showToast(sentences.join(" "), "warning");
   }
 }

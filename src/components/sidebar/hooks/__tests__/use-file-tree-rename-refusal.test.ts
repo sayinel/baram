@@ -144,6 +144,7 @@ describe("post-commit outcomes reach the user as warnings (issue 594)", () => {
       filesMoved: 3,
       indexRebuilt: false,
       skippedFiles: [],
+      uncheckedFiles: [],
       updatedFiles: [],
     });
     const { result } = renderHook(() => useFileTreeRename({ current: null }));
@@ -161,11 +162,36 @@ describe("post-commit outcomes reach the user as warnings (issue 594)", () => {
     expect(refreshIndex).toHaveBeenCalledWith("/vault");
   });
 
+  it("folds every post-commit outcome into ONE warning — the UI store shows a single toast", async () => {
+    // Two `showToast` calls in a row would leave only the second visible, so
+    // the user would never hear that references remain stale.
+    vi.mocked(renameNamespace).mockResolvedValue({
+      filesMoved: 3,
+      indexRebuilt: false,
+      skippedFiles: ["/vault/ro/a.md"],
+      uncheckedFiles: ["/vault/locked.md", "/vault/locked2.md"],
+      updatedFiles: [],
+    });
+    const { result } = renderHook(() => useFileTreeRename({ current: null }));
+    await act(() => result.current.handleConfirmRename("/vault/ns", "ns2"));
+
+    expect(showToast).toHaveBeenCalledTimes(1);
+    const [message, type] = showToast.mock.calls[0]!;
+    expect(type).toBe("warning");
+    // One sentence per outcome: the failed referrer, the two unreadable
+    // files, the index.
+    expect(message).toContain("1 file");
+    expect(message).toContain("2 file");
+    expect(message).toContain("link index");
+    expect(refreshIndex).toHaveBeenCalledTimes(1);
+  });
+
   it("CONTROL: a directory rename whose index was rebuilt toasts nothing and rebuilds nothing", async () => {
     vi.mocked(renameNamespace).mockResolvedValue({
       filesMoved: 3,
       indexRebuilt: true,
       skippedFiles: [],
+      uncheckedFiles: [],
       updatedFiles: [],
     });
     const { result } = renderHook(() => useFileTreeRename({ current: null }));
@@ -180,6 +206,7 @@ describe("post-commit outcomes reach the user as warnings (issue 594)", () => {
       filesMoved: 1,
       indexRebuilt: false,
       skippedFiles: [],
+      uncheckedFiles: [],
       updatedFiles: [],
     });
     vi.mocked(refreshIndex).mockRejectedValueOnce("/vault is not registered");

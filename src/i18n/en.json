@@ -161,6 +161,7 @@
   "fileTree.rename.failed.toast": "Rename failed: {message}",
   "fileTree.rename.indexNotRebuilt.toast": "Renamed, but the link index could not be rebuilt. Backlinks may be incomplete until it is rebuilt.",
   "fileTree.rename.skipped.toast": "Renamed, but {count} file(s) referring to it could not be updated.",
+  "fileTree.rename.unchecked.toast": "{count} file(s) could not be read, so their links were not checked and may still use the old name.",
   "followUp.ask": "Get follow-up questions",
   "followUp.dismiss": "Dismiss",
   "followUp.insert": "Write answer",

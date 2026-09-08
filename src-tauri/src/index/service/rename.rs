@@ -35,8 +35,13 @@ pub struct RenameResult {
 #[serde(rename_all = "camelCase")]
 pub struct NamespaceRenameResult {
     pub updated_files: Vec<String>,
-    /// See [`RenameResult::skipped_files`].
+    /// See [`RenameResult::skipped_files`] — here, only files whose rewrite
+    /// was attempted and failed.
     pub skipped_files: Vec<String>,
+    /// Files outside the moved directory that could not be read, so whether
+    /// they refer to it was never checked. Their links MAY still spell the old
+    /// directory.
+    pub unchecked_files: Vec<String>,
     pub files_moved: u32,
     /// `false`: the files moved, but the index under the root was not rebuilt —
     /// the rebuild failed and the stale index was dropped, or the context was
@@ -404,12 +409,14 @@ pub(crate) async fn rename_namespace_inner(
 /// The filesystem half of a namespace rename: move the directory, then rewrite
 /// the relative wikilinks that point into it.
 ///
-/// The rewrites are computed BEFORE the move and written AFTER it, so that an
-/// `Err` from here still means nothing changed: a referrer that cannot be
+/// The move comes FIRST, so that an `Err` from here still means nothing
+/// changed; the referrers are then read, rewritten and written one at a time,
+/// straight from what is on disk at that moment. A referrer that cannot be
 /// written once the directory has moved is reported in `skipped_files`, never
-/// left pointing at a `new_dir` that does not exist (issue 594). Reading before
-/// the move is not what makes this correct — these files live outside
-/// `old_dir` — it just keeps the read and the rewrite in one pass.
+/// left pointing at a `new_dir` that does not exist, and never held as a
+/// snapshot that a write would later stamp over someone else's edit
+/// (issue 594). The files outside `old_dir` are unaffected by the move, which
+/// is what makes reading them afterwards correct.
 pub(super) async fn commit_namespace_rename(
     old_dir: &str,
     new_dir: &str,
@@ -432,10 +439,19 @@ pub(super) async fn commit_namespace_rename(
         .filter(|f| f.starts_with(&old_dir_slash))
         .count() as u32;
 
-    // 2. Find the files outside old_dir whose relative wikilinks point into it,
-    //    and compute their new content. Nothing is written yet.
-    let mut rewrites: Vec<(String, String)> = Vec::new();
+    // 2. Rename the directory — the last step that may fail with nothing done.
+    crate::fs::rename_file(old_dir, new_dir)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // 3. Rewrite the relative wikilinks of every file outside old_dir that
+    //    point into it. Each file is read and written in turn; failures are
+    //    reported, not returned. A file that cannot be READ was never
+    //    inspected — it may or may not refer to the directory — so it is
+    //    reported apart from a referrer whose rewrite failed.
+    let mut updated_files = Vec::new();
     let mut skipped_files = Vec::new();
+    let mut unchecked_files = Vec::new();
 
     for file_path in &all_files {
         // Skip files inside the directory being renamed (they move with it)
@@ -447,42 +463,31 @@ pub(super) async fn commit_namespace_rename(
             Ok(c) => c,
             Err(e) => {
                 log::warn!(
-                    "§61 rename_namespace: {file_path} could not be read, its links are left as they are: {e}"
+                    "§61 rename_namespace: {file_path} could not be read, so its links were not checked: {e}"
                 );
-                skipped_files.push(file_path.clone());
+                unchecked_files.push(file_path.clone());
                 continue;
             }
         };
 
         let new_content = rewrite_relative_wikilinks(&content, file_path, old_dir, new_dir);
-
-        if new_content != content {
-            rewrites.push((file_path.clone(), new_content));
+        if new_content == content {
+            continue;
         }
-    }
-
-    // 3. Rename the directory — the last step that may fail with nothing done.
-    crate::fs::rename_file(old_dir, new_dir)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    // 4. Write the rewrites. The files have moved; a referrer that cannot be
-    //    written is reported, its links still spell the old directory.
-    let mut updated_files = Vec::new();
-    for (file_path, new_content) in rewrites {
-        if let Err(e) = crate::fs::write_file(&file_path, &new_content).await {
+        if let Err(e) = crate::fs::write_file(file_path, &new_content).await {
             log::warn!(
                 "§61 rename_namespace: {old_dir} moved, but {file_path} could not be rewritten: {e}"
             );
-            skipped_files.push(file_path);
+            skipped_files.push(file_path.clone());
             continue;
         }
-        updated_files.push(file_path);
+        updated_files.push(file_path.clone());
     }
 
     Ok(NamespaceRenameResult {
         updated_files,
         skipped_files,
+        unchecked_files,
         files_moved,
         // Decided by `settle_namespace_rebuild` once the rebuild has run.
         index_rebuilt: false,
