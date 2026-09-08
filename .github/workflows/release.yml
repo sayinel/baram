@@ -221,35 +221,11 @@ jobs:
       # wrong artifact, and notarization is an unbounded wait on Apple's queue —
       # v0.6.0's first submission sat there for 1h49m. Fail while it is cheap.
       #
-      # This asserts the PROPERTY (what the binary is linked against) rather than the
-      # runner label that was supposed to produce it: the label is an input, and only
-      # the Mach-O load command says what actually happened.
+      # The check itself lives in the composite action, shared with ci.yml's macos
+      # job so the rehearsal and the real thing cannot disagree about the rule.
       - name: Verify the macOS build SDK
         if: runner.os == 'macOS'
-        run: |
-          fail() { echo "::error::$1"; exit 1; }
-
-          APP="$(find src-tauri/target -type d -name 'Baram.app' | head -n1)"
-          [ -n "$APP" ] || fail "Baram.app not found under src-tauri/target"
-          BIN="$(find "$APP/Contents/MacOS" -type f -perm -111 | head -n1)"
-          [ -n "$BIN" ] || fail "no executable in $APP/Contents/MacOS"
-
-          # A universal binary carries one LC_BUILD_VERSION per architecture, so
-          # every slice has to answer — a check that reads only the first would pass
-          # on a build where one arch came from a different toolchain.
-          SDKS="$(otool -l "$BIN" | awk '/^ *sdk /{print $2}')"
-          echo "$BIN is linked against macOS SDK: ${SDKS:-<none>}"
-          [ -n "$SDKS" ] || fail "no LC_BUILD_VERSION sdk found in $BIN"
-
-          for SDK in $SDKS; do
-            case "$SDK" in
-              *[!0-9.]*) fail "unparsable SDK version '$SDK' in $BIN" ;;
-            esac
-            [ "${SDK%%.*}" -ge 26 ] \
-              || fail "built against macOS SDK $SDK; 26 or newer is required for the modern window chrome — check the runner label in the build matrix"
-          done
-
-          echo "Build SDK verified."
+        uses: ./.github/actions/verify-macos-sdk
 
       # Tauri notarizes and staples the .app, builds the dmg from it, and signs
       # the dmg — but never notarizes the dmg. The app inside is fine; the dmg is

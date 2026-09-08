@@ -1,0 +1,102 @@
+name: macOS build SDK
+
+# ‼️ WHY THIS IS A SCHEDULE AND NOT A CI JOB.
+#
+# macOS 26 draws the modern window chrome only for binaries linked against the
+# macOS 26 SDK, and offers no key to opt in when you were not. v0.7.0 shipped an
+# opaque light titlebar over a dark app because the release matrix was on
+# macos-15. The assertion that catches it reads a Mach-O load command off the
+# built binary — so it needs a real `tauri build`, which costs ~12 minutes.
+#
+# The thing it guards is a property of the RUNNER IMAGE. No diff in this
+# repository can change which SDK `macos-26` ships, which makes a rust path
+# filter the wrong trigger twice over: it spent 12 minutes per rust PR
+# re-asking a question that PR could not have affected, and it went blind
+# through any week with no rust merge. The hazard is time-based, so the trigger
+# is time-based. A day is well inside the window in which GitHub rolls a runner
+# image out.
+#
+# This is NOT the last line of defence — release.yml runs the same composite
+# action before notarization, so a bad SDK still cannot ship. This is the early
+# warning, and its job is to make that release failure never be a surprise.
+#
+# ‼️ Scheduled workflows are disabled automatically after 60 days without repo
+# activity, and a failure here e-mails whoever last touched the cron rather than
+# failing anything visible. If this repo goes quiet, check that this still runs.
+
+on:
+  schedule:
+    # 03:00 KST daily (the repo works in Asia/Seoul; cron is always UTC).
+    - cron: '0 18 * * *'
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    # The only changes on our side that can move the answer: the runner label
+    # and steps below, the assertion itself, the bundle configuration, and the
+    # toolchain that does the linking. A rust source change cannot, which is
+    # the whole point of not putting this in ci.yml.
+    paths:
+      - '.github/workflows/macos-sdk.yml'
+      - '.github/actions/verify-macos-sdk/**'
+      - '.github/actions/setup-node/**'
+      - 'src-tauri/tauri.conf.json'
+      - 'rust-toolchain*'
+
+concurrency:
+  group: macos-sdk-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  TZ: Asia/Seoul
+
+jobs:
+  sdk:
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-node
+
+      # Pin must be a master-history SHA (release-branch SHAs can be GC'd);
+      # the toolchain is selected via the input, not the ref name.
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master
+        with:
+          toolchain: stable
+
+      # Restores ci.yml's `macos` cache by name — rust-cache keys on the job id
+      # otherwise, and these are different jobs. That job builds debug and this
+      # one builds release, so what actually carries over is the cargo registry
+      # and git checkouts, not compiled artifacts.
+      #
+      # `save-if: false` on purpose. An unattended daily run must not be what
+      # defines the cache PR jobs restore from, and a release-profile target dir
+      # is big enough to push their entries out of the repo's cache budget.
+      # Nobody is waiting on this job, so it can afford to be cold.
+      - uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: src-tauri -> target
+          shared-key: macos
+          save-if: false
+
+      - name: Build frontend (required for Rust compilation)
+        run: npm run build
+
+      # `--bundles app` rather than `--no-bundle`: the check reads the load
+      # command off the binary inside Baram.app, so the bundle has to exist. It
+      # also puts Info.plist generation and the ad-hoc signature on the same
+      # path the release takes, for seconds of extra work. No signing secrets
+      # are needed — tauri.conf.json's macOS signingIdentity is "-", and the
+      # release config that asks for a Developer ID is passed only by
+      # release.yml.
+      #
+      # Deliberately NOT universal and NOT notarized: that is the release leg's
+      # job and takes 24 minutes. The SDK is recorded per slice by the same
+      # toolchain either way, so the native arch answers the question.
+      - name: Tauri build (app bundle, native arch)
+        run: npm run tauri build -- --bundles app
+
+      - uses: ./.github/actions/verify-macos-sdk
