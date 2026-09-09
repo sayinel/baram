@@ -13,14 +13,9 @@ import {
   updateContextLabel as ipcUpdateContextLabel,
 } from "../../ipc/context";
 import { logger } from "../../utils/logger";
-import { stripTrailingSeparators } from "../../utils/path-utils";
-import { resolveZettelDir } from "../../utils/zettelkasten/zettelkasten";
-import { useSettingsStore } from "../settings/store";
+import { basename, stripTrailingSeparators } from "../../utils/path-utils";
 import { tauriStorage } from "../system/tauri-storage";
-import {
-  refreshZettelIndex,
-  useZettelIndexStore,
-} from "../zettelkasten/zettel-index";
+import { createSpaceSlice, syncZettelIndexForContext } from "./space-slice";
 
 // --- Constants ---
 
@@ -35,14 +30,20 @@ const DEFAULT_COLORS = [
 
 // --- Helpers ---
 
-interface AddContextOpts {
-  alias?: string;
-  color?: string;
-  label?: string;
-  vaultType?: VaultType;
-}
-
-interface ContextState {
+export interface ContextState {
+  /**
+   * issue 598: `addContext` that also says whether THIS call appended `context`
+   * to the store — false when the backend deduped to a context already held,
+   * or to one another call mirrored in meanwhile. A caller that has to undo
+   * its own registration (a refused space move) may only remove what it
+   * inserted, or a concurrent, legitimate add of the same directory would be
+   * taken with it.
+   */
+  _addContextTracked: (
+    type: ContextType,
+    rawPath: string,
+    opts?: AddContextOpts,
+  ) => Promise<{ context: ContextInfo; inserted: boolean }>;
   /** §81 Set active context locally without IPC — used by switchContext */
   _setActiveContextLocal: (id: string) => void;
   // Derived
@@ -80,8 +81,8 @@ interface ContextState {
    */
   ensureFileContext: (filePath: string) => Promise<ContextInfo>;
   /**
-   * §85 M2b: Ensure a journal vault context exists and is active.
-   * Creates one if not present; activates it if not already active.
+   * §85 M2b: `ensureSpaceContext` for the journal space, with its label and
+   * colour. Activates unless `activate: false` (register only).
    */
   ensureJournalContext: (
     journalDir: string,
@@ -91,6 +92,19 @@ interface ContextState {
    * §92 Generic space-aware variant of ensureJournalContext: ensures a vault
    * context of the given vaultType exists at `dir` (creates+activates if missing,
    * activates if already present).
+   *
+   * issue 598: "present" means present AT `dir`. A space context found at another
+   * path is the same space whose directory setting moved; the new directory is
+   * registered (label, colour and alias carried over) and the old registration is
+   * retired, and its open tabs are re-homed (files under the old directory get a
+   * FileContext each; other tabs follow the space). If the old one was the active
+   * context, or activation was asked for, the app switches to the new directory
+   * the way the tab bar does (Rust root, file tree, link index) — a local-only
+   * activation would leave Rust's root and the tree on the old directory, and
+   * retiring the active context would otherwise hand activation to whatever
+   * context comes next, which no caller asked for. Rejects when `dir` is already
+   * registered as a different context: a space cannot take over a plain vault or
+   * the other space.
    */
   ensureSpaceContext: (
     vaultType: VaultType,
@@ -105,6 +119,12 @@ interface ContextState {
   ) => Promise<ContextInfo>;
   getContextForPath: (filePath: string) => ContextInfo | null;
   journalContext: () => ContextInfo | null;
+  /**
+   * §85/§93 Pin the space tabs (Zettelkasten, then Journal) to the front of the
+   * tab bar; a no-op transition when they already are. Every path that adds or
+   * replaces a context commits the order through here.
+   */
+  pinSpaceTabs: () => void;
   removeContext: (id: string) => Promise<void>;
   /** TODO §82: wire up drag-to-reorder in ContextTabBar */
   reorderContexts: (ids: string[]) => void;
@@ -115,6 +135,13 @@ interface ContextState {
   updateContextColor: (id: string, color: string) => void;
   updateContextLabel: (id: string, label: string) => void;
   vaultContexts: () => ContextInfo[];
+}
+
+interface AddContextOpts {
+  alias?: string;
+  color?: string;
+  label?: string;
+  vaultType?: VaultType;
 }
 
 // --- Types ---
@@ -140,78 +167,12 @@ function generateId(): string {
   return `ctx-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function labelFromPath(path: string): string {
-  const parts = path.split("/").filter(Boolean);
-  return parts[parts.length - 1] ?? path;
-}
-
-/**
- * §85/§93 Pin the special space contexts to the front of the tab bar in a
- * fixed order: Zettelkasten first (index 0), Journal next. Journal takes
- * index 0 when no Zettelkasten context exists. All other contexts keep their
- * relative order after the pinned spaces.
- * Returns a reordered copy if the order changed, otherwise null.
- */
-function pinSpaceContexts(contexts: ContextInfo[]): ContextInfo[] | null {
-  const zettel =
-    contexts.find(
-      (c) => c.contextType === "vault" && c.vaultType === "zettelkasten",
-    ) ?? null;
-  const journal =
-    contexts.find(
-      (c) => c.contextType === "vault" && c.vaultType === "journal",
-    ) ?? null;
-  if (!zettel && !journal) return null;
-
-  const rest = contexts.filter((c) => c !== zettel && c !== journal);
-  const pinned = [
-    ...(zettel ? [zettel] : []),
-    ...(journal ? [journal] : []),
-    ...rest,
-  ];
-  // No-op when already in the target order (avoid a needless set/persist).
-  if (pinned.every((c, i) => c === contexts[i])) return null;
-  return pinned;
-}
-
 // --- Store ---
-
-/**
- * §95/§98 M1: Keep the zettel id index scoped to the active zettel space.
- * When the newly active context's path is under the configured zettel dir,
- * refresh the index (covers switching INTO the space via the context tab
- * bar, not just the workspace preset). Otherwise clear it, so stale
- * id→title mappings from a previously active zettel space never leak into
- * an unrelated vault. No-op when the zettelkasten feature is disabled.
- *
- * Note: `resolveZettelDir`'s first (rootPath) argument is unused — only
- * absolute directory settings are supported — so we pass `null` here to
- * avoid importing the file store (which itself imports this module).
- */
-function syncZettelIndexForContext(ctx: ContextInfo | null): void {
-  const { zettelkastenEnabled, zettelkastenDirectory } =
-    useSettingsStore.getState();
-  if (!zettelkastenEnabled) return;
-
-  const zettelDir = resolveZettelDir(null, zettelkastenDirectory);
-  if (!zettelDir) return;
-
-  const prefix = `${zettelDir}/`;
-  const inZettelSpace =
-    !!ctx && (ctx.path === zettelDir || ctx.path.startsWith(prefix));
-
-  if (inZettelSpace) {
-    refreshZettelIndex(zettelDir).catch((err) =>
-      logger.error("[contextStore] Failed to refresh zettel index:", err),
-    );
-  } else {
-    useZettelIndexStore.getState().clear();
-  }
-}
 
 export const useContextStore = create<ContextState>()(
   persist(
     (set, get) => ({
+      ...createSpaceSlice(set, get),
       contexts: [],
       activeContextId: null,
 
@@ -223,13 +184,6 @@ export const useContextStore = create<ContextState>()(
       vaultContexts: () => {
         return get().contexts.filter((c) => c.contextType === "vault");
       },
-
-      journalContext: () => get().spaceContext("journal"),
-
-      spaceContext: (vaultType) =>
-        get().contexts.find(
-          (c) => c.contextType === "vault" && c.vaultType === vaultType,
-        ) ?? null,
 
       ensureFileContext: async (filePath: string) => {
         const { contexts } = get();
@@ -245,52 +199,10 @@ export const useContextStore = create<ContextState>()(
         if (existing) return existing;
 
         // Create new FileContext
-        const fileName = filePath.split("/").pop() ?? filePath;
         return get().addContext("file", filePath, {
-          label: fileName,
+          label: basename(filePath),
           color: "#9ca3af", // gray for standalone files
         });
-      },
-
-      ensureJournalContext: async (journalDir: string, opts) => {
-        const wasExisting = get().spaceContext("journal") !== null;
-        const ctx = await get().ensureSpaceContext("journal", journalDir, {
-          activate: opts?.activate,
-          label: "journal",
-          color: "#10b981",
-        });
-        // §85/§93 Pin the space tabs to the front — only needed when we just
-        // created it; an existing context is already pinned.
-        if (!wasExisting) {
-          const pinned = pinSpaceContexts(get().contexts);
-          if (pinned) set({ contexts: pinned });
-        }
-        return ctx;
-      },
-
-      ensureSpaceContext: async (vaultType, dir, opts) => {
-        const activate = opts?.activate !== false;
-        const existing = get().contexts.find(
-          (c) => c.contextType === "vault" && c.vaultType === vaultType,
-        );
-        if (existing) {
-          // Activate if not active — use local-only to avoid stale ID IPC failures
-          if (activate && get().activeContextId !== existing.id) {
-            get()._setActiveContextLocal(existing.id);
-          }
-          return existing;
-        }
-        // Create new vault context of the given type
-        const created = await get().addContext("vault", dir, {
-          vaultType,
-          label: opts?.label ?? vaultType,
-          color: opts?.color,
-        });
-        // Activate the newly created context
-        if (activate && get().activeContextId !== created.id) {
-          get()._setActiveContextLocal(created.id);
-        }
-        return created;
       },
 
       getContextForPath: (filePath: string) => {
@@ -327,7 +239,10 @@ export const useContextStore = create<ContextState>()(
         return best;
       },
 
-      addContext: async (type, rawPath, opts) => {
+      addContext: async (type, rawPath, opts) =>
+        (await get()._addContextTracked(type, rawPath, opts)).context,
+
+      _addContextTracked: async (type, rawPath, opts) => {
         const { contexts } = get();
         const colorIndex = contexts.length % DEFAULT_COLORS.length;
         // §260 Phase 4a security re-review (LOW-2) — normalise trailing separators ONCE,
@@ -339,14 +254,16 @@ export const useContextStore = create<ContextState>()(
         // field that can carry one (its zettelkasten twin strips, `resolveJournalDir`
         // does not). One point of truth beats five compensations.
         const path = contextRootOf(rawPath) || rawPath;
+        // The last path segment names the context; the filesystem root has none,
+        // so it is named by itself rather than by an empty string.
+        const defaultName = basename(path) || path;
         const info: ContextInfo = {
           id: generateId(),
           contextType: type,
           path,
-          label: opts?.label ?? labelFromPath(path),
+          label: opts?.label ?? defaultName,
           color: opts?.color ?? DEFAULT_COLORS[colorIndex],
-          alias:
-            opts?.alias ?? (type === "vault" ? labelFromPath(path) : undefined),
+          alias: opts?.alias ?? (type === "vault" ? defaultName : undefined),
           vaultType: opts?.vaultType,
           addedAt: Date.now(),
         };
@@ -360,7 +277,7 @@ export const useContextStore = create<ContextState>()(
           // an id it already had (duplicate React keys in the tab bar) and grew the
           // persisted list once per call.
           const deduped = get().contexts.find((c) => c.id === saved.id);
-          if (deduped) return deduped;
+          if (deduped) return { context: deduped, inserted: false };
           set((state) => {
             const next = [...state.contexts, saved];
             // Auto-activate first context
@@ -374,9 +291,8 @@ export const useContextStore = create<ContextState>()(
             };
           });
           // §85/§93 Keep the space tabs pinned to the front after any add
-          const pinned = pinSpaceContexts(get().contexts);
-          if (pinned) set({ contexts: pinned });
-          return saved;
+          get().pinSpaceTabs();
+          return { context: saved, inserted: true };
         } catch (err) {
           logger.error("[contextStore] addContext failed:", err);
           throw err;

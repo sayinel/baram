@@ -238,7 +238,8 @@ export function CalendarPanel() {
       // writeFile throwing out of here. This path does its own filesystem work instead
       // of going through ensureJournalFile, so it needs the step explicitly; sitting in
       // the same file as a call site that IS covered is what made it look protected.
-      await ensureJournalDirRegistered(resolvedDir);
+      // …and a directory held by another context is refused, not written into.
+      if (!(await ensureJournalDirRegistered(resolvedDir))) return;
       const notePath = getPath(resolvedDir, date);
       const parentDir = notePath.substring(0, notePath.lastIndexOf("/"));
       await createDir(parentDir).catch(() => {});

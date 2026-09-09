@@ -2,14 +2,30 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock IPC context module before store import
-const { ipcAddContext } = vi.hoisted(() => ({
+const { ipcAddContext, ipcRemoveContext } = vi.hoisted(() => ({
   ipcAddContext: vi.fn(async (info: unknown) => info),
+  ipcRemoveContext: vi.fn(async () => undefined),
 }));
 vi.mock("../../../ipc/context", () => ({
   addContext: ipcAddContext,
-  removeContext: vi.fn(async () => undefined),
+  removeContext: ipcRemoveContext,
   setActiveContext: vi.fn(async () => undefined),
   getContexts: vi.fn(async () => []),
+  updateContextAlias: vi.fn(async () => undefined),
+  updateContextColor: vi.fn(async () => undefined),
+  updateContextLabel: vi.fn(async () => undefined),
+}));
+
+// issue 598: an active space that moved is switched through the loader, which
+// imports this store — mocked here to what the switch means for the store.
+const { refreshInactiveContextIndex, switchContext } = vi.hoisted(() => ({
+  refreshInactiveContextIndex: vi.fn(),
+  switchContext: vi.fn(),
+}));
+vi.mock("../../../services/vault-context-loader", () => ({
+  refreshInactiveContextIndex: (path: string, scope: string) =>
+    refreshInactiveContextIndex(path, scope),
+  switchContext: (id: string) => switchContext(id),
 }));
 
 // Mock tauriStorage to be a no-op in-memory storage
@@ -22,6 +38,7 @@ vi.mock("../../system/tauri-storage", () => ({
 }));
 
 import { useContextStore } from "../context";
+import { SpaceDirectoryTakenError } from "../errors";
 
 describe("§81 contextStore", () => {
   beforeEach(async () => {
@@ -45,6 +62,19 @@ describe("§81 contextStore", () => {
     expect(state.contexts[0].path).toBe("/Users/test/notes");
     expect(state.contexts[0].label).toBe("notes");
     expect(state.activeContextId).toBe(state.contexts[0].id);
+  });
+
+  it("names a context after its last path segment, and the filesystem root after itself", async () => {
+    // `basename("/")` is "" — a root vault used to keep "/" as its label and
+    // alias, and must still (both persist; a blank tab would survive restart).
+    const root = await useContextStore.getState().addContext("vault", "/");
+    expect(root.label).toBe("/");
+    expect(root.alias).toBe("/");
+    const folder = await useContextStore
+      .getState()
+      .addContext("folder", "/Users/test/work/");
+    expect(folder.label).toBe("work");
+    expect(folder.alias).toBeUndefined();
   });
 
   it("removes a context", async () => {
@@ -416,5 +446,386 @@ describe("§85 ensureJournalContext — activation is opt-out", () => {
       .getState()
       .ensureJournalContext("/Users/test/journal", { activate: false });
     expect(useContextStore.getState().activeContextId).toBe(other.id);
+  });
+});
+
+describe("issue 598 ensureSpaceContext — a space whose directory setting moved", () => {
+  beforeEach(async () => {
+    await new Promise((r) => setTimeout(r, 0));
+    useContextStore.setState({ contexts: [], activeContextId: null });
+    ipcAddContext.mockClear();
+    ipcRemoveContext.mockClear();
+    ipcAddContext.mockImplementation(async (info: unknown) => info);
+    refreshInactiveContextIndex.mockClear();
+    switchContext.mockReset();
+    switchContext.mockImplementation(async (id: string) => {
+      useContextStore.getState()._setActiveContextLocal(id);
+    });
+  });
+
+  it("registers the new directory, retires the old one, and keeps label, colour and alias", async () => {
+    const old = await useContextStore
+      .getState()
+      .ensureSpaceContext("journal", "/vault/journal", {
+        color: "#10b981",
+        label: "journal",
+      });
+    useContextStore.getState().updateContextAlias(old.id, "diary");
+
+    const moved = await useContextStore
+      .getState()
+      .ensureSpaceContext("journal", "/elsewhere/journal");
+
+    const { contexts } = useContextStore.getState();
+    expect(moved.path).toBe("/elsewhere/journal");
+    expect(moved.id).not.toBe(old.id);
+    expect(moved.label).toBe("journal");
+    expect(moved.color).toBe("#10b981");
+    expect(moved.alias).toBe("diary");
+    expect(contexts.filter((c) => c.vaultType === "journal")).toHaveLength(1);
+    expect(contexts.find((c) => c.id === old.id)).toBeUndefined();
+    // Rust heard both halves, new first.
+    expect(ipcAddContext).toHaveBeenCalledTimes(2);
+    expect(ipcRemoveContext).toHaveBeenCalledWith(old.id);
+  });
+
+  it("returns the existing context when the directory only differs by a trailing separator", async () => {
+    const first = await useContextStore
+      .getState()
+      .ensureSpaceContext("zettelkasten", "/vault/zk");
+    ipcAddContext.mockClear();
+    const again = await useContextStore
+      .getState()
+      .ensureSpaceContext("zettelkasten", "/vault/zk/");
+    expect(again.id).toBe(first.id);
+    expect(ipcAddContext).not.toHaveBeenCalled();
+    expect(ipcRemoveContext).not.toHaveBeenCalled();
+  });
+
+  it("switches to the new directory when the old one was on screen, even without activate", async () => {
+    const old = await useContextStore
+      .getState()
+      .ensureSpaceContext("journal", "/vault/journal");
+    expect(useContextStore.getState().activeContextId).toBe(old.id);
+
+    const moved = await useContextStore
+      .getState()
+      .ensureSpaceContext("journal", "/elsewhere/journal", {
+        activate: false,
+      });
+    // The tab-bar switch: Rust root, file tree and link index follow — not the
+    // local-only activation a "register only" caller would otherwise get.
+    expect(switchContext).toHaveBeenCalledWith(moved.id);
+    expect(useContextStore.getState().activeContextId).toBe(moved.id);
+  });
+  it("leaves the active context alone when the old one was not active and activation was declined", async () => {
+    const old = await useContextStore
+      .getState()
+      .ensureSpaceContext("journal", "/vault/journal", { activate: false });
+    const other = await useContextStore
+      .getState()
+      .addContext("vault", "/other");
+    useContextStore.getState()._setActiveContextLocal(other.id);
+
+    await useContextStore
+      .getState()
+      .ensureSpaceContext("journal", "/elsewhere/journal", {
+        activate: false,
+      });
+    expect(useContextStore.getState().activeContextId).toBe(other.id);
+    expect(
+      useContextStore.getState().contexts.find((c) => c.id === old.id),
+    ).toBeUndefined();
+    expect(switchContext).not.toHaveBeenCalled();
+    // Nothing switched, so nothing else would build the new directory's link
+    // index (issue 263) — the move asks for it, as the Folder↔Vault convert does.
+    expect(refreshInactiveContextIndex).toHaveBeenCalledWith(
+      "/elsewhere/journal",
+      expect.any(String),
+    );
+  });
+
+  it("switches when activation is asked for, even if the old context was not on screen", async () => {
+    await useContextStore
+      .getState()
+      .ensureSpaceContext("journal", "/vault/journal", { activate: false });
+    const other = await useContextStore
+      .getState()
+      .addContext("vault", "/other");
+    useContextStore.getState()._setActiveContextLocal(other.id);
+
+    const moved = await useContextStore
+      .getState()
+      .ensureSpaceContext("journal", "/elsewhere/journal");
+    // Not a local activation: a switch, so Rust's root and the tree follow.
+    expect(switchContext).toHaveBeenCalledWith(moved.id);
+    // The switch rebuilds the index itself; asking twice would scan twice.
+    expect(refreshInactiveContextIndex).not.toHaveBeenCalled();
+  });
+
+  it("re-homes the retired context's open tabs: old-directory files get a FileContext, the rest follow the space", async () => {
+    const { useEditorStore } = await import("../../editor/editor");
+    const old = await useContextStore
+      .getState()
+      .ensureSpaceContext("journal", "/vault/journal", { activate: false });
+    useEditorStore.setState({
+      tabs: [
+        {
+          contextId: old.id,
+          filePath: "/vault/journal/2026-09-09.md",
+          id: "t-file",
+          isDirty: true,
+          isPinned: false,
+          title: "2026-09-09.md",
+          type: "file",
+        },
+        {
+          contextId: old.id,
+          filePath: "",
+          id: "t-graph",
+          isDirty: false,
+          isPinned: false,
+          title: "Graph",
+          type: "graph",
+        },
+        {
+          contextId: "elsewhere",
+          filePath: "/x/a.md",
+          id: "t-other",
+          isDirty: false,
+          isPinned: false,
+          title: "a.md",
+          type: "file",
+        },
+      ],
+    } as never);
+
+    const transitions = vi.fn();
+    const unsubscribe = useEditorStore.subscribe(transitions);
+    const moved = await useContextStore
+      .getState()
+      .ensureSpaceContext("journal", "/elsewhere/journal", { activate: false });
+    unsubscribe();
+    // One transition for the re-homed files, one for the rest of the space —
+    // not one per tab (every editor subscriber wakes on each).
+    expect(transitions).toHaveBeenCalledTimes(2);
+
+    const tabs = useEditorStore.getState().tabs;
+    const fileTab = tabs.find((t) => t.id === "t-file")!;
+    const home = useContextStore
+      .getState()
+      .contexts.find((c) => c.id === fileTab.contextId);
+    // The dirty journal page is now a standalone FileContext at its own path —
+    // still registered, so it can still be saved.
+    expect(home?.contextType).toBe("file");
+    expect(home?.path).toBe("/vault/journal/2026-09-09.md");
+    expect(fileTab.isDirty).toBe(true);
+    // A non-file tab of the space follows the space; an unrelated tab is untouched.
+    expect(tabs.find((t) => t.id === "t-graph")!.contextId).toBe(moved.id);
+    expect(tabs.find((t) => t.id === "t-other")!.contextId).toBe("elsewhere");
+  });
+
+  it("finishes the move when one tab cannot be given a home: that tab follows the space, no tab keeps the retired id", async () => {
+    const { useEditorStore } = await import("../../editor/editor");
+    const old = await useContextStore
+      .getState()
+      .ensureSpaceContext("journal", "/vault/journal");
+    useEditorStore.setState({
+      tabs: [
+        {
+          contextId: old.id,
+          filePath: "/vault/journal/kept.md",
+          id: "t-kept",
+          isDirty: false,
+          isPinned: false,
+          title: "kept.md",
+          type: "file",
+        },
+        {
+          contextId: old.id,
+          filePath: "/vault/journal/deleted-outside.md",
+          id: "t-gone",
+          isDirty: true,
+          isPinned: false,
+          title: "deleted-outside.md",
+          type: "file",
+        },
+        {
+          contextId: old.id,
+          filePath: "/vault/journal/later.md",
+          id: "t-later",
+          isDirty: false,
+          isPinned: false,
+          title: "later.md",
+          type: "file",
+        },
+      ],
+    } as never);
+    // The backend refuses a FileContext for a path that no longer exists.
+    ipcAddContext.mockImplementation(async (info: unknown) => {
+      const { path } = info as { path: string };
+      if (path === "/vault/journal/deleted-outside.md") {
+        throw new Error(`Path does not exist: ${path}`);
+      }
+      return info;
+    });
+
+    const moved = await useContextStore
+      .getState()
+      .ensureSpaceContext("journal", "/elsewhere/journal");
+
+    const { contexts } = useContextStore.getState();
+    const tabs = useEditorStore.getState().tabs;
+    const homeOf = (id: string) =>
+      contexts.find((c) => c.id === tabs.find((t) => t.id === id)!.contextId);
+    expect(homeOf("t-kept")?.path).toBe("/vault/journal/kept.md");
+    expect(homeOf("t-later")?.path).toBe("/vault/journal/later.md");
+    // The refused tab follows the space rather than keeping a dead id.
+    expect(homeOf("t-gone")?.id).toBe(moved.id);
+    expect(tabs.find((t) => t.id === "t-gone")!.isDirty).toBe(true);
+    expect(tabs.some((t) => t.contextId === old.id)).toBe(false);
+    // The rest of the move still happened — and the switch came BEFORE the
+    // tabs were re-homed, so the active seat and `rootPath` never sat on an
+    // unrelated context while those registrations ran.
+    expect(contexts.find((c) => c.id === old.id)).toBeUndefined();
+    expect(switchContext).toHaveBeenCalledWith(moved.id);
+    const [, newDir, ...homes] = ipcAddContext.mock.invocationCallOrder;
+    const switched = switchContext.mock.invocationCallOrder[0]!;
+    expect(newDir).toBeLessThan(switched);
+    expect(homes.length).toBeGreaterThan(0);
+    for (const order of homes) expect(order).toBeGreaterThan(switched);
+  });
+
+  it("keeps the moved space pinned in front of the tab bar", async () => {
+    await useContextStore.getState().addContext("vault", "/vault/notes");
+    const old = await useContextStore
+      .getState()
+      .ensureSpaceContext("journal", "/vault/journal", { activate: false });
+    expect(useContextStore.getState().contexts[0]!.id).toBe(old.id);
+
+    const moved = await useContextStore
+      .getState()
+      .ensureSpaceContext("journal", "/elsewhere/journal", { activate: false });
+
+    // `addContext` appended the new directory behind the plain vault and saw
+    // the old context still in front, so it pinned nothing; the retire must,
+    // or the Journal tab lands at the end and stays there (order persists).
+    const ids = useContextStore.getState().contexts.map((c) => c.id);
+    expect(ids).toHaveLength(2);
+    expect(ids[0]).toBe(moved.id);
+  });
+
+  it("refuses to move the space onto a directory that is already another context", async () => {
+    const plain = await useContextStore
+      .getState()
+      .addContext("vault", "/vault/notes");
+    const journal = await useContextStore
+      .getState()
+      .ensureSpaceContext("journal", "/vault/journal", { activate: false });
+    // The backend dedups by canonical path across every context: registering
+    // the journal at /vault/notes answers with the plain vault.
+    ipcAddContext.mockImplementationOnce(async () => plain);
+
+    const refusal = useContextStore
+      .getState()
+      .ensureSpaceContext("journal", "/vault/notes");
+    await expect(refusal).rejects.toThrow(
+      /already registered as another context/,
+    );
+    // Typed, so a caller with a locale can phrase it for the user.
+    await expect(refusal).rejects.toBeInstanceOf(SpaceDirectoryTakenError);
+    await expect(refusal).rejects.toMatchObject({
+      dir: "/vault/notes",
+      takenBy: expect.objectContaining({ id: plain.id }),
+      vaultType: "journal",
+    });
+
+    const { contexts } = useContextStore.getState();
+    expect(contexts.find((c) => c.id === journal.id)?.path).toBe(
+      "/vault/journal",
+    );
+    expect(contexts.find((c) => c.id === plain.id)?.vaultType).toBeUndefined();
+    expect(ipcRemoveContext).not.toHaveBeenCalled();
+    expect(switchContext).not.toHaveBeenCalled();
+  });
+
+  it("refuses the FIRST space context too when its directory is already another context", async () => {
+    const plain = await useContextStore
+      .getState()
+      .addContext("vault", "/vault/notes");
+    // No journal context yet; the backend dedups the journal directory onto
+    // the open vault. Taking that as the journal would leave the space with
+    // no context of its type while the caller believes it has one.
+    ipcAddContext.mockImplementationOnce(async () => plain);
+
+    await expect(
+      useContextStore.getState().ensureSpaceContext("journal", "/vault/notes"),
+    ).rejects.toBeInstanceOf(SpaceDirectoryTakenError);
+
+    const { activeContextId, contexts } = useContextStore.getState();
+    expect(contexts.map((c) => c.id)).toEqual([plain.id]);
+    expect(contexts[0]!.vaultType).toBeUndefined();
+    expect(activeContextId).toBe(plain.id);
+    expect(ipcRemoveContext).not.toHaveBeenCalled();
+    expect(switchContext).not.toHaveBeenCalled();
+  });
+
+  it("refuses the first space context when its directory is the OTHER space", async () => {
+    const zettel = await useContextStore
+      .getState()
+      .ensureSpaceContext("zettelkasten", "/vault/zk", { activate: false });
+    ipcAddContext.mockImplementationOnce(async () => zettel);
+
+    await expect(
+      useContextStore.getState().ensureSpaceContext("journal", "/vault/zk"),
+    ).rejects.toMatchObject({
+      takenBy: expect.objectContaining({ id: zettel.id }),
+    });
+
+    expect(useContextStore.getState().contexts.map((c) => c.id)).toEqual([
+      zettel.id,
+    ]);
+    expect(useContextStore.getState().spaceContext("journal")).toBeNull();
+  });
+
+  it("leaves no trace of a context the backend answered with but the store never held", async () => {
+    const journal = await useContextStore
+      .getState()
+      .ensureSpaceContext("journal", "/vault/journal", { activate: false });
+    // Rust still holds a legacy folder root at the new directory — an entry
+    // this store dropped long ago — and answers the dedup with it.
+    ipcAddContext.mockImplementationOnce(async () => ({
+      addedAt: 0,
+      color: "#000",
+      contextType: "folder",
+      id: "legacy-1",
+      label: "notes",
+      path: "/vault/notes",
+    }));
+
+    await expect(
+      useContextStore.getState().ensureSpaceContext("journal", "/vault/notes"),
+    ).rejects.toBeInstanceOf(SpaceDirectoryTakenError);
+
+    // The refused setting appended nothing; Rust's entry was not this call's
+    // to remove.
+    expect(useContextStore.getState().contexts.map((c) => c.id)).toEqual([
+      journal.id,
+    ]);
+    expect(ipcRemoveContext).not.toHaveBeenCalled();
+  });
+
+  it("does not retire anything when the backend says the new spelling is the same directory", async () => {
+    const old = await useContextStore
+      .getState()
+      .ensureSpaceContext("journal", "/vault/journal");
+    // The backend dedups by canonical path and answers with the context we hold.
+    ipcAddContext.mockImplementationOnce(async () => old);
+    const same = await useContextStore
+      .getState()
+      .ensureSpaceContext("journal", "/vault/JOURNAL");
+    expect(same.id).toBe(old.id);
+    expect(ipcRemoveContext).not.toHaveBeenCalled();
+    expect(useContextStore.getState().contexts).toHaveLength(1);
   });
 });

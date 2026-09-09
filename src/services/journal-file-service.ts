@@ -17,7 +17,9 @@ import {
   requestJournalBodyCursor,
 } from "../utils/journal/journal-events";
 import { logger } from "../utils/logger";
+import { basename } from "../utils/path-utils";
 import { resolveZettelDir } from "../utils/zettelkasten/zettelkasten";
+import { reportSpaceDirectoryTaken } from "./space-context-migration";
 
 export interface JournalFileOptions {
   /**
@@ -78,13 +80,21 @@ export interface JournalFileOptions {
  */
 export async function ensureJournalDirRegistered(
   journalDir: string,
-): Promise<void> {
+): Promise<boolean> {
   try {
     await useContextStore
       .getState()
       .ensureJournalContext(journalDir, { activate: false });
+    return true;
   } catch (err) {
+    // issue 598: a directory already held by another context is terminal —
+    // the user has just been told the Journal directory was left unchanged,
+    // so writing an entry there anyway (Rust would allow it: that other
+    // context covers the path) would contradict the toast. Any other failure
+    // keeps today's behaviour: the filesystem produces the real error.
+    if (reportSpaceDirectoryTaken(err)) return false;
     logger.error("[journal] journal context registration failed:", err);
+    return true;
   }
 }
 
@@ -94,7 +104,9 @@ export async function ensureJournalDirRegistered(
  *
  * Does NOT open a tab — the caller decides what to do with the file.
  *
- * Returns null if the path cannot be resolved.
+ * Returns null if the path cannot be resolved, or if the journal directory is
+ * held by another context (the user has been told; see
+ * `ensureJournalDirRegistered`).
  */
 export async function ensureJournalFile(
   date: Date,
@@ -112,7 +124,7 @@ export async function ensureJournalFile(
   const resolved = resolveJournalDir(rootPath ?? null, journalDirectory);
   if (!resolved) return null;
 
-  await ensureJournalDirRegistered(resolved);
+  if (!(await ensureJournalDirRegistered(resolved))) return null;
 
   const journalPath = journalUseHierarchy
     ? getHierarchicalJournalPath(resolved, date, journalFilenameFormat)
@@ -183,7 +195,7 @@ export async function openFileInTab(
       contextId: "",
       id: crypto.randomUUID(),
       filePath,
-      title: filePath.split("/").pop() ?? "Journal",
+      title: basename(filePath) || "Journal",
       isDirty: false,
       isPinned: false,
     });
