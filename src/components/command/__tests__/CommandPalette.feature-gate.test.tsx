@@ -10,8 +10,9 @@
 // does not live in `buildCommands`. This test renders the real component and
 // flips the store to prove the visible list actually updates.
 import { act, render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { useAIStore } from "../../../stores/ai/ai";
 import { useSettingsStore } from "../../../stores/settings/store";
 import { useUIStore } from "../../../stores/ui/ui";
 import { CommandPalette } from "../CommandPalette";
@@ -40,6 +41,10 @@ describe("CommandPalette — feature filter reacts to store changes (§338)", ()
     useSettingsStore.setState({ journalEnabled: false });
   });
 
+  afterEach(() => {
+    useAIStore.setState({ aiEnabled: true }); // restore the default for other files
+  });
+
   it("shows a journal command only after the feature is turned on, without remounting", () => {
     renderPalette();
 
@@ -63,5 +68,22 @@ describe("CommandPalette — feature filter reacts to store changes (§338)", ()
     });
 
     expect(screen.queryByText("Open Today's Journal")).not.toBeInTheDocument();
+  });
+
+  it("hides a Skills-category AI command when AI is off — category cannot discriminate this one", () => {
+    // `skill:test` sits under category: "Skills", not "AI", unlike the five
+    // ai:* commands (already category: "AI"). A regression that filtered by
+    // category instead of by the explicit `feature` field would keep
+    // passing those five while leaking this one straight through.
+    useAIStore.setState({ aiEnabled: true });
+    renderPalette();
+
+    expect(screen.getByText("AI: Test Skill")).toBeInTheDocument();
+
+    act(() => {
+      useAIStore.setState({ aiEnabled: false });
+    });
+
+    expect(screen.queryByText("AI: Test Skill")).not.toBeInTheDocument();
   });
 });

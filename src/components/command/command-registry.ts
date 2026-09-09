@@ -241,6 +241,7 @@ export function buildCommands(deps: CommandDeps): CommandItem[] {
       id: "skill:generate",
       label: "AI: Generate Skill",
       category: "Skills",
+      feature: "ai",
       action: () => {
         useUIStore.getState().toggleSkillGeneratorDialog();
       },
@@ -250,6 +251,7 @@ export function buildCommands(deps: CommandDeps): CommandItem[] {
       label: "AI: Test Skill",
       category: "Skills",
       shortcut: "⇧⌘T",
+      feature: "ai",
       action: () => {
         useUIStore.getState().toggleSkillTestDialog();
       },
