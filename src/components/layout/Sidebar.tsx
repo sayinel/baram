@@ -1,7 +1,7 @@
 import { lazy, Suspense } from "react";
 
 // §4.3 Left sidebar container — panel switching via ActivityBar
-import { useSettingsStore } from "../../stores/settings/store";
+import { useFeatureFlags } from "../../stores/settings/features";
 import { useUIStore } from "../../stores/ui/ui";
 import { PluginPanelHost } from "./PluginPanelHost";
 
@@ -83,9 +83,9 @@ const ZettelHubPanel = lazy(() =>
 
 export function Sidebar() {
   const { sidebarPanel } = useUIStore();
-  // I2: tasksEnabled off keeps the panel from mounting even if sidebarPanel
-  // was persisted as "tasks" from before the setting was turned off.
-  const tasksEnabled = useSettingsStore((s) => s.tasksEnabled);
+  // I2 / §340 ⓑ: 저장된 sidebarPanel 이 꺼진 기능의 좌석을 가리킬 수 있다 —
+  // 이동 이펙트(use-settings-effects)보다 첫 페인트가 빠르므로 여기서도 막는다.
+  const { journal, tasks, zettelkasten } = useFeatureFlags();
 
   return (
     <div className="sidebar">
@@ -105,14 +105,14 @@ export function Sidebar() {
           {sidebarPanel === "bookmarks" && <BookmarkPanel />}
           {sidebarPanel === "graph" && <GraphView />}
           {sidebarPanel === "git" && <GitPanel />}
-          {sidebarPanel === "calendar" && <CalendarPanel />}
+          {sidebarPanel === "calendar" && journal && <CalendarPanel />}
           {sidebarPanel === "tags" && <TagPanel />}
-          {sidebarPanel === "tasks" && tasksEnabled && <TaskAgendaPanel />}
+          {sidebarPanel === "tasks" && tasks && <TaskAgendaPanel />}
           {sidebarPanel === "snapshots" && <VersionHistoryPanel />}
           {sidebarPanel === "skills-gallery" && <SkillGalleryPanel />}
           {sidebarPanel === "plugins" && <PluginMarketplace />}
           {sidebarPanel === "plugin" && <PluginPanelHost />}
-          {sidebarPanel === "zettel" && <ZettelHubPanel />}
+          {sidebarPanel === "zettel" && zettelkasten && <ZettelHubPanel />}
         </div>
       </Suspense>
     </div>

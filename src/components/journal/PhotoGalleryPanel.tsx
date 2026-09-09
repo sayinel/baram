@@ -48,6 +48,10 @@ export function PhotoGalleryPanel() {
   );
   const rootPath = useFileStore((s) => s.rootPath);
   const journalDirectory = useSettingsStore((s) => s.journalDirectory);
+  // §340 ⓑ 저장된 rightPanelMode 가 꺼진 journal 기능의 좌석("photo-gallery")을 가리킬
+  // 수 있다 — 이동 이펙트(use-settings-effects)보다 첫 페인트가 빠르다. `isVisible`이
+  // 아래 이펙트의 dep이므로 그 이펙트도 자동으로 따라온다.
+  const journalEnabled = useSettingsStore((s) => s.journalEnabled);
 
   const [photos, setPhotos] = useState<PhotoGalleryEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -62,7 +66,8 @@ export function PhotoGalleryPanel() {
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
 
-  const isVisible = rightPanelOpen && rightPanelMode === "photo-gallery";
+  const isVisible =
+    journalEnabled && rightPanelOpen && rightPanelMode === "photo-gallery";
 
   const loadPhotos = useCallback(async () => {
     if (!rootPath || !journalDirectory) return;

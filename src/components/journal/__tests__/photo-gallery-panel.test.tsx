@@ -81,6 +81,8 @@ describe("PhotoGalleryPanel — media filter", () => {
     listDir.mockReset();
     useFileStore.getState().setRootPath("/vault");
     useSettingsStore.getState().setJournalDirectory("/vault/journal");
+    // §340 ⓑ PhotoGalleryPanel now guards its render on the journal feature flag.
+    useSettingsStore.setState({ journalEnabled: true });
     useUIStore.setState({
       rightPanelMode: "photo-gallery",
       rightPanelOpen: true,

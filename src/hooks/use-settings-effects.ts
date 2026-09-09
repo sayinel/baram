@@ -1,11 +1,15 @@
 // §4.2 Settings effects hook — apply theme, font, spellcheck to DOM
 import { useEffect } from "react";
 
+import type { FeatureKey } from "../stores/settings/feature-keys";
+import type { RightPanelMode, SidebarPanel } from "../stores/ui/ui";
 import type { Editor } from "@tiptap/core";
 
 import { useShallow } from "zustand/shallow";
 
+import { useFeatureFlags } from "../stores/settings/features";
 import { useSettingsStore } from "../stores/settings/store";
+import { useUIStore } from "../stores/ui/ui";
 import { findThemeById } from "../types/theme";
 import { logger } from "../utils/logger";
 import {
@@ -13,6 +17,20 @@ import {
   applyThemeVars,
   clearThemeVars,
 } from "../utils/theme-vars";
+
+/** §340 사이드바 좌석 → 그 좌석을 소유한 기능. */
+const SIDEBAR_PANEL_FEATURE: Partial<Record<SidebarPanel, FeatureKey>> = {
+  calendar: "journal",
+  tasks: "tasks",
+  zettel: "zettelkasten",
+};
+
+/** §340 우측 패널 좌석 → 그 좌석을 소유한 기능. */
+const RIGHT_PANEL_MODE_FEATURE: Partial<Record<RightPanelMode, FeatureKey>> = {
+  chat: "ai",
+  memories: "journal",
+  "photo-gallery": "journal",
+};
 
 export function useSettingsEffects(editor: Editor | null) {
   const {
@@ -143,4 +161,31 @@ export function useSettingsEffects(editor: Editor | null) {
       active = false;
     };
   }, [recentFolders, recentFiles, locale]);
+
+  // §340 ⓐ 기능이 꺼질 때, 저장된 포인터가 그 기능의 좌석을 가리키고 있으면 옮긴다.
+  //
+  // ‼️ **가리키고 있을 때만** 옮긴다. 조건 없이 리셋하면 무관한 작업 상태를 파괴한다.
+  // ‼️ 이것만으로는 부족하다 — 재하이드레이션 직후 첫 페인트가 이 이펙트보다 빠르므로
+  //    패널 쪽 렌더 가드(ⓑ)가 함께 있어야 빈 화면이 한 프레임 새지 않는다.
+  const featureFlags = useFeatureFlags();
+  useEffect(() => {
+    const ui = useUIStore.getState();
+    const panelFeature = SIDEBAR_PANEL_FEATURE[ui.sidebarPanel];
+    if (panelFeature && !featureFlags[panelFeature]) {
+      ui.setSidebarPanel("files");
+    }
+    const modeFeature = RIGHT_PANEL_MODE_FEATURE[ui.rightPanelMode];
+    if (modeFeature && !featureFlags[modeFeature]) {
+      ui.setRightPanelMode("none");
+    }
+    // `useFeatureFlags()` returns a fresh object every render (see its own doc comment
+    // in stores/settings/features.ts) — listing `featureFlags` itself here would re-run
+    // this effect on every render instead of only when one of the four booleans changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    featureFlags.ai,
+    featureFlags.journal,
+    featureFlags.tasks,
+    featureFlags.zettelkasten,
+  ]);
 }

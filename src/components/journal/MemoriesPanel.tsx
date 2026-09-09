@@ -24,12 +24,16 @@ export function MemoriesPanel() {
   );
   const mode = useSettingsStore((s) => s.memoriesMode);
   const setMode = useSettingsStore((s) => s.setMemoriesMode);
+  // §340 ⓑ 저장된 rightPanelMode 가 꺼진 journal 기능의 좌석("memories")을 가리킬 수
+  // 있다 — 이동 이펙트(use-settings-effects)보다 첫 페인트가 빠르다.
+  const journalEnabled = useSettingsStore((s) => s.journalEnabled);
   const [memories, setMemories] = useState<MemoryEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [showCalendar, setShowCalendar] = useState(false);
 
-  if (!rightPanelOpen || rightPanelMode !== "memories") return null;
+  if (!journalEnabled || !rightPanelOpen || rightPanelMode !== "memories")
+    return null;
 
   const month = selectedDate.getMonth() + 1;
   const day = selectedDate.getDate();

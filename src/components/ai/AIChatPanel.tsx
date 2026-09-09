@@ -3,7 +3,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { ResolvedReference } from "../../utils/chat-context";
 
+import { useShallow } from "zustand/shallow";
+
 import { useLLMStream } from "../../hooks/use-llm-stream";
+import { useAIStore } from "../../stores/ai/ai";
 import { useChatStore } from "../../stores/ai/chat";
 import { useUIStore } from "../../stores/ui/ui";
 import {
@@ -37,7 +40,17 @@ const ChevronIcon = ({ rotated }: { rotated: boolean }) => (
 );
 
 export function AIChatPanel() {
-  const { rightPanelOpen, rightPanelMode } = useUIStore();
+  // §340 ⓑ bare `useUIStore()` subscribes to the whole store — CLAUDE.md 규약을 따라
+  // 필요한 두 값만 shallow-select 한다.
+  const { rightPanelMode, rightPanelOpen } = useUIStore(
+    useShallow((s) => ({
+      rightPanelMode: s.rightPanelMode,
+      rightPanelOpen: s.rightPanelOpen,
+    })),
+  );
+  // §340 ⓑ 저장된 rightPanelMode 가 꺼진 ai 기능의 좌석("chat")을 가리킬 수 있다 —
+  // 이동 이펙트(use-settings-effects)보다 첫 페인트가 빠르다.
+  const aiEnabled = useAIStore((s) => s.aiEnabled);
   const {
     sessions,
     activeSessionId,
@@ -240,7 +253,7 @@ export function AIChatPanel() {
   // §11.4 Detect vault-wide Knowledge Q&A mode from current input
   const vaultMode = isVaultQuery(input);
 
-  if (!rightPanelOpen || rightPanelMode !== "chat") return null;
+  if (!aiEnabled || !rightPanelOpen || rightPanelMode !== "chat") return null;
 
   const activeSession = getActiveSession();
   const messages = activeSession?.messages ?? [];
