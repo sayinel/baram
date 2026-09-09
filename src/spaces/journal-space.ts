@@ -4,6 +4,7 @@ import {
   ensureJournalFile,
   openFileInTab,
 } from "../services/journal-file-service";
+import { reportSpaceDirectoryTaken } from "../services/space-context-migration";
 import { useContextStore } from "../stores/context/context";
 import { useFileStore } from "../stores/file/file";
 import { useSettingsStore } from "../stores/settings/store";
@@ -58,8 +59,11 @@ export const journalSpace: SpaceDefinition = {
     if (!resolvedDir) return;
     try {
       await useContextStore.getState().ensureJournalContext(resolvedDir);
-    } catch {
-      /* non-fatal */
+    } catch (err) {
+      // Non-fatal — except that a directory already held by another context
+      // is the one refusal the user must hear about, or the setting silently
+      // never takes effect (issue 598).
+      reportSpaceDirectoryTaken(err);
     }
   },
 };

@@ -19,6 +19,7 @@ import { openFolder } from "../services/vault-context-loader";
 import { getSpace } from "../spaces";
 import { useContextStore } from "../stores/context/context";
 import { useSettingsStore } from "../stores/settings/store";
+import { waitForHydration } from "../stores/system/hydration";
 import { useUIStore } from "../stores/ui/ui";
 import { logger } from "../utils/logger";
 
@@ -29,6 +30,20 @@ interface UseAppStartupParams {
 
 /** §89 Track whether queued file-open URLs have been processed (prevents double-open). */
 let openedUrlsProcessed = false;
+
+/**
+ * issue 597: the launch restore now WAITS for the persisted stores, which widens
+ * the window in which a "hot" file-open event (Finder "Open With" while the app
+ * is starting) would run before any context is registered. Hot opens wait for
+ * the restore to settle, and a path the cold-start queue already delivered is
+ * not opened a second time — Rust both emits the event and queues the path.
+ */
+let startupSettled: Promise<void> = Promise.resolve();
+let startupPending = false;
+/** Paths the cold-start drain opened — consulted only by hot events that arrived
+ *  while the restore was still pending, so a later, legitimate reopen of the same
+ *  file is never suppressed. */
+const openedDuringStartup = new Set<string>();
 
 export function useAppStartup({
   handleOpenFilePath,
@@ -49,10 +64,29 @@ export function useAppStartup({
     if (onLaunchDone.current) return;
     onLaunchDone.current = true;
 
-    const { onLaunch, lastOpenedFolder, lastOpenedFile } =
-      useSettingsStore.getState();
+    startupPending = true;
+    startupSettled = (async () => {
+      // issue 597: both stores rehydrate asynchronously from Tauri storage. Read
+      // before that lands and this effect decides on the DEFAULTS — an empty
+      // context list means "no vault to restore, take the legacy path" — and,
+      // being once-only, never revisits when the real state arrives moments
+      // later. The user sees last session's vault gone until they reopen it.
+      //
+      // ‼️ No deadline on this wait, deliberately. A deadline would let the
+      // restore run on defaults and then have the real state land on top of
+      // it — persisted contexts appearing with no Rust registration, contexts
+      // opened meanwhile vanishing — which is the very race this barrier
+      // removes, merely moved past the deadline. A read that never settles
+      // means the IPC bridge itself is gone, and nothing else in the app
+      // would answer either; a read that fails settles at once (`tauriStorage`
+      // turns errors into `null`, a corrupt file into `noteHydrationFailure`).
+      await Promise.all([
+        waitForHydration(useSettingsStore.persist),
+        waitForHydration(useContextStore.persist),
+      ]);
+      const { onLaunch, lastOpenedFolder, lastOpenedFile } =
+        useSettingsStore.getState();
 
-    (async () => {
       // §333 The Rust approval dialog picks its language from `uiLocale`, and this is
       // the last moment before a dialog can appear. See `mirrorUiLocale`.
       await mirrorUiLocale();
@@ -245,7 +279,14 @@ export function useAppStartup({
 
       // §89 Process any remaining queued file-open URLs (legacy/no-vault path)
       await processOpenedUrls(handleOpenFilePath);
-    })();
+    })()
+      .catch((err) => {
+        // The restore is best-effort; a throw here must not leave hot opens waiting.
+        logger.error("[startup] launch restore failed:", err);
+      })
+      .finally(() => {
+        startupPending = false;
+      });
   }, [handleOpenFilePath]);
 
   // Listen for file open events from macOS (Finder "Open With" while app is running)
@@ -254,7 +295,16 @@ export function useAppStartup({
     // processOpenedUrls() — called AFTER vault restoration completes.
     // This effect only handles hot-open events (file opened while running).
     const unlisten = listen<string>("file:open-request", (event) => {
-      handleOpenFilePath(event.payload);
+      // Only an event that arrived DURING the restore can be the twin of a
+      // queued path (Rust emits and queues the same open); one twin is consumed.
+      const arrivedDuringStartup = startupPending;
+      void (async () => {
+        await startupSettled;
+        if (arrivedDuringStartup && openedDuringStartup.delete(event.payload)) {
+          return;
+        }
+        await handleOpenFilePath(event.payload);
+      })();
     });
 
     return () => {
@@ -311,6 +361,7 @@ async function processOpenedUrls(
   if (!paths.length) return;
 
   for (const path of paths) {
+    openedDuringStartup.add(path);
     await handleOpenFilePath(path);
   }
 }

@@ -197,11 +197,32 @@ impl ContextManager {
         }
 
         if let Some(alias) = &info.alias {
-            let mut aliases = self.aliases.write().await;
-            aliases.insert(alias.clone(), info.id.clone());
+            self.claim_alias(alias, &info.id).await;
         }
 
         Ok(info)
+    }
+
+    /// Point `alias` at `id`. The last writer wins: two directories can carry
+    /// the same default alias (`/work/notes` and `/personal/notes`), and the
+    /// later registration owns the mapping.
+    async fn claim_alias(&self, alias: &str, id: &str) {
+        self.aliases
+            .write()
+            .await
+            .insert(alias.to_string(), id.to_string());
+    }
+
+    /// Drop `alias` only while it still points at `id` — the one rule every
+    /// site that gives an alias up follows. A space whose directory moved is
+    /// registered anew under the same alias before the old registration is
+    /// retired (issue 598), and a context that does not own the mapping must
+    /// not take the owner's resolution with it when it is renamed or cleared.
+    async fn release_alias_if_owned(&self, alias: &str, id: &str) {
+        let mut aliases = self.aliases.write().await;
+        if aliases.get(alias).map(String::as_str) == Some(id) {
+            aliases.remove(alias);
+        }
     }
 
     /// Remove a context entry by id.
@@ -217,10 +238,11 @@ impl ContextManager {
             return Err(format!("Context not found: {id}"));
         }
 
-        // Remove alias if any.
+        // The alias goes only if this entry still owns it (`release_alias_if_owned`):
+        // dropping an alias the replacement context now holds would break
+        // `resolve_cross_vault_link` for it until restart.
         if let Some(alias) = removed.as_ref().and_then(|s| s.info.alias.as_ref()) {
-            let mut aliases = self.aliases.write().await;
-            aliases.remove(alias);
+            self.release_alias_if_owned(alias, id).await;
         }
 
         // Clear active_id if it pointed to this entry.
@@ -443,18 +465,13 @@ impl ContextManager {
             .get_mut(context_id)
             .ok_or_else(|| format!("Context not found: {}", context_id))?;
 
-        // Remove old alias mapping
-        if let Some(old_alias) = &state.info.alias {
-            let mut aliases = self.aliases.write().await;
-            aliases.remove(old_alias);
+        if let Some(old_alias) = state.info.alias.take() {
+            self.release_alias_if_owned(&old_alias, context_id).await;
         }
 
-        // Set new alias (or clear if empty)
-        if new_alias.is_empty() {
-            state.info.alias = None;
-        } else {
-            let mut aliases = self.aliases.write().await;
-            aliases.insert(new_alias.clone(), context_id.to_string());
+        // Set the new alias (an empty one clears it).
+        if !new_alias.is_empty() {
+            self.claim_alias(&new_alias, context_id).await;
             state.info.alias = Some(new_alias);
         }
 
@@ -591,6 +608,92 @@ mod tests {
         let mgr = ContextManager::new();
         let info = make_info("v1", "/nonexistent/path/xyz", ContextType::Vault);
         assert!(mgr.add(info).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn removing_a_retired_context_keeps_an_alias_the_replacement_now_owns() {
+        // issue 598: a space moved to a new directory is registered anew under
+        // the same alias BEFORE the old registration is retired.
+        let dir_a = tempfile::tempdir().unwrap();
+        let dir_b = tempfile::tempdir().unwrap();
+        let mgr = ContextManager::new();
+        mgr.add(make_info_with_alias(
+            "old",
+            dir_a.path().to_str().unwrap(),
+            "journal",
+        ))
+        .await
+        .unwrap();
+        mgr.add(make_info_with_alias(
+            "new",
+            dir_b.path().to_str().unwrap(),
+            "journal",
+        ))
+        .await
+        .unwrap();
+        mgr.remove("old").await.unwrap();
+        assert_eq!(mgr.resolve_alias("journal").await.as_deref(), Some("new"));
+        // Retiring the owner does drop it.
+        mgr.remove("new").await.unwrap();
+        assert_eq!(mgr.resolve_alias("journal").await, None);
+    }
+
+    #[tokio::test]
+    async fn renaming_a_non_owner_alias_keeps_the_owner_mapping() {
+        // `/work/notes` and `/personal/notes` both default to "notes"; the
+        // later add owns the mapping.
+        let dir_a = tempfile::tempdir().unwrap();
+        let dir_b = tempfile::tempdir().unwrap();
+        let mgr = ContextManager::new();
+        mgr.add(make_info_with_alias(
+            "a",
+            dir_a.path().to_str().unwrap(),
+            "notes",
+        ))
+        .await
+        .unwrap();
+        mgr.add(make_info_with_alias(
+            "b",
+            dir_b.path().to_str().unwrap(),
+            "notes",
+        ))
+        .await
+        .unwrap();
+        assert_eq!(mgr.resolve_alias("notes").await.as_deref(), Some("b"));
+
+        mgr.update_alias("a", "work".to_string()).await.unwrap();
+        assert_eq!(mgr.resolve_alias("notes").await.as_deref(), Some("b"));
+        assert_eq!(mgr.resolve_alias("work").await.as_deref(), Some("a"));
+        // The owner renaming itself does move the mapping.
+        mgr.update_alias("b", "personal".to_string()).await.unwrap();
+        assert_eq!(mgr.resolve_alias("notes").await, None);
+        assert_eq!(mgr.resolve_alias("personal").await.as_deref(), Some("b"));
+    }
+
+    #[tokio::test]
+    async fn clearing_a_non_owner_alias_keeps_the_owner_mapping() {
+        let dir_a = tempfile::tempdir().unwrap();
+        let dir_b = tempfile::tempdir().unwrap();
+        let mgr = ContextManager::new();
+        mgr.add(make_info_with_alias(
+            "a",
+            dir_a.path().to_str().unwrap(),
+            "notes",
+        ))
+        .await
+        .unwrap();
+        mgr.add(make_info_with_alias(
+            "b",
+            dir_b.path().to_str().unwrap(),
+            "notes",
+        ))
+        .await
+        .unwrap();
+
+        mgr.update_alias("a", String::new()).await.unwrap();
+        assert_eq!(mgr.resolve_alias("notes").await.as_deref(), Some("b"));
+        let a = mgr.list().await.into_iter().find(|c| c.id == "a").unwrap();
+        assert_eq!(a.alias, None);
     }
 
     #[tokio::test]
