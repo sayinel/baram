@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 
+import type { FeatureKey } from "../../stores/settings/feature-keys";
 import type { Editor } from "@tiptap/react";
 
 import { useShallow } from "zustand/shallow";
@@ -7,6 +8,7 @@ import { useShallow } from "zustand/shallow";
 // §4.5 Command Palette — Cmd+P
 import { executePluginCommand } from "../../plugins/extension-context";
 import { usePluginUIStore } from "../../plugins/plugin-ui-store";
+import { useFeatureFlags } from "../../stores/settings/features";
 import { useUIStore } from "../../stores/ui/ui";
 import { fuzzyMatch } from "../../utils/file-search";
 import { buildCommands } from "./command-registry";
@@ -16,6 +18,13 @@ import { usePaletteListNav } from "./use-palette-list-nav";
 export interface CommandItem {
   action: (editor: Editor | null) => void;
   category: string;
+  /**
+   * §338 이 커맨드가 속한 기능. 없으면 항상 보인다.
+   *
+   * ‼️ `category` 를 대리자로 쓰지 않는 이유: 제텔 커맨드 4개가 `category: "Journal"`
+   * 아래 있고 퍼스펙티브 진입 2개는 `category: "Perspective"` 다.
+   */
+  feature?: FeatureKey;
   id: string;
   label: string;
   shortcut?: string;
@@ -55,8 +64,18 @@ export function CommandPalette({
   const pluginPaletteCommands = usePluginUIStore(
     useShallow((s) => s.paletteCommands),
   );
+  // §338 — read reactively and destructure immediately: `useFeatureFlags()`
+  // returns a fresh object every render, so the object itself must never sit
+  // in the memo's deps. The four primitives below do instead.
+  const { ai, journal, tasks, zettelkasten } = useFeatureFlags();
 
   const commands = useMemo(() => {
+    const flags: Record<FeatureKey, boolean> = {
+      ai,
+      journal,
+      tasks,
+      zettelkasten,
+    };
     const base = buildCommands({
       toggleSidebar,
       toggleSourceMode: onToggleSourceMode,
@@ -66,7 +85,10 @@ export function CommandPalette({
       onOpenFolder,
       onSkillPreview: onSkillPreview ?? (() => {}),
       onCloseFolder,
-    });
+    }).filter(
+      // §338 꺼진 기능의 커맨드는 목록에 없다
+      (c) => !c.feature || flags[c.feature],
+    );
     const plugin: CommandItem[] = pluginPaletteCommands.map((c) => ({
       action: () => {
         void executePluginCommand(c.commandId).catch((err) =>
@@ -79,6 +101,10 @@ export function CommandPalette({
     }));
     return [...base, ...plugin];
   }, [
+    ai,
+    journal,
+    tasks,
+    zettelkasten,
     toggleSidebar,
     onToggleSourceMode,
     onNewFile,

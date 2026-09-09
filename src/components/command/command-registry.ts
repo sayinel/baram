@@ -278,6 +278,7 @@ export function buildCommands(deps: CommandDeps): CommandItem[] {
       id: "tasks:weekly-review",
       label: "Tasks: Weekly Review",
       category: "Tasks",
+      feature: "tasks",
       action: () => useUIStore.getState().toggleWeeklyReview(),
     },
     // §57b Git commands
@@ -350,6 +351,7 @@ export function buildCommands(deps: CommandDeps): CommandItem[] {
       id: "ai:translate",
       label: "Translate Selection",
       category: "AI",
+      feature: "ai",
       action: async (editor) => {
         if (!editor) return;
         const selection = getSelectedText(editor);
@@ -379,6 +381,7 @@ export function buildCommands(deps: CommandDeps): CommandItem[] {
       id: "ai:summarize",
       label: "Summarize Selection",
       category: "AI",
+      feature: "ai",
       action: async (editor) => {
         if (!editor) return;
         const selection = getSelectedText(editor);
@@ -398,6 +401,7 @@ export function buildCommands(deps: CommandDeps): CommandItem[] {
       id: "ai:expand",
       label: "Expand Selection",
       category: "AI",
+      feature: "ai",
       action: async (editor) => {
         if (!editor) return;
         const selection = getSelectedText(editor);
@@ -417,6 +421,7 @@ export function buildCommands(deps: CommandDeps): CommandItem[] {
       id: "ai:fix-grammar",
       label: "Fix Grammar",
       category: "AI",
+      feature: "ai",
       action: (editor) => {
         if (!editor) return;
         const text = getSelectionOrParagraph(editor);
@@ -433,6 +438,7 @@ export function buildCommands(deps: CommandDeps): CommandItem[] {
       id: "ai:explain",
       label: "Explain Selection",
       category: "AI",
+      feature: "ai",
       action: async (editor) => {
         if (!editor) return;
         const selection = getSelectedText(editor);
@@ -467,6 +473,7 @@ export function buildCommands(deps: CommandDeps): CommandItem[] {
       label: "Zettel Perspective",
       category: "Perspective",
       shortcut: "⌥⌘2",
+      feature: "zettelkasten",
       action: () => useWorkspaceStore.getState().applyPreset("zettelkasten"),
     },
     {
@@ -474,6 +481,7 @@ export function buildCommands(deps: CommandDeps): CommandItem[] {
       label: "Journal Perspective",
       category: "Perspective",
       shortcut: "⌥⌘3",
+      feature: "journal",
       action: () => useWorkspaceStore.getState().applyPreset("journal"),
     },
     {
@@ -495,6 +503,7 @@ export function buildCommands(deps: CommandDeps): CommandItem[] {
       // The preset also applies the journal layout. (Registration is no longer a
       // difference: `ensureJournalFile` registers the directory itself, without
       // activating — see ensureJournalDirRegistered.)
+      feature: "journal",
       action: () => useWorkspaceStore.getState().applyPreset("journal"),
     },
     {
@@ -502,6 +511,7 @@ export function buildCommands(deps: CommandDeps): CommandItem[] {
       label: "New Zettel",
       category: "Journal",
       shortcut: "⇧⌘V",
+      feature: "zettelkasten",
       action: () => getAction("zettelkasten.newNote")?.(),
     },
     {
@@ -509,6 +519,7 @@ export function buildCommands(deps: CommandDeps): CommandItem[] {
       label: "New MOC",
       category: "Journal",
       shortcut: "⇧⌘C",
+      feature: "zettelkasten",
       action: () => getAction("zettelkasten.newMoc")?.(),
     },
     {
@@ -516,6 +527,7 @@ export function buildCommands(deps: CommandDeps): CommandItem[] {
       label: "Promote to Permanent Note",
       category: "Journal",
       shortcut: "⇧⌘U",
+      feature: "zettelkasten",
       action: () => getAction("zettelkasten.promote")?.(),
     },
     {
@@ -523,6 +535,7 @@ export function buildCommands(deps: CommandDeps): CommandItem[] {
       label: "New Note from Selection",
       category: "Journal",
       shortcut: "⇧⌘Y",
+      feature: "zettelkasten",
       action: () => getAction("zettelkasten.newFromSelection")?.(),
     },
   ];
