@@ -22,6 +22,9 @@ import { listen } from "@tauri-apps/api/event";
 
 import type { MenuEventHandlerDeps } from "../use-menu-event-handler";
 
+import { t } from "../../i18n";
+import { useAIStore } from "../../stores/ai/ai";
+import { useWorkspaceStore } from "../../stores/file/workspace";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
 import { BARAM_HOMEPAGE, helpDocUrl } from "../../utils/help-urls";
@@ -156,5 +159,88 @@ describe("menu event → Help (§4.2 online docs)", () => {
     menuEventHandler()({ payload: "help_homepage" });
 
     expect(openUrl).toHaveBeenCalledWith(BARAM_HOMEPAGE);
+  });
+});
+
+// §341 The native menu lives outside the webview: its accelerators (⌘⇧A, ⌘J,
+// ⌘⌥2, ⌘⌥3) fire regardless of what any DOM button shows, so greying an item
+// out (src-tauri `update_menu_enabled`) is one layer and this handler-side
+// guard is the second — it must hold even if the native disable is bypassed.
+describe("menu event → feature-owned ids gated by their feature flag (§341)", () => {
+  it("blocks workspace_journal and toasts when journal is disabled", () => {
+    useSettingsStore.setState({ journalEnabled: false });
+    const applyPreset = vi.spyOn(useWorkspaceStore.getState(), "applyPreset");
+    const showToast = vi.spyOn(useUIStore.getState(), "showToast");
+    renderHook(() => useMenuEventHandler(makeDeps()));
+
+    menuEventHandler()({ payload: "workspace_journal" });
+
+    expect(applyPreset).not.toHaveBeenCalled();
+    expect(showToast).toHaveBeenCalledWith(t("space.journal.disabled", "en"));
+  });
+
+  it("lets workspace_journal through once journal is enabled", () => {
+    useSettingsStore.setState({ journalEnabled: true });
+    const applyPreset = vi.spyOn(useWorkspaceStore.getState(), "applyPreset");
+    renderHook(() => useMenuEventHandler(makeDeps()));
+
+    menuEventHandler()({ payload: "workspace_journal" });
+
+    expect(applyPreset).toHaveBeenCalledWith("journal");
+    useSettingsStore.setState({ journalEnabled: false });
+  });
+
+  it("blocks workspace_zettel and toasts when zettelkasten is disabled", () => {
+    useSettingsStore.setState({ zettelkastenEnabled: false });
+    const applyPreset = vi.spyOn(useWorkspaceStore.getState(), "applyPreset");
+    const showToast = vi.spyOn(useUIStore.getState(), "showToast");
+    renderHook(() => useMenuEventHandler(makeDeps()));
+
+    menuEventHandler()({ payload: "workspace_zettel" });
+
+    expect(applyPreset).not.toHaveBeenCalled();
+    expect(showToast).toHaveBeenCalledWith(t("space.zettel.disabled", "en"));
+  });
+
+  it("blocks view_ai_chat and toasts when ai is disabled", () => {
+    useAIStore.setState({ aiEnabled: false });
+    const setRightPanelMode = vi.spyOn(
+      useUIStore.getState(),
+      "setRightPanelMode",
+    );
+    const showToast = vi.spyOn(useUIStore.getState(), "showToast");
+    renderHook(() => useMenuEventHandler(makeDeps()));
+
+    menuEventHandler()({ payload: "view_ai_chat" });
+
+    expect(setRightPanelMode).not.toHaveBeenCalled();
+    expect(showToast).toHaveBeenCalledWith(t("space.ai.disabled", "en"));
+    useAIStore.setState({ aiEnabled: true });
+  });
+
+  it("lets view_ai_chat through once ai is enabled", () => {
+    useAIStore.setState({ aiEnabled: true });
+    const setRightPanelMode = vi.spyOn(
+      useUIStore.getState(),
+      "setRightPanelMode",
+    );
+    renderHook(() => useMenuEventHandler(makeDeps()));
+
+    menuEventHandler()({ payload: "view_ai_chat" });
+
+    expect(setRightPanelMode).toHaveBeenCalledWith("chat");
+  });
+
+  it("does not gate insert_task_list — it is an editing command, not the tasks feature", () => {
+    useSettingsStore.setState({ tasksEnabled: false });
+    renderHook(() => useMenuEventHandler({ ...makeDeps(), editor: null }));
+
+    // No editor means the case body no-ops either way; this pins that the
+    // payload is not intercepted by the feature guard before reaching it.
+    const showToast = vi.spyOn(useUIStore.getState(), "showToast");
+    menuEventHandler()({ payload: "insert_task_list" });
+
+    expect(showToast).not.toHaveBeenCalled();
+    useSettingsStore.setState({ tasksEnabled: true });
   });
 });

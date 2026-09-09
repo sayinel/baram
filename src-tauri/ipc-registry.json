@@ -344,6 +344,18 @@
       "_note": "TS wrapper: syncMenuLocale in src/ipc/menu-locale.ts"
     },
     {
+      "name": "update_menu_enabled",
+      "input": {
+        "items": "Record<string, boolean>"
+      },
+      "output": "void",
+      "module": "app",
+      "spec": "§341",
+      "status": "implemented",
+      "description": "기능이 꺼진 네이티브 메뉴 항목을 회색 처리한다 — 비활성 항목은 accelerator도 발화하지 않는다",
+      "_note": "TS wrapper: syncMenuEnabled in src/ipc/menu-enabled.ts"
+    },
+    {
       "name": "update_recent_menu",
       "input": {
         "entries": "RecentMenuEntry[]"

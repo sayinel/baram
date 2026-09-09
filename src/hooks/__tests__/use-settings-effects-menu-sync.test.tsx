@@ -14,9 +14,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useSettingsEffects } from "../use-settings-effects";
 
+// §341 added a THIRD native-menu effect (grey out disabled-feature menu
+// items) behind the same lazy-import shape — same reason, same mock.
 const mocks = vi.hoisted(() => ({
   syncMenuLocale: vi.fn(() => Promise.resolve()),
   syncRecentMenu: vi.fn(() => Promise.resolve()),
+  syncMenuEnabled: vi.fn(() => Promise.resolve()),
 }));
 
 vi.mock("../../ipc/menu-locale", () => ({
@@ -24,6 +27,9 @@ vi.mock("../../ipc/menu-locale", () => ({
 }));
 vi.mock("../../ipc/recent-menu", () => ({
   syncRecentMenu: mocks.syncRecentMenu,
+}));
+vi.mock("../../ipc/menu-enabled", () => ({
+  syncMenuEnabled: mocks.syncMenuEnabled,
 }));
 
 function Host() {
@@ -60,5 +66,25 @@ describe("useSettingsEffects native-menu sync (§82)", () => {
     await settleLazyImports();
     expect(mocks.syncMenuLocale).not.toHaveBeenCalled();
     expect(mocks.syncRecentMenu).not.toHaveBeenCalled();
+  });
+});
+
+// §341 a THIRD native-menu effect, same cancel-aware shape — same pair of cases.
+describe("useSettingsEffects native-menu-enabled sync (§341)", () => {
+  beforeEach(() => {
+    mocks.syncMenuEnabled.mockClear();
+  });
+
+  it("syncs the disabled-feature menu grey-out while mounted", async () => {
+    render(<Host />);
+    await settleLazyImports();
+    expect(mocks.syncMenuEnabled).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not sync after the tree unmounts", async () => {
+    const { unmount } = render(<Host />);
+    unmount();
+    await settleLazyImports();
+    expect(mocks.syncMenuEnabled).not.toHaveBeenCalled();
   });
 });

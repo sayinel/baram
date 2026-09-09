@@ -18,15 +18,21 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 // and one resolving after vitest tears the environment down fails the WHOLE run with every
 // test passing (see ThemeEditor.test.tsx / use-settings-effects-menu-sync.test.tsx, which
 // document the same guard). Mocking both modules makes that structurally impossible.
+// §341 adds a THIRD lazily-imported IPC module reached by this same hook —
+// same failure mode, same fix.
 const menuIpc = vi.hoisted(() => ({
   syncMenuLocale: vi.fn(() => Promise.resolve()),
   syncRecentMenu: vi.fn(() => Promise.resolve()),
+  syncMenuEnabled: vi.fn(() => Promise.resolve()),
 }));
 vi.mock("../../../ipc/menu-locale", () => ({
   syncMenuLocale: menuIpc.syncMenuLocale,
 }));
 vi.mock("../../../ipc/recent-menu", () => ({
   syncRecentMenu: menuIpc.syncRecentMenu,
+}));
+vi.mock("../../../ipc/menu-enabled", () => ({
+  syncMenuEnabled: menuIpc.syncMenuEnabled,
 }));
 
 import {

@@ -79,6 +79,24 @@ fn update_menu_locale(
     Ok(())
 }
 
+/// §341 기능이 꺼진 메뉴 항목을 회색 처리한다.
+///
+/// `update_menu_locale` 과 같은 `MenuState.items` 조회를 쓰고 `set_text` 대신
+/// `set_enabled` 를 부른다. 비활성 항목은 accelerator 도 발화하지 않으므로, 이것이
+/// 네이티브 레이어의 우회를 닫는 방법이다.
+#[tauri::command]
+fn update_menu_enabled(
+    state: tauri::State<'_, menu::MenuState>,
+    items: HashMap<String, bool>,
+) -> Result<(), String> {
+    for (id, enabled) in &items {
+        if let Some(item) = state.items.get(id.as_str()) {
+            item.set_enabled(*enabled).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RecentMenuEntry {
@@ -335,6 +353,7 @@ pub fn run() {
             git_cmd::git_delete_branch,
             get_opened_urls,
             update_menu_locale,
+            update_menu_enabled,
             update_recent_menu,
             confirm_quit,
             tag_cmd::get_vault_tags,

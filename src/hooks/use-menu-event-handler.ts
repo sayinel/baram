@@ -4,19 +4,33 @@ import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
+import type { FeatureKey } from "../stores/settings/feature-keys";
 import type { Editor } from "@tiptap/react";
 
 // Native menu event handler hook — dispatches Tauri menu-event payloads to app actions
 import { chainWithVimExternalEdit } from "../extensions/plugins/vim/vim-keys";
+import { type Locale, t } from "../i18n";
+import { MENU_FEATURE_MAP } from "../ipc/menu-enabled";
 import { handleRecentMenuEvent } from "../ipc/recent-menu";
 import { getAction } from "../keybindings/keybinding-actions";
 import { useWorkspaceStore } from "../stores/file/workspace";
+import { isFeatureEnabled } from "../stores/settings/features";
 import { useSettingsStore } from "../stores/settings/store";
 import { useUIStore } from "../stores/ui/ui";
 import { showPrompt } from "../utils/ai-commands";
 import { registerEditorMutationTask } from "../utils/editor/mutation-tasks";
 import { BARAM_HOMEPAGE, type HelpDoc, helpDocUrl } from "../utils/help-urls";
 import { requestReload } from "./use-close-guard";
+
+/**
+ * §341 꺼진 기능의 토스트 키. `MENU_FEATURE_MAP`이 가리키는 기능만 다룬다 — tasks는
+ * 소유한 네이티브 메뉴 항목이 없으므로 여기 없다(`space.tasks.*` 키도 없다).
+ */
+const FEATURE_DISABLED_TOAST_KEY: Partial<Record<FeatureKey, string>> = {
+  ai: "space.ai.disabled",
+  journal: "space.journal.disabled",
+  zettelkasten: "space.zettel.disabled",
+};
 
 export interface MenuEventHandlerDeps {
   editor: Editor | null;
@@ -75,6 +89,19 @@ export function useMenuEventHandler({
   useEffect(() => {
     const unlisten = listen<string>("menu-event", async (event) => {
       if (handleRecentMenuEvent(event.payload)) return;
+      // §341 The native menu is greyed out for a disabled feature (Rust
+      // `update_menu_enabled`), but that lives outside the webview and is
+      // unobserved here — this is the second layer, so a bypassed disable
+      // still says why instead of acting.
+      const feature = MENU_FEATURE_MAP[event.payload];
+      if (feature && !isFeatureEnabled(feature)) {
+        const toastKey = FEATURE_DISABLED_TOAST_KEY[feature];
+        if (toastKey) {
+          const { locale } = useSettingsStore.getState();
+          useUIStore.getState().showToast(t(toastKey, locale as Locale));
+        }
+        return;
+      }
       switch (event.payload) {
         case "app_about":
           useUIStore.getState().toggleAbout();

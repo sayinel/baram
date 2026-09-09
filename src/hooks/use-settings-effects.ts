@@ -198,4 +198,23 @@ export function useSettingsEffects(editor: Editor | null) {
       ui.setRightPanelMode("none");
     }
   }, [ai, journal, tasks, zettelkasten]);
+
+  // §341 꺼진 기능의 네이티브 메뉴 항목을 회색 처리한다. 위 두 메뉴 이펙트와 같은
+  // `active` 플래그 형태 — 지연 import 가 언마운트 뒤에 착지할 수 있다.
+  useEffect(() => {
+    let active = true;
+    const flags: Record<FeatureKey, boolean> = {
+      ai,
+      journal,
+      tasks,
+      zettelkasten,
+    };
+    import("../ipc/menu-enabled").then(({ syncMenuEnabled }) => {
+      if (!active) return;
+      syncMenuEnabled(flags).catch((e) => logger.error(e));
+    });
+    return () => {
+      active = false;
+    };
+  }, [ai, journal, tasks, zettelkasten]);
 }
