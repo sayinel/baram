@@ -32,6 +32,9 @@ interface AIState {
   // M8 additions
   activeRequestId: null | string;
   addCustomCommand: (cmd: CustomAICommand) => void;
+  /** §339 AI 킬 스위치. 거짓이면 AI 표면 전체가 사라진다 — 채팅 패널·✨ 버튼 3곳·
+   *  슬래시 AI 그룹·팔레트 AI 5개·Ghost Text·Cmd+J 인라인. 기본 `true` = 오늘 동작. */
+  aiEnabled: boolean;
   // Auto model selection
   autoModelEnabled: boolean;
   /** §44 Clipboard content captured for @clipboard reference */
@@ -68,6 +71,7 @@ interface AIState {
   refreshConfiguredProviders: () => Promise<void>;
   removeCustomCommand: (id: string) => void;
   setActiveRequestId: (id: null | string) => void;
+  setAIEnabled: (enabled: boolean) => void;
   setApiKey: (key: string) => void;
   setAutoModelEnabled: (enabled: boolean) => void;
   /** §44 Set clipboard content for @clipboard reference */
@@ -104,6 +108,7 @@ export const useAIStore = create<AIState>()(
       ghostText: null,
       keychainReady: false,
       activeRequestId: null,
+      aiEnabled: true,
       ghostTextEnabled: false,
       ghostTextDebounceMs: 500,
       maxSuggestionLength: 100,
@@ -167,6 +172,7 @@ export const useAIStore = create<AIState>()(
       setStreaming: (isStreaming) => set({ isStreaming }),
       setGhostText: (ghostText) => set({ ghostText }),
       setActiveRequestId: (activeRequestId) => set({ activeRequestId }),
+      setAIEnabled: (aiEnabled) => set({ aiEnabled }),
       setGhostTextEnabled: (ghostTextEnabled) => set({ ghostTextEnabled }),
       setGhostTextDebounceMs: (ghostTextDebounceMs) =>
         set({ ghostTextDebounceMs }),
@@ -242,6 +248,7 @@ export const useAIStore = create<AIState>()(
       version: 3,
       storage: createJSONStorage(() => tauriStorage),
       partialize: (state) => ({
+        aiEnabled: state.aiEnabled,
         provider: state.provider,
         model: state.model,
         // apiKeys NO LONGER persisted to config.json — stored in OS keyring
