@@ -200,6 +200,7 @@ describe("menu event → feature-owned ids gated by their feature flag (§341)",
 
     expect(applyPreset).not.toHaveBeenCalled();
     expect(showToast).toHaveBeenCalledWith(t("space.zettel.disabled", "en"));
+    useSettingsStore.setState({ zettelkastenEnabled: false });
   });
 
   it("blocks view_ai_chat and toasts when ai is disabled", () => {
@@ -233,7 +234,7 @@ describe("menu event → feature-owned ids gated by their feature flag (§341)",
 
   it("does not gate insert_task_list — it is an editing command, not the tasks feature", () => {
     useSettingsStore.setState({ tasksEnabled: false });
-    renderHook(() => useMenuEventHandler({ ...makeDeps(), editor: null }));
+    renderHook(() => useMenuEventHandler(makeDeps()));
 
     // No editor means the case body no-ops either way; this pins that the
     // payload is not intercepted by the feature guard before reaching it.

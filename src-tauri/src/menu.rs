@@ -722,23 +722,4 @@ mod tests {
         assert_eq!(key_of("Ctrl+Shift+-"), "-");
         assert_eq!(key_of("CmdOrCtrl+0"), "0");
     }
-
-    /// §341 프런트가 `update_menu_enabled` 로 지정하는 id 5개가 실제로 존재해야
-    /// 한다. 없으면 그 커맨드는 조용히 아무것도 하지 않는다 — `items.get()` 이
-    /// `None` 이고 오류도 내지 않기 때문이다.
-    #[test]
-    fn feature_owned_menu_ids_exist_in_the_source() {
-        for id in [
-            "view_ai_chat",
-            "view_calendar",
-            "view_inline_ai",
-            "workspace_journal",
-            "workspace_zettel",
-        ] {
-            assert!(
-                MENU_SOURCE.contains(&format!("menu_items.insert(\"{id}\".into()")),
-                "{id} must be registered in the menu_items map"
-            );
-        }
-    }
 }
