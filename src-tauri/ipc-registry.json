@@ -259,7 +259,7 @@
       "phase": 1,
       "milestone": "M5",
       "status": "implemented",
-      "description": "LLM 호출 (스트리밍, 이벤트: llm:token, llm:done, llm:error). M8: provider(claude/openai/ollama/gemini), baseUrl, privacyMode 파라미터 추가"
+      "description": "LLM 호출 (스트리밍, 이벤트: llm:token, llm:done, llm:error). M8: provider(claude/openai/openrouter/ollama/gemini), baseUrl, privacyMode 파라미터 추가"
     },
     {
       "name": "create_dir",
@@ -758,7 +758,7 @@
     {
       "name": "keyring_set_provider_key",
       "input": {
-        "provider": "\"claude\" | \"gemini\" | \"openai\"",
+        "provider": "\"claude\" | \"gemini\" | \"openai\" | \"openrouter\"",
         "value": "string"
       },
       "output": "void",
@@ -772,7 +772,7 @@
     {
       "name": "keyring_provider_configured",
       "input": {
-        "provider": "\"claude\" | \"gemini\" | \"openai\""
+        "provider": "\"claude\" | \"gemini\" | \"openai\" | \"openrouter\""
       },
       "output": "boolean",
       "module": "keyring",
@@ -785,7 +785,7 @@
     {
       "name": "keyring_delete_provider_key",
       "input": {
-        "provider": "\"claude\" | \"gemini\" | \"openai\""
+        "provider": "\"claude\" | \"gemini\" | \"openai\" | \"openrouter\""
       },
       "output": "void",
       "module": "keyring",

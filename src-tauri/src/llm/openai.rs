@@ -185,20 +185,12 @@ pub async fn complete_stream(
     request_id: &str,
     base_url: &str,
     privacy_mode: bool,
-    mut cancel_rx: oneshot::Receiver<()>,
+    cancel_rx: oneshot::Receiver<()>,
     app_handle: &tauri::AppHandle,
 ) -> Result<(), LlmError> {
     if api_key.is_empty() {
         return Err(LlmError::NoApiKey);
     }
-
-    let mut headers = HeaderMap::new();
-    headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-    let auth_value = format!("Bearer {}", api_key);
-    headers.insert(
-        AUTHORIZATION,
-        HeaderValue::from_str(&auth_value).map_err(|e| LlmError::RequestFailed(e.to_string()))?,
-    );
 
     let mut messages = Vec::new();
     if let Some(sys) = system_prompt {
@@ -222,11 +214,44 @@ pub async fn complete_stream(
 
     let url = format!("{}/v1/chat/completions", base_url.trim_end_matches('/'));
 
+    stream_chat_completions(
+        PROVIDER, &url, api_key, &body, request_id, cancel_rx, app_handle,
+    )
+    .await
+}
+
+/// POST one OpenAI-shaped chat-completions request and pump its SSE stream to
+/// the frontend.
+///
+/// Shared by every provider that speaks this wire format (`openai`,
+/// `openrouter`): the loop below was byte-identical between them, and the only
+/// things that differ are the request body and `provider` — the name that ends
+/// up in `MalformedStream` / `IncompleteStream` so a failure says who failed.
+/// The bearer header is built here because it is the same for both; anything
+/// provider-specific belongs in the body the caller passes.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn stream_chat_completions<B: Serialize>(
+    provider: &'static str,
+    url: &str,
+    api_key: &str,
+    body: &B,
+    request_id: &str,
+    mut cancel_rx: oneshot::Receiver<()>,
+    app_handle: &tauri::AppHandle,
+) -> Result<(), LlmError> {
+    let mut headers = HeaderMap::new();
+    headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    let auth_value = format!("Bearer {}", api_key);
+    headers.insert(
+        AUTHORIZATION,
+        HeaderValue::from_str(&auth_value).map_err(|e| LlmError::RequestFailed(e.to_string()))?,
+    );
+
     let client = reqwest::Client::new();
     let response = client
-        .post(&url)
+        .post(url)
         .headers(headers)
-        .json(&body)
+        .json(body)
         .send()
         .await
         .map_err(|e| LlmError::RequestFailed(e.to_string()))?;
@@ -261,11 +286,11 @@ pub async fn complete_stream(
                 // no longer cut a character in half (framing.rs).
                 decoder
                     .push(&chunk)
-                    .map_err(|e| map_framing_error(PROVIDER, request_id, e))?;
+                    .map_err(|e| map_framing_error(provider, request_id, e))?;
                 while let Some(line) = decoder.next_line() {
-                    let line = line.map_err(|e| map_framing_error(PROVIDER, request_id, e))?;
+                    let line = line.map_err(|e| map_framing_error(provider, request_id, e))?;
                     let events =
-                        parse_line(line).map_err(|f| map_parse_failure(PROVIDER, request_id, f))?;
+                        parse_line(line).map_err(|f| map_parse_failure(provider, request_id, f))?;
                     for event in events {
                         match event {
                             LineEvent::Token(token) => {
@@ -287,7 +312,7 @@ pub async fn complete_stream(
     // An unterminated last SSE line is not an event; whatever it held went
     // with the connection. Say so instead of reporting a finished completion.
     Err(LlmError::IncompleteStream {
-        provider: PROVIDER,
+        provider,
         request_id: request_id.to_string(),
         tokens: token_count,
     })

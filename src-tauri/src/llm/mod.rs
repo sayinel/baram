@@ -6,6 +6,7 @@ pub mod framing;
 pub mod gemini;
 pub mod ollama;
 pub mod openai;
+pub mod openrouter;
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -205,6 +206,21 @@ pub async fn complete(
             )
             .await
         }
+        // OpenRouter's base URL is fixed (see `openrouter::BASE_URL`), so the
+        // caller's `base_url` is deliberately ignored here.
+        "openrouter" => {
+            openrouter::complete_stream(
+                api_key,
+                prompt,
+                model,
+                system_prompt,
+                max_tokens,
+                request_id,
+                cancel_rx,
+                app_handle,
+            )
+            .await
+        }
         // Note: Gemini has no no-store header API. Privacy mode blocks all cloud
         // providers (including Gemini) at line 60 before reaching this arm.
         "gemini" => {
@@ -248,6 +264,7 @@ pub async fn list_models(
             ollama::list_models(url).await
         }
         "gemini" => gemini::list_models(api_key).await,
+        "openrouter" => openrouter::list_models(api_key).await,
         _ => Err(LlmError::UnknownProvider(provider.to_string())),
     }
 }
@@ -255,6 +272,31 @@ pub async fn list_models(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // --- Provider dispatch wiring ---
+
+    #[tokio::test]
+    async fn list_models_routes_every_known_provider() {
+        // A provider that is merely defined still answers UnknownProvider until
+        // it has a match arm. Comparing the two errors is what proves the arm
+        // exists; both paths return before any network call.
+        assert!(matches!(
+            list_models("openrouter", "", None).await,
+            Err(LlmError::NoApiKey)
+        ));
+        assert!(matches!(
+            list_models("openai", "", None).await,
+            Err(LlmError::NoApiKey)
+        ));
+        assert!(matches!(
+            list_models("claude", "", None).await,
+            Err(LlmError::NoApiKey)
+        ));
+        assert!(matches!(
+            list_models("openrouter-typo", "", None).await,
+            Err(LlmError::UnknownProvider(_))
+        ));
+    }
 
     // --- Claude SSE parsing tests (re-exported from claude module) ---
 

@@ -3,10 +3,12 @@
 import type React from "react";
 
 import type { Locale } from "../../i18n";
+import type { AIProvider } from "../../stores/ai/ai";
 import type { TaskScanScope } from "../../utils/tasks/task-scan-scope";
 
 import { AVAILABLE_LOCALES, LOCALE_LABELS } from "../../i18n";
 import { useAIStore } from "../../stores/ai/ai";
+import { AI_PROVIDER_IDS, AI_PROVIDERS } from "../../stores/ai/providers";
 import { useSettingsStore } from "../../stores/settings/store";
 import { TASK_SCAN_SCOPES } from "../../utils/tasks/task-scan-scope";
 
@@ -483,16 +485,17 @@ export function useSettingsRegistry(): SearchableSetting[] {
       description: "settings.ai.aiProvider.desc",
       category: "ai",
       section: "settings.ai.provider",
-      keywords: ["claude", "openai", "ollama", "gemini"],
+      // Both derived from the provider table: the settings search index and
+      // this select used to list providers independently of the AI tab, so a
+      // new provider could be selectable in one place and not the other.
+      keywords: [...AI_PROVIDER_IDS],
       control: makeSelectControl(
         () => ai.provider,
-        (v) => ai.setProvider(v as "claude" | "gemini" | "ollama" | "openai"),
-        [
-          { value: "claude", label: "settings.ai.provider.claude" },
-          { value: "openai", label: "settings.ai.provider.openai" },
-          { value: "gemini", label: "settings.ai.provider.gemini" },
-          { value: "ollama", label: "settings.ai.provider.ollama" },
-        ],
+        (v) => ai.setProvider(v as AIProvider),
+        AI_PROVIDER_IDS.map((id) => ({
+          value: id,
+          label: AI_PROVIDERS[id].labelKey,
+        })),
       ),
     },
     {

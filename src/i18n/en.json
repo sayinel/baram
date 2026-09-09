@@ -764,6 +764,7 @@
   "settings.ai.provider.gemini": "Google Gemini",
   "settings.ai.provider.ollama": "Ollama (Local)",
   "settings.ai.provider.openai": "OpenAI",
+  "settings.ai.provider.openrouter": "OpenRouter",
   "settings.ai.selectModel": "Select model...",
   "settings.ai.useDefault": "Default",
   "settings.appearance.customBadge": "Custom",

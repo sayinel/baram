@@ -764,6 +764,7 @@
   "settings.ai.provider.gemini": "Google Gemini",
   "settings.ai.provider.ollama": "Ollama (로컬)",
   "settings.ai.provider.openai": "OpenAI",
+  "settings.ai.provider.openrouter": "OpenRouter",
   "settings.ai.selectModel": "모델 선택...",
   "settings.ai.useDefault": "기본",
   "settings.appearance.customBadge": "커스텀",

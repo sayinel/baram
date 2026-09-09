@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { AI_PROVIDER_IDS, AI_PROVIDERS } from "../../stores/ai/providers";
 import { isLLMAllowed } from "../privacy-check";
 
 describe("isLLMAllowed", () => {
@@ -27,6 +28,19 @@ describe("isLLMAllowed", () => {
   it("allows ollama when filePrivacy is true", () => {
     expect(isLLMAllowed(false, "ollama", true)).toBe(true);
   });
+
+  it.each(AI_PROVIDER_IDS)(
+    "under privacy mode allows %s only if it runs locally",
+    (provider) => {
+      // Derived from the provider table instead of a hand-written list, which
+      // is what stops the next cloud provider from being added and simply not
+      // appearing in this file. The equivalence asserted here is
+      // "keyless == local": true of Ollama, and the reason a future provider
+      // that needs no key but does leave the machine must break this test
+      // rather than inherit an allowance.
+      expect(isLLMAllowed(true, provider)).toBe(AI_PROVIDERS[provider].keyless);
+    },
+  );
 
   it("uses global privacy when filePrivacy is false", () => {
     expect(isLLMAllowed(false, "claude", false)).toBe(true);

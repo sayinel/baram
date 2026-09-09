@@ -7,7 +7,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
 /** Providers whose API keys live in the OS keyring. Ollama is keyless. */
-export type KeyringProvider = "claude" | "gemini" | "openai";
+export type KeyringProvider = "claude" | "gemini" | "openai" | "openrouter";
 
 /** Delete a provider's API key. Missing entry is a no-op. */
 export async function keyringDeleteProviderKey(
