@@ -12,7 +12,7 @@ import {
 } from "../../ipc/invoke";
 import { logger } from "../../utils/logger";
 import { tauriStorage } from "../system/tauri-storage";
-import { KEYRING_PROVIDERS } from "./providers";
+import { AI_PROVIDERS, KEYRING_PROVIDERS } from "./providers";
 
 // The provider list itself lives in `providers.ts`, which derives this union
 // from its table; re-exported here because this module is where every consumer
@@ -120,7 +120,31 @@ export const useAIStore = create<AIState>()(
       providerForChat: "",
       providerForAgent: "",
 
-      setProvider: (provider) => set({ provider }),
+      setProvider: (provider) =>
+        set((s) => {
+          // Returning the same object short-circuits zustand's Object.is check,
+          // so re-selecting the current provider wakes no subscriber.
+          if (s.provider === provider) return s;
+          return {
+            provider,
+            model: AI_PROVIDERS[provider].defaultModel,
+            // A task whose provider field is empty inherits the default
+            // provider, so its model has to follow as well: the id it holds
+            // was chosen under the provider being left and does not exist
+            // under the new one. `getConfigForTask` would otherwise pair the
+            // new provider with the old provider's model and the request
+            // would fail at use time. Tasks pinned to an explicit provider do
+            // not follow the default, so their models stay.
+            modelForAgent: s.providerForAgent ? s.modelForAgent : "",
+            modelForChat: s.providerForChat ? s.modelForChat : "",
+            modelForGhostText: s.providerForGhostText
+              ? s.modelForGhostText
+              : "",
+            modelForInlineEdit: s.providerForInlineEdit
+              ? s.modelForInlineEdit
+              : "",
+          };
+        }),
       setModel: (model) => set({ model }),
       setApiKey: (key) => {
         // §259 — the secret is written straight to the OS keyring and never

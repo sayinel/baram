@@ -413,17 +413,32 @@ mod tests {
     #[ignore = "talks to the real OpenRouter API"]
     #[tokio::test]
     async fn live_completion_streams_sse_tokens_for_our_request_body() {
-        use super::super::framing::{LineDecoder, LineEvent};
+        use std::time::{Duration, Instant};
+
         use futures::StreamExt;
+        use tokio::time::timeout;
+
+        use super::super::framing::{LineDecoder, LineEvent};
 
         let Some(key) = live_key() else {
             panic!("no OpenRouter key: add one in Settings → AI, or set OPENROUTER_API_KEY");
         };
 
+        // A free model, picked out of the live catalogue rather than hardcoded:
+        // `openrouter/auto` routes to paid models, so on an account with no
+        // credits this test would only ever prove that HTTP 402 works.
+        let catalogue = list_models(&key).await.expect("list_models failed");
+        let model = catalogue
+            .iter()
+            .find(|m| m.id.ends_with(":free"))
+            .map(|m| m.id.clone())
+            .expect("no free model in the catalogue to stream from");
+        eprintln!("streaming from {model}");
+
         // The exact body `complete_stream` sends, including the absence of
         // `store`. If OpenRouter rejected any of it, this is where we learn it.
         let body = OpenRouterRequest {
-            model: "openrouter/auto".to_string(),
+            model,
             messages: vec![OpenRouterMessage {
                 role: "user".to_string(),
                 content: "Reply with the single word: ok".to_string(),
@@ -432,13 +447,21 @@ mod tests {
             max_tokens: 32,
         };
 
-        let response = reqwest::Client::new()
-            .post(format!("{}/v1/chat/completions", BASE_URL))
-            .bearer_auth(&key)
-            .json(&body)
-            .send()
-            .await
-            .expect("request failed");
+        // A free model on a credit-less account queues before it answers — the
+        // first run of this test waited over an hour for headers. `send()` has
+        // no timeout of its own (neither does the provider, for any provider),
+        // so bound it here rather than let a manual check hang.
+        let response = timeout(
+            Duration::from_secs(180),
+            reqwest::Client::new()
+                .post(format!("{}/v1/chat/completions", BASE_URL))
+                .bearer_auth(&key)
+                .json(&body)
+                .send(),
+        )
+        .await
+        .expect("no response headers within 180s — the free model is queued")
+        .expect("request failed");
         assert!(
             response.status().is_success(),
             "HTTP {}: {}",
@@ -448,14 +471,29 @@ mod tests {
 
         // Decode with the same framing and parser the provider uses, so this
         // proves our pipeline reads OpenRouter's stream — not merely that the
-        // endpoint answered.
+        // endpoint answered. OpenRouter interleaves `: OPENROUTER PROCESSING`
+        // comment lines while a request queues; `sse_data` drops them because
+        // they carry no `data:` prefix, which is the one wire difference from
+        // OpenAI that could have broken the parse.
         let mut stream = response.bytes_stream();
         let mut decoder = LineDecoder::default();
         let mut text = String::new();
+        let mut bytes = 0usize;
         let mut saw_done = false;
 
-        while let Some(chunk) = stream.next().await {
-            decoder.push(&chunk.expect("chunk")).expect("framing");
+        // Bounded: a free model on a credit-less account can queue forever, and
+        // a test that waits forever reports nothing at all.
+        const CHUNK_TIMEOUT: Duration = Duration::from_secs(30);
+        let deadline = Instant::now() + Duration::from_secs(90);
+
+        while Instant::now() < deadline {
+            let Ok(next) = timeout(CHUNK_TIMEOUT, stream.next()).await else {
+                break;
+            };
+            let Some(chunk) = next else { break };
+            let chunk = chunk.expect("chunk");
+            bytes += chunk.len();
+            decoder.push(&chunk).expect("framing");
             while let Some(line) = decoder.next_line() {
                 let line = line.expect("utf-8 line");
                 for event in super::super::openai::parse_line(line).expect("parse") {
@@ -470,8 +508,15 @@ mod tests {
             }
         }
 
-        eprintln!("streamed {:?} (terminal record: {saw_done})", text);
+        eprintln!("{bytes} bytes, text {text:?}, terminal record: {saw_done}");
+        assert!(
+            bytes > 0,
+            "no bytes arrived: a free model queues indefinitely when the account \
+             has no credits. This is inconclusive, not a parser failure — the \
+             POST itself was accepted (a malformed body answers 400, and this \
+             account answers 402 for paid models, i.e. past validation)."
+        );
         assert!(saw_done, "stream ended without a terminal record");
-        assert!(!text.is_empty(), "no text tokens arrived");
+        assert!(!text.is_empty(), "bytes arrived but no text tokens did");
     }
 }

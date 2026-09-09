@@ -89,14 +89,16 @@ export function AITab() {
 
   const handleProviderChange = useCallback(
     (newProvider: AIProvider) => {
+      // `setProvider` picks the new provider's default model and drops the
+      // per-task models that followed the old one; this handler only resets
+      // what is local to the tab.
       setProvider(newProvider);
-      setModel(AI_PROVIDERS[newProvider].defaultModel);
       setModels([]);
       setModelsError(null);
       setCustomMode(false);
       setDraft("");
     },
-    [setProvider, setModel],
+    [setProvider],
   );
 
   const fetchModels = useCallback(async () => {
@@ -429,6 +431,13 @@ function TaskModelSelector({
   const [loading, setLoading] = useState(false);
 
   const effectiveProvider = taskProvider || defaultProvider;
+  // Selecting a provider and then entering its key is the only possible order
+  // for one being set up, so the fetch below runs once against a provider with
+  // no key and fails. `configuredProviders` gains that provider the moment the
+  // key is stored, which is the signal — and the only signal — that the failed
+  // fetch is worth repeating. A boolean, not the array, so an unrelated render
+  // does not turn this into a request per keystroke in the API key field.
+  const providerReady = configuredProviders.includes(effectiveProvider);
 
   useEffect(() => {
     let cancelled = false;
@@ -442,7 +451,7 @@ function TaskModelSelector({
     return () => {
       cancelled = true;
     };
-  }, [effectiveProvider, fetchModelsForProvider]);
+  }, [effectiveProvider, providerReady, fetchModelsForProvider]);
 
   return (
     <SettingsRow description={description} label={label}>
