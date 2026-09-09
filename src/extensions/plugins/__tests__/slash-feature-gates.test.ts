@@ -98,3 +98,29 @@ describe("slash menu feature gating (§338)", () => {
     expect(customAI).toBeGreaterThan(firstJournal);
   });
 });
+
+// §339 "/Extract Action Items" (extract-tasks) reads from tasks AND calls
+// the LLM — it belongs to both features and must require both flags, not
+// just the tasks group it happens to sit in.
+describe("extract-tasks requires both tasks and ai (§339)", () => {
+  const hasExtractTasks = (items: { id: string }[]) =>
+    items.some((i) => i.id === "extract-tasks");
+
+  it("is absent when tasks is on but AI is off", () => {
+    useSettingsStore.setState({ tasksEnabled: true });
+    useAIStore.setState({ aiEnabled: false });
+    expect(hasExtractTasks(buildSlashItems(editor))).toBe(false);
+  });
+
+  it("is present when both tasks and AI are on", () => {
+    useSettingsStore.setState({ tasksEnabled: true });
+    useAIStore.setState({ aiEnabled: true });
+    expect(hasExtractTasks(buildSlashItems(editor))).toBe(true);
+  });
+
+  it("is absent when tasks is off, regardless of AI", () => {
+    useSettingsStore.setState({ tasksEnabled: false });
+    useAIStore.setState({ aiEnabled: true });
+    expect(hasExtractTasks(buildSlashItems(editor))).toBe(false);
+  });
+});
