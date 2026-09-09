@@ -7,6 +7,9 @@
 // guard alone leaves the user staring at an empty panel with no way out.
 import { act } from "react";
 
+import type { FeatureKey } from "../../../stores/settings/feature-keys";
+import type { RightPanelMode, SidebarPanel } from "../../../stores/ui/ui";
+
 import { render, waitFor } from "@testing-library/react";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -26,8 +29,13 @@ vi.mock("../../../ipc/recent-menu", () => ({
   syncRecentMenu: menuIpc.syncRecentMenu,
 }));
 
-import { useSettingsEffects } from "../../../hooks/use-settings-effects";
+import {
+  RIGHT_PANEL_MODE_FEATURE,
+  SIDEBAR_PANEL_FEATURE,
+  useSettingsEffects,
+} from "../../../hooks/use-settings-effects";
 import { useAIStore } from "../../../stores/ai/ai";
+import { ACTIVITY_BAR_ITEM_FEATURE } from "../../../stores/settings/activity-bar-config";
 import { useSettingsStore } from "../../../stores/settings/store";
 import { useUIStore } from "../../../stores/ui/ui";
 import { AIChatPanel } from "../../ai/AIChatPanel";
@@ -41,6 +49,17 @@ function EffectHost() {
   useSettingsEffects(null);
   return null;
 }
+
+// 기능 4개가 두 스토어에 흩어져 있다(features.ts의 설명과 동일) — 어느 세터를 불러야
+// 하는지는 FeatureKey 자체로만 결정되고, 이 표는 SIDEBAR_PANEL_FEATURE/
+// RIGHT_PANEL_MODE_FEATURE 처럼 좌석이 늘 때마다 자라는 표가 아니라 FeatureKey 개수만큼만
+// 있다(FEATURE_KEYS의 소진 테스트가 그 배열 자체는 이미 지킨다).
+const disableFeature: Record<FeatureKey, () => void> = {
+  ai: () => useAIStore.setState({ aiEnabled: false }),
+  journal: () => useSettingsStore.setState({ journalEnabled: false }),
+  tasks: () => useSettingsStore.setState({ tasksEnabled: false }),
+  zettelkasten: () => useSettingsStore.setState({ zettelkastenEnabled: false }),
+};
 
 // ⓑ Both guarded sidebar panels are `React.lazy`, so the FIRST dynamic import of either
 // module pays a real transform cost (Vite parses and transforms it plus its whole
@@ -101,6 +120,70 @@ describe("seat pointer recovery (§340)", () => {
       expect(useUIStore.getState().sidebarPanel).toBe("graph");
       expect(useUIStore.getState().rightPanelMode).toBe("properties");
     });
+
+    // 위 두 테스트는 각각 SIDEBAR_PANEL_FEATURE/RIGHT_PANEL_MODE_FEATURE의 항목 하나씩만
+    // 겨눈다 — 나머지 넷("tasks", "zettel", "memories", "photo-gallery")의 맵 오타는 어떤
+    // 테스트도 못 잡았다. 손으로 케이스를 더 베끼는 대신 두 표 자체를 순회한다: 나중에
+    // 좌석이 추가돼도 이 테스트가 자동으로 덮는다.
+    it.each(
+      Object.entries(SIDEBAR_PANEL_FEATURE) as [SidebarPanel, FeatureKey][],
+    )(
+      "moves sidebarPanel off %s when its owning feature (%s) turns off — derived",
+      (panel, feature) => {
+        useUIStore.setState({ sidebarPanel: panel });
+        render(<EffectHost />);
+        act(() => {
+          disableFeature[feature]();
+        });
+        expect(useUIStore.getState().sidebarPanel).toBe("files");
+      },
+    );
+
+    it.each(
+      Object.entries(RIGHT_PANEL_MODE_FEATURE) as [
+        RightPanelMode,
+        FeatureKey,
+      ][],
+    )(
+      "moves rightPanelMode off %s when its owning feature (%s) turns off — derived",
+      (mode, feature) => {
+        useUIStore.setState({ rightPanelMode: mode });
+        render(<EffectHost />);
+        act(() => {
+          disableFeature[feature]();
+        });
+        expect(useUIStore.getState().rightPanelMode).toBe("none");
+      },
+    );
+
+    // ‼️ The two `it.each` blocks above can NOT catch a wrong VALUE in either map — they
+    // derive both the seat to test and the feature to disable from the very same map the
+    // effect itself reads, so a typo (e.g. "zettel" pointing at "journal" instead of
+    // "zettelkasten") changes the input and the expectation identically and the test still
+    // passes. Catching that requires an INDEPENDENT source of truth: `ACTIVITY_BAR_ITEM_FEATURE`
+    // (§338, activity-bar-config.ts) maps the same six ids to the same features for the
+    // activity-bar icons, authored separately from this file. Cross-checking against it is
+    // what actually verifies the maps' data, not just the effect's wiring.
+    it.each(
+      Object.entries(SIDEBAR_PANEL_FEATURE) as [SidebarPanel, FeatureKey][],
+    )(
+      "SIDEBAR_PANEL_FEATURE.%s agrees with ACTIVITY_BAR_ITEM_FEATURE (%s)",
+      (panel, feature) => {
+        expect(ACTIVITY_BAR_ITEM_FEATURE[panel]).toBe(feature);
+      },
+    );
+
+    it.each(
+      Object.entries(RIGHT_PANEL_MODE_FEATURE) as [
+        RightPanelMode,
+        FeatureKey,
+      ][],
+    )(
+      "RIGHT_PANEL_MODE_FEATURE.%s agrees with ACTIVITY_BAR_ITEM_FEATURE (%s)",
+      (mode, feature) => {
+        expect(ACTIVITY_BAR_ITEM_FEATURE[mode]).toBe(feature);
+      },
+    );
   });
 
   describe("ⓑ render guards", () => {

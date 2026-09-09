@@ -18,15 +18,24 @@ import {
   clearThemeVars,
 } from "../utils/theme-vars";
 
-/** §340 사이드바 좌석 → 그 좌석을 소유한 기능. */
-const SIDEBAR_PANEL_FEATURE: Partial<Record<SidebarPanel, FeatureKey>> = {
-  calendar: "journal",
-  tasks: "tasks",
-  zettel: "zettelkasten",
-};
+/**
+ * §340 사이드바 좌석 → 그 좌석을 소유한 기능.
+ *
+ * export된 이유: `feature-seat-pointer.test.tsx`가 이 표와 아래 표를 **순회**해서 ⓐ
+ * 이펙트를 검증한다 — 항목을 하나하나 베껴 적으면 다음에 좌석이 추가돼도 테스트가
+ * 조용히 그 항목을 놓친다(파생 검증이 이 표의 존재 이유).
+ */
+export const SIDEBAR_PANEL_FEATURE: Partial<Record<SidebarPanel, FeatureKey>> =
+  {
+    calendar: "journal",
+    tasks: "tasks",
+    zettel: "zettelkasten",
+  };
 
-/** §340 우측 패널 좌석 → 그 좌석을 소유한 기능. */
-const RIGHT_PANEL_MODE_FEATURE: Partial<Record<RightPanelMode, FeatureKey>> = {
+/** §340 우측 패널 좌석 → 그 좌석을 소유한 기능. (export 이유는 위와 동일) */
+export const RIGHT_PANEL_MODE_FEATURE: Partial<
+  Record<RightPanelMode, FeatureKey>
+> = {
   chat: "ai",
   memories: "journal",
   "photo-gallery": "journal",
@@ -167,25 +176,26 @@ export function useSettingsEffects(editor: Editor | null) {
   // ‼️ **가리키고 있을 때만** 옮긴다. 조건 없이 리셋하면 무관한 작업 상태를 파괴한다.
   // ‼️ 이것만으로는 부족하다 — 재하이드레이션 직후 첫 페인트가 이 이펙트보다 빠르므로
   //    패널 쪽 렌더 가드(ⓑ)가 함께 있어야 빈 화면이 한 프레임 새지 않는다.
-  const featureFlags = useFeatureFlags();
+  // `useFeatureFlags()` returns a fresh object every render (see its own doc comment in
+  // stores/settings/features.ts) — destructuring here, rather than passing the object
+  // through, is what lets the effect below depend on the four primitives directly instead
+  // of needing an `exhaustive-deps` suppression for a computed member access it can't narrow.
+  const { ai, journal, tasks, zettelkasten } = useFeatureFlags();
   useEffect(() => {
     const ui = useUIStore.getState();
+    const enabled: Record<FeatureKey, boolean> = {
+      ai,
+      journal,
+      tasks,
+      zettelkasten,
+    };
     const panelFeature = SIDEBAR_PANEL_FEATURE[ui.sidebarPanel];
-    if (panelFeature && !featureFlags[panelFeature]) {
+    if (panelFeature && !enabled[panelFeature]) {
       ui.setSidebarPanel("files");
     }
     const modeFeature = RIGHT_PANEL_MODE_FEATURE[ui.rightPanelMode];
-    if (modeFeature && !featureFlags[modeFeature]) {
+    if (modeFeature && !enabled[modeFeature]) {
       ui.setRightPanelMode("none");
     }
-    // `useFeatureFlags()` returns a fresh object every render (see its own doc comment
-    // in stores/settings/features.ts) — listing `featureFlags` itself here would re-run
-    // this effect on every render instead of only when one of the four booleans changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    featureFlags.ai,
-    featureFlags.journal,
-    featureFlags.tasks,
-    featureFlags.zettelkasten,
-  ]);
+  }, [ai, journal, tasks, zettelkasten]);
 }
