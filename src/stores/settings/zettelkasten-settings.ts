@@ -10,7 +10,7 @@ export interface ZettelkastenSettingsSlice {
   zettelkastenHomeNote: string;
   zettelkastenStartupBehavior: ZettelStartupBehavior;
 }
-type ZettelStartupBehavior = "nothing" | "openInbox";
+type ZettelStartupBehavior = "nothing" | "openHomeNote";
 
 export const createZettelkastenSettingsSlice: StateCreator<
   ZettelkastenSettingsSlice,
@@ -21,7 +21,7 @@ export const createZettelkastenSettingsSlice: StateCreator<
   // §92 Zettelkasten space
   zettelkastenEnabled: false,
   zettelkastenDirectory: "",
-  zettelkastenStartupBehavior: "openInbox",
+  zettelkastenStartupBehavior: "openHomeNote",
   zettelkastenHomeNote: "",
 
   // Setters

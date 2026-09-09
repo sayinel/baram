@@ -951,7 +951,7 @@
   "settings.general.zettelkastenStartup": "On Startup",
   "settings.general.zettelkastenStartup.desc": "Action when opening a workspace with Zettel enabled",
   "settings.general.zettelkastenStartup.nothing": "Do nothing",
-  "settings.general.zettelkastenStartup.openInbox": "Open the inbox note",
+  "settings.general.zettelkastenStartup.openHomeNote": "Open the home note",
   "settings.group.features": "Features",
   "settings.group.general": "General",
   "settings.group.plugins": "Plugins",

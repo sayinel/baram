@@ -951,7 +951,7 @@
   "settings.general.zettelkastenStartup": "시작 시",
   "settings.general.zettelkastenStartup.desc": "Zettel이 활성화된 워크스페이스를 열 때의 동작",
   "settings.general.zettelkastenStartup.nothing": "아무 동작 안 함",
-  "settings.general.zettelkastenStartup.openInbox": "인박스 노트 열기",
+  "settings.general.zettelkastenStartup.openHomeNote": "홈 노트 열기",
   "settings.group.features": "기능",
   "settings.group.general": "일반",
   "settings.group.plugins": "플러그인",

@@ -85,13 +85,13 @@ export function ZettelkastenTab() {
               className="settings-select"
               onChange={(e) =>
                 setZettelkastenStartupBehavior(
-                  e.target.value as "nothing" | "openInbox",
+                  e.target.value as "nothing" | "openHomeNote",
                 )
               }
               value={zettelkastenStartupBehavior}
             >
-              <option value="openInbox">
-                {t("settings.general.zettelkastenStartup.openInbox")}
+              <option value="openHomeNote">
+                {t("settings.general.zettelkastenStartup.openHomeNote")}
               </option>
               <option value="nothing">
                 {t("settings.general.zettelkastenStartup.nothing")}
