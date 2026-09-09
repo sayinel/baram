@@ -17,6 +17,12 @@
 //
 // So: gate that kind of setting on this hook and treat "not yet known" as the
 // safe value, rather than as the default.
+//
+// ‼️ Deliberately NOT ended by a failed read. The startup restore's barrier
+// (`stores/system/hydration.ts`) is released by `noteHydrationFailure` so a
+// corrupt config cannot hang the app; this gate is not, because what it guards
+// is that outward request, and on a read that failed "not yet known" stays the
+// safe answer for the session. The two gates disagree on purpose.
 import { useEffect, useState } from "react";
 
 import { useSettingsStore } from "../stores/settings/store";

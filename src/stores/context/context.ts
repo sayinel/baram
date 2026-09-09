@@ -14,6 +14,7 @@ import {
 } from "../../ipc/context";
 import { logger } from "../../utils/logger";
 import { basename, stripTrailingSeparators } from "../../utils/path-utils";
+import { noteHydrationFailure } from "../system/hydration";
 import { tauriStorage } from "../system/tauri-storage";
 import { createSpaceSlice, syncZettelIndexForContext } from "./space-slice";
 
@@ -398,6 +399,11 @@ export const useContextStore = create<ContextState>()(
         activeContextId: state.activeContextId,
       }),
       version: 1,
+      // issue 597: a failed read (corrupt config.json) would otherwise leave
+      // `hasHydrated()` false for good and hold the startup barrier forever.
+      onRehydrateStorage: () => (_state, error) => {
+        if (error) noteHydrationFailure(useContextStore.persist);
+      },
     },
   ),
 );
