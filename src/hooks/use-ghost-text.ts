@@ -129,7 +129,9 @@ export function useGhostText(editor: Editor | null) {
       }
 
       const store = useAIStore.getState();
-      if (!store.ghostTextEnabled) return;
+      // §339 aiEnabled === false counts as ghost text off too — AND the
+      // predicates, do not flip the user's own ghostTextEnabled preference.
+      if (!store.aiEnabled || !store.ghostTextEnabled) return;
       const filePrivacy = getFilePrivacy(editor);
       const ghostTaskConfig = getConfigForTask("ghost-text");
       if (
@@ -189,6 +191,14 @@ export function useGhostText(editor: Editor | null) {
         accumulatedRef.current = "";
 
         const storeSnapshot = useAIStore.getState();
+
+        // §339 Re-check AI/ghost-text — either can have been switched off
+        // during the debounce wait; a snapshot taken before the toggle
+        // flipped must not still spend a request after it.
+        if (!storeSnapshot.aiEnabled || !storeSnapshot.ghostTextEnabled) {
+          task.finish();
+          return;
+        }
 
         // Re-check privacy — privacyMode may have changed during debounce wait
         const taskCfg = getConfigForTask("ghost-text");
@@ -338,7 +348,9 @@ export function useGhostText(editor: Editor | null) {
     // §11.2.2 Register prefetch callback triggered after Tab-acceptance
     registerGhostTextAcceptedCallback((acceptedText, pos) => {
       const store = useAIStore.getState();
-      if (!store.ghostTextEnabled) return;
+      // §339 aiEnabled === false counts as ghost text off too — AND the
+      // predicates, do not flip the user's own ghostTextEnabled preference.
+      if (!store.aiEnabled || !store.ghostTextEnabled) return;
       const taskCfg = getConfigForTask("ghost-text");
       const filePrivacy = getFilePrivacy(editor);
       if (!isLLMAllowed(store.privacyMode, taskCfg.provider, filePrivacy))
