@@ -30,6 +30,7 @@ import {
 import { chainWithVimExternalEdit } from "../../extensions/plugins/vim/vim-keys";
 import { useTranslation } from "../../i18n/useTranslation";
 import { useEditorStore } from "../../stores/editor/editor";
+import { useFeatureFlags } from "../../stores/settings/features";
 import {
   dispatchAIAction,
   dispatchCustomInstruction,
@@ -76,6 +77,7 @@ export function BlockHandleMenu({
   onClose,
 }: BlockHandleMenuProps) {
   const { t } = useTranslation();
+  const { ai: aiEnabled } = useFeatureFlags();
   const [aiSubOpen, setAiSubOpen] = useState(false);
   const [turnIntoOpen, setTurnIntoOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -333,7 +335,9 @@ export function BlockHandleMenu({
       ))}
 
       {/* AI Submenu */}
-      {blockHasContent && (
+      {/* §338 blockHasContent && aiEnabled — 이 조건이 이미 구분자(:338)까지
+          함께 감싸고 있어 aiEnabled만 더하면 된다. */}
+      {blockHasContent && aiEnabled && (
         <>
           <div className="block-handle-separator" />
           <div

@@ -11,6 +11,7 @@ import { Sparkles } from "lucide-react";
 import { chainWithVimExternalEdit } from "../../extensions/plugins/vim/vim-keys";
 import { useTranslation } from "../../i18n/useTranslation";
 import { useCommandLabel } from "../../keybindings/use-command-label";
+import { useFeatureFlags } from "../../stores/settings/features";
 import {
   executeAICommand,
   getSelectedText,
@@ -119,6 +120,7 @@ const CONTEXTUAL_PROMPTS: Record<
 export function FloatingToolbar({ editor }: FloatingToolbarProps) {
   const { t } = useTranslation();
   const commandLabel = useCommandLabel();
+  const { ai: aiEnabled } = useFeatureFlags();
   const [aiOpen, setAiOpen] = useState(false);
   const [dropUp, setDropUp] = useState(false);
   const [dropReady, setDropReady] = useState(false);
@@ -372,34 +374,40 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
           chainWithVimExternalEdit(editor).focus().toggleOrderedList().run()
         }
       />
-      <div className="floating-toolbar-separator" />
-      <div className="floating-toolbar-ai-wrapper" ref={aiRef}>
-        <Tooltip label={t("toolbar.ai.commands")} placement="top">
-          <button
-            className={`floating-toolbar-btn ${aiOpen ? "floating-toolbar-btn-active" : ""}`}
-            onClick={handleAIOpen}
-          >
-            <Sparkles size={14} />
-          </button>
-        </Tooltip>
-        {aiOpen && (
-          <div
-            className={`floating-toolbar-ai-dropdown ${dropUp ? "floating-toolbar-ai-dropdown-up" : ""}`}
-            ref={dropdownRef}
-            style={dropReady ? undefined : { visibility: "hidden" }}
-          >
-            {getActionsForMode(contentMode).map((action) => (
+      {aiEnabled && (
+        <>
+          {/* §338 구분자를 버튼과 같은 조건 안에 둔다 — 버튼만 숨기면 구분자가
+              허공에 남는다. */}
+          <div className="floating-toolbar-separator" />
+          <div className="floating-toolbar-ai-wrapper" ref={aiRef}>
+            <Tooltip label={t("toolbar.ai.commands")} placement="top">
               <button
-                className="floating-toolbar-ai-item"
-                key={action.id}
-                onClick={() => handleContextualAction(action)}
+                className={`floating-toolbar-btn ${aiOpen ? "floating-toolbar-btn-active" : ""}`}
+                onClick={handleAIOpen}
               >
-                {t(action.label)}
+                <Sparkles size={14} />
               </button>
-            ))}
+            </Tooltip>
+            {aiOpen && (
+              <div
+                className={`floating-toolbar-ai-dropdown ${dropUp ? "floating-toolbar-ai-dropdown-up" : ""}`}
+                ref={dropdownRef}
+                style={dropReady ? undefined : { visibility: "hidden" }}
+              >
+                {getActionsForMode(contentMode).map((action) => (
+                  <button
+                    className="floating-toolbar-ai-item"
+                    key={action.id}
+                    onClick={() => handleContextualAction(action)}
+                  >
+                    {t(action.label)}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </>
+      )}
     </BubbleMenu>
   );
 }

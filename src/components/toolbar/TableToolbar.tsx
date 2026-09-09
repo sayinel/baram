@@ -16,6 +16,7 @@ import { AlignCenter, AlignLeft, AlignRight, Sparkles } from "lucide-react";
 import { chainWithVimExternalEdit } from "../../extensions/plugins/vim/vim-keys";
 import { useTranslation } from "../../i18n/useTranslation";
 import { useCommandLabel } from "../../keybindings/use-command-label";
+import { useFeatureFlags } from "../../stores/settings/features";
 import {
   canonicalNodeAt,
   serializeDetachedDoc,
@@ -146,6 +147,7 @@ interface TableToolbarProps {
 export function TableToolbar({ editor }: TableToolbarProps) {
   const { t } = useTranslation();
   const commandLabel = useCommandLabel();
+  const { ai: aiEnabled } = useFeatureFlags();
   const [visible, setVisible] = useState(false);
   const [position, setPosition] = useState<{ left: number; top: number }>({
     top: 0,
@@ -364,39 +366,45 @@ export function TableToolbar({ editor }: TableToolbarProps) {
           </button>
         </Tooltip>
         <div className="table-toolbar-separator" />
-        <Tooltip label={t("toolbar.ai.commands")} placement="top">
-          <button
-            className="table-toolbar-btn table-toolbar-btn-ai"
-            onClick={(e) => {
-              const table = findTable(editor);
-              if (!table || !table.node) return;
-              // §384: read the CANONICAL table node — if a mark/link/wikilink is
-              // mid-expansion inside a cell, the raw `table.node` still holds the
-              // literal delimiter text and would corrupt this copy.
-              const canonicalTable = canonicalNodeAt(
-                editor.state,
-                table.pos,
-                "table",
-              );
-              if (!canonicalTable) return;
-              const tempDoc = editor.schema.nodes.doc.create(null, [
-                canonicalTable,
-              ]);
-              const md = serializeDetachedDoc(tempDoc).trim();
-              if (!md) return;
-              showNodeViewAIMenu(
-                e.currentTarget,
-                "table",
-                md,
-                editor,
-                table.pos,
-              );
-            }}
-          >
-            <Sparkles size={14} />
-          </button>
-        </Tooltip>
-        <div className="table-toolbar-separator" />
+        {aiEnabled && (
+          <>
+            {/* §338 버튼 + 뒤따르는 구분자를 같은 조건 안에 둔다 — 버튼만
+                숨기면 구분자가 허공에 남는다. */}
+            <Tooltip label={t("toolbar.ai.commands")} placement="top">
+              <button
+                className="table-toolbar-btn table-toolbar-btn-ai"
+                onClick={(e) => {
+                  const table = findTable(editor);
+                  if (!table || !table.node) return;
+                  // §384: read the CANONICAL table node — if a mark/link/wikilink is
+                  // mid-expansion inside a cell, the raw `table.node` still holds the
+                  // literal delimiter text and would corrupt this copy.
+                  const canonicalTable = canonicalNodeAt(
+                    editor.state,
+                    table.pos,
+                    "table",
+                  );
+                  if (!canonicalTable) return;
+                  const tempDoc = editor.schema.nodes.doc.create(null, [
+                    canonicalTable,
+                  ]);
+                  const md = serializeDetachedDoc(tempDoc).trim();
+                  if (!md) return;
+                  showNodeViewAIMenu(
+                    e.currentTarget,
+                    "table",
+                    md,
+                    editor,
+                    table.pos,
+                  );
+                }}
+              >
+                <Sparkles size={14} />
+              </button>
+            </Tooltip>
+            <div className="table-toolbar-separator" />
+          </>
+        )}
         <Tooltip label={t("tableToolbar.more")} placement="top">
           <button
             aria-label={t("tableToolbar.moreOptions")}
