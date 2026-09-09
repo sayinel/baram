@@ -426,9 +426,10 @@ pub fn build_menu(
         .build()?;
 
     // --- Workspace menu (§52) ---
-    // §343 순서와 accelerator 는 `keybinding-registry.ts` 와 하나다:
-    // Writing 1 · Zettel 2 · Journal 3 · Skills 4. 예전에는 이 파일만 2·3이
-    // 뒤바뀌어 있어서 한 조합이 두 레이어에서 서로 다른 프리셋을 불렀다.
+    // §343 order and accelerators are one with `keybinding-registry.ts`:
+    // Writing 1 · Zettel 2 · Journal 3 · Skills 4. This file used to be the
+    // lone outlier with 2 and 3 swapped, so one chord invoked a different
+    // preset in each layer.
     let workspace_writing = MenuItemBuilder::new("Writing")
         .id("workspace_writing")
         .accelerator("Alt+CmdOrCtrl+1")

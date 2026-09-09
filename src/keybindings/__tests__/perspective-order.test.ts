@@ -2,9 +2,12 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { BUILTIN_PRESETS } from "../../stores/file/workspace";
 import { KEYBINDING_REGISTRY } from "../keybinding-registry";
 
-const PERSPECTIVES = ["writing", "zettelkasten", "journal", "skills"] as const;
+// 정본 순서는 BUILTIN_PRESETS 하나가 정한다 — 그 배열의 리터럴 고정은
+// workspace-store.test.ts:34 에 있고, 다른 표면은 전부 여기서 파생시킨다.
+const PERSPECTIVES = BUILTIN_PRESETS.map((p) => p.id);
 
 /** menu.rs 의 소스에서 퍼스펙티브 항목의 순서와 accelerator 를 뽑는다. */
 function readMenuRs() {
@@ -13,11 +16,17 @@ function readMenuRs() {
     path.posix.join(process.cwd(), "src-tauri/src/menu.rs"),
     "utf8",
   );
+  // 아이템별로 스팬을 끊어서 accelerator 매칭이 다음 `let workspace_` 아이템으로
+  // 넘어가지 못하게 한다 — 이전엔 고정폭 200자 lazy 윈도우였는데, accelerator가
+  // 없는 아이템이 추가되면 그 윈도우가 다음 아이템의 accelerator 를 대신 붙잡아
+  // 엉뚱한 id 에 귀속시켰다(§343 fix round 1).
+  const spans = src.split(/(?=let workspace_)/);
   const accel: Record<string, string> = {};
-  for (const m of src.matchAll(
-    /let workspace_(\w+) = MenuItemBuilder[\s\S]{0,200}?\.accelerator\("([^"]+)"\)/g,
-  )) {
-    accel[m[1]] = m[2];
+  for (const span of spans) {
+    const idMatch = /^let workspace_(\w+) = MenuItemBuilder/.exec(span);
+    if (!idMatch) continue;
+    const accelMatch = /\.accelerator\("([^"]+)"\)/.exec(span);
+    if (accelMatch) accel[idMatch[1]] = accelMatch[1];
   }
   // `.item(&workspace_menu)` also matches the raw pattern below — that's the
   // Perspective *submenu itself* being inserted into the top-level menu bar,

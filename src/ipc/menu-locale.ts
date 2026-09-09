@@ -100,11 +100,11 @@ export const MENU_I18N_MAP: Record<string, string> = {
   go_forward: "menu.go.forward",
   go_switch_doc: "menu.go.switchDoc",
 
-  // Workspace menu
+  // Workspace menu (§343: writing · zettel · journal · skills everywhere)
   workspace_writing: "menu.workspace.writing",
+  workspace_zettel: "menu.workspace.zettel",
   workspace_journal: "menu.workspace.journal",
   workspace_skills: "menu.workspace.skills",
-  workspace_zettel: "menu.workspace.zettel",
 
   // Window menu (predefined)
   win_minimize: "menu.window.minimize",

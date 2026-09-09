@@ -209,15 +209,15 @@ export function useKeybindingActions({
       useUIStore.getState().toggleSkillTestDialog();
     });
 
-    // Workspace
+    // Workspace (§343: writing · zettelkasten · journal · skills everywhere)
     registerAction("workspace.writing", () =>
       useWorkspaceStore.getState().applyPreset("writing"),
     );
-    registerAction("workspace.journal", () =>
-      useWorkspaceStore.getState().applyPreset("journal"),
-    );
     registerAction("workspace.zettelkasten", () =>
       useWorkspaceStore.getState().applyPreset("zettelkasten"),
+    );
+    registerAction("workspace.journal", () =>
+      useWorkspaceStore.getState().applyPreset("journal"),
     );
     registerAction("workspace.skills", () =>
       useWorkspaceStore.getState().applyPreset("skills"),
