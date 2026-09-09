@@ -1,6 +1,6 @@
 ---
 title: "AI"
-sourceHash: "fa3a4cdec67a"
+sourceHash: "e82126b19aed"
 ---
 
 
@@ -12,10 +12,13 @@ Baram은 여러 AI 프로바이더를 지원합니다. 해당 프로바이더에
 | ---------------------- | -------------------------------------------------------------------- |
 | **Claude**(Anthropic)  | [console.anthropic.com](https://console.anthropic.com/)              |
 | **OpenAI**             | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
+| **OpenRouter**         | [openrouter.ai/keys](https://openrouter.ai/keys)                     |
 | **Google Gemini**      | [aistudio.google.com/apikey](https://aistudio.google.com/apikey)     |
 | **Ollama**(로컬)       | API 키가 필요 없습니다 — 내 기기에서 돕니다                          |
 
 프로바이더마다 **설정 > AI**에 자기 API 키 칸이 있습니다.
+
+**OpenRouter**는 모델 공급사가 아니라 게이트웨이입니다. 키 하나로 여러 공급사의 모델에 닿고, 모델은 공급사가 앞에 붙은 id(`anthropic/claude-sonnet-4.5`, `openai/gpt-4o`)로 고르거나 `openrouter/auto`에 맡깁니다. 요청이 OpenRouter를 거치므로 무엇이 보관되는지는 Baram이 아니라 OpenRouter 계정 설정이 정합니다.
 
 ## 어떤 AI 모델을 지원하나요?
 
@@ -73,7 +76,7 @@ AI 사용료는 API 프로바이더가 청구합니다. Baram 자체는 AI 기�
 
 1. **API 키** — **설정 > AI**에서 고른 프로바이더의 유효한 API 키를 넣었는지 확인하십시오
 2. **프로바이더** — 맞는 프로바이더가 골라져 있는지 확인하십시오
-3. **네트워크** — 클라우드 프로바이더(Claude, OpenAI, Gemini)는 인터넷이 필요하고, Ollama는 로컬에서 돌고 있어야 합니다
+3. **네트워크** — 클라우드 프로바이더(Claude, OpenAI, OpenRouter, Gemini)는 인터넷이 필요하고, Ollama는 로컬에서 돌고 있어야 합니다
 4. **모델 선택** — 유효한 모델이 골라져 있는지 확인하십시오
 5. **개인정보 보호 모드** — 켜져 있으면 Ollama만 동작합니다. 뜻하지 않게 켜져 있지 않은지 확인하십시오
 

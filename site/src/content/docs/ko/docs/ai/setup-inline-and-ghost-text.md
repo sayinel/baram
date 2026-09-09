@@ -1,16 +1,16 @@
 ---
 title: "설정, 인라인 편집, 고스트 텍스트"
-sourceHash: "b8e998b23c82"
+sourceHash: "25995f569a31"
 ---
 
 
-Baram은 Claude, OpenAI, Google Gemini, Ollama(로컬)로 동작하는 AI 글쓰기 지원을 내장하고 있습니다.
+Baram은 Claude, OpenAI, OpenRouter, Google Gemini, Ollama(로컬)로 동작하는 AI 글쓰기 지원을 내장하고 있습니다.
 
 ## 설정
 
 1. `Cmd+,`(macOS) 또는 `Ctrl+,`(Windows/Linux)로 설정을 엽니다
 2. **AI** 탭으로 갑니다
-3. AI 프로바이더를 고릅니다(Claude, OpenAI, Gemini, Ollama)
+3. AI 프로바이더를 고릅니다(Claude, OpenAI, OpenRouter, Gemini, Ollama)
 4. API 키를 입력합니다(프로바이더마다 자기 키 칸이 있고, Ollama는 키가 필요 없습니다)
 5. 원하는 모델을 고릅니다(모델 목록은 프로바이더에서 실시간으로 불러옵니다)
 

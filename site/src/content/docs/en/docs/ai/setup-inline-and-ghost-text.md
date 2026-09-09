@@ -3,13 +3,13 @@ title: "Setup, inline edits, and Ghost Text"
 ---
 
 
-Baram has built-in AI writing assistance powered by Claude, OpenAI, Google Gemini, and Ollama (local).
+Baram has built-in AI writing assistance powered by Claude, OpenAI, OpenRouter, Google Gemini, and Ollama (local).
 
 ## Setup
 
 1. Open Settings with `Cmd+,` (macOS) or `Ctrl+,` (Windows/Linux)
 2. Go to the **AI** tab
-3. Select your AI provider (Claude, OpenAI, Gemini, or Ollama)
+3. Select your AI provider (Claude, OpenAI, OpenRouter, Gemini, or Ollama)
 4. Enter your API key (each provider has its own key field; Ollama requires no key)
 5. Choose your preferred model (models are loaded dynamically from the provider)
 

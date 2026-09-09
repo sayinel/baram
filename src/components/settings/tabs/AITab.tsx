@@ -5,6 +5,7 @@ import type { ModelInfo } from "../../../ipc/types";
 import { useTranslation } from "../../../i18n/useTranslation";
 import { llmListModels } from "../../../ipc/invoke";
 import { type AIProvider, useAIStore } from "../../../stores/ai/ai";
+import { AI_PROVIDER_IDS, AI_PROVIDERS } from "../../../stores/ai/providers";
 import { formatAIError } from "../../../utils/format-error";
 import { CustomAICommandEditor } from "../CustomAICommandEditor";
 import {
@@ -12,15 +13,6 @@ import {
   SettingsSectionHeader,
   ToggleSwitch,
 } from "../settings-shared";
-
-// ─── Provider Labels ────────────────────────────────────
-
-const PROVIDER_LABELS: Record<AIProvider, string> = {
-  claude: "Claude",
-  openai: "OpenAI",
-  gemini: "Gemini",
-  ollama: "Ollama",
-};
 
 // ─── Task Model Selector ────────────────────────────────
 
@@ -84,28 +76,29 @@ export function AITab() {
     [ollamaUrl],
   );
 
-  const configuredProviders = useMemo((): AIProvider[] => {
-    const result: AIProvider[] = [];
-    if (configured.claude) result.push("claude");
-    if (configured.openai) result.push("openai");
-    if (configured.gemini) result.push("gemini");
-    result.push("ollama");
-    return result;
-  }, [configured]);
+  // Keyless providers are always available; the rest appear once a key is
+  // stored. Derived from the provider table so a new provider cannot be
+  // configured and still be missing from the task selectors.
+  const configuredProviders = useMemo(
+    (): AIProvider[] =>
+      AI_PROVIDER_IDS.filter(
+        (id) => AI_PROVIDERS[id].keyless || configured[id],
+      ),
+    [configured],
+  );
 
   const handleProviderChange = useCallback(
-    (newProvider: "claude" | "gemini" | "ollama" | "openai") => {
+    (newProvider: AIProvider) => {
+      // `setProvider` picks the new provider's default model and drops the
+      // per-task models that followed the old one; this handler only resets
+      // what is local to the tab.
       setProvider(newProvider);
-      if (newProvider === "claude") setModel("claude-sonnet-4-5-20250929");
-      else if (newProvider === "openai") setModel("gpt-4o");
-      else if (newProvider === "ollama") setModel("llama3");
-      else if (newProvider === "gemini") setModel("gemini-2.0-flash");
       setModels([]);
       setModelsError(null);
       setCustomMode(false);
       setDraft("");
     },
-    [setProvider, setModel],
+    [setProvider],
   );
 
   const fetchModels = useCallback(async () => {
@@ -125,10 +118,11 @@ export function AITab() {
     }
   }, [provider, ollamaUrl]);
 
-  const providerConfigured =
-    provider === "ollama" ? true : (configured[provider] ?? false);
+  const providerConfigured = AI_PROVIDERS[provider].keyless
+    ? true
+    : (configured[provider] ?? false);
   const canFetchModels = providerConfigured || draft.length > 0;
-  const showApiKey = provider !== "ollama";
+  const showApiKey = !AI_PROVIDERS[provider].keyless;
   // §259 — when a key is already stored we show a masked marker (locale-neutral)
   // rather than the secret, since the frontend never receives it.
   const keyPlaceholder =
@@ -148,17 +142,14 @@ export function AITab() {
       >
         <select
           className="settings-select"
-          onChange={(e) =>
-            handleProviderChange(
-              e.target.value as "claude" | "gemini" | "ollama" | "openai",
-            )
-          }
+          onChange={(e) => handleProviderChange(e.target.value as AIProvider)}
           value={provider}
         >
-          <option value="claude">{t("settings.ai.provider.claude")}</option>
-          <option value="openai">{t("settings.ai.provider.openai")}</option>
-          <option value="gemini">{t("settings.ai.provider.gemini")}</option>
-          <option value="ollama">{t("settings.ai.provider.ollama")}</option>
+          {AI_PROVIDER_IDS.map((id) => (
+            <option key={id} value={id}>
+              {t(AI_PROVIDERS[id].labelKey)}
+            </option>
+          ))}
         </select>
       </SettingsRow>
 
@@ -440,6 +431,13 @@ function TaskModelSelector({
   const [loading, setLoading] = useState(false);
 
   const effectiveProvider = taskProvider || defaultProvider;
+  // Selecting a provider and then entering its key is the only possible order
+  // for one being set up, so the fetch below runs once against a provider with
+  // no key and fails. `configuredProviders` gains that provider the moment the
+  // key is stored, which is the signal — and the only signal — that the failed
+  // fetch is worth repeating. A boolean, not the array, so an unrelated render
+  // does not turn this into a request per keystroke in the API key field.
+  const providerReady = configuredProviders.includes(effectiveProvider);
 
   useEffect(() => {
     let cancelled = false;
@@ -453,7 +451,7 @@ function TaskModelSelector({
     return () => {
       cancelled = true;
     };
-  }, [effectiveProvider, fetchModelsForProvider]);
+  }, [effectiveProvider, providerReady, fetchModelsForProvider]);
 
   return (
     <SettingsRow description={description} label={label}>
@@ -468,11 +466,12 @@ function TaskModelSelector({
           value={taskProvider}
         >
           <option value="">
-            {t("settings.ai.useDefault")} ({PROVIDER_LABELS[defaultProvider]})
+            {t("settings.ai.useDefault")} ({AI_PROVIDERS[defaultProvider].label}
+            )
           </option>
           {configuredProviders.map((p) => (
             <option key={p} value={p}>
-              {PROVIDER_LABELS[p]}
+              {AI_PROVIDERS[p].label}
             </option>
           ))}
         </select>

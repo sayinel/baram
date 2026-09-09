@@ -11,10 +11,13 @@ Baram supports multiple AI providers. Get your API key from the respective provi
 | ---------------------- | -------------------------------------------------------------------- |
 | **Claude** (Anthropic) | [console.anthropic.com](https://console.anthropic.com/)              |
 | **OpenAI**             | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
+| **OpenRouter**         | [openrouter.ai/keys](https://openrouter.ai/keys)                     |
 | **Google Gemini**      | [aistudio.google.com/apikey](https://aistudio.google.com/apikey)     |
 | **Ollama** (local)     | No API key required — runs locally on your machine                   |
 
 Each provider has its own API key field in **Settings > AI**.
+
+**OpenRouter** is a gateway rather than a model vendor: one key reaches models from many vendors, and you choose the model by its qualified id (`anthropic/claude-sonnet-4.5`, `openai/gpt-4o`) or let `openrouter/auto` pick one. Because the request travels through OpenRouter, what is retained is governed by your OpenRouter account settings, not by Baram.
 
 ## What AI models are supported?
 
@@ -72,7 +75,7 @@ Press `Cmd+F` (macOS) / `Ctrl+F` (Windows/Linux) to open Find. Press `Cmd+H` / `
 
 1. **API key** — Make sure you've entered a valid API key for your selected provider in **Settings > AI**
 2. **Provider** — Verify the correct provider is selected
-3. **Network** — Cloud providers (Claude, OpenAI, Gemini) need internet access; Ollama needs to be running locally
+3. **Network** — Cloud providers (Claude, OpenAI, OpenRouter, Gemini) need internet access; Ollama needs to be running locally
 4. **Model selection** — Ensure a valid model is selected
 5. **Privacy Mode** — When Privacy Mode is enabled, only Ollama works. Check that it is not enabled unintentionally
 

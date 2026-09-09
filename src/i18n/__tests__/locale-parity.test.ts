@@ -44,6 +44,7 @@ const SHARED_VALUES = new Set<string>([
   "settings.ai.provider.claude", // Claude
   "settings.ai.provider.gemini", // Google Gemini
   "settings.ai.provider.openai", // OpenAI
+  "settings.ai.provider.openrouter", // OpenRouter
   "settings.general.tasksCaptureFile.placeholder", // tasks/inbox.md
   "settings.general.tasksExcludePaths.placeholder", // archive/, drafts/
   "settings.general.tasksHome.placeholder", // /Users/you/Notes/zettel

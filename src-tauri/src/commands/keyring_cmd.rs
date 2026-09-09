@@ -7,26 +7,39 @@
 // embedding calls, so the secret never crosses the IPC boundary.
 
 use keyring::Entry;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 const SERVICE: &str = "com.inel.baram";
 
 /// Providers whose API keys live in the OS keyring. Ollama is keyless and is
 /// intentionally absent — it never has a secret to store.
-#[derive(Clone, Copy, Debug, Deserialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Provider {
     Claude,
     Gemini,
     Openai,
+    Openrouter,
 }
 
 impl Provider {
+    /// Every variant, for the tests that check this enum against the string
+    /// path `get_provider_api_key` builds. `variant_count` below makes a stale
+    /// list fail rather than quietly skip a provider.
+    #[cfg(test)]
+    const ALL: &'static [Provider] = &[
+        Provider::Claude,
+        Provider::Gemini,
+        Provider::Openai,
+        Provider::Openrouter,
+    ];
+
     fn key_name(self) -> &'static str {
         match self {
             Provider::Claude => "baram-claude-api-key",
             Provider::Gemini => "baram-gemini-api-key",
             Provider::Openai => "baram-openai-api-key",
+            Provider::Openrouter => "baram-openrouter-api-key",
         }
     }
 }
@@ -86,14 +99,48 @@ pub fn get_provider_api_key(provider: &str) -> Result<String, String> {
 mod tests {
     use super::*;
 
+    /// The number of `Provider` variants. The exhaustive match forces this
+    /// function to be edited when a variant is added, which is the moment to
+    /// bump the count — and a stale `Provider::ALL` then fails the test below.
+    fn variant_count() -> usize {
+        fn _exhaustive(p: Provider) {
+            match p {
+                Provider::Claude | Provider::Gemini | Provider::Openai | Provider::Openrouter => (),
+            }
+        }
+        4
+    }
+
+    #[test]
+    fn all_lists_every_provider_variant() {
+        assert_eq!(Provider::ALL.len(), variant_count());
+    }
+
+    #[test]
+    fn key_name_matches_the_string_path_used_by_the_backend() {
+        // `get_provider_api_key` takes a provider NAME and rebuilds the entry
+        // as `baram-{provider}-api-key`. The doc comment there says the two
+        // MUST agree; this derives that agreement instead of restating it, so
+        // a variant whose key_name is typed by hand cannot drift.
+        for provider in Provider::ALL {
+            let name = serde_json::to_value(provider).unwrap();
+            let name = name.as_str().unwrap();
+            assert_eq!(
+                provider.key_name(),
+                format!("baram-{name}-api-key"),
+                "key_name for {name} does not match the backend string path"
+            );
+        }
+    }
+
     #[test]
     fn provider_deserializes_from_lowercase_and_maps_key_name() {
-        let claude: Provider = serde_json::from_str("\"claude\"").unwrap();
-        let gemini: Provider = serde_json::from_str("\"gemini\"").unwrap();
-        let openai: Provider = serde_json::from_str("\"openai\"").unwrap();
-        assert_eq!(claude.key_name(), "baram-claude-api-key");
-        assert_eq!(gemini.key_name(), "baram-gemini-api-key");
-        assert_eq!(openai.key_name(), "baram-openai-api-key");
+        for provider in Provider::ALL {
+            let name = serde_json::to_value(provider).unwrap();
+            let lowercase = format!("\"{}\"", name.as_str().unwrap());
+            let parsed: Provider = serde_json::from_str(&lowercase).unwrap();
+            assert_eq!(parsed.key_name(), provider.key_name());
+        }
     }
 
     #[test]
