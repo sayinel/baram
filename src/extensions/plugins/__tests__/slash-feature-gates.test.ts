@@ -58,9 +58,13 @@ describe("slash menu feature gating (§338)", () => {
     expect(cats(items)).toContain("AI");
   });
 
-  it("keeps flatIdx contiguous for every toggle combination", () => {
-    // 그 파일의 순서 계약: 배열 위치가 flatIdx 를 고정하고 화살표 순회가 그것에 의존한다.
-    // 조건부 제거는 순서를 보존한다 — 재배열은 계약 위반이다.
+  it("spreads no group twice for any toggle combination", () => {
+    // flatIdx(SlashMenu.tsx:78)는 그냥 배열 인덱스다 — 어떤 배열이든 0..n-1로
+    // 자명하게 연속이라 게이팅이 무엇을 하든 깨질 수 없는 성질이고, 그래서
+    // 여기서 단정하지 않는다. 실제로 여기서 지키는 건 8개 ai×journal×tasks
+    // 조합 전부에서 (a) id 중복 없음 — 같은 그룹이 두 번 spread되면 중복
+    // id가 생긴다 — 과 (b) 결과가 비어 있지 않음, 이 둘뿐이다. 상대 순서는
+    // 아래 "preserves relative group order" 테스트가 따로 지킨다.
     for (const ai of [true, false]) {
       for (const journal of [true, false]) {
         for (const tasks of [true, false]) {
