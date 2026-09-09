@@ -1068,6 +1068,7 @@
   "settings.workspace.preset.writing": "Writing",
   "settings.workspace.preset.writing.desc": "Hide sidebar and focus on the editor.",
   "settings.workspace.presetName": "Perspective name...",
+  "space.ai.disabled": "Enable AI in Settings › AI to use this.",
   "space.journal.disabled": "Enable Journal in Settings › Journal to use the Journal space.",
   "space.journal.noDirectory": "Set the Journal directory in Settings › Journal first.",
   "space.journal.openFailed": "Could not open today's journal. Check the Journal directory in Settings › Journal.",

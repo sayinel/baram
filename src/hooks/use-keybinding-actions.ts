@@ -31,6 +31,7 @@ import { useEditorStore } from "../stores/editor/editor";
 import { useBookmarkStore } from "../stores/file/bookmark";
 import { useFileStore } from "../stores/file/file";
 import { useWorkspaceStore } from "../stores/file/workspace";
+import { isFeatureEnabled } from "../stores/settings/features";
 import { useSettingsStore } from "../stores/settings/store";
 import { useUIStore } from "../stores/ui/ui";
 import { registerEditorMutationTask } from "../utils/editor/mutation-tasks";
@@ -179,19 +180,34 @@ export function useKeybindingActions({
         });
       }
     });
-    registerAction("insert.inlineAI", () => inlineAI.activate());
+    // §341 버튼은 숨겼으므로 이 경로로 오는 것은 단축키·네이티브 메뉴, 즉 사용자가
+    // 의도적으로 누른 것이다. 조용한 무동작을 남기지 않는다 (§18.19 결함 A).
+    const aiReady = () => {
+      if (isFeatureEnabled("ai")) return true;
+      const { locale } = useSettingsStore.getState();
+      useUIStore.getState().showToast(t("space.ai.disabled", locale as Locale));
+      return false;
+    };
+
+    registerAction("insert.inlineAI", () => {
+      if (!aiReady()) return;
+      inlineAI.activate();
+    });
 
     // AI
-    registerAction("ai.chatPanel", () =>
-      useUIStore.getState().toggleRightPanel(),
-    );
+    registerAction("ai.chatPanel", () => {
+      if (!aiReady()) return;
+      useUIStore.getState().toggleRightPanel();
+    });
     registerAction("ai.ghostText", () => {
+      if (!aiReady()) return;
       const ai = useAIStore.getState();
       ai.setGhostTextEnabled(!ai.ghostTextEnabled);
     });
-    registerAction("ai.skillTest", () =>
-      useUIStore.getState().toggleSkillTestDialog(),
-    );
+    registerAction("ai.skillTest", () => {
+      if (!aiReady()) return;
+      useUIStore.getState().toggleSkillTestDialog();
+    });
 
     // Workspace
     registerAction("workspace.writing", () =>
