@@ -6,6 +6,7 @@ import {
   ACTIVITY_BAR_ALWAYS_ON,
   ACTIVITY_BAR_ITEM_FEATURE,
   DEFAULT_ACTIVITY_BAR_CONFIG,
+  isActivityBarItemVisible,
 } from "../../../stores/settings/activity-bar-config";
 import { FEATURE_KEYS } from "../../../stores/settings/feature-keys";
 import { useSettingsStore } from "../../../stores/settings/store";
@@ -48,6 +49,31 @@ describe("activity-bar item classification (§338)", () => {
     for (const f of Object.values(ACTIVITY_BAR_ITEM_FEATURE)) {
       expect(FEATURE_KEYS).toContain(f);
     }
+  });
+});
+
+describe("isActivityBarItemVisible (§338)", () => {
+  // 스토어 없이 순수 함수 자체를 고정한다 — ActivityBar.tsx와 ActivityBarTab.tsx가
+  // 각자 지역 클로저로 복제했던 로직이 이제 여기 하나뿐이라는 것의 증거.
+  const allOff = {
+    ai: false,
+    journal: false,
+    tasks: false,
+    zettelkasten: false,
+  };
+  const allOn = { ai: true, journal: true, tasks: true, zettelkasten: true };
+
+  it("follows the owning feature's flag for a classified item", () => {
+    expect(isActivityBarItemVisible("chat", allOn)).toBe(true);
+    expect(isActivityBarItemVisible("chat", allOff)).toBe(false);
+    expect(
+      isActivityBarItemVisible("zettel", { ...allOn, zettelkasten: false }),
+    ).toBe(false);
+  });
+
+  it("is always true for an unclassified (always-on) item, regardless of flags", () => {
+    expect(isActivityBarItemVisible("search", allOff)).toBe(true);
+    expect(isActivityBarItemVisible("search", allOn)).toBe(true);
   });
 });
 
@@ -96,6 +122,10 @@ describe("activity-bar feature gating (§338)", () => {
     expect(
       screen.queryByRole("button", { name: NAME.zettel }),
     ).not.toBeInTheDocument();
+    // 비공허성 — 다른 기능은 남는다
+    expect(
+      screen.getByRole("button", { name: NAME.tasks }),
+    ).toBeInTheDocument();
   });
 
   it("hides the tasks item when tasks is off", () => {
@@ -104,6 +134,10 @@ describe("activity-bar feature gating (§338)", () => {
     expect(
       screen.queryByRole("button", { name: NAME.tasks }),
     ).not.toBeInTheDocument();
+    // 비공허성 — 다른 기능은 남는다
+    expect(
+      screen.getByRole("button", { name: NAME.zettel }),
+    ).toBeInTheDocument();
   });
 
   it("never writes to activityBarConfig", () => {

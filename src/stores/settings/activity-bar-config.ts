@@ -46,6 +46,22 @@ export const ACTIVITY_BAR_ITEM_FEATURE: Readonly<Record<string, FeatureKey>> = {
   zettel: "zettelkasten",
 };
 
+/**
+ * 이 항목이 기능 게이트를 통과하는가. 기능에 속하지 않는 항목은 늘 통과한다.
+ *
+ * 표를 읽는 유일한 함수 — `ActivityBar.tsx`와 `ActivityBarTab.tsx`가 각자 지역
+ * 클로저로 이 로직을 복제하면 표류면이 생긴다(한쪽이 바뀌어도 다른 쪽은 모른다).
+ * 플래그를 인자로 받는 순수 함수라 스토어 없이 직접 테스트할 수 있고, 이 파일이
+ * `features.ts`(→ `store.ts`)를 import하지 않아도 된다.
+ */
+export function isActivityBarItemVisible(
+  id: string,
+  flags: Record<FeatureKey, boolean>,
+): boolean {
+  const f = ACTIVITY_BAR_ITEM_FEATURE[id];
+  return f === undefined || flags[f];
+}
+
 /** 기능에 속하지 않는 항목 — 늘 보인다. */
 export const ACTIVITY_BAR_ALWAYS_ON: readonly string[] = [
   "backlinks",
