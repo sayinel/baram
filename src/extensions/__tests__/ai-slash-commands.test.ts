@@ -12,6 +12,10 @@ vi.mock("../../ipc/invoke", async (importOriginal) => {
 vi.mock("../../stores/ai/ai", () => ({
   useAIStore: {
     getState: () => ({
+      // §338 isFeatureEnabled("ai") reads this — without it buildSlashItems
+      // treats AI as off and the whole group (including these tests' fixtures)
+      // disappears.
+      aiEnabled: true,
       apiKey: "test-key",
       model: "claude-sonnet-4-5-20250929",
       provider: "claude",
@@ -28,47 +32,8 @@ vi.mock("../../stores/ai/ai", () => ({
   },
 }));
 
-// Minimal mock editor for buildSlashItems
-function createMockEditor() {
-  const chainObj: Record<string, unknown> = {};
-  chainObj.focus = () => chainObj;
-  chainObj.toggleHeading = () => chainObj;
-  chainObj.toggleBulletList = () => chainObj;
-  chainObj.toggleOrderedList = () => chainObj;
-  chainObj.toggleTaskList = () => chainObj;
-  chainObj.toggleBlockquote = () => chainObj;
-  chainObj.setHorizontalRule = () => chainObj;
-  chainObj.toggleCodeBlock = () => chainObj;
-  chainObj.insertContent = () => chainObj;
-  chainObj.insertTable = () => chainObj;
-  chainObj.setTextSelection = () => chainObj;
-  chainObj.deleteRange = () => chainObj;
-  chainObj.insertContentAt = () => chainObj;
-  chainObj.run = () => true;
-
-  return {
-    chain: () => chainObj,
-    commands: {
-      setCallout: vi.fn(),
-      setToggle: vi.fn(),
-      setMermaidBlock: vi.fn(),
-    },
-    state: {
-      selection: { from: 0, to: 0, $from: { parent: { textContent: "" } } },
-      // §308 M3-b `/due`·`/priority`가 커서 자리를 보므로 빈 문서를 흉내 낸다 —
-      // 태스크 줄이 아니면 그 둘은 메뉴에 들어오지 않는다.
-      doc: {
-        content: { size: 0 },
-        nodeAt: () => null,
-        resolve: () => ({ depth: 0 }),
-        textBetween: () => "",
-        textContent: "",
-      },
-    },
-  } as never;
-}
-
 import { buildSlashItems } from "../plugins/slash-command-items";
+import { createMockEditor } from "./helpers/mock-editor";
 
 // All AI commands in slash menu (input-based + selection-based)
 const SLASH_AI_IDS = [

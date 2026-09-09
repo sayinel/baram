@@ -79,6 +79,7 @@ import { act, renderHook } from "@testing-library/react";
 import { buildSlashItems } from "../../extensions/plugins/slash-command-items";
 import { llmCancel, llmComplete } from "../../ipc/invoke";
 import { useAIStore } from "../../stores/ai/ai";
+import { useSettingsStore } from "../../stores/settings/store";
 import { dispatchCustomInstruction } from "../../utils/ai-action-dispatcher";
 import * as aiCommands from "../../utils/ai-commands";
 import { executeAICommand } from "../../utils/ai-commands";
@@ -120,6 +121,9 @@ beforeEach(async () => {
   importGates.clear();
   vi.mocked(llmComplete).mockClear();
   vi.mocked(llmCancel).mockClear();
+  // §338 the "slash photo import" tests below presuppose the journal feature
+  // is on — buildSlashItems drops the "photo" item entirely when it's off.
+  useSettingsStore.setState({ journalEnabled: true });
   const { useEditorStore } = await import("../../stores/editor/editor");
   useEditorStore.setState({
     activeTabId: "tab-a",
