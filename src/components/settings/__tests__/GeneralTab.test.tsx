@@ -1,13 +1,17 @@
-// TemplatePathRow — DOM-identity pin. GeneralTab's five browse/clear rows
+// TemplatePathRow — DOM-identity pin. JournalTab's five browse/clear rows
 // were hand-written JSX before the general/TemplatePathRow.tsx extraction;
 // this pins the exact markup (classes, input attrs, button count/order) so a
 // future edit to the shared row can't silently change what other CSS/e2e
 // coverage depends on.
+//
+// §342 — these rows moved from GeneralTab to JournalTab when Journal was
+// promoted to its own settings tab; the assertions moved with them rather
+// than being deleted, since the DOM shape they pin is unchanged.
 import { render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { useSettingsStore } from "../../../stores/settings/store";
-import { GeneralTab } from "../tabs/GeneralTab";
+import { JournalTab } from "../tabs/JournalTab";
 
 const initialState = useSettingsStore.getState();
 
@@ -15,7 +19,7 @@ afterEach(() => {
   useSettingsStore.setState(initialState, true);
 });
 
-describe("GeneralTab — TemplatePathRow DOM shape", () => {
+describe("JournalTab — TemplatePathRow DOM shape", () => {
   it("renders the journal directory row with Browse only (no Clear)", () => {
     useSettingsStore.setState({
       ...initialState,
@@ -23,7 +27,7 @@ describe("GeneralTab — TemplatePathRow DOM shape", () => {
       journalEnabled: true,
       locale: "en",
     });
-    render(<GeneralTab />);
+    render(<JournalTab />);
 
     const label = screen.getByText("Journal Directory");
     const row = label.closest(".settings-row");
@@ -49,7 +53,7 @@ describe("GeneralTab — TemplatePathRow DOM shape", () => {
       journalTemplatePath: "/vault/template.md",
       locale: "en",
     });
-    render(<GeneralTab />);
+    render(<JournalTab />);
 
     const label = screen.getByText("Template");
     const row = label.closest(".settings-row");
@@ -75,7 +79,7 @@ describe("GeneralTab — TemplatePathRow DOM shape", () => {
       journalTemplatePath: "",
       locale: "en",
     });
-    render(<GeneralTab />);
+    render(<JournalTab />);
 
     const label = screen.getByText("Template");
     const row = label.closest(".settings-row");
@@ -120,7 +124,7 @@ describe("TemplatePathRow — reading a long path", () => {
         journalEnabled: true,
         locale: "en",
       });
-      render(<GeneralTab />);
+      render(<JournalTab />);
 
       const input = screen.getByLabelText("Journal Directory");
       expect(input).toHaveProperty("scrollLeft", 640);
@@ -138,7 +142,7 @@ describe("TemplatePathRow — reading a long path", () => {
       journalEnabled: true,
       locale: "en",
     });
-    render(<GeneralTab />);
+    render(<JournalTab />);
 
     // The name, asserted directly. `getByLabelText` alone would already throw if the tooltip had
     // overwritten aria-label, but then the assertion under this test's name would be proving
@@ -156,7 +160,7 @@ describe("TemplatePathRow — reading a long path", () => {
       journalEnabled: true,
       locale: "en",
     });
-    render(<GeneralTab />);
+    render(<JournalTab />);
 
     const row = screen.getByText("Journal Directory").closest(".settings-row");
     expect(row?.querySelector(".settings-key-row")).toHaveClass(

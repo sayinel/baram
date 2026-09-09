@@ -1,23 +1,23 @@
-// §5 Tasks settings section, split out of GeneralTab.
+// §5/§342 Tasks settings tab, promoted out of GeneralTab.
 import { useEffect, useRef, useState } from "react";
 
-import type { TaskScanScope } from "../../../../utils/tasks/task-scan-scope";
+import type { TaskScanScope } from "../../../utils/tasks/task-scan-scope";
 
 import { useShallow } from "zustand/shallow";
 
-import { useTranslation } from "../../../../i18n/useTranslation";
-import { pickApprovedDir } from "../../../../ipc/approval";
-import { useSettingsStore } from "../../../../stores/settings/store";
-import { TASK_SCAN_SCOPES } from "../../../../utils/tasks/task-scan-scope";
-import { resolveTasksHome } from "../../../../utils/tasks/tasks-home";
+import { useTranslation } from "../../../i18n/useTranslation";
+import { pickApprovedDir } from "../../../ipc/approval";
+import { useSettingsStore } from "../../../stores/settings/store";
+import { TASK_SCAN_SCOPES } from "../../../utils/tasks/task-scan-scope";
+import { resolveTasksHome } from "../../../utils/tasks/tasks-home";
 import {
   SettingsRow,
   SettingsSectionHeader,
   ToggleSwitch,
-} from "../../settings-shared";
-import { GlobalCaptureRow } from "./GlobalCaptureRow";
+} from "../settings-shared";
+import { GlobalCaptureRow } from "./general/GlobalCaptureRow";
 
-export function TasksSection() {
+export function TasksTab() {
   const { t } = useTranslation();
   const {
     tasksEnabled,
@@ -98,7 +98,7 @@ export function TasksSection() {
   }, []);
 
   return (
-    <>
+    <div className="settings-section">
       <SettingsSectionHeader title={t("settings.general.tasks")} />
 
       <SettingsRow
@@ -274,6 +274,6 @@ export function TasksSection() {
           </SettingsRow>
         </>
       )}
-    </>
+    </div>
   );
 }

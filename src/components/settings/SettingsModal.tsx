@@ -1,13 +1,15 @@
-// Settings Modal — 9-tab settings (General, Editor, Appearance, Markdown, AI, ActivityBar, Language, Keybindings, Plugins)
+// Settings Modal — General/Features/System nav groups (§342), plus Plugins.
 // Obsidian-style layout: label + description per row, section headers for grouping
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 
+import type { FeatureKey } from "../../stores/settings/feature-keys";
 import type { SearchableSetting, SettingsTab } from "./settings-registry";
 
 import { useShallow } from "zustand/shallow";
 
 import { useTranslation } from "../../i18n/useTranslation";
 import { usePluginUIStore } from "../../plugins/plugin-ui-store";
+import { useFeatureFlags } from "../../stores/settings/features";
 import { useUIStore } from "../../stores/ui/ui";
 import { PluginMarketplace } from "../plugins/PluginMarketplace";
 import { PluginSettingsTabHost } from "./PluginSettingsTabHost";
@@ -18,22 +20,50 @@ import { AITab } from "./tabs/AITab";
 import { AppearanceTab } from "./tabs/AppearanceTab";
 import { EditorTab } from "./tabs/EditorTab";
 import { GeneralTab } from "./tabs/GeneralTab";
+import { JournalTab } from "./tabs/JournalTab";
 import { KeybindingsTab } from "./tabs/KeybindingsTab";
 import { LanguageTab } from "./tabs/LanguageTab";
 import { MarkdownTab } from "./tabs/MarkdownTab";
+import { TasksTab } from "./tabs/TasksTab";
 import { VaultTab } from "./tabs/VaultTab";
+import { ZettelkastenTab } from "./tabs/ZettelkastenTab";
 
-const TABS: { icon: string; id: SettingsTab; label: string }[] = [
-  { id: "general", label: "General", icon: "\u2699" },
-  { id: "editor", label: "Editor", icon: "\u270E" },
-  { id: "appearance", label: "Appearance", icon: "\u25D1" },
-  { id: "markdown", label: "Markdown", icon: "M\u2193" },
-  { id: "ai", label: "AI", icon: "\u2726" },
-  { id: "activitybar", label: "Activity Bar", icon: "\u25A4" },
-  { id: "language", label: "Language", icon: "\uD83C\uDF10" },
-  { id: "keybindings", label: "Keybindings", icon: "\u2328" },
-  { id: "plugins", label: "Plugins", icon: "\uD83E\uDDE9" },
-  { id: "vault", label: "Vault", icon: "\uD83D\uDCE6" },
+// eslint-disable-next-line react-refresh/only-export-components
+export const SETTINGS_TAB_GROUPS: {
+  id: "features" | "general" | "system";
+  labelKey: string;
+}[] = [
+  { id: "general", labelKey: "settings.group.general" },
+  { id: "features", labelKey: "settings.group.features" },
+  { id: "system", labelKey: "settings.group.system" },
+];
+
+// eslint-disable-next-line react-refresh/only-export-components
+export const TABS: {
+  /** 이 탭이 기능 하나에 속하면 그 키. 흐리게 표시할지 판정한다. */
+  feature?: FeatureKey;
+  group: "features" | "general" | "system";
+  icon: string;
+  id: SettingsTab;
+}[] = [
+  { id: "general", group: "general", icon: "⚙" },
+  { id: "editor", group: "general", icon: "✎" },
+  { id: "appearance", group: "general", icon: "◑" },
+  { id: "markdown", group: "general", icon: "M↓" },
+  { id: "language", group: "general", icon: "🌐" },
+  { id: "keybindings", group: "general", icon: "⌨" },
+  { id: "journal", group: "features", icon: "📓", feature: "journal" },
+  {
+    id: "zettelkasten",
+    group: "features",
+    icon: "🗂",
+    feature: "zettelkasten",
+  },
+  { id: "tasks", group: "features", icon: "✓", feature: "tasks" },
+  { id: "ai", group: "features", icon: "✦", feature: "ai" },
+  { id: "activitybar", group: "system", icon: "▤" },
+  { id: "plugins", group: "system", icon: "🧩" },
+  { id: "vault", group: "system", icon: "📦" },
 ];
 
 export function SettingsModal() {
@@ -44,6 +74,7 @@ export function SettingsModal() {
   const { t } = useTranslation();
   const registry = useSettingsRegistry();
   const pluginTabs = usePluginUIStore(useShallow((s) => s.settingsTabs));
+  const featureFlags = useFeatureFlags();
 
   useEffect(() => {
     if (
@@ -98,7 +129,7 @@ export function SettingsModal() {
                 className="settings-search-clear"
                 onClick={() => setSearchQuery("")}
               >
-                {"\u00D7"}
+                {"×"}
               </button>
             )}
           </div>
@@ -107,27 +138,45 @@ export function SettingsModal() {
             onClick={toggleSettings}
             title={t("common.close")}
           >
-            {"\u00D7"}
+            {"×"}
           </button>
         </div>
         <div className="settings-body">
           <nav className="settings-nav">
-            {TABS.map((tab) => (
-              <button
-                className={`settings-nav-item ${activeTab === tab.id && !activePluginTab ? "settings-nav-active" : ""}`}
-                key={tab.id}
-                onClick={() => {
-                  setActiveTab(tab.id);
-                  setActivePluginTab(null);
-                }}
-              >
-                <span className="settings-nav-icon">{tab.icon}</span>
-                {t(`settings.tab.${tab.id}`)}
-              </button>
+            {SETTINGS_TAB_GROUPS.map((group) => (
+              <Fragment key={group.id}>
+                <div className="settings-nav-group">{t(group.labelKey)}</div>
+                {TABS.filter((tab) => tab.group === group.id).map((tab) => (
+                  <button
+                    className={[
+                      "settings-nav-item",
+                      activeTab === tab.id && !activePluginTab
+                        ? "settings-nav-active"
+                        : "",
+                      // §342 규칙 1 — 탭은 숨기지 않고 흐리게만. 숨기면 되켤 수 없다.
+                      tab.feature && !featureFlags[tab.feature]
+                        ? "settings-nav-item--off"
+                        : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                    key={tab.id}
+                    onClick={() => {
+                      setActiveTab(tab.id);
+                      setActivePluginTab(null);
+                    }}
+                  >
+                    <span className="settings-nav-icon">{tab.icon}</span>
+                    {t(`settings.tab.${tab.id}`)}
+                  </button>
+                ))}
+              </Fragment>
             ))}
             {pluginTabs.length > 0 && (
               <>
-                <div className="settings-nav-group">Plugins</div>
+                <div className="settings-nav-group">
+                  {t("settings.group.plugins")}
+                </div>
                 {pluginTabs.map((tab) => (
                   <button
                     className={`settings-nav-item ${activePluginTab === tab.tabId ? "settings-nav-active" : ""}`}
@@ -162,6 +211,9 @@ export function SettingsModal() {
                 {activeTab === "editor" && <EditorTab />}
                 {activeTab === "appearance" && <AppearanceTab />}
                 {activeTab === "markdown" && <MarkdownTab />}
+                {activeTab === "journal" && <JournalTab />}
+                {activeTab === "zettelkasten" && <ZettelkastenTab />}
+                {activeTab === "tasks" && <TasksTab />}
                 {activeTab === "ai" && <AITab />}
                 {activeTab === "activitybar" && <ActivityBarTab />}
                 {activeTab === "language" && <LanguageTab />}

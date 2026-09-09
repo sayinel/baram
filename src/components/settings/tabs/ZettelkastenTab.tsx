@@ -1,18 +1,18 @@
-// §80~§90 Zettelkasten settings section, split out of GeneralTab.
+// §80~§90/§342 Zettelkasten settings tab, promoted out of GeneralTab.
 import { useShallow } from "zustand/shallow";
 
-import { useTranslation } from "../../../../i18n/useTranslation";
-import { pickApprovedDir } from "../../../../ipc/approval";
-import { useSettingsStore } from "../../../../stores/settings/store";
-import { resolveAbsoluteDirSetting } from "../../../../utils/path-utils";
+import { useTranslation } from "../../../i18n/useTranslation";
+import { pickApprovedDir } from "../../../ipc/approval";
+import { useSettingsStore } from "../../../stores/settings/store";
+import { resolveAbsoluteDirSetting } from "../../../utils/path-utils";
 import {
   SettingsRow,
   SettingsSectionHeader,
   ToggleSwitch,
-} from "../../settings-shared";
-import { TemplatePathRow } from "./TemplatePathRow";
+} from "../settings-shared";
+import { TemplatePathRow } from "./general/TemplatePathRow";
 
-export function ZettelkastenSection() {
+export function ZettelkastenTab() {
   const { t } = useTranslation();
   const {
     zettelkastenEnabled,
@@ -37,7 +37,7 @@ export function ZettelkastenSection() {
   );
 
   return (
-    <>
+    <div className="settings-section">
       <SettingsSectionHeader title={t("settings.general.zettelkasten")} />
 
       <SettingsRow
@@ -115,6 +115,6 @@ export function ZettelkastenSection() {
           </SettingsRow>
         </>
       )}
-    </>
+    </div>
   );
 }

@@ -51,6 +51,7 @@ const SHARED_VALUES = new Set<string>([
   "settings.general.zettelkasten", // Zettel
   "settings.panels.git", // Git
   "settings.tab.ai", // AI
+  "settings.tab.zettelkasten", // Zettel — same term as settings.general.zettelkasten
   "settings.vault.extension.mermaid", // Mermaid — the diagram language, named after itself
   "settings.vault.group.ai", // AI
   "settings.vault.workLogFolder.placeholder", // daily — a folder name, not a word

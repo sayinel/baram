@@ -19,6 +19,8 @@ import {
 export function AITab() {
   const { t } = useTranslation();
   const {
+    aiEnabled,
+    setAIEnabled,
     provider,
     setProvider,
     model,
@@ -134,269 +136,286 @@ export function AITab() {
 
   return (
     <div className="settings-section">
-      <SettingsSectionHeader title={t("settings.ai.provider")} />
-
       <SettingsRow
-        description={t("settings.ai.aiProvider.desc")}
-        label={t("settings.ai.aiProvider")}
+        description={t("settings.ai.aiEnabled.desc")}
+        label={t("settings.ai.aiEnabled")}
       >
-        <select
-          className="settings-select"
-          onChange={(e) => handleProviderChange(e.target.value as AIProvider)}
-          value={provider}
-        >
-          {AI_PROVIDER_IDS.map((id) => (
-            <option key={id} value={id}>
-              {t(AI_PROVIDERS[id].labelKey)}
-            </option>
-          ))}
-        </select>
+        <ToggleSwitch checked={aiEnabled} onChange={setAIEnabled} />
       </SettingsRow>
 
-      {showApiKey && (
-        <SettingsRow
-          description={
-            keychainReady
-              ? t("settings.ai.apiKey.desc.ready")
-              : t("settings.ai.apiKey.desc.loading")
-          }
-          label={t("settings.ai.apiKey")}
-        >
-          <div className="settings-key-row">
-            <input
-              className="settings-input settings-input-key"
-              disabled={!keychainReady}
-              onChange={(e) => {
-                setDraft(e.target.value);
-                setApiKey(e.target.value);
-              }}
-              placeholder={keyPlaceholder}
-              type={showKey ? "text" : "password"}
-              value={draft}
-            />
-            <button
-              className="settings-key-toggle"
-              onClick={() => setShowKey((v) => !v)}
-              title={
-                showKey
-                  ? t("settings.ai.apiKey.hide")
-                  : t("settings.ai.apiKey.show")
-              }
-            >
-              {showKey
-                ? t("settings.ai.apiKey.hide")
-                : t("settings.ai.apiKey.show")}
-            </button>
-          </div>
-        </SettingsRow>
-      )}
+      {aiEnabled && (
+        <>
+          <SettingsSectionHeader title={t("settings.ai.provider")} />
 
-      {provider === "ollama" && (
-        <SettingsRow
-          description={t("settings.ai.ollamaUrl.desc")}
-          label={t("settings.ai.ollamaUrl")}
-        >
-          <input
-            className="settings-input"
-            onChange={(e) => setOllamaUrl(e.target.value)}
-            placeholder={t("settings.ai.ollamaUrl.placeholder")}
-            type="text"
-            value={ollamaUrl}
-          />
-        </SettingsRow>
-      )}
-
-      <SettingsRow
-        description={t("settings.ai.model.desc")}
-        label={t("settings.ai.model")}
-      >
-        <div className="settings-model-row">
-          {customMode || (models.length === 0 && !modelsLoading) ? (
-            <input
-              className="settings-input settings-input-model"
-              onChange={(e) => setModel(e.target.value)}
-              placeholder={t("settings.ai.model.placeholder")}
-              type="text"
-              value={model}
-            />
-          ) : (
+          <SettingsRow
+            description={t("settings.ai.aiProvider.desc")}
+            label={t("settings.ai.aiProvider")}
+          >
             <select
-              className="settings-select settings-select-model"
-              onChange={(e) => {
-                if (e.target.value === "__custom__") {
-                  setCustomMode(true);
-                } else {
-                  setModel(e.target.value);
-                }
-              }}
-              value={model}
+              className="settings-select"
+              onChange={(e) =>
+                handleProviderChange(e.target.value as AIProvider)
+              }
+              value={provider}
             >
-              {models.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
+              {AI_PROVIDER_IDS.map((id) => (
+                <option key={id} value={id}>
+                  {t(AI_PROVIDERS[id].labelKey)}
                 </option>
               ))}
-              <option value="__custom__">{t("common.custom")}...</option>
             </select>
+          </SettingsRow>
+
+          {showApiKey && (
+            <SettingsRow
+              description={
+                keychainReady
+                  ? t("settings.ai.apiKey.desc.ready")
+                  : t("settings.ai.apiKey.desc.loading")
+              }
+              label={t("settings.ai.apiKey")}
+            >
+              <div className="settings-key-row">
+                <input
+                  className="settings-input settings-input-key"
+                  disabled={!keychainReady}
+                  onChange={(e) => {
+                    setDraft(e.target.value);
+                    setApiKey(e.target.value);
+                  }}
+                  placeholder={keyPlaceholder}
+                  type={showKey ? "text" : "password"}
+                  value={draft}
+                />
+                <button
+                  className="settings-key-toggle"
+                  onClick={() => setShowKey((v) => !v)}
+                  title={
+                    showKey
+                      ? t("settings.ai.apiKey.hide")
+                      : t("settings.ai.apiKey.show")
+                  }
+                >
+                  {showKey
+                    ? t("settings.ai.apiKey.hide")
+                    : t("settings.ai.apiKey.show")}
+                </button>
+              </div>
+            </SettingsRow>
           )}
-          <button
-            className="settings-model-refresh"
-            disabled={!canFetchModels || modelsLoading}
-            onClick={fetchModels}
-            title={
-              !canFetchModels
-                ? t("settings.ai.model.keyFirst")
-                : t("settings.ai.model.fetchTooltip")
-            }
-          >
-            {modelsLoading ? (
-              <span className="settings-model-spinner" />
-            ) : (
-              "\u21BB"
-            )}
-          </button>
-        </div>
-      </SettingsRow>
 
-      {modelsError &&
-        (() => {
-          const formatted = formatAIError(modelsError);
-          return (
-            <div className="settings-model-error">
-              <strong>{formatted.title}</strong>
-              <span>{formatted.detail}</span>
+          {provider === "ollama" && (
+            <SettingsRow
+              description={t("settings.ai.ollamaUrl.desc")}
+              label={t("settings.ai.ollamaUrl")}
+            >
+              <input
+                className="settings-input"
+                onChange={(e) => setOllamaUrl(e.target.value)}
+                placeholder={t("settings.ai.ollamaUrl.placeholder")}
+                type="text"
+                value={ollamaUrl}
+              />
+            </SettingsRow>
+          )}
+
+          <SettingsRow
+            description={t("settings.ai.model.desc")}
+            label={t("settings.ai.model")}
+          >
+            <div className="settings-model-row">
+              {customMode || (models.length === 0 && !modelsLoading) ? (
+                <input
+                  className="settings-input settings-input-model"
+                  onChange={(e) => setModel(e.target.value)}
+                  placeholder={t("settings.ai.model.placeholder")}
+                  type="text"
+                  value={model}
+                />
+              ) : (
+                <select
+                  className="settings-select settings-select-model"
+                  onChange={(e) => {
+                    if (e.target.value === "__custom__") {
+                      setCustomMode(true);
+                    } else {
+                      setModel(e.target.value);
+                    }
+                  }}
+                  value={model}
+                >
+                  {models.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+                  <option value="__custom__">{t("common.custom")}...</option>
+                </select>
+              )}
+              <button
+                className="settings-model-refresh"
+                disabled={!canFetchModels || modelsLoading}
+                onClick={fetchModels}
+                title={
+                  !canFetchModels
+                    ? t("settings.ai.model.keyFirst")
+                    : t("settings.ai.model.fetchTooltip")
+                }
+              >
+                {modelsLoading ? (
+                  <span className="settings-model-spinner" />
+                ) : (
+                  "\u21BB"
+                )}
+              </button>
             </div>
-          );
-        })()}
+          </SettingsRow>
 
-      <SettingsSectionHeader title={t("settings.ai.modelSelection")} />
+          {modelsError &&
+            (() => {
+              const formatted = formatAIError(modelsError);
+              return (
+                <div className="settings-model-error">
+                  <strong>{formatted.title}</strong>
+                  <span>{formatted.detail}</span>
+                </div>
+              );
+            })()}
 
-      <SettingsRow
-        description={t("settings.ai.autoModel.desc")}
-        label={t("settings.ai.autoModel")}
-      >
-        <ToggleSwitch
-          checked={autoModelEnabled}
-          onChange={setAutoModelEnabled}
-        />
-      </SettingsRow>
+          <SettingsSectionHeader title={t("settings.ai.modelSelection")} />
 
-      {autoModelEnabled && (
-        <>
-          <TaskModelSelector
-            configuredProviders={configuredProviders}
-            defaultModel={model}
-            defaultProvider={provider}
-            description={t("settings.ai.ghostTextModel.desc")}
-            fetchModelsForProvider={fetchModelsForProvider}
-            label={t("settings.ai.ghostTextModel")}
-            onModelChange={(m) => setModelForTask("ghost-text", m)}
-            onProviderChange={(p) => setProviderForTask("ghost-text", p)}
-            taskModel={modelForGhostText}
-            taskProvider={providerForGhostText}
-          />
-          <TaskModelSelector
-            configuredProviders={configuredProviders}
-            defaultModel={model}
-            defaultProvider={provider}
-            description={t("settings.ai.inlineEditModel.desc")}
-            fetchModelsForProvider={fetchModelsForProvider}
-            label={t("settings.ai.inlineEditModel")}
-            onModelChange={(m) => setModelForTask("inline-edit", m)}
-            onProviderChange={(p) => setProviderForTask("inline-edit", p)}
-            taskModel={modelForInlineEdit}
-            taskProvider={providerForInlineEdit}
-          />
-          <TaskModelSelector
-            configuredProviders={configuredProviders}
-            defaultModel={model}
-            defaultProvider={provider}
-            description={t("settings.ai.chatModel.desc")}
-            fetchModelsForProvider={fetchModelsForProvider}
-            label={t("settings.ai.chatModel")}
-            onModelChange={(m) => setModelForTask("chat", m)}
-            onProviderChange={(p) => setProviderForTask("chat", p)}
-            taskModel={modelForChat}
-            taskProvider={providerForChat}
-          />
-          <TaskModelSelector
-            configuredProviders={configuredProviders}
-            defaultModel={model}
-            defaultProvider={provider}
-            description={t("settings.ai.agentModel.desc")}
-            fetchModelsForProvider={fetchModelsForProvider}
-            label={t("settings.ai.agentModel")}
-            onModelChange={(m) => setModelForTask("agent", m)}
-            onProviderChange={(p) => setProviderForTask("agent", p)}
-            taskModel={modelForAgent}
-            taskProvider={providerForAgent}
-          />
-        </>
-      )}
-
-      <SettingsSectionHeader title={t("settings.ai.privacy")} />
-
-      <SettingsRow
-        description={t("settings.ai.privacyMode.desc")}
-        label={t("settings.ai.privacyMode")}
-      >
-        <ToggleSwitch checked={privacyMode} onChange={setPrivacyMode} />
-      </SettingsRow>
-
-      <SettingsSectionHeader title={t("settings.ai.ghostText")} />
-
-      <SettingsRow
-        description={t("settings.ai.ghostTextEnabled.desc")}
-        label={t("settings.ai.ghostTextEnabled")}
-      >
-        <ToggleSwitch
-          checked={ghostTextEnabled}
-          onChange={setGhostTextEnabled}
-        />
-      </SettingsRow>
-
-      {ghostTextEnabled && (
-        <>
           <SettingsRow
-            description={t("settings.ai.debounce.desc").replace(
-              "{value}",
-              String(ghostTextDebounceMs),
-            )}
-            label={t("settings.ai.debounce")}
+            description={t("settings.ai.autoModel.desc")}
+            label={t("settings.ai.autoModel")}
           >
-            <input
-              className="settings-range"
-              max={2000}
-              min={200}
-              onChange={(e) => setGhostTextDebounceMs(Number(e.target.value))}
-              step={100}
-              type="range"
-              value={ghostTextDebounceMs}
+            <ToggleSwitch
+              checked={autoModelEnabled}
+              onChange={setAutoModelEnabled}
             />
           </SettingsRow>
 
+          {autoModelEnabled && (
+            <>
+              <TaskModelSelector
+                configuredProviders={configuredProviders}
+                defaultModel={model}
+                defaultProvider={provider}
+                description={t("settings.ai.ghostTextModel.desc")}
+                fetchModelsForProvider={fetchModelsForProvider}
+                label={t("settings.ai.ghostTextModel")}
+                onModelChange={(m) => setModelForTask("ghost-text", m)}
+                onProviderChange={(p) => setProviderForTask("ghost-text", p)}
+                taskModel={modelForGhostText}
+                taskProvider={providerForGhostText}
+              />
+              <TaskModelSelector
+                configuredProviders={configuredProviders}
+                defaultModel={model}
+                defaultProvider={provider}
+                description={t("settings.ai.inlineEditModel.desc")}
+                fetchModelsForProvider={fetchModelsForProvider}
+                label={t("settings.ai.inlineEditModel")}
+                onModelChange={(m) => setModelForTask("inline-edit", m)}
+                onProviderChange={(p) => setProviderForTask("inline-edit", p)}
+                taskModel={modelForInlineEdit}
+                taskProvider={providerForInlineEdit}
+              />
+              <TaskModelSelector
+                configuredProviders={configuredProviders}
+                defaultModel={model}
+                defaultProvider={provider}
+                description={t("settings.ai.chatModel.desc")}
+                fetchModelsForProvider={fetchModelsForProvider}
+                label={t("settings.ai.chatModel")}
+                onModelChange={(m) => setModelForTask("chat", m)}
+                onProviderChange={(p) => setProviderForTask("chat", p)}
+                taskModel={modelForChat}
+                taskProvider={providerForChat}
+              />
+              <TaskModelSelector
+                configuredProviders={configuredProviders}
+                defaultModel={model}
+                defaultProvider={provider}
+                description={t("settings.ai.agentModel.desc")}
+                fetchModelsForProvider={fetchModelsForProvider}
+                label={t("settings.ai.agentModel")}
+                onModelChange={(m) => setModelForTask("agent", m)}
+                onProviderChange={(p) => setProviderForTask("agent", p)}
+                taskModel={modelForAgent}
+                taskProvider={providerForAgent}
+              />
+            </>
+          )}
+
+          <SettingsSectionHeader title={t("settings.ai.privacy")} />
+
           <SettingsRow
-            description={t("settings.ai.maxLength.desc").replace(
-              "{value}",
-              String(maxSuggestionLength),
-            )}
-            label={t("settings.ai.maxLength")}
+            description={t("settings.ai.privacyMode.desc")}
+            label={t("settings.ai.privacyMode")}
           >
-            <input
-              className="settings-range"
-              max={500}
-              min={20}
-              onChange={(e) => setMaxSuggestionLength(Number(e.target.value))}
-              step={10}
-              type="range"
-              value={maxSuggestionLength}
+            <ToggleSwitch checked={privacyMode} onChange={setPrivacyMode} />
+          </SettingsRow>
+
+          <SettingsSectionHeader title={t("settings.ai.ghostText")} />
+
+          <SettingsRow
+            description={t("settings.ai.ghostTextEnabled.desc")}
+            label={t("settings.ai.ghostTextEnabled")}
+          >
+            <ToggleSwitch
+              checked={ghostTextEnabled}
+              onChange={setGhostTextEnabled}
             />
           </SettingsRow>
+
+          {ghostTextEnabled && (
+            <>
+              <SettingsRow
+                description={t("settings.ai.debounce.desc").replace(
+                  "{value}",
+                  String(ghostTextDebounceMs),
+                )}
+                label={t("settings.ai.debounce")}
+              >
+                <input
+                  className="settings-range"
+                  max={2000}
+                  min={200}
+                  onChange={(e) =>
+                    setGhostTextDebounceMs(Number(e.target.value))
+                  }
+                  step={100}
+                  type="range"
+                  value={ghostTextDebounceMs}
+                />
+              </SettingsRow>
+
+              <SettingsRow
+                description={t("settings.ai.maxLength.desc").replace(
+                  "{value}",
+                  String(maxSuggestionLength),
+                )}
+                label={t("settings.ai.maxLength")}
+              >
+                <input
+                  className="settings-range"
+                  max={500}
+                  min={20}
+                  onChange={(e) =>
+                    setMaxSuggestionLength(Number(e.target.value))
+                  }
+                  step={10}
+                  type="range"
+                  value={maxSuggestionLength}
+                />
+              </SettingsRow>
+            </>
+          )}
+
+          <SettingsSectionHeader title={t("settings.ai.customCommands")} />
+          <CustomAICommandEditor />
         </>
       )}
-
-      <SettingsSectionHeader title={t("settings.ai.customCommands")} />
-      <CustomAICommandEditor />
     </div>
   );
 }
