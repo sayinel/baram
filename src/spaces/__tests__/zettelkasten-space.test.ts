@@ -28,6 +28,10 @@ vi.mock("../../stores/zettelkasten/zettel-index", () => ({
 }));
 
 // Mock journal-file-service's openFileInTab (shared tab-open helper)
+vi.mock("../../services/space-context-migration", () => ({
+  reportSpaceDirectoryTaken: (err: unknown) =>
+    err instanceof SpaceDirectoryTakenError,
+}));
 vi.mock("../../services/journal-file-service", () => ({
   openFileInTab: vi.fn(async () => undefined),
 }));
@@ -40,6 +44,7 @@ vi.mock("../../ipc/invoke", () => ({
 import { readFile } from "../../ipc/invoke";
 import { openFileInTab } from "../../services/journal-file-service";
 import { useContextStore } from "../../stores/context/context";
+import { SpaceDirectoryTakenError } from "../../stores/context/errors";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
 import { refreshZettelIndex } from "../../stores/zettelkasten/zettel-index";
@@ -116,9 +121,38 @@ describe("§98 zettelkastenSpace.startup", () => {
 
     await zettelkastenSpace.startup?.();
 
+    // Registered, not activated: "nothing" must not take the seat — since
+    // issue 598 a moved directory switches for real when activation is asked.
     expect(ensureSpaceContext).toHaveBeenCalledWith("zettelkasten", "/zettel", {
+      activate: false,
       label: "Zettel",
     });
+    expect(refreshZettelIndex).not.toHaveBeenCalled();
+    expect(openFileInTab).not.toHaveBeenCalled();
+  });
+
+  it("stops after reporting a directory that is already another context", async () => {
+    mockContextState(true);
+    mockSettingsState({
+      zettelkastenEnabled: true,
+      zettelkastenStartupBehavior: "openInbox",
+      zettelkastenHomeNote: "home.md",
+    });
+    ensureSpaceContext.mockRejectedValueOnce(
+      new SpaceDirectoryTakenError("zettelkasten", "/zettel", {
+        addedAt: 0,
+        color: "#fff",
+        contextType: "vault",
+        id: "plain",
+        label: "Notes",
+        path: "/zettel",
+      }),
+    );
+
+    await zettelkastenSpace.startup?.();
+
+    // issue 598: the space has no context of its own — indexing that directory
+    // or opening its home note would act on a space that does not exist.
     expect(refreshZettelIndex).not.toHaveBeenCalled();
     expect(openFileInTab).not.toHaveBeenCalled();
   });
@@ -132,6 +166,11 @@ describe("§98 zettelkastenSpace.startup", () => {
     });
 
     await zettelkastenSpace.startup?.();
+
+    expect(ensureSpaceContext).toHaveBeenCalledWith("zettelkasten", "/zettel", {
+      activate: true,
+      label: "Zettel",
+    });
 
     expect(refreshZettelIndex).toHaveBeenCalledWith("/zettel");
     expect(readFile).not.toHaveBeenCalled();

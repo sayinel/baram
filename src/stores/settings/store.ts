@@ -9,6 +9,7 @@ import {
   THEME_COLOR_KEYS,
   THEME_COLOR_VALUE_RE,
 } from "../../types/theme";
+import { noteHydrationFailure } from "../system/hydration";
 import { tauriStorage } from "../system/tauri-storage";
 import {
   type ActivityBarItemConfig,
@@ -537,7 +538,9 @@ export const useSettingsStore = create<SettingsState>()(
         return state;
       },
       // Fallback for unversioned → v1 upgrade (Zustand skips migrate when stored version is undefined)
-      onRehydrateStorage: () => (state) => {
+      onRehydrateStorage: () => (state, error) => {
+        // issue 597: a failed read must not hold the startup barrier forever.
+        if (error) noteHydrationFailure(useSettingsStore.persist);
         if (!state) return;
         // extensionSettings sync (existing)
         const ext = { ...state.extensionSettings };

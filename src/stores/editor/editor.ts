@@ -208,6 +208,11 @@ interface EditorState {
   /** §287/§312 Turn source mode on or off for one tab */
   setSourceModeForTab: (tabId: string, on: boolean) => void;
   /**
+   * issue 598: give tabs new owning contexts (the re-homed files of a retired
+   * space), tab id → context id, in ONE transition — not one per tab.
+   */
+  setTabContexts: (assignments: ReadonlyMap<string, string>) => void;
+  /**
    * §69 Set a tab's display title.
    *
    * `renameTab` is for files and keys on a path; a plugin tab's label follows the installed
@@ -623,6 +628,27 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         sourceEditedTabs,
         sourceModeTabs,
         staleContentTabs,
+      };
+    }),
+
+  setTabContexts: (assignments) =>
+    set((state) => {
+      // Equality gate: nothing to move, no new state root.
+      if (
+        !state.tabs.some((t) => {
+          const next = assignments.get(t.id);
+          return next !== undefined && next !== t.contextId;
+        })
+      ) {
+        return state;
+      }
+      return {
+        tabs: state.tabs.map((t) => {
+          const next = assignments.get(t.id);
+          return next === undefined || next === t.contextId
+            ? t
+            : { ...t, contextId: next };
+        }),
       };
     }),
 

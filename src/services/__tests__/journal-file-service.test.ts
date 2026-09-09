@@ -61,6 +61,7 @@ import type { ContextInfo } from "../../ipc/types";
 import { useContextStore } from "../../stores/context/context";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
+import { useUIStore } from "../../stores/ui/ui";
 import { ensureJournalFile, openFileInTab } from "../journal-file-service";
 
 describe("openFileInTab", () => {
@@ -172,6 +173,39 @@ describe("ensureJournalFile — journal directory registration", () => {
     await ensureJournalFile(DATE, OPTIONS);
 
     expect(ipcAddContext).not.toHaveBeenCalled();
+  });
+
+  it("does not touch the disk when the journal directory is held by another context", async () => {
+    // issue 598: the user has just been told the Journal directory was left
+    // unchanged; writing today's entry into that directory anyway — Rust would
+    // allow it, the other context covers the path — would contradict the toast.
+    const vault: ContextInfo = {
+      addedAt: Date.now(),
+      color: "#3b82f6",
+      contextType: "vault",
+      id: "ctx-vault",
+      label: "vault",
+      path: JOURNAL_DIR,
+    };
+    useContextStore.setState({ activeContextId: vault.id, contexts: [vault] });
+    // The backend dedups by canonical path and answers with the vault itself.
+    ipcAddContext.mockImplementationOnce(async () => {
+      calls.push("add_context");
+      return vault;
+    });
+    const toast = vi.spyOn(useUIStore.getState(), "showToast");
+    logger.error.mockClear();
+
+    const result = await ensureJournalFile(DATE, OPTIONS);
+
+    expect(result).toBeNull();
+    // Registration was attempted, and nothing touched the disk after it.
+    expect(calls).toEqual(["add_context"]);
+    expect(toast).toHaveBeenCalledWith(
+      expect.stringContaining(JOURNAL_DIR),
+      "error",
+    );
+    expect(logger.error).not.toHaveBeenCalled();
   });
 
   it("still opens the entry when registration fails, and says so where release builds can see it", async () => {

@@ -5,6 +5,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 import { type Locale, t } from "../../i18n";
+import { reportSpaceDirectoryTaken } from "../../services/space-context-migration";
 import { switchContext } from "../../services/vault-context-loader";
 import { getSpace } from "../../spaces";
 import { resolveJournalDir } from "../../utils/journal/journal";
@@ -249,7 +250,9 @@ export const useWorkspaceStore = create<WorkspaceState>()(
                 // after newFileFlow so today's entry is in the tree it loads.
                 await switchContext(ctx.id);
               } catch (err) {
-                logger.error("[Workspace] Failed to open journal:", err);
+                if (!reportSpaceDirectoryTaken(err)) {
+                  logger.error("[Workspace] Failed to open journal:", err);
+                }
               }
             })();
           }
@@ -278,13 +281,17 @@ export const useWorkspaceStore = create<WorkspaceState>()(
                 await refreshZettelIndex(resolvedDir);
                 // Load the file tree for the zettel dir — ensureSpaceContext
                 // activates the context locally but does NOT load its tree
-                // (only switchContext/openFolder do). Without this the sidebar
+                // (only switchContext/openFolder do), except when the directory
+                // setting moved (issue 598): then it has switched already and
+                // this is a second, harmless load. Without this the sidebar
                 // keeps showing the previous vault's tree until the user clicks
                 // the context tab. inbox/ + notes/ now exist, so load them here.
                 await switchContext(ctx.id);
                 await getSpace("zettelkasten")?.startup?.();
               } catch (err) {
-                logger.error("[Workspace] Failed to open zettelkasten:", err);
+                if (!reportSpaceDirectoryTaken(err)) {
+                  logger.error("[Workspace] Failed to open zettelkasten:", err);
+                }
               }
             })();
           }

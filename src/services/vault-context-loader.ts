@@ -298,6 +298,29 @@ export async function switchContext(contextId: string): Promise<void> {
 }
 
 /**
+ * issue 263: `remove_context` forgets a path's link index (`context_cmd.rs`) and
+ * the only builder is `_loadContextFileTree`, which runs on a switch. A context
+ * that is (re)registered WITHOUT a switch — a Folder↔Vault convert of an inactive
+ * tab, a space whose directory moved while another context stayed on screen —
+ * therefore comes back with an empty index slot that nobody fills: backlinks
+ * read empty and renames inside it are refused as INDEX_NOT_READY until the
+ * user happens to switch to it. Rebuild it here; the active context is left to
+ * the switch, which rebuilds on its own.
+ *
+ * Fire-and-forget: resolves and logs on failure rather than rejecting, so the
+ * registration that just succeeded is not reported as failed.
+ */
+export function refreshInactiveContextIndex(path: string, scope: string): void {
+  refreshIndex(path)
+    .then(() => useLinkStore.getState().invalidate())
+    .catch((err) =>
+      // ‼️ error, not warn — `logger.warn` is gated on `import.meta.env.DEV`
+      // (utils/logger.ts) and leaves nothing behind in a release build.
+      logger.error(`${scope}: refreshIndex failed`, err),
+    );
+}
+
+/**
  * §81 Internal: Load file tree and index for a context path.
  * Shared by openFolder, addFolder, and switchContext.
  *
