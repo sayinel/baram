@@ -6,7 +6,7 @@ title: "Tasks and query blocks"
 
 ### How do I turn tasks on or off?
 
-They are on by default. **Settings > General > Tasks > Enable Tasks** controls both the vault-wide index and the Tasks icon in the activity bar.
+They are on by default. **Settings › Tasks > Enable Tasks** controls both the vault-wide index and the Tasks icon in the activity bar.
 
 ### What are the four checkbox states?
 
@@ -36,7 +36,7 @@ Completing or cancelling a repeating task **rolls it forward**: the dates move t
 
 ### Where does the Tasks panel get its tasks from?
 
-Every markdown file in the roots covered by **Agenda scope** (**Settings > General > Tasks**), which defaults to All vaults. Folders listed under **Exclude folders** are skipped. Query blocks are different — they always search the vault the note lives in, so a note shows everyone the same list.
+Every markdown file in the roots covered by **Agenda scope** (**Settings › Tasks**), which defaults to All vaults. Folders listed under **Exclude folders** are skipped. Query blocks are different — they always search the vault the note lives in, so a note shows everyone the same list.
 
 ### Why is my task in "Past scheduled" instead of "Overdue"?
 
@@ -48,7 +48,7 @@ Yes, `✅` with today's date, controlled by **Record completion date** (on by de
 
 ### Can Baram track how long a task takes?
 
-Turn on **Settings > General > Tasks > Track time on tasks in progress**. While a task sits in `[/]` it carries a `⏱` field, and the elapsed time is banked when it leaves that state. It's off by default because switching a task to "in progress" would otherwise write a new field into a file other apps also read.
+Turn on **Settings › Tasks > Track time on tasks in progress**. While a task sits in `[/]` it carries a `⏱` field, and the elapsed time is banked when it leaves that state. It's off by default because switching a task to "in progress" would otherwise write a new field into a file other apps also read.
 
 ### What happens to old completed tasks?
 

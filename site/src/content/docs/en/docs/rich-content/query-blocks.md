@@ -116,7 +116,7 @@ limit: 15
 
 Task queries search every task Baram has indexed **in the vault the note lives in** — not the scope the Tasks sidebar is set to. A note shows the same list to everyone who opens it, whatever their sidebar happens to be filtered to.
 
-Tasks must be enabled (**Settings > General > Tasks**); if they are off the block says so instead of showing an empty list.
+Tasks must be enabled (**Settings › Tasks**); if they are off the block says so instead of showing an empty list.
 
 | Field        | Operators                              | Values                                              |
 | ------------ | -------------------------------------- | --------------------------------------------------- |
@@ -186,6 +186,6 @@ filter: recurrence empty AND tags contains "routine"
 | What you see                                   | Why                                                                       |
 | ---------------------------------------------- | ------------------------------------------------------------------------- |
 | `No vault open`                                | Query blocks search a vault; open one first                               |
-| `Tasks are turned off. Settings → General → Tasks.` | `source: tasks` with the Tasks feature disabled                      |
+| `Tasks are turned off. Settings › Tasks.` | `source: tasks` with the Tasks feature disabled                      |
 | `No results` when you expect some              | A field/operator pair that is not in the tables above matches nothing rather than erroring. Re-pick the field in the builder — it always offers a valid operator set. |
 | Results look stale                             | The block only re-runs on the triggers listed above; press **Run query**  |

@@ -53,7 +53,7 @@ A rule that can't do that says so on its chip:
 
 ## Time tracking
 
-Off by default. Turn on **Settings > General > Tasks > Track time on tasks in progress** and a task writes a `⏱` field while it sits in `[/]`, banking the elapsed time when it leaves that state:
+Off by default. Turn on **Settings › Tasks > Track time on tasks in progress** and a task writes a `⏱` field while it sits in `[/]`, banking the elapsed time when it leaves that state:
 
 ```
 ⏱1h27m                      stopped — an hour and 27 minutes so far
