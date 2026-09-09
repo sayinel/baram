@@ -815,6 +815,38 @@ describe("issue 598 ensureSpaceContext — a space whose directory setting moved
     expect(ipcRemoveContext).not.toHaveBeenCalled();
   });
 
+  it("puts the active seat back when the refused directory was the store's first context", async () => {
+    // The store is EMPTY — every other refusal test starts with a context, so
+    // none of them arms `_addContextTracked`'s auto-activation. Rust still
+    // holds a legacy entry at the directory (a `removeContext` whose Rust half
+    // failed and was swallowed) and answers the dedup with it.
+    ipcAddContext.mockImplementationOnce(async () => ({
+      addedAt: 0,
+      color: "#000",
+      contextType: "folder",
+      id: "legacy-1",
+      label: "notes",
+      path: "/vault/notes",
+    }));
+
+    await expect(
+      useContextStore.getState().ensureSpaceContext("journal", "/vault/notes"),
+    ).rejects.toBeInstanceOf(SpaceDirectoryTakenError);
+
+    const { activeContextId, contexts } = useContextStore.getState();
+    expect(contexts).toEqual([]);
+    // Not just the list: an id left here names a context the store no longer
+    // holds, and the `activeContextId === null` gate would never auto-activate
+    // again — the next openFolder would register a vault nothing activates.
+    expect(activeContextId).toBeNull();
+
+    // Proof that the gate still works: the next add takes the seat.
+    const next = await useContextStore
+      .getState()
+      .addContext("vault", "/vault/notes2");
+    expect(useContextStore.getState().activeContextId).toBe(next.id);
+  });
+
   it("does not retire anything when the backend says the new spelling is the same directory", async () => {
     const old = await useContextStore
       .getState()

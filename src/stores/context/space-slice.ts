@@ -66,6 +66,10 @@ export function createSpaceSlice(
       // Register the new directory FIRST — the backend dedups by canonical path
       // and may answer with the very context we hold (a case or symlink
       // spelling of the same directory) — and only then retire the old one.
+      // ‼️ Captured BEFORE the add: `_addContextTracked` auto-activates when it
+      // appends the first context of an empty store, and a refusal has to put
+      // that seat back exactly as it found it.
+      const activeBefore = get().activeContextId;
       const { context: created, inserted } = await get()._addContextTracked(
         "vault",
         dir,
@@ -78,7 +82,14 @@ export function createSpaceSlice(
       // retire the one it had). Refuse, whether or not the space had a
       // context before; what the store held stays exactly as it was.
       if (created.contextType !== "vault" || created.vaultType !== vaultType) {
-        refuseTakenDirectory(set, vaultType, dir, created, inserted);
+        refuseTakenDirectory(
+          set,
+          vaultType,
+          dir,
+          created,
+          inserted,
+          activeBefore,
+        );
       }
       if (existing && created.id !== existing.id) {
         // Retiring the old registration, re-homing its tabs, re-pinning and
@@ -178,10 +189,23 @@ function refuseTakenDirectory(
   dir: string,
   created: ContextInfo,
   inserted: boolean,
+  activeBefore: null | string,
 ): never {
   if (inserted) {
     set((state) => ({
       contexts: state.contexts.filter((c) => c.id !== created.id),
+      // ‼️ The seat as well as the list. `_addContextTracked` activates the
+      // context it appends when the store was empty, so filtering `contexts`
+      // alone leaves — and PERSISTS — an `activeContextId` naming a context
+      // the store no longer holds: `activeContext()` is null for good, and the
+      // `activeContextId === null` gate that does the auto-activation never
+      // fires again, so the next `openFolder` registers a vault that is never
+      // activated. Restored only while the seat is still the refused context;
+      // a legitimate activation that landed meanwhile is not ours to undo.
+      activeContextId:
+        state.activeContextId === created.id
+          ? activeBefore
+          : state.activeContextId,
     }));
   }
   throw new SpaceDirectoryTakenError(vaultType, dir, created);
