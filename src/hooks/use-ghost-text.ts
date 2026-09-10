@@ -131,6 +131,18 @@ export function useGhostText(editor: Editor | null) {
       const store = useAIStore.getState();
       // §339 aiEnabled === false counts as ghost text off too — AND the
       // predicates, do not flip the user's own ghostTextEnabled preference.
+      //
+      // ‼️ This check and isLLMAllowed's `aiEnabled` argument below both read
+      // `store.aiEnabled` from this SAME snapshot in the same synchronous
+      // scope, so neither's removal is independently observable by a test —
+      // confirmed by mutation testing (fix-a-report.md). Keep both anyway:
+      // this one means "don't even start a request" (a cheap early exit,
+      // before building ghostTaskConfig/filePrivacy, on a typing-frequency
+      // path); isLLMAllowed's parameter means "is this request allowed" and
+      // exists so every isLLMAllowed caller enforces aiEnabled uniformly,
+      // enumerated by tsc rather than by a hand-written call-site list.
+      // Locally redundant here, globally the only enforcement — do not
+      // delete either on the grounds that no test would notice.
       if (!store.aiEnabled || !store.ghostTextEnabled) return;
       const filePrivacy = getFilePrivacy(editor);
       const ghostTaskConfig = getConfigForTask("ghost-text");
@@ -200,6 +212,10 @@ export function useGhostText(editor: Editor | null) {
         // §339 Re-check AI/ghost-text — either can have been switched off
         // during the debounce wait; a snapshot taken before the toggle
         // flipped must not still spend a request after it.
+        //
+        // ‼️ Same redundant-but-intentional pair as the immediate check
+        // above in handleUpdate — see that comment. Both read
+        // `storeSnapshot.aiEnabled` from the one snapshot taken above.
         if (!storeSnapshot.aiEnabled || !storeSnapshot.ghostTextEnabled) {
           task.finish();
           return;
@@ -356,6 +372,10 @@ export function useGhostText(editor: Editor | null) {
       const store = useAIStore.getState();
       // §339 aiEnabled === false counts as ghost text off too — AND the
       // predicates, do not flip the user's own ghostTextEnabled preference.
+      //
+      // ‼️ Same redundant-but-intentional pair as handleUpdate's immediate
+      // check above — see that comment. Both read `store.aiEnabled` from
+      // this same snapshot.
       if (!store.aiEnabled || !store.ghostTextEnabled) return;
       const taskCfg = getConfigForTask("ghost-text");
       const filePrivacy = getFilePrivacy(editor);
