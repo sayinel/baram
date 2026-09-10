@@ -82,7 +82,10 @@ describe("the markdown that reaches pandoc", () => {
     expect(vi.mocked(exportPandoc)).toHaveBeenCalledTimes(1);
     const markdown = vi.mocked(exportPandoc).mock.calls[0][0];
     expectPolicyApplied(markdown);
-    // The definition itself is gone with the reference it served.
+    // The definition line is gone too — not by this policy: the editor resolved
+    // the reference to an inline link when it loaded the document and dropped
+    // the definition then (`pipeline/reference-links.ts`, issue 546), so the
+    // markdown handed to Pandoc never had it.
     expect(markdown).not.toContain("[r]:");
   });
 });

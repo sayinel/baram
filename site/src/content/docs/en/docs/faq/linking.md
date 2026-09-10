@@ -22,6 +22,10 @@ not offered, since markdown embeds those with `![](…)`. Plain markdown links s
 the link index, so a markdown link produces no backlink and no graph edge. A wikilink to the same
 PDF does.
 
+## Do reference-style links survive a save?
+
+Not in their original form. `[text][name]` links and their `[name]: https://…` definition lines are rewritten as inline links, `[text](https://…)`, when you save, and definitions nothing refers to are dropped. See [Does Baram preserve my markdown exactly?](/en/docs/faq/editing/#does-baram-preserve-my-markdown-exactly) for the details and the exceptions.
+
 ## What are backlinks?
 
 Backlinks are the reverse of wikilinks — they show you which documents link *to* the current file. Press `Cmd+Shift+B` to open the backlinks panel in the sidebar. Each backlink shows the source file and context.
