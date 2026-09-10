@@ -6,7 +6,14 @@ import { BUILTIN_PRESETS } from "../../stores/file/workspace";
 import { KEYBINDING_REGISTRY } from "../keybinding-registry";
 
 // 정본 순서는 BUILTIN_PRESETS 하나가 정한다 — 그 배열의 리터럴 고정은
-// workspace-store.test.ts:34 에 있고, 다른 표면은 전부 여기서 파생시킨다.
+// workspace-store.test.ts 에 있고, 다른 표면은 전부 그것에서 파생시킨다.
+//
+// ‼️ 퍼스펙티브를 나열/광고하는 표면은 **네 곳**이고, 어디서 고정되는지 여기에
+// 적어 둔다(§345/M-9). 목록을 베끼면 낡으므로 **지목**한다:
+//   1. `keybinding-registry.ts` 배열 순서 → 이 파일
+//   2. `src-tauri/src/menu.rs` 서브메뉴 순서·accelerator → 이 파일(소스 파생)
+//   3. 상태바 드롭다운 = `BUILTIN_PRESETS` 를 직접 순회 → `workspace-store.test.ts`
+//   4. 커맨드 팔레트 순서·광고 숫자 → `command/__tests__/command-registry.test.ts`
 const PERSPECTIVES = BUILTIN_PRESETS.map((p) => p.id);
 
 /** menu.rs 의 소스에서 퍼스펙티브 항목의 순서와 accelerator 를 뽑는다. */
