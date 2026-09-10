@@ -108,6 +108,13 @@ export function TasksTab() {
         <ToggleSwitch checked={tasksEnabled} onChange={setTasksEnabled} />
       </SettingsRow>
 
+      {/* A2 — outside the tasksEnabled block on purpose: the global capture
+          shortcut it configures is registered regardless of this toggle
+          (journal.quickCapture is not Tasks-exclusive, fix-d-brief.md A2), so
+          hiding its settings row behind tasksEnabled would leave a still-live
+          shortcut with no way to change or clear it. */}
+      <GlobalCaptureRow />
+
       {tasksEnabled && (
         <>
           <SettingsRow
@@ -227,8 +234,6 @@ export function TasksTab() {
               value={tasksCaptureFile}
             />
           </SettingsRow>
-
-          <GlobalCaptureRow />
 
           <SettingsRow
             description={t(
