@@ -1,6 +1,10 @@
 // §344 제텔 홈 노트 파일 선택. 로컬 관례(UpdateDialog.test.tsx, approved-roots-section.test.tsx)를
 // 따라 fireEvent + vi.hoisted() 모듈 목을 쓴다 — 이 디렉터리는 @testing-library/user-event를
 // 쓰지 않는다.
+//
+// ‼️ (Fix E / I-9) 여기 더 이상 `readFile` 목이 없다 — 경고는 픽 시점 IPC 왕복이 아니라
+// `relativeToRoot`가 이미 계산하는 위치(제텔 디렉터리 안/밖)만으로 판정한다. 목을 남겨
+// 두면 "그 IPC를 가로챈다"는 거짓 인상을 준다(그 경로 자체가 없어졌다).
 import {
   fireEvent,
   render,
@@ -13,12 +17,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const open = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/plugin-dialog", () => ({
   open: (opts?: unknown) => open(opts),
-}));
-
-const readFile = vi.hoisted(() => vi.fn());
-vi.mock("../../../ipc/invoke", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../../ipc/invoke")>()),
-  readFile: (p: string) => readFile(p),
 }));
 
 import { useSettingsStore } from "../../../stores/settings/store";
@@ -36,7 +34,6 @@ function buttonIn(rowLabel: string, name: RegExp): HTMLElement {
 describe("Zettel home note picker (§344)", () => {
   beforeEach(() => {
     open.mockReset();
-    readFile.mockReset().mockResolvedValue("# Home");
     useSettingsStore.setState({
       zettelkastenEnabled: true,
       zettelkastenDirectory: "/vault/zettel",
@@ -72,11 +69,16 @@ describe("Zettel home note picker (§344)", () => {
     expect(useSettingsStore.getState().zettelkastenHomeNote).toBe("");
   });
 
-  it("warns at pick time when the file cannot be read", async () => {
-    // 제텔 디렉터리 밖을 고르면 vault 승인 경계에 막혀 시작 시 조용히 실패한다.
-    // 사용자가 그 자리에 있는 지금 말한다 (§18.19 결함 A).
+  // §344 / Fix E (I-9): the warning is judged by LOCATION (relativeToRoot), not by a
+  // pick-time `readFile` probe. The probe warned on perfectly valid setups — `check_vault`
+  // validates against registered contexts, and the Zettel directory is only registered
+  // AFTER startup picks it, so a home note outside the vault (a normal setup) always
+  // failed to read at pick time and always succeeded at startup. Location is the one
+  // thing we actually know ahead of time: a file inside the Zettel directory is
+  // guaranteed to be readable at startup (that directory is what gets registered);
+  // a file outside it depends on whatever else is registered by then, which is unknown.
+  it("warns when the picked file is outside the Zettel directory", async () => {
     open.mockResolvedValue("/elsewhere/home.md");
-    readFile.mockRejectedValue(new Error("VAULT_DENIED"));
     render(<ZettelkastenTab />);
     fireEvent.click(buttonIn("Home Note", /Browse/i));
     await waitFor(() =>
@@ -85,28 +87,33 @@ describe("Zettel home note picker (§344)", () => {
       ),
     );
     await waitFor(() =>
-      expect(useUIStore.getState().toast?.message).toContain("home note"),
+      expect(useUIStore.getState().toast?.message).toContain("Zettel"),
     );
+    // The old advice named the wrong mechanism ("approve … in Settings › Vault" —
+    // check_vault validates registered contexts, not the approval store). The new
+    // copy must not repeat that claim.
+    expect(useUIStore.getState().toast?.message).not.toContain("approve");
   });
 
-  it("does not warn when the picked file reads fine — negative control", async () => {
+  it("does not warn when the picked file is inside the Zettel directory — negative control", async () => {
     open.mockResolvedValue("/vault/zettel/home.md");
-    readFile.mockResolvedValue("# Home");
     render(<ZettelkastenTab />);
     fireEvent.click(buttonIn("Home Note", /Browse/i));
+    // ‼️ `open()` resolves on a microtask, so the handler's state write hasn't landed the
+    // instant `fireEvent.click` returns — wait for it before asserting toast ABSENCE, or
+    // this would pass vacuously on a stale pre-click snapshot instead of the post-click one.
     await waitFor(() =>
       expect(useSettingsStore.getState().zettelkastenHomeNote).toBe("home.md"),
     );
-    // ‼️ readFile 이 resolve 됐음을 위 waitFor 로 먼저 확인한 뒤에야 toast 부재를
-    // 단정한다 — 그렇지 않으면 onBrowse 가 아직 안 끝났을 뿐인데 통과하는,
-    // 언제나 초록인 단정이 된다.
     expect(useUIStore.getState().toast).toBeNull();
   });
 
-  it("with no zettel directory set, stores the absolute path and opens the dialog with no defaultPath", async () => {
+  it("with no zettel directory set, stores the absolute path, warns, and opens the dialog with no defaultPath", async () => {
     // dir === null 분기 — `resolveAbsoluteDirSetting` 은 빈 설정과 상대 경로 모두에
     // null 을 준다. 그때 상대화할 기준이 없으므로 절대 경로를 그대로 저장하고,
     // defaultPath 는 **undefined** 여야 한다(빈 문자열이면 OS 가 임의 위치를 연다).
+    // 위치를 알 수 없으므로(§344/Fix E) 경고도 뜬다 — "밖이거나 dir === null"의
+    // 나머지 절반.
     useSettingsStore.setState({ zettelkastenDirectory: "" });
     open.mockResolvedValue("/elsewhere/home.md");
     render(<ZettelkastenTab />);
@@ -116,6 +123,7 @@ describe("Zettel home note picker (§344)", () => {
         "/elsewhere/home.md",
       ),
     );
+    expect(useUIStore.getState().toast?.message).toContain("Zettel");
     expect(open.mock.calls[0][0]).toStrictEqual({
       defaultPath: undefined,
       filters: [{ name: "Markdown", extensions: ["md"] }],
