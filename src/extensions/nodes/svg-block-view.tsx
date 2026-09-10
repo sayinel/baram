@@ -13,6 +13,7 @@ import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 import { Captions, Copy, Download, Maximize2, Sparkles } from "lucide-react";
 
 import { Tooltip } from "../../components/Tooltip";
+import { useFontSurface } from "../../hooks/use-font-surface";
 import { useTranslation } from "../../i18n/useTranslation";
 import { useFeatureFlags } from "../../stores/settings/features";
 import { isInNativeTextControl } from "../../utils/editor/native-text-control";
@@ -64,6 +65,11 @@ export function SvgBlockView({
   const [fullscreen, setFullscreen] = useState(false);
   const [fullscreenCode, setFullscreenCode] = useState("");
   const [viewFullscreen, setViewFullscreen] = useState(false);
+  // §349 두 오버레이 모두 document.body 로 포털된다 — 문서 표면의 변수를
+  // 상속받지 못하므로 각 루트에 직접 덮는다. ref 는 요소마다 하나여야
+  // 하므로 두 개다.
+  const viewFullscreenFontSurface = useFontSurface("both");
+  const editFullscreenFontSurface = useFontSurface("both");
   const [editingCaption, setEditingCaption] = useState(false);
 
   // Refs for the selected-change effect (avoid re-running on every keystroke).
@@ -252,6 +258,7 @@ export function SvgBlockView({
               closeViewFullscreen();
             }
           }}
+          ref={viewFullscreenFontSurface}
         >
           <div className="svg-view-fullscreen-modal">
             <div className="svg-fullscreen-header">
@@ -304,6 +311,7 @@ export function SvgBlockView({
             if (e.key === "Escape") closeFullscreen();
           }}
           onMouseDown={(e) => e.stopPropagation()}
+          ref={editFullscreenFontSurface}
         >
           <div className="svg-fullscreen-modal">
             <div className="svg-fullscreen-header">

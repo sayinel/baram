@@ -10,6 +10,7 @@
 import React from "react";
 import { createPortal } from "react-dom";
 
+import { useFontSurface } from "../../../hooks/use-font-surface";
 import { useTranslation } from "../../../i18n/useTranslation";
 import { isInNativeTextControl } from "../../../utils/editor/native-text-control";
 import { mermaidTypeLabel } from "../../../utils/markdown/mermaid-utils";
@@ -47,6 +48,9 @@ export function MermaidViewFullscreenModal({
   svgHtml,
 }: MermaidViewFullscreenModalProps): React.ReactPortal {
   const { t } = useTranslation();
+  // §349 이 오버레이는 document.body 로 포털된다 — 문서 표면의 변수를
+  // 상속받지 못하므로 루트에 직접 덮는다.
+  const fontSurface = useFontSurface("both");
   const svgMarkup = useInnerHtml(svgHtml);
   return createPortal(
     <div
@@ -70,6 +74,7 @@ export function MermaidViewFullscreenModal({
           onClose();
         }
       }}
+      ref={fontSurface}
     >
       <div className="mermaid-view-fullscreen-modal">
         <div className="mermaid-fullscreen-header">
@@ -121,6 +126,9 @@ export function MermaidEditFullscreenModal({
   onDiscard,
 }: MermaidEditFullscreenModalProps): React.ReactPortal {
   const { t } = useTranslation();
+  // §349 이 오버레이는 document.body 로 포털된다 — 문서 표면의 변수를
+  // 상속받지 못하므로 루트에 직접 덮는다.
+  const fontSurface = useFontSurface("both");
   const fullscreenMarkup = useInnerHtml(fullscreenSvg);
   return createPortal(
     <div
@@ -141,6 +149,7 @@ export function MermaidEditFullscreenModal({
       onKeyDown={(e) => {
         if (e.key === "Escape") onClose();
       }}
+      ref={fontSurface}
     >
       <div className="mermaid-fullscreen-modal">
         <div className="mermaid-fullscreen-header">

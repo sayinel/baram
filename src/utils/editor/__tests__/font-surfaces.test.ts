@@ -30,7 +30,11 @@ import {
 const ASSERTED: Record<string, "both" | "mono"> = {
   "capture-editor": "both",
   "export-article": "both",
+  "image-fullscreen": "both",
+  "math-preview-popover": "both",
+  "mermaid-fullscreen": "both",
   "source-mode": "mono",
+  "svg-fullscreen": "both",
   wysiwyg: "both",
 };
 
@@ -73,7 +77,7 @@ describe("§349 document font surfaces", () => {
   it("asserts every enumerated surface", () => {
     const enumerated = DOCUMENT_FONT_SURFACES.map((s) => s.id).sort();
     expect(Object.keys(ASSERTED).sort()).toEqual(enumerated);
-    expect(enumerated.length).toBe(4);
+    expect(enumerated.length).toBe(8);
   });
 
   it("records which variables each surface takes", () => {
@@ -141,6 +145,42 @@ describe("§349 document font surfaces", () => {
       true,
     );
     expect(BASE_MONO_STACK.startsWith(`"${bundledFamily("code")}"`)).toBe(true);
+  });
+
+  // §349 리뷰 Important 2 — :root 회귀를 **철자로 우회할 수 없는** 자리에서 막는다.
+  //
+  // 원래 가드는 `document.documentElement.style.setProperty("--font-family-…")`
+  // 라는 한 가지 철자를 소스에서 grep 했다. 그런데 이 함수는 `HTMLElement` 를
+  // 받으므로 `applyFontVariables(document.documentElement, …)` 한 줄이면 같은
+  // 누수를 만들면서 그 정규식에는 걸리지 않는다 — 그리고 그 한 줄이야말로
+  // 스타일이 안 먹는 표면을 발견한 사람이 제일 먼저 시도하는 것이다.
+  // 함수 안에서 막으면 아직 쓰이지 않은 호출부(Task 7 포함)까지 덮는다.
+  it.each([
+    ["documentElement", () => document.documentElement],
+    ["body", () => document.body],
+  ])("refuses to write the variables to %s", (_name, target) => {
+    expect(() =>
+      applyFontVariables(target(), {
+        bodyFont: "Inter",
+        codeFont: "D2Coding",
+        which: "both",
+      }),
+    ).toThrow(/§349/u);
+  });
+
+  // 거부는 아무것도 쓰지 않은 채여야 한다 — 던지기 전에 한쪽을 이미 설정했다면
+  // 크롬은 이미 오염됐고 예외는 사후 통보일 뿐이다.
+  it("leaves the rejected root untouched", () => {
+    const root = document.documentElement;
+    expect(() =>
+      applyFontVariables(root, {
+        bodyFont: "Inter",
+        codeFont: "D2Coding",
+        which: "both",
+      }),
+    ).toThrow();
+    expect(root.style.getPropertyValue("--font-family-editor")).toBe("");
+    expect(root.style.getPropertyValue("--font-family-mono")).toBe("");
   });
 
   // 두 곳이 같은 폴백 스택을 적는다 — 이 TS 상수와 생성된 토큰. 갈라지면
