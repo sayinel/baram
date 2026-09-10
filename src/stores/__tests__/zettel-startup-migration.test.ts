@@ -57,6 +57,16 @@ describe("settings store v23 -> v24 (§344 openInbox -> openHomeNote)", () => {
     expect(result.zettelkastenStartupBehavior).toBe("openHomeNote");
   });
 
+  it("a v13-era install that explicitly chose 'nothing' keeps it", () => {
+    // ‼️ 이 케이스만이 v14 백필의 `=== undefined` 가드를 고정한다. 위의
+    // "leaves 'nothing' alone" 은 버전 23 이라 v14 블록을 아예 건너뛴다.
+    // 가드가 없으면 사용자가 명시적으로 고른 값이 조용히 덮어써진다.
+    const result = migrate({ zettelkastenStartupBehavior: "nothing" }, 13) as {
+      zettelkastenStartupBehavior?: string;
+    };
+    expect(result.zettelkastenStartupBehavior).toBe("nothing");
+  });
+
   it("the store is at version 24", () => {
     expect(useSettingsStore.persist.getOptions().version).toBe(24);
   });
