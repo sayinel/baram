@@ -22,7 +22,8 @@ tag/          ← Vault 태그 인덱스 (§56m)
 git/          ← git2 crate 기반 Git 연동 (vendored-openssl)
 snapshot/     ← 파일 스냅샷/버전 히스토리 (similar + sha2)
 llm/          ← LLM API 프록시 (Claude/OpenAI/Gemini/Ollama, 스트리밍)
-export/       ← PDF (chromiumoxide headless Chrome), HTML 내보내기
+export/       ← PDF (chromiumoxide headless Chrome) · Pandoc (§55: pandoc.rs = writer 바인딩·extra-arg
+              #    allowlist·Lua 정책 필터, pandoc_images.rs = vault 경계 안 이미지만 tempdir에 stage, #545) · 커스텀
 config/       ← 설정 파일 관리
 thumbnail/    ← 미리보기 썸네일 생성
 protocol/     ← 커스텀 프로토콜 핸들러      md/       ← 마크다운 유틸
