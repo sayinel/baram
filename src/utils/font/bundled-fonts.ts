@@ -17,6 +17,15 @@ export interface BundledFont {
   /** src/assets/fonts/ 안의 파일명. */
   fileName: string;
   /**
+   * 이 서체의 라이선스 사본 — `src/assets/fonts/` 안의 파일명 (§347).
+   *
+   * 둘 다 OFL 1.1 이고, OFL 1.1 §2 는 재배포되는 **사본마다** 저작권 표기와
+   * 라이선스가 함께 있을 것을 조건으로 단다. 그래서 이 파일명은 장식이 아니라
+   * 배포 조건이다 — `font-licenses.ts` 가 이 이름으로 텍스트를 번들에 싣고,
+   * About 모달이 그것을 보여 준다.
+   */
+  licenseFile: string;
+  /**
    * 이 서체가 채우는 슬롯 — 본문(`--font-family-editor`)이냐 코드(`--font-family-mono`)냐.
    *
    * 배열 순서로 짚거나 이름에 "mono"가 들었는지로 추론하지 않는다: 순서는 아무
@@ -32,12 +41,14 @@ export const BUNDLED_FONTS: readonly BundledFont[] = [
   {
     family: "Pretendard Variable",
     fileName: "PretendardVariable.woff2",
+    licenseFile: "OFL-Pretendard.txt",
     role: "body",
     weightRange: "45 920",
   },
   {
     family: "JetBrains Mono Variable",
     fileName: "jetbrains-mono-latin-wght-normal.woff2",
+    licenseFile: "OFL-JetBrainsMono.txt",
     role: "code",
     weightRange: "100 800",
   },

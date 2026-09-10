@@ -46,10 +46,12 @@ describe("§347 bundled fonts", () => {
     }
   });
 
+  // 파일명을 여기 다시 적지 않는다 — 세 번째 서체를 번들할 때 이 목록을 빠뜨리면
+  // 그 서체만 표기 없이 배포된다. `licenseFile` 이 그 이름의 출처다 (final review I2).
   it("ships an OFL copy for each bundled family", () => {
-    for (const name of ["OFL-Pretendard.txt", "OFL-JetBrainsMono.txt"]) {
-      const p = path.join(FONT_DIR, name);
-      expect(existsSync(p), `${name} missing`).toBe(true);
+    for (const { licenseFile } of BUNDLED_FONTS) {
+      const p = path.join(FONT_DIR, licenseFile);
+      expect(existsSync(p), `${licenseFile} missing`).toBe(true);
       expect(statSync(p).size).toBeGreaterThan(1_000);
     }
   });

@@ -11,6 +11,7 @@ import { useTranslation } from "../../i18n/useTranslation";
 import { checkForAppUpdate } from "../../services/app-update";
 import { useAppUpdateStore } from "../../stores/system/app-update";
 import { useUIStore } from "../../stores/ui/ui";
+import { BUNDLED_FONT_LICENSES, OFL_URL } from "../../utils/font/font-licenses";
 
 const APACHE_LICENSE_URL = "https://www.apache.org/licenses/LICENSE-2.0";
 
@@ -29,6 +30,7 @@ export function AboutModal() {
     useShallow((s) => ({ updateStatus: s.status })),
   );
   const [version, setVersion] = useState("");
+  const [fontLicensesOpen, setFontLicensesOpen] = useState(false);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -102,6 +104,43 @@ export function AboutModal() {
               Tauri 2.0 + React + Tiptap + Rust
             </span>
           </div>
+          {/* §347 — the app bundles two OFL-1.1 typefaces, and OFL 1.1 §2
+              conditions redistribution on each copy carrying the notice AND
+              the license. The families are rendered from BUNDLED_FONT_LICENSES
+              rather than spelled here, so adding a third bundled face cannot
+              ship without its attribution. */}
+          <div className="about-row">
+            <span className="about-label">{t("about.fonts")}</span>
+            <span className="about-value">
+              {BUNDLED_FONT_LICENSES.map((l) => l.family).join(", ")}
+            </span>
+          </div>
+          <div className="about-row">
+            <button
+              className="btn-unstyled about-license-link"
+              onClick={() =>
+                openUrl(OFL_URL).catch(() => {
+                  /* non-Tauri context or opener unavailable */
+                })
+              }
+            >
+              SIL Open Font License 1.1
+            </button>
+            <button
+              className="btn-unstyled about-license-link"
+              onClick={() => setFontLicensesOpen((open) => !open)}
+            >
+              {fontLicensesOpen
+                ? t("about.fontLicenses.hide")
+                : t("about.fontLicenses.show")}
+            </button>
+          </div>
+          {fontLicensesOpen &&
+            BUNDLED_FONT_LICENSES.map((license) => (
+              <pre className="about-license-text" key={license.family}>
+                {license.text}
+              </pre>
+            ))}
         </div>
         <div className="about-copyright">{t("about.copyright")}</div>
         <div className="about-authors">

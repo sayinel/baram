@@ -98,6 +98,25 @@
   text-decoration: underline;
 }
 
+/* §347 OFL 전문 — 접혀 있다가 펼쳐지는 영역. 모달 폭을 넘기지 않도록
+   `pre` 의 기본 무개행을 끄고 세로로만 스크롤한다. */
+.about-license-text {
+  width: 100%;
+  max-height: 180px;
+  padding: 8px 10px;
+  margin: 0;
+  overflow-y: auto;
+  font-family: var(--font-family-mono);
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--color-text-muted);
+  text-align: left;
+  white-space: pre-wrap;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+}
+
 .about-copyright {
   margin-bottom: 2px;
   font-size: 11px;
