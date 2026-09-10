@@ -27,6 +27,8 @@ Available settings tabs, grouped by nav section:
 
 Each feature tab (Journal, Zettel, Tasks, AI) carries its **Enable** toggle at the top; turning a feature off dims its tab instead of removing it, so it can always be turned back on.
 
+Turning a feature off also hides the surfaces it owns — its Activity Bar icons, its slash-menu group, and its Command Palette entries all disappear, and for AI the ✨ buttons go with them. Its keyboard shortcuts stay bound: pressing one tells you the feature is off rather than doing nothing.
+
 ## Themes
 
 Baram comes with 8 built-in themes and supports custom theme creation.
