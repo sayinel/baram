@@ -47,4 +47,52 @@ describe("EditorTab — Browse…", () => {
     expect(screen.getByText("Font Family")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Body" })).toBeNull();
   });
+
+  // ‼️ final review I3, at the artifact rather than at a prop. The test
+  // environment's `invoke` mock answers `font_list` with `undefined`, so
+  // `listFonts()` really does take its fallback path here — the same state a
+  // machine whose fonts cannot be enumerated is in. It used to reach this tab
+  // as the identical `null` that "still loading" produced, and the browser
+  // then said "Loading fonts…" with nothing behind it, for good.
+  //
+  // Note what this cannot be replaced by: a unit test on `listFonts` passes
+  // today and did while this was broken — `FALLBACK_FONTS` satisfied its own
+  // test and no surface. The claim has to be checked where the user is.
+  it("shows the fallback list, not a permanent loading pane, when the enumeration falls back", async () => {
+    useSettingsStore.setState({ ...initialState, locale: "en" });
+    render(<EditorTab />);
+    await flush();
+
+    const [browse] = screen.getAllByRole("button", { name: "Browse…" });
+    act(() => {
+      browse.click();
+    });
+
+    expect(screen.queryByTestId("font-browser-list-loading")).toBeNull();
+    expect(screen.getByTestId("font-browser-list-fallback")).toBeTruthy();
+    // FALLBACK_FONTS reaches a surface — the bundled body face is offered.
+    expect(
+      screen.getAllByRole("button", { name: "Pretendard Variable" }).length,
+    ).toBeGreaterThan(0);
+  });
+
+  // The other half of the three-state ruling, and the half the browser's own
+  // fix must not cost: a fallback list is not authority for "this machine does
+  // not have it". Claiming that about an installed font is the lie §351's badge
+  // was built to end, so `fallback` must reach the badge as `null`.
+  it("makes no missing claim about a chosen font while the enumeration is a fallback", async () => {
+    useSettingsStore.setState({
+      ...initialState,
+      fontFamily: "Comic Sans MS",
+      locale: "en",
+    });
+    render(<EditorTab />);
+    await flush();
+
+    // Non-vacuous: the value is on screen, so a badge for it would be too.
+    expect(
+      screen.getAllByRole("button", { name: "Comic Sans MS" }).length,
+    ).toBeGreaterThan(0);
+    expect(screen.queryByText("Not on this machine")).toBeNull();
+  });
 });

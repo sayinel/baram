@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import type { SystemFont } from "../../../ipc/types";
+import type { FontListState } from "../../../utils/font/font-list-state";
 import type { FontSlot } from "../FontSlotPicker";
 
 import { useShallow } from "zustand/shallow";
@@ -8,6 +8,10 @@ import { useShallow } from "zustand/shallow";
 import { useTranslation } from "../../../i18n/useTranslation";
 import { listFonts } from "../../../ipc/font";
 import { useSettingsStore } from "../../../stores/settings/store";
+import {
+  badgeFonts,
+  fontListStateFrom,
+} from "../../../utils/font/font-list-state";
 import { FontBrowser } from "../FontBrowser";
 import { FontSlotPicker } from "../FontSlotPicker";
 import {
@@ -70,11 +74,15 @@ export function EditorTab() {
     })),
   );
 
-  // review Critical 1 — `null` means "not known-good yet": either the
-  // enumeration hasn't resolved, or it resolved to the fallback list (which
-  // is not this machine's real font list — review Important 2). Both cases
-  // must render no confident "missing" badge; only a real enumeration does.
-  const [fonts, setFonts] = useState<null | SystemFont[]>(null);
+  // ‼️ Three states, not two (final review I3). "Still loading" and "the
+  // enumeration failed, here is a stand-in list" both have to render no
+  // confident "missing" badge — but they must NOT look the same to the
+  // browser, which used to say "Loading fonts…" forever on a failure. The
+  // badge asks `badgeFonts()`, which answers `null` for both; the browser
+  // reads the state and can tell them apart.
+  const [fontState, setFontState] = useState<FontListState>({
+    status: "loading",
+  });
   const [browserSlot, setBrowserSlot] = useState<FontSlot | null>(null);
 
   // §350 — 탭이 지연 로드 경계 뒤에 있으므로 마운트 시 1회 호출로 충분하다
@@ -83,7 +91,7 @@ export function EditorTab() {
     let cancelled = false;
     void listFonts().then((result) => {
       if (cancelled) return;
-      setFonts(result.isFallback ? null : result.fonts);
+      setFontState(fontListStateFrom(result));
     });
     return () => {
       cancelled = true;
@@ -96,10 +104,10 @@ export function EditorTab() {
   if (browserSlot) {
     return (
       <FontBrowser
-        fonts={fonts}
         onClose={() => setBrowserSlot(null)}
         recentFonts={recentFonts}
         slot={browserSlot}
+        state={fontState}
       />
     );
   }
@@ -113,7 +121,7 @@ export function EditorTab() {
         label={t("settings.editor.fontFamily")}
       >
         <FontSlotPicker
-          fonts={fonts}
+          fonts={badgeFonts(fontState)}
           onChange={setFontFamily}
           onOpenBrowser={setBrowserSlot}
           slot="body"
@@ -126,7 +134,7 @@ export function EditorTab() {
         label={t("settings.editor.codeFontFamily")}
       >
         <FontSlotPicker
-          fonts={fonts}
+          fonts={badgeFonts(fontState)}
           onChange={setCodeFontFamily}
           onOpenBrowser={setBrowserSlot}
           slot="code"

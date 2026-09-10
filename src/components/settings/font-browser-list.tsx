@@ -3,6 +3,7 @@
 // 각 행은 자기 서체로 자기 이름을 그린다.
 import type { Translate } from "../../i18n/useTranslation";
 import type { SystemFont } from "../../ipc/types";
+import type { FontListStatus } from "../../utils/font/font-list-state";
 import type { FontChip } from "./FontBrowser";
 import type { FontSlot } from "./FontSlotPicker";
 
@@ -16,17 +17,21 @@ import { fontAvailability } from "../../utils/font/font-availability";
 
 interface Props {
   activeValue: string;
-  /** 필터되지 않은 전체 열거 — 최근 항목이 고정폭·한글·설치 여부인지 판정하는
-   * 데 필요하다. loading일 때는 호출되지 않으므로 항상 신뢰할 수 있는 목록이다. */
+  /** 필터되지 않은 전체 열거 — 최근 항목이 고정폭·한글인지 판정하는 데 쓴다.
+   *
+   * ‼️ `status` 가 `ok` 일 때만 "이 머신에 설치됨"의 권위가 있다. `fallback`
+   * 이면 이 목록은 그릴 재료일 뿐이므로 가용성 판정에 넘기지 않는다 — 넘기면
+   * 실제로 설치된 최근 항목을 "없음"으로 걸러 낸다. */
   allFonts: readonly SystemFont[];
   chips: readonly FontChip[];
   /** 셸이 filterFonts()로 이미 계산한 결과(Installed 그룹의 재료). */
   filtered: readonly SystemFont[];
-  loading: boolean;
   onSelect: (name: string) => void;
   query: string;
   recentFonts: readonly string[];
   slot: FontSlot;
+  /** 열거의 세 상태 — `fallback` 은 `loading` 과 **다르게** 그린다 (final review I3). */
+  status: FontListStatus;
   t: Translate;
 }
 
@@ -49,14 +54,14 @@ export function FontBrowserList({
   allFonts,
   chips,
   filtered,
-  loading,
   onSelect,
   query,
   recentFonts,
   slot,
+  status,
   t,
 }: Props) {
-  if (loading) {
+  if (status === "loading") {
     return (
       <div
         className="font-browser-list font-browser-list-loading"
@@ -79,6 +84,7 @@ export function FontBrowserList({
     allFonts,
     query,
     chips,
+    status === "ok",
   ).filter((name) => !includedKeys.has(name.toLowerCase()));
   const recentKeys = new Set(recent.map((n) => n.toLowerCase()));
 
@@ -96,6 +102,20 @@ export function FontBrowserList({
 
   return (
     <div className="font-browser-list flex-col">
+      {/* ‼️ The fallback state renders its ROWS, and says so. Before this it
+          shared `loading`'s pane, so a machine whose fonts could not be read
+          showed "Loading fonts…" forever and FALLBACK_FONTS reached no
+          surface at all — §350 required the picker never be empty (final
+          review I3). Saying nothing here would be the other failure: rows
+          that look like a real, very short enumeration of this machine. */}
+      {status === "fallback" && (
+        <div
+          className="font-browser-list-notice"
+          data-testid="font-browser-list-fallback"
+        >
+          {t("settings.editor.fontBrowser.fallbackNotice")}
+        </div>
+      )}
       {empty && (
         <div className="settings-search-empty">
           {t("settings.editor.fontBrowser.empty")}
@@ -201,9 +221,10 @@ function FontRow({
  * 규칙으로 적용하고, 더 이상 이 머신에 없는 항목(§346의 결함이 다시 나타나는
  * 자리 — fix round 1 controller ruling)은 제외한다.
  *
- * `allFonts`는 loading일 때 이 함수가 호출되지 않으므로 항상 신뢰할 수 있는
- * 열거다 — `fontAvailability`가 "missing"을 돌려줘도 그것이 로딩 중의 거짓
- * 판정일 위험이 없다.
+ * ‼️ 그 "없음" 판정은 `authoritative`가 참일 때만 한다. 폴백 목록으로
+ * `fontAvailability`를 물으면 실제로 설치된 최근 항목이 전부 "missing"으로
+ * 나와 Recent 그룹이 통째로 사라진다 — 열거를 못 읽은 것에 대한 벌을 사용자의
+ * 이력에 주는 셈이다. `null`을 넘기면 그 판정은 `unknown`이 되어 통과한다.
  */
 function recentForSlot(
   recentFonts: readonly string[],
@@ -211,12 +232,14 @@ function recentForSlot(
   allFonts: readonly SystemFont[],
   query: string,
   chips: readonly FontChip[],
+  authoritative: boolean,
 ): string[] {
   const q = query.trim().toLowerCase();
   const monoDefault = slot === "code" && !chips.includes("all");
   return recentFonts.filter((name) => {
     if (q !== "" && !name.toLowerCase().includes(q)) return false;
-    if (fontAvailability(name, allFonts) === "missing") return false;
+    if (fontAvailability(name, authoritative ? allFonts : null) === "missing")
+      return false;
     if (monoDefault && !isMonospacedName(name, allFonts)) return false;
     if (chips.includes("korean") && !hasKoreanName(name, allFonts))
       return false;

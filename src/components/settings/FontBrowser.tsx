@@ -8,6 +8,7 @@
 import { useState } from "react";
 
 import type { SystemFont } from "../../ipc/types";
+import type { FontListState } from "../../utils/font/font-list-state";
 import type { FontSlot } from "./FontSlotPicker";
 
 import { useShallow } from "zustand/shallow";
@@ -15,6 +16,7 @@ import { useShallow } from "zustand/shallow";
 import { useTranslation } from "../../i18n/useTranslation";
 import { listFonts } from "../../ipc/font";
 import { useSettingsStore } from "../../stores/settings/store";
+import { fontListStateFrom } from "../../utils/font/font-list-state";
 import { FontBrowserList } from "./font-browser-list";
 import { FontBrowserPreview } from "./font-browser-preview";
 
@@ -27,13 +29,19 @@ interface FilterOptions {
 }
 
 interface FontBrowserProps {
-  /** `null` = 아직 신뢰할 수 없다(로딩 중이거나 listFonts()가 폴백으로
-   * 떨어짐) — FontSlotPicker의 `fonts`와 같은 계약. */
-  fonts: null | SystemFont[];
   onClose: () => void;
   /** §348 최근 사용 서체(슬롯 공용, 최신이 앞) — EditorTab이 store에서 읽어 넘긴다. */
   recentFonts: string[];
   slot: FontSlot;
+  /**
+   * 열거의 세 상태 (`font-list-state.ts`).
+   *
+   * ‼️ 여기서 `fallback` 을 `loading` 으로 접지 않는다 — 그 접기가 열거 실패 시
+   * 목록 창을 영구히 "불러오는 중"으로 만들었고 §350 의 "피커가 비는 일은 없어야
+   * 한다"를 무효화했다(final review I3). 배지가 폴백에 단정하지 않는 것과, 목록이
+   * 폴백을 **보여주는** 것은 양립한다.
+   */
+  state: FontListState;
 }
 
 /**
@@ -47,7 +55,7 @@ interface FontBrowserProps {
  */
 // eslint-disable-next-line react-refresh/only-export-components
 export function filterFonts(
-  fonts: SystemFont[],
+  fonts: readonly SystemFont[],
   opts: FilterOptions,
 ): SystemFont[] {
   const q = opts.query.trim().toLowerCase();
@@ -62,10 +70,10 @@ export function filterFonts(
 }
 
 export function FontBrowser({
-  fonts,
   onClose,
   recentFonts,
   slot,
+  state,
 }: FontBrowserProps) {
   const { t } = useTranslation();
   const {
@@ -87,16 +95,18 @@ export function FontBrowser({
   const [activeSlot, setActiveSlot] = useState<FontSlot>(slot);
   const [query, setQuery] = useState("");
   const [chips, setChips] = useState<FontChip[]>([]);
-  const [refreshedFonts, setRefreshedFonts] = useState<null | SystemFont[]>(
-    null,
-  );
+  // `null` here means one thing only — "refresh has not been used" — so the
+  // `??` below is not the conflation `fonts`/`null` used to be: a refresh that
+  // FAILS now lands as a `fallback` state and is rendered as one, instead of
+  // silently reusing the previous list (final review I3).
+  const [refreshed, setRefreshed] = useState<FontListState | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  const effectiveFonts = refreshedFonts ?? fonts;
+  const effective = refreshed ?? state;
   const filtered =
-    effectiveFonts === null
+    effective.status === "loading"
       ? []
-      : filterFonts(effectiveFonts, { chips, query, slot: activeSlot });
+      : filterFonts(effective.fonts, { chips, query, slot: activeSlot });
 
   // 슬롯을 바꾸면 칩도 초기화한다 — "all"은 코드 슬롯 전용 해제 스위치라
   // 본문 슬롯으로 넘어간 채 남아 있으면 아무 뜻도 없는 상태가 된다.
@@ -142,7 +152,7 @@ export function FontBrowser({
   const handleRefresh = () => {
     setRefreshing(true);
     void listFonts(true).then((result) => {
-      setRefreshedFonts(result.isFallback ? null : result.fonts);
+      setRefreshed(fontListStateFrom(result));
       setRefreshing(false);
     });
   };
@@ -228,11 +238,15 @@ export function FontBrowser({
             {t("settings.editor.fontBrowser.chipMono")}
           </button>
         </div>
+        {/* `ok` only. A count over the fallback list reads as "this machine
+            has 5 fonts", which is the claim the fallback state exists to
+            avoid making; the list pane's notice says what is going on
+            instead. */}
         <span className="font-browser-count" data-testid="font-browser-count">
-          {effectiveFonts !== null &&
+          {effective.status === "ok" &&
             t("settings.editor.fontBrowser.count", {
               shown: String(filtered.length),
-              total: String(effectiveFonts.length),
+              total: String(effective.fonts.length),
             })}
         </span>
       </div>
@@ -240,14 +254,14 @@ export function FontBrowser({
       <div className="font-browser-body">
         <FontBrowserList
           activeValue={activeSlot === "code" ? codeFontFamily : fontFamily}
-          allFonts={effectiveFonts ?? []}
+          allFonts={effective.status === "loading" ? [] : effective.fonts}
           chips={chips}
           filtered={filtered}
-          loading={effectiveFonts === null}
           onSelect={commit}
           query={query}
           recentFonts={recentFonts}
           slot={activeSlot}
+          status={effective.status}
           t={t}
         />
         <FontBrowserPreview slot={activeSlot} />

@@ -75,16 +75,19 @@ describe("filterFonts", () => {
   });
 });
 
+/** 권위 있는 열거 — 아래 대부분의 케이스가 쓰는 상태. */
+const OK = { fonts: FONTS, status: "ok" } as const;
+
 describe("FontBrowser", () => {
   const props = { onClose: vi.fn(), slot: "body" as const };
 
   it("shows the filtered count against the total", () => {
-    render(<FontBrowser {...props} fonts={FONTS} recentFonts={[]} />);
+    render(<FontBrowser {...props} recentFonts={[]} state={OK} />);
     expect(screen.getByTestId("font-browser-count").textContent).toContain("5");
   });
 
   it("groups included, recent, and installed families in that order", () => {
-    render(<FontBrowser {...props} fonts={FONTS} recentFonts={["Georgia"]} />);
+    render(<FontBrowser {...props} recentFonts={["Georgia"]} state={OK} />);
     const groups = screen
       .getAllByTestId("font-browser-group")
       .map((el) => el.textContent);
@@ -92,7 +95,7 @@ describe("FontBrowser", () => {
   });
 
   it("omits the recent group when there is no history", () => {
-    render(<FontBrowser {...props} fonts={FONTS} recentFonts={[]} />);
+    render(<FontBrowser {...props} recentFonts={[]} state={OK} />);
     const groups = screen
       .getAllByTestId("font-browser-group")
       .map((el) => el.textContent);
@@ -103,10 +106,10 @@ describe("FontBrowser", () => {
   it("filters the recent group by the slot", () => {
     render(
       <FontBrowser
-        fonts={FONTS}
         onClose={vi.fn()}
         recentFonts={["Georgia", "D2Coding"]}
         slot="code"
+        state={OK}
       />,
     );
     const recent =
@@ -120,10 +123,10 @@ describe("FontBrowser", () => {
   it("narrows the recent group when a chip is pressed, not just Included and Installed", () => {
     render(
       <FontBrowser
-        fonts={FONTS}
         onClose={vi.fn()}
         recentFonts={["Noto Sans KR", "Montserrat"]}
         slot="body"
+        state={OK}
       />,
     );
     let recent =
@@ -144,10 +147,10 @@ describe("FontBrowser", () => {
   it("lets the code slot's all chip lift the monospace default in Recent too", () => {
     render(
       <FontBrowser
-        fonts={FONTS}
         onClose={vi.fn()}
         recentFonts={["Georgia", "D2Coding"]}
         slot="code"
+        state={OK}
       />,
     );
     expect(
@@ -168,10 +171,10 @@ describe("FontBrowser", () => {
   it("excludes a stale recent entry no longer found on this machine", () => {
     render(
       <FontBrowser
-        fonts={FONTS}
         onClose={vi.fn()}
         recentFonts={["Comic Sans MS", "D2Coding"]}
         slot="body"
+        state={OK}
       />,
     );
     const recent =
@@ -181,22 +184,66 @@ describe("FontBrowser", () => {
   });
 
   it("renders both slots in the preview so the pairing is visible", () => {
-    render(<FontBrowser {...props} fonts={FONTS} recentFonts={[]} />);
+    render(<FontBrowser {...props} recentFonts={[]} state={OK} />);
     expect(screen.getByTestId("font-browser-preview-body")).toBeTruthy();
     expect(screen.getByTestId("font-browser-preview-code")).toBeTruthy();
   });
 
   // R28 — 2159개 얼굴 열거는 이 머신에서 250~270ms, 디스크 I/O 바운드다.
   // 목록 영역은 그 동안 정직하게 로딩을 라벨링한다(전체 스켈레톤 아님).
-  it("shows a loading state in the list area while the enumeration is not known-good", () => {
+  it("shows a loading state in the list area while the enumeration has not resolved", () => {
     render(
       <FontBrowser
-        fonts={null}
         onClose={vi.fn()}
         recentFonts={[]}
         slot="body"
+        state={{ status: "loading" }}
       />,
     );
     expect(screen.getByTestId("font-browser-list-loading")).toBeTruthy();
+  });
+
+  // ‼️ final review I3 — this case is why the state has three members. It used
+  // to share `loading`'s pane, so a machine whose fonts could not be read said
+  // "Loading fonts…" forever and FALLBACK_FONTS reached no surface at all,
+  // while §350 required that the picker never be empty. The old two-state
+  // shape could not satisfy that AND the badge's refusal to claim "missing"
+  // from an untrustworthy list; three states satisfy both.
+  it("renders the fallback rows with a notice instead of claiming to still be loading", () => {
+    render(
+      <FontBrowser
+        onClose={vi.fn()}
+        recentFonts={[]}
+        slot="body"
+        state={{ fonts: FONTS, status: "fallback" }}
+      />,
+    );
+
+    expect(screen.queryByTestId("font-browser-list-loading")).toBeNull();
+    expect(screen.getByTestId("font-browser-list-fallback").textContent).toBe(
+      "Couldn't read this machine's fonts — showing the bundled families.",
+    );
+    // The rows are there: the picker is not empty, which is the requirement.
+    expect(screen.getAllByTestId("font-browser-group").length).toBeGreaterThan(
+      0,
+    );
+    // And no count, which would read as "this machine has 5 fonts".
+    expect(screen.getByTestId("font-browser-count").textContent).toBe("");
+  });
+
+  // 폴백 목록은 "이 머신에 무엇이 없는지"에 대한 권위가 아니다 — 그것으로
+  // 최근 항목을 걸러 내면 실제로 설치된 서체를 이력에서 지운다.
+  it("keeps a recent entry the fallback list does not mention", () => {
+    render(
+      <FontBrowser
+        onClose={vi.fn()}
+        recentFonts={["Comic Sans MS"]}
+        slot="body"
+        state={{ fonts: FONTS, status: "fallback" }}
+      />,
+    );
+    expect(
+      screen.getByTestId("font-browser-recent-items").textContent,
+    ).toContain("Comic Sans MS");
   });
 });

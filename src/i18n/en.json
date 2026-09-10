@@ -806,6 +806,7 @@
   "settings.editor.fontBrowser.chipMono": "Monospace",
   "settings.editor.fontBrowser.count": "{shown} of {total}",
   "settings.editor.fontBrowser.empty": "No fonts match",
+  "settings.editor.fontBrowser.fallbackNotice": "Couldn't read this machine's fonts — showing the bundled families.",
   "settings.editor.fontBrowser.groupIncluded": "Included",
   "settings.editor.fontBrowser.groupInstalled": "Installed",
   "settings.editor.fontBrowser.groupRecent": "Recent",

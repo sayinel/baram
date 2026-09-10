@@ -44,7 +44,9 @@ const BADGE_CLASS: Record<Exclude<FontAvailability, "unknown">, string> = {
 };
 
 interface Props {
-  fonts: null | SystemFont[];
+  /** `null` = 아직 단정할 근거가 없다 (로딩 중이거나 열거가 폴백 —
+   * `badgeFonts()` 가 두 경우 모두 `null` 로 접는다, final review I3). */
+  fonts: null | readonly SystemFont[];
   onChange: (family: string) => void;
   onOpenBrowser: (slot: FontSlot) => void;
   slot: FontSlot;
