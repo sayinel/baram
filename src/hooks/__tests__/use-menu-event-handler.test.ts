@@ -20,13 +20,20 @@ vi.mock("../use-close-guard", () => ({
 
 import { listen } from "@tauri-apps/api/event";
 
+import type { FeatureKey } from "../../stores/settings/feature-keys";
 import type { MenuEventHandlerDeps } from "../use-menu-event-handler";
 
 import { t } from "../../i18n";
+import { MENU_FEATURE_MAP } from "../../ipc/menu-enabled";
+import {
+  clearActions,
+  registerAction,
+} from "../../keybindings/keybinding-actions";
 import { useAIStore } from "../../stores/ai/ai";
 import { useWorkspaceStore } from "../../stores/file/workspace";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
+import { FEATURE_DISABLED_TOAST_KEY } from "../../utils/feature-gate";
 import { BARAM_HOMEPAGE, helpDocUrl } from "../../utils/help-urls";
 import { requestReload } from "../use-close-guard";
 import { useMenuEventHandler } from "../use-menu-event-handler";
@@ -71,6 +78,10 @@ beforeEach(() => {
 // this file.
 afterEach(() => {
   vi.restoreAllMocks();
+  // The view_inline_ai probe below registers a fake "insert.inlineAI" action in the
+  // real (module-level, non-mocked) keybinding registry — clear it so it cannot leak
+  // into a later test.
+  clearActions();
 });
 
 describe("menu event → File > Close Workspace", () => {
@@ -167,17 +178,80 @@ describe("menu event → Help (§4.2 online docs)", () => {
 // out (src-tauri `update_menu_enabled`) is one layer and this handler-side
 // guard is the second — it must hold even if the native disable is bypassed.
 describe("menu event → feature-owned ids gated by their feature flag (§341)", () => {
-  it("blocks workspace_journal and toasts when journal is disabled", () => {
-    useSettingsStore.setState({ journalEnabled: false });
-    const applyPreset = vi.spyOn(useWorkspaceStore.getState(), "applyPreset");
-    const showToast = vi.spyOn(useUIStore.getState(), "showToast");
-    renderHook(() => useMenuEventHandler(makeDeps()));
+  // Each id's own way of proving its switch-case body never ran — a bare "a toast
+  // appeared" check would pass even if the case fired and ALSO happened to toast, so
+  // every entry spies (or, for view_inline_ai, fakes) the SPECIFIC call that id's own
+  // handler makes.
+  const ASSERT_NOT_FIRED: Record<string, () => () => void> = {
+    view_ai_chat: () => {
+      const spy = vi.spyOn(useUIStore.getState(), "setRightPanelMode");
+      return () => expect(spy).not.toHaveBeenCalled();
+    },
+    view_calendar: () => {
+      const spy = vi.spyOn(useUIStore.getState(), "setSidebarPanel");
+      return () => expect(spy).not.toHaveBeenCalled();
+    },
+    view_inline_ai: () => {
+      const fn = vi.fn();
+      registerAction("insert.inlineAI", fn);
+      return () => expect(fn).not.toHaveBeenCalled();
+    },
+    workspace_journal: () => {
+      const spy = vi.spyOn(useWorkspaceStore.getState(), "applyPreset");
+      return () => expect(spy).not.toHaveBeenCalled();
+    },
+    workspace_zettel: () => {
+      const spy = vi.spyOn(useWorkspaceStore.getState(), "applyPreset");
+      return () => expect(spy).not.toHaveBeenCalled();
+    },
+  };
 
-    menuEventHandler()({ payload: "workspace_journal" });
+  const DISABLE_FEATURE: Record<FeatureKey, () => void> = {
+    ai: () => useAIStore.setState({ aiEnabled: false }),
+    journal: () => useSettingsStore.setState({ journalEnabled: false }),
+    tasks: () => useSettingsStore.setState({ tasksEnabled: false }),
+    zettelkasten: () =>
+      useSettingsStore.setState({ zettelkastenEnabled: false }),
+  };
+  const ENABLE_FEATURE: Record<FeatureKey, () => void> = {
+    ai: () => useAIStore.setState({ aiEnabled: true }),
+    journal: () => useSettingsStore.setState({ journalEnabled: true }),
+    tasks: () => useSettingsStore.setState({ tasksEnabled: true }),
+    zettelkasten: () =>
+      useSettingsStore.setState({ zettelkastenEnabled: true }),
+  };
 
-    expect(applyPreset).not.toHaveBeenCalled();
-    expect(showToast).toHaveBeenCalledWith(t("space.journal.disabled", "en"));
-  });
+  // ‼️ (Fix E / M-10) Derived from MENU_FEATURE_MAP rather than hand-listed — a
+  // hand-written case per id is exactly the shape that left view_calendar and
+  // view_inline_ai uncovered (only 3 of the map's 5 ids had one). A derived sweep
+  // alone still cannot catch a WRONG map VALUE, though: disable the (wrong) feature
+  // the map itself names and re-check against that same wrong value, and it still
+  // passes. `menu-enabled.test.ts`'s "every key is an id menu.rs actually registers
+  // as a menu item" is the independent oracle for this exact map, read from the Rust
+  // source rather than re-derived here — the two files share the one MENU_FEATURE_MAP
+  // object, so that check already covers this file's import of it too.
+  it.each(Object.entries(MENU_FEATURE_MAP))(
+    "blocks %s and toasts when its owning feature (%s) is disabled",
+    (id, feature) => {
+      DISABLE_FEATURE[feature]();
+      const showToast = vi.spyOn(useUIStore.getState(), "showToast");
+      const assertNotFired = ASSERT_NOT_FIRED[id]();
+      renderHook(() => useMenuEventHandler(makeDeps()));
+
+      menuEventHandler()({ payload: id });
+
+      assertNotFired();
+      const toastKey = FEATURE_DISABLED_TOAST_KEY[feature];
+      if (!toastKey) {
+        throw new Error(
+          `no FEATURE_DISABLED_TOAST_KEY entry for "${feature}" (owns ${id}) — every feature reachable through MENU_FEATURE_MAP must have one, or blocking it is a silent no-op (§18.19 결함 A)`,
+        );
+      }
+      expect(showToast).toHaveBeenCalledWith(t(toastKey, "en"));
+
+      ENABLE_FEATURE[feature]();
+    },
+  );
 
   it("lets workspace_journal through once journal is enabled", () => {
     useSettingsStore.setState({ journalEnabled: true });
@@ -188,35 +262,6 @@ describe("menu event → feature-owned ids gated by their feature flag (§341)",
 
     expect(applyPreset).toHaveBeenCalledWith("journal");
     useSettingsStore.setState({ journalEnabled: false });
-  });
-
-  it("blocks workspace_zettel and toasts when zettelkasten is disabled", () => {
-    useSettingsStore.setState({ zettelkastenEnabled: false });
-    const applyPreset = vi.spyOn(useWorkspaceStore.getState(), "applyPreset");
-    const showToast = vi.spyOn(useUIStore.getState(), "showToast");
-    renderHook(() => useMenuEventHandler(makeDeps()));
-
-    menuEventHandler()({ payload: "workspace_zettel" });
-
-    expect(applyPreset).not.toHaveBeenCalled();
-    expect(showToast).toHaveBeenCalledWith(t("space.zettel.disabled", "en"));
-    useSettingsStore.setState({ zettelkastenEnabled: false });
-  });
-
-  it("blocks view_ai_chat and toasts when ai is disabled", () => {
-    useAIStore.setState({ aiEnabled: false });
-    const setRightPanelMode = vi.spyOn(
-      useUIStore.getState(),
-      "setRightPanelMode",
-    );
-    const showToast = vi.spyOn(useUIStore.getState(), "showToast");
-    renderHook(() => useMenuEventHandler(makeDeps()));
-
-    menuEventHandler()({ payload: "view_ai_chat" });
-
-    expect(setRightPanelMode).not.toHaveBeenCalled();
-    expect(showToast).toHaveBeenCalledWith(t("space.ai.disabled", "en"));
-    useAIStore.setState({ aiEnabled: true });
   });
 
   it("lets view_ai_chat through once ai is enabled", () => {
