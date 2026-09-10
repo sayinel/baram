@@ -5,6 +5,7 @@ export * from "./app";
 export * from "./config";
 export * from "./embedding";
 export * from "./export";
+export * from "./font";
 export * from "./fs";
 export * from "./git";
 export * from "./keyring";

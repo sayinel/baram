@@ -26,6 +26,7 @@
     "allow-export-pandoc",
     "allow-export-pdf",
     "allow-extract-zip",
+    "allow-font-list",
     "allow-get-backlinks",
     "allow-get-config",
     "allow-get-contexts",
