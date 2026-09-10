@@ -9,6 +9,7 @@ import { Sparkles } from "lucide-react";
 import { Tooltip } from "../../components/Tooltip";
 import { useEditorChrome } from "../../hooks/use-editor-chrome";
 import { useTranslation } from "../../i18n/useTranslation";
+import { useFeatureFlags } from "../../stores/settings/features";
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
 import {
   canUseEditorChrome,
@@ -27,6 +28,7 @@ export function CalloutView({
   updateAttributes,
 }: NodeViewProps) {
   const { t } = useTranslation();
+  const { ai: aiEnabled } = useFeatureFlags();
   const type = (node.attrs.type as string) || "info";
   const title = (node.attrs.title as string) || "";
   const collapsed = node.attrs.collapsed as boolean;
@@ -188,25 +190,27 @@ export function CalloutView({
           </span>
         )}
 
-        <Tooltip label={t("toolbar.ai.commands")} placement="bottom">
-          <button
-            className="callout-ai-btn"
-            onClick={(e) => {
-              e.stopPropagation();
-              const text = node.textContent || "";
-              if (!text.trim()) return;
-              const pos = getPos();
-              if (typeof pos !== "number") return;
-              showNodeViewAIMenu(e.currentTarget, "text", text, editor, pos);
-            }}
-            ref={(el) => {
-              if (el) el.onmousedown = (e) => e.stopPropagation();
-            }}
-            type="button"
-          >
-            <Sparkles size={14} />
-          </button>
-        </Tooltip>
+        {aiEnabled && (
+          <Tooltip label={t("toolbar.ai.commands")} placement="bottom">
+            <button
+              className="callout-ai-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                const text = node.textContent || "";
+                if (!text.trim()) return;
+                const pos = getPos();
+                if (typeof pos !== "number") return;
+                showNodeViewAIMenu(e.currentTarget, "text", text, editor, pos);
+              }}
+              ref={(el) => {
+                if (el) el.onmousedown = (e) => e.stopPropagation();
+              }}
+              type="button"
+            >
+              <Sparkles size={14} />
+            </button>
+          </Tooltip>
+        )}
         <Tooltip
           label={
             collapsed ? t("blockChrome.expand") : t("blockChrome.collapse")

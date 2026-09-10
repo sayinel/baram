@@ -6,6 +6,7 @@ import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 import { Captions, Copy, Download, Maximize2, Sparkles } from "lucide-react";
 
 import { useTranslation } from "../../i18n/useTranslation";
+import { useFeatureFlags } from "../../stores/settings/features";
 import {
   copyMermaidSource,
   detectMermaidType,
@@ -43,6 +44,7 @@ export function MermaidBlockView({
   getPos,
 }: NodeViewProps) {
   const { t } = useTranslation();
+  const { ai: aiEnabled } = useFeatureFlags();
   const code = (node.attrs.code as string) || "";
   const [localCode, setLocalCode] = useState(code);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -530,23 +532,25 @@ export function MermaidBlockView({
               >
                 <Captions size={16} strokeWidth={2} />
               </MediaToolbarButton>
-              <MediaToolbarButton
-                label={t("toolbar.ai.commands")}
-                onClick={(e) => {
-                  if (!code.trim()) return;
-                  const pos = getPos();
-                  if (typeof pos !== "number") return;
-                  showNodeViewAIMenu(
-                    e.currentTarget,
-                    "diagram",
-                    code,
-                    editor,
-                    pos,
-                  );
-                }}
-              >
-                <Sparkles size={14} />
-              </MediaToolbarButton>
+              {aiEnabled && (
+                <MediaToolbarButton
+                  label={t("toolbar.ai.commands")}
+                  onClick={(e) => {
+                    if (!code.trim()) return;
+                    const pos = getPos();
+                    if (typeof pos !== "number") return;
+                    showNodeViewAIMenu(
+                      e.currentTarget,
+                      "diagram",
+                      code,
+                      editor,
+                      pos,
+                    );
+                  }}
+                >
+                  <Sparkles size={14} />
+                </MediaToolbarButton>
+              )}
               <MediaToolbarButton
                 label={t("blockChrome.copySource")}
                 onClick={() => copyMermaidSource(activeSource)}

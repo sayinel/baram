@@ -5,6 +5,7 @@ import { useLLMStream } from "../../hooks/use-llm-stream";
 import { useSkillStore } from "../../stores/ai/skill";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
+import { useFeatureFlags } from "../../stores/settings/features";
 import {
   buildOptimizePrompt,
   type OptimizeSuggestion,
@@ -25,6 +26,7 @@ const CATEGORY_ICONS: Record<string, string> = {
 
 export function SkillOptimizeSection() {
   const isSkill = useSkillStore((s) => s.isSkill);
+  const { ai: aiEnabled } = useFeatureFlags();
   const { send, cancel, isStreaming, text, error } = useLLMStream();
 
   const [suggestions, setSuggestions] = useState<OptimizeSuggestion[]>([]);
@@ -61,8 +63,9 @@ export function SkillOptimizeSection() {
 
   const displaySuggestions = isStreaming ? suggestions : parsedSuggestions;
 
-  // Early return after all hooks
-  if (!isSkill) return null;
+  // Early return after all hooks — §339 this panel's only action is an LLM
+  // call, so it gates on `aiEnabled` too, same as isSkill.
+  if (!isSkill || !aiEnabled) return null;
 
   return (
     <div className="skill-optimize">
