@@ -85,9 +85,15 @@ export function useSettingsEffects(editor: Editor | null) {
     // eslint-disable-next-line react-hooks/immutability -- we are styling the DOM element, not mutating the editor argument
     tiptap.style.fontSize = `${fontSize}px`;
     // §349 인라인 font-family 대신 변수 두 개. 인라인은 이 요소의 `font-family`
-    // 하나만 덮으므로 코드·수식·표·미디어가 읽는 var(--font-family-mono) 30곳에는
-    // 닿지 않았고, 그래서 "코드 서체"라는 설정이 존재할 수 없었다. 변수는 이 표면
-    // 아래로 상속되므로 그 30곳이 배선 추가 없이 따라온다.
+    // 하나만 덮으므로 코드·수식·표·미디어가 읽는 var(--font-family-mono) 소비자
+    // 들에는 닿지 않았고, 그래서 "코드 서체"라는 설정이 존재할 수 없었다.
+    //
+    // ‼️ 변수 상속의 범위는 DOM 포함관계이지 파일 경로가 아니다 — `.tiptap` 밖으로
+    // 포털되는 오버레이는 이 한 줄로 따라오지 **않고** 각자 표면 배선이 필요하다.
+    // 어느 것이 그런지는 `utils/editor/font-surfaces.ts` 의 헤더와
+    // `DOCUMENT_FONT_SURFACES` 가 유일한 출처다. 여기 개수를 베껴 적지 않는다:
+    // 한때 "그 30곳이 배선 추가 없이 따라온다"고 적혀 있었고 그것은 거짓이었다
+    // (§349 리뷰 · final review I4). 베낀 목록은 낡고, 지목한 목록은 안 낡는다.
     applyFontVariables(tiptap, {
       bodyFont: fontFamily,
       codeFont: codeFontFamily,

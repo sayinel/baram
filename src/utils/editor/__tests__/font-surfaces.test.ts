@@ -14,11 +14,11 @@
 // 치환 시점으로 미루며, jsdom 은 var() 치환을 아예 구현하지 않는다. 그래서
 // 통과는 "올바른 문자열을 썼다"까지이고 "서체가 렌더된다"가 아니다 — 후자는
 // 스펙이 사람 손 검증으로 들고 있다.
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { BUNDLED_FONTS } from "../../font/bundled-fonts";
+import { bundledFont } from "../../font/bundled-fonts";
 import {
   applyFontVariables,
   BASE_EDITOR_STACK,
@@ -37,10 +37,6 @@ const ASSERTED: Record<string, "both" | "mono"> = {
   "svg-fullscreen": "both",
   wysiwyg: "both",
 };
-
-/** 번들 서체의 정확한 표기 — 이름을 여기 손으로 다시 적지 않는다 (§347 단일 출처). */
-const bundledFamily = (role: "body" | "code"): string | undefined =>
-  BUNDLED_FONTS.find((f) => f.role === role)?.family;
 
 /**
  * 스택을 비교 가능한 모양으로 — 패밀리마다 인용부호를 벗기고 소문자화한다.
@@ -140,11 +136,15 @@ describe("§349 document font surfaces", () => {
     );
   });
 
+  // 이름은 §347 단일 출처에서 끌어온다 — `bundledFont` 가 이제 역할로 서체를
+  // 꺼내는 유일한 방법이므로, 여기 `find(role)` 을 다시 쓰지 않는다.
   it("keeps the bundled families at the head of each base stack", () => {
-    expect(BASE_EDITOR_STACK.startsWith(`"${bundledFamily("body")}"`)).toBe(
+    expect(
+      BASE_EDITOR_STACK.startsWith(`"${bundledFont("body").family}"`),
+    ).toBe(true);
+    expect(BASE_MONO_STACK.startsWith(`"${bundledFont("code").family}"`)).toBe(
       true,
     );
-    expect(BASE_MONO_STACK.startsWith(`"${bundledFamily("code")}"`)).toBe(true);
   });
 
   // §349 리뷰 Important 2 — :root 회귀를 **철자로 우회할 수 없는** 자리에서 막는다.
@@ -195,3 +195,42 @@ describe("§349 document font surfaces", () => {
     );
   });
 });
+
+// ‼️ `where` 는 사람에게 배선 위치를 알려 주는 유일한 단서이고, 이 브랜치에서
+// 그것이 세 번 낡았다 — 한 번은 포털이 옮겨 간 뒤에도 옛 파일을 댔다(final
+// review T5-1). 파일 이름이 줄 번호보다 나은 이유가 바로 이것이다: 확인할 수
+// 있다. 그래서 확인한다.
+describe("§349 the `where` hints name files that exist", () => {
+  const named = DOCUMENT_FONT_SURFACES.flatMap((s) => [
+    ...s.where.matchAll(/[\w./-]+\.tsx?/gu),
+  ]).map((m) => m[0]);
+
+  it("found file names in the hints, so the check below is not vacuous", () => {
+    // 표면 여덟 개가 각자 하나 이상을 댄다.
+    expect(named.length).toBeGreaterThanOrEqual(DOCUMENT_FONT_SURFACES.length);
+  });
+
+  it.each([...new Set(named)])("%s", (name) => {
+    // 경로 조각이 들었으면 그 조각으로 끝나는 파일을, 아니면 basename 으로 찾는다.
+    const matches = sourceFiles().filter((file) =>
+      name.includes("/")
+        ? file.endsWith(path.posix.normalize(name))
+        : path.posix.basename(file) === name,
+    );
+    expect(matches, `no file under src/ matches "${name}"`).not.toHaveLength(0);
+  });
+});
+
+/** src/ 아래 모든 .ts/.tsx 의 posix 경로. */
+function sourceFiles(): string[] {
+  const out: string[] = [];
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = path.posix.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (/\.tsx?$/u.test(entry.name)) out.push(full);
+    }
+  };
+  walk("src");
+  return out;
+}

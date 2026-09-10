@@ -26,7 +26,14 @@ export interface FontSurface {
   id: string;
   /** 표면 루트 요소의 CSS 선택자. 배선 테스트가 이 값으로 요소를 찾는다. */
   root: string;
-  /** 사람이 읽는 위치 설명. 배선이 어디 있는지 찾는 단서. */
+  /**
+   * 사람이 읽는 위치 설명. 배선이 어디 있는지 찾는 단서.
+   *
+   * ‼️ 파일 이름까지만 적는다 — 줄 번호는 적지 않는다. 이 저장소에서 그 값은
+   * 유지되지 않는 것으로 실증됐다(§349 리뷰: 주석에 적힌 위치 네 개 중 네 개가
+   * 틀려 있었다). 파일 이름은 grep 으로 확인되고 편집을 견디지만, 줄 번호를
+   * 지키는 가드는 없고 커밋마다 밀린다.
+   */
   where: string;
   which: FontSurfaceScope;
 }
@@ -87,7 +94,7 @@ export const DOCUMENT_FONT_SURFACES: readonly FontSurface[] = [
   {
     id: "svg-fullscreen",
     root: ".svg-fullscreen-overlay",
-    where: "both fullscreen portals — svg-block-view.tsx",
+    where: "both fullscreen portals — views/SvgFullscreenModals.tsx",
     which: "both",
   },
   {

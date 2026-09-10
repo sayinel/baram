@@ -198,7 +198,7 @@ export const useSettingsStore = create<SettingsState>()(
         // would silently drop the setting on every restart.
         vimMode: state.vimMode,
       }),
-      version: 24,
+      version: 25,
       migrate: (persisted: unknown, version: number) => {
         const state = persisted as Record<string, unknown>;
 
@@ -549,6 +549,24 @@ export const useSettingsStore = create<SettingsState>()(
           if (state.zettelkastenStartupBehavior === "openInbox") {
             state.zettelkastenStartupBehavior = "openHomeNote";
           }
+        }
+
+        // §348 본문 서체 기본값이 `"Pretendard"` → `""` 로 바뀌었다. 화면은 같지만
+        // 저장된 값은 그대로 남고, `"Pretendard"` 와 번들 서체 `"Pretendard
+        // Variable"` 은 **서로 다른** CSS 패밀리명이다 — 그래서 §351 가용성 판정은
+        // 그 값을 "missing" 으로 돌려주고, 업그레이드한 사용자는 잘 렌더되고 있는
+        // 문서 위에서 빨간 "이 머신에 없음" 배지를 본다. 배지는 그 문자열에 대해
+        // 사실이지만, 사용자가 고른 적 없는 값에 대해 뜨는 것이므로 사용자의
+        // 실수가 아니라 마이그레이션 부작용이다 (final review I5).
+        //
+        // 정확히 그 문자열만, 정확히 한 번 새 기본값으로 되돌린다 — 버전 게이트가
+        // 있어야 이 뒤에 사용자가 직접 `"Pretendard"` 를 입력한 경우를 다음 버전
+        // 올림에서 다시 지우지 않는다. 화면은 어느 쪽이든 달라지지 않는다(같은
+        // 폴백 스택으로 렌더된다). 부수 효과로 export 임베드가 이 사용자들에게도
+        // 실제로 동작하게 된다 — 빈 슬롯은 번들 서체로 해석되지만
+        // `"Pretendard"` 는 번들이 아니라서 어떤 face 도 안 실렸다.
+        if (version < 25) {
+          if (state.fontFamily === "Pretendard") state.fontFamily = "";
         }
 
         return state;

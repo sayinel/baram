@@ -16,6 +16,22 @@
 // 그래서 이 가드는 선택자마다 "누가 이것을 덮는가"를 사람이 분류하게 만들고,
 // 분류되지 않은 선택자가 하나라도 생기면 실패한다. 새 오버레이를 만들면서
 // 표면 배선을 잊는 것이 곧 빨간불이다 — 그것이 원래 결함의 발생 경로였다.
+//
+// ‼️ 스캔 창은 `styles/editor/**` 뿐이다. 그 한계의 **실제 모양**은 최악의
+// 경우보다 좁다 — 재보고 적어 둔다 (final review R23, 이 브랜치 시점 실측):
+//
+//   · `var(--font-family-editor)` 를 읽는 선언은 `styles/editor/**` 와
+//     `generated/` 밖의 스타일시트에 **0개**다. 즉 본문 서체 소비자는 전부 이
+//     창 안에 있고, 이 가드가 그 절반을 완전히 덮는다.
+//   · `var(--font-family-mono)` 는 다르다 — 창 밖 스타일시트 19개에 62개
+//     선언이 있다. 다만 그 전부가 앱 크롬(파일 트리·git·툴바·패널·설정·
+//     다이얼로그)이고, 크롬은 사용자 코드 서체를 따라가지 **않는** 것이 맞다.
+//     오늘 존재하는 mono 소비 문서 오버레이는 전부 `styles/editor/**` 에서
+//     스타일링된다(mermaid.css · svg-block.css · media.css · math.css).
+//
+// 남은 위험은 따라서 가정형이다: **앞으로** 최상위 스타일시트에서 스타일링되는
+// 문서 오버레이를 만들면 이 가드가 못 본다. 창을 넓히면 저 62개를 모두
+// 분류해야 하고, 그 비용이 지금 이 한계를 받아들인 이유다.
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -35,25 +51,31 @@ const CHROME = "chrome";
  * ‼️ 여기 없는 선택자가 발견되면 이 파일이 실패한다. 그것이 요점이다: 분류를
  * 강제하지 않으면 "파일이 styles/editor/ 에 있으니 문서겠지"로 넘어가고, 그
  * 추측이 정확히 리뷰가 잡은 8개 선언을 만들었다.
+ *
+ * ‼️ 아래 주석은 파일 이름만 댄다 — 줄 번호는 적지 않는다. 한때 적혀 있던 네
+ * 개가 네 개 다 틀렸고(final review Minor 2), 그것을 맞게 유지하는 가드는 없다.
+ * 파일 이름은 grep 으로 확인되고 심볼이 옮겨 다녀도 살아남는다.
  */
 const COVERED_BY: Record<string, string> = {
   ".code-block-lang-select": INSIDE_TIPTAP,
   ".code-block-placeholder": INSIDE_TIPTAP,
   ".image-fullscreen-close": "image-fullscreen",
-  // ImageOriginalView 의 포털 (`:89` 가 document.body).
+  // components/editor/ImageOriginalView.tsx 의 포털 (document.body).
   ".image-fullscreen-label": "image-fullscreen",
-  // math-inline-edit.ts 의 플러그인 뷰가 `document.body.appendChild` 로 만든다 —
-  // React 포털이 아니라서 리뷰의 포털 표에도 없었다.
+  // extensions/plugins/math-inline-edit.ts 의 플러그인 뷰가
+  // `document.body.appendChild` 로 만든다 — React 포털이 아니라서 리뷰의 포털
+  // 표에도 없었다.
   ".math-inline-preview-error": "math-preview-popover",
   ".media-resize-label": INSIDE_TIPTAP,
   ".mermaid-fullscreen-close": "mermaid-fullscreen",
-  // MermaidFullscreenModals.tsx 의 두 포털 (`:51`, `:125`).
+  // extensions/nodes/views/MermaidFullscreenModals.tsx 의 두 포털.
   ".mermaid-fullscreen-editor .mermaid-block-textarea": "mermaid-fullscreen",
   ".mermaid-fullscreen-type": "mermaid-fullscreen",
   // PreviewToggleButton.tsx — App.tsx 툴바. 파일은 styles/editor/ 지만 크롬이다.
   ".mode-toggle-btn": CHROME,
   ".svg-fullscreen-close": "svg-fullscreen",
-  // svg-block-view.tsx 의 두 포털 (`:234`, `:287`).
+  // extensions/nodes/views/SvgFullscreenModals.tsx 의 두 포털 — 한때 이 주석이
+  // svg-block-view.tsx 를 댔고, 포털은 그 파일에 더 이상 없다.
   ".svg-fullscreen-editor .svg-block-textarea": "svg-fullscreen",
 };
 
