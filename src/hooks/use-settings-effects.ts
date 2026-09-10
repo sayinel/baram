@@ -154,8 +154,13 @@ export function useSettingsEffects(editor: Editor | null) {
   // §340 ⓐ 기능이 꺼질 때, 저장된 포인터가 그 기능의 좌석을 가리키고 있으면 옮긴다.
   //
   // ‼️ **가리키고 있을 때만** 옮긴다. 조건 없이 리셋하면 무관한 작업 상태를 파괴한다.
-  // ‼️ 이것만으로는 부족하다 — 재하이드레이션 직후 첫 페인트가 이 이펙트보다 빠르므로
-  //    패널 쪽 렌더 가드(ⓑ)가 함께 있어야 빈 화면이 한 프레임 새지 않는다.
+  // ‼️ 이것만으로는 부족하다(Fix E / M-1 정정: `useUIStore`엔 persist가 없다 —
+  //    "재하이드레이션"은 근거가 아니다). 실제 근거: (a) 플래그 write와 이 이펙트의
+  //    flush 사이의 한 프레임, (b) 이 이펙트가 볼 수 없는 writer들 — 커스텀 프리셋
+  //    (`workspace.ts`의 `customPresets`, 이쪽은 진짜로 영속된다) · skills 모드가
+  //    나가면서 복원하는 저장된 포인터(`use-skills-mode.ts`) · 저널 단축키가 직접
+  //    쓰는 `rightPanelMode`. 셋 다 네 기능 플래그 자체를 바꾸지 않으므로 아래
+  //    `useEffect`의 deps가 재발화하지 않는다 — 패널 쪽 렌더 가드(ⓑ)가 그래서 필요하다.
   // `useFeatureFlags()` returns a fresh object every render (see its own doc comment in
   // stores/settings/features.ts) — destructuring here, rather than passing the object
   // through, is what lets the effect below depend on the four primitives directly instead

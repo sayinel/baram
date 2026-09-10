@@ -1,10 +1,17 @@
-// §340 A disabled feature can leave a persisted UI pointer aimed at a seat
-// that no longer has an icon to close it (rightPanelMode defaults to "chat",
-// and both sidebarPanel/rightPanelMode are persisted). Two layers guard
-// against that: ⓐ an effect (in useSettingsEffects) that moves the pointer
-// off a hidden seat, and ⓑ a render guard on each affected panel — the
-// effect alone leaves the first paint after rehydration unguarded, and the
-// guard alone leaves the user staring at an empty panel with no way out.
+// §340 A disabled feature can leave a UI pointer (sidebarPanel/rightPanelMode,
+// both session-scoped — `useUIStore` has no persist middleware) aimed at a
+// seat that no longer has an icon to close it. Two layers guard against
+// that: ⓐ an effect (in useSettingsEffects) that moves the pointer off a
+// hidden seat whenever a feature flag turns off, and ⓑ a render guard on
+// each affected panel.
+//
+// ⓐ alone is not enough — not because of rehydration (there is none), but
+// because THREE writers can point a seat at a gated value without a feature
+// flag ever changing, so ⓐ's flag-keyed effect never re-fires for them: a
+// custom workspace preset (`workspace.ts`'s `customPresets` — this one IS
+// genuinely persisted), Skills mode restoring a saved pointer on exit
+// (`use-skills-mode.ts`), and a shortcut writing the mode directly. ⓑ alone
+// leaves the user staring at an empty panel with no way out (Fix B, C-2).
 import { act } from "react";
 
 import type { FeatureKey } from "../../../stores/settings/feature-keys";
