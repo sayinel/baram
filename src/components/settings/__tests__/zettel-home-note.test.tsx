@@ -102,4 +102,23 @@ describe("Zettel home note picker (§344)", () => {
     // 언제나 초록인 단정이 된다.
     expect(useUIStore.getState().toast).toBeNull();
   });
+
+  it("with no zettel directory set, stores the absolute path and opens the dialog with no defaultPath", async () => {
+    // dir === null 분기 — `resolveAbsoluteDirSetting` 은 빈 설정과 상대 경로 모두에
+    // null 을 준다. 그때 상대화할 기준이 없으므로 절대 경로를 그대로 저장하고,
+    // defaultPath 는 **undefined** 여야 한다(빈 문자열이면 OS 가 임의 위치를 연다).
+    useSettingsStore.setState({ zettelkastenDirectory: "" });
+    open.mockResolvedValue("/elsewhere/home.md");
+    render(<ZettelkastenTab />);
+    fireEvent.click(buttonIn("Home Note", /Browse/i));
+    await waitFor(() =>
+      expect(useSettingsStore.getState().zettelkastenHomeNote).toBe(
+        "/elsewhere/home.md",
+      ),
+    );
+    expect(open.mock.calls[0][0]).toStrictEqual({
+      defaultPath: undefined,
+      filters: [{ name: "Markdown", extensions: ["md"] }],
+    });
+  });
 });
