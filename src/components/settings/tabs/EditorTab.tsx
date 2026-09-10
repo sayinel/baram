@@ -1,37 +1,27 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+
+import type { SystemFont } from "../../../ipc/types";
+import type { FontSlot } from "../FontSlotPicker";
+
+import { useShallow } from "zustand/shallow";
 
 import { useTranslation } from "../../../i18n/useTranslation";
+import { listFonts } from "../../../ipc/font";
 import { useSettingsStore } from "../../../stores/settings/store";
+import { FontSlotPicker } from "../FontSlotPicker";
 import {
   SettingsRow,
   SettingsSectionHeader,
   ToggleSwitch,
 } from "../settings-shared";
 
-// ─── Font Family Picker ─────────────────────────────────
-
-const FONT_OPTIONS = [
-  { value: "system-ui", label: "System Default" },
-  { value: "Pretendard", label: "Pretendard" },
-  { value: "Inter", label: "Inter" },
-  { value: "Noto Sans", label: "Noto Sans" },
-  { value: "Noto Sans KR", label: "Noto Sans KR" },
-  { value: "IBM Plex Sans", label: "IBM Plex Sans" },
-  { value: "Roboto", label: "Roboto" },
-  { value: "Lato", label: "Lato" },
-  { value: "Open Sans", label: "Open Sans" },
-  { value: "Source Sans 3", label: "Source Sans 3" },
-  { value: "Merriweather", label: "Merriweather" },
-  { value: "Georgia", label: "Georgia" },
-  { value: "Lora", label: "Lora" },
-  { value: "Nanum Gothic", label: "Nanum Gothic" },
-];
-
 export function EditorTab() {
   const { t } = useTranslation();
   const {
     fontFamily,
     setFontFamily,
+    codeFontFamily,
+    setCodeFontFamily,
     fontSize,
     setFontSize,
     lineHeight,
@@ -50,7 +40,53 @@ export function EditorTab() {
     setAutoLoadVideoEmbeds,
     vimMode,
     setVimMode,
-  } = useSettingsStore();
+  } = useSettingsStore(
+    useShallow((s) => ({
+      autoLoadVideoEmbeds: s.autoLoadVideoEmbeds,
+      autoPairBrackets: s.autoPairBrackets,
+      codeFontFamily: s.codeFontFamily,
+      editorMaxWidth: s.editorMaxWidth,
+      fontFamily: s.fontFamily,
+      fontSize: s.fontSize,
+      lineHeight: s.lineHeight,
+      lineNumbers: s.lineNumbers,
+      setAutoLoadVideoEmbeds: s.setAutoLoadVideoEmbeds,
+      setAutoPairBrackets: s.setAutoPairBrackets,
+      setCodeFontFamily: s.setCodeFontFamily,
+      setEditorMaxWidth: s.setEditorMaxWidth,
+      setFontFamily: s.setFontFamily,
+      setFontSize: s.setFontSize,
+      setLineHeight: s.setLineHeight,
+      setLineNumbers: s.setLineNumbers,
+      setTabSize: s.setTabSize,
+      setVimMode: s.setVimMode,
+      setVirtualizeLargeDocs: s.setVirtualizeLargeDocs,
+      tabSize: s.tabSize,
+      vimMode: s.vimMode,
+      virtualizeLargeDocs: s.virtualizeLargeDocs,
+    })),
+  );
+
+  const [fonts, setFonts] = useState<SystemFont[]>([]);
+  const [browserSlot, setBrowserSlot] = useState<FontSlot | null>(null);
+
+  // §350 — 탭이 지연 로드 경계 뒤에 있으므로 마운트 시 1회 호출로 충분하다
+  // (설계 §351: "피커를 처음 열 때"가 이상적이나 이 탭 자체가 이미 그 경계다).
+  useEffect(() => {
+    let cancelled = false;
+    void listFonts().then((list) => {
+      if (!cancelled) setFonts(list);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (browserSlot) {
+    // §352 (Task 6) 이 이 자리를 <FontBrowser slot={browserSlot} onClose={…}/>
+    // 로 교체한다 — AppearanceTab 의 `editingTheme` → <ThemeEditor/> 와 같은 패턴.
+    return null;
+  }
 
   return (
     <div className="settings-section">
@@ -60,7 +96,26 @@ export function EditorTab() {
         description={t("settings.editor.fontFamily.desc")}
         label={t("settings.editor.fontFamily")}
       >
-        <FontFamilyPicker onChange={setFontFamily} value={fontFamily} />
+        <FontSlotPicker
+          fonts={fonts}
+          onChange={setFontFamily}
+          onOpenBrowser={setBrowserSlot}
+          slot="body"
+          value={fontFamily}
+        />
+      </SettingsRow>
+
+      <SettingsRow
+        description={t("settings.editor.codeFontFamily.desc")}
+        label={t("settings.editor.codeFontFamily")}
+      >
+        <FontSlotPicker
+          fonts={fonts}
+          onChange={setCodeFontFamily}
+          onOpenBrowser={setBrowserSlot}
+          slot="code"
+          value={codeFontFamily}
+        />
       </SettingsRow>
 
       <SettingsRow
@@ -180,104 +235,6 @@ export function EditorTab() {
           value={editorMaxWidth}
         />
       </SettingsRow>
-    </div>
-  );
-}
-
-// ─── Editor Tab ─────────────────────────────────────────
-
-function FontFamilyPicker({
-  value,
-  onChange,
-}: {
-  onChange: (v: string) => void;
-  value: string;
-}) {
-  const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState("");
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  const filtered = search
-    ? FONT_OPTIONS.filter((f) =>
-        f.label.toLowerCase().includes(search.toLowerCase()),
-      )
-    : FONT_OPTIONS;
-
-  // Close dropdown on outside click
-  useEffect(() => {
-    if (!open) return;
-    const handleClick = (e: MouseEvent) => {
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(e.target as Node)
-      ) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [open]);
-
-  const handleSelect = (fontValue: string) => {
-    onChange(fontValue);
-    setSearch("");
-    setOpen(false);
-  };
-
-  return (
-    <div className="settings-font-picker" ref={containerRef}>
-      <input
-        className="settings-input"
-        onChange={(e) => {
-          setSearch(e.target.value);
-          if (!open) setOpen(true);
-        }}
-        onFocus={() => {
-          setSearch("");
-          setOpen(true);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && search) {
-            // Allow custom font name
-            onChange(search);
-            setSearch("");
-            setOpen(false);
-          } else if (e.key === "Escape") {
-            setOpen(false);
-          }
-        }}
-        placeholder={t("settings.editor.fontPicker.placeholder")}
-        type="text"
-        value={open ? search : value}
-      />
-      {open && (
-        <div className="settings-font-dropdown">
-          {filtered.map((font) => (
-            <button
-              className={`settings-font-option ${font.value === value ? "settings-font-option-active" : ""}`}
-              key={font.value}
-              onClick={() => handleSelect(font.value)}
-              style={{ fontFamily: font.value }}
-            >
-              {font.value === "system-ui"
-                ? t("settings.editor.fontPicker.systemDefault")
-                : font.label}
-            </button>
-          ))}
-          {filtered.length === 0 && search && (
-            <button
-              className="settings-font-option"
-              onClick={() => handleSelect(search)}
-            >
-              {t("settings.editor.fontPicker.useCustom").replace(
-                "{font}",
-                search,
-              )}
-            </button>
-          )}
-        </div>
-      )}
     </div>
   );
 }

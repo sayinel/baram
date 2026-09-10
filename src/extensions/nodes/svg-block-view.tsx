@@ -13,10 +13,8 @@ import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 import { Captions, Copy, Download, Maximize2, Sparkles } from "lucide-react";
 
 import { Tooltip } from "../../components/Tooltip";
-import { useFontSurface } from "../../hooks/use-font-surface";
 import { useTranslation } from "../../i18n/useTranslation";
 import { useFeatureFlags } from "../../stores/settings/features";
-import { isInNativeTextControl } from "../../utils/editor/native-text-control";
 import {
   copySvgAsPng,
   downloadSvg,
@@ -38,6 +36,10 @@ import { BlockCaption } from "./views/BlockCaption";
 import { MediaResizeHandle } from "./views/MediaResizeHandle";
 import { MediaToolbar, MediaToolbarButton } from "./views/MediaToolbar";
 import { runBlockAction } from "./views/run-block-action";
+import {
+  SvgEditFullscreenModal,
+  SvgViewFullscreenModal,
+} from "./views/SvgFullscreenModals";
 import { useAtomBlockBehavior } from "./views/use-atom-block-behavior";
 import { useAtomEditSession } from "./views/use-atom-edit-session";
 import { useBlockContextMenu } from "./views/use-block-context-menu";
@@ -65,11 +67,6 @@ export function SvgBlockView({
   const [fullscreen, setFullscreen] = useState(false);
   const [fullscreenCode, setFullscreenCode] = useState("");
   const [viewFullscreen, setViewFullscreen] = useState(false);
-  // §349 두 오버레이 모두 document.body 로 포털된다 — 문서 표면의 변수를
-  // 상속받지 못하므로 각 루트에 직접 덮는다. ref 는 요소마다 하나여야
-  // 하므로 두 개다.
-  const viewFullscreenFontSurface = useFontSurface("both");
-  const editFullscreenFontSurface = useFontSurface("both");
   const [editingCaption, setEditingCaption] = useState(false);
 
   // Refs for the selected-change effect (avoid re-running on every keystroke).
@@ -139,9 +136,9 @@ export function SvgBlockView({
     [fullscreenCode],
   );
   // issue 549: one object per string, or React 19 re-seeds the svg DOM on
-  // every render of this view (use-inner-html.ts).
+  // every render of this view (use-inner-html.ts). The fullscreen modals
+  // memoise their own at their sink (R26 — SvgFullscreenModals.tsx).
   const svgMarkup = useInnerHtml(svgHtml);
-  const fullscreenMarkup = useInnerHtml(fullscreenSvg);
 
   // Auto-resize textarea — keyed on `editing`, NOT `selected`: the standby
   // element is 1px wide, and a measurement there writes an inflated inline
@@ -235,137 +232,23 @@ export function SvgBlockView({
     });
   }, []);
 
-  // ── Fullscreen view modal (read-only) ─────────────────────────────
-  const viewFullscreenModal = viewFullscreen
-    ? createPortal(
-        <div
-          className="svg-fullscreen-overlay"
-          // Stop click from bubbling through the React portal tree to the
-          // NodeViewWrapper's onClick (which would select the block → edit mode).
-          onClick={(e) => e.stopPropagation()}
-          // issue 521: a right-click inside the modal is nobody's — the block
-          // ignores portal events, and the browser's page menu (Reload) must
-          // not appear here. Text controls keep their native menu.
-          onContextMenu={(e) => {
-            if (isInNativeTextControl(e.target)) return;
-            e.preventDefault();
-            e.stopPropagation();
-          }}
-          onMouseDown={(e) => {
-            e.stopPropagation();
-            if (e.target === e.currentTarget) {
-              e.preventDefault();
-              closeViewFullscreen();
-            }
-          }}
-          ref={viewFullscreenFontSurface}
-        >
-          <div className="svg-view-fullscreen-modal">
-            <div className="svg-fullscreen-header">
-              <span className="svg-block-label">svg</span>
-              <button
-                className="svg-fullscreen-close"
-                onClick={closeViewFullscreen}
-                onMouseDown={(e) => e.preventDefault()}
-              >
-                {t("common.close")}
-              </button>
-            </div>
-            <div className="svg-view-fullscreen-body">
-              {svgHtml ? (
-                <div
-                  className="svg-block-render"
-                  dangerouslySetInnerHTML={svgMarkup}
-                />
-              ) : (
-                <div className="svg-block-empty">
-                  {t("svgBlock.emptyPreview")}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>,
-        document.body,
-      )
-    : null;
+  // ── Fullscreen modals ───────────────────────────────────────────────
+  // R26: split into their own components so useFontSurface only subscribes
+  // while an overlay is actually mounted — see SvgFullscreenModals.tsx.
+  const viewFullscreenModal = viewFullscreen ? (
+    <SvgViewFullscreenModal onClose={closeViewFullscreen} svgHtml={svgHtml} />
+  ) : null;
 
-  // ── Fullscreen edit modal ─────────────────────────────────────────
-  const fullscreenModal = fullscreen
-    ? createPortal(
-        <div
-          className="svg-fullscreen-overlay"
-          onClick={(e) => {
-            // Don't let the click bubble through the portal to the NodeViewWrapper.
-            e.stopPropagation();
-            if (e.target === e.currentTarget) closeFullscreen();
-          }}
-          // issue 521: a right-click inside the modal is nobody's — the block
-          // ignores portal events, and the browser's page menu (Reload) must
-          // not appear here. Text controls keep their native menu.
-          onContextMenu={(e) => {
-            if (isInNativeTextControl(e.target)) return;
-            e.preventDefault();
-            e.stopPropagation();
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") closeFullscreen();
-          }}
-          onMouseDown={(e) => e.stopPropagation()}
-          ref={editFullscreenFontSurface}
-        >
-          <div className="svg-fullscreen-modal">
-            <div className="svg-fullscreen-header">
-              <span className="svg-block-label">svg</span>
-              <button
-                className="svg-fullscreen-close"
-                onClick={discardFullscreen}
-                // ‼️ A native `title`, not the app pill: this modal's overlay is z-index
-                // 9999 (svg-block.css) and the pill is --z-tooltip (1060), so a pill here
-                // would paint BEHIND the modal. The button has visible text anyway.
-                title={t("blockChrome.discardHint")}
-              >
-                {t("blockChrome.discard")}
-              </button>
-              <button
-                className="svg-fullscreen-close"
-                onClick={closeFullscreen}
-              >
-                {t("common.close")}
-              </button>
-            </div>
-            <div className="svg-fullscreen-body">
-              <div className="svg-fullscreen-editor">
-                <textarea
-                  autoCapitalize="off"
-                  autoCorrect="off"
-                  autoFocus
-                  className="svg-block-textarea"
-                  data-gramm="false"
-                  data-vim-suspend=""
-                  onChange={(e) => setFullscreenCode(e.target.value)}
-                  ref={fullscreenTextareaRef}
-                  spellCheck={false}
-                  value={fullscreenCode}
-                />
-              </div>
-              <div className="svg-fullscreen-preview">
-                {fullscreenSvg ? (
-                  <div
-                    className="svg-block-render"
-                    dangerouslySetInnerHTML={fullscreenMarkup}
-                  />
-                ) : (
-                  <div className="svg-block-empty">
-                    {t("svgBlock.emptyPreview")}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>,
-        document.body,
-      )
-    : null;
+  const fullscreenModal = fullscreen ? (
+    <SvgEditFullscreenModal
+      fullscreenCode={fullscreenCode}
+      fullscreenSvg={fullscreenSvg}
+      fullscreenTextareaRef={fullscreenTextareaRef}
+      onChangeCode={setFullscreenCode}
+      onClose={closeFullscreen}
+      onDiscard={discardFullscreen}
+    />
+  ) : null;
 
   // §12-⑩ — one render path, editing UI keyed on ENTRY, not selection: a
   // traversal NodeSelection keeps the preview (plus PM's selectednode

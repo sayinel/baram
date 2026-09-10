@@ -363,6 +363,15 @@ export function useSettingsRegistry(): SearchableSetting[] {
       control: NAVIGATE_CONTROL,
     },
     {
+      id: "codeFontFamily",
+      label: "settings.editor.codeFontFamily",
+      description: "settings.editor.codeFontFamily.desc",
+      category: "editor",
+      section: "settings.editor.font",
+      keywords: ["typeface", "font", "code", "monospace"],
+      control: NAVIGATE_CONTROL,
+    },
+    {
       id: "fontSize",
       label: "settings.editor.fontSize",
       description: "settings.editor.fontSize.desc",

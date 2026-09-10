@@ -502,13 +502,14 @@ describe("node views inject markup only through the hook at the sink (issue 549)
   });
 
   it.each([
-    // preview, editing-state faded preview, fullscreen viewer, fullscreen
-    // editor preview
-    ["src/extensions/nodes/svg-block-view.tsx", 4],
+    // preview, editing-state faded preview (the modals live in their own file)
+    ["src/extensions/nodes/svg-block-view.tsx", 2],
     // preview, editing-state faded preview (the modals live in their own file)
     ["src/extensions/nodes/mermaid-block-view.tsx", 2],
     // fullscreen viewer, fullscreen editor preview — each memoised in place
     ["src/extensions/nodes/views/MermaidFullscreenModals.tsx", 2],
+    // fullscreen viewer, fullscreen editor preview — each memoised in place
+    ["src/extensions/nodes/views/SvgFullscreenModals.tsx", 2],
   ])("%s still injects at %i sites", (file, sites) => {
     expect(
       sitesOf(file)

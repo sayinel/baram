@@ -133,49 +133,82 @@
   border-color: var(--color-status-error-border);
 }
 
-/* Font Family Picker */
-.settings-font-picker {
-  position: relative;
-  width: 180px;
+/* §351 Font Slot Picker — value + source badge + browse button, and a 3-line
+   preview strip below. Replaces the old free-text dropdown, which drew every
+   row in the family it named and made a missing font look installed
+   (§346 defect 4). `.flex-col`/`.text-truncate` come from base.css. */
+.settings-font-slot {
+  gap: 6px;
+  width: 320px;
 }
 
-.settings-font-dropdown {
-  position: absolute;
-  top: 100%;
-  right: 0;
-  left: 0;
-  z-index: 10;
-  max-height: 200px;
-  margin-top: 2px;
-  overflow-y: auto;
-  background: var(--color-bg-default);
-  border: 1px solid var(--color-border-default);
-  border-radius: 5px;
-  box-shadow: 0 4px 12px rgb(0 0 0 / 10%);
+.settings-font-value {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 
-.settings-font-option {
-  display: block;
-  width: 100%;
-  padding: 6px 10px;
-  font-size: 0.8rem;
+.settings-font-value-name {
+  flex: 1;
+  font-size: 0.85rem;
   color: var(--color-text-primary);
-  text-align: left;
-  cursor: pointer;
-  background: transparent;
-  border: none;
 }
 
-.settings-font-option:hover {
-  background-color: var(--color-bg-subtle);
+.settings-font-badge {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  font-size: 0.7rem;
+  font-weight: 500;
+  white-space: nowrap;
+  border-radius: 999px;
 }
 
-.settings-font-option-active {
+.settings-font-badge-bundled {
   color: var(--color-accent-on-solid);
-  background-color: var(--color-accent-solid);
+  background: var(--color-accent-default);
 }
 
-.settings-font-option-active:hover {
-  color: var(--color-accent-on-solid);
-  background-color: var(--color-accent-solid-hover);
+.settings-font-badge-system {
+  color: var(--color-text-secondary);
+  background: var(--color-bg-elevated);
+}
+
+.settings-font-badge-missing {
+  color: var(--color-status-danger);
+  background: var(--color-status-error-bg);
+}
+
+.settings-font-more {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+
+.settings-font-more:hover {
+  color: var(--color-text-primary);
+}
+
+.settings-font-strip {
+  padding: 8px 10px;
+  overflow: hidden;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+}
+
+.settings-font-strip-primary {
+  font-size: 0.95rem;
+  color: var(--color-text-primary);
+}
+
+.settings-font-strip-secondary {
+  margin-top: 2px;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+}
+
+.settings-font-strip-glyphs {
+  margin-top: 4px;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
 }
