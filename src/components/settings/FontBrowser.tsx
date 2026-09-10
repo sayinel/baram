@@ -241,6 +241,7 @@ export function FontBrowser({
         <FontBrowserList
           activeValue={activeSlot === "code" ? codeFontFamily : fontFamily}
           allFonts={effectiveFonts ?? []}
+          chips={chips}
           filtered={filtered}
           loading={effectiveFonts === null}
           onSelect={commit}

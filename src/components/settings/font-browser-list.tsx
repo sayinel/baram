@@ -3,6 +3,7 @@
 // 각 행은 자기 서체로 자기 이름을 그린다.
 import type { Translate } from "../../i18n/useTranslation";
 import type { SystemFont } from "../../ipc/types";
+import type { FontChip } from "./FontBrowser";
 import type { FontSlot } from "./FontSlotPicker";
 
 import {
@@ -11,11 +12,14 @@ import {
 } from "../../utils/editor/font-surfaces";
 import { quoteFamily } from "../../utils/editor/quote-font-family";
 import { BUNDLED_FONTS } from "../../utils/font/bundled-fonts";
+import { fontAvailability } from "../../utils/font/font-availability";
 
 interface Props {
   activeValue: string;
-  /** 필터되지 않은 전체 열거 — 최근 항목이 고정폭인지 판정하는 데 필요하다. */
+  /** 필터되지 않은 전체 열거 — 최근 항목이 고정폭·한글·설치 여부인지 판정하는
+   * 데 필요하다. loading일 때는 호출되지 않으므로 항상 신뢰할 수 있는 목록이다. */
   allFonts: readonly SystemFont[];
+  chips: readonly FontChip[];
   /** 셸이 filterFonts()로 이미 계산한 결과(Installed 그룹의 재료). */
   filtered: readonly SystemFont[];
   loading: boolean;
@@ -43,6 +47,7 @@ function isMonospacedName(
 export function FontBrowserList({
   activeValue,
   allFonts,
+  chips,
   filtered,
   loading,
   onSelect,
@@ -68,9 +73,13 @@ export function FontBrowserList({
   ).map((f) => f.family);
   const includedKeys = new Set(included.map((n) => n.toLowerCase()));
 
-  const recent = recentForSlot(recentFonts, slot, allFonts, query).filter(
-    (name) => !includedKeys.has(name.toLowerCase()),
-  );
+  const recent = recentForSlot(
+    recentFonts,
+    slot,
+    allFonts,
+    query,
+    chips,
+  ).filter((name) => !includedKeys.has(name.toLowerCase()));
   const recentKeys = new Set(recent.map((n) => n.toLowerCase()));
 
   const installed = filtered
@@ -187,18 +196,40 @@ function FontRow({
   );
 }
 
-/** 최근 사용 목록을 슬롯으로 좁힌다 — 코드 슬롯에는 고정폭만, 본문 슬롯은
- * 전부. 검색어도 함께 적용해 검색 중에 안 맞는 최근 항목이 섞이지 않게 한다. */
+/**
+ * 최근 사용 목록을 좁힌다 — 검색어·칩·슬롯 기본값을 filterFonts()와 같은
+ * 규칙으로 적용하고, 더 이상 이 머신에 없는 항목(§346의 결함이 다시 나타나는
+ * 자리 — fix round 1 controller ruling)은 제외한다.
+ *
+ * `allFonts`는 loading일 때 이 함수가 호출되지 않으므로 항상 신뢰할 수 있는
+ * 열거다 — `fontAvailability`가 "missing"을 돌려줘도 그것이 로딩 중의 거짓
+ * 판정일 위험이 없다.
+ */
 function recentForSlot(
   recentFonts: readonly string[],
   slot: FontSlot,
   allFonts: readonly SystemFont[],
   query: string,
+  chips: readonly FontChip[],
 ): string[] {
   const q = query.trim().toLowerCase();
+  const monoDefault = slot === "code" && !chips.includes("all");
   return recentFonts.filter((name) => {
     if (q !== "" && !name.toLowerCase().includes(q)) return false;
-    if (slot === "code") return isMonospacedName(name, allFonts);
+    if (fontAvailability(name, allFonts) === "missing") return false;
+    if (monoDefault && !isMonospacedName(name, allFonts)) return false;
+    if (chips.includes("korean") && !hasKoreanName(name, allFonts))
+      return false;
+    if (chips.includes("mono") && !isMonospacedName(name, allFonts))
+      return false;
     return true;
   });
+}
+
+/** allFonts에서 이름을 찾아 한글 지원 여부를 판정한다. 열거에 없는 이름(번들
+ * 서체라 missing으로 걸러지지 않고 살아남았지만 이 머신의 열거에는 없는 경우)
+ * 은 판정 불가로 false — 모른다고 한글을 지원한다 주장하지 않는다. */
+function hasKoreanName(name: string, allFonts: readonly SystemFont[]): boolean {
+  const key = name.toLowerCase();
+  return allFonts.some((f) => f.name.toLowerCase() === key && f.hasKorean);
 }

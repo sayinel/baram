@@ -8,7 +8,7 @@
 // serif/sans 칩과 그 필드를 뺀다 — SystemFont에는 애초에 `serif`가 없다.
 import type { SystemFont } from "../../../ipc/types";
 
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { filterFonts, FontBrowser } from "../FontBrowser";
@@ -113,6 +113,71 @@ describe("FontBrowser", () => {
       screen.getByTestId("font-browser-recent-items").textContent ?? "";
     expect(recent).toContain("D2Coding");
     expect(recent).not.toContain("Georgia");
+  });
+
+  // fix round 1, Important 1 — chips must narrow all three groups, not just
+  // Included and Installed. Before the fix, Recent ignored `chips` entirely.
+  it("narrows the recent group when a chip is pressed, not just Included and Installed", () => {
+    render(
+      <FontBrowser
+        fonts={FONTS}
+        onClose={vi.fn()}
+        recentFonts={["Noto Sans KR", "Montserrat"]}
+        slot="body"
+      />,
+    );
+    let recent =
+      screen.getByTestId("font-browser-recent-items").textContent ?? "";
+    expect(recent).toContain("Noto Sans KR");
+    expect(recent).toContain("Montserrat");
+
+    fireEvent.click(screen.getByRole("button", { name: "Korean" }));
+
+    recent = screen.getByTestId("font-browser-recent-items").textContent ?? "";
+    expect(recent).toContain("Noto Sans KR");
+    expect(recent).not.toContain("Montserrat");
+  });
+
+  // fix round 1, Important 1 — the code slot's "all" escape hatch (pressing
+  // the Monospace chip again, since it starts implicitly active there) must
+  // lift the monospace default in Recent too, matching Installed.
+  it("lets the code slot's all chip lift the monospace default in Recent too", () => {
+    render(
+      <FontBrowser
+        fonts={FONTS}
+        onClose={vi.fn()}
+        recentFonts={["Georgia", "D2Coding"]}
+        slot="code"
+      />,
+    );
+    expect(
+      screen.getByTestId("font-browser-recent-items").textContent,
+    ).not.toContain("Georgia");
+
+    fireEvent.click(screen.getByRole("button", { name: "Monospace" }));
+
+    const recent =
+      screen.getByTestId("font-browser-recent-items").textContent ?? "";
+    expect(recent).toContain("Georgia");
+    expect(recent).toContain("D2Coding");
+  });
+
+  // controller ruling — a stale recent entry (chosen before, no longer on
+  // this machine) must not be presented as selectable-and-fine. Excluded
+  // from Recent once the enumeration is known-good, rather than badged.
+  it("excludes a stale recent entry no longer found on this machine", () => {
+    render(
+      <FontBrowser
+        fonts={FONTS}
+        onClose={vi.fn()}
+        recentFonts={["Comic Sans MS", "D2Coding"]}
+        slot="body"
+      />,
+    );
+    const recent =
+      screen.getByTestId("font-browser-recent-items").textContent ?? "";
+    expect(recent).toContain("D2Coding");
+    expect(recent).not.toContain("Comic Sans MS");
   });
 
   it("renders both slots in the preview so the pairing is visible", () => {
