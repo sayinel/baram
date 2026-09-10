@@ -202,16 +202,25 @@ export const PRINT_CSS = `
 /**
  * The complete stylesheet an exported document carries, in cascade order.
  *
- * Tokens first (everything below resolves `var()` against them), then the
+ * `fontFaceCSS` (§353, built by `export-font-embed.ts`'s `buildFontFaceCSS`)
+ * comes first — a `@font-face` declaration has to land before the rule that
+ * names the family in `font-family:` for the face to actually be found. Empty
+ * by default, so every existing caller (and every test that calls this with no
+ * arguments) is unaffected.
+ *
+ * Tokens next (everything below resolves `var()` against them), then the
  * editor's own appearance, then the export-only frame, then print. Exported as
  * one function so the tests can assert against exactly what ships rather than
  * against one of the pieces.
  */
-export function buildExportStylesheet(): string {
+export function buildExportStylesheet(fontFaceCSS = ""): string {
   return [
+    fontFaceCSS,
     exportTokensCSS(),
     editorContentCSS(),
     EXPORT_BASE_CSS.trim(),
     PRINT_CSS.trim(),
-  ].join("\n\n");
+  ]
+    .filter((block) => block !== "")
+    .join("\n\n");
 }

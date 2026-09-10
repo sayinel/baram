@@ -120,7 +120,7 @@ export const DOCUMENT_FONT_SURFACES: readonly FontSurface[] = [
   {
     id: "export-article",
     root: "article.baram-export",
-    where: "export-html.ts — Task 7, NOT YET WIRED",
+    where: "inline style attribute — generateStandaloneHTML in export-html.ts",
     which: "both",
   },
 ] as const;

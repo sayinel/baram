@@ -338,3 +338,9 @@
   line-height: 1.5;
   color: var(--color-text-muted);
 }
+
+/* §353 — the "Embed fonts" checkbox row, HTML format only. */
+.export-dialog-checkbox-label {
+  gap: 6px;
+  cursor: pointer;
+}

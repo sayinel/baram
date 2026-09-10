@@ -139,6 +139,8 @@
   "editor.surfaceError.reload": "Reload app",
   "editor.surfaceError.retry": "Retry",
   "editor.surfaceError.title": "This tab could not be opened",
+  "export.embedFonts": "Embed fonts (+2.7MB)",
+  "export.embedFonts.desc": "Keeps the typeface when the file is opened on another machine",
   "export.imagesLeftOut": "{count} image(s) were left out of the export. They point outside the note’s vault or folder, to a web address, or the file could not be read.",
   "export.imagesLeftOutUnscoped": "{count} image(s) were left out of the export. Relative image paths need the note to be saved inside an open vault or folder — save it there, or open its folder, and export again.",
   "fileEditor.conflict.keepLocal": "Keep Local",

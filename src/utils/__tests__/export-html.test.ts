@@ -130,6 +130,76 @@ describe("generateStandaloneHTML", () => {
   });
 });
 
+// §353 — the user's chosen fonts reach the exported document's article element.
+describe("generateStandaloneHTML — §353 font variables on the article element", () => {
+  it("declares both variables, user family first, when both are set", () => {
+    const html = generateStandaloneHTML("<p>x</p>", "Test", {
+      bodyFont: "Noto Sans KR",
+      codeFont: "D2Coding",
+    });
+    expect(html).toContain(
+      '<article class="baram-export" style="--font-family-editor:&quot;Noto Sans KR&quot;',
+    );
+    expect(html).toContain("--font-family-mono:&quot;D2Coding&quot;");
+  });
+
+  it("omits the style attribute entirely when no font is set (unchanged output)", () => {
+    const html = generateStandaloneHTML("<p>x</p>", "Test", {});
+    expect(html).toContain('<article class="baram-export">');
+    expect(html).not.toContain("style=");
+  });
+
+  // §353 review R10 — a family name is free text (the settings row accepts
+  // any string); an unescaped `"` would close the attribute early and let the
+  // rest of the value inject markup into a document handed to someone else.
+  // `quoteFamily` is no defense here: it escapes for a CSS <string> (`\"`),
+  // and a browser's HTML attribute parser does not know what a backslash is —
+  // a literal `"` closes `style="..."` whether or not one precedes it.
+  //
+  // The regex below is the discriminating instrument, not just an assertion
+  // helper: `[^"]*` reads only up to the first RAW quote. If escapeHTML were
+  // missing from the path, that first quote is the one `quoteFamily` put right
+  // after the colon, so the captured group would be the truncated
+  // `--font-family-editor:` — containing neither "Evil" nor "font" — and both
+  // assertions below would fail.
+  it("escapes a double quote in a font name so the style value is not truncated at it", () => {
+    const html = generateStandaloneHTML("<p>x</p>", "Test", {
+      bodyFont: 'Evil"font',
+    });
+    const styleValue = /style="([^"]*)"/.exec(html)?.[1] ?? "";
+    expect(styleValue).toContain("Evil");
+    expect(styleValue).toContain("font");
+  });
+
+  // Proves `escapeHTML` (which also escapes `<`/`>`) guards this attribute,
+  // not a hand-rolled quote-only escaper — `<`/`>` cannot break out of a
+  // double-quoted attribute, but the shared escaper is the one this repo's
+  // convention requires reusing, and it escapes all four characters together.
+  it("escapes < and > in a font name too", () => {
+    const html = generateStandaloneHTML("<p>x</p>", "Test", {
+      bodyFont: "<b>Bold</b> Sans",
+    });
+    const styleValue = /style="([^"]*)"/.exec(html)?.[1] ?? "";
+    expect(styleValue).toContain("&lt;b&gt;Bold&lt;/b&gt;");
+    expect(styleValue).not.toContain("<b>");
+  });
+
+  it("puts fontFaceCSS ahead of the rest of the stylesheet", () => {
+    const html = generateStandaloneHTML("<p>x</p>", "Test", {
+      fontFaceCSS: '@font-face{font-family:"Marker Face"}',
+    });
+    expect(html.indexOf("Marker Face")).toBeGreaterThan(-1);
+    expect(html.indexOf("Marker Face")).toBeLessThan(
+      html.indexOf("article.baram-export"),
+    );
+  });
+
+  it("leaves fontFaceCSS out when not provided (unchanged stylesheet)", () => {
+    const html = generateStandaloneHTML("<p>x</p>", "Test");
+    expect(html).not.toContain("data:font/woff2");
+  });
+});
+
 describe("captureEditorHTML — mermaid interactive UI stripping", () => {
   it("removes the shared media toolbar (AI / copy / expand buttons) but keeps the SVG", async () => {
     const dom = document.createElement("div");

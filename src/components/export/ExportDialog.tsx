@@ -9,6 +9,7 @@ import type { Editor } from "@tiptap/react";
 
 import { useShallow } from "zustand/shallow";
 
+import { useTranslation } from "../../i18n/useTranslation";
 import { detectPandoc } from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useSettingsStore } from "../../stores/settings/store";
@@ -117,18 +118,28 @@ export function ExportDialog({ editor }: ExportDialogProps) {
   const { activeTabId, tabs } = useEditorStore(
     useShallow((s) => ({ activeTabId: s.activeTabId, tabs: s.tabs })),
   );
-  const { pandocPath, wordTemplatePath, setWordTemplatePath } =
-    useSettingsStore(
-      useShallow((s) => ({
-        pandocPath: s.pandocPath,
-        wordTemplatePath: s.wordTemplatePath,
-        setWordTemplatePath: s.setWordTemplatePath,
-      })),
-    );
+  const { t } = useTranslation();
+  const {
+    codeFontFamily,
+    fontFamily,
+    pandocPath,
+    wordTemplatePath,
+    setWordTemplatePath,
+  } = useSettingsStore(
+    useShallow((s) => ({
+      codeFontFamily: s.codeFontFamily,
+      fontFamily: s.fontFamily,
+      pandocPath: s.pandocPath,
+      wordTemplatePath: s.wordTemplatePath,
+      setWordTemplatePath: s.setWordTemplatePath,
+    })),
+  );
   const [title, setTitle] = useState("Untitled");
   const [exporting, setExporting] = useState(false);
   const [paperSize, setPaperSize] = useState<"a4" | "letter">("a4");
   const [scale, setScale] = useState(100);
+  // §353 — HTML-only; PDF always embeds (embedFonts:true is fixed in exportAsPDF).
+  const [embedFonts, setEmbedFonts] = useState(false);
   const [errorMsg, setErrorMsg] = useState<null | string>(null);
   const [pandocInfo, setPandocInfo] = useState<null | PandocInfo>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
@@ -144,6 +155,7 @@ export function ExportDialog({ editor }: ExportDialogProps) {
       setExporting(false);
       setPaperSize("a4");
       setScale(100);
+      setEmbedFonts(false);
       setErrorMsg(null);
       setTimeout(() => {
         titleInputRef.current?.focus();
@@ -176,9 +188,18 @@ export function ExportDialog({ editor }: ExportDialogProps) {
     setErrorMsg(null);
     try {
       if (exportFormat === "html") {
-        await exportAsHTML(editor, title);
+        await exportAsHTML(editor, title, {
+          bodyFont: fontFamily,
+          codeFont: codeFontFamily,
+          embedFonts,
+        });
       } else if (exportFormat === "pdf") {
-        await exportAsPDF(editor, title, { paperSize, scale: scale / 100 });
+        await exportAsPDF(editor, title, {
+          paperSize,
+          scale: scale / 100,
+          bodyFont: fontFamily,
+          codeFont: codeFontFamily,
+        });
       } else if (exportFormat === "notion") {
         await exportForNotion(editor, title);
       } else if (isPandocFormat(exportFormat)) {
@@ -206,6 +227,9 @@ export function ExportDialog({ editor }: ExportDialogProps) {
     title,
     paperSize,
     scale,
+    embedFonts,
+    fontFamily,
+    codeFontFamily,
     pandocPath,
     pandocInfo,
     wordTemplatePath,
@@ -288,6 +312,22 @@ export function ExportDialog({ editor }: ExportDialogProps) {
               value={title}
             />
           </div>
+
+          {exportFormat === "html" && (
+            <div className="export-dialog-field">
+              <label className="export-dialog-label export-dialog-checkbox-label">
+                <input
+                  checked={embedFonts}
+                  onChange={(e) => setEmbedFonts(e.target.checked)}
+                  type="checkbox"
+                />
+                {t("export.embedFonts")}
+              </label>
+              <p className="export-dialog-notion-hint">
+                {t("export.embedFonts.desc")}
+              </p>
+            </div>
+          )}
 
           {exportFormat === "pdf" && (
             <div className="export-dialog-field">
