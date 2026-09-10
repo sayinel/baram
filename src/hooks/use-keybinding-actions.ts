@@ -300,15 +300,19 @@ export function useKeybindingActions({
 
     // M2-b4 같은 명령의 두 갈래 — 캡처창이면 태스크 모드 토글, 아니면 편집 모달.
     //
-    // ‼️ Fix-D finding beyond the brief's named list — reported, not silently
-    // gated: `tasks.taskInput` is genuinely ungated end-to-end (openTaskEdit →
-    // TaskEditDialog neither checks tasksEnabled), but `FEATURE_DISABLED_TOAST_KEY`
-    // has no `tasks` entry (feature-gate.ts, by design — no toast copy exists;
-    // the brief said not to invent one). Wrapping this in `featureReady("tasks")`
-    // would silently no-op instead — exactly the anti-pattern §18.19 결함 A
-    // forbids. Left ungated and named as an exception in
-    // use-keybinding-actions-feature-gate.test.ts pending a product decision
-    // (add tasks-disabled copy, or accept the gap).
+    // ‼️ Fix-D follow-up — team-lead overruled the earlier "leave ungated"
+    // exception once `space.tasks.disabled` existed (see feature-gate.ts):
+    // now gated below. Traced first, per team-lead's request, whether this
+    // shortcut is shared the way `journal.quickCapture` is (A2) — it turns
+    // out the SAME bound key also drives `taskMode.toggle()` inside
+    // QuickCaptureDialog.tsx (`findCommandByKey(...)?.id === TASK_INPUT_COMMAND`),
+    // a capture-window concern outside this file's ownership. That branch is
+    // NOT reachable through this handler — the `quickCaptureOpen` check below
+    // returns before any gate added here — so gating `openTaskEdit` cannot
+    // affect it either way. `openTaskEdit`/`taskEditOpen` themselves are read
+    // ONLY by `TaskEditDialog.tsx` (confirmed), so THIS branch is genuinely
+    // tasks-exclusive; the capture-window branch is a separate, untouched
+    // question for whoever owns that file.
     registerAction(TASK_INPUT_COMMAND, () => {
       const ui = useUIStore.getState();
       // ‼️ 캡처창의 핸들러는 `preventDefault`만 하고 전파를 막지 않는다. 이벤트는
@@ -320,6 +324,7 @@ export function useKeybindingActions({
       // 코드 어디에도 남지 않고, 다음 사람이 캡처창의 `stopPropagation` 한 줄을
       // 지우는 순간 같은 결함이 조용히 돌아온다.
       if (ui.quickCaptureOpen) return;
+      if (!featureReady("tasks")) return;
       // 대상이 될 수 없는 자리(코드블록·제목·표)에서는 모달이 스스로 닫는다. 여는
       // 판정을 여기서 한 번, 모달에서 또 한 번 하면 두 규칙이 갈라진다.
       ui.openTaskEdit();

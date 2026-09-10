@@ -316,3 +316,58 @@ describe("tasks.taskInput — 한 명령의 두 갈래", () => {
     expect(useUIStore.getState().taskEditOpen).toBe(false);
   });
 });
+
+// §338 — team-lead's ruling: gate tasks.taskInput now that `space.tasks.disabled`
+// exists, rather than leave it a named exception. Behavior, not presence: the
+// dialog must not open AND the toast must show — a scan proving the call site
+// "mentions featureReady" (use-keybinding-actions-feature-gate.test.ts) cannot
+// tell a correct gate from a broken one.
+describe("tasks.taskInput — feature-gated (§338, team-lead ruling on Fix D)", () => {
+  beforeEach(() => {
+    useUIStore.setState({
+      quickCaptureOpen: false,
+      taskEditOpen: false,
+      toast: null,
+    });
+    useSettingsStore.setState({ tasksEnabled: true, locale: "en" });
+  });
+
+  // ‼️ Split into two `it`s on purpose, not combined into one with two
+  // `expect`s: a failing `expect` throws and aborts the rest of the `it`, so
+  // a single combined test cannot tell "the block broke" from "the toast
+  // broke" — one mutation killing the first assertion would hide whether the
+  // second still held. Verified by mutation testing (see fix-d-report.md):
+  // removing only the `return` (keeping the `featureReady("tasks")` call)
+  // fails just "blocks", not "toasts" — the two are NOT the same fact.
+  // Removing the whole guard line kills both, which is expected: with no
+  // call to `featureReady` at all, neither the block nor its toast has
+  // anywhere left to come from.
+  it("blocks the dialog when tasks is disabled", () => {
+    useSettingsStore.setState({ tasksEnabled: false });
+    renderActionsHook(null);
+
+    act(() => getAction(TASK_INPUT_COMMAND)?.());
+
+    expect(useUIStore.getState().taskEditOpen).toBe(false);
+  });
+
+  it("toasts why when tasks is disabled", () => {
+    useSettingsStore.setState({ tasksEnabled: false });
+    renderActionsHook(null);
+
+    act(() => getAction(TASK_INPUT_COMMAND)?.());
+
+    expect(useUIStore.getState().toast?.message).toBe(
+      t("space.tasks.disabled", "en"),
+    );
+  });
+
+  it("opens the dialog and does not toast when tasks is enabled — positive control", () => {
+    renderActionsHook(null);
+
+    act(() => getAction(TASK_INPUT_COMMAND)?.());
+
+    expect(useUIStore.getState().taskEditOpen).toBe(true);
+    expect(useUIStore.getState().toast).toBeNull();
+  });
+});

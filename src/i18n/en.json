@@ -1074,6 +1074,7 @@
   "space.journal.disabled": "Enable Journal in Settings › Journal to use the Journal space.",
   "space.journal.noDirectory": "Set the Journal directory in Settings › Journal first.",
   "space.journal.openFailed": "Could not open today's journal. Check the Journal directory in Settings › Journal.",
+  "space.tasks.disabled": "Enable Tasks in Settings › Tasks to use this.",
   "space.zettel.directoryTaken": "{dir} is already open as “{label}”, so the Zettel directory was left unchanged.",
   "space.zettel.disabled": "Enable Zettel in Settings › Zettel to use the Zettel space.",
   "space.zettel.noDirectory": "Set the Zettel directory in Settings › Zettel first.",

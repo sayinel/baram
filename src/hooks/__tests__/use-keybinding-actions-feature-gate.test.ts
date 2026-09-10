@@ -11,9 +11,11 @@
 // instead (mirroring `nodeview-ai-menu-i18n.test.ts`'s technique for a
 // different function).
 //
-// ‼️ Two named exceptions exist, with reasons — not because the rule is wrong
-// for them, but because gating them the naive way would be worse than not
-// gating them. See EXCEPTIONS below.
+// ‼️ One named exception exists, with a reason — not because the rule is
+// wrong for it, but because gating it the naive way would be worse than not
+// gating it. See EXCEPTIONS below. (`tasks.taskInput` was a second exception
+// until `space.tasks.disabled` existed to gate it against — see
+// use-keybinding-actions.ts and feature-gate.ts.)
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -34,8 +36,6 @@ const REGISTRY_PATH = join("src", "keybindings", "keybinding-registry.ts");
 const EXCEPTIONS: Record<string, string> = {
   "journal.quickCapture":
     "A2 — capture is not exclusive to Journal or Tasks; this shortcut works regardless of either toggle (fix-d-brief.md A2).",
-  "tasks.taskInput":
-    'genuinely ungated (openTaskEdit/TaskEditDialog check nothing) — but `FEATURE_DISABLED_TOAST_KEY` has no `tasks` entry (feature-gate.ts, by design: no toast copy exists), so wrapping this in featureReady("tasks") would silently no-op instead of telling the user why, which §18.19 결함 A forbids. Reported in fix-d-report.md as a gap beyond this task\'s scope, not fixed here.',
 };
 
 /** `export const NAME = "value";` pairs from the registry — resolves the one

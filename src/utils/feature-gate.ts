@@ -15,37 +15,37 @@ import { useSettingsStore } from "../stores/settings/store";
 import { useUIStore } from "../stores/ui/ui";
 
 /**
- * 기능이 꺼졌을 때 보여줄 토스트 i18n 키.
+ * 기능이 꺼졌을 때 보여줄 토스트 i18n 키 — `FeatureKey` 전부.
  *
- * ‼️ `Partial`이다 — **`tasks`용 문구가 없다.** §341 당시 tasks는 소유한 네이티브
- * 메뉴 항목이 없어 토스트 문구를 만들 필요가 없었고, 이후로도 만든 적이 없다.
- * `Record<FeatureKey, string>`으로 좁히지 못하는 이유가 이거다 — 다섯 번째
- * `FeatureKey`가 생겨도 tsc는 이 맵의 누락을 잡지 못한다. 그 부재를 잡는 조건부
- * 검사는 `feature-gate.test.ts`의 파생 테스트다: `FeatureKey` 전체에서 여기 이름 붙은
- * 예외(`tasks`, 사유와 함께)를 뺀 나머지가 이 맵의 키 집합과 정확히 같아야 한다 —
- * 다섯 번째 멤버가 예외 없이 추가되면 그 테스트가 실패한다.
+ * ‼️ 한때 `Partial`이었다: `tasks`용 문구가 없었다(§341 당시 tasks는 소유한 네이티브
+ * 메뉴 항목이 없어 만들 필요가 없었고, 이후로도 안 만들었다). 그래서 다섯 번째
+ * `FeatureKey`가 생겨도 tsc가 이 맵의 누락을 못 잡았다 — 대신 파생 테스트가
+ * `FeatureKey` 전체와 이 맵의 키 집합이 (이름 붙은 예외를 빼고) 같은지 검사했다.
+ * `tasks.taskInput`(use-keybinding-actions.ts)이 이 문구를 필요로 하면서
+ * `space.tasks.disabled`를 만들었고, `Record`로 좁혔다 — 이제 다섯 번째 멤버는 tsc가
+ * **컴파일 시점에** 잡는다. 파생 테스트는 지웠다: 타입이 이미 증명하는 것을 런타임에
+ * 다시 확인할 이유가 없다.
  */
-export const FEATURE_DISABLED_TOAST_KEY: Partial<Record<FeatureKey, string>> = {
+export const FEATURE_DISABLED_TOAST_KEY: Record<FeatureKey, string> = {
   ai: "space.ai.disabled",
   journal: "space.journal.disabled",
+  tasks: "space.tasks.disabled",
   zettelkasten: "space.zettel.disabled",
 };
 
 /**
- * 기능이 켜져 있으면 true. 꺼져 있으면(그리고 토스트 문구가 있으면) 토스트를 띄우고
- * false.
+ * 기능이 켜져 있으면 true. 꺼져 있으면 토스트를 띄우고 false.
  *
- * ‼️ 문구가 없는 기능(현재 `tasks`)은 조용히 `false`만 돌려준다 — 그 호출부는
- * 스스로 판단해야 한다: 토스트 없이 막는 것이 조용한 무동작(§18.19 결함 A)이 되지
- * 않는지. 지금은 `tasks`로 이 함수를 부르는 호출부가 없다 — 있다면 그 결정과 이유를
- * 호출부 옆에 적을 것.
+ * ‼️ 모든 `FeatureKey`가 `FEATURE_DISABLED_TOAST_KEY`에 문구를 갖는다(위 타입이
+ * 보장한다) — 그래서 "문구가 없으면 조용히 막기만 한다"는 분기가 없다. 그 분기가
+ * 있던 시절 §18.19 결함 A(조용한 무동작)를 피하려고 tasks 관련 호출부 하나를
+ * 예외로 남겨 뒀었는데, 지금은 그 예외 자체가 없다.
  */
 export function featureReady(feature: FeatureKey): boolean {
   if (isFeatureEnabled(feature)) return true;
-  const toastKey = FEATURE_DISABLED_TOAST_KEY[feature];
-  if (toastKey) {
-    const { locale } = useSettingsStore.getState();
-    useUIStore.getState().showToast(t(toastKey, locale as Locale));
-  }
+  const { locale } = useSettingsStore.getState();
+  useUIStore
+    .getState()
+    .showToast(t(FEATURE_DISABLED_TOAST_KEY[feature], locale as Locale));
   return false;
 }
