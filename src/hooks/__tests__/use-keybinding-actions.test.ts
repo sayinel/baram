@@ -295,18 +295,37 @@ describe("zettelkasten.newNote — feature-gated (§338/I-6)", () => {
   });
 });
 
-describe("tasks.taskInput — 한 명령의 두 갈래", () => {
+// §338/Fix H follow-up — team-lead's own earlier fact ("quickCaptureOpen
+// checked before featureReady, so the dialog-open case never toasts") was
+// WRONG in the direction that matters: it meant Tasks off + capture open
+// used to toast (before Fix H existed at all), and swallowing that arm to
+// build Fix H's "no toast while capturing" test would have introduced a NEW
+// silent no-op instead — the dialog's own handler already swallows the
+// toggle (§338/Fix H, use-capture-task-mode.ts), and if this action's gate
+// ran second, it would never be reached either. §18.19 결함 A forbids this
+// exact shape, so `featureReady("tasks")` now runs FIRST — see the comment
+// at the registerAction call site for why the order itself is load-bearing.
+//
+// The 4 states below are exhaustive over {tasksEnabled, quickCaptureOpen},
+// not just the 2 the dual-dispatch shape happens to complicate.
+describe("tasks.taskInput — 한 명령의 두 갈래 (§338/Fix H)", () => {
   beforeEach(() => {
-    useUIStore.setState({ quickCaptureOpen: false, taskEditOpen: false });
+    useUIStore.setState({
+      quickCaptureOpen: false,
+      taskEditOpen: false,
+      toast: null,
+    });
+    useSettingsStore.setState({ tasksEnabled: true, locale: "en" });
   });
 
-  it("캡처창이 닫혀 있으면 편집 모달을 연다", () => {
+  it("tasks on, 캡처창 닫힘 → 편집 모달을 연다", () => {
     renderActionsHook(null);
     act(() => getAction(TASK_INPUT_COMMAND)?.());
     expect(useUIStore.getState().taskEditOpen).toBe(true);
+    expect(useUIStore.getState().toast).toBeNull();
   });
 
-  it("캡처창이 열려 있으면 모달을 열지 않는다", () => {
+  it("tasks on, 캡처창 열림 → 모달을 열지 않는다 (다이얼로그가 직접 처리)", () => {
     // ‼️ 캡처창의 핸들러는 `preventDefault`만 하고 전파를 막지 않아, 이 액션은 같은
     // 키 하나에 **함께** 불린다. 이 갈래가 없으면 태스크 모드가 켜지는 동시에 모달이
     // 뜨고, 거기서 저장한 태스크는 캡처와 무관한 현재 문서에 생긴다.
@@ -314,22 +333,32 @@ describe("tasks.taskInput — 한 명령의 두 갈래", () => {
     renderActionsHook(null);
     act(() => getAction(TASK_INPUT_COMMAND)?.());
     expect(useUIStore.getState().taskEditOpen).toBe(false);
+    expect(useUIStore.getState().toast).toBeNull();
   });
 
-  // §338/Fix H follow-up — the dual dispatch above (dialog's own handler +
-  // this global action, both reached from one keypress) is NOT two layers
-  // giving opposite answers: `quickCaptureOpen` is checked BEFORE
-  // `featureReady("tasks")` in the handler above, so this branch returns
-  // before ever reaching the toast. Confirmed empirically (not assumed) —
-  // if the two checks are ever reordered, this pins the toast staying silent
-  // while the dialog is open regardless of tasksEnabled.
-  it("캡처창이 열려 있으면 tasks가 꺼져 있어도 토스트를 띄우지 않는다", () => {
-    useUIStore.setState({ quickCaptureOpen: true, toast: null });
+  it("tasks off, 캡처창 닫힘 → 토스트만 뜨고 모달은 안 연다", () => {
     useSettingsStore.setState({ tasksEnabled: false });
     renderActionsHook(null);
     act(() => getAction(TASK_INPUT_COMMAND)?.());
     expect(useUIStore.getState().taskEditOpen).toBe(false);
-    expect(useUIStore.getState().toast).toBeNull();
+    expect(useUIStore.getState().toast?.message).toBe(
+      t("space.tasks.disabled", "en"),
+    );
+  });
+
+  // The previously-silent state: before this fix, Tasks off + capture open
+  // toggled nothing (the dialog's own gate, §338/Fix H) AND toasted nothing
+  // (this action's gate was checked second, after quickCaptureOpen already
+  // returned) — a silent no-op, §18.19 결함 A.
+  it("tasks off, 캡처창 열림 → 토스트가 뜬다 (예전엔 조용한 무동작이었다)", () => {
+    useUIStore.setState({ quickCaptureOpen: true });
+    useSettingsStore.setState({ tasksEnabled: false });
+    renderActionsHook(null);
+    act(() => getAction(TASK_INPUT_COMMAND)?.());
+    expect(useUIStore.getState().taskEditOpen).toBe(false);
+    expect(useUIStore.getState().toast?.message).toBe(
+      t("space.tasks.disabled", "en"),
+    );
   });
 });
 

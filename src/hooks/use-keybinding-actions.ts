@@ -306,15 +306,27 @@ export function useKeybindingActions({
     // shortcut is shared the way `journal.quickCapture` is (A2) — it turns
     // out the SAME bound key also drives `taskMode.toggle()` inside
     // QuickCaptureDialog.tsx (`findCommandByKey(...)?.id === TASK_INPUT_COMMAND`),
-    // a capture-window concern outside this file's ownership. That branch is
-    // NOT reachable through this handler — the `quickCaptureOpen` check below
-    // returns before any gate added here — so gating `openTaskEdit` cannot
-    // affect it either way. `openTaskEdit`/`taskEditOpen` themselves are read
-    // ONLY by `TaskEditDialog.tsx` (confirmed), so THIS branch is genuinely
-    // tasks-exclusive; the capture-window branch is a separate, untouched
-    // question for whoever owns that file.
+    // a capture-window concern outside this file's ownership (gated
+    // separately at its own chokepoint, §338/Fix H,
+    // use-capture-task-mode.ts). `openTaskEdit`/`taskEditOpen` themselves are
+    // read ONLY by `TaskEditDialog.tsx` (confirmed), so THIS branch is
+    // genuinely tasks-exclusive.
+    //
+    // ‼️ Fix-H follow-up — the guard ORDER below is load-bearing, not just the
+    // two guards' presence. `featureReady("tasks")` must run BEFORE the
+    // `quickCaptureOpen` check, not after: with the capture dialog open, this
+    // whole action is reached (the dialog's own handler doesn't stop
+    // propagation — see its comment), and if `quickCaptureOpen` were checked
+    // first, THIS gate would never run while the dialog is open — Tasks off
+    // + capture open would then toggle nothing (the dialog's own gate,
+    // §338/Fix H, correctly swallows the toggle) AND toast nothing (this
+    // gate never reached), which is exactly the silent no-op §18.19 결함 A
+    // forbids. Gate first so the disabled case is HEARD; only once the
+    // feature is confirmed on does the dual-dispatch branch decide whether
+    // this action or the dialog's own handler owns the keypress.
     registerAction(TASK_INPUT_COMMAND, () => {
       const ui = useUIStore.getState();
+      if (!featureReady("tasks")) return;
       // ‼️ 캡처창의 핸들러는 `preventDefault`만 하고 전파를 막지 않는다. 이벤트는
       // window 리스너까지 그대로 올라오므로, 이 갈래를 여기서 명시하지 않으면 한 번
       // 누를 때 **둘 다** 일어난다 — 태스크 모드가 켜지는 동시에 모달이 뜨고, 거기서
@@ -324,7 +336,6 @@ export function useKeybindingActions({
       // 코드 어디에도 남지 않고, 다음 사람이 캡처창의 `stopPropagation` 한 줄을
       // 지우는 순간 같은 결함이 조용히 돌아온다.
       if (ui.quickCaptureOpen) return;
-      if (!featureReady("tasks")) return;
       // 대상이 될 수 없는 자리(코드블록·제목·표)에서는 모달이 스스로 닫는다. 여는
       // 판정을 여기서 한 번, 모달에서 또 한 번 하면 두 규칙이 갈라진다.
       ui.openTaskEdit();
