@@ -213,6 +213,88 @@ describe("journal.openToday — unconfigured feedback", () => {
   });
 });
 
+// §338/I-6 — `journal.memories` used to open the right panel unconditionally,
+// giving a disabled Journal a reachable, non-vacuous state (C-2). It now goes
+// through `featureReady("journal")`, which is the "render" half of the
+// completeness pair described in use-keybinding-actions-feature-gate.test.ts
+// (that file's scan proves the call MENTIONS featureReady; this proves it
+// actually blocks the action AND tells the user why — and the positive
+// control proves the gate does not also block the enabled case).
+describe("journal.memories — feature-gated (§338/I-6)", () => {
+  beforeEach(() => {
+    useUIStore.setState({
+      rightPanelOpen: false,
+      rightPanelMode: "chat",
+      toast: null,
+    });
+    useSettingsStore.setState({ journalEnabled: true, locale: "en" });
+  });
+
+  it("does not open the panel and toasts when journal is disabled", () => {
+    useSettingsStore.setState({ journalEnabled: false });
+    renderActionsHook(null);
+
+    act(() => getAction("journal.memories")?.());
+
+    const ui = useUIStore.getState();
+    expect(ui.rightPanelOpen).toBe(false);
+    expect(ui.rightPanelMode).toBe("chat");
+    expect(ui.toast?.message).toBe(t("space.journal.disabled", "en"));
+  });
+
+  it("opens the memories panel and does not toast when journal is enabled", () => {
+    renderActionsHook(null);
+
+    act(() => getAction("journal.memories")?.());
+
+    const ui = useUIStore.getState();
+    expect(ui.rightPanelOpen).toBe(true);
+    expect(ui.rightPanelMode).toBe("memories");
+    expect(ui.toast).toBeNull();
+  });
+});
+
+// §338/I-6 — the 4 zettelkasten.* actions already checked `zettelkastenEnabled`
+// before this fix, but silently (`logger.warn`, no toast) — itself forbidden
+// by §18.19 결함 A, the same rule §85 already applied to journal.openToday.
+// `zettelkasten.newNote` is the simplest of the 4 to drive as a real behavior
+// test; the other 3 share the same `featureReady("zettelkasten")` call
+// (proven by the source scan) and their own pre-existing directory/tab checks
+// (proven by the zettelkasten.newFromSelection suite above).
+describe("zettelkasten.newNote — feature-gated (§338/I-6)", () => {
+  beforeEach(() => {
+    useUIStore.getState().closeZettelTitleDialog();
+    useUIStore.setState({ toast: null });
+    useSettingsStore.setState({
+      zettelkastenEnabled: true,
+      zettelkastenDirectory: "/vault/zettel",
+      locale: "en",
+    });
+    useFileStore.getState().setRootPath("/vault");
+  });
+
+  it("does not open the title dialog and toasts when zettelkasten is disabled", () => {
+    useSettingsStore.setState({ zettelkastenEnabled: false });
+    renderActionsHook(null);
+
+    act(() => getAction("zettelkasten.newNote")?.());
+
+    expect(useUIStore.getState().zettelTitleDialog.open).toBe(false);
+    expect(useUIStore.getState().toast?.message).toBe(
+      t("space.zettel.disabled", "en"),
+    );
+  });
+
+  it("opens the title dialog and does not toast when zettelkasten is enabled", () => {
+    renderActionsHook(null);
+
+    act(() => getAction("zettelkasten.newNote")?.());
+
+    expect(useUIStore.getState().zettelTitleDialog.open).toBe(true);
+    expect(useUIStore.getState().toast).toBeNull();
+  });
+});
+
 describe("tasks.taskInput — 한 명령의 두 갈래", () => {
   beforeEach(() => {
     useUIStore.setState({ quickCaptureOpen: false, taskEditOpen: false });

@@ -23,19 +23,18 @@ describe("space.ai.disabled catalog entry (§341)", () => {
   });
 });
 
-// ‼️ 액션 자체의 동작 단정은 `use-keybinding-actions.ts` 가 614줄이고
-// `registerAction` 레지스트리를 통해서만 닿으므로, 가드 존재는 소스 스캔으로
-// 고정한다. 헬퍼는 한 번만 정의되므로(§341 계획의 Ruling 1) 두 갈래로 나눈다:
-// call site는 `aiReady()` 호출 여부만, 헬퍼 자체는 그 안의 술어·토스트를 본다.
-// 이렇게 하면 `insert.inlineAI`에서 가드를 지우는 뮤테이션이 그 액션의
-// 단정만 깨뜨리고, 헬퍼 정의를 바꾸는 뮤테이션은 헬퍼 단정만 깨뜨린다.
+// ‼️ §338/M-3 update: the local `aiReady()` helper this file used to pin was
+// consolidated into the shared `featureReady()` (utils/feature-gate.ts, used
+// by both use-keybinding-actions.ts and use-menu-event-handler.ts) — its own
+// predicate/toast behavior is now pinned in feature-gate.test.ts instead.
 //
-// ‼️ 슬라이스는 다음 `registerAction(` 등장 지점에서 끊는다 — 고정폭 윈도우(예:
-// 600자)는 액션이 서로 가까이 붙어 있는 이 파일에서 다음 액션의 `aiReady()`
-// 호출까지 자기 몸통인 것처럼 읽어 뮤테이션을 무죄로 만든다(실측: `insert.inlineAI`의
-// 가드를 지웠는데도 600자 윈도우가 바로 다음 `ai.chatPanel`의 `aiReady()`를
-// 집어 그린으로 남았다).
-describe("AI keybinding actions are guarded (§341)", () => {
+// This file keeps ONE thing feature-gate.ts's own tests and
+// use-keybinding-actions-feature-gate.test.ts's PREFIX-derived scan cannot:
+// `insert.inlineAI` is registered under the "insert" category, not "ai.", so
+// a scan that derives its call list from the id prefix `ai.` structurally
+// cannot see it (the same gap this file's original comment already named:
+// "category로 열거하면 놓친다"). It is pinned here, by name, on purpose.
+describe("AI keybinding actions are guarded (§341/§338)", () => {
   const src = readFileSync(
     join(process.cwd(), "src/hooks/use-keybinding-actions.ts"),
     "utf8",
@@ -47,7 +46,7 @@ describe("AI keybinding actions are guarded (§341)", () => {
     return nextIdx === -1 ? src.slice(idx) : src.slice(idx, nextIdx);
   }
 
-  it("each AI action calls the aiReady() guard", () => {
+  it("each AI action calls the featureReady guard", () => {
     // ‼️ `insert.inlineAI` 는 category 가 "insert" 다 — category로 열거하면 놓친다
     for (const id of [
       "ai.chatPanel",
@@ -58,21 +57,9 @@ describe("AI keybinding actions are guarded (§341)", () => {
       const idx = src.indexOf(`registerAction("${id}"`);
       expect(idx, `${id} must be registered`).toBeGreaterThan(-1);
       const body = sliceOwnBody(idx);
-      expect(body, `${id} must call the aiReady() guard`).toMatch(
-        /aiReady\(\)/,
+      expect(body, `${id} must call the featureReady guard`).toMatch(
+        /featureReady\("ai"\)/,
       );
     }
-  });
-
-  it("the aiReady() helper checks the ai flag and toasts why", () => {
-    const idx = src.indexOf("const aiReady = () => {");
-    expect(idx, "aiReady helper must be defined").toBeGreaterThan(-1);
-    const helper = sliceOwnBody(idx);
-    expect(helper, 'helper must check isFeatureEnabled("ai")').toMatch(
-      /isFeatureEnabled\("ai"\)/,
-    );
-    expect(helper, "helper must say why nothing happened").toContain(
-      "space.ai.disabled",
-    );
   });
 });
