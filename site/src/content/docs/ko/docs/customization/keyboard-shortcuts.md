@@ -150,9 +150,9 @@ vim 모드는 그것을 아예 보지 못하므로(그쪽에서 `Cmd`는 vim의 
 | 동작                | macOS          | Windows / Linux |
 | ------------------- | -------------- | --------------- |
 | 글쓰기 화면구성     | `Cmd+Option+1` | `Ctrl+Alt+1`    |
-| Zettel 화면구성     | `Cmd+Option+2` | `Ctrl+Alt+2`    |
+| 제텔 화면구성       | `Cmd+Option+2` | `Ctrl+Alt+2`    |
 | 저널 화면구성       | `Cmd+Option+3` | `Ctrl+Alt+3`    |
-| Skills 화면구성     | `Cmd+Option+4` | `Ctrl+Alt+4`    |
+| 스킬 편집 화면구성  | `Cmd+Option+4` | `Ctrl+Alt+4`    |
 
 > 넷 다 **설정 > 단축키**의 **화면구성** 분류에서 조정할 수 있습니다. 공간을 바꿔도 열려 있는 폴더 트리를 강제로 닫지는 않습니다.
 
