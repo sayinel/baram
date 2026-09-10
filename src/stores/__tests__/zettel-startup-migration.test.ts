@@ -32,15 +32,32 @@ describe("settings store v23 -> v24 (§344 openInbox -> openHomeNote)", () => {
     expect(result.zettelkastenStartupBehavior).toBe("nothing");
   });
 
-  it("backfills v14-era state with the NEW value, not the old literal", () => {
-    // ‼️ v14 백필(store.ts)이 옛 리터럴을 다시 심으면 리터럴이 두 곳에 남는다
+  it("a v13-era install with nothing persisted ends up on openHomeNote through the whole chain", () => {
+    // v14's backfill and v24's remap both fire inside this one migrate()
+    // call, so this only proves the FINAL value is right — it does not
+    // prove the v14 backfill itself writes the new literal. If v14 wrote
+    // the old literal instead, v24 would silently fix it up right after in
+    // the same call and this assertion would still pass. The v14 literal's
+    // singularity is guarded by the scan test below, not by this one.
     const result = migrate({}, 13) as {
       zettelkastenStartupBehavior?: string;
     };
     expect(result.zettelkastenStartupBehavior).toBe("openHomeNote");
   });
 
-  it("bumps the store version to 24 exactly once", () => {
+  it("a v13-era install already persisted with openInbox also ends up on openHomeNote", () => {
+    // Distinguishes from the case above: here the key IS already defined
+    // on disk (a real, persistable v13-era value — this field is in the
+    // partialize allowlist), so v14's `=== undefined` guard must SKIP
+    // entirely and the conversion must come from the v24 remap alone.
+    const result = migrate(
+      { zettelkastenStartupBehavior: "openInbox" },
+      13,
+    ) as { zettelkastenStartupBehavior?: string };
+    expect(result.zettelkastenStartupBehavior).toBe("openHomeNote");
+  });
+
+  it("the store is at version 24", () => {
     expect(useSettingsStore.persist.getOptions().version).toBe(24);
   });
 
