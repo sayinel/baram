@@ -78,6 +78,41 @@ describe("settings store v23 -> v24 (§344 openInbox -> openHomeNote)", () => {
   });
 });
 
+// §92 / Fix E (M-2, A4): the v13 -> v14 block backfills FOUR fields, each behind its
+// own `=== undefined` guard — only `zettelkastenStartupBehavior`'s guard had a
+// dedicated pin (the "explicitly chose 'nothing' keeps it" case above). The other
+// three (`zettelkastenEnabled`, `zettelkastenDirectory`, `zettelkastenHomeNote`) had
+// none, so a guard silently turned into an unconditional assignment for any of them
+// would have clobbered a real v13-era value and nothing would have caught it.
+describe("settings store v13 -> v14 (§92 Zettelkasten additive backfill)", () => {
+  it("preserves all four explicitly-persisted v13 values, none replaced by their v14 default", () => {
+    // Every value here is chosen to differ from its v14 default (enabled: false,
+    // directory: "", startupBehavior: "openHomeNote", homeNote: "") — otherwise an
+    // unconditional-assignment mutation of that field would coincidentally produce
+    // the same result and the assertion would pass vacuously for it.
+    const result = migrate(
+      {
+        zettelkastenDirectory: "/custom/zettel",
+        zettelkastenEnabled: true,
+        zettelkastenHomeNote: "home.md",
+        zettelkastenStartupBehavior: "nothing",
+      },
+      13,
+    ) as {
+      zettelkastenDirectory?: string;
+      zettelkastenEnabled?: boolean;
+      zettelkastenHomeNote?: string;
+      zettelkastenStartupBehavior?: string;
+    };
+    expect(result).toMatchObject({
+      zettelkastenDirectory: "/custom/zettel",
+      zettelkastenEnabled: true,
+      zettelkastenHomeNote: "home.md",
+      zettelkastenStartupBehavior: "nothing",
+    });
+  });
+});
+
 describe("the old literal survives in exactly one place (§344)", () => {
   /**
    * 이 스캔 테스트 자신은 제외한다 — 이 파일의 describe/it 이름과 주석은 옛 이름을
