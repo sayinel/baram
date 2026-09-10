@@ -519,11 +519,11 @@
           "type": "fontFamily"
         },
         "mono": {
-          "value": "JetBrains Mono, Fira Code, SF Mono, ui-monospace, monospace",
+          "value": "JetBrains Mono Variable, JetBrains Mono, Fira Code, SF Mono, ui-monospace, monospace",
           "type": "fontFamily"
         },
         "editor": {
-          "value": "Pretendard, Inter, -apple-system, system-ui, sans-serif",
+          "value": "Pretendard Variable, Pretendard, -apple-system, system-ui, sans-serif",
           "type": "fontFamily"
         }
       },

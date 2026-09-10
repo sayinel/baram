@@ -3,8 +3,8 @@
     "family": {
       "$type": "fontFamily",
       "sans":   { "$value": "Inter, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif" },
-      "mono":   { "$value": "JetBrains Mono, Fira Code, SF Mono, ui-monospace, monospace" },
-      "editor": { "$value": "Pretendard, Inter, -apple-system, system-ui, sans-serif" }
+      "mono":   { "$value": "JetBrains Mono Variable, JetBrains Mono, Fira Code, SF Mono, ui-monospace, monospace" },
+      "editor": { "$value": "Pretendard Variable, Pretendard, -apple-system, system-ui, sans-serif" }
     },
     "size": {
       "$type": "dimension",

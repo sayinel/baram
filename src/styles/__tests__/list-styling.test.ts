@@ -209,11 +209,13 @@ describe("list geometry", () => {
   it("measures the ordered gutter in ch, and steps it in source order", () => {
     // Two separate ways this rule set breaks silently.
     //
-    // ONE — a digit width written in `em` is a guess about a font this app does not ship.
-    // `--font-family-editor` names Pretendard and Inter but there is no @font-face and no
-    // bundled file, so on a machine with neither it renders in `-apple-system`. `ch` is the
-    // font's own "0" advance, so the gutter is correct on every machine instead of on the
-    // author's. Any ordered gutter that widens for digits must therefore use `ch`.
+    // ONE — a digit width written in `em` is a guess about whichever font actually renders.
+    // Since §347 the app bundles Pretendard Variable and declares its @font-face, but `em`
+    // is still a guess: it scales with the *loaded* font's digit width, and that is only
+    // Pretendard's on a machine where the bundled face actually took over the fallback
+    // stack. `ch` is the font's own "0" advance, so the gutter is correct on every machine
+    // instead of on the author's. Any ordered gutter that widens for digits must therefore
+    // use `ch`.
     //
     // Scoped to the rules that WIDEN for digits. The base `.tiptap ul, .tiptap ol` floor is
     // a plain `1.4em` and correctly so — it is the bullet-list indent, not a digit
