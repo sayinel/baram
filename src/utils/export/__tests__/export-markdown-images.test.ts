@@ -91,10 +91,12 @@ describe("classifyImageSource", () => {
 
   it("resolves the scope from the document path and the context root, or not at all", () => {
     expect(relativeScope("/vault/notes/today.md", "/vault/")).toEqual({
+      caseInsensitive: false,
       documentDir: "/vault/notes",
       root: "/vault",
     });
     expect(relativeScope("C:\\vault\\notes\\today.md", "C:\\vault")).toEqual({
+      caseInsensitive: true,
       documentDir: "C:/vault/notes",
       root: "C:/vault",
     });
@@ -331,5 +333,90 @@ describe("stageMarkdownImages", () => {
       stageMarkdownImages("[![^x](../../s.png)][r]\n\n[r]: https://x\n", SAVED)
         .markdown,
     ).toBe("[\\^x][r]\n\n[r]: https://x\n");
+  });
+
+  it("stages an absolute path that stays inside the context and refuses one that leaves it", () => {
+    // Before this change an absolute path was the only form that ever
+    // embedded; inside the vault it still does.
+    expect(classifyImageSource("/vault/img/a.png", IN_VAULT, KNOWN)).toEqual({
+      kind: "stage",
+      source: "/vault/img/a.png",
+    });
+    expect(
+      classifyImageSource("%2Fvault%2Fimg%2Fa.png", IN_VAULT, KNOWN),
+    ).toEqual({
+      kind: "stage",
+      source: "%2Fvault%2Fimg%2Fa.png",
+    });
+    // What the escapes hid is an absolute path outside the vault — judged as
+    // one here, so the backend does not have to fail the export over it.
+    for (const url of [
+      "%2Fetc%2Fhosts",
+      "/vault2/x.png",
+      "/vault/../etc/hosts",
+      "%2F%2Fhost%2Fx.png",
+    ]) {
+      expect(classifyImageSource(url, IN_VAULT, KNOWN), url).toEqual({
+        kind: "refuse",
+      });
+    }
+    const { images, markdown } = stageMarkdownImages(
+      "![a](/vault/img/a.png)\n",
+      SAVED,
+    );
+    expect(markdown).toBe("![a](baram-asset:image-0.png)\n");
+    expect(images).toEqual([
+      { name: "image-0.png", source: "/vault/img/a.png" },
+    ]);
+  });
+
+  it("compares Windows paths without regard to case", () => {
+    const scope = relativeScope("c:\\vault\\notes\\today.md", "C:\\Vault");
+    expect(classifyImageSource("img/a.png", scope, KNOWN)).toEqual({
+      kind: "stage",
+      source: "img/a.png",
+    });
+    expect(
+      classifyImageSource("C:\\VAULT\\img\\a.png", scope, KNOWN).kind,
+    ).toBe("stage");
+    expect(classifyImageSource("D:\\vault\\img\\a.png", scope, KNOWN)).toEqual({
+      kind: "refuse",
+    });
+  });
+
+  it("turns the editor's resized <img> tag into a staged image with its width, or into alt text", () => {
+    const { images, markdown, refused } = stageMarkdownImages(
+      'a <img src="img/a.png" alt="A" title="T" width="640"> b\n\n<img src="img/b.png" width="50%">\n\n<img src="/etc/hosts" alt="hosts">\n\n<img src="img/c.png" loading="lazy">\n',
+      SAVED,
+    );
+    expect(markdown).toBe(
+      'a ![A](baram-asset:image-0.png "T"){width=640px} b\n\n![](baram-asset:image-1.png){width=50%}\n\nhosts\n\n<img src="img/c.png" loading="lazy">\n',
+    );
+    expect(images).toEqual([
+      { name: "image-0.png", source: "img/a.png" },
+      { name: "image-1.png", source: "img/b.png" },
+    ]);
+    // The tag the editor could not represent is left alone; the refused one counted.
+    expect(refused).toBe(1);
+  });
+
+  it("counts what became alt text and says whether there was a context at all", () => {
+    const md = "![a](img/a.png) ![b](/etc/hosts) ![c](https://x/y.png)\n";
+    expect(stageMarkdownImages(md, SAVED)).toMatchObject({
+      refused: 2,
+      scoped: true,
+    });
+    expect(stageMarkdownImages(md, UNSAVED)).toMatchObject({
+      refused: 3,
+      scoped: false,
+    });
+    expect(stageMarkdownImages(md, LONE)).toMatchObject({
+      refused: 3,
+      scoped: false,
+    });
+    expect(stageMarkdownImages("text\n", SAVED)).toMatchObject({
+      refused: 0,
+      scoped: true,
+    });
   });
 });

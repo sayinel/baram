@@ -191,7 +191,6 @@ export function ExportDialog({ editor }: ExportDialogProps) {
           pandocPath: pandocInfo?.path || pandocPath || undefined,
           referenceDoc:
             exportFormat === "docx" ? wordTemplatePath || undefined : undefined,
-          tabContextId: activeTab?.contextId || undefined,
         });
       }
       closeExportDialog();

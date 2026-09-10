@@ -1,7 +1,7 @@
 // §55 Pandoc Extended Export — Pandoc 감지, 실행, 커스텀 Export
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::process::Command;
 use tempfile::tempdir;
@@ -81,8 +81,8 @@ pub(super) fn is_safe_asset_name(name: &str) -> bool {
         .any(|c| c == '/' || c == '\\' || c == '<' || c == '>' || c.is_control())
         || name.ends_with('.')
         || name.ends_with(' ')
-        || name == INPUT_FILE_NAME
-        || name == POLICY_FILTER_NAME
+        || name.eq_ignore_ascii_case(INPUT_FILE_NAME)
+        || name.eq_ignore_ascii_case(POLICY_FILTER_NAME)
     {
         return false;
     }
@@ -106,29 +106,57 @@ const INPUT_FILE_NAME: &str = "baram-pandoc-input.md";
 const POLICY_FILTER_NAME: &str = "baram-export-policy.lua";
 
 /// issue 545: what pandoc may read is decided by the app, never by the
-/// document — and the markdown image pass on the frontend sees markdown
-/// images only. Two more ways a document can hand pandoc a file path are
-/// closed here, on pandoc's own parse of the document, so its reader and not
-/// a second parser decides what is raw HTML and what is metadata:
+/// document. The markdown image pass on the frontend sees markdown images
+/// only; this filter runs on pandoc's OWN parse of the document, so its
+/// reader and not a second parser decides what is an image, what is raw
+/// HTML and what is metadata:
 ///
-/// - Raw HTML is dropped. The epub writer turns `<img src>`, `<video>`,
-///   `<object>` and the rest into embedded files (verified on pandoc 3.11 —
-///   `<img src="/etc/passwd">` landed in `EPUB/media/`), and fetches an
-///   `https:` one. The docx, latex and rst writers ignored raw HTML already,
-///   so only EPUB output changes: raw HTML written into a note no longer
-///   passes through to it.
+/// - Every `Image` whose source is not one of the paths this export bound
+///   (`ALLOWED`, generated per export) becomes its alt text. That closes what
+///   no string pass can see — markdown pandoc re-parses inside an HTML block
+///   (`<div>` … `![](/outside)` … `</div>`, one `html` node to remark) — and
+///   any other way a path could reach the markdown string.
+/// - Every `Link` whose target has a scheme outside the app's link policy
+///   (`isAllowedLinkHref`, src/utils/link-href.ts) becomes its label, for the
+///   same reason: the frontend's link pass sees markdown links only.
+/// - Raw HTML is dropped, except that `<br>` becomes a line break. The epub
+///   writer turns `<img src>`, `<video>`, `<object>` and the rest into
+///   embedded files (verified on pandoc 3.11 — `<img src="/etc/passwd">`
+///   landed in `EPUB/media/`) and fetches an `https:` one. The docx, latex
+///   and rst writers ignored raw HTML already, so only EPUB output changes:
+///   raw HTML written into a note no longer passes through to it. `<br>` is
+///   what the editor writes for a line break inside a table cell, so it is
+///   kept as the break it means — in docx too, which dropped it before.
 /// - Metadata keys that name a file are dropped. A note's YAML frontmatter is
 ///   pandoc metadata, and `cover-image` and `css` make the epub writer read
 ///   those paths.
-const POLICY_FILTER: &str = r#"-- issue 545 (Baram): pandoc reads only what the app staged for it.
+const POLICY_FILTER_BODY: &str = r#"
+local LINK_SCHEMES = {
+  http = true, https = true, ftp = true, ftps = true, mailto = true,
+  tel = true, callto = true, sms = true, cid = true, xmpp = true, matrix = true,
+}
+local function link_allowed(target)
+  if target == nil or target == "" then return true end
+  if target:match("^[/\\][/\\]") then return false end
+  local scheme = target:match("^([%a][%w+.-]*):")
+  if scheme == nil then return true end
+  return LINK_SCHEMES[scheme:lower()] == true
+end
 local function drop_html(el)
   if el.format == "html" or el.format == "html5" or el.format == "html4" then
+    if el.text:match("^<[Bb][Rr]%s*/?>$") then return pandoc.LineBreak() end
     return {}
   end
 end
 local FILE_KEYS = { "cover-image", "epub-cover-image", "css", "stylesheet", "bibliography", "csl" }
 return {
   {
+    Image = function(el)
+      if not ALLOWED[el.src] then return el.caption end
+    end,
+    Link = function(el)
+      if not link_allowed(el.target) then return el.content end
+    end,
     RawInline = drop_html,
     RawBlock = drop_html,
     Meta = function(meta)
@@ -140,6 +168,36 @@ return {
   },
 }
 "#;
+
+/// The policy filter for one export: the paths its images may have, then the
+/// body above. A path is written as a Lua string with only `\` and `"`
+/// escaped — asset names admit no control character or quote-like trouble
+/// (`is_safe_asset_name`), and the temporary directory comes from the OS.
+fn policy_filter(allowed_paths: &[&str]) -> String {
+    let mut lua = String::from(
+        "-- issue 545 (Baram): pandoc reads only what the app staged for it.\nlocal ALLOWED = {\n",
+    );
+    for path in allowed_paths {
+        let escaped = path.replace('\\', "\\\\").replace('"', "\\\"");
+        lua.push_str(&format!("  [\"{escaped}\"] = true,\n"));
+    }
+    lua.push_str("}\n");
+    lua.push_str(POLICY_FILTER_BODY);
+    lua
+}
+
+/// A bound path as it is written into the markdown destination and the
+/// filter's allowlist: forward slashes on Windows. A backslash before
+/// punctuation is an escape in a markdown destination (`Temp\.tmpAbc` would
+/// read as `Temp.tmpAbc`), and Windows opens either separator.
+fn markdown_path(path: &Path) -> String {
+    let text = path.to_string_lossy();
+    if cfg!(windows) {
+        text.replace('\\', "/")
+    } else {
+        text.into_owned()
+    }
+}
 
 /// Names Windows reserves for devices, with any extension (`CON.png` too).
 const WINDOWS_DEVICE_NAMES: &[&str] = &[
@@ -341,8 +399,20 @@ pub fn run_pandoc(
     // 1. Write markdown (with assets) to temp dir
     let tmp_dir = tempdir().map_err(|e| ExportError::TempFileError(e.to_string()))?;
 
-    // 1a. Write each asset next to the input and map name -> absolute path
+    // 1a. Write each asset next to the input and map name -> absolute path.
+    // Names are taken case-insensitively: on a case-insensitive volume two
+    // spellings are one file, and the second write would replace the first.
     let mut name_to_path: HashMap<String, String> = HashMap::new();
+    let mut taken: HashSet<String> = HashSet::new();
+    let mut take = |name: &str| -> Result<(), ExportError> {
+        if taken.insert(name.to_ascii_lowercase()) {
+            Ok(())
+        } else {
+            Err(ExportError::TempFileError(format!(
+                "Duplicate asset name: {name}"
+            )))
+        }
+    };
     for asset in assets {
         if !is_safe_asset_name(&asset.name) {
             return Err(ExportError::TempFileError(format!(
@@ -350,32 +420,24 @@ pub fn run_pandoc(
                 asset.name
             )));
         }
+        take(&asset.name)?;
         let asset_path = tmp_dir.path().join(&asset.name);
         std::fs::write(&asset_path, &asset.data)
             .map_err(|e| ExportError::TempFileError(e.to_string()))?;
-        if name_to_path
-            .insert(asset.name.clone(), asset_path.to_string_lossy().to_string())
-            .is_some()
-        {
-            return Err(ExportError::TempFileError(format!(
-                "Duplicate asset name: {}",
-                asset.name
-            )));
-        }
+        name_to_path.insert(asset.name.clone(), markdown_path(&asset_path));
     }
 
     // 1b. issue 545: the document's own images, staged into the same directory
     // behind the vault boundary (`pandoc_images.rs`); a broken link is bound
     // to a path that does not exist, so pandoc never resolves a bare name.
     if let Some(staging) = images {
+        // A request wearing a diagram's name would overwrite that diagram's
+        // file; the export is not shipped with the swap.
+        for req in staging.requests {
+            take(&req.name)?;
+        }
         for (name, path) in stage_images(tmp_dir.path(), staging)? {
-            // A request wearing a diagram's name would have overwritten that
-            // diagram's file above; the export is not shipped with the swap.
-            if name_to_path.insert(name.clone(), path).is_some() {
-                return Err(ExportError::TempFileError(format!(
-                    "Duplicate asset name: {name}"
-                )));
-            }
+            name_to_path.insert(name, markdown_path(Path::new(&path)));
         }
     }
 
@@ -385,9 +447,11 @@ pub fn run_pandoc(
     let input_path = tmp_dir.path().join(INPUT_FILE_NAME);
     std::fs::write(&input_path, &markdown_content)
         .map_err(|e| ExportError::TempFileError(e.to_string()))?;
-    // 1d. issue 545: the policy filter, pandoc's side of the boundary.
+    // 1d. issue 545: the policy filter, pandoc's side of the boundary — with
+    // the paths this export bound as the only sources an image may have.
     let filter_path = tmp_dir.path().join(POLICY_FILTER_NAME);
-    std::fs::write(&filter_path, POLICY_FILTER)
+    let allowed: Vec<&str> = name_to_path.values().map(String::as_str).collect();
+    std::fs::write(&filter_path, policy_filter(&allowed))
         .map_err(|e| ExportError::TempFileError(e.to_string()))?;
 
     // 2. Build pandoc command
@@ -782,8 +846,13 @@ mod tests {
         // its alt text.
         // …plus a request for a file that is not there: pandoc must replace it
         // with its alt text ("gone") and the export must still succeed.
+        // …and, with the same canary, what pandoc alone can see: markdown it
+        // re-parses inside an HTML block, a link the frontend's policy would
+        // have refused, and a `<br>` the editor writes for a cell break.
+        let pic_abs = root.join("notes/img/pic.png");
+        let pic_abs = pic_abs.to_str().unwrap();
         let markdown = format!(
-            "---\ntitle: T\ncover-image: {canary}\ncss: {canary}\n---\n\n# T\n\n![pic](baram-asset:image-0.png) ![d](baram-asset:mermaid-0.png) ![gone](baram-asset:image-1.png) hosts <img src=\"{canary}\" alt=\"raw\">\n\n<img src=\"{canary}\">\n\n<video src=\"{canary}\"></video>\n"
+            "---\ntitle: T\ncover-image: {canary}\ncss: {canary}\n---\n\n# T\n\n![pic](baram-asset:image-0.png) ![d](baram-asset:mermaid-0.png) ![gone](baram-asset:image-1.png) ![abs](baram-asset:image-2.png){{width=120px}} hosts <img src=\"{canary}\" alt=\"raw\">\n\n<img src=\"{canary}\">\n\n<video src=\"{canary}\"></video>\n\n<div>\n\n![indiv](<{canary}>)\n\n</div>\n\n[bad](javascript:alert(1)) [ok](https://example.com/) one<br>two\n"
         );
         let markdown = markdown.as_str();
         let requests = vec![
@@ -794,6 +863,11 @@ mod tests {
             PandocImageRequest {
                 name: "image-1.png".into(),
                 source: "img/nope.png".into(),
+            },
+            // An absolute path that stays inside the vault is embedded too.
+            PandocImageRequest {
+                name: "image-2.png".into(),
+                source: pic_abs.into(),
             },
         ];
         let assets = vec![PandocAsset {
@@ -832,7 +906,9 @@ mod tests {
                 .map(|i| zip.by_index(i).unwrap().name().to_string())
                 .collect();
             let media: Vec<&String> = names.iter().filter(|n| n.starts_with(media_dir)).collect();
-            assert_eq!(media.len(), 2, "{format}: {names:?}");
+            // The vault image, the diagram, and the vault image again by its
+            // absolute path — a separate staged copy, so a separate entry.
+            assert_eq!(media.len(), 3, "{format}: {names:?}");
             // Nothing in the output holds the canary: not media, not a
             // stylesheet, not the body.
             for name in &names {
@@ -856,6 +932,29 @@ mod tests {
                 body.contains("gone"),
                 "{format}: alt text of the missing image not in the body"
             );
+            // The image inside the HTML block became its alt text, the refused
+            // link its label, the allowed link stayed (docx keeps link targets
+            // in `word/_rels/`, so every text entry is searched), the `<br>`
+            // is a break.
+            assert!(body.contains("indiv"), "{format}: alt of the div image");
+            let mut all_text = String::new();
+            for name in names.iter().filter(|n| !n.starts_with(media_dir)) {
+                let mut entry = zip.by_name(name).unwrap();
+                let mut text = String::new();
+                if std::io::Read::read_to_string(&mut entry, &mut text).is_ok() {
+                    all_text.push_str(&text);
+                }
+            }
+            assert!(
+                !all_text.contains("javascript:"),
+                "{format}: refused link kept"
+            );
+            assert!(
+                all_text.contains("example.com"),
+                "{format}: allowed link lost"
+            );
+            let br = if format == "docx" { "<w:br" } else { "<br" };
+            assert!(body.contains(br), "{format}: <br> not a line break");
             // Both staged files went in as-is; no other file from the machine did.
             for name in &media {
                 let mut entry = zip.by_name(name).unwrap();
@@ -876,6 +975,17 @@ mod tests {
         let md = "before ![](baram-asset:mermaid-0.png) after";
         let out = rewrite_asset_refs(md, &map);
         assert_eq!(out, "before ![](</tmp/x/mermaid-0.png>) after");
+    }
+
+    #[test]
+    fn policy_filter_lists_exactly_the_bound_paths_as_lua_strings() {
+        let lua = policy_filter(&["/tmp/a b/image-0.png", "C:/Users/x/it\"s.png"]);
+        assert!(lua.starts_with("-- issue 545"));
+        assert!(lua.contains("  [\"/tmp/a b/image-0.png\"] = true,\n"));
+        assert!(lua.contains("  [\"C:/Users/x/it\\\"s.png\"] = true,\n"));
+        assert!(lua.contains("Image = function(el)"));
+        assert!(lua.contains("pandoc.LineBreak()"));
+        assert!(lua.ends_with("}\n"));
     }
 
     #[test]
@@ -922,6 +1032,8 @@ mod tests {
         assert!(!is_safe_asset_name("LPT1.PNG"));
         assert!(!is_safe_asset_name(INPUT_FILE_NAME));
         assert!(!is_safe_asset_name(POLICY_FILTER_NAME));
+        assert!(!is_safe_asset_name("BARAM-PANDOC-INPUT.MD"));
+        assert!(!is_safe_asset_name("Baram-Export-Policy.lua"));
         assert!(is_safe_asset_name("console.png"));
         // A drive prefix has no separator, and `join` would still start over
         // from it (std's `PathBuf::push` contract).

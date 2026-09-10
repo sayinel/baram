@@ -1,11 +1,15 @@
 import { save } from "@tauri-apps/plugin-dialog";
 
+import type { Locale } from "../../i18n";
 import type { ContextInfo, PandocFormat, PdfOptions } from "../../ipc/types";
 // §5.12 Export — HTML file save + PDF via headless Chrome backend + §53 Notion + §55 Pandoc
 import type { Editor } from "@tiptap/core";
 
+import { t } from "../../i18n";
 import { exportBinaryFile, exportPandoc, exportPdf } from "../../ipc/invoke";
 import { contextRootOf, useContextStore } from "../../stores/context/context";
+import { useSettingsStore } from "../../stores/settings/store";
+import { useUIStore } from "../../stores/ui/ui";
 import { serializeLiveDoc } from "../editor/serialize-live-doc";
 import { isUnderRoot } from "../path-utils";
 import { captureEditorHTML, generateStandaloneHTML } from "./export-html";
@@ -109,8 +113,6 @@ export async function exportWithPandoc(
     documentPath?: null | string;
     pandocPath?: string;
     referenceDoc?: string;
-    /** The id of the context the document's tab names (issue 545; see `owningDirectoryContext`). */
-    tabContextId?: string;
   },
 ): Promise<void> {
   const md = serializeLiveDoc(editor);
@@ -128,16 +130,19 @@ export async function exportWithPandoc(
   // the reference and reads no file — so their images pass through as written.
   const documentPath = options?.documentPath ?? null;
   const owner =
-    documentPath === null
-      ? null
-      : owningDirectoryContext(documentPath, options?.tabContextId);
-  const { images, markdown: staged } = PANDOC_EMBEDS_IMAGES.has(format)
+    documentPath === null ? null : owningDirectoryContext(documentPath);
+  const {
+    images,
+    markdown: staged,
+    refused,
+    scoped,
+  } = PANDOC_EMBEDS_IMAGES.has(format)
     ? stageMarkdownImages(rewritten, {
         contextRoot: owner === null ? null : contextRootOf(owner.path),
         documentPath,
         knownAssets: new Set(assets.map((asset) => asset.name)),
       })
-    : { images: [], markdown: rewritten };
+    : { images: [], markdown: rewritten, refused: 0, scoped: true };
   // issue 527: the link policy runs LAST — see export-markdown-links.ts.
   const finalMd = stripDisallowedMarkdownLinks(staged);
 
@@ -167,31 +172,41 @@ export async function exportWithPandoc(
     pandocPath: options?.pandocPath,
     referenceDoc: options?.referenceDoc,
   });
+  // issue 545: an image left out is not an error — the export went through
+  // without it — but it is not nothing either. Say how many, and why.
+  if (refused > 0) {
+    const { locale } = useSettingsStore.getState();
+    useUIStore
+      .getState()
+      .showToast(
+        t(
+          scoped ? "export.imagesLeftOut" : "export.imagesLeftOutUnscoped",
+          locale as Locale,
+          { count: String(refused) },
+        ),
+        "warning",
+      );
+  }
 }
 
 /**
  * issue 545: the vault or folder context whose files an export of
- * `documentPath` may embed — the tab's own context when it is a directory
- * context holding the document (`openTab` backfills the id from whatever
- * context was active, so it may not be), else the deepest directory context
- * holding it. A file opened on its own has none: a `File` context authorizes
- * exactly that file. Directory contexts only, deepest first — NOT
- * `getContextForPath`, which answers an exact `File` match first. This is the
- * user-facing half of the rule; the backend re-derives it from canonical
- * paths (`ContextManager::owning_directory_root`) and is the boundary.
+ * `documentPath` may embed — the deepest directory context holding it, as
+ * everywhere else in the app (§81, longest prefix). Never a `File` context:
+ * a file opened on its own authorizes exactly that file. Not the tab's own
+ * context: `openTab` backfills that id from whatever context was active, and
+ * a wider one would let `../secret.png` climb past a folder the user opened
+ * on purpose. This is the user-facing half of the rule; the backend
+ * re-derives the boundary from canonical paths
+ * (`ContextManager::owning_directory_root`).
  */
-function owningDirectoryContext(
-  documentPath: string,
-  tabContextId: string | undefined,
-): ContextInfo | null {
+function owningDirectoryContext(documentPath: string): ContextInfo | null {
   const { contexts } = useContextStore.getState();
-  const holds = (c: ContextInfo): boolean =>
-    c.contextType !== "file" && isUnderRoot(documentPath, c.path);
-  const named = contexts.find((c) => c.id === tabContextId);
-  if (named !== undefined && holds(named)) return named;
   let best: ContextInfo | null = null;
   for (const c of contexts) {
-    if (!holds(c)) continue;
+    if (c.contextType === "file" || !isUnderRoot(documentPath, c.path)) {
+      continue;
+    }
     if (
       best === null ||
       contextRootOf(c.path).length > contextRootOf(best.path).length

@@ -29,6 +29,7 @@ import { createBaramExtensions } from "../../../extensions";
 import { exportBinaryFile, exportPandoc } from "../../../ipc/invoke";
 import { markdownToProsemirror } from "../../../pipeline/md-to-pm";
 import { useContextStore } from "../../../stores/context/context";
+import { useUIStore } from "../../../stores/ui/ui";
 import { exportForNotion, exportWithPandoc } from "../export";
 
 // Inline links, and (issue 546) a reference-style link: the editor resolves
@@ -125,6 +126,7 @@ describe("the images in the markdown that reaches pandoc", () => {
 
   afterEach(() => {
     useContextStore.setState({ activeContextId: null, contexts: [] });
+    useUIStore.setState({ toast: null });
   });
 
   it("stages the relative image, reduces the rest to alt text, and names the owning context", async () => {
@@ -137,7 +139,6 @@ describe("the images in the markdown that reaches pandoc", () => {
     const editor = loadEditor(IMAGE_DOC);
     await exportWithPandoc(editor, "t", "docx", {
       documentPath: "/vault/notes/today.md",
-      tabContextId: "ctx-vault",
     });
 
     const [request] = vi.mocked(exportPandoc).mock.calls[0];
@@ -158,10 +159,12 @@ describe("the images in the markdown that reaches pandoc", () => {
     expect(request.documentContextId).toBe("ctx-vault");
   });
 
-  it("finds the owning directory context when the tab names none, or names one that does not hold the file", async () => {
-    // The tab's context is a lone-file context for this very file (openTab
-    // backfills it from the active context): a File context authorizes one
-    // file, so the deepest directory context holding the document owns it.
+  it("owns the document by the deepest directory context holding it, never a File context", async () => {
+    // A lone-file context for this very file exists (openTab backfills the
+    // tab's context id from whatever was active): a File context authorizes
+    // one file, so the deepest directory context holding the document owns
+    // it — and not the wider vault, which would let `../` climb past the
+    // folder the user opened on purpose.
     useContextStore.setState({
       contexts: [
         context("ctx-file", "/vault/notes/today.md", "file"),
@@ -172,7 +175,6 @@ describe("the images in the markdown that reaches pandoc", () => {
     const editor = loadEditor(IMAGE_DOC);
     await exportWithPandoc(editor, "t", "docx", {
       documentPath: "/vault/notes/today.md",
-      tabContextId: "ctx-file",
     });
 
     const [request] = vi.mocked(exportPandoc).mock.calls[0];
@@ -182,20 +184,36 @@ describe("the images in the markdown that reaches pandoc", () => {
     ]);
   });
 
-  it("refuses relative images for a document no directory context holds", async () => {
+  it("tells the user how many images were left out, and why", async () => {
+    useContextStore.setState({
+      contexts: [context("ctx-vault", "/vault", "vault")],
+    });
+    const editor = loadEditor(IMAGE_DOC);
+    await exportWithPandoc(editor, "t", "docx", {
+      documentPath: "/vault/notes/today.md",
+    });
+    // `/etc/hosts` and the tracker pixel were left out; `img/a.png` was not.
+    const toast = useUIStore.getState().toast;
+    expect(toast?.type).toBe("warning");
+    expect(toast?.message).toContain("2");
+    expect(toast?.message).toContain("left out");
+  });
+
+  it("refuses relative images for a document no directory context holds, and says so", async () => {
     useContextStore.setState({
       contexts: [context("ctx-other", "/elsewhere", "vault")],
     });
     const editor = loadEditor("![local](img/a.png)\n");
     await exportWithPandoc(editor, "t", "docx", {
       documentPath: "/vault/notes/today.md",
-      tabContextId: "ctx-other",
     });
 
     const [request] = vi.mocked(exportPandoc).mock.calls[0];
     expect(request.markdownContent).toBe("local\n");
     expect(request.images).toEqual([]);
     expect(request.documentContextId).toBeUndefined();
+    // The notice names the cure: save the note inside an open vault or folder.
+    expect(useUIStore.getState().toast?.message).toContain("vault or folder");
   });
 
   it("leaves images as written for LaTeX and RST, which embed nothing", async () => {
@@ -205,7 +223,6 @@ describe("the images in the markdown that reaches pandoc", () => {
     const editor = loadEditor(IMAGE_DOC);
     await exportWithPandoc(editor, "t", "latex", {
       documentPath: "/vault/notes/today.md",
-      tabContextId: "ctx-vault",
     });
 
     const [request] = vi.mocked(exportPandoc).mock.calls[0];

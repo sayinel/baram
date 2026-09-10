@@ -46,27 +46,30 @@ pub struct PandocImageRequest {
 /// names a device or a multi-gigabyte file, not a format limit.
 const MAX_IMAGE_BYTES: u64 = 64 * 1024 * 1024;
 
-/// Where `source`, written relative to a document in `document_dir`, points
-/// BEFORE the boundary check: percent-decoded (pandoc decodes a local image
-/// destination the same way), refused when it is not relative after all — a
-/// rooted path, a Windows prefix (`C:`, `\\server`) — and joined under the
-/// document's directory. What the join yields is still only a candidate; the
-/// caller canonicalizes it and asks the vault boundary.
+/// Where `source`, written in a document in `document_dir`, points BEFORE the
+/// boundary check: percent-decoded (pandoc decodes a local image destination
+/// the same way), joined under the document's directory when relative, taken
+/// as it is when absolute — a rooted path, a Windows prefix (`C:`,
+/// `\\server`). An absolute path is not refused here: the caller
+/// canonicalizes the candidate and asks the vault boundary, and an absolute
+/// path that stays inside the document's context is as good as a relative
+/// one (it was, before this change, the only form that ever embedded).
 pub fn resolve_image_candidate(document_dir: &Path, source: &str) -> Result<PathBuf, ExportError> {
     let decoded = percent_encoding::percent_decode_str(source).decode_utf8_lossy();
-    let relative = Path::new(decoded.as_ref());
-    if decoded.is_empty()
-        || relative.is_absolute()
-        || relative.has_root()
-        || relative
-            .components()
-            .any(|c| matches!(c, std::path::Component::Prefix(_)))
-    {
-        return Err(ExportError::ImageRefused(format!(
-            "{source} is not a path relative to the document"
-        )));
+    if decoded.is_empty() {
+        return Err(ExportError::ImageRefused(format!("{source} names no file")));
     }
-    Ok(document_dir.join(relative))
+    let path = Path::new(decoded.as_ref());
+    let rooted = path.is_absolute()
+        || path.has_root()
+        || path
+            .components()
+            .any(|c| matches!(c, std::path::Component::Prefix(_)));
+    Ok(if rooted {
+        path.to_path_buf()
+    } else {
+        document_dir.join(path)
+    })
 }
 
 /// Most images one export will stage, and the most bytes they may add up to —
@@ -125,8 +128,10 @@ pub fn stage_images(
         ));
     }
     let refused = |source: &str, why: String| ExportError::ImageRefused(format!("{source}: {why}"));
-    let missing_dir = tmp_dir.join("missing");
-    let mut total: u64 = 0;
+    // Names first, before anything is written: a duplicate would have the
+    // second copy replace the first under one name, and a case-insensitive
+    // volume makes two spellings one file.
+    let mut names = std::collections::HashSet::with_capacity(requests.len());
     for req in requests.iter() {
         if !is_safe_asset_name(&req.name) {
             return Err(ExportError::TempFileError(format!(
@@ -134,6 +139,16 @@ pub fn stage_images(
                 req.name
             )));
         }
+        if !names.insert(req.name.to_ascii_lowercase()) {
+            return Err(ExportError::TempFileError(format!(
+                "Duplicate asset name: {}",
+                req.name
+            )));
+        }
+    }
+    let missing_dir = tmp_dir.join("missing");
+    let mut total: u64 = 0;
+    for req in requests.iter() {
         let candidate = resolve_image_candidate(document_dir, &req.source)?;
         let Ok(canonical) = std::fs::canonicalize(&candidate) else {
             // Not there (or a component that is not a directory): a broken link.
@@ -301,18 +316,79 @@ mod tests {
     }
 
     #[test]
-    fn image_candidate_refuses_what_is_not_relative() {
+    fn image_candidate_takes_an_absolute_source_as_it_is_and_refuses_an_empty_one() {
         let dir = Path::new("/vault/notes");
-        for source in ["", "/etc/hosts", "%2Fetc%2Fhosts"] {
-            assert!(
-                resolve_image_candidate(dir, source).is_err(),
-                "{source} must be refused"
+        assert!(resolve_image_candidate(dir, "").is_err());
+        // Absolute, encoded or not: the boundary check decides, not this.
+        for source in ["/etc/hosts", "%2Fetc%2Fhosts"] {
+            assert_eq!(
+                resolve_image_candidate(dir, source).unwrap(),
+                PathBuf::from("/etc/hosts"),
+                "{source}"
             );
         }
         #[cfg(windows)]
-        for source in ["C:\\x.png", "\\\\server\\share\\x.png", "\\x.png"] {
-            assert!(resolve_image_candidate(dir, source).is_err());
+        for source in ["C:\\x.png", "\\\\server\\share\\x.png"] {
+            assert!(!resolve_image_candidate(dir, source)
+                .unwrap()
+                .starts_with(dir));
         }
+    }
+
+    #[test]
+    fn stage_images_embeds_an_absolute_path_inside_the_root_and_refuses_one_outside() {
+        let vault = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(vault.path()).unwrap();
+        write(&root.join("notes/img/a.png"), b"PNG");
+        write(&outside.path().join("secret.png"), b"SECRET");
+        let inside = root.join("notes/img/a.png");
+        let (tmp, bound) = stage(
+            &root.join("notes"),
+            &root,
+            &req("image-0.png", inside.to_str().unwrap()),
+        )
+        .unwrap();
+        assert_eq!(std::fs::read(&bound["image-0.png"]).unwrap(), b"PNG");
+        assert!(Path::new(&bound["image-0.png"]).starts_with(tmp.path()));
+        let secret = outside.path().join("secret.png");
+        let err = stage(
+            &root.join("notes"),
+            &root,
+            &req("image-0.png", secret.to_str().unwrap()),
+        )
+        .expect_err("must be refused");
+        assert!(matches!(err, ExportError::ImageRefused(_)), "{err}");
+    }
+
+    #[test]
+    fn stage_images_refuses_duplicate_names_before_writing_anything() {
+        let vault = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(vault.path()).unwrap();
+        write(&root.join("a.png"), b"A");
+        write(&root.join("b.png"), b"B");
+        let two = vec![
+            PandocImageRequest {
+                name: "image-0.png".into(),
+                source: "a.png".into(),
+            },
+            PandocImageRequest {
+                name: "IMAGE-0.PNG".into(),
+                source: "b.png".into(),
+            },
+        ];
+        let tmp = tempfile::tempdir().unwrap();
+        let staging = ImageStaging {
+            document_dir: &root,
+            root: &root,
+            requests: &two,
+        };
+        let err = stage_images(tmp.path(), &staging).expect_err("must be refused");
+        assert!(matches!(err, ExportError::TempFileError(_)), "{err}");
+        assert!(
+            std::fs::read_dir(tmp.path()).unwrap().next().is_none(),
+            "nothing written"
+        );
     }
 
     #[test]
