@@ -2,6 +2,7 @@ import { save } from "@tauri-apps/plugin-dialog";
 
 import type { Locale } from "../../i18n";
 import type { ContextInfo, PandocFormat, PdfOptions } from "../../ipc/types";
+import type { BundledFont } from "../font/bundled-fonts";
 // §5.12 Export — HTML file save + PDF via headless Chrome backend + §53 Notion + §55 Pandoc
 import type { Editor } from "@tiptap/core";
 
@@ -11,6 +12,7 @@ import { contextRootOf, useContextStore } from "../../stores/context/context";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
 import { serializeLiveDoc } from "../editor/serialize-live-doc";
+import { bundledFont } from "../font/bundled-fonts";
 import { isUnderRoot } from "../path-utils";
 import { buildFontFaceCSS } from "./export-font-embed";
 import { captureEditorHTML, generateStandaloneHTML } from "./export-html";
@@ -40,6 +42,31 @@ export interface HTMLExportOptions extends FontExportOptions {
 }
 
 /**
+ * The family a slot will ACTUALLY render in, which is the question embedding
+ * has to ask (§353).
+ *
+ * ‼️ An empty slot does not mean "no font chosen". §348 made `""` the default
+ * and defined it as "use the token stack", whose head is the bundled face —
+ * and the exported document names that family regardless, because
+ * `exportTokensCSS()` inlines `primitives.css`. Keying the embed decision on
+ * the literal setting value therefore embedded nothing for every user in the
+ * default state while the document still asked for Pretendard Variable: the
+ * "Embed fonts" checkbox produced a file that was not bigger and did not
+ * carry the typeface, and PDF — which always embeds — printed in a system
+ * fallback. Two sections of one spec disagreeing about what `""` means (final
+ * review C1).
+ *
+ * The other half of that defect is a stored `"Pretendard"` (every user from
+ * before this branch), which is a DIFFERENT family name from
+ * `"Pretendard Variable"` and so is not bundled. That one is not resolvable
+ * here — a non-empty value is the user's word — and is fixed where it was
+ * created, by the settings-store migration that rewrites it to `""`.
+ */
+function effectiveFamily(slot: string, role: BundledFont["role"]): string {
+  return slot.trim() === "" ? bundledFont(role).family : slot;
+}
+
+/**
  * Export editor content as a standalone HTML file.
  * Opens native save dialog, then writes via Rust atomic write.
  */
@@ -51,7 +78,10 @@ export async function exportAsHTML(
   const bodyFont = options?.bodyFont ?? "";
   const codeFont = options?.codeFont ?? "";
   const fontFaceCSS = options?.embedFonts
-    ? await buildFontFaceCSS([bodyFont, codeFont])
+    ? await buildFontFaceCSS([
+        effectiveFamily(bodyFont, "body"),
+        effectiveFamily(codeFont, "code"),
+      ])
     : "";
   const html = generateStandaloneHTML(await captureEditorHTML(editor), title, {
     bodyFont,
@@ -82,7 +112,10 @@ export async function exportAsPDF(
   // §353 — PDF always embeds bundled faces, unconditionally: `generate_pdf`
   // renders from a temp directory a relative font URL cannot resolve against
   // (export-font-embed.ts). There is no checkbox for PDF.
-  const fontFaceCSS = await buildFontFaceCSS([bodyFont, codeFont]);
+  const fontFaceCSS = await buildFontFaceCSS([
+    effectiveFamily(bodyFont, "body"),
+    effectiveFamily(codeFont, "code"),
+  ]);
   const html = generateStandaloneHTML(
     // §301 fix (I4): PDF can never play video — captureEditorHTML replaces it
     // with a link instead of leaving an inert `<video>`.

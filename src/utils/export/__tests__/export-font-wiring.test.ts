@@ -33,10 +33,14 @@ vi.mock("../export-html", async (importOriginal) => ({
 }));
 
 import { exportBinaryFile, exportPdf } from "../../../ipc/invoke";
+import { bundledFont } from "../../font/bundled-fonts";
 import { exportAsHTML, exportAsPDF } from "../export";
+import { captureEditorHTML } from "../export-html";
+import { buildCodeBlockExport } from "../export-html-code-block";
 
 // captureEditorHTML is stubbed above, so the editor's own content never
-// matters to this file — only the options bag does.
+// matters to this file — only the options bag does. The one exception is the
+// code-block journey at the bottom, which overrides the stub for one call.
 const fakeEditor = {} as unknown as Editor;
 
 function htmlPrinted(): string {
@@ -99,6 +103,33 @@ describe("exportAsHTML — options reach the assembled document (§353 review Im
     expect(fetch).toHaveBeenCalled();
     expect(htmlWritten()).toContain("data:font/woff2;base64,");
   });
+
+  // ‼️ final review C1 — THE DEFAULT, which is the state every install and
+  // every upgrading user is actually in and which no test exercised. `""` is
+  // not "no font chosen": §348 made it mean "use the token stack", whose head
+  // is the bundled face, and the exported document names that family through
+  // the inlined primitives.css regardless. Keying the embed on the literal
+  // setting value therefore shipped a file that was neither bigger nor
+  // carrying the typeface while the checkbox promised both.
+  //
+  // The case above pins the opposite (a bundled name explicitly selected) and
+  // reads, at a glance, as though it covered this one.
+  it("embeds BOTH bundled faces for two empty slots, because empty means the bundled stack", async () => {
+    await exportAsHTML(fakeEditor, "t", {
+      bodyFont: "",
+      codeFont: "",
+      embedFonts: true,
+    });
+
+    const html = htmlWritten();
+    expect(html).toContain("data:font/woff2");
+    // Both slots, named from the single source rather than re-spelled: a fix
+    // that resolved only the body slot would pass a bare data-URI check.
+    for (const role of ["body", "code"] as const) {
+      expect(html).toContain(`font-family:"${bundledFont(role).family}"`);
+    }
+    expect([...html.matchAll(/@font-face/gu)]).toHaveLength(2);
+  });
 });
 
 describe("exportAsPDF — always embeds, no checkbox to gate it (§353 review Important 2)", () => {
@@ -134,5 +165,68 @@ describe("exportAsPDF — always embeds, no checkbox to gate it (§353 review Im
     const html = htmlPrinted();
     expect(html).toContain("--font-family-editor:&quot;Noto Sans KR&quot;");
     expect(html).toContain("--font-family-mono:&quot;D2Coding&quot;");
+  });
+
+  // final review C1, the PDF half: §353 says PDF embeds unconditionally, but
+  // "unconditionally" used to be conditioned on a bundled name being SELECTED,
+  // so a PDF printed in the default state carried no face at all and rendered
+  // in a system fallback.
+  it("embeds both bundled faces for the default (empty) settings", async () => {
+    await exportAsPDF(fakeEditor, "t", { bodyFont: "", codeFont: "" });
+
+    const html = htmlPrinted();
+    for (const role of ["body", "code"] as const) {
+      expect(html).toContain(`font-family:"${bundledFont(role).family}"`);
+    }
+    expect([...html.matchAll(/@font-face/gu)]).toHaveLength(2);
+  });
+});
+
+// final review I1 — the code font's most relevant surface was the one surface
+// it could not reach. The block is rebuilt rather than cloned, and both its
+// stylesheet rules and its inline `cssText` named a module constant that was
+// also a stale copy of the mono stack missing the bundled head. So even with
+// C1 fixed and the face embedded, exported code blocks would still not have
+// rendered in it.
+//
+// This asserts the whole chain on the artifact: the document declares the
+// user's code font on the variable, and the block reads THAT variable. The
+// two halves regress independently, which is why one test covers both.
+describe("the code font reaches an exported code block (§353 review I1)", () => {
+  it("declares the code font on the article and makes the block read that variable", async () => {
+    const block = buildCodeBlockExport({
+      highlightedLines: ["const a = 1;"],
+      lang: "ts",
+      lineNumbers: null,
+      style: "default",
+    });
+    vi.mocked(captureEditorHTML).mockResolvedValueOnce(block.outerHTML);
+
+    await exportAsHTML(fakeEditor, "t", { bodyFont: "", codeFont: "D2Coding" });
+
+    const html = htmlWritten();
+    expect(html).toContain("--font-family-mono:&quot;D2Coding&quot;");
+
+    // Read the block's own inline style out of the written document rather
+    // than searching the whole file: the editor stylesheets it inlines
+    // legitimately contain `var(--font-family-mono)` in ~27 other places, so
+    // a document-wide substring check would pass with the constant restored.
+    //
+    // Matched with a regex because the source's compact `cssText` is
+    // re-serialized by CSSOM with spaces before it ever reaches the file.
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    for (const selector of [".code-block-body", ".code-block-export-lang"]) {
+      const el = doc.querySelector(selector);
+      expect(el, `${selector} missing from the export`).not.toBeNull();
+      expect(el?.getAttribute("style")).toMatch(
+        /font-family:\s*var\(--font-family-mono\)/u,
+      );
+    }
+
+    // And the rules the stylesheet carries for the same two classes. The
+    // deleted constant's exact spelling (no space after the commas) is the
+    // discriminator — the token in primitives.css names the same families
+    // with spaces, so a looser check would match the legitimate stack.
+    expect(html).not.toContain('"JetBrains Mono","Fira Code"');
   });
 });
