@@ -1955,3 +1955,126 @@ describe("QuickCaptureDialog — 태그가 지목한 노트에 붙인다 (§320,
     });
   });
 });
+
+// §338/Fix H — task mode has 3 entry points, and the dialog never checked
+// `tasksEnabled`: the visible checkbox, the `TASK_INPUT_COMMAND` chord this
+// file's own `handleKeyDown` matches directly (bypassing the gated global
+// action in use-keybinding-actions.ts entirely), and
+// use-global-capture-shortcut.ts's `openQuickCaptureForTask()` — which opens
+// this dialog ALREADY in task mode via `quickCaptureTaskIntent`. With Tasks
+// off, that third path made a disabled feature the dialog's default state.
+//
+// The fix is a chokepoint inside `useCaptureTaskMode()` (pins `enabled`
+// false), not three separate patches — these tests exercise the real
+// component/hook wiring to prove the chokepoint actually reaches all 3,
+// not just that each call site "mentions" a gate.
+describe("QuickCaptureDialog — task mode gated on tasksEnabled (§338/Fix H)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useSettingsStore.setState({
+      locale: LOCALE,
+      tasksCaptureFile: "tasks/inbox.md",
+      tasksHome: "/vault/tasks-home",
+    });
+    useSettingsStore.getState().setZettelkastenEnabled(true);
+    useSettingsStore.getState().setZettelkastenDirectory("/vault/zettel");
+    useFileStore.getState().setRootPath("/vault");
+    useUIStore.setState({
+      quickCaptureOpen: true,
+      quickCaptureTaskIntent: false,
+      showToast: REAL_SHOW_TOAST,
+      toast: null,
+    });
+    vi.mocked(listDir).mockResolvedValue([]);
+  });
+
+  const taskCheckbox = () =>
+    screen.queryByRole("checkbox", {
+      name: t("journal.capture.taskMode.label", LOCALE),
+    });
+
+  /** `Mod+Alt+T` (TASK_INPUT_COMMAND's default binding) fired on the dialog —
+   *  both `ctrlKey` and `metaKey` set so this matches regardless of which one
+   *  `normalizeKeyEvent` treats as "Mod" on the test platform. */
+  function fireTaskModeChord(): void {
+    fireEvent.keyDown(document.querySelector(".quick-capture-dialog")!, {
+      altKey: true,
+      code: "KeyT",
+      ctrlKey: true,
+      metaKey: true,
+    });
+  }
+
+  describe("the checkbox (entry point 1)", () => {
+    it("is absent when tasks is disabled", () => {
+      useSettingsStore.setState({ tasksEnabled: false });
+      render(<QuickCaptureDialog />);
+      expect(taskCheckbox()).toBeNull();
+    });
+
+    it("is present when tasks is enabled — positive control", () => {
+      useSettingsStore.setState({ tasksEnabled: true });
+      render(<QuickCaptureDialog />);
+      expect(taskCheckbox()).toBeInTheDocument();
+    });
+  });
+
+  describe("the in-dialog chord (entry point 2)", () => {
+    it("does not switch to task mode when tasks is disabled", () => {
+      useSettingsStore.setState({ tasksEnabled: false });
+      render(<QuickCaptureDialog />);
+      fireTaskModeChord();
+      // ‼️ Asserting only `taskCheckbox()).toBeNull()` here would be vacuous:
+      // the checkbox is hidden by tasksEnabled directly (component-level,
+      // independent of the hook), so it stays null whether or not the chord
+      // silently flipped the hook's internal state. The Source field only
+      // renders when task mode is OFF, so its presence is what actually
+      // proves the chord did nothing — confirmed by mutation: reverting the
+      // hook's gate flips this from present to absent, while the checkbox
+      // assertion alone stayed green throughout.
+      expect(
+        screen.getByPlaceholderText(sourcePlaceholder),
+      ).toBeInTheDocument();
+      expect(taskCheckbox()).toBeNull();
+    });
+
+    it("switches to task mode when tasks is enabled — positive control", () => {
+      useSettingsStore.setState({ tasksEnabled: true });
+      render(<QuickCaptureDialog />);
+      fireTaskModeChord();
+      expect(taskCheckbox()).toBeChecked();
+    });
+  });
+
+  describe("the global-capture initial state (entry point 3)", () => {
+    it("opens in normal mode, not task mode, when tasks is disabled", () => {
+      useSettingsStore.setState({ tasksEnabled: false });
+      // Simulates use-global-capture-shortcut.ts's bringUpCapture(), which
+      // calls openQuickCaptureForTask() -> { quickCaptureOpen: true,
+      // quickCaptureTaskIntent: true } (confirmed at that call site, not
+      // from the doc comment alone).
+      useUIStore.setState({
+        quickCaptureOpen: true,
+        quickCaptureTaskIntent: true,
+      });
+      render(<QuickCaptureDialog />);
+      // The checkbox is hidden regardless, so the meaningful assertion is
+      // that the REST of the dialog behaves like normal (non-task) capture:
+      // the Source field, which only renders when task mode is off, must be
+      // there.
+      expect(
+        screen.getByPlaceholderText(sourcePlaceholder),
+      ).toBeInTheDocument();
+    });
+
+    it("opens in task mode when tasks is enabled — positive control", () => {
+      useSettingsStore.setState({ tasksEnabled: true });
+      useUIStore.setState({
+        quickCaptureOpen: true,
+        quickCaptureTaskIntent: true,
+      });
+      render(<QuickCaptureDialog />);
+      expect(taskCheckbox()).toBeChecked();
+    });
+  });
+});

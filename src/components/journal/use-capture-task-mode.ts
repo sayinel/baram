@@ -15,14 +15,21 @@ import { useSettingsStore } from "../../stores/settings/store";
 import { resolveTasksHome } from "../../utils/tasks/tasks-home";
 
 interface CaptureTaskMode {
+  /** §338/Fix H — pinned `false` while Tasks is off, regardless of what
+   *  `reset`/`toggle` are asked to do. */
   enabled: boolean;
   /**
    * 다이얼로그가 열릴 때마다 **여는 쪽이 정한 상태**로 되돌린다(§307D 리뷰 Minor 6).
    * 인자가 없으면 꺼진 상태 — 지난 캡처의 모드가 넘어오지 않는다. §313 전역 캡처만
    * 켜진 상태로 연다.
+   *
+   * §338/Fix H: Tasks가 꺼져 있으면 `initial`이 `true`여도 켜진 상태로 리셋되지
+   * 않는다 — 전역 캡처가 이 함수로 "이미 태스크 모드로" 여는 경로가 있어서다
+   * (`use-global-capture-shortcut.ts`).
    */
   reset: (initial?: boolean) => void;
   save: (body: string, tags: string[]) => Promise<void>;
+  /** §338/Fix H: Tasks가 꺼져 있으면 아무 것도 하지 않는다. */
   toggle: () => void;
 }
 
@@ -48,11 +55,29 @@ export function captureErrorKey(err: unknown): string {
 }
 
 export function useCaptureTaskMode(): CaptureTaskMode {
-  const [enabled, setEnabled] = useState(false);
+  // §338/Fix H — the chokepoint: task mode can never be true while Tasks is
+  // off. Gating here (not in QuickCaptureDialog.tsx's keydown branch, and not
+  // in use-global-capture-shortcut.ts's "open already in task mode" path)
+  // makes both go inert without editing either — the global capture shortcut
+  // stays reachable (A2: capture also serves Journal/Zettel), but it can no
+  // longer hand the dialog a disabled feature as its default state.
+  const tasksEnabled = useSettingsStore((s) => s.tasksEnabled);
+  const [enabledState, setEnabledState] = useState(false);
   const editor = useEditorContext();
 
-  const reset = useCallback((initial = false) => setEnabled(initial), []);
-  const toggle = useCallback(() => setEnabled((v) => !v), []);
+  // Gate the setters AND the read, not just one: gating only the read would
+  // let `enabledState` drift true while Tasks is off (e.g. `reset(true)` from
+  // the global-capture path) and then silently resurface the moment Tasks is
+  // re-enabled, with no toggle in between to explain it.
+  const enabled = tasksEnabled && enabledState;
+  const reset = useCallback(
+    (initial = false) => setEnabledState(tasksEnabled && initial),
+    [tasksEnabled],
+  );
+  const toggle = useCallback(() => {
+    if (!tasksEnabled) return;
+    setEnabledState((v) => !v);
+  }, [tasksEnabled]);
 
   const save = useCallback(
     async (body: string, tags: string[]) => {
