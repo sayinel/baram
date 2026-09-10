@@ -1,7 +1,10 @@
 // §342 — nav groups (General/Features/System) + tab promotion for Journal,
 // Zettel, and Tasks. Feature tabs are never hidden (rule 1): hiding one would
 // remove the only way to turn that feature back on, so they dim instead.
+import type { ReactNode } from "react";
+
 import { render, renderHook, screen } from "@testing-library/react";
+import { CircleCheck, Sparkles } from "lucide-react";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { useAIStore } from "../../../stores/ai/ai";
@@ -19,6 +22,44 @@ describe("settings tab structure (§342)", () => {
     );
     expect(assigned.sort()).toEqual(TABS.map((t) => t.id).sort());
     expect(new Set(assigned).size).toBe(TABS.length);
+  });
+
+  // 동훈님 요청: 설정 탭의 두 아이콘은 다른 표면과 **같은 모양**이어야 한다 —
+  // tasks 는 활동표시줄의 태스크 아이콘(`ActivityBar.tsx` 의 `CircleCheck`), ai 는
+  // 블록 팝업의 AI 버튼(`image-view.tsx`·`callout-view.tsx`·`math-block-view.tsx`·
+  // `svg-block-view.tsx` 가 모두 `<Sparkles size={14} />`).
+  //
+  // ‼️ 클래스로 판별할 수 없다: 이 lucide 버전은 svg 에 `"lucide"` 하나만 붙이고
+  // 아이콘별 클래스를 붙이지 않는다(`mergeClasses("lucide", contextClass, className)`).
+  // 그래서 **경로 자체**를 비교한다 — 그것만이 모양이 같다는 증거다. 다른 lucide
+  // 아이콘으로 바꾸면 iconNode 가 달라 이 단정이 깨진다.
+  //
+  // ‼️ 이 결합은 **규약이고 파생이 아니다**: `ActivityBar.tsx` 의 `PANEL_ICONS` 와
+  // NodeView 들의 버튼은 export 되지 않아 여기서 읽을 수 없다. 즉 활동표시줄이 자기
+  // 아이콘을 바꾸면 이 테스트는 그것을 모른다. 그때는 두 자리를 같이 고쳐야 한다.
+  it("draws the tasks and ai tabs with the icons their sibling surfaces use", () => {
+    const shapeOf = (node: ReactNode) => {
+      const { container, unmount } = render(<>{node}</>);
+      const svg = container.querySelector("svg");
+      const html = svg?.innerHTML ?? null;
+      unmount();
+      return html;
+    };
+
+    const tabIcon = (id: string) =>
+      shapeOf(TABS.find((t) => t.id === id)?.icon);
+
+    expect(tabIcon("tasks")).not.toBeNull();
+    expect(tabIcon("tasks")).toBe(
+      shapeOf(<CircleCheck size={14} strokeWidth={1.5} />),
+    );
+    expect(tabIcon("ai")).toBe(
+      shapeOf(<Sparkles size={14} strokeWidth={1.5} />),
+    );
+
+    // 음성 대조군 — 두 아이콘이 서로 다르다. 없으면 "둘 다 같은 것을 그린다"와
+    // 구별되지 않는다(예: 양쪽이 실수로 같은 컴포넌트가 된 경우).
+    expect(tabIcon("tasks")).not.toBe(tabIcon("ai"));
   });
 
   // ‼️ 이름을 실제 방향으로 좁혔다(M-8). 이 단정은 레지스트리 → TABS **한 방향**만

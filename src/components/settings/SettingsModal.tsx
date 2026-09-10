@@ -1,10 +1,12 @@
 // Settings Modal — General/Features/System nav groups (§342), plus Plugins.
 // Obsidian-style layout: label + description per row, section headers for grouping
 import { Fragment, useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 
 import type { FeatureKey } from "../../stores/settings/feature-keys";
 import type { SearchableSetting, SettingsTab } from "./settings-registry";
 
+import { CircleCheck, Sparkles } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
 import { useTranslation } from "../../i18n/useTranslation";
@@ -43,7 +45,11 @@ export const TABS: {
   /** 이 탭이 기능 하나에 속하면 그 키. 흐리게 표시할지 판정한다. */
   feature?: FeatureKey;
   group: "features" | "general" | "system";
-  icon: string;
+  /** 문자 글리프이거나 아이콘 컴포넌트. 두 탭은 다른 표면과 **같은 아이콘**을 쓴다:
+   *  tasks 는 활동표시줄(`ActivityBar.tsx` 의 `CircleCheck`), ai 는 블록 팝업의
+   *  AI 버튼(`image-view.tsx` 등의 `Sparkles`). lucide 는 `currentColor` 를 쓰므로
+   *  모노톤으로 테마 색을 그대로 따른다 — 이모지는 자기 색을 갖고 온다. */
+  icon: ReactNode;
   id: SettingsTab;
 }[] = [
   { id: "general", group: "general", icon: "⚙" },
@@ -59,8 +65,18 @@ export const TABS: {
     icon: "🗂",
     feature: "zettelkasten",
   },
-  { id: "tasks", group: "features", icon: "✓", feature: "tasks" },
-  { id: "ai", group: "features", icon: "✦", feature: "ai" },
+  {
+    id: "tasks",
+    group: "features",
+    icon: <CircleCheck size={14} strokeWidth={1.5} />,
+    feature: "tasks",
+  },
+  {
+    id: "ai",
+    group: "features",
+    icon: <Sparkles size={14} strokeWidth={1.5} />,
+    feature: "ai",
+  },
   { id: "activitybar", group: "system", icon: "▤" },
   { id: "plugins", group: "system", icon: "🧩" },
   { id: "vault", group: "system", icon: "📦" },
