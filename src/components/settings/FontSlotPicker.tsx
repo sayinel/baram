@@ -90,6 +90,38 @@ export function FontSlotPicker({
     if (editing) inputRef.current?.focus();
   }, [editing]);
 
+  // ‼️ No re-entrancy guard below, and that is a verified absence, not an
+  // oversight — a fix-round-1 version of this file HAD one (a
+  // `suppressNextBlurRef`), removed here because its own rationale did not
+  // hold up (§351 리뷰 fix round 2). Read this before removing the input on
+  // Enter/Escape by any means other than conditional unmount.
+  //
+  // The hazard the old guard was for: Enter/Escape unmount this `<input>`
+  // (`editing` flips false). If a native `blur` ever reached this component
+  // AFTER that, `commit` would re-run — with `draft` already reset by
+  // `cancel()`, silently SAVING the text the user just told the app to
+  // discard (worse than Enter's case, which would merely double-commit the
+  // same value).
+  //
+  // It cannot reach here. Two independent reasons, not one:
+  //   1. DOM dispatch semantics (real browsers, version-independent): the
+  //      HTML spec's unfocusing steps fire `blur` only AFTER the element is
+  //      detached (`parentNode === null`). A detached node has no ancestors
+  //      to bubble through, so the event never reaches React's
+  //      root-delegated listener.
+  //   2. jsdom specifically CANNOT exercise this race AT ALL: removing a
+  //      focused element moves `document.activeElement` to `<body>`, but
+  //      jsdom never fires a native `blur` for it — not synchronously, not
+  //      on a later tick, confirmed directly against this repo's jsdom via
+  //      both sequential `fireEvent` calls and native events dispatched in
+  //      one `act()` batch. A green test that tries to reproduce the race
+  //      itself would be proving nothing — this repo's own suite already
+  //      did that once and the claim in the report was wrong until
+  //      corrected.
+  // What IS tested (`FontSlotPicker.test.tsx`) is reason 1's precondition:
+  // the input is actually REMOVED from the DOM on Enter/Escape, not merely
+  // hidden. A refactor that keeps it mounted and toggles visibility instead
+  // reopens a reachable race and fails that test.
   const beginEdit = () => {
     setDraft(value);
     setEditing(true);

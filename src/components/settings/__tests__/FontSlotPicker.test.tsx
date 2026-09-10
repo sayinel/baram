@@ -182,6 +182,13 @@ describe("FontSlotPicker", () => {
       // the (still-unchanged) `value` prop again until the parent re-renders
       // with the committed one, which is EditorTab's job, not this one's.
       expect(screen.queryByRole("textbox")).toBeNull();
+      // review fix round 2 — REMOVED, not merely hidden: `queryByRole`
+      // above would also pass for a `display: none` input (RTL excludes
+      // hidden elements from accessibility queries), which would silently
+      // reopen the unreachable blur race the comment at commit/cancel in
+      // FontSlotPicker.tsx explains. This is the precondition that argument
+      // actually depends on.
+      expect(document.body.contains(input)).toBe(false);
     });
 
     it("commits on blur too", () => {
@@ -223,6 +230,11 @@ describe("FontSlotPicker", () => {
       expect(
         screen.getByRole("button", { name: "Pretendard Variable" }),
       ).toBeTruthy();
+      // review fix round 2 — REMOVED, not merely hidden (see the matching
+      // assertion on the Enter path above for why this specific check, not
+      // queryByRole, is the one that guards the unreachable-blur-race
+      // invariant explained at commit/cancel in FontSlotPicker.tsx).
+      expect(document.body.contains(input)).toBe(false);
     });
 
     it("does not call onChange when the committed text equals the current value", () => {
