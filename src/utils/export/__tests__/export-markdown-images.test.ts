@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import {
   classifyImageSource,
   relativeScope,
+  rewriteImageTagsAsMarkdown,
   stageMarkdownImages,
 } from "../export-markdown-images";
 import { stripDisallowedMarkdownLinks } from "../export-markdown-links";
@@ -418,5 +419,16 @@ describe("stageMarkdownImages", () => {
       refused: 0,
       scoped: true,
     });
+  });
+});
+
+describe("rewriteImageTagsAsMarkdown (the text writers)", () => {
+  it("rewrites the editor's <img> tags with their source untouched, and nothing else", () => {
+    const md =
+      'a <img src="img/a.png" alt="A" width="640"> b\n\n<img src="../x.png" width="50%">\n\n<img src="img/c.png" loading="lazy">\n\n![k](img/k.png)\n';
+    expect(rewriteImageTagsAsMarkdown(md)).toBe(
+      'a ![A](img/a.png){width=640px} b\n\n![](../x.png){width=50%}\n\n<img src="img/c.png" loading="lazy">\n\n![k](img/k.png)\n',
+    );
+    expect(rewriteImageTagsAsMarkdown("plain\n")).toBe("plain\n");
   });
 });

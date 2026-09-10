@@ -59,6 +59,7 @@ export function convertForPandoc(md: string): string {
   result = convertHighlightForPandoc(result);
   result = convertSubscriptForPandoc(result);
   result = convertSuperscriptForPandoc(result);
+  result = convertUnderlineForPandoc(result);
 
   // Note: Definition lists (Term\n: Def) are kept as-is — Pandoc supports them natively.
   // Note: Footnotes are kept as-is — Pandoc supports [^id] natively.
@@ -75,6 +76,8 @@ export function convertHighlightForPandoc(md: string): string {
     (_match, content: string) => {
       return `**${content}**`;
     },
+    // `$a == b$` is math, not a highlight.
+    { inlineMath: true, markup: true },
   );
 }
 
@@ -82,27 +85,92 @@ export function convertHighlightForPandoc(md: string): string {
 // Individual converters
 // ---------------------------------------------------------------------------
 
-/** Convert `~text~` subscript to `<sub>text</sub>` (Pandoc recognizes HTML sub/sup) */
+/**
+ * Subscript, superscript and underline in pandoc's OWN spellings — `~x~`,
+ * `^x^`, `[x]{.underline}` — never as raw HTML. The docx writer ignores raw
+ * HTML, and the export's Lua policy filter drops every raw node on pandoc's
+ * parse (issue 544), so `<sub>`/`<sup>`/`<u>` would reach no writer at all;
+ * the native forms render everywhere (docx `vertAlign`/`w:u`, epub
+ * `<sub>`/`<u>`, latex `\textsubscript`/`\ul`). Baram's `~x~`/`^x^` are the
+ * same syntax pandoc uses, with two differences this pass settles: pandoc
+ * requires an inner space to be escaped (`~a\ b~`), and a span may not cross
+ * a line. What counts as a span is Baram's own rule (convert-inline-text.ts,
+ * the editor's parser): the delimiters hug a non-space character on both
+ * sides, so `~90,000 ... ( ~1.05 GB` and `^ up or ^ down` are prose, exactly
+ * as the editor shows them. Matches never touch code spans, fences or math
+ * (`replaceOutsideCode` rejects any overlap, not only a start inside).
+ */
 export function convertSubscriptForPandoc(md: string): string {
   return replaceOutsideCode(
     md,
-    /(?<!~)~(?!~)([^~]+)(?<!~)~(?!~)/g,
-    (_match, content: string) => {
-      return `<sub>${content}</sub>`;
-    },
+    /(?<!~)~([^~\s](?:[^~\n]*[^~\s])?)~(?!~)/g,
+    (_match, content: string) => `~${escapePandocInnerSpaces(content)}~`,
+    { inlineMath: true, markup: true },
   );
 }
 
-/** Convert `^text^` superscript to `<sup>text</sup>`.
- *  Does not match across lines or inside footnote refs `[^id]`. */
+/** Superscript as `^text^`, by the same hugging rule; a footnote reference
+ *  `[^id]` is excluded by the `[` lookbehind and the `]` exclusion. */
 export function convertSuperscriptForPandoc(md: string): string {
   return replaceOutsideCode(
     md,
-    /(?<!\^)(?<!\[)\^(?!\^)([^^\\n[\]]+)\^(?!\^)/g,
-    (_match, content: string) => {
-      return `<sup>${content}</sup>`;
-    },
+    /(?<!\^)(?<!\[)\^([^^\s[\]](?:[^^\n[\]]*[^^\s[\]])?)\^(?!\^)/g,
+    (_match, content: string) => `^${escapePandocInnerSpaces(content)}^`,
+    { inlineMath: true, markup: true },
   );
+}
+
+/**
+ * Underline: the serializer writes `<u>…</u>` (pm-to-md.ts); pandoc's
+ * bracketed span with the `underline` class is what its writers render. The
+ * content may hold other marks, a link, a `<br>`, a soft line break — but not
+ * a blank line, which would end the paragraph. Brackets inside the content
+ * are kept when they balance (a link survives as a link) and escaped when
+ * they do not, since a lone `]` would close the span early and leave
+ * `{.underline}` visible in the export.
+ */
+export function convertUnderlineForPandoc(md: string): string {
+  return replaceOutsideCode(
+    md,
+    /<u>((?:(?!<\/u>)(?:[^\n]|\n(?!\n)))*?)<\/u>/g,
+    // No `markup`/`inlineMath` here: the `<u>` tags this pass consumes ARE
+    // tags, and an underline may well contain `$…$` — a match that merely
+    // overlaps math must still convert, or the underline is lost.
+    (_match, content: string) => `[${balanceBrackets(content)}]{.underline}`,
+  );
+}
+
+/** A space (or tab) inside `~…~` / `^…^` must be `\ ` for pandoc; one
+ *  already escaped stays. */
+function escapePandocInnerSpaces(content: string): string {
+  return content.replace(/(?<!\\)[ \t]/g, "\\ ");
+}
+
+/** Escape only the live `[`/`]` that have no partner, so a link inside the
+ *  underline survives while a lone `]` cannot close the span early. A bracket
+ *  is live when the run of backslashes before it has even length: `\]` is
+ *  escaped, `\\]` is an escaped backslash followed by a live bracket. */
+function balanceBrackets(content: string): string {
+  const unmatched = new Set<number>();
+  const stack: number[] = [];
+  for (let i = 0; i < content.length; i++) {
+    const ch = content[i];
+    if (ch !== "[" && ch !== "]") continue;
+    let run = 0;
+    for (let j = i - 1; j >= 0 && content[j] === "\\"; j--) run += 1;
+    if (run % 2 === 1) continue;
+    if (ch === "[") stack.push(i);
+    else if (stack.length > 0) stack.pop();
+    else unmatched.add(i);
+  }
+  for (const i of stack) unmatched.add(i);
+  if (unmatched.size === 0) return content;
+  let out = "";
+  for (let i = 0; i < content.length; i++) {
+    if (unmatched.has(i)) out += "\\";
+    out += content[i];
+  }
+  return out;
 }
 
 /** Convert toggle (details/summary) to blockquote.
@@ -166,6 +234,7 @@ export function convertWikilinksForPandoc(md: string): string {
 
       return `[${displayText}](${url})`;
     },
+    { inlineMath: true },
   );
 }
 

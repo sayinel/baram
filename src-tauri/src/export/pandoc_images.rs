@@ -15,13 +15,15 @@
 // for a broken link a path under the temporary directory that does not
 // exist, so it puts the alt text in place — never a path the document wrote.
 //
-// What this module does NOT guard: the markdown string itself. It is the
-// webview's, and a webview that has been compromised could write an absolute
-// path straight into it; nothing here parses that string, on purpose — a
-// second markdown parser would only disagree with pandoc's. Closing that
-// channel means running pandoc with `--sandbox`, which also stops it reading
-// the copies staged here, so assets would have to travel another way. That
-// is tracked as a follow-up; this module's boundary is the document's.
+// The markdown string itself is judged one layer later: the Lua policy
+// filter `pandoc.rs` writes for each export runs on pandoc's own parse — an
+// Image whose source is not one of the paths bound here, a Link outside the
+// scheme policy, any raw node — so a path written straight into the string,
+// by a note or by a webview that has been compromised, reaches no file.
+// Nothing here parses that string, on purpose: a second markdown parser
+// would only disagree with pandoc's. `--sandbox` would be a further layer;
+// it also stops pandoc reading the copies staged here, so it waits on a
+// different way of handing assets over (tracked as a follow-up).
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};

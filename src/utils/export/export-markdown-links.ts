@@ -47,14 +47,15 @@
 // dangling marker, and an image reference (outside this policy, see below)
 // may still need it.
 //
-// Not covered here, deliberately, and tracked separately: raw HTML (`html`
-// nodes — pandoc's markdown reader passes `<a href>`, `<script>` and event
-// handlers through to html5/epub; inline raw HTML arrives as separate open
-// and close tag nodes, so a per-node sanitizer would corrupt it), raw TeX
-// (`\href{javascript:…}{x}` is plain text to remark and a hyperlink command
-// to pandoc's latex writer — same class, same reader-profile decision) and
-// image sources (499 did not scrub `<img src>` either; pandoc's own resource
-// access is a different threat model from a live hyperlink).
+// Not covered here, deliberately: raw HTML (`html` nodes — inline raw HTML
+// arrives as separate open and close tag nodes, so a per-node sanitizer
+// would corrupt it), raw TeX (`\href{javascript:…}{x}` is plain text to
+// remark) and image sources. Those are judged one layer later, on pandoc's
+// own parse, by the Lua policy filter `src-tauri/src/export/pandoc.rs`
+// writes for each export (issues 545 and 544): every raw node is dropped,
+// every Link is held to the same scheme policy as here, every Image to the
+// staged-asset allowlist. This pass stays the last word on markdown links
+// in the string the frontend hands over.
 import type { Link, LinkReference, Nodes } from "mdast";
 
 import { visit } from "unist-util-visit";
