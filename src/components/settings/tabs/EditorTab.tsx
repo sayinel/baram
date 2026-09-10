@@ -8,6 +8,7 @@ import { useShallow } from "zustand/shallow";
 import { useTranslation } from "../../../i18n/useTranslation";
 import { listFonts } from "../../../ipc/font";
 import { useSettingsStore } from "../../../stores/settings/store";
+import { FontBrowser } from "../FontBrowser";
 import { FontSlotPicker } from "../FontSlotPicker";
 import {
   SettingsRow,
@@ -22,6 +23,7 @@ export function EditorTab() {
     setFontFamily,
     codeFontFamily,
     setCodeFontFamily,
+    recentFonts,
     fontSize,
     setFontSize,
     lineHeight,
@@ -50,6 +52,7 @@ export function EditorTab() {
       fontSize: s.fontSize,
       lineHeight: s.lineHeight,
       lineNumbers: s.lineNumbers,
+      recentFonts: s.recentFonts,
       setAutoLoadVideoEmbeds: s.setAutoLoadVideoEmbeds,
       setAutoPairBrackets: s.setAutoPairBrackets,
       setCodeFontFamily: s.setCodeFontFamily,
@@ -87,25 +90,17 @@ export function EditorTab() {
     };
   }, []);
 
+  // §352 (Task 6) — owns its own close the way AppearanceTab's
+  // <ThemeEditor onClose={…}/> does (review Important 3: a real back
+  // control, not a blank pane).
   if (browserSlot) {
-    // review Important 3 — a real back control, not a blank pane: §352
-    // (Task 6) swaps this whole branch for <FontBrowser slot={browserSlot}
-    // onClose={…}/>, which owns its own close the way AppearanceTab's
-    // <ThemeEditor onClose={…}/> does. Until then, this placeholder is that
-    // same shape with nothing behind the button yet.
     return (
-      <div className="settings-section">
-        <div className="settings-font-browser-placeholder">
-          <button
-            className="settings-font-browser-back btn-unstyled"
-            onClick={() => setBrowserSlot(null)}
-            type="button"
-          >
-            {t("common.close")}
-          </button>
-          <p>{t("settings.editor.fontPicker.browserUnavailable")}</p>
-        </div>
-      </div>
+      <FontBrowser
+        fonts={fonts}
+        onClose={() => setBrowserSlot(null)}
+        recentFonts={recentFonts}
+        slot={browserSlot}
+      />
     );
   }
 

@@ -1,4 +1,4 @@
-// §351 — the font UI renders in the app's language.
+// §351/§352 — the font UI renders in the app's language.
 //
 // Modeled on vault-tab-i18n.test.tsx: neither locale-file guard
 // (`locale-parity.test.ts`, `label-key-coverage.test.ts`) can see hardcoded
@@ -8,7 +8,9 @@
 // test it would slip past every prose check in the repo silently — the
 // exact way an enumerated guard misses its next member. `EditorTab.tsx` is
 // included too: it has never had prose-scan coverage, and this task rewrites
-// most of its font section.
+// most of its font section. Task 6 (§352) adds the font browser's three
+// files — an enumerated `FILES` list protects only what is named in it, so a
+// new component slips past unless it is appended here too.
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
@@ -19,6 +21,9 @@ import ko from "../../../i18n/ko.json";
 const KEYS = new Set(Object.keys(en));
 
 const FILES = [
+  "src/components/settings/FontBrowser.tsx",
+  "src/components/settings/font-browser-list.tsx",
+  "src/components/settings/font-browser-preview.tsx",
   "src/components/settings/FontSlotPicker.tsx",
   "src/components/settings/tabs/EditorTab.tsx",
 ];
@@ -27,7 +32,7 @@ const FILES = [
 const ALLOWED = new Set<string>([]);
 
 describe("no font settings UI file hardcodes user-facing English", () => {
-  it("read both files, so the scan below is not empty", () => {
+  it("read every file, so the scan below is not empty", () => {
     for (const file of FILES) {
       expect(readFileSync(file, "utf8").length).toBeGreaterThan(1000);
     }

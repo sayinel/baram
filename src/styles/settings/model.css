@@ -232,24 +232,205 @@
   color: var(--color-text-muted);
 }
 
-/* review Important 3 — placeholder for the not-yet-built font browser
-   (§352/Task 6). A working back control so no reachable state leaves the
-   pane empty with no exit. */
-.settings-font-browser-placeholder {
-  padding: 24px 0;
+/* §352 Font Browser — two-pane replacement for the old placeholder (review
+   Important 3): a filtered/grouped list on the left, a live body+code
+   preview on the right. Owns its own back control the way ThemeEditor does.
+   `.flex-col`/`.flex-header`/`.btn-unstyled`/`.text-truncate` come from
+   base.css; `.settings-search*`/`.settings-model-refresh*`/`.settings-range`
+   are reused as-is from the rest of the settings modal. */
+.font-browser {
+  gap: 12px;
+  min-height: 420px;
 }
 
-.settings-font-browser-back {
+.font-browser-topbar {
+  gap: 12px;
+}
+
+.font-browser-back {
   font-size: 0.8rem;
   color: var(--color-accent-default);
 }
 
-.settings-font-browser-back:hover {
+.font-browser-back:hover {
   color: var(--color-accent-hover);
 }
 
-.settings-font-browser-placeholder p {
-  margin-top: 12px;
-  font-size: 0.85rem;
+/* Body/Code segmented control — same shape as .settings-scheme-group. */
+.font-browser-slot-group {
+  display: flex;
+  overflow: hidden;
+  border: 1px solid var(--color-border-default);
+  border-radius: 5px;
+}
+
+.font-browser-slot-btn {
+  padding: 4px 12px;
+  font-family: var(--font-family-sans);
+  font-size: 0.78rem;
   color: var(--color-text-secondary);
+  cursor: pointer;
+  background: var(--color-bg-default);
+  border: none;
+}
+
+.font-browser-slot-btn:not(:last-child) {
+  border-right: 1px solid var(--color-border-default);
+}
+
+.font-browser-slot-btn:hover {
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-subtle);
+}
+
+.font-browser-slot-btn-active {
+  color: var(--color-accent-on-solid);
+  background-color: var(--color-accent-solid);
+}
+
+.font-browser-toolbar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.font-browser-toolbar .settings-search-wrapper {
+  max-width: none;
+  margin: 0;
+}
+
+.font-browser-chips {
+  display: flex;
+  flex-shrink: 0;
+  gap: 6px;
+}
+
+.font-browser-chip {
+  padding: 3px 10px;
+  font-size: 0.72rem;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-default);
+  border-radius: 999px;
+}
+
+.font-browser-chip:hover {
+  color: var(--color-text-primary);
+}
+
+.font-browser-chip-active {
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid);
+  border-color: var(--color-accent-solid);
+}
+
+.font-browser-count {
+  flex-shrink: 0;
+  margin-left: auto;
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.font-browser-body {
+  display: flex;
+  flex: 1;
+  gap: 16px;
+  min-height: 0;
+}
+
+.font-browser-list {
+  flex: 0 0 42%;
+  gap: 12px;
+  overflow-y: auto;
+}
+
+.font-browser-list-loading {
+  padding: 24px 0;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.font-browser-group-title {
+  padding-bottom: 4px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.font-browser-group-items {
+  display: flex;
+  flex-direction: column;
+}
+
+.font-browser-row {
+  padding: 5px 4px;
+  font-size: 0.85rem;
+  color: var(--color-text-primary);
+  text-align: left;
+  border-radius: 4px;
+}
+
+.font-browser-row:hover {
+  background: var(--color-bg-subtle);
+}
+
+.font-browser-row-active {
+  color: var(--color-accent-default);
+  background: var(--color-bg-subtle);
+}
+
+.font-browser-preview {
+  flex: 1;
+  gap: 12px;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+.font-browser-preview-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.font-browser-preview-control {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.7rem;
+  color: var(--color-text-secondary);
+}
+
+.font-browser-preview-body,
+.font-browser-preview-code {
+  padding: 12px 14px;
+  overflow: auto;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+}
+
+.font-browser-preview-body p {
+  margin: 0 0 8px;
+  color: var(--color-text-primary);
+}
+
+.font-browser-preview-body p.font-browser-preview-glyphs {
+  color: var(--color-text-secondary);
+}
+
+.font-browser-preview-code {
+  margin: 0;
+  color: var(--color-text-primary);
+  white-space: pre-wrap;
+}
+
+/* review-equivalent — highlight whichever preview matches the slot being
+   browsed, without hiding the other (the pairing must stay visible). */
+.font-browser-preview-active {
+  border-color: var(--color-accent-default);
 }
