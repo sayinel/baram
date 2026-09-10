@@ -6,7 +6,15 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 import { listFonts } from "../font";
 
 describe("listFonts", () => {
-  beforeEach(() => invoke.mockReset());
+  // 블록 바디 필수 — 화살표 식 바디는 `mockReset()`의 반환값(모킹 함수 자신)을 그대로
+  // beforeEach 밖으로 돌려준다. vitest는 beforeEach가 함수를 반환하면 그 함수를 해당
+  // 테스트의 cleanup으로 등록해 테스트가 끝난 뒤 인자 없이 호출한다
+  // (getBeforeHookCleanupCallback, vitest/dist/chunks/run.*.js). "no font dir" 로
+  // 리젝트를 설정한 테스트 뒤에 그 cleanup이 invoke()를 호출하면 아무도 await·catch하지
+  // 않는 리젝트가 새로 생겨 "Unknown Error"로 보고된다 — 테스트 자체의 try/catch와는 무관.
+  beforeEach(() => {
+    invoke.mockReset();
+  });
 
   it("passes refresh through to the command", async () => {
     invoke.mockResolvedValue([]);
