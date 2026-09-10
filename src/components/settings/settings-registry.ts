@@ -6,6 +6,8 @@ import type { Locale } from "../../i18n";
 import type { AIProvider } from "../../stores/ai/ai";
 import type { TaskScanScope } from "../../utils/tasks/task-scan-scope";
 
+import { useShallow } from "zustand/shallow";
+
 import { AVAILABLE_LOCALES, LOCALE_LABELS } from "../../i18n";
 import { useAIStore } from "../../stores/ai/ai";
 import { AI_PROVIDER_IDS, AI_PROVIDERS } from "../../stores/ai/providers";
@@ -70,7 +72,22 @@ export const NAVIGATE_CONTROL: SettingControlMeta = {
  */
 export function useSettingsRegistry(): SearchableSetting[] {
   const settings = useSettingsStore();
-  const ai = useAIStore();
+  // §340 M-11 정정: bare `useAIStore()`는 ai 스토어의 **모든** write에 이 레지스트리
+  // 전체를 재구성한다 — 스트리밍 토큰마다 바뀌는 `ghostText`·`isStreaming`도 포함해서.
+  // 설정 모달이 열려 있는 동안만이지만, 이 브랜치가 `aiEnabled`를 여기서 읽게 만들며
+  // 그 비용이 커졌다. 아래 여덟 필드만 이 파일이 실제로 읽고 쓴다.
+  const ai = useAIStore(
+    useShallow((s) => ({
+      aiEnabled: s.aiEnabled,
+      ghostTextEnabled: s.ghostTextEnabled,
+      privacyMode: s.privacyMode,
+      provider: s.provider,
+      setAIEnabled: s.setAIEnabled,
+      setGhostTextEnabled: s.setGhostTextEnabled,
+      setPrivacyMode: s.setPrivacyMode,
+      setProvider: s.setProvider,
+    })),
+  );
 
   return [
     // ── General ──────────────────────────────────────────────────────────────
