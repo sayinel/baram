@@ -101,7 +101,7 @@ baram/
   try { await llmComplete(...); } catch { ... } finally { cleanup(); }
   ```
 - **`openUrl()`(plugin-opener)은 capability `opener:default` 범위인 http·https·mailto·tel만 연다** — 다른 scheme은 Tauri ACL이 거부한다. 테스트에서 mock `openUrl` 호출을 단언해도 실제로 열린다는 증거가 아니다
-- **export 경로는 둘이다**: HTML·PDF는 `captureEditorHTML`(에디터 DOM 복제 — 후행 패스 `resolveVideoSources`가 `<a>`를 새로 만드니 최종 정리는 `innerHTML` 직전), Pandoc·Notion은 `serializeLiveDoc` markdown 직행. 출력 정책은 두 경로에 각각 걸어야 한다(#527) — 링크 정책은 `src/utils/export/`의 DOM 쪽 `export-html-links.ts`, markdown 쪽 `export-markdown-links.ts`(변환기·mermaid 자산 재작성 뒤 **마지막** 패스)에 있다. 새 export 경로나 후행 패스를 추가하면 그 뒤에 다시 걸 것
+- **export 경로는 둘이다**: HTML·PDF는 `captureEditorHTML`(에디터 DOM 복제 — 후행 패스 `resolveVideoSources`가 `<a>`를 새로 만드니 최종 정리는 `innerHTML` 직전), Pandoc·Notion은 `serializeLiveDoc` markdown 직행. 출력 정책은 두 경로에 각각 걸어야 한다(#527) — 링크 정책은 `src/utils/export/`의 DOM 쪽 `export-html-links.ts`, markdown 쪽 `export-markdown-links.ts`(변환기·mermaid 자산 재작성 뒤 **마지막** 패스)에 있다. 새 export 경로나 후행 패스를 추가하면 그 뒤에 다시 걸 것. Pandoc 이미지 정책(#545)은 두 반쪽이다 — frontend `export-markdown-images.ts`(UX 반: 문자열로 판정해 alt 텍스트로 degrade)와 Rust `src-tauri/src/export/pandoc_images.rs`(경계: canonical 경로로 재판정·tempdir 복사). **Rust는 이미지 요청에 대한 frontend 판정을 신뢰하지 않는다**(markdown 문자열 자체는 webview 것 — `--sandbox`가 후속) — 새 이미지 입구는 양쪽에 걸 것
 - **공유 유틸리티 위치** — 로컬 재구현 금지:
   - `basename()` / `dirname()` → `src/utils/path-utils.ts`
   - Journal 날짜 regex → `src/utils/journal/journal.ts` (`JOURNAL_FILENAME_RE`, `JOURNAL_DATE_PARTS_RE`, `JOURNAL_FILENAME_COMPACT_RE`)

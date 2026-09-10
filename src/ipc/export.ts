@@ -5,6 +5,7 @@ import type {
   ExportFormat,
   ExportOptions,
   PandocAsset,
+  PandocImageRequest,
   PandocInfo,
   PdfOptions,
 } from "./types";
@@ -29,24 +30,27 @@ export async function exportDocument(
   });
 }
 
+/** What `export_pandoc` takes — one object, not ten positional parameters. */
+export interface ExportPandocRequest {
+  assets?: PandocAsset[];
+  /** issue 545: the vault or folder context that owns the document (see export.ts). */
+  documentContextId?: string;
+  /** issue 545: the document's absolute path; the backend takes its directory. */
+  documentPath?: string;
+  extraArgs?: string[];
+  format: string;
+  /** issue 545: relative images for the backend to resolve and stage. */
+  images?: PandocImageRequest[];
+  markdownContent: string;
+  outputPath: string;
+  pandocPath?: string;
+  referenceDoc?: string;
+}
+
 export async function exportPandoc(
-  markdownContent: string,
-  outputPath: string,
-  format: string,
-  pandocPath?: string,
-  referenceDoc?: string,
-  extraArgs?: string[],
-  assets?: PandocAsset[],
+  request: ExportPandocRequest,
 ): Promise<void> {
-  return invoke<void>("export_pandoc", {
-    markdownContent,
-    outputPath,
-    format,
-    pandocPath,
-    referenceDoc,
-    extraArgs,
-    assets,
-  });
+  return invoke<void>("export_pandoc", { ...request });
 }
 
 // §5.10 PDF export via headless Chrome

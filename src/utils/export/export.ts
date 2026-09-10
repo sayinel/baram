@@ -1,12 +1,15 @@
 import { save } from "@tauri-apps/plugin-dialog";
 
-import type { PandocFormat, PdfOptions } from "../../ipc/types";
+import type { ContextInfo, PandocFormat, PdfOptions } from "../../ipc/types";
 // §5.12 Export — HTML file save + PDF via headless Chrome backend + §53 Notion + §55 Pandoc
 import type { Editor } from "@tiptap/core";
 
 import { exportBinaryFile, exportPandoc, exportPdf } from "../../ipc/invoke";
+import { contextRootOf, useContextStore } from "../../stores/context/context";
 import { serializeLiveDoc } from "../editor/serialize-live-doc";
+import { isUnderRoot } from "../path-utils";
 import { captureEditorHTML, generateStandaloneHTML } from "./export-html";
+import { stageMarkdownImages } from "./export-markdown-images";
 import { stripDisallowedMarkdownLinks } from "./export-markdown-links";
 import { rewriteMermaidForPandoc } from "./mermaid-export-assets";
 import { convertForNotion } from "./notion-export";
@@ -86,6 +89,12 @@ export async function exportForNotion(
   await exportBinaryFile(path, Array.from(new TextEncoder().encode(notionMd)));
 }
 
+/** The Pandoc targets that embed images, i.e. make pandoc open the files (issue 545). */
+const PANDOC_EMBEDS_IMAGES: ReadonlySet<PandocFormat> = new Set([
+  "docx",
+  "epub",
+]);
+
 /**
  * §55 Export editor content via Pandoc to docx/latex/epub/rst.
  * Converts Baram-specific syntax to standard markdown first,
@@ -95,7 +104,14 @@ export async function exportWithPandoc(
   editor: Editor,
   title: string,
   format: PandocFormat,
-  options?: { pandocPath?: string; referenceDoc?: string },
+  options?: {
+    /** The document's absolute path, or null/undefined when never saved (issue 545). */
+    documentPath?: null | string;
+    pandocPath?: string;
+    referenceDoc?: string;
+    /** The id of the context the document's tab names (issue 545; see `owningDirectoryContext`). */
+    tabContextId?: string;
+  },
 ): Promise<void> {
   const md = serializeLiveDoc(editor);
   // §95: resolve bare [[id]] zettel links to [[id|title]] for export output
@@ -103,9 +119,27 @@ export async function exportWithPandoc(
   const pandocMd = convertForPandoc(resolveZettelLinksForExport(md));
   const { markdown: rewritten, assets } =
     await rewriteMermaidForPandoc(pandocMd);
-  // issue 527: the link policy runs LAST, after every converter and the
-  // mermaid asset rewrite — see export-markdown-links.ts.
-  const finalMd = stripDisallowedMarkdownLinks(rewritten);
+  // issue 545: for the formats that EMBED images — pandoc reads the files —
+  // the image policy runs after every converter and the mermaid rewrite:
+  // relative images become asset requests the backend resolves inside the
+  // document's own context, everything else becomes alt text. It runs BEFORE
+  // the link policy, so that one stays the final gate
+  // (export-markdown-images.ts). LaTeX and RST embed nothing — pandoc writes
+  // the reference and reads no file — so their images pass through as written.
+  const documentPath = options?.documentPath ?? null;
+  const owner =
+    documentPath === null
+      ? null
+      : owningDirectoryContext(documentPath, options?.tabContextId);
+  const { images, markdown: staged } = PANDOC_EMBEDS_IMAGES.has(format)
+    ? stageMarkdownImages(rewritten, {
+        contextRoot: owner === null ? null : contextRootOf(owner.path),
+        documentPath,
+        knownAssets: new Set(assets.map((asset) => asset.name)),
+      })
+    : { images: [], markdown: rewritten };
+  // issue 527: the link policy runs LAST — see export-markdown-links.ts.
+  const finalMd = stripDisallowedMarkdownLinks(staged);
 
   const extensionMap: Record<PandocFormat, string> = {
     docx: "docx",
@@ -122,13 +156,48 @@ export async function exportWithPandoc(
   });
   if (!path) return; // user cancelled
 
-  await exportPandoc(
-    finalMd,
-    path,
-    format,
-    options?.pandocPath,
-    options?.referenceDoc,
-    undefined,
+  await exportPandoc({
     assets,
-  );
+    documentContextId: owner?.id,
+    documentPath: documentPath ?? undefined,
+    format,
+    images,
+    markdownContent: finalMd,
+    outputPath: path,
+    pandocPath: options?.pandocPath,
+    referenceDoc: options?.referenceDoc,
+  });
+}
+
+/**
+ * issue 545: the vault or folder context whose files an export of
+ * `documentPath` may embed — the tab's own context when it is a directory
+ * context holding the document (`openTab` backfills the id from whatever
+ * context was active, so it may not be), else the deepest directory context
+ * holding it. A file opened on its own has none: a `File` context authorizes
+ * exactly that file. Directory contexts only, deepest first — NOT
+ * `getContextForPath`, which answers an exact `File` match first. This is the
+ * user-facing half of the rule; the backend re-derives it from canonical
+ * paths (`ContextManager::owning_directory_root`) and is the boundary.
+ */
+function owningDirectoryContext(
+  documentPath: string,
+  tabContextId: string | undefined,
+): ContextInfo | null {
+  const { contexts } = useContextStore.getState();
+  const holds = (c: ContextInfo): boolean =>
+    c.contextType !== "file" && isUnderRoot(documentPath, c.path);
+  const named = contexts.find((c) => c.id === tabContextId);
+  if (named !== undefined && holds(named)) return named;
+  let best: ContextInfo | null = null;
+  for (const c of contexts) {
+    if (!holds(c)) continue;
+    if (
+      best === null ||
+      contextRootOf(c.path).length > contextRootOf(best.path).length
+    ) {
+      best = c;
+    }
+  }
+  return best;
 }

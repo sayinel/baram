@@ -476,7 +476,10 @@
         "pandocPath": "string?",
         "referenceDoc": "string?",
         "extraArgs": "string[]?",
-        "assets": "PandocAsset[]?"
+        "assets": "PandocAsset[]?",
+        "images": "PandocImageRequest[]?",
+        "documentPath": "string?",
+        "documentContextId": "string?"
       },
       "output": "void",
       "module": "export",
