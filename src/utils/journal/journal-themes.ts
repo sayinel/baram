@@ -1,9 +1,6 @@
 // §56h Journal visual themes — calendar and journal component theming
 
-import type { BundledFont } from "../font/bundled-fonts";
-
-import { quoteFamily } from "../editor/quote-font-family";
-import { BUNDLED_FONTS } from "../font/bundled-fonts";
+import { bundledFamily } from "../font/bundled-fonts";
 
 export interface JournalTheme {
   accentColor: string;
@@ -23,19 +20,6 @@ export interface JournalTypography {
   fontFamily: string;
   lineHeight: number;
   maxWidth: string;
-}
-
-/**
- * 번들 서체의 CSS 패밀리명 — §347 단일 출처(`bundled-fonts.ts`)에서 끌어온다.
- *
- * 없는 역할을 물으면 던진다. 조용한 폴백은 "이름만 있고 실물이 없다"는
- * §346 의 결함을 반대 방향으로 되살린다 — font-surfaces.ts 의
- * `bundledFamily()` 와 같은 관용구.
- */
-function bundledFamily(role: BundledFont["role"]): string {
-  const font = BUNDLED_FONTS.find((f) => f.role === role);
-  if (!font) throw new Error(`§347: no bundled font for the "${role}" role`);
-  return quoteFamily(font.family);
 }
 
 export const JOURNAL_THEMES: JournalTheme[] = [

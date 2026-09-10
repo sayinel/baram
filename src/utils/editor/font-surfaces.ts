@@ -18,9 +18,7 @@
 // 같은 훅이 이미 같은 관용구를 쓴다 — use-settings-effects.ts 의
 // `--editor-line-height`. 새 패턴이 아니다.
 
-import type { BundledFont } from "../font/bundled-fonts";
-
-import { BUNDLED_FONTS } from "../font/bundled-fonts";
+import { bundledFamily } from "../font/bundled-fonts";
 import { quoteFamily } from "./quote-font-family";
 
 export interface FontSurface {
@@ -35,19 +33,6 @@ export interface FontSurface {
 
 /** 어떤 변수를 덮는가. `mono` 는 원문을 고정폭으로 보여주는 표면용. */
 export type FontSurfaceScope = "both" | "mono";
-
-/**
- * 번들 서체의 CSS 표기 — 이름은 `bundled-fonts.ts` 하나에만 적혀 있다 (§347).
- *
- * 없는 역할을 물으면 던진다. 이름 없는 폴백 스택은 조용히 시스템 서체로
- * 렌더되어 §346 의 결함("이름만 있고 실물이 없다")을 반대 방향으로 되살린다 —
- * import 시점의 큰 소리가 낫다.
- */
-function bundledFamily(role: BundledFont["role"]): string {
-  const font = BUNDLED_FONTS.find((f) => f.role === role);
-  if (!font) throw new Error(`§347: no bundled font for the "${role}" role`);
-  return quoteFamily(font.family);
-}
 
 /**
  * 번들 서체를 머리에 둔 폴백 스택.

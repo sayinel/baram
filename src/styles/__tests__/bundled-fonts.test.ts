@@ -12,6 +12,8 @@ import { describe, expect, it } from "vitest";
 import {
   BUNDLED_FAMILY_KEYS,
   BUNDLED_FONTS,
+  bundledFamily,
+  bundledFont,
 } from "../../utils/font/bundled-fonts";
 
 const ROOT = process.cwd();
@@ -112,4 +114,18 @@ describe("§347 bundled fonts", () => {
       BUNDLED_FONTS.map((f) => f.family.toLowerCase()).sort(),
     );
   });
+
+  // 이 두 함수가 이제 단일 출처를 "역할로 꺼내는" 유일한 방법이다 — 같은
+  // `find(role) → throw → 인용` 관용구가 세 파일에 복제돼 있었고 네 번째가
+  // 필요해져서 여기로 올렸다 (final review C1 / T8-1).
+  it.each(["body", "code"] as const)(
+    "derives the %s role's font and its quoted CSS form from BUNDLED_FONTS",
+    (role) => {
+      const declared = BUNDLED_FONTS.find((f) => f.role === role);
+      expect(bundledFont(role)).toBe(declared);
+      // 인용은 장식이 아니다: 두 패밀리명 모두 공백이 든 다단어라서 인용이
+      // 없으면 CSS가 <custom-ident> 열로 파싱한다.
+      expect(bundledFamily(role)).toBe(`"${declared?.family}"`);
+    },
+  );
 });
