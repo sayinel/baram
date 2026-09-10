@@ -1,10 +1,17 @@
 // §80~§90/§342 Zettelkasten settings tab, promoted out of GeneralTab.
+import { open } from "@tauri-apps/plugin-dialog";
+
 import { useShallow } from "zustand/shallow";
 
 import { useTranslation } from "../../../i18n/useTranslation";
 import { pickApprovedDir } from "../../../ipc/approval";
+import { readFile } from "../../../ipc/invoke";
 import { useSettingsStore } from "../../../stores/settings/store";
-import { resolveAbsoluteDirSetting } from "../../../utils/path-utils";
+import { useUIStore } from "../../../stores/ui/ui";
+import {
+  relativeToRoot,
+  resolveAbsoluteDirSetting,
+} from "../../../utils/path-utils";
 import {
   SettingsRow,
   SettingsSectionHeader,
@@ -103,13 +110,40 @@ export function ZettelkastenTab() {
             description={t("settings.general.zettelkastenHomeNote.desc")}
             label={t("settings.general.zettelkastenHomeNote")}
           >
-            <input
-              className="settings-input"
-              onChange={(e) => setZettelkastenHomeNote(e.target.value)}
+            <TemplatePathRow
+              label={t("settings.general.zettelkastenHomeNote")}
+              onBrowse={async () => {
+                const dir = resolveAbsoluteDirSetting(zettelkastenDirectory);
+                const selected = await open({
+                  defaultPath: dir ?? undefined,
+                  filters: [{ name: "Markdown", extensions: ["md"] }],
+                });
+                if (typeof selected !== "string") return;
+
+                // §344 제텔 디렉터리 안이면 상대 경로로 저장한다 —
+                // `resolveHomeNotePath` 가 상대/절대 두 갈래를 갖고 있고, 상대로 두면
+                // 디렉터리를 옮겨도 설정이 산다.
+                const rel = (dir && relativeToRoot(selected, dir)) || selected;
+                setZettelkastenHomeNote(rel);
+
+                // ‼️ 선택 시점에 읽을 수 있는지 확인한다. 제텔 디렉터리 밖이면 vault
+                // 승인 경계(§329~)에 막혀 시작 시 조용히 실패하고, 사용자는 이유를
+                // 알 수 없다. 시작마다 토스트를 띄우는 것은 소음이므로 여기서 말한다.
+                try {
+                  await readFile(selected);
+                } catch {
+                  useUIStore
+                    .getState()
+                    .showToast(
+                      t("settings.general.zettelkastenHomeNote.unreadable"),
+                      "warning",
+                    );
+                }
+              }}
+              onClear={() => setZettelkastenHomeNote("")}
               placeholder={t(
                 "settings.general.zettelkastenHomeNote.placeholder",
               )}
-              type="text"
               value={zettelkastenHomeNote}
             />
           </SettingsRow>
