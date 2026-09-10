@@ -77,7 +77,7 @@ export function BlockHandleMenu({
   onClose,
 }: BlockHandleMenuProps) {
   const { t } = useTranslation();
-  const { ai: aiEnabled } = useFeatureFlags();
+  const { ai: aiEnabled, tasks: tasksEnabled } = useFeatureFlags();
   const [aiSubOpen, setAiSubOpen] = useState(false);
   const [turnIntoOpen, setTurnIntoOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -150,7 +150,7 @@ export function BlockHandleMenu({
   // Determine AI actions for the current block
   const currentNode = editor.state.doc.nodeAt(pos);
   const aiMode = currentNode ? getBlockContentMode(currentNode) : null;
-  const aiActions = aiMode ? getActionsForMode(aiMode) : [];
+  const aiActions = aiMode ? getActionsForMode(aiMode, tasksEnabled) : [];
   const blockHasContent = currentNode
     ? getBlockTextContent(currentNode).trim().length > 0
     : false;

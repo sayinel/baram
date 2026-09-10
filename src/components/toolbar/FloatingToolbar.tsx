@@ -120,7 +120,7 @@ const CONTEXTUAL_PROMPTS: Record<
 export function FloatingToolbar({ editor }: FloatingToolbarProps) {
   const { t } = useTranslation();
   const commandLabel = useCommandLabel();
-  const { ai: aiEnabled } = useFeatureFlags();
+  const { ai: aiEnabled, tasks: tasksEnabled } = useFeatureFlags();
   const [aiOpen, setAiOpen] = useState(false);
   const [dropUp, setDropUp] = useState(false);
   const [dropReady, setDropReady] = useState(false);
@@ -394,7 +394,7 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
                 ref={dropdownRef}
                 style={dropReady ? undefined : { visibility: "hidden" }}
               >
-                {getActionsForMode(contentMode).map((action) => (
+                {getActionsForMode(contentMode, tasksEnabled).map((action) => (
                   <button
                     className="floating-toolbar-ai-item"
                     key={action.id}
