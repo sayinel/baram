@@ -48,12 +48,18 @@ describe("featureReady", () => {
       });
 
       expect(featureReady(feature)).toBe(false);
-      // Compared against the catalogue TEXT, not `t(...)` on both sides: `t`
-      // falls back to the key, so a `t`-vs-`t` assertion would stay green
-      // even if the catalogue entry were deleted.
-      expect(useUIStore.getState().toast?.message).toBe(
-        t(FEATURE_DISABLED_TOAST_KEY[feature], "en"),
-      );
+      // ‼️ 이 단정은 `t(키)` 를 양쪽에서 쓴다 — `featureReady` 안쪽도 같은 `t(같은 키)` 다.
+      // 예전 주석은 "카탈로그 TEXT 와 비교하므로 t-vs-t 를 피했다"고 적혀 있었는데
+      // **거짓이었다**: 실측으로 `space.tasks.disabled` 를 en·ko 양쪽에서 지웠더니 이 파일
+      // 23건과 `src/i18n/__tests__/` 79건이 전부 초록이었고(locale-parity 는 양쪽에서
+      // 없어진 키를 못 잡는다) 사용자는 토스트에 **원시 키**를 보게 된다.
+      //
+      // 그래서 아래 한 줄이 그 구멍을 메운다: `t` 는 키가 없으면 키 자체를 돌려주므로,
+      // "번역된 값이 키와 다르다"가 곧 카탈로그에 그 항목이 있다는 증거다. 이 형태를
+      // 쓰는 새 테스트가 네 곳 이상이고, 이 한 줄이 그 부류를 함께 지킨다.
+      const key = FEATURE_DISABLED_TOAST_KEY[feature];
+      expect(t(key, "en")).not.toBe(key);
+      expect(useUIStore.getState().toast?.message).toBe(t(key, "en"));
     },
   );
 });

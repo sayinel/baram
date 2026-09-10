@@ -70,6 +70,13 @@ export function createAIAPI(pluginId: string): AIAPI {
       return buffer;
     },
     async listModels() {
+      // ‼️ §339 — `start` 와 같은 kill switch 를 여기서도 본다. 이 함수는 문서 내용을
+      // 내보내지 않으므로 프라이버시 영향은 없지만, `ai` 권한을 가진 플러그인이
+      // **AI 를 끈 상태에서** 앱으로 하여금 설정된 프로바이더에 요청을 보내게 할 수
+      // 있었다(키는 keyring 에서 Rust 가 붙인다). Rust 쪽 백스톱은 privacy mode 뿐이고
+      // `aiEnabled` 는 프런트 전용 개념이라 2층 방어가 없다 — 그래서 여기서 막는다.
+      const { aiEnabled } = useAIStore.getState();
+      if (!aiEnabled) throw new Error("AI is disabled.");
       const cfg = getConfigForTask("chat");
       const models = await llmListModels(cfg.provider, cfg.baseUrl);
       return models.map((m) => ({ id: m.id, name: m.name }));

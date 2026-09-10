@@ -162,6 +162,27 @@ describe("useCaptureTaskMode — gated on tasksEnabled (§338/Fix H)", () => {
     rerender();
     expect(result.current.enabled).toBe(false);
   });
+
+  it("turning tasks off while the mode is already on reports it off", () => {
+    // ‼️ 위 테스트의 **반대 방향**이다(재리뷰 I-C, 이 브랜치 다섯 번째 흡수 사례).
+    // 위 것은 "세터를 막아야 한다"를 지키고, 이건 "읽기도 막아야 한다"를 지킨다.
+    // 실측: `const enabled = tasksEnabled && enabledState;` 를 `= enabledState;` 로
+    // 바꿔도(세터 게이트 둘은 그대로) 93건이 전부 초록이었다 — 세터 게이트가 읽기
+    // 게이트의 뮤테이션을 흡수한다.
+    //
+    // 이 상태는 실제로 도달한다: 태스크 모드를 켠 채 캡처창을 열어 두고 설정에서
+    // Tasks 를 끄면, 읽기 게이트가 없으면 체크박스는 컴포넌트 게이트로 **사라지는데**
+    // 모드는 **켜진 채**이고 저장은 태스크 수집함으로 간다 — 꺼진 기능이 보이지 않게
+    // 계속 동작한다.
+    useSettingsStore.setState({ tasksEnabled: true });
+    const { result, rerender } = renderHook(() => useCaptureTaskMode());
+    act(() => result.current.toggle());
+    expect(result.current.enabled).toBe(true); // 양성 대조군
+
+    useSettingsStore.setState({ tasksEnabled: false });
+    rerender();
+    expect(result.current.enabled).toBe(false);
+  });
 });
 
 describe("captureErrorKey", () => {

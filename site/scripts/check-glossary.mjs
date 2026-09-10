@@ -253,8 +253,13 @@ for (const term of terms) {
           `(예: ${unexplained[0][0]} = "${unexplained[0][1].slice(0, 24)}") — requireKo 를 빼거나, ` +
           `정당한 자리는 requireKoAppExempt 에 키로 열거하고 근거를 requireKoAnywayWhy 에 적을 것`,
       );
-    } else if (unexplained.length && exempt.size) {
-      // 면제 목록이 있는데 그 밖에서 영어형이 나왔다 — 억제가 아니라 발견이다.
+    } else if (unexplained.length) {
+      // 면제 목록 **밖**에서 영어형이 나왔다 — 억제가 아니라 발견이다.
+      //
+      // ‼️ 여기에 `&& exempt.size` 를 달면 안 된다: 그러면 `requireKoAnywayWhy` 만 두고
+      // 면제 목록을 비워 둔 항목이 **어느 분기도 타지 않아** 그 용어 전체가 무검사가 된다
+      // — 이 함수를 키 단위로 바꾼 이유가 바로 그 전면 억제였는데 opt-in 으로 두면
+      // 다음 사람이 해치만 쓰고 목록을 비워 그것을 되살린다. 실측으로 재현됐다.
       problems.push(
         `[면제 밖의 영어형] ${en}: ${unexplained.map(([k]) => k).join(", ")} — ` +
           `오역이면 "${term.ko}" 로 고치고, 정당하면 requireKoAppExempt 에 더할 것`,
