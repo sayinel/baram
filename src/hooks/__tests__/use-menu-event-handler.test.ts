@@ -32,6 +32,10 @@ import {
 import { useAIStore } from "../../stores/ai/ai";
 import { useWorkspaceStore } from "../../stores/file/workspace";
 import { useSettingsStore } from "../../stores/settings/store";
+import {
+  RIGHT_PANEL_MODE_FEATURE,
+  SIDEBAR_PANEL_FEATURE,
+} from "../../stores/ui/panel-feature";
 import { useUIStore } from "../../stores/ui/ui";
 import { FEATURE_DISABLED_TOAST_KEY } from "../../utils/feature-gate";
 import { BARAM_HOMEPAGE, helpDocUrl } from "../../utils/help-urls";
@@ -221,15 +225,50 @@ describe("menu event → feature-owned ids gated by their feature flag (§341)",
       useSettingsStore.setState({ zettelkastenEnabled: true }),
   };
 
+  // ‼️ (Fix G) Re-enabling every feature belongs in `afterEach`, not at the tail of
+  // the `it.each` body below — an inline call there is skipped whenever an assertion
+  // above it throws (a real regression, or a mutation-testing run), and this describe
+  // runs 5 iterations before the two "lets X through" positive controls. A found-it-
+  // firsthand case: mutating the production gate correctly failed all 5 "blocks"
+  // cases, but the un-restored `aiEnabled: false` left behind by the failed
+  // "blocks view_ai_chat" iteration then ALSO failed "lets view_ai_chat through" —
+  // a cascading false negative unrelated to what that test actually checks.
+  //
+  // The same mutation run surfaced a SECOND, independent leak once the first was
+  // fixed: with the gate removed, "blocks view_ai_chat" no longer short-circuits, so
+  // it runs the real view_ai_chat switch case and flips the REAL useUIStore to
+  // `rightPanelOpen: true, rightPanelMode: "chat"` — which nothing here ever reset.
+  // "lets view_ai_chat through" (run later) then hit the case's
+  // `rightPanelMode === "chat"` branch, which only calls `toggleRightPanel`, not
+  // `setRightPanelMode` — so it asserted 0 calls though nothing about THAT test was
+  // wrong. Reset the UI fields every case in this describe can touch, back to
+  // `useUIStore`'s own defaults (ui.ts).
+  afterEach(() => {
+    for (const enable of Object.values(ENABLE_FEATURE)) enable();
+    useUIStore.setState({
+      rightPanelMode: "chat",
+      rightPanelOpen: false,
+      sidebarOpen: true,
+      sidebarPanel: "files",
+    });
+  });
+
   // ‼️ (Fix E / M-10) Derived from MENU_FEATURE_MAP rather than hand-listed — a
   // hand-written case per id is exactly the shape that left view_calendar and
   // view_inline_ai uncovered (only 3 of the map's 5 ids had one). A derived sweep
   // alone still cannot catch a WRONG map VALUE, though: disable the (wrong) feature
   // the map itself names and re-check against that same wrong value, and it still
-  // passes. `menu-enabled.test.ts`'s "every key is an id menu.rs actually registers
-  // as a menu item" is the independent oracle for this exact map, read from the Rust
-  // source rather than re-derived here — the two files share the one MENU_FEATURE_MAP
-  // object, so that check already covers this file's import of it too.
+  // passes — verified firsthand (Fix G): mutating `view_calendar` to `"ai"` here left
+  // all 15 tests in this file green, because the sweep derives BOTH which feature to
+  // disable AND which feature to expect the toast for from the very same map entry
+  // the production code also reads.
+  //
+  // ‼️ (Fix G correction) `menu-enabled.test.ts`'s "every key is an id menu.rs
+  // actually registers" is an independent oracle for this map's KEYS (does this id
+  // exist as a real menu item) — it is NOT an oracle for its VALUES (does it name the
+  // right feature), a different question menu.rs cannot answer at all (Rust's menu
+  // definitions carry no feature-ownership information). See the
+  // "MENU_FEATURE_MAP values are independently verifiable" describe below for that.
   it.each(Object.entries(MENU_FEATURE_MAP))(
     "blocks %s and toasts when its owning feature (%s) is disabled",
     (id, feature) => {
@@ -248,8 +287,6 @@ describe("menu event → feature-owned ids gated by their feature flag (§341)",
         );
       }
       expect(showToast).toHaveBeenCalledWith(t(toastKey, "en"));
-
-      ENABLE_FEATURE[feature]();
     },
   );
 
@@ -288,5 +325,33 @@ describe("menu event → feature-owned ids gated by their feature flag (§341)",
 
     expect(showToast).not.toHaveBeenCalled();
     useSettingsStore.setState({ tasksEnabled: true });
+  });
+});
+
+// ‼️ (Fix G) Closes the blind spot named above: two of the five ids open a seat that
+// `panel-feature.ts` (§340) already maps to a feature, authored independently of
+// MENU_FEATURE_MAP — view_ai_chat opens the "chat" right-panel mode, view_calendar
+// opens the "calendar" sidebar panel. Cross-checking against those catches either
+// one being swapped (verified: reverting the "MENU_FEATURE_MAP values are
+// independently verifiable" describe's own fix and re-running the view_calendar
+// mutation above against ONLY this file, without this describe, reproduces the
+// blind pass).
+//
+// The other three ids have no panel seat to check against: `insert.inlineAI` is an
+// editor command, and workspace_journal/workspace_zettel each switch a Perspective
+// preset, not a panel. There is no second, independently-authored source for what
+// feature owns them, so — the same shape as this file's own EXCEPTIONS pattern in
+// use-keybinding-actions-feature-gate.test.ts — they are pinned explicitly instead of
+// left unchecked. Named, not silently trusted.
+describe("MENU_FEATURE_MAP values are independently verifiable (Fix G)", () => {
+  it("agrees with panel-feature.ts for the two ids that open a mapped panel seat", () => {
+    expect(MENU_FEATURE_MAP.view_ai_chat).toBe(RIGHT_PANEL_MODE_FEATURE.chat);
+    expect(MENU_FEATURE_MAP.view_calendar).toBe(SIDEBAR_PANEL_FEATURE.calendar);
+  });
+
+  it("pins the three ids with no independent panel seat to check against", () => {
+    expect(MENU_FEATURE_MAP.view_inline_ai).toBe("ai");
+    expect(MENU_FEATURE_MAP.workspace_journal).toBe("journal");
+    expect(MENU_FEATURE_MAP.workspace_zettel).toBe("zettelkasten");
   });
 });
