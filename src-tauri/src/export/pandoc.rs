@@ -101,6 +101,13 @@ pub(super) fn is_safe_asset_name(name: &str) -> bool {
 /// the assets — so no asset may take its name.
 const INPUT_FILE_NAME: &str = "baram-pandoc-input.md";
 
+/// Which writers open image files to embed them — the same split the
+/// frontend's `PANDOC_EMBEDS_IMAGES` makes: docx and epub do, latex and rst
+/// write the reference and read nothing.
+fn writer_embeds_images(format: &str) -> bool {
+    matches!(format, "docx" | "epub")
+}
+
 /// The Lua filter pandoc runs over the parsed document (issue 545), written
 /// next to the input; no asset may take its name either.
 const POLICY_FILTER_NAME: &str = "baram-export-policy.lua";
@@ -111,11 +118,16 @@ const POLICY_FILTER_NAME: &str = "baram-export-policy.lua";
 /// reader and not a second parser decides what is an image, what is raw
 /// HTML and what is metadata:
 ///
-/// - Every `Image` whose source is not one of the paths this export bound
-///   (`ALLOWED`, generated per export) becomes its alt text. That closes what
-///   no string pass can see — markdown pandoc re-parses inside an HTML block
-///   (`<div>` … `![](/outside)` … `</div>`, one `html` node to remark) — and
-///   any other way a path could reach the markdown string.
+/// - For the writers that embed images (docx, epub), every `Image` whose
+///   source is not one of the paths this export bound (`ALLOWED`, generated
+///   per export) becomes its alt text. That closes what no string pass can
+///   see — markdown pandoc re-parses inside an HTML block (`<div>` …
+///   `![](/outside)` … `</div>`, one `html` node to remark) — and any other
+///   way a path could reach the markdown string. LaTeX and RST write the
+///   reference and open no file, so their images pass through as written,
+///   exactly as the frontend's pass leaves them (`IMAGES_EMBEDDED = false`;
+///   the frontend stages nothing for them, and a rule that ignored the writer
+///   turned every image in a `.tex` into its caption).
 /// - Every `Link` whose target has a scheme outside the app's link policy
 ///   (`isAllowedLinkHref`, src/utils/link-href.ts) becomes its label, for the
 ///   same reason: the frontend's link pass sees markdown links only.
@@ -152,7 +164,7 @@ local FILE_KEYS = { "cover-image", "epub-cover-image", "css", "stylesheet", "bib
 return {
   {
     Image = function(el)
-      if not ALLOWED[el.src] then return el.caption end
+      if IMAGES_EMBEDDED and not ALLOWED[el.src] then return el.caption end
     end,
     Link = function(el)
       if not link_allowed(el.target) then return el.content end
@@ -173,9 +185,9 @@ return {
 /// body above. A path is written as a Lua string with only `\` and `"`
 /// escaped — asset names admit no control character or quote-like trouble
 /// (`is_safe_asset_name`), and the temporary directory comes from the OS.
-fn policy_filter(allowed_paths: &[&str]) -> String {
-    let mut lua = String::from(
-        "-- issue 545 (Baram): pandoc reads only what the app staged for it.\nlocal ALLOWED = {\n",
+fn policy_filter(allowed_paths: &[&str], images_embedded: bool) -> String {
+    let mut lua = format!(
+        "-- issue 545 (Baram): pandoc reads only what the app staged for it.\nlocal IMAGES_EMBEDDED = {images_embedded}\nlocal ALLOWED = {{\n"
     );
     for path in allowed_paths {
         let escaped = path.replace('\\', "\\\\").replace('"', "\\\"");
@@ -451,8 +463,11 @@ pub fn run_pandoc(
     // the paths this export bound as the only sources an image may have.
     let filter_path = tmp_dir.path().join(POLICY_FILTER_NAME);
     let allowed: Vec<&str> = name_to_path.values().map(String::as_str).collect();
-    std::fs::write(&filter_path, policy_filter(&allowed))
-        .map_err(|e| ExportError::TempFileError(e.to_string()))?;
+    std::fs::write(
+        &filter_path,
+        policy_filter(&allowed, writer_embeds_images(&options.format)),
+    )
+    .map_err(|e| ExportError::TempFileError(e.to_string()))?;
 
     // 2. Build pandoc command
     let mut cmd = Command::new(pandoc_path);
@@ -963,6 +978,41 @@ mod tests {
                 assert_eq!(bytes, PNG, "{format}: {name}");
             }
         }
+
+        // LaTeX and RST embed nothing: the frontend stages no images for them
+        // and pandoc writes the reference as it was written — inside the vault
+        // or not. The filter must leave those images alone (it judged them by
+        // the docx/epub rule once, and every image in a `.tex` became its
+        // caption).
+        for (format, ext, reference) in [
+            ("latex", "tex", "includegraphics"),
+            ("rst", "rst", "image::"),
+        ] {
+            let out_path = out.path().join(format!("plain.{ext}"));
+            let options = PandocExportOptions {
+                format: format.into(),
+                reference_doc: None,
+                extra_args: Vec::new(),
+            };
+            run_pandoc(
+                "![pic](img/pic.png) ![abs](/etc/hosts) ![d](baram-asset:mermaid-0.png)\n",
+                out_path.to_str().unwrap(),
+                "pandoc",
+                &options,
+                &assets,
+                None,
+            )
+            .unwrap_or_else(|e| panic!("{format}: {e}"));
+            let text = std::fs::read_to_string(&out_path).unwrap();
+            assert!(
+                text.contains(reference) && text.contains("img/pic.png"),
+                "{format}: image reference lost: {text}"
+            );
+            assert!(
+                text.contains("/etc/hosts"),
+                "{format}: absolute reference lost"
+            );
+        }
     }
 
     #[test]
@@ -979,8 +1029,12 @@ mod tests {
 
     #[test]
     fn policy_filter_lists_exactly_the_bound_paths_as_lua_strings() {
-        let lua = policy_filter(&["/tmp/a b/image-0.png", "C:/Users/x/it\"s.png"]);
+        let lua = policy_filter(&["/tmp/a b/image-0.png", "C:/Users/x/it\"s.png"], true);
         assert!(lua.starts_with("-- issue 545"));
+        assert!(lua.contains("local IMAGES_EMBEDDED = true\n"));
+        assert!(policy_filter(&[], false).contains("local IMAGES_EMBEDDED = false\n"));
+        assert!(writer_embeds_images("docx") && writer_embeds_images("epub"));
+        assert!(!writer_embeds_images("latex") && !writer_embeds_images("rst"));
         assert!(lua.contains("  [\"/tmp/a b/image-0.png\"] = true,\n"));
         assert!(lua.contains("  [\"C:/Users/x/it\\\"s.png\"] = true,\n"));
         assert!(lua.contains("Image = function(el)"));
