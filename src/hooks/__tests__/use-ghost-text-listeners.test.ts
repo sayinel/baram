@@ -11,6 +11,7 @@ import { Editor } from "@tiptap/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createBaramExtensions } from "../../extensions";
+import { ghostTextPluginKey } from "../../extensions/plugins/ghost-text";
 import {
   LLM_CANCELLED_REJECTION,
   llmCancel,
@@ -155,6 +156,7 @@ beforeEach(() => {
   accepted.current = null;
   useEditorStore.setState({ activeTabId: null, tabs: [] });
   useAIStore.setState({
+    aiEnabled: true,
     ghostTextDebounceMs: 30,
     ghostTextEnabled: true,
     privacyMode: false,
@@ -743,5 +745,105 @@ describe("ghost text listener lifecycle (issue 265)", () => {
       "ghost-text prefetch",
     ]);
     off();
+  });
+});
+
+// §339 — aiEnabled === false must be treated as ghost text off too, ANDed
+// with (not flipping) the user's own ghostTextEnabled preference. Ghost text
+// fires on nearly every keystroke, so a bare `ghostTextEnabled` check alone
+// leaves the LLM running after the user turns AI off.
+describe("ghost text is also off when AI is off (§339)", () => {
+  it("does not fire when AI is off but ghostTextEnabled is still true", async () => {
+    arrangeListen();
+    useAIStore.setState({ aiEnabled: false, ghostTextEnabled: true });
+    const editor = makeEditor("<p>ai disabled document</p>");
+    renderHook(() => useGhostText(editor));
+    await typeAndWait(editor);
+    expect(mockComplete).not.toHaveBeenCalled();
+    // §339 forbids flipping the user's own preference: it must survive AI
+    // being switched off and back on.
+    expect(useAIStore.getState().ghostTextEnabled).toBe(true);
+  });
+
+  it("still fires when both AI and ghostTextEnabled are on (non-vacuity)", async () => {
+    arrangeListen();
+    useAIStore.setState({ aiEnabled: true, ghostTextEnabled: true });
+    const editor = makeEditor("<p>ai enabled document</p>");
+    renderHook(() => useGhostText(editor));
+    await typeAndWait(editor);
+    expect(mockComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it("the Tab-acceptance prefetch does not fire when AI is off", async () => {
+    arrangeListen();
+    useAIStore.setState({ aiEnabled: false, ghostTextEnabled: true });
+    const editor = makeEditor("<p>One sentence. Two</p>");
+    renderHook(() => useGhostText(editor));
+    expect(accepted.current).not.toBeNull();
+    act(() => {
+      accepted.current!(" sentence.", editor.state.doc.content.size - 1);
+    });
+    await flush();
+    expect(mockComplete).not.toHaveBeenCalled();
+  });
+
+  it("a mid-debounce AI toggle-off stops the request before it fires", async () => {
+    // storeSnapshot (use-ghost-text.ts) re-reads state after the debounce
+    // wait, but only re-checked privacyMode — a toggle flipped during that
+    // wait must also be caught, not just one present at keystroke time.
+    arrangeListen();
+    useAIStore.setState({
+      aiEnabled: true,
+      ghostTextDebounceMs: 100,
+      ghostTextEnabled: true,
+    });
+    const editor = makeEditor("<p>mid-debounce toggle</p>");
+    renderHook(() => useGhostText(editor));
+    act(() => {
+      editor.commands.insertContentAt(editor.state.doc.content.size - 1, "xyz");
+    });
+    // Flip AI off partway through the 100ms debounce window.
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    act(() => {
+      useAIStore.setState({ aiEnabled: false });
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 120));
+    });
+    await flush();
+    expect(mockComplete).not.toHaveBeenCalled();
+  });
+
+  it("a cache hit does not display ghost text when AI is off (pins the immediate guard, not the debounce recheck)", async () => {
+    // The cache-hit fast path (use-ghost-text.ts) dispatches straight from
+    // `handleUpdate` and never reaches the debounce timer at all, so it
+    // cannot be caught by the storeSnapshot recheck above — only the guard
+    // right after `useAIStore.getState()` protects it.
+    const { handlers } = arrangeListen();
+    let finish!: () => void;
+    mockComplete.mockImplementation(
+      () => new Promise<void>((r) => (finish = r)),
+    );
+    const editor = makeEditor("<p>cache seed</p>");
+    renderHook(() => useGhostText(editor));
+    await typeAndWait(editor);
+    const requestId = mockComplete.mock.calls[0]![2] as string;
+    act(() => {
+      handlers["llm:token"]![0]!(ev({ requestId, token: "cached suggestion" }));
+      handlers["llm:done"]![0]!(ev({ requestId, totalTokens: 1 }));
+    });
+    act(() => finish());
+    await flush();
+
+    // A second, fresh editor whose text resolves to the SAME cache key
+    // ("cache seedxyz") would be served from cache on the very first
+    // keystroke — but AI is off, so it must never reach that far.
+    useAIStore.setState({ aiEnabled: false });
+    const editor2 = makeEditor("<p>cache seed</p>");
+    renderHook(() => useGhostText(editor2));
+    await typeAndWait(editor2);
+    expect(ghostTextPluginKey.getState(editor2.state)?.text).toBeNull();
   });
 });

@@ -224,25 +224,25 @@ describe("Integration: Writing Mode Detection → Writing Flow Store", () => {
 // ---------------------------------------------------------------------------
 describe("Integration: Privacy Mode", () => {
   it("blocks cloud providers when privacyMode is true", () => {
-    expect(isLLMAllowed(true, "claude")).toBe(false);
-    expect(isLLMAllowed(true, "openai")).toBe(false);
-    expect(isLLMAllowed(true, "gemini")).toBe(false);
+    expect(isLLMAllowed(true, true, "claude")).toBe(false);
+    expect(isLLMAllowed(true, true, "openai")).toBe(false);
+    expect(isLLMAllowed(true, true, "gemini")).toBe(false);
   });
 
   it("allows Ollama when privacyMode is true", () => {
-    expect(isLLMAllowed(true, "ollama")).toBe(true);
+    expect(isLLMAllowed(true, true, "ollama")).toBe(true);
   });
 
   it("allows all providers when privacyMode is false", () => {
-    expect(isLLMAllowed(false, "claude")).toBe(true);
-    expect(isLLMAllowed(false, "openai")).toBe(true);
-    expect(isLLMAllowed(false, "ollama")).toBe(true);
+    expect(isLLMAllowed(true, false, "claude")).toBe(true);
+    expect(isLLMAllowed(true, false, "openai")).toBe(true);
+    expect(isLLMAllowed(true, false, "ollama")).toBe(true);
   });
 
   it("per-file privacy overrides global setting", () => {
     // Global privacy off, but file privacy on → blocks cloud
-    expect(isLLMAllowed(false, "claude", true)).toBe(false);
-    expect(isLLMAllowed(false, "ollama", true)).toBe(true);
+    expect(isLLMAllowed(true, false, "claude", true)).toBe(false);
+    expect(isLLMAllowed(true, false, "ollama", true)).toBe(true);
   });
 
   it("privacy + model routing: per-task config still respects privacy check", () => {
@@ -256,7 +256,15 @@ describe("Integration: Privacy Mode", () => {
     const cfg = getConfigForTask("ghost-text");
     expect(cfg.provider).toBe("openai");
     // The config itself resolves — privacy check is enforced at callsite
-    expect(isLLMAllowed(true, cfg.provider)).toBe(false);
+    expect(isLLMAllowed(true, true, cfg.provider)).toBe(false);
+  });
+
+  // §339 — the AI kill switch is a separate predicate from privacy mode: off
+  // blocks everything, including a local/keyless provider that privacy mode
+  // alone would allow.
+  it("aiEnabled=false blocks even ollama, independent of privacy mode", () => {
+    expect(isLLMAllowed(false, false, "ollama")).toBe(false);
+    expect(isLLMAllowed(false, true, "ollama")).toBe(false);
   });
 });
 
@@ -663,7 +671,7 @@ describe("Integration: Cross-feature Pipelines", () => {
     expect(cfg.model).toBe("gpt-4o-mini");
 
     // 5. Check privacy allows this
-    expect(isLLMAllowed(false, cfg.provider)).toBe(true);
+    expect(isLLMAllowed(true, false, cfg.provider)).toBe(true);
   });
 
   it("privacy mode blocks full pipeline even with per-task config", () => {
@@ -673,9 +681,9 @@ describe("Integration: Cross-feature Pipelines", () => {
     // Config resolves to openai...
     expect(cfg.provider).toBe("openai");
     // ...but privacy check blocks it
-    expect(isLLMAllowed(true, cfg.provider)).toBe(false);
+    expect(isLLMAllowed(true, true, cfg.provider)).toBe(false);
     // Only ollama would be allowed
-    expect(isLLMAllowed(true, "ollama")).toBe(true);
+    expect(isLLMAllowed(true, true, "ollama")).toBe(true);
   });
 
   it("agent mode + authorship: AI edits tracked with model info", () => {

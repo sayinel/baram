@@ -24,12 +24,19 @@ export function MemoriesPanel() {
   );
   const mode = useSettingsStore((s) => s.memoriesMode);
   const setMode = useSettingsStore((s) => s.setMemoriesMode);
+  // §340 ⓑ (Fix E / M-1 정정: "저장된" · "첫 페인트가 이동 이펙트보다 빠르다"는 근거가
+  // 틀렸다 — `useUIStore`엔 persist가 없어 재하이드레이션이 없다) rightPanelMode 가
+  // 꺼진 journal 기능의 좌석("memories")을 가리킬 수 있는 진짜 경로: 이동 이펙트
+  // (ⓐ, 네 기능 플래그 변화에만 반응)가 볼 수 없는 writer — 커스텀 프리셋 적용 ·
+  // skills 모드 복원 · 저널 단축키가 직접 쓰는 rightPanelMode.
+  const journalEnabled = useSettingsStore((s) => s.journalEnabled);
   const [memories, setMemories] = useState<MemoryEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [showCalendar, setShowCalendar] = useState(false);
 
-  if (!rightPanelOpen || rightPanelMode !== "memories") return null;
+  if (!journalEnabled || !rightPanelOpen || rightPanelMode !== "memories")
+    return null;
 
   const month = selectedDate.getMonth() + 1;
   const day = selectedDate.getDate();

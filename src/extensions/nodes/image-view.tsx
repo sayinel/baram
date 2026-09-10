@@ -6,6 +6,7 @@ import { Captions, Maximize2, Sparkles } from "lucide-react";
 
 import { ImageOriginalView } from "../../components/editor/ImageOriginalView";
 import { useTranslation } from "../../i18n/useTranslation";
+import { useFeatureFlags } from "../../stores/settings/features";
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
 // §3.3 Image NodeView — edge-drag resize, caption editing, AI menu
 import { updateNodeAttributesWithVim } from "../plugins/vim/vim-keys";
@@ -22,6 +23,7 @@ export function ImageView({
   getPos,
 }: NodeViewProps) {
   const { t } = useTranslation();
+  const { ai: aiEnabled } = useFeatureFlags();
   const rawSrc = node.attrs.src as string;
   const alt = (node.attrs.alt as string) || "";
   const title = (node.attrs.title as string) || "";
@@ -152,32 +154,34 @@ export function ImageView({
           >
             <Maximize2 size={16} strokeWidth={2} />
           </MediaToolbarButton>
-          <MediaToolbarButton
-            label={t("toolbar.ai.commands")}
-            onClick={(e) => {
-              // ‼️ English on purpose: this is the PROMPT the model reads, not UI. Labelling
-              // the fields in the user's language would put two languages in one prompt.
-              const context =
-                [
-                  alt && `Alt: ${alt}`,
-                  title && `Title: ${title}`,
-                  rawSrc && `Source: ${rawSrc}`,
-                ]
-                  .filter(Boolean)
-                  .join("\n") || "image";
-              const pos = getPos();
-              if (typeof pos !== "number") return;
-              showNodeViewAIMenu(
-                e.currentTarget,
-                "image",
-                context,
-                editor,
-                pos,
-              );
-            }}
-          >
-            <Sparkles size={14} />
-          </MediaToolbarButton>
+          {aiEnabled && (
+            <MediaToolbarButton
+              label={t("toolbar.ai.commands")}
+              onClick={(e) => {
+                // ‼️ English on purpose: this is the PROMPT the model reads, not UI. Labelling
+                // the fields in the user's language would put two languages in one prompt.
+                const context =
+                  [
+                    alt && `Alt: ${alt}`,
+                    title && `Title: ${title}`,
+                    rawSrc && `Source: ${rawSrc}`,
+                  ]
+                    .filter(Boolean)
+                    .join("\n") || "image";
+                const pos = getPos();
+                if (typeof pos !== "number") return;
+                showNodeViewAIMenu(
+                  e.currentTarget,
+                  "image",
+                  context,
+                  editor,
+                  pos,
+                );
+              }}
+            >
+              <Sparkles size={14} />
+            </MediaToolbarButton>
+          )}
         </MediaToolbar>
 
         {/* Caption */}

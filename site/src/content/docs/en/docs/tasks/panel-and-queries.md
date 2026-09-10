@@ -17,7 +17,7 @@ Open **Tasks** in the activity bar (the check-circle icon). It gathers every ind
 | **Finished this week** / **Done** | completed                                  |
 | **Cancelled**      | `[-]`                                                     |
 
-Overdue and past-scheduled are separate on purpose: a missed **due** date is a broken promise, a missed **scheduled** date is only a plan that slipped. Which day the week starts on is **Settings > General > Tasks > Week starts on** (default Monday). The buckets roll over at midnight without a restart.
+Overdue and past-scheduled are separate on purpose: a missed **due** date is a broken promise, a missed **scheduled** date is only a plan that slipped. Which day the week starts on is **Settings › Tasks > Week starts on** (default Monday). The buckets roll over at midnight without a restart.
 
 In-progress tasks stay in their date bucket rather than getting one of their own — being held doesn't change when a thing is due — and the state is shown on the row.
 
@@ -43,7 +43,7 @@ The **Zettel hub** has its own compact Tasks section showing only what needs att
 
 Open **Quick Capture** with `Cmd+Shift+N`, then press `Cmd+Alt+T` to switch it into task mode. What you write lands in your capture file: `inbox.md` inside the `tasks/` subfolder of your **Tasks home**, which defaults to your Zettel directory.
 
-You can also assign a **global capture shortcut** (**Settings > General > Tasks**) that opens Quick Capture in task mode even while Baram is in the background. It has no default, because a global shortcut is intercepted system-wide and could take a key combination another app already uses.
+You can also assign a **global capture shortcut** (**Settings › Tasks**) that opens Quick Capture in task mode even while Baram is in the background. It has no default, because a global shortcut is intercepted system-wide and could take a key combination another app already uses.
 
 ## Tasks in a query block
 
@@ -51,7 +51,7 @@ A ` ```query ` block with `source: tasks` embeds any slice of your task list int
 
 ## Task settings
 
-All under **Settings > General > Tasks**:
+All under **Settings › Tasks**:
 
 | Setting                          | Default            | What it does                                                        |
 | -------------------------------- | ------------------ | ------------------------------------------------------------------- |

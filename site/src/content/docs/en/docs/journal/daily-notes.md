@@ -7,7 +7,7 @@ Baram includes a built-in journal system for maintaining daily notes with automa
 
 ## Setup
 
-1. Open **Settings** (`Cmd+,` / `Ctrl+,`) and go to the **General** tab
+1. Open **Settings** (`Cmd+,` / `Ctrl+,`) and go to the **Journal** tab
 2. Enable the **Journal** toggle
 3. Click **Browse** and select a folder for your journal files (must be an absolute path)
 4. (Optional) Choose a filename format: `YYYY-MM-DD.md` (default) or `YYYYMMDD.md`
@@ -54,7 +54,7 @@ If no custom template is set, Baram uses a default template with YAML frontmatte
 
 Beyond daily entries, Baram supports weekly, monthly, and yearly notes:
 
-- Enable each type in **Settings > General > Journal**
+- Enable each type in **Settings › Journal**
 - In the Calendar sidebar, click the week-number column for a weekly note, the month header for a monthly note, or the year for a yearly note
 - Each periodic note type can have its own template
 
@@ -77,6 +77,6 @@ Beyond daily entries, Baram supports weekly, monthly, and yearly notes:
 
 ## Journal Themes
 
-Choose a dedicated journal/calendar theme (independent of the app theme) in **Settings > General > Journal**.
+Choose a dedicated journal/calendar theme (independent of the app theme) in **Settings › Journal**.
 
 ---

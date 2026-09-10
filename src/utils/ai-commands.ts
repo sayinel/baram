@@ -40,8 +40,19 @@ export async function executeAICommand(
   }
 
   const filePrivacy = getFilePrivacy(editor);
-  if (!isLLMAllowed(store.privacyMode, inlineCfg.provider, filePrivacy)) {
-    logger.error("AI command: blocked by privacy settings");
+  if (
+    !isLLMAllowed(
+      store.aiEnabled,
+      store.privacyMode,
+      inlineCfg.provider,
+      filePrivacy,
+    )
+  ) {
+    logger.error(
+      store.aiEnabled
+        ? "AI command: blocked by privacy settings"
+        : "AI command: AI is disabled",
+    );
     return;
   }
 

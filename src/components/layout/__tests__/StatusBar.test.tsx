@@ -128,6 +128,12 @@ describe("StatusBar — Perspective launcher", () => {
     useWorkspaceStore.setState({ activePresetId: null });
     useEditorStore.setState({ activeTabId: null, tabs: [] });
     useFileStore.getState().setRootPath("/vault");
+    // §338/I-8 — journalEnabled defaults to false; this block's own tests are
+    // about the launcher's plumbing (label, active-preset badge, apply-on-click),
+    // not about feature gating, so they need the Journal preset actually visible.
+    // The gating itself is covered by "StatusBar — Perspective launcher feature
+    // gate (§338/I-8)" below.
+    useSettingsStore.setState({ journalEnabled: true });
   });
 
   function expectedLabel() {
@@ -150,6 +156,9 @@ describe("StatusBar — Perspective launcher", () => {
     expect(launcher.textContent).not.toContain("Journal");
   });
 
+  // ‼️ en-only — `menu.workspace.writing`/`journal` and `preset.name` are BOTH "Writing"/
+  // "Journal" in en.json, so this assertion cannot see a wrong or missing `nameKey` (§343,
+  // see `preset-labels.test.tsx` for the ko-locale assertions that do).
   it("opens a menu of all presets and applies one on click", () => {
     render(<StatusBar editor={null} mode="wysiwyg" />);
     fireEvent.click(screen.getByTestId("perspective-launcher"));
@@ -163,6 +172,38 @@ describe("StatusBar — Perspective launcher", () => {
     );
     fireEvent.click(writingItem);
     expect(useWorkspaceStore.getState().activePresetId).toBe("writing");
+  });
+});
+
+// §338/I-8 — the dropdown used to render `BUILTIN_PRESETS` unconditionally, so
+// a disabled Journal/Zettel still offered its preset here even though
+// applying it (workspace.ts) already refused and toasted. This is the
+// "render" half of that completeness pair (preset-feature-gate.test.ts is the
+// "applyPreset agrees with PRESET_FEATURE" half).
+describe("StatusBar — Perspective launcher feature gate (§338/I-8)", () => {
+  beforeEach(() => {
+    useWorkspaceStore.setState({ activePresetId: null });
+    useEditorStore.setState({ activeTabId: null, tabs: [] });
+    useFileStore.getState().setRootPath("/vault");
+  });
+
+  // ‼️ en-only, same caveat as above — see `preset-labels.test.tsx` for the ko assertions.
+  it("hides Journal but keeps Writing/Skills when journal is off", () => {
+    useSettingsStore.setState({ journalEnabled: false });
+    render(<StatusBar editor={null} mode="wysiwyg" />);
+    fireEvent.click(screen.getByTestId("perspective-launcher"));
+
+    expect(screen.queryByText("Journal")).toBeNull();
+    expect(screen.getByText("Writing")).toBeInTheDocument();
+    expect(screen.getByText("Skills")).toBeInTheDocument();
+  });
+
+  it("shows Journal when journal is on — positive control", () => {
+    useSettingsStore.setState({ journalEnabled: true });
+    render(<StatusBar editor={null} mode="wysiwyg" />);
+    fireEvent.click(screen.getByTestId("perspective-launcher"));
+
+    expect(screen.getByText("Journal")).toBeInTheDocument();
   });
 });
 

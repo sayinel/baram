@@ -67,6 +67,10 @@ Yes. Select **Ollama** as your provider and enable **Privacy Mode** in **Setting
 
 When enabled, Privacy Mode prevents your document content from being sent to cloud AI providers. Only Ollama (local) is allowed. Enable it globally in **Settings > AI**, or per-file by adding `privacy: true` to the YAML frontmatter.
 
+## Can I turn AI off completely?
+
+Yes. Turn off **Enable AI** in **Settings > AI**. Every AI surface goes with it — the chat panel, the ✨ buttons, slash AI commands, Ghost Text, and inline AI. The AI tab itself stays, dimmed, so you can turn it back on. AI keyboard shortcuts stay bound: pressing one tells you AI is off rather than doing nothing.
+
 ## How do I search and replace text?
 
 Press `Cmd+F` (macOS) / `Ctrl+F` (Windows/Linux) to open Find. Press `Cmd+H` / `Ctrl+H` for Find & Replace. Use `Enter` / `Shift+Enter` to navigate matches. Replace one or all matches.

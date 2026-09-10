@@ -43,14 +43,14 @@ export const zettelkastenSpace: SpaceDefinition = {
     if (!resolvedDir) return;
     try {
       // §98 "nothing" registers the space without taking the seat; only
-      // "openInbox" activates. Activating here regardless used to pass
+      // "openHomeNote" activates. Activating here regardless used to pass
       // unnoticed (a local seat change) — since issue 598 a moved directory
       // switches for real, and a user who asked for nothing must not boot
       // into the Zettel space.
       await useContextStore
         .getState()
         .ensureSpaceContext("zettelkasten", resolvedDir, {
-          activate: zettelkastenStartupBehavior === "openInbox",
+          activate: zettelkastenStartupBehavior === "openHomeNote",
           label: "Zettel",
         });
     } catch (err) {
@@ -64,7 +64,7 @@ export const zettelkastenSpace: SpaceDefinition = {
 
     // §98 "nothing" → only ensure the context (done above); no index refresh
     // or file open beyond what ensureSpaceContext already does.
-    if (zettelkastenStartupBehavior !== "openInbox") return;
+    if (zettelkastenStartupBehavior !== "openHomeNote") return;
 
     try {
       await refreshZettelIndex(resolvedDir);

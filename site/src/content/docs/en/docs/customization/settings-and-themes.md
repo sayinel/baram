@@ -7,20 +7,27 @@ title: "Settings and themes"
 
 Open Settings with `Cmd+,` (macOS) or `Ctrl+,` (Windows/Linux).
 
-Available settings tabs:
+Available settings tabs, grouped by nav section:
 
-| Tab              | What You Can Configure                                                                          |
-| ---------------- | ---------------------------------------------------------------------------------------------- |
-| **General**      | Startup behavior, auto-save, Journal, Tasks, and file snapshots (Version History)              |
-| **Editor**       | Indentation, tab size, line numbers, line endings, editor max width, Vim keybindings           |
-| **Appearance**   | Theme gallery, custom theme editor, and perspectives                                            |
-| **Markdown**     | Extended syntax toggles (math, highlight, strikethrough), smart punctuation                    |
-| **AI**           | Provider, model, API key (per-provider), privacy mode, Ghost Text settings, custom AI commands |
-| **Activity Bar** | Show/hide and reorder the left Activity Bar panels                                              |
-| **Language**     | Interface language (English, Korean)                                                            |
-| **Keybindings**  | Customize keyboard shortcuts — search, rebind, reset                                            |
-| **Plugins**      | Browse, install, update, and manage community plugins                                           |
-| **Vault**        | Initialize/revert vault, vault alias, journal directory, approved locations, and cross-vault settings |
+| Group        | Tab              | What it holds                                                        |
+| ------------ | ---------------- | --------------------------------------------------------------------------------------------------- |
+| **General**  | **General**      | Startup behavior, auto-save, links, file snapshots, updates          |
+| **General**  | **Editor**       | Typing, folding, vim mode                                            |
+| **General**  | **Appearance**   | Theme, fonts, layout presets                                         |
+| **General**  | **Markdown**     | Serialization rules                                                  |
+| **General**  | **Language**     | UI language                                                          |
+| **General**  | **Keybindings**  | Shortcut customization                                               |
+| **Features** | **Journal**      | Enable Journal, its directory, templates, periodic notes             |
+| **Features** | **Zettel**       | Enable Zettel, its directory, startup action, home note              |
+| **Features** | **Tasks**        | Enable Tasks, tasks home, capture, agenda scope                      |
+| **Features** | **AI**           | Enable AI, provider, models, privacy, Ghost Text                     |
+| **System**   | **Activity Bar** | Which icons show, and in what order                                  |
+| **System**   | **Plugins**      | Install, enable, and configure plugins                               |
+| **System**   | **Vault**        | Initialize vaults, approved folders                                  |
+
+Each feature tab (Journal, Zettel, Tasks, AI) carries its **Enable** toggle at the top; turning a feature off dims its tab instead of removing it, so it can always be turned back on.
+
+Turning a feature off also hides the surfaces it owns — its Activity Bar icons, its slash-menu group, and its Command Palette entries all disappear, and for AI the ✨ buttons go with them. Its keyboard shortcuts stay bound: pressing one tells you the feature is off rather than doing nothing.
 
 ## Themes
 

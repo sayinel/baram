@@ -22,6 +22,7 @@ import {
   registerAction,
 } from "../../../keybindings/keybinding-actions";
 import { useWorkspaceStore } from "../../../stores/file/workspace";
+import { useSettingsStore } from "../../../stores/settings/store";
 import { useUIStore } from "../../../stores/ui/ui";
 import { CommandPalette } from "../CommandPalette";
 
@@ -45,6 +46,9 @@ describe("CommandPalette — Open Today's Journal", () => {
   beforeEach(() => {
     clearActions();
     useUIStore.setState({ commandPaletteOpen: true });
+    // §338 — these commands are journal-owned; the palette gate (added after
+    // this test) hides them unless the feature is on.
+    useSettingsStore.setState({ journalEnabled: true });
   });
 
   it("routes through the journal preset, which registers the context first", () => {

@@ -5,6 +5,7 @@ import type { ContentMode } from "./content-type-detector";
 import type { Editor } from "@tiptap/core";
 
 import { t } from "../i18n";
+import { isFeatureEnabled } from "../stores/settings/features";
 import { useSettingsStore } from "../stores/settings/store";
 import {
   dispatchAIAction,
@@ -41,7 +42,7 @@ export function showNodeViewAIMenu(
   // svg, callout, code block, table toolbar), so add `t()` at any new one.
   const locale = useSettingsStore.getState().locale as Locale;
 
-  const actions = getActionsForMode(mode);
+  const actions = getActionsForMode(mode, isFeatureEnabled("tasks"));
   const menu = document.createElement("div");
   menu.className = "nodeview-ai-menu";
 

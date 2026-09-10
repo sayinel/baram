@@ -1,26 +1,26 @@
-// §85 Journal settings section, split out of GeneralTab.
+// §85/§342 Journal settings tab, promoted out of GeneralTab.
 import { useState } from "react";
 
 import { open } from "@tauri-apps/plugin-dialog";
 
-import type { MigrationDirection } from "../../../journal/MigrationDialog";
+import type { MigrationDirection } from "../../journal/MigrationDialog";
 
 import { useShallow } from "zustand/shallow";
 
-import { useTranslation } from "../../../../i18n/useTranslation";
-import { pickApprovedDir } from "../../../../ipc/approval";
-import { useSettingsStore } from "../../../../stores/settings/store";
-import { initJournalTemplatesDir } from "../../../../utils/journal/journal-templates";
-import { resolveAbsoluteDirSetting } from "../../../../utils/path-utils";
-import { MigrationDialog } from "../../../journal/MigrationDialog";
+import { useTranslation } from "../../../i18n/useTranslation";
+import { pickApprovedDir } from "../../../ipc/approval";
+import { useSettingsStore } from "../../../stores/settings/store";
+import { initJournalTemplatesDir } from "../../../utils/journal/journal-templates";
+import { resolveAbsoluteDirSetting } from "../../../utils/path-utils";
+import { MigrationDialog } from "../../journal/MigrationDialog";
 import {
   SettingsRow,
   SettingsSectionHeader,
   ToggleSwitch,
-} from "../../settings-shared";
-import { TemplatePathRow } from "./TemplatePathRow";
+} from "../settings-shared";
+import { TemplatePathRow } from "./general/TemplatePathRow";
 
-export function JournalSection() {
+export function JournalTab() {
   const { t } = useTranslation();
   const [migrationOpen, setMigrationOpen] = useState(false);
   const [migrationDirection, setMigrationDirection] =
@@ -69,7 +69,7 @@ export function JournalSection() {
   );
 
   return (
-    <>
+    <div className="settings-section">
       <SettingsSectionHeader title={t("settings.general.journal")} />
 
       <SettingsRow
@@ -303,6 +303,6 @@ export function JournalSection() {
         onClose={() => setMigrationOpen(false)}
         open={migrationOpen}
       />
-    </>
+    </div>
   );
 }

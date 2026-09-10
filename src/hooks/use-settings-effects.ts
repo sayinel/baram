@@ -1,11 +1,18 @@
 // §4.2 Settings effects hook — apply theme, font, spellcheck to DOM
 import { useEffect } from "react";
 
+import type { FeatureKey } from "../stores/settings/feature-keys";
 import type { Editor } from "@tiptap/core";
 
 import { useShallow } from "zustand/shallow";
 
+import { useFeatureFlags } from "../stores/settings/features";
 import { useSettingsStore } from "../stores/settings/store";
+import {
+  RIGHT_PANEL_MODE_FEATURE,
+  SIDEBAR_PANEL_FEATURE,
+} from "../stores/ui/panel-feature";
+import { useUIStore } from "../stores/ui/ui";
 import { findThemeById } from "../types/theme";
 import { logger } from "../utils/logger";
 import {
@@ -143,4 +150,56 @@ export function useSettingsEffects(editor: Editor | null) {
       active = false;
     };
   }, [recentFolders, recentFiles, locale]);
+
+  // §340 ⓐ 기능이 꺼질 때, 저장된 포인터가 그 기능의 좌석을 가리키고 있으면 옮긴다.
+  //
+  // ‼️ **가리키고 있을 때만** 옮긴다. 조건 없이 리셋하면 무관한 작업 상태를 파괴한다.
+  // ‼️ 이것만으로는 부족하다(Fix E / M-1 정정: `useUIStore`엔 persist가 없다 —
+  //    "재하이드레이션"은 근거가 아니다). 실제 근거: (a) 플래그 write와 이 이펙트의
+  //    flush 사이의 한 프레임, (b) 이 이펙트가 볼 수 없는 writer들 — 커스텀 프리셋
+  //    (`workspace.ts`의 `customPresets`, 이쪽은 진짜로 영속된다) · skills 모드가
+  //    나가면서 복원하는 저장된 포인터(`use-skills-mode.ts`) · 저널 단축키가 직접
+  //    쓰는 `rightPanelMode`. 셋 다 네 기능 플래그 자체를 바꾸지 않으므로 아래
+  //    `useEffect`의 deps가 재발화하지 않는다 — 패널 쪽 렌더 가드(ⓑ)가 그래서 필요하다.
+  // `useFeatureFlags()` returns a fresh object every render (see its own doc comment in
+  // stores/settings/features.ts) — destructuring here, rather than passing the object
+  // through, is what lets the effect below depend on the four primitives directly instead
+  // of needing an `exhaustive-deps` suppression for a computed member access it can't narrow.
+  const { ai, journal, tasks, zettelkasten } = useFeatureFlags();
+  useEffect(() => {
+    const ui = useUIStore.getState();
+    const enabled: Record<FeatureKey, boolean> = {
+      ai,
+      journal,
+      tasks,
+      zettelkasten,
+    };
+    const panelFeature = SIDEBAR_PANEL_FEATURE[ui.sidebarPanel];
+    if (panelFeature && !enabled[panelFeature]) {
+      ui.setSidebarPanel("files");
+    }
+    const modeFeature = RIGHT_PANEL_MODE_FEATURE[ui.rightPanelMode];
+    if (modeFeature && !enabled[modeFeature]) {
+      ui.setRightPanelMode("none");
+    }
+  }, [ai, journal, tasks, zettelkasten]);
+
+  // §341 꺼진 기능의 네이티브 메뉴 항목을 회색 처리한다. 위 두 메뉴 이펙트와 같은
+  // `active` 플래그 형태 — 지연 import 가 언마운트 뒤에 착지할 수 있다.
+  useEffect(() => {
+    let active = true;
+    const flags: Record<FeatureKey, boolean> = {
+      ai,
+      journal,
+      tasks,
+      zettelkasten,
+    };
+    import("../ipc/menu-enabled").then(({ syncMenuEnabled }) => {
+      if (!active) return;
+      syncMenuEnabled(flags).catch((e) => logger.error(e));
+    });
+    return () => {
+      active = false;
+    };
+  }, [ai, journal, tasks, zettelkasten]);
 }

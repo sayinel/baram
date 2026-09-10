@@ -1,7 +1,7 @@
 import { lazy, Suspense } from "react";
 
 // §4.3 Left sidebar container — panel switching via ActivityBar
-import { useSettingsStore } from "../../stores/settings/store";
+import { useFeatureFlags } from "../../stores/settings/features";
 import { useUIStore } from "../../stores/ui/ui";
 import { PluginPanelHost } from "./PluginPanelHost";
 
@@ -82,10 +82,16 @@ const ZettelHubPanel = lazy(() =>
 );
 
 export function Sidebar() {
-  const { sidebarPanel } = useUIStore();
-  // I2: tasksEnabled off keeps the panel from mounting even if sidebarPanel
-  // was persisted as "tasks" from before the setting was turned off.
-  const tasksEnabled = useSettingsStore((s) => s.tasksEnabled);
+  // §340 M-11 정정: bare `useUIStore()`는 스토어 전체를 구독해 무관한 UI write마다
+  // (예: 우측 패널 크기 드래그) 이 컴포넌트를 재렌더한다. 필요한 건 이 필드 하나뿐.
+  const sidebarPanel = useUIStore((s) => s.sidebarPanel);
+  // I2 / §340 ⓑ (Fix E / M-1 정정: "저장된" · "첫 페인트가 이동 이펙트보다 빠르다"는
+  // 근거가 틀렸다 — `useUIStore`엔 persist가 없어 재하이드레이션이 없다) sidebarPanel
+  // 이 꺼진 기능의 좌석을 가리킬 수 있는 진짜 경로: 이동 이펙트(ⓐ, 네 기능 플래그
+  // 변화에만 반응)가 볼 수 없는 writer — 가장 직접적인 예가 커스텀 워크스페이스
+  // 프리셋(`workspace.ts`의 `customPresets`)이다. 이쪽은 sidebarPanel까지 함께
+  // 복원하고, **진짜로** 영속된다(재시작을 넘어 산다).
+  const { journal, tasks, zettelkasten } = useFeatureFlags();
 
   return (
     <div className="sidebar">
@@ -105,14 +111,14 @@ export function Sidebar() {
           {sidebarPanel === "bookmarks" && <BookmarkPanel />}
           {sidebarPanel === "graph" && <GraphView />}
           {sidebarPanel === "git" && <GitPanel />}
-          {sidebarPanel === "calendar" && <CalendarPanel />}
+          {sidebarPanel === "calendar" && journal && <CalendarPanel />}
           {sidebarPanel === "tags" && <TagPanel />}
-          {sidebarPanel === "tasks" && tasksEnabled && <TaskAgendaPanel />}
+          {sidebarPanel === "tasks" && tasks && <TaskAgendaPanel />}
           {sidebarPanel === "snapshots" && <VersionHistoryPanel />}
           {sidebarPanel === "skills-gallery" && <SkillGalleryPanel />}
           {sidebarPanel === "plugins" && <PluginMarketplace />}
           {sidebarPanel === "plugin" && <PluginPanelHost />}
-          {sidebarPanel === "zettel" && <ZettelHubPanel />}
+          {sidebarPanel === "zettel" && zettelkasten && <ZettelHubPanel />}
         </div>
       </Suspense>
     </div>

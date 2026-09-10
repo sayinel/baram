@@ -48,6 +48,13 @@ export function PhotoGalleryPanel() {
   );
   const rootPath = useFileStore((s) => s.rootPath);
   const journalDirectory = useSettingsStore((s) => s.journalDirectory);
+  // §340 ⓑ (Fix E / M-1 정정: "저장된" · "첫 페인트가 이동 이펙트보다 빠르다"는 근거가
+  // 틀렸다 — `useUIStore`엔 persist가 없어 재하이드레이션이 없다) rightPanelMode 가
+  // 꺼진 journal 기능의 좌석("photo-gallery")을 가리킬 수 있는 진짜 경로: 이동
+  // 이펙트(ⓐ, 네 기능 플래그 변화에만 반응)가 볼 수 없는 writer — 커스텀 프리셋
+  // 적용 · skills 모드 복원 · 저널 단축키가 직접 쓰는 rightPanelMode. `isVisible`이
+  // 아래 이펙트의 dep이므로 그 이펙트도 자동으로 따라온다.
+  const journalEnabled = useSettingsStore((s) => s.journalEnabled);
 
   const [photos, setPhotos] = useState<PhotoGalleryEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -62,7 +69,8 @@ export function PhotoGalleryPanel() {
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
 
-  const isVisible = rightPanelOpen && rightPanelMode === "photo-gallery";
+  const isVisible =
+    journalEnabled && rightPanelOpen && rightPanelMode === "photo-gallery";
 
   const loadPhotos = useCallback(async () => {
     if (!rootPath || !journalDirectory) return;

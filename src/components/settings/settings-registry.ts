@@ -6,6 +6,8 @@ import type { Locale } from "../../i18n";
 import type { AIProvider } from "../../stores/ai/ai";
 import type { TaskScanScope } from "../../utils/tasks/task-scan-scope";
 
+import { useShallow } from "zustand/shallow";
+
 import { AVAILABLE_LOCALES, LOCALE_LABELS } from "../../i18n";
 import { useAIStore } from "../../stores/ai/ai";
 import { AI_PROVIDER_IDS, AI_PROVIDERS } from "../../stores/ai/providers";
@@ -44,11 +46,18 @@ export type SettingsTab =
   | "appearance"
   | "editor"
   | "general"
+  | "journal"
   | "keybindings"
   | "language"
   | "markdown"
   | "plugins"
-  | "vault";
+  | "tasks"
+  | "vault"
+  | "zettelkasten";
+
+// ‼️ 키 namespace 는 이력상 `settings.general.*` 이다 (§342 규칙 3). 탭은 옮겼지만
+// 20개 넘는 i18n 키를 개명하면 정렬·parity·glossary 게이트를 전부 통과시켜야 하는데
+// 사용자에게 보이지 않는 이름이라 얻는 것이 없다. `category` 가 탭을 정한다.
 
 // Marker for settings that require navigation to their tab (no inline control)
 export const NAVIGATE_CONTROL: SettingControlMeta = {
@@ -63,7 +72,22 @@ export const NAVIGATE_CONTROL: SettingControlMeta = {
  */
 export function useSettingsRegistry(): SearchableSetting[] {
   const settings = useSettingsStore();
-  const ai = useAIStore();
+  // §340 M-11 정정: bare `useAIStore()`는 ai 스토어의 **모든** write에 이 레지스트리
+  // 전체를 재구성한다 — 스트리밍 토큰마다 바뀌는 `ghostText`·`isStreaming`도 포함해서.
+  // 설정 모달이 열려 있는 동안만이지만, 이 브랜치가 `aiEnabled`를 여기서 읽게 만들며
+  // 그 비용이 커졌다. 아래 여덟 필드만 이 파일이 실제로 읽고 쓴다.
+  const ai = useAIStore(
+    useShallow((s) => ({
+      aiEnabled: s.aiEnabled,
+      ghostTextEnabled: s.ghostTextEnabled,
+      privacyMode: s.privacyMode,
+      provider: s.provider,
+      setAIEnabled: s.setAIEnabled,
+      setGhostTextEnabled: s.setGhostTextEnabled,
+      setPrivacyMode: s.setPrivacyMode,
+      setProvider: s.setProvider,
+    })),
+  );
 
   return [
     // ── General ──────────────────────────────────────────────────────────────
@@ -179,7 +203,7 @@ export function useSettingsRegistry(): SearchableSetting[] {
       id: "journalEnabled",
       label: "settings.general.journalEnabled",
       description: "settings.general.journalEnabled.desc",
-      category: "general",
+      category: "journal",
       section: "settings.general.journal",
       keywords: ["daily", "note", "diary"],
       control: makeToggleControl(
@@ -191,7 +215,7 @@ export function useSettingsRegistry(): SearchableSetting[] {
       id: "tasksEnabled",
       label: "settings.general.tasksEnabled",
       description: "settings.general.tasksEnabled.desc",
-      category: "general",
+      category: "tasks",
       section: "settings.general.tasks",
       keywords: ["task", "todo", "checkbox", "agenda"],
       control: makeToggleControl(
@@ -203,7 +227,7 @@ export function useSettingsRegistry(): SearchableSetting[] {
       id: "tasksRecordDoneDate",
       label: "settings.general.tasksRecordDoneDate",
       description: "settings.general.tasksRecordDoneDate.desc",
-      category: "general",
+      category: "tasks",
       section: "settings.general.tasks",
       keywords: ["task", "done", "completion", "date"],
       control: makeToggleControl(
@@ -215,7 +239,7 @@ export function useSettingsRegistry(): SearchableSetting[] {
       id: "tasksTrackTime",
       label: "settings.general.tasksTrackTime",
       description: "settings.general.tasksTrackTime.desc",
-      category: "general",
+      category: "tasks",
       section: "settings.general.tasks",
       keywords: ["task", "time", "timer", "tracking", "duration"],
       control: makeToggleControl(
@@ -227,7 +251,7 @@ export function useSettingsRegistry(): SearchableSetting[] {
       id: "tasksStampCreatedDate",
       label: "settings.general.tasksStampCreatedDate",
       description: "settings.general.tasksStampCreatedDate.desc",
-      category: "general",
+      category: "tasks",
       section: "settings.general.tasks",
       keywords: ["task", "created", "date", "stamp"],
       control: makeToggleControl(
@@ -239,7 +263,7 @@ export function useSettingsRegistry(): SearchableSetting[] {
       id: "tasksWeekStart",
       label: "settings.general.tasksWeekStart",
       description: "settings.general.tasksWeekStart.desc",
-      category: "general",
+      category: "tasks",
       section: "settings.general.tasks",
       keywords: ["task", "week", "monday", "sunday"],
       control: makeSelectControl(
@@ -255,7 +279,7 @@ export function useSettingsRegistry(): SearchableSetting[] {
       id: "tasksHome",
       label: "settings.general.tasksHome",
       description: "settings.general.tasksHome.desc",
-      category: "general",
+      category: "tasks",
       section: "settings.general.tasks",
       keywords: ["task", "home", "inbox", "capture", "태스크 홈"],
       control: NAVIGATE_CONTROL,
@@ -264,7 +288,7 @@ export function useSettingsRegistry(): SearchableSetting[] {
       id: "tasksScanScope",
       label: "settings.general.tasksScanScope",
       description: "settings.general.tasksScanScope.desc",
-      category: "general",
+      category: "tasks",
       section: "settings.general.tasks",
       keywords: ["task", "scope", "agenda", "vault", "범위"],
       control: makeSelectControl(
@@ -282,7 +306,7 @@ export function useSettingsRegistry(): SearchableSetting[] {
       id: "tasksCaptureFile",
       label: "settings.general.tasksCaptureFile",
       description: "settings.general.tasksCaptureFile.desc",
-      category: "general",
+      category: "tasks",
       section: "settings.general.tasks",
       keywords: ["task", "capture", "inbox", "수집함"],
       control: NAVIGATE_CONTROL,
@@ -291,7 +315,7 @@ export function useSettingsRegistry(): SearchableSetting[] {
       id: "tasksGlobalCaptureShortcut",
       label: "settings.general.tasksGlobalCapture",
       description: "settings.general.tasksGlobalCapture.desc",
-      category: "general",
+      category: "tasks",
       section: "settings.general.tasks",
       keywords: ["task", "capture", "shortcut", "global", "hotkey", "단축키"],
       // 검색 패널에서 직접 녹음시키지 않는다 — 키를 누르는 순간 그 키가 검색창의
@@ -302,7 +326,7 @@ export function useSettingsRegistry(): SearchableSetting[] {
       id: "tasksArchiveAfterDays",
       label: "settings.general.tasksArchiveAfterDays",
       description: "settings.general.tasksArchiveAfterDays.desc",
-      category: "general",
+      category: "tasks",
       section: "settings.general.tasks",
       keywords: ["task", "archive", "done", "cleanup", "정리", "아카이브"],
       control: NAVIGATE_CONTROL,
@@ -311,10 +335,22 @@ export function useSettingsRegistry(): SearchableSetting[] {
       id: "tasksExcludePaths",
       label: "settings.general.tasksExcludePaths",
       description: "settings.general.tasksExcludePaths.desc",
-      category: "general",
+      category: "tasks",
       section: "settings.general.tasks",
       keywords: ["task", "exclude", "ignore", "folder"],
       control: NAVIGATE_CONTROL,
+    },
+    {
+      id: "zettelkastenEnabled",
+      label: "settings.general.zettelkastenEnabled",
+      description: "settings.general.zettelkastenEnabled.desc",
+      category: "zettelkasten",
+      section: "settings.general.zettelkasten",
+      keywords: ["zettel", "slipbox", "permanent", "note"],
+      control: makeToggleControl(
+        () => settings.zettelkastenEnabled,
+        settings.setZettelkastenEnabled,
+      ),
     },
     // ── Editor ───────────────────────────────────────────────────────────────
     {
@@ -479,6 +515,15 @@ export function useSettingsRegistry(): SearchableSetting[] {
       ),
     },
     // ── AI ───────────────────────────────────────────────────────────────────
+    {
+      id: "aiEnabled",
+      label: "settings.ai.aiEnabled",
+      description: "settings.ai.aiEnabled.desc",
+      category: "ai",
+      section: "settings.ai.provider",
+      keywords: ["ai", "assistant", "disable", "off"],
+      control: makeToggleControl(() => ai.aiEnabled, ai.setAIEnabled),
+    },
     {
       id: "provider",
       label: "settings.ai.aiProvider",

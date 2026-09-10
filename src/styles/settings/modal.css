@@ -92,6 +92,13 @@
   background-color: var(--color-bg-subtle);
 }
 
+/* §342 규칙 1 — 꺼진 기능의 탭은 숨기지 않고 흐리게. 내비게이션이 곧
+   "무엇이 켜져 있나" 개요가 된다. 여전히 클릭해서 켤 수 있어야 하므로
+   pointer-events 는 건드리지 않는다. */
+.settings-nav-item--off {
+  color: var(--color-text-muted);
+}
+
 .settings-nav-active {
   font-weight: 500;
   color: var(--color-text-primary);

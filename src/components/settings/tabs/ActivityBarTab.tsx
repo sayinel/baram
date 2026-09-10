@@ -3,6 +3,8 @@ import { useCallback, useRef, useState } from "react";
 import type { ActivityBarItemConfig } from "../../../stores/settings/store";
 
 import { useTranslation } from "../../../i18n/useTranslation";
+import { isActivityBarItemVisible } from "../../../stores/settings/activity-bar-config";
+import { useFeatureFlags } from "../../../stores/settings/features";
 import { useSettingsStore } from "../../../stores/settings/store";
 import { SettingsSectionHeader, ToggleSwitch } from "../settings-shared";
 
@@ -24,8 +26,16 @@ export function ActivityBarTab() {
   const configRef = useRef(activityBarConfig);
   configRef.current = activityBarConfig;
 
-  const topItems = activityBarConfig.filter((i) => i.section === "top");
-  const bottomItems = activityBarConfig.filter((i) => i.section === "bottom");
+  const featureFlags = useFeatureFlags();
+  // 기능이 꺼져 있으면 이 행의 visible 토글은 아무 효과가 없다 — 오늘 이미 태스크에서
+  // 그렇다. 행 자체를 숨긴다. activityBarConfig 는 그대로이므로 되켜면 돌아온다.
+  const topItems = activityBarConfig.filter(
+    (i) => i.section === "top" && isActivityBarItemVisible(i.id, featureFlags),
+  );
+  const bottomItems = activityBarConfig.filter(
+    (i) =>
+      i.section === "bottom" && isActivityBarItemVisible(i.id, featureFlags),
+  );
 
   const toggleItem = (id: string) => {
     setActivityBarConfig(

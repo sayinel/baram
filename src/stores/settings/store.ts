@@ -194,7 +194,7 @@ export const useSettingsStore = create<SettingsState>()(
         // would silently drop the setting on every restart.
         vimMode: state.vimMode,
       }),
-      version: 23,
+      version: 24,
       migrate: (persisted: unknown, version: number) => {
         const state = persisted as Record<string, unknown>;
 
@@ -375,7 +375,9 @@ export const useSettingsStore = create<SettingsState>()(
           if (state.zettelkastenDirectory === undefined)
             state.zettelkastenDirectory = "";
           if (state.zettelkastenStartupBehavior === undefined)
-            state.zettelkastenStartupBehavior = "openInbox";
+            // §344 v24 가 개명한 새 값을 심는다. 옛 리터럴을 여기 남기면 리터럴이
+            // 두 곳에 살아 다음 개명이 하나를 놓친다.
+            state.zettelkastenStartupBehavior = "openHomeNote";
           if (state.zettelkastenHomeNote === undefined)
             state.zettelkastenHomeNote = "";
         }
@@ -532,6 +534,16 @@ export const useSettingsStore = create<SettingsState>()(
           const cfg = state.activityBarConfig as undefined | { id: string }[];
           if (Array.isArray(cfg)) {
             state.activityBarConfig = cfg.filter((c) => c.id !== "help");
+          }
+        }
+
+        // v23 → v24: §344 시작 시 열던 것은 홈 노트뿐이었다 — 인박스 파일을 연 적이
+        // 없으므로 옛 값은 거짓 이름이었다. 값 자체를 개명하고 기존에 저장된 값을
+        // 잇는다. 마이그레이션 없이 개명하면 기존에 저장된 값이 아래 비교식에서
+        // 탈락해 조용히 "아무것도 안 함"으로 퇴행한다.
+        if (version < 24) {
+          if (state.zettelkastenStartupBehavior === "openInbox") {
+            state.zettelkastenStartupBehavior = "openHomeNote";
           }
         }
 

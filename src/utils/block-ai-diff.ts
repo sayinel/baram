@@ -128,8 +128,19 @@ export async function executeBlockAIWithDiff(
   }
 
   const filePrivacy = getFilePrivacy(editor);
-  if (!isLLMAllowed(store.privacyMode, inlineCfg.provider, filePrivacy)) {
-    logger.error("Block AI diff: blocked by privacy settings");
+  if (
+    !isLLMAllowed(
+      store.aiEnabled,
+      store.privacyMode,
+      inlineCfg.provider,
+      filePrivacy,
+    )
+  ) {
+    logger.error(
+      store.aiEnabled
+        ? "Block AI diff: blocked by privacy settings"
+        : "Block AI diff: AI is disabled",
+    );
     return;
   }
 

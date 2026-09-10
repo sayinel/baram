@@ -1,23 +1,23 @@
-// §5 Tasks settings section, split out of GeneralTab.
+// §5/§342 Tasks settings tab, promoted out of GeneralTab.
 import { useEffect, useRef, useState } from "react";
 
-import type { TaskScanScope } from "../../../../utils/tasks/task-scan-scope";
+import type { TaskScanScope } from "../../../utils/tasks/task-scan-scope";
 
 import { useShallow } from "zustand/shallow";
 
-import { useTranslation } from "../../../../i18n/useTranslation";
-import { pickApprovedDir } from "../../../../ipc/approval";
-import { useSettingsStore } from "../../../../stores/settings/store";
-import { TASK_SCAN_SCOPES } from "../../../../utils/tasks/task-scan-scope";
-import { resolveTasksHome } from "../../../../utils/tasks/tasks-home";
+import { useTranslation } from "../../../i18n/useTranslation";
+import { pickApprovedDir } from "../../../ipc/approval";
+import { useSettingsStore } from "../../../stores/settings/store";
+import { TASK_SCAN_SCOPES } from "../../../utils/tasks/task-scan-scope";
+import { resolveTasksHome } from "../../../utils/tasks/tasks-home";
 import {
   SettingsRow,
   SettingsSectionHeader,
   ToggleSwitch,
-} from "../../settings-shared";
-import { GlobalCaptureRow } from "./GlobalCaptureRow";
+} from "../settings-shared";
+import { GlobalCaptureRow } from "./general/GlobalCaptureRow";
 
-export function TasksSection() {
+export function TasksTab() {
   const { t } = useTranslation();
   const {
     tasksEnabled,
@@ -98,7 +98,7 @@ export function TasksSection() {
   }, []);
 
   return (
-    <>
+    <div className="settings-section">
       <SettingsSectionHeader title={t("settings.general.tasks")} />
 
       <SettingsRow
@@ -107,6 +107,13 @@ export function TasksSection() {
       >
         <ToggleSwitch checked={tasksEnabled} onChange={setTasksEnabled} />
       </SettingsRow>
+
+      {/* A2 — outside the tasksEnabled block on purpose: the global capture
+          shortcut it configures is registered regardless of this toggle
+          (journal.quickCapture is not Tasks-exclusive, fix-d-brief.md A2), so
+          hiding its settings row behind tasksEnabled would leave a still-live
+          shortcut with no way to change or clear it. */}
+      <GlobalCaptureRow />
 
       {tasksEnabled && (
         <>
@@ -228,8 +235,6 @@ export function TasksSection() {
             />
           </SettingsRow>
 
-          <GlobalCaptureRow />
-
           <SettingsRow
             description={t(
               "settings.general.tasksArchiveAfterDays.desc",
@@ -274,6 +279,6 @@ export function TasksSection() {
           </SettingsRow>
         </>
       )}
-    </>
+    </div>
   );
 }

@@ -179,7 +179,7 @@ is never shadowed. On macOS, `Cmd+R` is the native menu accelerator and vim mode
 
 ## Tasks
 
-> The Tasks feature must be on (**Settings > General > Tasks**). `Cmd+Alt+T` does two jobs: in the editor it opens the task dialog — editing the task line the cursor is on, or creating a new one; in Quick Capture it switches that dialog into task mode.
+> The Tasks feature must be on (**Settings › Tasks**). `Cmd+Alt+T` does two jobs: in the editor it opens the task dialog — editing the task line the cursor is on, or creating a new one; in Quick Capture it switches that dialog into task mode.
 
 | Action                    | macOS         | Windows / Linux |
 | ------------------------- | ------------- | --------------- |
@@ -187,7 +187,7 @@ is never shadowed. On macOS, `Cmd+R` is the native menu accelerator and vim mode
 | Quick Capture             | `Cmd+Shift+N` | `Ctrl+Shift+N`  |
 | Confirm a recognized date | `Tab`         | `Tab`           |
 
-> A **global capture shortcut** that opens Quick Capture in task mode even when Baram is in the background can be assigned in **Settings > General > Tasks**. It has no default — a global shortcut is intercepted system-wide.
+> A **global capture shortcut** that opens Quick Capture in task mode even when Baram is in the background can be assigned in **Settings › Tasks**. It has no default — a global shortcut is intercepted system-wide.
 
 ### Task rows
 

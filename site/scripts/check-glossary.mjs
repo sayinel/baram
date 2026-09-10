@@ -85,6 +85,7 @@ const TERM_FIELDS = new Set([
   "note",
   "requireKo",
   "requireKoAnywayWhy",
+  "requireKoAppExempt",
 ]);
 
 const app = JSON.parse(readFileSync(APP_KO, "utf8"));
@@ -221,14 +222,47 @@ for (const term of terms) {
   //    **앱 자신이 영어로 부르는 것**이면 그 가정이 거짓이다 — `Zettel` 이 그랬다: 앱은
   //    공간·분류를 영어 `Zettel` 로, 노트를 `제텔` 로 부른다. 그래서 "Zettel 허브" 라는
   //    옳은 문장이 걸렸다. 이것도 판단이 아니라 앱에서 파생시킨다.
+  //    ‼️ `requireKoAnywayWhy` 하나만 두면 이 검사가 **전면 억제**된다 — 정당한 영어형
+  //    한 곳 때문에 나머지 전부가 무검사가 된다. `Journal` 이 그 함정을 드러냈다: 앱의
+  //    정당한 영어형은 `journal.outsideCreate` 의 `[[Journal::{date}]]`(위키링크 **문법**
+  //    리터럴) 하나뿐인데, 그것 때문에 억제를 걸면 `space.journal.directoryTaken` 의
+  //    "Journal 디렉터리"(진짜 오역, main 이 머지로 들여왔다)가 그 그늘에 숨었다.
+  //    그래서 면제는 **키 단위**다: 열거한 키만 빠지고 나머지는 계속 검사받는다.
   if (term.requireKo) {
     const enWord = new RegExp(`(^|[^A-Za-z])${en}([^A-Za-z]|$)`);
+    const exempt = new Set(term.requireKoAppExempt ?? []);
     const inApp = Object.entries(app).filter(([, v]) => typeof v === "string" && enWord.test(v));
-    if (inApp.length && !term.requireKoAnywayWhy) {
+
+    if (exempt.size && !term.requireKoAnywayWhy) {
+      problems.push(`[면제에 근거 없음] ${en}: requireKoAppExempt 에는 requireKoAnywayWhy 가 필요하다`);
+    }
+    // 면제 목록은 낡는다. 그 키가 더는 영어형을 담지 않으면 목록이 조용히 넓어진 것이다.
+    for (const key of exempt) {
+      const v = app[key];
+      if (typeof v !== "string" || !enWord.test(v)) {
+        problems.push(
+          `[낡은 면제] ${en}: requireKoAppExempt 의 "${key}" 는 이제 "${en}" 을 담지 않는다 — 목록에서 뺄 것`,
+        );
+      }
+    }
+
+    const unexplained = inApp.filter(([k]) => !exempt.has(k));
+    if (unexplained.length && !term.requireKoAnywayWhy) {
       problems.push(
-        `[영어형을 앱이 쓴다] ${en}: 앱이 ${inApp.length}곳에서 영어 그대로 쓴다 ` +
-          `(예: ${inApp[0][0]} = "${inApp[0][1].slice(0, 24)}") — requireKo 를 빼거나, ` +
-          `그래도 요구할 근거를 requireKoAnywayWhy 에 적을 것`,
+        `[영어형을 앱이 쓴다] ${en}: 앱이 ${unexplained.length}곳에서 영어 그대로 쓴다 ` +
+          `(예: ${unexplained[0][0]} = "${unexplained[0][1].slice(0, 24)}") — requireKo 를 빼거나, ` +
+          `정당한 자리는 requireKoAppExempt 에 키로 열거하고 근거를 requireKoAnywayWhy 에 적을 것`,
+      );
+    } else if (unexplained.length) {
+      // 면제 목록 **밖**에서 영어형이 나왔다 — 억제가 아니라 발견이다.
+      //
+      // ‼️ 여기에 `&& exempt.size` 를 달면 안 된다: 그러면 `requireKoAnywayWhy` 만 두고
+      // 면제 목록을 비워 둔 항목이 **어느 분기도 타지 않아** 그 용어 전체가 무검사가 된다
+      // — 이 함수를 키 단위로 바꾼 이유가 바로 그 전면 억제였는데 opt-in 으로 두면
+      // 다음 사람이 해치만 쓰고 목록을 비워 그것을 되살린다. 실측으로 재현됐다.
+      problems.push(
+        `[면제 밖의 영어형] ${en}: ${unexplained.map(([k]) => k).join(", ")} — ` +
+          `오역이면 "${term.ko}" 로 고치고, 정당하면 requireKoAppExempt 에 더할 것`,
       );
     }
   }

@@ -51,11 +51,11 @@ const SHARED_VALUES = new Set<string>([
   "settings.general.zettelkasten", // Zettel
   "settings.panels.git", // Git
   "settings.tab.ai", // AI
+  "settings.tab.zettelkasten", // Zettel — same term as settings.general.zettelkasten
   "settings.vault.extension.mermaid", // Mermaid — the diagram language, named after itself
   "settings.vault.group.ai", // AI
   "settings.vault.workLogFolder.placeholder", // daily — a folder name, not a word
   "settings.vault.workLogTemplate.placeholder", // templates/work-log.md
-  "settings.workspace.preset.skills", // Skills
   "statusbar.mode.wysiwyg", // WYSIWYG — 두 로케일에서 같은 머리글자다
   "tasks.edit.tags.placeholder", // deep-work, someday — `#someday`는 §312가 쓰는 기능 태그다
   "toolbar.link.url", // URL — 두 로케일에서 같은 약어다

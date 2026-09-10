@@ -7,10 +7,7 @@ import {
   SettingsSectionHeader,
   ToggleSwitch,
 } from "../settings-shared";
-import { JournalSection } from "./general/JournalSection";
-import { TasksSection } from "./general/TasksSection";
 import { UpdatesSection } from "./general/UpdatesSection";
-import { ZettelkastenSection } from "./general/ZettelkastenSection";
 
 export function GeneralTab() {
   const { t } = useTranslation();
@@ -183,9 +180,6 @@ export function GeneralTab() {
         />
       </SettingsRow>
 
-      <JournalSection />
-      <TasksSection />
-      <ZettelkastenSection />
       <UpdatesSection />
     </div>
   );

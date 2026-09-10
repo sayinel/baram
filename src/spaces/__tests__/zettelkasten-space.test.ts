@@ -63,7 +63,7 @@ function mockSettingsState(overrides: {
   zettelkastenDirectory?: string;
   zettelkastenEnabled: boolean;
   zettelkastenHomeNote?: string;
-  zettelkastenStartupBehavior: "nothing" | "openInbox";
+  zettelkastenStartupBehavior: "nothing" | "openHomeNote";
 }) {
   vi.mocked(useSettingsStore.getState).mockReturnValue({
     zettelkastenDirectory: "/zettel",
@@ -85,7 +85,7 @@ describe("§98 zettelkastenSpace.startup", () => {
     mockContextState(false);
     mockSettingsState({
       zettelkastenEnabled: true,
-      zettelkastenStartupBehavior: "openInbox",
+      zettelkastenStartupBehavior: "openHomeNote",
       zettelkastenHomeNote: "home.md",
     });
 
@@ -96,11 +96,11 @@ describe("§98 zettelkastenSpace.startup", () => {
     expect(openFileInTab).not.toHaveBeenCalled();
   });
 
-  it("no-ops when zettelkasten is disabled, even with openInbox + home note", async () => {
+  it("no-ops when zettelkasten is disabled, even with openHomeNote + home note", async () => {
     mockContextState(true);
     mockSettingsState({
       zettelkastenEnabled: false,
-      zettelkastenStartupBehavior: "openInbox",
+      zettelkastenStartupBehavior: "openHomeNote",
       zettelkastenHomeNote: "home.md",
     });
 
@@ -135,7 +135,7 @@ describe("§98 zettelkastenSpace.startup", () => {
     mockContextState(true);
     mockSettingsState({
       zettelkastenEnabled: true,
-      zettelkastenStartupBehavior: "openInbox",
+      zettelkastenStartupBehavior: "openHomeNote",
       zettelkastenHomeNote: "home.md",
     });
     ensureSpaceContext.mockRejectedValueOnce(
@@ -157,11 +157,11 @@ describe("§98 zettelkastenSpace.startup", () => {
     expect(openFileInTab).not.toHaveBeenCalled();
   });
 
-  it("openInbox with no home note refreshes the index but opens nothing", async () => {
+  it("openHomeNote with no home note refreshes the index but opens nothing", async () => {
     mockContextState(true);
     mockSettingsState({
       zettelkastenEnabled: true,
-      zettelkastenStartupBehavior: "openInbox",
+      zettelkastenStartupBehavior: "openHomeNote",
       zettelkastenHomeNote: "",
     });
 
@@ -177,11 +177,11 @@ describe("§98 zettelkastenSpace.startup", () => {
     expect(openFileInTab).not.toHaveBeenCalled();
   });
 
-  it("openInbox with a relative home note reads it under the zettel dir and opens it", async () => {
+  it("openHomeNote with a relative home note reads it under the zettel dir and opens it", async () => {
     mockContextState(true);
     mockSettingsState({
       zettelkastenEnabled: true,
-      zettelkastenStartupBehavior: "openInbox",
+      zettelkastenStartupBehavior: "openHomeNote",
       zettelkastenHomeNote: "home.md",
     });
     vi.mocked(readFile).mockResolvedValue("# Home\ncontent");
@@ -196,11 +196,11 @@ describe("§98 zettelkastenSpace.startup", () => {
     );
   });
 
-  it("openInbox with an absolute home note path uses it as-is", async () => {
+  it("openHomeNote with an absolute home note path uses it as-is", async () => {
     mockContextState(true);
     mockSettingsState({
       zettelkastenEnabled: true,
-      zettelkastenStartupBehavior: "openInbox",
+      zettelkastenStartupBehavior: "openHomeNote",
       zettelkastenHomeNote: "/elsewhere/home.md",
     });
     vi.mocked(readFile).mockResolvedValue("abs content");
@@ -214,11 +214,11 @@ describe("§98 zettelkastenSpace.startup", () => {
     );
   });
 
-  it("openInbox swallows a missing/unreadable home note without opening anything", async () => {
+  it("openHomeNote swallows a missing/unreadable home note without opening anything", async () => {
     mockContextState(true);
     mockSettingsState({
       zettelkastenEnabled: true,
-      zettelkastenStartupBehavior: "openInbox",
+      zettelkastenStartupBehavior: "openHomeNote",
       zettelkastenHomeNote: "missing.md",
     });
     vi.mocked(readFile).mockRejectedValue(new Error("not found"));

@@ -126,3 +126,31 @@ describe("deleting a custom perspective", () => {
     expect(useWorkspaceStore.getState().customPresets).toEqual([]);
   });
 });
+
+// §338/I-8 — the workspace gallery used to render `BUILTIN_PRESETS`
+// unconditionally, so a disabled Journal/Zettel still offered a card here
+// even though applying it (workspace.ts) already refused and toasted. This is
+// the "render" half of that completeness pair (preset-feature-gate.test.ts is
+// the "applyPreset agrees with PRESET_FEATURE" half). Custom presets are
+// never filtered — "Deep work" (CUSTOM_PRESET) stays regardless.
+describe("workspace gallery — preset feature gate (§338/I-8)", () => {
+  // ‼️ en-only — `menu.workspace.*` and the (now-removed) `settings.workspace.preset.*` name
+  // keys were BOTH "Writing"/"Journal"/"Skills" in en.json, so this assertion cannot see a wrong
+  // or missing `nameKey` (§343; see `preset-labels.test.tsx` for the ko-locale assertions).
+  it("hides the Journal card but keeps Writing/Skills/the custom preset when journal is off", () => {
+    useSettingsStore.setState({ journalEnabled: false });
+    render(<AppearanceTab />);
+
+    expect(screen.queryByText("Journal")).toBeNull();
+    expect(screen.getByText("Writing")).toBeInTheDocument();
+    expect(screen.getByText("Skills")).toBeInTheDocument();
+    expect(screen.getByText("Deep work")).toBeInTheDocument();
+  });
+
+  it("shows the Journal card when journal is on — positive control", () => {
+    useSettingsStore.setState({ journalEnabled: true });
+    render(<AppearanceTab />);
+
+    expect(screen.getByText("Journal")).toBeInTheDocument();
+  });
+});

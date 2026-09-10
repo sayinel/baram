@@ -326,9 +326,26 @@ export const AI_ACTION_LABEL_KEYS: readonly string[] = [
  */
 const EXTRACTABLE: ContentMode[] = ["structure", "text"];
 
-export function getActionsForMode(mode: ContentMode): AIAction[] {
+/**
+ * §338/§314 — `extract-tasks` is a Tasks-feature action, so it must answer the
+ * same as every other Tasks entry point when the feature is off (I-7: the
+ * slash menu already gated on `tasksEnabled`, while this function's 3 render
+ * sites — FloatingToolbar, BlockHandleMenu, `nodeview-ai-menu.ts` — did not,
+ * so the same command gave a different answer depending on which surface
+ * asked).
+ *
+ * ‼️ `tasksEnabled` is a REQUIRED parameter, not read from the store here —
+ * this function stays pure (`contextual-ai-actions.test.ts` asserts it by
+ * argument alone), and a required parameter makes tsc enumerate every call
+ * site that needs updating. A hand-written call-site list is what let this
+ * function's 3 render sites drift apart in the first place.
+ */
+export function getActionsForMode(
+  mode: ContentMode,
+  tasksEnabled: boolean,
+): AIAction[] {
   const actions = MODE_ACTIONS[mode];
-  return EXTRACTABLE.includes(mode)
+  return tasksEnabled && EXTRACTABLE.includes(mode)
     ? [...actions, EXTRACT_TASKS_ACTION]
     : actions;
 }

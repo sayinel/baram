@@ -5,7 +5,7 @@ title: "Writing a task"
 
 Every `- [ ]` checkbox in your vault is a task. Baram indexes them all, lets you give them dates, priorities and repeat rules without typing a single emoji, and gathers them into an agenda — while the task stays a plain markdown line in the note where you wrote it.
 
-Tasks are on by default. Turn them off in **Settings > General > Tasks > Enable Tasks**; the Tasks sidebar icon disappears with them.
+Tasks are on by default. Turn them off in **Settings › Tasks > Enable Tasks**; the Tasks sidebar icon disappears with them.
 
 ## Anatomy of a task line
 

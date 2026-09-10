@@ -34,6 +34,7 @@ import { useWorkspaceStore } from "../stores/file/workspace";
 import { useSettingsStore } from "../stores/settings/store";
 import { useUIStore } from "../stores/ui/ui";
 import { registerEditorMutationTask } from "../utils/editor/mutation-tasks";
+import { featureReady } from "../utils/feature-gate";
 import { resolveJournalDir } from "../utils/journal/journal";
 import { logger } from "../utils/logger";
 import { showTableGridPicker } from "../utils/table-grid-picker";
@@ -179,35 +180,47 @@ export function useKeybindingActions({
         });
       }
     });
-    registerAction("insert.inlineAI", () => inlineAI.activate());
+    // §341 버튼은 숨겼으므로 이 경로로 오는 것은 단축키·네이티브 메뉴, 즉 사용자가
+    // 의도적으로 누른 것이다. 조용한 무동작을 남기지 않는다 (§18.19 결함 A).
+    registerAction("insert.inlineAI", () => {
+      if (!featureReady("ai")) return;
+      inlineAI.activate();
+    });
 
     // AI
-    registerAction("ai.chatPanel", () =>
-      useUIStore.getState().toggleRightPanel(),
-    );
+    registerAction("ai.chatPanel", () => {
+      if (!featureReady("ai")) return;
+      useUIStore.getState().toggleRightPanel();
+    });
     registerAction("ai.ghostText", () => {
+      if (!featureReady("ai")) return;
       const ai = useAIStore.getState();
       ai.setGhostTextEnabled(!ai.ghostTextEnabled);
     });
-    registerAction("ai.skillTest", () =>
-      useUIStore.getState().toggleSkillTestDialog(),
-    );
+    registerAction("ai.skillTest", () => {
+      if (!featureReady("ai")) return;
+      useUIStore.getState().toggleSkillTestDialog();
+    });
 
-    // Workspace
+    // Workspace (§343: writing · zettelkasten · journal · skills everywhere)
     registerAction("workspace.writing", () =>
       useWorkspaceStore.getState().applyPreset("writing"),
     );
-    registerAction("workspace.journal", () =>
-      useWorkspaceStore.getState().applyPreset("journal"),
-    );
     registerAction("workspace.zettelkasten", () =>
       useWorkspaceStore.getState().applyPreset("zettelkasten"),
+    );
+    registerAction("workspace.journal", () =>
+      useWorkspaceStore.getState().applyPreset("journal"),
     );
     registerAction("workspace.skills", () =>
       useWorkspaceStore.getState().applyPreset("skills"),
     );
 
     // Journal
+    // ‼️ A2 — intentionally NOT gated on `featureReady`, despite the `journal.`
+    // prefix: capture is not exclusive to Journal or Tasks (fix-d-brief.md A2),
+    // so this shortcut works regardless of either toggle. Named exception in
+    // use-keybinding-actions-feature-gate.test.ts.
     registerAction("journal.quickCapture", () =>
       useUIStore.getState().toggleQuickCapture(),
     );
@@ -215,8 +228,11 @@ export function useKeybindingActions({
     registerAction("journal.openToday", () => {
       (async () => {
         try {
+          // §85 Say why nothing opened. A shortcut that returns silently is
+          // indistinguishable from one that is not bound — the same two cases the
+          // journal preset now reports (workspace.ts), worded identically.
+          if (!featureReady("journal")) return;
           const {
-            journalEnabled,
             journalDirectory,
             journalFilenameFormat,
             journalTemplatePath,
@@ -224,15 +240,6 @@ export function useKeybindingActions({
             locale,
           } = useSettingsStore.getState();
           const { rootPath } = useFileStore.getState();
-          // §85 Say why nothing opened. A shortcut that returns silently is
-          // indistinguishable from one that is not bound — the same two cases the
-          // journal preset now reports (workspace.ts), worded identically.
-          if (!journalEnabled) {
-            useUIStore
-              .getState()
-              .showToast(t("space.journal.disabled", locale as Locale));
-            return;
-          }
           if (!resolveJournalDir(rootPath, journalDirectory)) {
             useUIStore
               .getState()
@@ -268,6 +275,7 @@ export function useKeybindingActions({
     });
 
     registerAction("journal.memories", () => {
+      if (!featureReady("journal")) return;
       const ui = useUIStore.getState();
       if (!ui.rightPanelOpen) {
         ui.setRightPanelMode("memories");
@@ -280,6 +288,7 @@ export function useKeybindingActions({
     });
 
     registerAction("journal.photoGallery", () => {
+      if (!featureReady("journal")) return;
       const ui = useUIStore.getState();
       if (ui.rightPanelMode === "photo-gallery" && ui.rightPanelOpen) {
         ui.toggleRightPanel();
@@ -290,8 +299,34 @@ export function useKeybindingActions({
     });
 
     // M2-b4 같은 명령의 두 갈래 — 캡처창이면 태스크 모드 토글, 아니면 편집 모달.
+    //
+    // ‼️ Fix-D follow-up — team-lead overruled the earlier "leave ungated"
+    // exception once `space.tasks.disabled` existed (see feature-gate.ts):
+    // now gated below. Traced first, per team-lead's request, whether this
+    // shortcut is shared the way `journal.quickCapture` is (A2) — it turns
+    // out the SAME bound key also drives `taskMode.toggle()` inside
+    // QuickCaptureDialog.tsx (`findCommandByKey(...)?.id === TASK_INPUT_COMMAND`),
+    // a capture-window concern outside this file's ownership (gated
+    // separately at its own chokepoint, §338/Fix H,
+    // use-capture-task-mode.ts). `openTaskEdit`/`taskEditOpen` themselves are
+    // read ONLY by `TaskEditDialog.tsx` (confirmed), so THIS branch is
+    // genuinely tasks-exclusive.
+    //
+    // ‼️ Fix-H follow-up — the guard ORDER below is load-bearing, not just the
+    // two guards' presence. `featureReady("tasks")` must run BEFORE the
+    // `quickCaptureOpen` check, not after: with the capture dialog open, this
+    // whole action is reached (the dialog's own handler doesn't stop
+    // propagation — see its comment), and if `quickCaptureOpen` were checked
+    // first, THIS gate would never run while the dialog is open — Tasks off
+    // + capture open would then toggle nothing (the dialog's own gate,
+    // §338/Fix H, correctly swallows the toggle) AND toast nothing (this
+    // gate never reached), which is exactly the silent no-op §18.19 결함 A
+    // forbids. Gate first so the disabled case is HEARD; only once the
+    // feature is confirmed on does the dual-dispatch branch decide whether
+    // this action or the dialog's own handler owns the keypress.
     registerAction(TASK_INPUT_COMMAND, () => {
       const ui = useUIStore.getState();
+      if (!featureReady("tasks")) return;
       // ‼️ 캡처창의 핸들러는 `preventDefault`만 하고 전파를 막지 않는다. 이벤트는
       // window 리스너까지 그대로 올라오므로, 이 갈래를 여기서 명시하지 않으면 한 번
       // 누를 때 **둘 다** 일어난다 — 태스크 모드가 켜지는 동시에 모달이 뜨고, 거기서
@@ -308,12 +343,12 @@ export function useKeybindingActions({
 
     // §94 Zettelkasten
     registerAction("zettelkasten.newNote", () => {
-      const { zettelkastenEnabled, zettelkastenDirectory } =
-        useSettingsStore.getState();
+      if (!featureReady("zettelkasten")) return;
+      const { zettelkastenDirectory } = useSettingsStore.getState();
       const { rootPath } = useFileStore.getState();
       const dir = resolveZettelDir(rootPath, zettelkastenDirectory);
-      if (!zettelkastenEnabled || !dir) {
-        logger.warn("[Zettel] newNote: space not enabled/configured");
+      if (!dir) {
+        logger.warn("[Zettel] newNote: directory not configured");
         return;
       }
       useUIStore.getState().openZettelTitleDialog({
@@ -328,17 +363,13 @@ export function useKeybindingActions({
     });
 
     registerAction("zettelkasten.promote", () => {
-      const { zettelkastenEnabled, zettelkastenDirectory } =
-        useSettingsStore.getState();
+      if (!featureReady("zettelkasten")) return;
+      const { zettelkastenDirectory } = useSettingsStore.getState();
       const { rootPath } = useFileStore.getState();
       const dir = resolveZettelDir(rootPath, zettelkastenDirectory);
       const es = useEditorStore.getState();
       const tab = es.tabs.find((t) => t.id === es.activeTabId);
-      if (
-        !zettelkastenEnabled ||
-        !dir ||
-        !tab?.filePath?.startsWith(`${dir}/inbox/`)
-      ) {
+      if (!dir || !tab?.filePath?.startsWith(`${dir}/inbox/`)) {
         logger.warn("[Zettel] promote: active file is not an inbox note");
         return;
       }
@@ -369,12 +400,12 @@ export function useKeybindingActions({
     // §94 New note from selection — extract the selected text into a new
     // permanent zettel note and replace the selection with an [[id]] link.
     registerAction("zettelkasten.newFromSelection", () => {
-      const { zettelkastenEnabled, zettelkastenDirectory } =
-        useSettingsStore.getState();
+      if (!featureReady("zettelkasten")) return;
+      const { zettelkastenDirectory } = useSettingsStore.getState();
       const { rootPath } = useFileStore.getState();
       const dir = resolveZettelDir(rootPath, zettelkastenDirectory);
-      if (!zettelkastenEnabled || !dir || !editor) {
-        logger.warn("[Zettel] newFromSelection: space not enabled/configured");
+      if (!dir || !editor) {
+        logger.warn("[Zettel] newFromSelection: space not configured");
         return;
       }
       // §95/§99 M5: mirror zettelkasten.promote's gate — only insert an
@@ -439,12 +470,12 @@ export function useKeybindingActions({
     // §97 New MOC (Map of Content) — a #moc-tagged index note. Discovery of
     // MOCs reuses the existing tag search; no dedicated sidebar panel here.
     registerAction("zettelkasten.newMoc", () => {
-      const { zettelkastenEnabled, zettelkastenDirectory } =
-        useSettingsStore.getState();
+      if (!featureReady("zettelkasten")) return;
+      const { zettelkastenDirectory } = useSettingsStore.getState();
       const { rootPath } = useFileStore.getState();
       const dir = resolveZettelDir(rootPath, zettelkastenDirectory);
-      if (!zettelkastenEnabled || !dir) {
-        logger.warn("[Zettel] newMoc: space not enabled/configured");
+      if (!dir) {
+        logger.warn("[Zettel] newMoc: directory not configured");
         return;
       }
       useUIStore.getState().openZettelTitleDialog({

@@ -10,9 +10,9 @@ const MIGRATED = [
   "src/components/settings/tabs/VaultTab.tsx",
   "src/components/layout/ContextAddMenu.tsx",
   "src/services/vault-create.ts",
-  "src/components/settings/tabs/general/JournalSection.tsx",
-  "src/components/settings/tabs/general/ZettelkastenSection.tsx",
-  "src/components/settings/tabs/general/TasksSection.tsx",
+  "src/components/settings/tabs/JournalTab.tsx",
+  "src/components/settings/tabs/ZettelkastenTab.tsx",
+  "src/components/settings/tabs/TasksTab.tsx",
 ];
 
 describe("§332 승인 피커 이전", () => {

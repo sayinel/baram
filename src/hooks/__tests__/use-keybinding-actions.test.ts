@@ -213,18 +213,119 @@ describe("journal.openToday — unconfigured feedback", () => {
   });
 });
 
-describe("tasks.taskInput — 한 명령의 두 갈래", () => {
+// §338/I-6 — `journal.memories` used to open the right panel unconditionally,
+// giving a disabled Journal a reachable, non-vacuous state (C-2). It now goes
+// through `featureReady("journal")`, which is the "render" half of the
+// completeness pair described in use-keybinding-actions-feature-gate.test.ts
+// (that file's scan proves the call MENTIONS featureReady; this proves it
+// actually blocks the action AND tells the user why — and the positive
+// control proves the gate does not also block the enabled case).
+describe("journal.memories — feature-gated (§338/I-6)", () => {
   beforeEach(() => {
-    useUIStore.setState({ quickCaptureOpen: false, taskEditOpen: false });
+    useUIStore.setState({
+      rightPanelOpen: false,
+      rightPanelMode: "chat",
+      toast: null,
+    });
+    useSettingsStore.setState({ journalEnabled: true, locale: "en" });
   });
 
-  it("캡처창이 닫혀 있으면 편집 모달을 연다", () => {
+  it("does not open the panel and toasts when journal is disabled", () => {
+    useSettingsStore.setState({ journalEnabled: false });
+    renderActionsHook(null);
+
+    act(() => getAction("journal.memories")?.());
+
+    const ui = useUIStore.getState();
+    expect(ui.rightPanelOpen).toBe(false);
+    expect(ui.rightPanelMode).toBe("chat");
+    expect(ui.toast?.message).toBe(t("space.journal.disabled", "en"));
+  });
+
+  it("opens the memories panel and does not toast when journal is enabled", () => {
+    renderActionsHook(null);
+
+    act(() => getAction("journal.memories")?.());
+
+    const ui = useUIStore.getState();
+    expect(ui.rightPanelOpen).toBe(true);
+    expect(ui.rightPanelMode).toBe("memories");
+    expect(ui.toast).toBeNull();
+  });
+});
+
+// §338/I-6 — the 4 zettelkasten.* actions already checked `zettelkastenEnabled`
+// before this fix, but silently (`logger.warn`, no toast) — itself forbidden
+// by §18.19 결함 A, the same rule §85 already applied to journal.openToday.
+// `zettelkasten.newNote` is the simplest of the 4 to drive as a real behavior
+// test; the other 3 share the same `featureReady("zettelkasten")` call
+// (proven by the source scan) and their own pre-existing directory/tab checks
+// (proven by the zettelkasten.newFromSelection suite above).
+describe("zettelkasten.newNote — feature-gated (§338/I-6)", () => {
+  beforeEach(() => {
+    useUIStore.getState().closeZettelTitleDialog();
+    useUIStore.setState({ toast: null });
+    useSettingsStore.setState({
+      zettelkastenEnabled: true,
+      zettelkastenDirectory: "/vault/zettel",
+      locale: "en",
+    });
+    useFileStore.getState().setRootPath("/vault");
+  });
+
+  it("does not open the title dialog and toasts when zettelkasten is disabled", () => {
+    useSettingsStore.setState({ zettelkastenEnabled: false });
+    renderActionsHook(null);
+
+    act(() => getAction("zettelkasten.newNote")?.());
+
+    expect(useUIStore.getState().zettelTitleDialog.open).toBe(false);
+    expect(useUIStore.getState().toast?.message).toBe(
+      t("space.zettel.disabled", "en"),
+    );
+  });
+
+  it("opens the title dialog and does not toast when zettelkasten is enabled", () => {
+    renderActionsHook(null);
+
+    act(() => getAction("zettelkasten.newNote")?.());
+
+    expect(useUIStore.getState().zettelTitleDialog.open).toBe(true);
+    expect(useUIStore.getState().toast).toBeNull();
+  });
+});
+
+// §338/Fix H follow-up — team-lead's own earlier fact ("quickCaptureOpen
+// checked before featureReady, so the dialog-open case never toasts") was
+// WRONG in the direction that matters: it meant Tasks off + capture open
+// used to toast (before Fix H existed at all), and swallowing that arm to
+// build Fix H's "no toast while capturing" test would have introduced a NEW
+// silent no-op instead — the dialog's own handler already swallows the
+// toggle (§338/Fix H, use-capture-task-mode.ts), and if this action's gate
+// ran second, it would never be reached either. §18.19 결함 A forbids this
+// exact shape, so `featureReady("tasks")` now runs FIRST — see the comment
+// at the registerAction call site for why the order itself is load-bearing.
+//
+// The 4 states below are exhaustive over {tasksEnabled, quickCaptureOpen},
+// not just the 2 the dual-dispatch shape happens to complicate.
+describe("tasks.taskInput — 한 명령의 두 갈래 (§338/Fix H)", () => {
+  beforeEach(() => {
+    useUIStore.setState({
+      quickCaptureOpen: false,
+      taskEditOpen: false,
+      toast: null,
+    });
+    useSettingsStore.setState({ tasksEnabled: true, locale: "en" });
+  });
+
+  it("tasks on, 캡처창 닫힘 → 편집 모달을 연다", () => {
     renderActionsHook(null);
     act(() => getAction(TASK_INPUT_COMMAND)?.());
     expect(useUIStore.getState().taskEditOpen).toBe(true);
+    expect(useUIStore.getState().toast).toBeNull();
   });
 
-  it("캡처창이 열려 있으면 모달을 열지 않는다", () => {
+  it("tasks on, 캡처창 열림 → 모달을 열지 않는다 (다이얼로그가 직접 처리)", () => {
     // ‼️ 캡처창의 핸들러는 `preventDefault`만 하고 전파를 막지 않아, 이 액션은 같은
     // 키 하나에 **함께** 불린다. 이 갈래가 없으면 태스크 모드가 켜지는 동시에 모달이
     // 뜨고, 거기서 저장한 태스크는 캡처와 무관한 현재 문서에 생긴다.
@@ -232,5 +333,86 @@ describe("tasks.taskInput — 한 명령의 두 갈래", () => {
     renderActionsHook(null);
     act(() => getAction(TASK_INPUT_COMMAND)?.());
     expect(useUIStore.getState().taskEditOpen).toBe(false);
+    expect(useUIStore.getState().toast).toBeNull();
+  });
+
+  it("tasks off, 캡처창 닫힘 → 토스트만 뜨고 모달은 안 연다", () => {
+    useSettingsStore.setState({ tasksEnabled: false });
+    renderActionsHook(null);
+    act(() => getAction(TASK_INPUT_COMMAND)?.());
+    expect(useUIStore.getState().taskEditOpen).toBe(false);
+    expect(useUIStore.getState().toast?.message).toBe(
+      t("space.tasks.disabled", "en"),
+    );
+  });
+
+  // The previously-silent state: before this fix, Tasks off + capture open
+  // toggled nothing (the dialog's own gate, §338/Fix H) AND toasted nothing
+  // (this action's gate was checked second, after quickCaptureOpen already
+  // returned) — a silent no-op, §18.19 결함 A.
+  it("tasks off, 캡처창 열림 → 토스트가 뜬다 (예전엔 조용한 무동작이었다)", () => {
+    useUIStore.setState({ quickCaptureOpen: true });
+    useSettingsStore.setState({ tasksEnabled: false });
+    renderActionsHook(null);
+    act(() => getAction(TASK_INPUT_COMMAND)?.());
+    expect(useUIStore.getState().taskEditOpen).toBe(false);
+    expect(useUIStore.getState().toast?.message).toBe(
+      t("space.tasks.disabled", "en"),
+    );
+  });
+});
+
+// §338 — team-lead's ruling: gate tasks.taskInput now that `space.tasks.disabled`
+// exists, rather than leave it a named exception. Behavior, not presence: the
+// dialog must not open AND the toast must show — a scan proving the call site
+// "mentions featureReady" (use-keybinding-actions-feature-gate.test.ts) cannot
+// tell a correct gate from a broken one.
+describe("tasks.taskInput — feature-gated (§338, team-lead ruling on Fix D)", () => {
+  beforeEach(() => {
+    useUIStore.setState({
+      quickCaptureOpen: false,
+      taskEditOpen: false,
+      toast: null,
+    });
+    useSettingsStore.setState({ tasksEnabled: true, locale: "en" });
+  });
+
+  // ‼️ Split into two `it`s on purpose, not combined into one with two
+  // `expect`s: a failing `expect` throws and aborts the rest of the `it`, so
+  // a single combined test cannot tell "the block broke" from "the toast
+  // broke" — one mutation killing the first assertion would hide whether the
+  // second still held. Verified by mutation testing (see fix-d-report.md):
+  // removing only the `return` (keeping the `featureReady("tasks")` call)
+  // fails just "blocks", not "toasts" — the two are NOT the same fact.
+  // Removing the whole guard line kills both, which is expected: with no
+  // call to `featureReady` at all, neither the block nor its toast has
+  // anywhere left to come from.
+  it("blocks the dialog when tasks is disabled", () => {
+    useSettingsStore.setState({ tasksEnabled: false });
+    renderActionsHook(null);
+
+    act(() => getAction(TASK_INPUT_COMMAND)?.());
+
+    expect(useUIStore.getState().taskEditOpen).toBe(false);
+  });
+
+  it("toasts why when tasks is disabled", () => {
+    useSettingsStore.setState({ tasksEnabled: false });
+    renderActionsHook(null);
+
+    act(() => getAction(TASK_INPUT_COMMAND)?.());
+
+    expect(useUIStore.getState().toast?.message).toBe(
+      t("space.tasks.disabled", "en"),
+    );
+  });
+
+  it("opens the dialog and does not toast when tasks is enabled — positive control", () => {
+    renderActionsHook(null);
+
+    act(() => getAction(TASK_INPUT_COMMAND)?.());
+
+    expect(useUIStore.getState().taskEditOpen).toBe(true);
+    expect(useUIStore.getState().toast).toBeNull();
   });
 });

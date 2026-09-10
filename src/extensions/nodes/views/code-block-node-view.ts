@@ -12,6 +12,7 @@ import { EditorView as CMView } from "@codemirror/view";
 
 import { attachTooltip } from "../../../components/tooltip-core";
 import { t } from "../../../i18n";
+import { useAIStore } from "../../../stores/ai/ai";
 import { useSettingsStore } from "../../../stores/settings/store";
 import { showNodeViewAIMenu } from "../../../utils/nodeview-ai-menu";
 import { withVimExternalEdit } from "../../plugins/vim/vim-keys";
@@ -28,6 +29,9 @@ import { onFirstVisible } from "./lazy-visible";
 
 export class CodeBlockNodeView implements NodeView {
   dom: HTMLElement;
+  /** §339 unsubscribe from the AI kill switch — live, not just at construction:
+   *  this NodeView can outlive a Settings toggle (see aiBtn wiring below). */
+  private aiUnsub: (() => void) | null = null;
   private cmContainer: HTMLElement;
   private cmInitialized = false;
   private cmView: CMView | null = null;
@@ -150,6 +154,16 @@ export class CodeBlockNodeView implements NodeView {
       if (typeof pos !== "number") return;
       showNodeViewAIMenu(aiBtn, "code", blockText, this.tiptapEditor, pos);
     });
+    // §339 this class NodeView has no re-render to react to a store change —
+    // read `aiEnabled` at creation AND subscribe so a live Settings toggle
+    // hides/shows the button without needing the block re-mounted (matching
+    // the React NodeViews, which already re-render on `useFeatureFlags()`).
+    aiBtn.hidden = !useAIStore.getState().aiEnabled;
+    this.aiUnsub = useAIStore.subscribe((state, prev) => {
+      if (state.aiEnabled !== prev.aiEnabled) {
+        aiBtn.hidden = !state.aiEnabled;
+      }
+    });
     header.appendChild(aiBtn);
 
     // CodeMirror container
@@ -240,6 +254,10 @@ export class CodeBlockNodeView implements NodeView {
     if (this.detachAiTooltip) {
       this.detachAiTooltip();
       this.detachAiTooltip = null;
+    }
+    if (this.aiUnsub) {
+      this.aiUnsub();
+      this.aiUnsub = null;
     }
     this.teardownCM();
     this.vimIsland.destroy();

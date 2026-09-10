@@ -75,12 +75,14 @@ export function QuickCaptureDialog() {
   // §99 M4: reactive read so the "space not configured" hint / disabled Save
   // surface immediately on open/render, not only after a failed save attempt.
   const keybindingOverrides = useSettingsStore((s) => s.keybindingOverrides);
-  const { zettelkastenEnabled, zettelkastenDirectory } = useSettingsStore(
-    useShallow((s) => ({
-      zettelkastenEnabled: s.zettelkastenEnabled,
-      zettelkastenDirectory: s.zettelkastenDirectory,
-    })),
-  );
+  const { tasksEnabled, zettelkastenEnabled, zettelkastenDirectory } =
+    useSettingsStore(
+      useShallow((s) => ({
+        tasksEnabled: s.tasksEnabled,
+        zettelkastenEnabled: s.zettelkastenEnabled,
+        zettelkastenDirectory: s.zettelkastenDirectory,
+      })),
+    );
   const rootPath = useFileStore((s) => s.rootPath);
   const zettelDir = resolveZettelDir(rootPath, zettelkastenDirectory);
   const zettelReady = zettelkastenEnabled && !!zettelDir;
@@ -516,14 +518,21 @@ export function QuickCaptureDialog() {
       >
         <div className="quick-capture-header">
           <h3>{t("journal.capture.title")}</h3>
-          <label className="quick-capture-task-toggle">
-            <input
-              checked={taskMode.enabled}
-              onChange={taskMode.toggle}
-              type="checkbox"
-            />
-            {t("journal.capture.taskMode.label")}
-          </label>
+          {/* §338/Fix H — hidden, not disabled: an inert checkbox the user can
+              still click with nothing happening is the silent no-op §18.19
+              결함 A forbids. `useCaptureTaskMode()` already pins `enabled`
+              false while Tasks is off, so hiding here is belt-and-suspenders
+              on the affordance, not the only gate. */}
+          {tasksEnabled && (
+            <label className="quick-capture-task-toggle">
+              <input
+                checked={taskMode.enabled}
+                onChange={taskMode.toggle}
+                type="checkbox"
+              />
+              {t("journal.capture.taskMode.label")}
+            </label>
+          )}
         </div>
 
         {/* Body — §323 문서창과 같은 엔진. `_editor` 핸들은 테스트가 jsdom에서

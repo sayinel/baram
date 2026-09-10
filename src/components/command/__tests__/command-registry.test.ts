@@ -10,6 +10,7 @@ import type { CommandDeps } from "../command-registry";
 import { describe, expect, it } from "vitest";
 
 import { KEYBINDING_REGISTRY } from "../../../keybindings/keybinding-registry";
+import { BUILTIN_PRESETS } from "../../../stores/file/workspace";
 import { buildCommands } from "../command-registry";
 
 const noop = () => {};
@@ -83,5 +84,18 @@ describe("command registry — a perspective's shortcut is the one bound to it",
 
       expect(commands.get(commandId)?.shortcut).toBe(`⌥⌘${digit}`);
     }
+  });
+
+  // §343/M-9 — 숫자만 파생돼 있었고 **순서**는 리터럴 배치였다. 팔레트는 퍼스펙티브를
+  // 나열하는 네 표면 중 하나이고, 나머지 셋(keybinding-registry · menu.rs · 상태바
+  // 드롭다운)은 `perspective-order.test.ts` 와 `workspace-store.test.ts` 가 고정한다.
+  // 정본은 `BUILTIN_PRESETS` 하나뿐이므로 여기서도 그것에서 파생시킨다 — 리터럴을
+  // 또 적으면 이 파일이 다섯 번째 사본이 된다.
+  it("lists the perspectives in BUILTIN_PRESETS order, not a literal order", () => {
+    const palette = buildCommands(DEPS)
+      .filter((c) => c.category === "Perspective")
+      .map((c) => c.id.replace(/^workspace:/, ""));
+
+    expect(palette).toEqual(BUILTIN_PRESETS.map((p) => p.id));
   });
 });

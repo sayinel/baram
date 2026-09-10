@@ -1,5 +1,6 @@
 // §52 Workspace 프리셋 스토어
 import type { VaultType } from "../../ipc/types";
+import type { FeatureKey } from "../settings/feature-keys";
 
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
@@ -8,6 +9,7 @@ import { type Locale, t } from "../../i18n";
 import { reportSpaceDirectoryTaken } from "../../services/space-context-migration";
 import { switchContext } from "../../services/vault-context-loader";
 import { getSpace } from "../../spaces";
+import { featureReady } from "../../utils/feature-gate";
 import { resolveJournalDir } from "../../utils/journal/journal";
 import { logger } from "../../utils/logger";
 import {
@@ -37,19 +39,39 @@ export interface WorkspaceLayout {
 
 export interface WorkspacePreset {
   builtIn: boolean;
+  /** §343 — translation key for `description`. Built-in only; a custom preset has no key and
+   * falls back to its user-typed `description` (see `presetDisplayDescription`). */
+  descKey?: string;
   description: string;
   id: string;
   layout: WorkspaceLayout;
   name: string;
+  /** §343 — translation key for `name`. Built-in only; a custom preset has no key and falls
+   * back to its user-typed `name` (see `presetDisplayName`). */
+  nameKey?: string;
 }
+
+/**
+ * §343 A built-in preset always carries its own i18n keys — narrowing them to required (rather
+ * than leaving them optional like `WorkspacePreset` must for custom presets) means tsc catches a
+ * missing key the moment a fifth built-in is added, the same shape this branch already uses for
+ * `isLLMAllowed(aiEnabled, …)` and `Record<FeatureKey, string>`.
+ */
+type BuiltinPreset = WorkspacePreset & {
+  builtIn: true;
+  descKey: string;
+  nameKey: string;
+};
 
 // --- Built-in Presets (§4.3) ---
 
-export const BUILTIN_PRESETS: WorkspacePreset[] = [
+export const BUILTIN_PRESETS: BuiltinPreset[] = [
   {
     id: "writing",
     name: "Writing",
+    nameKey: "menu.workspace.writing",
     description: "Hide sidebar and focus on the editor.",
+    descKey: "settings.workspace.preset.writing.desc",
     builtIn: true,
     layout: {
       sidebarOpen: false,
@@ -61,7 +83,12 @@ export const BUILTIN_PRESETS: WorkspacePreset[] = [
   {
     id: "zettelkasten",
     name: "Zettel",
+    // ‼️ Suffix differs from the id — `zettelkasten` names its menu key `menu.workspace.zettel`.
+    // String-assembling `` `menu.workspace.${id}` `` is exactly the bug this key fixes: write it
+    // as data, not derive it.
+    nameKey: "menu.workspace.zettel",
     description: "Capture ideas fast and refine them into linked notes.",
+    descKey: "settings.workspace.preset.zettelkasten.desc",
     builtIn: true,
     layout: getSpace("zettelkasten")?.layout ?? {
       sidebarOpen: true,
@@ -73,7 +100,9 @@ export const BUILTIN_PRESETS: WorkspacePreset[] = [
   {
     id: "journal",
     name: "Journal",
+    nameKey: "menu.workspace.journal",
     description: "Open calendar, today's journal, and Memories view together.",
+    descKey: "settings.workspace.preset.journal.desc",
     builtIn: true,
     layout: {
       sidebarOpen: true,
@@ -85,7 +114,9 @@ export const BUILTIN_PRESETS: WorkspacePreset[] = [
   {
     id: "skills",
     name: "Skills",
+    nameKey: "menu.workspace.skills",
     description: "Layout optimized for editing LLM Skills files.",
+    descKey: "settings.workspace.preset.skills.desc",
     builtIn: true,
     layout: {
       sidebarOpen: true,
@@ -95,6 +126,62 @@ export const BUILTIN_PRESETS: WorkspacePreset[] = [
     },
   },
 ];
+
+/**
+ * §343 The one place that decides a preset's displayed NAME. `StatusBar` and `AppearanceTab`
+ * both used to carry their own ternary (`preset.builtIn ? t(...) : preset.name`), and one of
+ * them (`StatusBar`) skipped the `t()` call entirely — a duplicated branch is exactly how that
+ * kind of surface drifts from the other. `translate` takes one argument (not a
+ * locale-and-params tuple) so a component's already locale-bound `const { t } = useTranslation()`
+ * passes straight through.
+ */
+export function presetDisplayName(
+  preset: WorkspacePreset,
+  translate: (key: string) => string,
+): string {
+  return preset.nameKey ? translate(preset.nameKey) : preset.name;
+}
+
+/** §343 The DESCRIPTION counterpart to `presetDisplayName` — same shared-resolver reasoning. */
+export function presetDisplayDescription(
+  preset: WorkspacePreset,
+  translate: (key: string) => string,
+): string {
+  return preset.descKey ? translate(preset.descKey) : preset.description;
+}
+
+/**
+ * §338/I-8 어느 프리셋이 어느 기능에 속하는가. 기능이 꺼지면 이 프리셋은
+ * StatusBar 드롭다운·AppearanceTab 목록에서 사라지고(`isPresetVisible`),
+ * `applyPreset`도 적용 시점에 한 번 더 막는다(렌더 필터를 우회해도 진입은
+ * 막힌다) — 셋 다 이 맵 하나를 쓴다.
+ *
+ * ‼️ 여기 없는 프리셋 id는 늘 보인다 — `writing`·`skills`는 기능이 아니다
+ * (활동표시줄의 `ACTIVITY_BAR_ITEM_FEATURE`와 같은 형태: 없으면 always-on).
+ * 커스텀 프리셋도 이 맵에 없으므로 늘 보인다 — 사용자가 만든 것이고 필터
+ * 대상이 아니다(그리고 `applyPreset`은 이 맵으로만 분기하므로 커스텀 프리셋
+ * id는 애초에 여기 걸리지 않는다).
+ */
+export const PRESET_FEATURE: Readonly<Record<string, FeatureKey>> = {
+  journal: "journal",
+  zettelkasten: "zettelkasten",
+};
+
+/**
+ * 이 프리셋이 기능 게이트를 통과하는가. 기능에 속하지 않는 프리셋과 커스텀
+ * 프리셋(둘 다 맵에 없음)은 늘 통과한다.
+ *
+ * 표를 읽는 유일한 함수 — `StatusBar.tsx`와 `AppearanceTab.tsx`가 각자 지역
+ * 클로저로 이 로직을 복제하면 표류면이 생긴다(`ACTIVITY_BAR_ITEM_FEATURE`와
+ * 같은 이유로 `isActivityBarItemVisible`을 공유 함수로 뒀다).
+ */
+export function isPresetVisible(
+  id: string,
+  flags: Record<FeatureKey, boolean>,
+): boolean {
+  const feature = PRESET_FEATURE[id];
+  return feature === undefined || flags[feature];
+}
 
 // --- Store ---
 
@@ -125,17 +212,19 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         const preset = get().getPreset(id);
         if (!preset) return;
 
-        // §93 The Zettel space needs the feature enabled + a directory set.
+        // §338/I-8 One chokepoint for "does this preset need a feature on":
+        // PRESET_FEATURE also drives the StatusBar dropdown and AppearanceTab
+        // list filters (isPresetVisible below), so the id set this blocks and
+        // the id set those two hide from is the SAME map, not two hand-kept
+        // copies that can drift.
+        const feature = PRESET_FEATURE[id];
+        if (feature && !featureReady(feature)) return;
+
+        // §93 The Zettel space also needs a directory set — featureReady above
+        // already handled (and toasted for) the feature being off.
         // Guide the user with a toast instead of switching into an empty space.
         if (id === "zettelkasten") {
-          const { locale, zettelkastenDirectory, zettelkastenEnabled } =
-            useSettingsStore.getState();
-          if (!zettelkastenEnabled) {
-            useUIStore
-              .getState()
-              .showToast(t("space.zettel.disabled", locale as Locale));
-            return;
-          }
+          const { locale, zettelkastenDirectory } = useSettingsStore.getState();
           if (
             !resolveZettelDir(
               useFileStore.getState().rootPath,
@@ -150,20 +239,14 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         }
 
         // §85 The Journal space has the same contract as Zettel: the feature enabled
-        // and a directory that resolves. It used to just skip its open step, so
-        // "Open Today's Journal" (which routes here) swapped the panels and opened
-        // nothing — and the palette closes before the action runs, leaving no signal
-        // at all. `resolveJournalDir` rejects relative paths, so an unresolvable
-        // directory is as much a dead end as an empty setting.
+        // (featureReady above) and a directory that resolves. It used to just skip
+        // its open step, so "Open Today's Journal" (which routes here) swapped the
+        // panels and opened nothing — and the palette closes before the action
+        // runs, leaving no signal at all. `resolveJournalDir` rejects relative
+        // paths, so an unresolvable directory is as much a dead end as an empty
+        // setting.
         if (id === "journal") {
-          const { journalDirectory, journalEnabled, locale } =
-            useSettingsStore.getState();
-          if (!journalEnabled) {
-            useUIStore
-              .getState()
-              .showToast(t("space.journal.disabled", locale as Locale));
-            return;
-          }
+          const { journalDirectory, locale } = useSettingsStore.getState();
           if (
             !resolveJournalDir(
               useFileStore.getState().rootPath,

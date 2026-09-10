@@ -4,6 +4,8 @@ import { lazy, Suspense, useCallback } from "react";
 import { useShallow } from "zustand/shallow";
 
 import { useFileStore } from "../../stores/file/file";
+import { useFeatureFlags } from "../../stores/settings/features";
+import { isRightPanelUsable } from "../../stores/ui/panel-feature";
 import { useUIStore } from "../../stores/ui/ui";
 import { ActivityBar } from "./ActivityBar";
 import { ContextTabBar } from "./ContextTabBar";
@@ -47,6 +49,7 @@ export function AppLayout({ children, statusBar }: AppLayoutProps) {
     sidebarWidth,
     setSidebarWidth,
     rightPanelOpen,
+    rightPanelMode,
     rightPanelWidth,
     setRightPanelWidth,
   } = useUIStore(
@@ -55,11 +58,26 @@ export function AppLayout({ children, statusBar }: AppLayoutProps) {
       sidebarWidth: s.sidebarWidth,
       setSidebarWidth: s.setSidebarWidth,
       rightPanelOpen: s.rightPanelOpen,
+      rightPanelMode: s.rightPanelMode,
       rightPanelWidth: s.rightPanelWidth,
       setRightPanelWidth: s.setRightPanelWidth,
     })),
   );
   const rootPath = useFileStore((s) => s.rootPath);
+  const featureFlags = useFeatureFlags();
+
+  // §340 ⓒ render-time filter (C-2 / I-1 / I-2): the right panel wrapper must not
+  // render when the feature owning the CURRENT rightPanelMode is disabled — regardless
+  // of whether ⓐ (the pointer-move effect in use-settings-effects.ts) has already fired.
+  // ⓐ alone leaves two gaps open (see fix-b-brief.md): a mode set while ⓐ's deps didn't
+  // change (skills-mode restoring a saved pointer) and a mode written straight into a
+  // persisted preset (custom workspace layouts). Both leave `rightPanelOpen: true`
+  // pointing at a hidden seat with no icon left to close it, since this branch hid the
+  // three escape hatches (activity bar icon, chat shortcut, native menu) for a disabled
+  // feature. Gating the render instead of relying on the pointer having moved closes
+  // all three paths at once, the same principle this branch already applies to the
+  // activity bar (`activityBarConfig` isn't mutated — visibility is filtered at render).
+  const rightPanelUsable = isRightPanelUsable(rightPanelMode, featureFlags);
 
   // §89 Sidebar visibility follows the ACTIVE CONTEXT (via rootPath), not the
   // active editor tab. rootPath is set for vault/folder contexts and cleared for
@@ -117,8 +135,9 @@ export function AppLayout({ children, statusBar }: AppLayoutProps) {
         {/* Main Editor Area */}
         <div className="app-main">{children}</div>
 
-        {/* Right Panel — hidden when no folder open */}
-        {!!rootPath && rightPanelOpen && (
+        {/* Right Panel — hidden when no folder open, panel is closed, or the current
+            mode's owning feature is off (§340 ⓒ, see rightPanelUsable above) */}
+        {!!rootPath && rightPanelOpen && rightPanelUsable && (
           <>
             <Splitter
               direction="horizontal"

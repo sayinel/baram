@@ -29,15 +29,21 @@ import { ThemeEditor } from "../ThemeEditor";
 // The paths must keep matching the ones `use-settings-effects.ts` imports — if the hook
 // moves a module, these mocks silently stop applying and the flake comes back. That is what
 // `keeps the native-menu IPC modules out of the loader` below pins.
+// §341 added a THIRD native-menu effect (grey out disabled-feature menu
+// items) behind the same lazy `import()` — same reason, same mock.
 const menuIpc = vi.hoisted(() => ({
   syncMenuLocale: vi.fn(() => Promise.resolve()),
   syncRecentMenu: vi.fn(() => Promise.resolve()),
+  syncMenuEnabled: vi.fn(() => Promise.resolve()),
 }));
 vi.mock("../../../ipc/menu-locale", () => ({
   syncMenuLocale: menuIpc.syncMenuLocale,
 }));
 vi.mock("../../../ipc/recent-menu", () => ({
   syncRecentMenu: menuIpc.syncRecentMenu,
+}));
+vi.mock("../../../ipc/menu-enabled", () => ({
+  syncMenuEnabled: menuIpc.syncMenuEnabled,
 }));
 
 const NORD = BUILT_IN_THEMES.find((t) => t.id === "nord")!;

@@ -9,6 +9,7 @@ import { Sparkles } from "lucide-react";
 
 import { Tooltip } from "../../components/Tooltip";
 import { useTranslation } from "../../i18n/useTranslation";
+import { useFeatureFlags } from "../../stores/settings/features";
 import { preprocessNotionFormula } from "../../utils/export/notion-katex-compat";
 import { parseKaTeXError } from "../../utils/katex/katex-error";
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
@@ -29,6 +30,7 @@ export function MathBlockView({
   getPos,
 }: NodeViewProps) {
   const { t } = useTranslation();
+  const { ai: aiEnabled } = useFeatureFlags();
   const formula = (node.attrs.formula as string) || "";
   const mathSize = (node.attrs.mathSize as string) || "normal";
   const [localFormula, setLocalFormula] = useState(formula);
@@ -248,7 +250,8 @@ export function MathBlockView({
               {error}
             </div>
           )
-        : formula.trim() && (
+        : formula.trim() &&
+          aiEnabled && (
             // Below, not above: the button is pinned to the block's top-right corner, so a
             // pill above it would sit over the previous block.
             <Tooltip label={t("toolbar.ai.commands")} placement="bottom">

@@ -28,6 +28,8 @@ import { useTranslation } from "../../i18n/useTranslation";
 import { formatKeyForDisplay } from "../../keybindings/key-utils";
 import { useKeybindings } from "../../keybindings/use-keybindings";
 import { usePluginUIStore } from "../../plugins/plugin-ui-store";
+import { isActivityBarItemVisible } from "../../stores/settings/activity-bar-config";
+import { useFeatureFlags } from "../../stores/settings/features";
 import { useSettingsStore } from "../../stores/settings/store";
 import {
   type RightPanelMode,
@@ -130,12 +132,8 @@ export function ActivityBar() {
       setRightPanelMode: s.setRightPanelMode,
     })),
   );
-  const { activityBarConfig, tasksEnabled } = useSettingsStore(
-    useShallow((s) => ({
-      activityBarConfig: s.activityBarConfig,
-      tasksEnabled: s.tasksEnabled,
-    })),
-  );
+  const activityBarConfig = useSettingsStore((s) => s.activityBarConfig);
+  const featureFlags = useFeatureFlags();
   const { activePluginPanelId, sidebarPanels, setActivePluginPanelId } =
     usePluginUIStore(
       useShallow((s) => ({
@@ -196,15 +194,26 @@ export function ActivityBar() {
     }
   };
 
+  // §338 기능 소속 항목은 그 토글이 꺼지면 사라진다. 상단·하단이 **같은** 술어를
+  // 통과한다 — 예전에는 상단에만 tasks 전용 필터가 있어서 하단 3개(memories ·
+  // photo-gallery · chat)에는 게이트가 아예 없었다.
   const visibleTopItems = activityBarConfig
-    .filter((c) => c.section === "top" && c.visible)
-    // I2: tasksEnabled off hides the icon entirely, not just incremental updates.
-    .filter((c) => c.id !== "tasks" || tasksEnabled)
+    .filter(
+      (c) =>
+        c.section === "top" &&
+        c.visible &&
+        isActivityBarItemVisible(c.id, featureFlags),
+    )
     .map((c) => PANEL_ICONS.find((p) => p.id === c.id))
     .filter(Boolean) as { icon: ReactNode; id: SidebarPanel }[];
 
   const visibleBottomItems = activityBarConfig
-    .filter((c) => c.section === "bottom" && c.visible)
+    .filter(
+      (c) =>
+        c.section === "bottom" &&
+        c.visible &&
+        isActivityBarItemVisible(c.id, featureFlags),
+    )
     .map((c) => ({ ...BOTTOM_ITEMS[c.id], id: c.id }))
     .filter((item) => item.icon);
 

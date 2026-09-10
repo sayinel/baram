@@ -30,7 +30,7 @@ Zettel notes are addressed by a timestamp `id`, so links are stored as `[[id]]`.
 
 ### How do I enable it?
 
-Go to **Settings > General > Zettel**, toggle it on, and choose a directory. Then open the space from the space menu (status bar), the Command Palette (**Zettel Perspective**), or `Cmd+Alt+2`.
+Go to **Settings › Zettel**, toggle it on, and choose a directory. Then open the space from the space menu (status bar), the Command Palette (**Zettel Perspective**), or `Cmd+Alt+2`.
 
 ---
 
@@ -42,7 +42,7 @@ Baram includes a built-in journal system that automatically creates daily notes,
 
 ### How do I enable the Journal?
 
-Open **Settings > General > Journal**, enable the toggle, and select a folder for your journal files. The journal directory must be an absolute path (e.g., `/Users/me/journals`).
+Open **Settings › Journal**, enable the toggle, and select a folder for your journal files. The journal directory must be an absolute path (e.g., `/Users/me/journals`).
 
 ### How do I create a daily note?
 
@@ -54,7 +54,7 @@ Three ways:
 
 ### Can I use a custom template for daily notes?
 
-Yes. In **Settings > General > Journal**, select a `.md` template file. Templates support variables: `{{date}}`, `{{year}}`, `{{month}}`, `{{day}}`, `{{dayName}}`, `{{monthName}}`. If no template is set, Baram generates a default entry with frontmatter and a date heading.
+Yes. In **Settings › Journal**, select a `.md` template file. Templates support variables: `{{date}}`, `{{year}}`, `{{month}}`, `{{day}}`, `{{dayName}}`, `{{monthName}}`. If no template is set, Baram generates a default entry with frontmatter and a date heading.
 
 ### How do I navigate between journal entries?
 

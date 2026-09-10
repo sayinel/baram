@@ -351,6 +351,43 @@
         "journal.stats.refresh",
         "journal.stats.refresh.aria"
       ]
+    },
+    {
+      "en": "Appearance",
+      "ko": "외관",
+      "appKey": "settings.tab.appearance",
+      "avoid": [
+        "설정 > 모양",
+        "모양 탭",
+        "**모양**"
+      ],
+      "note": "맨 낱말 '모양'은 금지할 수 없다 — '모양(shape)'이라는 일반 뜻으로 태스크·플러그인 문서 여러 곳에 정당하게 나온다(반복 규칙 문법, 레지스트리 JSON 모양 등). 사전에 없어서 이 탭 이름이 여러 페이지에서, 그리고 표 셀에서 볼드로 단독으로도(예: '| **모양** |') '모양'으로 갈려 있었다(§342 리뷰에서 발견) — 금지어는 탭을 가리키는 구·볼드 단독형으로 좁혔다. 뒤의 두 문구는 문장 속 '모양'과 겹치지 않는다 — shape 뜻의 용례는 어디서도 볼드로 감싸지 않는다."
+    },
+    {
+      "en": "Keybindings",
+      "ko": "단축키",
+      "appKey": "settings.tab.keybindings",
+      "avoid": [
+        "설정 > 키 바인딩",
+        "키 바인딩 탭",
+        "**키 바인딩**"
+      ],
+      "note": "‼️ 동형이의어다 — 'Vim 키 바인딩'(settings.editor.vimMode)은 이 탭과 다른 기능이라 '키 바인딩'을 통째로 금지할 수 없다. 이 탭을 가리킬 때만 쓰는 구·볼드 단독형으로 좁혔다. 'Vim 키 바인딩'을 볼드로 쓸 때는 항상 'Vim' 까지 함께 감싸므로(예: '**Vim 키 바인딩**') '**키 바인딩**' 단독형과 겹치지 않는다. 사전에 없어서 이 탭 이름이 여러 페이지에서, 그리고 표 셀에서 볼드로 단독으로도 '키 바인딩'으로 갈려 있었다(§342 리뷰에서 발견)."
+    },
+    {
+      "en": "Journal",
+      "ko": "저널",
+      "appKey": "menu.workspace.journal",
+      "avoid": [
+        "일지",
+        "저널링"
+      ],
+      "requireKo": true,
+      "requireKoAppExempt": [
+        "journal.outsideCreate"
+      ],
+      "requireKoAnywayWhy": "앱의 정당한 영어형은 `journal.outsideCreate` 의 `[[Journal::{date}]]` 하나뿐이다 — 위키링크 **문법 리터럴**이고 사용자가 실제로 타이핑하는 링크 타깃이라 번역하면 링크가 깨진다. 기능을 가리키는 말로는 앱이 39곳에서 '저널' 을 쓴다. ‼️ 그래서 전면 억제가 아니라 **그 키만** requireKoAppExempt 로 면제한다 — 전면 억제로 두었더니 `space.journal.directoryTaken` 의 'Journal 디렉터리'(진짜 오역)가 그 그늘에 숨었다.",
+      "note": "‼️ 이 항목이 없어서 `space.journal.directoryTaken` 의 ko 값이 '**Journal** 디렉터리' 로 배포될 수 있었다(origin/main 이 머지로 들여왔고 게이트가 통과시켰다). 앱은 '저널' 을 39곳에서 쓰는데 사전이 그것을 고정하지 않았다 — 열거된 금지 목록의 구멍은 **없는 항목**이다. `일기` 는 avoid 에 넣지 않았다: 가장 그럴듯한 오역이지만 앱이 서술어로 정당하게 쓴다(`journal.lightbox.openEntry`='일기 보기', `journal.memories.open`='일기 열기', `journal.search.hasPhotos`='사진 있는 일기만') 그리고 ko 문서 2곳의 '일기 성격의 저널' 도 옳은 문장이다. 금지어는 그 용어의 그럴듯한 오역이어야 하고 인접 개념의 정확한 이름이면 안 된다 — `Zettel` 항목이 같은 이유로 '제텔카스텐' 을 뺐다. 그래서 앱·문서에서 0건인 `일지`·`저널링` 만 넣었다."
     }
   ],
   "_limits": "‼️ 열거된 금지 목록의 한계 — 가장 그럴듯한 오역이 앱의 다른 기능 어휘라서 금지할 수 없는 경우가 있다: `작업`(Task, 앱은 AI 작업·작업 기록에 쓴다) · `저장소`(Vault, 앱은 플러그인 저장소·git 저장소에 쓴다) · `즐겨찾기`(Bookmarks, 앱은 제텔 허브 즐겨찾기에 쓴다) · `내부 링크`(Wikilink, 앱은 링크 형식 설정에 쓴다) · `소스 보기`(Source Mode, 앱은 저널 블록 동작에 쓴다) · `레이아웃`(Perspective, 앱은 '현재 레이아웃 저장'에 쓴다). `requireKo` 의 조건부 검사가 그 구멍의 한쪽(영어를 그대로 둔 것)을 메운다.",

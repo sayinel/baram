@@ -89,6 +89,8 @@ beforeEach(() => {
   useSettingsStore.setState({
     journalDirectory: "journal",
     memoriesMode: "oneline",
+    // §340 ⓑ MemoriesPanel now guards its render on the journal feature flag.
+    journalEnabled: true,
   });
   useUIStore.setState({ rightPanelMode: "memories", rightPanelOpen: true });
 });
