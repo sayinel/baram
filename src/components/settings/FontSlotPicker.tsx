@@ -8,6 +8,8 @@ import { useEffect, useRef, useState } from "react";
 import type { SystemFont } from "../../ipc/types";
 import type { FontAvailability } from "../../utils/font/font-availability";
 
+import { Pencil } from "lucide-react";
+
 import { useTranslation } from "../../i18n/useTranslation";
 import {
   BASE_EDITOR_STACK,
@@ -81,9 +83,13 @@ export function FontSlotPicker({
   const displayValue =
     value.trim() === "" ? t("settings.editor.fontPicker.systemDefault") : value;
 
-  // §351 리뷰 Important 1 — 값 이름 자체가 유일한 커밋 경로다: "더 보기"는
-  // 아직(Task 6 전까지) 갈 곳이 없고, 열거에 없는 이름도 저장 가능해야 한다는
-  // 스펙 요건(§351) 은 자유 입력 없이는 이 UI 어디에도 구현되지 않는다.
+  // §351 리뷰 Important 1 — 열거에 없는 이름도 저장 가능해야 한다는 스펙 요건은
+  // 자유 입력 없이는 이 UI 어디에도 구현되지 않는다. 그 입구는 연필 버튼이다.
+  //
+  // 값 이름이 아니다: 이름을 누르면 브라우저가 열린다. 보이는 서체 이름이 눈이
+  // 먼저 가는 곳이라 사람들은 그걸 먼저 누르는데, 예전에는 그 클릭이 텍스트
+  // 입력으로 바뀌어서 "서체를 고르려던" 의도와 어긋났다. 한 클릭을 두 동작에
+  // 나눠 줄 수는 없으므로 드문 쪽(직접 타이핑)이 자기 버튼을 갖는다.
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -157,7 +163,7 @@ export function FontSlotPicker({
         ) : (
           <button
             className="settings-font-value-name text-truncate btn-unstyled"
-            onClick={beginEdit}
+            onClick={() => onOpenBrowser(slot)}
             style={{ fontFamily: previewFamily }}
             type="button"
           >
@@ -169,8 +175,19 @@ export function FontSlotPicker({
             {t(badge.key)}
           </span>
         )}
+        {!editing && (
+          <button
+            aria-label={t("settings.editor.fontPicker.edit")}
+            className="settings-font-edit icon-btn"
+            onClick={beginEdit}
+            title={t("settings.editor.fontPicker.edit")}
+            type="button"
+          >
+            <Pencil size={13} />
+          </button>
+        )}
         <button
-          className="settings-font-more btn-unstyled"
+          className="settings-font-more"
           onClick={() => onOpenBrowser(slot)}
           type="button"
         >

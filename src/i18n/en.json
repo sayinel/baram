@@ -818,6 +818,7 @@
   "settings.editor.fontFamily": "Font Family",
   "settings.editor.fontFamily.desc": "Typeface for editor body text; app UI is unaffected",
   "settings.editor.fontPicker.bundled": "Included",
+  "settings.editor.fontPicker.edit": "Type a font name",
   "settings.editor.fontPicker.missing": "Not on this machine",
   "settings.editor.fontPicker.more": "Browse…",
   "settings.editor.fontPicker.system": "System",

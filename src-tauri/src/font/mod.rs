@@ -58,15 +58,35 @@ impl FontCache {
     }
 }
 
+/// 웹뷰가 실제로 지정할 수 있는 패밀리 이름인지.
+///
+/// 점으로 시작하는 이름은 macOS 가 내부용 숨김 패밀리에 쓰는 관례다 —
+/// `.SF NS`, `.AppleSystemUIFont`, `.ADT slab Numeric`. CSS 의 `<family-name>` 은
+/// `<custom-ident>` 이라 점으로 시작할 수 없고 인용해도 그 이름으로 조회되지
+/// 않으므로, 목록에 두면 "골랐는데 아무 일도 안 일어나는" 항목이 된다. 그건
+/// §346 이 끝내려던 바로 그 오해(사용자가 자기 탓으로 읽는 무효 항목)를 열거
+/// 쪽에서 다시 만드는 것이다. 빈 이름도 같은 이유로 뺀다.
+fn is_selectable_family(name: &str) -> bool {
+    let name = name.trim();
+    !name.is_empty() && !name.starts_with('.')
+}
+
 /// face 목록을 패밀리 단위로 접는다.
 ///
 /// `has_korean` 은 OR — 한 face 라도 한글을 가지면 그 패밀리로 한글을 쓸 수 있다.
 /// `monospaced` 는 AND — 하나라도 아니면 고정폭이라고 광고하면 안 된다. 표에서
 /// 열이 안 맞는 것보다 목록에 안 보이는 게 낫다.
+///
+/// 고를 수 없는 이름은 여기서 떨어진다([`is_selectable_family`]) — 이 함수가
+/// 열거의 모든 face 가 웹뷰로 가기 전에 지나는 유일한 깔때기라, 걸러 내는 자리도
+/// 여기 하나뿐이어야 미래의 다른 face 생산자도 같은 규칙을 받는다.
 pub fn aggregate(faces: Vec<RawFace>) -> Vec<FontFamily> {
     use std::collections::BTreeMap;
     let mut by_name: BTreeMap<String, FontFamily> = BTreeMap::new();
     for f in faces {
+        if !is_selectable_family(&f.family) {
+            continue;
+        }
         let key = f.family.to_lowercase();
         let entry = by_name.entry(key).or_insert_with(|| FontFamily {
             has_korean: false,
@@ -198,6 +218,43 @@ mod tests {
         // 먼저 본 표기를 유지한다 — `or_insert_with` 는 첫 삽입에서만 `name` 을 채운다.
         assert_eq!(families[0].name, "Georgia");
         assert_eq!(families[0].weights, vec![400, 700]);
+    }
+
+    // 동훈님 보고 — "설치된 서체" 에 `.ADT slab Numeric` 처럼 점으로 시작하는
+    // 이름들이 섞여 있는데 골라도 적용이 안 된다. 파일은 실재하지만
+    // (`ADTNumeric.ttc`) 패밀리 이름이 숨김 관례를 쓴다.
+    #[test]
+    fn drops_the_hidden_families_whose_name_starts_with_a_dot() {
+        let families = aggregate(vec![
+            face(".ADT slab Numeric", false, 400, false),
+            face(".SF NS", false, 400, false),
+            face("Georgia", false, 400, false),
+        ]);
+        assert_eq!(
+            families.iter().map(|f| f.name.as_str()).collect::<Vec<_>>(),
+            vec!["Georgia"]
+        );
+    }
+
+    // 빈 이름도 고를 수 없다 — 그리고 목록에서는 누를 수 있어 보이는 빈 줄이 된다.
+    #[test]
+    fn drops_a_family_whose_name_is_blank() {
+        let families = aggregate(vec![
+            face("   ", false, 400, false),
+            face("Georgia", false, 400, false),
+        ]);
+        assert_eq!(
+            families.iter().map(|f| f.name.as_str()).collect::<Vec<_>>(),
+            vec!["Georgia"]
+        );
+    }
+
+    // 규칙은 접두사에 대한 것이다. 이름 "안" 의 점까지 막으면 멀쩡한 패밀리가
+    // 사라진다 — 버전 표기에 점을 쓰는 패밀리가 있다.
+    #[test]
+    fn keeps_a_family_whose_name_merely_contains_a_dot() {
+        let families = aggregate(vec![face("Sample 1.1 Display", false, 400, false)]);
+        assert_eq!(families.len(), 1);
     }
 
     // §350 — 반환 구조체는 파일 경로를 담지 않는다. 담으면 vault 밖 파일

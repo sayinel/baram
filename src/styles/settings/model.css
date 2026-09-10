@@ -197,14 +197,45 @@
   background: var(--color-status-error-bg);
 }
 
+/* 버튼처럼 보여야 버튼으로 읽힌다 — `.btn-unstyled` 였을 때는 옆의 배지와 구분되지
+   않는 회색 글자라 한참 뒤에야 눈에 띄었다(동훈님 보고). 이 모달의 다른 작은
+   버튼(`.settings-model-refresh`)과 같은 차림새를 쓴다. */
 .settings-font-more {
   flex-shrink: 0;
+  padding: 4px 10px;
+  font-family: var(--font-family-sans);
   font-size: 0.75rem;
+  line-height: 1;
   color: var(--color-text-secondary);
+  cursor: pointer;
+  background-color: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-default);
+  border-radius: 4px;
 }
 
 .settings-font-more:hover {
   color: var(--color-text-primary);
+  background-color: var(--color-bg-subtle);
+}
+
+/* 자유 입력(열거에 없는 이름을 직접 타이핑)의 입구. 값 이름을 누르는 것은 이제
+   브라우저를 여는 동작이라 이 경로는 자기 버튼을 갖는다 — 드문 동작이므로
+   테두리 없이 앉아 있다가 hover 에서만 버튼으로 드러난다. 아이콘 하나뿐이니
+   접근 가능한 이름은 `aria-label`/`title` 이 갖는다. */
+.settings-font-edit {
+  flex-shrink: 0;
+  padding: 4px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background-color: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+}
+
+.settings-font-edit:hover {
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-subtle);
+  border-color: var(--color-border-default);
 }
 
 .settings-font-strip {
@@ -237,10 +268,16 @@
    preview on the right. Owns its own back control the way ThemeEditor does.
    `.flex-col`/`.flex-header`/`.btn-unstyled`/`.text-truncate` come from
    base.css; `.settings-search*`/`.settings-model-refresh*`/`.settings-range`
-   are reused as-is from the rest of the settings modal. */
+   are reused as-is from the rest of the settings modal.
+
+   높이는 부모(`.settings-content`)가 정하고, 넘치는 것은 안쪽 두 칸이 각자 삼킨다.
+   바닥(`min-height`)만 있고 상한이 없던 동안에는 넘치는 쪽이 부모였다 — 목록
+   아래쪽 서체를 고르면 오른쪽 미리보기도 위쪽 "← 에디터 설정" 버튼도 함께 밀려
+   올라가서, 예제를 보려고도 되돌아가려고도 스크롤을 다시 올려야 했다(동훈님 보고).
+   `font-browser-scroll.test.ts` 가 이 세 조건을 함께 지킨다. */
 .font-browser {
   gap: 12px;
-  min-height: 420px;
+  height: 100%;
 }
 
 .font-browser-topbar {

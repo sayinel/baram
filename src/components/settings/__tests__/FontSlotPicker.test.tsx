@@ -23,6 +23,9 @@ const font = (name: string, extra: Partial<SystemFont> = {}): SystemFont => ({
   ...extra,
 });
 
+/** 연필 버튼의 접근 가능한 이름 — 자유 입력의 유일한 입구다. */
+const EDIT_LABEL = "Type a font name";
+
 const INSTALLED = [
   font("Pretendard Variable"),
   font("Noto Sans KR", { hasKorean: true }),
@@ -143,6 +146,38 @@ describe("FontSlotPicker", () => {
     );
   });
 
+  // 동훈님 보고 — 눈이 먼저 가는 곳은 "더 보기"가 아니라 지금 쓰는 서체 이름이다.
+  it("opens the browser when the font name itself is pressed", () => {
+    const onOpenBrowser = vi.fn();
+    render(
+      <FontSlotPicker
+        {...props}
+        onOpenBrowser={onOpenBrowser}
+        slot="code"
+        value="D2Coding"
+      />,
+    );
+    screen.getByRole("button", { name: "D2Coding" }).click();
+    expect(onOpenBrowser).toHaveBeenCalledWith("code");
+    // 그리고 편집으로 들어가지 않는다 — 한 클릭이 두 곳으로 가면 어느 쪽도 못 믿는다.
+    expect(screen.queryByRole("textbox")).toBeNull();
+  });
+
+  it("opens the free-text input from its own button, not from the name", () => {
+    const onOpenBrowser = vi.fn();
+    render(
+      <FontSlotPicker
+        {...props}
+        onOpenBrowser={onOpenBrowser}
+        slot="body"
+        value="Noto Sans KR"
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: EDIT_LABEL }));
+    expect(screen.getByRole("textbox")).toBeTruthy();
+    expect(onOpenBrowser).not.toHaveBeenCalled();
+  });
+
   it("opens the browser when the more button is pressed", async () => {
     const onOpenBrowser = vi.fn();
     render(
@@ -157,10 +192,14 @@ describe("FontSlotPicker", () => {
     expect(onOpenBrowser).toHaveBeenCalledWith("body");
   });
 
-  // review Important 1 — the value name is the only remaining commit path.
-  // Without it, a family absent from the enumeration could never be saved
-  // (the free-text entry the old dropdown had was deleted with it).
-  describe("click-to-edit commit path", () => {
+  // review Important 1 — free text is the only remaining commit path. Without
+  // it, a family absent from the enumeration could never be saved (the entry
+  // the old dropdown had was deleted with it).
+  //
+  // 그 입구가 값 이름에서 연필 버튼으로 옮겨졌다: 이름을 누르는 것은 이제
+  // 브라우저를 여는 동작이다(동훈님 보고 — 직관적으로 먼저 누르게 되는 곳).
+  // 두 동작을 한 클릭에 겹칠 수는 없으므로 자유 입력은 자기 버튼을 갖는다.
+  describe("free-text commit path", () => {
     it("commits a typed family name on Enter, including one absent from the enumeration", () => {
       const onChange = vi.fn();
       render(
@@ -171,9 +210,7 @@ describe("FontSlotPicker", () => {
           value="Pretendard Variable"
         />,
       );
-      fireEvent.click(
-        screen.getByRole("button", { name: "Pretendard Variable" }),
-      );
+      fireEvent.click(screen.getByRole("button", { name: EDIT_LABEL }));
       const input = screen.getByRole("textbox");
       fireEvent.change(input, { target: { value: "Roboto" } });
       fireEvent.keyDown(input, { key: "Enter" });
@@ -201,9 +238,7 @@ describe("FontSlotPicker", () => {
           value="Pretendard Variable"
         />,
       );
-      fireEvent.click(
-        screen.getByRole("button", { name: "Pretendard Variable" }),
-      );
+      fireEvent.click(screen.getByRole("button", { name: EDIT_LABEL }));
       const input = screen.getByRole("textbox");
       fireEvent.change(input, { target: { value: "Georgia" } });
       fireEvent.blur(input);
@@ -220,9 +255,7 @@ describe("FontSlotPicker", () => {
           value="Pretendard Variable"
         />,
       );
-      fireEvent.click(
-        screen.getByRole("button", { name: "Pretendard Variable" }),
-      );
+      fireEvent.click(screen.getByRole("button", { name: EDIT_LABEL }));
       const input = screen.getByRole("textbox");
       fireEvent.change(input, { target: { value: "Whatever" } });
       fireEvent.keyDown(input, { key: "Escape" });
@@ -247,9 +280,7 @@ describe("FontSlotPicker", () => {
           value="Pretendard Variable"
         />,
       );
-      fireEvent.click(
-        screen.getByRole("button", { name: "Pretendard Variable" }),
-      );
+      fireEvent.click(screen.getByRole("button", { name: EDIT_LABEL }));
       fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
       expect(onChange).not.toHaveBeenCalled();
     });

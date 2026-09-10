@@ -86,15 +86,21 @@ export function FontBrowserList({
     chips,
     status === "ok",
   ).filter((name) => !includedKeys.has(name.toLowerCase()));
-  const recentKeys = new Set(recent.map((n) => n.toLowerCase()));
 
+  // 최근 사용은 "설치된 서체" 에서 빼지 않는다 — 바로가기이지 이사가 아니다.
+  //
+  // 뺐을 때의 모양(동훈님 보고): 서체를 하나 고르면 그 줄이 있던 자리에서 사라져
+  // 위쪽 "최근 사용" 으로 올라가고, 아래 목록이 한 줄씩 당겨진다. 서체가 적용된
+  // 모습을 보려고 이어서 그 아래 줄을 누르려던 손은 매번 다른 서체를 누른다.
+  // 중복 표시는 그 대가로 치를 만하다: 최근 목록은 5개 상한이라 처음 몇 번만
+  // 한 줄씩 늘고, 그 뒤로는 목록 높이가 아예 변하지 않는다.
+  //
+  // 기본 제공(번들) 차감은 그대로다 — 그쪽은 무엇을 고르든 바뀌지 않으므로
+  // 목록을 흔드는 원인이 아니고, 같은 서체가 두 출처로 보이면 배지가 말하는
+  // 출처가 둘이 되어 §351 이 세운 판정이 흐려진다.
   const installed = filtered
     .map((f) => f.name)
-    .filter(
-      (name) =>
-        !includedKeys.has(name.toLowerCase()) &&
-        !recentKeys.has(name.toLowerCase()),
-    );
+    .filter((name) => !includedKeys.has(name.toLowerCase()));
 
   const stack = slot === "code" ? BASE_MONO_STACK : BASE_EDITOR_STACK;
   const empty =
@@ -144,6 +150,7 @@ export function FontBrowserList({
         <FontGroup
           activeValue={activeValue}
           items={installed}
+          itemsTestId="font-browser-installed-items"
           onSelect={onSelect}
           stack={stack}
           title={t("settings.editor.fontBrowser.groupInstalled")}

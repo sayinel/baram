@@ -94,6 +94,36 @@ describe("FontBrowser", () => {
     expect(groups).toEqual(["Included", "Recent", "Installed"]);
   });
 
+  // 동훈님 보고 — 서체를 하나 고를 때마다 그 줄이 "설치된 서체"에서 사라져
+  // "최근 사용"으로 이사를 갔다. 바로 아래 줄을 이어서 눌러 보려던 손은 매번
+  // 어긋난다. 최근 사용은 바로가기이지 이사가 아니다: 원래 자리는 그대로 두고
+  // 위에 한 벌 더 보여준다.
+  it("keeps a recent family in the installed group instead of moving it", () => {
+    render(<FontBrowser {...props} recentFonts={["Georgia"]} state={OK} />);
+    expect(
+      screen.getByTestId("font-browser-recent-items").textContent,
+    ).toContain("Georgia");
+    expect(
+      screen.getByTestId("font-browser-installed-items").textContent,
+    ).toContain("Georgia");
+  });
+
+  // 위보다 강한 판정 — "목록이 흔들리지 않는다"는 주장은 한 이름이 남아 있다는
+  // 것이 아니라 목록 전체가 그대로라는 것이다. 이름 하나만 보는 단정은 그 이름을
+  // 예외 처리하는 구현으로도 초록이 되고, 그러면 그 다음 선택에서 다시 흔들린다.
+  it("leaves the installed list unchanged when a pick lands in recents", () => {
+    const { rerender } = render(
+      <FontBrowser {...props} recentFonts={[]} state={OK} />,
+    );
+    const before = screen.getByTestId(
+      "font-browser-installed-items",
+    ).textContent;
+    rerender(<FontBrowser {...props} recentFonts={["Georgia"]} state={OK} />);
+    expect(screen.getByTestId("font-browser-installed-items").textContent).toBe(
+      before,
+    );
+  });
+
   it("omits the recent group when there is no history", () => {
     render(<FontBrowser {...props} recentFonts={[]} state={OK} />);
     const groups = screen
