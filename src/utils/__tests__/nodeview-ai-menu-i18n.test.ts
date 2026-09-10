@@ -117,6 +117,7 @@ describe("the NodeView Ask AI menu", () => {
 
       // 6 text actions + §314 extraction + Custom Instruction.
       expect(labels.length).toBe(8);
+      // ‼️ 이 8 은 tasks 가 켜져 있을 때다 — 아래 테스트가 그 인자를 고정한다.
       const values = new Set(Object.values(ko as Record<string, string>));
       expect(labels.filter((label) => !values.has(label))).toEqual([]);
       // And specifically not the key shape that shipping raw would produce.
@@ -126,5 +127,35 @@ describe("the NodeView Ask AI menu", () => {
     } finally {
       cleanup();
     }
+  });
+
+  // ‼️ `showNodeViewAIMenu` 는 `getActionsForMode(mode, isFeatureEnabled("tasks"))` 로
+  // 인자를 넘기는데, 그 인자가 아무것에도 고정돼 있지 않았다 — 실측으로 `true` 를
+  // 하드코딩해도 전부 초록이었다(재리뷰 Minor c). I-7("같은 커맨드가 표면마다 다른 답")을
+  // 촉발한 그 세 렌더 표면 중 **이것이 세 번째**이고, 순수 함수 테스트와 tsc 인자 개수에만
+  // 의존하고 있었다. 항목 개수는 그 인자만이 바꾸므로 DOM 에서 직접 센다.
+  it("drops the extract-tasks item when tasks is off, keeps it when on", () => {
+    const countItems = (tasksEnabled: boolean) => {
+      useSettingsStore.setState({ locale: "en", tasksEnabled });
+      const anchor = document.createElement("button");
+      document.body.append(anchor);
+      const cleanup = showNodeViewAIMenu(
+        anchor,
+        "text",
+        "hello",
+        {} as never,
+        undefined,
+      );
+      try {
+        return document.querySelectorAll(".nodeview-ai-menu-item").length;
+      } finally {
+        cleanup();
+        anchor.remove();
+      }
+    };
+
+    // 양성 대조군이 함께 있어야 "항상 하나 적다" 와 구별된다.
+    expect(countItems(true)).toBe(8);
+    expect(countItems(false)).toBe(7);
   });
 });

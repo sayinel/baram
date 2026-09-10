@@ -66,7 +66,17 @@ export async function extractActionItems(editor: Editor): Promise<void> {
       getFilePrivacy(editor),
     )
   ) {
-    toast(t("tasks.extract.blocked", locale), "error");
+    // ‼️ 이유를 갈라 말한다(재리뷰 Minor e): `tasks.extract.blocked` 는 "프라이버시
+    // 설정에 막혔습니다" 인데, `aiEnabled === false` 로 막힌 것도 같은 문구를 띄우고
+    // 있었다. 나머지 5개 `isLLMAllowed` 호출부는 이번에 그 둘을 갈랐는데 **사용자에게
+    // 실제로 보이는 유일한 문구가 안 갈려 있었다.**
+    toast(
+      t(
+        store.aiEnabled ? "tasks.extract.blocked" : "space.ai.disabled",
+        locale,
+      ),
+      "error",
+    );
     return;
   }
 

@@ -14,6 +14,7 @@ import { registerEditorMutationTask } from "../../utils/editor/mutation-tasks";
 import { createLLMStream } from "../../utils/llm-stream";
 import { logger } from "../../utils/logger";
 import { getConfigForTask } from "../../utils/model-selection";
+import { getFilePrivacy, isLLMAllowed } from "../../utils/privacy-check";
 import { buildTemplatePrompt } from "../../utils/smart-templates";
 
 const SmartTemplateDialog = lazy(() =>
@@ -52,6 +53,23 @@ export function SmartTemplateDialogWrapper({
         return;
       }
       const store = useAIStore.getState();
+      // ‼️ §339 — 이 호출부는 `isLLMAllowed` 를 전혀 부르지 않는다. 지금 유일한 진입점이
+      // 슬래시 AI 그룹(게이트됨)이라 도달 불가지만, 그래서 **I-4 의 tsc 메커니즘이
+      // 구조적으로 못 덮는 자리**다 — 팔레트나 단축키 진입점이 하나 생기면 C-1(✨ 6곳이
+      // 무게이트였던 그것)이 조용히 다시 열린다. "지금 도달 불가"를 근거로 열어 두었다가
+      // 틀린 전례가 이 브랜치에 있다(`SkillOptimizeSection` — 부수효과 import 라
+      // JSX grep 이 못 봤다). privacy 는 Rust 가 막지만 `aiEnabled` 는 프런트 전용이다.
+      if (
+        !isLLMAllowed(
+          store.aiEnabled,
+          store.privacyMode,
+          inlineCfg.provider,
+          getFilePrivacy(editor),
+        )
+      ) {
+        logger.error("SmartTemplate: blocked by AI/privacy settings");
+        return;
+      }
       const requestId = `ai_template_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
       let accumulated = "";
 

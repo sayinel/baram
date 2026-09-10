@@ -101,16 +101,31 @@ describe("registerAction calls gate on their feature", () => {
     // 7 at the time of writing: ai.chatPanel, ai.ghostText, ai.skillTest,
     // journal.quickCapture, journal.memories, journal.photoGallery,
     // zettelkasten.newNote/promote/newFromSelection/newMoc, tasks.taskInput.
-    expect(featureCalls.length).toBeGreaterThanOrEqual(7);
+    // ‼️ 실측 12 다(주석이 11개 id 를 나열하면서 "7" 이라고 적고 있었다 — 재리뷰
+    // Minor g). 하한은 슬랙만큼만 가드다: 7 이면 다섯 자리가 조용히 사라져도 통과한다.
+    expect(featureCalls.length).toBeGreaterThanOrEqual(12);
   });
 
+  // ‼️ "featureReady 를 부른다"만으로는 **어느 기능으로** 부르는지 모른다 — 실측으로
+  // 인자를 다른 기능으로 바꿔도 이 스캔은 초록이었다(재리뷰 Minor b). 그래서 id 접두사에서
+  // 기대 인자를 **파생**시켜 함께 단정한다. 12개 중 키까지 고정돼 있던 것은 8개뿐이었고
+  // `journal.openToday`·`journal.photoGallery`·`zettelkasten.promote`·
+  // `zettelkasten.newFromSelection`·`zettelkasten.newMoc` 5개가 비어 있었다.
+  //
+  // ‼️ 이건 여전히 소스 스캔이므로 **가드가 옳은 자리에 있는지**는 못 본다(이른 return
+  // 뒤에 있어도 통과한다). 그 층은 동작 테스트가 덮는다 — `journal.memories`·
+  // `zettelkasten.newNote`·`tasks.taskInput`·`ai.*` 가 그것이고, 나머지는 아직 스캔뿐이다.
   it.each(featureCalls.filter((c) => !(c.id in EXCEPTIONS)))(
-    "$id mentions featureReady",
+    "$id gates on the feature its id names",
     ({ id, body }) => {
+      const feature = FEATURE_KEYS.find((f) => id.startsWith(`${f}.`));
+      expect(feature, `no FeatureKey prefixes ${id}`).toBeDefined();
       expect({
         id,
-        mentionsFeatureReady: /\bfeatureReady\(/.test(body),
-      }).toEqual({ id, mentionsFeatureReady: true });
+        gatesOnOwnFeature: new RegExp(
+          `featureReady\\(\\s*["']${feature}["']`,
+        ).test(body),
+      }).toEqual({ id, gatesOnOwnFeature: true });
     },
   );
 

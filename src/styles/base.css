@@ -160,6 +160,16 @@
 /* §4.1 디자인 원칙: 에디터 중심, 최소 크롬 */
 
 /* Base styles */
+
+/* ‼️ `el.hidden = true` 가 실제로 감추도록 보장한다.
+   이 선언이 없던 동안 code-block 의 ✨ 게이트(`aiBtn.hidden = true`)는 **`.code-block-ai-btn`
+   에 `display` 선언이 우연히 없어서만** 동작했다. 누가 `display: flex` 를 더하면 버튼이
+   다시 보이고 클릭 가능해지는데, 테스트는 `.hidden` 속성만 보고 jsdom 은 계산 스타일을
+   못 보므로 전부 초록으로 남는다(재리뷰 Minor d). 규칙 하나가 그 부류 전체를 닫는다. */
+[hidden] {
+  display: none !important;
+}
+
 html,
 body,
 #root {
