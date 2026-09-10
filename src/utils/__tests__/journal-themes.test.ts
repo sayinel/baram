@@ -157,6 +157,16 @@ describe("§353 journal theme typography", () => {
   // 그쪽이 한 항목 늘 때 여기서 조용히 갈라진다.
   const BUNDLED = BUNDLED_FONTS.map((f) => f.family);
 
+  // 번들로 설계된 4개 테마와 의도적으로 비번들인 2개(classic-diary·
+  // watercolor)의 고정된 분류 — 값이 아니라 소속 자체를 단정해야 어느 한
+  // 테마가 조용히 번들을 잃어도(또는 의도치 않게 얻어도) 잡힌다.
+  const EXPECTED_BUNDLED_THEME_IDS = new Set([
+    "moleskine",
+    "muji",
+    "night-owl",
+    "vintage",
+  ]);
+
   it("ends every stack in a generic family", () => {
     for (const theme of JOURNAL_THEMES) {
       const last = theme.typography.fontFamily.split(",").at(-1)?.trim() ?? "";
@@ -191,10 +201,14 @@ describe("§353 journal theme typography", () => {
     }
   });
 
-  it("routes at least one theme through a bundled family so the set is not all hope", () => {
-    const usesBundled = JOURNAL_THEMES.filter((t) =>
-      BUNDLED.some((b) => t.typography.fontFamily.includes(b)),
-    );
-    expect(usesBundled.length).toBeGreaterThanOrEqual(1);
+  it("routes exactly the bundled-by-design themes through a bundled family", () => {
+    for (const theme of JOURNAL_THEMES) {
+      const routesBundled = BUNDLED.some((b) =>
+        theme.typography.fontFamily.includes(b),
+      );
+      expect(routesBundled, theme.id).toBe(
+        EXPECTED_BUNDLED_THEME_IDS.has(theme.id),
+      );
+    }
   });
 });
