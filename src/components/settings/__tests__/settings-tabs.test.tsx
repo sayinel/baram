@@ -37,6 +37,29 @@ describe("settings tab structure (§342)", () => {
   // ‼️ 이 결합은 **규약이고 파생이 아니다**: `ActivityBar.tsx` 의 `PANEL_ICONS` 와
   // NodeView 들의 버튼은 export 되지 않아 여기서 읽을 수 없다. 즉 활동표시줄이 자기
   // 아이콘을 바꾸면 이 테스트는 그것을 모른다. 그때는 두 자리를 같이 고쳐야 한다.
+  // 동훈님 요청: 설정 아이콘은 전부 모노톤이어야 한다. 컬러가 새어 들어오는 경로는
+  // **이모지 폴백** 하나다 — 문자 글리프 중 `Emoji=Yes` 인 코드포인트는 주 폰트에
+  // 없으면 Apple Color Emoji 로 떨어져 컬러로 그려진다(macOS 에서 실제로 그랬다:
+  // 📓🗂🧩📦🌐 는 물론이고 `⚙`(U+2699)·`⌨`(U+2328)도 `Emoji=Yes` 다).
+  //
+  // 그래서 목록을 베끼지 않고 **규칙**으로 고정한다: 어떤 탭 아이콘도 Emoji 코드포인트를
+  // 담지 않는다. 남아 있는 `✎ ◑ M↓ ▤` 는 측정으로 `Emoji=No` 이므로 통과한다.
+  // lucide 는 `currentColor` 로 stroke 하므로 컴포넌트 쪽은 정의상 모노톤이다.
+  it("draws no tab icon with an emoji codepoint — colour can only enter that way", () => {
+    const emoji = /\p{Emoji}/u;
+    const offenders = TABS.filter(
+      (t) => typeof t.icon === "string" && emoji.test(t.icon),
+    ).map((t) => `${t.id}=${String(t.icon)}`);
+
+    expect(offenders).toEqual([]);
+
+    // 비-공허성: 검사가 실제로 이모지를 판별한다. 이것이 없으면 정규식이 아무것도
+    // 매치하지 못하게 망가져도 위 단정이 조용히 통과한다.
+    expect(emoji.test("📓")).toBe(true);
+    expect(emoji.test("⚙")).toBe(true);
+    expect(emoji.test("◑")).toBe(false);
+  });
+
   it("draws the tasks and ai tabs with the icons their sibling surfaces use", () => {
     const shapeOf = (node: ReactNode) => {
       const { container, unmount } = render(<>{node}</>);

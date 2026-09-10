@@ -6,7 +6,17 @@ import type { ReactNode } from "react";
 import type { FeatureKey } from "../../stores/settings/feature-keys";
 import type { SearchableSetting, SettingsTab } from "./settings-registry";
 
-import { CircleCheck, Sparkles } from "lucide-react";
+import {
+  CircleCheck,
+  Globe,
+  Keyboard,
+  Notebook,
+  Puzzle,
+  Settings,
+  Sparkles,
+  StickyNote,
+  Vault,
+} from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
 import { useTranslation } from "../../i18n/useTranslation";
@@ -30,6 +40,10 @@ import { TasksTab } from "./tabs/TasksTab";
 import { VaultTab } from "./tabs/VaultTab";
 import { ZettelkastenTab } from "./tabs/ZettelkastenTab";
 
+/** 설정 내비의 아이콘 크기·굵기. `.settings-nav-icon` 이 20px 박스이므로 14px 이 맞고,
+ *  굵기는 활동표시줄(`ICON_PROPS`)과 같은 1.5 다. 한 곳에서 정해 탭마다 어긋나지 않게 한다. */
+const TAB_ICON = { size: 14, strokeWidth: 1.5 } as const;
+
 // eslint-disable-next-line react-refresh/only-export-components
 export const SETTINGS_TAB_GROUPS: {
   id: "features" | "general" | "system";
@@ -52,34 +66,39 @@ export const TABS: {
   icon: ReactNode;
   id: SettingsTab;
 }[] = [
-  { id: "general", group: "general", icon: "⚙" },
+  { id: "general", group: "general", icon: <Settings {...TAB_ICON} /> },
   { id: "editor", group: "general", icon: "✎" },
   { id: "appearance", group: "general", icon: "◑" },
   { id: "markdown", group: "general", icon: "M↓" },
-  { id: "language", group: "general", icon: "🌐" },
-  { id: "keybindings", group: "general", icon: "⌨" },
-  { id: "journal", group: "features", icon: "📓", feature: "journal" },
+  { id: "language", group: "general", icon: <Globe {...TAB_ICON} /> },
+  { id: "keybindings", group: "general", icon: <Keyboard {...TAB_ICON} /> },
+  {
+    id: "journal",
+    group: "features",
+    icon: <Notebook {...TAB_ICON} />,
+    feature: "journal",
+  },
   {
     id: "zettelkasten",
     group: "features",
-    icon: "🗂",
+    icon: <StickyNote {...TAB_ICON} />,
     feature: "zettelkasten",
   },
   {
     id: "tasks",
     group: "features",
-    icon: <CircleCheck size={14} strokeWidth={1.5} />,
+    icon: <CircleCheck {...TAB_ICON} />,
     feature: "tasks",
   },
   {
     id: "ai",
     group: "features",
-    icon: <Sparkles size={14} strokeWidth={1.5} />,
+    icon: <Sparkles {...TAB_ICON} />,
     feature: "ai",
   },
   { id: "activitybar", group: "system", icon: "▤" },
-  { id: "plugins", group: "system", icon: "🧩" },
-  { id: "vault", group: "system", icon: "📦" },
+  { id: "plugins", group: "system", icon: <Puzzle {...TAB_ICON} /> },
+  { id: "vault", group: "system", icon: <Vault {...TAB_ICON} /> },
 ];
 
 export function SettingsModal() {
@@ -199,7 +218,9 @@ export function SettingsModal() {
                     key={tab.tabId}
                     onClick={() => setActivePluginTab(tab.tabId)}
                   >
-                    <span className="settings-nav-icon">{"🧩"}</span>
+                    <span className="settings-nav-icon">
+                      <Puzzle {...TAB_ICON} />
+                    </span>
                     {tab.title}
                   </button>
                 ))}
