@@ -17,6 +17,7 @@
 // observable from a rendered component. These guards read the real CSS text.
 import { describe, expect, it } from "vitest";
 
+import { DOCUMENT_FONT_SURFACES } from "../../utils/editor/font-surfaces";
 import { cssDeclarations, cssRules } from "./css-rules";
 
 const DOCUMENT_SURFACE = ".tiptap";
@@ -34,6 +35,14 @@ const CAPTURE_SURFACE = ".quick-capture-editor .tiptap";
 const INHERITED_FROM_DOCUMENT_SURFACE = new Set([
   // `color`, `font-family` and `line-height`: same typeface, ink and rhythm as
   // the document — the capture box is the same writing tool, just smaller.
+  //
+  // §349: `font-family` here keeps the DOCUMENT's declaration, which reads a
+  // variable rather than naming a family. The two font variables are KEEP too —
+  // a capture box in a different typeface from the document is a defect — but
+  // they cannot be listed in this Set, because nothing declares them in a
+  // stylesheet: each document surface gets them inline (`applyFontVariables`),
+  // and the guard below requires every entry here to be a real `.tiptap`
+  // declaration. The §349 describe block at the bottom registers them instead.
   "color",
   "font-family",
   "line-height",
@@ -132,5 +141,28 @@ describe("§323 캡처 편집기 안내 문구 — 로케일을 따른다", () =
     expect(declaration(capturePlaceholder, "content")).toBe(
       "attr(data-placeholder)",
     );
+  });
+});
+
+// §349 두 폰트 변수는 KEEP 쪽이다 — 캡처 상자는 문서와 같은 서체로 뜬다.
+//
+// 위 allowlist 에 넣을 수 없는 이유는 그 주석에 적었다(스타일시트에 선언이 없다).
+// 대신 "문서와 같은 서체"를 성립시키는 두 사실을 여기서 고정한다. 둘 중 하나만
+// 깨져도 캡처 상자는 조용히 다른 서체로 뜨고, 그것을 아무 게이트도 못 본다.
+describe("§349 캡처 편집기 표면 — 문서와 같은 서체 변수를 받는다", () => {
+  it("문서 `.tiptap`의 font-family는 패밀리 이름이 아니라 변수를 읽는다", () => {
+    // 이것이 변수를 나르는 유일한 통로다. 여기에 패밀리 이름을 직접 적으면
+    // 표면에 변수를 덮어도 본문 서체가 바뀌지 않는다.
+    expect(declaration(DOCUMENT_SURFACE, "font-family")).toBe(
+      "var(--font-family-editor)",
+    );
+  });
+
+  it("캡처 표면이 두 변수를 모두 받는 표면으로 열거돼 있다", () => {
+    const capture = DOCUMENT_FONT_SURFACES.find(
+      (s) => s.id === "capture-editor",
+    );
+    expect(capture, "capture-editor가 표면 열거에서 빠졌다").toBeDefined();
+    expect(capture?.which).toBe("both");
   });
 });

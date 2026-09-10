@@ -9,6 +9,14 @@ export interface BundledFont {
   family: string;
   /** src/assets/fonts/ 안의 파일명. */
   fileName: string;
+  /**
+   * 이 서체가 채우는 슬롯 — 본문(`--font-family-editor`)이냐 코드(`--font-family-mono`)냐.
+   *
+   * 배열 순서로 짚거나 이름에 "mono"가 들었는지로 추론하지 않는다: 순서는 아무
+   * 것도 보장하지 않고, 이름 추론은 "Mononoki" 같은 본문 서체를 코드로 분류한다.
+   * 역할은 선언되는 사실이므로 선언한다.
+   */
+  role: "body" | "code";
   /** @font-face 의 font-weight 범위 (가변 폰트). */
   weightRange: string;
 }
@@ -17,11 +25,13 @@ export const BUNDLED_FONTS: readonly BundledFont[] = [
   {
     family: "Pretendard Variable",
     fileName: "PretendardVariable.woff2",
+    role: "body",
     weightRange: "45 920",
   },
   {
     family: "JetBrains Mono Variable",
     fileName: "jetbrains-mono-latin-wght-normal.woff2",
+    role: "code",
     weightRange: "100 800",
   },
 ] as const;

@@ -119,7 +119,11 @@ export const useSettingsStore = create<SettingsState>()(
         recentFiles: state.recentFiles,
         lastOpenedFolder: state.lastOpenedFolder,
         lastOpenedFile: state.lastOpenedFile,
+        // §348 서체 슬롯 둘과 최근 목록. partialize는 whitelist다 — 빠뜨리면
+        // 재시작마다 고른 서체가 사라진다.
+        codeFontFamily: state.codeFontFamily,
         fontFamily: state.fontFamily,
+        recentFonts: state.recentFonts,
         fontSize: state.fontSize,
         lineHeight: state.lineHeight,
         tabSize: state.tabSize,

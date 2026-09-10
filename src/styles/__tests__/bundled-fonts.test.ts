@@ -3,6 +3,8 @@
 //
 // jsdom은 폰트를 로드하지 않으므로 "적용됨"은 이 파일이 증명할 수 없다. 여기서
 // 막는 것은 그보다 앞의 실패다 — 이름만 있고 파일이 없던 §346의 상태.
+import type { BundledFont } from "../../utils/font/bundled-fonts";
+
 import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -77,13 +79,22 @@ describe("§347 bundled fonts", () => {
         .exec(primitives)?.[1]
         .replace(/\s+/gu, " ")
         .trim() ?? "";
-    const monoFont = BUNDLED_FONTS.find((f) =>
-      f.family.toLowerCase().includes("mono"),
-    );
-    const editorFont = BUNDLED_FONTS.find((f) => f !== monoFont);
-    expect(firstFamily(stack("editor"))).toBe(editorFont?.family.toLowerCase());
-    expect(firstFamily(stack("mono"))).toBe(monoFont?.family.toLowerCase());
+    // 역할은 선언된 `role` 로 읽는다. 배열 순서로 짚거나 이름에 "mono"가 든
+    // 것으로 추론하면 항목이 늘거나 이름이 바뀔 때 조용히 반대쪽을 단정한다.
+    const family = (role: BundledFont["role"]) =>
+      BUNDLED_FONTS.find((f) => f.role === role)?.family.toLowerCase();
+    expect(firstFamily(stack("editor"))).toBe(family("body"));
+    expect(firstFamily(stack("mono"))).toBe(family("code"));
   });
+
+  // 역할은 정확히 한 항목씩이다. 둘 중 하나가 비면 위 단정이 `undefined` 를
+  // 비교하게 되고, 그 역할로 폴백 스택을 만드는 `font-surfaces.ts` 는 던진다.
+  it.each(["body", "code"] as const)(
+    "declares exactly one bundled font for the %s role",
+    (role) => {
+      expect(BUNDLED_FONTS.filter((f) => f.role === role)).toHaveLength(1);
+    },
+  );
 
   it("imports fonts.css before any stylesheet that names a bundled family", () => {
     const index = readFileSync(path.join(ROOT, "src/styles/index.css"), "utf8");

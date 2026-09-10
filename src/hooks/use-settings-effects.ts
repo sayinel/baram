@@ -14,6 +14,7 @@ import {
 } from "../stores/ui/panel-feature";
 import { useUIStore } from "../stores/ui/ui";
 import { findThemeById } from "../types/theme";
+import { applyFontVariables } from "../utils/editor/font-surfaces";
 import { logger } from "../utils/logger";
 import {
   appliesInlineVars,
@@ -24,6 +25,7 @@ import {
 export function useSettingsEffects(editor: Editor | null) {
   const {
     activeThemeId,
+    codeFontFamily,
     customThemes,
     fontSize,
     fontFamily,
@@ -33,6 +35,7 @@ export function useSettingsEffects(editor: Editor | null) {
   } = useSettingsStore(
     useShallow((s) => ({
       activeThemeId: s.activeThemeId,
+      codeFontFamily: s.codeFontFamily,
       customThemes: s.customThemes,
       fontSize: s.fontSize,
       fontFamily: s.fontFamily,
@@ -81,9 +84,15 @@ export function useSettingsEffects(editor: Editor | null) {
     const tiptap = domNode as HTMLElement;
     // eslint-disable-next-line react-hooks/immutability -- we are styling the DOM element, not mutating the editor argument
     tiptap.style.fontSize = `${fontSize}px`;
-    tiptap.style.fontFamily = fontFamily
-      ? `${fontFamily}, var(--font-family-editor)`
-      : "";
+    // §349 인라인 font-family 대신 변수 두 개. 인라인은 이 요소의 `font-family`
+    // 하나만 덮으므로 코드·수식·표·미디어가 읽는 var(--font-family-mono) 30곳에는
+    // 닿지 않았고, 그래서 "코드 서체"라는 설정이 존재할 수 없었다. 변수는 이 표면
+    // 아래로 상속되므로 그 30곳이 배선 추가 없이 따라온다.
+    applyFontVariables(tiptap, {
+      bodyFont: fontFamily,
+      codeFont: codeFontFamily,
+      which: "both",
+    });
     tiptap.style.lineHeight = String(lineHeight);
     // Also as a variable, because CSS has to compute WITH the line height, not just
     // inherit it: the list markers and the fold arrow are absolutely positioned, so they
@@ -94,7 +103,14 @@ export function useSettingsEffects(editor: Editor | null) {
     tiptap.style.maxWidth = editorMaxWidth > 0 ? `${editorMaxWidth}px` : "";
     tiptap.style.marginLeft = editorMaxWidth > 0 ? "auto" : "";
     tiptap.style.marginRight = editorMaxWidth > 0 ? "auto" : "";
-  }, [fontSize, fontFamily, lineHeight, editorMaxWidth, editor]);
+  }, [
+    fontSize,
+    fontFamily,
+    codeFontFamily,
+    lineHeight,
+    editorMaxWidth,
+    editor,
+  ]);
 
   useEffect(() => {
     if (!editor) return;

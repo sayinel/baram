@@ -33,6 +33,7 @@ import { getHighlightStyle } from "../../extensions/nodes/code-block-highlight";
 import { getLanguageExtension } from "../../extensions/nodes/code-block-languages";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
+import { applyFontVariables } from "../../utils/editor/font-surfaces";
 import { textReplaceRange } from "../../utils/editor/text-replace-range";
 import { logger } from "../../utils/logger";
 import { createVimController } from "./vim-controller";
@@ -354,6 +355,25 @@ export function SourceCodeEditor({
     // 만들어도 결과가 같고, deps에 넣으면 렌더마다 effect가 돌면서 큰 문서의
     // doc.toString()을 반복한다.
   }, [content]);
+
+  // §349 소스 모드는 `DOCUMENT_FONT_SURFACES` 의 `mono` 표면이다.
+  //
+  // 변수를 이 **래퍼**에 둔다: `.cm-content` 는 CodeMirror 가 소유하는 요소라
+  // 거기에 인라인으로 쓰면 다음 재구성에 사라진다. 래퍼는 `EditorView` 의 parent
+  // 이므로 상속으로 닿고, `.cm-content` 의 `font-family: var(--font-family-mono)`
+  // (위 `EditorView.theme`)가 그 값을 읽는다.
+  //
+  // 본문 서체는 덮지 않는다 — 이 표면은 원문 마크다운을 고정폭으로 보여준다.
+  const codeFontFamily = useSettingsStore((s) => s.codeFontFamily);
+  useEffect(() => {
+    if (!containerRef.current) return;
+    applyFontVariables(containerRef.current, {
+      // `which: "mono"` 는 본문 슬롯을 읽지 않는다.
+      bodyFont: "",
+      codeFont: codeFontFamily,
+      which: "mono",
+    });
+  }, [codeFontFamily]);
 
   return (
     <div

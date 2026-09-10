@@ -14,6 +14,9 @@ export interface EditorSettingsSlice {
   autoPairBrackets: boolean;
   codeBlockLineNumbers: boolean;
   codeBlockStyle: CodeBlockStyle;
+  /** §348 코드 서체 슬롯 — 코드 블록·수식·표가 읽는 `--font-family-mono`.
+   * 빈 문자열은 "설정 없음"이고 토큰 스택을 그대로 쓴다는 뜻이다. */
+  codeFontFamily: string;
   diagrams: boolean;
   editorMaxWidth: number;
   extensionSettings: Record<string, unknown>;
@@ -26,10 +29,14 @@ export interface EditorSettingsSlice {
   /** §283 PDF 사이드 레일의 폭(CSS px). 드래그로 조절하고 재시작 뒤에도 남는다.
    * clampRailWidth 범위 밖의 값은 setter가 자른다. */
   pdfRailWidth: number;
+  pushRecentFont: (family: string) => void;
+  /** §348 최근 사용 서체 — 최신이 앞, 최대 5개. 두 슬롯이 공유한다. */
+  recentFonts: string[];
   setAutoLoadVideoEmbeds: (enabled: boolean) => void;
   setAutoPairBrackets: (enabled: boolean) => void;
   setCodeBlockLineNumbers: (enabled: boolean) => void;
   setCodeBlockStyle: (style: CodeBlockStyle) => void;
+  setCodeFontFamily: (family: string) => void;
   setDiagrams: (enabled: boolean) => void;
   setEditorMaxWidth: (width: number) => void;
   setExtensionSetting: (key: string, value: unknown) => void;
@@ -69,7 +76,17 @@ export const createEditorSettingsSlice: StateCreator<
   EditorSettingsSlice
 > = (set) => ({
   // Editor
-  fontFamily: "Pretendard",
+  // §348 두 서체 슬롯의 기본값은 빈 문자열 = "설정 없음" = 토큰 스택을 그대로.
+  //
+  // `fontFamily` 에 있던 `"Pretendard"` 를 지운 것은 동작 변경이 아니다: 그 이름의
+  // 서체는 어디에도 번들되어 있지 않았고(§346), 그래서 인라인 선언은 늘 뒤의
+  // `var(--font-family-editor)` 로 떨어졌다. 그 스택의 첫 항목이 이제 실재하는
+  // `"Pretendard Variable"` 이므로 화면에 나오는 서체가 같다 — 그래서 backfill
+  // 마이그레이션도, `store.ts` 의 `version` 상승도 필요하지 않다. 설정 창의 입력
+  // 칸은 빈 값에서 placeholder("Type or select a font…")를 보여 준다.
+  fontFamily: "",
+  codeFontFamily: "",
+  recentFonts: [],
   fontSize: 16,
   lineHeight: 1.75,
   tabSize: 2,
@@ -96,7 +113,30 @@ export const createEditorSettingsSlice: StateCreator<
   extensionSettings: {},
 
   // Editor setters
+  setCodeFontFamily: (codeFontFamily) => set({ codeFontFamily }),
   setFontFamily: (fontFamily) => set({ fontFamily }),
+  /**
+   * §348 최근 사용 서체 — 최신이 앞, 최대 5개, 중복은 앞으로 승격.
+   *
+   * 목록은 슬롯 공용이고 표시할 때 슬롯별로 필터한다(코드 슬롯에서는
+   * monospaced 인 것만). 두 목록을 따로 두면 같은 서체를 두 번 기억한다.
+   *
+   * ‼️ 무동작일 때 `state` 를 **그대로** 돌려준다. zustand 는 반환값이 현재
+   * state 와 같은 객체일 때만 리스너를 건너뛴다 — `{ recentFonts: state.recentFonts }`
+   * 같은 partial 은 새 root 가 되어 아무것도 안 바뀌었는데 모든 구독자를 깨운다.
+   */
+  pushRecentFont: (family) =>
+    set((state) => {
+      const name = family.trim();
+      if (name === "") return state;
+      if (state.recentFonts[0] === name) return state; // 동등성 관문
+      return {
+        recentFonts: [
+          name,
+          ...state.recentFonts.filter((f) => f !== name),
+        ].slice(0, 5),
+      };
+    }),
   setFontSize: (fontSize) => set({ fontSize }),
   setLineHeight: (lineHeight) => set({ lineHeight }),
   setTabSize: (tabSize) => set({ tabSize }),
