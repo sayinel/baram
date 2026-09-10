@@ -8,8 +8,10 @@ import { useShallow } from "zustand/shallow";
 import { useTranslation } from "../../../i18n/useTranslation";
 import {
   BUILTIN_PRESETS,
+  isPresetVisible,
   useWorkspaceStore,
 } from "../../../stores/file/workspace";
+import { useFeatureFlags } from "../../../stores/settings/features";
 import { useSettingsStore } from "../../../stores/settings/store";
 import { BUILT_IN_THEMES } from "../../../types/theme";
 import { showConfirm } from "../../../utils/confirm-dialog";
@@ -405,7 +407,16 @@ function WorkspaceSection() {
   const [savingNew, setSavingNew] = useState(false);
   const [newName, setNewName] = useState("");
 
-  const allPresets = [...BUILTIN_PRESETS, ...customPresets];
+  const featureFlags = useFeatureFlags();
+  // §338/I-8 — customPresets are never filtered: they are user-made, and
+  // `applyPreset` only branches on PRESET_FEATURE's own ids, so a custom
+  // preset id is never subject to this gate in the first place.
+  const allPresets = [
+    ...BUILTIN_PRESETS.filter((preset) =>
+      isPresetVisible(preset.id, featureFlags),
+    ),
+    ...customPresets,
+  ];
 
   const handleApply = useCallback(
     (id: string) => {

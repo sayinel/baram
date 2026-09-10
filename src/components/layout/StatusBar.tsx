@@ -21,8 +21,10 @@ import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import {
   BUILTIN_PRESETS,
+  isPresetVisible,
   useWorkspaceStore,
 } from "../../stores/file/workspace";
+import { useFeatureFlags } from "../../stores/settings/features";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useGitStore } from "../../stores/system/git";
 import { useUIStore } from "../../stores/ui/ui";
@@ -202,6 +204,7 @@ export function StatusBar({ editor, mode }: StatusBarProps) {
 
   const applyPreset = useWorkspaceStore((s) => s.applyPreset);
   const { t } = useTranslation();
+  const featureFlags = useFeatureFlags();
 
   // §102 Favorite-toggle star for the active permanent Zettel note.
   const { zettelkastenDirectory, zettelkastenEnabled } = useSettingsStore(
@@ -288,7 +291,9 @@ export function StatusBar({ editor, mode }: StatusBarProps) {
           </button>
           {spaceMenuOpen && (
             <div className="status-space-menu">
-              {BUILTIN_PRESETS.map((preset) => {
+              {BUILTIN_PRESETS.filter((preset) =>
+                isPresetVisible(preset.id, featureFlags),
+              ).map((preset) => {
                 const Icon = SPACE_ICONS[preset.id] || Pencil;
                 return (
                   <button
