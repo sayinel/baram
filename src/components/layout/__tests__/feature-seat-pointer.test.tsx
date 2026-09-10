@@ -35,14 +35,14 @@ vi.mock("../../../ipc/menu-enabled", () => ({
   syncMenuEnabled: menuIpc.syncMenuEnabled,
 }));
 
-import {
-  RIGHT_PANEL_MODE_FEATURE,
-  SIDEBAR_PANEL_FEATURE,
-  useSettingsEffects,
-} from "../../../hooks/use-settings-effects";
+import { useSettingsEffects } from "../../../hooks/use-settings-effects";
 import { useAIStore } from "../../../stores/ai/ai";
 import { ACTIVITY_BAR_ITEM_FEATURE } from "../../../stores/settings/activity-bar-config";
 import { useSettingsStore } from "../../../stores/settings/store";
+import {
+  RIGHT_PANEL_MODE_FEATURE,
+  SIDEBAR_PANEL_FEATURE,
+} from "../../../stores/ui/panel-feature";
 import { useUIStore } from "../../../stores/ui/ui";
 import { AIChatPanel } from "../../ai/AIChatPanel";
 import { MemoriesPanel } from "../../journal/MemoriesPanel";

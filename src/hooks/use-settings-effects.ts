@@ -2,13 +2,16 @@
 import { useEffect } from "react";
 
 import type { FeatureKey } from "../stores/settings/feature-keys";
-import type { RightPanelMode, SidebarPanel } from "../stores/ui/ui";
 import type { Editor } from "@tiptap/core";
 
 import { useShallow } from "zustand/shallow";
 
 import { useFeatureFlags } from "../stores/settings/features";
 import { useSettingsStore } from "../stores/settings/store";
+import {
+  RIGHT_PANEL_MODE_FEATURE,
+  SIDEBAR_PANEL_FEATURE,
+} from "../stores/ui/panel-feature";
 import { useUIStore } from "../stores/ui/ui";
 import { findThemeById } from "../types/theme";
 import { logger } from "../utils/logger";
@@ -17,29 +20,6 @@ import {
   applyThemeVars,
   clearThemeVars,
 } from "../utils/theme-vars";
-
-/**
- * §340 사이드바 좌석 → 그 좌석을 소유한 기능.
- *
- * export된 이유: `feature-seat-pointer.test.tsx`가 이 표와 아래 표를 **순회**해서 ⓐ
- * 이펙트를 검증한다 — 항목을 하나하나 베껴 적으면 다음에 좌석이 추가돼도 테스트가
- * 조용히 그 항목을 놓친다(파생 검증이 이 표의 존재 이유).
- */
-export const SIDEBAR_PANEL_FEATURE: Partial<Record<SidebarPanel, FeatureKey>> =
-  {
-    calendar: "journal",
-    tasks: "tasks",
-    zettel: "zettelkasten",
-  };
-
-/** §340 우측 패널 좌석 → 그 좌석을 소유한 기능. (export 이유는 위와 동일) */
-export const RIGHT_PANEL_MODE_FEATURE: Partial<
-  Record<RightPanelMode, FeatureKey>
-> = {
-  chat: "ai",
-  memories: "journal",
-  "photo-gallery": "journal",
-};
 
 export function useSettingsEffects(editor: Editor | null) {
   const {
