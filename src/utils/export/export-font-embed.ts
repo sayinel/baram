@@ -21,29 +21,50 @@ import jetbrainsMonoUrl from "../../assets/fonts/jetbrains-mono-latin-wght-norma
 import pretendardUrl from "../../assets/fonts/PretendardVariable.woff2?url";
 import { BASE_EDITOR_STACK, BASE_MONO_STACK } from "../editor/font-surfaces";
 import { quoteFamily } from "../editor/quote-font-family";
+import { BUNDLED_FONTS } from "../font/bundled-fonts";
 
 /**
- * 번들 서체만 임베드할 수 있다 — 나머지는 재배포 권리가 없다.
+ * §353 리뷰 Important 1 — `family`/`weightRange`를 여기 다시 적지 않는다.
+ * `bundled-fonts.ts`의 헤더 주석이 "export 임베드"를 그 값의 다섯 지목처 중
+ * 하나로 **이름까지 대며** 적어 뒀다 — 다시 적으면 §346 이 반대 방향으로
+ * 재발한다. `fileName` 으로 매핑해 `BUNDLED_FONTS` 에서 끌어온다.
  *
- * `family` 를 값에 담는 이유: 키에서 표시명을 복원하려면 대문자 규칙을 다시
- * 적어야 하고 ("jetbrains mono variable" → JetBrains 의 두 번째 대문자를 잃는다),
- * 그것은 §347의 이름 계약을 두 곳에 적는 짓이다. 계약은 한 번만 적는다.
+ * `?url` import 경로는 Vite 가 정적 문자열 리터럴을 요구해서 여기 남는
+ * 유일한 중복이다 — 그 잔여 중복은 `export-font-embed.test.ts` 의 소스
+ * 스캔 가드(§353 리뷰 Important 1)가 `BUNDLED_FONTS[].fileName` 과 대조한다.
  */
+const ASSET_URLS: Record<string, string> = {
+  "jetbrains-mono-latin-wght-normal.woff2": jetbrainsMonoUrl,
+  "PretendardVariable.woff2": pretendardUrl,
+};
+
+/** `ASSET_URLS`에 대응 항목이 없으면 즉시, 크게 던진다 — 조용한 누락은
+ * §346 이 이미 보여준 결함이다(이름 없는 폴백이 시스템 서체로 조용히
+ * 렌더된다). import 시점의 예외가 export 시점의 무음보다 낫다. */
+function assetUrlFor(fileName: string): string {
+  const url = ASSET_URLS[fileName];
+  if (url === undefined) {
+    throw new Error(
+      `§353: no ?url import registered in export-font-embed.ts for bundled font file "${fileName}"`,
+    );
+  }
+  return url;
+}
+
+/** 번들 서체만 임베드할 수 있다 — 나머지는 재배포 권리가 없다. 키는 §347 표기의 소문자. */
 const BUNDLED_ASSETS: Record<
   string,
   { family: string; url: string; weightRange: string }
-> = {
-  "jetbrains mono variable": {
-    family: "JetBrains Mono Variable",
-    url: jetbrainsMonoUrl,
-    weightRange: "100 800",
-  },
-  "pretendard variable": {
-    family: "Pretendard Variable",
-    url: pretendardUrl,
-    weightRange: "45 920",
-  },
-};
+> = Object.fromEntries(
+  BUNDLED_FONTS.map((f) => [
+    f.family.toLowerCase(),
+    {
+      family: f.family,
+      url: assetUrlFor(f.fileName),
+      weightRange: f.weightRange,
+    },
+  ]),
+);
 
 /** `article.baram-export` 의 인라인 style 값. 빈 설정은 선언을 만들지 않는다. */
 export function exportFontVariables(

@@ -5,8 +5,11 @@
 // KaTeX face(≈296KB → 395KB base64)를 export 청크에 넣는다. 2MB 서체를 같은
 // 방식으로 넣으면 체크박스를 끄든 켜든 2.7MB 가 청크에 상주하고, export
 // 다이얼로그를 여는 것만으로 로드된다. ?url + fetch 는 필요할 때만 비용이 든다.
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { BUNDLED_FONTS } from "../../font/bundled-fonts";
 import { buildFontFaceCSS, exportFontVariables } from "../export-font-embed";
 
 describe("exportFontVariables", () => {
@@ -71,5 +74,26 @@ describe("buildFontFaceCSS", () => {
       vi.fn(async () => ({ ok: false })),
     );
     await expect(buildFontFaceCSS(["Pretendard Variable"])).resolves.toBe("");
+  });
+});
+
+// §353 리뷰 Important 1 — `family`/`weightRange`는 이제 BUNDLED_FONTS에서 끌어오지만,
+// `?url` import 경로는 Vite가 정적 문자열을 요구해서 여전히 손으로 적혀 있다. 그
+// 잔여 중복이 갈라지면(예: bundled-fonts.ts에서 파일명을 바꾸고 이 파일의 import는
+// 안 바꾸면) buildFontFaceCSS는 그 서체를 조용히 건너뛴다 — 이 테스트가 없으면
+// 아무 게이트도 못 잡는다. 소스 텍스트를 스캔하는 이유: 런타임 딕셔너리
+// (ASSET_URLS)의 키만 비교하면 값(실제 import된 URL)이 엉뚱한 파일을 가리켜도
+// 통과한다 — import 문 자체의 경로 리터럴을 읽어야 진짜 배선을 본다.
+describe("§353 review Important 1 — the residual ?url import duplication stays pinned", () => {
+  it("imports exactly the asset files BUNDLED_FONTS names, no more, no fewer", () => {
+    const source = readFileSync(
+      path.join(process.cwd(), "src/utils/export/export-font-embed.ts"),
+      "utf8",
+    );
+    const importedBasenames = [...source.matchAll(/from\s+"([^"]+)\?url"/gu)]
+      .map((m) => path.posix.basename(m[1]))
+      .sort();
+    const declaredFileNames = BUNDLED_FONTS.map((f) => f.fileName).sort();
+    expect(importedBasenames).toEqual(declaredFileNames);
   });
 });
