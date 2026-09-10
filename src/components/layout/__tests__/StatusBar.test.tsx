@@ -156,6 +156,9 @@ describe("StatusBar — Perspective launcher", () => {
     expect(launcher.textContent).not.toContain("Journal");
   });
 
+  // ‼️ en-only — `menu.workspace.writing`/`journal` and `preset.name` are BOTH "Writing"/
+  // "Journal" in en.json, so this assertion cannot see a wrong or missing `nameKey` (§343,
+  // see `preset-labels.test.tsx` for the ko-locale assertions that do).
   it("opens a menu of all presets and applies one on click", () => {
     render(<StatusBar editor={null} mode="wysiwyg" />);
     fireEvent.click(screen.getByTestId("perspective-launcher"));
@@ -184,6 +187,7 @@ describe("StatusBar — Perspective launcher feature gate (§338/I-8)", () => {
     useFileStore.getState().setRootPath("/vault");
   });
 
+  // ‼️ en-only, same caveat as above — see `preset-labels.test.tsx` for the ko assertions.
   it("hides Journal but keeps Writing/Skills when journal is off", () => {
     useSettingsStore.setState({ journalEnabled: false });
     render(<StatusBar editor={null} mode="wysiwyg" />);

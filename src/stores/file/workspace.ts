@@ -39,19 +39,39 @@ export interface WorkspaceLayout {
 
 export interface WorkspacePreset {
   builtIn: boolean;
+  /** §343 — translation key for `description`. Built-in only; a custom preset has no key and
+   * falls back to its user-typed `description` (see `presetDisplayDescription`). */
+  descKey?: string;
   description: string;
   id: string;
   layout: WorkspaceLayout;
   name: string;
+  /** §343 — translation key for `name`. Built-in only; a custom preset has no key and falls
+   * back to its user-typed `name` (see `presetDisplayName`). */
+  nameKey?: string;
 }
+
+/**
+ * §343 A built-in preset always carries its own i18n keys — narrowing them to required (rather
+ * than leaving them optional like `WorkspacePreset` must for custom presets) means tsc catches a
+ * missing key the moment a fifth built-in is added, the same shape this branch already uses for
+ * `isLLMAllowed(aiEnabled, …)` and `Record<FeatureKey, string>`.
+ */
+type BuiltinPreset = WorkspacePreset & {
+  builtIn: true;
+  descKey: string;
+  nameKey: string;
+};
 
 // --- Built-in Presets (§4.3) ---
 
-export const BUILTIN_PRESETS: WorkspacePreset[] = [
+export const BUILTIN_PRESETS: BuiltinPreset[] = [
   {
     id: "writing",
     name: "Writing",
+    nameKey: "menu.workspace.writing",
     description: "Hide sidebar and focus on the editor.",
+    descKey: "settings.workspace.preset.writing.desc",
     builtIn: true,
     layout: {
       sidebarOpen: false,
@@ -63,7 +83,12 @@ export const BUILTIN_PRESETS: WorkspacePreset[] = [
   {
     id: "zettelkasten",
     name: "Zettel",
+    // ‼️ Suffix differs from the id — `zettelkasten` names its menu key `menu.workspace.zettel`.
+    // String-assembling `` `menu.workspace.${id}` `` is exactly the bug this key fixes: write it
+    // as data, not derive it.
+    nameKey: "menu.workspace.zettel",
     description: "Capture ideas fast and refine them into linked notes.",
+    descKey: "settings.workspace.preset.zettelkasten.desc",
     builtIn: true,
     layout: getSpace("zettelkasten")?.layout ?? {
       sidebarOpen: true,
@@ -75,7 +100,9 @@ export const BUILTIN_PRESETS: WorkspacePreset[] = [
   {
     id: "journal",
     name: "Journal",
+    nameKey: "menu.workspace.journal",
     description: "Open calendar, today's journal, and Memories view together.",
+    descKey: "settings.workspace.preset.journal.desc",
     builtIn: true,
     layout: {
       sidebarOpen: true,
@@ -87,7 +114,9 @@ export const BUILTIN_PRESETS: WorkspacePreset[] = [
   {
     id: "skills",
     name: "Skills",
+    nameKey: "menu.workspace.skills",
     description: "Layout optimized for editing LLM Skills files.",
+    descKey: "settings.workspace.preset.skills.desc",
     builtIn: true,
     layout: {
       sidebarOpen: true,
@@ -97,6 +126,29 @@ export const BUILTIN_PRESETS: WorkspacePreset[] = [
     },
   },
 ];
+
+/**
+ * §343 The one place that decides a preset's displayed NAME. `StatusBar` and `AppearanceTab`
+ * both used to carry their own ternary (`preset.builtIn ? t(...) : preset.name`), and one of
+ * them (`StatusBar`) skipped the `t()` call entirely — a duplicated branch is exactly how that
+ * kind of surface drifts from the other. `translate` takes one argument (not a
+ * locale-and-params tuple) so a component's already locale-bound `const { t } = useTranslation()`
+ * passes straight through.
+ */
+export function presetDisplayName(
+  preset: WorkspacePreset,
+  translate: (key: string) => string,
+): string {
+  return preset.nameKey ? translate(preset.nameKey) : preset.name;
+}
+
+/** §343 The DESCRIPTION counterpart to `presetDisplayName` — same shared-resolver reasoning. */
+export function presetDisplayDescription(
+  preset: WorkspacePreset,
+  translate: (key: string) => string,
+): string {
+  return preset.descKey ? translate(preset.descKey) : preset.description;
+}
 
 /**
  * §338/I-8 어느 프리셋이 어느 기능에 속하는가. 기능이 꺼지면 이 프리셋은

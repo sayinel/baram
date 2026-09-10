@@ -22,6 +22,7 @@ import { useFileStore } from "../../stores/file/file";
 import {
   BUILTIN_PRESETS,
   isPresetVisible,
+  presetDisplayName,
   useWorkspaceStore,
 } from "../../stores/file/workspace";
 import { useFeatureFlags } from "../../stores/settings/features";
@@ -302,7 +303,7 @@ export function StatusBar({ editor, mode }: StatusBarProps) {
                     onClick={() => handleSpaceSelect(preset.id)}
                   >
                     <Icon size={12} strokeWidth={1.5} />
-                    {preset.name}
+                    {presetDisplayName(preset, t)}
                   </button>
                 );
               })}

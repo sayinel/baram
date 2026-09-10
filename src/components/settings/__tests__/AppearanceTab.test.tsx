@@ -134,6 +134,9 @@ describe("deleting a custom perspective", () => {
 // the "applyPreset agrees with PRESET_FEATURE" half). Custom presets are
 // never filtered — "Deep work" (CUSTOM_PRESET) stays regardless.
 describe("workspace gallery — preset feature gate (§338/I-8)", () => {
+  // ‼️ en-only — `menu.workspace.*` and the (now-removed) `settings.workspace.preset.*` name
+  // keys were BOTH "Writing"/"Journal"/"Skills" in en.json, so this assertion cannot see a wrong
+  // or missing `nameKey` (§343; see `preset-labels.test.tsx` for the ko-locale assertions).
   it("hides the Journal card but keeps Writing/Skills/the custom preset when journal is off", () => {
     useSettingsStore.setState({ journalEnabled: false });
     render(<AppearanceTab />);

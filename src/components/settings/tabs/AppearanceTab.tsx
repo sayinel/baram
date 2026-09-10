@@ -9,6 +9,8 @@ import { useTranslation } from "../../../i18n/useTranslation";
 import {
   BUILTIN_PRESETS,
   isPresetVisible,
+  presetDisplayDescription,
+  presetDisplayName,
   useWorkspaceStore,
 } from "../../../stores/file/workspace";
 import { useFeatureFlags } from "../../../stores/settings/features";
@@ -266,15 +268,11 @@ function PresetCard({
       </div>
 
       <span className="workspace-card-name">
-        {preset.builtIn
-          ? t(`settings.workspace.preset.${preset.id}`)
-          : preset.name}
+        {presetDisplayName(preset, t)}
       </span>
       {preset.description && (
         <span className="workspace-card-desc">
-          {preset.builtIn
-            ? t(`settings.workspace.preset.${preset.id}.desc`)
-            : preset.description}
+          {presetDisplayDescription(preset, t)}
         </span>
       )}
       <span className="workspace-card-summary">
