@@ -315,6 +315,22 @@ describe("tasks.taskInput — 한 명령의 두 갈래", () => {
     act(() => getAction(TASK_INPUT_COMMAND)?.());
     expect(useUIStore.getState().taskEditOpen).toBe(false);
   });
+
+  // §338/Fix H follow-up — the dual dispatch above (dialog's own handler +
+  // this global action, both reached from one keypress) is NOT two layers
+  // giving opposite answers: `quickCaptureOpen` is checked BEFORE
+  // `featureReady("tasks")` in the handler above, so this branch returns
+  // before ever reaching the toast. Confirmed empirically (not assumed) —
+  // if the two checks are ever reordered, this pins the toast staying silent
+  // while the dialog is open regardless of tasksEnabled.
+  it("캡처창이 열려 있으면 tasks가 꺼져 있어도 토스트를 띄우지 않는다", () => {
+    useUIStore.setState({ quickCaptureOpen: true, toast: null });
+    useSettingsStore.setState({ tasksEnabled: false });
+    renderActionsHook(null);
+    act(() => getAction(TASK_INPUT_COMMAND)?.());
+    expect(useUIStore.getState().taskEditOpen).toBe(false);
+    expect(useUIStore.getState().toast).toBeNull();
+  });
 });
 
 // §338 — team-lead's ruling: gate tasks.taskInput now that `space.tasks.disabled`
