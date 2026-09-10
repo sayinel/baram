@@ -147,6 +147,21 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
+      # The Pandoc export policy (issue 545/544) is proven by an `#[ignore]`d
+      # test that runs a real pandoc over docx/epub/latex/rst output and checks
+      # what landed in the archives. Ubuntu's apt package is the deliberate
+      # choice: noble ships pandoc 3.1.x, which makes this run the minimum
+      # supported version rather than whatever is newest — a user's Homebrew
+      # or Chocolatey pandoc is at least this. `pandoc --version` fails the
+      # job loudly if the package ever goes missing, instead of the test's
+      # panic. Not added to the macOS job on purpose: that job answers Darwin
+      # compilation and case-insensitive-filesystem questions (see
+      # .claude/docs/ci-contract.md), and a Homebrew download would broaden it.
+      - name: Install pandoc (export policy smoke)
+        run: |
+          sudo apt-get install -y pandoc
+          pandoc --version | head -1
+
       # Pin must be a master-history SHA (release-branch SHAs can be GC'd);
       # the toolchain is selected via the input, not the ref name.
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master
@@ -169,6 +184,21 @@ jobs:
 
       - name: Cargo test
         run: npm run rust:_test
+
+      # Ignored on purpose in the normal run (needs the pandoc binary); the
+      # name filter keeps the other ignored tests — live OpenRouter calls, the
+      # OS keyring, timing benches — out of it. The `--list` line first: a
+      # filter that matches nothing is a green run of zero tests, so at least
+      # one `pandoc_smoke_*` test must be SEEN before anything is run — if the
+      # tests were renamed or moved, this fails loudly instead of silently
+      # switching the coverage off. Cargo is invoked directly rather than
+      # through `npm run rust:_test`, so a package.json edit (outside the rust
+      # path filter) cannot change what this step does.
+      - name: Pandoc export policy smoke (real pandoc)
+        run: |
+          cargo test --manifest-path src-tauri/Cargo.toml pandoc_smoke -- --ignored --list \
+            | grep -E '(^|::)pandoc_smoke_[a-z0-9_]+: test$'
+          cargo test --manifest-path src-tauri/Cargo.toml pandoc_smoke -- --ignored
 
       - name: Tauri build smoke test (release only)
         # github.event_name is NEVER 'workflow_call' inside a called workflow —
