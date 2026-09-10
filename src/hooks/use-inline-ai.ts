@@ -126,7 +126,14 @@ export function useInlineAI(editor: Editor | null): UseInlineAIReturn {
 
       const store = useAIStore.getState();
       const filePrivacy = getFilePrivacy(editor);
-      if (!isLLMAllowed(store.privacyMode, store.provider, filePrivacy)) {
+      if (
+        !isLLMAllowed(
+          store.aiEnabled,
+          store.privacyMode,
+          store.provider,
+          filePrivacy,
+        )
+      ) {
         return;
       }
 

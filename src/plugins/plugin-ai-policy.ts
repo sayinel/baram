@@ -23,10 +23,12 @@ export function createAIAPI(pluginId: string): AIAPI {
     onToken: (t: string) => void,
   ): Promise<void> => {
     const cfg = getConfigForTask("chat");
-    const { privacyMode } = useAIStore.getState();
-    if (!isLLMAllowed(privacyMode, cfg.provider)) {
+    const { aiEnabled, privacyMode } = useAIStore.getState();
+    if (!isLLMAllowed(aiEnabled, privacyMode, cfg.provider)) {
       throw new Error(
-        "Privacy mode is active — only local (Ollama) models are allowed.",
+        aiEnabled
+          ? "Privacy mode is active — only local (Ollama) models are allowed."
+          : "AI is disabled.",
       );
     }
     const requestId = `plugin-${pluginId}-${Date.now()}-${Math.random()

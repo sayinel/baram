@@ -77,9 +77,11 @@ export function useLLMStream(): UseLLMStreamReturn {
       const privacyMode = store.privacyMode;
 
       // Privacy check
-      if (!isLLMAllowed(privacyMode, provider)) {
+      if (!isLLMAllowed(store.aiEnabled, privacyMode, provider)) {
         setError(
-          "Privacy mode is active. Only local models (Ollama) are allowed.",
+          store.aiEnabled
+            ? "Privacy mode is active. Only local models (Ollama) are allowed."
+            : "AI is disabled.",
         );
         return;
       }

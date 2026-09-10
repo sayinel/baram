@@ -58,7 +58,14 @@ export async function extractActionItems(editor: Editor): Promise<void> {
     toast(t("tasks.extract.noModel", locale), "error");
     return;
   }
-  if (!isLLMAllowed(store.privacyMode, cfg.provider, getFilePrivacy(editor))) {
+  if (
+    !isLLMAllowed(
+      store.aiEnabled,
+      store.privacyMode,
+      cfg.provider,
+      getFilePrivacy(editor),
+    )
+  ) {
     toast(t("tasks.extract.blocked", locale), "error");
     return;
   }

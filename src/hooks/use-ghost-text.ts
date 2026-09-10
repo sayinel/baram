@@ -135,7 +135,12 @@ export function useGhostText(editor: Editor | null) {
       const filePrivacy = getFilePrivacy(editor);
       const ghostTaskConfig = getConfigForTask("ghost-text");
       if (
-        !isLLMAllowed(store.privacyMode, ghostTaskConfig.provider, filePrivacy)
+        !isLLMAllowed(
+          store.aiEnabled,
+          store.privacyMode,
+          ghostTaskConfig.provider,
+          filePrivacy,
+        )
       )
         return;
 
@@ -204,6 +209,7 @@ export function useGhostText(editor: Editor | null) {
         const taskCfg = getConfigForTask("ghost-text");
         if (
           !isLLMAllowed(
+            storeSnapshot.aiEnabled,
             storeSnapshot.privacyMode,
             taskCfg.provider,
             getFilePrivacy(editor),
@@ -353,7 +359,14 @@ export function useGhostText(editor: Editor | null) {
       if (!store.aiEnabled || !store.ghostTextEnabled) return;
       const taskCfg = getConfigForTask("ghost-text");
       const filePrivacy = getFilePrivacy(editor);
-      if (!isLLMAllowed(store.privacyMode, taskCfg.provider, filePrivacy))
+      if (
+        !isLLMAllowed(
+          store.aiEnabled,
+          store.privacyMode,
+          taskCfg.provider,
+          filePrivacy,
+        )
+      )
         return;
 
       // Build the text that will be before the cursor after acceptance
