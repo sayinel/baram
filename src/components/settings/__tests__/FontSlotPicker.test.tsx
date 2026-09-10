@@ -9,7 +9,7 @@
 // 같은 관례로, 키 문자열 자체가 아니라 번역된 문자열을 단정한다.
 import type { SystemFont } from "../../../ipc/types";
 
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { fontAvailability } from "../../../utils/font/font-availability";
@@ -50,6 +50,27 @@ describe("fontAvailability", () => {
   it("treats an empty value as bundled — it means the default stack", () => {
     expect(fontAvailability("", INSTALLED)).toBe("bundled");
   });
+
+  // review Critical 1 — a `null` enumeration means "not known good yet"
+  // (still loading, or listFonts() fell back), not "checked and absent".
+  it("reports unknown when the enumeration is not known-good, even for an installed-looking name", () => {
+    expect(fontAvailability("Noto Sans KR", null)).toBe("unknown");
+  });
+
+  it("still reports bundled and empty-as-bundled when the enumeration is unknown", () => {
+    expect(fontAvailability("Pretendard Variable", null)).toBe("bundled");
+    expect(fontAvailability("", null)).toBe("bundled");
+  });
+
+  // review Important 2 (generics half) — a CSS generic keyword is not a font
+  // this machine has or lacks; badging it "system" (as the old fallback-list
+  // reachable path did) or "missing" is false either way.
+  it.each(["serif", "monospace", "system-ui"])(
+    "reports the CSS generic %s as unknown rather than system or missing",
+    (generic) => {
+      expect(fontAvailability(generic, INSTALLED)).toBe("unknown");
+    },
+  );
 });
 
 describe("FontSlotPicker", () => {
@@ -74,6 +95,23 @@ describe("FontSlotPicker", () => {
   it("labels an installed Korean-capable family with the Korean marker", () => {
     render(<FontSlotPicker {...props} slot="body" value="Noto Sans KR" />);
     expect(screen.getByText("System · Korean")).toBeTruthy();
+  });
+
+  // review Critical 1 — the not-yet-known state must not claim a family is
+  // missing (the very false statement §351 exists to end).
+  it("renders no availability badge while the enumeration is not yet known", () => {
+    render(
+      <FontSlotPicker
+        {...props}
+        fonts={null}
+        slot="body"
+        value="Noto Sans KR"
+      />,
+    );
+    expect(screen.queryByText("Not on this machine")).toBeNull();
+    expect(screen.queryByText("Included")).toBeNull();
+    expect(screen.queryByText("System")).toBeNull();
+    expect(screen.queryByText("System · Korean")).toBeNull();
   });
 
   it("renders the preview strip in the selected family", () => {
@@ -117,5 +155,91 @@ describe("FontSlotPicker", () => {
     );
     screen.getByRole("button", { name: "Browse…" }).click();
     expect(onOpenBrowser).toHaveBeenCalledWith("body");
+  });
+
+  // review Important 1 — the value name is the only remaining commit path.
+  // Without it, a family absent from the enumeration could never be saved
+  // (the free-text entry the old dropdown had was deleted with it).
+  describe("click-to-edit commit path", () => {
+    it("commits a typed family name on Enter, including one absent from the enumeration", () => {
+      const onChange = vi.fn();
+      render(
+        <FontSlotPicker
+          {...props}
+          onChange={onChange}
+          slot="body"
+          value="Pretendard Variable"
+        />,
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: "Pretendard Variable" }),
+      );
+      const input = screen.getByRole("textbox");
+      fireEvent.change(input, { target: { value: "Roboto" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+      expect(onChange).toHaveBeenCalledWith("Roboto");
+      // Back to the read view — this component is controlled, so it shows
+      // the (still-unchanged) `value` prop again until the parent re-renders
+      // with the committed one, which is EditorTab's job, not this one's.
+      expect(screen.queryByRole("textbox")).toBeNull();
+    });
+
+    it("commits on blur too", () => {
+      const onChange = vi.fn();
+      render(
+        <FontSlotPicker
+          {...props}
+          onChange={onChange}
+          slot="body"
+          value="Pretendard Variable"
+        />,
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: "Pretendard Variable" }),
+      );
+      const input = screen.getByRole("textbox");
+      fireEvent.change(input, { target: { value: "Georgia" } });
+      fireEvent.blur(input);
+      expect(onChange).toHaveBeenCalledWith("Georgia");
+    });
+
+    it("discards the edit on Escape without calling onChange", () => {
+      const onChange = vi.fn();
+      render(
+        <FontSlotPicker
+          {...props}
+          onChange={onChange}
+          slot="body"
+          value="Pretendard Variable"
+        />,
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: "Pretendard Variable" }),
+      );
+      const input = screen.getByRole("textbox");
+      fireEvent.change(input, { target: { value: "Whatever" } });
+      fireEvent.keyDown(input, { key: "Escape" });
+      expect(onChange).not.toHaveBeenCalled();
+      expect(
+        screen.getByRole("button", { name: "Pretendard Variable" }),
+      ).toBeTruthy();
+    });
+
+    it("does not call onChange when the committed text equals the current value", () => {
+      const onChange = vi.fn();
+      render(
+        <FontSlotPicker
+          {...props}
+          onChange={onChange}
+          slot="body"
+          value="Pretendard Variable"
+        />,
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: "Pretendard Variable" }),
+      );
+      fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+      expect(onChange).not.toHaveBeenCalled();
+    });
   });
 });

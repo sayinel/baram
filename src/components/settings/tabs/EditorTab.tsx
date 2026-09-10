@@ -67,15 +67,20 @@ export function EditorTab() {
     })),
   );
 
-  const [fonts, setFonts] = useState<SystemFont[]>([]);
+  // review Critical 1 — `null` means "not known-good yet": either the
+  // enumeration hasn't resolved, or it resolved to the fallback list (which
+  // is not this machine's real font list — review Important 2). Both cases
+  // must render no confident "missing" badge; only a real enumeration does.
+  const [fonts, setFonts] = useState<null | SystemFont[]>(null);
   const [browserSlot, setBrowserSlot] = useState<FontSlot | null>(null);
 
   // §350 — 탭이 지연 로드 경계 뒤에 있으므로 마운트 시 1회 호출로 충분하다
   // (설계 §351: "피커를 처음 열 때"가 이상적이나 이 탭 자체가 이미 그 경계다).
   useEffect(() => {
     let cancelled = false;
-    void listFonts().then((list) => {
-      if (!cancelled) setFonts(list);
+    void listFonts().then((result) => {
+      if (cancelled) return;
+      setFonts(result.isFallback ? null : result.fonts);
     });
     return () => {
       cancelled = true;
@@ -83,9 +88,25 @@ export function EditorTab() {
   }, []);
 
   if (browserSlot) {
-    // §352 (Task 6) 이 이 자리를 <FontBrowser slot={browserSlot} onClose={…}/>
-    // 로 교체한다 — AppearanceTab 의 `editingTheme` → <ThemeEditor/> 와 같은 패턴.
-    return null;
+    // review Important 3 — a real back control, not a blank pane: §352
+    // (Task 6) swaps this whole branch for <FontBrowser slot={browserSlot}
+    // onClose={…}/>, which owns its own close the way AppearanceTab's
+    // <ThemeEditor onClose={…}/> does. Until then, this placeholder is that
+    // same shape with nothing behind the button yet.
+    return (
+      <div className="settings-section">
+        <div className="settings-font-browser-placeholder">
+          <button
+            className="settings-font-browser-back btn-unstyled"
+            onClick={() => setBrowserSlot(null)}
+            type="button"
+          >
+            {t("common.close")}
+          </button>
+          <p>{t("settings.editor.fontPicker.browserUnavailable")}</p>
+        </div>
+      </div>
+    );
   }
 
   return (

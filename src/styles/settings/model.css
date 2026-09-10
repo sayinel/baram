@@ -150,8 +150,19 @@
 
 .settings-font-value-name {
   flex: 1;
+  min-width: 0;
+  font: inherit;
   font-size: 0.85rem;
   color: var(--color-text-primary);
+  text-align: left;
+}
+
+/* review Important 1 — click-to-edit commit path (the free-text entry the
+   old dropdown had, without which a family absent from the enumeration
+   could never be saved). */
+.settings-font-value-input {
+  flex: 1;
+  min-width: 0;
 }
 
 .settings-font-badge {
@@ -163,9 +174,17 @@
   border-radius: 999px;
 }
 
+/* review Important 5: `--color-accent-on-solid` is contrast-checked against
+   `--color-accent-solid`, not `--color-accent-default` (semantic-light.css:
+   accent-default is 3.68:1, accent-solid is a step darker specifically so
+   on-solid text clears WCAG AA at 5.17:1 on it). Pairing on-solid with
+   accent-default fails AA at this badge's ~11px size, and on-solid flips
+   black/white per theme based on a contrast computation against a background
+   the badge never uses. Use the background on-solid is actually measured
+   against. */
 .settings-font-badge-bundled {
   color: var(--color-accent-on-solid);
-  background: var(--color-accent-default);
+  background: var(--color-accent-solid);
 }
 
 .settings-font-badge-system {
@@ -211,4 +230,26 @@
   margin-top: 4px;
   font-size: 0.75rem;
   color: var(--color-text-muted);
+}
+
+/* review Important 3 — placeholder for the not-yet-built font browser
+   (§352/Task 6). A working back control so no reachable state leaves the
+   pane empty with no exit. */
+.settings-font-browser-placeholder {
+  padding: 24px 0;
+}
+
+.settings-font-browser-back {
+  font-size: 0.8rem;
+  color: var(--color-accent-default);
+}
+
+.settings-font-browser-back:hover {
+  color: var(--color-accent-hover);
+}
+
+.settings-font-browser-placeholder p {
+  margin-top: 12px;
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
 }

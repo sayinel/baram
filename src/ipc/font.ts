@@ -27,11 +27,29 @@ const FALLBACK_FONTS: SystemFont[] = [
   { hasKorean: false, monospaced: true, name: "monospace", weights: [400] },
 ];
 
-export async function listFonts(refresh = false): Promise<SystemFont[]> {
+export interface FontListResult {
+  fonts: SystemFont[];
+  /**
+   * `true` when `fonts` is {@link FALLBACK_FONTS}, not a real enumeration of
+   * this machine — the IPC call failed, or it returned nothing.
+   *
+   * §351 리뷰 Important 2: 이전에는 실패와 빈 결과 둘 다 조용히 같은
+   * 폴백 목록으로 떨어져서, 호출자가 "이 머신에 실제로 설치된 목록"과
+   * "브라우저를 비우지 않으려는 임시 목록"을 구분할 수 없었다. 폴백 목록은
+   * Task 6 브라우저가 비지 않게 하려고 존재할 뿐, 이 머신에 무엇이 없는지에
+   * 대한 권위가 아니다 — 그 권위로 쓰면(§351의 가용성 배지) 실제로 설치된
+   * 서체를 "이 머신에 없음"이라 단정하는 거짓 배지가 된다.
+   */
+  isFallback: boolean;
+}
+
+export async function listFonts(refresh = false): Promise<FontListResult> {
   try {
     const fonts = await invoke<SystemFont[]>("font_list", { refresh });
-    return fonts.length > 0 ? fonts : FALLBACK_FONTS;
+    return fonts.length > 0
+      ? { fonts, isFallback: false }
+      : { fonts: FALLBACK_FONTS, isFallback: true };
   } catch {
-    return FALLBACK_FONTS;
+    return { fonts: FALLBACK_FONTS, isFallback: true };
   }
 }

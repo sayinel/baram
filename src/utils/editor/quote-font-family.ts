@@ -11,8 +11,12 @@
  * `"serif"`는 패밀리 이름 serif 를 찾으라는 뜻이 되어 제네릭 폴백이 죽는다.
  * 그래서 열거된 예외로 통과시킨다 — 열거이므로 CSS가 제네릭을 더하면 여기도
  * 늘려야 한다.
+ *
+ * export 하는 이유(§351 리뷰 Important 2): `font-availability.ts`가 같은
+ * 집합으로 "이 값은 설치된 서체가 아니라 CSS 제네릭 키워드다"를 판정한다 —
+ * 재구현하면 여기서 하나를 늘렸을 때 그쪽이 조용히 갈라진다.
  */
-const GENERIC_FAMILIES = new Set([
+export const GENERIC_FAMILIES = new Set([
   "cursive",
   "emoji",
   "fangsong",

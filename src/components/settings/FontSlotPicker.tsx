@@ -3,6 +3,8 @@
 // 배지가 이 컴포넌트의 존재 이유다. §346까지 드롭다운은 없는 서체를 폴백으로
 // 그려서 무효한 항목을 정상처럼 보이게 했다. 스트립은 여전히 폴백으로 렌더되지만
 // 배지가 사실을 말한다.
+import { useEffect, useRef, useState } from "react";
+
 import type { SystemFont } from "../../ipc/types";
 import type { FontAvailability } from "../../utils/font/font-availability";
 
@@ -22,7 +24,12 @@ import {
 
 export type FontSlot = "body" | "code";
 
-const BADGE_KEY: Record<FontAvailability, string> = {
+/**
+ * "unknown"은 배지를 그리지 않는다 — 아직 확인 중이거나 확인할 근거가 없다는
+ * 뜻이라, 세 상태(bundled/system/missing) 중 어느 것으로도 단정하면 거짓이
+ * 된다(§351 리뷰 Critical 1).
+ */
+const BADGE_KEY: Record<Exclude<FontAvailability, "unknown">, string> = {
   bundled: "settings.editor.fontPicker.bundled",
   missing: "settings.editor.fontPicker.missing",
   system: "settings.editor.fontPicker.system",
@@ -30,48 +37,104 @@ const BADGE_KEY: Record<FontAvailability, string> = {
 
 /** 배지 색 클래스 — availability 를 문자열로 이어붙이지 않는다: 그러면 클래스
  *  이름 조각이 서체 이름처럼 보이는 리터럴이 되어 i18n 프로즈 스캐너가 걸린다. */
-const BADGE_CLASS: Record<FontAvailability, string> = {
+const BADGE_CLASS: Record<Exclude<FontAvailability, "unknown">, string> = {
   bundled: "settings-font-badge-bundled",
   missing: "settings-font-badge-missing",
   system: "settings-font-badge-system",
 };
 
 interface Props {
-  fonts: SystemFont[];
+  fonts: null | SystemFont[];
   onChange: (family: string) => void;
   onOpenBrowser: (slot: FontSlot) => void;
   slot: FontSlot;
   value: string;
 }
 
-export function FontSlotPicker({ fonts, onOpenBrowser, slot, value }: Props) {
+export function FontSlotPicker({
+  fonts,
+  onChange,
+  onOpenBrowser,
+  slot,
+  value,
+}: Props) {
   const { t } = useTranslation();
   const availability = fontAvailability(value, fonts);
-  const korean = fonts.find(
+  const korean = fonts?.find(
     (f) => f.name.toLowerCase() === value.trim().toLowerCase(),
   )?.hasKorean;
-  const badgeKey =
-    availability === "system" && korean
-      ? "settings.editor.fontPicker.systemKorean"
-      : BADGE_KEY[availability];
+  const badge =
+    availability === "unknown"
+      ? null
+      : {
+          className: BADGE_CLASS[availability],
+          key:
+            availability === "system" && korean
+              ? "settings.editor.fontPicker.systemKorean"
+              : BADGE_KEY[availability],
+        };
   const stack = slot === "code" ? BASE_MONO_STACK : BASE_EDITOR_STACK;
   const previewFamily =
     value.trim() === "" ? stack : `${quoteFamily(value)}, ${stack}`;
+  const displayValue =
+    value.trim() === "" ? t("settings.editor.fontPicker.systemDefault") : value;
+
+  // §351 리뷰 Important 1 — 값 이름 자체가 유일한 커밋 경로다: "더 보기"는
+  // 아직(Task 6 전까지) 갈 곳이 없고, 열거에 없는 이름도 저장 가능해야 한다는
+  // 스펙 요건(§351) 은 자유 입력 없이는 이 UI 어디에도 구현되지 않는다.
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editing) inputRef.current?.focus();
+  }, [editing]);
+
+  const beginEdit = () => {
+    setDraft(value);
+    setEditing(true);
+  };
+  const commit = () => {
+    const trimmed = draft.trim();
+    if (trimmed !== value) onChange(trimmed);
+    setEditing(false);
+  };
+  const cancel = () => {
+    setDraft(value);
+    setEditing(false);
+  };
 
   return (
     <div className="settings-font-slot flex-col">
       <div className="settings-font-value">
-        <span
-          className="settings-font-value-name text-truncate"
-          style={{ fontFamily: previewFamily }}
-        >
-          {value.trim() === ""
-            ? t("settings.editor.fontPicker.systemDefault")
-            : value}
-        </span>
-        <span className={`settings-font-badge ${BADGE_CLASS[availability]}`}>
-          {t(badgeKey)}
-        </span>
+        {editing ? (
+          <input
+            className="settings-input settings-font-value-input"
+            onBlur={commit}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commit();
+              else if (e.key === "Escape") cancel();
+            }}
+            ref={inputRef}
+            type="text"
+            value={draft}
+          />
+        ) : (
+          <button
+            className="settings-font-value-name text-truncate btn-unstyled"
+            onClick={beginEdit}
+            style={{ fontFamily: previewFamily }}
+            type="button"
+          >
+            {displayValue}
+          </button>
+        )}
+        {badge && (
+          <span className={`settings-font-badge ${badge.className}`}>
+            {t(badge.key)}
+          </span>
+        )}
         <button
           className="settings-font-more btn-unstyled"
           onClick={() => onOpenBrowser(slot)}

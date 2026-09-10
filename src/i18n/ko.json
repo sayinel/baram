@@ -798,6 +798,7 @@
   "settings.editor.font": "글꼴",
   "settings.editor.fontFamily": "글꼴",
   "settings.editor.fontFamily.desc": "에디터 본문에 쓰이는 서체. 앱 UI는 바뀌지 않습니다",
+  "settings.editor.fontPicker.browserUnavailable": "폰트 브라우저는 아직 제공되지 않습니다.",
   "settings.editor.fontPicker.bundled": "기본 제공",
   "settings.editor.fontPicker.missing": "이 머신에 없음",
   "settings.editor.fontPicker.more": "더 보기",

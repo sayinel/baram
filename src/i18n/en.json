@@ -798,6 +798,7 @@
   "settings.editor.font": "Font",
   "settings.editor.fontFamily": "Font Family",
   "settings.editor.fontFamily.desc": "Typeface for editor body text; app UI is unaffected",
+  "settings.editor.fontPicker.browserUnavailable": "The font browser isn't available yet.",
   "settings.editor.fontPicker.bundled": "Included",
   "settings.editor.fontPicker.missing": "Not on this machine",
   "settings.editor.fontPicker.more": "Browse…",

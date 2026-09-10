@@ -92,11 +92,14 @@ describe("SvgBlockView font-surface subscription (R26)", () => {
   });
 
   it("subscribes once the view-fullscreen overlay opens, and stops after it closes", async () => {
-    const { view } = await mountSvgBlock();
+    const { editor, view } = await mountSvgBlock();
 
     fireEvent.click(view.getByLabelText(en["blockChrome.viewFullscreen"]));
     await flush();
     expect(useFontSurfaceMock).toHaveBeenCalledTimes(1);
+    expect(
+      document.body.querySelector(".svg-fullscreen-overlay"),
+    ).not.toBeNull();
 
     const close = document.body.querySelector<HTMLElement>(
       ".svg-fullscreen-close",
@@ -112,8 +115,19 @@ describe("SvgBlockView font-surface subscription (R26)", () => {
     });
 
     useFontSurfaceMock.mockClear();
-    // Nothing left mounted that would call it again.
+    // Review Important 4: mockClear() followed immediately by an assertion
+    // with no render in between is trivially true whether or not the overlay
+    // actually unmounted. Force a render that would hit any surviving
+    // subscriber (a leaked overlay keeps calling useFontSurface on every
+    // re-render of the parent), and independently confirm the portal itself
+    // is gone — a leaked overlay (state not reset, portal not unmounted)
+    // would fail either check.
+    act(() => {
+      editor.commands.setNodeSelection(0);
+    });
+    await flush();
     expect(useFontSurfaceMock).not.toHaveBeenCalled();
+    expect(document.body.querySelector(".svg-fullscreen-overlay")).toBeNull();
   });
 
   it("subscribes once the edit-fullscreen overlay opens", async () => {

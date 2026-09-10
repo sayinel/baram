@@ -31,14 +31,37 @@ describe("listFonts", () => {
   // §350 폴백: 피커가 비는 일은 없어야 한다.
   it("falls back to the bundled families when the command errors", async () => {
     invoke.mockRejectedValue("no font dir");
-    const fonts = await listFonts();
-    expect(fonts.map((f) => f.name)).toContain("Pretendard Variable");
-    expect(fonts.map((f) => f.name)).toContain("JetBrains Mono Variable");
+    const result = await listFonts();
+    expect(result.fonts.map((f) => f.name)).toContain("Pretendard Variable");
+    expect(result.fonts.map((f) => f.name)).toContain(
+      "JetBrains Mono Variable",
+    );
   });
 
   it("falls back when the command returns an empty list", async () => {
     invoke.mockResolvedValue([]);
-    const fonts = await listFonts();
-    expect(fonts.length).toBeGreaterThan(0);
+    const result = await listFonts();
+    expect(result.fonts.length).toBeGreaterThan(0);
+  });
+
+  // §351 리뷰 Important 2 — 호출자가 이 목록을 이 머신의 권위로 믿어도 되는지
+  // 구분할 수 있어야 한다: 실패·빈 결과는 폴백이고, 폴백은 "이 머신에 없다"고
+  // 말할 근거가 아니다.
+  it.each([
+    ["errors", () => invoke.mockRejectedValue("no font dir")],
+    ["returns an empty list", () => invoke.mockResolvedValue([])],
+  ])("marks the result as a fallback when the command %s", async (_, setup) => {
+    setup();
+    const result = await listFonts();
+    expect(result.isFallback).toBe(true);
+  });
+
+  it("marks the result as NOT a fallback when the command returns real fonts", async () => {
+    invoke.mockResolvedValue([
+      { hasKorean: false, monospaced: false, name: "Arial", weights: [400] },
+    ]);
+    const result = await listFonts();
+    expect(result.isFallback).toBe(false);
+    expect(result.fonts.map((f) => f.name)).toEqual(["Arial"]);
   });
 });
