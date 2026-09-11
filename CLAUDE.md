@@ -62,6 +62,7 @@ baram/
 ├── site/                   # 홈페이지 + 문서 사이트 — **독립 npm 프로젝트**(자체 package.json/lockfile)
 │                           #   Astro + Starlight · 랜딩 `/{en,ko}/` · 문서 `/{locale}/docs/**`(57페이지)
 │                           #   ia-tree.mjs = 사이드바·제목 canonical · help-routes.json = 앱 URL 계약
+│                           #   routes.mjs = help-routes.json으로 URL을 조립하는 유일한 곳(withBase)
 ├── dev/                    # 내부 개발 문서 (public 배포 제외, git 밖 심볼릭 링크) — 성격별 5분류:
 │                           #   design/(설계서 part1~20) design/specs/(기능별 설계) plans/(구현 계획)
 │                           #   impl-notes/(구현 기록·렛저) guides/(런북) + backlog·next-steps·progress
@@ -112,7 +113,7 @@ baram/
 - **i18n(en/ko.json) 키는 알파벳 정렬** — 추가 시 정렬 자리에 삽입, 두 카탈로그 동시(parity 테스트 있음)
 - **공개 문서 편집**은 `site/src/content/docs/{en,ko}/docs/**` 에서 한다 (`docs/*.md` 는 이주 후 삭제됐다). prettier·lint 대상 밖이고 검증은 **`cd site && npm run verify`** — 빌드 · 산출물 게이트 · 페이지 게이트 · 테스트 · `astro check`. `pages.yml` 이 `site/**`·`docs/**` PR 에서 돌린다
   - **새 페이지를 만들면 `site/ia-tree.mjs` 의 `PAGES`·`TITLES` 에 등록해야 한다** — `check:pages` 가 매니페스트↔디스크 양방향을 실패시킨다. 페이지 크기는 40~200줄(예외는 그 스크립트에 이유와 함께 명시)
-  - 내부 링크는 `/en/docs/<slug>/#anchor` 형태다 — 커스텀 도메인(`baram.ing`) 이후 base 세그먼트가 없다(`site/help-routes.json` 이 출처, 리포명 아래로 서빙되던 시절의 `/baram/…` 가 아니다). 앵커 slug 는 Starlight 의 github-slugger 가 정하고, 빌드의 `starlight-links-validator` 가 깨진 링크·앵커를 실패시킨다 — 실제로 이주 때 `invalid hash` 를 전부 잡았다
+  - 내부 링크는 `/en/docs/<slug>/#anchor` 형태다 — 커스텀 도메인(`baram.ing`) 이후 base 세그먼트가 없다(`site/help-routes.json` 이 출처, 리포명 아래로 서빙되던 시절의 `/baram/…` 가 아니다). 코드에서 URL 을 만들 때는 `site/routes.mjs` 의 `withBase`·`BASE` 를 쓴다 — 각자 문자열을 이어붙이면 base 누락이 한 소비자에게만 생긴다(Astro redirects 가 실제로 그렇게 깨졌다). 앵커 slug 는 Starlight 의 github-slugger 가 정하고, 빌드의 `starlight-links-validator` 가 깨진 링크·앵커를 실패시킨다 — 실제로 이주 때 `invalid hash` 를 전부 잡았다
   - **앱 Help URL 은 `src/utils/help-urls.ts`** 이고 `site/help-routes.json` 과 짝이다. 한쪽만 바꾸면 앱이 404 를 연다 — `help-urls.test.ts` 가 그 JSON 에서 파생 검증한다
   - **원문(en)을 기계적으로 일괄 편집하면 한국어 번역이 전부 "낡음"으로 뒤집힌다** — 신선도 판정은 ko 프론트매터의 `sourceHash`(번역 시점 en 파일 **전체**의 해시)와 현재 해시를 비교하므로, 링크 치환·경로 변경처럼 산문과 무관한 편집도 독자에게 낡음 배너를 띄운다. **`npm run verify` 는 이걸 못 잡는다** — 판정은 보고만 하고 종료 코드를 내지 않는다(게이트는 `check-pages.mjs` 하나로 몰아 둔 설계). 원문을 손댄 PR 은 `cd site && npm run i18n:status` 를 따로 볼 것. 번역이 같은 편집을 함께 받았다면 `npm run i18n:stamp -- --all` 로 되돌리되, 스탬프를 덮는 것은 '번역을 원문에 맞게 고쳤다'는 선언이므로 **원래부터 낡았던 페이지가 섞여 있지 않은지 먼저 전수 확인**할 것 (도메인 이전 PR #605 가 실제로 27개를 이렇게 뒤집었다)
 - **단축키 추가**: `keybinding-registry.ts` 등록이 규약(Settings 표시·리매핑 가능) — menu.rs accelerator만 달면 안 보인다. 네이티브 accelerator는 DOM과 별개 레이어라 조건부 양보 불가·리바인드 후에도 fallback 잔존; registry 경로는 상위 stopPropagation에 자동 양보된다. 충돌 조사 필수(Ctrl+R=vim redo, Mod+Shift+R=Memories 등) — 함정 상세는 menu.rs 상단 주석
