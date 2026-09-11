@@ -4,6 +4,7 @@ use crate::plugin;
 use crate::plugin::vault_path::{
     authorized_path_str, plugin_target_path, redact_fs_error, reject_app_state_path,
 };
+use std::time::Instant;
 use tauri::Manager;
 
 /// #261 — install is two commands, and this one installs nothing.
@@ -965,13 +966,35 @@ fn admit_op(
     authorizer: &plugin::PluginAuthorizer,
     limiter: &plugin::PluginRateLimiter,
 ) -> Result<String, String> {
+    admit_op_at(label, op, authorizer, limiter, Instant::now())
+}
+
+/// `admit_op` with an injected clock, mirroring `PluginRateLimiter::check_at`.
+///
+/// The seam exists for the same reason that one does, and its absence had the exact
+/// consequence that comment predicts. A test that drains a bucket through the real
+/// clock is racing the refill: `RateClass::Default` refills 100/s, so a token returns
+/// every 10ms, and "spend the whole burst, then assert the next call is refused" only
+/// holds if 200 calls finish inside 10ms — 50µs each. On this repo's machines they do;
+/// on a shared macOS runner `a_denied_op_spends_no_tokens` failed once (PR #632) with
+/// `past the burst must be refused`, and passed on re-run of the same commit.
+///
+/// Passing one `Instant` for a whole sequence makes the refill exactly zero, so the
+/// bucket arithmetic is the only thing the assertions can be measuring.
+fn admit_op_at(
+    label: &str,
+    op: &plugin::PluginOp,
+    authorizer: &plugin::PluginAuthorizer,
+    limiter: &plugin::PluginRateLimiter,
+    now: Instant,
+) -> Result<String, String> {
     // `authorize_op` keeps the "does this op need a grant?" decision on the op
     // (§260 3c-2b: `SourceRead` needs none), so no call site can get it wrong.
     let plugin_id = authorizer
         .authorize_op(label, op)
         .map_err(|e| e.to_string())?;
     limiter
-        .check(label, op.rate_class())
+        .check_at(label, op.rate_class(), now)
         .map_err(|e| e.to_string())?;
     Ok(plugin_id)
 }
@@ -1031,8 +1054,15 @@ mod tests {
         channels.connect("plugin-alpha".into(), dummy_channel());
         assert!(channels.send("plugin-alpha", serde_json::json!({})).is_ok());
         // Drain this plugin's network budget so the bucket is observably non-fresh.
+        //
+        // ‼️ One frozen `Instant` for the drain AND the assertion at the end of this
+        // test. `RateClass::Network` returns a token every 200ms, so on the real clock
+        // that final "the bucket is fresh again" check passes after a 200ms stall
+        // whether or not `deregister_sandbox` dropped the buckets — it would certify a
+        // broken `forget`. Frozen, only `forget` can make it pass.
+        let now = Instant::now();
         while limiter
-            .check("plugin-alpha", plugin::RateClass::Network)
+            .check_at("plugin-alpha", plugin::RateClass::Network, now)
             .is_ok()
         {}
 
@@ -1058,7 +1088,7 @@ mod tests {
         // budget rather than inheriting the previous life's drained bucket.
         assert!(
             limiter
-                .check("plugin-alpha", plugin::RateClass::Network)
+                .check_at("plugin-alpha", plugin::RateClass::Network, now)
                 .is_ok(),
             "deregister must drop the plugin's rate buckets"
         );
@@ -1334,14 +1364,26 @@ mod tests {
     /// budget is keyed on the caller's label, so metering an UNAUTHORIZED call would
     /// let anything that can reach the command spend the budget of the plugin whose
     /// label it presents.
+    /// ‼️ ONE `Instant` for the whole sequence, through `admit_op_at`.
+    ///
+    /// With the real clock this test was racing the refill: `RateClass::Default`
+    /// returns a token every 10ms, so "spend the burst, then the next call is
+    /// refused" held only if 200 calls finished inside 10ms. It failed exactly
+    /// that way once on a shared macOS runner (PR #632) and passed on re-run of
+    /// the same commit. A frozen clock makes the refill zero, so the bucket
+    /// arithmetic is the only thing these assertions can measure.
+    ///
+    /// The fix is NOT a bigger burst or a sleep: the defect is that the test read
+    /// the wall clock at all, and widening the margin leaves it reading it.
     #[test]
     fn a_denied_op_spends_no_tokens() {
         let (authorizer, _, limiter) = state();
         let op = plugin::PluginOp::StorageList;
+        let now = Instant::now();
         // Unregistered: refused by authorization, and the bucket is untouched.
         let burst = plugin::RateClass::Default.burst();
         for _ in 0..burst * 2 {
-            assert!(admit_op("plugin-alpha", &op, &authorizer, &limiter).is_err());
+            assert!(admit_op_at("plugin-alpha", &op, &authorizer, &limiter, now).is_err());
         }
 
         // Now grant it: a full burst is still available, which proves none of the
@@ -1353,15 +1395,70 @@ mod tests {
         );
         for i in 0..burst {
             assert!(
-                admit_op("plugin-alpha", &op, &authorizer, &limiter).is_ok(),
+                admit_op_at("plugin-alpha", &op, &authorizer, &limiter, now).is_ok(),
                 "call {i} of the fresh burst must be admitted"
             );
         }
         // …and the limiter is genuinely in the path: the next one is refused, with the
         // rate-limit error rather than an authorization error.
-        let err = admit_op("plugin-alpha", &op, &authorizer, &limiter)
+        let err = admit_op_at("plugin-alpha", &op, &authorizer, &limiter, now)
             .expect_err("past the burst must be refused");
         assert!(err.contains("rate limit"), "unexpected error: {err}");
+    }
+
+    /// §260 — no test in this file may spend rate-limit tokens on the wall clock.
+    ///
+    /// The author of `rate_limit.rs` already knew this hazard and wrote it down there
+    /// ("a sleeping test is a slow test and a flaky one"), yet it came back here,
+    /// because the tests reach the limiter through the production gate rather than
+    /// through the limiter's own API. It cost one red CI run on a shared macOS runner
+    /// that nobody could reproduce locally. So the rule is a test, not a comment.
+    ///
+    /// Two things make this scan honest:
+    ///
+    ///   · **The needles are assembled.** A guard that spells the call it forbids
+    ///     matches its own source and fails on a clean file. Written as `concat!`
+    ///     pieces, the forbidden text never appears here.
+    ///   · **Whitespace is squashed first.** `rustfmt` wraps a long call, so the real
+    ///     offender is often `limiter` on one line and the method on the next; a
+    ///     literal search over raw text reads that as clean.
+    ///
+    /// The scan window stops at this function, so the prose above is inside it — hence
+    /// no name here is followed by an open paren.
+    #[test]
+    fn no_test_here_spends_rate_limit_tokens_on_the_wall_clock() {
+        let src = include_str!("plugin_cmd.rs");
+        let tests = src
+            .split_once("#[cfg(test)]")
+            .expect("this file has a test module")
+            .1;
+        let end = tests
+            .find(concat!("fn no_test_here", "_spends_rate_limit_tokens"))
+            .expect("the guard must find its own definition in order to exclude it");
+        let squashed: String = tests[..end]
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect();
+
+        // The scan is measuring something: both injected-clock calls are in range.
+        for present in [concat!("admit_op_at", "("), concat!(".check_at", "(")] {
+            assert!(
+                squashed.contains(present),
+                "scan window does not reach the injected-clock calls — it would pass \
+                 an offender too"
+            );
+        }
+
+        for forbidden in [concat!("admit_op", "("), concat!(".check", "(")] {
+            assert!(
+                !squashed.contains(forbidden),
+                "a test in this file reaches the limiter through the wall clock. Use \
+                 the injected-clock sibling with ONE frozen Instant for the whole \
+                 sequence — see a_denied_op_spends_no_tokens. Widening the timing \
+                 margin instead (a bigger burst, a sleep) leaves the test reading the \
+                 clock, which is the defect."
+            );
+        }
     }
 
     #[test]
