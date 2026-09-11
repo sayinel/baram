@@ -1,5 +1,5 @@
 // §4.2 페이지마다 "이 번역이 원문보다 낡았는가"를 판정해 라우트 데이터에 싣는다.
-// 설계: dev/design/specs/2026-09-06-docs-site-i18n-restructure-design.md
+// 설계: dev/design/specs/0044-docs-site-i18n-restructure-design.md
 //
 // ‼️ **폴백 라우트는 `id` 가 `ko/...` 인데 `entry` 는 en 엔트리다.** (Starlight
 //    `utils/routing/index.js` 의 `getRoutes` 실측) 그래서 판정은 `route.id` 가 아니라

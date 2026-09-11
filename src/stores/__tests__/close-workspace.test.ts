@@ -175,7 +175,7 @@ describe("closeFolder — clears the whole workspace, deterministically", () => 
 
 // §81 The guard in front of the menu item. Before it existed, `closeAllTabs()`
 // threw unsaved tabs away with no prompt at all — the design spec
-// (dev/design/specs/2026-03-11-home-screen-design.md) asked for the confirmation
+// (dev/design/specs/0011-home-screen-design.md) asked for the confirmation
 // from the start and never got one.
 describe("requestCloseWorkspace — asks before discarding unsaved work", () => {
   function tab(id: string, over: Partial<EditorTab> = {}): EditorTab {

@@ -11,7 +11,7 @@ import { CEIL, FLOOR, measure, parseHeadings } from "./ia-measure.mjs";
 
 const DOC = join(
   dirname(fileURLToPath(import.meta.url)),
-  "../../../dev/design/specs/2026-09-06-docs-site-ia-tree.md",
+  "../../../dev/design/specs/0045-docs-site-ia-tree.md",
 );
 const BEGIN = "<!-- BEGIN generated tree — site/scripts/gen-ia-doc.mjs 가 씁니다. 손으로 고치지 마세요 -->";
 const END = "<!-- END generated tree -->";

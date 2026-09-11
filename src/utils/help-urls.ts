@@ -1,5 +1,5 @@
 // §4.2 Help 문서는 앱에 번들되지 않고 홈페이지에서 서빙된다.
-// 설계: dev/design/specs/2026-09-06-docs-site-i18n-restructure-design.md
+// 설계: dev/design/specs/0044-docs-site-i18n-restructure-design.md
 //
 // ‼️ 아래 slug 는 사이트의 `site/help-routes.json` 과 짝이다. 한쪽만 바꾸면 앱이 404를
 // 연다 — `__tests__/help-urls.test.ts` 가 그 JSON 에서 기대값을 **파생시켜** 고정한다.

@@ -75,7 +75,7 @@ export const DOCUMENT_BUDGET_REFILL_PER_SECOND = 512 * 1024;
  * size would price it at almost nothing.
  *
  * §260 Phase 4b review — a write's cost is NOT in its payload. The C4 handoff notes
- * (`dev/impl-notes/large-file-perf-c4-handoff.md`) measured `view.dispatch` forcing a
+ * (`dev/impl-notes/0033-large-file-perf-c4-handoff.md`) measured `view.dispatch` forcing a
  * synchronous layout of the whole contenteditable for selection sync: ~53 ms on a huge
  * document versus ~4 ms on a small one, i.e. linear in RENDERED BLOCK COUNT. So a 4 KiB
  * `insertText` at the transport's 150/s is seconds of layout per second of wall clock — a

@@ -2,7 +2,7 @@
   "name": "baram-site",
   "private": true,
   "type": "module",
-  "description": "Baram 홈페이지 + 문서 사이트. 앱과 의존성을 분리한다 (dev/design/specs/2026-09-06-docs-site-i18n-restructure-design.md).",
+  "description": "Baram 홈페이지 + 문서 사이트. 앱과 의존성을 분리한다 (dev/design/specs/0044-docs-site-i18n-restructure-design.md).",
   "scripts": {
     "build": "astro build",
     "check": "astro check && npm run check:pages",

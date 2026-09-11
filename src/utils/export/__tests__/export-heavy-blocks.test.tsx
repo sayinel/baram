@@ -29,7 +29,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 // Mermaid itself is not under test — its bundle needs real layout, which jsdom
 // does not have. What IS under test is whether the export ever gives the block
 // a chance to render. The real diagram is verified by printing an export
-// through headless Chrome (dev/impl-notes/2026-08-23-pdf-export-defects.md).
+// through headless Chrome (dev/impl-notes/0040-pdf-export-defects.md).
 vi.mock("mermaid", () => ({
   default: {
     initialize: vi.fn(),
