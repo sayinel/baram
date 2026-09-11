@@ -395,6 +395,23 @@ export function useSettingsRegistry(): SearchableSetting[] {
         { min: 1.0, max: 3.0, step: 0.05 },
       ),
     },
+    // §354 연동 스위치만 검색에 올린다. 코드 크기·줄 높이 슬라이더는 연동이
+    // 켜져 있는 동안 값이 무시되는데, 이 레지스트리의 슬라이더 컨트롤에는 끈
+    // 상태가 없다 — 검색 결과에 살아 있는 슬라이더로 나오면 움직여도 아무 일이
+    // 일어나지 않는, 고장과 구별되지 않는 컨트롤이 된다. 스위치는 그 두 행으로
+    // 가는 문이고, 그 자체로는 언제나 유효하다.
+    {
+      id: "linkFontMetrics",
+      label: "settings.editor.linkFontMetrics",
+      description: "settings.editor.linkFontMetrics.desc",
+      category: "editor",
+      section: "settings.editor.font",
+      keywords: ["code", "size", "line height", "link"],
+      control: makeToggleControl(
+        () => settings.linkFontMetrics,
+        settings.setLinkFontMetrics,
+      ),
+    },
     {
       id: "tabSize",
       label: "settings.editor.tabSize",

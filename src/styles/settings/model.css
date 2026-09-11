@@ -246,20 +246,23 @@
   border-radius: 6px;
 }
 
+/* `em`, `rem` 이 아니다 — 세 줄의 크기는 스트립에 인라인으로 걸린 설정값에서
+   파생돼야 슬라이더를 움직일 때 예제가 따라 움직인다(동훈님 요청). 비율은
+   그대로라 기본 16px 에서는 예전 `rem` 값과 픽셀 단위로 같다. */
 .settings-font-strip-primary {
-  font-size: 0.95rem;
+  font-size: 0.95em;
   color: var(--color-text-primary);
 }
 
 .settings-font-strip-secondary {
   margin-top: 2px;
-  font-size: 0.8rem;
+  font-size: 0.8em;
   color: var(--color-text-secondary);
 }
 
 .settings-font-strip-glyphs {
   margin-top: 4px;
-  font-size: 0.75rem;
+  font-size: 0.75em;
   color: var(--color-text-muted);
 }
 

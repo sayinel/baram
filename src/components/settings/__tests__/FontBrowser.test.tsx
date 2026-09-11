@@ -9,8 +9,9 @@
 import type { SystemFont } from "../../../ipc/types";
 
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { useSettingsStore } from "../../../stores/settings/store";
 import { filterFonts, FontBrowser } from "../FontBrowser";
 
 const font = (name: string, extra: Partial<SystemFont> = {}): SystemFont => ({
@@ -81,6 +82,11 @@ const OK = { fonts: FONTS, status: "ok" } as const;
 describe("FontBrowser", () => {
   const props = { onClose: vi.fn(), slot: "body" as const };
 
+  const settingsBefore = useSettingsStore.getState();
+  afterEach(() => {
+    useSettingsStore.setState(settingsBefore, true);
+  });
+
   it("shows the filtered count against the total", () => {
     render(<FontBrowser {...props} recentFonts={[]} state={OK} />);
     expect(screen.getByTestId("font-browser-count").textContent).toContain("5");
@@ -121,6 +127,20 @@ describe("FontBrowser", () => {
     rerender(<FontBrowser {...props} recentFonts={["Georgia"]} state={OK} />);
     expect(screen.getByTestId("font-browser-installed-items").textContent).toBe(
       before,
+    );
+  });
+
+  // §354 — 미리보기의 용도가 "본문과 코드가 나란히 있을 때 어떻게 보이는가"
+  // 이므로 코드 칸은 코드 크기로 그려야 한다. 본문 크기로 그리면 실제 에디터에
+  // 없는 조합을 보여 준다.
+  it("draws the code sample at the code size, not the body size", () => {
+    useSettingsStore.setState({ fontSize: 20, linkFontMetrics: true });
+    render(<FontBrowser {...props} recentFonts={[]} state={OK} />);
+    expect(screen.getByTestId("font-browser-preview-body").style.fontSize).toBe(
+      "20px",
+    );
+    expect(screen.getByTestId("font-browser-preview-code").style.fontSize).toBe(
+      "17.5px",
     );
   });
 

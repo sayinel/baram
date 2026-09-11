@@ -8,6 +8,7 @@ import { useShallow } from "zustand/shallow";
 import { useTranslation } from "../../../i18n/useTranslation";
 import { listFonts } from "../../../ipc/font";
 import { useSettingsStore } from "../../../stores/settings/store";
+import { resolveCodeMetrics } from "../../../utils/font/code-metrics";
 import {
   badgeFonts,
   fontListStateFrom,
@@ -36,6 +37,12 @@ export function EditorTab() {
     setFontSize,
     lineHeight,
     setLineHeight,
+    linkFontMetrics,
+    setLinkFontMetrics,
+    codeFontSize,
+    setCodeFontSize,
+    codeLineHeight,
+    setCodeLineHeight,
     tabSize,
     setTabSize,
     lineNumbers,
@@ -55,20 +62,26 @@ export function EditorTab() {
       autoLoadVideoEmbeds: s.autoLoadVideoEmbeds,
       autoPairBrackets: s.autoPairBrackets,
       codeFontFamily: s.codeFontFamily,
+      codeFontSize: s.codeFontSize,
+      codeLineHeight: s.codeLineHeight,
       editorMaxWidth: s.editorMaxWidth,
       fontFamily: s.fontFamily,
       fontSize: s.fontSize,
       lineHeight: s.lineHeight,
       lineNumbers: s.lineNumbers,
+      linkFontMetrics: s.linkFontMetrics,
       recentFonts: s.recentFonts,
       setAutoLoadVideoEmbeds: s.setAutoLoadVideoEmbeds,
       setAutoPairBrackets: s.setAutoPairBrackets,
       setCodeFontFamily: s.setCodeFontFamily,
+      setCodeFontSize: s.setCodeFontSize,
+      setCodeLineHeight: s.setCodeLineHeight,
       setEditorMaxWidth: s.setEditorMaxWidth,
       setFontFamily: s.setFontFamily,
       setFontSize: s.setFontSize,
       setLineHeight: s.setLineHeight,
       setLineNumbers: s.setLineNumbers,
+      setLinkFontMetrics: s.setLinkFontMetrics,
       setTabSize: s.setTabSize,
       setVimMode: s.setVimMode,
       setVirtualizeLargeDocs: s.setVirtualizeLargeDocs,
@@ -88,6 +101,16 @@ export function EditorTab() {
     status: "loading",
   });
   const [browserSlot, setBrowserSlot] = useState<FontSlot | null>(null);
+  // §354 코드 슬롯의 예제와 아래 두 슬라이더가 보여 주는 값 — 연동 중이면
+  // 본문에서 파생한 것이고, 끄면 저장된 코드 값이다. 이 자리에서 다시 계산하지
+  // 않는다: 같은 답을 내야 하는 곳이 넷이라 계산은 code-metrics.ts 하나뿐이다.
+  const codeMetrics = resolveCodeMetrics({
+    codeFontSize,
+    codeLineHeight,
+    fontSize,
+    lineHeight,
+    linkFontMetrics,
+  });
 
   // §350 — 탭이 지연 로드 경계 뒤에 있으므로 마운트 시 1회 호출로 충분하다
   // (설계 §351: "피커를 처음 열 때"가 이상적이나 이 탭 자체가 이미 그 경계다).
@@ -126,6 +149,8 @@ export function EditorTab() {
       >
         <FontSlotPicker
           fonts={badgeFonts(fontState)}
+          fontSize={fontSize}
+          lineHeight={lineHeight}
           onChange={setFontFamily}
           onOpenBrowser={setBrowserSlot}
           slot="body"
@@ -139,6 +164,8 @@ export function EditorTab() {
       >
         <FontSlotPicker
           fonts={badgeFonts(fontState)}
+          fontSize={codeMetrics.fontSize}
+          lineHeight={codeMetrics.lineHeight}
           onChange={setCodeFontFamily}
           onOpenBrowser={setBrowserSlot}
           slot="code"
@@ -179,6 +206,54 @@ export function EditorTab() {
           step={0.05}
           type="range"
           value={lineHeight}
+        />
+      </SettingsRow>
+
+      <SettingsRow
+        description={t("settings.editor.linkFontMetrics.desc")}
+        label={t("settings.editor.linkFontMetrics")}
+      >
+        <ToggleSwitch checked={linkFontMetrics} onChange={setLinkFontMetrics} />
+      </SettingsRow>
+
+      {/* 연동 중에도 두 행을 숨기지 않고 끈 채로 둔다 — 코드가 지금 몇 px 인지는
+          연동 여부와 무관하게 궁금한 값이고, 행이 사라지면 "어디서 바꾸지?" 가
+          된다. 값은 파생값이라 슬라이더가 실제 상태를 그대로 가리킨다. */}
+      <SettingsRow
+        description={t("settings.editor.codeFontSize.desc").replace(
+          "{value}",
+          fontSizeNumber(Math.round(codeMetrics.fontSize)),
+        )}
+        label={t("settings.editor.codeFontSize")}
+      >
+        <input
+          className="settings-range"
+          disabled={linkFontMetrics}
+          max={32}
+          min={8}
+          onChange={(e) => setCodeFontSize(Number(e.target.value))}
+          step={1}
+          type="range"
+          value={Math.round(codeMetrics.fontSize)}
+        />
+      </SettingsRow>
+
+      <SettingsRow
+        description={t("settings.editor.codeLineHeight.desc").replace(
+          "{value}",
+          lineHeightNumber(codeMetrics.lineHeight),
+        )}
+        label={t("settings.editor.codeLineHeight")}
+      >
+        <input
+          className="settings-range"
+          disabled={linkFontMetrics}
+          max={3.0}
+          min={1.0}
+          onChange={(e) => setCodeLineHeight(Number(e.target.value))}
+          step={0.05}
+          type="range"
+          value={codeMetrics.lineHeight}
         />
       </SettingsRow>
 

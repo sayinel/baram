@@ -10,6 +10,7 @@
 import type { SystemFont } from "../../../ipc/types";
 
 import { fireEvent, render, screen } from "@testing-library/react";
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 
 import { fontAvailability } from "../../../utils/font/font-availability";
@@ -79,6 +80,8 @@ describe("fontAvailability", () => {
 describe("FontSlotPicker", () => {
   const props = {
     fonts: INSTALLED,
+    fontSize: 16,
+    lineHeight: 1.75,
     onChange: vi.fn(),
     onOpenBrowser: vi.fn(),
   };
@@ -121,6 +124,43 @@ describe("FontSlotPicker", () => {
     render(<FontSlotPicker {...props} slot="body" value="Noto Sans KR" />);
     const strip = screen.getByTestId("font-preview-strip");
     expect(strip.style.fontFamily).toContain("Noto Sans KR");
+  });
+
+  // 동훈님 요청 — 같은 화면의 크기·줄높이 슬라이더를 움직이면 예제도 따라
+  // 움직여야 한다. 스트립이 고정 `rem` 이던 동안에는 무엇을 조절해도 예제는
+  // 가만히 있었고, 그 설정이 본문에 어떻게 보일지는 창을 닫아야 알 수 있었다.
+  it("renders the strip at the configured size and line height", () => {
+    render(
+      <FontSlotPicker
+        {...props}
+        fontSize={21}
+        lineHeight={1.7}
+        slot="body"
+        value="Noto Sans KR"
+      />,
+    );
+    const strip = screen.getByTestId("font-preview-strip");
+    expect(strip.style.fontSize).toBe("21px");
+    expect(strip.style.lineHeight).toBe("1.7");
+  });
+
+  // 세 줄이 `em` 이라야 위 인라인 크기에서 파생된다 — `rem` 이면 스트립의
+  // 크기를 바꿔도 줄들은 루트 크기를 계속 읽어서 혼자 움직이지 않는다.
+  // jsdom 은 `var()`/상속을 계산하지 않으므로 계산된 px 을 물을 수 없다:
+  // 물을 수 있는 것은 선언된 단위다.
+  it("sizes the three sample lines relative to the strip, not to the root", () => {
+    const css = readFileSync("src/styles/settings/model.css", "utf8");
+    for (const selector of [
+      ".settings-font-strip-primary",
+      ".settings-font-strip-secondary",
+      ".settings-font-strip-glyphs",
+    ]) {
+      const body = new RegExp(`\\${selector} \\{([^}]*)\\}`, "u").exec(
+        css,
+      )?.[1];
+      expect(body).toBeDefined();
+      expect(body).toMatch(/font-size:\s*[\d.]+em;/u);
+    }
   });
 
   // 글리프 줄은 두 슬롯 모두에 있다 — 본문에서도 숫자·유사문자 구분이 판단 근거다.

@@ -1,5 +1,6 @@
 import type { StateCreator } from "zustand";
 
+import { derivedCodeFontSize } from "../../utils/font/code-metrics";
 import {
   clampRailWidth,
   PDF_RAIL_DEFAULT_WIDTH_PX,
@@ -17,6 +18,12 @@ export interface EditorSettingsSlice {
   /** §348 코드 서체 슬롯 — 코드 블록·수식·표가 읽는 `--font-family-mono`.
    * 빈 문자열은 "설정 없음"이고 토큰 스택을 그대로 쓴다는 뜻이다. */
   codeFontFamily: string;
+  /** §354 코드 전용 크기·줄 높이. `linkFontMetrics` 가 켜져 있는 동안에는
+   * **읽히지 않는다** — 그때 코드 값은 본문에서 파생한다(`code-metrics.ts`).
+   * 연동을 끄는 순간 그 파생값이 여기 적히므로, 슬라이더는 늘 지금 화면에
+   * 보이는 크기에서 출발한다. */
+  codeFontSize: number;
+  codeLineHeight: number;
   diagrams: boolean;
   editorMaxWidth: number;
   extensionSettings: Record<string, unknown>;
@@ -26,6 +33,8 @@ export interface EditorSettingsSlice {
   inlineMath: boolean;
   lineHeight: number;
   lineNumbers: boolean;
+  /** §354 켜져 있으면 코드 크기·줄 높이가 본문을 따른다(기본값). 끄면 독립. */
+  linkFontMetrics: boolean;
   /** §283 PDF 사이드 레일의 폭(CSS px). 드래그로 조절하고 재시작 뒤에도 남는다.
    * clampRailWidth 범위 밖의 값은 setter가 자른다. */
   pdfRailWidth: number;
@@ -37,6 +46,8 @@ export interface EditorSettingsSlice {
   setCodeBlockLineNumbers: (enabled: boolean) => void;
   setCodeBlockStyle: (style: CodeBlockStyle) => void;
   setCodeFontFamily: (family: string) => void;
+  setCodeFontSize: (size: number) => void;
+  setCodeLineHeight: (height: number) => void;
   setDiagrams: (enabled: boolean) => void;
   setEditorMaxWidth: (width: number) => void;
   setExtensionSetting: (key: string, value: unknown) => void;
@@ -46,6 +57,7 @@ export interface EditorSettingsSlice {
   setInlineMath: (enabled: boolean) => void;
   setLineHeight: (height: number) => void;
   setLineNumbers: (enabled: boolean) => void;
+  setLinkFontMetrics: (linked: boolean) => void;
   setPdfRailWidth: (width: number) => void;
   setSmartPunctuation: (enabled: boolean) => void;
   setSpellCheck: (enabled: boolean) => void;
@@ -89,6 +101,12 @@ export const createEditorSettingsSlice: StateCreator<
   recentFonts: [],
   fontSize: 16,
   lineHeight: 1.75,
+  // §354 기본은 연동이다. 아래 두 값은 연동을 끄기 전까지 읽히지 않으므로
+  // 기본 상태의 화면은 이 설정이 생기기 전과 같다 — 그래서 store version 을
+  // 올릴 이유도, 기존 사용자를 위한 backfill 도 없다.
+  linkFontMetrics: true,
+  codeFontSize: 14,
+  codeLineHeight: 1.75,
   tabSize: 2,
   lineNumbers: false,
   autoPairBrackets: true,
@@ -139,6 +157,21 @@ export const createEditorSettingsSlice: StateCreator<
     }),
   setFontSize: (fontSize) => set({ fontSize }),
   setLineHeight: (lineHeight) => set({ lineHeight }),
+  setCodeFontSize: (codeFontSize) => set({ codeFontSize }),
+  setCodeLineHeight: (codeLineHeight) => set({ codeLineHeight }),
+  // 연동을 끌 때만 코드 값을 채운다 — 켤 때는 손대지 않는다. 켜는 동안 그 값을
+  // 읽는 곳이 없으므로 지우는 것과 남기는 것의 차이가 화면에 없고, 다음에 끌 때
+  // 어차피 그 시점의 파생값으로 다시 덮인다. 반올림은 여기서 한 번만 한다:
+  // 슬라이더는 정수 px 스텝이라 14.875 에서 출발하면 첫 드래그에 값이 튄다.
+  setLinkFontMetrics: (linkFontMetrics) =>
+    set((state) => {
+      if (linkFontMetrics) return { linkFontMetrics };
+      return {
+        codeFontSize: Math.round(derivedCodeFontSize(state.fontSize)),
+        codeLineHeight: state.lineHeight,
+        linkFontMetrics,
+      };
+    }),
   setTabSize: (tabSize) => set({ tabSize }),
   setLineNumbers: (lineNumbers) => set({ lineNumbers }),
   setAutoPairBrackets: (autoPairBrackets) => set({ autoPairBrackets }),

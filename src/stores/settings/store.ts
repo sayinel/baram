@@ -126,6 +126,10 @@ export const useSettingsStore = create<SettingsState>()(
         recentFonts: state.recentFonts,
         fontSize: state.fontSize,
         lineHeight: state.lineHeight,
+        // §354 코드 전용 크기·줄 높이와 그 연동 스위치. partialize 는 whitelist다.
+        linkFontMetrics: state.linkFontMetrics,
+        codeFontSize: state.codeFontSize,
+        codeLineHeight: state.codeLineHeight,
         tabSize: state.tabSize,
         lineNumbers: state.lineNumbers,
         autoPairBrackets: state.autoPairBrackets,

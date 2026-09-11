@@ -15,6 +15,7 @@ import {
 import { useUIStore } from "../stores/ui/ui";
 import { findThemeById } from "../types/theme";
 import { applyFontVariables } from "../utils/editor/font-surfaces";
+import { resolveCodeMetrics } from "../utils/font/code-metrics";
 import { logger } from "../utils/logger";
 import {
   appliesInlineVars,
@@ -26,20 +27,26 @@ export function useSettingsEffects(editor: Editor | null) {
   const {
     activeThemeId,
     codeFontFamily,
+    codeFontSize,
+    codeLineHeight,
     customThemes,
     fontSize,
     fontFamily,
     lineHeight,
+    linkFontMetrics,
     spellCheck,
     editorMaxWidth,
   } = useSettingsStore(
     useShallow((s) => ({
       activeThemeId: s.activeThemeId,
       codeFontFamily: s.codeFontFamily,
+      codeFontSize: s.codeFontSize,
+      codeLineHeight: s.codeLineHeight,
       customThemes: s.customThemes,
       fontSize: s.fontSize,
       fontFamily: s.fontFamily,
       lineHeight: s.lineHeight,
+      linkFontMetrics: s.linkFontMetrics,
       spellCheck: s.spellCheck,
       editorMaxWidth: s.editorMaxWidth,
     })),
@@ -106,6 +113,24 @@ export function useSettingsEffects(editor: Editor | null) {
     // `line-height` is not possible from a `calc()`, which is why those offsets used to be
     // constants that only matched the default 1.75.
     tiptap.style.setProperty("--editor-line-height", String(lineHeight));
+    // §354 코드 전용 크기·줄 높이. 변수인 이유는 본문과 같다 — 인라인 스타일은
+    // 이 요소 하나만 덮지만, 코드는 문서 안 여러 자리(인라인 코드 · 코드블록
+    // 편집기 · 그 플레이스홀더)에서 제 크기를 선언한다. 그 선언들이 지금까지
+    // 쓰던 `0.875em` 의 자리를 이 변수가 대신한다.
+    //
+    // 연동 중이면 값이 정확히 `본문 × 0.875` 라 예전 `em` 과 같은 픽셀이 나온다.
+    const code = resolveCodeMetrics({
+      codeFontSize,
+      codeLineHeight,
+      fontSize,
+      lineHeight,
+      linkFontMetrics,
+    });
+    tiptap.style.setProperty("--editor-code-font-size", `${code.fontSize}px`);
+    tiptap.style.setProperty(
+      "--editor-code-line-height",
+      String(code.lineHeight),
+    );
     tiptap.style.maxWidth = editorMaxWidth > 0 ? `${editorMaxWidth}px` : "";
     tiptap.style.marginLeft = editorMaxWidth > 0 ? "auto" : "";
     tiptap.style.marginRight = editorMaxWidth > 0 ? "auto" : "";
@@ -113,6 +138,9 @@ export function useSettingsEffects(editor: Editor | null) {
     fontSize,
     fontFamily,
     codeFontFamily,
+    codeFontSize,
+    codeLineHeight,
+    linkFontMetrics,
     lineHeight,
     editorMaxWidth,
     editor,

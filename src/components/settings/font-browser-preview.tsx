@@ -15,6 +15,7 @@ import {
   BASE_MONO_STACK,
 } from "../../utils/editor/font-surfaces";
 import { quoteFamily } from "../../utils/editor/quote-font-family";
+import { resolveCodeMetrics } from "../../utils/font/code-metrics";
 import {
   fontSizeNumber,
   lineHeightNumber,
@@ -34,21 +35,39 @@ export function FontBrowserPreview({ slot }: Props) {
   const { t } = useTranslation();
   const {
     codeFontFamily,
+    codeFontSize,
+    codeLineHeight,
     fontFamily,
     fontSize,
     lineHeight,
+    linkFontMetrics,
     setFontSize,
     setLineHeight,
   } = useSettingsStore(
     useShallow((s) => ({
       codeFontFamily: s.codeFontFamily,
+      codeFontSize: s.codeFontSize,
+      codeLineHeight: s.codeLineHeight,
       fontFamily: s.fontFamily,
       fontSize: s.fontSize,
       lineHeight: s.lineHeight,
+      linkFontMetrics: s.linkFontMetrics,
       setFontSize: s.setFontSize,
       setLineHeight: s.setLineHeight,
     })),
   );
+
+  // §354 코드 칸은 코드 크기로 그린다 — 이 미리보기의 용도가 "본문과 코드가
+  // 나란히 있을 때 어떻게 보이는가" 이므로, 코드를 본문 크기로 그리면 실제
+  // 에디터에는 없는 조합을 보여 주게 된다. 연동 중이면 이 값은 본문에서
+  // 파생되므로 위 슬라이더를 움직일 때 코드 칸도 함께 움직인다.
+  const code = resolveCodeMetrics({
+    codeFontSize,
+    codeLineHeight,
+    fontSize,
+    lineHeight,
+    linkFontMetrics,
+  });
 
   const bodyStack =
     fontFamily.trim() === ""
@@ -130,7 +149,11 @@ export function FontBrowserPreview({ slot }: Props) {
       <pre
         className={`font-browser-preview-code ${slot === "code" ? "font-browser-preview-active" : ""}`}
         data-testid="font-browser-preview-code"
-        style={{ fontFamily: codeStack, fontSize, lineHeight }}
+        style={{
+          fontFamily: codeStack,
+          fontSize: code.fontSize,
+          lineHeight: code.lineHeight,
+        }}
       >
         <code>{SAMPLE_CODE}</code>
       </pre>

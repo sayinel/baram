@@ -49,6 +49,11 @@ interface Props {
   /** `null` = 아직 단정할 근거가 없다 (로딩 중이거나 열거가 폴백 —
    * `badgeFonts()` 가 두 경우 모두 `null` 로 접는다, final review I3). */
   fonts: null | readonly SystemFont[];
+  /** 스트립이 실제 크기로 보여야 판단이 된다 — 같은 화면의 크기·줄높이
+   *  슬라이더와 한 값이다. store 를 직접 읽지 않고 받는 이유는 이 컴포넌트가
+   *  지금도 순수하게 props 로만 그려지기 때문이다(테스트가 값을 주입한다). */
+  fontSize: number;
+  lineHeight: number;
   onChange: (family: string) => void;
   onOpenBrowser: (slot: FontSlot) => void;
   slot: FontSlot;
@@ -57,6 +62,8 @@ interface Props {
 
 export function FontSlotPicker({
   fonts,
+  fontSize,
+  lineHeight,
   onChange,
   onOpenBrowser,
   slot,
@@ -197,7 +204,7 @@ export function FontSlotPicker({
       <div
         className="settings-font-strip"
         data-testid="font-preview-strip"
-        style={{ fontFamily: previewFamily }}
+        style={{ fontFamily: previewFamily, fontSize, lineHeight }}
       >
         <div className="settings-font-strip-primary text-truncate">
           {slot === "code" ? SAMPLE_CODE : SAMPLE_KO}

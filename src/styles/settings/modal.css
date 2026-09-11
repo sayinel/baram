@@ -307,6 +307,15 @@
   cursor: pointer;
 }
 
+/* 꺼진 슬라이더는 **꺼져 보여야 한다** — `.icon-btn:disabled` 와 같은 이유
+   (base.css 주석): 눌러도 아무 일이 없는 컨트롤은 사용자에게 고장과 구별되지
+   않는다. §354 의 코드 크기·줄 높이는 본문과 연동된 동안 이 상태이고, 값은
+   파생값이라 여전히 지금 상태를 정확히 가리킨다. */
+.settings-range:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
 /* Toggle switch */
 .settings-toggle {
   position: relative;

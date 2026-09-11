@@ -13,7 +13,12 @@ import { useSettingsStore } from "../settings/store";
 beforeEach(() => {
   useSettingsStore.setState({
     codeFontFamily: "",
+    codeFontSize: 14,
+    codeLineHeight: 1.75,
     fontFamily: "",
+    fontSize: 16,
+    lineHeight: 1.75,
+    linkFontMetrics: true,
     recentFonts: [],
   });
 });
@@ -111,4 +116,38 @@ describe("§348 font settings", () => {
       expect(Object.keys(persisted)).toContain(key);
     },
   );
+});
+
+// §354 연동 스위치. 규칙은 하나뿐이다: **끌 때만** 코드 값을 채운다. 켤 때
+// 손대지 않는 이유는 켜져 있는 동안 그 값을 읽는 곳이 없기 때문이고(그래서
+// 지우는 것과 남기는 것이 화면에서 구별되지 않는다), 다음에 끌 때 어차피
+// 그 시점의 파생값으로 다시 덮이기 때문이다.
+describe("§354 link switch", () => {
+  it("starts linked, so the shipped default renders exactly as before", () => {
+    expect(useSettingsStore.getInitialState().linkFontMetrics).toBe(true);
+  });
+
+  it("seeds the code values from the derived ones when unlinked", () => {
+    useSettingsStore.setState({ fontSize: 20, lineHeight: 2 });
+    useSettingsStore.getState().setLinkFontMetrics(false);
+    const s = useSettingsStore.getState();
+    // 20 × 0.875 = 17.5 → 슬라이더가 표현할 수 있는 18.
+    expect(s.codeFontSize).toBe(18);
+    expect(s.codeLineHeight).toBe(2);
+  });
+
+  // 반올림은 파생이 아니라 **여기서만** 일어난다. 슬라이더의 스텝이 1px 이라
+  // 표현 못 하는 값에서 출발하면 첫 드래그에 값이 튄다.
+  it("rounds only the seeded value, to a step the slider can express", () => {
+    useSettingsStore.setState({ fontSize: 17 });
+    useSettingsStore.getState().setLinkFontMetrics(false);
+    expect(useSettingsStore.getState().codeFontSize).toBe(15);
+  });
+
+  it("leaves a custom code size alone when the link is switched back on", () => {
+    useSettingsStore.getState().setCodeFontSize(11);
+    useSettingsStore.getState().setLinkFontMetrics(true);
+    expect(useSettingsStore.getState().codeFontSize).toBe(11);
+    expect(useSettingsStore.getState().linkFontMetrics).toBe(true);
+  });
 });

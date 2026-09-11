@@ -28,6 +28,7 @@ import {
   keymap,
   lineNumbers,
 } from "@codemirror/view";
+import { useShallow } from "zustand/shallow";
 
 import { getHighlightStyle } from "../../extensions/nodes/code-block-highlight";
 import { getLanguageExtension } from "../../extensions/nodes/code-block-languages";
@@ -35,6 +36,7 @@ import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
 import { applyFontVariables } from "../../utils/editor/font-surfaces";
 import { textReplaceRange } from "../../utils/editor/text-replace-range";
+import { resolveCodeMetrics } from "../../utils/font/code-metrics";
 import { logger } from "../../utils/logger";
 import { createVimController } from "./vim-controller";
 
@@ -221,7 +223,13 @@ export function SourceCodeEditor({
         EditorView.theme({
           "&": {
             height: "100%",
-            fontSize: "14px",
+            // §354 크기·줄 높이는 코드 설정을 따른다. 이 테마는 EditorState 를
+            // 세울 때 한 번 만들어지므로 숫자를 박으면 설정을 바꿔도 파일을 다시
+            // 열기 전까지 안 바뀐다 — 변수를 읽으면 래퍼의 인라인 값이 바뀌는
+            // 것만으로 따라온다. 폴백 14px 는 예전 상수이고, 기본 본문 16px 에서
+            // 파생되는 값(16 × 0.875)과 같은 수다.
+            fontSize: "var(--editor-code-font-size, 14px)",
+            lineHeight: "var(--editor-code-line-height, normal)",
           },
           ".cm-content": {
             fontFamily: "var(--font-family-mono)",
@@ -374,6 +382,26 @@ export function SourceCodeEditor({
       which: "mono",
     });
   }, [codeFontFamily]);
+
+  // §354 크기·줄 높이도 같은 래퍼에 건다 — 서체와 같은 이유(테마는 재구성마다
+  // 사라지고, 래퍼는 EditorView 의 parent 라 상속으로 닿는다). 이 표면은 문서
+  // 전체를 고정폭으로 보여 주므로 본문 설정이 아니라 코드 설정을 따른다.
+  const metrics = useSettingsStore(
+    useShallow((s) => ({
+      codeFontSize: s.codeFontSize,
+      codeLineHeight: s.codeLineHeight,
+      fontSize: s.fontSize,
+      lineHeight: s.lineHeight,
+      linkFontMetrics: s.linkFontMetrics,
+    })),
+  );
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const code = resolveCodeMetrics(metrics);
+    el.style.setProperty("--editor-code-font-size", `${code.fontSize}px`);
+    el.style.setProperty("--editor-code-line-height", String(code.lineHeight));
+  }, [metrics]);
 
   return (
     <div
