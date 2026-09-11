@@ -1,7 +1,12 @@
 // §55 Pandoc Extended Export — Baram MD → standard Pandoc-compatible MD preprocessing
 // Pure utility functions (no external dependencies)
 
-import { replaceOutsideCode } from "../markdown/markdown-code-regions";
+import {
+  collectCodeRegions,
+  isInCodeRegion,
+  isLive,
+  replaceOutsideCode,
+} from "../markdown/markdown-code-regions";
 
 /** Convert Baram callouts to simple blockquotes.
  *  `> [!tip] Title` → `> **Tip**: Title` */
@@ -122,22 +127,59 @@ export function convertSuperscriptForPandoc(md: string): string {
 
 /**
  * Underline: the serializer writes `<u>…</u>` (pm-to-md.ts); pandoc's
- * bracketed span with the `underline` class is what its writers render. The
- * content may hold other marks, a link, a `<br>`, a soft line break — but not
- * a blank line, which would end the paragraph. Brackets inside the content
- * are kept when they balance (a link survives as a link) and escaped when
- * they do not, since a lone `]` would close the span early and leave
- * `{.underline}` visible in the export.
+ * bracketed span with the `underline` class is what its writers render. Both
+ * tags must be live: a literal `<u>` typed as text is serialized as `\<u>`,
+ * which pandoc and the editor show as those characters, so it is no
+ * underline. The content may hold other marks, a link, a code span, math, a
+ * `<br>`, a soft line break — but not a blank line, which would end the
+ * paragraph. Brackets
+ * inside the content are kept when they balance (a link survives as a link)
+ * and escaped when they do not, since a lone `]` would close the span early
+ * and leave `{.underline}` visible in the export.
  */
 export function convertUnderlineForPandoc(md: string): string {
-  return replaceOutsideCode(
-    md,
-    /<u>((?:(?!<\/u>)(?:[^\n]|\n(?!\n)))*?)<\/u>/g,
-    // No `markup`/`inlineMath` here: the `<u>` tags this pass consumes ARE
-    // tags, and an underline may well contain `$…$` — a match that merely
-    // overlaps math must still convert, or the underline is lost.
-    (_match, content: string) => `[${balanceBrackets(content)}]{.underline}`,
-  );
+  // Only the two tags must sit outside code and math (`$<u>x</u>$` is TeX);
+  // the content may hold a code span or math — `balanceBrackets` leaves
+  // their brackets alone — and a `</u>` inside a code span is code, so the
+  // search for the closer continues past it. Both tags must be live: a
+  // literal `<u>` typed as text is serialized as `\<u>`, and an escaped
+  // `</u>` cannot end the span.
+  const regions = collectCodeRegions(md, { inlineMath: true });
+  let out = "";
+  let i = 0;
+  for (;;) {
+    const open = md.indexOf("<u>", i);
+    if (open === -1) break;
+    const close =
+      isLive(md, open) && !isInCodeRegion(open, regions)
+        ? underlineCloser(md, open + "<u>".length, regions)
+        : -1;
+    if (close === -1) {
+      out += md.slice(i, open + "<u>".length);
+      i = open + "<u>".length;
+      continue;
+    }
+    const content = md.slice(open + "<u>".length, close);
+    out += `${md.slice(i, open)}[${balanceBrackets(content)}]{.underline}`;
+    i = close + "</u>".length;
+  }
+  return out + md.slice(i);
+}
+
+/** The first live `</u>` outside code and math at or after `from`, or -1
+ *  when a blank line — the end of the paragraph — comes first. */
+function underlineCloser(
+  md: string,
+  from: number,
+  regions: ReturnType<typeof collectCodeRegions>,
+): number {
+  let j = from;
+  for (;;) {
+    const close = md.indexOf("</u>", j);
+    if (close === -1 || /\n[ \t]*\n/.test(md.slice(from, close))) return -1;
+    if (isLive(md, close) && !isInCodeRegion(close, regions)) return close;
+    j = close + 1;
+  }
 }
 
 /** A space (or tab) inside `~…~` / `^…^` must be `\ ` for pandoc; one
@@ -147,15 +189,24 @@ function escapePandocInnerSpaces(content: string): string {
 }
 
 /** Escape only the live `[`/`]` that have no partner, so a link inside the
- *  underline survives while a lone `]` cannot close the span early. A bracket
- *  is live when the run of backslashes before it has even length: `\]` is
- *  escaped, `\\]` is an escaped backslash followed by a live bracket. */
+ *  underline survives while a lone `]` cannot close the span early. Counted
+ *  the way pandoc counts when it looks for the span's end
+ *  (`inlinesInBalancedBrackets`): an escaped bracket is no bracket (`\]` is
+ *  escaped, `\\]` is an escaped backslash then a live bracket), and neither
+ *  is one inside a code span, inline math or an HTML tag — escaping the `[`
+ *  of `$[0,1)$` would change the TeX. A link destination's brackets ARE
+ *  counted, by pandoc and here. */
 function balanceBrackets(content: string): string {
+  const skipped = collectCodeRegions(content, {
+    inlineMath: true,
+    markup: true,
+  }).filter((r) => !content.startsWith("](", r.start));
   const unmatched = new Set<number>();
   const stack: number[] = [];
   for (let i = 0; i < content.length; i++) {
     const ch = content[i];
     if (ch !== "[" && ch !== "]") continue;
+    if (isInCodeRegion(i, skipped)) continue;
     let run = 0;
     for (let j = i - 1; j >= 0 && content[j] === "\\"; j--) run += 1;
     if (run % 2 === 1) continue;

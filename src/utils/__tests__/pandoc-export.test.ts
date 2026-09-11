@@ -204,6 +204,31 @@ describe("§55 convertSubscriptForPandoc", () => {
     expect(convertSubscriptForPandoc("- x\n\n  ```\n  ~a b~\n  ```\n")).toBe(
       "- x\n\n  ```\n  ~a b~\n  ```\n",
     );
+    // The fence may open on the list item's own line, behind the marker —
+    // `- `, `1. `, even inside a blockquote; the closer carries no marker.
+    expect(convertSubscriptForPandoc("- ```\n  ~a b~\n  ```\n")).toBe(
+      "- ```\n  ~a b~\n  ```\n",
+    );
+    expect(convertSubscriptForPandoc("1. ```\n   ~a b~\n   ```\n~c d~\n")).toBe(
+      "1. ```\n   ~a b~\n   ```\n~c\\ d~\n",
+    );
+    expect(
+      convertSubscriptForPandoc("> - ```\n>   ~a b~\n> ```\n> ~c d~\n"),
+    ).toBe("> - ```\n>   ~a b~\n> ```\n> ~c\\ d~\n");
+    // A less indented closer still closes an item's fence (pandoc gathers
+    // the line into the item) …
+    expect(convertSubscriptForPandoc("- ```\n  x\n```\n~a b~\n")).toBe(
+      "- ```\n  x\n```\n~a\\ b~\n",
+    );
+    // … but the next list marker starts a new item, never closes: its own
+    // fence holds the code, and the first item's fence ends with the item.
+    expect(
+      convertSubscriptForPandoc("- ```\n  x\n- ```\n  ~a b~\n  ```\n"),
+    ).toBe("- ```\n  x\n- ```\n  ~a b~\n  ```\n");
+    // A list marker inside a column-zero fence is code.
+    expect(convertSubscriptForPandoc("```\n- x\n~a b~\n```\n")).toBe(
+      "```\n- x\n~a b~\n```\n",
+    );
     // A `> ```` line inside a column-zero block does not close it …
     expect(convertSubscriptForPandoc("```\ncode\n> ```\n~a b~\n```\n")).toBe(
       "```\ncode\n> ```\n~a b~\n```\n",
@@ -217,6 +242,11 @@ describe("§55 convertSubscriptForPandoc", () => {
 
   it("preserves subscript in code", () => {
     expect(convertSubscriptForPandoc("`~sub~`")).toBe("`~sub~`");
+    // A code span may cross a line break, and a double-backtick span holds
+    // a single backtick — CommonMark's equal-length rule, not a regex.
+    expect(convertSubscriptForPandoc("`a\n~b c~`")).toBe("`a\n~b c~`");
+    expect(convertSubscriptForPandoc("``a`~b c~`d``")).toBe("``a`~b c~`d``");
+    expect(convertSubscriptForPandoc("\\`~a b~`")).toBe("\\`~a\\ b~`");
   });
 });
 
@@ -258,6 +288,8 @@ describe("§55 convertUnderlineForPandoc", () => {
   it("leaves code and unmatched tags alone", () => {
     expect(convertUnderlineForPandoc("`<u>x</u>`")).toBe("`<u>x</u>`");
     expect(convertUnderlineForPandoc("<u>open only")).toBe("<u>open only");
+    // Tags inside math are TeX, not an underline.
+    expect(convertUnderlineForPandoc("$<u>x</u>$")).toBe("$<u>x</u>$");
   });
 
   it("keeps a link inside, escapes brackets that do not pair, spans a soft break, allows <", () => {
@@ -288,6 +320,53 @@ describe("§55 convertUnderlineForPandoc", () => {
     expect(
       convertUnderlineForPandoc("<u>[link](https://example.com) a]b</u>"),
     ).toBe("[[link](https://example.com) a\\]b]{.underline}");
+  });
+
+  it("converts only live tags: a literal <u> typed as text stays text", () => {
+    // The serializer escapes a literal `<u>` to `\<u>`; pandoc and the
+    // editor show those characters, so there is no underline to convert.
+    expect(convertUnderlineForPandoc("\\<u>literal\\</u>")).toBe(
+      "\\<u>literal\\</u>",
+    );
+    expect(convertUnderlineForPandoc("\\<u>a</u>")).toBe("\\<u>a</u>");
+    // `\\<u>` is an escaped backslash and a live tag.
+    expect(convertUnderlineForPandoc("\\\\<u>x</u>")).toBe(
+      "\\\\[x]{.underline}",
+    );
+    // An escaped `</u>` cannot end the span; the live one after it does.
+    expect(convertUnderlineForPandoc("<u>a\\</u>b</u>")).toBe(
+      "[a\\</u>b]{.underline}",
+    );
+  });
+
+  it("counts brackets the way pandoc does: none inside math, code or a tag", () => {
+    // pandoc's `inlinesInBalancedBrackets` skips math, code spans and raw
+    // HTML; escaping the `[` inside the math would change the TeX itself.
+    expect(convertUnderlineForPandoc("<u>$[0,1)$</u>")).toBe(
+      "[$[0,1)$]{.underline}",
+    );
+    expect(convertUnderlineForPandoc("<u>see `a[` here</u>")).toBe(
+      "[see `a[` here]{.underline}",
+    );
+    expect(convertUnderlineForPandoc('<u><span title="[">x</span></u>')).toBe(
+      '[<span title="[">x</span>]{.underline}',
+    );
+    // … while a lone bracket outside them is still escaped.
+    expect(convertUnderlineForPandoc("<u>$[0,1)$ and ]</u>")).toBe(
+      "[$[0,1)$ and \\]]{.underline}",
+    );
+    // A destination's brackets are counted by pandoc too.
+    expect(convertUnderlineForPandoc("<u>[a](b[c)</u>")).toBe(
+      "[[a](b\\[c)]{.underline}",
+    );
+    // A `</u>` inside a code span is code; the search goes on to the live
+    // closer. A double-backtick span keeps its bracket byte for byte.
+    expect(convertUnderlineForPandoc("<u>a `x</u>` c</u>")).toBe(
+      "[a `x</u>` c]{.underline}",
+    );
+    expect(convertUnderlineForPandoc("<u>``a`[x`b``</u>")).toBe(
+      "[``a`[x`b``]{.underline}",
+    );
   });
 });
 

@@ -30,18 +30,13 @@ export function collectCodeRegions(
   md: string,
   options: CodeRegionOptions = {},
 ): CodeRegion[] {
-  const regions: CodeRegion[] = [...fencedCodeRegions(md)];
+  const fences = fencedCodeRegions(md);
+  const regions: CodeRegion[] = [...fences, ...inlineCodeRegions(md, fences)];
 
   // Block math: $$...$$ (multiline)
   const blockMathRe = /\$\$[\s\S]*?\$\$/g;
   let m: null | RegExpExecArray;
   while ((m = blockMathRe.exec(md)) !== null) {
-    regions.push({ start: m.index, end: m.index + m[0].length });
-  }
-
-  // Inline code: `...`
-  const inlineCodeRe = /`[^`\n]+`/g;
-  while ((m = inlineCodeRe.exec(md)) !== null) {
     regions.push({ start: m.index, end: m.index + m[0].length });
   }
 
@@ -71,37 +66,71 @@ export function collectCodeRegions(
 }
 
 /** Is the character at `index` live — preceded by an even run of backslashes? */
-function isLive(md: string, index: number): boolean {
+export function isLive(md: string, index: number): boolean {
   let run = 0;
   for (let j = index - 1; j >= 0 && md[j] === "\\"; j--) run += 1;
   return run % 2 === 0;
 }
 
 /**
- * Fenced code blocks (``` or ~~~), by CommonMark's line rules rather than a
+ * Fenced code blocks (``` or ~~~), by pandoc's line rules rather than a
  * single regex: the opener may sit behind a container prefix (blockquote
- * markers, list indentation), the closer must sit behind the SAME number of
- * blockquote markers and use the same fence character with at least the
- * opener's length, and an unclosed fence runs to the end of the document.
- * A regex that accepted any prefix on the closer took a `> ```` line inside
- * a column-zero block as its end and exposed the rest of the code.
+ * markers, list markers, indentation), the closer must sit behind the SAME
+ * number of blockquote markers and use the same fence character with at
+ * least the opener's length, and an unclosed fence runs to the end of the
+ * document. A fence opened on a list item's own line (`- ````) ends with the
+ * item: the next list marker at a shallower column starts a new item (and
+ * may open the next fence), while a less indented closer still closes it
+ * (pandoc gathers such lines into the item). A line carrying a list marker
+ * is never a closer. A regex that accepted any prefix on the closer took a
+ * `> ```` line inside a column-zero block as its end and exposed the rest of
+ * the code.
  */
 function fencedCodeRegions(md: string): CodeRegion[] {
   const regions: CodeRegion[] = [];
-  const prefixRe = /^([ \t]*(?:>[ \t]*)*)/;
-  let open: null | { char: string; gt: number; len: number; start: number } =
-    null;
+  // A container prefix: blockquote markers and list markers (`-` `*` `+`,
+  // `1.` `1)` — each followed by a space) in any mix, with their
+  // indentation.
+  const prefixRe = /^([ \t]*(?:(?:>|(?:[-*+]|\d{1,9}[.)])(?=[ \t]))[ \t]*)*)/;
+  const markerRe = /(?:[-*+]|\d{1,9}[.)])[ \t]/;
+  let open: null | {
+    char: string;
+    column: null | number;
+    gt: number;
+    len: number;
+    start: number;
+  } = null;
   let offset = 0;
   for (const line of md.split("\n")) {
     const prefix = prefixRe.exec(line)![1];
     const gt = (prefix.match(/>/g) ?? []).length;
     const rest = line.slice(prefix.length);
+    // Past the last blockquote marker: where a list marker sits, and where
+    // an item's content starts (after the marker and its space).
+    const afterQuote = prefix.slice(prefix.lastIndexOf(">") + 1);
+    const marker = markerRe.exec(afterQuote);
+    if (
+      open !== null &&
+      open.column !== null &&
+      gt === open.gt &&
+      marker !== null &&
+      marker.index < open.column
+    ) {
+      regions.push({ start: open.start, end: offset });
+      open = null;
+    }
     if (open === null) {
       const o = /^(`{3,}|~{3,})/.exec(rest);
       if (o !== null) {
-        open = { char: o[1][0], gt, len: o[1].length, start: offset };
+        open = {
+          char: o[1][0],
+          column: marker === null ? null : afterQuote.length,
+          gt,
+          len: o[1].length,
+          start: offset,
+        };
       }
-    } else if (gt === open.gt) {
+    } else if (gt === open.gt && marker === null) {
       const c = /^(`{3,}|~{3,})[ \t]*$/.exec(rest);
       if (c !== null && c[1][0] === open.char && c[1].length >= open.len) {
         regions.push({ start: open.start, end: offset + line.length });
@@ -111,6 +140,53 @@ function fencedCodeRegions(md: string): CodeRegion[] {
     offset += line.length + 1;
   }
   if (open !== null) regions.push({ start: open.start, end: md.length });
+  return regions;
+}
+
+/**
+ * Code spans by CommonMark's rule: a run of n backticks opens a span that the
+ * next run of EXACTLY n backticks closes — a run of another length is text
+ * inside it, so ``a`[x`b`` is one span holding a backtick. A span may cross
+ * a line break but not a blank line. A run inside a fence is the fence's
+ * own text, and an escaped first backtick shortens the run.
+ */
+function inlineCodeRegions(md: string, fences: CodeRegion[]): CodeRegion[] {
+  const regions: CodeRegion[] = [];
+  const runRe = /`+/g;
+  let m: null | RegExpExecArray;
+  while ((m = runRe.exec(md)) !== null) {
+    let start = m.index;
+    let n = m[0].length;
+    const fence = fences.find((f) => start >= f.start && start < f.end);
+    if (fence !== undefined) {
+      runRe.lastIndex = Math.max(fence.end, start + n);
+      continue;
+    }
+    if (!isLive(md, start)) {
+      start += 1;
+      n -= 1;
+      if (n === 0) continue;
+    }
+    let j = start + n;
+    let closed = -1;
+    while (j < md.length) {
+      if (md[j] === "\n" && md[j + 1] === "\n") break;
+      if (md[j] === "`") {
+        let k = j;
+        while (md[k] === "`") k += 1;
+        if (k - j === n) {
+          closed = k;
+          break;
+        }
+        j = k;
+        continue;
+      }
+      j += 1;
+    }
+    if (closed === -1) continue;
+    regions.push({ start, end: closed });
+    runRe.lastIndex = closed;
+  }
   return regions;
 }
 
