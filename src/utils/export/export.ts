@@ -2,6 +2,7 @@ import { save } from "@tauri-apps/plugin-dialog";
 
 import type { Locale } from "../../i18n";
 import type { ContextInfo, PandocFormat, PdfOptions } from "../../ipc/types";
+import type { BundledFont } from "../font/bundled-fonts";
 // §5.12 Export — HTML file save + PDF via headless Chrome backend + §53 Notion + §55 Pandoc
 import type { Editor } from "@tiptap/core";
 
@@ -11,7 +12,9 @@ import { contextRootOf, useContextStore } from "../../stores/context/context";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
 import { serializeLiveDoc } from "../editor/serialize-live-doc";
+import { bundledFont } from "../font/bundled-fonts";
 import { isUnderRoot } from "../path-utils";
+import { buildFontFaceCSS } from "./export-font-embed";
 import { captureEditorHTML, generateStandaloneHTML } from "./export-html";
 import { stageMarkdownImages } from "./export-markdown-images";
 import { stripDisallowedMarkdownLinks } from "./export-markdown-links";
@@ -21,14 +24,70 @@ import { convertForPandoc } from "./pandoc-export";
 import { resolveZettelLinksForExport } from "./zettel-link-resolve";
 
 /**
+ * §353 — the user's chosen fonts, read by the caller (this module does not
+ * touch the settings store — export utilities stay pure) and passed through.
+ */
+export interface FontExportOptions {
+  bodyFont?: string;
+  codeFont?: string;
+}
+
+export interface HTMLExportOptions extends FontExportOptions {
+  /**
+   * Embed the bundled faces as data URIs (§353). Off by default: ~2.7MB of
+   * base64 for the body face alone is not something every export should pay
+   * for. The dialog's checkbox controls this.
+   */
+  embedFonts?: boolean;
+}
+
+/**
+ * The family a slot will ACTUALLY render in, which is the question embedding
+ * has to ask (§353).
+ *
+ * ‼️ An empty slot does not mean "no font chosen". §348 made `""` the default
+ * and defined it as "use the token stack", whose head is the bundled face —
+ * and the exported document names that family regardless, because
+ * `exportTokensCSS()` inlines `primitives.css`. Keying the embed decision on
+ * the literal setting value therefore embedded nothing for every user in the
+ * default state while the document still asked for Pretendard Variable: the
+ * "Embed fonts" checkbox produced a file that was not bigger and did not
+ * carry the typeface, and PDF — which always embeds — printed in a system
+ * fallback. Two sections of one spec disagreeing about what `""` means (final
+ * review C1).
+ *
+ * The other half of that defect is a stored `"Pretendard"` (every user from
+ * before this branch), which is a DIFFERENT family name from
+ * `"Pretendard Variable"` and so is not bundled. That one is not resolvable
+ * here — a non-empty value is the user's word — and is fixed where it was
+ * created, by the settings-store migration that rewrites it to `""`.
+ */
+function effectiveFamily(slot: string, role: BundledFont["role"]): string {
+  return slot.trim() === "" ? bundledFont(role).family : slot;
+}
+
+/**
  * Export editor content as a standalone HTML file.
  * Opens native save dialog, then writes via Rust atomic write.
  */
 export async function exportAsHTML(
   editor: Editor,
   title: string,
+  options?: HTMLExportOptions,
 ): Promise<void> {
-  const html = generateStandaloneHTML(await captureEditorHTML(editor), title);
+  const bodyFont = options?.bodyFont ?? "";
+  const codeFont = options?.codeFont ?? "";
+  const fontFaceCSS = options?.embedFonts
+    ? await buildFontFaceCSS([
+        effectiveFamily(bodyFont, "body"),
+        effectiveFamily(codeFont, "code"),
+      ])
+    : "";
+  const html = generateStandaloneHTML(await captureEditorHTML(editor), title, {
+    bodyFont,
+    codeFont,
+    fontFaceCSS,
+  });
 
   const path = await save({
     filters: [{ name: "HTML", extensions: ["html"] }],
@@ -47,14 +106,22 @@ export async function exportAsHTML(
 export async function exportAsPDF(
   editor: Editor,
   title: string,
-  options?: PdfOptions,
+  options?: FontExportOptions & PdfOptions,
 ): Promise<void> {
+  const { bodyFont = "", codeFont = "", ...pdfOptions } = options ?? {};
+  // §353 — PDF always embeds bundled faces, unconditionally: `generate_pdf`
+  // renders from a temp directory a relative font URL cannot resolve against
+  // (export-font-embed.ts). There is no checkbox for PDF.
+  const fontFaceCSS = await buildFontFaceCSS([
+    effectiveFamily(bodyFont, "body"),
+    effectiveFamily(codeFont, "code"),
+  ]);
   const html = generateStandaloneHTML(
     // §301 fix (I4): PDF can never play video — captureEditorHTML replaces it
     // with a link instead of leaving an inert `<video>`.
     await captureEditorHTML(editor, { forPdf: true }),
     title,
-    { theme: "light" },
+    { theme: "light", bodyFont, codeFont, fontFaceCSS },
   );
 
   const path = await save({
@@ -63,7 +130,7 @@ export async function exportAsPDF(
   });
   if (!path) return; // user cancelled
 
-  await exportPdf(html, path, options);
+  await exportPdf(html, path, pdfOptions);
 }
 
 /**

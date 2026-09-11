@@ -1,0 +1,36 @@
+/* src/styles/fonts.css */
+
+/* §347 번들 서체 — 앱이 공급하는 두 서체의 유일한 @font-face 선언.
+ *
+ * 왜 번들하는가: §346까지 이 앱은 `--font-family-editor`에서 Pretendard와
+ * Inter를 지목하면서 @font-face도 파일도 두지 않았다. 실측(개발 머신, 폰트
+ * 442개 설치)에서 설정 목록 14종 중 3종만 실재했고 **기본값 Pretendard가
+ * 부재 목록에 있었다** — 앱의 첫 화면이 이미 폴백이었다.
+ *
+ * 가변 1파일을 쓰는 이유: 정적 굵기 4종은 748KB × 4 ≈ 3MB로 더 크고 굵기도
+ * 4개뿐이다. 가변은 2,009KB에 45~900 전 굵기가 들어 있다.
+ *
+ * unicode-range 분할을 하지 않는 이유: 로컬 앱은 네트워크가 없어서 "문서당
+ * 로드 비용"이라는 개념이 없다. 웹의 분할 전략을 여기 옮길 이유가 없다.
+ *
+ * `font-display: block`이 아니라 `swap`인 이유: 로컬 파일이라 대기 시간이
+ * 사실상 0이지만, 0이 아닌 머신에서 본문이 비는 것보다 폴백으로 먼저 보이는
+ * 편이 낫다. */
+
+@font-face {
+  font-family: "Pretendard Variable";
+  font-style: normal;
+  font-weight: 45 920;
+  src: url("../assets/fonts/PretendardVariable.woff2")
+    format("woff2-variations");
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "JetBrains Mono Variable";
+  font-style: normal;
+  font-weight: 100 800;
+  src: url("../assets/fonts/jetbrains-mono-latin-wght-normal.woff2")
+    format("woff2-variations");
+  font-display: swap;
+}

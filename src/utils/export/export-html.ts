@@ -6,6 +6,7 @@ import katexCSS from "katex/dist/katex.min.css?raw";
 
 import { withVirtualizationSuspendedAsync } from "../../extensions/plugins/viewport-virtualize";
 import { useSettingsStore } from "../../stores/settings/store";
+import { exportFontVariables } from "./export-font-embed";
 import { settleHeavyBlocks } from "./export-heavy-blocks";
 import { linkInternalReferences } from "./export-html-anchors";
 import {
@@ -40,6 +41,18 @@ export interface CaptureEditorHTMLOptions {
 }
 
 export interface ExportHTMLOptions {
+  /** §353 — the user's chosen body font. Empty/omitted leaves the stylesheet default. */
+  bodyFont?: string;
+  /** §353 — the user's chosen code (mono) font. Empty/omitted leaves the stylesheet default. */
+  codeFont?: string;
+  /**
+   * §353 — `@font-face` CSS for the bundled faces among `bodyFont`/`codeFont`,
+   * pre-built by `buildFontFaceCSS` (async — it fetches the asset). Built by the
+   * caller rather than here, so this function stays synchronous: KaTeX-font and
+   * CSP tests below call it without `await`, and the default `""` keeps every
+   * existing call site's output unchanged.
+   */
+  fontFaceCSS?: string;
   theme?: "dark" | "light";
 }
 
@@ -228,6 +241,22 @@ export function generateStandaloneHTML(
   const safeTitle = escapeHTML(title);
   void options?.theme; // reserved for future dark theme export
 
+  // §353 — the article's inline font-variable declaration.
+  //
+  // ‼️ escapeHTML, not quoteFamily, guards this attribute. quoteFamily escapes
+  // for a CSS <string> (backslash-escapes `"`); this value lands inside an
+  // HTML attribute delimited by `"`, a different grammar entirely. A family
+  // name is free text — the settings row accepts anything — so an unescaped
+  // `"` here would close the attribute early and inject markup into a document
+  // handed to someone else (§353 review R10). The attribute is double-quoted,
+  // so `'` needs no escaping.
+  const fontVars = exportFontVariables(
+    options?.bodyFont ?? "",
+    options?.codeFont ?? "",
+  );
+  const articleStyleAttr =
+    fontVars === "" ? "" : ` style="${escapeHTML(fontVars)}"`;
+
   return `<!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -237,10 +266,10 @@ export function generateStandaloneHTML(
   <meta name="generator" content="Baram">
   <title>${safeTitle}</title>
   ${katexStyles(editorHTML)}
-  <style>${buildExportStylesheet()}</style>
+  <style>${buildExportStylesheet(options?.fontFaceCSS)}</style>
 </head>
 <body>
-  <article class="baram-export">${editorHTML}</article>
+  <article class="baram-export"${articleStyleAttr}>${editorHTML}</article>
 </body>
 </html>`;
 }

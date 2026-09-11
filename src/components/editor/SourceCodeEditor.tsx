@@ -28,12 +28,15 @@ import {
   keymap,
   lineNumbers,
 } from "@codemirror/view";
+import { useShallow } from "zustand/shallow";
 
 import { getHighlightStyle } from "../../extensions/nodes/code-block-highlight";
 import { getLanguageExtension } from "../../extensions/nodes/code-block-languages";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
+import { applyFontVariables } from "../../utils/editor/font-surfaces";
 import { textReplaceRange } from "../../utils/editor/text-replace-range";
+import { resolveCodeMetrics } from "../../utils/font/code-metrics";
 import { logger } from "../../utils/logger";
 import { createVimController } from "./vim-controller";
 
@@ -220,7 +223,13 @@ export function SourceCodeEditor({
         EditorView.theme({
           "&": {
             height: "100%",
-            fontSize: "14px",
+            // §354 크기·줄 높이는 코드 설정을 따른다. 이 테마는 EditorState 를
+            // 세울 때 한 번 만들어지므로 숫자를 박으면 설정을 바꿔도 파일을 다시
+            // 열기 전까지 안 바뀐다 — 변수를 읽으면 래퍼의 인라인 값이 바뀌는
+            // 것만으로 따라온다. 폴백 14px 는 예전 상수이고, 기본 본문 16px 에서
+            // 파생되는 값(16 × 0.875)과 같은 수다.
+            fontSize: "var(--editor-code-font-size, 14px)",
+            lineHeight: "var(--editor-code-line-height, normal)",
           },
           ".cm-content": {
             fontFamily: "var(--font-family-mono)",
@@ -354,6 +363,45 @@ export function SourceCodeEditor({
     // 만들어도 결과가 같고, deps에 넣으면 렌더마다 effect가 돌면서 큰 문서의
     // doc.toString()을 반복한다.
   }, [content]);
+
+  // §349 소스 모드는 `DOCUMENT_FONT_SURFACES` 의 `mono` 표면이다.
+  //
+  // 변수를 이 **래퍼**에 둔다: `.cm-content` 는 CodeMirror 가 소유하는 요소라
+  // 거기에 인라인으로 쓰면 다음 재구성에 사라진다. 래퍼는 `EditorView` 의 parent
+  // 이므로 상속으로 닿고, `.cm-content` 의 `font-family: var(--font-family-mono)`
+  // (위 `EditorView.theme`)가 그 값을 읽는다.
+  //
+  // 본문 서체는 덮지 않는다 — 이 표면은 원문 마크다운을 고정폭으로 보여준다.
+  const codeFontFamily = useSettingsStore((s) => s.codeFontFamily);
+  useEffect(() => {
+    if (!containerRef.current) return;
+    applyFontVariables(containerRef.current, {
+      // `which: "mono"` 는 본문 슬롯을 읽지 않는다.
+      bodyFont: "",
+      codeFont: codeFontFamily,
+      which: "mono",
+    });
+  }, [codeFontFamily]);
+
+  // §354 크기·줄 높이도 같은 래퍼에 건다 — 서체와 같은 이유(테마는 재구성마다
+  // 사라지고, 래퍼는 EditorView 의 parent 라 상속으로 닿는다). 이 표면은 문서
+  // 전체를 고정폭으로 보여 주므로 본문 설정이 아니라 코드 설정을 따른다.
+  const metrics = useSettingsStore(
+    useShallow((s) => ({
+      codeFontSize: s.codeFontSize,
+      codeLineHeight: s.codeLineHeight,
+      fontSize: s.fontSize,
+      lineHeight: s.lineHeight,
+      linkFontMetrics: s.linkFontMetrics,
+    })),
+  );
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const code = resolveCodeMetrics(metrics);
+    el.style.setProperty("--editor-code-font-size", `${code.fontSize}px`);
+    el.style.setProperty("--editor-code-line-height", String(code.lineHeight));
+  }, [metrics]);
 
   return (
     <div

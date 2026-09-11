@@ -1,7 +1,7 @@
 // §5.12 HTML Export — Code block pure functions
 
 import { lightHighlightDeclarations } from "../../extensions/nodes/code-block-highlight";
-import { CODE_STYLE_MAP, MONO_FONT } from "./export-html-styles";
+import { CODE_STYLE_MAP } from "./export-html-styles";
 
 export interface CodeBlockInfo {
   highlightedLines: string[];
@@ -10,7 +10,21 @@ export interface CodeBlockInfo {
   style: string;
 }
 
-/** Build export DOM for a code block — uses inline styles for reliable PDF rendering */
+/**
+ * Build export DOM for a code block — uses inline styles for reliable PDF
+ * rendering.
+ *
+ * ‼️ The two `font-family` declarations below say `var(--font-family-mono)`
+ * and must keep saying it (§353, final review I1). An inline `cssText` beats
+ * every rule that reads the variable, so while these named a module constant
+ * the user's code font could not reach the most code-font-relevant content in
+ * the document — and that constant had drifted into a stale copy of the mono
+ * stack, missing the bundled head, so the block did not render in the
+ * embedded face either. `article.baram-export` carries the setting as an
+ * inline custom-property declaration (export-font-embed.ts) and the token in
+ * primitives.css stands in when the setting is empty, so the variable
+ * resolves either way.
+ */
 export function buildCodeBlockExport(info: CodeBlockInfo): HTMLElement {
   const s = CODE_STYLE_MAP[info.style] || CODE_STYLE_MAP.default;
 
@@ -28,7 +42,7 @@ export function buildCodeBlockExport(info: CodeBlockInfo): HTMLElement {
   if (info.lang) {
     const langLabel = document.createElement("div");
     langLabel.className = "code-block-export-lang";
-    langLabel.style.cssText = `font-family:${MONO_FONT};font-size:0.7rem;padding:2px 8px;background:${s.langBg};border:1px solid ${s.langBorder};border-bottom:none;border-radius:6px 6px 0 0;color:${s.langColor};`;
+    langLabel.style.cssText = `font-family:var(--font-family-mono);font-size:0.7rem;padding:2px 8px;background:${s.langBg};border:1px solid ${s.langBorder};border-bottom:none;border-radius:6px 6px 0 0;color:${s.langColor};`;
     langLabel.textContent = info.lang;
     exportDiv.appendChild(langLabel);
   }
@@ -36,7 +50,7 @@ export function buildCodeBlockExport(info: CodeBlockInfo): HTMLElement {
   const body = document.createElement("div");
   body.className = "code-block-body";
   const hasLang = !!info.lang;
-  body.style.cssText = `display:flex;font-family:${MONO_FONT};font-size:0.875em;line-height:1.6;background:${s.bodyBg};border:1px solid ${s.bodyBorder};${hasLang ? "border-top:none;" : ""}border-radius:${hasLang ? "0 0 6px 6px" : "6px"};overflow-x:auto;color:${s.bodyColor};`;
+  body.style.cssText = `display:flex;font-family:var(--font-family-mono);font-size:0.875em;line-height:1.6;background:${s.bodyBg};border:1px solid ${s.bodyBorder};${hasLang ? "border-top:none;" : ""}border-radius:${hasLang ? "0 0 6px 6px" : "6px"};overflow-x:auto;color:${s.bodyColor};`;
 
   // Line numbers gutter
   if (info.lineNumbers && info.lineNumbers.length > 0) {

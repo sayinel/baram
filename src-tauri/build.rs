@@ -29,6 +29,7 @@ fn main() {
         "export_pandoc",
         "export_pdf",
         "extract_zip",
+        "font_list",
         "get_backlinks",
         "get_config",
         "get_contexts",

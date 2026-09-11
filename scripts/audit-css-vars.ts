@@ -125,6 +125,14 @@ const ALLOWLIST = new Set([
   // inherited `line-height` cannot do from inside a calc(). Every consumer passes a 1.75
   // fallback, so the stylesheet is still correct before the effect runs.
   "--editor-line-height",
+  // §354 코드 전용 크기·줄 높이 — `.tiptap` 과 소스 모드 래퍼에 각각 걸린다
+  // (use-settings-effects.ts · SourceCodeEditor.tsx). 토큰이 아닌 이유는 값이
+  // 사용자 설정이기 때문이고, 두 표면에 따로 거는 이유는 §349 와 같다: 변수
+  // 상속의 범위는 DOM 포함관계라 한 루트에 걸면 다른 표면에 닿지 않는다.
+  // 모든 소비자가 예전 CSS 값(`0.875em`, `14px`)을 폴백으로 들고 있어 효과가
+  // 돌기 전에도 스타일시트 혼자 맞다.
+  "--editor-code-font-size",
+  "--editor-code-line-height",
   "--editor-zoom",
   "--journal-font-family",
   "--journal-header-bg",

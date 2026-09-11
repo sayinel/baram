@@ -1890,6 +1890,17 @@
       "spec": "§332",
       "status": "implemented",
       "description": "승인 기록만 삭제한다(§335) — Scope::forbid는 걸지 않는다. 이미 부여된 asset:// 권한은 앱 재시작 전까지 남는다"
+    },
+    {
+      "name": "font_list",
+      "input": {
+        "refresh": "boolean"
+      },
+      "output": "FontFamily[]",
+      "module": "font",
+      "spec": "§350",
+      "status": "implemented",
+      "description": "설치된 서체 패밀리 목록. 경로 인자를 받지 않으므로 승인 게이트 대상이 아니다. 첫 호출 뒤 결과를 캐시하고, refresh=true 로 비운다"
     }
   ],
   "events": [

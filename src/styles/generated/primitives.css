@@ -123,8 +123,10 @@
   --font-family-sans:
     inter, pretendard, -apple-system, blinkmacsystemfont, system-ui, sans-serif;
   --font-family-mono:
-    "JetBrains Mono", "Fira Code", "SF Mono", ui-monospace, monospace;
-  --font-family-editor: pretendard, inter, -apple-system, system-ui, sans-serif;
+    "JetBrains Mono Variable", "JetBrains Mono", "Fira Code", "SF Mono",
+    ui-monospace, monospace;
+  --font-family-editor:
+    "Pretendard Variable", pretendard, -apple-system, system-ui, sans-serif;
   --font-size-2xs: 10px;
   --font-size-xs: 11px;
   --font-size-sm: 12px;

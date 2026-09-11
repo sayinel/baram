@@ -1,41 +1,48 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+
+import type { FontListState } from "../../../utils/font/font-list-state";
+import type { FontSlot } from "../FontSlotPicker";
+
+import { useShallow } from "zustand/shallow";
 
 import { useTranslation } from "../../../i18n/useTranslation";
+import { listFonts } from "../../../ipc/font";
 import { useSettingsStore } from "../../../stores/settings/store";
+import { resolveCodeMetrics } from "../../../utils/font/code-metrics";
+import {
+  badgeFonts,
+  fontListStateFrom,
+} from "../../../utils/font/font-list-state";
+import {
+  fontSizeNumber,
+  lineHeightNumber,
+} from "../../../utils/font/font-metric-text";
+import { FontBrowser } from "../FontBrowser";
+import { FontSlotPicker } from "../FontSlotPicker";
 import {
   SettingsRow,
   SettingsSectionHeader,
   ToggleSwitch,
 } from "../settings-shared";
 
-// ─── Font Family Picker ─────────────────────────────────
-
-const FONT_OPTIONS = [
-  { value: "system-ui", label: "System Default" },
-  { value: "Pretendard", label: "Pretendard" },
-  { value: "Inter", label: "Inter" },
-  { value: "Noto Sans", label: "Noto Sans" },
-  { value: "Noto Sans KR", label: "Noto Sans KR" },
-  { value: "IBM Plex Sans", label: "IBM Plex Sans" },
-  { value: "Roboto", label: "Roboto" },
-  { value: "Lato", label: "Lato" },
-  { value: "Open Sans", label: "Open Sans" },
-  { value: "Source Sans 3", label: "Source Sans 3" },
-  { value: "Merriweather", label: "Merriweather" },
-  { value: "Georgia", label: "Georgia" },
-  { value: "Lora", label: "Lora" },
-  { value: "Nanum Gothic", label: "Nanum Gothic" },
-];
-
 export function EditorTab() {
   const { t } = useTranslation();
   const {
     fontFamily,
     setFontFamily,
+    codeFontFamily,
+    setCodeFontFamily,
+    recentFonts,
     fontSize,
     setFontSize,
     lineHeight,
     setLineHeight,
+    linkFontMetrics,
+    setLinkFontMetrics,
+    codeFontSize,
+    setCodeFontSize,
+    codeLineHeight,
+    setCodeLineHeight,
     tabSize,
     setTabSize,
     lineNumbers,
@@ -50,7 +57,87 @@ export function EditorTab() {
     setAutoLoadVideoEmbeds,
     vimMode,
     setVimMode,
-  } = useSettingsStore();
+  } = useSettingsStore(
+    useShallow((s) => ({
+      autoLoadVideoEmbeds: s.autoLoadVideoEmbeds,
+      autoPairBrackets: s.autoPairBrackets,
+      codeFontFamily: s.codeFontFamily,
+      codeFontSize: s.codeFontSize,
+      codeLineHeight: s.codeLineHeight,
+      editorMaxWidth: s.editorMaxWidth,
+      fontFamily: s.fontFamily,
+      fontSize: s.fontSize,
+      lineHeight: s.lineHeight,
+      lineNumbers: s.lineNumbers,
+      linkFontMetrics: s.linkFontMetrics,
+      recentFonts: s.recentFonts,
+      setAutoLoadVideoEmbeds: s.setAutoLoadVideoEmbeds,
+      setAutoPairBrackets: s.setAutoPairBrackets,
+      setCodeFontFamily: s.setCodeFontFamily,
+      setCodeFontSize: s.setCodeFontSize,
+      setCodeLineHeight: s.setCodeLineHeight,
+      setEditorMaxWidth: s.setEditorMaxWidth,
+      setFontFamily: s.setFontFamily,
+      setFontSize: s.setFontSize,
+      setLineHeight: s.setLineHeight,
+      setLineNumbers: s.setLineNumbers,
+      setLinkFontMetrics: s.setLinkFontMetrics,
+      setTabSize: s.setTabSize,
+      setVimMode: s.setVimMode,
+      setVirtualizeLargeDocs: s.setVirtualizeLargeDocs,
+      tabSize: s.tabSize,
+      vimMode: s.vimMode,
+      virtualizeLargeDocs: s.virtualizeLargeDocs,
+    })),
+  );
+
+  // ‼️ Three states, not two (final review I3). "Still loading" and "the
+  // enumeration failed, here is a stand-in list" both have to render no
+  // confident "missing" badge — but they must NOT look the same to the
+  // browser, which used to say "Loading fonts…" forever on a failure. The
+  // badge asks `badgeFonts()`, which answers `null` for both; the browser
+  // reads the state and can tell them apart.
+  const [fontState, setFontState] = useState<FontListState>({
+    status: "loading",
+  });
+  const [browserSlot, setBrowserSlot] = useState<FontSlot | null>(null);
+  // §354 코드 슬롯의 예제와 아래 두 슬라이더가 보여 주는 값 — 연동 중이면
+  // 본문에서 파생한 것이고, 끄면 저장된 코드 값이다. 이 자리에서 다시 계산하지
+  // 않는다: 같은 답을 내야 하는 곳이 넷이라 계산은 code-metrics.ts 하나뿐이다.
+  const codeMetrics = resolveCodeMetrics({
+    codeFontSize,
+    codeLineHeight,
+    fontSize,
+    lineHeight,
+    linkFontMetrics,
+  });
+
+  // §350 — 탭이 지연 로드 경계 뒤에 있으므로 마운트 시 1회 호출로 충분하다
+  // (설계 §351: "피커를 처음 열 때"가 이상적이나 이 탭 자체가 이미 그 경계다).
+  useEffect(() => {
+    let cancelled = false;
+    void listFonts().then((result) => {
+      if (cancelled) return;
+      setFontState(fontListStateFrom(result));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // §352 (Task 6) — owns its own close the way AppearanceTab's
+  // <ThemeEditor onClose={…}/> does (review Important 3: a real back
+  // control, not a blank pane).
+  if (browserSlot) {
+    return (
+      <FontBrowser
+        onClose={() => setBrowserSlot(null)}
+        recentFonts={recentFonts}
+        slot={browserSlot}
+        state={fontState}
+      />
+    );
+  }
 
   return (
     <div className="settings-section">
@@ -60,13 +147,36 @@ export function EditorTab() {
         description={t("settings.editor.fontFamily.desc")}
         label={t("settings.editor.fontFamily")}
       >
-        <FontFamilyPicker onChange={setFontFamily} value={fontFamily} />
+        <FontSlotPicker
+          fonts={badgeFonts(fontState)}
+          fontSize={fontSize}
+          lineHeight={lineHeight}
+          onChange={setFontFamily}
+          onOpenBrowser={setBrowserSlot}
+          slot="body"
+          value={fontFamily}
+        />
+      </SettingsRow>
+
+      <SettingsRow
+        description={t("settings.editor.codeFontFamily.desc")}
+        label={t("settings.editor.codeFontFamily")}
+      >
+        <FontSlotPicker
+          fonts={badgeFonts(fontState)}
+          fontSize={codeMetrics.fontSize}
+          lineHeight={codeMetrics.lineHeight}
+          onChange={setCodeFontFamily}
+          onOpenBrowser={setBrowserSlot}
+          slot="code"
+          value={codeFontFamily}
+        />
       </SettingsRow>
 
       <SettingsRow
         description={t("settings.editor.fontSize.desc").replace(
           "{value}",
-          String(fontSize),
+          fontSizeNumber(fontSize),
         )}
         label={t("settings.editor.fontSize")}
       >
@@ -84,7 +194,7 @@ export function EditorTab() {
       <SettingsRow
         description={t("settings.editor.lineHeight.desc").replace(
           "{value}",
-          lineHeight.toFixed(2),
+          lineHeightNumber(lineHeight),
         )}
         label={t("settings.editor.lineHeight")}
       >
@@ -96,6 +206,54 @@ export function EditorTab() {
           step={0.05}
           type="range"
           value={lineHeight}
+        />
+      </SettingsRow>
+
+      <SettingsRow
+        description={t("settings.editor.linkFontMetrics.desc")}
+        label={t("settings.editor.linkFontMetrics")}
+      >
+        <ToggleSwitch checked={linkFontMetrics} onChange={setLinkFontMetrics} />
+      </SettingsRow>
+
+      {/* 연동 중에도 두 행을 숨기지 않고 끈 채로 둔다 — 코드가 지금 몇 px 인지는
+          연동 여부와 무관하게 궁금한 값이고, 행이 사라지면 "어디서 바꾸지?" 가
+          된다. 값은 파생값이라 슬라이더가 실제 상태를 그대로 가리킨다. */}
+      <SettingsRow
+        description={t("settings.editor.codeFontSize.desc").replace(
+          "{value}",
+          fontSizeNumber(Math.round(codeMetrics.fontSize)),
+        )}
+        label={t("settings.editor.codeFontSize")}
+      >
+        <input
+          className="settings-range"
+          disabled={linkFontMetrics}
+          max={32}
+          min={8}
+          onChange={(e) => setCodeFontSize(Number(e.target.value))}
+          step={1}
+          type="range"
+          value={Math.round(codeMetrics.fontSize)}
+        />
+      </SettingsRow>
+
+      <SettingsRow
+        description={t("settings.editor.codeLineHeight.desc").replace(
+          "{value}",
+          lineHeightNumber(codeMetrics.lineHeight),
+        )}
+        label={t("settings.editor.codeLineHeight")}
+      >
+        <input
+          className="settings-range"
+          disabled={linkFontMetrics}
+          max={3.0}
+          min={1.0}
+          onChange={(e) => setCodeLineHeight(Number(e.target.value))}
+          step={0.05}
+          type="range"
+          value={codeMetrics.lineHeight}
         />
       </SettingsRow>
 
@@ -180,104 +338,6 @@ export function EditorTab() {
           value={editorMaxWidth}
         />
       </SettingsRow>
-    </div>
-  );
-}
-
-// ─── Editor Tab ─────────────────────────────────────────
-
-function FontFamilyPicker({
-  value,
-  onChange,
-}: {
-  onChange: (v: string) => void;
-  value: string;
-}) {
-  const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState("");
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  const filtered = search
-    ? FONT_OPTIONS.filter((f) =>
-        f.label.toLowerCase().includes(search.toLowerCase()),
-      )
-    : FONT_OPTIONS;
-
-  // Close dropdown on outside click
-  useEffect(() => {
-    if (!open) return;
-    const handleClick = (e: MouseEvent) => {
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(e.target as Node)
-      ) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [open]);
-
-  const handleSelect = (fontValue: string) => {
-    onChange(fontValue);
-    setSearch("");
-    setOpen(false);
-  };
-
-  return (
-    <div className="settings-font-picker" ref={containerRef}>
-      <input
-        className="settings-input"
-        onChange={(e) => {
-          setSearch(e.target.value);
-          if (!open) setOpen(true);
-        }}
-        onFocus={() => {
-          setSearch("");
-          setOpen(true);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && search) {
-            // Allow custom font name
-            onChange(search);
-            setSearch("");
-            setOpen(false);
-          } else if (e.key === "Escape") {
-            setOpen(false);
-          }
-        }}
-        placeholder={t("settings.editor.fontPicker.placeholder")}
-        type="text"
-        value={open ? search : value}
-      />
-      {open && (
-        <div className="settings-font-dropdown">
-          {filtered.map((font) => (
-            <button
-              className={`settings-font-option ${font.value === value ? "settings-font-option-active" : ""}`}
-              key={font.value}
-              onClick={() => handleSelect(font.value)}
-              style={{ fontFamily: font.value }}
-            >
-              {font.value === "system-ui"
-                ? t("settings.editor.fontPicker.systemDefault")
-                : font.label}
-            </button>
-          ))}
-          {filtered.length === 0 && search && (
-            <button
-              className="settings-font-option"
-              onClick={() => handleSelect(search)}
-            >
-              {t("settings.editor.fontPicker.useCustom").replace(
-                "{font}",
-                search,
-              )}
-            </button>
-          )}
-        </div>
-      )}
     </div>
   );
 }

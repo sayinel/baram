@@ -10,9 +10,12 @@ import type { PendingMedia } from "../../utils/media-data-url";
 import type { Editor } from "@tiptap/react";
 
 import { isNodeEmpty, Editor as TiptapEditor } from "@tiptap/core";
+import { useShallow } from "zustand/shallow";
 
 import { createBaramExtensions } from "../../extensions";
 import { useEditorStore } from "../../stores/editor/editor";
+import { useSettingsStore } from "../../stores/settings/store";
+import { applyFontVariables } from "../../utils/editor/font-surfaces";
 import {
   canonicalDoc,
   serializeLiveDoc,
@@ -102,6 +105,28 @@ export function useCaptureEditor(open: boolean): CaptureEditor {
       }
     };
   }, [open, extensions]);
+
+  // §349 캡처 표면은 `DOCUMENT_FONT_SURFACES` 의 멤버다. 문서창을 배선하는
+  // `use-settings-effects.ts` 는 활성 편집기 하나만 겨누므로(그 파일의
+  // §perf-large-file C3.4 주석) 이 인스턴스에는 닿지 않는다 — 캡처 상자가 문서와
+  // 다른 서체로 뜨는 것은 결함이라 같은 헬퍼로 같은 두 변수를 여기에도 덮는다.
+  //
+  // 배선이 편집기 인스턴스 옆에 있는 이유: 표면 요소의 수명이 곧 그 인스턴스의
+  // 수명이다. 다이얼로그 쪽에 두면 "언제 새 인스턴스가 되는가"를 두 곳이 알아야 한다.
+  const { codeFontFamily, fontFamily } = useSettingsStore(
+    useShallow((s) => ({
+      codeFontFamily: s.codeFontFamily,
+      fontFamily: s.fontFamily,
+    })),
+  );
+  useEffect(() => {
+    if (!editor) return;
+    applyFontVariables(editor.view.dom, {
+      bodyFont: fontFamily,
+      codeFont: codeFontFamily,
+      which: "both",
+    });
+  }, [editor, fontFamily, codeFontFamily]);
 
   const getMarkdown = useCallback(() => {
     if (!editor || editor.isDestroyed || isDocEmpty(editor.state.doc))

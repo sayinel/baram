@@ -88,6 +88,13 @@ image = { version = "0.25", default-features = false, features = [
 tauri-plugin-clipboard-manager = "2"
 trash = "5"
 tauri-plugin-log = "2.9.0"
+# §350 시스템 폰트 열거 (font/mod.rs). fontdb 는 OS 폰트 디렉터리를 걷는다; ttf-parser 는
+# 직접 추가한다 — fontdb 0.24 는 자체 내부 `mod ttf_parser` 를 갖고 `Language`/`Width`
+# 만 재수출하므로, fontdb 를 거쳐서는 ttf-parser 의 Face API(한글 글리프 조회)에 닿지
+# 않는다. `with_face_data` 가 넘기는 것은 원시 `&[u8]` 라 두 크레이트의 버전이 달라도
+# 경계를 넘는 타입은 없다.
+fontdb = "0.24"
+ttf-parser = "0.25"
 
 # §313 전역 캡처 단축키. 데스크톱 전용 — 모바일 타깃에는 이 플러그인이 없다.
 # 기본 바인딩은 두지 않는다: 등록은 사용자가 설정에서 조합을 지정할 때만 일어난다.

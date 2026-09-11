@@ -219,10 +219,10 @@ const NATIVE_TITLE_BUDGET = new Map<string, number>([
   // the document's own words
   ["src/extensions/nodes/image-view.tsx", 1], // <img title>
   // the pill cannot be seen there (z-index 9999)
-  ["src/extensions/nodes/svg-block-view.tsx", 1], // Discard, in the fullscreen editor
   ["src/extensions/nodes/video-view.tsx", 2], // <iframe title>, <video title>
   ["src/extensions/nodes/views/MermaidBlockContextMenu.tsx", 3], // the disabled items' reason
   ["src/extensions/nodes/views/MermaidFullscreenModals.tsx", 1], // ditto
+  ["src/extensions/nodes/views/SvgFullscreenModals.tsx", 1], // Discard, in the fullscreen editor
   ["src/extensions/nodes/wikilink-view.tsx", 1], // the un-truncated heading
 ]);
 

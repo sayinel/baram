@@ -14,6 +14,8 @@ import {
 } from "../stores/ui/panel-feature";
 import { useUIStore } from "../stores/ui/ui";
 import { findThemeById } from "../types/theme";
+import { applyFontVariables } from "../utils/editor/font-surfaces";
+import { resolveCodeMetrics } from "../utils/font/code-metrics";
 import { logger } from "../utils/logger";
 import {
   appliesInlineVars,
@@ -24,19 +26,27 @@ import {
 export function useSettingsEffects(editor: Editor | null) {
   const {
     activeThemeId,
+    codeFontFamily,
+    codeFontSize,
+    codeLineHeight,
     customThemes,
     fontSize,
     fontFamily,
     lineHeight,
+    linkFontMetrics,
     spellCheck,
     editorMaxWidth,
   } = useSettingsStore(
     useShallow((s) => ({
       activeThemeId: s.activeThemeId,
+      codeFontFamily: s.codeFontFamily,
+      codeFontSize: s.codeFontSize,
+      codeLineHeight: s.codeLineHeight,
       customThemes: s.customThemes,
       fontSize: s.fontSize,
       fontFamily: s.fontFamily,
       lineHeight: s.lineHeight,
+      linkFontMetrics: s.linkFontMetrics,
       spellCheck: s.spellCheck,
       editorMaxWidth: s.editorMaxWidth,
     })),
@@ -81,9 +91,21 @@ export function useSettingsEffects(editor: Editor | null) {
     const tiptap = domNode as HTMLElement;
     // eslint-disable-next-line react-hooks/immutability -- we are styling the DOM element, not mutating the editor argument
     tiptap.style.fontSize = `${fontSize}px`;
-    tiptap.style.fontFamily = fontFamily
-      ? `${fontFamily}, var(--font-family-editor)`
-      : "";
+    // §349 인라인 font-family 대신 변수 두 개. 인라인은 이 요소의 `font-family`
+    // 하나만 덮으므로 코드·수식·표·미디어가 읽는 var(--font-family-mono) 소비자
+    // 들에는 닿지 않았고, 그래서 "코드 서체"라는 설정이 존재할 수 없었다.
+    //
+    // ‼️ 변수 상속의 범위는 DOM 포함관계이지 파일 경로가 아니다 — `.tiptap` 밖으로
+    // 포털되는 오버레이는 이 한 줄로 따라오지 **않고** 각자 표면 배선이 필요하다.
+    // 어느 것이 그런지는 `utils/editor/font-surfaces.ts` 의 헤더와
+    // `DOCUMENT_FONT_SURFACES` 가 유일한 출처다. 여기 개수를 베껴 적지 않는다:
+    // 한때 "그 30곳이 배선 추가 없이 따라온다"고 적혀 있었고 그것은 거짓이었다
+    // (§349 리뷰 · final review I4). 베낀 목록은 낡고, 지목한 목록은 안 낡는다.
+    applyFontVariables(tiptap, {
+      bodyFont: fontFamily,
+      codeFont: codeFontFamily,
+      which: "both",
+    });
     tiptap.style.lineHeight = String(lineHeight);
     // Also as a variable, because CSS has to compute WITH the line height, not just
     // inherit it: the list markers and the fold arrow are absolutely positioned, so they
@@ -91,10 +113,38 @@ export function useSettingsEffects(editor: Editor | null) {
     // `line-height` is not possible from a `calc()`, which is why those offsets used to be
     // constants that only matched the default 1.75.
     tiptap.style.setProperty("--editor-line-height", String(lineHeight));
+    // §354 코드 전용 크기·줄 높이. 변수인 이유는 본문과 같다 — 인라인 스타일은
+    // 이 요소 하나만 덮지만, 코드는 문서 안 여러 자리(인라인 코드 · 코드블록
+    // 편집기 · 그 플레이스홀더)에서 제 크기를 선언한다. 그 선언들이 지금까지
+    // 쓰던 `0.875em` 의 자리를 이 변수가 대신한다.
+    //
+    // 연동 중이면 값이 정확히 `본문 × 0.875` 라 예전 `em` 과 같은 픽셀이 나온다.
+    const code = resolveCodeMetrics({
+      codeFontSize,
+      codeLineHeight,
+      fontSize,
+      lineHeight,
+      linkFontMetrics,
+    });
+    tiptap.style.setProperty("--editor-code-font-size", `${code.fontSize}px`);
+    tiptap.style.setProperty(
+      "--editor-code-line-height",
+      String(code.lineHeight),
+    );
     tiptap.style.maxWidth = editorMaxWidth > 0 ? `${editorMaxWidth}px` : "";
     tiptap.style.marginLeft = editorMaxWidth > 0 ? "auto" : "";
     tiptap.style.marginRight = editorMaxWidth > 0 ? "auto" : "";
-  }, [fontSize, fontFamily, lineHeight, editorMaxWidth, editor]);
+  }, [
+    fontSize,
+    fontFamily,
+    codeFontFamily,
+    codeFontSize,
+    codeLineHeight,
+    linkFontMetrics,
+    lineHeight,
+    editorMaxWidth,
+    editor,
+  ]);
 
   useEffect(() => {
     if (!editor) return;

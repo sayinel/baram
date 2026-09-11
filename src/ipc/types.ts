@@ -382,6 +382,14 @@ export interface SnapshotFileEntry {
   sizeBytes: number;
 }
 
+// §350 System font enumeration
+export interface SystemFont {
+  hasKorean: boolean;
+  monospaced: boolean;
+  name: string;
+  weights: number[];
+}
+
 // §56m Tag types
 export interface TagEntry {
   count: number;

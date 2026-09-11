@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { GENERIC_FAMILIES } from "../editor/quote-font-family";
+import { BUNDLED_FONTS } from "../font/bundled-fonts";
 import {
   getJournalTheme,
   getStreakIcon,
@@ -142,5 +144,71 @@ describe("getStreakIcon", () => {
 
   it("returns 🔥 for unknown theme (falls back to classic-diary)", () => {
     expect(getStreakIcon("unknown-id")).toBe("🔥");
+  });
+});
+
+// §353 — 저널 테마의 서체는 "번들이거나, 폴백이 명시된 체인"이어야 한다.
+//
+// 오늘의 상태: 6개 테마가 Noto Serif KR·D2Coding·Nanum Pen Script 등을
+// 하드코딩하고 번들은 하나도 없어서 대부분 serif/monospace/cursive 로 떨어진다.
+// 스펙에 적힌 모습과 실제 렌더가 다르고, 아무도 그걸 볼 수 없었다.
+describe("§353 journal theme typography", () => {
+  // BUNDLED·GENERICS 는 §347/§349 의 단일 출처에서 끌어온다 — 로컬 사본은
+  // 그쪽이 한 항목 늘 때 여기서 조용히 갈라진다.
+  const BUNDLED = BUNDLED_FONTS.map((f) => f.family);
+
+  // 번들로 설계된 4개 테마와 의도적으로 비번들인 2개(classic-diary·
+  // watercolor)의 고정된 분류 — 값이 아니라 소속 자체를 단정해야 어느 한
+  // 테마가 조용히 번들을 잃어도(또는 의도치 않게 얻어도) 잡힌다.
+  const EXPECTED_BUNDLED_THEME_IDS = new Set([
+    "moleskine",
+    "muji",
+    "night-owl",
+    "vintage",
+  ]);
+
+  it("ends every stack in a generic family", () => {
+    for (const theme of JOURNAL_THEMES) {
+      const last = theme.typography.fontFamily.split(",").at(-1)?.trim() ?? "";
+      expect(GENERIC_FAMILIES.has(last), `${theme.id} ends in ${last}`).toBe(
+        true,
+      );
+    }
+  });
+
+  // 체인이 한 칸이면 폴백이 아니라 희망이다.
+  it("names at least one concrete family before the generic", () => {
+    for (const theme of JOURNAL_THEMES) {
+      const parts = theme.typography.fontFamily.split(",").map((p) => p.trim());
+      expect(
+        parts.length,
+        `${theme.id} has no fallback chain`,
+      ).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  it("quotes every multi-word family name", () => {
+    for (const theme of JOURNAL_THEMES) {
+      const parts = theme.typography.fontFamily.split(",").map((p) => p.trim());
+      for (const part of parts) {
+        if (GENERIC_FAMILIES.has(part)) continue;
+        if (part.includes(" ")) {
+          expect(part.startsWith('"'), `${theme.id}: ${part} unquoted`).toBe(
+            true,
+          );
+        }
+      }
+    }
+  });
+
+  it("routes exactly the bundled-by-design themes through a bundled family", () => {
+    for (const theme of JOURNAL_THEMES) {
+      const routesBundled = BUNDLED.some((b) =>
+        theme.typography.fontFamily.includes(b),
+      );
+      expect(routesBundled, theme.id).toBe(
+        EXPECTED_BUNDLED_THEME_IDS.has(theme.id),
+      );
+    }
   });
 });

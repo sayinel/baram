@@ -13,6 +13,8 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 
+import { useFontSurface } from "../../hooks/use-font-surface";
+
 export function ImageOriginalView({
   alt,
   onClose,
@@ -27,6 +29,9 @@ export function ImageOriginalView({
   previewUrl: null | string;
 }) {
   const [originalLoaded, setOriginalLoaded] = useState(false);
+  // §349 이 오버레이는 document.body 로 포털된다 — 문서 표면의 변수를
+  // 상속받지 못하므로 루트에 직접 덮는다.
+  const fontSurface = useFontSurface("both");
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -49,6 +54,7 @@ export function ImageOriginalView({
           onClose();
         }
       }}
+      ref={fontSurface}
     >
       <div className="image-view-fullscreen-modal">
         <div className="image-fullscreen-header">

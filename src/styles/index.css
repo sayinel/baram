@@ -1,5 +1,8 @@
 /* Baram Design System — Master CSS Entry Point */
 
+/* 0. Bundled font faces (§347) — must precede every stylesheet that names them */
+@import "./fonts.css";
+
 /* 1. Base: tokens, reset, utilities, dark mode */
 @import "./base.css";
 

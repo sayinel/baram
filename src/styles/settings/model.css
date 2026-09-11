@@ -133,49 +133,372 @@
   border-color: var(--color-status-error-border);
 }
 
-/* Font Family Picker */
-.settings-font-picker {
-  position: relative;
-  width: 180px;
+/* §351 Font Slot Picker — value + source badge + browse button, and a 3-line
+   preview strip below. Replaces the old free-text dropdown, which drew every
+   row in the family it named and made a missing font look installed
+   (§346 defect 4). `.flex-col`/`.text-truncate` come from base.css. */
+.settings-font-slot {
+  gap: 6px;
+  width: 320px;
 }
 
-.settings-font-dropdown {
-  position: absolute;
-  top: 100%;
-  right: 0;
-  left: 0;
-  z-index: 10;
-  max-height: 200px;
-  margin-top: 2px;
-  overflow-y: auto;
-  background: var(--color-bg-default);
-  border: 1px solid var(--color-border-default);
-  border-radius: 5px;
-  box-shadow: 0 4px 12px rgb(0 0 0 / 10%);
+.settings-font-value {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 
-.settings-font-option {
-  display: block;
-  width: 100%;
-  padding: 6px 10px;
-  font-size: 0.8rem;
+.settings-font-value-name {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 0.85rem;
   color: var(--color-text-primary);
   text-align: left;
-  cursor: pointer;
-  background: transparent;
-  border: none;
 }
 
-.settings-font-option:hover {
+/* review Important 1 — click-to-edit commit path (the free-text entry the
+   old dropdown had, without which a family absent from the enumeration
+   could never be saved). */
+.settings-font-value-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-font-badge {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  font-size: 0.7rem;
+  font-weight: 500;
+  white-space: nowrap;
+  border-radius: 999px;
+}
+
+/* review Important 5: `--color-accent-on-solid` is contrast-checked against
+   `--color-accent-solid`, not `--color-accent-default` (semantic-light.css:
+   accent-default is 3.68:1, accent-solid is a step darker specifically so
+   on-solid text clears WCAG AA at 5.17:1 on it). Pairing on-solid with
+   accent-default fails AA at this badge's ~11px size, and on-solid flips
+   black/white per theme based on a contrast computation against a background
+   the badge never uses. Use the background on-solid is actually measured
+   against. */
+.settings-font-badge-bundled {
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid);
+}
+
+.settings-font-badge-system {
+  color: var(--color-text-secondary);
+  background: var(--color-bg-elevated);
+}
+
+.settings-font-badge-missing {
+  color: var(--color-status-danger);
+  background: var(--color-status-error-bg);
+}
+
+/* 버튼처럼 보여야 버튼으로 읽힌다 — `.btn-unstyled` 였을 때는 옆의 배지와 구분되지
+   않는 회색 글자라 한참 뒤에야 눈에 띄었다(동훈님 보고). 이 모달의 다른 작은
+   버튼(`.settings-model-refresh`)과 같은 차림새를 쓴다. */
+.settings-font-more {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  font-family: var(--font-family-sans);
+  font-size: 0.75rem;
+  line-height: 1;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  background-color: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-default);
+  border-radius: 4px;
+}
+
+.settings-font-more:hover {
+  color: var(--color-text-primary);
   background-color: var(--color-bg-subtle);
 }
 
-.settings-font-option-active {
+/* 자유 입력(열거에 없는 이름을 직접 타이핑)의 입구. 값 이름을 누르는 것은 이제
+   브라우저를 여는 동작이라 이 경로는 자기 버튼을 갖는다 — 드문 동작이므로
+   테두리 없이 앉아 있다가 hover 에서만 버튼으로 드러난다. 아이콘 하나뿐이니
+   접근 가능한 이름은 `aria-label`/`title` 이 갖는다. */
+.settings-font-edit {
+  flex-shrink: 0;
+  padding: 4px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background-color: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+}
+
+.settings-font-edit:hover {
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-subtle);
+  border-color: var(--color-border-default);
+}
+
+.settings-font-strip {
+  padding: 8px 10px;
+  overflow: hidden;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+}
+
+/* `em`, `rem` 이 아니다 — 세 줄의 크기는 스트립에 인라인으로 걸린 설정값에서
+   파생돼야 슬라이더를 움직일 때 예제가 따라 움직인다(동훈님 요청). 비율은
+   그대로라 기본 16px 에서는 예전 `rem` 값과 픽셀 단위로 같다. */
+.settings-font-strip-primary {
+  font-size: 0.95em;
+  color: var(--color-text-primary);
+}
+
+.settings-font-strip-secondary {
+  margin-top: 2px;
+  font-size: 0.8em;
+  color: var(--color-text-secondary);
+}
+
+.settings-font-strip-glyphs {
+  margin-top: 4px;
+  font-size: 0.75em;
+  color: var(--color-text-muted);
+}
+
+/* §352 Font Browser — two-pane replacement for the old placeholder (review
+   Important 3): a filtered/grouped list on the left, a live body+code
+   preview on the right. Owns its own back control the way ThemeEditor does.
+   `.flex-col`/`.flex-header`/`.btn-unstyled`/`.text-truncate` come from
+   base.css; `.settings-search*`/`.settings-model-refresh*`/`.settings-range`
+   are reused as-is from the rest of the settings modal.
+
+   높이는 부모(`.settings-content`)가 정하고, 넘치는 것은 안쪽 두 칸이 각자 삼킨다.
+   바닥(`min-height`)만 있고 상한이 없던 동안에는 넘치는 쪽이 부모였다 — 목록
+   아래쪽 서체를 고르면 오른쪽 미리보기도 위쪽 "← 에디터 설정" 버튼도 함께 밀려
+   올라가서, 예제를 보려고도 되돌아가려고도 스크롤을 다시 올려야 했다(동훈님 보고).
+   `font-browser-scroll.test.ts` 가 이 세 조건을 함께 지킨다. */
+.font-browser {
+  gap: 12px;
+  height: 100%;
+}
+
+.font-browser-topbar {
+  gap: 12px;
+}
+
+.font-browser-back {
+  font-size: 0.8rem;
+  color: var(--color-accent-default);
+}
+
+.font-browser-back:hover {
+  color: var(--color-accent-hover);
+}
+
+/* Body/Code segmented control — same shape as .settings-scheme-group. */
+.font-browser-slot-group {
+  display: flex;
+  overflow: hidden;
+  border: 1px solid var(--color-border-default);
+  border-radius: 5px;
+}
+
+.font-browser-slot-btn {
+  padding: 4px 12px;
+  font-family: var(--font-family-sans);
+  font-size: 0.78rem;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  background: var(--color-bg-default);
+  border: none;
+}
+
+.font-browser-slot-btn:not(:last-child) {
+  border-right: 1px solid var(--color-border-default);
+}
+
+.font-browser-slot-btn:hover {
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-subtle);
+}
+
+.font-browser-slot-btn-active {
   color: var(--color-accent-on-solid);
   background-color: var(--color-accent-solid);
 }
 
-.settings-font-option-active:hover {
+.font-browser-toolbar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.font-browser-toolbar .settings-search-wrapper {
+  max-width: none;
+  margin: 0;
+}
+
+.font-browser-chips {
+  display: flex;
+  flex-shrink: 0;
+  gap: 6px;
+}
+
+.font-browser-chip {
+  padding: 3px 10px;
+  font-size: 0.72rem;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-default);
+  border-radius: 999px;
+}
+
+.font-browser-chip:hover {
+  color: var(--color-text-primary);
+}
+
+.font-browser-chip-active {
   color: var(--color-accent-on-solid);
-  background-color: var(--color-accent-solid-hover);
+  background: var(--color-accent-solid);
+  border-color: var(--color-accent-solid);
+}
+
+.font-browser-count {
+  flex-shrink: 0;
+  margin-left: auto;
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.font-browser-body {
+  display: flex;
+  flex: 1;
+  gap: 16px;
+  min-height: 0;
+}
+
+.font-browser-list {
+  flex: 0 0 42%;
+  gap: 12px;
+  overflow-y: auto;
+}
+
+.font-browser-list-loading {
+  padding: 24px 0;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+/* §350 폴백 알림 — 목록 위에 한 줄. 경고가 아니라 사실 진술이므로
+   status-danger 가 아니라 muted 계열이다: 사용자가 잘못한 것이 없다. */
+.font-browser-list-notice {
+  padding: 6px 8px;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: var(--color-text-muted);
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-default);
+  border-radius: 4px;
+}
+
+.font-browser-group-title {
+  padding-bottom: 4px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.font-browser-group-items {
+  display: flex;
+  flex-direction: column;
+}
+
+.font-browser-row {
+  padding: 5px 4px;
+  font-size: 0.85rem;
+  color: var(--color-text-primary);
+  text-align: left;
+  border-radius: 4px;
+}
+
+.font-browser-row:hover {
+  background: var(--color-bg-subtle);
+}
+
+.font-browser-row-active {
+  color: var(--color-accent-default);
+  background: var(--color-bg-subtle);
+}
+
+.font-browser-preview {
+  flex: 1;
+  gap: 12px;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+.font-browser-preview-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.font-browser-preview-control {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.7rem;
+  color: var(--color-text-secondary);
+}
+
+/* 라벨과 수치가 슬라이더 폭 양끝에 앉는다 — 설정 행이 설명문 안에 적어 주는
+   그 수치를, 브라우저에서는 조절하는 자리 바로 위에 둔다(동훈님 요청). */
+.font-browser-preview-control-head {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+/* `tabular-nums` — 드래그하는 동안 1 과 8 의 폭이 달라 수치가 흔들리면 읽는
+   대신 눈이 따라다니게 된다. */
+.font-browser-preview-value {
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-primary);
+}
+
+.font-browser-preview-body,
+.font-browser-preview-code {
+  padding: 12px 14px;
+  overflow: auto;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+}
+
+.font-browser-preview-body p {
+  margin: 0 0 8px;
+  color: var(--color-text-primary);
+}
+
+.font-browser-preview-body p.font-browser-preview-glyphs {
+  color: var(--color-text-secondary);
+}
+
+.font-browser-preview-code {
+  margin: 0;
+  color: var(--color-text-primary);
+  white-space: pre-wrap;
+}
+
+/* review-equivalent — highlight whichever preview matches the slot being
+   browsed, without hiding the other (the pairing must stay visible). */
+.font-browser-preview-active {
+  border-color: var(--color-accent-default);
 }

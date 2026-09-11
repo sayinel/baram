@@ -9,9 +9,6 @@
 
 import { editorContentCSS, exportTokensCSS } from "./export-editor-css";
 
-export const MONO_FONT =
-  '"JetBrains Mono","Fira Code","SF Mono",ui-monospace,monospace';
-
 /** Style presets per code block data-style variant */
 export const CODE_STYLE_MAP: Record<
   string,
@@ -121,15 +118,25 @@ article.baram-export .tag-node { color: var(--color-accent-default); font-weight
 
 /* Code block — built by export-html-code-block.ts rather than cloned, because
    the live block is a CodeMirror instance full of editing machinery. The
-   per-variant palette is applied inline there; these rules carry the rest. */
+   per-variant palette is applied inline there; these rules carry the rest.
+
+   ‼️ \`var(--font-family-mono)\`, never a literal stack (§353, final review I1).
+   These two rules and the inline styles in export-html-code-block.ts used to
+   name a module constant, which meant the most code-font-relevant content in
+   the document was the one surface the "code font" setting could not reach —
+   and that constant had also drifted into a stale copy of the mono stack
+   missing the bundled head, so the block did not render in the embedded face
+   either. The variable is set on \`article.baram-export\` from the user's
+   setting (export-font-embed.ts) and falls back to the token in
+   primitives.css, so there is nothing left for a literal here to add. */
 .code-block-export { margin: 1em 0; overflow: hidden; }
 .code-block-export-lang {
-  font-family: ${MONO_FONT};
+  font-family: var(--font-family-mono);
   font-size: 0.7rem;
 }
 .code-block-body {
   display: flex;
-  font-family: ${MONO_FONT};
+  font-family: var(--font-family-mono);
   font-size: 0.875em;
   line-height: 1.6;
   overflow-x: auto;
@@ -202,16 +209,25 @@ export const PRINT_CSS = `
 /**
  * The complete stylesheet an exported document carries, in cascade order.
  *
- * Tokens first (everything below resolves `var()` against them), then the
+ * `fontFaceCSS` (§353, built by `export-font-embed.ts`'s `buildFontFaceCSS`)
+ * comes first — a `@font-face` declaration has to land before the rule that
+ * names the family in `font-family:` for the face to actually be found. Empty
+ * by default, so every existing caller (and every test that calls this with no
+ * arguments) is unaffected.
+ *
+ * Tokens next (everything below resolves `var()` against them), then the
  * editor's own appearance, then the export-only frame, then print. Exported as
  * one function so the tests can assert against exactly what ships rather than
  * against one of the pieces.
  */
-export function buildExportStylesheet(): string {
+export function buildExportStylesheet(fontFaceCSS = ""): string {
   return [
+    fontFaceCSS,
     exportTokensCSS(),
     editorContentCSS(),
     EXPORT_BASE_CSS.trim(),
     PRINT_CSS.trim(),
-  ].join("\n\n");
+  ]
+    .filter((block) => block !== "")
+    .join("\n\n");
 }

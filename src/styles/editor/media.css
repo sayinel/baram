@@ -19,11 +19,18 @@
   border-radius: 0;
 }
 
-/* Inline code */
+/* Inline code.
+
+   §354 크기는 `--editor-code-font-size` 가 정한다. 폴백 `0.875em` 은 그 변수를
+   거는 `use-settings-effects` 가 닿지 않는 표면(문서 밖 미리보기 등)을 위한
+   것이고, 그 값이 곧 연동 상태에서 변수가 갖는 값이다.
+
+   줄 높이는 여기 걸지 않는다 — 인라인 조각에 줄 높이를 주면 본문 한 줄의 높이가
+   그 조각 때문에 들쭉날쭉해진다. "코드 줄 높이"가 뜻하는 것은 블록이다. */
 .tiptap code {
   padding: 0.1em 0.3em;
   font-family: var(--font-family-mono);
-  font-size: 0.875em;
+  font-size: var(--editor-code-font-size, 0.875em);
   background-color: var(--color-bg-subtle);
   border: 1px solid var(--color-border-subtle);
   border-radius: 3px;

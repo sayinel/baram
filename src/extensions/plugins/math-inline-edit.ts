@@ -14,6 +14,8 @@ import {
 } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 
+import { useSettingsStore } from "../../stores/settings/store";
+import { applyFontVariables } from "../../utils/editor/font-surfaces";
 import { parseKaTeXError } from "../../utils/katex/katex-error";
 import { logger } from "../../utils/logger";
 
@@ -294,6 +296,29 @@ function createMathEditPlugin(): Plugin<MathEditState> {
       overlay.style.display = "none";
       document.body.appendChild(overlay);
 
+      // §349 이 팝오버는 `document.body` 의 자식이므로 문서 표면의 폰트 변수를
+      // 상속받지 못한다 — `.math-inline-preview-error` 가 읽는
+      // `var(--font-family-mono)` 가 사용자의 코드 서체를 따라가려면 여기에
+      // 직접 덮어야 한다. React 트리가 아니라 훅을 쓸 수 없어 스토어를 직접
+      // 구독하고, 아래 `destroy()` 에서 해지한다.
+      const applyFonts = () => {
+        const { codeFontFamily, fontFamily } = useSettingsStore.getState();
+        applyFontVariables(overlay, {
+          bodyFont: fontFamily,
+          codeFont: codeFontFamily,
+          which: "both",
+        });
+      };
+      applyFonts();
+      const unsubscribeFonts = useSettingsStore.subscribe((next, prev) => {
+        if (
+          next.codeFontFamily !== prev.codeFontFamily ||
+          next.fontFamily !== prev.fontFamily
+        ) {
+          applyFonts();
+        }
+      });
+
       const previewContent = document.createElement("div");
       previewContent.className = "math-inline-preview-content";
       overlay.appendChild(previewContent);
@@ -416,6 +441,7 @@ function createMathEditPlugin(): Plugin<MathEditState> {
         },
         destroy() {
           if (pendingRaf) cancelAnimationFrame(pendingRaf);
+          unsubscribeFonts();
           overlay.remove();
         },
       };

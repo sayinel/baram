@@ -67,8 +67,14 @@ describe("settings store v23 -> v24 (§344 openInbox -> openHomeNote)", () => {
     expect(result.zettelkastenStartupBehavior).toBe("nothing");
   });
 
-  it("the store is at version 24", () => {
-    expect(useSettingsStore.persist.getOptions().version).toBe(24);
+  // 이 단정이 지키는 것은 "게이트가 도달 가능하다"이지 현재 버전이 아니다.
+  // 등호로 적어 두면 다음 버전 올림마다 §344 와 무관한 이유로 빨간불이 되고,
+  // 그때 고치는 사람은 이 파일이 무엇을 주장하려 했는지 알 수 없다. 버전이
+  // 24 아래로 되돌아가면 v23 사용자에게 이 재매핑이 영원히 안 돈다 — 그것만 본다.
+  it("is at a version that can still run the openHomeNote remap", () => {
+    expect(
+      useSettingsStore.persist.getOptions().version,
+    ).toBeGreaterThanOrEqual(24);
   });
 
   it("defaults a fresh install to openHomeNote", () => {
