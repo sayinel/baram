@@ -12,6 +12,10 @@ import {
   badgeFonts,
   fontListStateFrom,
 } from "../../../utils/font/font-list-state";
+import {
+  fontSizeNumber,
+  lineHeightNumber,
+} from "../../../utils/font/font-metric-text";
 import { FontBrowser } from "../FontBrowser";
 import { FontSlotPicker } from "../FontSlotPicker";
 import {
@@ -145,7 +149,7 @@ export function EditorTab() {
       <SettingsRow
         description={t("settings.editor.fontSize.desc").replace(
           "{value}",
-          String(fontSize),
+          fontSizeNumber(fontSize),
         )}
         label={t("settings.editor.fontSize")}
       >
@@ -163,7 +167,7 @@ export function EditorTab() {
       <SettingsRow
         description={t("settings.editor.lineHeight.desc").replace(
           "{value}",
-          lineHeight.toFixed(2),
+          lineHeightNumber(lineHeight),
         )}
         label={t("settings.editor.lineHeight")}
       >

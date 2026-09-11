@@ -24,6 +24,47 @@ async function flush(): Promise<void> {
 }
 
 describe("EditorTab — Browse…", () => {
+  // 동훈님 요청 — 브라우저의 슬라이더에도 수치를 띄운다. 두 표면은 한 store 값의
+  // 두 창이므로, 같은 값을 다른 모양으로 적으면(1.7 vs 1.70) 어느 쪽이 진짜인지
+  // 알 수 없다. 그래서 단정은 "숫자가 보인다"가 아니라 "설정 행이 적은 것과 글자
+  // 그대로 같다" 이고, 기대값을 손으로 적지 않고 설정 행에서 뽑아 온다 — 손으로
+  // 적으면 두 표면이 함께 틀려도 초록이다.
+  //
+  // `1.7` 을 고른 이유: 자릿수 고정을 실제로 구분한다. `String(lineHeight)` 로
+  // 되돌아가면 설정 행의 "1.70" 과 브라우저의 "1.7" 이 갈라져 이 테스트가 깨진다.
+  it("shows the same size and line height in the browser as in the settings rows", async () => {
+    useSettingsStore.setState({
+      ...initialState,
+      fontSize: 21,
+      lineHeight: 1.7,
+      locale: "en",
+    });
+    render(<EditorTab />);
+    await flush();
+
+    const parenthesised = (pattern: RegExp): string => {
+      const text = screen.getByText(pattern).textContent ?? "";
+      const inside = /\(([^)]+)\)/u.exec(text);
+      expect(inside).not.toBeNull();
+      return (inside as RegExpExecArray)[1];
+    };
+    const size = parenthesised(/Size of text in the editor/u);
+    const height = parenthesised(/Spacing between lines/u);
+    expect(size).toBe("21px");
+    expect(height).toBe("1.70");
+
+    act(() => {
+      screen.getAllByRole("button", { name: "Browse…" })[0].click();
+    });
+
+    expect(screen.getByTestId("font-browser-size-value").textContent).toBe(
+      size,
+    );
+    expect(
+      screen.getByTestId("font-browser-line-height-value").textContent,
+    ).toBe(height);
+  });
+
   it("swaps in the font browser instead of a blank pane, and returns to the font rows", async () => {
     useSettingsStore.setState({ ...initialState, locale: "en" });
     render(<EditorTab />);

@@ -454,6 +454,22 @@
   color: var(--color-text-secondary);
 }
 
+/* 라벨과 수치가 슬라이더 폭 양끝에 앉는다 — 설정 행이 설명문 안에 적어 주는
+   그 수치를, 브라우저에서는 조절하는 자리 바로 위에 둔다(동훈님 요청). */
+.font-browser-preview-control-head {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+/* `tabular-nums` — 드래그하는 동안 1 과 8 의 폭이 달라 수치가 흔들리면 읽는
+   대신 눈이 따라다니게 된다. */
+.font-browser-preview-value {
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-primary);
+}
+
 .font-browser-preview-body,
 .font-browser-preview-code {
   padding: 12px 14px;

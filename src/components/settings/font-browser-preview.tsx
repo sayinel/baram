@@ -16,6 +16,10 @@ import {
 } from "../../utils/editor/font-surfaces";
 import { quoteFamily } from "../../utils/editor/quote-font-family";
 import {
+  fontSizeNumber,
+  lineHeightNumber,
+} from "../../utils/font/font-metric-text";
+import {
   SAMPLE_CODE,
   SAMPLE_EN,
   SAMPLE_GLYPHS,
@@ -68,7 +72,15 @@ export function FontBrowserPreview({ slot }: Props) {
     <div className="font-browser-preview flex-col">
       <div className="font-browser-preview-controls">
         <label className="font-browser-preview-control">
-          <span>{t("settings.editor.fontSize")}</span>
+          <span className="font-browser-preview-control-head">
+            <span>{t("settings.editor.fontSize")}</span>
+            <span
+              className="font-browser-preview-value"
+              data-testid="font-browser-size-value"
+            >
+              {`${fontSizeNumber(fontSize)}px`}
+            </span>
+          </span>
           <input
             className="settings-range"
             max={32}
@@ -80,7 +92,15 @@ export function FontBrowserPreview({ slot }: Props) {
           />
         </label>
         <label className="font-browser-preview-control">
-          <span>{t("settings.editor.lineHeight")}</span>
+          <span className="font-browser-preview-control-head">
+            <span>{t("settings.editor.lineHeight")}</span>
+            <span
+              className="font-browser-preview-value"
+              data-testid="font-browser-line-height-value"
+            >
+              {lineHeightNumber(lineHeight)}
+            </span>
+          </span>
           <input
             className="settings-range"
             max={3.0}
