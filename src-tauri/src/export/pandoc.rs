@@ -196,10 +196,26 @@ local function drop_raw_block(_)
   return {}
 end
 local FILE_KEYS = { "cover-image", "epub-cover-image", "css", "stylesheet", "bibliography", "csl" }
+-- Attributes ride into EPUB's XHTML verbatim: `<div onclick>` (native_divs),
+-- `<span onclick>` (native_spans), `[x]{onclick=…}` (bracketed_spans),
+-- `# H {onclick=…}`, `![](x){onclick=…}`. Only an image's size survives; ids
+-- and classes stay (anchors, code languages).
+local IMAGE_KEYS = { width = true, height = true }
+local CODE_KEYS = { startFrom = true }
+local function scrub(el, keep)
+  local kept = {}
+  for _, kv in ipairs(el.attributes) do
+    if keep and keep[kv[1]] then table.insert(kept, kv) end
+  end
+  el.attributes = kept
+  return el
+end
+local function scrub_all(el) return scrub(el, nil) end
 return {
   {
     Image = function(el)
       if IMAGES_EMBEDDED and not ALLOWED[unescaped(el.src)] then return el.caption end
+      return scrub(el, IMAGE_KEYS)
     end,
     -- Inline handlers ran first, so a rejected image is its alt text by now.
     -- pandoc wraps a lone image in a figure captioned with that same alt;
@@ -209,9 +225,9 @@ return {
     Figure = function(el)
       local image = false
       el:walk({ Image = function() image = true end })
-      if image then return nil end
+      if image then return scrub(el, nil) end
       if pandoc.utils.stringify(el.caption.long) ~= pandoc.utils.stringify(el.content) then
-        return nil
+        return scrub(el, nil)
       end
       local blocks = {}
       for _, block in ipairs(el.content) do
@@ -223,8 +239,15 @@ return {
       end
       return blocks
     end,
+    Div = scrub_all,
+    Span = scrub_all,
+    Header = scrub_all,
+    CodeBlock = function(el) return scrub(el, CODE_KEYS) end,
+    Code = scrub_all,
+    Table = scrub_all,
     Link = function(el)
       if not link_allowed(el.target) then return el.content end
+      return scrub(el, nil)
     end,
     RawInline = drop_raw_inline,
     RawBlock = drop_raw_block,
@@ -976,7 +999,7 @@ mod tests {
         let pic_abs = root.join("notes/img/pic.png");
         let pic_abs = pic_abs.to_str().unwrap();
         let markdown = format!(
-            "---\ntitle: T\ncover-image: {canary}\ncss: {canary}\n---\n\n# T\n\n![pic](baram-asset:image-0.png) ![d](baram-asset:mermaid-0.png) ![gone](baram-asset:image-1.png) ![abs](baram-asset:image-2.png){{width=120px}} hosts <img src=\"{canary}\" alt=\"raw\">\n\n<img src=\"{canary}\">\n\n<video src=\"{canary}\"></video>\n\n<div>\n\n![indiv](<{canary}>)\n\n</div>\n\n[bad](javascript:alert(1)) [ok](https://example.com/) one<br>two\n\nH<sub>2</sub>O x<sup>2</sup> <u>under</u>\n\n![lonely](baram-asset:image-3.png)\n\n![The caption.](baram-asset:image-1.png){{alt=\"described\"}}\n\nraw tex \\href{{javascript:alert(2)}}{{texclick}} \\input{{{canary}}} \\newpage\n\n```{{=HTML}}\n<SUB>HTML-UPPER-MARK</SUB>\n```\n\n```{{=latex}}\nLATEX-RAW-MARK\n```\n\n```{{=openxml}}\n<w:p><w:r><w:t>OPENXML-MARK</w:t></w:r></w:p>\n```\n\n```{{=rst}}\n.. raw:: html\n\n   RST-RAW-MARK\n```\n"
+            "---\ntitle: T\ncover-image: {canary}\ncss: {canary}\n---\n\n# T\n\n![pic](baram-asset:image-0.png) ![d](baram-asset:mermaid-0.png) ![gone](baram-asset:image-1.png) ![abs](baram-asset:image-2.png){{width=120px}} hosts <img src=\"{canary}\" alt=\"raw\">\n\n<img src=\"{canary}\">\n\n<video src=\"{canary}\"></video>\n\n<div>\n\n![indiv](<{canary}>)\n\n</div>\n\n[bad](javascript:alert(1)) [ok](https://example.com/) one<br>two\n\nH<sub>2</sub>O x<sup>2</sup> <u>under</u>\n\n![lonely](baram-asset:image-3.png)\n\n![The caption.](baram-asset:image-1.png){{alt=\"described\"}}\n\nraw tex \\href{{javascript:alert(2)}}{{texclick}} \\input{{{canary}}} \\newpage\n\n```{{=HTML}}\n<SUB>HTML-UPPER-MARK</SUB>\n```\n\n```{{=latex}}\nLATEX-RAW-MARK\n```\n\n```{{=openxml}}\n<w:p><w:r><w:t>OPENXML-MARK</w:t></w:r></w:p>\n```\n\n```{{=rst}}\n.. raw:: html\n\n   RST-RAW-MARK\n```\n\n<div onclick=\"alert(1)\" style=\"background-image:url(https://tracker.example/p)\"><span onclick=\"alert(2)\">spanned</span></div>\n\n[attr span]{{onclick=\"alert(3)\"}} ![d2](baram-asset:mermaid-0.png){{onclick=\"alert(4)\" width=90px}}\n\n## Head {{onclick=\"alert(5)\"}}\n"
         );
         let markdown = markdown.as_str();
         let requests = vec![
@@ -1111,6 +1134,21 @@ mod tests {
                     "{format}: raw markup `{mark}` reached the output"
                 );
             }
+            // Attributes a note can write (`onclick`, a `style` with a URL) do
+            // not reach the archive either, while the text they wrapped does:
+            // `<div>`/`<span>` become native nodes with attributes, not raw.
+            assert!(
+                !all_text.contains("onclick"),
+                "{format}: attribute reached the output"
+            );
+            assert!(
+                !all_text.contains("tracker.example"),
+                "{format}: style url reached the output"
+            );
+            assert!(
+                body.contains("spanned") && body.contains("attr span"),
+                "{format}: attributed text lost"
+            );
             if format == "epub" {
                 assert!(
                     body.contains("<sub>2</sub>")
