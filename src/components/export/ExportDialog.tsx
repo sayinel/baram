@@ -182,7 +182,12 @@ export function ExportDialog({ editor }: ExportDialogProps) {
       } else if (exportFormat === "notion") {
         await exportForNotion(editor, title);
       } else if (isPandocFormat(exportFormat)) {
+        // issue 545: relative images resolve against the document's own
+        // directory; an unsaved document has none, and its relative images
+        // become alt text.
+        const activeTab = tabs.find((t) => t.id === activeTabId);
         await exportWithPandoc(editor, title, exportFormat, {
+          documentPath: activeTab?.filePath || null,
           pandocPath: pandocInfo?.path || pandocPath || undefined,
           referenceDoc:
             exportFormat === "docx" ? wordTemplatePath || undefined : undefined,
@@ -206,6 +211,8 @@ export function ExportDialog({ editor }: ExportDialogProps) {
     wordTemplatePath,
     exporting,
     closeExportDialog,
+    tabs,
+    activeTabId,
   ]);
 
   const handleKeyDown = useCallback(

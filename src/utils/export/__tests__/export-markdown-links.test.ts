@@ -408,4 +408,28 @@ describe("what is never a link", () => {
       "see [alias](Other%20Page.md) and x\n",
     );
   });
+
+  // issue 545 — the link pass runs AFTER the image pass, so what it splices
+  // back must not complete an image the image pass never judged.
+  it("cannot mint an image out of a refused link's label", () => {
+    // `![z` is literal text (its bracket never closed); the refused link's
+    // label `b]` would have closed it around `(/etc/passwd)`.
+    expect(
+      stripDisallowedMarkdownLinks("![z[b\\]](javascript:x)(/etc/passwd)\n"),
+    ).toBe("![zb\\](/etc/passwd)\n");
+    // …or a reference image, with a definition the link policy allows.
+    expect(
+      stripDisallowedMarkdownLinks(
+        "![z[b\\]](javascript:x)[ref]\n\n[ref]: /etc/passwd\n",
+      ),
+    ).toBe("![zb\\][ref]\n\n[ref]: /etc/passwd\n");
+    // A label ending in `!` before a link that stays: `x![z](…)` is an image.
+    expect(
+      stripDisallowedMarkdownLinks("[x!](javascript:y)[z](/etc/passwd)\n"),
+    ).toBe("x\\![z](/etc/passwd)\n");
+    // A `!` that is not at the edge, or not before `[`, stays as it is.
+    expect(stripDisallowedMarkdownLinks("[wow!](javascript:y) ok\n")).toBe(
+      "wow! ok\n",
+    );
+  });
 });

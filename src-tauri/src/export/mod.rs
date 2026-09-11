@@ -2,6 +2,7 @@
 // §55 Pandoc Extended Export — Pandoc 기반 다중 포맷 내보내기
 
 pub mod pandoc;
+pub mod pandoc_images;
 
 use chromiumoxide::browser::{Browser, BrowserConfig};
 use chromiumoxide_cdp::cdp::browser_protocol::page::PrintToPdfParams;
@@ -34,6 +35,12 @@ pub enum ExportError {
 
     #[error("Pandoc not found: {0}")]
     PandocNotFound(String),
+
+    /// issue 545: an image the document refers to could not be staged for
+    /// pandoc — it resolves outside every registered context, is not a
+    /// regular file, or cannot be read. Named so the user can fix the note.
+    #[error("Image not exported — {0}")]
+    ImageRefused(String),
 
     #[error("Pandoc export failed: {0}")]
     PandocFailed(String),

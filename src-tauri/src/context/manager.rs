@@ -366,6 +366,27 @@ impl ContextManager {
             .collect()
     }
 
+    /// issue 545: the canonical root of the vault or folder context named by
+    /// `context_id` — the export's owning context, chosen by the frontend
+    /// (`owningDirectoryContext` in src/utils/export/export.ts) — when the
+    /// document lies inside it; `None` otherwise, and for a `File` context,
+    /// which authorizes exactly one file, and for an unknown id. No wider
+    /// search is made here: this is the boundary, judged on canonical paths,
+    /// and a request that names a context the document is not in fails rather
+    /// than being redirected to one it is in.
+    pub async fn owning_directory_root(
+        &self,
+        document_path: &str,
+        context_id: Option<&str>,
+    ) -> Option<PathBuf> {
+        let canonical = resolve_canonical(document_path).ok()?;
+        let (root, kind) = self.context_root(context_id?).await?;
+        match kind {
+            ContextType::Vault | ContextType::Folder if canonical.starts_with(&root) => Some(root),
+            _ => None,
+        }
+    }
+
     // ── Listing ────────────────────────────────────────────────────────────────
 
     /// Return all registered contexts sorted by `added_at` (ascending).
@@ -694,6 +715,71 @@ mod tests {
         assert_eq!(mgr.resolve_alias("notes").await.as_deref(), Some("b"));
         let a = mgr.list().await.into_iter().find(|c| c.id == "a").unwrap();
         assert_eq!(a.alias, None);
+    }
+
+    #[tokio::test]
+    async fn owning_directory_root_is_the_named_context_only_when_it_holds_the_document() {
+        let vault = tempfile::tempdir().unwrap();
+        let other = tempfile::tempdir().unwrap();
+        let lone = tempfile::tempdir().unwrap();
+        let vault_root = std::fs::canonicalize(vault.path()).unwrap();
+        std::fs::create_dir_all(vault_root.join("sub")).unwrap();
+        std::fs::write(vault_root.join("sub/a.md"), "x").unwrap();
+        let lone_root = std::fs::canonicalize(lone.path()).unwrap();
+        std::fs::write(lone_root.join("solo.md"), "x").unwrap();
+
+        let mgr = ContextManager::new();
+        mgr.add(make_info(
+            "v",
+            vault_root.to_str().unwrap(),
+            ContextType::Vault,
+        ))
+        .await
+        .unwrap();
+        mgr.add(make_info(
+            "s",
+            vault_root.join("sub").to_str().unwrap(),
+            ContextType::Folder,
+        ))
+        .await
+        .unwrap();
+        mgr.add(make_info(
+            "o",
+            other.path().to_str().unwrap(),
+            ContextType::Vault,
+        ))
+        .await
+        .unwrap();
+        mgr.add(make_info(
+            "f",
+            lone_root.join("solo.md").to_str().unwrap(),
+            ContextType::File,
+        ))
+        .await
+        .unwrap();
+        let doc = vault_root.join("sub/a.md");
+        let doc = doc.to_str().unwrap();
+
+        // Either directory context that holds the document, as named.
+        assert_eq!(
+            mgr.owning_directory_root(doc, Some("v")).await,
+            Some(vault_root.clone())
+        );
+        assert_eq!(
+            mgr.owning_directory_root(doc, Some("s")).await,
+            Some(vault_root.join("sub"))
+        );
+        // A context that does not hold the document, an unknown id, no id at
+        // all, a File context: nothing — no wider search on this path.
+        assert_eq!(mgr.owning_directory_root(doc, Some("o")).await, None);
+        assert_eq!(mgr.owning_directory_root(doc, Some("no-such")).await, None);
+        assert_eq!(mgr.owning_directory_root(doc, None).await, None);
+        let solo = lone_root.join("solo.md");
+        assert_eq!(
+            mgr.owning_directory_root(solo.to_str().unwrap(), Some("f"))
+                .await,
+            None
+        );
     }
 
     #[tokio::test]

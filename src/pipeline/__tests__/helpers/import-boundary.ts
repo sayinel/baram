@@ -358,10 +358,17 @@ export function buildPipelineInternalSet(): Set<string> {
  *   grep -rn 'from ".*pipeline[/"]' --include='*.ts' --include='*.tsx' src \
  *     | grep -v '^src/pipeline/' | grep -v '__tests__\|\.test\.'
  *
- * turned up exactly these two families and no others.
+ * turned up exactly these two families and no others. A third entry, the
+ * `<img>` tag parser, was added 2026-09-10 for the export image policy
+ * (issue 545).
  */
 export function buildAllowlist(): Map<string, Set<string>> {
   const blockId = join(PIPELINE_DIR, "block-id.ts");
+  const imageTransformer = join(
+    PIPELINE_DIR,
+    "transformers",
+    "image-transformer.ts",
+  );
   const wikilink = join(
     PIPELINE_DIR,
     "transformers",
@@ -391,6 +398,17 @@ export function buildAllowlist(): Map<string, Set<string>> {
         // components/editor/pdf/pdf-highlight-sidecar.ts — inverse of the
         // above, decoding a target back to a real path.
         "unescapeBlockRefTarget",
+      ]),
+    ],
+    [
+      imageTransformer,
+      new Set([
+        // utils/export/export-markdown-images.ts (issue 545) — reads the
+        // `<img …>` tag the editor writes for a resized image back into its
+        // attrs, on a string, to judge its src for the Pandoc export. The
+        // same regex-and-attrs parser the MD→PM direction uses; no PM doc,
+        // no mdast tree.
+        "parseImgHtml",
       ]),
     ],
     [

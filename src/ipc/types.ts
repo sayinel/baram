@@ -265,6 +265,18 @@ export interface PandocAsset {
   name: string;
 }
 
+/**
+ * issue 545 — an image the document refers to by a RELATIVE path, which the
+ * backend resolves against the document's directory and stages as an asset
+ * under `name` only if the canonical file lies inside a registered context.
+ */
+export interface PandocImageRequest {
+  /** Asset name the markdown already refers to, e.g. "image-0.png" */
+  name: string;
+  /** The destination as written in the document (relative, may be percent-encoded) */
+  source: string;
+}
+
 // §55 Pandoc Extended Export types
 export type PandocFormat = "docx" | "epub" | "latex" | "rst";
 

@@ -49,11 +49,11 @@ const ALLOWED_PROTOCOLS: ReadonlySet<string> = new Set([
 
 /** Base for scheme-less hrefs (relative paths, fragments, `www.…`). An href
  *  that carries its own scheme parses independently of it. */
-const RELATIVE_BASE = "https://baram.invalid/";
+export const RELATIVE_BASE = "https://baram.invalid/";
 
 /** The first characters the URL parser actually looks at: it drops leading
  *  C0 controls and spaces, and every ASCII tab/LF/CR, before anything else. */
-function parserView(href: string): string {
+export function parserView(href: string): string {
   return href.replace(/^[\u0000-\u0020]+/, "").replace(/[\t\n\r]/g, ""); // eslint-disable-line no-control-regex
 }
 
