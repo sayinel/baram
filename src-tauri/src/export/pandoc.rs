@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::process::Command;
-use tempfile::tempdir;
 
 use super::pandoc_images::{stage_images, ImageStaging};
 use super::ExportError;
@@ -154,23 +153,65 @@ local function link_allowed(target)
   if scheme == nil then return true end
   return LINK_SCHEMES[scheme:lower()] == true
 end
-local function drop_html(el)
-  if el.format == "html" or el.format == "html5" or el.format == "html4" then
-    if el.text:match("^<[Bb][Rr]%s*/?>$") then return pandoc.LineBreak() end
-    return {}
+-- pandoc's markdown reader percent-escapes a destination before the filter
+-- sees it (`a b` -> `a%20b`, `[` -> `%5B`; older readers non-ASCII too), and
+-- its writers decode again when they open the file. Both spellings name the
+-- same bound path, so the lookup tries both; each is an exact key.
+local function unescaped(s)
+  return (s:gsub("%%(%x%x)", function(h) return string.char(tonumber(h, 16)) end))
+end
+-- Raw markup, in whatever format the note declared it, reaches no writer.
+-- The exceptions are what the app itself writes as HTML: `<br>` (a cell
+-- break) becomes a line break, and the bare sub/sup/underline tags the
+-- export converter and the serializer emit are kept for the epub writer.
+-- Formats and tag names compare case-insensitively: pandoc's own `Format`
+-- equality ignores case, so `{=HTML}` is `{=html}` to its writers.
+local KEEP_HTML = {
+  ["<sub>"] = true, ["</sub>"] = true, ["<sup>"] = true, ["</sup>"] = true,
+  ["<u>"] = true, ["</u>"] = true,
+}
+local function drop_raw_inline(el)
+  local format = el.format:lower()
+  if format == "html" or format == "html5" or format == "html4" then
+    local tag = (el.text:lower():gsub("%s", ""))
+    if tag == "<br>" or tag == "<br/>" then return pandoc.LineBreak() end
+    if KEEP_HTML[tag] then return nil end
   end
+  return {}
+end
+local function drop_raw_block(_)
+  return {}
 end
 local FILE_KEYS = { "cover-image", "epub-cover-image", "css", "stylesheet", "bibliography", "csl" }
 return {
   {
     Image = function(el)
-      if IMAGES_EMBEDDED and not ALLOWED[el.src] then return el.caption end
+      if IMAGES_EMBEDDED and not (ALLOWED[el.src] or ALLOWED[unescaped(el.src)]) then
+        return el.caption
+      end
+    end,
+    -- Inline handlers ran first, so a rejected image is its alt text by now.
+    -- pandoc wraps a lone image in a figure captioned with that same alt;
+    -- with no image left the figure is unwrapped, or the alt prints twice.
+    Figure = function(el)
+      local image = false
+      el:walk({ Image = function() image = true end })
+      if image then return nil end
+      local blocks = {}
+      for _, block in ipairs(el.content) do
+        if block.t == "Plain" then
+          table.insert(blocks, pandoc.Para(block.content))
+        else
+          table.insert(blocks, block)
+        end
+      end
+      return blocks
     end,
     Link = function(el)
       if not link_allowed(el.target) then return el.content end
     end,
-    RawInline = drop_html,
-    RawBlock = drop_html,
+    RawInline = drop_raw_inline,
+    RawBlock = drop_raw_block,
     Meta = function(meta)
       for _, key in ipairs(FILE_KEYS) do
         meta[key] = nil
@@ -388,6 +429,31 @@ pub fn run_pandoc(
     assets: &[PandocAsset],
     images: Option<&ImageStaging<'_>>,
 ) -> Result<(), ExportError> {
+    run_pandoc_in(
+        &std::env::temp_dir(),
+        markdown_content,
+        output_path,
+        pandoc_path,
+        options,
+        assets,
+        images,
+    )
+}
+
+/// `run_pandoc` with the export's temporary directory created under
+/// `tmp_parent`: the OS temp dir in production, and in the smoke test a
+/// parent whose name holds a space and Hangul, as a Windows user's temp dir
+/// (`C:\Users\<name>\AppData\Local\Temp`) may.
+#[allow(clippy::too_many_arguments)] // `run_pandoc`'s six, plus the seam
+fn run_pandoc_in(
+    tmp_parent: &Path,
+    markdown_content: &str,
+    output_path: &str,
+    pandoc_path: &str,
+    options: &PandocExportOptions,
+    assets: &[PandocAsset],
+    images: Option<&ImageStaging<'_>>,
+) -> Result<(), ExportError> {
     // 0. The writer is decided HERE, from `format`, never inferred from the
     // output's suffix or picked by an extra argument (issue 545) — and the
     // suffix must agree with it, or pandoc would turn a `.pdf` into a PDF run.
@@ -409,7 +475,8 @@ pub fn run_pandoc(
     }
 
     // 1. Write markdown (with assets) to temp dir
-    let tmp_dir = tempdir().map_err(|e| ExportError::TempFileError(e.to_string()))?;
+    let tmp_dir =
+        tempfile::tempdir_in(tmp_parent).map_err(|e| ExportError::TempFileError(e.to_string()))?;
 
     // 1a. Write each asset next to the input and map name -> absolute path.
     // Names are taken case-insensitively: on a case-insensitive volume two
@@ -460,9 +527,17 @@ pub fn run_pandoc(
     std::fs::write(&input_path, &markdown_content)
         .map_err(|e| ExportError::TempFileError(e.to_string()))?;
     // 1d. issue 545: the policy filter, pandoc's side of the boundary — with
-    // the paths this export bound as the only sources an image may have.
+    // the paths this export bound as the only sources an image may have. A
+    // broken link's binding names no file, so it is left out: the filter
+    // turns that image into its alt text before the writer looks for it,
+    // instead of pandoc's own fallback, which warns and keeps the figure it
+    // wrapped a lone image in (the alt would print twice, as its caption).
     let filter_path = tmp_dir.path().join(POLICY_FILTER_NAME);
-    let allowed: Vec<&str> = name_to_path.values().map(String::as_str).collect();
+    let allowed: Vec<&str> = name_to_path
+        .values()
+        .map(String::as_str)
+        .filter(|path| Path::new(path).is_file())
+        .collect();
     std::fs::write(
         &filter_path,
         policy_filter(&allowed, writer_embeds_images(&options.format)),
@@ -846,6 +921,14 @@ mod tests {
         std::fs::create_dir_all(root.join("notes/img")).unwrap();
         std::fs::write(root.join("notes/img/pic.png"), PNG).unwrap();
         let out = tempfile::tempdir().unwrap();
+        // The export's own temporary directory goes under a parent named with
+        // a space and Hangul, as a Windows user's `AppData\Local\Temp` may be:
+        // pandoc's reader percent-escapes such a path before the filter sees
+        // it, and every image and diagram vanished when the lookup was exact.
+        let tmp_parent = tempfile::Builder::new()
+            .prefix("bar am 한글 ")
+            .tempdir()
+            .unwrap();
         // A file outside the vault that the document names every way it can
         // without a markdown image: raw HTML inline and as a block, and the
         // frontmatter keys the epub writer reads files from. None of it may
@@ -867,7 +950,7 @@ mod tests {
         let pic_abs = root.join("notes/img/pic.png");
         let pic_abs = pic_abs.to_str().unwrap();
         let markdown = format!(
-            "---\ntitle: T\ncover-image: {canary}\ncss: {canary}\n---\n\n# T\n\n![pic](baram-asset:image-0.png) ![d](baram-asset:mermaid-0.png) ![gone](baram-asset:image-1.png) ![abs](baram-asset:image-2.png){{width=120px}} hosts <img src=\"{canary}\" alt=\"raw\">\n\n<img src=\"{canary}\">\n\n<video src=\"{canary}\"></video>\n\n<div>\n\n![indiv](<{canary}>)\n\n</div>\n\n[bad](javascript:alert(1)) [ok](https://example.com/) one<br>two\n"
+            "---\ntitle: T\ncover-image: {canary}\ncss: {canary}\n---\n\n# T\n\n![pic](baram-asset:image-0.png) ![d](baram-asset:mermaid-0.png) ![gone](baram-asset:image-1.png) ![abs](baram-asset:image-2.png){{width=120px}} hosts <img src=\"{canary}\" alt=\"raw\">\n\n<img src=\"{canary}\">\n\n<video src=\"{canary}\"></video>\n\n<div>\n\n![indiv](<{canary}>)\n\n</div>\n\n[bad](javascript:alert(1)) [ok](https://example.com/) one<br>two\n\nH<sub>2</sub>O x<sup>2</sup> <u>under</u>\n\n![lonely](baram-asset:image-3.png)\n\nraw tex \\href{{javascript:alert(2)}}{{texclick}} \\input{{{canary}}} \\newpage\n\n```{{=HTML}}\n<SUB>HTML-UPPER-MARK</SUB>\n```\n\n```{{=latex}}\nLATEX-RAW-MARK\n```\n\n```{{=openxml}}\n<w:p><w:r><w:t>OPENXML-MARK</w:t></w:r></w:p>\n```\n\n```{{=rst}}\n.. raw:: html\n\n   RST-RAW-MARK\n```\n"
         );
         let markdown = markdown.as_str();
         let requests = vec![
@@ -883,6 +966,12 @@ mod tests {
             PandocImageRequest {
                 name: "image-2.png".into(),
                 source: pic_abs.into(),
+            },
+            // A missing image standing alone in its paragraph: pandoc makes
+            // it a figure captioned with its alt.
+            PandocImageRequest {
+                name: "image-3.png".into(),
+                source: "img/nope2.png".into(),
             },
         ];
         let assets = vec![PandocAsset {
@@ -906,7 +995,8 @@ mod tests {
                 reference_doc: None,
                 extra_args: Vec::new(),
             };
-            run_pandoc(
+            run_pandoc_in(
+                tmp_parent.path(),
                 markdown,
                 out_path.to_str().unwrap(),
                 "pandoc",
@@ -952,6 +1042,14 @@ mod tests {
             // in `word/_rels/`, so every text entry is searched), the `<br>`
             // is a break.
             assert!(body.contains("indiv"), "{format}: alt of the div image");
+            // …and, alone in its paragraph, pandoc made it a figure: once the
+            // filter rejects the image, the figure is unwrapped so the alt
+            // is not repeated as a caption.
+            assert_eq!(
+                body.matches("indiv").count(),
+                1,
+                "{format}: alt text of the div image repeated"
+            );
             let mut all_text = String::new();
             for name in names.iter().filter(|n| !n.starts_with(media_dir)) {
                 let mut entry = zip.by_name(name).unwrap();
@@ -970,6 +1068,42 @@ mod tests {
             );
             let br = if format == "docx" { "<w:br" } else { "<br" };
             assert!(body.contains(br), "{format}: <br> not a line break");
+            // Raw markup of any format is gone, in whatever case the note
+            // declared it; the editor's own sub/sup/underline tags are the one
+            // raw HTML the epub writer still gets (docx ignored raw HTML
+            // before and still does).
+            for mark in [
+                "HTML-UPPER-MARK",
+                "LATEX-RAW-MARK",
+                "OPENXML-MARK",
+                "RST-RAW-MARK",
+                "texclick",
+                "newpage",
+            ] {
+                assert!(
+                    !all_text.contains(mark),
+                    "{format}: raw markup `{mark}` reached the output"
+                );
+            }
+            if format == "epub" {
+                assert!(
+                    body.contains("<sub>2</sub>")
+                        && body.contains("<sup>2</sup>")
+                        && body.contains("<u>under</u>"),
+                    "epub: sub/sup/underline lost"
+                );
+                assert!(
+                    !body.contains("<figcaption>lonely"),
+                    "epub: the rejected lone image kept its figure caption"
+                );
+            }
+            // The rejected lone image is its alt text once — not once more as
+            // the caption of the figure pandoc wrapped it in.
+            assert_eq!(
+                body.matches("lonely").count(),
+                1,
+                "{format}: alt text of the lone image repeated"
+            );
             // Both staged files went in as-is; no other file from the machine did.
             for name in &media {
                 let mut entry = zip.by_name(name).unwrap();
@@ -994,8 +1128,9 @@ mod tests {
                 reference_doc: None,
                 extra_args: Vec::new(),
             };
-            run_pandoc(
-                "![pic](img/pic.png) ![abs](/etc/hosts) ![d](baram-asset:mermaid-0.png)\n",
+            run_pandoc_in(
+                tmp_parent.path(),
+                "![pic](img/pic.png) ![abs](/etc/hosts) ![d](baram-asset:mermaid-0.png)\n\nraw tex \\href{javascript:alert(2)}{texclick} \\newpage\n\n```{=latex}\nLATEX-RAW-MARK\n```\n\n```{=rst}\nRST-RAW-MARK\n```\n",
                 out_path.to_str().unwrap(),
                 "pandoc",
                 &options,
@@ -1004,6 +1139,15 @@ mod tests {
             )
             .unwrap_or_else(|e| panic!("{format}: {e}"));
             let text = std::fs::read_to_string(&out_path).unwrap();
+            // Raw TeX and raw rst are raw nodes to these writers too, and the
+            // same filter drops them: no `\href`, no `\newpage`, no fence
+            // content in the source the user will compile.
+            for mark in ["texclick", "newpage", "LATEX-RAW-MARK", "RST-RAW-MARK"] {
+                assert!(
+                    !text.contains(mark),
+                    "{format}: raw markup `{mark}` reached the output"
+                );
+            }
             assert!(
                 text.contains(reference) && text.contains("img/pic.png"),
                 "{format}: image reference lost: {text}"
