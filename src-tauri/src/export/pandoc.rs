@@ -1328,9 +1328,15 @@ mod tests {
                 // span is asserted — `under line` may straddle a line break.
                 assert!(text.contains("\\ul{under"), "latex: underline not rendered");
                 // The math kept its bracket: `[$[0,1)$]{.underline}` is an
-                // underlined interval, not `\[0,1)`.
+                // underlined interval, not `\[0,1)`. WHICH delimiters the
+                // writer puts around inline math inside `\ul{}` is a pandoc
+                // version detail and not what this pins — 3.1.3 writes
+                // `\ul{\([0,1)\)}`, 3.9 writes `\ul{$[0,1)$}` — so both
+                // spellings pass and the bracket is the assertion. Pinning
+                // one spelling made the CI baseline (noble's apt 3.1.3) fail
+                // on a difference that is not this policy's.
                 assert!(
-                    text.contains("\\ul{$[0,1)$}"),
+                    text.contains("\\ul{$[0,1)$}") || text.contains("\\ul{\\([0,1)\\)}"),
                     "latex: math inside an underline lost its bracket"
                 );
                 assert!(
