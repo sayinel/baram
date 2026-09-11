@@ -75,10 +75,20 @@ pub(super) fn is_safe_asset_name(name: &str) -> bool {
     // names could land on one file — or into a device (`CON`, `NUL`, …),
     // which `File::create` would open. Nor the names of the markdown input
     // and the policy filter, which share the directory.
-    if name
-        .chars()
-        .any(|c| c == '/' || c == '\\' || c == '<' || c == '>' || c.is_control())
-        || name.ends_with('.')
+    // Nor `%`, `?` or `#`: pandoc percent-decodes a destination and drops a
+    // `?query` or `#fragment` before it opens the file, so a name holding
+    // them would be bound under one spelling and opened under another
+    // (`a%2Fb.png` opens `a/b.png`).
+    if name.chars().any(|c| {
+        c == '/'
+            || c == '\\'
+            || c == '<'
+            || c == '>'
+            || c == '%'
+            || c == '?'
+            || c == '#'
+            || c.is_control()
+    }) || name.ends_with('.')
         || name.ends_with(' ')
         || name.eq_ignore_ascii_case(INPUT_FILE_NAME)
         || name.eq_ignore_ascii_case(POLICY_FILTER_NAME)
@@ -155,8 +165,11 @@ local function link_allowed(target)
 end
 -- pandoc's markdown reader percent-escapes a destination before the filter
 -- sees it (`a b` -> `a%20b`, `[` -> `%5B`; older readers non-ASCII too), and
--- its writers decode again when they open the file. Both spellings name the
--- same bound path, so the lookup tries both; each is an exact key.
+-- its writers decode it again before they open the file. What pandoc opens
+-- is the DECODED string, so that is what must be a bound path — never the
+-- raw spelling, which could equal a bound path while decoding to another
+-- (`a%2Fb` opens `a/b`). A bound path holds no `%`, `?` or `#` (the app
+-- refuses them), so its decoded form is itself.
 local function unescaped(s)
   return (s:gsub("%%(%x%x)", function(h) return string.char(tonumber(h, 16)) end))
 end
@@ -186,17 +199,20 @@ local FILE_KEYS = { "cover-image", "epub-cover-image", "css", "stylesheet", "bib
 return {
   {
     Image = function(el)
-      if IMAGES_EMBEDDED and not (ALLOWED[el.src] or ALLOWED[unescaped(el.src)]) then
-        return el.caption
-      end
+      if IMAGES_EMBEDDED and not ALLOWED[unescaped(el.src)] then return el.caption end
     end,
     -- Inline handlers ran first, so a rejected image is its alt text by now.
     -- pandoc wraps a lone image in a figure captioned with that same alt;
-    -- with no image left the figure is unwrapped, or the alt prints twice.
+    -- with no image left and nothing but the alt as its caption, the figure
+    -- is unwrapped, or the alt prints twice. A caption of its own
+    -- (`![The caption.](x){alt="…"}`) is content and stays, id and all.
     Figure = function(el)
       local image = false
       el:walk({ Image = function() image = true end })
       if image then return nil end
+      if pandoc.utils.stringify(el.caption.long) ~= pandoc.utils.stringify(el.content) then
+        return nil
+      end
       local blocks = {}
       for _, block in ipairs(el.content) do
         if block.t == "Plain" then
@@ -477,6 +493,16 @@ fn run_pandoc_in(
     // 1. Write markdown (with assets) to temp dir
     let tmp_dir =
         tempfile::tempdir_in(tmp_parent).map_err(|e| ExportError::TempFileError(e.to_string()))?;
+    // The filter compares pandoc's DECODED destination (its `?query` and
+    // `#fragment` dropped, `%XX` resolved) with the bound paths, so a bound
+    // path must read the same before and after. A temp dir whose path holds
+    // `%`, `?` or `#` would let pandoc open a path the app never bound;
+    // refuse rather than guess.
+    if markdown_path(tmp_dir.path()).contains(['%', '?', '#']) {
+        return Err(ExportError::TempFileError(
+            "The temporary directory path holds %, ? or #".into(),
+        ));
+    }
 
     // 1a. Write each asset next to the input and map name -> absolute path.
     // Names are taken case-insensitively: on a case-insensitive volume two
@@ -950,7 +976,7 @@ mod tests {
         let pic_abs = root.join("notes/img/pic.png");
         let pic_abs = pic_abs.to_str().unwrap();
         let markdown = format!(
-            "---\ntitle: T\ncover-image: {canary}\ncss: {canary}\n---\n\n# T\n\n![pic](baram-asset:image-0.png) ![d](baram-asset:mermaid-0.png) ![gone](baram-asset:image-1.png) ![abs](baram-asset:image-2.png){{width=120px}} hosts <img src=\"{canary}\" alt=\"raw\">\n\n<img src=\"{canary}\">\n\n<video src=\"{canary}\"></video>\n\n<div>\n\n![indiv](<{canary}>)\n\n</div>\n\n[bad](javascript:alert(1)) [ok](https://example.com/) one<br>two\n\nH<sub>2</sub>O x<sup>2</sup> <u>under</u>\n\n![lonely](baram-asset:image-3.png)\n\nraw tex \\href{{javascript:alert(2)}}{{texclick}} \\input{{{canary}}} \\newpage\n\n```{{=HTML}}\n<SUB>HTML-UPPER-MARK</SUB>\n```\n\n```{{=latex}}\nLATEX-RAW-MARK\n```\n\n```{{=openxml}}\n<w:p><w:r><w:t>OPENXML-MARK</w:t></w:r></w:p>\n```\n\n```{{=rst}}\n.. raw:: html\n\n   RST-RAW-MARK\n```\n"
+            "---\ntitle: T\ncover-image: {canary}\ncss: {canary}\n---\n\n# T\n\n![pic](baram-asset:image-0.png) ![d](baram-asset:mermaid-0.png) ![gone](baram-asset:image-1.png) ![abs](baram-asset:image-2.png){{width=120px}} hosts <img src=\"{canary}\" alt=\"raw\">\n\n<img src=\"{canary}\">\n\n<video src=\"{canary}\"></video>\n\n<div>\n\n![indiv](<{canary}>)\n\n</div>\n\n[bad](javascript:alert(1)) [ok](https://example.com/) one<br>two\n\nH<sub>2</sub>O x<sup>2</sup> <u>under</u>\n\n![lonely](baram-asset:image-3.png)\n\n![The caption.](baram-asset:image-1.png){{alt=\"described\"}}\n\nraw tex \\href{{javascript:alert(2)}}{{texclick}} \\input{{{canary}}} \\newpage\n\n```{{=HTML}}\n<SUB>HTML-UPPER-MARK</SUB>\n```\n\n```{{=latex}}\nLATEX-RAW-MARK\n```\n\n```{{=openxml}}\n<w:p><w:r><w:t>OPENXML-MARK</w:t></w:r></w:p>\n```\n\n```{{=rst}}\n.. raw:: html\n\n   RST-RAW-MARK\n```\n"
         );
         let markdown = markdown.as_str();
         let requests = vec![
@@ -1104,6 +1130,16 @@ mod tests {
                 1,
                 "{format}: alt text of the lone image repeated"
             );
+            // A caption of its own is content: it stays with the alt, once each.
+            assert_eq!(
+                body.matches("described").count(),
+                1,
+                "{format}: alt text of the captioned image repeated or lost"
+            );
+            assert!(
+                body.contains("The caption."),
+                "{format}: the figure's own caption lost"
+            );
             // Both staged files went in as-is; no other file from the machine did.
             for name in &media {
                 let mut entry = zip.by_name(name).unwrap();
@@ -1169,6 +1205,14 @@ mod tests {
         let md = "before ![](baram-asset:mermaid-0.png) after";
         let out = rewrite_asset_refs(md, &map);
         assert_eq!(out, "before ![](</tmp/x/mermaid-0.png>) after");
+    }
+
+    #[test]
+    fn asset_names_pandoc_would_open_under_another_spelling_are_refused() {
+        assert!(is_safe_asset_name("image-0.png") && is_safe_asset_name("a b.png"));
+        for name in ["a%2Fb.png", "%2e%2e%2fsecret.png", "a?b.png", "a#b.png"] {
+            assert!(!is_safe_asset_name(name), "{name} accepted");
+        }
     }
 
     #[test]
