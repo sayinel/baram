@@ -22,6 +22,27 @@ export interface CodeRegionOptions {
   markup?: boolean;
 }
 
+/** How {@link replaceOutsideCode} judges a match that touches a region.
+ *
+ *  `"span"` (the default) refuses ANY overlap. It is the rule for a replacer
+ *  that rewrites the match's INTERIOR — the sub/superscript passes escape
+ *  the spaces inside it, so a swallowed code span (`~a \`x y\` b~`) would
+ *  have its own bytes rewritten.
+ *
+ *  `"delimiters"` refuses only when one of the match's own ends sits inside
+ *  a region. It is the rule for a replacer that keeps the interior verbatim
+ *  and swaps the delimiters alone (highlight `==x==` → `**x**`, Notion's
+ *  `$x$` → `$$x$$`): a mark WRAPPING a code span, a link or a tag is
+ *  ordinary authoring and must still convert, while a delimiter landing
+ *  inside code (`a ==b \`c== d\` e`) must not. Judging those by overlap
+ *  silently left `==` in the output of all four pandoc writers and of
+ *  Notion. */
+export type MatchGuard = "delimiters" | "span";
+
+export interface ReplaceOutsideCodeOptions extends CodeRegionOptions {
+  guard?: MatchGuard;
+}
+
 /**
  * Collect start/end offsets of all fenced code blocks, block math, and
  * inline code spans in content.
@@ -50,7 +71,14 @@ export function collectCodeRegions(
     // An HTML tag — a live `<`, a real tag name, attributes, `>` — and a
     // link/image destination: their text is markup or a path, and a `~`/`^`
     // there is never a mark. `\<u~a b~>` is prose with an escaped `<`.
-    const tagRe = /<\/?[A-Za-z][A-Za-z0-9-]*(?:\s[^<>\n]*)?\/?>/g;
+    //
+    // Attributes are matched by their own grammar rather than "anything up
+    // to the next `>`", because a QUOTED VALUE may hold one: with
+    // `[^<>\n]*` the region of `<img alt="x>y" src="p/~a b~.png">` stopped
+    // at the `>` inside `alt`, leaving the `src` path exposed to the mark
+    // rewriters — the very failure this option exists to prevent.
+    const tagRe =
+      /<\/?[A-Za-z][A-Za-z0-9-]*(?:\s+[^\s"'/=<>]+(?:\s*=\s*(?:"[^"\n]*"|'[^'\n]*'|[^\s"'`=<>]+))?)*\s*\/?>/g;
     while ((m = tagRe.exec(md)) !== null) {
       if (isLive(md, m.index)) {
         regions.push({ start: m.index, end: m.index + m[0].length });
@@ -58,6 +86,16 @@ export function collectCodeRegions(
     }
     const destinationRe = /\]\((?:[^()\n\\]|\\.|\([^()\n]*\))*\)/g;
     while ((m = destinationRe.exec(md)) !== null) {
+      regions.push({ start: m.index, end: m.index + m[0].length });
+    }
+    // A link/image REFERENCE definition — `[id]: dest "title"`. Its
+    // destination is a path exactly as an inline one is, and
+    // `export-markdown-images.ts` walks `definition` nodes, so a
+    // reference-style image is a supported input: a `\ ` injected here names
+    // no file and the image is silently reduced to its alt text.
+    const definitionRe =
+      /^ {0,3}\[(?:[^\]\\\n]|\\.)*\]:[ \t]*(?:<[^>\n]*>|\S+)/gm;
+    while ((m = definitionRe.exec(md)) !== null) {
       regions.push({ start: m.index, end: m.index + m[0].length });
     }
   }
@@ -256,9 +294,14 @@ export function replaceOutsideCode(
   md: string,
   pattern: RegExp,
   replacer: (match: string, ...groups: string[]) => string,
-  options: CodeRegionOptions = {},
+  options: ReplaceOutsideCodeOptions = {},
 ): string {
   const regions = collectCodeRegions(md, options);
+  const blocked =
+    options.guard === "delimiters"
+      ? (start: number, end: number) =>
+          isInCodeRegion(start, regions) || isInCodeRegion(end - 1, regions)
+      : (start: number, end: number) => overlapsCodeRegion(start, end, regions);
   // Ensure the regex is global
   const globalRe = new RegExp(
     pattern.source,
@@ -268,7 +311,7 @@ export function replaceOutsideCode(
     // String.replace passes: match, ...groups, offset, originalString
     // offset is the second-to-last argument
     const offset = args[args.length - 2] as number;
-    if (overlapsCodeRegion(offset, offset + match.length, regions)) {
+    if (blocked(offset, offset + match.length)) {
       return match;
     }
     return replacer(match, ...(args.slice(0, -2) as string[]));

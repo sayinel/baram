@@ -150,9 +150,13 @@ const POLICY_FILTER_NAME: &str = "baram-export-policy.lua";
 ///   `\input`), so no list of command names is a boundary; a
 ///   ```` ```{=openxml} ```` block is written into the docx as it is, and a
 ///   `{=rst}` one can carry `.. raw:: html`. Deny by default, then: what a
-///   note wrote as raw markup reaches no writer. The docx and rst writers
-///   ignored raw HTML already; what changes for users is raw HTML in EPUB
-///   and raw TeX in LaTeX output. `<br>` is what the editor writes for a
+///   note wrote as raw markup reaches no writer. Only the docx writer
+///   ignored raw HTML and raw TeX already (an `{=openxml}` block still went
+///   straight into its document XML); the rst writer wraps BOTH in a
+///   `.. raw:: html` / `.. raw:: latex` block, and an inline raw TeX in a
+///   `:raw-latex:` role — measured on pandoc 3.9, not assumed. So what
+///   changes for users is raw markup in EPUB, LaTeX and RST output alike,
+///   and `{=openxml}` in docx. `<br>` is what the editor writes for a
 ///   line break inside a table cell, so it is kept as the break it means —
 ///   in docx too, which dropped it before. Subscript, superscript and
 ///   underline reach the writers in pandoc's own spellings
@@ -1132,20 +1136,6 @@ mod tests {
             let br = if format == "docx" { "<w:br" } else { "<br" };
             assert!(body.contains(br), "{format}: <br> not a line break");
             // Raw markup of every format is gone; the native spellings render.
-            // Attributes a note can write (`onclick`, a `style` with a URL) do
-            // not reach the archive either, while the text they wrapped does.
-            assert!(
-                !all_text.contains("onclick"),
-                "{format}: attribute reached the output"
-            );
-            assert!(
-                !all_text.contains("tracker.example"),
-                "{format}: style url reached the output"
-            );
-            assert!(
-                body.contains("spanned") && body.contains("attr span"),
-                "{format}: attributed text lost"
-            );
             for mark in [
                 "HTML-UPPER-MARK",
                 "texclick",

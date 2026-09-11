@@ -360,6 +360,10 @@ export function convertHighlightForNotion(md: string): string {
     (_match, content: string) => {
       return `**${content}**`;
     },
+    // The interior is carried over verbatim, so only a DELIMITER inside a
+    // code span blocks the match — a highlight WRAPPING code is ordinary
+    // authoring, and judging it by overlap left a literal `==` in Notion.
+    { guard: "delimiters" },
   );
 }
 
@@ -373,6 +377,9 @@ export function convertInlineMathForNotion(md: string): string {
     (_match, content: string) => {
       return `$$${content}$$`;
     },
+    // Delimiters only, for the same reason as the highlight above: `$a `x`
+    // b$` is math that happens to quote code, and it must still convert.
+    { guard: "delimiters" },
   );
 }
 

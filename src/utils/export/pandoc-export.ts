@@ -81,8 +81,10 @@ export function convertHighlightForPandoc(md: string): string {
     (_match, content: string) => {
       return `**${content}**`;
     },
-    // `$a == b$` is math, not a highlight.
-    { inlineMath: true, markup: true },
+    // `$a == b$` is math, not a highlight. The interior is carried over
+    // verbatim, so only a DELIMITER inside code or math blocks the match —
+    // highlighting a span that holds a code span or a link is ordinary.
+    { guard: "delimiters", inlineMath: true, markup: true },
   );
 }
 

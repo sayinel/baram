@@ -14,6 +14,35 @@ import {
   stripTocForPandoc,
 } from "../export/pandoc-export";
 
+describe("§55 convertHighlightForPandoc — a mark may wrap code and links", () => {
+  // The mark's delimiters are what gets rewritten; the interior passes
+  // through verbatim, so wrapping a code span, math or a link is ordinary
+  // authoring and must still convert. Only a DELIMITER landing inside such a
+  // region blocks the match (issue 544 review).
+  it("converts a highlight that wraps a code span, a link or a tag", () => {
+    expect(convertHighlightForPandoc("==see `x` now==")).toBe(
+      "**see `x` now**",
+    );
+    expect(convertHighlightForPandoc("==see [d](u) now==")).toBe(
+      "**see [d](u) now**",
+    );
+    expect(convertHighlightForPandoc("==a <b>c</b> d==")).toBe(
+      "**a <b>c</b> d**",
+    );
+    expect(convertHighlightForPandoc("==plain text==")).toBe("**plain text**");
+  });
+
+  it("still refuses a highlight whose delimiter sits inside code or math", () => {
+    expect(convertHighlightForPandoc("`==x==`")).toBe("`==x==`");
+    expect(convertHighlightForPandoc("$a == b$")).toBe("$a == b$");
+    // The closing delimiter is inside the code span: converting would
+    // rewrite the code's own bytes.
+    expect(convertHighlightForPandoc("a ==b `c== d` e")).toBe(
+      "a ==b `c== d` e",
+    );
+  });
+});
+
 describe("§55 convertWikilinksForPandoc", () => {
   it("converts simple wikilink", () => {
     expect(convertWikilinksForPandoc("See [[MyPage]]")).toBe(
@@ -195,6 +224,34 @@ describe("§55 convertSubscriptForPandoc", () => {
     );
     // An escaped `<` is prose, and `<u~a` is no tag name: the mark converts.
     expect(convertSubscriptForPandoc("\\<u~a b~>")).toBe("\\<u~a\\ b~>");
+  });
+
+  it("protects a reference definition's destination, like an inline one", () => {
+    // `export-markdown-images.ts` walks `definition` nodes, so a
+    // reference-style image is a supported input: a `\ ` injected into the
+    // destination names no file and the image is lost.
+    expect(convertSubscriptForPandoc("[logo]: img/~draft file~.png")).toBe(
+      "[logo]: img/~draft file~.png",
+    );
+    expect(convertSubscriptForPandoc('[a]: <x/~p q~.png> "t"')).toBe(
+      '[a]: <x/~p q~.png> "t"',
+    );
+    expect(convertSuperscriptForPandoc("[b]: img/~x^a b^y~.png")).toBe(
+      "[b]: img/~x^a b^y~.png",
+    );
+    // Still a mark in ordinary prose that merely starts with a bracket.
+    expect(convertSubscriptForPandoc("[not a def] ~a b~")).toBe(
+      "[not a def] ~a\\ b~",
+    );
+  });
+
+  it("protects a tag whose attribute value contains `>`", () => {
+    expect(convertSubscriptForPandoc('<img alt="x>y" src="p/~a b~.png">')).toBe(
+      '<img alt="x>y" src="p/~a b~.png">',
+    );
+    expect(convertSubscriptForPandoc("<img alt='x>y' src='p/~a b~.png'>")).toBe(
+      "<img alt='x>y' src='p/~a b~.png'>",
+    );
   });
 
   it("protects a fence inside a blockquote or a list item", () => {
