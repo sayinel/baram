@@ -16,24 +16,24 @@ vim 구현의 **파일 경로가 사는 유일한 페이지**다. 다른 페이�
 
 ## adapters — core 의 intent 를 PM 위에서 실행
 
-| 파일                                                                                                                            | 무엇                                                   |
-| ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| [execute-command.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/execute-command.ts)         | `CoreCommand` 실행 진입점 (설계 §2)                    |
-| [motions.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/motions.ts)                         | 모션                                                   |
-| [operations.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/operations.ts)                   | 줄·문자 오퍼레이션 d/c/y (설계 §9)                     |
-| [line-units.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/line-units.ts)                   | "줄이란 무엇인가" (설계 §9)                            |
-| [cursor-line-columns.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/cursor-line-columns.ts) | 커서 줄의 컬럼 프리미티브                              |
-| [cursor-selection.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/cursor-selection.ts)       | vim 커서 위치를 PM selection 으로 바꾸는 **유일한 곳** |
-| [graphemes.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/graphemes.ts)                     | 커서 단위 — grapheme 경계 (설계 §6)                    |
-| [search.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/search.ts)                           | `/` 검색 어댑터 (#372)                                 |
-| [register.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/register.ts)                       | vim register (설계 §6)                                 |
-| [paste.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/paste.ts)                             | paste — register · 예산 (설계 §6/§9)                   |
-| [atom-insert.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/atom-insert.ts)                 | atom 위 insert 진입 프리플라이트                       |
-| [insert-entry.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/insert-entry.ts)               | PM insert 모드 화살표로 코드블록 island 진입 (#477)    |
-| [code-block-landing.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/code-block-landing.ts)   | 코드블록 진입 착지 정책                                |
-| [esc-arbitration.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/esc-arbitration.ts)         | insert-Esc 중재 (설계 §4/§5)                           |
-| [scroll.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/scroll.ts)                           | z 계열 스크롤 + 커서 팔로우                            |
-| [suspension.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/suspension.ts)                   | 입력 섬 판정 + island 라벨 (설계 §4)                   |
+| 파일                                                                                                                            | 무엇                                                                              |
+| ------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| [execute-command.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/execute-command.ts)         | `CoreCommand` 실행 진입점 (설계 §2)                                               |
+| [motions.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/motions.ts)                         | 모션 해석 — EditorState + 위치 + motion → 목표 위치 (dispatch 는 plugin, 설계 §2) |
+| [operations.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/operations.ts)                   | 줄·문자 오퍼레이션 d/c/y (설계 §9)                                                |
+| [line-units.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/line-units.ts)                   | "줄이란 무엇인가" (설계 §9)                                                       |
+| [cursor-line-columns.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/cursor-line-columns.ts) | 커서 줄의 컬럼 프리미티브                                                         |
+| [cursor-selection.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/cursor-selection.ts)       | vim 커서 위치를 PM selection 으로 바꾸는 **유일한 곳**                            |
+| [graphemes.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/graphemes.ts)                     | 커서 단위 — grapheme 경계 (설계 §6)                                               |
+| [search.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/search.ts)                           | `/` 검색 어댑터 (#372)                                                            |
+| [register.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/register.ts)                       | vim register (설계 §6)                                                            |
+| [paste.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/paste.ts)                             | paste — register · 예산 (설계 §6/§9)                                              |
+| [atom-insert.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/atom-insert.ts)                 | atom 위 insert 진입 프리플라이트                                                  |
+| [insert-entry.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/insert-entry.ts)               | PM insert 모드 화살표로 코드블록 island 진입 (#477)                               |
+| [code-block-landing.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/code-block-landing.ts)   | 코드블록 진입 착지 정책                                                           |
+| [esc-arbitration.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/esc-arbitration.ts)         | insert-Esc 중재 (설계 §4/§5)                                                      |
+| [scroll.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/scroll.ts)                           | z 계열 스크롤 + 커서 팔로우                                                       |
+| [suspension.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/suspension.ts)                   | 입력 섬 판정 + island 라벨 (설계 §4)                                              |
 
 ## 루트 — 플러그인 본체와 배선
 
