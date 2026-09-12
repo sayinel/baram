@@ -140,17 +140,38 @@ const POLICY_FILTER_NAME: &str = "baram-export-policy.lua";
 /// - Every `Link` whose target has a scheme outside the app's link policy
 ///   (`isAllowedLinkHref`, src/utils/link-href.ts) becomes its label, for the
 ///   same reason: the frontend's link pass sees markdown links only.
-/// - Raw HTML is dropped, except that `<br>` becomes a line break. The epub
-///   writer turns `<img src>`, `<video>`, `<object>` and the rest into
-///   embedded files (verified on pandoc 3.11 — `<img src="/etc/passwd">`
-///   landed in `EPUB/media/`) and fetches an `https:` one. The docx, latex
-///   and rst writers ignored raw HTML already, so only EPUB output changes:
-///   raw HTML written into a note no longer passes through to it. `<br>` is
-///   what the editor writes for a line break inside a table cell, so it is
-///   kept as the break it means — in docx too, which dropped it before.
+/// - Every raw node is dropped, whatever its format — html, tex/latex,
+///   openxml, rst — except that `<br>` becomes a line break (issue 544). The
+///   epub writer turns raw `<img src>`, `<video>`, `<object>` into embedded
+///   files (verified on pandoc 3.11 — `<img src="/etc/passwd">` landed in
+///   `EPUB/media/`) and fetches an `https:` one; the latex writer passes
+///   raw TeX through, and TeX is a language that can assemble a link or a
+///   file read from macros (`\let\x\href`, `\hyperbaseurl`, `\special`,
+///   `\input`), so no list of command names is a boundary; a
+///   ```` ```{=openxml} ```` block is written into the docx as it is, and a
+///   `{=rst}` one can carry `.. raw:: html`. Deny by default, then: what a
+///   note wrote as raw markup reaches no writer. Only the docx writer
+///   ignored raw HTML and raw TeX already (an `{=openxml}` block still went
+///   straight into its document XML); the rst writer wraps BOTH in a
+///   `.. raw:: html` / `.. raw:: latex` block, and an inline raw TeX in a
+///   `:raw-latex:` role — measured on pandoc 3.9, not assumed. So what
+///   changes for users is raw markup in EPUB, LaTeX and RST output alike,
+///   and `{=openxml}` in docx. `<br>` is what the editor writes for a
+///   line break inside a table cell, so it is kept as the break it means —
+///   in docx too, which dropped it before. Subscript, superscript and
+///   underline reach the writers in pandoc's own spellings
+///   (`convertForPandoc`), not as raw `<sub>`/`<sup>`/`<u>`.
 /// - Metadata keys that name a file are dropped. A note's YAML frontmatter is
 ///   pandoc metadata, and `cover-image` and `css` make the epub writer read
 ///   those paths.
+/// - Key-value attributes are dropped from every node that carries them
+///   (Div, Span, Header, CodeBlock, Code, Link, Image, Table, Figure): with
+///   `native_divs`,
+///   `bracketed_spans`, `header_attributes` and `link_attributes` on, a note
+///   can write `<div onclick="…">`, `[x]{onclick=…}` or `![](x){onclick=…}`,
+///   and the epub writer copies those into its XHTML. Ids and classes stay
+///   (anchors, `.underline`, code languages); an image keeps `width` and
+///   `height`, a code block its `startFrom` line number.
 const POLICY_FILTER_BODY: &str = r#"
 local LINK_SCHEMES = {
   http = true, https = true, ftp = true, ftps = true, mailto = true,
@@ -173,23 +194,12 @@ end
 local function unescaped(s)
   return (s:gsub("%%(%x%x)", function(h) return string.char(tonumber(h, 16)) end))
 end
--- Raw markup, in whatever format the note declared it, reaches no writer.
--- The exceptions are what the app itself writes as HTML: `<br>` (a cell
--- break) becomes a line break, and the bare sub/sup/underline tags the
--- export converter and the serializer emit are kept for the epub writer.
--- Formats and tag names compare case-insensitively: pandoc's own `Format`
--- equality ignores case, so `{=HTML}` is `{=html}` to its writers.
-local KEEP_HTML = {
-  ["<sub>"] = true, ["</sub>"] = true, ["<sup>"] = true, ["</sup>"] = true,
-  ["<u>"] = true, ["</u>"] = true,
-}
+-- Raw markup, in whatever format the note declared it, reaches no writer;
+-- the one exception is the `<br>` the editor writes for a cell break, which
+-- becomes the line break it means. A block-level raw node (a `<br>` alone on
+-- its line is one) can only be dropped: a LineBreak is no Block.
 local function drop_raw_inline(el)
-  local format = el.format:lower()
-  if format == "html" or format == "html5" or format == "html4" then
-    local tag = (el.text:lower():gsub("%s", ""))
-    if tag == "<br>" or tag == "<br/>" then return pandoc.LineBreak() end
-    if KEEP_HTML[tag] then return nil end
-  end
+  if el.text:match("^<[Bb][Rr]%s*/?>$") then return pandoc.LineBreak() end
   return {}
 end
 local function drop_raw_block(_)
@@ -199,7 +209,7 @@ local FILE_KEYS = { "cover-image", "epub-cover-image", "css", "stylesheet", "bib
 -- Attributes ride into EPUB's XHTML verbatim: `<div onclick>` (native_divs),
 -- `<span onclick>` (native_spans), `[x]{onclick=…}` (bracketed_spans),
 -- `# H {onclick=…}`, `![](x){onclick=…}`. Only an image's size survives; ids
--- and classes stay (anchors, code languages).
+-- and classes stay (anchors, `.underline`, code languages).
 local IMAGE_KEYS = { width = true, height = true }
 local CODE_KEYS = { startFrom = true }
 local function scrub(el, keep)
@@ -947,7 +957,7 @@ mod tests {
     /// fails, rather than passes, when pandoc is missing.
     #[test]
     #[ignore]
-    fn pandoc_smoke_embeds_staged_images_in_docx_and_epub() {
+    fn pandoc_smoke_policy_holds_across_the_four_writers() {
         // A missing pandoc is a failed prerequisite, not a pass: an ignored
         // test that returned green without running would prove nothing.
         if std::process::Command::new("pandoc")
@@ -998,8 +1008,16 @@ mod tests {
         // have refused, and a `<br>` the editor writes for a cell break.
         let pic_abs = root.join("notes/img/pic.png");
         let pic_abs = pic_abs.to_str().unwrap();
+        // …and raw markup of every format pandoc knows (issue 544): TeX that
+        // would be a link or a file read once compiled, an openxml block the
+        // docx writer would write in as it is, an rst block that could carry
+        // `.. raw:: html`. All of it must be gone from every writer. The
+        // native subscript/superscript/underline spellings are written here
+        // BY HAND, including the escaped inner space: this test proves what
+        // pandoc does with them, not that `convertForPandoc` produces them —
+        // that half is pinned by its own vitest (pandoc-export.test.ts).
         let markdown = format!(
-            "---\ntitle: T\ncover-image: {canary}\ncss: {canary}\n---\n\n# T\n\n![pic](baram-asset:image-0.png) ![d](baram-asset:mermaid-0.png) ![gone](baram-asset:image-1.png) ![abs](baram-asset:image-2.png){{width=120px}} hosts <img src=\"{canary}\" alt=\"raw\">\n\n<img src=\"{canary}\">\n\n<video src=\"{canary}\"></video>\n\n<div>\n\n![indiv](<{canary}>)\n\n</div>\n\n[bad](javascript:alert(1)) [ok](https://example.com/) one<br>two\n\nH<sub>2</sub>O x<sup>2</sup> <u>under</u>\n\n![lonely](baram-asset:image-3.png)\n\n![The caption.](baram-asset:image-1.png){{alt=\"described\"}}\n\nraw tex \\href{{javascript:alert(2)}}{{texclick}} \\input{{{canary}}} \\newpage\n\n```{{=HTML}}\n<SUB>HTML-UPPER-MARK</SUB>\n```\n\n```{{=latex}}\nLATEX-RAW-MARK\n```\n\n```{{=openxml}}\n<w:p><w:r><w:t>OPENXML-MARK</w:t></w:r></w:p>\n```\n\n```{{=rst}}\n.. raw:: html\n\n   RST-RAW-MARK\n```\n\n<div onclick=\"alert(1)\" style=\"background-image:url(https://tracker.example/p)\"><span onclick=\"alert(2)\">spanned</span></div>\n\n[attr span]{{onclick=\"alert(3)\"}} ![d2](baram-asset:mermaid-0.png){{onclick=\"alert(4)\" width=90px}}\n\n## Head {{onclick=\"alert(5)\"}}\n"
+            "---\ntitle: T\ncover-image: {canary}\ncss: {canary}\n---\n\n# T\n\n![pic](baram-asset:image-0.png) ![d](baram-asset:mermaid-0.png) ![gone](baram-asset:image-1.png) ![abs](baram-asset:image-2.png){{width=120px}} hosts <img src=\"{canary}\" alt=\"raw\">\n\n<img src=\"{canary}\">\n\n<video src=\"{canary}\"></video>\n\n<div>\n\n![indiv](<{canary}>)\n\n</div>\n\n[bad](javascript:alert(1)) [ok](https://example.com/) one<br>two\n\n![lonely](baram-asset:image-3.png)\n\n![The caption.](baram-asset:image-1.png){{alt=\"described\"}}\n\nraw tex \\href{{javascript:alert(2)}}{{texclick}} \\input{{{canary}}} \\newpage\n\n```{{=HTML}}\n<SUB>HTML-UPPER-MARK</SUB>\n```\n\n```{{=latex}}\nLATEX-RAW-MARK\n```\n\n```{{=openxml}}\n<w:p><w:r><w:t>OPENXML-MARK</w:t></w:r></w:p>\n```\n\n```{{=rst}}\n.. raw:: html\n\n   RST-RAW-MARK\n```\n\nH~2~O x^2^ ~a\\ b~ [under line]{{.underline}} [$[0,1)$]{{.underline}}\n\n<div onclick=\"alert(1)\" style=\"background-image:url(https://tracker.example/p)\"><span onclick=\"alert(2)\">spanned</span></div>\n\n[attr span]{{onclick=\"alert(3)\"}} ![d2](baram-asset:mermaid-0.png){{onclick=\"alert(4)\" width=90px}}\n\n## Head {{onclick=\"alert(5)\"}}\n"
         );
         let markdown = markdown.as_str();
         let requests = vec![
@@ -1117,16 +1135,13 @@ mod tests {
             );
             let br = if format == "docx" { "<w:br" } else { "<br" };
             assert!(body.contains(br), "{format}: <br> not a line break");
-            // Raw markup of any format is gone, in whatever case the note
-            // declared it; the editor's own sub/sup/underline tags are the one
-            // raw HTML the epub writer still gets (docx ignored raw HTML
-            // before and still does).
+            // Raw markup of every format is gone; the native spellings render.
             for mark in [
                 "HTML-UPPER-MARK",
+                "texclick",
                 "LATEX-RAW-MARK",
                 "OPENXML-MARK",
                 "RST-RAW-MARK",
-                "texclick",
                 "newpage",
             ] {
                 assert!(
@@ -1151,12 +1166,6 @@ mod tests {
             );
             if format == "epub" {
                 assert!(
-                    body.contains("<sub>2</sub>")
-                        && body.contains("<sup>2</sup>")
-                        && body.contains("<u>under</u>"),
-                    "epub: sub/sup/underline lost"
-                );
-                assert!(
                     !body.contains("<figcaption>lonely"),
                     "epub: the rejected lone image kept its figure caption"
                 );
@@ -1177,6 +1186,34 @@ mod tests {
             assert!(
                 body.contains("The caption."),
                 "{format}: the figure's own caption lost"
+            );
+            let (sub, sup, underline) = if format == "docx" {
+                (
+                    "vertAlign w:val=\"subscript\"",
+                    "vertAlign w:val=\"superscript\"",
+                    "<w:u ",
+                )
+            } else {
+                ("<sub>", "<sup>", "<u>")
+            };
+            for (what, needle) in [
+                ("subscript", sub),
+                ("superscript", sup),
+                ("underline", underline),
+            ] {
+                assert!(body.contains(needle), "{format}: {what} not rendered");
+            }
+            // The span closed where the converter meant it to: the `[` inside
+            // the math counted for neither side, so no `{.underline}` leaks
+            // out as text.
+            assert!(
+                !body.contains("{.underline}"),
+                "{format}: underline span did not close"
+            );
+            // An escaped inner space is a real subscript with a no-break space.
+            assert!(
+                body.contains("a\u{a0}b"),
+                "{format}: escaped space not a subscript"
             );
             // Both staged files went in as-is; no other file from the machine did.
             for name in &media {
@@ -1230,6 +1267,83 @@ mod tests {
                 text.contains("/etc/hosts"),
                 "{format}: absolute reference lost"
             );
+        }
+
+        // The text writers, fed the same document with no staging (production
+        // sends none for them): raw TeX and raw rst pass through pandoc's
+        // parse as raw nodes there too, and the same filter must have dropped
+        // them. The canary's bytes cannot appear here — these writers read no
+        // file — and its path may, as an image reference written as it was
+        // (the loop above pins that); what must not appear is raw markup.
+        for (format, ext) in [("latex", "tex"), ("rst", "rst")] {
+            let out_path = out.path().join(format!("t.{ext}"));
+            let options = PandocExportOptions {
+                format: format.into(),
+                reference_doc: None,
+                extra_args: Vec::new(),
+            };
+            run_pandoc_in(
+                tmp_parent.path(),
+                markdown,
+                out_path.to_str().unwrap(),
+                "pandoc",
+                &options,
+                &assets,
+                None,
+            )
+            .unwrap_or_else(|e| panic!("{format}: {e}"));
+            let text = std::fs::read_to_string(&out_path).unwrap();
+            for mark in [
+                "javascript:",
+                "onclick",
+                "tracker.example",
+                "texclick",
+                "LATEX-RAW-MARK",
+                "OPENXML-MARK",
+                "RST-RAW-MARK",
+                "newpage",
+                "\\input",
+            ] {
+                assert!(
+                    !text.contains(mark),
+                    "{format}: `{mark}` reached the output"
+                );
+            }
+            assert!(text.contains("example.com"), "{format}: allowed link lost");
+            assert!(
+                !text.contains("{.underline}"),
+                "{format}: underline span did not close"
+            );
+            let (sub, sup) = if format == "latex" {
+                ("\\textsubscript{2}", "\\textsuperscript{2}")
+            } else {
+                (":sub:`2`", ":sup:`2`")
+            };
+            assert!(
+                text.contains(sub) && text.contains(sup),
+                "{format}: sub/sup not rendered"
+            );
+            if format == "latex" {
+                // pandoc wraps output at 72 columns, so only the head of the
+                // span is asserted — `under line` may straddle a line break.
+                assert!(text.contains("\\ul{under"), "latex: underline not rendered");
+                // The math kept its bracket: `[$[0,1)$]{.underline}` is an
+                // underlined interval, not `\[0,1)`. WHICH delimiters the
+                // writer puts around inline math inside `\ul{}` is a pandoc
+                // version detail and not what this pins — 3.1.3 writes
+                // `\ul{\([0,1)\)}`, 3.9 writes `\ul{$[0,1)$}` — so both
+                // spellings pass and the bracket is the assertion. Pinning
+                // one spelling made the CI baseline (noble's apt 3.1.3) fail
+                // on a difference that is not this policy's.
+                assert!(
+                    text.contains("\\ul{$[0,1)$}") || text.contains("\\ul{\\([0,1)\\)}"),
+                    "latex: math inside an underline lost its bracket"
+                );
+                assert!(
+                    text.contains("\\textsubscript{a~b}"),
+                    "latex: escaped space not a subscript"
+                );
+            }
         }
     }
 

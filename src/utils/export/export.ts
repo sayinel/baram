@@ -16,7 +16,10 @@ import { bundledFont } from "../font/bundled-fonts";
 import { isUnderRoot } from "../path-utils";
 import { buildFontFaceCSS } from "./export-font-embed";
 import { captureEditorHTML, generateStandaloneHTML } from "./export-html";
-import { stageMarkdownImages } from "./export-markdown-images";
+import {
+  rewriteImageTagsAsMarkdown,
+  stageMarkdownImages,
+} from "./export-markdown-images";
 import { stripDisallowedMarkdownLinks } from "./export-markdown-links";
 import { rewriteMermaidForPandoc } from "./mermaid-export-assets";
 import { convertForNotion } from "./notion-export";
@@ -209,7 +212,15 @@ export async function exportWithPandoc(
         documentPath,
         knownAssets: new Set(assets.map((asset) => asset.name)),
       })
-    : { images: [], markdown: rewritten, refused: 0, scoped: true };
+    : {
+        images: [],
+        // The text writers embed nothing and take every reference as written;
+        // only the editor's `<img>` tags are turned into markdown images so
+        // the raw-HTML drop does not swallow a resized image.
+        markdown: rewriteImageTagsAsMarkdown(rewritten),
+        refused: 0,
+        scoped: true,
+      };
   // issue 527: the link policy runs LAST — see export-markdown-links.ts.
   const finalMd = stripDisallowedMarkdownLinks(staged);
 

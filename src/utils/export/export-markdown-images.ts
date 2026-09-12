@@ -47,12 +47,14 @@
 // from strings built by other means, and a definition is also what its links
 // use.
 //
-// Not covered here, and tracked separately: raw HTML (`<img src>` inline or
-// in an HTML block — pandoc's markdown reader passes it through and epub
-// fetches it; issue 544's reader profile), an epub `cover-image` in YAML
-// metadata, and raw TeX `\includegraphics` (plain text to pandoc's writers,
-// a file read to a later TeX run). A document with nothing to change comes
-// back as the very same string.
+// Not covered here — judged one layer later, on pandoc's own parse, by the
+// Lua policy filter `src-tauri/src/export/pandoc.rs` writes for each export
+// (issues 545 and 544): raw HTML of any kind, including an `<img src>` this
+// pass did not recognise as the editor's own tag, is dropped there; an epub
+// `cover-image` in YAML metadata is removed from the metadata; every Image
+// the writers would embed is held to the staged-asset allowlist. Raw TeX
+// `\includegraphics` is dropped with the rest of raw TeX. A document with
+// nothing to change comes back as the very same string.
 import type { PandocImageRequest } from "../../ipc/types";
 import type { Html, Image, ImageReference, Nodes } from "mdast";
 
@@ -102,6 +104,10 @@ export interface ImagePolicyResult {
   /** Whether the document had a context to be relative to at all. */
   scoped: boolean;
 }
+
+/** What the editor's `<img>` parser yields — named through its return type,
+ *  so this module reaches into the pipeline for one audited export only. */
+type MediaHtmlAttrs = NonNullable<ReturnType<typeof parseImgHtml>>;
 
 /** Where an image may point, resolved once per document. */
 export interface RelativeScope {
@@ -326,9 +332,7 @@ function imgTagEdit(
   ctx: LabelContext,
   walk: Walk,
 ): null | SourceEdit {
-  const value = node.value.trim();
-  if (!/^<img\s/i.test(value)) return null;
-  const attrs = parseImgHtml(value);
+  const attrs = editorImgTag(node);
   if (attrs === null) return null;
   const verdict = classifyImageSource(attrs.src, walk.scope, walk.knownAssets);
   if (verdict.kind === "refuse") {
@@ -339,6 +343,24 @@ function imgTagEdit(
     verdict.kind === "keep"
       ? attrs.src
       : `${ASSET_SCHEME}${stageRequest(walk, verdict.source)}`;
+  return imageEdit(node, attrs, url, ctx);
+}
+
+/** The attrs of an `<img …>` tag the editor's own parser accepts, or null. */
+function editorImgTag(node: Html): MediaHtmlAttrs | null {
+  const value = node.value.trim();
+  if (!/^<img\s/i.test(value)) return null;
+  return parseImgHtml(value);
+}
+
+/** Replace the tag by a markdown image with `url`, keeping alt, title and
+ *  the width as pandoc's `{width=…}` attribute. */
+function imageEdit(
+  node: Html,
+  attrs: MediaHtmlAttrs,
+  url: string,
+  ctx: LabelContext,
+): SourceEdit {
   const image: Image = {
     alt: attrs.alt ?? undefined,
     title: attrs.title,
@@ -357,6 +379,35 @@ function imgTagEdit(
     start: start.offset!,
     text: serializeInline([image]) + (width === null ? "" : `{width=${width}}`),
   };
+}
+
+/**
+ * For the writers that embed nothing (latex, rst): the editor's `<img …>`
+ * tags become markdown images with their source AS WRITTEN — no staging, no
+ * verdict, exactly as every other image reference passes through to those
+ * writers. Without this, the raw tag reaches the backend, the policy filter
+ * drops it (raw HTML is never written into any output), and a resized image
+ * silently vanishes from a `.tex`. Returns the input itself when there is
+ * nothing to change.
+ */
+export function rewriteImageTagsAsMarkdown(markdown: string): string {
+  const edits: SourceEdit[] = [];
+  const collect = (node: Nodes, ctx: LabelContext): void => {
+    if (node.type === "html") {
+      const attrs = editorImgTag(node);
+      if (attrs !== null) edits.push(imageEdit(node, attrs, attrs.src, ctx));
+      return;
+    }
+    if (!("children" in node)) return;
+    const inner = innerContext(ctx, node.type);
+    for (const child of node.children) collect(child, inner);
+  };
+  collect(parseMdast(markdown), {
+    inHeading: false,
+    inLink: false,
+    inTableCell: false,
+  });
+  return edits.length === 0 ? markdown : applyEdits(markdown, edits);
 }
 
 function stageOnce(

@@ -219,6 +219,26 @@ describe("the images in the markdown that reaches pandoc", () => {
     expect(useUIStore.getState().toast?.message).toContain("vault or folder");
   });
 
+  it("turns the editor's resized <img> into a markdown image for LaTeX, source as written", async () => {
+    useContextStore.setState({
+      contexts: [context("ctx-vault", "/vault", "vault")],
+    });
+    const editor = loadEditor(
+      '<img src="img/a.png" alt="A" width="640">\n\n<img src="/etc/hosts" width="50%">\n',
+    );
+    await exportWithPandoc(editor, "t", "latex", {
+      documentPath: "/vault/notes/today.md",
+    });
+
+    const [request] = vi.mocked(exportPandoc).mock.calls[0];
+    // No staging, no verdict — the reference passes through as written, with
+    // its width; a raw `<img>` would have been dropped by the policy filter.
+    expect(request.markdownContent).toContain("![A](img/a.png){width=640px}");
+    expect(request.markdownContent).toContain("![](/etc/hosts){width=50%}");
+    expect(request.markdownContent).not.toContain("<img");
+    expect(request.images).toEqual([]);
+  });
+
   it("leaves images as written for LaTeX and RST, which embed nothing", async () => {
     useContextStore.setState({
       contexts: [context("ctx-vault", "/vault", "vault")],

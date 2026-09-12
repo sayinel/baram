@@ -10,32 +10,259 @@ export interface CodeRegion {
   start: number;
 }
 
+/** What `collectCodeRegions` protects beyond fences, block math and inline
+ *  code. Inline math is opt-in: a converter that REWRITES `$…$` (the Notion
+ *  export) must still see it, while one that must not touch it (the Pandoc
+ *  sub/superscript pass, issue 544) asks for it to be protected. */
+export interface CodeRegionOptions {
+  inlineMath?: boolean;
+  /** Protect HTML tags and markdown link/image destinations too — a
+   *  `~…~` inside `<img src="img/~draft file~.png">` or `](…)` is a path,
+   *  not a mark (issue 544). */
+  markup?: boolean;
+}
+
+/** How {@link replaceOutsideCode} judges a match that touches a region.
+ *
+ *  `"span"` (the default) refuses ANY overlap. It is the rule for a replacer
+ *  that rewrites the match's INTERIOR — the sub/superscript passes escape
+ *  the spaces inside it, so a swallowed code span (`~a \`x y\` b~`) would
+ *  have its own bytes rewritten.
+ *
+ *  `"delimiters"` refuses only when one of the match's own ends sits inside
+ *  a region. It is the rule for a replacer that keeps the interior verbatim
+ *  and swaps the delimiters alone (highlight `==x==` → `**x**`, Notion's
+ *  `$x$` → `$$x$$`): a mark WRAPPING a code span, a link or a tag is
+ *  ordinary authoring and must still convert, while a delimiter landing
+ *  inside code (`a ==b \`c== d\` e`) must not. Judging those by overlap
+ *  silently left `==` in the output of all four pandoc writers and of
+ *  Notion. */
+export type MatchGuard = "delimiters" | "span";
+
+export interface ReplaceOutsideCodeOptions extends CodeRegionOptions {
+  guard?: MatchGuard;
+}
+
 /**
  * Collect start/end offsets of all fenced code blocks, block math, and
  * inline code spans in content.
  */
-export function collectCodeRegions(md: string): CodeRegion[] {
-  const regions: CodeRegion[] = [];
-
-  // Fenced code blocks: ``` or ~~~
-  const fencedRe = /^(`{3,}|~{3,})[^\n]*\n[\s\S]*?\n\1\s*$/gm;
-  let m: null | RegExpExecArray;
-  while ((m = fencedRe.exec(md)) !== null) {
-    regions.push({ start: m.index, end: m.index + m[0].length });
-  }
+export function collectCodeRegions(
+  md: string,
+  options: CodeRegionOptions = {},
+): CodeRegion[] {
+  const fences = fencedCodeRegions(md);
+  const regions: CodeRegion[] = [...fences, ...inlineCodeRegions(md, fences)];
 
   // Block math: $$...$$ (multiline)
   const blockMathRe = /\$\$[\s\S]*?\$\$/g;
+  let m: null | RegExpExecArray;
   while ((m = blockMathRe.exec(md)) !== null) {
     regions.push({ start: m.index, end: m.index + m[0].length });
   }
 
-  // Inline code: `...`
-  const inlineCodeRe = /`[^`\n]+`/g;
-  while ((m = inlineCodeRe.exec(md)) !== null) {
-    regions.push({ start: m.index, end: m.index + m[0].length });
+  if (options.inlineMath) {
+    for (const r of inlineMathRegions(md)) {
+      if (!isInCodeRegion(r.start, regions)) regions.push(r);
+    }
   }
 
+  if (options.markup) {
+    // An HTML tag — a live `<`, a real tag name, attributes, `>` — and a
+    // link/image destination: their text is markup or a path, and a `~`/`^`
+    // there is never a mark. `\<u~a b~>` is prose with an escaped `<`.
+    //
+    // Attributes are matched by their own grammar rather than "anything up
+    // to the next `>`", because a QUOTED VALUE may hold one: with
+    // `[^<>\n]*` the region of `<img alt="x>y" src="p/~a b~.png">` stopped
+    // at the `>` inside `alt`, leaving the `src` path exposed to the mark
+    // rewriters — the very failure this option exists to prevent.
+    const tagRe =
+      /<\/?[A-Za-z][A-Za-z0-9-]*(?:\s+[^\s"'/=<>]+(?:\s*=\s*(?:"[^"\n]*"|'[^'\n]*'|[^\s"'`=<>]+))?)*\s*\/?>/g;
+    while ((m = tagRe.exec(md)) !== null) {
+      if (isLive(md, m.index)) {
+        regions.push({ start: m.index, end: m.index + m[0].length });
+      }
+    }
+    const destinationRe = /\]\((?:[^()\n\\]|\\.|\([^()\n]*\))*\)/g;
+    while ((m = destinationRe.exec(md)) !== null) {
+      regions.push({ start: m.index, end: m.index + m[0].length });
+    }
+    // A link/image REFERENCE definition — `[id]: dest "title"`. Its
+    // destination is a path exactly as an inline one is, and
+    // `export-markdown-images.ts` walks `definition` nodes, so a
+    // reference-style image is a supported input: a `\ ` injected here names
+    // no file and the image is silently reduced to its alt text.
+    const definitionRe =
+      /^ {0,3}\[(?:[^\]\\\n]|\\.)*\]:[ \t]*(?:<[^>\n]*>|\S+)/gm;
+    while ((m = definitionRe.exec(md)) !== null) {
+      regions.push({ start: m.index, end: m.index + m[0].length });
+    }
+  }
+
+  return regions;
+}
+
+/** Is the character at `index` live — preceded by an even run of backslashes? */
+export function isLive(md: string, index: number): boolean {
+  let run = 0;
+  for (let j = index - 1; j >= 0 && md[j] === "\\"; j--) run += 1;
+  return run % 2 === 0;
+}
+
+/**
+ * Fenced code blocks (``` or ~~~), by pandoc's line rules rather than a
+ * single regex: the opener may sit behind a container prefix (blockquote
+ * markers, list markers, indentation), the closer must sit behind the SAME
+ * number of blockquote markers and use the same fence character with at
+ * least the opener's length, and an unclosed fence runs to the end of the
+ * document. A fence opened on a list item's own line (`- ````) ends with the
+ * item: the next list marker at a shallower column starts a new item (and
+ * may open the next fence), while a less indented closer still closes it
+ * (pandoc gathers such lines into the item). A line carrying a list marker
+ * is never a closer. A regex that accepted any prefix on the closer took a
+ * `> ```` line inside a column-zero block as its end and exposed the rest of
+ * the code.
+ */
+function fencedCodeRegions(md: string): CodeRegion[] {
+  const regions: CodeRegion[] = [];
+  // A container prefix: blockquote markers and list markers (`-` `*` `+`,
+  // `1.` `1)` — each followed by a space) in any mix, with their
+  // indentation.
+  const prefixRe = /^([ \t]*(?:(?:>|(?:[-*+]|\d{1,9}[.)])(?=[ \t]))[ \t]*)*)/;
+  const markerRe = /(?:[-*+]|\d{1,9}[.)])[ \t]/;
+  let open: null | {
+    char: string;
+    column: null | number;
+    gt: number;
+    len: number;
+    start: number;
+  } = null;
+  let offset = 0;
+  for (const line of md.split("\n")) {
+    const prefix = prefixRe.exec(line)![1];
+    const gt = (prefix.match(/>/g) ?? []).length;
+    const rest = line.slice(prefix.length);
+    // Past the last blockquote marker: where a list marker sits, and where
+    // an item's content starts (after the marker and its space).
+    const afterQuote = prefix.slice(prefix.lastIndexOf(">") + 1);
+    const marker = markerRe.exec(afterQuote);
+    if (
+      open !== null &&
+      open.column !== null &&
+      gt === open.gt &&
+      marker !== null &&
+      marker.index < open.column
+    ) {
+      regions.push({ start: open.start, end: offset });
+      open = null;
+    }
+    if (open === null) {
+      const o = /^(`{3,}|~{3,})/.exec(rest);
+      if (o !== null) {
+        open = {
+          char: o[1][0],
+          column: marker === null ? null : afterQuote.length,
+          gt,
+          len: o[1].length,
+          start: offset,
+        };
+      }
+    } else if (gt === open.gt && marker === null) {
+      const c = /^(`{3,}|~{3,})[ \t]*$/.exec(rest);
+      if (c !== null && c[1][0] === open.char && c[1].length >= open.len) {
+        regions.push({ start: open.start, end: offset + line.length });
+        open = null;
+      }
+    }
+    offset += line.length + 1;
+  }
+  if (open !== null) regions.push({ start: open.start, end: md.length });
+  return regions;
+}
+
+/**
+ * Code spans by CommonMark's rule: a run of n backticks opens a span that the
+ * next run of EXACTLY n backticks closes — a run of another length is text
+ * inside it, so ``a`[x`b`` is one span holding a backtick. A span may cross
+ * a line break but not a blank line. A run inside a fence is the fence's
+ * own text, and an escaped first backtick shortens the run.
+ */
+function inlineCodeRegions(md: string, fences: CodeRegion[]): CodeRegion[] {
+  const regions: CodeRegion[] = [];
+  const runRe = /`+/g;
+  let m: null | RegExpExecArray;
+  while ((m = runRe.exec(md)) !== null) {
+    let start = m.index;
+    let n = m[0].length;
+    const fence = fences.find((f) => start >= f.start && start < f.end);
+    if (fence !== undefined) {
+      runRe.lastIndex = Math.max(fence.end, start + n);
+      continue;
+    }
+    if (!isLive(md, start)) {
+      start += 1;
+      n -= 1;
+      if (n === 0) continue;
+    }
+    let j = start + n;
+    let closed = -1;
+    while (j < md.length) {
+      if (md[j] === "\n" && md[j + 1] === "\n") break;
+      if (md[j] === "`") {
+        let k = j;
+        while (md[k] === "`") k += 1;
+        if (k - j === n) {
+          closed = k;
+          break;
+        }
+        j = k;
+        continue;
+      }
+      j += 1;
+    }
+    if (closed === -1) continue;
+    regions.push({ start, end: closed });
+    runRe.lastIndex = closed;
+  }
+  return regions;
+}
+
+/**
+ * Inline math by pandoc's `tex_math_dollars` rule: the opener is a live `$`
+ * (even backslash run before it, so `\\$` is a backslash then math) not
+ * followed by a space, the closer is a live `$` not preceded by a space nor
+ * followed by a digit, and the span may cross a line break but not a blank
+ * line.
+ */
+function inlineMathRegions(md: string): CodeRegion[] {
+  const regions: CodeRegion[] = [];
+  let i = 0;
+  while (i < md.length) {
+    if (md[i] !== "$" || !isLive(md, i) || /\s/.test(md[i + 1] ?? " ")) {
+      i += 1;
+      continue;
+    }
+    let j = i + 1;
+    let closed = -1;
+    while (j < md.length) {
+      const ch = md[j];
+      if (ch === "\n" && md[j + 1] === "\n") break;
+      if (ch === "$" && isLive(md, j)) {
+        if (!/\s/.test(md[j - 1]) && !/\d/.test(md[j + 1] ?? "")) {
+          closed = j;
+        }
+        break;
+      }
+      j += 1;
+    }
+    if (closed === -1) {
+      i += 1;
+      continue;
+    }
+    regions.push({ start: i, end: closed + 1 });
+    i = closed + 1;
+  }
   return regions;
 }
 
@@ -44,6 +271,18 @@ export function collectCodeRegions(md: string): CodeRegion[] {
  */
 export function isInCodeRegion(pos: number, regions: CodeRegion[]): boolean {
   return regions.some((r) => pos >= r.start && pos < r.end);
+}
+
+/** Does the span `[start, end)` touch any code region? A match that merely
+ *  STARTS outside code can still swallow a code span whole (`~a \`x y\` b~`),
+ *  and a replacement that rewrites the code's contents is exactly what the
+ *  regions exist to prevent. */
+export function overlapsCodeRegion(
+  start: number,
+  end: number,
+  regions: CodeRegion[],
+): boolean {
+  return regions.some((r) => start < r.end && end > r.start);
 }
 
 /**
@@ -55,8 +294,14 @@ export function replaceOutsideCode(
   md: string,
   pattern: RegExp,
   replacer: (match: string, ...groups: string[]) => string,
+  options: ReplaceOutsideCodeOptions = {},
 ): string {
-  const regions = collectCodeRegions(md);
+  const regions = collectCodeRegions(md, options);
+  const blocked =
+    options.guard === "delimiters"
+      ? (start: number, end: number) =>
+          isInCodeRegion(start, regions) || isInCodeRegion(end - 1, regions)
+      : (start: number, end: number) => overlapsCodeRegion(start, end, regions);
   // Ensure the regex is global
   const globalRe = new RegExp(
     pattern.source,
@@ -66,7 +311,7 @@ export function replaceOutsideCode(
     // String.replace passes: match, ...groups, offset, originalString
     // offset is the second-to-last argument
     const offset = args[args.length - 2] as number;
-    if (isInCodeRegion(offset, regions)) {
+    if (blocked(offset, offset + match.length)) {
       return match;
     }
     return replacer(match, ...(args.slice(0, -2) as string[]));
