@@ -5,11 +5,15 @@
 // 그 게이트를 우리가 갖기 위해서이므로, 검사는 여기 있다.
 // 규약의 출처는 `.docs/decisions/2026-09-12-vim-wiki-structure.md`.
 
-import { readdirSync, readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const WIKI = "wiki";
 const RESERVED = new Set(["Home.md", "_Sidebar.md", "_Footer.md"]);
+const VIM_ROOT = "src/extensions/plugins/vim";
+const CODE_MAP = "Vim-Code-map.md";
+const BLOB = /https:\/\/github\.com\/sayinel\/baram\/blob\/main\/([^)\s]+)/g;
 
 /** 제목 `Vim Architecture` → 파일 `Vim-Architecture.md`. GitHub wiki 는 제목에
  *  슬래시·콜론 등을 금지하고 폴더로 계층을 만들 수 없다 — 이름이 곧 계층이다. */
@@ -64,6 +68,29 @@ for (const f of files) {
     if (!files.includes(`${target}.md`)) {
       problems.push(`[깨진 내부 링크] ${f} → ${target}`);
     }
+  }
+}
+
+// 4. code map 전수 검증
+//    `.docs` 가 낡은 방식은 "옮겨진 파일"이 아니라 "추가됐는데 지도에 없는 파일"이었다.
+//    그래서 경로 실존만이 아니라 **전수**를 단언한다.
+//
+//    ‼️ 열거는 `git ls-files` 로 한다 — 디렉터리를 직접 읽으면 추적되지 않는 세션 산출물
+//       (`.omc/state/**`)이 vim 디렉터리 안에 섞여 있어 같이 잡힌다. 추적 여부를 기준으로
+//       삼으면 제외 목록을 손으로 관리할 필요가 없다.
+if (files.includes(CODE_MAP)) {
+  const listed = new Set();
+  for (const [, p] of page(CODE_MAP).matchAll(BLOB)) listed.add(p);
+
+  for (const p of listed) {
+    if (!existsSync(p)) problems.push(`[code map 이 없는 파일을 가리킨다] ${p}`);
+  }
+
+  const tracked = execFileSync("git", ["ls-files", VIM_ROOT], { encoding: "utf8" })
+    .split("\n")
+    .filter((p) => p && !p.includes("/__tests__/"));
+  for (const p of tracked) {
+    if (!listed.has(p)) problems.push(`[code map 누락] ${p}`);
   }
 }
 

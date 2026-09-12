@@ -18,5 +18,5 @@
 - Internal contracts — 미작성
 - Command reference — 미작성
 - Testing methodology — 미작성
-- Code map — 미작성
+- [Code map](Vim-Code-map)
 - Decisions and history — 미작성
