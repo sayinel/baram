@@ -25,7 +25,8 @@ adapters              intent 를 실제 문서 위에서 실행
 EditorState
 ```
 
-각 층의 파일은 [Code map](Vim-Code-map) 에 있다.
+각 층의 파일은 [Code map](Vim-Code-map) 에 있다 — 키 정규화는 흐름에서 core 앞에 서지만
+파일은 **core 안의 별도 모듈이다.**
 
 ## 층별 책임
 

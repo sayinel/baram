@@ -35,13 +35,13 @@ DOM 에 쓰지 못한다.** 상태와 DOM 이 어긋난 채 남고, `DOMObserver
 (PM 이 `brokenSelectBetweenUneditable` 로 알고 있는 그 동작), PM 의 임시-editable 우회도 루트
 전체가 non-editable 이면 듣지 않아 **늦은 `selectionchange` 가 뒤늦게 도착한다.**
 
-이 리포의 버그가 아니다 — upstream ProseMirror #820 과 같은 계열이다. 그래서 해법도 PM 코어가
-자기 churn 에 쓰는 도구를 그대로 쓴다.
+이 리포의 버그가 아니다 —
+[upstream ProseMirror #820](https://github.com/ProseMirror/prosemirror/issues/820) 과 같은
+계열이다. 그래서 해법도 PM 코어가 자기 churn 에 쓰는 도구를 그대로 쓴다.
 
 ## 반증된 시도들
 
-재발 방지의 핵심은 이 절이다. 세 시도 모두 그럴듯했고, 앞의 둘은 **계측으로 확인하기 전까지
-고쳐진 것처럼 보였다.**
+재발 방지의 핵심은 이 절이다. 세 시도 모두 그럴듯했고, 앞의 둘은 **계측으로만 반증됐다.**
 
 ### atom NodeView 에 `ignoreMutation` 을 준다
 
@@ -74,12 +74,12 @@ DOM 에 재주장한다. 한 시점의 기준이 아니라 **구간을 억제한
 정답을 알아도 남는 문제가 있다: **selection 을 쓰는 경로가 하나가 아니다.** 억제되지 않은
 경로가 하나라도 있으면 그 경로에서만 churn 이 되살아난다. 방어는 경로 열거의 문제다.
 
-1. **`dispatchCursor` 단일 관문.** vim 의 selection 쓰기가 **전부 이 헬퍼를 통과한다.**
-   dispatch 직후 억제를 걸고, normal 모드면 잔여 DOM range 까지 `removeAllRanges` 로 지운다.
-   후자는 유령 하이라이트 수정이다 — WebKit 은 노드 범위를 루트 앵커 블록의 범위로
-   재정규화하는데 `.ProseMirror-hideselection *::selection` 은 텍스트 선택만 숨기므로 블록
-   하나가 파랗게 남는다. visual 모드는 예외다: 그 범위가 곧 사용자가 보아야 하는 네이티브
-   선택이다.
+1. **`dispatchCursor` 단일 관문.** vim 이 **직접 만드는 selection 쓰기가 전부 이 헬퍼를
+   통과한다.** dispatch 직후 억제를 걸고, normal 모드면 잔여 DOM range 까지
+   `removeAllRanges` 로 지운다. 후자는 유령 하이라이트 수정이다 — WebKit 은 노드 범위를 루트
+   앵커 블록의 범위로 재정규화하는데 `.ProseMirror-hideselection *::selection` 은 텍스트
+   선택만 숨기므로 블록 하나가 파랗게 남는다. visual 모드는 예외다: 그 범위가 곧 사용자가
+   보아야 하는 네이티브 선택이다.
 2. **클릭 핸들러** (#408). 클릭으로 생기는 NodeSelection 은 PM 의 pointer dispatch 라
    `dispatchCursor` 를 타지 않는다 — 유일하게 보호되지 않은 selection 쓰기였다. microtask 에서
    억제를 걸되 **클릭 target 이 이미 선택된 atom 내부일 때만** 건다. 파킹된 선택 위에서 다른
@@ -100,7 +100,9 @@ jsdom 에는 WebKit 의 DOM-selection 동기화가 없다. churn 은 브라우�
 
 그래서 이 영역의 회귀 핀은 **결과가 아니라 호출을 고정한다.**
 
-- 억제 헬퍼를 스파이로 감싸 **호출됐는지, 그리고 focus 보다 먼저 호출됐는지를 단언한다.**
+- 억제 헬퍼를 스파이로 감싸 **호출됐는지를 단언한다.** 호출 여부까지다 — 억제를 focus 보다
+  먼저 무장해야 한다는 위 4번의 순서 계약은 **어떤 핀도 잡고 있지 않고 코드 주석이 지킨다.**
+  순서를 뒤집어도 스위트는 초록이다.
 - 핀 주석에 결과를 단언하지 않는 이유를 남긴다. 이유가 없으면 다음 사람이 "약한 테스트" 로 보고
   결과 단언으로 바꾸다가 거짓 초록불을 만든다.
 - 핀이 실제로 무는지는 **수정을 되돌려** 확인한다. 스파이 핀은 통과하기 쉬워서, 컨트롤 없이는
