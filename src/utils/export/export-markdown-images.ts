@@ -56,6 +56,7 @@
 // `\includegraphics` is dropped with the rest of raw TeX. A document with
 // nothing to change comes back as the very same string.
 import type { PandocImageRequest } from "../../ipc/types";
+import type { MediaHtmlAttrs } from "../../pipeline/transformers/media-html-tag";
 import type { Html, Image, ImageReference, Nodes } from "mdast";
 
 import { visit } from "unist-util-visit";
@@ -104,10 +105,6 @@ export interface ImagePolicyResult {
   /** Whether the document had a context to be relative to at all. */
   scoped: boolean;
 }
-
-/** What the editor's `<img>` parser yields — named through its return type,
- *  so this module reaches into the pipeline for one audited export only. */
-type MediaHtmlAttrs = NonNullable<ReturnType<typeof parseImgHtml>>;
 
 /** Where an image may point, resolved once per document. */
 export interface RelativeScope {

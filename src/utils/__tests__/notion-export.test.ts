@@ -210,6 +210,13 @@ describe("convertInlineMathForNotion", () => {
     expect(convertInlineMathForNotion(input)).toBe(input);
   });
 
+  it("converts inline math that wraps a code span (#634)", () => {
+    // Only the `$` delimiters must sit outside code; the interior is carried
+    // over verbatim. Judged by overlap the span stayed `$…$`, which Notion
+    // shows as literal dollar signs, not math.
+    expect(convertInlineMathForNotion("$a `x` b$")).toBe("$$a `x` b$$");
+  });
+
   it("converts multiple inline math expressions", () => {
     const input = "Where $a$ and $b$ are constants";
     expect(convertInlineMathForNotion(input)).toBe(
@@ -254,6 +261,12 @@ describe("convertHighlightForNotion", () => {
   it("does not convert == inside code", () => {
     const input = "Use `==highlight==` syntax";
     expect(convertHighlightForNotion(input)).toBe(input);
+  });
+
+  it("converts a highlight that wraps a code span (#634)", () => {
+    // Same rule as inline math: a mark may wrap code, so `==a `x` b==` must
+    // still become bold instead of reaching Notion as a literal `==`.
+    expect(convertHighlightForNotion("==a `x` b==")).toBe("**a `x` b**");
   });
 });
 
