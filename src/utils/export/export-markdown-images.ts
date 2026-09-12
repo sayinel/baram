@@ -173,7 +173,15 @@ export function stageMarkdownImages(
   let out = markdown;
   for (let round = 0; round < MAX_ROUNDS; round++) {
     const staged: string[] = [];
-    const next = stageOnce(out, scope, known, images, staged, counters);
+    const next = stageOnce(
+      out,
+      scope,
+      known,
+      images,
+      staged,
+      counters,
+      round === 0,
+    );
     for (const name of staged) known.add(name);
     if (next === out) {
       return {
@@ -194,6 +202,9 @@ export function stageMarkdownImages(
 interface Walk {
   /** Shared across rounds: how many images became alt text. */
   counters: { refused: number };
+  /** Only the first round counts a node it cannot align — it survives every
+   *  round unchanged and would be counted again each time. */
+  firstRound: boolean;
   images: PandocImageRequest[];
   knownAssets: ReadonlySet<string>;
   refusedIdentifiers: ReadonlySet<string>;
@@ -637,7 +648,12 @@ function readImgTag(raw: string): LooseImg {
  */
 function editorSize(raw: string, loose: LooseImg): Omit<ImgAttrs, "alt"> {
   const strict = parseImgHtml(raw);
-  if (strict === null || strict.src !== loose.src) return {};
+  // The strict parser neither trims nor decodes beyond four references;
+  // compare on the same footing so a size is not lost to ` img/a.png ` or
+  // `a&#46;png`.
+  if (strict === null || decodeEntities(strict.src).trim() !== loose.src) {
+    return {};
+  }
   return {
     title: strict.title,
     widthPercent: strict.widthPercent,
@@ -667,7 +683,7 @@ function imgTagEdits(
   if (map === null) {
     // The node could not be aligned with the source: its tags stay raw, the
     // filter drops them, and the user is told how many images that cost.
-    walk.counters.refused += spans.length;
+    if (walk.firstRound) walk.counters.refused += spans.length;
     return;
   }
   for (const span of spans) {
@@ -796,6 +812,7 @@ function stageOnce(
   images: PandocImageRequest[],
   staged: string[],
   counters: { refused: number },
+  firstRound: boolean,
 ): string {
   const root = parseMdast(markdown);
 
@@ -814,6 +831,7 @@ function stageOnce(
     { inHeading: false, inLink: false, inTableCell: false },
     {
       counters,
+      firstRound,
       images,
       knownAssets,
       refusedIdentifiers,

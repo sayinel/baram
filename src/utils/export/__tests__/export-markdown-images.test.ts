@@ -712,6 +712,22 @@ describe("stageMarkdownImages", () => {
       });
     });
 
+    it("keeps the editor's width when HTML's reading of the src differs only by trimming or an entity", () => {
+      expect(
+        stageMarkdownImages(
+          '<img src=" img/a.png " width="640">\n\n<img src="img/b&#46;png" width="50%">\n',
+          SAVED,
+        ),
+      ).toMatchObject({
+        images: [
+          { name: "image-0.png", source: "img/a.png" },
+          { name: "image-1.png", source: "img/b.png" },
+        ],
+        markdown:
+          "![](baram-asset:image-0.png){width=640px}\n\n![](baram-asset:image-1.png){width=50%}\n",
+      });
+    });
+
     it("keeps a table cell one cell when a decoded alt holds a pipe", () => {
       const { markdown } = stageMarkdownImages(
         "| a | b |\n| - | - |\n| <img src='img/a.png' alt='p&#124;q'> | c |\n",
