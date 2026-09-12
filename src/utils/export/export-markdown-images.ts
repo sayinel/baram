@@ -130,7 +130,9 @@ const ASSET_SCHEME = "baram-asset:";
 const EXTENSION = /\.([A-Za-z0-9]{1,8})$/;
 /** A POSIX-separated path that begins with a Windows drive letter. */
 type Verdict =
-  { kind: "keep" } | { kind: "refuse" } | { kind: "stage"; source: string };
+  | { kind: "keep"; source: string }
+  | { kind: "refuse" }
+  | { kind: "stage"; source: string };
 
 /** One `<img …>` tag's offsets in the markdown source. */
 interface TagSpan {
@@ -250,8 +252,10 @@ export function classifyImageSource(
 ): Verdict {
   const view = parserView(url);
   if (view.startsWith(ASSET_SCHEME)) {
+    // Kept by the parser's view of it: that is the destination written out,
+    // so a stray leading tab never reaches the markdown handed to pandoc.
     return knownAssets.has(view.slice(ASSET_SCHEME.length))
-      ? { kind: "keep" }
+      ? { kind: "keep", source: view }
       : { kind: "refuse" };
   }
   if (view === "" || /^[#?]/.test(view)) return { kind: "refuse" };
@@ -577,7 +581,7 @@ function imgTagEdits(
     }
     const url =
       verdict.kind === "keep"
-        ? loose.src
+        ? verdict.source
         : `${ASSET_SCHEME}${stageRequest(walk, verdict.source)}`;
     const attrs = { alt: loose.alt, ...editorSize(raw, loose) };
     edits.push(imageEditAt(at, attrs, url, ctx));
