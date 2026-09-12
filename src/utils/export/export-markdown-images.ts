@@ -362,6 +362,13 @@ function stageRequest(walk: Walk, source: string): string {
  *  not a tag. */
 const RAW_TEXT_ELEMENTS = new Set(["script", "style", "textarea", "title"]);
 
+/** HTML's whitespace is ASCII only — tab, LF, FF, CR, space. JavaScript's
+ *  `\s` would also end an unquoted value at a no-break space, which is a
+ *  legal character in a file name. */
+function isHtmlSpace(ch: string): boolean {
+  return ch === " " || ch === "\t" || ch === "\n" || ch === "\f" || ch === "\r";
+}
+
 /** A comment ends at `-->`, or at `--!>` (a parse error HTML accepts). */
 const COMMENT_END = /--!?>/g;
 
@@ -401,7 +408,9 @@ function scanImgTags(html: string): { img: TagSpan[]; markup: TagSpan[] } {
       continue;
     }
     // A tag name runs to whitespace, `/` or `>` — `<o:p>` from Word included.
-    const open = /^<(\/?)([A-Za-z][^\s/>]*)/.exec(html.slice(lt, lt + 80));
+    const open = /^<(\/?)([A-Za-z][^\t\n\f\r />]*)/.exec(
+      html.slice(lt, lt + 80),
+    );
     if (open === null) {
       i = lt + 1;
       continue;
@@ -444,9 +453,9 @@ function tagEnd(html: string, from: number): number {
       if (ch === quote) state = "attr";
     } else if (state === "unquoted") {
       if (ch === ">") return j;
-      if (/\s/.test(ch)) state = "attr";
+      if (isHtmlSpace(ch)) state = "attr";
     } else if (state === "beforeValue") {
-      if (/\s/.test(ch)) continue;
+      if (isHtmlSpace(ch)) continue;
       if (ch === ">") return j;
       if (ch === '"' || ch === "'") {
         quote = ch;
@@ -594,23 +603,39 @@ function decodeEntities(value: string): string {
 function readAttributes(raw: string): Map<string, string> {
   const attrs = new Map<string, string>();
   let i = 1;
-  while (i < raw.length && !/[\s/>]/.test(raw[i])) i += 1; // the tag name
+  while (
+    i < raw.length &&
+    !isHtmlSpace(raw[i]) &&
+    raw[i] !== "/" &&
+    raw[i] !== ">"
+  )
+    i += 1; // the tag name
   while (i < raw.length) {
     const ch = raw[i];
     if (ch === ">") break;
-    if (ch === "/" || /\s/.test(ch)) {
+    if (ch === "/" || isHtmlSpace(ch)) {
       i += 1;
       continue;
     }
-    let j = i;
-    while (j < raw.length && !/[\s/=>]/.test(raw[j])) j += 1;
+    // A `=` where a name should start begins a name of `=` (a parse error
+    // HTML accepts), so the `src` after it is still its own attribute.
+    let j = ch === "=" ? i + 1 : i;
+    while (
+      j < raw.length &&
+      !isHtmlSpace(raw[j]) &&
+      raw[j] !== "/" &&
+      raw[j] !== "=" &&
+      raw[j] !== ">"
+    ) {
+      j += 1;
+    }
     const name = raw.slice(i, j).toLowerCase();
     i = j;
-    while (i < raw.length && /\s/.test(raw[i])) i += 1;
+    while (i < raw.length && isHtmlSpace(raw[i])) i += 1;
     let value = "";
     if (raw[i] === "=") {
       i += 1;
-      while (i < raw.length && /\s/.test(raw[i])) i += 1;
+      while (i < raw.length && isHtmlSpace(raw[i])) i += 1;
       const quote = raw[i];
       if (quote === '"' || quote === "'") {
         const close = raw.indexOf(quote, i + 1);
@@ -618,7 +643,7 @@ function readAttributes(raw: string): Map<string, string> {
         i = close === -1 ? raw.length : close + 1;
       } else {
         j = i;
-        while (j < raw.length && !/[\s>]/.test(raw[j])) j += 1;
+        while (j < raw.length && !isHtmlSpace(raw[j]) && raw[j] !== ">") j += 1;
         value = raw.slice(i, j);
         i = j;
       }

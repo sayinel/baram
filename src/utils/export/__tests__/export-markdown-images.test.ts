@@ -754,6 +754,22 @@ describe("stageMarkdownImages", () => {
       });
     });
 
+    it("reads attributes by the tokenizer's states: a leading `=` names an attribute, and only ASCII whitespace separates", () => {
+      const NBSP = String.fromCharCode(0xa0);
+      const { images, markdown, refused } = stageMarkdownImages(
+        `<div>\n<img = src="img/a.png" alt="A">\n<img src=img/b${NBSP}c.png alt=B>\n</div>\n`,
+        SAVED,
+      );
+      expect(markdown).toBe(
+        "<div>\n![A](baram-asset:image-0.png)\n![B](baram-asset:image-1.png)\n</div>\n",
+      );
+      expect(images).toEqual([
+        { name: "image-0.png", source: "img/a.png" },
+        { name: "image-1.png", source: `img/b${NBSP}c.png` },
+      ]);
+      expect(refused).toBe(0);
+    });
+
     it("keeps a table cell one cell when a decoded alt holds a pipe", () => {
       const { markdown } = stageMarkdownImages(
         "| a | b |\n| - | - |\n| <img src='img/a.png' alt='p&#124;q'> | c |\n",
