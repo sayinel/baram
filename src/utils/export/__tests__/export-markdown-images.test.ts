@@ -644,6 +644,27 @@ describe("stageMarkdownImages", () => {
       });
     });
 
+    it("maps a node whose lines end in CR or CRLF as the parser read them", () => {
+      expect(
+        stageMarkdownImages(
+          '> <img\r> src="img/a.png"\r> height="1">\r',
+          SAVED,
+        ),
+      ).toMatchObject({
+        markdown: "> ![](baram-asset:image-0.png)\r",
+        refused: 0,
+      });
+      expect(
+        stageMarkdownImages(
+          '> <img\r\n> src="img/b.png"\r\n> height="1">\r\n',
+          SAVED,
+        ),
+      ).toMatchObject({
+        markdown: "> ![](baram-asset:image-0.png)\r\n",
+        refused: 0,
+      });
+    });
+
     it("keeps a table cell one cell when a decoded alt holds a pipe", () => {
       const { markdown } = stageMarkdownImages(
         "| a | b |\n| - | - |\n| <img src='img/a.png' alt='p&#124;q'> | c |\n",

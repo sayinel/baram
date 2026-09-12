@@ -351,6 +351,9 @@ function stageRequest(walk: Walk, source: string): string {
  *  not a tag. */
 const RAW_TEXT_ELEMENTS = new Set(["script", "style", "textarea", "title"]);
 
+/** A line terminator as the parser reads it (global: searched from `lastIndex`). */
+const LINE_END = /\r\n|\r|\n/g;
+
 /**
  * The `<img …>` tags in an html node's text, as offsets in that text. One
  * node may hold several — an HTML block runs to the next blank line — and
@@ -459,7 +462,9 @@ function valueToSource(
   source: string,
   startOffset: number,
 ): ((offset: number) => number) | null {
-  const lines = value.split("\n");
+  // Lines end in LF, CRLF or a lone CR — the parser reads all three, and
+  // keeps each as written, so the same terminator is looked for in the source.
+  const lines = value.split(/\r\n|\r|\n/);
   const valueStarts: number[] = [];
   const sourceStarts: number[] = [];
   let valueAt = 0;
@@ -467,8 +472,10 @@ function valueToSource(
   let prefix = 0; // container prefix length of the previous line
   for (let k = 0; k < lines.length; k += 1) {
     const line = lines[k];
-    const newline = source.indexOf("\n", cursor);
-    const lineEnd = newline === -1 ? source.length : newline;
+    LINE_END.lastIndex = cursor;
+    const terminator = LINE_END.exec(source);
+    const lineEnd = terminator === null ? source.length : terminator.index;
+    const delimiter = terminator === null ? 1 : terminator[0].length;
     // The parser expands a leading tab to spaces, so a continuation line of
     // the text may begin with more blanks than its source line: align on the
     // line's first non-blank character and let the blanks before it map to
@@ -487,8 +494,8 @@ function valueToSource(
         if (!source.startsWith(body, cursor)) return null;
         valueStarts.push(lead);
         sourceStarts.push(at);
-        valueAt += line.length + 1;
-        cursor = lineEnd + 1;
+        valueAt += line.length + delimiter;
+        cursor = lineEnd + delimiter;
         continue;
       }
     } else if (k < lines.length - 1) {
@@ -504,8 +511,8 @@ function valueToSource(
     }
     valueStarts.push(valueAt + (k === 0 ? 0 : lead));
     sourceStarts.push(at);
-    valueAt += line.length + 1;
-    cursor = lineEnd + 1;
+    valueAt += line.length + delimiter;
+    cursor = lineEnd + delimiter;
   }
   return (offset: number): number => {
     let k = valueStarts.length - 1;
