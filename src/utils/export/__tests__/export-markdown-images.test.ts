@@ -615,6 +615,35 @@ describe("stageMarkdownImages", () => {
       expect(refused).toBe(0);
     });
 
+    it("aligns the first line of a node whose container prefix ends in a tab (the parser synthesises leading spaces)", () => {
+      // remark expands a tab in the prefix into spaces at the head of
+      // `node.value` while `position.start` already sits past the tab.
+      expect(
+        stageMarkdownImages(
+          '>\t<img src="img/a.png">\n>\tcaption text\n',
+          SAVED,
+        ),
+      ).toMatchObject({
+        markdown: ">\t![](baram-asset:image-0.png)\n>\tcaption text\n",
+        refused: 0,
+      });
+      expect(
+        stageMarkdownImages(
+          '- item\n\n\t<img src="img/b.png">\n\n\tmore text\n',
+          SAVED,
+        ),
+      ).toMatchObject({
+        markdown: "- item\n\n\t![](baram-asset:image-0.png)\n\n\tmore text\n",
+        refused: 0,
+      });
+      expect(
+        stageMarkdownImages('>>\t<img src="img/c.png">\n>>\tafter\n', SAVED),
+      ).toMatchObject({
+        markdown: ">>\t![](baram-asset:image-0.png)\n>>\tafter\n",
+        refused: 0,
+      });
+    });
+
     it("keeps a table cell one cell when a decoded alt holds a pipe", () => {
       const { markdown } = stageMarkdownImages(
         "| a | b |\n| - | - |\n| <img src='img/a.png' alt='p&#124;q'> | c |\n",

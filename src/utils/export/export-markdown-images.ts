@@ -477,7 +477,20 @@ function valueToSource(
     const body = line.slice(lead);
     let at: number;
     if (k === 0) {
+      // The parser expands a tab that ends the container prefix into spaces
+      // at the head of the text (`>\t<img` → `  <img`) while `start.offset`
+      // already sits past the tab: align the first line on its first
+      // non-blank character as well, and let the synthesised blanks map to
+      // that same spot.
       at = cursor;
+      if (!source.startsWith(line, cursor)) {
+        if (!source.startsWith(body, cursor)) return null;
+        valueStarts.push(lead);
+        sourceStarts.push(at);
+        valueAt += line.length + 1;
+        cursor = lineEnd + 1;
+        continue;
+      }
     } else if (k < lines.length - 1) {
       at = lineEnd - body.length;
       if (at < cursor || !source.startsWith(body, at)) return null;
