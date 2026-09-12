@@ -5,6 +5,7 @@
 // refused image is replaced with, and that the splice cannot form new syntax.
 import { describe, expect, it } from "vitest";
 
+import { parseMdast } from "../../../pipeline/parse-mdast";
 import {
   classifyImageSource,
   relativeScope,
@@ -37,9 +38,7 @@ describe("classifyImageSource", () => {
   it("keeps a staged mermaid asset and refuses any asset name this export did not produce", () => {
     expect(
       classifyImageSource("baram-asset:mermaid-0.png", IN_VAULT, KNOWN),
-    ).toEqual({
-      kind: "keep",
-    });
+    ).toEqual({ kind: "keep" });
     // A document-written placeholder would reach pandoc as a bare file name.
     expect(
       classifyImageSource("baram-asset:mermaid-1.png", IN_VAULT, KNOWN),
@@ -48,9 +47,7 @@ describe("classifyImageSource", () => {
     });
     expect(
       classifyImageSource("\tbaram-asset:mermaid-0.png", IN_VAULT, KNOWN),
-    ).toEqual({
-      kind: "keep",
-    });
+    ).toEqual({ kind: "keep" });
     expect(classifyImageSource("baram-asset:../x", IN_VAULT, KNOWN)).toEqual({
       kind: "refuse",
     });
@@ -408,14 +405,224 @@ describe("stageMarkdownImages", () => {
       SAVED,
     );
     expect(markdown).toBe(
-      'a ![A](baram-asset:image-0.png "T"){width=640px} b\n\n![](baram-asset:image-1.png){width=50%}\n\nhosts\n\n<img src="img/c.png" loading="lazy">\n',
+      'a ![A](baram-asset:image-0.png "T"){width=640px} b\n\n![](baram-asset:image-1.png){width=50%}\n\nhosts\n\n![](baram-asset:image-2.png)\n',
     );
     expect(images).toEqual([
       { name: "image-0.png", source: "img/a.png" },
       { name: "image-1.png", source: "img/b.png" },
+      { name: "image-2.png", source: "img/c.png" },
     ]);
-    // The tag the editor could not represent is left alone; the refused one counted.
+    // A tag the editor could not represent (issue 631) is still an image to
+    // pandoc's policy: its source is judged and staged, only its size is not
+    // trusted. The refused one is counted.
     expect(refused).toBe(1);
+  });
+
+  describe("an <img> tag the editor's strict parser refuses (issue 631)", () => {
+    it("stages the source of a tag with single quotes, an extra attribute or a width it cannot round-trip, without a size", () => {
+      const { images, markdown, refused } = stageMarkdownImages(
+        '<img src=\'img/a.png\' alt=\'A\'>\n\n<img src="img/b.png" height="20">\n\n<img src="img/c.png" width="50vw">\n\n<img src=d.png alt=D>\n',
+        SAVED,
+      );
+      expect(markdown).toBe(
+        "![A](baram-asset:image-0.png)\n\n![](baram-asset:image-1.png)\n\n![](baram-asset:image-2.png)\n\n![D](baram-asset:image-3.png)\n",
+      );
+      expect(images).toEqual([
+        { name: "image-0.png", source: "img/a.png" },
+        { name: "image-1.png", source: "img/b.png" },
+        { name: "image-2.png", source: "img/c.png" },
+        { name: "image-3.png", source: "d.png" },
+      ]);
+      expect(refused).toBe(0);
+    });
+
+    it("refuses such a tag by the same rule as any image, and counts a tag with no usable source", () => {
+      const { images, markdown, refused } = stageMarkdownImages(
+        '<img src="/etc/hosts" alt="hosts" height="1">\n\n<img alt="lost" height="1">\n\n<img src="" alt="empty">\n',
+        SAVED,
+      );
+      expect(markdown).toBe("hosts\n\nlost\n\nempty\n");
+      expect(images).toEqual([]);
+      expect(refused).toBe(3);
+    });
+
+    it("reads the attribute values as HTML does: entities decoded, the first of a duplicate kept, names case-insensitive", () => {
+      const { images, markdown } = stageMarkdownImages(
+        "<img src='img/a&amp;b.png' alt='say &quot;hi&quot;'>\n\n<IMG SRC='img/c.png' src='img/d.png' ALT='C'>\n",
+        SAVED,
+      );
+      expect(markdown).toBe(
+        '![say "hi"](baram-asset:image-0.png)\n\n![C](baram-asset:image-1.png)\n',
+      );
+      expect(images).toEqual([
+        { name: "image-0.png", source: "img/a&b.png" },
+        { name: "image-1.png", source: "img/c.png" },
+      ]);
+    });
+
+    it("decodes before it judges: an encoded absolute path or scheme is still refused", () => {
+      const { images, markdown, refused } = stageMarkdownImages(
+        "<img src='&#47;etc/hosts' alt='abs'>\n\n<img src='https&colon;//tracker.example/p.gif' alt='remote'>\n",
+        SAVED,
+      );
+      expect(markdown).toBe("abs\n\nremote\n");
+      expect(images).toEqual([]);
+      expect(refused).toBe(2);
+    });
+
+    it("edits each tag of an HTML block that holds several, keeping what stands between them", () => {
+      const md =
+        "<img src='img/a.png' alt='A'>\n<img src='img/b.png'><img src='/etc/hosts' alt='hosts'> tail\n";
+      // One html node — an HTML block runs to the blank line (CommonMark).
+      const tree = parseMdast(md);
+      expect(tree.children.map((n) => n.type)).toEqual(["html"]);
+      const { images, markdown, refused } = stageMarkdownImages(md, SAVED);
+      expect(markdown).toBe(
+        "![A](baram-asset:image-0.png)\n![](baram-asset:image-1.png)hosts tail\n",
+      );
+      expect(images).toEqual([
+        { name: "image-0.png", source: "img/a.png" },
+        { name: "image-1.png", source: "img/b.png" },
+      ]);
+      expect(refused).toBe(1);
+    });
+
+    it("leaves a commented-out tag, a custom element and a closing tag alone", () => {
+      const md =
+        "<!-- <img src='img/a.png'> -->\n\n<img-custom src=\"img/b.png\">\n\n</img>\n";
+      expect(stageMarkdownImages(md, SAVED)).toMatchObject({
+        images: [],
+        markdown: md,
+        refused: 0,
+      });
+    });
+
+    it("does not mistake `<img` inside another tag's attribute or a script body for an image", () => {
+      const md =
+        "<div title=\"<img src='missing.png'>\">\n\n<script>var s = \"<img src='x.png'>\";</script>\n\n<textarea><img src='t.png'></textarea>\n";
+      expect(stageMarkdownImages(md, SAVED)).toMatchObject({
+        images: [],
+        markdown: md,
+        refused: 0,
+      });
+    });
+
+    it("edits a tag that spans lines inside a blockquote or a list by its logical text, not the prefixed source", () => {
+      const quoted = '> <img\n> src="img/a.png"\n> height="1">\n';
+      expect(stageMarkdownImages(quoted, SAVED)).toMatchObject({
+        images: [{ name: "image-0.png", source: "img/a.png" }],
+        markdown: "> ![](baram-asset:image-0.png)\n",
+        refused: 0,
+      });
+      const listed = '- <img\n  src="img/b.png" height="1"> tail\n';
+      expect(stageMarkdownImages(listed, SAVED)).toMatchObject({
+        images: [{ name: "image-0.png", source: "img/b.png" }],
+        markdown: "- ![](baram-asset:image-0.png) tail\n",
+        refused: 0,
+      });
+    });
+
+    it("reads quotes the way the HTML tokenizer does: only after `=` does a quote open a value", () => {
+      // A stray quote inside an unquoted value or after a tag name is part of
+      // that value, so the tag still ends at the first `>` and nothing beside
+      // it is swallowed; the later tags on the same node are still found.
+      const md =
+        "<div>\n<img src=a\"b.png> x \" > y <img src='img/c.png' alt='C'>\n<img alt=it's src=img/d.png>\n</div>\n";
+      const { images, markdown, refused } = stageMarkdownImages(md, SAVED);
+      expect(markdown).toBe(
+        "<div>\n![](baram-asset:image-0.png) x \" > y ![C](baram-asset:image-1.png)\n![it's](baram-asset:image-2.png)\n</div>\n",
+      );
+      // `a"b.png` is a file name like any other: staged, quote and all.
+      expect(images).toEqual([
+        { name: "image-0.png", source: 'a"b.png' },
+        { name: "image-1.png", source: "img/c.png" },
+        { name: "image-2.png", source: "img/d.png" },
+      ]);
+      expect(refused).toBe(0);
+    });
+
+    it("does not stop at an abruptly closed comment", () => {
+      const { images, markdown } = stageMarkdownImages(
+        "<div>\n<!--> <img src='img/b.png'>\n</div>\n",
+        SAVED,
+      );
+      expect(markdown).toBe(
+        "<div>\n<!--> ![](baram-asset:image-0.png)\n</div>\n",
+      );
+      expect(images).toEqual([{ name: "image-0.png", source: "img/b.png" }]);
+    });
+
+    it("leaves a tag inside a code fence or a code span of an HTML block alone: pandoc reads that as code", () => {
+      const md =
+        "<details>\n<summary>s</summary>\n```html\n<img src=\"img/a.png\">\n```\n`<img src='img/b.png'>` and <img src='img/c.png'>\n</details>\n";
+      const tree = parseMdast(md);
+      expect(tree.children.map((n) => n.type)).toEqual(["html"]);
+      const { images, markdown, refused } = stageMarkdownImages(md, SAVED);
+      expect(markdown).toBe(
+        "<details>\n<summary>s</summary>\n```html\n<img src=\"img/a.png\">\n```\n`<img src='img/b.png'>` and ![](baram-asset:image-0.png)\n</details>\n",
+      );
+      expect(images).toEqual([{ name: "image-0.png", source: "img/c.png" }]);
+      expect(refused).toBe(0);
+    });
+
+    it("maps a continuation line whose leading tab the parser expanded to spaces", () => {
+      const { images, markdown, refused } = stageMarkdownImages(
+        '<img\n\tsrc="img/a.png"\n\talt="A">\n',
+        SAVED,
+      );
+      expect(markdown).toBe("![A](baram-asset:image-0.png)\n");
+      expect(images).toEqual([{ name: "image-0.png", source: "img/a.png" }]);
+      expect(refused).toBe(0);
+    });
+
+    it("consumes a tag whose name holds a colon, as Word-pasted `<o:p>` does, inside an HTML block", () => {
+      // In a paragraph CommonMark itself does not read `<o:p` as a tag (no
+      // colon in its tag-name grammar) and hands over only the inner `<img`;
+      // that raw fragment is dropped by the filter either way, so only the
+      // block form — one html node holding both — is the scanner's to get right.
+      const md = '<div>\n<o:p title="<img src=/x.png>"></o:p>\n</div>\n';
+      expect(stageMarkdownImages(md, SAVED)).toMatchObject({
+        images: [],
+        markdown: md,
+        refused: 0,
+      });
+    });
+
+    it("ends an unquoted value at whitespace or `>` as HTML does, even when it holds `=` and a quote", () => {
+      // HTML reads src as `https://x.example/a="b` and ` KEEP ">` as text;
+      // a scanner that let the `"` open a value swallowed that text.
+      const md = '<div>\n<img src=https://x.example/a="b> KEEP ">\n</div>\n';
+      const { images, markdown, refused } = stageMarkdownImages(md, SAVED);
+      expect(markdown).toBe('<div>\n KEEP ">\n</div>\n');
+      expect(images).toEqual([]);
+      expect(refused).toBe(1);
+    });
+
+    it("still reads a tag whose alt looks like math or code: only a tag that STARTS inside code is code", () => {
+      const md =
+        '<img alt="$$caption$$" src="img/a.png">\n\n<img alt="a `b` c" src="img/b.png">\n';
+      const { images, markdown, refused } = stageMarkdownImages(md, SAVED);
+      // The serializer escapes `$` and backticks in the alt; pandoc reads the
+      // escapes back as the characters.
+      expect(markdown).toBe(
+        "![\\$\\$caption\\$\\$](baram-asset:image-0.png)\n\n![a \\`b\\` c](baram-asset:image-1.png)\n",
+      );
+      expect(images).toEqual([
+        { name: "image-0.png", source: "img/a.png" },
+        { name: "image-1.png", source: "img/b.png" },
+      ]);
+      expect(refused).toBe(0);
+    });
+
+    it("keeps a table cell one cell when a decoded alt holds a pipe", () => {
+      const { markdown } = stageMarkdownImages(
+        "| a | b |\n| - | - |\n| <img src='img/a.png' alt='p&#124;q'> | c |\n",
+        SAVED,
+      );
+      expect(markdown).toBe(
+        "| a | b |\n| - | - |\n| ![p\\|q](baram-asset:image-0.png) | c |\n",
+      );
+    });
   });
 
   it("counts what became alt text and says whether there was a context at all", () => {
@@ -443,9 +650,28 @@ describe("rewriteImageTagsAsMarkdown (the text writers)", () => {
   it("rewrites the editor's <img> tags with their source untouched, and nothing else", () => {
     const md =
       'a <img src="img/a.png" alt="A" width="640"> b\n\n<img src="../x.png" width="50%">\n\n<img src="img/c.png" loading="lazy">\n\n![k](img/k.png)\n';
-    expect(rewriteImageTagsAsMarkdown(md)).toBe(
-      'a ![A](img/a.png){width=640px} b\n\n![](../x.png){width=50%}\n\n<img src="img/c.png" loading="lazy">\n\n![k](img/k.png)\n',
-    );
-    expect(rewriteImageTagsAsMarkdown("plain\n")).toBe("plain\n");
+    expect(rewriteImageTagsAsMarkdown(md)).toEqual({
+      markdown:
+        "a ![A](img/a.png){width=640px} b\n\n![](../x.png){width=50%}\n\n![](img/c.png)\n\n![k](img/k.png)\n",
+      refused: 0,
+    });
+    expect(rewriteImageTagsAsMarkdown("plain\n")).toEqual({
+      markdown: "plain\n",
+      refused: 0,
+    });
+  });
+
+  it("turns a tag the strict parser refuses into a markdown image with its decoded source, and a source-less one into its alt (issue 631)", () => {
+    expect(
+      rewriteImageTagsAsMarkdown(
+        "<img src='img/a&amp;b.png' alt='A' height='1'>\n\n<img alt='lost' height='1'>\n\n<img src='x.png'><img src='y.png' alt='Y'> tail\n",
+      ),
+    ).toEqual({
+      // The serializer escapes the `&` in the destination; pandoc reads `\&`
+      // back as `&`, so the file it names is `img/a&b.png`. The source-less
+      // tag became its alt text and is counted, so the user hears about it.
+      markdown: "![A](img/a\\&b.png)\n\nlost\n\n![](x.png)![Y](y.png) tail\n",
+      refused: 1,
+    });
   });
 });

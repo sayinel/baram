@@ -56,7 +56,6 @@
 // `\includegraphics` is dropped with the rest of raw TeX. A document with
 // nothing to change comes back as the very same string.
 import type { PandocImageRequest } from "../../ipc/types";
-import type { MediaHtmlAttrs } from "../../pipeline/transformers/media-html-tag";
 import type { Html, Image, ImageReference, Nodes } from "mdast";
 
 import { visit } from "unist-util-visit";
@@ -64,6 +63,10 @@ import { visit } from "unist-util-visit";
 import { parseMdast } from "../../pipeline/parse-mdast";
 import { parseImgHtml } from "../../pipeline/transformers/image-transformer";
 import { parserView, RELATIVE_BASE } from "../link-href";
+import {
+  collectCodeRegions,
+  isInCodeRegion,
+} from "../markdown/markdown-code-regions";
 import {
   dirname,
   foldAsciiCase,
@@ -129,6 +132,26 @@ const EXTENSION = /\.([A-Za-z0-9]{1,8})$/;
 type Verdict =
   { kind: "keep" } | { kind: "refuse" } | { kind: "stage"; source: string };
 
+/** One `<img …>` tag's offsets in the markdown source. */
+interface TagSpan {
+  end: number;
+  start: number;
+}
+
+/** What an `<img>` tag says as HTML reads it. `src` null: absent or empty. */
+interface LooseImg {
+  alt: null | string;
+  src: null | string;
+}
+
+/** What an image edit carries besides its destination. */
+interface ImgAttrs {
+  alt: null | string;
+  title?: null | string;
+  widthPercent?: number;
+  widthPixel?: number;
+}
+
 /**
  * Stage the images pandoc may read and reduce every other image to its alt
  * text. Returns the input string itself when there is nothing to change.
@@ -173,6 +196,8 @@ interface Walk {
   knownAssets: ReadonlySet<string>;
   refusedIdentifiers: ReadonlySet<string>;
   scope: null | RelativeScope;
+  /** The markdown being walked — `<img>` tags are located in it by offset. */
+  source: string;
   /** The names this walk staged — known from the next round on. */
   staged: string[];
 }
@@ -302,8 +327,7 @@ function collectEdits(
     return;
   }
   if (node.type === "html") {
-    const edit = imgTagEdit(node, ctx, walk);
-    if (edit !== null) edits.push(edit);
+    imgTagEdits(node, ctx, walk, edits);
     return;
   }
   if (!("children" in node)) return;
@@ -319,83 +343,321 @@ function stageRequest(walk: Walk, source: string): string {
   return name;
 }
 
+/** Elements whose body is text to HTML, never markup: an `<img` in there is
+ *  not a tag. */
+const RAW_TEXT_ELEMENTS = new Set(["script", "style", "textarea", "title"]);
+
 /**
- * An `<img …>` tag as the editor itself writes one for a resized image
- * (image-transformer.ts: width is kept as HTML because markdown has no
- * syntax for it). Judged like a markdown image and written back as one, its
- * width as pandoc's `{width=…}` attribute, so Word and EPUB keep the size —
- * Word never rendered the tag at all, and the backend's filter now drops raw
- * HTML for EPUB too. A tag the editor could not represent is left alone.
+ * The `<img …>` tags in an html node's text, as offsets in that text. One
+ * node may hold several — an HTML block runs to the next blank line — and
+ * text may stand between them, so every tag is edited on its own. Every
+ * other tag is consumed whole (an `<img` inside a `title="…"` is not a tag),
+ * the body of a raw-text element is skipped, comments too, and a tag with no
+ * closing `>` ends the scan. Only a real `<img` (its name ends there) counts:
+ * `<img-custom>` and `</img>` are not images (issue 631).
  */
-function imgTagEdit(
+function scanImgTags(html: string): TagSpan[] {
+  const spans: TagSpan[] = [];
+  let i = 0;
+  while (i < html.length) {
+    const lt = html.indexOf("<", i);
+    if (lt === -1) break;
+    if (html.startsWith("<!--", lt)) {
+      // `<!-->` and `<!--->` are comments HTML closes at once.
+      const abrupt = /^<!---?>/.exec(html.slice(lt, lt + 6));
+      const close =
+        abrupt === null
+          ? html.indexOf("-->", lt + 4)
+          : lt + abrupt[0].length - 3;
+      if (close === -1) break;
+      i = close + 3;
+      continue;
+    }
+    // A tag name runs to whitespace, `/` or `>` — `<o:p>` from Word included.
+    const open = /^<(\/?)([A-Za-z][^\s/>]*)/.exec(html.slice(lt, lt + 80));
+    if (open === null) {
+      i = lt + 1;
+      continue;
+    }
+    const close = tagEnd(html, lt + 1);
+    if (close === -1) break;
+    const closing = open[1] === "/";
+    const name = open[2].toLowerCase();
+    if (!closing && name === "img") spans.push({ end: close + 1, start: lt });
+    i = close + 1;
+    if (!closing && RAW_TEXT_ELEMENTS.has(name)) {
+      const endTag = html.toLowerCase().indexOf(`</${name}`, i);
+      if (endTag === -1) break;
+      i = endTag;
+    }
+  }
+  return spans;
+}
+
+/**
+ * The index of the `>` that ends the tag opened just before `from`, or -1
+ * when the text runs out first. Attribute values are read as the HTML
+ * tokenizer reads them: a quote opens a value only as the first character
+ * after `=`; an unquoted value runs to whitespace or `>` and a `=` or a quote
+ * inside it is an ordinary character, so `<img src=a"b> x "` still ends at
+ * its first `>` and `<img src=u/a="b> KEEP "` at its first `>` too.
+ */
+function tagEnd(html: string, from: number): number {
+  let state: "attr" | "beforeValue" | "quoted" | "unquoted" = "attr";
+  let quote = "";
+  for (let j = from; j < html.length; j += 1) {
+    const ch = html[j];
+    if (state === "quoted") {
+      if (ch === quote) state = "attr";
+    } else if (state === "unquoted") {
+      if (ch === ">") return j;
+      if (/\s/.test(ch)) state = "attr";
+    } else if (state === "beforeValue") {
+      if (/\s/.test(ch)) continue;
+      if (ch === ">") return j;
+      if (ch === '"' || ch === "'") {
+        quote = ch;
+        state = "quoted";
+      } else {
+        state = "unquoted";
+      }
+    } else if (ch === ">") {
+      return j;
+    } else if (ch === "=") {
+      state = "beforeValue";
+    }
+  }
+  return -1;
+}
+
+/**
+ * The `<img …>` tags of an html node that pandoc will read as tags. Inside
+ * an HTML block pandoc still parses markdown (`markdown_in_html_blocks`), so
+ * a tag that STARTS inside a code fence or a code span there is code, not an
+ * image. Only the opener is judged: an alt or title that merely looks like
+ * math or code (`alt="$$caption$$"`, a backtick) is still an attribute.
+ */
+function imgTagSpans(html: string): TagSpan[] {
+  const code = collectCodeRegions(html);
+  return scanImgTags(html).filter((span) => !isInCodeRegion(span.start, code));
+}
+
+/**
+ * Offsets in an html node's text → offsets in the source. The text is the
+ * source with the container prefix of every continuation line (`> `, list
+ * indentation) removed, so a middle line of the text is the tail of its
+ * source line, and the last line sits after the same prefix as the line
+ * before it. Returns null when the lines cannot be aligned — the caller then
+ * leaves the node alone rather than guess.
+ */
+function valueToSource(
+  value: string,
+  source: string,
+  startOffset: number,
+): ((offset: number) => number) | null {
+  const lines = value.split("\n");
+  const valueStarts: number[] = [];
+  const sourceStarts: number[] = [];
+  let valueAt = 0;
+  let cursor = startOffset; // where the current source line begins
+  let prefix = 0; // container prefix length of the previous line
+  for (let k = 0; k < lines.length; k += 1) {
+    const line = lines[k];
+    const newline = source.indexOf("\n", cursor);
+    const lineEnd = newline === -1 ? source.length : newline;
+    // The parser expands a leading tab to spaces, so a continuation line of
+    // the text may begin with more blanks than its source line: align on the
+    // line's first non-blank character and let the blanks before it map to
+    // that same spot (no tag starts or ends inside them).
+    const lead = /^[ \t]*/.exec(line)![0].length;
+    const body = line.slice(lead);
+    let at: number;
+    if (k === 0) {
+      at = cursor;
+    } else if (k < lines.length - 1) {
+      at = lineEnd - body.length;
+      if (at < cursor || !source.startsWith(body, at)) return null;
+      prefix = at - cursor;
+    } else {
+      at = cursor + prefix;
+      if (!source.startsWith(body, at)) {
+        at = source.indexOf(body, cursor);
+        if (at === -1 || at > lineEnd) return null;
+      }
+    }
+    valueStarts.push(valueAt + (k === 0 ? 0 : lead));
+    sourceStarts.push(at);
+    valueAt += line.length + 1;
+    cursor = lineEnd + 1;
+  }
+  return (offset: number): number => {
+    let k = valueStarts.length - 1;
+    while (k > 0 && valueStarts[k] > offset) k -= 1;
+    return sourceStarts[k] + Math.max(0, offset - valueStarts[k]);
+  };
+}
+
+/**
+ * The tag's `src` and `alt` as HTML reads them: entities decoded, the first
+ * of a duplicate kept, attribute names case-insensitive, quotes optional.
+ * The strict parser (`parseImgHtml`) exists for the MD→PM round-trip and
+ * refuses anything it could not write back byte for byte; the export only
+ * has to know where the image points and what to say if it cannot embed it,
+ * so it reads the tag the way pandoc's own HTML reader would (issue 631).
+ * A `DOMParser` document loads nothing, so the tag's source is never fetched.
+ */
+function readImgTag(raw: string): LooseImg {
+  const el = new DOMParser()
+    .parseFromString(raw, "text/html")
+    .querySelector("img");
+  const src = el?.getAttribute("src")?.trim() ?? "";
+  return { alt: el?.getAttribute("alt") ?? null, src: src === "" ? null : src };
+}
+
+/**
+ * Title and size for a tag the editor itself wrote — the strict parser
+ * accepts exactly that spelling, and its `src` agrees with HTML's reading
+ * (the name scan can be fooled by a quoted value, HTML's tokenizer cannot).
+ * Any other tag keeps no size: pandoc's `{width=…}` is only written for a
+ * width the editor would have round-tripped.
+ */
+function editorSize(raw: string, loose: LooseImg): Omit<ImgAttrs, "alt"> {
+  const strict = parseImgHtml(raw);
+  if (strict === null || strict.src !== loose.src) return {};
+  return {
+    title: strict.title,
+    widthPercent: strict.widthPercent,
+    widthPixel: strict.widthPixel,
+  };
+}
+
+/**
+ * Edits for the `<img …>` tags in an html node: each source is judged like
+ * any other image — staged, kept, or reduced to its alt text and counted — and
+ * a tag with no usable source becomes its alt text and is counted too, since
+ * the backend's filter would drop the raw tag with no word to the user.
+ */
+function imgTagEdits(
   node: Html,
   ctx: LabelContext,
   walk: Walk,
-): null | SourceEdit {
-  const attrs = editorImgTag(node);
-  if (attrs === null) return null;
-  const verdict = classifyImageSource(attrs.src, walk.scope, walk.knownAssets);
-  if (verdict.kind === "refuse") {
-    walk.counters.refused += 1;
-    return altEdit(node, attrs.alt, ctx);
+  edits: SourceEdit[],
+): void {
+  const spans = imgTagSpans(node.value);
+  if (spans.length === 0) return;
+  const map = valueToSource(
+    node.value,
+    walk.source,
+    node.position!.start.offset!,
+  );
+  if (map === null) {
+    // The node could not be aligned with the source: its tags stay raw, the
+    // filter drops them, and the user is told how many images that cost.
+    walk.counters.refused += spans.length;
+    return;
   }
-  const url =
-    verdict.kind === "keep"
-      ? attrs.src
-      : `${ASSET_SCHEME}${stageRequest(walk, verdict.source)}`;
-  return imageEdit(node, attrs, url, ctx);
+  for (const span of spans) {
+    const raw = node.value.slice(span.start, span.end);
+    const at = { end: map(span.end), start: map(span.start) };
+    const loose = readImgTag(raw);
+    if (loose.src === null) {
+      walk.counters.refused += 1;
+      edits.push(altEditAt(at, loose.alt, ctx));
+      continue;
+    }
+    const verdict = classifyImageSource(
+      loose.src,
+      walk.scope,
+      walk.knownAssets,
+    );
+    if (verdict.kind === "refuse") {
+      walk.counters.refused += 1;
+      edits.push(altEditAt(at, loose.alt, ctx));
+      continue;
+    }
+    const url =
+      verdict.kind === "keep"
+        ? loose.src
+        : `${ASSET_SCHEME}${stageRequest(walk, verdict.source)}`;
+    const attrs = { alt: loose.alt, ...editorSize(raw, loose) };
+    edits.push(imageEditAt(at, attrs, url, ctx));
+  }
 }
 
-/** The attrs of an `<img …>` tag the editor's own parser accepts, or null. */
-function editorImgTag(node: Html): MediaHtmlAttrs | null {
-  const value = node.value.trim();
-  if (!/^<img\s/i.test(value)) return null;
-  return parseImgHtml(value);
-}
-
-/** Replace the tag by a markdown image with `url`, keeping alt, title and
- *  the width as pandoc's `{width=…}` attribute. */
-function imageEdit(
-  node: Html,
-  attrs: MediaHtmlAttrs,
+/** Replace the tag by a markdown image with `url`, keeping alt and title and
+ *  writing the width as pandoc's `{width=…}` attribute. */
+function imageEditAt(
+  span: TagSpan,
+  attrs: ImgAttrs,
   url: string,
   ctx: LabelContext,
 ): SourceEdit {
   const image: Image = {
     alt: attrs.alt ?? undefined,
-    title: attrs.title,
+    title: attrs.title ?? null,
     type: "image",
     url,
   };
   const width = attrs.widthPixel
     ? `${attrs.widthPixel}px`
-    : attrs.widthPercent !== 100
+    : attrs.widthPercent !== undefined && attrs.widthPercent !== 100
       ? `${attrs.widthPercent}%`
       : null;
-  const { end, start } = node.position!;
   return {
-    end: end.offset!,
+    end: span.end,
     inLink: ctx.inLink,
-    start: start.offset!,
-    text: serializeInline([image]) + (width === null ? "" : `{width=${width}}`),
+    start: span.start,
+    text:
+      inlineImageText(image, ctx) + (width === null ? "" : `{width=${width}}`),
   };
 }
 
 /**
- * For the writers that embed nothing (latex, rst): the editor's `<img …>`
- * tags become markdown images with their source AS WRITTEN — no staging, no
+ * For the writers that embed nothing (latex, rst): every `<img …>` tag
+ * becomes a markdown image with its source as HTML reads it — no staging, no
  * verdict, exactly as every other image reference passes through to those
- * writers. Without this, the raw tag reaches the backend, the policy filter
- * drops it (raw HTML is never written into any output), and a resized image
- * silently vanishes from a `.tex`. Returns the input itself when there is
- * nothing to change.
+ * writers — and a tag with no usable source becomes its alt text. Without
+ * this, the raw tag reaches the backend, the policy filter drops it (raw
+ * HTML is never written into any output), and the image silently vanishes
+ * from a `.tex`. Returns the input itself when there is nothing to change.
  */
-export function rewriteImageTagsAsMarkdown(markdown: string): string {
+export function rewriteImageTagsAsMarkdown(markdown: string): {
+  markdown: string;
+  refused: number;
+} {
   const edits: SourceEdit[] = [];
+  let refused = 0;
   const collect = (node: Nodes, ctx: LabelContext): void => {
     if (node.type === "html") {
-      const attrs = editorImgTag(node);
-      if (attrs !== null) edits.push(imageEdit(node, attrs, attrs.src, ctx));
+      const spans = imgTagSpans(node.value);
+      if (spans.length === 0) return;
+      const map = valueToSource(
+        node.value,
+        markdown,
+        node.position!.start.offset!,
+      );
+      if (map === null) {
+        refused += spans.length;
+        return;
+      }
+      for (const span of spans) {
+        const raw = node.value.slice(span.start, span.end);
+        const at = { end: map(span.end), start: map(span.start) };
+        const loose = readImgTag(raw);
+        if (loose.src === null) {
+          refused += 1;
+          edits.push(altEditAt(at, loose.alt, ctx));
+          continue;
+        }
+        edits.push(
+          imageEditAt(
+            at,
+            { alt: loose.alt, ...editorSize(raw, loose) },
+            loose.src,
+            ctx,
+          ),
+        );
+      }
       return;
     }
     if (!("children" in node)) return;
@@ -407,7 +669,10 @@ export function rewriteImageTagsAsMarkdown(markdown: string): string {
     inLink: false,
     inTableCell: false,
   });
-  return edits.length === 0 ? markdown : applyEdits(markdown, edits);
+  return {
+    markdown: edits.length === 0 ? markdown : applyEdits(markdown, edits),
+    refused,
+  };
 }
 
 function stageOnce(
@@ -433,7 +698,15 @@ function stageOnce(
   collectEdits(
     root,
     { inHeading: false, inLink: false, inTableCell: false },
-    { counters, images, knownAssets, refusedIdentifiers, scope, staged },
+    {
+      counters,
+      images,
+      knownAssets,
+      refusedIdentifiers,
+      scope,
+      source: markdown,
+      staged,
+    },
     edits,
   );
   if (edits.length === 0) return markdown;
@@ -457,16 +730,25 @@ function stagedName(index: number, source: string): string {
 
 /** Replace the image by its alt text, spliced as literal text. */
 function altEdit(
-  node: Html | Image | ImageReference,
+  node: Image | ImageReference,
   alt: null | string | undefined,
   ctx: LabelContext,
 ): SourceEdit {
   const { end, start } = node.position!;
+  return altEditAt({ end: end.offset!, start: start.offset! }, alt, ctx);
+}
+
+/** The alt text for `[start, end)`, spliced as literal text. */
+function altEditAt(
+  span: TagSpan,
+  alt: null | string | undefined,
+  ctx: LabelContext,
+): SourceEdit {
   const children = alt ? [{ type: "text" as const, value: alt }] : [];
   return {
-    end: end.offset!,
+    end: span.end,
     inLink: ctx.inLink,
-    start: start.offset!,
+    start: span.start,
     text: labelText(children, ctx),
   };
 }
@@ -476,13 +758,20 @@ function altEdit(
 function assetEdit(node: Image, url: string, ctx: LabelContext): SourceEdit {
   const { end, start } = node.position!;
   const image: Image = { ...node, position: undefined, url };
-  let text = serializeInline([image]);
-  if (ctx.inTableCell) {
-    // A GFM cell ends at the next unescaped pipe; the alt came out with its
-    // pipes decoded.
-    text = text.replace(/(\\*)\|/g, (match, run: string) =>
-      run.length % 2 === 0 ? `${run}\\|` : match,
-    );
-  }
-  return { end: end.offset!, inLink: ctx.inLink, start: start.offset!, text };
+  return {
+    end: end.offset!,
+    inLink: ctx.inLink,
+    start: start.offset!,
+    text: inlineImageText(image, ctx),
+  };
+}
+
+/** One image, serialized for where it stands: inside a GFM cell a pipe in
+ *  the alt (decoded by the parser) must be escaped again or it ends the cell. */
+function inlineImageText(image: Image, ctx: LabelContext): string {
+  const text = serializeInline([image]);
+  if (!ctx.inTableCell) return text;
+  return text.replace(/(\\*)\|/g, (match, run: string) =>
+    run.length % 2 === 0 ? `${run}\\|` : match,
+  );
 }

@@ -215,10 +215,10 @@ export async function exportWithPandoc(
     : {
         images: [],
         // The text writers embed nothing and take every reference as written;
-        // only the editor's `<img>` tags are turned into markdown images so
-        // the raw-HTML drop does not swallow a resized image.
-        markdown: rewriteImageTagsAsMarkdown(rewritten),
-        refused: 0,
+        // `<img>` tags are turned into markdown images so the raw-HTML drop
+        // does not swallow one, and a tag with no source becomes its alt text
+        // and is counted like any refused image.
+        ...rewriteImageTagsAsMarkdown(rewritten),
         scoped: true,
       };
   // issue 527: the link policy runs LAST — see export-markdown-links.ts.
