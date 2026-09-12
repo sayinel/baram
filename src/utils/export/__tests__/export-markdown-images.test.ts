@@ -665,6 +665,28 @@ describe("stageMarkdownImages", () => {
       });
     });
 
+    it("reads a tag without building an element, so a remote src is never fetched before it is judged", () => {
+      // No DOMParser at all: the reading must not depend on parsing the tag
+      // into a live element (a DOMParser document may fetch <img> sources).
+      const saved = globalThis.DOMParser;
+      // @ts-expect-error -- simulate a runtime without DOMParser
+      delete globalThis.DOMParser;
+      try {
+        expect(
+          stageMarkdownImages(
+            "<img src='https://tracker.example/p.gif' alt='pixel' height='1'>\n\n<img src='img/a&amp;b.png' alt='A &quot;q&quot;' height='1'>\n",
+            SAVED,
+          ),
+        ).toMatchObject({
+          images: [{ name: "image-0.png", source: "img/a&b.png" }],
+          markdown: 'pixel\n\n![A "q"](baram-asset:image-0.png)\n',
+          refused: 1,
+        });
+      } finally {
+        globalThis.DOMParser = saved;
+      }
+    });
+
     it("keeps a table cell one cell when a decoded alt holds a pipe", () => {
       const { markdown } = stageMarkdownImages(
         "| a | b |\n| - | - |\n| <img src='img/a.png' alt='p&#124;q'> | c |\n",

@@ -521,21 +521,87 @@ function valueToSource(
   };
 }
 
+/** One `<textarea>` kept for decoding: its RCDATA parser builds no element
+ *  and loads nothing. */
+let decoder: HTMLTextAreaElement | null = null;
+
 /**
- * The tag's `src` and `alt` as HTML reads them: entities decoded, the first
- * of a duplicate kept, attribute names case-insensitive, quotes optional.
- * The strict parser (`parseImgHtml`) exists for the MD→PM round-trip and
- * refuses anything it could not write back byte for byte; the export only
- * has to know where the image points and what to say if it cannot embed it,
- * so it reads the tag the way pandoc's own HTML reader would (issue 631).
- * A `DOMParser` document loads nothing, so the tag's source is never fetched.
+ * Character references decoded as HTML decodes an attribute value — every
+ * named and numeric reference the platform knows — without parsing the
+ * value as markup: `<` is neutralised first so a `</textarea>` inside a
+ * value cannot end the text early. Outside a DOM (no `document`) the value
+ * is returned as written.
+ */
+function decodeEntities(value: string): string {
+  if (!value.includes("&") || typeof document === "undefined") return value;
+  decoder ??= document.createElement("textarea");
+  decoder.innerHTML = value.replace(/</g, "&lt;");
+  const out = decoder.value;
+  decoder.innerHTML = "";
+  return out;
+}
+
+/**
+ * The attribute name/value pairs of one tag, by the tokenizer's rules: a
+ * name runs to whitespace, `/`, `=` or `>`; a value is quoted or runs to
+ * whitespace or `>`; an attribute with no `=` has the empty value; names
+ * are case-insensitive and the first of a duplicate wins.
+ */
+function readAttributes(raw: string): Map<string, string> {
+  const attrs = new Map<string, string>();
+  let i = 1;
+  while (i < raw.length && !/[\s/>]/.test(raw[i])) i += 1; // the tag name
+  while (i < raw.length) {
+    const ch = raw[i];
+    if (ch === ">") break;
+    if (ch === "/" || /\s/.test(ch)) {
+      i += 1;
+      continue;
+    }
+    let j = i;
+    while (j < raw.length && !/[\s/=>]/.test(raw[j])) j += 1;
+    const name = raw.slice(i, j).toLowerCase();
+    i = j;
+    while (i < raw.length && /\s/.test(raw[i])) i += 1;
+    let value = "";
+    if (raw[i] === "=") {
+      i += 1;
+      while (i < raw.length && /\s/.test(raw[i])) i += 1;
+      const quote = raw[i];
+      if (quote === '"' || quote === "'") {
+        const close = raw.indexOf(quote, i + 1);
+        value = raw.slice(i + 1, close === -1 ? raw.length : close);
+        i = close === -1 ? raw.length : close + 1;
+      } else {
+        j = i;
+        while (j < raw.length && !/[\s>]/.test(raw[j])) j += 1;
+        value = raw.slice(i, j);
+        i = j;
+      }
+    }
+    if (name !== "" && !attrs.has(name)) attrs.set(name, value);
+  }
+  return attrs;
+}
+
+/**
+ * The tag's `src` and `alt` as HTML reads them: names case-insensitive, the
+ * first of a duplicate kept, quotes optional, character references decoded.
+ * No element is built on the way — a `DOMParser` document may fetch an
+ * `<img>`'s source, and that source is the very thing still to be judged
+ * (issue 631). The strict parser (`parseImgHtml`) exists for the MD→PM
+ * round-trip and refuses anything it could not write back byte for byte;
+ * the export only has to know where the image points and what to say if
+ * it cannot embed it.
  */
 function readImgTag(raw: string): LooseImg {
-  const el = new DOMParser()
-    .parseFromString(raw, "text/html")
-    .querySelector("img");
-  const src = el?.getAttribute("src")?.trim() ?? "";
-  return { alt: el?.getAttribute("alt") ?? null, src: src === "" ? null : src };
+  const attrs = readAttributes(raw);
+  const src = decodeEntities(attrs.get("src") ?? "").trim();
+  const alt = attrs.get("alt");
+  return {
+    alt: alt === undefined ? null : decodeEntities(alt),
+    src: src === "" ? null : src,
+  };
 }
 
 /**
