@@ -698,6 +698,20 @@ describe("stageMarkdownImages", () => {
       });
     });
 
+    it("judges code regions on the text outside tags: a fence or backticks inside attributes hide nothing", () => {
+      const md =
+        '<div title="\n~~~\n">\n<img src="img/a.png">\n</div>\n\n<div title="`"><img src="img/b.png"><span title="`"></span></div>\n';
+      expect(stageMarkdownImages(md, SAVED)).toMatchObject({
+        images: [
+          { name: "image-0.png", source: "img/a.png" },
+          { name: "image-1.png", source: "img/b.png" },
+        ],
+        markdown:
+          '<div title="\n~~~\n">\n![](baram-asset:image-0.png)\n</div>\n\n<div title="`">![](baram-asset:image-1.png)<span title="`"></span></div>\n',
+        refused: 0,
+      });
+    });
+
     it("keeps a table cell one cell when a decoded alt holds a pipe", () => {
       const { markdown } = stageMarkdownImages(
         "| a | b |\n| - | - |\n| <img src='img/a.png' alt='p&#124;q'> | c |\n",

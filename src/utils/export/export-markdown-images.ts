@@ -366,8 +366,9 @@ const LINE_END = /\r\n|\r|\n/g;
  * closing `>` ends the scan. Only a real `<img` (its name ends there) counts:
  * `<img-custom>` and `</img>` are not images (issue 631).
  */
-function scanImgTags(html: string): TagSpan[] {
+function scanImgTags(html: string): { img: TagSpan[]; markup: TagSpan[] } {
   const spans: TagSpan[] = [];
+  const markup: TagSpan[] = [];
   let i = 0;
   while (i < html.length) {
     const lt = html.indexOf("<", i);
@@ -378,12 +379,14 @@ function scanImgTags(html: string): TagSpan[] {
       const abrupt = /^<!---?>/.exec(html.slice(lt, lt + 6));
       if (abrupt !== null) {
         i = lt + abrupt[0].length;
+        markup.push({ end: i, start: lt });
         continue;
       }
       COMMENT_END.lastIndex = lt + 4;
       const close = COMMENT_END.exec(html);
       if (close === null) break;
       i = close.index + close[0].length;
+      markup.push({ end: i, start: lt });
       continue;
     }
     // A tag name runs to whitespace, `/` or `>` — `<o:p>` from Word included.
@@ -397,6 +400,7 @@ function scanImgTags(html: string): TagSpan[] {
     const closing = open[1] === "/";
     const name = open[2].toLowerCase();
     if (!closing && name === "img") spans.push({ end: close + 1, start: lt });
+    markup.push({ end: close + 1, start: lt });
     i = close + 1;
     if (!closing && RAW_TEXT_ELEMENTS.has(name)) {
       // The body ends at the element's own end tag — `</script` followed by
@@ -405,10 +409,11 @@ function scanImgTags(html: string): TagSpan[] {
       endTag.lastIndex = i;
       const found = endTag.exec(html);
       if (found === null) break;
+      markup.push({ end: found.index, start: i });
       i = found.index;
     }
   }
-  return spans;
+  return { img: spans, markup };
 }
 
 /**
@@ -451,12 +456,21 @@ function tagEnd(html: string, from: number): number {
  * The `<img …>` tags of an html node that pandoc will read as tags. Inside
  * an HTML block pandoc still parses markdown (`markdown_in_html_blocks`), so
  * a tag that STARTS inside a code fence or a code span there is code, not an
- * image. Only the opener is judged: an alt or title that merely looks like
- * math or code (`alt="$$caption$$"`, a backtick) is still an attribute.
+ * image. The regions are judged on the text OUTSIDE markup — every tag,
+ * comment and raw-text body blanked out, line breaks kept — so a `~~~` or a
+ * backtick inside an attribute value opens nothing.
  */
 function imgTagSpans(html: string): TagSpan[] {
-  const code = collectCodeRegions(html);
-  return scanImgTags(html).filter((span) => !isInCodeRegion(span.start, code));
+  const { img, markup } = scanImgTags(html);
+  if (img.length === 0) return img;
+  const chars = html.split(""); // UTF-16 units, as the spans count
+  for (const span of markup) {
+    for (let k = span.start; k < span.end; k += 1) {
+      if (chars[k] !== "\n" && chars[k] !== "\r") chars[k] = " ";
+    }
+  }
+  const code = collectCodeRegions(chars.join(""));
+  return img.filter((span) => !isInCodeRegion(span.start, code));
 }
 
 /**
