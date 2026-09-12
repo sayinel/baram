@@ -144,12 +144,12 @@ function bindingName(el: ts.ExportSpecifier | ts.ImportSpecifier): string {
  * (reads the file first) and the CONTROL fixtures (a literal string) share it.
  *
  * `import type { X } from "spec"` is NOT special-cased — a type-only import
- * is checked exactly like a value import. At implementation time no
- * production file imported a TYPE from the closure; since 2026-09-12 one
- * does (`utils/export/export-markdown-images.ts` → `MediaHtmlAttrs`, issue
- * 634) and it passes only because that pair is on the allowlist below. The
- * over-block is a deliberate default, not an oversight, matching this
- * boundary's bias elsewhere (namespace/dynamic are unconditionally red too).
+ * is checked exactly like a value import. No production file imports a TYPE
+ * from the closure today (one did for a day — issue 634's `MediaHtmlAttrs`,
+ * allowlisted by name; issue 631 removed that consumer), so this never
+ * fires; it is a deliberate over-block default, not an oversight, matching
+ * this boundary's bias elsewhere (namespace/dynamic are unconditionally red
+ * too).
  *
  * Non-literal dynamic imports — `import(/* @vite-ignore *\/ url)` in the
  * plugin loader (`src/plugins/plugin-loader.ts`) and the sandbox entry
@@ -361,14 +361,13 @@ export function buildPipelineInternalSet(): Set<string> {
  *
  * turned up exactly these two families and no others. A third entry, the
  * `<img>` tag parser, was added 2026-09-10 for the export image policy
- * (issue 545), and a fourth — the attrs INTERFACE that parser returns —
- * 2026-09-12 (issue 634). That one is type-only: the `type` keyword erases
- * the import at emit, and `verbatimModuleSyntax` (tsconfig.json) makes the
- * keyword mandatory for a type (TS1484 on a bare import), so while
- * `MediaHtmlAttrs` stays an interface no runtime edge can appear. The
- * allowlist itself matches by name only — if that export ever became a
- * value, this entry would let a value import through unflagged (issue 637
- * tracks making type-only entries mechanical).
+ * (issue 545). A fourth, type-only entry — the attrs INTERFACE that parser
+ * returns (issue 634) — lived here for one day: issue 631 made the export
+ * read `<img>` tags through `DOMParser` instead of naming that type, and the
+ * entry left with its consumer (the dead-entry assertion below would have
+ * caught it otherwise). The collector still checks a type-only import like
+ * a value import; nothing outside the pipeline imports a TYPE from the
+ * closure today.
  */
 export function buildAllowlist(): Map<string, Set<string>> {
   const blockId = join(PIPELINE_DIR, "block-id.ts");
@@ -377,7 +376,6 @@ export function buildAllowlist(): Map<string, Set<string>> {
     "transformers",
     "image-transformer.ts",
   );
-  const mediaHtmlTag = join(PIPELINE_DIR, "transformers", "media-html-tag.ts");
   const wikilink = join(
     PIPELINE_DIR,
     "transformers",
@@ -418,17 +416,6 @@ export function buildAllowlist(): Map<string, Set<string>> {
         // same regex-and-attrs parser the MD→PM direction uses; no PM doc,
         // no mdast tree.
         "parseImgHtml",
-      ]),
-    ],
-    [
-      mediaHtmlTag,
-      new Set([
-        // utils/export/export-markdown-images.ts (issue 634) — the attrs
-        // shape `parseImgHtml` returns, listed under its own name instead of
-        // being derived from that return type, so the audit trail shows the
-        // dependency. An interface, imported with `import type` (erased at
-        // emit): a set of strings, no PM doc, no mdast tree.
-        "MediaHtmlAttrs",
       ]),
     ],
     [
