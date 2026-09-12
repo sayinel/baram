@@ -255,6 +255,22 @@ describe("the images in the markdown that reaches pandoc", () => {
     expect(request.images).toEqual([]);
   });
 
+  it("finds the owning context on Windows across drive-letter case and mixed separators (issue 631)", async () => {
+    useContextStore.setState({
+      contexts: [context("ctx-vault", "C:\\Vault", "vault")],
+    });
+    const editor = loadEditor(IMAGE_DOC);
+    await exportWithPandoc(editor, "t", "docx", {
+      documentPath: "c:/vault/notes/today.md",
+    });
+
+    const [request] = vi.mocked(exportPandoc).mock.calls[0];
+    expect(request.images).toEqual([
+      { name: "image-0.png", source: "img/a.png" },
+    ]);
+    expect(request.documentContextId).toBe("ctx-vault");
+  });
+
   it("refuses relative images for a document that was never saved and sends no path", async () => {
     const editor = loadEditor("![local](img/a.png)\n");
     await exportWithPandoc(editor, "t", "docx");
