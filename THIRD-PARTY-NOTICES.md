@@ -2,7 +2,8 @@
 
 Baram bundles third-party open-source software. This file summarizes the
 **principal runtime dependencies** and their licenses. All are distributed under
-permissive open-source licenses (MIT, Apache-2.0, BSD, ISC, MPL-2.0, or CC0-1.0).
+permissive open-source licenses (MIT, Apache-2.0, BSD, ISC, MPL-2.0, CC0-1.0,
+or OFL-1.1).
 
 This is a curated summary of the primary dependencies, **not** an exhaustive
 transitive list. To generate a complete, authoritative report:
@@ -73,6 +74,26 @@ cargo install cargo-about && cargo about generate about.hbs   # or: cargo licens
 - **log** — MIT OR Apache-2.0
 - **tempfile** — MIT OR Apache-2.0
 - **headless_chrome** — MIT
+
+---
+
+## Fonts (bundled binaries)
+
+Unlike the entries above, these are redistributed **inside** the application
+bundle as font files. The SIL Open Font License 1.1 requires its copyright
+notice and licence text to travel with every copy, so each licence is shipped
+verbatim in `src/assets/fonts/` and shown in-app under
+**Baram > About Baram > Bundled fonts > View font licenses**.
+
+- **Pretendard Variable** (`PretendardVariable.woff2`) — OFL-1.1
+  Copyright (c) 2021, Kil Hyung-jin, with Reserved Font Name 'Pretendard'.
+  Pretendard derives from work by three further holders, all named in the licence
+  file: Copyright 2014-2021 Adobe; Copyright (c) 2016 The Inter Project Authors;
+  Copyright 2021 The M+ FONTS Project Authors.
+  Licence: `src/assets/fonts/OFL-Pretendard.txt`
+- **JetBrains Mono Variable** (`jetbrains-mono-latin-wght-normal.woff2`) — OFL-1.1
+  Copyright 2020 The JetBrains Mono Project Authors.
+  Licence: `src/assets/fonts/OFL-JetBrainsMono.txt`
 
 ---
 

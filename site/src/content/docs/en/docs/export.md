@@ -13,6 +13,17 @@ Generates clean, self-contained HTML with inline styles. The exported file inclu
 
 Creates a print-ready PDF via the system print dialog. Supports customization of paper size (A4 / Letter), margins, and layout.
 
+## Fonts
+
+HTML and PDF carry the fonts you chose in **Settings > Editor**. The Markdown-based formats
+below do not — for Word, fonts come from the reference template instead (see below).
+
+PDF always embeds the bundled faces, and there is no option to turn that off: the renderer
+works from a temporary directory that a relative font URL cannot resolve against. For HTML
+the Export dialog offers **Embed fonts (+2.7MB)**, off by default. Turn it on when the file
+has to keep its typeface on a machine that does not have the font installed. Left off, the
+document still asks for the font by name and falls back wherever it is missing.
+
 ## Notion
 
 Exports a Notion-compatible Markdown file. Automatically converts Baram-specific syntax that Notion doesn't understand:
