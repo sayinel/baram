@@ -1,6 +1,6 @@
 // Baram 홈페이지 + 문서 사이트.
-// 설계: dev/design/specs/2026-09-06-docs-site-i18n-restructure-design.md
-// 페이지 트리: dev/design/specs/2026-09-06-docs-site-ia-tree.md (canonical = ./ia-tree.mjs)
+// 설계: dev/design/specs/0044-docs-site-i18n-restructure-design.md
+// 페이지 트리: dev/design/specs/0045-docs-site-ia-tree.md (canonical = ./ia-tree.mjs)
 import starlight from "@astrojs/starlight";
 import { defineConfig } from "astro/config";
 import starlightLinksValidator from "starlight-links-validator";

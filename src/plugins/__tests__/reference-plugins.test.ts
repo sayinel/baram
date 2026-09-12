@@ -310,7 +310,7 @@ describe("the plugin guide's copy-paste examples are valid (§260 Phase 6)", () 
   // validator, so this guards the examples themselves rather than the sentence about them.
   // ‼️ 가이드는 13개 페이지로 분할됐다 (docs/plugin-development.md 는 이주 후 삭제).
   // 페이지 하나만 읽으면 나머지 12개의 예시가 검증되지 않으므로 전부 읽는다.
-  // 설계: dev/design/specs/2026-09-06-docs-site-i18n-restructure-design.md
+  // 설계: dev/design/specs/0044-docs-site-i18n-restructure-design.md
   const GUIDE_DIR = resolve(
     __dirname,
     "../../../site/src/content/docs/en/docs/plugin-dev",

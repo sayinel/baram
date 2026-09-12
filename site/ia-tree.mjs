@@ -1,5 +1,5 @@
 // IA 트리 — 사이드바 순서 · 그룹 라벨 · 페이지 제목의 canonical.
-// 문서: dev/design/specs/2026-09-06-docs-site-ia-tree.md
+// 문서: dev/design/specs/0045-docs-site-ia-tree.md
 //
 // ‼️ **이주는 끝났다.** `items`/`h2`/`src`/`wholeDoc` 필드는 원문 `docs/*.md` 의 어느 절이
 //    어느 페이지로 갔는지를 남긴 **이력**이고, 그 원문은 이주 커밋에서 삭제됐다. 런타임이

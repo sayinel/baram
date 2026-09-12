@@ -86,7 +86,7 @@ describe("the Word Count plugin agrees with the native status bar", () => {
   // the point: on the shortcuts reference the two used to differ by more than 1,000 words.
   //
   // ‼️ These moved when the docs site was split into pages
-  // (dev/design/specs/2026-09-06-docs-site-i18n-restructure-design.md). The site source
+  // (dev/design/specs/0044-docs-site-i18n-restructure-design.md). The site source
   // carries Starlight frontmatter, which is not prose — strip it, or the corpus silently
   // includes YAML and the comparison stops measuring what it claims to.
   const SITE_DOCS = "site/src/content/docs/en/docs";

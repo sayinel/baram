@@ -1,5 +1,5 @@
 // §4.2 번역 신선도 판정. 원문(en)의 `title + 본문`을 해시해 번역본의 스탬프와 대조한다.
-// 설계: dev/design/specs/2026-09-06-docs-site-i18n-restructure-design.md ('원문 해시 스탬프')
+// 설계: dev/design/specs/0044-docs-site-i18n-restructure-design.md ('원문 해시 스탬프')
 //
 // ‼️ 이 모듈은 **두 곳에서 돈다** — 스탬프 도구(순수 Node)와 페이지 렌더(Vite 번들).
 //    판정이 두 벌이면 갈리므로 계산은 여기 하나뿐이다. 그래서 파일을 읽지 않는다:

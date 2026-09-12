@@ -4,8 +4,8 @@
 **이주는 끝났고 이 스크립트들은 다시 돌리지 않는다.** 지우지 않고 남긴 이유는 하나다 —
 "분할에 손실이 없었다" 는 주장을 **누구든 재현해 확인할 수 있어야** 하기 때문이다.
 
-설계: `dev/design/specs/2026-09-06-docs-site-i18n-restructure-design.md`
-페이지 트리: `dev/design/specs/2026-09-06-docs-site-ia-tree.md`
+설계: `dev/design/specs/0044-docs-site-i18n-restructure-design.md`
+페이지 트리: `dev/design/specs/0045-docs-site-ia-tree.md`
 
 ## 무엇을 증명했나
 
