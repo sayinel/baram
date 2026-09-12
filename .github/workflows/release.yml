@@ -32,7 +32,19 @@ jobs:
           [[ "$TAG" == "$PKG" ]] || fail "tag $TAG does not match package.json version $PKG"
           git merge-base --is-ancestor "$GITHUB_SHA" origin/main \
             || fail "tag commit $GITHUB_SHA is not on main"
-          echo "Tag $TAG verified."
+
+          # The notes are an input to the BUILD, not something written afterwards:
+          # tauri-action bakes releaseBody into latest.json's `notes`, which is the
+          # only thing the in-app update dialog shows (it has no link out). Through
+          # v0.7.2 that field shipped the placeholder and every release needed a
+          # hand patch — download latest.json, swap one field, compare 13 platform
+          # signatures, delete and re-upload — which is a lot of ceremony to keep a
+          # dialog honest. Requiring the file here makes the notes exist before the
+          # build, so one tracked source fills both the release body and the dialog.
+          NOTES=".github/release-notes/${TAG}.md"
+          [[ -f "$NOTES" ]] || fail "no release notes at $NOTES — write them in the release PR, before the tag"
+          [[ -s "$NOTES" ]] || fail "$NOTES is empty"
+          echo "Tag $TAG verified, notes present."
 
   # ── Run full CI ─────────────────────────────────────────────────────
   ci:
@@ -187,6 +199,25 @@ jobs:
             || { echo "::error::APPLE_API_KEY_P8 did not decode to a PEM private key"; exit 1; }
           echo "API key staged."
 
+      # verify-tag already proved this file exists; re-checking here is not
+      # redundant, it is the only check on the path that actually consumes it —
+      # this job is what a manual re-run would start from.
+      - name: Load the release notes
+        id: notes
+        run: |
+          NOTES=".github/release-notes/${GITHUB_REF_NAME}.md"
+          [ -f "$NOTES" ] || { echo "::error::no release notes at $NOTES"; exit 1; }
+          # Random delimiter: a fixed one is a heredoc the notes file could close
+          # early, by accident or on purpose, and everything after it would be read
+          # as workflow commands.
+          DELIM="RELEASE_NOTES_$(openssl rand -hex 16)"
+          {
+            echo "body<<${DELIM}"
+            cat "$NOTES"
+            echo "${DELIM}"
+          } >> "$GITHUB_OUTPUT"
+          echo "Loaded $(wc -c < "$NOTES") bytes of notes."
+
       - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # action-v1.0.0
         # Bounded below the job so the diagnostic step below still gets to run.
         # A job-level kill skips every remaining step, which is exactly how the
@@ -207,7 +238,7 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: 'Baram v__VERSION__'
-          releaseBody: 'See the assets to download and install this version.'
+          releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: true
           prerelease: false
           # Updater signing is release-only: base tauri.conf.json leaves
@@ -221,8 +252,9 @@ jobs:
       # wrong artifact, and notarization is an unbounded wait on Apple's queue —
       # v0.6.0's first submission sat there for 1h49m. Fail while it is cheap.
       #
-      # The check itself lives in the composite action, shared with ci.yml's macos
-      # job so the rehearsal and the real thing cannot disagree about the rule.
+      # The check itself lives in the composite action, shared with macos-sdk.yml's
+      # daily cron so the early warning and the real thing cannot disagree about the
+      # rule. (ci.yml's macos job is Clippy and cargo test; it builds no .app.)
       - name: Verify the macOS build SDK
         if: runner.os == 'macOS'
         uses: ./.github/actions/verify-macos-sdk
