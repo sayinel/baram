@@ -13,7 +13,7 @@ import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
 import { serializeLiveDoc } from "../editor/serialize-live-doc";
 import { bundledFont } from "../font/bundled-fonts";
-import { isUnderRoot } from "../path-utils";
+import { hasDriveLetter, isUnderRoot, toPosixPath } from "../path-utils";
 import { buildFontFaceCSS } from "./export-font-embed";
 import { captureEditorHTML, generateStandaloneHTML } from "./export-html";
 import {
@@ -281,15 +281,20 @@ export async function exportWithPandoc(
 function owningDirectoryContext(documentPath: string): ContextInfo | null {
   const { contexts } = useContextStore.getState();
   let best: ContextInfo | null = null;
+  let bestLength = -1;
   for (const c of contexts) {
-    if (c.contextType === "file" || !isUnderRoot(documentPath, c.path)) {
-      continue;
-    }
-    if (
-      best === null ||
-      contextRootOf(c.path).length > contextRootOf(best.path).length
-    ) {
+    if (c.contextType === "file") continue;
+    // Windows: the root and the document may differ in drive-letter or
+    // directory case and in separator (`C:\Vault` vs `c:/vault/…`), and are
+    // still one tree — the same rule `relativeScope` applies (issue 631).
+    const fold = hasDriveLetter(documentPath) || hasDriveLetter(c.path);
+    const candidate = fold ? toPosixPath(documentPath) : documentPath;
+    const root = fold ? toPosixPath(c.path) : c.path;
+    if (!isUnderRoot(candidate, root, fold)) continue;
+    const length = contextRootOf(root).length;
+    if (length > bestLength) {
       best = c;
+      bestLength = length;
     }
   }
   return best;

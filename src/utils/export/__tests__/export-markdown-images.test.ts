@@ -132,6 +132,23 @@ describe("classifyImageSource", () => {
   });
 });
 
+describe("relativeScope", () => {
+  it("judges drive-letter case before normalisation strips the separator off a drive root (issue 631)", () => {
+    // `C:\` becomes `C:` once normalised — no longer drive-absolute to look
+    // at — so the rule is applied to the inputs as given.
+    expect(relativeScope("C:\\a.md", "C:\\")).toEqual({
+      caseInsensitive: true,
+      documentDir: "C:",
+      root: "C:",
+    });
+    expect(relativeScope("/vault/notes/a.md", "/vault/")).toEqual({
+      caseInsensitive: false,
+      documentDir: "/vault/notes",
+      root: "/vault",
+    });
+  });
+});
+
 describe("stageMarkdownImages", () => {
   it("returns the same string when there is nothing to change", () => {
     const md = "text ![d](baram-asset:mermaid-0.png) more\n";

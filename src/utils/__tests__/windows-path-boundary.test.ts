@@ -14,6 +14,7 @@ import { describe, expect, it } from "vitest";
 import { flattenFileTree } from "../file-search";
 import { isJournalPath } from "../journal/journal";
 import {
+  hasDriveLetter,
   isUnderRoot,
   relativeToRoot,
   stripTrailingSeparators,
@@ -59,6 +60,43 @@ describe("isUnderRoot tests the boundary, not a constructed prefix", () => {
   it("refuses the root itself, and an empty root", () => {
     expect(isUnderRoot("/vault", "/vault")).toBe(false);
     expect(isUnderRoot("/vault/a.md", "")).toBe(false);
+  });
+});
+
+describe("isUnderRoot folds case only when asked (issue 631)", () => {
+  it("is case-sensitive by default, on both separators", () => {
+    expect(isUnderRoot("c:\\vault\\notes\\a.md", "C:\\Vault")).toBe(false);
+    expect(isUnderRoot("/Vault/a.md", "/vault")).toBe(false);
+  });
+
+  it("matches a Windows document to its root across drive-letter and directory case", () => {
+    expect(isUnderRoot("c:\\vault\\notes\\a.md", "C:\\Vault", true)).toBe(true);
+    expect(isUnderRoot("C:/Vault/notes/a.md", "c:/vault", true)).toBe(true);
+  });
+
+  it("folds ASCII letters only: a pair Windows keeps apart stays apart", () => {
+    // U+212A KELVIN SIGN lowercases to `k` in JavaScript, but NTFS does not
+    // equate the two — folding them here would name an owner the backend then
+    // refuses, failing the export instead of degrading its images.
+    expect(isUnderRoot("c:\\\u212Avault\\a.md", "C:\\kvault", true)).toBe(
+      false,
+    );
+  });
+
+  it("still tests the boundary when folding: a sibling sharing a prefix is refused", () => {
+    expect(isUnderRoot("c:\\me\\workspace\\n.md", "C:\\me\\work", true)).toBe(
+      false,
+    );
+  });
+});
+
+describe("hasDriveLetter names drive-absolute syntax only", () => {
+  it("accepts C:\\ and c:/, refuses POSIX, drive-relative and UNC", () => {
+    expect(hasDriveLetter("C:\\Vault")).toBe(true);
+    expect(hasDriveLetter("c:/vault/a.md")).toBe(true);
+    expect(hasDriveLetter("/vault")).toBe(false);
+    expect(hasDriveLetter("C:foo")).toBe(false);
+    expect(hasDriveLetter("\\\\server\\share")).toBe(false);
   });
 });
 

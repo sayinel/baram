@@ -66,6 +66,8 @@ import { parseImgHtml } from "../../pipeline/transformers/image-transformer";
 import { parserView, RELATIVE_BASE } from "../link-href";
 import {
   dirname,
+  foldAsciiCase,
+  hasDriveLetter,
   isUnderRoot,
   stripTrailingSeparators,
   toPosixPath,
@@ -124,8 +126,6 @@ const ASSET_SCHEME = "baram-asset:";
 /** An extension worth keeping on a staged image's name — pandoc picks the media type from it. */
 const EXTENSION = /\.([A-Za-z0-9]{1,8})$/;
 /** A POSIX-separated path that begins with a Windows drive letter. */
-const DRIVE_LETTER = /^[A-Za-z]:\//;
-
 type Verdict =
   { kind: "keep" } | { kind: "refuse" } | { kind: "stage"; source: string };
 
@@ -183,12 +183,15 @@ export function relativeScope(
   contextRoot: null | string,
 ): null | RelativeScope {
   if (documentPath === null || contextRoot === null) return null;
+  // Judged on the inputs as given: a drive root `C:/` would lose its
+  // separator to the normalisation below and stop looking like a drive.
+  const caseInsensitive =
+    hasDriveLetter(documentPath) || hasDriveLetter(contextRoot);
   const root = stripTrailingSeparators(toPosixPath(contextRoot));
   if (root === "") return null;
-  const documentDir = dirname(toPosixPath(documentPath));
   return {
-    caseInsensitive: DRIVE_LETTER.test(root) || DRIVE_LETTER.test(documentDir),
-    documentDir,
+    caseInsensitive,
+    documentDir: dirname(toPosixPath(documentPath)),
     root,
   };
 }
@@ -200,10 +203,10 @@ function isAbsolutePath(path: string): boolean {
 
 /** Is `target` the scope's root or inside it, by the scope's own case rule? */
 function inScope(target: string, scope: RelativeScope): boolean {
-  const [t, root] = scope.caseInsensitive
-    ? [target.toLowerCase(), scope.root.toLowerCase()]
-    : [target, scope.root];
-  return t === root || isUnderRoot(t, root);
+  const same = scope.caseInsensitive
+    ? foldAsciiCase(target) === foldAsciiCase(scope.root)
+    : target === scope.root;
+  return same || isUnderRoot(target, scope.root, scope.caseInsensitive);
 }
 
 /**

@@ -42,6 +42,12 @@ export function extractNamespace(relativePath: string): string | undefined {
   return relativePath.substring(0, lastSlash);
 }
 
+/** Lowercases ASCII letters only — the case rule Windows drive paths follow
+ *  closely enough, and one that never equates what NTFS keeps apart. */
+export function foldAsciiCase(path: string): string {
+  return path.replace(/[A-Z]/g, (ch) => ch.toLowerCase());
+}
+
 /** Convert an absolute path to a relative path from a given directory */
 export function getRelativePath(fromDir: string, toPath: string): string {
   const fromParts = fromDir.split("/").filter(Boolean);
@@ -66,6 +72,15 @@ export function getRelativePath(fromDir: string, toPath: string): string {
   return "../".repeat(ups) + remainder.join("/");
 }
 
+/**
+ * Drive-absolute syntax — `C:\…` or `C:/…` — the one Windows shape whose
+ * comparisons must ignore case. Drive-relative `C:foo` and UNC `\\server\share`
+ * are deliberately not matched (issue 631).
+ */
+export function hasDriveLetter(path: string): boolean {
+  return /^[A-Za-z]:[\\/]/.test(path);
+}
+
 /** Check if a file path has an image extension */
 export function isImageFile(path: string): boolean {
   const ext = path.split(".").pop()?.toLowerCase() ?? "";
@@ -87,10 +102,24 @@ export function isImageFile(path: string): boolean {
  * The boundary check is also what stops `/Users/me/work` matching `/Users/me/workspace/note.md`.
  * "Strictly inside" — the root itself is not under itself; callers that accept equality test it.
  */
-export function isUnderRoot(candidate: string, root: string): boolean {
+export function isUnderRoot(
+  candidate: string,
+  root: string,
+  caseInsensitive = false,
+): boolean {
   const base = stripTrailingSeparators(root);
-  if (!base || !candidate.startsWith(base)) return false;
-  const boundary = candidate[base.length];
+  if (!base) return false;
+  // Windows paths compare without case (issue 631: a context root `C:\Vault`
+  // and a document under `c:\vault` are the same tree). The caller decides —
+  // POSIX callers keep the exact comparison, and a POSIX directory name may
+  // legitimately differ from another only by case. Only ASCII letters fold:
+  // `toLowerCase()` equates pairs Windows keeps apart (U+212A KELVIN SIGN and
+  // `k`), and naming an owner the backend then refuses fails the export,
+  // where a missed owner only degrades its images to alt text.
+  const path = caseInsensitive ? foldAsciiCase(candidate) : candidate;
+  const prefix = caseInsensitive ? foldAsciiCase(base) : base;
+  if (!path.startsWith(prefix)) return false;
+  const boundary = path[prefix.length];
   return boundary === "/" || boundary === "\\";
 }
 
