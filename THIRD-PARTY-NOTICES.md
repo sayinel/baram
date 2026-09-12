@@ -87,7 +87,10 @@ verbatim in `src/assets/fonts/` and shown in-app under
 
 - **Pretendard Variable** (`PretendardVariable.woff2`) — OFL-1.1
   Copyright (c) 2021, Kil Hyung-jin, with Reserved Font Name 'Pretendard'.
-  Includes work Copyright 2014-2021 Adobe. Licence: `src/assets/fonts/OFL-Pretendard.txt`
+  Pretendard derives from work by three further holders, all named in the licence
+  file: Copyright 2014-2021 Adobe; Copyright (c) 2016 The Inter Project Authors;
+  Copyright 2021 The M+ FONTS Project Authors.
+  Licence: `src/assets/fonts/OFL-Pretendard.txt`
 - **JetBrains Mono Variable** (`jetbrains-mono-latin-wght-normal.woff2`) — OFL-1.1
   Copyright 2020 The JetBrains Mono Project Authors.
   Licence: `src/assets/fonts/OFL-JetBrainsMono.txt`

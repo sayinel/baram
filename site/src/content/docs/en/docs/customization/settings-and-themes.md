@@ -113,8 +113,8 @@ typefaces most often disagree about. It carries the same size and line-height sl
 settings rows — one setting seen from two places, not two settings.
 
 To use a family Baram did not find, click the pencil beside the slot and type the name. It
-is saved exactly as typed, and carries the **Not on this machine** badge if nothing can
-render it.
+is saved as written once surrounding whitespace is dropped, and carries the **Not on this
+machine** badge if nothing can render it.
 
 ### Size and spacing
 
