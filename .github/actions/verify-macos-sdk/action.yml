@@ -7,7 +7,9 @@ runs:
   using: composite
   steps:
     # ‼️ ONE implementation, two callers — release.yml (before notarization) and
-    # ci.yml's macos job. The rule is about the runner image, so it can regress
+    # macos-sdk.yml (the daily cron). NOT ci.yml's macos job: that one is Clippy
+    # and cargo test on a rust path filter, and it never builds a .app for this
+    # to read. The rule is about the runner image, so it can regress
     # with no change to our code at all; a second copy of it would be a second
     # thing to keep in agreement, and the one that drifts is the one nobody runs
     # until release day.
