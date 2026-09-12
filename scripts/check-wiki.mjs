@@ -57,6 +57,16 @@ if (files.includes("_Sidebar.md")) {
   }
 }
 
+// 3. 내부 링크 — 사이드바는 위에서 이미 봤으므로 제외한다 (중복 보고 방지)
+for (const f of files) {
+  if (f === "_Sidebar.md") continue;
+  for (const [, target] of page(f).matchAll(WIKI_LINK)) {
+    if (!files.includes(`${target}.md`)) {
+      problems.push(`[깨진 내부 링크] ${f} → ${target}`);
+    }
+  }
+}
+
 if (problems.length) {
   console.error(`wiki 게이트 실패 (${problems.length})`);
   for (const p of problems) console.error(`  ${p}`);
