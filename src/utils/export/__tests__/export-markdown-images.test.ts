@@ -728,6 +728,16 @@ describe("stageMarkdownImages", () => {
       });
     });
 
+    it("masks markup without inventing markdown: a `~~~` right after a tag is not a fence", () => {
+      expect(
+        stageMarkdownImages('<div>\n<img src="img/a.png">~~~\n</div>\n', SAVED),
+      ).toMatchObject({
+        images: [{ name: "image-0.png", source: "img/a.png" }],
+        markdown: "<div>\n![](baram-asset:image-0.png)~~~\n</div>\n",
+        refused: 0,
+      });
+    });
+
     it("keeps a table cell one cell when a decoded alt holds a pipe", () => {
       const { markdown } = stageMarkdownImages(
         "| a | b |\n| - | - |\n| <img src='img/a.png' alt='p&#124;q'> | c |\n",

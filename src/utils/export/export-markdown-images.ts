@@ -468,16 +468,18 @@ function tagEnd(html: string, from: number): number {
  * an HTML block pandoc still parses markdown (`markdown_in_html_blocks`), so
  * a tag that STARTS inside a code fence or a code span there is code, not an
  * image. The regions are judged on the text OUTSIDE markup — every tag,
- * comment and raw-text body blanked out, line breaks kept — so a `~~~` or a
+ * comment and raw-text body masked, line breaks kept — so a `~~~` or a
  * backtick inside an attribute value opens nothing.
  */
 function imgTagSpans(html: string): TagSpan[] {
   const { img, markup } = scanImgTags(html);
   if (img.length === 0) return img;
+  // Masked with a letter, not a blank: blanks would let a `~~~` or backtick
+  // that follows a tag start a line and read as a fence or code span.
   const chars = html.split(""); // UTF-16 units, as the spans count
   for (const span of markup) {
     for (let k = span.start; k < span.end; k += 1) {
-      if (chars[k] !== "\n" && chars[k] !== "\r") chars[k] = " ";
+      if (chars[k] !== "\n" && chars[k] !== "\r") chars[k] = "x";
     }
   }
   const code = collectCodeRegions(chars.join(""));
