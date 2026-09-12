@@ -572,7 +572,14 @@ let decoder: HTMLTextAreaElement | null = null;
 function decodeEntities(value: string): string {
   if (!value.includes("&") || typeof document === "undefined") return value;
   decoder ??= document.createElement("textarea");
-  decoder.innerHTML = value.replace(/</g, "&lt;");
+  // Attribute-value rules, not text rules: a named reference with no
+  // semicolon stays literal when `=` follows (`a&amp=x` is `a&amp=x`, not
+  // `a&=x`), so those are shielded before the text parser sees them — the
+  // name is taken whole, so `&amp;b` is never read as `&am` + `p`. `<` is
+  // neutralised so a `</textarea>` cannot end the text.
+  decoder.innerHTML = value
+    .replace(/&([A-Za-z][A-Za-z0-9]*)(?![A-Za-z0-9;])(?==)/g, "&amp;$1")
+    .replace(/</g, "&lt;");
   const out = decoder.value;
   decoder.innerHTML = "";
   return out;

@@ -738,6 +738,22 @@ describe("stageMarkdownImages", () => {
       });
     });
 
+    it("decodes references as an attribute value does: a legacy reference without its semicolon stays literal before `=` or a letter", () => {
+      // Decoding is one pass: `&amp;amp;` yields `&amp;`, never `&`.
+      expect(
+        stageMarkdownImages(
+          '<div>\n<img src="img/a&amp=x.png" alt="A &amp; B" height="1">\n<img src="img/b&amp;amp;c.png" height="1">\n</div>\n',
+          SAVED,
+        ),
+      ).toMatchObject({
+        images: [
+          { name: "image-0.png", source: "img/a&amp=x.png" },
+          { name: "image-1.png", source: "img/b&amp;c.png" },
+        ],
+        refused: 0,
+      });
+    });
+
     it("keeps a table cell one cell when a decoded alt holds a pipe", () => {
       const { markdown } = stageMarkdownImages(
         "| a | b |\n| - | - |\n| <img src='img/a.png' alt='p&#124;q'> | c |\n",
