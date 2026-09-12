@@ -102,10 +102,11 @@ tabs switch slots without leaving it.
 The left pane lists families in three groups — **Included**, **Recent**, and **Installed** —
 each name drawn in its own face. **Search** narrows the list by name, and the count tells
 you how many of the total still match. The **Korean** and **Monospace** chips narrow it
-further, with one twist: the code slot starts out monospace-only, so there the Monospace
-chip works in reverse and releases the list to every family. **Refresh** re-reads the
-machine's fonts after you install one — and when they cannot be read at all, the browser
-says so and falls back to the bundled families rather than showing an empty pane.
+further. On the code slot the Monospace chip starts out already on, because that slot is
+monospace-only by default — so there it is turning the chip *off* that widens the list to
+every family. **Refresh** re-reads the machine's fonts after you install one, and when they
+cannot be read at all the browser says so and falls back to the bundled families rather
+than showing an empty pane.
 
 The right pane previews body and code together, in Latin, Hangul, and the glyphs that
 typefaces most often disagree about. It carries the same size and line-height sliders as the
