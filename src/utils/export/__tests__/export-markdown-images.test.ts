@@ -687,6 +687,17 @@ describe("stageMarkdownImages", () => {
       }
     });
 
+    it("ends a raw-text element only at its own closing tag, and a comment at `--!>` too", () => {
+      const md =
+        "<script>let x=\"</scripture><img src='img/e.png'>\";</script>\n\n<!-- x --!> <img src='img/c.png'>\n";
+      expect(stageMarkdownImages(md, SAVED)).toMatchObject({
+        images: [{ name: "image-0.png", source: "img/c.png" }],
+        markdown:
+          "<script>let x=\"</scripture><img src='img/e.png'>\";</script>\n\n<!-- x --!> ![](baram-asset:image-0.png)\n",
+        refused: 0,
+      });
+    });
+
     it("keeps a table cell one cell when a decoded alt holds a pipe", () => {
       const { markdown } = stageMarkdownImages(
         "| a | b |\n| - | - |\n| <img src='img/a.png' alt='p&#124;q'> | c |\n",

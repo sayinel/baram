@@ -351,6 +351,9 @@ function stageRequest(walk: Walk, source: string): string {
  *  not a tag. */
 const RAW_TEXT_ELEMENTS = new Set(["script", "style", "textarea", "title"]);
 
+/** A comment ends at `-->`, or at `--!>` (a parse error HTML accepts). */
+const COMMENT_END = /--!?>/g;
+
 /** A line terminator as the parser reads it (global: searched from `lastIndex`). */
 const LINE_END = /\r\n|\r|\n/g;
 
@@ -370,14 +373,17 @@ function scanImgTags(html: string): TagSpan[] {
     const lt = html.indexOf("<", i);
     if (lt === -1) break;
     if (html.startsWith("<!--", lt)) {
-      // `<!-->` and `<!--->` are comments HTML closes at once.
+      // `<!-->` and `<!--->` are comments HTML closes at once; `--!>` ends
+      // one as `-->` does.
       const abrupt = /^<!---?>/.exec(html.slice(lt, lt + 6));
-      const close =
-        abrupt === null
-          ? html.indexOf("-->", lt + 4)
-          : lt + abrupt[0].length - 3;
-      if (close === -1) break;
-      i = close + 3;
+      if (abrupt !== null) {
+        i = lt + abrupt[0].length;
+        continue;
+      }
+      COMMENT_END.lastIndex = lt + 4;
+      const close = COMMENT_END.exec(html);
+      if (close === null) break;
+      i = close.index + close[0].length;
       continue;
     }
     // A tag name runs to whitespace, `/` or `>` — `<o:p>` from Word included.
@@ -393,9 +399,13 @@ function scanImgTags(html: string): TagSpan[] {
     if (!closing && name === "img") spans.push({ end: close + 1, start: lt });
     i = close + 1;
     if (!closing && RAW_TEXT_ELEMENTS.has(name)) {
-      const endTag = html.toLowerCase().indexOf(`</${name}`, i);
-      if (endTag === -1) break;
-      i = endTag;
+      // The body ends at the element's own end tag — `</script` followed by
+      // whitespace, `/` or `>` — not at text that merely starts that way.
+      const endTag = new RegExp(`</${name}(?=[\\s/>])`, "gi");
+      endTag.lastIndex = i;
+      const found = endTag.exec(html);
+      if (found === null) break;
+      i = found.index;
     }
   }
   return spans;
