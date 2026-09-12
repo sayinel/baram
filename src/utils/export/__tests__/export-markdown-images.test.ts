@@ -38,16 +38,17 @@ describe("classifyImageSource", () => {
   it("keeps a staged mermaid asset and refuses any asset name this export did not produce", () => {
     expect(
       classifyImageSource("baram-asset:mermaid-0.png", IN_VAULT, KNOWN),
-    ).toEqual({ kind: "keep" });
+    ).toEqual({ kind: "keep", source: "baram-asset:mermaid-0.png" });
     // A document-written placeholder would reach pandoc as a bare file name.
     expect(
       classifyImageSource("baram-asset:mermaid-1.png", IN_VAULT, KNOWN),
     ).toEqual({
       kind: "refuse",
     });
+    // Kept by the parser's view: the tab is gone from what is written out.
     expect(
       classifyImageSource("\tbaram-asset:mermaid-0.png", IN_VAULT, KNOWN),
-    ).toEqual({ kind: "keep" });
+    ).toEqual({ kind: "keep", source: "baram-asset:mermaid-0.png" });
     expect(classifyImageSource("baram-asset:../x", IN_VAULT, KNOWN)).toEqual({
       kind: "refuse",
     });
@@ -622,6 +623,14 @@ describe("stageMarkdownImages", () => {
       expect(markdown).toBe(
         "| a | b |\n| - | - |\n| ![p\\|q](baram-asset:image-0.png) | c |\n",
       );
+    });
+
+    it("emits a kept asset by the parser's view of its source, not the raw attribute", () => {
+      const { markdown } = stageMarkdownImages(
+        '<img src="\tbaram-asset:mermaid-0.png" alt="d">\n',
+        SAVED,
+      );
+      expect(markdown).toBe("![d](baram-asset:mermaid-0.png)\n");
     });
   });
 
