@@ -126,6 +126,7 @@ Baram pairs a **beautiful WYSIWYG** editor with **lossless markdown**, **AI-nati
 
 - **Export** — HTML, PDF, and — via Pandoc — Word, LaTeX, EPUB, and RST, plus Notion-compatible markdown.
 - **Themes** — 8 built-in editor themes (plus 6 journal themes), system auto light/dark, and a full color editor with import/export.
+- **Fonts** — Pretendard and JetBrains Mono ship with the app, so documents look the same on every platform. Pick body and code typefaces separately from a searchable browser that previews each one and says which are actually installed; HTML and PDF exports carry your choice, optionally embedding the faces.
 - **Plugins** — Install community plugins from a built-in marketplace, browse each one's README in a detail tab, and toggle any plugin — built-ins included — on or off. Plugins run **sandboxed**, isolated from the editor, and every privileged action is checked against the capabilities you approved in the install dialog. A plugin can instead ask for full trust — that comes with a warning and a separate confirmation. Installs are staged and atomic, and a signed withdrawal list stops a plugin that was later pulled or found vulnerable from running.
 - **Keyboard-first & i18n** — Command palette, quick switcher, slash commands, fully customizable shortcuts, and English/Korean UI.
 - **Vim mode** — Optional modal editing with normal/insert/visual modes, motions, operators, counts, `/` search, and `:w`/`:q` — in the WYSIWYG surface, Source mode, and inside code blocks. Works with the Korean IME.
@@ -134,13 +135,13 @@ Baram pairs a **beautiful WYSIWYG** editor with **lossless markdown**, **AI-nati
 
 ## AI Integration
 
-Baram has built-in AI writing assistance powered by Claude, OpenAI, Google Gemini, and Ollama (local).
+Baram has built-in AI writing assistance powered by Claude, OpenAI, OpenRouter, Google Gemini, and Ollama (local).
 
 ### Setup
 
 1. Open Settings with `Cmd+,`
 2. Go to the **AI** tab
-3. Select your AI provider (Claude, OpenAI, Gemini, or Ollama)
+3. Select your AI provider (Claude, OpenAI, OpenRouter, Gemini, or Ollama)
 4. Enter your API key (per-provider — each provider has its own key field; Ollama requires no key)
 5. Choose your preferred model (models are loaded dynamically from the provider)
 
