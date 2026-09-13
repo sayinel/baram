@@ -30,9 +30,11 @@
 //   and an "include remote images" option is a separate decision.
 import { parserView, RELATIVE_BASE } from "../link-href";
 import {
+  decodePercent,
   dirname,
   foldAsciiCase,
   hasDriveLetter,
+  isAbsolutePath,
   isUnderRoot,
   stripTrailingSeparators,
   toPosixPath,
@@ -51,7 +53,10 @@ export interface RelativeScope {
   root: string;
 }
 
-/** The scheme the mermaid export uses for staged assets (see mermaid-export-assets.ts). */
+/** The scheme of a staged asset's placeholder — written by the mermaid export
+ *  (mermaid-export-assets.ts) and by this policy, swapped for the file by the
+ *  backend. The one spelling on the frontend side; the backend has its own
+ *  by design (the layers do not trust each other). */
 export const ASSET_SCHEME = "baram-asset:";
 
 /** What may happen to one destination: kept as written (`source`), staged
@@ -78,11 +83,6 @@ export function relativeScope(
     documentDir: dirname(toPosixPath(documentPath)),
     root,
   };
-}
-
-/** A path that starts at a root: POSIX `/…`, Windows `C:\…` or `C:/…`. */
-function isAbsolutePath(path: string): boolean {
-  return /^[/\\]/.test(path) || /^[A-Za-z]:[\\/]/.test(path);
 }
 
 /** Is `target` the scope's root or inside it, by the scope's own case rule? */
@@ -144,12 +144,7 @@ export function classifyImageSource(
   // path that leaves the context root has no business being staged — the
   // backend would refuse it and fail the whole export, where alt text lets
   // the export go through without it.
-  let decoded = source;
-  try {
-    decoded = decodeURIComponent(source);
-  } catch {
-    // A malformed escape is still a path; the backend decides what it opens.
-  }
+  const decoded = decodePercent(source);
   // What the escapes hid is judged too: `%2Fetc%2Fpasswd` is `/etc/passwd`,
   // an absolute path, and the backend decodes it the same way.
   if (/^[/\\]{2}/.test(decoded)) return { kind: "refuse" };

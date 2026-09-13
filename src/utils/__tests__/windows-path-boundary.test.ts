@@ -15,6 +15,7 @@ import { flattenFileTree } from "../file-search";
 import { isJournalPath } from "../journal/journal";
 import {
   hasDriveLetter,
+  isAbsolutePath,
   isUnderRoot,
   relativeToRoot,
   stripTrailingSeparators,
@@ -97,6 +98,22 @@ describe("hasDriveLetter names drive-absolute syntax only", () => {
     expect(hasDriveLetter("/vault")).toBe(false);
     expect(hasDriveLetter("C:foo")).toBe(false);
     expect(hasDriveLetter("\\\\server\\share")).toBe(false);
+  });
+});
+
+describe("isAbsolutePath names a path that starts at a root", () => {
+  it("accepts a POSIX root, a backslash root and a drive-absolute path", () => {
+    expect(isAbsolutePath("/etc/hosts")).toBe(true);
+    expect(isAbsolutePath("\\\\server\\share")).toBe(true);
+    expect(isAbsolutePath("C:\\Vault\\a.png")).toBe(true);
+    expect(isAbsolutePath("c:/vault/a.png")).toBe(true);
+  });
+
+  it("refuses a relative path and a drive-relative one", () => {
+    expect(isAbsolutePath("img/a.png")).toBe(false);
+    expect(isAbsolutePath("./a.png")).toBe(false);
+    expect(isAbsolutePath("C:foo")).toBe(false);
+    expect(isAbsolutePath("")).toBe(false);
   });
 });
 

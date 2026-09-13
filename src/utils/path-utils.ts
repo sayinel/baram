@@ -81,6 +81,31 @@ export function hasDriveLetter(path: string): boolean {
   return /^[A-Za-z]:[\\/]/.test(path);
 }
 
+/**
+ * A path that starts at a root: POSIX `/…`, a backslash root (`\\server\…`
+ * on Windows), or a drive-absolute `C:\…` / `C:/…`. A drive-relative `C:foo`
+ * is not absolute.
+ */
+export function isAbsolutePath(path: string): boolean {
+  return /^[/\\]/.test(path) || hasDriveLetter(path);
+}
+
+/**
+ * Percent-escapes decoded, or the value as written when they do not decode:
+ * `50% off.md` is a real file name whose `%` is not an escape, and a
+ * malformed escape is still a path the caller may look up or hand on. Three
+ * sites (the export image policy twice, local link navigation) carried this
+ * try/catch before it lived here.
+ */
+export function decodePercent(value: string): string {
+  if (!value.includes("%")) return value;
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 /** Check if a file path has an image extension */
 export function isImageFile(path: string): boolean {
   const ext = path.split(".").pop()?.toLowerCase() ?? "";

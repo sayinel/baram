@@ -51,6 +51,7 @@ import type { Html, Nodes } from "mdast";
 import { visit } from "unist-util-visit";
 
 import { parseMdast } from "../../pipeline/parse-mdast";
+import { decodePercent } from "../path-utils";
 import {
   mayHoldImage,
   rawOpenedBy,
@@ -442,12 +443,6 @@ function stageOnce(
 function stagedName(index: number, source: string): string {
   // `source` has already lost its query and fragment; what a `%23` decodes
   // to is part of the file name (`a#b.png`), not a fragment to strip again.
-  let decoded = source;
-  try {
-    decoded = decodeURIComponent(source);
-  } catch {
-    // A malformed escape is still a path; the backend decides what it opens.
-  }
-  const ext = EXTENSION.exec(decoded)?.[1];
+  const ext = EXTENSION.exec(decodePercent(source))?.[1];
   return ext ? `image-${index}.${ext.toLowerCase()}` : `image-${index}`;
 }
