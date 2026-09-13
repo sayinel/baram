@@ -33,11 +33,17 @@
 // reference that starts in prose and runs into a code span
 // (`((n#^id|`x`))`) is left alone by the editor, so it is here.
 //
-// Known differences from the editor's parser (remark), kept deliberately and
-// pinned in the tests: `$ x $` with blanks next to the dollars and an
-// unclosed `$$` block are prose here and math there (pulldown follows the
-// stricter rule, which also avoids reading `$5 and $6` as a formula); a
-// `((…))` inside the YAML front matter is prose here and literal there.
+// Math follows the editor's parser (remark-math), not pulldown's stricter
+// rule, because the editor is what decides what a note's formulas are: a
+// `$` run is a formula up to the next run of the same length, blanks and
+// line breaks included (`$5 and $6` is one), left to right with code spans
+// and escapes; a line that opens with `$$` (and meta without a `$`) is a
+// display formula until a line that is `$$` and blanks, or — when none comes
+// — until its container ends. pulldown's own math stays on for structure;
+// the two rules are added on top of what it reports.
+//
+// One difference from the editor is kept deliberately: a `((…))` inside the
+// YAML front matter is prose here and literal there (see above).
 use std::ops::Range;
 
 use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
@@ -62,15 +68,18 @@ impl Literal {
     /// Read `content` once. The ranges index into `content` itself.
     pub fn of(content: &str) -> Literal {
         let body_start = front_matter_end(content);
-        let mut prose: Vec<Range<usize>> = Vec::new();
-        let mut inline: Vec<Range<usize>> = Vec::new();
+        let mut walk = collect(&content[body_start..], body_start);
         if body_start > 0 {
-            prose.push(0..body_start);
+            walk.prose.push(0..body_start);
         }
-        collect(&content[body_start..], body_start, &mut prose, &mut inline);
+        let mut inline = walk.inline;
+        for block in &walk.prose {
+            inline_math(content, block.clone(), &mut inline);
+        }
+        display_math(content, &walk.line_starts, &mut inline);
 
         // literal = complement(prose) ∪ inline literals
-        let prose = merge(prose);
+        let prose = merge(walk.prose);
         let mut ranges = Vec::with_capacity(prose.len() + inline.len() + 1);
         let mut cursor = 0;
         for range in &prose {
@@ -185,55 +194,78 @@ fn front_matter_end(content: &str) -> usize {
 
 /// An open block while walking the events. A list item's own text (a tight
 /// item has no paragraph) is prose except where its child blocks are, so an
-/// item remembers how far its text has been accounted for.
+/// item remembers how far its text has been accounted for; a container
+/// remembers where it ends, which is where an unclosed display formula ends.
 enum Frame {
     Item { cursor: usize, end: usize },
+    Container { end: usize },
+    Paragraph,
     Other,
 }
 
-/// Walk the body once. `prose` receives the block ranges that hold prose,
-/// `inline` the literal spans inside them; both are offsets into the whole
-/// note (`base` is the body's offset).
-fn collect(body: &str, base: usize, prose: &mut Vec<Range<usize>>, inline: &mut Vec<Range<usize>>) {
+/// What one walk over the body found, in offsets of the whole note.
+struct Walk {
+    /// The block ranges that hold prose.
+    prose: Vec<Range<usize>>,
+    /// Literal spans inside prose: code spans, inline HTML, math, images.
+    inline: Vec<Range<usize>>,
+    /// Where a line's content starts inside a paragraph or a list item's
+    /// own text — the positions a display formula may open at — with the
+    /// end of the innermost container around it.
+    line_starts: Vec<(usize, usize)>,
+}
+
+/// Walk the body once (`base` is the body's offset in the note).
+fn collect(body: &str, base: usize) -> Walk {
+    let limit = base + body.len();
+    let mut walk = Walk {
+        prose: Vec::new(),
+        inline: Vec::new(),
+        line_starts: Vec::new(),
+    };
     let mut stack: Vec<Frame> = Vec::new();
+    let mut at_line_start = true;
     for (event, range) in Parser::new_ext(body, OPTIONS).into_offset_iter() {
         let range = range.start + base..range.end + base;
         match event {
             Event::Start(tag) => {
-                let is_block = match &tag {
-                    Tag::Paragraph
-                    | Tag::Heading { .. }
-                    | Tag::BlockQuote(_)
+                let frame = match &tag {
+                    Tag::Paragraph => Some(Frame::Paragraph),
+                    Tag::Item => Some(Frame::Item {
+                        cursor: range.start,
+                        end: range.end,
+                    }),
+                    Tag::BlockQuote(_)
+                    | Tag::FootnoteDefinition(_)
+                    | Tag::DefinitionListDefinition => Some(Frame::Container { end: range.end }),
+                    Tag::Heading { .. }
                     | Tag::CodeBlock(_)
                     | Tag::HtmlBlock
                     | Tag::List(_)
-                    | Tag::Item
-                    | Tag::FootnoteDefinition(_)
                     | Tag::DefinitionList
                     | Tag::DefinitionListTitle
-                    | Tag::DefinitionListDefinition
                     | Tag::Table(_)
                     | Tag::TableHead
                     | Tag::TableRow
                     | Tag::TableCell
-                    | Tag::MetadataBlock(_) => true,
+                    | Tag::MetadataBlock(_) => Some(Frame::Other),
                     Tag::Emphasis
                     | Tag::Strong
                     | Tag::Strikethrough
                     | Tag::Superscript
                     | Tag::Subscript
                     | Tag::Link { .. }
-                    | Tag::Image { .. } => false,
+                    | Tag::Image { .. } => None,
                 };
                 match &tag {
                     // Prose blocks: the whole source range, container
                     // prefixes, markers and escapes included.
                     Tag::Paragraph | Tag::Heading { .. } | Tag::TableCell => {
-                        prose.push(range.clone());
+                        walk.prose.push(range.clone());
                     }
                     // An image is literal from `![` to `)`, alt text included
                     // — the editor keeps alt text out of the document model.
-                    Tag::Image { .. } => inline.push(range.clone()),
+                    Tag::Image { .. } => walk.inline.push(range.clone()),
                     Tag::BlockQuote(_)
                     | Tag::CodeBlock(_)
                     | Tag::HtmlBlock
@@ -254,15 +286,15 @@ fn collect(body: &str, base: usize, prose: &mut Vec<Range<usize>>, inline: &mut 
                     | Tag::Subscript
                     | Tag::Link { .. } => {}
                 }
-                if is_block {
-                    leave_item_text_before(&mut stack, &range, prose);
-                    stack.push(match tag {
-                        Tag::Item => Frame::Item {
-                            cursor: range.start,
-                            end: range.end,
-                        },
-                        _ => Frame::Other,
-                    });
+                match frame {
+                    Some(frame) => {
+                        leave_item_text_before(&mut stack, &range, &mut walk.prose);
+                        stack.push(frame);
+                        at_line_start = true;
+                    }
+                    None => {
+                        note_line_start(&stack, &mut at_line_start, range.start, limit, &mut walk);
+                    }
                 }
             }
             Event::End(tag) => {
@@ -294,29 +326,63 @@ fn collect(body: &str, base: usize, prose: &mut Vec<Range<usize>>, inline: &mut 
                 if is_block {
                     if let Some(Frame::Item { cursor, end }) = stack.pop() {
                         if cursor < end {
-                            prose.push(cursor..end);
+                            walk.prose.push(cursor..end);
                         }
                     }
+                    at_line_start = true;
                 }
             }
             // Inline literals inside prose.
             Event::Code(_)
             | Event::InlineHtml(_)
             | Event::InlineMath(_)
-            | Event::DisplayMath(_) => inline.push(range),
+            | Event::DisplayMath(_) => {
+                note_line_start(&stack, &mut at_line_start, range.start, limit, &mut walk);
+                walk.inline.push(range);
+            }
             // A thematic break is a block with no Start/End: it ends an
             // item's own text like any other child block.
-            Event::Rule => leave_item_text_before(&mut stack, &range, prose),
-            // Everything else lives inside a prose block and is prose, or
-            // inside a literal block and is covered by the complement.
-            Event::Text(_)
-            | Event::Html(_)
-            | Event::FootnoteReference(_)
-            | Event::SoftBreak
-            | Event::HardBreak
-            | Event::TaskListMarker(_) => {}
+            Event::Rule => {
+                leave_item_text_before(&mut stack, &range, &mut walk.prose);
+                at_line_start = true;
+            }
+            Event::SoftBreak | Event::HardBreak => at_line_start = true,
+            Event::Text(_) | Event::FootnoteReference(_) | Event::TaskListMarker(_) => {
+                note_line_start(&stack, &mut at_line_start, range.start, limit, &mut walk);
+            }
+            // Lines of an HTML block: not prose, and never where a display
+            // formula opens.
+            Event::Html(_) => at_line_start = false,
         }
     }
+    walk
+}
+
+/// The first inline event of a line, inside a paragraph or a list item's
+/// own text, marks where that line's content starts.
+fn note_line_start(
+    stack: &[Frame],
+    at_line_start: &mut bool,
+    start: usize,
+    limit: usize,
+    walk: &mut Walk,
+) {
+    if !*at_line_start {
+        return;
+    }
+    *at_line_start = false;
+    if !matches!(stack.last(), Some(Frame::Paragraph | Frame::Item { .. })) {
+        return;
+    }
+    let container_end = stack
+        .iter()
+        .rev()
+        .find_map(|frame| match frame {
+            Frame::Item { end, .. } | Frame::Container { end } => Some(*end),
+            Frame::Paragraph | Frame::Other => None,
+        })
+        .unwrap_or(limit);
+    walk.line_starts.push((start, container_end));
 }
 
 /// A child block that starts directly under a list item ends the item's
@@ -331,6 +397,91 @@ fn leave_item_text_before(
             prose.push(*cursor..child.start);
         }
         *cursor = (*cursor).max(child.end);
+    }
+}
+
+/// The editor's inline rule (remark-math, like a code span): a run of `$`
+/// opens a formula that the next run of the same length closes, whatever
+/// lies between — blanks and line breaks included. Left to right, a code
+/// span or a formula that opens first is opaque to the other, and an
+/// escaped `$` or backtick opens nothing.
+fn inline_math(content: &str, block: Range<usize>, out: &mut Vec<Range<usize>>) {
+    let bytes = &content.as_bytes()[block.clone()];
+    let run = |from: usize, byte: u8| bytes[from..].iter().take_while(|&&b| b == byte).count();
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\\' => {
+                i += 1;
+                if bytes.get(i).is_some_and(u8::is_ascii_punctuation) {
+                    i += 1;
+                }
+            }
+            byte @ (b'`' | b'$') => {
+                let open = run(i, byte);
+                let mut j = i + open;
+                let mut close = None;
+                while j < bytes.len() {
+                    if bytes[j] == byte {
+                        let len = run(j, byte);
+                        if len == open {
+                            close = Some(j);
+                            break;
+                        }
+                        j += len;
+                    } else {
+                        j += 1;
+                    }
+                }
+                match close {
+                    Some(j) => {
+                        if byte == b'$' {
+                            out.push(block.start + i..block.start + j + open);
+                        }
+                        i = j + open;
+                    }
+                    None => i += open,
+                }
+            }
+            _ => i += 1,
+        }
+    }
+}
+
+/// The editor's display rule (remark-math, like a fenced code block): a line
+/// whose content opens with two or more `$` and carries no other `$` opens a
+/// formula that ends with the line break of the next line that is a `$` run
+/// at least as long and blanks — or, when no such line comes before the
+/// container ends, at the container's end. Blank lines inside do not end it.
+fn display_math(content: &str, line_starts: &[(usize, usize)], out: &mut Vec<Range<usize>>) {
+    let bytes = content.as_bytes();
+    let mut skip_until = 0;
+    for &(start, container_end) in line_starts {
+        if start < skip_until {
+            continue;
+        }
+        let open = bytes[start..].iter().take_while(|&&b| b == b'$').count();
+        if open < 2 {
+            continue;
+        }
+        let line_end = content[start..]
+            .find('\n')
+            .map_or(content.len(), |i| start + i + 1);
+        if bytes[start + open..line_end].contains(&b'$') {
+            continue;
+        }
+        let end = source_lines(&content[line_end..])
+            .take_while(|line| line_end + line.offset < container_end)
+            .find(|line| {
+                let text = line.text.trim_start_matches([' ', '\t', '>']);
+                let close = text.bytes().take_while(|&b| b == b'$').count();
+                close >= open && text[close..].trim_matches([' ', '\t']).is_empty()
+            })
+            .map_or(container_end, |line| {
+                line_end + line.offset + line.text.len() + line.terminator.len()
+            });
+        out.push(start..end);
+        skip_until = end;
     }
 }
 
@@ -436,14 +587,61 @@ mod tests {
         assert_eq!(refs("$$\n((n#^o))\n$$\n((n#^o))\n"), [false, true]);
     }
 
-    /// Kept on purpose (decision record, "known differences"): the editor's
-    /// parser reads these as math; pulldown does not, and neither would a
-    /// reader who writes `$5 and $6`. A reference here is renamed by the
-    /// backend and left by the editor — no fixture shares these cases.
+    /// The editor's parser (remark-math) reads a `$` run like a backtick
+    /// run: any content up to the next run of the same length, blanks and
+    /// line breaks included, left to right with code spans and escapes.
+    /// pulldown's own rule is stricter; the editor's is the contract.
     #[test]
-    fn known_difference_blank_padded_dollars_and_an_unclosed_display_block_are_prose() {
-        assert_eq!(refs("$ ((n#^o)) $\n"), [true]);
-        assert_eq!(refs("$$\n((n#^o))\n\n((n#^o))\n"), [true, true]);
+    fn inline_math_follows_the_editors_rule() {
+        assert_eq!(refs("$ ((n#^o)) $ x ((n#^o))\n"), [false, true]);
+        assert_eq!(refs("$5 ((n#^o)) $6 ((n#^o))\n"), [false, true]);
+        assert_eq!(refs("$a\n((n#^o)) b$ ((n#^o))\n"), [false, true]);
+        // An escaped dollar opens nothing; the next one does.
+        assert_eq!(refs("\\$((n#^o))$ ((n#^o))$\n"), [true, false]);
+        // Whichever opens first wins: a code span swallows a dollar, a
+        // formula swallows a backtick.
+        assert_eq!(refs("`$` ((n#^o)) $\n"), [true]);
+        assert_eq!(refs("$ x `y` ((n#^o)) $\n"), [false]);
+        assert_eq!(refs("$$ ((n#^o)) $$ ((n#^o))\n"), [false, true]);
+        // A run of another length is content, not a closer.
+        assert_eq!(refs("$$ ((n#^o)) $ ((n#^o)) $$\n"), [false, false]);
+    }
+
+    /// A line that opens with `$$` (plus optional meta without a `$`) is a
+    /// display formula to the editor until a line that is `$$` and blanks —
+    /// or, when none comes, until its container ends: the blockquote, the
+    /// list item, the note. Blank lines inside do not end it.
+    #[test]
+    fn display_math_runs_to_its_closing_line_or_to_the_end_of_its_container() {
+        assert_eq!(refs("$$\n((n#^o))\n\n((n#^o))\n"), [false, false]);
+        assert_eq!(
+            refs("$$\n((n#^o))\n\n((n#^o))\n$$\n((n#^o))\n"),
+            [false, false, true]
+        );
+        assert_eq!(refs("$$\n((n#^o))\n$$ y\n((n#^o))\n"), [false, false]);
+        assert_eq!(refs("$$latex\n((n#^o))\n$$\n((n#^o))\n"), [false, true]);
+        assert_eq!(refs("text\n$$\n((n#^o))\n$$\n((n#^o))\n"), [false, true]);
+        assert_eq!(refs("> $$\n> ((n#^o))\n\n((n#^o))\n"), [false, true]);
+        assert_eq!(refs("- $$\n  ((n#^o))\n\n((n#^o))\n"), [false, true]);
+        assert_eq!(
+            refs("> a\n> $$\n> ((n#^o))\n>\n> ((n#^o))\n\n((n#^o))\n"),
+            [false, false, true]
+        );
+        // A closer shorter than the opener is content.
+        assert_eq!(
+            refs("$$$\n((n#^o))\n$$\n((n#^o))\n$$$\n((n#^o))\n"),
+            [false, false, true]
+        );
+    }
+
+    #[test]
+    fn reference_style_images_are_literal_like_inline_ones() {
+        assert_eq!(
+            refs("![a ((n#^o))][pic] ![((n#^o))] ((n#^o))\n\n[pic]: x.png\n[((n#^o))]: z.png\n"),
+            [false, false, true, false]
+        );
+        // Without a definition the brackets are text.
+        assert_eq!(refs("![a ((n#^o))][nodef]\n"), [true]);
     }
 
     #[test]

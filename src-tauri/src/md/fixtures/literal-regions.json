@@ -64,6 +64,26 @@
       "name": "nothing to rename is byte-identical",
       "markdown": "```\n((note#^b1))\n```\n`((note#^b1))`\n",
       "expected": "```\n((note#^b1))\n```\n`((note#^b1))`\n"
+    },
+    {
+      "name": "blank-padded inline math, and a pair of dollars that is not a formula to a human",
+      "markdown": "$ ((note#^b1)) $ and $5 ((note#^b1)) $6 then ((note#^b1))\n",
+      "expected": "$ ((note#^b1)) $ and $5 ((note#^b1)) $6 then ((note#^b2-longer))\n"
+    },
+    {
+      "name": "an unclosed display formula runs to the end of the note",
+      "markdown": "((note#^b1))\n\n$$\n((note#^b1))\n\n((note#^b1))\n",
+      "expected": "((note#^b2-longer))\n\n$$\n((note#^b1))\n\n((note#^b1))\n"
+    },
+    {
+      "name": "a display formula with a blank line inside, and one ended by its blockquote",
+      "markdown": "$$\n((note#^b1))\n\n((note#^b1))\n$$\n> $$\n> ((note#^b1))\n\n((note#^b1))\n",
+      "expected": "$$\n((note#^b1))\n\n((note#^b1))\n$$\n> $$\n> ((note#^b1))\n\n((note#^b2-longer))\n"
+    },
+    {
+      "name": "reference-style images: alt text and label are literal",
+      "markdown": "![a ((note#^b1))][pic] ![((note#^b1))] ((note#^b1))\n\n[pic]: x.png\n[((note#^b1))]: z.png\n",
+      "expected": "![a ((note#^b1))][pic] ![((note#^b1))] ((note#^b2-longer))\n\n[pic]: x.png\n[((note#^b1))]: z.png\n"
     }
   ]
 }
