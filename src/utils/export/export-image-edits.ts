@@ -14,6 +14,7 @@ import type { EditorImageMetadata } from "./export-img-attributes";
 import type { Image, ImageReference } from "mdast";
 
 import {
+  escapeCellPipes,
   type LabelContext,
   labelText,
   serializeInline,
@@ -99,8 +100,5 @@ export function assetEdit(
  *  the alt (decoded by the parser) must be escaped again or it ends the cell. */
 function inlineImageText(image: Image, ctx: LabelContext): string {
   const text = serializeInline([image]);
-  if (!ctx.inTableCell) return text;
-  return text.replace(/(\\*)\|/g, (match, run: string) =>
-    run.length % 2 === 0 ? `${run}\\|` : match,
-  );
+  return ctx.inTableCell ? escapeCellPipes(text) : text;
 }

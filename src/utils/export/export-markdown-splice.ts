@@ -205,15 +205,21 @@ export function labelText(
       .replace(/(#+)\s*$/, "\\$1")
       .replace(/\{([^{}]*)\}\s*$/, "\\{$1}");
   }
-  if (ctx.inTableCell) {
-    // A GFM cell ends at the next pipe that is not escaped by an odd run of
-    // backslashes. Text and code came out of the cell with their pipes
-    // decoded; math kept its `\|`, so only an even run gets one more.
-    text = text.replace(/(\\*)\|/g, (match, run: string) =>
-      run.length % 2 === 0 ? `${run}\\|` : match,
-    );
-  }
+  if (ctx.inTableCell) text = escapeCellPipes(text);
   return text;
+}
+
+/**
+ * `text` made safe inside a GFM table cell: a cell ends at the next pipe
+ * that is not escaped by an odd run of backslashes. Text and code come out
+ * of a cell with their pipes decoded; math keeps its `\|`, so only an even
+ * run gets one more. Shared by every splice that lands in a cell — a label,
+ * an alt text, a re-serialized image.
+ */
+export function escapeCellPipes(text: string): string {
+  return text.replace(/(\\*)\|/g, (match, run: string) =>
+    run.length % 2 === 0 ? `${run}\\|` : match,
+  );
 }
 
 /** Inline nodes as markdown on one line, through the pipeline's conventions

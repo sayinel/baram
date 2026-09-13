@@ -57,6 +57,8 @@
 // inline tag all hide it from pandoc while the parser hands it over on its
 // own; the tag is then rewritten and its file staged for nothing, and the
 // filter drops the construct as it always did.
+import { LINE_END } from "./export-html-node-offsets";
+
 /** One `<img …>` tag's offsets in the text it was read from. */
 export interface TagSpan {
   end: number;
@@ -155,7 +157,7 @@ export function readHtmlFragment(value: string): null | TagSpan[] {
  *  the last — caption text pandoc cannot read as anything but words? */
 function isCaption(text: string): boolean {
   if (NOT_CAPTION.test(text)) return false;
-  const [first, ...rest] = text.split(/\r\n|\r|\n/);
+  const [first, ...rest] = text.split(LINE_END);
   if (AFTER_TAG.test(first)) return false;
   return rest.every((line) => !INDENTED.test(line) && !LINE_START.test(line));
 }

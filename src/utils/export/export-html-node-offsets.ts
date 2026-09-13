@@ -8,7 +8,7 @@
 // gives up rather than guess when they do not match.
 
 /** A line terminator as the parser reads it (global: searched from `lastIndex`). */
-const LINE_END = /\r\n|\r|\n/g;
+export const LINE_END = /\r\n|\r|\n/g;
 
 /**
  * Offsets in an html node's text → offsets in the source. The text is the
@@ -25,7 +25,7 @@ export function valueToSource(
 ): ((offset: number) => number) | null {
   // Lines end in LF, CRLF or a lone CR — the parser reads all three, and
   // keeps each as written, so the same terminator is looked for in the source.
-  const lines = value.split(/\r\n|\r|\n/);
+  const lines = value.split(LINE_END);
   const valueStarts: number[] = [];
   const sourceStarts: number[] = [];
   let valueAt = 0;
