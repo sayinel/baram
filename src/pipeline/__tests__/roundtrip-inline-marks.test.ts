@@ -96,15 +96,28 @@ describe("Roundtrip: Superscript ^text^", () => {
 });
 
 describe("Roundtrip: Nested & combined marks", () => {
+  // Custom marks (highlight, sub, sup) wrap outside standard marks in mdast, and
+  // are written as `<mark>` / `<sub>` / `<sup>` when they hold anything but plain
+  // text — see wrapCustomInlineMark in pm-to-md.ts.
+  //
+  // These two used to assert the shorthand output (`==**bold highlight**==`,
+  // `~*italic sub*~`). That output is NOT a fixed point: reading it back splits
+  // into text/strong/text, the shorthand regex — which only ever matches inside a
+  // single text node — finds no pair, the custom mark is lost, and the next save
+  // writes `\==**bold highlight**==`. The tests were named for a round trip while
+  // pinning a form that could not survive one, so opening a file and saving it
+  // changed its bytes. Each case now asserts the fixed point explicitly, which is
+  // what makes the difference visible.
   it("bold + highlight (custom mark wraps outer)", () => {
-    // Custom marks (highlight) wrap outside standard marks (bold) in mdast
-    expect(roundtrip("**==bold highlight==**\n")).toBe(
-      "==**bold highlight**==\n",
-    );
+    const output = roundtrip("**==bold highlight==**\n");
+    expect(output).toBe("<mark>**bold highlight**</mark>\n");
+    expect(roundtrip(output)).toBe(output);
   });
 
   it("italic + subscript (custom mark wraps outer)", () => {
-    expect(roundtrip("*~italic sub~*\n")).toBe("~*italic sub*~\n");
+    const output = roundtrip("*~italic sub~*\n");
+    expect(output).toBe("<sub>*italic sub*</sub>\n");
+    expect(roundtrip(output)).toBe(output);
   });
 
   it("multiple custom marks in one line", () => {
