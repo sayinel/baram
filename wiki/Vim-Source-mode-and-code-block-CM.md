@@ -56,8 +56,10 @@ vim 의 리터럴 치환을 구동한다 — 그게 맞는 동작이다.
 - **CodeMirror 자신의 composition 상태**를 읽는다. 로컬 `compositionend` 리스너가 아니다 —
   Safari 는 dead-key 조합에서 `compositionend` 를 아예 안 낼 때가 있고 CM 은 DOM 이벤트 없이
   내부 타이머로 회복한다. 로컬 플래그였다면 참으로 굳어 replace 입력이 영구히 죽는다.
-- 방금 본 `insertText`/`insertCompositionText` `beforeinput`. 양쪽을 NFC 정규화해 맞춰 보고,
-  **맞으면 소비한다** — IME 삽입 하나가 수동 덮어쓰기를 최대 하나만 억제하도록.
+- **짧은 창 안에서** 본 `insertText`/`insertCompositionText` `beforeinput`. 창을 두는 이유는
+  오래된 증거가 나중의 직접 입력을 억누르면 안 되기 때문이다. 양쪽을 NFC 정규화해 맞춰 보고
+  (`InputEvent` 의 data 에는 정규화 계약이 없다), **맞으면 소비한다** — IME 삽입 하나가 수동
+  덮어쓰기를 최대 하나만 억제하도록.
 
 직접 레이아웃 문자는 두 증거 중 아무것도 못 만들므로 온전한 덮어쓰기 의미론을 유지한다.
 메서드를 감싼 덕에 어댑터의 keypress 옆문도 같이 닫힌다.
