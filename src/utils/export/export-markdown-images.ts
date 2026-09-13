@@ -85,6 +85,7 @@ import {
   editorSize,
   type LooseImg,
   mayHoldImage,
+  rawOpenedBy,
   readHtmlFragment,
   readImgTag,
   type TagSpan,
@@ -149,7 +150,6 @@ export interface RelativeScope {
 const ASSET_SCHEME = "baram-asset:";
 /** An extension worth keeping on a staged image's name — pandoc picks the media type from it. */
 const EXTENSION = /\.([A-Za-z0-9]{1,8})$/;
-/** A POSIX-separated path that begins with a Windows drive letter. */
 type Verdict =
   | { kind: "keep"; source: string }
   | { kind: "refuse" }
@@ -378,35 +378,6 @@ function collectEdits(
   if (!("children" in node)) return;
   const inner = innerContext(ctx, node.type);
   for (const child of node.children) collectEdits(child, inner, walk, edits);
-}
-
-/** A comment opener, or the start tag of an element whose body is verbatim. */
-const RAW_OPENER = /<!--|<(pre|script|style|textarea)(?=[\s/>])/gi;
-/** A comment's end as HTML reads it (pandoc ends one at `--!>` too — measured). */
-const COMMENT_CLOSE = /--!?>/g;
-
-/**
- * The closer of the comment or verbatim element `value` opens without
- * closing, or null. An abrupt comment (`<!-->`, `<!--->`) is closed at once.
- */
-function rawOpenedBy(value: string): null | RegExp {
-  let i = 0;
-  for (;;) {
-    RAW_OPENER.lastIndex = i;
-    const opener = RAW_OPENER.exec(value);
-    if (opener === null) return null;
-    i = opener.index + opener[0].length;
-    const name = opener[1];
-    if (name === undefined && /^-?>/.test(value.slice(i, i + 2))) continue;
-    const close =
-      name === undefined
-        ? COMMENT_CLOSE
-        : new RegExp(`</${name}(?=[\\s/>])`, "gi");
-    close.lastIndex = i;
-    const closer = close.exec(value);
-    if (closer === null) return new RegExp(close.source, "i");
-    i = closer.index + closer[0].length;
-  }
 }
 
 /** Let any node's text close the region the walk is inside. */

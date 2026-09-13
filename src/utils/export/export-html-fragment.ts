@@ -82,8 +82,13 @@ export interface EditorSize {
 
 /** Elements whose body pandoc keeps verbatim (the manual's four exceptions
  *  to markdown inside HTML — measured: `noscript`, `title`, `iframe` bodies
- *  are markup to it): an `<img` in there is not a tag. */
+ *  are markup to it): an `<img` in there is not a tag. The one list every
+ *  rule about verbatim bodies is built from. */
 const OPAQUE = new Set(["pre", "script", "style", "textarea"]);
+/** The start tag of an element whose body is verbatim, as a pattern. */
+const OPAQUE_START = `<(${[...OPAQUE].join("|")})(?=[\\s/>])`;
+/** A comment's end as HTML reads it, and pandoc too (measured: `--!>`). */
+const COMMENT_END = "--!?>";
 
 /** ASCII whitespace — what may separate a tag's attributes, lines included. */
 const WS = "[ \\t\\n\\r\\f]";
@@ -102,6 +107,9 @@ const OPEN_TAG = new RegExp(`^<(${NAME})(?:${WS}+${ATTRIBUTE})*${WS}*/?>`);
 const CLOSE_TAG = new RegExp(`^</(${NAME})${WS}*>`);
 /** A comment as HTML and pandoc both end it: not abrupt, no `--!>`. */
 const COMMENT = /^<!--(?!-?>)(?:(?!--!>)[^])*?-->/;
+/** A comment opener, or the start tag of a verbatim element (global: the
+ *  caller sets `lastIndex`). */
+const RAW_OPENER = new RegExp(`<!--|${OPAQUE_START}`, "gi");
 /** What may not begin a line of caption text (after up to three spaces),
  *  nor follow a tag (after any spaces): a tilde fence, a blockquote marker,
  *  a bullet, a definition marker (`:` or `~`), or any ordered-list marker
@@ -112,14 +120,19 @@ const COMMENT = /^<!--(?!-?>)(?:(?!--!>)[^])*?-->/;
  *  indentation rule cannot see into. A marker needs its space, so `Fig. 1`
  *  and `well-known` are caption text. */
 const ORDERED =
-  "(?:\\d{1,9}|[A-Za-z]|[ivxlcdm]{1,9}|[IVXLCDM]{1,9}|#|@[A-Za-z0-9_-]*)";
-const BLOCK_START = `(?:~~~|>|(?:[-*+:~]|\\(${ORDERED}\\)|${ORDERED}[.)])(?:[ \\t]|$))`;
+  "(?:\\d{1,9}|[a-z]|[ivxlcdm]{1,9}|[IVXLCDM]{2,9}|#|@[A-Za-z0-9_-]*)";
+/** A single capital letter and a period is a marker only before two spaces
+ *  — pandoc's own rule, so that `B. Smith` and `I. Newton` are text. */
+const CAPITAL = "[A-Z]";
+const MARKER = `(?:(?:[-*+:~]|\\(${ORDERED}\\)|\\(${CAPITAL}\\)|${ORDERED}[.)]|${CAPITAL}\\))(?:[ \\t]|$)|${CAPITAL}\\.(?:  |\\t|$))`;
+const BLOCK_START = `(?:~~~|>|${MARKER})`;
 const AFTER_TAG = new RegExp(`^ *${BLOCK_START}`);
 const LINE_START = new RegExp(`^ {0,3}${BLOCK_START}`);
 /** A line, after the first, indented four columns or by a tab. */
 const INDENTED = /^(?: {4}| {0,3}\t)/;
-/** The characters caption text may not hold. `<` is only ever an item. */
-const NOT_CAPTION = /[`$\\<[\]{}|]/;
+/** The characters caption text may not hold (a `<` never reaches it: the
+ *  text ends where the next item begins). */
+const NOT_CAPTION = /[`$\\[\]{}|]/;
 
 /**
  * The `<img …>` start tags of a supported html node, as offsets in its
@@ -165,13 +178,15 @@ function isCaption(text: string): boolean {
 }
 
 /** Where pandoc cannot read an image even in a node this module does not
- *  read: fenced code, a code span, a comment (abrupt ones close at once, an
- *  unclosed one runs to the end) and the body of a verbatim element. */
+ *  read: fenced code (closed by three or more of its own character — a
+ *  longer opener is not held to its length, an estimate), a code span, a
+ *  comment (abrupt ones close at once, an unclosed one runs to the end) and
+ *  the body of a verbatim element. */
 const NOT_A_CANDIDATE = [
-  /(^|[\r\n])[ \t]*(`{3,}|~{3,})[^\r\n]*(?:[\r\n][^]*?(?:[\r\n][ \t]*\2[ \t]*(?=[\r\n]|$)|$)|$)/g,
+  /(^|[\r\n])[ \t]*(`|~)\2{2,}[^\r\n]*(?:[\r\n][^]*?(?:[\r\n][ \t]*\2{3,}[ \t]*(?=[\r\n]|$)|$)|$)/g,
   /`[^`]*`/g,
-  /<!--(?:-?>|(?:(?!--!?>)[^])*(?:--!?>|$))/g,
-  /<(pre|script|style|textarea)(?=[\s/>])[^]*?(?:<\/\1(?=[\s/>])|$)/gi,
+  new RegExp(`<!--(?:-?>|(?:(?!${COMMENT_END})[^])*(?:${COMMENT_END}|$))`, "g"),
+  new RegExp(`${OPAQUE_START}[^]*?(?:</\\1(?=[\\s/>])|$)`, "gi"),
 ];
 
 /**
@@ -184,6 +199,33 @@ export function mayHoldImage(value: string): boolean {
   let text = value;
   for (const region of NOT_A_CANDIDATE) text = text.replace(region, " ");
   return /<img(?=[\s/>])/i.test(text) || text.includes("![");
+}
+
+/**
+ * The closer of the comment or verbatim element `value` opens without
+ * closing, or null — for a node this module did not read, whose raw region
+ * pandoc carries into the nodes that follow. An abrupt comment (`<!-->`,
+ * `<!--->`) is closed at once. The result is a plain (non-global) pattern
+ * to test the following nodes' text with.
+ */
+export function rawOpenedBy(value: string): null | RegExp {
+  let i = 0;
+  for (;;) {
+    RAW_OPENER.lastIndex = i;
+    const opener = RAW_OPENER.exec(value);
+    if (opener === null) return null;
+    i = opener.index + opener[0].length;
+    const name = opener[1];
+    if (name === undefined && /^-?>/.test(value.slice(i, i + 2))) continue;
+    const close = new RegExp(
+      name === undefined ? COMMENT_END : `</${name}(?=[\\s/>])`,
+      "gi",
+    );
+    close.lastIndex = i;
+    const closer = close.exec(value);
+    if (closer === null) return new RegExp(close.source, "i");
+    i = closer.index + closer[0].length;
+  }
 }
 
 /** One `<template>` kept for parsing. Its contents live in an inert document

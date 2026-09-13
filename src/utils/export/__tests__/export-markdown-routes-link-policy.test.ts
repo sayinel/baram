@@ -245,6 +245,28 @@ describe("the images in the markdown that reaches pandoc", () => {
     expect(useUIStore.getState().toast?.message).toContain("vault or folder");
   });
 
+  it("embeds a resized image at its size as the editor itself writes the tag (writer to reader)", async () => {
+    useContextStore.setState({
+      contexts: [context("ctx-vault", "/vault", "vault")],
+    });
+    // The editor round-trips the tag through its own writer, which spells
+    // it `<img … />`; that spelling, not a hand-written one, is what the
+    // export reads.
+    const editor = loadEditor('<img src="img/a.png" alt="A" width="640" />\n');
+    await exportWithPandoc(editor, "t", "docx", {
+      documentPath: "/vault/notes/today.md",
+    });
+
+    const [request] = vi.mocked(exportPandoc).mock.calls[0];
+    expect(request.markdownContent).toContain(
+      "![A](baram-asset:image-0.png){width=640px}",
+    );
+    expect(request.images).toEqual([
+      { name: "image-0.png", source: "img/a.png" },
+    ]);
+    expect(useUIStore.getState().toast).toBeNull();
+  });
+
   it("turns the editor's resized <img> into a markdown image for LaTeX, source as written", async () => {
     useContextStore.setState({
       contexts: [context("ctx-vault", "/vault", "vault")],

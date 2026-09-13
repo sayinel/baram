@@ -12,6 +12,7 @@ import { describe, expect, it } from "vitest";
 import {
   editorSize,
   mayHoldImage,
+  rawOpenedBy,
   readHtmlFragment,
   readImgTag,
   valueToSource,
@@ -155,6 +156,15 @@ describe("readHtmlFragment", () => {
     expect(imgTags('<div>\nFig. 1 <img src="a.png">\n</div>')).toEqual([
       '<img src="a.png">',
     ]);
+    // pandoc's own rule for initials: a capital letter and a period is a
+    // marker only before two spaces (measured: `B. Smith` is text).
+    expect(
+      imgTags(
+        '<div>\nB. Smith, 1997 <img src="a.png">\nI. Newton <img src="b.png">\n</div>',
+      ),
+    ).toEqual(['<img src="a.png">', '<img src="b.png">']);
+    expect(imgTags('<div>\nB.  two <img src="a.png">\n</div>')).toBeNull();
+    expect(imgTags('<div>\nB) two <img src="a.png">\n</div>')).toBeNull();
     // A marker needs its space: a dash inside a word, a star opening
     // emphasis and a heading are caption text.
     expect(
@@ -240,6 +250,25 @@ describe("mayHoldImage", () => {
     expect(mayHoldImage("<div>\n<!-- x --!> <img src='c.png'>\n</div>")).toBe(
       true,
     );
+    // A closing fence may be longer than its opener: the tag after it counts.
+    expect(mayHoldImage('<div>\n```\nx\n````\n<img src="a.png">\n</div>')).toBe(
+      true,
+    );
+  });
+});
+
+describe("rawOpenedBy", () => {
+  it("names the closer of a comment or verbatim element the text opens and does not close", () => {
+    expect(rawOpenedBy("<script>")?.test("</script>")).toBe(true);
+    expect(rawOpenedBy("<script>")?.test("</scripture>")).toBe(false);
+    expect(rawOpenedBy("<pre>x</pre><style>")?.test("</STYLE >")).toBe(true);
+    expect(rawOpenedBy("<div>\n<!--")?.test("-->")).toBe(true);
+    expect(rawOpenedBy("<div>\n<!--")?.test("--!>")).toBe(true);
+    // Closed within the text, or closed at once: nothing carries over.
+    expect(rawOpenedBy("<!-- x --> <img>")).toBeNull();
+    expect(rawOpenedBy("<!--> x")).toBeNull();
+    expect(rawOpenedBy("<script>a</script><img>")).toBeNull();
+    expect(rawOpenedBy("<div>plain</div>")).toBeNull();
   });
 });
 
@@ -283,6 +312,8 @@ describe("editorSize", () => {
     const fooled =
       '<img alt=\'src="img/fake.png"\' src="img/real.png" width="640">';
     expect(editorSize(fooled, readImgTag(fooled))).toEqual({});
+    // A tag the strict parser refuses outright (single quotes are not its
+    // spelling) keeps no size either, before any agreement is checked.
     const loose = "<img src='img/a.png' width='640'>";
     expect(editorSize(loose, readImgTag(loose))).toEqual({});
   });
