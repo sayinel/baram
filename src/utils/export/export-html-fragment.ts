@@ -104,10 +104,16 @@ const CLOSE_TAG = new RegExp(`^</(${NAME})${WS}*>`);
 const COMMENT = /^<!--(?!-?>)(?:(?!--!>)[^])*?-->/;
 /** What may not begin a line of caption text (after up to three spaces),
  *  nor follow a tag (after any spaces): a tilde fence, a blockquote marker,
- *  a list, definition or number marker. Each puts a following tag inside a
- *  block pandoc reads as code, or opens a container the indentation rule
- *  cannot see into. */
-const BLOCK_START = "(?:~~~|>|[-*+:](?:[ \\t]|$)|\\d{1,9}[.)](?:[ \\t]|$))";
+ *  a bullet, a definition marker (`:` or `~`), or any ordered-list marker
+ *  pandoc's markdown knows — a number, a letter, a roman numeral, `#` or an
+ *  example label `@x`, with `.` or `)` and optionally in parentheses. Each
+ *  puts a following tag inside a block pandoc reads as code (`(@x)     <img>`
+ *  is a code block in an example list — measured), or opens a container the
+ *  indentation rule cannot see into. A marker needs its space, so `Fig. 1`
+ *  and `well-known` are caption text. */
+const ORDERED =
+  "(?:\\d{1,9}|[A-Za-z]|[ivxlcdm]{1,9}|[IVXLCDM]{1,9}|#|@[A-Za-z0-9_-]*)";
+const BLOCK_START = `(?:~~~|>|(?:[-*+:~]|\\(${ORDERED}\\)|${ORDERED}[.)])(?:[ \\t]|$))`;
 const AFTER_TAG = new RegExp(`^ *${BLOCK_START}`);
 const LINE_START = new RegExp(`^ {0,3}${BLOCK_START}`);
 /** A line, after the first, indented four columns or by a tab. */
@@ -158,13 +164,26 @@ function isCaption(text: string): boolean {
   return rest.every((line) => !INDENTED.test(line) && !LINE_START.test(line));
 }
 
+/** Where pandoc cannot read an image even in a node this module does not
+ *  read: fenced code, a code span, a comment (abrupt ones close at once, an
+ *  unclosed one runs to the end) and the body of a verbatim element. */
+const NOT_A_CANDIDATE = [
+  /(^|[\r\n])[ \t]*(`{3,}|~{3,})[^\r\n]*(?:[\r\n][^]*?(?:[\r\n][ \t]*\2[ \t]*(?=[\r\n]|$)|$)|$)/g,
+  /`[^`]*`/g,
+  /<!--(?:-?>|(?:(?!--!?>)[^])*(?:--!?>|$))/g,
+  /<(pre|script|style|textarea)(?=[\s/>])[^]*?(?:<\/\1(?=[\s/>])|$)/gi,
+];
+
 /**
- * Might this text hold an image at all? An estimate for the "could not be
- * read" notice of an unsupported node — an `<img` start or a markdown image
- * anywhere, comments and code included — never a count of images.
+ * Might this text hold an image pandoc would read? An estimate for the
+ * "may be missing" notice about a node this module did not read: an `<img`
+ * start or a markdown image outside code, comments and verbatim bodies —
+ * never a count of images, and a code sample of a tag is not one.
  */
 export function mayHoldImage(value: string): boolean {
-  return /<img(?=[\s/>])/i.test(value) || value.includes("![");
+  let text = value;
+  for (const region of NOT_A_CANDIDATE) text = text.replace(region, " ");
+  return /<img(?=[\s/>])/i.test(text) || text.includes("![");
 }
 
 /** One `<template>` kept for parsing. Its contents live in an inert document

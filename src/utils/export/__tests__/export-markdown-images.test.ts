@@ -504,13 +504,14 @@ describe("stageMarkdownImages", () => {
     it("does not mistake `<img` inside another tag's attribute or a script body for an image", () => {
       const md =
         "<div title=\"<img src='missing.png'>\">\n\n<script>var s = \"<img src='x.png'>\";</script>\n\n<textarea><img src='t.png'></textarea>\n";
-      // The attribute is opaque in a node that is read; the two raw-text
-      // elements are not read at all, and each may hold an image.
+      // The attribute is opaque in a node that is read; the two verbatim
+      // elements are not read at all, and a tag in their bodies is not an
+      // image pandoc could read, so nothing is counted either.
       expect(stageMarkdownImages(md, SAVED)).toMatchObject({
         images: [],
         markdown: md,
         refused: 0,
-        unsupportedHtml: 2,
+        unsupportedHtml: 0,
       });
     });
 
@@ -815,13 +816,28 @@ describe("stageMarkdownImages", () => {
 
     it("counts an unread block once, however many rounds the document takes", () => {
       const md =
-        '![k](img/k.png)\n\n<div>\n```\n<img src="img/a.png">\n```\n</div>\n';
+        '![k](img/k.png)\n\n<div>\n$x$ <img src="img/a.png">\n</div>\n';
       expect(stageMarkdownImages(md, SAVED)).toMatchObject({
         images: [{ name: "image-0.png", source: "img/k.png" }],
         markdown:
-          '![k](baram-asset:image-0.png)\n\n<div>\n```\n<img src="img/a.png">\n```\n</div>\n',
+          '![k](baram-asset:image-0.png)\n\n<div>\n$x$ <img src="img/a.png">\n</div>\n',
         unsupportedHtml: 1,
       });
+    });
+
+    it("does not count an unread block whose only tags are code samples, comments or verbatim bodies", () => {
+      for (const md of [
+        '<div>\n~~~html\n<img src="example.png">\n~~~\n</div>\n',
+        "<script>let x=\"</scripture><img src='img/e.png'>\";</script>\n",
+        "<div>\n<!-- x <img src='img/c.png'>\n</div>\n",
+      ]) {
+        expect(stageMarkdownImages(md, SAVED), md).toMatchObject({
+          images: [],
+          markdown: md,
+          refused: 0,
+          unsupportedHtml: 0,
+        });
+      }
     });
 
     it("counts a block whose text it cannot align with the source as unread", () => {
@@ -858,9 +874,11 @@ describe("stageMarkdownImages", () => {
         '<div>\n<img src="img/a.png">~~~\n</div>\n',
         // an indented line is an indented code block to pandoc
         '<div align="center">\n    <img src="img/a.png">\n</div>\n',
-        // a raw-text element and a comment that never ends
-        "<script>let x=\"</scripture><img src='img/e.png'>\";</script>\n",
-        "<div>\n<!-- x <img src='img/c.png'>\n</div>\n",
+        // a container or list marker before the tag
+        '<div>\n> ~~~\n> <img src="img/a.png">\n> ~~~\n</div>\n',
+        '<div>\n(@x)     <img src="img/a.png" alt="A">\n</div>\n',
+        // a pipe table inside the block
+        "<div>\n| a | b |\n| - | - |\n| <img src='img/a.png' alt='p&#124;q'> | z |\n</div>\n",
       ];
       for (const md of shapes) {
         expect(stageMarkdownImages(md, SAVED), md).toEqual({

@@ -138,6 +138,19 @@ describe("readHtmlFragment", () => {
     ).toBeNull();
     expect(imgTags('<div>\n1. ~~~\n   <img src="a.png">\n</div>')).toBeNull();
     expect(imgTags('<div>> <img src="a.png">\n</div>')).toBeNull();
+    // Every ordered marker pandoc's markdown knows, the `~` definition
+    // marker included: `(@x)     <img>` is a code block in an example list.
+    expect(
+      imgTags('<div>\n(@x)     <img src="a.png" alt="A">\n</div>'),
+    ).toBeNull();
+    expect(imgTags('<div>\nTerm\n~     <img src="a.png">\n</div>')).toBeNull();
+    expect(imgTags('<div>\na. <img src="a.png">\n</div>')).toBeNull();
+    expect(imgTags('<div>\niv) <img src="a.png">\n</div>')).toBeNull();
+    expect(imgTags('<div>\n(1) <img src="a.png">\n</div>')).toBeNull();
+    expect(imgTags('<div>\n#. <img src="a.png">\n</div>')).toBeNull();
+    expect(imgTags('<div>\nFig. 1 <img src="a.png">\n</div>')).toEqual([
+      '<img src="a.png">',
+    ]);
     // A marker needs its space: a dash inside a word, a star opening
     // emphasis and a heading are caption text.
     expect(
@@ -192,14 +205,37 @@ describe("readHtmlFragment", () => {
 });
 
 describe("mayHoldImage", () => {
-  it("is an estimate: an `<img` tag start or a markdown image anywhere in the text", () => {
-    expect(
-      mayHoldImage("<script>var s = \"<img src='x.png'>\";</script>"),
-    ).toBe(true);
+  it("is an estimate: an `<img` tag start or a markdown image outside code, comments and verbatim bodies", () => {
     expect(mayHoldImage("<IMG/>")).toBe(true);
     expect(mayHoldImage("<div>\n![a](x.png)\n</div>")).toBe(true);
     expect(mayHoldImage('<img-custom src="b.png">')).toBe(false);
-    expect(mayHoldImage("<div>\n```\ncode\n```\n</div>")).toBe(false);
+    // A code sample of a tag is not an image pandoc would read.
+    expect(
+      mayHoldImage('<div>\n~~~html\n<img src="example.png">\n~~~\n</div>'),
+    ).toBe(false);
+    expect(
+      mayHoldImage("<div>\n```\n<img src='a.png'>\n<img src='b.png'>\n"),
+    ).toBe(false);
+    expect(
+      mayHoldImage("<script>var s = \"<img src='x.png'>\";</script>"),
+    ).toBe(false);
+    expect(
+      mayHoldImage(
+        "<textarea><img src='t.png'></textarea> <pre><img src='p.png'>",
+      ),
+    ).toBe(false);
+    expect(
+      mayHoldImage("<!-- <img src='a.png'> --> <!-- <img src='b.png'>"),
+    ).toBe(false);
+    // A tag outside those regions still counts; an abrupt comment closes
+    // at once, and `--!>` ends one.
+    expect(
+      mayHoldImage("<div>\n`<img src='b.png'>` and <img src='c.png'>\n</div>"),
+    ).toBe(true);
+    expect(mayHoldImage("<div>\n<!--> <img src='b.png'>\n</div>")).toBe(true);
+    expect(mayHoldImage("<div>\n<!-- x --!> <img src='c.png'>\n</div>")).toBe(
+      true,
+    );
   });
 });
 
