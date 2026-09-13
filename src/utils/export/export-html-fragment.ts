@@ -79,6 +79,9 @@ const OPAQUE = new Set(["pre", "script", "style", "textarea"]);
 /** A comment's end as HTML reads it, and pandoc too (measured: `--!>`). */
 const COMMENT_END = "--!?>";
 
+// The constants below are regex SOURCES (strings) composed into the patterns
+// that follow them; `new RegExp` marks where a pattern is built.
+
 /** ASCII whitespace — what may separate a tag's attributes, lines included. */
 const WS = "[ \\t\\n\\r\\f]";
 /** A tag name, and an attribute name: a letter, then letters, digits, `_`,
@@ -96,21 +99,28 @@ const OPEN_TAG = new RegExp(`^<(${NAME})(?:${WS}+${ATTRIBUTE})*${WS}*/?>`);
 const CLOSE_TAG = new RegExp(`^</(${NAME})${WS}*>`);
 /** A comment as HTML and pandoc both end it: not abrupt, no `--!>`. */
 const COMMENT = /^<!--(?!-?>)(?:(?!--!>)[^])*?-->/;
-/** What may not begin a line of caption text (after up to three spaces),
- *  nor follow a tag (after any spaces): a tilde fence, a blockquote marker,
- *  a bullet, a definition marker (`:` or `~`), or any ordered-list marker
- *  pandoc's markdown knows — a number, a letter, a roman numeral, `#` or an
- *  example label `@x`, with `.` or `)` and optionally in parentheses. Each
- *  puts a following tag inside a block pandoc reads as code (`(@x)     <img>`
- *  is a code block in an example list — measured), or opens a container the
- *  indentation rule cannot see into. A marker needs its space, so `Fig. 1`
- *  and `well-known` are caption text. */
-const ORDERED =
+/** A bullet (`-` `*` `+`) or a definition marker (`:` `~`). */
+const BULLET = "[-*+:~]";
+/** What an ordered marker counts with: a number, a lowercase letter, a
+ *  roman numeral, `#`, or an example label `@x`. */
+const ORDINAL =
   "(?:\\d{1,9}|[a-z]|[ivxlcdm]{1,9}|[IVXLCDM]{2,9}|#|@[A-Za-z0-9_-]*)";
-/** A single capital letter and a period is a marker only before two spaces
- *  — pandoc's own rule, so that `B. Smith` and `I. Newton` are text. */
+/** An ordered marker: the ordinal with `.` or `)`, or in parentheses. */
+const ORDERED = `(?:\\(${ORDINAL}\\)|${ORDINAL}[.)])`;
+/** A single capital letter as an ordinal — with `)` or in parentheses like
+ *  any other, but with a period only before TWO spaces: pandoc's own rule,
+ *  so that `B. Smith` and `I. Newton` are text. */
 const CAPITAL = "[A-Z]";
-const MARKER = `(?:(?:[-*+:~]|\\(${ORDERED}\\)|\\(${CAPITAL}\\)|${ORDERED}[.)]|${CAPITAL}\\))(?:[ \\t]|$)|${CAPITAL}\\.(?:  |\\t|$))`;
+const CAPITAL_MARKER = `(?:\\(${CAPITAL}\\)|${CAPITAL}\\))`;
+const CAPITAL_PERIOD = `${CAPITAL}\\.(?:  |\\t|$)`;
+/** A marker needs its space (or the line's end) after it. */
+const MARKER = `(?:(?:${BULLET}|${ORDERED}|${CAPITAL_MARKER})(?:[ \\t]|$)|${CAPITAL_PERIOD})`;
+/** What may not begin a line of supported text (after up to three spaces),
+ *  nor follow a tag (after any spaces): a tilde fence, a blockquote marker,
+ *  or a list marker. Each puts a following tag inside a block pandoc reads
+ *  as code (`(@x)     <img>` is a code block in an example list — measured),
+ *  or opens a container the indentation rule cannot see into. A marker
+ *  needs its space, so `Fig. 1` and `well-known` are text. */
 const BLOCK_START = `(?:~~~|>|${MARKER})`;
 const AFTER_TAG = new RegExp(`^ *${BLOCK_START}`);
 const LINE_START = new RegExp(`^ {0,3}${BLOCK_START}`);
@@ -130,7 +140,7 @@ export function readHtmlFragment(value: string): null | TagSpan[] {
   while (i < value.length) {
     const lt = value.indexOf("<", i);
     const text = value.slice(i, lt === -1 ? value.length : lt);
-    if (!isCaption(text)) return null;
+    if (!isSupportedText(text)) return null;
     if (lt === -1) break;
     const rest = value.slice(lt);
     const comment = COMMENT.exec(rest);
@@ -155,21 +165,25 @@ export function readHtmlFragment(value: string): null | TagSpan[] {
 }
 
 /** Is `text` — what stands between two items, or before the first or after
- *  the last — caption text pandoc cannot read as anything but words? */
-function isCaption(text: string): boolean {
+ *  the last — text pandoc reads as inline prose (words, emphasis, a heading
+ *  line) and never as code, math, a fence, a container or a link target? */
+function isSupportedText(text: string): boolean {
   if (NOT_CAPTION.test(text)) return false;
   const [first, ...rest] = text.split(LINE_END);
   if (AFTER_TAG.test(first)) return false;
   return rest.every((line) => !INDENTED.test(line) && !LINE_START.test(line));
 }
 
-/** Code pandoc cannot read an image in: fenced code (closed by three or
- *  more of its own character — a longer opener is not held to its length,
- *  an estimate) and a code span. */
-const CODE = [
-  /(^|[\r\n])[ \t]*(`|~)\2{2,}[^\r\n]*(?:[\r\n][^]*?(?:[\r\n][ \t]*\2{3,}[ \t]*(?=[\r\n]|$)|$)|$)/g,
-  /`[^`]*`/g,
-];
+/** Fenced code, for the candidate estimate: an opener line of three or more
+ *  backticks or tildes, closed by a line of three or more of the same
+ *  character (a longer opener is not held to its length — an estimate) or
+ *  running to the end. */
+const FENCED_CODE =
+  /(^|[\r\n])[ \t]*(?<fence>`|~)\k<fence>{2,}[^\r\n]*(?:[\r\n][^]*?(?:[\r\n][ \t]*\k<fence>{3,}[ \t]*(?=[\r\n]|$)|$)|$)/g;
+/** A code span, for the candidate estimate. */
+const CODE_SPAN = /`[^`]*`/g;
+/** Code pandoc cannot read an image in. */
+const CODE = [FENCED_CODE, CODE_SPAN];
 
 /** The raw TeX environment opener pandoc's `raw_tex` reads, at the text's start. */
 const TEX_BEGIN = /^\\begin\{([^{}]+)\}/;
