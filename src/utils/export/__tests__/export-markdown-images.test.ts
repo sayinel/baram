@@ -770,6 +770,31 @@ describe("stageMarkdownImages", () => {
       expect(refused).toBe(0);
     });
 
+    it("finds a tag's end by the tokenizer's attribute states: a leading `=` names an attribute, so a `>` inside the next quoted value does not end the tag", () => {
+      expect(
+        stageMarkdownImages(
+          '<div>\n<img = src="img/a>b.png" alt="A">\n</div>\n',
+          SAVED,
+        ),
+      ).toMatchObject({
+        images: [{ name: "image-0.png", source: "img/a>b.png" }],
+        markdown: "<div>\n![A](baram-asset:image-0.png)\n</div>\n",
+        refused: 0,
+      });
+      // `="x` is an attribute NAME (a quote is a name character to HTML), so
+      // the first tag ends at its `>` and the second tag is its own.
+      expect(
+        stageMarkdownImages(
+          "<div>\n<img =\"x><img src='img/b.png'>\">\n</div>\n",
+          SAVED,
+        ),
+      ).toMatchObject({
+        images: [{ name: "image-0.png", source: "img/b.png" }],
+        markdown: '<div>\n![](baram-asset:image-0.png)">\n</div>\n',
+        refused: 1,
+      });
+    });
+
     it("keeps a table cell one cell when a decoded alt holds a pipe", () => {
       const { markdown } = stageMarkdownImages(
         "| a | b |\n| - | - |\n| <img src='img/a.png' alt='p&#124;q'> | c |\n",

@@ -415,7 +415,9 @@ function scanImgTags(html: string): { img: TagSpan[]; markup: TagSpan[] } {
       i = lt + 1;
       continue;
     }
-    const close = tagEnd(html, lt + 1);
+    // Scan from after the tag name: the name is not an attribute, so a `=`
+    // right after it starts a name of `=` rather than a value.
+    const close = tagEnd(html, lt + open[0].length);
     if (close === -1) break;
     const closing = open[1] === "/";
     const name = open[2].toLowerCase();
@@ -438,22 +440,25 @@ function scanImgTags(html: string): { img: TagSpan[]; markup: TagSpan[] } {
 
 /**
  * The index of the `>` that ends the tag opened just before `from`, or -1
- * when the text runs out first. Attribute values are read as the HTML
- * tokenizer reads them: a quote opens a value only as the first character
- * after `=`; an unquoted value runs to whitespace or `>` and a `=` or a quote
- * inside it is an ordinary character, so `<img src=a"b> x "` still ends at
- * its first `>` and `<img src=u/a="b> KEEP "` at its first `>` too.
+ * when the text runs out first — by the tokenizer's own attribute states.
+ * A name runs to whitespace, `/`, `=` or `>` and may itself begin with `=`
+ * (HTML's leading-`=` rule) or hold a quote; a quote opens a value only
+ * right after `=`; an unquoted value ends at whitespace or `>`. So
+ * `<img = src="a>b">` ends at its last `>`, and `<img src=a"b> x "` at its
+ * first.
  */
 function tagEnd(html: string, from: number): number {
-  let state: "attr" | "beforeValue" | "quoted" | "unquoted" = "attr";
+  type State =
+    "afterName" | "beforeName" | "beforeValue" | "name" | "quoted" | "unquoted";
+  let state: State = "beforeName";
   let quote = "";
   for (let j = from; j < html.length; j += 1) {
     const ch = html[j];
     if (state === "quoted") {
-      if (ch === quote) state = "attr";
+      if (ch === quote) state = "afterName";
     } else if (state === "unquoted") {
       if (ch === ">") return j;
-      if (isHtmlSpace(ch)) state = "attr";
+      if (isHtmlSpace(ch)) state = "beforeName";
     } else if (state === "beforeValue") {
       if (isHtmlSpace(ch)) continue;
       if (ch === ">") return j;
@@ -463,10 +468,22 @@ function tagEnd(html: string, from: number): number {
       } else {
         state = "unquoted";
       }
-    } else if (ch === ">") {
-      return j;
-    } else if (ch === "=") {
-      state = "beforeValue";
+    } else if (state === "name") {
+      if (ch === ">") return j;
+      if (isHtmlSpace(ch)) state = "afterName";
+      else if (ch === "/") state = "beforeName";
+      else if (ch === "=") state = "beforeValue";
+    } else if (state === "afterName") {
+      if (ch === ">") return j;
+      if (isHtmlSpace(ch)) continue;
+      if (ch === "=") state = "beforeValue";
+      else if (ch === "/") state = "beforeName";
+      else state = "name";
+    } else {
+      // beforeName: `/` and whitespace are skipped; anything else, `=`
+      // included, starts a name.
+      if (ch === ">") return j;
+      if (!isHtmlSpace(ch) && ch !== "/") state = "name";
     }
   }
   return -1;
