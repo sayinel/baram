@@ -1,4 +1,5 @@
 import { save } from "@tauri-apps/plugin-dialog";
+import { openUrl } from "@tauri-apps/plugin-opener";
 
 import type { Locale } from "../../i18n";
 import type { PandocFormat, PdfOptions } from "../../ipc/types";
@@ -6,11 +7,14 @@ import type { BundledFont } from "../font/bundled-fonts";
 // §5.12 Export — HTML file save + PDF via headless Chrome backend + §53 Notion + §55 Pandoc
 import type { Editor } from "@tiptap/core";
 
+import { t } from "../../i18n";
 import { exportBinaryFile, exportPandoc, exportPdf } from "../../ipc/invoke";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
 import { serializeLiveDoc } from "../editor/serialize-live-doc";
 import { bundledFont } from "../font/bundled-fonts";
+import { helpDocUrl } from "../help-urls";
+import { logger } from "../logger";
 import { buildFontFaceCSS } from "./export-font-embed";
 import { captureEditorHTML, generateStandaloneHTML } from "./export-html";
 import { stripDisallowedMarkdownLinks } from "./export-markdown-links";
@@ -218,10 +222,19 @@ export async function exportWithPandoc(
     referenceDoc: options?.referenceDoc,
   });
   // issue 545: an image left out is not an error — the export went through
-  // without it — but it is not nothing either. Say how many, and why.
-  const notice = imagePolicyNotice(
-    prepared,
-    useSettingsStore.getState().locale as Locale,
-  );
-  if (notice !== null) useUIStore.getState().showToast(notice, "warning");
+  // without it — but it is not nothing either. Say how many, and why — and
+  // where the rest is written up: the action is also what gives the toast
+  // the longer, hover-held lifetime a two-sentence notice needs.
+  const locale = useSettingsStore.getState().locale as Locale;
+  const notice = imagePolicyNotice(prepared, locale);
+  if (notice !== null) {
+    useUIStore.getState().showToast(notice, "warning", undefined, {
+      label: t("export.imageNotice.learnMore", locale),
+      onClick: () => {
+        openUrl(helpDocUrl("export", locale)).catch((e) =>
+          logger.error("[Baram Export] help page", e),
+        );
+      },
+    });
+  }
 }

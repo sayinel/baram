@@ -20,6 +20,8 @@ vi.mock("@tauri-apps/plugin-opener", () => ({
   openUrl: vi.fn().mockResolvedValue(undefined),
 }));
 
+import { openUrl } from "@tauri-apps/plugin-opener";
+
 import type { ContextInfo } from "../../../ipc/types";
 
 import { exportBinaryFile, exportPandoc } from "../../../ipc/invoke";
@@ -147,12 +149,16 @@ describe("the images in the markdown that reaches pandoc", () => {
     expect(request.markdownContent).toContain('<img src="img/b.png">');
     expect(request.images).toEqual([]);
     // The store holds one toast: both sentences arrive in it, the definite
-    // count first.
+    // count first — and a "learn more" action, which is what gives the toast
+    // the longer, hover-held lifetime a two-sentence notice needs.
     const toast = useUIStore.getState().toast;
     expect(toast?.type).toBe("warning");
-    expect(toast?.message).toMatch(/^1 image\(s\) were left out/);
-    expect(toast?.message).toContain(
-      "Images in 1 HTML fragment(s) may be missing",
+    expect(toast?.message).toMatch(/^1 image\(s\) left out/);
+    expect(toast?.message).toContain("1 HTML fragment(s) may be missing");
+    expect(toast?.action?.label).toBe("Learn more");
+    toast?.action?.onClick();
+    expect(vi.mocked(openUrl)).toHaveBeenCalledWith(
+      "https://baram.ing/en/docs/export/",
     );
   });
 
