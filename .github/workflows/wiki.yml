@@ -31,7 +31,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          git clone --depth 1 \
+          # 얕은 clone 을 쓰지 않는다. wiki 는 markdown 몇 장이라 전체를 받아도 비용이
+          # 없는데, shallow clone 에서의 push 는 서버 설정에 따라 거부될 수 있다 —
+          # 이득 0 인 위험을 첫 실행까지 끌고 갈 이유가 없다.
+          git clone \
             "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.wiki.git" \
             "${RUNNER_TEMP}/wiki"
           # 삭제된 페이지가 wiki 에 남지 않도록 먼저 비운다. glob 이 비어도 실패하지
