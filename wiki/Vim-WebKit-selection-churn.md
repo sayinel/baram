@@ -76,8 +76,7 @@ DOM 에 재주장한다. 한 시점의 기준이 아니라 **구간을 억제한
 
 1. **`dispatchCursor` — 모션 경로의 관문.** normal/visual 의 커서 이동과 visual 전이,
    즉 `runSelectionCommand` 를 타는 selection 쓰기가 이 헬퍼를 통과한다. **그 밖의 쓰기는
-   각자 억제를 걸어야 한다** — 검색 착지·활성화 리셋·편집 후 착지가 그렇고, 아래 2~4 번이
-   그렇게 발견된 경로다. dispatch 직후 억제를 걸고, normal 모드면 잔여 DOM range 까지
+   이 헬퍼 밖이고**, 아래 2~4 번이 그렇게 발견된 경로다. dispatch 직후 억제를 걸고, normal 모드면 잔여 DOM range 까지
    `removeAllRanges` 로 지운다. 후자는 유령 하이라이트 수정이다 — WebKit 은 노드 범위를 루트
    앵커 블록의 범위로 재정규화하는데 `.ProseMirror-hideselection *::selection` 은 텍스트
    선택만 숨기므로 블록 하나가 파랗게 남는다. visual 모드는 예외다: 그 범위가 곧 사용자가

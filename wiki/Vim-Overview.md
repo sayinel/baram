@@ -71,8 +71,8 @@ vim 이 기성품으로 없는 이유는 키 바인딩이 아니라 이런 층�
 
 wiki 는 거의 변하지 않는 것만 싣는다. 자주 변하는 것은 canonical 한 집이 있다.
 
-| 찾는 것                 | 가는 곳                                                                                                   |
-| ----------------------- | --------------------------------------------------------------------------------------------------------- |
-| 키 목록과 쓰는 법       | [사용자 문서](https://baram.ing/ko/docs/customization/palette-language-and-vim/)                          |
-| 무엇이 되고 안 되나     | [#298](https://github.com/sayinel/baram/issues/298) · [#372](https://github.com/sayinel/baram/issues/372) |
-| 플러그인용 공개 vim API | **없다** — `index.ts` 가 register 를 플러그인 비노출로 못박았다                                           |
+| 찾는 것                 | 가는 곳                                                                                                       |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------- |
+| 키 목록과 쓰는 법       | [사용자 문서](https://baram.ing/ko/docs/customization/palette-language-and-vim/)                              |
+| 무엇이 되고 안 되나     | [#298](https://github.com/sayinel/baram/issues/298) · [#372](https://github.com/sayinel/baram/issues/372)     |
+| 플러그인용 공개 vim API | **없다** — `src/plugins/**` 어디에서도 vim 을 참조하지 않고, vim register 는 `adapters/` 안에서만 import 된다 |

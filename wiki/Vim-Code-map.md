@@ -2,10 +2,10 @@
 
 vim 구현의 **파일 경로가 사는 유일한 페이지**다. 다른 페이지는 경로를 적지 않고 여기를 가리킨다.
 링크는 `main` 을 가리키므로 파일이 옮겨지면 404 가 된다 — 그리고 리포의 `lint:wiki` 게이트가
-그보다 먼저 빨간불을 낸다. **단 아래 네 절의 검사 강도가 서로 다르다** — 마지막 절의 도입부를 볼 것.
+그보다 먼저 빨간불을 낸다. **단 아래 다섯 절의 검사 강도가 서로 다르다** — 마지막 절의 도입부를 볼 것.
 
 `§` 는 vim 설계서의 절 번호다. 설계서 자체는 내부 문서(리포 밖)지만, **같은 § 가 각 모듈의 헤더
-주석과 커밋 메시지에 붙어 있다** — 공개된 등가물은 그 헤더 주석이고, 어긋나면 **헤더가 옳다**.
+주석에 붙어 있다** — 공개된 등가물은 그 헤더 주석이고, 어긋나면 **헤더가 옳다**.
 
 ## core — 순수 상태기계 (ProseMirror 무의존)
 
@@ -53,11 +53,12 @@ vim 구현의 **파일 경로가 사는 유일한 페이지**다. 다른 페이�
 | [vim-activation.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/vim-activation.ts)                 | 문서 활성화 경계 — 탭 전환 리셋                                                  |
 | [vim-search-line.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/vim-search-line.ts)               | StatusBar input ↔ core 배선 (IME 정공법)                                         |
 | [replace-editor-state.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/replace-editor-state.ts)     | EditorState 전체 교체의 관문 — 전 호출부가 여기를 지난다(관례이고 게이트는 없다) |
+| [vim.css](https://github.com/sayinel/baram/blob/main/src/styles/vim.css)                                                     | WYSIWYG 블록 커서 렌더 (설계 §10) — normal 모드 데코레이션 · 비활성 창 hollow    |
 
 ## CM 표면 — source mode · 코드블록 island
 
 WYSIWYG 이 자체 엔진인 반면 이쪽은 `@replit/codemirror-vim` 어댑터다 ([Overview](Vim-Overview) 참조).
-위의 세 절과 같이 **게이트가 전수로 지킨다** — 이름이 vim 인 파일이 리포 어디에 생겨도 잡힌다.
+위의 세 절과 같이 **게이트가 전수로 지킨다** — 이름이 vim 인 파일이 `src/` 어디에 생겨도 잡힌다(`src/spike/` 프로브는 제외).
 
 | 파일                                                                                                                       | 무엇                                                          |
 | -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
@@ -68,7 +69,6 @@ WYSIWYG 이 자체 엔진인 반면 이쪽은 `@replit/codemirror-vim` 어댑터
 | [code-block-vim-island.ts](https://github.com/sayinel/baram/blob/main/src/extensions/nodes/views/code-block-vim-island.ts) | 섬 배선 — 동기 editing-host 장벽 · PM↔CM 핸드오프 · 상태 피드 |
 | [vim-island-markers.ts](https://github.com/sayinel/baram/blob/main/src/utils/vim-island-markers.ts)                        | 마커 상수 leaf — sanitizer 와 공용 (설계 §4)                  |
 | [VimSearchInput.tsx](https://github.com/sayinel/baram/blob/main/src/components/layout/VimSearchInput.tsx)                  | 검색 input — IME 목적지                                       |
-| [vim.css](https://github.com/sayinel/baram/blob/main/src/styles/vim.css)                                                   | 모드별 커서·선택 렌더                                         |
 
 ## vim 디렉터리 밖 — vim 이 의존하는 공용 파일
 
