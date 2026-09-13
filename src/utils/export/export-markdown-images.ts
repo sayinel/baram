@@ -81,16 +81,18 @@ import {
   toPosixPath,
 } from "../path-utils";
 import {
-  type EditorSize,
-  editorSize,
-  type LooseImg,
   mayHoldImage,
   rawOpenedBy,
   readHtmlFragment,
-  readImgTag,
   type TagSpan,
-  valueToSource,
 } from "./export-html-fragment";
+import { valueToSource } from "./export-html-node-offsets";
+import {
+  type EditorImageMetadata,
+  editorImageMetadata,
+  type LooseImg,
+  readImgTag,
+} from "./export-img-attributes";
 import {
   applyEdits,
   innerContext,
@@ -156,7 +158,7 @@ type Verdict =
   | { kind: "stage"; source: string };
 
 /** What an image edit carries besides its destination. */
-interface ImgAttrs extends EditorSize {
+interface ImgAttrs extends EditorImageMetadata {
   alt: null | string;
 }
 
@@ -474,7 +476,7 @@ function imgTagEdits(
       verdict.kind === "keep"
         ? verdict.source
         : `${ASSET_SCHEME}${stageRequest(walk, verdict.source)}`;
-    const attrs = { alt: loose.alt, ...editorSize(raw, loose) };
+    const attrs = { alt: loose.alt, ...editorImageMetadata(raw, loose) };
     edits.push(imageEditAt(at, attrs, url, ctx));
   }
 }
@@ -540,7 +542,7 @@ export function rewriteImageTagsAsMarkdown(markdown: string): {
         edits.push(
           imageEditAt(
             at,
-            { alt: loose.alt, ...editorSize(raw, loose) },
+            { alt: loose.alt, ...editorImageMetadata(raw, loose) },
             loose.src,
             ctx,
           ),
