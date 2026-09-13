@@ -114,14 +114,16 @@ const parser = unified()
 
 /**
  * Node types whose text is literal — never a block ID, never a reference. An
- * image's alt text and a reference-style link definition are attributes on
- * the PM side, not text a blockReference could live in.
+ * image's alt text (inline or reference-style) and a reference-style link
+ * definition are attributes on the PM side, not text a blockReference could
+ * live in.
  */
 const LITERAL_TYPES = new Set([
   "code",
   "definition",
   "html",
   "image",
+  "imageReference",
   "inlineCode",
   "inlineMath",
   "math",

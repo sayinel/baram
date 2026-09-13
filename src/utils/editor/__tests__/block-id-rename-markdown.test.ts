@@ -91,6 +91,14 @@ describe("renameBlockIdInMarkdown — the definition", () => {
     );
   });
 
+  it("leaves a reference-style image's alt text alone, like an inline image's", () => {
+    const md =
+      "![a ((#^old))][pic] ![((#^old))] ((#^old))\n\n[pic]: x.png\n[((#^old))]: z.png\n";
+    expect(rename(md)).toBe(
+      "![a ((#^old))][pic] ![((#^old))] ((#^fresh))\n\n[pic]: x.png\n[((#^old))]: z.png\n",
+    );
+  });
+
   it("renames a document that starts with a byte order mark", () => {
     // micromark drops a leading U+FEFF before it parses; the literal ranges
     // it reports are then one short for the original string, and every one
