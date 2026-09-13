@@ -14,26 +14,13 @@ import {
 } from "../export-image-source-policy";
 import { stageMarkdownImages } from "../export-markdown-images";
 import { stripDisallowedMarkdownLinks } from "../export-markdown-links";
-
-/** The diagram assets this export produced — the only `baram-asset:` names kept. */
-const KNOWN = new Set(["mermaid-0.png"]);
-const SAVED = {
-  contextRoot: "/vault",
-  documentPath: "/vault/notes/today.md",
-  knownAssets: KNOWN,
-};
-const UNSAVED = {
-  contextRoot: "/vault",
-  documentPath: null,
-  knownAssets: KNOWN,
-};
-/** A file opened on its own: no vault or folder context to be relative to. */
-const LONE = {
-  contextRoot: null,
-  documentPath: "/Users/me/solo.md",
-  knownAssets: KNOWN,
-};
-const IN_VAULT = relativeScope(SAVED.documentPath, SAVED.contextRoot);
+import {
+  IN_VAULT,
+  KNOWN,
+  LONE,
+  SAVED,
+  UNSAVED,
+} from "./helpers/image-policy-fixtures";
 
 describe("stageMarkdownImages", () => {
   it("returns the same string when there is nothing to change", () => {

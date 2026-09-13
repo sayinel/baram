@@ -8,15 +8,7 @@ import {
   classifyImageSource,
   relativeScope,
 } from "../export-image-source-policy";
-
-/** The diagram assets this export produced — the only `baram-asset:` names kept. */
-const KNOWN = new Set(["mermaid-0.png"]);
-const SAVED = {
-  contextRoot: "/vault",
-  documentPath: "/vault/notes/today.md",
-  knownAssets: KNOWN,
-};
-const IN_VAULT = relativeScope(SAVED.documentPath, SAVED.contextRoot);
+import { IN_VAULT, KNOWN } from "./helpers/image-policy-fixtures";
 
 describe("classifyImageSource", () => {
   it("keeps a staged mermaid asset and refuses any asset name this export did not produce", () => {

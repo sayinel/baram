@@ -9,14 +9,7 @@ import {
   rewriteImageTagsAsMarkdown,
   stageMarkdownImages,
 } from "../export-markdown-images";
-
-/** The diagram assets this export produced — the only `baram-asset:` names kept. */
-const KNOWN = new Set(["mermaid-0.png"]);
-const SAVED = {
-  contextRoot: "/vault",
-  documentPath: "/vault/notes/today.md",
-  knownAssets: KNOWN,
-};
+import { SAVED } from "./helpers/image-policy-fixtures";
 
 describe("stageMarkdownImages on <img> tags", () => {
   it("turns the editor's resized <img> tag into a staged image with its width, or into alt text", () => {
