@@ -47,12 +47,6 @@
   cursor: col-resize;
 }
 
-/* §5.5 M10: Virtual scroll for 50+ row tables */
-.tiptap table tr.baram-vscroll {
-  contain-intrinsic-height: 40px;
-  content-visibility: auto;
-}
-
 /* §perf-large-file C3.1c: content-visibility:auto forced whole-document
  * re-layout on every caret/coordinate query in WKWebView (~300ms per
  * keystroke, ~5s per click on a 3,531-block doc; Safari Timeline showed

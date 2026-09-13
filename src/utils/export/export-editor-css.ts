@@ -88,17 +88,21 @@ const BLANK_LINES_RE = /\n{3,}/g;
 /**
  * Remove every dropped declaration, repeating until the text stops changing.
  *
- * ‼️ One `/g` pass is NOT enough, and the case it misses is in this repo. The
- * pattern anchors on the `;` or `{` that precedes a declaration and CONSUMES
- * the `;` that ends it — so for two dropped declarations in a row, the first
- * match eats the separator the second one needs, and the second survives:
+ * ‼️ One `/g` pass is NOT enough, and the case that motivated this loop was in
+ * this repo. The pattern anchors on the `;` or `{` that precedes a declaration
+ * and CONSUMES the `;` that ends it — so for two dropped declarations in a
+ * row, the first match eats the separator the second one needs, and the
+ * second survives. That was editor/tables.css's since-removed
+ * `tr.baram-vscroll` rule:
  *
- *     .tiptap table tr.baram-vscroll {   // editor/tables.css
+ *     .tiptap table tr.baram-vscroll {   // editor/tables.css (removed)
  *       contain-intrinsic-height: 40px;
  *       content-visibility: auto;        // ← shipped, before this loop existed
  *     }
  *
- * `content-visibility: auto` is the worst possible survivor: content Chrome
+ * The rule is gone, but the hazard it exposed is generic to any two dropped
+ * declarations back to back, so this loop stays. `content-visibility: auto`
+ * is the worst possible survivor: content Chrome
  * decides is off-screen may not be laid out when it prints, so a long table
  * loses rows. Re-running to a fixpoint is a couple of extra passes over a
  * string built once per export, and it needs no regex feature (lookbehind)

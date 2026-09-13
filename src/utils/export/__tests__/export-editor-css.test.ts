@@ -80,9 +80,12 @@ describe("rescopeEditorCSS", () => {
     // ‼️ This is the assertion that caught the real bug, and the per-fixture
     // checks above are not a substitute for it: the single `/g` pass handled
     // every fixture correctly and still shipped `content-visibility: auto`,
-    // because editor/tables.css puts two dropped declarations back to back and
-    // the first match ate the separator the second one needed. Only a sweep of
-    // the WHOLE output can see that.
+    // because a rule once had two dropped declarations back to back and the
+    // first match ate the separator the second one needed. That case (editor/
+    // tables.css's since-removed `tr.baram-vscroll` rule) is now covered by the
+    // synthetic fixture above ("drops the longer contain-* properties, not
+    // just the prefix"), but only a sweep of the WHOLE output can see this
+    // class of bug in general.
     const css = buildExportStylesheet();
     // Iterating the list itself, so a property added to it later cannot be
     // dropped in production and left unswept here.
