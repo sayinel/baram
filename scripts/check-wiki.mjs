@@ -19,6 +19,11 @@ const BLOB = /https:\/\/github\.com\/sayinel\/baram\/blob\/main\/([^)\s]+)/g;
 const LINE_FLOOR = 40;
 const LINE_CEIL = 200;
 
+/** 길이 예외. `site/scripts/check-pages.mjs` 의 `SIZE_EXCEPTIONS` 와 같은 모양이다 —
+ *  예산은 "주제가 둘인가" 를 묻는 장치이지 그 자체가 목적이 아니므로, 정당하게 짧거나
+ *  긴 페이지는 **이유와 함께** 여기 적는다. 이유 없이 추가하지 말 것. */
+const SIZE_EXCEPTIONS = new Map();
+
 /** 공개 문서 사이트 링크 → `site/` 의 소스 파일. 사용법 라우팅 전체가 이 링크들에 달려 있고,
  *  `site/` 가 페이지를 옮기면 wiki 는 조용히 독자를 404 로 보낸다. 리포 선례: `help-urls.test.ts`
  *  가 `site/help-routes.json` 에서 파생 검증한다. */
@@ -114,9 +119,26 @@ for (const f of files) {
 //     결정 기록이 규칙으로 세웠는데 게이트가 인코딩하지 않으면, "wiki 엔 게이트가 없으니
 //     소스를 리포 안에 둔다" 는 이 설계의 논지에 규칙 하나가 빠져 있는 셈이 된다.
 for (const f of pages) {
+  if (SIZE_EXCEPTIONS.has(f)) continue;
   const n = page(f).split("\n").length;
   if (n < LINE_FLOOR || n > LINE_CEIL) {
-    problems.push(`[페이지 길이] ${f} — ${n}줄, 예산 ${LINE_FLOOR}~${LINE_CEIL}`);
+    problems.push(
+      `[페이지 길이] ${f} — ${n}줄, 예산 ${LINE_FLOOR}~${LINE_CEIL}` +
+        ` (정당한 예외면 check-wiki.mjs 의 SIZE_EXCEPTIONS 에 이유와 함께 적을 것)`,
+    );
+  }
+}
+
+// 3e. `wiki/` 는 평평해야 한다.
+//     GitHub wiki 에 폴더 계층이 없고 게시도 `cp wiki/*.md` 한 줄이라, 하위 디렉터리에
+//     둔 페이지는 **게시되지 않는다.** 그런데 위 검사들은 비재귀 `readdirSync` 라 그것을
+//     보지 못하고 초록을 낸다 — 기여자가 페이지를 쓰고 게이트를 통과했는데 wiki 에는
+//     없는 상태가 된다. 조용히 버리지 말고 여기서 막는다.
+for (const entry of readdirSync(WIKI, { withFileTypes: true })) {
+  if (entry.isDirectory()) {
+    problems.push(
+      `[하위 디렉터리 금지] ${entry.name}/ — wiki 는 평평하다. 계층은 페이지 이름으로 만들 것`,
+    );
   }
 }
 
