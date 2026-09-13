@@ -15,8 +15,7 @@ IME, 블록 경계, 그리고 섬의 수명.
 ## 모듈 로딩
 
 vim 모듈은 **동적 import** 다. 설정을 켜지 않는 사용자는 내려받지 않는다. 모듈 promise 는
-캐시되어 source mode 를 드나들 때마다, 그리고 코드블록마다 **같은 모듈을 공유한다** — 세
-표면에 세 벌을 두지 않는 방법이 이것이다.
+캐시되어 source mode 를 드나들 때마다, 그리고 코드블록마다 **같은 모듈을 공유한다.**
 
 확장은 `Prec.highest(vim())` 으로 세운다. vim 의 키 처리는 자기 ViewPlugin 핸들러에서
 일어나므로 **어떤 keymap 도 그 위에 앉을 수 없다.** 이 사실이 아래 경계 처리의 모양을 정한다.
@@ -96,10 +95,11 @@ CodeMirror 의 같은 타깃 기록 리스너가 계속 돌아야 한다.
 | **CM 인스턴스** (attach → detach, 재생성마다 반복) | vim controller, 섬 상태 리스너(focusin · focusout · keydown), 그리고 바로 그 인스턴스를 캡처한 클로저들                                  |
 
 `detachCM` 은 복원 메모를 **보존한다** — 재생성 뒤의 복원이 그 메모로 산다. 레지스트리를
-해제하는 것은 `destroy` 뿐이다.
+해제하는 것은 `destroy` 뿐이다. **이건 핀이 아니라 규약이다** — `destroy` 를 거치지 않는 teardown
+경로를 새로 만들면 레지스트리가 샌다.
 
 의존 방향은 한쪽이다: NodeView → 결합부 → (controller · 상태 · 키 · 레지스트리). 결합부는
-NodeView 클래스도 vim plugin 도 import 하지 않는다.
+NodeView 클래스도 `vim-plugin.ts` 도 import 하지 않는다(`vim-keys` · `vim-status` 같은 leaf 는 쓴다).
 
 진입이 "됐다 안 됐다" 했던 비결정성과 그 핸드오프 채널은
 [Input islands and block entry](Vim-Input-islands-and-block-entry) 에 있다.
