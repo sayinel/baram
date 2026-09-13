@@ -1,0 +1,46 @@
+name: Publish Wiki
+
+# wiki 소스는 리포의 `wiki/` 에 있고 PR 에서 `npm run lint:wiki` 가 검사한다.
+# 이 워크플로는 검사가 아니라 **게시**다 — main 에 들어온 것을 wiki 탭으로 옮긴다.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "wiki/**"
+      - ".github/workflows/wiki.yml"
+  workflow_dispatch:
+
+# 같은 리포의 wiki 는 기본 GITHUB_TOKEN 으로 push 할 수 있다 — PAT 불필요.
+permissions:
+  contents: write
+
+concurrency:
+  group: wiki
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # ‼️ 서드파티 wiki 액션을 쓰지 않는다. 하는 일이 clone·복사·push 뿐이라
+      #    SHA 핀으로 관리할 의존성을 하나 더 만들 이유가 없다.
+      - name: Publish wiki/ to the GitHub wiki
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git clone --depth 1 \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.wiki.git" \
+            "${RUNNER_TEMP}/wiki"
+          # 삭제된 페이지가 wiki 에 남지 않도록 먼저 비운다. glob 이 비어도 실패하지
+          # 않게 find 를 쓴다.
+          find "${RUNNER_TEMP}/wiki" -maxdepth 1 -name '*.md' -delete
+          cp wiki/*.md "${RUNNER_TEMP}/wiki/"
+          cd "${RUNNER_TEMP}/wiki"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet || git commit -m "docs: publish wiki from ${GITHUB_SHA}"
+          git push
