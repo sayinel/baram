@@ -15,6 +15,15 @@ const VIM_ROOT = "src/extensions/plugins/vim";
 const CODE_MAP = "Vim-Code-map.md";
 const BLOB = /https:\/\/github\.com\/sayinel\/baram\/blob\/main\/([^)\s]+)/g;
 
+/** 페이지 길이 예산 (결정 기록의 규칙). 예약 페이지는 목차·푸터라 면제. */
+const LINE_FLOOR = 40;
+const LINE_CEIL = 200;
+
+/** 공개 문서 사이트 링크 → `site/` 의 소스 파일. 사용법 라우팅 전체가 이 링크들에 달려 있고,
+ *  `site/` 가 페이지를 옮기면 wiki 는 조용히 독자를 404 로 보낸다. 리포 선례: `help-urls.test.ts`
+ *  가 `site/help-routes.json` 에서 파생 검증한다. */
+const SITE_LINK = /https:\/\/baram\.ing\/([^)\s#]+)/g;
+
 /** 제목 `Vim Architecture` → 파일 `Vim-Architecture.md`. GitHub wiki 는 제목에
  *  슬래시·콜론 등을 금지하고 폴더로 계층을 만들 수 없다 — 이름이 곧 계층이다. */
 const PAGE_NAME = /^[A-Z][A-Za-z0-9]*(-[A-Za-z0-9]+)*\.md$/;
@@ -71,26 +80,89 @@ for (const f of files) {
   }
 }
 
-// 4. code map 전수 검증
+// 3b. `[[Page Name]]` 금지.
+//     GitHub wiki 의 **네이티브** 문법이라 기여자가 자연히 손을 뻗고 렌더도 되는데, 대상이
+//     없으면 **조용히** 깨진다 — 위의 검사가 이 모양을 아예 보지 못하기 때문이다. 이 wiki 의
+//     링크 문법은 `[텍스트](Page-Name)` 하나로 고정하고, 다른 모양은 실패시킨다.
+for (const f of files) {
+  if (/\[\[/.test(page(f))) {
+    problems.push(`[금지된 링크 문법] ${f} — '[[…]]' 대신 '[텍스트](Page-Name)' 을 쓸 것`);
+  }
+}
+
+// 3c. 페이지 길이 예산.
+//     결정 기록이 규칙으로 세웠는데 게이트가 인코딩하지 않으면, "wiki 엔 게이트가 없으니
+//     소스를 리포 안에 둔다" 는 이 설계의 논지에 규칙 하나가 빠져 있는 셈이 된다.
+for (const f of pages) {
+  const n = page(f).split("\n").length;
+  if (n < LINE_FLOOR || n > LINE_CEIL) {
+    problems.push(`[페이지 길이] ${f} — ${n}줄, 예산 ${LINE_FLOOR}~${LINE_CEIL}`);
+  }
+}
+
+// 3d. 공개 문서 사이트 링크가 실제 페이지를 가리키는가.
+//     `site/` 는 별도 npm 프로젝트라 자기 게이트가 있지만, wiki → site 방향은 아무도 안 본다.
+for (const f of files) {
+  for (const [, path] of page(f).matchAll(SITE_LINK)) {
+    const slug = path.replace(/\/$/, "");
+    const base = `site/src/content/docs/${slug}`;
+    const hit = [".md", ".mdx", "/index.md", "/index.mdx"].some((ext) =>
+      existsSync(base + ext),
+    );
+    if (!hit) problems.push(`[사이트 링크가 없는 페이지를 가리킨다] ${f} → ${path}`);
+  }
+}
+
+// 4. code map 검증 — 세 티어. 성격이 다른 세 모집단이라 단언도 셋이다.
+//
 //    `.docs` 가 낡은 방식은 "옮겨진 파일"이 아니라 "추가됐는데 지도에 없는 파일"이었다.
-//    그래서 경로 실존만이 아니라 **전수**를 단언한다.
+//    그래서 티어 A·B 는 경로 실존만이 아니라 **전수**를 단언한다.
 //
 //    ‼️ 열거는 `git ls-files` 로 한다 — 디렉터리를 직접 읽으면 추적되지 않는 세션 산출물
 //       (`.omc/state/**`)이 vim 디렉터리 안에 섞여 있어 같이 잡힌다. 추적 여부를 기준으로
 //       삼으면 제외 목록을 손으로 관리할 필요가 없다.
+//
+//    ‼️ 범위 주의 — 전수는 **vim 이 통째로 소유한 것에만** 건다:
+//       (A) `src/extensions/plugins/vim/**`
+//       (B) 그 밖에서 basename 이 vim 인 추적 파일 — **손 목록이 아니라 발견 규칙**이라
+//           새 `vim-*.ts` 가 어디 생겨도 잡힌다.
+//       지도의 "vim 디렉터리 밖" 절(티어 C)은 **사람이 고른 목록**이라 dangling 만 본다.
+//       여기에 전수를 걸 수 없는 이유: 그 파일들이 사는 디렉터리는 vim 소유가 아니고,
+//       "vim 이 import 하는 것" 으로 넓히면 **44개**가 잡힌다 — 대부분 toolbar·context
+//       menu·tab switching·AI 커맨드처럼 "지금 vim modal 인가"만 묻는 우발적 소비자다.
+//       (이 숫자를 남기는 이유: 다음 사람이 반드시 "의존성으로 넓히면 되지 않나"를 다시
+//        떠올리고, 근거 없이는 그게 좋은 아이디어로 보인다.)
+//       게이트가 못 잡는 결함은 **페이지가 이름 붙여 설명하는 동작의 집이 그 절에 없는 경우**
+//       이고, 그건 사람이 본다 — 규칙은 CLAUDE.md 와 지도 그 절의 도입부에 있다.
 if (files.includes(CODE_MAP)) {
   const listed = new Set();
   for (const [, p] of page(CODE_MAP).matchAll(BLOB)) listed.add(p);
 
+  // 티어 A·B·C 공통: 지도가 가리키는 경로는 실존해야 한다 (옮겨지면 404).
   for (const p of listed) {
     if (!existsSync(p)) problems.push(`[code map 이 없는 파일을 가리킨다] ${p}`);
   }
 
-  const tracked = execFileSync("git", ["ls-files", VIM_ROOT], { encoding: "utf8" })
-    .split("\n")
-    .filter((p) => p && !p.includes("/__tests__/"));
-  for (const p of tracked) {
-    if (!listed.has(p)) problems.push(`[code map 누락] ${p}`);
+  const tracked = (args) =>
+    execFileSync("git", ["ls-files", ...args], { encoding: "utf8" })
+      .split("\n")
+      .filter((p) => p && !p.includes("/__tests__/"));
+
+  // 티어 A — vim 이 통째로 소유한 디렉터리. 새 파일의 기본 착지점이고, 실제 드리프트가
+  //          일어난 곳이다.
+  for (const p of tracked([VIM_ROOT])) {
+    if (!listed.has(p)) problems.push(`[code map 누락 · vim 디렉터리] ${p}`);
+  }
+
+  // 티어 B — 그 밖에서 이름이 vim 인 파일. `src/spike/` 는 프로브라 지도의 주제가 아니다.
+  const tierB = tracked(["src"]).filter(
+    (p) =>
+      !p.startsWith(`${VIM_ROOT}/`) &&
+      !p.startsWith("src/spike/") &&
+      /vim/i.test(p.slice(p.lastIndexOf("/") + 1)),
+  );
+  for (const p of tierB) {
+    if (!listed.has(p)) problems.push(`[code map 누락 · vim 이름 파일] ${p}`);
   }
 }
 
