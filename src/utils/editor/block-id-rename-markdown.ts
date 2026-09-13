@@ -132,10 +132,19 @@ function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/** `[start, end)` offsets of the literal nodes and of the tables in `markdown`. */
+/**
+ * `[start, end)` offsets of the literal nodes and of the tables in `markdown`.
+ *
+ * micromark drops a leading byte order mark before it parses, so every
+ * offset it reports is one short for a document that starts with one —
+ * enough to land each range on the text just before it and exempt a
+ * reference from the rename. Parse without the mark and shift the offsets
+ * back (issue 620).
+ */
 function parsedRanges(markdown: string): { literal: Range[]; table: Range[] } {
   const literal: Range[] = [];
   const table: Range[] = [];
+  const shift = markdown.startsWith("\uFEFF") ? 1 : 0;
   const visit = (node: {
     children?: unknown[];
     position?: { end: { offset?: number }; start: { offset?: number } };
@@ -144,15 +153,20 @@ function parsedRanges(markdown: string): { literal: Range[]; table: Range[] } {
     const start = node.position?.start.offset;
     const end = node.position?.end.offset;
     if (start !== undefined && end !== undefined) {
+      const range: Range = [start + shift, end + shift];
       if (LITERAL_TYPES.has(node.type)) {
-        literal.push([start, end]);
+        literal.push(range);
         return;
       }
-      if (node.type === "table") table.push([start, end]);
+      if (node.type === "table") table.push(range);
     }
     for (const child of node.children ?? []) visit(child as typeof node);
   };
-  visit(parser.parse(markdown) as unknown as Parameters<typeof visit>[0]);
+  visit(
+    parser.parse(markdown.slice(shift)) as unknown as Parameters<
+      typeof visit
+    >[0],
+  );
   return { literal, table };
 }
 

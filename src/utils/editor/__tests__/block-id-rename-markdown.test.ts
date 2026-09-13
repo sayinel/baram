@@ -91,6 +91,15 @@ describe("renameBlockIdInMarkdown — the definition", () => {
     );
   });
 
+  it("renames a document that starts with a byte order mark", () => {
+    // micromark drops a leading U+FEFF before it parses; the literal ranges
+    // it reports are then one short for the original string, and every one
+    // of them used to land on the text just before it.
+    expect(rename("\uFEFF((#^old))`x` ^old\n")).toBe(
+      "\uFEFF((#^fresh))`x` ^fresh\n",
+    );
+  });
+
   it("is byte-identical when nothing matches", () => {
     const md = "no ids here\n\n((other#^old))\n";
     expect(rename(md)).toBe(md);
