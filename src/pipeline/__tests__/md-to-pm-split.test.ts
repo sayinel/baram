@@ -3,9 +3,9 @@ import { Schema } from "@tiptap/pm/model";
 import { describe, expect, it } from "vitest";
 
 import { extractBlockIdFromMdast } from "../convert-block-special";
+import { splitTextWithCustomInlineMarks } from "../convert-inline-custom-marks";
 import {
   splitTextWithBlockRefs,
-  splitTextWithCustomInlineMarks,
   splitTextWithMentions,
   splitTextWithPattern,
   splitTextWithTags,

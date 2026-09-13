@@ -14,6 +14,21 @@ import {
   WIKILINK_RE,
 } from "./transformers/wikilink-transformer";
 
+/**
+ * 텍스트 안에 있으면 **노드**가 만들어질 수 있음을 알리는 표식 — 분리기들의 fast check.
+ *
+ * 한 곳에만 적는다. `convert-inline.ts`의 분리기와
+ * `convert-inline-custom-marks.ts`의 구간 판정이 같은 목록을 봐야 하기 때문이다.
+ * 갈라지면 커스텀 마크가 노드를 감쌀 때 마크는 못 실리는데 구분자만 지워져,
+ * 사용자가 친 `==`가 흔적 없이 사라진다.
+ */
+export const INLINE_NODE_TRIGGERS = {
+  blockReference: "((",
+  mention: "@[[",
+  tagNode: "#",
+  wikilink: "[[",
+} as const;
+
 // §perf-large-file: Pre-compiled regex with 'g' flag — avoid per-call RegExp allocation
 const WIKILINK_RE_G = new RegExp(WIKILINK_RE.source, "g");
 const BLOCK_REF_RE_G = new RegExp(BLOCK_REF_RE.source, "g");
@@ -201,116 +216,4 @@ export function splitTextWithWikilinks(
       });
     },
   );
-}
-
-/** Custom inline mark patterns: ==highlight==, ^superscript^, ~subscript~ */
-const CUSTOM_MARK_PATTERNS: {
-  fastCheck: string;
-  markName: string;
-  re: RegExp;
-}[] = [
-  { markName: "highlight", re: /==((?:[^=]|=[^=])+)==/g, fastCheck: "==" },
-  // Superscript ^text^: like subscript, require the opening ^ to hug the first
-  // content char and the closing ^ to hug the last one, so prose containing two
-  // stray carets is not treated as superscript. Content must not start/end with
-  // whitespace.
-  {
-    markName: "superscript",
-    re: /\^([^^\s](?:[^^]*[^^\s])?)\^/g,
-    fastCheck: "^",
-  },
-  // Subscript ~text~ (single tilde). To distinguish from prose that merely
-  // contains two tildes (e.g. "~2배 향상 또는 ~4배"), require the opening ~ to
-  // hug the first content char and the closing ~ to hug the last one — i.e.
-  // the content must neither start nor end with whitespace.
-  {
-    markName: "subscript",
-    re: /(?<![~])~([^~\s](?:[^~]*[^~\s])?)~(?!~)/g,
-    fastCheck: "~",
-  },
-];
-
-/**
- * Split text at custom inline mark boundaries (==highlight==, ^super^, ~sub~).
- * Processes each mark pattern in order; returns empty array if no matches.
- */
-export function splitTextWithCustomInlineMarks(
-  text: string,
-  schema: Schema,
-  parentMarks: Mark[],
-): PmNode[] {
-  // Try each pattern; first match wins
-  for (const { markName, re, fastCheck } of CUSTOM_MARK_PATTERNS) {
-    if (!schema.marks[markName]) continue;
-    if (!text.includes(fastCheck)) continue;
-
-    const nodes = splitTextWithSingleCustomMark(
-      text,
-      schema,
-      parentMarks,
-      markName,
-      re,
-    );
-    if (nodes.length > 0) return nodes;
-  }
-  return [];
-}
-
-/** Split text on a single custom mark regex, returning PM nodes with the mark applied */
-function splitTextWithSingleCustomMark(
-  text: string,
-  schema: Schema,
-  parentMarks: Mark[],
-  markName: string,
-  regex: RegExp,
-): PmNode[] {
-  const result: PmNode[] = [];
-  const re = new RegExp(regex.source, regex.flags);
-  let lastIndex = 0;
-  let match: null | RegExpExecArray;
-
-  while ((match = re.exec(text)) !== null) {
-    // Text before the match
-    if (match.index > lastIndex) {
-      const before = text.slice(lastIndex, match.index);
-      // Recursively check remaining patterns on the "before" text
-      const beforeNodes = splitTextWithCustomInlineMarks(
-        before,
-        schema,
-        parentMarks,
-      );
-      if (beforeNodes.length > 0) {
-        result.push(...beforeNodes);
-      } else {
-        result.push(schema.text(before, parentMarks));
-      }
-    }
-
-    // The matched content with the mark applied
-    const mark = schema.marks[markName]?.create();
-    if (mark) {
-      result.push(schema.text(match[1], [...parentMarks, mark]));
-    }
-
-    lastIndex = re.lastIndex;
-  }
-
-  if (result.length === 0) return [];
-
-  // Text after the last match
-  if (lastIndex < text.length) {
-    const after = text.slice(lastIndex);
-    const afterNodes = splitTextWithCustomInlineMarks(
-      after,
-      schema,
-      parentMarks,
-    );
-    if (afterNodes.length > 0) {
-      result.push(...afterNodes);
-    } else {
-      result.push(schema.text(after, parentMarks));
-    }
-  }
-
-  return result;
 }

@@ -7,8 +7,12 @@ import type { Mark, Node as PmNode, Schema } from "@tiptap/pm/model";
 import type { PhrasingContent, Text } from "mdast";
 
 import {
-  splitTextWithBlockRefs,
+  normalizeCrossNodeCustomMarks,
   splitTextWithCustomInlineMarks,
+} from "./convert-inline-custom-marks";
+import {
+  INLINE_NODE_TRIGGERS,
+  splitTextWithBlockRefs,
   splitTextWithMentions,
   splitTextWithTags,
   splitTextWithWikilinks,
@@ -17,10 +21,24 @@ import { markTransformers, nodeTransformers } from "./transformers";
 
 /** Convert inline mdast children to PM nodes with marks */
 export function convertInlineChildren(
-  children: PhrasingContent[],
+  rawChildren: PhrasingContent[],
   schema: Schema,
   parentMarks: Mark[],
+  skipCustomMarkNormalize = false,
 ): PmNode[] {
+  // 형제 노드를 가로지르는 `==`/`~`/`^` 짝을 아래 HTML 상태 기계가 읽는 토큰으로
+  // 먼저 바꾼다 — `==**b**==`처럼 안에 다른 마크가 있으면 텍스트 노드 하나에 거는
+  // 정규식이 짝을 못 찾아 마크가 통째로 사라졌다.
+  //
+  // 바꿀지 말지는 **실제로 변환해 보고** 정한다. 구간이 텍스트만 내놓을 때에만
+  // 구분자를 지운다 — 마크는 텍스트에만 실리므로, 노드가 하나라도 섞이면 마크는
+  // 못 실리는데 구분자만 사라져 사용자가 친 `==`가 흔적 없이 없어진다.
+  // `skipCustomMarkNormalize`는 그 검증 호출이 자기를 다시 부르지 않게 한다.
+  const children = skipCustomMarkNormalize
+    ? rawChildren
+    : normalizeCrossNodeCustomMarks(rawChildren, schema, (span) =>
+        convertInlineChildren(span, schema, [], true).every((n) => n.isText),
+      );
   const result: PmNode[] = [];
 
   // Track HTML tag-based marks: <u>, <mark>, <sub>, <sup>
@@ -108,19 +126,21 @@ const INLINE_SPLITTERS: ((
   marks: readonly Mark[],
 ) => PmNode[])[] = [
   (t, s, m) =>
-    s.nodes.mention && t.includes("@[[")
+    s.nodes.mention && t.includes(INLINE_NODE_TRIGGERS.mention)
       ? splitTextWithMentions(t, s, [...m])
       : [],
   (t, s, m) =>
-    s.nodes.wikilink && t.includes("[[")
+    s.nodes.wikilink && t.includes(INLINE_NODE_TRIGGERS.wikilink)
       ? splitTextWithWikilinks(t, s, [...m])
       : [],
   (t, s, m) =>
-    s.nodes.blockReference && t.includes("((")
+    s.nodes.blockReference && t.includes(INLINE_NODE_TRIGGERS.blockReference)
       ? splitTextWithBlockRefs(t, s, [...m])
       : [],
   (t, s, m) =>
-    s.nodes.tagNode && t.includes("#") ? splitTextWithTags(t, s, [...m]) : [],
+    s.nodes.tagNode && t.includes(INLINE_NODE_TRIGGERS.tagNode)
+      ? splitTextWithTags(t, s, [...m])
+      : [],
   (t, s, m) => splitTextWithCustomInlineMarks(t, s, [...m]),
 ];
 
