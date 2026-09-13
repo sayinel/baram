@@ -13,7 +13,7 @@
 - Hangul and IME — 미작성
 - [Input islands and block entry](Vim-Input-islands-and-block-entry)
 - Search — 미작성
-- Source mode and code block CM — 미작성
+- [Source mode and code block CM](Vim-Source-mode-and-code-block-CM)
 - Lifecycle and settings — 미작성
 - [WebKit selection churn](Vim-WebKit-selection-churn)
 - PM machinery in non-editable views — 미작성
