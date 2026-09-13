@@ -167,6 +167,18 @@ interface Counters {
 }
 
 /**
+ * A comment or verbatim element an earlier node opened and has not closed,
+ * carried in document order. The parser splits `<script>…<img>…</script>`
+ * inside a paragraph into three html nodes, and a comment holding a blank
+ * line into html blocks on either side of what stands in it; pandoc reads
+ * each as one raw region, so an html node inside it is not a tag. `until`
+ * is the closer still to come, or null.
+ */
+interface RawRegion {
+  until: null | RegExp;
+}
+
+/**
  * Stage the images pandoc may read and reduce every other image to its alt
  * text. Returns the input string itself when there is nothing to change.
  */
@@ -219,6 +231,8 @@ interface Walk {
   firstRound: boolean;
   images: PandocImageRequest[];
   knownAssets: ReadonlySet<string>;
+  /** The raw region the walk is inside, if any (document order). */
+  raw: RawRegion;
   refusedIdentifiers: ReadonlySet<string>;
   scope: null | RelativeScope;
   /** The markdown being walked — `<img>` tags are located in it by offset. */
@@ -357,9 +371,47 @@ function collectEdits(
     imgTagEdits(node, ctx, walk, edits);
     return;
   }
+  if ("value" in node) {
+    closeRawRegion(walk.raw, node.value);
+    return;
+  }
   if (!("children" in node)) return;
   const inner = innerContext(ctx, node.type);
   for (const child of node.children) collectEdits(child, inner, walk, edits);
+}
+
+/** A comment opener, or the start tag of an element whose body is verbatim. */
+const RAW_OPENER = /<!--|<(pre|script|style|textarea)(?=[\s/>])/gi;
+/** A comment's end as HTML reads it (pandoc ends one at `--!>` too — measured). */
+const COMMENT_CLOSE = /--!?>/g;
+
+/**
+ * The closer of the comment or verbatim element `value` opens without
+ * closing, or null. An abrupt comment (`<!-->`, `<!--->`) is closed at once.
+ */
+function rawOpenedBy(value: string): null | RegExp {
+  let i = 0;
+  for (;;) {
+    RAW_OPENER.lastIndex = i;
+    const opener = RAW_OPENER.exec(value);
+    if (opener === null) return null;
+    i = opener.index + opener[0].length;
+    const name = opener[1];
+    if (name === undefined && /^-?>/.test(value.slice(i, i + 2))) continue;
+    const close =
+      name === undefined
+        ? COMMENT_CLOSE
+        : new RegExp(`</${name}(?=[\\s/>])`, "gi");
+    close.lastIndex = i;
+    const closer = close.exec(value);
+    if (closer === null) return new RegExp(close.source, "i");
+    i = closer.index + closer[0].length;
+  }
+}
+
+/** Let any node's text close the region the walk is inside. */
+function closeRawRegion(raw: RawRegion, value: string): void {
+  if (raw.until !== null && raw.until.test(value)) raw.until = null;
 }
 
 /** Record a request for `source` and return the name its placeholder gets. */
@@ -384,11 +436,23 @@ interface HtmlImage {
  * user. A node outside the supported grammar (export-html-fragment.ts) or
  * one whose text cannot be aligned with the source is left whole: its tags
  * stay raw and the filter drops them. A node that cannot hold an image at
- * all is simply nothing to do.
+ * all, or that stands inside a raw region an earlier node opened, is simply
+ * nothing to do.
  */
-function htmlNodeImages(node: Html, source: string): HtmlImage[] | null {
+function htmlNodeImages(
+  node: Html,
+  source: string,
+  raw: RawRegion,
+): HtmlImage[] | null {
+  if (raw.until !== null) {
+    closeRawRegion(raw, node.value);
+    return [];
+  }
   const spans = readHtmlFragment(node.value);
-  if (spans === null) return mayHoldImage(node.value) ? null : [];
+  if (spans === null) {
+    raw.until = rawOpenedBy(node.value);
+    return mayHoldImage(node.value) ? null : [];
+  }
   if (spans.length === 0) return [];
   const map = valueToSource(node.value, source, node.position!.start.offset!);
   if (map === null) return null;
@@ -414,7 +478,7 @@ function imgTagEdits(
   walk: Walk,
   edits: SourceEdit[],
 ): void {
-  const found = htmlNodeImages(node, walk.source);
+  const found = htmlNodeImages(node, walk.source, walk.raw);
   if (found === null) {
     if (walk.firstRound) walk.counters.unsupportedHtml += 1;
     return;
@@ -488,9 +552,10 @@ export function rewriteImageTagsAsMarkdown(markdown: string): {
 } {
   const edits: SourceEdit[] = [];
   const counters: Counters = { refused: 0, unsupportedHtml: 0 };
+  const raw: RawRegion = { until: null };
   const collect = (node: Nodes, ctx: LabelContext): void => {
     if (node.type === "html") {
-      const found = htmlNodeImages(node, markdown);
+      const found = htmlNodeImages(node, markdown, raw);
       if (found === null) {
         counters.unsupportedHtml += 1;
         return;
@@ -510,6 +575,10 @@ export function rewriteImageTagsAsMarkdown(markdown: string): {
           ),
         );
       }
+      return;
+    }
+    if ("value" in node) {
+      closeRawRegion(raw, node.value);
       return;
     }
     if (!("children" in node)) return;
@@ -556,6 +625,7 @@ function stageOnce(
       firstRound,
       images,
       knownAssets,
+      raw: { until: null },
       refusedIdentifiers,
       scope,
       source: markdown,

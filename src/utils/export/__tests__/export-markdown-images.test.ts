@@ -852,6 +852,46 @@ describe("stageMarkdownImages", () => {
       });
     });
 
+    it("does not read a tag the parser split off from the verbatim element or comment an earlier node opened", () => {
+      // A paragraph: html `<script>`, text, html `<img>`, text, html
+      // `</script>` — pandoc reads the whole thing as one raw block.
+      const inline =
+        'x <script>const s = \'<img src="img/a.png" alt="A">\';</script> y\n';
+      expect(stageMarkdownImages(inline, SAVED)).toMatchObject({
+        images: [],
+        markdown: inline,
+        refused: 0,
+        unsupportedHtml: 0,
+      });
+      // The region closes where its closer stands, in any node's text.
+      expect(
+        stageMarkdownImages(
+          'x <script>s</script> <img src="img/b.png">\n',
+          SAVED,
+        ),
+      ).toMatchObject({
+        images: [{ name: "image-0.png", source: "img/b.png" }],
+        markdown: "x <script>s</script> ![](baram-asset:image-0.png)\n",
+      });
+      // A comment holding a blank line: html block, html block, paragraph.
+      const blocks =
+        '<div>\n<!--\n\n<img src="img/a.png">\n\n-->\n</div>\n\n<img src="img/c.png">\n';
+      expect(stageMarkdownImages(blocks, SAVED)).toMatchObject({
+        images: [{ name: "image-0.png", source: "img/c.png" }],
+        markdown:
+          '<div>\n<!--\n\n<img src="img/a.png">\n\n-->\n</div>\n\n![](baram-asset:image-0.png)\n',
+        unsupportedHtml: 0,
+      });
+      // Many tags inside one script: none staged, so the backend's cap
+      // cannot fail the export over script text.
+      const many = `x <script>${'<img src="img/a.png">'.repeat(300)}</script> y\n`;
+      expect(stageMarkdownImages(many, SAVED)).toMatchObject({
+        images: [],
+        markdown: many,
+        unsupportedHtml: 0,
+      });
+    });
+
     it("leaves a tag shape HTML and pandoc could read differently, or that pandoc reads as code or a fence, rather than guess", () => {
       const NBSP = String.fromCharCode(0xa0);
       const shapes = [
