@@ -9,7 +9,8 @@
 //   backend swaps it for the staged file. Only a name this export produced
 //   counts: a document-written placeholder wearing another name is refused.
 // - A path that stays inside the document's own context — judged here on the
-//   normalized string, against the context root the tab names — is staged:
+//   normalized string, against the root of the deepest directory context
+//   that holds the document — is staged:
 //   the destination becomes `baram-asset:image-N.ext` and `{ name, source }`
 //   goes to the backend, which resolves `source` against the document's
 //   directory, canonicalizes it, and reads it only if the result lies under

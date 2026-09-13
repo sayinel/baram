@@ -86,8 +86,9 @@ import {
 
 export interface ImagePolicyOptions {
   /**
-   * The root of the vault or folder context the document's tab belongs to, or
-   * null for a document opened on its own (or no context at all).
+   * The root of the deepest vault or folder context that holds the document
+   * (pandoc-image-policy.ts chooses it — never the tab's own context, never a
+   * `File` context), or null when no directory context holds it.
    */
   contextRoot: null | string;
   /** The document's absolute path, or null when it has never been saved. */

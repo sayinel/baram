@@ -34,7 +34,9 @@ export interface PandocImagePreparation {
   markdown: string;
   /** How many images became their alt text. */
   refused: number;
-  /** Whether the document had a context to be relative to at all. */
+  /** Whether the document had a context to be relative to at all — which
+   *  decides the wording of the notice. The text writers embed nothing and
+   *  take every reference as written, so for them this is always true. */
   scoped: boolean;
   /** How many html fragments the policy could not read and that may hold an image. */
   unsupportedHtml: number;
@@ -42,9 +44,10 @@ export interface PandocImagePreparation {
 
 /**
  * For the formats that EMBED images — pandoc reads the files — the image
- * policy turns relative images into asset requests the backend resolves
- * inside the document's own context, and everything else into alt text
- * (export-markdown-images.ts). LaTeX and RST embed nothing — pandoc writes
+ * policy (export-markdown-images.ts) keeps the assets this export produced,
+ * turns every path that stays inside the document's own context, relative
+ * or absolute, into an asset request the backend resolves there, and
+ * reduces everything else to alt text. LaTeX and RST embed nothing — pandoc writes
  * the reference and reads no file — so their images pass through as
  * written; `<img>` tags are still turned into markdown images so the
  * raw-HTML drop does not swallow one, and a tag with no source becomes its
