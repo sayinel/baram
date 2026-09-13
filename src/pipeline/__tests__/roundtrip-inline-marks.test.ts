@@ -119,3 +119,32 @@ describe("Roundtrip: Nested & combined marks", () => {
     );
   });
 });
+
+describe("Roundtrip: inline code inside other marks (data-loss regression)", () => {
+  // Inline code is a leaf in mdast (no children), so it must be the innermost
+  // node of any surrounding mark — but the surrounding mark itself must not
+  // be dropped, and adjacent same-mark runs split by the code leaf must
+  // still serialize as ONE continuous span.
+  it.each([
+    ["code at start of a strong span", "**`code` more text**\n"],
+    ["code in the middle of a strong span", "**text `code` more**\n"],
+    ["code at end of a strong span", "**text `code`**\n"],
+    ["code inside an emphasis span", "*`code` in italic*\n"],
+    ["code as the entire link text", "[`code`](https://example.com)\n"],
+    [
+      "code surrounded by other text inside a link",
+      "[before `code` after](https://example.com)\n",
+    ],
+  ])("%s", (_, input) => {
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  // Control case: no code mark at all. Guards against a regression that
+  // stops applying marks entirely (which the cases above alone could not
+  // distinguish from "marks silently dropped everywhere").
+  it("bold and italic with no code mark (control)", () => {
+    expect(roundtrip("**bold** and *italic*\n")).toBe(
+      "**bold** and *italic*\n",
+    );
+  });
+});

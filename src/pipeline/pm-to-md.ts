@@ -214,6 +214,63 @@ function coalesceUnderlineTags(nodes: PhrasingContent[]): PhrasingContent[] {
   return result;
 }
 
+const MERGEABLE_WRAPPER_TYPES = new Set(["delete", "emphasis", "strong"]);
+
+function canMergeWrapperNodes(a: PhrasingContent, b: PhrasingContent): boolean {
+  if (a.type !== b.type) return false;
+  if (MERGEABLE_WRAPPER_TYPES.has(a.type)) return true;
+  if (a.type === "link") {
+    const la = a as Link;
+    const lb = b as Link;
+    return la.url === lb.url && (la.title || null) === (lb.title || null);
+  }
+  return false;
+}
+
+/**
+ * Merge adjacent sibling mdast wrapper nodes (strong/emphasis/delete/link) of
+ * the same identity, concatenating their children into one node.
+ *
+ * Why this exists: convertPmInlineChildren converts one PM text node at a
+ * time. Inline code must be an mdast LEAF (no children), so a single PM mark
+ * run that has code on only part of its text (e.g. a bold span that reads
+ * `text `code` more`) becomes MULTIPLE adjacent PM text nodes — one run per
+ * distinct mark set — each independently wrapped in its own "strong" mdast
+ * node by convertTextWithMarks. Left unmerged, remark-stringify serializes
+ * each wrapper with its own delimiters (`**text****code**** more**`) instead
+ * of one continuous span (`**text `code` more**`), corrupting the file on
+ * save. Custom marks (highlight/subscript/superscript) already get the same
+ * treatment via coalesceCustomMarkNodes — this covers the standard ones.
+ */
+function coalesceAdjacentWrapperNodes(
+  nodes: PhrasingContent[],
+): PhrasingContent[] {
+  const result: PhrasingContent[] = [];
+
+  for (const node of nodes) {
+    const prev = result[result.length - 1];
+    if (prev && canMergeWrapperNodes(prev, node)) {
+      (prev as { children: PhrasingContent[] }).children.push(
+        ...(node as { children: PhrasingContent[] }).children,
+      );
+      continue;
+    }
+    result.push(node);
+  }
+
+  // Recurse into children so nested combinations (e.g. a merged strong node
+  // whose children themselves need coalescing) are handled too.
+  for (const node of result) {
+    const children = (node as { children?: PhrasingContent[] }).children;
+    if (children) {
+      (node as { children: PhrasingContent[] }).children =
+        coalesceAdjacentWrapperNodes(children);
+    }
+  }
+
+  return result;
+}
+
 /** Convert PM block children to mdast nodes */
 function convertPmChildren(node: PmNode): Content[] {
   const result: Content[] = [];
@@ -274,7 +331,9 @@ function convertPmInlineChildren(node: PmNode): PhrasingContent[] {
   });
 
   // Coalesce adjacent </u><u> pairs, then adjacent custom mark nodes
-  return coalesceCustomMarkNodes(coalesceUnderlineTags(result));
+  return coalesceAdjacentWrapperNodes(
+    coalesceCustomMarkNodes(coalesceUnderlineTags(result)),
+  );
 }
 
 /** Convert a single PM node to mdast node */
@@ -409,11 +468,13 @@ function convertTextWithMarks(
     return [{ type: "text", value: text } as Text];
   }
 
-  // Inline code mark is special — it's a leaf node in mdast
+  // Inline code mark is special — it's a leaf node in mdast (no children), so
+  // it must be the INNERMOST node. But any other marks on the same text node
+  // (bold, italic, link, ...) must still wrap it — the pipeline builds mark
+  // arrays directly (not via addMark), so a doc loaded from disk can carry
+  // code alongside other marks even though the live editor's `excludes: "_"`
+  // on the code mark prevents creating that combination interactively.
   const codeMark = marks.find((m) => m.type.name === "code");
-  if (codeMark) {
-    return [{ type: "inlineCode", value: text } as PhrasingContent];
-  }
 
   // Separate special marks that use custom mdast types or raw HTML
   const specialMarkNames = [
@@ -426,12 +487,18 @@ function convertTextWithMarks(
   const highlightMark = marks.find((m) => m.type.name === "highlight");
   const subscriptMark = marks.find((m) => m.type.name === "subscript");
   const superscriptMark = marks.find((m) => m.type.name === "superscript");
+  // "code" is excluded here too — its leaf inlineCode node (below) already
+  // represents it, so the registered `code` mark transformer must not wrap
+  // it a second time.
   const otherMarks = marks.filter(
-    (m) => !specialMarkNames.includes(m.type.name),
+    (m) => !specialMarkNames.includes(m.type.name) && m.type.name !== "code",
   );
 
-  // Build nested mark structure from innermost to outermost
-  let current: PhrasingContent[] = [{ type: "text", value: text } as Text];
+  // Build nested mark structure from innermost to outermost. Start from the
+  // inlineCode leaf when a code mark is present, otherwise from plain text.
+  let current: PhrasingContent[] = codeMark
+    ? [{ type: "inlineCode", value: text } as PhrasingContent]
+    : [{ type: "text", value: text } as Text];
 
   // Process marks in consistent order for deterministic output
   const sortedMarks = [...otherMarks].sort((a, b) =>

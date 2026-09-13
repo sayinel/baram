@@ -180,9 +180,14 @@ describe("Roundtrip: Nested marks", () => {
     expect(roundtrip("***bold italic***\n")).toBe("***bold italic***\n");
   });
 
-  it("bold wrapping code (code excludes other marks)", () => {
-    // code mark excludes all other marks, so bold is stripped
-    expect(roundtrip("**`bold code`**\n")).toBe("`bold code`\n");
+  it("bold wrapping code", () => {
+    // `code`'s schema-level `excludes: "_"` only blocks *creating* this
+    // combination interactively (via addMark) — it does not apply here.
+    // The pipeline builds PM mark arrays directly (see md-to-pm.ts), so a
+    // doc loaded from disk (or produced by any other tool) can carry code
+    // alongside bold, and the round trip must preserve both, not silently
+    // drop bold (§8.4 byte-exact roundtrip is the top quality bar).
+    expect(roundtrip("**`bold code`**\n")).toBe("**`bold code`**\n");
   });
 
   it("link with bold text", () => {
