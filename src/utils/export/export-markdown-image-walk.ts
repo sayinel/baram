@@ -12,9 +12,13 @@
 // An html node is offered as its `<img …>` tags only when the grammar can
 // read the node (export-html-fragment.ts) and its text can be aligned with
 // the source (export-html-node-offsets.ts); otherwise the node is left whole
-// and, when it may hold an image, reported as unread. Both passes of the
-// policy (export-markdown-images.ts) walk this way; what to do with what is
-// found is theirs.
+// and, when it may hold an image, reported as unread. So is an inline tag
+// that stands inside braces an earlier sibling left open — `\texttt{<img>}`
+// is one raw TeX inline to pandoc and `[x]{title="<img>"}` a span whose
+// attribute holds the tag; neither shows an image, and a file staged for
+// one could fail the export for nothing. Both passes of the policy
+// (export-markdown-images.ts) walk this way; what to do with what is found
+// is theirs.
 import type { Html, Image, ImageReference, Nodes } from "mdast";
 
 import {
@@ -63,7 +67,7 @@ export function walkImages(
   visitor: ImageWalkVisitor,
 ): void {
   const raw: RawRegion = { until: null };
-  const visit = (node: Nodes, ctx: LabelContext): void => {
+  const visit = (node: Nodes, ctx: LabelContext, inBraces: boolean): void => {
     if (node.type === "image") {
       visitor.image?.(node, ctx);
       return;
@@ -73,6 +77,10 @@ export function walkImages(
       return;
     }
     if (node.type === "html") {
+      if (inBraces) {
+        if (mayHoldImage(node.value)) visitor.unread(node);
+        return;
+      }
       const found = readHtmlNode(node, source, raw);
       if (found === null) visitor.unread(node);
       else for (const image of found) visitor.htmlImage(image, ctx);
@@ -84,9 +92,26 @@ export function walkImages(
     }
     if (!("children" in node)) return;
     const inner = innerContext(ctx, node.type);
-    for (const child of node.children) visit(child, inner);
+    // Braces open and close across the siblings of one parent: text on
+    // either side of an inline tag, or of the emphasis around it.
+    let depth = 0;
+    for (const child of node.children) {
+      visit(child, inner, inBraces || depth > 0);
+      if (child.type === "text") depth = braceDepth(child.value, depth);
+    }
   };
-  visit(root, { inHeading: false, inLink: false, inTableCell: false });
+  visit(root, { inHeading: false, inLink: false, inTableCell: false }, false);
+}
+
+/** `depth` after `text`: one deeper per `{`, one shallower per `}`, never
+ *  below zero — a stray closer opens nothing. */
+function braceDepth(text: string, depth: number): number {
+  let d = depth;
+  for (const ch of text) {
+    if (ch === "{") d += 1;
+    else if (ch === "}" && d > 0) d -= 1;
+  }
+  return d;
 }
 
 /**

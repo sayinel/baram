@@ -191,6 +191,42 @@ describe("stageMarkdownImages on html nodes it does not read", () => {
     });
   });
 
+  it("does not read an inline tag that stands inside braces an earlier sibling opened: a raw TeX argument or a span attribute", () => {
+    // pandoc reads `\\texttt{…}` as one raw TeX inline and `[x]{title="…"}` as a
+    // span whose attribute holds the tag; neither shows an image, and a
+    // staged file could fail the export for nothing.
+    for (const md of [
+      'a \\texttt{<img src="img/a.png" alt="A">} b\n',
+      "[x]{title=\"<img src='img/a.png'>\"}\n",
+      '\\href{https://x}{*<img src="img/a.png">*}\n',
+    ]) {
+      expect(stageMarkdownImages(md, SAVED), md).toEqual({
+        images: [],
+        markdown: md,
+        refused: 0,
+        scoped: true,
+        unsupportedHtml: 1,
+      });
+    }
+    // Balanced braces before the tag, or braces closed by then, hide nothing.
+    expect(
+      stageMarkdownImages(
+        'Photo {1} <img src="img/a.png"> and \\texttt{x} <img src="img/b.png">\n',
+        SAVED,
+      ),
+    ).toEqual({
+      images: [
+        { name: "image-0.png", source: "img/a.png" },
+        { name: "image-1.png", source: "img/b.png" },
+      ],
+      markdown:
+        "Photo {1} ![](baram-asset:image-0.png) and \\texttt{x} ![](baram-asset:image-1.png)\n",
+      refused: 0,
+      scoped: true,
+      unsupportedHtml: 0,
+    });
+  });
+
   it("leaves a tag shape HTML and pandoc could read differently, or that pandoc reads as code or a fence, rather than guess", () => {
     const NBSP = String.fromCharCode(0xa0);
     const shapes = [

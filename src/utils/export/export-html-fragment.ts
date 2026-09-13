@@ -55,14 +55,11 @@
 // Anything else — an unclosed tag, an attribute shape outside the grammar
 // (a leading `=`, a quote inside an unquoted value, an empty `src=`), a
 // raw-text element, a fence, code, math, an escaped `<`, an indented line —
-// makes the whole node unsupported. A region pandoc reads through — a
-// comment, a verbatim body or a raw TeX environment an earlier node opened
-// and did not close — is carried across the nodes that follow by the policy
-// walk (`rawOpenedBy`), since the parser splits such a region into several
-// nodes. Not emulated and left to pandoc: a `\texttt{…}` or a `[x]{title="…"}`
-// around an inline tag hides it from pandoc while the parser hands it over
-// on its own; the tag is then rewritten and its file staged for nothing,
-// and the filter drops the construct as it always did.
+// makes the whole node unsupported. What stands OUTSIDE the node is the
+// walk's to judge (export-markdown-image-walk.ts): a region pandoc reads
+// through — a comment, a verbatim body or a raw TeX environment an earlier
+// node opened and did not close (`rawOpenedBy`) — and braces an earlier
+// sibling left open around an inline tag (`\texttt{…}`, `[x]{title="…"}`).
 import { LINE_END } from "./export-html-node-offsets";
 
 /** One `<img …>` tag's offsets in the text it was read from. */
