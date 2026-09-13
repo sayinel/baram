@@ -40,6 +40,24 @@ describe("ExportDialog", () => {
     expect(screen.getByText(/not saved yet/)).toBeTruthy();
   });
 
+  it("shows it for every format that embeds images, and for none that does not", () => {
+    useEditorStore.setState({ activeTabId: "tab-1", tabs: [tab("")] });
+    for (const format of ["docx", "epub"] as const) {
+      useUIStore.setState({ exportDialogOpen: true, exportFormat: format });
+      const view = render(<ExportDialog editor={null} />);
+      expect(screen.getByText(/not saved yet/)).toBeTruthy();
+      view.unmount();
+    }
+    // LaTeX and RST write the reference and open no file: saving the note
+    // would change nothing for them, so the hint would be a false promise.
+    for (const format of ["latex", "rst", "html", "pdf", "notion"] as const) {
+      useUIStore.setState({ exportDialogOpen: true, exportFormat: format });
+      const view = render(<ExportDialog editor={null} />);
+      expect(screen.queryByText(/not saved yet/)).toBeNull();
+      view.unmount();
+    }
+  });
+
   it("says nothing of the kind for a saved note, or for a format that does not embed", () => {
     useEditorStore.setState({
       activeTabId: "tab-1",

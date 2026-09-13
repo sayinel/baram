@@ -20,6 +20,7 @@ import {
   exportForNotion,
   exportWithPandoc,
 } from "../../utils/export/export";
+import { pandocEmbedsImages } from "../../utils/export/pandoc-image-policy";
 import { logger } from "../../utils/logger";
 import { ExportFormatDropdown } from "./ExportFormatDropdown";
 
@@ -119,11 +120,14 @@ export function ExportDialog({ editor }: ExportDialogProps) {
     useShallow((s) => ({ activeTabId: s.activeTabId, tabs: s.tabs })),
   );
   const { t } = useTranslation();
-  // issue 631: what the notice after a Pandoc export would say about an
+  // issue 631: what the notice after an embedding export would say about an
   // unsaved note is worth saying before it — its relative images cannot be
-  // embedded until it has a folder to resolve them against.
-  const unsavedForPandoc =
+  // embedded until it has a folder to resolve them against. Only for the
+  // formats that embed: LaTeX and RST write references, so saving changes
+  // nothing for them.
+  const unsavedForEmbedding =
     isPandocFormat(exportFormat) &&
+    pandocEmbedsImages(exportFormat) &&
     !tabs.find((tab) => tab.id === activeTabId)?.filePath;
   const {
     codeFontFamily,
@@ -305,7 +309,7 @@ export function ExportDialog({ editor }: ExportDialogProps) {
             )}
           </div>
 
-          {unsavedForPandoc && (
+          {unsavedForEmbedding && (
             <p className="export-dialog-hint">{t("export.unsavedNote")}</p>
           )}
 

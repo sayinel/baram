@@ -24,6 +24,12 @@ const PANDOC_EMBEDS_IMAGES: ReadonlySet<PandocFormat> = new Set([
   "epub",
 ]);
 
+/** Does exporting to `format` embed images — and so depend on where the
+ *  document's images can be read from? LaTeX and RST write references. */
+export function pandocEmbedsImages(format: PandocFormat): boolean {
+  return PANDOC_EMBEDS_IMAGES.has(format);
+}
+
 /** What the image policy made of the markdown: for the backend, and for the user. */
 export interface PandocImagePreparation {
   /** The context whose canonical root bounds what the backend may read;
@@ -62,7 +68,7 @@ export function preparePandocImages(
 ): PandocImagePreparation {
   const owner =
     documentPath === null ? null : owningDirectoryContext(documentPath);
-  const result = PANDOC_EMBEDS_IMAGES.has(format)
+  const result = pandocEmbedsImages(format)
     ? stageMarkdownImages(markdown, {
         contextRoot: owner === null ? null : contextRootOf(owner.path),
         documentPath,
