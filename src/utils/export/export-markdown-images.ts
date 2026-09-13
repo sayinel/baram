@@ -143,6 +143,8 @@ interface TagSpan {
 /** What an `<img>` tag says as HTML reads it. `src` null: absent or empty. */
 interface LooseImg {
   alt: null | string;
+  /** Every attribute as HTML read it, untrimmed; null when the tag did not parse. */
+  attrs: Map<string, string> | null;
   src: null | string;
 }
 
@@ -584,126 +586,93 @@ function valueToSource(
   };
 }
 
-/** One `<textarea>` kept for decoding: its RCDATA parser builds no element
- *  and loads nothing. */
-let decoder: HTMLTextAreaElement | null = null;
+/** One `<template>` kept for parsing. Its contents live in an inert document
+ *  with no browsing context: nothing in there loads or runs. */
+let host: HTMLTemplateElement | null = null;
 
 /**
- * Character references decoded as HTML decodes an attribute value — every
- * named and numeric reference the platform knows — without parsing the
- * value as markup: `<` is neutralised first so a `</textarea>` inside a
- * value cannot end the text early. Outside a DOM (no `document`) the value
- * is returned as written.
+ * The tag's attributes as HTML reads them, by parsing it inside the template
+ * as `<baram-img …>` — an inert custom element, never an `<img>`, whose
+ * element would fetch its source, the very thing still to be judged. The
+ * parser gives attribute-value decoding (references by attribute rules, a
+ * legacy `&copy` staying literal before a letter), the first of a duplicate,
+ * lowercased names, unquoted values to ASCII whitespace or `>`, a leading
+ * `=` as a name, and line endings normalised to LF. Null when there is no
+ * document, or when the parse did not yield exactly one empty element — the
+ * scanner promised one complete start tag, so anything else is refused.
  */
-function decodeEntities(value: string): string {
-  if (!value.includes("&") || typeof document === "undefined") return value;
-  decoder ??= document.createElement("textarea");
-  // Attribute-value rules, not text rules: a named reference with no
-  // semicolon stays literal when `=` follows (`a&amp=x` is `a&amp=x`, not
-  // `a&=x`), so those are shielded before the text parser sees them — the
-  // name is taken whole, so `&amp;b` is never read as `&am` + `p`. `<` is
-  // neutralised so a `</textarea>` cannot end the text.
-  decoder.innerHTML = value
-    .replace(/&([A-Za-z][A-Za-z0-9]*)(?![A-Za-z0-9;])(?==)/g, "&amp;$1")
-    .replace(/</g, "&lt;");
-  const out = decoder.value;
-  decoder.innerHTML = "";
-  return out;
-}
-
-/**
- * The attribute name/value pairs of one tag, by the tokenizer's rules: a
- * name runs to whitespace, `/`, `=` or `>`; a value is quoted or runs to
- * whitespace or `>`; an attribute with no `=` has the empty value; names
- * are case-insensitive and the first of a duplicate wins.
- */
-function readAttributes(raw: string): Map<string, string> {
-  const attrs = new Map<string, string>();
-  let i = 1;
-  while (
-    i < raw.length &&
-    !isHtmlSpace(raw[i]) &&
-    raw[i] !== "/" &&
-    raw[i] !== ">"
-  )
-    i += 1; // the tag name
-  while (i < raw.length) {
-    const ch = raw[i];
-    if (ch === ">") break;
-    if (ch === "/" || isHtmlSpace(ch)) {
-      i += 1;
-      continue;
-    }
-    // A `=` where a name should start begins a name of `=` (a parse error
-    // HTML accepts), so the `src` after it is still its own attribute.
-    let j = ch === "=" ? i + 1 : i;
-    while (
-      j < raw.length &&
-      !isHtmlSpace(raw[j]) &&
-      raw[j] !== "/" &&
-      raw[j] !== "=" &&
-      raw[j] !== ">"
+function parseTag(raw: string): Map<string, string> | null {
+  if (typeof document === "undefined") return null;
+  host ??= document.createElement("template");
+  try {
+    host.innerHTML = `<baram-img${raw.slice(4)}`; // `raw` begins with `<img`
+    const { content } = host;
+    const el = content.firstElementChild;
+    if (
+      el === null ||
+      content.childNodes.length !== 1 ||
+      el.childNodes.length !== 0 ||
+      el.tagName.toLowerCase() !== "baram-img"
     ) {
-      j += 1;
+      return null;
     }
-    const name = raw.slice(i, j).toLowerCase();
-    i = j;
-    while (i < raw.length && isHtmlSpace(raw[i])) i += 1;
-    let value = "";
-    if (raw[i] === "=") {
-      i += 1;
-      while (i < raw.length && isHtmlSpace(raw[i])) i += 1;
-      const quote = raw[i];
-      if (quote === '"' || quote === "'") {
-        const close = raw.indexOf(quote, i + 1);
-        value = raw.slice(i + 1, close === -1 ? raw.length : close);
-        i = close === -1 ? raw.length : close + 1;
-      } else {
-        j = i;
-        while (j < raw.length && !isHtmlSpace(raw[j]) && raw[j] !== ">") j += 1;
-        value = raw.slice(i, j);
-        i = j;
-      }
+    const attrs = new Map<string, string>();
+    for (const { name, value } of Array.from(el.attributes)) {
+      attrs.set(name, value);
     }
-    if (name !== "" && !attrs.has(name)) attrs.set(name, value);
+    return attrs;
+  } finally {
+    host.innerHTML = "";
   }
-  return attrs;
+}
+
+/** One attribute value decoded once, by attribute rules — for comparing the
+ *  strict parser's raw capture with what HTML read. `text` holds no `"`. */
+function decodeAttributeValue(text: string): null | string {
+  if (typeof document === "undefined") return null;
+  host ??= document.createElement("template");
+  try {
+    host.innerHTML = `<baram-x a="${text}">`;
+    return host.content.firstElementChild?.getAttribute("a") ?? null;
+  } finally {
+    host.innerHTML = "";
+  }
 }
 
 /**
- * The tag's `src` and `alt` as HTML reads them: names case-insensitive, the
- * first of a duplicate kept, quotes optional, character references decoded.
- * No element is built on the way — a `DOMParser` document may fetch an
- * `<img>`'s source, and that source is the very thing still to be judged
- * (issue 631). The strict parser (`parseImgHtml`) exists for the MD→PM
- * round-trip and refuses anything it could not write back byte for byte;
- * the export only has to know where the image points and what to say if
- * it cannot embed it.
+ * The tag's `src` and `alt` as HTML reads them (issue 631). The strict
+ * parser (`parseImgHtml`) exists for the MD→PM round-trip and refuses
+ * anything it could not write back byte for byte; the export only has to
+ * know where the image points and what to say if it cannot embed it.
  */
 function readImgTag(raw: string): LooseImg {
-  const attrs = readAttributes(raw);
-  const src = decodeEntities(attrs.get("src") ?? "").trim();
-  const alt = attrs.get("alt");
-  return {
-    alt: alt === undefined ? null : decodeEntities(alt),
-    src: src === "" ? null : src,
-  };
+  const attrs = parseTag(raw);
+  const src = attrs?.get("src")?.trim() ?? "";
+  const alt = attrs?.get("alt");
+  return { alt: alt ?? null, attrs, src: src === "" ? null : src };
 }
+
+/** The attributes the strict parser reads and would write back. */
+const STRICT_ATTRS = ["src", "alt", "title", "width"] as const;
 
 /**
  * Title and size for a tag the editor itself wrote — the strict parser
- * accepts exactly that spelling, and its `src` agrees with HTML's reading
- * (the name scan can be fooled by a quoted value, HTML's tokenizer cannot).
- * Any other tag keeps no size: pandoc's `{width=…}` is only written for a
- * width the editor would have round-tripped.
+ * accepts exactly that spelling — and only when it and HTML agree on every
+ * attribute it copies. The strict parser's name scan can be fooled by a
+ * quoted value that spells another attribute (`alt='width="640"'`); HTML's
+ * tokenizer cannot, so each of the parser's raw captures is decoded once by
+ * attribute rules and compared, untrimmed, with what HTML read. Any
+ * disagreement keeps no size and no title: the image is still judged by
+ * HTML's reading. Any other tag keeps no size either — pandoc's `{width=…}`
+ * is only written for a width the editor would have round-tripped.
  */
 function editorSize(raw: string, loose: LooseImg): Omit<ImgAttrs, "alt"> {
   const strict = parseImgHtml(raw);
-  // The strict parser neither trims nor decodes beyond four references;
-  // compare on the same footing so a size is not lost to ` img/a.png ` or
-  // `a&#46;png`.
-  if (strict === null || decodeEntities(strict.src).trim() !== loose.src) {
-    return {};
+  if (strict === null || loose.attrs === null) return {};
+  for (const name of STRICT_ATTRS) {
+    const capture = new RegExp(`\\b${name}="([^"]*)"`, "i").exec(raw)?.[1];
+    const parsed = capture === undefined ? null : decodeAttributeValue(capture);
+    if (parsed !== (loose.attrs.get(name) ?? null)) return {};
   }
   return {
     title: strict.title,

@@ -665,9 +665,9 @@ describe("stageMarkdownImages", () => {
       });
     });
 
-    it("reads a tag without building an element, so a remote src is never fetched before it is judged", () => {
-      // No DOMParser at all: the reading must not depend on parsing the tag
-      // into a live element (a DOMParser document may fetch <img> sources).
+    it("reads a tag as an inert custom element, never as <img>, so a remote src is not fetched before it is judged", () => {
+      // No DOMParser at all: the reading parses the tag inside a <template>
+      // as `<baram-img>` (a DOMParser document may fetch <img> sources).
       const saved = globalThis.DOMParser;
       // @ts-expect-error -- simulate a runtime without DOMParser
       delete globalThis.DOMParser;
@@ -793,6 +793,121 @@ describe("stageMarkdownImages", () => {
         markdown: '<div>\n![](baram-asset:image-0.png)">\n</div>\n',
         refused: 1,
       });
+    });
+
+    it("decodes references by attribute rules: a legacy reference without its semicolon stays literal before a letter, decodes otherwise", () => {
+      const { images } = stageMarkdownImages(
+        '<div>\n<img src="img/&copycat.png" height="1">\n<img src="img/&notit.png" height="1">\n<img src="img/&copy.png" height="1">\n<img src="img/&copy;cat.png" height="1">\n</div>\n',
+        SAVED,
+      );
+      expect(images.map((i) => i.source)).toEqual([
+        "img/&copycat.png",
+        "img/&notit.png",
+        "img/©.png",
+        "img/©cat.png",
+      ]);
+    });
+
+    it("keeps an editor tag's width whose source holds a nested reference: each side decoded once", () => {
+      expect(
+        stageMarkdownImages(
+          '<img src="img/a&amp;lt;b.png" width="640">\n\n<img src="img/c&amp;amp;d.png" width="50%">\n',
+          SAVED,
+        ),
+      ).toMatchObject({
+        images: [
+          { name: "image-0.png", source: "img/a&lt;b.png" },
+          { name: "image-1.png", source: "img/c&amp;d.png" },
+        ],
+        markdown:
+          "![](baram-asset:image-0.png){width=640px}\n\n![](baram-asset:image-1.png){width=50%}\n",
+      });
+    });
+
+    it("reads the shapes HTML accepts: self-closing, an empty value, no space before the next attribute, a duplicate in either case", () => {
+      expect(
+        stageMarkdownImages("<div>\n<img/>\n<img src=>\n</div>\n", SAVED),
+      ).toMatchObject({
+        images: [],
+        markdown: "<div>\n\n\n</div>\n",
+        refused: 2,
+      });
+      expect(
+        stageMarkdownImages(
+          '<div>\n<img alt="a"src="img/b.png">\n</div>\n',
+          SAVED,
+        ),
+      ).toMatchObject({
+        images: [{ name: "image-0.png", source: "img/b.png" }],
+        markdown: "<div>\n![a](baram-asset:image-0.png)\n</div>\n",
+        refused: 0,
+      });
+      // The first of a duplicate wins, whichever case it was written in.
+      expect(
+        stageMarkdownImages(
+          '<div>\n<IMG SRC="https://tracker.example/p.gif" src="img/a.png" ALT="pixel">\n</div>\n',
+          SAVED,
+        ),
+      ).toMatchObject({
+        images: [],
+        markdown: "<div>\npixel\n</div>\n",
+        refused: 1,
+      });
+      expect(
+        stageMarkdownImages(
+          '<div>\n<IMG SRC="img/a.png" src="https://tracker.example/p.gif" ALT="pixel">\n</div>\n',
+          SAVED,
+        ),
+      ).toMatchObject({
+        images: [{ name: "image-0.png", source: "img/a.png" }],
+        refused: 0,
+      });
+    });
+
+    it("keeps the editor's size only when the strict parser and HTML agree on every attribute it copies", () => {
+      // The strict parser's name scan can be fooled by a quoted value that
+      // spells another attribute; HTML cannot. Any disagreement drops the size
+      // (and the title) — the image itself is still judged by HTML's reading.
+      expect(
+        stageMarkdownImages(
+          '<img alt=\'src="img/fake.png"\' src="img/real.png" width="640">\n',
+          SAVED,
+        ),
+      ).toMatchObject({
+        images: [{ name: "image-0.png", source: "img/real.png" }],
+        markdown: '![src="img/fake.png"](baram-asset:image-0.png)\n',
+      });
+      expect(
+        stageMarkdownImages(
+          '<img alt=\'src=" img/a.png "\' src="img/a.png" width="640">\n',
+          SAVED,
+        ),
+      ).toMatchObject({
+        markdown: '![src=" img/a.png "](baram-asset:image-0.png)\n',
+      });
+      expect(
+        stageMarkdownImages(
+          '<img src="img/a.png" alt=\'width="640"\'>\n',
+          SAVED,
+        ),
+      ).toMatchObject({
+        markdown: '![width="640"](baram-asset:image-0.png)\n',
+      });
+      expect(
+        stageMarkdownImages('<img src="img/a.png" alt=\'title="T"\'>\n', SAVED),
+      ).toMatchObject({
+        markdown: '![title="T"](baram-asset:image-0.png)\n',
+      });
+    });
+
+    it("normalises a line ending inside a quoted value the way HTML does, whether or not the value holds a reference", () => {
+      const { markdown } = stageMarkdownImages(
+        '<img src="img/a.png" alt="p\rr">\n\n<img src="img/b.png" alt="p&amp;q\rr">\n',
+        SAVED,
+      );
+      expect(markdown).toBe(
+        "![p\nr](baram-asset:image-0.png)\n\n![p\\&q\nr](baram-asset:image-1.png)\n",
+      );
     });
 
     it("keeps a table cell one cell when a decoded alt holds a pipe", () => {
