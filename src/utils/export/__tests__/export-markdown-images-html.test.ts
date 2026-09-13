@@ -105,11 +105,12 @@ describe("stageMarkdownImages on <img> tags", () => {
         "<!-- <img src='img/a.png'> -->\n\n<img-custom src=\"img/b.png\">\n\n</img>\n";
       // All three are read (a comment, a wrapper, a closing tag) and hold no
       // image to judge: nothing to count either.
-      expect(stageMarkdownImages(md, SAVED)).toMatchObject({
+      expect(stageMarkdownImages(md, SAVED)).toEqual({
         images: [],
         markdown: md,
         refused: 0,
         unsupportedHtml: 0,
+        scoped: true,
       });
     });
 
@@ -119,26 +120,31 @@ describe("stageMarkdownImages on <img> tags", () => {
       // The attribute is opaque in a node that is read; the two verbatim
       // elements are not read at all, and a tag in their bodies is not an
       // image pandoc could read, so nothing is counted either.
-      expect(stageMarkdownImages(md, SAVED)).toMatchObject({
+      expect(stageMarkdownImages(md, SAVED)).toEqual({
         images: [],
         markdown: md,
         refused: 0,
         unsupportedHtml: 0,
+        scoped: true,
       });
     });
 
     it("edits a tag that spans lines inside a blockquote or a list by its logical text, not the prefixed source", () => {
       const quoted = '> <img\n> src="img/a.png"\n> height="1">\n';
-      expect(stageMarkdownImages(quoted, SAVED)).toMatchObject({
+      expect(stageMarkdownImages(quoted, SAVED)).toEqual({
         images: [{ name: "image-0.png", source: "img/a.png" }],
         markdown: "> ![](baram-asset:image-0.png)\n",
         refused: 0,
+        scoped: true,
+        unsupportedHtml: 0,
       });
       const listed = '- <img\n  src="img/b.png" height="1"> tail\n';
-      expect(stageMarkdownImages(listed, SAVED)).toMatchObject({
+      expect(stageMarkdownImages(listed, SAVED)).toEqual({
         images: [{ name: "image-0.png", source: "img/b.png" }],
         markdown: "- ![](baram-asset:image-0.png) tail\n",
         refused: 0,
+        scoped: true,
+        unsupportedHtml: 0,
       });
     });
 
@@ -158,10 +164,12 @@ describe("stageMarkdownImages on <img> tags", () => {
       // that raw fragment is dropped by the filter either way, so only the
       // block form — one html node holding both — is the scanner's to get right.
       const md = '<div>\n<o:p title="<img src=/x.png>"></o:p>\n</div>\n';
-      expect(stageMarkdownImages(md, SAVED)).toMatchObject({
+      expect(stageMarkdownImages(md, SAVED)).toEqual({
         images: [],
         markdown: md,
         refused: 0,
+        scoped: true,
+        unsupportedHtml: 0,
       });
     });
 
@@ -189,24 +197,33 @@ describe("stageMarkdownImages on <img> tags", () => {
           '>\t<img src="img/a.png">\n>\tcaption text\n',
           SAVED,
         ),
-      ).toMatchObject({
+      ).toEqual({
         markdown: ">\t![](baram-asset:image-0.png)\n>\tcaption text\n",
         refused: 0,
+        images: [{ name: "image-0.png", source: "img/a.png" }],
+        scoped: true,
+        unsupportedHtml: 0,
       });
       expect(
         stageMarkdownImages(
           '- item\n\n\t<img src="img/b.png">\n\n\tmore text\n',
           SAVED,
         ),
-      ).toMatchObject({
+      ).toEqual({
         markdown: "- item\n\n\t![](baram-asset:image-0.png)\n\n\tmore text\n",
         refused: 0,
+        images: [{ name: "image-0.png", source: "img/b.png" }],
+        scoped: true,
+        unsupportedHtml: 0,
       });
       expect(
         stageMarkdownImages('>>\t<img src="img/c.png">\n>>\tafter\n', SAVED),
-      ).toMatchObject({
+      ).toEqual({
         markdown: ">>\t![](baram-asset:image-0.png)\n>>\tafter\n",
         refused: 0,
+        images: [{ name: "image-0.png", source: "img/c.png" }],
+        scoped: true,
+        unsupportedHtml: 0,
       });
     });
 
@@ -216,24 +233,32 @@ describe("stageMarkdownImages on <img> tags", () => {
           '> <img\r> src="img/a.png"\r> height="1">\r',
           SAVED,
         ),
-      ).toMatchObject({
+      ).toEqual({
         markdown: "> ![](baram-asset:image-0.png)\r",
         refused: 0,
+        images: [{ name: "image-0.png", source: "img/a.png" }],
+        scoped: true,
+        unsupportedHtml: 0,
       });
       expect(
         stageMarkdownImages(
           '> <img\r\n> src="img/b.png"\r\n> height="1">\r\n',
           SAVED,
         ),
-      ).toMatchObject({
+      ).toEqual({
         markdown: "> ![](baram-asset:image-0.png)\r\n",
         refused: 0,
+        images: [{ name: "image-0.png", source: "img/b.png" }],
+        scoped: true,
+        unsupportedHtml: 0,
       });
     });
 
-    it("reads a tag as an inert custom element, never as <img>, so a remote src is not fetched before it is judged", () => {
-      // No DOMParser at all: the reading parses the tag inside a <template>
-      // as `<baram-img>` (a DOMParser document may fetch <img> sources).
+    it("reads a tag's attributes without DOMParser", () => {
+      // The reading parses the tag inside a <template> as `<baram-img>` (a
+      // DOMParser document may fetch <img> sources — export-img-attributes.ts
+      // says why). This pins only that DOMParser is not needed; it cannot
+      // observe that nothing is fetched.
       const saved = globalThis.DOMParser;
       // @ts-expect-error -- simulate a runtime without DOMParser
       delete globalThis.DOMParser;
@@ -256,7 +281,7 @@ describe("stageMarkdownImages on <img> tags", () => {
     it("treats attribute values as opaque: a fence or backticks inside one hide nothing", () => {
       const md =
         '<div title="\n~~~\n">\n<img src="img/a.png">\n</div>\n\n<div title="`"><img src="img/b.png"><span title="`"></span></div>\n';
-      expect(stageMarkdownImages(md, SAVED)).toMatchObject({
+      expect(stageMarkdownImages(md, SAVED)).toEqual({
         images: [
           { name: "image-0.png", source: "img/a.png" },
           { name: "image-1.png", source: "img/b.png" },
@@ -264,6 +289,8 @@ describe("stageMarkdownImages on <img> tags", () => {
         markdown:
           '<div title="\n~~~\n">\n![](baram-asset:image-0.png)\n</div>\n\n<div title="`">![](baram-asset:image-1.png)<span title="`"></span></div>\n',
         refused: 0,
+        scoped: true,
+        unsupportedHtml: 0,
       });
     });
 
@@ -273,13 +300,16 @@ describe("stageMarkdownImages on <img> tags", () => {
           '<img src=" img/a.png " width="640">\n\n<img src="img/b&#46;png" width="50%">\n',
           SAVED,
         ),
-      ).toMatchObject({
+      ).toEqual({
         images: [
           { name: "image-0.png", source: "img/a.png" },
           { name: "image-1.png", source: "img/b.png" },
         ],
         markdown:
           "![](baram-asset:image-0.png){width=640px}\n\n![](baram-asset:image-1.png){width=50%}\n",
+        refused: 0,
+        scoped: true,
+        unsupportedHtml: 0,
       });
     });
 
@@ -318,13 +348,16 @@ describe("stageMarkdownImages on <img> tags", () => {
           '<img src="img/a&amp;lt;b.png" width="640">\n\n<img src="img/c&amp;amp;d.png" width="50%">\n',
           SAVED,
         ),
-      ).toMatchObject({
+      ).toEqual({
         images: [
           { name: "image-0.png", source: "img/a&lt;b.png" },
           { name: "image-1.png", source: "img/c&amp;d.png" },
         ],
         markdown:
           "![](baram-asset:image-0.png){width=640px}\n\n![](baram-asset:image-1.png){width=50%}\n",
+        refused: 0,
+        scoped: true,
+        unsupportedHtml: 0,
       });
     });
 
@@ -337,30 +370,45 @@ describe("stageMarkdownImages on <img> tags", () => {
           '<img alt=\'src="img/fake.png"\' src="img/real.png" width="640">\n',
           SAVED,
         ),
-      ).toMatchObject({
+      ).toEqual({
         images: [{ name: "image-0.png", source: "img/real.png" }],
         markdown: '![src="img/fake.png"](baram-asset:image-0.png)\n',
+        refused: 0,
+        scoped: true,
+        unsupportedHtml: 0,
       });
       expect(
         stageMarkdownImages(
           '<img alt=\'src=" img/a.png "\' src="img/a.png" width="640">\n',
           SAVED,
         ),
-      ).toMatchObject({
+      ).toEqual({
         markdown: '![src=" img/a.png "](baram-asset:image-0.png)\n',
+        images: [{ name: "image-0.png", source: "img/a.png" }],
+        refused: 0,
+        scoped: true,
+        unsupportedHtml: 0,
       });
       expect(
         stageMarkdownImages(
           '<img src="img/a.png" alt=\'width="640"\'>\n',
           SAVED,
         ),
-      ).toMatchObject({
+      ).toEqual({
         markdown: '![width="640"](baram-asset:image-0.png)\n',
+        images: [{ name: "image-0.png", source: "img/a.png" }],
+        refused: 0,
+        scoped: true,
+        unsupportedHtml: 0,
       });
       expect(
         stageMarkdownImages('<img src="img/a.png" alt=\'title="T"\'>\n', SAVED),
-      ).toMatchObject({
+      ).toEqual({
         markdown: '![title="T"](baram-asset:image-0.png)\n',
+        images: [{ name: "image-0.png", source: "img/a.png" }],
+        refused: 0,
+        scoped: true,
+        unsupportedHtml: 0,
       });
     });
 

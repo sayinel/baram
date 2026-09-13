@@ -35,21 +35,24 @@ describe("stageMarkdownImages on html nodes it does not read", () => {
     // A markdown image inside an HTML block is pandoc's to read, not the
     // parser's: it cannot be staged, so the block is reported instead.
     const md = '<div>\n<img src="img/a.png">\n![b](img/b.png)\n</div>\n';
-    expect(stageMarkdownImages(md, SAVED)).toMatchObject({
+    expect(stageMarkdownImages(md, SAVED)).toEqual({
       images: [],
       markdown: md,
       refused: 0,
       unsupportedHtml: 1,
+      scoped: true,
     });
   });
 
   it("counts an unread block once, however many rounds the document takes", () => {
     const md = '![k](img/k.png)\n\n<div>\n$x$ <img src="img/a.png">\n</div>\n';
-    expect(stageMarkdownImages(md, SAVED)).toMatchObject({
+    expect(stageMarkdownImages(md, SAVED)).toEqual({
       images: [{ name: "image-0.png", source: "img/k.png" }],
       markdown:
         '![k](baram-asset:image-0.png)\n\n<div>\n$x$ <img src="img/a.png">\n</div>\n',
       unsupportedHtml: 1,
+      refused: 0,
+      scoped: true,
     });
   });
 
@@ -73,11 +76,12 @@ describe("stageMarkdownImages on html nodes it does not read", () => {
       "<script>let x=\"</scripture><img src='img/e.png'>\";</script>\n",
       "<div>\n<!-- x <img src='img/c.png'>\n</div>\n",
     ]) {
-      expect(stageMarkdownImages(md, SAVED), md).toMatchObject({
+      expect(stageMarkdownImages(md, SAVED), md).toEqual({
         images: [],
         markdown: md,
         refused: 0,
         unsupportedHtml: 0,
+        scoped: true,
       });
     }
   });
@@ -86,11 +90,12 @@ describe("stageMarkdownImages on html nodes it does not read", () => {
     // The parser replaces a NUL by U+FFFD in the node's text but not in the
     // source: the offsets cannot be trusted, so the block is left whole.
     const md = `<div>\n${String.fromCharCode(0)} <img src="img/a.png">\n</div>\n`;
-    expect(stageMarkdownImages(md, SAVED)).toMatchObject({
+    expect(stageMarkdownImages(md, SAVED)).toEqual({
       images: [],
       markdown: md,
       refused: 0,
       unsupportedHtml: 1,
+      scoped: true,
     });
   });
 
@@ -99,11 +104,12 @@ describe("stageMarkdownImages on html nodes it does not read", () => {
     // `</script>` — pandoc reads the whole thing as one raw block.
     const inline =
       'x <script>const s = \'<img src="img/a.png" alt="A">\';</script> y\n';
-    expect(stageMarkdownImages(inline, SAVED)).toMatchObject({
+    expect(stageMarkdownImages(inline, SAVED)).toEqual({
       images: [],
       markdown: inline,
       refused: 0,
       unsupportedHtml: 0,
+      scoped: true,
     });
     // The region closes where its closer stands, in any node's text.
     expect(
@@ -111,26 +117,33 @@ describe("stageMarkdownImages on html nodes it does not read", () => {
         'x <script>s</script> <img src="img/b.png">\n',
         SAVED,
       ),
-    ).toMatchObject({
+    ).toEqual({
       images: [{ name: "image-0.png", source: "img/b.png" }],
       markdown: "x <script>s</script> ![](baram-asset:image-0.png)\n",
+      refused: 0,
+      scoped: true,
+      unsupportedHtml: 0,
     });
     // A comment holding a blank line: html block, html block, paragraph.
     const blocks =
       '<div>\n<!--\n\n<img src="img/a.png">\n\n-->\n</div>\n\n<img src="img/c.png">\n';
-    expect(stageMarkdownImages(blocks, SAVED)).toMatchObject({
+    expect(stageMarkdownImages(blocks, SAVED)).toEqual({
       images: [{ name: "image-0.png", source: "img/c.png" }],
       markdown:
         '<div>\n<!--\n\n<img src="img/a.png">\n\n-->\n</div>\n\n![](baram-asset:image-0.png)\n',
       unsupportedHtml: 0,
+      refused: 0,
+      scoped: true,
     });
     // Many tags inside one script: none staged, so the backend's cap
     // cannot fail the export over script text.
     const many = `x <script>${'<img src="img/a.png">'.repeat(300)}</script> y\n`;
-    expect(stageMarkdownImages(many, SAVED)).toMatchObject({
+    expect(stageMarkdownImages(many, SAVED)).toEqual({
       images: [],
       markdown: many,
       unsupportedHtml: 0,
+      refused: 0,
+      scoped: true,
     });
   });
 
@@ -139,12 +152,13 @@ describe("stageMarkdownImages on html nodes it does not read", () => {
     // html nodes included; the tag inside is TeX, not an image.
     const blocks =
       "\\begin{verbatim}\n\n<img src='img/a.png' loading='lazy'>\n\n\\end{verbatim}\n\n<img src='img/b.png' loading='lazy'>\n";
-    expect(stageMarkdownImages(blocks, SAVED)).toMatchObject({
+    expect(stageMarkdownImages(blocks, SAVED)).toEqual({
       images: [{ name: "image-0.png", source: "img/b.png" }],
       markdown:
         "\\begin{verbatim}\n\n<img src='img/a.png' loading='lazy'>\n\n\\end{verbatim}\n\n![](baram-asset:image-0.png)\n",
       refused: 0,
       unsupportedHtml: 0,
+      scoped: true,
     });
     const inline =
       "\\begin{figure} <img src='img/a.png' loading='lazy'> \\end{figure} <img src='img/b.png' loading='lazy'>\n";
@@ -155,22 +169,25 @@ describe("stageMarkdownImages on html nodes it does not read", () => {
     // Many tags inside one environment: none staged, so the backend's cap
     // cannot fail the export over TeX text.
     const many = `\\begin{verbatim}\n\n${"<img src='img/a.png' loading='lazy'>\n\n".repeat(300)}\\end{verbatim}\n`;
-    expect(stageMarkdownImages(many, SAVED)).toMatchObject({
+    expect(stageMarkdownImages(many, SAVED)).toEqual({
       images: [],
       markdown: many,
       unsupportedHtml: 0,
+      refused: 0,
+      scoped: true,
     });
   });
 
   it("does not take an opener inside an attribute value for a raw region: the images after such a node are still read", () => {
     const md =
       '<div title="<script>">[ <img src="img/a.png"></div>\n\n<img src="img/b.png" width="640">\n';
-    expect(stageMarkdownImages(md, SAVED)).toMatchObject({
+    expect(stageMarkdownImages(md, SAVED)).toEqual({
       images: [{ name: "image-0.png", source: "img/b.png" }],
       markdown:
         '<div title="<script>">[ <img src="img/a.png"></div>\n\n![](baram-asset:image-0.png){width=640px}\n',
       refused: 0,
       unsupportedHtml: 1,
+      scoped: true,
     });
   });
 
