@@ -19,8 +19,10 @@
 // measured on (`--from markdown`, default extensions). Inside a paragraph
 // the parser has already separated an inline tag from code spans, escapes
 // and math, so such a node is a single tag and trivially supported; the
-// grammar is what an HTML BLOCK gets — and an HTML block never holds a blank
-// line, which is why no rule here needs to know where a paragraph ends.
+// grammar is what an HTML BLOCK gets — and its caption text never holds a
+// blank line (a blank line ends the block; only a comment or a verbatim
+// body may span one, and neither is caption text), which is why no rule
+// here needs to know where a paragraph ends.
 //
 // Supported items:
 // - an `<img …>` start tag, well formed (CommonMark's open-tag grammar, in
@@ -40,9 +42,11 @@
 //   `|` in a rewritten alt — measured). And no line, after the node's first,
 //   indented four columns or by a tab (an indented code block — measured:
 //   pandoc reads `<div>\n    <img>` as one inside the div, and so a 4-space
-//   line after `</p>` or after a heading), nor beginning with `~~~`, `>` or
-//   a list, definition or number marker (`- ~~~` and `> ~~~` open a fence
-//   inside a container, `>     <img>` is indented code — measured); right
+//   line after `</p>` or after a heading), nor beginning with `~~~`, `>`, a
+//   definition marker or any list marker pandoc's markdown knows — bullet,
+//   number, letter, roman numeral, `#`, example label (`- ~~~` and `> ~~~`
+//   open a fence inside a container, `>     <img>` and `(@x)     <img>` are
+//   indented code — measured); right
 //   after a tag the same run of tildes or marker is refused too (`<div> ~~~`
 //   opens a fence; `<img>~~~` does not, and the grammar does not know block
 //   tags from inline ones). `<img a>\n    <img b>` is a paragraph
@@ -51,12 +55,14 @@
 // Anything else — an unclosed tag, an attribute shape outside the grammar
 // (a leading `=`, a quote inside an unquoted value, an empty `src=`), a
 // raw-text element, a fence, code, math, an escaped `<`, an indented line —
-// makes the whole node unsupported. Not emulated and left to pandoc: what
-// stands OUTSIDE the node. A raw TeX environment spanning blank lines, a
-// comment spanning them, a `\texttt{…}` or a `[x]{title="…"}` around an
-// inline tag all hide it from pandoc while the parser hands it over on its
-// own; the tag is then rewritten and its file staged for nothing, and the
-// filter drops the construct as it always did.
+// makes the whole node unsupported. A region pandoc reads through — a
+// comment, a verbatim body or a raw TeX environment an earlier node opened
+// and did not close — is carried across the nodes that follow by the policy
+// walk (`rawOpenedBy`), since the parser splits such a region into several
+// nodes. Not emulated and left to pandoc: a `\texttt{…}` or a `[x]{title="…"}`
+// around an inline tag hides it from pandoc while the parser hands it over
+// on its own; the tag is then rewritten and its file staged for nothing,
+// and the filter drops the construct as it always did.
 import { LINE_END } from "./export-html-node-offsets";
 
 /** One `<img …>` tag's offsets in the text it was read from. */
@@ -70,8 +76,6 @@ export interface TagSpan {
  *  are markup to it): an `<img` in there is not a tag. The one list every
  *  rule about verbatim bodies is built from. */
 const OPAQUE = new Set(["pre", "script", "style", "textarea"]);
-/** The start tag of an element whose body is verbatim, as a pattern. */
-const OPAQUE_START = `<(${[...OPAQUE].join("|")})(?=[\\s/>])`;
 /** A comment's end as HTML reads it, and pandoc too (measured: `--!>`). */
 const COMMENT_END = "--!?>";
 
@@ -92,9 +96,6 @@ const OPEN_TAG = new RegExp(`^<(${NAME})(?:${WS}+${ATTRIBUTE})*${WS}*/?>`);
 const CLOSE_TAG = new RegExp(`^</(${NAME})${WS}*>`);
 /** A comment as HTML and pandoc both end it: not abrupt, no `--!>`. */
 const COMMENT = /^<!--(?!-?>)(?:(?!--!>)[^])*?-->/;
-/** A comment opener, or the start tag of a verbatim element (global: the
- *  caller sets `lastIndex`). */
-const RAW_OPENER = new RegExp(`<!--|${OPAQUE_START}`, "gi");
 /** What may not begin a line of caption text (after up to three spaces),
  *  nor follow a tag (after any spaces): a tilde fence, a blockquote marker,
  *  a bullet, a definition marker (`:` or `~`), or any ordered-list marker
@@ -162,53 +163,125 @@ function isCaption(text: string): boolean {
   return rest.every((line) => !INDENTED.test(line) && !LINE_START.test(line));
 }
 
-/** Where pandoc cannot read an image even in a node this module does not
- *  read: fenced code (closed by three or more of its own character — a
- *  longer opener is not held to its length, an estimate), a code span, a
- *  comment (abrupt ones close at once, an unclosed one runs to the end) and
- *  the body of a verbatim element. */
-const NOT_A_CANDIDATE = [
+/** Code pandoc cannot read an image in: fenced code (closed by three or
+ *  more of its own character — a longer opener is not held to its length,
+ *  an estimate) and a code span. */
+const CODE = [
   /(^|[\r\n])[ \t]*(`|~)\2{2,}[^\r\n]*(?:[\r\n][^]*?(?:[\r\n][ \t]*\2{3,}[ \t]*(?=[\r\n]|$)|$)|$)/g,
   /`[^`]*`/g,
-  new RegExp(`<!--(?:-?>|(?:(?!${COMMENT_END})[^])*(?:${COMMENT_END}|$))`, "g"),
-  new RegExp(`${OPAQUE_START}[^]*?(?:</\\1(?=[\\s/>])|$)`, "gi"),
 ];
+
+/** The raw TeX environment opener pandoc's `raw_tex` reads, at the text's start. */
+const TEX_BEGIN = /^\\begin\{([^{}]+)\}/;
+
+/** What a text opens and does not close: the pattern that closes it, and
+ *  where the region began. */
+interface OpenRegion {
+  at: number;
+  until: RegExp;
+}
+
+/**
+ * The regions of `value` pandoc reads through — a comment, a verbatim
+ * element with its body, a raw TeX environment — found by the tag grammar,
+ * so that an opener inside an attribute value (`title="<script>"`) opens
+ * nothing. `closed` are the regions that end inside the text; `open` is the
+ * one that does not, if any. An abrupt comment (`<!-->`, `<!--->`) is
+ * closed at once.
+ */
+function rawRegions(value: string): {
+  closed: TagSpan[];
+  open: null | OpenRegion;
+} {
+  const closed: TagSpan[] = [];
+  let i = 0;
+  while (i < value.length) {
+    const lt = value.indexOf("<", i);
+    const begin = value.indexOf("\\begin{", i);
+    if (lt === -1 && begin === -1) break;
+    if (begin !== -1 && (lt === -1 || begin < lt)) {
+      const env = TEX_BEGIN.exec(value.slice(begin));
+      if (env === null) {
+        i = begin + 1;
+        continue;
+      }
+      const name = env[1].replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const end = new RegExp(`\\\\end\\{${name}\\}`, "g");
+      end.lastIndex = begin + env[0].length;
+      const closer = end.exec(value);
+      if (closer === null) {
+        return { closed, open: { at: begin, until: new RegExp(end.source) } };
+      }
+      closed.push({ end: closer.index + closer[0].length, start: begin });
+      i = closer.index + closer[0].length;
+      continue;
+    }
+    const rest = value.slice(lt);
+    if (rest.startsWith("<!--")) {
+      const abrupt = /^<!---?>/.exec(rest);
+      if (abrupt !== null) {
+        closed.push({ end: lt + abrupt[0].length, start: lt });
+        i = lt + abrupt[0].length;
+        continue;
+      }
+      const end = new RegExp(COMMENT_END, "g");
+      end.lastIndex = lt + 4;
+      const closer = end.exec(value);
+      if (closer === null) {
+        return { closed, open: { at: lt, until: new RegExp(COMMENT_END) } };
+      }
+      closed.push({ end: closer.index + closer[0].length, start: lt });
+      i = closer.index + closer[0].length;
+      continue;
+    }
+    const close = CLOSE_TAG.exec(rest);
+    if (close !== null) {
+      i = lt + close[0].length;
+      continue;
+    }
+    const open = OPEN_TAG.exec(rest);
+    if (open === null) {
+      i = lt + 1;
+      continue;
+    }
+    i = lt + open[0].length;
+    const name = open[1].toLowerCase();
+    if (!OPAQUE.has(name)) continue;
+    const end = new RegExp(`</${name}(?=[\\s/>])`, "gi");
+    end.lastIndex = i;
+    const closer = end.exec(value);
+    if (closer === null) {
+      return { closed, open: { at: lt, until: new RegExp(end.source, "i") } };
+    }
+    closed.push({ end: closer.index + closer[0].length, start: lt });
+    i = closer.index + closer[0].length;
+  }
+  return { closed, open: null };
+}
 
 /**
  * Might this text hold an image pandoc would read? An estimate for the
  * "may be missing" notice about a node this module did not read: an `<img`
- * start or a markdown image outside code, comments and verbatim bodies —
- * never a count of images, and a code sample of a tag is not one.
+ * start or a markdown image outside code, comments, verbatim bodies and raw
+ * TeX — never a count of images, and a code sample of a tag is not one.
  */
 export function mayHoldImage(value: string): boolean {
-  let text = value;
-  for (const region of NOT_A_CANDIDATE) text = text.replace(region, " ");
+  const { closed, open } = rawRegions(value);
+  let text = open === null ? value : value.slice(0, open.at);
+  for (const { end, start } of closed) {
+    text = text.slice(0, start) + " ".repeat(end - start) + text.slice(end);
+  }
+  for (const region of CODE) text = text.replace(region, " ");
   return /<img(?=[\s/>])/i.test(text) || text.includes("![");
 }
 
 /**
- * The closer of the comment or verbatim element `value` opens without
- * closing, or null — for a node this module did not read, whose raw region
- * pandoc carries into the nodes that follow. An abrupt comment (`<!-->`,
- * `<!--->`) is closed at once. The result is a plain (non-global) pattern
- * to test the following nodes' text with.
+ * The closer of the comment, verbatim element or raw TeX environment
+ * `value` opens without closing, or null — for a node the policy did not
+ * read (or a text node), whose region pandoc carries into the nodes that
+ * follow. A plain (non-global) pattern to test the following nodes' text
+ * with.
  */
 export function rawOpenedBy(value: string): null | RegExp {
-  let i = 0;
-  for (;;) {
-    RAW_OPENER.lastIndex = i;
-    const opener = RAW_OPENER.exec(value);
-    if (opener === null) return null;
-    i = opener.index + opener[0].length;
-    const name = opener[1];
-    if (name === undefined && /^-?>/.test(value.slice(i, i + 2))) continue;
-    const close = new RegExp(
-      name === undefined ? COMMENT_END : `</${name}(?=[\\s/>])`,
-      "gi",
-    );
-    close.lastIndex = i;
-    const closer = close.exec(value);
-    if (closer === null) return new RegExp(close.source, "i");
-    i = closer.index + closer[0].length;
-  }
+  return rawRegions(value).open?.until ?? null;
 }

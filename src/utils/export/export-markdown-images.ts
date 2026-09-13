@@ -230,7 +230,7 @@ function collectEdits(
     return;
   }
   if ("value" in node) {
-    closeRawRegion(walk.raw, node.value);
+    trackRawRegion(walk.raw, node);
     return;
   }
   if (!("children" in node)) return;
@@ -238,9 +238,30 @@ function collectEdits(
   for (const child of node.children) collectEdits(child, inner, walk, edits);
 }
 
-/** Let any node's text close the region the walk is inside. */
-function closeRawRegion(raw: RawRegion, value: string): void {
-  if (raw.until !== null && raw.until.test(value)) raw.until = null;
+/**
+ * Let any node's text close the region the walk is inside; what follows the
+ * closer is returned for the caller to read on, or null when the region
+ * stays open (or there was none to close).
+ */
+function closeRawRegion(raw: RawRegion, value: string): null | string {
+  if (raw.until === null) return null;
+  const closer = raw.until.exec(value);
+  if (closer === null) return null;
+  raw.until = null;
+  return value.slice(closer.index + closer[0].length);
+}
+
+/**
+ * A value node's part in the raw region: it may close the one the walk is
+ * inside, and a text node may open one — pandoc's raw TeX environment
+ * (`\begin{verbatim}` … `\end{verbatim}`) is text to the parser and spans
+ * any html node between its lines. Code is code to pandoc too, so a code
+ * node opens nothing.
+ */
+function trackRawRegion(raw: RawRegion, node: Nodes & { value: string }): void {
+  const rest =
+    raw.until === null ? node.value : closeRawRegion(raw, node.value);
+  if (rest !== null && node.type === "text") raw.until = rawOpenedBy(rest);
 }
 
 /** Record a request for `source` and return the name its placeholder gets. */
@@ -274,7 +295,11 @@ function htmlNodeImages(
   raw: RawRegion,
 ): HtmlImage[] | null {
   if (raw.until !== null) {
-    closeRawRegion(raw, node.value);
+    // Inside the region: not a tag to pandoc. What follows the closer, if
+    // it stands in this node, is left unread as well (conservative) but may
+    // open the next region.
+    const rest = closeRawRegion(raw, node.value);
+    if (rest !== null) raw.until = rawOpenedBy(rest);
     return [];
   }
   const spans = readHtmlFragment(node.value);
@@ -379,7 +404,7 @@ export function rewriteImageTagsAsMarkdown(markdown: string): {
       return;
     }
     if ("value" in node) {
-      closeRawRegion(raw, node.value);
+      trackRawRegion(raw, node);
       return;
     }
     if (!("children" in node)) return;

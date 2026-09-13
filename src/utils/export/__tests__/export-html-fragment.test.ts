@@ -247,6 +247,11 @@ describe("mayHoldImage", () => {
     expect(mayHoldImage("<div>\n<!-- x --!> <img src='c.png'>\n</div>")).toBe(
       true,
     );
+    // An opener inside an attribute value masks nothing: the tag after it
+    // is a candidate.
+    expect(
+      mayHoldImage('<div title="<script>">[ <img src="a.png"></div>'),
+    ).toBe(true);
     // A closing fence may be longer than its opener: the tag after it counts.
     expect(mayHoldImage('<div>\n```\nx\n````\n<img src="a.png">\n</div>')).toBe(
       true,
@@ -266,5 +271,22 @@ describe("rawOpenedBy", () => {
     expect(rawOpenedBy("<!--> x")).toBeNull();
     expect(rawOpenedBy("<script>a</script><img>")).toBeNull();
     expect(rawOpenedBy("<div>plain</div>")).toBeNull();
+  });
+
+  it("reads openers by the tag grammar: one inside an attribute value opens nothing, a raw TeX environment does", () => {
+    expect(rawOpenedBy('<div title="<script>">[x')).toBeNull();
+    expect(rawOpenedBy('<div title="<!--">[x')).toBeNull();
+    expect(rawOpenedBy('<div title="\\begin{figure}">[x')).toBeNull();
+    // pandoc's raw TeX: an environment runs to its own `\end`, blank lines
+    // and html nodes included.
+    expect(rawOpenedBy("\\begin{verbatim}")?.test("\\end{verbatim}")).toBe(
+      true,
+    );
+    expect(rawOpenedBy("\\begin{verbatim}")?.test("\\end{figure}")).toBe(false);
+    expect(rawOpenedBy("\\begin{figure*} x")?.test("\\end{figure*}")).toBe(
+      true,
+    );
+    expect(rawOpenedBy("\\begin{a}\\end{a} tail")).toBeNull();
+    expect(rawOpenedBy("\\begin{a}\\end{b}")?.test("\\end{a}")).toBe(true);
   });
 });

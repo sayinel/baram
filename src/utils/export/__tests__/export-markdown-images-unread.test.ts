@@ -141,6 +141,46 @@ describe("stageMarkdownImages on html nodes it does not read", () => {
     });
   });
 
+  it("does not read a tag inside a raw TeX environment, in a paragraph or across blank lines, and reads on after its end", () => {
+    // pandoc's raw_tex: the environment is one raw block, blank lines and
+    // html nodes included; the tag inside is TeX, not an image.
+    const blocks =
+      "\\begin{verbatim}\n\n<img src='img/a.png' loading='lazy'>\n\n\\end{verbatim}\n\n<img src='img/b.png' loading='lazy'>\n";
+    expect(stageMarkdownImages(blocks, SAVED)).toMatchObject({
+      images: [{ name: "image-0.png", source: "img/b.png" }],
+      markdown:
+        "\\begin{verbatim}\n\n<img src='img/a.png' loading='lazy'>\n\n\\end{verbatim}\n\n![](baram-asset:image-0.png)\n",
+      refused: 0,
+      unsupportedHtml: 0,
+    });
+    const inline =
+      "\\begin{figure} <img src='img/a.png' loading='lazy'> \\end{figure} <img src='img/b.png' loading='lazy'>\n";
+    expect(stageMarkdownImages(inline, SAVED)).toMatchObject({
+      images: [{ name: "image-0.png", source: "img/b.png" }],
+      unsupportedHtml: 0,
+    });
+    // Many tags inside one environment: none staged, so the backend's cap
+    // cannot fail the export over TeX text.
+    const many = `\\begin{verbatim}\n\n${"<img src='img/a.png' loading='lazy'>\n\n".repeat(300)}\\end{verbatim}\n`;
+    expect(stageMarkdownImages(many, SAVED)).toMatchObject({
+      images: [],
+      markdown: many,
+      unsupportedHtml: 0,
+    });
+  });
+
+  it("does not take an opener inside an attribute value for a raw region: the images after such a node are still read", () => {
+    const md =
+      '<div title="<script>">[ <img src="img/a.png"></div>\n\n<img src="img/b.png" width="640">\n';
+    expect(stageMarkdownImages(md, SAVED)).toMatchObject({
+      images: [{ name: "image-0.png", source: "img/b.png" }],
+      markdown:
+        '<div title="<script>">[ <img src="img/a.png"></div>\n\n![](baram-asset:image-0.png){width=640px}\n',
+      refused: 0,
+      unsupportedHtml: 1,
+    });
+  });
+
   it("leaves a tag shape HTML and pandoc could read differently, or that pandoc reads as code or a fence, rather than guess", () => {
     const NBSP = String.fromCharCode(0xa0);
     const shapes = [
