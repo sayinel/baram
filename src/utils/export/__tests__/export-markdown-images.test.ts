@@ -9,6 +9,8 @@ import { parseMdast } from "../../../pipeline/parse-mdast";
 import {
   classifyImageSource,
   relativeScope,
+} from "../export-image-source-policy";
+import {
   rewriteImageTagsAsMarkdown,
   stageMarkdownImages,
 } from "../export-markdown-images";
