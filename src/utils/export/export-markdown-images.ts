@@ -8,7 +8,8 @@
 // network request at export time. Nothing checked the destination, and pandoc
 // ran without `--sandbox`.
 //
-// This pass walks the document and gives every image its verdict
+// This pass walks the document (export-markdown-image-walk.ts) and gives
+// every image its verdict
 // (export-image-source-policy.ts: kept, staged as an asset request the
 // backend resolves inside the document's context, or refused), then writes
 // the edits (export-image-edits.ts): a staged image points at its
@@ -46,19 +47,11 @@
 // dropped with the rest of raw TeX. A document with nothing to change comes
 // back as the very same string.
 import type { PandocImageRequest } from "../../ipc/types";
-import type { Html, Nodes } from "mdast";
 
 import { visit } from "unist-util-visit";
 
 import { parseMdast } from "../../pipeline/parse-mdast";
 import { decodePercent } from "../path-utils";
-import {
-  mayHoldImage,
-  rawOpenedBy,
-  readHtmlFragment,
-  type TagSpan,
-} from "./export-html-fragment";
-import { valueToSource } from "./export-html-node-offsets";
 import {
   altEdit,
   altEditAt,
@@ -71,13 +64,9 @@ import {
   type RelativeScope,
   relativeScope,
 } from "./export-image-source-policy";
-import {
-  type ExportImageTag,
-  readExportImageTag,
-} from "./export-img-attributes";
+import { type HtmlImage, walkImages } from "./export-markdown-image-walk";
 import {
   applyEdits,
-  innerContext,
   type LabelContext,
   MAX_ROUNDS,
   type SourceEdit,
@@ -126,18 +115,6 @@ interface Counters {
 }
 
 /**
- * A comment or verbatim element an earlier node opened and has not closed,
- * carried in document order. The parser splits `<script>…<img>…</script>`
- * inside a paragraph into three html nodes, and a comment holding a blank
- * line into html blocks on either side of what stands in it; pandoc reads
- * each as one raw region, so an html node inside it is not a tag. `until`
- * is the closer still to come, or null.
- */
-interface RawRegion {
-  until: null | RegExp;
-}
-
-/**
  * Stage the images pandoc may read and reduce every other image to its alt
  * text. Returns the input string itself when there is nothing to change.
  */
@@ -182,174 +159,53 @@ export function stageMarkdownImages(
   );
 }
 
-/** What one pass carries while it walks the tree. */
-interface Walk {
+/** What one round stages into, shared by every edit of the round. */
+interface Staging {
   counters: Counters;
-  /** Only the first round counts a node it cannot read — it survives every
-   *  round unchanged and would be counted again each time. */
-  firstRound: boolean;
   images: PandocImageRequest[];
   knownAssets: ReadonlySet<string>;
-  /** The raw region the walk is inside, if any (document order). */
-  raw: RawRegion;
-  refusedIdentifiers: ReadonlySet<string>;
   scope: null | RelativeScope;
-  /** The markdown being walked — `<img>` tags are located in it by offset. */
-  source: string;
-  /** The names this walk staged — known from the next round on. */
+  /** The names this round staged — known from the next round on. */
   staged: string[];
 }
 
-function collectEdits(
-  node: Nodes,
-  ctx: LabelContext,
-  walk: Walk,
-  edits: SourceEdit[],
-): void {
-  if (node.type === "image") {
-    const verdict = classifyImageSource(node.url, walk.scope, walk.knownAssets);
-    if (verdict.kind === "refuse") {
-      walk.counters.refused += 1;
-      edits.push(altEdit(node, node.alt, ctx));
-    }
-    if (verdict.kind === "stage") {
-      const name = stageRequest(walk, verdict.source);
-      edits.push(assetEdit(node, `${ASSET_SCHEME}${name}`, ctx));
-    }
-    return;
-  }
-  if (node.type === "imageReference") {
-    if (walk.refusedIdentifiers.has(node.identifier)) {
-      walk.counters.refused += 1;
-      edits.push(altEdit(node, node.alt, ctx));
-    }
-    return;
-  }
-  if (node.type === "html") {
-    imgTagEdits(node, ctx, walk, edits);
-    return;
-  }
-  if ("value" in node) {
-    trackRawRegion(walk.raw, node);
-    return;
-  }
-  if (!("children" in node)) return;
-  const inner = innerContext(ctx, node.type);
-  for (const child of node.children) collectEdits(child, inner, walk, edits);
-}
-
-/**
- * Let any node's text close the region the walk is inside; what follows the
- * closer is returned for the caller to read on, or null when the region
- * stays open (or there was none to close).
- */
-function closeRawRegion(raw: RawRegion, value: string): null | string {
-  if (raw.until === null) return null;
-  const closer = raw.until.exec(value);
-  if (closer === null) return null;
-  raw.until = null;
-  return value.slice(closer.index + closer[0].length);
-}
-
-/**
- * A value node's part in the raw region: it may close the one the walk is
- * inside, and a text node may open one — pandoc's raw TeX environment
- * (`\begin{verbatim}` … `\end{verbatim}`) is text to the parser and spans
- * any html node between its lines. Code is code to pandoc too, so a code
- * node opens nothing.
- */
-function trackRawRegion(raw: RawRegion, node: Nodes & { value: string }): void {
-  const rest =
-    raw.until === null ? node.value : closeRawRegion(raw, node.value);
-  if (rest !== null && node.type === "text") raw.until = rawOpenedBy(rest);
-}
-
 /** Record a request for `source` and return the name its placeholder gets. */
-function stageRequest(walk: Walk, source: string): string {
-  const name = stagedName(walk.images.length, source);
-  walk.images.push({ name, source });
-  walk.staged.push(name);
+function stageRequest(staging: Staging, source: string): string {
+  const name = stagedName(staging.images.length, source);
+  staging.images.push({ name, source });
+  staging.staged.push(name);
   return name;
 }
 
-/** One `<img …>` tag of an html node: where it stands in the source and
- *  what it says. */
-interface HtmlImage {
-  at: TagSpan;
-  tag: ExportImageTag;
-}
-
 /**
- * The `<img …>` tags of an html node, or null when the node is not this
- * pass's to read and may hold an image — the caller counts that for the
- * user. A node outside the supported grammar (export-html-fragment.ts) or
- * one whose text cannot be aligned with the source is left whole: its tags
- * stay raw and the filter drops them. A node that cannot hold an image at
- * all, or that stands inside a raw region an earlier node opened, is simply
- * nothing to do.
+ * The edit for one `<img …>` tag the walk read: its source is judged like
+ * any other image — staged, kept, or reduced to its alt text and counted —
+ * and a tag with no usable source becomes its alt text and is counted too,
+ * since the backend's filter would drop the raw tag with no word to the user.
  */
-function htmlNodeImages(
-  node: Html,
-  source: string,
-  raw: RawRegion,
-): HtmlImage[] | null {
-  if (raw.until !== null) {
-    // Inside the region: not a tag to pandoc. What follows the closer, if
-    // it stands in this node, is left unread as well (conservative) but may
-    // open the next region.
-    const rest = closeRawRegion(raw, node.value);
-    if (rest !== null) raw.until = rawOpenedBy(rest);
-    return [];
-  }
-  const spans = readHtmlFragment(node.value);
-  if (spans === null) {
-    raw.until = rawOpenedBy(node.value);
-    return mayHoldImage(node.value) ? null : [];
-  }
-  if (spans.length === 0) return [];
-  const map = valueToSource(node.value, source, node.position!.start.offset!);
-  if (map === null) return null;
-  return spans.map((span) => ({
-    at: { end: map(span.end), start: map(span.start) },
-    tag: readExportImageTag(node.value.slice(span.start, span.end)),
-  }));
-}
-
-/**
- * Edits for the `<img …>` tags in an html node: each source is judged like
- * any other image — staged, kept, or reduced to its alt text and counted — and
- * a tag with no usable source becomes its alt text and is counted too, since
- * the backend's filter would drop the raw tag with no word to the user.
- */
-function imgTagEdits(
-  node: Html,
+function htmlImageEdit(
+  { at, tag }: HtmlImage,
   ctx: LabelContext,
-  walk: Walk,
-  edits: SourceEdit[],
-): void {
-  const found = htmlNodeImages(node, walk.source, walk.raw);
-  if (found === null) {
-    if (walk.firstRound) walk.counters.unsupportedHtml += 1;
-    return;
+  staging: Staging,
+): SourceEdit {
+  if (tag.src === null) {
+    staging.counters.refused += 1;
+    return altEditAt(at, tag.alt, ctx);
   }
-  for (const { at, tag } of found) {
-    if (tag.src === null) {
-      walk.counters.refused += 1;
-      edits.push(altEditAt(at, tag.alt, ctx));
-      continue;
-    }
-    const verdict = classifyImageSource(tag.src, walk.scope, walk.knownAssets);
-    if (verdict.kind === "refuse") {
-      walk.counters.refused += 1;
-      edits.push(altEditAt(at, tag.alt, ctx));
-      continue;
-    }
-    const url =
-      verdict.kind === "keep"
-        ? verdict.source
-        : `${ASSET_SCHEME}${stageRequest(walk, verdict.source)}`;
-    edits.push(imageEditAt(at, tag, url, ctx));
+  const verdict = classifyImageSource(
+    tag.src,
+    staging.scope,
+    staging.knownAssets,
+  );
+  if (verdict.kind === "refuse") {
+    staging.counters.refused += 1;
+    return altEditAt(at, tag.alt, ctx);
   }
+  const url =
+    verdict.kind === "keep"
+      ? verdict.source
+      : `${ASSET_SCHEME}${stageRequest(staging, verdict.source)}`;
+  return imageEditAt(at, tag, url, ctx);
 }
 
 /**
@@ -368,36 +224,18 @@ export function rewriteImageTagsAsMarkdown(markdown: string): {
 } {
   const edits: SourceEdit[] = [];
   const counters: Counters = { refused: 0, unsupportedHtml: 0 };
-  const raw: RawRegion = { until: null };
-  const collect = (node: Nodes, ctx: LabelContext): void => {
-    if (node.type === "html") {
-      const found = htmlNodeImages(node, markdown, raw);
-      if (found === null) {
-        counters.unsupportedHtml += 1;
+  walkImages(parseMdast(markdown), markdown, {
+    htmlImage: ({ at, tag }, ctx) => {
+      if (tag.src === null) {
+        counters.refused += 1;
+        edits.push(altEditAt(at, tag.alt, ctx));
         return;
       }
-      for (const { at, tag } of found) {
-        if (tag.src === null) {
-          counters.refused += 1;
-          edits.push(altEditAt(at, tag.alt, ctx));
-          continue;
-        }
-        edits.push(imageEditAt(at, tag, tag.src, ctx));
-      }
-      return;
-    }
-    if ("value" in node) {
-      trackRawRegion(raw, node);
-      return;
-    }
-    if (!("children" in node)) return;
-    const inner = innerContext(ctx, node.type);
-    for (const child of node.children) collect(child, inner);
-  };
-  collect(parseMdast(markdown), {
-    inHeading: false,
-    inLink: false,
-    inTableCell: false,
+      edits.push(imageEditAt(at, tag, tag.src, ctx));
+    },
+    unread: () => {
+      counters.unsupportedHtml += 1;
+    },
   });
   return {
     markdown: edits.length === 0 ? markdown : applyEdits(markdown, edits),
@@ -425,23 +263,35 @@ function stageOnce(
     }
   });
 
+  const staging: Staging = { counters, images, knownAssets, scope, staged };
   const edits: SourceEdit[] = [];
-  collectEdits(
-    root,
-    { inHeading: false, inLink: false, inTableCell: false },
-    {
-      counters,
-      firstRound,
-      images,
-      knownAssets,
-      raw: { until: null },
-      refusedIdentifiers,
-      scope,
-      source: markdown,
-      staged,
+  walkImages(root, markdown, {
+    htmlImage: (image, ctx) => {
+      edits.push(htmlImageEdit(image, ctx, staging));
     },
-    edits,
-  );
+    image: (node, ctx) => {
+      const verdict = classifyImageSource(node.url, scope, knownAssets);
+      if (verdict.kind === "refuse") {
+        counters.refused += 1;
+        edits.push(altEdit(node, node.alt, ctx));
+      }
+      if (verdict.kind === "stage") {
+        const name = stageRequest(staging, verdict.source);
+        edits.push(assetEdit(node, `${ASSET_SCHEME}${name}`, ctx));
+      }
+    },
+    imageReference: (node, ctx) => {
+      if (refusedIdentifiers.has(node.identifier)) {
+        counters.refused += 1;
+        edits.push(altEdit(node, node.alt, ctx));
+      }
+    },
+    // Only the first round counts a node the walk cannot read: it survives
+    // every round unchanged and would be counted again each time.
+    unread: () => {
+      if (firstRound) counters.unsupportedHtml += 1;
+    },
+  });
   if (edits.length === 0) return markdown;
   return applyEdits(markdown, edits);
 }
