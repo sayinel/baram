@@ -13,7 +13,6 @@ import {
   createColResizePlugin,
   createUserResizeTracker,
 } from "./plugins/table-col-resize";
-import { createVirtualScrollPlugin } from "./plugins/table-virtual-scroll";
 
 // §5.5 Tier 3: Table.extend() with resizable columns + pipe-input auto creation
 export const BaramTable = Table.extend({
@@ -67,7 +66,6 @@ export const BaramTable = Table.extend({
       ...(this.parent?.() || []),
       createColResizePlugin(),
       createUserResizeTracker(),
-      createVirtualScrollPlugin(),
     ];
   },
 

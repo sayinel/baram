@@ -177,7 +177,7 @@
         "Mod-t": "insert table (grid picker)",
         "Mod-m": "merge or split cells"
       },
-      "notes": "Tier 3: resizable columns (session only), pipe-input auto creation, context menu, hover insert buttons, TSV paste, CellSelection toolbar. M10: cell merge/split (colspan/rowspan → GFM decomposition), virtual scroll (content-visibility: auto) for 50+ row tables"
+      "notes": "Tier 3: resizable columns (session only), pipe-input auto creation, context menu, hover insert buttons, TSV paste, CellSelection toolbar. M10: cell merge/split (colspan/rowspan → GFM decomposition)"
     },
     {
       "name": "frontmatter",
@@ -752,16 +752,6 @@
       "status": "implemented",
       "shortcuts": {},
       "_note": "WebKit list marker alignment fix. Inserts zero-width space widget when list item starts with atom-only content (e.g. tagNode)."
-    },
-    {
-      "name": "tableVirtualScroll",
-      "file": "nodes/plugins/table-virtual-scroll.ts",
-      "spec": "§5.5",
-      "phase": 3,
-      "milestone": "M10",
-      "status": "implemented",
-      "shortcuts": {},
-      "_note": "CSS content-visibility: auto on 50+ row tables. ProseMirror Plugin applied via EditorView. Graceful degradation for unsupported browsers."
     },
     {
       "name": "fold",
