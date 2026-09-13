@@ -38,7 +38,7 @@ vim 구현의 **파일 경로가 사는 유일한 페이지**다. 다른 페이�
 | [scroll.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/scroll.ts)                           | z 계열 스크롤 + 커서 팔로우                                                                 |
 | [suspension.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/suspension.ts)                   | 입력 섬 판정 + island 라벨 (설계 §4)                                                        |
 
-## 루트 — 플러그인 본체와 배선
+## 루트와 렌더 — 플러그인 본체 · 배선 · 커서 CSS
 
 | 파일                                                                                                                         | 무엇                                                                             |
 | ---------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
