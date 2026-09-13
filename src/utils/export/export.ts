@@ -1,29 +1,23 @@
 import { save } from "@tauri-apps/plugin-dialog";
 
 import type { Locale } from "../../i18n";
-import type { ContextInfo, PandocFormat, PdfOptions } from "../../ipc/types";
+import type { PandocFormat, PdfOptions } from "../../ipc/types";
 import type { BundledFont } from "../font/bundled-fonts";
 // §5.12 Export — HTML file save + PDF via headless Chrome backend + §53 Notion + §55 Pandoc
 import type { Editor } from "@tiptap/core";
 
-import { t } from "../../i18n";
 import { exportBinaryFile, exportPandoc, exportPdf } from "../../ipc/invoke";
-import { contextRootOf, useContextStore } from "../../stores/context/context";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
 import { serializeLiveDoc } from "../editor/serialize-live-doc";
 import { bundledFont } from "../font/bundled-fonts";
-import { hasDriveLetter, isUnderRoot, toPosixPath } from "../path-utils";
 import { buildFontFaceCSS } from "./export-font-embed";
 import { captureEditorHTML, generateStandaloneHTML } from "./export-html";
-import {
-  rewriteImageTagsAsMarkdown,
-  stageMarkdownImages,
-} from "./export-markdown-images";
 import { stripDisallowedMarkdownLinks } from "./export-markdown-links";
 import { rewriteMermaidForPandoc } from "./mermaid-export-assets";
 import { convertForNotion } from "./notion-export";
 import { convertForPandoc } from "./pandoc-export";
+import { imagePolicyNotice, preparePandocImages } from "./pandoc-image-policy";
 import { resolveZettelLinksForExport } from "./zettel-link-resolve";
 
 /**
@@ -163,12 +157,6 @@ export async function exportForNotion(
   await exportBinaryFile(path, Array.from(new TextEncoder().encode(notionMd)));
 }
 
-/** The Pandoc targets that embed images, i.e. make pandoc open the files (issue 545). */
-const PANDOC_EMBEDS_IMAGES: ReadonlySet<PandocFormat> = new Set([
-  "docx",
-  "epub",
-]);
-
 /**
  * §55 Export editor content via Pandoc to docx/latex/epub/rst.
  * Converts Baram-specific syntax to standard markdown first,
@@ -191,39 +179,17 @@ export async function exportWithPandoc(
   const pandocMd = convertForPandoc(resolveZettelLinksForExport(md));
   const { markdown: rewritten, assets } =
     await rewriteMermaidForPandoc(pandocMd);
-  // issue 545: for the formats that EMBED images — pandoc reads the files —
-  // the image policy runs after every converter and the mermaid rewrite:
-  // relative images become asset requests the backend resolves inside the
-  // document's own context, everything else becomes alt text. It runs BEFORE
-  // the link policy, so that one stays the final gate
-  // (export-markdown-images.ts). LaTeX and RST embed nothing — pandoc writes
-  // the reference and reads no file — so their images pass through as written.
+  // issue 545: the image policy runs after every converter and the mermaid
+  // rewrite, and BEFORE the link policy (pandoc-image-policy.ts).
   const documentPath = options?.documentPath ?? null;
-  const owner =
-    documentPath === null ? null : owningDirectoryContext(documentPath);
-  const {
-    images,
-    markdown: staged,
-    refused,
-    scoped,
-    unsupportedHtml,
-  } = PANDOC_EMBEDS_IMAGES.has(format)
-    ? stageMarkdownImages(rewritten, {
-        contextRoot: owner === null ? null : contextRootOf(owner.path),
-        documentPath,
-        knownAssets: new Set(assets.map((asset) => asset.name)),
-      })
-    : {
-        images: [],
-        // The text writers embed nothing and take every reference as written;
-        // `<img>` tags are turned into markdown images so the raw-HTML drop
-        // does not swallow one, and a tag with no source becomes its alt text
-        // and is counted like any refused image.
-        ...rewriteImageTagsAsMarkdown(rewritten),
-        scoped: true,
-      };
+  const prepared = preparePandocImages(
+    rewritten,
+    format,
+    documentPath,
+    new Set(assets.map((asset) => asset.name)),
+  );
   // issue 527: the link policy runs LAST — see export-markdown-links.ts.
-  const finalMd = stripDisallowedMarkdownLinks(staged);
+  const finalMd = stripDisallowedMarkdownLinks(prepared.markdown);
 
   const extensionMap: Record<PandocFormat, string> = {
     docx: "docx",
@@ -242,73 +208,20 @@ export async function exportWithPandoc(
 
   await exportPandoc({
     assets,
-    documentContextId: owner?.id,
+    documentContextId: prepared.documentContextId,
     documentPath: documentPath ?? undefined,
     format,
-    images,
+    images: prepared.images,
     markdownContent: finalMd,
     outputPath: path,
     pandocPath: options?.pandocPath,
     referenceDoc: options?.referenceDoc,
   });
   // issue 545: an image left out is not an error — the export went through
-  // without it — but it is not nothing either. Say how many, and why. issue
-  // 631: an HTML fragment the policy could not read is a separate sentence —
-  // the policy does not know how many images it held, only that pandoc drops
-  // the raw tags in it (export-html-fragment.ts). One toast: the store holds
-  // one at a time, so a second call would hide the first.
-  const { locale } = useSettingsStore.getState();
-  const notices: string[] = [];
-  if (refused > 0) {
-    notices.push(
-      t(
-        scoped ? "export.imagesLeftOut" : "export.imagesLeftOutUnscoped",
-        locale as Locale,
-        { count: String(refused) },
-      ),
-    );
-  }
-  if (unsupportedHtml > 0) {
-    notices.push(
-      t("export.htmlNotRead", locale as Locale, {
-        count: String(unsupportedHtml),
-      }),
-    );
-  }
-  if (notices.length > 0) {
-    useUIStore.getState().showToast(notices.join(" "), "warning");
-  }
-}
-
-/**
- * issue 545: the vault or folder context whose files an export of
- * `documentPath` may embed — the deepest directory context holding it, as
- * everywhere else in the app (§81, longest prefix). Never a `File` context:
- * a file opened on its own authorizes exactly that file. Not the tab's own
- * context: `openTab` backfills that id from whatever context was active, and
- * a wider one would let `../secret.png` climb past a folder the user opened
- * on purpose. This is the user-facing half of the rule; the backend
- * re-derives the boundary from canonical paths
- * (`ContextManager::owning_directory_root`).
- */
-function owningDirectoryContext(documentPath: string): ContextInfo | null {
-  const { contexts } = useContextStore.getState();
-  let best: ContextInfo | null = null;
-  let bestLength = -1;
-  for (const c of contexts) {
-    if (c.contextType === "file") continue;
-    // Windows: the root and the document may differ in drive-letter or
-    // directory case and in separator (`C:\Vault` vs `c:/vault/…`), and are
-    // still one tree — the same rule `relativeScope` applies (issue 631).
-    const fold = hasDriveLetter(documentPath) || hasDriveLetter(c.path);
-    const candidate = fold ? toPosixPath(documentPath) : documentPath;
-    const root = fold ? toPosixPath(c.path) : c.path;
-    if (!isUnderRoot(candidate, root, fold)) continue;
-    const length = contextRootOf(root).length;
-    if (length > bestLength) {
-      best = c;
-      bestLength = length;
-    }
-  }
-  return best;
+  // without it — but it is not nothing either. Say how many, and why.
+  const notice = imagePolicyNotice(
+    prepared,
+    useSettingsStore.getState().locale as Locale,
+  );
+  if (notice !== null) useUIStore.getState().showToast(notice, "warning");
 }
