@@ -491,20 +491,26 @@ describe("stageMarkdownImages", () => {
     it("leaves a commented-out tag, a custom element and a closing tag alone", () => {
       const md =
         "<!-- <img src='img/a.png'> -->\n\n<img-custom src=\"img/b.png\">\n\n</img>\n";
+      // All three are read (a comment, a wrapper, a closing tag) and hold no
+      // image to judge: nothing to count either.
       expect(stageMarkdownImages(md, SAVED)).toMatchObject({
         images: [],
         markdown: md,
         refused: 0,
+        unsupportedHtml: 0,
       });
     });
 
     it("does not mistake `<img` inside another tag's attribute or a script body for an image", () => {
       const md =
         "<div title=\"<img src='missing.png'>\">\n\n<script>var s = \"<img src='x.png'>\";</script>\n\n<textarea><img src='t.png'></textarea>\n";
+      // The attribute is opaque in a node that is read; the two raw-text
+      // elements are not read at all, and each may hold an image.
       expect(stageMarkdownImages(md, SAVED)).toMatchObject({
         images: [],
         markdown: md,
         refused: 0,
+        unsupportedHtml: 2,
       });
     });
 
@@ -521,49 +527,6 @@ describe("stageMarkdownImages", () => {
         markdown: "- ![](baram-asset:image-0.png) tail\n",
         refused: 0,
       });
-    });
-
-    it("reads quotes the way the HTML tokenizer does: only after `=` does a quote open a value", () => {
-      // A stray quote inside an unquoted value or after a tag name is part of
-      // that value, so the tag still ends at the first `>` and nothing beside
-      // it is swallowed; the later tags on the same node are still found.
-      const md =
-        "<div>\n<img src=a\"b.png> x \" > y <img src='img/c.png' alt='C'>\n<img alt=it's src=img/d.png>\n</div>\n";
-      const { images, markdown, refused } = stageMarkdownImages(md, SAVED);
-      expect(markdown).toBe(
-        "<div>\n![](baram-asset:image-0.png) x \" > y ![C](baram-asset:image-1.png)\n![it's](baram-asset:image-2.png)\n</div>\n",
-      );
-      // `a"b.png` is a file name like any other: staged, quote and all.
-      expect(images).toEqual([
-        { name: "image-0.png", source: 'a"b.png' },
-        { name: "image-1.png", source: "img/c.png" },
-        { name: "image-2.png", source: "img/d.png" },
-      ]);
-      expect(refused).toBe(0);
-    });
-
-    it("does not stop at an abruptly closed comment", () => {
-      const { images, markdown } = stageMarkdownImages(
-        "<div>\n<!--> <img src='img/b.png'>\n</div>\n",
-        SAVED,
-      );
-      expect(markdown).toBe(
-        "<div>\n<!--> ![](baram-asset:image-0.png)\n</div>\n",
-      );
-      expect(images).toEqual([{ name: "image-0.png", source: "img/b.png" }]);
-    });
-
-    it("leaves a tag inside a code fence or a code span of an HTML block alone: pandoc reads that as code", () => {
-      const md =
-        "<details>\n<summary>s</summary>\n```html\n<img src=\"img/a.png\">\n```\n`<img src='img/b.png'>` and <img src='img/c.png'>\n</details>\n";
-      const tree = parseMdast(md);
-      expect(tree.children.map((n) => n.type)).toEqual(["html"]);
-      const { images, markdown, refused } = stageMarkdownImages(md, SAVED);
-      expect(markdown).toBe(
-        "<details>\n<summary>s</summary>\n```html\n<img src=\"img/a.png\">\n```\n`<img src='img/b.png'>` and ![](baram-asset:image-0.png)\n</details>\n",
-      );
-      expect(images).toEqual([{ name: "image-0.png", source: "img/c.png" }]);
-      expect(refused).toBe(0);
     });
 
     it("maps a continuation line whose leading tab the parser expanded to spaces", () => {
@@ -587,16 +550,6 @@ describe("stageMarkdownImages", () => {
         markdown: md,
         refused: 0,
       });
-    });
-
-    it("ends an unquoted value at whitespace or `>` as HTML does, even when it holds `=` and a quote", () => {
-      // HTML reads src as `https://x.example/a="b` and ` KEEP ">` as text;
-      // a scanner that let the `"` open a value swallowed that text.
-      const md = '<div>\n<img src=https://x.example/a="b> KEEP ">\n</div>\n';
-      const { images, markdown, refused } = stageMarkdownImages(md, SAVED);
-      expect(markdown).toBe('<div>\n KEEP ">\n</div>\n');
-      expect(images).toEqual([]);
-      expect(refused).toBe(1);
     });
 
     it("still reads a tag whose alt looks like math or code: only a tag that STARTS inside code is code", () => {
@@ -687,18 +640,7 @@ describe("stageMarkdownImages", () => {
       }
     });
 
-    it("ends a raw-text element only at its own closing tag, and a comment at `--!>` too", () => {
-      const md =
-        "<script>let x=\"</scripture><img src='img/e.png'>\";</script>\n\n<!-- x --!> <img src='img/c.png'>\n";
-      expect(stageMarkdownImages(md, SAVED)).toMatchObject({
-        images: [{ name: "image-0.png", source: "img/c.png" }],
-        markdown:
-          "<script>let x=\"</scripture><img src='img/e.png'>\";</script>\n\n<!-- x --!> ![](baram-asset:image-0.png)\n",
-        refused: 0,
-      });
-    });
-
-    it("judges code regions on the text outside tags: a fence or backticks inside attributes hide nothing", () => {
+    it("treats attribute values as opaque: a fence or backticks inside one hide nothing", () => {
       const md =
         '<div title="\n~~~\n">\n<img src="img/a.png">\n</div>\n\n<div title="`"><img src="img/b.png"><span title="`"></span></div>\n';
       expect(stageMarkdownImages(md, SAVED)).toMatchObject({
@@ -728,16 +670,6 @@ describe("stageMarkdownImages", () => {
       });
     });
 
-    it("masks markup without inventing markdown: a `~~~` right after a tag is not a fence", () => {
-      expect(
-        stageMarkdownImages('<div>\n<img src="img/a.png">~~~\n</div>\n', SAVED),
-      ).toMatchObject({
-        images: [{ name: "image-0.png", source: "img/a.png" }],
-        markdown: "<div>\n![](baram-asset:image-0.png)~~~\n</div>\n",
-        refused: 0,
-      });
-    });
-
     it("decodes references as an attribute value does: a legacy reference without its semicolon stays literal before `=` or a letter", () => {
       // Decoding is one pass: `&amp;amp;` yields `&amp;`, never `&`.
       expect(
@@ -751,47 +683,6 @@ describe("stageMarkdownImages", () => {
           { name: "image-1.png", source: "img/b&amp;c.png" },
         ],
         refused: 0,
-      });
-    });
-
-    it("reads attributes by the tokenizer's states: a leading `=` names an attribute, and only ASCII whitespace separates", () => {
-      const NBSP = String.fromCharCode(0xa0);
-      const { images, markdown, refused } = stageMarkdownImages(
-        `<div>\n<img = src="img/a.png" alt="A">\n<img src=img/b${NBSP}c.png alt=B>\n</div>\n`,
-        SAVED,
-      );
-      expect(markdown).toBe(
-        "<div>\n![A](baram-asset:image-0.png)\n![B](baram-asset:image-1.png)\n</div>\n",
-      );
-      expect(images).toEqual([
-        { name: "image-0.png", source: "img/a.png" },
-        { name: "image-1.png", source: `img/b${NBSP}c.png` },
-      ]);
-      expect(refused).toBe(0);
-    });
-
-    it("finds a tag's end by the tokenizer's attribute states: a leading `=` names an attribute, so a `>` inside the next quoted value does not end the tag", () => {
-      expect(
-        stageMarkdownImages(
-          '<div>\n<img = src="img/a>b.png" alt="A">\n</div>\n',
-          SAVED,
-        ),
-      ).toMatchObject({
-        images: [{ name: "image-0.png", source: "img/a>b.png" }],
-        markdown: "<div>\n![A](baram-asset:image-0.png)\n</div>\n",
-        refused: 0,
-      });
-      // `="x` is an attribute NAME (a quote is a name character to HTML), so
-      // the first tag ends at its `>` and the second tag is its own.
-      expect(
-        stageMarkdownImages(
-          "<div>\n<img =\"x><img src='img/b.png'>\">\n</div>\n",
-          SAVED,
-        ),
-      ).toMatchObject({
-        images: [{ name: "image-0.png", source: "img/b.png" }],
-        markdown: '<div>\n![](baram-asset:image-0.png)">\n</div>\n',
-        refused: 1,
       });
     });
 
@@ -821,46 +712,6 @@ describe("stageMarkdownImages", () => {
         ],
         markdown:
           "![](baram-asset:image-0.png){width=640px}\n\n![](baram-asset:image-1.png){width=50%}\n",
-      });
-    });
-
-    it("reads the shapes HTML accepts: self-closing, an empty value, no space before the next attribute, a duplicate in either case", () => {
-      expect(
-        stageMarkdownImages("<div>\n<img/>\n<img src=>\n</div>\n", SAVED),
-      ).toMatchObject({
-        images: [],
-        markdown: "<div>\n\n\n</div>\n",
-        refused: 2,
-      });
-      expect(
-        stageMarkdownImages(
-          '<div>\n<img alt="a"src="img/b.png">\n</div>\n',
-          SAVED,
-        ),
-      ).toMatchObject({
-        images: [{ name: "image-0.png", source: "img/b.png" }],
-        markdown: "<div>\n![a](baram-asset:image-0.png)\n</div>\n",
-        refused: 0,
-      });
-      // The first of a duplicate wins, whichever case it was written in.
-      expect(
-        stageMarkdownImages(
-          '<div>\n<IMG SRC="https://tracker.example/p.gif" src="img/a.png" ALT="pixel">\n</div>\n',
-          SAVED,
-        ),
-      ).toMatchObject({
-        images: [],
-        markdown: "<div>\npixel\n</div>\n",
-        refused: 1,
-      });
-      expect(
-        stageMarkdownImages(
-          '<div>\n<IMG SRC="img/a.png" src="https://tracker.example/p.gif" ALT="pixel">\n</div>\n',
-          SAVED,
-        ),
-      ).toMatchObject({
-        images: [{ name: "image-0.png", source: "img/a.png" }],
-        refused: 0,
       });
     });
 
@@ -927,6 +778,100 @@ describe("stageMarkdownImages", () => {
       );
       expect(markdown).toBe("![d](baram-asset:mermaid-0.png)\n");
     });
+
+    it("leaves a block it cannot read whole and counts it, apart from the images it refused", () => {
+      // pandoc keeps parsing markdown inside an HTML block, so a tag inside
+      // the fence or the code span is code to it; the third tag would be an
+      // image, but the policy does not pick and choose inside a block it
+      // cannot read (export-html-fragment.ts): the block stays as written.
+      const md =
+        '<details>\n<summary>s</summary>\n```html\n<img src="img/a.png">\n```\n`<img src=\'img/b.png\'>` and <img src=\'img/c.png\'>\n</details>\n\n<img src="/etc/hosts" alt="hosts">\n';
+      const tree = parseMdast(md);
+      expect(tree.children.map((n) => n.type)).toEqual(["html", "html"]);
+      expect(stageMarkdownImages(md, SAVED)).toEqual({
+        images: [],
+        markdown:
+          "<details>\n<summary>s</summary>\n```html\n<img src=\"img/a.png\">\n```\n`<img src='img/b.png'>` and <img src='img/c.png'>\n</details>\n\nhosts\n",
+        refused: 1,
+        scoped: true,
+        unsupportedHtml: 1,
+      });
+    });
+
+    it("counts an unread block only when it may hold an image, a markdown image included", () => {
+      expect(
+        stageMarkdownImages("<script>var s = 1;</script>\n", SAVED),
+      ).toMatchObject({ refused: 0, unsupportedHtml: 0 });
+      // A markdown image inside an HTML block is pandoc's to read, not the
+      // parser's: it cannot be staged, so the block is reported instead.
+      const md = '<div>\n<img src="img/a.png">\n![b](img/b.png)\n</div>\n';
+      expect(stageMarkdownImages(md, SAVED)).toMatchObject({
+        images: [],
+        markdown: md,
+        refused: 0,
+        unsupportedHtml: 1,
+      });
+    });
+
+    it("counts an unread block once, however many rounds the document takes", () => {
+      const md =
+        '![k](img/k.png)\n\n<div>\n```\n<img src="img/a.png">\n```\n</div>\n';
+      expect(stageMarkdownImages(md, SAVED)).toMatchObject({
+        images: [{ name: "image-0.png", source: "img/k.png" }],
+        markdown:
+          '![k](baram-asset:image-0.png)\n\n<div>\n```\n<img src="img/a.png">\n```\n</div>\n',
+        unsupportedHtml: 1,
+      });
+    });
+
+    it("counts a block whose text it cannot align with the source as unread", () => {
+      // The parser replaces a NUL by U+FFFD in the node's text but not in the
+      // source: the offsets cannot be trusted, so the block is left whole.
+      const md = `<div>\n${String.fromCharCode(0)} <img src="img/a.png">\n</div>\n`;
+      expect(stageMarkdownImages(md, SAVED)).toMatchObject({
+        images: [],
+        markdown: md,
+        refused: 0,
+        unsupportedHtml: 1,
+      });
+    });
+
+    it("leaves a tag shape HTML and pandoc could read differently, or that pandoc reads as code or a fence, rather than guess", () => {
+      const NBSP = String.fromCharCode(0xa0);
+      const shapes = [
+        // a quote inside an unquoted value
+        '<div>\n<img src=a"b.png> x " > y\n</div>\n',
+        // a leading `=`: HTML names an attribute `=`, pandoc reads no tag at all
+        '<div>\n<img = src="img/a>b.png" alt="A">\n</div>\n',
+        // `=` and a quote inside an unquoted value
+        '<div>\n<img src=https://x.example/a="b> KEEP ">\n</div>\n',
+        // no whitespace before the next attribute
+        '<div>\n<img alt="a"src="img/b.png">\n</div>\n',
+        // an empty unquoted value
+        "<div>\n<img src=>\n</div>\n",
+        // a no-break space inside an unquoted value
+        `<div>\n<img src=img/b${NBSP}c.png alt=B>\n</div>\n`,
+        // comments HTML and pandoc end at different places
+        "<div>\n<!--> <img src='img/b.png'>\n</div>\n",
+        "<div>\n<!-- x --!> <img src='img/c.png'>\n</div>\n",
+        // a tilde run right after a tag opens a fence after a block tag
+        '<div>\n<img src="img/a.png">~~~\n</div>\n',
+        // an indented line is an indented code block to pandoc
+        '<div align="center">\n    <img src="img/a.png">\n</div>\n',
+        // a raw-text element and a comment that never ends
+        "<script>let x=\"</scripture><img src='img/e.png'>\";</script>\n",
+        "<div>\n<!-- x <img src='img/c.png'>\n</div>\n",
+      ];
+      for (const md of shapes) {
+        expect(stageMarkdownImages(md, SAVED), md).toEqual({
+          images: [],
+          markdown: md,
+          refused: 0,
+          scoped: true,
+          unsupportedHtml: 1,
+        });
+      }
+    });
   });
 
   it("counts what became alt text and says whether there was a context at all", () => {
@@ -958,10 +903,12 @@ describe("rewriteImageTagsAsMarkdown (the text writers)", () => {
       markdown:
         "a ![A](img/a.png){width=640px} b\n\n![](../x.png){width=50%}\n\n![](img/c.png)\n\n![k](img/k.png)\n",
       refused: 0,
+      unsupportedHtml: 0,
     });
     expect(rewriteImageTagsAsMarkdown("plain\n")).toEqual({
       markdown: "plain\n",
       refused: 0,
+      unsupportedHtml: 0,
     });
   });
 
@@ -976,6 +923,17 @@ describe("rewriteImageTagsAsMarkdown (the text writers)", () => {
       // tag became its alt text and is counted, so the user hears about it.
       markdown: "![A](img/a\\&b.png)\n\nlost\n\n![](x.png)![Y](y.png) tail\n",
       refused: 1,
+      unsupportedHtml: 0,
+    });
+  });
+
+  it("takes the same acceptance decision as the embedding route: an unread block stays whole and is counted", () => {
+    const md =
+      "<div>\n```\n<img src='img/a.png'>\n```\n<img src='img/b.png'>\n</div>\n";
+    expect(rewriteImageTagsAsMarkdown(md)).toEqual({
+      markdown: md,
+      refused: 0,
+      unsupportedHtml: 1,
     });
   });
 });

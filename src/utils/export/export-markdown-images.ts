@@ -47,26 +47,31 @@
 // from strings built by other means, and a definition is also what its links
 // use.
 //
+// An `<img …>` tag in raw HTML is an image to pandoc too (issue 631): the
+// editor writes one for a resized image, a note pasted from elsewhere may
+// hold any spelling. Such a tag is judged like a markdown image — its
+// source as HTML reads it — and written back as one, only when its html
+// node is one this pass can read at all: nothing but tags, comments and
+// caption text (export-html-fragment.ts, a positive grammar). Any other
+// node — a fence, code, math or an indented line beside the tag, a shape
+// pandoc and HTML read differently — is left whole, and the user is told
+// that block could not be read, apart from the count of images refused.
+//
 // Not covered here — judged one layer later, on pandoc's own parse, by the
 // Lua policy filter `src-tauri/src/export/pandoc.rs` writes for each export
-// (issues 545 and 544): raw HTML of any kind, including an `<img src>` this
-// pass did not recognise as the editor's own tag, is dropped there; an epub
-// `cover-image` in YAML metadata is removed from the metadata; every Image
-// the writers would embed is held to the staged-asset allowlist. Raw TeX
-// `\includegraphics` is dropped with the rest of raw TeX. A document with
-// nothing to change comes back as the very same string.
+// (issues 545 and 544): raw HTML of any kind, including an `<img src>` in a
+// node this pass did not read, is dropped there; an epub `cover-image` in
+// YAML metadata is removed from the metadata; every Image the writers would
+// embed is held to the staged-asset allowlist. Raw TeX `\includegraphics` is
+// dropped with the rest of raw TeX. A document with nothing to change comes
+// back as the very same string.
 import type { PandocImageRequest } from "../../ipc/types";
 import type { Html, Image, ImageReference, Nodes } from "mdast";
 
 import { visit } from "unist-util-visit";
 
 import { parseMdast } from "../../pipeline/parse-mdast";
-import { parseImgHtml } from "../../pipeline/transformers/image-transformer";
 import { parserView, RELATIVE_BASE } from "../link-href";
-import {
-  collectCodeRegions,
-  isInCodeRegion,
-} from "../markdown/markdown-code-regions";
 import {
   dirname,
   foldAsciiCase,
@@ -75,6 +80,16 @@ import {
   stripTrailingSeparators,
   toPosixPath,
 } from "../path-utils";
+import {
+  type EditorSize,
+  editorSize,
+  type LooseImg,
+  mayHoldImage,
+  readHtmlFragment,
+  readImgTag,
+  type TagSpan,
+  valueToSource,
+} from "./export-html-fragment";
 import {
   applyEdits,
   innerContext,
@@ -109,6 +124,12 @@ export interface ImagePolicyResult {
   refused: number;
   /** Whether the document had a context to be relative to at all. */
   scoped: boolean;
+  /**
+   * How many html nodes this pass could not read and that may hold an image
+   * (export-html-fragment.ts): left whole, their raw tags dropped by the
+   * filter. An estimate of blocks, never a count of images.
+   */
+  unsupportedHtml: number;
 }
 
 /** Where an image may point, resolved once per document. */
@@ -134,26 +155,15 @@ type Verdict =
   | { kind: "refuse" }
   | { kind: "stage"; source: string };
 
-/** One `<img …>` tag's offsets in the markdown source. */
-interface TagSpan {
-  end: number;
-  start: number;
-}
-
-/** What an `<img>` tag says as HTML reads it. `src` null: absent or empty. */
-interface LooseImg {
-  alt: null | string;
-  /** Every attribute as HTML read it, untrimmed; null when the tag did not parse. */
-  attrs: Map<string, string> | null;
-  src: null | string;
-}
-
 /** What an image edit carries besides its destination. */
-interface ImgAttrs {
+interface ImgAttrs extends EditorSize {
   alt: null | string;
-  title?: null | string;
-  widthPercent?: number;
-  widthPixel?: number;
+}
+
+/** What one pass counts for the user, shared across rounds. */
+interface Counters {
+  refused: number;
+  unsupportedHtml: number;
 }
 
 /**
@@ -171,7 +181,7 @@ export function stageMarkdownImages(
   // but within a round a document-written placeholder wearing a name staged
   // earlier in the same walk is still the forgery it was.
   const known = new Set(knownAssets);
-  const counters = { refused: 0 };
+  const counters: Counters = { refused: 0, unsupportedHtml: 0 };
   let out = markdown;
   for (let round = 0; round < MAX_ROUNDS; round++) {
     const staged: string[] = [];
@@ -191,6 +201,7 @@ export function stageMarkdownImages(
         markdown: out,
         refused: counters.refused,
         scoped: scope !== null,
+        unsupportedHtml: counters.unsupportedHtml,
       };
     }
     out = next;
@@ -202,9 +213,8 @@ export function stageMarkdownImages(
 
 /** What one pass carries while it walks the tree. */
 interface Walk {
-  /** Shared across rounds: how many images became alt text. */
-  counters: { refused: number };
-  /** Only the first round counts a node it cannot align — it survives every
+  counters: Counters;
+  /** Only the first round counts a node it cannot read — it survives every
    *  round unchanged and would be counted again each time. */
   firstRound: boolean;
   images: PandocImageRequest[];
@@ -360,325 +370,36 @@ function stageRequest(walk: Walk, source: string): string {
   return name;
 }
 
-/** Elements whose body is text to HTML, never markup: an `<img` in there is
- *  not a tag. */
-const RAW_TEXT_ELEMENTS = new Set(["script", "style", "textarea", "title"]);
-
-/** HTML's whitespace is ASCII only — tab, LF, FF, CR, space. JavaScript's
- *  `\s` would also end an unquoted value at a no-break space, which is a
- *  legal character in a file name. */
-function isHtmlSpace(ch: string): boolean {
-  return ch === " " || ch === "\t" || ch === "\n" || ch === "\f" || ch === "\r";
-}
-
-/** A comment ends at `-->`, or at `--!>` (a parse error HTML accepts). */
-const COMMENT_END = /--!?>/g;
-
-/** A line terminator as the parser reads it (global: searched from `lastIndex`). */
-const LINE_END = /\r\n|\r|\n/g;
-
-/**
- * The `<img …>` tags in an html node's text, as offsets in that text. One
- * node may hold several — an HTML block runs to the next blank line — and
- * text may stand between them, so every tag is edited on its own. Every
- * other tag is consumed whole (an `<img` inside a `title="…"` is not a tag),
- * the body of a raw-text element is skipped, comments too, and a tag with no
- * closing `>` ends the scan. Only a real `<img` (its name ends there) counts:
- * `<img-custom>` and `</img>` are not images (issue 631).
- */
-function scanImgTags(html: string): { img: TagSpan[]; markup: TagSpan[] } {
-  const spans: TagSpan[] = [];
-  const markup: TagSpan[] = [];
-  let i = 0;
-  while (i < html.length) {
-    const lt = html.indexOf("<", i);
-    if (lt === -1) break;
-    if (html.startsWith("<!--", lt)) {
-      // `<!-->` and `<!--->` are comments HTML closes at once; `--!>` ends
-      // one as `-->` does.
-      const abrupt = /^<!---?>/.exec(html.slice(lt, lt + 6));
-      if (abrupt !== null) {
-        i = lt + abrupt[0].length;
-        markup.push({ end: i, start: lt });
-        continue;
-      }
-      COMMENT_END.lastIndex = lt + 4;
-      const close = COMMENT_END.exec(html);
-      if (close === null) break;
-      i = close.index + close[0].length;
-      markup.push({ end: i, start: lt });
-      continue;
-    }
-    // A tag name runs to whitespace, `/` or `>` — `<o:p>` from Word included.
-    const open = /^<(\/?)([A-Za-z][^\t\n\f\r />]*)/.exec(
-      html.slice(lt, lt + 80),
-    );
-    if (open === null) {
-      i = lt + 1;
-      continue;
-    }
-    // Scan from after the tag name: the name is not an attribute, so a `=`
-    // right after it starts a name of `=` rather than a value.
-    const close = tagEnd(html, lt + open[0].length);
-    if (close === -1) break;
-    const closing = open[1] === "/";
-    const name = open[2].toLowerCase();
-    if (!closing && name === "img") spans.push({ end: close + 1, start: lt });
-    markup.push({ end: close + 1, start: lt });
-    i = close + 1;
-    if (!closing && RAW_TEXT_ELEMENTS.has(name)) {
-      // The body ends at the element's own end tag — `</script` followed by
-      // whitespace, `/` or `>` — not at text that merely starts that way.
-      const endTag = new RegExp(`</${name}(?=[\\s/>])`, "gi");
-      endTag.lastIndex = i;
-      const found = endTag.exec(html);
-      if (found === null) break;
-      markup.push({ end: found.index, start: i });
-      i = found.index;
-    }
-  }
-  return { img: spans, markup };
+/** One `<img …>` tag of an html node: where it stands in the source and
+ *  what it says. */
+interface HtmlImage {
+  at: TagSpan;
+  loose: LooseImg;
+  raw: string;
 }
 
 /**
- * The index of the `>` that ends the tag opened just before `from`, or -1
- * when the text runs out first — by the tokenizer's own attribute states.
- * A name runs to whitespace, `/`, `=` or `>` and may itself begin with `=`
- * (HTML's leading-`=` rule) or hold a quote; a quote opens a value only
- * right after `=`; an unquoted value ends at whitespace or `>`. So
- * `<img = src="a>b">` ends at its last `>`, and `<img src=a"b> x "` at its
- * first.
+ * The `<img …>` tags of an html node, or null when the node is not this
+ * pass's to read and may hold an image — the caller counts that for the
+ * user. A node outside the supported grammar (export-html-fragment.ts) or
+ * one whose text cannot be aligned with the source is left whole: its tags
+ * stay raw and the filter drops them. A node that cannot hold an image at
+ * all is simply nothing to do.
  */
-function tagEnd(html: string, from: number): number {
-  type State =
-    "afterName" | "beforeName" | "beforeValue" | "name" | "quoted" | "unquoted";
-  let state: State = "beforeName";
-  let quote = "";
-  for (let j = from; j < html.length; j += 1) {
-    const ch = html[j];
-    if (state === "quoted") {
-      if (ch === quote) state = "afterName";
-    } else if (state === "unquoted") {
-      if (ch === ">") return j;
-      if (isHtmlSpace(ch)) state = "beforeName";
-    } else if (state === "beforeValue") {
-      if (isHtmlSpace(ch)) continue;
-      if (ch === ">") return j;
-      if (ch === '"' || ch === "'") {
-        quote = ch;
-        state = "quoted";
-      } else {
-        state = "unquoted";
-      }
-    } else if (state === "name") {
-      if (ch === ">") return j;
-      if (isHtmlSpace(ch)) state = "afterName";
-      else if (ch === "/") state = "beforeName";
-      else if (ch === "=") state = "beforeValue";
-    } else if (state === "afterName") {
-      if (ch === ">") return j;
-      if (isHtmlSpace(ch)) continue;
-      if (ch === "=") state = "beforeValue";
-      else if (ch === "/") state = "beforeName";
-      else state = "name";
-    } else {
-      // beforeName: `/` and whitespace are skipped; anything else, `=`
-      // included, starts a name.
-      if (ch === ">") return j;
-      if (!isHtmlSpace(ch) && ch !== "/") state = "name";
-    }
-  }
-  return -1;
-}
-
-/**
- * The `<img …>` tags of an html node that pandoc will read as tags. Inside
- * an HTML block pandoc still parses markdown (`markdown_in_html_blocks`), so
- * a tag that STARTS inside a code fence or a code span there is code, not an
- * image. The regions are judged on the text OUTSIDE markup — every tag,
- * comment and raw-text body masked, line breaks kept — so a `~~~` or a
- * backtick inside an attribute value opens nothing.
- */
-function imgTagSpans(html: string): TagSpan[] {
-  const { img, markup } = scanImgTags(html);
-  if (img.length === 0) return img;
-  // Masked with a letter, not a blank: blanks would let a `~~~` or backtick
-  // that follows a tag start a line and read as a fence or code span.
-  const chars = html.split(""); // UTF-16 units, as the spans count
-  for (const span of markup) {
-    for (let k = span.start; k < span.end; k += 1) {
-      if (chars[k] !== "\n" && chars[k] !== "\r") chars[k] = "x";
-    }
-  }
-  const code = collectCodeRegions(chars.join(""));
-  return img.filter((span) => !isInCodeRegion(span.start, code));
-}
-
-/**
- * Offsets in an html node's text → offsets in the source. The text is the
- * source with the container prefix of every continuation line (`> `, list
- * indentation) removed, so a middle line of the text is the tail of its
- * source line, and the last line sits after the same prefix as the line
- * before it. Returns null when the lines cannot be aligned — the caller then
- * leaves the node alone rather than guess.
- */
-function valueToSource(
-  value: string,
-  source: string,
-  startOffset: number,
-): ((offset: number) => number) | null {
-  // Lines end in LF, CRLF or a lone CR — the parser reads all three, and
-  // keeps each as written, so the same terminator is looked for in the source.
-  const lines = value.split(/\r\n|\r|\n/);
-  const valueStarts: number[] = [];
-  const sourceStarts: number[] = [];
-  let valueAt = 0;
-  let cursor = startOffset; // where the current source line begins
-  let prefix = 0; // container prefix length of the previous line
-  for (let k = 0; k < lines.length; k += 1) {
-    const line = lines[k];
-    LINE_END.lastIndex = cursor;
-    const terminator = LINE_END.exec(source);
-    const lineEnd = terminator === null ? source.length : terminator.index;
-    const delimiter = terminator === null ? 1 : terminator[0].length;
-    // The parser expands a leading tab to spaces, so a continuation line of
-    // the text may begin with more blanks than its source line: align on the
-    // line's first non-blank character and let the blanks before it map to
-    // that same spot (no tag starts or ends inside them).
-    const lead = /^[ \t]*/.exec(line)![0].length;
-    const body = line.slice(lead);
-    let at: number;
-    if (k === 0) {
-      // The parser expands a tab that ends the container prefix into spaces
-      // at the head of the text (`>\t<img` → `  <img`) while `start.offset`
-      // already sits past the tab: align the first line on its first
-      // non-blank character as well, and let the synthesised blanks map to
-      // that same spot.
-      at = cursor;
-      if (!source.startsWith(line, cursor)) {
-        if (!source.startsWith(body, cursor)) return null;
-        valueStarts.push(lead);
-        sourceStarts.push(at);
-        valueAt += line.length + delimiter;
-        cursor = lineEnd + delimiter;
-        continue;
-      }
-    } else if (k < lines.length - 1) {
-      at = lineEnd - body.length;
-      if (at < cursor || !source.startsWith(body, at)) return null;
-      prefix = at - cursor;
-    } else {
-      at = cursor + prefix;
-      if (!source.startsWith(body, at)) {
-        at = source.indexOf(body, cursor);
-        if (at === -1 || at > lineEnd) return null;
-      }
-    }
-    valueStarts.push(valueAt + (k === 0 ? 0 : lead));
-    sourceStarts.push(at);
-    valueAt += line.length + delimiter;
-    cursor = lineEnd + delimiter;
-  }
-  return (offset: number): number => {
-    let k = valueStarts.length - 1;
-    while (k > 0 && valueStarts[k] > offset) k -= 1;
-    return sourceStarts[k] + Math.max(0, offset - valueStarts[k]);
-  };
-}
-
-/** One `<template>` kept for parsing. Its contents live in an inert document
- *  with no browsing context: nothing in there loads or runs. */
-let host: HTMLTemplateElement | null = null;
-
-/**
- * The tag's attributes as HTML reads them, by parsing it inside the template
- * as `<baram-img …>` — an inert custom element, never an `<img>`, whose
- * element would fetch its source, the very thing still to be judged. The
- * parser gives attribute-value decoding (references by attribute rules, a
- * legacy `&copy` staying literal before a letter), the first of a duplicate,
- * lowercased names, unquoted values to ASCII whitespace or `>`, a leading
- * `=` as a name, and line endings normalised to LF. Null when there is no
- * document, or when the parse did not yield exactly one empty element — the
- * scanner promised one complete start tag, so anything else is refused.
- */
-function parseTag(raw: string): Map<string, string> | null {
-  if (typeof document === "undefined") return null;
-  host ??= document.createElement("template");
-  try {
-    host.innerHTML = `<baram-img${raw.slice(4)}`; // `raw` begins with `<img`
-    const { content } = host;
-    const el = content.firstElementChild;
-    if (
-      el === null ||
-      content.childNodes.length !== 1 ||
-      el.childNodes.length !== 0 ||
-      el.tagName.toLowerCase() !== "baram-img"
-    ) {
-      return null;
-    }
-    const attrs = new Map<string, string>();
-    for (const { name, value } of Array.from(el.attributes)) {
-      attrs.set(name, value);
-    }
-    return attrs;
-  } finally {
-    host.innerHTML = "";
-  }
-}
-
-/** One attribute value decoded once, by attribute rules — for comparing the
- *  strict parser's raw capture with what HTML read. `text` holds no `"`. */
-function decodeAttributeValue(text: string): null | string {
-  if (typeof document === "undefined") return null;
-  host ??= document.createElement("template");
-  try {
-    host.innerHTML = `<baram-x a="${text}">`;
-    return host.content.firstElementChild?.getAttribute("a") ?? null;
-  } finally {
-    host.innerHTML = "";
-  }
-}
-
-/**
- * The tag's `src` and `alt` as HTML reads them (issue 631). The strict
- * parser (`parseImgHtml`) exists for the MD→PM round-trip and refuses
- * anything it could not write back byte for byte; the export only has to
- * know where the image points and what to say if it cannot embed it.
- */
-function readImgTag(raw: string): LooseImg {
-  const attrs = parseTag(raw);
-  const src = attrs?.get("src")?.trim() ?? "";
-  const alt = attrs?.get("alt");
-  return { alt: alt ?? null, attrs, src: src === "" ? null : src };
-}
-
-/** The attributes the strict parser reads and would write back. */
-const STRICT_ATTRS = ["src", "alt", "title", "width"] as const;
-
-/**
- * Title and size for a tag the editor itself wrote — the strict parser
- * accepts exactly that spelling — and only when it and HTML agree on every
- * attribute it copies. The strict parser's name scan can be fooled by a
- * quoted value that spells another attribute (`alt='width="640"'`); HTML's
- * tokenizer cannot, so each of the parser's raw captures is decoded once by
- * attribute rules and compared, untrimmed, with what HTML read. Any
- * disagreement keeps no size and no title: the image is still judged by
- * HTML's reading. Any other tag keeps no size either — pandoc's `{width=…}`
- * is only written for a width the editor would have round-tripped.
- */
-function editorSize(raw: string, loose: LooseImg): Omit<ImgAttrs, "alt"> {
-  const strict = parseImgHtml(raw);
-  if (strict === null || loose.attrs === null) return {};
-  for (const name of STRICT_ATTRS) {
-    const capture = new RegExp(`\\b${name}="([^"]*)"`, "i").exec(raw)?.[1];
-    const parsed = capture === undefined ? null : decodeAttributeValue(capture);
-    if (parsed !== (loose.attrs.get(name) ?? null)) return {};
-  }
-  return {
-    title: strict.title,
-    widthPercent: strict.widthPercent,
-    widthPixel: strict.widthPixel,
-  };
+function htmlNodeImages(node: Html, source: string): HtmlImage[] | null {
+  const spans = readHtmlFragment(node.value);
+  if (spans === null) return mayHoldImage(node.value) ? null : [];
+  if (spans.length === 0) return [];
+  const map = valueToSource(node.value, source, node.position!.start.offset!);
+  if (map === null) return null;
+  return spans.map((span) => {
+    const raw = node.value.slice(span.start, span.end);
+    return {
+      at: { end: map(span.end), start: map(span.start) },
+      loose: readImgTag(raw),
+      raw,
+    };
+  });
 }
 
 /**
@@ -693,23 +414,12 @@ function imgTagEdits(
   walk: Walk,
   edits: SourceEdit[],
 ): void {
-  const spans = imgTagSpans(node.value);
-  if (spans.length === 0) return;
-  const map = valueToSource(
-    node.value,
-    walk.source,
-    node.position!.start.offset!,
-  );
-  if (map === null) {
-    // The node could not be aligned with the source: its tags stay raw, the
-    // filter drops them, and the user is told how many images that cost.
-    if (walk.firstRound) walk.counters.refused += spans.length;
+  const found = htmlNodeImages(node, walk.source);
+  if (found === null) {
+    if (walk.firstRound) walk.counters.unsupportedHtml += 1;
     return;
   }
-  for (const span of spans) {
-    const raw = node.value.slice(span.start, span.end);
-    const at = { end: map(span.end), start: map(span.start) };
-    const loose = readImgTag(raw);
+  for (const { at, loose, raw } of found) {
     if (loose.src === null) {
       walk.counters.refused += 1;
       edits.push(altEditAt(at, loose.alt, ctx));
@@ -774,28 +484,20 @@ function imageEditAt(
 export function rewriteImageTagsAsMarkdown(markdown: string): {
   markdown: string;
   refused: number;
+  unsupportedHtml: number;
 } {
   const edits: SourceEdit[] = [];
-  let refused = 0;
+  const counters: Counters = { refused: 0, unsupportedHtml: 0 };
   const collect = (node: Nodes, ctx: LabelContext): void => {
     if (node.type === "html") {
-      const spans = imgTagSpans(node.value);
-      if (spans.length === 0) return;
-      const map = valueToSource(
-        node.value,
-        markdown,
-        node.position!.start.offset!,
-      );
-      if (map === null) {
-        refused += spans.length;
+      const found = htmlNodeImages(node, markdown);
+      if (found === null) {
+        counters.unsupportedHtml += 1;
         return;
       }
-      for (const span of spans) {
-        const raw = node.value.slice(span.start, span.end);
-        const at = { end: map(span.end), start: map(span.start) };
-        const loose = readImgTag(raw);
+      for (const { at, loose, raw } of found) {
         if (loose.src === null) {
-          refused += 1;
+          counters.refused += 1;
           edits.push(altEditAt(at, loose.alt, ctx));
           continue;
         }
@@ -821,7 +523,7 @@ export function rewriteImageTagsAsMarkdown(markdown: string): {
   });
   return {
     markdown: edits.length === 0 ? markdown : applyEdits(markdown, edits),
-    refused,
+    ...counters,
   };
 }
 
@@ -831,7 +533,7 @@ function stageOnce(
   knownAssets: ReadonlySet<string>,
   images: PandocImageRequest[],
   staged: string[],
-  counters: { refused: number },
+  counters: Counters,
   firstRound: boolean,
 ): string {
   const root = parseMdast(markdown);
