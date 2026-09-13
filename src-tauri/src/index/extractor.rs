@@ -11,6 +11,7 @@ use std::sync::LazyLock;
 
 use super::normalizer::{make_relative_path, resolve_relative_path};
 use super::{IndexError, LinkEntry};
+use crate::md::literal::{source_lines, Literal};
 
 // Wikilink regex: [[target]], [[alias::target]], [[target|display]], [[target#heading]], etc.
 // §87: optional alias:: prefix — group 1 = alias, group 2 = target
@@ -196,11 +197,21 @@ pub(crate) fn extract_file_tags(content: &str) -> Vec<String> {
 /// Extract all links (wikilinks, block refs, block embeds) from file content
 pub(crate) fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
     let mut entries = Vec::new();
-    let lines: Vec<&str> = content.lines().collect();
+    // issue 620: a match inside code, HTML, math, an image or a link
+    // definition is not a link — the editor's parser never reads one there,
+    // and the rewriters (below) skip the same bytes, so what the index
+    // counts is exactly what a rename may touch.
+    let literal = Literal::of(content);
 
-    for (line_idx, line) in lines.iter().enumerate() {
+    for line in source_lines(content) {
+        let is_prose =
+            |m: &regex::Match| !literal.overlaps(line.offset + m.start()..line.offset + m.end());
+
         // §29 Wikilinks: [[target]], [[alias::target]], [[target|display]], etc.
-        for cap in WIKILINK_RE.captures_iter(line) {
+        for cap in WIKILINK_RE.captures_iter(line.text) {
+            if !is_prose(&cap.get(0).unwrap()) {
+                continue;
+            }
             let vault_alias = cap.get(1).map(|m| m.as_str().to_string());
             let target = cap.get(2).map(|m| m.as_str().trim()).unwrap_or("");
             if target.is_empty() {
@@ -210,8 +221,8 @@ pub(crate) fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
             entries.push(LinkEntry {
                 source_path: file_path.to_string(),
                 target: target.to_string(),
-                line: (line_idx + 1) as u32,
-                context: build_context(line),
+                line: line.number,
+                context: build_context(line.text),
                 link_type: "wikilink".to_string(),
                 block_id: None,
                 target_vault_alias: vault_alias,
@@ -219,7 +230,10 @@ pub(crate) fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
         }
 
         // §30c Block embeds first (so we can skip them in block ref matching)
-        for cap in BLOCK_EMBED_RE.captures_iter(line) {
+        for cap in BLOCK_EMBED_RE.captures_iter(line.text) {
+            if !is_prose(&cap.get(0).unwrap()) {
+                continue;
+            }
             let raw_target = cap.get(1).map(|m| m.as_str().trim()).unwrap_or("");
             let block_id = cap.get(2).map(|m| m.as_str()).unwrap_or("");
             if block_id.is_empty() {
@@ -236,8 +250,8 @@ pub(crate) fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
             entries.push(LinkEntry {
                 source_path: file_path.to_string(),
                 target,
-                line: (line_idx + 1) as u32,
-                context: build_context(line),
+                line: line.number,
+                context: build_context(line.text),
                 link_type: "blockEmbed".to_string(),
                 block_id: Some(block_id.to_string()),
                 target_vault_alias: None,
@@ -245,7 +259,10 @@ pub(crate) fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
         }
 
         // §30c Block references: ((target#^blockId))
-        for cap in BLOCK_REF_RE.captures_iter(line) {
+        for cap in BLOCK_REF_RE.captures_iter(line.text) {
+            if !is_prose(&cap.get(0).unwrap()) {
+                continue;
+            }
             let raw_target = cap.get(1).map(|m| m.as_str().trim()).unwrap_or("");
             let block_id = cap.get(2).map(|m| m.as_str()).unwrap_or("");
             if block_id.is_empty() {
@@ -255,7 +272,7 @@ pub(crate) fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
             // Skip if this match is part of a block embed (already captured above)
             let match_start = cap.get(0).unwrap().start();
             if match_start >= 8 {
-                let prefix = &line[..match_start];
+                let prefix = &line.text[..match_start];
                 if prefix.ends_with("{{embed ") {
                     continue;
                 }
@@ -271,8 +288,8 @@ pub(crate) fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
             entries.push(LinkEntry {
                 source_path: file_path.to_string(),
                 target,
-                line: (line_idx + 1) as u32,
-                context: build_context(line),
+                line: line.number,
+                context: build_context(line.text),
                 link_type: "blockRef".to_string(),
                 block_id: Some(block_id.to_string()),
                 target_vault_alias: None,
@@ -457,9 +474,15 @@ pub async fn find_unlinked_mentions(
             Err(_) => continue,
         };
 
-        for (line_idx, line) in content.lines().enumerate() {
+        // issue 620: a stem inside code, HTML, math or an image is not a
+        // mention — blank those bytes (offsets and line breaks kept) before
+        // the search, as the wikilinks are blanked below.
+        let blanked = Literal::of(&content).blank(&content);
+        for (line, visible) in source_lines(&content).zip(source_lines(&blanked)) {
+            let number = line.number;
+            let line = line.text;
             // Strip all [[...]] wikilinks from the line, replacing with spaces of same length
-            let stripped = strip_wikilinks(line);
+            let stripped = strip_wikilinks(visible.text);
 
             // Search for the stem in the stripped text (only first match per line)
             if let Some(mat) = stem_re.find(&stripped) {
@@ -476,7 +499,7 @@ pub async fn find_unlinked_mentions(
 
                 results.push(UnlinkedMentionResult {
                     source_path: md_path.clone(),
-                    line: (line_idx + 1) as u32,
+                    line: number,
                     context,
                     match_text: mat.as_str().to_string(),
                 });
@@ -927,5 +950,81 @@ mod tests {
         let stripped = strip_wikilinks(line);
         assert!(!stripped.contains("[["));
         assert!(stripped.contains("architecture"));
+    }
+
+    // issue 620 — a reference inside a literal region is not a reference:
+    // the index, the rewriters and the mention search share `md::literal`.
+    fn indexed(content: &str) -> Vec<(String, u32)> {
+        extract_links("/vault/guide.md", content)
+            .into_iter()
+            .map(|e| (e.target, e.line))
+            .collect()
+    }
+
+    #[test]
+    fn links_inside_code_html_math_images_and_definitions_are_not_indexed() {
+        let content = "[[prose]] `[[span]]` ((n#^p)) `((n#^s))`\n\
+                       ```\n[[fence]] ((n#^f)) {{embed ((n#^f))}}\n```\n\
+                       <div>\n[[html]]\n</div>\n\n\
+                       ![[[alt]]](x.png) $[[math]]$ [[after]]\n\n\
+                       [r]: [[definition]]\n\
+                       > ```\n> [[quoted-fence]]\n> ```\n> [[quoted]]\n";
+        assert_eq!(
+            indexed(content),
+            [
+                ("prose".to_string(), 1),
+                ("n".to_string(), 1),
+                ("after".to_string(), 9),
+                ("quoted".to_string(), 15),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_reference_that_runs_into_a_code_span_is_not_indexed() {
+        assert_eq!(indexed("((n#^id|`x`)) [[ok]]\n"), [("ok".to_string(), 1)]);
+    }
+
+    #[test]
+    fn offsets_follow_the_bytes_of_a_crlf_file() {
+        // With `lines()` and `len() + 1` the offsets would drift one byte per
+        // line and the last link would fall inside the fence's closer.
+        let content = "a `x` b\r\n[[one]]\r\n```\r\n[[two]]\r\n```\r\n[[three]]\r\n";
+        assert_eq!(
+            indexed(content),
+            [("one".to_string(), 2), ("three".to_string(), 6)]
+        );
+    }
+
+    #[test]
+    fn front_matter_links_are_still_indexed() {
+        assert_eq!(
+            indexed("---\nrelated: \"[[prop]]\"\n    - \"[[deep]]\"\n---\n[[body]]\n"),
+            [
+                ("prop".to_string(), 2),
+                ("deep".to_string(), 3),
+                ("body".to_string(), 5),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn an_unlinked_mention_inside_code_is_not_a_mention() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_string_lossy().to_string();
+        let note = format!("{root}/note.md");
+        tokio::fs::write(&note, "# note\n").await.unwrap();
+        tokio::fs::write(
+            format!("{root}/other.md"),
+            "`note` in a span, then ```\n```\nnote in a fence\n```\n[[note]] linked, note here\n",
+        )
+        .await
+        .unwrap();
+        let found = find_unlinked_mentions(&note, &root).await.unwrap();
+        assert_eq!(
+            found.iter().map(|m| m.line).collect::<Vec<_>>(),
+            [5],
+            "{found:?}"
+        );
     }
 }
