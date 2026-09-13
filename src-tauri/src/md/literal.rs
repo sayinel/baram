@@ -123,15 +123,18 @@ impl Literal {
 }
 
 /// One line of a note, for the scanners that work a line at a time: its
-/// 1-based number, the byte offset of `text` in the note, and the text
-/// without its `\n` or `\r\n`. A bare `\r` is not a line break, as for
-/// `str::lines`. The offset is what makes a per-line regex match comparable
-/// with a `Literal`, which knows only the whole note.
+/// 1-based number, the byte offset of `text` in the note, the text without
+/// its line break, and that break (`"\n"`, `"\r\n"` or `""` at the end) so
+/// a rewriter can put the note back together byte for byte. A bare `\r` is
+/// not a line break, as for `str::lines`. The offset is what makes a
+/// per-line regex match comparable with a `Literal`, which knows only the
+/// whole note.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SourceLine<'a> {
     pub number: u32,
     pub offset: usize,
     pub text: &'a str,
+    pub terminator: &'a str,
 }
 
 /// The lines of `content`, in order — the same lines `content.lines()`
@@ -148,6 +151,7 @@ pub fn source_lines(content: &str) -> impl Iterator<Item = SourceLine<'_>> {
                 number: i as u32 + 1,
                 offset,
                 text,
+                terminator: &raw[text.len()..],
             };
             offset += raw.len();
             line
@@ -557,6 +561,16 @@ mod tests {
         assert_eq!(
             lines,
             [(1, 0, "ab"), (2, 4, "cd"), (3, 7, ""), (4, 8, "ef")]
+        );
+        assert_eq!(
+            source_lines(md).map(|l| l.terminator).collect::<Vec<_>>(),
+            ["\r\n", "\n", "\n", ""]
+        );
+        assert_eq!(
+            source_lines(md)
+                .map(|l| format!("{}{}", l.text, l.terminator))
+                .collect::<String>(),
+            md
         );
         assert_eq!(
             source_lines(md).map(|l| l.text).collect::<Vec<_>>(),
