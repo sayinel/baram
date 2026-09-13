@@ -1086,4 +1086,37 @@ mod tests {
             "[[../new/x]] `[[../old/x]]`\n```\n[[../old/x]]\n```\n"
         );
     }
+
+    /// issue 620 — the cross-language contract: the editor's text path
+    /// (`block-id-rename-markdown.ts`) and this reader→writer chain rewrite
+    /// the same references. The expectations live in the JSON, not in
+    /// either implementation; the vitest side reads the same file.
+    #[test]
+    fn the_rename_fixtures_shared_with_the_frontend_hold() {
+        let doc: serde_json::Value =
+            serde_json::from_str(include_str!("../md/fixtures/literal-regions.json")).unwrap();
+        let referrer = doc["referrer"].as_str().unwrap();
+        let target = doc["target"].as_str().unwrap();
+        let (old, new) = (doc["old"].as_str().unwrap(), doc["new"].as_str().unwrap());
+        for case in doc["cases"].as_array().unwrap() {
+            let (name, markdown) = (
+                case["name"].as_str().unwrap(),
+                case["markdown"].as_str().unwrap(),
+            );
+            let mut index = crate::index::LinkIndex::new();
+            index.update_file_from_content(referrer, markdown);
+            let lines: std::collections::HashSet<u32> = index
+                .block_reference_lines(target, old)
+                .into_iter()
+                .filter(|(source, _)| source == referrer)
+                .map(|(_, line)| line)
+                .collect();
+            let keys = crate::index::backlink_keys(target);
+            assert_eq!(
+                replace_block_id_refs_to(markdown, &lines, &keys, old, new),
+                case["expected"].as_str().unwrap(),
+                "{name}"
+            );
+        }
+    }
 }
