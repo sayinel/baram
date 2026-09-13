@@ -65,7 +65,14 @@ const serializer = unified()
     listItemIndent: "one", // compact indent
     tightDefinitions: true,
   } as Parameters<typeof remarkStringify>[0])
-  .use(remarkGfm, { singleTilde: false })
+  // tablePipeAlign:false — do NOT pad table cells out to the column width.
+  // Padding rewrote every row of every table on save: a 25,095-byte file with
+  // four tables came back 43,158 bytes, so one edit anywhere in the document
+  // produced a diff touching every table line. Unpadded output leaves the cells
+  // byte-identical to what the user wrote; the only remaining difference is the
+  // delimiter row (`| --- |` → `| - |`), which mdast cannot preserve because it
+  // does not record the original dash count.
+  .use(remarkGfm, { singleTilde: false, tablePipeAlign: false })
   .use(remarkMath)
   .use(remarkFrontmatter, ["yaml"])
   .use(remarkWikiLink);
