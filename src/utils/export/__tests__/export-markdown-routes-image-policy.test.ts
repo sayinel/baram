@@ -5,7 +5,6 @@
 // through the pipeline and serialized by the real route code; only the save
 // dialog and the IPC boundary are doubled. The policy itself is pinned in
 // export-markdown-images*.test.ts; this file pins the route.
-import { Editor } from "@tiptap/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({
@@ -23,29 +22,16 @@ vi.mock("@tauri-apps/plugin-opener", () => ({
 
 import type { ContextInfo } from "../../../ipc/types";
 
-import { createBaramExtensions } from "../../../extensions";
 import { exportBinaryFile, exportPandoc } from "../../../ipc/invoke";
-import { markdownToProsemirror } from "../../../pipeline/md-to-pm";
 import { useContextStore } from "../../../stores/context/context";
 import { useUIStore } from "../../../stores/ui/ui";
+import { createEditorFixture } from "../../__tests__/helpers/editor-fixture";
 import { exportWithPandoc } from "../export";
 
-const editors: Editor[] = [];
-
-function loadEditor(markdown: string): Editor {
-  const editor = new Editor({
-    content: "",
-    extensions: createBaramExtensions(),
-  });
-  editors.push(editor);
-  editor.commands.setContent(
-    markdownToProsemirror(markdown, editor.schema).toJSON(),
-  );
-  return editor;
-}
+const { dispose: disposeEditors, load: loadEditor } = createEditorFixture();
 
 afterEach(() => {
-  for (const e of editors.splice(0)) e.destroy();
+  disposeEditors();
   vi.mocked(exportPandoc).mockClear();
   vi.mocked(exportBinaryFile).mockClear();
 });
