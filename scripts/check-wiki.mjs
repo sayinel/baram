@@ -6,7 +6,7 @@
 // 규약의 출처는 `.docs/decisions/2026-09-12-vim-wiki-structure.md`.
 
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const WIKI = "wiki";
@@ -39,6 +39,26 @@ const files = readdirSync(WIKI)
   .filter((f) => f.endsWith(".md"))
   .sort();
 const pages = files.filter((f) => !RESERVED.has(f));
+
+// 0. `wiki/` 에 심볼릭 링크 금지.
+//    게시 워크플로의 `cp` 는 링크를 **따라간다.** `wiki/X.md` 를 리포 밖이나
+//    `$GITHUB_WORKSPACE/.git/config` 로 향하게 만든 PR 이 merge 되면 그 내용이 **공개
+//    wiki 에 게시된다.** 워크플로 쪽에서 `persist-credentials: false` 로 가장 값진 표적을
+//    없앴지만, 표적을 지우는 것과 경로를 막는 것은 다른 처치다 — 이 검사는 PR 시점에
+//    실패시켜, 리뷰어가 diff 에서 심볼릭 링크를 알아보기를 기대하지 않게 한다.
+//    **여기서 즉시 중단한다.** 아래 검사들은 페이지를 `readFileSync` 로 읽는데, 그것이
+//    곧 링크를 따라가는 일이다 — 위험하다고 판정한 링크를 계속 읽을 이유가 없고, 대상이
+//    디렉터리가 아니면 검사가 메시지 대신 스택으로 죽어 원인이 가려진다.
+const symlinks = readdirSync(WIKI).filter((e) =>
+  lstatSync(join(WIKI, e)).isSymbolicLink(),
+);
+if (symlinks.length) {
+  console.error(`wiki 게이트 실패 (${symlinks.length})`);
+  for (const e of symlinks) {
+    console.error(`  [심볼릭 링크 금지] ${e} — 게시 시 링크를 따라가 대상이 공개된다`);
+  }
+  process.exit(1);
+}
 
 // 1. 필수 페이지와 이름 규약
 for (const f of RESERVED) {

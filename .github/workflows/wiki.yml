@@ -23,7 +23,15 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
+      # ‼️ `persist-credentials: false` — checkout 이 기본으로 `.git/config` 에 남기는
+      #    `AUTHORIZATION: basic …` 를 만들지 않는다. 이 잡은 그 자격을 쓰지 않는다(wiki
+      #    clone 은 아래에서 `GH_TOKEN` 으로 따로 인증한다). 남겨 두면 `wiki/X.md` 를
+      #    `.git/config` 로 향하는 심볼릭 링크로 만든 PR 이 merge 됐을 때, 아래 `cp` 가
+      #    링크를 따라가 **토큰을 공개 wiki 에 게시한다.** 표적을 없애는 쪽이 경로를 막는
+      #    것보다 확실하다.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       # ‼️ 서드파티 wiki 액션을 쓰지 않는다. 하는 일이 clone·복사·push 뿐이라
       #    SHA 핀으로 관리할 의존성을 하나 더 만들 이유가 없다.
       - name: Publish wiki/ to the GitHub wiki
