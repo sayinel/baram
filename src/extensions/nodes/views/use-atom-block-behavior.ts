@@ -1,5 +1,8 @@
 // Common keyboard navigation and block lifecycle for atom-block NodeViews.
-// Shared by math-block, mermaid-block, html-block, and block-embed views.
+// Shared by math-block, mermaid-block, svg-block, html-block, and block-embed
+// views — NOT query-block, which has the standby entry model but not this hook.
+// The three atom-block contracts have DIFFERENT membership; do not assume one
+// edit here covers "every atom block" (wiki: Vim Input islands and block entry).
 //
 // Extracts three duplicated functions: deleteBlock, exitBlock, handleKeyDown.
 
