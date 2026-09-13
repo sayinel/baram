@@ -73,6 +73,10 @@ describe("readHtmlFragment", () => {
         '<noscript><img src="a.png" xml:lang="v" data-x hidden></noscript>',
       ),
     ).toEqual(['<img src="a.png" xml:lang="v" data-x hidden>']);
+    // `<title>` is RCDATA to a browser, markup to pandoc (measured): a wrapper.
+    expect(imgTags('<title>cap <img src="a.png"> end</title>')).toEqual([
+      '<img src="a.png">',
+    ]);
     expect(imgTags('<img alt="$$c$$ `x`" src="a.png">')).toEqual([
       '<img alt="$$c$$ `x`" src="a.png">',
     ]);

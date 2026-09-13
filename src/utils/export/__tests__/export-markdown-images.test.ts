@@ -825,6 +825,20 @@ describe("stageMarkdownImages", () => {
       });
     });
 
+    it("does not report a wrapped image it embedded: the rewritten node is unreadable in the next round, and that is not news", () => {
+      // Round 0 reads `<div><img></div>` and rewrites it; round 1 sees
+      // `<div>![](…)</div>`, a bracket the grammar refuses, and must stay quiet.
+      expect(
+        stageMarkdownImages('<div><img src="img/a.png"></div>\n', SAVED),
+      ).toEqual({
+        images: [{ name: "image-0.png", source: "img/a.png" }],
+        markdown: "<div>![](baram-asset:image-0.png)</div>\n",
+        refused: 0,
+        scoped: true,
+        unsupportedHtml: 0,
+      });
+    });
+
     it("does not count an unread block whose only tags are code samples, comments or verbatim bodies", () => {
       for (const md of [
         '<div>\n~~~html\n<img src="example.png">\n~~~\n</div>\n',
