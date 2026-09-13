@@ -213,7 +213,9 @@ PR에서 rust skip이 허용되는 유일한 경우는 "rust 관련 경로를 �
 
 - **Phase 1 (MVP, M1~M6)** · **Phase 2 (확장, M7~M9)** — ✅ 완료
 - **Phase 3 (고급 기능)** — 진행 중
-  - ✅ ~v0.4: 테이블 고급(셀 병합·가상 스크롤), 쿼리 블록(§5.13), Git 고급(§67), 파일 스냅샷(§71),
+  - ✅ ~v0.4: 테이블 고급(셀 병합만 — **가상 스크롤 §5.5는 구현된 적이 없고 PR #643에서 제거했다.**
+    `content-visibility`는 `<tr>`(internal table box)에 규격상 무효라 동작하지 않았고, 대신 50행부터
+    앱을 영구 정지시켰다), 쿼리 블록(§5.13), Git 고급(§67), 파일 스냅샷(§71),
     네임스페이스(§61, P2 보류), Skills 모드(§72), Settings UI 리디자인, 단축키 커스터마이징,
     Heading/List Folding, CSS 디자인 토큰 시스템, Vault System(§80~§90), macOS Universal Binary
   - ✅ **v0.5.0** (2026-07-30): 플러그인 실행 모델 **§260** 6개 페이즈 — trusted/sandboxed 두 티어,
