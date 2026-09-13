@@ -68,10 +68,10 @@ describe("reference-style links survive a load (issue 546)", () => {
     }
   });
 
-  it("a code span inside the label resolves to the same (schema-invalid) node the inline form gives", () => {
-    // `code` excludes every other mark in this schema, so a link around a code
-    // span is not representable — for `[\`code\`](url)` either; not this
-    // pass's doing. The two forms must still agree.
+  it("a code span inside the label resolves to the same node the inline form gives", () => {
+    // `[\`code\`](url)` is valid GFM and §7.2's code mark carries no
+    // `excludes`, so a link around a code span is representable. The reference
+    // form must resolve to exactly what the inline form gives.
     const reference = markdownToProsemirror(
       "[`code`][r]\n\n[r]: https://ok.example/\n",
       schema,

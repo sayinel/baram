@@ -37,7 +37,7 @@ const schema = new Schema({
   marks: {
     bold: {},
     italic: {},
-    code: { excludes: "_" },
+    code: {},
     strike: {},
     link: {
       attrs: {
@@ -181,12 +181,11 @@ describe("Roundtrip: Nested marks", () => {
   });
 
   it("bold wrapping code", () => {
-    // `code`'s schema-level `excludes: "_"` only blocks *creating* this
-    // combination interactively (via addMark) — it does not apply here.
-    // The pipeline builds PM mark arrays directly (see md-to-pm.ts), so a
-    // doc loaded from disk (or produced by any other tool) can carry code
-    // alongside bold, and the round trip must preserve both, not silently
-    // drop bold (§8.4 byte-exact roundtrip is the top quality bar).
+    // `**`x`**` is valid GFM and §7.2's code mark carries no `excludes`, so
+    // bold and code coexist on every path. The round trip must preserve both,
+    // not silently drop bold (§8.4 byte-exact roundtrip is the top quality
+    // bar). That the paths agree is pinned separately by
+    // extensions/__tests__/code-mark-coexistence.test.ts.
     expect(roundtrip("**`bold code`**\n")).toBe("**`bold code`**\n");
   });
 

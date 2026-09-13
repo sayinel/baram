@@ -32,7 +32,7 @@ const schema = new Schema({
     hardBreak: { inline: true, group: "inline" },
     text: { group: "inline" },
   },
-  marks: { bold: {}, italic: {}, code: { excludes: "_" } },
+  marks: { bold: {}, italic: {}, code: {} },
 });
 
 function roundtrip(input: string): string {
