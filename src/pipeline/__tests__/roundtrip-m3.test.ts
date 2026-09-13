@@ -139,8 +139,21 @@ describe("Roundtrip: Math Inline (§5.3)", () => {
 });
 
 describe("Roundtrip: Tables (§5.5)", () => {
-  // Note: remark-gfm normalizes table formatting (column padding, separator width)
-  // Tests verify content preservation; formatting is semantically equivalent
+  // Note: cells are written back verbatim — `tablePipeAlign: false`
+  // (serializer.ts) stops remark-gfm padding every cell out to the column
+  // width. Only the delimiter row is normalized (mdast does not record the
+  // original dash count), so tests assert content and alignment, not width.
+
+  it("does not re-pad cells to the column width", () => {
+    // The regression this pins: padding rewrote every row of every table on
+    // save (a real 25,095-byte file came back 43,158 bytes), so a one-character
+    // edit produced a diff touching every table line. Widths here are
+    // deliberately uneven — padding would be plainly visible.
+    const input = "| a | bbbbbbbbbb |\n| --- | --- |\n| ccccc | d |\n";
+    const output = roundtrip(input);
+    expect(output.split("\n")[0]).toBe("| a | bbbbbbbbbb |");
+    expect(output.split("\n")[2]).toBe("| ccccc | d |");
+  });
 
   it("simple table — content preserved", () => {
     const input = "| A | B |\n| --- | --- |\n| 1 | 2 |\n";
@@ -164,10 +177,24 @@ describe("Roundtrip: Tables (§5.5)", () => {
     const input =
       "| Left | Center | Right |\n| :--- | :---: | ---: |\n| a | b | c |\n";
     const output = roundtrip(input);
-    // Alignment markers should be preserved
-    expect(output).toMatch(/\| :--+/); // left align
-    expect(output).toMatch(/:--+: \|/); // center align
-    expect(output).toMatch(/--+: \|/); // right align (at end)
+    // Alignment survives as the GFM delimiter-row colons. The dash COUNT is
+    // deliberately NOT asserted: `tablePipeAlign: false` (serializer.ts) emits
+    // the minimum width so that saving a file never re-pads its tables, so the
+    // row comes back as `| :- | :-: | -: |`. The three markers are mutually
+    // distinct, so dropping or confusing any one of them still fails here.
+    const delimiterCells = output
+      .split("\n")[1]
+      .split("|")
+      .slice(1, -1)
+      .map((cell) => cell.trim());
+    expect(delimiterCells).toHaveLength(3);
+    const [left, center, right] = delimiterCells;
+    expect([left.startsWith(":"), left.endsWith(":")]).toEqual([true, false]);
+    expect([center.startsWith(":"), center.endsWith(":")]).toEqual([
+      true,
+      true,
+    ]);
+    expect([right.startsWith(":"), right.endsWith(":")]).toEqual([false, true]);
     // Content preserved
     expect(output).toContain("Left");
     expect(output).toContain("Center");
