@@ -119,6 +119,12 @@ export function ExportDialog({ editor }: ExportDialogProps) {
     useShallow((s) => ({ activeTabId: s.activeTabId, tabs: s.tabs })),
   );
   const { t } = useTranslation();
+  // issue 631: what the notice after a Pandoc export would say about an
+  // unsaved note is worth saying before it — its relative images cannot be
+  // embedded until it has a folder to resolve them against.
+  const unsavedForPandoc =
+    isPandocFormat(exportFormat) &&
+    !tabs.find((tab) => tab.id === activeTabId)?.filePath;
   const {
     codeFontFamily,
     fontFamily,
@@ -299,6 +305,10 @@ export function ExportDialog({ editor }: ExportDialogProps) {
             )}
           </div>
 
+          {unsavedForPandoc && (
+            <p className="export-dialog-hint">{t("export.unsavedNote")}</p>
+          )}
+
           <div className="export-dialog-field">
             <label className="export-dialog-label" htmlFor="export-title">
               Title
@@ -323,7 +333,7 @@ export function ExportDialog({ editor }: ExportDialogProps) {
                 />
                 {t("export.embedFonts")}
               </label>
-              <p className="export-dialog-notion-hint">
+              <p className="export-dialog-hint">
                 {t("export.embedFonts.desc")}
               </p>
             </div>
@@ -369,7 +379,7 @@ export function ExportDialog({ editor }: ExportDialogProps) {
           )}
 
           {exportFormat === "notion" && (
-            <p className="export-dialog-notion-hint">
+            <p className="export-dialog-hint">
               Converts wikilinks, callouts, highlights, and other Baram-specific
               syntax to Notion-compatible Markdown.
             </p>
@@ -399,7 +409,7 @@ export function ExportDialog({ editor }: ExportDialogProps) {
           )}
 
           {isPandocFormat(exportFormat) && pandocAvailable && pandocInfo && (
-            <p className="export-dialog-notion-hint">
+            <p className="export-dialog-hint">
               Using Pandoc {pandocInfo.version} to convert Baram Markdown.
             </p>
           )}

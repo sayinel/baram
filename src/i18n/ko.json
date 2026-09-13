@@ -148,6 +148,7 @@
   "export.imageNotice.learnMore": "자세히",
   "export.imagesLeftOut": "이미지 {count}개가 빠졌습니다. vault·폴더 밖이거나 웹 주소이거나 읽을 수 없는 파일입니다.",
   "export.imagesLeftOutUnscoped": "이미지 {count}개가 빠졌습니다. 상대 경로 이미지는 노트를 열려 있는 vault 나 폴더 안에 저장해야 내장됩니다.",
+  "export.unsavedNote": "아직 저장하지 않은 노트입니다. 상대 경로 이미지는 열려 있는 vault 나 폴더 안에 저장한 뒤에야 내장됩니다.",
   "fileEditor.conflict.keepLocal": "내 변경 유지",
   "fileEditor.conflict.merge": "병합",
   "fileEditor.conflict.msg": "이 파일이 외부에서 변경되었습니다.",

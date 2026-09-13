@@ -148,6 +148,7 @@
   "export.imageNotice.learnMore": "Learn more",
   "export.imagesLeftOut": "{count} image(s) left out: outside the note’s vault or folder, a web address, or a file that could not be read.",
   "export.imagesLeftOutUnscoped": "{count} image(s) left out: relative image paths need the note saved inside an open vault or folder.",
+  "export.unsavedNote": "This note is not saved yet: its relative image paths can be embedded only after it is saved inside an open vault or folder.",
   "fileEditor.conflict.keepLocal": "Keep Local",
   "fileEditor.conflict.merge": "Merge",
   "fileEditor.conflict.msg": "This file was modified externally.",

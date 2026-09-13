@@ -332,7 +332,7 @@
   border-color: var(--color-status-error-border);
 }
 
-.export-dialog-notion-hint {
+.export-dialog-hint {
   margin: 0;
   font-size: 0.8rem;
   line-height: 1.5;
