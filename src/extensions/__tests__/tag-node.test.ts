@@ -50,7 +50,7 @@ const schema = new Schema({
     hardBreak: { inline: true, group: "inline" },
     text: { group: "inline" },
   },
-  marks: { bold: {}, italic: {}, code: { excludes: "_" }, strike: {} },
+  marks: { bold: {}, italic: {}, code: {}, strike: {} },
 });
 
 function roundtrip(input: string): string {

@@ -115,7 +115,7 @@ const schema = new Schema({
   // `convertInlineNode` inlineCode 분기가 인라인 코드를
   // `schema.marks.code?.create()`로 게이트하므로, 없으면 백틱 안이 그냥
   // 텍스트로 남아 이 마크 경로를 한 번도 지나지 않는다.
-  marks: { bold: {}, code: { excludes: "_" }, italic: {} },
+  marks: { bold: {}, code: {}, italic: {} },
 });
 
 const TODAY = new Date(2026, 7, 25); // 2026-08-25

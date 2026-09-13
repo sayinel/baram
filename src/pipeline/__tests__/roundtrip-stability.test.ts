@@ -91,7 +91,7 @@ const schema = new Schema({
   marks: {
     bold: {},
     italic: {},
-    code: { excludes: "_" },
+    code: {},
     strike: {},
     link: {
       attrs: {

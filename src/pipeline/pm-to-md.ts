@@ -470,10 +470,9 @@ function convertTextWithMarks(
 
   // Inline code mark is special — it's a leaf node in mdast (no children), so
   // it must be the INNERMOST node. But any other marks on the same text node
-  // (bold, italic, link, ...) must still wrap it — the pipeline builds mark
-  // arrays directly (not via addMark), so a doc loaded from disk can carry
-  // code alongside other marks even though the live editor's `excludes: "_"`
-  // on the code mark prevents creating that combination interactively.
+  // (bold, italic, link, ...) must still wrap it — `**`x`**` is valid GFM, and a
+  // document can carry code alongside other marks whatever path it arrived by
+  // (disk, paste, the toolbar), so dropping them here loses formatting on save.
   const codeMark = marks.find((m) => m.type.name === "code");
 
   // Separate special marks that use custom mdast types or raw HTML
@@ -513,31 +512,17 @@ function convertTextWithMarks(
     }
   }
 
-  // Wrap with custom mdast types for highlight/subscript/superscript
-  // Uses value-based approach (like wikiLink) to avoid remark-gfm escaping ~ chars
+  // Wrap with custom mdast types for highlight/subscript/superscript.
+  // The shorthand is value-based (like wikiLink) to avoid remark-gfm escaping ~
+  // chars; it is only safe for plain text — see wrapCustomInlineMark.
   if (highlightMark) {
-    const inner = extractTextFromPhrasing(current);
-    current = [
-      {
-        type: "highlight",
-        value: `==${inner}==`,
-      } satisfies HighlightNode,
-    ];
+    current = wrapCustomInlineMark(current, "highlight", "==", "mark");
   }
   if (subscriptMark) {
-    const inner = extractTextFromPhrasing(current);
-    current = [
-      { type: "subscript", value: `~${inner}~` } satisfies SubscriptNode,
-    ];
+    current = wrapCustomInlineMark(current, "subscript", "~", "sub");
   }
   if (superscriptMark) {
-    const inner = extractTextFromPhrasing(current);
-    current = [
-      {
-        type: "superscript",
-        value: `^${inner}^`,
-      } satisfies SuperscriptNode,
-    ];
+    current = wrapCustomInlineMark(current, "superscript", "^", "sup");
   }
 
   // Wrap with <u></u> HTML nodes if underline is active
@@ -612,4 +597,41 @@ function extractTextFromPhrasing(nodes: PhrasingContent[]): string {
       return "";
     })
     .join("");
+}
+
+/**
+ * §5.1 커스텀 인라인 마크(`==`, `~`, `^`)를 **되읽을 수 있는 형태로** 감싼다.
+ *
+ * 단축 구문은 평문에만 쓴다. 되읽기 쪽(`convert-inline-text.ts`의
+ * `CUSTOM_MARK_PATTERNS`)이 **단일 text 노드에 거는 정규식**이라, 안에 다른 인라인
+ * 마크가 들어 있으면 mdast가 `text("==") strong text("==")`로 쪼개 놓아 짝을 찾지
+ * 못한다. 그러면 마크가 사라지고 그 다음 저장이 `\==**b**==`를 쓴다 — 열고 저장만
+ * 해도 파일이 손상됐다(측정: `<mark>` + 굵게, `<sub>` + 인라인 코드 등).
+ *
+ * 평문이 아니면 HTML 형태로 낸다. `<mark>`/`<sub>`/`<sup>`는 `convert-inline.ts`의
+ * **형제 노드 상태 기계**가 읽으므로 내용이 무엇이든 왕복한다. underline이 처음부터
+ * 이 방식이었고, 그래서 커스텀 마크 넷 중 유일하게 멀쩡했다.
+ *
+ * 평문 경로의 출력 바이트는 그대로다 — 기존 파일의 `==강조==`는 변하지 않는다.
+ */
+function wrapCustomInlineMark(
+  current: PhrasingContent[],
+  mdastType: "highlight" | "subscript" | "superscript",
+  delimiter: string,
+  htmlTag: string,
+): PhrasingContent[] {
+  if (current.length === 1 && current[0].type === "text") {
+    const inner = extractTextFromPhrasing(current);
+    return [
+      {
+        type: mdastType,
+        value: `${delimiter}${inner}${delimiter}`,
+      } as PhrasingContent,
+    ];
+  }
+  return [
+    { type: "html", value: `<${htmlTag}>` } as PhrasingContent,
+    ...current,
+    { type: "html", value: `</${htmlTag}>` } as PhrasingContent,
+  ];
 }
