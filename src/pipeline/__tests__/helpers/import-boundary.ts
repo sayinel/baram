@@ -317,6 +317,7 @@ export function buildPipelineClosure(): Set<string> {
  */
 export const MD_TO_PM_ROUTE_FILES: ReadonlySet<string> = new Set([
   join(PIPELINE_DIR, "convert-block-special.ts"),
+  join(PIPELINE_DIR, "convert-inline-custom-marks.ts"),
   join(PIPELINE_DIR, "convert-inline-text.ts"),
   join(PIPELINE_DIR, "convert-inline.ts"),
   join(PIPELINE_DIR, "convert-list.ts"),

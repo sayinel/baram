@@ -1,24 +1,13 @@
-import type {
-  HighlightNode,
-  MentionNode,
-  SubscriptNode,
-  SuperscriptNode,
-  TagNode,
-  WikiLinkNode,
-} from "./types";
+import type { HighlightNode, SubscriptNode, SuperscriptNode } from "./types";
 import type { Mark, Node as PmNode } from "@tiptap/pm/model";
 import type {
   Content,
-  Delete,
-  Emphasis,
   FootnoteReference,
   Link,
   PhrasingContent,
   Root,
-  Strong,
   Text,
 } from "mdast";
-import type { InlineMath } from "mdast-util-math";
 
 // pm-to-md.ts — §3.3 ProseMirror Document → Markdown 변환 파이프라인
 //
@@ -189,25 +178,131 @@ function coalesceCustomMarkNodes(nodes: PhrasingContent[]): PhrasingContent[] {
   return result;
 }
 
-/** Remove adjacent </u><u> pairs (from consecutive underlined text nodes) */
-function coalesceUnderlineTags(nodes: PhrasingContent[]): PhrasingContent[] {
+/** 커스텀 인라인 마크와 밑줄이 쓰는 HTML 태그 토큰 */
+const INLINE_TAG_TOKENS = new Set([
+  "</mark>",
+  "</sub>",
+  "</sup>",
+  "</u>",
+  "<mark>",
+  "<sub>",
+  "<sup>",
+  "<u>",
+]);
+
+/**
+ * `</tag>` 와 그 뒤의 `<tag>` 짝을 제거해 끊긴 구간을 하나로 잇는다.
+ *
+ * `convertTextWithMarks`는 **텍스트 노드마다** 따로 태그를 두르므로, 한 구간이 여러
+ * 노드에 걸치면 경계마다 닫고 다시 여는 토큰이 생긴다.
+ *
+ * **바로 붙어 있는 짝만 지우면 부족하다.** 사이에 다른 태그가 끼면 (`==a <u>b</u> c==`
+ * 는 `</mark> <u> <mark>` 처럼 나온다) 이음매가 인접하지 않아 구간이 끊긴 채 남고,
+ * 조각마다 따로 단축 구문으로 굳어 `==a ==<u>==b==</u>== c==` 라는 쓰레기가 나왔다.
+ * 그래서 **사이에 태그 토큰만 있으면** 짝으로 본다. 사이의 태그들은 제자리에 두므로
+ * 중첩이 유지된다.
+ */
+function coalesceInlineTagPairs(nodes: PhrasingContent[]): PhrasingContent[] {
+  const isTagToken = (n: PhrasingContent | undefined): boolean =>
+    n?.type === "html" &&
+    INLINE_TAG_TOKENS.has((n as { value: string }).value.trim());
+
+  let current = nodes;
+  // 짝을 하나 지우면 새 인접이 생기므로 변화가 없을 때까지 돈다.
+  for (let pass = 0; pass <= nodes.length; pass++) {
+    let removedAt = -1;
+    let partnerAt = -1;
+    for (let i = 0; i < current.length && removedAt === -1; i++) {
+      const node = current[i];
+      if (!isTagToken(node)) continue;
+      const value = (node as { value: string }).value.trim();
+      if (!value.startsWith("</")) continue;
+      const wantOpen = `<${value.slice(2)}`;
+      for (let j = i + 1; j < current.length; j++) {
+        const candidate = current[j];
+        if (!isTagToken(candidate)) break; // 태그가 아닌 내용이 끼면 진짜 경계다
+        if ((candidate as { value: string }).value.trim() === wantOpen) {
+          removedAt = i;
+          partnerAt = j;
+          break;
+        }
+      }
+    }
+    if (removedAt === -1) return current;
+    current = current.filter((_, i) => i !== removedAt && i !== partnerAt);
+  }
+  return current;
+}
+
+/** HTML 태그 ↔ 단축 구문 구분자 */
+const CUSTOM_MARK_TAG_DELIMITERS: Record<
+  string,
+  { delim: string; type: string }
+> = {
+  mark: { delim: "==", type: "highlight" },
+  sub: { delim: "~", type: "subscript" },
+  sup: { delim: "^", type: "superscript" },
+};
+
+/**
+ * `<mark>평문</mark>` 을 `==평문==` 단축 구문으로 되돌린다.
+ *
+ * 대부분의 하이라이트·첨자는 평문이고, 사용자 파일에도 단축 구문으로 적혀 있다.
+ * 태그로 내보내면 그 파일들이 **열고 저장만 해도** 전부 다시 쓰이므로, 되읽기가
+ * 확실한 경우에는 원래 형태를 유지한다.
+ *
+ * 판정은 파서의 정규식보다 **일부러 더 엄격하다** — 내용에 구분자 문자가 하나도 없고
+ * 앞뒤가 공백이 아닐 때만 되돌린다. 정규식을 여기서 흉내 내면 둘이 갈라질 수 있고,
+ * 갈라지는 쪽이 곧 데이터 손실이다. 엄격해서 손해 보는 것은 `<mark>` 가 조금 더
+ * 자주 나오는 것뿐이다.
+ */
+function collapsePlainCustomMarkTags(
+  nodes: PhrasingContent[],
+): PhrasingContent[] {
   const result: PhrasingContent[] = [];
 
   for (let i = 0; i < nodes.length; i++) {
     const node = nodes[i];
-    const next = nodes[i + 1];
-
-    // Skip </u> followed by <u>
+    const shape =
+      node.type === "html"
+        ? CUSTOM_MARK_TAG_DELIMITERS[
+            (node as { value: string }).value.replace(/[<>]/g, "")
+          ]
+        : undefined;
+    const inner = nodes[i + 1];
+    const closer = nodes[i + 2];
     if (
-      node.type === "html" &&
-      (node as { value: string }).value === "</u>" &&
-      next?.type === "html" &&
-      (next as { value: string }).value === "<u>"
+      shape &&
+      (node as { value: string }).value.startsWith("<") &&
+      !(node as { value: string }).value.startsWith("</") &&
+      inner?.type === "text" &&
+      closer?.type === "html" &&
+      (closer as { value: string }).value ===
+        `</${(node as { value: string }).value.slice(1)}`
     ) {
-      i++; // skip both
-      continue;
+      const text = (inner as Text).value;
+      // `==`는 파서가 앞뒤 공백을 허용한다(`/==((?:[^=]|=[^=])+)==/`). `~`·`^`만
+      // 내용이 구분자에 붙어 있기를 요구하므로 그 둘에만 공백 조건을 건다.
+      const needsHug = shape.delim !== "==";
+      // 구분자 **문자**가 양 끝에 붙어도 안 된다. `==` 는 두 글자라 `includes` 만
+      // 보면 `a=` 가 통과하는데, 그러면 `==a===` 가 되어 되읽을 때 끝의 `=` 가
+      // 마크 밖으로 떨어진다(바이트는 안정이라 마크를 봐야만 보인다).
+      const edge = shape.delim[0];
+      const safe =
+        text.length > 0 &&
+        !text.includes(shape.delim) &&
+        !text.startsWith(edge) &&
+        !text.endsWith(edge) &&
+        (!needsHug || (!/^\s/.test(text) && !/\s$/.test(text)));
+      if (safe) {
+        result.push({
+          type: shape.type,
+          value: `${shape.delim}${text}${shape.delim}`,
+        } as PhrasingContent);
+        i += 2;
+        continue;
+      }
     }
-
     result.push(node);
   }
 
@@ -330,9 +425,13 @@ function convertPmInlineChildren(node: PmNode): PhrasingContent[] {
     }
   });
 
-  // Coalesce adjacent </u><u> pairs, then adjacent custom mark nodes
+  // 태그 짝을 먼저 합쳐 구간을 하나로 만든 뒤, 평문 구간만 단축 구문으로 되돌리고,
+  // 남은 값 노드와 wrapper 노드를 합친다. 순서가 뜻을 가진다 — 합치기 전에 되돌리면
+  // 여러 노드에 걸친 구간이 조각마다 다른 형태로 굳는다.
   return coalesceAdjacentWrapperNodes(
-    coalesceCustomMarkNodes(coalesceUnderlineTags(result)),
+    coalesceCustomMarkNodes(
+      collapsePlainCustomMarkTags(coalesceInlineTagPairs(result)),
+    ),
   );
 }
 
@@ -512,18 +611,12 @@ function convertTextWithMarks(
     }
   }
 
-  // Wrap with custom mdast types for highlight/subscript/superscript.
-  // The shorthand is value-based (like wikiLink) to avoid remark-gfm escaping ~
-  // chars; it is only safe for plain text — see wrapCustomInlineMark.
-  if (highlightMark) {
-    current = wrapCustomInlineMark(current, "highlight", "==", "mark");
-  }
-  if (subscriptMark) {
-    current = wrapCustomInlineMark(current, "subscript", "~", "sub");
-  }
-  if (superscriptMark) {
-    current = wrapCustomInlineMark(current, "superscript", "^", "sup");
-  }
+  // Wrap highlight/subscript/superscript in HTML tag tokens. The `==`/`~`/`^`
+  // shorthand is restored later, once the whole run is visible — see
+  // wrapCustomInlineMarkAsTags and collapsePlainCustomMarkTags.
+  if (highlightMark) current = wrapCustomInlineMarkAsTags(current, "mark");
+  if (subscriptMark) current = wrapCustomInlineMarkAsTags(current, "sub");
+  if (superscriptMark) current = wrapCustomInlineMarkAsTags(current, "sup");
 
   // Wrap with <u></u> HTML nodes if underline is active
   if (underlineMark) {
@@ -568,67 +661,18 @@ function extractTableColwidths(tableNode: PmNode): null | number[] {
   return null;
 }
 
-/** Extract plain text from a phrasing content array (for wrapping in custom mark delimiters).
- *  Serializes nested standard marks (bold → **, italic → *, etc.) to markdown. */
-function extractTextFromPhrasing(nodes: PhrasingContent[]): string {
-  return nodes
-    .map((node) => {
-      if (node.type === "text") return (node as Text).value;
-      if (node.type === "strong") {
-        const inner = extractTextFromPhrasing((node as Strong).children);
-        return `**${inner}**`;
-      }
-      if (node.type === "emphasis") {
-        const inner = extractTextFromPhrasing((node as Emphasis).children);
-        return `*${inner}*`;
-      }
-      if (node.type === "delete") {
-        const inner = extractTextFromPhrasing((node as Delete).children);
-        return `~~${inner}~~`;
-      }
-      if (node.type === "inlineCode")
-        return `\`${(node as { value: string }).value}\``;
-      if (node.type === "link")
-        return extractTextFromPhrasing((node as Link).children);
-      if (node.type === "inlineMath") return (node as InlineMath).value || "";
-      if (node.type === "wikiLink") return (node as WikiLinkNode).value || "";
-      if (node.type === "mention") return (node as MentionNode).value || "";
-      if (node.type === "tagNode") return (node as TagNode).value || "";
-      return "";
-    })
-    .join("");
-}
-
 /**
- * §5.1 커스텀 인라인 마크(`==`, `~`, `^`)를 **되읽을 수 있는 형태로** 감싼다.
+ * §5.1 커스텀 인라인 마크(`==`, `~`, `^`)를 **항상 HTML 태그 토큰으로** 감싼다.
  *
- * 단축 구문은 평문에만 쓴다. 되읽기 쪽(`convert-inline-text.ts`의
- * `CUSTOM_MARK_PATTERNS`)이 **단일 text 노드에 거는 정규식**이라, 안에 다른 인라인
- * 마크가 들어 있으면 mdast가 `text("==") strong text("==")`로 쪼개 놓아 짝을 찾지
- * 못한다. 그러면 마크가 사라지고 그 다음 저장이 `\==**b**==`를 쓴다 — 열고 저장만
- * 해도 파일이 손상됐다(측정: `<mark>` + 굵게, `<sub>` + 인라인 코드 등).
- *
- * 평문이 아니면 HTML 형태로 낸다. `<mark>`/`<sub>`/`<sup>`는 `convert-inline.ts`의
- * **형제 노드 상태 기계**가 읽으므로 내용이 무엇이든 왕복한다. underline이 처음부터
- * 이 방식이었고, 그래서 커스텀 마크 넷 중 유일하게 멀쩡했다.
- *
- * 평문 경로의 출력 바이트는 그대로다 — 기존 파일의 `==강조==`는 변하지 않는다.
+ * `underline`이 처음부터 이 방식이었고, 그래서 커스텀 마크 넷 중 유일하게 멀쩡했다.
+ * 단축 구문 복원은 `collapsePlainCustomMarkTags`가 **구간 전체를 보고** 뒤에서 한다 —
+ * 여기서 텍스트 노드 하나만 보고 정하면 `==x **y** z==`처럼 한 구간이 여러 텍스트
+ * 노드에 걸칠 때 조각마다 다른 형태가 나와 `==x ==<mark>**y**</mark>== z==`가 된다.
  */
-function wrapCustomInlineMark(
+function wrapCustomInlineMarkAsTags(
   current: PhrasingContent[],
-  mdastType: "highlight" | "subscript" | "superscript",
-  delimiter: string,
   htmlTag: string,
 ): PhrasingContent[] {
-  if (current.length === 1 && current[0].type === "text") {
-    const inner = extractTextFromPhrasing(current);
-    return [
-      {
-        type: mdastType,
-        value: `${delimiter}${inner}${delimiter}`,
-      } as PhrasingContent,
-    ];
-  }
   return [
     { type: "html", value: `<${htmlTag}>` } as PhrasingContent,
     ...current,
