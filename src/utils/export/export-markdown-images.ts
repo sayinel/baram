@@ -109,9 +109,9 @@ export interface ImagePolicyResult {
   /** Whether the document had a context to be relative to at all. */
   scoped: boolean;
   /**
-   * How many html nodes this pass could not read and that may hold an image
-   * (export-html-fragment.ts): left whole, their raw tags dropped by the
-   * filter. An estimate of blocks, never a count of images.
+   * How many html fragments this pass could not read and that may hold an
+   * image (export-html-fragment.ts): left whole, their raw tags dropped by
+   * the filter. An estimate of fragments, never a count of images.
    */
   unsupportedHtml: number;
 }

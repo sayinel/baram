@@ -364,9 +364,11 @@ export function buildPipelineInternalSet(): Set<string> {
  * `<img>` tag parser, was added 2026-09-10 for the export image policy
  * (issue 545). A fourth, type-only entry — the attrs INTERFACE that parser
  * returns (issue 634) — lived here for one day: issue 631 made the export
- * read `<img>` tags through `DOMParser` instead of naming that type, and the
- * entry left with its consumer (the dead-entry assertion below would have
- * caught it otherwise). The collector still checks a type-only import like
+ * read `<img>` tags through the platform's HTML parser (inside an inert
+ * `<template>`, as a custom element — never `DOMParser`, whose document may
+ * fetch an `<img>` source) instead of naming that type, and the entry left
+ * with its consumer (the dead-entry assertion below would have caught it
+ * otherwise). The collector still checks a type-only import like
  * a value import; nothing outside the pipeline imports a TYPE from the
  * closure today.
  */

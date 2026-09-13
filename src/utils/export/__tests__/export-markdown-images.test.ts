@@ -1,8 +1,11 @@
 // issue 545 — the Pandoc export's image policy, on strings.
 //
 // What pandoc may read is decided here and enforced in Rust; these tests pin
-// the string side: which destinations are kept, staged or refused, what a
-// refused image is replaced with, and that the splice cannot form new syntax.
+// the walk over markdown images: what a staged image becomes, what a refused
+// one is replaced with, that the splice cannot form new syntax, and what is
+// counted. The verdict on one destination is pinned in
+// export-image-source-policy.test.ts, the `<img>` tags in
+// export-markdown-images-html.test.ts and -unread.test.ts.
 import { describe, expect, it } from "vitest";
 
 import {
