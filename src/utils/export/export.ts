@@ -206,6 +206,7 @@ export async function exportWithPandoc(
     markdown: staged,
     refused,
     scoped,
+    unsupportedHtml,
   } = PANDOC_EMBEDS_IMAGES.has(format)
     ? stageMarkdownImages(rewritten, {
         contextRoot: owner === null ? null : contextRootOf(owner.path),
@@ -251,19 +252,31 @@ export async function exportWithPandoc(
     referenceDoc: options?.referenceDoc,
   });
   // issue 545: an image left out is not an error — the export went through
-  // without it — but it is not nothing either. Say how many, and why.
+  // without it — but it is not nothing either. Say how many, and why. issue
+  // 631: an HTML fragment the policy could not read is a separate sentence —
+  // the policy does not know how many images it held, only that pandoc drops
+  // the raw tags in it (export-html-fragment.ts). One toast: the store holds
+  // one at a time, so a second call would hide the first.
+  const { locale } = useSettingsStore.getState();
+  const notices: string[] = [];
   if (refused > 0) {
-    const { locale } = useSettingsStore.getState();
-    useUIStore
-      .getState()
-      .showToast(
-        t(
-          scoped ? "export.imagesLeftOut" : "export.imagesLeftOutUnscoped",
-          locale as Locale,
-          { count: String(refused) },
-        ),
-        "warning",
-      );
+    notices.push(
+      t(
+        scoped ? "export.imagesLeftOut" : "export.imagesLeftOutUnscoped",
+        locale as Locale,
+        { count: String(refused) },
+      ),
+    );
+  }
+  if (unsupportedHtml > 0) {
+    notices.push(
+      t("export.htmlNotRead", locale as Locale, {
+        count: String(unsupportedHtml),
+      }),
+    );
+  }
+  if (notices.length > 0) {
+    useUIStore.getState().showToast(notices.join(" "), "warning");
   }
 }
 

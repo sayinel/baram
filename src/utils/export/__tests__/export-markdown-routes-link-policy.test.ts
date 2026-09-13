@@ -202,6 +202,32 @@ describe("the images in the markdown that reaches pandoc", () => {
     expect(toast?.message).toContain("left out");
   });
 
+  it("tells the user, separately, about an HTML block the image policy could not read (issue 631)", async () => {
+    useContextStore.setState({
+      contexts: [context("ctx-vault", "/vault", "vault")],
+    });
+    // pandoc reads the fenced tag as code; the policy leaves the block whole
+    // rather than pick inside it (export-html-fragment.ts), and says so.
+    const editor = loadEditor(
+      '![hosts](/etc/hosts)\n\n<div>\n```\n<img src="img/a.png">\n```\n<img src="img/b.png">\n</div>\n',
+    );
+    await exportWithPandoc(editor, "t", "docx", {
+      documentPath: "/vault/notes/today.md",
+    });
+
+    const [request] = vi.mocked(exportPandoc).mock.calls[0];
+    expect(request.markdownContent).toContain('<img src="img/b.png">');
+    expect(request.images).toEqual([]);
+    // The store holds one toast: both sentences arrive in it, the definite
+    // count first.
+    const toast = useUIStore.getState().toast;
+    expect(toast?.type).toBe("warning");
+    expect(toast?.message).toMatch(/^1 image\(s\) were left out/);
+    expect(toast?.message).toContain(
+      "Images in 1 HTML fragment(s) may be missing",
+    );
+  });
+
   it("refuses relative images for a document no directory context holds, and says so", async () => {
     useContextStore.setState({
       contexts: [context("ctx-other", "/elsewhere", "vault")],
