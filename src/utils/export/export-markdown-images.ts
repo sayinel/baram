@@ -72,9 +72,8 @@ import {
   relativeScope,
 } from "./export-image-source-policy";
 import {
-  editorImageMetadata,
-  type LooseImg,
-  readImgTag,
+  type ExportImageTag,
+  readExportImageTag,
 } from "./export-img-attributes";
 import {
   applyEdits,
@@ -277,8 +276,7 @@ function stageRequest(walk: Walk, source: string): string {
  *  what it says. */
 interface HtmlImage {
   at: TagSpan;
-  loose: LooseImg;
-  raw: string;
+  tag: ExportImageTag;
 }
 
 /**
@@ -311,14 +309,10 @@ function htmlNodeImages(
   if (spans.length === 0) return [];
   const map = valueToSource(node.value, source, node.position!.start.offset!);
   if (map === null) return null;
-  return spans.map((span) => {
-    const raw = node.value.slice(span.start, span.end);
-    return {
-      at: { end: map(span.end), start: map(span.start) },
-      loose: readImgTag(raw),
-      raw,
-    };
-  });
+  return spans.map((span) => ({
+    at: { end: map(span.end), start: map(span.start) },
+    tag: readExportImageTag(node.value.slice(span.start, span.end)),
+  }));
 }
 
 /**
@@ -338,28 +332,23 @@ function imgTagEdits(
     if (walk.firstRound) walk.counters.unsupportedHtml += 1;
     return;
   }
-  for (const { at, loose, raw } of found) {
-    if (loose.src === null) {
+  for (const { at, tag } of found) {
+    if (tag.src === null) {
       walk.counters.refused += 1;
-      edits.push(altEditAt(at, loose.alt, ctx));
+      edits.push(altEditAt(at, tag.alt, ctx));
       continue;
     }
-    const verdict = classifyImageSource(
-      loose.src,
-      walk.scope,
-      walk.knownAssets,
-    );
+    const verdict = classifyImageSource(tag.src, walk.scope, walk.knownAssets);
     if (verdict.kind === "refuse") {
       walk.counters.refused += 1;
-      edits.push(altEditAt(at, loose.alt, ctx));
+      edits.push(altEditAt(at, tag.alt, ctx));
       continue;
     }
     const url =
       verdict.kind === "keep"
         ? verdict.source
         : `${ASSET_SCHEME}${stageRequest(walk, verdict.source)}`;
-    const attrs = { alt: loose.alt, ...editorImageMetadata(raw, loose) };
-    edits.push(imageEditAt(at, attrs, url, ctx));
+    edits.push(imageEditAt(at, tag, url, ctx));
   }
 }
 
@@ -387,20 +376,13 @@ export function rewriteImageTagsAsMarkdown(markdown: string): {
         counters.unsupportedHtml += 1;
         return;
       }
-      for (const { at, loose, raw } of found) {
-        if (loose.src === null) {
+      for (const { at, tag } of found) {
+        if (tag.src === null) {
           counters.refused += 1;
-          edits.push(altEditAt(at, loose.alt, ctx));
+          edits.push(altEditAt(at, tag.alt, ctx));
           continue;
         }
-        edits.push(
-          imageEditAt(
-            at,
-            { alt: loose.alt, ...editorImageMetadata(raw, loose) },
-            loose.src,
-            ctx,
-          ),
-        );
+        edits.push(imageEditAt(at, tag, tag.src, ctx));
       }
       return;
     }
