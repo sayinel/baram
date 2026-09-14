@@ -108,6 +108,7 @@ describe("stageMarkdownImages on <img> tags", () => {
       expect(stageMarkdownImages(md, SAVED)).toEqual({
         images: [],
         markdown: md,
+        overCap: 0,
         refused: 0,
         unsupportedHtml: 0,
         scoped: true,
@@ -123,6 +124,7 @@ describe("stageMarkdownImages on <img> tags", () => {
       expect(stageMarkdownImages(md, SAVED)).toEqual({
         images: [],
         markdown: md,
+        overCap: 0,
         refused: 0,
         unsupportedHtml: 0,
         scoped: true,
@@ -134,6 +136,7 @@ describe("stageMarkdownImages on <img> tags", () => {
       expect(stageMarkdownImages(quoted, SAVED)).toEqual({
         images: [{ name: "image-0.png", source: "img/a.png" }],
         markdown: "> ![](baram-asset:image-0.png)\n",
+        overCap: 0,
         refused: 0,
         scoped: true,
         unsupportedHtml: 0,
@@ -142,6 +145,7 @@ describe("stageMarkdownImages on <img> tags", () => {
       expect(stageMarkdownImages(listed, SAVED)).toEqual({
         images: [{ name: "image-0.png", source: "img/b.png" }],
         markdown: "- ![](baram-asset:image-0.png) tail\n",
+        overCap: 0,
         refused: 0,
         scoped: true,
         unsupportedHtml: 0,
@@ -167,6 +171,7 @@ describe("stageMarkdownImages on <img> tags", () => {
       expect(stageMarkdownImages(md, SAVED)).toEqual({
         images: [],
         markdown: md,
+        overCap: 0,
         refused: 0,
         scoped: true,
         unsupportedHtml: 0,
@@ -199,6 +204,7 @@ describe("stageMarkdownImages on <img> tags", () => {
         ),
       ).toEqual({
         markdown: ">\t![](baram-asset:image-0.png)\n>\tcaption text\n",
+        overCap: 0,
         refused: 0,
         images: [{ name: "image-0.png", source: "img/a.png" }],
         scoped: true,
@@ -211,6 +217,7 @@ describe("stageMarkdownImages on <img> tags", () => {
         ),
       ).toEqual({
         markdown: "- item\n\n\t![](baram-asset:image-0.png)\n\n\tmore text\n",
+        overCap: 0,
         refused: 0,
         images: [{ name: "image-0.png", source: "img/b.png" }],
         scoped: true,
@@ -220,6 +227,7 @@ describe("stageMarkdownImages on <img> tags", () => {
         stageMarkdownImages('>>\t<img src="img/c.png">\n>>\tafter\n', SAVED),
       ).toEqual({
         markdown: ">>\t![](baram-asset:image-0.png)\n>>\tafter\n",
+        overCap: 0,
         refused: 0,
         images: [{ name: "image-0.png", source: "img/c.png" }],
         scoped: true,
@@ -235,6 +243,7 @@ describe("stageMarkdownImages on <img> tags", () => {
         ),
       ).toEqual({
         markdown: "> ![](baram-asset:image-0.png)\r",
+        overCap: 0,
         refused: 0,
         images: [{ name: "image-0.png", source: "img/a.png" }],
         scoped: true,
@@ -247,6 +256,7 @@ describe("stageMarkdownImages on <img> tags", () => {
         ),
       ).toEqual({
         markdown: "> ![](baram-asset:image-0.png)\r\n",
+        overCap: 0,
         refused: 0,
         images: [{ name: "image-0.png", source: "img/b.png" }],
         scoped: true,
@@ -271,6 +281,7 @@ describe("stageMarkdownImages on <img> tags", () => {
         ).toMatchObject({
           images: [{ name: "image-0.png", source: "img/a&b.png" }],
           markdown: 'pixel\n\n![A "q"](baram-asset:image-0.png)\n',
+          overCap: 0,
           refused: 1,
         });
       } finally {
@@ -288,6 +299,7 @@ describe("stageMarkdownImages on <img> tags", () => {
         ],
         markdown:
           '<div title="\n~~~\n">\n![](baram-asset:image-0.png)\n</div>\n\n<div title="`">![](baram-asset:image-1.png)<span title="`"></span></div>\n',
+        overCap: 0,
         refused: 0,
         scoped: true,
         unsupportedHtml: 0,
@@ -307,6 +319,7 @@ describe("stageMarkdownImages on <img> tags", () => {
         ],
         markdown:
           "![](baram-asset:image-0.png){width=640px}\n\n![](baram-asset:image-1.png){width=50%}\n",
+        overCap: 0,
         refused: 0,
         scoped: true,
         unsupportedHtml: 0,
@@ -325,6 +338,7 @@ describe("stageMarkdownImages on <img> tags", () => {
           { name: "image-0.png", source: "img/a&amp=x.png" },
           { name: "image-1.png", source: "img/b&amp;c.png" },
         ],
+        overCap: 0,
         refused: 0,
       });
     });
@@ -355,6 +369,7 @@ describe("stageMarkdownImages on <img> tags", () => {
         ],
         markdown:
           "![](baram-asset:image-0.png){width=640px}\n\n![](baram-asset:image-1.png){width=50%}\n",
+        overCap: 0,
         refused: 0,
         scoped: true,
         unsupportedHtml: 0,
@@ -373,6 +388,7 @@ describe("stageMarkdownImages on <img> tags", () => {
       ).toEqual({
         images: [{ name: "image-0.png", source: "img/real.png" }],
         markdown: '![src="img/fake.png"](baram-asset:image-0.png)\n',
+        overCap: 0,
         refused: 0,
         scoped: true,
         unsupportedHtml: 0,
@@ -385,6 +401,7 @@ describe("stageMarkdownImages on <img> tags", () => {
       ).toEqual({
         markdown: '![src=" img/a.png "](baram-asset:image-0.png)\n',
         images: [{ name: "image-0.png", source: "img/a.png" }],
+        overCap: 0,
         refused: 0,
         scoped: true,
         unsupportedHtml: 0,
@@ -397,6 +414,7 @@ describe("stageMarkdownImages on <img> tags", () => {
       ).toEqual({
         markdown: '![width="640"](baram-asset:image-0.png)\n',
         images: [{ name: "image-0.png", source: "img/a.png" }],
+        overCap: 0,
         refused: 0,
         scoped: true,
         unsupportedHtml: 0,
@@ -406,6 +424,7 @@ describe("stageMarkdownImages on <img> tags", () => {
       ).toEqual({
         markdown: '![title="T"](baram-asset:image-0.png)\n',
         images: [{ name: "image-0.png", source: "img/a.png" }],
+        overCap: 0,
         refused: 0,
         scoped: true,
         unsupportedHtml: 0,
@@ -449,11 +468,13 @@ describe("rewriteImageTagsAsMarkdown (the text writers)", () => {
     expect(rewriteImageTagsAsMarkdown(md)).toEqual({
       markdown:
         "a ![A](img/a.png){width=640px} b\n\n![](../x.png){width=50%}\n\n![](img/c.png)\n\n![k](img/k.png)\n",
+      overCap: 0,
       refused: 0,
       unsupportedHtml: 0,
     });
     expect(rewriteImageTagsAsMarkdown("plain\n")).toEqual({
       markdown: "plain\n",
+      overCap: 0,
       refused: 0,
       unsupportedHtml: 0,
     });
@@ -469,6 +490,7 @@ describe("rewriteImageTagsAsMarkdown (the text writers)", () => {
       // back as `&`, so the file it names is `img/a&b.png`. The source-less
       // tag became its alt text and is counted, so the user hears about it.
       markdown: "![A](img/a\\&b.png)\n\nlost\n\n![](x.png)![Y](y.png) tail\n",
+      overCap: 0,
       refused: 1,
       unsupportedHtml: 0,
     });
@@ -479,6 +501,7 @@ describe("rewriteImageTagsAsMarkdown (the text writers)", () => {
       "<div>\n```\n<img src='img/a.png'>\n```\n<img src='img/b.png'>\n</div>\n";
     expect(rewriteImageTagsAsMarkdown(md)).toEqual({
       markdown: md,
+      overCap: 0,
       refused: 0,
       unsupportedHtml: 1,
     });

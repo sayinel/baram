@@ -38,6 +38,11 @@
 // user is told that block could not be read, apart from the count of images
 // refused.
 //
+// The backend accepts at most `MAX_STAGED_IMAGES` requests and fails the
+// export past that — a boundary, not a courtesy. Staging stops at the same
+// number here and every image after it becomes its alt text, counted apart,
+// so a note with a gallery of hundreds still exports (issue 631).
+//
 // Not covered here — judged one layer later, on pandoc's own parse, by the
 // Lua policy filter `src-tauri/src/export/pandoc.rs` writes for each export
 // (issues 545 and 544): raw HTML of any kind, including an `<img src>` in a
@@ -93,6 +98,8 @@ export interface ImagePolicyResult {
   /** The images to stage, in document order; the backend reads them. */
   images: PandocImageRequest[];
   markdown: string;
+  /** How many images past `MAX_STAGED_IMAGES` became their alt text. */
+  overCap: number;
   /** How many images became their alt text — what the user should hear about. */
   refused: number;
   /** Whether the document had a context to be relative to at all. */
@@ -108,8 +115,17 @@ export interface ImagePolicyResult {
 /** An extension worth keeping on a staged image's name — pandoc picks the media type from it. */
 const EXTENSION = /\.([A-Za-z0-9]{1,8})$/;
 
+/**
+ * How many images one export may stage: the backend's `MAX_IMAGE_COUNT`
+ * (`src-tauri/src/export/pandoc_images.rs`), which refuses a longer list and
+ * fails the export. The two numbers are pinned equal by a test that reads
+ * the Rust source.
+ */
+export const MAX_STAGED_IMAGES = 256;
+
 /** What one pass counts for the user, shared across rounds. */
 interface Counters {
+  overCap: number;
   refused: number;
   unsupportedHtml: number;
 }
@@ -129,7 +145,7 @@ export function stageMarkdownImages(
   // but within a round a document-written placeholder wearing a name staged
   // earlier in the same walk is still the forgery it was.
   const known = new Set(knownAssets);
-  const counters: Counters = { refused: 0, unsupportedHtml: 0 };
+  const counters: Counters = { overCap: 0, refused: 0, unsupportedHtml: 0 };
   let out = markdown;
   for (let round = 0; round < MAX_ROUNDS; round++) {
     const staged: string[] = [];
@@ -147,6 +163,7 @@ export function stageMarkdownImages(
       return {
         images,
         markdown: out,
+        overCap: counters.overCap,
         refused: counters.refused,
         scoped: scope !== null,
         unsupportedHtml: counters.unsupportedHtml,
@@ -169,8 +186,14 @@ interface Staging {
   staged: string[];
 }
 
-/** Record a request for `source` and return the name its placeholder gets. */
-function stageRequest(staging: Staging, source: string): string {
+/** Record a request for `source` and return the name its placeholder gets —
+ *  or null, counted, when the export already stages as many images as the
+ *  backend accepts. */
+function stageRequest(staging: Staging, source: string): null | string {
+  if (staging.images.length >= MAX_STAGED_IMAGES) {
+    staging.counters.overCap += 1;
+    return null;
+  }
   const name = stagedName(staging.images.length, source);
   staging.images.push({ name, source });
   staging.staged.push(name);
@@ -201,11 +224,10 @@ function htmlImageEdit(
     staging.counters.refused += 1;
     return altEditAt(at, tag.alt, ctx);
   }
-  const url =
-    verdict.kind === "keep"
-      ? verdict.source
-      : `${ASSET_SCHEME}${stageRequest(staging, verdict.source)}`;
-  return imageEditAt(at, tag, url, ctx);
+  if (verdict.kind === "keep") return imageEditAt(at, tag, verdict.source, ctx);
+  const name = stageRequest(staging, verdict.source);
+  if (name === null) return altEditAt(at, tag.alt, ctx);
+  return imageEditAt(at, tag, `${ASSET_SCHEME}${name}`, ctx);
 }
 
 /**
@@ -219,11 +241,12 @@ function htmlImageEdit(
  */
 export function rewriteImageTagsAsMarkdown(markdown: string): {
   markdown: string;
+  overCap: number;
   refused: number;
   unsupportedHtml: number;
 } {
   const edits: SourceEdit[] = [];
-  const counters: Counters = { refused: 0, unsupportedHtml: 0 };
+  const counters: Counters = { overCap: 0, refused: 0, unsupportedHtml: 0 };
   walkImages(parseMdast(markdown), markdown, {
     htmlImage: ({ at, tag }, ctx) => {
       if (tag.src === null) {
@@ -277,7 +300,11 @@ function stageOnce(
       }
       if (verdict.kind === "stage") {
         const name = stageRequest(staging, verdict.source);
-        edits.push(assetEdit(node, `${ASSET_SCHEME}${name}`, ctx));
+        edits.push(
+          name === null
+            ? altEdit(node, node.alt, ctx)
+            : assetEdit(node, `${ASSET_SCHEME}${name}`, ctx),
+        );
       }
     },
     imageReference: (node, ctx) => {

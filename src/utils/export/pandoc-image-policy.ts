@@ -14,6 +14,7 @@ import { t } from "../../i18n";
 import { contextRootOf, useContextStore } from "../../stores/context/context";
 import { hasDriveLetter, isUnderRoot, toPosixPath } from "../path-utils";
 import {
+  MAX_STAGED_IMAGES,
   rewriteImageTagsAsMarkdown,
   stageMarkdownImages,
 } from "./export-markdown-images";
@@ -38,6 +39,8 @@ export interface PandocImagePreparation {
   /** The images to stage, in document order; the backend reads them. */
   images: PandocImageRequest[];
   markdown: string;
+  /** How many images past the backend's cap became their alt text. */
+  overCap: number;
   /** How many images became their alt text. */
   refused: number;
   /** Whether the document had a context to be relative to at all — which
@@ -87,10 +90,14 @@ export function preparePandocImages(
  */
 export function imagePolicyNotice(
   {
+    overCap,
     refused,
     scoped,
     unsupportedHtml,
-  }: Pick<PandocImagePreparation, "refused" | "scoped" | "unsupportedHtml">,
+  }: Pick<
+    PandocImagePreparation,
+    "overCap" | "refused" | "scoped" | "unsupportedHtml"
+  >,
   locale: Locale,
 ): null | string {
   const notices: string[] = [];
@@ -101,6 +108,14 @@ export function imagePolicyNotice(
         locale,
         { count: String(refused) },
       ),
+    );
+  }
+  if (overCap > 0) {
+    notices.push(
+      t("export.imagesOverCap", locale, {
+        count: String(overCap),
+        max: String(MAX_STAGED_IMAGES),
+      }),
     );
   }
   if (unsupportedHtml > 0) {

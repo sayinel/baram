@@ -6,13 +6,18 @@
 // counted. The verdict on one destination is pinned in
 // export-image-source-policy.test.ts, the `<img>` tags in
 // export-markdown-images-html.test.ts and -unread.test.ts.
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
   classifyImageSource,
   relativeScope,
 } from "../export-image-source-policy";
-import { stageMarkdownImages } from "../export-markdown-images";
+import {
+  MAX_STAGED_IMAGES,
+  stageMarkdownImages,
+} from "../export-markdown-images";
 import { stripDisallowedMarkdownLinks } from "../export-markdown-links";
 import {
   IN_VAULT,
@@ -293,5 +298,46 @@ describe("stageMarkdownImages", () => {
       refused: 0,
       scoped: true,
     });
+  });
+});
+
+// issue 631 — the backend refuses a request for more images than its cap and
+// fails the whole export; before `<img>` tags were staged, a note with many
+// of them exported without them. The frontend stops at the same number and
+// degrades the rest to alt text, so the export still goes through.
+describe("the cap on staged images", () => {
+  it("mirrors the backend's MAX_IMAGE_COUNT, so what the frontend stages is what the backend accepts", () => {
+    const rust = readFileSync(
+      join(process.cwd(), "src-tauri/src/export/pandoc_images.rs"),
+      "utf8",
+    );
+    const declared = [
+      ...rust.matchAll(/^const MAX_IMAGE_COUNT: usize = (\d+);$/gm),
+    ];
+    expect(declared).toHaveLength(1);
+    expect(Number(declared[0][1])).toBe(MAX_STAGED_IMAGES);
+  });
+
+  it("embeds the images up to the cap and turns the rest into alt text, counted apart from the refused", () => {
+    const lines = Array.from(
+      { length: MAX_STAGED_IMAGES + 1 },
+      (_, i) => `![n${i}](img/${i}.png)`,
+    );
+    const md = `${lines.join("\n\n")}\n\n<img src="img/x.png" alt="X"> ![h](/etc/hosts)\n`;
+    const { images, markdown, overCap, refused } = stageMarkdownImages(
+      md,
+      SAVED,
+    );
+    const last = MAX_STAGED_IMAGES - 1;
+    expect(images).toHaveLength(MAX_STAGED_IMAGES);
+    expect(images.at(-1)).toEqual({
+      name: `image-${last}.png`,
+      source: `img/${last}.png`,
+    });
+    expect(markdown).toContain(`![n${last}](baram-asset:image-${last}.png)`);
+    // The image past the cap, the tag after it, then the refused one.
+    expect(markdown).toContain(`\n\nn${MAX_STAGED_IMAGES}\n\nX h\n`);
+    expect(overCap).toBe(2);
+    expect(refused).toBe(1);
   });
 });
