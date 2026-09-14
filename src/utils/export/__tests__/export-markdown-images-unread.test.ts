@@ -78,7 +78,6 @@ describe("stageMarkdownImages on html nodes it does not read", () => {
     for (const md of [
       '<div>\n~~~html\n<img src="example.png">\n~~~\n</div>\n',
       "<script>let x=\"</scripture><img src='img/e.png'>\";</script>\n",
-      "<div>\n<!-- x <img src='img/c.png'>\n</div>\n",
     ]) {
       expect(stageMarkdownImages(md, SAVED), md).toEqual({
         images: [],
@@ -87,6 +86,54 @@ describe("stageMarkdownImages on html nodes it does not read", () => {
         refused: 0,
         unsupportedHtml: 0,
         scoped: true,
+      });
+    }
+  });
+
+  it("opens no region for an opener pandoc never closes, and reports the node that holds one", () => {
+    // pandoc 3.11 reads `\begin{itemize}` without its `\end` as text, and a
+    // `<script>` or `<!--` without its closer as the tag alone, and shows the
+    // images after them: no region carries into the nodes that follow.
+    expect(
+      stageMarkdownImages(
+        "text \\begin{itemize} more\n\n<img src='img/a.png'>\n",
+        SAVED,
+      ),
+    ).toEqual({
+      images: [{ name: "image-0.png", source: "img/a.png" }],
+      markdown: "text \\begin{itemize} more\n\n![](baram-asset:image-0.png)\n",
+      overCap: 0,
+      refused: 0,
+      scoped: true,
+      unsupportedHtml: 0,
+    });
+    expect(
+      stageMarkdownImages("x <script> y\n\n<img src='img/b.png'>\n", SAVED),
+    ).toEqual({
+      images: [{ name: "image-0.png", source: "img/b.png" }],
+      markdown: "x <script> y\n\n![](baram-asset:image-0.png)\n",
+      overCap: 0,
+      refused: 0,
+      scoped: true,
+      unsupportedHtml: 0,
+    });
+    // The parser makes one block of an unclosed `<script>` or `<!--` and of
+    // all that follows it; the policy cannot read that block, and used to
+    // take the opener for a region that swallowed the images silently. They
+    // may well be missing — pandoc drops the raw tags — so the block is
+    // counted, like any other block the policy could not read.
+    for (const md of [
+      "<script>\n\n<img src='img/a.png'>\n\n<img src='img/b.png'>\n",
+      "<!-- note\n\n<img src='img/c.png'>\n",
+      "<div>\n<!-- x <img src='img/c.png'>\n</div>\n",
+    ]) {
+      expect(stageMarkdownImages(md, SAVED), md).toEqual({
+        images: [],
+        markdown: md,
+        overCap: 0,
+        refused: 0,
+        scoped: true,
+        unsupportedHtml: 1,
       });
     }
   });

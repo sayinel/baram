@@ -275,10 +275,21 @@ function rawRegions(value: string): {
  * "may be missing" notice about a node this module did not read: an `<img`
  * start or a markdown image outside code, comments, verbatim bodies and raw
  * TeX — never a count of images, and a code sample of a tag is not one.
+ *
+ * A region the text opens and does not close hides what follows it only
+ * when `opens` says the opener is real — the walk answers by whether the
+ * closer comes later in the document. pandoc reads an opener whose closer
+ * never comes as text (a `\\begin{}`) or as the tag alone (a `<script>`, a
+ * `<!--`), and shows the images after it; the browser's reading, in which
+ * an unclosed comment swallows the rest of the page, is not pandoc's.
  */
-export function mayHoldImage(value: string): boolean {
+export function mayHoldImage(
+  value: string,
+  opens: (until: RegExp) => boolean = () => true,
+): boolean {
   const { closed, open } = rawRegions(value);
-  let text = open === null ? value : value.slice(0, open.at);
+  let text =
+    open !== null && opens(open.until) ? value.slice(0, open.at) : value;
   for (const { end, start } of closed) {
     text = text.slice(0, start) + " ".repeat(end - start) + text.slice(end);
   }

@@ -7,7 +7,12 @@
 // comment holding a blank line into html blocks on either side of what
 // stands in it, and a raw TeX environment into text and the html nodes
 // between its lines, while pandoc reads each as one raw region; an html node
-// inside such a region is not a tag, and is not offered to the visitor.
+// inside such a region is not a tag, and is not offered to the visitor. An
+// opener whose closer never comes opens nothing: pandoc (3.11) reads a
+// `\\begin{}` without its `\\end{}` as text and a `<script>` or `<!--` without
+// its closer as the tag alone, and shows the images after them — a region
+// carried to the end of the document would swallow those images without a
+// word. Such a node is left whole and, when it may hold an image, reported.
 //
 // An html node is offered as its `<img …>` tags only when the grammar can
 // read the node (export-html-fragment.ts) and its text can be aligned with
@@ -59,6 +64,10 @@ interface RawRegion {
   until: null | RegExp;
 }
 
+/** Does `until` — the closer of a region a node opens — come after byte
+ *  `from` of the source? Only then is the opener real to pandoc. */
+type Opens = (until: RegExp, from: number) => boolean;
+
 /** Walk `root` (parsed from `source`) in document order, offering what it
  *  finds to `visitor`. `source` is what the offsets of an `HtmlImage` index. */
 export function walkImages(
@@ -67,6 +76,12 @@ export function walkImages(
   visitor: ImageWalkVisitor,
 ): void {
   const raw: RawRegion = { until: null };
+  const opens: Opens = (until, from) => {
+    const flags = until.flags.includes("g") ? until.flags : `${until.flags}g`;
+    const later = new RegExp(until.source, flags);
+    later.lastIndex = from;
+    return later.test(source);
+  };
   const visit = (node: Nodes, ctx: LabelContext, inBraces: boolean): void => {
     if (node.type === "image") {
       visitor.image?.(node, ctx);
@@ -81,13 +96,13 @@ export function walkImages(
         if (mayHoldImage(node.value)) visitor.unread(node);
         return;
       }
-      const found = readHtmlNode(node, source, raw);
+      const found = readHtmlNode(node, source, raw, opens);
       if (found === null) visitor.unread(node);
       else for (const image of found) visitor.htmlImage(image, ctx);
       return;
     }
     if ("value" in node) {
-      trackRawRegion(raw, node);
+      trackRawRegion(raw, node, opens);
       return;
     }
     if (!("children" in node)) return;
@@ -120,25 +135,31 @@ function braceDepth(text: string, depth: number): number {
  * grammar or one whose text cannot be aligned with the source is left
  * whole: its tags stay raw and the filter drops them. A node that cannot
  * hold an image at all, or that stands inside a raw region an earlier node
- * opened, is simply nothing to offer.
+ * opened, is simply nothing to offer: inside a comment, a script or a TeX
+ * environment a tag is text to pandoc, not an image that could go missing.
  */
 function readHtmlNode(
   node: Html,
   source: string,
   raw: RawRegion,
+  opens: Opens,
 ): HtmlImage[] | null {
+  const after = (until: RegExp): boolean =>
+    opens(until, node.position!.end.offset!);
   if (raw.until !== null) {
-    // Inside the region: not a tag to pandoc. What follows the closer, if
-    // it stands in this node, is left unread as well (conservative) but may
-    // open the next region.
+    // Inside the region. What follows the closer, if it stands in this
+    // node, is not read either — pandoc ends its block on that line — but
+    // may open the next region, and if it may hold an image the user hears
+    // of it.
     const rest = closeRawRegion(raw, node.value);
-    if (rest !== null) raw.until = rawOpenedBy(rest);
-    return [];
+    if (rest === null) return [];
+    raw.until = openedRegion(rest, after);
+    return mayHoldImage(rest, after) ? null : [];
   }
   const spans = readHtmlFragment(node.value);
   if (spans === null) {
-    raw.until = rawOpenedBy(node.value);
-    return mayHoldImage(node.value) ? null : [];
+    raw.until = openedRegion(node.value, after);
+    return mayHoldImage(node.value, after) ? null : [];
   }
   if (spans.length === 0) return [];
   const map = valueToSource(node.value, source, node.position!.start.offset!);
@@ -162,6 +183,15 @@ function closeRawRegion(raw: RawRegion, value: string): null | string {
   return value.slice(closer.index + closer[0].length);
 }
 
+/** The region `text` opens, when its closer comes later in the document. */
+function openedRegion(
+  text: string,
+  opens: (until: RegExp) => boolean,
+): null | RegExp {
+  const until = rawOpenedBy(text);
+  return until !== null && opens(until) ? until : null;
+}
+
 /**
  * A value node's part in the raw region: it may close the one the walk is
  * inside, and a text node may open one — pandoc's raw TeX environment
@@ -169,8 +199,16 @@ function closeRawRegion(raw: RawRegion, value: string): null | string {
  * any html node between its lines. Code is code to pandoc too, so a code
  * node opens nothing.
  */
-function trackRawRegion(raw: RawRegion, node: Nodes & { value: string }): void {
+function trackRawRegion(
+  raw: RawRegion,
+  node: Nodes & { value: string },
+  opens: Opens,
+): void {
   const rest =
     raw.until === null ? node.value : closeRawRegion(raw, node.value);
-  if (rest !== null && node.type === "text") raw.until = rawOpenedBy(rest);
+  if (rest !== null && node.type === "text") {
+    raw.until = openedRegion(rest, (until) =>
+      opens(until, node.position!.end.offset!),
+    );
+  }
 }
