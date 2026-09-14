@@ -228,6 +228,78 @@ describe("stageMarkdownImages on html nodes it does not read", () => {
     }
   });
 
+  describe("raw regions follow the exact source, as pandoc reads it", () => {
+    // pandoc 3.11 on every input below; the parser's decoded values are not
+    // what pandoc sees.
+    it("does not export an image whose syntax began inside a raw region", () => {
+      // The raw block ends at the `</script>` in the alt; `](img/inside.png)`
+      // is literal text to pandoc, not an image.
+      const md =
+        'a <script> b\n\n![</script>](img/inside.png)\n\n<img src="img/after.png">\n';
+      expect(stageMarkdownImages(md, SAVED)).toEqual({
+        images: [{ name: "image-0.png", source: "img/after.png" }],
+        markdown:
+          "a <script> b\n\n![</script>](img/inside.png)\n\n![](baram-asset:image-0.png)\n",
+        noSource: 0,
+        overCap: 0,
+        refused: 0,
+        scoped: true,
+        unsupportedHtml: 0,
+      });
+      // The same for a reference-style image.
+      const ref =
+        "a <script> b\n\n![</script>][r]\n\n<img src='img/after.png'>\n\n[r]: img/x.png\n";
+      expect(stageMarkdownImages(ref, SAVED)).toMatchObject({
+        images: [{ name: "image-0.png", source: "img/after.png" }],
+        markdown:
+          "a <script> b\n\n![</script>][r]\n\n![](baram-asset:image-0.png)\n\n[r]: img/x.png\n",
+        refused: 0,
+      });
+    });
+
+    it("opens the region a title reopens right after closing one", () => {
+      // pandoc: a second raw block begins at the `<script>` in the title.
+      const md =
+        'a <script> b\n\n[x](u "</script><script>")\n\n<img src="img/hidden.png">\n\n</script>\n\n<img src="img/visible.png">\n';
+      expect(stageMarkdownImages(md, SAVED)).toMatchObject({
+        images: [{ name: "image-0.png", source: "img/visible.png" }],
+        markdown:
+          'a <script> b\n\n[x](u "</script><script>")\n\n<img src="img/hidden.png">\n\n</script>\n\n![](baram-asset:image-0.png)\n',
+      });
+    });
+
+    it("does not let a decoded entity or an escape invent a closer or an opener", () => {
+      // `&lt;/script>` decodes to `</script>` in the text node; pandoc reads
+      // the source and keeps the block open to the literal closer.
+      const entityCloser =
+        'a <script> b\n\n[&lt;/script>](u)\n\n<img src="img/hidden.png">\n\n</script>\n\n<img src="img/visible.png">\n';
+      expect(stageMarkdownImages(entityCloser, SAVED)).toMatchObject({
+        images: [{ name: "image-0.png", source: "img/visible.png" }],
+      });
+      // `\<script>` and `&lt;script>` are text to pandoc: nothing opens,
+      // though the closer that would make the opener real stands below.
+      for (const md of [
+        'x \\<script> y\n\n<img src="img/a.png">\n\n</script>\n',
+        'x &lt;script> y\n\n<img src="img/a.png">\n\n</script>\n',
+        'x \\\\begin{verbatim} y\n\n<img src="img/a.png">\n\n\\end{verbatim}\n',
+      ]) {
+        expect(stageMarkdownImages(md, SAVED), md).toMatchObject({
+          images: [{ name: "image-0.png", source: "img/a.png" }],
+          unsupportedHtml: 0,
+        });
+      }
+    });
+
+    it("closes a region at a closer in a reference link's label", () => {
+      const md =
+        'a <script> b\n\n[x][</script>]\n\n<img src="img/visible.png">\n\n[</script>]: /u\n';
+      expect(stageMarkdownImages(md, SAVED)).toMatchObject({
+        images: [{ name: "image-0.png", source: "img/visible.png" }],
+        unsupportedHtml: 0,
+      });
+    });
+  });
+
   it("counts a block whose text it cannot align with the source as unread", () => {
     // The parser replaces a NUL by U+FFFD in the node's text but not in the
     // source: the offsets cannot be trusted, so the block is left whole.

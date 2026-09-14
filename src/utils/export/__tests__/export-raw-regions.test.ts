@@ -79,6 +79,19 @@ describe("rawRegions — the region a text opens and does not close", () => {
       expect(regions.open?.until.test("</PRE>")).toBe(true);
     });
   });
+
+  it("takes an escaped opener as text: an odd run of backslashes before `<` or `\\begin{`", () => {
+    // pandoc reads `\<script>` as the characters `<script>`, and `\\begin{x}`
+    // as a backslash followed by the word `begin{x}`; an even run escapes
+    // only itself, and the opener behind it is real.
+    expect(openedBy("\\<script>")).toBeNull();
+    expect(openedBy("\\<!-- x")).toBeNull();
+    expect(openedBy("\\\\begin{verbatim}")).toBeNull();
+    expect(openedBy("\\\\<script>")?.test("</script>")).toBe(true);
+    expect(openedBy("\\\\\\begin{verbatim}")?.test("\\end{verbatim}")).toBe(
+      true,
+    );
+  });
 });
 
 describe("closerIndex", () => {

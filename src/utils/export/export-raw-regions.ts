@@ -117,7 +117,9 @@ export function rawRegions(
     if (begin !== -1 && begin < i) begin = value.indexOf("\\begin{", i);
     if (lt === -1 && begin === -1) break;
     if (begin !== -1 && (lt === -1 || begin < lt)) {
-      const env = TEX_BEGIN.exec(value.slice(begin));
+      const env = escaped(value, begin)
+        ? null
+        : TEX_BEGIN.exec(value.slice(begin));
       if (env === null) {
         i = begin + 1;
         continue;
@@ -145,6 +147,10 @@ export function rawRegions(
       }
       closed.push({ end: closer.index + closer[0].length, start: begin });
       i = closer.index + closer[0].length;
+      continue;
+    }
+    if (escaped(value, lt)) {
+      i = lt + 1;
       continue;
     }
     const rest = value.slice(lt);
@@ -209,4 +215,12 @@ export function rawRegions(
     i = closer.index + closer[0].length;
   }
   return { closed, open: null };
+}
+
+/** Is the character at `at` escaped — preceded by an odd run of
+ *  backslashes? `\<script>` and `\\begin{x}` are text to pandoc. */
+function escaped(value: string, at: number): boolean {
+  let slashes = 0;
+  for (let k = at - 1; k >= 0 && value[k] === "\\"; k--) slashes++;
+  return slashes % 2 === 1;
 }
