@@ -16,7 +16,9 @@ Baram supports GFM (GitHub Flavored Markdown) pipe tables.
 
 - **Tab** / **Shift+Tab** to navigate between cells
 - Column alignment (`:---`, `:---:`, `---:`) is preserved
-- **Column resize** — Drag column borders to adjust width (session only, not saved to markdown)
+- **Column resize** — Drag column borders to adjust width. The widths are written into the
+  file as a `<!-- colwidths:... -->` comment just above the table, so they survive a reopen;
+  other markdown viewers ignore the comment. A table you only hovered over is left alone.
 - Hover over the table to see ⊕ buttons for adding rows and columns
 - **Right-click** for context menu: alignment, header toggle, copy as Markdown/HTML, delete
 
