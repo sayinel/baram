@@ -209,6 +209,25 @@ describe("stageMarkdownImages on html nodes it does not read", () => {
     ).toMatchObject({ unsupportedHtml: 1 });
   });
 
+  it("closes a region at a closer that stands in a link destination, a title or a definition", () => {
+    // pandoc 3.11 reads raw source: the `</script>` inside the link title
+    // ends the raw block, and the tag after it is an image. The parser hands
+    // those strings over as node attributes, not as text, so the walk must
+    // read them for a closer too — or the region runs to the end of the
+    // note and every image after it is lost without a word.
+    for (const md of [
+      'a <script> b\n\n[x](u "</script>")\n\n<img src="img/a.png">\n',
+      'a <script> b\n\n[x](</script>)\n\n<img src="img/a.png">\n',
+      'a <script> b\n\n[r]: /u "</script>"\n\n<img src="img/a.png">\n',
+      'a <script> b\n\n![</script>](https://x/y.png)\n\n<img src="img/a.png">\n',
+    ]) {
+      expect(stageMarkdownImages(md, SAVED), md).toMatchObject({
+        images: [{ name: "image-0.png", source: "img/a.png" }],
+        unsupportedHtml: 0,
+      });
+    }
+  });
+
   it("counts a block whose text it cannot align with the source as unread", () => {
     // The parser replaces a NUL by U+FFFD in the node's text but not in the
     // source: the offsets cannot be trusted, so the block is left whole.

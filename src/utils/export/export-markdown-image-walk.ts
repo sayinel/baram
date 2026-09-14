@@ -13,6 +13,9 @@
 // its closer as the tag alone, and shows the images after them — a region
 // carried to the end of the document would swallow those images without a
 // word. Such a node is left whole and, when it may hold an image, reported.
+// A closer may also stand where the parser keeps no text node — a link's
+// destination or title, a definition, an image's alt — and pandoc, which
+// reads raw source, closes the region there; so those strings close it too.
 //
 // An html node is offered as its `<img …>` tags only when the grammar can
 // read the node (export-html-fragment.ts) and its text can be aligned with
@@ -110,7 +113,12 @@ export function walkImages(
   });
   const visit = (node: Nodes, ctx: LabelContext, inBraces: boolean): void => {
     if (node.type === "image") {
+      closeInSource(raw, source, node.position!.start.offset!, node);
       visitor.image?.(node, ctx);
+      return;
+    }
+    if (node.type === "definition") {
+      closeInSource(raw, source, node.position!.start.offset!, node);
       return;
     }
     if (node.type === "imageReference") {
@@ -145,6 +153,17 @@ export function walkImages(
     for (const child of node.children) {
       visit(child, inner, inBraces || depth > 0);
       if (child.type === "text") depth = braceDepth(child.value, depth);
+    }
+    // The destination and title follow the label in the source; the label's
+    // own text closed what it could as it was visited.
+    if (node.type === "link") {
+      const last = node.children.at(-1);
+      closeInSource(
+        raw,
+        source,
+        last?.position?.end.offset ?? node.position!.start.offset!,
+        node,
+      );
     }
   };
   visit(root, { inHeading: false, inLink: false, inTableCell: false }, false);
@@ -202,6 +221,23 @@ function readHtmlNode(
     at: { end: map(span.end), start: map(span.start) },
     tag: readExportImageTag(node.value.slice(span.start, span.end)),
   }));
+}
+
+/**
+ * The source of a node the parser keeps as attributes — a link's destination
+ * and title, a definition, an image — may close the region the walk is
+ * inside, as pandoc reads it: raw text. The SOURCE, not the parsed values: a
+ * `</script>` in an angle-bracket destination parses to `/script`. Such text
+ * opens nothing.
+ */
+function closeInSource(
+  raw: RawRegion,
+  source: string,
+  from: number,
+  node: Nodes,
+): void {
+  if (raw.until === null) return;
+  closeRawRegion(raw, source.slice(from, node.position!.end.offset!));
 }
 
 /**
