@@ -2,7 +2,7 @@ import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { EMPTY_GIT_BADGE_INDEX } from "../../../stores/system/git-badges";
-import { FileTreeProvider } from "../FileTreeContext";
+import { FileTreeContext } from "../FileTreeContext";
 import { FileTreeNode } from "../FileTreeNode";
 
 const noop = () => {};
@@ -30,13 +30,13 @@ const handlers = {
 
 function renderNode(ctx: typeof baseCtx, path = "/r/a.md") {
   return render(
-    <FileTreeProvider value={ctx}>
+    <FileTreeContext value={ctx}>
       <FileTreeNode
         depth={0}
         entry={{ name: "a.md", path, isDir: false }}
         {...handlers}
       />
-    </FileTreeProvider>,
+    </FileTreeContext>,
   );
 }
 

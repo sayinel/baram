@@ -27,7 +27,7 @@ vi.mock("../../../utils/editor/serialize-live-doc", () => ({
   serializeLiveDoc: (...a: unknown[]) => serializeLiveDoc(...a),
 }));
 
-import { EditorProvider } from "../../../contexts/editor-context";
+import { EditorContext } from "../../../contexts/editor-context";
 import { t } from "../../../i18n";
 import { useEditorStore } from "../../../stores/editor/editor";
 import { useLinkStore } from "../../../stores/editor/link";
@@ -478,9 +478,9 @@ describe("TaskAgendaPanel", () => {
       previewTaskStateLine.mockResolvedValue("- [x] 하나 ✅2026-08-24");
       useTaskStore.getState().setAll([task({ raw: "- [ ] 하나" })]);
       render(
-        <EditorProvider value={FAKE_EDITOR}>
+        <EditorContext value={FAKE_EDITOR}>
           <TaskAgendaPanel />
-        </EditorProvider>,
+        </EditorContext>,
       );
 
       await userEvent.click(screen.getByRole("button", { name: /하나 — / }));
@@ -503,9 +503,9 @@ describe("TaskAgendaPanel", () => {
         .getState()
         .setAll([task({ raw: "- [/] 하나 ✅2026-01-01", state: "doing" })]);
       render(
-        <EditorProvider value={FAKE_EDITOR}>
+        <EditorContext value={FAKE_EDITOR}>
           <TaskAgendaPanel />
-        </EditorProvider>,
+        </EditorContext>,
       );
 
       await userEvent.click(screen.getByRole("button", { name: /하나 — / }));
@@ -527,9 +527,9 @@ describe("TaskAgendaPanel", () => {
         }),
       ]);
       render(
-        <EditorProvider value={FAKE_EDITOR}>
+        <EditorContext value={FAKE_EDITOR}>
           <TaskAgendaPanel />
-        </EditorProvider>,
+        </EditorContext>,
       );
 
       await userEvent.click(screen.getByRole("button", { name: /하나 — / }));
@@ -589,9 +589,9 @@ describe("TaskAgendaPanel — 소스 경로 (§312)", () => {
     previewTaskStateLine.mockResolvedValue("- [x] 하나 ✅2026-08-24");
     useTaskStore.getState().setAll([task({ raw: "- [ ] 하나" })]);
     render(
-      <EditorProvider value={FAKE_EDITOR}>
+      <EditorContext value={FAKE_EDITOR}>
         <TaskAgendaPanel />
-      </EditorProvider>,
+      </EditorContext>,
     );
 
     await userEvent.click(screen.getByRole("button", { name: /하나 — / }));
@@ -610,9 +610,9 @@ describe("TaskAgendaPanel — 소스 경로 (§312)", () => {
       .getState()
       .setAll([task({ raw: "- [/] 하나", state: "doing" })]);
     render(
-      <EditorProvider value={FAKE_EDITOR}>
+      <EditorContext value={FAKE_EDITOR}>
         <TaskAgendaPanel />
-      </EditorProvider>,
+      </EditorContext>,
     );
 
     await userEvent.click(screen.getByRole("button", { name: /하나 — / }));
@@ -644,9 +644,9 @@ describe("TaskAgendaPanel — 소스 경로 (§312)", () => {
         task({ line: 1, raw: "- [ ] 둘", text: "둘" }),
       ]);
     render(
-      <EditorProvider value={FAKE_EDITOR}>
+      <EditorContext value={FAKE_EDITOR}>
         <TaskAgendaPanel />
-      </EditorProvider>,
+      </EditorContext>,
     );
 
     await userEvent.click(screen.getByRole("button", { name: /둘 — / }));
@@ -665,9 +665,9 @@ describe("TaskAgendaPanel — 소스 경로 (§312)", () => {
     buffer = "- [ ] 사용자가 이미 고쳐 둔 줄\n";
     useTaskStore.getState().setAll([task({ raw: "- [ ] 하나" })]);
     render(
-      <EditorProvider value={FAKE_EDITOR}>
+      <EditorContext value={FAKE_EDITOR}>
         <TaskAgendaPanel />
-      </EditorProvider>,
+      </EditorContext>,
     );
 
     await userEvent.click(screen.getByRole("button", { name: /하나 — / }));

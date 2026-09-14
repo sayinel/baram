@@ -144,7 +144,7 @@ function SkillTestDialogWrapper() {
 }
 
 /** §4.2 Dialog/overlay host — CommandPalette, every lazy modal, the conflict
- * banner, and the merge view. Rendered inside `<EditorProvider>` at the same
+ * banner, and the merge view. Rendered inside `<EditorContext>` at the same
  * tree position as before this was extracted (see App.tsx render). */
 export function AppDialogs({
   activeEditor,
