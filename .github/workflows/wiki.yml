@@ -27,11 +27,20 @@ jobs:
       #    `AUTHORIZATION: basic …` 를 만들지 않는다. 이 잡은 그 자격을 쓰지 않는다(wiki
       #    clone 은 아래에서 `GH_TOKEN` 으로 따로 인증한다). 남겨 두면 `wiki/X.md` 를
       #    `.git/config` 로 향하는 심볼릭 링크로 만든 PR 이 merge 됐을 때, 아래 `cp` 가
-      #    링크를 따라가 **토큰을 공개 wiki 에 게시한다.** 표적을 없애는 쪽이 경로를 막는
-      #    것보다 확실하다.
+      #    링크를 따라가 **토큰을 공개 wiki 에 게시한다.** 표적을 없애는 것과 경로를 막는
+      #    것은 다른 처치이므로 둘 다 건다 — 아래 게이트 스텝과 `find -type f`.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # ‼️ PR 게이트를 **게시 경로에서도** 돌린다. `lint:wiki` 는 PR 에서만 도는데,
+      #    main 직접 푸시나 CI 빨간불 상태의 머지로 들어온 것은 검사를 한 번도 거치지
+      #    않은 채 여기 도착한다 — `protect-main` 룰셋에 required PR 도 required status
+      #    check 도 없다(2026-09-14 실측). 게이트가 PR 에서만 존재하면 그 경로에서는
+      #    두 겹 중 둘째 겹이 없는 것과 같다.
+      #    게이트는 `node:*` 만 import 하므로 `npm ci` 없이 돈다. `git ls-files` 를 쓰지만
+      #    위 checkout 의 인덱스로 충분하다(히스토리 불필요).
+      - name: Gate wiki/ before publishing
+        run: node scripts/check-wiki.mjs
       # ‼️ 서드파티 wiki 액션을 쓰지 않는다. 하는 일이 clone·복사·push 뿐이라
       #    SHA 핀으로 관리할 의존성을 하나 더 만들 이유가 없다.
       - name: Publish wiki/ to the GitHub wiki
@@ -54,7 +63,14 @@ jobs:
           # 삭제된 페이지가 wiki 에 남지 않도록 먼저 비운다. glob 이 비어도 실패하지
           # 않게 find 를 쓴다.
           find "${RUNNER_TEMP}/wiki" -maxdepth 1 -name '*.md' -delete
-          cp wiki/*.md "${RUNNER_TEMP}/wiki/"
+          # ‼️ `cp` 를 그대로 쓰지 않는다 — `cp` 는 심볼릭 링크를 **따라가** 대상의 내용을
+          #    복사한다. `wiki/X.md` 를 러너 위 경로로 향하게 만든 것이 머지되면 그 내용이
+          #    공개 wiki 로 나간다. 바로 위 clone 이 자격 증명을 박은 URL 을
+          #    `${RUNNER_TEMP}/wiki/.git/config` 에 적으므로 **이 잡 스스로 표적을 만든다**
+          #    (`RUNNER_TEMP` 는 호스티드 러너에서 예측 가능한 경로다).
+          #    `-L` 없는 `find` 의 `-type f` 는 링크를 걸러 낸다. `cp -P` 도 되지만 그쪽은
+          #    링크 자체를 복사해 wiki 에 깨진 파일을 올리므로, 조용히 빠지는 이쪽이 낫다.
+          find wiki -maxdepth 1 -type f -name '*.md' -exec cp {} "${RUNNER_TEMP}/wiki/" \;
           cd "${RUNNER_TEMP}/wiki"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
