@@ -2,7 +2,7 @@
 // says about them: a node outside the supported grammar or inside a raw
 // region an earlier node opened stays exactly as written, and is counted —
 // once, and only when it may hold an image — apart from the images refused.
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { parseMdast } from "../../../pipeline/parse-mdast";
 import { stageMarkdownImages } from "../export-markdown-images";
@@ -144,6 +144,37 @@ describe("stageMarkdownImages on html nodes it does not read", () => {
         unsupportedHtml: 1,
       });
     }
+  });
+
+  it("does not let a false opener hide the real one behind it in the same text", () => {
+    // pandoc 3.11: `\begin{missing}` is text, `\begin{verbatim}` opens the
+    // environment that holds the first tag, the second tag is an image.
+    // The scan used to stop at the first unclosed opener; when the
+    // lookahead rejected it, the real opener after it was never seen and
+    // the tag inside the environment was staged — a file pandoc never reads.
+    const md =
+      "prefix \\begin{missing} then \\begin{verbatim}\n\n<img src='img/a.png'>\n\n\\end{verbatim}\n\n<img src='img/b.png'>\n";
+    expect(stageMarkdownImages(md, SAVED)).toEqual({
+      images: [{ name: "image-0.png", source: "img/b.png" }],
+      markdown:
+        "prefix \\begin{missing} then \\begin{verbatim}\n\n<img src='img/a.png'>\n\n\\end{verbatim}\n\n![](baram-asset:image-0.png)\n",
+      noSource: 0,
+      overCap: 0,
+      refused: 0,
+      scoped: true,
+      unsupportedHtml: 0,
+    });
+    // The same with an unclosed comment before the environment, in one
+    // paragraph: pandoc reads `<!--` as text too.
+    expect(
+      stageMarkdownImages(
+        "x <!-- y \\begin{verbatim}\n\n<img src='img/a.png'>\n\n\\end{verbatim}\n\n<img src='img/b.png'>\n",
+        SAVED,
+      ),
+    ).toMatchObject({
+      images: [{ name: "image-0.png", source: "img/b.png" }],
+      unsupportedHtml: 0,
+    });
   });
 
   it("counts a block whose text it cannot align with the source as unread", () => {
@@ -346,5 +377,63 @@ describe("stageMarkdownImages on html nodes it does not read", () => {
         unsupportedHtml: 1,
       });
     }
+  });
+
+  describe("the lookahead for a closer", () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    it("searches the document once per closer pattern, however many openers never close", () => {
+      // Each unclosed `\\begin{itemize}` asks whether `\\end{itemize}` comes
+      // later in the DOCUMENT; without a memo every one of them scanned to
+      // the end of the note — a thousand openers, a thousand full scans
+      // (4.5 s at 20,000 paragraphs). Pinned by count, not by time: the
+      // scans of the whole source, apart from each node's own scan of its
+      // text.
+      const exec = vi.spyOn(RegExp.prototype, "exec");
+      // Half the openers repeat one name, half carry a name of their own:
+      // a memo per pattern would still scan once per distinct name.
+      const md = `${Array.from(
+        { length: 200 },
+        (_, i) => `para ${i} \\begin{${i % 2 ? "itemize" : `env${i}`}} more`,
+      ).join("\n\n")}\n`;
+      expect(stageMarkdownImages(md, SAVED).markdown).toBe(md);
+      const wholeSourceScans = exec.mock.calls.filter(
+        ([text], k) =>
+          text === md &&
+          (exec.mock.instances[k] as RegExp).source.includes("end"),
+      );
+      expect(wholeSourceScans).toHaveLength(1);
+    });
+
+    it("does not search a node's own text for a closer the document does not hold", () => {
+      // Thousands of false openers in ONE node — a paragraph of `\\begin{a}`
+      // with no `\\end{a}` anywhere, or an HTML block of `<!--` with no
+      // `-->` — used to cost a search to the end of the node per opener:
+      // quadratic in the node, 26 s for a 512 KB note. The index knows the
+      // closer is nowhere, so the node is not searched at all.
+      const exec = vi.spyOn(RegExp.prototype, "exec");
+      const tex = `${Array.from({ length: 300 }, () => "\\begin{a} text").join(" ")}\n`;
+      expect(stageMarkdownImages(tex, SAVED).markdown).toBe(tex);
+      const inNodeTexScans = exec.mock.calls.filter(
+        ([text], k) =>
+          typeof text === "string" &&
+          text.length > 100 &&
+          (exec.mock.instances[k] as RegExp).source === "\\\\end\\{a\\}",
+      );
+      expect(inNodeTexScans).toHaveLength(0);
+      exec.mockClear();
+      const html = `${Array.from({ length: 300 }, () => "<!-- x").join("\n")}\n`;
+      expect(stageMarkdownImages(html, SAVED)).toMatchObject({
+        markdown: html,
+        unsupportedHtml: 0,
+      });
+      const inNodeCommentScans = exec.mock.calls.filter(
+        ([text], k) =>
+          typeof text === "string" &&
+          text.length > 100 &&
+          (exec.mock.instances[k] as RegExp).source === "--!?>",
+      );
+      expect(inNodeCommentScans).toHaveLength(0);
+    });
   });
 });

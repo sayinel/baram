@@ -185,12 +185,61 @@ const CODE = [FENCED_CODE, CODE_SPAN];
 /** The raw TeX environment opener pandoc's `raw_tex` reads, at the text's start. */
 const TEX_BEGIN = /^\\begin\{([^{}]+)\}/;
 
-/** What a text opens and does not close: the pattern that closes it, and
- *  where the region began. */
-interface OpenRegion {
+/** What a text opens and does not close: where the region began, the
+ *  pattern that closes it, and the key its closers are indexed under
+ *  (`closerIndex`): `tex:<name>`, `tag:<name>` or `comment`. */
+export interface OpenRegion {
   at: number;
+  key: string;
   until: RegExp;
 }
+
+/**
+ * What the document knows about closers, asked by `rawRegions` before it
+ * searches a node's text: whether a closer with `key` stands anywhere at or
+ * after value offset `at` (mapped into the document by the caller), and
+ * whether one stands after the node — which is what makes an opener that
+ * nothing closes inside the node real. The walk answers from
+ * `closerIndex`; by default every closer is taken to exist.
+ */
+export interface CloserOracle {
+  afterNode: (key: string) => boolean;
+  anyFrom: (key: string, at: number) => boolean;
+}
+
+const EVERY_CLOSER: CloserOracle = {
+  afterNode: () => true,
+  anyFrom: () => true,
+};
+
+/** Every `\end{name}` in `source` (exact), and every `</pre>`-class closer
+ *  and `-->` (case-insensitive), by the key an `OpenRegion` carries, in
+ *  document order — read once so that asking whether a closer comes after a
+ *  position is a lookup, not a scan of the rest of the document. */
+export function closerIndex(source: string): ReadonlyMap<string, number[]> {
+  const index = new Map<string, number[]>();
+  const add = (key: string, at: number): void => {
+    const list = index.get(key);
+    if (list === undefined) index.set(key, [at]);
+    else list.push(at);
+  };
+  for (const hit of source.matchAll(TEX_END)) add(`tex:${hit[1]}`, hit.index);
+  for (const hit of source.matchAll(TAG_OR_COMMENT_END)) {
+    add(
+      hit[1] === undefined ? "comment" : `tag:${hit[1].toLowerCase()}`,
+      hit.index,
+    );
+  }
+  return index;
+}
+
+/** The closers `closerIndex` collects — the same patterns `rawRegions`
+ *  closes a region with. */
+const TEX_END = /\\end\{([^{}]+)\}/g;
+const TAG_OR_COMMENT_END = new RegExp(
+  `</(${[...OPAQUE].join("|")})(?=[\\s/>])|${COMMENT_END}`,
+  "gi",
+);
 
 /** What `rawRegions` found: the regions that end inside the text, and the
  *  one that does not, if any. */
@@ -205,15 +254,29 @@ export interface RawRegions {
  * so that an opener inside an attribute value (`title="<script>"`) opens
  * nothing. `closed` are the regions that end inside the text; `open` is the
  * one that does not, if any. An abrupt comment (`<!-->`, `<!--->`) is
- * closed at once. Read once per node and handed to `mayHoldImage` and
- * `rawOpenedBy`, which would otherwise each read it again.
+ * closed at once. An opener nothing closes inside the text is `open` only
+ * when the document holds its closer after the node; otherwise it is text
+ * to pandoc, and the scan goes on behind it — a false `\begin{missing}`
+ * must not hide the `\begin{verbatim}` that follows it. The document is
+ * asked BEFORE the text is searched: a note that repeats an opener the
+ * document never closes, thousands of times in one paragraph or HTML
+ * block, must not cost a search to the end of the node per opener. Read
+ * once per node and handed to `mayHoldImage` and `rawOpenedBy`, which
+ * would otherwise each read it again.
  */
-export function rawRegions(value: string): RawRegions {
+export function rawRegions(
+  value: string,
+  closers: CloserOracle = EVERY_CLOSER,
+): RawRegions {
   const closed: TagSpan[] = [];
   let i = 0;
+  // The next `<` and `\begin{` at or after `i`, found once each and kept
+  // until the scan passes them; -1 means none until the end of the text.
+  let lt = value.indexOf("<");
+  let begin = value.indexOf("\\begin{");
   while (i < value.length) {
-    const lt = value.indexOf("<", i);
-    const begin = value.indexOf("\\begin{", i);
+    if (lt !== -1 && lt < i) lt = value.indexOf("<", i);
+    if (begin !== -1 && begin < i) begin = value.indexOf("\\begin{", i);
     if (lt === -1 && begin === -1) break;
     if (begin !== -1 && (lt === -1 || begin < lt)) {
       const env = TEX_BEGIN.exec(value.slice(begin));
@@ -221,12 +284,25 @@ export function rawRegions(value: string): RawRegions {
         i = begin + 1;
         continue;
       }
+      const key = `tex:${env[1]}`;
+      const after = begin + env[0].length;
+      if (!closers.anyFrom(key, begin)) {
+        i = after;
+        continue;
+      }
       const name = env[1].replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const end = new RegExp(`\\\\end\\{${name}\\}`, "g");
-      end.lastIndex = begin + env[0].length;
+      end.lastIndex = after;
       const closer = end.exec(value);
       if (closer === null) {
-        return { closed, open: { at: begin, until: new RegExp(end.source) } };
+        if (closers.afterNode(key)) {
+          return {
+            closed,
+            open: { at: begin, key, until: new RegExp(end.source) },
+          };
+        }
+        i = after;
+        continue;
       }
       closed.push({ end: closer.index + closer[0].length, start: begin });
       i = closer.index + closer[0].length;
@@ -240,11 +316,22 @@ export function rawRegions(value: string): RawRegions {
         i = lt + abrupt[0].length;
         continue;
       }
+      if (!closers.anyFrom("comment", lt)) {
+        i = lt + 4;
+        continue;
+      }
       const end = new RegExp(COMMENT_END, "g");
       end.lastIndex = lt + 4;
       const closer = end.exec(value);
       if (closer === null) {
-        return { closed, open: { at: lt, until: new RegExp(COMMENT_END) } };
+        if (closers.afterNode("comment")) {
+          return {
+            closed,
+            open: { at: lt, key: "comment", until: new RegExp(COMMENT_END) },
+          };
+        }
+        i = lt + 4;
+        continue;
       }
       closed.push({ end: closer.index + closer[0].length, start: lt });
       i = closer.index + closer[0].length;
@@ -263,11 +350,19 @@ export function rawRegions(value: string): RawRegions {
     i = lt + open[0].length;
     const name = open[1].toLowerCase();
     if (!OPAQUE.has(name)) continue;
+    const key = `tag:${name}`;
+    if (!closers.anyFrom(key, lt)) continue;
     const end = new RegExp(`</${name}(?=[\\s/>])`, "gi");
     end.lastIndex = i;
     const closer = end.exec(value);
     if (closer === null) {
-      return { closed, open: { at: lt, until: new RegExp(end.source, "i") } };
+      if (closers.afterNode(key)) {
+        return {
+          closed,
+          open: { at: lt, key, until: new RegExp(end.source, "i") },
+        };
+      }
+      continue;
     }
     closed.push({ end: closer.index + closer[0].length, start: lt });
     i = closer.index + closer[0].length;
@@ -282,19 +377,17 @@ export function rawRegions(value: string): RawRegions {
  * TeX — never a count of images, and a code sample of a tag is not one.
  *
  * A region the text opens and does not close hides what follows it only
- * when `opens` says the opener is real — the walk answers by whether the
- * closer comes later in the document. pandoc reads an opener whose closer
- * never comes as text (a `\\begin{}`) or as the tag alone (a `<script>`, a
- * `<!--`), and shows the images after it; the browser's reading, in which
- * an unclosed comment swallows the rest of the page, is not pandoc's.
+ * when the opener is real (`rawRegions` with the walk's oracle): pandoc
+ * reads an opener whose closer never comes as text (a `\\begin{}`) or as
+ * the tag alone (a `<script>`, a `<!--`), and shows the images after it;
+ * the browser's reading, in which an unclosed comment swallows the rest of
+ * the page, is not pandoc's.
  */
 export function mayHoldImage(
   value: string,
-  opens: (until: RegExp) => boolean = () => true,
   { closed, open }: RawRegions = rawRegions(value),
 ): boolean {
-  let text =
-    open !== null && opens(open.until) ? value.slice(0, open.at) : value;
+  let text = open === null ? value : value.slice(0, open.at);
   for (const { end, start } of closed) {
     text = text.slice(0, start) + " ".repeat(end - start) + text.slice(end);
   }

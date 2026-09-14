@@ -27,10 +27,10 @@
 import type { Html, Image, ImageReference, Nodes } from "mdast";
 
 import {
+  closerIndex,
+  type CloserOracle,
   mayHoldImage,
-  rawOpenedBy,
   rawRegions,
-  type RawRegions,
   readHtmlFragment,
   type TagSpan,
 } from "./export-html-fragment";
@@ -66,9 +66,10 @@ interface RawRegion {
   until: null | RegExp;
 }
 
-/** Does `until` — the closer of a region a node opens — come after byte
- *  `from` of the source? Only then is the opener real to pandoc. */
-type Opens = (until: RegExp, from: number) => boolean;
+/** The document's answers about closers for the text that starts at byte
+ *  `start` of the source and ends at `end` — `rawRegions` asks them before
+ *  it searches the text, and to decide whether an opener is real. */
+type OracleFor = (start: number, end: number) => CloserOracle;
 
 /** Walk `root` (parsed from `source`) in document order, offering what it
  *  finds to `visitor`. `source` is what the offsets of an `HtmlImage` index. */
@@ -78,12 +79,32 @@ export function walkImages(
   visitor: ImageWalkVisitor,
 ): void {
   const raw: RawRegion = { until: null };
-  const opens: Opens = (until, from) => {
-    const flags = until.flags.includes("g") ? until.flags : `${until.flags}g`;
-    const later = new RegExp(until.source, flags);
-    later.lastIndex = from;
-    return later.test(source);
+  // Every closer in the document, indexed once: whether an opener's closer
+  // comes after a position is then a lookup. A note that names
+  // `\begin{itemize}` — or a thousand different environments — in a
+  // thousand paragraphs without closing them would otherwise scan to the
+  // end of the document a thousand times.
+  const closers = closerIndex(source);
+  const closerAtOrAfter = (key: string, from: number): boolean => {
+    const positions = closers.get(key);
+    if (positions === undefined) return false;
+    // Positions are in document order: the first one at or after `from`.
+    let low = 0;
+    let high = positions.length;
+    while (low < high) {
+      const mid = (low + high) >>> 1;
+      if (positions[mid] < from) low = mid + 1;
+      else high = mid;
+    }
+    return low < positions.length;
   };
+  // A value offset is at most its source offset (the parser strips
+  // container prefixes, never adds), so `start + at` is a safe lower bound
+  // for where an opener stands in the document.
+  const oracleFor: OracleFor = (start, end) => ({
+    afterNode: (key) => closerAtOrAfter(key, end),
+    anyFrom: (key, at) => closerAtOrAfter(key, start + at),
+  });
   const visit = (node: Nodes, ctx: LabelContext, inBraces: boolean): void => {
     if (node.type === "image") {
       visitor.image?.(node, ctx);
@@ -98,13 +119,13 @@ export function walkImages(
         if (mayHoldImage(node.value)) visitor.unread(node);
         return;
       }
-      const found = readHtmlNode(node, source, raw, opens);
+      const found = readHtmlNode(node, source, raw, oracleFor);
       if (found === null) visitor.unread(node);
       else for (const image of found) visitor.htmlImage(image, ctx);
       return;
     }
     if ("value" in node) {
-      trackRawRegion(raw, node, opens);
+      trackRawRegion(raw, node, oracleFor);
       return;
     }
     if (!("children" in node)) return;
@@ -144,10 +165,10 @@ function readHtmlNode(
   node: Html,
   source: string,
   raw: RawRegion,
-  opens: Opens,
+  oracleFor: OracleFor,
 ): HtmlImage[] | null {
-  const after = (until: RegExp): boolean =>
-    opens(until, node.position!.end.offset!);
+  const start = node.position!.start.offset!;
+  const end = node.position!.end.offset!;
   if (raw.until !== null) {
     // Inside the region. What follows the closer, if it stands in this
     // node, is not read either — pandoc ends its block on that line — but
@@ -155,15 +176,18 @@ function readHtmlNode(
     // of it.
     const rest = closeRawRegion(raw, node.value);
     if (rest === null) return [];
-    const regions = rawRegions(rest);
-    raw.until = openedRegion(rest, after, regions);
-    return mayHoldImage(rest, after, regions) ? null : [];
+    const regions = rawRegions(
+      rest,
+      oracleFor(start + node.value.length - rest.length, end),
+    );
+    raw.until = regions.open?.until ?? null;
+    return mayHoldImage(rest, regions) ? null : [];
   }
   const spans = readHtmlFragment(node.value);
   if (spans === null) {
-    const regions = rawRegions(node.value);
-    raw.until = openedRegion(node.value, after, regions);
-    return mayHoldImage(node.value, after, regions) ? null : [];
+    const regions = rawRegions(node.value, oracleFor(start, end));
+    raw.until = regions.open?.until ?? null;
+    return mayHoldImage(node.value, regions) ? null : [];
   }
   if (spans.length === 0) return [];
   const map = valueToSource(node.value, source, node.position!.start.offset!);
@@ -187,16 +211,6 @@ function closeRawRegion(raw: RawRegion, value: string): null | string {
   return value.slice(closer.index + closer[0].length);
 }
 
-/** The region `text` opens, when its closer comes later in the document. */
-function openedRegion(
-  text: string,
-  opens: (until: RegExp) => boolean,
-  regions: RawRegions = rawRegions(text),
-): null | RegExp {
-  const until = rawOpenedBy(text, regions);
-  return until !== null && opens(until) ? until : null;
-}
-
 /**
  * A value node's part in the raw region: it may close the one the walk is
  * inside, and a text node may open one — pandoc's raw TeX environment
@@ -207,13 +221,15 @@ function openedRegion(
 function trackRawRegion(
   raw: RawRegion,
   node: Nodes & { value: string },
-  opens: Opens,
+  oracleFor: OracleFor,
 ): void {
   const rest =
     raw.until === null ? node.value : closeRawRegion(raw, node.value);
   if (rest !== null && node.type === "text") {
-    raw.until = openedRegion(rest, (until) =>
-      opens(until, node.position!.end.offset!),
-    );
+    const start = node.position!.start.offset!;
+    const end = node.position!.end.offset!;
+    raw.until =
+      rawRegions(rest, oracleFor(start + node.value.length - rest.length, end))
+        .open?.until ?? null;
   }
 }
