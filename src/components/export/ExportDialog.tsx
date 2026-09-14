@@ -11,6 +11,7 @@ import { useShallow } from "zustand/shallow";
 
 import { useTranslation } from "../../i18n/useTranslation";
 import { detectPandoc } from "../../ipc/invoke";
+import { useContextStore } from "../../stores/context/context";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
@@ -20,7 +21,10 @@ import {
   exportForNotion,
   exportWithPandoc,
 } from "../../utils/export/export";
-import { pandocEmbedsImages } from "../../utils/export/pandoc-image-policy";
+import {
+  hasEmbeddingContext,
+  pandocEmbedsImages,
+} from "../../utils/export/pandoc-image-policy";
 import { logger } from "../../utils/logger";
 import { ExportFormatDropdown } from "./ExportFormatDropdown";
 
@@ -119,16 +123,26 @@ export function ExportDialog({ editor }: ExportDialogProps) {
   const { activeTabId, tabs } = useEditorStore(
     useShallow((s) => ({ activeTabId: s.activeTabId, tabs: s.tabs })),
   );
+  const { contexts } = useContextStore(
+    useShallow((s) => ({ contexts: s.contexts })),
+  );
   const { t } = useTranslation();
-  // issue 631: what the notice after an embedding export would say about an
-  // unsaved note is worth saying before it — its relative images cannot be
-  // embedded until it has a folder to resolve them against. Only for the
-  // formats that embed: LaTeX and RST write references, so saving changes
-  // nothing for them.
-  const unsavedForEmbedding =
-    isPandocFormat(exportFormat) &&
-    pandocEmbedsImages(exportFormat) &&
-    !tabs.find((tab) => tab.id === activeTabId)?.filePath;
+  // issue 631: what the notice after an embedding export would say about
+  // the note is worth saying before it. An unsaved note has no folder for
+  // its relative images to resolve against; a saved one that no open vault
+  // or folder holds (a lone file opened on its own) has none the export may
+  // read from — the same rule the policy applies. Only for the formats that
+  // embed: LaTeX and RST write references, so neither changes anything.
+  const embeddingHint = ((): null | string => {
+    if (!isPandocFormat(exportFormat) || !pandocEmbedsImages(exportFormat)) {
+      return null;
+    }
+    const filePath = tabs.find((tab) => tab.id === activeTabId)?.filePath;
+    if (!filePath) return "export.unsavedNote";
+    return hasEmbeddingContext(filePath, contexts)
+      ? null
+      : "export.unscopedNote";
+  })();
   const {
     codeFontFamily,
     fontFamily,
@@ -309,8 +323,8 @@ export function ExportDialog({ editor }: ExportDialogProps) {
             )}
           </div>
 
-          {unsavedForEmbedding && (
-            <p className="export-dialog-hint">{t("export.unsavedNote")}</p>
+          {embeddingHint !== null && (
+            <p className="export-dialog-hint">{t(embeddingHint)}</p>
           )}
 
           <div className="export-dialog-field">

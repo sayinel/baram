@@ -72,7 +72,12 @@ export function preparePandocImages(
   knownAssets: ReadonlySet<string>,
 ): PandocImagePreparation {
   const owner =
-    documentPath === null ? null : owningDirectoryContext(documentPath);
+    documentPath === null
+      ? null
+      : owningDirectoryContext(
+          documentPath,
+          useContextStore.getState().contexts,
+        );
   const result = pandocEmbedsImages(format)
     ? stageMarkdownImages(markdown, {
         contextRoot: owner === null ? null : contextRootOf(owner.path),
@@ -136,6 +141,20 @@ export function imagePolicyNotice(
 }
 
 /**
+ * Would an embedding export of the saved note at `documentPath` have a
+ * vault or folder to resolve its relative images in? The dialog asks this
+ * before the export, by the same rule the export applies (issue 631): a
+ * note no directory context holds — a lone file opened on its own — gets
+ * every relative image refused, and hearing that only afterwards is late.
+ */
+export function hasEmbeddingContext(
+  documentPath: string,
+  contexts: readonly ContextInfo[],
+): boolean {
+  return owningDirectoryContext(documentPath, contexts) !== null;
+}
+
+/**
  * issue 545: the vault or folder context whose files an export of
  * `documentPath` may embed — the deepest directory context holding it, as
  * everywhere else in the app (§81, longest prefix). Never a `File` context:
@@ -146,8 +165,10 @@ export function imagePolicyNotice(
  * re-derives the boundary from canonical paths
  * (`ContextManager::owning_directory_root`).
  */
-function owningDirectoryContext(documentPath: string): ContextInfo | null {
-  const { contexts } = useContextStore.getState();
+function owningDirectoryContext(
+  documentPath: string,
+  contexts: readonly ContextInfo[],
+): ContextInfo | null {
   let best: ContextInfo | null = null;
   let bestLength = -1;
   for (const c of contexts) {

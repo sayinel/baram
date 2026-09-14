@@ -1,6 +1,7 @@
 // issue 631 — the export dialog says up front what the notice would say
 // afterwards: a note that was never saved has no folder for its relative
-// images to resolve against, so a Pandoc export cannot embed them.
+// images to resolve against, so a Pandoc export cannot embed them — and
+// neither can a saved note that no open vault or folder holds.
 import { render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -13,6 +14,9 @@ vi.mock("../../../ipc/invoke", async (importOriginal) => ({
   })),
 }));
 
+import type { ContextInfo } from "../../../ipc/types";
+
+import { useContextStore } from "../../../stores/context/context";
 import { useEditorStore } from "../../../stores/editor/editor";
 import { useUIStore } from "../../../stores/ui/ui";
 import { ExportDialog } from "../ExportDialog";
@@ -27,9 +31,23 @@ const tab = (filePath: string) => ({
   title: "note",
 });
 
+const context = (
+  id: string,
+  path: string,
+  contextType: ContextInfo["contextType"],
+): ContextInfo => ({
+  addedAt: 0,
+  color: "",
+  contextType,
+  id,
+  label: id,
+  path,
+});
+
 afterEach(() => {
   useEditorStore.setState({ activeTabId: null, tabs: [] });
   useUIStore.setState({ exportDialogOpen: false });
+  useContextStore.setState({ activeContextId: null, contexts: [] });
 });
 
 describe("ExportDialog", () => {
@@ -58,7 +76,30 @@ describe("ExportDialog", () => {
     }
   });
 
-  it("says nothing of the kind for a saved note, or for a format that does not embed", () => {
+  it("tells the user that a saved note no open vault or folder holds cannot embed them either", () => {
+    // File > Open on a lone .md: saved, so "not saved yet" would be wrong,
+    // but no directory context owns it — the policy will refuse every
+    // relative image, and the export would only say so afterwards.
+    useContextStore.setState({
+      contexts: [
+        context("ctx-file", "/Users/me/solo.md", "file"),
+        context("ctx-other", "/elsewhere", "vault"),
+      ],
+    });
+    useEditorStore.setState({
+      activeTabId: "tab-1",
+      tabs: [tab("/Users/me/solo.md")],
+    });
+    useUIStore.setState({ exportDialogOpen: true, exportFormat: "docx" });
+    render(<ExportDialog editor={null} />);
+    expect(screen.getByText(/not inside an open vault or folder/)).toBeTruthy();
+    expect(screen.queryByText(/not saved yet/)).toBeNull();
+  });
+
+  it("says nothing of the kind for a saved note inside an open vault, or for a format that does not embed", () => {
+    useContextStore.setState({
+      contexts: [context("ctx-vault", "/vault", "vault")],
+    });
     useEditorStore.setState({
       activeTabId: "tab-1",
       tabs: [tab("/vault/notes/today.md")],
@@ -66,6 +107,7 @@ describe("ExportDialog", () => {
     useUIStore.setState({ exportDialogOpen: true, exportFormat: "docx" });
     const saved = render(<ExportDialog editor={null} />);
     expect(screen.queryByText(/not saved yet/)).toBeNull();
+    expect(screen.queryByText(/not inside an open vault or folder/)).toBeNull();
     saved.unmount();
     useEditorStore.setState({ activeTabId: "tab-1", tabs: [tab("")] });
     useUIStore.setState({ exportDialogOpen: true, exportFormat: "html" });
