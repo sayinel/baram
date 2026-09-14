@@ -259,19 +259,31 @@ export function HtmlBlockView({
  * 소독된 HTML을 주입하고, **주입된 DOM 위에서** 상대경로 미디어 src를 해석한다
  * (§294 최종 게이트 I3). 무엇을·왜 고치는지는 resolve-html-media-srcs.ts.
  *
- * ‼️ 의존성 배열이 **없다**. React 19는 `dangerouslySetInnerHTML` prop을 객체
- * 아이덴티티로 비교하고, 여기서는 렌더마다 `{ __html }` 리터럴이 새로 생기므로
- * **매 렌더 innerHTML을 다시 심는다** — 문자열이 그대로여도 그렇다. 측정으로
- * 확인했다: deps를 `[html, baseDir]`로 두면 관계없는 리렌더 한 번에 src가 원래
- * 상대경로로 되돌아가고 effect는 다시 돌지 않아서 이미지가 **다시 빈 화면이
- * 된다**. React가 다시 심는 주기와 고쳐 쓰는 주기가 같아야 한다.
+ * ‼️ `key={baseDir}`가 재해석의 **유일한 보증**이다. 해석은 멱등 가드
+ * (`value.startsWith("asset:")`)를 들고 있어 이미 `asset:`이 된 src를 두 번
+ * 고치지 않는다 — 그러니 baseDir이 바뀌었을 때 다시 해석하려면 주입된 DOM이
+ * 원래의 상대경로로 돌아와 있어야 하고, 그 리셋을 일으키는 것이 이 key다.
+ *
+ * ‼️ 예전에는 key 없이도 됐는데, 그건 React가 **매 렌더 innerHTML을 다시
+ * 심었기** 때문이다. **React 19.3에서 그 동작이 바뀌었다** — 두 버전에서 같은
+ * 프로브로 측정했다(`{ __html }` 리터럴은 매 렌더 새 객체인데도):
+ *   - 19.2.8: 주입된 DOM에 준 변형이 리렌더 한 번에 **지워진다**(재주입)
+ *   - 19.3.0: `__html` **문자열**이 같으면 재주입하지 않아 변형이 **살아남는다**
+ * 그래서 19.3에서는 deps 없는 effect가 돌아도 src가 이미 `asset:`이라 멱등
+ * 가드에 걸려 아무것도 안 했다 — 탭을 옮겨도 옛 디렉터리 기준으로 남았다.
+ * React의 재주입 주기에 기대지 말고 우리가 리셋 시점을 정한다.
+ *
+ * ‼️ deps 없는 effect는 그대로 둔다. html이 바뀌면 React가 새 markup을 심고,
+ * baseDir이 바뀌면 key가 심으므로 effect는 그 두 경우를 모두 뒤따르기만 하면
+ * 된다. 멱등이라 그 밖의 렌더에서는 아무 일도 하지 않는다.
  *
  * ‼️ `useLayoutEffect`인 이유: 페인트 전에 끝내야 상대경로 src로 요청이 한 번
  * 나가고 깨진 이미지가 한 프레임 보이는 일이 없다.
  *
- * ‼️ svg·mermaid view는 정반대로 간다 — `views/use-inner-html.ts`로 `{ __html }`
- * 객체를 memoize해 리렌더에도 svg DOM을 유지한다(issue 549). 여기를 그쪽에
- * 맞춰 "정리"하면 위의 src 재해석 주기가 끊긴다. 이 리터럴은 의도다.
+ * ‼️ svg·mermaid view는 `views/use-inner-html.ts`로 `{ __html }` 객체를
+ * memoize해 리렌더에도 svg DOM을 유지한다(issue 549). 19.3부터는 React가 알아서
+ * 유지하므로 그 memo는 더 이상 결정적이지 않지만, 여기의 key는 반대로 **필요할
+ * 때 일부러 버리는** 장치라 성격이 다르다. 둘을 같은 모양으로 "정리"하지 말 것.
  */
 function HtmlBlockRender({
   className,
@@ -291,6 +303,7 @@ function HtmlBlockRender({
     <div
       className={className}
       dangerouslySetInnerHTML={{ __html: html }}
+      key={baseDir ?? ""}
       ref={ref}
     />
   );

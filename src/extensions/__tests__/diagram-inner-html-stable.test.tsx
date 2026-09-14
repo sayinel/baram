@@ -15,6 +15,15 @@
 // mermaid editor (fullscreenMarkup) — plus the preview across a resize drag,
 // the heaviest real trigger (dragPct changes on every mousemove).
 //
+// ‼️ 2026-09-14, React 19.3 — this file no longer DISCRIMINATES. 19.3 compares
+// the `__html` string instead of the wrapper's identity, so React keeps the DOM
+// on its own: replacing `useInnerHtml(svgHtml)` with an inline literal leaves
+// all 10 cases green here, while the same mutation fails 3 of them on 19.2.8
+// (both measured). Keep the file — it still pins the user-visible behaviour —
+// but the guard that actually holds the convention is the source scan in
+// diagram-inner-html-source.test.ts. Do not read a green run here as evidence
+// that the memo is wired up.
+//
 // The trigger is a right-click on the wrapper: it opens the block menu (a
 // state change → re-render) without changing the mode, so the branch under
 // test stays mounted — a mode flip would legitimately replace the element and

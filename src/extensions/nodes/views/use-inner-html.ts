@@ -20,8 +20,21 @@
 // that: the attribute's value must be a const bound to this hook in the same
 // function.
 //
-// html-block-view.tsx deliberately does NOT use this: its HtmlBlockRender
-// relies on the per-render re-seed (see the comment there).
+// ‼️ React 19.3 STOPPED doing that. Measured with the same probe on both
+// versions (an inline `{{ __html: s }}` literal, i.e. a new object every
+// render, and a DOM mutation made between renders):
+//   - 19.2.8: the mutation is WIPED — React re-assigned innerHTML
+//   - 19.3.0: the mutation SURVIVES — React compares the `__html` STRING now
+// So on 19.3 this memo no longer decides the outcome: mutating the hook away
+// at a call site leaves `diagram-inner-html-stable.test.tsx` green (measured;
+// the same mutation fails 3 of its cases on 19.2.8). The hook stays because
+// the behaviour it guards is React's private detail, not a documented API —
+// but the live structural guard is the source scan
+// (`diagram-inner-html-source.test.ts`), not the stability test.
+//
+// html-block-view.tsx does NOT use this. It used to rely on the per-render
+// re-seed; on 19.3 it resets its injected DOM deliberately with
+// `key={baseDir}` instead (see the comment there).
 import { useMemo } from "react";
 
 export interface InnerHtml {
