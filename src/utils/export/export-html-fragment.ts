@@ -58,7 +58,7 @@
 // makes the whole node unsupported. What stands OUTSIDE the node is the
 // walk's to judge (export-markdown-image-walk.ts): a region pandoc reads
 // through — a comment, a verbatim body or a raw TeX environment an earlier
-// node opened and did not close (`rawOpenedBy`) — and braces an earlier
+// node opened and did not close (`rawRegions`) — and braces an earlier
 // sibling left open around an inline tag (`\texttt{…}`, `[x]{title="…"}`).
 import { LINE_END } from "./export-html-node-offsets";
 
@@ -185,20 +185,19 @@ const CODE = [FENCED_CODE, CODE_SPAN];
 /** The raw TeX environment opener pandoc's `raw_tex` reads, at the text's start. */
 const TEX_BEGIN = /^\\begin\{([^{}]+)\}/;
 
-/** What a text opens and does not close: where the region began, the
- *  pattern that closes it, and the key its closers are indexed under
- *  (`closerIndex`): `tex:<name>`, `tag:<name>` or `comment`. */
+/** What a text opens and does not close: where the region began and the
+ *  pattern that closes it. */
 export interface OpenRegion {
   at: number;
-  key: string;
   until: RegExp;
 }
 
 /**
  * What the document knows about closers, asked by `rawRegions` before it
- * searches a node's text: whether a closer with `key` stands anywhere at or
- * after the node's start, and whether one stands after the node — which is
- * what makes an opener that nothing closes inside the node real. Both are
+ * searches a node's text: whether a closer with `key` (`tex:<name>`,
+ * `tag:<name>` or `comment`, as `closerIndex` files them) stands anywhere
+ * at or after the node's start, and whether one stands after the node —
+ * which is what makes an opener that nothing closes inside the node real. Both are
  * asked about the NODE, never about an offset into its text: the text can
  * be longer than its source span (a tab that ends a container prefix is
  * expanded), so no text offset maps soundly into the document. The walk
@@ -263,8 +262,8 @@ export interface RawRegions {
  * asked BEFORE the text is searched: a note that repeats an opener the
  * document never closes, thousands of times in one paragraph or HTML
  * block, must not cost a search to the end of the node per opener. Read
- * once per node and handed to `mayHoldImage` and `rawOpenedBy`, which
- * would otherwise each read it again.
+ * once per node and handed to `mayHoldImage`, which would otherwise read it
+ * again.
  */
 export function rawRegions(
   value: string,
@@ -306,7 +305,7 @@ export function rawRegions(
         if (closers.afterNode(key)) {
           return {
             closed,
-            open: { at: begin, key, until: new RegExp(end.source) },
+            open: { at: begin, until: new RegExp(end.source) },
           };
         }
         exhausted.add(key);
@@ -336,7 +335,7 @@ export function rawRegions(
         if (closers.afterNode("comment")) {
           return {
             closed,
-            open: { at: lt, key: "comment", until: new RegExp(COMMENT_END) },
+            open: { at: lt, until: new RegExp(COMMENT_END) },
           };
         }
         exhausted.add("comment");
@@ -369,7 +368,7 @@ export function rawRegions(
       if (closers.afterNode(key)) {
         return {
           closed,
-          open: { at: lt, key, until: new RegExp(end.source, "i") },
+          open: { at: lt, until: new RegExp(end.source, "i") },
         };
       }
       exhausted.add(key);
@@ -416,18 +415,4 @@ export function mayHoldImage(
   let text = parts.join("");
   for (const region of CODE) text = text.replace(region, " ");
   return /<img(?=[\s/>])/i.test(text) || text.includes("![");
-}
-
-/**
- * The closer of the comment, verbatim element or raw TeX environment
- * `value` opens without closing, or null — for a node the policy did not
- * read (or a text node), whose region pandoc carries into the nodes that
- * follow. A plain (non-global) pattern to test the following nodes' text
- * with.
- */
-export function rawOpenedBy(
-  value: string,
-  regions: RawRegions = rawRegions(value),
-): null | RegExp {
-  return regions.open?.until ?? null;
 }

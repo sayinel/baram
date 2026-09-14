@@ -96,6 +96,16 @@ describe("ExportDialog", () => {
     expect(screen.queryByText(/not saved yet/)).toBeNull();
   });
 
+  it("shows the hint for a vault opened at the filesystem root, which owns no note", () => {
+    // A root that strips to "" owns nothing (`isUnderRoot`), and the
+    // export's `relativeScope` refuses it too — dialog and export agree.
+    useContextStore.setState({ contexts: [context("ctx-root", "/", "vault")] });
+    useEditorStore.setState({ activeTabId: "tab-1", tabs: [tab("/solo.md")] });
+    useUIStore.setState({ exportDialogOpen: true, exportFormat: "docx" });
+    render(<ExportDialog editor={null} />);
+    expect(screen.getByText(/not inside an open vault or folder/)).toBeTruthy();
+  });
+
   it("says nothing of the kind for a saved note inside an open vault, or for a format that does not embed", () => {
     useContextStore.setState({
       contexts: [context("ctx-vault", "/vault", "vault")],
