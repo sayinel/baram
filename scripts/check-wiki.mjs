@@ -134,12 +134,25 @@ for (const f of pages) {
 //     둔 페이지는 **게시되지 않는다.** 그런데 위 검사들은 비재귀 `readdirSync` 라 그것을
 //     보지 못하고 초록을 낸다 — 기여자가 페이지를 쓰고 게이트를 통과했는데 wiki 에는
 //     없는 상태가 된다. 조용히 버리지 말고 여기서 막는다.
-for (const entry of readdirSync(WIKI, { withFileTypes: true })) {
-  if (entry.isDirectory()) {
-    problems.push(
-      `[하위 디렉터리 금지] ${entry.name}/ — wiki 는 평평하다. 계층은 페이지 이름으로 만들 것`,
-    );
-  }
+//
+//     ‼️ 열거는 git 으로 한다 — `readdirSync` 는 **무시 대상 도구 디렉터리까지** 본다.
+//        `wiki/.omc/`(OMC 세션 상태)가 실제로 생겨서, 그 도구를 쓰는 기여자 전원의
+//        `npm run lint` 가 자기 변경과 무관하게 실패했다. 게시되는 것은 커밋된 것뿐이므로
+//        추적 파일과 **무시되지 않은** 미추적 파일만 보면 된다 — 후자를 함께 보는 이유는
+//        커밋 전에 로컬에서 먼저 잡히게 하려는 것이다.
+const gitPaths = (args) =>
+  execFileSync("git", ["ls-files", ...args, WIKI], { encoding: "utf8" })
+    .split("\n")
+    .filter(Boolean);
+const nested = new Set();
+for (const p of [...gitPaths([]), ...gitPaths(["--others", "--exclude-standard"])]) {
+  const rest = p.slice(WIKI.length + 1);
+  if (rest.includes("/")) nested.add(rest.slice(0, rest.indexOf("/")));
+}
+for (const dir of nested) {
+  problems.push(
+    `[하위 디렉터리 금지] ${dir}/ — wiki 는 평평하다. 계층은 페이지 이름으로 만들 것`,
+  );
 }
 
 // 3d. 공개 문서 사이트 링크가 실제 페이지를 가리키는가.
