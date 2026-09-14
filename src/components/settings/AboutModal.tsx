@@ -15,10 +15,14 @@ import { BUNDLED_FONT_LICENSES, OFL_URL } from "../../utils/font/font-licenses";
 
 const APACHE_LICENSE_URL = "https://www.apache.org/licenses/LICENSE-2.0";
 
-// Authors ordered by GitHub contribution (commit count, bots excluded).
-// Names are the contributors' GitHub display names.
+// Ordered by GitHub contribution, bots excluded — re-derive with
+// `gh api repos/sayinel/baram/contributors` and read each entry's `contributions`.
+// The names below are chosen for this credit line, NOT copied from GitHub display
+// names: those carry personal annotations ("Aiden Ha (Main)") and change without
+// notice, so syncing them would put someone's account housekeeping in the About
+// window. Update a name only when the person it names asks for it.
 const AUTHORS: ReadonlyArray<{ name: string; url: string }> = [
-  { name: "sayinel", url: "https://github.com/sayinel" },
+  { name: "Sayinel", url: "https://github.com/sayinel" },
   { name: "Pignu", url: "https://github.com/pignuante" },
   { name: "Aiden Ha", url: "https://github.com/aidenhany" },
 ];
