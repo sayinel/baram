@@ -58,44 +58,20 @@
 // makes the whole node unsupported. What stands OUTSIDE the node is the
 // walk's to judge (export-markdown-image-walk.ts): a region pandoc reads
 // through — a comment, a verbatim body or a raw TeX environment an earlier
-// node opened and did not close (`rawRegions`) — and braces an earlier
+// node opened and did not close (export-raw-regions.ts) — and braces an earlier
 // sibling left open around an inline tag (`\texttt{…}`, `[x]{title="…"}`).
+import {
+  CLOSE_TAG,
+  COMMENT,
+  OPAQUE,
+  OPEN_TAG,
+  type TagSpan,
+} from "./export-html-grammar";
 import { LINE_END } from "./export-html-node-offsets";
+import { rawRegions, type RawRegions } from "./export-raw-regions";
 
-/** One `<img …>` tag's offsets in the text it was read from. */
-export interface TagSpan {
-  end: number;
-  start: number;
-}
+export type { TagSpan } from "./export-html-grammar";
 
-/** Elements whose body pandoc keeps verbatim (the manual's four exceptions
- *  to markdown inside HTML — measured: `noscript`, `title`, `iframe` bodies
- *  are markup to it): an `<img` in there is not a tag. The one list every
- *  rule about verbatim bodies is built from. */
-const OPAQUE = new Set(["pre", "script", "style", "textarea"]);
-/** A comment's end as HTML reads it, and pandoc too (measured: `--!>`). */
-const COMMENT_END = "--!?>";
-
-// The constants below are regex SOURCES (strings) composed into the patterns
-// that follow them; `new RegExp` marks where a pattern is built.
-
-/** ASCII whitespace — what may separate a tag's attributes, lines included. */
-const WS = "[ \\t\\n\\r\\f]";
-/** A tag name, and an attribute name: a letter, then letters, digits, `_`,
- *  `:` (Word's `<o:p>`, `xml:lang`) or `-`. No `.`, no leading `_` or `:` —
- *  measured: pandoc reads `<a.b>`, `<img a.b="x">` and `<img _x="v">` as
- *  text, not as tags. */
-const NAME = "[A-Za-z][A-Za-z0-9_:-]*";
-/** An attribute: a name, and a value that is quoted or plain. Any Unicode
- *  space (`\s`) ends a plain value's grammar — HTML and pandoc do not agree
- *  on a no-break space there. */
-const ATTRIBUTE = `${NAME}(?:${WS}*=${WS}*(?:"[^"]*"|'[^']*'|[^\\s"'=<>\`]+))?`;
-/** A well-formed open or self-closing tag, at the start of the text. */
-const OPEN_TAG = new RegExp(`^<(${NAME})(?:${WS}+${ATTRIBUTE})*${WS}*/?>`);
-/** A well-formed closing tag (no attributes), at the start of the text. */
-const CLOSE_TAG = new RegExp(`^</(${NAME})${WS}*>`);
-/** A comment as HTML and pandoc both end it: not abrupt, no `--!>`. */
-const COMMENT = /^<!--(?!-?>)(?:(?!--!>)[^])*?-->/;
 /** A bullet (`-` `*` `+`) or a definition marker (`:` `~`). */
 const BULLET = "[-*+:~]";
 /** What an ordered marker counts with: a number, a lowercase letter, a
@@ -181,204 +157,6 @@ const FENCED_CODE =
 const CODE_SPAN = /`[^`]*`/g;
 /** Code pandoc cannot read an image in. */
 const CODE = [FENCED_CODE, CODE_SPAN];
-
-/** The raw TeX environment opener pandoc's `raw_tex` reads, at the text's start. */
-const TEX_BEGIN = /^\\begin\{([^{}]+)\}/;
-
-/** What a text opens and does not close: where the region began and the
- *  pattern that closes it. */
-export interface OpenRegion {
-  at: number;
-  until: RegExp;
-}
-
-/**
- * What the document knows about closers, asked by `rawRegions` before it
- * searches a node's text: whether a closer with `key` (`tex:<name>`,
- * `tag:<name>` or `comment`, as `closerIndex` files them) stands anywhere
- * at or after the node's start, and whether one stands after the node —
- * which is what makes an opener that nothing closes inside the node real. Both are
- * asked about the NODE, never about an offset into its text: the text can
- * be longer than its source span (a tab that ends a container prefix is
- * expanded), so no text offset maps soundly into the document. The walk
- * answers from `closerIndex`; by default every closer is taken to exist.
- */
-export interface CloserOracle {
-  afterNode: (key: string) => boolean;
-  anyFrom: (key: string) => boolean;
-}
-
-const EVERY_CLOSER: CloserOracle = {
-  afterNode: () => true,
-  anyFrom: () => true,
-};
-
-/** Every `\end{name}` in `source` (exact), and every `</pre>`-class closer
- *  and `-->` (case-insensitive), by the key an `OpenRegion` carries, in
- *  document order — read once so that asking whether a closer comes after a
- *  position is a lookup, not a scan of the rest of the document. */
-export function closerIndex(source: string): ReadonlyMap<string, number[]> {
-  const index = new Map<string, number[]>();
-  const add = (key: string, at: number): void => {
-    const list = index.get(key);
-    if (list === undefined) index.set(key, [at]);
-    else list.push(at);
-  };
-  for (const hit of source.matchAll(TEX_END)) add(`tex:${hit[1]}`, hit.index);
-  for (const hit of source.matchAll(TAG_OR_COMMENT_END)) {
-    add(
-      hit[1] === undefined ? "comment" : `tag:${hit[1].toLowerCase()}`,
-      hit.index,
-    );
-  }
-  return index;
-}
-
-/** The closers `closerIndex` collects — the same patterns `rawRegions`
- *  closes a region with. */
-const TEX_END = /\\end\{([^{}]+)\}/g;
-const TAG_OR_COMMENT_END = new RegExp(
-  `</(${[...OPAQUE].join("|")})(?=[\\s/>])|${COMMENT_END}`,
-  "gi",
-);
-
-/** What `rawRegions` found: the regions that end inside the text, and the
- *  one that does not, if any. */
-export interface RawRegions {
-  closed: TagSpan[];
-  open: null | OpenRegion;
-}
-
-/**
- * The regions of `value` pandoc reads through — a comment, a verbatim
- * element with its body, a raw TeX environment — found by the tag grammar,
- * so that an opener inside an attribute value (`title="<script>"`) opens
- * nothing. `closed` are the regions that end inside the text; `open` is the
- * one that does not, if any. An abrupt comment (`<!-->`, `<!--->`) is
- * closed at once. An opener nothing closes inside the text is `open` only
- * when the document holds its closer after the node; otherwise it is text
- * to pandoc, and the scan goes on behind it — a false `\begin{missing}`
- * must not hide the `\begin{verbatim}` that follows it. The document is
- * asked BEFORE the text is searched: a note that repeats an opener the
- * document never closes, thousands of times in one paragraph or HTML
- * block, must not cost a search to the end of the node per opener. Read
- * once per node and handed to `mayHoldImage`, which would otherwise read it
- * again.
- */
-export function rawRegions(
-  value: string,
-  closers: CloserOracle = EVERY_CLOSER,
-): RawRegions {
-  const closed: TagSpan[] = [];
-  // Keys whose closer this text does not hold from some point on, and the
-  // document does not hold after the node: a search that failed from one
-  // opener fails from every later one, so the key is settled for the rest
-  // of the text — an opener whose closer lies BEFORE it would otherwise
-  // pass the document's question and cost a search each.
-  const exhausted = new Set<string>();
-  let i = 0;
-  // The next `<` and `\begin{` at or after `i`, found once each and kept
-  // until the scan passes them; -1 means none until the end of the text.
-  let lt = value.indexOf("<");
-  let begin = value.indexOf("\\begin{");
-  while (i < value.length) {
-    if (lt !== -1 && lt < i) lt = value.indexOf("<", i);
-    if (begin !== -1 && begin < i) begin = value.indexOf("\\begin{", i);
-    if (lt === -1 && begin === -1) break;
-    if (begin !== -1 && (lt === -1 || begin < lt)) {
-      const env = TEX_BEGIN.exec(value.slice(begin));
-      if (env === null) {
-        i = begin + 1;
-        continue;
-      }
-      const key = `tex:${env[1]}`;
-      const after = begin + env[0].length;
-      if (exhausted.has(key) || !closers.anyFrom(key)) {
-        i = after;
-        continue;
-      }
-      const name = env[1].replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const end = new RegExp(`\\\\end\\{${name}\\}`, "g");
-      end.lastIndex = after;
-      const closer = end.exec(value);
-      if (closer === null) {
-        if (closers.afterNode(key)) {
-          return {
-            closed,
-            open: { at: begin, until: new RegExp(end.source) },
-          };
-        }
-        exhausted.add(key);
-        i = after;
-        continue;
-      }
-      closed.push({ end: closer.index + closer[0].length, start: begin });
-      i = closer.index + closer[0].length;
-      continue;
-    }
-    const rest = value.slice(lt);
-    if (rest.startsWith("<!--")) {
-      const abrupt = /^<!---?>/.exec(rest);
-      if (abrupt !== null) {
-        closed.push({ end: lt + abrupt[0].length, start: lt });
-        i = lt + abrupt[0].length;
-        continue;
-      }
-      if (exhausted.has("comment") || !closers.anyFrom("comment")) {
-        i = lt + 4;
-        continue;
-      }
-      const end = new RegExp(COMMENT_END, "g");
-      end.lastIndex = lt + 4;
-      const closer = end.exec(value);
-      if (closer === null) {
-        if (closers.afterNode("comment")) {
-          return {
-            closed,
-            open: { at: lt, until: new RegExp(COMMENT_END) },
-          };
-        }
-        exhausted.add("comment");
-        i = lt + 4;
-        continue;
-      }
-      closed.push({ end: closer.index + closer[0].length, start: lt });
-      i = closer.index + closer[0].length;
-      continue;
-    }
-    const close = CLOSE_TAG.exec(rest);
-    if (close !== null) {
-      i = lt + close[0].length;
-      continue;
-    }
-    const open = OPEN_TAG.exec(rest);
-    if (open === null) {
-      i = lt + 1;
-      continue;
-    }
-    i = lt + open[0].length;
-    const name = open[1].toLowerCase();
-    if (!OPAQUE.has(name)) continue;
-    const key = `tag:${name}`;
-    if (exhausted.has(key) || !closers.anyFrom(key)) continue;
-    const end = new RegExp(`</${name}(?=[\\s/>])`, "gi");
-    end.lastIndex = i;
-    const closer = end.exec(value);
-    if (closer === null) {
-      if (closers.afterNode(key)) {
-        return {
-          closed,
-          open: { at: lt, until: new RegExp(end.source, "i") },
-        };
-      }
-      exhausted.add(key);
-      continue;
-    }
-    closed.push({ end: closer.index + closer[0].length, start: lt });
-    i = closer.index + closer[0].length;
-  }
-  return { closed, open: null };
-}
 
 /**
  * Might this text hold an image pandoc would read? An estimate for the

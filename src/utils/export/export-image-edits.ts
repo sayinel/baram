@@ -9,7 +9,7 @@
 // guards of the shared splice machinery (export-markdown-splice.ts) — an alt
 // of `# x` at a line start must not become a heading, and a pipe in an alt
 // must not end a table cell.
-import type { TagSpan } from "./export-html-fragment";
+import type { TagSpan } from "./export-html-grammar";
 import type { EditorImageMetadata } from "./export-img-attributes";
 import type { Image, ImageReference } from "mdast";
 

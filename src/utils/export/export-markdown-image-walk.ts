@@ -30,10 +30,7 @@
 import type { Html, Image, ImageReference, Nodes } from "mdast";
 
 import {
-  closerIndex,
-  type CloserOracle,
   mayHoldImage,
-  rawRegions,
   readHtmlFragment,
   type TagSpan,
 } from "./export-html-fragment";
@@ -43,6 +40,11 @@ import {
   readExportImageTag,
 } from "./export-img-attributes";
 import { innerContext, type LabelContext } from "./export-markdown-splice";
+import {
+  closerIndex,
+  type CloserOracle,
+  rawRegions,
+} from "./export-raw-regions";
 
 /** One `<img …>` tag of an html node: where it stands in the source and
  *  what it says. */
