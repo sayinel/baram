@@ -14,6 +14,7 @@
 - **`npm run build`는 lint 잡과 rust 잡 양쪽에 있다 — 중복이 아니다.** rust가 정당하게 skip되는 PR(프런트 소스만, 의존성만)이 곧 프로덕션 빌드 게이트가 사라지는 PR이라, lint 쪽이 그 경우의 유일한 `vite build`다. `npm run lint`가 이미 tsc를 돌리므로 lint 쪽이 더하는 것은 번들링 자체다. 어느 한쪽을 "이미 빌드하니까"로 지우지 말 것
 - **릴리스 태그 규칙**: `v*` 태그는 package.json 버전과 일치하고 **main에 포함된 커밋**이어야 함 — verify-tag 잡이 불일치 시 즉시 실패
 - **reusable workflow 함정**: called workflow 안에서 `github.event_name`은 호출자의 이벤트 — 절대 `'workflow_call'`이 아님. 릴리스 여부는 `inputs.release`로 판별
+- **매트릭스 잡의 `run:`은 `shell:`을 명시한다** — 지정하지 않으면 GitHub은 Windows 러너에서 PowerShell을 쓴다. `release.yml`의 `build-and-release`는 3플랫폼 매트릭스이고, 그 `run:` 스텝 열 개 중 아홉은 `runner.os == 'macOS'`(또는 Linux) guard 뒤에 있어 Windows를 만난 적이 없다. guard를 가질 수 **없는** 스텝(세 플랫폼 모두 결과가 필요한 것)이 유일한 노출면이고, v0.7.3의 첫 태그가 정확히 거기서 죽었다(`Load the release notes`, `ParserError: ....ps1:3`). **증상이 부분 릴리스라 알아보기 어렵다** — macOS·Linux가 성공해 draft는 생기고 자산만 10/14개, `latest.json`에 windows 키가 없다. 워크플로 diff를 읽는 것으로는 못 잡는다. 바뀐 스텝이 *어느 축에서* 도는지를 세고, 매트릭스 축마다 검증하거나 축을 좁히는 guard를 달 것
 - **액션은 커밋 SHA 핀** (+`# vN` 주석, dependabot이 갱신). dtolnay/rust-toolchain만 예외: master 히스토리 SHA + `toolchain:` 입력 (ref명이 툴체인을 선택, release 브랜치 SHA는 GC됨)
 - **release Linux 러너는 ubuntu-22.04 고정** — 오래된 glibc에서 빌드해야 배포 호환이 넓어짐. "현대화" 금지
 - **gitleaks는 curl 설치** — dependabot 사각지대라 버전+체크섬을 손으로 함께 갱신
