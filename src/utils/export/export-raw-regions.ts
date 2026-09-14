@@ -92,8 +92,11 @@ export interface RawRegions {
  * must not hide the `\begin{verbatim}` that follows it. The document is
  * asked BEFORE the text is searched: a note that repeats an opener the
  * document never closes, thousands of times in one paragraph or HTML
- * block, must not cost a search to the end of the node per opener. Read
- * once per node and handed to `mayHoldImage`, which would otherwise read it
+ * block, must not cost a search to the end of the node per opener. Nor may
+ * an opener whose closer stands BEFORE it — which passes the document's
+ * question — cost one: the text's own closers are indexed once, the first
+ * time an opener needs them, and each opener looks its closer up. Read once
+ * per node and handed to `mayHoldImage`, which would otherwise read it
  * again.
  */
 export function rawRegions(
@@ -101,12 +104,15 @@ export function rawRegions(
   closers: CloserOracle = EVERY_CLOSER,
 ): RawRegions {
   const closed: TagSpan[] = [];
-  // Keys whose closer this text does not hold from some point on, and the
-  // document does not hold after the node: a search that failed from one
-  // opener fails from every later one, so the key is settled for the rest
-  // of the text — an opener whose closer lies BEFORE it would otherwise
-  // pass the document's question and cost a search each.
-  const exhausted = new Set<string>();
+  // The text's closers by key, built the first time an opener asks; the
+  // first closer at or after a position is then a lookup. The closer's
+  // end, when found, or -1.
+  let own: null | ReadonlyMap<string, number[]> = null;
+  const closerEnd = (key: string, from: number, length: number): number => {
+    own ??= closerIndex(value);
+    const at = firstAtOrAfter(own.get(key), from);
+    return at === -1 ? -1 : at + length;
+  };
   let i = 0;
   // The next `<` and `\begin{` at or after `i`, found once each and kept
   // until the scan passes them; -1 means none until the end of the text.
@@ -126,27 +132,25 @@ export function rawRegions(
       }
       const key = `tex:${env[1]}`;
       const after = begin + env[0].length;
-      if (exhausted.has(key) || !closers.anyFrom(key)) {
+      if (!closers.anyFrom(key)) {
         i = after;
         continue;
       }
-      const name = env[1].replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const end = new RegExp(`\\\\end\\{${name}\\}`, "g");
-      end.lastIndex = after;
-      const closer = end.exec(value);
-      if (closer === null) {
+      // `\end{name}`: six characters around the name.
+      const end = closerEnd(key, after, env[1].length + 6);
+      if (end === -1) {
         if (closers.afterNode(key)) {
+          const name = env[1].replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
           return {
             closed,
-            open: { at: begin, until: new RegExp(end.source) },
+            open: { at: begin, until: new RegExp(`\\\\end\\{${name}\\}`) },
           };
         }
-        exhausted.add(key);
         i = after;
         continue;
       }
-      closed.push({ end: closer.index + closer[0].length, start: begin });
-      i = closer.index + closer[0].length;
+      closed.push({ end, start: begin });
+      i = end;
       continue;
     }
     if (escaped(value, lt)) {
@@ -161,26 +165,26 @@ export function rawRegions(
         i = lt + abrupt[0].length;
         continue;
       }
-      if (exhausted.has("comment") || !closers.anyFrom("comment")) {
+      if (!closers.anyFrom("comment")) {
         i = lt + 4;
         continue;
       }
-      const end = new RegExp(COMMENT_END, "g");
-      end.lastIndex = lt + 4;
-      const closer = end.exec(value);
-      if (closer === null) {
+      // `-->` or `--!>`: the index files where it starts.
+      own ??= closerIndex(value);
+      const at = firstAtOrAfter(own.get("comment"), lt + 4);
+      if (at === -1) {
         if (closers.afterNode("comment")) {
           return {
             closed,
             open: { at: lt, until: new RegExp(COMMENT_END) },
           };
         }
-        exhausted.add("comment");
         i = lt + 4;
         continue;
       }
-      closed.push({ end: closer.index + closer[0].length, start: lt });
-      i = closer.index + closer[0].length;
+      const end = at + (value[at + 2] === "!" ? 4 : 3);
+      closed.push({ end, start: lt });
+      i = end;
       continue;
     }
     const close = CLOSE_TAG.exec(rest);
@@ -197,24 +201,39 @@ export function rawRegions(
     const name = open[1].toLowerCase();
     if (!OPAQUE.has(name)) continue;
     const key = `tag:${name}`;
-    if (exhausted.has(key) || !closers.anyFrom(key)) continue;
-    const end = new RegExp(`</${name}(?=[\\s/>])`, "gi");
-    end.lastIndex = i;
-    const closer = end.exec(value);
-    if (closer === null) {
+    if (!closers.anyFrom(key)) continue;
+    // `</name`: the region ends with the closer's name, as the grammar's
+    // closer pattern matches it.
+    const end = closerEnd(key, i, name.length + 2);
+    if (end === -1) {
       if (closers.afterNode(key)) {
         return {
           closed,
-          open: { at: lt, until: new RegExp(end.source, "i") },
+          open: { at: lt, until: new RegExp(`</${name}(?=[\\s/>])`, "i") },
         };
       }
-      exhausted.add(key);
       continue;
     }
-    closed.push({ end: closer.index + closer[0].length, start: lt });
-    i = closer.index + closer[0].length;
+    closed.push({ end, start: lt });
+    i = end;
   }
   return { closed, open: null };
+}
+
+/** The first of `positions` (in ascending order) at or after `from`, or -1. */
+function firstAtOrAfter(
+  positions: readonly number[] | undefined,
+  from: number,
+): number {
+  if (positions === undefined) return -1;
+  let low = 0;
+  let high = positions.length;
+  while (low < high) {
+    const mid = (low + high) >>> 1;
+    if (positions[mid] < from) low = mid + 1;
+    else high = mid;
+  }
+  return low < positions.length ? positions[low] : -1;
 }
 
 /** Is the character at `at` escaped — preceded by an odd run of

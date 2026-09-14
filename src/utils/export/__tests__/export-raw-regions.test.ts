@@ -56,27 +56,56 @@ describe("rawRegions — the region a text opens and does not close", () => {
       expect(regions.open?.until.test("\\end{verbatim}")).toBe(true);
     });
 
-    it("opens nothing when the closer is neither in the text nor after the node, and asks the text once per key", () => {
+    it("opens nothing when the closer is neither in the text nor after the node, and indexes the text's closers once", () => {
+      const value =
+        "\\begin{a} \\begin{a} \\begin{a} <!-- <!-- <script> <script>";
       const exec = vi.spyOn(RegExp.prototype, "exec");
-      const regions = rawRegions(
-        "\\begin{a} \\begin{a} \\begin{a} <!-- <!-- <script> <script>",
-        oracle({ afterNode: () => false }),
-      );
+      const regions = rawRegions(value, oracle({ afterNode: () => false }));
       expect(regions.open).toBeNull();
-      const searches = exec.mock.instances
-        .map((re) => (re as RegExp).source)
-        .filter(
+      const sources = exec.mock.instances.map((re) => (re as RegExp).source);
+      // No search for one opener's closer; the text's closers are read once
+      // per pattern (TeX ends, tag and comment ends), over the whole text.
+      expect(
+        sources.filter(
           (src) =>
             src === "\\\\end\\{a\\}" ||
             src === "--!?>" ||
             src.includes("script(?="),
-        );
-      expect(searches).toHaveLength(3);
+        ),
+      ).toHaveLength(0);
+      expect(
+        exec.mock.calls.filter(
+          ([text], k) =>
+            text === value &&
+            (sources[k].startsWith("\\\\end\\{(") ||
+              // `RegExp.source` escapes the slash.
+              sources[k].startsWith("<\\/(")),
+        ),
+      ).toHaveLength(2);
     });
 
     it("takes an opener as real when the document holds its closer after the node", () => {
       const regions = rawRegions("<pre>", oracle({}));
       expect(regions.open?.until.test("</PRE>")).toBe(true);
+    });
+
+    it("reads the closers of the text once, never with a search per opener", () => {
+      // A closer that stands BEFORE its opener passes the document's question
+      // (a closer exists at or after the node), and a search per opener then
+      // scanned to the end of the text for each — a thousand distinct names,
+      // a thousand scans (3.5 s at 874 KB). Pinned by count: no search for a
+      // name is run at all.
+      const names = Array.from({ length: 400 }, (_, k) => `e${k}`);
+      const value = `${names.map((e) => `\\end{${e}}`).join(" ")} ${names
+        .map((e) => `\\begin{${e}}`)
+        .join(" ")}`;
+      const exec = vi.spyOn(RegExp.prototype, "exec");
+      const regions = rawRegions(value, oracle({ afterNode: () => false }));
+      expect(regions).toEqual({ closed: [], open: null });
+      const perName = exec.mock.instances.filter((re) =>
+        /^\\\\end\\\{e\d+\\\}$/.test((re as RegExp).source),
+      );
+      expect(perName).toHaveLength(0);
     });
   });
 
