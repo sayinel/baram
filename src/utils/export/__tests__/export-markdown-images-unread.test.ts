@@ -22,6 +22,7 @@ describe("stageMarkdownImages on html nodes it does not read", () => {
       images: [],
       markdown:
         "<details>\n<summary>s</summary>\n```html\n<img src=\"img/a.png\">\n```\n`<img src='img/b.png'>` and <img src='img/c.png'>\n</details>\n\nhosts\n",
+      noSource: 0,
       overCap: 0,
       refused: 1,
       scoped: true,
@@ -39,6 +40,7 @@ describe("stageMarkdownImages on html nodes it does not read", () => {
     expect(stageMarkdownImages(md, SAVED)).toEqual({
       images: [],
       markdown: md,
+      noSource: 0,
       overCap: 0,
       refused: 0,
       unsupportedHtml: 1,
@@ -53,6 +55,7 @@ describe("stageMarkdownImages on html nodes it does not read", () => {
       markdown:
         '![k](baram-asset:image-0.png)\n\n<div>\n$x$ <img src="img/a.png">\n</div>\n',
       unsupportedHtml: 1,
+      noSource: 0,
       overCap: 0,
       refused: 0,
       scoped: true,
@@ -67,6 +70,7 @@ describe("stageMarkdownImages on html nodes it does not read", () => {
     ).toEqual({
       images: [{ name: "image-0.png", source: "img/a.png" }],
       markdown: "<div>![](baram-asset:image-0.png)</div>\n",
+      noSource: 0,
       overCap: 0,
       refused: 0,
       scoped: true,
@@ -82,6 +86,7 @@ describe("stageMarkdownImages on html nodes it does not read", () => {
       expect(stageMarkdownImages(md, SAVED), md).toEqual({
         images: [],
         markdown: md,
+        noSource: 0,
         overCap: 0,
         refused: 0,
         unsupportedHtml: 0,
@@ -102,6 +107,7 @@ describe("stageMarkdownImages on html nodes it does not read", () => {
     ).toEqual({
       images: [{ name: "image-0.png", source: "img/a.png" }],
       markdown: "text \\begin{itemize} more\n\n![](baram-asset:image-0.png)\n",
+      noSource: 0,
       overCap: 0,
       refused: 0,
       scoped: true,
@@ -112,6 +118,7 @@ describe("stageMarkdownImages on html nodes it does not read", () => {
     ).toEqual({
       images: [{ name: "image-0.png", source: "img/b.png" }],
       markdown: "x <script> y\n\n![](baram-asset:image-0.png)\n",
+      noSource: 0,
       overCap: 0,
       refused: 0,
       scoped: true,
@@ -130,6 +137,7 @@ describe("stageMarkdownImages on html nodes it does not read", () => {
       expect(stageMarkdownImages(md, SAVED), md).toEqual({
         images: [],
         markdown: md,
+        noSource: 0,
         overCap: 0,
         refused: 0,
         scoped: true,
@@ -145,6 +153,7 @@ describe("stageMarkdownImages on html nodes it does not read", () => {
     expect(stageMarkdownImages(md, SAVED)).toEqual({
       images: [],
       markdown: md,
+      noSource: 0,
       overCap: 0,
       refused: 0,
       unsupportedHtml: 1,
@@ -160,6 +169,7 @@ describe("stageMarkdownImages on html nodes it does not read", () => {
     expect(stageMarkdownImages(inline, SAVED)).toEqual({
       images: [],
       markdown: inline,
+      noSource: 0,
       overCap: 0,
       refused: 0,
       unsupportedHtml: 0,
@@ -174,6 +184,7 @@ describe("stageMarkdownImages on html nodes it does not read", () => {
     ).toEqual({
       images: [{ name: "image-0.png", source: "img/b.png" }],
       markdown: "x <script>s</script> ![](baram-asset:image-0.png)\n",
+      noSource: 0,
       overCap: 0,
       refused: 0,
       scoped: true,
@@ -187,6 +198,7 @@ describe("stageMarkdownImages on html nodes it does not read", () => {
       markdown:
         '<div>\n<!--\n\n<img src="img/a.png">\n\n-->\n</div>\n\n![](baram-asset:image-0.png)\n',
       unsupportedHtml: 0,
+      noSource: 0,
       overCap: 0,
       refused: 0,
       scoped: true,
@@ -198,6 +210,7 @@ describe("stageMarkdownImages on html nodes it does not read", () => {
       images: [],
       markdown: many,
       unsupportedHtml: 0,
+      noSource: 0,
       overCap: 0,
       refused: 0,
       scoped: true,
@@ -213,6 +226,7 @@ describe("stageMarkdownImages on html nodes it does not read", () => {
       images: [{ name: "image-0.png", source: "img/b.png" }],
       markdown:
         "\\begin{verbatim}\n\n<img src='img/a.png' loading='lazy'>\n\n\\end{verbatim}\n\n![](baram-asset:image-0.png)\n",
+      noSource: 0,
       overCap: 0,
       refused: 0,
       unsupportedHtml: 0,
@@ -231,6 +245,7 @@ describe("stageMarkdownImages on html nodes it does not read", () => {
       images: [],
       markdown: many,
       unsupportedHtml: 0,
+      noSource: 0,
       overCap: 0,
       refused: 0,
       scoped: true,
@@ -244,6 +259,7 @@ describe("stageMarkdownImages on html nodes it does not read", () => {
       images: [{ name: "image-0.png", source: "img/b.png" }],
       markdown:
         '<div title="<script>">[ <img src="img/a.png"></div>\n\n![](baram-asset:image-0.png){width=640px}\n',
+      noSource: 0,
       overCap: 0,
       refused: 0,
       unsupportedHtml: 1,
@@ -263,6 +279,7 @@ describe("stageMarkdownImages on html nodes it does not read", () => {
       expect(stageMarkdownImages(md, SAVED), md).toEqual({
         images: [],
         markdown: md,
+        noSource: 0,
         overCap: 0,
         refused: 0,
         scoped: true,
@@ -282,6 +299,7 @@ describe("stageMarkdownImages on html nodes it does not read", () => {
       ],
       markdown:
         "Photo {1} ![](baram-asset:image-0.png) and \\texttt{x} ![](baram-asset:image-1.png)\n",
+      noSource: 0,
       overCap: 0,
       refused: 0,
       scoped: true,
@@ -321,6 +339,7 @@ describe("stageMarkdownImages on html nodes it does not read", () => {
       expect(stageMarkdownImages(md, SAVED), md).toEqual({
         images: [],
         markdown: md,
+        noSource: 0,
         overCap: 0,
         refused: 0,
         scoped: true,

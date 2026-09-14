@@ -39,9 +39,11 @@ export interface PandocImagePreparation {
   /** The images to stage, in document order; the backend reads them. */
   images: PandocImageRequest[];
   markdown: string;
+  /** How many `<img>` tags with no source became their alt text. */
+  noSource: number;
   /** How many images past the backend's cap became their alt text. */
   overCap: number;
-  /** How many images became their alt text. */
+  /** How many images whose destination was refused became their alt text. */
   refused: number;
   /** Whether the document had a context to be relative to at all — which
    *  decides the wording of the notice. The text writers embed nothing and
@@ -83,20 +85,22 @@ export function preparePandocImages(
 
 /**
  * What to tell the user, or null when nothing was left out: the definite
- * count of images that became alt text, and why (issue 545), then — issue
- * 631 — the html fragments the policy could not read, whose images may be
- * missing; the policy does not know how many they held. One string: the
+ * count of images whose destination was refused, and why (issue 545); then
+ * — issue 631 — the tags that had no source, the images the cap left out,
+ * and the html fragments the policy could not read, whose images may be
+ * missing (the policy does not know how many they held). One string: the
  * toast store shows one at a time, so a second toast would hide the first.
  */
 export function imagePolicyNotice(
   {
+    noSource,
     overCap,
     refused,
     scoped,
     unsupportedHtml,
   }: Pick<
     PandocImagePreparation,
-    "overCap" | "refused" | "scoped" | "unsupportedHtml"
+    "noSource" | "overCap" | "refused" | "scoped" | "unsupportedHtml"
   >,
   locale: Locale,
 ): null | string {
@@ -108,6 +112,11 @@ export function imagePolicyNotice(
         locale,
         { count: String(refused) },
       ),
+    );
+  }
+  if (noSource > 0) {
+    notices.push(
+      t("export.imagesNoSource", locale, { count: String(noSource) }),
     );
   }
   if (overCap > 0) {

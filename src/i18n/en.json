@@ -148,6 +148,7 @@
   "export.imageNotice.learnMore": "Learn more",
   "export.imagesLeftOut": "{count} image(s) left out: outside the note’s vault or folder, a web address, or a file that could not be read.",
   "export.imagesLeftOutUnscoped": "{count} image(s) left out: relative image paths need the note saved inside an open vault or folder.",
+  "export.imagesNoSource": "{count} image tag(s) had no source and became their alt text.",
   "export.imagesOverCap": "Only the first {max} images were embedded; {count} more became their alt text.",
   "export.unsavedNote": "This note is not saved yet: its relative image paths can be embedded only after it is saved inside an open vault or folder.",
   "fileEditor.conflict.keepLocal": "Keep Local",

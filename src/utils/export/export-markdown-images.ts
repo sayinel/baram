@@ -99,9 +99,13 @@ export interface ImagePolicyResult {
   /** The images to stage, in document order; the backend reads them. */
   images: PandocImageRequest[];
   markdown: string;
+  /** How many `<img>` tags with no source (none, or a blank one) became
+   *  their alt text — a reason of its own, not a refused destination. */
+  noSource: number;
   /** How many images past `MAX_STAGED_IMAGES` became their alt text. */
   overCap: number;
-  /** How many images became their alt text — what the user should hear about. */
+  /** How many images whose destination was refused — outside the context,
+   *  a web address, unreadable — became their alt text. */
   refused: number;
   /** Whether the document had a context to be relative to at all. */
   scoped: boolean;
@@ -126,6 +130,7 @@ export const MAX_STAGED_IMAGES = 256;
 
 /** What one pass counts for the user, shared across rounds. */
 interface Counters {
+  noSource: number;
   overCap: number;
   refused: number;
   unsupportedHtml: number;
@@ -146,7 +151,12 @@ export function stageMarkdownImages(
   // but within a round a document-written placeholder wearing a name staged
   // earlier in the same walk is still the forgery it was.
   const known = new Set(knownAssets);
-  const counters: Counters = { overCap: 0, refused: 0, unsupportedHtml: 0 };
+  const counters: Counters = {
+    noSource: 0,
+    overCap: 0,
+    refused: 0,
+    unsupportedHtml: 0,
+  };
   let out = markdown;
   for (let round = 0; round < MAX_ROUNDS; round++) {
     const staged: string[] = [];
@@ -164,6 +174,7 @@ export function stageMarkdownImages(
       return {
         images,
         markdown: out,
+        noSource: counters.noSource,
         overCap: counters.overCap,
         refused: counters.refused,
         scoped: scope !== null,
@@ -201,23 +212,29 @@ function stageRequest(staging: Staging, source: string): null | string {
   return name;
 }
 
+/** A tag with no `src`, or a blank one, has no source to judge. */
+function hasNoSource(tag: HtmlImage["tag"]): boolean {
+  return tag.src === null || parserView(tag.src) === "";
+}
+
 /**
  * The edit for one `<img …>` tag the walk read: its source is judged like
  * any other image — staged, kept, or reduced to its alt text and counted —
- * and a tag with no usable source becomes its alt text and is counted too,
- * since the backend's filter would drop the raw tag with no word to the user.
+ * and a tag with no usable source becomes its alt text and is counted apart,
+ * since the backend's filter would drop the raw tag with no word to the user
+ * and the reason is not one a refused destination has.
  */
 function htmlImageEdit(
   { at, tag }: HtmlImage,
   ctx: LabelContext,
   staging: Staging,
 ): SourceEdit {
-  if (tag.src === null) {
-    staging.counters.refused += 1;
+  if (hasNoSource(tag)) {
+    staging.counters.noSource += 1;
     return altEditAt(at, tag.alt, ctx);
   }
   const verdict = classifyImageSource(
-    tag.src,
+    tag.src ?? "",
     staging.scope,
     staging.knownAssets,
   );
@@ -244,20 +261,26 @@ function htmlImageEdit(
  */
 export function rewriteImageTagsAsMarkdown(markdown: string): {
   markdown: string;
+  noSource: number;
   overCap: number;
   refused: number;
   unsupportedHtml: number;
 } {
   const edits: SourceEdit[] = [];
-  const counters: Counters = { overCap: 0, refused: 0, unsupportedHtml: 0 };
+  const counters: Counters = {
+    noSource: 0,
+    overCap: 0,
+    refused: 0,
+    unsupportedHtml: 0,
+  };
   walkImages(parseMdast(markdown), markdown, {
     htmlImage: ({ at, tag }, ctx) => {
-      if (tag.src === null) {
-        counters.refused += 1;
+      if (hasNoSource(tag)) {
+        counters.noSource += 1;
         edits.push(altEditAt(at, tag.alt, ctx));
         return;
       }
-      edits.push(imageEditAt(at, tag, parserView(tag.src), ctx));
+      edits.push(imageEditAt(at, tag, parserView(tag.src ?? ""), ctx));
     },
     unread: () => {
       counters.unsupportedHtml += 1;
