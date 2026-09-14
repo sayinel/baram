@@ -496,6 +496,21 @@ describe("rewriteImageTagsAsMarkdown (the text writers)", () => {
     });
   });
 
+  it("writes the source as HTML reads it, like the embedding route: blanks trimmed, tabs and line breaks removed", () => {
+    // The embedding route judges and writes the parser's view of the source
+    // (a tab inside an attribute value never reaches pandoc); the text
+    // writers used to splice the raw attribute, so the same note named two
+    // different files in `.docx` and `.tex`.
+    expect(
+      rewriteImageTagsAsMarkdown('<img src="\timg/a\tb.png " alt="A">\n'),
+    ).toMatchObject({ markdown: "![A](img/ab.png)\n" });
+    expect(
+      stageMarkdownImages('<img src="\timg/a\tb.png " alt="A">\n', SAVED),
+    ).toMatchObject({
+      images: [{ name: "image-0.png", source: "img/ab.png" }],
+    });
+  });
+
   it("takes the same acceptance decision as the embedding route: an unread block stays whole and is counted", () => {
     const md =
       "<div>\n```\n<img src='img/a.png'>\n```\n<img src='img/b.png'>\n</div>\n";

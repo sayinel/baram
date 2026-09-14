@@ -56,6 +56,7 @@ import type { PandocImageRequest } from "../../ipc/types";
 import { visit } from "unist-util-visit";
 
 import { parseMdast } from "../../pipeline/parse-mdast";
+import { parserView } from "../link-href";
 import { decodePercent } from "../path-utils";
 import {
   altEdit,
@@ -232,9 +233,11 @@ function htmlImageEdit(
 
 /**
  * For the writers that embed nothing (latex, rst): every `<img …>` tag
- * becomes a markdown image with its source as HTML reads it — no staging, no
- * verdict, exactly as every other image reference passes through to those
- * writers — and a tag with no usable source becomes its alt text. Without
+ * becomes a markdown image with its source as HTML reads it — the parser's
+ * view, as the embedding route writes it, so a blank or a tab inside the
+ * attribute value never reaches pandoc — no staging, no verdict, exactly as
+ * every other image reference passes through to those writers — and a tag
+ * with no usable source becomes its alt text. Without
  * this, the raw tag reaches the backend, the policy filter drops it (raw
  * HTML is never written into any output), and the image silently vanishes
  * from a `.tex`. Returns the input itself when there is nothing to change.
@@ -254,7 +257,7 @@ export function rewriteImageTagsAsMarkdown(markdown: string): {
         edits.push(altEditAt(at, tag.alt, ctx));
         return;
       }
-      edits.push(imageEditAt(at, tag, tag.src, ctx));
+      edits.push(imageEditAt(at, tag, parserView(tag.src), ctx));
     },
     unread: () => {
       counters.unsupportedHtml += 1;
