@@ -98,7 +98,7 @@ Baram pairs a **beautiful WYSIWYG** editor with **lossless markdown**, **AI-nati
 - **Disappearing syntax** — Markdown delimiters (`**`, `*`, `` ` ``, `~~`, `==`, `~`, `^`, links) show only when your cursor enters the range and vanish when you leave.
 - **Lossless roundtrip** — MD → editor → MD preserves your document exactly, including markup Baram does not render itself. Plain text on disk, always — no database, no proprietary container, no lock-in.
 - **Source mode** — Toggle raw markdown editing (CodeMirror 6) with `Cmd+/`.
-- **Rich blocks** — Headings, lists, tables (with cell merge & virtual scroll), task lists, Obsidian-compatible callouts, toggles, footnotes, definition lists, and YAML frontmatter — created by typing markdown, `/` slash commands, or shortcuts.
+- **Rich blocks** — Headings, lists, tables (with cell merge), task lists, Obsidian-compatible callouts, toggles, footnotes, definition lists, and YAML frontmatter — created by typing markdown, `/` slash commands, or shortcuts.
 - **Math, code & diagrams** — Inline/block LaTeX (KaTeX), syntax highlighting for 14+ languages (CodeMirror 6), and Mermaid diagrams — all with live preview.
 - **Images** — Drag-and-drop, paste from clipboard, resize, and edit alt text inline.
 - **Other file types** — Open HTML with a sandboxed live preview and a source-edit toggle, and images/SVG in a built-in viewer — all in place, without leaving the app. Plugins can add viewers for more types.
