@@ -98,12 +98,15 @@ export function walkImages(
     }
     return low < positions.length;
   };
-  // A value offset is at most its source offset (the parser strips
-  // container prefixes, never adds), so `start + at` is a safe lower bound
-  // for where an opener stands in the document.
+  // The node's source start is the one sound lower bound for every opener
+  // in it. An offset into the node's text is NOT: micromark expands a tab
+  // that ends a container prefix into spaces, so the text can be longer
+  // than its source span (two columns per such line), and `start + offset`
+  // would ask past the real closer once the drift outgrew the distance to
+  // it — and take a real `<script>` for a false opener.
   const oracleFor: OracleFor = (start, end) => ({
     afterNode: (key) => closerAtOrAfter(key, end),
-    anyFrom: (key, at) => closerAtOrAfter(key, start + at),
+    anyFrom: (key) => closerAtOrAfter(key, start),
   });
   const visit = (node: Nodes, ctx: LabelContext, inBraces: boolean): void => {
     if (node.type === "image") {
@@ -116,7 +119,13 @@ export function walkImages(
     }
     if (node.type === "html") {
       if (inBraces) {
-        if (mayHoldImage(node.value)) visitor.unread(node);
+        // Judged by the same oracle as any other node: a false opener in a
+        // processing instruction must not mask the `<img` behind it.
+        const regions = rawRegions(
+          node.value,
+          oracleFor(node.position!.start.offset!, node.position!.end.offset!),
+        );
+        if (mayHoldImage(node.value, regions)) visitor.unread(node);
         return;
       }
       const found = readHtmlNode(node, source, raw, oracleFor);
@@ -176,10 +185,7 @@ function readHtmlNode(
     // of it.
     const rest = closeRawRegion(raw, node.value);
     if (rest === null) return [];
-    const regions = rawRegions(
-      rest,
-      oracleFor(start + node.value.length - rest.length, end),
-    );
+    const regions = rawRegions(rest, oracleFor(start, end));
     raw.until = regions.open?.until ?? null;
     return mayHoldImage(rest, regions) ? null : [];
   }
@@ -228,8 +234,6 @@ function trackRawRegion(
   if (rest !== null && node.type === "text") {
     const start = node.position!.start.offset!;
     const end = node.position!.end.offset!;
-    raw.until =
-      rawRegions(rest, oracleFor(start + node.value.length - rest.length, end))
-        .open?.until ?? null;
+    raw.until = rawRegions(rest, oracleFor(start, end)).open?.until ?? null;
   }
 }

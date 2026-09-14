@@ -197,14 +197,16 @@ export interface OpenRegion {
 /**
  * What the document knows about closers, asked by `rawRegions` before it
  * searches a node's text: whether a closer with `key` stands anywhere at or
- * after value offset `at` (mapped into the document by the caller), and
- * whether one stands after the node — which is what makes an opener that
- * nothing closes inside the node real. The walk answers from
- * `closerIndex`; by default every closer is taken to exist.
+ * after the node's start, and whether one stands after the node — which is
+ * what makes an opener that nothing closes inside the node real. Both are
+ * asked about the NODE, never about an offset into its text: the text can
+ * be longer than its source span (a tab that ends a container prefix is
+ * expanded), so no text offset maps soundly into the document. The walk
+ * answers from `closerIndex`; by default every closer is taken to exist.
  */
 export interface CloserOracle {
   afterNode: (key: string) => boolean;
-  anyFrom: (key: string, at: number) => boolean;
+  anyFrom: (key: string) => boolean;
 }
 
 const EVERY_CLOSER: CloserOracle = {
@@ -269,6 +271,12 @@ export function rawRegions(
   closers: CloserOracle = EVERY_CLOSER,
 ): RawRegions {
   const closed: TagSpan[] = [];
+  // Keys whose closer this text does not hold from some point on, and the
+  // document does not hold after the node: a search that failed from one
+  // opener fails from every later one, so the key is settled for the rest
+  // of the text — an opener whose closer lies BEFORE it would otherwise
+  // pass the document's question and cost a search each.
+  const exhausted = new Set<string>();
   let i = 0;
   // The next `<` and `\begin{` at or after `i`, found once each and kept
   // until the scan passes them; -1 means none until the end of the text.
@@ -286,7 +294,7 @@ export function rawRegions(
       }
       const key = `tex:${env[1]}`;
       const after = begin + env[0].length;
-      if (!closers.anyFrom(key, begin)) {
+      if (exhausted.has(key) || !closers.anyFrom(key)) {
         i = after;
         continue;
       }
@@ -301,6 +309,7 @@ export function rawRegions(
             open: { at: begin, key, until: new RegExp(end.source) },
           };
         }
+        exhausted.add(key);
         i = after;
         continue;
       }
@@ -316,7 +325,7 @@ export function rawRegions(
         i = lt + abrupt[0].length;
         continue;
       }
-      if (!closers.anyFrom("comment", lt)) {
+      if (exhausted.has("comment") || !closers.anyFrom("comment")) {
         i = lt + 4;
         continue;
       }
@@ -330,6 +339,7 @@ export function rawRegions(
             open: { at: lt, key: "comment", until: new RegExp(COMMENT_END) },
           };
         }
+        exhausted.add("comment");
         i = lt + 4;
         continue;
       }
@@ -351,7 +361,7 @@ export function rawRegions(
     const name = open[1].toLowerCase();
     if (!OPAQUE.has(name)) continue;
     const key = `tag:${name}`;
-    if (!closers.anyFrom(key, lt)) continue;
+    if (exhausted.has(key) || !closers.anyFrom(key)) continue;
     const end = new RegExp(`</${name}(?=[\\s/>])`, "gi");
     end.lastIndex = i;
     const closer = end.exec(value);
@@ -362,6 +372,7 @@ export function rawRegions(
           open: { at: lt, key, until: new RegExp(end.source, "i") },
         };
       }
+      exhausted.add(key);
       continue;
     }
     closed.push({ end: closer.index + closer[0].length, start: lt });

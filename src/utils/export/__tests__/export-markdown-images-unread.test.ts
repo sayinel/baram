@@ -177,6 +177,38 @@ describe("stageMarkdownImages on html nodes it does not read", () => {
     });
   });
 
+  it("keeps a region real inside a container whose prefix ends in a tab, however long the node grows", () => {
+    // micromark expands a tab that ends a container prefix into spaces, so
+    // a node's text is LONGER than its source span — two columns per such
+    // line. A lookahead that added a text offset to the node's source start
+    // asked past the real `</script>` once the drift outgrew the distance to
+    // it, rejected the opener, and staged the tag inside the script body.
+    for (const n of [10, 36, 80]) {
+      const body = Array.from({ length: n }, () => "\t<a>").join("\n");
+      const md = `- <div>\n${body}\n\t<script>\n\n\t<img src="secret.png">\n\n\t</script>\n`;
+      const tabs = stageMarkdownImages(md, SAVED);
+      const spaces = stageMarkdownImages(md.replaceAll("\t", "  "), SAVED);
+      expect(tabs.images, `tabs n=${n}`).toEqual([]);
+      expect(tabs.markdown).toBe(md);
+      expect(spaces.images, `spaces n=${n}`).toEqual([]);
+    }
+  });
+
+  it("reports a braced inline node by the same rule as any other: a false opener hides nothing", () => {
+    // A processing instruction holds a false `<script>` opener and an `<img`
+    // in one inline node. Inside braces the node used to be judged without
+    // the document's oracle, so the false opener masked the tag.
+    expect(
+      stageMarkdownImages(
+        "\\texttt{<?<script><img src=a.png>?>} tail\n",
+        SAVED,
+      ),
+    ).toMatchObject({ unsupportedHtml: 1 });
+    expect(
+      stageMarkdownImages("x <?<script><img src=a.png>?> tail\n", SAVED),
+    ).toMatchObject({ unsupportedHtml: 1 });
+  });
+
   it("counts a block whose text it cannot align with the source as unread", () => {
     // The parser replaces a NUL by U+FFFD in the node's text but not in the
     // source: the offsets cannot be trusted, so the block is left whole.
@@ -434,6 +466,27 @@ describe("stageMarkdownImages on html nodes it does not read", () => {
           (exec.mock.instances[k] as RegExp).source === "--!?>",
       );
       expect(inNodeCommentScans).toHaveLength(0);
+    });
+
+    it("searches a node once per key when the only closer stands before every opener", () => {
+      // `<!--x-->` closes nothing that follows it, yet it puts a closer in
+      // the index, so the document-level question cannot rule the openers
+      // out. Two searches at most: the one that closes `<!--x-->`, and the
+      // first failed one, which settles the key for the rest of the node —
+      // not one search per opener.
+      const exec = vi.spyOn(RegExp.prototype, "exec");
+      const html = `<!--x-->${"<!--".repeat(300)}\n`;
+      expect(stageMarkdownImages(html, SAVED)).toMatchObject({
+        markdown: html,
+        unsupportedHtml: 0,
+      });
+      const inNodeCommentScans = exec.mock.calls.filter(
+        ([text], k) =>
+          typeof text === "string" &&
+          text.length > 100 &&
+          (exec.mock.instances[k] as RegExp).source === "--!?>",
+      );
+      expect(inNodeCommentScans.length).toBeLessThanOrEqual(2);
     });
   });
 });
