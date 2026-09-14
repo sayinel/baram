@@ -398,10 +398,22 @@ export function mayHoldImage(
   value: string,
   { closed, open }: RawRegions = rawRegions(value),
 ): boolean {
-  let text = open === null ? value : value.slice(0, open.at);
+  // The closed regions are blanked in one pass over the text — rebuilding
+  // the string per region made a block of thousands of comments quadratic
+  // (344 KiB: 1.8 s). Their widths are kept so nothing shifts.
+  const upto = open === null ? value.length : open.at;
+  const parts: string[] = [];
+  let cursor = 0;
   for (const { end, start } of closed) {
-    text = text.slice(0, start) + " ".repeat(end - start) + text.slice(end);
+    if (start >= upto) break;
+    parts.push(
+      value.slice(cursor, start),
+      " ".repeat(Math.min(end, upto) - start),
+    );
+    cursor = Math.min(end, upto);
   }
+  parts.push(value.slice(cursor, upto));
+  let text = parts.join("");
   for (const region of CODE) text = text.replace(region, " ");
   return /<img(?=[\s/>])/i.test(text) || text.includes("![");
 }
