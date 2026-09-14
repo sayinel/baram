@@ -16,14 +16,21 @@ export interface FileTreeContextValue {
   selectedPaths: Set<string>;
 }
 
-const FileTreeCtx = createContext<FileTreeContextValue | null>(null);
-
-export const FileTreeProvider = FileTreeCtx.Provider;
+/**
+ * ‼️ `FileTreeContext.Provider` 를 `FileTreeProvider` 같은 이름으로 재export 하지 말 것 —
+ * 이유는 `contexts/editor-context.tsx` 의 같은 주석에 있다(요약: 그 별칭이 이 파일을
+ * 컴포넌트 모듈로 만들어 `useFileTreeContext` 가 react-refresh 위반으로 보고된다).
+ *
+ * 소비자는 컨텍스트를 그대로 렌더한다: `<FileTreeContext value={ctxValue}>`.
+ */
+export const FileTreeContext = createContext<FileTreeContextValue | null>(null);
 
 export function useFileTreeContext(): FileTreeContextValue {
-  const ctx = useContext(FileTreeCtx);
+  const ctx = useContext(FileTreeContext);
   if (!ctx) {
-    throw new Error("useFileTreeContext must be used within FileTreeProvider");
+    throw new Error(
+      "useFileTreeContext must be used within a FileTreeContext provider",
+    );
   }
   return ctx;
 }

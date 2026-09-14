@@ -13,7 +13,7 @@ import { EditorArea } from "./components/layout/EditorArea";
 import { StatusBar } from "./components/layout/StatusBar";
 import { TabBar } from "./components/layout/TabBar";
 import { TabSwitcher } from "./components/layout/TabSwitcher";
-import { EditorProvider } from "./contexts/editor-context";
+import { EditorContext } from "./contexts/editor-context";
 import { createBaramExtensions } from "./extensions";
 import { useActiveTabSurface } from "./hooks/use-active-tab-surface";
 import { useAppCommands } from "./hooks/use-app-commands";
@@ -357,7 +357,7 @@ function App() {
   });
 
   return (
-    <EditorProvider value={activeEditor}>
+    <EditorContext value={activeEditor}>
       <AppLayout
         statusBar={
           rootPath ? (
@@ -428,7 +428,7 @@ function App() {
           selectedIndex={tabSwitcherIndex}
         />
       )}
-    </EditorProvider>
+    </EditorContext>
   );
 }
 

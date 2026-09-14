@@ -39,7 +39,7 @@ vi.mock("../../../utils/editor/serialize-live-doc", () => ({
   serializeLiveDoc: vi.fn(),
 }));
 
-import { EditorProvider } from "../../../contexts/editor-context";
+import { EditorContext } from "../../../contexts/editor-context";
 import { useTaskStore } from "../../../stores/tasks/task-store";
 import { useUIStore } from "../../../stores/ui/ui";
 import { TASK_ROW_KEYSHORTCUTS } from "../../../utils/tasks/task-row-keys";
@@ -53,9 +53,9 @@ function overlay(): Element | null {
 function renderPanel(entries: TaskEntry[] = [task()]): HTMLElement {
   useTaskStore.getState().setAll(entries);
   render(
-    <EditorProvider value={null}>
+    <EditorContext value={null}>
       <TaskAgendaPanel />
-    </EditorProvider>,
+    </EditorContext>,
   );
   const row = screen.getByText(entries[0].text).closest("li")!;
   row.focus();

@@ -51,7 +51,7 @@ vi.mock("../../../utils/journal/journal-photo", () => ({
     savePhotoToAssets(...(a as [Uint8Array, string])),
 }));
 
-import { EditorProvider } from "../../../contexts/editor-context";
+import { EditorContext } from "../../../contexts/editor-context";
 import { t } from "../../../i18n";
 import {
   createDir,
@@ -1942,9 +1942,9 @@ describe("QuickCaptureDialog — 태그가 지목한 노트에 붙인다 (§320,
   it("hands the append the main editor, not the capture dialog's own", async () => {
     const mainEditor = { __probe: "main-editor" } as unknown as Editor;
     render(
-      <EditorProvider value={mainEditor}>
+      <EditorContext value={mainEditor}>
         <QuickCaptureDialog />
-      </EditorProvider>,
+      </EditorContext>,
     );
     await saveWith("#영감노트");
 

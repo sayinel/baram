@@ -7,7 +7,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { Editor } from "@tiptap/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { EditorProvider } from "../../../contexts/editor-context";
+import { EditorContext } from "../../../contexts/editor-context";
 import { createBaramExtensions } from "../../../extensions";
 import { markdownToProsemirror } from "../../../pipeline/md-to-pm";
 import { prosemirrorToMarkdown } from "../../../pipeline/pm-to-md";
@@ -48,9 +48,9 @@ function open(markdown: string): Editor {
 
   useUIStore.setState({ taskEditOpen: true });
   render(
-    <EditorProvider value={editor}>
+    <EditorContext value={editor}>
       <TaskEditDialog />
-    </EditorProvider>,
+    </EditorContext>,
   );
   return editor;
 }
@@ -171,9 +171,9 @@ describe("TaskEditDialog", () => {
     editor.commands.setTextSelection(at);
     useUIStore.setState({ taskEditOpen: true });
     const view = render(
-      <EditorProvider value={editor}>
+      <EditorContext value={editor}>
         <TaskEditDialog />
-      </EditorProvider>,
+      </EditorContext>,
     );
     fireEvent.change(screen.getByDisplayValue("원래 초안"), {
       target: { value: "지켜야 할 draft" },
@@ -194,9 +194,9 @@ describe("TaskEditDialog", () => {
     );
     editorB.commands.setTextSelection(2);
     view.rerender(
-      <EditorProvider value={editorB}>
+      <EditorContext value={editorB}>
         <TaskEditDialog />
-      </EditorProvider>,
+      </EditorContext>,
     );
 
     // draft가 다른 문서의 블록으로 갈아치워지지 않았다.
@@ -235,9 +235,9 @@ describe("TaskEditDialog", () => {
     editor.commands.setTextSelection(at);
     useUIStore.setState({ taskEditOpen: true });
     const view = render(
-      <EditorProvider value={editor}>
+      <EditorContext value={editor}>
         <TaskEditDialog />
-      </EditorProvider>,
+      </EditorContext>,
     );
     fireEvent.change(screen.getByDisplayValue("원래 초안"), {
       target: { value: "지켜야 할 draft" },
@@ -259,15 +259,15 @@ describe("TaskEditDialog", () => {
 
     // 스왑 갔다가 —
     view.rerender(
-      <EditorProvider value={editorB}>
+      <EditorContext value={editorB}>
         <TaskEditDialog />
-      </EditorProvider>,
+      </EditorContext>,
     );
     // — 되돌아온다.
     view.rerender(
-      <EditorProvider value={editor}>
+      <EditorContext value={editor}>
         <TaskEditDialog />
-      </EditorProvider>,
+      </EditorContext>,
     );
 
     // draft가 재초기화로 덮이지 않았고, 스왑 사유가 소멸했으니 경고도 없다.
@@ -304,9 +304,9 @@ describe("TaskEditDialog", () => {
     editor.commands.setTextSelection(at);
     useUIStore.setState({ taskEditOpen: true });
     const view = render(
-      <EditorProvider value={editor}>
+      <EditorContext value={editor}>
         <TaskEditDialog />
-      </EditorProvider>,
+      </EditorContext>,
     );
     fireEvent.change(screen.getByDisplayValue("원래 초안"), {
       target: { value: "지켜야 할 draft" },
@@ -327,9 +327,9 @@ describe("TaskEditDialog", () => {
       ).toJSON() as never,
     );
     view.rerender(
-      <EditorProvider value={editorB}>
+      <EditorContext value={editorB}>
         <TaskEditDialog />
-      </EditorProvider>,
+      </EditorContext>,
     );
 
     // 조용히 닫혀 draft가 증발하면 안 된다.

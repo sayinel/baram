@@ -30,7 +30,7 @@ import { someSelectedIsDir } from "./file-tree-multi-ops";
 import { ancestorDirs } from "./file-tree-reveal";
 import { DRAG_EXPAND_DELAY_MS, TREE_BASE_PADDING_PX } from "./file-tree-types";
 import { computeVisibleEntries } from "./file-tree-visible";
-import { FileTreeProvider } from "./FileTreeContext";
+import { FileTreeContext } from "./FileTreeContext";
 import { FileTreeNode } from "./FileTreeNode";
 import { FileTreeSortDropdown } from "./FileTreeSortDropdown";
 import { FolderAccessError } from "./FolderAccessError";
@@ -520,7 +520,7 @@ export function FileTree(): React.JSX.Element {
   }
 
   return (
-    <FileTreeProvider value={ctxValue}>
+    <FileTreeContext value={ctxValue}>
       <div
         className={`file-tree ${isDragging ? "file-tree-dragging" : ""}`}
         onContextMenu={handleEmptyAreaContextMenu}
@@ -705,6 +705,6 @@ export function FileTree(): React.JSX.Element {
           />
         )}
       </div>
-    </FileTreeProvider>
+    </FileTreeContext>
   );
 }

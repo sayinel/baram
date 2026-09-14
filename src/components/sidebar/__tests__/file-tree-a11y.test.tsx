@@ -20,7 +20,7 @@ import { useEditorStore } from "../../../stores/editor/editor";
 import { useFileStore } from "../../../stores/file/file";
 import { EMPTY_GIT_BADGE_INDEX } from "../../../stores/system/git-badges";
 import { FileTree } from "../FileTree";
-import { FileTreeProvider } from "../FileTreeContext";
+import { FileTreeContext } from "../FileTreeContext";
 import { FileTreeNode } from "../FileTreeNode";
 
 const ctx: FileTreeContextValue = {
@@ -41,7 +41,7 @@ function renderNode(
   ctxOverride: Partial<FileTreeContextValue> = {},
 ): void {
   render(
-    <FileTreeProvider value={{ ...ctx, ...ctxOverride }}>
+    <FileTreeContext value={{ ...ctx, ...ctxOverride }}>
       <FileTreeNode
         depth={0}
         entry={entry}
@@ -54,7 +54,7 @@ function renderNode(
         onFileClick={noop}
         onStartRename={noop}
       />
-    </FileTreeProvider>,
+    </FileTreeContext>,
   );
 }
 

@@ -46,7 +46,7 @@ vi.mock("../../../utils/editor/serialize-live-doc", () => ({
   serializeLiveDoc: (...a: unknown[]) => serializeLiveDoc(...a),
 }));
 
-import { EditorProvider } from "../../../contexts/editor-context";
+import { EditorContext } from "../../../contexts/editor-context";
 import { t } from "../../../i18n";
 import { useEditorStore } from "../../../stores/editor/editor";
 import { useFileStore } from "../../../stores/file/file";
@@ -995,9 +995,9 @@ describe("§312 triage menu on an agenda row", () => {
   it("아젠다 패널의 행에서도 같은 경로가 돈다", async () => {
     useTaskStore.getState().setAll([task({ due: "2000-01-01" })]);
     render(
-      <EditorProvider value={null}>
+      <EditorContext value={null}>
         <TaskAgendaPanel />
-      </EditorProvider>,
+      </EditorContext>,
     );
 
     fireEvent.contextMenu(screen.getByText("하나"));

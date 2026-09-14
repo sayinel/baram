@@ -5,7 +5,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { EMPTY_GIT_BADGE_INDEX } from "../../../stores/system/git-badges";
-import { FileTreeProvider } from "../FileTreeContext";
+import { FileTreeContext } from "../FileTreeContext";
 import { FileTreeNode } from "../FileTreeNode";
 
 const ctx: FileTreeContextValue = {
@@ -30,7 +30,7 @@ function renderNode(
   ctxOverride: Partial<FileTreeContextValue> = {},
 ): void {
   render(
-    <FileTreeProvider value={{ ...ctx, ...ctxOverride }}>
+    <FileTreeContext value={{ ...ctx, ...ctxOverride }}>
       <FileTreeNode
         depth={0}
         entry={entry}
@@ -43,7 +43,7 @@ function renderNode(
         onFileClick={handlers.onFileClick ?? noop}
         onStartRename={noop}
       />
-    </FileTreeProvider>,
+    </FileTreeContext>,
   );
 }
 
