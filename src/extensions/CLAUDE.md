@@ -166,7 +166,9 @@ codemirror-vim의 keymap·엔진 본체는 `@replit/codemirror-vim`이 아니라
 
 **NodeView wrapper의 React 핸들러(`onContextMenu` 등)는 `createPortal`로 body에 그린 모달 안의 이벤트도 받는다** — React 트리 기준으로 버블하기 때문. 블록 자신의 이벤트인지는 `wrapperRef.current.contains(e.target)`로 먼저 걸러라 (mermaid/svg fullscreen 모달 우클릭이 인라인 상태에 묶인 블록 메뉴를 열던 사고, PR 537).
 
-**`dangerouslySetInnerHTML`은 `views/use-inner-html.ts`의 `useInnerHtml`을 주입하는 컴포넌트 안에서 호출해 넘긴다(issue 549).** React 19는 이 prop을 객체 identity로 비교해 인라인 리터럴이면 매 렌더 svg를 재파싱·재생성한다(우클릭 메뉴·캡션 편집·리사이즈 드래그 mousemove마다). wrapper 객체를 prop으로 넘기지 말 것 — spread 한 번에 무력화된다. `html-block-view.tsx`는 재심기에 의지하는 유일한 예외. `__tests__/diagram-inner-html-source.test.ts`가 `nodes/**/*.tsx`를 AST로 스캔해 강제하며, 들여다볼 수 없는 spread(`{...props}` 등)는 그 테스트의 `REVIEWED_OPAQUE_SPREADS`에 손으로 검토해 추가해야 통과한다.
+**`dangerouslySetInnerHTML`은 `views/use-inner-html.ts`의 `useInnerHtml`을 주입하는 컴포넌트 안에서 호출해 넘긴다(issue 549).** React 19.2 이하는 이 prop을 객체 identity로 비교해 인라인 리터럴이면 매 렌더 svg를 재파싱·재생성했다(우클릭 메뉴·캡션 편집·리사이즈 드래그 mousemove마다). wrapper 객체를 prop으로 넘기지 말 것 — spread 한 번에 무력화된다. `__tests__/diagram-inner-html-source.test.ts`가 `nodes/**/*.tsx`를 AST로 스캔해 강제하며, 들여다볼 수 없는 spread(`{...props}` 등)는 그 테스트의 `REVIEWED_OPAQUE_SPREADS`에 손으로 검토해 추가해야 통과한다.
+
+‼️ **React 19.3에서 그 비교가 `__html` 문자열 기준으로 바뀌었다**(두 버전 프로브로 실측). 파급 둘: (1) `useInnerHtml` memo는 더 이상 결과를 좌우하지 않는다 — 19.3에서는 memo를 걷어내도 `diagram-inner-html-stable.test.tsx`가 초록이다(19.2.8에서는 3건 실패). 규약을 지키는 것은 이제 위 **소스 스캔**이지 그 안정성 테스트가 아니다. (2) `html-block-view.tsx`는 더 이상 "재심기에 의지하는 예외"가 아니다 — 주입된 DOM을 상대경로로 되돌려야 할 때 `key={baseDir}`로 **일부러 버린다**. 두 파일을 같은 모양으로 정리하지 말 것: 한쪽은 DOM 유지, 다른 쪽은 의도적 폐기다.
 
 ## registry.json 유지 규칙
 
