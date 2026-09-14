@@ -21,7 +21,8 @@
 // doubled (the globally mocked `listen` hands us the token handler).
 import { listen } from "@tauri-apps/api/event";
 
-import { Editor } from "@tiptap/core";
+import type { Editor } from "@tiptap/core";
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../ipc/invoke", async (importOriginal) => ({
@@ -36,12 +37,11 @@ vi.mock("@tauri-apps/plugin-opener", () => ({
 
 import type { AICommandOptions } from "../ai-commands";
 
-import { createBaramExtensions } from "../../extensions";
 import { llmComplete } from "../../ipc/invoke";
-import { markdownToProsemirror } from "../../pipeline/md-to-pm";
 import { useAIStore } from "../../stores/ai/ai";
 import { executeAICommand } from "../ai-commands";
 import { countLiveEditorMutationTasks } from "../editor/mutation-tasks";
+import { createEditorFixture } from "./helpers/editor-fixture";
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -61,19 +61,7 @@ async function flush(): Promise<void> {
   for (let i = 0; i < 5; i++) await Promise.resolve();
 }
 
-const editors: Editor[] = [];
-
-function loadEditor(markdown: string): Editor {
-  const editor = new Editor({
-    content: "",
-    extensions: createBaramExtensions(),
-  });
-  editors.push(editor);
-  editor.commands.setContent(
-    markdownToProsemirror(markdown, editor.schema).toJSON(),
-  );
-  return editor;
-}
+const { dispose: disposeEditors, load: loadEditor } = createEditorFixture();
 
 /** Text of every top-level block, in order. */
 function blockTexts(editor: Editor): string[] {
@@ -123,7 +111,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  for (const e of editors.splice(0)) e.destroy();
+  disposeEditors();
 });
 
 describe("a syntax-reveal collapse appended while the stream is running", () => {

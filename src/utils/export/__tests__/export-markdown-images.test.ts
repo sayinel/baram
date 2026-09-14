@@ -1,136 +1,31 @@
 // issue 545 — the Pandoc export's image policy, on strings.
 //
 // What pandoc may read is decided here and enforced in Rust; these tests pin
-// the string side: which destinations are kept, staged or refused, what a
-// refused image is replaced with, and that the splice cannot form new syntax.
+// the walk over markdown images: what a staged image becomes, what a refused
+// one is replaced with, that the splice cannot form new syntax, and what is
+// counted. The verdict on one destination is pinned in
+// export-image-source-policy.test.ts, the `<img>` tags in
+// export-markdown-images-html.test.ts and -unread.test.ts.
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
   classifyImageSource,
   relativeScope,
-  rewriteImageTagsAsMarkdown,
+} from "../export-image-source-policy";
+import {
+  MAX_STAGED_IMAGES,
   stageMarkdownImages,
 } from "../export-markdown-images";
 import { stripDisallowedMarkdownLinks } from "../export-markdown-links";
-
-/** The diagram assets this export produced — the only `baram-asset:` names kept. */
-const KNOWN = new Set(["mermaid-0.png"]);
-const SAVED = {
-  contextRoot: "/vault",
-  documentPath: "/vault/notes/today.md",
-  knownAssets: KNOWN,
-};
-const UNSAVED = {
-  contextRoot: "/vault",
-  documentPath: null,
-  knownAssets: KNOWN,
-};
-/** A file opened on its own: no vault or folder context to be relative to. */
-const LONE = {
-  contextRoot: null,
-  documentPath: "/Users/me/solo.md",
-  knownAssets: KNOWN,
-};
-const IN_VAULT = relativeScope(SAVED.documentPath, SAVED.contextRoot);
-
-describe("classifyImageSource", () => {
-  it("keeps a staged mermaid asset and refuses any asset name this export did not produce", () => {
-    expect(
-      classifyImageSource("baram-asset:mermaid-0.png", IN_VAULT, KNOWN),
-    ).toEqual({
-      kind: "keep",
-    });
-    // A document-written placeholder would reach pandoc as a bare file name.
-    expect(
-      classifyImageSource("baram-asset:mermaid-1.png", IN_VAULT, KNOWN),
-    ).toEqual({
-      kind: "refuse",
-    });
-    expect(
-      classifyImageSource("\tbaram-asset:mermaid-0.png", IN_VAULT, KNOWN),
-    ).toEqual({
-      kind: "keep",
-    });
-    expect(classifyImageSource("baram-asset:../x", IN_VAULT, KNOWN)).toEqual({
-      kind: "refuse",
-    });
-    expect(classifyImageSource("baram-asset:", IN_VAULT, KNOWN)).toEqual({
-      kind: "refuse",
-    });
-  });
-
-  it("stages a relative path that stays inside the document's context, refuses one that leaves it", () => {
-    expect(classifyImageSource("img/a.png", IN_VAULT, KNOWN)).toEqual({
-      kind: "stage",
-      source: "img/a.png",
-    });
-    // Up one level is still inside /vault.
-    expect(classifyImageSource("../shared/a.png", IN_VAULT, KNOWN).kind).toBe(
-      "stage",
-    );
-    expect(classifyImageSource("./a%20b.png", IN_VAULT, KNOWN).kind).toBe(
-      "stage",
-    );
-    // Up two levels leaves /vault — judged on the string, so the export can
-    // degrade to alt text instead of failing in the backend.
-    for (const url of [
-      "../../secret.png",
-      "../../../etc/hosts",
-      "%2e%2e/%2e%2e/secret.png",
-      "img/../../../secret.png",
-      "..\\..\\secret.png",
-    ]) {
-      expect(classifyImageSource(url, IN_VAULT, KNOWN), url).toEqual({
-        kind: "refuse",
-      });
-    }
-    // No scope at all — unsaved, or a file opened on its own.
-    expect(classifyImageSource("img/a.png", null, KNOWN)).toEqual({
-      kind: "refuse",
-    });
-  });
-
-  it("resolves the scope from the document path and the context root, or not at all", () => {
-    expect(relativeScope("/vault/notes/today.md", "/vault/")).toEqual({
-      caseInsensitive: false,
-      documentDir: "/vault/notes",
-      root: "/vault",
-    });
-    expect(relativeScope("C:\\vault\\notes\\today.md", "C:\\vault")).toEqual({
-      caseInsensitive: true,
-      documentDir: "C:/vault/notes",
-      root: "C:/vault",
-    });
-    expect(relativeScope(null, "/vault")).toBeNull();
-    expect(relativeScope("/Users/me/solo.md", null)).toBeNull();
-  });
-
-  it("refuses everything pandoc would read from outside the document's tree", () => {
-    for (const url of [
-      "/etc/hosts",
-      "/Users/me/.ssh/id_rsa",
-      "\\\\server\\share\\x.png",
-      "\\Windows\\x.png",
-      "C:\\Users\\me\\x.png",
-      "c:/x.png",
-      "file:///etc/hosts",
-      "FILE:///etc/hosts",
-      " file:///etc/hosts",
-      "data:image/png;base64,AAAA",
-      "https://tracker.example/pixel.gif",
-      "http://x/y.png",
-      "//tracker.example/pixel.gif",
-      "java\tscript:alert(1)",
-      "",
-      "#fragment",
-      "?query",
-    ]) {
-      expect(classifyImageSource(url, IN_VAULT, KNOWN), url).toEqual({
-        kind: "refuse",
-      });
-    }
-  });
-});
+import {
+  IN_VAULT,
+  KNOWN,
+  LONE,
+  SAVED,
+  UNSAVED,
+} from "./helpers/image-policy-fixtures";
 
 describe("stageMarkdownImages", () => {
   it("returns the same string when there is nothing to change", () => {
@@ -385,22 +280,6 @@ describe("stageMarkdownImages", () => {
     });
   });
 
-  it("turns the editor's resized <img> tag into a staged image with its width, or into alt text", () => {
-    const { images, markdown, refused } = stageMarkdownImages(
-      'a <img src="img/a.png" alt="A" title="T" width="640"> b\n\n<img src="img/b.png" width="50%">\n\n<img src="/etc/hosts" alt="hosts">\n\n<img src="img/c.png" loading="lazy">\n',
-      SAVED,
-    );
-    expect(markdown).toBe(
-      'a ![A](baram-asset:image-0.png "T"){width=640px} b\n\n![](baram-asset:image-1.png){width=50%}\n\nhosts\n\n<img src="img/c.png" loading="lazy">\n',
-    );
-    expect(images).toEqual([
-      { name: "image-0.png", source: "img/a.png" },
-      { name: "image-1.png", source: "img/b.png" },
-    ]);
-    // The tag the editor could not represent is left alone; the refused one counted.
-    expect(refused).toBe(1);
-  });
-
   it("counts what became alt text and says whether there was a context at all", () => {
     const md = "![a](img/a.png) ![b](/etc/hosts) ![c](https://x/y.png)\n";
     expect(stageMarkdownImages(md, SAVED)).toMatchObject({
@@ -422,13 +301,43 @@ describe("stageMarkdownImages", () => {
   });
 });
 
-describe("rewriteImageTagsAsMarkdown (the text writers)", () => {
-  it("rewrites the editor's <img> tags with their source untouched, and nothing else", () => {
-    const md =
-      'a <img src="img/a.png" alt="A" width="640"> b\n\n<img src="../x.png" width="50%">\n\n<img src="img/c.png" loading="lazy">\n\n![k](img/k.png)\n';
-    expect(rewriteImageTagsAsMarkdown(md)).toBe(
-      'a ![A](img/a.png){width=640px} b\n\n![](../x.png){width=50%}\n\n<img src="img/c.png" loading="lazy">\n\n![k](img/k.png)\n',
+// issue 631 — the backend refuses a request for more images than its cap and
+// fails the whole export; before `<img>` tags were staged, a note with many
+// of them exported without them. The frontend stops at the same number and
+// degrades the rest to alt text, so the export still goes through.
+describe("the cap on staged images", () => {
+  it("mirrors the backend's MAX_IMAGE_COUNT, so what the frontend stages is what the backend accepts", () => {
+    const rust = readFileSync(
+      join(process.cwd(), "src-tauri/src/export/pandoc_images.rs"),
+      "utf8",
     );
-    expect(rewriteImageTagsAsMarkdown("plain\n")).toBe("plain\n");
+    const declared = [
+      ...rust.matchAll(/^const MAX_IMAGE_COUNT: usize = (\d+);$/gm),
+    ];
+    expect(declared).toHaveLength(1);
+    expect(Number(declared[0][1])).toBe(MAX_STAGED_IMAGES);
+  });
+
+  it("embeds the images up to the cap and turns the rest into alt text, counted apart from the refused", () => {
+    const lines = Array.from(
+      { length: MAX_STAGED_IMAGES + 1 },
+      (_, i) => `![n${i}](img/${i}.png)`,
+    );
+    const md = `${lines.join("\n\n")}\n\n<img src="img/x.png" alt="X"> ![h](/etc/hosts)\n`;
+    const { images, markdown, overCap, refused } = stageMarkdownImages(
+      md,
+      SAVED,
+    );
+    const last = MAX_STAGED_IMAGES - 1;
+    expect(images).toHaveLength(MAX_STAGED_IMAGES);
+    expect(images.at(-1)).toEqual({
+      name: `image-${last}.png`,
+      source: `img/${last}.png`,
+    });
+    expect(markdown).toContain(`![n${last}](baram-asset:image-${last}.png)`);
+    // The image past the cap, the tag after it, then the refused one.
+    expect(markdown).toContain(`\n\nn${MAX_STAGED_IMAGES}\n\nX h\n`);
+    expect(overCap).toBe(2);
+    expect(refused).toBe(1);
   });
 });

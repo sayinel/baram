@@ -368,7 +368,7 @@ impl ContextManager {
 
     /// issue 545: the canonical root of the vault or folder context named by
     /// `context_id` — the export's owning context, chosen by the frontend
-    /// (`owningDirectoryContext` in src/utils/export/export.ts) — when the
+    /// (`owningDirectoryContext` in src/utils/export/pandoc-image-policy.ts) — when the
     /// document lies inside it; `None` otherwise, and for a `File` context,
     /// which authorizes exactly one file, and for an unknown id. No wider
     /// search is made here: this is the boundary, judged on canonical paths,

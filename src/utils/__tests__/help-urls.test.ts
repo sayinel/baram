@@ -41,6 +41,7 @@ describe("help-urls ↔ 사이트 계약", () => {
   it("스캔이 실제로 값을 집는다 (빈손이면 아래 단정이 모두 공허해진다)", () => {
     const routes = siteRoutes();
     expect(Object.keys(routes.entries).sort()).toEqual([
+      "export",
       "faq",
       "guide",
       "shortcuts",

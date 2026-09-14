@@ -12,7 +12,7 @@
 //
 // ‼️ 이 함수는 해석을 **추가만** 한다. 지금 앱에서 열리는 링크(`.md`/`.markdown`)는
 // 호출부가 별도로 계속 붙잡으므로, 여기서 못 찾았다고 기존 링크가 외부로 새지 않는다.
-import { normalizePath } from "../path-utils";
+import { decodePercent, normalizePath } from "../path-utils";
 
 /** 트리에서 조회할 때 필요한 최소 형태 — `FlatFile`이 이것을 만족한다. */
 export interface LocalLinkFile {
@@ -107,17 +107,6 @@ export function resolveLocalLinkTarget(
     if (hit) return hit.path;
   }
   return null;
-}
-
-function decodePercent(value: string): string {
-  if (!value.includes("%")) return value;
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    // `50% off.md`처럼 퍼센트가 이스케이프가 아닌 이름은 URIError를 던진다.
-    // 원본이 이미 후보에 있으므로 조용히 포기하는 것이 맞다.
-    return value;
-  }
 }
 
 /**

@@ -59,9 +59,15 @@ test("legacy targets are derived from entries, not duplicated", () => {
   }
 });
 
-test("the app opens exactly the three documented surfaces", () => {
-  // 앱 Help 메뉴가 여는 URL. 3단계에서 src/utils/help-urls.ts 가 이 값을 파생한다.
-  assert.deepEqual(Object.keys(ROUTES.entries).sort(), ["faq", "guide", "shortcuts"]);
+test("the app opens exactly the four documented surfaces", () => {
+  // 앱이 여는 URL: Help 메뉴 세 항목과, 내보내기 알림의 "자세히"가 여는 export 페이지.
+  // src/utils/help-urls.ts 가 이 값을 파생한다.
+  assert.deepEqual(Object.keys(ROUTES.entries).sort(), [
+    "export",
+    "faq",
+    "guide",
+    "shortcuts",
+  ]);
   assert.equal(
     absolute(docPath(entrySlug("guide"), "en")),
     "https://baram.ing/en/docs/getting-started/",

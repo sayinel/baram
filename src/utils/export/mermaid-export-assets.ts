@@ -5,6 +5,7 @@ import { segmentMarkdownByMermaid } from "../markdown/mermaid-fence";
 import { stripMermaidMeta } from "../markdown/mermaid-meta";
 import { renderMermaidRasterSvg } from "../markdown/mermaid-utils";
 import { svgToPngBlob } from "../markdown/svg-utils";
+import { ASSET_SCHEME } from "./export-image-source-policy";
 
 export type MermaidPngRenderer = (code: string) => Promise<number[]>;
 
@@ -32,7 +33,7 @@ export async function rewriteMermaidForPandoc(
       const data = await render(code);
       const name = `mermaid-${idx}.png`;
       assets.push({ data, name });
-      out.push(`![](baram-asset:${name})`);
+      out.push(`![](${ASSET_SCHEME}${name})`);
       idx++;
     } catch (err) {
       console.error("Mermaid export: render failed, keeping source", err);

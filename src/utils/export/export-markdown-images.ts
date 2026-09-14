@@ -8,82 +8,81 @@
 // network request at export time. Nothing checked the destination, and pandoc
 // ran without `--sandbox`.
 //
-// This pass decides what pandoc may read, and it decides it so that pandoc
-// never sees a filesystem path the document wrote:
-//
-// - `baram-asset:NAME` (a mermaid diagram the export rasterized) is kept; the
-//   backend swaps it for the staged file.
-// - A RELATIVE path that stays inside the document's own context — judged
-//   here on the normalized string, against the context root the tab names —
-//   is turned into an asset request: the destination becomes
-//   `baram-asset:image-N.ext` and `{ name, source }` goes to the backend, which
-//   resolves `source` against the document's directory, canonicalizes it, and
-//   reads it only if the result lies under that same root. The string check
-//   here is what lets a plain `../../secret.png` degrade to its alt text and
-//   the export still succeed; the canonical check there is the boundary — a
-//   symlink out of the vault, a spelling the URL parser and the filesystem
-//   read differently, a path this file never imagined, all fail the export
-//   there, naming the source. A relative path in a document that has never
-//   been saved, or in a file opened on its own (a `File` context authorizes
-//   exactly that file), has nothing it may be relative to, and is refused.
-// - Everything else is refused and replaced by its alt text: an absolute path
-//   (`/…`, `C:\…`, `\\server\…`), `file:`, `data:`, `http(s):` and every other
-//   scheme, a protocol-relative `//host/x`, an empty or fragment-only
-//   destination. Remote images are refused deliberately — an export must not
-//   make a request the user did not see coming (a tracking pixel in a shared
-//   note) — and an "include remote images" option is a separate decision.
-//
-// Runs after every converter and the mermaid rewrite, and BEFORE the link pass
+// This pass walks the document (export-markdown-image-walk.ts) and gives
+// every image its verdict
+// (export-image-source-policy.ts: kept, staged as an asset request the
+// backend resolves inside the document's context, or refused), then writes
+// the edits (export-image-edits.ts): a staged image points at its
+// `baram-asset:image-N.ext` placeholder, a refused one becomes its alt text,
+// and the user is told how many were refused. It runs until nothing changes
+// (a later round reads its own placeholders back and keeps them), after every
+// converter and the mermaid rewrite, and BEFORE the link pass
 // (export-markdown-links.ts), so that pass stays the final gate for links and
 // re-parses whatever this one wrote. Nothing re-parses what the LINK pass
 // writes, so its splice must not be able to complete an image: the shared
-// serializer escapes a label's `]` and a `!` at its edge before a `[`. Alt text is spliced in with the shared machinery
-// (export-markdown-splice.ts): serialized as literal text with block starters
-// escaped, then escaped for its table cell or heading, with the neighbour
-// guards — an alt of `# x` at a line start must not become a heading. A
+// serializer escapes a label's `]` and a `!` at its edge before a `[`. A
 // reference-style image (`![alt][ref]`) whose definition is anything but a
 // kept asset becomes its alt text rather than a staged request: the editor
 // resolves references when it loads a document, so one reaches this pass only
 // from strings built by other means, and a definition is also what its links
 // use.
 //
+// An `<img …>` tag in raw HTML is an image to pandoc too (issue 631): the
+// editor writes one for a resized image, a note pasted from elsewhere may
+// hold any spelling. Such a tag is judged like a markdown image — its
+// source as HTML reads it (export-img-attributes.ts) — and written back as
+// one, only when its html node is one this pass can read at all: nothing but
+// tags, comments and caption text (export-html-fragment.ts, a positive
+// grammar). Any other node — a fence, code, math or an indented line beside
+// the tag, a shape pandoc and HTML read differently — is left whole, and the
+// user is told that block could not be read, apart from the count of images
+// refused.
+//
+// The backend accepts at most `MAX_STAGED_IMAGES` requests and fails the
+// export past that — a boundary, not a courtesy. Staging stops at the same
+// number here and every image after it becomes its alt text, counted apart,
+// so a note with a gallery of hundreds still exports (issue 631).
+//
 // Not covered here — judged one layer later, on pandoc's own parse, by the
 // Lua policy filter `src-tauri/src/export/pandoc.rs` writes for each export
-// (issues 545 and 544): raw HTML of any kind, including an `<img src>` this
-// pass did not recognise as the editor's own tag, is dropped there; an epub
-// `cover-image` in YAML metadata is removed from the metadata; every Image
-// the writers would embed is held to the staged-asset allowlist. Raw TeX
-// `\includegraphics` is dropped with the rest of raw TeX. A document with
-// nothing to change comes back as the very same string.
+// (issues 545 and 544): raw HTML of any kind, including an `<img src>` in a
+// node this pass did not read, is dropped there; an epub `cover-image` in
+// YAML metadata is removed from the metadata; every Image the writers would
+// embed is held to the staged-asset allowlist. Raw TeX `\includegraphics` is
+// dropped with the rest of raw TeX. A document with nothing to change comes
+// back as the very same string.
 import type { PandocImageRequest } from "../../ipc/types";
-import type { MediaHtmlAttrs } from "../../pipeline/transformers/media-html-tag";
-import type { Html, Image, ImageReference, Nodes } from "mdast";
 
 import { visit } from "unist-util-visit";
 
 import { parseMdast } from "../../pipeline/parse-mdast";
-import { parseImgHtml } from "../../pipeline/transformers/image-transformer";
-import { parserView, RELATIVE_BASE } from "../link-href";
+import { parserView } from "../link-href";
+import { decodePercent } from "../path-utils";
 import {
-  dirname,
-  isUnderRoot,
-  stripTrailingSeparators,
-  toPosixPath,
-} from "../path-utils";
+  altEdit,
+  altEditAt,
+  assetEdit,
+  imageEditAt,
+} from "./export-image-edits";
+import {
+  ASSET_SCHEME,
+  classifyImageSource,
+  type RelativeScope,
+  relativeScope,
+} from "./export-image-source-policy";
+import { type HtmlImage, walkImages } from "./export-markdown-image-walk";
 import {
   applyEdits,
-  innerContext,
   type LabelContext,
-  labelText,
   MAX_ROUNDS,
-  serializeInline,
   type SourceEdit,
 } from "./export-markdown-splice";
 
 export interface ImagePolicyOptions {
   /**
-   * The root of the vault or folder context the document's tab belongs to, or
-   * null for a document opened on its own (or no context at all).
+   * The root of the deepest vault or folder context that holds the document
+   * (pandoc-image-policy.ts chooses it — never the tab's own context, never a
+   * `File` context), or null when no directory context holds it.
    */
   contextRoot: null | string;
   /** The document's absolute path, or null when it has never been saved. */
@@ -100,34 +99,42 @@ export interface ImagePolicyResult {
   /** The images to stage, in document order; the backend reads them. */
   images: PandocImageRequest[];
   markdown: string;
-  /** How many images became their alt text — what the user should hear about. */
+  /** How many `<img>` tags with no source (none, or a blank one) became
+   *  their alt text — a reason of its own, not a refused destination. */
+  noSource: number;
+  /** How many images past `MAX_STAGED_IMAGES` became their alt text. */
+  overCap: number;
+  /** How many images whose destination was refused — outside the context,
+   *  a web address, unreadable — became their alt text. */
   refused: number;
   /** Whether the document had a context to be relative to at all. */
   scoped: boolean;
-}
-
-/** Where an image may point, resolved once per document. */
-export interface RelativeScope {
   /**
-   * Windows paths (a drive letter) are compared case-insensitively: the
-   * filesystem is, and `c:\vault` and `C:\Vault` are one directory.
+   * How many html fragments this pass could not read and that may hold an
+   * image (export-html-fragment.ts): left whole, their raw tags dropped by
+   * the filter. An estimate of fragments, never a count of images.
    */
-  caseInsensitive: boolean;
-  /** The document's directory, POSIX-separated. */
-  documentDir: string;
-  /** The context root, POSIX-separated, without a trailing separator. */
-  root: string;
+  unsupportedHtml: number;
 }
 
-/** The scheme the mermaid export uses for staged assets (see mermaid-export-assets.ts). */
-const ASSET_SCHEME = "baram-asset:";
 /** An extension worth keeping on a staged image's name — pandoc picks the media type from it. */
 const EXTENSION = /\.([A-Za-z0-9]{1,8})$/;
-/** A POSIX-separated path that begins with a Windows drive letter. */
-const DRIVE_LETTER = /^[A-Za-z]:\//;
 
-type Verdict =
-  { kind: "keep" } | { kind: "refuse" } | { kind: "stage"; source: string };
+/**
+ * How many images one export may stage: the backend's `MAX_IMAGE_COUNT`
+ * (`src-tauri/src/export/pandoc_images.rs`), which refuses a longer list and
+ * fails the export. The two numbers are pinned equal by a test that reads
+ * the Rust source.
+ */
+export const MAX_STAGED_IMAGES = 256;
+
+/** What one pass counts for the user, shared across rounds. */
+interface Counters {
+  noSource: number;
+  overCap: number;
+  refused: number;
+  unsupportedHtml: number;
+}
 
 /**
  * Stage the images pandoc may read and reduce every other image to its alt
@@ -144,18 +151,34 @@ export function stageMarkdownImages(
   // but within a round a document-written placeholder wearing a name staged
   // earlier in the same walk is still the forgery it was.
   const known = new Set(knownAssets);
-  const counters = { refused: 0 };
+  const counters: Counters = {
+    noSource: 0,
+    overCap: 0,
+    refused: 0,
+    unsupportedHtml: 0,
+  };
   let out = markdown;
   for (let round = 0; round < MAX_ROUNDS; round++) {
     const staged: string[] = [];
-    const next = stageOnce(out, scope, known, images, staged, counters);
+    const next = stageOnce(
+      out,
+      scope,
+      known,
+      images,
+      staged,
+      counters,
+      round === 0,
+    );
     for (const name of staged) known.add(name);
     if (next === out) {
       return {
         images,
         markdown: out,
+        noSource: counters.noSource,
+        overCap: counters.overCap,
         refused: counters.refused,
         scoped: scope !== null,
+        unsupportedHtml: counters.unsupportedHtml,
       };
     }
     out = next;
@@ -165,246 +188,108 @@ export function stageMarkdownImages(
   );
 }
 
-/** What one pass carries while it walks the tree. */
-interface Walk {
-  /** Shared across rounds: how many images became alt text. */
-  counters: { refused: number };
+/** What one round stages into, shared by every edit of the round. */
+interface Staging {
+  counters: Counters;
   images: PandocImageRequest[];
   knownAssets: ReadonlySet<string>;
-  refusedIdentifiers: ReadonlySet<string>;
   scope: null | RelativeScope;
-  /** The names this walk staged — known from the next round on. */
+  /** The names this round staged — known from the next round on. */
   staged: string[];
 }
 
-/** The scope relative images resolve in, or null when there is none. */
-export function relativeScope(
-  documentPath: null | string,
-  contextRoot: null | string,
-): null | RelativeScope {
-  if (documentPath === null || contextRoot === null) return null;
-  const root = stripTrailingSeparators(toPosixPath(contextRoot));
-  if (root === "") return null;
-  const documentDir = dirname(toPosixPath(documentPath));
-  return {
-    caseInsensitive: DRIVE_LETTER.test(root) || DRIVE_LETTER.test(documentDir),
-    documentDir,
-    root,
-  };
-}
-
-/** A path that starts at a root: POSIX `/…`, Windows `C:\…` or `C:/…`. */
-function isAbsolutePath(path: string): boolean {
-  return /^[/\\]/.test(path) || /^[A-Za-z]:[\\/]/.test(path);
-}
-
-/** Is `target` the scope's root or inside it, by the scope's own case rule? */
-function inScope(target: string, scope: RelativeScope): boolean {
-  const [t, root] = scope.caseInsensitive
-    ? [target.toLowerCase(), scope.root.toLowerCase()]
-    : [target, scope.root];
-  return t === root || isUnderRoot(t, root);
-}
-
-/**
- * Whether pandoc may read `url`, and how. `scope` null: no path image may.
- * Judged on the parser's view of the destination (leading controls and
- * spaces dropped, tabs and newlines removed — `parserView`), as the link
- * policy does, so a tab before an absolute path is still an absolute path.
- * An absolute path is judged like a relative one — where it leads: inside
- * the document's context it is staged (before this change it was the only
- * form that ever embedded), outside it becomes alt text.
- */
-export function classifyImageSource(
-  url: string,
-  scope: null | RelativeScope,
-  knownAssets: ReadonlySet<string>,
-): Verdict {
-  const view = parserView(url);
-  if (view.startsWith(ASSET_SCHEME)) {
-    return knownAssets.has(view.slice(ASSET_SCHEME.length))
-      ? { kind: "keep" }
-      : { kind: "refuse" };
+/** Record a request for `source` and return the name its placeholder gets —
+ *  or null, counted, when the export already stages as many images as the
+ *  backend accepts. */
+function stageRequest(staging: Staging, source: string): null | string {
+  if (staging.images.length >= MAX_STAGED_IMAGES) {
+    staging.counters.overCap += 1;
+    return null;
   }
-  if (view === "" || /^[#?]/.test(view)) return { kind: "refuse" };
-  // Protocol-relative (`//host/x`) and UNC (`\\server\share`) name a host,
-  // never a file of this context.
-  if (/^[/\\]{2}/.test(view)) return { kind: "refuse" };
-  const absolute = isAbsolutePath(view);
-  if (!absolute) {
-    // The WHATWG parser is what decides whether a destination carries its
-    // own scheme (`java\tscript:`, ` HTTP:`); anything that does not resolve
-    // under the placeholder base is not a path.
-    let parsed: URL;
-    try {
-      parsed = new URL(view, RELATIVE_BASE);
-    } catch {
-      return { kind: "refuse" };
-    }
-    if (parsed.protocol !== "https:" || parsed.host !== "baram.invalid") {
-      return { kind: "refuse" };
-    }
-  }
-  if (scope === null) return { kind: "refuse" };
-  // A query or fragment is not part of a file name (`img/a.png?raw=1`,
-  // `icons.svg#home`): the file is what comes before it.
-  const source = view.replace(/[?#].*$/, "");
-  if (source === "") return { kind: "refuse" };
-  // Where the path leads, on the string: `..` collapsed, percent-escapes
-  // decoded as pandoc would decode them, backslashes read as separators. A
-  // path that leaves the context root has no business being staged — the
-  // backend would refuse it and fail the whole export, where alt text lets
-  // the export go through without it.
-  let decoded = source;
-  try {
-    decoded = decodeURIComponent(source);
-  } catch {
-    // A malformed escape is still a path; the backend decides what it opens.
-  }
-  // What the escapes hid is judged too: `%2Fetc%2Fpasswd` is `/etc/passwd`,
-  // an absolute path, and the backend decodes it the same way.
-  if (/^[/\\]{2}/.test(decoded)) return { kind: "refuse" };
-  const target = toPosixPath(
-    absolute || isAbsolutePath(decoded)
-      ? decoded
-      : `${scope.documentDir}/${decoded}`,
-  );
-  if (!inScope(target, scope)) return { kind: "refuse" };
-  return { kind: "stage", source };
-}
-
-function collectEdits(
-  node: Nodes,
-  ctx: LabelContext,
-  walk: Walk,
-  edits: SourceEdit[],
-): void {
-  if (node.type === "image") {
-    const verdict = classifyImageSource(node.url, walk.scope, walk.knownAssets);
-    if (verdict.kind === "refuse") {
-      walk.counters.refused += 1;
-      edits.push(altEdit(node, node.alt, ctx));
-    }
-    if (verdict.kind === "stage") {
-      const name = stageRequest(walk, verdict.source);
-      edits.push(assetEdit(node, `${ASSET_SCHEME}${name}`, ctx));
-    }
-    return;
-  }
-  if (node.type === "imageReference") {
-    if (walk.refusedIdentifiers.has(node.identifier)) {
-      walk.counters.refused += 1;
-      edits.push(altEdit(node, node.alt, ctx));
-    }
-    return;
-  }
-  if (node.type === "html") {
-    const edit = imgTagEdit(node, ctx, walk);
-    if (edit !== null) edits.push(edit);
-    return;
-  }
-  if (!("children" in node)) return;
-  const inner = innerContext(ctx, node.type);
-  for (const child of node.children) collectEdits(child, inner, walk, edits);
-}
-
-/** Record a request for `source` and return the name its placeholder gets. */
-function stageRequest(walk: Walk, source: string): string {
-  const name = stagedName(walk.images.length, source);
-  walk.images.push({ name, source });
-  walk.staged.push(name);
+  const name = stagedName(staging.images.length, source);
+  staging.images.push({ name, source });
+  staging.staged.push(name);
   return name;
 }
 
+/** A tag with no `src`, or a blank one, has no source to judge. */
+function hasNoSource(tag: HtmlImage["tag"]): boolean {
+  return tag.src === null || parserView(tag.src) === "";
+}
+
 /**
- * An `<img …>` tag as the editor itself writes one for a resized image
- * (image-transformer.ts: width is kept as HTML because markdown has no
- * syntax for it). Judged like a markdown image and written back as one, its
- * width as pandoc's `{width=…}` attribute, so Word and EPUB keep the size —
- * Word never rendered the tag at all, and the backend's filter now drops raw
- * HTML for EPUB too. A tag the editor could not represent is left alone.
+ * The edit for one `<img …>` tag the walk read: its source is judged like
+ * any other image — staged, kept, or reduced to its alt text and counted —
+ * and a tag with no usable source becomes its alt text and is counted apart,
+ * since the backend's filter would drop the raw tag with no word to the user
+ * and the reason is not one a refused destination has.
  */
-function imgTagEdit(
-  node: Html,
+function htmlImageEdit(
+  { at, tag }: HtmlImage,
   ctx: LabelContext,
-  walk: Walk,
-): null | SourceEdit {
-  const attrs = editorImgTag(node);
-  if (attrs === null) return null;
-  const verdict = classifyImageSource(attrs.src, walk.scope, walk.knownAssets);
-  if (verdict.kind === "refuse") {
-    walk.counters.refused += 1;
-    return altEdit(node, attrs.alt, ctx);
-  }
-  const url =
-    verdict.kind === "keep"
-      ? attrs.src
-      : `${ASSET_SCHEME}${stageRequest(walk, verdict.source)}`;
-  return imageEdit(node, attrs, url, ctx);
-}
-
-/** The attrs of an `<img …>` tag the editor's own parser accepts, or null. */
-function editorImgTag(node: Html): MediaHtmlAttrs | null {
-  const value = node.value.trim();
-  if (!/^<img\s/i.test(value)) return null;
-  return parseImgHtml(value);
-}
-
-/** Replace the tag by a markdown image with `url`, keeping alt, title and
- *  the width as pandoc's `{width=…}` attribute. */
-function imageEdit(
-  node: Html,
-  attrs: MediaHtmlAttrs,
-  url: string,
-  ctx: LabelContext,
+  staging: Staging,
 ): SourceEdit {
-  const image: Image = {
-    alt: attrs.alt ?? undefined,
-    title: attrs.title,
-    type: "image",
-    url,
-  };
-  const width = attrs.widthPixel
-    ? `${attrs.widthPixel}px`
-    : attrs.widthPercent !== 100
-      ? `${attrs.widthPercent}%`
-      : null;
-  const { end, start } = node.position!;
-  return {
-    end: end.offset!,
-    inLink: ctx.inLink,
-    start: start.offset!,
-    text: serializeInline([image]) + (width === null ? "" : `{width=${width}}`),
-  };
+  if (hasNoSource(tag)) {
+    staging.counters.noSource += 1;
+    return altEditAt(at, tag.alt, ctx);
+  }
+  const verdict = classifyImageSource(
+    tag.src ?? "",
+    staging.scope,
+    staging.knownAssets,
+  );
+  if (verdict.kind === "refuse") {
+    staging.counters.refused += 1;
+    return altEditAt(at, tag.alt, ctx);
+  }
+  if (verdict.kind === "keep") return imageEditAt(at, tag, verdict.source, ctx);
+  const name = stageRequest(staging, verdict.source);
+  if (name === null) return altEditAt(at, tag.alt, ctx);
+  return imageEditAt(at, tag, `${ASSET_SCHEME}${name}`, ctx);
 }
 
 /**
- * For the writers that embed nothing (latex, rst): the editor's `<img …>`
- * tags become markdown images with their source AS WRITTEN — no staging, no
- * verdict, exactly as every other image reference passes through to those
- * writers. Without this, the raw tag reaches the backend, the policy filter
- * drops it (raw HTML is never written into any output), and a resized image
- * silently vanishes from a `.tex`. Returns the input itself when there is
- * nothing to change.
+ * For the writers that embed nothing (latex, rst): every `<img …>` tag
+ * becomes a markdown image with its source as HTML reads it — the parser's
+ * view, as the embedding route writes it, so a blank or a tab inside the
+ * attribute value never reaches pandoc — no staging, no verdict, exactly as
+ * every other image reference passes through to those writers — and a tag
+ * with no usable source becomes its alt text. Without
+ * this, the raw tag reaches the backend, the policy filter drops it (raw
+ * HTML is never written into any output), and the image silently vanishes
+ * from a `.tex`. Returns the input itself when there is nothing to change.
  */
-export function rewriteImageTagsAsMarkdown(markdown: string): string {
+export function rewriteImageTagsAsMarkdown(markdown: string): {
+  markdown: string;
+  noSource: number;
+  overCap: number;
+  refused: number;
+  unsupportedHtml: number;
+} {
   const edits: SourceEdit[] = [];
-  const collect = (node: Nodes, ctx: LabelContext): void => {
-    if (node.type === "html") {
-      const attrs = editorImgTag(node);
-      if (attrs !== null) edits.push(imageEdit(node, attrs, attrs.src, ctx));
-      return;
-    }
-    if (!("children" in node)) return;
-    const inner = innerContext(ctx, node.type);
-    for (const child of node.children) collect(child, inner);
+  const counters: Counters = {
+    noSource: 0,
+    overCap: 0,
+    refused: 0,
+    unsupportedHtml: 0,
   };
-  collect(parseMdast(markdown), {
-    inHeading: false,
-    inLink: false,
-    inTableCell: false,
+  walkImages(parseMdast(markdown), markdown, {
+    htmlImage: ({ at, tag }, ctx) => {
+      if (hasNoSource(tag)) {
+        counters.noSource += 1;
+        edits.push(altEditAt(at, tag.alt, ctx));
+        return;
+      }
+      edits.push(imageEditAt(at, tag, parserView(tag.src ?? ""), ctx));
+    },
+    unread: () => {
+      counters.unsupportedHtml += 1;
+    },
   });
-  return edits.length === 0 ? markdown : applyEdits(markdown, edits);
+  return {
+    markdown: edits.length === 0 ? markdown : applyEdits(markdown, edits),
+    ...counters,
+  };
 }
 
 function stageOnce(
@@ -413,7 +298,8 @@ function stageOnce(
   knownAssets: ReadonlySet<string>,
   images: PandocImageRequest[],
   staged: string[],
-  counters: { refused: number },
+  counters: Counters,
+  firstRound: boolean,
 ): string {
   const root = parseMdast(markdown);
 
@@ -426,13 +312,39 @@ function stageOnce(
     }
   });
 
+  const staging: Staging = { counters, images, knownAssets, scope, staged };
   const edits: SourceEdit[] = [];
-  collectEdits(
-    root,
-    { inHeading: false, inLink: false, inTableCell: false },
-    { counters, images, knownAssets, refusedIdentifiers, scope, staged },
-    edits,
-  );
+  walkImages(root, markdown, {
+    htmlImage: (image, ctx) => {
+      edits.push(htmlImageEdit(image, ctx, staging));
+    },
+    image: (node, ctx) => {
+      const verdict = classifyImageSource(node.url, scope, knownAssets);
+      if (verdict.kind === "refuse") {
+        counters.refused += 1;
+        edits.push(altEdit(node, node.alt, ctx));
+      }
+      if (verdict.kind === "stage") {
+        const name = stageRequest(staging, verdict.source);
+        edits.push(
+          name === null
+            ? altEdit(node, node.alt, ctx)
+            : assetEdit(node, `${ASSET_SCHEME}${name}`, ctx),
+        );
+      }
+    },
+    imageReference: (node, ctx) => {
+      if (refusedIdentifiers.has(node.identifier)) {
+        counters.refused += 1;
+        edits.push(altEdit(node, node.alt, ctx));
+      }
+    },
+    // Only the first round counts a node the walk cannot read: it survives
+    // every round unchanged and would be counted again each time.
+    unread: () => {
+      if (firstRound) counters.unsupportedHtml += 1;
+    },
+  });
   if (edits.length === 0) return markdown;
   return applyEdits(markdown, edits);
 }
@@ -442,44 +354,6 @@ function stageOnce(
 function stagedName(index: number, source: string): string {
   // `source` has already lost its query and fragment; what a `%23` decodes
   // to is part of the file name (`a#b.png`), not a fragment to strip again.
-  let decoded = source;
-  try {
-    decoded = decodeURIComponent(source);
-  } catch {
-    // A malformed escape is still a path; the backend decides what it opens.
-  }
-  const ext = EXTENSION.exec(decoded)?.[1];
+  const ext = EXTENSION.exec(decodePercent(source))?.[1];
   return ext ? `image-${index}.${ext.toLowerCase()}` : `image-${index}`;
-}
-
-/** Replace the image by its alt text, spliced as literal text. */
-function altEdit(
-  node: Html | Image | ImageReference,
-  alt: null | string | undefined,
-  ctx: LabelContext,
-): SourceEdit {
-  const { end, start } = node.position!;
-  const children = alt ? [{ type: "text" as const, value: alt }] : [];
-  return {
-    end: end.offset!,
-    inLink: ctx.inLink,
-    start: start.offset!,
-    text: labelText(children, ctx),
-  };
-}
-
-/** Rewrite the image's destination to the staged asset, re-serializing the
- *  whole image so the alt and title keep their escapes. */
-function assetEdit(node: Image, url: string, ctx: LabelContext): SourceEdit {
-  const { end, start } = node.position!;
-  const image: Image = { ...node, position: undefined, url };
-  let text = serializeInline([image]);
-  if (ctx.inTableCell) {
-    // A GFM cell ends at the next unescaped pipe; the alt came out with its
-    // pipes decoded.
-    text = text.replace(/(\\*)\|/g, (match, run: string) =>
-      run.length % 2 === 0 ? `${run}\\|` : match,
-    );
-  }
-  return { end: end.offset!, inLink: ctx.inLink, start: start.offset!, text };
 }

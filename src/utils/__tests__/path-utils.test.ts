@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  decodePercent,
   extractNamespace,
   getRelativePath,
   isImageFile,
@@ -143,5 +144,15 @@ describe("resolveNameConflict", () => {
 
   test("handles files without extension", () => {
     expect(resolveNameConflict("README", new Set(["README"]))).toBe("README-1");
+  });
+});
+
+describe("decodePercent", () => {
+  test("decodes percent-escapes and leaves a name whose percent is not an escape alone", () => {
+    expect(decodePercent("img/a%20b.png")).toBe("img/a b.png");
+    expect(decodePercent("%2Fetc%2Fpasswd")).toBe("/etc/passwd");
+    // `50% off.md` is a real file name: a malformed escape is kept as written.
+    expect(decodePercent("50% off.md")).toBe("50% off.md");
+    expect(decodePercent("plain.png")).toBe("plain.png");
   });
 });

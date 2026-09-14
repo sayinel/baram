@@ -10,13 +10,15 @@ import type { Locale } from "../i18n";
 /** 홈페이지 루트. 끝의 `/`는 문서 URL 조립에 쓰이므로 유지한다. */
 export const BARAM_HOMEPAGE = "https://baram.ing/";
 
-export type HelpDoc = "faq" | "guide" | "shortcuts";
+export type HelpDoc = "export" | "faq" | "guide" | "shortcuts";
 
 /** 문서 URL 의 로케일 뒤에 붙는 세그먼트. 랜딩이 `/<locale>/` 를 쓰므로 문서는 한 단 아래다. */
 const DOCS_PREFIX = "docs/";
 
-/** Help 메뉴 세 항목이 착지하는 페이지 slug (IA 트리의 slug 와 같아야 한다). */
+/** 앱이 여는 문서 페이지의 slug (IA 트리의 slug 와 같아야 한다): Help 메뉴 세
+ *  항목과, 내보내기 알림의 "자세히"가 여는 export 페이지. */
 const DOC_SLUGS: Record<HelpDoc, string> = {
+  export: "export",
   faq: "faq/general",
   guide: "getting-started",
   shortcuts: "customization/keyboard-shortcuts",

@@ -11,6 +11,7 @@
 
   "_entries": "앱 Help 메뉴 세 항목의 착지 slug. IA 트리(site/ia-tree.mjs)의 slug 와 같아야 하며 check-dist.mjs 가 대조한다.",
   "entries": {
+    "export": "export",
     "guide": "getting-started",
     "shortcuts": "customization/keyboard-shortcuts",
     "faq": "faq/general"
