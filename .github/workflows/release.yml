@@ -204,13 +204,24 @@ jobs:
       # this job is what a manual re-run would start from.
       - name: Load the release notes
         id: notes
+        # ‼️ shell: bash is load-bearing, not decoration. This is the only step in
+        # this job that is NOT guarded by `runner.os == 'macOS'`, so it is the only
+        # one that reaches the Windows runner — where the default shell is
+        # PowerShell, which parsed this as .ps1 and failed v0.7.3's first tag on
+        # line 3. The matrix builds three platforms; a step here has to say which
+        # shell it means.
+        shell: bash
         run: |
           NOTES=".github/release-notes/${GITHUB_REF_NAME}.md"
           [ -f "$NOTES" ] || { echo "::error::no release notes at $NOTES"; exit 1; }
           # Random delimiter: a fixed one is a heredoc the notes file could close
           # early, by accident or on purpose, and everything after it would be read
           # as workflow commands.
-          DELIM="RELEASE_NOTES_$(openssl rand -hex 16)"
+          #
+          # The fallback is not paranoia about entropy — it is that openssl is the
+          # one tool here we cannot prove is on Git Bash for Windows, and this path
+          # has already cost one release by being verified on a single platform.
+          DELIM="RELEASE_NOTES_$(openssl rand -hex 16 2>/dev/null || echo "${RANDOM}${RANDOM}${RANDOM}${RANDOM}")"
           {
             echo "body<<${DELIM}"
             cat "$NOTES"
