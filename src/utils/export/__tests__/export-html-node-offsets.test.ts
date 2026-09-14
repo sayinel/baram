@@ -1,7 +1,7 @@
 // issue 631 — offsets in an html node's text mapped back to the source.
 import { describe, expect, it } from "vitest";
 
-import { valueToSource } from "../export-html-node-offsets";
+import { LINE_END, valueToSource } from "../export-html-node-offsets";
 
 describe("valueToSource", () => {
   it("maps a node's text back through container prefixes and an expanded tab", () => {
@@ -21,5 +21,16 @@ describe("valueToSource", () => {
 
   it("gives up when the lines cannot be aligned", () => {
     expect(valueToSource("<img\nx>", "<img\ny>\n", 0)).toBeNull();
+  });
+});
+
+describe("LINE_END", () => {
+  it("keeps no position between callers: two tests of the same text both match", () => {
+    // A global pattern remembers where its last match ended, so a second
+    // `.test()` on the same text starts past the line break and fails —
+    // and every caller that split by it would read the lines one off.
+    expect(LINE_END.test("a\nb")).toBe(true);
+    expect(LINE_END.test("a\nb")).toBe(true);
+    expect("a\r\nb\rc\nd".split(LINE_END)).toEqual(["a", "b", "c", "d"]);
   });
 });

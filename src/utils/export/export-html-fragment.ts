@@ -192,18 +192,23 @@ interface OpenRegion {
   until: RegExp;
 }
 
+/** What `rawRegions` found: the regions that end inside the text, and the
+ *  one that does not, if any. */
+export interface RawRegions {
+  closed: TagSpan[];
+  open: null | OpenRegion;
+}
+
 /**
  * The regions of `value` pandoc reads through — a comment, a verbatim
  * element with its body, a raw TeX environment — found by the tag grammar,
  * so that an opener inside an attribute value (`title="<script>"`) opens
  * nothing. `closed` are the regions that end inside the text; `open` is the
  * one that does not, if any. An abrupt comment (`<!-->`, `<!--->`) is
- * closed at once.
+ * closed at once. Read once per node and handed to `mayHoldImage` and
+ * `rawOpenedBy`, which would otherwise each read it again.
  */
-function rawRegions(value: string): {
-  closed: TagSpan[];
-  open: null | OpenRegion;
-} {
+export function rawRegions(value: string): RawRegions {
   const closed: TagSpan[] = [];
   let i = 0;
   while (i < value.length) {
@@ -286,8 +291,8 @@ function rawRegions(value: string): {
 export function mayHoldImage(
   value: string,
   opens: (until: RegExp) => boolean = () => true,
+  { closed, open }: RawRegions = rawRegions(value),
 ): boolean {
-  const { closed, open } = rawRegions(value);
   let text =
     open !== null && opens(open.until) ? value.slice(0, open.at) : value;
   for (const { end, start } of closed) {
@@ -304,6 +309,9 @@ export function mayHoldImage(
  * follow. A plain (non-global) pattern to test the following nodes' text
  * with.
  */
-export function rawOpenedBy(value: string): null | RegExp {
-  return rawRegions(value).open?.until ?? null;
+export function rawOpenedBy(
+  value: string,
+  regions: RawRegions = rawRegions(value),
+): null | RegExp {
+  return regions.open?.until ?? null;
 }

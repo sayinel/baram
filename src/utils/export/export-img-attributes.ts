@@ -104,8 +104,15 @@ function decodeAttributeValue(
   }
 }
 
-/** The attributes the strict parser reads and would write back. */
-const STRICT_ATTRS = ["src", "alt", "title", "width"] as const;
+/** The attributes the strict parser reads and would write back, each with
+ *  the pattern that lifts its raw capture from the tag — compiled once, not
+ *  once per tag. */
+const STRICT_ATTRS: ReadonlyArray<readonly [string, RegExp]> = [
+  "src",
+  "alt",
+  "title",
+  "width",
+].map((name) => [name, new RegExp(`\\b${name}="([^"]*)"`, "i")] as const);
 
 /**
  * Title and size for a tag the editor itself wrote — the strict parser
@@ -126,8 +133,8 @@ function editorImageMetadata(
 ): EditorImageMetadata {
   const strict = parseImgHtml(raw);
   if (strict === null) return {};
-  for (const name of STRICT_ATTRS) {
-    const capture = new RegExp(`\\b${name}="([^"]*)"`, "i").exec(raw)?.[1];
+  for (const [name, pattern] of STRICT_ATTRS) {
+    const capture = pattern.exec(raw)?.[1];
     const parsed =
       capture === undefined ? null : decodeAttributeValue(host, capture);
     if (parsed !== (attrs.get(name) ?? null)) return {};

@@ -7,8 +7,11 @@
 // source as it is. This mapper aligns the text's lines with the source's and
 // gives up rather than guess when they do not match.
 
-/** A line terminator as the parser reads it (global: searched from `lastIndex`). */
-export const LINE_END = /\r\n|\r|\n/g;
+/** A line terminator as the parser reads it — LF, CRLF or a lone CR. Not
+ *  global: safe to `split` by and to `test` from any module. */
+export const LINE_END = /\r\n|\r|\n/;
+/** The same terminator, searched from `lastIndex`; this module's own. */
+const LINE_END_FROM = new RegExp(LINE_END.source, "g");
 
 /** Where a line of the node's text begins, and where the same line begins
  *  in the source. An offset in the text maps to the line's anchor plus its
@@ -58,8 +61,8 @@ function alignLines(
   let cursor = startOffset; // where the current source line begins
   let prefix = 0; // container prefix length of the previous line
   for (const [k, line] of lines.entries()) {
-    LINE_END.lastIndex = cursor;
-    const terminator = LINE_END.exec(source);
+    LINE_END_FROM.lastIndex = cursor;
+    const terminator = LINE_END_FROM.exec(source);
     const lineEnd = terminator === null ? source.length : terminator.index;
     const delimiter = terminator === null ? 1 : terminator[0].length;
     const place = k === 0 ? "first" : k < lines.length - 1 ? "middle" : "last";

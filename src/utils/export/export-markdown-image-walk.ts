@@ -29,6 +29,8 @@ import type { Html, Image, ImageReference, Nodes } from "mdast";
 import {
   mayHoldImage,
   rawOpenedBy,
+  rawRegions,
+  type RawRegions,
   readHtmlFragment,
   type TagSpan,
 } from "./export-html-fragment";
@@ -153,13 +155,15 @@ function readHtmlNode(
     // of it.
     const rest = closeRawRegion(raw, node.value);
     if (rest === null) return [];
-    raw.until = openedRegion(rest, after);
-    return mayHoldImage(rest, after) ? null : [];
+    const regions = rawRegions(rest);
+    raw.until = openedRegion(rest, after, regions);
+    return mayHoldImage(rest, after, regions) ? null : [];
   }
   const spans = readHtmlFragment(node.value);
   if (spans === null) {
-    raw.until = openedRegion(node.value, after);
-    return mayHoldImage(node.value, after) ? null : [];
+    const regions = rawRegions(node.value);
+    raw.until = openedRegion(node.value, after, regions);
+    return mayHoldImage(node.value, after, regions) ? null : [];
   }
   if (spans.length === 0) return [];
   const map = valueToSource(node.value, source, node.position!.start.offset!);
@@ -187,8 +191,9 @@ function closeRawRegion(raw: RawRegion, value: string): null | string {
 function openedRegion(
   text: string,
   opens: (until: RegExp) => boolean,
+  regions: RawRegions = rawRegions(text),
 ): null | RegExp {
-  const until = rawOpenedBy(text);
+  const until = rawOpenedBy(text, regions);
   return until !== null && opens(until) ? until : null;
 }
 
