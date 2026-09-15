@@ -20,7 +20,8 @@
 // `((n#^id|a\*b))` produces no event, and treating that gap as literal would
 // silently exempt the reference from a rename — the wrong direction.
 //
-// Front matter is the one thing NOT handed to the parser. Property links
+// Front matter is the one thing NOT handed to the parser — that, and one
+// leading byte order mark, which the editor's parser drops. Property links
 // (`related: "[[note]]"`) are indexed and rewritten today, like Obsidian; the
 // parser would read the YAML as a thematic break, a setext heading or — when
 // a list is indented four spaces — an indented code block. So the front
@@ -121,7 +122,14 @@ impl Literal {
     /// that point is known to be wrong, and touching nothing there is safe.
     fn analyse(content: &str) -> Analysis {
         const READS: usize = 8;
-        let body_start = front_matter_end(content);
+        // The editor's parser drops one leading byte order mark before it
+        // reads; pulldown does not, and would read the first line's fence
+        // or tag as text. Cut it with the front matter — it is prose, as
+        // the front matter is. A second mark is text to both.
+        let mut body_start = front_matter_end(content);
+        if body_start == 0 && content.starts_with('\u{FEFF}') {
+            body_start = '\u{FEFF}'.len_utf8();
+        }
         let mut source = String::new();
         let mut confirmed: Vec<Range<usize>> = Vec::new();
         let mut appended = 0;
@@ -1452,5 +1460,21 @@ mod tests {
             refs("Write $$ here.\n$$\n((n#^o))\n$$\n((n#^o))\n"),
             [false, true]
         );
+    }
+
+    /// The editor's parser drops one leading byte order mark; the parser
+    /// here would read `\u{FEFF}```` as text and the fence would vanish.
+    /// The mark is cut with the front matter. A second mark is text — the
+    /// fence after it is no fence, to the editor either.
+    #[test]
+    fn a_leading_byte_order_mark_does_not_hide_the_first_block_from_the_parser() {
+        assert_eq!(
+            refs("\u{FEFF}```\n((n#^o))\n```\n((n#^o))\n"),
+            [false, true]
+        );
+        assert_eq!(refs("\u{FEFF}<div>\n((n#^o))\n</div>\n"), [false]);
+        assert_eq!(refs("\u{FEFF}    ((n#^o))\n"), [false]);
+        assert_eq!(refs("\u{FEFF}> ```\n> ((n#^o))\n> ```\n"), [false]);
+        assert_eq!(refs("\u{FEFF}\u{FEFF}```\n((n#^o))\n```\n"), [true]);
     }
 }

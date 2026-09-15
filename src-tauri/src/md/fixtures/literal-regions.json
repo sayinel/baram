@@ -144,6 +144,11 @@
       "name": "a stray double dollar in a paragraph does not close on the line that opens a display formula",
       "markdown": "Write $$ to open display math.\n((note#^b1))\n$$\nE = mc^2\n$$\n",
       "expected": "Write $$ to open display math.\n((note#^b2-longer))\n$$\nE = mc^2\n$$\n"
+    },
+    {
+      "name": "a leading byte order mark does not hide the fence on the first line",
+      "markdown": "﻿```\n((note#^b1))\n```\n((note#^b1))\n",
+      "expected": "﻿```\n((note#^b1))\n```\n((note#^b2-longer))\n"
     }
   ]
 }

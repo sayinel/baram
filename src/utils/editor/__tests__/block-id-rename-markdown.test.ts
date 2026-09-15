@@ -99,6 +99,15 @@ describe("renameBlockIdInMarkdown — the definition", () => {
     );
   });
 
+  it("keeps a second byte order mark as text and still lands every range", () => {
+    // micromark drops only the first mark. Slicing it off before parsing
+    // would let micromark drop the second as well and shift every range one
+    // more than the offsets are corrected for.
+    expect(rename("\uFEFF\uFEFF((#^old))`x` ^old\n")).toBe(
+      "\uFEFF\uFEFF((#^fresh))`x` ^fresh\n",
+    );
+  });
+
   it("renames a document that starts with a byte order mark", () => {
     // micromark drops a leading U+FEFF before it parses; the literal ranges
     // it reports are then one short for the original string, and every one

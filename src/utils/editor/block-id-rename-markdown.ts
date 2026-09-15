@@ -137,11 +137,12 @@ function escapeRegExp(text: string): string {
 /**
  * `[start, end)` offsets of the literal nodes and of the tables in `markdown`.
  *
- * micromark drops a leading byte order mark before it parses, so every
+ * micromark drops one leading byte order mark before it parses, so every
  * offset it reports is one short for a document that starts with one —
  * enough to land each range on the text just before it and exempt a
- * reference from the rename. Parse without the mark and shift the offsets
- * back (issue 620).
+ * reference from the rename. Shift the offsets back (issue 620). The
+ * document is parsed as written: a second mark is text to micromark, as it
+ * is to the editor, and slicing the first off would let it drop the second.
  */
 function parsedRanges(markdown: string): { literal: Range[]; table: Range[] } {
   const literal: Range[] = [];
@@ -164,11 +165,7 @@ function parsedRanges(markdown: string): { literal: Range[]; table: Range[] } {
     }
     for (const child of node.children ?? []) visit(child as typeof node);
   };
-  visit(
-    parser.parse(markdown.slice(shift)) as unknown as Parameters<
-      typeof visit
-    >[0],
-  );
+  visit(parser.parse(markdown) as unknown as Parameters<typeof visit>[0]);
   return { literal, table };
 }
 
