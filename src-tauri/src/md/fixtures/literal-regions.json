@@ -84,6 +84,26 @@
       "name": "reference-style images: alt text and label are literal",
       "markdown": "![a ((note#^b1))][pic] ![((note#^b1))] ((note#^b1))\n\n[pic]: x.png\n[((note#^b1))]: z.png\n",
       "expected": "![a ((note#^b1))][pic] ![((note#^b1))] ((note#^b2-longer))\n\n[pic]: x.png\n[((note#^b1))]: z.png\n"
+    },
+    {
+      "name": "a dollar inside an inline HTML tag opens no formula",
+      "markdown": "<i title=\"$\"> ((note#^b1)) $\n",
+      "expected": "<i title=\"$\"> ((note#^b2-longer)) $\n"
+    },
+    {
+      "name": "a backtick inside an inline HTML tag opens no code span, so the formula after the tag is a formula",
+      "markdown": "<i title=\"`\"> $ ((note#^b1)) $ `\n",
+      "expected": "<i title=\"`\"> $ ((note#^b1)) $ `\n"
+    },
+    {
+      "name": "a dollar inside an autolink opens no formula",
+      "markdown": "<https://x.test/$> ((note#^b1)) $\n",
+      "expected": "<https://x.test/$> ((note#^b2-longer)) $\n"
+    },
+    {
+      "name": "an escaped dollar opens nothing, the next one does; an escaped backslash leaves the dollar live",
+      "markdown": "\\$$ ((note#^b1)) $ and \\\\$ ((note#^b1)) $\n",
+      "expected": "\\$$ ((note#^b1)) $ and \\\\$ ((note#^b1)) $\n"
     }
   ]
 }

@@ -47,9 +47,10 @@
 //
 // One difference from the editor is kept deliberately: a `((…))` inside the
 // YAML front matter is prose here and literal there (see above).
+use std::collections::HashMap;
 use std::ops::Range;
 
-use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
+use pulldown_cmark::{Event, LinkType, Options, Parser, Tag, TagEnd};
 
 /// The parser options the editor's reader enables (remark-gfm), listed
 /// explicitly so an upgrade of either side is a visible diff. YAML metadata
@@ -73,9 +74,11 @@ impl Literal {
     pub fn of(content: &str) -> Literal {
         let body_start = front_matter_end(content);
         let mut walk = collect(&content[body_start..], body_start);
+        let mut atoms = walk.opaque;
+        atoms.sort_by_key(|atom| atom.start);
         let mut inline = walk.inline;
         for block in &walk.prose {
-            inline_math(content, block.clone(), &mut inline);
+            inline_math(content, block.clone(), &atoms, &mut inline);
         }
         display_math(content, &walk.line_starts, &mut inline);
         // The front matter is prose (a property link is a link) but not
@@ -221,6 +224,10 @@ struct Walk {
     prose: Vec<Range<usize>>,
     /// Literal spans inside prose: code spans, inline HTML, math, images.
     inline: Vec<Range<usize>>,
+    /// Spans the editor reads before it looks for a formula or a code span
+    /// — inline HTML tags and autolinks — so a `$` or a backtick inside them
+    /// opens nothing. Not literal by themselves: an autolink is prose.
+    opaque: Vec<Range<usize>>,
     /// Where a line's content starts inside a paragraph or a list item's
     /// own text — the positions a display formula may open at — with the
     /// end of the innermost container around it.
@@ -233,6 +240,7 @@ fn collect(body: &str, base: usize) -> Walk {
     let mut walk = Walk {
         prose: Vec::new(),
         inline: Vec::new(),
+        opaque: Vec::new(),
         line_starts: Vec::new(),
     };
     let mut stack: Vec<Frame> = Vec::new();
@@ -295,8 +303,14 @@ fn collect(body: &str, base: usize) -> Walk {
                     | Tag::Strong
                     | Tag::Strikethrough
                     | Tag::Superscript
-                    | Tag::Subscript
-                    | Tag::Link { .. } => {}
+                    | Tag::Subscript => {}
+                    // An autolink is read before any formula or code span
+                    // that would start inside it; its text stays prose.
+                    Tag::Link { link_type, .. } => {
+                        if matches!(link_type, LinkType::Autolink | LinkType::Email) {
+                            walk.opaque.push(range.clone());
+                        }
+                    }
                 }
                 match frame {
                     Some(frame) => {
@@ -344,13 +358,16 @@ fn collect(body: &str, base: usize) -> Walk {
                     at_line_start = true;
                 }
             }
-            // Inline literals inside prose. Math events cannot occur while
-            // `OPTIONS` leaves math off; the arms stay so the match is
-            // exhaustive when the crate is upgraded.
-            Event::Code(_)
-            | Event::InlineHtml(_)
-            | Event::InlineMath(_)
-            | Event::DisplayMath(_) => {
+            // Inline literals inside prose. An inline HTML tag is also read
+            // before any formula or code span that would start inside it.
+            Event::InlineHtml(_) => {
+                note_line_start(&stack, &mut at_line_start, range.start, limit, &mut walk);
+                walk.opaque.push(range.clone());
+                walk.inline.push(range);
+            }
+            // Math events cannot occur while `OPTIONS` leaves math off; the
+            // arm stays so the match is exhaustive when the crate is upgraded.
+            Event::Code(_) | Event::InlineMath(_) | Event::DisplayMath(_) => {
                 note_line_start(&stack, &mut at_line_start, range.start, limit, &mut walk);
                 walk.inline.push(range);
             }
@@ -414,52 +431,137 @@ fn leave_item_text_before(
     }
 }
 
-/// The editor's inline rule (remark-math, like a code span): a run of `$`
-/// opens a formula that the next run of the same length closes, whatever
-/// lies between — blanks and line breaks included. Left to right, a code
-/// span or a formula that opens first is opaque to the other, and an
-/// escaped `$` or backtick opens nothing.
-fn inline_math(content: &str, block: Range<usize>, out: &mut Vec<Range<usize>>) {
-    let bytes = &content.as_bytes()[block.clone()];
-    let run = |from: usize, byte: u8| bytes[from..].iter().take_while(|&&b| b == byte).count();
+/// A maximal run of `$` or backticks in a prose block, as the raw bytes have
+/// it: where it starts, how long it is, and whether a backslash escapes its
+/// first character. A closer is matched raw — an escape inside a formula is
+/// content, as inside a code span — so the raw length is a closer's length;
+/// an opener that starts behind an escape is the run minus that character.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Run {
+    start: usize,
+    len: usize,
+    byte: u8,
+    escaped: bool,
+}
+
+/// The delimiter runs of `bytes`, left to right, in one pass. The escape walk
+/// is the editor's: a backslash before ASCII punctuation escapes that one
+/// character (`\\$` leaves the `$` live, `\$$` leaves an opener of one).
+fn delimiter_runs(bytes: &[u8]) -> Vec<Run> {
+    let run_from = |i: usize, byte: u8| bytes[i..].iter().take_while(|&&b| b == byte).count();
+    let mut runs = Vec::new();
     let mut i = 0;
     while i < bytes.len() {
         match bytes[i] {
             b'\\' => {
                 i += 1;
-                if bytes.get(i).is_some_and(u8::is_ascii_punctuation) {
-                    i += 1;
+                match bytes.get(i) {
+                    Some(&byte @ (b'`' | b'$')) => {
+                        let len = run_from(i, byte);
+                        runs.push(Run {
+                            start: i,
+                            len,
+                            byte,
+                            escaped: true,
+                        });
+                        i += len;
+                    }
+                    Some(b) if b.is_ascii_punctuation() => i += 1,
+                    _ => {}
                 }
             }
             byte @ (b'`' | b'$') => {
-                let open = run(i, byte);
-                let mut j = i + open;
-                let mut close = None;
-                while j < bytes.len() {
-                    if bytes[j] == byte {
-                        let len = run(j, byte);
-                        if len == open {
-                            close = Some(j);
-                            break;
-                        }
-                        j += len;
-                    } else {
-                        j += 1;
-                    }
-                }
-                match close {
-                    Some(j) => {
-                        if byte == b'$' {
-                            out.push(block.start + i..block.start + j + open);
-                        }
-                        i = j + open;
-                    }
-                    None => i += open,
-                }
+                let len = run_from(i, byte);
+                runs.push(Run {
+                    start: i,
+                    len,
+                    byte,
+                    escaped: false,
+                });
+                i += len;
             }
             _ => i += 1,
         }
     }
+    runs
+}
+
+/// The editor's inline rule (remark-math, like a code span): a run of `$`
+/// opens a formula that the next run of the same length closes, whatever
+/// lies between — blanks, line breaks, tags and escapes included. Left to
+/// right: a code span or a formula that opens first is opaque to the other,
+/// an escaped `$` or backtick opens nothing, and neither does one inside an
+/// inline HTML tag or an autolink the editor reads first — `atoms`, sorted,
+/// which hold a run only when the scan reaches their start: a formula that
+/// closed inside a would-be tag has destroyed it, and the rest is text.
+/// One pass over the runs: a closer comes from an index of the runs by
+/// length, never from rescanning the text, so k unmatched runs cost
+/// O(k log k) after the O(n) walk that finds them. Returns how many runs
+/// the pass visited — the count the tests pin.
+fn inline_math(
+    content: &str,
+    block: Range<usize>,
+    atoms: &[Range<usize>],
+    out: &mut Vec<Range<usize>>,
+) -> usize {
+    let runs = delimiter_runs(&content.as_bytes()[block.clone()]);
+    let mut by_key: HashMap<(u8, usize), Vec<usize>> = HashMap::new();
+    for (r, run) in runs.iter().enumerate() {
+        by_key.entry((run.byte, run.len)).or_default().push(r);
+    }
+    // The first run after `r` that is `len` bytes of `byte`, raw.
+    let closer_after = |r: usize, byte: u8, len: usize| -> Option<usize> {
+        let same = by_key.get(&(byte, len))?;
+        same.get(same.partition_point(|&i| i <= r)).copied()
+    };
+    let live = |atom: usize| atom < atoms.len() && atoms[atom].start < block.end;
+    let mut atom = atoms.partition_point(|a| a.start < block.start);
+    // Where the editor's scan stands: after the last construct it read.
+    let mut pos = block.start;
+    let mut visited = 0;
+    let mut r = 0;
+    while r < runs.len() {
+        visited += 1;
+        let run = runs[r];
+        let start = block.start + run.start;
+        // Atoms behind this run are over: swallowed by an earlier construct
+        // (they began before `pos`) or simply passed.
+        while live(atom) && (atoms[atom].start < pos || atoms[atom].end <= start) {
+            atom += 1;
+        }
+        // A live atom that begins at or before this run holds it — and
+        // every run up to its end.
+        if live(atom) && atoms[atom].start <= start {
+            pos = atoms[atom].end;
+            atom += 1;
+            while r < runs.len() && block.start + runs[r].start < pos {
+                r += 1;
+            }
+            continue;
+        }
+        let opener = run.start + usize::from(run.escaped);
+        let len = run.len - usize::from(run.escaped);
+        let closer = if len == 0 {
+            None
+        } else {
+            closer_after(r, run.byte, len)
+        };
+        match closer {
+            Some(c) => {
+                let close_end = block.start + runs[c].start + runs[c].len;
+                if run.byte == b'$' {
+                    out.push(block.start + opener..close_end);
+                }
+                pos = close_end;
+                r = c + 1;
+            }
+            None => {
+                pos = start + run.len;
+                r += 1;
+            }
+        }
+    }
+    visited
 }
 
 /// The editor's display rule (remark-math, like a fenced code block): a line
@@ -794,6 +896,17 @@ mod tests {
         assert_eq!(source_lines("a\rb\n").next().unwrap().text, "a\rb");
     }
 
+    /// remark reads an inline HTML tag before it looks for a formula, left
+    /// to right, so a `$` or a backtick inside a tag's attribute opens
+    /// nothing — but a formula that opened before the tag swallows it, raw.
+    #[test]
+    fn a_delimiter_inside_an_inline_html_tag_opens_nothing() {
+        assert_eq!(refs("<i title=\"$\"> ((n#^o)) $\n"), [true]);
+        assert_eq!(refs("<i title=\"`\"> $ ((n#^o)) $ `\n"), [false]);
+        assert_eq!(refs("$ <i> ((n#^o)) $\n"), [false]);
+        assert_eq!(refs("$ <i title=\"$\"> ((n#^o))\n"), [true]);
+    }
+
     /// A byte order mark before the opening `---` does not stop the front
     /// matter from being front matter — and prose (D2).
     #[test]
@@ -804,11 +917,102 @@ mod tests {
         );
     }
 
+    /// A `$` inside an autolink opens nothing either — the editor reads the
+    /// autolink first — while the URL itself stays prose.
+    #[test]
+    fn a_delimiter_inside_an_autolink_opens_nothing() {
+        assert_eq!(refs("<https://x.com/$> ((n#^o)) $\n"), [true]);
+        assert_eq!(
+            refs("<https://x.com/((n#^o))> $ ((n#^o)) $\n"),
+            [true, false]
+        );
+        assert_eq!(refs("<a$b@example.test> ((n#^o)) $\n"), [true]);
+        // A formula that closes inside a would-be tag has destroyed it: the
+        // runs after the closer are live again.
+        assert_eq!(refs("$ x <i a=\"$ y $ ((n#^o)) $\">\n"), [false]);
+    }
+
+    /// Brackets bind later than a formula: a `$` in link text opens one and
+    /// eats the `]`, as a code span would. A formula that opens and closes
+    /// inside an image's alt text leaves the image standing.
+    #[test]
+    fn a_dollar_in_link_text_opens_a_formula_and_one_closed_inside_an_alt_leaves_the_image() {
+        assert_eq!(refs("[x $](p) ((n#^o)) $\n"), [false]);
+        assert_eq!(refs("![x $y$](p.png) ((n#^o))\n"), [true]);
+    }
+
+    /// Escapes are read the editor's way: before an opener only. A closer is
+    /// a raw run, escaped or not, as inside a code span.
+    #[test]
+    fn escapes_apply_to_openers_not_to_closers() {
+        assert_eq!(refs("$a\\$$b$ x ((n#^o))\n"), [true]);
+        assert_eq!(refs("\\\\$ ((n#^o)) $\n"), [false]);
+        assert_eq!(refs("$$ ((n#^o)) \\$$ y $$ ((n#^o))\n"), [false, true]);
+        assert_eq!(
+            refs("\\$$ ((n#^o)) $ and \\\\$ ((n#^o)) $\n"),
+            [false, false]
+        );
+    }
+
     /// The front matter is prose for links, but the editor reads no formula
     /// in it.
     #[test]
     fn no_formula_is_read_inside_the_front_matter() {
         assert_eq!(refs("---\nprice: $5 ((n#^o)) $6\n---\n"), [true]);
+    }
+
+    /// Unmatched runs of growing length: no opener has a closer, and a
+    /// search that rescanned the text for each one would read Θ(k³) bytes
+    /// for k runs. The run index makes it one pass over k runs.
+    #[test]
+    fn unmatched_delimiter_runs_are_paired_in_one_pass_over_the_runs() {
+        let k = 1_500;
+        let mut md = String::new();
+        for len in 1..=k {
+            md.push_str(" x ");
+            md.push_str(&"$".repeat(len));
+        }
+        md.push_str(" ((n#^o))\n");
+        assert_eq!(delimiter_runs(md.as_bytes()).len(), k);
+        let mut out = Vec::new();
+        assert_eq!(inline_math(&md, 0..md.len(), &[], &mut out), k);
+        assert!(out.is_empty());
+        assert_eq!(refs(&md), [true]);
+        // Nothing but blank bytes (the line break) is literal.
+        assert!(literal_texts(&md).iter().all(|t| t.trim().is_empty()));
+    }
+
+    /// The runs a formula holds are content: the pass visits the opener,
+    /// takes the closer from the index and resumes after it. A tag the scan
+    /// reaches holds its runs the same way; a tag a formula closed inside
+    /// does not.
+    #[test]
+    fn the_pass_skips_the_runs_a_formula_or_a_live_tag_holds() {
+        let mut out = Vec::new();
+        let inner = (2..=9).map(|n| "$".repeat(n)).collect::<Vec<_>>().join(" ");
+        let md = format!("$ {inner} $ tail");
+        assert_eq!(inline_math(&md, 0..md.len(), &[], &mut out), 1);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0], 0..md.len() - 5);
+
+        let md = "<i a=\"$ $$ $\"> $ x $";
+        let tag = 0..md.find('>').unwrap() + 1;
+        out.clear();
+        assert_eq!(
+            inline_math(md, 0..md.len(), std::slice::from_ref(&tag), &mut out),
+            2
+        );
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0], md.len() - 5..md.len());
+
+        let md = "$ x <i a=\"$ y $ ((n#^o)) $\">";
+        let tag = 4..md.len();
+        out.clear();
+        assert_eq!(
+            inline_math(md, 0..md.len(), std::slice::from_ref(&tag), &mut out),
+            2
+        );
+        assert_eq!(out.len(), 2);
     }
 
     /// pulldown pairs runs by its own rule (`$a$$ b` is a formula to it, and
