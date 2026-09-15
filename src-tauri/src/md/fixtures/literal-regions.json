@@ -154,6 +154,16 @@
       "name": "a display formula whose first content line is a setext underline is a formula",
       "markdown": "$$\n===\n((note#^b1))\n$$\n((note#^b1))\n",
       "expected": "$$\n===\n((note#^b1))\n$$\n((note#^b2-longer))\n"
+    },
+    {
+      "name": "a dollar inside a bare URL opens no formula",
+      "markdown": "https://api.test/?$filter=x ((note#^b1)) $\n",
+      "expected": "https://api.test/?$filter=x ((note#^b2-longer)) $\n"
+    },
+    {
+      "name": "an address ends before a dollar, which then opens a formula",
+      "markdown": "a@b.test$ ((note#^b1)) $\n",
+      "expected": "a@b.test$ ((note#^b1)) $\n"
     }
   ]
 }
