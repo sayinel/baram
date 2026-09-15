@@ -54,6 +54,17 @@
 // code span ran into. `<i title="$">` opens nothing; `$x<i title="$` is a
 // formula and the rest of the tag is text — as the editor has it.
 //
+// The parser does not know a formula, so what it reports around one can be
+// wrong: it pairs the backtick a formula swallows with a later one and hides
+// the tag, image or link between them inside that code span. The sweep sees
+// this happen — a construct the parser reported begins inside a formula the
+// sweep read — and up to that point its formulas are right. So the body is
+// read again with those formulas filled in with `x` (line breaks kept, same
+// length): the parser no longer forms the construct, what it hid surfaces,
+// and the sweep continues past the point with the right atoms. It repeats
+// while a read still destroys something, a few times at most; a body where
+// no formula runs into a construct — nearly every note — is read once.
+//
 // One difference from the editor is kept deliberately: a `((…))` inside the
 // YAML front matter is prose here and literal there (see above).
 use std::collections::HashMap;
@@ -79,16 +90,51 @@ pub struct Literal {
 }
 
 impl Literal {
-    /// Read `content` once. The ranges index into `content` itself.
+    /// Read `content`. The ranges index into `content` itself.
     pub fn of(content: &str) -> Literal {
+        Literal::analyse(content).0
+    }
+
+    /// `of`, and how many times the body was handed to the parser: once
+    /// for nearly every note; once more for every read in which a formula
+    /// the sweep read ran into a construct the parser had formed — the
+    /// formulas up to that point are confirmed and filled in for the next
+    /// read, so each read confirms more (bounded, in case).
+    fn analyse(content: &str) -> (Literal, usize) {
+        const READS: usize = 6;
         let body_start = front_matter_end(content);
-        let mut walk = collect(&content[body_start..], body_start);
-        let mut atoms = walk.atoms;
-        atoms.sort_by_key(|atom| atom.range.start);
-        let mut inline = walk.inline;
-        for block in &walk.prose {
-            inline_literals(content, block.clone(), &atoms, &mut inline);
-        }
+        let mut source = String::new();
+        let mut confirmed: Vec<Range<usize>> = Vec::new();
+        let mut reads = 0;
+        let (mut walk, mut inline) = loop {
+            reads += 1;
+            let body = if reads == 1 {
+                &content[body_start..]
+            } else {
+                &source[body_start..]
+            };
+            let walk = collect(body, body_start);
+            let mut atoms = walk.atoms.clone();
+            atoms.sort_by_key(|atom| atom.range.start);
+            let mut inline = walk.inline.clone();
+            let mut formulas = Vec::new();
+            let mut destroyed = false;
+            for block in &walk.prose {
+                let swept =
+                    inline_literals(content, block.clone(), &atoms, &mut inline, &mut formulas);
+                if let Some(at) = swept.destroyed {
+                    destroyed = true;
+                    confirmed.extend(formulas.iter().filter(|f| f.start < at).cloned());
+                }
+            }
+            if !destroyed || reads == READS {
+                inline.extend(formulas);
+                break (walk, inline);
+            }
+            confirmed.sort_by_key(|f| f.start);
+            confirmed.dedup();
+            source = fill(content, &confirmed);
+        };
         display_math(content, &walk.line_starts, &mut inline);
         // The front matter is prose (a property link is a link) but not
         // markdown: the editor reads no formula in it.
@@ -110,9 +156,12 @@ impl Literal {
             ranges.push(cursor..content.len());
         }
         ranges.extend(inline);
-        Literal {
-            ranges: merge(ranges),
-        }
+        (
+            Literal {
+                ranges: merge(ranges),
+            },
+            reads,
+        )
     }
 
     /// Does `range` share at least one byte with a literal range?
@@ -227,15 +276,19 @@ enum Frame {
     Other,
 }
 
-/// A span the editor reads as one piece before it looks for a formula or a
-/// code span: an inline HTML tag, an autolink, or the resource part of a
-/// link or an image (`](dest "title")`, `][ref]`, `]`). A delimiter inside
-/// opens nothing — while the atom is intact. A formula or a code span that
-/// opened earlier and runs past the atom's start has destroyed it: its
-/// bytes are plain text again, and it contributes nothing.
+/// A span the parser read as one piece: an inline HTML tag, an autolink, a
+/// code span, or the resource part of a link or an image (`](dest "title")`,
+/// `][ref]`, `]`). The editor reads it before it looks for a formula or a
+/// code span inside, so a delimiter there opens nothing — while the atom is
+/// intact. A formula or a code span the sweep read that runs over the
+/// construct's beginning (`start`: the `[` of a link, else the range's
+/// start) or, for a link or an image, over its `]` (`range.start`) has
+/// destroyed it: its bytes are plain text again, it contributes nothing,
+/// and the parser must read the body again.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Atom {
     range: Range<usize>,
+    start: usize,
     kind: AtomKind,
 }
 
@@ -243,6 +296,10 @@ struct Atom {
 enum AtomKind {
     /// The tag itself is literal.
     Html,
+    /// A code span as the parser paired it: literal while intact. The sweep
+    /// pairs backticks by the same rule; the parser's span is kept as the
+    /// witness that a formula destroyed one.
+    Code,
     /// An autolink's URL is prose, as link text is.
     Autolink,
     /// A link's destination, title or label: not literal, not prose to
@@ -257,7 +314,7 @@ impl Atom {
     /// What an intact atom adds to the literal set.
     fn contribute(&self, out: &mut Vec<Range<usize>>) {
         match &self.kind {
-            AtomKind::Html => out.push(self.range.clone()),
+            AtomKind::Html | AtomKind::Code => out.push(self.range.clone()),
             AtomKind::ImageResource { image } => out.push(image.clone()),
             AtomKind::Autolink | AtomKind::LinkResource => {}
         }
@@ -274,18 +331,21 @@ enum Open {
 /// The atom a link or an image leaves once it closes: the whole autolink,
 /// or the resource after the text.
 fn resource_atom(range: Range<usize>, text_end: usize, open: Open) -> Option<Atom> {
-    let end = range.end;
+    let (start, end) = (range.start, range.end);
     match open {
         Open::Autolink => Some(Atom {
             range,
+            start,
             kind: AtomKind::Autolink,
         }),
         Open::Link => (text_end < end).then_some(Atom {
             range: text_end..end,
+            start,
             kind: AtomKind::LinkResource,
         }),
         Open::Image => Some(Atom {
             range: text_end.min(end)..end,
+            start,
             kind: AtomKind::ImageResource { image: range },
         }),
     }
@@ -445,17 +505,23 @@ fn collect(body: &str, base: usize) -> Walk {
                     at_line_start = true;
                 }
             }
-            // An inline HTML tag is an atom: literal if the sweep reaches it
-            // intact. A code span the sweep pairs for itself.
+            // An inline HTML tag and a code span are atoms: literal if the
+            // sweep reaches them intact (see `Atom`).
             Event::InlineHtml(_) => {
                 note_line_start(&stack, &mut at_line_start, range.start, limit, &mut walk);
                 walk.atoms.push(Atom {
+                    start: range.start,
                     range,
                     kind: AtomKind::Html,
                 });
             }
             Event::Code(_) => {
                 note_line_start(&stack, &mut at_line_start, range.start, limit, &mut walk);
+                walk.atoms.push(Atom {
+                    start: range.start,
+                    range,
+                    kind: AtomKind::Code,
+                });
             }
             // Math events cannot occur while `OPTIONS` leaves math off; the
             // arm stays so the match is exhaustive when the crate is upgraded.
@@ -578,25 +644,37 @@ fn delimiter_runs(bytes: &[u8]) -> Vec<Run> {
     runs
 }
 
+/// What one sweep over a block reports besides its literals.
+struct Swept {
+    /// How many runs the pass visited — the count the tests pin.
+    visited: usize,
+    /// Where the first atom began that a formula or a code span the sweep
+    /// read had opened before and run into — the parser formed it on a text
+    /// the editor never reads, so the body must be read again.
+    destroyed: Option<usize>,
+}
+
 /// The editor's left-to-right inline rule over one prose block: a run of
 /// `$` opens a formula and a run of backticks a code span, each closed by
 /// the next run of the same length, whatever lies between — blanks, line
 /// breaks, tags and escapes included (remark-math reads a formula like a
 /// code span). An escaped `$` or backtick opens nothing, and neither does
-/// one inside an intact atom (`atoms`, sorted): a tag, an autolink or a
-/// link's resource the editor read first. An atom that a formula or a code
-/// span opened earlier runs into is destroyed — its bytes are text and it
-/// contributes nothing. The literal set is what the sweep emits: formulas,
-/// code spans, intact tags and intact images. One pass over the runs, a
-/// closer taken from an index by byte and raw length, so k unmatched runs
-/// cost O(k log k) after the O(n) walk that finds them. Returns how many
-/// runs the pass visited — the count the tests pin.
+/// one inside an intact atom (`atoms`, sorted): a tag, an autolink, a code
+/// span or a link's resource the editor read first. An atom that a formula
+/// or a code span opened earlier runs into is destroyed — its bytes are text
+/// and it contributes nothing. The literal set is what the sweep emits: code
+/// spans, intact tags and intact images into `out`, formulas into
+/// `formulas` — apart, so the caller can read the body again with them
+/// filled in. One pass over the runs, a closer taken from an index by byte
+/// and raw length, so k unmatched runs cost O(k log k) after the O(n) walk
+/// that finds them.
 fn inline_literals(
     content: &str,
     block: Range<usize>,
     atoms: &[Atom],
     out: &mut Vec<Range<usize>>,
-) -> usize {
+    formulas: &mut Vec<Range<usize>>,
+) -> Swept {
     let runs = delimiter_runs(&content.as_bytes()[block.clone()]);
     let mut by_key: HashMap<(u8, usize), Vec<usize>> = HashMap::new();
     for (r, run) in runs.iter().enumerate() {
@@ -607,29 +685,41 @@ fn inline_literals(
         let same = by_key.get(&(byte, len))?;
         same.get(same.partition_point(|&i| i <= r)).copied()
     };
+    // The formulas and code spans read so far, in order, non-overlapping.
+    let mut constructs: Vec<Range<usize>> = Vec::new();
+    // The first of the atom's two anchors — where its construct began, and
+    // where its own range begins (`]` for a link or an image; the same byte
+    // for the rest) — that one of them opened before and runs past.
+    let destroyed = |constructs: &[Range<usize>], a: &Atom| {
+        [a.start, a.range.start].into_iter().find(|&at| {
+            let i = constructs.partition_point(|c| c.start < at);
+            i > 0 && constructs[i - 1].end > at
+        })
+    };
     let live = |atom: usize| atom < atoms.len() && atoms[atom].range.start < block.end;
     let mut atom = atoms.partition_point(|a| a.range.start < block.start);
-    // Where the editor's scan stands: after the last construct it read.
-    let mut pos = block.start;
-    let mut visited = 0;
+    let mut swept = Swept {
+        visited: 0,
+        destroyed: None,
+    };
     let mut r = 0;
     'runs: while r < runs.len() {
-        visited += 1;
+        swept.visited += 1;
         let run = runs[r];
         let start = block.start + run.start;
-        // Atoms that begin at or before this run: destroyed by a construct
-        // that opened earlier (they began before `pos`), passed intact, or
-        // holding this run and every run up to their end.
+        // Atoms that begin at or before this run: destroyed, passed intact,
+        // or holding this run and every run up to their end.
         while live(atom) && atoms[atom].range.start <= start {
             let a = &atoms[atom];
             atom += 1;
-            if a.range.start < pos {
+            if let Some(at) = destroyed(&constructs, a) {
+                swept.destroyed.get_or_insert(at);
                 continue;
             }
             a.contribute(out);
             if a.range.end > start {
-                pos = a.range.end;
-                while r < runs.len() && block.start + runs[r].start < pos {
+                let end = a.range.end;
+                while r < runs.len() && block.start + runs[r].start < end {
                     r += 1;
                 }
                 continue 'runs;
@@ -645,25 +735,30 @@ fn inline_literals(
         match closer {
             Some(c) => {
                 let close_end = block.start + runs[c].start + runs[c].len;
-                out.push(block.start + opener..close_end);
-                pos = close_end;
+                let range = block.start + opener..close_end;
+                constructs.push(range.clone());
+                if run.byte == b'$' {
+                    formulas.push(range);
+                } else {
+                    out.push(range);
+                }
                 r = c + 1;
             }
-            None => {
-                pos = start + run.len;
-                r += 1;
-            }
+            None => r += 1,
         }
     }
-    // Atoms after the last run: intact unless a construct ran past them.
+    // Atoms after the last run.
     while live(atom) {
         let a = &atoms[atom];
         atom += 1;
-        if a.range.start >= pos {
-            a.contribute(out);
+        match destroyed(&constructs, a) {
+            Some(at) => {
+                swept.destroyed.get_or_insert(at);
+            }
+            None => a.contribute(out),
         }
     }
-    visited
+    swept
 }
 
 /// The editor's display rule (remark-math, like a fenced code block): a line
@@ -701,6 +796,22 @@ fn display_math(content: &str, line_starts: &[(usize, usize)], out: &mut Vec<Ran
         out.push(start..end);
         skip_until = end;
     }
+}
+
+/// `content` with every byte of `ranges` turned into `x` — line breaks kept
+/// — so the parser reads plain text of the same length where the formulas
+/// are, and every offset it reports still means what it meant. A formula
+/// starts and ends at a `$`, so the bytes stay valid UTF-8.
+fn fill(content: &str, ranges: &[Range<usize>]) -> String {
+    let mut bytes = content.as_bytes().to_vec();
+    for range in ranges {
+        for byte in &mut bytes[range.clone()] {
+            if !matches!(*byte, b'\n' | b'\r') {
+                *byte = b'x';
+            }
+        }
+    }
+    String::from_utf8(bytes).unwrap_or_else(|_| content.to_owned())
 }
 
 /// Sort and merge touching or overlapping ranges, dropping empty ones.
@@ -1076,9 +1187,12 @@ mod tests {
         }
         md.push_str(" ((n#^o))\n");
         assert_eq!(delimiter_runs(md.as_bytes()).len(), k);
-        let mut out = Vec::new();
-        assert_eq!(inline_literals(&md, 0..md.len(), &[], &mut out), k);
-        assert!(out.is_empty());
+        let (mut out, mut formulas) = (Vec::new(), Vec::new());
+        assert_eq!(
+            inline_literals(&md, 0..md.len(), &[], &mut out, &mut formulas).visited,
+            k
+        );
+        assert!(out.is_empty() && formulas.is_empty());
         assert_eq!(refs(&md), [true]);
         // Nothing but blank bytes (the line break) is literal.
         assert!(literal_texts(&md).iter().all(|t| t.trim().is_empty()));
@@ -1090,38 +1204,52 @@ mod tests {
     /// does not.
     #[test]
     fn the_pass_skips_the_runs_a_formula_or_a_live_tag_holds() {
-        let mut out = Vec::new();
+        let (mut out, mut formulas) = (Vec::new(), Vec::new());
         let inner = (2..=9).map(|n| "$".repeat(n)).collect::<Vec<_>>().join(" ");
         let md = format!("$ {inner} $ tail");
-        assert_eq!(inline_literals(&md, 0..md.len(), &[], &mut out), 1);
-        assert_eq!(out.len(), 1);
-        assert_eq!(out[0], 0..md.len() - 5);
+        let swept = inline_literals(&md, 0..md.len(), &[], &mut out, &mut formulas);
+        assert_eq!((swept.visited, swept.destroyed), (1, None));
+        assert!(out.is_empty());
+        assert_eq!(formulas, vec![0..md.len() - 5]);
 
         let md = "<i a=\"$ $$ $\"> $ x $";
         let tag = Atom {
             range: 0..md.find('>').unwrap() + 1,
+            start: 0,
             kind: AtomKind::Html,
         };
-        out.clear();
-        assert_eq!(
-            inline_literals(md, 0..md.len(), std::slice::from_ref(&tag), &mut out),
-            2
+        formulas.clear();
+        let swept = inline_literals(
+            md,
+            0..md.len(),
+            std::slice::from_ref(&tag),
+            &mut out,
+            &mut formulas,
         );
-        assert_eq!(out, vec![tag.range.clone(), md.len() - 5..md.len()]);
+        assert_eq!((swept.visited, swept.destroyed), (2, None));
+        assert_eq!(out, vec![tag.range.clone()]);
+        assert_eq!(formulas, vec![md.len() - 5..md.len()]);
 
-        // The formula closes inside the tag: the tag is gone, its runs live,
-        // and it adds nothing to the literal set.
+        // The formula closes inside the tag: the tag is destroyed, its runs
+        // live, it adds nothing — and the sweep reports where it began.
         let md = "$ x <i a=\"$ y $ ((n#^o)) $\">";
         let tag = Atom {
             range: 4..md.len(),
+            start: 4,
             kind: AtomKind::Html,
         };
         out.clear();
-        assert_eq!(
-            inline_literals(md, 0..md.len(), std::slice::from_ref(&tag), &mut out),
-            2
+        formulas.clear();
+        let swept = inline_literals(
+            md,
+            0..md.len(),
+            std::slice::from_ref(&tag),
+            &mut out,
+            &mut formulas,
         );
-        assert_eq!(out.len(), 2);
+        assert_eq!((swept.visited, swept.destroyed), (2, Some(4)));
+        assert!(out.is_empty());
+        assert_eq!(formulas.len(), 2);
     }
 
     /// pulldown pairs runs by its own rule (`$a$$ b` is a formula to it, and
@@ -1156,5 +1284,47 @@ mod tests {
         assert_eq!(refs("![a](u$) ((n#^o)) $\n"), [true]);
         assert_eq!(refs("[x][r$] ((n#^o)) $\n\n[r$]: u\n"), [true]);
         assert_eq!(refs("[`x`](u) `((n#^o))`\n"), [false]);
+    }
+
+    /// The parser does not know a formula: it may pair the backtick a
+    /// formula swallows with a later one and hide the tag, image or link
+    /// between them in that code span. The second read, with the formula
+    /// filled in, surfaces them — as the editor reads the text after one.
+    #[test]
+    fn what_a_destroyed_code_span_hid_surfaces_on_the_second_read() {
+        assert_eq!(refs("$ x ` y $ <i title=\"((n#^o))\"> `\n"), [false]);
+        assert_eq!(refs("$ x ` y $ ![((n#^o))](u) `\n"), [false]);
+        assert_eq!(refs("$ x ` y $ [z](u$) ((n#^o)) $ `\n"), [true]);
+    }
+
+    /// A body is read once unless a formula runs into a construct the parser
+    /// formed; then once more per such read. `fill` keeps length and breaks.
+    #[test]
+    fn the_body_is_read_once_unless_a_formula_destroys_what_the_parser_formed() {
+        assert_eq!(Literal::analyse("plain `code` <b>x</b> ((n#^o))\n").1, 1);
+        assert_eq!(Literal::analyse("$a$ `b` <i>$c$</i> ((n#^o))\n").1, 1);
+        assert_eq!(
+            Literal::analyse("$ x ` y $ <i title=\"((n#^o))\"> `\n").1,
+            2
+        );
+        assert_eq!(Literal::analyse("$ x ` y $ [z](u$) ((n#^o)) $ `\n").1, 2);
+        // Two destructions in a row take a third read.
+        assert_eq!(
+            Literal::analyse("$ x ` y $ [z](u$ `) $ w $ <i title=\"((n#^o))\"> `\n").1,
+            3
+        );
+        let md = "a $b\r\nc$ d 한\n";
+        let filled = fill(md, std::slice::from_ref(&(2..8)));
+        assert_eq!(filled, "a xx\r\nxx d 한\n");
+        assert_eq!(filled.len(), md.len());
+    }
+
+    /// A link whose `[` a formula ran over is no link: the dollar in what was
+    /// its destination opens a formula. One whose text merely holds a formula
+    /// stands.
+    #[test]
+    fn a_formula_that_runs_over_a_links_opening_bracket_destroys_the_link() {
+        assert_eq!(refs("$ [a $ b](u$) ((n#^o)) $\n"), [false]);
+        assert_eq!(refs("[a $b$ c](u$) ((n#^o)) $\n"), [true]);
     }
 }

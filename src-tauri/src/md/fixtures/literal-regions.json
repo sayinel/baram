@@ -124,6 +124,21 @@
       "name": "a formula that swallows a backtick leaves the later backtick alone",
       "markdown": "$ x ` $ ((note#^b1)) `\n",
       "expected": "$ x ` $ ((note#^b2-longer)) `\n"
+    },
+    {
+      "name": "a tag the parser hid inside a code span a formula destroyed is a tag: its attribute is literal",
+      "markdown": "$ x ` y $ <i title=\"((note#^b1))\"> `\n",
+      "expected": "$ x ` y $ <i title=\"((note#^b1))\"> `\n"
+    },
+    {
+      "name": "an image the parser hid inside a code span a formula destroyed is an image: its alt is literal",
+      "markdown": "$ x ` y $ ![((note#^b1))](u) `\n",
+      "expected": "$ x ` y $ ![((note#^b1))](u) `\n"
+    },
+    {
+      "name": "a link the parser hid inside a code span a formula destroyed is a link: the dollar in its destination opens nothing",
+      "markdown": "$ x ` y $ [z](u$) ((note#^b1)) $ `\n",
+      "expected": "$ x ` y $ [z](u$) ((note#^b2-longer)) $ `\n"
     }
   ]
 }
