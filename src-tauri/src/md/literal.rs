@@ -89,7 +89,11 @@ pub struct Literal {
     ranges: Vec<Range<usize>>,
 }
 
-/// `Literal::analyse`: the literal set and the two counts the tests pin.
+/// `Literal::analyse`: the literal set and the two counts the tests pin —
+/// how many times the parser read the body, and how many formula ranges
+/// the reads appended to the confirmed list in all, counted before the
+/// list is deduplicated, so that appending a whole prefix per block (the
+/// quadratic fault this guards against) shows as the sum it is.
 struct Analysis {
     literal: Literal,
     // The two counts are read by the tests only.
@@ -120,6 +124,7 @@ impl Literal {
         let body_start = front_matter_end(content);
         let mut source = String::new();
         let mut confirmed: Vec<Range<usize>> = Vec::new();
+        let mut appended = 0;
         let mut reads = 0;
         let (mut walk, mut inline) = loop {
             reads += 1;
@@ -142,7 +147,10 @@ impl Literal {
                 let swept =
                     inline_literals(content, block.clone(), &atoms, &mut inline, &mut formulas);
                 if let Some(at) = swept.destroyed {
-                    confirmed.extend(formulas[first..].iter().filter(|f| f.start < at).cloned());
+                    let fresh = formulas[first..].iter().filter(|f| f.start < at).cloned();
+                    let before = confirmed.len();
+                    confirmed.extend(fresh);
+                    appended += confirmed.len() - before;
                     unsettled.push((block.clone(), at));
                 }
             }
@@ -184,7 +192,7 @@ impl Literal {
                 ranges: merge(ranges),
             },
             reads,
-            confirmed: confirmed.len(),
+            confirmed: appended,
         }
     }
 
@@ -1360,7 +1368,9 @@ mod tests {
 
     /// Confirming costs one range per formula, whatever the number of blocks
     /// a read has seen before — a note of many paragraphs that each destroy
-    /// a code span is two linear reads, not a quadratic list.
+    /// a code span is two linear reads, not a quadratic list. The count is
+    /// what the reads appended before deduplication: a whole prefix per
+    /// block would show as 2,001,000 here.
     #[test]
     fn confirming_costs_one_range_per_formula_not_per_block_seen_before() {
         let md = "$ x ` y $ z `\n\n".repeat(2_000);
