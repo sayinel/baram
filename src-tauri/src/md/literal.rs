@@ -724,11 +724,11 @@ fn note_line_start(
 /// Does the text at `at` begin its line, allowing only blanks and
 /// blockquote markers before it? A cell after a `|` does not.
 fn begins_line(bytes: &[u8], at: usize) -> bool {
-    bytes[..at]
+    let before = bytes[..at]
         .iter()
         .rev()
-        .find(|&&b| !matches!(b, b' ' | b'\t' | b'>'))
-        .is_none_or(|&b| b == b'\n')
+        .find(|&&b| !matches!(b, b' ' | b'\t' | b'>'));
+    matches!(before, None | Some(b'\n'))
 }
 
 /// A child block that starts directly under a list item ends the item's
