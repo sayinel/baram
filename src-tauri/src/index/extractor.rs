@@ -11,12 +11,15 @@ use std::sync::LazyLock;
 
 use super::normalizer::{make_relative_path, resolve_relative_path};
 use super::{IndexError, LinkEntry};
+use crate::md::literal::{source_lines, Literal};
 
 // Wikilink regex: [[target]], [[alias::target]], [[target|display]], [[target#heading]], etc.
 // §87: optional alias:: prefix — group 1 = alias, group 2 = target
+// issue 620: no link crosses a line break — the index reads a line at a time,
+// and the whole-file rewriters below must recognise the same candidates.
 static WIKILINK_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"\[\[(?:([a-zA-Z][\w-]*)::)?([^\]|#^]+)(?:#[^\]|^]+)?(?:\^[^\]|]+)?(?:\|[^\]]+)?\]\]",
+        r"\[\[(?:([a-zA-Z][\w-]*)::)?([^\]|#^\n]+)(?:#[^\]|^\n]+)?(?:\^[^\]|\n]+)?(?:\|[^\]\n]+)?\]\]",
     )
     .unwrap()
 });
@@ -50,23 +53,20 @@ static FM_TAGS_ITEM_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s+-\s+
 // §87: optional alias:: prefix — group 1 = alias, group 2 = target, group 3 = rest
 static REPLACE_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"\[\[((?:[a-zA-Z][\w-]*::)?)([^\]|#^]+)((?:#[^\]|^]+)?(?:\^[^\]|]+)?(?:\|[^\]]+)?)\]\]",
+        r"\[\[((?:[a-zA-Z][\w-]*::)?)([^\]|#^\n]+)((?:#[^\]|^\n]+)?(?:\^[^\]|\n]+)?(?:\|[^\]\n]+)?)\]\]",
     )
     .unwrap()
 });
 
-// §30a Block embed replace regex: {{embed ((target#^ID))}}
-static EMBED_REPLACE_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\{\{embed \(\(([^)#|]*?)#\^([a-zA-Z0-9][\w-]*)\)\)\}\}").unwrap()
-});
-
-// §30a Block ref replace regex: ((target#^ID)) or ((target#^ID|display))
+// §30a Block ref replace regex: ((target#^ID)) or ((target#^ID|display)) — also the
+// `((…))` inside `{{embed ((target#^ID))}}`, so an embed needs no pass of its own.
 static REF_REPLACE_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\(\(([^)#|]*?)#\^([a-zA-Z0-9][\w-]*)(\|[^)]+)?\)\)").unwrap());
 
 // §61 Relative wikilink regex: [[./path...]] or [[../path...]]
 static RELATIVE_WIKILINK_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\[\[(\.\.?/[^\]|#^]+)((?:#[^\]|^]+)?(?:\^[^\]|]+)?(?:\|[^\]]+)?)\]\]").unwrap()
+    Regex::new(r"\[\[(\.\.?/[^\]|#^\n]+)((?:#[^\]|^\n]+)?(?:\^[^\]|\n]+)?(?:\|[^\]\n]+)?)\]\]")
+        .unwrap()
 });
 
 /// §34 Unlinked mention result returned to the frontend
@@ -196,11 +196,45 @@ pub(crate) fn extract_file_tags(content: &str) -> Vec<String> {
 /// Extract all links (wikilinks, block refs, block embeds) from file content
 pub(crate) fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
     let mut entries = Vec::new();
-    let lines: Vec<&str> = content.lines().collect();
+    // issue 620: a match inside code, HTML, math, an image or a link
+    // definition is not a link — the editor's parser never reads one there,
+    // and the rewriters (below) skip the same bytes, so what the index
+    // counts is exactly what a rename may touch.
+    // Read once, and only if a candidate turns up: a note with no `[[` or
+    // `((` at all is never parsed. This is the one reader that knows the
+    // note's path, so it is the one that says when the analysis gave up on
+    // a block — a reference there is left out of the index with no other
+    // sign — and, quietly, when a note needed more than one read.
+    let mut literal: Option<Literal> = None;
+    let mut analyse = || {
+        let analysis = Literal::analyse(content);
+        if analysis.gave_up {
+            log::warn!(
+                "index: {file_path}: the literal analysis gave up after {} reads; the rest of an \
+                 unsettled block is left literal and nothing in it is indexed",
+                analysis.reads
+            );
+        } else if analysis.reads > 1 {
+            log::debug!(
+                "index: {file_path}: literal analysis read the body {} times",
+                analysis.reads
+            );
+        }
+        analysis.literal
+    };
 
-    for (line_idx, line) in lines.iter().enumerate() {
+    for line in source_lines(content) {
+        let mut is_prose = |m: &regex::Match| {
+            !literal
+                .get_or_insert_with(&mut analyse)
+                .overlaps(line.offset + m.start()..line.offset + m.end())
+        };
+
         // §29 Wikilinks: [[target]], [[alias::target]], [[target|display]], etc.
-        for cap in WIKILINK_RE.captures_iter(line) {
+        for cap in WIKILINK_RE.captures_iter(line.text) {
+            if !is_prose(&cap.get(0).unwrap()) {
+                continue;
+            }
             let vault_alias = cap.get(1).map(|m| m.as_str().to_string());
             let target = cap.get(2).map(|m| m.as_str().trim()).unwrap_or("");
             if target.is_empty() {
@@ -210,8 +244,8 @@ pub(crate) fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
             entries.push(LinkEntry {
                 source_path: file_path.to_string(),
                 target: target.to_string(),
-                line: (line_idx + 1) as u32,
-                context: build_context(line),
+                line: line.number,
+                context: build_context(line.text),
                 link_type: "wikilink".to_string(),
                 block_id: None,
                 target_vault_alias: vault_alias,
@@ -219,7 +253,10 @@ pub(crate) fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
         }
 
         // §30c Block embeds first (so we can skip them in block ref matching)
-        for cap in BLOCK_EMBED_RE.captures_iter(line) {
+        for cap in BLOCK_EMBED_RE.captures_iter(line.text) {
+            if !is_prose(&cap.get(0).unwrap()) {
+                continue;
+            }
             let raw_target = cap.get(1).map(|m| m.as_str().trim()).unwrap_or("");
             let block_id = cap.get(2).map(|m| m.as_str()).unwrap_or("");
             if block_id.is_empty() {
@@ -236,8 +273,8 @@ pub(crate) fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
             entries.push(LinkEntry {
                 source_path: file_path.to_string(),
                 target,
-                line: (line_idx + 1) as u32,
-                context: build_context(line),
+                line: line.number,
+                context: build_context(line.text),
                 link_type: "blockEmbed".to_string(),
                 block_id: Some(block_id.to_string()),
                 target_vault_alias: None,
@@ -245,7 +282,10 @@ pub(crate) fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
         }
 
         // §30c Block references: ((target#^blockId))
-        for cap in BLOCK_REF_RE.captures_iter(line) {
+        for cap in BLOCK_REF_RE.captures_iter(line.text) {
+            if !is_prose(&cap.get(0).unwrap()) {
+                continue;
+            }
             let raw_target = cap.get(1).map(|m| m.as_str().trim()).unwrap_or("");
             let block_id = cap.get(2).map(|m| m.as_str()).unwrap_or("");
             if block_id.is_empty() {
@@ -255,7 +295,7 @@ pub(crate) fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
             // Skip if this match is part of a block embed (already captured above)
             let match_start = cap.get(0).unwrap().start();
             if match_start >= 8 {
-                let prefix = &line[..match_start];
+                let prefix = &line.text[..match_start];
                 if prefix.ends_with("{{embed ") {
                     continue;
                 }
@@ -271,8 +311,8 @@ pub(crate) fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
             entries.push(LinkEntry {
                 source_path: file_path.to_string(),
                 target,
-                line: (line_idx + 1) as u32,
-                context: build_context(line),
+                line: line.number,
+                context: build_context(line.text),
                 link_type: "blockRef".to_string(),
                 block_id: Some(block_id.to_string()),
                 target_vault_alias: None,
@@ -289,8 +329,14 @@ pub(crate) fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
 pub fn replace_wikilink_target(content: &str, old_target: &str, new_target: &str) -> String {
     // Match all wikilink forms: [[target]], [[target|display]], [[target#heading]], etc.
     // Capture groups: (1) target, (2) rest — #heading, ^blockId, |display in any combo
+    // issue 620: a match inside a literal region is left as it is — the index
+    // never counted it, the editor never read it. The literal set is read
+    // only once a match names the old target: a vault-wide rename visits
+    // every note, and most hold no such link.
+    let mut literal: Option<Literal> = None;
     REPLACE_RE
         .replace_all(content, |caps: &regex::Captures| {
+            let whole = caps.get(0).unwrap();
             let alias_prefix = caps.get(1).map(|m| m.as_str()).unwrap_or("");
             let captured_target = caps.get(2).map(|m| m.as_str()).unwrap_or("");
             let rest = caps.get(3).map(|m| m.as_str()).unwrap_or("");
@@ -299,11 +345,14 @@ pub fn replace_wikilink_target(content: &str, old_target: &str, new_target: &str
             if captured_target
                 .trim()
                 .eq_ignore_ascii_case(old_target.trim())
+                && !literal
+                    .get_or_insert_with(|| Literal::of(content))
+                    .overlaps(whole.range())
             {
                 format!("[[{alias_prefix}{}{rest}]]", new_target)
             } else {
                 // No match — return original
-                caps[0].to_string()
+                whole.as_str().to_string()
             }
         })
         .to_string()
@@ -331,43 +380,36 @@ pub fn replace_block_id_refs_to(
         let t = raw_target.trim();
         !t.is_empty() && target_keys.contains(&super::normalizer::normalize_file_path(t))
     };
+    // issue 620: the literal regions of THIS content — an index built before
+    // a line became code may still name it. One pass per line: the reference
+    // regex matches the `((…))` inside an embed too, and every offset stays
+    // an offset into the original line, so the interval check is exact
+    // whatever the new ID's length.
+    let mut literal: Option<Literal> = None;
     let mut out = String::with_capacity(content.len());
-    // Split keeps the separators so the output is byte-identical elsewhere.
-    let mut line_no: u32 = 0;
-    let mut rest = content;
-    while !rest.is_empty() {
-        line_no += 1;
-        let (line, sep) = match rest.find('\n') {
-            Some(i) => (&rest[..i], &rest[i..i + 1]),
-            None => (rest, ""),
-        };
-        rest = &rest[line.len() + sep.len()..];
-        if !lines.contains(&line_no) {
-            out.push_str(line);
-            out.push_str(sep);
-            continue;
+    for line in source_lines(content) {
+        if lines.contains(&line.number) {
+            let rewritten = REF_REPLACE_RE.replace_all(line.text, |caps: &regex::Captures| {
+                let whole = caps.get(0).unwrap();
+                let target = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+                let id = caps.get(2).map(|m| m.as_str()).unwrap_or("");
+                let display = caps.get(3).map(|m| m.as_str()).unwrap_or("");
+                let mut in_prose = || {
+                    !literal
+                        .get_or_insert_with(|| Literal::of(content))
+                        .overlaps(line.offset + whole.start()..line.offset + whole.end())
+                };
+                if id == old_id && refers_to_target(target) && in_prose() {
+                    format!("(({target}#^{new_id}{display}))")
+                } else {
+                    whole.as_str().to_string()
+                }
+            });
+            out.push_str(&rewritten);
+        } else {
+            out.push_str(line.text);
         }
-        let step1 = EMBED_REPLACE_RE.replace_all(line, |caps: &regex::Captures| {
-            let target = caps.get(1).map(|m| m.as_str()).unwrap_or("");
-            let id = caps.get(2).map(|m| m.as_str()).unwrap_or("");
-            if id == old_id && refers_to_target(target) {
-                format!("{{{{embed (({target}#^{new_id}))}}}}")
-            } else {
-                caps[0].to_string()
-            }
-        });
-        let step2 = REF_REPLACE_RE.replace_all(&step1, |caps: &regex::Captures| {
-            let target = caps.get(1).map(|m| m.as_str()).unwrap_or("");
-            let id = caps.get(2).map(|m| m.as_str()).unwrap_or("");
-            let display = caps.get(3).map(|m| m.as_str()).unwrap_or("");
-            if id == old_id && refers_to_target(target) {
-                format!("(({target}#^{new_id}{display}))")
-            } else {
-                caps[0].to_string()
-            }
-        });
-        out.push_str(&step2);
-        out.push_str(sep);
+        out.push_str(line.terminator);
     }
     out
 }
@@ -399,8 +441,13 @@ pub fn rewrite_relative_wikilinks(
         format!("{}/", old_dir)
     };
 
+    // issue 620: a match inside a literal region is left as it is. The
+    // literal set is read only once a link resolves into the old
+    // directory — a namespace rename visits every note in the vault.
+    let mut literal: Option<Literal> = None;
     RELATIVE_WIKILINK_RE
         .replace_all(content, |caps: &regex::Captures| {
+            let whole = caps.get(0).unwrap();
             let rel_target = caps.get(1).map(|m| m.as_str()).unwrap_or("");
             let rest = caps.get(2).map(|m| m.as_str()).unwrap_or("");
 
@@ -408,7 +455,11 @@ pub fn rewrite_relative_wikilinks(
             let resolved = resolve_relative_path(&source_dir, rel_target);
 
             // Check if this resolved path points into old_dir
-            if resolved.starts_with(&old_dir_slash) || resolved == old_dir {
+            if (resolved.starts_with(&old_dir_slash) || resolved == old_dir)
+                && !literal
+                    .get_or_insert_with(|| Literal::of(content))
+                    .overlaps(whole.range())
+            {
                 // Compute the new absolute path
                 let suffix = &resolved[old_dir.len()..];
                 let new_resolved = format!("{}{}", new_dir, suffix);
@@ -457,9 +508,21 @@ pub async fn find_unlinked_mentions(
             Err(_) => continue,
         };
 
-        for (line_idx, line) in content.lines().enumerate() {
+        // A stem the raw text does not hold cannot turn up once literal
+        // bytes are blanked: skip the parse for the notes that never
+        // mention it — nearly all of them, on every query.
+        if !stem_re.is_match(&content) {
+            continue;
+        }
+        // issue 620: a stem inside code, HTML, math or an image is not a
+        // mention — blank those bytes (offsets and line breaks kept) before
+        // the search, as the wikilinks are blanked below.
+        let blanked = Literal::of(&content).blank(&content);
+        for (line, visible) in source_lines(&content).zip(source_lines(&blanked)) {
+            let number = line.number;
+            let line = line.text;
             // Strip all [[...]] wikilinks from the line, replacing with spaces of same length
-            let stripped = strip_wikilinks(line);
+            let stripped = strip_wikilinks(visible.text);
 
             // Search for the stem in the stripped text (only first match per line)
             if let Some(mat) = stem_re.find(&stripped) {
@@ -476,7 +539,7 @@ pub async fn find_unlinked_mentions(
 
                 results.push(UnlinkedMentionResult {
                     source_path: md_path.clone(),
-                    line: (line_idx + 1) as u32,
+                    line: number,
                     context,
                     match_text: mat.as_str().to_string(),
                 });
@@ -927,5 +990,186 @@ mod tests {
         let stripped = strip_wikilinks(line);
         assert!(!stripped.contains("[["));
         assert!(stripped.contains("architecture"));
+    }
+
+    // issue 620 — a reference inside a literal region is not a reference:
+    // the index, the rewriters and the mention search share `md::literal`.
+    fn indexed(content: &str) -> Vec<(String, u32)> {
+        extract_links("/vault/guide.md", content)
+            .into_iter()
+            .map(|e| (e.target, e.line))
+            .collect()
+    }
+
+    #[test]
+    fn links_inside_code_html_math_images_and_definitions_are_not_indexed() {
+        let content = "[[prose]] `[[span]]` ((n#^p)) `((n#^s))`\n\
+                       ```\n[[fence]] ((n#^f)) {{embed ((n#^f))}}\n```\n\
+                       <div>\n[[html]]\n</div>\n\n\
+                       ![[[alt]]](x.png) $[[math]]$ [[after]]\n\n\
+                       [r]: [[definition]]\n\
+                       > ```\n> [[quoted-fence]]\n> ```\n> [[quoted]]\n";
+        assert_eq!(
+            indexed(content),
+            [
+                ("prose".to_string(), 1),
+                ("n".to_string(), 1),
+                ("after".to_string(), 9),
+                ("quoted".to_string(), 15),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_reference_that_runs_into_a_code_span_is_not_indexed() {
+        assert_eq!(indexed("((n#^id|`x`)) [[ok]]\n"), [("ok".to_string(), 1)]);
+    }
+
+    #[test]
+    fn offsets_follow_the_bytes_of_a_crlf_file() {
+        // With `lines()` and `len() + 1` the offsets would drift one byte per
+        // line and the last link would fall inside the fence's closer.
+        let content = "a `x` b\r\n[[one]]\r\n```\r\n[[two]]\r\n```\r\n[[three]]\r\n";
+        assert_eq!(
+            indexed(content),
+            [("one".to_string(), 2), ("three".to_string(), 6)]
+        );
+    }
+
+    #[test]
+    fn front_matter_links_are_still_indexed() {
+        assert_eq!(
+            indexed("---\nrelated: \"[[prop]]\"\n    - \"[[deep]]\"\n---\n[[body]]\n"),
+            [
+                ("prop".to_string(), 2),
+                ("deep".to_string(), 3),
+                ("body".to_string(), 5),
+            ]
+        );
+    }
+
+    #[test]
+    fn front_matter_behind_a_byte_order_mark_is_indexed_and_rewritten() {
+        // Without the mark the four-space YAML line would be an indented code
+        // block to the parser and the link would go stale on a rename.
+        let fm = "\u{FEFF}---\nrefs:\n\n    - \"[[old]]\"\n---\n";
+        assert_eq!(indexed(fm), [("old".to_string(), 4)]);
+        assert_eq!(
+            replace_wikilink_target(fm, "old", "new-longer"),
+            "\u{FEFF}---\nrefs:\n\n    - \"[[new-longer]]\"\n---\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_unlinked_mention_inside_code_is_not_a_mention() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_string_lossy().to_string();
+        let note = format!("{root}/note.md");
+        tokio::fs::write(&note, "# note\n").await.unwrap();
+        tokio::fs::write(
+            format!("{root}/other.md"),
+            "`note` in a span, then ```\n```\nnote in a fence\n```\n[[note]] linked, note here\n",
+        )
+        .await
+        .unwrap();
+        let found = find_unlinked_mentions(&note, &root).await.unwrap();
+        assert_eq!(
+            found.iter().map(|m| m.line).collect::<Vec<_>>(),
+            [5],
+            "{found:?}"
+        );
+    }
+
+    #[test]
+    fn a_block_id_rename_leaves_a_fenced_line_alone_even_when_the_index_named_it() {
+        // Defence in depth: an index built before this change may still
+        // point at a line inside a fence.
+        let content = "```\n((notes#^abc))\n```\n((notes#^abc)) `((notes#^abc))`\n";
+        assert_eq!(
+            replace_block_id_refs_to(
+                content,
+                &lines(&[1, 2, 3, 4]),
+                &keys(&["notes"]),
+                "abc",
+                "xyz"
+            ),
+            "```\n((notes#^abc))\n```\n((notes#^xyz)) `((notes#^abc))`\n"
+        );
+    }
+
+    #[test]
+    fn a_block_id_rename_on_one_line_keeps_the_code_span_whatever_the_new_length() {
+        let content = "{{embed ((notes#^abc))}} `((notes#^abc))` ((notes#^abc|show))\n";
+        assert_eq!(
+            replace_block_id_refs_to(content, &lines(&[1]), &keys(&["notes"]), "abc", "a-much-longer-id"),
+            "{{embed ((notes#^a-much-longer-id))}} `((notes#^abc))` ((notes#^a-much-longer-id|show))\n"
+        );
+        assert_eq!(
+            replace_block_id_refs_to(content, &lines(&[1]), &keys(&["notes"]), "abc", "z"),
+            "{{embed ((notes#^z))}} `((notes#^abc))` ((notes#^z|show))\n"
+        );
+    }
+
+    #[test]
+    fn a_block_id_rename_keeps_crlf_and_finds_its_lines_in_a_crlf_file() {
+        let content = "((notes#^abc))\r\n```\r\n((notes#^abc))\r\n```\r\n((notes#^abc))\r\n";
+        assert_eq!(
+            replace_block_id_refs_to(content, &lines(&[1, 3, 5]), &keys(&["notes"]), "abc", "xyz"),
+            "((notes#^xyz))\r\n```\r\n((notes#^abc))\r\n```\r\n((notes#^xyz))\r\n"
+        );
+    }
+
+    #[test]
+    fn a_wikilink_target_rename_skips_code_and_a_link_broken_across_lines() {
+        let content = "[[old]] `[[old]]`\n```\n[[old]]\n```\n    [[old]]\n[[old|shown]]\n";
+        assert_eq!(
+            replace_wikilink_target(content, "old", "new"),
+            "[[new]] `[[old]]`\n```\n[[old]]\n```\n    [[old]]\n[[new|shown]]\n"
+        );
+        // The index reads a line at a time and never sees `[[a\nb]]`; the
+        // rewriter must not either.
+        assert_eq!(replace_wikilink_target("[[a\nb]]", "a\nb", "c"), "[[a\nb]]");
+    }
+
+    #[test]
+    fn a_relative_wikilink_rewrite_skips_code() {
+        let content = "[[../old/x]] `[[../old/x]]`\n```\n[[../old/x]]\n```\n";
+        assert_eq!(
+            rewrite_relative_wikilinks(content, "/v/a/note.md", "/v/old", "/v/new"),
+            "[[../new/x]] `[[../old/x]]`\n```\n[[../old/x]]\n```\n"
+        );
+    }
+
+    /// issue 620 — the cross-language contract: the editor's text path
+    /// (`block-id-rename-markdown.ts`) and this reader→writer chain rewrite
+    /// the same references. The expectations live in the JSON, not in
+    /// either implementation; the vitest side reads the same file.
+    #[test]
+    fn the_rename_fixtures_shared_with_the_frontend_hold() {
+        let doc: serde_json::Value =
+            serde_json::from_str(include_str!("../md/fixtures/literal-regions.json")).unwrap();
+        let referrer = doc["referrer"].as_str().unwrap();
+        let target = doc["target"].as_str().unwrap();
+        let (old, new) = (doc["old"].as_str().unwrap(), doc["new"].as_str().unwrap());
+        for case in doc["cases"].as_array().unwrap() {
+            let (name, markdown) = (
+                case["name"].as_str().unwrap(),
+                case["markdown"].as_str().unwrap(),
+            );
+            let mut index = crate::index::LinkIndex::new();
+            index.update_file_from_content(referrer, markdown);
+            let lines: std::collections::HashSet<u32> = index
+                .block_reference_lines(target, old)
+                .into_iter()
+                .filter(|(source, _)| source == referrer)
+                .map(|(_, line)| line)
+                .collect();
+            let keys = crate::index::backlink_keys(target);
+            assert_eq!(
+                replace_block_id_refs_to(markdown, &lines, &keys, old, new),
+                case["expected"].as_str().unwrap(),
+                "{name}"
+            );
+        }
     }
 }

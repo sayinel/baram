@@ -29,7 +29,7 @@ title: "Dates, block references, and navigation"
 | `[[2026-02-27]]` | a **reference** to that day's entry | opens it |
 | `[[My Note]]` | a **reference** to a page | opens it |
 
-Only `[[…]]` links are collected into the link index, so only they appear in backlinks and the Graph View.
+Only `[[…]]` links are collected into the link index, so only they appear in backlinks and the Graph View. A link or block reference written inside a code block, a code span, an HTML block, an HTML tag, a formula, an image's alt text or a link reference definition is an example, not a link: it is not indexed, and renaming a file or a block ID leaves it exactly as written. Text between inline tags (`<span>[[note]]</span>`) is ordinary prose, so a link there is a link. Links in the front matter (`related: "[[note]]"`) are indexed and renamed like any other.
 
 > **Page mentions.** Earlier versions also offered `@[[My Note]]` for pages. That pointed at the same file `[[My Note]]` does while never appearing in backlinks, so `@` is now dates only. Page mentions already written keep rendering and still navigate on Cmd+click (Ctrl+click on Windows/Linux); use `[[…]]` for new ones.
 

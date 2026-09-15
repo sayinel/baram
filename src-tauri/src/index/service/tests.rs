@@ -2039,3 +2039,54 @@ async fn a_block_id_rename_leaves_another_notes_block_with_the_same_id_alone() {
         "para ^b1"
     );
 }
+
+#[tokio::test]
+async fn a_reference_inside_a_code_fence_is_neither_a_backlink_nor_renamed() {
+    // issue 620: guide.md shows how a block reference is written. The index
+    // must not count the example as a backlink of note.md, and renaming the
+    // block must leave guide.md byte for byte as it was.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-620", true).await;
+    std::fs::write(dir.path().join("note.md"), "para ^b1\n").unwrap();
+    let guide = "block refs are written like this:\n\n```\n((note#^b1))\n```\n\nand `((note#^b1))` inline\n";
+    std::fs::write(dir.path().join("guide.md"), guide).unwrap();
+    std::fs::write(dir.path().join("real.md"), "see ((note#^b1))\n").unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+
+    let backlinks = get_backlinks_inner(&state, &ctx, &format!("{root}/note.md"))
+        .await
+        .unwrap();
+    assert_eq!(sources(&backlinks), vec![format!("{root}/real.md")]);
+
+    let result = rename_block_id_inner(&state, &ctx, &format!("{root}/note.md"), "b1", "b2")
+        .await
+        .unwrap();
+    assert_eq!(result.updated_files, vec![format!("{root}/real.md")]);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("guide.md")).unwrap(),
+        guide
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("real.md")).unwrap(),
+        "see ((note#^b2))\n"
+    );
+    // A save that turns the example into prose, and back, follows the text.
+    let guide_path = format!("{root}/guide.md");
+    std::fs::write(&guide_path, "((note#^b2)) now real\n").unwrap();
+    update_file_index_inner(&state, &ctx, &guide_path)
+        .await
+        .unwrap();
+    let backlinks = get_backlinks_inner(&state, &ctx, &format!("{root}/note.md"))
+        .await
+        .unwrap();
+    assert!(sources(&backlinks).contains(&guide_path.as_str()));
+    std::fs::write(&guide_path, "```\n((note#^b2))\n```\n").unwrap();
+    update_file_index_inner(&state, &ctx, &guide_path)
+        .await
+        .unwrap();
+    let backlinks = get_backlinks_inner(&state, &ctx, &format!("{root}/note.md"))
+        .await
+        .unwrap();
+    assert!(!sources(&backlinks).contains(&guide_path.as_str()));
+}

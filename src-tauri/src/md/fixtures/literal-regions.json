@@ -1,0 +1,174 @@
+{
+  "contract": "issue 620. Rename block b1 of target to new, as seen from referrer. Rust: LinkIndex reads the markdown (extract_links), block_reference_lines names the lines, replace_block_id_refs_to rewrites them. Frontend: renameBlockIdInMarkdown(markdown, target, old, new). Both must produce expected. No ' ^b1' definitions and no ((#^b1)) empty-target self references here: those are each function's own business and are tested apart. No path-qualified targets either (issue 619).",
+  "referrer": "/vault/guide.md",
+  "target": "/vault/note.md",
+  "old": "b1",
+  "new": "b2-longer",
+  "cases": [
+    {
+      "name": "a fenced example is not a reference",
+      "markdown": "block refs look like this:\n\n```\n((note#^b1))\n```\n\nand this one is real: ((note#^b1))\n",
+      "expected": "block refs look like this:\n\n```\n((note#^b1))\n```\n\nand this one is real: ((note#^b2-longer))\n"
+    },
+    {
+      "name": "a code span, and a reference that runs into one",
+      "markdown": "`((note#^b1))` ((note#^b1|`x`)) ((note#^b1|shown))\n",
+      "expected": "`((note#^b1))` ((note#^b1|`x`)) ((note#^b2-longer|shown))\n"
+    },
+    {
+      "name": "a fence inside a blockquote; four spaces after a list item are a paragraph",
+      "markdown": "> ```\n> ((note#^b1))\n> ```\n\n- item\n\n    ((note#^b1))\n",
+      "expected": "> ```\n> ((note#^b1))\n> ```\n\n- item\n\n    ((note#^b2-longer))\n"
+    },
+    {
+      "name": "an HTML block until the blank line; an inline tag covers only itself",
+      "markdown": "<div>\n((note#^b1))\n</div>\n((note#^b1))\n\n<span>((note#^b1))</span>\n",
+      "expected": "<div>\n((note#^b1))\n</div>\n((note#^b1))\n\n<span>((note#^b2-longer))</span>\n"
+    },
+    {
+      "name": "math, an image's alt text and a link reference definition",
+      "markdown": "$((note#^b1))$ ![a ((note#^b1))](x.png)\n\n[r]: ((note#^b1))\n\n((note#^b1)) [r]\n",
+      "expected": "$((note#^b1))$ ![a ((note#^b1))](x.png)\n\n[r]: ((note#^b1))\n\n((note#^b2-longer)) [r]\n"
+    },
+    {
+      "name": "an embed, a longer new ID and CRLF line endings",
+      "markdown": "{{embed ((note#^b1))}} `((note#^b1))`\r\n```\r\n((note#^b1))\r\n```\r\n((note#^b1))\r\n",
+      "expected": "{{embed ((note#^b2-longer))}} `((note#^b1))`\r\n```\r\n((note#^b1))\r\n```\r\n((note#^b2-longer))\r\n"
+    },
+    {
+      "name": "table cells are prose, a code span in a cell is not",
+      "markdown": "| ((note#^b1)) | `((note#^b1))` |\n|---|---|\n| ((note#^b1)) | x |\n",
+      "expected": "| ((note#^b2-longer)) | `((note#^b1))` |\n|---|---|\n| ((note#^b2-longer)) | x |\n"
+    },
+    {
+      "name": "another file's block with the same ID stays",
+      "markdown": "((other#^b1)) ((note#^b1))\n",
+      "expected": "((other#^b1)) ((note#^b2-longer))\n"
+    },
+    {
+      "name": "a byte order mark before the first reference",
+      "markdown": "﻿((note#^b1))`x`\n",
+      "expected": "﻿((note#^b2-longer))`x`\n"
+    },
+    {
+      "name": "multibyte text and a combining character around the references",
+      "markdown": "한글 ((note#^b1)) 🙂 `((note#^b1))` é((note#^b1))\n",
+      "expected": "한글 ((note#^b2-longer)) 🙂 `((note#^b1))` é((note#^b2-longer))\n"
+    },
+    {
+      "name": "an escape and emphasis inside the display text",
+      "markdown": "((note#^b1|a\\*b)) ((note#^b1|*x*))\n",
+      "expected": "((note#^b2-longer|a\\*b)) ((note#^b2-longer|*x*))\n"
+    },
+    {
+      "name": "nothing to rename is byte-identical",
+      "markdown": "```\n((note#^b1))\n```\n`((note#^b1))`\n",
+      "expected": "```\n((note#^b1))\n```\n`((note#^b1))`\n"
+    },
+    {
+      "name": "blank-padded inline math, and a pair of dollars that is not a formula to a human",
+      "markdown": "$ ((note#^b1)) $ and $5 ((note#^b1)) $6 then ((note#^b1))\n",
+      "expected": "$ ((note#^b1)) $ and $5 ((note#^b1)) $6 then ((note#^b2-longer))\n"
+    },
+    {
+      "name": "an unclosed display formula runs to the end of the note",
+      "markdown": "((note#^b1))\n\n$$\n((note#^b1))\n\n((note#^b1))\n",
+      "expected": "((note#^b2-longer))\n\n$$\n((note#^b1))\n\n((note#^b1))\n"
+    },
+    {
+      "name": "a display formula with a blank line inside, and one ended by its blockquote",
+      "markdown": "$$\n((note#^b1))\n\n((note#^b1))\n$$\n> $$\n> ((note#^b1))\n\n((note#^b1))\n",
+      "expected": "$$\n((note#^b1))\n\n((note#^b1))\n$$\n> $$\n> ((note#^b1))\n\n((note#^b2-longer))\n"
+    },
+    {
+      "name": "reference-style images: alt text and label are literal",
+      "markdown": "![a ((note#^b1))][pic] ![((note#^b1))] ((note#^b1))\n\n[pic]: x.png\n[((note#^b1))]: z.png\n",
+      "expected": "![a ((note#^b1))][pic] ![((note#^b1))] ((note#^b2-longer))\n\n[pic]: x.png\n[((note#^b1))]: z.png\n"
+    },
+    {
+      "name": "a dollar inside an inline HTML tag opens no formula",
+      "markdown": "<i title=\"$\"> ((note#^b1)) $\n",
+      "expected": "<i title=\"$\"> ((note#^b2-longer)) $\n"
+    },
+    {
+      "name": "a backtick inside an inline HTML tag opens no code span, so the formula after the tag is a formula",
+      "markdown": "<i title=\"`\"> $ ((note#^b1)) $ `\n",
+      "expected": "<i title=\"`\"> $ ((note#^b1)) $ `\n"
+    },
+    {
+      "name": "a dollar inside an autolink opens no formula",
+      "markdown": "<https://x.test/$> ((note#^b1)) $\n",
+      "expected": "<https://x.test/$> ((note#^b2-longer)) $\n"
+    },
+    {
+      "name": "an escaped dollar opens nothing, the next one does; an escaped backslash leaves the dollar live",
+      "markdown": "\\$$ ((note#^b1)) $ and \\\\$ ((note#^b1)) $\n",
+      "expected": "\\$$ ((note#^b1)) $ and \\\\$ ((note#^b1)) $\n"
+    },
+    {
+      "name": "a formula that closes inside a tag destroys the tag: the rest is text",
+      "markdown": "$x<i title=\"$ ((note#^b1))\">\n",
+      "expected": "$x<i title=\"$ ((note#^b2-longer))\">\n"
+    },
+    {
+      "name": "a backtick inside a link destination opens no code span, so the formula after the link is a formula",
+      "markdown": "[x](https://x.test/`) $((note#^b1))$ `\n",
+      "expected": "[x](https://x.test/`) $((note#^b1))$ `\n"
+    },
+    {
+      "name": "a dollar in an image's alt text opens a formula that eats the bracket: the image is gone and the text before it is text",
+      "markdown": "![((note#^b1)) $](p.png) tail $\n",
+      "expected": "![((note#^b2-longer)) $](p.png) tail $\n"
+    },
+    {
+      "name": "a formula that swallows a backtick leaves the later backtick alone",
+      "markdown": "$ x ` $ ((note#^b1)) `\n",
+      "expected": "$ x ` $ ((note#^b2-longer)) `\n"
+    },
+    {
+      "name": "a tag the parser hid inside a code span a formula destroyed is a tag: its attribute is literal",
+      "markdown": "$ x ` y $ <i title=\"((note#^b1))\"> `\n",
+      "expected": "$ x ` y $ <i title=\"((note#^b1))\"> `\n"
+    },
+    {
+      "name": "an image the parser hid inside a code span a formula destroyed is an image: its alt is literal",
+      "markdown": "$ x ` y $ ![((note#^b1))](u) `\n",
+      "expected": "$ x ` y $ ![((note#^b1))](u) `\n"
+    },
+    {
+      "name": "a link the parser hid inside a code span a formula destroyed is a link: the dollar in its destination opens nothing",
+      "markdown": "$ x ` y $ [z](u$) ((note#^b1)) $ `\n",
+      "expected": "$ x ` y $ [z](u$) ((note#^b2-longer)) $ `\n"
+    },
+    {
+      "name": "a stray double dollar in a paragraph does not close on the line that opens a display formula",
+      "markdown": "Write $$ to open display math.\n((note#^b1))\n$$\nE = mc^2\n$$\n",
+      "expected": "Write $$ to open display math.\n((note#^b2-longer))\n$$\nE = mc^2\n$$\n"
+    },
+    {
+      "name": "a leading byte order mark does not hide the fence on the first line",
+      "markdown": "﻿```\n((note#^b1))\n```\n((note#^b1))\n",
+      "expected": "﻿```\n((note#^b1))\n```\n((note#^b2-longer))\n"
+    },
+    {
+      "name": "a display formula whose first content line is a setext underline is a formula",
+      "markdown": "$$\n===\n((note#^b1))\n$$\n((note#^b1))\n",
+      "expected": "$$\n===\n((note#^b1))\n$$\n((note#^b2-longer))\n"
+    },
+    {
+      "name": "a dollar inside a bare URL opens no formula",
+      "markdown": "https://api.test/?$filter=x ((note#^b1)) $\n",
+      "expected": "https://api.test/?$filter=x ((note#^b2-longer)) $\n"
+    },
+    {
+      "name": "an address ends before a dollar, which then opens a formula",
+      "markdown": "a@b.test$ ((note#^b1)) $\n",
+      "expected": "a@b.test$ ((note#^b1)) $\n"
+    },
+    {
+      "name": "a URL whose domain begins with a hyphen is no link, so the dollar after it opens a formula",
+      "markdown": "https://-a.test/$ ((note#^b1)) $\n",
+      "expected": "https://-a.test/$ ((note#^b1)) $\n"
+    }
+  ]
+}

@@ -1,4 +1,9 @@
 // 공유 마크다운 전처리 — tag(§56m)와 task(§304)가 같은 스캔 규칙을 쓴다.
+//
+// `literal`(§29, issue 620)은 링크 index·rewriter 가 쓰는 **파서 기반** 판정이다. 여기의
+// 느슨한 fence 규칙과 일부러 갈라 두었다 — tag 의 reader·writer 는 둘 다 느슨한 채로 계약을
+// 지키고, 그 계약을 옮기는 것은 태그의 제품 변화라 별도 변경이다.
+pub mod literal;
 use regex::Regex;
 use std::sync::LazyLock;
 
