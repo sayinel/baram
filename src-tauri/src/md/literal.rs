@@ -982,13 +982,17 @@ fn fill(content: &str, ranges: &[Range<usize>]) -> String {
 
 /// The bare URLs and e-mail addresses the editor reads as links
 /// (remark-gfm's autolink literals), as byte ranges of `text` offset by
-/// `base`. GFM's rule: a `www.`, `http://` or `https://` (any case) at the
-/// start of the text or after a blank, `*`, `_`, `~` or `(`, a domain of
-/// alphanumeric, `_` and `-` segments with at least one `.` and no `_` in
-/// the last two, then anything up to a blank or `<`; trailing `?!.,:*_~`
-/// come off, so does an unbalanced `)`, and a `&name;` entity; an address
-/// is `[A-Za-z0-9._+-]+@` and such a domain whose last segment ends in
-/// neither `-` nor `_`. Left to right, non-overlapping.
+/// `base`. The rule as micromark applies it, measured, not as the GFM text
+/// reads: a `www.`, `http://` or `https://` (any case) at the start of the
+/// text or after a blank, `*`, `_`, `~` or `(`; then a domain — any run of
+/// bytes that are not blanks, `<` or ASCII punctuation other than `-`, `.`
+/// and `_` (a non-ASCII letter counts, no period is required, `localhost`
+/// and `1.2.3.4` pass) that after `://` does not begin with `-` or `.` and
+/// has no `_` in its last two `.`-segments; then anything up to a blank or
+/// `<`. Trailing `?!.,:*_~` come off, so does an unbalanced `)`, and a
+/// `&name;` entity. An address is `[A-Za-z0-9._+-]+@` and such a domain
+/// with a period, its last byte neither `-` nor `_`. Left to right,
+/// non-overlapping.
 fn autolink_literals(text: &str, base: usize) -> Vec<Range<usize>> {
     let bytes = text.as_bytes();
     let boundary = |i: usize| {
@@ -998,22 +1002,17 @@ fn autolink_literals(text: &str, base: usize) -> Vec<Range<usize>> {
                 b' ' | b'\t' | b'\n' | b'\r' | b'*' | b'_' | b'~' | b'('
             )
     };
-    let domain_ok = |seg: &[u8]| -> bool {
-        // Segments of [A-Za-z0-9_-] split on `.`, at least one `.`, and no
-        // `_` in the last two segments.
-        if seg.is_empty()
-            || !seg
-                .iter()
-                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.'))
-        {
-            return false;
-        }
-        let parts: Vec<&[u8]> = seg.split(|&b| b == b'.').collect();
-        parts.len() >= 2
-            && parts.iter().all(|p| !p.is_empty())
-            && parts[parts.len().saturating_sub(2)..]
-                .iter()
-                .all(|p| !p.contains(&b'_'))
+    let domain_byte = |b: &u8| {
+        !b.is_ascii_whitespace()
+            && *b != b'<'
+            && (!b.is_ascii_punctuation() || matches!(b, b'-' | b'.' | b'_'))
+    };
+    // No `_` in the last two `.`-segments (an empty segment counts as one).
+    let underscores_ok = |dom: &[u8]| -> bool {
+        let parts: Vec<&[u8]> = dom.split(|&b| b == b'.').collect();
+        parts[parts.len().saturating_sub(2)..]
+            .iter()
+            .all(|p| !p.contains(&b'_'))
     };
     let mut out = Vec::new();
     let mut i = 0;
@@ -1034,14 +1033,19 @@ fn autolink_literals(text: &str, base: usize) -> Vec<Range<usize>> {
             None
         };
         if let Some(skip) = prefix.filter(|_| boundary(i)) {
-            // Domain: up to the first byte that is not a domain byte.
             let dom_start = i + skip;
             let dom_end = dom_start
                 + bytes[dom_start..]
                     .iter()
-                    .take_while(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.'))
+                    .take_while(|b| domain_byte(b))
                     .count();
-            if domain_ok(&bytes[dom_start..dom_end]) {
+            let dom = &bytes[dom_start..dom_end];
+            // For `www.` the domain begins with the `w`; after `://` it must
+            // not begin with `-` or `.`.
+            if !dom.is_empty()
+                && !(skip > 0 && matches!(dom[0], b'-' | b'.'))
+                && underscores_ok(dom)
+            {
                 // Path: up to a blank or `<`.
                 let mut end = dom_end
                     + bytes[dom_end..]
@@ -1055,7 +1059,7 @@ fn autolink_literals(text: &str, base: usize) -> Vec<Range<usize>> {
             }
         }
         if bytes[i] == b'@' {
-            // An address: walk back over the local part, forward over the domain.
+            // An address: back over the local part, forward over the domain.
             let local = bytes[..i]
                 .iter()
                 .rev()
@@ -1071,7 +1075,8 @@ fn autolink_literals(text: &str, base: usize) -> Vec<Range<usize>> {
             let dom = &bytes[i + 1..dom_end];
             if local > 0
                 && boundary(start)
-                && domain_ok(dom)
+                && dom.contains(&b'.')
+                && underscores_ok(dom)
                 && !matches!(dom.last(), Some(b'-' | b'_'))
             {
                 out.push(base + start..base + dom_end);
@@ -1737,28 +1742,62 @@ mod tests {
     }
 
     /// A bare URL or address is a link to the editor, delimiters inside it
-    /// included, when it starts after a boundary and has a valid domain —
-    /// and never inside a link's text. Its trailing punctuation, an
-    /// unbalanced `)` and an entity are not part of it.
+    /// included, when it starts after a boundary and has a domain micromark
+    /// accepts — and never inside a link's text. Its trailing punctuation,
+    /// an unbalanced `)` and an entity are not part of it.
     #[test]
     fn a_delimiter_inside_a_bare_url_or_address_opens_nothing() {
-        assert_eq!(refs("https://api.test/?$filter=x ((n#^o)) $\n"), [true]);
-        assert_eq!(refs("https://x.test/`a` ((n#^o)) `\n"), [true]);
-        assert_eq!(refs("www.x.test/$ ((n#^o)) $\n"), [true]);
-        assert_eq!(refs("WWW.X.TEST/$ ((n#^o)) $\n"), [true]);
-        assert_eq!(refs("*https://x.test/$* ((n#^o)) $\n"), [true]);
-        assert_eq!(refs("(https://x.test/$) ((n#^o)) $\n"), [true]);
-        assert_eq!(refs("https://x.test/(a$) ((n#^o)) $\n"), [true]);
-        assert_eq!(refs("see https://x.test/a$. ((n#^o)) $\n"), [true]);
-        assert_eq!(refs("https://x.test/a$&amp; ((n#^o)) $\n"), [true]);
-        // The address ends before the `$`, which then opens a formula.
-        assert_eq!(refs("a@b.test$ ((n#^o)) $\n"), [false]);
-        assert_eq!(refs("a.b+c@d-e.test$ ((n#^o)) $\n"), [false]);
-        // No boundary, an underscore in the domain: not a link, so a formula.
-        assert_eq!(refs("xhttps://x.test/$ ((n#^o)) $\n"), [false]);
-        assert_eq!(refs("https://x_y.test/$ ((n#^o)) $\n"), [false]);
-        // Inside a link's text the editor reads no bare URL: the `$` opens.
-        assert_eq!(refs("[https://x.test/$](u) ((n#^o)) $\n"), [false]);
+        for md in [
+            "https://api.test/?$filter=x ((n#^o)) $\n",
+            "https://x.test/`a` ((n#^o)) `\n",
+            "www.x.test/$ ((n#^o)) $\n",
+            "WWW.X.TEST/$ ((n#^o)) $\n",
+            "*https://x.test/$* ((n#^o)) $\n",
+            "(https://x.test/$) ((n#^o)) $\n",
+            "https://x.test/(a$) ((n#^o)) $\n",
+            "see https://x.test/a$. ((n#^o)) $\n",
+            "https://x.test/a$&amp; ((n#^o)) $\n",
+            // What the editor accepts as a domain: hyphens anywhere but
+            // first, empty and trailing segments, digits, a port, no period
+            // at all, a non-ASCII letter, an underscore before the last two
+            // segments, a `-` first after `www.`.
+            "https://a-.test/$ ((n#^o)) $\n",
+            "https://a.-b.test/$ ((n#^o)) $\n",
+            "https://a.test-/$ ((n#^o)) $\n",
+            "https://a..test/$ ((n#^o)) $\n",
+            "https://a.test./$ ((n#^o)) $\n",
+            "https://1.2.3.4/$ ((n#^o)) $\n",
+            "https://a.test:8080/$ ((n#^o)) $\n",
+            "http://localhost/$ ((n#^o)) $\n",
+            "https://a/$ ((n#^o)) $\n",
+            "https://a_b.c.test/$ ((n#^o)) $\n",
+            "https://ä.test/$ ((n#^o)) $\n",
+            "www.-a.test/$ ((n#^o)) $\n",
+            "https://a.test$ ((n#^o)) $\n",
+        ] {
+            assert_eq!(refs(md), [true], "{md:?}");
+        }
+        // Not a link — no boundary, an underscore in the last two segments,
+        // a domain that begins with `-` or `.` — so the `$` opens a formula.
+        // An address ends before the `$`, whatever `-` its parts begin or
+        // end with; a `<` ends a URL. Inside a link's text the editor reads
+        // no bare URL.
+        for md in [
+            "xhttps://x.test/$ ((n#^o)) $\n",
+            "https://x_y.test/$ ((n#^o)) $\n",
+            "https://a.b_c.test/$ ((n#^o)) $\n",
+            "https://-a.test/$ ((n#^o)) $\n",
+            "https://.a.test/$ ((n#^o)) $\n",
+            "a@b.test$ ((n#^o)) $\n",
+            "a.b+c@d-e.test$ ((n#^o)) $\n",
+            "a-@b.test$ ((n#^o)) $\n",
+            "-a@b.test$ ((n#^o)) $\n",
+            "a@-b.test$ ((n#^o)) $\n",
+            "https://a.test/x<y$ ((n#^o)) $\n",
+            "[https://x.test/$](u) ((n#^o)) $\n",
+        ] {
+            assert_eq!(refs(md), [false], "{md:?}");
+        }
         // A formula that opened first swallows the URL, raw.
         assert_eq!(refs("$ x https://a.test/$b ((n#^o))\n"), [true]);
     }

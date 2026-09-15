@@ -164,6 +164,11 @@
       "name": "an address ends before a dollar, which then opens a formula",
       "markdown": "a@b.test$ ((note#^b1)) $\n",
       "expected": "a@b.test$ ((note#^b1)) $\n"
+    },
+    {
+      "name": "a URL whose domain begins with a hyphen is no link, so the dollar after it opens a formula",
+      "markdown": "https://-a.test/$ ((note#^b1)) $\n",
+      "expected": "https://-a.test/$ ((note#^b1)) $\n"
     }
   ]
 }
