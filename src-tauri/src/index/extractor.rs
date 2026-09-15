@@ -201,13 +201,32 @@ pub(crate) fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
     // and the rewriters (below) skip the same bytes, so what the index
     // counts is exactly what a rename may touch.
     // Read once, and only if a candidate turns up: a note with no `[[` or
-    // `((` at all is never parsed.
+    // `((` at all is never parsed. This is the one reader that knows the
+    // note's path, so it is the one that says when the analysis gave up on
+    // a block — a reference there is left out of the index with no other
+    // sign — and, quietly, when a note needed more than one read.
     let mut literal: Option<Literal> = None;
+    let mut analyse = || {
+        let analysis = Literal::analyse(content);
+        if analysis.gave_up {
+            log::warn!(
+                "index: {file_path}: the literal analysis gave up after {} reads; the rest of an \
+                 unsettled block is left literal and nothing in it is indexed",
+                analysis.reads
+            );
+        } else if analysis.reads > 1 {
+            log::debug!(
+                "index: {file_path}: literal analysis read the body {} times",
+                analysis.reads
+            );
+        }
+        analysis.literal
+    };
 
     for line in source_lines(content) {
         let mut is_prose = |m: &regex::Match| {
             !literal
-                .get_or_insert_with(|| Literal::of(content))
+                .get_or_insert_with(&mut analyse)
                 .overlaps(line.offset + m.start()..line.offset + m.end())
         };
 

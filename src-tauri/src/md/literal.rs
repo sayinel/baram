@@ -90,18 +90,21 @@ pub struct Literal {
     ranges: Vec<Range<usize>>,
 }
 
-/// `Literal::analyse`: the literal set and the two counts the tests pin —
-/// how many times the parser read the body, and how many formula ranges
-/// the reads appended to the confirmed list in all, counted before the
-/// list is deduplicated, so that appending a whole prefix per block (the
-/// quadratic fault this guards against) shows as the sum it is.
-struct Analysis {
-    literal: Literal,
-    // The two counts are read by the tests only.
+/// `Literal::analyse`: the literal set with what happened on the way — how
+/// many times the parser read the body, how many formula ranges the reads
+/// appended to the confirmed list in all (counted before the list is
+/// deduplicated, so that appending a whole prefix per block, the quadratic
+/// fault this guards against, shows as the sum it is), and whether a read
+/// gave up on a block: hit the cap or confirmed nothing new while the block
+/// still held a destroyed construct, and left the block literal from the
+/// anchor on. The indexer logs that, with the note's path.
+pub struct Analysis {
+    pub literal: Literal,
+    pub reads: usize,
+    // Read by the tests only; the indexer logs `reads` and `gave_up`.
     #[cfg_attr(not(test), allow(dead_code))]
-    reads: usize,
-    #[cfg_attr(not(test), allow(dead_code))]
-    confirmed: usize,
+    pub confirmed: usize,
+    pub gave_up: bool,
 }
 
 impl Literal {
@@ -120,7 +123,7 @@ impl Literal {
     /// in the last two cases a block that still holds a destroyed construct
     /// is left literal from the anchor on — the parser's view of it past
     /// that point is known to be wrong, and touching nothing there is safe.
-    fn analyse(content: &str) -> Analysis {
+    pub fn analyse(content: &str) -> Analysis {
         const READS: usize = 8;
         // The editor's parser drops one leading byte order mark before it
         // reads; pulldown does not, and would read the first line's fence
@@ -134,6 +137,7 @@ impl Literal {
         let mut confirmed: Vec<Range<usize>> = Vec::new();
         let mut appended = 0;
         let mut reads = 0;
+        let mut gave_up = false;
         let (mut walk, inline) = loop {
             reads += 1;
             let body = if reads == 1 {
@@ -217,6 +221,7 @@ impl Literal {
                 break (walk, inline);
             }
             if reads == READS || confirmed.len() == known {
+                gave_up = true;
                 inline.extend(unsettled.into_iter().map(|(block, at)| at..block.end));
                 break (walk, inline);
             }
@@ -248,6 +253,7 @@ impl Literal {
             },
             reads,
             confirmed: appended,
+            gave_up,
         }
     }
 
@@ -1691,7 +1697,9 @@ mod tests {
         assert_eq!(Literal::analyse(&short).reads, 7);
         assert_eq!(refs(&short), [false]);
         let long = chain(12);
-        assert_eq!(Literal::analyse(&long).reads, 8);
+        let analysis = Literal::analyse(&long);
+        assert_eq!((analysis.reads, analysis.gave_up), (8, true));
+        assert!(!Literal::analyse(&short).gave_up);
         assert_eq!(refs(&long), [false]);
     }
 
