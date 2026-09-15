@@ -112,13 +112,13 @@ impl Literal {
 
     /// `of`, with what the tests pin: how many times the body was handed
     /// to the parser — once for nearly every note, once more for every read
-    /// in which a formula ran into a construct the parser had formed — and
-    /// how many formulas were confirmed and filled in along the way. Each
-    /// read confirms at least one more formula (the one that ran into the
-    /// construct was not filled in, or it could not have), so the reads end;
-    /// they are capped all the same, and a read that confirmed nothing new
-    /// or hit the cap while a block still had a destroyed construct leaves
-    /// that block literal from the anchor on — the parser's view of it past
+    /// in which a formula or a code span ran into a construct the parser
+    /// had formed — and how many formulas were confirmed and filled in along
+    /// the way. The reads end when a read destroys nothing, when the
+    /// confirmed list stops growing (the sweep runs on the original text, so
+    /// a read may only re-find what is already filled in), or at the cap;
+    /// in the last two cases a block that still holds a destroyed construct
+    /// is left literal from the anchor on — the parser's view of it past
     /// that point is known to be wrong, and touching nothing there is safe.
     fn analyse(content: &str) -> Analysis {
         const READS: usize = 8;
@@ -141,10 +141,13 @@ impl Literal {
             } else {
                 &source[body_start..]
             };
-            let walk = collect(body, body_start);
-            let mut atoms = walk.atoms.clone();
-            atoms.sort_by_key(|atom| atom.range.start);
-            let mut inline = walk.inline.clone();
+            let mut walk = collect(body, body_start);
+            walk.atoms.sort_by_key(|atom| atom.range.start);
+            debug_assert!(
+                walk.inline.is_empty(),
+                "math is off in OPTIONS; the parser reports no formula"
+            );
+            let mut inline: Vec<Range<usize>> = Vec::new();
             // Flow before text, as the editor reads: a display formula is
             // settled from the line starts before the sweep looks at any
             // run, and its bytes are not the sweep's to pair.
@@ -163,7 +166,7 @@ impl Literal {
                 let swept = inline_literals(
                     content,
                     block.clone(),
-                    &atoms,
+                    &walk.atoms,
                     &display,
                     &mut inline,
                     &mut formulas,
@@ -176,8 +179,9 @@ impl Literal {
                     unsettled.push((block.clone(), at));
                 }
             }
-            confirmed.sort_by_key(|f| f.start);
-            confirmed.dedup();
+            // One opener may have been paired with different closers on
+            // different reads: keep the union, not the duplicates.
+            confirmed = merge(confirmed);
             inline.extend(formulas);
             inline.extend(display.ranges);
             if unsettled.is_empty() {
@@ -406,8 +410,8 @@ fn resource_atom(range: Range<usize>, text_end: usize, open: Open) -> Option<Ato
             start,
             kind: AtomKind::LinkResource,
         }),
-        Open::Image => Some(Atom {
-            range: text_end.min(end)..end,
+        Open::Image => (text_end < end).then_some(Atom {
+            range: text_end..end,
             start,
             kind: AtomKind::ImageResource { image: range },
         }),
