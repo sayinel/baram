@@ -104,6 +104,26 @@
       "name": "an escaped dollar opens nothing, the next one does; an escaped backslash leaves the dollar live",
       "markdown": "\\$$ ((note#^b1)) $ and \\\\$ ((note#^b1)) $\n",
       "expected": "\\$$ ((note#^b1)) $ and \\\\$ ((note#^b1)) $\n"
+    },
+    {
+      "name": "a formula that closes inside a tag destroys the tag: the rest is text",
+      "markdown": "$x<i title=\"$ ((note#^b1))\">\n",
+      "expected": "$x<i title=\"$ ((note#^b2-longer))\">\n"
+    },
+    {
+      "name": "a backtick inside a link destination opens no code span, so the formula after the link is a formula",
+      "markdown": "[x](https://x.test/`) $((note#^b1))$ `\n",
+      "expected": "[x](https://x.test/`) $((note#^b1))$ `\n"
+    },
+    {
+      "name": "a dollar in an image's alt text opens a formula that eats the bracket: the image is gone and the text before it is text",
+      "markdown": "![((note#^b1)) $](p.png) tail $\n",
+      "expected": "![((note#^b2-longer)) $](p.png) tail $\n"
+    },
+    {
+      "name": "a formula that swallows a backtick leaves the later backtick alone",
+      "markdown": "$ x ` $ ((note#^b1)) `\n",
+      "expected": "$ x ` $ ((note#^b2-longer)) `\n"
     }
   ]
 }
