@@ -126,7 +126,7 @@ impl Literal {
         let mut confirmed: Vec<Range<usize>> = Vec::new();
         let mut appended = 0;
         let mut reads = 0;
-        let (mut walk, mut inline) = loop {
+        let (mut walk, inline) = loop {
             reads += 1;
             let body = if reads == 1 {
                 &content[body_start..]
@@ -137,6 +137,14 @@ impl Literal {
             let mut atoms = walk.atoms.clone();
             atoms.sort_by_key(|atom| atom.range.start);
             let mut inline = walk.inline.clone();
+            // Flow before text, as the editor reads: a display formula is
+            // settled from the line starts before the sweep looks at any
+            // run, and its bytes are not the sweep's to pair.
+            let mut display = Vec::new();
+            display_math(content, &walk.line_starts, &mut display);
+            let display = Literal {
+                ranges: merge(display),
+            };
             let mut formulas = Vec::new();
             // The blocks a construct was destroyed in, with the anchor: the
             // block's formulas that start before it are confirmed.
@@ -144,8 +152,14 @@ impl Literal {
             let known = confirmed.len();
             for block in &walk.prose {
                 let first = formulas.len();
-                let swept =
-                    inline_literals(content, block.clone(), &atoms, &mut inline, &mut formulas);
+                let swept = inline_literals(
+                    content,
+                    block.clone(),
+                    &atoms,
+                    &display,
+                    &mut inline,
+                    &mut formulas,
+                );
                 if let Some(at) = swept.destroyed {
                     let fresh = formulas[first..].iter().filter(|f| f.start < at).cloned();
                     let before = confirmed.len();
@@ -157,6 +171,7 @@ impl Literal {
             confirmed.sort_by_key(|f| f.start);
             confirmed.dedup();
             inline.extend(formulas);
+            inline.extend(display.ranges);
             if unsettled.is_empty() {
                 break (walk, inline);
             }
@@ -166,7 +181,6 @@ impl Literal {
             }
             source = fill(content, &confirmed);
         };
-        display_math(content, &walk.line_starts, &mut inline);
         // The front matter is prose (a property link is a link) but not
         // markdown: the editor reads no formula in it.
         if body_start > 0 {
@@ -690,9 +704,11 @@ struct Swept {
 /// `$` opens a formula and a run of backticks a code span, each closed by
 /// the next run of the same length, whatever lies between — blanks, line
 /// breaks, tags and escapes included (remark-math reads a formula like a
-/// code span). An escaped `$` or backtick opens nothing, and neither does
-/// one inside an intact atom (`atoms`, sorted): a tag, an autolink, a code
-/// span or a link's resource the editor read first. An atom that a formula
+/// code span). Runs inside a display formula (`display`, settled first, as
+/// flow comes before text) are not the sweep's. An escaped `$` or backtick
+/// opens nothing, and neither does one inside an intact atom (`atoms`,
+/// sorted): a tag, an autolink, a code span or a link's resource the editor
+/// read first. An atom that a formula
 /// or a code span opened earlier runs into is destroyed — its bytes are text
 /// and it contributes nothing. The literal set is what the sweep emits: code
 /// spans, intact tags and intact images into `out`, formulas into
@@ -704,10 +720,17 @@ fn inline_literals(
     content: &str,
     block: Range<usize>,
     atoms: &[Atom],
+    display: &Literal,
     out: &mut Vec<Range<usize>>,
     formulas: &mut Vec<Range<usize>>,
 ) -> Swept {
-    let runs = delimiter_runs(&content.as_bytes()[block.clone()]);
+    let mut runs = delimiter_runs(&content.as_bytes()[block.clone()]);
+    // A run inside a display formula belongs to the formula, not to the
+    // text around it: a stray `$$` in a paragraph never closes on the
+    // `$$` that opens a display formula two lines down.
+    runs.retain(|run| {
+        !display.overlaps(block.start + run.start..block.start + run.start + run.len)
+    });
     let mut by_key: HashMap<(u8, usize), Vec<usize>> = HashMap::new();
     for (r, run) in runs.iter().enumerate() {
         by_key.entry((run.byte, run.len)).or_default().push(r);
@@ -875,6 +898,9 @@ mod tests {
             .map(|m| !literal.overlaps(m.range()))
             .collect()
     }
+
+    /// No display formula, for sweeping a block directly.
+    static NONE: Literal = Literal { ranges: Vec::new() };
 
     /// The literal slices of `md`, for reading a classification directly.
     fn literal_texts(md: &str) -> Vec<&str> {
@@ -1221,7 +1247,7 @@ mod tests {
         assert_eq!(delimiter_runs(md.as_bytes()).len(), k);
         let (mut out, mut formulas) = (Vec::new(), Vec::new());
         assert_eq!(
-            inline_literals(&md, 0..md.len(), &[], &mut out, &mut formulas).visited,
+            inline_literals(&md, 0..md.len(), &[], &NONE, &mut out, &mut formulas).visited,
             k
         );
         assert!(out.is_empty() && formulas.is_empty());
@@ -1239,7 +1265,7 @@ mod tests {
         let (mut out, mut formulas) = (Vec::new(), Vec::new());
         let inner = (2..=9).map(|n| "$".repeat(n)).collect::<Vec<_>>().join(" ");
         let md = format!("$ {inner} $ tail");
-        let swept = inline_literals(&md, 0..md.len(), &[], &mut out, &mut formulas);
+        let swept = inline_literals(&md, 0..md.len(), &[], &NONE, &mut out, &mut formulas);
         assert_eq!((swept.visited, swept.destroyed), (1, None));
         assert!(out.is_empty());
         assert_eq!(formulas, vec![0..md.len() - 5]);
@@ -1255,6 +1281,7 @@ mod tests {
             md,
             0..md.len(),
             std::slice::from_ref(&tag),
+            &NONE,
             &mut out,
             &mut formulas,
         );
@@ -1276,6 +1303,7 @@ mod tests {
             md,
             0..md.len(),
             std::slice::from_ref(&tag),
+            &NONE,
             &mut out,
             &mut formulas,
         );
@@ -1403,5 +1431,26 @@ mod tests {
         let long = chain(12);
         assert_eq!(Literal::analyse(&long).reads, 8);
         assert_eq!(refs(&long), [false]);
+    }
+
+    /// The editor reads flow before text: a line that opens a display
+    /// formula is a display formula, never the closer of a stray `$$` in
+    /// the paragraph above it — in a paragraph, a blockquote, a list item,
+    /// and with CRLF line ends.
+    #[test]
+    fn a_stray_double_dollar_does_not_close_on_the_line_that_opens_a_display_formula() {
+        assert_eq!(
+            refs("Write $$ to open display math.\n((n#^o))\n$$\nE = mc^2\n$$\n"),
+            [true]
+        );
+        assert_eq!(refs("> a $$ b\n> ((n#^o))\n> $$ c\n"), [true]);
+        assert_eq!(refs("- a $$ b\n  ((n#^o))\n  $$ c\n"), [true]);
+        assert_eq!(refs("1. a $$ b\n   ((n#^o))\n   $$ c\n"), [true]);
+        assert_eq!(refs("a $$ b\r\n((n#^o))\r\n$$ c\r\n"), [true]);
+        // The formula itself is still literal, and closes where it should.
+        assert_eq!(
+            refs("Write $$ here.\n$$\n((n#^o))\n$$\n((n#^o))\n"),
+            [false, true]
+        );
     }
 }

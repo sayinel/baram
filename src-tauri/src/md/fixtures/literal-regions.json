@@ -139,6 +139,11 @@
       "name": "a link the parser hid inside a code span a formula destroyed is a link: the dollar in its destination opens nothing",
       "markdown": "$ x ` y $ [z](u$) ((note#^b1)) $ `\n",
       "expected": "$ x ` y $ [z](u$) ((note#^b2-longer)) $ `\n"
+    },
+    {
+      "name": "a stray double dollar in a paragraph does not close on the line that opens a display formula",
+      "markdown": "Write $$ to open display math.\n((note#^b1))\n$$\nE = mc^2\n$$\n",
+      "expected": "Write $$ to open display math.\n((note#^b2-longer))\n$$\nE = mc^2\n$$\n"
     }
   ]
 }
