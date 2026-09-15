@@ -39,8 +39,11 @@
 // line breaks included (`$5 and $6` is one), left to right with code spans
 // and escapes; a line that opens with `$$` (and meta without a `$`) is a
 // display formula until a line that is `$$` and blanks, or — when none comes
-// — until its container ends. pulldown's own math stays on for structure;
-// the two rules are added on top of what it reports.
+// — until its container ends. pulldown's own math is OFF: it pairs runs
+// differently (`$a$$ b` is a formula to it and text to the editor), and a
+// formula it reads hides the tags and code spans inside from the rules
+// here. It reports plain CommonMark inline structure; the two rules above
+// are the only ones that read a `$`.
 //
 // One difference from the editor is kept deliberately: a `((…))` inside the
 // YAML front matter is prose here and literal there (see above).
@@ -48,15 +51,16 @@ use std::ops::Range;
 
 use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
 
-/// The parser options the editor's reader enables (remark-gfm, remark-math),
-/// listed explicitly so an upgrade of either side is a visible diff. YAML
-/// metadata stays OFF: pulldown would also accept a `---` block in the middle
-/// of a note and a `...` closer, and swallow lines remark reads as prose.
+/// The parser options the editor's reader enables (remark-gfm), listed
+/// explicitly so an upgrade of either side is a visible diff. YAML metadata
+/// stays OFF: pulldown would also accept a `---` block in the middle of a
+/// note and a `...` closer, and swallow lines remark reads as prose. Math
+/// stays OFF too: `inline_math` and `display_math` below are the editor's
+/// rules (remark-math), and pulldown's pairing differs from them.
 const OPTIONS: Options = Options::ENABLE_TABLES
     .union(Options::ENABLE_STRIKETHROUGH)
     .union(Options::ENABLE_TASKLISTS)
-    .union(Options::ENABLE_FOOTNOTES)
-    .union(Options::ENABLE_MATH);
+    .union(Options::ENABLE_FOOTNOTES);
 
 /// The literal byte ranges of one string: sorted, merged, non-empty.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -69,14 +73,16 @@ impl Literal {
     pub fn of(content: &str) -> Literal {
         let body_start = front_matter_end(content);
         let mut walk = collect(&content[body_start..], body_start);
-        if body_start > 0 {
-            walk.prose.push(0..body_start);
-        }
         let mut inline = walk.inline;
         for block in &walk.prose {
             inline_math(content, block.clone(), &mut inline);
         }
         display_math(content, &walk.line_starts, &mut inline);
+        // The front matter is prose (a property link is a link) but not
+        // markdown: the editor reads no formula in it.
+        if body_start > 0 {
+            walk.prose.push(0..body_start);
+        }
 
         // literal = complement(prose) ∪ inline literals
         let prose = merge(walk.prose);
@@ -338,7 +344,9 @@ fn collect(body: &str, base: usize) -> Walk {
                     at_line_start = true;
                 }
             }
-            // Inline literals inside prose.
+            // Inline literals inside prose. Math events cannot occur while
+            // `OPTIONS` leaves math off; the arms stay so the match is
+            // exhaustive when the crate is upgraded.
             Event::Code(_)
             | Event::InlineHtml(_)
             | Event::InlineMath(_)
@@ -794,5 +802,20 @@ mod tests {
             refs("\u{FEFF}---\nrefs:\n\n    - ((n#^o))\n---\n((n#^o))\n"),
             [true, true]
         );
+    }
+
+    /// The front matter is prose for links, but the editor reads no formula
+    /// in it.
+    #[test]
+    fn no_formula_is_read_inside_the_front_matter() {
+        assert_eq!(refs("---\nprice: $5 ((n#^o)) $6\n---\n"), [true]);
+    }
+
+    /// pulldown pairs runs by its own rule (`$a$$ b` is a formula to it, and
+    /// `$$ x $$$` too); the editor's rule above is the only one consulted.
+    #[test]
+    fn a_run_the_editor_leaves_unmatched_is_text_whatever_the_parser_would_pair() {
+        assert_eq!(refs("$((n#^o))$$ b\n"), [true]);
+        assert_eq!(refs("$$ ((n#^o)) $$$\n"), [true]);
     }
 }
