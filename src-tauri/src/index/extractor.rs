@@ -200,11 +200,16 @@ pub(crate) fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
     // definition is not a link — the editor's parser never reads one there,
     // and the rewriters (below) skip the same bytes, so what the index
     // counts is exactly what a rename may touch.
-    let literal = Literal::of(content);
+    // Read once, and only if a candidate turns up: a note with no `[[` or
+    // `((` at all is never parsed.
+    let mut literal: Option<Literal> = None;
 
     for line in source_lines(content) {
-        let is_prose =
-            |m: &regex::Match| !literal.overlaps(line.offset + m.start()..line.offset + m.end());
+        let mut is_prose = |m: &regex::Match| {
+            !literal
+                .get_or_insert_with(|| Literal::of(content))
+                .overlaps(line.offset + m.start()..line.offset + m.end())
+        };
 
         // §29 Wikilinks: [[target]], [[alias::target]], [[target|display]], etc.
         for cap in WIKILINK_RE.captures_iter(line.text) {
@@ -306,8 +311,10 @@ pub fn replace_wikilink_target(content: &str, old_target: &str, new_target: &str
     // Match all wikilink forms: [[target]], [[target|display]], [[target#heading]], etc.
     // Capture groups: (1) target, (2) rest — #heading, ^blockId, |display in any combo
     // issue 620: a match inside a literal region is left as it is — the index
-    // never counted it, the editor never read it.
-    let literal = Literal::of(content);
+    // never counted it, the editor never read it. The literal set is read
+    // only once a match names the old target: a vault-wide rename visits
+    // every note, and most hold no such link.
+    let mut literal: Option<Literal> = None;
     REPLACE_RE
         .replace_all(content, |caps: &regex::Captures| {
             let whole = caps.get(0).unwrap();
@@ -319,7 +326,9 @@ pub fn replace_wikilink_target(content: &str, old_target: &str, new_target: &str
             if captured_target
                 .trim()
                 .eq_ignore_ascii_case(old_target.trim())
-                && !literal.overlaps(whole.range())
+                && !literal
+                    .get_or_insert_with(|| Literal::of(content))
+                    .overlaps(whole.range())
             {
                 format!("[[{alias_prefix}{}{rest}]]", new_target)
             } else {
@@ -357,7 +366,7 @@ pub fn replace_block_id_refs_to(
     // regex matches the `((…))` inside an embed too, and every offset stays
     // an offset into the original line, so the interval check is exact
     // whatever the new ID's length.
-    let literal = Literal::of(content);
+    let mut literal: Option<Literal> = None;
     let mut out = String::with_capacity(content.len());
     for line in source_lines(content) {
         if lines.contains(&line.number) {
@@ -366,9 +375,12 @@ pub fn replace_block_id_refs_to(
                 let target = caps.get(1).map(|m| m.as_str()).unwrap_or("");
                 let id = caps.get(2).map(|m| m.as_str()).unwrap_or("");
                 let display = caps.get(3).map(|m| m.as_str()).unwrap_or("");
-                let in_prose =
-                    !literal.overlaps(line.offset + whole.start()..line.offset + whole.end());
-                if id == old_id && refers_to_target(target) && in_prose {
+                let mut in_prose = || {
+                    !literal
+                        .get_or_insert_with(|| Literal::of(content))
+                        .overlaps(line.offset + whole.start()..line.offset + whole.end())
+                };
+                if id == old_id && refers_to_target(target) && in_prose() {
                     format!("(({target}#^{new_id}{display}))")
                 } else {
                     whole.as_str().to_string()
@@ -410,8 +422,10 @@ pub fn rewrite_relative_wikilinks(
         format!("{}/", old_dir)
     };
 
-    // issue 620: a match inside a literal region is left as it is.
-    let literal = Literal::of(content);
+    // issue 620: a match inside a literal region is left as it is. The
+    // literal set is read only once a link resolves into the old
+    // directory — a namespace rename visits every note in the vault.
+    let mut literal: Option<Literal> = None;
     RELATIVE_WIKILINK_RE
         .replace_all(content, |caps: &regex::Captures| {
             let whole = caps.get(0).unwrap();
@@ -423,7 +437,9 @@ pub fn rewrite_relative_wikilinks(
 
             // Check if this resolved path points into old_dir
             if (resolved.starts_with(&old_dir_slash) || resolved == old_dir)
-                && !literal.overlaps(whole.range())
+                && !literal
+                    .get_or_insert_with(|| Literal::of(content))
+                    .overlaps(whole.range())
             {
                 // Compute the new absolute path
                 let suffix = &resolved[old_dir.len()..];
@@ -473,6 +489,12 @@ pub async fn find_unlinked_mentions(
             Err(_) => continue,
         };
 
+        // A stem the raw text does not hold cannot turn up once literal
+        // bytes are blanked: skip the parse for the notes that never
+        // mention it — nearly all of them, on every query.
+        if !stem_re.is_match(&content) {
+            continue;
+        }
         // issue 620: a stem inside code, HTML, math or an image is not a
         // mention — blank those bytes (offsets and line breaks kept) before
         // the search, as the wikilinks are blanked below.
