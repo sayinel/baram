@@ -175,7 +175,13 @@ pub fn source_lines(content: &str) -> impl Iterator<Item = SourceLine<'_>> {
 fn front_matter_end(content: &str) -> usize {
     let is_fence = |text: &str| text.trim_end_matches([' ', '\t']) == "---";
     let mut lines = source_lines(content);
-    if !lines.next().is_some_and(|first| is_fence(first.text)) {
+    // A byte order mark before the first `---` is not part of the fence. The
+    // offsets below still count its bytes, so the front matter range keeps
+    // them.
+    let first = lines
+        .next()
+        .map(|line| line.text.strip_prefix('\u{FEFF}').unwrap_or(line.text));
+    if !first.is_some_and(is_fence) {
         return 0;
     }
     lines
@@ -778,5 +784,15 @@ mod tests {
         assert_eq!(source_lines("x\n").count(), 1);
         // A bare CR is not a line break, as for `str::lines`.
         assert_eq!(source_lines("a\rb\n").next().unwrap().text, "a\rb");
+    }
+
+    /// A byte order mark before the opening `---` does not stop the front
+    /// matter from being front matter — and prose (D2).
+    #[test]
+    fn front_matter_behind_a_byte_order_mark_is_still_prose() {
+        assert_eq!(
+            refs("\u{FEFF}---\nrefs:\n\n    - ((n#^o))\n---\n((n#^o))\n"),
+            [true, true]
+        );
     }
 }

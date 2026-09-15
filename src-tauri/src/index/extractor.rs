@@ -1007,6 +1007,18 @@ mod tests {
         );
     }
 
+    #[test]
+    fn front_matter_behind_a_byte_order_mark_is_indexed_and_rewritten() {
+        // Without the mark the four-space YAML line would be an indented code
+        // block to the parser and the link would go stale on a rename.
+        let fm = "\u{FEFF}---\nrefs:\n\n    - \"[[old]]\"\n---\n";
+        assert_eq!(indexed(fm), [("old".to_string(), 4)]);
+        assert_eq!(
+            replace_wikilink_target(fm, "old", "new-longer"),
+            "\u{FEFF}---\nrefs:\n\n    - \"[[new-longer]]\"\n---\n"
+        );
+    }
+
     #[tokio::test]
     async fn an_unlinked_mention_inside_code_is_not_a_mention() {
         let dir = tempfile::tempdir().unwrap();
