@@ -89,19 +89,34 @@ pub struct Literal {
     ranges: Vec<Range<usize>>,
 }
 
+/// `Literal::analyse`: the literal set and the two counts the tests pin.
+struct Analysis {
+    literal: Literal,
+    // The two counts are read by the tests only.
+    #[cfg_attr(not(test), allow(dead_code))]
+    reads: usize,
+    #[cfg_attr(not(test), allow(dead_code))]
+    confirmed: usize,
+}
+
 impl Literal {
     /// Read `content`. The ranges index into `content` itself.
     pub fn of(content: &str) -> Literal {
-        Literal::analyse(content).0
+        Literal::analyse(content).literal
     }
 
-    /// `of`, and how many times the body was handed to the parser: once
-    /// for nearly every note; once more for every read in which a formula
-    /// the sweep read ran into a construct the parser had formed — the
-    /// formulas up to that point are confirmed and filled in for the next
-    /// read, so each read confirms more (bounded, in case).
-    fn analyse(content: &str) -> (Literal, usize) {
-        const READS: usize = 6;
+    /// `of`, with what the tests pin: how many times the body was handed
+    /// to the parser — once for nearly every note, once more for every read
+    /// in which a formula ran into a construct the parser had formed — and
+    /// how many formulas were confirmed and filled in along the way. Each
+    /// read confirms at least one more formula (the one that ran into the
+    /// construct was not filled in, or it could not have), so the reads end;
+    /// they are capped all the same, and a read that confirmed nothing new
+    /// or hit the cap while a block still had a destroyed construct leaves
+    /// that block literal from the anchor on — the parser's view of it past
+    /// that point is known to be wrong, and touching nothing there is safe.
+    fn analyse(content: &str) -> Analysis {
+        const READS: usize = 8;
         let body_start = front_matter_end(content);
         let mut source = String::new();
         let mut confirmed: Vec<Range<usize>> = Vec::new();
@@ -118,21 +133,29 @@ impl Literal {
             atoms.sort_by_key(|atom| atom.range.start);
             let mut inline = walk.inline.clone();
             let mut formulas = Vec::new();
-            let mut destroyed = false;
+            // The blocks a construct was destroyed in, with the anchor: the
+            // block's formulas that start before it are confirmed.
+            let mut unsettled: Vec<(Range<usize>, usize)> = Vec::new();
+            let known = confirmed.len();
             for block in &walk.prose {
+                let first = formulas.len();
                 let swept =
                     inline_literals(content, block.clone(), &atoms, &mut inline, &mut formulas);
                 if let Some(at) = swept.destroyed {
-                    destroyed = true;
-                    confirmed.extend(formulas.iter().filter(|f| f.start < at).cloned());
+                    confirmed.extend(formulas[first..].iter().filter(|f| f.start < at).cloned());
+                    unsettled.push((block.clone(), at));
                 }
-            }
-            if !destroyed || reads == READS {
-                inline.extend(formulas);
-                break (walk, inline);
             }
             confirmed.sort_by_key(|f| f.start);
             confirmed.dedup();
+            inline.extend(formulas);
+            if unsettled.is_empty() {
+                break (walk, inline);
+            }
+            if reads == READS || confirmed.len() == known {
+                inline.extend(unsettled.into_iter().map(|(block, at)| at..block.end));
+                break (walk, inline);
+            }
             source = fill(content, &confirmed);
         };
         display_math(content, &walk.line_starts, &mut inline);
@@ -156,12 +179,13 @@ impl Literal {
             ranges.push(cursor..content.len());
         }
         ranges.extend(inline);
-        (
-            Literal {
+        Analysis {
+            literal: Literal {
                 ranges: merge(ranges),
             },
             reads,
-        )
+            confirmed: confirmed.len(),
+        }
     }
 
     /// Does `range` share at least one byte with a literal range?
@@ -1301,16 +1325,22 @@ mod tests {
     /// formed; then once more per such read. `fill` keeps length and breaks.
     #[test]
     fn the_body_is_read_once_unless_a_formula_destroys_what_the_parser_formed() {
-        assert_eq!(Literal::analyse("plain `code` <b>x</b> ((n#^o))\n").1, 1);
-        assert_eq!(Literal::analyse("$a$ `b` <i>$c$</i> ((n#^o))\n").1, 1);
         assert_eq!(
-            Literal::analyse("$ x ` y $ <i title=\"((n#^o))\"> `\n").1,
+            Literal::analyse("plain `code` <b>x</b> ((n#^o))\n").reads,
+            1
+        );
+        assert_eq!(Literal::analyse("$a$ `b` <i>$c$</i> ((n#^o))\n").reads, 1);
+        assert_eq!(
+            Literal::analyse("$ x ` y $ <i title=\"((n#^o))\"> `\n").reads,
             2
         );
-        assert_eq!(Literal::analyse("$ x ` y $ [z](u$) ((n#^o)) $ `\n").1, 2);
+        assert_eq!(
+            Literal::analyse("$ x ` y $ [z](u$) ((n#^o)) $ `\n").reads,
+            2
+        );
         // Two destructions in a row take a third read.
         assert_eq!(
-            Literal::analyse("$ x ` y $ [z](u$ `) $ w $ <i title=\"((n#^o))\"> `\n").1,
+            Literal::analyse("$ x ` y $ [z](u$ `) $ w $ <i title=\"((n#^o))\"> `\n").reads,
             3
         );
         let md = "a $b\r\nc$ d 한\n";
@@ -1326,5 +1356,42 @@ mod tests {
     fn a_formula_that_runs_over_a_links_opening_bracket_destroys_the_link() {
         assert_eq!(refs("$ [a $ b](u$) ((n#^o)) $\n"), [false]);
         assert_eq!(refs("[a $b$ c](u$) ((n#^o)) $\n"), [true]);
+    }
+
+    /// Confirming costs one range per formula, whatever the number of blocks
+    /// a read has seen before — a note of many paragraphs that each destroy
+    /// a code span is two linear reads, not a quadratic list.
+    #[test]
+    fn confirming_costs_one_range_per_formula_not_per_block_seen_before() {
+        let md = "$ x ` y $ z `\n\n".repeat(2_000);
+        let a = Literal::analyse(&md);
+        assert_eq!((a.reads, a.confirmed), (2, 2_000));
+    }
+
+    /// Code spans nested by backtick length, each hiding the next: a read
+    /// surfaces one level. A short chain resolves; one past the cap ends
+    /// with the block literal from the anchor on, so the tag's attribute is
+    /// left alone either way.
+    #[test]
+    fn a_chain_of_hidden_code_spans_resolves_read_by_read_or_ends_safe() {
+        fn chain(levels: usize) -> String {
+            let mut md = String::new();
+            for k in 1..=levels {
+                md.push_str(&format!("$ a {} b $ ", "`".repeat(k)));
+            }
+            md.push_str("<i title=\"((n#^o))\"> ");
+            for k in (1..=levels).rev() {
+                md.push_str(&"`".repeat(k));
+                md.push(' ');
+            }
+            md.push('\n');
+            md
+        }
+        let short = chain(6);
+        assert_eq!(Literal::analyse(&short).reads, 7);
+        assert_eq!(refs(&short), [false]);
+        let long = chain(12);
+        assert_eq!(Literal::analyse(&long).reads, 8);
+        assert_eq!(refs(&long), [false]);
     }
 }
