@@ -986,8 +986,9 @@ fn fill(content: &str, ranges: &[Range<usize>]) -> String {
 /// reads: a `www.`, `http://` or `https://` (any case) at the start of the
 /// text or after a blank, `*`, `_`, `~` or `(`; then a domain — any run of
 /// bytes that are not blanks, `<` or ASCII punctuation other than `-`, `.`
-/// and `_` (a non-ASCII letter counts, no period is required, `localhost`
-/// and `1.2.3.4` pass) that after `://` does not begin with `-` or `.` and
+/// and `_` (a non-ASCII character counts, no period is required,
+/// `localhost` and `1.2.3.4` pass) whose first character is a letter or a
+/// digit (so not `-`, `.`, `_` or a punctuation mark such as `。`) and that
 /// has no `_` in its last two `.`-segments; then anything up to a blank or
 /// `<`. Trailing `?!.,:*_~` come off, so does an unbalanced `)`, and a
 /// `&name;` entity. An address is `[A-Za-z0-9._+-]+@` and such a domain
@@ -1040,12 +1041,15 @@ fn autolink_literals(text: &str, base: usize) -> Vec<Range<usize>> {
                     .take_while(|b| domain_byte(b))
                     .count();
             let dom = &bytes[dom_start..dom_end];
-            // For `www.` the domain begins with the `w`; after `://` it must
-            // not begin with `-` or `.`.
-            if !dom.is_empty()
-                && !(skip > 0 && matches!(dom[0], b'-' | b'.'))
-                && underscores_ok(dom)
-            {
+            // The first character must be a letter or a digit — `-`, `.`,
+            // `_` and any punctuation mark are refused there, and only
+            // there (`a。b.test` passes). `dom_start` follows an ASCII
+            // prefix, so it is a character boundary.
+            let starts_well = text[dom_start..]
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_alphanumeric());
+            if !dom.is_empty() && starts_well && underscores_ok(dom) {
                 // Path: up to a blank or `<`.
                 let mut end = dom_end
                     + bytes[dom_end..]
@@ -1772,13 +1776,16 @@ mod tests {
             "https://a/$ ((n#^o)) $\n",
             "https://a_b.c.test/$ ((n#^o)) $\n",
             "https://ä.test/$ ((n#^o)) $\n",
+            "https://１.test/$ ((n#^o)) $\n",
+            "https://a。b.test/$ ((n#^o)) $\n",
             "www.-a.test/$ ((n#^o)) $\n",
             "https://a.test$ ((n#^o)) $\n",
         ] {
             assert_eq!(refs(md), [true], "{md:?}");
         }
         // Not a link — no boundary, an underscore in the last two segments,
-        // a domain that begins with `-` or `.` — so the `$` opens a formula.
+        // a domain that begins with `-`, `.`, `_` or a punctuation mark — so
+        // the `$` opens a formula.
         // An address ends before the `$`, whatever `-` its parts begin or
         // end with; a `<` ends a URL. Inside a link's text the editor reads
         // no bare URL.
@@ -1788,6 +1795,10 @@ mod tests {
             "https://a.b_c.test/$ ((n#^o)) $\n",
             "https://-a.test/$ ((n#^o)) $\n",
             "https://.a.test/$ ((n#^o)) $\n",
+            "https://_..a/$ ((n#^o)) $\n",
+            "https://_a.test/$ ((n#^o)) $\n",
+            "https://。/$ ((n#^o)) $\n",
+            "https://→.test/$ ((n#^o)) $\n",
             "a@b.test$ ((n#^o)) $\n",
             "a.b+c@d-e.test$ ((n#^o)) $\n",
             "a-@b.test$ ((n#^o)) $\n",
