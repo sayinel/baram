@@ -149,6 +149,11 @@
       "name": "a leading byte order mark does not hide the fence on the first line",
       "markdown": "﻿```\n((note#^b1))\n```\n((note#^b1))\n",
       "expected": "﻿```\n((note#^b1))\n```\n((note#^b2-longer))\n"
+    },
+    {
+      "name": "a display formula whose first content line is a setext underline is a formula",
+      "markdown": "$$\n===\n((note#^b1))\n$$\n((note#^b1))\n",
+      "expected": "$$\n===\n((note#^b1))\n$$\n((note#^b2-longer))\n"
     }
   ]
 }

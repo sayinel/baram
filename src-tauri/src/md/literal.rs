@@ -324,9 +324,18 @@ fn front_matter_end(content: &str) -> usize {
 /// item remembers how far its text has been accounted for; a container
 /// remembers where it ends, which is where an unclosed display formula ends.
 enum Frame {
-    Item { cursor: usize, end: usize },
-    Container { end: usize },
+    Item {
+        cursor: usize,
+        end: usize,
+    },
+    Container {
+        end: usize,
+    },
     Paragraph,
+    /// A table cell: prose, and a place a display formula may open only
+    /// when the cell's text begins the line — `$$` under a `|---|` row is
+    /// a formula to the editor, `| $$ |` is a cell.
+    Cell,
     Other,
 }
 
@@ -423,6 +432,7 @@ struct Walk {
 /// Walk the body once (`base` is the body's offset in the note).
 fn collect(body: &str, base: usize) -> Walk {
     let limit = base + body.len();
+    let bytes = body.as_bytes();
     let mut walk = Walk {
         prose: Vec::new(),
         inline: Vec::new(),
@@ -453,8 +463,16 @@ fn collect(body: &str, base: usize) -> Walk {
                     Tag::BlockQuote(_)
                     | Tag::FootnoteDefinition(_)
                     | Tag::DefinitionListDefinition => Some(Frame::Container { end: range.end }),
-                    Tag::Heading { .. }
-                    | Tag::CodeBlock(_)
+                    // A setext heading's text lines are lines a display
+                    // formula may open on (`$$` over `===` is a formula to
+                    // the editor); an ATX heading's `#` comes first.
+                    Tag::Heading { .. } => Some(if bytes[range.start - base] == b'#' {
+                        Frame::Other
+                    } else {
+                        Frame::Paragraph
+                    }),
+                    Tag::TableCell => Some(Frame::Cell),
+                    Tag::CodeBlock(_)
                     | Tag::HtmlBlock
                     | Tag::List(_)
                     | Tag::DefinitionList
@@ -462,7 +480,6 @@ fn collect(body: &str, base: usize) -> Walk {
                     | Tag::Table(_)
                     | Tag::TableHead
                     | Tag::TableRow
-                    | Tag::TableCell
                     | Tag::MetadataBlock(_) => Some(Frame::Other),
                     Tag::Emphasis
                     | Tag::Strong
@@ -515,7 +532,14 @@ fn collect(body: &str, base: usize) -> Walk {
                         at_line_start = true;
                     }
                     None => {
-                        note_line_start(&stack, &mut at_line_start, range.start, limit, &mut walk);
+                        note_line_start(
+                            &stack,
+                            &mut at_line_start,
+                            range.start,
+                            (bytes, base),
+                            limit,
+                            &mut walk,
+                        );
                     }
                 }
             }
@@ -562,7 +586,14 @@ fn collect(body: &str, base: usize) -> Walk {
             // An inline HTML tag and a code span are atoms: literal if the
             // sweep reaches them intact (see `Atom`).
             Event::InlineHtml(_) => {
-                note_line_start(&stack, &mut at_line_start, range.start, limit, &mut walk);
+                note_line_start(
+                    &stack,
+                    &mut at_line_start,
+                    range.start,
+                    (bytes, base),
+                    limit,
+                    &mut walk,
+                );
                 walk.atoms.push(Atom {
                     start: range.start,
                     range,
@@ -570,7 +601,14 @@ fn collect(body: &str, base: usize) -> Walk {
                 });
             }
             Event::Code(_) => {
-                note_line_start(&stack, &mut at_line_start, range.start, limit, &mut walk);
+                note_line_start(
+                    &stack,
+                    &mut at_line_start,
+                    range.start,
+                    (bytes, base),
+                    limit,
+                    &mut walk,
+                );
                 walk.atoms.push(Atom {
                     start: range.start,
                     range,
@@ -580,7 +618,14 @@ fn collect(body: &str, base: usize) -> Walk {
             // Math events cannot occur while `OPTIONS` leaves math off; the
             // arm stays so the match is exhaustive when the crate is upgraded.
             Event::InlineMath(_) | Event::DisplayMath(_) => {
-                note_line_start(&stack, &mut at_line_start, range.start, limit, &mut walk);
+                note_line_start(
+                    &stack,
+                    &mut at_line_start,
+                    range.start,
+                    (bytes, base),
+                    limit,
+                    &mut walk,
+                );
                 walk.inline.push(range);
             }
             // A thematic break is a block with no Start/End: it ends an
@@ -591,7 +636,14 @@ fn collect(body: &str, base: usize) -> Walk {
             }
             Event::SoftBreak | Event::HardBreak => at_line_start = true,
             Event::Text(_) | Event::FootnoteReference(_) | Event::TaskListMarker(_) => {
-                note_line_start(&stack, &mut at_line_start, range.start, limit, &mut walk);
+                note_line_start(
+                    &stack,
+                    &mut at_line_start,
+                    range.start,
+                    (bytes, base),
+                    limit,
+                    &mut walk,
+                );
             }
             // Lines of an HTML block: not prose, and never where a display
             // formula opens.
@@ -601,12 +653,15 @@ fn collect(body: &str, base: usize) -> Walk {
     walk
 }
 
-/// The first inline event of a line, inside a paragraph or a list item's
-/// own text, marks where that line's content starts.
+/// The first inline event of a line, inside a paragraph, a setext heading,
+/// a list item's own text or a table cell that begins its line, marks where
+/// that line's content starts. `source` is the body the parser read and its
+/// offset in the note, for looking at the bytes before a cell.
 fn note_line_start(
     stack: &[Frame],
     at_line_start: &mut bool,
     start: usize,
+    source: (&[u8], usize),
     limit: usize,
     walk: &mut Walk,
 ) {
@@ -614,7 +669,12 @@ fn note_line_start(
         return;
     }
     *at_line_start = false;
-    if !matches!(stack.last(), Some(Frame::Paragraph | Frame::Item { .. })) {
+    let prose_line = match stack.last() {
+        Some(Frame::Paragraph | Frame::Item { .. }) => true,
+        Some(Frame::Cell) => begins_line(source.0, start - source.1),
+        Some(Frame::Container { .. } | Frame::Other) | None => false,
+    };
+    if !prose_line {
         return;
     }
     let container_end = stack
@@ -622,10 +682,20 @@ fn note_line_start(
         .rev()
         .find_map(|frame| match frame {
             Frame::Item { end, .. } | Frame::Container { end } => Some(*end),
-            Frame::Paragraph | Frame::Other => None,
+            Frame::Paragraph | Frame::Cell | Frame::Other => None,
         })
         .unwrap_or(limit);
     walk.line_starts.push((start, container_end));
+}
+
+/// Does the text at `at` begin its line, allowing only blanks and
+/// blockquote markers before it? A cell after a `|` does not.
+fn begins_line(bytes: &[u8], at: usize) -> bool {
+    bytes[..at]
+        .iter()
+        .rev()
+        .find(|&&b| !matches!(b, b' ' | b'\t' | b'>'))
+        .is_none_or(|&b| b == b'\n')
 }
 
 /// A child block that starts directly under a list item ends the item's
@@ -1476,5 +1546,18 @@ mod tests {
         assert_eq!(refs("\u{FEFF}    ((n#^o))\n"), [false]);
         assert_eq!(refs("\u{FEFF}> ```\n> ((n#^o))\n> ```\n"), [false]);
         assert_eq!(refs("\u{FEFF}\u{FEFF}```\n((n#^o))\n```\n"), [true]);
+    }
+
+    /// The parser reads `$$` over `===`, `---` or `|---|` as a setext
+    /// heading or a table; the editor reads a display formula. Its opening
+    /// line is a line start here too. An ATX heading and a cell after a `|`
+    /// are not.
+    #[test]
+    fn a_display_formula_opens_on_a_line_the_parser_read_as_a_heading_or_a_table() {
+        assert_eq!(refs("$$\n===\n((n#^o))\n$$\n"), [false]);
+        assert_eq!(refs("$$\n---\n((n#^o))\n$$\n"), [false]);
+        assert_eq!(refs("$$\n|---|\n((n#^o))\n$$\n"), [false]);
+        assert_eq!(refs("# $$\n((n#^o))\n$$\n"), [true]);
+        assert_eq!(refs("| a |\n|---|\n| $$ |\n((n#^o))\n"), [true]);
     }
 }
