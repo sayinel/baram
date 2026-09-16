@@ -33,11 +33,6 @@ static BLOCK_EMBED_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\{\{embed \(\(([^)#|]*?)#\^([a-zA-Z0-9][\w-]*)\)\)\}\}").unwrap()
 });
 
-// Inline #tag regex: #tag, #parent/child, #한국어태그
-static TAG_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?:^|[\s\(])#([\w\p{Script=Hangul}]+(?:/[\w\p{Script=Hangul}]+)*)").unwrap()
-});
-
 // Frontmatter tags: tags: [tag1, tag2]
 static FM_TAGS_INLINE_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)^tags\s*:\s*\[([^\]]*)\]").unwrap());
@@ -101,27 +96,6 @@ pub(crate) fn file_stem_from_path(path: &str) -> String {
         .unwrap_or_default()
 }
 
-/// Strip fenced code blocks from content (for tag extraction)
-fn strip_code_blocks_for_tags(content: &str) -> String {
-    let mut result = String::with_capacity(content.len());
-    let mut in_fence = false;
-    for line in content.lines() {
-        let trimmed = line.trim_start();
-        if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
-            in_fence = !in_fence;
-            result.push('\n');
-            continue;
-        }
-        if in_fence {
-            result.push('\n');
-        } else {
-            result.push_str(line);
-            result.push('\n');
-        }
-    }
-    result
-}
-
 /// Extract all tags (#tag, frontmatter tags) from file content, deduplicated.
 pub(crate) fn extract_file_tags(content: &str) -> Vec<String> {
     let mut tags = std::collections::HashSet::new();
@@ -182,13 +156,13 @@ pub(crate) fn extract_file_tags(content: &str) -> Vec<String> {
         }
     }
 
-    // Extract inline #tags (outside code blocks)
-    let clean_body = strip_code_blocks_for_tags(&body);
-    for cap in TAG_RE.captures_iter(&clean_body) {
-        if let Some(m) = cap.get(1) {
-            tags.insert(m.as_str().to_string());
-        }
-    }
+    // Extract inline #tags (outside code blocks). issue 666: the tag index's
+    // reader (`get_vault_tags`) and writer (`rename_tag`) share these two
+    // rules — the loose fence rule and the tag alphabet — so the graph's tag
+    // node is the tag the panel names, `#deep-work` included. A third copy
+    // here once read `#deep-work` as `deep`.
+    let clean_body = crate::md::strip_code_blocks(&body);
+    tags.extend(crate::md::extract_inline_tags(&clean_body));
 
     tags.into_iter().collect()
 }
@@ -1138,6 +1112,21 @@ mod tests {
             rewrite_relative_wikilinks(content, "/v/a/note.md", "/v/old", "/v/new"),
             "[[../new/x]] `[[../old/x]]`\n```\n[[../old/x]]\n```\n"
         );
+    }
+
+    /// issue 666 — the graph's tags are the tag index's tags: the same loose
+    /// fence rule (a tilde fence closes a backtick fence) and the same
+    /// alphabet (a hyphen is a tag character).
+    #[test]
+    fn the_graphs_tag_scanner_shares_the_tag_indexs_rules() {
+        let body = "```\n#inside\n~~~\n#deep-work outside #한글\n";
+        let mut tags = extract_file_tags(body);
+        tags.sort();
+        assert_eq!(tags, vec!["deep-work", "한글"]);
+        // What the shared reader says of the same body, fences stripped.
+        let mut shared = crate::md::extract_inline_tags(&crate::md::strip_code_blocks(body));
+        shared.sort();
+        assert_eq!(tags, shared);
     }
 
     /// issue 620 — the cross-language contract: the editor's text path
