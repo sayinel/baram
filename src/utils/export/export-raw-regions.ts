@@ -113,16 +113,44 @@ export function rawRegions(
     const at = firstAtOrAfter(own.get(key), from);
     return at === -1 ? -1 : at + length;
   };
-  // The text's brace pairs, matched in one pass the first time a TeX
-  // command asks: the index just past the brace that closes the argument
-  // of the command at `at`, or -1 when nothing closes it — pandoc reads the
-  // command as text then, and so does the scan. A lookup, so a thousand
-  // commands nothing closes cost one pass, not a scan to the end each.
-  let braces: null | ReadonlyMap<number, number> = null;
-  const argumentEnd = (at: number): number => {
-    braces ??= braceMatches(value);
-    const close = braces.get(value.indexOf("{", at));
-    return close === undefined ? -1 : close + 1;
+  // The text's argument groups, matched in one pass the first time a TeX
+  // command asks: the index just past the last group of the arguments of
+  // the command at `at`, as pandoc reads a raw TeX command — `[…]` groups
+  // before the first `{…}` group and `{…}` groups after it, blanks and line
+  // breaks between them allowed (`\foo[o] {x}`, `\href{u} {x}`) — or -1
+  // when the first group nothing closes, or an unescaped `\begin{` lies
+  // inside: pandoc reads the command as text then, the environment opens,
+  // and so does the scan. `begin` is the scan's next `\begin{` behind the
+  // command. A lookup, so a thousand commands nothing closes cost one pass,
+  // not a scan to the end each.
+  let groups: null | ReadonlyMap<number, number> = null;
+  const argumentsEnd = (at: number, begin: number): number => {
+    groups ??= groupMatches(value);
+    let k = at + 1;
+    while (k < value.length && /[A-Za-z]/.test(value[k])) k++;
+    let end = -1;
+    let braced = false;
+    for (;;) {
+      let j = k;
+      while (j < value.length && /\s/.test(value[j])) j++;
+      const c = value[j];
+      if (c !== "{" && (c !== "[" || braced)) break;
+      const close = groups.get(j);
+      if (close === undefined) break;
+      braced ||= c === "{";
+      k = close + 1;
+      end = k;
+    }
+    if (end === -1) return -1;
+    let environment = begin;
+    while (
+      environment !== -1 &&
+      environment < end &&
+      escaped(value, environment)
+    ) {
+      environment = value.indexOf("\\begin{", environment + 1);
+    }
+    return environment !== -1 && environment < end ? -1 : end;
   };
   let i = 0;
   // The next `<`, `\begin{` and `\command{` at or after `i`, found once each
@@ -136,14 +164,21 @@ export function rawRegions(
     if (begin !== -1 && begin < i) begin = value.indexOf("\\begin{", i);
     if (command !== -1 && command < i) command = texCommandAt(value, i);
     if (lt === -1 && begin === -1) break;
-    // A raw TeX command's argument — `\texttt{<script>}` — is one raw TeX
-    // inline to pandoc: the `<` and `\begin{` inside its braces open
-    // nothing, and the scan resumes behind the closing brace. `\begin{`
-    // itself is not such a command, and an escaped backslash is text.
+    // A raw TeX command's arguments — `\texttt{<script>}`,
+    // `\href{u}{<script>}` — are one raw TeX inline to pandoc: the `<`
+    // inside them opens nothing, and the scan resumes behind the last
+    // group. The span is closed to `mayHoldImage`, which reads no image in
+    // it. `\begin{` itself is not such a command, and an escaped backslash
+    // is text.
     const next = lt === -1 ? begin : begin === -1 ? lt : Math.min(lt, begin);
     if (command !== -1 && command < next) {
-      const close = argumentEnd(command);
-      i = close === -1 ? command + 1 : close;
+      const close = argumentsEnd(command, begin);
+      if (close === -1) {
+        i = command + 1;
+        continue;
+      }
+      closed.push({ end: close, start: command });
+      i = close;
       continue;
     }
     if (begin !== -1 && (lt === -1 || begin < lt)) {
@@ -268,12 +303,13 @@ function escaped(value: string, at: number): boolean {
   return slashes % 2 === 1;
 }
 
-/** A raw TeX command with a braced argument, `\word{`. */
-const TEX_COMMAND = /\\([A-Za-z]+)\{/g;
+/** A raw TeX command with an argument, `\word{` or `\word[` — blanks
+ *  between the name and the group allowed, as pandoc allows them. */
+const TEX_COMMAND = /\\([A-Za-z]+)\s*[{[]/g;
 
-/** The start of the next `\word{` at or after `from`, or -1. `\begin{` is
- *  the environment opener the scan reads itself, not a command, and an
- *  escaped backslash is text. */
+/** The start of the next `\word{` at or after `from`, or -1. `\begin{`
+ *  and `\end{` are the environment's opener and closer, which the scan
+ *  reads itself, not commands, and an escaped backslash is text. */
 function texCommandAt(value: string, from: number): number {
   TEX_COMMAND.lastIndex = from;
   for (
@@ -281,23 +317,49 @@ function texCommandAt(value: string, from: number): number {
     hit !== null;
     hit = TEX_COMMAND.exec(value)
   ) {
-    if (hit[1] !== "begin" && !escaped(value, hit.index)) return hit.index;
+    if (hit[1] !== "begin" && hit[1] !== "end" && !escaped(value, hit.index)) {
+      return hit.index;
+    }
     TEX_COMMAND.lastIndex = hit.index + 1;
   }
   return -1;
 }
 
-/** Every `{` of `value` that a `}` closes, braces nesting, mapped to the
- *  index of that `}` — one pass, so that the argument of each TeX command
- *  is a lookup. An unmatched `{` is absent. */
-function braceMatches(value: string): ReadonlyMap<number, number> {
+/** Every `{` and `[` of `value` that a `}` or `]` closes, mapped to the
+ *  index of that closer — one pass, so that the arguments of each TeX
+ *  command are a lookup. Braces nest; a bracket group skips the braced
+ *  groups inside it, so a `]` in one does not close it, as pandoc's TeX
+ *  reader skips them; an escaped delimiter is text. An unmatched opener is
+ *  absent. */
+function groupMatches(value: string): ReadonlyMap<number, number> {
   const matches = new Map<number, number>();
   const open: number[] = [];
+  let slashes = 0;
   for (let k = 0; k < value.length; k++) {
-    if (value[k] === "{") open.push(k);
-    else if (value[k] === "}") {
-      const start = open.pop();
-      if (start !== undefined) matches.set(start, k);
+    const c = value[k];
+    if (c === "\\") {
+      slashes++;
+      continue;
+    }
+    const escapedHere = slashes % 2 === 1;
+    slashes = 0;
+    if (escapedHere) continue;
+    if (c === "{" || c === "[") {
+      open.push(k);
+    } else if (c === "}") {
+      // The nearest brace closes; a bracket left open inside it is text.
+      for (let start = open.pop(); start !== undefined; start = open.pop()) {
+        if (value[start] === "{") {
+          matches.set(start, k);
+          break;
+        }
+      }
+    } else if (c === "]") {
+      const top = open[open.length - 1];
+      if (top !== undefined && value[top] === "[") {
+        open.pop();
+        matches.set(top, k);
+      }
     }
   }
   return matches;

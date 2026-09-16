@@ -122,16 +122,52 @@ describe("rawRegions — the region a text opens and does not close", () => {
     );
   });
 
-  it("reads an opener inside a raw TeX command's argument as text", () => {
-    // pandoc 3.11: `\texttt{<script>}` is one raw TeX inline; the `<script>`
-    // in it opens nothing. Braces nest, an escaped backslash makes the
-    // command text, and an argument nothing closes is text too.
+  it("reads an opener inside a raw TeX command's arguments as text", () => {
+    // pandoc 3.11: a raw TeX command with every `{…}` and `[…]` group after
+    // it, blanks and line breaks between them allowed, is one raw TeX
+    // inline; an opener inside opens nothing. Braces nest, an escaped
+    // backslash makes the command text, an argument nothing closes is
+    // text, and a group holding `\begin{` is no argument — pandoc reads
+    // the command as text then, and the environment opens.
     expect(openedBy("\\texttt{<script>}")).toBeNull();
     expect(openedBy("\\texttt{a{<script>}b}")).toBeNull();
-    expect(openedBy("\\texttt{\\begin{verbatim}}")).toBeNull();
+    expect(openedBy("\\href{http://x}{<script>}")).toBeNull();
+    expect(openedBy("\\multicolumn{1}{c}{<script>}")).toBeNull();
+    expect(openedBy("\\href{u} {<script>}")).toBeNull();
+    expect(openedBy("\\href{u}\n{<script>}")).toBeNull();
+    expect(openedBy("\\texttt {<script>}")).toBeNull();
+    expect(openedBy("\\foo[<script>]{x}")).toBeNull();
+    expect(openedBy("\\includegraphics[width=1]{<script>}")).toBeNull();
+    expect(openedBy("\\foo[a] [b] {<script>}")).toBeNull();
+    expect(openedBy("\\foo[a]\n{<script>}")).toBeNull();
+    // A bracket group skips the braced groups inside it, and an escaped
+    // delimiter is text — pandoc's TeX reader reads both so.
+    expect(openedBy("\\foo[{x]}]{<script>}")).toBeNull();
+    expect(openedBy("\\foo[a\\]<script>]{x}")).toBeNull();
+    expect(openedBy("\\texttt{a\\}<script>}")).toBeNull();
+    // An escaped `\begin{` in the argument is text, and the argument holds.
+    expect(openedBy("\\texttt{\\\\begin{verbatim}<script>}")).toBeNull();
+    // A bracket group after a brace group is no argument: pandoc reads
+    // `\foo{x}` and then markdown.
+    expect(openedBy("\\foo{x}[<script>]")?.test("</script>")).toBe(true);
+    expect(openedBy("\\foo{x} [<script>]")?.test("</script>")).toBe(true);
+    expect(rawRegions("\\foo{x}[<script>]").closed).toEqual([
+      { end: 7, start: 0 },
+    ]);
+    expect(
+      openedBy("\\texttt{\\begin{verbatim}}")?.test("\\end{verbatim}"),
+    ).toBe(true);
+    expect(
+      openedBy("\\texttt{<script>\\begin{verbatim}}")?.test("</script>"),
+    ).toBe(true);
     expect(openedBy("\\texttt{x} <script>")?.test("</script>")).toBe(true);
     expect(openedBy("\\\\texttt{<script>}")?.test("</script>")).toBe(true);
     expect(openedBy("\\texttt{<script>")?.test("</script>")).toBe(true);
+    // The arguments are a closed span, so `mayHoldImage` reads no image in
+    // a comment inside them.
+    expect(rawRegions("\\texttt{<!-- <img src=a.png> -->}").closed).toEqual([
+      { end: 33, start: 0 },
+    ]);
   });
 
   it("matches the braces of a text once, so commands nothing closes do not each scan to the end", () => {
@@ -142,6 +178,25 @@ describe("rawRegions — the region a text opens and does not close", () => {
     expect(openedBy(value)?.test("\\end{x}")).toBe(true);
     // And a closed argument after many open ones is still one argument.
     expect(openedBy(`${"\\a{".repeat(50)}\\b{<script>} </script>`)).toBeNull();
+  });
+
+  it("reads thousands of closed or bracket-only commands without a search per command", () => {
+    // Every command used to search the rest of the text for a `\begin{`,
+    // and every `\word[` for its `]`: ten thousand of either, ten thousand
+    // scans to the end. The groups are matched in one pass and the scan's
+    // own next `\begin{` is reused, pinned by the searches run.
+    const indexOf = vi.spyOn(String.prototype, "indexOf");
+    try {
+      expect(
+        openedBy(`${"\\word{x} ".repeat(10_000)}<script>`)?.test("</script>"),
+      ).toBe(true);
+      expect(
+        openedBy(`${"\\word[".repeat(10_000)}<script>`)?.test("</script>"),
+      ).toBe(true);
+      expect(indexOf.mock.calls.length).toBeLessThan(20);
+    } finally {
+      indexOf.mockRestore();
+    }
   });
 });
 

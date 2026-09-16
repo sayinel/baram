@@ -341,6 +341,45 @@ describe("stageMarkdownImages on html nodes it does not read", () => {
       });
     });
 
+    it("reads every argument of a raw TeX command as text, in a block it does not read too", () => {
+      // pandoc 3.11: `\href{u}{<script>}` is one raw TeX inline, its second
+      // argument included, and so is `\texttt {<script>}` with a blank
+      // before the brace: the image after the block is visible.
+      for (const command of [
+        "\\href{http://e}{<script>}",
+        "\\frac{a}{<script>}",
+        "\\texttt {<script>}",
+        "\\foo[{x]}]{<script>}",
+        "\\texttt{\\\\begin{verbatim}<script>}",
+      ]) {
+        const md = `<div>\n${command}\n</div>\n\n<img src="img/a.png">\n\n</script>\n`;
+        expect(stageMarkdownImages(md, SAVED), md).toMatchObject({
+          images: [{ name: "image-0.png", source: "img/a.png" }],
+          unsupportedHtml: 0,
+        });
+      }
+      // A comment inside the arguments is raw TeX to pandoc: no image in
+      // it, and no notice about the block.
+      for (const command of [
+        '\\texttt{<!-- <img src="img/a.png"> -->}',
+        '\\frac{<!-- <img src="img/a.png"> -->}{2}',
+      ]) {
+        const md = `<div>\n${command}\n</div>\n`;
+        expect(stageMarkdownImages(md, SAVED), md).toMatchObject({
+          images: [],
+          unsupportedHtml: 0,
+        });
+      }
+      // A `\begin{` inside the argument is no argument: the command is
+      // text and the environment opens, hiding the image until `\end{}`.
+      const md =
+        '<div>\n\\texttt{\\begin{verbatim}}\n</div>\n\n<img src="img/a.png">\n\n\\end{verbatim}\n';
+      expect(stageMarkdownImages(md, SAVED)).toMatchObject({
+        images: [],
+        unsupportedHtml: 0,
+      });
+    });
+
     it("stages nothing for the images a reopened region hides, however many", () => {
       // Three hundred hidden tags take no staging slot and count nowhere:
       // the one visible image after the final closer is image-0.
