@@ -231,4 +231,21 @@ describe("rekeyOpenFilesPrefix", () => {
     expect(result.get("/r/unrelated.md")).toBe("keep");
     expect(result.has("/r/docs/a.md")).toBe(false);
   });
+
+  it("rewrites keys joined with a backslash, and leaves a sibling that shares the prefix (issue 595)", () => {
+    const openFiles = new Map([
+      ["C:\\vault\\ns-old\\other.md", "sibling"],
+      ["C:\\vault\\ns\\in.md", "in"],
+      ["C:\\vault\\ns\\sub\\deep.md", "deep"],
+    ]);
+    const result = rekeyOpenFilesPrefix(
+      openFiles,
+      "C:\\vault\\ns",
+      "C:\\vault\\ns2",
+    );
+    expect(result.get("C:\\vault\\ns2\\in.md")).toBe("in");
+    expect(result.get("C:\\vault\\ns2\\sub\\deep.md")).toBe("deep");
+    expect(result.get("C:\\vault\\ns-old\\other.md")).toBe("sibling");
+    expect(result.has("C:\\vault\\ns\\in.md")).toBe(false);
+  });
 });
