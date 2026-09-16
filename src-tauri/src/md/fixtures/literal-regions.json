@@ -189,6 +189,11 @@
       "name": "an unclosed display formula in a list item runs through the lines indented to its content column",
       "markdown": "-   $$\n    ((note#^b1))\n  ((note#^b1))\n",
       "expected": "-   $$\n    ((note#^b1))\n  ((note#^b2-longer))\n"
+    },
+    {
+      "name": "an unclosed display formula in a footnote definition ends with the footnote",
+      "markdown": "[^1]: $$\n    ((note#^b1))\n((note#^b1))\n",
+      "expected": "[^1]: $$\n    ((note#^b1))\n((note#^b2-longer))\n"
     }
   ]
 }

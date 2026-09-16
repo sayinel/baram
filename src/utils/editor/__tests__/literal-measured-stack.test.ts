@@ -13,22 +13,59 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-/** The grammar the literal analysis was measured against, package by package. */
+/** The grammar the literal analysis was measured against: every installed
+ *  remark, micromark, mdast-util and unified package, the transitive parts
+ *  included — a whitespace or container rule lives in `micromark-factory-space`
+ *  and `micromark-util-character`, not only in the wrappers. */
 const MEASURED: Record<string, string> = {
+  "mdast-util-find-and-replace": "3.0.2",
   "mdast-util-from-markdown": "2.0.3",
   "mdast-util-frontmatter": "2.0.1",
   "mdast-util-gfm": "3.1.0",
+  "mdast-util-gfm-autolink-literal": "2.0.1",
+  "mdast-util-gfm-footnote": "2.1.0",
+  "mdast-util-gfm-strikethrough": "2.0.0",
+  "mdast-util-gfm-table": "2.0.0",
+  "mdast-util-gfm-task-list-item": "2.0.0",
   "mdast-util-math": "3.0.0",
+  "mdast-util-phrasing": "4.1.0",
+  "mdast-util-to-markdown": "2.1.2",
+  "mdast-util-to-string": "4.0.0",
   micromark: "4.0.2",
   "micromark-core-commonmark": "2.0.3",
   "micromark-extension-frontmatter": "2.0.0",
   "micromark-extension-gfm": "3.0.0",
   "micromark-extension-gfm-autolink-literal": "2.1.0",
+  "micromark-extension-gfm-footnote": "2.1.0",
+  "micromark-extension-gfm-strikethrough": "2.1.0",
+  "micromark-extension-gfm-table": "2.1.1",
+  "micromark-extension-gfm-tagfilter": "2.0.0",
+  "micromark-extension-gfm-task-list-item": "2.1.0",
   "micromark-extension-math": "3.1.0",
+  "micromark-factory-destination": "2.0.1",
+  "micromark-factory-label": "2.0.1",
+  "micromark-factory-space": "2.0.1",
+  "micromark-factory-title": "2.0.1",
+  "micromark-factory-whitespace": "2.0.1",
+  "micromark-util-character": "2.1.1",
+  "micromark-util-chunked": "2.0.1",
+  "micromark-util-classify-character": "2.0.1",
+  "micromark-util-combine-extensions": "2.0.1",
+  "micromark-util-decode-numeric-character-reference": "2.0.2",
+  "micromark-util-decode-string": "2.0.1",
+  "micromark-util-encode": "2.0.1",
+  "micromark-util-html-tag-name": "2.0.1",
+  "micromark-util-normalize-identifier": "2.0.1",
+  "micromark-util-resolve-all": "2.0.1",
+  "micromark-util-sanitize-uri": "2.0.1",
+  "micromark-util-subtokenize": "2.1.0",
+  "micromark-util-symbol": "2.0.1",
+  "micromark-util-types": "2.0.2",
   "remark-frontmatter": "5.0.0",
   "remark-gfm": "4.0.1",
   "remark-math": "6.0.0",
   "remark-parse": "11.0.0",
+  "remark-stringify": "11.0.0",
   unified: "11.0.5",
 };
 

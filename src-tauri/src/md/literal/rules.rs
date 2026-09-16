@@ -208,7 +208,7 @@ pub(super) fn display_math(
 ) {
     let bytes = content.as_bytes();
     let mut skip_until = 0;
-    for &(start, _) in line_starts {
+    for &(start, container_end) in line_starts {
         if start < skip_until {
             continue;
         }
@@ -228,16 +228,27 @@ pub(super) fn display_math(
             .iter()
             .rposition(|&b| b == b'\n' || b == b'\r')
             .map_or(0, |i| i + 1);
-        let prefix = container_prefix(&content[line_start..start]);
+        let (prefix, modelled) = container_prefix(&content[line_start..start]);
         // The end of the last line that is still the formula's: the closing
         // line when one comes, else the last line that carries every
-        // container prefix and is not blank.
+        // container prefix and is not blank. A prefix this rule does not
+        // model — a footnote definition's `[^1]: ` — keeps the parser's own
+        // container end as the bound, as before.
+        let bound = if modelled {
+            content.len()
+        } else {
+            container_end
+        };
         let mut end = line_end;
         for line in source_lines(&content[line_end..]) {
+            let at = line_end + line.offset;
+            if at >= bound {
+                break;
+            }
             let Some(rest) = continues(line.text, &prefix) else {
                 break;
             };
-            let after = line_end + line.offset + line.text.len() + line.terminator.len();
+            let after = at + line.text.len() + line.terminator.len();
             let text = rest.trim_start_matches([' ', '\t']);
             let close = text.bytes().take_while(|&b| b == b'$').count();
             if close >= open && text[close..].trim_matches([' ', '\t']).is_empty() {
@@ -264,8 +275,11 @@ pub(super) enum Continue {
 
 /// The containers a line's prefix opens, in order — the blockquote markers
 /// and list markers before the content, with the column the item's content
-/// starts at (a tab stop is four columns).
-pub(super) fn container_prefix(prefix: &str) -> Vec<Continue> {
+/// starts at (a tab stop is four columns) — and whether the whole prefix
+/// was read: a marker this rule does not know (a footnote definition's
+/// `[^1]: `) leaves the rest unread, and the caller keeps the parser's
+/// container end as the bound.
+pub(super) fn container_prefix(prefix: &str) -> (Vec<Continue>, bool) {
     let bytes = prefix.as_bytes();
     let mut reqs = Vec::new();
     let mut column = 0;
@@ -308,10 +322,25 @@ pub(super) fn container_prefix(prefix: &str) -> Vec<Continue> {
                 (i, column) = blanks(i, column);
                 reqs.push(Continue::Item { column });
             }
-            _ => break,
+            // A footnote definition, `[^label]: `: its lines continue when
+            // indented four columns past where it began, or blank, as an
+            // item's do (remark-gfm's footnote rule).
+            b'[' if bytes.get(i + 1) == Some(&b'^') => {
+                let Some(close) = prefix[i..].find("]:") else {
+                    return (reqs, false);
+                };
+                let label = column;
+                let consumed = close + 2;
+                let width = prefix[i..i + consumed].chars().count();
+                i += consumed;
+                column += width;
+                (i, column) = blanks(i, column);
+                reqs.push(Continue::Item { column: label + 4 });
+            }
+            _ => return (reqs, false),
         }
     }
-    reqs
+    (reqs, true)
 }
 
 /// The text of `line` past every container prefix in `reqs`, or None when

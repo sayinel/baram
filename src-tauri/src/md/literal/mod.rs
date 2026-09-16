@@ -413,6 +413,23 @@ mod tests {
         // A closing line still closes, and a bare CR is a line break here too.
         assert_eq!(refs("> $$\n> ((n#^o))\n> $$\n((n#^o))\n"), [false, true]);
         assert_eq!(refs("> $$\r> ((n#^o))\r((n#^o))\r"), [false, true]);
+        // A footnote definition continues through lines indented four columns
+        // past where it began, or blank — whatever the label's width, and
+        // inside a blockquote past the quote's prefix.
+        assert_eq!(refs("[^1]: $$\n    ((n#^o))\n((n#^o))\n"), [false, true]);
+        assert_eq!(
+            refs("[^1]: $$\n    ((n#^o))\n\n    ((n#^o))\n((n#^o))\n"),
+            [false, false, true]
+        );
+        assert_eq!(refs("[^1]: $$\n   ((n#^o))\n"), [true]);
+        assert_eq!(
+            refs("[^note]: $$\n    ((n#^o))\n  ((n#^o))\n"),
+            [false, true]
+        );
+        assert_eq!(
+            refs("> [^1]: $$\n>     ((n#^o))\n> ((n#^o))\n((n#^o))\n"),
+            [false, true, true]
+        );
     }
 
     /// No display formula, for sweeping a block directly.
