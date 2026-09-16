@@ -497,17 +497,16 @@ pub(super) async fn commit_namespace_rename(
         .await
         .map_err(|e| e.to_string())?;
 
-    let old_dir_slash = if old_dir.ends_with('/') {
-        old_dir.to_string()
-    } else {
-        format!("{}/", old_dir)
-    };
+    // A file inside the directory being renamed moves with it. issue 595:
+    // component-wise, as the crate compares paths everywhere else — a string
+    // prefix with a hard-coded `/` matched nothing on Windows, where
+    // `collect_md_files` spells paths with `\`, so `files_moved` read 0 and
+    // every moved note was reported as unchecked once its old path failed
+    // to read.
+    let inside = |file: &str| Path::new(file).starts_with(Path::new(old_dir));
 
-    // Count files that will be moved
-    let files_moved = all_files
-        .iter()
-        .filter(|f| f.starts_with(&old_dir_slash))
-        .count() as u32;
+    // Count the markdown files that will be moved
+    let files_moved = all_files.iter().filter(|f| inside(f)).count() as u32;
 
     // 2. Rename the directory — the last step that may fail with nothing done.
     crate::fs::rename_file(old_dir, new_dir)
@@ -525,7 +524,7 @@ pub(super) async fn commit_namespace_rename(
 
     for file_path in &all_files {
         // Skip files inside the directory being renamed (they move with it)
-        if file_path.starts_with(&old_dir_slash) {
+        if inside(file_path) {
             continue;
         }
 
