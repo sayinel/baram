@@ -98,6 +98,20 @@ pub fn extract_inline_tags(body: &str) -> Vec<String> {
 mod tests {
     use super::*;
 
+    /// issue 669 — `literal` reads block structure with pulldown-cmark and
+    /// pins the rest to the measured behaviour of the editor's remark stack.
+    /// The measurement (decision record of issue 620) was taken against this
+    /// exact pulldown version; a bump must re-run it, and this test is what
+    /// makes the bump visible. The vitest side pins the remark packages.
+    #[test]
+    fn the_measured_pulldown_version_is_the_one_in_the_lock_file() {
+        let lock = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.lock"));
+        assert!(
+            lock.contains("name = \"pulldown-cmark\"\nversion = \"0.13.4\""),
+            "pulldown-cmark moved from 0.13.4: re-measure md::literal against remark (issue 669), then update this sentinel"
+        );
+    }
+
     #[test]
     fn strips_fenced_code_but_preserves_line_count() {
         let input = "before\n```\n#notatag\n```\nafter";
