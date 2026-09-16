@@ -9,7 +9,6 @@ use serde::Serialize;
 use std::path::Path;
 use std::sync::LazyLock;
 
-use super::normalizer::{make_relative_path, resolve_relative_path};
 use super::{IndexError, LinkEntry};
 use crate::md::literal::{source_lines, Literal};
 
@@ -422,24 +421,41 @@ pub(crate) fn strip_wikilinks(line: &str) -> String {
         .to_string()
 }
 
-/// §61 Rewrite relative wikilinks in content that resolve into old_dir to point to new_dir instead.
-/// source_path is the file containing the content (used for relative path resolution).
+/// §61 Rewrite the relative wikilinks of `content` that resolve into
+/// `old_dir` so that they point into `new_dir` instead. `source_path` is the
+/// note that holds `content`; a relative target resolves against its
+/// directory.
 pub fn rewrite_relative_wikilinks(
     content: &str,
     source_path: &str,
     old_dir: &str,
     new_dir: &str,
 ) -> String {
-    let source_dir = Path::new(source_path)
-        .parent()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_default();
+    rewrite_relative_wikilinks_with(content, source_path, old_dir, new_dir, cfg!(windows))
+}
 
-    let old_dir_slash = if old_dir.ends_with('/') {
-        old_dir.to_string()
-    } else {
-        format!("{}/", old_dir)
-    };
+/// The rewrite proper, with the platform's separator rule as a parameter.
+///
+/// issue 595: `collect_md_files` spells paths with the OS separator — `\` on
+/// Windows — and the webview's `old_dir` may spell either. A comparison that
+/// split on `/` alone read `C:\vault\notes` as one component, so `..` popped
+/// the whole path and no link ever resolved into the directory. Paths are
+/// handled as components here (`/`, and `\` when `windows`), a leading drive
+/// letter compares without regard to case as `std::path` does, and the
+/// wikilink the rewrite writes is joined with `/`: it is markdown, not a
+/// native path. The Rust tests run on Linux, so the Windows shape is tested
+/// by passing `windows = true`, never behind `cfg(windows)`.
+fn rewrite_relative_wikilinks_with(
+    content: &str,
+    source_path: &str,
+    old_dir: &str,
+    new_dir: &str,
+    windows: bool,
+) -> String {
+    let mut source_dir = path_components(source_path, windows);
+    source_dir.pop();
+    let old = path_components(old_dir, windows);
+    let new = path_components(new_dir, windows);
 
     // issue 620: a match inside a literal region is left as it is. The
     // literal set is read only once a link resolves into the old
@@ -451,26 +467,94 @@ pub fn rewrite_relative_wikilinks(
             let rel_target = caps.get(1).map(|m| m.as_str()).unwrap_or("");
             let rest = caps.get(2).map(|m| m.as_str()).unwrap_or("");
 
-            // Resolve the relative target to an absolute path (without .md)
-            let resolved = resolve_relative_path(&source_dir, rel_target);
-
-            // Check if this resolved path points into old_dir
-            if (resolved.starts_with(&old_dir_slash) || resolved == old_dir)
-                && !literal
-                    .get_or_insert_with(|| Literal::of(content))
-                    .overlaps(whole.range())
+            let resolved = resolve_components(&source_dir, rel_target, windows);
+            let Some(inside) = strip_dir_prefix(&old, &resolved, windows) else {
+                return caps[0].to_string();
+            };
+            if literal
+                .get_or_insert_with(|| Literal::of(content))
+                .overlaps(whole.range())
             {
-                // Compute the new absolute path
-                let suffix = &resolved[old_dir.len()..];
-                let new_resolved = format!("{}{}", new_dir, suffix);
-                // Convert back to relative path from source_dir
-                let new_rel = make_relative_path(&source_dir, &new_resolved);
-                format!("[[{new_rel}{rest}]]")
-            } else {
-                caps[0].to_string()
+                return caps[0].to_string();
             }
+            let new_resolved: Vec<&str> = new.iter().chain(inside).copied().collect();
+            let new_rel = relative_components(&source_dir, &new_resolved, windows);
+            format!("[[{new_rel}{rest}]]")
         })
         .to_string()
+}
+
+/// The components of `path`: split on `/` — and on `\` when `windows` —
+/// with empty parts and `.` dropped. A backslash in a Unix file name is a
+/// character, not a separator.
+fn path_components(path: &str, windows: bool) -> Vec<&str> {
+    path.split(|c| c == '/' || (windows && c == '\\'))
+        .filter(|part| !part.is_empty() && *part != ".")
+        .collect()
+}
+
+/// A wikilink target such as `./ai/prompt` or `../x`, resolved against the
+/// directory `base`: `..` steps up, and never above the root.
+fn resolve_components<'a>(base: &[&'a str], relative: &'a str, windows: bool) -> Vec<&'a str> {
+    let mut resolved = base.to_vec();
+    for part in path_components(relative, windows) {
+        if part == ".." {
+            resolved.pop();
+        } else {
+            resolved.push(part);
+        }
+    }
+    resolved
+}
+
+/// Do two components name the same entry? Equal bytes — or, as the first
+/// component of a Windows path, the same drive letter in either case, the
+/// one exception `std::path` makes to case-sensitive comparison.
+fn same_component(a: &str, b: &str, first: bool, windows: bool) -> bool {
+    a == b || (first && windows && is_drive(a) && is_drive(b) && a.eq_ignore_ascii_case(b))
+}
+
+fn is_drive(part: &str) -> bool {
+    let bytes = part.as_bytes();
+    bytes.len() == 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':'
+}
+
+/// What of `path` lies under the directory `dir`: the components after
+/// `dir`'s — empty when `path` IS the directory — or None when it is not
+/// under it. Component-wise, so `ns` does not claim `ns-old`.
+fn strip_dir_prefix<'a>(dir: &[&str], path: &'a [&'a str], windows: bool) -> Option<&'a [&'a str]> {
+    if path.len() < dir.len() {
+        return None;
+    }
+    let under = dir
+        .iter()
+        .zip(path)
+        .enumerate()
+        .all(|(k, (d, p))| same_component(d, p, k == 0, windows));
+    under.then(|| &path[dir.len()..])
+}
+
+/// The relative wikilink target that leads from the directory `source_dir`
+/// to `target`: `./` when the target lies under it, else `../` per step up,
+/// then the rest — joined with `/`, whatever the platform.
+fn relative_components(source_dir: &[&str], target: &[&str], windows: bool) -> String {
+    let common = source_dir
+        .iter()
+        .zip(target)
+        .enumerate()
+        .take_while(|(k, (a, b))| same_component(a, b, *k == 0, windows))
+        .count();
+    let ups = source_dir.len() - common;
+    let mut result = String::new();
+    if ups == 0 {
+        result.push_str("./");
+    } else {
+        for _ in 0..ups {
+            result.push_str("../");
+        }
+    }
+    result.push_str(&target[common..].join("/"));
+    result
 }
 
 /// §34 Find unlinked mentions — text occurrences of a file stem in other files,
@@ -1137,6 +1221,95 @@ mod tests {
         assert_eq!(
             rewrite_relative_wikilinks(content, "/v/a/note.md", "/v/old", "/v/new"),
             "[[../new/x]] `[[../old/x]]`\n```\n[[../old/x]]\n```\n"
+        );
+    }
+
+    /// issue 595 — Windows spells the note's path and the directories with
+    /// `\`; the rewrite compares components and writes `/` into the link.
+    /// Tested with `windows = true` because the Rust tests run on Linux.
+    #[test]
+    fn a_relative_wikilink_rewrite_reads_windows_paths_as_components() {
+        let rewrite = |content: &str, source: &str, old: &str, new: &str| {
+            rewrite_relative_wikilinks_with(content, source, old, new, true)
+        };
+        // Into the directory, through `./` and `../`; a sibling that merely
+        // shares the prefix (`ns-old`) and a global link are left alone.
+        assert_eq!(
+            rewrite(
+                "[[./ns/c]] [[../a/ns/d#h|D]] [[./ns-old/e]] [[ns/f]]",
+                r"C:\vault\a\note.md",
+                r"C:\vault\a\ns",
+                r"C:\vault\a\ns2",
+            ),
+            "[[./ns2/c]] [[./ns2/d#h|D]] [[./ns-old/e]] [[ns/f]]"
+        );
+        // The directory itself, and a link from a deeper note that steps up;
+        // `./ns` from that note names `deep/ns`, not the directory, and stays.
+        assert_eq!(
+            rewrite(
+                "[[../../ns]] [[../../ns/g]] [[./ns]]",
+                r"C:\vault\a\sub\deep\note.md",
+                r"C:\vault\a\ns",
+                r"C:\vault\a\ns2",
+            ),
+            "[[../../ns2]] [[../../ns2/g]] [[./ns]]"
+        );
+        // Mixed separators and a drive letter in the other case name the
+        // same directory, as they do to std::path on Windows.
+        assert_eq!(
+            rewrite(
+                "[[./ns/c]]",
+                r"c:\vault/a\note.md",
+                "C:/vault/a/ns",
+                r"C:\vault\a\ns2",
+            ),
+            "[[./ns2/c]]"
+        );
+        // Without the Windows rule a backslash is a character of the name:
+        // `ns\c` is one component and does not lie under `ns`.
+        assert_eq!(
+            rewrite_relative_wikilinks_with(
+                r"[[./ns\c]] [[./ns/c]]",
+                "/v/a/note.md",
+                "/v/a/ns",
+                "/v/a/ns2",
+                false,
+            ),
+            r"[[./ns\c]] [[./ns2/c]]"
+        );
+    }
+
+    #[test]
+    fn windows_paths_resolve_and_compare_as_components() {
+        assert_eq!(
+            path_components(r"C:\vault\notes/ai", true),
+            ["C:", "vault", "notes", "ai"]
+        );
+        assert_eq!(path_components(r"/v/my\dir", false), ["v", r"my\dir"]);
+        assert_eq!(
+            resolve_components(&["C:", "vault", "notes"], r"..\x/./y", true),
+            ["C:", "vault", "x", "y"]
+        );
+        assert_eq!(resolve_components(&["v"], "../../up", false), ["up"]);
+        assert_eq!(
+            strip_dir_prefix(&["c:", "v", "ns"], &["C:", "v", "ns", "x"], true),
+            Some(&["x"][..])
+        );
+        assert_eq!(
+            strip_dir_prefix(&["c:", "v", "ns"], &["C:", "v", "ns", "x"], false),
+            None
+        );
+        assert_eq!(
+            strip_dir_prefix(&["v", "ns"], &["v", "ns-old", "x"], true),
+            None
+        );
+        assert_eq!(
+            relative_components(&["v", "notes"], &["v", "notes", "ml", "p"], false),
+            "./ml/p"
+        );
+        assert_eq!(
+            relative_components(&["v", "notes", "sub"], &["v", "ml"], false),
+            "../../ml"
         );
     }
 
