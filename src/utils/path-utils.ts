@@ -149,6 +149,41 @@ export function isUnderRoot(
 }
 
 /**
+ * Is `candidate` strictly under the directory `dir`, by the separator the
+ * directory is spelled with? The boundary after `dir` must be `/`; it may be
+ * `\` only when `dir` itself is spelled as a Windows path — a drive letter,
+ * or a backslash in it.
+ *
+ * `isUnderRoot` accepts either separator on every platform, which is right
+ * for an owner lookup that must not miss a root, and wrong for MOVING cache
+ * keys and tabs: on Unix a file named `foo\bar.md` beside the directory
+ * `foo` is a sibling, and moving it with the directory would point its next
+ * save at a file that does not exist (issue 595).
+ */
+export function isDescendantPath(candidate: string, dir: string): boolean {
+  const base = stripTrailingSeparators(dir);
+  if (!base || !candidate.startsWith(base)) return false;
+  const boundary = candidate[base.length];
+  if (boundary === "/") return true;
+  return boundary === "\\" && (hasDriveLetter(base) || base.includes("\\"));
+}
+
+/**
+ * The final name of a path, split the way the path is spelled: after the
+ * last `/`, or after the last `/` or `\` when the path is a Windows one — a
+ * drive letter or a UNC root. On Unix a backslash is a character of the name
+ * (issue 595). `basename` reads `/` alone, which vault-relative and POSIX
+ * callers want.
+ */
+export function lastPathSegment(path: string): string {
+  const windows = hasDriveLetter(path) || path.startsWith("\\\\");
+  const at = windows
+    ? Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"))
+    : path.lastIndexOf("/");
+  return at >= 0 ? path.substring(at + 1) : path;
+}
+
+/**
  * Collapse `.`, `..` and empty segments in a POSIX-style path.
  *
  * ‼️ Two callers used to inline this loop, and the third — the one that
