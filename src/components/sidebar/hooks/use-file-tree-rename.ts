@@ -17,6 +17,7 @@ import { useFileStore } from "../../../stores/file/file";
 import { useSettingsStore } from "../../../stores/settings/store";
 import { useUIStore } from "../../../stores/ui/ui";
 import { logger } from "../../../utils/logger";
+import { basename } from "../../../utils/path-utils";
 import { syncCleanSurfacesAfterReferrerRewrite } from "../../../utils/tasks/sync-open-surfaces";
 
 interface UseFileTreeRenameReturn {
@@ -50,23 +51,19 @@ export function useFileTreeRename(
     async (oldPath: string, newName: string): Promise<void> => {
       setRenamingPath(null);
       treeRef.current?.focus();
-      const parts = oldPath.split("/");
-      const oldName = parts[parts.length - 1];
+      // The tree's entry for this path knows its name and whether it is a
+      // directory. issue 595: the name is NOT what follows the last `/` —
+      // on Windows the tree's paths are joined with `\`, and splitting on
+      // `/` made the whole path the name and `newPath` the bare new name,
+      // which the backend refused as a destination outside the vault.
+      // Only the last name changes, so `newPath` keeps whatever separator
+      // the tree used.
+      const entry = findEntry(fileTree, oldPath);
+      const oldName = entry?.name ?? basename(oldPath);
       if (newName === oldName || !newName.trim()) return;
       const newPath =
         oldPath.substring(0, oldPath.length - oldName.length) + newName;
-
-      // Check if this is a directory rename
-      const isDir = ((): boolean => {
-        function find(entries: FileEntry[]): boolean {
-          for (const e of entries) {
-            if (e.path === oldPath) return e.isDir;
-            if (e.isDir && e.children && find(e.children)) return true;
-          }
-          return false;
-        }
-        return find(fileTree);
-      })();
+      const isDir = entry?.isDir ?? false;
 
       // §61 Namespace rename (directory + relative wikilink updates) vs single
       // file rename. One decision, read three times below — it used to be two
@@ -157,6 +154,18 @@ export function useFileTreeRename(
     handleCancelRename,
     handleConfirmRename,
   };
+}
+
+/** The tree entry at `path`, at any depth, or undefined. */
+function findEntry(entries: FileEntry[], path: string): FileEntry | undefined {
+  for (const e of entries) {
+    if (e.path === path) return e;
+    if (e.isDir && e.children) {
+      const found = findEntry(e.children, path);
+      if (found) return found;
+    }
+  }
+  return undefined;
 }
 
 /**
