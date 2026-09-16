@@ -1,4 +1,4 @@
-// issue 669 — the Rust link index (`src-tauri/src/md/literal.rs`) does not
+// issue 669 — the Rust link index (`src-tauri/src/md/literal/`) does not
 // implement a specification: it re-implements what THIS remark stack reads,
 // measured case by case (decision record of issue 620). The measurement holds
 // only for the versions it was taken against. Dependabot moves these packages
@@ -44,7 +44,7 @@ describe("the remark stack the literal analysis was measured against (issue 669)
   it.each(Object.entries(MEASURED))("%s is still at %s", (name, measured) => {
     expect(
       installedVersion(name),
-      `${name} moved from ${measured}: re-measure src-tauri/src/md/literal.rs against the new stack (issue 669), then update MEASURED`,
+      `${name} moved from ${measured}: re-measure src-tauri/src/md/literal/ against the new stack (issue 669), then update MEASURED`,
     ).toBe(measured);
   });
 });
