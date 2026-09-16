@@ -502,10 +502,13 @@ fn root_components(path: &str, windows: bool) -> usize {
     if !windows {
         return 0;
     }
-    let unc = path.starts_with(r"\\") || path.starts_with("//");
+    // The UNC form first: `\\C:\share` names a server called `C:`, not a
+    // drive, so the share is its root.
+    if path.starts_with(r"\\") || path.starts_with("//") {
+        return 2;
+    }
     match path_components(path, true).first() {
         Some(first) if is_drive(first) => 1,
-        Some(_) if unc => 2,
         _ => 0,
     }
 }
@@ -1350,8 +1353,14 @@ mod tests {
         assert_eq!(root_components(r"C:\vault\note.md", true), 1);
         assert_eq!(root_components(r"\\server\share\note.md", true), 2);
         assert_eq!(root_components("//server/share/note.md", true), 2);
+        // A server that happens to be spelled like a drive is still a share.
+        assert_eq!(root_components(r"\\C:\share\note.md", true), 2);
         assert_eq!(root_components(r"\vault\note.md", true), 0);
+        // A drive-relative path (`C:note.md`) names no absolute root here.
+        assert_eq!(root_components("C:note.md", true), 0);
+        assert_eq!(root_components(r"C:\", true), 1);
         assert_eq!(root_components("/v/note.md", false), 0);
+        assert_eq!(root_components("//v/note.md", false), 0);
         assert_eq!(
             strip_dir_prefix(&["c:", "v", "ns"], &["C:", "v", "ns", "x"], true),
             Some(&["x"][..])
