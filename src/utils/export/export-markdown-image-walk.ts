@@ -19,9 +19,12 @@
 // opener it never sees. A closer may stand where the parser keeps no text
 // node — a link's destination or title, a reference label, a definition, an
 // image's alt — so those source spans move the state too, and what follows
-// a closer in them may open the next region. An image whose syntax began
-// inside a region is not an image to pandoc (its alt held the closer): the
-// state moves over it, the visitor never sees it.
+// a closer in them may open the next region. A node that BEGAN inside a
+// region is raw text to pandoc up to the closer, whatever the parser made
+// of it — an image whose alt held the closer, a tag the parser saw inside
+// braces, a code span or a formula: the state moves over its source, what
+// follows the closer may open the next region, and the visitor never sees
+// it.
 //
 // An html node is offered as its `<img …>` tags only when the grammar can
 // read the node (export-html-fragment.ts) and its text can be aligned with
@@ -147,7 +150,11 @@ export function walkImages(
       return;
     }
     if (node.type === "html") {
-      if (inBraces) {
+      // Begun inside a region, the node is raw text to pandoc whatever
+      // braces the parser saw around it: readHtmlNode moves the state over
+      // it (the closer may stand in it) and offers nothing. Only a tag
+      // entered OUTSIDE a region is judged by the braces.
+      if (inBraces && raw.until === null) {
         // Judged by the same oracle as any other node: a false opener in a
         // processing instruction must not mask the `<img` behind it.
         const regions = rawRegions(
@@ -163,9 +170,12 @@ export function walkImages(
       return;
     }
     if ("value" in node) {
-      // A text node's source may close the region and open the next; code
-      // is code to pandoc too, so a code node only closes.
-      advance(start, end, node.type === "text");
+      // A text node's source may close the region and open the next. Code
+      // entered outside a region is code to pandoc too, so it only closes —
+      // but a code span or a formula that BEGAN inside a region is raw text
+      // to pandoc, and what follows its closer may open the next region.
+      const beganRaw = raw.until !== null;
+      advance(start, end, node.type === "text" || beganRaw);
       return;
     }
     if (!("children" in node)) return;
@@ -219,8 +229,9 @@ function readHtmlNode(
     // Inside the region. What follows the closer, if it stands in this
     // node, is not read either — pandoc ends its block on that line — but
     // may open the next region, and if it may hold an image the user hears
-    // of it.
-    const rest = closeRawRegion(raw, node.value);
+    // of it. The exact source, as everywhere the state moves: a container
+    // prefix the parser stripped from the value is text pandoc read.
+    const rest = closeRawRegion(raw, source.slice(start, end));
     if (rest === null) return [];
     const regions = rawRegions(rest, oracleFor(start, end));
     raw.until = regions.open?.until ?? null;

@@ -231,6 +231,74 @@ describe("stageMarkdownImages on html nodes it does not read", () => {
   describe("raw regions follow the exact source, as pandoc reads it", () => {
     // pandoc 3.11 on every input below; the parser's decoded values are not
     // what pandoc sees.
+    it("closes a region at a closer the parser saw inside braces, and reads the image after it", () => {
+      // pandoc: `<script>{</script>` is one raw block, whatever the braces;
+      // the tag after it is an image. Left open, the region would swallow
+      // that image without a word.
+      const md = 'x <script>{</script>} <img src="img/a.png">\n';
+      expect(stageMarkdownImages(md, SAVED)).toMatchObject({
+        images: [{ name: "image-0.png", source: "img/a.png" }],
+        refused: 0,
+        unsupportedHtml: 0,
+      });
+    });
+
+    it("lets a code span or a formula that began inside a region close it and open the next", () => {
+      // The opening delimiter is script body to pandoc; after the closer,
+      // the second `<script>` opens a region that hides the first image.
+      for (const delim of ["`", "$"]) {
+        const md = `x <script>${delim}</script><script>${delim}\n\n<img src="img/a.png">\n\n</script>\n\n<img src="img/b.png">\n`;
+        expect(stageMarkdownImages(md, SAVED), md).toMatchObject({
+          images: [{ name: "image-0.png", source: "img/b.png" }],
+          markdown: `x <script>${delim}</script><script>${delim}\n\n<img src="img/a.png">\n\n</script>\n\n![](baram-asset:image-0.png)\n`,
+          unsupportedHtml: 0,
+        });
+      }
+      // Entered outside a region, code is code to pandoc as well: the
+      // `<script>` inside the backticks opens nothing.
+      expect(
+        stageMarkdownImages(
+          'x `<script>` y\n\n<img src="img/a.png">\n\n</script>\n',
+          SAVED,
+        ),
+      ).toMatchObject({
+        images: [{ name: "image-0.png", source: "img/a.png" }],
+      });
+    });
+
+    it("moves the state over a tag that began inside a region, braces or not", () => {
+      // The title of a tag the parser saw inside braces closes the script
+      // and opens a `<pre>` that hides the first image; the second is read.
+      const md =
+        'x <script>{<i title="</script><pre>">}\n\n<img src="img/a.png">\n\n</pre>\n\n<img src="img/b.png">\n';
+      expect(stageMarkdownImages(md, SAVED)).toMatchObject({
+        images: [{ name: "image-0.png", source: "img/b.png" }],
+        markdown:
+          'x <script>{<i title="</script><pre>">}\n\n<img src="img/a.png">\n\n</pre>\n\n![](baram-asset:image-0.png)\n',
+        unsupportedHtml: 0,
+      });
+      // What follows the closer inside the same tag is not read either, but
+      // an image standing there is reported — the user hears of it.
+      const suffix = `x <script>{<i title="</script><img src='img/a.png'>">}\n`;
+      expect(stageMarkdownImages(suffix, SAVED)).toMatchObject({
+        images: [],
+        markdown: suffix,
+        unsupportedHtml: 1,
+      });
+    });
+
+    it("stages nothing for the images a reopened region hides, however many", () => {
+      // Three hundred hidden tags take no staging slot and count nowhere:
+      // the one visible image after the final closer is image-0.
+      const md = `x <script>\`</script><script>\`\n\n${'<img src="img/a.png">\n\n'.repeat(300)}</script>\n\n<img src="img/b.png">\n`;
+      expect(stageMarkdownImages(md, SAVED)).toMatchObject({
+        images: [{ name: "image-0.png", source: "img/b.png" }],
+        overCap: 0,
+        refused: 0,
+        unsupportedHtml: 0,
+      });
+    });
+
     it("does not export an image whose syntax began inside a raw region", () => {
       // The raw block ends at the `</script>` in the alt; `](img/inside.png)`
       // is literal text to pandoc, not an image.
