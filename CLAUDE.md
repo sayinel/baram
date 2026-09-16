@@ -137,6 +137,11 @@ baram/
 - zip 추출은 `fs/archive.rs`의 `ExtractBounds` 공용 코어 경유 (6종 폭탄 방어 — fs·plugin 공유; 경로 봉쇄는 호출자 책임)
 - 에러 처리: `thiserror` crate으로 커스텀 에러 타입 정의
 - IPC 커맨드: `Result<T, String>` 반환 (Tauri 직렬화 제약)
+- **링크 index 와 rewriter 는 `md::literal` 을 통과한다 (#620)**: `[[…]]`·`((…#^id))` 후보는 regex 로 찾되, 매치 **구간**을
+  `Literal::overlaps` 로 검사해 코드·HTML·수식·이미지·링크 정의 안이면 버린다 — 점 검사 금지(`((n#^id|`x`))` 처럼 걸치는 후보는
+  불변), 줄 단위 스캔은 `content.lines()` 가 아니라 `source_lines`(CRLF 에서 오프셋이 샌다). frontmatter 는 잘라내되 텍스트(속성
+  링크는 링크). 프런트 `block-id-rename-markdown.ts` 와의 계약은 `src-tauri/src/md/fixtures/literal-regions.json` 이 양쪽에서 읽힌다.
+  tag·task 스캐너의 느슨한 fence 규칙은 별개 계약이라 여기 얹지 말 것
 - **vault 경계는 자기를 인가할 수 없다 (§329–§336)**: 웹뷰가 준 경로로 asset scope를 부여하는
   커맨드는 부여 **전에** `approval_cmd::ensure_approved`를 통과해야 한다. 승인 기록은 Rust 소유
   `{app_data_dir}/approved-roots.json` — `config.json`은 웹뷰가 임의 키로 쓸 수 있어 거기 두면 무효다
