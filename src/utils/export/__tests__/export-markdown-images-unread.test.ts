@@ -314,6 +314,19 @@ describe("stageMarkdownImages on html nodes it does not read", () => {
       }
     });
 
+    it("lets the tail of a link that began inside a region open the next one after its label closed the first", () => {
+      // The link never formed to pandoc: `[x </script>` is script body, the
+      // tail `](u "<script>")` is plain text whose `<script>` opens a region
+      // that hides the first image. The same with an image in the label.
+      for (const label of ["x </script>", "![</script>](img/alt.png)"]) {
+        const md = `a <script> b\n\n[${label}](u "<script>")\n\n<img src="img/hidden.png">\n\n</script>\n\n<img src="img/visible.png">\n`;
+        expect(stageMarkdownImages(md, SAVED), md).toMatchObject({
+          images: [{ name: "image-0.png", source: "img/visible.png" }],
+          unsupportedHtml: 0,
+        });
+      }
+    });
+
     it("leaves an opener inside a raw TeX argument alone when it rescans after a closer", () => {
       // The `$` is script body to pandoc; after the closer, `\texttt{<script>}`
       // is one raw TeX inline, so both images are visible.

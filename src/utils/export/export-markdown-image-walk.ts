@@ -184,6 +184,10 @@ export function walkImages(
     }
     if (!("children" in node)) return;
     const inner = innerContext(ctx, node.type);
+    // A link that began inside a region never formed to pandoc: its whole
+    // source, tail included, is raw text up to the closer and plain text
+    // after it, whatever the parser made of its label and title.
+    const beganRaw = raw.until !== null;
     // Braces open and close across the siblings of one parent: text on
     // either side of an inline tag, or of the emphasis around it.
     let depth = 0;
@@ -193,14 +197,16 @@ export function walkImages(
     }
     // The destination and title, or the reference label, follow the label
     // in the source; the label's own nodes moved the state as they were
-    // visited. Entered outside a region, that tail is link syntax to pandoc
-    // (`[x](<script>)` names a destination, it opens nothing); entered
-    // inside one, it is raw text, and what follows its closer may open.
+    // visited. Entered outside a region — the link itself and its tail —
+    // that tail is link syntax to pandoc (`[x](<script>)` names a
+    // destination, it opens nothing). A tail that is raw text — the region
+    // is still open, or the link began inside one and its label closed it
+    // — may open the next region after its closer.
     if (node.type === "link" || node.type === "linkReference") {
       advance(
         node.children.at(-1)?.position?.end.offset ?? start,
         end,
-        raw.until !== null,
+        beganRaw || raw.until !== null,
       );
     }
   };

@@ -113,6 +113,17 @@ export function rawRegions(
     const at = firstAtOrAfter(own.get(key), from);
     return at === -1 ? -1 : at + length;
   };
+  // The text's brace pairs, matched in one pass the first time a TeX
+  // command asks: the index just past the brace that closes the argument
+  // of the command at `at`, or -1 when nothing closes it — pandoc reads the
+  // command as text then, and so does the scan. A lookup, so a thousand
+  // commands nothing closes cost one pass, not a scan to the end each.
+  let braces: null | ReadonlyMap<number, number> = null;
+  const argumentEnd = (at: number): number => {
+    braces ??= braceMatches(value);
+    const close = braces.get(value.indexOf("{", at));
+    return close === undefined ? -1 : close + 1;
+  };
   let i = 0;
   // The next `<`, `\begin{` and `\command{` at or after `i`, found once each
   // and kept until the scan passes them; -1 means none until the end of the
@@ -131,7 +142,7 @@ export function rawRegions(
     // itself is not such a command, and an escaped backslash is text.
     const next = lt === -1 ? begin : begin === -1 ? lt : Math.min(lt, begin);
     if (command !== -1 && command < next) {
-      const close = texArgumentEnd(value, command);
+      const close = argumentEnd(command);
       i = close === -1 ? command + 1 : close;
       continue;
     }
@@ -276,14 +287,18 @@ function texCommandAt(value: string, from: number): number {
   return -1;
 }
 
-/** The index just past the brace that closes the argument of the command
- *  at `at`, braces nesting, or -1 when nothing closes it — pandoc reads the
- *  command as text then, and so does the scan. */
-function texArgumentEnd(value: string, at: number): number {
-  let depth = 0;
-  for (let k = value.indexOf("{", at); k < value.length; k++) {
-    if (value[k] === "{") depth++;
-    else if (value[k] === "}" && --depth === 0) return k + 1;
+/** Every `{` of `value` that a `}` closes, braces nesting, mapped to the
+ *  index of that `}` — one pass, so that the argument of each TeX command
+ *  is a lookup. An unmatched `{` is absent. */
+function braceMatches(value: string): ReadonlyMap<number, number> {
+  const matches = new Map<number, number>();
+  const open: number[] = [];
+  for (let k = 0; k < value.length; k++) {
+    if (value[k] === "{") open.push(k);
+    else if (value[k] === "}") {
+      const start = open.pop();
+      if (start !== undefined) matches.set(start, k);
+    }
   }
-  return -1;
+  return matches;
 }

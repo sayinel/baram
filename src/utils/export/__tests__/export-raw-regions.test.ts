@@ -133,6 +133,16 @@ describe("rawRegions — the region a text opens and does not close", () => {
     expect(openedBy("\\\\texttt{<script>}")?.test("</script>")).toBe(true);
     expect(openedBy("\\texttt{<script>")?.test("</script>")).toBe(true);
   });
+
+  it("matches the braces of a text once, so commands nothing closes do not each scan to the end", () => {
+    // Ten thousand `\word{` with no `}`: each used to scan from its brace
+    // to the end of the text before the scan advanced one character. The
+    // pairs are matched in one pass now; the opener behind them is read.
+    const value = `${"\\word{".repeat(10_000)}\\begin{x} <script>`;
+    expect(openedBy(value)?.test("\\end{x}")).toBe(true);
+    // And a closed argument after many open ones is still one argument.
+    expect(openedBy(`${"\\a{".repeat(50)}\\b{<script>} </script>`)).toBeNull();
+  });
 });
 
 describe("closerIndex", () => {
