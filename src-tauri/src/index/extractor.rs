@@ -454,6 +454,39 @@ pub fn replace_block_id_refs_to(
     out
 }
 
+/// issue 668: how many lines of `content` refer, in prose, to ITS OWN block
+/// `^id` naming no target — `((#^id))`, or that inside `{{embed ((#^id))}}`.
+/// The index files such a reference under the note's own stem, so renaming
+/// the block of another note with that stem names this file as a referrer,
+/// one `(file, line)` per reference, and the rewrite rightly leaves those
+/// alone. Against the lines the index named the file for, this tells whether
+/// it was named for them alone: a same-stem note whose `((note#^id))` to the
+/// target has gone since holds fewer, and is stale like any other.
+pub fn own_block_reference_lines(content: &str, id: &str) -> usize {
+    let body_start = front_matter_end(content);
+    let mut literal: Option<Literal> = None;
+    let mut lines = 0;
+    for line in source_lines(content) {
+        let holds_one = BLOCK_REF_RE.captures_iter(line.text).any(|cap| {
+            let raw_target = cap.get(1).map(|m| m.as_str().trim()).unwrap_or("");
+            let block_id = cap.get(2).map(|m| m.as_str()).unwrap_or("");
+            if !raw_target.is_empty() || block_id != id {
+                return false;
+            }
+            let whole = cap.get(0).unwrap();
+            let range = line.offset + whole.start()..line.offset + whole.end();
+            range.start >= body_start
+                && !literal
+                    .get_or_insert_with(|| Literal::of(content))
+                    .overlaps(range)
+        });
+        if holds_one {
+            lines += 1;
+        }
+    }
+    lines
+}
+
 /// Replace [[...]] wikilink blocks with spaces of the same byte length.
 /// This allows searching for unlinked mentions without matching linked ones.
 pub(crate) fn strip_wikilinks(line: &str) -> String {
@@ -856,6 +889,33 @@ mod tests {
         let result =
             replace_block_id_refs_to(content, "/v/referrer.md", &keys(&["notes"]), "abc", "xyz");
         assert_eq!(result, content);
+    }
+
+    #[test]
+    fn a_note_refers_to_its_own_block_only_by_a_prose_reference_that_names_no_target() {
+        // issue 668: what exempts a same-stem referrer from the stale report
+        // is the self-references the index filed under its stem — in prose,
+        // past the front matter, with the block ID in question, counted by
+        // line as the index names them. A reference that names the target,
+        // even its own stem, is the rewriter's.
+        assert_eq!(own_block_reference_lines("mine ^b1 ((#^b1))\n", "b1"), 1);
+        assert_eq!(own_block_reference_lines("{{embed ((#^b1))}}\n", "b1"), 1);
+        assert_eq!(own_block_reference_lines("see ((#^b1|shown))\n", "b1"), 1);
+        assert_eq!(
+            own_block_reference_lines("((#^b1)) ((#^b1))\n((#^b1))\n", "b1"),
+            2
+        );
+        assert_eq!(own_block_reference_lines("see ((note#^b1))\n", "b1"), 0);
+        assert_eq!(own_block_reference_lines("mine ((#^b2))\n", "b1"), 0);
+        assert_eq!(own_block_reference_lines("`((#^b1))`\n", "b1"), 0);
+        assert_eq!(
+            own_block_reference_lines("---\nrelated: ((#^b1))\n---\nbody\n", "b1"),
+            0
+        );
+        assert_eq!(
+            own_block_reference_lines("the reference is gone\n", "b1"),
+            0
+        );
     }
 
     // §33 replace_wikilink_target tests
