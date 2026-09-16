@@ -125,6 +125,15 @@ impl Literal {
     /// that point is known to be wrong, and touching nothing there is safe.
     pub fn analyse(content: &str) -> Analysis {
         const READS: usize = 8;
+        // issue 663: the parser is handed a copy in which a bare `\r` is a
+        // `\n` — same length, every offset kept. pulldown reads a bare `\r`
+        // as a line break inside a paragraph but not where a fence opens
+        // (0.13.4 reads "```\r…" as text and opens the block one line late),
+        // while the editor's parser reads it as any line break; a CR-only
+        // note would otherwise have a fence's inside and outside change
+        // places. Nothing below cares which byte the break is.
+        let normalized = bare_cr_as_newline(content);
+        let content: &str = normalized.as_deref().unwrap_or(content);
         // The editor's parser drops one leading byte order mark before it
         // reads; pulldown does not, and would read the first line's fence
         // or tag as text. Cut it with the front matter — it is prose, as
@@ -293,11 +302,13 @@ impl Literal {
 
 /// One line of a note, for the scanners that work a line at a time: its
 /// 1-based number, the byte offset of `text` in the note, the text without
-/// its line break, and that break (`"\n"`, `"\r\n"` or `""` at the end) so
-/// a rewriter can put the note back together byte for byte. A bare `\r` is
-/// not a line break, as for `str::lines`. The offset is what makes a
-/// per-line regex match comparable with a `Literal`, which knows only the
-/// whole note.
+/// its line break, and that break (`"\n"`, `"\r\n"`, a bare `"\r"`, or `""`
+/// at the end) so a rewriter can put the note back together byte for byte.
+/// A bare `\r` IS a line break, as it is to CommonMark and so to both
+/// parsers whose block structure these offsets must match (issue 663);
+/// `str::lines` disagrees, and a scanner that used it slid every block of a
+/// CR-only note by a line. The offset is what makes a per-line regex match
+/// comparable with a `Literal`, which knows only the whole note.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SourceLine<'a> {
     pub number: u32,
@@ -306,25 +317,34 @@ pub struct SourceLine<'a> {
     pub terminator: &'a str,
 }
 
-/// The lines of `content`, in order — the same lines `content.lines()`
-/// yields, with their offsets.
+/// The lines of `content`, in order, with their offsets. A line ends at
+/// `\n`, at `\r\n`, or at a bare `\r`; the last line may end without one,
+/// and an empty note has no lines.
 pub fn source_lines(content: &str) -> impl Iterator<Item = SourceLine<'_>> {
+    let bytes = content.as_bytes();
     let mut offset = 0;
-    content
-        .split_inclusive('\n')
-        .enumerate()
-        .map(move |(i, raw)| {
-            let text = raw.strip_suffix('\n').unwrap_or(raw);
-            let text = text.strip_suffix('\r').unwrap_or(text);
-            let line = SourceLine {
-                number: i as u32 + 1,
-                offset,
-                text,
-                terminator: &raw[text.len()..],
-            };
-            offset += raw.len();
-            line
-        })
+    let mut number = 0;
+    std::iter::from_fn(move || {
+        if offset >= content.len() {
+            return None;
+        }
+        let rest = &bytes[offset..];
+        let (text_len, break_len) = match rest.iter().position(|&b| b == b'\n' || b == b'\r') {
+            None => (rest.len(), 0),
+            Some(i) if rest[i] == b'\n' => (i, 1),
+            Some(i) if rest.get(i + 1) == Some(&b'\n') => (i, 2),
+            Some(i) => (i, 1),
+        };
+        number += 1;
+        let line = SourceLine {
+            number,
+            offset,
+            text: &content[offset..offset + text_len],
+            terminator: &content[offset + text_len..offset + text_len + break_len],
+        };
+        offset += text_len + break_len;
+        Some(line)
+    })
 }
 
 /// Where the body starts: past the YAML front matter when `content` opens
@@ -346,15 +366,7 @@ fn front_matter_end(content: &str) -> usize {
     }
     lines
         .find(|line| is_fence(line.text))
-        .map(|closer| {
-            let end = closer.offset + closer.text.len();
-            let rest = &content[end..];
-            end + if rest.starts_with("\r\n") {
-                2
-            } else {
-                usize::from(rest.starts_with('\n'))
-            }
-        })
+        .map(|closer| closer.offset + closer.text.len() + closer.terminator.len())
         .unwrap_or(0)
 }
 
@@ -734,7 +746,7 @@ fn begins_line(bytes: &[u8], at: usize) -> bool {
         .iter()
         .rev()
         .find(|&&b| !matches!(b, b' ' | b'\t' | b'>'));
-    matches!(before, None | Some(b'\n'))
+    matches!(before, None | Some(b'\n' | b'\r'))
 }
 
 /// A child block that starts directly under a list item ends the item's
@@ -949,9 +961,11 @@ fn display_math(content: &str, line_starts: &[(usize, usize)], out: &mut Vec<Ran
         if open < 2 {
             continue;
         }
-        let line_end = content[start..]
-            .find('\n')
-            .map_or(content.len(), |i| start + i + 1);
+        let line_end = source_lines(&content[start..])
+            .next()
+            .map_or(content.len(), |line| {
+                start + line.text.len() + line.terminator.len()
+            });
         if bytes[start + open..line_end].contains(&b'$') {
             continue;
         }
@@ -968,6 +982,24 @@ fn display_math(content: &str, line_starts: &[(usize, usize)], out: &mut Vec<Ran
         out.push(start..end);
         skip_until = end;
     }
+}
+
+/// A copy of `content` with every bare `\r` (one not followed by `\n`) turned
+/// into `\n`, or None when there is none — see `analyse`. Same length: only
+/// ASCII bytes change, so the copy is valid UTF-8 and offsets carry over.
+fn bare_cr_as_newline(content: &str) -> Option<String> {
+    let bytes = content.as_bytes();
+    let bare = |i: usize| bytes[i] == b'\r' && bytes.get(i + 1) != Some(&b'\n');
+    if !(0..bytes.len()).any(bare) {
+        return None;
+    }
+    let mut out = bytes.to_vec();
+    for i in 0..out.len() {
+        if bare(i) {
+            out[i] = b'\n';
+        }
+    }
+    String::from_utf8(out).ok()
 }
 
 /// `content` with every byte of `ranges` turned into `x` — line breaks kept
@@ -1165,6 +1197,18 @@ mod tests {
         REF.find_iter(md)
             .map(|m| !literal.overlaps(m.range()))
             .collect()
+    }
+
+    /// issue 663 — a note broken with bare carriage returns (classic Mac OS)
+    /// has the same blocks to pulldown and to remark; the line offsets must
+    /// agree with them, or a fence's inside and outside change places.
+    #[test]
+    fn a_bare_carriage_return_ends_a_line_for_the_offsets_too() {
+        assert_eq!(refs("```\r((n#^o))\r```\r((n#^o))\r"), [false, true]);
+        assert_eq!(refs("text\r```\r((n#^o))\r```\r"), [false]);
+        assert_eq!(refs("a `((n#^o))` b\r((n#^o))\r"), [false, true]);
+        // Mixed endings, and a formula whose closing line ends with a bare CR.
+        assert_eq!(refs("$$\r((n#^o))\r$$\r\n((n#^o))\n"), [false, true]);
     }
 
     /// No display formula, for sweeping a block directly.
@@ -1431,8 +1475,17 @@ mod tests {
         );
         assert_eq!(source_lines("").count(), 0);
         assert_eq!(source_lines("x\n").count(), 1);
-        // A bare CR is not a line break, as for `str::lines`.
-        assert_eq!(source_lines("a\rb\n").next().unwrap().text, "a\rb");
+        // issue 663: a bare CR is a line break, as it is to both parsers.
+        let cr: Vec<(&str, &str)> = source_lines("a\rb\r\nc\rd")
+            .map(|l| (l.text, l.terminator))
+            .collect();
+        assert_eq!(cr, [("a", "\r"), ("b", "\r\n"), ("c", "\r"), ("d", "")]);
+        assert_eq!(
+            source_lines("a\rb\r\nc")
+                .map(|l| l.offset)
+                .collect::<Vec<_>>(),
+            [0, 2, 5]
+        );
     }
 
     /// remark reads an inline HTML tag before it looks for a formula, left

@@ -16,10 +16,11 @@ use crate::md::literal::{source_lines, Literal};
 // Wikilink regex: [[target]], [[alias::target]], [[target|display]], [[target#heading]], etc.
 // §87: optional alias:: prefix — group 1 = alias, group 2 = target
 // issue 620: no link crosses a line break — the index reads a line at a time,
-// and the whole-file rewriters below must recognise the same candidates.
+// and the whole-file rewriters below must recognise the same candidates. A
+// bare `\r` is a line break too (issue 663), so it is excluded as `\n` is.
 static WIKILINK_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"\[\[(?:([a-zA-Z][\w-]*)::)?([^\]|#^\n]+)(?:#[^\]|^\n]+)?(?:\^[^\]|\n]+)?(?:\|[^\]\n]+)?\]\]",
+        r"\[\[(?:([a-zA-Z][\w-]*)::)?([^\]|#^\n\r]+)(?:#[^\]|^\n\r]+)?(?:\^[^\]|\n\r]+)?(?:\|[^\]\n\r]+)?\]\]",
     )
     .unwrap()
 });
@@ -48,7 +49,7 @@ static FM_TAGS_ITEM_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s+-\s+
 // §87: optional alias:: prefix — group 1 = alias, group 2 = target, group 3 = rest
 static REPLACE_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"\[\[((?:[a-zA-Z][\w-]*::)?)([^\]|#^\n]+)((?:#[^\]|^\n]+)?(?:\^[^\]|\n]+)?(?:\|[^\]\n]+)?)\]\]",
+        r"\[\[((?:[a-zA-Z][\w-]*::)?)([^\]|#^\n\r]+)((?:#[^\]|^\n\r]+)?(?:\^[^\]|\n\r]+)?(?:\|[^\]\n\r]+)?)\]\]",
     )
     .unwrap()
 });
@@ -60,8 +61,10 @@ static REF_REPLACE_RE: LazyLock<Regex> =
 
 // §61 Relative wikilink regex: [[./path...]] or [[../path...]]
 static RELATIVE_WIKILINK_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\[\[(\.\.?/[^\]|#^\n]+)((?:#[^\]|^\n]+)?(?:\^[^\]|\n]+)?(?:\|[^\]\n]+)?)\]\]")
-        .unwrap()
+    Regex::new(
+        r"\[\[(\.\.?/[^\]|#^\n\r]+)((?:#[^\]|^\n\r]+)?(?:\^[^\]|\n\r]+)?(?:\|[^\]\n\r]+)?)\]\]",
+    )
+    .unwrap()
 });
 
 /// §34 Unlinked mention result returned to the frontend

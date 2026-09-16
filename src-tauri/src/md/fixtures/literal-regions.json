@@ -169,6 +169,11 @@
       "name": "a URL whose domain begins with a hyphen is no link, so the dollar after it opens a formula",
       "markdown": "https://-a.test/$ ((note#^b1)) $\n",
       "expected": "https://-a.test/$ ((note#^b1)) $\n"
+    },
+    {
+      "name": "a bare carriage return ends a line: the fenced example stays, the reference after the fence is renamed",
+      "markdown": "```\r((note#^b1))\r```\r((note#^b1))\r",
+      "expected": "```\r((note#^b1))\r```\r((note#^b2-longer))\r"
     }
   ]
 }
