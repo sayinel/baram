@@ -248,4 +248,17 @@ describe("rekeyOpenFilesPrefix", () => {
     expect(result.get("C:\\vault\\ns-old\\other.md")).toBe("sibling");
     expect(result.has("C:\\vault\\ns\\in.md")).toBe(false);
   });
+
+  it("leaves a Unix file whose name holds a backslash beside the renamed directory (issue 595)", () => {
+    const openFiles = new Map([
+      ["/v/foo/in.md", "in"],
+      ["/v/foo\\bar.md", "sibling with a backslash in its name"],
+    ]);
+    const result = rekeyOpenFilesPrefix(openFiles, "/v/foo", "/v/baz");
+    expect(result.get("/v/baz/in.md")).toBe("in");
+    expect(result.get("/v/foo\\bar.md")).toBe(
+      "sibling with a backslash in its name",
+    );
+    expect(result.has("/v/baz\\bar.md")).toBe(false);
+  });
 });

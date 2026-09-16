@@ -1,7 +1,7 @@
 import type { FileEntry as IpcFileEntry } from "../../ipc/types";
 import type { FileEntry } from "./file";
 
-import { isUnderRoot } from "../../utils/path-utils";
+import { isDescendantPath } from "../../utils/path-utils";
 import {
   compareEntries,
   DEFAULT_SORT_ORDER,
@@ -227,10 +227,11 @@ export function rekeyOpenFilesPrefix(
 ): Map<string, string> {
   const next = new Map(openFiles);
   for (const [key, value] of openFiles) {
-    // issue 595: the boundary after the prefix is either separator — on
-    // Windows the keys are joined with `\`, and `oldPrefix + "/"` matched
-    // no descendant, leaving the cache keyed under the removed directory.
-    if (key === oldPrefix || isUnderRoot(key, oldPrefix)) {
+    // issue 595: the boundary after the prefix is the separator the prefix
+    // is spelled with — on Windows the keys are joined with `\`, and
+    // `oldPrefix + "/"` matched no descendant, leaving the cache keyed under
+    // the removed directory. On Unix a `\` is a character of a name.
+    if (key === oldPrefix || isDescendantPath(key, oldPrefix)) {
       next.delete(key);
       next.set(newPrefix + key.slice(oldPrefix.length), value);
     }

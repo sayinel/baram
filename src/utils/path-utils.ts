@@ -149,6 +149,26 @@ export function isUnderRoot(
 }
 
 /**
+ * Is `candidate` strictly under the directory `dir`, by the separator the
+ * directory is spelled with? The boundary after `dir` must be `/`; it may be
+ * `\` only when `dir` itself is spelled as a Windows path — a drive letter,
+ * or a backslash in it.
+ *
+ * `isUnderRoot` accepts either separator on every platform, which is right
+ * for an owner lookup that must not miss a root, and wrong for MOVING cache
+ * keys and tabs: on Unix a file named `foo\bar.md` beside the directory
+ * `foo` is a sibling, and moving it with the directory would point its next
+ * save at a file that does not exist (issue 595).
+ */
+export function isDescendantPath(candidate: string, dir: string): boolean {
+  const base = stripTrailingSeparators(dir);
+  if (!base || !candidate.startsWith(base)) return false;
+  const boundary = candidate[base.length];
+  if (boundary === "/") return true;
+  return boundary === "\\" && (hasDriveLetter(base) || base.includes("\\"));
+}
+
+/**
  * Collapse `.`, `..` and empty segments in a POSIX-style path.
  *
  * ‼️ Two callers used to inline this loop, and the third — the one that

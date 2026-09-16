@@ -4,6 +4,7 @@ import {
   decodePercent,
   extractNamespace,
   getRelativePath,
+  isDescendantPath,
   isImageFile,
   normalizePath,
   resolveNameConflict,
@@ -144,6 +145,32 @@ describe("resolveNameConflict", () => {
 
   test("handles files without extension", () => {
     expect(resolveNameConflict("README", new Set(["README"]))).toBe("README-1");
+  });
+});
+
+describe("isDescendantPath (issue 595)", () => {
+  test("a slash boundary is a descendant on every platform", () => {
+    expect(isDescendantPath("/v/foo/bar.md", "/v/foo")).toBe(true);
+    expect(isDescendantPath("/v/foo/bar.md", "/v/foo/")).toBe(true);
+    expect(isDescendantPath("C:/vault/ns/a.md", "C:/vault/ns")).toBe(true);
+  });
+
+  test("a backslash boundary counts only under a directory spelled as a Windows path", () => {
+    expect(isDescendantPath("C:\\vault\\ns\\a.md", "C:\\vault\\ns")).toBe(true);
+    expect(
+      isDescendantPath("\\\\server\\share\\ns\\a.md", "\\\\server\\share\\ns"),
+    ).toBe(true);
+    // On Unix the backslash is a character of the name: a sibling, not a child.
+    expect(isDescendantPath("/v/foo\\bar.md", "/v/foo")).toBe(false);
+  });
+
+  test("the directory itself and a sibling sharing the prefix are not descendants", () => {
+    expect(isDescendantPath("/v/foo", "/v/foo")).toBe(false);
+    expect(isDescendantPath("/v/foo-old/x.md", "/v/foo")).toBe(false);
+    expect(isDescendantPath("C:\\vault\\ns-old\\a.md", "C:\\vault\\ns")).toBe(
+      false,
+    );
+    expect(isDescendantPath("/v/foo/x.md", "")).toBe(false);
   });
 });
 

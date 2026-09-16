@@ -21,13 +21,14 @@ describe("renameDirInTabs", () => {
   beforeEach(() => {
     useEditorStore.setState({
       activeTabId: "a",
-      mruOrder: ["a", "b", "c", "d"],
+      mruOrder: ["a", "b", "c", "d", "e"],
       sourceModeTabs: [],
       tabs: [
         tab("a", "C:\\vault\\ns\\a.md"),
         tab("b", "C:\\vault\\ns\\sub\\b.md"),
         tab("c", "C:\\vault\\ns-old\\c.md"),
         tab("d", "/v/ns/d.md"),
+        tab("e", "/v/ns\\e.md"),
       ],
     });
   });
@@ -48,10 +49,13 @@ describe("renameDirInTabs", () => {
     expect(byId.d.filePath).toBe("/v/ns/d.md");
   });
 
-  it("still moves the tabs under a directory joined with a slash", () => {
+  it("still moves the tabs under a directory joined with a slash, and not a Unix sibling with a backslash in its name", () => {
     useEditorStore.getState().renameDirInTabs("/v/ns", "/v/renamed");
-    expect(
-      useEditorStore.getState().tabs.find((t) => t.id === "d")?.filePath,
-    ).toBe("/v/renamed/d.md");
+    const byId = Object.fromEntries(
+      useEditorStore.getState().tabs.map((t) => [t.id, t]),
+    );
+    expect(byId.d.filePath).toBe("/v/renamed/d.md");
+    // `/v/ns\e.md` is a file beside the directory, not one inside it.
+    expect(byId.e.filePath).toBe("/v/ns\\e.md");
   });
 });

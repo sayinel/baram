@@ -4,7 +4,7 @@ import type { EditorState as PmEditorState } from "@tiptap/pm/state";
 
 import { create } from "zustand";
 
-import { isUnderRoot } from "../../utils/path-utils";
+import { isDescendantPath } from "../../utils/path-utils";
 import { useContextStore } from "../context/context";
 
 /**
@@ -497,13 +497,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   renameDirInTabs: (oldDir, newDir) =>
     set((state) => ({
       tabs: state.tabs.map((t) => {
-        // issue 595: the boundary after the directory is either separator —
-        // on Windows tab paths are joined with `\`, and `oldDir + "/"` left
-        // every tab under the removed directory on its old path. A directory
-        // rename changes no file's own name, so the title stays.
+        // issue 595: the boundary after the directory is the separator the
+        // directory is spelled with — on Windows tab paths are joined with
+        // `\`, and `oldDir + "/"` left every tab under the removed directory
+        // on its old path; on Unix a `\` is a character of a name. A
+        // directory rename changes no file's own name, so the title stays.
         if (
           t.filePath &&
-          (t.filePath === oldDir || isUnderRoot(t.filePath, oldDir))
+          (t.filePath === oldDir || isDescendantPath(t.filePath, oldDir))
         ) {
           return { ...t, filePath: newDir + t.filePath.slice(oldDir.length) };
         }
