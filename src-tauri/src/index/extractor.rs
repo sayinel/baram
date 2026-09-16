@@ -454,6 +454,7 @@ fn rewrite_relative_wikilinks_with(
 ) -> String {
     let mut source_dir = path_components(source_path, windows);
     source_dir.pop();
+    let root = root_components(source_path, windows);
     let old = path_components(old_dir, windows);
     let new = path_components(new_dir, windows);
 
@@ -467,7 +468,7 @@ fn rewrite_relative_wikilinks_with(
             let rel_target = caps.get(1).map(|m| m.as_str()).unwrap_or("");
             let rest = caps.get(2).map(|m| m.as_str()).unwrap_or("");
 
-            let resolved = resolve_components(&source_dir, rel_target, windows);
+            let resolved = resolve_components(&source_dir, root, rel_target, windows);
             let Some(inside) = strip_dir_prefix(&old, &resolved, windows) else {
                 return caps[0].to_string();
             };
@@ -493,13 +494,38 @@ fn path_components(path: &str, windows: bool) -> Vec<&str> {
         .collect()
 }
 
+/// How many leading components of `path` are its root and never step up: a
+/// Windows drive (`C:`) is one, a UNC share (`\\server\share`) is two, a Unix
+/// path has none to keep — `..` above `/` stays at `/`, which an empty
+/// component list already is.
+fn root_components(path: &str, windows: bool) -> usize {
+    if !windows {
+        return 0;
+    }
+    let unc = path.starts_with(r"\\") || path.starts_with("//");
+    match path_components(path, true).first() {
+        Some(first) if is_drive(first) => 1,
+        Some(_) if unc => 2,
+        _ => 0,
+    }
+}
+
 /// A wikilink target such as `./ai/prompt` or `../x`, resolved against the
-/// directory `base`: `..` steps up, and never above the root.
-fn resolve_components<'a>(base: &[&'a str], relative: &'a str, windows: bool) -> Vec<&'a str> {
+/// directory `base`, whose first `root` components are the path's root: `..`
+/// steps up, and never above the root — `C:\vault` + `../../x` is `C:\x`, as
+/// it is to Windows.
+fn resolve_components<'a>(
+    base: &[&'a str],
+    root: usize,
+    relative: &'a str,
+    windows: bool,
+) -> Vec<&'a str> {
     let mut resolved = base.to_vec();
     for part in path_components(relative, windows) {
         if part == ".." {
-            resolved.pop();
+            if resolved.len() > root {
+                resolved.pop();
+            }
         } else {
             resolved.push(part);
         }
@@ -1254,6 +1280,27 @@ mod tests {
             ),
             "[[../../ns2]] [[../../ns2/g]] [[./ns]]"
         );
+        // Too many `..` stop at the drive, as they do to Windows: the link
+        // still resolves into the directory and is rewritten. And on a UNC
+        // share the root is the share.
+        assert_eq!(
+            rewrite(
+                "[[../../vault/ns/x#h|X]]",
+                r"C:\vault\note.md",
+                r"C:\vault\ns",
+                r"C:\vault\ns2",
+            ),
+            "[[./ns2/x#h|X]]"
+        );
+        assert_eq!(
+            rewrite(
+                "[[../../../vault/ns/x]]",
+                r"\\server\share\vault\note.md",
+                r"\\server\share\vault\ns",
+                r"\\server\share\vault\ns2",
+            ),
+            "[[./ns2/x]]"
+        );
         // Mixed separators and a drive letter in the other case name the
         // same directory, as they do to std::path on Windows.
         assert_eq!(
@@ -1287,10 +1334,24 @@ mod tests {
         );
         assert_eq!(path_components(r"/v/my\dir", false), ["v", r"my\dir"]);
         assert_eq!(
-            resolve_components(&["C:", "vault", "notes"], r"..\x/./y", true),
+            resolve_components(&["C:", "vault", "notes"], 1, r"..\x/./y", true),
             ["C:", "vault", "x", "y"]
         );
-        assert_eq!(resolve_components(&["v"], "../../up", false), ["up"]);
+        assert_eq!(resolve_components(&["v"], 0, "../../up", false), ["up"]);
+        // `..` never steps above the root: the drive, or the UNC share.
+        assert_eq!(
+            resolve_components(&["C:", "vault"], 1, "../../../x", true),
+            ["C:", "x"]
+        );
+        assert_eq!(
+            resolve_components(&["server", "share", "v"], 2, "../../x", true),
+            ["server", "share", "x"]
+        );
+        assert_eq!(root_components(r"C:\vault\note.md", true), 1);
+        assert_eq!(root_components(r"\\server\share\note.md", true), 2);
+        assert_eq!(root_components("//server/share/note.md", true), 2);
+        assert_eq!(root_components(r"\vault\note.md", true), 0);
+        assert_eq!(root_components("/v/note.md", false), 0);
         assert_eq!(
             strip_dir_prefix(&["c:", "v", "ns"], &["C:", "v", "ns", "x"], true),
             Some(&["x"][..])
