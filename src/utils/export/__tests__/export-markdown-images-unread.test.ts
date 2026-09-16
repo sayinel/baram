@@ -287,6 +287,47 @@ describe("stageMarkdownImages on html nodes it does not read", () => {
       });
     });
 
+    it("opens no region from a destination, a title, a definition or an alt entered outside one", () => {
+      // pandoc reads the `<script>` in each as link or image syntax, not as
+      // a tag: the image after it is visible. Only a tail or an image that
+      // BEGAN inside a region may open the next one after its closer.
+      const visible = { name: "image-0.png", source: "img/a.png" };
+      for (const [md, images] of [
+        ['[x](<script>)\n\n<img src="img/a.png">\n\n</script>\n', [visible]],
+        [
+          '[x](u "<script>")\n\n<img src="img/a.png">\n\n</script>\n',
+          [visible],
+        ],
+        ['[r]: <script>\n\n<img src="img/a.png">\n\n</script>\n', [visible]],
+        [
+          '![<script>](img/x.png)\n\n<img src="img/a.png">\n\n</script>\n',
+          [
+            { name: "image-0.png", source: "img/x.png" },
+            { name: "image-1.png", source: "img/a.png" },
+          ],
+        ],
+      ] as const) {
+        expect(stageMarkdownImages(md, SAVED), md).toMatchObject({
+          images,
+          unsupportedHtml: 0,
+        });
+      }
+    });
+
+    it("leaves an opener inside a raw TeX argument alone when it rescans after a closer", () => {
+      // The `$` is script body to pandoc; after the closer, `\texttt{<script>}`
+      // is one raw TeX inline, so both images are visible.
+      const md =
+        'x <script>$</script>\\texttt{<script>}$\n\n<img src="img/a.png">\n\n</script>\n\n<img src="img/b.png">\n';
+      expect(stageMarkdownImages(md, SAVED)).toMatchObject({
+        images: [
+          { name: "image-0.png", source: "img/a.png" },
+          { name: "image-1.png", source: "img/b.png" },
+        ],
+        unsupportedHtml: 0,
+      });
+    });
+
     it("stages nothing for the images a reopened region hides, however many", () => {
       // Three hundred hidden tags take no staging slot and count nowhere:
       // the one visible image after the final closer is image-0.

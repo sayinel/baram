@@ -137,16 +137,20 @@ export function walkImages(
     const end = node.position!.end.offset!;
     if (node.type === "image" || node.type === "imageReference") {
       // Begun inside a region, the image is text to pandoc up to the closer
-      // and literal characters after it — no image at all.
+      // and literal characters after it — no image at all, and what follows
+      // the closer may open the next region. Begun outside one, it is an
+      // image whatever its alt says: `![<script>](x)` opens nothing.
       const beganRaw = raw.until !== null;
-      advance(start, end, true);
+      advance(start, end, beganRaw);
       if (beganRaw) return;
       if (node.type === "image") visitor.image?.(node, ctx);
       else visitor.imageReference?.(node, ctx);
       return;
     }
     if (node.type === "definition") {
-      advance(start, end, true);
+      // A definition's destination is a destination to pandoc, never an
+      // opener; only the remainder after a closer it holds may open.
+      advance(start, end, raw.until !== null);
       return;
     }
     if (node.type === "html") {
@@ -189,9 +193,15 @@ export function walkImages(
     }
     // The destination and title, or the reference label, follow the label
     // in the source; the label's own nodes moved the state as they were
-    // visited.
+    // visited. Entered outside a region, that tail is link syntax to pandoc
+    // (`[x](<script>)` names a destination, it opens nothing); entered
+    // inside one, it is raw text, and what follows its closer may open.
     if (node.type === "link" || node.type === "linkReference") {
-      advance(node.children.at(-1)?.position?.end.offset ?? start, end, true);
+      advance(
+        node.children.at(-1)?.position?.end.offset ?? start,
+        end,
+        raw.until !== null,
+      );
     }
   };
   visit(root, { inHeading: false, inLink: false, inTableCell: false }, false);

@@ -121,6 +121,18 @@ describe("rawRegions — the region a text opens and does not close", () => {
       true,
     );
   });
+
+  it("reads an opener inside a raw TeX command's argument as text", () => {
+    // pandoc 3.11: `\texttt{<script>}` is one raw TeX inline; the `<script>`
+    // in it opens nothing. Braces nest, an escaped backslash makes the
+    // command text, and an argument nothing closes is text too.
+    expect(openedBy("\\texttt{<script>}")).toBeNull();
+    expect(openedBy("\\texttt{a{<script>}b}")).toBeNull();
+    expect(openedBy("\\texttt{\\begin{verbatim}}")).toBeNull();
+    expect(openedBy("\\texttt{x} <script>")?.test("</script>")).toBe(true);
+    expect(openedBy("\\\\texttt{<script>}")?.test("</script>")).toBe(true);
+    expect(openedBy("\\texttt{<script>")?.test("</script>")).toBe(true);
+  });
 });
 
 describe("closerIndex", () => {

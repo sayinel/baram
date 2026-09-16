@@ -114,14 +114,27 @@ export function rawRegions(
     return at === -1 ? -1 : at + length;
   };
   let i = 0;
-  // The next `<` and `\begin{` at or after `i`, found once each and kept
-  // until the scan passes them; -1 means none until the end of the text.
+  // The next `<`, `\begin{` and `\command{` at or after `i`, found once each
+  // and kept until the scan passes them; -1 means none until the end of the
+  // text.
   let lt = value.indexOf("<");
   let begin = value.indexOf("\\begin{");
+  let command = texCommandAt(value, 0);
   while (i < value.length) {
     if (lt !== -1 && lt < i) lt = value.indexOf("<", i);
     if (begin !== -1 && begin < i) begin = value.indexOf("\\begin{", i);
+    if (command !== -1 && command < i) command = texCommandAt(value, i);
     if (lt === -1 && begin === -1) break;
+    // A raw TeX command's argument — `\texttt{<script>}` — is one raw TeX
+    // inline to pandoc: the `<` and `\begin{` inside its braces open
+    // nothing, and the scan resumes behind the closing brace. `\begin{`
+    // itself is not such a command, and an escaped backslash is text.
+    const next = lt === -1 ? begin : begin === -1 ? lt : Math.min(lt, begin);
+    if (command !== -1 && command < next) {
+      const close = texArgumentEnd(value, command);
+      i = close === -1 ? command + 1 : close;
+      continue;
+    }
     if (begin !== -1 && (lt === -1 || begin < lt)) {
       const env = escaped(value, begin)
         ? null
@@ -242,4 +255,35 @@ function escaped(value: string, at: number): boolean {
   let slashes = 0;
   for (let k = at - 1; k >= 0 && value[k] === "\\"; k--) slashes++;
   return slashes % 2 === 1;
+}
+
+/** A raw TeX command with a braced argument, `\word{`. */
+const TEX_COMMAND = /\\([A-Za-z]+)\{/g;
+
+/** The start of the next `\word{` at or after `from`, or -1. `\begin{` is
+ *  the environment opener the scan reads itself, not a command, and an
+ *  escaped backslash is text. */
+function texCommandAt(value: string, from: number): number {
+  TEX_COMMAND.lastIndex = from;
+  for (
+    let hit = TEX_COMMAND.exec(value);
+    hit !== null;
+    hit = TEX_COMMAND.exec(value)
+  ) {
+    if (hit[1] !== "begin" && !escaped(value, hit.index)) return hit.index;
+    TEX_COMMAND.lastIndex = hit.index + 1;
+  }
+  return -1;
+}
+
+/** The index just past the brace that closes the argument of the command
+ *  at `at`, braces nesting, or -1 when nothing closes it — pandoc reads the
+ *  command as text then, and so does the scan. */
+function texArgumentEnd(value: string, at: number): number {
+  let depth = 0;
+  for (let k = value.indexOf("{", at); k < value.length; k++) {
+    if (value[k] === "{") depth++;
+    else if (value[k] === "}" && --depth === 0) return k + 1;
+  }
+  return -1;
 }
