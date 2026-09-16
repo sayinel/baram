@@ -9,9 +9,10 @@ use serde::Serialize;
 use std::path::Path;
 use std::sync::LazyLock;
 
+use super::normalizer::normalize_target;
 use super::normalizer::{make_relative_path, resolve_relative_path};
 use super::{IndexError, LinkEntry};
-use crate::md::literal::{source_lines, Literal};
+use crate::md::literal::{front_matter_end, source_lines, Literal};
 
 // Wikilink regex: [[target]], [[alias::target]], [[target|display]], [[target#heading]], etc.
 // §87: optional alias:: prefix — group 1 = alias, group 2 = target
@@ -223,12 +224,19 @@ pub(crate) fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
         analysis.literal
     };
 
+    // issue 667: a block reference or embed in the front matter is not a
+    // reference — no rewriter touches YAML (the editor's text path holds it
+    // literal, the document model keeps it raw), so counting one there would
+    // show a backlink nothing can rename. An attribute wikilink there stays a
+    // link (decision D2 of issue 620).
+    let body_start = front_matter_end(content);
     for line in source_lines(content) {
         let mut is_prose = |m: &regex::Match| {
             !literal
                 .get_or_insert_with(&mut analyse)
                 .overlaps(line.offset + m.start()..line.offset + m.end())
         };
+        let in_front_matter = |m: &regex::Match| line.offset + m.start() < body_start;
 
         // §29 Wikilinks: [[target]], [[alias::target]], [[target|display]], etc.
         for cap in WIKILINK_RE.captures_iter(line.text) {
@@ -252,9 +260,16 @@ pub(crate) fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
             });
         }
 
-        // §30c Block embeds first (so we can skip them in block ref matching)
+        // §30c Block embeds first, remembering where each stands: the block
+        // reference regex matches the `((…))` inside an embed too, and only a
+        // match inside an embed the grammar RECOGNISED is the embed's — a
+        // `{{embed ((x#^id|caption))}}` the embed regex does not accept is a
+        // plain reference, indexed as one and rewritten as one (issue 668).
+        let mut embed_spans: Vec<std::ops::Range<usize>> = Vec::new();
         for cap in BLOCK_EMBED_RE.captures_iter(line.text) {
-            if !is_prose(&cap.get(0).unwrap()) {
+            let whole = cap.get(0).unwrap();
+            embed_spans.push(whole.range());
+            if in_front_matter(&whole) || !is_prose(&whole) {
                 continue;
             }
             let raw_target = cap.get(1).map(|m| m.as_str().trim()).unwrap_or("");
@@ -283,7 +298,8 @@ pub(crate) fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
 
         // §30c Block references: ((target#^blockId))
         for cap in BLOCK_REF_RE.captures_iter(line.text) {
-            if !is_prose(&cap.get(0).unwrap()) {
+            let whole = cap.get(0).unwrap();
+            if in_front_matter(&whole) || !is_prose(&whole) {
                 continue;
             }
             let raw_target = cap.get(1).map(|m| m.as_str().trim()).unwrap_or("");
@@ -292,13 +308,12 @@ pub(crate) fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
                 continue;
             }
 
-            // Skip if this match is part of a block embed (already captured above)
-            let match_start = cap.get(0).unwrap().start();
-            if match_start >= 8 {
-                let prefix = &line.text[..match_start];
-                if prefix.ends_with("{{embed ") {
-                    continue;
-                }
+            // The `((…))` of a recognised embed was captured above.
+            if embed_spans
+                .iter()
+                .any(|span| span.start <= whole.start() && whole.end() <= span.end)
+            {
+                continue;
             }
 
             // Self-ref ((#^id)) → use current file stem as target
@@ -358,33 +373,51 @@ pub fn replace_wikilink_target(content: &str, old_target: &str, new_target: &str
         .to_string()
 }
 
-/// §30a Replace block ID references in file content.
-/// Updates ((target#^oldId)), ((target#^oldId|display)), ((#^oldId)),
-/// and {{embed ((target#^oldId))}} patterns.
 /// §30a Rename `^old_id` → `^new_id` in the references a file makes TO ONE
 /// target — the file whose block is being renamed — and nowhere else. Two notes
 /// may carry the same block ID; a referrer that says `((target#^id))` and
-/// `((other#^id))` must change only the first (issue 594). The index already
-/// decided which of this file's lines refer to the target (`lines`, 1-based,
-/// from `get_backlinks`); within those lines a reference is rewritten only if
-/// its target normalizes to one of the target's keys (`backlink_keys`) — an
-/// empty target names the referrer itself, never the target.
+/// `((other#^id))` must change only the first (issue 594). Handles
+/// `((target#^oldId))`, `((target#^oldId|display))` and the `((…))` inside
+/// `{{embed ((target#^oldId))}}`.
+///
+/// issue 668: the lines to rewrite come from reading THIS content with the
+/// index's own grammar (`extract_links`) — a reference to the target with the
+/// old ID, on whichever line it stands NOW. The index once handed the line
+/// numbers it remembered, and a file edited outside the app since (a closed
+/// tab, a `git pull`) had moved its reference off them: nothing changed, and
+/// the definition took the new ID alone. The target test is the index's
+/// filing rule, `normalize_target` — path-qualified `((b/note#^id))` names
+/// another file's block and is left alone, exactly as the index leaves it out
+/// (issue 619). `ref_path` is the referrer, for its self-references.
 pub fn replace_block_id_refs_to(
     content: &str,
-    lines: &std::collections::HashSet<u32>,
+    ref_path: &str,
     target_keys: &[String],
     old_id: &str,
     new_id: &str,
 ) -> String {
     let refers_to_target = |raw_target: &str| {
         let t = raw_target.trim();
-        !t.is_empty() && target_keys.contains(&super::normalizer::normalize_file_path(t))
+        !t.is_empty() && target_keys.contains(&normalize_target(t))
     };
-    // issue 620: the literal regions of THIS content — an index built before
-    // a line became code may still name it. One pass per line: the reference
+    let lines: std::collections::HashSet<u32> = extract_links(ref_path, content)
+        .into_iter()
+        .filter(|entry| {
+            entry.link_type != "wikilink"
+                && entry.block_id.as_deref() == Some(old_id)
+                && refers_to_target(&entry.target)
+        })
+        .map(|entry| entry.line)
+        .collect();
+    if lines.is_empty() {
+        return content.to_owned();
+    }
+    // issue 620: the literal regions of THIS content — the lines above were
+    // read with them, and the interval check here keeps a `((…))` inside a
+    // code span on a prose line as it is. One pass per line: the reference
     // regex matches the `((…))` inside an embed too, and every offset stays
-    // an offset into the original line, so the interval check is exact
-    // whatever the new ID's length.
+    // an offset into the original line, so the check is exact whatever the
+    // new ID's length.
     let mut literal: Option<Literal> = None;
     let mut out = String::with_capacity(content.len());
     for line in source_lines(content) {
@@ -738,9 +771,6 @@ mod tests {
     }
 
     // §30a replace_block_id_refs_to tests
-    fn lines(list: &[u32]) -> std::collections::HashSet<u32> {
-        list.iter().copied().collect()
-    }
     fn keys(list: &[&str]) -> Vec<String> {
         list.iter().map(|k| k.to_string()).collect()
     }
@@ -751,7 +781,7 @@ mod tests {
             "See ((notes#^abc123)) and ((notes#^abc123|my label)).\n{{embed ((notes#^abc123))}}";
         let result = replace_block_id_refs_to(
             content,
-            &lines(&[1, 2]),
+            "/v/referrer.md",
             &keys(&["notes"]),
             "abc123",
             "xyz789",
@@ -766,7 +796,8 @@ mod tests {
     fn test_replace_block_id_refs_to_leaves_other_targets_with_the_same_id() {
         // issue 594: two notes carry ^id1; only the reference to `a` changes.
         let content = "((a#^id1)) and ((b#^id1)) and ((a#^id2))";
-        let result = replace_block_id_refs_to(content, &lines(&[1]), &keys(&["a"]), "id1", "newId");
+        let result =
+            replace_block_id_refs_to(content, "/v/referrer.md", &keys(&["a"]), "id1", "newId");
         assert_eq!(result, "((a#^newId)) and ((b#^id1)) and ((a#^id2))");
     }
 
@@ -774,31 +805,41 @@ mod tests {
     fn test_replace_block_id_refs_to_never_touches_a_self_reference() {
         // `((#^id))` in a referrer names the referrer's own block.
         let content = "See ((#^abc123)) and ((notes#^abc123)).";
-        let result =
-            replace_block_id_refs_to(content, &lines(&[1]), &keys(&["notes"]), "abc123", "xyz789");
+        let result = replace_block_id_refs_to(
+            content,
+            "/v/referrer.md",
+            &keys(&["notes"]),
+            "abc123",
+            "xyz789",
+        );
         assert_eq!(result, "See ((#^abc123)) and ((notes#^xyz789)).");
     }
 
     #[test]
-    fn test_replace_block_id_refs_to_only_on_the_lines_the_index_named() {
+    fn test_replace_block_id_refs_to_rewrites_every_line_that_refers() {
+        // issue 668: the rewriter reads the content as it is, not the line
+        // numbers an index remembered — every reference to the target changes.
         let content = "((notes#^abc)) first\n((notes#^abc)) second\n((notes#^abc)) third";
         let result =
-            replace_block_id_refs_to(content, &lines(&[2]), &keys(&["notes"]), "abc", "xyz");
+            replace_block_id_refs_to(content, "/v/referrer.md", &keys(&["notes"]), "abc", "xyz");
         assert_eq!(
             result,
-            "((notes#^abc)) first\n((notes#^xyz)) second\n((notes#^abc)) third"
+            "((notes#^xyz)) first\n((notes#^xyz)) second\n((notes#^xyz)) third"
         );
     }
 
     #[test]
     fn test_replace_block_id_refs_to_matches_the_target_the_way_the_index_does() {
-        // Case, extension and a path prefix normalize away, as `get_backlinks` keys do.
-        let content = "((Notes#^abc)) ((dir/notes.md#^abc)) ((other#^abc))";
+        // Case and the `.md` extension normalize away, as the index's keys do.
+        // A path-qualified target does NOT: the index files `dir/notes` under
+        // that key, never under `notes` (issue 619), so the rewriter leaves it
+        // alone too — what the index counts is what a rename may touch.
+        let content = "((Notes#^abc)) ((notes.md#^abc)) ((dir/notes.md#^abc)) ((other#^abc))";
         let result =
-            replace_block_id_refs_to(content, &lines(&[1]), &keys(&["notes"]), "abc", "xyz");
+            replace_block_id_refs_to(content, "/v/referrer.md", &keys(&["notes"]), "abc", "xyz");
         assert_eq!(
             result,
-            "((Notes#^xyz)) ((dir/notes.md#^xyz)) ((other#^abc))"
+            "((Notes#^xyz)) ((notes.md#^xyz)) ((dir/notes.md#^abc)) ((other#^abc))"
         );
     }
 
@@ -806,7 +847,7 @@ mod tests {
     fn test_replace_block_id_refs_to_no_match_is_byte_identical() {
         let content = "See ((notes#^other)) and {{embed ((notes#^other))}}\r\nend";
         let result =
-            replace_block_id_refs_to(content, &lines(&[1, 2]), &keys(&["notes"]), "abc", "xyz");
+            replace_block_id_refs_to(content, "/v/referrer.md", &keys(&["notes"]), "abc", "xyz");
         assert_eq!(result, content);
     }
 
@@ -1086,13 +1127,7 @@ mod tests {
         // point at a line inside a fence.
         let content = "```\n((notes#^abc))\n```\n((notes#^abc)) `((notes#^abc))`\n";
         assert_eq!(
-            replace_block_id_refs_to(
-                content,
-                &lines(&[1, 2, 3, 4]),
-                &keys(&["notes"]),
-                "abc",
-                "xyz"
-            ),
+            replace_block_id_refs_to(content, "/v/referrer.md", &keys(&["notes"]), "abc", "xyz"),
             "```\n((notes#^abc))\n```\n((notes#^xyz)) `((notes#^abc))`\n"
         );
     }
@@ -1101,11 +1136,11 @@ mod tests {
     fn a_block_id_rename_on_one_line_keeps_the_code_span_whatever_the_new_length() {
         let content = "{{embed ((notes#^abc))}} `((notes#^abc))` ((notes#^abc|show))\n";
         assert_eq!(
-            replace_block_id_refs_to(content, &lines(&[1]), &keys(&["notes"]), "abc", "a-much-longer-id"),
+            replace_block_id_refs_to(content, "/v/referrer.md", &keys(&["notes"]), "abc", "a-much-longer-id"),
             "{{embed ((notes#^a-much-longer-id))}} `((notes#^abc))` ((notes#^a-much-longer-id|show))\n"
         );
         assert_eq!(
-            replace_block_id_refs_to(content, &lines(&[1]), &keys(&["notes"]), "abc", "z"),
+            replace_block_id_refs_to(content, "/v/referrer.md", &keys(&["notes"]), "abc", "z"),
             "{{embed ((notes#^z))}} `((notes#^abc))` ((notes#^z|show))\n"
         );
     }
@@ -1114,7 +1149,7 @@ mod tests {
     fn a_block_id_rename_keeps_crlf_and_finds_its_lines_in_a_crlf_file() {
         let content = "((notes#^abc))\r\n```\r\n((notes#^abc))\r\n```\r\n((notes#^abc))\r\n";
         assert_eq!(
-            replace_block_id_refs_to(content, &lines(&[1, 3, 5]), &keys(&["notes"]), "abc", "xyz"),
+            replace_block_id_refs_to(content, "/v/referrer.md", &keys(&["notes"]), "abc", "xyz"),
             "((notes#^xyz))\r\n```\r\n((notes#^abc))\r\n```\r\n((notes#^xyz))\r\n"
         );
     }
@@ -1140,6 +1175,74 @@ mod tests {
         );
     }
 
+    /// issue 668 — the rewriter judges the CURRENT content, not the line
+    /// numbers an index remembered, and by the index's own target rule.
+    #[test]
+    fn the_block_id_rewriter_finds_the_reference_where_it_stands_now() {
+        let keys = crate::index::backlink_keys("/v/note.md");
+        // A line inserted above the reference after the index was built: the
+        // reference is found on its new line and rewritten.
+        assert_eq!(
+            replace_block_id_refs_to("new line\nsee ((note#^b1))\n", "/v/a.md", &keys, "b1", "b2"),
+            "new line\nsee ((note#^b2))\n"
+        );
+        // Path-qualified target on its own line names another file's block:
+        // the index files it under `b/note`, and the rewriter leaves it alone.
+        assert_eq!(
+            replace_block_id_refs_to(
+                "((note#^b1))\n((b/note#^b1))\n",
+                "/v/a.md",
+                &keys,
+                "b1",
+                "b2"
+            ),
+            "((note#^b2))\n((b/note#^b1))\n"
+        );
+        // An embed with a display part is a plain reference to the grammar —
+        // indexed as one, rewritten as one.
+        assert_eq!(
+            replace_block_id_refs_to(
+                "{{embed ((note#^b1|caption))}}\n",
+                "/v/a.md",
+                &keys,
+                "b1",
+                "b2"
+            ),
+            "{{embed ((note#^b2|caption))}}\n"
+        );
+        // Nothing to the target: byte for byte.
+        let untouched = "((other#^b1)) `((note#^b1))`\n";
+        assert_eq!(
+            replace_block_id_refs_to(untouched, "/v/a.md", &keys, "b1", "b2"),
+            untouched
+        );
+    }
+
+    /// issue 667 — a block reference in the front matter is neither indexed
+    /// nor rewritten; an attribute wikilink there is still a link.
+    #[test]
+    fn a_block_reference_in_the_front_matter_is_not_a_reference() {
+        let md = "---\nrelated: ((#^b1)) ((note#^b1))\nlink: \"[[x]]\"\n---\nbody ((note#^b1))\n";
+        let entries = extract_links("/v/a.md", md);
+        let kinds: Vec<(&str, &str, u32)> = entries
+            .iter()
+            .map(|e| (e.link_type.as_str(), e.target.as_str(), e.line))
+            .collect();
+        assert_eq!(kinds, vec![("wikilink", "x", 3), ("blockRef", "note", 5)]);
+        let keys = crate::index::backlink_keys("/v/note.md");
+        assert_eq!(
+            replace_block_id_refs_to(md, "/v/a.md", &keys, "b1", "b2"),
+            "---\nrelated: ((#^b1)) ((note#^b1))\nlink: \"[[x]]\"\n---\nbody ((note#^b2))\n"
+        );
+        // Behind a byte order mark, and an embed in the front matter, the same.
+        let bom = "\u{FEFF}---\nx: {{embed ((note#^b1))}}\n---\n{{embed ((note#^b1))}}\n";
+        let kinds: Vec<(String, u32)> = extract_links("/v/a.md", bom)
+            .into_iter()
+            .map(|e| (e.link_type, e.line))
+            .collect();
+        assert_eq!(kinds, vec![("blockEmbed".to_string(), 4)]);
+    }
+
     /// issue 620 — the cross-language contract: the editor's text path
     /// (`block-id-rename-markdown.ts`) and this reader→writer chain rewrite
     /// the same references. The expectations live in the JSON, not in
@@ -1156,17 +1259,9 @@ mod tests {
                 case["name"].as_str().unwrap(),
                 case["markdown"].as_str().unwrap(),
             );
-            let mut index = crate::index::LinkIndex::new();
-            index.update_file_from_content(referrer, markdown);
-            let lines: std::collections::HashSet<u32> = index
-                .block_reference_lines(target, old)
-                .into_iter()
-                .filter(|(source, _)| source == referrer)
-                .map(|(_, line)| line)
-                .collect();
             let keys = crate::index::backlink_keys(target);
             assert_eq!(
-                replace_block_id_refs_to(markdown, &lines, &keys, old, new),
+                replace_block_id_refs_to(markdown, referrer, &keys, old, new),
                 case["expected"].as_str().unwrap(),
                 "{name}"
             );
