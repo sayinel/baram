@@ -948,12 +948,21 @@ fn inline_literals(
 /// The editor's display rule (remark-math, like a fenced code block): a line
 /// whose content opens with two or more `$` and carries no other `$` opens a
 /// formula that ends with the line break of the next line that is a `$` run
-/// at least as long and blanks — or, when no such line comes before the
-/// container ends, at the container's end. Blank lines inside do not end it.
+/// at least as long and blanks — or, when no such line comes, where the
+/// formula's containers end. Blank lines inside do not end it.
+///
+/// issue 664: where the containers end is NOT where pulldown says. remark's
+/// math flow has no lazy continuation, so the formula runs only through the
+/// lines that still carry every container prefix the opener's line carried:
+/// a `>` (after up to three blanks) for each blockquote, the content column
+/// for each list item — read off the opener line's own prefix, in order,
+/// whatever pulldown made of the lines after (it reads a `>`-less line as
+/// the lazy continuation of the paragraph it took the `$$` for). A blank
+/// line keeps an item and ends a blockquote, as it does for the editor.
 fn display_math(content: &str, line_starts: &[(usize, usize)], out: &mut Vec<Range<usize>>) {
     let bytes = content.as_bytes();
     let mut skip_until = 0;
-    for &(start, container_end) in line_starts {
+    for &(start, _) in line_starts {
         if start < skip_until {
             continue;
         }
@@ -969,19 +978,142 @@ fn display_math(content: &str, line_starts: &[(usize, usize)], out: &mut Vec<Ran
         if bytes[start + open..line_end].contains(&b'$') {
             continue;
         }
-        let end = source_lines(&content[line_end..])
-            .take_while(|line| line_end + line.offset < container_end)
-            .find(|line| {
-                let text = line.text.trim_start_matches([' ', '\t', '>']);
-                let close = text.bytes().take_while(|&b| b == b'$').count();
-                close >= open && text[close..].trim_matches([' ', '\t']).is_empty()
-            })
-            .map_or(container_end, |line| {
-                line_end + line.offset + line.text.len() + line.terminator.len()
-            });
+        let line_start = bytes[..start]
+            .iter()
+            .rposition(|&b| b == b'\n' || b == b'\r')
+            .map_or(0, |i| i + 1);
+        let prefix = container_prefix(&content[line_start..start]);
+        // The end of the last line that is still the formula's: the closing
+        // line when one comes, else the last line that carries every
+        // container prefix and is not blank.
+        let mut end = line_end;
+        for line in source_lines(&content[line_end..]) {
+            let Some(rest) = continues(line.text, &prefix) else {
+                break;
+            };
+            let after = line_end + line.offset + line.text.len() + line.terminator.len();
+            let text = rest.trim_start_matches([' ', '\t']);
+            let close = text.bytes().take_while(|&b| b == b'$').count();
+            if close >= open && text[close..].trim_matches([' ', '\t']).is_empty() {
+                end = after;
+                break;
+            }
+            if !text.trim_matches([' ', '\t']).is_empty() {
+                end = after;
+            }
+        }
         out.push(start..end);
         skip_until = end;
     }
+}
+
+/// What a line must carry to continue a container the formula opened in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Continue {
+    /// A blockquote: up to three blanks, then `>`, then one optional blank.
+    Quote,
+    /// A list item: blank, or indented to its content column.
+    Item { column: usize },
+}
+
+/// The containers a line's prefix opens, in order — the blockquote markers
+/// and list markers before the content, with the column the item's content
+/// starts at (a tab stop is four columns).
+fn container_prefix(prefix: &str) -> Vec<Continue> {
+    let bytes = prefix.as_bytes();
+    let mut reqs = Vec::new();
+    let mut column = 0;
+    let mut i = 0;
+    let blanks = |mut i: usize, mut column: usize| {
+        while let Some(&b) = bytes.get(i) {
+            match b {
+                b' ' => column += 1,
+                b'\t' => column += 4 - column % 4,
+                _ => break,
+            }
+            i += 1;
+        }
+        (i, column)
+    };
+    while i < bytes.len() {
+        match bytes[i] {
+            b' ' | b'\t' => (i, column) = blanks(i, column),
+            b'>' => {
+                reqs.push(Continue::Quote);
+                i += 1;
+                column += 1;
+                if bytes.get(i) == Some(&b' ') {
+                    i += 1;
+                    column += 1;
+                }
+            }
+            b'-' | b'+' | b'*' => {
+                (i, column) = blanks(i + 1, column + 1);
+                reqs.push(Continue::Item { column });
+            }
+            b'0'..=b'9' => {
+                let digits = bytes[i..].iter().take_while(|b| b.is_ascii_digit()).count();
+                i += digits;
+                column += digits;
+                if matches!(bytes.get(i), Some(b'.') | Some(b')')) {
+                    i += 1;
+                    column += 1;
+                }
+                (i, column) = blanks(i, column);
+                reqs.push(Continue::Item { column });
+            }
+            _ => break,
+        }
+    }
+    reqs
+}
+
+/// The text of `line` past every container prefix in `reqs`, or None when
+/// the line does not carry them all — where the formula ends.
+fn continues<'a>(line: &'a str, reqs: &[Continue]) -> Option<&'a str> {
+    let bytes = line.as_bytes();
+    let mut i = 0;
+    let mut column = 0;
+    for req in reqs {
+        match *req {
+            Continue::Quote => {
+                let mut j = i;
+                while j < bytes.len() && j - i < 3 && bytes[j] == b' ' {
+                    j += 1;
+                }
+                if bytes.get(j) != Some(&b'>') {
+                    return None;
+                }
+                column += j - i + 1;
+                j += 1;
+                if bytes.get(j) == Some(&b' ') {
+                    j += 1;
+                    column += 1;
+                }
+                i = j;
+            }
+            Continue::Item { column: needed } => {
+                if line[i..].trim_matches([' ', '\t']).is_empty() {
+                    i = line.len();
+                    continue;
+                }
+                let mut j = i;
+                while j < bytes.len() && column < needed {
+                    match bytes[j] {
+                        b' ' => column += 1,
+                        b'\t' => column += 4 - column % 4,
+                        _ => break,
+                    }
+                    j += 1;
+                }
+                if column < needed {
+                    return None;
+                }
+                i = j;
+            }
+        }
+    }
+    Some(&line[i..])
 }
 
 /// A copy of `content` with every bare `\r` (one not followed by `\n`) turned
@@ -1209,6 +1341,39 @@ mod tests {
         assert_eq!(refs("a `((n#^o))` b\r((n#^o))\r"), [false, true]);
         // Mixed endings, and a formula whose closing line ends with a bare CR.
         assert_eq!(refs("$$\r((n#^o))\r$$\r\n((n#^o))\n"), [false, true]);
+    }
+
+    /// issue 664 — an unclosed display formula ends where its containers end
+    /// to the editor: remark's math flow has no lazy continuation, so the
+    /// formula runs only through the lines that still carry every container
+    /// prefix the opener line carried. pulldown reads the `>`-less line after
+    /// `> $$` as a lazy paragraph continuation inside the blockquote; the
+    /// editor reads it as a new paragraph — prose. Every shape below was
+    /// measured against the editor's remark stack.
+    #[test]
+    fn an_unclosed_display_formula_ends_where_the_editors_container_ends() {
+        // A blockquote ends at the first line without `>`.
+        assert_eq!(refs("> $$\n((n#^o))\n\n((n#^o))\n"), [true, true]);
+        assert_eq!(refs("> $$\n> ((n#^o))\n((n#^o))\n"), [false, true]);
+        assert_eq!(refs("> > $$\n> > ((n#^o))\n> ((n#^o))\n"), [false, true]);
+        assert_eq!(refs("   > $$\n   > ((n#^o))\n((n#^o))\n"), [false, true]);
+        assert_eq!(refs(">\t$$\n> ((n#^o))\n((n#^o))\n"), [false, true]);
+        // A blank line ends a blockquote, and keeps a list item.
+        assert_eq!(refs("> $$\n\n> ((n#^o))\n"), [true]);
+        assert_eq!(refs("- $$\n\n  ((n#^o))\n"), [false]);
+        // A list item runs through the lines indented to its content column.
+        assert_eq!(refs("- $$\n  ((n#^o))\n((n#^o))\n"), [false, true]);
+        assert_eq!(refs("- $$\n ((n#^o))\n"), [true]);
+        assert_eq!(refs("-   $$\n    ((n#^o))\n  ((n#^o))\n"), [false, true]);
+        assert_eq!(refs("1. $$\n   ((n#^o))\n((n#^o))\n"), [false, true]);
+        // Nested containers compose, in order.
+        assert_eq!(refs("> - $$\n>   ((n#^o))\n> ((n#^o))\n"), [false, true]);
+        assert_eq!(refs("- > $$\n  > ((n#^o))\n  ((n#^o))\n"), [false, true]);
+        // A `$$` on the lazy line opens a new formula at the top level.
+        assert_eq!(refs("> $$\n$$\n((n#^o))\n"), [false]);
+        // A closing line still closes, and a bare CR is a line break here too.
+        assert_eq!(refs("> $$\n> ((n#^o))\n> $$\n((n#^o))\n"), [false, true]);
+        assert_eq!(refs("> $$\r> ((n#^o))\r((n#^o))\r"), [false, true]);
     }
 
     /// No display formula, for sweeping a block directly.
