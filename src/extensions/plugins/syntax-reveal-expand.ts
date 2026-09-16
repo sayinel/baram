@@ -148,11 +148,27 @@ export function expandMark(
 
 // ── Media expansion (image/video, §295) ─────────────────────────────────
 
+/**
+ * Reveal a media atom as `![alt](src)` text, or refuse — returns whether
+ * the document changed.
+ *
+ * issue 509: the image and video nodes are block atoms, yet the loader
+ * tolerates one inside a paragraph when the markdown puts it on a line with
+ * text (`이미지: ![로고](url)`). Revealing THAT one wraps the text in a new
+ * paragraph inside the paragraph; ProseMirror splits the parent, the tracked
+ * range is off by one, collapse fails, and the save path writes the revealed
+ * text escaped (`!\[로고]\(url)`) — the file is damaged. So an atom whose
+ * parent is a textblock stays an atom: it renders, it is selected, and its
+ * markdown is edited in source mode. Callers branch on the result: a click
+ * not taken falls through to the default selection, a key not taken is
+ * swallowed rather than typed over the atom.
+ */
 export function expandMediaAtom(
   view: EditorView,
   node: PmNode,
   pos: number,
-): void {
+): boolean {
+  if (view.state.doc.resolve(pos).parent.isTextblock) return false;
   const src = (node.attrs.src as string) || "";
   const alt = (node.attrs.alt as string) || "";
   const title = node.attrs.title as null | string;
@@ -210,6 +226,7 @@ export function expandMediaAtom(
   tagSyntaxRevealEphemeral(tr);
 
   view.dispatch(tr);
+  return true;
 }
 
 // ── Wikilink expansion ────────────────────────────────────────────────

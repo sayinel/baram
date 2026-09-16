@@ -6,11 +6,14 @@
 import type { Node as PmNode } from "@tiptap/pm/model";
 
 import { Editor } from "@tiptap/core";
+import { NodeSelection } from "@tiptap/pm/state";
 import { describe, expect, it } from "vitest";
 
 import { createBaramExtensions } from "../../extensions";
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
+import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
 import { forceCollapseSyntaxReveal } from "../plugins/syntax-reveal";
+import { syntaxRevealKey } from "../plugins/syntax-reveal-state";
 
 function createEditor(): Editor {
   return new Editor({ extensions: createBaramExtensions(), content: "" });
@@ -346,6 +349,93 @@ describe("image syntax reveal (§300-3 regression guard)", () => {
       expect(imgB?.attrs.src).toBe("two.png");
       editor.destroy();
     });
+  });
+});
+
+describe("an image on a line with text stays an atom (issue 509)", () => {
+  // The image node is a block atom, yet the loader tolerates one inside a
+  // paragraph when the markdown puts it on a line with text. Revealing that
+  // one used to wrap the revealed text in a paragraph INSIDE the paragraph:
+  // ProseMirror split the parent, the tracked range was off by one, collapse
+  // failed and the save path wrote the revealed text escaped
+  // (`!\[로고]\(https\://…)`). Option 1 of issue 509: it is not revealed at
+  // all — it renders, it is selected, and its markdown is edited in source
+  // mode. The three entry points (click, key on a NodeSelection, the
+  // selection-driven frame) all decline.
+  const INLINE = "이미지: ![로고](https://example.com/logo.png)\n";
+  const DOC = `Hello\n\n${INLINE}`;
+
+  function loadInline(): { editor: Editor; pos: number } {
+    const editor = createEditor();
+    loadMarkdown(editor, DOC);
+    const pos = findNodePos(editor, "image");
+    // The tolerated state this suite is about: the atom's parent is a
+    // paragraph, not the document.
+    expect(editor.state.doc.resolve(pos).parent.type.name).toBe("paragraph");
+    return { editor, pos };
+  }
+
+  it("declines the click and leaves the document as it was", () => {
+    const { editor, pos } = loadInline();
+    const handled = editor.view.someProp("handleClick", (f) =>
+      f(editor.view, pos, new MouseEvent("click")),
+    );
+    expect(handled).toBeFalsy();
+    expect(nodeTypeNames(editor)).toContain("image");
+    expect(editor.state.doc.textContent).not.toContain("![");
+    expect(prosemirrorToMarkdown(editor.state.doc).trimEnd()).toBe(
+      DOC.trimEnd(),
+    );
+    editor.destroy();
+  });
+
+  it("swallows Enter and a printable key on the selected atom instead of typing over it", () => {
+    // Left to ProseMirror, a printable key on a NodeSelection replaces the
+    // node with the character: `이미지: x`. The plugin takes the key and
+    // does nothing with it.
+    const { editor, pos } = loadInline();
+    editor.commands.setNodeSelection(pos);
+    for (const key of ["Enter", "x"]) {
+      const event = new KeyboardEvent("keydown", { cancelable: true, key });
+      const handled = editor.view.someProp("handleKeyDown", (f) =>
+        f(editor.view, event),
+      );
+      expect(handled, key).toBe(true);
+      expect(event.defaultPrevented, key).toBe(true);
+    }
+    expect(editor.state.selection).toBeInstanceOf(NodeSelection);
+    expect(nodeTypeNames(editor)).toContain("image");
+    expect(syntaxRevealKey.getState(editor.state)?.expanded).toBeFalsy();
+    expect(prosemirrorToMarkdown(editor.state.doc).trimEnd()).toBe(
+      DOC.trimEnd(),
+    );
+    editor.destroy();
+  });
+
+  it("does not reveal it from the selection-driven frame either", async () => {
+    // The same hop as selectNodeAndAwaitExpand: the guard that stops an
+    // InputRule's fresh node from re-expanding must be cleared, or the frame
+    // is never scheduled and the test would pass for the wrong reason.
+    const { editor, pos } = loadInline();
+    await selectNodeAndAwaitExpand(editor, pos);
+    expect(editor.state.selection).toBeInstanceOf(NodeSelection);
+    expect(syntaxRevealKey.getState(editor.state)?.expanded).toBeFalsy();
+    expect(nodeTypeNames(editor)).toContain("image");
+    editor.destroy();
+  });
+
+  it("still reveals the image that stands on its own line in the same document", () => {
+    const editor = createEditor();
+    loadMarkdown(editor, `${DOC}\n![a](one.png)\n`);
+    const [, blockPos] = findAllNodePos(editor, "image");
+    const handled = editor.view.someProp("handleClick", (f) =>
+      f(editor.view, blockPos, new MouseEvent("click")),
+    );
+    expect(handled).toBe(true);
+    expect(editor.state.doc.textContent).toContain("![a](one.png)");
+    // The inline one is still an atom.
+    expect(nodeTypeNames(editor).filter((n) => n === "image")).toHaveLength(1);
+    editor.destroy();
   });
 });
 

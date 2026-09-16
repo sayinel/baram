@@ -374,10 +374,11 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
         const $pos = view.state.doc.resolve(pos);
         const nodeAfter = $pos.nodeAfter;
 
-        // Click on image atom → expand to editable markdown
+        // Click on image atom → expand to editable markdown. issue 509: an
+        // atom inside a textblock is not revealed, and then the click is
+        // not ours — the default selection stands.
         if (nodeAfter && isMediaAtom(nodeAfter.type.name)) {
-          expandMediaAtom(view, nodeAfter, pos);
-          return true;
+          return expandMediaAtom(view, nodeAfter, pos);
         }
 
         // Click on wikilink atom → expand (but not Cmd+Click which navigates)
@@ -416,12 +417,16 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
                 !event.altKey;
 
               if (isEnter || isPrintable) {
-                if (isEnter) event.preventDefault();
+                event.preventDefault();
                 if (pendingRaf) {
                   cancelAnimationFrame(pendingRaf);
                   pendingRaf = null;
                 }
                 if (isMediaAtom(nodeName)) {
+                  // issue 509: an inline media atom is not revealed, and the
+                  // key is swallowed all the same — left to ProseMirror, a
+                  // printable key would be typed over the selected atom and
+                  // delete the image.
                   expandMediaAtom(view, selection.node, selection.from);
                 } else {
                   expandWikilink(view, selection.node, selection.from);
