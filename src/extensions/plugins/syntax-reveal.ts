@@ -395,6 +395,28 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
         return false;
       },
 
+      // ── Text input over an inline media atom (issue 509) ────────
+      // Text that arrives without a plain printable keydown — AltGraph or
+      // dead-key input, a character composed at the OS level — reaches
+      // ProseMirror here, and would replace the NodeSelected atom with the
+      // character. An atom that is not revealed keeps its place: the text
+      // is swallowed as the key would have been. (IME composition does not
+      // pass through this handler; it replaces a selected atom as it does
+      // any other atom — a deliberate edit, undoable.)
+      handleTextInput(view, from, to) {
+        // Only the input that would replace the atom: ProseMirror calls this
+        // for text changes it observed in the DOM too, whose range may lie
+        // elsewhere while the selection still rests on the atom.
+        const { selection } = view.state;
+        return (
+          selection instanceof NodeSelection &&
+          from === selection.from &&
+          to === selection.to &&
+          isMediaAtom(selection.node.type.name) &&
+          view.state.doc.resolve(selection.from).parent.isTextblock
+        );
+      },
+
       // ── Keyboard handling ───────────────────────────────────────
       handleKeyDown(view, event) {
         const es = syntaxRevealKey.getState(view.state);

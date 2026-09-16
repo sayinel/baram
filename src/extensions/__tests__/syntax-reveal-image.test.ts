@@ -412,6 +412,42 @@ describe("an image on a line with text stays an atom (issue 509)", () => {
     editor.destroy();
   });
 
+  it("swallows text input that arrives without a printable keydown, and only over the inline atom", () => {
+    // AltGraph and dead-key input, or a character composed at the OS level,
+    // reach ProseMirror as text input rather than a plain printable key, and
+    // would replace the selected atom. Over the inline atom the plugin takes
+    // the text; over a block image it does not (the reveal handles that key).
+    const { editor, pos } = loadInline();
+    editor.commands.setNodeSelection(pos);
+    const swallowed = editor.view.someProp("handleTextInput", (f) =>
+      f(editor.view, pos, pos + 1, "@", () => editor.state.tr),
+    );
+    expect(swallowed).toBe(true);
+    expect(nodeTypeNames(editor)).toContain("image");
+    expect(prosemirrorToMarkdown(editor.state.doc).trimEnd()).toBe(
+      DOC.trimEnd(),
+    );
+    // A change ProseMirror observed elsewhere — the selection still on the
+    // atom, the range in the preceding text — is not the plugin's to swallow.
+    expect(
+      editor.view.someProp("handleTextInput", (f) =>
+        f(editor.view, 1, 1, "@", () => editor.state.tr),
+      ),
+    ).toBeFalsy();
+    editor.destroy();
+
+    const block = createEditor();
+    loadMarkdown(block, "Hello\n\n![a](one.png)\n");
+    const blockPos = findNodePos(block, "image");
+    block.commands.setNodeSelection(blockPos);
+    expect(
+      block.view.someProp("handleTextInput", (f) =>
+        f(block.view, blockPos, blockPos + 1, "@", () => block.state.tr),
+      ),
+    ).toBeFalsy();
+    block.destroy();
+  });
+
   it("does not reveal it from the selection-driven frame either", async () => {
     // The same hop as selectNodeAndAwaitExpand: the guard that stops an
     // InputRule's fresh node from re-expanding must be cleared, or the frame
