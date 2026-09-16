@@ -318,12 +318,9 @@ fn bare_cr_as_newline(content: &str) -> Option<String> {
     if !(0..bytes.len()).any(bare) {
         return None;
     }
-    let mut out = bytes.to_vec();
-    for i in 0..out.len() {
-        if bare(i) {
-            out[i] = b'\n';
-        }
-    }
+    let out: Vec<u8> = (0..bytes.len())
+        .map(|i| if bare(i) { b'\n' } else { bytes[i] })
+        .collect();
     String::from_utf8(out).ok()
 }
 
