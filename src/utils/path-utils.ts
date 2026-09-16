@@ -169,6 +169,21 @@ export function isDescendantPath(candidate: string, dir: string): boolean {
 }
 
 /**
+ * The final name of a path, split the way the path is spelled: after the
+ * last `/`, or after the last `/` or `\` when the path is a Windows one — a
+ * drive letter or a UNC root. On Unix a backslash is a character of the name
+ * (issue 595). `basename` reads `/` alone, which vault-relative and POSIX
+ * callers want.
+ */
+export function lastPathSegment(path: string): string {
+  const windows = hasDriveLetter(path) || path.startsWith("\\\\");
+  const at = windows
+    ? Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"))
+    : path.lastIndexOf("/");
+  return at >= 0 ? path.substring(at + 1) : path;
+}
+
+/**
  * Collapse `.`, `..` and empty segments in a POSIX-style path.
  *
  * ‼️ Two callers used to inline this loop, and the third — the one that

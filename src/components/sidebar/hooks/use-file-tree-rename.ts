@@ -17,7 +17,7 @@ import { useFileStore } from "../../../stores/file/file";
 import { useSettingsStore } from "../../../stores/settings/store";
 import { useUIStore } from "../../../stores/ui/ui";
 import { logger } from "../../../utils/logger";
-import { basename } from "../../../utils/path-utils";
+import { lastPathSegment } from "../../../utils/path-utils";
 import { syncCleanSurfacesAfterReferrerRewrite } from "../../../utils/tasks/sync-open-surfaces";
 
 interface UseFileTreeRenameReturn {
@@ -57,9 +57,10 @@ export function useFileTreeRename(
       // `/` made the whole path the name and `newPath` the bare new name,
       // which the backend refused as a destination outside the vault.
       // Only the last name changes, so `newPath` keeps whatever separator
-      // the tree used.
+      // the tree used. A path the tree no longer knows (replaced under an
+      // open rename) is split the way it is spelled, not on `/` alone.
       const entry = findEntry(fileTree, oldPath);
-      const oldName = entry?.name ?? basename(oldPath);
+      const oldName = entry?.name ?? lastPathSegment(oldPath);
       if (newName === oldName || !newName.trim()) return;
       const newPath =
         oldPath.substring(0, oldPath.length - oldName.length) + newName;

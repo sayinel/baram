@@ -115,4 +115,17 @@ describe("renaming under Windows paths (issue 595)", () => {
       "/elsewhere/y.md",
     );
   });
+
+  it("a Windows path the tree does not know still splits at its backslash", async () => {
+    vi.mocked(renameFileWithLinks).mockResolvedValue({
+      skippedFiles: [],
+      updatedFiles: [],
+    });
+    await confirm("C:\\elsewhere\\x.md", "y.md");
+
+    expect(renameFileWithLinks).toHaveBeenCalledWith(
+      "C:\\elsewhere\\x.md",
+      "C:\\elsewhere\\y.md",
+    );
+  });
 });

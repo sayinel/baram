@@ -6,6 +6,7 @@ import {
   getRelativePath,
   isDescendantPath,
   isImageFile,
+  lastPathSegment,
   normalizePath,
   resolveNameConflict,
 } from "../path-utils";
@@ -171,6 +172,22 @@ describe("isDescendantPath (issue 595)", () => {
       false,
     );
     expect(isDescendantPath("/v/foo/x.md", "")).toBe(false);
+  });
+});
+
+describe("lastPathSegment (issue 595)", () => {
+  test("splits a POSIX path on the slash, a backslash being part of a name", () => {
+    expect(lastPathSegment("/v/foo/bar.md")).toBe("bar.md");
+    expect(lastPathSegment("/v/foo\\bar.md")).toBe("foo\\bar.md");
+    expect(lastPathSegment("bar.md")).toBe("bar.md");
+  });
+
+  test("splits a Windows path on either separator", () => {
+    expect(lastPathSegment("C:\\vault\\ns\\a.md")).toBe("a.md");
+    expect(lastPathSegment("C:/vault/ns\\a.md")).toBe("a.md");
+    expect(lastPathSegment("\\\\server\\share\\ns")).toBe("ns");
+    // A drive-relative `C:foo` is not spelled as a Windows path here.
+    expect(lastPathSegment("C:foo")).toBe("C:foo");
   });
 });
 
