@@ -231,9 +231,9 @@ pub(super) fn display_math(
         let (prefix, modelled) = container_prefix(&content[line_start..start]);
         // The end of the last line that is still the formula's: the closing
         // line when one comes, else the last line that carries every
-        // container prefix and is not blank. A prefix this rule does not
-        // model — a footnote definition's `[^1]: ` — keeps the parser's own
-        // container end as the bound, as before.
+        // container prefix and is not blank. A prefix with a marker this
+        // rule does not know keeps the parser's own container end as the
+        // bound.
         let bound = if modelled {
             content.len()
         } else {
@@ -245,13 +245,16 @@ pub(super) fn display_math(
             if at >= bound {
                 break;
             }
-            let Some(rest) = continues(line.text, &prefix) else {
+            let Some((text, indent)) = continues(line.text, &prefix) else {
                 break;
             };
             let after = at + line.text.len() + line.terminator.len();
-            let text = rest.trim_start_matches([' ', '\t']);
+            // The closing run may be indented at most three columns past the
+            // container's content, as a fenced code block's closer may.
+            // Indented further, the line is the formula's — measured against
+            // remark, tabs split across a container's edge included.
             let close = text.bytes().take_while(|&b| b == b'$').count();
-            if close >= open && text[close..].trim_matches([' ', '\t']).is_empty() {
+            if indent <= 3 && close >= open && text[close..].trim_matches([' ', '\t']).is_empty() {
                 end = after;
                 break;
             }
@@ -276,9 +279,8 @@ pub(super) enum Continue {
 /// The containers a line's prefix opens, in order — the blockquote markers
 /// and list markers before the content, with the column the item's content
 /// starts at (a tab stop is four columns) — and whether the whole prefix
-/// was read: a marker this rule does not know (a footnote definition's
-/// `[^1]: `) leaves the rest unread, and the caller keeps the parser's
-/// container end as the bound.
+/// was read: a marker this rule does not know leaves the rest unread, and
+/// the caller keeps the parser's container end as the bound.
 pub(super) fn container_prefix(prefix: &str) -> (Vec<Continue>, bool) {
     let bytes = prefix.as_bytes();
     let mut reqs = Vec::new();
@@ -343,52 +345,107 @@ pub(super) fn container_prefix(prefix: &str) -> (Vec<Continue>, bool) {
     (reqs, true)
 }
 
-/// The text of `line` past every container prefix in `reqs`, or None when
-/// the line does not carry them all — where the formula ends.
-pub(super) fn continues<'a>(line: &'a str, reqs: &[Continue]) -> Option<&'a str> {
-    let bytes = line.as_bytes();
-    let mut i = 0;
-    let mut column = 0;
+/// The text of `line` past every container prefix in `reqs` and past the
+/// blanks after them, with how many columns those blanks span, or None when
+/// the line does not carry every prefix — where the formula ends.
+pub(super) fn continues<'a>(line: &'a str, reqs: &[Continue]) -> Option<(&'a str, usize)> {
+    let mut blanks = Blanks::new(line);
     for req in reqs {
         match *req {
             Continue::Quote => {
-                let mut j = i;
-                while j < bytes.len() && j - i < 3 && bytes[j] == b' ' {
-                    j += 1;
+                let mut before = 0;
+                while before < 3 && blanks.at() == Some(b' ') {
+                    blanks.take();
+                    before += 1;
                 }
-                if bytes.get(j) != Some(&b'>') {
+                if blanks.at() != Some(b'>') {
                     return None;
                 }
-                column += j - i + 1;
-                j += 1;
-                if bytes.get(j) == Some(&b' ') {
-                    j += 1;
-                    column += 1;
-                }
-                i = j;
+                blanks.skip_marker();
+                // The one optional blank after `>`: a space, or one column of
+                // a tab, whose other columns are the content's.
+                blanks.take();
             }
             Continue::Item { column: needed } => {
-                if line[i..].trim_matches([' ', '\t']).is_empty() {
-                    i = line.len();
+                if blanks.rest().trim_matches([' ', '\t']).is_empty() {
+                    blanks.skip_to_end();
                     continue;
                 }
-                let mut j = i;
-                while j < bytes.len() && column < needed {
-                    match bytes[j] {
-                        b' ' => column += 1,
-                        b'\t' => column += 4 - column % 4,
-                        _ => break,
-                    }
-                    j += 1;
-                }
-                if column < needed {
+                while blanks.column < needed && blanks.take() {}
+                if blanks.column < needed {
                     return None;
                 }
-                i = j;
             }
         }
     }
-    Some(&line[i..])
+    let mut indent = 0;
+    while blanks.take() {
+        indent += 1;
+    }
+    Some((blanks.rest(), indent))
+}
+
+/// A cursor over a line's blanks, in columns — a tab is the columns to the
+/// next tab stop, and a container may take some of them and leave the rest
+/// to whatever follows, as micromark reads a tab as virtual spaces.
+struct Blanks<'a> {
+    line: &'a str,
+    i: usize,
+    column: usize,
+    /// Columns of the tab at `i` already taken.
+    taken: usize,
+}
+
+impl<'a> Blanks<'a> {
+    fn new(line: &'a str) -> Self {
+        Self {
+            line,
+            i: 0,
+            column: 0,
+            taken: 0,
+        }
+    }
+
+    fn at(&self) -> Option<u8> {
+        self.line.as_bytes().get(self.i).copied()
+    }
+
+    fn rest(&self) -> &'a str {
+        &self.line[self.i..]
+    }
+
+    /// Take one column of blank; false when what follows is not a blank.
+    fn take(&mut self) -> bool {
+        match self.at() {
+            Some(b' ') => {
+                self.i += 1;
+                self.column += 1;
+                true
+            }
+            Some(b'\t') => {
+                let width = 4 - (self.column - self.taken) % 4;
+                self.taken += 1;
+                self.column += 1;
+                if self.taken == width {
+                    self.i += 1;
+                    self.taken = 0;
+                }
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Step over a one-byte marker such as `>`.
+    fn skip_marker(&mut self) {
+        self.i += 1;
+        self.column += 1;
+    }
+
+    fn skip_to_end(&mut self) {
+        self.i = self.line.len();
+        self.taken = 0;
+    }
 }
 
 /// The bare URLs and e-mail addresses the editor reads as links

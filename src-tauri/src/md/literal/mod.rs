@@ -432,6 +432,38 @@ mod tests {
         );
     }
 
+    /// The closing `$$` run may be indented at most three columns past the
+    /// container's content column — remark-math closes as a fenced code
+    /// block does — and a tab reaches the next tab stop of the line's own
+    /// column. Indented further, the line is the formula's.
+    #[test]
+    fn a_closing_dollar_run_is_indented_at_most_three_columns() {
+        assert_eq!(refs("$$\n   $$\n((n#^o))\n"), [true]);
+        assert_eq!(refs("$$\n   $$   \n((n#^o))\n"), [true]);
+        assert_eq!(refs("$$\n    $$\n((n#^o))\n"), [false]);
+        assert_eq!(refs("$$\n\t$$\n((n#^o))\n"), [false]);
+        assert_eq!(refs("- $$\n     $$\n  ((n#^o))\n"), [true]);
+        assert_eq!(refs("- $$\n      $$\n  ((n#^o))\n"), [false]);
+        assert_eq!(refs("- $$\n  \t$$\n  ((n#^o))\n"), [true]);
+        assert_eq!(refs("- $$\n      \t$$\n  ((n#^o))\n"), [false]);
+        assert_eq!(refs("> $$\n>    $$\n> ((n#^o))\n"), [true]);
+        assert_eq!(refs("> $$\n>     $$\n> ((n#^o))\n"), [false]);
+        assert_eq!(refs("[^1]: $$\n       $$\n    ((n#^o))\n"), [true]);
+        assert_eq!(refs("[^1]: $$\n        $$\n    ((n#^o))\n"), [false]);
+        // A tab straddling a container's edge: the container takes the
+        // columns it needs, the rest count toward the closer's indentation.
+        assert_eq!(refs("- $$\n\t$$\n  ((n#^o))\n"), [true]);
+        assert_eq!(refs("- $$\n\t $$\n  ((n#^o))\n"), [true]);
+        assert_eq!(refs("- $$\n\t   $$\n  ((n#^o))\n"), [false]);
+        assert_eq!(refs("> $$\n>\t$$\n> ((n#^o))\n"), [true]);
+        assert_eq!(refs("> $$\n>\t $$\n> ((n#^o))\n"), [true]);
+        assert_eq!(refs("> $$\n>\t  $$\n> ((n#^o))\n"), [false]);
+        assert_eq!(refs("> - $$\n>\t   $$\n>   ((n#^o))\n"), [true]);
+        assert_eq!(refs("[^1]: $$\n\t   $$\n    ((n#^o))\n"), [true]);
+        assert_eq!(refs("[^1]: $$\n\t\t$$\n    ((n#^o))\n"), [false]);
+        assert_eq!(refs(">\t$$\n>\t((n#^o))\n((n#^o))\n"), [false, true]);
+    }
+
     /// No display formula, for sweeping a block directly.
     static NONE: Literal = Literal { ranges: Vec::new() };
 

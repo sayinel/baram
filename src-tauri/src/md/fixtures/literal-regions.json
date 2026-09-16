@@ -194,6 +194,16 @@
       "name": "an unclosed display formula in a footnote definition ends with the footnote",
       "markdown": "[^1]: $$\n    ((note#^b1))\n((note#^b1))\n",
       "expected": "[^1]: $$\n    ((note#^b1))\n((note#^b2-longer))\n"
+    },
+    {
+      "name": "a closing dollar run indented four columns past the item's content is the formula's",
+      "markdown": "- $$\n      $$\n  ((note#^b1))\n((note#^b1))\n",
+      "expected": "- $$\n      $$\n  ((note#^b1))\n((note#^b2-longer))\n"
+    },
+    {
+      "name": "a tab straddling the item's content column leaves its other columns to the closer's indentation",
+      "markdown": "- $$\n\t   $$\n  ((note#^b1))\n((note#^b1))\n",
+      "expected": "- $$\n\t   $$\n  ((note#^b1))\n((note#^b2-longer))\n"
     }
   ]
 }
