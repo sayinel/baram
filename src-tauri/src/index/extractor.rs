@@ -297,6 +297,7 @@ pub(crate) fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
         }
 
         // §30c Block references: ((target#^blockId))
+        let mut embed_cursor = 0;
         for cap in BLOCK_REF_RE.captures_iter(line.text) {
             let whole = cap.get(0).unwrap();
             if in_front_matter(&whole) || !is_prose(&whole) {
@@ -308,10 +309,16 @@ pub(crate) fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
                 continue;
             }
 
-            // The `((…))` of a recognised embed was captured above.
+            // The `((…))` of a recognised embed was captured above. Both
+            // iterators run left to right, so one cursor over the spans
+            // keeps this linear in the line, however many embeds it holds.
+            while embed_cursor < embed_spans.len() && embed_spans[embed_cursor].end <= whole.start()
+            {
+                embed_cursor += 1;
+            }
             if embed_spans
-                .iter()
-                .any(|span| span.start <= whole.start() && whole.end() <= span.end)
+                .get(embed_cursor)
+                .is_some_and(|span| span.start <= whole.start() && whole.end() <= span.end)
             {
                 continue;
             }

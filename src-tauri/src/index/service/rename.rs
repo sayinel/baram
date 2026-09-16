@@ -168,7 +168,7 @@ pub(crate) async fn rename_file_with_links_inner(
         &referring_files,
         old_path,
         &dirs,
-        Unchanged::Ignore,
+        &Unchanged::Ignore,
         |content, _| replace_wikilink_target(content, &old_target, &new_target),
     )
     .await;
@@ -241,6 +241,14 @@ pub(crate) async fn rename_block_id_inner(
     referring_files.sort();
     referring_files.dedup();
     let target_keys = backlink_keys(file_path);
+    // A referrer that shares the target's stem — another `note.md` in some
+    // other folder — is named by the index for its own self-references
+    // (`((#^id))` is filed under the referrer's own stem, which is the
+    // target's). The rewrite leaves those alone, rightly, and the file must
+    // not then be reported as a stale referrer: the index cannot tell the
+    // two notes apart, and that is not news about this file.
+    let is_target_stem =
+        |path: &str| target_keys.contains(&crate::index::normalizer::normalize_file_path(path));
 
     // 2. Read + replace + write (outside lock). The first referrer written is
     //    this command's point of no return: a later one that cannot be
@@ -255,7 +263,9 @@ pub(crate) async fn rename_block_id_inner(
         &referring_files,
         file_path,
         &dirs,
-        Unchanged::Report,
+        &Unchanged::Report {
+            unless: &is_target_stem,
+        },
         |content, ref_path| {
             replace_block_id_refs_to(content, ref_path, &target_keys, old_id, new_id)
         },
@@ -296,12 +306,14 @@ struct Rewritten {
 
 /// What to make of a referrer the index named whose content `rewrite` did not
 /// change (issue 668).
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Unchanged {
+enum Unchanged<'a> {
     /// The index was stale — the reference moved or went — and the file still
     /// says the old name: report it in `skipped`, as any referrer whose links
-    /// were not updated.
-    Report,
+    /// were not updated. `unless` names the referrers the index names for a
+    /// reason the rewrite rightly ignores, which are no news.
+    Report {
+        unless: &'a (dyn Fn(&str) -> bool + Sync),
+    },
     /// Not news: the index names referrers this rewrite does not cover (a file
     /// rename rewrites wikilinks; a referrer may refer by a block reference or
     /// an embed alone).
@@ -316,7 +328,7 @@ async fn rewrite_referrers(
     referring_files: &[String],
     own_path: &str,
     dirs: &[Registered],
-    unchanged: Unchanged,
+    unchanged: &Unchanged<'_>,
     rewrite: impl Fn(&str, &str) -> String,
 ) -> Rewritten {
     let mut result = Rewritten {
@@ -340,7 +352,10 @@ async fn rewrite_referrers(
         };
         let new_content = rewrite(&content, ref_path);
         if new_content == content {
-            if unchanged == Unchanged::Report {
+            if let Unchanged::Report { unless } = unchanged {
+                if unless(ref_path) {
+                    continue;
+                }
                 log::warn!(
                     "rename: {ref_path} was named by the index but holds no reference to rename now — the index was stale; its links are left as they are"
                 );
