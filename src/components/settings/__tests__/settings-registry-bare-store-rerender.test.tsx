@@ -10,6 +10,7 @@ import { act, render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { useAIStore } from "../../../stores/ai/ai";
+import { useSettingsStore } from "../../../stores/settings/store";
 import { useSettingsRegistry } from "../settings-registry";
 
 /** `useSettingsRegistry` is a hook, not a component — this is the minimal render surface
@@ -64,5 +65,32 @@ describe("useSettingsRegistry re-render scope (§340 M-11)", () => {
     expect(state.commits).toBeGreaterThan(before);
 
     useAIStore.setState({ aiEnabled: true });
+  });
+
+  it("does not commit again for a settings-store write it does not read (a keybinding override) — issue 267", () => {
+    const state = renderRegistryCountingCommits();
+    const before = state.commits;
+
+    act(() => {
+      useSettingsStore
+        .getState()
+        .setKeybindingOverride("probe.command", "Mod-Shift-9");
+    });
+
+    expect(state.commits).toBe(before);
+    useSettingsStore.getState().removeKeybindingOverride("probe.command");
+  });
+
+  it("still commits when a settings field it reads changes — non-vacuity control", () => {
+    const state = renderRegistryCountingCommits();
+    const before = state.commits;
+    const size = useSettingsStore.getState().fontSize;
+
+    act(() => {
+      useSettingsStore.getState().setFontSize(size + 1);
+    });
+
+    expect(state.commits).toBeGreaterThan(before);
+    useSettingsStore.getState().setFontSize(size);
   });
 });

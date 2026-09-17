@@ -3,6 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { FileEntry } from "../../stores/file/file";
 
+import { useShallow } from "zustand/shallow";
+
 import { readFile } from "../../ipc/invoke";
 import { useSkillStore } from "../../stores/ai/skill";
 import { useEditorStore } from "../../stores/editor/editor";
@@ -25,7 +27,12 @@ import { registerSkillSection } from "./skill-panel-registry";
 
 export function SkillDependencySection() {
   const fileTree = useFileStore((s) => s.fileTree);
-  const { activeTabId, tabs } = useEditorStore();
+  const { activeTabId, tabs } = useEditorStore(
+    useShallow((s) => ({
+      activeTabId: s.activeTabId,
+      tabs: s.tabs,
+    })),
+  );
   const isSkill = useSkillStore((s) => s.isSkill);
 
   // Derive yaml and filePath from stores

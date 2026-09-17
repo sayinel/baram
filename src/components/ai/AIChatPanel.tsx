@@ -63,7 +63,18 @@ export function AIChatPanel() {
     addMessage,
     updateLastMessage,
     getActiveSession,
-  } = useChatStore();
+  } = useChatStore(
+    useShallow((s) => ({
+      sessions: s.sessions,
+      activeSessionId: s.activeSessionId,
+      createSession: s.createSession,
+      setActiveSession: s.setActiveSession,
+      deleteSession: s.deleteSession,
+      addMessage: s.addMessage,
+      updateLastMessage: s.updateLastMessage,
+      getActiveSession: s.getActiveSession,
+    })),
+  );
   const { send, cancel, isStreaming, text, error } = useLLMStream();
   const [input, setInput] = useState("");
   const [dropdownOpen, setDropdownOpen] = useState(false);

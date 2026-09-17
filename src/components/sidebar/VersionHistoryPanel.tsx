@@ -3,6 +3,8 @@ import { useCallback, useEffect, useState } from "react";
 
 import type { SnapshotEntry } from "../../ipc/types";
 
+import { useShallow } from "zustand/shallow";
+
 import { useSnapshotStore } from "../../stores/editor/snapshot";
 import {
   formatSnapshotTime,
@@ -25,7 +27,20 @@ export function VersionHistoryPanel() {
     loadSnapshots,
     selectSnapshot,
     performCreate,
-  } = useSnapshotStore();
+  } = useSnapshotStore(
+    useShallow((s) => ({
+      snapshots: s.snapshots,
+      loading: s.loading,
+      error: s.error,
+      selectedSnapshotId: s.selectedSnapshotId,
+      fileHistoryPath: s.fileHistoryPath,
+      fileHistoryVault: s.fileHistoryVault,
+      creating: s.creating,
+      loadSnapshots: s.loadSnapshots,
+      selectSnapshot: s.selectSnapshot,
+      performCreate: s.performCreate,
+    })),
+  );
 
   const [showLabelInput, setShowLabelInput] = useState(false);
   const [labelInput, setLabelInput] = useState("");
@@ -180,7 +195,25 @@ function SnapshotDetail({
     closeDiff,
     performRestore,
     performDelete,
-  } = useSnapshotStore();
+  } = useSnapshotStore(
+    useShallow((s) => ({
+      snapshots: s.snapshots,
+      selectedSnapshotId: s.selectedSnapshotId,
+      selectedFiles: s.selectedFiles,
+      activeDiff: s.activeDiff,
+      diffLoading: s.diffLoading,
+      restoring: s.restoring,
+      restoreMessage: s.restoreMessage,
+      error: s.error,
+      toggleFileSelection: s.toggleFileSelection,
+      selectAllFiles: s.selectAllFiles,
+      deselectAllFiles: s.deselectAllFiles,
+      loadDiff: s.loadDiff,
+      closeDiff: s.closeDiff,
+      performRestore: s.performRestore,
+      performDelete: s.performDelete,
+    })),
+  );
 
   const snapshot = snapshots.find((s) => s.id === selectedSnapshotId);
   if (!snapshot) return null;

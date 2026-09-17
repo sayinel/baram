@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { ModelInfo } from "../../../ipc/types";
 
+import { useShallow } from "zustand/shallow";
+
 import { useTranslation } from "../../../i18n/useTranslation";
 import { llmListModels } from "../../../ipc/invoke";
 import { type AIProvider, useAIStore } from "../../../stores/ai/ai";
@@ -50,7 +52,41 @@ export function AITab() {
     providerForChat,
     providerForAgent,
     setProviderForTask,
-  } = useAIStore();
+  } = useAIStore(
+    useShallow((s) => ({
+      aiEnabled: s.aiEnabled,
+      setAIEnabled: s.setAIEnabled,
+      provider: s.provider,
+      setProvider: s.setProvider,
+      model: s.model,
+      setModel: s.setModel,
+      setApiKey: s.setApiKey,
+      ollamaUrl: s.ollamaUrl,
+      setOllamaUrl: s.setOllamaUrl,
+      privacyMode: s.privacyMode,
+      setPrivacyMode: s.setPrivacyMode,
+      ghostTextEnabled: s.ghostTextEnabled,
+      setGhostTextEnabled: s.setGhostTextEnabled,
+      ghostTextDebounceMs: s.ghostTextDebounceMs,
+      setGhostTextDebounceMs: s.setGhostTextDebounceMs,
+      maxSuggestionLength: s.maxSuggestionLength,
+      setMaxSuggestionLength: s.setMaxSuggestionLength,
+      keychainReady: s.keychainReady,
+      autoModelEnabled: s.autoModelEnabled,
+      setAutoModelEnabled: s.setAutoModelEnabled,
+      modelForGhostText: s.modelForGhostText,
+      modelForInlineEdit: s.modelForInlineEdit,
+      modelForChat: s.modelForChat,
+      modelForAgent: s.modelForAgent,
+      setModelForTask: s.setModelForTask,
+      configured: s.configured,
+      providerForGhostText: s.providerForGhostText,
+      providerForInlineEdit: s.providerForInlineEdit,
+      providerForChat: s.providerForChat,
+      providerForAgent: s.providerForAgent,
+      setProviderForTask: s.setProviderForTask,
+    })),
+  );
   const [showKey, setShowKey] = useState(false);
   // §259 — write-only draft. The stored secret is never loaded back into the
   // frontend, so this input only ever holds a key the user types this session.

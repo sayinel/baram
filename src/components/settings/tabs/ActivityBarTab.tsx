@@ -2,6 +2,8 @@ import { useCallback, useRef, useState } from "react";
 
 import type { ActivityBarItemConfig } from "../../../stores/settings/store";
 
+import { useShallow } from "zustand/shallow";
+
 import { useTranslation } from "../../../i18n/useTranslation";
 import { isActivityBarItemVisible } from "../../../stores/settings/activity-bar-config";
 import { useFeatureFlags } from "../../../stores/settings/features";
@@ -10,7 +12,13 @@ import { SettingsSectionHeader, ToggleSwitch } from "../settings-shared";
 
 export function ActivityBarTab() {
   const { activityBarConfig, setActivityBarConfig, resetActivityBarConfig } =
-    useSettingsStore();
+    useSettingsStore(
+      useShallow((s) => ({
+        activityBarConfig: s.activityBarConfig,
+        setActivityBarConfig: s.setActivityBarConfig,
+        resetActivityBarConfig: s.resetActivityBarConfig,
+      })),
+    );
   const { t } = useTranslation();
 
   const [draggingId, setDraggingId] = useState<null | string>(null);

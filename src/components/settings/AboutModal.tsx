@@ -29,7 +29,12 @@ const AUTHORS: ReadonlyArray<{ name: string; url: string }> = [
 
 export function AboutModal() {
   const { t } = useTranslation();
-  const { aboutOpen, toggleAbout } = useUIStore();
+  const { aboutOpen, toggleAbout } = useUIStore(
+    useShallow((s) => ({
+      aboutOpen: s.aboutOpen,
+      toggleAbout: s.toggleAbout,
+    })),
+  );
   const { updateStatus } = useAppUpdateStore(
     useShallow((s) => ({ updateStatus: s.status })),
   );

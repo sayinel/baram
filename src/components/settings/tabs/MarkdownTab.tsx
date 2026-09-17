@@ -1,5 +1,7 @@
 import type { Translate } from "../../../i18n/useTranslation";
 
+import { useShallow } from "zustand/shallow";
+
 import registry from "../../../extensions/registry.json";
 import { useTranslation } from "../../../i18n/useTranslation";
 import { useSettingsStore } from "../../../stores/settings/store";
@@ -45,7 +47,18 @@ export function MarkdownTab() {
     setStrikethrough,
     smartPunctuation,
     setSmartPunctuation,
-  } = useSettingsStore();
+  } = useSettingsStore(
+    useShallow((s) => ({
+      inlineMath: s.inlineMath,
+      setInlineMath: s.setInlineMath,
+      highlight: s.highlight,
+      setHighlight: s.setHighlight,
+      strikethrough: s.strikethrough,
+      setStrikethrough: s.setStrikethrough,
+      smartPunctuation: s.smartPunctuation,
+      setSmartPunctuation: s.setSmartPunctuation,
+    })),
+  );
 
   return (
     <div className="settings-section">
@@ -110,7 +123,12 @@ function ExtensionSettingRow({
   setting: SettingDef;
   t: Translate;
 }) {
-  const { extensionSettings, setExtensionSetting } = useSettingsStore();
+  const { extensionSettings, setExtensionSetting } = useSettingsStore(
+    useShallow((s) => ({
+      extensionSettings: s.extensionSettings,
+      setExtensionSetting: s.setExtensionSetting,
+    })),
+  );
   const value = extensionSettings[setting.key] ?? setting.default;
   const label = translated(t, `settings.ext.${setting.key}`, setting.label);
   const description = translated(
