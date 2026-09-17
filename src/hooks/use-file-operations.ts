@@ -187,7 +187,7 @@ export function useFileOperations({
 }: UseFileOperationsParams) {
   const openTab = useEditorStore((s) => s.openTab);
   const markDirty = useEditorStore((s) => s.markDirty);
-  const { setFileContent } = useFileStore();
+  const setFileContent = useFileStore((s) => s.setFileContent);
 
   const handleNewFile = useCallback(
     (name?: string) => {

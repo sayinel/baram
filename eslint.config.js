@@ -80,4 +80,21 @@ export default tseslint.config(
     ignores: ["dist/", "examples/", "src-tauri/", "node_modules/"],
   },
   eslintConfigPrettier,
+  {
+    // issue 267 — a bare `useXStore()` subscribes to the whole store, so every unrelated
+    // write re-renders the caller (CLAUDE.md "Zustand 셀렉터"). Pass a selector, wrap an
+    // object selector in `useShallow`, or call `useXStore.getState()` in a handler.
+    files: ["src/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          message:
+            "bare use*Store() subscribes to the whole store — pass a selector (useShallow for an object), or read useXStore.getState() in a handler (CLAUDE.md: Zustand 셀렉터)",
+          selector:
+            "CallExpression[callee.type='Identifier'][callee.name=/^use[A-Z]\\w*Store$/][arguments.length=0]",
+        },
+      ],
+    },
+  },
 );

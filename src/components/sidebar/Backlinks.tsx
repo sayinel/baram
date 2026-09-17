@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { UnlinkedMention } from "../../ipc/types";
 
+import { useShallow } from "zustand/shallow";
+
 import { useTranslation } from "../../i18n/useTranslation";
 import {
   getBacklinks,
@@ -39,7 +41,19 @@ export function Backlinks() {
     setUnlinkedMentions,
     setLoading,
     setError,
-  } = useLinkStore();
+  } = useLinkStore(
+    useShallow((s) => ({
+      backlinks: s.backlinks,
+      unlinkedMentions: s.unlinkedMentions,
+      loading: s.loading,
+      error: s.error,
+      indexVersion: s.indexVersion,
+      setBacklinks: s.setBacklinks,
+      setUnlinkedMentions: s.setUnlinkedMentions,
+      setLoading: s.setLoading,
+      setError: s.setError,
+    })),
+  );
 
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const filePath = activeTab?.filePath ?? null;

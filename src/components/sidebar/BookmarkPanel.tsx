@@ -3,6 +3,8 @@ import { useCallback, useEffect } from "react";
 
 import type { BookmarkItem } from "../../stores/file/bookmark";
 
+import { useShallow } from "zustand/shallow";
+
 import { useEditorContext } from "../../contexts/editor-context";
 import { revealElementInActiveEditor } from "../../extensions/plugins/viewport-virtualize";
 import { readFile } from "../../ipc/invoke";
@@ -23,7 +25,15 @@ export function BookmarkPanel() {
     removeBookmark,
     loadBookmarks,
     saveBookmarks,
-  } = useBookmarkStore();
+  } = useBookmarkStore(
+    useShallow((s) => ({
+      bookmarks: s.bookmarks,
+      addBookmark: s.addBookmark,
+      removeBookmark: s.removeBookmark,
+      loadBookmarks: s.loadBookmarks,
+      saveBookmarks: s.saveBookmarks,
+    })),
+  );
 
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const filePath = activeTab?.filePath ?? null;

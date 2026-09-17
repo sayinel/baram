@@ -4,6 +4,7 @@ import type React from "react";
 
 import type { Locale } from "../../i18n";
 import type { AIProvider } from "../../stores/ai/ai";
+import type { SettingsState } from "../../stores/settings/store";
 import type { TaskScanScope } from "../../utils/tasks/task-scan-scope";
 
 import { useShallow } from "zustand/shallow";
@@ -66,12 +67,79 @@ export const NAVIGATE_CONTROL: SettingControlMeta = {
   storeSetter: () => undefined,
 };
 
+/** The settings fields the registry reads and writes — exactly the `settings.*` accesses
+ *  below, selected with `useShallow` so a settings write the registry does not display
+ *  (a keybinding override, an extension setting, a recent folder) does not rebuild it
+ *  (issue 267). Add a field here when a new entry reads it. */
+const selectRegistrySettings = (s: SettingsState) => ({
+  autoLoadVideoEmbeds: s.autoLoadVideoEmbeds,
+  autoPairBrackets: s.autoPairBrackets,
+  autoSave: s.autoSave,
+  autoSaveDelay: s.autoSaveDelay,
+  autoUpdateLinks: s.autoUpdateLinks,
+  editorMaxWidth: s.editorMaxWidth,
+  fontSize: s.fontSize,
+  highlight: s.highlight,
+  inlineMath: s.inlineMath,
+  journalEnabled: s.journalEnabled,
+  lineHeight: s.lineHeight,
+  lineNumbers: s.lineNumbers,
+  linkFontMetrics: s.linkFontMetrics,
+  locale: s.locale,
+  onLaunch: s.onLaunch,
+  setAutoLoadVideoEmbeds: s.setAutoLoadVideoEmbeds,
+  setAutoPairBrackets: s.setAutoPairBrackets,
+  setAutoSave: s.setAutoSave,
+  setAutoSaveDelay: s.setAutoSaveDelay,
+  setAutoUpdateLinks: s.setAutoUpdateLinks,
+  setEditorMaxWidth: s.setEditorMaxWidth,
+  setFontSize: s.setFontSize,
+  setHighlight: s.setHighlight,
+  setInlineMath: s.setInlineMath,
+  setJournalEnabled: s.setJournalEnabled,
+  setLineHeight: s.setLineHeight,
+  setLineNumbers: s.setLineNumbers,
+  setLinkFontMetrics: s.setLinkFontMetrics,
+  setLocale: s.setLocale,
+  setOnLaunch: s.setOnLaunch,
+  setSmartPunctuation: s.setSmartPunctuation,
+  setSnapshotInterval: s.setSnapshotInterval,
+  setSnapshotMaxCount: s.setSnapshotMaxCount,
+  setSpellCheck: s.setSpellCheck,
+  setStrikethrough: s.setStrikethrough,
+  setTabSize: s.setTabSize,
+  setTasksEnabled: s.setTasksEnabled,
+  setTasksRecordDoneDate: s.setTasksRecordDoneDate,
+  setTasksScanScope: s.setTasksScanScope,
+  setTasksStampCreatedDate: s.setTasksStampCreatedDate,
+  setTasksTrackTime: s.setTasksTrackTime,
+  setTasksWeekStart: s.setTasksWeekStart,
+  setVirtualizeLargeDocs: s.setVirtualizeLargeDocs,
+  setWikilinkFormat: s.setWikilinkFormat,
+  setZettelkastenEnabled: s.setZettelkastenEnabled,
+  smartPunctuation: s.smartPunctuation,
+  snapshotInterval: s.snapshotInterval,
+  snapshotMaxCount: s.snapshotMaxCount,
+  spellCheck: s.spellCheck,
+  strikethrough: s.strikethrough,
+  tabSize: s.tabSize,
+  tasksEnabled: s.tasksEnabled,
+  tasksRecordDoneDate: s.tasksRecordDoneDate,
+  tasksScanScope: s.tasksScanScope,
+  tasksStampCreatedDate: s.tasksStampCreatedDate,
+  tasksTrackTime: s.tasksTrackTime,
+  tasksWeekStart: s.tasksWeekStart,
+  virtualizeLargeDocs: s.virtualizeLargeDocs,
+  wikilinkFormat: s.wikilinkFormat,
+  zettelkastenEnabled: s.zettelkastenEnabled,
+});
+
 /**
  * Returns the full settings registry.
  * Must be called inside a React component (hooks are used internally).
  */
 export function useSettingsRegistry(): SearchableSetting[] {
-  const settings = useSettingsStore();
+  const settings = useSettingsStore(useShallow(selectRegistrySettings));
   // §340 M-11 정정: bare `useAIStore()`는 ai 스토어의 **모든** write에 이 레지스트리
   // 전체를 재구성한다 — 스트리밍 토큰마다 바뀌는 `ghostText`·`isStreaming`도 포함해서.
   // 설정 모달이 열려 있는 동안만이지만, 이 브랜치가 `aiEnabled`를 여기서 읽게 만들며

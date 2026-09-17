@@ -1,8 +1,10 @@
 // §57b Git Source Control Panel — sidebar
 import { useCallback, useEffect, useState } from "react";
 
-// file-store uses rootPath for the vault directory
 import type { GitChange } from "../../ipc/types";
+
+// file-store uses rootPath for the vault directory
+import { useShallow } from "zustand/shallow";
 
 import { useFileStore } from "../../stores/file/file";
 import {
@@ -50,7 +52,46 @@ export function GitPanel() {
     pushRemote,
     pullRemote,
     setActiveTab,
-  } = useGitStore();
+  } = useGitStore(
+    useShallow((s) => ({
+      isRepo: s.isRepo,
+      branch: s.branch,
+      changes: s.changes,
+      loading: s.loading,
+      error: s.error,
+      commitMessage: s.commitMessage,
+      committing: s.committing,
+      activeDiff: s.activeDiff,
+      diffLoading: s.diffLoading,
+      logEntries: s.logEntries,
+      logLoading: s.logLoading,
+      stashEntries: s.stashEntries,
+      stashLoading: s.stashLoading,
+      aheadBehind: s.aheadBehind,
+      pushing: s.pushing,
+      pulling: s.pulling,
+      activeTab: s.activeTab,
+      refresh: s.refresh,
+      stageFiles: s.stageFiles,
+      unstageFiles: s.unstageFiles,
+      stageAll: s.stageAll,
+      unstageAll: s.unstageAll,
+      commitChanges: s.commitChanges,
+      discardFiles: s.discardFiles,
+      loadDiff: s.loadDiff,
+      closeDiff: s.closeDiff,
+      setCommitMessage: s.setCommitMessage,
+      loadLog: s.loadLog,
+      loadStash: s.loadStash,
+      saveStash: s.saveStash,
+      popStash: s.popStash,
+      dropStash: s.dropStash,
+      loadAheadBehind: s.loadAheadBehind,
+      pushRemote: s.pushRemote,
+      pullRemote: s.pullRemote,
+      setActiveTab: s.setActiveTab,
+    })),
+  );
 
   const vaultPath = useFileStore((s) => s.rootPath);
 

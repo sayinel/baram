@@ -9,7 +9,7 @@ import { render, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useSettingsStore } from "../../stores/settings/store";
-import { useCaptureShortcutStatus } from "../../stores/tasks/capture-shortcut-status";
+import { useCaptureShortcutStatusStore } from "../../stores/tasks/capture-shortcut-status";
 import { useUIStore } from "../../stores/ui/ui";
 import { useGlobalCaptureShortcut } from "../use-global-capture-shortcut";
 
@@ -49,7 +49,7 @@ describe("useGlobalCaptureShortcut", () => {
     register.mockResolvedValue(undefined);
     unregister.mockResolvedValue(undefined);
     useSettingsStore.setState({ tasksGlobalCaptureShortcut: null });
-    useCaptureShortcutStatus.setState({ status: { kind: "idle" } });
+    useCaptureShortcutStatusStore.setState({ status: { kind: "idle" } });
     useUIStore.setState({
       quickCaptureOpen: false,
       quickCaptureTaskIntent: false,
@@ -62,7 +62,7 @@ describe("useGlobalCaptureShortcut", () => {
     render(<Harness />);
     await settle();
     expect(register).not.toHaveBeenCalled();
-    expect(useCaptureShortcutStatus.getState().status.kind).toBe("idle");
+    expect(useCaptureShortcutStatusStore.getState().status.kind).toBe("idle");
   });
 
   it("설정된 조합을 액셀러레이터로 옮겨 등록한다", async () => {
@@ -73,7 +73,7 @@ describe("useGlobalCaptureShortcut", () => {
       "CommandOrControl+Shift+N",
       expect.any(Function),
     );
-    expect(useCaptureShortcutStatus.getState().status).toEqual({
+    expect(useCaptureShortcutStatusStore.getState().status).toEqual({
       accelerator: "CommandOrControl+Shift+N",
       kind: "registered",
     });
@@ -86,7 +86,9 @@ describe("useGlobalCaptureShortcut", () => {
     useSettingsStore.setState({ tasksGlobalCaptureShortcut: "Mod+Shift+N" });
     render(<Harness />);
     await settle();
-    expect(useCaptureShortcutStatus.getState().status.kind).toBe("unavailable");
+    expect(useCaptureShortcutStatusStore.getState().status.kind).toBe(
+      "unavailable",
+    );
   });
 
   it("등록에 실패한 조합은 해제하지 않는다", async () => {
@@ -106,7 +108,9 @@ describe("useGlobalCaptureShortcut", () => {
     render(<Harness />);
     await settle();
     expect(register).not.toHaveBeenCalled();
-    expect(useCaptureShortcutStatus.getState().status.kind).toBe("invalid");
+    expect(useCaptureShortcutStatusStore.getState().status.kind).toBe(
+      "invalid",
+    );
   });
 
   it("값이 바뀌면 이전 등록을 해제한다", async () => {

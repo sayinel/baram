@@ -1,6 +1,8 @@
 // §72c Skill Live Preview — auto-updating LLM prompt preview in PropertiesPanel
 import { useEffect, useMemo, useState } from "react";
 
+import { useShallow } from "zustand/shallow";
+
 import { useSkillStore } from "../../stores/ai/skill";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
@@ -14,7 +16,12 @@ import { registerSkillSection } from "./skill-panel-registry";
 // ─── Variable highlighting ──────────────────────────────────────────────────
 
 export function SkillLivePreview() {
-  const { activeTabId, tabs } = useEditorStore();
+  const { activeTabId, tabs } = useEditorStore(
+    useShallow((s) => ({
+      activeTabId: s.activeTabId,
+      tabs: s.tabs,
+    })),
+  );
   const openFiles = useFileStore((s) => s.openFiles);
   const contentRefreshKey = useEditorStore((s) => s.contentRefreshKey);
   const isSkill = useSkillStore((s) => s.isSkill);

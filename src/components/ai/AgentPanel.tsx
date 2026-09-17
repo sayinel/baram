@@ -1,6 +1,8 @@
 // §11.6 Agent Panel — top-level state-based view for Agent Mode
 import { useCallback, useState } from "react";
 
+import { useShallow } from "zustand/shallow";
+
 import { useAgentStore } from "../../stores/agent-store";
 import { AgentDiffView } from "./AgentDiffView";
 import { AgentPlanView } from "./AgentPlanView";
@@ -17,7 +19,19 @@ export function AgentPanel() {
     startPlanning,
     status,
     totalSteps,
-  } = useAgentStore();
+  } = useAgentStore(
+    useShallow((s) => ({
+      acceptAll: s.acceptAll,
+      approvePlan: s.approvePlan,
+      cancel: s.cancel,
+      completedSteps: s.completedSteps,
+      plan: s.plan,
+      results: s.results,
+      startPlanning: s.startPlanning,
+      status: s.status,
+      totalSteps: s.totalSteps,
+    })),
+  );
   const [goalInput, setGoalInput] = useState("");
 
   const handleSubmitGoal = useCallback(() => {

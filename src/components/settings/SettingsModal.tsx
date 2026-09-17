@@ -102,7 +102,12 @@ export const TABS: {
 ];
 
 export function SettingsModal() {
-  const { settingsOpen, toggleSettings } = useUIStore();
+  const { settingsOpen, toggleSettings } = useUIStore(
+    useShallow((s) => ({
+      settingsOpen: s.settingsOpen,
+      toggleSettings: s.toggleSettings,
+    })),
+  );
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
   const [activePluginTab, setActivePluginTab] = useState<null | string>(null);
   const [searchQuery, setSearchQuery] = useState("");

@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
+import { useShallow } from "zustand/shallow";
+
 import { useTranslation } from "../../../i18n/useTranslation";
 import {
   formatKeyForDisplay,
@@ -25,7 +27,14 @@ export function KeybindingsTab() {
     setKeybindingOverride,
     removeKeybindingOverride,
     resetAllKeybindings,
-  } = useSettingsStore();
+  } = useSettingsStore(
+    useShallow((s) => ({
+      keybindingOverrides: s.keybindingOverrides,
+      setKeybindingOverride: s.setKeybindingOverride,
+      removeKeybindingOverride: s.removeKeybindingOverride,
+      resetAllKeybindings: s.resetAllKeybindings,
+    })),
+  );
   const merged = getMergedKeybindings(keybindingOverrides);
   const [filter, setFilter] = useState("");
   const [capturingId, setCapturingId] = useState<null | string>(null);
