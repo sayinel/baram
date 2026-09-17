@@ -2041,6 +2041,226 @@ async fn a_block_id_rename_leaves_another_notes_block_with_the_same_id_alone() {
 }
 
 #[tokio::test]
+async fn a_block_id_rename_finds_a_reference_the_index_remembers_on_another_line() {
+    // issue 668: `a.md` was indexed with its reference on line 1, then edited
+    // outside the app — a line inserted above — with the tab closed, so the
+    // index still says line 1. The rewrite reads the file as it is now.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-668", true).await;
+    std::fs::write(dir.path().join("note.md"), "para ^b1\n").unwrap();
+    std::fs::write(dir.path().join("a.md"), "see ((note#^b1))\n").unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    std::fs::write(
+        dir.path().join("a.md"),
+        "inserted above\n\nsee ((note#^b1))\n",
+    )
+    .unwrap();
+
+    let result = rename_block_id_inner(&state, &ctx, &format!("{root}/note.md"), "b1", "b2")
+        .await
+        .unwrap();
+    assert_eq!(result.updated_files, vec![format!("{root}/a.md")]);
+    assert!(result.skipped_files.is_empty());
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("a.md")).unwrap(),
+        "inserted above\n\nsee ((note#^b2))\n"
+    );
+}
+
+#[tokio::test]
+async fn a_block_id_rename_reports_a_referrer_whose_reference_is_gone() {
+    // issue 668: the index names `a.md`, but on disk the reference has since
+    // been turned into code. Nothing changes in the file — and that is not
+    // success: the definition takes the new ID while `a.md` keeps the old one,
+    // so the file is reported like any referrer whose links were not updated.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-668b", true).await;
+    std::fs::write(dir.path().join("note.md"), "para ^b1\n").unwrap();
+    std::fs::write(dir.path().join("a.md"), "see ((note#^b1))\n").unwrap();
+    std::fs::write(dir.path().join("b.md"), "see ((note#^b1)) too\n").unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    std::fs::write(dir.path().join("a.md"), "see `((note#^b1))`\n").unwrap();
+
+    let result = rename_block_id_inner(&state, &ctx, &format!("{root}/note.md"), "b1", "b2")
+        .await
+        .unwrap();
+    assert_eq!(result.updated_files, vec![format!("{root}/b.md")]);
+    assert_eq!(result.skipped_files, vec![format!("{root}/a.md")]);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("a.md")).unwrap(),
+        "see `((note#^b1))`\n"
+    );
+}
+
+#[tokio::test]
+async fn a_block_id_rename_does_not_report_another_note_with_the_same_stem_for_its_own_reference() {
+    // issue 668: `b/note.md` refers to its OWN block with `((#^b1))`, which the
+    // index files under the stem `note` — the same key `a/note.md` is looked
+    // up by. Renaming a/note's block names b/note as a referrer; nothing in
+    // it changes, rightly, and that is not a stale index to report.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-668d", true).await;
+    std::fs::create_dir_all(dir.path().join("a")).unwrap();
+    std::fs::create_dir_all(dir.path().join("b")).unwrap();
+    std::fs::write(dir.path().join("a/note.md"), "para ^b1\n").unwrap();
+    std::fs::write(dir.path().join("b/note.md"), "mine ^b1 ((#^b1))\n").unwrap();
+    std::fs::write(dir.path().join("x.md"), "see ((note#^b1))\n").unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+
+    let result = rename_block_id_inner(&state, &ctx, &format!("{root}/a/note.md"), "b1", "b2")
+        .await
+        .unwrap();
+    assert_eq!(result.updated_files, vec![format!("{root}/x.md")]);
+    assert!(
+        result.skipped_files.is_empty(),
+        "{:?}",
+        result.skipped_files
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("b/note.md")).unwrap(),
+        "mine ^b1 ((#^b1))\n"
+    );
+}
+
+#[tokio::test]
+async fn a_block_id_rename_reports_a_same_stem_note_whose_reference_to_the_target_has_gone() {
+    // issue 668: `b/note.md` referred to a/note's block as `((note#^b1))` —
+    // filed under the stem `note`, as a self-reference would be — and was
+    // edited outside the app since, the reference gone. Sharing the stem is
+    // not why the index named it: nothing in it changes, and it is stale.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-668e", true).await;
+    std::fs::create_dir_all(dir.path().join("a")).unwrap();
+    std::fs::create_dir_all(dir.path().join("b")).unwrap();
+    std::fs::write(dir.path().join("a/note.md"), "para ^b1\n").unwrap();
+    std::fs::write(dir.path().join("b/note.md"), "see ((note#^b1))\n").unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    std::fs::write(dir.path().join("b/note.md"), "the reference is gone\n").unwrap();
+
+    let result = rename_block_id_inner(&state, &ctx, &format!("{root}/a/note.md"), "b1", "b2")
+        .await
+        .unwrap();
+    assert!(
+        result.updated_files.is_empty(),
+        "{:?}",
+        result.updated_files
+    );
+    assert_eq!(result.skipped_files, vec![format!("{root}/b/note.md")]);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("b/note.md")).unwrap(),
+        "the reference is gone\n"
+    );
+}
+
+#[tokio::test]
+async fn a_block_id_rename_reports_a_same_stem_note_whose_cross_reference_went_beside_its_own() {
+    // issue 668: `b/note.md` held both its own `((#^b1))` and `((note#^b1))`
+    // to a/note's block — two lines the index named it for. The second was
+    // made code outside the app. The self-reference alone does not account
+    // for what the index named: the file is stale, and reported.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-668f", true).await;
+    std::fs::create_dir_all(dir.path().join("a")).unwrap();
+    std::fs::create_dir_all(dir.path().join("b")).unwrap();
+    std::fs::write(dir.path().join("a/note.md"), "para ^b1\n").unwrap();
+    std::fs::write(
+        dir.path().join("b/note.md"),
+        "mine ^b1 ((#^b1))\nsee ((note#^b1))\n",
+    )
+    .unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    let edited = "mine ^b1 ((#^b1))\nsee `((note#^b1))`\n";
+    std::fs::write(dir.path().join("b/note.md"), edited).unwrap();
+
+    let result = rename_block_id_inner(&state, &ctx, &format!("{root}/a/note.md"), "b1", "b2")
+        .await
+        .unwrap();
+    assert!(
+        result.updated_files.is_empty(),
+        "{:?}",
+        result.updated_files
+    );
+    assert_eq!(result.skipped_files, vec![format!("{root}/b/note.md")]);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("b/note.md")).unwrap(),
+        edited
+    );
+}
+
+#[tokio::test]
+async fn a_file_rename_does_not_report_a_referrer_that_refers_by_a_block_reference_alone() {
+    // issue 668 (control): a file rename rewrites wikilinks; a referrer the
+    // index names for a block reference alone is unchanged by it, and that
+    // is not a stale index — it is not reported.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-668c", true).await;
+    std::fs::write(dir.path().join("old.md"), "para ^b1\n").unwrap();
+    std::fs::write(dir.path().join("w.md"), "see [[old]]\n").unwrap();
+    std::fs::write(dir.path().join("r.md"), "see ((old#^b1))\n").unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/old.md"),
+        &format!("{root}/new.md"),
+    )
+    .await
+    .unwrap();
+    assert_eq!(result.updated_files, vec![format!("{root}/w.md")]);
+    assert!(
+        result.skipped_files.is_empty(),
+        "{:?}",
+        result.skipped_files
+    );
+}
+
+#[tokio::test]
+async fn a_block_reference_in_a_notes_own_front_matter_is_not_a_backlink() {
+    // issue 667: `note.md` names its own block in its front matter. Nothing
+    // renames YAML — so the index does not count it, and the backlink panel
+    // does not show a reference that a rename would leave behind.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-667", true).await;
+    std::fs::write(
+        dir.path().join("note.md"),
+        "---\nrelated: ((#^b1))\n---\npara ^b1\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.path().join("other.md"),
+        "---\nsee: ((note#^b1))\n---\nbody ((note#^b1))\n",
+    )
+    .unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+
+    let backlinks = get_backlinks_inner(&state, &ctx, &format!("{root}/note.md"))
+        .await
+        .unwrap();
+    let lines: Vec<(&str, u32)> = backlinks
+        .iter()
+        .map(|b| (b.source_path.as_str(), b.line))
+        .collect();
+    assert_eq!(lines, vec![(format!("{root}/other.md").as_str(), 4)]);
+
+    let result = rename_block_id_inner(&state, &ctx, &format!("{root}/note.md"), "b1", "b2")
+        .await
+        .unwrap();
+    assert_eq!(result.updated_files, vec![format!("{root}/other.md")]);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("other.md")).unwrap(),
+        "---\nsee: ((note#^b1))\n---\nbody ((note#^b2))\n"
+    );
+}
+
+#[tokio::test]
 async fn a_reference_inside_a_code_fence_is_neither_a_backlink_nor_renamed() {
     // issue 620: guide.md shows how a block reference is written. The index
     // must not count the example as a backlink of note.md, and renaming the

@@ -13,6 +13,8 @@ Insert images in multiple ways:
 
 Hover over an image to access the toolbar for resizing (25% / 50% / 75% / 100%) and editing alt text.
 
+An image written on the same line as text (`Logo: ![alt](image-url)`) is rendered like any other, but clicking it or pressing `Enter` on it does not open its markdown for inline editing — edit that markdown in source mode (`Cmd/Ctrl+/`) instead. Saving keeps the image in place; it is no longer written back as escaped text.
+
 **Previews and the original.** In the document, images are drawn from a cached preview (up to 2048px on the long edge) rather than the file itself, so a page of camera-sized photos opens without stalling. Click the **View original** button (⤢) in the hover toolbar — or press `Esc` to leave it — to see the full-resolution file. Your markdown is untouched either way: the path you wrote is what stays in the file and what gets exported.
 
 ## Videos

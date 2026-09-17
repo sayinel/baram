@@ -9,9 +9,9 @@ use serde::Serialize;
 use std::path::Path;
 use std::sync::LazyLock;
 
-use super::normalizer::{make_relative_path, resolve_relative_path};
+use super::normalizer::normalize_target;
 use super::{IndexError, LinkEntry};
-use crate::md::literal::{source_lines, Literal};
+use crate::md::literal::{front_matter_end, source_lines, Literal};
 
 // Wikilink regex: [[target]], [[alias::target]], [[target|display]], [[target#heading]], etc.
 // §87: optional alias:: prefix — group 1 = alias, group 2 = target
@@ -200,12 +200,19 @@ pub(crate) fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
         analysis.literal
     };
 
+    // issue 667: a block reference or embed in the front matter is not a
+    // reference — no rewriter touches YAML (the editor's text path holds it
+    // literal, the document model keeps it raw), so counting one there would
+    // show a backlink nothing can rename. An attribute wikilink there stays a
+    // link (decision D2 of issue 620).
+    let body_start = front_matter_end(content);
     for line in source_lines(content) {
         let mut is_prose = |m: &regex::Match| {
             !literal
                 .get_or_insert_with(&mut analyse)
                 .overlaps(line.offset + m.start()..line.offset + m.end())
         };
+        let in_front_matter = |m: &regex::Match| line.offset + m.start() < body_start;
 
         // §29 Wikilinks: [[target]], [[alias::target]], [[target|display]], etc.
         for cap in WIKILINK_RE.captures_iter(line.text) {
@@ -229,9 +236,16 @@ pub(crate) fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
             });
         }
 
-        // §30c Block embeds first (so we can skip them in block ref matching)
+        // §30c Block embeds first, remembering where each stands: the block
+        // reference regex matches the `((…))` inside an embed too, and only a
+        // match inside an embed the grammar RECOGNISED is the embed's — a
+        // `{{embed ((x#^id|caption))}}` the embed regex does not accept is a
+        // plain reference, indexed as one and rewritten as one (issue 668).
+        let mut embed_spans: Vec<std::ops::Range<usize>> = Vec::new();
         for cap in BLOCK_EMBED_RE.captures_iter(line.text) {
-            if !is_prose(&cap.get(0).unwrap()) {
+            let whole = cap.get(0).unwrap();
+            embed_spans.push(whole.range());
+            if in_front_matter(&whole) || !is_prose(&whole) {
                 continue;
             }
             let raw_target = cap.get(1).map(|m| m.as_str().trim()).unwrap_or("");
@@ -259,8 +273,10 @@ pub(crate) fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
         }
 
         // §30c Block references: ((target#^blockId))
+        let mut embed_cursor = 0;
         for cap in BLOCK_REF_RE.captures_iter(line.text) {
-            if !is_prose(&cap.get(0).unwrap()) {
+            let whole = cap.get(0).unwrap();
+            if in_front_matter(&whole) || !is_prose(&whole) {
                 continue;
             }
             let raw_target = cap.get(1).map(|m| m.as_str().trim()).unwrap_or("");
@@ -269,13 +285,18 @@ pub(crate) fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
                 continue;
             }
 
-            // Skip if this match is part of a block embed (already captured above)
-            let match_start = cap.get(0).unwrap().start();
-            if match_start >= 8 {
-                let prefix = &line.text[..match_start];
-                if prefix.ends_with("{{embed ") {
-                    continue;
-                }
+            // The `((…))` of a recognised embed was captured above. Both
+            // iterators run left to right, so one cursor over the spans
+            // keeps this linear in the line, however many embeds it holds.
+            while embed_cursor < embed_spans.len() && embed_spans[embed_cursor].end <= whole.start()
+            {
+                embed_cursor += 1;
+            }
+            if embed_spans
+                .get(embed_cursor)
+                .is_some_and(|span| span.start <= whole.start() && whole.end() <= span.end)
+            {
+                continue;
             }
 
             // Self-ref ((#^id)) → use current file stem as target
@@ -335,33 +356,51 @@ pub fn replace_wikilink_target(content: &str, old_target: &str, new_target: &str
         .to_string()
 }
 
-/// §30a Replace block ID references in file content.
-/// Updates ((target#^oldId)), ((target#^oldId|display)), ((#^oldId)),
-/// and {{embed ((target#^oldId))}} patterns.
 /// §30a Rename `^old_id` → `^new_id` in the references a file makes TO ONE
 /// target — the file whose block is being renamed — and nowhere else. Two notes
 /// may carry the same block ID; a referrer that says `((target#^id))` and
-/// `((other#^id))` must change only the first (issue 594). The index already
-/// decided which of this file's lines refer to the target (`lines`, 1-based,
-/// from `get_backlinks`); within those lines a reference is rewritten only if
-/// its target normalizes to one of the target's keys (`backlink_keys`) — an
-/// empty target names the referrer itself, never the target.
+/// `((other#^id))` must change only the first (issue 594). Handles
+/// `((target#^oldId))`, `((target#^oldId|display))` and the `((…))` inside
+/// `{{embed ((target#^oldId))}}`.
+///
+/// issue 668: the lines to rewrite come from reading THIS content with the
+/// index's own grammar (`extract_links`) — a reference to the target with the
+/// old ID, on whichever line it stands NOW. The index once handed the line
+/// numbers it remembered, and a file edited outside the app since (a closed
+/// tab, a `git pull`) had moved its reference off them: nothing changed, and
+/// the definition took the new ID alone. The target test is the index's
+/// filing rule, `normalize_target` — path-qualified `((b/note#^id))` names
+/// another file's block and is left alone, exactly as the index leaves it out
+/// (issue 619). `ref_path` is the referrer, for its self-references.
 pub fn replace_block_id_refs_to(
     content: &str,
-    lines: &std::collections::HashSet<u32>,
+    ref_path: &str,
     target_keys: &[String],
     old_id: &str,
     new_id: &str,
 ) -> String {
     let refers_to_target = |raw_target: &str| {
         let t = raw_target.trim();
-        !t.is_empty() && target_keys.contains(&super::normalizer::normalize_file_path(t))
+        !t.is_empty() && target_keys.contains(&normalize_target(t))
     };
-    // issue 620: the literal regions of THIS content — an index built before
-    // a line became code may still name it. One pass per line: the reference
+    let lines: std::collections::HashSet<u32> = extract_links(ref_path, content)
+        .into_iter()
+        .filter(|entry| {
+            entry.link_type != "wikilink"
+                && entry.block_id.as_deref() == Some(old_id)
+                && refers_to_target(&entry.target)
+        })
+        .map(|entry| entry.line)
+        .collect();
+    if lines.is_empty() {
+        return content.to_owned();
+    }
+    // issue 620: the literal regions of THIS content — the lines above were
+    // read with them, and the interval check here keeps a `((…))` inside a
+    // code span on a prose line as it is. One pass per line: the reference
     // regex matches the `((…))` inside an embed too, and every offset stays
-    // an offset into the original line, so the interval check is exact
-    // whatever the new ID's length.
+    // an offset into the original line, so the check is exact whatever the
+    // new ID's length.
     let mut literal: Option<Literal> = None;
     let mut out = String::with_capacity(content.len());
     for line in source_lines(content) {
@@ -391,6 +430,39 @@ pub fn replace_block_id_refs_to(
     out
 }
 
+/// issue 668: how many lines of `content` refer, in prose, to ITS OWN block
+/// `^id` naming no target — `((#^id))`, or that inside `{{embed ((#^id))}}`.
+/// The index files such a reference under the note's own stem, so renaming
+/// the block of another note with that stem names this file as a referrer,
+/// one `(file, line)` per reference, and the rewrite rightly leaves those
+/// alone. Against the lines the index named the file for, this tells whether
+/// it was named for them alone: a same-stem note whose `((note#^id))` to the
+/// target has gone since holds fewer, and is stale like any other.
+pub fn own_block_reference_lines(content: &str, id: &str) -> usize {
+    let body_start = front_matter_end(content);
+    let mut literal: Option<Literal> = None;
+    let mut lines = 0;
+    for line in source_lines(content) {
+        let holds_one = BLOCK_REF_RE.captures_iter(line.text).any(|cap| {
+            let raw_target = cap.get(1).map(|m| m.as_str().trim()).unwrap_or("");
+            let block_id = cap.get(2).map(|m| m.as_str()).unwrap_or("");
+            if !raw_target.is_empty() || block_id != id {
+                return false;
+            }
+            let whole = cap.get(0).unwrap();
+            let range = line.offset + whole.start()..line.offset + whole.end();
+            range.start >= body_start
+                && !literal
+                    .get_or_insert_with(|| Literal::of(content))
+                    .overlaps(range)
+        });
+        if holds_one {
+            lines += 1;
+        }
+    }
+    lines
+}
+
 /// Replace [[...]] wikilink blocks with spaces of the same byte length.
 /// This allows searching for unlinked mentions without matching linked ones.
 pub(crate) fn strip_wikilinks(line: &str) -> String {
@@ -399,24 +471,42 @@ pub(crate) fn strip_wikilinks(line: &str) -> String {
         .to_string()
 }
 
-/// §61 Rewrite relative wikilinks in content that resolve into old_dir to point to new_dir instead.
-/// source_path is the file containing the content (used for relative path resolution).
+/// §61 Rewrite the relative wikilinks of `content` that resolve into
+/// `old_dir` so that they point into `new_dir` instead. `source_path` is the
+/// note that holds `content`; a relative target resolves against its
+/// directory.
 pub fn rewrite_relative_wikilinks(
     content: &str,
     source_path: &str,
     old_dir: &str,
     new_dir: &str,
 ) -> String {
-    let source_dir = Path::new(source_path)
-        .parent()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_default();
+    rewrite_relative_wikilinks_with(content, source_path, old_dir, new_dir, cfg!(windows))
+}
 
-    let old_dir_slash = if old_dir.ends_with('/') {
-        old_dir.to_string()
-    } else {
-        format!("{}/", old_dir)
-    };
+/// The rewrite proper, with the platform's separator rule as a parameter.
+///
+/// issue 595: `collect_md_files` spells paths with the OS separator — `\` on
+/// Windows — and the webview's `old_dir` may spell either. A comparison that
+/// split on `/` alone read `C:\vault\notes` as one component, so `..` popped
+/// the whole path and no link ever resolved into the directory. Paths are
+/// handled as components here (`/`, and `\` when `windows`), a leading drive
+/// letter compares without regard to case as `std::path` does, and the
+/// wikilink the rewrite writes is joined with `/`: it is markdown, not a
+/// native path. The Rust tests run on Linux, so the Windows shape is tested
+/// by passing `windows = true`, never behind `cfg(windows)`.
+fn rewrite_relative_wikilinks_with(
+    content: &str,
+    source_path: &str,
+    old_dir: &str,
+    new_dir: &str,
+    windows: bool,
+) -> String {
+    let mut source_dir = path_components(source_path, windows);
+    source_dir.pop();
+    let root = root_components(source_path, windows);
+    let old = path_components(old_dir, windows);
+    let new = path_components(new_dir, windows);
 
     // issue 620: a match inside a literal region is left as it is. The
     // literal set is read only once a link resolves into the old
@@ -428,26 +518,122 @@ pub fn rewrite_relative_wikilinks(
             let rel_target = caps.get(1).map(|m| m.as_str()).unwrap_or("");
             let rest = caps.get(2).map(|m| m.as_str()).unwrap_or("");
 
-            // Resolve the relative target to an absolute path (without .md)
-            let resolved = resolve_relative_path(&source_dir, rel_target);
-
-            // Check if this resolved path points into old_dir
-            if (resolved.starts_with(&old_dir_slash) || resolved == old_dir)
-                && !literal
-                    .get_or_insert_with(|| Literal::of(content))
-                    .overlaps(whole.range())
+            let resolved = resolve_components(&source_dir, root, rel_target, windows);
+            let Some(inside) = strip_dir_prefix(&old, &resolved, windows) else {
+                return caps[0].to_string();
+            };
+            if literal
+                .get_or_insert_with(|| Literal::of(content))
+                .overlaps(whole.range())
             {
-                // Compute the new absolute path
-                let suffix = &resolved[old_dir.len()..];
-                let new_resolved = format!("{}{}", new_dir, suffix);
-                // Convert back to relative path from source_dir
-                let new_rel = make_relative_path(&source_dir, &new_resolved);
-                format!("[[{new_rel}{rest}]]")
-            } else {
-                caps[0].to_string()
+                return caps[0].to_string();
             }
+            let new_resolved: Vec<&str> = new.iter().chain(inside).copied().collect();
+            let new_rel = relative_components(&source_dir, &new_resolved, windows);
+            format!("[[{new_rel}{rest}]]")
         })
         .to_string()
+}
+
+/// The components of `path`: split on `/` — and on `\` when `windows` —
+/// with empty parts and `.` dropped. A backslash in a Unix file name is a
+/// character, not a separator.
+fn path_components(path: &str, windows: bool) -> Vec<&str> {
+    path.split(|c| c == '/' || (windows && c == '\\'))
+        .filter(|part| !part.is_empty() && *part != ".")
+        .collect()
+}
+
+/// How many leading components of `path` are its root and never step up: a
+/// Windows drive (`C:`) is one, a UNC share (`\\server\share`) is two, a Unix
+/// path has none to keep — `..` above `/` stays at `/`, which an empty
+/// component list already is.
+fn root_components(path: &str, windows: bool) -> usize {
+    if !windows {
+        return 0;
+    }
+    // The UNC form first: `\\C:\share` names a server called `C:`, not a
+    // drive, so the share is its root.
+    if path.starts_with(r"\\") || path.starts_with("//") {
+        return 2;
+    }
+    match path_components(path, true).first() {
+        Some(first) if is_drive(first) => 1,
+        _ => 0,
+    }
+}
+
+/// A wikilink target such as `./ai/prompt` or `../x`, resolved against the
+/// directory `base`, whose first `root` components are the path's root: `..`
+/// steps up, and never above the root — `C:\vault` + `../../x` is `C:\x`, as
+/// it is to Windows.
+fn resolve_components<'a>(
+    base: &[&'a str],
+    root: usize,
+    relative: &'a str,
+    windows: bool,
+) -> Vec<&'a str> {
+    let mut resolved = base.to_vec();
+    for part in path_components(relative, windows) {
+        if part == ".." {
+            if resolved.len() > root {
+                resolved.pop();
+            }
+        } else {
+            resolved.push(part);
+        }
+    }
+    resolved
+}
+
+/// Do two components name the same entry? Equal bytes — or, as the first
+/// component of a Windows path, the same drive letter in either case, the
+/// one exception `std::path` makes to case-sensitive comparison.
+fn same_component(a: &str, b: &str, first: bool, windows: bool) -> bool {
+    a == b || (first && windows && is_drive(a) && is_drive(b) && a.eq_ignore_ascii_case(b))
+}
+
+fn is_drive(part: &str) -> bool {
+    let bytes = part.as_bytes();
+    bytes.len() == 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':'
+}
+
+/// What of `path` lies under the directory `dir`: the components after
+/// `dir`'s — empty when `path` IS the directory — or None when it is not
+/// under it. Component-wise, so `ns` does not claim `ns-old`.
+fn strip_dir_prefix<'a>(dir: &[&str], path: &'a [&'a str], windows: bool) -> Option<&'a [&'a str]> {
+    if path.len() < dir.len() {
+        return None;
+    }
+    let under = dir
+        .iter()
+        .zip(path)
+        .enumerate()
+        .all(|(k, (d, p))| same_component(d, p, k == 0, windows));
+    under.then(|| &path[dir.len()..])
+}
+
+/// The relative wikilink target that leads from the directory `source_dir`
+/// to `target`: `./` when the target lies under it, else `../` per step up,
+/// then the rest — joined with `/`, whatever the platform.
+fn relative_components(source_dir: &[&str], target: &[&str], windows: bool) -> String {
+    let common = source_dir
+        .iter()
+        .zip(target)
+        .enumerate()
+        .take_while(|(k, (a, b))| same_component(a, b, *k == 0, windows))
+        .count();
+    let ups = source_dir.len() - common;
+    let mut result = String::new();
+    if ups == 0 {
+        result.push_str("./");
+    } else {
+        for _ in 0..ups {
+            result.push_str("../");
+        }
+    }
+    result.push_str(&target[common..].join("/"));
+    result
 }
 
 /// §34 Find unlinked mentions — text occurrences of a file stem in other files,
@@ -715,9 +901,6 @@ mod tests {
     }
 
     // §30a replace_block_id_refs_to tests
-    fn lines(list: &[u32]) -> std::collections::HashSet<u32> {
-        list.iter().copied().collect()
-    }
     fn keys(list: &[&str]) -> Vec<String> {
         list.iter().map(|k| k.to_string()).collect()
     }
@@ -728,7 +911,7 @@ mod tests {
             "See ((notes#^abc123)) and ((notes#^abc123|my label)).\n{{embed ((notes#^abc123))}}";
         let result = replace_block_id_refs_to(
             content,
-            &lines(&[1, 2]),
+            "/v/referrer.md",
             &keys(&["notes"]),
             "abc123",
             "xyz789",
@@ -743,7 +926,8 @@ mod tests {
     fn test_replace_block_id_refs_to_leaves_other_targets_with_the_same_id() {
         // issue 594: two notes carry ^id1; only the reference to `a` changes.
         let content = "((a#^id1)) and ((b#^id1)) and ((a#^id2))";
-        let result = replace_block_id_refs_to(content, &lines(&[1]), &keys(&["a"]), "id1", "newId");
+        let result =
+            replace_block_id_refs_to(content, "/v/referrer.md", &keys(&["a"]), "id1", "newId");
         assert_eq!(result, "((a#^newId)) and ((b#^id1)) and ((a#^id2))");
     }
 
@@ -751,31 +935,41 @@ mod tests {
     fn test_replace_block_id_refs_to_never_touches_a_self_reference() {
         // `((#^id))` in a referrer names the referrer's own block.
         let content = "See ((#^abc123)) and ((notes#^abc123)).";
-        let result =
-            replace_block_id_refs_to(content, &lines(&[1]), &keys(&["notes"]), "abc123", "xyz789");
+        let result = replace_block_id_refs_to(
+            content,
+            "/v/referrer.md",
+            &keys(&["notes"]),
+            "abc123",
+            "xyz789",
+        );
         assert_eq!(result, "See ((#^abc123)) and ((notes#^xyz789)).");
     }
 
     #[test]
-    fn test_replace_block_id_refs_to_only_on_the_lines_the_index_named() {
+    fn test_replace_block_id_refs_to_rewrites_every_line_that_refers() {
+        // issue 668: the rewriter reads the content as it is, not the line
+        // numbers an index remembered — every reference to the target changes.
         let content = "((notes#^abc)) first\n((notes#^abc)) second\n((notes#^abc)) third";
         let result =
-            replace_block_id_refs_to(content, &lines(&[2]), &keys(&["notes"]), "abc", "xyz");
+            replace_block_id_refs_to(content, "/v/referrer.md", &keys(&["notes"]), "abc", "xyz");
         assert_eq!(
             result,
-            "((notes#^abc)) first\n((notes#^xyz)) second\n((notes#^abc)) third"
+            "((notes#^xyz)) first\n((notes#^xyz)) second\n((notes#^xyz)) third"
         );
     }
 
     #[test]
     fn test_replace_block_id_refs_to_matches_the_target_the_way_the_index_does() {
-        // Case, extension and a path prefix normalize away, as `get_backlinks` keys do.
-        let content = "((Notes#^abc)) ((dir/notes.md#^abc)) ((other#^abc))";
+        // Case and the `.md` extension normalize away, as the index's keys do.
+        // A path-qualified target does NOT: the index files `dir/notes` under
+        // that key, never under `notes` (issue 619), so the rewriter leaves it
+        // alone too — what the index counts is what a rename may touch.
+        let content = "((Notes#^abc)) ((notes.md#^abc)) ((dir/notes.md#^abc)) ((other#^abc))";
         let result =
-            replace_block_id_refs_to(content, &lines(&[1]), &keys(&["notes"]), "abc", "xyz");
+            replace_block_id_refs_to(content, "/v/referrer.md", &keys(&["notes"]), "abc", "xyz");
         assert_eq!(
             result,
-            "((Notes#^xyz)) ((dir/notes.md#^xyz)) ((other#^abc))"
+            "((Notes#^xyz)) ((notes.md#^xyz)) ((dir/notes.md#^abc)) ((other#^abc))"
         );
     }
 
@@ -783,8 +977,35 @@ mod tests {
     fn test_replace_block_id_refs_to_no_match_is_byte_identical() {
         let content = "See ((notes#^other)) and {{embed ((notes#^other))}}\r\nend";
         let result =
-            replace_block_id_refs_to(content, &lines(&[1, 2]), &keys(&["notes"]), "abc", "xyz");
+            replace_block_id_refs_to(content, "/v/referrer.md", &keys(&["notes"]), "abc", "xyz");
         assert_eq!(result, content);
+    }
+
+    #[test]
+    fn a_note_refers_to_its_own_block_only_by_a_prose_reference_that_names_no_target() {
+        // issue 668: what exempts a same-stem referrer from the stale report
+        // is the self-references the index filed under its stem — in prose,
+        // past the front matter, with the block ID in question, counted by
+        // line as the index names them. A reference that names the target,
+        // even its own stem, is the rewriter's.
+        assert_eq!(own_block_reference_lines("mine ^b1 ((#^b1))\n", "b1"), 1);
+        assert_eq!(own_block_reference_lines("{{embed ((#^b1))}}\n", "b1"), 1);
+        assert_eq!(own_block_reference_lines("see ((#^b1|shown))\n", "b1"), 1);
+        assert_eq!(
+            own_block_reference_lines("((#^b1)) ((#^b1))\n((#^b1))\n", "b1"),
+            2
+        );
+        assert_eq!(own_block_reference_lines("see ((note#^b1))\n", "b1"), 0);
+        assert_eq!(own_block_reference_lines("mine ((#^b2))\n", "b1"), 0);
+        assert_eq!(own_block_reference_lines("`((#^b1))`\n", "b1"), 0);
+        assert_eq!(
+            own_block_reference_lines("---\nrelated: ((#^b1))\n---\nbody\n", "b1"),
+            0
+        );
+        assert_eq!(
+            own_block_reference_lines("the reference is gone\n", "b1"),
+            0
+        );
     }
 
     // §33 replace_wikilink_target tests
@@ -1063,13 +1284,7 @@ mod tests {
         // point at a line inside a fence.
         let content = "```\n((notes#^abc))\n```\n((notes#^abc)) `((notes#^abc))`\n";
         assert_eq!(
-            replace_block_id_refs_to(
-                content,
-                &lines(&[1, 2, 3, 4]),
-                &keys(&["notes"]),
-                "abc",
-                "xyz"
-            ),
+            replace_block_id_refs_to(content, "/v/referrer.md", &keys(&["notes"]), "abc", "xyz"),
             "```\n((notes#^abc))\n```\n((notes#^xyz)) `((notes#^abc))`\n"
         );
     }
@@ -1078,11 +1293,11 @@ mod tests {
     fn a_block_id_rename_on_one_line_keeps_the_code_span_whatever_the_new_length() {
         let content = "{{embed ((notes#^abc))}} `((notes#^abc))` ((notes#^abc|show))\n";
         assert_eq!(
-            replace_block_id_refs_to(content, &lines(&[1]), &keys(&["notes"]), "abc", "a-much-longer-id"),
+            replace_block_id_refs_to(content, "/v/referrer.md", &keys(&["notes"]), "abc", "a-much-longer-id"),
             "{{embed ((notes#^a-much-longer-id))}} `((notes#^abc))` ((notes#^a-much-longer-id|show))\n"
         );
         assert_eq!(
-            replace_block_id_refs_to(content, &lines(&[1]), &keys(&["notes"]), "abc", "z"),
+            replace_block_id_refs_to(content, "/v/referrer.md", &keys(&["notes"]), "abc", "z"),
             "{{embed ((notes#^z))}} `((notes#^abc))` ((notes#^z|show))\n"
         );
     }
@@ -1091,7 +1306,7 @@ mod tests {
     fn a_block_id_rename_keeps_crlf_and_finds_its_lines_in_a_crlf_file() {
         let content = "((notes#^abc))\r\n```\r\n((notes#^abc))\r\n```\r\n((notes#^abc))\r\n";
         assert_eq!(
-            replace_block_id_refs_to(content, &lines(&[1, 3, 5]), &keys(&["notes"]), "abc", "xyz"),
+            replace_block_id_refs_to(content, "/v/referrer.md", &keys(&["notes"]), "abc", "xyz"),
             "((notes#^xyz))\r\n```\r\n((notes#^abc))\r\n```\r\n((notes#^xyz))\r\n"
         );
     }
@@ -1132,6 +1347,204 @@ mod tests {
         assert_eq!(tags, shared);
     }
 
+    /// issue 668 — the rewriter judges the CURRENT content, not the line
+    /// numbers an index remembered, and by the index's own target rule.
+    #[test]
+    fn the_block_id_rewriter_finds_the_reference_where_it_stands_now() {
+        let keys = crate::index::backlink_keys("/v/note.md");
+        // A line inserted above the reference after the index was built: the
+        // reference is found on its new line and rewritten.
+        assert_eq!(
+            replace_block_id_refs_to("new line\nsee ((note#^b1))\n", "/v/a.md", &keys, "b1", "b2"),
+            "new line\nsee ((note#^b2))\n"
+        );
+        // Path-qualified target on its own line names another file's block:
+        // the index files it under `b/note`, and the rewriter leaves it alone.
+        assert_eq!(
+            replace_block_id_refs_to(
+                "((note#^b1))\n((b/note#^b1))\n",
+                "/v/a.md",
+                &keys,
+                "b1",
+                "b2"
+            ),
+            "((note#^b2))\n((b/note#^b1))\n"
+        );
+        // An embed with a display part is a plain reference to the grammar —
+        // indexed as one, rewritten as one.
+        assert_eq!(
+            replace_block_id_refs_to(
+                "{{embed ((note#^b1|caption))}}\n",
+                "/v/a.md",
+                &keys,
+                "b1",
+                "b2"
+            ),
+            "{{embed ((note#^b2|caption))}}\n"
+        );
+        // Nothing to the target: byte for byte.
+        let untouched = "((other#^b1)) `((note#^b1))`\n";
+        assert_eq!(
+            replace_block_id_refs_to(untouched, "/v/a.md", &keys, "b1", "b2"),
+            untouched
+        );
+    }
+
+    /// issue 667 — a block reference in the front matter is neither indexed
+    /// nor rewritten; an attribute wikilink there is still a link.
+    #[test]
+    fn a_block_reference_in_the_front_matter_is_not_a_reference() {
+        let md = "---\nrelated: ((#^b1)) ((note#^b1))\nlink: \"[[x]]\"\n---\nbody ((note#^b1))\n";
+        let entries = extract_links("/v/a.md", md);
+        let kinds: Vec<(&str, &str, u32)> = entries
+            .iter()
+            .map(|e| (e.link_type.as_str(), e.target.as_str(), e.line))
+            .collect();
+        assert_eq!(kinds, vec![("wikilink", "x", 3), ("blockRef", "note", 5)]);
+        let keys = crate::index::backlink_keys("/v/note.md");
+        assert_eq!(
+            replace_block_id_refs_to(md, "/v/a.md", &keys, "b1", "b2"),
+            "---\nrelated: ((#^b1)) ((note#^b1))\nlink: \"[[x]]\"\n---\nbody ((note#^b2))\n"
+        );
+        // Behind a byte order mark, and an embed in the front matter, the same.
+        let bom = "\u{FEFF}---\nx: {{embed ((note#^b1))}}\n---\n{{embed ((note#^b1))}}\n";
+        let kinds: Vec<(String, u32)> = extract_links("/v/a.md", bom)
+            .into_iter()
+            .map(|e| (e.link_type, e.line))
+            .collect();
+        assert_eq!(kinds, vec![("blockEmbed".to_string(), 4)]);
+    }
+
+    /// issue 595 — Windows spells the note's path and the directories with
+    /// `\`; the rewrite compares components and writes `/` into the link.
+    /// Tested with `windows = true` because the Rust tests run on Linux.
+    #[test]
+    fn a_relative_wikilink_rewrite_reads_windows_paths_as_components() {
+        let rewrite = |content: &str, source: &str, old: &str, new: &str| {
+            rewrite_relative_wikilinks_with(content, source, old, new, true)
+        };
+        // Into the directory, through `./` and `../`; a sibling that merely
+        // shares the prefix (`ns-old`) and a global link are left alone.
+        assert_eq!(
+            rewrite(
+                "[[./ns/c]] [[../a/ns/d#h|D]] [[./ns-old/e]] [[ns/f]]",
+                r"C:\vault\a\note.md",
+                r"C:\vault\a\ns",
+                r"C:\vault\a\ns2",
+            ),
+            "[[./ns2/c]] [[./ns2/d#h|D]] [[./ns-old/e]] [[ns/f]]"
+        );
+        // The directory itself, and a link from a deeper note that steps up;
+        // `./ns` from that note names `deep/ns`, not the directory, and stays.
+        assert_eq!(
+            rewrite(
+                "[[../../ns]] [[../../ns/g]] [[./ns]]",
+                r"C:\vault\a\sub\deep\note.md",
+                r"C:\vault\a\ns",
+                r"C:\vault\a\ns2",
+            ),
+            "[[../../ns2]] [[../../ns2/g]] [[./ns]]"
+        );
+        // Too many `..` stop at the drive, as they do to Windows: the link
+        // still resolves into the directory and is rewritten. And on a UNC
+        // share the root is the share.
+        assert_eq!(
+            rewrite(
+                "[[../../vault/ns/x#h|X]]",
+                r"C:\vault\note.md",
+                r"C:\vault\ns",
+                r"C:\vault\ns2",
+            ),
+            "[[./ns2/x#h|X]]"
+        );
+        assert_eq!(
+            rewrite(
+                "[[../../../vault/ns/x]]",
+                r"\\server\share\vault\note.md",
+                r"\\server\share\vault\ns",
+                r"\\server\share\vault\ns2",
+            ),
+            "[[./ns2/x]]"
+        );
+        // Mixed separators and a drive letter in the other case name the
+        // same directory, as they do to std::path on Windows.
+        assert_eq!(
+            rewrite(
+                "[[./ns/c]]",
+                r"c:\vault/a\note.md",
+                "C:/vault/a/ns",
+                r"C:\vault\a\ns2",
+            ),
+            "[[./ns2/c]]"
+        );
+        // Without the Windows rule a backslash is a character of the name:
+        // `ns\c` is one component and does not lie under `ns`.
+        assert_eq!(
+            rewrite_relative_wikilinks_with(
+                r"[[./ns\c]] [[./ns/c]]",
+                "/v/a/note.md",
+                "/v/a/ns",
+                "/v/a/ns2",
+                false,
+            ),
+            r"[[./ns\c]] [[./ns2/c]]"
+        );
+    }
+
+    #[test]
+    fn windows_paths_resolve_and_compare_as_components() {
+        assert_eq!(
+            path_components(r"C:\vault\notes/ai", true),
+            ["C:", "vault", "notes", "ai"]
+        );
+        assert_eq!(path_components(r"/v/my\dir", false), ["v", r"my\dir"]);
+        assert_eq!(
+            resolve_components(&["C:", "vault", "notes"], 1, r"..\x/./y", true),
+            ["C:", "vault", "x", "y"]
+        );
+        assert_eq!(resolve_components(&["v"], 0, "../../up", false), ["up"]);
+        // `..` never steps above the root: the drive, or the UNC share.
+        assert_eq!(
+            resolve_components(&["C:", "vault"], 1, "../../../x", true),
+            ["C:", "x"]
+        );
+        assert_eq!(
+            resolve_components(&["server", "share", "v"], 2, "../../x", true),
+            ["server", "share", "x"]
+        );
+        assert_eq!(root_components(r"C:\vault\note.md", true), 1);
+        assert_eq!(root_components(r"\\server\share\note.md", true), 2);
+        assert_eq!(root_components("//server/share/note.md", true), 2);
+        // A server that happens to be spelled like a drive is still a share.
+        assert_eq!(root_components(r"\\C:\share\note.md", true), 2);
+        assert_eq!(root_components(r"\vault\note.md", true), 0);
+        // A drive-relative path (`C:note.md`) names no absolute root here.
+        assert_eq!(root_components("C:note.md", true), 0);
+        assert_eq!(root_components(r"C:\", true), 1);
+        assert_eq!(root_components("/v/note.md", false), 0);
+        assert_eq!(root_components("//v/note.md", false), 0);
+        assert_eq!(
+            strip_dir_prefix(&["c:", "v", "ns"], &["C:", "v", "ns", "x"], true),
+            Some(&["x"][..])
+        );
+        assert_eq!(
+            strip_dir_prefix(&["c:", "v", "ns"], &["C:", "v", "ns", "x"], false),
+            None
+        );
+        assert_eq!(
+            strip_dir_prefix(&["v", "ns"], &["v", "ns-old", "x"], true),
+            None
+        );
+        assert_eq!(
+            relative_components(&["v", "notes"], &["v", "notes", "ml", "p"], false),
+            "./ml/p"
+        );
+        assert_eq!(
+            relative_components(&["v", "notes", "sub"], &["v", "ml"], false),
+            "../../ml"
+        );
+    }
+
     /// issue 620 — the cross-language contract: the editor's text path
     /// (`block-id-rename-markdown.ts`) and this reader→writer chain rewrite
     /// the same references. The expectations live in the JSON, not in
@@ -1148,17 +1561,9 @@ mod tests {
                 case["name"].as_str().unwrap(),
                 case["markdown"].as_str().unwrap(),
             );
-            let mut index = crate::index::LinkIndex::new();
-            index.update_file_from_content(referrer, markdown);
-            let lines: std::collections::HashSet<u32> = index
-                .block_reference_lines(target, old)
-                .into_iter()
-                .filter(|(source, _)| source == referrer)
-                .map(|(_, line)| line)
-                .collect();
             let keys = crate::index::backlink_keys(target);
             assert_eq!(
-                replace_block_id_refs_to(markdown, &lines, &keys, old, new),
+                replace_block_id_refs_to(markdown, referrer, &keys, old, new),
                 case["expected"].as_str().unwrap(),
                 "{name}"
             );
