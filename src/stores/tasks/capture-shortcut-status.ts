@@ -23,16 +23,16 @@ interface CaptureShortcutStatusStore {
   status: CaptureShortcutStatus;
 }
 
-export const useCaptureShortcutStatus = create<CaptureShortcutStatusStore>(
+export const useCaptureShortcutStatusStore = create<CaptureShortcutStatusStore>(
   () => ({ status: { kind: "idle" } }),
 );
 
 export function setCaptureShortcutStatus(status: CaptureShortcutStatus): void {
   // 같은 상태면 쓰지 않는다 — 등록 시도는 설정을 열어 둔 채 타이핑하는 동안에도
   // 일어나고, 매번 새 root를 만들면 설정 화면 전체가 다시 그려진다.
-  const current = useCaptureShortcutStatus.getState().status;
+  const current = useCaptureShortcutStatusStore.getState().status;
   if (sameStatus(current, status)) return;
-  useCaptureShortcutStatus.setState({ status });
+  useCaptureShortcutStatusStore.setState({ status });
 }
 
 function sameStatus(

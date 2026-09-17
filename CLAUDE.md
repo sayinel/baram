@@ -88,7 +88,7 @@ baram/
 - **파일 크기**: 단일 파일 ~300줄 이하 유지. ~500줄 초과 시 집중 서브모듈로 분리
   - 단, Rust in-file `#[cfg(test)]`·사고 이력 주석은 카운트 제외하고 판단. **분리 금지 판정 파일**(응집이 본질): FileTree.tsx, viewport-virtualize.ts, vim/adapters/operations.ts, plugins/types.ts(공개 .d.ts 계약), plugin-loader.ts 동시성 클래스, Rust authorizer/task/write/logging
   - **부분 분리 완료·잔여는 응집 판정**(PR 519): mermaid-block-view.tsx(13-state 코어+훅 순서 계약), md-to-pm.ts(상호 재귀 블록 워커+공유 루프 카운터), App.tsx(useEditor 안정성 계약+keepalive/fileOps/navigation 순환 매듭) — 추가 분리는 시그니처 변경이 필요한 재설계
-- **Zustand 셀렉터**: 컴포넌트에서 `useStore()` bare call 금지. 반드시 `useShallow((s) => ({...}))` 셀렉터 사용
+- **Zustand 셀렉터**: 컴포넌트에서 `useStore()` bare call 금지. 반드시 `useShallow((s) => ({...}))` 셀렉터 사용 — `eslint.config.js` 의 `no-restricted-syntax` 가 인자 없는 `use*Store()` 를 error 로 막는다(#267). action 만 필요하면 `useXStore.getState()`. 규칙은 이름으로 판정하므로 **Zustand hook 은 반드시 `use…Store` 로 이름 짓는다** — `src/__tests__/bare-store-lint-rule.test.ts` 가 `create` 로 만든 hook 전부를 훑어 고정한다
   ```ts
   import { useShallow } from "zustand/shallow";
   const { foo, bar } = useUIStore(

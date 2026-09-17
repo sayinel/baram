@@ -14,7 +14,7 @@ import {
   normalizeKeyEvent,
 } from "../../../../keybindings/key-utils";
 import { useSettingsStore } from "../../../../stores/settings/store";
-import { useCaptureShortcutStatus } from "../../../../stores/tasks/capture-shortcut-status";
+import { useCaptureShortcutStatusStore } from "../../../../stores/tasks/capture-shortcut-status";
 import { toAccelerator } from "../../../../utils/tasks/capture-shortcut";
 import { SettingsRow } from "../../settings-shared";
 
@@ -34,7 +34,7 @@ export function GlobalCaptureRow() {
       shortcut: s.tasksGlobalCaptureShortcut,
     })),
   );
-  const status = useCaptureShortcutStatus((s) => s.status);
+  const status = useCaptureShortcutStatusStore((s) => s.status);
   const [capturing, setCapturing] = useState(false);
   const isMac = navigator.platform.includes("Mac");
 
