@@ -179,7 +179,7 @@ baram/
 - **jsdom 에디터 픽스처**: `focus()`는 DOM에 붙은 요소만 · contenteditable은 `tabindex` 없으면 포커스 불가 · `focusin`은 수동 dispatch · `Range.getClientRects` 없음(폴리필 필요) · 리사이즈 드래그를 mouseup으로 끝내면 `swallowNextClick`이 window capture click 리스너(300ms)를 무장한다 — 다음 테스트 전에 throwaway click으로 소비 · mermaid는 `setNodeSelection`이 render effect를 재실행해 새 svg id가 비동기로 착지한다 — 그 뒤에 요소를 잡을 것
 - **리터럴 경로 스캔 테스트**: revocation 테스트 2개·`scripts/rust-constants.ts`는 `src-tauri/src/plugin/mod.rs`를 경로로 읽어 스캔(REVOCATION 상수 3개는 그 파일에 고정), vim `editable-ownership.test.tsx`의 REGISTER_ALLOW는 경로 allowlist — 심볼을 옮기면 컴파일은 통과해도 검증이 조용히 죽는다. 이동 시 스캔 경로 동반 갱신 · 발견한 경로를 문자열 키와 비교하는 스캔은 `path.posix.join`(Windows에서 `join`은 역슬래시)
   - media-toolbar-reveal.test.ts는 소스 텍스트를 스캔해 NodeViewWrapper+MediaToolbar 파일 수 ≥4를 요구 — 뷰에서 toolbar 블록을 다른 파일로 빼면 깨진다
-  - pipeline/에 프로덕션 파일을 추가하면 import-boundary의 `MD_TO_PM_ROUTE_FILES` Set(+감사 주석의 개수·날짜)을 갱신해야 한다 — allowlist를 넓히는 우회는 금지
+  - pipeline/에 프로덕션 파일을 추가하면 import-boundary의 `MD_TO_PM_ROUTE_FILES` Set(+감사 주석의 개수·날짜)을 갱신해야 한다 — allowlist를 넓히는 우회는 금지. 타입으로만 쓰는 항목은 `{ typeOnly: true }` 로 등록한다 — 값 import 는 red, barrel 재export 는 값 접근으로 판정된다(#637)
   - 반대로 transformer가 `src/utils/`의 leaf 모듈을 import하는 것은 경계 위반이 아니다 — 금지 closure는 `pm-to-md.ts`에서 출발해 `src/pipeline/` 안으로만 BFS한다
 
 ### 의존성 관리
