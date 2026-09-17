@@ -32,6 +32,10 @@ describe("§55 convertHighlightForPandoc — a mark may wrap code and links", ()
     expect(convertHighlightForPandoc("==plain text==")).toBe("**plain text**");
   });
 
+  it("finds its closer past a `==` inside a code span (issue 636)", () => {
+    expect(convertHighlightForPandoc("==a `x==y` b==")).toBe("**a `x==y` b**");
+  });
+
   it("still refuses a highlight whose delimiter sits inside code or math", () => {
     expect(convertHighlightForPandoc("`==x==`")).toBe("`==x==`");
     expect(convertHighlightForPandoc("$a == b$")).toBe("$a == b$");
@@ -203,9 +207,20 @@ describe("§55 convertSubscriptForPandoc", () => {
       "$a^2 + b^2 = c^2$",
     );
     expect(convertSubscriptForPandoc("~a `x y` b~")).toBe("~a `x y` b~");
-    // Prices are prose to pandoc's math rule and stay editable.
+    // `$5 and $` is the editor's formula (issue 636); the mark after it is
+    // outside and converts.
     expect(convertSubscriptForPandoc("$5 and $6 ~a b~")).toBe(
       "$5 and $6 ~a\\ b~",
+    );
+    // The first pair wraps code and is refused whole — its closer is not
+    // offered to the next opener — while the pair after it converts; and a
+    // backtick inside a link destination still closes the span opened
+    // before it, so the second pair is the only mark.
+    expect(convertSubscriptForPandoc("~a `x~y` b~ and ~c d~")).toBe(
+      "~a `x~y` b~ and ~c\\ d~",
+    );
+    expect(convertSubscriptForPandoc("`~a b~ [x](u/`) ~c d~")).toBe(
+      "`~a b~ [x](u/`) ~c\\ d~",
     );
     // A literal `\$` opens no math, so the mark after it is still a mark;
     // `\\$` is an escaped backslash and LIVE math; math may cross a line

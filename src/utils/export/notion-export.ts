@@ -1,7 +1,10 @@
 // notion-export.ts — Convert Baram markdown to Notion-compatible markdown
 // Pure utility functions (no external dependencies)
 
-import { replaceOutsideCode } from "../markdown/markdown-code-regions";
+import {
+  inlineMathSpans,
+  replaceOutsideCode,
+} from "../markdown/markdown-code-regions";
 import { segmentMarkdownByMermaid } from "../markdown/mermaid-fence";
 import { stripMermaidMeta } from "../markdown/mermaid-meta";
 
@@ -368,32 +371,60 @@ export function convertHighlightForNotion(md: string): string {
 }
 
 /** Convert inline math `$...$` to Notion's `$$...$$`.
- *  Does not touch block math `$$...$$` or code regions. */
+ *  Does not touch block math `$$...$$` or code regions.
+ *
+ *  The spans are the editor's (issue 636): a `$` pairs with the next lone
+ *  `$` on its line the way remark-math pairs them — a code span opened
+ *  earlier owns its dollars, a formula opened earlier owns its backticks
+ *  (`$a \`x$y\` b$` is the formula `a \`x` and text, as the editor shows
+ *  it), a backslash escapes an opener only, and `$10 or $20` is the
+ *  formula `10 or `, as the editor renders it. */
 export function convertInlineMathForNotion(md: string): string {
-  // Match single $ that are NOT preceded or followed by another $
-  return replaceOutsideCode(
-    md,
-    /(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)/g,
-    (_match, content: string) => {
-      return `$$${content}$$`;
-    },
-    // Delimiters only, for the same reason as the highlight above: `$a `x`
-    // b$` is math that happens to quote code, and it must still convert.
-    { guard: "delimiters" },
-  );
+  const parts: string[] = [];
+  let last = 0;
+  for (const { end, start } of inlineMathSpans(md)) {
+    parts.push(md.slice(last, start), `$$${md.slice(start + 1, end - 1)}$$`);
+    last = end;
+  }
+  parts.push(md.slice(last));
+  return parts.join("");
 }
+
+/** A blank line — a line break, blanks or blockquote markers alone, a
+ *  line break — as a lookahead: Notion's sub/superscript content may cross
+ *  a soft break, as the editor's marks do, but not a paragraph (issue
+ *  636). The `$$_{…}$$` fallback written across a blank line was math to
+ *  no later pass, and the editor has no such mark either.
+ *
+ *  A lone `$` on either side of the mark is captured with it: a fallback
+ *  wrapper written flush against it would fuse into a `$$$` run that no
+ *  later pass reads as the wrapper (`$~<u>x</u>~` became `$$$_{…}$$`),
+ *  so beside a dollar the mark stays as written unless it maps to
+ *  Unicode. */
+const NOT_BLANK_LINE = String.raw`(?!(?:\r\n|\n|\r)[ \t>]*(?:\r\n|\n|\r))`;
+const subscriptRe = (): RegExp =>
+  new RegExp(
+    String.raw`(\$?)(?<!~)~(?!~)((?:${NOT_BLANK_LINE}[^~])+)(?<!~)~(?!~)(\$?)`,
+    "g",
+  );
+const superscriptRe = (): RegExp =>
+  new RegExp(
+    String.raw`(\$?)(?<!\^)\^(?!\^)((?:${NOT_BLANK_LINE}[^^])+)(?<!\^)\^(?!\^)(\$?)`,
+    "g",
+  );
 
 /** Convert `~text~` subscript to Unicode subscript or math fallback.
  *  Does NOT match `~~strikethrough~~`. */
 export function convertSubscriptForNotion(md: string): string {
   return replaceOutsideCode(
     md,
-    /(?<!~)~(?!~)([^~]+)(?<!~)~(?!~)/g,
-    (_match, content: string) => {
+    subscriptRe(),
+    (match, lead: string, content: string, trail: string) => {
       const { text, complete } = toUnicodeSubscript(content);
       if (complete) {
-        return text;
+        return `${lead}${text}${trail}`;
       }
+      if (lead !== "" || trail !== "") return match;
       return `$$_{${content}}$$`;
     },
   );
@@ -404,12 +435,13 @@ export function convertSubscriptForNotion(md: string): string {
 export function convertSuperscriptForNotion(md: string): string {
   return replaceOutsideCode(
     md,
-    /(?<!\^)\^(?!\^)([^^]+)(?<!\^)\^(?!\^)/g,
-    (_match, content: string) => {
+    superscriptRe(),
+    (match, lead: string, content: string, trail: string) => {
       const { text, complete } = toUnicodeSuperscript(content);
       if (complete) {
-        return text;
+        return `${lead}${text}${trail}`;
       }
+      if (lead !== "" || trail !== "") return match;
       return `$$^{${content}}$$`;
     },
   );
@@ -434,9 +466,15 @@ export function convertToggleForNotion(md: string): string {
 
 /** Convert `<u>text</u>` underline to `*text*` italic (closest Notion alternative) */
 export function convertUnderlineForNotion(md: string): string {
-  return md.replace(/<u>([\s\S]*?)<\/u>/g, (_match, content: string) => {
-    return `*${content}*`;
-  });
+  // Delimiters only: `$<u>x</u>$` is the formula's text once the math pass
+  // has written `$$<u>x</u>$$`, and a `<u>` inside a code span is code,
+  // while an underline wrapping either still converts (issue 636).
+  return replaceOutsideCode(
+    md,
+    /<u>([\s\S]*?)<\/u>/g,
+    (_match, content: string) => `*${content}*`,
+    { guard: "delimiters" },
+  );
 }
 
 /** Convert wikilinks to standard markdown links.

@@ -224,16 +224,55 @@ describe("convertInlineMathForNotion", () => {
     );
   });
 
-  it("does not convert dollar sign in normal text", () => {
-    const input = "Price is $10 or $20";
-    // These are tricky — single $ followed by digits and space don't form pairs
-    // The pattern requires $..$ (non-greedy), so "10 or $" is unlikely to match if spaces separate
-    // Actually "$10 or $" could match. Let's test the actual behavior.
-    // The regex `(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)` would match `$10 or $` — that's a concern.
-    // But this is a known limitation of dollar-sign math detection.
-    // We just verify it doesn't crash.
-    const result = convertInlineMathForNotion(input);
-    expect(typeof result).toBe("string");
+  it("converts a price pair exactly as the editor renders it — as a formula (issue 636)", () => {
+    // remark-math with single dollars reads `$10 or $` as inline math, and
+    // so does the editor on screen; the export shows Notion the same
+    // document. Whether prices should be math at all is the editor
+    // grammar's question, not the export's.
+    expect(convertInlineMathForNotion("Price is $10 or $20")).toBe(
+      "Price is $$10 or $$20",
+    );
+  });
+
+  describe("pairs dollars the way the editor's parser does (issue 636)", () => {
+    it("lets whichever opened first own the other's delimiters", () => {
+      // The formula opened at the first `$` owns the backtick inside it and
+      // closes at the `$` inside what would have been a code span — the
+      // editor shows `a `x` as the formula and the rest as text. A code
+      // span opened first owns its dollar.
+      expect(convertInlineMathForNotion("$a `x$y` b$")).toBe("$$a `x$$y` b$");
+      expect(convertInlineMathForNotion("`$` and $x$")).toBe("`$` and $$x$$");
+      expect(convertInlineMathForNotion("`unclosed $x$")).toBe(
+        "`unclosed $$x$$",
+      );
+    });
+
+    it("closes a run with the next run of the same length only", () => {
+      expect(convertInlineMathForNotion("$a $$x$$ b$")).toBe("$$a $$x$$ b$$");
+      expect(convertInlineMathForNotion("$a $$ b$")).toBe("$$a $$ b$$");
+      expect(convertInlineMathForNotion("$$x$$")).toBe("$$x$$");
+      expect(convertInlineMathForNotion("$$$x$$$")).toBe("$$$x$$$");
+    });
+
+    it("reads a backslash before an opener only: it shortens the run, and a closer is never escaped", () => {
+      expect(convertInlineMathForNotion("\\$$x$")).toBe("\\$$$x$$");
+      expect(convertInlineMathForNotion("$x\\$")).toBe("$$x\\$$");
+    });
+
+    it("has no whitespace or digit rules, as the editor has none", () => {
+      expect(convertInlineMathForNotion("$ x$")).toBe("$$ x$$");
+      expect(convertInlineMathForNotion("$x$5")).toBe("$$x$$5");
+      expect(convertInlineMathForNotion("a$b$c")).toBe("a$$b$$c");
+    });
+
+    it("pairs within a line, and never across a blank line", () => {
+      expect(convertInlineMathForNotion("$a\nb$")).toBe("$a\nb$");
+      expect(convertInlineMathForNotion("$a\r\n\r\nb$")).toBe("$a\r\n\r\nb$");
+    });
+
+    it("leaves display math alone, unclosed included", () => {
+      expect(convertInlineMathForNotion("$$\n$x$\n")).toBe("$$\n$x$\n");
+    });
   });
 });
 
@@ -268,12 +307,73 @@ describe("convertHighlightForNotion", () => {
     // still become bold instead of reaching Notion as a literal `==`.
     expect(convertHighlightForNotion("==a `x` b==")).toBe("**a `x` b**");
   });
+
+  describe("finds its closer past a `==` inside code (issue 636)", () => {
+    it("pairs across a code span holding the delimiter", () => {
+      // The match is found on a shadow in which the code span is filler:
+      // the `==` inside it is no closer, and the real closer behind the
+      // span is found instead of being thrown away with the rejected one.
+      expect(convertHighlightForNotion("==a `x==y` b==")).toBe(
+        "**a `x==y` b**",
+      );
+      expect(convertHighlightForNotion("==a `==` b==")).toBe("**a `==` b**");
+      expect(convertHighlightForNotion("`==` then ==hi==")).toBe(
+        "`==` then **hi**",
+      );
+    });
+
+    it("keeps display math protected, and a `$$` inside code is code", () => {
+      // An unclosed display block runs to the end; a `$$$` block is not
+      // closed by `$$`; a `$$` inside a code span opens nothing.
+      expect(convertHighlightForNotion("$$\n==inside==\n")).toBe(
+        "$$\n==inside==\n",
+      );
+      expect(convertHighlightForNotion("$$$\nx\n$$\n==still math==\n")).toBe(
+        "$$$\nx\n$$\n==still math==\n",
+      );
+      expect(convertHighlightForNotion("- $$\n  ==x==\n  $$$\n==y==")).toBe(
+        "- $$\n  ==x==\n  $$$\n**y**",
+      );
+      expect(convertHighlightForNotion("`$$` ==live== $$")).toBe(
+        "`$$` **live** $$",
+      );
+    });
+
+    it("closes a fence written with CRLF or lone CR line breaks", () => {
+      expect(
+        convertHighlightForNotion("```\r\n==code==\r\n```\r\n==live=="),
+      ).toBe("```\r\n==code==\r\n```\r\n**live**");
+      expect(convertHighlightForNotion("```\r==code==\r```\r==live==")).toBe(
+        "```\r==code==\r```\r**live**",
+      );
+    });
+
+    it("keeps its own line rule, and counts code units so an astral character inside code shifts nothing", () => {
+      expect(convertHighlightForNotion("==a\nb== c")).toBe("==a\nb== c");
+      expect(convertHighlightForNotion("==a `😀==` b== ==c==")).toBe(
+        "**a `😀==` b** **c**",
+      );
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
 // 7. convertSubscriptForNotion
 // ---------------------------------------------------------------------------
 describe("convertSubscriptForNotion", () => {
+  it("crosses a soft line break, as the editor's mark does", () => {
+    expect(convertSubscriptForNotion("A~b\nc~D")).toBe("A$$_{b\nc}$$D");
+  });
+
+  it("leaves a pair that swallows code alone and still converts the next pair (issue 636)", () => {
+    // The first pair is found as a pair on the shadow and refused for
+    // wrapping code; its closer is consumed with it, not offered to the
+    // next opener as `~ and ~` once was.
+    expect(convertSubscriptForNotion("~a `x~y` b~ and ~c d~")).toBe(
+      "~a `x~y` b~ and $$_{c d}$$",
+    );
+  });
+
   it("converts digit subscript to Unicode", () => {
     const result = convertSubscriptForNotion("H~2~O");
     expect(result).toBe("H\u2082O");
@@ -471,6 +571,12 @@ describe("convertToggleForNotion", () => {
 // 14. convertUnderlineForNotion
 // ---------------------------------------------------------------------------
 describe("convertUnderlineForNotion", () => {
+  it("leaves a tag inside code or math alone, and converts an underline that wraps code (issue 636)", () => {
+    expect(convertUnderlineForNotion("`<u>x</u>`")).toBe("`<u>x</u>`");
+    expect(convertUnderlineForNotion("$$<u>x</u>$$")).toBe("$$<u>x</u>$$");
+    expect(convertUnderlineForNotion("<u>a `x` b</u>")).toBe("*a `x` b*");
+  });
+
   it("converts basic underline to italic", () => {
     expect(convertUnderlineForNotion("This is <u>underlined</u> text")).toBe(
       "This is *underlined* text",
@@ -552,6 +658,30 @@ describe("convertForNotion + mermaid", () => {
 // 16. convertForNotion (full document integration)
 // ---------------------------------------------------------------------------
 describe("convertForNotion", () => {
+  it("keeps its own `$$_{…}$$` subscript output readable by the passes after it (issue 636)", () => {
+    // The subscript pass writes `$$_{a\nb}$$` across a line break; the
+    // superscript pass must read it as inline math, not as a display block
+    // opened by a `$$` line and never closed. A display block opens on a
+    // line that is nothing but its `$$`.
+    expect(convertForNotion("~a\nb~ ^2^")).toBe("$$_{a\nb}$$ ²");
+    // A mark does not cross a blank line — the editor has none there, and
+    // a wrapper written across one was math to no later pass.
+    expect(convertForNotion("~a\n\nb~ ^2^")).toBe("~a\n\nb~ ²");
+    expect(convertForNotion("~a\n\nb^2^~")).toBe("~a\n\nb²~");
+    // The wrapper's content is math to every pass after it: an underline
+    // tag inside converted math or inside the wrapper stays.
+    expect(convertForNotion("$<u>x</u>$")).toBe("$$<u>x</u>$$");
+    expect(convertForNotion("~<u>x</u>~")).toBe("$$_{<u>x</u>}$$");
+    // A blockquote's bare `>` line is a paragraph break too.
+    expect(convertForNotion("> ~A\n>\n> B~ ^2^")).toBe("> ~A\n>\n> B~ ²");
+    // Beside a lone dollar no wrapper is written — it would fuse into a
+    // `$$$` run no later pass reads — while a Unicode mark still converts.
+    expect(convertForNotion("$~<u>x</u>~")).toBe("$~*x*~");
+    expect(convertForNotion("~<u>x</u>~$")).toBe("~*x*~$");
+    expect(convertForNotion("$~a~")).toBe("$ₐ");
+    expect(convertForNotion("~a~$")).toBe("ₐ$");
+  });
+
   it("preserves frontmatter unchanged", () => {
     const input = "---\ntitle: My Doc\ntags: [a, b]\n---\n\n# Hello";
     const result = convertForNotion(input);
