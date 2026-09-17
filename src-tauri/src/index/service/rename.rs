@@ -1,11 +1,11 @@
 use crate::context::manager::{resolve_canonical, Registered};
 use crate::context::ContextManager;
 use crate::index::{
-    backlink_keys, collect_md_files, replace_block_id_refs_to, replace_wikilink_target,
-    rewrite_relative_wikilinks, IndexStats,
+    backlink_keys, collect_md_files, own_block_reference_lines, replace_block_id_refs_to,
+    replace_wikilink_target, rewrite_relative_wikilinks, IndexStats,
 };
 use serde::Serialize;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use super::build::{
@@ -161,9 +161,16 @@ pub(crate) async fn rename_file_with_links_inner(
     //    file has moved, so a failure here is never a failed rename: the
     //    referrer is skipped and REPORTED (issue 594) — its links still spell
     //    the old name, and only the user can do something about that.
-    let rewritten = rewrite_referrers(&referring_files, old_path, &dirs, |content, _| {
-        replace_wikilink_target(content, &old_target, &new_target)
-    })
+    //    A referrer whose content does not change is not news here: the index
+    //    names files that refer by a block reference or an embed as well, and
+    //    this rewrite handles wikilinks only (see `Unchanged`).
+    let rewritten = rewrite_referrers(
+        &referring_files,
+        old_path,
+        &dirs,
+        &Unchanged::Ignore,
+        |content, _| replace_wikilink_target(content, &old_target, &new_target),
+    )
     .await;
 
     // 4. Update every containing index: drop the old entry, re-index the
@@ -222,27 +229,58 @@ pub(crate) async fn rename_block_id_inner(
     //    `((other#^old_id))` — another note's block with the same ID — which
     //    must not change: the rewrite is confined to those lines and, on them,
     //    to references whose target is this file (issue 594).
-    let mut referring_lines: HashMap<String, HashSet<u32>> = HashMap::new();
-    for (source, line) in read_indexes(state, &dirs, |index| {
+    //    issue 668: the index says WHICH FILES refer; the lines it remembers
+    //    are not trusted — the rewriter reads each file as it is now. How
+    //    many lines it named each file for is kept, for the exemption below.
+    let mut named: Vec<(String, u32)> = read_indexes(state, &dirs, |index| {
         index.block_reference_lines(file_path, old_id)
     })
-    .await?
-    {
-        referring_lines.entry(source).or_default().insert(line);
+    .await?;
+    named.sort();
+    named.dedup();
+    let mut named_lines: HashMap<String, usize> = HashMap::new();
+    for (source, _) in &named {
+        *named_lines.entry(source.clone()).or_default() += 1;
     }
-    let mut referring_files: Vec<String> = referring_lines.keys().cloned().collect();
+    let mut referring_files: Vec<String> = named_lines.keys().cloned().collect();
     referring_files.sort();
     let target_keys = backlink_keys(file_path);
+    // A referrer that shares the target's stem — another `note.md` in some
+    // other folder — is named by the index for its own self-references
+    // (`((#^id))` is filed under the referrer's own stem, which is the
+    // target's). The rewrite leaves those alone, rightly, and the file must
+    // not then be reported as a stale referrer — while it holds at least as
+    // many self-reference lines as the index named it for. The stem alone is
+    // not why the index named it: a same-stem note whose `((note#^id))` to
+    // the target has gone since, self-reference beside it or not, holds
+    // fewer, and is stale like any other.
+    let named_for_its_own_references = |path: &str, content: &str| {
+        target_keys.contains(&crate::index::normalizer::normalize_file_path(path))
+            && named_lines
+                .get(path)
+                .is_some_and(|&lines| own_block_reference_lines(content, old_id) >= lines)
+    };
 
     // 2. Read + replace + write (outside lock). The first referrer written is
     //    this command's point of no return: a later one that cannot be
     //    rewritten is skipped and reported, not turned into an `Err` that
     //    would claim nothing changed while some files already say `new_id`
     //    (issue 594).
-    let rewritten = rewrite_referrers(&referring_files, file_path, &dirs, |content, ref_path| {
-        let lines = referring_lines.get(ref_path).cloned().unwrap_or_default();
-        replace_block_id_refs_to(content, &lines, &target_keys, old_id, new_id)
-    })
+    //    A referrer the index named in which no reference to this block is
+    //    found any more is REPORTED (issue 668): the index was stale, the
+    //    definition takes the new ID, and the user must hear that this file
+    //    still says the old one.
+    let rewritten = rewrite_referrers(
+        &referring_files,
+        file_path,
+        &dirs,
+        &Unchanged::Report {
+            unless: &named_for_its_own_references,
+        },
+        |content, ref_path| {
+            replace_block_id_refs_to(content, ref_path, &target_keys, old_id, new_id)
+        },
+    )
     .await;
 
     // 3. Update the containing indexes — each rewritten file goes into the
@@ -277,6 +315,23 @@ struct Rewritten {
     contents: Vec<(PathBuf, String)>,
 }
 
+/// What to make of a referrer the index named whose content `rewrite` did not
+/// change (issue 668).
+enum Unchanged<'a> {
+    /// The index was stale — the reference moved or went — and the file still
+    /// says the old name: report it in `skipped`, as any referrer whose links
+    /// were not updated. `unless`, given the referrer's path and its content
+    /// as read, names the referrers the index names for a reason the rewrite
+    /// rightly ignores, which are no news.
+    Report {
+        unless: &'a (dyn Fn(&str, &str) -> bool + Sync),
+    },
+    /// Not news: the index names referrers this rewrite does not cover (a file
+    /// rename rewrites wikilinks; a referrer may refer by a block reference or
+    /// an embed alone).
+    Ignore,
+}
+
 /// Rewrite every referring file with `rewrite`, skipping `own_path` (the file
 /// whose links are being renamed). A referrer that cannot be read, resolves
 /// outside `dirs`, or cannot be written is reported in `skipped`; nothing here
@@ -285,6 +340,7 @@ async fn rewrite_referrers(
     referring_files: &[String],
     own_path: &str,
     dirs: &[Registered],
+    unchanged: &Unchanged<'_>,
     rewrite: impl Fn(&str, &str) -> String,
 ) -> Rewritten {
     let mut result = Rewritten {
@@ -308,6 +364,15 @@ async fn rewrite_referrers(
         };
         let new_content = rewrite(&content, ref_path);
         if new_content == content {
+            if let Unchanged::Report { unless } = unchanged {
+                if unless(ref_path, &content) {
+                    continue;
+                }
+                log::warn!(
+                    "rename: {ref_path} was named by the index but holds no reference to rename now — the index was stale; its links are left as they are"
+                );
+                result.skipped.push(ref_path.clone());
+            }
             continue;
         }
         // A referrer the index names that cannot be resolved, or that now

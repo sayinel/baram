@@ -332,7 +332,7 @@ pub fn source_lines(content: &str) -> impl Iterator<Item = SourceLine<'_>> {
 /// line `---` (trailing blanks allowed) through the next line `---` (trailing
 /// blanks allowed) and that line's break; nothing closes it, nothing is
 /// front matter.
-fn front_matter_end(content: &str) -> usize {
+pub(crate) fn front_matter_end(content: &str) -> usize {
     let is_fence = |text: &str| text.trim_end_matches([' ', '\t']) == "---";
     let mut lines = source_lines(content);
     // A byte order mark before the first `---` is not part of the fence. The

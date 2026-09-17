@@ -13,8 +13,9 @@ use thiserror::Error;
 
 // Re-export public API consumed by `service/` and the IPC layer
 pub use extractor::{
-    collect_all_files, collect_md_files, find_unlinked_mentions, replace_block_id_refs_to,
-    replace_wikilink_target, rewrite_relative_wikilinks, UnlinkedMentionResult,
+    collect_all_files, collect_md_files, find_unlinked_mentions, own_block_reference_lines,
+    replace_block_id_refs_to, replace_wikilink_target, rewrite_relative_wikilinks,
+    UnlinkedMentionResult,
 };
 
 use extractor::{extract_file_tags, extract_links};
