@@ -13,9 +13,18 @@
 // its closer as the tag alone, and shows the images after them — a region
 // carried to the end of the document would swallow those images without a
 // word. Such a node is left whole and, when it may hold an image, reported.
-// A closer may also stand where the parser keeps no text node — a link's
-// destination or title, a definition, an image's alt — and pandoc, which
-// reads raw source, closes the region there; so those strings close it too.
+// The region's state moves on the EXACT SOURCE of each node, in document
+// order — never on the parser's decoded text: `&lt;/script>` decodes to a
+// closer that pandoc, reading the source, never sees, and `\<script>` to an
+// opener it never sees. A closer may stand where the parser keeps no text
+// node — a link's destination or title, a reference label, a definition, an
+// image's alt — so those source spans move the state too, and what follows
+// a closer in them may open the next region. A node that BEGAN inside a
+// region is raw text to pandoc up to the closer, whatever the parser made
+// of it — an image whose alt held the closer, a tag the parser saw inside
+// braces, a code span or a formula: the state moves over its source, what
+// follows the closer may open the next region, and the visitor never sees
+// it.
 //
 // An html node is offered as its `<img …>` tags only when the grammar can
 // read the node (export-html-fragment.ts) and its text can be aligned with
@@ -113,22 +122,43 @@ export function walkImages(
     afterNode: (key) => closerAtOrAfter(key, end),
     anyFrom: (key) => closerAtOrAfter(key, start),
   });
+  // Move the region's state over `source[from, to)`: the open region may
+  // close there; what follows the closer — or the whole span, when nothing
+  // was open — may open the next one, unless the span is code, which opens
+  // nothing to pandoc either.
+  const advance = (from: number, to: number, mayOpen: boolean): void => {
+    const span = source.slice(from, to);
+    const rest = raw.until === null ? span : closeRawRegion(raw, span);
+    if (rest === null || !mayOpen) return;
+    raw.until = rawRegions(rest, oracleFor(from, to)).open?.until ?? null;
+  };
   const visit = (node: Nodes, ctx: LabelContext, inBraces: boolean): void => {
-    if (node.type === "image") {
-      closeInSource(raw, source, node.position!.start.offset!, node);
-      visitor.image?.(node, ctx);
+    const start = node.position!.start.offset!;
+    const end = node.position!.end.offset!;
+    if (node.type === "image" || node.type === "imageReference") {
+      // Begun inside a region, the image is text to pandoc up to the closer
+      // and literal characters after it — no image at all, and what follows
+      // the closer may open the next region. Begun outside one, it is an
+      // image whatever its alt says: `![<script>](x)` opens nothing.
+      const beganRaw = raw.until !== null;
+      advance(start, end, beganRaw);
+      if (beganRaw) return;
+      if (node.type === "image") visitor.image?.(node, ctx);
+      else visitor.imageReference?.(node, ctx);
       return;
     }
     if (node.type === "definition") {
-      closeInSource(raw, source, node.position!.start.offset!, node);
-      return;
-    }
-    if (node.type === "imageReference") {
-      visitor.imageReference?.(node, ctx);
+      // A definition's destination is a destination to pandoc, never an
+      // opener; only the remainder after a closer it holds may open.
+      advance(start, end, raw.until !== null);
       return;
     }
     if (node.type === "html") {
-      if (inBraces) {
+      // Begun inside a region, the node is raw text to pandoc whatever
+      // braces the parser saw around it: readHtmlNode moves the state over
+      // it (the closer may stand in it) and offers nothing. Only a tag
+      // entered OUTSIDE a region is judged by the braces.
+      if (inBraces && raw.until === null) {
         // Judged by the same oracle as any other node: a false opener in a
         // processing instruction must not mask the `<img` behind it.
         const regions = rawRegions(
@@ -144,11 +174,20 @@ export function walkImages(
       return;
     }
     if ("value" in node) {
-      trackRawRegion(raw, node, oracleFor);
+      // A text node's source may close the region and open the next. Code
+      // entered outside a region is code to pandoc too, so it only closes —
+      // but a code span or a formula that BEGAN inside a region is raw text
+      // to pandoc, and what follows its closer may open the next region.
+      const beganRaw = raw.until !== null;
+      advance(start, end, node.type === "text" || beganRaw);
       return;
     }
     if (!("children" in node)) return;
     const inner = innerContext(ctx, node.type);
+    // A link that began inside a region never formed to pandoc: its whole
+    // source, tail included, is raw text up to the closer and plain text
+    // after it, whatever the parser made of its label and title.
+    const beganRaw = raw.until !== null;
     // Braces open and close across the siblings of one parent: text on
     // either side of an inline tag, or of the emphasis around it.
     let depth = 0;
@@ -156,15 +195,18 @@ export function walkImages(
       visit(child, inner, inBraces || depth > 0);
       if (child.type === "text") depth = braceDepth(child.value, depth);
     }
-    // The destination and title follow the label in the source; the label's
-    // own text closed what it could as it was visited.
-    if (node.type === "link") {
-      const last = node.children.at(-1);
-      closeInSource(
-        raw,
-        source,
-        last?.position?.end.offset ?? node.position!.start.offset!,
-        node,
+    // The destination and title, or the reference label, follow the label
+    // in the source; the label's own nodes moved the state as they were
+    // visited. Entered outside a region — the link itself and its tail —
+    // that tail is link syntax to pandoc (`[x](<script>)` names a
+    // destination, it opens nothing). A tail that is raw text — the region
+    // is still open, or the link began inside one and its label closed it
+    // — may open the next region after its closer.
+    if (node.type === "link" || node.type === "linkReference") {
+      advance(
+        node.children.at(-1)?.position?.end.offset ?? start,
+        end,
+        beganRaw || raw.until !== null,
       );
     }
   };
@@ -203,8 +245,9 @@ function readHtmlNode(
     // Inside the region. What follows the closer, if it stands in this
     // node, is not read either — pandoc ends its block on that line — but
     // may open the next region, and if it may hold an image the user hears
-    // of it.
-    const rest = closeRawRegion(raw, node.value);
+    // of it. The exact source, as everywhere the state moves: a container
+    // prefix the parser stripped from the value is text pandoc read.
+    const rest = closeRawRegion(raw, source.slice(start, end));
     if (rest === null) return [];
     const regions = rawRegions(rest, oracleFor(start, end));
     raw.until = regions.open?.until ?? null;
@@ -226,23 +269,6 @@ function readHtmlNode(
 }
 
 /**
- * The source of a node the parser keeps as attributes — a link's destination
- * and title, a definition, an image — may close the region the walk is
- * inside, as pandoc reads it: raw text. The SOURCE, not the parsed values: a
- * `</script>` in an angle-bracket destination parses to `/script`. Such text
- * opens nothing.
- */
-function closeInSource(
-  raw: RawRegion,
-  source: string,
-  from: number,
-  node: Nodes,
-): void {
-  if (raw.until === null) return;
-  closeRawRegion(raw, source.slice(from, node.position!.end.offset!));
-}
-
-/**
  * Let any node's text close the region the walk is inside; what follows the
  * closer is returned for the caller to read on, or null when the region
  * stays open (or there was none to close).
@@ -253,25 +279,4 @@ function closeRawRegion(raw: RawRegion, value: string): null | string {
   if (closer === null) return null;
   raw.until = null;
   return value.slice(closer.index + closer[0].length);
-}
-
-/**
- * A value node's part in the raw region: it may close the one the walk is
- * inside, and a text node may open one — pandoc's raw TeX environment
- * (`\begin{verbatim}` … `\end{verbatim}`) is text to the parser and spans
- * any html node between its lines. Code is code to pandoc too, so a code
- * node opens nothing.
- */
-function trackRawRegion(
-  raw: RawRegion,
-  node: Nodes & { value: string },
-  oracleFor: OracleFor,
-): void {
-  const rest =
-    raw.until === null ? node.value : closeRawRegion(raw, node.value);
-  if (rest !== null && node.type === "text") {
-    const start = node.position!.start.offset!;
-    const end = node.position!.end.offset!;
-    raw.until = rawRegions(rest, oracleFor(start, end)).open?.until ?? null;
-  }
 }
