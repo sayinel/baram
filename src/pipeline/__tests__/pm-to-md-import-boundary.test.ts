@@ -53,9 +53,14 @@ import {
 // forwarding leg still needs `allEntries`, since that's where a re-exporting barrel's own
 // `export { X } from "./module"` statement lives (pipeline/index.ts is pipeline-internal, and
 // so excluded from `checked`).
+//
+// issue 637: an entry sanctioned for type use alone (`typeOnly`) is consumed
+// only by a type-only import — a value import of it is a violation, not a
+// consumer — and only through a type-only re-export.
 function isExportConsumed(
   module: string,
   name: string,
+  typeOnly: boolean,
   checked: readonly FileRefs[],
   allEntries: readonly FileRefs[],
   visited: Set<string> = new Set(),
@@ -69,7 +74,7 @@ function isExportConsumed(
       (ref) =>
         ref.module === module &&
         (ref.form === "named-import" || ref.form === "default-import") &&
-        ref.pairs.some((p) => p.original === name),
+        ref.pairs.some((p) => p.original === name && (!typeOnly || p.typeOnly)),
     ),
   );
   if (consumedDirectly) return true;
@@ -77,10 +82,18 @@ function isExportConsumed(
   for (const { file: barrelFile, refs } of allEntries) {
     for (const ref of refs) {
       if (ref.module !== module || ref.form !== "export-named") continue;
-      for (const { original, local } of ref.pairs) {
+      for (const { original, local, typeOnly: reExportedAsType } of ref.pairs) {
         if (
           original === name &&
-          isExportConsumed(barrelFile, local, checked, allEntries, visited)
+          (!typeOnly || reExportedAsType) &&
+          isExportConsumed(
+            barrelFile,
+            local,
+            typeOnly,
+            checked,
+            allEntries,
+            visited,
+          )
         ) {
           return true;
         }
@@ -290,8 +303,10 @@ describe("pm→markdown import boundary — real production scan (§384 commit 3
   it("every allowlisted (module, export) pair has at least one real production consumer — no dead entries", () => {
     const deadEntries: string[] = [];
     for (const [module, names] of allowlist) {
-      for (const name of names) {
-        if (!isExportConsumed(module, name, checked, allEntries)) {
+      for (const [name, entry] of names) {
+        if (
+          !isExportConsumed(module, name, entry.typeOnly, checked, allEntries)
+        ) {
           deadEntries.push(
             `"${name}" from ${module} — remove from buildAllowlist()`,
           );
@@ -519,6 +534,148 @@ describe("CONTROL — red/green demonstrations (§384 commit 3-C)", () => {
       ].join("\n"),
     );
     expect(violations).toEqual([]);
+  });
+
+  // issue 637 — an allowlist entry sanctioned for type use alone. No real
+  // entry is type-only today (the one that was, issue 634's MediaHtmlAttrs,
+  // left with its consumer), so these run against a fixture-local allowlist
+  // holding that same interface, still exported by an in-closure module. The
+  // RED bare-import twin proves the module resolves into the closure; the
+  // GREEN twins prove the entry is consulted, not the name alone.
+  describe("a type-only allowlist entry (issue 637)", () => {
+    const MEDIA_HTML_TAG = join(
+      PIPELINE_DIR,
+      "transformers",
+      "media-html-tag.ts",
+    );
+    const typeOnlyAllowlist = new Map([
+      [MEDIA_HTML_TAG, new Map([["MediaHtmlAttrs", { typeOnly: true }]])],
+    ]);
+    const SPEC = '"../../transformers/media-html-tag"';
+
+    function typeOnlyViolationsFor(files: [name: string, source: string][]) {
+      const paths = files.map(([name, source]) => writeFixture(name, source));
+      const entries = loadRealEntries(paths);
+      const forwarded = buildForwardedBans(closure, typeOnlyAllowlist, entries);
+      return {
+        entries,
+        paths,
+        violations: findViolations(
+          entries,
+          closure,
+          typeOnlyAllowlist,
+          forwarded,
+        ),
+      };
+    }
+
+    it("the fixture module is in the closure, so the entry is what lets anything through", () => {
+      expect(closure.has(MEDIA_HTML_TAG)).toBe(true);
+    });
+
+    it("RED — a value import of a type-only entry, named as such", () => {
+      const { violations } = typeOnlyViolationsFor([
+        [
+          "type-only-red.ts",
+          `import { MediaHtmlAttrs } from ${SPEC};\nvoid MediaHtmlAttrs;\n`,
+        ],
+      ]);
+      expect(violations).toHaveLength(1);
+      expect(violations[0].message).toContain("type-only import");
+    });
+
+    it("GREEN — `import type { X }` and `import { type X }` of a type-only entry", () => {
+      const { violations } = typeOnlyViolationsFor([
+        [
+          "type-only-green-clause.ts",
+          `import type { MediaHtmlAttrs } from ${SPEC};\nexport type A = MediaHtmlAttrs;\n`,
+        ],
+        [
+          "type-only-green-inline.ts",
+          `import { type MediaHtmlAttrs } from ${SPEC};\nexport type B = MediaHtmlAttrs;\n`,
+        ],
+      ]);
+      expect(violations).toEqual([]);
+    });
+
+    it("RED, once — a mixed clause and a second declaration each keep their value pair", () => {
+      const { violations } = typeOnlyViolationsFor([
+        [
+          "type-only-mixed.ts",
+          `import { type MediaHtmlAttrs, MediaHtmlAttrs as XValue } from ${SPEC};\nvoid XValue;\nexport type C = MediaHtmlAttrs;\n`,
+        ],
+        [
+          "type-only-twice.ts",
+          `import type { MediaHtmlAttrs } from ${SPEC};\nimport { MediaHtmlAttrs as YValue } from ${SPEC};\nvoid YValue;\nexport type D = MediaHtmlAttrs;\n`,
+        ],
+      ]);
+      expect(
+        violations.map((v) => v.message.slice(0, v.message.indexOf(" from "))),
+      ).toEqual([
+        '"MediaHtmlAttrs" (as XValue)',
+        '"MediaHtmlAttrs" (as YValue)',
+      ]);
+    });
+
+    it("RED — a default import of an in-closure module has no entry to pass through", () => {
+      const { violations } = typeOnlyViolationsFor([
+        [
+          "type-only-default.ts",
+          `import Anything from ${SPEC};\nvoid Anything;\n`,
+        ],
+      ]);
+      expect(violations).toHaveLength(1);
+      expect(violations[0].message).toContain('"default"');
+    });
+
+    it("RED both ways — a barrel's `export type { X as Y } from` forwards a ban, whatever the downstream spelling", () => {
+      const { paths, violations } = typeOnlyViolationsFor([
+        [
+          "type-only-barrel.ts",
+          `export type { MediaHtmlAttrs as X } from ${SPEC};\n`,
+        ],
+        [
+          "type-only-barrel-value.ts",
+          `import { X } from "./type-only-barrel";\nvoid X;\n`,
+        ],
+        [
+          "type-only-barrel-type.ts",
+          `import type { X } from "./type-only-barrel";\nexport type E = X;\n`,
+        ],
+      ]);
+      const [barrel, valueConsumer, typeConsumer] = paths;
+      expect(violations.map((v) => v.file).sort()).toEqual(
+        [valueConsumer, typeConsumer].sort(),
+      );
+      expect(violations.some((v) => v.file === barrel)).toBe(false);
+    });
+
+    it("liveness — a type-only entry is consumed by a type-only import alone", () => {
+      const { entries } = typeOnlyViolationsFor([
+        [
+          "type-only-live-value.ts",
+          `import { MediaHtmlAttrs } from ${SPEC};\nvoid MediaHtmlAttrs;\n`,
+        ],
+      ]);
+      expect(
+        isExportConsumed(
+          MEDIA_HTML_TAG,
+          "MediaHtmlAttrs",
+          true,
+          entries,
+          entries,
+        ),
+      ).toBe(false);
+      const { entries: typed } = typeOnlyViolationsFor([
+        [
+          "type-only-live-type.ts",
+          `import type { MediaHtmlAttrs } from ${SPEC};\nexport type F = MediaHtmlAttrs;\n`,
+        ],
+      ]);
+      expect(
+        isExportConsumed(MEDIA_HTML_TAG, "MediaHtmlAttrs", true, typed, typed),
+      ).toBe(true);
+    });
   });
 
   it("unnumbered — a barrel forwarding a banned name does NOT ban its unrelated re-exports (the false positive buildForwardedBans exists to avoid)", () => {

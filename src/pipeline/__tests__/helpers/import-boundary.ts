@@ -116,6 +116,11 @@ export type RefForm =
 export interface NamePair {
   local: string;
   original: string;
+  /** issue 637: the pair is a type-only import or re-export — `import type
+   * { X }`, `import { type X }`, `export type { X } from`. Recorded per pair
+   * (the specifier, not the declaration), so `import { type X, X as Y }`
+   * yields one type-only pair and one value pair. */
+  typeOnly: boolean;
 }
 
 const WHOLE_MODULE_FORMS: ReadonlySet<RefForm> = new Set([
@@ -138,18 +143,29 @@ function bindingName(el: ts.ExportSpecifier | ts.ImportSpecifier): string {
   return (el.propertyName ?? el.name).text;
 }
 
+/** An allowlisted export: `typeOnly` sanctions the name for `import type`
+ * alone — a value import of it stays red (issue 637). */
+export interface AllowEntry {
+  typeOnly: boolean;
+}
+
 /**
  * Every import/export-from/literal-dynamic-import reference in `sourceText`,
  * resolved to absolute module ids. Pure — no disk I/O — so both the real scan
  * (reads the file first) and the CONTROL fixtures (a literal string) share it.
  *
- * `import type { X } from "spec"` is NOT special-cased — a type-only import
- * is checked exactly like a value import. No production file imports a TYPE
- * from the closure today (one did for a day — issue 634's `MediaHtmlAttrs`,
- * allowlisted by name; issue 631 removed that consumer), so this never
- * fires; it is a deliberate over-block default, not an oversight, matching
- * this boundary's bias elsewhere (namespace/dynamic are unconditionally red
- * too).
+ * `import type { X } from "spec"` and `import { type X }` are recorded as
+ * type-only PAIRS (issue 637): the allowlist may sanction a name for type
+ * use alone, and a value import of such a name is red. A type-only import of
+ * a name the allowlist does not hold at all is checked exactly like a value
+ * import — the over-block default this boundary keeps elsewhere
+ * (namespace/dynamic are unconditionally red too). No production file
+ * imports a TYPE from the closure today (one did for a day — issue 634's
+ * `MediaHtmlAttrs`; issue 631 removed that consumer), so no entry is
+ * type-only yet; the machinery is here for the next one. A local re-export
+ * (`import type { X } …; export type { X };` in a file outside the closure)
+ * is not tracked — it has no module specifier — and is left to the
+ * compiler: `verbatimModuleSyntax` refuses a value use of it.
  *
  * Non-literal dynamic imports — `import(/* @vite-ignore *\/ url)` in the
  * plugin loader (`src/plugins/plugin-loader.ts`) and the sandbox entry
@@ -195,11 +211,22 @@ export function collectReferences(
         push("namespace-import", spec, [], pos);
       }
       const namedPairs: NamePair[] = [];
-      if (clause?.name)
-        namedPairs.push({ local: clause.name.text, original: "default" });
+      if (clause?.name) {
+        namedPairs.push({
+          local: clause.name.text,
+          original: "default",
+          typeOnly: ts.isTypeOnlyImportDeclaration(clause),
+        });
+      }
       if (clause?.namedBindings && ts.isNamedImports(clause.namedBindings)) {
         for (const el of clause.namedBindings.elements) {
-          namedPairs.push({ local: el.name.text, original: bindingName(el) });
+          // The specifier answers for both spellings — `import type { X }`
+          // (the clause is type-only) and `import { type X }`.
+          namedPairs.push({
+            local: el.name.text,
+            original: bindingName(el),
+            typeOnly: ts.isTypeOnlyImportDeclaration(el),
+          });
         }
       }
       if (namedPairs.length > 0) {
@@ -224,9 +251,13 @@ export function collectReferences(
       } else if (ts.isNamespaceExport(node.exportClause)) {
         push("export-namespace-star", spec, [], pos);
       } else if (ts.isNamedExports(node.exportClause)) {
+        // Per specifier again: `ts.isTypeOnlyExportDeclaration` on the
+        // ExportDeclaration itself answers only for a clause-less
+        // `export type * from`, not for `export type { X } from`.
         const pairs = node.exportClause.elements.map((el) => ({
           local: el.name.text,
           original: bindingName(el),
+          typeOnly: ts.isTypeOnlyExportDeclaration(el),
         }));
         push("export-named", spec, pairs, pos);
       }
@@ -368,11 +399,15 @@ export function buildPipelineInternalSet(): Set<string> {
  * `<template>`, as a custom element — never `DOMParser`, whose document may
  * fetch an `<img>` source) instead of naming that type, and the entry left
  * with its consumer (the dead-entry assertion below would have caught it
- * otherwise). The collector still checks a type-only import like
- * a value import; nothing outside the pipeline imports a TYPE from the
- * closure today.
+ * otherwise). An entry is `{ typeOnly: true }` when the name is sanctioned
+ * for `import type` alone (issue 637) — a value import of it is red, and the
+ * dead-entry check counts only type-only consumers for it. Nothing outside
+ * the pipeline imports a TYPE from the closure today, so every entry below
+ * is a value.
  */
-export function buildAllowlist(): Map<string, Set<string>> {
+export function buildAllowlist(): Map<string, Map<string, AllowEntry>> {
+  const value = (names: string[]): Map<string, AllowEntry> =>
+    new Map(names.map((name) => [name, { typeOnly: false }]));
   const blockId = join(PIPELINE_DIR, "block-id.ts");
   const imageTransformer = join(
     PIPELINE_DIR,
@@ -387,7 +422,7 @@ export function buildAllowlist(): Map<string, Set<string>> {
   return new Map([
     [
       blockId,
-      new Set([
+      value([
         // extensions/nodes/block-reference.ts — InputRule/pasteRule matching
         // and §276.6 width parsing; turns already-typed text into node attrs.
         "BLOCK_REF_RE",
@@ -412,7 +447,7 @@ export function buildAllowlist(): Map<string, Set<string>> {
     ],
     [
       imageTransformer,
-      new Set([
+      value([
         // utils/export/export-markdown-images.ts (issue 545) — reads the
         // `<img …>` tag the editor writes for a resized image back into its
         // attrs, on a string, to judge its src for the Pandoc export. The
@@ -423,7 +458,7 @@ export function buildAllowlist(): Map<string, Set<string>> {
     ],
     [
       wikilink,
-      new Set([
+      value([
         "serializeWikilink",
         // utils/export/zettel-link-resolve.ts — reuses the [[...]] regex and
         // rebuilds the string from attrs it already parsed out, for EXPORT
@@ -438,14 +473,23 @@ export function buildAllowlist(): Map<string, Set<string>> {
 
 export type Forward = "*" | Set<string>;
 
+/** Is `name` of `module` banned for an import of the given kind? A closure
+ * member's name passes only through the allowlist — and an entry sanctioned
+ * for type use alone passes only a type-only import (issue 637). A module
+ * outside the closure is banned only for the names a barrel forwards. */
 function isNamedBanned(
   module: string,
   name: string,
+  typeOnlyImport: boolean,
   closure: ReadonlySet<string>,
-  allowlist: ReadonlyMap<string, ReadonlySet<string>>,
+  allowlist: ReadonlyMap<string, ReadonlyMap<string, AllowEntry>>,
   forwarded: ReadonlyMap<string, Forward>,
 ): boolean {
-  if (closure.has(module)) return !(allowlist.get(module)?.has(name) ?? false);
+  if (closure.has(module)) {
+    const entry = allowlist.get(module)?.get(name);
+    if (entry === undefined) return true;
+    return entry.typeOnly && !typeOnlyImport;
+  }
   const fb = forwarded.get(module);
   if (fb === "*") return true;
   return fb ? fb.has(name) : false;
@@ -476,7 +520,7 @@ export { isNamedBanned, isWholeBanned };
  */
 export function buildForwardedBans(
   closure: ReadonlySet<string>,
-  allowlist: ReadonlyMap<string, ReadonlySet<string>>,
+  allowlist: ReadonlyMap<string, ReadonlyMap<string, AllowEntry>>,
   entries: FileRefs[],
 ): Map<string, Forward> {
   const forwarded = new Map<string, Forward>();
@@ -499,10 +543,16 @@ export function buildForwardedBans(
         } else if (ref.form === "export-named") {
           if (forwarded.get(file) === "*") continue;
           for (const { original, local } of ref.pairs) {
+            // A re-export is judged as a VALUE access whatever its spelling
+            // (issue 637): `export type { X as Y } from` of a type-only entry
+            // forwards a ban, so every import of `Y` through the barrel is
+            // red — the boundary's over-block bias, kept until a barrel
+            // needs to forward a type-only allowance.
             if (
               !isNamedBanned(
                 ref.module,
                 original,
+                false,
                 closure,
                 allowlist,
                 forwarded,
@@ -539,7 +589,7 @@ export interface Violation {
 export function findViolations(
   entries: FileRefs[],
   closure: ReadonlySet<string>,
-  allowlist: ReadonlyMap<string, ReadonlySet<string>>,
+  allowlist: ReadonlyMap<string, ReadonlyMap<string, AllowEntry>>,
   forwarded: ReadonlyMap<string, Forward>,
 ): Violation[] {
   const violations: Violation[] = [];
@@ -555,17 +605,29 @@ export function findViolations(
         }
         continue;
       }
-      for (const { original, local } of ref.pairs) {
+      for (const { original, local, typeOnly } of ref.pairs) {
         if (
-          isNamedBanned(ref.module, original, closure, allowlist, forwarded)
+          !isNamedBanned(
+            ref.module,
+            original,
+            typeOnly,
+            closure,
+            allowlist,
+            forwarded,
+          )
         ) {
-          const as = local !== original ? ` (as ${local})` : "";
-          violations.push({
-            file,
-            line: ref.line,
-            message: `"${original}"${as} from ${ref.module} is not on the neutral-export allowlist — read it through src/utils/editor/serialize-live-doc.ts instead`,
-          });
+          continue;
         }
+        const as = local !== original ? ` (as ${local})` : "";
+        const typeOnlyEntry =
+          allowlist.get(ref.module)?.get(original)?.typeOnly === true;
+        violations.push({
+          file,
+          line: ref.line,
+          message: typeOnlyEntry
+            ? `"${original}"${as} from ${ref.module} is allowlisted for type-only import — write \`import type\` (issue 637)`
+            : `"${original}"${as} from ${ref.module} is not on the neutral-export allowlist — read it through src/utils/editor/serialize-live-doc.ts instead`,
+        });
       }
     }
   }
