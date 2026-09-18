@@ -42,15 +42,7 @@ pub(super) fn display_math(
     // that carries its `>` is in a blockquote either way, the old one or a
     // new one, and one that does not is settled on the opener's own line.
     let mut closed: HashSet<Holder> = HashSet::new();
-    let over = |holders: &[Holder], closed: &mut HashSet<Holder>| {
-        closed.extend(
-            holders
-                .iter()
-                .filter(|holder| holder.kind != HolderKind::Quote),
-        );
-    };
     for opener in line_starts {
-        let container_end = opener.container_end;
         // A second read has `x` where a formula was, blanks included, so the
         // line start pulldown reports there may stand on the original's
         // blanks: the `$$` is past them.
@@ -66,11 +58,10 @@ pub(super) fn display_math(
         if open < 2 {
             continue;
         }
-        let line_end = source_lines(&content[start..])
-            .next()
-            .map_or(content.len(), |line| {
-                start + line.text.len() + line.terminator.len()
-            });
+        let line_end = {
+            let (line_start, text, terminator) = line_at(content, start);
+            line_start + text.len() + terminator.len()
+        };
         if bytes[start + open..line_end].contains(&b'$') {
             continue;
         }
@@ -84,12 +75,14 @@ pub(super) fn display_math(
             .iter()
             .filter(|holder| {
                 holder.kind == HolderKind::Quote
-                    || !(closed.contains(holder) || within(out, marker_byte(bytes, holder.start)))
+                    || !(closed.contains(holder) || {
+                        let marker = marker_byte(bytes, holder.start);
+                        overlaps(out, marker..marker + 1)
+                    })
             })
             .copied()
             .collect();
-        let chain = &chain[..];
-        let Some((reqs, modelled)) = requirements(content, start, chain) else {
+        let Some((reqs, modelled)) = requirements(content, start, &chain) else {
             continue;
         };
         // The end of the last line that is still the formula's: the closing
@@ -99,15 +92,16 @@ pub(super) fn display_math(
         let bound = if modelled {
             content.len()
         } else {
-            container_end
+            opener.container_end
         };
         let end = formula_end(content, (line_end, bound), open, &reqs);
         out.push(start..end);
         skip_until = end;
+        // An unread chain gives no ground to judge the lines after.
         if modelled {
             // The containers the opener's own line had already lost.
             over(&chain[reqs.len()..], &mut closed);
-            let code_end = after_formula(content, end, (chain, &reqs), &mut closed, &over);
+            let code_end = after_formula(content, end, (&chain, &reqs), &mut closed);
             if code_end > end {
                 out.push(end..code_end);
                 skip_until = code_end;
@@ -165,7 +159,6 @@ fn after_formula(
     end: usize,
     (chain, reqs): (&[Holder], &[Continue]),
     closed: &mut HashSet<Holder>,
-    over: &dyn Fn(&[Holder], &mut HashSet<Holder>),
 ) -> usize {
     let mut code_end = end;
     let mut live = reqs.len();
@@ -173,7 +166,7 @@ fn after_formula(
         if line.text.trim_matches([' ', '\t']).is_empty() {
             continue;
         }
-        let (carried, indent) = carried_past(line.text, &reqs[..live]);
+        let (carried, indent, _) = carry(line.text, &reqs[..live]);
         over(&chain[carried..live], closed);
         live = carried;
         if indent < 4 {
@@ -184,24 +177,14 @@ fn after_formula(
     code_end
 }
 
-/// How many of `reqs` the line still carries, outermost first, up to the
-/// first one it does not — and the columns of blanks it has left after them.
-fn carried_past(line: &str, reqs: &[Continue]) -> (usize, usize) {
-    let mut blanks = Blanks::new(line);
-    let mut carried = 0;
-    for req in reqs {
-        let before = blanks;
-        if !pass(&mut blanks, *req) {
-            blanks = before;
-            break;
-        }
-        carried += 1;
-    }
-    let mut indent = 0;
-    while blanks.take() {
-        indent += 1;
-    }
-    (carried, indent)
+/// List `holders` as over for the editor — a blockquote never: a line that
+/// carries its `>` is in a blockquote either way, the old one or a new one.
+fn over(holders: &[Holder], closed: &mut HashSet<Holder>) {
+    closed.extend(
+        holders
+            .iter()
+            .filter(|holder| holder.kind != HolderKind::Quote),
+    );
 }
 
 /// The first byte at or after `at` that is neither a blank nor a line break:
@@ -213,28 +196,6 @@ fn marker_byte(bytes: &[u8], at: usize) -> usize {
         .iter()
         .take_while(|&&b| matches!(b, b' ' | b'\t' | b'\n' | b'\r'))
         .count()
-}
-
-/// Is `at` inside one of `ranges`? They are the display rule's own output:
-/// in the note's order, none overlapping the next.
-fn within(ranges: &[Range<usize>], at: usize) -> bool {
-    let next = ranges.partition_point(|range| range.end <= at);
-    ranges.get(next).is_some_and(|range| range.start <= at)
-}
-
-/// The line `at` stands on: where it starts, and its text without the line
-/// break (`\n`, `\r\n` or a bare `\r`).
-fn line_of(content: &str, at: usize) -> (usize, &str) {
-    let bytes = content.as_bytes();
-    let start = bytes[..at]
-        .iter()
-        .rposition(|&b| b == b'\n' || b == b'\r')
-        .map_or(0, |i| i + 1);
-    let end = bytes[at..]
-        .iter()
-        .position(|&b| b == b'\n' || b == b'\r')
-        .map_or(content.len(), |i| at + i);
-    (start, &content[start..end])
 }
 
 /// What the containers around the opener at `opener` ask of the lines after
@@ -258,9 +219,8 @@ fn line_of(content: &str, at: usize) -> (usize, &str) {
 /// must be less than four columns, as before any flow construct: four or
 /// more make the line the paragraph's text, and no formula opens.
 ///
-/// A container the editor does not have (a definition list), or a marker
-/// line this rule cannot read, leaves the rest unread (`false`): the caller
-/// keeps the parser's container end as the bound.
+/// A marker line this rule cannot read leaves the rest unread (`false`):
+/// the caller keeps the parser's container end as the bound.
 pub(super) fn requirements(
     content: &str,
     opener: usize,
@@ -275,7 +235,7 @@ pub(super) fn requirements(
         // in COLUMNS, taken off in bytes: behind a tab it falls short of the
         // marker's line, onto the line break before it. The marker is on
         // that line or the next.
-        let (mut line_start, mut text) = line_of(content, holder.start);
+        let (mut line_start, mut text, mut terminator) = line_at(content, holder.start);
         for _ in 0..2 {
             let outer = (&chain[..k], &reqs[..], &marker_lines[..]);
             if let Some(req) = measure(holder, (line_start, text), outer) {
@@ -283,71 +243,27 @@ pub(super) fn requirements(
                 marker_lines.push(line_start);
                 continue 'holders;
             }
-            let next = line_start + text.len();
-            let next = next
-                + source_lines(&content[next..])
-                    .next()
-                    .map_or(0, |line| line.terminator.len());
-            if next >= content.len() || next == line_start {
+            let next = line_start + text.len() + terminator.len();
+            if next >= content.len() {
                 break;
             }
-            (line_start, text) = line_of(content, next);
+            (line_start, text, terminator) = line_at(content, next);
         }
         // Unread from here on. The opener's line is still settled below
         // against what was read.
         read = false;
         break;
     }
-    let (line_start, text) = line_of(content, opener);
-    let mut blanks = Blanks::new(text);
-    for k in 0..reqs.len() {
-        let before = blanks;
-        let met = if marker_lines[k] == line_start {
-            open_at(&mut blanks, &chain[k], line_start).is_some()
-        } else {
-            pass(&mut blanks, reqs[k])
-        };
-        if !met {
-            blanks = before;
-            reqs.truncate(k);
-            break;
-        }
-    }
-    let mut indent = 0;
-    while blanks.take() {
-        indent += 1;
-    }
+    let (line_start, text, _) = line_at(content, opener);
+    let (met, indent) = settle(
+        (line_start, text),
+        (&chain[..reqs.len()], &reqs, &marker_lines),
+    );
+    reqs.truncate(met);
     // Four columns of blanks past the last container the line carries: what
     // follows them opens nothing, a marker no more than a formula.
     if indent >= 4 {
         return None;
     }
     Some((reqs, read))
-}
-
-/// What `holder` asks of later lines, read on the line at `line` — after the
-/// containers before it (`outer`: the holders, what they ask, and the lines
-/// their markers stand on) have been passed there. None when the line does
-/// not open it.
-fn measure(
-    holder: &Holder,
-    line: (usize, &str),
-    outer: (&[Holder], &[Continue], &[usize]),
-) -> Option<Continue> {
-    let (line_start, text) = line;
-    let (holders, reqs, marker_lines) = outer;
-    let mut blanks = Blanks::new(text);
-    for (k, req) in reqs.iter().enumerate() {
-        let passed = if marker_lines[k] == line_start {
-            // Opened on this very line: read its prefix again.
-            open_at(&mut blanks, &holders[k], line_start).is_some()
-        } else {
-            pass(&mut blanks, *req)
-        };
-        if !passed {
-            return None;
-        }
-    }
-    let (req, marker) = open_at(&mut blanks, holder, line_start)?;
-    (line_start + marker >= holder.start).then_some(req)
 }

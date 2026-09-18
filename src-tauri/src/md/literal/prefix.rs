@@ -24,7 +24,7 @@ pub(super) enum Continue {
 /// walk cannot pass may stand before it: a definition pulldown closed for
 /// the one it opens on the same line, the prefix of an item that is not the
 /// editor's. What these two ask does not depend on where they stand.
-pub(super) fn open_at(
+fn open_at(
     blanks: &mut Blanks<'_>,
     holder: &Holder,
     line_start: usize,
@@ -40,18 +40,10 @@ pub(super) fn open_at(
 /// Read the prefix that opens a container of `kind` where the cursor stands:
 /// what it asks of later lines, and the byte the marker is at. None when the
 /// line does not open such a container there.
-pub(super) fn open(blanks: &mut Blanks<'_>, kind: HolderKind) -> Option<(Continue, usize)> {
+fn open(blanks: &mut Blanks<'_>, kind: HolderKind) -> Option<(Continue, usize)> {
     let base = blanks.column;
     match kind {
-        HolderKind::Quote => {
-            if !before_quote_marker(blanks) {
-                return None;
-            }
-            let marker = blanks.i;
-            blanks.skip_marker();
-            blanks.take();
-            Some((Continue::Quote, marker))
-        }
+        HolderKind::Quote => open_quote(blanks).map(|marker| (Continue::Quote, marker)),
         HolderKind::Item => open_item(blanks, base),
         HolderKind::Footnote => {
             while blanks.take() {}
@@ -73,7 +65,6 @@ pub(super) fn open(blanks: &mut Blanks<'_>, kind: HolderKind) -> Option<(Continu
             while blanks.take() {}
             Some((Continue::Item { width: 4 }, marker))
         }
-        HolderKind::Unknown => None,
     }
 }
 
@@ -135,30 +126,31 @@ fn open_item(blanks: &mut Blanks<'_>, base: usize) -> Option<(Continue, usize)> 
     ))
 }
 
-/// Up to three columns of blanks, then `>`: a tab counts by its columns, and
-/// one the blockquote before left half taken is the rest of them. A fourth
-/// column, or a tab that runs past the third, leaves no `>` to read.
-fn before_quote_marker(blanks: &mut Blanks<'_>) -> bool {
+/// A blockquote's prefix where the cursor stands — up to three columns of
+/// blanks, `>`, one optional blank — and the byte the `>` is at. A tab
+/// counts by its columns, and one the blockquote before left half taken is
+/// the rest of them; a fourth column, or a tab that runs past the third,
+/// leaves no `>` to read. The one blank after `>` is a space, or one column
+/// of a tab whose other columns are the content's. Opening a blockquote and
+/// continuing one read the same prefix.
+fn open_quote(blanks: &mut Blanks<'_>) -> Option<usize> {
     let mut before = 0;
     while before < 3 && blanks.take() {
         before += 1;
     }
-    blanks.taken == 0 && blanks.at() == Some(b'>')
+    if blanks.taken != 0 || blanks.at() != Some(b'>') {
+        return None;
+    }
+    let marker = blanks.i;
+    blanks.skip_marker();
+    blanks.take();
+    Some(marker)
 }
 
 /// Does the line carry `req` where the cursor stands? Takes what it carries.
-pub(super) fn pass(blanks: &mut Blanks<'_>, req: Continue) -> bool {
+fn pass(blanks: &mut Blanks<'_>, req: Continue) -> bool {
     match req {
-        Continue::Quote => {
-            if !before_quote_marker(blanks) {
-                return false;
-            }
-            blanks.skip_marker();
-            // The one optional blank after `>`: a space, or one column of
-            // a tab, whose other columns are the content's.
-            blanks.take();
-            true
-        }
+        Continue::Quote => open_quote(blanks).is_some(),
         Continue::Item { width } => {
             if blanks.rest().trim_matches([' ', '\t']).is_empty() {
                 blanks.skip_to_end();
@@ -171,28 +163,100 @@ pub(super) fn pass(blanks: &mut Blanks<'_>, req: Continue) -> bool {
     }
 }
 
+/// Containers to walk a line through: the holders, what each asks, and the
+/// line each marker stands on.
+pub(super) type Chain<'a> = (&'a [Holder], &'a [Continue], &'a [usize]);
+
+/// One walk over a line's container prefixes: how many of `reqs` it carries,
+/// outermost first, up to the first one it does not — the cursor stays
+/// before that one — then the blanks after them, in columns, and the text
+/// past those blanks.
+pub(super) fn carry<'a>(line: &'a str, reqs: &[Continue]) -> (usize, usize, &'a str) {
+    let mut blanks = Blanks::new(line);
+    let carried = pass_all(&mut blanks, reqs);
+    let (indent, rest) = blanks_then_rest(&mut blanks);
+    (carried, indent, rest)
+}
+
 /// The text of `line` past every container in `reqs` and past the blanks
 /// after them, with how many columns those blanks span, or None when the
 /// line does not carry every container — where the formula ends.
 pub(super) fn continues<'a>(line: &'a str, reqs: &[Continue]) -> Option<(&'a str, usize)> {
-    let mut blanks = Blanks::new(line);
-    for req in reqs {
-        if !pass(&mut blanks, *req) {
-            return None;
+    let (carried, indent, rest) = carry(line, reqs);
+    (carried == reqs.len()).then_some((rest, indent))
+}
+
+/// The containers of `chain` a line still has, read left to right — opened
+/// again where the marker stands on this very line, continued elsewhere —
+/// up to the first one it does not: how many, and the blanks after them.
+pub(super) fn settle(line: (usize, &str), chain: Chain<'_>) -> (usize, usize) {
+    let mut blanks = Blanks::new(line.1);
+    let passed = pass_holders(&mut blanks, line.0, chain);
+    let (indent, _) = blanks_then_rest(&mut blanks);
+    (passed, indent)
+}
+
+/// What `holder` asks of later lines, read on the line at `line` — after
+/// the containers before it (`outer`) have been passed there. None when the
+/// line does not open it.
+pub(super) fn measure(holder: &Holder, line: (usize, &str), outer: Chain<'_>) -> Option<Continue> {
+    let (line_start, text) = line;
+    let mut blanks = Blanks::new(text);
+    if pass_holders(&mut blanks, line_start, outer) < outer.0.len() {
+        return None;
+    }
+    let (req, marker) = open_at(&mut blanks, holder, line_start)?;
+    (line_start + marker >= holder.start).then_some(req)
+}
+
+/// Pass the holders of `chain` on the line starting at `line_start`, in
+/// order: opened again where the marker stands on this line, continued
+/// elsewhere. Stops before the first one the line does not carry, the
+/// cursor restored to before it; returns how many passed.
+fn pass_holders(blanks: &mut Blanks<'_>, line_start: usize, chain: Chain<'_>) -> usize {
+    let (holders, reqs, marker_lines) = chain;
+    for (k, req) in reqs.iter().enumerate() {
+        let before = *blanks;
+        let passed = if marker_lines[k] == line_start {
+            open_at(blanks, &holders[k], line_start).is_some()
+        } else {
+            pass(blanks, *req)
+        };
+        if !passed {
+            *blanks = before;
+            return k;
         }
     }
+    reqs.len()
+}
+
+/// Pass every `req` in order, stopping before the first the line does not
+/// carry (the cursor restored to before it); how many passed.
+fn pass_all(blanks: &mut Blanks<'_>, reqs: &[Continue]) -> usize {
+    for (k, req) in reqs.iter().enumerate() {
+        let before = *blanks;
+        if !pass(blanks, *req) {
+            *blanks = before;
+            return k;
+        }
+    }
+    reqs.len()
+}
+
+/// The blanks where the cursor stands, in columns, and the text past them.
+fn blanks_then_rest<'a>(blanks: &mut Blanks<'a>) -> (usize, &'a str) {
     let mut indent = 0;
     while blanks.take() {
         indent += 1;
     }
-    Some((blanks.rest(), indent))
+    (indent, blanks.rest())
 }
 
 /// A cursor over a line's blanks, in columns — a tab is the columns to the
 /// next tab stop, and a container may take some of them and leave the rest
 /// to whatever follows, as micromark reads a tab as virtual spaces.
 #[derive(Clone, Copy)]
-pub(super) struct Blanks<'a> {
+struct Blanks<'a> {
     line: &'a str,
     i: usize,
     column: usize,
@@ -201,7 +265,7 @@ pub(super) struct Blanks<'a> {
 }
 
 impl<'a> Blanks<'a> {
-    pub(super) fn new(line: &'a str) -> Self {
+    fn new(line: &'a str) -> Self {
         Self {
             line,
             i: 0,
@@ -219,7 +283,7 @@ impl<'a> Blanks<'a> {
     }
 
     /// Take one column of blank; false when what follows is not a blank.
-    pub(super) fn take(&mut self) -> bool {
+    fn take(&mut self) -> bool {
         match self.at() {
             Some(b' ') => {
                 self.i += 1;

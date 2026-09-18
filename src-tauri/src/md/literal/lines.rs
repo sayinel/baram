@@ -21,6 +21,19 @@ pub struct SourceLine<'a> {
     pub terminator: &'a str,
 }
 
+/// The line `at` stands on: where it starts, its text, and its line break
+/// (`\n`, `\r\n`, a bare `\r`, or nothing at the end of the note).
+pub fn line_at(content: &str, at: usize) -> (usize, &str, &str) {
+    let bytes = content.as_bytes();
+    let start = bytes[..at]
+        .iter()
+        .rposition(|&b| b == b'\n' || b == b'\r')
+        .map_or(0, |i| i + 1);
+    source_lines(&content[start..])
+        .next()
+        .map_or((start, "", ""), |line| (start, line.text, line.terminator))
+}
+
 /// The lines of `content`, in order, with their offsets. A line ends at
 /// `\n`, at `\r\n`, or at a bare `\r`; the last line may end without one,
 /// and an empty note has no lines.

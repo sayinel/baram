@@ -48,14 +48,11 @@ pub(super) enum HolderKind {
     Quote,
     Item,
     Footnote,
-    /// A container the editor does not have (a definition list): the rule
-    /// keeps the parser's own container end as the bound.
-    Unknown,
 }
 
 /// Where a line's content starts, with the end of the innermost container
 /// around it and the containers around it — an index into `Walk::chains`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy)]
 pub(super) struct LineStart {
     pub(super) start: usize,
     pub(super) container_end: usize,
@@ -200,11 +197,6 @@ pub(super) fn collect(body: &str, base: usize) -> Walk {
                         start: range.start,
                         kind: HolderKind::Footnote,
                     }),
-                    Tag::DefinitionListDefinition => Some(Frame::Container {
-                        end: range.end,
-                        start: range.start,
-                        kind: HolderKind::Unknown,
-                    }),
                     // A setext heading's text lines are lines a display
                     // formula may open on (`$$` over `===` is a formula to
                     // the editor); an ATX heading's `#` comes first.
@@ -214,11 +206,14 @@ pub(super) fn collect(body: &str, base: usize) -> Walk {
                         Frame::Paragraph
                     }),
                     Tag::TableCell => Some(Frame::Cell),
+                    // A definition list is not the editor's, and `OPTIONS`
+                    // leaves it off: no frame the display rule would read.
                     Tag::CodeBlock(_)
                     | Tag::HtmlBlock
                     | Tag::List(_)
                     | Tag::DefinitionList
                     | Tag::DefinitionListTitle
+                    | Tag::DefinitionListDefinition
                     | Tag::Table(_)
                     | Tag::TableHead
                     | Tag::TableRow
