@@ -40,11 +40,18 @@
 // line breaks included (`$5 and $6` is one), left to right with code spans
 // and escapes; a line that opens with `$$` (and meta without a `$`) is a
 // display formula until a line that is `$$` and blanks, or — when none comes
-// — until its container ends. pulldown's own math is OFF: it pairs runs
+// — until its container ends; what follows a formula begins a block of its
+// own, an indented code block when four columns in. pulldown's own math is
+// OFF: it pairs runs
 // differently (`$a$$ b` is a formula to it and text to the editor), and a
 // formula it reads hides the tags and code spans inside from the rules
 // here. It reports plain CommonMark inline structure; the two rules above
 // are the only ones that read a `$`.
+//
+// Words: a *container* is a blockquote, a list item or a footnote
+// definition; the display rule calls the containers around a `$$` its
+// *holders* (`Holder`), read off the parser's frames, where `Frame::Container`
+// is the narrower frame of the two that are not items.
 //
 // Inside prose the parser's inline events are not taken as literal either.
 // It reports where tags, autolinks, links, images and code spans are; one
@@ -68,7 +75,23 @@
 //
 // One difference from the editor is kept deliberately: a `((…))` inside the
 // YAML front matter is prose here and literal there (see above).
-use std::collections::HashMap;
+mod autolink;
+mod display;
+mod inline;
+mod lines;
+mod parser;
+mod prefix;
+
+use autolink::*;
+use display::*;
+use inline::*;
+pub(crate) use lines::front_matter_end;
+use lines::line_at;
+pub use lines::source_lines;
+use parser::*;
+use prefix::*;
+
+use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 
 use pulldown_cmark::{Event, LinkType, Options, Parser, Tag, TagEnd};
@@ -125,6 +148,15 @@ impl Literal {
     /// that point is known to be wrong, and touching nothing there is safe.
     pub fn analyse(content: &str) -> Analysis {
         const READS: usize = 8;
+        // issue 663: the parser is handed a copy in which a bare `\r` is a
+        // `\n` — same length, every offset kept. pulldown reads a bare `\r`
+        // as a line break inside a paragraph but not where a fence opens
+        // (0.13.4 reads "```\r…" as text and opens the block one line late),
+        // while the editor's parser reads it as any line break; a CR-only
+        // note would otherwise have a fence's inside and outside change
+        // places. Nothing below cares which byte the break is.
+        let normalized = bare_cr_as_newline(content);
+        let content: &str = normalized.as_deref().unwrap_or(content);
         // The editor's parser drops one leading byte order mark before it
         // reads; pulldown does not, and would read the first line's fence
         // or tag as text. Cut it with the front matter — it is prose, as
@@ -185,7 +217,7 @@ impl Literal {
             // settled from the line starts before the sweep looks at any
             // run, and its bytes are not the sweep's to pair.
             let mut display = Vec::new();
-            display_math(content, &walk.line_starts, &mut display);
+            display_math(content, &walk.line_starts, &walk.chains, &mut display);
             let display = Literal {
                 ranges: merge(display),
             };
@@ -259,12 +291,7 @@ impl Literal {
 
     /// Does `range` share at least one byte with a literal range?
     pub fn overlaps(&self, range: Range<usize>) -> bool {
-        if range.start >= range.end {
-            return false;
-        }
-        // The first literal range that ends after `range` starts.
-        let i = self.ranges.partition_point(|r| r.end <= range.start);
-        self.ranges.get(i).is_some_and(|r| r.start < range.end)
+        overlaps(&self.ranges, range)
     }
 
     /// `content` with every literal byte turned into a space — line breaks
@@ -291,683 +318,19 @@ impl Literal {
     }
 }
 
-/// One line of a note, for the scanners that work a line at a time: its
-/// 1-based number, the byte offset of `text` in the note, the text without
-/// its line break, and that break (`"\n"`, `"\r\n"` or `""` at the end) so
-/// a rewriter can put the note back together byte for byte. A bare `\r` is
-/// not a line break, as for `str::lines`. The offset is what makes a
-/// per-line regex match comparable with a `Literal`, which knows only the
-/// whole note.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SourceLine<'a> {
-    pub number: u32,
-    pub offset: usize,
-    pub text: &'a str,
-    pub terminator: &'a str,
-}
-
-/// The lines of `content`, in order — the same lines `content.lines()`
-/// yields, with their offsets.
-pub fn source_lines(content: &str) -> impl Iterator<Item = SourceLine<'_>> {
-    let mut offset = 0;
-    content
-        .split_inclusive('\n')
-        .enumerate()
-        .map(move |(i, raw)| {
-            let text = raw.strip_suffix('\n').unwrap_or(raw);
-            let text = text.strip_suffix('\r').unwrap_or(text);
-            let line = SourceLine {
-                number: i as u32 + 1,
-                offset,
-                text,
-                terminator: &raw[text.len()..],
-            };
-            offset += raw.len();
-            line
-        })
-}
-
-/// Where the body starts: past the YAML front matter when `content` opens
-/// with one by the editor's rule, else 0. The front matter runs from a first
-/// line `---` (trailing blanks allowed) through the next line `---` (trailing
-/// blanks allowed) and that line's break; nothing closes it, nothing is
-/// front matter.
-pub(crate) fn front_matter_end(content: &str) -> usize {
-    let is_fence = |text: &str| text.trim_end_matches([' ', '\t']) == "---";
-    let mut lines = source_lines(content);
-    // A byte order mark before the first `---` is not part of the fence. The
-    // offsets below still count its bytes, so the front matter range keeps
-    // them.
-    let first = lines
-        .next()
-        .map(|line| line.text.strip_prefix('\u{FEFF}').unwrap_or(line.text));
-    if !first.is_some_and(is_fence) {
-        return 0;
-    }
-    lines
-        .find(|line| is_fence(line.text))
-        .map(|closer| {
-            let end = closer.offset + closer.text.len();
-            let rest = &content[end..];
-            end + if rest.starts_with("\r\n") {
-                2
-            } else {
-                usize::from(rest.starts_with('\n'))
-            }
-        })
-        .unwrap_or(0)
-}
-
-/// An open block while walking the events. A list item's own text (a tight
-/// item has no paragraph) is prose except where its child blocks are, so an
-/// item remembers how far its text has been accounted for; a container
-/// remembers where it ends, which is where an unclosed display formula ends.
-enum Frame {
-    Item {
-        cursor: usize,
-        end: usize,
-    },
-    Container {
-        end: usize,
-    },
-    Paragraph,
-    /// A table cell: prose, and a place a display formula may open only
-    /// when the cell's text begins the line — `$$` under a `|---|` row is
-    /// a formula to the editor, `| $$ |` is a cell.
-    Cell,
-    Other,
-}
-
-/// A span the parser read as one piece: an inline HTML tag, an autolink, a
-/// code span, or the resource part of a link or an image (`](dest "title")`,
-/// `][ref]`, `]`). The editor reads it before it looks for a formula or a
-/// code span inside, so a delimiter there opens nothing — while the atom is
-/// intact. A formula or a code span the sweep read that runs over the
-/// construct's beginning (`start`: the `[` of a link, else the range's
-/// start) or, for a link or an image, over its `]` (`range.start`) has
-/// destroyed it: its bytes are plain text again, it contributes nothing,
-/// and the parser must read the body again.
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct Atom {
-    range: Range<usize>,
-    start: usize,
-    kind: AtomKind,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum AtomKind {
-    /// The tag itself is literal.
-    Html,
-    /// A code span as the parser paired it: literal while intact. The sweep
-    /// pairs backticks by the same rule; the parser's span is kept as the
-    /// witness that a formula destroyed one.
-    Code,
-    /// An autolink's URL is prose, as link text is.
-    Autolink,
-    /// A link's destination, title or label: not literal, not prose to
-    /// rename — the editor's text path treats it as the link does.
-    LinkResource,
-    /// An image's resource; an intact image is literal from `![` to its
-    /// end, alt text included — the editor keeps alt text out of the model.
-    ImageResource { image: Range<usize> },
-}
-
-impl Atom {
-    /// What an intact atom adds to the literal set.
-    fn contribute(&self, out: &mut Vec<Range<usize>>) {
-        match &self.kind {
-            AtomKind::Html | AtomKind::Code => out.push(self.range.clone()),
-            AtomKind::ImageResource { image } => out.push(image.clone()),
-            AtomKind::Autolink | AtomKind::LinkResource => {}
-        }
-    }
-}
-
-/// A link or an image still open while walking its text.
-enum Open {
-    Link,
-    Autolink,
-    Image,
-}
-
-/// The atom a link or an image leaves once it closes: the whole autolink,
-/// or the resource after the text.
-fn resource_atom(range: Range<usize>, text_end: usize, open: Open) -> Option<Atom> {
-    let (start, end) = (range.start, range.end);
-    match open {
-        Open::Autolink => Some(Atom {
-            range,
-            start,
-            kind: AtomKind::Autolink,
-        }),
-        Open::Link => (text_end < end).then_some(Atom {
-            range: text_end..end,
-            start,
-            kind: AtomKind::LinkResource,
-        }),
-        Open::Image => (text_end < end).then_some(Atom {
-            range: text_end..end,
-            start,
-            kind: AtomKind::ImageResource { image: range },
-        }),
-    }
-}
-
-/// What one walk over the body found, in offsets of the whole note.
-struct Walk {
-    /// The block ranges that hold prose.
-    prose: Vec<Range<usize>>,
-    /// Math spans the parser would report — none while `OPTIONS` leaves
-    /// math off; the field stays with the exhaustive match.
-    inline: Vec<Range<usize>>,
-    /// The atoms of the body (see `Atom`), in event order.
-    atoms: Vec<Atom>,
-    /// Where a line's content starts inside a paragraph or a list item's
-    /// own text — the positions a display formula may open at — with the
-    /// end of the innermost container around it.
-    line_starts: Vec<(usize, usize)>,
-}
-
-/// Walk the body once (`base` is the body's offset in the note).
-fn collect(body: &str, base: usize) -> Walk {
-    let limit = base + body.len();
-    let bytes = body.as_bytes();
-    let mut walk = Walk {
-        prose: Vec::new(),
-        inline: Vec::new(),
-        atoms: Vec::new(),
-        line_starts: Vec::new(),
-    };
-    let mut stack: Vec<Frame> = Vec::new();
-    // Open links and images: the range, how far the text (alt) has run, and
-    // which kind — the resource after the text becomes an atom on close.
-    let mut links: Vec<(Range<usize>, usize, Open)> = Vec::new();
-    let mut at_line_start = true;
-    for (event, range) in Parser::new_ext(body, OPTIONS).into_offset_iter() {
-        let range = range.start + base..range.end + base;
-        // Inside an open link or image every event up to its End is text.
-        if let Some((_, text_end, _)) = links.last_mut() {
-            if !matches!(event, Event::End(TagEnd::Link | TagEnd::Image)) {
-                *text_end = (*text_end).max(range.end);
-            }
-        }
-        match event {
-            Event::Start(tag) => {
-                let frame = match &tag {
-                    Tag::Paragraph => Some(Frame::Paragraph),
-                    Tag::Item => Some(Frame::Item {
-                        cursor: range.start,
-                        end: range.end,
-                    }),
-                    Tag::BlockQuote(_)
-                    | Tag::FootnoteDefinition(_)
-                    | Tag::DefinitionListDefinition => Some(Frame::Container { end: range.end }),
-                    // A setext heading's text lines are lines a display
-                    // formula may open on (`$$` over `===` is a formula to
-                    // the editor); an ATX heading's `#` comes first.
-                    Tag::Heading { .. } => Some(if bytes[range.start - base] == b'#' {
-                        Frame::Other
-                    } else {
-                        Frame::Paragraph
-                    }),
-                    Tag::TableCell => Some(Frame::Cell),
-                    Tag::CodeBlock(_)
-                    | Tag::HtmlBlock
-                    | Tag::List(_)
-                    | Tag::DefinitionList
-                    | Tag::DefinitionListTitle
-                    | Tag::Table(_)
-                    | Tag::TableHead
-                    | Tag::TableRow
-                    | Tag::MetadataBlock(_) => Some(Frame::Other),
-                    Tag::Emphasis
-                    | Tag::Strong
-                    | Tag::Strikethrough
-                    | Tag::Superscript
-                    | Tag::Subscript
-                    | Tag::Link { .. }
-                    | Tag::Image { .. } => None,
-                };
-                match &tag {
-                    // Prose blocks: the whole source range, container
-                    // prefixes, markers and escapes included.
-                    Tag::Paragraph | Tag::Heading { .. } | Tag::TableCell => {
-                        walk.prose.push(range.clone());
-                    }
-                    // An image's text is read like link text; what it leaves
-                    // as literal is decided when it closes (see `Atom`).
-                    Tag::Image { .. } => links.push((range.clone(), range.start + 2, Open::Image)),
-                    Tag::BlockQuote(_)
-                    | Tag::CodeBlock(_)
-                    | Tag::HtmlBlock
-                    | Tag::List(_)
-                    | Tag::Item
-                    | Tag::FootnoteDefinition(_)
-                    | Tag::DefinitionList
-                    | Tag::DefinitionListTitle
-                    | Tag::DefinitionListDefinition
-                    | Tag::Table(_)
-                    | Tag::TableHead
-                    | Tag::TableRow
-                    | Tag::MetadataBlock(_)
-                    | Tag::Emphasis
-                    | Tag::Strong
-                    | Tag::Strikethrough
-                    | Tag::Superscript
-                    | Tag::Subscript => {}
-                    Tag::Link { link_type, .. } => {
-                        let open = if matches!(link_type, LinkType::Autolink | LinkType::Email) {
-                            Open::Autolink
-                        } else {
-                            Open::Link
-                        };
-                        links.push((range.clone(), range.start + 1, open));
-                    }
-                }
-                match frame {
-                    Some(frame) => {
-                        leave_item_text_before(&mut stack, &range, &mut walk.prose);
-                        stack.push(frame);
-                        at_line_start = true;
-                    }
-                    None => {
-                        note_line_start(
-                            &stack,
-                            &mut at_line_start,
-                            range.start,
-                            (bytes, base),
-                            limit,
-                            &mut walk,
-                        );
-                    }
-                }
-            }
-            Event::End(tag) => {
-                if matches!(tag, TagEnd::Link | TagEnd::Image) {
-                    if let Some((link, text_end, open)) = links.pop() {
-                        walk.atoms.extend(resource_atom(link, text_end, open));
-                    }
-                }
-                let is_block = match tag {
-                    TagEnd::Paragraph
-                    | TagEnd::Heading(_)
-                    | TagEnd::BlockQuote(_)
-                    | TagEnd::CodeBlock
-                    | TagEnd::HtmlBlock
-                    | TagEnd::List(_)
-                    | TagEnd::Item
-                    | TagEnd::FootnoteDefinition
-                    | TagEnd::DefinitionList
-                    | TagEnd::DefinitionListTitle
-                    | TagEnd::DefinitionListDefinition
-                    | TagEnd::Table
-                    | TagEnd::TableHead
-                    | TagEnd::TableRow
-                    | TagEnd::TableCell
-                    | TagEnd::MetadataBlock(_) => true,
-                    TagEnd::Emphasis
-                    | TagEnd::Strong
-                    | TagEnd::Strikethrough
-                    | TagEnd::Superscript
-                    | TagEnd::Subscript
-                    | TagEnd::Link
-                    | TagEnd::Image => false,
-                };
-                if is_block {
-                    if let Some(Frame::Item { cursor, end }) = stack.pop() {
-                        if cursor < end {
-                            walk.prose.push(cursor..end);
-                        }
-                    }
-                    at_line_start = true;
-                }
-            }
-            // An inline HTML tag and a code span are atoms: literal if the
-            // sweep reaches them intact (see `Atom`).
-            Event::InlineHtml(_) => {
-                note_line_start(
-                    &stack,
-                    &mut at_line_start,
-                    range.start,
-                    (bytes, base),
-                    limit,
-                    &mut walk,
-                );
-                walk.atoms.push(Atom {
-                    start: range.start,
-                    range,
-                    kind: AtomKind::Html,
-                });
-            }
-            Event::Code(_) => {
-                note_line_start(
-                    &stack,
-                    &mut at_line_start,
-                    range.start,
-                    (bytes, base),
-                    limit,
-                    &mut walk,
-                );
-                walk.atoms.push(Atom {
-                    start: range.start,
-                    range,
-                    kind: AtomKind::Code,
-                });
-            }
-            // Math events cannot occur while `OPTIONS` leaves math off; the
-            // arm stays so the match is exhaustive when the crate is upgraded.
-            Event::InlineMath(_) | Event::DisplayMath(_) => {
-                note_line_start(
-                    &stack,
-                    &mut at_line_start,
-                    range.start,
-                    (bytes, base),
-                    limit,
-                    &mut walk,
-                );
-                walk.inline.push(range);
-            }
-            // A thematic break is a block with no Start/End: it ends an
-            // item's own text like any other child block.
-            Event::Rule => {
-                leave_item_text_before(&mut stack, &range, &mut walk.prose);
-                at_line_start = true;
-            }
-            Event::SoftBreak | Event::HardBreak => at_line_start = true,
-            Event::Text(_) | Event::FootnoteReference(_) | Event::TaskListMarker(_) => {
-                note_line_start(
-                    &stack,
-                    &mut at_line_start,
-                    range.start,
-                    (bytes, base),
-                    limit,
-                    &mut walk,
-                );
-            }
-            // Lines of an HTML block: not prose, and never where a display
-            // formula opens.
-            Event::Html(_) => at_line_start = false,
-        }
-    }
-    walk
-}
-
-/// The first inline event of a line, inside a paragraph, a setext heading,
-/// a list item's own text or a table cell that begins its line, marks where
-/// that line's content starts. `source` is the body the parser read and its
-/// offset in the note, for looking at the bytes before a cell.
-fn note_line_start(
-    stack: &[Frame],
-    at_line_start: &mut bool,
-    start: usize,
-    source: (&[u8], usize),
-    limit: usize,
-    walk: &mut Walk,
-) {
-    if !*at_line_start {
-        return;
-    }
-    *at_line_start = false;
-    let prose_line = match stack.last() {
-        Some(Frame::Paragraph | Frame::Item { .. }) => true,
-        Some(Frame::Cell) => begins_line(source.0, start - source.1),
-        Some(Frame::Container { .. } | Frame::Other) | None => false,
-    };
-    if !prose_line {
-        return;
-    }
-    let container_end = stack
-        .iter()
-        .rev()
-        .find_map(|frame| match frame {
-            Frame::Item { end, .. } | Frame::Container { end } => Some(*end),
-            Frame::Paragraph | Frame::Cell | Frame::Other => None,
-        })
-        .unwrap_or(limit);
-    walk.line_starts.push((start, container_end));
-}
-
-/// Does the text at `at` begin its line, allowing only blanks and
-/// blockquote markers before it? A cell after a `|` does not.
-fn begins_line(bytes: &[u8], at: usize) -> bool {
-    let before = bytes[..at]
-        .iter()
-        .rev()
-        .find(|&&b| !matches!(b, b' ' | b'\t' | b'>'));
-    matches!(before, None | Some(b'\n'))
-}
-
-/// A child block that starts directly under a list item ends the item's
-/// own text before it: that text is prose, the child accounts for itself.
-fn leave_item_text_before(
-    stack: &mut [Frame],
-    child: &Range<usize>,
-    prose: &mut Vec<Range<usize>>,
-) {
-    if let Some(Frame::Item { cursor, .. }) = stack.last_mut() {
-        if child.start > *cursor {
-            prose.push(*cursor..child.start);
-        }
-        *cursor = (*cursor).max(child.end);
-    }
-}
-
-/// A maximal run of `$` or backticks in a prose block, as the raw bytes have
-/// it: where it starts, how long it is, and whether a backslash escapes its
-/// first character. A closer is matched raw — an escape inside a formula is
-/// content, as inside a code span — so the raw length is a closer's length;
-/// an opener that starts behind an escape is the run minus that character.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Run {
-    start: usize,
-    len: usize,
-    byte: u8,
-    escaped: bool,
-}
-
-/// The delimiter runs of `bytes`, left to right, in one pass. The escape walk
-/// is the editor's: a backslash before ASCII punctuation escapes that one
-/// character (`\\$` leaves the `$` live, `\$$` leaves an opener of one).
-fn delimiter_runs(bytes: &[u8]) -> Vec<Run> {
-    let run_from = |i: usize, byte: u8| bytes[i..].iter().take_while(|&&b| b == byte).count();
-    let mut runs = Vec::new();
-    let mut i = 0;
-    while i < bytes.len() {
-        match bytes[i] {
-            b'\\' => {
-                i += 1;
-                match bytes.get(i) {
-                    Some(&byte @ (b'`' | b'$')) => {
-                        let len = run_from(i, byte);
-                        runs.push(Run {
-                            start: i,
-                            len,
-                            byte,
-                            escaped: true,
-                        });
-                        i += len;
-                    }
-                    Some(b) if b.is_ascii_punctuation() => i += 1,
-                    _ => {}
-                }
-            }
-            byte @ (b'`' | b'$') => {
-                let len = run_from(i, byte);
-                runs.push(Run {
-                    start: i,
-                    len,
-                    byte,
-                    escaped: false,
-                });
-                i += len;
-            }
-            _ => i += 1,
-        }
-    }
-    runs
-}
-
-/// What one sweep over a block reports besides its literals.
-struct Swept {
-    /// How many runs the pass visited — the count the tests pin.
-    visited: usize,
-    /// Where the first atom began that a formula or a code span the sweep
-    /// read had opened before and run into — the parser formed it on a text
-    /// the editor never reads, so the body must be read again.
-    destroyed: Option<usize>,
-}
-
-/// The editor's left-to-right inline rule over one prose block: a run of
-/// `$` opens a formula and a run of backticks a code span, each closed by
-/// the next run of the same length, whatever lies between — blanks, line
-/// breaks, tags and escapes included (remark-math reads a formula like a
-/// code span). Runs inside a display formula (`display`, settled first, as
-/// flow comes before text) are not the sweep's. An escaped `$` or backtick
-/// opens nothing, and neither does one inside an intact atom (`atoms`,
-/// sorted): a tag, an autolink, a code span or a link's resource the editor
-/// read first. An atom that a formula
-/// or a code span opened earlier runs into is destroyed — its bytes are text
-/// and it contributes nothing. The literal set is what the sweep emits: code
-/// spans, intact tags and intact images into `out`, formulas into
-/// `formulas` — apart, so the caller can read the body again with them
-/// filled in. One pass over the runs, a closer taken from an index by byte
-/// and raw length, so k unmatched runs cost O(k log k) after the O(n) walk
-/// that finds them.
-fn inline_literals(
-    content: &str,
-    block: Range<usize>,
-    atoms: &[Atom],
-    display: &Literal,
-    out: &mut Vec<Range<usize>>,
-    formulas: &mut Vec<Range<usize>>,
-) -> Swept {
-    let mut runs = delimiter_runs(&content.as_bytes()[block.clone()]);
-    // A run inside a display formula belongs to the formula, not to the
-    // text around it: a stray `$$` in a paragraph never closes on the
-    // `$$` that opens a display formula two lines down.
-    runs.retain(|run| {
-        !display.overlaps(block.start + run.start..block.start + run.start + run.len)
-    });
-    let mut by_key: HashMap<(u8, usize), Vec<usize>> = HashMap::new();
-    for (r, run) in runs.iter().enumerate() {
-        by_key.entry((run.byte, run.len)).or_default().push(r);
-    }
-    // The first run after `r` that is `len` bytes of `byte`, raw.
-    let closer_after = |r: usize, byte: u8, len: usize| -> Option<usize> {
-        let same = by_key.get(&(byte, len))?;
-        same.get(same.partition_point(|&i| i <= r)).copied()
-    };
-    // The formulas and code spans read so far, in order, non-overlapping.
-    let mut constructs: Vec<Range<usize>> = Vec::new();
-    // The first of the atom's two anchors — where its construct began, and
-    // where its own range begins (`]` for a link or an image; the same byte
-    // for the rest) — that one of them opened before and runs past.
-    let destroyed = |constructs: &[Range<usize>], a: &Atom| {
-        [a.start, a.range.start].into_iter().find(|&at| {
-            let i = constructs.partition_point(|c| c.start < at);
-            i > 0 && constructs[i - 1].end > at
-        })
-    };
-    let live = |atom: usize| atom < atoms.len() && atoms[atom].range.start < block.end;
-    let mut atom = atoms.partition_point(|a| a.range.start < block.start);
-    let mut swept = Swept {
-        visited: 0,
-        destroyed: None,
-    };
-    let mut r = 0;
-    'runs: while r < runs.len() {
-        swept.visited += 1;
-        let run = runs[r];
-        let start = block.start + run.start;
-        // Atoms that begin at or before this run: destroyed, passed intact,
-        // or holding this run and every run up to their end.
-        while live(atom) && atoms[atom].range.start <= start {
-            let a = &atoms[atom];
-            atom += 1;
-            if let Some(at) = destroyed(&constructs, a) {
-                swept.destroyed.get_or_insert(at);
-                continue;
-            }
-            a.contribute(out);
-            if a.range.end > start {
-                let end = a.range.end;
-                while r < runs.len() && block.start + runs[r].start < end {
-                    r += 1;
-                }
-                continue 'runs;
-            }
-        }
-        let opener = run.start + usize::from(run.escaped);
-        let len = run.len - usize::from(run.escaped);
-        let closer = if len == 0 {
-            None
-        } else {
-            closer_after(r, run.byte, len)
-        };
-        match closer {
-            Some(c) => {
-                let close_end = block.start + runs[c].start + runs[c].len;
-                let range = block.start + opener..close_end;
-                constructs.push(range.clone());
-                if run.byte == b'$' {
-                    formulas.push(range);
-                } else {
-                    out.push(range);
-                }
-                r = c + 1;
-            }
-            None => r += 1,
-        }
-    }
-    // Atoms after the last run.
-    while live(atom) {
-        let a = &atoms[atom];
-        atom += 1;
-        match destroyed(&constructs, a) {
-            Some(at) => {
-                swept.destroyed.get_or_insert(at);
-            }
-            None => a.contribute(out),
-        }
-    }
-    swept
-}
-
-/// The editor's display rule (remark-math, like a fenced code block): a line
-/// whose content opens with two or more `$` and carries no other `$` opens a
-/// formula that ends with the line break of the next line that is a `$` run
-/// at least as long and blanks — or, when no such line comes before the
-/// container ends, at the container's end. Blank lines inside do not end it.
-fn display_math(content: &str, line_starts: &[(usize, usize)], out: &mut Vec<Range<usize>>) {
+/// A copy of `content` with every bare `\r` (one not followed by `\n`) turned
+/// into `\n`, or None when there is none — see `analyse`. Same length: only
+/// ASCII bytes change, so the copy is valid UTF-8 and offsets carry over.
+fn bare_cr_as_newline(content: &str) -> Option<String> {
     let bytes = content.as_bytes();
-    let mut skip_until = 0;
-    for &(start, container_end) in line_starts {
-        if start < skip_until {
-            continue;
-        }
-        let open = bytes[start..].iter().take_while(|&&b| b == b'$').count();
-        if open < 2 {
-            continue;
-        }
-        let line_end = content[start..]
-            .find('\n')
-            .map_or(content.len(), |i| start + i + 1);
-        if bytes[start + open..line_end].contains(&b'$') {
-            continue;
-        }
-        let end = source_lines(&content[line_end..])
-            .take_while(|line| line_end + line.offset < container_end)
-            .find(|line| {
-                let text = line.text.trim_start_matches([' ', '\t', '>']);
-                let close = text.bytes().take_while(|&b| b == b'$').count();
-                close >= open && text[close..].trim_matches([' ', '\t']).is_empty()
-            })
-            .map_or(container_end, |line| {
-                line_end + line.offset + line.text.len() + line.terminator.len()
-            });
-        out.push(start..end);
-        skip_until = end;
+    let bare = |i: usize| bytes[i] == b'\r' && bytes.get(i + 1) != Some(&b'\n');
+    if !(0..bytes.len()).any(bare) {
+        return None;
     }
+    let out: Vec<u8> = (0..bytes.len())
+        .map(|i| if bare(i) { b'\n' } else { bytes[i] })
+        .collect();
+    String::from_utf8(out).ok()
 }
 
 /// `content` with every byte of `ranges` turned into `x` — line breaks kept
@@ -986,155 +349,16 @@ fn fill(content: &str, ranges: &[Range<usize>]) -> String {
     String::from_utf8(bytes).unwrap_or_else(|_| content.to_owned())
 }
 
-/// The bare URLs and e-mail addresses the editor reads as links
-/// (remark-gfm's autolink literals), as byte ranges of `text` offset by
-/// `base`. The rule as micromark applies it, measured, not as the GFM text
-/// reads: a `www.`, `http://` or `https://` (any case) at the start of the
-/// text or after a blank, `*`, `_`, `~` or `(`; then a domain — any run of
-/// bytes that are not blanks, `<` or ASCII punctuation other than `-`, `.`
-/// and `_` (a non-ASCII character counts, no period is required,
-/// `localhost` and `1.2.3.4` pass) whose first character is a letter or a
-/// digit (so not `-`, `.`, `_` or a punctuation mark such as `。`) and that
-/// has no `_` in its last two `.`-segments; then anything up to a blank or
-/// `<`. Trailing `?!.,:*_~` come off, so does an unbalanced `)`, and a
-/// `&name;` entity. An address is `[A-Za-z0-9._+-]+@` and such a domain
-/// with a period, its last byte neither `-` nor `_`. Left to right,
-/// non-overlapping.
-fn autolink_literals(text: &str, base: usize) -> Vec<Range<usize>> {
-    let bytes = text.as_bytes();
-    let boundary = |i: usize| {
-        i == 0
-            || matches!(
-                bytes[i - 1],
-                b' ' | b'\t' | b'\n' | b'\r' | b'*' | b'_' | b'~' | b'('
-            )
-    };
-    let domain_byte = |b: &u8| {
-        !b.is_ascii_whitespace()
-            && *b != b'<'
-            && (!b.is_ascii_punctuation() || matches!(b, b'-' | b'.' | b'_'))
-    };
-    // No `_` in the last two `.`-segments (an empty segment counts as one).
-    let underscores_ok = |dom: &[u8]| -> bool {
-        let parts: Vec<&[u8]> = dom.split(|&b| b == b'.').collect();
-        parts[parts.len().saturating_sub(2)..]
-            .iter()
-            .all(|p| !p.contains(&b'_'))
-    };
-    let mut out = Vec::new();
-    let mut i = 0;
-    while i < bytes.len() {
-        // Byte-wise, any case: `i` may sit inside a multibyte character.
-        let has = |p: &[u8]| {
-            bytes
-                .get(i..i + p.len())
-                .is_some_and(|s| s.eq_ignore_ascii_case(p))
-        };
-        let prefix = if has(b"www.") {
-            Some(0)
-        } else if has(b"http://") {
-            Some(7)
-        } else if has(b"https://") {
-            Some(8)
-        } else {
-            None
-        };
-        if let Some(skip) = prefix.filter(|_| boundary(i)) {
-            let dom_start = i + skip;
-            let dom_end = dom_start
-                + bytes[dom_start..]
-                    .iter()
-                    .take_while(|b| domain_byte(b))
-                    .count();
-            let dom = &bytes[dom_start..dom_end];
-            // The first character must be a letter or a digit — `-`, `.`,
-            // `_` and any punctuation mark are refused there, and only
-            // there (`a。b.test` passes). `dom_start` follows an ASCII
-            // prefix, so it is a character boundary.
-            let starts_well = text[dom_start..]
-                .chars()
-                .next()
-                .is_some_and(|c| c.is_alphanumeric());
-            if !dom.is_empty() && starts_well && underscores_ok(dom) {
-                // Path: up to a blank or `<`.
-                let mut end = dom_end
-                    + bytes[dom_end..]
-                        .iter()
-                        .take_while(|b| !matches!(b, b' ' | b'\t' | b'\n' | b'\r' | b'<'))
-                        .count();
-                end = trim_autolink_end(bytes, i, end);
-                out.push(base + i..base + end);
-                i = end.max(i + 1);
-                continue;
-            }
-        }
-        if bytes[i] == b'@' {
-            // An address: back over the local part, forward over the domain.
-            let local = bytes[..i]
-                .iter()
-                .rev()
-                .take_while(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'+' | b'-'))
-                .count();
-            let start = i - local;
-            let dom_end = i
-                + 1
-                + bytes[i + 1..]
-                    .iter()
-                    .take_while(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.'))
-                    .count();
-            let dom = &bytes[i + 1..dom_end];
-            if local > 0
-                && boundary(start)
-                && dom.contains(&b'.')
-                && underscores_ok(dom)
-                && !matches!(dom.last(), Some(b'-' | b'_'))
-            {
-                out.push(base + start..base + dom_end);
-                i = dom_end;
-                continue;
-            }
-        }
-        i += 1;
+/// Does `range` share at least one byte with one of `ranges` — sorted, none
+/// overlapping the next, as `merge` leaves them and the display rule emits
+/// them?
+fn overlaps(ranges: &[Range<usize>], range: Range<usize>) -> bool {
+    if range.start >= range.end {
+        return false;
     }
-    out
-}
-
-/// GFM's trailing rules for an autolink literal `bytes[start..end]`: drop
-/// trailing `?!.,:*_~`; drop a `)` while the link has more `)` than `(`;
-/// drop a `&name;` entity at the end. Returns the new end.
-fn trim_autolink_end(bytes: &[u8], start: usize, mut end: usize) -> usize {
-    loop {
-        let before = end;
-        while end > start
-            && matches!(
-                bytes[end - 1],
-                b'?' | b'!' | b'.' | b',' | b':' | b'*' | b'_' | b'~'
-            )
-        {
-            end -= 1;
-        }
-        if end > start && bytes[end - 1] == b')' {
-            let link = &bytes[start..end];
-            let opens = link.iter().filter(|&&b| b == b'(').count();
-            let closes = link.iter().filter(|&&b| b == b')').count();
-            if closes > opens {
-                end -= 1;
-            }
-        }
-        if end > start && bytes[end - 1] == b';' {
-            let name = bytes[start..end - 1]
-                .iter()
-                .rev()
-                .take_while(|b| b.is_ascii_alphanumeric())
-                .count();
-            if name > 0 && end - 1 - name > start && bytes[end - 2 - name] == b'&' {
-                end -= name + 2;
-            }
-        }
-        if end == before {
-            return end;
-        }
-    }
+    // The first range that ends after `range` starts.
+    let i = ranges.partition_point(|r| r.end <= range.start);
+    ranges.get(i).is_some_and(|r| r.start < range.end)
 }
 
 /// Sort and merge touching or overlapping ranges, dropping empty ones.
@@ -1165,6 +389,451 @@ mod tests {
         REF.find_iter(md)
             .map(|m| !literal.overlaps(m.range()))
             .collect()
+    }
+
+    /// issue 663 — a note broken with bare carriage returns (classic Mac OS)
+    /// has the same blocks to pulldown and to remark; the line offsets must
+    /// agree with them, or a fence's inside and outside change places.
+    #[test]
+    fn a_bare_carriage_return_ends_a_line_for_the_offsets_too() {
+        assert_eq!(refs("```\r((n#^o))\r```\r((n#^o))\r"), [false, true]);
+        assert_eq!(refs("text\r```\r((n#^o))\r```\r"), [false]);
+        assert_eq!(refs("a `((n#^o))` b\r((n#^o))\r"), [false, true]);
+        // Mixed endings, and a formula whose closing line ends with a bare CR.
+        assert_eq!(refs("$$\r((n#^o))\r$$\r\n((n#^o))\n"), [false, true]);
+    }
+
+    /// issue 664 — an unclosed display formula ends where its containers end
+    /// to the editor: remark's math flow has no lazy continuation, so the
+    /// formula runs only through the lines that still carry every container
+    /// the opener's line was in. pulldown reads the `>`-less line after
+    /// `> $$` as a lazy paragraph continuation inside the blockquote; the
+    /// editor reads it as a new paragraph — prose. Every shape below was
+    /// measured against the editor's remark stack.
+    #[test]
+    fn an_unclosed_display_formula_ends_where_the_editors_container_ends() {
+        // A blockquote ends at the first line without `>`.
+        assert_eq!(refs("> $$\n((n#^o))\n\n((n#^o))\n"), [true, true]);
+        assert_eq!(refs("> $$\n> ((n#^o))\n((n#^o))\n"), [false, true]);
+        assert_eq!(refs("> > $$\n> > ((n#^o))\n> ((n#^o))\n"), [false, true]);
+        assert_eq!(refs("   > $$\n   > ((n#^o))\n((n#^o))\n"), [false, true]);
+        assert_eq!(refs(">\t$$\n> ((n#^o))\n((n#^o))\n"), [false, true]);
+        // A blank line ends a blockquote, and keeps a list item.
+        assert_eq!(refs("> $$\n\n> ((n#^o))\n"), [true]);
+        assert_eq!(refs("- $$\n\n  ((n#^o))\n"), [false]);
+        // A list item runs through the lines indented to its content column.
+        assert_eq!(refs("- $$\n  ((n#^o))\n((n#^o))\n"), [false, true]);
+        assert_eq!(refs("- $$\n ((n#^o))\n"), [true]);
+        assert_eq!(refs("-   $$\n    ((n#^o))\n  ((n#^o))\n"), [false, true]);
+        assert_eq!(refs("1. $$\n   ((n#^o))\n((n#^o))\n"), [false, true]);
+        // Nested containers compose, in order.
+        assert_eq!(refs("> - $$\n>   ((n#^o))\n> ((n#^o))\n"), [false, true]);
+        assert_eq!(refs("- > $$\n  > ((n#^o))\n  ((n#^o))\n"), [false, true]);
+        // A `$$` on the lazy line opens a new formula at the top level.
+        assert_eq!(refs("> $$\n$$\n((n#^o))\n"), [false]);
+        // A closing line still closes, and a bare CR is a line break here too.
+        assert_eq!(refs("> $$\n> ((n#^o))\n> $$\n((n#^o))\n"), [false, true]);
+        assert_eq!(refs("> $$\r> ((n#^o))\r((n#^o))\r"), [false, true]);
+        // A footnote definition continues through lines indented four columns
+        // past where it began, or blank — whatever the label's width, and
+        // inside a blockquote past the quote's prefix.
+        assert_eq!(refs("[^1]: $$\n    ((n#^o))\n((n#^o))\n"), [false, true]);
+        assert_eq!(
+            refs("[^1]: $$\n    ((n#^o))\n\n    ((n#^o))\n((n#^o))\n"),
+            [false, false, true]
+        );
+        assert_eq!(refs("[^1]: $$\n   ((n#^o))\n"), [true]);
+        assert_eq!(
+            refs("[^note]: $$\n    ((n#^o))\n  ((n#^o))\n"),
+            [false, true]
+        );
+        assert_eq!(
+            refs("> [^1]: $$\n>     ((n#^o))\n> ((n#^o))\n((n#^o))\n"),
+            [false, true, true]
+        );
+    }
+
+    /// PR 674 review — the containers of a display formula come from the
+    /// parser's frames and are measured on their own marker lines, in widths
+    /// relative to the containers before them. Every row measured against
+    /// the editor (remark through `renameBlockIdInMarkdown`), 2026-09-17:
+    /// reading the opener line's own prefix lost the item when the `$$`
+    /// stood below the marker line (the formula ran to the end of the note),
+    /// and absolute columns disagreed with micromark as soon as two lines
+    /// carried different blanks before a `>`.
+    #[test]
+    fn a_display_formulas_containers_come_from_the_frames_in_relative_widths() {
+        // the `$$` stands on the item's second line: the item ends the formula
+        assert_eq!(refs("- a\n  $$\n  ((n#^o))\n\n((n#^o))\n"), [false, true]);
+        // the same after a blank line inside the item
+        assert_eq!(refs("- a\n\n  $$\n  ((n#^o))\n\n((n#^o))\n"), [false, true]);
+        // the closer's three columns count from the item's content, not from column 0
+        assert_eq!(refs("- a\n  $$\n    $$\n  ((n#^o))\n"), [true]);
+        // an item's width is relative to where the blockquote's prefix ended on each line
+        assert_eq!(refs("   > - $$\n>   ((n#^o))\n"), [false]);
+        // a footnote definition asks for four columns whatever its own indent
+        assert_eq!(
+            refs("  [^1]: $$\n    ((n#^o))\n\n((n#^o))\n"),
+            [false, true]
+        );
+        // a footnote definition: more than four columns is still inside
+        assert_eq!(
+            refs("  [^1]: $$\n      ((n#^o))\n\n((n#^o))\n"),
+            [false, true]
+        );
+        // a nested item is measured past its parent's content
+        assert_eq!(
+            refs("- a\n  - b\n    $$\n    ((n#^o))\n  ((n#^o))\n"),
+            [false, true]
+        );
+        // an item inside a blockquote, opener below the marker line
+        assert_eq!(
+            refs("> - a\n>   $$\n>   ((n#^o))\n> ((n#^o))\n"),
+            [false, true]
+        );
+        // an ordered marker's width
+        assert_eq!(
+            refs("10. a\n    $$\n    ((n#^o))\n   ((n#^o))\n"),
+            [false, true]
+        );
+        // the blanks before a marker are part of the item's width
+        assert_eq!(
+            refs("  - a\n    $$\n    ((n#^o))\n   ((n#^o))\n"),
+            [false, true]
+        );
+        // a footnote definition, opener below the marker line
+        assert_eq!(
+            refs("[^1]: a\n    $$\n    ((n#^o))\n\n((n#^o))\n"),
+            [false, true]
+        );
+        // a tab after the marker is the columns to the next tab stop
+        assert_eq!(refs("-\ta\n\t$$\n\t((n#^o))\n((n#^o))\n"), [false, true]);
+        // the continuation line may carry more blanks before `>` than the opener's
+        assert_eq!(refs("> - $$\n   >   ((n#^o))\n"), [false]);
+        // a closer three columns past the nested content closes
+        assert_eq!(refs("> - a\n>   $$\n>      $$\n> ((n#^o))\n"), [true]);
+        // a closer four columns past it is the formula's own line
+        assert_eq!(refs("> - a\n>   $$\n>       $$\n>   ((n#^o))\n"), [false]);
+        // a marker with nothing after it takes one column
+        assert_eq!(refs("-\n  $$\n  ((n#^o))\n\n((n#^o))\n"), [false, true]);
+        // five or more blanks after a marker are one column and indented code
+        assert_eq!(
+            refs("-      a\n  $$\n  ((n#^o))\n\n((n#^o))\n"),
+            [false, true]
+        );
+        // a blockquote whose opener is below its first line
+        assert_eq!(refs("> a\n> $$\n> ((n#^o))\n((n#^o))\n"), [false, true]);
+        // a blockquote inside an item, opener below both first lines
+        assert_eq!(
+            refs("- > a\n  > $$\n  > ((n#^o))\n  ((n#^o))\n"),
+            [false, true]
+        );
+        // an ordered item opened on the blockquote's line
+        assert_eq!(
+            refs("> 1. $$\n>    ((n#^o))\n>   ((n#^o))\n"),
+            [false, true]
+        );
+        // a footnote definition inside a blockquote asks for four columns past the `>`
+        assert_eq!(
+            refs("> [^1]: $$\n>     ((n#^o))\n> ((n#^o))\n"),
+            [false, true]
+        );
+        // an ordered item's three columns
+        assert_eq!(
+            refs("1. a\n   $$\n   ((n#^o))\n  ((n#^o))\n"),
+            [false, true]
+        );
+        // CRLF line ends
+        assert_eq!(
+            refs("- a\r\n  $$\r\n  ((n#^o))\r\n\r\n((n#^o))\r\n"),
+            [false, true]
+        );
+        // tabs after the marker and after the `>`
+        assert_eq!(
+            refs("> -\ta\n>\t$$\n>\t((n#^o))\n> ((n#^o))\n"),
+            [false, true]
+        );
+        // a second paragraph of the item
+        assert_eq!(
+            refs("- a\n\n  b\n  $$\n  ((n#^o))\n\n((n#^o))\n"),
+            [false, true]
+        );
+        // a closed formula below the marker line, and prose after it in the same item
+        assert_eq!(
+            refs("* a\n  $$\n  ((n#^o))\n  $$\n  ((n#^o))\n"),
+            [false, true]
+        );
+        // a blank line ends the blockquote inside the item, not the item
+        assert_eq!(
+            refs("- a\n  > $$\n  > ((n#^o))\n\n  ((n#^o))\n"),
+            [false, true]
+        );
+        // front matter before the list: the frames' offsets are the note's
+        assert_eq!(
+            refs("---\ntitle: x\n---\n- a\n  $$\n  ((n#^o))\n\n((n#^o))\n"),
+            [false, true]
+        );
+        // a bullet item nested in an ordered one
+        assert_eq!(
+            refs("1) a\n   - b\n     $$\n     ((n#^o))\n   ((n#^o))\n"),
+            [false, true]
+        );
+        // pulldown starts a nested item behind a tab on the line break BEFORE its marker's line
+        assert_eq!(
+            refs("- a\n\t- b\n\t  $$\n\t  ((n#^o))\n  ((n#^o))\n"),
+            [false, true]
+        );
+        // a footnote definition under another one: pulldown and the editor agree there is one container
+        assert_eq!(
+            refs("[^a]: a\n    [^b]: $$\n        ((n#^o))\n    ((n#^o))\n((n#^o))\n"),
+            [false, false, true]
+        );
+        // an empty item ends with the blank line after it, for pulldown as for the editor
+        assert_eq!(refs("-\n\n  $$\n  ((n#^o))\n((n#^o))\n"), [false, false]);
+        // a tab before a nested `>` is the columns it spans
+        assert_eq!(refs("> > $$\n> \t> ((n#^o))\n> ((n#^o))\n"), [false, true]);
+        // a footnote definition inside an item
+        assert_eq!(
+            refs("- [^1]: $$\n      ((n#^o))\n  ((n#^o))\n"),
+            [false, true]
+        );
+        // an item inside a footnote definition
+        assert_eq!(
+            refs("[^1]: - $$\n      ((n#^o))\n    ((n#^o))\n"),
+            [false, true]
+        );
+        // bare CR line ends
+        assert_eq!(refs("- a\r  $$\r  ((n#^o))\r((n#^o))\r"), [false, true]);
+        // CRLF, after a front matter
+        assert_eq!(
+            refs("---\r\nx: y\r\n---\r\n- a\r\n  $$\r\n  ((n#^o))\r\n((n#^o))\r\n"),
+            [false, true]
+        );
+        // an empty first line, then the item's text
+        assert_eq!(
+            refs("-\n  a\n\n  $$\n  ((n#^o))\n((n#^o))\n"),
+            [false, true]
+        );
+        // a footnote definition in an ordered item, opener below both markers
+        assert_eq!(
+            refs("1. a\n\n   [^x]: b\n       $$\n       ((n#^o))\n   ((n#^o))\n"),
+            [false, true]
+        );
+        // two nested items behind tabs
+        assert_eq!(
+            refs("- a\n\t- b\n\t\t- c\n\t\t  $$\n\t\t  ((n#^o))\n\t  ((n#^o))\n"),
+            [false, true]
+        );
+        // a tab right after the outer `>`: one column is its optional blank, the rest lead to the inner `>`
+        assert_eq!(refs("> > $$\n>\t> ((n#^o))\n> ((n#^o))\n"), [false, true]);
+        // a tab right after the outer `>`, on the opener's own line
+        assert_eq!(refs("> \t> $$\n> > ((n#^o))\n> ((n#^o))\n"), [false, true]);
+        // a tab meets an ordered item's three columns
+        assert_eq!(refs("1. a\n\t$$\n\t((n#^o))\n  ((n#^o))\n"), [false, true]);
+        // two blank lines inside an item
+        assert_eq!(refs("- a\n\n\n  $$\n  ((n#^o))\n((n#^o))\n"), [false, true]);
+        // a tab after `>` on the opener's line and the next
+        assert_eq!(refs("> \t$$\n> \t((n#^o))\n((n#^o))\n"), [false, true]);
+        // three blanks after the marker are the item's
+        assert_eq!(
+            refs("-   a\n    $$\n    ((n#^o))\n   ((n#^o))\n"),
+            [false, true]
+        );
+        // two footnote markers on one line: pulldown closes the first definition, the marker is read where it says
+        assert_eq!(refs("[^1]: [^1]: $$\n((n#^o))\n"), [true]);
+    }
+
+    /// PR 674 review — pulldown keeps a `$$` that lost its `>` or its item's
+    /// indent inside the container as a lazy paragraph continuation; remark's
+    /// math flow interrupts the paragraph and the container is over, so the
+    /// formula has only the containers the opener's own line carries. And
+    /// four columns of blanks past them make the line paragraph text, not a
+    /// formula at all. Measured against the editor, 2026-09-17.
+    #[test]
+    fn an_opener_the_editor_reads_as_lazy_or_as_text_opens_less_or_nothing() {
+        // a line that lost the item's indent ends the formula (pulldown reads it as lazy)
+        assert_eq!(refs("- a\n  $$\n  ((n#^o))\n((n#^o))\n"), [false, true]);
+        // a `$$` that lost its `>` is lazy to pulldown; remark's math flow ends the quote
+        assert_eq!(refs("> a\n$$\n((n#^o))\n\n((n#^o))\n"), [false, false]);
+        // a `$$` that lost the item's indent is lazy to pulldown too; the item is over
+        assert_eq!(refs("- a\n$$\n((n#^o))\n\n((n#^o))\n"), [false, false]);
+        // a lazy paragraph line before the opener changes nothing
+        assert_eq!(
+            refs("- a\nb\n  $$\n  ((n#^o))\n\n((n#^o))\n"),
+            [false, true]
+        );
+        // four columns past the item's content is indented code, not a formula
+        assert_eq!(refs("- a\n\n      $$\n  ((n#^o))\n"), [true]);
+        // an opener that kept its `>` but lost the item's indent: the item is over, the quote is not
+        assert_eq!(refs("> - a\n> $$\n> ((n#^o))\n((n#^o))\n"), [false, true]);
+        // an opener indented three columns past the item's content is still an opener
+        assert_eq!(
+            refs("- a\n     $$\n  ((n#^o))\n\n((n#^o))\n"),
+            [false, true]
+        );
+        // the opener left the nested item: only the outer item holds the formula
+        assert_eq!(
+            refs("- a\n  - b\n  $$\n  ((n#^o))\n((n#^o))\n"),
+            [false, true]
+        );
+        // a lazy `$$` four columns in, once its item is gone, is the paragraph's text: no formula
+        assert_eq!(
+            refs("123456789. a\n    $$\n    ((n#^o))\n((n#^o))\n"),
+            [true, true]
+        );
+        // four spaces before the `$$` are two past the item's content: an opener
+        assert_eq!(refs("- a\n    $$\n  ((n#^o))\n"), [false]);
+        // a lazy `$$` four columns in, once its blockquote is gone: text
+        assert_eq!(refs("> a\n    $$\n((n#^o))\n"), [true]);
+        // four columns past the item's content, inside a paragraph: text, not an opener
+        assert_eq!(refs("- a\n      $$\n  ((n#^o))\n"), [true]);
+        // four columns at the top level, inside a paragraph: text
+        assert_eq!(refs("a\n    $$\n((n#^o))\n"), [true]);
+        // three columns past the item's content: an opener
+        assert_eq!(
+            refs("- a\n     $$\n  ((n#^o))\n\n((n#^o))\n"),
+            [false, true]
+        );
+        // four columns past the `>`: text
+        assert_eq!(refs("> a\n>     $$\n> ((n#^o))\n"), [true]);
+        // one column short of the item inside the blockquote: the item is over, the quote holds
+        assert_eq!(refs("> - a\n>  $$\n> ((n#^o))\n((n#^o))\n"), [false, true]);
+    }
+
+    /// PR 674 review — after a formula the editor has no paragraph open,
+    /// where pulldown still reads the paragraph it took the `$$` for: a line
+    /// four columns past the containers it carries is an indented code block,
+    /// and an item the first line after the formula does not carry is over
+    /// for every later `$$`, indented as it asked or not — while one pulldown
+    /// opened since is the editor's too. Measured against the editor,
+    /// 2026-09-18.
+    #[test]
+    fn what_follows_a_formula_is_a_block_of_its_own_to_the_editor() {
+        // after a formula its blockquote ended, four columns are an indented code block — prose to pulldown, which reads the line as lazy
+        assert_eq!(refs("> $$\n    ((n#^o))\n"), [false]);
+        // the same after a closed formula
+        assert_eq!(refs("$$\n$$\n    ((n#^o))\n"), [false]);
+        // the code block ends with the first line that is not indented
+        assert_eq!(refs("a\n> $$\n    ((n#^o))\n\n((n#^o))\n"), [false, true]);
+        // four columns past the item's content, after a formula closed inside the item
+        assert_eq!(
+            refs("- a\n  $$\n  $$\n      ((n#^o))\n  ((n#^o))\n"),
+            [false, true]
+        );
+        // a blank line between the formula and the code block
+        assert_eq!(refs("> $$\n\n    ((n#^o))\n   ((n#^o))\n"), [false, true]);
+        // a tab is four columns: an indented code block after the formula
+        assert_eq!(refs("> $$\n\t((n#^o))\n((n#^o))\n"), [false, true]);
+        // an item the editor closed after a formula is over for a later `$$`, indented as the item asked or not
+        assert_eq!(refs("- $$\n((n#^o))\n  $$\n((n#^o))\n"), [true, false]);
+        // a blockquote is not over: a line that carries `>` is in one either way
+        assert_eq!(refs("> $$\na\n> $$\n> ((n#^o))\n((n#^o))\n"), [false, true]);
+        // the nested item is over as well
+        assert_eq!(
+            refs("- - $$\n((n#^o))\n  $$\n  ((n#^o))\n((n#^o))\n"),
+            [true, false, false]
+        );
+        // an item pulldown opened after one the editor closed is the editor's too, only not inside it
+        assert_eq!(
+            refs("- $$\nx\n  - $$\n    ((n#^o))\n((n#^o))\n"),
+            [false, true]
+        );
+        // a blockquote inside an item that is over still asks for its `>`
+        assert_eq!(
+            refs("* > > ((n#^o))\n    $$\n$$\n ((n#^o))\n"),
+            [true, false]
+        );
+        // a nested item pulldown starts on the closer's line break, behind a tab, is not made of the formula
+        assert_eq!(
+            refs("- $$\n  $$\n\t- $$\n\t  ((n#^o))\n  ((n#^o))\n"),
+            [false, true]
+        );
+        // a child pulldown opens four columns in, once its parent is over, is text to the editor: no marker, no formula
+        assert_eq!(
+            refs("-   $$\nx\n    - $$\n        ((n#^o))\n((n#^o))\n"),
+            [true, true]
+        );
+        // closed formulas in a row: each is read once, the item's start behind them all
+        assert_eq!(
+            refs("- $$\n  $$\n  $$\n  $$\n  $$\n  $$\n  ((n#^o))\n"),
+            [true]
+        );
+        // three columns in, the child is a real item
+        assert_eq!(
+            refs("- $$\nx\n   - $$\n     ((n#^o))\n((n#^o))\n"),
+            [false, true]
+        );
+        // six columns past an item's text are its paragraph, marker and all
+        assert_eq!(
+            refs("- a\n      - $$\n        ((n#^o))\n((n#^o))\n"),
+            [true, true]
+        );
+        // the same inside a blockquote
+        assert_eq!(
+            refs("> - $$\n> x\n>   - $$\n>     ((n#^o))\n> ((n#^o))\n"),
+            [false, true]
+        );
+    }
+
+    /// PR 674 review — a second read (a formula destroyed what the parser
+    /// formed) shows `x` where a formula was, blanks included, and the line
+    /// start pulldown reports there stands on the original's blanks; a
+    /// footnote label ends at its first unescaped `]` and spans UTF-16
+    /// columns, as micromark counts them before a tab. Measured against the
+    /// editor, 2026-09-18.
+    #[test]
+    fn a_second_read_and_a_footnote_label_keep_the_containers() {
+        // the second read (a formula destroys what the parser formed) keeps the frames
+        assert_eq!(
+            refs("- $ x ` y $ <i title=\"((n#^o))\"> `\n  $$\n  ((n#^o))\n((n#^o))\n"),
+            [false, false, true]
+        );
+        // a second read reports the line start on the blanks a filled formula left; the `$$` is past them, and the item still holds it
+        assert_eq!(
+            refs("- a $$ x `\n  $$\n  ((n#^o))\n`\n((n#^o))\n"),
+            [false, true]
+        );
+        // a tab after an astral label stops where UTF-16 columns put it
+        assert_eq!(refs("[^😀]: -\t$$\n      ((n#^o))\n"), [true]);
+        // an escaped `]` does not end a footnote label; four columns past the item inside it is text
+        assert_eq!(
+            refs("[^a\\]:b]: - a\n          $$\n      ((n#^o))\n"),
+            [true]
+        );
+        // an escaped `]` inside a label, and four columns after it
+        assert_eq!(refs("[^a\\]]: $$\n    ((n#^o))\n((n#^o))\n"), [false, true]);
+    }
+
+    /// The closing `$$` run may be indented at most three columns past the
+    /// container's content column — remark-math closes as a fenced code
+    /// block does — and a tab reaches the next tab stop of the line's own
+    /// column. Indented further, the line is the formula's.
+    #[test]
+    fn a_closing_dollar_run_is_indented_at_most_three_columns() {
+        assert_eq!(refs("$$\n   $$\n((n#^o))\n"), [true]);
+        assert_eq!(refs("$$\n   $$   \n((n#^o))\n"), [true]);
+        assert_eq!(refs("$$\n    $$\n((n#^o))\n"), [false]);
+        assert_eq!(refs("$$\n\t$$\n((n#^o))\n"), [false]);
+        assert_eq!(refs("- $$\n     $$\n  ((n#^o))\n"), [true]);
+        assert_eq!(refs("- $$\n      $$\n  ((n#^o))\n"), [false]);
+        assert_eq!(refs("- $$\n  \t$$\n  ((n#^o))\n"), [true]);
+        assert_eq!(refs("- $$\n      \t$$\n  ((n#^o))\n"), [false]);
+        assert_eq!(refs("> $$\n>    $$\n> ((n#^o))\n"), [true]);
+        assert_eq!(refs("> $$\n>     $$\n> ((n#^o))\n"), [false]);
+        assert_eq!(refs("[^1]: $$\n       $$\n    ((n#^o))\n"), [true]);
+        assert_eq!(refs("[^1]: $$\n        $$\n    ((n#^o))\n"), [false]);
+        // A tab straddling a container's edge: the container takes the
+        // columns it needs, the rest count toward the closer's indentation.
+        assert_eq!(refs("- $$\n\t$$\n  ((n#^o))\n"), [true]);
+        assert_eq!(refs("- $$\n\t $$\n  ((n#^o))\n"), [true]);
+        assert_eq!(refs("- $$\n\t   $$\n  ((n#^o))\n"), [false]);
+        assert_eq!(refs("> $$\n>\t$$\n> ((n#^o))\n"), [true]);
+        assert_eq!(refs("> $$\n>\t $$\n> ((n#^o))\n"), [true]);
+        assert_eq!(refs("> $$\n>\t  $$\n> ((n#^o))\n"), [false]);
+        assert_eq!(refs("> - $$\n>\t   $$\n>   ((n#^o))\n"), [true]);
+        assert_eq!(refs("[^1]: $$\n\t   $$\n    ((n#^o))\n"), [true]);
+        assert_eq!(refs("[^1]: $$\n\t\t$$\n    ((n#^o))\n"), [false]);
+        assert_eq!(refs(">\t$$\n>\t((n#^o))\n((n#^o))\n"), [false, true]);
     }
 
     /// No display formula, for sweeping a block directly.
@@ -1431,8 +1100,17 @@ mod tests {
         );
         assert_eq!(source_lines("").count(), 0);
         assert_eq!(source_lines("x\n").count(), 1);
-        // A bare CR is not a line break, as for `str::lines`.
-        assert_eq!(source_lines("a\rb\n").next().unwrap().text, "a\rb");
+        // issue 663: a bare CR is a line break, as it is to both parsers.
+        let cr: Vec<(&str, &str)> = source_lines("a\rb\r\nc\rd")
+            .map(|l| (l.text, l.terminator))
+            .collect();
+        assert_eq!(cr, [("a", "\r"), ("b", "\r\n"), ("c", "\r"), ("d", "")]);
+        assert_eq!(
+            source_lines("a\rb\r\nc")
+                .map(|l| l.offset)
+                .collect::<Vec<_>>(),
+            [0, 2, 5]
+        );
     }
 
     /// remark reads an inline HTML tag before it looks for a formula, left

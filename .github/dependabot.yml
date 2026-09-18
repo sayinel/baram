@@ -25,6 +25,12 @@ updates:
         patterns: ["eslint*", "@eslint/*", "typescript-eslint", "stylelint*", "prettier*"]
       dev-tools:
         patterns: ["husky", "lint-staged", "@commitlint/*"]
+      # The editor's markdown grammar — the Rust link index emulates what this
+      # stack reads (src-tauri/src/md/literal/), so it moves in one PR that
+      # the measured-stack sentinel (literal-measured-stack.test.ts) turns red
+      # until the emulation is re-measured (issue 669)
+      remark:
+        patterns: ["remark*", "micromark*", "mdast-util-*", "unified"]
     ignore:
       - dependency-name: "@tiptap/*"
         update-types: ["version-update:semver-major"]
