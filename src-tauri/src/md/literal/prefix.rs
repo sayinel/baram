@@ -52,7 +52,10 @@ fn open(blanks: &mut Blanks<'_>, kind: HolderKind) -> Option<(Continue, usize)> 
             if !rest.starts_with("[^") {
                 return None;
             }
-            // The label ends at the first `]` no backslash escapes.
+            // The label ends at the first `]` no backslash escapes. A byte
+            // walk: the two delimiters are ASCII, which no continuation
+            // byte of a multibyte character can equal, so landing inside
+            // one after a backslash only walks on.
             let bytes = rest.as_bytes();
             let mut close = 2;
             while close < bytes.len() && bytes[close] != b']' {
@@ -163,9 +166,15 @@ fn pass(blanks: &mut Blanks<'_>, req: Continue) -> bool {
     }
 }
 
-/// Containers to walk a line through: the holders, what each asks, and the
-/// line each marker stands on.
-pub(super) type Chain<'a> = (&'a [Holder], &'a [Continue], &'a [usize]);
+/// A container measured on its own marker line: the holder, what it asks of
+/// later lines, and where that marker line starts — the last so a walk over
+/// that same line reopens it instead of continuing it.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct Measured {
+    pub(super) holder: Holder,
+    pub(super) req: Continue,
+    pub(super) marker_line: usize,
+}
 
 /// One walk over a line's container prefixes: how many of `reqs` it carries,
 /// outermost first, up to the first one it does not — the cursor stays
@@ -189,7 +198,7 @@ pub(super) fn continues<'a>(line: &'a str, reqs: &[Continue]) -> Option<(&'a str
 /// The containers of `chain` a line still has, read left to right — opened
 /// again where the marker stands on this very line, continued elsewhere —
 /// up to the first one it does not: how many, and the blanks after them.
-pub(super) fn settle(line: (usize, &str), chain: Chain<'_>) -> (usize, usize) {
+pub(super) fn settle(line: (usize, &str), chain: &[Measured]) -> (usize, usize) {
     let mut blanks = Blanks::new(line.1);
     let passed = pass_holders(&mut blanks, line.0, chain);
     let (indent, _) = blanks_then_rest(&mut blanks);
@@ -199,10 +208,14 @@ pub(super) fn settle(line: (usize, &str), chain: Chain<'_>) -> (usize, usize) {
 /// What `holder` asks of later lines, read on the line at `line` — after
 /// the containers before it (`outer`) have been passed there. None when the
 /// line does not open it.
-pub(super) fn measure(holder: &Holder, line: (usize, &str), outer: Chain<'_>) -> Option<Continue> {
+pub(super) fn measure(
+    holder: &Holder,
+    line: (usize, &str),
+    outer: &[Measured],
+) -> Option<Continue> {
     let (line_start, text) = line;
     let mut blanks = Blanks::new(text);
-    if pass_holders(&mut blanks, line_start, outer) < outer.0.len() {
+    if pass_holders(&mut blanks, line_start, outer) < outer.len() {
         return None;
     }
     let (req, marker) = open_at(&mut blanks, holder, line_start)?;
@@ -213,21 +226,20 @@ pub(super) fn measure(holder: &Holder, line: (usize, &str), outer: Chain<'_>) ->
 /// order: opened again where the marker stands on this line, continued
 /// elsewhere. Stops before the first one the line does not carry, the
 /// cursor restored to before it; returns how many passed.
-fn pass_holders(blanks: &mut Blanks<'_>, line_start: usize, chain: Chain<'_>) -> usize {
-    let (holders, reqs, marker_lines) = chain;
-    for (k, req) in reqs.iter().enumerate() {
+fn pass_holders(blanks: &mut Blanks<'_>, line_start: usize, chain: &[Measured]) -> usize {
+    for (k, measured) in chain.iter().enumerate() {
         let before = *blanks;
-        let passed = if marker_lines[k] == line_start {
-            open_at(blanks, &holders[k], line_start).is_some()
+        let passed = if measured.marker_line == line_start {
+            open_at(blanks, &measured.holder, line_start).is_some()
         } else {
-            pass(blanks, *req)
+            pass(blanks, measured.req)
         };
         if !passed {
             *blanks = before;
             return k;
         }
     }
-    reqs.len()
+    chain.len()
 }
 
 /// Pass every `req` in order, stopping before the first the line does not
@@ -333,5 +345,74 @@ impl<'a> Blanks<'a> {
                 self.skip_text(&self.line[self.i..end]);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn item(line: &str) -> Option<(usize, usize)> {
+        let mut blanks = Blanks::new(line);
+        open(&mut blanks, HolderKind::Item).map(|(req, marker)| match req {
+            Continue::Item { width } => (width, marker),
+            Continue::Quote => unreachable!("an item"),
+        })
+    }
+
+    /// The arithmetic the measured rows exercise end to end, pinned here
+    /// directly so a change to the cursor is checked without the corpus.
+    #[test]
+    fn a_tab_is_the_columns_to_the_next_stop_and_may_be_taken_in_parts() {
+        let mut blanks = Blanks::new("\tx");
+        assert!(blanks.take());
+        assert_eq!((blanks.column, blanks.i, blanks.taken), (1, 0, 1));
+        assert!(blanks.take() && blanks.take() && blanks.take());
+        assert_eq!((blanks.column, blanks.i, blanks.taken), (4, 1, 0));
+        assert!(!blanks.take());
+        // From column two a tab spans two columns.
+        let mut blanks = Blanks::new("  \tx");
+        assert!(blanks.take() && blanks.take() && blanks.take() && blanks.take());
+        assert_eq!((blanks.column, blanks.i), (4, 3));
+        assert_eq!(blanks.rest(), "x");
+    }
+
+    #[test]
+    fn an_items_width_is_its_prefix_up_to_four_blanks_after_the_marker() {
+        assert_eq!(item("- a"), Some((2, 0)));
+        assert_eq!(item("  - a"), Some((4, 2)));
+        assert_eq!(item("1) a"), Some((3, 0)));
+        assert_eq!(item("10. a"), Some((4, 0)));
+        assert_eq!(item("-    a"), Some((5, 0)));
+        // Five or more blanks, or nothing, after the marker: one column.
+        assert_eq!(item("-     a"), Some((2, 0)));
+        assert_eq!(item("-"), Some((2, 0)));
+        assert_eq!(item("-\ta"), Some((4, 0)));
+        // Four blanks before a marker, no blank after it, ten digits: no item.
+        assert_eq!(item("    - a"), None);
+        assert_eq!(item("-x"), None);
+        assert_eq!(item("1234567890. a"), None);
+    }
+
+    #[test]
+    fn a_blockquote_marker_takes_three_columns_at_most_before_it() {
+        assert_eq!(open_quote(&mut Blanks::new("> x")), Some(0));
+        assert_eq!(open_quote(&mut Blanks::new("   > x")), Some(3));
+        assert_eq!(open_quote(&mut Blanks::new("    > x")), None);
+        assert_eq!(open_quote(&mut Blanks::new("\t> x")), None);
+    }
+
+    #[test]
+    fn a_footnote_label_ends_at_its_first_unescaped_bracket_and_spans_utf16_columns() {
+        let mut blanks = Blanks::new("[^a\\]b]: x");
+        assert_eq!(
+            open(&mut blanks, HolderKind::Footnote),
+            Some((Continue::Item { width: 4 }, 0))
+        );
+        assert_eq!(blanks.rest(), "x");
+        let mut blanks = Blanks::new("[^😀]:\tx");
+        assert!(open(&mut blanks, HolderKind::Footnote).is_some());
+        // Six UTF-16 columns of label, then a tab to the eighth.
+        assert_eq!((blanks.column, blanks.rest()), (8, "x"));
     }
 }

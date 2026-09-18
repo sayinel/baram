@@ -1,8 +1,8 @@
 // The parser adapter of `md::literal` (issue 665): what pulldown-cmark's
 // events become — the prose blocks, the atoms the editor reads as one piece
 // (tags, autolinks, code spans, link and image resources), and the line
-// starts the display rule needs. Nothing here knows the editor's inline
-// rules; that is `rules`.
+// starts the display rule needs. Nothing here knows the editor's rules;
+// those are `inline` and `display`.
 
 use super::*;
 
@@ -24,7 +24,7 @@ pub(super) enum Frame {
     Container {
         end: usize,
         start: usize,
-        kind: HolderKind,
+        kind: ContainerKind,
     },
     Paragraph,
     /// A table cell: prose, and a place a display formula may open only
@@ -48,6 +48,23 @@ pub(super) enum HolderKind {
     Quote,
     Item,
     Footnote,
+}
+
+/// The containers `Frame::Container` holds — every one but an item, which
+/// has its own frame.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ContainerKind {
+    Quote,
+    Footnote,
+}
+
+impl From<ContainerKind> for HolderKind {
+    fn from(kind: ContainerKind) -> Self {
+        match kind {
+            ContainerKind::Quote => HolderKind::Quote,
+            ContainerKind::Footnote => HolderKind::Footnote,
+        }
+    }
 }
 
 /// Where a line's content starts, with the end of the innermost container
@@ -113,7 +130,7 @@ pub(super) enum Open {
 
 /// The atom a link or an image leaves once it closes: the whole autolink,
 /// or the resource after the text.
-pub(super) fn resource_atom(range: Range<usize>, text_end: usize, open: Open) -> Option<Atom> {
+fn resource_atom(range: Range<usize>, text_end: usize, open: Open) -> Option<Atom> {
     let (start, end) = (range.start, range.end);
     match open {
         Open::Autolink => Some(Atom {
@@ -139,7 +156,7 @@ pub(super) struct Walk {
     /// The block ranges that hold prose.
     pub(super) prose: Vec<Range<usize>>,
     /// Math spans the parser would report — none while `OPTIONS` leaves
-    /// math off; the field stays with the exhaustive match.
+    /// math off, which `analyse` asserts on this field.
     pub(super) inline: Vec<Range<usize>>,
     /// The atoms of the body (see `Atom`), in event order.
     pub(super) atoms: Vec<Atom>,
@@ -190,12 +207,12 @@ pub(super) fn collect(body: &str, base: usize) -> Walk {
                     Tag::BlockQuote(_) => Some(Frame::Container {
                         end: range.end,
                         start: range.start,
-                        kind: HolderKind::Quote,
+                        kind: ContainerKind::Quote,
                     }),
                     Tag::FootnoteDefinition(_) => Some(Frame::Container {
                         end: range.end,
                         start: range.start,
-                        kind: HolderKind::Footnote,
+                        kind: ContainerKind::Footnote,
                     }),
                     // A setext heading's text lines are lines a display
                     // formula may open on (`$$` over `===` is a formula to
@@ -394,7 +411,7 @@ pub(super) fn collect(body: &str, base: usize) -> Walk {
 /// a list item's own text or a table cell that begins its line, marks where
 /// that line's content starts. `source` is the body the parser read and its
 /// offset in the note, for looking at the bytes before a cell.
-pub(super) fn note_line_start(
+fn note_line_start(
     stack: &[Frame],
     at_line_start: &mut bool,
     start: usize,
@@ -428,7 +445,10 @@ pub(super) fn note_line_start(
                 kind: HolderKind::Item,
                 start,
             }),
-            Frame::Container { start, kind, .. } => Some(Holder { kind, start }),
+            Frame::Container { start, kind, .. } => Some(Holder {
+                kind: kind.into(),
+                start,
+            }),
             Frame::Paragraph | Frame::Cell | Frame::Other => None,
         })
     };
@@ -448,7 +468,7 @@ pub(super) fn note_line_start(
 
 /// Does the text at `at` begin its line, allowing only blanks and
 /// blockquote markers before it? A cell after a `|` does not.
-pub(super) fn begins_line(bytes: &[u8], at: usize) -> bool {
+fn begins_line(bytes: &[u8], at: usize) -> bool {
     let before = bytes[..at]
         .iter()
         .rev()
@@ -458,7 +478,7 @@ pub(super) fn begins_line(bytes: &[u8], at: usize) -> bool {
 
 /// A child block that starts directly under a list item ends the item's
 /// own text before it: that text is prose, the child accounts for itself.
-pub(super) fn leave_item_text_before(
+fn leave_item_text_before(
     stack: &mut [Frame],
     child: &Range<usize>,
     prose: &mut Vec<Range<usize>>,

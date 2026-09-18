@@ -40,11 +40,18 @@
 // line breaks included (`$5 and $6` is one), left to right with code spans
 // and escapes; a line that opens with `$$` (and meta without a `$`) is a
 // display formula until a line that is `$$` and blanks, or — when none comes
-// — until its container ends. pulldown's own math is OFF: it pairs runs
+// — until its container ends; what follows a formula begins a block of its
+// own, an indented code block when four columns in. pulldown's own math is
+// OFF: it pairs runs
 // differently (`$a$$ b` is a formula to it and text to the editor), and a
 // formula it reads hides the tags and code spans inside from the rules
 // here. It reports plain CommonMark inline structure; the two rules above
 // are the only ones that read a `$`.
+//
+// Words: a *container* is a blockquote, a list item or a footnote
+// definition; the display rule calls the containers around a `$$` its
+// *holders* (`Holder`), read off the parser's frames, where `Frame::Container`
+// is the narrower frame of the two that are not items.
 //
 // Inside prose the parser's inline events are not taken as literal either.
 // It reports where tags, autolinks, links, images and code spans are; one
@@ -342,7 +349,6 @@ fn fill(content: &str, ranges: &[Range<usize>]) -> String {
     String::from_utf8(bytes).unwrap_or_else(|_| content.to_owned())
 }
 
-/// Sort and merge touching or overlapping ranges, dropping empty ones.
 /// Does `range` share at least one byte with one of `ranges` — sorted, none
 /// overlapping the next, as `merge` leaves them and the display rule emits
 /// them?
@@ -355,6 +361,7 @@ fn overlaps(ranges: &[Range<usize>], range: Range<usize>) -> bool {
     ranges.get(i).is_some_and(|r| r.start < range.end)
 }
 
+/// Sort and merge touching or overlapping ranges, dropping empty ones.
 fn merge(mut ranges: Vec<Range<usize>>) -> Vec<Range<usize>> {
     ranges.retain(|r| r.start < r.end);
     ranges.sort_by_key(|r| (r.start, r.end));

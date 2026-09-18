@@ -26,6 +26,10 @@ use super::*;
 /// (`LineStart::chain`), not from the opener line's own prefix: an item's
 /// marker stands on the item's first line only, so a `$$` on a later line
 /// has blanks before it and nothing to read a container from.
+///
+/// `line_starts` and `chains` may come from a filled copy of `content`
+/// (`fill` keeps every offset and character boundary), so they index this
+/// string; the `$$` and the marker lines are read here, in the original.
 pub(super) fn display_math(
     content: &str,
     line_starts: &[LineStart],
@@ -71,20 +75,24 @@ pub(super) fn display_math(
         // container pulldown opened since is the editor's too, only not
         // inside those. A blockquote stays either way: what it asks is the
         // `>` itself, which the opener's line carries or does not.
+        let made_of_a_formula = |holder: &Holder| {
+            // A point test is what is wanted here: is this one marker byte
+            // inside a formula already read.
+            let marker = marker_byte(bytes, holder.start);
+            overlaps(out, marker..marker + 1)
+        };
         let chain: Vec<Holder> = chains[opener.chain]
             .iter()
             .filter(|holder| {
                 holder.kind == HolderKind::Quote
-                    || !(closed.contains(holder) || {
-                        let marker = marker_byte(bytes, holder.start);
-                        overlaps(out, marker..marker + 1)
-                    })
+                    || (!closed.contains(holder) && !made_of_a_formula(holder))
             })
             .copied()
             .collect();
-        let Some((reqs, modelled)) = requirements(content, start, &chain) else {
+        let Some((measured, modelled)) = requirements(content, start, &chain) else {
             continue;
         };
+        let reqs: Vec<Continue> = measured.iter().map(|m| m.req).collect();
         // The end of the last line that is still the formula's: the closing
         // line when one comes, else the last line that carries every
         // container and is not blank. A container this rule cannot read
@@ -94,14 +102,14 @@ pub(super) fn display_math(
         } else {
             opener.container_end
         };
-        let end = formula_end(content, (line_end, bound), open, &reqs);
+        let end = formula_end(content, line_end, bound, open, &reqs);
         out.push(start..end);
         skip_until = end;
         // An unread chain gives no ground to judge the lines after.
         if modelled {
             // The containers the opener's own line had already lost.
-            over(&chain[reqs.len()..], &mut closed);
-            let code_end = after_formula(content, end, (&chain, &reqs), &mut closed);
+            retire(&chain[measured.len()..], &mut closed);
+            let code_end = after_formula(content, end, &measured, &mut closed);
             if code_end > end {
                 out.push(end..code_end);
                 skip_until = code_end;
@@ -116,7 +124,8 @@ pub(super) fn display_math(
 /// container in `reqs` and is not blank.
 fn formula_end(
     content: &str,
-    (line_end, bound): (usize, usize),
+    line_end: usize,
+    bound: usize,
     open: usize,
     reqs: &[Continue],
 ) -> usize {
@@ -153,21 +162,23 @@ fn formula_end(
 /// indented code block to the editor. That block's end is returned (`end`
 /// when there is none: blank lines and further such lines are the block's).
 /// And no paragraph being open, a line after the formula is lazy to nobody:
-/// the containers of `chain` it does not carry are `over`.
+/// the containers of `chain` it does not carry are retired.
 fn after_formula(
     content: &str,
     end: usize,
-    (chain, reqs): (&[Holder], &[Continue]),
+    chain: &[Measured],
     closed: &mut HashSet<Holder>,
 ) -> usize {
+    let reqs: Vec<Continue> = chain.iter().map(|m| m.req).collect();
+    let holders: Vec<Holder> = chain.iter().map(|m| m.holder).collect();
     let mut code_end = end;
-    let mut live = reqs.len();
+    let mut live = chain.len();
     for line in source_lines(&content[end..]) {
         if line.text.trim_matches([' ', '\t']).is_empty() {
             continue;
         }
         let (carried, indent, _) = carry(line.text, &reqs[..live]);
-        over(&chain[carried..live], closed);
+        retire(&holders[carried..live], closed);
         live = carried;
         if indent < 4 {
             break;
@@ -179,7 +190,7 @@ fn after_formula(
 
 /// List `holders` as over for the editor — a blockquote never: a line that
 /// carries its `>` is in a blockquote either way, the old one or a new one.
-fn over(holders: &[Holder], closed: &mut HashSet<Holder>) {
+fn retire(holders: &[Holder], closed: &mut HashSet<Holder>) {
     closed.extend(
         holders
             .iter()
@@ -221,26 +232,23 @@ fn marker_byte(bytes: &[u8], at: usize) -> usize {
 ///
 /// A marker line this rule cannot read leaves the rest unread (`false`):
 /// the caller keeps the parser's container end as the bound.
-pub(super) fn requirements(
-    content: &str,
-    opener: usize,
-    chain: &[Holder],
-) -> Option<(Vec<Continue>, bool)> {
-    let mut reqs: Vec<Continue> = Vec::with_capacity(chain.len());
-    // The line each container's marker stands on, as resolved below.
-    let mut marker_lines: Vec<usize> = Vec::with_capacity(chain.len());
+fn requirements(content: &str, opener: usize, chain: &[Holder]) -> Option<(Vec<Measured>, bool)> {
+    let mut measured: Vec<Measured> = Vec::with_capacity(chain.len());
     let mut read = true;
-    'holders: for (k, holder) in chain.iter().enumerate() {
+    'holders: for holder in chain {
         // pulldown's start of an item is its marker minus the outer indent
         // in COLUMNS, taken off in bytes: behind a tab it falls short of the
         // marker's line, onto the line break before it. The marker is on
         // that line or the next.
+        const LINES_TO_TRY: usize = 2;
         let (mut line_start, mut text, mut terminator) = line_at(content, holder.start);
-        for _ in 0..2 {
-            let outer = (&chain[..k], &reqs[..], &marker_lines[..]);
-            if let Some(req) = measure(holder, (line_start, text), outer) {
-                reqs.push(req);
-                marker_lines.push(line_start);
+        for _ in 0..LINES_TO_TRY {
+            if let Some(req) = measure(holder, (line_start, text), &measured) {
+                measured.push(Measured {
+                    holder: *holder,
+                    req,
+                    marker_line: line_start,
+                });
                 continue 'holders;
             }
             let next = line_start + text.len() + terminator.len();
@@ -255,15 +263,12 @@ pub(super) fn requirements(
         break;
     }
     let (line_start, text, _) = line_at(content, opener);
-    let (met, indent) = settle(
-        (line_start, text),
-        (&chain[..reqs.len()], &reqs, &marker_lines),
-    );
-    reqs.truncate(met);
+    let (met, indent) = settle((line_start, text), &measured);
+    measured.truncate(met);
     // Four columns of blanks past the last container the line carries: what
     // follows them opens nothing, a marker no more than a formula.
     if indent >= 4 {
         return None;
     }
-    Some((reqs, read))
+    Some((measured, read))
 }

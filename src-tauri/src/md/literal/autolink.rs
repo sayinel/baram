@@ -120,7 +120,7 @@ pub(super) fn autolink_literals(text: &str, base: usize) -> Vec<Range<usize>> {
 /// GFM's trailing rules for an autolink literal `bytes[start..end]`: drop
 /// trailing `?!.,:*_~`; drop a `)` while the link has more `)` than `(`;
 /// drop a `&name;` entity at the end. Returns the new end.
-pub(super) fn trim_autolink_end(bytes: &[u8], start: usize, mut end: usize) -> usize {
+fn trim_autolink_end(bytes: &[u8], start: usize, mut end: usize) -> usize {
     loop {
         let before = end;
         while end > start
