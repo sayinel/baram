@@ -77,7 +77,7 @@ pub use lines::source_lines;
 use parser::*;
 use rules::*;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 
 use pulldown_cmark::{Event, LinkType, Options, Parser, Tag, TagEnd};
@@ -203,7 +203,7 @@ impl Literal {
             // settled from the line starts before the sweep looks at any
             // run, and its bytes are not the sweep's to pair.
             let mut display = Vec::new();
-            display_math(content, &walk.line_starts, &mut display);
+            display_math(content, &walk.line_starts, &walk.chains, &mut display);
             let display = Literal {
                 ranges: merge(display),
             };
@@ -385,7 +385,7 @@ mod tests {
     /// issue 664 — an unclosed display formula ends where its containers end
     /// to the editor: remark's math flow has no lazy continuation, so the
     /// formula runs only through the lines that still carry every container
-    /// prefix the opener line carried. pulldown reads the `>`-less line after
+    /// the opener's line was in. pulldown reads the `>`-less line after
     /// `> $$` as a lazy paragraph continuation inside the blockquote; the
     /// editor reads it as a new paragraph — prose. Every shape below was
     /// measured against the editor's remark stack.
@@ -429,6 +429,326 @@ mod tests {
         assert_eq!(
             refs("> [^1]: $$\n>     ((n#^o))\n> ((n#^o))\n((n#^o))\n"),
             [false, true, true]
+        );
+    }
+
+    /// PR 674 review — the containers of a display formula come from the
+    /// parser's frames and are measured on their own marker lines, in widths
+    /// relative to the containers before them. Every row measured against
+    /// the editor (remark through `renameBlockIdInMarkdown`), 2026-09-17:
+    /// reading the opener line's own prefix lost the item when the `$$`
+    /// stood below the marker line (the formula ran to the end of the note),
+    /// and absolute columns disagreed with micromark as soon as two lines
+    /// carried different blanks before a `>`.
+    #[test]
+    fn a_display_formulas_containers_come_from_the_frames_in_relative_widths() {
+        // the `$$` stands on the item's second line: the item ends the formula
+        assert_eq!(refs("- a\n  $$\n  ((n#^o))\n\n((n#^o))\n"), [false, true]);
+        // the same after a blank line inside the item
+        assert_eq!(refs("- a\n\n  $$\n  ((n#^o))\n\n((n#^o))\n"), [false, true]);
+        // the closer's three columns count from the item's content, not from column 0
+        assert_eq!(refs("- a\n  $$\n    $$\n  ((n#^o))\n"), [true]);
+        // an item's width is relative to where the blockquote's prefix ended on each line
+        assert_eq!(refs("   > - $$\n>   ((n#^o))\n"), [false]);
+        // a line that lost the item's indent ends the formula (pulldown reads it as lazy)
+        assert_eq!(refs("- a\n  $$\n  ((n#^o))\n((n#^o))\n"), [false, true]);
+        // a `$$` that lost its `>` is lazy to pulldown; remark's math flow ends the quote
+        assert_eq!(refs("> a\n$$\n((n#^o))\n\n((n#^o))\n"), [false, false]);
+        // and one that lost the item's indent ends the item
+        assert_eq!(refs("- a\n$$\n((n#^o))\n\n((n#^o))\n"), [false, false]);
+        // a footnote definition asks for four columns whatever its own indent
+        assert_eq!(
+            refs("  [^1]: $$\n    ((n#^o))\n\n((n#^o))\n"),
+            [false, true]
+        );
+        // and more than four is still inside
+        assert_eq!(
+            refs("  [^1]: $$\n      ((n#^o))\n\n((n#^o))\n"),
+            [false, true]
+        );
+        // a nested item is measured past its parent's content
+        assert_eq!(
+            refs("- a\n  - b\n    $$\n    ((n#^o))\n  ((n#^o))\n"),
+            [false, true]
+        );
+        // an item inside a blockquote, opener below the marker line
+        assert_eq!(
+            refs("> - a\n>   $$\n>   ((n#^o))\n> ((n#^o))\n"),
+            [false, true]
+        );
+        // an ordered marker's width
+        assert_eq!(
+            refs("10. a\n    $$\n    ((n#^o))\n   ((n#^o))\n"),
+            [false, true]
+        );
+        // the blanks before a marker are part of the item's width
+        assert_eq!(
+            refs("  - a\n    $$\n    ((n#^o))\n   ((n#^o))\n"),
+            [false, true]
+        );
+        // a footnote definition, opener below the marker line
+        assert_eq!(
+            refs("[^1]: a\n    $$\n    ((n#^o))\n\n((n#^o))\n"),
+            [false, true]
+        );
+        // a tab after the marker is the columns to the next tab stop
+        assert_eq!(refs("-\ta\n\t$$\n\t((n#^o))\n((n#^o))\n"), [false, true]);
+        // the continuation line may carry more blanks before `>` than the opener's
+        assert_eq!(refs("> - $$\n   >   ((n#^o))\n"), [false]);
+        // a closer three columns past the nested content closes
+        assert_eq!(refs("> - a\n>   $$\n>      $$\n> ((n#^o))\n"), [true]);
+        // four columns past it is the formula's own line
+        assert_eq!(refs("> - a\n>   $$\n>       $$\n>   ((n#^o))\n"), [false]);
+        // a lazy paragraph line before the opener changes nothing
+        assert_eq!(
+            refs("- a\nb\n  $$\n  ((n#^o))\n\n((n#^o))\n"),
+            [false, true]
+        );
+        // a marker with nothing after it takes one column
+        assert_eq!(refs("-\n  $$\n  ((n#^o))\n\n((n#^o))\n"), [false, true]);
+        // five or more blanks after a marker are one column and indented code
+        assert_eq!(
+            refs("-      a\n  $$\n  ((n#^o))\n\n((n#^o))\n"),
+            [false, true]
+        );
+        // a blockquote whose opener is below its first line
+        assert_eq!(refs("> a\n> $$\n> ((n#^o))\n((n#^o))\n"), [false, true]);
+        // four columns past the item's content is indented code, not a formula
+        assert_eq!(refs("- a\n\n      $$\n  ((n#^o))\n"), [true]);
+        // an opener that kept its `>` but lost the item's indent: the item is over, the quote is not
+        assert_eq!(refs("> - a\n> $$\n> ((n#^o))\n((n#^o))\n"), [false, true]);
+        // a blockquote inside an item, opener below both first lines
+        assert_eq!(
+            refs("- > a\n  > $$\n  > ((n#^o))\n  ((n#^o))\n"),
+            [false, true]
+        );
+        // an ordered item opened on the blockquote's line
+        assert_eq!(
+            refs("> 1. $$\n>    ((n#^o))\n>   ((n#^o))\n"),
+            [false, true]
+        );
+        // a footnote definition inside a blockquote asks for four columns past the `>`
+        assert_eq!(
+            refs("> [^1]: $$\n>     ((n#^o))\n> ((n#^o))\n"),
+            [false, true]
+        );
+        // an ordered item's three columns
+        assert_eq!(
+            refs("1. a\n   $$\n   ((n#^o))\n  ((n#^o))\n"),
+            [false, true]
+        );
+        // an opener indented three columns past the item's content is still an opener
+        assert_eq!(
+            refs("- a\n     $$\n  ((n#^o))\n\n((n#^o))\n"),
+            [false, true]
+        );
+        // CRLF line ends
+        assert_eq!(
+            refs("- a\r\n  $$\r\n  ((n#^o))\r\n\r\n((n#^o))\r\n"),
+            [false, true]
+        );
+        // tabs after the marker and after the `>`
+        assert_eq!(
+            refs("> -\ta\n>\t$$\n>\t((n#^o))\n> ((n#^o))\n"),
+            [false, true]
+        );
+        // the opener left the nested item: only the outer item holds the formula
+        assert_eq!(
+            refs("- a\n  - b\n  $$\n  ((n#^o))\n((n#^o))\n"),
+            [false, true]
+        );
+        // a second paragraph of the item
+        assert_eq!(
+            refs("- a\n\n  b\n  $$\n  ((n#^o))\n\n((n#^o))\n"),
+            [false, true]
+        );
+        // a closed formula below the marker line, and prose after it in the same item
+        assert_eq!(
+            refs("* a\n  $$\n  ((n#^o))\n  $$\n  ((n#^o))\n"),
+            [false, true]
+        );
+        // a blank line ends the blockquote inside the item, not the item
+        assert_eq!(
+            refs("- a\n  > $$\n  > ((n#^o))\n\n  ((n#^o))\n"),
+            [false, true]
+        );
+        // front matter before the list: the frames' offsets are the note's
+        assert_eq!(
+            refs("---\ntitle: x\n---\n- a\n  $$\n  ((n#^o))\n\n((n#^o))\n"),
+            [false, true]
+        );
+        // a bullet item nested in an ordered one
+        assert_eq!(
+            refs("1) a\n   - b\n     $$\n     ((n#^o))\n   ((n#^o))\n"),
+            [false, true]
+        );
+        // pulldown starts a nested item behind a tab on the line break BEFORE its marker's line
+        assert_eq!(
+            refs("- a\n\t- b\n\t  $$\n\t  ((n#^o))\n  ((n#^o))\n"),
+            [false, true]
+        );
+        // a footnote definition under another one: pulldown and the editor agree there is one container
+        assert_eq!(
+            refs("[^a]: a\n    [^b]: $$\n        ((n#^o))\n    ((n#^o))\n((n#^o))\n"),
+            [false, false, true]
+        );
+        // an empty item ends with the blank line after it, for pulldown as for the editor
+        assert_eq!(refs("-\n\n  $$\n  ((n#^o))\n((n#^o))\n"), [false, false]);
+        // a lazy `$$` four columns in, once its item is gone, is the paragraph's text: no formula
+        assert_eq!(
+            refs("123456789. a\n    $$\n    ((n#^o))\n((n#^o))\n"),
+            [true, true]
+        );
+        // a tab before a nested `>` is the columns it spans
+        assert_eq!(refs("> > $$\n> \t> ((n#^o))\n> ((n#^o))\n"), [false, true]);
+        // a footnote definition inside an item
+        assert_eq!(
+            refs("- [^1]: $$\n      ((n#^o))\n  ((n#^o))\n"),
+            [false, true]
+        );
+        // an item inside a footnote definition
+        assert_eq!(
+            refs("[^1]: - $$\n      ((n#^o))\n    ((n#^o))\n"),
+            [false, true]
+        );
+        // bare CR line ends
+        assert_eq!(refs("- a\r  $$\r  ((n#^o))\r((n#^o))\r"), [false, true]);
+        // CRLF, after a front matter
+        assert_eq!(
+            refs("---\r\nx: y\r\n---\r\n- a\r\n  $$\r\n  ((n#^o))\r\n((n#^o))\r\n"),
+            [false, true]
+        );
+        // the second read (a formula destroys what the parser formed) keeps the frames
+        assert_eq!(
+            refs("- $ x ` y $ <i title=\"((n#^o))\"> `\n  $$\n  ((n#^o))\n((n#^o))\n"),
+            [false, false, true]
+        );
+        // four spaces before the `$$` are two past the item's content: an opener
+        assert_eq!(refs("- a\n    $$\n  ((n#^o))\n"), [false]);
+        // a lazy `$$` four columns in, once its blockquote is gone: text
+        assert_eq!(refs("> a\n    $$\n((n#^o))\n"), [true]);
+        // an empty first line, then the item's text
+        assert_eq!(
+            refs("-\n  a\n\n  $$\n  ((n#^o))\n((n#^o))\n"),
+            [false, true]
+        );
+        // a footnote definition in an ordered item, opener below both markers
+        assert_eq!(
+            refs("1. a\n\n   [^x]: b\n       $$\n       ((n#^o))\n   ((n#^o))\n"),
+            [false, true]
+        );
+        // four columns past the item's content, inside a paragraph: text, not an opener
+        assert_eq!(refs("- a\n      $$\n  ((n#^o))\n"), [true]);
+        // four columns at the top level, inside a paragraph: text
+        assert_eq!(refs("a\n    $$\n((n#^o))\n"), [true]);
+        // three columns past the item's content: an opener
+        assert_eq!(
+            refs("- a\n     $$\n  ((n#^o))\n\n((n#^o))\n"),
+            [false, true]
+        );
+        // four columns past the `>`: text
+        assert_eq!(refs("> a\n>     $$\n> ((n#^o))\n"), [true]);
+        // two nested items behind tabs
+        assert_eq!(
+            refs("- a\n\t- b\n\t\t- c\n\t\t  $$\n\t\t  ((n#^o))\n\t  ((n#^o))\n"),
+            [false, true]
+        );
+        // a tab right after the outer `>`: one column is its optional blank, the rest lead to the inner `>`
+        assert_eq!(refs("> > $$\n>\t> ((n#^o))\n> ((n#^o))\n"), [false, true]);
+        // the same on the opener's own line
+        assert_eq!(refs("> \t> $$\n> > ((n#^o))\n> ((n#^o))\n"), [false, true]);
+        // one column short of the item inside the blockquote: the item is over, the quote holds
+        assert_eq!(refs("> - a\n>  $$\n> ((n#^o))\n((n#^o))\n"), [false, true]);
+        // a tab meets an ordered item's three columns
+        assert_eq!(refs("1. a\n\t$$\n\t((n#^o))\n  ((n#^o))\n"), [false, true]);
+        // two blank lines inside an item
+        assert_eq!(refs("- a\n\n\n  $$\n  ((n#^o))\n((n#^o))\n"), [false, true]);
+        // a tab after `>` on the opener's line and the next
+        assert_eq!(refs("> \t$$\n> \t((n#^o))\n((n#^o))\n"), [false, true]);
+        // three blanks after the marker are the item's
+        assert_eq!(
+            refs("-   a\n    $$\n    ((n#^o))\n   ((n#^o))\n"),
+            [false, true]
+        );
+        // a second read reports the line start on the blanks a filled formula left; the `$$` is past them, and the item still holds it
+        assert_eq!(
+            refs("- a $$ x `\n  $$\n  ((n#^o))\n`\n((n#^o))\n"),
+            [false, true]
+        );
+        // a tab after an astral label stops where UTF-16 columns put it
+        assert_eq!(refs("[^😀]: -\t$$\n      ((n#^o))\n"), [true]);
+        // an escaped `]` does not end a footnote label; four columns past the item inside it is text
+        assert_eq!(
+            refs("[^a\\]:b]: - a\n          $$\n      ((n#^o))\n"),
+            [true]
+        );
+        // after a formula its blockquote ended, four columns are an indented code block — prose to pulldown, which reads the line as lazy
+        assert_eq!(refs("> $$\n    ((n#^o))\n"), [false]);
+        // and after a closed formula
+        assert_eq!(refs("$$\n$$\n    ((n#^o))\n"), [false]);
+        // the code block ends with the first line that is not indented
+        assert_eq!(refs("a\n> $$\n    ((n#^o))\n\n((n#^o))\n"), [false, true]);
+        // four columns past the item's content, after a formula closed inside the item
+        assert_eq!(
+            refs("- a\n  $$\n  $$\n      ((n#^o))\n  ((n#^o))\n"),
+            [false, true]
+        );
+        // a blank line between the formula and the code block
+        assert_eq!(refs("> $$\n\n    ((n#^o))\n   ((n#^o))\n"), [false, true]);
+        // two footnote markers on one line: pulldown closes the first definition, the marker is read where it says
+        assert_eq!(refs("[^1]: [^1]: $$\n((n#^o))\n"), [true]);
+        // an item the editor closed after a formula is over for a later `$$`, indented as the item asked or not
+        assert_eq!(refs("- $$\n((n#^o))\n  $$\n((n#^o))\n"), [true, false]);
+        // a blockquote is not: a line that carries `>` is in one either way
+        assert_eq!(refs("> $$\na\n> $$\n> ((n#^o))\n((n#^o))\n"), [false, true]);
+        // the nested item is over as well
+        assert_eq!(
+            refs("- - $$\n((n#^o))\n  $$\n  ((n#^o))\n((n#^o))\n"),
+            [true, false, false]
+        );
+        // an escaped `]` inside a label, and four columns after it
+        assert_eq!(refs("[^a\\]]: $$\n    ((n#^o))\n((n#^o))\n"), [false, true]);
+        // a tab is four columns
+        assert_eq!(refs("> $$\n\t((n#^o))\n((n#^o))\n"), [false, true]);
+        // an item pulldown opened after one the editor closed is the editor's too, only not inside it
+        assert_eq!(
+            refs("- $$\nx\n  - $$\n    ((n#^o))\n((n#^o))\n"),
+            [false, true]
+        );
+        // and a blockquote inside an item that is over still asks for its `>`
+        assert_eq!(
+            refs("* > > ((n#^o))\n    $$\n$$\n ((n#^o))\n"),
+            [true, false]
+        );
+        // a nested item pulldown starts on the closer's line break, behind a tab, is not made of the formula
+        assert_eq!(
+            refs("- $$\n  $$\n\t- $$\n\t  ((n#^o))\n  ((n#^o))\n"),
+            [false, true]
+        );
+        // a child pulldown opens four columns in, once its parent is over, is text to the editor: no marker, no formula
+        assert_eq!(
+            refs("-   $$\nx\n    - $$\n        ((n#^o))\n((n#^o))\n"),
+            [true, true]
+        );
+        // closed formulas in a row: each is read once, the item's start behind them all
+        assert_eq!(
+            refs("- $$\n  $$\n  $$\n  $$\n  $$\n  $$\n  ((n#^o))\n"),
+            [true]
+        );
+        // three columns in, the child is a real item
+        assert_eq!(
+            refs("- $$\nx\n   - $$\n     ((n#^o))\n((n#^o))\n"),
+            [false, true]
+        );
+        // six columns past an item's text are its paragraph, marker and all
+        assert_eq!(
+            refs("- a\n      - $$\n        ((n#^o))\n((n#^o))\n"),
+            [true, true]
+        );
+        // the same inside a blockquote
+        assert_eq!(
+            refs("> - $$\n> x\n>   - $$\n>     ((n#^o))\n> ((n#^o))\n"),
+            [false, true]
         );
     }
 

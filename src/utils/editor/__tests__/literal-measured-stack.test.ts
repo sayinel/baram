@@ -3,8 +3,8 @@
 // measured case by case (decision record of issue 620). The measurement holds
 // only for the versions it was taken against. Dependabot moves these packages
 // on caret ranges, and nothing else would notice a grammar change: the shared
-// fixtures (`literal-regions.json`) cover 33 shapes, the Rust unit tests pin
-// values that are never re-derived. So this test turns red when the stack
+// fixtures (`literal-regions.json`) cover a few dozen shapes, the Rust unit tests
+// pin values that are never re-derived. So this test turns red when the stack
 // moves, and the ritual is: re-run the literal corpus against the new stack
 // (the probe in the decision record), fix what diverged, then update the
 // versions here. Dependabot groups these packages (`remark` in

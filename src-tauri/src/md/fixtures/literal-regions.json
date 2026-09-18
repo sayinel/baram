@@ -204,6 +204,96 @@
       "name": "a tab straddling the item's content column leaves its other columns to the closer's indentation",
       "markdown": "- $$\n\t   $$\n  ((note#^b1))\n((note#^b1))\n",
       "expected": "- $$\n\t   $$\n  ((note#^b1))\n((note#^b2-longer))\n"
+    },
+    {
+      "name": "a formula opened below its item's marker line ends with the item",
+      "markdown": "- a\n  $$\n  ((note#^b1))\n\n((note#^b1))\n",
+      "expected": "- a\n  $$\n  ((note#^b1))\n\n((note#^b2-longer))\n"
+    },
+    {
+      "name": "a closer's three columns count from the item's content when the opener is below the marker line",
+      "markdown": "- a\n  $$\n    $$\n  ((note#^b1))\n",
+      "expected": "- a\n  $$\n    $$\n  ((note#^b2-longer))\n"
+    },
+    {
+      "name": "an item's width is relative to the blockquote's prefix, whose blanks may differ from line to line",
+      "markdown": "   > - $$\n>   ((note#^b1))\n",
+      "expected": "   > - $$\n>   ((note#^b1))\n"
+    },
+    {
+      "name": "a line that lost the item's indent ends a formula opened below the marker line",
+      "markdown": "- a\n  $$\n  ((note#^b1))\n((note#^b1))\n",
+      "expected": "- a\n  $$\n  ((note#^b1))\n((note#^b2-longer))\n"
+    },
+    {
+      "name": "an indented footnote definition asks for four columns, not four past its own indent",
+      "markdown": "  [^1]: $$\n    ((note#^b1))\n\n((note#^b1))\n",
+      "expected": "  [^1]: $$\n    ((note#^b1))\n\n((note#^b2-longer))\n"
+    },
+    {
+      "name": "a nested item's formula ends where the nested item does",
+      "markdown": "- a\n  - b\n    $$\n    ((note#^b1))\n  ((note#^b1))\n",
+      "expected": "- a\n  - b\n    $$\n    ((note#^b1))\n  ((note#^b2-longer))\n"
+    },
+    {
+      "name": "a nested item behind a tab keeps its formula, though the parser starts it on the line before",
+      "markdown": "- a\n\t- b\n\t  $$\n\t  ((note#^b1))\n  ((note#^b1))\n",
+      "expected": "- a\n\t- b\n\t  $$\n\t  ((note#^b1))\n  ((note#^b2-longer))\n"
+    },
+    {
+      "name": "a lazy formula opener four columns in is paragraph text once its item is gone",
+      "markdown": "123456789. a\n    $$\n    ((note#^b1))\n((note#^b1))\n",
+      "expected": "123456789. a\n    $$\n    ((note#^b2-longer))\n((note#^b2-longer))\n"
+    },
+    {
+      "name": "a tab before a nested blockquote marker counts by its columns",
+      "markdown": "> > $$\n> \t> ((note#^b1))\n> ((note#^b1))\n",
+      "expected": "> > $$\n> \t> ((note#^b1))\n> ((note#^b2-longer))\n"
+    },
+    {
+      "name": "four columns past an item's content is paragraph text, not a formula opener",
+      "markdown": "- a\n      $$\n  ((note#^b1))\n",
+      "expected": "- a\n      $$\n  ((note#^b2-longer))\n"
+    },
+    {
+      "name": "a formula found on the second read keeps its item",
+      "markdown": "- a $$ x `\n  $$\n  ((note#^b1))\n`\n((note#^b1))\n",
+      "expected": "- a $$ x `\n  $$\n  ((note#^b1))\n`\n((note#^b2-longer))\n"
+    },
+    {
+      "name": "a tab after an astral footnote label",
+      "markdown": "[^😀]: -\t$$\n      ((note#^b1))\n",
+      "expected": "[^😀]: -\t$$\n      ((note#^b2-longer))\n"
+    },
+    {
+      "name": "an escaped bracket in a footnote label",
+      "markdown": "[^a\\]:b]: - a\n          $$\n      ((note#^b1))\n",
+      "expected": "[^a\\]:b]: - a\n          $$\n      ((note#^b2-longer))\n"
+    },
+    {
+      "name": "four columns after a formula its blockquote ended are an indented code block",
+      "markdown": "> $$\n    ((note#^b1))\n",
+      "expected": "> $$\n    ((note#^b1))\n"
+    },
+    {
+      "name": "an item closed after a formula does not hold a later formula",
+      "markdown": "- $$\n((note#^b1))\n  $$\n((note#^b1))\n",
+      "expected": "- $$\n((note#^b2-longer))\n  $$\n((note#^b1))\n"
+    },
+    {
+      "name": "an item opened after one the editor closed holds its own formula",
+      "markdown": "- $$\nx\n  - $$\n    ((note#^b1))\n((note#^b1))\n",
+      "expected": "- $$\nx\n  - $$\n    ((note#^b1))\n((note#^b2-longer))\n"
+    },
+    {
+      "name": "a nested item behind a tab after a closed formula keeps its own formula",
+      "markdown": "- $$\n  $$\n\t- $$\n\t  ((note#^b1))\n  ((note#^b1))\n",
+      "expected": "- $$\n  $$\n\t- $$\n\t  ((note#^b1))\n  ((note#^b2-longer))\n"
+    },
+    {
+      "name": "a child item four columns in, once its parent is over, is paragraph text",
+      "markdown": "-   $$\nx\n    - $$\n        ((note#^b1))\n((note#^b1))\n",
+      "expected": "-   $$\nx\n    - $$\n        ((note#^b2-longer))\n((note#^b2-longer))\n"
     }
   ]
 }

@@ -8,15 +8,23 @@ use super::*;
 
 /// An open block while walking the events. A list item's own text (a tight
 /// item has no paragraph) is prose except where its child blocks are, so an
-/// item remembers how far its text has been accounted for; a container
-/// remembers where it ends, which is where an unclosed display formula ends.
+/// item remembers how far its text has been accounted for. An item and a
+/// container also remember where they began and what they are — the display
+/// rule measures what each asks of later lines on its own marker line — and
+/// where they end, which bounds a formula only where that rule cannot read
+/// them.
 pub(super) enum Frame {
     Item {
         cursor: usize,
         end: usize,
+        /// Where the parser says the item began: its marker, or the blanks
+        /// before it.
+        start: usize,
     },
     Container {
         end: usize,
+        start: usize,
+        kind: HolderKind,
     },
     Paragraph,
     /// A table cell: prose, and a place a display formula may open only
@@ -24,6 +32,34 @@ pub(super) enum Frame {
     /// a formula to the editor, `| $$ |` is a cell.
     Cell,
     Other,
+}
+
+/// A container around a line, as the display rule needs it: what kind, and
+/// where the parser says it began. The rule measures what the container asks
+/// of a later line on the container's own marker line (`requirements`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(super) struct Holder {
+    pub(super) kind: HolderKind,
+    pub(super) start: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(super) enum HolderKind {
+    Quote,
+    Item,
+    Footnote,
+    /// A container the editor does not have (a definition list): the rule
+    /// keeps the parser's own container end as the bound.
+    Unknown,
+}
+
+/// Where a line's content starts, with the end of the innermost container
+/// around it and the containers around it — an index into `Walk::chains`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct LineStart {
+    pub(super) start: usize,
+    pub(super) container_end: usize,
+    pub(super) chain: usize,
 }
 
 /// A span the parser read as one piece: an inline HTML tag, an autolink, a
@@ -111,9 +147,14 @@ pub(super) struct Walk {
     /// The atoms of the body (see `Atom`), in event order.
     pub(super) atoms: Vec<Atom>,
     /// Where a line's content starts inside a paragraph or a list item's
-    /// own text — the positions a display formula may open at — with the
-    /// end of the innermost container around it.
-    pub(super) line_starts: Vec<(usize, usize)>,
+    /// own text — the positions a display formula may open at (see
+    /// `LineStart`).
+    pub(super) line_starts: Vec<LineStart>,
+    /// The container chains the line starts stand in, outermost first; a
+    /// new one only when it differs from the last. Kept whatever the line
+    /// reads: a second read sees `x` where a formula's `$$` was, and the
+    /// display rule reads the original.
+    pub(super) chains: Vec<Vec<Holder>>,
 }
 
 /// Walk the body once (`base` is the body's offset in the note).
@@ -125,6 +166,7 @@ pub(super) fn collect(body: &str, base: usize) -> Walk {
         inline: Vec::new(),
         atoms: Vec::new(),
         line_starts: Vec::new(),
+        chains: vec![Vec::new()],
     };
     let mut stack: Vec<Frame> = Vec::new();
     // Open links and images: the range, how far the text (alt) has run, and
@@ -146,10 +188,23 @@ pub(super) fn collect(body: &str, base: usize) -> Walk {
                     Tag::Item => Some(Frame::Item {
                         cursor: range.start,
                         end: range.end,
+                        start: range.start,
                     }),
-                    Tag::BlockQuote(_)
-                    | Tag::FootnoteDefinition(_)
-                    | Tag::DefinitionListDefinition => Some(Frame::Container { end: range.end }),
+                    Tag::BlockQuote(_) => Some(Frame::Container {
+                        end: range.end,
+                        start: range.start,
+                        kind: HolderKind::Quote,
+                    }),
+                    Tag::FootnoteDefinition(_) => Some(Frame::Container {
+                        end: range.end,
+                        start: range.start,
+                        kind: HolderKind::Footnote,
+                    }),
+                    Tag::DefinitionListDefinition => Some(Frame::Container {
+                        end: range.end,
+                        start: range.start,
+                        kind: HolderKind::Unknown,
+                    }),
                     // A setext heading's text lines are lines a display
                     // formula may open on (`$$` over `===` is a formula to
                     // the editor); an ATX heading's `#` comes first.
@@ -262,7 +317,7 @@ pub(super) fn collect(body: &str, base: usize) -> Walk {
                     | TagEnd::Image => false,
                 };
                 if is_block {
-                    if let Some(Frame::Item { cursor, end }) = stack.pop() {
+                    if let Some(Frame::Item { cursor, end, .. }) = stack.pop() {
                         if cursor < end {
                             walk.prose.push(cursor..end);
                         }
@@ -368,11 +423,32 @@ pub(super) fn note_line_start(
         .iter()
         .rev()
         .find_map(|frame| match frame {
-            Frame::Item { end, .. } | Frame::Container { end } => Some(*end),
+            Frame::Item { end, .. } | Frame::Container { end, .. } => Some(*end),
             Frame::Paragraph | Frame::Cell | Frame::Other => None,
         })
         .unwrap_or(limit);
-    walk.line_starts.push((start, container_end));
+    let holders = || {
+        stack.iter().filter_map(|frame| match *frame {
+            Frame::Item { start, .. } => Some(Holder {
+                kind: HolderKind::Item,
+                start,
+            }),
+            Frame::Container { start, kind, .. } => Some(Holder { kind, start }),
+            Frame::Paragraph | Frame::Cell | Frame::Other => None,
+        })
+    };
+    if !walk
+        .chains
+        .last()
+        .is_some_and(|last| holders().eq(last.iter().copied()))
+    {
+        walk.chains.push(holders().collect());
+    }
+    walk.line_starts.push(LineStart {
+        start,
+        container_end,
+        chain: walk.chains.len() - 1,
+    });
 }
 
 /// Does the text at `at` begin its line, allowing only blanks and
