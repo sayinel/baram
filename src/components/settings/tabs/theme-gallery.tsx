@@ -1,12 +1,17 @@
 // §356 테마 갤러리 — 출처별로 묶인 카드 격자와 그 아래의 갤러리 동작(편집·가져오기).
 //
-// AppearanceTab에서 나왔다(그 파일이 516줄이었다). 그룹은 눈에는 예전과 같은
-// 격자로 보이고 경계는 role="group" + aria-label 로만 드러난다 — 이 계획의 목표는
-// "모델은 바뀌고 화면은 안 바뀐다"이기 때문이다.
+// AppearanceTab에서 나왔다(그 파일이 516줄이었다). 각 그룹은 자기 `.theme-gallery`
+// 요소이고 그 클래스가 `grid-template-columns` 와 `margin-bottom: 16px` 을 함께
+// 들고 있으므로(`styles/settings/theme.css`), 커스텀 테마가 하나라도 있으면 격자가
+// 둘로 **쌓여 보인다**. 의도한 것이다 — 출처별로 나누는 것이 이 변경이 요구받은
+// 기능이고, 한 격자 안에서 배지로만 구분하던 것이 그 요구의 출발점이었다. 배지를
+// 그대로 둔 이유는 반대편에 있다: 그룹 제목은 aria-label 이라 보조기기에만 읽히므로,
+// 그것을 지우면 눈으로 커스텀을 알아보던 유일한 표식이 사라진다.
 //
 // 카드가 무엇을 할 수 있는지는 themeActions(source)가 정한다. 컴포넌트가
 // `source === "builtin"` 같은 비교를 직접 하면 출처가 하나 늘 때 조용히 틀린다.
 import type { ThemeColors, ThemeDef } from "../../../types/theme";
+import type { ThemeSource } from "../../../types/theme-sources";
 
 import { useShallow } from "zustand/shallow";
 
@@ -17,13 +22,22 @@ import { themeActions } from "../../../types/theme-sources";
 import { showConfirm } from "../../../utils/confirm-dialog";
 import { useThemeImport } from "./use-theme-import";
 
-/** 그룹 순서이자 제목의 출처. 출처가 늘면 여기에 한 줄 더한다. */
-const GROUPS = [
-  { source: "builtin", labelKey: "settings.appearance.groupBuiltin" },
-  { source: "community", labelKey: "settings.appearance.groupInstalled" },
-  { source: "custom", labelKey: "settings.appearance.groupCustom" },
-  { source: "dev", labelKey: "settings.appearance.groupDev" },
-] as const;
+/**
+ * 그룹 제목이자 화면에 나오는 순서 — 선언 순서가 곧 표시 순서다.
+ *
+ * `Record<ThemeSource, …>` 인 것이 요점이다. `theme-sources.ts` 의 `BY_SOURCE` 가
+ * 한 약속("새 출처가 생기면 컴파일러가 빠진 행을 짚는다")을 이쪽에서도 지킨다 —
+ * 배열이었다면 다섯 번째 출처가 컴파일을 통과하고, 그 출처의 테마만 갤러리에서
+ * 조용히 사라졌을 것이다.
+ */
+const GROUP_LABEL_KEYS: Record<ThemeSource, string> = {
+  builtin: "settings.appearance.groupBuiltin",
+  community: "settings.appearance.groupInstalled",
+  custom: "settings.appearance.groupCustom",
+  dev: "settings.appearance.groupDev",
+};
+
+const GROUPS = Object.entries(GROUP_LABEL_KEYS) as [ThemeSource, string][];
 
 export function ThemeGallery({ onCustomize }: { onCustomize: () => void }) {
   const { t } = useTranslation();
@@ -42,7 +56,7 @@ export function ThemeGallery({ onCustomize }: { onCustomize: () => void }) {
 
   return (
     <>
-      {GROUPS.map(({ labelKey, source }) => {
+      {GROUPS.map(([source, labelKey]) => {
         const rows = allThemes.filter((theme) => theme.source === source);
         // dev·community는 대개 비어 있다 — 빈 제목만 남기지 않는다.
         if (rows.length === 0) return null;

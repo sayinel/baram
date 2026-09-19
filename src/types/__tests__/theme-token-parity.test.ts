@@ -21,7 +21,8 @@ import { describe, expect, it } from "vitest";
 
 import { DEFAULT_DARK_PALETTE } from "../generated/palette-dark";
 import { DEFAULT_LIGHT_PALETTE } from "../generated/palette-light";
-import { BUILT_IN_THEMES, themeModes } from "../theme";
+import { BUILT_IN_THEMES } from "../theme";
+import { solePalette } from "./helpers/theme-palette";
 
 describe("기본 테마는 생성 팔레트를 그대로 쓴다", () => {
   it.each([
@@ -38,7 +39,10 @@ describe("기본 테마는 생성 팔레트를 그대로 쓴다", () => {
     const literals = BUILT_IN_THEMES.filter((t) => !generatedIds.has(t.id));
     expect(literals).toHaveLength(6);
     for (const theme of literals) {
-      const colors = theme.modes[themeModes(theme)[0]]?.colors;
+      // ‼️ solePalette 는 없으면 **던진다**. `modes[…]?.colors` 로 읽으면 타입이
+      // `ThemeColors | undefined` 라, modes 가 비어 버린 날에도 undefined 가 생성
+      // 상수와 같지 않다는 이유로 통과한다 — 아무것도 증명하지 못하는 단언이다.
+      const colors = solePalette(theme);
       expect(colors).not.toBe(DEFAULT_LIGHT_PALETTE);
       expect(colors).not.toBe(DEFAULT_DARK_PALETTE);
     }
