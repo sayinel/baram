@@ -49,6 +49,7 @@ describe("validateManifest", () => {
   test("accepts tiptapExtensions on the trusted tier", () => {
     const result = validateManifest({
       ...validManifest,
+      capabilities: ["editor:readonly", "statusbar", "extensions"],
       trust: "trusted",
       tiptapExtensions: [
         { type: "plugin", name: "wordCount", exportName: "WordCountExtension" },
@@ -252,6 +253,7 @@ describe("validateManifest — trust tier (§260)", () => {
     expect(
       validateManifest({
         ...base,
+        capabilities: ["extensions"],
         trust: "trusted",
         tiptapExtensions: [{ type: "plugin", name: "x", exportName: "X" }],
       }).valid,
@@ -615,9 +617,60 @@ describe("validateManifest — trust tier (§260)", () => {
   it("still accepts a plugin contribution", () => {
     const result = validateManifest({
       ...base,
+      capabilities: ["extensions"],
       trust: "trusted",
       tiptapExtensions: [{ exportName: "X", name: "x", type: "plugin" }],
     });
+    expect(result.valid).toBe(true);
+  });
+
+  // §260 spec 0050 §6 (Task 7) — declaring `tiptapExtensions` without also declaring the
+  // `extensions` capability leaves the install-consent dialog with nothing to say about a
+  // plugin that runs code inside the editor. The capability is the upper bound AND the
+  // description the dialog renders, so it must actually be required.
+  test("rejects a tiptap contribution from a manifest that did not ask for the capability", () => {
+    const result = validateManifest({
+      ...base,
+      capabilities: ["settings"],
+      trust: "trusted",
+      tiptapExtensions: [{ exportName: "X", name: "x", type: "plugin" }],
+    });
+
+    expect(result.valid).toBe(false);
+  });
+
+  test("names the capability the manifest is missing", () => {
+    const result = validateManifest({
+      ...base,
+      capabilities: [],
+      trust: "trusted",
+      tiptapExtensions: [{ exportName: "X", name: "x", type: "plugin" }],
+    });
+
+    if (result.valid) throw new Error("expected the manifest to be rejected");
+    expect(result.errors.map((e) => e.message).join(" ")).toContain(
+      "extensions",
+    );
+  });
+
+  test("accepts it once the capability is declared", () => {
+    const result = validateManifest({
+      ...base,
+      capabilities: ["extensions"],
+      trust: "trusted",
+      tiptapExtensions: [{ exportName: "X", name: "x", type: "plugin" }],
+    });
+
+    expect(result.valid).toBe(true);
+  });
+
+  test("leaves a manifest with no tiptap contribution alone", () => {
+    const result = validateManifest({
+      ...base,
+      capabilities: ["settings"],
+      trust: "trusted",
+    });
+
     expect(result.valid).toBe(true);
   });
 });

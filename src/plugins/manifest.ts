@@ -188,6 +188,23 @@ export function validateManifest(
         message: "tiptapExtensions must be an array",
       });
     } else {
+      // §260 스펙 0050 §6 — 기여는 `extensions` capability 를 선언해야 한다. capability 는
+      // 권한의 상한이자 **설치 동의 화면이 사용자에게 보여 주는 설명**이다. 선언을 강제하지
+      // 않으면 플러그인은 그냥 적지 않으면 되고, 에디터 안에서 코드를 돌린다는 사실이
+      // 동의 화면에 영영 나타나지 않는다 — 이 capability 를 만든 이유가 그것이다.
+      if (
+        obj.tiptapExtensions.length > 0 &&
+        Array.isArray(obj.capabilities) &&
+        !obj.capabilities.includes("extensions")
+      ) {
+        errors.push({
+          field: "capabilities",
+          message:
+            'a plugin that declares tiptapExtensions must also declare the "extensions" ' +
+            "capability — it runs code inside the editor, and the install dialog has to " +
+            "be able to say so.",
+        });
+      }
       for (let i = 0; i < obj.tiptapExtensions.length; i++) {
         const ext = obj.tiptapExtensions[i] as Record<string, unknown>;
         // §260 스펙 0050 §3.2 — `node`/`mark` 는 SCHEMA 를 바꾸고, 스키마는 에디터를
