@@ -260,6 +260,28 @@ describe("validateManifest — trust tier (§260)", () => {
     ).toBe(true);
   });
 
+  // Task 7 fix round 1 — the "extensions" capability check must not fire for a
+  // sandboxed manifest: sandboxed plugins are barred from tiptapExtensions outright
+  // (the check above), regardless of capabilities, so telling the author to declare
+  // "extensions" there is actively misleading — they would add it, reinstall, and be
+  // refused again with no new information. A test that only asserts "some error
+  // mentions tiptapExtensions" cannot see this: it passes whether or not the wrong
+  // error is ALSO added beside the right one.
+  it("does not also blame the missing capability on a sandboxed manifest", () => {
+    const r = validateManifest({
+      ...base,
+      capabilities: [],
+      trust: "sandboxed",
+      tiptapExtensions: [{ type: "plugin", name: "x", exportName: "X" }],
+    });
+    expect(r.valid).toBe(false);
+    if (!r.valid) {
+      expect(r.errors.some((e) => e.message.includes("extensions"))).toBe(
+        false,
+      );
+    }
+  });
+
   it("requires a sandboxed main to be a single relative bundle file", () => {
     for (const main of ["../outside.mjs", "/abs/index.mjs", "./a/../b.mjs"]) {
       const r = validateManifest({ ...base, trust: "sandboxed", main });

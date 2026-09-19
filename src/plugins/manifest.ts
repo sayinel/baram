@@ -194,6 +194,12 @@ export function validateManifest(
       // 동의 화면에 영영 나타나지 않는다 — 이 capability 를 만든 이유가 그것이다.
       if (
         obj.tiptapExtensions.length > 0 &&
+        // Sandboxed manifests never reach a valid state via this branch — the check
+        // above already refuses ANY tiptapExtensions on that tier, whatever the
+        // capabilities say. Firing here too would tell the author to declare
+        // "extensions", which would not fix anything: reinstalling still fails, with
+        // no new information (Task 7 fix round 1).
+        obj.trust !== "sandboxed" &&
         Array.isArray(obj.capabilities) &&
         !obj.capabilities.includes("extensions")
       ) {
