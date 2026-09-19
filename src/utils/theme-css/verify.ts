@@ -19,7 +19,9 @@
 //      더불어 `url(` 이 **함수 토큰**으로 나타나면 거부한다 — 그 형태가 2 의 스캔을
 //      통째로 우회하는 자리다(`hasUrlSpelledAsFunction` 이 실측과 함께 적는다)
 //   3. `!important` 가 없다 — layered `!important` 는 unlayered 를 이긴다(Cascade 5),
-//      즉 레이어로 감싸는 것만으로는 막히지 않는다(§359, sanitize 가 같은 이유로 제거한다)
+//      즉 레이어로 감싸는 것만으로는 막히지 않는다(§359, sanitize 가 같은 이유로 제거한다).
+//      계약 2 와 마찬가지로 **토큰 스캔이 먼저**다(`hasImportantSpelledAnywhere`) — 아래
+//      워크만으로는 파서가 `Raw` 로 남긴 구간을 못 본다
 //   4. `@import` 가 없다 — 설치 뒤에 임의의 CSS 를 끌어올 수 있는 통로다
 //
 // ‼️ 판정은 전부 파서가 준 것으로 한다. 문자열 검사는 CSS 이스케이프와 문법 변형에
@@ -49,6 +51,58 @@ function hasOnlyDataUrls(css: string): boolean {
     if (!isDataUrl(value)) ok = false;
   });
   return ok;
+}
+
+// 계약 3 의 파싱 독립 절반. `!important` 가 **토큰으로** 어딘가에 있는가.
+//
+// ‼️ 아래 워크만으로는 부족하다는 것이 실측이다. css-tree 3.2.1 은 **CSS 중첩** 규칙 중
+// 선택자가 `&` 로 시작하지 않는 것을 `Raw` 로 남긴다 — 그리고 그 형태는 모든 브라우저가
+// 지키는 유효한 CSS 다. 그래서 이 스캔이 없으면 다음이 통과했다(§359 리뷰에서 실측):
+//
+//   @layer baram-theme { html{.security-surface-host{display:none !important}} }   ← 통과
+//   @layer baram-theme { html{> .security-surface-host{display:none !important}} } ← 통과
+//   @layer baram-theme { html{.security-surface-host{display:none !\69 mportant}} } ← 통과
+//   @layer baram-theme { .security-surface-host{display:none !important} }         ← 거부
+//   @layer baram-theme { html{&.x{display:none !important}} }                      ← 거부
+//
+// 위 셋은 §359 가 막으려는 바로 그 공격이다 — layered `!important` 가 unlayered 를
+// 이기므로 동의 대화상자의 host 가 통째로 사라진다. 계약 2 가 토큰 스캔을 먼저 두는
+// 이유와 같은 이유로, 계약 3 도 파싱 결과에 기대면 안 된다.
+//
+// 형태: `!` 는 Delim 토큰이고 `important` 는 그 다음 Ident 토큰이며, 사이에 공백과
+// 주석이 올 수 있다(둘 다 실측). 이스케이프 철자는 Ident 의 **원문**으로 오므로
+// `cssName`(디코드+소문자)이 푼다 — 아래 워크의 `important !== false` 가 같은 이유로
+// `!== false` 인 것과 짝이다.
+//
+// ‼️ 무엇을 과잉 거부하는가, 정확히. 문자열 안의 `!important` 는 **아니다** —
+// `content:"!important"` 는 String 토큰 하나라 Delim+Ident 로 쪼개지지 않는다(실측).
+// 과잉 거부되는 것은 "브라우저가 선언으로 읽지 않을 자리에 놓인 `!` + `important`
+// 토큰 쌍"뿐이고(예: 무효한 at-rule 프렐류드 안), 그런 CSS 는 어차피 버려진다.
+// fail-closed 이므로 이 방향이 안전한 쪽이다 — **나중에 오탐이 보인다고 스캔을 좁히지
+// 말 것.** 좁히는 순간 위 세 줄이 다시 통과한다.
+function hasImportantSpelledAnywhere(css: string): boolean {
+  let found = false;
+  let afterBang = false;
+  const stream = new csstree.TokenStream(css, csstree.tokenize);
+  stream.forEachToken((type, start, end) => {
+    // 공백·주석은 `!` 와 `important` 사이에 올 수 있으므로 상태를 유지한 채 건너뛴다.
+    if (
+      type === csstree.tokenTypes.WhiteSpace ||
+      type === csstree.tokenTypes.Comment
+    ) {
+      return;
+    }
+    if (
+      afterBang &&
+      type === csstree.tokenTypes.Ident &&
+      cssName(css.slice(start, end)) === "important"
+    ) {
+      found = true;
+    }
+    afterBang =
+      type === csstree.tokenTypes.Delim && css.slice(start, end) === "!";
+  });
+  return found;
 }
 
 // 계약 2 의 나머지 절반. `url(` 이 **함수 토큰**으로 나타나는가.
@@ -126,8 +180,14 @@ function isThemeLayer(node: csstree.CssNode): boolean {
  */
 export function verifyStoredThemeCss(css: string): boolean {
   // 토큰 스캔이 먼저다. AST 워크가 보지 못하는 곳(파서가 포기한 `Raw` 조각)도
-  // 훑으므로, 계약 2 만은 파싱 결과와 무관하게 CSS 전체에 걸린다.
-  if (hasUrlSpelledAsFunction(css) || !hasOnlyDataUrls(css)) return false;
+  // 훑으므로, 계약 2 와 3 은 파싱 결과와 무관하게 CSS 전체에 걸린다.
+  if (
+    hasUrlSpelledAsFunction(css) ||
+    !hasOnlyDataUrls(css) ||
+    hasImportantSpelledAnywhere(css)
+  ) {
+    return false;
+  }
 
   let ast: csstree.CssNode;
   try {

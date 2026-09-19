@@ -203,4 +203,78 @@ describe("verifyStoredThemeCss — !important 와 @import", () => {
       verifyStoredThemeCss('@layer baram-theme{@\\69 mport "local.css";}'),
     ).toBe(false);
   });
+
+  // ‼️ §359 최종 리뷰 — 계약 3 이 파서에 기대고 있었고, 그 자리가 실제로 뚫려 있었다.
+  //
+  // css-tree 3.2.1 은 **CSS 중첩** 규칙 중 선택자가 `&` 로 시작하지 않는 것을 `Raw` 로
+  // 남긴다. AST 워크는 `Raw` 안을 보지 못하므로 그 안의 `!important` 가 그대로 통과했고,
+  // layered `!important` 는 unlayered 를 이기므로 보안 표면의 host 가 통째로 사라진다 —
+  // §359 가 막으려는 바로 그 공격이다. 토큰 스캔으로 옮겨서 막는다.
+  //
+  // 각 케이스는 수정 **전에 통과했다**(실측). 셋을 함께 두는 이유는 셋이 서로 다른
+  // 이유로 새기 때문이다: 평범한 중첩, 결합자로 시작하는 중첩, 그리고 그 안에서 다시
+  // 이스케이프한 철자.
+  describe("중첩 규칙이 만드는 Raw 안의 !important (§359)", () => {
+    const layered = (inner: string) => `@layer baram-theme {\n${inner}\n}\n`;
+
+    it("평범한 중첩 안의 !important 를 거부한다", () => {
+      expect(
+        verifyStoredThemeCss(
+          layered("html{.security-surface-host{display:none !important}}"),
+        ),
+      ).toBe(false);
+    });
+
+    it("결합자로 시작하는 중첩 안의 !important 를 거부한다", () => {
+      expect(
+        verifyStoredThemeCss(
+          layered("html{> .security-surface-host{display:none !important}}"),
+        ),
+      ).toBe(false);
+    });
+
+    it("중첩 안에서 이스케이프한 !important 도 거부한다", () => {
+      expect(
+        verifyStoredThemeCss(
+          layered("html{.security-surface-host{display:none !\\69 mportant}}"),
+        ),
+      ).toBe(false);
+    });
+
+    it("`!` 와 important 사이의 공백·주석도 뚫지 못한다", () => {
+      // 스펙이 허용하는 형태이고, 토크나이저도 그렇게 쪼갠다(실측).
+      expect(
+        verifyStoredThemeCss(layered("html{.x{display:none ! important}}")),
+      ).toBe(false);
+      expect(
+        verifyStoredThemeCss(layered("html{.x{display:none !/*c*/important}}")),
+      ).toBe(false);
+    });
+
+    it("`&` 로 시작하는 중첩은 파서가 보므로 예전에도 막혔다", () => {
+      // 대조군 — 이 케이스는 수정 전에도 거부됐다. 이것만 보고 계약 3 이 성립한다고
+      // 읽은 것이 리뷰가 잡은 실수다.
+      expect(
+        verifyStoredThemeCss(layered("html{&.x{display:none !important}}")),
+      ).toBe(false);
+    });
+
+    it("문자열 안의 !important 는 거부하지 않는다", () => {
+      // 토큰 스캔이 과잉 거부하지 않는다는 증거. `"!important"` 는 String 토큰 하나라
+      // Delim+Ident 로 쪼개지지 않는다(실측) — 이게 아니면 `content` 를 쓰는 평범한
+      // 테마가 로드에서 거부된다.
+      expect(verifyStoredThemeCss(layered('.x{content:"!important"}'))).toBe(
+        true,
+      );
+    });
+
+    it("멀쩡한 테마는 그대로 통과한다", () => {
+      // 위 여섯이 전부 false 라 스캔이 무엇이든 거부하는 것은 아닌지 확인한다.
+      expect(
+        verifyStoredThemeCss(
+          layered(".plugin-consent{background:#fff;color:#000}"),
+        ),
+      ).toBe(true);
+    });
+  });
 });
