@@ -342,7 +342,7 @@ describe("convertHighlightForNotion", () => {
     );
   });
 
-  describe("finds its closer past a `==` inside code (issue 636)", () => {
+  describe("pairs across code and honours the block rules, as the editor does (issue 636)", () => {
     it("pairs across a code span holding the delimiter", () => {
       // The match is found on a shadow in which the code span is filler:
       // the `==` inside it is no closer, and the real closer behind the

@@ -1,7 +1,8 @@
 /**
  * The markup a converter must not rewrite — HTML tags, link and image
- * destinations, reference definitions (issue 544). Opt-in through the
- * `markup` option of `markdown-code-regions.ts`.
+ * destinations, reference definitions (issue 544). The mark passes opt in
+ * through the `markup` option of `markdown-code-regions.ts`; the Notion
+ * math pass (`inlineMathSpans`) always steps over it.
  */
 
 import { type CodeRegion, isLive } from "./markdown-source";

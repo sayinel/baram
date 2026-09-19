@@ -12,7 +12,9 @@ export interface CodeRegion {
 /** The body of a blank line, as a regex fragment: blanks, or blockquote
  *  markers alone — a `>` line is blank inside its quote, as the editor reads
  *  it. A blank line ends a paragraph and every inline construct open in it;
- *  the inline scanner and the Notion mark patterns share this one reading. */
+ *  the inline scanner and the Notion mark patterns share this one reading.
+ *  It must stay free of capturing groups: the mark patterns read their
+ *  groups by number. */
 export const BLANK_LINE_BODY = String.raw`[ \t>]*`;
 
 /** A source line: `[start, end)` is its text, `[end, next)` its break. */

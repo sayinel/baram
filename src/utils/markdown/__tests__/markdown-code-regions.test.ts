@@ -103,7 +103,7 @@ describe("inlineMathSpans", () => {
 });
 
 describe("collectCodeRegions", () => {
-  it("merges fences, display math, code spans and — on request — one-dollar formulas and markup", () => {
+  it("collects fences, display math, code spans and — on request — one-dollar formulas and markup", () => {
     const md = "`a\nb` $c\nd$ x";
     expect(collectCodeRegions(md)).toEqual([{ end: 5, start: 0 }]);
     expect(collectCodeRegions(md, { inlineMath: true })).toEqual([

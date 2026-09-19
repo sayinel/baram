@@ -25,9 +25,9 @@ import { type CodeRegion, splitLines } from "./markdown-source";
  *  sub/superscript pass, issue 544) asks for it to be protected. */
 export interface CodeRegionOptions {
   inlineMath?: boolean;
-  /** Protect HTML tags and markdown link/image destinations too — a
-   *  `~…~` inside `<img src="img/~draft file~.png">` or `](…)` is a path,
-   *  not a mark (issue 544). */
+  /** Protect HTML tags, markdown link/image destinations and reference
+   *  definitions too — a `~…~` inside `<img src="img/~draft file~.png">`,
+   *  `](…)` or `[id]: …` is a path, not a mark (issue 544). */
   markup?: boolean;
 }
 
