@@ -12,3 +12,15 @@ export function useEditorSurface(editor: Editor | null): void {
     return registerEditorSurface(editor);
   }, [editor]);
 }
+
+/**
+ * Same registration `useEditorSurface` does, for an editor that isn't built inside a hook.
+ * §perf-large-file C3.5 keep-alive editors are constructed in a factory
+ * (`createKeepaliveEditor`), not rendered, so there is no mount/unmount to hang a
+ * `useEffect` off of — this registers at construction and tears itself down when the
+ * editor fires its own `"destroy"` event instead.
+ */
+export function registerKeepaliveEditorSurface(editor: Editor): void {
+  const dispose = registerEditorSurface(editor);
+  editor.on("destroy", dispose);
+}

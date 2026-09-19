@@ -21,7 +21,10 @@ import { useAppStartup } from "./hooks/use-app-startup";
 import { useCodeAutoSave } from "./hooks/use-code-auto-save";
 import { useEditorEffects } from "./hooks/use-editor-effects";
 import { useEditorFeatures } from "./hooks/use-editor-features";
-import { useEditorSurface } from "./hooks/use-editor-surface";
+import {
+  registerKeepaliveEditorSurface,
+  useEditorSurface,
+} from "./hooks/use-editor-surface";
 import { useFileOperations } from "./hooks/use-file-operations";
 import { useFindReplaceRouting } from "./hooks/use-find-replace-routing";
 import { useJournal } from "./hooks/use-journal";
@@ -35,7 +38,6 @@ import { useRetainedSurfaces } from "./hooks/use-retained-surfaces";
 import { type AppendHandleRef, useSourceMode } from "./hooks/use-source-mode";
 import { useTabSwitcherOverlay } from "./hooks/use-tab-switcher-overlay";
 import { useTabSwitching } from "./hooks/use-tab-switching";
-import { registerEditorSurface } from "./plugins/editor-surfaces";
 import { notifyEditorReady } from "./plugins/plugin-lifecycle";
 import { isImeProbeEnabled } from "./spike/ime-probe/ime-probe-enabled";
 import { isVimWysiwygProbeEnabled } from "./spike/vim-wysiwyg-probe/vim-probe-enabled";
@@ -272,8 +274,7 @@ function App() {
     });
     // §260 스펙 0050 §4 — keepalive 에디터는 플러그인이 로드된 뒤에도 새로 생긴다.
     // 등록하지 않으면 탭을 바꾸는 순간 기여분이 사라진다.
-    const dispose = registerEditorSurface(created);
-    created.on("destroy", dispose);
+    registerKeepaliveEditorSurface(created);
     return created;
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
