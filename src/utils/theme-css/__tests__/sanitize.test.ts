@@ -192,6 +192,27 @@ describe("출력 스캔만이 잡는 것", () => {
   });
 });
 
+// ‼️ 이 그룹이 워크의 `Url` case 와 `String` case 를 단독으로 고정한다 — 다만 고정하는 것은
+// **보안 판정이 아니라 진단**이다. 두 case 를 지워도 `assertNoRemoteReferences` 가 같은 입력을
+// 같은 code 로 거부하므로 통과 여부는 바뀌지 않는다(실측: 말뭉치 539개의 판정이 무변화).
+// 바뀌는 것은 detail 이다 — 워크가 먼저 답하면 `(줄:칸)` 이 붙고, 지우면 위치 없는
+// `output …` 만 남아 테마 작성자가 어디를 고쳐야 할지 알 수 없다. 그 차이를 고정한다.
+describe("워크가 먼저 답하고 위치를 준다", () => {
+  it.each([
+    "a{background:url(https://e.com/x.png)}",
+    "@media print{a{background:url(https://e.com/x.png)}}",
+  ])("%s — Url case 가 위치와 함께 거부한다", (css) => {
+    expect(code(css)).toBe("absoluteUrl");
+    expect(detail(css)).toMatch(/\(\d+:\d+\)$/);
+  });
+
+  it("image-set 의 문자열은 String case 가 위치와 함께 거부한다", () => {
+    const css = 'a{background:image-set("https://e.com/x.png" 1x)}';
+    expect(code(css)).toBe("absoluteUrl");
+    expect(detail(css)).toMatch(/\(\d+:\d+\)$/);
+  });
+});
+
 describe("나가는 CSS 를 토큰으로 다시 훑는다", () => {
   it.each([
     'a{background:image-set("https://evil.com/x.png" 1x)}',

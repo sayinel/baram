@@ -274,11 +274,13 @@ export function sanitizeThemeCss(css: string): string {
         // css-tree 가 이스케이프를 해석하고 따옴표·공백을 벗긴 뒤의 값을 준다 —
         // 그래서 `url(\68 ttps://…)` 가 여기서 `https://…` 다(실측).
         //
-        // ‼️ 이 case 와 아래 `String` case 는 **중복**이다. 둘을 빼도 말뭉치 539개의
-        // 판정이 하나도 바뀌지 않는다(실측) — `assertNoRemoteReferences` 가 같은 것을
-        // 출력에서 다시 잡기 때문이다. 단독으로 고정하는 테스트가 없다는 뜻이고,
-        // 그래서 여기 적어 둔다: 지워도 테스트는 초록이다. 남겨 두는 이유는 값싼
-        // 이중화라는 것뿐이고, 더 강한 보장을 한다고 읽으면 안 된다.
+        // ‼️ **보안 판정으로는** 이 case 와 아래 `String` case 가 중복이다: 둘을 빼도
+        // 말뭉치 539개의 통과/거부가 하나도 바뀌지 않는다(실측) — `assertNoRemoteReferences`
+        // 가 같은 것을 출력에서 다시 잡는다. 그러니 "여기가 막고 있다"고 읽으면 안 된다.
+        //
+        // 이 case 가 **혼자** 주는 것은 진단이다. 워크는 AST 노드를 보므로 `loc` 이 있고
+        // detail 에 `(줄:칸)` 이 붙는다. 지우면 출력 스캔이 위치 없는 `output …` 만 남긴다.
+        // 테스트 "워크가 먼저 답하고 위치를 준다"가 그 차이를 고정한다 — 지우면 빨개진다.
         if (isRemoteUrl(node.value)) {
           throw new ThemeCssError(
             "absoluteUrl",
@@ -293,9 +295,11 @@ export function sanitizeThemeCss(css: string): string {
   // 우리가 내보내는 것도 우리 기준을 통과해야 한다. 짝이 안 맞는 `}` 하나면 그 뒤의
   // 테마 CSS 가 `@layer baram-theme {` 밖으로 빠져나가 레이어 우선순위를 통째로 무시한다.
   //
-  // ‼️ 이것도 **중복**이다: 빼도 말뭉치 539개의 판정이 바뀌지 않는다(실측). 입력이 이미
-  // 닫혀 있음을 확인했으므로, 여기서 걸리려면 css-tree 의 `generate` 가 균형을 깨야 한다.
-  // 그런 입력을 찾지 못했다 — 단독으로 고정하는 테스트가 없다는 뜻이다.
+  // ‼️ 이것은 **어떤 테스트도 고정하지 못하는** 순수 이중화다. 빼도 말뭉치 539개의 판정이
+  // 바뀌지 않고(실측), 진단도 달라지지 않는다. 여기서 걸리려면 입력이 닫혀 있는데 css-tree 의
+  // `generate` 가 균형을 깨야 하는데, 균형 잡힌 입력 348개를 generate 까지 돌려 그런 출력이
+  // 나오는지 따로 찾아봤고 0건이었다. 즉 css-tree 의 버그가 생겨야 발화한다 — 지우면 아무
+  // 테스트도 빨개지지 않으니, 이 주석이 유일한 표시다.
   assertWellFormed(sanitized, "output");
   assertNoRemoteReferences(sanitized);
   return sanitized;
