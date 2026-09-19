@@ -217,6 +217,22 @@ describe("convertInlineMathForNotion", () => {
     expect(convertInlineMathForNotion("$a `x` b$")).toBe("$$a `x` b$$");
   });
 
+  it("opens no formula inside a path or a tag (issue 544)", () => {
+    // A `$` in a destination is a path's character, not an opener: two
+    // URLs with a `$` each, in one paragraph, paired across their
+    // destinations and both broke.
+    expect(convertInlineMathForNotion("![](p/$a b$.png)")).toBe(
+      "![](p/$a b$.png)",
+    );
+    expect(
+      convertInlineMathForNotion(
+        "[a](https://x/?q=$1) and [b](https://y/?q=$2)",
+      ),
+    ).toBe("[a](https://x/?q=$1) and [b](https://y/?q=$2)");
+    // A formula opened before a link owns it, as the editor's does.
+    expect(convertInlineMathForNotion("$a [x](u) b$")).toBe("$$a [x](u) b$$");
+  });
+
   it("converts multiple inline math expressions", () => {
     const input = "Where $a$ and $b$ are constants";
     expect(convertInlineMathForNotion(input)).toBe(
@@ -308,6 +324,21 @@ describe("convertHighlightForNotion", () => {
     expect(convertHighlightForNotion("==a `x` b==")).toBe("**a `x` b**");
   });
 
+  it("never rewrites a path or a tag: a `==` there is not a mark (issue 544)", () => {
+    // The pandoc pass has protected markup since issue 544; this one read a
+    // destination as text and wrote `**a**` into the file name.
+    expect(convertHighlightForNotion("![](p/==a==.png)")).toBe(
+      "![](p/==a==.png)",
+    );
+    expect(convertHighlightForNotion('<img src="p/==a==.png">')).toBe(
+      '<img src="p/==a==.png">',
+    );
+    // A highlight WRAPPING a link still converts: its delimiters are text.
+    expect(convertHighlightForNotion("==see [d](u) now==")).toBe(
+      "**see [d](u) now**",
+    );
+  });
+
   describe("finds its closer past a `==` inside code (issue 636)", () => {
     it("pairs across a code span holding the delimiter", () => {
       // The match is found on a shadow in which the code span is filler:
@@ -374,6 +405,52 @@ describe("convertSubscriptForNotion", () => {
     );
   });
 
+  it("never touches a path or a tag: the marks live in text, not in markup (issue 544)", () => {
+    // The pandoc pass has protected markup since issue 544; this one read a
+    // destination as text and wrote `$$_{a b}$$` — or `note₁`, with no
+    // fallback to notice — into a path that then names no file.
+    expect(convertSubscriptForNotion("![alt](p/~a b~.png)")).toBe(
+      "![alt](p/~a b~.png)",
+    );
+    expect(convertSubscriptForNotion('<img src="p/~a b~.png">')).toBe(
+      '<img src="p/~a b~.png">',
+    );
+    // The definition's region is its destination: the title is text, and
+    // so is the mark after it.
+    expect(convertSubscriptForNotion('[id]: p/~a~.png "t" ~b c~')).toBe(
+      '[id]: p/~a~.png "t" $$_{b c}$$',
+    );
+    expect(convertSubscriptForNotion("![](assets/note~1~.png)")).toBe(
+      "![](assets/note~1~.png)",
+    );
+    // One tilde per path, two paths in a paragraph — a Windows 8.3 name or
+    // a `~user` URL twice — paired ACROSS the destinations and broke both.
+    expect(
+      convertSubscriptForNotion("![](a/FILENA~1.PNG)\n![](b/FILENA~2.PNG)"),
+    ).toBe("![](a/FILENA~1.PNG)\n![](b/FILENA~2.PNG)");
+    expect(
+      convertSubscriptForNotion(
+        "[x](https://h.edu/~alice/) and [y](https://h.edu/~bob/)",
+      ),
+    ).toBe("[x](https://h.edu/~alice/) and [y](https://h.edu/~bob/)");
+    // A mark after a destination still converts.
+    expect(convertSubscriptForNotion("![](p/~a.png) ~c d~")).toBe(
+      "![](p/~a.png) $$_{c d}$$",
+    );
+  });
+
+  it("refuses a pair that wraps a link or a tag, as it refuses one that wraps code", () => {
+    // The interior is the mark's to rewrite, so a destination or a tag
+    // inside it is not its text; the pandoc pass has the same rule.
+    expect(convertSubscriptForNotion("~a [x](u) b~")).toBe("~a [x](u) b~");
+    expect(convertSubscriptForNotion("~<u>x</u>~")).toBe("~<u>x</u>~");
+    // The refused pair is consumed, as every refused pair is: its closer
+    // is not offered to the `~` after it.
+    expect(convertSubscriptForNotion("~a <u>x</u> c~d~")).toBe(
+      "~a <u>x</u> c~d~",
+    );
+  });
+
   it("converts digit subscript to Unicode", () => {
     const result = convertSubscriptForNotion("H~2~O");
     expect(result).toBe("H\u2082O");
@@ -424,6 +501,16 @@ describe("convertSuperscriptForNotion", () => {
   it("handles multiple superscripts", () => {
     const result = convertSuperscriptForNotion("x^2^ + y^3^");
     expect(result).toBe("x\u00B2 + y\u00B3");
+  });
+
+  it("never touches a path or a tag, and refuses a pair that wraps one (issue 544)", () => {
+    expect(convertSuperscriptForNotion("see [ref](docs/x^2^.md)")).toBe(
+      "see [ref](docs/x^2^.md)",
+    );
+    expect(convertSuperscriptForNotion('<img src="p/x^2.png"> ^3^')).toBe(
+      '<img src="p/x^2.png"> \u00B3',
+    );
+    expect(convertSuperscriptForNotion("^see [x](u)^")).toBe("^see [x](u)^");
   });
 });
 
@@ -668,10 +755,13 @@ describe("convertForNotion", () => {
     // a wrapper written across one was math to no later pass.
     expect(convertForNotion("~a\n\nb~ ^2^")).toBe("~a\n\nb~ ²");
     expect(convertForNotion("~a\n\nb^2^~")).toBe("~a\n\nb²~");
-    // The wrapper's content is math to every pass after it: an underline
-    // tag inside converted math or inside the wrapper stays.
+    // The wrapper's content is math to every pass after it: a tag inside
+    // converted math stays, and so does a superscript inside the wrapper.
+    // A mark wrapping a tag is refused — the tag is markup, not the mark's
+    // text (issue 544) — and the tag then converts on its own.
     expect(convertForNotion("$<u>x</u>$")).toBe("$$<u>x</u>$$");
-    expect(convertForNotion("~<u>x</u>~")).toBe("$$_{<u>x</u>}$$");
+    expect(convertForNotion("~x ^2^~")).toBe("$$_{x ^2^}$$");
+    expect(convertForNotion("~<u>x</u>~")).toBe("~*x*~");
     // A blockquote's bare `>` line is a paragraph break too.
     expect(convertForNotion("> ~A\n>\n> B~ ^2^")).toBe("> ~A\n>\n> B~ ²");
     // Beside a lone dollar no wrapper is written — it would fuse into a

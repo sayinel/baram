@@ -28,9 +28,11 @@ export interface CodeRegionOptions {
 /** How {@link replaceOutsideCode} judges a match that touches a region.
  *
  *  `"span"` (the default) refuses ANY overlap. It is the rule for a replacer
- *  that rewrites the match's INTERIOR — the sub/superscript passes escape
- *  the spaces inside it, so a swallowed code span (`~a \`x y\` b~`) would
- *  have its own bytes rewritten. A refused match is consumed, as the editor
+ *  that rewrites the match's INTERIOR — the pandoc sub/superscript passes
+ *  escape the spaces inside it, so a swallowed code span (`~a \`x y\` b~`)
+ *  would have its own bytes rewritten; the Notion ones map it to Unicode,
+ *  or keep it verbatim in a `$$_{…}$$` wrapper that is math to every
+ *  later pass. A refused match is consumed, as the editor
  *  consumes a pair it rejects: its closer is not offered to a later opener.
  *
  *  `"delimiters"` refuses only when one of the match's own ends sits inside
@@ -403,11 +405,15 @@ export function inlineSpans(
 }
 
 /** The inline math spans written with one dollar — `$…$` within a line,
- *  fences and display math blocks stepped over — for a converter that
- *  rewrites them (the Notion export). */
+ *  fences, display math blocks and markup stepped over — for a converter
+ *  that rewrites them (the Notion export). A `$` inside a link destination
+ *  or a tag is a path's character, not an opener (issue 544): two URLs
+ *  with a `$` each paired across their destinations. */
 export function inlineMathSpans(md: string): CodeRegion[] {
   const lines = splitLines(md);
-  const skip = fencedCodeRegions(md, lines);
+  const skip = [...fencedCodeRegions(md, lines), ...markupRegions(md)].sort(
+    (a, b) => a.start - b.start,
+  );
   return inlineSpans(md, lines, { mathCrossesLines: false, skip })
     .filter((span) => span.kind === "math" && span.n === 1)
     .map(({ end, start }) => ({ end, start }));

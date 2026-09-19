@@ -366,7 +366,8 @@ export function convertHighlightForNotion(md: string): string {
     // The interior is carried over verbatim, so only a DELIMITER inside a
     // code span blocks the match — a highlight WRAPPING code is ordinary
     // authoring, and judging it by overlap left a literal `==` in Notion.
-    { guard: "delimiters" },
+    // A `==` inside a path or a tag is not a mark (issue 544).
+    { guard: "delimiters", markup: true },
   );
 }
 
@@ -414,7 +415,15 @@ const superscriptRe = (): RegExp =>
   );
 
 /** Convert `~text~` subscript to Unicode subscript or math fallback.
- *  Does NOT match `~~strikethrough~~`. */
+ *  Does NOT match `~~strikethrough~~`.
+ *
+ *  A `~` inside a link destination, an HTML tag or a reference definition
+ *  is not a mark (issue 544): read as text, a destination holding `~a b~`
+ *  — or two destinations in a paragraph with one `~` each, a Windows 8.3
+ *  name or a `~user` URL twice — was rewritten and named no file. An
+ *  autolink or a bare URL is none of those and is still read as text. Not
+ *  `inlineMath`: in `convertForNotion` the math pass runs before this one,
+ *  so every formula is already the `$$…$$` the scanner protects. */
 export function convertSubscriptForNotion(md: string): string {
   return replaceOutsideCode(
     md,
@@ -427,11 +436,13 @@ export function convertSubscriptForNotion(md: string): string {
       if (lead !== "" || trail !== "") return match;
       return `$$_{${content}}$$`;
     },
+    { markup: true },
   );
 }
 
 /** Convert `^text^` superscript to Unicode superscript or math fallback.
- *  Does NOT match `^^` sequences. */
+ *  Does NOT match `^^` sequences. Markup is protected as for the
+ *  subscript. */
 export function convertSuperscriptForNotion(md: string): string {
   return replaceOutsideCode(
     md,
@@ -444,6 +455,7 @@ export function convertSuperscriptForNotion(md: string): string {
       if (lead !== "" || trail !== "") return match;
       return `$$^{${content}}$$`;
     },
+    { markup: true },
   );
 }
 
