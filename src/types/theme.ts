@@ -5,6 +5,8 @@ export { THEME_COLOR_KEYS, THEME_COLOR_VALUE_RE } from "./theme-color-keys";
 
 import type { ThemeColors } from "./theme-color-keys";
 
+import { DEFAULT_DARK_PALETTE } from "./generated/palette-dark";
+import { DEFAULT_LIGHT_PALETTE } from "./generated/palette-light";
 import { THEME_COLOR_VALUE_RE } from "./theme-color-keys";
 
 // ---------------------------------------------------------------------------
@@ -94,37 +96,7 @@ export const BUILT_IN_THEMES: ThemeDef[] = [
     name: "Default Light",
     base: "light",
     builtIn: true,
-    colors: {
-      "--color-bg-default": "#ffffff",
-      "--color-bg-subtle": "#f8f9fa",
-      "--color-bg-panel": "#f1f3f5",
-      "--color-bg-elevated": "#f0f0f3",
-
-      "--color-text-primary": "#1a1a1a",
-      "--color-text-secondary": "#6b7280",
-      "--color-text-disabled": "#9ca3af",
-
-      "--color-border-default": "#e5e7eb",
-      "--color-border-subtle": "#f3f4f6",
-
-      "--color-accent-default": "#3b82f6",
-      "--color-accent-hover": "#2563eb",
-
-      "--color-editor-bg": "#ffffff",
-      "--color-editor-text": "#1a1a1a",
-      "--color-editor-selection": "#bfdbfe",
-      "--color-editor-cursor": "#1a1a1a",
-
-      "--color-status-danger": "#ef4444",
-      "--color-status-warning": "#f59e0b",
-      "--color-status-success": "#10b981",
-      "--color-accent-subtle": "#eff6ff",
-      "--color-accent-ai": "#8b5cf6",
-      "--color-bg-input": "#ffffff",
-      "--color-graph-node": "#6b7280",
-      "--color-graph-active": "#3b82f6",
-      "--color-graph-edge": "#9ca3af",
-    },
+    colors: DEFAULT_LIGHT_PALETTE,
   },
 
   // ── Default Dark ────────────────────────────────────────────────────────
@@ -133,37 +105,7 @@ export const BUILT_IN_THEMES: ThemeDef[] = [
     name: "Default Dark",
     base: "dark",
     builtIn: true,
-    colors: {
-      "--color-bg-default": "#1a1a2e",
-      "--color-bg-subtle": "#16213e",
-      "--color-bg-panel": "#0f172a",
-      "--color-bg-elevated": "#1e2a45",
-
-      "--color-text-primary": "#e2e8f0",
-      "--color-text-secondary": "#94a3b8",
-      "--color-text-disabled": "#64748b",
-
-      "--color-border-default": "#334155",
-      "--color-border-subtle": "#1e293b",
-
-      "--color-accent-default": "#60a5fa",
-      "--color-accent-hover": "#3b82f6",
-
-      "--color-editor-bg": "#1a1a2e",
-      "--color-editor-text": "#e2e8f0",
-      "--color-editor-selection": "#1e3a5f",
-      "--color-editor-cursor": "#e2e8f0",
-
-      "--color-status-danger": "#ef4444",
-      "--color-status-warning": "#f59e0b",
-      "--color-status-success": "#10b981",
-      "--color-accent-subtle": "#172554",
-      "--color-accent-ai": "#a78bfa",
-      "--color-bg-input": "#1e293b",
-      "--color-graph-node": "#6b7280",
-      "--color-graph-active": "#60a5fa",
-      "--color-graph-edge": "#374151",
-    },
+    colors: DEFAULT_DARK_PALETTE,
   },
 
   // ── Tokyo Night ─────────────────────────────────────────────────────────
