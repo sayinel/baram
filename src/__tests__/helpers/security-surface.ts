@@ -15,14 +15,40 @@ import type { BoundFunctions, queries } from "@testing-library/react";
 import { waitFor, within } from "@testing-library/react";
 import { expect } from "vitest";
 
-/** The element React renders into, inside each mounted surface's shadow root. */
-export function surfaceContents(): HTMLElement[] {
+/**
+ * The element React renders into, inside each mounted surface's shadow root.
+ *
+ * Document-wide by default. Pass a `root` to restrict it to surfaces mounted inside one
+ * render's container — which is only meaningful for the two INLINE surfaces, since the
+ * consent dialog's host is portaled to `document.body` and is never a descendant of a
+ * test's container.
+ */
+export function surfaceContents(root: ParentNode = document): HTMLElement[] {
   const found: HTMLElement[] = [];
-  for (const host of document.querySelectorAll(".security-surface-host")) {
+  for (const host of root.querySelectorAll(".security-surface-host")) {
     const content = host.shadowRoot?.querySelector<HTMLElement>(
       ".security-surface-content",
     );
     if (content) found.push(content);
+  }
+  return found;
+}
+
+/**
+ * `root.querySelectorAll(selector)`, extended through any security surface inside it.
+ *
+ * For sweeps that claim to cover everything a component renders. `querySelectorAll` does
+ * not pierce a shadow root, so the moment a component grew one, every such sweep quietly
+ * narrowed from "every control" to "every control outside the surface" — while its own
+ * comment kept promising the wider thing.
+ */
+export function queryAllPiercing(
+  root: ParentNode,
+  selector: string,
+): Element[] {
+  const found = [...root.querySelectorAll(selector)];
+  for (const content of surfaceContents(root)) {
+    found.push(...content.querySelectorAll(selector));
   }
   return found;
 }

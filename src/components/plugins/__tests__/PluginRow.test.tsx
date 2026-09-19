@@ -5,7 +5,10 @@ import type { PluginManifest } from "../../../plugins/types";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { withinSurface } from "../../../__tests__/helpers/security-surface";
+import {
+  queryAllPiercing,
+  withinSurface,
+} from "../../../__tests__/helpers/security-surface";
 import { PluginRowView } from "../PluginRow";
 
 // §359 — the revocation notice renders inside a shadow root, which `screen` cannot
@@ -183,8 +186,20 @@ describe("PluginRowView (§69)", () => {
       // regression dropped the plugin's name from every control but one. Parametrised
       // over the row shapes that add more controls (update offered, settings wired up,
       // each source's own set) so the property holds as the row grows.
+      //
+      // ‼️ §359 — the sweep PIERCES. `container.querySelectorAll` stops at a shadow
+      // boundary, and the revocation notice is behind one now, so a plain sweep would
+      // have kept that promise only for controls outside it. `queryAllPiercing` keeps
+      // it true for a row that grows a surface.
+      //
+      // No row below sets `revocation`, so the notice is not exercised HERE — and that
+      // is deliberate rather than an oversight. Its Remove button's accessible name is
+      // `plugin.revoked.remove` = "Remove it" verbatim, with no plugin name, so adding
+      // such a row would fail this property on a real §69 naming gap that §359 has no
+      // mandate to change. The piercing is exercised by the test below instead, so it
+      // cannot rot; whoever fixes that name can add the row here and it will hold.
       const { container } = render(<PluginRowView row={r} {...h} />);
-      const controls = Array.from(container.querySelectorAll(CONTROLS));
+      const controls = queryAllPiercing(container, CONTROLS);
       expect(controls.length).toBeGreaterThan(0);
       // Reported as the list of offenders, so a failure names the control it found.
       expect(
@@ -194,4 +209,23 @@ describe("PluginRowView (§69)", () => {
       ).toEqual([]);
     },
   );
+
+  it("컨트롤 스윕이 shadow 안까지 본다", () => {
+    // Guards the sweep above. Without this the piercing is dead code: no parametrised
+    // row renders a surface, so a `queryAllPiercing` that silently stopped at the
+    // boundary would look exactly like one that works.
+    const { container } = render(
+      <PluginRowView row={row({ revocation: REVOKED })} {...handlers} />,
+    );
+    const plain = Array.from(container.querySelectorAll(CONTROLS));
+    const pierced = queryAllPiercing(container, CONTROLS);
+    // The notice's Remove button is inside the shadow root and reachable only by the
+    // piercing sweep — so `pierced` is a strict superset, and by exactly that button.
+    expect(pierced.length).toBe(plain.length + 1);
+    expect(
+      pierced
+        .filter((el) => !plain.includes(el))
+        .map((el) => accessibleName(el)),
+    ).toEqual(["Remove it"]);
+  });
 });
