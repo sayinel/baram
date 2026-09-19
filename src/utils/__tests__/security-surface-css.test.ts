@@ -229,12 +229,22 @@ describe("§359 shadow 안으로 들어가는 CSS", () => {
     // shipping a silently dead declaration. Theme values arrive by inheritance
     // instead — custom properties cross the boundary — so a token block on `:root` is
     // correctly not extracted.
+    const outsideShadow = /data-theme|\bhtml\b|:root/u;
+    // Control on the pattern itself — every assertion below is a NEGATIVE one, so a
+    // regex that stopped matching anything would make them all pass forever. (A sibling
+    // test pins the sheets non-empty, so this cannot go vacuous the other way.)
+    expect(outsideShadow.test('[data-theme="dark"] .plugin-consent{}')).toBe(
+      true,
+    );
+    expect(outsideShadow.test("html:not([data-theme]) .plugin-consent{}")).toBe(
+      true,
+    );
+    expect(outsideShadow.test(":root{--x:1}")).toBe(true);
+    expect(outsideShadow.test(".plugin-consent{display:flex}")).toBe(false);
+
     for (const surface of Object.keys(SECURITY_SURFACE_CLASSES)) {
       const css = selectorsIn(securitySurfaceCss(surface as SecuritySurface));
-      expect([surface, /data-theme|\bhtml\b|:root/u.test(css)]).toEqual([
-        surface,
-        false,
-      ]);
+      expect([surface, outsideShadow.test(css)]).toEqual([surface, false]);
     }
   });
 

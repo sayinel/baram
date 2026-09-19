@@ -182,8 +182,9 @@ describe("image()·src() 의 <string> 인자", () => {
 // ‼️ 아래 그룹이 `assertNoRemoteReferences` 를 **단독으로** 고정한다. 여기 문자열들은
 // 자원 이름을 받는 함수 **안쪽**에 있지만 바로 위 함수는 그렇지 않아서, `this.function`
 // 하나만 보는 AST 워크에는 보이지 않는다. 그래서 detail 이 `output ` 으로 시작한다 —
-// 출력 스캔이 잡았다는 뜻이고, 그 관문을 지우면 이 그룹만 빨개진다(실측: 이 관문을
-// 빼면 말뭉치 539개 중 33개가 열린다).
+// 출력 스캔이 잡았다는 뜻이고, 그 관문을 지우면 이 그룹만 빨개진다 — 이 관문을 빼면
+// 말뭉치 중 33개가 열린다(실측). 측정 기록은 `dev/impl-notes/0050-theme-css-ablation-record.md`
+// 이고, 인용되던 말뭉치 크기(539)가 문서화된 구성(525)과 맞지 않는다는 사실도 거기 있다.
 describe("출력 스캔만이 잡는 것", () => {
   it.each([
     'a{background:image-set(local("https://evil.com/x.png") 1x)}',
@@ -203,7 +204,8 @@ describe("출력 스캔만이 잡는 것", () => {
 
 // ‼️ 이 그룹이 워크의 `Url` case 와 `String` case 를 단독으로 고정한다 — 다만 고정하는 것은
 // **보안 판정이 아니라 진단**이다. 두 case 를 지워도 `assertNoRemoteReferences` 가 같은 입력을
-// 같은 code 로 거부하므로 통과 여부는 바뀌지 않는다(실측: 말뭉치 539개의 판정이 무변화).
+// 같은 code 로 거부하므로 통과 여부는 바뀌지 않는다(실측 — 말뭉치와 그 미해결 숫자는
+// `dev/impl-notes/0050-theme-css-ablation-record.md`).
 // 바뀌는 것은 detail 이다 — 워크가 먼저 답하면 `(줄:칸)` 이 붙고, 지우면 위치 없는
 // `output …` 만 남아 테마 작성자가 어디를 고쳐야 할지 알 수 없다. 그 차이를 고정한다.
 describe("워크가 먼저 답하고 위치를 준다", () => {

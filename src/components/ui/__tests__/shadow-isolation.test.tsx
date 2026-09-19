@@ -48,6 +48,14 @@ const ROOT = path.resolve(__dirname, "../../../..");
  * `sanitizeThemeCss` before being injected — testing CSS that skipped the hygiene
  * pipeline would be testing a state the app cannot reach, since `applyThemeCss` calls
  * `verifyStoredThemeCss` and injects nothing that fails it.
+ *
+ * ‼️ "nothing that fails it" is a statement about that gate, not a guarantee that no
+ * `!important` can reach the document. §359's final review found one that did: css-tree
+ * leaves a CSS nesting rule whose selector does not lead with `&` as `Raw`, and the AST
+ * walk could not see the `!important` inside it. `verify.ts` closes that with a token
+ * scan and `verify.test.ts` pins the spellings — but the lesson for THIS file is that
+ * the fixture below is a sample of what a theme might ship, not a proof of the set of
+ * things one can ship. Isolation is asserted structurally here for that reason.
  */
 const HOSTILE = `
   .plugin-consent-overlay { display: none !important; }

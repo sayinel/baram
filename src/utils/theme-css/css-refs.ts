@@ -41,13 +41,27 @@ export const NON_RESOURCE_ARGUMENT_FUNCTIONS: ReadonlySet<string> = new Set([
 // 인자로 받은 맨 `<string>` 이 곧 자원의 이름이 되는 함수들. 그 인자는 `Url` 노드가
 // 아니라 `String` 노드라서 Url 워크에 잡히지 않는다(실측).
 //
-// ‼️ 이 집합은 구멍의 모양 자체다 — CSS 가 문자열을 자원 이름으로 받는 함수를 새로 얻을
-// 때마다 여기에 더해야 한다. 오늘 아는 것: `image-set()`(Images 4), `image()`(Images 4,
-// `<image-src> = <url> | <string>`), `src()`(Values 5), 그리고 `url()` 자신 — 값 자리
-// 밖(미디어 특성 값 등)에서는 css-tree 가 `Url` 이 아니라 `Function:url` 을 준다(실측).
+// ‼️ **이 집합이 무엇을 가리는지 정확히.** `forEachResourceName` 은 `Url` **토큰**을
+// 조건 없이 전부 방문한다 — 이 집합은 거기 관여하지 않는다. 집합이 관문 노릇을 하는 것은
+// `String` 가지 하나뿐이다. 그래서 이 집합이 완전해야 하는 범위는 CSS 전체가 아니라
+// **"함수 안의 맨 `<string>` 이 곧 가져올 자원의 이름이 되는 경우"** 이고, 그 범위에 대해
+// 아래 다섯은 오늘 완전하다: `image-set()`(Images 4), `-webkit-image-set()`(그 별칭),
+// `image()`(Images 4, `<image-src> = <url> | <string>`), `src()`(Values 5), 그리고
+// `url()` 자신 — 값 자리 밖(미디어 특성 값 등)에서는 css-tree 가 `Url` 이 아니라
+// `Function:url` 을 준다(실측).
 //
-// ‼️ 이 집합에 빠진 이름은 아래 `forEachResourceName` 도 놓친다. 그건 다른 층이 아니라
-// 이 집합을 고쳐야 막힌다.
+// 문자열을 받지만 **그 문자열을 가져오지 않아** 일부러 뺀 것들(§359 최종 리뷰에서 하나씩
+// 확인): `local()`(폰트 이름) · `format()`·`tech()`(형식 힌트) · `element()`(요소 id) ·
+// `paint()`(paint worklet 이름) · `attr()`(속성 이름) · `var()`·`env()`(커스텀 속성 이름) ·
+// `cross-fade()`(이미지를 받지 자원 이름을 받지 않는다). 이것들은 자원 이름이 아니므로
+// 빠진 것이 맞다 — 그리고 그중 `local()` 안에 절대 URL 을 넣은 입력은 출력 스캔이 따로
+// 잡는다(`sanitize.test.ts` "출력 스캔만이 잡는 것").
+//
+// ‼️ **열린 채로 남는 것 하나**: `-moz-image-set` 을 아직 별칭으로 인정하는 엔진이 있는지
+// 확인하지 못했다. 있다면 여기 더해야 한다. "없다" 가 아니라 "모른다" 로 적는다.
+//
+// ‼️ 이 집합에 빠진 이름은 아래 `forEachResourceName` 의 `String` 가지가 놓친다. 그건 다른
+// 층이 아니라 이 집합을 고쳐야 막힌다.
 export const URL_BEARING_FUNCTIONS: ReadonlySet<string> = new Set([
   "-webkit-image-set",
   "image",
