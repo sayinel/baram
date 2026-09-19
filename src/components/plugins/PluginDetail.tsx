@@ -97,6 +97,7 @@ export function PluginDetail({
       {/* Gated like the row's copy: the same callback reaching a source that cannot
           remove is the same defect on this screen, and this screen now knows `can`. */}
       <PluginRevokedNotice
+        name={entry.name}
         onRemove={can.canRemove ? onUninstall : undefined}
         revocation={revocation ?? null}
       />

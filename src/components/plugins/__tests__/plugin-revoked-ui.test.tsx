@@ -34,6 +34,14 @@ const ENTRY: RegistryEntry = {
   version: "2.0.1",
 };
 
+// §69 — the button's accessible name is the NAMED form now (`aria-label`), not its
+// visible text. Querying by `plugin.revoked.remove` would find nothing, and a
+// `queryBy…` written that way would pass for the wrong reason.
+const REMOVE_NAMED = LABELS["plugin.revoked.removeNamed"].replace(
+  "{name}",
+  ENTRY.name,
+);
+
 function detail(revoked: null | RevocationEntry) {
   return render(
     <PluginDetail
@@ -85,7 +93,7 @@ describe("the withdrawal notice", () => {
       notice().getByText(LABELS["plugin.revoked.keepFiles"]),
     ).toBeInTheDocument();
     expect(
-      notice().getByRole("button", { name: LABELS["plugin.revoked.remove"] }),
+      notice().getByRole("button", { name: REMOVE_NAMED }),
     ).toBeInTheDocument();
   });
 
@@ -98,9 +106,7 @@ describe("the withdrawal notice", () => {
     expect(
       notice().queryByText(LABELS["plugin.revoked.blockedLoad"]),
     ).toBeNull();
-    expect(
-      notice().queryByRole("button", { name: LABELS["plugin.revoked.remove"] }),
-    ).toBeNull();
+    expect(notice().queryByRole("button", { name: REMOVE_NAMED })).toBeNull();
   });
 
   it("shows nothing at all for an unlisted plugin", () => {

@@ -52,6 +52,10 @@ function row(over: Partial<PluginRow>): PluginRow {
  * 유일한 조작 요소인 토글이 애초에 검사 대상 집합에 든 적이 없었다. role 목록은 다음에
  * 추가될 조작 요소를 기본값으로 통과시키는 denylist다. 셀렉터는 아무것도 통과시키지 않는다.
  */
+// §69 — the notice's Remove button carries the plugin name in its `aria-label`, so
+// that is its accessible name; its visible text is still the short form.
+const REMOVE_NAMED = "Remove Ex";
+
 const CONTROLS = "a[href], button, input, select, textarea";
 
 /**
@@ -135,7 +139,7 @@ describe("PluginRowView (§69)", () => {
     expect(
       notice().getByText("This plugin has been withdrawn and is not running."),
     ).toBeTruthy();
-    expect(notice().queryByRole("button", { name: "Remove it" })).toBeNull();
+    expect(notice().queryByRole("button", { name: REMOVE_NAMED })).toBeNull();
   });
 
   it("offers it to a community plugin, which can remove", () => {
@@ -146,7 +150,7 @@ describe("PluginRowView (§69)", () => {
         {...handlers}
       />,
     );
-    const button = notice().getByRole("button", { name: "Remove it" });
+    const button = notice().getByRole("button", { name: REMOVE_NAMED });
     fireEvent.click(button);
     expect(handlers.onRemove).toHaveBeenCalledTimes(1);
   });
@@ -165,23 +169,50 @@ describe("PluginRowView (§69)", () => {
     expect(screen.getByRole("button", { name: /settings/i })).toBeTruthy();
   });
 
+  // Each row carries the number of controls it draws, measured in place from these very
+  // fixtures. Without it the property below cannot fail by SHRINKAGE: it quantifies over
+  // the controls the sweep found, so a control that stops being found takes its own
+  // assertion with it and the test stays green. That is how the withdrawn row pins the
+  // piercing — de-pierce the sweep and its count drops 4 → 3.
   it.each([
-    ["a default community row (Details, Remove)", row({}), handlers],
+    ["a default community row (Details, Remove)", row({}), handlers, 3],
     [
       "a row with an update offered (adds Update)",
       row({ updateVersion: "2.0.0" }),
       handlers,
+      4,
     ],
     [
       "a row with onSettings passed (adds Settings)",
       row({}),
       { ...handlers, onSettings: vi.fn() },
+      4,
     ],
-    ["a built-in row (Details, toggle)", row({ source: "builtin" }), handlers],
-    ["a dev row (Details, Reload, Remove)", row({ source: "dev" }), handlers],
+    [
+      "a built-in row (Details, toggle)",
+      row({ source: "builtin" }),
+      handlers,
+      2,
+    ],
+    [
+      "a dev row (Details, Reload, Remove)",
+      row({ source: "dev" }),
+      handlers,
+      3,
+    ],
+    // §69 — this row was absent while the notice's Remove button was "Remove it"
+    // verbatim: it would have failed the property on a real naming gap rather than a
+    // test defect. The gap is fixed, so the row belongs in the sweep like any other —
+    // and it is the only shape whose controls cross the shadow boundary.
+    [
+      "a withdrawn row (adds the notice's own Remove)",
+      row({ revocation: REVOKED }),
+      handlers,
+      4,
+    ],
   ])(
     "names the plugin in every rendered control's accessible name — %s",
-    (_label, r, h) => {
+    (_label, r, h, expected) => {
       // ‼️ `unnamed === []`, not `named > 0`: the weaker form would still pass if a
       // regression dropped the plugin's name from every control but one. Parametrised
       // over the row shapes that add more controls (update offered, settings wired up,
@@ -191,16 +222,9 @@ describe("PluginRowView (§69)", () => {
       // boundary, and the revocation notice is behind one now, so a plain sweep would
       // have kept that promise only for controls outside it. `queryAllPiercing` keeps
       // it true for a row that grows a surface.
-      //
-      // No row below sets `revocation`, so the notice is not exercised HERE — and that
-      // is deliberate rather than an oversight. Its Remove button's accessible name is
-      // `plugin.revoked.remove` = "Remove it" verbatim, with no plugin name, so adding
-      // such a row would fail this property on a real §69 naming gap that §359 has no
-      // mandate to change. The piercing is exercised by the test below instead, so it
-      // cannot rot; whoever fixes that name can add the row here and it will hold.
       const { container } = render(<PluginRowView row={r} {...h} />);
       const controls = queryAllPiercing(container, CONTROLS);
-      expect(controls.length).toBeGreaterThan(0);
+      expect(controls.length).toBe(expected);
       // Reported as the list of offenders, so a failure names the control it found.
       expect(
         controls
@@ -226,6 +250,6 @@ describe("PluginRowView (§69)", () => {
       pierced
         .filter((el) => !plain.includes(el))
         .map((el) => accessibleName(el)),
-    ).toEqual(["Remove it"]);
+    ).toEqual([REMOVE_NAMED]);
   });
 });
