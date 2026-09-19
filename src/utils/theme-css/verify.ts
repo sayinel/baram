@@ -61,11 +61,32 @@ function hasOnlyDataUrls(css: string): boolean {
 // sanitize 는 같은 입력을 `parseFailed` 로 막지만(실측), verify 의 입력만은
 // sanitize 를 거쳤다는 보장이 없다 — 그것이 이 층이 있는 이유다.
 //
-// 멀쩡한 테마를 거부하지 않는 이유: 우리 생성기는 `url(…)` 을 **언제나 url-token 하나**로
-// 낸다. 맨 형태·따옴표·괄호 안 공백·`data:` 값 네 가지를 실측했고 넷 다 css-tree 가 `Url`
-// 노드로 읽어 `generate` 가 url-token 으로 되돌렸다. 즉 저장된 바이트의 `url(` 함수 토큰은
-// 우리가 쓴 것이 아니다. 문자열을 인자로 받는 다른 함수(`src(`·`image-set(`·`type(`)는
-// 함수 토큰 그대로 남지만, 그쪽 문자열은 위 스캔이 본다(그것도 같이 실측했다).
+// 멀쩡한 테마를 거부하지 않는 근거는 구조가 먼저다: css-tree 의 `Url` **노드** 생성기는
+// 언제나 url-token 을 낸다(`lib/syntax/node/Url.js` — `inline-assets.ts` 가 이미 인용한
+// 그 근거다). 그래서 함수 철자가 살아남는 자리는 파서가 `Url` 노드를 **아예 만들지 않은**
+// 자리뿐이다.
+//
+// ‼️ 그리고 그런 자리가 **있다** — 우리 인라인 단계도 거기서는 함수 철자를 쓴다.
+// `@media (scripting:url("x.png"))` 의 media-feature 값은 느슨한 문법으로 파싱돼 `Url` 이
+// 아니라 `Function:url` 이 되고(`css-refs.ts` 가 워크의 한계로 이미 적어 둔 그 경우다),
+// 인라인이 거기 심은 `url("data:…")` 를 이 관문이 거부한다(실측). 그러니 "저장된 바이트의
+// `url(` 함수 토큰은 우리가 쓴 것이 아니다" 로 읽으면 **안 된다.**
+//
+// 그래도 관문은 이대로 둔다. fail-closed 이고, 이 거부가 삼키는 것은 그 쿼리가 어차피
+// 무효인 CSS 다(`scripting` 은 `none|initial-only|enabled` 만 받는다). 위치를 가려 받으려면
+// 노드 **모양**을 다시 열거해야 하는데, 이 모듈이 두 번 열린 원인이 정확히 그 열거다.
+//
+// 쓸어 본 범위(sanitize → inline → verify 를 실제로 통과시켜 본 것): 선언 값 ·
+// `@font-face src` · `image-set`·`-webkit-image-set`·`src`·`image` · `cursor` ·
+// `list-style-image` · `@supports` 프렐류드 · `@namespace`·`@document`·`@container` ·
+// `@media` 프렐류드 — 9위치 23철자. 함수 철자로 남은 것은 `@media` media-feature 값 둘뿐이고,
+// `@supports (background:url(…))` 은 url-token 으로 되돌아온다(실측).
+//
+// ‼️ **발견된 것이 그것 하나**라는 뜻이지 "그것뿐" 이 아니다 — css-tree 의 at-rule 문법표를
+// 전수로 읽지는 않았다. 느슨하게 파싱되는 자리를 새로 발견하면 여기에 더할 것.
+//
+// (문자열을 인자로 받는 다른 함수 — `src(`·`image-set(`·`type(` — 는 함수 토큰 그대로
+// 남지만 이 관문의 대상이 아니고, 그쪽 문자열은 위 `data:` 스캔이 본다.)
 function hasUrlSpelledAsFunction(css: string): boolean {
   let found = false;
   const stream = new csstree.TokenStream(css, csstree.tokenize);
