@@ -161,7 +161,14 @@ const SRC_DIR = join(import.meta.dirname, "..", "..", "..", "..");
 /** Any .registerPlugin/.unregisterPlugin — silent reconfigure path. */
 const REGISTER_RE = /\.(un)?registerPlugin\s*\(/;
 /** Baram's plugin-UI store shares the method name; not Tiptap's editor. */
-const REGISTER_ALLOW = [join("plugins", "trusted", "ui-api.ts")];
+const REGISTER_ALLOW = [
+  join("plugins", "trusted", "ui-api.ts"),
+  // §260 (스펙 0050) — the one runtime registration path in the app. It refuses any
+  // contributed plugin that defines `props.editable` (see `build()` in
+  // plugins/editor-surfaces.ts), so the ⓒ contract holds THROUGH it rather than
+  // being waived for it.
+  join("plugins", "editor-surfaces.ts"),
+];
 /** Direct view.setProps — bypasses every signal. */
 const SET_PROPS_RE = /\.setProps\s*\(/;
 /** Direct setEditable — silent with emitUpdate=false; the wrapper notifies. */
