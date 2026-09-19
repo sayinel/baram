@@ -10,7 +10,7 @@
 // ‼️ 공유 폴리필(`src/test-setup.ts`)은 `matches: false` 에 no-op 리스너라 두 분기
 // 모두 돌지 않는다. 그래서 **이 파일에서만** 가짜 MediaQueryList 로 덮고 끝나면
 // 되돌린다 — 공유 폴리필은 다른 스위트가 그 모양에 의존하므로 건드리지 않는다.
-import { render } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // ‼️ `useSettingsEffects` 는 네이티브 메뉴 세 개를 **지연** `import()` 로 동기화한다(§82).
@@ -35,12 +35,15 @@ vi.mock("../../ipc/menu-enabled", () => ({
 
 import type { ThemeColors, ThemeDef } from "../../types/theme";
 
+import { ThemeEditor } from "../../components/settings/ThemeEditor";
 import { useSettingsStore } from "../../stores/settings/store";
-import { defaultColorsForBase } from "../../types/theme";
+import { defaultColorsForBase, THEME_COLOR_KEYS } from "../../types/theme";
 import { clearThemeVars } from "../../utils/theme-vars";
 import { useSettingsEffects } from "../use-settings-effects";
 
 const ACCENT = "--color-accent-default";
+const ACCENT_LABEL = THEME_COLOR_KEYS.find((e) => e.key === ACCENT)!.label;
+const SENTINEL = "#123456";
 /** 다크 팔레트에서 **일부러 뺀** 키 — 아래 "덮어쓴 게 아니라 지워졌다"의 관측 지점. */
 const DROPPED = "--color-bg-input";
 
@@ -157,6 +160,34 @@ describe("paired theme follows the OS", () => {
     // 값이 비어 있다는 것은 clearThemeVars 가 먼저 돌았다는 뜻이다. 앞 모드의
     // 잔여 변수가 새 모드를 계속 덮는 것이 #330 의 결함 형태였다.
     expect(varOf(DROPPED)).toBe("");
+  });
+
+  it("편집기가 떠 있는 동안에는 OS 전환이 미리보기를 지우지 않는다", () => {
+    // 위 테스트의 반대 방향. apply() 의 첫 줄이 clearThemeVars 이므로, 리스너가
+    // 그대로 돌면 색을 드래그하던 미리보기가 지워지고 저장된 테마가 다시 깔린다 —
+    // ThemeEditor 의 preview effect 는 deps 가 [colors, base] 라 되돌리지 못하고,
+    // data-theme 까지 저장된 테마의 모드로 돌아가 혼합 미리보기가 된다.
+    const media = installMatchMedia(false);
+    render(
+      <>
+        <Host />
+        <ThemeEditor onClose={() => {}} />
+      </>,
+    );
+    const label = screen.getByText(ACCENT_LABEL, {
+      selector: ".theme-editor-label",
+    });
+    const input = label
+      .closest(".theme-editor-row")!
+      .querySelector<HTMLInputElement>('input[type="color"]')!;
+    fireEvent.change(input, { target: { value: SENTINEL } });
+    expect(varOf(ACCENT)).toBe(SENTINEL);
+
+    media.fire(true);
+
+    // 편집 중인 색과 편집 중인 모드가 둘 다 그대로다.
+    expect(varOf(ACCENT)).toBe(SENTINEL);
+    expect(document.documentElement.dataset.theme).toBe("light");
   });
 
   it("언마운트하면 리스너를 떼어 둔다", () => {

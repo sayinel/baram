@@ -13,6 +13,9 @@ import {
   stripCssComments,
   stripTsComments,
 } from "../src/utils/audit/css-var-scan";
+// 편집 가능한 색 키의 canonical 목록 — 아래 "writer 전수 검사"가 이것을 기준으로
+// 판정한다. 베껴 적지 않고 import 하므로 키가 늘거나 줄면 검사가 따라온다.
+import { THEME_COLOR_KEYS } from "../src/types/theme-color-keys";
 
 function findFiles(dir: string, extensions: string[]): string[] {
   const results: string[] = [];
@@ -77,7 +80,9 @@ const tsxFiles = findFiles("src", [".tsx", ".ts"]).filter(
 // 검출이 무뎌진다.
 //
 // 단, **writer·메타데이터 파일은 소비원이 아니다**(적대 리뷰): 테마 편집
-// 메타데이터(types/theme.ts의 THEME_COLOR_KEYS)는 25키 전부를, 테마 적용기
+// 메타데이터(types/theme-color-keys.ts의 THEME_COLOR_KEYS)는 24키 전부를,
+// 기본 팔레트 생성물(types/generated/palette-{light,dark}.ts)은 그 24키의 값을,
+// 내장 테마 데이터(types/theme.ts)는 테마마다 그 24키를, 테마 적용기
 // (utils/theme-vars.ts의 setProperty·DERIVED_KEYS)는 쓰는 쪽 이름을 언급한다.
 // 이들을 소비로 세면 "사용자가 편집까지 하는데 아무 효과 없는" 죽은 editable
 // 토큰(editor-line-highlight가 실사례)이 advisory에서 구조적으로 숨는다.
@@ -85,11 +90,20 @@ const tsxFiles = findFiles("src", [".tsx", ".ts"]).filter(
 // 있다 — stripTsComments가 URL 오탐을 피하려고 줄 머리 주석만 벗기기 때문.
 // advisory 전용 경로라 게이트 우회는 아니며, 정밀화는 AST 스캐너가 필요하다.
 const LITERAL_NON_CONSUMERS = new Set([
+  "src/types/generated/palette-dark.ts",
+  "src/types/generated/palette-light.ts",
+  "src/types/theme-color-keys.ts",
   "src/types/theme.ts",
   "src/utils/theme-vars.ts",
 ]);
 // 리터럴 경로 스캔의 함정 방지(CLAUDE.md): 파일이 옮겨지면 제외가 조용히
 // 무효가 되어 advisory가 3→1로 붕괴한다(적대 리뷰 실측). 크게 죽는다.
+//
+// ‼️ 이 존재 검사는 **이동**만 잡는다 — 실제로 놓친 것은 **분할**이었다(§356
+// 최종 리뷰 I1): theme.ts는 그대로 남은 채 24키 목록이 theme-color-keys.ts로,
+// 값이 generated/palette-*.ts로 갈라져 나가 세 파일이 제외 밖에 섰고, 남은
+// theme.ts가 존재하므로 여기서는 아무 소리도 나지 않았다. 그래서 아래
+// writer 전수 검사를 함께 둔다.
 for (const excluded of LITERAL_NON_CONSUMERS) {
   if (!fs.existsSync(excluded)) {
     console.error(
@@ -98,6 +112,12 @@ for (const excluded of LITERAL_NON_CONSUMERS) {
     process.exit(1);
   }
 }
+// 분할 탐지: **편집 가능한 24키를 전부** 문자열로 이름 드는 파일은 소비자가
+// 아니라 팔레트나 메타데이터다 — 소비자는 var()를 쓰고, 간접 소비(graph-colors)
+// 는 자기가 쓰는 몇 개만 든다. 이 전수 조건은 경로가 아니라 내용으로 판정하므로
+// 새 파일이 어디에 생기든 제외 목록에 서기 전까지 실패한다.
+const EDITABLE_KEYS: string[] = THEME_COLOR_KEYS.map((entry) => entry.key);
+const literalWriters: string[] = [];
 const literalMentions = new Set<string>();
 for (const file of tsxFiles) {
   const content = stripTsComments(fs.readFileSync(file, "utf-8"));
@@ -108,10 +128,26 @@ for (const file of tsxFiles) {
     if (!usedVars.has(varName)) usedVars.set(varName, []);
     usedVars.get(varName)!.push(relPath);
   }
-  if (LITERAL_NON_CONSUMERS.has(relPath)) continue;
+  const literals = new Set<string>();
   for (const match of content.matchAll(/"(--[\w-]+)"/g)) {
-    literalMentions.add(match[1]);
+    literals.add(match[1]);
   }
+  if (EDITABLE_KEYS.every((key) => literals.has(key))) {
+    literalWriters.push(relPath);
+  }
+  if (LITERAL_NON_CONSUMERS.has(relPath)) continue;
+  for (const name of literals) {
+    literalMentions.add(name);
+  }
+}
+const unexcludedWriters = literalWriters.filter(
+  (f) => !LITERAL_NON_CONSUMERS.has(f),
+);
+if (unexcludedWriters.length > 0) {
+  console.error(
+    `편집 가능한 24키를 전부 드는 파일이 LITERAL_NON_CONSUMERS 밖에 있다: ${unexcludedWriters.join(", ")} — 팔레트·메타데이터면 목록에 넣을 것`,
+  );
+  process.exit(1);
 }
 
 // 3. Check for undefined references

@@ -21,6 +21,7 @@ import {
   appliesInlineVars,
   applyThemeVars,
   clearThemeVars,
+  themePreviewOwned,
 } from "../utils/theme-vars";
 
 export function useSettingsEffects(editor: Editor | null) {
@@ -95,8 +96,21 @@ export function useSettingsEffects(editor: Editor | null) {
     };
 
     apply();
-    mql.addEventListener("change", apply);
-    return () => mql.removeEventListener("change", apply);
+    // ‼️ 테마 편집기가 열려 있는 동안에는 OS 전환을 **듣기만 하고 적용하지 않는다**.
+    // apply()의 첫 줄이 clearThemeVars이므로, 색을 드래그하는 중에 해가 져서 macOS가
+    // 다크로 넘어가면 미리보기가 지워지고 저장된 테마가 다시 깔린다 — ThemeEditor의
+    // preview effect는 deps가 [colors, base]라 다시 돌지 않으므로 hex 스와치가 화면에
+    // 없는 색을 설명하게 되고, 더 나쁘게는 data-theme이 **저장된** 테마의 모드로
+    // 되돌아간다. 그것은 ThemeEditor.tsx의 preview effect 주석("…옛 base로 남은 혼합
+    // 미리보기", 현재 :100-103)이 막으려고 쓴 결함이 새 문으로 되살아난 것이다.
+    // 건너뛴 전환은 잃지 않는다: 편집기를 닫으면 restorePreview()가, 저장하면 이
+    // 이펙트의 재실행이 각각 그 시점의 mql.matches를 다시 읽는다.
+    const onSchemeChange = () => {
+      if (themePreviewOwned()) return;
+      apply();
+    };
+    mql.addEventListener("change", onSchemeChange);
+    return () => mql.removeEventListener("change", onSchemeChange);
   }, [activeThemeId, customThemes]);
 
   useEffect(() => {

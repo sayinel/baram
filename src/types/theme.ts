@@ -11,7 +11,7 @@ import { DEFAULT_LIGHT_PALETTE } from "./generated/palette-light";
 import { THEME_COLOR_VALUE_RE } from "./theme-color-keys";
 
 // ---------------------------------------------------------------------------
-// 2. ThemeDef — A complete theme definition
+// 1. ThemeDef — A complete theme definition
 // ---------------------------------------------------------------------------
 
 export type ThemeMode = "dark" | "light";
@@ -75,7 +75,7 @@ export function themeFieldFor(
 }
 
 // ---------------------------------------------------------------------------
-// 3. Theme key migration map (v9 → v10)
+// 2. Theme key migration map (v9 → v10)
 // ---------------------------------------------------------------------------
 
 /** Old CSS variable key → new key. Used by settings migration v10. */
@@ -95,8 +95,9 @@ export const THEME_KEY_MIGRATION_V10: Record<string, keyof ThemeColors> = {
  * Keys that don't need migration are passed through unchanged.
  * Missing keys are filled from `fallback` — 필수다(적대 리뷰): optional이던
  * 시절 기본값이 Default Light라, fallback을 잊은 호출자마다 다크 테마가
- * 라이트 값과 섞이는 footgun이 시그니처에 남아 있었다. 테마의 base를 알면
- * defaultColorsForBase(base)를 넘긴다.
+ * 라이트 값과 섞이는 footgun이 시그니처에 남아 있었다. 이 색들이 어느 모드의
+ * 것인지 알면 defaultColorsForBase(mode)를 넘긴다 — `base`는 더 이상 ThemeDef의
+ * 필드가 아니라 그 헬퍼의 매개변수 이름이다(§357에서 modes 맵으로 바뀌었다).
  */
 export function migrateThemeColors(
   old: Record<string, string>,
@@ -137,7 +138,7 @@ export function defaultColorsForBase(base: ThemeMode): ThemeColors {
 }
 
 // ---------------------------------------------------------------------------
-// 5. BUILT_IN_THEMES — 8 shipped themes
+// 3. BUILT_IN_THEMES — 8 shipped themes
 // ---------------------------------------------------------------------------
 
 export const BUILT_IN_THEMES: ThemeDef[] = [
@@ -411,7 +412,7 @@ export const BUILT_IN_THEMES: ThemeDef[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// 5. Helper — find a theme by ID across built-in and custom themes
+// 4. Helper — find a theme by ID across built-in and custom themes
 // ---------------------------------------------------------------------------
 
 export function findThemeById(

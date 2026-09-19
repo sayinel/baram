@@ -13,7 +13,7 @@
 // 감사 순서 6: 24키를 손으로 두 번 적지 않는다 — 아래 THEME_COLOR_KEYS(값,
 // 색 피커 메타데이터)가 단일 출처이고, 이 타입은 그 배열에서 파생된다. 키를
 // 추가/삭제하려면 배열 한 곳만 고치면 타입·에디터 UI·clearThemeVars의 제거
-// 목록이 함께 따라온다. (배열은 3번 섹션에 있다 — 타입 공간의 typeof 참조는
+// 목록이 함께 따라온다. (배열은 2번 섹션에 있다 — 타입 공간의 typeof 참조는
 // 선언 순서를 타지 않는다.)
 export type ThemeColorKey = (typeof THEME_COLOR_KEYS)[number]["key"];
 export type ThemeColors = Record<ThemeColorKey, string>;

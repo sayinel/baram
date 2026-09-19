@@ -586,12 +586,18 @@ export const useSettingsStore = create<SettingsState>()(
               const t = raw as Record<string, unknown>;
               // 재실행 안전: 이미 새 형태면 손대지 않는다.
               if (t.modes !== undefined) return t;
-              const mode = t.base === "dark" ? "dark" : "light";
+              // 원본을 펼친 뒤 덮어쓴다 — v10·v11·v22 와 같은 모양이다. 새 객체를
+              // 짓던 형태는 id·name 이 이미 유실된 저장분에서 그 자리를 undefined 로
+              // 만들어, findThemeById 가 영영 못 찾는 이름 없는 카드를 남겼다.
+              // 대체된 옛 필드는 함께 떨군다: base·colors 는 modes 로 접혔고,
+              // builtIn 은 source 로 대체된다(위 주석).
+              const { base, colors, ...rest } = t;
+              delete rest.builtIn;
+              const mode = base === "dark" ? "dark" : "light";
               return {
-                id: t.id,
-                name: t.name,
+                ...rest,
                 source: "custom",
-                modes: { [mode]: { colors: t.colors } },
+                modes: { [mode]: { colors } },
               };
             });
           }

@@ -27,6 +27,7 @@ import {
   appliesInlineVars,
   applyThemeVars,
   clearThemeVars,
+  setThemePreviewOwner,
 } from "../../utils/theme-vars";
 
 interface ThemeEditorProps {
@@ -109,6 +110,15 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
     if (root.dataset.theme !== base) root.dataset.theme = base;
   }, [colors, base]);
 
+  // 편집기가 떠 있는 동안 인라인 변수의 주인은 위 effect다. 그 소유권을 밖에
+  // 알려, use-settings-effects의 prefers-color-scheme 리스너가 미리보기를 지우고
+  // 저장된 테마를 다시 깔지 않도록 한다 — 왜 그것이 위 주석이 막으려던 혼합
+  // 미리보기와 같은 결함인지는 그 리스너 옆에 적혀 있다.
+  useEffect(() => {
+    setThemePreviewOwner(true);
+    return () => setThemePreviewOwner(false);
+  }, []);
+
   // Restore original colors on unmount (cancel / navigate away)
   useEffect(() => {
     // Aliased so the cleanup reads the ref through a stable local (lint rule), not
@@ -132,11 +142,22 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
     const isCustom = sourceTheme.source === "custom";
     const themeId = isCustom ? sourceTheme.id : `custom-${Date.now()}`;
 
+    // ‼️ 맵을 **합친다**. 통째로 갈아끼우면 쌍(light+dark)을 가진 테마를 편집할 때
+    // 편집하지 않은 반대쪽 모드가 경고도 되돌리기도 없이 사라진다 — startMode가
+    // themeModes()[0]이라 항상 light에서 출발하므로, 쌍을 가진 테마를 열어 색 하나만
+    // 고치고 저장하면 다크 팔레트를 잃는 것이 기본 경로가 된다(계획 0090의 설치
+    // 테마가 그런 쌍을 들고 온다). 편집 중인 모드 안쪽도 펼쳐, 편집기가 다루지 않는
+    // 자산(§358의 css)을 색만 고쳤다는 이유로 떨구지 않는다.
+    // 부수 효과 하나: 한 모드짜리 테마에서 base 토글을 반대쪽으로 넘겨 저장하면
+    // 결과가 쌍이 된다 — 원래 모드는 손대지 않은 원본 팔레트 그대로 남는다.
     const themeDef: ThemeDef = {
       id: themeId,
       name,
       source: "custom",
-      modes: { [base]: { colors: { ...colors } } },
+      modes: {
+        ...sourceTheme.modes,
+        [base]: { ...sourceTheme.modes[base], colors: { ...colors } },
+      },
     };
 
     saveCustomTheme(themeDef);

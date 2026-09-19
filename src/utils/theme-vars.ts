@@ -69,6 +69,25 @@ export function appliesInlineVars(themeId: string): boolean {
   return !CASCADE_ONLY_THEME_IDS.has(themeId);
 }
 
+/**
+ * Is the theme editor currently the owner of `<html>`'s inline variables?
+ *
+ * Only ever true while ThemeEditor is mounted. It exists so the settings effect's
+ * `prefers-color-scheme` listener can stand down instead of wiping a live preview;
+ * the reasoning for that lives at its call site (use-settings-effects.ts).
+ */
+let previewOwned = false;
+
+/** Claim (`true`) or release (`false`) the ownership {@link themePreviewOwned} reports. */
+export function setThemePreviewOwner(owned: boolean): void {
+  previewOwned = owned;
+}
+
+/** @see setThemePreviewOwner */
+export function themePreviewOwned(): boolean {
+  return previewOwned;
+}
+
 /** Write a theme's colours and every foreground derived from them to `root`. */
 export function applyThemeVars(
   root: HTMLElement,
