@@ -184,6 +184,28 @@ describe("나가는 CSS 를 토큰으로 다시 훑는다", () => {
   });
 });
 
+// ‼️ 이름 비교는 반드시 디코드한 뒤에 한다. css-tree 는 at-rule·함수 이름을 원문 그대로
+// 주므로, 이 관문들이 한때 `@\69 mport "local.css"` 와 `\69 mage-set("https://…")` 를
+// 통째로 지나보냈다(실측). `\68 ttps:` 와 같은 부류다.
+describe("이스케이프한 이름도 같은 이름이다", () => {
+  it.each([
+    ["@\\69 mport url(https://e.com/t.css);", "importNotAllowed"],
+    ['@\\69 mport "local.css";', "importNotAllowed"],
+    ["@\\49 MPORT url(https://e.com/t.css);", "importNotAllowed"],
+    ['a{background:\\69 mage-set("https://e.com/x.png" 1x)}', "absoluteUrl"],
+    ['a{background:i\\6d age-set("https://e.com/x.png" 1x)}', "absoluteUrl"],
+    ['a{background:\\49 MAGE-SET("https://e.com/x.png" 1x)}', "absoluteUrl"],
+    ['a{background:\\73 rc("https://e.com/x.png")}', "absoluteUrl"],
+    ["a{background:image-set(\\76 ar(--x) 1x)}", "absoluteUrl"],
+  ])("%s → %s", (css, expected) => {
+    expect(code(css)).toBe(expected);
+  });
+
+  it("이스케이프해도 상대 경로는 통과한다", () => {
+    expect(code('a{background:\\69 mage-set("local.png" 1x)}')).toBe("(통과)");
+  });
+});
+
 describe("상대 참조는 통과한다", () => {
   it.each([
     "a{background:url(assets/x.png)}",
@@ -283,8 +305,9 @@ describe("파싱 실패는 닫는다", () => {
   });
 
   // 여기 URL 은 Url 노드가 아니라 Raw 안에 통째로 들어간다 — Url 워크가 보지 못한다.
-  // 오늘은 onParseError 가 먼저 잡고 Raw 관문이 두 번째 자물쇠다. 둘 중 하나만 남아도
-  // 거부여야 하므로 결과로만 못을 박는다.
+  // 이 둘은 구조 검증 패스가 먼저 잡고 Raw 관문이 두 번째 자물쇠다. 둘 중 하나만 남아도
+  // 거부여야 하므로 결과로만 못을 박는다. (커스텀 속성 값 쪽은 반대로 Raw 관문이 유일한
+  // 관문이다 — 아래 "검사되지 않은 Raw" 두 줄이 그것을 단독으로 고정한다.)
   it("워크가 못 본 CSS 는 검사되지 않은 CSS 다 — Raw 에 숨은 URL 도 거부한다", () => {
     expect(code("@layer url(https://e.com/x.png);")).toBe("parseFailed");
     expect(code("@page url(https://e.com/x.png){margin:0}")).toBe(

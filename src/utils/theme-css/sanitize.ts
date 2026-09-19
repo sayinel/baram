@@ -106,7 +106,7 @@ function assertNoRemoteReferences(css: string): void {
   stream.forEachToken((type, start, end, index) => {
     const text = css.slice(start, end);
     if (type === csstree.tokenTypes.Function) {
-      if (URL_BEARING_FUNCTIONS.has(css.slice(start, end - 1).toLowerCase())) {
+      if (URL_BEARING_FUNCTIONS.has(cssName(css.slice(start, end - 1)))) {
         const close = stream.getBlockTokenPairIndex(index);
         bearingUntil = Math.max(
           bearingUntil,
@@ -125,6 +125,14 @@ function assertNoRemoteReferences(css: string): void {
       throw new ThemeCssError("absoluteUrl", `output ${text.slice(0, 80)}`);
     }
   });
+}
+
+// at-rule 이름과 함수 이름을 비교 가능한 형태로. **반드시 이것을 거쳐서 비교한다** —
+// css-tree 는 이름을 원문 그대로 준다(`@\69 mport` 는 AST 에서도 `\69 mport` 다).
+// 디코드하지 않고 비교하면 `@\69 mport "x.css"` 와 `\69 mage-set("https://…")` 가
+// 그대로 통과한다 — 실측했고, `\68 ttps:` 와 정확히 같은 부류의 함정이다.
+function cssName(raw: string): string {
+  return csstree.ident.decode(raw).toLowerCase();
 }
 
 // 이 참조가 테마 패키지 밖을 가리키는가. 판정은 WHATWG URL 파서가 한다 —
@@ -203,7 +211,7 @@ export function sanitizeThemeCss(css: string): string {
   csstree.walk(ast, function (node) {
     switch (node.type) {
       case "Atrule":
-        if (node.name.toLowerCase() === "import") {
+        if (cssName(node.name) === "import") {
           throw new ThemeCssError("importNotAllowed", `@import${where(node)}`);
         }
         break;
@@ -218,8 +226,8 @@ export function sanitizeThemeCss(css: string): string {
         // 정해진다 — 설치 시점에 증명할 수 없는 것은 통과시키지 않는다.
         if (
           this.function !== null &&
-          URL_BEARING_FUNCTIONS.has(this.function.name.toLowerCase()) &&
-          SUBSTITUTION_FUNCTIONS.has(node.name.toLowerCase())
+          URL_BEARING_FUNCTIONS.has(cssName(this.function.name)) &&
+          SUBSTITUTION_FUNCTIONS.has(cssName(node.name))
         ) {
           throw new ThemeCssError(
             "absoluteUrl",
@@ -242,7 +250,7 @@ export function sanitizeThemeCss(css: string): string {
       case "String":
         if (
           this.function !== null &&
-          URL_BEARING_FUNCTIONS.has(this.function.name.toLowerCase()) &&
+          URL_BEARING_FUNCTIONS.has(cssName(this.function.name)) &&
           isRemoteUrl(node.value)
         ) {
           throw new ThemeCssError(
