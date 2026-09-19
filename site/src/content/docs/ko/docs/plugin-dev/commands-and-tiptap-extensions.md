@@ -1,6 +1,6 @@
 ---
 title: "명령 팔레트와 Tiptap 확장"
-sourceHash: "bc8845772b01"
+sourceHash: "5dee3f0d24a0"
 ---
 
 ## 명령 팔레트 연동
@@ -21,43 +21,73 @@ context.commands.register("summarize", () => summarize(), {
 
 ## Tiptap 확장 플러그인
 
-플러그인이 커스텀 Tiptap(ProseMirror) 확장을 제공할 수 있습니다. 매니페스트에 선언하십시오.
+플러그인이 살아 있는 에디터에 ProseMirror 플러그인을 기여할 수 있습니다. 매니페스트에
+선언하고, `extensions` capability 를 요구하십시오.
 
 ```json
 {
+  "capabilities": ["extensions"],
   "tiptapExtensions": [
     {
-      "type": "node",
-      "name": "customBlock",
-      "exportName": "CustomBlock"
+      "type": "plugin",
+      "name": "highlighter",
+      "exportName": "Highlighter"
     }
   ]
 }
 ```
 
-그다음 진입점에서 그 Tiptap 확장을 내보냅니다.
+`type`은 반드시 `"plugin"`이어야 합니다 — `"node"`와 `"mark"`는 `validateManifest`가
+**거부**합니다. node 나 mark 는 ProseMirror *스키마*를 바꾸는데, 스키마는 에디터를 만들 때
+딱 한 번, 어떤 플러그인도 로드되기 전에 만들어집니다. 지금은 플러그인이 스키마에 더할 수 있는
+경로가 없습니다. 데코레이션·키보드 핸들러·입력 규칙·붙여넣기 규칙 — 에디터 플러그인이 원하는
+것의 대부분은 ProseMirror `Plugin` 하나 안에 들어가므로, 실제로는 거의 제약이 되지 않습니다.
+
+그다음 진입점에서 **팩토리**를 내보냅니다. 팩토리는 컨텍스트 객체를 받아 ProseMirror
+`Plugin`을 정확히 하나 돌려줘야 합니다.
 
 ```javascript
-import { Node } from "@tiptap/core";
+import { Plugin } from "@tiptap/pm/state";
 
-export const CustomBlock = Node.create({
-  name: "customBlock",
-  group: "block",
-  content: "inline*",
-  parseHTML() {
-    return [{ tag: 'div[data-type="custom-block"]' }];
-  },
-  renderHTML({ HTMLAttributes }) {
-    return ["div", { ...HTMLAttributes, "data-type": "custom-block" }, 0];
-  },
-});
+// `ctx.key`는 앱이 발급합니다. 그대로 쓰십시오 — 다른 키로 만든 플러그인은 등록이
+// 거부됩니다. 언로드가 정확히 이 키만 제거해야 하기 때문입니다.
+export const Highlighter = (ctx) =>
+  new Plugin({
+    key: ctx.key,
+    props: { decorations: (state) => buildDecorations(state, ctx.settings) },
+  });
 
 export function activate(context) {
   // 그 밖의 플러그인 로직
 }
 ```
 
-**중요:** ProseMirror 스키마는 앱이 시작할 때 딱 한 번 만들어집니다. 그래서
-`tiptapExtensions`가 있는 플러그인은 **앱을 완전히 재시작**해야 적용됩니다 — 개발자 구역에서
-플러그인을 다시 불러오면(아래 참조) `activate`/`deactivate`는 다시 돌지만 스키마는 **다시 만들지
-않으므로**, 스키마에 기여하는 변경은 앱을 재시작할 때까지 나타나지 않습니다.
+**키는 앱이 발급합니다 — 직접 고르는 게 아닙니다.** `ctx.key`가 아닌 다른 키로 플러그인을
+만들면 등록이 거부됩니다. 언로드는 정확히 이 플러그인의 키만 제거해야 하는데, 작성자가 직접
+키를 고를 수 있다면 두 플러그인이(서로, 또는 앱 자신의 플러그인과) 충돌할 수 있기 때문입니다.
+컨텍스트는 `ctx.editor`(아래 참조)·`ctx.pluginId`·`ctx.settings`(플러그인에 반영된 설정값)도
+함께 담고 있습니다.
+
+기여한 플러그인은 `props.editable`도 선언할 수 없습니다 — 그 호출 역시 거부됩니다.
+편집 가능 여부는 에디터의 코어 Editable 확장과 vim 의 몫입니다(§298 §12-⑪). 그것을 거부할 수
+있는 제3의 주인이 생기면 그 계약이 깨집니다.
+
+**재시작이 필요 없습니다.** Tiptap 플러그인은 여러분의 플러그인이 활성화되거나 언로드되는
+순간 — 스키마를 다시 만드는 것이 아니라 평범한 `editor.registerPlugin` / `editor.unregisterPlugin`
+API를 통해 — 에디터에 설치되거나 제거됩니다. 개발자 구역에서 플러그인을 다시 불러오면(아래
+참조) 바뀐 기여분이 즉시 반영됩니다.
+
+### 함정 두 가지
+
+**에디터의 DOM을 직접 건드리지 마십시오.** ProseMirror의 `DOMObserver`는 `view.dom`의 서브트리
+전체를 속성 변경까지 포함해 관찰하고, `contentDOM`을 가진 노드에서는 그것을 **무시하지 않습니다**
+— 그 구간을 문서 변경처럼 다시 읽고 다시 그립니다. 플러그인이 에디터 밖에서 쓴 속성은 즉시
+지워지고, 같은 구간의 위젯 데코레이션은 재생성되며(눈에 보이는 깜박임), `readDOMChange`가 그
+"변경"을 실제 문서 트랜잭션으로 만들 수도 있습니다. 에디터에 무언가를 그려야 한다면 `"plugin"`
+기여를 만들고 데코레이션을 쓰십시오 — 이 API가 그러라고 있는 것입니다.
+
+**에디터는 하나가 아닙니다.** 비활성 탭의 `MarkdownSurface`는 언마운트되는 대신 `display:
+none`으로 DOM에 남고, keep-alive 에디터도 보이는 에디터와 함께 마운트됩니다 — 그래서
+`document.querySelector(".tiptap")`은 대개 사용자가 보고 있는 에디터가 아니라 숨은 에디터를
+집습니다. 기여한 플러그인의 팩토리는 자신이 설치된 표면의 `ctx.editor`를 그대로 받으므로, 이
+문제를 겪지 않습니다.

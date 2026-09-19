@@ -136,7 +136,7 @@ describe("PluginDeveloperSection", () => {
     );
   });
 
-  it("reloads a dev plugin without Tiptap extensions and shows a plain toast", async () => {
+  it("reloads a dev plugin and shows a toast", async () => {
     usePluginStore.getState().setDevPlugins([makeDevPlugin()]);
     const showToastSpy = vi.spyOn(useUIStore.getState(), "showToast");
 
@@ -159,46 +159,6 @@ describe("PluginDeveloperSection", () => {
     );
     await waitFor(() =>
       expect(showToastSpy).toHaveBeenCalledWith("Reloaded dev plugin: Dev X"),
-    );
-    expect(
-      showToastSpy.mock.calls.some((call) =>
-        String(call[0]).includes("restart required"),
-      ),
-    ).toBe(false);
-  });
-
-  it("reloads a dev plugin with Tiptap extensions and warns a restart is required", async () => {
-    const manifestWithTiptap: PluginManifest = {
-      ...baseManifest,
-      tiptapExtensions: [{ type: "plugin", name: "x", exportName: "X" }],
-    };
-    usePluginStore.getState().setDevPlugins([makeDevPlugin()]);
-    addDevFolder.mockResolvedValue({
-      install_path: "/dev/dev-x",
-      checksum: "",
-      is_dev: true,
-      manifest: manifestWithTiptap,
-    });
-    const showToastSpy = vi.spyOn(useUIStore.getState(), "showToast");
-
-    render(<PluginDeveloperSection />);
-    fireEvent.click(screen.getByText("Dev X"));
-    fireEvent.click(screen.getByRole("button", { name: "Reload" }));
-
-    await waitFor(() =>
-      expect(pluginLoader.reloadPlugin).toHaveBeenCalledWith(
-        "/dev/dev-x",
-        manifestWithTiptap,
-        // §260 Phase 5 round 4 (G1) — asserted, not tolerated: without `isDev` the loader
-        // falls back to an installed plugin's consent, so a dev folder sharing an id
-        // silently loses capabilities or refuses to load outright.
-        { isDev: true },
-      ),
-    );
-    await waitFor(() =>
-      expect(showToastSpy).toHaveBeenCalledWith(
-        expect.stringContaining("restart required"),
-      ),
     );
   });
 

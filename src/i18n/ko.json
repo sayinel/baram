@@ -630,7 +630,6 @@
   "plugin.dev.toast.loaded": "개발 플러그인을 불러왔습니다: {name}",
   "plugin.dev.toast.reloadFailed": "다시 불러오지 못했습니다: {error}",
   "plugin.dev.toast.reloaded": "개발 플러그인을 다시 불러왔습니다: {name}",
-  "plugin.dev.toast.reloadedRestart": "{name}을(를) 다시 불러왔습니다 — Tiptap 확장은 재시작이 필요합니다",
   "plugin.dev.toast.removeFailed": "제거하지 못했습니다: {error}",
   "plugin.dev.toast.removed": "개발 플러그인을 제거했습니다: {name}",
   "plugin.error.activationTimeout": "플러그인 {id} 활성화가 {ms}ms 안에 끝나지 않았습니다",

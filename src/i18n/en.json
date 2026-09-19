@@ -630,7 +630,6 @@
   "plugin.dev.toast.loaded": "Loaded dev plugin: {name}",
   "plugin.dev.toast.reloadFailed": "Reload failed: {error}",
   "plugin.dev.toast.reloaded": "Reloaded dev plugin: {name}",
-  "plugin.dev.toast.reloadedRestart": "Reloaded {name} — restart required for Tiptap extensions",
   "plugin.dev.toast.removeFailed": "Remove failed: {error}",
   "plugin.dev.toast.removed": "Removed dev plugin: {name}",
   "plugin.error.activationTimeout": "Plugin {id} activation timed out after {ms}ms",
