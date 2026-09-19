@@ -57,7 +57,26 @@
      overlay declares inside is scoped to this box and cannot layer against anything
      outside it. The number moved out of `plugins.css` unchanged, so the order that
      `editor-popup-layering.test.ts` pins — `--z-editor-popup` (1050) and `--z-tooltip`
-     (1060) below the consent dialog — is the order it was before.
+     (1060) below the consent dialog — is the order it was before. The REASON it is
+     pinned was already written at `plugins.css:10`, where this number used to live:
+     this dialog must not depend on staying a descendant of anybody's stacking context
+     to be visible. A deliberate decision relocated, not a new one.
+
+     ‼️ WHAT THIS DOES NOT DEFEND AGAINST: a hostile theme. The unlayered-beats-layered
+     rule only helps where the app declares something, and a theme can put
+     `position: fixed; inset: 0; z-index: 2147483647` on any element the app leaves
+     unpinned and cover this one. No value here wins that race. What a z-index does buy
+     is protection from OUR OWN stacking mistakes — §323, where a body-mounted
+     suggestion menu at 50 painted under a dialog overlay at 200 while still eating the
+     arrow keys — and that is sufficient reason for it on its own.
+
+     The structural answer to covering is the browser's top layer, which
+     `dialog.showModal()` puts an element into and no z-index can beat. It is out of
+     scope here for a testability reason, not a design one: jsdom 30.0.1 has
+     `HTMLDialogElement` but `showModal` and `close` are both `undefined` (measured
+     against this repo's installed copy), and with no Playwright in this repo adopting
+     it would leave the consent dialog with no test coverage at all. It is the right
+     move for a future task that has a real browser to run in.
 
      Its meaning is unchanged too, and it is not the top of the app. Measured over the
      27 `*-overlay` rules in `src/styles`: EIGHT declare 9999 —
