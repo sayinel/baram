@@ -3,15 +3,15 @@
 //
 // Why read instead of move. The obvious shape is to cut these rules out of
 // `plugins.css`/`vault.css`/`modal.css` into one file and inject that. Four of the
-// classes forbid it. Counted over `src/components` outside tests: `className="settings-section"`
-// appears in 15 files (this surface is one of them, so 14 others), `settings-section-desc`
-// and `vault-tab-empty` in 3 each (this surface, `VaultTab.tsx`, `PluginDeveloperSection.tsx`),
-// and `btn-unstyled`/`flex-header`/`text-truncate` are the shared utilities CLAUDE.md pins
-// to `base.css`. Cutting those out breaks the
-// screens left behind; copying them is the drift `export-editor-css.ts` was written to
-// end ("a copy has no way to notice that its original moved"). So nothing moves: the
-// light DOM is untouched, and a change to any rule below reaches the shadow on the next
-// build.
+// classes forbid it. Counted over `src/components` outside tests:
+// `className="settings-section"` appears in 15 files (this surface is one of them, so
+// 14 others); `settings-section-desc` and `vault-tab-empty` in 3 each (this surface,
+// `VaultTab.tsx`, `PluginDeveloperSection.tsx`); and `btn-unstyled`/`flex-header`/
+// `text-truncate` are the shared utilities CLAUDE.md pins to `base.css`. Cutting those
+// out breaks the screens left behind; copying them is the drift `export-editor-css.ts`
+// was written to end ("a copy has no way to notice that its original moved"). So
+// nothing moves: the light DOM is untouched, and a change to any rule below reaches the
+// shadow on the next build.
 //
 // What the extractor keeps, and why those two shapes:
 //
