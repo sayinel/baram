@@ -51,16 +51,21 @@ context object and must return exactly one ProseMirror `Plugin`:
 ```javascript
 import { Plugin } from "@tiptap/pm/state";
 
+let host; // the context `activate` is handed, kept for live settings reads
+
 // `ctx.key` is minted by the app. Use it — a plugin built with any other key is
 // refused, because the app removes exactly this key when your plugin unloads.
 export const Highlighter = (ctx) =>
   new Plugin({
     key: ctx.key,
-    props: { decorations: (state) => buildDecorations(state, ctx.settings) },
+    // Not `ctx.settings`: that is the snapshot this factory was built with.
+    props: {
+      decorations: (state) => buildDecorations(state, host.settings.getAll()),
+    },
   });
 
 export function activate(context) {
-  // Additional plugin logic
+  host = context;
 }
 ```
 
@@ -69,7 +74,16 @@ anything other than `ctx.key` and registration is refused: unloading has to
 remove exactly this plugin's key and nothing else, and letting authors pick
 their own key would let two plugins collide (with each other, or with the
 app's own plugins). The context also carries `ctx.editor` (see below),
-`ctx.pluginId`, and `ctx.settings` (the plugin's resolved settings).
+`ctx.pluginId`, and `ctx.settings`.
+
+**`ctx.settings` is a load-time snapshot, not a live view.** It holds your
+plugin's resolved settings as they were when the plugin loaded. Changing a
+value in the plugin's settings form does not reload the plugin, so nothing
+re-runs your factory — a prop that reads `ctx.settings` keeps handing out the
+values the plugin started with. When you need the current answer, call
+`context.settings.getAll()` (the `context` your `activate` was given; it needs
+the `settings` capability) at the moment you need it. Reloading the plugin is
+what refreshes the snapshot.
 
 A contribution may not set `props.editable`, either — that call is refused
 too. Editability belongs to the editor's own Editable extension and to vim

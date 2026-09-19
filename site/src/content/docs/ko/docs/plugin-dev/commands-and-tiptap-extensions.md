@@ -1,6 +1,6 @@
 ---
 title: "명령 팔레트와 Tiptap 확장"
-sourceHash: "5dee3f0d24a0"
+sourceHash: "3730b22a46cf"
 ---
 
 ## 명령 팔레트 연동
@@ -49,24 +49,35 @@ context.commands.register("summarize", () => summarize(), {
 ```javascript
 import { Plugin } from "@tiptap/pm/state";
 
+let host; // `activate`가 받은 컨텍스트 — 설정값을 그때그때 읽으려고 들고 있습니다
+
 // `ctx.key`는 앱이 발급합니다. 그대로 쓰십시오 — 다른 키로 만든 플러그인은 등록이
 // 거부됩니다. 언로드가 정확히 이 키만 제거해야 하기 때문입니다.
 export const Highlighter = (ctx) =>
   new Plugin({
     key: ctx.key,
-    props: { decorations: (state) => buildDecorations(state, ctx.settings) },
+    // `ctx.settings`가 아닙니다 — 그것은 이 팩토리가 만들어질 때의 스냅숏입니다.
+    props: {
+      decorations: (state) => buildDecorations(state, host.settings.getAll()),
+    },
   });
 
 export function activate(context) {
-  // 그 밖의 플러그인 로직
+  host = context;
 }
 ```
 
 **키는 앱이 발급합니다 — 직접 고르는 게 아닙니다.** `ctx.key`가 아닌 다른 키로 플러그인을
 만들면 등록이 거부됩니다. 언로드는 정확히 이 플러그인의 키만 제거해야 하는데, 작성자가 직접
 키를 고를 수 있다면 두 플러그인이(서로, 또는 앱 자신의 플러그인과) 충돌할 수 있기 때문입니다.
-컨텍스트는 `ctx.editor`(아래 참조)·`ctx.pluginId`·`ctx.settings`(플러그인에 반영된 설정값)도
-함께 담고 있습니다.
+컨텍스트는 `ctx.editor`(아래 참조)·`ctx.pluginId`·`ctx.settings`도 함께 담고 있습니다.
+
+**`ctx.settings`는 로드 시점의 스냅숏이지, 살아 있는 값이 아닙니다.** 플러그인이 로드될 때
+반영돼 있던 설정값을 담고 있습니다. 설정 폼에서 값을 바꿔도 플러그인이 다시 로드되지는 않으므로
+팩토리도 다시 실행되지 않습니다 — `ctx.settings`를 읽는 prop 은 플러그인이 시작할 때의 값을
+계속 내놓습니다. 현재 값이 필요하면 그 시점에 `context.settings.getAll()`을 부르십시오
+(`activate`가 받은 그 `context`이며, `settings` capability 가 필요합니다). 스냅숏은 플러그인을
+다시 불러올 때 갱신됩니다.
 
 기여한 플러그인은 `props.editable`도 선언할 수 없습니다 — 그 호출 역시 거부됩니다.
 편집 가능 여부는 에디터의 코어 Editable 확장과 vim 의 몫입니다(§298 §12-⑪). 그것을 거부할 수
