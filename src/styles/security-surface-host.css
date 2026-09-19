@@ -1,0 +1,72 @@
+/* §359 — the light-DOM host of a shadow-isolated security surface.
+ *
+ * The shadow boundary keeps theme CSS off the content. It does nothing for the host,
+ * which stays in the light DOM where a theme selector can reach it; `display: none`
+ * here removes everything inside regardless. So the geometry a theme would use to hide
+ * this surface is pinned, and the residual risk that remains is the ancestor chain —
+ * which is why `ShadowIsolated.tsx` portals the consent dialog to `document.body` and
+ * leaves the other two in place, and says there what each choice gives up.
+ *
+ * ‼️ `!important` HOLDS AGAINST THEMES — not against all CSS. Theme CSS reaching the
+ * document is structurally free of `!important`: `theme-css/verify.ts:148` rejects a
+ * sheet on any declaration whose `important` is not `false`, and `theme-vars.ts:117`
+ * runs that check before injecting, so there is no theme declaration left to compete
+ * with these. The other runtime injector into `document.head` is a TRUSTED plugin's
+ * `addStyle` (`src/plugins/trusted/ui-api.ts:106`), which is unfiltered and can use
+ * `!important` freely — a separately consent-gated trust tier (§260), outside §359's
+ * threat model, and not something these rules stop.
+ *
+ * Those two are the whole corpus of runtime style injection, enumerated rather than
+ * assumed: grepping `src` outside tests for `head.appendChild`, `head.append(` and
+ * `document.head` yields seven hits. Four are prose (`ui-api.ts:3`, `ui-api.ts:100`,
+ * `PluginShadowMount.tsx:31`, `ShadowIsolated.tsx:10`); one is `ui-api.ts:137`, which
+ * queries `head` only to REMOVE a plugin's styles; the two that append a style element
+ * are `theme-vars.ts:131` and `ui-api.ts:106`.
+ *
+ * (Tag names are spelled out in prose here rather than in angle brackets: stylelint's
+ * `--fix`, which the pre-commit hook runs, rewrites `<` inside a CSS comment to the
+ * escape `\3c` and leaves the sentence unreadable.)
+ *
+ * Belt-and-braces, to be honest about it: a theme's declarations are wrapped in
+ * `@layer baram-theme`, and by the Cascade spec an unlayered author rule beats a
+ * layered one for normal declarations — which is the rule the whole theme pipeline
+ * already rests on, but a browser behaviour this repo's tests cannot confirm (jsdom
+ * does not apply layered rules at all). The `!important` costs nothing and does not
+ * depend on that contract holding. */
+
+.security-surface-host {
+  /* `position` is in this list for the same reason as `display`: `position: absolute;
+     left: -9999px` hides a surface just as completely as `display: none`. */
+  position: static !important;
+  display: block !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+  opacity: 1 !important;
+}
+
+/* Two classes rather than one, so this beats the base rule on specificity instead of
+   on source order — both are `!important`, and at equal specificity the later rule
+   would win, which is a silent dependency on where in this file they sit. */
+.security-surface-host.security-surface-host--overlay {
+  position: fixed !important;
+  inset: 0 !important;
+
+  /* ‼️ The consent dialog's layering lives HERE, not on `.plugin-consent-overlay`
+     inside the shadow. Shadow content is subject to its host's stacking position: a
+     `position: fixed` host always establishes a stacking context, so any z-index the
+     overlay declares inside is scoped to this box and cannot layer against anything
+     outside it. The number moved out of `plugins.css` unchanged, so the order that
+     `editor-popup-layering.test.ts` pins — `--z-editor-popup` (1050) and `--z-tooltip`
+     (1060) below the consent dialog — is the order it was before.
+
+     Its meaning is unchanged too, and it is not the top of the app. Measured over the
+     27 `*-overlay` rules in `src/styles`: EIGHT declare 9999 —
+     `.image-fullscreen-overlay`, `.mermaid-fullscreen-overlay`,
+     `.svg-fullscreen-overlay`, `.photo-lightbox-overlay`, `.git-diff-overlay`,
+     `.table-grid-overlay`, `.ai-prompt-overlay`, `.block-ai-diff-overlay` — and every
+     other one that declares a z-index is at 1010 or below, so 1100 clears those but
+     not the eight. That band was above the
+     consent dialog before this change and still are; §359 is about what a THEME can do
+     to this screen, and moving that band is a separate decision. */
+  z-index: 1100 !important;
+}

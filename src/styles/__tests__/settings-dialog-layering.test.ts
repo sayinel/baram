@@ -38,8 +38,17 @@ import { cssDeclarations, cssRules, walk } from "./css-rules";
 /** The overlay every other one in this family has to clear. */
 const BASELINE = "settings-overlay";
 
-/** The ceiling: the consent dialog must stay the topmost surface. */
-const CEILING = "plugin-consent-overlay";
+/**
+ * The ceiling: the consent dialog must stay above this family.
+ *
+ * ‼️ §359 moved the number, not the meaning. The dialog renders inside a shadow
+ * root, and its host — `position: fixed`, so it always establishes a stacking
+ * context — is what layers against these overlays now; a z-index left on
+ * `.plugin-consent-overlay` would be scoped inside that host and could not
+ * compete with anything here. The 1100 moved to the host unchanged, so this reads
+ * the rule that decides. `editor-popup-layering.test.ts` reads the same one.
+ */
+const CEILING = ".security-surface-host.security-surface-host--overlay";
 
 /**
  * Overlay classes rendered by components in the settings family, minus the
@@ -64,19 +73,25 @@ function settingsFamilyOverlays(): string[] {
   return [...found].sort();
 }
 
-/** The `z-index` of the first rule matching `.className`, as a number. */
-function zIndexOf(className: string): number {
-  const rule = cssRules().find((r) => r.selector === `.${className}`);
-  if (!rule) throw new Error(`CSS rule not found: .${className}`);
-  const value = cssDeclarations(rule.body).find(
-    (d) => d.prop === "z-index",
-  )?.value;
+/**
+ * The `z-index` of the first rule matching `selector`, as a number.
+ *
+ * `!important` is stripped before parsing rather than rejected: the consent host
+ * carries it to stop a theme pushing the surface behind the page (§359), which is a
+ * hiding defence and says nothing about this ordering. What is compared is the number.
+ */
+function zIndexOf(selector: string): number {
+  const rule = cssRules().find((r) => r.selector === selector);
+  if (!rule) throw new Error(`CSS rule not found: ${selector}`);
+  const value = cssDeclarations(rule.body)
+    .find((d) => d.prop === "z-index")
+    ?.value.replace(/\s*!important$/u, "");
   if (value === undefined) {
-    throw new Error(`.${className} has no \`z-index\` declaration`);
+    throw new Error(`${selector} has no \`z-index\` declaration`);
   }
   const parsed = Number(value);
   if (Number.isNaN(parsed)) {
-    throw new Error(`.${className} z-index is not a bare number: ${value}`);
+    throw new Error(`${selector} z-index is not a bare number: ${value}`);
   }
   return parsed;
 }
@@ -101,7 +116,7 @@ describe("§206 설정창과 함께 뜨는 다이얼로그의 레이어링", () 
       // the ORDER between them. Raising the settings overlay and lowering this
       // one are the same defect, and asserting a literal here would only see
       // one of them.
-      expect(zIndexOf(overlay)).toBeGreaterThan(zIndexOf(BASELINE));
+      expect(zIndexOf(`.${overlay}`)).toBeGreaterThan(zIndexOf(`.${BASELINE}`));
     },
   );
 
@@ -111,7 +126,7 @@ describe("§206 설정창과 함께 뜨는 다이얼로그의 레이어링", () 
       // The ceiling, for the reason `plugins.css` gives: the consent dialog is
       // the last thing between a user and running third-party code, so nothing
       // may paint over it. Clearing Settings must not turn into clearing that.
-      expect(zIndexOf(overlay)).toBeLessThan(zIndexOf(CEILING));
+      expect(zIndexOf(`.${overlay}`)).toBeLessThan(zIndexOf(CEILING));
     },
   );
 });

@@ -1,7 +1,14 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import { withinSurface } from "../../../__tests__/helpers/security-surface";
 import { PluginConsentDialog } from "../PluginConsentDialog";
+
+// §359 — the dialog renders inside a shadow root, which `screen` cannot see into:
+// it queries `document.body`, and nothing inside a shadow root is reachable from
+// there. `surface()` is the same query set bound to the shadow content instead, so
+// every assertion below is the one it always was, asked in the right tree.
+const surface = () => withinSurface(".plugin-consent");
 
 const base = {
   intent: "install" as const,
@@ -21,8 +28,8 @@ describe("PluginConsentDialog (§260 Phase 5)", () => {
     // Asserted in the ACTIVE locale (the store defaults to `en`). This used to assert the
     // Korean strings from `CAPABILITY_DESCRIPTIONS`, which is how the mixed-language dialog
     // stayed green: the test encoded the bug. `capability-i18n.test.tsx` covers both locales.
-    expect(screen.getByText(/Read and edit the document/)).toBeTruthy();
-    expect(screen.getByText(/Send network requests/)).toBeTruthy();
+    expect(surface().getByText(/Read and edit the document/)).toBeTruthy();
+    expect(surface().getByText(/Send network requests/)).toBeTruthy();
   });
 
   it("gates a trusted install behind an explicit acknowledgement", () => {
@@ -35,12 +42,12 @@ describe("PluginConsentDialog (§260 Phase 5)", () => {
         onConfirm={onConfirm}
       />,
     );
-    const confirm = screen.getByRole("button", { name: /install/i });
+    const confirm = surface().getByRole("button", { name: /install/i });
     expect(confirm.hasAttribute("disabled")).toBe(true);
     fireEvent.click(confirm);
     expect(onConfirm).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(surface().getByRole("checkbox"));
     expect(confirm.hasAttribute("disabled")).toBe(false);
     fireEvent.click(confirm);
     expect(onConfirm).toHaveBeenCalledTimes(1);
@@ -57,7 +64,9 @@ describe("PluginConsentDialog (§260 Phase 5)", () => {
         onConfirm={vi.fn()}
       />,
     );
-    expect(screen.getByRole("alert").textContent).toMatch(/does not limit it/i);
+    expect(surface().getByRole("alert").textContent).toMatch(
+      /does not limit it/i,
+    );
   });
 
   it("needs no acknowledgement for a sandboxed install", () => {
@@ -70,9 +79,9 @@ describe("PluginConsentDialog (§260 Phase 5)", () => {
         onConfirm={onConfirm}
       />,
     );
-    expect(screen.queryByRole("checkbox")).toBeNull();
-    expect(screen.queryByRole("alert")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: /install/i }));
+    expect(surface().queryByRole("checkbox")).toBeNull();
+    expect(surface().queryByRole("alert")).toBeNull();
+    fireEvent.click(surface().getByRole("button", { name: /install/i }));
     expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 
@@ -87,7 +96,7 @@ describe("PluginConsentDialog (§260 Phase 5)", () => {
         prior={{ capabilities: ["editor"], trust: "sandboxed" }}
       />,
     );
-    const rows = screen.getAllByRole("listitem");
+    const rows = surface().getAllByRole("listitem");
     expect(rows).toHaveLength(2);
     expect(rows[0].textContent).not.toContain("NEW");
     expect(rows[1].textContent).toContain("NEW");
@@ -104,7 +113,7 @@ describe("PluginConsentDialog (§260 Phase 5)", () => {
         onConfirm={vi.fn()}
       />,
     );
-    expect(screen.getByRole("listitem").textContent).not.toContain("NEW");
+    expect(surface().getByRole("listitem").textContent).not.toContain("NEW");
   });
 
   it("treats a readonly narrowing as already covered, not as NEW", () => {
@@ -120,7 +129,7 @@ describe("PluginConsentDialog (§260 Phase 5)", () => {
         prior={{ capabilities: ["files"], trust: "sandboxed" }}
       />,
     );
-    expect(screen.getByRole("listitem").textContent).not.toContain("NEW");
+    expect(surface().getByRole("listitem").textContent).not.toContain("NEW");
   });
 
   it("says what it will do — install versus update, from the CALLER's intent", () => {
@@ -132,7 +141,7 @@ describe("PluginConsentDialog (§260 Phase 5)", () => {
         onConfirm={vi.fn()}
       />,
     );
-    expect(screen.getByRole("heading").textContent).toMatch(/install/i);
+    expect(surface().getByRole("heading").textContent).toMatch(/install/i);
     unmount();
 
     render(
@@ -144,7 +153,7 @@ describe("PluginConsentDialog (§260 Phase 5)", () => {
         onConfirm={vi.fn()}
       />,
     );
-    expect(screen.getByRole("heading").textContent).toMatch(/update/i);
+    expect(surface().getByRole("heading").textContent).toMatch(/update/i);
   });
 
   it("cancels without confirming", () => {
@@ -158,7 +167,7 @@ describe("PluginConsentDialog (§260 Phase 5)", () => {
         onConfirm={onConfirm}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
+    fireEvent.click(surface().getByRole("button", { name: /cancel/i }));
     expect(onCancel).toHaveBeenCalledTimes(1);
     expect(onConfirm).not.toHaveBeenCalled();
   });

@@ -69,6 +69,10 @@ vi.mock("../../../plugins/registry-client", () => ({
   searchRegistry: () => listed,
 }));
 
+import {
+  findSurface,
+  surfaceCount,
+} from "../../../__tests__/helpers/security-surface";
 import { usePluginStore } from "../../../stores/system/plugin";
 import { PluginMarketplace } from "../PluginMarketplace";
 
@@ -108,9 +112,14 @@ async function clickInstall() {
 /**
  * The consent dialog's confirm button — scoped to the dialog, because the card behind it
  * still offers its own "Install" and an unscoped query would match both.
+ *
+ * ‼️ §359 — the dialog is inside a shadow root now, so `screen` cannot see it at all:
+ * `screen` queries `document.body`, and a shadow root is not part of that tree. That
+ * also means `queryByRole("dialog")` returning null no longer distinguishes "closed"
+ * from "open", which is why the absence assertions in this file count surfaces.
  */
 async function confirmConsent() {
-  const dialog = await screen.findByRole("dialog");
+  const dialog = (await findSurface(".plugin-consent")).getByRole("dialog");
   fireEvent.click(within(dialog).getByRole("button", { name: /^Install$/ }));
 }
 
@@ -174,14 +183,20 @@ describe("install consent + registry cross-check (§260 Phase 5)", () => {
 
   it("asks before downloading anything", async () => {
     await clickInstall();
-    expect(await screen.findByRole("dialog")).toBeTruthy();
+    expect(await findSurface(".plugin-consent")).toBeTruthy();
     expect(pluginInstallStage).not.toHaveBeenCalled();
   });
 
   it("downloads nothing when the dialog is cancelled", async () => {
     await clickInstall();
-    fireEvent.click(await screen.findByRole("button", { name: /cancel/i }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    fireEvent.click(
+      (await findSurface(".plugin-consent")).getByRole("button", {
+        name: /cancel/i,
+      }),
+    );
+    await waitFor(() => {
+      expect(surfaceCount(".plugin-consent")).toBe(0);
+    });
     expect(pluginInstallStage).not.toHaveBeenCalled();
     expect(usePluginStore.getState().installedPlugins.demo).toBeUndefined();
   });
@@ -278,7 +293,7 @@ describe("install consent + registry cross-check (§260 Phase 5)", () => {
 
     render(<PluginMarketplace />);
     fireEvent.click(await screen.findByRole("button", { name: /^Install$/ }));
-    const dialog = await screen.findByRole("dialog");
+    const dialog = (await findSurface(".plugin-consent")).getByRole("dialog");
     fireEvent.click(within(dialog).getByRole("checkbox"));
     fireEvent.click(within(dialog).getByRole("button", { name: /^Install$/ }));
 
@@ -305,7 +320,7 @@ describe("install consent + registry cross-check (§260 Phase 5)", () => {
       await screen.findByRole("button", { name: /^Update to v/ }),
     );
 
-    const dialog = await screen.findByRole("dialog");
+    const dialog = (await findSurface(".plugin-consent")).getByRole("dialog");
     expect(dialog.textContent).toContain("NEW");
     fireEvent.click(within(dialog).getByRole("button", { name: /install/i }));
 
@@ -336,7 +351,7 @@ describe("install consent + registry cross-check (§260 Phase 5)", () => {
         trust: "sandboxed",
       }),
     );
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(surfaceCount(".plugin-consent")).toBe(0);
   });
 
   it("keeps the working version when an update fails its checks", async () => {
@@ -557,7 +572,7 @@ describe("install consent + registry cross-check (§260 Phase 5)", () => {
       await screen.findByRole("button", { name: /^Update to v/ }),
     );
 
-    const dialog = await screen.findByRole("dialog");
+    const dialog = (await findSurface(".plugin-consent")).getByRole("dialog");
     expect(within(dialog).getByRole("heading").textContent).toMatch(/update/i);
     expect(within(dialog).getByRole("heading").textContent).not.toMatch(
       /^Install/i,
@@ -606,7 +621,7 @@ describe("install consent + registry cross-check (§260 Phase 5)", () => {
     // Name-qualified since the row moved to `PluginRowView` — see the note above.
     fireEvent.click(await screen.findByRole("button", { name: "Update Demo" }));
 
-    const dialog = await screen.findByRole("dialog");
+    const dialog = (await findSurface(".plugin-consent")).getByRole("dialog");
     expect(dialog.textContent).toContain("NEW");
   });
 
@@ -648,7 +663,7 @@ describe("install consent + registry cross-check (§260 Phase 5)", () => {
     expect(install.hasAttribute("disabled")).toBe(true);
     fireEvent.click(install);
 
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(surfaceCount(".plugin-consent")).toBe(0);
     expect(pluginInstallStage).not.toHaveBeenCalled();
   });
 
@@ -674,7 +689,7 @@ describe("install consent + registry cross-check (§260 Phase 5)", () => {
         "predates Baram's plugin trust model",
       ),
     );
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(surfaceCount(".plugin-consent")).toBe(0);
     expect(pluginInstallStage).not.toHaveBeenCalled();
     // Nothing was removed either — a refusal must not be destructive.
     expect(usePluginStore.getState().installedPlugins.demo).toBeDefined();

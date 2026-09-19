@@ -23,6 +23,8 @@ import { closeContexts } from "../../../services/close-context";
 import { useContextStore } from "../../../stores/context/context";
 import { useUIStore } from "../../../stores/ui/ui";
 import { logger } from "../../../utils/logger";
+import { securitySurfaceCss } from "../../../utils/security-surface-css";
+import { ShadowIsolated } from "../../ui/ShadowIsolated";
 
 export function ApprovedRootsSection() {
   const { t } = useTranslation();
@@ -100,42 +102,50 @@ export function ApprovedRootsSection() {
   );
 
   return (
-    <div className="settings-section">
-      <h3 className="settings-section-title">
-        {t("settings.vault.approvedRoots.title")}
-      </h3>
-      <p className="settings-section-desc">
-        {t("settings.vault.approvedRoots.desc")}
-      </p>
-      {roots.length === 0 ? (
-        <p className="vault-tab-empty">
-          {t("settings.vault.approvedRoots.empty")}
+    // §359 — the MIDDLE tier in `ShadowIsolated`'s header. Isolated but NOT
+    // portaled: this section is meaningful among its sibling settings sections,
+    // and the user navigated here on purpose, so a missing one is noticeable.
+    <ShadowIsolated
+      styles={securitySurfaceCss("approvedRoots")}
+      variant="inline"
+    >
+      <div className="settings-section">
+        <h3 className="settings-section-title">
+          {t("settings.vault.approvedRoots.title")}
+        </h3>
+        <p className="settings-section-desc">
+          {t("settings.vault.approvedRoots.desc")}
         </p>
-      ) : (
-        <ul className="approved-roots-list">
-          {roots.map((r) => (
-            <li className="approved-roots-item flex-header" key={r.path}>
-              <span className="text-truncate" title={r.path}>
-                {r.path}
-              </span>
-              <button
-                className="btn-unstyled approved-roots-revoke"
-                disabled={revoking.has(r.path)}
-                onClick={() => {
-                  void handleRevoke(r.path);
-                }}
-                type="button"
-              >
-                {t("settings.vault.approvedRoots.revoke")}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-      <p className="settings-section-desc">
-        {t("settings.vault.approvedRoots.restartNote")}
-      </p>
-    </div>
+        {roots.length === 0 ? (
+          <p className="vault-tab-empty">
+            {t("settings.vault.approvedRoots.empty")}
+          </p>
+        ) : (
+          <ul className="approved-roots-list">
+            {roots.map((r) => (
+              <li className="approved-roots-item flex-header" key={r.path}>
+                <span className="text-truncate" title={r.path}>
+                  {r.path}
+                </span>
+                <button
+                  className="btn-unstyled approved-roots-revoke"
+                  disabled={revoking.has(r.path)}
+                  onClick={() => {
+                    void handleRevoke(r.path);
+                  }}
+                  type="button"
+                >
+                  {t("settings.vault.approvedRoots.revoke")}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="settings-section-desc">
+          {t("settings.vault.approvedRoots.restartNote")}
+        </p>
+      </div>
+    </ShadowIsolated>
   );
 }
 

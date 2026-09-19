@@ -17,12 +17,19 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { withinSurface } from "../../../__tests__/helpers/security-surface";
 import en from "../../../i18n/en.json";
 import ko from "../../../i18n/ko.json";
 import { CAPABILITY_DESCRIPTIONS } from "../../../plugins/types";
 import { useSettingsStore } from "../../../stores/settings/store";
 import { PluginCapabilityBadge } from "../PluginCapabilityBadge";
 import { PluginConsentDialog } from "../PluginConsentDialog";
+
+// §359 — the consent dialog renders inside a shadow root, which `screen` cannot
+// reach: it queries `document.body`, and a shadow root is not part of that tree.
+// The `PluginCapabilityBadge` block at the bottom of this file is NOT isolated and
+// still uses `screen`.
+const surface = () => withinSurface(".plugin-consent");
 
 /** Hangul syllables. Any match in the English UI is the bug this file is about. */
 const HANGUL = /[가-힣]/;
@@ -128,7 +135,7 @@ describe("the dialog renders in the app's language", () => {
       useSettingsStore.setState({ locale: "en" });
       renderDialog({ intent, trust });
 
-      const text = screen.getByRole("dialog").textContent ?? "";
+      const text = surface().getByRole("dialog").textContent ?? "";
       expect(text.length).toBeGreaterThan(60); // the dialog actually rendered
       const offending = text.match(
         new RegExp(`.{0,24}${HANGUL.source}.{0,24}`, "g"),
@@ -143,7 +150,7 @@ describe("the dialog renders in the app's language", () => {
       useSettingsStore.setState({ locale: "ko" });
       renderDialog({ intent, trust });
 
-      const text = screen.getByRole("dialog").textContent ?? "";
+      const text = surface().getByRole("dialog").textContent ?? "";
       expect(HANGUL.test(text)).toBe(true);
       expect(
         latinLeftovers(text),
@@ -163,7 +170,7 @@ describe("the dialog renders in the app's language", () => {
       ["editor"],
     );
 
-    const rows = screen.getAllByRole("listitem");
+    const rows = surface().getAllByRole("listitem");
     expect(rows[1].textContent).toContain("추가");
     expect(latinLeftovers(rows[1].textContent ?? "")).toBeNull();
   });
@@ -172,7 +179,7 @@ describe("the dialog renders in the app's language", () => {
     useSettingsStore.setState({ locale: "ko" });
     renderDialog({ intent: "install", trust: "sandboxed" }, []);
 
-    const text = screen.getByRole("dialog").textContent ?? "";
+    const text = surface().getByRole("dialog").textContent ?? "";
     expect(text).toMatch(/요청하는 권한이 없습니다/);
     expect(latinLeftovers(text)).toBeNull();
   });
@@ -180,7 +187,7 @@ describe("the dialog renders in the app's language", () => {
   it("translates the title, including the plugin name, per locale", () => {
     useSettingsStore.setState({ locale: "ko" });
     renderDialog();
-    const heading = screen.getByRole("heading").textContent ?? "";
+    const heading = surface().getByRole("heading").textContent ?? "";
     // The name is interpolated, not concatenated around a hardcoded verb.
     expect(heading).toContain("Demo");
     expect(heading).toMatch(/설치하시겠습니까/);
@@ -190,7 +197,7 @@ describe("the dialog renders in the app's language", () => {
   it("translates the trusted-tier warning, which is the copy that matters most", () => {
     useSettingsStore.setState({ locale: "ko" });
     renderDialog();
-    const alert = screen.getByRole("alert").textContent ?? "";
+    const alert = surface().getByRole("alert").textContent ?? "";
     expect(alert).toMatch(/제한하지는 않습니다/);
     expect(alert).not.toMatch(/does not limit it/);
   });
@@ -265,15 +272,15 @@ describe("the decision stays on screen", () => {
     useSettingsStore.setState({ locale: "en" });
     renderDialog({ intent: "install", trust: "trusted" });
 
-    const body = screen
+    const body = surface()
       .getByRole("dialog")
       .querySelector(".plugin-consent__body");
     expect(body).not.toBeNull();
     expect(body?.querySelector(".plugin-consent__ack")).toBeNull();
     expect(body?.querySelector(".plugin-consent__actions")).toBeNull();
     // …and they exist at all, so the assertions above are not satisfied by absence.
-    expect(screen.getByRole("checkbox")).toBeInTheDocument();
-    expect(screen.getAllByRole("button")).toHaveLength(2);
+    expect(surface().getByRole("checkbox")).toBeInTheDocument();
+    expect(surface().getAllByRole("button")).toHaveLength(2);
   });
 
   // The OTHER half of the original report — "it looked unstyled" — had no guard at all. The

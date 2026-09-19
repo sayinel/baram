@@ -47,8 +47,17 @@ vi.mock("../../../plugins/registry-client", () => ({
 
 import type { RevocationSeverity } from "../../../plugins/revocation";
 
+import {
+  findSurface,
+  surfaceCount,
+} from "../../../__tests__/helpers/security-surface";
 import { usePluginStore } from "../../../stores/system/plugin";
 import { PluginMarketplace } from "../PluginMarketplace";
+
+// §359 — the consent dialog renders inside a shadow root, which `screen` cannot
+// reach: it queries `document.body`, and a shadow root is not part of that tree.
+// `queryByRole("dialog")` returning null stopped meaning "not open" the moment the
+// dialog moved there, so the absence assertions count mounted surfaces instead.
 
 const ENTRY: RegistryEntry = {
   author: "Baram",
@@ -150,8 +159,7 @@ describe("the marketplace install gate (§69)", () => {
     fireEvent.click(await screen.findByRole("button", { name: /^Install$/ }));
 
     // The consent dialog stands between the click and the download.
-    const dialog = await screen.findByRole("dialog");
-    expect(dialog).toBeInTheDocument();
+    expect(await findSurface(".plugin-consent")).toBeTruthy();
   });
 });
 
@@ -247,7 +255,7 @@ describe("the marketplace update gate (§69)", () => {
     await waitFor(() =>
       expect(usePluginStore.getState().pluginErrors.demo).toBeTruthy(),
     );
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(surfaceCount(".plugin-consent")).toBe(0);
     expect(pluginInstallStage).not.toHaveBeenCalled();
   });
 });

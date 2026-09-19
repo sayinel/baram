@@ -1,0 +1,48 @@
+/* §359 — the part of the app's CSS that a shadow boundary drops and that no
+ * stylesheet in this repo can supply, so it is authored here instead of read.
+ *
+ * ‼️ This file is NOT imported by `index.css`. It is read with `?raw` by
+ * `src/utils/security-surface-css.ts` and injected into each security surface's
+ * shadow root. Everything else those surfaces need — their own class rules, the
+ * three `base.css` utilities they borrow, and the two universal `a11y.css` rules —
+ * is EXTRACTED from the stylesheets that already own it, so that a change there
+ * reaches the shadow too. Nothing below is a copy of a rule this repo has; it is
+ * the third-party layer we cannot read.
+ *
+ * That layer is Tailwind's preflight. It arrives through `@import "tailwindcss"`
+ * at `base.css:8`, expanded by the build, so there is no source file to point a
+ * `?raw` import at — and `base.css` itself cannot be injected whole, because that
+ * `@import` would become a live network request inside the shadow root.
+ *
+ * Only the declarations the extracted rules actually depend on are restated, and
+ * the corpus for "actually depend on" is those rules themselves:
+ *
+ *  - `box-sizing`. Not an inherited property, so it does not cross the boundary.
+ *    `.plugin-consent` is `width: 480px` with `padding: 22px 24px 18px` and a 1px
+ *    border; under the UA default (`content-box`) those add to the width instead of
+ *    fitting inside it, so the dialog renders 50px wider than it is declared.
+ *    `.plugin-consent__ack`, `.plugin-consent__danger` and `.plugin-revoked` pair
+ *    padding with a border the same way.
+ *  - `font` on form controls. Also not inherited — a UA gives button and input
+ *    elements their own font family rather than the page's. Every button these
+ *    surfaces draw sets a size or a weight and no family — `.plugin-consent__cancel`
+ *    and `__confirm` (13px/500), `.plugin-revoked__remove` (12px/500),
+ *    `.approved-roots-revoke` (11px) — so without this they render in the platform
+ *    control font while the prose beside them uses the app's.
+ *
+ * What is deliberately NOT restated: margins and list styling. The extracted rules
+ * set those themselves where the UA default would differ — `plugins.css:107` and
+ * `:156` zero the heading and lead margins, `:165` zeroes the capability list's
+ * padding/margin and removes its markers — so restating them here would be a second
+ * opinion about a value that already has an owner. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+button,
+input {
+  font: inherit;
+}

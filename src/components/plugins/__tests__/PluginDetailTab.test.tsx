@@ -53,6 +53,7 @@ vi.mock("../plugin-readme", () => ({
   readPluginReadme: (p: string) => readPluginReadme(p),
 }));
 
+import { withinSurface } from "../../../__tests__/helpers/security-surface";
 import { revocationFor } from "../../../plugins/revocation";
 import { useEditorStore } from "../../../stores/editor/editor";
 import { usePluginStore } from "../../../stores/system/plugin";
@@ -242,6 +243,8 @@ describe("PluginDetailTab — a plugin the registry does not list (§69)", () =>
 // detail it links to explained nothing while offering Install — on the one screen whose job is
 // provenance. The install itself was still refused by `usePluginActions`, so this was a
 // display-only regression, on the security explanation path.
+// §359 — the notice renders inside a shadow root, which `screen` cannot reach: it
+// queries `document.body`, and a shadow root is not part of that tree.
 describe("PluginDetailTab — revocation (§69)", () => {
   const revoked = {
     revoked: [
@@ -277,7 +280,9 @@ describe("PluginDetailTab — revocation (§69)", () => {
     render(<PluginDetailTab pluginId="risky" />);
     await settleRegistryFetch();
 
-    expect(screen.getByText(/malicious build/iu)).toBeTruthy();
+    expect(
+      withinSurface(".plugin-revoked").getByText(/malicious build/iu),
+    ).toBeTruthy();
   });
 
   it("still explains it for an installed plugin", async () => {
@@ -296,7 +301,9 @@ describe("PluginDetailTab — revocation (§69)", () => {
     render(<PluginDetailTab pluginId="risky" />);
     await settleRegistryFetch();
 
-    expect(screen.getByText(/malicious build/iu)).toBeTruthy();
+    expect(
+      withinSurface(".plugin-revoked").getByText(/malicious build/iu),
+    ).toBeTruthy();
   });
 });
 

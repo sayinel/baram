@@ -5,7 +5,13 @@ import type { PluginManifest } from "../../../plugins/types";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { withinSurface } from "../../../__tests__/helpers/security-surface";
 import { PluginRowView } from "../PluginRow";
+
+// §359 — the revocation notice renders inside a shadow root, which `screen` cannot
+// reach: it queries `document.body`, and a shadow root is not part of that tree.
+// The rest of this file asserts on light-DOM markup and still uses `screen`.
+const notice = () => withinSurface(".plugin-revoked");
 
 /** 철회 목록의 한 항목. `malicious`라야 알림이 제거 버튼까지 그린다. */
 const REVOKED = {
@@ -124,9 +130,9 @@ describe("PluginRowView (§69)", () => {
       />,
     );
     expect(
-      screen.getByText("This plugin has been withdrawn and is not running."),
+      notice().getByText("This plugin has been withdrawn and is not running."),
     ).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Remove it" })).toBeNull();
+    expect(notice().queryByRole("button", { name: "Remove it" })).toBeNull();
   });
 
   it("offers it to a community plugin, which can remove", () => {
@@ -137,7 +143,7 @@ describe("PluginRowView (§69)", () => {
         {...handlers}
       />,
     );
-    const button = screen.getByRole("button", { name: "Remove it" });
+    const button = notice().getByRole("button", { name: "Remove it" });
     fireEvent.click(button);
     expect(handlers.onRemove).toHaveBeenCalledTimes(1);
   });
