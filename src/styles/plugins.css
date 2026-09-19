@@ -11,11 +11,17 @@
   position: fixed;
   inset: 0;
 
-  /* Above `.settings-overlay` (1000), which is where the marketplace actually lives.
-     Nested inside it the z-index is scoped and any value would do — but this dialog is
-     the last thing between a user and running third-party code, so it must not depend
-     on staying a descendant of that stacking context to be visible. */
-  z-index: 1100;
+  /* ‼️ §359 — NO z-index here, deliberately. This rule is no longer applied in the
+     light DOM: `PluginConsentDialog` renders inside a shadow root whose host is
+     `position: fixed`, and a fixed host always establishes a stacking context, so any
+     z-index declared here would be scoped to that box and could not layer against
+     anything outside it. The 1100 that used to sit on this line moved unchanged to
+     `.security-surface-host--overlay` in `security-surface-host.css`, which is the
+     element that now does the layering; `editor-popup-layering.test.ts` reads it
+     there. The reason it is pinned at all is still the reason written here before:
+     this dialog is the last thing between a user and running third-party code, so its
+     visibility must not depend on staying a descendant of anybody's stacking
+     context. */
   display: flex;
   justify-content: center;
   padding-top: 12vh;

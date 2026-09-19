@@ -155,7 +155,24 @@ describe("§323 body-mounted 편집기 팝업의 레이어링", () => {
     // that dependency. "No editor is reachable from the consent dialog today"
     // is not the guarantee; the order is, which is why it is pinned and not
     // argued.
-    const consent = Number(declaration(".plugin-consent-overlay", "z-index"));
+    //
+    // ‼️ §359 moved the number, not the meaning. The dialog renders inside a
+    // shadow root whose host is `position: fixed` — which always establishes a
+    // stacking context — so `.plugin-consent-overlay`'s own z-index would be
+    // scoped inside that box and would no longer compete with anything on this
+    // list. The 1100 moved unchanged to the host, which is the element that
+    // actually layers, so reading it here is reading the rule that decides.
+    //
+    // The `!important` is stripped rather than parsed: on the host it is there to
+    // stop a theme pushing the surface behind the page with `z-index: -1`, which is
+    // a hiding vector, not a statement about this ordering. What this test compares
+    // is the number.
+    const consent = Number(
+      declaration(
+        ".security-surface-host.security-surface-host--overlay",
+        "z-index",
+      ).replace(/\s*!important$/u, ""),
+    );
     expect(Number.isNaN(consent)).toBe(false);
     expect(tokenValue()).toBeLessThan(consent);
   });

@@ -7,13 +7,7 @@
 // through the ordering, so an error string alone would not pin it.
 import type { RegistryEntry, RegistryIndex } from "../../../plugins/types";
 
-import {
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within,
-} from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const pluginInstallStage = vi.fn();
@@ -56,8 +50,20 @@ vi.mock("../../../plugins/registry-client", () => ({
   searchRegistry: () => [listing],
 }));
 
+import {
+  countAnywhere,
+  findSurface,
+} from "../../../__tests__/helpers/security-surface";
 import { usePluginStore } from "../../../stores/system/plugin";
 import { PluginMarketplace } from "../PluginMarketplace";
+
+// §359 — the consent dialog renders inside a shadow root, which `screen` cannot
+// reach: it queries `document.body`, and a shadow root is not part of that tree.
+// `queryByRole("dialog")` returning null stopped meaning "not open" the moment the
+// dialog moved there, so the absence assertions use `countAnywhere`, which counts the
+// light DOM AND every shadow root. NOT `surfaceCount` — that counts only inside mounted
+// surfaces, so it is also satisfied by the dialog rendering with no wrapper at all,
+// which is the regression the wrapper exists to prevent.
 
 /** The listing declares a floor the app under test will not meet. */
 const ENTRY: RegistryEntry = {
@@ -114,7 +120,7 @@ describe("the marketplace version-floor gate (§69)", () => {
     await waitFor(() =>
       expect(usePluginStore.getState().pluginErrors.demo).toBeTruthy(),
     );
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(countAnywhere(".plugin-consent")).toBe(0);
   });
 
   it("downloads when the app satisfies the floor", async () => {
@@ -124,7 +130,7 @@ describe("the marketplace version-floor gate (§69)", () => {
     render(<PluginMarketplace />);
     fireEvent.click(await screen.findByRole("button", { name: /^Install$/ }));
 
-    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(await findSurface(".plugin-consent")).toBeTruthy();
   });
 
   it("refuses a DOWNLOAD whose floor the listing under-declared, and discards it", async () => {
@@ -149,8 +155,8 @@ describe("the marketplace version-floor gate (§69)", () => {
     fireEvent.click(await screen.findByRole("button", { name: /^Install$/ }));
     // Confirm consent — scoped to the dialog, because the card behind it still offers its
     // own "Install" and an unscoped query matches both.
-    const dialog = await screen.findByRole("dialog");
-    fireEvent.click(within(dialog).getByRole("button", { name: /^Install$/ }));
+    const dialog = await findSurface(".plugin-consent");
+    fireEvent.click(dialog.getByRole("button", { name: /^Install$/ }));
 
     await waitFor(() =>
       expect(usePluginStore.getState().pluginErrors.demo).toBeTruthy(),
@@ -171,7 +177,7 @@ describe("the marketplace version-floor gate (§69)", () => {
     render(<PluginMarketplace />);
     fireEvent.click(await screen.findByRole("button", { name: /^Install$/ }));
 
-    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(await findSurface(".plugin-consent")).toBeTruthy();
   });
 });
 

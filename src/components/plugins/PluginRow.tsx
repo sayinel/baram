@@ -81,6 +81,7 @@ export function PluginRowView({
             the notice returns null: two incidental facts holding up a rule that has one
             authority. */}
         <PluginRevokedNotice
+          name={manifest.name}
           onRemove={can.canRemove ? onRemove : undefined}
           revocation={row.revocation ?? null}
         />

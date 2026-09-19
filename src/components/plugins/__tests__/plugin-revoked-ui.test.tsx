@@ -9,6 +9,10 @@ import type { RegistryEntry } from "../../../plugins/types";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
+import {
+  countAnywhere,
+  withinSurface,
+} from "../../../__tests__/helpers/security-surface";
 import en from "../../../i18n/en.json";
 import { useSettingsStore } from "../../../stores/settings/store";
 import { PluginCard } from "../PluginCard";
@@ -29,6 +33,14 @@ const ENTRY: RegistryEntry = {
   trust: "sandboxed",
   version: "2.0.1",
 };
+
+// §69 — the button's accessible name is the NAMED form now (`aria-label`), not its
+// visible text. Querying by `plugin.revoked.remove` would find nothing, and a
+// `queryBy…` written that way would pass for the wrong reason.
+const REMOVE_NAMED = LABELS["plugin.revoked.removeNamed"].replace(
+  "{name}",
+  ENTRY.name,
+);
 
 function detail(revoked: null | RevocationEntry) {
   return render(
@@ -55,13 +67,21 @@ function revocation(over: Partial<RevocationEntry> = {}): RevocationEntry {
   };
 }
 
+// §359 — the notice renders inside a shadow root, which `screen` cannot reach: it
+// queries `document.body`, and a shadow root is not part of that tree. The "shows
+// nothing" cases therefore count `.plugin-revoked` across BOTH trees: `screen` finds
+// nothing either way now, so their old form would have passed with the notice
+// rendered in full, and counting only surfaces would still pass if the notice were
+// ever rendered without the wrapper.
+const notice = () => withinSurface(".plugin-revoked");
+
 describe("the withdrawal notice", () => {
   it("states that the plugin is not running, and why", () => {
     detail(revocation());
     expect(
-      screen.getByText(LABELS["plugin.revoked.blockedLoad"]),
+      notice().getByText(LABELS["plugin.revoked.blockedLoad"]),
     ).toBeInTheDocument();
-    expect(screen.getByText(/exfiltrates the vault/)).toBeInTheDocument();
+    expect(notice().getByText(/exfiltrates the vault/)).toBeInTheDocument();
   });
 
   it("says the files were kept, and offers removal as the user's choice", () => {
@@ -70,23 +90,23 @@ describe("the withdrawal notice", () => {
     // is why — a refused load is reversible, a deleted directory is not.
     detail(revocation());
     expect(
-      screen.getByText(LABELS["plugin.revoked.keepFiles"]),
+      notice().getByText(LABELS["plugin.revoked.keepFiles"]),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: LABELS["plugin.revoked.remove"] }),
+      notice().getByRole("button", { name: REMOVE_NAMED }),
     ).toBeInTheDocument();
   });
 
   it("warns without claiming it is stopped, for a vulnerable version", () => {
     detail(revocation({ severity: "vulnerable" }));
     expect(
-      screen.getByText(LABELS["plugin.revoked.vulnerable"]),
+      notice().getByText(LABELS["plugin.revoked.vulnerable"]),
     ).toBeInTheDocument();
     // It is still running, so neither the stopped wording nor the removal offer belong.
-    expect(screen.queryByText(LABELS["plugin.revoked.blockedLoad"])).toBeNull();
     expect(
-      screen.queryByRole("button", { name: LABELS["plugin.revoked.remove"] }),
+      notice().queryByText(LABELS["plugin.revoked.blockedLoad"]),
     ).toBeNull();
+    expect(notice().queryByRole("button", { name: REMOVE_NAMED })).toBeNull();
   });
 
   it("shows nothing at all for an unlisted plugin", () => {
@@ -94,13 +114,12 @@ describe("the withdrawal notice", () => {
     // Most of a real withdrawal list is this, and alarming the user about it would
     // make the notice worth ignoring when it finally matters.
     detail(revocation({ severity: "unlisted" }));
-    expect(screen.queryByText(LABELS["plugin.revoked.blockedLoad"])).toBeNull();
-    expect(screen.queryByText(LABELS["plugin.revoked.vulnerable"])).toBeNull();
+    expect(countAnywhere(".plugin-revoked")).toBe(0);
   });
 
   it("shows nothing when the plugin is not withdrawn", () => {
     detail(null);
-    expect(screen.queryByText(LABELS["plugin.revoked.blockedLoad"])).toBeNull();
+    expect(countAnywhere(".plugin-revoked")).toBe(0);
   });
 
   it("prefers a translated reason key over the English prose when one exists", () => {
@@ -109,9 +128,9 @@ describe("the withdrawal notice", () => {
       revocation({ reason: "raw prose", reasonKey: "plugin.trust.legacy" }),
     );
     expect(
-      screen.getByText(new RegExp(LABELS["plugin.trust.legacy"])),
+      notice().getByText(new RegExp(LABELS["plugin.trust.legacy"])),
     ).toBeInTheDocument();
-    expect(screen.queryByText(/raw prose/)).toBeNull();
+    expect(notice().queryByText(/raw prose/)).toBeNull();
   });
 
   it("falls back to the prose when the key resolves to nothing", () => {
@@ -121,8 +140,8 @@ describe("the withdrawal notice", () => {
     detail(
       revocation({ reason: "raw prose", reasonKey: "plugin.revoked.nope" }),
     );
-    expect(screen.getByText(/raw prose/)).toBeInTheDocument();
-    expect(screen.queryByText(/plugin\.revoked\.nope/)).toBeNull();
+    expect(notice().getByText(/raw prose/)).toBeInTheDocument();
+    expect(notice().queryByText(/plugin\.revoked\.nope/)).toBeNull();
   });
 });
 

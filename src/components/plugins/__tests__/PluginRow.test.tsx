@@ -5,7 +5,16 @@ import type { PluginManifest } from "../../../plugins/types";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  queryAllPiercing,
+  withinSurface,
+} from "../../../__tests__/helpers/security-surface";
 import { PluginRowView } from "../PluginRow";
+
+// §359 — the revocation notice renders inside a shadow root, which `screen` cannot
+// reach: it queries `document.body`, and a shadow root is not part of that tree.
+// The rest of this file asserts on light-DOM markup and still uses `screen`.
+const notice = () => withinSurface(".plugin-revoked");
 
 /** 철회 목록의 한 항목. `malicious`라야 알림이 제거 버튼까지 그린다. */
 const REVOKED = {
@@ -43,6 +52,10 @@ function row(over: Partial<PluginRow>): PluginRow {
  * 유일한 조작 요소인 토글이 애초에 검사 대상 집합에 든 적이 없었다. role 목록은 다음에
  * 추가될 조작 요소를 기본값으로 통과시키는 denylist다. 셀렉터는 아무것도 통과시키지 않는다.
  */
+// §69 — the notice's Remove button carries the plugin name in its `aria-label`, so
+// that is its accessible name; its visible text is still the short form.
+const REMOVE_NAMED = "Remove Ex";
+
 const CONTROLS = "a[href], button, input, select, textarea";
 
 /**
@@ -124,9 +137,9 @@ describe("PluginRowView (§69)", () => {
       />,
     );
     expect(
-      screen.getByText("This plugin has been withdrawn and is not running."),
+      notice().getByText("This plugin has been withdrawn and is not running."),
     ).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Remove it" })).toBeNull();
+    expect(notice().queryByRole("button", { name: REMOVE_NAMED })).toBeNull();
   });
 
   it("offers it to a community plugin, which can remove", () => {
@@ -137,7 +150,7 @@ describe("PluginRowView (§69)", () => {
         {...handlers}
       />,
     );
-    const button = screen.getByRole("button", { name: "Remove it" });
+    const button = notice().getByRole("button", { name: REMOVE_NAMED });
     fireEvent.click(button);
     expect(handlers.onRemove).toHaveBeenCalledTimes(1);
   });
@@ -156,30 +169,62 @@ describe("PluginRowView (§69)", () => {
     expect(screen.getByRole("button", { name: /settings/i })).toBeTruthy();
   });
 
+  // Each row carries the number of controls it draws, measured in place from these very
+  // fixtures. Without it the property below cannot fail by SHRINKAGE: it quantifies over
+  // the controls the sweep found, so a control that stops being found takes its own
+  // assertion with it and the test stays green. That is how the withdrawn row pins the
+  // piercing — de-pierce the sweep and its count drops 4 → 3.
   it.each([
-    ["a default community row (Details, Remove)", row({}), handlers],
+    ["a default community row (Details, Remove)", row({}), handlers, 3],
     [
       "a row with an update offered (adds Update)",
       row({ updateVersion: "2.0.0" }),
       handlers,
+      4,
     ],
     [
       "a row with onSettings passed (adds Settings)",
       row({}),
       { ...handlers, onSettings: vi.fn() },
+      4,
     ],
-    ["a built-in row (Details, toggle)", row({ source: "builtin" }), handlers],
-    ["a dev row (Details, Reload, Remove)", row({ source: "dev" }), handlers],
+    [
+      "a built-in row (Details, toggle)",
+      row({ source: "builtin" }),
+      handlers,
+      2,
+    ],
+    [
+      "a dev row (Details, Reload, Remove)",
+      row({ source: "dev" }),
+      handlers,
+      3,
+    ],
+    // §69 — this row was absent while the notice's Remove button was "Remove it"
+    // verbatim: it would have failed the property on a real naming gap rather than a
+    // test defect. The gap is fixed, so the row belongs in the sweep like any other —
+    // and it is the only shape whose controls cross the shadow boundary.
+    [
+      "a withdrawn row (adds the notice's own Remove)",
+      row({ revocation: REVOKED }),
+      handlers,
+      4,
+    ],
   ])(
     "names the plugin in every rendered control's accessible name — %s",
-    (_label, r, h) => {
+    (_label, r, h, expected) => {
       // ‼️ `unnamed === []`, not `named > 0`: the weaker form would still pass if a
       // regression dropped the plugin's name from every control but one. Parametrised
       // over the row shapes that add more controls (update offered, settings wired up,
       // each source's own set) so the property holds as the row grows.
+      //
+      // ‼️ §359 — the sweep PIERCES. `container.querySelectorAll` stops at a shadow
+      // boundary, and the revocation notice is behind one now, so a plain sweep would
+      // have kept that promise only for controls outside it. `queryAllPiercing` keeps
+      // it true for a row that grows a surface.
       const { container } = render(<PluginRowView row={r} {...h} />);
-      const controls = Array.from(container.querySelectorAll(CONTROLS));
-      expect(controls.length).toBeGreaterThan(0);
+      const controls = queryAllPiercing(container, CONTROLS);
+      expect(controls.length).toBe(expected);
       // Reported as the list of offenders, so a failure names the control it found.
       expect(
         controls
@@ -188,4 +233,23 @@ describe("PluginRowView (§69)", () => {
       ).toEqual([]);
     },
   );
+
+  it("컨트롤 스윕이 shadow 안까지 본다", () => {
+    // Guards the sweep above. Without this the piercing is dead code: no parametrised
+    // row renders a surface, so a `queryAllPiercing` that silently stopped at the
+    // boundary would look exactly like one that works.
+    const { container } = render(
+      <PluginRowView row={row({ revocation: REVOKED })} {...handlers} />,
+    );
+    const plain = Array.from(container.querySelectorAll(CONTROLS));
+    const pierced = queryAllPiercing(container, CONTROLS);
+    // The notice's Remove button is inside the shadow root and reachable only by the
+    // piercing sweep — so `pierced` is a strict superset, and by exactly that button.
+    expect(pierced.length).toBe(plain.length + 1);
+    expect(
+      pierced
+        .filter((el) => !plain.includes(el))
+        .map((el) => accessibleName(el)),
+    ).toEqual([REMOVE_NAMED]);
+  });
 });

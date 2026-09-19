@@ -22,6 +22,10 @@ import {
 import { DEFAULT_ACTIVITY_BAR_CONFIG } from "../../stores/settings/activity-bar-config";
 import { AI_ACTION_LABEL_KEYS } from "../../utils/contextual-ai-actions";
 import { MERMAID_TYPE_LABEL_KEYS } from "../../utils/markdown/mermaid-utils";
+import {
+  THEME_CSS_ERROR_CODES,
+  themeCssErrorKey,
+} from "../../utils/theme-css/errors";
 import { TURN_INTO_LABEL_KEYS } from "../../utils/toolbar/block-turn-into";
 import en from "../en.json";
 import ko from "../ko.json";
@@ -289,6 +293,44 @@ describe("a block's own label tables", () => {
         (k) =>
           (k.startsWith("mermaidBlock.type.") ||
             k.startsWith("callout.type.")) &&
+          !referenced.has(k),
+      );
+      expect(orphaned).toEqual([]);
+    },
+  );
+});
+
+describe("theme CSS rejection reasons", () => {
+  // §358 — a theme that ships CSS is rejected by CODE, and the code is what the settings pane
+  // has to turn into a sentence. A code with no string renders as `settings.appearance.
+  // themeCssError.tooLarge` on screen, and nothing else notices: the rejection path is the one
+  // a user only reaches when something already went wrong, so it is the least-looked-at screen
+  // in the app.
+  //
+  // Derived from THEME_CSS_ERROR_CODES rather than a copy of the list, because the point of
+  // that array existing at all is that a code added to the union cannot escape this check.
+  it("has every code represented, so the checks below are not vacuous", () => {
+    expect(THEME_CSS_ERROR_CODES.length).toBeGreaterThan(5);
+  });
+
+  it.each(LOCALES)("defines every rejection reason in %s", (_name, locale) => {
+    const missing = THEME_CSS_ERROR_CODES.map(themeCssErrorKey).filter(
+      (k) => !(k in locale),
+    );
+    expect(missing).toEqual([]);
+  });
+
+  // The reverse direction, in both catalogues — same reasoning as the activity bar's orphan
+  // check: a key added to ko alone and referenced by nothing escapes an EN-only scan.
+  it.each(LOCALES)(
+    "has no orphaned rejection reason in %s",
+    (_name, locale) => {
+      const referenced = new Set<string>(
+        THEME_CSS_ERROR_CODES.map(themeCssErrorKey),
+      );
+      const orphaned = Object.keys(locale).filter(
+        (k) =>
+          k.startsWith("settings.appearance.themeCssError.") &&
           !referenced.has(k),
       );
       expect(orphaned).toEqual([]);

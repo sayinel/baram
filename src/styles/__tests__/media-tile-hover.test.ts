@@ -10,9 +10,10 @@
 //
 // 그래서 이 파일이 고정하는 성질은 "이 선언들을 써라"가 아니라 셋이다 — 배경에 의존하는
 // 메커니즘을 쓰지 말 것, 방향은 밝아짐일 것, 밝기가 무력한 내용에서도 보일 것.
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
+import { solePalette } from "../../types/__tests__/helpers/theme-palette";
+import { BUILT_IN_THEMES } from "../../types/theme";
 import { cssRules } from "./css-rules";
 
 const HOVER = cssRules().filter(
@@ -31,14 +32,18 @@ function luminance(hex: string): number {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
-/** 칸 뒤에 실제로 있는 색 — `.app-right-panel`의 `--color-bg-panel` (layout.css). */
+/**
+ * 칸 뒤에 실제로 있는 색 — `.app-right-panel`의 `--color-bg-panel` (layout.css).
+ *
+ * 한때 `theme.ts`의 **소스 텍스트**를 정규식으로 훑었다. §355가 두 기본 팔레트를
+ * 생성 모듈로 옮기자 그 스캔은 여덟에서 여섯으로 조용히 줄었고, 아래 가드의 전제가
+ * 증명되지 않은 채로 남았다. 값이 어디 적혀 있든 테마 데이터에서 읽는다.
+ */
 function panelBackgrounds(): { hex: string; id: string }[] {
-  const src = readFileSync("src/types/theme.ts", "utf8");
-  return [
-    ...src.matchAll(
-      /id:\s*"([\w-]+)"[\s\S]{0,3000}?"--color-bg-panel":\s*"(#[0-9a-fA-F]{3,8})"/gu,
-    ),
-  ].map((m) => ({ hex: m[2], id: m[1] }));
+  return BUILT_IN_THEMES.map((theme) => ({
+    hex: solePalette(theme)["--color-bg-panel"],
+    id: theme.id,
+  }));
 }
 
 describe("gallery tile hover", () => {

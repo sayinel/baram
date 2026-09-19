@@ -1,4 +1,4 @@
-// §54 Theme System — the one place that writes theme CSS variables (#330)
+// §54 Theme System — the one place that applies a theme to the document (#330)
 //
 // Themes used to be applied by iterating ThemeColors at each call site while a
 // separate hand-listed array did the clearing. The two drifted: the clear list
@@ -6,6 +6,12 @@
 // theme. Both lists are now derived from THEME_COLOR_KEYS, and the foregrounds
 // derived from the theme's own colours live here too, so a colour and the
 // foreground computed from it can never be applied out of step.
+//
+// §358 이 모듈은 이제 두 가지를 적용한다: `<html>` 의 인라인 CSS 변수와, 테마가 실어
+// 보낸 CSS 를 담는 `<style data-baram-theme>` 한 장. `<style>` 도 여기 있는 이유는
+// 변수가 여기 있는 이유와 같다 — 붙이는 곳과 떼는 곳이 갈리면 #330 이 다시 난다.
+// 짝이 맞는지는 `__tests__/theme-vars.test.ts` 가 목록이 아니라 **문서 스냅샷**으로
+// 고정한다: 적용했다가 지우면 문서가 원래대로 돌아와야 한다.
 
 import type { ThemeColors } from "../types/theme";
 
@@ -15,9 +21,18 @@ import {
   onSolidForeground,
   solidHoverFill,
 } from "./color-contrast";
+import { logger } from "./logger";
+import { verifyStoredThemeCss } from "./theme-css/verify";
 
 /** Status families that are used as a filled surface with text on them. */
 const STATUS_FAMILIES = ["danger", "success", "warning"] as const;
+
+/**
+ * §358 테마 CSS 를 담은 `<style>` 의 소유자 표식. 플러그인이 `data-baram-plugin` 으로
+ * 제 것을 표시하는 관례와 같다(`plugins/trusted/ui-api.ts`) — 붙일 때 적고, 뗄 때
+ * 이 속성으로 찾는다.
+ */
+const THEME_STYLE_ATTR = "data-baram-theme";
 
 /**
  * CSS variables computed from a theme rather than stored in it.
@@ -69,6 +84,56 @@ export function appliesInlineVars(themeId: string): boolean {
   return !CASCADE_ONLY_THEME_IDS.has(themeId);
 }
 
+/**
+ * Is the theme editor currently the owner of `<html>`'s inline variables?
+ *
+ * Only ever true while ThemeEditor is mounted. It exists so the settings effect's
+ * `prefers-color-scheme` listener can stand down instead of wiping a live preview;
+ * the reasoning for that lives at its call site (use-settings-effects.ts).
+ */
+let previewOwned = false;
+
+/** Claim (`true`) or release (`false`) the ownership {@link themePreviewOwned} reports. */
+export function setThemePreviewOwner(owned: boolean): void {
+  previewOwned = owned;
+}
+
+/** @see setThemePreviewOwner */
+export function themePreviewOwned(): boolean {
+  return previewOwned;
+}
+
+/**
+ * §358 테마가 실어 보낸 CSS 를 `<style data-baram-theme>` 한 장으로 문서에 붙인다.
+ * `css` 가 없거나 계약을 지키지 않으면 아무것도 붙이지 않고, 앞 테마의 것을 뗀다.
+ *
+ * ‼️ 검증이 **여기** 있는 이유: 호출자에게 맡기면 "검증하지 않은 주입" 이라는 경로가
+ * 생긴다. 이 모듈이 `<style>` 을 붙이는 유일한 곳인 것과 같은 이유다.
+ *
+ * 거부는 조용하지 않다 — 테마가 색은 그대로인데 CSS 만 사라지는 증상은 로그 없이는
+ * 진단할 수 없다. 사용자에게 다시 물을 수 있는 시점(설치)은 이미 지났으므로 던지지
+ * 않는다: 로드 시점의 예외는 테마 하나가 앱 시작을 막는다는 뜻이다.
+ */
+export function applyThemeCss(root: Document, css: string | undefined): void {
+  if (css === undefined || !verifyStoredThemeCss(css)) {
+    if (css !== undefined) {
+      logger.error("[theme] stored CSS failed verification — not injected");
+    }
+    clearThemeCss(root);
+    return;
+  }
+  const existing = root.querySelector<HTMLStyleElement>(
+    `style[${THEME_STYLE_ATTR}]`,
+  );
+  const style = existing ?? root.createElement("style");
+  if (existing === null) {
+    style.setAttribute(THEME_STYLE_ATTR, "");
+    root.head.appendChild(style);
+  }
+  // 동등성 관문: `textContent` 대입은 값이 같아도 스타일시트를 다시 파싱시킨다.
+  if (style.textContent !== css) style.textContent = css;
+}
+
 /** Write a theme's colours and every foreground derived from them to `root`. */
 export function applyThemeVars(
   root: HTMLElement,
@@ -91,6 +156,25 @@ export function applyThemeVars(
   }
   for (const [key, value] of Object.entries(derivedVars(colors, base))) {
     root.style.setProperty(key, value);
+  }
+}
+
+/**
+ * §358 Remove the `<style>` {@link applyThemeCss} can attach.
+ *
+ * ‼️ `clearThemeVars` 와 짝이지만 **한 함수가 아니다**. `ThemeEditor.tsx` 의
+ * `restorePreview` 는 색이 있으면 `applyThemeVars`, 없으면 `clearThemeVars` 로 갈리는데,
+ * 토큰 없이 CSS 만 실은 모드(§355 가 허용한다)가 정확히 그 `clearThemeVars` 갈래로
+ * 간다 — 그 함수가 `<style>` 까지 뗀다면 편집기를 닫는 것만으로 그 테마의 CSS 가
+ * 사라지고, `restorePreview` 는 그것을 다시 붙일 줄 모른다. 대신 "적용한 것이 전부
+ * 되돌아오는가" 는 `__tests__/theme-vars.test.ts` 가 목록이 아니라 문서 스냅샷으로
+ * 고정한다.
+ */
+export function clearThemeCss(root: Document): void {
+  // querySelectorAll 로 찾는다 — 한 장만 유지하는 것이 계약이지만, 어긋난 날 하나가
+  // 남아 앞 테마를 계속 그리는 것이 #330 의 증상 그대로다.
+  for (const style of root.querySelectorAll(`style[${THEME_STYLE_ATTR}]`)) {
+    style.remove();
   }
 }
 

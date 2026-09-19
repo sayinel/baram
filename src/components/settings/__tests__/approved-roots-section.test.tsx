@@ -1,7 +1,7 @@
 // §335 승인 회수 UI. 로컬 관례(UpdateDialog.test.tsx)를 따라 fireEvent +
 // vi.hoisted() 모듈 목을 쓴다 — 이 디렉터리는 @testing-library/user-event를
 // 쓰지 않는다.
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const listApprovedRoots = vi.hoisted(() => vi.fn());
@@ -22,10 +22,16 @@ vi.mock("../../../ipc/invoke", async (importOriginal) => ({
   listDir: (path: string, recursive: boolean) => listDir(path, recursive),
 }));
 
+import { withinSurface } from "../../../__tests__/helpers/security-surface";
 import { useContextStore } from "../../../stores/context/context";
 import { useFileStore } from "../../../stores/file/file";
 import { useUIStore } from "../../../stores/ui/ui";
 import { ApprovedRootsSection } from "../tabs/ApprovedRootsSection";
+
+// §359 — this section renders inside a shadow root, which `screen` cannot reach:
+// it queries `document.body`, and a shadow root is not part of that tree. Same
+// queries, bound to the shadow content instead.
+const surface = () => withinSurface(".settings-section");
 
 const VAULT = "/x/Vault";
 
@@ -56,14 +62,16 @@ describe("§335 승인 회수", () => {
     revokeApprovedRoot.mockResolvedValue(undefined);
 
     render(<ApprovedRootsSection />);
-    await screen.findByText("/x/Vault");
+    await surface().findByText("/x/Vault");
 
-    fireEvent.click(screen.getAllByRole("button", { name: /revoke|회수/i })[0]);
+    fireEvent.click(
+      surface().getAllByRole("button", { name: /revoke|회수/i })[0],
+    );
 
     await waitFor(() =>
       expect(revokeApprovedRoot).toHaveBeenCalledWith("/x/Vault"),
     );
-    await waitFor(() => expect(screen.queryByText("/x/Vault")).toBeNull());
+    await waitFor(() => expect(surface().queryByText("/x/Vault")).toBeNull());
   });
 
   it("회수 후 재시작이 필요하다는 사실과, 탭이 닫히고 제거된다는 사실을 화면에 말한다", async () => {
@@ -76,7 +84,7 @@ describe("§335 승인 회수", () => {
     //
     // §335(M2) — I1 이후 회수는 컨텍스트도 함께 지운다: 탭이 닫히고 라벨·색·
     // 별칭이 확인 없이 사라진다. 재시작 안내만으로는 그 무게를 말하지 않는다.
-    const note = await screen.findByText(/restart|재시작/i);
+    const note = await surface().findByText(/restart|재시작/i);
     expect(note.textContent).toMatch(/close|remove|removed|닫|제거/i);
   });
 
@@ -90,9 +98,9 @@ describe("§335 승인 회수", () => {
     const showToastSpy = vi.spyOn(useUIStore.getState(), "showToast");
 
     render(<ApprovedRootsSection />);
-    await screen.findByText("/x/Vault");
+    await surface().findByText("/x/Vault");
 
-    fireEvent.click(screen.getByRole("button", { name: /revoke|회수/i }));
+    fireEvent.click(surface().getByRole("button", { name: /revoke|회수/i }));
 
     await waitFor(() =>
       expect(showToastSpy).toHaveBeenCalledWith(
@@ -100,7 +108,7 @@ describe("§335 승인 회수", () => {
         "error",
       ),
     );
-    expect(screen.getByText("/x/Vault")).toBeTruthy();
+    expect(surface().getByText("/x/Vault")).toBeTruthy();
   });
 
   // §335 리뷰 Minor 2 — 로드 실패를 삼키면 "승인 0건"과 구분이 안 된다. 사용자가
@@ -133,9 +141,9 @@ describe("§335 승인 회수", () => {
     );
 
     render(<ApprovedRootsSection />);
-    await screen.findByText("/x/Vault");
+    await surface().findByText("/x/Vault");
 
-    const button = screen.getByRole("button", { name: /revoke|회수/i });
+    const button = surface().getByRole("button", { name: /revoke|회수/i });
     fireEvent.click(button);
     expect(button).toBeDisabled();
 
@@ -143,7 +151,7 @@ describe("§335 승인 회수", () => {
     await waitFor(() => expect(revokeApprovedRoot).toHaveBeenCalledTimes(1));
 
     resolveRevoke();
-    await waitFor(() => expect(screen.queryByText("/x/Vault")).toBeNull());
+    await waitFor(() => expect(surface().queryByText("/x/Vault")).toBeNull());
     // 전부 가라앉은 뒤에 다시 센다 — waitFor는 1에서 통과해 버리므로, 두 번째
     // 클릭이 뒤늦게 도착했는지는 이 단정만이 가른다.
     expect(revokeApprovedRoot).toHaveBeenCalledTimes(1);
@@ -189,8 +197,8 @@ describe("§335 승인 회수", () => {
     );
 
     render(<ApprovedRootsSection />);
-    await screen.findByText(VAULT);
-    fireEvent.click(screen.getByRole("button", { name: /revoke|회수/i }));
+    await surface().findByText(VAULT);
+    fireEvent.click(surface().getByRole("button", { name: /revoke|회수/i }));
 
     await waitFor(() =>
       expect(useContextStore.getState().contexts.map((c) => c.id)).toEqual([
@@ -235,8 +243,8 @@ describe("§335 승인 회수", () => {
     );
 
     render(<ApprovedRootsSection />);
-    await screen.findByText(VAULT);
-    fireEvent.click(screen.getByRole("button", { name: /revoke|회수/i }));
+    await surface().findByText(VAULT);
+    fireEvent.click(surface().getByRole("button", { name: /revoke|회수/i }));
 
     await waitFor(() =>
       expect(useContextStore.getState().contexts.map((c) => c.id)).toEqual([
@@ -272,8 +280,8 @@ describe("§335 승인 회수", () => {
     } as never);
 
     render(<ApprovedRootsSection />);
-    await screen.findByText(VAULT);
-    fireEvent.click(screen.getByRole("button", { name: /revoke|회수/i }));
+    await surface().findByText(VAULT);
+    fireEvent.click(surface().getByRole("button", { name: /revoke|회수/i }));
 
     // 회수한 vault의 트리를 그대로 띄워 두면 "회수됐다"와 화면이 어긋난다.
     await waitFor(() => expect(useFileStore.getState().fileTree).toEqual([]));
@@ -324,8 +332,8 @@ describe("§335 승인 회수", () => {
     showToastSpy.mockClear();
 
     render(<ApprovedRootsSection />);
-    await screen.findByText(VAULT);
-    fireEvent.click(screen.getByRole("button", { name: /revoke|회수/i }));
+    await surface().findByText(VAULT);
+    fireEvent.click(surface().getByRole("button", { name: /revoke|회수/i }));
 
     // 회수 자체는 성공해서 c1이 지워진다 — switchContext(c2)의 트리 재로드
     // 실패는 그 *다음* 단계다.

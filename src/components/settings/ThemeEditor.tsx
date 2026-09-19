@@ -3,7 +3,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { save } from "@tauri-apps/plugin-dialog";
 
-import type { ThemeColors, ThemeDef } from "../../types/theme";
+import type {
+  ThemeColorKey,
+  ThemeColors,
+  ThemeDef,
+  ThemeMode,
+} from "../../types/theme";
 
 import { useShallow } from "zustand/shallow";
 
@@ -12,13 +17,17 @@ import { writeFile } from "../../ipc/invoke";
 import { useSettingsStore } from "../../stores/settings/store";
 import {
   BUILT_IN_THEMES,
+  defaultColorsForBase,
   findThemeById,
+  resolveThemeMode,
   THEME_COLOR_KEYS,
+  themeModes,
 } from "../../types/theme";
 import {
   appliesInlineVars,
   applyThemeVars,
   clearThemeVars,
+  setThemePreviewOwner,
 } from "../../utils/theme-vars";
 
 interface ThemeEditorProps {
@@ -55,13 +64,19 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
     [resolvedTheme],
   );
 
-  // Local editing state
+  // Local editing state. 편집을 시작할 모드는 출발 테마가 선언한 첫 모드다 —
+  // 모드가 없거나 토큰 없이 CSS만 싣는 테마(§358)는 보여줄 색이 없으므로 그
+  // 모드의 기본 팔레트에서 출발한다.
+  const startMode = themeModes(sourceTheme)[0] ?? "light";
   const [name, setName] = useState(() =>
-    sourceTheme.builtIn ? `Custom ${sourceTheme.name}` : sourceTheme.name,
+    sourceTheme.source === "builtin"
+      ? `Custom ${sourceTheme.name}`
+      : sourceTheme.name,
   );
-  const [base, setBase] = useState<"dark" | "light">(sourceTheme.base);
+  const [base, setBase] = useState<ThemeMode>(startMode);
   const [colors, setColors] = useState<ThemeColors>(() => ({
-    ...sourceTheme.colors,
+    ...(sourceTheme.modes[startMode]?.colors ??
+      defaultColorsForBase(startMode)),
   }));
 
   // Set once the edited colours have been adopted as a real theme, so the unmount
@@ -95,6 +110,15 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
     if (root.dataset.theme !== base) root.dataset.theme = base;
   }, [colors, base]);
 
+  // 편집기가 떠 있는 동안 인라인 변수의 주인은 위 effect다. 그 소유권을 밖에
+  // 알려, use-settings-effects의 prefers-color-scheme 리스너가 미리보기를 지우고
+  // 저장된 테마를 다시 깔지 않도록 한다 — 왜 그것이 위 주석이 막으려던 혼합
+  // 미리보기와 같은 결함인지는 그 리스너 옆에 적혀 있다.
+  useEffect(() => {
+    setThemePreviewOwner(true);
+    return () => setThemePreviewOwner(false);
+  }, []);
+
   // Restore original colors on unmount (cancel / navigate away)
   useEffect(() => {
     // Aliased so the cleanup reads the ref through a stable local (lint rule), not
@@ -106,25 +130,34 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
     };
   }, []);
 
-  const handleColorChange = useCallback(
-    (key: keyof ThemeColors, value: string) => {
-      setColors((prev) => ({ ...prev, [key]: value }));
-    },
-    [],
-  );
+  const handleColorChange = useCallback((key: ThemeColorKey, value: string) => {
+    setColors((prev) => ({ ...prev, [key]: value }));
+  }, []);
 
   const handleSave = useCallback(() => {
     // From here the settings effect owns the DOM: these colours are a real theme.
     savedRef.current = true;
-    const isCustom = !sourceTheme.builtIn;
+    // ‼️ 부정(`!builtIn`)이 아니라 명시 비교다. 새 모델에는 community·dev도
+    // 있고, 그것들을 "내 테마"로 취급하면 편집이 설치본을 덮어쓴다.
+    const isCustom = sourceTheme.source === "custom";
     const themeId = isCustom ? sourceTheme.id : `custom-${Date.now()}`;
 
+    // ‼️ 맵을 **합친다**. 통째로 갈아끼우면 쌍(light+dark)을 가진 테마를 편집할 때
+    // 편집하지 않은 반대쪽 모드가 경고도 되돌리기도 없이 사라진다 — startMode가
+    // themeModes()[0]이라 항상 light에서 출발하므로, 쌍을 가진 테마를 열어 색 하나만
+    // 고치고 저장하면 다크 팔레트를 잃는 것이 기본 경로가 된다(계획 0090의 설치
+    // 테마가 그런 쌍을 들고 온다). 편집 중인 모드 안쪽도 펼쳐, 편집기가 다루지 않는
+    // 자산(§358의 css)을 색만 고쳤다는 이유로 떨구지 않는다.
+    // 부수 효과 하나: 한 모드짜리 테마에서 base 토글을 반대쪽으로 넘겨 저장하면
+    // 결과가 쌍이 된다 — 원래 모드는 손대지 않은 원본 팔레트 그대로 남는다.
     const themeDef: ThemeDef = {
       id: themeId,
       name,
-      base,
-      colors: { ...colors },
-      builtIn: false,
+      source: "custom",
+      modes: {
+        ...sourceTheme.modes,
+        [base]: { ...sourceTheme.modes[base], colors: { ...colors } },
+      },
     };
 
     saveCustomTheme(themeDef);
@@ -239,22 +272,33 @@ function restorePreview(): void {
   const root = document.documentElement;
   const { activeThemeId, customThemes } = useSettingsStore.getState();
   const resolved = findThemeById(activeThemeId, customThemes);
+  // 적용될 모드는 OS 설정이 정한다 — use-settings-effects와 같은 규칙이어야
+  // 복원이 그 효과가 남겨둘 상태와 일치한다. 편집 중인 모드는 여기 쓰지 않는다:
+  // 그것은 미리보기의 것이고, 복원은 미리보기를 지우는 일이다.
+  const mode =
+    resolved === undefined
+      ? undefined
+      : resolveThemeMode(
+          resolved,
+          window.matchMedia("(prefers-color-scheme: dark)").matches,
+        );
+  const colors = mode === undefined ? undefined : resolved?.modes[mode]?.colors;
   const hasInlineVars =
     resolved !== undefined && appliesInlineVars(activeThemeId);
   // 색·base·attribute 전부를 호출 시점의 store에서 읽는다(적대 리뷰 2라운드):
   // 편집기를 열 때 캡처한 색을 쓰면, 편집 중 활성 테마가 바뀌는 경로가 생기는
   // 순간 "현재 테마의 base + 과거 테마의 색"이 섞인 복원이 된다. 오늘의 UI는
   // 편집 중 테마 전환을 막지만, 이 함수의 정합성이 그 우연에 기대면 안 된다.
-  if (hasInlineVars) {
-    applyThemeVars(root, resolved.colors, resolved.base);
+  if (hasInlineVars && mode !== undefined && colors !== undefined) {
+    applyThemeVars(root, colors, mode);
   } else {
     clearThemeVars(root);
   }
-  // preview effect가 data-theme도 base로 밀어뒀으므로 attribute까지 되돌린다 —
-  // use-settings-effects와 같은 규칙: 해석되는 테마는 그 base, system·미해석은
-  // attribute 제거(= prefers-color-scheme 경로).
-  if (resolved) {
-    root.dataset.theme = resolved.base;
+  // preview effect가 data-theme도 편집 중인 모드로 밀어뒀으므로 attribute까지
+  // 되돌린다 — use-settings-effects와 같은 규칙: 해석되는 테마는 그 모드,
+  // system·미해석은 attribute 제거(= prefers-color-scheme 경로).
+  if (mode !== undefined) {
+    root.dataset.theme = mode;
   } else {
     root.removeAttribute("data-theme");
   }

@@ -53,6 +53,10 @@ vi.mock("../plugin-readme", () => ({
   readPluginReadme: (p: string) => readPluginReadme(p),
 }));
 
+import {
+  surfaceContents,
+  withinSurface,
+} from "../../../__tests__/helpers/security-surface";
 import { revocationFor } from "../../../plugins/revocation";
 import { useEditorStore } from "../../../stores/editor/editor";
 import { usePluginStore } from "../../../stores/system/plugin";
@@ -221,6 +225,14 @@ describe("PluginDetailTab — a plugin the registry does not list (§69)", () =>
     });
 
     expect(container.textContent).toBe("");
+    // ‼️ §359 — `container.textContent` alone stopped meaning "nothing rendered" when
+    // the consent dialog moved. It portals to `document.body` now, so it is outside
+    // this subtree; and it renders inside a shadow root, which does not contribute to
+    // any ancestor's `textContent`, so `document.body.textContent` would not see it
+    // either. No fixture in this file sets `pendingConsent`, so nothing was lost — but
+    // the claim had quietly narrowed to "nothing in this subtree", and this restores
+    // what it says it checks.
+    expect(surfaceContents()).toEqual([]);
   });
 
   it("distinguishes an unreachable registry from a withdrawn listing", async () => {
@@ -242,6 +254,8 @@ describe("PluginDetailTab — a plugin the registry does not list (§69)", () =>
 // detail it links to explained nothing while offering Install — on the one screen whose job is
 // provenance. The install itself was still refused by `usePluginActions`, so this was a
 // display-only regression, on the security explanation path.
+// §359 — the notice renders inside a shadow root, which `screen` cannot reach: it
+// queries `document.body`, and a shadow root is not part of that tree.
 describe("PluginDetailTab — revocation (§69)", () => {
   const revoked = {
     revoked: [
@@ -277,7 +291,9 @@ describe("PluginDetailTab — revocation (§69)", () => {
     render(<PluginDetailTab pluginId="risky" />);
     await settleRegistryFetch();
 
-    expect(screen.getByText(/malicious build/iu)).toBeTruthy();
+    expect(
+      withinSurface(".plugin-revoked").getByText(/malicious build/iu),
+    ).toBeTruthy();
   });
 
   it("still explains it for an installed plugin", async () => {
@@ -296,7 +312,9 @@ describe("PluginDetailTab — revocation (§69)", () => {
     render(<PluginDetailTab pluginId="risky" />);
     await settleRegistryFetch();
 
-    expect(screen.getByText(/malicious build/iu)).toBeTruthy();
+    expect(
+      withinSurface(".plugin-revoked").getByText(/malicious build/iu),
+    ).toBeTruthy();
   });
 });
 
