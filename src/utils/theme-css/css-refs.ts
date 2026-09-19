@@ -74,8 +74,9 @@ export function cssName(raw: string): string {
  * AST 워크가 아니라 토큰으로 보는 이유: 워크는 노드 **모양**을 열거하는데 그 열거가
  * 실제로 틀렸다. `@media (scripting:url("…"))` 에서 css-tree 는 `Url` 이 아니라
  * `Function:url` 을 주고, `image-set(local("https://…"))` 처럼 한 겹 더 감싸면 워크의
- * "바로 위 함수" 규칙이 보지 못한다. 토큰 범위로 보면 그 두 부류가 다 잡힌다
- * (실측: sanitize 에서 이 관문만 빼면 말뭉치 539개 중 33개가 열린다).
+ * "바로 위 함수" 규칙이 보지 못한다. 토큰 범위로 보면 그 두 부류가 다 잡힌다 — sanitize
+ * 에서 이 관문만 빼면 말뭉치 중 33개가 열린다(실측). 측정 기록과, 인용되던 말뭉치 크기가
+ * 아직 재현 가능한 이름을 못 가졌다는 사실: `dev/impl-notes/0050-theme-css-ablation-record.md`.
  *
  * `enclosing` 은 그 토큰을 **직접** 감싼 함수 이름(디코드·소문자)이다. 정책이 인자의
  * 문법을 알아야 할 때만 쓴다 — 예를 들어 `image-set()` 의 `type(<string>)` 은 media
