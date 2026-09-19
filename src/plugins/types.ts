@@ -116,6 +116,7 @@ export type PluginCapability =
   | "editor"
   | "editor:readonly"
   | "events"
+  | "extensions"
   | "files"
   | "files:readonly"
   | "network"
@@ -610,6 +611,8 @@ export const CAPABILITY_DESCRIPTIONS: Record<PluginCapability, string> = {
   settings:
     "설정 화면에 옵션을 추가하고, 사용자가 설정한 값을 읽을 수 있습니다",
   events: "에디터 이벤트를 수신할 수 있습니다",
+  extensions:
+    "에디터 내부에서 코드를 실행합니다 — 문서를 읽고 바꿀 수 있습니다",
   ai: "AI/LLM 기능을 사용할 수 있습니다",
   network: "네트워크 요청을 보낼 수 있습니다",
   storage: "플러그인 전용 저장소를 사용할 수 있습니다",

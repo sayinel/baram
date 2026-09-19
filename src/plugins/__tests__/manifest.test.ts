@@ -3,6 +3,7 @@ import { describe, expect, it, test } from "vitest";
 
 import { validateManifest } from "../manifest";
 import { MAX_SETTING_FIELDS } from "../plugin-settings";
+import { CAPABILITY_DESCRIPTIONS } from "../types";
 
 const validManifest = {
   id: "baram-word-count",
@@ -559,5 +560,20 @@ describe("validateManifest — trust tier (§260)", () => {
       );
       expect(sandboxed({ settings: many.slice(1) }).valid).toBe(true);
     });
+  });
+
+  it("accepts the extensions capability", () => {
+    const result = validateManifest({
+      ...base,
+      trust: "trusted",
+      capabilities: ["extensions"],
+    });
+    expect(result.valid).toBe(true);
+  });
+
+  it("describes the extensions capability to the user", () => {
+    // The install dialog renders this string — a capability with no description
+    // shows the user an empty row.
+    expect(CAPABILITY_DESCRIPTIONS.extensions).toBeTruthy();
   });
 });

@@ -584,6 +584,7 @@
   "plugin.capability.editor": "Read and edit the document",
   "plugin.capability.editor:readonly": "Read the document's content (cannot edit)",
   "plugin.capability.events": "Receive editor events",
+  "plugin.capability.extensions": "Runs code inside the editor — can read and change the document",
   "plugin.capability.files": "Read and write files in the vault",
   "plugin.capability.files:readonly": "Read files in the vault (cannot write)",
   "plugin.capability.network": "Send network requests",

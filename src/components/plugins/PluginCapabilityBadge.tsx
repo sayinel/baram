@@ -29,6 +29,7 @@ const CAPABILITY_COLORS: Record<PluginCapability, string> = {
   statusbar: "#6366f1",
   settings: "#6b7280",
   events: "#10b981",
+  extensions: "#f97316",
   ai: "#ec4899",
   network: "#ef4444",
   storage: "#14b8a6",

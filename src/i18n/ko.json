@@ -584,6 +584,7 @@
   "plugin.capability.editor": "문서를 읽고 수정할 수 있습니다",
   "plugin.capability.editor:readonly": "문서 내용을 읽을 수 있습니다 (수정 불가)",
   "plugin.capability.events": "에디터 이벤트를 수신할 수 있습니다",
+  "plugin.capability.extensions": "에디터 내부에서 코드를 실행합니다 — 문서를 읽고 바꿀 수 있습니다",
   "plugin.capability.files": "볼트 내 파일을 읽고 쓸 수 있습니다",
   "plugin.capability.files:readonly": "볼트 내 파일을 읽을 수 있습니다 (쓰기 불가)",
   "plugin.capability.network": "네트워크 요청을 보낼 수 있습니다",
