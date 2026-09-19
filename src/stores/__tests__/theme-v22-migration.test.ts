@@ -11,14 +11,29 @@ import { describe, expect, it } from "vitest";
 import { defaultColorsForBase } from "../../types/theme";
 import { useSettingsStore } from "../settings/store";
 
-type MigratedTheme = { base: string; colors: Record<string, string> };
+type MigratedTheme = {
+  modes: Record<string, undefined | { colors: Record<string, string> }>;
+};
 
-function migrateThemes(themes: unknown[]): MigratedTheme[] {
+/**
+ * v22 는 이제 사슬의 중간이다 — 뒤따르는 §357 base → modes 가 팔레트를
+ * `modes[mode].colors` 로 옮기므로 v22 가 쓴 결과도 거기서 읽는다. 검증
+ * 대상은 그대로 v22 의 **값 계약**이고, 단언은 한 글자도 약해지지 않았다.
+ */
+function migrateThemes(
+  themes: unknown[],
+): { colors: Record<string, string> }[] {
   const migrate = useSettingsStore.persist.getOptions().migrate;
   const result = migrate!({ customThemes: themes }, 21) as {
     customThemes: MigratedTheme[];
   };
-  return result.customThemes;
+  return result.customThemes.map((theme) => {
+    const colors = Object.values(theme.modes)[0]?.colors;
+    if (colors === undefined) {
+      throw new Error("base → modes 마이그레이션이 팔레트를 잃었다");
+    }
+    return { colors };
+  });
 }
 
 describe("settings store v21 -> v22 migration (§54 theme value contract)", () => {

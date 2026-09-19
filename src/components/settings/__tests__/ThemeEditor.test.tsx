@@ -17,7 +17,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useSettingsEffects } from "../../../hooks/use-settings-effects";
 import { useSettingsStore } from "../../../stores/settings/store";
-import { BUILT_IN_THEMES, THEME_COLOR_KEYS } from "../../../types/theme";
+import { solePalette } from "../../../types/__tests__/helpers/theme-palette";
+import {
+  BUILT_IN_THEMES,
+  defaultColorsForBase,
+  THEME_COLOR_KEYS,
+} from "../../../types/theme";
 import { ThemeEditor } from "../ThemeEditor";
 
 // ‼️ `useSettingsEffects` syncs two native menus through a LAZY `import()` (§82). This file
@@ -47,6 +52,7 @@ vi.mock("../../../ipc/menu-enabled", () => ({
 }));
 
 const NORD = BUILT_IN_THEMES.find((t) => t.id === "nord")!;
+const NORD_COLORS = solePalette(NORD);
 
 const ACCENT = "--color-accent-default";
 const ACCENT_LABEL = THEME_COLOR_KEYS.find((e) => e.key === ACCENT)!.label;
@@ -70,11 +76,10 @@ function editAccent(): void {
 }
 
 const CUSTOM: ThemeDef = {
-  base: "dark",
-  builtIn: false,
-  colors: { ...NORD.colors },
   id: "custom-1730000000000",
+  modes: { dark: { colors: { ...NORD_COLORS } } },
   name: "Mine",
+  source: "custom",
 };
 
 function inlineVarCount(): number {
@@ -138,7 +143,7 @@ describe("ThemeEditor — leaving the editor", () => {
 
     fireEvent.click(screen.getByText("Cancel"));
 
-    expect(accentValue()).toBe(NORD.colors[ACCENT]);
+    expect(accentValue()).toBe(NORD_COLORS[ACCENT]);
   });
 
   it("restores the ORIGINAL colour after an edit when the editor unmounts", () => {
@@ -151,7 +156,7 @@ describe("ThemeEditor — leaving the editor", () => {
 
     unmount();
 
-    expect(accentValue()).toBe(NORD.colors[ACCENT]);
+    expect(accentValue()).toBe(NORD_COLORS[ACCENT]);
   });
 
   it("keeps a saved theme applied when the editor closes in a later commit", () => {
@@ -177,6 +182,40 @@ describe("ThemeEditor — leaving the editor", () => {
     act(() => closeEditor());
 
     expect(accentValue()).toBe(SENTINEL);
+  });
+
+  it("keeps the mode it did not edit when a paired theme is saved", () => {
+    // handleSave used to REPLACE `modes` with `{ [base]: … }`. The editor always
+    // starts on `themeModes(sourceTheme)[0]`, which is a fixed light-then-dark
+    // order, so a theme carrying both palettes opened on light — and saving one
+    // colour deleted the dark half with no warning and nothing to undo it with.
+    // Nothing on this branch builds a two-mode theme yet; plan 0090's installed
+    // themes do, and the editor is reachable from any card in the gallery.
+    const PAIRED: ThemeDef = {
+      id: "custom-paired",
+      modes: {
+        dark: { colors: { ...NORD_COLORS } },
+        light: { colors: { ...defaultColorsForBase("light") } },
+      },
+      name: "Paired",
+      source: "custom",
+    };
+    useSettingsStore.setState({
+      activeThemeId: PAIRED.id,
+      customThemes: [PAIRED],
+    });
+    render(<ThemeEditor onClose={() => {}} />);
+    editAccent();
+
+    fireEvent.click(screen.getByText("Save"));
+
+    const saved = useSettingsStore
+      .getState()
+      .customThemes.find((t) => t.id === PAIRED.id)!;
+    // The edited half took the change…
+    expect(saved.modes.light?.colors?.[ACCENT]).toBe(SENTINEL);
+    // …and the half the editor never showed is still there, byte for byte.
+    expect(saved.modes.dark?.colors).toEqual(NORD_COLORS);
   });
 
   it("keeps the native-menu IPC modules out of the loader", async () => {

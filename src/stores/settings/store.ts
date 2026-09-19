@@ -8,6 +8,7 @@ import {
   migrateThemeColors,
   THEME_COLOR_KEYS,
   THEME_COLOR_VALUE_RE,
+  themeFieldFor,
 } from "../../types/theme";
 import { noteHydrationFailure } from "../system/hydration";
 import { tauriStorage } from "../system/tauri-storage";
@@ -202,7 +203,7 @@ export const useSettingsStore = create<SettingsState>()(
         // would silently drop the setting on every restart.
         vimMode: state.vimMode,
       }),
-      version: 25,
+      version: 26,
       migrate: (persisted: unknown, version: number) => {
         const state = persisted as Record<string, unknown>;
 
@@ -573,6 +574,35 @@ export const useSettingsStore = create<SettingsState>()(
           if (state.fontFamily === "Pretendard") state.fontFamily = "";
         }
 
+        // §357 base → modes. 테마가 라이트/다크 쌍을 가질 수 있게 되면서 한 모드를
+        // 뜻하던 `base` 가 맵의 키가 되었다. `builtIn` 은 `source` 로 대체된다 —
+        // 저장분에 있는 것은 전부 사용자가 만든 것이므로 "custom" 이다.
+        if (version < 26) {
+          const themes = state.customThemes;
+          if (!Array.isArray(themes)) {
+            state.customThemes = [];
+          } else {
+            state.customThemes = themes.map((raw) => {
+              const t = raw as Record<string, unknown>;
+              // 재실행 안전: 이미 새 형태면 손대지 않는다.
+              if (t.modes !== undefined) return t;
+              // 원본을 펼친 뒤 덮어쓴다 — v10·v11·v22 와 같은 모양이다. 새 객체를
+              // 짓던 형태는 id·name 이 이미 유실된 저장분에서 그 자리를 undefined 로
+              // 만들어, findThemeById 가 영영 못 찾는 이름 없는 카드를 남겼다.
+              // 대체된 옛 필드는 함께 떨군다: base·colors 는 modes 로 접혔고,
+              // builtIn 은 source 로 대체된다(위 주석).
+              const { base, colors, ...rest } = t;
+              delete rest.builtIn;
+              const mode = base === "dark" ? "dark" : "light";
+              return {
+                ...rest,
+                source: "custom",
+                modes: { [mode]: { colors } },
+              };
+            });
+          }
+        }
+
         return state;
       },
       // Fallback for unversioned → v1 upgrade (Zustand skips migrate when stored version is undefined)
@@ -599,8 +629,9 @@ export const useSettingsStore = create<SettingsState>()(
         // Theme sync: ensure theme field matches activeThemeId
         if (state.activeThemeId && state.activeThemeId !== "system") {
           const t = findThemeById(state.activeThemeId, state.customThemes);
-          if (t && state.theme !== t.base) {
-            useSettingsStore.setState({ theme: t.base });
+          const field = themeFieldFor(t);
+          if (t && state.theme !== field) {
+            useSettingsStore.setState({ theme: field });
           }
         }
       },

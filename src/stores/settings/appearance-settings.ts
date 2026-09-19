@@ -3,7 +3,7 @@ import type { ActivityBarItemConfig } from "./activity-bar-config";
 import type { StateCreator } from "zustand";
 
 import { setConfig } from "../../ipc/config";
-import { findThemeById } from "../../types/theme";
+import { findThemeById, themeFieldFor } from "../../types/theme";
 import { logger } from "../../utils/logger";
 
 export interface AppearanceSettingsSlice {
@@ -58,12 +58,9 @@ export const createAppearanceSettingsSlice: StateCreator<
   },
   setActiveTheme: (id) =>
     set((state) => {
-      let base: "dark" | "light" | "system" = "system";
-      if (id !== "system") {
-        const theme = findThemeById(id, state.customThemes);
-        base = theme?.base ?? "light";
-      }
-      return { activeThemeId: id, theme: base };
+      if (id === "system") return { activeThemeId: id, theme: "system" };
+      const theme = findThemeById(id, state.customThemes);
+      return { activeThemeId: id, theme: themeFieldFor(theme) };
     }),
   saveCustomTheme: (theme) =>
     set((state) => {

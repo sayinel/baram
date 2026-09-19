@@ -77,7 +77,20 @@ export default tseslint.config(
     },
   },
   {
-    ignores: ["dist/", "examples/", "src-tauri/", "node_modules/"],
+    // 생성물은 린트 대상이 아니다. `lint:ts` 는 `eslint src/` 라 두 generated 디렉터리가
+    // 그냥 걸려들었고, 오늘 안전한 이유는 `perfectionist/sort-objects` 가 위에서 명시적으로
+    // 꺼져 있다는 우연 하나뿐이다. 그것이 켜지는 날 `eslint --fix` 는 팔레트 24키를
+    // 알파벳순으로 정렬하고 `npm run tokens:build` 는 THEME_COLOR_KEYS 순서로 다시 써낸다 —
+    // 두 autofix 가 서로를 되돌려 `tokens:check` 의 `git diff --exit-code` 가 원인이 보이지
+    // 않는 채로 영구히 빨개진다.
+    ignores: [
+      "dist/",
+      "examples/",
+      "src-tauri/",
+      "node_modules/",
+      "src/styles/generated/",
+      "src/types/generated/",
+    ],
   },
   eslintConfigPrettier,
   {

@@ -7,7 +7,7 @@
 // settings cards now use the same one. The dialog itself is mocked here — what
 // is pinned is that the store does not change until it answers yes, and that
 // the question names the item.
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../../utils/confirm-dialog", () => ({
@@ -20,16 +20,15 @@ import type { ThemeDef } from "../../../types/theme";
 
 import { useWorkspaceStore } from "../../../stores/file/workspace";
 import { useSettingsStore } from "../../../stores/settings/store";
-import { BUILT_IN_THEMES } from "../../../types/theme";
+import { defaultColorsForBase } from "../../../types/theme";
 import { showConfirm } from "../../../utils/confirm-dialog";
 import { AppearanceTab } from "../tabs/AppearanceTab";
 
 const CUSTOM_THEME: ThemeDef = {
-  base: "dark",
-  builtIn: false,
-  colors: { ...BUILT_IN_THEMES[0].colors },
   id: "custom-1730000000000",
+  modes: { dark: { colors: defaultColorsForBase("light") } },
   name: "Mine",
+  source: "custom",
 };
 
 const CUSTOM_PRESET: WorkspacePreset = {
@@ -101,6 +100,53 @@ describe("deleting a custom theme", () => {
     await settle();
 
     expect(useSettingsStore.getState().customThemes).toEqual([]);
+  });
+});
+
+// §356 갤러리는 출처별로 나뉜다 — 행이 무엇을 할 수 있는지는 그 출처가 정한다
+// (theme-sources.ts). 그룹은 시각적으로는 예전과 같은 격자이고, 경계는
+// role="group" + aria-label 로만 드러난다.
+describe("theme gallery — groups by source (§356)", () => {
+  it("테마를 출처별 그룹으로 나눠 보여준다", () => {
+    useSettingsStore.setState({
+      customThemes: [
+        {
+          id: "mine",
+          name: "Mine",
+          source: "custom",
+          modes: { light: { colors: defaultColorsForBase("light") } },
+        },
+      ],
+    });
+    render(<AppearanceTab />);
+    expect(screen.getByRole("group", { name: /기본|Built-in/i })).toBeTruthy();
+    expect(
+      screen.getByRole("group", { name: /내가 만든|My themes/i }),
+    ).toBeTruthy();
+  });
+
+  it("내장 테마에는 제거 버튼이 없고 커스텀 테마에는 있다", () => {
+    useSettingsStore.setState({
+      customThemes: [
+        {
+          id: "mine",
+          name: "Mine",
+          source: "custom",
+          modes: { light: { colors: defaultColorsForBase("light") } },
+        },
+      ],
+    });
+    render(<AppearanceTab />);
+    const builtinGroup = screen.getByRole("group", { name: /기본|Built-in/i });
+    const customGroup = screen.getByRole("group", {
+      name: /내가 만든|My themes/i,
+    });
+    expect(
+      within(builtinGroup).queryByRole("button", { name: /삭제|Delete/i }),
+    ).toBeNull();
+    expect(
+      within(customGroup).getByRole("button", { name: /삭제|Delete/i }),
+    ).toBeTruthy();
   });
 });
 

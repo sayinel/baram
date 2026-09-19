@@ -3,6 +3,10 @@
 // the exact fills the eight built-in themes end up with.
 import { describe, expect, it } from "vitest";
 
+import {
+  soleMode,
+  solePalette,
+} from "../../types/__tests__/helpers/theme-palette";
 import { BUILT_IN_THEMES } from "../../types/theme";
 import {
   AA_TEXT_RATIO,
@@ -163,10 +167,11 @@ describe("solidHoverFill", () => {
 
 describe("built-in themes", () => {
   it.each(BUILT_IN_THEMES)("$id clears AA on its solid accent", (theme) => {
+    const colors = solePalette(theme);
     const solid = accentSolidFill(
-      theme.colors["--color-accent-default"],
-      theme.colors["--color-accent-hover"],
-      theme.base,
+      colors["--color-accent-default"],
+      colors["--color-accent-hover"],
+      soleMode(theme),
     );
     const fg = onSolidForeground(solid);
     expect(contrastRatio(fg, solid)!).toBeGreaterThanOrEqual(AA_TEXT_RATIO);
@@ -180,23 +185,25 @@ describe("built-in themes", () => {
     (theme) => {
       // WCAG 1.4.11: the button's own edge against the page is non-text contrast.
       // This is the check that rules out darkening a dark theme's fill.
+      const colors = solePalette(theme);
       const solid = accentSolidFill(
-        theme.colors["--color-accent-default"],
-        theme.colors["--color-accent-hover"],
-        theme.base,
+        colors["--color-accent-default"],
+        colors["--color-accent-hover"],
+        soleMode(theme),
       );
       expect(
-        contrastRatio(solid, theme.colors["--color-bg-default"])!,
+        contrastRatio(solid, colors["--color-bg-default"])!,
       ).toBeGreaterThanOrEqual(3);
     },
   );
 
   it("derives the pairing the design was approved with", () => {
     const derived = BUILT_IN_THEMES.map((theme) => {
+      const colors = solePalette(theme);
       const solid = accentSolidFill(
-        theme.colors["--color-accent-default"],
-        theme.colors["--color-accent-hover"],
-        theme.base,
+        colors["--color-accent-default"],
+        colors["--color-accent-hover"],
+        soleMode(theme),
       );
       return `${theme.id} ${solid} ${onSolidForeground(solid)}`;
     });

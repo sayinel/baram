@@ -7,6 +7,10 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
+import {
+  soleMode,
+  solePalette,
+} from "../../types/__tests__/helpers/theme-palette";
 import { BUILT_IN_THEMES } from "../../types/theme";
 import { AA_TEXT_RATIO, contrastRatio } from "../color-contrast";
 import { derivedVars } from "../theme-vars";
@@ -97,7 +101,7 @@ describe.each([
     // If they disagreed, switching between a default and a custom theme would
     // change the button's colours for no reason the user can see.
     const theme = BUILT_IN_THEMES.find((t) => t.id === themeId)!;
-    const derived = derivedVars(theme.colors, theme.base);
+    const derived = derivedVars(solePalette(theme), soleMode(theme));
     const { onSolid, solid } = accentTrio(file);
     expect(solid).toBe(derived["--color-accent-solid"]);
     expect(onSolid).toBe(derived["--color-accent-on-solid"]);
@@ -145,7 +149,7 @@ describe.each([
 
   it("agrees with what the runtime would derive", () => {
     const theme = BUILT_IN_THEMES.find((t) => t.id === themeId)!;
-    const derived = derivedVars(theme.colors, theme.base);
+    const derived = derivedVars(solePalette(theme), soleMode(theme));
     const tokens = declarations(file);
     for (const family of FAMILIES) {
       const key = `--color-status-${family}-on-solid`;
