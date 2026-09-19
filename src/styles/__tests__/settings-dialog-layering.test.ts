@@ -124,8 +124,16 @@ describe("§206 설정창과 함께 뜨는 다이얼로그의 레이어링", () 
     ".%s는 플러그인 설치 동의 다이얼로그보다 아래다",
     (overlay) => {
       // The ceiling, for the reason `plugins.css` gives: the consent dialog is
-      // the last thing between a user and running third-party code, so nothing
-      // may paint over it. Clearing Settings must not turn into clearing that.
+      // the last thing between a user and running third-party code, so this
+      // family must not paint over it. Clearing Settings must not turn into
+      // clearing that.
+      //
+      // ‼️ NOT "nothing may paint over it", which is what this said and which is
+      // false. Measured over the `*-overlay` rules in `src/styles`, eight sit at
+      // 9999 — the image, mermaid and SVG fullscreen viewers, the photo lightbox,
+      // the git diff, the table grid, and the two AI prompt overlays — and every
+      // one of them is above the dialog, before this change and after it. The
+      // scope of this guard is the settings family, which is what it iterates.
       expect(zIndexOf(`.${overlay}`)).toBeLessThan(zIndexOf(CEILING));
     },
   );

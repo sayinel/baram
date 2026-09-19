@@ -49,9 +49,11 @@
 @import "./plugins.css";
 
 /* 12a. §359 security-surface hosts — the shadow-isolated screens' light-DOM anchors.
-   Their shadow content is NOT here: `security-surfaces.css` is read with `?raw` and
-   injected into the shadow root, so importing it into the document would only add
-   rules that match nothing. */
+   Their shadow content is NOT here, and deliberately so. `security-surfaces.css` is
+   read with `?raw` and injected into each shadow root; it holds `*{box-sizing}` and
+   `button,input{font}`, which in the document would match EVERYTHING and restate what
+   Tailwind's preflight already does there. It exists only because preflight does not
+   cross a shadow boundary. */
 @import "./security-surface-host.css";
 
 /* 13. Remaining components */

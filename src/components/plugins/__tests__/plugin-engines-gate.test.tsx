@@ -60,7 +60,10 @@ import { PluginMarketplace } from "../PluginMarketplace";
 // §359 — the consent dialog renders inside a shadow root, which `screen` cannot
 // reach: it queries `document.body`, and a shadow root is not part of that tree.
 // `queryByRole("dialog")` returning null stopped meaning "not open" the moment the
-// dialog moved there, so the absence assertions count mounted surfaces instead.
+// dialog moved there, so the absence assertions use `countAnywhere`, which counts the
+// light DOM AND every shadow root. NOT `surfaceCount` — that counts only inside mounted
+// surfaces, so it is also satisfied by the dialog rendering with no wrapper at all,
+// which is the regression the wrapper exists to prevent.
 
 /** The listing declares a floor the app under test will not meet. */
 const ENTRY: RegistryEntry = {

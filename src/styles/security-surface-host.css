@@ -84,8 +84,7 @@
      `.svg-fullscreen-overlay`, `.photo-lightbox-overlay`, `.git-diff-overlay`,
      `.table-grid-overlay`, `.ai-prompt-overlay`, `.block-ai-diff-overlay` — and every
      other one that declares a z-index is at 1010 or below, so 1100 clears those but
-     not the eight. That band was above the
-     consent dialog before this change and still are; §359 is about what a THEME can do
-     to this screen, and moving that band is a separate decision. */
+     not the eight. Those eight were above the consent dialog before this change and
+     still are; this change does not touch them. */
   z-index: 1100 !important;
 }

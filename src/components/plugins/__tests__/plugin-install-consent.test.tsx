@@ -116,7 +116,10 @@ async function clickInstall() {
  * ‼️ §359 — the dialog is inside a shadow root now, so `screen` cannot see it at all:
  * `screen` queries `document.body`, and a shadow root is not part of that tree. That
  * also means `queryByRole("dialog")` returning null no longer distinguishes "closed"
- * from "open", which is why the absence assertions in this file count surfaces.
+ * from "open", which is why the absence assertions in this file use `countAnywhere` —
+ * the light DOM AND every shadow root. NOT `surfaceCount`, which counts only inside
+ * mounted surfaces and is therefore also satisfied by the dialog rendering with no
+ * wrapper at all.
  */
 async function confirmConsent() {
   const dialog = (await findSurface(".plugin-consent")).getByRole("dialog");

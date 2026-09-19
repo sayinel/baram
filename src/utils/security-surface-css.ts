@@ -2,16 +2,28 @@
 // reading the stylesheets that already own each rule rather than by copying them.
 //
 // Why read instead of move. The obvious shape is to cut these rules out of
-// `plugins.css`/`vault.css`/`modal.css` into one file and inject that. Four of the
-// classes forbid it. Counted over `src/components` outside tests:
-// `className="settings-section"` appears in 15 files (this surface is one of them, so
-// 14 others); `settings-section-desc` and `vault-tab-empty` in 3 each (this surface,
-// `VaultTab.tsx`, `PluginDeveloperSection.tsx`); and `btn-unstyled`/`flex-header`/
-// `text-truncate` are the shared utilities CLAUDE.md pins to `base.css`. Cutting those
-// out breaks the screens left behind; copying them is the drift `export-editor-css.ts`
-// was written to end ("a copy has no way to notice that its original moved"). So
-// nothing moves: the light DOM is untouched, and a change to any rule below reaches the
-// shadow on the next build.
+// `plugins.css`/`vault.css`/`modal.css` into one file and inject that. SEVEN of the 32
+// classes forbid it — the test that moving one breaks something is "another screen uses
+// it AND it has a rule", and these are the classes that pass it, counted over
+// `src/components` outside tests:
+//
+//   settings-section      modal.css:135   `className="settings-section"` in 15 files
+//   settings-section-desc vault.css:195   3 files
+//   vault-tab-empty       vault.css:9     3 files
+//   btn-unstyled          base.css:96     ) the shared utilities CLAUDE.md pins to
+//   flex-header           base.css:103    ) base.css, used across the app
+//   text-truncate         base.css:110    )
+//   plugin-revoked__note  plugins.css:473 PluginMarketplace.tsx:297,306,311 — its OWN
+//                                         staleness notices, in the light DOM
+//
+// The last one is the concrete payoff: a move would have unstyled three paragraphs of
+// the marketplace with nothing to catch it. `settings-section-title` is shared too (3
+// other files) but has no rule anywhere, so moving it would break nothing — not counted.
+//
+// Cutting those out breaks the screens left behind; copying them is the drift
+// `export-editor-css.ts` was written to end ("a copy has no way to notice that its
+// original moved"). So nothing moves: the light DOM is untouched, and a change to any
+// rule below reaches the shadow on the next build.
 //
 // What the extractor keeps, and why those two shapes:
 //
@@ -37,6 +49,13 @@
 // checked against the class tokens scanned out of the three component sources, and every
 // listed class that has a rule anywhere in `src/styles` must appear in the output — so
 // an extraction that silently matched nothing goes red instead of rendering unstyled.
+//
+// ‼️ The second of those matches on a CLASS BOUNDARY, not a substring, and that is not
+// a detail: three of the 32 classes are prefixes of siblings that are always present
+// (`plugin-consent` ⊂ `plugin-consent__body`, `plugin-revoked` ⊂ `plugin-revoked__title`,
+// `settings-section` ⊂ `settings-section-desc`). A substring test could not fail for any
+// of the three — review deleted the real `.plugin-consent` rule and the guard stayed
+// green. A third test in that file pins the boundary itself.
 import * as csstree from "css-tree";
 
 import a11yCss from "../styles/a11y.css?raw";

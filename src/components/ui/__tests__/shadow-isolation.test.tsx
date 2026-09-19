@@ -102,13 +102,13 @@ describe("§359 보안 표면의 구조적 격리", () => {
     // `document.querySelector` does not pierce a shadow root (measured in jsdom), so
     // finding nothing here is the same thing a document stylesheet's selector finds.
     //
-    // ‼️ DO NOT "improve" this into a `getComputedStyle` check. It will fail, and it
-    // will fail in the shape of a real defect — the hostile theme's `display: none`
-    // appearing to reach the dialog, as though the isolation were broken. It is not:
-    // jsdom does not model the style boundary (see the file header), so a document
-    // rule computes straight through into shadow content here and in no browser. The
-    // instinct on seeing that red will be to change the component until it goes green.
-    // There is nothing there to fix.
+    // ‼️ DO NOT "improve" this into a `getComputedStyle` check — here or in the test
+    // below, which does inject `HOSTILE`. It will fail, and it will fail in the shape
+    // of a real defect: a document rule appearing to reach inside the shadow, as though
+    // the isolation were broken. It is not. jsdom does not model the style boundary
+    // (see the file header), so a document rule computes straight through into shadow
+    // content here and in no browser. The instinct on seeing that red will be to change
+    // the component until it goes green. There is nothing there to fix.
     expect(document.querySelector(".plugin-consent")).toBeNull();
     expect(document.querySelector(".plugin-consent-overlay")).toBeNull();
     expect(surfaceContent().querySelector(".plugin-consent")).not.toBeNull();
