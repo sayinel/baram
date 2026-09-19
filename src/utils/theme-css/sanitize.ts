@@ -30,7 +30,9 @@ import { ThemeCssError } from "./errors";
 // 때마다 여기에 더해야 한다. 오늘 아는 것: `image-set()`(Images 4), `image()`(Images 4,
 // `<image-src> = <url> | <string>`), `src()`(Values 5), 그리고 `url()` 자신 — 값 자리
 // 밖(미디어 특성 값 등)에서는 css-tree 가 `Url` 이 아니라 `Function:url` 을 준다(실측).
-// 열거는 틀리므로 `assertNoRemoteReferences` 가 출력에서 한 번 더 훑는다.
+//
+// ‼️ `assertNoRemoteReferences` 는 이 집합을 **같이 쓴다**. 즉 출력 스캔은 여기 빠진
+// 이름을 메워 주지 않는다 — 메워 주는 것은 AST 노드 **모양** 의 열거 실수뿐이다.
 const URL_BEARING_FUNCTIONS: ReadonlySet<string> = new Set([
   "-webkit-image-set",
   "image",
@@ -93,11 +95,20 @@ function assertWellFormed(css: string, stage: string): void {
   });
 }
 
-// 마지막 관문 — 우리가 내보낼 바이트를 토큰 수준에서 다시 훑는다. 위의 AST 워크는 노드
-// 모양을 열거하는 일이고 열거는 틀린다: 실제로 `@media (scripting:url("…"))` 에서
-// css-tree 는 `Url` 이 아니라 `Function:url` 을 주어 한 번 새어 나갔다. 이 스캔은 모양이
-// 아니라 효과를 본다 — 나가는 CSS 안의 모든 `url()` 토큰과, 자원 이름을 받는 함수 안의
-// 모든 문자열을, 파서의 디코더로 풀어서 다시 판정한다.
+// 마지막 관문 — 우리가 내보낼 바이트를 토큰 수준에서 다시 훑는다. 나가는 CSS 안의 모든
+// `url()` 토큰과, `URL_BEARING_FUNCTIONS` 안에 있는(이름은 `cssName` 으로 디코드한 뒤
+// 비교하는) 함수 **안쪽 어디든**의 문자열을, 파서의 디코더로 풀어서 다시 판정한다.
+//
+// 무엇을 막아 주는지 정확히: **AST 노드 모양의 열거 실수**다. 위의 워크는 `Url` 노드와
+// `String` 노드의 바로 위 함수만 보는데, 실제로 `@media (scripting:url("…"))` 에서
+// css-tree 가 `Url` 이 아니라 `Function:url` 을 주어 한 번 새어 나갔고,
+// `image-set(local("https://…"))` 처럼 한 겹 더 감싸면 지금도 워크는 보지 못한다.
+// 토큰 범위로 보는 이 스캔은 그 두 부류를 다 잡는다(실측: 이 관문만 빼면 말뭉치
+// 539개 중 33개가 열린다).
+//
+// ‼️ 무엇을 막아 주지 **않는지**도 정확히: 이름 집합은 워크와 **공유**한다. 그래서
+// `URL_BEARING_FUNCTIONS` 에 빠진 함수는 이 스캔도 놓친다. 그건 다른 층이 아니라
+// 그 집합을 고쳐야 막힌다.
 function assertNoRemoteReferences(css: string): void {
   const stream = new csstree.TokenStream(css, csstree.tokenize);
   // 자원 이름을 받는 함수가 열려 있는 동안의 토큰 인덱스 상한. 함수는 제대로 중첩되므로
@@ -262,6 +273,12 @@ export function sanitizeThemeCss(css: string): string {
       case "Url":
         // css-tree 가 이스케이프를 해석하고 따옴표·공백을 벗긴 뒤의 값을 준다 —
         // 그래서 `url(\68 ttps://…)` 가 여기서 `https://…` 다(실측).
+        //
+        // ‼️ 이 case 와 아래 `String` case 는 **중복**이다. 둘을 빼도 말뭉치 539개의
+        // 판정이 하나도 바뀌지 않는다(실측) — `assertNoRemoteReferences` 가 같은 것을
+        // 출력에서 다시 잡기 때문이다. 단독으로 고정하는 테스트가 없다는 뜻이고,
+        // 그래서 여기 적어 둔다: 지워도 테스트는 초록이다. 남겨 두는 이유는 값싼
+        // 이중화라는 것뿐이고, 더 강한 보장을 한다고 읽으면 안 된다.
         if (isRemoteUrl(node.value)) {
           throw new ThemeCssError(
             "absoluteUrl",
@@ -275,6 +292,10 @@ export function sanitizeThemeCss(css: string): string {
   const sanitized = `@layer baram-theme {\n${csstree.generate(ast)}\n}\n`;
   // 우리가 내보내는 것도 우리 기준을 통과해야 한다. 짝이 안 맞는 `}` 하나면 그 뒤의
   // 테마 CSS 가 `@layer baram-theme {` 밖으로 빠져나가 레이어 우선순위를 통째로 무시한다.
+  //
+  // ‼️ 이것도 **중복**이다: 빼도 말뭉치 539개의 판정이 바뀌지 않는다(실측). 입력이 이미
+  // 닫혀 있음을 확인했으므로, 여기서 걸리려면 css-tree 의 `generate` 가 균형을 깨야 한다.
+  // 그런 입력을 찾지 못했다 — 단독으로 고정하는 테스트가 없다는 뜻이다.
   assertWellFormed(sanitized, "output");
   assertNoRemoteReferences(sanitized);
   return sanitized;

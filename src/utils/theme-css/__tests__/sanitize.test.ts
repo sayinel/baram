@@ -13,6 +13,17 @@ function code(css: string): string {
   }
 }
 
+// 거부한 관문을 이름으로 구분하기 위한 것. `assertNoRemoteReferences` 만 detail 을
+// `output ` 으로 시작한다 — 그 관문을 단독으로 고정하는 테스트가 이걸 쓴다.
+function detail(css: string): string {
+  try {
+    sanitizeThemeCss(css);
+    return "(통과)";
+  } catch (e) {
+    return e instanceof ThemeCssError ? (e.detail ?? "") : "(다른 예외)";
+  }
+}
+
 describe("절대 URL 거부", () => {
   it.each([
     ["a{background:url(https://e.com/x.png)}", "https"],
@@ -159,6 +170,28 @@ describe("image()·src() 의 <string> 인자", () => {
 // 값 자리 **밖**에서는 css-tree 가 `url("…")` 를 `Url` 이 아니라 `Function:url` 로 준다.
 // 노드 모양을 열거하는 워크는 그래서 한 번 새어 나갔다 — 나가는 바이트를 토큰으로 다시
 // 훑는 관문이 그 부류를 통째로 닫는다.
+// ‼️ 아래 그룹이 `assertNoRemoteReferences` 를 **단독으로** 고정한다. 여기 문자열들은
+// 자원 이름을 받는 함수 **안쪽**에 있지만 바로 위 함수는 그렇지 않아서, `this.function`
+// 하나만 보는 AST 워크에는 보이지 않는다. 그래서 detail 이 `output ` 으로 시작한다 —
+// 출력 스캔이 잡았다는 뜻이고, 그 관문을 지우면 이 그룹만 빨개진다(실측: 이 관문을
+// 빼면 말뭉치 539개 중 33개가 열린다).
+describe("출력 스캔만이 잡는 것", () => {
+  it.each([
+    'a{background:image-set(local("https://evil.com/x.png") 1x)}',
+    'a{background:src(format("https://evil.com/x.png"))}',
+    'a{background:image-set(foo("https://evil.com/x.png") 1x)}',
+    'a{background:image(rect("https://evil.com/x.png"))}',
+    'a{background:image-set(url(a.png) type("https://evil.com/x.png"))}',
+  ])("%s → absoluteUrl, 그리고 잡은 곳은 출력 스캔이다", (css) => {
+    expect(code(css)).toBe("absoluteUrl");
+    expect(detail(css).startsWith("output ")).toBe(true);
+  });
+
+  it("같은 모양의 상대 경로는 통과한다", () => {
+    expect(code('a{background:image-set(local("x.png") 1x)}')).toBe("(통과)");
+  });
+});
+
 describe("나가는 CSS 를 토큰으로 다시 훑는다", () => {
   it.each([
     'a{background:image-set("https://evil.com/x.png" 1x)}',
@@ -191,18 +224,28 @@ describe("이스케이프한 이름도 같은 이름이다", () => {
   it.each([
     ["@\\69 mport url(https://e.com/t.css);", "importNotAllowed"],
     ['@\\69 mport "local.css";', "importNotAllowed"],
+    ['@\\69 mport "https://evil.com/t.css";', "importNotAllowed"],
     ["@\\49 MPORT url(https://e.com/t.css);", "importNotAllowed"],
+    ['a{background:\\75 rl("https://evil.com/pixel.png")}', "absoluteUrl"],
+    ['a{background:u\\72 l("https://evil.com/pixel.png")}', "absoluteUrl"],
     ['a{background:\\69 mage-set("https://e.com/x.png" 1x)}', "absoluteUrl"],
     ['a{background:i\\6d age-set("https://e.com/x.png" 1x)}', "absoluteUrl"],
     ['a{background:\\49 MAGE-SET("https://e.com/x.png" 1x)}', "absoluteUrl"],
+    ['a{background:\\69 mage("https://e.com/x.png")}', "absoluteUrl"],
     ['a{background:\\73 rc("https://e.com/x.png")}', "absoluteUrl"],
     ["a{background:image-set(\\76 ar(--x) 1x)}", "absoluteUrl"],
   ])("%s → %s", (css, expected) => {
     expect(code(css)).toBe(expected);
   });
 
-  it("이스케이프해도 상대 경로는 통과한다", () => {
-    expect(code('a{background:\\69 mage-set("local.png" 1x)}')).toBe("(통과)");
+  it.each([
+    'a{background:\\75 rl("local.png")}',
+    'a{background:u\\72 l("local.png")}',
+    'a{background:\\69 mage-set("local.png" 1x)}',
+    'a{background:\\69 mage("local.png")}',
+    'a{background:\\73 rc("local.png")}',
+  ])("%s — 이스케이프해도 상대 경로는 통과한다", (css) => {
+    expect(code(css)).toBe("(통과)");
   });
 });
 
