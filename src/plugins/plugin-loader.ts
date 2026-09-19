@@ -9,7 +9,6 @@ import type {
   PluginManifest,
   PluginModule,
 } from "./types";
-import type { Extensions } from "@tiptap/core";
 
 import { type Locale, t } from "../i18n";
 import {
@@ -22,6 +21,11 @@ import { usePluginStore } from "../stores/system/plugin";
 import { logger } from "../utils/logger";
 import { withTimeout } from "../utils/with-timeout";
 import {
+  addPluginContributions,
+  removePluginContributions,
+  type TiptapPluginFactory,
+} from "./editor-surfaces";
+import {
   createExtensionContext,
   setEditorSurfaceBlocked as recordEditorSurfaceBlocked,
   registerHostCommandHandler,
@@ -30,7 +34,7 @@ import {
 } from "./extension-context";
 import { validateManifest } from "./manifest";
 import { grantableCapabilities } from "./plugin-consent";
-import { declaredSettingsFor } from "./plugin-settings";
+import { declaredSettingsFor, resolvePluginSettings } from "./plugin-settings";
 import { legacyInstallMessage, pluginTrustOf } from "./plugin-trust";
 import { usePluginUIStore } from "./plugin-ui-store";
 import { blocksLoad, revocationFor, revocationReason } from "./revocation";
@@ -93,25 +97,6 @@ export class PluginLoader {
   /** Get all loaded plugins */
   getLoadedPlugins(): LoadedPlugin[] {
     return [...this.loaded.values()];
-  }
-
-  /** Get Tiptap extensions from all loaded plugins */
-  getTiptapExtensions(): Extensions {
-    const extensions: Extensions = [];
-    for (const plugin of this.loaded.values()) {
-      if (!plugin.manifest.tiptapExtensions?.length) continue;
-      for (const extDef of plugin.manifest.tiptapExtensions) {
-        const ext = plugin.module[extDef.exportName];
-        if (ext) {
-          extensions.push(ext as Extensions[number]);
-        } else {
-          logger.warn(
-            `[PluginLoader] Plugin ${plugin.id}: export "${extDef.exportName}" not found`,
-          );
-        }
-      }
-    }
-    return extensions;
   }
 
   /** Check if a plugin is loaded */
@@ -216,6 +201,8 @@ export class PluginLoader {
         logger.error(`[PluginLoader] Error deactivating ${id}:`, err);
       }
     }
+
+    removePluginContributions(id);
 
     // Dispose all disposables
     for (const disposable of plugin.disposables) {
@@ -580,6 +567,20 @@ export class PluginLoader {
       );
     }
 
+    // §260 스펙 0050 §4 — activate 가 성공한 뒤에만. 키가 네임스페이스를 어기면
+    // `addPluginContributions` 가 던지고, 그 예외가 이 로드를 실패시킨다.
+    const factories = collectFactories(manifest, module);
+    if (factories.size > 0) {
+      addPluginContributions(
+        manifest.id,
+        factories,
+        resolvePluginSettings(
+          declaredSettingsFor(manifest),
+          usePluginStore.getState().pluginSettings[manifest.id],
+        ),
+      );
+    }
+
     // 6. Store loaded plugin
     this.loaded.set(manifest.id, {
       id: manifest.id,
@@ -736,6 +737,31 @@ export class PluginLoader {
     // the user switching tabs (the normal case at startup).
     replayCurrentState(subscriber, activeFilePath());
   }
+}
+
+/**
+ * The contributed ProseMirror plugin factories, by contribution name.
+ *
+ * A missing or non-function export FAILS the load. It used to warn and skip, which made
+ * a typo in `exportName` look exactly like a plugin that does nothing.
+ */
+function collectFactories(
+  manifest: PluginManifest,
+  module: PluginModule,
+): Map<string, TiptapPluginFactory> {
+  const factories = new Map<string, TiptapPluginFactory>();
+  for (const def of manifest.tiptapExtensions ?? []) {
+    const exported = module[def.exportName];
+    if (typeof exported !== "function") {
+      throw new Error(
+        `Plugin ${manifest.id}: export "${def.exportName}" for tiptap contribution ` +
+          `"${def.name}" is ${exported === undefined ? "missing" : "not a function"}. ` +
+          `A "plugin" contribution exports a factory returning ProseMirror plugins.`,
+      );
+    }
+    factories.set(def.name, exported as TiptapPluginFactory);
+  }
+  return factories;
 }
 
 /**
