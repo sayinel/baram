@@ -119,6 +119,9 @@ describe("절대 URL 거부 — scheme 상대(authority 생략) 형태", () => {
 // `var()` 는 computed-value 시점에 풀린다 — 설치 시점에 값을 증명할 수 없다.
 // 좁은 규칙을 골랐다: 자원 이름을 받는 함수 안의 치환 함수만 거부한다. 그래서
 // `content:"https://…"` 같은 평범한 텍스트는 계속 합법이다(위 "상대 참조" 그룹이 고정).
+//
+// ‼️ 코드는 `absoluteUrl` 이 **아니다**. `--x` 가 순전히 로컬이어도 거부하므로 그 코드는
+// 제작자에게 거짓 원인을 보여 준다 — 아래 두 줄이 그 구분을 못으로 박는다.
 describe("자원 이름을 받는 함수 안의 치환 함수 거부", () => {
   it.each([
     ':root{--x:"https://evil.com/x.png"}a{background:image-set(var(--x) 1x)}',
@@ -127,8 +130,14 @@ describe("자원 이름을 받는 함수 안의 치환 함수 거부", () => {
     "a{background:-webkit-image-set(var(--x) 1x)}",
     "a{background:image(var(--x))}",
     "a{background:image-set(env(--x) 1x)}",
-  ])("%s → absoluteUrl", (css) => {
-    expect(code(css)).toBe("absoluteUrl");
+  ])("%s → substitutionNotAllowed", (css) => {
+    expect(code(css)).toBe("substitutionNotAllowed");
+  });
+
+  it("치환이 로컬이어도 거부는 치환을 이유로 한다", () => {
+    expect(
+      code(':root{--x:"local.png"}a{background:image-set(var(--x) 1x)}'),
+    ).toBe("substitutionNotAllowed");
   });
 
   it("커스텀 속성이 image-set 통째를 들고 있어도 본다", () => {
@@ -254,7 +263,7 @@ describe("이스케이프한 이름도 같은 이름이다", () => {
     ['a{background:\\49 MAGE-SET("https://e.com/x.png" 1x)}', "absoluteUrl"],
     ['a{background:\\69 mage("https://e.com/x.png")}', "absoluteUrl"],
     ['a{background:\\73 rc("https://e.com/x.png")}', "absoluteUrl"],
-    ["a{background:image-set(\\76 ar(--x) 1x)}", "absoluteUrl"],
+    ["a{background:image-set(\\76 ar(--x) 1x)}", "substitutionNotAllowed"],
   ])("%s → %s", (css, expected) => {
     expect(code(css)).toBe(expected);
   });

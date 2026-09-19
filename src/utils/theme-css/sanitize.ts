@@ -21,33 +21,14 @@
 
 import * as csstree from "css-tree";
 
+import {
+  cssName,
+  forEachResourceName,
+  isRemoteUrl,
+  URL_BEARING_FUNCTIONS,
+  where,
+} from "./css-refs";
 import { ThemeCssError } from "./errors";
-
-// 인자로 받은 맨 `<string>` 이 곧 자원의 이름이 되는 함수들. 그 인자는 `Url` 노드가
-// 아니라 `String` 노드라서 Url 워크에 잡히지 않는다(실측).
-//
-// ‼️ 이 집합은 구멍의 모양 자체다 — CSS 가 문자열을 자원 이름으로 받는 함수를 새로 얻을
-// 때마다 여기에 더해야 한다. 오늘 아는 것: `image-set()`(Images 4), `image()`(Images 4,
-// `<image-src> = <url> | <string>`), `src()`(Values 5), 그리고 `url()` 자신 — 값 자리
-// 밖(미디어 특성 값 등)에서는 css-tree 가 `Url` 이 아니라 `Function:url` 을 준다(실측).
-//
-// ‼️ `assertNoRemoteReferences` 는 이 집합을 **같이 쓴다**. 즉 출력 스캔은 여기 빠진
-// 이름을 메워 주지 않는다 — 메워 주는 것은 AST 노드 **모양** 의 열거 실수뿐이다.
-const URL_BEARING_FUNCTIONS: ReadonlySet<string> = new Set([
-  "-webkit-image-set",
-  "image",
-  "image-set",
-  "src",
-  "url",
-]);
-
-// 상대 URL 을 해석해 볼 가짜 출처. 쌍 안에서는 host 만 다르고, 두 쌍 사이에서는
-// scheme 이 다르다 — `isRemoteUrl` 이 두 쌍을 모두 쓰는 이유가 그 차이다.
-const PROBE_BASES = ["https://a.invalid/theme/", "https://b.invalid/theme/"];
-const PROBE_BASES_OPAQUE = [
-  "baram-a://a.invalid/theme/",
-  "baram-b://b.invalid/theme/",
-];
 
 // 자원의 이름을 실어 나를 수 있는 토큰. `Raw` 안에서 이 중 하나라도 보이면 그 조각은
 // 검사되지 않은 참조를 숨기고 있을 수 있다. `Function` 까지 넣는 이유는 `url( "x" )`
@@ -95,9 +76,8 @@ function assertWellFormed(css: string, stage: string): void {
   });
 }
 
-// 마지막 관문 — 우리가 내보낼 바이트를 토큰 수준에서 다시 훑는다. 나가는 CSS 안의 모든
-// `url()` 토큰과, `URL_BEARING_FUNCTIONS` 안에 있는(이름은 `cssName` 으로 디코드한 뒤
-// 비교하는) 함수 **안쪽 어디든**의 문자열을, 파서의 디코더로 풀어서 다시 판정한다.
+// 마지막 관문 — 우리가 내보낼 바이트를 토큰 수준에서 다시 훑는다. 어디를 훑는지는
+// `forEachResourceName` 이 정하고, 여기서는 그 값에 정책만 건다.
 //
 // 무엇을 막아 주는지 정확히: **AST 노드 모양의 열거 실수**다. 위의 워크는 `Url` 노드와
 // `String` 노드의 바로 위 함수만 보는데, 실제로 `@media (scripting:url("…"))` 에서
@@ -110,62 +90,11 @@ function assertWellFormed(css: string, stage: string): void {
 // `URL_BEARING_FUNCTIONS` 에 빠진 함수는 이 스캔도 놓친다. 그건 다른 층이 아니라
 // 그 집합을 고쳐야 막힌다.
 function assertNoRemoteReferences(css: string): void {
-  const stream = new csstree.TokenStream(css, csstree.tokenize);
-  // 자원 이름을 받는 함수가 열려 있는 동안의 토큰 인덱스 상한. 함수는 제대로 중첩되므로
-  // 가장 바깥의 닫힘 위치 하나만 들고 있으면 된다.
-  let bearingUntil = -1;
-  stream.forEachToken((type, start, end, index) => {
-    const text = css.slice(start, end);
-    if (type === csstree.tokenTypes.Function) {
-      if (URL_BEARING_FUNCTIONS.has(cssName(css.slice(start, end - 1)))) {
-        const close = stream.getBlockTokenPairIndex(index);
-        bearingUntil = Math.max(
-          bearingUntil,
-          close === -1 ? stream.tokenCount : close,
-        );
-      }
-      return;
-    }
-    const value =
-      type === csstree.tokenTypes.Url
-        ? csstree.url.decode(text)
-        : type === csstree.tokenTypes.String && index < bearingUntil
-          ? csstree.string.decode(text)
-          : null;
-    if (value !== null && isRemoteUrl(value)) {
-      throw new ThemeCssError("absoluteUrl", `output ${text.slice(0, 80)}`);
+  forEachResourceName(css, (value, raw) => {
+    if (isRemoteUrl(value)) {
+      throw new ThemeCssError("absoluteUrl", `output ${raw.slice(0, 80)}`);
     }
   });
-}
-
-// at-rule 이름과 함수 이름을 비교 가능한 형태로. **반드시 이것을 거쳐서 비교한다** —
-// css-tree 는 이름을 원문 그대로 준다(`@\69 mport` 는 AST 에서도 `\69 mport` 다).
-// 디코드하지 않고 비교하면 `@\69 mport "x.css"` 와 `\69 mage-set("https://…")` 가
-// 그대로 통과한다 — 실측했고, `\68 ttps:` 와 정확히 같은 부류의 함정이다.
-function cssName(raw: string): string {
-  return csstree.ident.decode(raw).toLowerCase();
-}
-
-// 이 참조가 테마 패키지 밖을 가리키는가. 판정은 WHATWG URL 파서가 한다 —
-// `link-href.ts` 와 같은 이유로: 브라우저가 실제로 돌리는 파서만이 탭·개행·앞뒤
-// 공백을 지우고 scheme 을 소문자로 접은 뒤의 의미를 안다.
-//
-// 규칙은 "base 를 바꿔도 안 움직이면 우리 밖" 이고, **쌍을 둘 쓴다.** 한 쌍만으로는
-// 값의 scheme 이 그 쌍의 scheme 과 같을 때 뚫린다 — `https:evil.com/x` 는 `https:`
-// base 에서는 상대 참조로 움직이지만 `baram-a:` base 에서는 절대 URL 로 고정된다.
-// 반대로 `\\evil.com\x` 는 special scheme(`https:`) 에서만 authority 로 바뀌므로
-// `https:` 쌍이 잡는다. 둘 중 한 쌍이라도 고정되면 거부한다.
-function isRemoteUrl(value: string): boolean {
-  const pinnedTo = (bases: readonly string[]): boolean => {
-    const [a, b] = bases.map((base) => new URL(value, base).href);
-    return a === b;
-  };
-  try {
-    return pinnedTo(PROBE_BASES) || pinnedTo(PROBE_BASES_OPAQUE);
-  } catch {
-    // base 를 줘도 해석되지 않는 형태 — 모르는 것은 거부한다.
-    return true;
-  }
 }
 
 // `Raw` 값 안에서 자원을 가리킬 수 있는 첫 토큰의 이름. 없으면 null. 여기서도
@@ -178,11 +107,6 @@ function resourceNamingToken(value: string): null | string {
     }
   });
   return found;
-}
-
-// 로그용 위치 꼬리표. `positions: true` 로 파싱했으므로 거의 항상 붙는다.
-function where(node: csstree.CssNode): string {
-  return node.loc ? ` (${node.loc.start.line}:${node.loc.start.column})` : "";
 }
 
 /**
@@ -235,13 +159,17 @@ export function sanitizeThemeCss(css: string): string {
         // 자원 이름을 받는 함수 안의 치환 함수. `image-set(var(--x) 1x)` 는 `--x` 가
         // 무엇이든 그 자리에서 fetch 대상이 되는데, 그 값은 computed-value 시점에야
         // 정해진다 — 설치 시점에 증명할 수 없는 것은 통과시키지 않는다.
+        //
+        // ‼️ 코드는 `absoluteUrl` 이 아니다. `--x` 가 순전히 로컬이어도 거부하므로
+        // "절대 URL 을 썼다" 는 제작자에게 **거짓 원인**이다 — 고칠 곳을 엉뚱한 데로
+        // 보낸다. 거부 사유가 "증명할 수 없는 치환" 인 것이 실제 사실이다.
         if (
           this.function !== null &&
           URL_BEARING_FUNCTIONS.has(cssName(this.function.name)) &&
           SUBSTITUTION_FUNCTIONS.has(cssName(node.name))
         ) {
           throw new ThemeCssError(
-            "absoluteUrl",
+            "substitutionNotAllowed",
             `${this.function.name}(${node.name}())${where(node)}`,
           );
         }
