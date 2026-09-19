@@ -19,10 +19,18 @@
  *
  * It is closed — `verify.ts` now scans for `!important` at the TOKEN level, before and
  * independently of parsing, the same shape contract 2 already used — and the six
- * spellings are pinned in `verify.test.ts`. But the honest statement of what these nine
- * pins rest on is: a gate whose coverage is now checked parse-independently, not a
- * structural impossibility. The other runtime injector into `document.head` is a TRUSTED
- * plugin's
+ * spellings are pinned in `verify.test.ts`. But the honest statement of what the eight
+ * pins below rest on is: a gate whose coverage is now checked parse-independently, not a
+ * structural impossibility.
+ *
+ * (Eight, counted from this file: five on `.security-surface-host` — `position`,
+ * `display`, `visibility`, `pointer-events`, `opacity` — plus `position` and `inset` on
+ * the overlay modifier, plus its `z-index`. This said "nine", a number carried from a
+ * review document rather than counted from here. Named by property and not by line on
+ * purpose: a line citation inside the file it counts invalidates itself, and editing
+ * this paragraph moved all eight.)
+ *
+ * The other runtime injector into `document.head` is a TRUSTED plugin's
  * `addStyle` (`src/plugins/trusted/ui-api.ts:106`), which is unfiltered and can use
  * `!important` freely — a separately consent-gated trust tier (§260), outside §359's
  * threat model, and not something these rules stop.
