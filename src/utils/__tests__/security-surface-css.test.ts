@@ -76,6 +76,24 @@ function classesInSource(file: string): Set<string> {
   return found;
 }
 
+/**
+ * Does `css` contain a selector for exactly this class?
+ *
+ * ‼️ The boundary is the whole point, and its absence made this guard decorative for
+ * three of the 32 classes. A plain `css.includes(".plugin-consent")` is satisfied by
+ * `.plugin-consent__body`, so the guard could not fail for `plugin-consent`,
+ * `plugin-revoked` or `settings-section` — each of which is a prefix of a sibling that
+ * is always present. Deleting the real `.plugin-consent { … }` rule left it green,
+ * which would ship the consent dialog with no width, padding, border or background.
+ *
+ * A class name continues over `[A-Za-z0-9_-]`, so requiring the next character to be
+ * outside that set (or the string to end) matches the class and not its prefixes.
+ */
+function selectorPresent(css: string, className: string): boolean {
+  const escaped = className.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+  return new RegExp(`\\.${escaped}(?![\\w-])`, "u").test(css);
+}
+
 /** Selectors the extracted sheet actually emits, comments and bodies stripped. */
 function selectorsIn(css: string): string {
   return css
@@ -141,9 +159,46 @@ describe("§359 shadow 안으로 들어가는 CSS", () => {
     for (const [surface, classes] of Object.entries(SECURITY_SURFACE_CLASSES)) {
       const css = selectorsIn(securitySurfaceCss(surface as SecuritySurface));
       const absent = classes.filter(
-        (c) => defined.has(c) && !css.includes(`.${c}`),
+        (c) => defined.has(c) && !selectorPresent(css, c),
       );
       expect([surface, absent]).toEqual([surface, []]);
+    }
+  });
+
+  it("클래스 존재 검사가 접두사에 속지 않는다", () => {
+    // Guards the guard above. Its predicate used to be `css.includes(".p" + c)`, and
+    // three of the 32 classes are prefixes of siblings that are always present, so for
+    // those three it could not fail — a review deleted the real `.plugin-consent` rule
+    // and it stayed green, which would ship the dialog with no width, padding, border
+    // or background.
+    //
+    // The mutation below is the isolating one. Deleting the rule from `plugins.css`
+    // does NOT test this: `defined` is rebuilt from the same stylesheets, so the class
+    // leaves both sides at once and the guard skips it. What has to be simulated is the
+    // class going missing from the OUTPUT while its rule still exists — a selector that
+    // gains a foreign class, or a class list that loses an entry.
+    for (const [surface, className] of [
+      ["consentDialog", "plugin-consent"],
+      ["revokedNotice", "plugin-revoked"],
+      ["approvedRoots", "settings-section"],
+    ] as [SecuritySurface, string][]) {
+      const css = selectorsIn(securitySurfaceCss(surface));
+      expect([className, selectorPresent(css, className)]).toEqual([
+        className,
+        true,
+      ]);
+      const without = css.replace(`.${className}{}`, "");
+      // The prefix siblings are still there, which is exactly why the old predicate
+      // could not see the difference…
+      expect([className, without.includes(`.${className}`)]).toEqual([
+        className,
+        true,
+      ]);
+      // …and why this one has to.
+      expect([className, selectorPresent(without, className)]).toEqual([
+        className,
+        false,
+      ]);
     }
   });
 
@@ -158,7 +213,7 @@ describe("§359 shadow 안으로 들어가는 CSS", () => {
     expect(consent).toContain("prefers-reduced-motion");
     expect(consent).toContain("@keyframes plugin-consent-fade");
     expect(consent).toContain("@keyframes plugin-consent-rise");
-    // Tailwind's preflight is not readable from source (`base.css:9` imports the
+    // Tailwind's preflight is not readable from source (`base.css:8` imports the
     // package and the build expands it), so `security-surfaces.css` restates the two
     // declarations these rules depend on. Neither property is inherited, which is why
     // neither crosses the boundary on its own.
