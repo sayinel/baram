@@ -100,13 +100,17 @@ function blankRegions(md: string, regions: readonly CodeRegion[]): string {
   return parts.join("");
 }
 
-/** `regions` sorted by start, overlapping and touching ones merged. */
+/** `regions` sorted by start, overlapping ones merged. Touching ones stay
+ *  apart: a region's START is part of the contract — `balanceBrackets`
+ *  (pandoc underline) tells a destination by the `](` it starts with, and
+ *  fusing a code span flush against one hid that start (a `]` inside the
+ *  code was escaped on one side, the link's `[` on the other). */
 function mergeRegions(regions: readonly CodeRegion[]): CodeRegion[] {
   const sorted = [...regions].sort((a, b) => a.start - b.start);
   const merged: CodeRegion[] = [];
   for (const region of sorted) {
     const last = merged[merged.length - 1];
-    if (last !== undefined && region.start <= last.end) {
+    if (last !== undefined && region.start < last.end) {
       if (region.end > last.end) last.end = region.end;
     } else {
       merged.push({ end: region.end, start: region.start });
@@ -118,7 +122,8 @@ function mergeRegions(regions: readonly CodeRegion[]): CodeRegion[] {
 /**
  * Collect start/end offsets of all fenced code blocks and display math
  * blocks, inline code spans and (per options) inline math, HTML tags and
- * link destinations in content. Sorted and merged.
+ * link destinations in content. Sorted, non-overlapping, each region
+ * starting where its construct does (see {@link mergeRegions}).
  */
 export function collectCodeRegions(
   md: string,

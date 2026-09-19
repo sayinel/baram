@@ -117,6 +117,27 @@ describe("collectCodeRegions", () => {
     );
   });
 
+  it("keeps touching regions apart: a caller reads a destination by its start", () => {
+    // `balanceBrackets` (pandoc underline) drops the regions that start
+    // with `](` so a link's closing bracket is still counted. Fusing a
+    // code span flush against a destination into one region hid that
+    // start — on one side the `]` inside the code was escaped, on the
+    // other the link's `[` was.
+    expect(
+      collectCodeRegions("[x](u)`a]b` c", { inlineMath: true, markup: true }),
+    ).toEqual([
+      { end: 6, start: 2 },
+      { end: 11, start: 6 },
+    ]);
+    expect(
+      collectCodeRegions("[`x`](u) $E$", { inlineMath: true, markup: true }),
+    ).toEqual([
+      { end: 4, start: 1 },
+      { end: 8, start: 4 },
+      { end: 12, start: 9 },
+    ]);
+  });
+
   it("closes a fence on a CRLF or lone-CR line, and an unclosed display block runs to the end", () => {
     expect(collectCodeRegions("```\r\nx\r\n```\r\ny")).toEqual([
       { end: 11, start: 0 },
