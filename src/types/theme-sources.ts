@@ -7,7 +7,6 @@
 // 플러그인 표와 달리 토글이 없다 — 테마는 동시에 하나만 활성이므로 켜고 끄는 것이
 // 아니라 고르는 것이다.
 
-/** `custom`은 플러그인에 대응물이 없다 — 앱 안에서 사용자가 만든 테마다. */
 export interface ThemeActionSet {
   /** 이 테마를 활성으로 만든다 */
   apply: boolean;
@@ -25,6 +24,7 @@ export interface ThemeActionSet {
   update: boolean;
 }
 
+/** `custom`은 플러그인에 대응물이 없다 — 앱 안에서 사용자가 만든 테마다. */
 export type ThemeSource = "builtin" | "community" | "custom" | "dev";
 
 const NONE: ThemeActionSet = {
