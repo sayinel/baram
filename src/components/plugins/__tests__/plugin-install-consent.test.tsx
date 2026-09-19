@@ -272,7 +272,9 @@ describe("install consent + registry cross-check (§260 Phase 5)", () => {
     downloadReturns({
       ...MANIFEST,
       capabilities: ["editor", "network"],
-      tiptapExtensions: [{ exportName: "X", name: "x", type: "node" as const }],
+      tiptapExtensions: [
+        { exportName: "X", name: "x", type: "plugin" as const },
+      ],
       trust: "trusted",
     });
 

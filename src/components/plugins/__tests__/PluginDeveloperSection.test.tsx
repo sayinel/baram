@@ -170,7 +170,7 @@ describe("PluginDeveloperSection", () => {
   it("reloads a dev plugin with Tiptap extensions and warns a restart is required", async () => {
     const manifestWithTiptap: PluginManifest = {
       ...baseManifest,
-      tiptapExtensions: [{ type: "node", name: "x", exportName: "X" }],
+      tiptapExtensions: [{ type: "plugin", name: "x", exportName: "X" }],
     };
     usePluginStore.getState().setDevPlugins([makeDevPlugin()]);
     addDevFolder.mockResolvedValue({

@@ -178,7 +178,7 @@ describe("validateManifest", () => {
   test("rejects tiptapExtension with missing name", () => {
     const result = validateManifest({
       ...validManifest,
-      tiptapExtensions: [{ type: "node", exportName: "Test" }],
+      tiptapExtensions: [{ type: "plugin", exportName: "Test" }],
     });
     expect(result.valid).toBe(false);
   });
@@ -186,7 +186,7 @@ describe("validateManifest", () => {
   test("rejects tiptapExtension with missing exportName", () => {
     const result = validateManifest({
       ...validManifest,
-      tiptapExtensions: [{ type: "node", name: "test" }],
+      tiptapExtensions: [{ type: "plugin", name: "test" }],
     });
     expect(result.valid).toBe(false);
   });
@@ -242,7 +242,7 @@ describe("validateManifest — trust tier (§260)", () => {
     const r = validateManifest({
       ...base,
       trust: "sandboxed",
-      tiptapExtensions: [{ type: "node", name: "x", exportName: "X" }],
+      tiptapExtensions: [{ type: "plugin", name: "x", exportName: "X" }],
     });
     expect(r.valid).toBe(false);
     if (!r.valid) {
@@ -253,7 +253,7 @@ describe("validateManifest — trust tier (§260)", () => {
       validateManifest({
         ...base,
         trust: "trusted",
-        tiptapExtensions: [{ type: "node", name: "x", exportName: "X" }],
+        tiptapExtensions: [{ type: "plugin", name: "x", exportName: "X" }],
       }).valid,
     ).toBe(true);
   });
@@ -575,5 +575,49 @@ describe("validateManifest — trust tier (§260)", () => {
     // The install dialog renders this string — a capability with no description
     // shows the user an empty row.
     expect(CAPABILITY_DESCRIPTIONS.extensions).toBeTruthy();
+  });
+
+  // §260 spec 0050 §3.2 — `node`/`mark` change the SCHEMA, which is built once when
+  // the editor is created, before plugins load. Passing them through and then
+  // dropping them silently was this field's original defect; reject them instead.
+  it("rejects a node contribution, which the editor cannot take at runtime", () => {
+    const result = validateManifest({
+      ...base,
+      trust: "trusted",
+      tiptapExtensions: [{ exportName: "X", name: "x", type: "node" }],
+    });
+    expect(result.valid).toBe(false);
+  });
+
+  it("rejects a mark contribution for the same reason", () => {
+    const result = validateManifest({
+      ...base,
+      trust: "trusted",
+      tiptapExtensions: [{ exportName: "X", name: "x", type: "mark" }],
+    });
+    expect(result.valid).toBe(false);
+  });
+
+  it("tells the author what to use instead", () => {
+    const result = validateManifest({
+      ...base,
+      trust: "trusted",
+      tiptapExtensions: [{ exportName: "X", name: "x", type: "node" }],
+    });
+    if (result.valid) throw new Error("expected the manifest to be rejected");
+    const message = result.errors
+      .filter((e) => e.field.includes("tiptapExtensions"))
+      .map((e) => e.message)
+      .join(" ");
+    expect(message).toContain("plugin");
+  });
+
+  it("still accepts a plugin contribution", () => {
+    const result = validateManifest({
+      ...base,
+      trust: "trusted",
+      tiptapExtensions: [{ exportName: "X", name: "x", type: "plugin" }],
+    });
+    expect(result.valid).toBe(true);
   });
 });

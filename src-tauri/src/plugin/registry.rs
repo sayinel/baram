@@ -50,7 +50,7 @@ pub struct EngineRequirement {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TiptapExtensionDef {
     #[serde(rename = "type")]
-    pub ext_type: String, // "node" | "mark" | "plugin"
+    pub ext_type: String, // "plugin"
     pub name: String,
     #[serde(rename = "exportName")]
     pub export_name: String,

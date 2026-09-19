@@ -545,7 +545,11 @@ export interface StorageAPI {
 export interface TiptapExtensionDef {
   exportName: string;
   name: string;
-  type: "mark" | "node" | "plugin";
+  /**
+   * `"plugin"` 뿐이다. `node`/`mark` 는 SCHEMA 를 바꾸고 스키마는 에디터 생성 시 한 번
+   * 만들어지는데 플러그인은 그 뒤에 로드된다 — 스펙 0050 §3.2 의 재개 조건 참조.
+   */
+  type: "plugin";
 }
 
 export interface UIAPI {
