@@ -4,9 +4,9 @@
 import {
   collectCodeRegions,
   isInCodeRegion,
-  isLive,
   replaceOutsideCode,
 } from "../markdown/markdown-code-regions";
+import { isLive } from "../markdown/markdown-source";
 
 /** Convert Baram callouts to simple blockquotes.
  *  `> [!tip] Title` → `> **Tip**: Title` */

@@ -5,10 +5,10 @@ import { describe, expect, it } from "vitest";
 import {
   collectCodeRegions,
   inlineMathSpans,
-  inlineSpans,
   replaceOutsideCode,
-  splitLines,
 } from "../markdown-code-regions";
+import { inlineSpans } from "../markdown-inline-spans";
+import { splitLines } from "../markdown-source";
 
 const spansOf = (md: string, mathCrossesLines = true) =>
   inlineSpans(md, splitLines(md), { mathCrossesLines, skip: [] }).map(
