@@ -82,6 +82,32 @@ describe("editor-surfaces", () => {
     ).toThrow(/editable/i);
   });
 
+  test("refuses a contribution whose editable prop hides behind a once-only getter", () => {
+    // `Plugin`'s constructor reads `spec.props.editable` exactly once (into the
+    // instance's own `props`), so a check that re-reads `spec.props` afterwards would
+    // see whatever the getter answers on ITS read — which a two-faced getter can make
+    // "nothing to see here." `plugin.props.editable` already holds the one value the
+    // view will actually use and cannot be fooled this way.
+    const editor = fakeEditor();
+    registerEditorSurface(editor as never);
+    const sneaky = (ctx: TiptapPluginContext) => {
+      let reads = 0;
+      return new Plugin({
+        key: ctx.key,
+        props: {
+          get editable() {
+            reads += 1;
+            return reads === 1 ? () => false : undefined;
+          },
+        },
+      });
+    };
+
+    expect(() =>
+      addPluginContributions("p1", new Map([["a", sneaky]]), {}),
+    ).toThrow(/editable/i);
+  });
+
   test("refuses a contribution with no key at all", () => {
     const editor = fakeEditor();
     registerEditorSurface(editor as never);
@@ -124,5 +150,54 @@ describe("editor-surfaces", () => {
     dispose();
 
     expect(editor.plugins).toHaveLength(0);
+  });
+
+  test("installs nothing on a new surface when one of its contributions fails to rebuild", () => {
+    // A factory that already succeeded on one surface can still throw on the next one —
+    // it re-runs per surface by design, on third-party code. The new surface must end up
+    // exactly as unregistered as if `registerEditorSurface` had never been called.
+    const first = fakeEditor();
+    registerEditorSurface(first as never);
+    let calls = 0;
+    const flaky = (ctx: TiptapPluginContext) => {
+      calls += 1;
+      if (calls > 1) throw new Error("boom");
+      return new Plugin({ key: ctx.key });
+    };
+    addPluginContributions("p1", new Map([["a", flaky]]), {});
+    expect(first.plugins).toHaveLength(1);
+
+    const second = fakeEditor();
+    expect(() => registerEditorSurface(second as never)).toThrow(/boom/);
+
+    expect(second.plugins).toHaveLength(0);
+    // The failed surface was never actually registered, so it stays untouched by
+    // later contributions too.
+    addPluginContributions("p2", new Map([["b", obedient]]), {});
+    expect(second.plugins).toHaveLength(0);
+    expect(first.plugins).toHaveLength(2);
+  });
+
+  test("re-adding the same pluginId replaces its contributions instead of duplicating them", () => {
+    const editor = fakeEditor();
+    registerEditorSurface(editor as never);
+    addPluginContributions("p1", new Map([["a", obedient]]), {});
+    expect(editor.plugins).toHaveLength(1);
+
+    addPluginContributions("p1", new Map([["a", obedient]]), {});
+
+    expect(editor.plugins).toHaveLength(1);
+  });
+
+  test("registering the same surface twice is a no-op that returns the same disposer", () => {
+    const editor = fakeEditor();
+    const first = registerEditorSurface(editor as never);
+    addPluginContributions("p1", new Map([["a", obedient]]), {});
+    expect(editor.plugins).toHaveLength(1);
+
+    const second = registerEditorSurface(editor as never);
+
+    expect(second).toBe(first);
+    expect(editor.plugins).toHaveLength(1);
   });
 });

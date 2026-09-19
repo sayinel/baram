@@ -165,8 +165,13 @@ const REGISTER_ALLOW = [
   join("plugins", "trusted", "ui-api.ts"),
   // §260 (스펙 0050) — the one runtime registration path in the app. It refuses any
   // contributed plugin that defines `props.editable` (see `build()` in
-  // plugins/editor-surfaces.ts), so the ⓒ contract holds THROUGH it rather than
-  // being waived for it.
+  // plugins/editor-surfaces.ts), so the app's OWN registration never carries an
+  // editability override. That is a narrower claim than "closes the third path" — a
+  // contributed plugin still runs in the main realm and can reach editability through
+  // its own powers (`editor.setEditable`, `view.setProps`, a `spec.view()`), same as any
+  // other trusted-plugin code; those routes are not in `src/` and this scan was never
+  // going to see them. What earns the allowlist entry is that OUR call to
+  // `registerPlugin` cannot be the vector.
   join("plugins", "editor-surfaces.ts"),
 ];
 /** Direct view.setProps — bypasses every signal. */
