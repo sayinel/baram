@@ -21,7 +21,9 @@ import { basename, normalizePath } from "../path-utils";
 import {
   cssName,
   forEachResourceName,
+  isDataUrl,
   isRemoteUrl,
+  NON_RESOURCE_ARGUMENT_FUNCTIONS,
   URL_BEARING_FUNCTIONS,
   where,
 } from "./css-refs";
@@ -47,15 +49,6 @@ const ASSET_MEDIA_TYPES: ReadonlyMap<string, string> = new Map([
 
 /** 동봉 자산의 **누적** 상한. 하나가 아니라 테마 전체가 여기에 들어가야 한다. */
 export const MAX_THEME_ASSET_BYTES = 2 * 1024 * 1024;
-
-// 자원 이름을 받는 함수 안에 있지만 그 인자가 자원 이름이 **아닌** 함수.
-// `image-set()` 의 `type(<string>)` 은 media type 이다(CSS Images 4). 이것을 자원으로
-// 읽으면 합법한 테마가 "없는 파일" 로 거부된다.
-//
-// ‼️ 이 예외가 구멍이 되지 않는 이유: sanitize 는 이 예외를 쓰지 않는다. 그래서
-// `image-set(type("https://evil.com/x.png"))` 는 여기 오기 전에 이미 거부된다 — 여기
-// 예외가 통과시키는 것은 원격으로 보이지 않는 문자열뿐이다.
-const NON_RESOURCE_ARGUMENT_FUNCTIONS: ReadonlySet<string> = new Set(["type"]);
 
 /**
  * 패키지 상대 경로 하나를 읽는다. 그런 파일이 없으면 `undefined`.
@@ -141,16 +134,6 @@ function encodeBase64(bytes: Uint8Array): string {
     binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
   }
   return btoa(binary);
-}
-
-// scheme 판정은 URL 파서가 한다 — `startsWith("data:")` 는 `\64 ata:` 와 앞뒤 공백에
-// 뚫리고, 이 리포는 같은 이유로 scheme 의 regex 재구현을 금지한다(`link-href.ts`).
-function isDataUrl(value: string): boolean {
-  try {
-    return new URL(value).protocol === "data:";
-  } catch {
-    return false;
-  }
 }
 
 // 확장자로 media type 을 고른다. 표에 없거나 확장자가 없으면 거부다.

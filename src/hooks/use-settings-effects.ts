@@ -19,6 +19,7 @@ import { resolveCodeMetrics } from "../utils/font/code-metrics";
 import { logger } from "../utils/logger";
 import {
   appliesInlineVars,
+  applyThemeCss,
   applyThemeVars,
   clearThemeVars,
   themePreviewOwned,
@@ -65,34 +66,47 @@ export function useSettingsEffects(editor: Editor | null) {
       // Clear previous CSS variable overrides
       clearThemeVars(root);
 
-      if (activeThemeId === "system") {
-        root.removeAttribute("data-theme");
-        return;
-      }
-      const themeDef = findThemeById(activeThemeId, customThemes);
-      if (!themeDef) {
-        root.removeAttribute("data-theme");
-        return;
-      }
-      const mode = resolveThemeMode(themeDef, mql.matches);
-      if (mode === undefined) {
-        root.removeAttribute("data-theme");
-        return;
-      }
+      // ‼️ §358 이른 반환이 셋이었는데 하나로 합쳤다. 적용물이 인라인 변수 하나였을
+      // 때는 맨 위의 clearThemeVars 가 모든 갈래를 덮었지만, 이제 `<style>` 도 갈린다 —
+      // 갈래마다 제거를 적으면 그중 하나를 빠뜨리는 날 앞 테마의 CSS 가 남는다. 그것이
+      // #330 의 모양이다. 그래서 아래 `data-theme` 과 `applyThemeCss` 는 호출부가 하나씩이다.
+      const themeDef =
+        activeThemeId === "system"
+          ? undefined
+          : findThemeById(activeThemeId, customThemes);
+      const mode =
+        themeDef === undefined
+          ? undefined
+          : resolveThemeMode(themeDef, mql.matches);
 
       // Set the mode (light/dark) for CSS + CodeMirror.
       // ‼️ NOT Mermaid any more — it renders in one fixed palette regardless
       // (MERMAID_THEME in utils/markdown/mermaid-utils.ts), because its colours
       // are baked into the SVG and would follow the editor's theme into a PDF.
-      root.dataset.theme = mode;
+      if (mode === undefined) root.removeAttribute("data-theme");
+      else root.dataset.theme = mode;
+
+      const assets =
+        themeDef === undefined || mode === undefined
+          ? undefined
+          : themeDef.modes[mode];
 
       // For non-default themes, apply CSS variable overrides. The default themes
       // need none: src/styles/generated/ already carries their values, including the
       // accent pairing that applyThemeVars derives for everyone else (#330).
-      const colors = themeDef.modes[mode]?.colors;
-      if (appliesInlineVars(activeThemeId) && colors !== undefined) {
+      const colors = assets?.colors;
+      if (
+        mode !== undefined &&
+        appliesInlineVars(activeThemeId) &&
+        colors !== undefined
+      ) {
         applyThemeVars(root, colors, mode);
       }
+
+      // §358 스펙 §6 의 순서 — generated → 토큰 → CSS. 테마 CSS 가 마지막인 이유는
+      // 그것이 토큰을 읽는 쪽이기 때문이다. 저장된 바이트가 계약을 지키는지는
+      // applyThemeCss 가 주입 직전에 다시 본다(설치 때 통과한 사실을 믿지 않는다).
+      applyThemeCss(document, assets?.css);
     };
 
     apply();

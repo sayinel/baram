@@ -1,10 +1,11 @@
 // §358 CSS 안에서 "자원의 이름" 이 어디에 나타나는가 — 테마 CSS 를 검사하는
-// 쪽(`sanitize.ts`)과 자산을 인라인하는 쪽(`inline-assets.ts`)이 함께 쓰는 원시 층.
+// 쪽(`sanitize.ts`), 자산을 인라인하는 쪽(`inline-assets.ts`), 저장된 결과를 로드
+// 시점에 다시 보는 쪽(`verify.ts`)이 함께 쓰는 원시 층.
 //
-// 두 쪽의 **정책은 다르다**: sanitize 는 패키지 상대 경로만 허용하고 `data:` 를
-// 거부하며, inline 은 그 상대 경로를 `data:` 로 바꾼다. 여기 있는 것은 정책이
-// 아니라 "무엇이 자원의 이름인가" 하나뿐이다 — 그 판정이 두 벌이 되면 한쪽만
-// 고쳐진 채로 갈린다.
+// 세 쪽의 **정책은 다르다**: sanitize 는 패키지 상대 경로만 허용하고 `data:` 를
+// 거부하며, inline 은 그 상대 경로를 `data:` 로 바꾸고, verify 는 `data:` 말고는
+// 아무것도 받지 않는다. 여기 있는 것은 정책이 아니라 "무엇이 자원의 이름인가"
+// 하나뿐이다 — 그 판정이 세 벌이 되면 한쪽만 고쳐진 채로 갈린다.
 //
 // ‼️ 판정은 전부 파서가 준 것으로 한다. 문자열·정규식 검사는 CSS 이스케이프
 // (`url(\68 ttp://…)`)와 대소문자·공백 변형에 뚫린다 — 이 리포는 링크 scheme
@@ -20,6 +21,22 @@ const PROBE_BASES_OPAQUE = [
   "baram-a://a.invalid/theme/",
   "baram-b://b.invalid/theme/",
 ];
+
+// 자원 이름을 받는 함수 **안에** 있지만 그 인자가 자원의 이름이 아닌 함수.
+// `image-set()` 의 `type(<string>)` 은 media type 이다(CSS Images 4) — 브라우저는
+// 그 문자열로 후보를 고를 뿐 그것을 가져오지 않는다. 자원으로 읽으면 합법한 테마가
+// "없는 파일" 로 거부된다.
+//
+// ‼️ 그래서 이 예외는 신뢰하지 않는 입력에도 안전하다: 여기 면제되는 문자열은 애초에
+// fetch 대상이 아니다. 쓰는 곳은 `inline-assets.ts` 의 출력 스캔과 `verify.ts` —
+// **두 곳이 같은 집합을 봐야 한다.** 한쪽에만 있으면 인라인은 통과시킨 CSS 를 로드
+// 시점에 verify 가 거부해, 설치는 되고 적용은 안 되는 테마가 생긴다.
+//
+// sanitize 는 이 예외를 쓰지 않는다 — 저자가 쓴 `type("https://evil.com/x.png")` 는
+// 자원이 아니어도 그대로 거부된다.
+export const NON_RESOURCE_ARGUMENT_FUNCTIONS: ReadonlySet<string> = new Set([
+  "type",
+]);
 
 // 인자로 받은 맨 `<string>` 이 곧 자원의 이름이 되는 함수들. 그 인자는 `Url` 노드가
 // 아니라 `String` 노드라서 Url 워크에 잡히지 않는다(실측).
@@ -93,6 +110,19 @@ export function forEachResourceName(
     if (value === null) return;
     visit(value, raw, open.length === 0 ? null : open[open.length - 1].name);
   });
+}
+
+/**
+ * 이 참조가 `data:` URI 인가. scheme 판정은 URL 파서가 한다 — `startsWith("data:")`
+ * 는 `\64 ata:` 와 앞뒤 공백에 뚫리고, 이 리포는 같은 이유로 scheme 의 regex 재구현을
+ * 금지한다(`link-href.ts`).
+ */
+export function isDataUrl(value: string): boolean {
+  try {
+    return new URL(value).protocol === "data:";
+  } catch {
+    return false;
+  }
 }
 
 /**

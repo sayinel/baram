@@ -2,7 +2,7 @@ import type { ThemeColors } from "../../types/theme";
 
 // §54 / #330 — theme variables are applied and cleared through one module so a
 // colour and the foreground derived from it can never be written out of step.
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   soleMode,
@@ -10,9 +10,12 @@ import {
 } from "../../types/__tests__/helpers/theme-palette";
 import { BUILT_IN_THEMES, THEME_COLOR_KEYS } from "../../types/theme";
 import { relativeLuminance } from "../color-contrast";
+import * as themeVars from "../theme-vars";
 import {
   appliesInlineVars,
+  applyThemeCss,
   applyThemeVars,
+  clearThemeCss,
   clearThemeVars,
   DERIVED_KEYS,
 } from "../theme-vars";
@@ -221,6 +224,95 @@ describe("clearThemeVars", () => {
     // A key the old 16-entry list omitted.
     expect(root.style.getPropertyValue("--color-accent-subtle")).toBe("");
     expect(root.style.getPropertyValue("--color-status-danger")).toBe("");
+  });
+});
+
+// §358 #330 의 불변식을 CSS 변수 **밖**까지 넓힌다.
+//
+// 위의 "removes everything applyThemeVars can set" 는 THEME_COLOR_KEYS + DERIVED_KEYS
+// 를 **열거해서** 검사한다. `<style data-baram-theme>` 는 CSS 변수가 아니므로 그 열거에
+// 잡히지 않는다 — 테마 CSS 가 생긴 순간 그 핀이 보지 못하는 세 번째 적용물이 생겼다.
+//
+// 그래서 이 핀은 목록을 적지 않는다. 적용 **전**의 문서를 통째로 찍어 두고, 적용하고,
+// 지운 뒤 같은 문서인지 본다. 무엇을 적용했든 되돌아오지 않으면 빨개진다 — #330 은
+// 손으로 적은 목록이 표류해서 났고, 여기에는 적을 목록이 없다.
+//
+// 그 성질이 성립하려면 이 테스트가 **모든** apply 를 불러야 한다. 첫 단언이 그것을
+// 모듈 표면에서 확인한다: 새 `apply*` 가 export 되면 여기부터 빨개진다.
+describe("적용과 제거는 짝이다 (#330, 열거가 아니라 관측으로)", () => {
+  /**
+   * 문서가 지금 무엇을 이고 있는가. `<html>` 통째로 찍으므로 인라인 스타일도,
+   * head 의 스타일시트도, 속성도 함께 들어온다.
+   *
+   * 마지막 인라인 속성을 지워도 DOM 은 `style=""` 이라는 빈 껍데기를 남긴다(실측).
+   * 그것은 "적용물" 이 아니므로 스냅샷에서 지운다 — 값이 남아 있으면 그대로 보인다.
+   */
+  function documentPrint(): string {
+    const root = document.documentElement;
+    if (root.getAttribute("style") === "") root.removeAttribute("style");
+    return root.outerHTML;
+  }
+
+  beforeEach(() => {
+    clearThemeVars(document.documentElement);
+    clearThemeCss(document);
+  });
+
+  it("이 핀이 부르는 apply* 가 모듈이 export 하는 apply* 전부다", () => {
+    const exported = Object.keys(themeVars)
+      .filter((name) => name.startsWith("apply"))
+      .sort();
+    expect(exported).toEqual(["applyThemeCss", "applyThemeVars"]);
+  });
+
+  it("적용했다가 지우면 문서가 원래대로 돌아온다", () => {
+    const root = document.documentElement;
+    const before = documentPrint();
+
+    applyThemeVars(root, NORD_COLORS, NORD_MODE);
+    applyThemeCss(document, "@layer baram-theme{.probe{color:red}}");
+
+    // 스냅샷이 두 적용을 **본다**는 것부터 증명한다. 보지 못하면 아래 단언은
+    // 아무것도 검사하지 않은 채로 통과한다.
+    expect(documentPrint()).not.toBe(before);
+    expect(root.style.getPropertyValue("--color-accent-default")).not.toBe("");
+    expect(document.querySelectorAll("style[data-baram-theme]")).toHaveLength(
+      1,
+    );
+
+    clearThemeVars(root);
+    clearThemeCss(document);
+    expect(documentPrint()).toBe(before);
+  });
+
+  it("같은 테마를 다시 적용해도 스타일시트는 한 장이다", () => {
+    const css = "@layer baram-theme{.probe{color:red}}";
+    applyThemeCss(document, css);
+    applyThemeCss(document, css);
+    applyThemeCss(document, "@layer baram-theme{.probe{color:blue}}");
+
+    const styles = document.querySelectorAll("style[data-baram-theme]");
+    expect(styles).toHaveLength(1);
+    expect(styles[0].textContent).toBe(
+      "@layer baram-theme{.probe{color:blue}}",
+    );
+  });
+
+  it("계약을 어긴 css 는 붙이지 않고, 앞 테마의 것도 떼어 낸다", () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    applyThemeCss(document, "@layer baram-theme{.probe{color:red}}");
+    expect(document.querySelectorAll("style[data-baram-theme]")).toHaveLength(
+      1,
+    );
+
+    // 레이어 밖이다 — 통과시키면 앱 CSS 를 이긴다.
+    applyThemeCss(document, ".probe{color:red}");
+
+    expect(document.querySelectorAll("style[data-baram-theme]")).toHaveLength(
+      0,
+    );
+    expect(logged).toHaveBeenCalled();
+    logged.mockRestore();
   });
 });
 

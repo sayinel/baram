@@ -30,6 +30,13 @@ import {
 } from "./css-refs";
 import { ThemeCssError } from "./errors";
 
+/**
+ * 테마 CSS 가 들어가는 cascade layer 의 이름. 감싸는 쪽이 여기 있으므로 이름의 집도
+ * 여기다 — 로드 시점에 "전부 이 레이어 안인가" 를 다시 보는 `verify.ts` 가 이것을
+ * 읽는다. 두 곳에 같은 문자열을 적으면 한쪽만 고친 날 테마 CSS 가 통째로 거부된다.
+ */
+export const THEME_LAYER_NAME = "baram-theme";
+
 // 자원의 이름을 실어 나를 수 있는 토큰. `Raw` 안에서 이 중 하나라도 보이면 그 조각은
 // 검사되지 않은 참조를 숨기고 있을 수 있다. `Function` 까지 넣는 이유는 `url( "x" )`
 // 처럼 공백이 끼면 url-token 이 아니라 function-token 으로 쪼개지기 때문이다.
@@ -219,7 +226,7 @@ export function sanitizeThemeCss(css: string): string {
     }
   });
 
-  const sanitized = `@layer baram-theme {\n${csstree.generate(ast)}\n}\n`;
+  const sanitized = `@layer ${THEME_LAYER_NAME} {\n${csstree.generate(ast)}\n}\n`;
   // 우리가 내보내는 것도 우리 기준을 통과해야 한다. 짝이 안 맞는 `}` 하나면 그 뒤의
   // 테마 CSS 가 `@layer baram-theme {` 밖으로 빠져나가 레이어 우선순위를 통째로 무시한다.
   //
