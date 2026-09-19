@@ -51,8 +51,8 @@ vi.mock("../../../plugins/registry-client", () => ({
 }));
 
 import {
+  countAnywhere,
   findSurface,
-  surfaceCount,
 } from "../../../__tests__/helpers/security-surface";
 import { usePluginStore } from "../../../stores/system/plugin";
 import { PluginMarketplace } from "../PluginMarketplace";
@@ -117,7 +117,7 @@ describe("the marketplace version-floor gate (§69)", () => {
     await waitFor(() =>
       expect(usePluginStore.getState().pluginErrors.demo).toBeTruthy(),
     );
-    expect(surfaceCount(".plugin-consent")).toBe(0);
+    expect(countAnywhere(".plugin-consent")).toBe(0);
   });
 
   it("downloads when the app satisfies the floor", async () => {

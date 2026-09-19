@@ -56,13 +56,32 @@ export function withinSurface(
 /**
  * How many mounted surfaces contain `selector`.
  *
- * For "the dialog is not open" assertions. `screen.queryByRole("dialog")` returning
- * null stopped meaning that the moment the dialog moved into a shadow root: it now
- * returns null whether the dialog is open or not.
+ * For waiting on a surface to appear. Use {@link countAnywhere} for "it is NOT open".
  */
 export function surfaceCount(selector: string): number {
   return surfaceContents().filter((c) => c.querySelector(selector) !== null)
     .length;
+}
+
+/**
+ * Matches for `selector` in the light DOM AND inside every mounted surface.
+ *
+ * ‼️ This, not `surfaceCount`, is what an "it is not open" assertion needs.
+ * `screen.queryByRole("dialog")` returning null stopped meaning that the moment the
+ * dialog moved into a shadow root — it returns null whether the dialog is open or
+ * not — and `surfaceCount(…) === 0` replaces one blind spot with a smaller one: it
+ * is also satisfied by a surface that renders WITHOUT the wrapper, straight into the
+ * light DOM. Counting both trees is satisfied only by the thing actually being
+ * absent, which is what the test claims.
+ */
+export function countAnywhere(selector: string): number {
+  return (
+    document.querySelectorAll(selector).length +
+    surfaceContents().reduce(
+      (n, content) => n + content.querySelectorAll(selector).length,
+      0,
+    )
+  );
 }
 
 /**

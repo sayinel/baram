@@ -70,8 +70,8 @@ vi.mock("../../../plugins/registry-client", () => ({
 }));
 
 import {
+  countAnywhere,
   findSurface,
-  surfaceCount,
 } from "../../../__tests__/helpers/security-surface";
 import { usePluginStore } from "../../../stores/system/plugin";
 import { PluginMarketplace } from "../PluginMarketplace";
@@ -195,7 +195,7 @@ describe("install consent + registry cross-check (§260 Phase 5)", () => {
       }),
     );
     await waitFor(() => {
-      expect(surfaceCount(".plugin-consent")).toBe(0);
+      expect(countAnywhere(".plugin-consent")).toBe(0);
     });
     expect(pluginInstallStage).not.toHaveBeenCalled();
     expect(usePluginStore.getState().installedPlugins.demo).toBeUndefined();
@@ -351,7 +351,7 @@ describe("install consent + registry cross-check (§260 Phase 5)", () => {
         trust: "sandboxed",
       }),
     );
-    expect(surfaceCount(".plugin-consent")).toBe(0);
+    expect(countAnywhere(".plugin-consent")).toBe(0);
   });
 
   it("keeps the working version when an update fails its checks", async () => {
@@ -663,7 +663,7 @@ describe("install consent + registry cross-check (§260 Phase 5)", () => {
     expect(install.hasAttribute("disabled")).toBe(true);
     fireEvent.click(install);
 
-    expect(surfaceCount(".plugin-consent")).toBe(0);
+    expect(countAnywhere(".plugin-consent")).toBe(0);
     expect(pluginInstallStage).not.toHaveBeenCalled();
   });
 
@@ -689,7 +689,7 @@ describe("install consent + registry cross-check (§260 Phase 5)", () => {
         "predates Baram's plugin trust model",
       ),
     );
-    expect(surfaceCount(".plugin-consent")).toBe(0);
+    expect(countAnywhere(".plugin-consent")).toBe(0);
     expect(pluginInstallStage).not.toHaveBeenCalled();
     // Nothing was removed either — a refusal must not be destructive.
     expect(usePluginStore.getState().installedPlugins.demo).toBeDefined();

@@ -10,7 +10,7 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import {
-  surfaceContents,
+  countAnywhere,
   withinSurface,
 } from "../../../__tests__/helpers/security-surface";
 import en from "../../../i18n/en.json";
@@ -61,9 +61,10 @@ function revocation(over: Partial<RevocationEntry> = {}): RevocationEntry {
 
 // §359 — the notice renders inside a shadow root, which `screen` cannot reach: it
 // queries `document.body`, and a shadow root is not part of that tree. The "shows
-// nothing" cases below therefore assert that NO surface is mounted rather than that
-// `screen` finds nothing — `screen` finds nothing either way now, so the old form of
-// those three would have passed with the notice rendered in full.
+// nothing" cases therefore count `.plugin-revoked` across BOTH trees: `screen` finds
+// nothing either way now, so their old form would have passed with the notice
+// rendered in full, and counting only surfaces would still pass if the notice were
+// ever rendered without the wrapper.
 const notice = () => withinSurface(".plugin-revoked");
 
 describe("the withdrawal notice", () => {
@@ -107,12 +108,12 @@ describe("the withdrawal notice", () => {
     // Most of a real withdrawal list is this, and alarming the user about it would
     // make the notice worth ignoring when it finally matters.
     detail(revocation({ severity: "unlisted" }));
-    expect(surfaceContents()).toEqual([]);
+    expect(countAnywhere(".plugin-revoked")).toBe(0);
   });
 
   it("shows nothing when the plugin is not withdrawn", () => {
     detail(null);
-    expect(surfaceContents()).toEqual([]);
+    expect(countAnywhere(".plugin-revoked")).toBe(0);
   });
 
   it("prefers a translated reason key over the English prose when one exists", () => {

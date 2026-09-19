@@ -48,8 +48,8 @@ vi.mock("../../../plugins/registry-client", () => ({
 import type { RevocationSeverity } from "../../../plugins/revocation";
 
 import {
+  countAnywhere,
   findSurface,
-  surfaceCount,
 } from "../../../__tests__/helpers/security-surface";
 import { usePluginStore } from "../../../stores/system/plugin";
 import { PluginMarketplace } from "../PluginMarketplace";
@@ -255,7 +255,7 @@ describe("the marketplace update gate (§69)", () => {
     await waitFor(() =>
       expect(usePluginStore.getState().pluginErrors.demo).toBeTruthy(),
     );
-    expect(surfaceCount(".plugin-consent")).toBe(0);
+    expect(countAnywhere(".plugin-consent")).toBe(0);
     expect(pluginInstallStage).not.toHaveBeenCalled();
   });
 });
