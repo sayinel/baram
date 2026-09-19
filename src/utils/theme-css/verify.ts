@@ -79,8 +79,14 @@ function hasOnlyDataUrls(css: string): boolean {
 // 쓸어 본 범위(sanitize → inline → verify 를 실제로 통과시켜 본 것): 선언 값 ·
 // `@font-face src` · `image-set`·`-webkit-image-set`·`src`·`image` · `cursor` ·
 // `list-style-image` · `@supports` 프렐류드 · `@namespace`·`@document`·`@container` ·
-// `@media` 프렐류드 — 9위치 23철자. 함수 철자로 남은 것은 `@media` media-feature 값 둘뿐이고,
-// `@supports (background:url(…))` 은 url-token 으로 되돌아온다(실측).
+// `@media` **본문**(블록 안의 평범한 선언 값이다 — 프렐류드가 아니다) — 9위치 23철자.
+// 함수 철자로 남은 것은 `@media` media-feature 값 둘뿐이고, `@supports (background:url(…))`
+// 은 url-token 으로 되돌아온다(실측).
+//
+// ‼️ `@media` 가 두 자리를 내는 것처럼 읽지 말 것. 프렐류드에서 괄호 **밖**에 쓴 `url()` 은
+// `Url` 도 `Function:url` 도 되지 않는다 — 파서가 그 구간을 통째로 `Raw` 로 남긴다(실측).
+// 그러니 이 at-rule 이 기여하는 것은 깨진 feature 값 하나와, 위 목록의 `선언 값`과 같은
+// 부류인 본문뿐이다.
 //
 // ‼️ **발견된 것이 그것 하나**라는 뜻이지 "그것뿐" 이 아니다 — css-tree 의 at-rule 문법표를
 // 전수로 읽지는 않았다. 느슨하게 파싱되는 자리를 새로 발견하면 여기에 더할 것.
