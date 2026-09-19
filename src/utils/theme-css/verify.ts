@@ -62,10 +62,10 @@ function hasOnlyDataUrls(css: string): boolean {
 // sanitize 를 거쳤다는 보장이 없다 — 그것이 이 층이 있는 이유다.
 //
 // 멀쩡한 테마를 거부하지 않는 이유: 우리 생성기는 `url(…)` 을 **언제나 url-token 하나**로
-// 낸다. 따옴표·공백·`data:` 형태로 쓴 것까지 css-tree 가 `Url` 노드로 읽고 `generate` 가
-// url-token 으로 되돌린다(실측 7형태). 즉 저장된 바이트의 `url(` 함수 토큰은 우리가 쓴
-// 것이 아니다. 문자열을 인자로 받는 다른 함수(`src(`·`image-set(`·`type(`)는 함수 토큰
-// 그대로 남지만, 그쪽 문자열은 위 스캔이 본다.
+// 낸다. 맨 형태·따옴표·괄호 안 공백·`data:` 값 네 가지를 실측했고 넷 다 css-tree 가 `Url`
+// 노드로 읽어 `generate` 가 url-token 으로 되돌렸다. 즉 저장된 바이트의 `url(` 함수 토큰은
+// 우리가 쓴 것이 아니다. 문자열을 인자로 받는 다른 함수(`src(`·`image-set(`·`type(`)는
+// 함수 토큰 그대로 남지만, 그쪽 문자열은 위 스캔이 본다(그것도 같이 실측했다).
 function hasUrlSpelledAsFunction(css: string): boolean {
   let found = false;
   const stream = new csstree.TokenStream(css, csstree.tokenize);

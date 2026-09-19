@@ -162,11 +162,13 @@ export function applyThemeVars(
 /**
  * §358 Remove the `<style>` {@link applyThemeCss} can attach.
  *
- * ‼️ `clearThemeVars` 와 짝이지만 **한 함수가 아니다**. 변수 쪽은 `<html>` 하나를 받고
- * 테마 편집기의 미리보기 복원이 그것만 되돌리는데(`ThemeEditor.tsx`), 그 경로가
- * `<style>` 까지 떼면 편집기를 닫을 때 테마 CSS 가 사라진 채로 남는다 — 그 함수는
- * CSS 를 다시 붙일 줄 모른다. 대신 "적용한 것이 전부 되돌아오는가" 는
- * `__tests__/theme-vars.test.ts` 가 목록이 아니라 문서 스냅샷으로 고정한다.
+ * ‼️ `clearThemeVars` 와 짝이지만 **한 함수가 아니다**. `ThemeEditor.tsx` 의
+ * `restorePreview` 는 색이 있으면 `applyThemeVars`, 없으면 `clearThemeVars` 로 갈리는데,
+ * 토큰 없이 CSS 만 실은 모드(§355 가 허용한다)가 정확히 그 `clearThemeVars` 갈래로
+ * 간다 — 그 함수가 `<style>` 까지 뗀다면 편집기를 닫는 것만으로 그 테마의 CSS 가
+ * 사라지고, `restorePreview` 는 그것을 다시 붙일 줄 모른다. 대신 "적용한 것이 전부
+ * 되돌아오는가" 는 `__tests__/theme-vars.test.ts` 가 목록이 아니라 문서 스냅샷으로
+ * 고정한다.
  */
 export function clearThemeCss(root: Document): void {
   // querySelectorAll 로 찾는다 — 한 장만 유지하는 것이 계약이지만, 어긋난 날 하나가

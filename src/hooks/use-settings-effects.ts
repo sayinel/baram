@@ -66,10 +66,11 @@ export function useSettingsEffects(editor: Editor | null) {
       // Clear previous CSS variable overrides
       clearThemeVars(root);
 
-      // ‼️ §358 이른 반환이 셋이었는데 하나로 합쳤다. 적용물이 인라인 변수 하나였을
-      // 때는 맨 위의 clearThemeVars 가 모든 갈래를 덮었지만, 이제 `<style>` 도 갈린다 —
-      // 갈래마다 제거를 적으면 그중 하나를 빠뜨리는 날 앞 테마의 CSS 가 남는다. 그것이
-      // #330 의 모양이다. 그래서 아래 `data-theme` 과 `applyThemeCss` 는 호출부가 하나씩이다.
+      // ‼️ §358 이른 반환 셋을 걷어냈다(이제 이 함수에는 반환이 없다). 적용물이 인라인
+      // 변수 하나였을 때는 맨 위의 clearThemeVars 가 모든 갈래를 덮었지만, 이제 `<style>`
+      // 도 갈린다 — 갈래마다 제거를 따로 적으면 그중 하나를 빠뜨리는 날 앞 테마의 CSS 가
+      // 남는다. 그것이 #330 의 모양이다. 그래서 `data-theme` 도 `applyThemeCss` 도
+      // 아래 한 자리에서만 결정된다.
       const themeDef =
         activeThemeId === "system"
           ? undefined
