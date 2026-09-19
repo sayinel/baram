@@ -3,10 +3,12 @@ import type { ThemeDef } from "../../types/theme";
 // §54 Theme System — settings store theme functionality tests
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { solePalette } from "../../types/__tests__/helpers/theme-palette";
 import {
   BUILT_IN_THEMES,
   findThemeById,
   THEME_COLOR_KEYS,
+  themeModes,
 } from "../../types/theme";
 import { useSettingsStore } from "../settings/store";
 
@@ -46,7 +48,7 @@ describe("Built-in themes", () => {
     // 따라오고, 키 집합까지 대조해 이름 drift도 함께 잡는다.
     const expected = new Set<string>(THEME_COLOR_KEYS.map((e) => e.key));
     for (const theme of BUILT_IN_THEMES) {
-      expect(new Set(Object.keys(theme.colors))).toEqual(expected);
+      expect(new Set(Object.keys(solePalette(theme)))).toEqual(expected);
     }
   });
 
@@ -64,30 +66,30 @@ describe("Built-in themes", () => {
     ];
     for (const theme of BUILT_IN_THEMES) {
       for (const key of requiredKeys) {
-        expect(theme.colors).toHaveProperty(key);
+        expect(solePalette(theme)).toHaveProperty(key);
       }
     }
   });
 
-  it("every built-in theme has builtIn=true", () => {
+  it("every built-in theme has source=builtin", () => {
     for (const theme of BUILT_IN_THEMES) {
-      expect(theme.builtIn).toBe(true);
+      expect(theme.source).toBe("builtin");
     }
   });
 
-  it("light themes have base=light", () => {
+  it("light themes declare the light mode only", () => {
     const lightIds = ["default-light", "solarized-light"];
     for (const id of lightIds) {
       const theme = BUILT_IN_THEMES.find((t) => t.id === id)!;
-      expect(theme.base).toBe("light");
+      expect(themeModes(theme)).toEqual(["light"]);
     }
   });
 
-  it("dark themes have base=dark", () => {
+  it("dark themes declare the dark mode only", () => {
     const darkIds = ["default-dark", "tokyo-night", "solarized-dark", "nord"];
     for (const id of darkIds) {
       const theme = BUILT_IN_THEMES.find((t) => t.id === id)!;
-      expect(theme.base).toBe("dark");
+      expect(themeModes(theme)).toEqual(["dark"]);
     }
   });
 });
@@ -105,9 +107,8 @@ describe("findThemeById", () => {
     const custom: ThemeDef = {
       id: "my-custom",
       name: "My Custom",
-      base: "light",
-      builtIn: false,
-      colors: BUILT_IN_THEMES[0].colors,
+      source: "custom",
+      modes: { light: { colors: solePalette(BUILT_IN_THEMES[0]) } },
     };
     const theme = findThemeById("my-custom", [custom]);
     expect(theme).toBeDefined();
@@ -123,13 +124,12 @@ describe("findThemeById", () => {
     const fake: ThemeDef = {
       id: "default-light",
       name: "Fake Light",
-      base: "dark",
-      builtIn: false,
-      colors: BUILT_IN_THEMES[1].colors,
+      source: "custom",
+      modes: { dark: { colors: solePalette(BUILT_IN_THEMES[1]) } },
     };
     const result = findThemeById("default-light", [fake]);
-    expect(result!.builtIn).toBe(true);
-    expect(result!.base).toBe("light");
+    expect(result!.source).toBe("builtin");
+    expect(themeModes(result!)).toEqual(["light"]);
   });
 });
 
@@ -158,10 +158,12 @@ describe("setActiveTheme", () => {
     expect(useSettingsStore.getState().activeThemeId).toBe("system");
   });
 
-  it("uses base=light as fallback for unknown theme id", () => {
+  it("falls back to system for an unknown theme id", () => {
     useSettingsStore.getState().setActiveTheme("totally-unknown-id");
-    // findThemeById returns undefined → base falls back to "light"
-    expect(useSettingsStore.getState().theme).toBe("light");
+    // §357 이 필드는 파생이다. 해석되지 않는 id 는 use-settings-effects 가
+    // data-theme 을 아예 지워 cascade 에 맡기므로 화면은 OS 를 따라간다 —
+    // 옛 "light" 는 그 화면과 어긋난 값이었다.
+    expect(useSettingsStore.getState().theme).toBe("system");
   });
 });
 
@@ -191,9 +193,8 @@ describe("saveCustomTheme", () => {
   const makeCustom = (id: string, name: string): ThemeDef => ({
     id,
     name,
-    base: "light",
-    builtIn: false,
-    colors: BUILT_IN_THEMES[0].colors,
+    source: "custom",
+    modes: { light: { colors: solePalette(BUILT_IN_THEMES[0]) } },
   });
 
   it("adds a new custom theme", () => {
@@ -228,9 +229,8 @@ describe("deleteCustomTheme", () => {
   const custom: ThemeDef = {
     id: "deletable",
     name: "Deletable",
-    base: "dark",
-    builtIn: false,
-    colors: BUILT_IN_THEMES[1].colors,
+    source: "custom",
+    modes: { dark: { colors: solePalette(BUILT_IN_THEMES[1]) } },
   };
 
   beforeEach(() => {

@@ -21,16 +21,16 @@ import { describe, expect, it } from "vitest";
 
 import { DEFAULT_DARK_PALETTE } from "../generated/palette-dark";
 import { DEFAULT_LIGHT_PALETTE } from "../generated/palette-light";
-import { BUILT_IN_THEMES } from "../theme";
+import { BUILT_IN_THEMES, themeModes } from "../theme";
 
 describe("기본 테마는 생성 팔레트를 그대로 쓴다", () => {
   it.each([
-    ["default-light", DEFAULT_LIGHT_PALETTE],
-    ["default-dark", DEFAULT_DARK_PALETTE],
-  ])("%s 는 생성 상수와 동일 참조다", (id, generated) => {
+    ["default-light", "light", DEFAULT_LIGHT_PALETTE],
+    ["default-dark", "dark", DEFAULT_DARK_PALETTE],
+  ] as const)("%s 는 생성 상수와 동일 참조다", (id, mode, generated) => {
     const theme = BUILT_IN_THEMES.find((t) => t.id === id)!;
     // toBe — 값 동등이 아니라 **같은 객체**. 손으로 베껴 적으면 값은 같아도 여기서 죽는다.
-    expect(theme.colors).toBe(generated);
+    expect(theme.modes[mode]?.colors).toBe(generated);
   });
 
   it("나머지 여섯 내장 테마는 리터럴로 남아 있다", () => {
@@ -38,8 +38,9 @@ describe("기본 테마는 생성 팔레트를 그대로 쓴다", () => {
     const literals = BUILT_IN_THEMES.filter((t) => !generatedIds.has(t.id));
     expect(literals).toHaveLength(6);
     for (const theme of literals) {
-      expect(theme.colors).not.toBe(DEFAULT_LIGHT_PALETTE);
-      expect(theme.colors).not.toBe(DEFAULT_DARK_PALETTE);
+      const colors = theme.modes[themeModes(theme)[0]]?.colors;
+      expect(colors).not.toBe(DEFAULT_LIGHT_PALETTE);
+      expect(colors).not.toBe(DEFAULT_DARK_PALETTE);
     }
   });
 });

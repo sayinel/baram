@@ -4,6 +4,10 @@ import type { ThemeColors } from "../../types/theme";
 // colour and the foreground derived from it can never be written out of step.
 import { beforeEach, describe, expect, it } from "vitest";
 
+import {
+  soleMode,
+  solePalette,
+} from "../../types/__tests__/helpers/theme-palette";
 import { BUILT_IN_THEMES, THEME_COLOR_KEYS } from "../../types/theme";
 import { relativeLuminance } from "../color-contrast";
 import {
@@ -14,9 +18,12 @@ import {
 } from "../theme-vars";
 
 const NORD = BUILT_IN_THEMES.find((t) => t.id === "nord")!;
+const NORD_MODE = soleMode(NORD);
+const NORD_COLORS = solePalette(NORD);
 const SOLARIZED_LIGHT = BUILT_IN_THEMES.find(
   (t) => t.id === "solarized-light",
 )!;
+const SOLARIZED_LIGHT_COLORS = solePalette(SOLARIZED_LIGHT);
 
 function inlineKeys(root: HTMLElement): string[] {
   return Array.from({ length: root.style.length }, (_, i) =>
@@ -30,7 +37,7 @@ describe("THEME_COLOR_KEYS", () => {
     // list it replaced had drifted to 16 of 25 keys, leaving nine overrides behind
     // on a switch back to a default theme — so the array being complete IS the fix.
     const declared = THEME_COLOR_KEYS.map((entry) => entry.key).sort();
-    const actual = (Object.keys(NORD.colors) as (keyof ThemeColors)[]).sort();
+    const actual = (Object.keys(NORD_COLORS) as (keyof ThemeColors)[]).sort();
     expect(declared).toEqual(actual);
   });
 
@@ -76,8 +83,8 @@ describe("applyThemeVars", () => {
   });
 
   it("writes every theme colour", () => {
-    applyThemeVars(root, NORD.colors, NORD.base);
-    for (const [key, value] of Object.entries(NORD.colors)) {
+    applyThemeVars(root, NORD_COLORS, NORD_MODE);
+    for (const [key, value] of Object.entries(NORD_COLORS)) {
       expect(root.style.getPropertyValue(key)).toBe(value);
     }
   });
@@ -87,14 +94,14 @@ describe("applyThemeVars", () => {
     // whitelist 순회 도입 직후에는 빠진 키가 setProperty(key, undefined)로
     // 흘러 리터럴 "undefined" custom property가 cascade 기본값을 가렸다
     // (적대 리뷰). 빠진 키는 아예 쓰지 않아야 한다.
-    const partial = { ...NORD.colors } as Record<string, string>;
+    const partial = { ...NORD_COLORS } as Record<string, string>;
     delete partial["--color-bg-input"];
-    applyThemeVars(root, partial as typeof NORD.colors, NORD.base);
+    applyThemeVars(root, partial as typeof NORD_COLORS, NORD_MODE);
     expect(root.style.getPropertyValue("--color-bg-input")).toBe("");
   });
 
   it("writes the derived accent pairing alongside the colours", () => {
-    applyThemeVars(root, NORD.colors, NORD.base);
+    applyThemeVars(root, NORD_COLORS, NORD_MODE);
     // Nord's pale cyan accent takes dark text — white on it is 2.00:1.
     expect(root.style.getPropertyValue("--color-accent-solid")).toBe("#88c0d0");
     expect(root.style.getPropertyValue("--color-accent-on-solid")).toBe(
@@ -108,13 +115,13 @@ describe("applyThemeVars", () => {
   it("derives from the base it is given, not from the colours alone", () => {
     // Same palette, different base: the light reading steps the fill to the
     // palette's darker blue so white text can stay.
-    applyThemeVars(root, SOLARIZED_LIGHT.colors, "light");
+    applyThemeVars(root, SOLARIZED_LIGHT_COLORS, "light");
     expect(root.style.getPropertyValue("--color-accent-solid")).toBe("#1a6fb5");
     expect(root.style.getPropertyValue("--color-accent-on-solid")).toBe(
       "#ffffff",
     );
 
-    applyThemeVars(root, SOLARIZED_LIGHT.colors, "dark");
+    applyThemeVars(root, SOLARIZED_LIGHT_COLORS, "dark");
     expect(root.style.getPropertyValue("--color-accent-solid")).toBe("#268bd2");
     expect(root.style.getPropertyValue("--color-accent-on-solid")).toBe(
       "#000000",
@@ -125,7 +132,7 @@ describe("applyThemeVars", () => {
 describe("derived status foregrounds", () => {
   it("writes one per status family", () => {
     const root = document.createElement("div");
-    applyThemeVars(root, NORD.colors, NORD.base);
+    applyThemeVars(root, NORD_COLORS, NORD_MODE);
     // Nord keeps the default status palette: white on all three fails AA, so all
     // three take dark text.
     for (const family of ["danger", "success", "warning"]) {
@@ -145,8 +152,8 @@ describe("derived status foregrounds", () => {
 
     applyThemeVars(
       root,
-      { ...NORD.colors, "--color-status-danger": "#dc322f" },
-      NORD.base,
+      { ...NORD_COLORS, "--color-status-danger": "#dc322f" },
+      NORD_MODE,
     );
     expect(root.style.getPropertyValue("--color-status-danger-on-solid")).toBe(
       "#ffffff",
@@ -160,8 +167,8 @@ describe("derived status foregrounds", () => {
     // …and the opposite case still goes the other way.
     applyThemeVars(
       root,
-      { ...NORD.colors, "--color-status-danger": "#ef4444" },
-      NORD.base,
+      { ...NORD_COLORS, "--color-status-danger": "#ef4444" },
+      NORD_MODE,
     );
     expect(root.style.getPropertyValue("--color-status-danger-on-solid")).toBe(
       "#000000",
@@ -179,8 +186,8 @@ describe("derived status foregrounds", () => {
     const root = document.createElement("div");
     applyThemeVars(
       root,
-      { ...NORD.colors, "--color-status-danger": "#5c0f0f" },
-      NORD.base,
+      { ...NORD_COLORS, "--color-status-danger": "#5c0f0f" },
+      NORD_MODE,
     );
     expect(root.style.getPropertyValue("--color-status-danger-on-solid")).toBe(
       "#ffffff",
@@ -194,7 +201,7 @@ describe("derived status foregrounds", () => {
 describe("clearThemeVars", () => {
   it("removes everything applyThemeVars can set", () => {
     const root = document.createElement("div");
-    applyThemeVars(root, NORD.colors, NORD.base);
+    applyThemeVars(root, NORD_COLORS, NORD_MODE);
     expect(inlineKeys(root).length).toBeGreaterThan(0);
 
     clearThemeVars(root);
@@ -205,7 +212,7 @@ describe("clearThemeVars", () => {
     // The regression this pairing of functions exists to prevent: a stale
     // --color-accent-solid would keep overriding the default theme's cascade.
     const root = document.createElement("div");
-    applyThemeVars(root, NORD.colors, NORD.base);
+    applyThemeVars(root, NORD_COLORS, NORD_MODE);
     clearThemeVars(root);
     for (const key of DERIVED_KEYS) {
       expect(root.style.getPropertyValue(key)).toBe("");
@@ -228,7 +235,7 @@ describe("applyThemeVars — 여분 키 주입 차단 (감사 BLOCKER)", () => {
   it("colors에 끼어든 알 수 없는 키는 inline style에 쓰이지 않는다", () => {
     const root = document.documentElement;
     const poisoned = {
-      ...NORD.colors,
+      ...NORD_COLORS,
       display: "none",
       "pointer-events": "none",
       "--evil-custom": "1",

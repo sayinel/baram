@@ -17,6 +17,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useSettingsEffects } from "../../../hooks/use-settings-effects";
 import { useSettingsStore } from "../../../stores/settings/store";
+import { solePalette } from "../../../types/__tests__/helpers/theme-palette";
 import { BUILT_IN_THEMES, THEME_COLOR_KEYS } from "../../../types/theme";
 import { ThemeEditor } from "../ThemeEditor";
 
@@ -47,6 +48,7 @@ vi.mock("../../../ipc/menu-enabled", () => ({
 }));
 
 const NORD = BUILT_IN_THEMES.find((t) => t.id === "nord")!;
+const NORD_COLORS = solePalette(NORD);
 
 const ACCENT = "--color-accent-default";
 const ACCENT_LABEL = THEME_COLOR_KEYS.find((e) => e.key === ACCENT)!.label;
@@ -70,11 +72,10 @@ function editAccent(): void {
 }
 
 const CUSTOM: ThemeDef = {
-  base: "dark",
-  builtIn: false,
-  colors: { ...NORD.colors },
   id: "custom-1730000000000",
+  modes: { dark: { colors: { ...NORD_COLORS } } },
   name: "Mine",
+  source: "custom",
 };
 
 function inlineVarCount(): number {
@@ -138,7 +139,7 @@ describe("ThemeEditor — leaving the editor", () => {
 
     fireEvent.click(screen.getByText("Cancel"));
 
-    expect(accentValue()).toBe(NORD.colors[ACCENT]);
+    expect(accentValue()).toBe(NORD_COLORS[ACCENT]);
   });
 
   it("restores the ORIGINAL colour after an edit when the editor unmounts", () => {
@@ -151,7 +152,7 @@ describe("ThemeEditor — leaving the editor", () => {
 
     unmount();
 
-    expect(accentValue()).toBe(NORD.colors[ACCENT]);
+    expect(accentValue()).toBe(NORD_COLORS[ACCENT]);
   });
 
   it("keeps a saved theme applied when the editor closes in a later commit", () => {

@@ -13,7 +13,7 @@ import {
   SIDEBAR_PANEL_FEATURE,
 } from "../stores/ui/panel-feature";
 import { useUIStore } from "../stores/ui/ui";
-import { findThemeById } from "../types/theme";
+import { findThemeById, resolveThemeMode } from "../types/theme";
 import { applyFontVariables } from "../utils/editor/font-surfaces";
 import { resolveCodeMetrics } from "../utils/font/code-metrics";
 import { logger } from "../utils/logger";
@@ -54,33 +54,49 @@ export function useSettingsEffects(editor: Editor | null) {
 
   useEffect(() => {
     const root = document.documentElement;
+    // ‼️ 신설이다. 지금까지 `system` 은 인라인 변수를 아예 쓰지 않고 cascade 에만
+    // 의존했으므로(CASCADE_ONLY_THEME_IDS) OS 전환을 들을 이유가 없었다. 쌍을 가진
+    // 설치 테마는 인라인 토큰을 쓰므로 전환 시 다시 써야 한다 — 미디어 쿼리는
+    // 인라인 스타일을 바꿔 주지 않는다.
+    const mql = window.matchMedia("(prefers-color-scheme: dark)");
 
-    // Clear previous CSS variable overrides
-    clearThemeVars(root);
+    const apply = () => {
+      // Clear previous CSS variable overrides
+      clearThemeVars(root);
 
-    if (activeThemeId === "system") {
-      root.removeAttribute("data-theme");
-      return;
-    }
+      if (activeThemeId === "system") {
+        root.removeAttribute("data-theme");
+        return;
+      }
+      const themeDef = findThemeById(activeThemeId, customThemes);
+      if (!themeDef) {
+        root.removeAttribute("data-theme");
+        return;
+      }
+      const mode = resolveThemeMode(themeDef, mql.matches);
+      if (mode === undefined) {
+        root.removeAttribute("data-theme");
+        return;
+      }
 
-    const themeDef = findThemeById(activeThemeId, customThemes);
-    if (!themeDef) {
-      root.removeAttribute("data-theme");
-      return;
-    }
+      // Set the mode (light/dark) for CSS + CodeMirror.
+      // ‼️ NOT Mermaid any more — it renders in one fixed palette regardless
+      // (MERMAID_THEME in utils/markdown/mermaid-utils.ts), because its colours
+      // are baked into the SVG and would follow the editor's theme into a PDF.
+      root.dataset.theme = mode;
 
-    // Set base mode (light/dark) for CSS + CodeMirror.
-    // ‼️ NOT Mermaid any more — it renders in one fixed palette regardless
-    // (MERMAID_THEME in utils/markdown/mermaid-utils.ts), because its colours
-    // are baked into the SVG and would follow the editor's theme into a PDF.
-    root.dataset.theme = themeDef.base;
+      // For non-default themes, apply CSS variable overrides. The default themes
+      // need none: src/styles/generated/ already carries their values, including the
+      // accent pairing that applyThemeVars derives for everyone else (#330).
+      const colors = themeDef.modes[mode]?.colors;
+      if (appliesInlineVars(activeThemeId) && colors !== undefined) {
+        applyThemeVars(root, colors, mode);
+      }
+    };
 
-    // For non-default themes, apply CSS variable overrides. The default themes
-    // need none: src/styles/generated/ already carries their values, including the
-    // accent pairing that applyThemeVars derives for everyone else (#330).
-    if (appliesInlineVars(activeThemeId)) {
-      applyThemeVars(root, themeDef.colors, themeDef.base);
-    }
+    apply();
+    mql.addEventListener("change", apply);
+    return () => mql.removeEventListener("change", apply);
   }, [activeThemeId, customThemes]);
 
   useEffect(() => {

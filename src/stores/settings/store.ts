@@ -8,6 +8,7 @@ import {
   migrateThemeColors,
   THEME_COLOR_KEYS,
   THEME_COLOR_VALUE_RE,
+  themeFieldFor,
 } from "../../types/theme";
 import { noteHydrationFailure } from "../system/hydration";
 import { tauriStorage } from "../system/tauri-storage";
@@ -202,7 +203,7 @@ export const useSettingsStore = create<SettingsState>()(
         // would silently drop the setting on every restart.
         vimMode: state.vimMode,
       }),
-      version: 25,
+      version: 26,
       migrate: (persisted: unknown, version: number) => {
         const state = persisted as Record<string, unknown>;
 
@@ -573,6 +574,29 @@ export const useSettingsStore = create<SettingsState>()(
           if (state.fontFamily === "Pretendard") state.fontFamily = "";
         }
 
+        // §357 base → modes. 테마가 라이트/다크 쌍을 가질 수 있게 되면서 한 모드를
+        // 뜻하던 `base` 가 맵의 키가 되었다. `builtIn` 은 `source` 로 대체된다 —
+        // 저장분에 있는 것은 전부 사용자가 만든 것이므로 "custom" 이다.
+        if (version < 26) {
+          const themes = state.customThemes;
+          if (!Array.isArray(themes)) {
+            state.customThemes = [];
+          } else {
+            state.customThemes = themes.map((raw) => {
+              const t = raw as Record<string, unknown>;
+              // 재실행 안전: 이미 새 형태면 손대지 않는다.
+              if (t.modes !== undefined) return t;
+              const mode = t.base === "dark" ? "dark" : "light";
+              return {
+                id: t.id,
+                name: t.name,
+                source: "custom",
+                modes: { [mode]: { colors: t.colors } },
+              };
+            });
+          }
+        }
+
         return state;
       },
       // Fallback for unversioned → v1 upgrade (Zustand skips migrate when stored version is undefined)
@@ -599,8 +623,9 @@ export const useSettingsStore = create<SettingsState>()(
         // Theme sync: ensure theme field matches activeThemeId
         if (state.activeThemeId && state.activeThemeId !== "system") {
           const t = findThemeById(state.activeThemeId, state.customThemes);
-          if (t && state.theme !== t.base) {
-            useSettingsStore.setState({ theme: t.base });
+          const field = themeFieldFor(t);
+          if (t && state.theme !== field) {
+            useSettingsStore.setState({ theme: field });
           }
         }
       },

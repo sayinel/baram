@@ -8,7 +8,7 @@ import { useCallback, useState } from "react";
 
 import { open } from "@tauri-apps/plugin-dialog";
 
-import type { ThemeColors, ThemeDef } from "../../../types/theme";
+import type { ThemeColors, ThemeDef, ThemeMode } from "../../../types/theme";
 
 import { useShallow } from "zustand/shallow";
 
@@ -117,9 +117,8 @@ export function useThemeImport(): {
       const newTheme: ThemeDef = {
         id: "custom-" + Date.now(),
         name,
-        base: data.base,
-        colors: sanitized,
-        builtIn: false,
+        source: "custom",
+        modes: { [data.base as ThemeMode]: { colors: sanitized } },
       };
       saveCustomTheme(newTheme);
       setActiveTheme(newTheme.id);
