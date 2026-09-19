@@ -279,6 +279,21 @@ export interface RegistryEntry {
     icon?: string;
     id: string;
     keywords?: string[];
+    /**
+     * §360 — which marketplace this entry belongs to.
+     *
+     * Absent reads as `"plugin"` — every index published before §360 has no such field, and
+     * this build must keep listing those entries exactly as it always has. NOT normalized to a
+     * literal `"plugin"` by `fetchRegistryIndex`: callers read absence as legacy plugin
+     * themselves, the same way `!entry.trust` is read directly rather than defaulted, so a
+     * genuinely legacy entry stays distinguishable from one that arrived already stamped.
+     *
+     * `normalizeIndex` drops (not demotes) an entry whose `kind` is present but unrecognized —
+     * there is no "legacy kind" to demote it to the way an unknown `trust` demotes to legacy,
+     * and letting an unknown kind reach a consent screen this build cannot enforce is exactly
+     * what `VALID_CAPABILITIES` already refuses for capabilities.
+     */
+    kind?: RegistryEntryKind;
     license: string;
     name: string;
     /**
@@ -298,6 +313,8 @@ export interface RegistryEntry {
     trust?: PluginTrust;
     version: string;
 }
+/** The two marketplaces §360 knows about. Anything else predates or postdates this build. */
+export type RegistryEntryKind = "plugin" | "theme";
 /**
  * How many entries Rust discarded because it could not deserialize them.
  *

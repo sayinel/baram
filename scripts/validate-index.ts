@@ -97,6 +97,10 @@ const FIELDS: Record<
     required: false,
     type: "an array of strings",
   },
+  // §360 — optional to READ (absence means a legacy "plugin" entry), same as `trust`. This
+  // table only pins the WIRE TYPE serde demands; the value itself (`"plugin"` | `"theme"`) is
+  // enforced at runtime by `normalizeIndex`, which drops an entry naming anything else.
+  kind: { check: isString, required: false, type: "a string" },
   license: { check: isString, required: true, type: "a string" },
   name: { check: isString, required: true, type: "a string" },
   readme: { check: isString, required: false, type: "a string" },
