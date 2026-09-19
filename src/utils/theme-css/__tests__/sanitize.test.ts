@@ -59,6 +59,131 @@ describe("절대 URL 거부 — 표에 없던 입구", () => {
   });
 });
 
+// 리뷰 1차가 실측으로 잡아낸 우회. 판정 base 와 scheme 이 같으면 WHATWG 파서는
+// `https:evil.com/x` 를 상대 참조로 읽는다 — 그런데 앱의 실제 base 는 `tauri:`·`http:`
+// 라 브라우저는 같은 값을 `https://evil.com/x` 로 읽고 CSP `img-src … https:` 가 허용한다.
+describe("절대 URL 거부 — scheme 상대(authority 생략) 형태", () => {
+  it.each([
+    ["a{background:url(https:evil.com/x.png)}", "슬래시 없음"],
+    ["a{background:url(https:/evil.com/x.png)}", "슬래시 하나"],
+    ["a{background:url(\\68 ttps:evil.com/x.png)}", "이스케이프 + 슬래시 없음"],
+    ["@font-face{src:url(https:evil.com/f.woff)}", "@font-face 안"],
+    ["@font-face{src:url(https:/evil.com/f.woff)}", "@font-face + 슬래시 하나"],
+    [
+      "@font-face{src:url(\\68 ttps:evil.com/f.woff)}",
+      "@font-face + 이스케이프",
+    ],
+    ["a{background:url(http:evil.com/x.png)}", "판정 base 와 다른 scheme"],
+    ["a{background:url(HTTPS:EVIL.COM/x.png)}", "대문자"],
+  ])("%s → absoluteUrl (%s)", (css) => {
+    expect(code(css)).toBe("absoluteUrl");
+  });
+
+  // special scheme(앱의 실제 base 인 `http:`) 에서만 백슬래시가 authority 구분자로
+  // 바뀐다. 불투명 scheme 쌍만 썼다면 이쪽이 상대 경로로 보였을 것이다 — 두 쌍이
+  // 서로를 받쳐 준다. CSS 원문에서 `\\` 는 백슬래시 **하나**이므로 String.raw 로 쓴다.
+  it.each([
+    [
+      String.raw`a{background:url("\\\\evil.com\\x.png")}`,
+      String.raw`\\evil.com\x.png`,
+    ],
+    [
+      String.raw`a{background:url("/\\evil.com/x.png")}`,
+      String.raw`/\evil.com/x.png`,
+    ],
+    [String.raw`a{background:url(\\\\evil.com\\x.png)}`, "따옴표 없는 같은 값"],
+  ])("%s → absoluteUrl (백슬래시 authority: %s)", (css) => {
+    expect(code(css)).toBe("absoluteUrl");
+  });
+
+  // 백슬래시 **하나**는 authority 를 만들지 못한다 — `http://tauri.localhost/evil.com/…`
+  // 로 풀리므로 루트 절대 경로와 같은 부류다(우리 정책상 통과).
+  it("백슬래시 하나는 같은 origin 이라 통과한다", () => {
+    expect(code(String.raw`a{background:url("\evil.com/x.png")}`)).toBe(
+      "(통과)",
+    );
+  });
+});
+
+// `var()` 는 computed-value 시점에 풀린다 — 설치 시점에 값을 증명할 수 없다.
+// 좁은 규칙을 골랐다: 자원 이름을 받는 함수 안의 치환 함수만 거부한다. 그래서
+// `content:"https://…"` 같은 평범한 텍스트는 계속 합법이다(위 "상대 참조" 그룹이 고정).
+describe("자원 이름을 받는 함수 안의 치환 함수 거부", () => {
+  it.each([
+    ':root{--x:"https://evil.com/x.png"}a{background:image-set(var(--x) 1x)}',
+    "a{background:image-set(var(--x) 1x)}",
+    'a{background:image-set(var(--x,"https://evil.com/x.png") 1x)}',
+    "a{background:-webkit-image-set(var(--x) 1x)}",
+    "a{background:image(var(--x))}",
+    "a{background:image-set(env(--x) 1x)}",
+  ])("%s → absoluteUrl", (css) => {
+    expect(code(css)).toBe("absoluteUrl");
+  });
+
+  it("커스텀 속성이 image-set 통째를 들고 있어도 본다", () => {
+    expect(
+      code(
+        ':root{--w:image-set("https://evil.com/x.png" 1x)}a{background:var(--w)}',
+      ),
+    ).toBe("absoluteUrl");
+  });
+
+  // 따옴표 없는 `url()` 안에 `(` 가 들어가면 토크나이저가 bad-url-token 을 낸다.
+  // 치환 함수 규칙까지 가지 않고 더 앞에서 닫히지만, 어느 쪽이든 통과는 아니다.
+  it("url(var(--x)) 는 토크나이저 단계에서 닫힌다", () => {
+    expect(code("@media (scripting:url(var(--x))){a{color:red}}")).toBe(
+      "parseFailed",
+    );
+  });
+
+  it("자원 이름을 받는 함수 밖의 var() 는 건드리지 않는다", () => {
+    expect(code("a{color:var(--c);background:url(a.png)}")).toBe("(통과)");
+  });
+});
+
+// `image()` 는 `<image-src> = <url> | <string>` 이라 맨 문자열이 이미지 출처다.
+// 오늘 구현한 브라우저는 없지만 구멍의 모양이 `image-set()` 과 같다.
+describe("image()·src() 의 <string> 인자", () => {
+  it.each([
+    'a{background:image("https://evil.com/x.png")}',
+    'a{background:src("https://evil.com/x.png")}',
+  ])("%s → absoluteUrl", (css) => {
+    expect(code(css)).toBe("absoluteUrl");
+  });
+
+  it("상대 경로는 통과한다", () => {
+    expect(code('a{background:image("x.png")}')).toBe("(통과)");
+  });
+});
+
+// 값 자리 **밖**에서는 css-tree 가 `url("…")` 를 `Url` 이 아니라 `Function:url` 로 준다.
+// 노드 모양을 열거하는 워크는 그래서 한 번 새어 나갔다 — 나가는 바이트를 토큰으로 다시
+// 훑는 관문이 그 부류를 통째로 닫는다.
+describe("나가는 CSS 를 토큰으로 다시 훑는다", () => {
+  it.each([
+    'a{background:image-set("https://evil.com/x.png" 1x)}',
+    '@media (scripting:url("https://evil.com/x.png")){a{color:red}}',
+    '@media (scripting:url("htt\tps://evil.com/x.png")){a{color:red}}',
+    '@supports (background:url("https://evil.com/x.png")){a{color:red}}',
+  ])("%s → absoluteUrl", (css) => {
+    expect(code(css)).toBe("absoluteUrl");
+  });
+
+  it("같은 자리의 상대 경로는 통과한다", () => {
+    expect(code('@media (scripting:url("x.png")){a{color:red}}')).toBe(
+      "(통과)",
+    );
+  });
+
+  it("나가는 CSS 안에는 원격 참조가 한 건도 없다", () => {
+    const out = sanitizeThemeCss(
+      ':root{--bg:url(bg.png)}a{background:image-set("a.png" 1x,"b.png" 2x)}',
+    );
+    expect(out).toContain("url(bg.png)");
+    expect(out).not.toMatch(/https?:/);
+  });
+});
+
 describe("상대 참조는 통과한다", () => {
   it.each([
     "a{background:url(assets/x.png)}",
@@ -129,6 +254,32 @@ describe("파싱 실패는 닫는다", () => {
   it("세미콜론·주석만 남은 Raw 는 찌꺼기라 통과시킨다", () => {
     expect(code("a{;;color:red}")).toBe("(통과)");
     expect(code("a{/* c */color:red}")).toBe("(통과)");
+  });
+
+  // CSS Variables 는 값 자리에 거의 아무 토큰열이나 허용한다. 그걸 값 문법으로 읽으면
+  // 합법한 테마가 문법 오류로 거부되므로, 구조 검증 패스는 커스텀 속성 값을 읽지 않는다.
+  it.each([
+    ":root{--raw:{a:b}}",
+    ":root{--x:https://e.com/x.png}",
+    ":root{--e:cubic-bezier(.4,0,.2,1)}",
+    ":root{--s:0 1px 2px rgba(0,0,0,.1)}",
+    ":root{--f:-apple-system,'Segoe UI',sans-serif}",
+    ":root{--c:calc(var(--a) * 2)}",
+    ":root{--g:[full-start] minmax(1rem,1fr) [content-start]}",
+    ':root{--t:"a: b"}',
+    ":root{--empty:}",
+    ":root{--icon:url(local.png)}",
+  ])("%s 는 합법이다", (css) => {
+    expect(code(css)).toBe("(통과)");
+  });
+
+  // 다만 커스텀 속성 값이 Raw 로 남았고 그 안에 자원 이름이 될 수 있는 토큰이 있으면
+  // 아무도 그것을 검사하지 못한 것이므로 닫는다.
+  it.each([
+    ":root{--bad:{background:url(https://e.com/x.png)}}",
+    ':root{--bad:{content:"https://e.com/x.png"}}',
+  ])("%s → parseFailed (검사되지 않은 Raw)", (css) => {
+    expect(code(css)).toBe("parseFailed");
   });
 
   // 여기 URL 은 Url 노드가 아니라 Raw 안에 통째로 들어간다 — Url 워크가 보지 못한다.

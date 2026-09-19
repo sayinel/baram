@@ -12,34 +12,64 @@
 // ‼️ 관대한 파서는 열린 문이다. css-tree 는 `a{color:red` 를 조용히 닫고 성공을
 // 돌려주며 `onParseError` 도 부르지 않는다(실측). 그래서 파싱 **전에** 토크나이저로
 // 닫히지 않은 블록을 먼저 거부하고, 파싱 **후에** 파서가 포기하고 남긴 `Raw` 조각을
-// 거부한다 — 워크가 보지 못한 CSS 는 검사되지 않은 CSS 다.
+// 토큰으로 다시 본다 — 워크가 보지 못한 CSS 는 검사되지 않은 CSS 다.
+//
+// ‼️ "URL 파서를 쓴다" 만으로는 부족하다. base 하나로 판정하면 `url(https:evil.com/x)`
+// 가 빠져나간다: 값의 scheme 이 base 의 scheme 과 같으면 WHATWG 파서는 그것을 상대
+// 참조로 읽고 base 를 따라 움직인다. 앱의 실제 base 는 `tauri:`·`http:` 라 브라우저는
+// 같은 값을 절대 URL 로 읽는다. `isRemoteUrl` 의 두 쌍이 그래서 있다.
 
 import * as csstree from "css-tree";
 
 import { ThemeCssError } from "./errors";
 
-// `image-set()` 은 `url()` 뿐 아니라 맨 `<string>` 도 URL 로 읽는다. 그 인자는 `Url`
-// 노드가 아니라 `String` 노드라서 Url 워크에 잡히지 않는다(실측).
-const IMAGE_SET_FUNCTIONS: ReadonlySet<string> = new Set([
+// 인자로 받은 맨 `<string>` 이 곧 자원의 이름이 되는 함수들. 그 인자는 `Url` 노드가
+// 아니라 `String` 노드라서 Url 워크에 잡히지 않는다(실측).
+//
+// ‼️ 이 집합은 구멍의 모양 자체다 — CSS 가 문자열을 자원 이름으로 받는 함수를 새로 얻을
+// 때마다 여기에 더해야 한다. 오늘 아는 것: `image-set()`(Images 4), `image()`(Images 4,
+// `<image-src> = <url> | <string>`), `src()`(Values 5), 그리고 `url()` 자신 — 값 자리
+// 밖(미디어 특성 값 등)에서는 css-tree 가 `Url` 이 아니라 `Function:url` 을 준다(실측).
+// 열거는 틀리므로 `assertNoRemoteReferences` 가 출력에서 한 번 더 훑는다.
+const URL_BEARING_FUNCTIONS: ReadonlySet<string> = new Set([
   "-webkit-image-set",
+  "image",
   "image-set",
+  "src",
+  "url",
 ]);
 
-// 상대 URL 을 해석해 볼 두 개의 가짜 출처. host 만 다르다 — 아래 `isRemoteUrl` 참조.
+// 상대 URL 을 해석해 볼 가짜 출처. 쌍 안에서는 host 만 다르고, 두 쌍 사이에서는
+// scheme 이 다르다 — `isRemoteUrl` 이 두 쌍을 모두 쓰는 이유가 그 차이다.
 const PROBE_BASES = ["https://a.invalid/theme/", "https://b.invalid/theme/"];
+const PROBE_BASES_OPAQUE = [
+  "baram-a://a.invalid/theme/",
+  "baram-b://b.invalid/theme/",
+];
 
-// 파서가 포기하고 남긴 `Raw` 조각에 이것들만 들어 있으면 버려도 되는 찌꺼기다.
-// 블록 안의 빈 선언(`a{;;color:red}`)이 실제로 이 모양으로 남는다.
-const TRIVIAL_RAW_TOKENS: ReadonlySet<number> = new Set([
-  csstree.tokenTypes.Comment,
-  csstree.tokenTypes.Semicolon,
-  csstree.tokenTypes.WhiteSpace,
+// 자원의 이름을 실어 나를 수 있는 토큰. `Raw` 안에서 이 중 하나라도 보이면 그 조각은
+// 검사되지 않은 참조를 숨기고 있을 수 있다. `Function` 까지 넣는 이유는 `url( "x" )`
+// 처럼 공백이 끼면 url-token 이 아니라 function-token 으로 쪼개지기 때문이다.
+const RESOURCE_NAMING_TOKENS: ReadonlySet<number> = new Set([
+  csstree.tokenTypes.BadString,
+  csstree.tokenTypes.BadUrl,
+  csstree.tokenTypes.Function,
+  csstree.tokenTypes.String,
+  csstree.tokenTypes.Url,
+]);
+
+// computed-value 시점에 값이 정해지는 CSS 치환 함수. 설치 시점에는 무엇이 될지 증명할
+// 수 없으므로, 자원 이름을 받는 함수 안에서는 거부한다.
+const SUBSTITUTION_FUNCTIONS: ReadonlySet<string> = new Set([
+  "attr",
+  "env",
+  "var",
 ]);
 
 // 입력이 끝까지 닫혀 있는지 토크나이저에게 묻는다. 직접 중괄호를 세지 않는 이유는
 // 문자열·주석·`url()` 안의 중괄호를 구분해야 하기 때문이고, 그 구분은 토크나이저가
 // 이미 한다 — `a{content:'}'}` 는 닫혀 있고 `a{content:"hi}` 는 닫혀 있지 않다.
-function assertWellFormed(css: string): void {
+function assertWellFormed(css: string, stage: string): void {
   const stream = new csstree.TokenStream(css, csstree.tokenize);
   stream.forEachToken((type, start, _end, index) => {
     const name = csstree.tokenNames[type];
@@ -47,7 +77,7 @@ function assertWellFormed(css: string): void {
       type === csstree.tokenTypes.BadString ||
       type === csstree.tokenTypes.BadUrl
     ) {
-      throw new ThemeCssError("parseFailed", `${name} at ${start}`);
+      throw new ThemeCssError("parseFailed", `${stage} ${name} at ${start}`);
     }
     // css-tree 자신의 짝 찾기. 짝이 없으면 -1 이고, 그건 EOF 까지 열려 있었다는 뜻이다.
     const unpaired =
@@ -55,36 +85,80 @@ function assertWellFormed(css: string): void {
         stream.isBlockCloserTokenType(type)) &&
       stream.getBlockTokenPairIndex(index) === -1;
     if (unpaired) {
-      throw new ThemeCssError("parseFailed", `unpaired ${name} at ${start}`);
+      throw new ThemeCssError(
+        "parseFailed",
+        `${stage} unpaired ${name} at ${start}`,
+      );
+    }
+  });
+}
+
+// 마지막 관문 — 우리가 내보낼 바이트를 토큰 수준에서 다시 훑는다. 위의 AST 워크는 노드
+// 모양을 열거하는 일이고 열거는 틀린다: 실제로 `@media (scripting:url("…"))` 에서
+// css-tree 는 `Url` 이 아니라 `Function:url` 을 주어 한 번 새어 나갔다. 이 스캔은 모양이
+// 아니라 효과를 본다 — 나가는 CSS 안의 모든 `url()` 토큰과, 자원 이름을 받는 함수 안의
+// 모든 문자열을, 파서의 디코더로 풀어서 다시 판정한다.
+function assertNoRemoteReferences(css: string): void {
+  const stream = new csstree.TokenStream(css, csstree.tokenize);
+  // 자원 이름을 받는 함수가 열려 있는 동안의 토큰 인덱스 상한. 함수는 제대로 중첩되므로
+  // 가장 바깥의 닫힘 위치 하나만 들고 있으면 된다.
+  let bearingUntil = -1;
+  stream.forEachToken((type, start, end, index) => {
+    const text = css.slice(start, end);
+    if (type === csstree.tokenTypes.Function) {
+      if (URL_BEARING_FUNCTIONS.has(css.slice(start, end - 1).toLowerCase())) {
+        const close = stream.getBlockTokenPairIndex(index);
+        bearingUntil = Math.max(
+          bearingUntil,
+          close === -1 ? stream.tokenCount : close,
+        );
+      }
+      return;
+    }
+    const value =
+      type === csstree.tokenTypes.Url
+        ? csstree.url.decode(text)
+        : type === csstree.tokenTypes.String && index < bearingUntil
+          ? csstree.string.decode(text)
+          : null;
+    if (value !== null && isRemoteUrl(value)) {
+      throw new ThemeCssError("absoluteUrl", `output ${text.slice(0, 80)}`);
     }
   });
 }
 
 // 이 참조가 테마 패키지 밖을 가리키는가. 판정은 WHATWG URL 파서가 한다 —
 // `link-href.ts` 와 같은 이유로: 브라우저가 실제로 돌리는 파서만이 탭·개행·앞뒤
-// 공백을 지우고 scheme 을 소문자로 접은 뒤의 의미를 안다. `htt<TAB>ps://e.com` 은
-// scheme regex 에는 상대 경로로 보이지만 브라우저에는 `https://e.com` 이다.
+// 공백을 지우고 scheme 을 소문자로 접은 뒤의 의미를 안다.
 //
-// 규칙 하나로 끝난다: base 를 바꿔도 같은 곳을 가리키면 우리 밖이다. 상대 경로는
-// base 를 따라 움직이고, scheme 이 붙은 것(`https:`·`data:`)과 프로토콜 상대
-// (`//host/…`)는 움직이지 않는다. 해석 자체가 실패하면 모르는 형태이므로 거부한다.
+// 규칙은 "base 를 바꿔도 안 움직이면 우리 밖" 이고, **쌍을 둘 쓴다.** 한 쌍만으로는
+// 값의 scheme 이 그 쌍의 scheme 과 같을 때 뚫린다 — `https:evil.com/x` 는 `https:`
+// base 에서는 상대 참조로 움직이지만 `baram-a:` base 에서는 절대 URL 로 고정된다.
+// 반대로 `\\evil.com\x` 는 special scheme(`https:`) 에서만 authority 로 바뀌므로
+// `https:` 쌍이 잡는다. 둘 중 한 쌍이라도 고정되면 거부한다.
 function isRemoteUrl(value: string): boolean {
-  try {
-    const [a, b] = PROBE_BASES.map((base) => new URL(value, base).href);
+  const pinnedTo = (bases: readonly string[]): boolean => {
+    const [a, b] = bases.map((base) => new URL(value, base).href);
     return a === b;
+  };
+  try {
+    return pinnedTo(PROBE_BASES) || pinnedTo(PROBE_BASES_OPAQUE);
   } catch {
+    // base 를 줘도 해석되지 않는 형태 — 모르는 것은 거부한다.
     return true;
   }
 }
 
-// `Raw` 값이 버려도 되는 찌꺼기인가. 여기서도 토크나이저에게 묻는다 — 문자열 검사로
-// 판정하면 `Raw` 안에 숨은 `url(…)` 를 놓친다.
-function isTrivialRaw(value: string): boolean {
-  let trivial = true;
+// `Raw` 값 안에서 자원을 가리킬 수 있는 첫 토큰의 이름. 없으면 null. 여기서도
+// 토크나이저에게 묻는다 — 문자열 검사로 판정하면 이스케이프에 뚫린다.
+function resourceNamingToken(value: string): null | string {
+  let found: null | string = null;
   csstree.tokenize(value, (type) => {
-    if (!TRIVIAL_RAW_TOKENS.has(type)) trivial = false;
+    if (found === null && RESOURCE_NAMING_TOKENS.has(type)) {
+      found = csstree.tokenNames[type];
+    }
   });
-  return trivial;
+  return found;
 }
 
 // 로그용 위치 꼬리표. `positions: true` 로 파싱했으므로 거의 항상 붙는다.
@@ -100,25 +174,31 @@ function where(node: csstree.CssNode): string {
  * 실수로 원본을 주입할 여지를 남기지 않기 위해서다.
  */
 export function sanitizeThemeCss(css: string): string {
-  assertWellFormed(css);
+  assertWellFormed(css, "input");
 
-  let ast: csstree.CssNode;
+  // 1차 — 구조만 본다. 커스텀 속성 값은 **파싱하지 않는다**: CSS Variables 는 값 자리에
+  // 거의 아무 토큰열이나 허용하는데 그것을 값 문법으로 읽으면 합법한 테마가 문법 오류로
+  // 거부된다(`--raw:{a:b}`·`--x:https://e.com/x.png` 이 실제로 그랬다). 그래서 여기서
+  // 나는 오류는 커스텀 속성 **밖**의 진짜 구조 문제뿐이다.
   try {
-    ast = csstree.parse(css, {
+    csstree.parse(css, {
       onParseError: (error) => {
-        // 이 throw 는 밖으로 전파된다(실측). 다만 파서가 여기까지 오지 않고
-        // 조용히 넘어가는 경우가 많아, 이것만으로는 관문이 되지 못한다.
         throw error;
       },
-      // 커스텀 속성 값은 기본값에서 통째로 `Raw` 가 된다 — `--x:url(https://…)` 가
-      // Url 워크에 보이지 않는다(실측). 켜야 판정 대상이 된다.
-      parseCustomProperty: true,
-      // 거부 위치를 로그에 남기려면 loc 이 필요하다.
-      positions: true,
+      parseCustomProperty: false,
     });
   } catch (error) {
     throw new ThemeCssError("parseFailed", String(error));
   }
+
+  // 2차 — 검사하고 내보낼 AST. 이쪽은 커스텀 속성 값도 파싱해야 `--evil:url(https://…)`
+  // 가 Url 노드로 보인다(끄면 통째로 Raw 가 되어 워크에 안 잡힌다, 실측). 여기서 나는
+  // 오류는 1차가 이미 걸렀거나 커스텀 속성 값 안의 것이고, 후자는 아래 Raw 관문이 토큰으로
+  // 다시 본다 — 그래서 여기서는 `onParseError` 로 막지 않는다.
+  const ast = csstree.parse(css, {
+    parseCustomProperty: true,
+    positions: true,
+  });
 
   csstree.walk(ast, function (node) {
     switch (node.type) {
@@ -132,20 +212,37 @@ export function sanitizeThemeCss(css: string): string {
         // 레이어 래핑만으로는 보안 표면을 못 지키므로 여기서 제거한다.
         node.important = false;
         break;
-      case "Raw":
-        // 파서가 읽기를 포기한 조각이다. 그 안은 아래 워크들이 들여다보지 못했으므로
-        // 무해한 찌꺼기가 아니면 통과시키지 않는다.
-        if (!isTrivialRaw(node.value)) {
+      case "Function":
+        // 자원 이름을 받는 함수 안의 치환 함수. `image-set(var(--x) 1x)` 는 `--x` 가
+        // 무엇이든 그 자리에서 fetch 대상이 되는데, 그 값은 computed-value 시점에야
+        // 정해진다 — 설치 시점에 증명할 수 없는 것은 통과시키지 않는다.
+        if (
+          this.function !== null &&
+          URL_BEARING_FUNCTIONS.has(this.function.name.toLowerCase()) &&
+          SUBSTITUTION_FUNCTIONS.has(node.name.toLowerCase())
+        ) {
           throw new ThemeCssError(
-            "parseFailed",
-            `unparsed${where(node)}: ${node.value.slice(0, 80)}`,
+            "absoluteUrl",
+            `${this.function.name}(${node.name}())${where(node)}`,
           );
         }
         break;
+      case "Raw": {
+        // 파서가 읽기를 포기한 조각이다. 그 안은 다른 워크가 들여다보지 못했으므로,
+        // 자원의 이름을 실을 수 있는 토큰이 하나라도 있으면 통과시키지 않는다.
+        const token = resourceNamingToken(node.value);
+        if (token !== null) {
+          throw new ThemeCssError(
+            "parseFailed",
+            `unparsed ${token}${where(node)}: ${node.value.slice(0, 80)}`,
+          );
+        }
+        break;
+      }
       case "String":
         if (
           this.function !== null &&
-          IMAGE_SET_FUNCTIONS.has(this.function.name.toLowerCase()) &&
+          URL_BEARING_FUNCTIONS.has(this.function.name.toLowerCase()) &&
           isRemoteUrl(node.value)
         ) {
           throw new ThemeCssError(
@@ -167,5 +264,10 @@ export function sanitizeThemeCss(css: string): string {
     }
   });
 
-  return `@layer baram-theme {\n${csstree.generate(ast)}\n}\n`;
+  const sanitized = `@layer baram-theme {\n${csstree.generate(ast)}\n}\n`;
+  // 우리가 내보내는 것도 우리 기준을 통과해야 한다. 짝이 안 맞는 `}` 하나면 그 뒤의
+  // 테마 CSS 가 `@layer baram-theme {` 밖으로 빠져나가 레이어 우선순위를 통째로 무시한다.
+  assertWellFormed(sanitized, "output");
+  assertNoRemoteReferences(sanitized);
+  return sanitized;
 }
