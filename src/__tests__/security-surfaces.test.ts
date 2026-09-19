@@ -122,13 +122,41 @@ it("SECURITY_SURFACE_FILES 원소는 전부 .tsx 다", () => {
 // `java\tscript:` 같은 우회)을 우리가 판정할 때 적용되는 것이지, 우리가 직접 읽을 수
 // 있는 우리 코드의 생김새를 서술할 때는 적용되지 않는다. 과다 검출의 방향도
 // 안전하다: 걸리면 사람이 한 번 더 보게 될 뿐이다.
+//
+// 코퍼스는 이 스캔과 같다(`src/components` 아래 `.ts`, `__tests__`·테스트 파일명
+// 제외). 2026-09-19 그 코퍼스에서 실측한 DOM 구성 관용구: insertBefore 1개 파일
+// (pdf-text-layer-selection.ts), outerHTML 1개(context-menu-table.ts),
+// replaceChildren·createDocumentFragment 각 1개(둘 다 pdf-find-render.ts),
+// `.append(` 3개(pdf-find-render.ts·pdf-text-layer-selection.ts·tooltip-core.ts).
+// 이 코퍼스에서는 0건이지만 표준 DOM 구성 API라 넣은 것: insertAdjacentElement
+// (이미 목록에 있는 insertAdjacentHTML 의 형제), cloneNode, createTextNode.
+//
+// `.append(`만 DOM 이 아닌 흔한 뜻이 있다(FormData.append, URLSearchParams.append).
+// 리포 전체(`src`, 테스트 제외)에서 지금 걸리는 6건은 전부 DOM(tooltip-core.ts,
+// pdf-text-layer-selection.ts, pdf-find-render.ts, export-html-anchors.ts,
+// task-chip-label.ts, date-picker.ts) — 나중에 FormData.append 오탐이 나오면 그건
+// 마커를 지울 이유가 아니라 한 번 들여다보라는 신호다.
 const DOM_CONSTRUCTION_MARKERS = [
   "createElement",
   "appendChild",
+  "insertBefore",
   "insertAdjacentHTML",
+  "insertAdjacentElement",
   "innerHTML",
+  "outerHTML",
+  "replaceChildren",
+  "cloneNode",
+  "createTextNode",
+  "createDocumentFragment",
+  ".append(",
 ];
 
+// 확장자 검사와 마커 루프가 한 `it()` 안에 순서대로 있어, 어떤 파일이 `.ts`가
+// 아니면 `expect(f.endsWith(".ts")).toBe(true)`가 먼저 던지고 그 파일의 마커
+// 루프는 아예 실행되지 않는다 — 즉 `.tsx`를 이 목록에 잘못 넣으면 마커 검사가
+// 아니라 확장자 검사가 잡는다(2026-09-19 반례로 확인: 실패 메시지가
+// `expected false to be true`였다, 마커 검사의 `expected true to be false`가
+// 아니라). 마커 루프가 실제로 실행되는 건 확장자가 맞는 파일뿐이다.
 it("NON_RENDERING_EFFECT_CALLERS 원소는 .ts 이고 DOM 구성 마커가 없다", () => {
   for (const f of NON_RENDERING_EFFECT_CALLERS) {
     expect(f.endsWith(".ts")).toBe(true);

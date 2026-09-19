@@ -10,13 +10,15 @@
 // 지키지 못한다: 그리는 파일을 `NON_RENDERING_EFFECT_CALLERS`로 옮겨도(또는 그
 // 반대로) 두 검사 다 그대로 통과한다. 그래서 같은 테스트가 두 목록의 원소를 그
 // **모양**으로도 검사한다 — `SECURITY_SURFACE_FILES`는 전부 `.tsx`(JSX를 담을 수
-// 있다는 뜻),`NON_RENDERING_EFFECT_CALLERS`는 전부 `.ts`이면서 DOM 구성 마커
-// (`createElement`·`appendChild`·`insertAdjacentHTML`·`innerHTML`)가 없다. 이 두
-// 검사가 함께 막는 것: React 컴포넌트는 `.ts`에 있을 수 없고(JSX는 `.ts`에서
-// TS1161 로 파싱조차 안 된다 — `npm run typecheck`가 강제), 명령형으로 DOM을 짓는
-// `.ts` 파일도 두 번째 목록에 못 들어간다. 막지 못하는 것: `NON_RENDERING_EFFECT_
-// CALLERS`의 `.ts` 파일이 **다른 파일에 위임해** 무언가를 그리는 경로 — 이 스캔은
-// 그 파일 자신의 소스만 본다.
+// 있다는 뜻), `NON_RENDERING_EFFECT_CALLERS`는 전부 `.ts`이면서 DOM 구성 마커 열두
+// 개(`security-surfaces.test.ts`의 `DOM_CONSTRUCTION_MARKERS` — 그 파일 자체 코퍼스
+// 명시와 함께) 중 아무것도 없다. 이 두 검사가 함께 막는 것: React 컴포넌트는
+// `.ts`에 있을 수 없고(JSX는 `.ts`에서 TS1161 로 파싱조차 안 된다 — `npm run
+// typecheck`가 강제), 그 열두 관용구로 명령형 DOM을 짓는 `.ts` 파일도 두 번째
+// 목록에 못 들어간다. 막지 못하는 것 둘: (1) 그 열두 개 밖의 DOM 구성 방법 —
+// 마커 목록은 이 코드베이스에서 실측한 관용구 기준이지 전체 DOM API 의 전수
+// 목록이 아니다, (2) `NON_RENDERING_EFFECT_CALLERS`의 `.ts` 파일이 **다른 파일에
+// 위임해** 무언가를 그리는 경로 — 이 스캔은 그 파일 자신의 소스만 본다.
 
 /**
  * 그린다 — shadow DOM 대상. 셋(2026-09-19 실측, 위 테스트가 유지한다):
