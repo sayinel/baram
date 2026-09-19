@@ -25,13 +25,18 @@ const COMPONENTS_DIR = path.join(ROOT, "src/components");
 
 /** `walk` 과 같은 재귀 모양이되 `.ts`까지 본다(아래 EFFECTS 코퍼스 참고). 결과는
  *  리포 루트 기준 **posix** 상대경로로 정규화한다 — 비교 대상이 문자열 키라
- *  Windows 에서 `path.sep` 이 역슬래시로 새면 키가 어긋난다(CLAUDE.md). */
+ *  Windows 에서 `path.sep` 이 역슬래시로 새면 키가 어긋난다(CLAUDE.md).
+ *
+ *  테스트 파일은 디렉터리 이름(`__tests__`)뿐 아니라 파일명으로도 뺀다 —
+ *  `*.test.ts(x)`/`*.spec.ts(x)` 가 `__tests__` 밖에 놓일 수도 있어서다(오늘은
+ *  `src/components` 아래에 그런 파일이 0개라 잠복 상태이지만, 디렉터리 검사만으로는
+ *  막지 못한다). */
 function filesUnder(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
     const full = path.join(dir, entry);
     if (statSync(full).isDirectory()) {
       if (entry !== "__tests__") filesUnder(full, out);
-    } else if (/\.tsx?$/.test(entry)) {
+    } else if (/\.tsx?$/.test(entry) && !/\.(test|spec)\.tsx?$/.test(entry)) {
       out.push(path.relative(ROOT, full).split(path.sep).join("/"));
     }
   }
@@ -100,4 +105,36 @@ it("효과로 찾은 표면 집합이 선언된 두 목록의 합집합과 정�
   });
   const declared = [...SECURITY_SURFACE_FILES, ...NON_RENDERING_EFFECT_CALLERS];
   expect([...found].sort()).toEqual([...declared].sort());
+});
+
+// 위 두 테스트는 **멤버십**만 본다 — 스캔이 찾은 파일이 두 목록 중 정확히 하나에
+// 있는지. `PluginRevokedNotice.tsx`를 `SECURITY_SURFACE_FILES`에서
+// `NON_RENDERING_EFFECT_CALLERS`로 옮겨도 둘 다 그린 채로 통과한다: 여전히 스캔에
+// 잡히고, 여전히 목록 하나에만 있다. 아래 두 테스트가 **분류**를 잡는다.
+it("SECURITY_SURFACE_FILES 원소는 전부 .tsx 다", () => {
+  for (const f of SECURITY_SURFACE_FILES) {
+    expect(f.endsWith(".tsx")).toBe(true);
+  }
+});
+
+// DOM_CONSTRUCTION_MARKERS 는 우리 첫 파티 소스에 대한 빌드타임 인벤토리를 문자열로
+// 검사한다 — 계획의 "보안 판정은 파서로 한다" 제약은 신뢰할 수 없는 입력(예:
+// `java\tscript:` 같은 우회)을 우리가 판정할 때 적용되는 것이지, 우리가 직접 읽을 수
+// 있는 우리 코드의 생김새를 서술할 때는 적용되지 않는다. 과다 검출의 방향도
+// 안전하다: 걸리면 사람이 한 번 더 보게 될 뿐이다.
+const DOM_CONSTRUCTION_MARKERS = [
+  "createElement",
+  "appendChild",
+  "insertAdjacentHTML",
+  "innerHTML",
+];
+
+it("NON_RENDERING_EFFECT_CALLERS 원소는 .ts 이고 DOM 구성 마커가 없다", () => {
+  for (const f of NON_RENDERING_EFFECT_CALLERS) {
+    expect(f.endsWith(".ts")).toBe(true);
+    const src = readFileSync(path.join(ROOT, f), "utf-8");
+    for (const marker of DOM_CONSTRUCTION_MARKERS) {
+      expect(src.includes(marker)).toBe(false);
+    }
+  }
 });
