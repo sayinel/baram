@@ -14,10 +14,11 @@ packaging or installing it:
 - **Reload** — re-reads the manifest from disk and reloads the plugin's
   module (unload the old instance, re-`import()` the bundle, re-run
   `activate`). Use this after rebuilding your bundle (`npm run build`) to
-  pick up code changes without restarting the app. If the reloaded manifest
-  declares `tiptapExtensions`, you'll see a toast reminding you a full
-  restart is still required for schema changes (see above) — Reload alone
-  never rebuilds the schema.
+  pick up code changes without restarting the app. A changed `tiptapExtensions`
+  contribution takes effect the same way — unload removes the old
+  contribution's ProseMirror plugin from the editor, and the fresh `activate`
+  installs the new one (see above). No restart, and nothing schema-related
+  to wait on.
 - **Remove** — unloads the plugin and forgets the dev folder (does not
   delete anything on disk).
 

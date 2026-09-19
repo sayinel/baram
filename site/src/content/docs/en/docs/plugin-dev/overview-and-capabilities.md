@@ -18,10 +18,13 @@ Every plugin declares one of two tiers in its manifest, and the tier decides wha
   operation goes through a Rust broker that authorizes the call against the plugin's
   granted capabilities. Here the capability list is a **real boundary**.
 - **`"trust": "trusted"`** — the same JavaScript context as the editor, Obsidian's model.
-  Necessary for `tiptapExtensions`, which need direct access to the live ProseMirror
-  `Schema` that an isolated plugin cannot be given. Here the capability system is only an
-  **API gate**: the plugin can reach around it, so the list describes intent rather than
-  limiting anything. Installing one requires an explicit acknowledgement of exactly that.
+  Necessary for `tiptapExtensions`, which need direct access to the live **editor** to
+  register a ProseMirror plugin on it — not the schema; a `"plugin"` contribution cannot
+  touch the schema at all, which is exactly why `node`/`mark` contributions aren't
+  supported (see [Tiptap Extension plugins](/en/docs/plugin-dev/commands-and-tiptap-extensions/#tiptap-extension-plugins)).
+  Here the capability system is only an **API gate**: the plugin can reach around it, so
+  the list describes intent rather than limiting anything. Installing one requires an
+  explicit acknowledgement of exactly that.
 
 Write sandboxed unless you are contributing a Tiptap extension or DOM-mounted UI. See
 [Trust model & security](/en/docs/plugin-dev/trust-model-and-errors/#trust-model--security) before installing or authoring anything
@@ -42,6 +45,7 @@ Accessing an API whose capability was not declared throws a clear error
 | `editor`          | Read and modify document content        |               |
 | `editor:readonly` | Read document content (no modification) |               |
 | `events`          | Listen to editor events                 |               |
+| `extensions`      | Contribute a ProseMirror plugin to the editor (trusted tier only) | |
 | `files`           | Read and write files in the vault       | sensitive     |
 | `files:readonly`  | Read files in the vault (no writing)    |               |
 | `sidebar`         | Add panels to the sidebar               |               |
