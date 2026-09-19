@@ -4,8 +4,12 @@
 // Why read instead of move. The obvious shape is to cut these rules out of
 // `plugins.css`/`vault.css`/`modal.css` into one file and inject that. SEVEN of the 32
 // classes forbid it — the test that moving one breaks something is "another screen uses
-// it AND it has a rule", and these are the classes that pass it, counted over
-// `src/components` outside tests:
+// it AND it has a rule", and these are the classes that pass it. The counts below come
+// from scanning the `.tsx` files under `src/components`, tests excluded. No `.ts` file
+// under that tree carries any of these seven strings today (measured), so the figures
+// happen to be the same for the wider corpus — but they were taken over the narrower
+// one, and saying which is the point: a class name parked in a `.ts` constant would
+// falsify them silently.
 //
 //   settings-section      modal.css:135   `className="settings-section"` in 15 files
 //   settings-section-desc vault.css:195   3 files
@@ -13,7 +17,7 @@
 //   btn-unstyled          base.css:96     ) the shared utilities CLAUDE.md pins to
 //   flex-header           base.css:103    ) base.css, used across the app
 //   text-truncate         base.css:110    )
-//   plugin-revoked__note  plugins.css:473 PluginMarketplace.tsx:297,306,311 — its OWN
+//   plugin-revoked__note  plugins.css:479 PluginMarketplace.tsx:297,306,311 — its OWN
 //                                         staleness notices, in the light DOM
 //
 // The last one is the concrete payoff: a move would have unstyled three paragraphs of
