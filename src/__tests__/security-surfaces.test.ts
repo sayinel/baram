@@ -123,19 +123,29 @@ it("SECURITY_SURFACE_FILES 원소는 전부 .tsx 다", () => {
 // 있는 우리 코드의 생김새를 서술할 때는 적용되지 않는다. 과다 검출의 방향도
 // 안전하다: 걸리면 사람이 한 번 더 보게 될 뿐이다.
 //
-// 코퍼스는 이 스캔과 같다(`src/components` 아래 `.ts`, `__tests__`·테스트 파일명
-// 제외). 2026-09-19 그 코퍼스에서 실측한 DOM 구성 관용구: insertBefore 1개 파일
-// (pdf-text-layer-selection.ts), outerHTML 1개(context-menu-table.ts),
-// replaceChildren·createDocumentFragment 각 1개(둘 다 pdf-find-render.ts),
-// `.append(` 3개(pdf-find-render.ts·pdf-text-layer-selection.ts·tooltip-core.ts).
-// 이 코퍼스에서는 0건이지만 표준 DOM 구성 API라 넣은 것: insertAdjacentElement
-// (이미 목록에 있는 insertAdjacentHTML 의 형제), cloneNode, createTextNode.
+// 코퍼스는 이 스캔과 같다(`src/components` 아래 `.ts`+`.tsx`, `__tests__` 디렉터리와
+// `*.test.*`·`*.spec.*` 제외 — 오늘 298개). 그 코퍼스에서 마커별 실측(2026-09-19,
+// §359 재측정): createElement 7 · appendChild 2 · insertBefore 1 · innerHTML 1 ·
+// outerHTML 1 · replaceChildren 3 · createDocumentFragment 1 · `.append(` 4.
+// 0건이지만 표준 DOM 구성 API라 넣은 것 넷: insertAdjacentHTML, insertAdjacentElement,
+// cloneNode, createTextNode.
+//
+// ‼️ 앞 판의 숫자 둘이 틀렸고, 하나는 이 브랜치가 바꿨다. replaceChildren 을 "1개
+// (pdf-find-render.ts)" 라고 적었지만 실측 3개다 — PluginViewerHost.tsx 와 PdfPage.tsx
+// 가 §271(`8446d5b1`)부터 있었으므로 쓸 때부터 틀렸다. `.append(` 는 3→4 인데 그건
+// §359 가 `ui/ShadowIsolated.tsx` 를 더했기 때문이다. 세는 스캔을 좁게 돌리면 이렇게
+// 된다는 실례이므로 숫자와 함께 남긴다.
 //
 // `.append(`만 DOM 이 아닌 흔한 뜻이 있다(FormData.append, URLSearchParams.append).
-// 리포 전체(`src`, 테스트 제외)에서 지금 걸리는 6건은 전부 DOM(tooltip-core.ts,
-// pdf-text-layer-selection.ts, pdf-find-render.ts, export-html-anchors.ts,
-// task-chip-label.ts, date-picker.ts) — 나중에 FormData.append 오탐이 나오면 그건
-// 마커를 지울 이유가 아니라 한 번 들여다보라는 신호다.
+// 리포 전체(`src`, 테스트 제외)에서 지금 걸리는 **8건**은 전부 DOM(tooltip-core.ts,
+// ui/ShadowIsolated.tsx, pdf-text-layer-selection.ts, pdf-find-render.ts, main.tsx,
+// export-html-anchors.ts, task-chip-label.ts, date-picker.ts — 앞 판은 6건이라 적었고
+// main.tsx 를 빠뜨렸다) — 나중에 FormData.append 오탐이 나오면 그건 마커를 지울
+// 이유가 아니라 한 번 들여다보라는 신호다.
+//
+// ‼️ 그리고 그 "지우지 말라" 는 **주석이 아니라 테스트가** 지킨다(아래
+// MARKER_FIXTURES). 주석만 있을 때는 오탐을 만난 사람이 마커를 지우면 자기 테스트가
+// 초록이 되고 다른 어떤 테스트도 움직이지 않았다 — 검사를 무력화하는 편집이 무료였다.
 const DOM_CONSTRUCTION_MARKERS = [
   "createElement",
   "appendChild",
@@ -164,5 +174,72 @@ it("NON_RENDERING_EFFECT_CALLERS 원소는 .ts 이고 DOM 구성 마커가 없�
     for (const marker of DOM_CONSTRUCTION_MARKERS) {
       expect(src.includes(marker)).toBe(false);
     }
+  }
+});
+
+/**
+ * 마커 하나하나가 실제로 무언가를 잡는다는 증거 — 양성 대조군.
+ *
+ * ‼️ 위 `it()` 의 루프는 `DOM_CONSTRUCTION_MARKERS` 를 순회하므로 **배열이 비면 아무
+ * 것도 단언하지 않는다.** 마커를 하나 지워도 마찬가지로 조용하다. 형제 테스트들(합집합·
+ * 서로소·확장자)은 마커를 아예 쳐다보지 않으므로 이 파일에서 그 편집을 알아채는 것이
+ * 없었다.
+ *
+ * 각 항목은 "이 파일을 스캔하면 **정확히** 이 마커들이 걸린다" 이다. 집합이므로 마커
+ * 하나를 배열에서 지우면 그 마커를 담은 항목의 집합이 달라져 빨개진다. 0건 마커 넷은
+ * 코퍼스에 양성 대조군이 없어 이 방식으로 덮을 수 없고, 아래에서 이름으로 고정한다.
+ */
+const MARKER_FIXTURES: [string, string[]][] = [
+  ["src/components/journal/utils.ts", ["innerHTML"]],
+  ["src/components/toolbar/context-menu-table.ts", ["outerHTML"]],
+  ["src/components/editor/PluginViewerHost.tsx", ["replaceChildren"]],
+  [
+    "src/components/editor/pdf/use-pdf-highlight-ref-preview.ts",
+    ["createElement"],
+  ],
+  [
+    "src/components/editor/pdf/pdf-find-render.ts",
+    [".append(", "createDocumentFragment", "createElement", "replaceChildren"],
+  ],
+  [
+    "src/components/editor/pdf/pdf-text-layer-selection.ts",
+    [".append(", "createElement", "insertBefore"],
+  ],
+  [
+    "src/components/sidebar/hooks/use-file-tree-dnd.ts",
+    ["appendChild", "createElement"],
+  ],
+];
+
+/** 코퍼스에 0건이라 양성 대조군을 만들 수 없는 넷. 이름으로만 고정한다. */
+const ASPIRATIONAL_MARKERS = [
+  "cloneNode",
+  "createTextNode",
+  "insertAdjacentElement",
+  "insertAdjacentHTML",
+];
+
+it("마커를 지우거나 비우면 이 테스트가 빨개진다", () => {
+  const covered = new Set<string>();
+  for (const [file, expected] of MARKER_FIXTURES) {
+    const src = readFileSync(path.join(ROOT, file), "utf-8");
+    const found = DOM_CONSTRUCTION_MARKERS.filter((m) =>
+      src.includes(m),
+    ).sort();
+    expect([file, found]).toEqual([file, expected]);
+    for (const marker of expected) covered.add(marker);
+  }
+  // 픽스처가 0건 넷을 뺀 전부를 덮는지 — 덮지 못하는 마커는 지워도 위 루프가 조용하다.
+  expect([...covered].sort()).toEqual(
+    DOM_CONSTRUCTION_MARKERS.filter(
+      (m) => !ASPIRATIONAL_MARKERS.includes(m),
+    ).sort(),
+  );
+  // 그 넷은 이름으로. 지우려면 이 줄도 같이 지워야 하고, 그러면 위 주석을 읽게 된다.
+  for (const marker of ASPIRATIONAL_MARKERS) {
+    expect([marker, DOM_CONSTRUCTION_MARKERS.includes(marker)]).toEqual([
+      marker,
+      true,
+    ]);
   }
 });
