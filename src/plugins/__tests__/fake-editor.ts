@@ -8,10 +8,11 @@ import type { Plugin, PluginKey } from "@tiptap/pm/state";
  * contribution and passes that exact key back, and ProseMirror's `name$` terminator stops
  * one contribution's key from prefixing another's.
  *
- * `on`/`emit` are a minimal stand-in for Tiptap's real `EventEmitter` — just enough to let
- * a test fire `"destroy"` and assert what a listener registered via `on("destroy", ...)`
- * does. The real Editor invokes destroy handlers with an event payload; callers here only
- * ever pass zero-arg handlers, so `emit` takes no payload either.
+ * `on`/`off`/`emit` are a minimal stand-in for Tiptap's real `EventEmitter` — just enough
+ * to let a test fire `"destroy"`, assert what a listener registered via `on("destroy",
+ * ...)` does, and check that the listener was taken off again. The real Editor invokes
+ * destroy handlers with an event payload; callers here only ever pass zero-arg handlers,
+ * so `emit` takes no payload either.
  */
 export function fakeEditor() {
   const plugins: Plugin[] = [];
@@ -34,6 +35,10 @@ export function fakeEditor() {
       }
       handlers.add(handler);
     },
+    off(event: string, handler: () => void) {
+      listeners.get(event)?.delete(handler);
+    },
+    listenerCount: (event: string) => listeners.get(event)?.size ?? 0,
     emit(event: string) {
       for (const handler of listeners.get(event) ?? []) handler();
     },

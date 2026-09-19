@@ -4,6 +4,14 @@
 // 표면과 기여분은 서로를 모른 채 따로 들어온다: 플러그인은 앱이 이미 뜬 뒤 로드되고,
 // keepalive 에디터는 플러그인이 로드된 뒤에도 새로 생긴다. 그래서 이 모듈은 둘을 각각
 // 들고 있다가 곱집합을 유지한다 — 어느 쪽이 먼저 와도 결과가 같다.
+//
+// ‼️ INVARIANT: no contributed factory may call back into this module while it is being
+// constructed. `build` runs third-party code with `surfaces`/`contributions` mid-traverse,
+// so a factory that re-entered `registerEditorSurface` or `addPluginContributions` would
+// mutate a collection under its own iteration. Nothing enforces this — it cannot be, the
+// factory runs in the main realm — so the traversals below iterate a COPY, which bounds
+// re-entry to "the new entry is missed this round" instead of a partially-built registry.
+// Every write here is therefore also written to be safe against a nested one.
 import type { PluginSettingValue } from "./types";
 import type { Editor } from "@tiptap/core";
 import type { Plugin } from "@tiptap/pm/state";
@@ -62,13 +70,24 @@ export function addPluginContributions(
   // install: a factory may have side effects, and the instance checked must be the
   // instance installed.
   const built = new Map<Editor, Map<string, Plugin>>();
-  for (const editor of surfaces) {
+  for (const editor of [...surfaces]) {
     built.set(editor, build(editor, pluginId, contribution));
   }
 
   contributions.set(pluginId, contribution);
-  for (const [editor, plugins] of built) {
-    installPlugins(editor, pluginId, plugins);
+  try {
+    for (const [editor, plugins] of built) {
+      installPlugins(editor, pluginId, plugins);
+    }
+  } catch (err) {
+    // `registerPlugin` is the EDITOR's, not ours — a destroyed editor or a key collision
+    // rejects here, long after every factory built cleanly. The entry above must not
+    // outlive that: the loader does not put a failed load into `loaded`, so nothing ever
+    // calls `removePluginContributions` for it, and every surface registered afterwards
+    // would install a dead plugin's contribution. Unwinding also takes back whatever this
+    // call already registered, so a refusal leaves nothing half-installed either.
+    removePluginContributions(pluginId);
+    throw err;
   }
 }
 
@@ -86,14 +105,26 @@ export function registerEditorSurface(editor: Editor): () => void {
   // throw leaves this surface exactly as unregistered as before the call — no half-wired
   // editor stuck in the maps with no disposer to unwind it.
   const built = new Map<string, Map<string, Plugin>>();
-  for (const [pluginId, contribution] of contributions) {
+  for (const [pluginId, contribution] of [...contributions]) {
     built.set(pluginId, build(editor, pluginId, contribution));
   }
 
   surfaces.add(editor);
   installed.set(editor, new Map());
-  for (const [pluginId, plugins] of built) {
-    installPlugins(editor, pluginId, plugins);
+  try {
+    for (const [pluginId, plugins] of built) {
+      installPlugins(editor, pluginId, plugins);
+    }
+  } catch (err) {
+    // Same unwind as `addPluginContributions`, and for the same reason the build above
+    // runs first: `registerPlugin` can still refuse, and this surface must end up exactly
+    // as unregistered as before the call — there is no disposer to hand back for it.
+    for (const pluginId of [...(installed.get(editor)?.keys() ?? [])]) {
+      uninstall(editor, pluginId);
+    }
+    installed.delete(editor);
+    surfaces.delete(editor);
+    throw err;
   }
 
   const dispose = () => {
@@ -110,7 +141,7 @@ export function registerEditorSurface(editor: Editor): () => void {
 
 export function removePluginContributions(pluginId: string): void {
   contributions.delete(pluginId);
-  for (const editor of surfaces) uninstall(editor, pluginId);
+  for (const editor of [...surfaces]) uninstall(editor, pluginId);
 }
 
 function keyFor(pluginId: string, name: string): PluginKey {
@@ -189,11 +220,15 @@ function installPlugins(
   plugins: Map<string, Plugin>,
 ): void {
   const keysInstalled: PluginKey[] = [];
+  // Recorded BEFORE the first `registerPlugin`, not after the last one: the map holds this
+  // very array, so a `registerPlugin` that throws part-way still leaves what already
+  // landed recorded — and therefore removable by the callers' unwind. Recording at the end
+  // meant a partial install was invisible and stuck on the editor for good.
+  installed.get(editor)?.set(pluginId, keysInstalled);
   for (const [name, plugin] of plugins) {
     editor.registerPlugin(plugin);
     keysInstalled.push(keyFor(pluginId, name));
   }
-  installed.get(editor)?.set(pluginId, keysInstalled);
 }
 
 function uninstall(editor: Editor, pluginId: string): void {

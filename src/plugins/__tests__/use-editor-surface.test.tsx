@@ -76,6 +76,18 @@ describe("registerKeepaliveEditorSurface", () => {
     expect(editor.plugins).toHaveLength(0);
   });
 
+  test("takes its destroy listener back off once it has fired", () => {
+    // The listener must not outlive the one disposal it exists to perform: it holds a
+    // spent disposer, and a keep-alive editor accumulates one per registration.
+    const editor = fakeEditor();
+    registerKeepaliveEditorSurface(editor as never);
+    expect(editor.listenerCount("destroy")).toBe(1);
+
+    editor.emit("destroy");
+
+    expect(editor.listenerCount("destroy")).toBe(0);
+  });
+
   test("a second destroy is a safe no-op, not a double-dispose", () => {
     const editor = fakeEditor();
     registerKeepaliveEditorSurface(editor as never);

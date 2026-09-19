@@ -19,8 +19,17 @@ export function useEditorSurface(editor: Editor | null): void {
  * (`createKeepaliveEditor`), not rendered, so there is no mount/unmount to hang a
  * `useEffect` off of — this registers at construction and tears itself down when the
  * editor fires its own `"destroy"` event instead.
+ *
+ * The handler removes ITSELF before disposing, so it never outlives the one disposal it
+ * exists to perform: `editor.on("destroy", dispose)` left a listener holding a spent
+ * disposer on every keep-alive editor, and a second `"destroy"` (or a second
+ * registration for the same editor) re-ran it.
  */
 export function registerKeepaliveEditorSurface(editor: Editor): void {
   const dispose = registerEditorSurface(editor);
-  editor.on("destroy", dispose);
+  const onDestroy = () => {
+    editor.off("destroy", onDestroy);
+    dispose();
+  };
+  editor.on("destroy", onDestroy);
 }

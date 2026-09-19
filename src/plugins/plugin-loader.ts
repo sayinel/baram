@@ -4,6 +4,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import type { SandboxSession } from "./sandbox/sandbox-session";
 import type {
   Disposable,
+  ExtensionContext,
   LoadedPlugin,
   PluginConsent,
   PluginManifest,
@@ -569,16 +570,31 @@ export class PluginLoader {
 
     // §260 스펙 0050 §4 — activate 가 성공한 뒤에만. 키가 네임스페이스를 어기면
     // `addPluginContributions` 가 던지고, 그 예외가 이 로드를 실패시킨다.
-    const factories = collectFactories(manifest, module);
-    if (factories.size > 0) {
-      addPluginContributions(
-        manifest.id,
-        factories,
-        resolvePluginSettings(
-          declaredSettingsFor(manifest),
-          usePluginStore.getState().pluginSettings[manifest.id],
-        ),
-      );
+    //
+    // ‼️ The `try` is not decoration: this is the ONE stretch that can throw after
+    // `activate()` has run and before `this.loaded.set` below records the plugin — and
+    // `unloadPlugin` returns early for a plugin it never recorded, so nothing else can
+    // clean up after it. See `unwindAfterActivate`.
+    try {
+      const factories = collectFactories(manifest, module);
+      if (factories.size > 0) {
+        addPluginContributions(
+          manifest.id,
+          factories,
+          // ‼️ A SNAPSHOT, read once here. Changing a setting re-renders the form but does
+          // not reload the plugin, so nothing re-runs these factories with newer values;
+          // a contribution that needs the current answer reads `context.settings.getAll()`
+          // when it needs it. The plugin-dev docs say so at the one place that matters —
+          // the factory example.
+          resolvePluginSettings(
+            declaredSettingsFor(manifest),
+            usePluginStore.getState().pluginSettings[manifest.id],
+          ),
+        );
+      }
+    } catch (err) {
+      this.unwindAfterActivate(manifest.id, context);
+      throw err;
     }
 
     // 6. Store loaded plugin
@@ -680,6 +696,38 @@ export class PluginLoader {
   }
 
   /**
+   * Undo an activation whose load then failed — the trusted tier's counterpart to
+   * `rollbackSandboxLoad`.
+   *
+   * This window exists because `activate()` runs BEFORE the plugin is recorded in
+   * `loaded`, and `unloadPlugin` returns early for a plugin it never recorded. So a throw
+   * in between leaves the commands, status-bar items and `context.subscriptions` that
+   * `activate` registered live, with nothing able to remove them — and a dev Reload runs
+   * `activate` on top of that again, once per attempt. The ordinary trigger is a typo in
+   * `exportName`, which §260 스펙 0050 §4 deliberately promoted from warn-skip to a load
+   * failure.
+   *
+   * Mirrors `unloadPlugin`'s teardown, minus `deactivate`: the module's own load is what
+   * just failed, and the plugin was never told it had finished activating. Nothing here
+   * may throw over the original error, which the caller rethrows.
+   */
+  private unwindAfterActivate(id: string, context: ExtensionContext): void {
+    removePluginContributions(id);
+    for (const disposable of context.subscriptions) {
+      try {
+        disposable.dispose();
+      } catch (e) {
+        logger.error(`[PluginLoader] unwind dispose error for ${id}:`, e);
+      }
+    }
+    try {
+      unregisterPluginUI(id);
+    } catch (e) {
+      logger.error(`[PluginLoader] unwind UI sweep failed for ${id}:`, e);
+    }
+  }
+
+  /**
    * Map a started sandbox's declared commands onto the host and subscribe it to app
    * events. Everything it registers is pushed onto `disposables`, which is both the
    * unload path and the rollback path. (The status bar is registered earlier, before the
@@ -750,7 +798,28 @@ function collectFactories(
   module: PluginModule,
 ): Map<string, TiptapPluginFactory> {
   const factories = new Map<string, TiptapPluginFactory>();
-  for (const def of manifest.tiptapExtensions ?? []) {
+  const declared = manifest.tiptapExtensions ?? [];
+  if (declared.length === 0) return factories;
+
+  // Gated on the GRANTED capabilities, not on what the file asks for. `validateManifest`
+  // already refuses a manifest that declares contributions without `extensions`, but that
+  // is not the reachable case: the manifest arriving here has been through
+  // `narrowToConsent`, so a plugin installed under a narrower consent whose later version
+  // adds `tiptapExtensions` + `"extensions"` passes validation, gets the capability
+  // withheld ("reinstall to re-approve"), and used to install its contributions anyway.
+  //
+  // Warned and SKIPPED, exactly like `registerDeclaredStatusBar` — not failed. A withheld
+  // capability means its API is denied and the plugin still runs with less; failing the
+  // whole load would give `extensions` harsher semantics than any other capability has.
+  if (!manifest.capabilities.includes("extensions")) {
+    logger.warn(
+      `[PluginLoader] ${manifest.id} declares tiptapExtensions without the ` +
+        `"extensions" capability — ignoring them`,
+    );
+    return factories;
+  }
+
+  for (const def of declared) {
     const exported = module[def.exportName];
     if (typeof exported !== "function") {
       throw new Error(

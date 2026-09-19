@@ -178,6 +178,55 @@ describe("editor-surfaces", () => {
     expect(first.plugins).toHaveLength(2);
   });
 
+  test("leaves no registry entry when installing a contribution throws", () => {
+    // `registerPlugin` belongs to the EDITOR, not to us: a destroyed editor or a key
+    // collision rejects there, after every factory has already built cleanly. Recording
+    // the contribution before that call would leave a failed install's pluginId in the
+    // registry with nothing that ever removes it — the plugin never enters the loader's
+    // `loaded` map, so `removePluginContributions` is never called — and every surface
+    // created afterwards would install a dead plugin's contribution.
+    const hostile = fakeEditor();
+    hostile.registerPlugin = () => {
+      throw new Error("editor refused");
+    };
+    registerEditorSurface(hostile as never);
+
+    expect(() =>
+      addPluginContributions("p1", new Map([["a", obedient]]), {}),
+    ).toThrow(/refused/);
+
+    const later = fakeEditor();
+    registerEditorSurface(later as never);
+    expect(later.plugins).toHaveLength(0);
+  });
+
+  test("unwinds the plugins that did land when a later one is rejected", () => {
+    const editor = fakeEditor();
+    const accept = editor.registerPlugin;
+    let calls = 0;
+    editor.registerPlugin = (plugin) => {
+      calls += 1;
+      if (calls > 1) throw new Error("editor refused");
+      accept(plugin);
+    };
+    registerEditorSurface(editor as never);
+
+    expect(() =>
+      addPluginContributions(
+        "p1",
+        new Map([
+          ["a", obedient],
+          ["b", obedient],
+        ]),
+        {},
+      ),
+    ).toThrow(/refused/);
+
+    // Half an installation is worse than none: the first plugin is live on the editor
+    // with no record anyone can use to take it off again.
+    expect(editor.plugins).toHaveLength(0);
+  });
+
   test("re-adding the same pluginId replaces its contributions instead of duplicating them", () => {
     const editor = fakeEditor();
     registerEditorSurface(editor as never);
