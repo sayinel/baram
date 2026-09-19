@@ -138,6 +138,35 @@ describe("collectCodeRegions", () => {
     ]);
   });
 
+  it("yields sorted, non-overlapping regions without a merge step: the shadow relies on it", () => {
+    // Skip candidates may nest and overlap (a destination inside a tag's
+    // attribute, a tag inside a destination, a fence holding both); the
+    // scanner honours the outer one and drops what begins inside it, so
+    // `blankRegions` needs no merge — and a merge step is where touching
+    // regions were once fused (see above).
+    const inputs = [
+      '<a href="[x](u)">t</a> `a` $b$',
+      "[x](<u>) `y`",
+      "[a](b) <b [c](d)> $e$",
+      '<img alt="`x`" src="p/$a$.png">`q`',
+      "`a<b>`<b>`c`</b> $x<u>y</u>$",
+      "[id]: <p/`x`.png> `y` [z](w)",
+      "```\n[x](u) $a$\n```\n`b`[c](d)",
+      "> $$\n> [x](u)\n> $$\n`a`",
+      "$a `b` c$ [d](e`f`) `g$h` $i$",
+      '<a\n\nhref="[x](u)">`y`</a>',
+      "- ```\n  [x](u)\n- `a` $b$ [c](d)",
+    ];
+    for (const md of inputs) {
+      for (const markup of [false, true]) {
+        const regions = collectCodeRegions(md, { inlineMath: true, markup });
+        for (let i = 1; i < regions.length; i++) {
+          expect(regions[i].start).toBeGreaterThanOrEqual(regions[i - 1].end);
+        }
+      }
+    }
+  });
+
   it("closes a fence on a CRLF or lone-CR line, and an unclosed display block runs to the end", () => {
     expect(collectCodeRegions("```\r\nx\r\n```\r\ny")).toEqual([
       { end: 11, start: 0 },

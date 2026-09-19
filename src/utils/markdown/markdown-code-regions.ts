@@ -79,30 +79,16 @@ function blankRegions(md: string, regions: readonly CodeRegion[]): string {
   return parts.join("");
 }
 
-/** `regions` sorted by start, overlapping ones merged. Touching ones stay
- *  apart: a region's START is part of the contract — `balanceBrackets`
- *  (pandoc underline) tells a destination by the `](` it starts with, and
- *  fusing a code span flush against one hid that start (a `]` inside the
- *  code was escaped on one side, the link's `[` on the other). */
-function mergeRegions(regions: readonly CodeRegion[]): CodeRegion[] {
-  const sorted = [...regions].sort((a, b) => a.start - b.start);
-  const merged: CodeRegion[] = [];
-  for (const region of sorted) {
-    const last = merged[merged.length - 1];
-    if (last !== undefined && region.start < last.end) {
-      if (region.end > last.end) last.end = region.end;
-    } else {
-      merged.push({ end: region.end, start: region.start });
-    }
-  }
-  return merged;
-}
-
 /**
  * Collect start/end offsets of all fenced code blocks and display math
  * blocks, inline code spans and (per options) inline math, HTML tags and
- * link destinations in content. Sorted, non-overlapping, each region
- * starting where its construct does (see {@link mergeRegions}).
+ * link destinations in content. Sorted and non-overlapping, as the inline
+ * scanner yields them, and each region starts where its construct does:
+ * a region's START is part of the contract — `balanceBrackets` (pandoc
+ * underline) tells a destination by the `](` it starts with, and a merge
+ * step that once fused a code span flush against one hid that start (a
+ * `]` inside the code was escaped on one side, the link's `[` on the
+ * other). No merging, then: touching regions stay apart.
  */
 export function collectCodeRegions(
   md: string,
@@ -123,7 +109,7 @@ export function collectCodeRegions(
     if (span.kind === "math" && span.n === 1 && !options.inlineMath) continue;
     regions.push({ end: span.end, start: span.start });
   }
-  return mergeRegions(regions);
+  return regions;
 }
 
 /** The inline math spans written with one dollar — `$…$` within a line,
