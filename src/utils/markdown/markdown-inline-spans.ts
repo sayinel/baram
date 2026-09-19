@@ -4,7 +4,14 @@
  * regions it is handed. `markdown-code-regions.ts` composes it.
  */
 
-import { type CodeRegion, isLive, type SourceLine } from "./markdown-source";
+import {
+  BLANK_LINE_BODY,
+  type CodeRegion,
+  isLive,
+  type SourceLine,
+} from "./markdown-source";
+
+const BLANK_LINE = new RegExp(`^${BLANK_LINE_BODY}$`);
 
 /** A span the inline scanner found: a code span, an inline math span with
  *  `n` dollars, or a skip region it honoured. */
@@ -78,12 +85,10 @@ export function inlineSpans(
   const { mathCrossesLines, skip } = options;
   const { byKey, runs } = indexRuns(md);
   const keyCursor = new Map<string, number>();
-  // Blank lines end a paragraph — and any construct still open in it. A
-  // line of blockquote markers alone (`>`) is blank inside its quote, as
-  // the editor reads it.
+  // Blank lines end a paragraph — and any construct still open in it.
   const blanks: number[] = [];
   for (const line of lines) {
-    if (/^[ \t>]*$/.test(md.slice(line.start, line.end)))
+    if (BLANK_LINE.test(md.slice(line.start, line.end)))
       blanks.push(line.start);
   }
   let b = 0;

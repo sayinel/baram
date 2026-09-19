@@ -5,6 +5,7 @@ import {
   inlineMathSpans,
   replaceOutsideCode,
 } from "../markdown/markdown-code-regions";
+import { BLANK_LINE_BODY } from "../markdown/markdown-source";
 import { segmentMarkdownByMermaid } from "../markdown/mermaid-fence";
 import { stripMermaidMeta } from "../markdown/mermaid-meta";
 
@@ -402,7 +403,7 @@ export function convertInlineMathForNotion(md: string): string {
  *  later pass reads as the wrapper (`$~<u>x</u>~` became `$$$_{…}$$`),
  *  so beside a dollar the mark stays as written unless it maps to
  *  Unicode. */
-const NOT_BLANK_LINE = String.raw`(?!(?:\r\n|\n|\r)[ \t>]*(?:\r\n|\n|\r))`;
+const NOT_BLANK_LINE = String.raw`(?!(?:\r\n|\n|\r)${BLANK_LINE_BODY}(?:\r\n|\n|\r))`;
 const subscriptRe = (): RegExp =>
   new RegExp(
     String.raw`(\$?)(?<!~)~(?!~)((?:${NOT_BLANK_LINE}[^~])+)(?<!~)~(?!~)(\$?)`,

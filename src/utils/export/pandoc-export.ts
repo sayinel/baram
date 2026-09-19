@@ -209,9 +209,7 @@ function balanceBrackets(content: string): string {
     const ch = content[i];
     if (ch !== "[" && ch !== "]") continue;
     if (isInCodeRegion(i, skipped)) continue;
-    let run = 0;
-    for (let j = i - 1; j >= 0 && content[j] === "\\"; j--) run += 1;
-    if (run % 2 === 1) continue;
+    if (!isLive(content, i)) continue;
     if (ch === "[") stack.push(i);
     else if (stack.length > 0) stack.pop();
     else unmatched.add(i);
