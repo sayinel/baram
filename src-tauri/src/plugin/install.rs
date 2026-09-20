@@ -1,8 +1,8 @@
 // §69 Plugin Marketplace / #261 — staged install lifecycle.
 //
-// `stage_plugin` downloads, verifies and extracts a plugin to a staging directory without
-// touching anything installed; `commit_staged_plugin` is the only destructive step, an atomic
-// swap; `discard_staged_plugin` and `uninstall_plugin` are the two ways to undo. See
+// `stage_install` downloads, verifies and extracts a plugin to a staging directory without
+// touching anything installed; `commit_staged_install` is the only destructive step, an atomic
+// swap; `discard_staged_install` and `uninstall_installed` are the two ways to undo. See
 // `swap_into_place` for why the previously installed version survives every failure, and
 // `STALE_STAGE_AFTER` / `recover_orphaned_backups` for the two kinds of interrupted install
 // this module cleans up after.
@@ -69,17 +69,17 @@ const STALE_STAGE_AFTER: Duration = Duration::from_secs(24 * 60 * 60);
 /// The point of naming this state (#261) is that everything expensive and everything
 /// attacker-controlled happens before anything installed is touched. The caller inspects
 /// the manifest, asks the user, checks it against what was consented to — and only then
-/// commits. A refusal at any of those points costs a `discard_staged_plugin`, never a
+/// commits. A refusal at any of those points costs a `discard_staged_install`, never a
 /// working plugin.
 #[derive(Debug, Clone, Serialize)]
 pub struct StagedPluginInfo {
-    /// Opaque handle for [`commit_staged_plugin`] / [`discard_staged_plugin`]. A directory
+    /// Opaque handle for [`commit_staged_install`] / [`discard_staged_install`]. A directory
     /// name under [`STAGING_DIR`], never a path — the caller cannot name anything else.
     pub stage_id: String,
     pub checksum: String,
     pub manifest: PluginManifest,
     /// SHA-256 of the staged `baram-plugin.json`, to be handed back to
-    /// [`commit_staged_plugin`]. See [`read_staged_manifest`] for why.
+    /// [`commit_staged_install`]. See [`read_staged_manifest`] for why.
     pub manifest_sha256: String,
 }
 
@@ -226,7 +226,7 @@ fn backup_name(plugin_id: &str) -> String {
 
 /// Drop any backup held for `plugin_id`. Best-effort.
 ///
-/// Called by [`uninstall_plugin`], and the reason is [`recover_orphaned_backups`]: a
+/// Called by [`uninstall_installed`], and the reason is [`recover_orphaned_backups`]: a
 /// deliberate uninstall also leaves the install path missing, which is the same shape as an
 /// interrupted swap. Without this, uninstalling a plugin whose backup survived a crash would
 /// see it RESURRECTED by the next install.
@@ -331,7 +331,7 @@ fn swap_into_place(staged: &Path, target: &Path, backup: &Path) -> Result<(), Pl
 /// Download a plugin ZIP, verify its checksum, and extract it to a staging directory.
 ///
 /// Installs NOTHING. The returned [`StagedPluginInfo::stage_id`] is the handle for the
-/// second half — [`commit_staged_plugin`] or [`discard_staged_plugin`] — and until one of
+/// second half — [`commit_staged_install`] or [`discard_staged_install`] — and until one of
 /// those runs, whatever version of this plugin the user already had is still installed and
 /// still running.
 ///
@@ -352,13 +352,13 @@ fn swap_into_place(staged: &Path, target: &Path, backup: &Path) -> Result<(), Pl
 ///
 /// ‼️ THAT DOES NOT MEAN A THEME CAN STAGE YET. `kind` picks the TREE but not the manifest
 /// FORMAT: [`read_staged_manifest`], called below, still requires `baram-plugin.json` and
-/// deserializes it as [`PluginManifest`], so `stage_plugin(InstallKind::Theme, …)` against
+/// deserializes it as [`PluginManifest`], so `stage_install(InstallKind::Theme, …)` against
 /// a real theme archive (which ships `baram-theme.json`) fails there with
 /// `InvalidManifest("baram-plugin.json not found in archive")` — a diagnosable refusal,
 /// not data loss, but a refusal all the same. Generalizing that seam (raw-capped
 /// `baram-theme.json` text for the frontend's `validateThemeManifest`, which takes
 /// already-parsed data) is Task 4's, deliberately not done here.
-pub async fn stage_plugin(
+pub async fn stage_install(
     kind: InstallKind,
     url: &str,
     registry_url: &str,
@@ -568,16 +568,16 @@ fn read_staged_manifest(dir: &Path) -> Result<(PluginManifest, String), PluginEr
 /// every failure here.
 ///
 /// ‼️ The manifest is RE-READ and RE-VALIDATED from disk rather than trusted from the
-/// [`stage_plugin`] result. The caller chooses which stage id to commit, so treating the
+/// [`stage_install`] result. The caller chooses which stage id to commit, so treating the
 /// earlier return value as authoritative would let a caller stage two plugins and commit one
 /// under the other's name — and the id is what names the install directory.
 ///
-/// `kind` (§360) MUST be the same one passed to the [`stage_plugin`] call that produced
+/// `kind` (§360) MUST be the same one passed to the [`stage_install`] call that produced
 /// `stage_id` — it is not recorded anywhere that ties the two together. Passing the wrong
 /// one fails safely, though: `resolve_stage_in` looks for `stage_id` under the OTHER tree's
 /// `.staging/`, will not find it there, and returns [`PluginError::NotFound`] rather than
 /// resolving to some unrelated directory.
-pub async fn commit_staged_plugin(
+pub async fn commit_staged_install(
     kind: InstallKind,
     stage_id: &str,
     expected_id: &str,
@@ -643,9 +643,9 @@ fn commit_staged_in(
 /// "already swept" for "cleaned up". Callers that discard on an error path should log and
 /// swallow it — the failure they are handling is the one worth reporting.
 ///
-/// `kind` (§360) MUST match what the stage was created with — see [`commit_staged_plugin`]'s
+/// `kind` (§360) MUST match what the stage was created with — see [`commit_staged_install`]'s
 /// doc comment for why a mismatch fails safely rather than reaching the wrong tree.
-pub async fn discard_staged_plugin(kind: InstallKind, stage_id: &str) -> Result<(), PluginError> {
+pub async fn discard_staged_install(kind: InstallKind, stage_id: &str) -> Result<(), PluginError> {
     let stage_id = stage_id.to_owned();
     tokio::task::spawn_blocking(move || discard_staged_in(&install_root(kind)?, &stage_id))
         .await
@@ -667,11 +667,11 @@ fn discard_staged_in(plugin_root: &Path, stage_id: &str) -> Result<(), PluginErr
 /// aim at a directory, so it is checked rather than assumed.
 ///
 /// ‼️ Not the install rollback path (#261). An install that fails its post-download checks
-/// calls [`discard_staged_plugin`], which can only ever remove a staging directory. Nothing
+/// calls [`discard_staged_install`], which can only ever remove a staging directory. Nothing
 /// reaches this function except a user asking to uninstall.
 ///
 /// `kind` (§360) chooses which tree `plugin_id` is looked up in — see [`InstallKind`].
-pub async fn uninstall_plugin(kind: InstallKind, plugin_id: &str) -> Result<(), PluginError> {
+pub async fn uninstall_installed(kind: InstallKind, plugin_id: &str) -> Result<(), PluginError> {
     uninstall_in(&install_root(kind)?, plugin_id)
 }
 
@@ -1024,7 +1024,7 @@ mod tests {
         // this test did not exercise it at all (#261 code review, MEDIUM-3). Every other
         // entry below fails for a DIFFERENT reason — the `stage-` prefix, or a path that
         // simply does not exist — so deleting `single_segment` left the whole array green,
-        // while `discard_staged_plugin("<a real stage>/../../demo")` would resolve to an
+        // while `discard_staged_install("<a real stage>/../../demo")` would resolve to an
         // INSTALLED plugin and `remove_dir_all` it. A traversal only reaches the `is_dir`
         // check if it is rooted at a stage that exists, and the loop never used the one the
         // test had just created.
@@ -1116,7 +1116,7 @@ mod tests {
     ///
     /// ‼️ Driven through `uninstall_in`, NOT through `drop_backups_for`. The first version of
     /// this test called the helper directly and mutation testing walked straight past it:
-    /// deleting the call from `uninstall_plugin` left it green, because a test of a helper
+    /// deleting the call from `uninstall_installed` left it green, because a test of a helper
     /// says nothing about whether anything invokes the helper.
     #[test]
     fn uninstalling_drops_a_backup_so_it_cannot_come_back() {

@@ -113,8 +113,8 @@ mod test_support;
 // Re-exported: `install.rs` staging/commit/discard/uninstall lifecycle
 // (src-tauri/src/commands/plugin_cmd.rs).
 pub use install::{
-    commit_staged_plugin, discard_staged_plugin, list_installed, read_manifest, stage_plugin,
-    staging_dir_of, uninstall_plugin, CommittedPluginInfo, StagedPluginInfo,
+    commit_staged_install, discard_staged_install, list_installed, read_manifest, stage_install,
+    staging_dir_of, uninstall_installed, CommittedPluginInfo, StagedPluginInfo,
 };
 // Re-exported: manifest/registry data models (src-tauri/src/commands/plugin_cmd.rs).
 pub use registry::{InstalledPluginInfo, PluginManifest, RegistryIndex};

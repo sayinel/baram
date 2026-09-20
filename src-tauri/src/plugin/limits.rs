@@ -91,7 +91,7 @@ pub(super) const ALLOWED_COMPRESSION: [zip::CompressionMethod; 2] = [
 /// is far past anything real and takes the worst case to 2,000 × 16, which is seconds rather
 /// than minutes.
 ///
-/// Forward note: `stage_plugin` requires `baram-plugin.json` at the staged ROOT, so a
+/// Forward note: `stage_install` requires `baram-plugin.json` at the staged ROOT, so a
 /// GitHub-style wrapper folder (`repo-v1.0.0/…`) already fails for an unrelated reason. If
 /// a wrapper is ever tolerated, the budget here silently becomes 15.
 pub(super) const MAX_PATH_DEPTH: usize = 16;
