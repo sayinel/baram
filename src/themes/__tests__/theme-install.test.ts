@@ -289,6 +289,30 @@ describe("installTheme installs nothing when any layer refuses (§360)", () => {
     expect(result.ok === false && result.detail).toBe("assetNotFound");
   });
 
+  // ‼️ THE ONE INPUT THE PRE-STORE `verifyStoredThemeCss` CATCHES ALONE, and the reason
+  // that call is not redundant. Verify's contract 2 has two halves, and the second —
+  // `hasUrlSpelledAsFunction` — lives only in `verify.ts`; neither earlier layer shares it.
+  // A `url()` in an `@media` media-feature value is parsed with the loose grammar, so
+  // css-tree gives `Function:url` rather than a `Url` node: sanitize passes it, and inline
+  // passes it too, planting its own `url("data:…")` right there. `verify.ts:130-138` had
+  // already measured this exact case and said so; I first wrote that no such input existed
+  // after failing to construct one, which was a search losing to the callee's own comment.
+  //
+  // Mutate away the `verifyStoredThemeCss` call in `sanitizedModeCss` and this goes red.
+  it("refuses CSS that only the stored-CSS verify can refuse", async () => {
+    stageWith({
+      "assets/x.png": new Uint8Array([1, 2, 3]),
+      "light/theme.css": enc(
+        '@media (scripting:url("assets/x.png")){body{color:red}}',
+      ),
+    });
+    const result = await refuses();
+    expect(result.ok === false && result.reason).toBe("cssRejected");
+    // `parseFailed` is the code `sanitizedModeCss` raises for its own verify, so this
+    // distinguishes "verify refused it" from "an earlier layer did".
+    expect(result.ok === false && result.detail).toBe("parseFailed");
+  });
+
   it("refuses a manifest the validator rejects", async () => {
     stageWith({}, manifestText({ modes: {} }));
     const result = await refuses();
@@ -309,8 +333,9 @@ describe("installTheme installs nothing when any layer refuses (§360)", () => {
 
   // ‼️ THE CAP THAT CANNOT BE DERIVED FROM THE ASSET BUDGET, demonstrated rather than
   // asserted: ONE 2 MiB asset (the whole budget, and `inlineThemeAssets` counts a path
-  // once) referenced TWICE produces ~5.6 MiB of stored CSS. The budget is satisfied; the
-  // output is not bounded by it. That is why `MAX_STORED_THEME_CSS_BYTES` exists.
+  // once) referenced TWICE produces 5,592,408 bytes (5.33 MiB) of stored CSS. The budget
+  // is satisfied; the output is not bounded by it. That is why
+  // `MAX_STORED_THEME_CSS_BYTES` exists.
   it("refuses stored CSS over its own cap even when the asset budget was satisfied", async () => {
     const asset = new Uint8Array(2 * 1024 * 1024);
     stageWith({
@@ -366,11 +391,22 @@ describe("installTheme commits last (§360)", () => {
     );
   });
 
-  it("reports a commit failure without claiming the theme is installed", async () => {
+  // ‼️ EVERY commit failure, not the ones whose wording happens to mention staging. The
+  // first version of this classified on `err.includes("staged")`, which caught three of the
+  // seven strings a theme commit can return: the Rust size refusal, "a theme commit must
+  // carry its sanitized CSS", "invalid stage id" and every IO error out of
+  // `write_stored_theme_css` / `swap_into_place` all fell through to `downloadFailed` — so
+  // a user whose disk was full was told to check their network. `it.each` rather than one
+  // case because the defect was a classifier that was right about some inputs.
+  it.each([
+    "the staged manifest changed after it was checked",
+    "stored theme CSS for light.css is 5000000 bytes, over the 4194304-byte limit",
+    "a theme commit must carry its sanitized CSS",
+    "invalid stage id: stage-1",
+    "IO error: No space left on device (os error 28)",
+  ])("reports %s as a commit failure, not a download one", async (message) => {
     stageWith({ "light/theme.css": enc("a{color:red}") });
-    themeInstallCommit.mockRejectedValue(
-      "the staged manifest changed after it was checked",
-    );
+    themeInstallCommit.mockRejectedValue(message);
     const result = await installTheme(entry(), "https://reg.test/index.json");
     expect(result.ok).toBe(false);
     expect(result.ok === false && result.reason).toBe("commitFailed");

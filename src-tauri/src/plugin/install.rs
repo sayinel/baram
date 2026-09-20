@@ -99,8 +99,10 @@ const STORED_CSS_DIR: &str = ".stored";
 /// produce, so this never fires first on a legitimate theme: 2 MiB of assets base64-encode
 /// to 2,796,204 characters (⌈2097152/3⌉ × 4), the authored stylesheet is capped at 512 KiB
 /// before it is parsed (`MAX_THEME_CSS_BYTES`, same TypeScript file), and the
-/// `data:<media type>;base64,` prefixes cost ~23 bytes per reference — roughly 3.3 MiB
-/// together, leaving about 850 KiB of headroom.
+/// `data:<media type>;base64,` prefixes cost ~23 bytes per reference — 3,320,492 bytes
+/// (3.17 MiB) together, leaving 873,812 bytes (853 KiB) of headroom. Every figure here is
+/// a MEBIbyte; an earlier version of this comment said "3.3 MiB" for a number that is
+/// 3.17 MiB, which is the MB/MiB slip the arithmetic above exists to avoid.
 ///
 /// ‼️ `scripts/rust-constants.ts` scrapes this literal and
 /// `src/themes/__tests__/stored-css-cap-parity.test.ts` binds the TypeScript copy to it, so

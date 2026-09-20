@@ -12,7 +12,10 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { storedThemeCssByteCap } from "../../../scripts/rust-constants";
-import { MAX_STORED_THEME_CSS_BYTES } from "../theme-install";
+import {
+  MAX_STORED_THEME_CSS_BYTES,
+  storedCssByteLength,
+} from "../theme-install";
 
 /**
  * The file the constant lives in, by literal path.
@@ -51,6 +54,18 @@ describe("the stored theme CSS cap is one number (§360)", () => {
         "const MAX_STORED_THEME_CSS_BYTES: usize = 1;\nconst MAX_STORED_THEME_CSS_BYTES: usize = 2;",
       ),
     ).toThrow(/found 2 declarations/u);
+  });
+
+  // ‼️ THE UNIT, NOT ONLY THE NUMBER. Rust's `body.len()` is UTF-8 BYTES; JavaScript's
+  // `String.length` is UTF-16 CODE UNITS. "가" is one code unit and three bytes, so a
+  // frontend measuring with `.length` would be the LOOSER of the two caps while both
+  // constants read `4 * 1024 * 1024` — a drift the value assertion above cannot see,
+  // because the value never moved. Asserting the measurement instead of the threshold is
+  // what makes this cheap: it needs one character rather than a 4 MiB document.
+  it("measures in the same unit Rust does", () => {
+    expect(storedCssByteLength("가")).toBe(3);
+    expect(storedCssByteLength("가")).not.toBe("가".length);
+    expect(storedCssByteLength("ab")).toBe(2);
   });
 
   // ‼️ The cap must sit ABOVE what a package respecting the other two caps can produce, or
