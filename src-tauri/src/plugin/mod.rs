@@ -119,10 +119,14 @@ pub use install::{
 // Re-exported: manifest/registry data models (src-tauri/src/commands/plugin_cmd.rs).
 pub use registry::{InstalledPluginInfo, PluginManifest, RegistryIndex};
 // Re-exported: the plugin storage primitives + plugin directory accessor
-// (src-tauri/src/commands/plugin_cmd.rs).
+// (src-tauri/src/commands/plugin_cmd.rs). `InstallKind` is §360's generalized entry point
+// (dev/plans/0090-theme-marketplace-plan Task 3) — `get_theme_dir`/`install_root`
+// themselves have no caller yet outside `plugin::install`, which reaches them directly via
+// `super::storage`, so they are not re-exported here until something outside this module
+// needs them (the next unused-import warning this file will get if that changes).
 pub use storage::{
     get_plugin_dir, read_bundle_in, read_text_capped, storage_list, storage_read, storage_remove,
-    storage_write,
+    storage_write, InstallKind,
 };
 // Re-exported: registry/revocation network fetch (src-tauri/src/commands/plugin_cmd.rs).
 pub use fetch::{fetch_registry, fetch_registry_readme, fetch_revocations, FetchedRevocations};

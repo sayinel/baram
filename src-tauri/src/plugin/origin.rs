@@ -710,6 +710,7 @@ mod tests {
         // says nothing about whether the download path consults it. Nothing here reaches the
         // network — the refusal precedes the request.
         let err = stage_plugin(
+            InstallKind::Plugin,
             "https://sayinel.github.io/baram-plugins/%2f..%2f..%2fevil/x-1.0.0.zip",
             LIVE_INDEX,
             None,
@@ -731,9 +732,15 @@ mod tests {
     /// reaches the network.
     #[tokio::test]
     async fn test_stage_plugin_refuses_non_http_schemes() {
-        let err = stage_plugin("file:///etc/passwd", LIVE_INDEX, None, None)
-            .await
-            .expect_err("a file:// download URL must be refused");
+        let err = stage_plugin(
+            InstallKind::Plugin,
+            "file:///etc/passwd",
+            LIVE_INDEX,
+            None,
+            None,
+        )
+        .await
+        .expect_err("a file:// download URL must be refused");
         assert!(
             err.to_string().contains("blocked URL scheme 'file'"),
             "expected the scheme guard's refusal, got: {err}"

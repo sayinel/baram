@@ -7,6 +7,7 @@
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use super::PluginError;
@@ -24,6 +25,64 @@ pub fn get_plugin_dir() -> Result<PathBuf, PluginError> {
         std::fs::create_dir_all(&plugin_dir)?;
     }
     Ok(plugin_dir)
+}
+
+/// Returns the theme installation base directory: ~/.baram/themes/
+///
+/// §360 (dev/plans/0090-theme-marketplace-plan Task 3) — a SIBLING tree to
+/// [`get_plugin_dir`], not a child of it: removal, enumeration and permission all mean
+/// something different for a theme than for a plugin, even though the staging/commit/
+/// uninstall machinery in `install.rs` is now shared between the two trees via
+/// [`InstallKind`].
+///
+/// Deliberately its own five lines rather than a shared helper with [`get_plugin_dir`]:
+/// that function has no test of its OWN in this crate — every existing caller resolves the
+/// real `$HOME` (see `install_root_dispatches_by_kind` below, which is the first test to
+/// touch either accessor, and only to compare their outputs). Factoring its body out to
+/// save one directory-name literal would mean editing code an existing, live install path
+/// depends on; duplicating it costs five lines and edits nothing that already works.
+pub fn get_theme_dir() -> Result<PathBuf, PluginError> {
+    let home = dirs_next().ok_or_else(|| {
+        PluginError::Io(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "Could not determine home directory",
+        ))
+    })?;
+    let theme_dir = home.join(".baram").join("themes");
+    if !theme_dir.exists() {
+        std::fs::create_dir_all(&theme_dir)?;
+    }
+    Ok(theme_dir)
+}
+
+/// Which installable-asset tree a caller wants resolved to a filesystem root.
+///
+/// §360 — the reason this enum exists rather than a root parameter. Generalizing the
+/// staging/commit/discard/uninstall functions in `install.rs` to accept a root directly
+/// would open a surface where whatever calls them chooses the install path, and if that
+/// caller is ever a webview-facing command taking a path STRING, that reopens §329–§336
+/// ("the vault boundary cannot authorise itself" — src-tauri/CLAUDE.md); this crate's
+/// `no_new_asset_scope_grant_outside_the_allowlist` guards exactly this family of mistake.
+/// Naming a closed KIND instead keeps every legal root Rust's own choice — see
+/// [`install_root`], the only function that turns one of these into a path.
+///
+/// The shape follows [`super::registry::PluginTrust`]: a small enum crossing the IPC
+/// boundary via `#[serde(rename_all = "lowercase")]`, not [`super::PluginOp`]'s
+/// `#[serde(tag = "kind")]` tagged union — there is no payload here beyond the choice
+/// itself, so the heavier pattern buys nothing.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum InstallKind {
+    Plugin,
+    Theme,
+}
+
+/// Resolves `kind` to the base directory installs of that kind live under.
+pub fn install_root(kind: InstallKind) -> Result<PathBuf, PluginError> {
+    match kind {
+        InstallKind::Plugin => get_plugin_dir(),
+        InstallKind::Theme => get_theme_dir(),
+    }
 }
 
 fn dirs_next() -> Option<PathBuf> {
@@ -344,5 +403,50 @@ mod tests {
 
         let out = list_storage_keys(tmp.path()).unwrap();
         assert_eq!(out, vec!["foo".to_string()]);
+    }
+
+    /// §360 (Task 3) — the security property in `InstallKind`'s doc comment, pinned:
+    /// whatever crosses the IPC boundary as a `kind` is one of exactly two lowercase
+    /// strings, never an arbitrary path. Serde is the machinery doing the enforcing, so
+    /// this is checked against it rather than asserted from reading our own code.
+    #[test]
+    fn install_kind_is_a_closed_lowercase_enum_on_the_wire() {
+        assert_eq!(
+            serde_json::from_str::<InstallKind>("\"plugin\"").unwrap(),
+            InstallKind::Plugin
+        );
+        assert_eq!(
+            serde_json::from_str::<InstallKind>("\"theme\"").unwrap(),
+            InstallKind::Theme
+        );
+        // Neither the Rust variant name (PascalCase) nor an arbitrary string — in
+        // particular, not a path — deserializes.
+        assert!(serde_json::from_str::<InstallKind>("\"Plugin\"").is_err());
+        assert!(serde_json::from_str::<InstallKind>("\"/etc/passwd\"").is_err());
+
+        assert_eq!(
+            serde_json::to_string(&InstallKind::Plugin).unwrap(),
+            "\"plugin\""
+        );
+        assert_eq!(
+            serde_json::to_string(&InstallKind::Theme).unwrap(),
+            "\"theme\""
+        );
+    }
+
+    /// `install_root` must dispatch to the same function a direct call would reach — the
+    /// match arms in its body are the whole implementation, so this is the one thing worth
+    /// pinning about it. Both sides resolve the real `$HOME` (there is no cheaper way to
+    /// compare them), which is why this is the only test in this module that does.
+    #[test]
+    fn install_root_dispatches_by_kind() {
+        assert_eq!(
+            install_root(InstallKind::Plugin).unwrap(),
+            get_plugin_dir().unwrap()
+        );
+        assert_eq!(
+            install_root(InstallKind::Theme).unwrap(),
+            get_theme_dir().unwrap()
+        );
     }
 }

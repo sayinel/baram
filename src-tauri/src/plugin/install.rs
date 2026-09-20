@@ -19,7 +19,7 @@ use super::origin::{
     validate_http_url,
 };
 use super::registry::{InstalledPluginInfo, PluginManifest};
-use super::storage::{get_plugin_dir, hex_sha256, single_segment};
+use super::storage::{get_plugin_dir, hex_sha256, install_root, single_segment, InstallKind};
 use super::{validate_manifest, PluginError};
 
 /// Where an in-flight install lives until something commits it: `~/.baram/plugins/.staging/`.
@@ -341,7 +341,12 @@ fn swap_into_place(staged: &Path, target: &Path, backup: &Path) -> Result<(), Pl
 /// `registry_url` is the index this listing came from. The archive must live under it —
 /// see `registry_base`. Required, not `Option`: a caller that omits it would otherwise
 /// download from anywhere, which is the protection being opt-out by forgetfulness.
+///
+/// `kind` (§360) chooses which installable-asset tree this stages into — see
+/// [`InstallKind`]. Nothing above this line cares which one it is: the download, the
+/// checksum check and the size cap are the same regardless of what gets installed.
 pub async fn stage_plugin(
+    kind: InstallKind,
     url: &str,
     registry_url: &str,
     expected_checksum: Option<&str>,
@@ -448,7 +453,7 @@ pub async fn stage_plugin(
     let expected_id = expected_id.map(str::to_owned);
     let (stage_id, manifest, manifest_sha256) = tokio::task::spawn_blocking(
         move || -> Result<(String, PluginManifest, String), PluginError> {
-            stage_archive_in(&get_plugin_dir()?, &bytes, expected_id.as_deref())
+            stage_archive_in(&install_root(kind)?, &bytes, expected_id.as_deref())
         },
     )
     .await
@@ -553,7 +558,14 @@ fn read_staged_manifest(dir: &Path) -> Result<(PluginManifest, String), PluginEr
 /// [`stage_plugin`] result. The caller chooses which stage id to commit, so treating the
 /// earlier return value as authoritative would let a caller stage two plugins and commit one
 /// under the other's name — and the id is what names the install directory.
+///
+/// `kind` (§360) MUST be the same one passed to the [`stage_plugin`] call that produced
+/// `stage_id` — it is not recorded anywhere that ties the two together. Passing the wrong
+/// one fails safely, though: `resolve_stage_in` looks for `stage_id` under the OTHER tree's
+/// `.staging/`, will not find it there, and returns [`PluginError::NotFound`] rather than
+/// resolving to some unrelated directory.
 pub async fn commit_staged_plugin(
+    kind: InstallKind,
     stage_id: &str,
     expected_id: &str,
     expected_manifest_sha256: &str,
@@ -563,7 +575,7 @@ pub async fn commit_staged_plugin(
     let expected_digest = expected_manifest_sha256.to_owned();
     tokio::task::spawn_blocking(move || {
         commit_staged_in(
-            &get_plugin_dir()?,
+            &install_root(kind)?,
             &stage_id,
             &expected_id,
             &expected_digest,
@@ -617,9 +629,12 @@ fn commit_staged_in(
 /// An unknown id is an error rather than a silent success, so a caller cannot mistake
 /// "already swept" for "cleaned up". Callers that discard on an error path should log and
 /// swallow it — the failure they are handling is the one worth reporting.
-pub async fn discard_staged_plugin(stage_id: &str) -> Result<(), PluginError> {
+///
+/// `kind` (§360) MUST match what the stage was created with — see [`commit_staged_plugin`]'s
+/// doc comment for why a mismatch fails safely rather than reaching the wrong tree.
+pub async fn discard_staged_plugin(kind: InstallKind, stage_id: &str) -> Result<(), PluginError> {
     let stage_id = stage_id.to_owned();
-    tokio::task::spawn_blocking(move || discard_staged_in(&get_plugin_dir()?, &stage_id))
+    tokio::task::spawn_blocking(move || discard_staged_in(&install_root(kind)?, &stage_id))
         .await
         .map_err(|_| PluginError::Refused("the plugin discard task did not finish".into()))?
 }
@@ -641,8 +656,10 @@ fn discard_staged_in(plugin_root: &Path, stage_id: &str) -> Result<(), PluginErr
 /// ‼️ Not the install rollback path (#261). An install that fails its post-download checks
 /// calls [`discard_staged_plugin`], which can only ever remove a staging directory. Nothing
 /// reaches this function except a user asking to uninstall.
-pub async fn uninstall_plugin(plugin_id: &str) -> Result<(), PluginError> {
-    uninstall_in(&get_plugin_dir()?, plugin_id)
+///
+/// `kind` (§360) chooses which tree `plugin_id` is looked up in — see [`InstallKind`].
+pub async fn uninstall_plugin(kind: InstallKind, plugin_id: &str) -> Result<(), PluginError> {
+    uninstall_in(&install_root(kind)?, plugin_id)
 }
 
 fn uninstall_in(plugin_root: &Path, plugin_id: &str) -> Result<(), PluginError> {
@@ -1249,5 +1266,75 @@ mod tests {
             err.to_string().contains("lowercase letters"),
             "expected the id-charset refusal, got: {err}"
         );
+    }
+
+    // --- §360 (Task 3): the same sequence, against a THEME root -----------------------
+    //
+    // `stage_archive_in` / `commit_staged_in` / `swap_into_place` never look at the name of
+    // the root they are handed — that genericity already existed (every test above drives
+    // them against a bare `tempdir()`, never against a literal `~/.baram/plugins`). What
+    // Task 3 adds is `InstallKind` / `install_root` picking WHICH real root a caller gets;
+    // the two tests below are the brief's own "핵심 테스트" — the sequence still works, and
+    // the #261 rollback guarantee still holds, against a root standing in for
+    // `~/.baram/themes/<id>/` exactly the way every test above stands one in for
+    // `~/.baram/plugins/`.
+
+    /// The full stage → commit sequence, run against a tempdir standing in for a theme
+    /// root. Same shape as `commit_replaces_the_installed_version_and_cleans_up` above —
+    /// the point is that nothing had to change for it to apply to a different tree.
+    #[test]
+    fn the_staging_sequence_works_against_a_theme_root() {
+        let theme_root = tempfile::tempdir().unwrap();
+        let installed = install_by_hand(theme_root.path(), "cobalt", "v1");
+
+        let (stage_id, manifest, digest) = stage_archive_in(
+            theme_root.path(),
+            &plugin_zip("cobalt", "2.0.0", "v2"),
+            Some("cobalt"),
+        )
+        .unwrap();
+        assert_eq!(manifest.version, "2.0.0");
+
+        let committed = commit_staged_in(theme_root.path(), &stage_id, "cobalt", &digest).unwrap();
+
+        assert_eq!(committed.install_path, installed.to_string_lossy());
+        assert_eq!(
+            std::fs::read_to_string(installed.join("main.js")).unwrap(),
+            "v2"
+        );
+        assert_eq!(
+            stage_dirs(theme_root.path()),
+            Vec::<String>::new(),
+            "the staged tree and its backup must both be gone after a successful commit"
+        );
+    }
+
+    /// The #261 rollback guarantee, against a theme root: a failed commit must not cost the
+    /// user their previously installed theme. Same injection as
+    /// `a_failed_swap_restores_the_previous_version` above (a `staged` path that does not
+    /// exist), driven at a root that is not the plugin tree.
+    #[test]
+    fn a_failed_commit_leaves_the_previous_theme_installed() {
+        let theme_root = tempfile::tempdir().unwrap();
+        let installed = install_by_hand(theme_root.path(), "cobalt", "v1");
+        let backup = theme_root
+            .path()
+            .join(STAGING_DIR)
+            .join("backup-cobalt-test");
+        std::fs::create_dir_all(theme_root.path().join(STAGING_DIR)).unwrap();
+
+        let err = swap_into_place(&theme_root.path().join("nonexistent"), &installed, &backup)
+            .expect_err("renaming a nonexistent staged tree must fail");
+
+        assert!(
+            matches!(err, PluginError::Io(_)),
+            "the caller must see the rename's own error, got: {err}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(installed.join("main.js")).unwrap(),
+            "v1",
+            "the previous theme must be back where the app looks for it"
+        );
+        assert!(!backup.exists(), "the backup must not be left behind");
     }
 }
