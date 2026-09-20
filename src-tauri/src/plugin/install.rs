@@ -22,7 +22,9 @@ use super::registry::{InstalledPluginInfo, PluginManifest};
 use super::storage::{get_plugin_dir, hex_sha256, install_root, single_segment, InstallKind};
 use super::{validate_manifest, PluginError};
 
-/// Where an in-flight install lives until something commits it: `~/.baram/plugins/.staging/`.
+/// Where an in-flight install lives until something commits it: `~/.baram/plugins/.staging/`
+/// (or `~/.baram/themes/.staging/` — §360, [`InstallKind`]; this constant names the leaf
+/// under WHICHEVER root a caller was resolved to, never a root itself).
 ///
 /// Inside the plugin directory rather than the OS temp directory, and that is the whole
 /// mechanism (#261): `std::fs::rename` is atomic only WITHIN a filesystem, and on Linux
@@ -247,7 +249,9 @@ fn drop_backups_for(root: &Path, plugin_id: &str) {
 /// our own frontend sends one. `single_segment` rejects anything with a separator or a
 /// `..`, and the prefix check rejects every OTHER child of the staging directory — so the
 /// worst a malformed id can name is a staging tree, never an installed plugin and never
-/// anything outside `~/.baram/plugins/.staging/`.
+/// anything outside `~/.baram/plugins/.staging/` (or `~/.baram/themes/.staging/` — see
+/// [`InstallKind`]; the containment argument is about the root this function is HANDED, so
+/// it holds identically for either).
 fn resolve_stage_in(plugin_root: &Path, stage_id: &str) -> Result<PathBuf, PluginError> {
     let seg = single_segment(stage_id)
         .filter(|_| stage_id.starts_with(STAGE_PREFIX))
@@ -345,6 +349,15 @@ fn swap_into_place(staged: &Path, target: &Path, backup: &Path) -> Result<(), Pl
 /// `kind` (§360) chooses which installable-asset tree this stages into — see
 /// [`InstallKind`]. Nothing above this line cares which one it is: the download, the
 /// checksum check and the size cap are the same regardless of what gets installed.
+///
+/// ‼️ THAT DOES NOT MEAN A THEME CAN STAGE YET. `kind` picks the TREE but not the manifest
+/// FORMAT: [`read_staged_manifest`], called below, still requires `baram-plugin.json` and
+/// deserializes it as [`PluginManifest`], so `stage_plugin(InstallKind::Theme, …)` against
+/// a real theme archive (which ships `baram-theme.json`) fails there with
+/// `InvalidManifest("baram-plugin.json not found in archive")` — a diagnosable refusal,
+/// not data loss, but a refusal all the same. Generalizing that seam (raw-capped
+/// `baram-theme.json` text for the frontend's `validateThemeManifest`, which takes
+/// already-parsed data) is Task 4's, deliberately not done here.
 pub async fn stage_plugin(
     kind: InstallKind,
     url: &str,
@@ -1268,73 +1281,19 @@ mod tests {
         );
     }
 
-    // --- §360 (Task 3): the same sequence, against a THEME root -----------------------
-    //
-    // `stage_archive_in` / `commit_staged_in` / `swap_into_place` never look at the name of
-    // the root they are handed — that genericity already existed (every test above drives
-    // them against a bare `tempdir()`, never against a literal `~/.baram/plugins`). What
-    // Task 3 adds is `InstallKind` / `install_root` picking WHICH real root a caller gets;
-    // the two tests below are the brief's own "핵심 테스트" — the sequence still works, and
-    // the #261 rollback guarantee still holds, against a root standing in for
-    // `~/.baram/themes/<id>/` exactly the way every test above stands one in for
-    // `~/.baram/plugins/`.
-
-    /// The full stage → commit sequence, run against a tempdir standing in for a theme
-    /// root. Same shape as `commit_replaces_the_installed_version_and_cleans_up` above —
-    /// the point is that nothing had to change for it to apply to a different tree.
-    #[test]
-    fn the_staging_sequence_works_against_a_theme_root() {
-        let theme_root = tempfile::tempdir().unwrap();
-        let installed = install_by_hand(theme_root.path(), "cobalt", "v1");
-
-        let (stage_id, manifest, digest) = stage_archive_in(
-            theme_root.path(),
-            &plugin_zip("cobalt", "2.0.0", "v2"),
-            Some("cobalt"),
-        )
-        .unwrap();
-        assert_eq!(manifest.version, "2.0.0");
-
-        let committed = commit_staged_in(theme_root.path(), &stage_id, "cobalt", &digest).unwrap();
-
-        assert_eq!(committed.install_path, installed.to_string_lossy());
-        assert_eq!(
-            std::fs::read_to_string(installed.join("main.js")).unwrap(),
-            "v2"
-        );
-        assert_eq!(
-            stage_dirs(theme_root.path()),
-            Vec::<String>::new(),
-            "the staged tree and its backup must both be gone after a successful commit"
-        );
-    }
-
-    /// The #261 rollback guarantee, against a theme root: a failed commit must not cost the
-    /// user their previously installed theme. Same injection as
-    /// `a_failed_swap_restores_the_previous_version` above (a `staged` path that does not
-    /// exist), driven at a root that is not the plugin tree.
-    #[test]
-    fn a_failed_commit_leaves_the_previous_theme_installed() {
-        let theme_root = tempfile::tempdir().unwrap();
-        let installed = install_by_hand(theme_root.path(), "cobalt", "v1");
-        let backup = theme_root
-            .path()
-            .join(STAGING_DIR)
-            .join("backup-cobalt-test");
-        std::fs::create_dir_all(theme_root.path().join(STAGING_DIR)).unwrap();
-
-        let err = swap_into_place(&theme_root.path().join("nonexistent"), &installed, &backup)
-            .expect_err("renaming a nonexistent staged tree must fail");
-
-        assert!(
-            matches!(err, PluginError::Io(_)),
-            "the caller must see the rename's own error, got: {err}"
-        );
-        assert_eq!(
-            std::fs::read_to_string(installed.join("main.js")).unwrap(),
-            "v1",
-            "the previous theme must be back where the app looks for it"
-        );
-        assert!(!backup.exists(), "the backup must not be left behind");
-    }
+    // §360 fix round 1 (MEDIUM-1) — this used to be two tests, `theme_root` tempdirs
+    // renamed from `root`, that drove `stage_archive_in` / `commit_staged_in` /
+    // `swap_into_place` and asserted the sequence and the #261 rollback guarantee "work
+    // against a theme root". They were removed: proven by mutation, they could not fail
+    // for anything Task 3 introduced. Calling a `tempdir()` `theme_root` does not make it
+    // one — these three functions never read the name of the root they are handed, which
+    // is exactly why every test ABOVE this comment, none of which mentions a theme, already
+    // covers them nineteen times over. There is no proposition left to prove here: the
+    // cores are root-agnostic BY CONSTRUCTION (they take `plugin_root: &Path` and never
+    // inspect it), and #261's rollback lives entirely in `swap_into_place`, which sees only
+    // paths. What Task 3 actually added — `InstallKind` resolving to a DIFFERENT real
+    // directory per kind — is pinned in `storage.rs`'s
+    // `install_root_resolves_each_kind_to_its_own_directory_name`, the one test that
+    // mentions `InstallKind` and the only one a mutation of `install_root`'s theme arm
+    // could fail.
 }

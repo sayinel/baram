@@ -35,12 +35,12 @@ pub fn get_plugin_dir() -> Result<PathBuf, PluginError> {
 /// uninstall machinery in `install.rs` is now shared between the two trees via
 /// [`InstallKind`].
 ///
-/// Deliberately its own five lines rather than a shared helper with [`get_plugin_dir`]:
-/// that function has no test of its OWN in this crate — every existing caller resolves the
-/// real `$HOME` (see `install_root_dispatches_by_kind` below, which is the first test to
-/// touch either accessor, and only to compare their outputs). Factoring its body out to
-/// save one directory-name literal would mean editing code an existing, live install path
-/// depends on; duplicating it costs five lines and edits nothing that already works.
+/// Deliberately its own 13 lines rather than a shared helper with [`get_plugin_dir`]: that
+/// function has no test of its OWN in this crate — every existing caller resolves the real
+/// `$HOME` (see `install_root_resolves_each_kind_to_its_own_directory_name` below, the only
+/// test in this module that does). Factoring its body out to save one directory-name
+/// literal would mean editing code an existing, live install path depends on; duplicating
+/// it costs 13 lines and edits nothing that already works.
 pub fn get_theme_dir() -> Result<PathBuf, PluginError> {
     let home = dirs_next().ok_or_else(|| {
         PluginError::Io(std::io::Error::new(
@@ -434,19 +434,23 @@ mod tests {
         );
     }
 
-    /// `install_root` must dispatch to the same function a direct call would reach — the
-    /// match arms in its body are the whole implementation, so this is the one thing worth
-    /// pinning about it. Both sides resolve the real `$HOME` (there is no cheaper way to
-    /// compare them), which is why this is the only test in this module that does.
+    /// §360 fix round 1 (MEDIUM-1) — the previous version of this test asserted
+    /// `install_root(kind) == get_plugin_dir()/get_theme_dir()`, which is TAUTOLOGICAL for
+    /// the `Theme` arm: `install_root(Theme)` IS a call to `get_theme_dir()`, so both sides
+    /// of that equality move together no matter what `get_theme_dir` returns. A mutation
+    /// that broke the DESTINATION — `Theme` resolving into the plugin tree, precisely what
+    /// `InstallKind` exists to prevent (spec §9.2) — passed it. Asserting the actual last
+    /// path component instead can catch that, and it is the one test in this module that
+    /// resolves the real `$HOME` to do it.
     #[test]
-    fn install_root_dispatches_by_kind() {
+    fn install_root_resolves_each_kind_to_its_own_directory_name() {
         assert_eq!(
-            install_root(InstallKind::Plugin).unwrap(),
-            get_plugin_dir().unwrap()
+            install_root(InstallKind::Plugin).unwrap().file_name(),
+            Some(OsStr::new("plugins"))
         );
         assert_eq!(
-            install_root(InstallKind::Theme).unwrap(),
-            get_theme_dir().unwrap()
+            install_root(InstallKind::Theme).unwrap().file_name(),
+            Some(OsStr::new("themes"))
         );
     }
 }
