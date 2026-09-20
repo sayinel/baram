@@ -38,7 +38,7 @@ import type { ThemeDef } from "../../../types/theme";
 import { useWorkspaceStore } from "../../../stores/file/workspace";
 import { useSettingsStore } from "../../../stores/settings/store";
 import { defaultColorsForBase } from "../../../types/theme";
-import { showConfirm } from "../../../utils/confirm-dialog";
+import { showAlert, showConfirm } from "../../../utils/confirm-dialog";
 import { AppearanceTab } from "../tabs/AppearanceTab";
 
 const CUSTOM_THEME: ThemeDef = {
@@ -69,6 +69,7 @@ async function settle(): Promise<void> {
 beforeEach(() => {
   vi.mocked(showConfirm).mockReset();
   vi.mocked(showConfirm).mockResolvedValue(false);
+  vi.mocked(showAlert).mockClear();
   useSettingsStore.setState({
     activeThemeId: "system",
     customThemes: [CUSTOM_THEME],
@@ -88,6 +89,8 @@ afterEach(() => {
 
 const INSTALLED_THEME: InstalledTheme = {
   checksum: "c".repeat(64),
+  consentedAt: "2026-09-01T00:00:00.000Z",
+  consentedVersion: "1.0.0",
   id: "dracula",
   installedAt: "2026-09-01T00:00:00.000Z",
   installPath: "/home/.baram/themes/dracula",
@@ -312,5 +315,31 @@ describe("theme gallery — community group (§361)", () => {
     fireEvent.click(within(group).getByText("Dracula"));
 
     expect(useSettingsStore.getState().activeThemeId).toBe("dracula");
+  });
+
+  // §361 fix round 1 (F2/M-E) — review round 1 removed the ⓘ affordance entirely
+  // (`onInfo={undefined}`) and 199 tests stayed green; this is the fix.
+  it("설치한 테마에는 설치 정보 버튼이 있고, 누르면 동의 내용을 보여준다 — RED under M-E", () => {
+    useSettingsStore.setState({
+      installedThemes: { dracula: INSTALLED_THEME },
+    });
+    render(<AppearanceTab />);
+
+    const group = screen.getByRole("group", { name: /설치한|Installed/i });
+    fireEvent.click(within(group).getByRole("button", { name: /정보|info/i }));
+
+    expect(showAlert).toHaveBeenCalledTimes(1);
+    const message = vi.mocked(showAlert).mock.calls[0][0];
+    expect(message).toContain("1.0.0");
+  });
+
+  // §361 — a builtin/custom theme has consentHistory: false, so no info button renders for
+  // it (theme-sources.ts's action table, not a `source === …` check in the component).
+  it("내장·커스텀 테마에는 설치 정보 버튼이 없다", () => {
+    render(<AppearanceTab />);
+    const builtinGroup = screen.getByRole("group", { name: /기본|Built-in/i });
+    expect(
+      within(builtinGroup).queryByRole("button", { name: /정보|info/i }),
+    ).toBeNull();
   });
 });

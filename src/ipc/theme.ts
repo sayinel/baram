@@ -1,10 +1,12 @@
 // §360 테마 설치 IPC 래퍼 (스펙 0049 §9).
 //
-// 설치 다섯 커맨드의 순서가 곧 보안 속성이다 — 근거는 Rust 쪽
-// `src-tauri/src/commands/theme_cmd.rs` 머리주석에 한 번만 적혀 있다. 여기서
+// 이 파일은 export 여섯 개다. 그중 **설치 파이프라인 넷**(themeInstallStage·
+// themeStageRead·themeInstallCommit·themeInstallDiscard)의 순서가 보안 속성이다 — 근거는
+// Rust 쪽 `src-tauri/src/commands/theme_cmd.rs` 머리주석에 한 번만 적혀 있다. 여기서
 // 되풀이하지 않는 이유는 그 순서를 강제하는 것이 이 파일이 아니라 커맨드 집합의
-// 모양이기 때문이다(스테이징 트리에 쓰는 커맨드가 아예 없다). `themeUninstall`(§361)은
-// 그 다섯에 들지 않는다 — 제거는 설치 순서와 무관한 별개의 생명주기 동작이다.
+// 모양이기 때문이다(스테이징 트리에 쓰는 커맨드가 아예 없다). 나머지 둘은 그 순서 밖이다
+// — `themeReadStoredCss`는 로드 시점 읽기(§361이 첫 호출자를 줬다), `themeUninstall`(§361)은
+// 제거로, 설치 순서와 무관한 별개의 생명주기 동작이다.
 import { invoke } from "@tauri-apps/api/core";
 
 import type { ThemeMode } from "../types/theme";

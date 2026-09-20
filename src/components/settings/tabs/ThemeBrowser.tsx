@@ -197,12 +197,18 @@ function ThemeBrowserCard({
 
 /**
  * §9.3's three fixed sentences — a theme has no `capabilities`, so there is nothing to list
- * per-capability the way `PluginConsentDialog` does, and no `ShadowIsolated` portal either:
- * §8's `@layer baram-theme` guarantee already keeps ANY installed theme's CSS from
- * outranking unlayered app chrome (spec 0049 §8, test C-11), which is the same threat
- * `ShadowIsolated` exists to close for a plugin's own styling. Nothing is installed yet at
- * the moment this dialog is open, in any case — only an ALREADY-installed theme's CSS could
- * be live, and that guarantee already covers it.
+ * per-capability the way `PluginConsentDialog` does, and no `ShadowIsolated` portal either.
+ * Nothing is installed yet at the moment this dialog is open — only an ALREADY-installed
+ * theme's CSS could be live while a SECOND theme's consent is on screen, and that is a real
+ * threat (the same one `ShadowIsolated` closes for a plugin's own styling), not an absent
+ * one. §8's `@layer baram-theme` guarantee ALONE does not close it (review round 1, F3) —
+ * `styles/settings/theme.css`'s `.theme-consent-backdrop` comment has the full argument and
+ * is the one home for it; the short version is that this dialog's critical properties
+ * (display/opacity/visibility) are declared explicitly and unlayered there, which cascade
+ * rules make unbeatable by any *normal*-importance layered rule — and a theme's stored CSS
+ * is structurally unable to carry `!important` (`verifyStoredThemeCss`, checked on every
+ * apply, not only at install). Read that comment before touching either side of this
+ * dependency.
  *
  * ‼️ The third sentence ("makes no network connection") is true only because 0089 made it
  * STRUCTURALLY true — stored CSS carries no URL other than `data:` (`inlineThemeAssets`

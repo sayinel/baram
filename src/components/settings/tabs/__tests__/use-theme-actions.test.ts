@@ -61,6 +61,8 @@ function entry(over: Partial<RegistryEntry> = {}): RegistryEntry {
 function installedTheme(over: Partial<InstalledTheme> = {}): InstalledTheme {
   return {
     checksum: "c".repeat(64),
+    consentedAt: "2026-09-01T00:00:00.000Z",
+    consentedVersion: "1.0.0",
     id: "dracula",
     installedAt: "2026-09-01T00:00:00.000Z",
     installPath: "/home/.baram/themes/dracula",
@@ -94,6 +96,63 @@ beforeEach(() => {
 
 afterEach(() => {
   useSettingsStore.setState({ customThemes: [], installedThemes: {} });
+});
+
+// §361 fix round 1 (F8/M-F) — the unmount guard is attributed in its own comment to a
+// reported defect in usePluginActions (a dialog that disappears with the component must
+// resolve as a REFUSAL, or the awaiting caller hangs forever) but had no test of its own;
+// review round 1's M-F (deleting the guard) passed the whole suite green.
+describe("the pending consent promise settles even if nothing else does", () => {
+  it("unmounting while a consent is pending resolves handleInstall's promise as false — RED under M-F", async () => {
+    const { result, unmount } = renderHook(() => useThemeActions());
+    let installed: boolean | undefined;
+    let settled = false;
+    act(() => {
+      void result.current
+        .handleInstall(entry(), "https://reg.test")
+        .then((v) => {
+          installed = v;
+          settled = true;
+        });
+    });
+    expect(result.current.pendingConsent).not.toBeNull();
+
+    unmount();
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(settled).toBe(true);
+    expect(installed).toBe(false);
+    expect(installTheme).not.toHaveBeenCalled();
+  });
+
+  it("a second consent request resolves the first one as false, not leaking it forever", async () => {
+    const { result } = renderHook(() => useThemeActions());
+    let firstResolved: boolean | undefined;
+    act(() => {
+      void result.current
+        .handleInstall(entry({ id: "first" }), "https://reg.test")
+        .then((v) => {
+          firstResolved = v;
+        });
+    });
+    expect(result.current.pendingConsent?.entry.id).toBe("first");
+
+    // A second entry asks before the first was ever answered.
+    act(() => {
+      void result.current.handleInstall(
+        entry({ id: "second" }),
+        "https://reg.test",
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(firstResolved).toBe(false);
+    expect(result.current.pendingConsent?.entry.id).toBe("second");
+  });
 });
 
 describe("handleInstall", () => {
@@ -155,6 +214,11 @@ describe("handleInstall", () => {
     expect(toast?.action).toBeDefined();
     toast?.action?.onClick();
     expect(useSettingsStore.getState().activeThemeId).toBe("default-light");
+    // §361 fix round 1 (F8) — §10.3 says undo reverses only the APPLY: the directory and the
+    // record both stay. Only `activeThemeId` moves; `installedThemes` is untouched.
+    expect(useSettingsStore.getState().installedThemes.dracula?.id).toBe(
+      "dracula",
+    );
   });
 
   it("records an error and does not apply anything on a failed install", async () => {
@@ -322,12 +386,50 @@ describe("installFailureMessage", () => {
 });
 
 describe("showConsentHistory", () => {
-  it("shows an alert naming the version and installed date", () => {
+  it("shows an alert naming the consented version and date", () => {
     const { result } = renderHook(() => useThemeActions());
     act(() => result.current.showConsentHistory(installedTheme()));
 
     expect(showAlert).toHaveBeenCalledTimes(1);
     const message = showAlert.mock.calls[0][0] as string;
     expect(message).toContain("1.0.0");
+  });
+
+  // §361 fix round 1 (F2/M-D) — review round 1 deleted the three sentences from this alert
+  // and every test still passed; strengthened to assert each one by its actual locale text.
+  it("includes the three fixed consent sentences — RED under M-D", () => {
+    const { result } = renderHook(() => useThemeActions());
+    act(() => result.current.showConsentHistory(installedTheme()));
+
+    const message = showAlert.mock.calls[0][0] as string;
+    expect(message).toContain(
+      T("settings.appearance.installConsent.appearance"),
+    );
+    expect(message).toContain(T("settings.appearance.installConsent.noCode"));
+    expect(message).toContain(
+      T("settings.appearance.installConsent.noNetwork"),
+    );
+  });
+
+  // §361 fix round 1 (F4) — reads consentedAt/consentedVersion, not installedAt/
+  // manifest.version, so an update (Task 6) that legitimately moves the latter two does not
+  // make this screen assert a consent that never happened.
+  it("reads consentedAt/consentedVersion, not installedAt/manifest.version", () => {
+    const { result } = renderHook(() => useThemeActions());
+    act(() =>
+      result.current.showConsentHistory(
+        installedTheme({
+          consentedAt: "2020-01-01T00:00:00.000Z",
+          consentedVersion: "1.0.0",
+          installedAt: "2099-12-31T00:00:00.000Z",
+          manifest: { ...installedTheme().manifest, version: "9.9.9" },
+        }),
+      ),
+    );
+
+    const message = showAlert.mock.calls[0][0] as string;
+    expect(message).toContain("1.0.0");
+    expect(message).not.toContain("9.9.9");
+    expect(message).not.toContain("2099");
   });
 });

@@ -13,7 +13,11 @@ vi.mock("../../ipc/plugin-invoke", () => ({
 }));
 
 import { usePluginStore } from "../../stores/system/plugin";
-import { fetchRegistryIndex, searchRegistry } from "../registry-client";
+import {
+  fetchRegistryIndex,
+  searchRegistry,
+  searchThemeRegistry,
+} from "../registry-client";
 
 function entry(over: Partial<RegistryEntry> = {}): RegistryEntry {
   return {
@@ -118,5 +122,55 @@ describe("searchRegistry lists only plugin-kind entries (§360)", () => {
       plugins: [entry({ id: "a-theme", kind: "theme", name: "Matching Name" })],
     };
     expect(searchRegistry(index, "matching")).toEqual([]);
+  });
+});
+
+// §361 fix round 1 (F8) — `searchThemeRegistry` had no DIRECT unit test; only
+// `ThemeBrowser.test.tsx`'s render test exercised it (review confirmed that test does catch
+// M-G, the equivalent of core test 5's mirror). Direct tests here pin the filter itself,
+// same shape as `searchRegistry`'s own suite above, filtering the opposite way.
+describe("searchThemeRegistry lists only theme-kind entries (§361)", () => {
+  it("excludes a legacy entry (no `kind`) — absence reads as plugin, not theme", () => {
+    const index: RegistryIndex = { plugins: [entry({ id: "legacy" })] };
+    expect(searchThemeRegistry(index, "")).toEqual([]);
+  });
+
+  it("excludes an explicit kind: 'plugin' entry", () => {
+    const index: RegistryIndex = {
+      plugins: [entry({ id: "a-plugin", kind: "plugin" })],
+    };
+    expect(searchThemeRegistry(index, "")).toEqual([]);
+  });
+
+  it("keeps a kind: 'theme' entry, even with an empty query", () => {
+    const index: RegistryIndex = {
+      plugins: [
+        entry({ id: "a-plugin" }),
+        entry({ id: "a-theme", kind: "theme" }),
+      ],
+    };
+    expect(searchThemeRegistry(index, "").map((p) => p.id)).toEqual([
+      "a-theme",
+    ]);
+  });
+
+  it("matches a theme entry by name/description/id/author/keywords", () => {
+    const index: RegistryIndex = {
+      plugins: [
+        entry({
+          author: "Ada",
+          description: "a dark palette",
+          id: "dracula",
+          keywords: ["dark", "vampire"],
+          kind: "theme",
+          name: "Dracula",
+        }),
+      ],
+    };
+    expect(searchThemeRegistry(index, "dracula")).toHaveLength(1);
+    expect(searchThemeRegistry(index, "dark palette")).toHaveLength(1);
+    expect(searchThemeRegistry(index, "vampire")).toHaveLength(1);
+    expect(searchThemeRegistry(index, "ada")).toHaveLength(1);
+    expect(searchThemeRegistry(index, "nonexistent")).toEqual([]);
   });
 });

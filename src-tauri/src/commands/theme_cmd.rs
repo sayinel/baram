@@ -5,9 +5,12 @@
 // (`~/.baram/themes/`, §9.2), the manifest (`baram-theme.json`, §4), and one extra step —
 // the CSS hygiene pipeline, which runs on the FRONTEND between staging and committing.
 //
-// ‼️ THE ORDER IS THE SECURITY PROPERTY, and these five INSTALL commands are shaped to make
-// it the only order available (a sixth command, `theme_uninstall`, is unrelated lifecycle —
-// removal rather than installation — and has no ordering to preserve):
+// ‼️ THIS FILE HAS SIX `#[tauri::command]`s (verified by re-count at each edit — see
+// CLAUDE.md's "수정도 새 주장이다"). THE ORDER IS THE SECURITY PROPERTY for exactly FOUR of
+// them, the install pipeline below. The other two are NOT part of that order:
+// `theme_read_stored_css` is a LOAD-TIME read this task (§361) gave its first consumer, not
+// an install step; `theme_uninstall` (also §361) is unrelated lifecycle — removal rather
+// than installation. Neither has an ordering to preserve.
 //
 //   theme_install_stage   → download + extract, installs nothing
 //   theme_stage_read      → the frontend reads the authored CSS, tokens and assets

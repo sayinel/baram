@@ -54,6 +54,19 @@ export const MAX_THEME_MANIFEST_BYTES = 64 * 1024;
 export interface InstalledTheme {
   /** 이 설치가 내려받은 아카이브의 SHA-256. */
   checksum: string;
+  /**
+   * §361 스펙 §9.3 — §260 의 동의 기록 구조(승인 시각 + 승인한 버전)를 그대로 재사용한다.
+   * `installedAt`/`manifest.version` 에서 파생하지 **않는다** — 저 둘은 나중에 같은 함수가
+   * 업데이트로 다시 부를 때 새 값으로 갈리지만, 테마는 capabilities 가 없어 재동의를
+   * 요구할 일이 없으므로 동의는 **최초 설치 그 순간 한 번**이다.
+   *
+   * ‼️ **업데이트 경로(Task 6)는 이 두 필드를 다시 계산하지 말고 그대로 옮겨야 한다.**
+   * 이 함수는 오늘 최초 설치만 호출하므로 아래 값은 지금은 항상 옳다 — 업데이트가
+   * 생기는 순간 이 doc 주석이 그 계약이다.
+   */
+  consentedAt: string;
+  /** @see consentedAt */
+  consentedVersion: string;
   id: string;
   installedAt: string;
   installPath: string;
@@ -249,7 +262,7 @@ export type ThemeInstallResult =
  *
  * 타입이 아니라 배열이 원본이다 — `THEME_CSS_ERROR_CODES`(`utils/theme-css/errors.ts`)와
  * 같은 이유다. 이 배열이 있어야 "이 값 하나하나에 문장이 붙는가"를 런타임에 셀 수 있고,
- * 그 검사는 `i18n/__tests__/locale-parity.test.ts`에 있다.
+ * 그 검사는 `i18n/__tests__/label-key-coverage.test.ts`에 있다.
  */
 export const THEME_INSTALL_FAILURE_REASONS = [
   /** 다운로드·checksum·origin 검사·아카이브 추출 중 실패했다. */
@@ -353,15 +366,22 @@ export async function installTheme(
     // 들 수 없다 — "이미 커밋했음" 플래그를 두지 않는 이유다. 설령 미래의 편집이 그 사이에
     // 던지는 호출을 넣더라도 손해는 없다: swap 이 stage 디렉터리를 이미 가져갔으므로
     // `discard` 는 `NotFound` 로 끝나고, 그 실패는 로그에만 남는다.
+    //
+    // §361 — `consentedAt`/`consentedVersion`은 여기서 `installedAt`/`manifest.version`과
+    // 같은 순간·같은 값으로 한 번 정해진다. 이 함수는 오늘 최초 설치만 호출하므로 셋이
+    // 같은 것이 옳다 — `InstalledTheme.consentedAt`의 doc 주석이 그 계약을 적어 둔다.
+    const now = new Date().toISOString();
     return {
       ok: true,
       installed: {
+        checksum: staged.checksum,
+        consentedAt: now,
+        consentedVersion: manifest.version,
         id: committed.id,
-        installedAt: new Date().toISOString(),
+        installedAt: now,
         installPath: committed.install_path,
         manifest,
         modes,
-        checksum: staged.checksum,
       },
     };
   } catch (err) {

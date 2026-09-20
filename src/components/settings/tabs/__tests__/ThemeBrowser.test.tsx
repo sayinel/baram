@@ -39,8 +39,11 @@ vi.mock("../use-theme-actions", () => ({
   }),
 }));
 
+import en from "../../../../i18n/en.json";
 import { usePluginStore } from "../../../../stores/system/plugin";
 import { ThemeBrowser } from "../ThemeBrowser";
+
+const EN = en as Record<string, string>;
 
 function themeEntry(over: Partial<RegistryEntry> = {}): RegistryEntry {
   return {
@@ -154,17 +157,72 @@ describe("ThemeBrowser", () => {
     );
   });
 
-  it("renders the consent dialog when one is pending, and wires confirm/cancel", async () => {
-    fetchResult = Promise.resolve({ plugins: [themeEntry()] });
-    pendingConsent = { entry: themeEntry() };
-    render(<ThemeBrowser onBack={() => {}} />);
+  // §361 fix round 1 (F2) — review round 1 found the consent surface asserted nowhere: three
+  // mutations that each delete or hide the §9.3 disclosure (the sentences, and the ⓘ
+  // affordance elsewhere) all passed the suite green. Every test below is written to fail
+  // if what it names is missing from the screen, not merely to prove a dialog exists.
+  describe("consent dialog (§9.3)", () => {
+    beforeEach(() => {
+      fetchResult = Promise.resolve({ plugins: [themeEntry()] });
+      pendingConsent = { entry: themeEntry() };
+    });
 
-    const dialog = await screen.findByRole("dialog");
-    expect(dialog).toBeInTheDocument();
-    // The card's own Install button is ALSO on screen and says "Install" — scoped to the
-    // dialog so this can't accidentally click that one instead.
-    fireEvent.click(within(dialog).getByRole("button", { name: /install/i }));
-    expect(settleConsent).toHaveBeenCalledWith(true);
+    it("shows the three fixed sentences — RED under M-A (sentences deleted)", async () => {
+      render(<ThemeBrowser onBack={() => {}} />);
+      const dialog = await screen.findByRole("dialog");
+
+      expect(
+        within(dialog).getByText(
+          EN["settings.appearance.installConsent.appearance"],
+        ),
+      ).toBeInTheDocument();
+      expect(
+        within(dialog).getByText(
+          EN["settings.appearance.installConsent.noCode"],
+        ),
+      ).toBeInTheDocument();
+      expect(
+        within(dialog).getByText(
+          EN["settings.appearance.installConsent.noNetwork"],
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it("names the theme in the title", async () => {
+      render(<ThemeBrowser onBack={() => {}} />);
+      const dialog = await screen.findByRole("dialog");
+      expect(within(dialog).getByText(/dracula/i)).toBeInTheDocument();
+    });
+
+    it("Install calls settleConsent(true)", async () => {
+      render(<ThemeBrowser onBack={() => {}} />);
+      const dialog = await screen.findByRole("dialog");
+      // The card's own Install button is ALSO on screen and says "Install" — scoped to the
+      // dialog so this can't accidentally click that one instead.
+      fireEvent.click(within(dialog).getByRole("button", { name: /install/i }));
+      expect(settleConsent).toHaveBeenCalledWith(true);
+    });
+
+    it("Cancel calls settleConsent(false)", async () => {
+      render(<ThemeBrowser onBack={() => {}} />);
+      const dialog = await screen.findByRole("dialog");
+      fireEvent.click(within(dialog).getByRole("button", { name: /cancel/i }));
+      expect(settleConsent).toHaveBeenCalledWith(false);
+    });
+
+    it("Escape calls settleConsent(false)", async () => {
+      render(<ThemeBrowser onBack={() => {}} />);
+      await screen.findByRole("dialog");
+      fireEvent.keyDown(window, { key: "Escape" });
+      expect(settleConsent).toHaveBeenCalledWith(false);
+    });
+
+    it("a key other than Escape does nothing", async () => {
+      render(<ThemeBrowser onBack={() => {}} />);
+      await screen.findByRole("dialog");
+      fireEvent.keyDown(window, { key: "Enter" });
+      expect(settleConsent).not.toHaveBeenCalled();
+    });
   });
 
   it("calls onBack when the back control is used", async () => {

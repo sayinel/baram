@@ -109,13 +109,22 @@ export function searchRegistry(
   if (!query.trim()) return plugins;
 
   const lower = query.toLowerCase();
-  return plugins.filter(
-    (p) =>
-      p.name.toLowerCase().includes(lower) ||
-      p.description.toLowerCase().includes(lower) ||
-      p.id.toLowerCase().includes(lower) ||
-      p.keywords?.some((k) => k.toLowerCase().includes(lower)) ||
-      p.author.toLowerCase().includes(lower),
+  return plugins.filter((p) => matchesQuery(p, lower));
+}
+
+/**
+ * §361 fix round 1 (F7) — the five-field match `searchRegistry`/`searchThemeRegistry` both
+ * ran, factored out after review found the two copies were byte-identical: a field added to
+ * one silently stopped matching in the other. `lower` is already lower-cased by the caller,
+ * once per query rather than once per field per entry.
+ */
+function matchesQuery(entry: RegistryEntry, lower: string): boolean {
+  return (
+    entry.name.toLowerCase().includes(lower) ||
+    entry.description.toLowerCase().includes(lower) ||
+    entry.id.toLowerCase().includes(lower) ||
+    (entry.keywords?.some((k) => k.toLowerCase().includes(lower)) ?? false) ||
+    entry.author.toLowerCase().includes(lower)
   );
 }
 
@@ -133,14 +142,7 @@ export function searchThemeRegistry(
   if (!query.trim()) return themes;
 
   const lower = query.toLowerCase();
-  return themes.filter(
-    (p) =>
-      p.name.toLowerCase().includes(lower) ||
-      p.description.toLowerCase().includes(lower) ||
-      p.id.toLowerCase().includes(lower) ||
-      p.keywords?.some((k) => k.toLowerCase().includes(lower)) ||
-      p.author.toLowerCase().includes(lower),
-  );
+  return themes.filter((p) => matchesQuery(p, lower));
 }
 
 /**

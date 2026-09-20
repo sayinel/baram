@@ -229,17 +229,23 @@ export function useThemeActions() {
    * §10.3's `consentHistory` affordance for `themeActions("community")`.
    *
    * Not a growing list — a theme has no capabilities to escalate, so the three fixed
-   * sentences never change between versions, and `installedAt` is the only moment consent
-   * was ever asked. "History" here means "what you agreed to, and when," shown once.
+   * sentences never change between versions, and there is exactly one consent moment ever.
+   *
+   * ‼️ Reads `consentedAt`/`consentedVersion`, NOT `installedAt`/`manifest.version` (review
+   * round 1, F4). Those two pairs coincide today because this task only ever installs fresh,
+   * but `installTheme`/`addInstalledTheme` also run on an UPDATE (Task 6), which legitimately
+   * moves `installedAt` and `manifest.version` without asking again — reading those here
+   * would have this screen assert a consent at a date and version nothing was ever agreed to.
+   * `InstalledTheme.consentedAt`'s doc comment is the contract Task 6 must not break.
    */
   const showConsentHistory = useCallback(
     (installed: InstalledTheme): void => {
-      const date = new Date(installed.installedAt).toLocaleString(undefined);
+      const date = new Date(installed.consentedAt).toLocaleString(undefined);
       void showAlert(
         [
           t("settings.appearance.consentHistoryIntro", {
             date,
-            version: installed.manifest.version,
+            version: installed.consentedVersion,
           }),
           t("settings.appearance.installConsent.appearance"),
           t("settings.appearance.installConsent.noCode"),

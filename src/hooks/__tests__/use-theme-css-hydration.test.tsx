@@ -30,6 +30,8 @@ function Host({
 function installed(over: Partial<InstalledTheme> = {}): InstalledTheme {
   return {
     checksum: "c".repeat(64),
+    consentedAt: "2026-09-01T00:00:00.000Z",
+    consentedVersion: "1.0.0",
     id: "dracula",
     installedAt: "2026-09-01T00:00:00.000Z",
     installPath: "/home/.baram/themes/dracula",

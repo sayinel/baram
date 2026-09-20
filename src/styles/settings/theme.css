@@ -518,40 +518,74 @@
    stacking context (rendered from ThemeBrowser, which replaces AppearanceTab's body), so
    this backdrop is deliberately NOT named "*-overlay": settings-dialog-layering.test.ts
    scans for that suffix among components/settings siblings of the Settings modal, and a
-   nested dialog like this one needs no z-index above .settings-overlay to be visible. */
+   nested dialog like this one needs no z-index above .settings-overlay to be visible.
+   ‼️ It IS a security surface by `src/utils/security-surfaces.ts`'s own definition
+   ("보안 표면의 정의는 이름이 아니라 효과다") — a hostile ALREADY-INSTALLED theme is exactly
+   what could want to hide it before a SECOND install's consent. That module's scan keys on
+   four plugin-specific effect names and cannot reach a theme dialog; not extended here
+   (review round 1, F10) — recorded for Task 6 or a follow-up.
+
+   ‼️ §8's `@layer baram-theme` alone is NOT the guarantee that closes this (review round 1,
+   F3) — C-11 is about two declarations of the SAME property competing, and this dialog's
+   critical properties (display/opacity/visibility) were previously undeclared here, so a
+   layered *normal* rule for one of them from an installed theme would apply unopposed.
+   What actually closes it: every property below is declared EXPLICITLY and UNLAYERED, and
+   for *normal*-importance declarations, cascade layers rank BELOW unlayered styles
+   regardless of selector specificity or source order (CSS Cascade Layers §6) — so an
+   unlayered normal declaration here always beats a layered normal declaration for the same
+   property, full stop. That holds only because a theme's stored CSS can never carry
+   `!important` anywhere in the text: `verifyStoredThemeCss`'s `hasImportantSpelledAnywhere`
+   is a lexer-level token scan over the WHOLE string (not an AST walk, so nesting depth
+   cannot hide it from this one), and it runs at LOAD TIME on every apply
+   (`utils/theme-vars.ts`'s `applyThemeCss`) — not only once at install — so every
+   declaration a currently-applied theme makes is guaranteed *normal* importance for the
+   whole time it is on the page. If that guarantee is ever loosened, this comment's claim
+   goes false and nothing here would notice — same shape as the third consent sentence's
+   0089 dependency. Residual NOT closed by this: `pointer-events` sabotage (undeclared here)
+   and any property besides the three below. */
 .theme-consent-backdrop {
   position: fixed;
   inset: 0;
   z-index: 10;
   display: flex;
+  visibility: visible;
   align-items: center;
   justify-content: center;
   background: rgb(0 0 0 / 40%);
+  opacity: 1;
 }
 
 .theme-consent {
   display: flex;
+  visibility: visible;
   flex-direction: column;
   gap: 12px;
   width: min(400px, 90vw);
   padding: 20px;
   background: var(--color-bg-default);
   border-radius: 10px;
-  box-shadow: 0 8px 24px rgb(0 0 0 / 20%);
+  box-shadow: var(--shadow-lg);
+  opacity: 1;
 }
 
 .theme-consent-title {
+  display: block;
+  visibility: visible;
   margin: 0;
   font-size: 0.95rem;
   font-weight: 600;
   color: var(--color-text-primary);
+  opacity: 1;
 }
 
 .theme-consent-list {
+  display: block;
+  visibility: visible;
   padding-left: 20px;
   margin: 0;
   font-size: 0.82rem;
   color: var(--color-text-secondary);
+  opacity: 1;
 }
 
 .theme-consent-list li {
@@ -560,18 +594,23 @@
 
 .theme-consent-actions {
   display: flex;
+  visibility: visible;
   gap: 8px;
   justify-content: flex-end;
   margin-top: 4px;
+  opacity: 1;
 }
 
 .theme-consent-cancel {
+  visibility: visible;
   padding: 6px 12px;
   font-size: 0.82rem;
   color: var(--color-text-secondary);
+  opacity: 1;
 }
 
 .theme-consent-confirm {
+  visibility: visible;
   padding: 6px 14px;
   font-size: 0.82rem;
   font-weight: 500;
@@ -580,6 +619,7 @@
   background: var(--color-accent-solid);
   border: none;
   border-radius: 6px;
+  opacity: 1;
 }
 
 .theme-consent-confirm:hover {
