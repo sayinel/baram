@@ -15,6 +15,7 @@ import { useShallow } from "zustand/shallow";
 import { useTranslation } from "../../i18n/useTranslation";
 import { writeFile } from "../../ipc/invoke";
 import { useSettingsStore } from "../../stores/settings/store";
+import { lookupThemes } from "../../themes/installed-theme-defs";
 import {
   BUILT_IN_THEMES,
   defaultColorsForBase,
@@ -36,25 +37,38 @@ interface ThemeEditorProps {
 
 export function ThemeEditor({ onClose }: ThemeEditorProps) {
   const { t } = useTranslation();
-  const { activeThemeId, customThemes, saveCustomTheme, setActiveTheme } =
-    useSettingsStore(
-      useShallow((s) => ({
-        activeThemeId: s.activeThemeId,
-        customThemes: s.customThemes,
-        saveCustomTheme: s.saveCustomTheme,
-        setActiveTheme: s.setActiveTheme,
-      })),
-    );
+  const {
+    activeThemeId,
+    customThemes,
+    installedThemes,
+    saveCustomTheme,
+    setActiveTheme,
+  } = useSettingsStore(
+    useShallow((s) => ({
+      activeThemeId: s.activeThemeId,
+      customThemes: s.customThemes,
+      installedThemes: s.installedThemes,
+      saveCustomTheme: s.saveCustomTheme,
+      setActiveTheme: s.setActiveTheme,
+    })),
+  );
 
   // The active theme, when it has colours of its own. `system` has none by design,
   // and an id that resolves to nothing means the settings effect cleared the
   // variables too — both editing sessions start from the default-light palette.
+  //
+  // §361 — `installedThemes` is in this lookup so "Customize" duplicates a COMMUNITY
+  // theme's actual colours when one is active, rather than silently falling back to
+  // Default Light (`themeActions("community").duplicate` says this path applies to it too).
   const resolvedTheme = useMemo(
     () =>
       activeThemeId === "system"
         ? undefined
-        : findThemeById(activeThemeId, customThemes),
-    [activeThemeId, customThemes],
+        : findThemeById(
+            activeThemeId,
+            lookupThemes(customThemes, installedThemes),
+          ),
+    [activeThemeId, customThemes, installedThemes],
   );
 
   // Resolve the starting theme
@@ -270,8 +284,12 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
  */
 function restorePreview(): void {
   const root = document.documentElement;
-  const { activeThemeId, customThemes } = useSettingsStore.getState();
-  const resolved = findThemeById(activeThemeId, customThemes);
+  const { activeThemeId, customThemes, installedThemes } =
+    useSettingsStore.getState();
+  const resolved = findThemeById(
+    activeThemeId,
+    lookupThemes(customThemes, installedThemes),
+  );
   // 적용될 모드는 OS 설정이 정한다 — use-settings-effects와 같은 규칙이어야
   // 복원이 그 효과가 남겨둘 상태와 일치한다. 편집 중인 모드는 여기 쓰지 않는다:
   // 그것은 미리보기의 것이고, 복원은 미리보기를 지우는 일이다.

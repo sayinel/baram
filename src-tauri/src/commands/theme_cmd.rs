@@ -5,8 +5,9 @@
 // (`~/.baram/themes/`, §9.2), the manifest (`baram-theme.json`, §4), and one extra step —
 // the CSS hygiene pipeline, which runs on the FRONTEND between staging and committing.
 //
-// ‼️ THE ORDER IS THE SECURITY PROPERTY, and these five commands are shaped to make it the
-// only order available:
+// ‼️ THE ORDER IS THE SECURITY PROPERTY, and these five INSTALL commands are shaped to make
+// it the only order available (a sixth command, `theme_uninstall`, is unrelated lifecycle —
+// removal rather than installation — and has no ordering to preserve):
 //
 //   theme_install_stage   → download + extract, installs nothing
 //   theme_stage_read      → the frontend reads the authored CSS, tokens and assets
@@ -120,6 +121,21 @@ pub async fn theme_read_stored_css(
     mode: plugin::ThemeMode,
 ) -> Result<String, String> {
     plugin::read_stored_theme_css(&theme_id, mode)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// §361 — remove an installed theme. Mirrors `plugin_cmd::plugin_uninstall`; Task 3 already
+/// generalized `uninstall_installed` over `InstallKind`, so this needed no new Rust
+/// machinery beyond the wrapper and its registration (`lib.rs`, `build.rs`,
+/// `capabilities/default.json`, `ipc-registry.json`).
+///
+/// Not part of the install pipeline above — the settings store (§361, frontend) is what
+/// enumerates installed themes, and this just deletes the directory `theme_id` names.
+/// `uninstall_in`'s `single_segment` check contains it to that one directory.
+#[tauri::command]
+pub async fn theme_uninstall(theme_id: String) -> Result<(), String> {
+    plugin::uninstall_installed(plugin::InstallKind::Theme, &theme_id)
         .await
         .map_err(|e| e.to_string())
 }

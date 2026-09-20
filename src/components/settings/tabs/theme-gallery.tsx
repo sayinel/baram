@@ -17,9 +17,11 @@ import { useShallow } from "zustand/shallow";
 
 import { useTranslation } from "../../../i18n/useTranslation";
 import { useSettingsStore } from "../../../stores/settings/store";
+import { installedThemeDefs } from "../../../themes/installed-theme-defs";
 import { BUILT_IN_THEMES, themeModes } from "../../../types/theme";
 import { themeActions } from "../../../types/theme-sources";
 import { showConfirm } from "../../../utils/confirm-dialog";
+import { useThemeActions } from "./use-theme-actions";
 import { useThemeImport } from "./use-theme-import";
 
 /**
@@ -39,20 +41,33 @@ const GROUP_LABEL_KEYS: Record<ThemeSource, string> = {
 
 const GROUPS = Object.entries(GROUP_LABEL_KEYS) as [ThemeSource, string][];
 
-export function ThemeGallery({ onCustomize }: { onCustomize: () => void }) {
+export function ThemeGallery({
+  onBrowseThemes,
+  onCustomize,
+}: {
+  onBrowseThemes: () => void;
+  onCustomize: () => void;
+}) {
   const { t } = useTranslation();
-  const { activeThemeId, customThemes, deleteCustomTheme, setActiveTheme } =
+  const { activeThemeId, customThemes, installedThemes, setActiveTheme } =
     useSettingsStore(
       useShallow((s) => ({
         activeThemeId: s.activeThemeId,
         customThemes: s.customThemes,
-        deleteCustomTheme: s.deleteCustomTheme,
+        installedThemes: s.installedThemes,
         setActiveTheme: s.setActiveTheme,
       })),
     );
   const { handleImport, importError } = useThemeImport();
+  // §361 — owns the source-based branch (custom → deleteCustomTheme, community →
+  // uninstall + removeInstalledTheme) so this component only ever calls `removeTheme`.
+  const { removeTheme, showConsentHistory } = useThemeActions();
 
-  const allThemes = [...BUILT_IN_THEMES, ...customThemes];
+  const allThemes = [
+    ...BUILT_IN_THEMES,
+    ...customThemes,
+    ...installedThemeDefs(installedThemes),
+  ];
 
   return (
     <>
@@ -84,7 +99,16 @@ export function ThemeGallery({ onCustomize }: { onCustomize: () => void }) {
                 }
                 isActive={activeThemeId === theme.id}
                 key={theme.id}
-                onDelete={deleteCustomTheme}
+                onDelete={() => void removeTheme(theme)}
+                onInfo={
+                  // themeActions(source).consentHistory 는 community 만 true 다.
+                  // installedThemes[theme.id] 는 그래서 항상 있다 — 없으면(이론상
+                  // 스토어 불일치) 정보 버튼을 그리지 않는다.
+                  themeActions(source).consentHistory &&
+                  installedThemes[theme.id]
+                    ? () => showConsentHistory(installedThemes[theme.id])
+                    : undefined
+                }
                 onSelect={setActiveTheme}
                 theme={theme}
               />
@@ -99,6 +123,9 @@ export function ThemeGallery({ onCustomize }: { onCustomize: () => void }) {
         </button>
         <button className="theme-action-btn" onClick={handleImport}>
           {t("settings.appearance.import")}
+        </button>
+        <button className="theme-action-btn" onClick={onBrowseThemes}>
+          {t("settings.appearance.browseThemes")}
         </button>
       </div>
       {importError !== null && (
@@ -116,12 +143,16 @@ function ThemeCard({
   badge,
   isActive,
   onDelete,
+  onInfo,
   onSelect,
   theme,
 }: {
   badge: string | undefined;
   isActive: boolean;
-  onDelete: (id: string) => void;
+  onDelete: () => void;
+  /** §361 — present only when `themeActions(theme.source).consentHistory` is true AND the
+   *  caller has something to show (`theme-gallery.tsx` decides both). */
+  onInfo?: () => void;
   onSelect: (id: string) => void;
   theme: ThemeDef;
 }) {
@@ -168,13 +199,29 @@ function ThemeCard({
                 confirmLabel: t("common.delete"),
               },
             );
-            if (confirmed) onDelete(theme.id);
+            if (confirmed) onDelete();
           }}
           title={t("settings.appearance.deleteThemeNamed", {
             name: theme.name,
           })}
         >
           {"×"}
+        </button>
+      )}
+      {onInfo && (
+        // 설치 동의 정보 — §361. 삭제 버튼과 대칭인 반대쪽 모서리에 둔다(같은
+        // hover-reveal 방식, `theme-card-wrap`이 기준점).
+        <button
+          aria-label={t("settings.appearance.consentHistoryLabel", {
+            name: theme.name,
+          })}
+          className="theme-card-info"
+          onClick={onInfo}
+          title={t("settings.appearance.consentHistoryLabel", {
+            name: theme.name,
+          })}
+        >
+          {"ⓘ"}
         </button>
       )}
     </div>

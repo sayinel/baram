@@ -144,6 +144,7 @@ fn main() {
         "theme_install_stage",
         "theme_read_stored_css",
         "theme_stage_read",
+        "theme_uninstall",
         "update_context_alias",
         "update_context_color",
         "update_context_label",

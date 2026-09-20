@@ -438,6 +438,7 @@ pub fn run() {
             theme_cmd::theme_install_discard,
             theme_cmd::theme_stage_read,
             theme_cmd::theme_read_stored_css,
+            theme_cmd::theme_uninstall,
         ])
         // Unsaved-changes guard: intercept the window close (red X) and ask the
         // frontend to confirm. `confirm_quit` flips QuitGuard to let it through.

@@ -374,3 +374,214 @@
   margin-top: 16px;
   border-top: 1px solid var(--color-border-subtle);
 }
+
+/* Theme Card — install-info button (§361) */
+.theme-card-info {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: var(--color-bg-elevated);
+  border: none;
+  border-radius: 50%;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.theme-card-wrap:hover .theme-card-info,
+.theme-card-info:focus-visible {
+  opacity: 1;
+}
+
+.theme-card-info:hover {
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid);
+}
+
+/* Theme Browser (§361) — settings sub-screen, not a full-screen overlay: it replaces
+   AppearanceTab's body the same way ThemeEditor does, so it never competes with
+   .settings-overlay's stacking context (see settings-dialog-layering.test.ts). */
+.theme-browser {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.theme-browser-header {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.theme-browser-title {
+  flex: 1;
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.theme-browser-search {
+  padding: 6px 10px;
+  font-family: var(--font-family-sans);
+  font-size: 0.82rem;
+  color: var(--color-text-primary);
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+}
+
+.theme-browser-search:focus {
+  outline: none;
+  border-color: var(--color-accent-default);
+}
+
+.theme-browser-empty {
+  padding: 24px 0;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.theme-browser-error {
+  padding: 10px 12px;
+  font-size: 0.82rem;
+  color: var(--color-status-danger);
+  background: var(--color-bg-subtle);
+  border-radius: 6px;
+}
+
+.theme-browser-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.theme-browser-card {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border-default);
+  border-radius: 8px;
+}
+
+.theme-browser-card-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.theme-browser-card-name {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.theme-browser-card-version {
+  font-size: 0.72rem;
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
+
+.theme-browser-card-description {
+  margin: 2px 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.theme-browser-card-author {
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+}
+
+.theme-browser-card-error {
+  margin-top: 4px;
+  font-size: 0.75rem;
+  color: var(--color-status-danger);
+}
+
+/* Theme install consent dialog (§361) — nested inside the settings modal's own
+   stacking context (rendered from ThemeBrowser, which replaces AppearanceTab's body), so
+   this backdrop is deliberately NOT named "*-overlay": settings-dialog-layering.test.ts
+   scans for that suffix among components/settings siblings of the Settings modal, and a
+   nested dialog like this one needs no z-index above .settings-overlay to be visible. */
+.theme-consent-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(0 0 0 / 40%);
+}
+
+.theme-consent {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(400px, 90vw);
+  padding: 20px;
+  background: var(--color-bg-default);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 20%);
+}
+
+.theme-consent-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.theme-consent-list {
+  padding-left: 20px;
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--color-text-secondary);
+}
+
+.theme-consent-list li {
+  margin: 4px 0;
+}
+
+.theme-consent-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.theme-consent-cancel {
+  padding: 6px 12px;
+  font-size: 0.82rem;
+  color: var(--color-text-secondary);
+}
+
+.theme-consent-confirm {
+  padding: 6px 14px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--color-accent-on-solid);
+  cursor: pointer;
+  background: var(--color-accent-solid);
+  border: none;
+  border-radius: 6px;
+}
+
+.theme-consent-confirm:hover {
+  background: var(--color-accent-solid-hover);
+}

@@ -120,6 +120,30 @@ export function searchRegistry(
 }
 
 /**
+ * §361 — the theme browser's list (`ThemeBrowser.tsx`). Mirror of `searchRegistry`, filtering
+ * the opposite way: only `kind: "theme"` rows, so an entry with no `kind` (read as
+ * `"plugin"` — see `RegistryEntry.kind`'s doc comment) never appears here either. Reuses the
+ * same `fetchRegistryIndex` cache — themes and plugins are one registry, one fetch.
+ */
+export function searchThemeRegistry(
+  index: RegistryIndex,
+  query: string,
+): RegistryEntry[] {
+  const themes = index.plugins.filter((p) => p.kind === "theme");
+  if (!query.trim()) return themes;
+
+  const lower = query.toLowerCase();
+  return themes.filter(
+    (p) =>
+      p.name.toLowerCase().includes(lower) ||
+      p.description.toLowerCase().includes(lower) ||
+      p.id.toLowerCase().includes(lower) ||
+      p.keywords?.some((k) => k.toLowerCase().includes(lower)) ||
+      p.author.toLowerCase().includes(lower),
+  );
+}
+
+/**
  * §69 security review (MEDIUM-2) — an id claimed twice resolves to NEITHER entry.
  *
  * THE ATTACK: every lookup in this codebase is `plugins.find((p) => p.id === id)`, so an

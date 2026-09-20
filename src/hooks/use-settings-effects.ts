@@ -8,11 +8,13 @@ import { useShallow } from "zustand/shallow";
 
 import { useFeatureFlags } from "../stores/settings/features";
 import { useSettingsStore } from "../stores/settings/store";
+import { useThemeCssCacheStore } from "../stores/system/theme-css-cache";
 import {
   RIGHT_PANEL_MODE_FEATURE,
   SIDEBAR_PANEL_FEATURE,
 } from "../stores/ui/panel-feature";
 import { useUIStore } from "../stores/ui/ui";
+import { lookupThemes } from "../themes/installed-theme-defs";
 import { findThemeById, resolveThemeMode } from "../types/theme";
 import { applyFontVariables } from "../utils/editor/font-surfaces";
 import { resolveCodeMetrics } from "../utils/font/code-metrics";
@@ -24,6 +26,7 @@ import {
   clearThemeVars,
   themePreviewOwned,
 } from "../utils/theme-vars";
+import { useThemeCssHydration } from "./use-theme-css-hydration";
 
 export function useSettingsEffects(editor: Editor | null) {
   const {
@@ -32,6 +35,7 @@ export function useSettingsEffects(editor: Editor | null) {
     codeFontSize,
     codeLineHeight,
     customThemes,
+    installedThemes,
     fontSize,
     fontFamily,
     lineHeight,
@@ -45,6 +49,7 @@ export function useSettingsEffects(editor: Editor | null) {
       codeFontSize: s.codeFontSize,
       codeLineHeight: s.codeLineHeight,
       customThemes: s.customThemes,
+      installedThemes: s.installedThemes,
       fontSize: s.fontSize,
       fontFamily: s.fontFamily,
       lineHeight: s.lineHeight,
@@ -53,6 +58,12 @@ export function useSettingsEffects(editor: Editor | null) {
       editorMaxWidth: s.editorMaxWidth,
     })),
   );
+  // §361 — a community theme's CSS text is not in the settings store (only a `css: boolean`
+  // flag is; see `InstalledTheme`'s doc comment), so it has to be re-read off disk. This
+  // hook does that re-read and drops the result in `useThemeCssCacheStore`, which the apply
+  // effect below reads via `cssCacheEntries`.
+  useThemeCssHydration(activeThemeId, installedThemes);
+  const cssCacheEntries = useThemeCssCacheStore((s) => s.entries);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -74,7 +85,10 @@ export function useSettingsEffects(editor: Editor | null) {
       const themeDef =
         activeThemeId === "system"
           ? undefined
-          : findThemeById(activeThemeId, customThemes);
+          : findThemeById(
+              activeThemeId,
+              lookupThemes(customThemes, installedThemes, cssCacheEntries),
+            );
       const mode =
         themeDef === undefined
           ? undefined
@@ -126,7 +140,11 @@ export function useSettingsEffects(editor: Editor | null) {
     };
     mql.addEventListener("change", onSchemeChange);
     return () => mql.removeEventListener("change", onSchemeChange);
-  }, [activeThemeId, customThemes]);
+    // §361 — `installedThemes`/`cssCacheEntries` added: a community theme's CSS arrives
+    // AFTER this effect's first run (the hydration hook above fetches it asynchronously),
+    // so the effect has to re-run once the cache fills in, or the theme stays colour-only
+    // until something else happens to change activeThemeId/customThemes.
+  }, [activeThemeId, customThemes, installedThemes, cssCacheEntries]);
 
   useEffect(() => {
     // §perf-large-file C3.4: resolve via editor.view.dom rather than a global

@@ -1990,6 +1990,19 @@
       "milestone": "M11",
       "status": "implemented",
       "description": "설치된 테마의 저장(위생 처리된) CSS 한 모드. 경로 조각을 호출자가 고를 수 없다 — themeId 는 single_segment, mode 는 닫힌 enum 이다. 그 모드에 CSS 가 없으면 NotFound"
+    },
+    {
+      "name": "theme_uninstall",
+      "input": {
+        "themeId": "string"
+      },
+      "output": "void",
+      "module": "theme",
+      "spec": "§361",
+      "phase": 3,
+      "milestone": "M11",
+      "status": "implemented",
+      "description": "설치된 테마 제거. plugin_uninstall 과 같은 함수(uninstall_installed)를 InstallKind::Theme 로 호출한다 — Task 3 이 이미 kind 로 일반화해 두어 새 Rust 로직 없이 래퍼 하나로 끝난다"
     }
   ],
   "events": [

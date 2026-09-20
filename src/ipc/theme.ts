@@ -1,9 +1,10 @@
 // §360 테마 설치 IPC 래퍼 (스펙 0049 §9).
 //
-// 다섯 커맨드의 순서가 곧 보안 속성이다 — 근거는 Rust 쪽
+// 설치 다섯 커맨드의 순서가 곧 보안 속성이다 — 근거는 Rust 쪽
 // `src-tauri/src/commands/theme_cmd.rs` 머리주석에 한 번만 적혀 있다. 여기서
 // 되풀이하지 않는 이유는 그 순서를 강제하는 것이 이 파일이 아니라 커맨드 집합의
-// 모양이기 때문이다(스테이징 트리에 쓰는 커맨드가 아예 없다).
+// 모양이기 때문이다(스테이징 트리에 쓰는 커맨드가 아예 없다). `themeUninstall`(§361)은
+// 그 다섯에 들지 않는다 — 제거는 설치 순서와 무관한 별개의 생명주기 동작이다.
 import { invoke } from "@tauri-apps/api/core";
 
 import type { ThemeMode } from "../types/theme";
@@ -99,4 +100,15 @@ export async function themeReadStoredCss(
   mode: ThemeMode,
 ): Promise<string> {
   return invoke<string>("theme_read_stored_css", { mode, themeId });
+}
+
+/**
+ * §361 설치된 테마를 제거한다. `plugin::uninstall_installed`를 `InstallKind::Theme`로
+ * 부르는 얇은 래퍼 — Task 3이 이미 kind로 일반화해 둔 것을 그대로 쓴다. 성공해도 설정
+ * 스토어의 `installedThemes` 기록은 이 함수가 지우지 않는다: 호출자가
+ * `removeInstalledTheme`으로 따로 지운다(플러그인의 `handleUninstall`과 같은 순서 —
+ * 디스크 삭제가 실패하면 기록을 남겨 사라진 척하지 않는다).
+ */
+export async function themeUninstall(themeId: string): Promise<void> {
+  return invoke<void>("theme_uninstall", { themeId });
 }

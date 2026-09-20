@@ -244,13 +244,28 @@ export type ThemeInstallResult =
     }
   | { installed: InstalledTheme; ok: true };
 
-/** 설치가 멈춘 이유. UI 가 locale 문장으로 바꾼다. */
+/**
+ * 설치가 멈춘 이유. UI 가 locale 문장으로 바꾼다.
+ *
+ * 타입이 아니라 배열이 원본이다 — `THEME_CSS_ERROR_CODES`(`utils/theme-css/errors.ts`)와
+ * 같은 이유다. 이 배열이 있어야 "이 값 하나하나에 문장이 붙는가"를 런타임에 셀 수 있고,
+ * 그 검사는 `i18n/__tests__/locale-parity.test.ts`에 있다.
+ */
+export const THEME_INSTALL_FAILURE_REASONS = [
+  /** 다운로드·checksum·origin 검사·아카이브 추출 중 실패했다. */
+  "downloadFailed",
+  /** 매니페스트는 읽었지만 위생 파이프라인(sanitize·inline·verify) 어느 층이 거부했다. */
+  "cssRejected",
+  /** 다운로드한 매니페스트의 `id`가 레지스트리 항목의 `id`와 다르다. */
+  "idMismatch",
+  /** `validateThemeManifest`가 구조를 거부했다. `errors`에 필드별 사유가 실린다. */
+  "manifestInvalid",
+  /** 위생을 통과한 뒤 Rust 쪽 commit(디스크 쓰기·원자적 swap)이 실패했다. */
+  "commitFailed",
+] as const;
+
 export type ThemeInstallFailure =
-  | "commitFailed"
-  | "cssRejected"
-  | "downloadFailed"
-  | "idMismatch"
-  | "manifestInvalid";
+  (typeof THEME_INSTALL_FAILURE_REASONS)[number];
 
 /**
  * 레지스트리 항목 하나를 설치한다.
