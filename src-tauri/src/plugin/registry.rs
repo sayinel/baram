@@ -322,11 +322,14 @@ mod tests {
     fn test_committed_registry_seed_deserializes() {
         const SEED: &str = include_str!("../../../registry/index.json");
         let idx: RegistryIndex = serde_json::from_str(SEED).unwrap();
-        // §260 Phase 6 — one entry: `baram-ai-summary` was withdrawn from the index because
-        // it needs a declarative `sidebar` contribution that does not exist yet, so it
-        // cannot be a sandboxed plugin and must not be published as a trusted one.
+        // §260 Phase 6 — `baram-ai-summary` was withdrawn from the index because it needs
+        // a declarative `sidebar` contribution that does not exist yet, so it cannot be a
+        // sandboxed plugin and must not be published as a trusted one. §69 seeded Bullet
+        // Threading beside word-count; a seed edit that does not touch this list goes
+        // unnoticed by CI (`registry/index.json` is outside the rust path filter), so the
+        // list here is the one to update together with the seed.
         let ids: Vec<&str> = idx.plugins.iter().map(|p| p.id.as_str()).collect();
-        assert_eq!(ids, vec!["baram-word-count"]);
+        assert_eq!(ids, vec!["baram-word-count", "baram-bullet-threading"]);
         for entry in &idx.plugins {
             assert!(
                 entry
@@ -350,11 +353,14 @@ mod tests {
             assert!(entry.checksum.chars().all(|c| c.is_ascii_hexdigit()));
             // §260 Phase 6 — an entry without a tier is one the app refuses to install
             // (Phase 5 reads it as legacy), so a seed missing it would model a dead registry.
-            assert_eq!(
-                entry.trust.as_deref(),
-                Some("sandboxed"),
-                "{} must declare its tier",
-                entry.id
+            // §69 — the tier is either one: the release allowlist names a tier per plugin
+            // directory, and an editor plugin (Bullet Threading) ships trusted by
+            // construction, since the sandboxed tier refuses `tiptapExtensions`.
+            assert!(
+                matches!(entry.trust.as_deref(), Some("sandboxed" | "trusted")),
+                "{} must declare a known tier, got {:?}",
+                entry.id,
+                entry.trust
             );
         }
     }
