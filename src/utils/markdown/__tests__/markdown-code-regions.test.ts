@@ -8,7 +8,7 @@ import {
   replaceOutsideCode,
 } from "../markdown-code-regions";
 import { inlineSpans } from "../markdown-inline-spans";
-import { splitLines } from "../markdown-source";
+import { orderedRegions, splitLines } from "../markdown-source";
 
 const spansOf = (md: string, mathCrossesLines = true) =>
   inlineSpans(md, splitLines(md), { mathCrossesLines, skip: [] }).map(
@@ -196,6 +196,44 @@ describe("collectCodeRegions", () => {
     // a paragraph ends there — and a `$$` inside a code span is code.
     expect(collectCodeRegions("$$_{a\n\nb}$$ x")).toEqual([]);
     expect(collectCodeRegions("`$$` x $$")).toEqual([{ end: 4, start: 0 }]);
+  });
+});
+
+describe("orderedRegions", () => {
+  it("refuses a region that begins before the last one ended, or before its own start", () => {
+    // With the merge step gone, nothing reorders or fuses regions before
+    // they reach a consumer. A region out of order or overlapping the last
+    // would put its filler on the shadow twice, and the Notion math pass
+    // would copy text twice, so every offset after it would point at the
+    // wrong byte of the original — silently. The check turns that into an
+    // error the export surfaces.
+    expect(() =>
+      orderedRegions([
+        { end: 2, start: 0 },
+        { end: 3, start: 1 },
+      ]),
+    ).toThrow(/begins before the last one ended/);
+    expect(() =>
+      orderedRegions([
+        { end: 3, start: 2 },
+        { end: 1, start: 0 },
+      ]),
+    ).toThrow(/begins before the last one ended/);
+    // An inverted region would move the cursor backwards — the same
+    // lengthened shadow by another route.
+    expect(() =>
+      orderedRegions([
+        { end: 1, start: 2 },
+        { end: 4, start: 3 },
+      ]),
+    ).toThrow(/ends before it begins/);
+    // Touching and empty regions are in order and pass through unchanged.
+    const ok = [
+      { end: 2, start: 0 },
+      { end: 2, start: 2 },
+      { end: 3, start: 2 },
+    ];
+    expect(orderedRegions(ok)).toBe(ok);
   });
 });
 

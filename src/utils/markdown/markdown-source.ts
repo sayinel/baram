@@ -24,6 +24,30 @@ export interface SourceLine {
   start: number;
 }
 
+/** `regions` as given, once each begins at or past the end of the one
+ *  before it and at or before its own end — the inline scanner's output
+ *  contract, which the consumers rely on and nothing re-establishes: the
+ *  shadow would carry a region's filler twice and grow, the Notion math
+ *  pass would copy text twice, and every later offset would point at the
+ *  wrong byte of the original, silently. A merge step once hid such a
+ *  fault instead of reporting it, and fused touching regions on the way
+ *  (issue 691). So the fault is an error the export surfaces. */
+export function orderedRegions<R extends readonly CodeRegion[]>(regions: R): R {
+  let cursor = 0;
+  for (const { end, start } of regions) {
+    if (start < cursor) {
+      throw new Error(
+        `code region [${start}, ${end}) begins before the last one ended at ${cursor}`,
+      );
+    }
+    if (end < start) {
+      throw new Error(`code region [${start}, ${end}) ends before it begins`);
+    }
+    cursor = end;
+  }
+  return regions;
+}
+
 /** Is the character at `index` live — preceded by an even run of backslashes? */
 export function isLive(md: string, index: number): boolean {
   let run = 0;

@@ -17,7 +17,7 @@
 import { fencedCodeRegions } from "./markdown-block-regions";
 import { inlineSpans } from "./markdown-inline-spans";
 import { markupRegions } from "./markdown-markup-regions";
-import { type CodeRegion, splitLines } from "./markdown-source";
+import { type CodeRegion, orderedRegions, splitLines } from "./markdown-source";
 
 /** What `collectCodeRegions` protects beyond fences, block math and inline
  *  code. Inline math is opt-in: a converter that REWRITES `$…$` (the Notion
@@ -64,7 +64,9 @@ export interface ReplaceOutsideCodeOptions extends CodeRegionOptions {
 const FILLER = "\uE000";
 
 /** `md` with every region's characters replaced by {@link FILLER}, its line
- *  breaks kept. `regions` must be sorted and non-overlapping. */
+ *  breaks kept. `regions` must be sorted and non-overlapping, or the shadow
+ *  would carry a region's filler twice and grow; `collectCodeRegions`
+ *  checks that (`orderedRegions`) before handing them over. */
 function blankRegions(md: string, regions: readonly CodeRegion[]): string {
   const parts: string[] = [];
   let cursor = 0;
@@ -109,7 +111,7 @@ export function collectCodeRegions(
     if (span.kind === "math" && span.n === 1 && !options.inlineMath) continue;
     regions.push({ end: span.end, start: span.start });
   }
-  return regions;
+  return orderedRegions(regions);
 }
 
 /** The inline math spans written with one dollar — `$…$` within a line,
@@ -122,9 +124,11 @@ export function inlineMathSpans(md: string): CodeRegion[] {
   const skip = [...fencedCodeRegions(md, lines), ...markupRegions(md)].sort(
     (a, b) => a.start - b.start,
   );
-  return inlineSpans(md, lines, { mathCrossesLines: false, skip })
-    .filter((span) => span.kind === "math" && span.n === 1)
-    .map(({ end, start }) => ({ end, start }));
+  return orderedRegions(
+    inlineSpans(md, lines, { mathCrossesLines: false, skip })
+      .filter((span) => span.kind === "math" && span.n === 1)
+      .map(({ end, start }) => ({ end, start })),
+  );
 }
 
 /**

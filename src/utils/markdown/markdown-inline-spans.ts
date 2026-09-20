@@ -76,6 +76,17 @@ function indexRuns(md: string): { byKey: Map<string, number[]>; runs: Run[] } {
  *
  * Linear: the runs are indexed once by kind and length, and every cursor —
  * over runs, lines, blank lines, skip regions — moves forward only.
+ *
+ * Output contract: the spans come sorted by start and non-overlapping —
+ * each begins at or past the end of the one before it (touching is
+ * ordinary: `[a](p)\`x\``). A skip candidate that begins inside an honoured
+ * region, or inside an open code span or formula, is dropped as that
+ * construct's text, and the skip cursor `s` and the run cursor `k` only
+ * ever advance past what was emitted; `skip` itself must be sorted by
+ * start. The shadow and the Notion math pass rely on this order, and
+ * `collectCodeRegions` and `inlineMathSpans` check it (`orderedRegions`)
+ * instead of merging — a merge step once fused touching regions and hid a
+ * destination's start.
  */
 export function inlineSpans(
   md: string,
