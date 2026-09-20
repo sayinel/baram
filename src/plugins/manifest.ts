@@ -213,16 +213,19 @@ export function validateManifest(
       }
       for (let i = 0; i < obj.tiptapExtensions.length; i++) {
         const ext = obj.tiptapExtensions[i] as Record<string, unknown>;
-        // §260 스펙 0050 §3.2 — `node`/`mark` 는 SCHEMA 를 바꾸고, 스키마는 에디터를
-        // 만들 때 한 번 만들어진다. 플러그인은 그 뒤에 로드되므로 지금은 받을 수 없다.
-        // 통과시킨 뒤 버리는 것이 이 필드의 원래 결함이었으므로, 여기서 거부한다.
+        // §260 스펙 0050 §3.2 — `node`/`mark` 는 SCHEMA 를 바꾸는데, 스키마는 그것을 쓰는
+        // 에디터를 만들 때 고정되고, 닿아야 할 에디터도 하나가 아니다: 큰 문서를 열 때마다
+        // 자기 스키마를 가진 keep-alive 에디터가 플러그인이 로드된 뒤에도 새로 생긴다. 그래서
+        // 지금은 받을 수 없다. 통과시킨 뒤 버리는 것이 이 필드의 원래 결함이었으므로,
+        // 여기서 거부한다.
         if (ext.type !== "plugin") {
           errors.push({
             field: `tiptapExtensions[${i}].type`,
             message:
               'type must be "plugin". Contributing a node or a mark changes the ' +
-              "schema, which is built once when the editor is created — before " +
-              "plugins load — so it is not supported yet. Decorations, keyboard " +
+              "schema, which is fixed when its editor is created — and the app " +
+              "creates more than one editor, some of them after plugins have " +
+              "loaded — so it is not supported yet. Decorations, keyboard " +
               'handlers and input rules all fit in a "plugin" contribution.',
           });
         }

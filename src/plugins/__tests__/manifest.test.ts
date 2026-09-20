@@ -635,9 +635,11 @@ describe("validateManifest — trust tier (§260)", () => {
     expect(result.valid).toBe(true);
   });
 
-  // §260 spec 0050 §3.2 — `node`/`mark` change the SCHEMA, which is built once when
-  // the editor is created, before plugins load. Passing them through and then
-  // dropping them silently was this field's original defect; reject them instead.
+  // §260 spec 0050 §3.2 — `node`/`mark` change the SCHEMA, which is fixed when its
+  // editor is created; and there is more than one editor to reach, including
+  // keep-alive editors built for large documents after plugins have loaded. Passing
+  // them through and then dropping them silently was this field's original defect;
+  // reject them instead.
   it("rejects a node contribution, which the editor cannot take at runtime", () => {
     const result = validateManifest({
       ...base,

@@ -546,8 +546,9 @@ export interface TiptapExtensionDef {
   exportName: string;
   name: string;
   /**
-   * `"plugin"` 뿐이다. `node`/`mark` 는 SCHEMA 를 바꾸고 스키마는 에디터 생성 시 한 번
-   * 만들어지는데 플러그인은 그 뒤에 로드된다 — 스펙 0050 §3.2 의 재개 조건 참조.
+   * `"plugin"` 뿐이다. `node`/`mark` 는 SCHEMA 를 바꾸는데, 스키마는 그것을 쓰는 에디터를
+   * 만들 때 고정되고, 닿아야 할 에디터도 하나가 아니다 — 큰 문서를 열 때마다 자기 스키마를 가진
+   * keep-alive 에디터가 플러그인이 로드된 뒤에도 새로 생긴다. 스펙 0050 §3.2 의 재개 조건 참조.
    */
   type: "plugin";
 }

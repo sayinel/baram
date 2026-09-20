@@ -38,12 +38,14 @@ the manifest, and require the `extensions` capability:
 ```
 
 `type` must be `"plugin"` — `"node"` and `"mark"` are **rejected** by
-`validateManifest`. A node or a mark changes the ProseMirror *schema*, and
-the schema is built once, when the editor is created, before any plugin
-loads. There is no supported way for a plugin to add to it yet. Decorations,
-keyboard handlers, input rules and paste rules — most of what an editor
-plugin wants — all fit inside a ProseMirror `Plugin`, so this is rarely a
-real limitation.
+`validateManifest`. A node or a mark changes the ProseMirror *schema*, and a
+schema is fixed when its editor is created. There is also more than one
+editor to reach: besides the shared one, the app builds a keep-alive editor —
+a separate editor with its own schema — each time a large document is loaded,
+which can happen long after plugins have loaded. There is no supported way for
+a plugin to add to a schema yet. Decorations, keyboard handlers, input rules and paste rules —
+most of what an editor plugin wants — all fit inside a ProseMirror `Plugin`,
+so this is rarely a real limitation.
 
 Then export a **factory** from your entry point. The factory receives a
 context object and must return exactly one ProseMirror `Plugin`:
@@ -107,10 +109,10 @@ decoration sitting in that range gets recreated (visible flicker), and
 you need to draw something in the editor, contribute a `"plugin"` and use
 decorations — that's what this API is for.
 
-**There is more than one editor.** An inactive tab's `MarkdownSurface` stays
-mounted under `display: none` rather than unmounting, and a keep-alive
-editor is mounted alongside the visible one — so
-`document.querySelector(".tiptap")` will usually find a hidden editor, not
-the one the user is looking at. A contributed plugin's factory is handed its
-own `ctx.editor` for the surface it was installed on, so it never has to
+**There is more than one editor.** The markdown surface mounts the shared
+editor and — for a large document — a keep-alive editor as siblings, with
+`display: none` on whichever is inactive, so
+`document.querySelector(".tiptap")` can return the hidden one rather than
+the editor the user is looking at. A contributed plugin's factory is handed
+its own `ctx.editor` for the surface it was installed on, so it never has to
 guess.

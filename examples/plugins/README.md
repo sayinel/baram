@@ -29,10 +29,12 @@ examples/plugins/
 
 **Looking for an editor-contribution example?** Neither `word-count/` nor
 `ai-summary/` contributes a Tiptap/ProseMirror extension — both stick to UI
-and events, not editor behavior. A plugin can contribute one ProseMirror
-`Plugin` (decorations, keyboard handlers, input rules — not a new node or
+and events, not editor behavior. A plugin can contribute ProseMirror
+`Plugin`s (decorations, keyboard handlers, input rules — not a new node or
 mark; see below) to the live editor via `tiptapExtensions` + the
-`extensions` capability. For the factory shape, the two traps that catch
+`extensions` capability: one per `tiptapExtensions` entry, and the
+manifest validator sets no limit on how many entries one plugin
+declares. For the factory shape, the two traps that catch
 editor-touching plugins, and why `type: "node"`/`"mark"` are rejected, see
 [Tiptap Extension plugins](https://baram.ing/en/docs/plugin-dev/commands-and-tiptap-extensions/#tiptap-extension-plugins)
 in the docs. There is no such example plugin in this directory yet —
