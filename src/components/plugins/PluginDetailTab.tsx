@@ -18,6 +18,7 @@ import type { RegistryIndex } from "../../plugins/types";
 import { useShallow } from "zustand/shallow";
 
 import { useTranslation } from "../../i18n/useTranslation";
+import { pluginFetchReadme } from "../../ipc/plugin-invoke";
 import {
   derivePluginSource,
   entryFromManifest,
@@ -120,23 +121,47 @@ export function PluginDetailTab({ pluginId }: { pluginId: string }) {
   // on any plugin write, so depending on the object identity re-read the README every time an
   // unrelated plugin was toggled. `undefined` means built-in — compiled in, nothing on disk.
   const installPath = installed?.installPath;
+  // The listing's README URL, for a plugin that is NOT installed. Read off the index rather
+  // than off `entry`, which is computed below and prefers the installed manifest.
+  const listedReadmeUrl = registryIndex?.plugins.find(
+    (p) => p.id === pluginId,
+  )?.readme;
   useEffect(() => {
-    if (installPath === undefined) {
-      setReadme(null);
-      return;
-    }
     let cancelled = false;
-    readPluginReadme(installPath)
-      .then((content) => {
-        if (!cancelled) setReadme(content);
-      })
-      .catch(() => {
-        if (!cancelled) setReadme(null);
-      });
+    const settle = (content: null | string) => {
+      if (!cancelled) setReadme(content);
+    };
+
+    if (installPath !== undefined) {
+      // Installed: read the copy on disk. It is the one that matches the code actually
+      // running, which the listing's need not be — an update can be pending.
+      readPluginReadme(installPath).then(settle, () => settle(null));
+    } else if (listedReadmeUrl) {
+      // ‼️ NOT INSTALLED, AND THIS IS THE CASE THE FIELD EXISTS FOR. Before it, the only
+      // thing on this screen for a plugin the user had not installed was the entry's
+      // one-line `description` — so deciding whether to accept a full-trust prompt meant
+      // installing first to read what the plugin does. The registry URL travels with the
+      // request because Rust checks the README is under the index that listed it.
+      // The store's URL, not the default constant — it is the one `fetchRegistryIndex` read,
+      // so the README is checked against the index this entry actually came from.
+      const registryUrl = usePluginStore.getState().registryUrl;
+      pluginFetchReadme(registryUrl, listedReadmeUrl).then(
+        settle,
+        (err: unknown) => {
+          // Quiet: a listing without a reachable README is a normal state (an older entry, a
+          // registry mid-deploy), and the page renders without the section.
+          logger.warn("[PluginDetailTab] listing readme fetch failed:", err);
+          settle(null);
+        },
+      );
+    } else {
+      settle(null);
+    }
+
     return () => {
       cancelled = true;
     };
-  }, [installPath]);
+  }, [installPath, listedReadmeUrl]);
 
   // The listing is the fallback, not the preference: it is the only source for a plugin the
   // user has not installed, which is also the only case where `downloadUrl` matters.

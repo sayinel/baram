@@ -247,6 +247,23 @@ jobs:
             || fail "the verified tier did not reach this step (got '$EXPECTED_TRUST') — this is a bug in this workflow, not a refusal"
           [[ "$ZIP_TRUST" == "$EXPECTED_TRUST" ]] \
             || fail "the archive declares trust '$ZIP_TRUST' but '$EXPECTED_TRUST' was verified"
+          # §69 — the README, taken OUT OF THE VERIFIED ARCHIVE for the same reason the manifest
+          # is: the copy published beside the index must be the copy inside the ZIP, or the
+          # marketplace shows one document before an install and a different one after. Reading
+          # it from `examples/plugins/$DIR/` instead would reintroduce exactly the directory
+          # binding round-5 HIGH-1 removed.
+          #
+          # ABSENT IS LEGAL, and the index simply carries no `readme` for that entry. A plugin
+          # without a README is a thin listing, not a failed release — and `Package ZIP` would
+          # already have failed if `README.md` were named and missing.
+          README="$RUNNER_TEMP/packaged-readme.md"
+          if unzip -p "$RUNNER_TEMP/$ZIP_NAME" README.md > "$README" 2>/dev/null \
+             && [[ -s "$README" ]]; then
+            echo "readme=$README" >> "$GITHUB_OUTPUT"
+          else
+            rm -f "$README"
+            echo "::notice::the archive has no README.md — the listing will carry no readme URL"
+          fi
           echo "manifest=$MANIFEST" >> "$GITHUB_OUTPUT"
 
       - name: Compute checksum
@@ -286,18 +303,34 @@ jobs:
           # entry advertising `trust: "trusted"` past both gates Phase 6 rests on, with the whole
           # test suite green. There is no directory binding here any more.
           PACKAGED_MANIFEST: ${{ steps.artifact.outputs.manifest }}
+          # Empty when the archive carried no README — the index then gets no `readme` for
+          # this entry, which is a legal listing rather than a failure.
+          PACKAGED_README: ${{ steps.artifact.outputs.readme }}
+          PLUGIN_ID: ${{ steps.meta.outputs.plugin_id }}
+          VERSION: ${{ steps.meta.outputs.version }}
           ZIP_NAME: ${{ steps.meta.outputs.zip_name }}
           CHECKSUM: ${{ steps.sum.outputs.checksum }}
         run: |
           git clone --depth 1 "https://github.com/${REGISTRY_REPO}.git" "$RUNNER_TEMP/registry"
           mkdir -p "$RUNNER_TEMP/registry/plugins"
           cp "$RUNNER_TEMP/$ZIP_NAME" "$RUNNER_TEMP/registry/plugins/"
+          # §69 — the README beside its archive, named by id AND version so a release never
+          # rewrites the document an older entry still points at. `readme/` rather than
+          # `plugins/` keeps `validate-registry-assets.ts`'s archive sweep looking at archives.
+          README_ARGS=()
+          if [[ -n "$PACKAGED_README" ]]; then
+            mkdir -p "$RUNNER_TEMP/registry/readme"
+            README_NAME="$PLUGIN_ID-$VERSION.md"
+            cp "$PACKAGED_README" "$RUNNER_TEMP/registry/readme/$README_NAME"
+            README_ARGS=(--readme-name "$README_NAME")
+          fi
           node scripts/update-registry-index.mjs \
             --index "$RUNNER_TEMP/registry/index.json" \
             --manifest "$PACKAGED_MANIFEST" \
             --zip-name "$ZIP_NAME" \
             --checksum "$CHECKSUM" \
-            --base-url "$BASE_URL"
+            --base-url "$BASE_URL" \
+            "${README_ARGS[@]}"
           # The WHOLE index, not just the entry written above. `update-registry-index.mjs`
           # validates its own manifest input, but nothing has ever read the entries already in
           # the registry — and those are where a hand-added or community entry lands. The app
@@ -333,7 +366,13 @@ jobs:
           git remote set-url origin "git@github.com:${REGISTRY_REPO}.git"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # `readme/` is staged as a DIRECTORY rather than by name: the file is written only
+          # when the archive had one, and `git add` on a path that does not exist aborts the
+          # step — which would fail a perfectly good release of a plugin without a README.
+          # An unchanged or absent directory adds nothing and the `--quiet` check below still
+          # decides whether there is anything to publish.
           git add "plugins/$ZIP_NAME" index.json
+          git add readme 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "::notice::Registry already contains this exact release — nothing to publish."
             exit 0

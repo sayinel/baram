@@ -1,6 +1,6 @@
 ---
 title: "레지스트리 JSON 모양"
-sourceHash: "078e0cb5a574"
+sourceHash: "bd737b07ff97"
 ---
 
 
@@ -32,6 +32,7 @@ interface RegistryEntry {
   downloads?: number;
   repository?: string;
   homepage?: string;
+  readme?: string; // 플러그인 README 의 https URL — 설치 **전에** 보여 준다
 }
 ```
 
@@ -39,6 +40,34 @@ interface RegistryEntry {
 같습니다). `downloadUrl`은 플러그인을 담은 호스팅된 ZIP을 가리켜야 하고(아래 패키징 단계와 같은
 내용), `checksum`은 그 ZIP의 SHA-256을 16진수로 적은 것입니다. 레지스트리 설치는 ZIP을 풀기 전에
 `checksum`을 검증합니다 — 해시가 맞지 않는 패키지는 호스트가 설치를 거부합니다.
+
+### `readme`
+
+아카이브의 `README.md`를 그 옆에 함께 배포한 것으로, 마켓플레이스가 **설치 전에** 보여 줄 수
+있게 합니다. 이것이 없으면 목록 페이지에 있는 것은 한 줄짜리 `description`뿐이라, full-trust
+동의할 것인지 판단하려면 **먼저 설치해서 무엇을 하는 플러그인인지 읽어야** 했습니다.
+
+이 필드는 직접 쓰는 것이 아닙니다. `plugin-release.yml`이 검증된 아카이브에서 `README.md`를
+꺼내 `readme/<id>-<version>.md`로 배포하고, `update-registry-index.mjs`가 URL을 채웁니다.
+README가 없는 아카이브는 이 필드가 없는 엔트리가 되며, 그것은 적법하고 앞으로도 그렇습니다 —
+이 필드가 생기기 전에 배포된 모든 엔트리가 그 상태입니다.
+
+지키는 규칙이 셋이고, **각각 확인할 수 있는 곳이 달라서** 세 군데에서 강제됩니다.
+
+- **반드시 https.** `downloadUrl`이 평문 http인 것은 경고에 그칩니다 — 체크섬이 바이트를
+  증명하니까요. README를 증명하는 것은 아무것도 없고, 사용자가 신뢰 여부를 판단하는 화면에
+  마크다운으로 렌더됩니다. 그래서 `validate-index.ts`는 이것을 오류로 다룹니다.
+- **그것을 목록에 올린 레지스트리 안에 있을 것.** 앱이 가져오는 시점에 Rust에서 확인하고,
+  **리다이렉트 매 홉을 다시 검사**합니다 — `downloadUrl`이 받는 것과 같은 가드입니다.
+  `validate-index.ts`는 이걸 확인할 수 없습니다. 그 스크립트는 문서를 판정할 뿐, 그 문서가
+  어느 URL에서 서빙됐는지 듣지 못합니다.
+- **실제로 존재할 것.** `validate-registry-assets.ts`가 아카이브에 대해 하는 것처럼, 파일이
+  레지스트리에 있는지 확인합니다.
+
+**체크섬은 일부러 두지 않습니다.** 아카이브에 체크섬이 있는 이유는 앱이 그 바이트를
+*실행*하기 때문입니다. README는 신뢰하지 않는 마크다운 sanitizer를 거쳐 렌더되고, 해시를 두면
+배포된 아카이브 옆의 문서가 고정되어 — 발행된 README의 오타 하나를 고치는 데 버전 올리기가
+필요해집니다.
 
 ### 아카이브 한도
 

@@ -31,6 +31,7 @@ interface RegistryEntry {
   downloads?: number;
   repository?: string;
   homepage?: string;
+  readme?: string; // https URL of the plugin's README, shown BEFORE install
 }
 ```
 
@@ -40,6 +41,38 @@ containing the plugin (same contents as the packaging step below); `checksum`
 is that ZIP's SHA-256, hex-encoded. Registry installs verify `checksum`
 before extracting the ZIP — the host refuses to install a package whose hash
 doesn't match.
+
+### `readme`
+
+The archive's `README.md`, published beside it so the marketplace can show it
+**before** anything is installed. Without it the only thing on a listing's page
+is the one-line `description`, which meant deciding whether to accept a
+full-trust prompt required installing the plugin first to read what it does.
+
+You do not write this field: `plugin-release.yml` extracts `README.md` from the
+verified archive, publishes it as `readme/<id>-<version>.md`, and
+`update-registry-index.mjs` fills in the URL. An archive with no README simply
+produces an entry without the field, which is legal and always will be — every
+entry published before this existed is in that state.
+
+Three rules it is held to, and they are enforced in three different places
+because each one can only be checked where it is:
+
+- **https, always.** A plain-http `downloadUrl` is a warning because the
+  checksum still attests the bytes; nothing attests a README, and it is
+  rendered as markdown on the screen a user reads to decide about trust. So
+  `validate-index.ts` makes this an error.
+- **Inside the registry that listed it.** Checked by the app at the moment it
+  is fetched, in Rust, with every redirect hop re-checked — the same guard
+  `downloadUrl` gets. It cannot be checked by `validate-index.ts`, which judges
+  a document and is never told which URL that document was served from.
+- **Actually present.** `validate-registry-assets.ts` requires the file to be
+  in the registry, the way it does for archives.
+
+There is deliberately **no checksum** for it. The archive has one because the
+app executes those bytes; a README is rendered through the untrusted markdown
+sanitiser, and a hash would freeze the document beside a released archive — so
+fixing a typo in a published README would need a version bump.
 
 ### Archive limits
 

@@ -137,6 +137,12 @@ if (!Array.isArray(plugins)) {
  */
 function resolveInRegistry(
   url: string,
+  /**
+   * Which field this URL came from, so the refusals name it. Parameterised when `readme`
+   * joined `downloadUrl` here: a message that says "downloadUrl" about a readme sends the
+   * operator to the wrong line of the index.
+   */
+  field = "downloadUrl",
 ): { error: string } | { relative: string } {
   let parsed: URL;
   let base: URL;
@@ -144,7 +150,7 @@ function resolveInRegistry(
     parsed = new URL(url);
     base = new URL(baseUrl);
   } catch {
-    return { error: `downloadUrl ${label(JSON.stringify(url))} is not a URL` };
+    return { error: `${field} ${label(JSON.stringify(url))} is not a URL` };
   }
   if (
     parsed.origin !== base.origin ||
@@ -162,15 +168,15 @@ function resolveInRegistry(
     // anywhere that says where a plugin may come from.
     return {
       error:
-        `downloadUrl ${label(JSON.stringify(url))} is not under ${baseUrl} — ` +
-        "the archive cannot be verified here, so publishing it would mean shipping an " +
-        "entry no gate has ever checked",
+        `${field} ${label(JSON.stringify(url))} is not under ${baseUrl} — ` +
+        "the file cannot be checked here, so publishing it would mean shipping an " +
+        "entry no gate has ever looked at",
     };
   }
   if (parsed.search !== "" || parsed.hash !== "") {
     return {
       error:
-        `downloadUrl ${label(JSON.stringify(url))} carries a query or fragment, so the ` +
+        `${field} ${label(JSON.stringify(url))} carries a query or fragment, so the ` +
         "path actually served is ambiguous",
     };
   }
@@ -180,7 +186,7 @@ function resolveInRegistry(
     relative = decodeURIComponent(encoded);
   } catch {
     return {
-      error: `downloadUrl ${label(JSON.stringify(url))} has invalid percent-encoding`,
+      error: `${field} ${label(JSON.stringify(url))} has invalid percent-encoding`,
     };
   }
   // Canonical form only. `%2e` decodes to `.` and `encodeURI(".")` is `.`, so a URL that
@@ -188,7 +194,7 @@ function resolveInRegistry(
   if (encodeURI(relative) !== encoded) {
     return {
       error:
-        `downloadUrl ${label(JSON.stringify(url))} is percent-encoded in a form the server ` +
+        `${field} ${label(JSON.stringify(url))} is percent-encoded in a form the server ` +
         "decodes differently — write the path literally so this can check the file users get",
     };
   }
@@ -198,13 +204,13 @@ function resolveInRegistry(
     relative.startsWith("/")
   ) {
     return {
-      error: `downloadUrl ${label(JSON.stringify(url))} does not name a file inside the registry`,
+      error: `${field} ${label(JSON.stringify(url))} does not name a file inside the registry`,
     };
   }
   const file = resolve(root, relative);
   if (!file.startsWith(resolve(root) + sep)) {
     return {
-      error: `downloadUrl ${label(JSON.stringify(url))} resolves outside the registry`,
+      error: `${field} ${label(JSON.stringify(url))} resolves outside the registry`,
     };
   }
   return { relative };
@@ -212,6 +218,16 @@ function resolveInRegistry(
 
 /** Archives an entry claimed, canonical, so orphans can be reported afterwards. */
 const referenced = new Set<string>();
+
+/**
+ * READMEs an entry claimed. Collected separately from `referenced` because the orphan sweep
+ * below walks `plugins/` and reports anything unclaimed there — feeding readme paths into
+ * the same set would say nothing about `readme/`, and pointing that sweep at both
+ * directories is a larger change than this one. An unreferenced readme is also a much
+ * cheaper mistake than an unreferenced archive: it is a stale document, not a plugin nobody
+ * can install.
+ */
+const referencedReadmes = new Set<string>();
 
 plugins.forEach((value, position) => {
   const entry = (value ?? {}) as Record<string, unknown>;
@@ -275,6 +291,54 @@ plugins.forEach((value, position) => {
         "told the download was corrupted",
     );
   }
+
+  // §69 — the README, EXISTENCE ONLY.
+  //
+  // Same failure this script was written for, one field over: an entry naming a readme that
+  // is not in the registry deploys cleanly, validates in `validate-index.ts` (which judges
+  // the document, not the deployment), and leaves every user on the plugin's page with the
+  // section silently missing — the one screen they read to decide about full trust.
+  //
+  // ‼️ NO CHECKSUM, DELIBERATELY, and this is the one asymmetry with the archive above. The
+  // index carries no hash for a readme and should not: the archive's checksum exists because
+  // the app EXECUTES those bytes, while this document is rendered as markdown through the
+  // untrusted sanitiser. Adding a hash here would freeze the copy beside a released archive,
+  // so fixing a typo in a published README would require a version bump. Existence is what
+  // this layer can prove; the origin rule is enforced at fetch time in Rust.
+  if (entry.readme !== undefined) {
+    if (typeof entry.readme !== "string") {
+      // Left to `validate-index.ts`, which owns the type table — but counted, for the same
+      // reason the archive's type check above is.
+      unchecked += 1;
+      return;
+    }
+    const resolvedReadme = resolveInRegistry(entry.readme, "readme");
+    if ("error" in resolvedReadme) {
+      errors.push(`${where}: ${resolvedReadme.error}`);
+      return;
+    }
+    const readmeShown = label(resolvedReadme.relative);
+    referencedReadmes.add(resolvedReadme.relative);
+    const readmeFile = join(root, resolvedReadme.relative);
+    if (!lstatSync(readmeFile, { throwIfNoEntry: false })?.isFile()) {
+      errors.push(
+        `${where}: ${readmeShown} is not a regular file in the registry — the plugin's ` +
+          "page would show no README at all, before install, with nothing reporting why",
+      );
+      return;
+    }
+    // The same case check the archive gets, for the same reason: Pages is case-sensitive
+    // and a maintainer's macOS checkout is not.
+    const readmeBase = resolvedReadme.relative.slice(
+      resolvedReadme.relative.lastIndexOf("/") + 1,
+    );
+    if (!readdirSync(dirname(readmeFile)).includes(readmeBase)) {
+      errors.push(
+        `${where}: ${readmeShown} differs from the file on disk only by case — the registry ` +
+          "is served case-sensitively, so this readme would 404 for every user",
+      );
+    }
+  }
 });
 
 /**
@@ -323,7 +387,8 @@ const archiveBelongsTo = (name: string, id: string) =>
  * are left to the parser: they are spellings the app would also treat as the same version,
  * and inventing a stricter grammar here is the mistake this comment opens by naming.
  */
-const isSemver = (v: string) => !/\s/u.test(v) && compareVersions(v, v) !== null;
+const isSemver = (v: string) =>
+  !/\s/u.test(v) && compareVersions(v, v) !== null;
 
 const indexedIds = plugins
   .map((p) => (p as null | { id?: unknown })?.id)
