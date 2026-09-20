@@ -1,16 +1,25 @@
 import { CURSOR_CLASS, THREAD_CLASS } from "./threading";
 
+/** How the item holding the caret is marked. */
+export type CaretMarker = "filled" | "halo" | "none";
+
 export interface ThreadSettings {
+  caretMarker: CaretMarker;
   color: string;
   lineWidth: number;
+  onlyWhenFocused: boolean;
   showElbow: boolean;
 }
 
 export const DEFAULT_SETTINGS: ThreadSettings = {
+  caretMarker: "halo",
   color: "var(--color-accent-default)",
   lineWidth: 2,
+  onlyWhenFocused: false,
   showElbow: true,
 };
+
+const CARET_MARKERS: readonly CaretMarker[] = ["filled", "halo", "none"];
 
 /**
  * What a colour may contain.
@@ -20,7 +29,7 @@ export const DEFAULT_SETTINGS: ThreadSettings = {
  * check is a character allowlist rather than a colour parser: every character that could
  * end the declaration and start a rule of its own (`;`, `{`, `}`, `:`, `/`, `@`) is
  * absent from it, which is the property that matters. It stays wide enough for hex,
- * `rgb()`, `hsl()`, a colour name, and `var(--token)` — pointing the thread at one of the
+ * `rgb()`, `hsl()`, a colour name, and `var(--…)` — pointing the thread at one of the
  * app's own tokens is a reasonable thing to want.
  */
 const SAFE_COLOR = /^[\w#(),.%\s-]{1,64}$/;
@@ -30,19 +39,33 @@ const SAFE_COLOR = /^[\w#(),.%\s-]{1,64}$/;
  * say which build it is showing — without it, "the rule did not apply" and "the reload
  * kept the old module" are indistinguishable from a screenshot.
  */
-const STYLE_REVISION = "4";
+const STYLE_REVISION = "5";
 
 const MIN_WIDTH = 0.5;
 const MAX_WIDTH = 8;
 
+/**
+ * ‼️ Every field is re-checked here even though the host now enforces the same bounds it
+ * declares (`min`/`max` on `lineWidth`, `options` on `caretMarker`, the colour allowlist).
+ * That is not redundancy to delete: the host guarantees what the CURRENT manifest says, and
+ * a plugin is handed values by whatever Baram the user is running — one that predates a
+ * field's constraints resolves it without them. The manifest is a request; this is the
+ * plugin's own answer, and it is what decides what goes into the stylesheet.
+ */
 export function resolveSettings(raw: Record<string, unknown>): ThreadSettings {
   return {
+    caretMarker: resolveOneOf(
+      raw.caretMarker,
+      CARET_MARKERS,
+      DEFAULT_SETTINGS.caretMarker,
+    ),
     color: resolveColor(raw.color),
     lineWidth: resolveWidth(raw.lineWidth),
-    showElbow:
-      typeof raw.showElbow === "boolean"
-        ? raw.showElbow
-        : DEFAULT_SETTINGS.showElbow,
+    onlyWhenFocused: resolveBoolean(
+      raw.onlyWhenFocused,
+      DEFAULT_SETTINGS.onlyWhenFocused,
+    ),
+    showElbow: resolveBoolean(raw.showElbow, DEFAULT_SETTINGS.showElbow),
   };
 }
 
@@ -65,6 +88,15 @@ export function resolveSettings(raw: Record<string, unknown>): ThreadSettings {
  * nothing to keep in sync.
  */
 export function buildCss(settings: ThreadSettings): string {
+  // `onlyWhenFocused` is one selector prefix, because ProseMirror already maintains the
+  // fact: `prosemirror-view` adds and removes `ProseMirror-focused` on `view.dom`, and
+  // `@tiptap/core` prepends `tiptap` to that SAME element's class list — so the two land
+  // together and no listener is needed here. The VARIABLE block below stays on plain
+  // `.tiptap`: it paints nothing, and `--bt-build` has to stay readable from a running app
+  // whether or not the editor happens to have focus.
+  const root = settings.onlyWhenFocused
+    ? `.tiptap.ProseMirror-focused`
+    : `.tiptap`;
   const railX = `calc(-1 * (var(--list-gutter, 1.4em) + 1em))`;
   // `railX` is the axis the editor's own indent guide sits on, but the two draw around
   // it differently: lists.css gives the guide `width: --guide-width` and pulls it back
@@ -84,8 +116,8 @@ export function buildCss(settings: ThreadSettings): string {
   const firstChild = (suffix: string) => childItem(`${suffix}:first-child`);
   const childItem = (suffix: string) =>
     [
-      `.tiptap li.${THREAD_CLASS}:not(.${CURSOR_CLASS}) > :is(ul, ol) > li${suffix}::after`,
-      `.tiptap li.${THREAD_CLASS}:not(.${CURSOR_CLASS}) > div > :is(ul, ol) > li${suffix}::after`,
+      `${root} li.${THREAD_CLASS}:not(.${CURSOR_CLASS}) > :is(ul, ol) > li${suffix}::after`,
+      `${root} li.${THREAD_CLASS}:not(.${CURSOR_CLASS}) > div > :is(ul, ol) > li${suffix}::after`,
     ].join(",\n");
 
   return [
@@ -105,7 +137,7 @@ export function buildCss(settings: ThreadSettings): string {
     // The elbow: one box carrying a left and a bottom border, curved where they meet.
     // Only on an item that is itself inside a list item — a top-level item has no parent
     // rail to descend from, and the stroke would hang in the left margin.
-    `.tiptap li li.${THREAD_CLASS}::after{` +
+    `${root} li li.${THREAD_CLASS}::after{` +
       `position:absolute;` +
       `left:${railX};` +
       `margin-left:${centreOnRail};` +
@@ -155,31 +187,49 @@ export function buildCss(settings: ThreadSettings): string {
     // `z-index` is only needed because `::after` would otherwise paint over `::before`.
     // Ordered markers are text and task items draw no marker at all (`content: none`),
     // so both fall through to the colour rule below.
-    `.tiptap ul > li.${THREAD_CLASS}::before{` +
+    `${root} ul > li.${THREAD_CLASS}::before{` +
       `z-index:1;` +
       `background:var(--color-editor-bg);` +
       `box-shadow:0 0 0 var(--bt-width) var(--bt-color)}`,
 
     // Everything else on the thread that paints with `currentcolor` — ordered numbers,
     // and the bullet's fallback if the rule above is ever overridden.
-    `.tiptap li.${THREAD_CLASS}::before{color:var(--bt-color)}`,
+    `${root} li.${THREAD_CLASS}::before{color:var(--bt-color)}`,
 
-    // The end of the thread is filled rather than hollow, with a soft halo: in a deep
-    // outline the stroke alone says which BRANCH you are on, not which item.
-    `.tiptap ul > li.${CURSOR_CLASS}::before{` +
-      `background:var(--bt-color);` +
-      `box-shadow:0 0 0 var(--bt-width) var(--bt-color),` +
-      `0 0 0 calc(var(--bt-width) * 3) color-mix(in srgb, var(--bt-color) 25%, transparent)}`,
+    // The end of the thread is filled rather than hollow: in a deep outline the stroke
+    // alone says which BRANCH you are on, not which item. `halo` adds a soft outer glow
+    // on top of that, and `none` emits neither — the caret's item then keeps the same
+    // hollow ring as its ancestors, which is the quietest the plugin gets while still
+    // drawing a thread.
+    //
+    // ‼️ THREE states rather than a boolean because the rendering genuinely has three.
+    // `filled` is not a degraded `halo`: the fill is what marks the item and the glow is
+    // what makes it loud, and they are worth separating.
+    ...(settings.caretMarker === "none"
+      ? []
+      : [
+          `${root} ul > li.${CURSOR_CLASS}::before{` +
+            `background:var(--bt-color);` +
+            `box-shadow:0 0 0 var(--bt-width) var(--bt-color)` +
+            (settings.caretMarker === "halo"
+              ? `,0 0 0 calc(var(--bt-width) * 3) ` +
+                `color-mix(in srgb, var(--bt-color) 25%, transparent)`
+              : ``) +
+            `}`,
 
-    // ...and the ordered-list equivalent, where there is no dot to fill. A box around
-    // the number reads as a form field; a glow on the glyph itself is the same gesture
-    // as the bullet's halo, so `text-shadow` rather than `box-shadow` — the latter would
-    // outline the marker's rectangular box.
-    `.tiptap ol > li.${CURSOR_CLASS}::before{` +
-      `color:var(--bt-color);` +
-      `font-weight:700;` +
-      `text-shadow:0 0 calc(var(--bt-width) * 2.5) ` +
-      `color-mix(in srgb, var(--bt-color) 55%, transparent)}`,
+          // ...and the ordered-list equivalent, where there is no dot to fill. A box around
+          // the number reads as a form field; a glow on the glyph itself is the same gesture
+          // as the bullet's halo, so `text-shadow` rather than `box-shadow` — the latter
+          // would outline the marker's rectangular box.
+          `${root} ol > li.${CURSOR_CLASS}::before{` +
+            `color:var(--bt-color);` +
+            `font-weight:700;` +
+            (settings.caretMarker === "halo"
+              ? `text-shadow:0 0 calc(var(--bt-width) * 2.5) ` +
+                `color-mix(in srgb, var(--bt-color) 55%, transparent);`
+              : ``) +
+            `}`,
+        ]),
 
     // Ordered markers are TEXT, and text has nothing to hide the stroke the way a
     // bullet's ring does — so the line ran into the digits at the end of the elbow AND
@@ -196,17 +246,29 @@ export function buildCss(settings: ThreadSettings): string {
     // moving the number. Whatever runs underneath is hidden for exactly that distance
     // past the glyph's left edge — one constant gap for every marker width, and the
     // same mechanism the ring already uses.
-    `.tiptap ol > li.${THREAD_CLASS}::before{` +
+    `${root} ol > li.${THREAD_CLASS}::before{` +
       `z-index:1;` +
       `background:var(--color-editor-bg);` +
       `padding-left:0.3em}`,
   ].join("\n");
 }
 
+function resolveBoolean(value: unknown, fallback: boolean): boolean {
+  return typeof value === "boolean" ? value : fallback;
+}
+
 function resolveColor(value: unknown): string {
   if (typeof value !== "string") return DEFAULT_SETTINGS.color;
   const trimmed = value.trim();
   return trimmed && SAFE_COLOR.test(trimmed) ? trimmed : DEFAULT_SETTINGS.color;
+}
+
+function resolveOneOf<T extends string>(
+  value: unknown,
+  allowed: readonly T[],
+  fallback: T,
+): T {
+  return allowed.includes(value as T) ? (value as T) : fallback;
 }
 
 function resolveWidth(value: unknown): number {

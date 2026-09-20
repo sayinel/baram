@@ -108,3 +108,95 @@ describe("resolveSettings", () => {
     expect(resolveSettings({ lineWidth: 3 }).lineWidth).toBe(3);
   });
 });
+
+// §0054 — the two settings added when the host gained enum fields and a live rebuild.
+describe("caretMarker", () => {
+  const cursorRules = (value: string) => {
+    const built = buildCss({
+      ...DEFAULT_SETTINGS,
+      caretMarker: value as never,
+    });
+    // ‼️ `bt-thread-cursor::before`, not `bt-thread-cursor`. The sibling-segment rules name
+    // the class too — as `:not(.bt-thread-cursor)`, which is how the thread stops AT the
+    // caret rather than running past it. Matching the looser string collected those as well
+    // and made `emits no caret rule` unfailable.
+    return built
+      .split("\n")
+      .filter((rule) => rule.includes("bt-thread-cursor::before"))
+      .join("\n");
+  };
+
+  it("fills the bullet and haloes it by default", () => {
+    // The positive case: `none` asserting an absence proves nothing unless the presence
+    // is pinned too.
+    const rules = cursorRules("halo");
+    expect(rules).toContain("background:var(--bt-color)");
+    expect(rules).toContain("color-mix(in srgb, var(--bt-color) 25%, transparent)");
+  });
+
+  it('keeps the fill but drops the glow at "filled"', () => {
+    // ‼️ Not a degraded halo — the fill is what marks the item, the glow is what makes it
+    // loud, and this is the state that separates them. Losing the fill here would make
+    // `filled` indistinguishable from `none`.
+    const rules = cursorRules("filled");
+    expect(rules).toContain("background:var(--bt-color)");
+    expect(rules).toContain("box-shadow:0 0 0 var(--bt-width) var(--bt-color)");
+    expect(rules).not.toContain("color-mix");
+    expect(rules).not.toContain("text-shadow");
+  });
+
+  it('emits no caret rule at all at "none"', () => {
+    // The caret's item then keeps the hollow ring its ancestors have — the thread still
+    // ends there, it just is not announced.
+    expect(cursorRules("none")).toBe("");
+    // …and the ancestors' ring is untouched, so this is a removal and not a breakage.
+    expect(buildCss({ ...DEFAULT_SETTINGS, caretMarker: "none" })).toContain(
+      "li.bt-thread::before{z-index:1;background:var(--color-editor-bg)",
+    );
+  });
+});
+
+describe("onlyWhenFocused", () => {
+  it("scopes every DRAWING rule to the focused editor, and nothing else", () => {
+    // ‼️ `ProseMirror-focused` is added by prosemirror-view to `view.dom`, and
+    // `@tiptap/core` prepends `tiptap` to that same element — the two classes land
+    // together, which is why one prefix is the whole feature. If either library moved its
+    // class to a different element this test would still pass and the plugin would break,
+    // so the pairing is verified in the host suite against the real editor.
+    const scoped = buildCss({ ...DEFAULT_SETTINGS, onlyWhenFocused: true });
+    const drawing = scoped
+      .split("\n")
+      .filter((rule) => rule.includes("bt-thread"));
+    expect(drawing.length).toBeGreaterThan(0);
+    for (const rule of drawing) {
+      expect(rule, rule).toContain(".tiptap.ProseMirror-focused");
+    }
+  });
+
+  it("leaves the variable block unscoped, so --bt-build stays readable", () => {
+    // That property is how a running app says WHICH build it is showing. Gating it on
+    // focus would make "the plugin did not reload" and "the editor is not focused"
+    // indistinguishable from a console read — the exact confusion it exists to end.
+    const scoped = buildCss({ ...DEFAULT_SETTINGS, onlyWhenFocused: true });
+    expect(scoped).toContain('.tiptap{--bt-build:');
+  });
+
+  it("draws unscoped by default", () => {
+    expect(buildCss(DEFAULT_SETTINGS)).not.toContain("ProseMirror-focused");
+  });
+});
+
+describe("resolveSettings — the fields added in §0054", () => {
+  it("refuses a caretMarker outside the declared options", () => {
+    // The host resolves against the CURRENT manifest's options, but a plugin is run by
+    // whatever Baram the user has — including one that predates the enum type.
+    expect(resolveSettings({ caretMarker: "glow" }).caretMarker).toBe("halo");
+    expect(resolveSettings({ caretMarker: 3 }).caretMarker).toBe("halo");
+    expect(resolveSettings({ caretMarker: "none" }).caretMarker).toBe("none");
+  });
+
+  it("refuses a non-boolean onlyWhenFocused", () => {
+    expect(resolveSettings({ onlyWhenFocused: "yes" }).onlyWhenFocused).toBe(false);
+    expect(resolveSettings({ onlyWhenFocused: true }).onlyWhenFocused).toBe(true);
+  });
+});

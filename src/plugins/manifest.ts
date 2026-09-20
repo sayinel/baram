@@ -497,7 +497,7 @@ function validateContributions(
     if (settingType === "color" && !isSafeSettingColor(field.default)) {
       errors.push({
         field: `${at}.default`,
-        message: `default must be a CSS colour — a hex value, a colour name, rgb()/hsl(), or var(--token)`,
+        message: `default must be a CSS colour — a hex value, a colour name, rgb()/hsl(), or var(--color-accent-default)`,
       });
     }
   });

@@ -23,15 +23,13 @@ caret, so your Markdown file is untouched and the feature leaves no trace in it.
 
 | Setting | Default | What it does |
 | --- | --- | --- |
-| Thread colour | the app's accent colour | Any CSS colour — a hex value, `rgb(…)`, a colour name, or one of Baram's own theme tokens such as `var(--color-text-muted)` |
-| Line width (px) | `2` | How thick the line is. Values outside 0.5–8 fall back to the default |
-| Curve into each item | on | Rounds the line into each item instead of dropping straight down |
+| Thread colour | the app's accent colour | Pick one of the eight theme colours, or type any CSS colour — a hex value, `rgb(…)`, a colour name, or one of Baram's own tokens such as `var(--color-text-muted)`. A theme colour follows dark mode; a hex value does not |
+| Line width (px) | `2` | How thick the line is, between 0.5 and 8 |
+| Branch into each item | on | Off leaves only the vertical rails, with no line turning in towards each item |
+| Marker at the caret | filled with a halo | How the item you are in is picked out — filled with a halo, filled, or left the same as the rest of the thread |
+| Only while editing | off | Hides the thread whenever the editor does not have focus, so it goes quiet while you read a side panel |
 
-‼️ **A change takes effect the next time the plugin loads, not immediately.** Toggle the
-plugin off and on under **Settings → Plugins** — or restart Baram — to see it. This is a
-limit of the plugin API rather than a choice: there is no event that tells a plugin its
-settings changed, so the stylesheet this plugin builds when it starts cannot be rebuilt
-when you edit a value.
+Changes take effect **immediately** — there is nothing to toggle and nothing to restart.
 
 If a colour you typed is not valid CSS, the plugin falls back to the accent colour rather
 than producing a broken stylesheet.
@@ -43,7 +41,8 @@ immediately and leaves nothing behind. **Uninstall** removes the plugin's files 
 
 ## Requirements
 
-Baram 0.7.0 or newer.
+Baram 0.7.4 or newer. (Version 2.0.1 runs on 0.7.0, without the settings above applying
+live.)
 
 This is a **fully trusted** plugin, so installing it asks you to acknowledge that. That
 is not a judgement about this plugin — it is what any plugin that draws inside the editor

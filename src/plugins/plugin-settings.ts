@@ -143,7 +143,7 @@ export function resolvePluginSettings(
  * A character allowlist rather than a colour parser, for the same reason as the plugin's:
  * every character that could end a declaration and start a rule of its own (`;`, `{`, `}`,
  * `:`, `/`, `@`) is absent from the set, which is the property that matters. Wide enough for
- * hex, `rgb()`, `hsl()`, `color-mix()`, a colour name, and `var(--token)` — pointing a plugin
+ * hex, `rgb()`, `hsl()`, `color-mix()`, a colour name, and `var(--…)` — pointing a plugin
  * at one of the app's own tokens is what the form's swatches do.
  *
  * ‼️ The modern slash syntax (`rgb(0 0 0 / 30%)`) is REFUSED, because `/` is in that set.

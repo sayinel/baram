@@ -2,18 +2,15 @@
   "id": "baram-bullet-threading",
   "name": "Bullet Threading",
   "description": "Draws the outline path from the outermost ancestor down to the list item holding the caret.",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "author": "Baram",
   "license": "Apache-2.0",
   "main": "dist/index.mjs",
   "engines": {
-    "baram": ">=0.7.0"
+    "baram": ">=0.7.4"
   },
   "trust": "trusted",
-  "capabilities": [
-    "extensions",
-    "settings"
-  ],
+  "capabilities": ["extensions", "settings"],
   "tiptapExtensions": [
     {
       "type": "plugin",
@@ -22,30 +19,49 @@
     }
   ],
   "icon": "🧵",
-  "keywords": [
-    "outline",
-    "list",
-    "focus"
-  ],
+  "keywords": ["outline", "list", "focus"],
   "contributions": {
     "settings": [
       {
         "key": "color",
-        "type": "string",
+        "type": "color",
         "label": "Thread colour",
+        "description": "Pick one of the theme colours, or type any CSS colour",
         "default": "var(--color-accent-default)"
       },
       {
         "key": "lineWidth",
         "type": "number",
         "label": "Line width (px)",
+        "min": 0.5,
+        "max": 8,
         "default": 2
       },
       {
         "key": "showElbow",
         "type": "boolean",
-        "label": "Curve into each item",
+        "label": "Branch into each item",
+        "description": "Off leaves only the vertical rails, with no line turning in",
         "default": true
+      },
+      {
+        "key": "caretMarker",
+        "type": "enum",
+        "label": "Marker at the caret",
+        "description": "How the item you are in is picked out from the rest of the thread",
+        "options": [
+          { "value": "halo", "label": "Filled with a halo" },
+          { "value": "filled", "label": "Filled" },
+          { "value": "none", "label": "Same as the rest" }
+        ],
+        "default": "halo"
+      },
+      {
+        "key": "onlyWhenFocused",
+        "type": "boolean",
+        "label": "Only while editing",
+        "description": "Hides the thread when the editor does not have focus",
+        "default": false
       }
     ]
   }

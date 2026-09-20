@@ -1,6 +1,6 @@
 ---
 title: "컨텍스트: AI·네트워크·저장소·설정"
-sourceHash: "f902654d5326"
+sourceHash: "054463461ae4"
 ---
 
 ## `context.ai` (`ai` 필요)
@@ -75,6 +75,50 @@ getAll(): Record<string, boolean | number | string>;
 ```javascript
 const { prefix = "»" } = context.settings.getAll();
 ```
+
+### 값이 바뀐 것을 전해 듣기
+
+```javascript
+context.events.on("settings:changed", () => {
+  rebuild(context.settings.getAll()); // 이벤트는 값을 싣지 않는다
+});
+```
+
+이 이벤트 하나만은 두 티어 모두 `events`가 아니라 **`settings`**로 게이트됩니다 — 페이로드가
+없고, `events`를 요구하면 설치 대화상자가 "사용자가 파일에 하는 일을 지켜본다"고 주장하게 되기
+때문입니다. 디바운스되므로, 문자열 필드를 입력하는 동안에는 키마다가 아니라 값이 멎은 뒤에 한 번
+알려 줍니다.
+
+‼️ `tiptapExtensions` 팩토리가 받는 `settings`는 플러그인이 로드될 때 찍은 **스냅샷**입니다.
+팩토리는 다시 실행되지 않으므로, 현재 값이 필요하면 그때 `context.settings.getAll()`을
+읽으십시오.
+
+### 필드가 선언할 수 있는 것
+
+```typescript
+interface PluginSettingField {
+  key: string;
+  label: string;
+  type: "boolean" | "color" | "enum" | "number" | "string";
+  default?: boolean | number | string;
+  description?: string;   // 라벨 아래 한 줄
+  min?: number;           // number 전용, 경계 포함
+  max?: number;           // number 전용, 경계 포함
+  options?: { value: string; label: string }[]; // enum 전용, 필수
+}
+```
+
+`color`는 텍스트 입력 옆에 앱의 테마 스와치를 함께 렌더하고, 값은 CSS에 쓸 수 있는 것이면
+됩니다 — hex, `rgb(…)`, 색 이름, 또는 사용자의 테마를 따라가는 `var(--token)`. `enum`은
+`options`에 대한 select로 렌더됩니다.
+
+`min`/`max` 밖이거나 `options`에 없는 값은 타입 불일치와 같은 방식으로 되돌아갑니다 — 선언한
+`default`로, 다음에는 타입의 영값(enum은 첫 option)으로. 자기 필드가 거부할 `default`는
+설치 시점 오류입니다.
+
+‼️ 그렇다고 값을 직접 확인할 필요가 사라지지는 않습니다. 제약은 **사용자가 실행 중인 Baram이**
+*현재* 매니페스트를 기준으로 해석하는 것이고, 그 제약보다 오래된 Baram은 필드를 제약 없이
+해석합니다.
 
 ## `context.subscriptions`
 

@@ -40,30 +40,43 @@ function createThreadingPlugin(ctx) {
 
 // src/css.ts
 var DEFAULT_SETTINGS = {
+  caretMarker: "halo",
   color: "var(--color-accent-default)",
   lineWidth: 2,
+  onlyWhenFocused: false,
   showElbow: true
 };
+var CARET_MARKERS = ["filled", "halo", "none"];
 var SAFE_COLOR = /^[\w#(),.%\s-]{1,64}$/;
-var STYLE_REVISION = "4";
+var STYLE_REVISION = "5";
 var MIN_WIDTH = 0.5;
 var MAX_WIDTH = 8;
 function resolveSettings(raw) {
   return {
+    caretMarker: resolveOneOf(
+      raw.caretMarker,
+      CARET_MARKERS,
+      DEFAULT_SETTINGS.caretMarker
+    ),
     color: resolveColor(raw.color),
     lineWidth: resolveWidth(raw.lineWidth),
-    showElbow: typeof raw.showElbow === "boolean" ? raw.showElbow : DEFAULT_SETTINGS.showElbow
+    onlyWhenFocused: resolveBoolean(
+      raw.onlyWhenFocused,
+      DEFAULT_SETTINGS.onlyWhenFocused
+    ),
+    showElbow: resolveBoolean(raw.showElbow, DEFAULT_SETTINGS.showElbow)
   };
 }
 function buildCss(settings) {
+  const root = settings.onlyWhenFocused ? `.tiptap.ProseMirror-focused` : `.tiptap`;
   const railX = `calc(-1 * (var(--list-gutter, 1.4em) + 1em))`;
   const centreOnRail = `calc(var(--bt-width) / -2)`;
   const stroke = `var(--bt-width) solid var(--bt-color)`;
   const reachUp = `calc(-1 * (var(--bt-gap) + var(--editor-line-height, 1.75) * 0.5em))`;
   const firstChild = (suffix) => childItem(`${suffix}:first-child`);
   const childItem = (suffix) => [
-    `.tiptap li.${THREAD_CLASS}:not(.${CURSOR_CLASS}) > :is(ul, ol) > li${suffix}::after`,
-    `.tiptap li.${THREAD_CLASS}:not(.${CURSOR_CLASS}) > div > :is(ul, ol) > li${suffix}::after`
+    `${root} li.${THREAD_CLASS}:not(.${CURSOR_CLASS}) > :is(ul, ol) > li${suffix}::after`,
+    `${root} li.${THREAD_CLASS}:not(.${CURSOR_CLASS}) > div > :is(ul, ol) > li${suffix}::after`
   ].join(",\n");
   return [
     // `--bt-gap` is the ONE number here that is not derived: it mirrors `li`'s own
@@ -80,7 +93,7 @@ function buildCss(settings) {
     // The elbow: one box carrying a left and a bottom border, curved where they meet.
     // Only on an item that is itself inside a list item — a top-level item has no parent
     // rail to descend from, and the stroke would hang in the left margin.
-    `.tiptap li li.${THREAD_CLASS}::after{position:absolute;left:${railX};margin-left:${centreOnRail};top:calc(-1 * var(--bt-gap));width:calc(var(--list-gutter, 1.4em) + 0.5em);height:calc(var(--bt-gap) + var(--editor-line-height, 1.75) * 0.5em + var(--bt-width) / 2);border-left:${stroke};` + (settings.showElbow ? `border-bottom:${stroke};border-bottom-left-radius:var(--bt-radius);` : ``) + `pointer-events:none;content:""}`,
+    `${root} li li.${THREAD_CLASS}::after{position:absolute;left:${railX};margin-left:${centreOnRail};top:calc(-1 * var(--bt-gap));width:calc(var(--list-gutter, 1.4em) + 0.5em);height:calc(var(--bt-gap) + var(--editor-line-height, 1.75) * 0.5em + var(--bt-width) / 2);border-left:${stroke};` + (settings.showElbow ? `border-bottom:${stroke};border-bottom-left-radius:var(--bt-radius);` : ``) + `pointer-events:none;content:""}`,
     // The siblings above the threaded item, so the thread reaches it unbroken. Each
     // segment starts one collapsed margin high to close the gap to the item above.
     `${childItem(`:not(.${THREAD_CLASS})`)}{position:absolute;left:${railX};margin-left:${centreOnRail};top:calc(-1 * var(--bt-gap));bottom:0;border-left:${stroke};pointer-events:none;content:""}`,
@@ -102,18 +115,27 @@ function buildCss(settings) {
     // `z-index` is only needed because `::after` would otherwise paint over `::before`.
     // Ordered markers are text and task items draw no marker at all (`content: none`),
     // so both fall through to the colour rule below.
-    `.tiptap ul > li.${THREAD_CLASS}::before{z-index:1;background:var(--color-editor-bg);box-shadow:0 0 0 var(--bt-width) var(--bt-color)}`,
+    `${root} ul > li.${THREAD_CLASS}::before{z-index:1;background:var(--color-editor-bg);box-shadow:0 0 0 var(--bt-width) var(--bt-color)}`,
     // Everything else on the thread that paints with `currentcolor` — ordered numbers,
     // and the bullet's fallback if the rule above is ever overridden.
-    `.tiptap li.${THREAD_CLASS}::before{color:var(--bt-color)}`,
-    // The end of the thread is filled rather than hollow, with a soft halo: in a deep
-    // outline the stroke alone says which BRANCH you are on, not which item.
-    `.tiptap ul > li.${CURSOR_CLASS}::before{background:var(--bt-color);box-shadow:0 0 0 var(--bt-width) var(--bt-color),0 0 0 calc(var(--bt-width) * 3) color-mix(in srgb, var(--bt-color) 25%, transparent)}`,
-    // ...and the ordered-list equivalent, where there is no dot to fill. A box around
-    // the number reads as a form field; a glow on the glyph itself is the same gesture
-    // as the bullet's halo, so `text-shadow` rather than `box-shadow` — the latter would
-    // outline the marker's rectangular box.
-    `.tiptap ol > li.${CURSOR_CLASS}::before{color:var(--bt-color);font-weight:700;text-shadow:0 0 calc(var(--bt-width) * 2.5) color-mix(in srgb, var(--bt-color) 55%, transparent)}`,
+    `${root} li.${THREAD_CLASS}::before{color:var(--bt-color)}`,
+    // The end of the thread is filled rather than hollow: in a deep outline the stroke
+    // alone says which BRANCH you are on, not which item. `halo` adds a soft outer glow
+    // on top of that, and `none` emits neither — the caret's item then keeps the same
+    // hollow ring as its ancestors, which is the quietest the plugin gets while still
+    // drawing a thread.
+    //
+    // ‼️ THREE states rather than a boolean because the rendering genuinely has three.
+    // `filled` is not a degraded `halo`: the fill is what marks the item and the glow is
+    // what makes it loud, and they are worth separating.
+    ...settings.caretMarker === "none" ? [] : [
+      `${root} ul > li.${CURSOR_CLASS}::before{background:var(--bt-color);box-shadow:0 0 0 var(--bt-width) var(--bt-color)` + (settings.caretMarker === "halo" ? `,0 0 0 calc(var(--bt-width) * 3) color-mix(in srgb, var(--bt-color) 25%, transparent)` : ``) + `}`,
+      // ...and the ordered-list equivalent, where there is no dot to fill. A box around
+      // the number reads as a form field; a glow on the glyph itself is the same gesture
+      // as the bullet's halo, so `text-shadow` rather than `box-shadow` — the latter
+      // would outline the marker's rectangular box.
+      `${root} ol > li.${CURSOR_CLASS}::before{color:var(--bt-color);font-weight:700;` + (settings.caretMarker === "halo" ? `text-shadow:0 0 calc(var(--bt-width) * 2.5) color-mix(in srgb, var(--bt-color) 55%, transparent);` : ``) + `}`
+    ],
     // Ordered markers are TEXT, and text has nothing to hide the stroke the way a
     // bullet's ring does — so the line ran into the digits at the end of the elbow AND
     // through them on the way down, because the guide axis falls inside a number's box
@@ -129,13 +151,19 @@ function buildCss(settings) {
     // moving the number. Whatever runs underneath is hidden for exactly that distance
     // past the glyph's left edge — one constant gap for every marker width, and the
     // same mechanism the ring already uses.
-    `.tiptap ol > li.${THREAD_CLASS}::before{z-index:1;background:var(--color-editor-bg);padding-left:0.3em}`
+    `${root} ol > li.${THREAD_CLASS}::before{z-index:1;background:var(--color-editor-bg);padding-left:0.3em}`
   ].join("\n");
+}
+function resolveBoolean(value, fallback) {
+  return typeof value === "boolean" ? value : fallback;
 }
 function resolveColor(value) {
   if (typeof value !== "string") return DEFAULT_SETTINGS.color;
   const trimmed = value.trim();
   return trimmed && SAFE_COLOR.test(trimmed) ? trimmed : DEFAULT_SETTINGS.color;
+}
+function resolveOneOf(value, allowed, fallback) {
+  return allowed.includes(value) ? value : fallback;
 }
 function resolveWidth(value) {
   if (typeof value !== "number" || !Number.isFinite(value)) {
@@ -146,16 +174,28 @@ function resolveWidth(value) {
 
 // src/index.ts
 var style;
+var watching;
 function activate(context) {
-  const raw = context.settings?.getAll() ?? {};
-  const settings = resolveSettings(raw);
-  style = context.ui?.addStyle(buildCss(settings));
+  inject(context);
+  try {
+    watching = context.events?.on("settings:changed", () => inject(context));
+  } catch {
+    watching = void 0;
+  }
 }
 function deactivate() {
   style?.dispose();
   style = void 0;
+  watching?.dispose();
+  watching = void 0;
 }
 var Threading = createThreadingPlugin;
+function inject(context) {
+  const raw = context.settings?.getAll() ?? {};
+  const css = buildCss(resolveSettings(raw));
+  style?.dispose();
+  style = context.ui?.addStyle(css);
+}
 export {
   DEFAULT_SETTINGS,
   Threading,
