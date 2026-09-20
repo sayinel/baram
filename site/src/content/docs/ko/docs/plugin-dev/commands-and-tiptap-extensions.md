@@ -1,6 +1,6 @@
 ---
 title: "명령 팔레트와 Tiptap 확장"
-sourceHash: "c82f82f3c3d7"
+sourceHash: "06a5ab6e25db"
 ---
 
 ## 명령 팔레트 연동
@@ -49,18 +49,20 @@ context.commands.register("summarize", () => summarize(), {
 `Plugin`을 정확히 하나 돌려줘야 합니다.
 
 ```javascript
-import { Plugin } from "@tiptap/pm/state";
+// ProseMirror에서 아무것도 import하지 않습니다. 아래 "ctx.pm으로 만드십시오" 참조 —
+// 자기 사본을 싣는 것은 번들이 무거워지는 문제가 아니라 크래시입니다.
 
 let host; // `activate`가 받은 컨텍스트 — 설정값을 그때그때 읽으려고 들고 있습니다
 
 // `ctx.key`는 앱이 발급합니다. 그대로 쓰십시오 — 다른 키로 만든 플러그인은 등록이
 // 거부됩니다. 언로드가 정확히 이 키만 제거해야 하기 때문입니다.
 export const Highlighter = (ctx) =>
-  new Plugin({
+  new ctx.pm.Plugin({
     key: ctx.key,
     // `ctx.settings`가 아닙니다 — 그것은 이 팩토리가 만들어질 때의 스냅숏입니다.
     props: {
-      decorations: (state) => buildDecorations(state, host.settings.getAll()),
+      decorations: (state) =>
+        buildDecorations(state, ctx.pm, host.settings.getAll()),
     },
   });
 
@@ -72,7 +74,32 @@ export function activate(context) {
 **키는 앱이 발급합니다 — 직접 고르는 게 아닙니다.** `ctx.key`가 아닌 다른 키로 플러그인을
 만들면 등록이 거부됩니다. 언로드는 정확히 이 플러그인의 키만 제거해야 하는데, 작성자가 직접
 키를 고를 수 있다면 두 플러그인이(서로, 또는 앱 자신의 플러그인과) 충돌할 수 있기 때문입니다.
-컨텍스트는 `ctx.editor`(아래 참조)·`ctx.pluginId`·`ctx.settings`도 함께 담고 있습니다.
+컨텍스트는 `ctx.pm`(바로 아래 참조)·`ctx.editor`(더 아래 참조)·`ctx.pluginId`·`ctx.settings`도
+함께 담고 있습니다.
+
+### `ctx.pm`으로 만드십시오 — 직접 import하지 마십시오
+
+`ctx.pm`은 앱 자신의 `Decoration`·`DecorationSet`·`Plugin`·`PluginKey`를 담고 있고 얼려져
+있습니다. ProseMirror에 관한 것은 전부 여기서 꺼내 쓰고, 에디터에 기여하는 플러그인에서는
+`@tiptap/pm/*`을 import하지 마십시오.
+
+플러그인은 자기 번들로 배포되므로 안에서 `@tiptap/pm/view`를 import하면 prosemirror-view의
+**두 번째 사본**이 됩니다. 그 사본은 앱의 것과 상호운용되지 않고, 그 실패가 하필 **가장 먼저
+시험해 보는 자리에서 조용하기** 때문에 정확히 적어 둡니다.
+
+| 데코레이션 소스 | 자기 사본으로 만든 `DecorationSet` |
+| --- | --- |
+| 자기 것 하나뿐 | 등록·렌더·트랜잭션 전부 정상 — 멀쩡해 보입니다 |
+| 자기 것 + 다른 것 | `Cannot read properties of undefined (reading 'localsInner')` |
+
+에디터 자신의 확장들이 언제나 무언가를 그리고 있으므로 사용자가 만나는 것은 **두 번째 줄**입니다.
+작은 재현 예제는 첫 번째 줄에 걸리기 쉽고, 그러면 import가 무해하다고 믿게 됩니다.
+
+논거는 `ctx.key`와 같습니다 — 정체성이 하나여야 하고, 그것을 보장할 수 있는 쪽은 앱뿐입니다.
+
+번들러를 쓴다면 `@tiptap/pm`을 의존성으로 둘 필요조차 없습니다 —
+`examples/plugins/bullet-threading`은 ProseMirror가 한 글자도 없는 번들로 빌드되고,
+테스트가 그것을 단언합니다.
 
 **`ctx.settings`는 로드 시점의 스냅숏이지, 살아 있는 값이 아닙니다.** 플러그인이 로드될 때
 반영돼 있던 설정값을 담고 있습니다. 설정 폼에서 값을 바꿔도 플러그인이 다시 로드되지는 않으므로
@@ -80,6 +107,13 @@ export function activate(context) {
 계속 내놓습니다. 현재 값이 필요하면 그 시점에 `context.settings.getAll()`을 부르십시오
 (`activate`가 받은 그 `context`이며, `settings` capability 가 필요합니다). 스냅숏은 플러그인을
 다시 불러올 때 갱신됩니다.
+
+**설정이 바뀌어도 플러그인을 다시 부르는 것은 없습니다.** 설정 이벤트가 없고
+(`PluginEventName`은 `editor:ready`·`file:open`·`file:save`뿐), `SettingsAPI`에는
+`getAll()`밖에 없습니다. 그래서 상태 변경마다 도는 prop은 살아 있습니다 — 매번 현재 값을
+읽을 수 있으니까요. 반면 `activate`에서 한 번만 하는 일, 예컨대 스타일시트 주입은 그렇지
+않고, 다시 로드될 때까지 시작 시점의 값에 머뭅니다. 설정이 즉시 반영돼야 한다면 그것이
+제어하는 것을 스타일시트가 아니라 데코레이션에 실으십시오.
 
 기여한 플러그인은 `props.editable`도 선언할 수 없습니다 — 그 호출 역시 거부됩니다.
 편집 가능 여부는 에디터의 코어 Editable 확장과 vim 의 몫입니다(§298 §12-⑪). 그것을 거부할 수

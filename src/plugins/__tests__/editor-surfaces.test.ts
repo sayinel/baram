@@ -1,4 +1,7 @@
-import type { TiptapPluginContext } from "../editor-surfaces";
+import type {
+  PluginProseMirror,
+  TiptapPluginContext,
+} from "../editor-surfaces";
 
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { beforeEach, describe, expect, test, vi } from "vitest";
@@ -372,5 +375,66 @@ describe("editor-surfaces", () => {
 
     expect(second).toBe(first);
     expect(editor.plugins).toHaveLength(1);
+  });
+});
+
+describe("ctx.pm is the published surface (§260)", () => {
+  beforeEach(() => __resetEditorSurfaces());
+
+  test("hands over exactly the constructors PluginProseMirror declares", () => {
+    // `PluginProseMirror` in plugins/types.ts is what a plugin author's editor knows
+    // about; the object handed over here is what they actually receive. They are
+    // SEPARATE declarations on purpose — types.ts carries no `@tiptap` imports so the
+    // generated examples/plugins/types.d.ts resolves for someone who has not installed
+    // it, while this module names the real classes. That makes a constructor added here
+    // and not published there a silent gap, and this is what closes it.
+    //
+    // The published list is a literal because TypeScript's keys are erased at runtime.
+    // Adding a member to `PluginProseMirror` without adding it here reddens nothing; the
+    // failure this catches is the other direction, which is the one that has a victim —
+    // an author who cannot see what they were given.
+    const published = ["Decoration", "DecorationSet", "Plugin", "PluginKey"];
+
+    let handed: Record<string, unknown> | undefined;
+    const editor = fakeEditor();
+    registerEditorSurface(editor as never);
+    addPluginContributions(
+      "pm-surface",
+      new Map([
+        [
+          "x",
+          (ctx: TiptapPluginContext) => {
+            handed = ctx.pm as unknown as Record<string, unknown>;
+            return new Plugin({ key: ctx.key });
+          },
+        ],
+      ]),
+      {},
+    );
+
+    expect(handed).toBeDefined();
+    expect(Object.keys(handed ?? {}).sort()).toEqual(published);
+  });
+
+  test("the object is frozen, so one contribution cannot swap a constructor", () => {
+    // Shared by every factory on every surface; a mutation would reach the next one.
+    let handed: PluginProseMirror | undefined;
+    const editor = fakeEditor();
+    registerEditorSurface(editor as never);
+    addPluginContributions(
+      "pm-frozen",
+      new Map([
+        [
+          "x",
+          (ctx: TiptapPluginContext) => {
+            handed = ctx.pm;
+            return new Plugin({ key: ctx.key });
+          },
+        ],
+      ]),
+      {},
+    );
+
+    expect(Object.isFrozen(handed)).toBe(true);
   });
 });

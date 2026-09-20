@@ -1,6 +1,6 @@
 ---
 title: "로컬 개발과 번들링"
-sourceHash: "86103d5e6e72"
+sourceHash: "7c460a95fe0d"
 ---
 
 ## 로컬 개발 루프
@@ -27,40 +27,34 @@ sourceHash: "86103d5e6e72"
 esbuild로 ESM 번들 하나를 만드십시오. **무엇을 external로 둘 수 있는지가 티어에 달려 있고**,
 틀리면 빌드가 아니라 activate 시점에 실패합니다.
 
-**샌드박스 — 전부 번들하고 `--external`을 아예 쓰지 않습니다:**
+**전부 번들하십시오. 어느 티어에서도 external을 남기지 마십시오:**
 
 ```bash
 npx esbuild src/index.ts --bundle --format=esm --outfile=dist/index.mjs
 ```
 
-샌드박스 플러그인은 `blob:` URL에서 import되고, blob 모듈에는 **base URL이 없으므로** 산출물에
-남은 맨 `import`는 해석될 수 없습니다. 무언가를 external로 두면 플러그인 불러오기가 해석 오류로
-실패합니다. (이 티어는 Tiptap을 아예 쓸 수 없습니다 — 확장은 메인 렐름의 ProseMirror 인스턴스에
-주입되는데, 그것이 바로 이 티어가 닿을 수 없는 것입니다.)
+`@tiptap/pm/state` 같은 맨 specifier는 import map이 있어야 해석되는데 앱은 그것을 선언하지
+않습니다 — 그래서 external로 둔 것은 아무도 만족시킬 수 없는 import로 산출물에 남고, 플러그인은
+아예 불러와지지 않습니다. 샌드박스 플러그인은 여기에 더해 `blob:` URL에서 import되는데 blob
+모듈에는 **base URL이 없으므로** 상대 경로 import조차 해석되지 않습니다.
 
-**Trusted — `@tiptap/core`와 `@tiptap/pm`을 external로 둡니다.** 호스트가 런타임에 제공하고,
-번들에 넣으면 앱 자신의 ProseMirror 인스턴스를 중복시켜 — 아마도 어긋나게 — 만들기 때문입니다.
+**ProseMirror는 어디서 얻나.** 에디터에 기여하는 플러그인은 그것을 import하지 않습니다 —
+`ctx.pm`이 앱 자신의 `Decoration`·`DecorationSet`·`Plugin`·`PluginKey`를 담고 있습니다.
+편의의 문제가 아닙니다. prosemirror-view의 두 번째 사본은 앱의 것과 상호운용되지 않고, 그
+크래시는 다른 무언가가 함께 그리기 전까지 조용합니다.
+[`ctx.pm`으로 만드십시오](/ko/docs/plugin-dev/commands-and-tiptap-extensions/#ctxpm으로-만드십시오--직접-import하지-마십시오)
+를 보십시오. 샌드박스 티어는 애초에 에디터에 기여할 수 없으므로 이 질문이 생기지 않습니다.
 
-```bash
-npx esbuild src/index.ts --bundle --format=esm --outfile=dist/index.mjs \
-  --external:@tiptap/core --external:@tiptap/pm
-```
+이렇게 빌드한 플러그인에는 `@tiptap` 의존성이 필요하지 않습니다 —
+`examples/plugins/bullet-threading`은 ProseMirror가 한 글자도 없는 번들을 내고, 테스트가
+그것을 단언합니다.
 
-`package.json` 스크립트 — `word-count`(샌드박스)와 `ai-summary`(trusted)가 정확히 여기서
-다릅니다. 조심해서 베낄 만한 차이입니다.
+`package.json` 스크립트 — 어느 티어든 같습니다.
 
 ```json
 {
   "scripts": {
     "build": "esbuild src/index.ts --bundle --format=esm --outfile=dist/index.mjs"
-  }
-}
-```
-
-```json
-{
-  "scripts": {
-    "build": "esbuild src/index.ts --bundle --format=esm --outfile=dist/index.mjs --external:@tiptap/core --external:@tiptap/pm"
   }
 }
 ```

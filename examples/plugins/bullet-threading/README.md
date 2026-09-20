@@ -75,6 +75,17 @@ document.
 before use — see `src/css.ts` for what that does and does not guarantee. The host
 guarantees a setting's declared *type*, not that its value is usable.
 
+**Changing one of these takes effect on the next plugin load, not immediately.** The
+plugin API has no settings-change event — `PluginEventName` is `editor:ready`,
+`file:open`, `file:save` — and `SettingsAPI` offers only `getAll()`, so nothing calls
+back into a plugin when a value changes. This plugin builds its stylesheet once, in
+`activate`, which is where that limit becomes visible.
+
+A prop that runs per state change *is* live, because it can call
+`context.settings.getAll()` each time it runs; a stylesheet injected once cannot. If you
+are writing a plugin whose settings must apply immediately, put what they control on the
+decoration rather than in the stylesheet.
+
 ## Layout
 
 | | |

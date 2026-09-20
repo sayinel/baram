@@ -487,6 +487,40 @@ export interface StorageAPI {
     remove(key: string): Promise<void>;
     write(key: string, value: string): Promise<void>;
 }
+/**
+ * The app's own ProseMirror constructors, handed to every `tiptapExtensions` factory as
+ * `ctx.pm`.
+ *
+ * A plugin ships as its own bundle, so importing `@tiptap/pm/view` inside one resolves to
+ * a SECOND copy of prosemirror-view, and the two do not interoperate. The failure is
+ * quiet where an author is most likely to test it: a `DecorationSet` from a second copy
+ * renders fine when it is the only decoration source, and throws
+ * `Cannot read properties of undefined (reading 'localsInner')` as soon as anything else
+ * is decorating too — which the editor's own extensions always are. So identity is the
+ * app's to give, exactly as `key` is.
+ *
+ * Shaped structurally rather than re-exported from `@tiptap/pm`, because this file is the
+ * published plugin API and carries no imports an author would have to resolve. The values
+ * are the real classes; what is written here is only as much of them as a contribution
+ * needs, and `editor-surfaces.test.ts` pins the member set so a constructor added to the
+ * host object cannot go unpublished.
+ *
+ * The implementation's own declaration of this name lives in `plugins/editor-surfaces.ts`
+ * and names the real classes; the two are kept in step by that test, not by the compiler.
+ */
+export interface PluginProseMirror {
+    Decoration: {
+        inline: (from: number, to: number, attrs: Record<string, string>) => unknown;
+        node: (from: number, to: number, attrs: Record<string, string>) => unknown;
+        widget: (pos: number, toDOM: unknown, spec?: unknown) => unknown;
+    };
+    DecorationSet: {
+        create: (doc: unknown, decorations: unknown[]) => unknown;
+        empty: unknown;
+    };
+    Plugin: new (spec: unknown) => unknown;
+    PluginKey: new (name?: string) => unknown;
+}
 export interface TiptapExtensionDef {
     exportName: string;
     name: string;
@@ -496,6 +530,32 @@ export interface TiptapExtensionDef {
      * keep-alive 에디터가 플러그인이 로드된 뒤에도 새로 생긴다. 스펙 0050 §3.2 의 재개 조건 참조.
      */
     type: "plugin";
+}
+/**
+ * What a `tiptapExtensions` factory is handed — one per editor surface, so a plugin's
+ * factory runs more than once and must not assume a single editor.
+ *
+ * Published for the same reason `SandboxContext` is: without it an author writing
+ * `export const Threading = (ctx) => …` has no type to name.
+ */
+export interface TiptapPluginContext {
+    /** The editor this contribution is being installed on. */
+    editor: unknown;
+    /**
+     * The key this contribution MUST give its plugin — `new ctx.pm.Plugin({ key: ctx.key })`.
+     * The app mints it so two plugins cannot collide and so unloading removes exactly this
+     * plugin; a plugin built with any other key is refused.
+     */
+    key: unknown;
+    pluginId: string;
+    /** See {@link PluginProseMirror} — build everything ProseMirror from this. */
+    pm: PluginProseMirror;
+    /**
+     * This plugin's settings as they were when it loaded. A settings change does not reload
+     * the plugin, so this does not update; call `context.settings.getAll()` from the context
+     * `activate` was given when the current value matters.
+     */
+    settings: Record<string, PluginSettingValue>;
 }
 export interface UIAPI {
     addSettingsTab(opts: PluginSettingsTabOptions): Disposable;

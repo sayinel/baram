@@ -34,6 +34,14 @@ import { logger } from "../utils/logger";
  *
  * So identity is the host's to give, exactly as `key` is. Build decorations with these
  * and never with your own import.
+ *
+ * ‼️ There is a SECOND declaration of this name, and of `TiptapPluginContext`, in
+ * `plugins/types.ts`. That one is the published API — it names the real classes only
+ * structurally, because `types.ts` carries no `@tiptap` imports so the generated
+ * `examples/plugins/types.d.ts` resolves for an author who has not installed Tiptap.
+ * This one is the implementation's, and names the classes. A constructor added here has
+ * to be added there too or authors cannot see it; `__tests__/editor-surfaces.test.ts`
+ * compares the handed-over object against the published member list.
  */
 export interface PluginProseMirror {
   Decoration: typeof Decoration;

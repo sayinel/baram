@@ -51,18 +51,20 @@ Then export a **factory** from your entry point. The factory receives a
 context object and must return exactly one ProseMirror `Plugin`:
 
 ```javascript
-import { Plugin } from "@tiptap/pm/state";
+// Nothing is imported from ProseMirror. See "Build with ctx.pm" below — a copy of
+// your own is not a heavier bundle, it is a crash.
 
 let host; // the context `activate` is handed, kept for live settings reads
 
 // `ctx.key` is minted by the app. Use it — a plugin built with any other key is
 // refused, because the app removes exactly this key when your plugin unloads.
 export const Highlighter = (ctx) =>
-  new Plugin({
+  new ctx.pm.Plugin({
     key: ctx.key,
     // Not `ctx.settings`: that is the snapshot this factory was built with.
     props: {
-      decorations: (state) => buildDecorations(state, host.settings.getAll()),
+      decorations: (state) =>
+        buildDecorations(state, ctx.pm, host.settings.getAll()),
     },
   });
 
@@ -75,8 +77,35 @@ export function activate(context) {
 anything other than `ctx.key` and registration is refused: unloading has to
 remove exactly this plugin's key and nothing else, and letting authors pick
 their own key would let two plugins collide (with each other, or with the
-app's own plugins). The context also carries `ctx.editor` (see below),
-`ctx.pluginId`, and `ctx.settings`.
+app's own plugins). The context also carries `ctx.pm` (see below),
+`ctx.editor` (see further below), `ctx.pluginId`, and `ctx.settings`.
+
+### Build with `ctx.pm`, never with your own import
+
+`ctx.pm` holds the app's own `Decoration`, `DecorationSet`, `Plugin` and
+`PluginKey`. It is frozen. Use it for everything ProseMirror, and import
+nothing from `@tiptap/pm/*` in a plugin that contributes to the editor.
+
+Your plugin ships as its own bundle, so an `import` of `@tiptap/pm/view`
+inside it resolves to a **second copy** of prosemirror-view. That copy does
+not interoperate with the app's, and the failure is worth stating precisely,
+because it is quiet in the place you are most likely to test:
+
+| Decoration sources | A `DecorationSet` from your own copy |
+| --- | --- |
+| Yours alone | Registers, renders, survives a transaction — looks fine |
+| Yours plus any other | `Cannot read properties of undefined (reading 'localsInner')` |
+
+The editor's own extensions are always decorating something, so the second
+row is what a user gets. A small reproduction can easily hit the first and
+convince you the import is harmless.
+
+The argument is the same one behind `ctx.key`: there has to be a single
+identity, and the app is the only party that can guarantee it.
+
+If you use a bundler, this also means you do not need `@tiptap/pm` as a
+dependency at all — `examples/plugins/bullet-threading` builds to a bundle
+with no ProseMirror in it, and a test asserts that.
 
 **`ctx.settings` is a load-time snapshot, not a live view.** It holds your
 plugin's resolved settings as they were when the plugin loaded. Changing a
@@ -86,6 +115,14 @@ values the plugin started with. When you need the current answer, call
 `context.settings.getAll()` (the `context` your `activate` was given; it needs
 the `settings` capability) at the moment you need it. Reloading the plugin is
 what refreshes the snapshot.
+
+**Nothing calls back when a setting changes.** There is no settings event —
+`PluginEventName` is `editor:ready`, `file:open` and `file:save` — and
+`SettingsAPI` offers only `getAll()`. A prop that runs per state change is
+therefore live, because it can read the current value each time it runs; work
+done once in `activate`, such as injecting a stylesheet, is not, and stays at
+the value the plugin started with until it is reloaded. If a setting must apply
+immediately, put what it controls on the decoration rather than in a stylesheet.
 
 A contribution may not set `props.editable`, either — that call is refused
 too. Editability belongs to the editor's own Editable extension and to vim
