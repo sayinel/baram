@@ -26,23 +26,27 @@
 // theme's colour tokens on `<html>` reach inside. That is intended — a security
 // surface that ignored the user's theme would look broken, not trustworthy.
 //
-// ── Why the three surfaces are not treated alike ─────────────────────────────
+// ── Why the four surfaces are not treated alike ──────────────────────────────
 //
-// `SECURITY_SURFACE_FILES` (`src/utils/security-surfaces.ts`) names three screens, and
+// `SECURITY_SURFACE_FILES` (`src/utils/security-surfaces.ts`) names four screens, and
 // what each one costs when it is hidden is different, so what each one pays for that
 // protection is different too. Highest cost first:
 //
-//  - PluginConsentDialog — HIGHEST, `variant="overlay"`. Hidden, the user grants
-//    capabilities to third-party code WITHOUT SEEING THE REQUEST. It is portaled to
-//    `document.body`, so its ancestor chain is `body > host` and the app owns both
-//    links of it. The portal is also what keeps the stacking context honest (see
-//    `security-surface-host.css`): shadow content is subject to its host's stacking
-//    position, so a host buried in the React tree can be trapped under any ancestor
-//    that establishes a context — which would leave the dialog taking keystrokes while
-//    invisible, the exact failure §323 hit with the suggestion menus, and
-//    indistinguishable from the hiding this file exists to stop. The price is that the
-//    dialog no longer sits inside the marketplace's DOM; nothing it does depends on
-//    that, because it is a fixed-position modal already.
+//  - PluginConsentDialog / ThemeConsentDialog — HIGHEST, `variant="overlay"`. Hidden, the
+//    user grants capabilities to third-party code (or installs a theme) WITHOUT SEEING
+//    THE REQUEST. Both are portaled to `document.body`, so their ancestor chain is
+//    `body > host` and the app owns both links of it. The portal is also what keeps the
+//    stacking context honest (see `security-surface-host.css`): shadow content is
+//    subject to its host's stacking position, so a host buried in the React tree can be
+//    trapped under any ancestor that establishes a context — which would leave the
+//    dialog taking keystrokes while invisible, the exact failure §323 hit with the
+//    suggestion menus, and indistinguishable from the hiding this file exists to stop.
+//    The price is that the dialog no longer sits inside its opener's own DOM (the
+//    marketplace, or ThemeBrowser); neither depends on that, because both are
+//    fixed-position modals already. ThemeConsentDialog got this treatment one plan later
+//    than the plugin one (§361 review round 2, F3) — a CSS-only property allowlist was
+//    tried first and found incomplete;
+//    see `styles/settings/theme.css`'s `.theme-consent-overlay` comment for the history.
 //
 //  - ApprovedRootsSection — MIDDLE, `variant="inline"`. Hidden, the user cannot see or
 //    withdraw a vault approval — a real loss of control, but not a silent grant: they

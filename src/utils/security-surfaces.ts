@@ -1,7 +1,7 @@
 // 테마 CSS가 닿으면 안 되는 화면의 단일 출처. "보안 표면"의 정의는 이름이 아니라 효과다:
 // 동의·승인·회수 IPC를 호출하거나 회수 사실을 고지하는 컴포넌트. 코퍼스는 `src/components`
 // 아래 `.ts`+`.tsx` 전부, `__tests__` 디렉터리는 제외한다 — 이 파일이 `src/utils/`에 있는
-// 것은 그 코퍼스 **밖**에 두기 위해서다: 아래 네 효과 이름을 전부 담은 이 주석이
+// 것은 그 코퍼스 **밖**에 두기 위해서다: 아래 다섯 효과 이름을 전부 담은 이 주석이
 // `src/components/` 안에 있었다면 스스로를 표면으로 잡았을 것이다.
 //
 // 이 두 목록은 손으로 적었지만 `src/__tests__/security-surfaces.test.ts`가 매번 같은
@@ -21,21 +21,26 @@
 // 위임해** 무언가를 그리는 경로 — 이 스캔은 그 파일 자신의 소스만 본다.
 
 /**
- * 그린다 — shadow DOM 대상. 셋(2026-09-19 실측, 위 테스트가 유지한다):
+ * 그린다 — shadow DOM 대상. 넷(§361 review round 2 가 하나를 더했다; 위 테스트가 유지한다):
  *  - PluginConsentDialog.tsx — `consentCovers` 를 불러 이미 승인된 범위인지 판정한다
  *    (능력 목록 자체는 props 로 받는다 — `consentRequired`·`consentGaps` 는 안 부른다).
  *  - PluginRevokedNotice.tsx — `revocationReason` 을 불러 회수 사유를 고지한다.
  *  - ApprovedRootsSection.tsx — `listApprovedRoots`·`revokeApprovedRoot` 를 불러
  *    vault 승인 목록을 보여주고 회수한다(승인 자체는 네이티브 폴더 선택 대화상자다).
+ *  - ThemeConsentDialog.tsx — `themeConsentSentences` 를 불러 §9.3 의 고정 세 문장을 그린다.
+ *    테마는 capabilities 가 없어 `consentCovers` 에 대응하는 "이미 승인됐는가" 판정이
+ *    없고, 그래서 새 효과 이름이 필요했다 — 기존 넷 중 아무것도 테마 설치 동의의
+ *    실제 부름을 담지 않는다(플러그인 회수·vault 승인과 다른 도메인이다).
  */
 export const SECURITY_SURFACE_FILES: readonly string[] = [
   "src/components/plugins/PluginConsentDialog.tsx",
   "src/components/plugins/PluginRevokedNotice.tsx",
   "src/components/settings/tabs/ApprovedRootsSection.tsx",
+  "src/components/settings/tabs/ThemeConsentDialog.tsx",
 ];
 
 /**
- * 같은 코퍼스에서 같은 네 효과 중 하나를 부르지만, 텍스트를 계산해 다른 파일의
+ * 같은 코퍼스에서 같은 다섯 효과 중 하나를 부르지만, 텍스트를 계산해 다른 파일의
  * prop 으로 넘기거나 코드로 설치를 막을 뿐 자기 소스에는 JSX 도 DOM 구성 마커도
  * 없다(위 파일 헤더의 두 검사가 강제하는 것 — "아무것도 그리지 않는다"는 더 강한
  * 주장이고 여기서는 하지 않는다). shadow DOM 대상이 아니다.
@@ -45,7 +50,19 @@ export const SECURITY_SURFACE_FILES: readonly string[] = [
  *    관례다: 같은 디렉터리의 `plugin-ui-i18n.test.tsx`가 `.tsx`만 보므로, JSX를 담지
  *    않는 이 훅을 `.ts`로 분리해 뒀다(파일 자체 헤더 주석 :17-19). 코퍼스가 `.tsx`만
  *    봤다면 이 파일은 조용히 빠졌을 것 — 그래서 코퍼스를 `.ts`까지 넓혔다.
+ *  - use-theme-actions.ts — `themeConsentSentences` 를 **정의**하고(같은 파일이라 자기
+ *    소스에 그 이름이 있다) `showConsentHistory`(§10.3 의 consentHistory 어포던스)가
+ *    부른다. `.ts`이고 훅 하나가 JSX 없이 상태·부수효과만 다루는, `usePluginActions.ts`
+ *    와 같은 모양이다 — 이 파일도 그 이유로 `.ts`다(`theme-gallery.tsx`·
+ *    `ThemeConsentDialog.tsx`가 `.tsx`로 그림을 맡는다).
+ *
+ * `theme-gallery.tsx` 는 위 어느 효과도 자기 소스에 담지 않아 두 목록 모두에 없다 —
+ * `showConsentHistory(installedThemes[theme.id])`를 부를 뿐 `themeConsentSentences`
+ * 자체는 부르지 않고, 그 결과(문장이 든 alert)도 자기 JSX 가 아니라
+ * `utils/confirm-dialog.ts`의 `showAlert`가 그린다. `revocationFor`의 세 소비자가
+ * "그중 무엇도 직접 그리지 않는다"는 이유로 빠진 것과 같은 모양이다.
  */
 export const NON_RENDERING_EFFECT_CALLERS: readonly string[] = [
   "src/components/plugins/usePluginActions.ts",
+  "src/components/settings/tabs/use-theme-actions.ts",
 ];

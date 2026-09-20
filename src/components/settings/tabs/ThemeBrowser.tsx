@@ -20,6 +20,7 @@ import {
   searchThemeRegistry,
 } from "../../../plugins/registry-client";
 import { usePluginStore } from "../../../stores/system/plugin";
+import { ThemeConsentDialog } from "./ThemeConsentDialog";
 import { useThemeActions } from "./use-theme-actions";
 
 interface ThemeBrowserProps {
@@ -189,80 +190,6 @@ function ThemeBrowserCard({
           ? t("settings.appearance.themeBrowser.installing")
           : t("settings.appearance.themeBrowser.install")}
       </button>
-    </div>
-  );
-}
-
-// ─── Consent Dialog ─────────────────────────────────────
-
-/**
- * §9.3's three fixed sentences — a theme has no `capabilities`, so there is nothing to list
- * per-capability the way `PluginConsentDialog` does, and no `ShadowIsolated` portal either.
- * Nothing is installed yet at the moment this dialog is open — only an ALREADY-installed
- * theme's CSS could be live while a SECOND theme's consent is on screen, and that is a real
- * threat (the same one `ShadowIsolated` closes for a plugin's own styling), not an absent
- * one. §8's `@layer baram-theme` guarantee ALONE does not close it (review round 1, F3) —
- * `styles/settings/theme.css`'s `.theme-consent-backdrop` comment has the full argument and
- * is the one home for it; the short version is that this dialog's critical properties
- * (display/opacity/visibility) are declared explicitly and unlayered there, which cascade
- * rules make unbeatable by any *normal*-importance layered rule — and a theme's stored CSS
- * is structurally unable to carry `!important` (`verifyStoredThemeCss`, checked on every
- * apply, not only at install). Read that comment before touching either side of this
- * dependency.
- *
- * ‼️ The third sentence ("makes no network connection") is true only because 0089 made it
- * STRUCTURALLY true — stored CSS carries no URL other than `data:` (`inlineThemeAssets`
- * turns every reference into one before anything is stored). If any 0089 layer is ever
- * loosened, this sentence becomes false and nothing here would notice — it is asserted as
- * copy, not re-verified per install.
- */
-function ThemeConsentDialog({
-  name,
-  onCancel,
-  onConfirm,
-}: {
-  name: string;
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
-  const { t } = useTranslation();
-
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onCancel();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onCancel]);
-
-  return (
-    <div className="theme-consent-backdrop">
-      <div aria-modal="true" className="theme-consent" role="dialog">
-        <h3 className="theme-consent-title">
-          {t("settings.appearance.installConsent.title", { name })}
-        </h3>
-        <ul className="theme-consent-list">
-          <li>{t("settings.appearance.installConsent.appearance")}</li>
-          <li>{t("settings.appearance.installConsent.noCode")}</li>
-          <li>{t("settings.appearance.installConsent.noNetwork")}</li>
-        </ul>
-        <div className="theme-consent-actions">
-          <button
-            className="btn-unstyled theme-consent-cancel"
-            onClick={onCancel}
-            type="button"
-          >
-            {t("common.cancel")}
-          </button>
-          <button
-            className="theme-consent-confirm"
-            onClick={onConfirm}
-            type="button"
-          >
-            {t("settings.appearance.installConsent.confirm")}
-          </button>
-        </div>
-      </div>
     </div>
   );
 }

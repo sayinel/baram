@@ -154,9 +154,14 @@ describe("useSettingsEffects paints an installed (community) theme (F1)", () => 
     });
   });
 
-  it("does nothing for a plain custom theme with no installed record (negative control)", async () => {
+  // §361 fix round 2 — re-review: the previous version of this control changed TWO inputs
+  // at once (`activeThemeId: "system"` and `installedThemes: {}`), so it could not tell
+  // apart "no theme is active" from "this theme id has no installed record". Varying only
+  // `installedThemes` — `activeThemeId` stays "dracula", same as the positive tests above —
+  // isolates the one thing this control claims to prove.
+  it("does nothing when activeThemeId names no installed record (negative control)", async () => {
     useSettingsStore.setState({
-      activeThemeId: "system",
+      activeThemeId: "dracula",
       installedThemes: {},
     });
     render(<Host />);
@@ -166,6 +171,14 @@ describe("useSettingsEffects paints an installed (community) theme (F1)", () => 
   });
 });
 
+// §361 fix round 2 — re-review named the narrowness of these two tests honestly, and
+// accepted it as sufficient rather than requiring a full mock-tauriStorage round trip:
+// `partialize` is the one task-specific link in "does this survive a restart" — there is
+// no custom `merge` on this store, and `migrate` (`store.ts`) only mutates the persisted
+// record under `version <` guards, so it strips nothing regardless of what `installedThemes`
+// holds. What these two tests do NOT prove: that `tauriStorage` itself round-trips the
+// value, or that a future `merge`/`migrate` addition would not drop it — that is shared
+// persistence machinery with its own coverage, not this task's.
 describe("installedThemes survives a restart (F1 — RED under M-K)", () => {
   it("is included in the persisted (partialize) shape", () => {
     const theme = installedTheme();
@@ -181,7 +194,11 @@ describe("installedThemes survives a restart (F1 — RED under M-K)", () => {
     expect(persisted?.installedThemes).toEqual({ dracula: theme });
   });
 
-  it("omits installedThemes when there are none, rather than always claiming a value", () => {
+  // §361 fix round 2 — re-review: this title used to say "omits installedThemes when there
+  // are none," but the assertion is `toEqual({})` — present AND empty, not absent. Fixed to
+  // say what is actually checked: an empty record round-trips as `{}`, not as `undefined`
+  // or a dropped key, which would also make `persisted?.installedThemes` fail differently.
+  it("carries installedThemes through as {} when there are none, not as a dropped key", () => {
     useSettingsStore.setState({ installedThemes: {} });
     const options = useSettingsStore.persist.getOptions();
     const partialize = options.partialize as

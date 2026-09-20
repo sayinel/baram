@@ -4,13 +4,7 @@
 // publish this task cannot make.
 import type { RegistryEntry, RegistryIndex } from "../../../../plugins/types";
 
-import {
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within,
-} from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Bare `vi.fn()` (no inline implementation) rather than `vi.fn(() => fetchResult)`: a typed
@@ -29,7 +23,13 @@ vi.mock("../../../../plugins/registry-client", async (importOriginal) => ({
 const handleInstall = vi.fn();
 const settleConsent = vi.fn();
 let pendingConsent: null | { entry: RegistryEntry } = null;
-vi.mock("../use-theme-actions", () => ({
+// `importOriginal` + spread, not a bare literal: `ThemeConsentDialog.tsx` imports the real
+// `themeConsentSentences` from this same module path, and a bare factory would leave it
+// undefined — the exact trap `plugin-install-consent.test.tsx` names for the same reason
+// (its mock of `plugin-loader.ts` needs `importOriginal` because sibling exports are used
+// elsewhere in the same import graph).
+vi.mock("../use-theme-actions", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../use-theme-actions")>()),
   useThemeActions: () => ({
     handleInstall: (...a: unknown[]) => handleInstall(...a),
     installErrors: {} as Record<string, string>,
@@ -39,6 +39,7 @@ vi.mock("../use-theme-actions", () => ({
   }),
 }));
 
+import { findSurface } from "../../../../__tests__/helpers/security-surface";
 import en from "../../../../i18n/en.json";
 import { usePluginStore } from "../../../../stores/system/plugin";
 import { ThemeBrowser } from "../ThemeBrowser";
@@ -161,6 +162,12 @@ describe("ThemeBrowser", () => {
   // mutations that each delete or hide the §9.3 disclosure (the sentences, and the ⓘ
   // affordance elsewhere) all passed the suite green. Every test below is written to fail
   // if what it names is missing from the screen, not merely to prove a dialog exists.
+  //
+  // §361 fix round 2 — the dialog is now shadow-isolated (`ThemeConsentDialog.tsx`, F3), so
+  // `screen`/`within` cannot see inside it: `querySelectorAll` does not pierce a shadow
+  // root, in jsdom or in a real browser. `findSurface` (the same helper
+  // `plugin-install-consent.test.tsx` uses for `PluginConsentDialog`) waits for the shadow
+  // host to appear and returns queries bound inside its content.
   describe("consent dialog (§9.3)", () => {
     beforeEach(() => {
       fetchResult = Promise.resolve({ plugins: [themeEntry()] });
@@ -169,57 +176,51 @@ describe("ThemeBrowser", () => {
 
     it("shows the three fixed sentences — RED under M-A (sentences deleted)", async () => {
       render(<ThemeBrowser onBack={() => {}} />);
-      const dialog = await screen.findByRole("dialog");
+      const dialog = await findSurface(".theme-consent");
 
       expect(
-        within(dialog).getByText(
-          EN["settings.appearance.installConsent.appearance"],
-        ),
+        dialog.getByText(EN["settings.appearance.installConsent.appearance"]),
       ).toBeInTheDocument();
       expect(
-        within(dialog).getByText(
-          EN["settings.appearance.installConsent.noCode"],
-        ),
+        dialog.getByText(EN["settings.appearance.installConsent.noCode"]),
       ).toBeInTheDocument();
       expect(
-        within(dialog).getByText(
-          EN["settings.appearance.installConsent.noNetwork"],
-        ),
+        dialog.getByText(EN["settings.appearance.installConsent.noNetwork"]),
       ).toBeInTheDocument();
     });
 
     it("names the theme in the title", async () => {
       render(<ThemeBrowser onBack={() => {}} />);
-      const dialog = await screen.findByRole("dialog");
-      expect(within(dialog).getByText(/dracula/i)).toBeInTheDocument();
+      const dialog = await findSurface(".theme-consent");
+      expect(dialog.getByText(/dracula/i)).toBeInTheDocument();
     });
 
     it("Install calls settleConsent(true)", async () => {
       render(<ThemeBrowser onBack={() => {}} />);
-      const dialog = await screen.findByRole("dialog");
-      // The card's own Install button is ALSO on screen and says "Install" — scoped to the
-      // dialog so this can't accidentally click that one instead.
-      fireEvent.click(within(dialog).getByRole("button", { name: /install/i }));
+      const dialog = await findSurface(".theme-consent");
+      // The card's own Install button is ALSO on screen (light DOM) and says "Install" —
+      // querying inside the shadow surface can't accidentally click that one instead.
+      fireEvent.click(dialog.getByRole("button", { name: /install/i }));
       expect(settleConsent).toHaveBeenCalledWith(true);
     });
 
     it("Cancel calls settleConsent(false)", async () => {
       render(<ThemeBrowser onBack={() => {}} />);
-      const dialog = await screen.findByRole("dialog");
-      fireEvent.click(within(dialog).getByRole("button", { name: /cancel/i }));
+      const dialog = await findSurface(".theme-consent");
+      fireEvent.click(dialog.getByRole("button", { name: /cancel/i }));
       expect(settleConsent).toHaveBeenCalledWith(false);
     });
 
     it("Escape calls settleConsent(false)", async () => {
       render(<ThemeBrowser onBack={() => {}} />);
-      await screen.findByRole("dialog");
+      await findSurface(".theme-consent");
       fireEvent.keyDown(window, { key: "Escape" });
       expect(settleConsent).toHaveBeenCalledWith(false);
     });
 
     it("a key other than Escape does nothing", async () => {
       render(<ThemeBrowser onBack={() => {}} />);
-      await screen.findByRole("dialog");
+      await findSurface(".theme-consent");
       fireEvent.keyDown(window, { key: "Enter" });
       expect(settleConsent).not.toHaveBeenCalled();
     });

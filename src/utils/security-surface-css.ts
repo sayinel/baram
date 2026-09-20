@@ -2,9 +2,9 @@
 // reading the stylesheets that already own each rule rather than by copying them.
 //
 // Why read instead of move. The obvious shape is to cut these rules out of
-// `plugins.css`/`vault.css`/`modal.css` into one file and inject that. SEVEN of the 32
-// classes forbid it — the test that moving one breaks something is "another screen uses
-// it AND it has a rule", and these are the classes that pass it. The counts below come
+// `plugins.css`/`vault.css`/`modal.css`/`theme.css` into one file and inject that. SEVEN of
+// the 40 classes forbid it — the test that moving one breaks something is "another screen
+// uses it AND it has a rule", and these are the classes that pass it. The counts below come
 // from scanning the `.tsx` files under `src/components`, tests excluded. No `.ts` file
 // under that tree carries any of these seven strings today (measured), so the figures
 // happen to be the same for the wider corpus — but they were taken over the narrower
@@ -23,6 +23,10 @@
 // The last one is the concrete payoff: a move would have unstyled three paragraphs of
 // the marketplace with nothing to catch it. `settings-section-title` is shared too (3
 // other files) but has no rule anywhere, so moving it would break nothing — not counted.
+// The seven are unchanged by `themeConsent` (§361 review round 2): every `theme-consent-*`
+// class is single-purpose, defined only in `theme.css`, used only by `ThemeBrowser.tsx` —
+// only `btn-unstyled`, already on the list, is shared with it. The denominator moved
+// (32 → 40) because `theme.css` is read for the first time; the shared set did not.
 //
 // Cutting those out breaks the screens left behind; copying them is the drift
 // `export-editor-css.ts` was written to end ("a copy has no way to notice that its
@@ -50,12 +54,12 @@
 // `src/styles/__tests__` records three ways a hand-rolled matcher got that wrong.
 //
 // `security-surface-css.test.ts` keeps this honest from both ends: the class lists are
-// checked against the class tokens scanned out of the three component sources, and every
+// checked against the class tokens scanned out of the four component sources, and every
 // listed class that has a rule anywhere in `src/styles` must appear in the output — so
 // an extraction that silently matched nothing goes red instead of rendering unstyled.
 //
 // ‼️ The second of those matches on a CLASS BOUNDARY, not a substring, and that is not
-// a detail: three of the 32 classes are prefixes of siblings that are always present
+// a detail: three of the 40 classes are prefixes of siblings that are always present
 // (`plugin-consent` ⊂ `plugin-consent__body`, `plugin-revoked` ⊂ `plugin-revoked__title`,
 // `settings-section` ⊂ `settings-section-desc`). A substring test could not fail for any
 // of the three — review deleted the real `.plugin-consent` rule and the guard stayed
@@ -67,11 +71,12 @@ import baseCss from "../styles/base.css?raw";
 import pluginsCss from "../styles/plugins.css?raw";
 import boundaryCss from "../styles/security-surfaces.css?raw";
 import modalCss from "../styles/settings/modal.css?raw";
+import themeCss from "../styles/settings/theme.css?raw";
 import vaultCss from "../styles/settings/vault.css?raw";
 
-/** The three screens `SECURITY_SURFACE_FILES` names, keyed for the lookup below. */
+/** The four screens `SECURITY_SURFACE_FILES` names, keyed for the lookup below. */
 export type SecuritySurface =
-  "approvedRoots" | "consentDialog" | "revokedNotice";
+  "approvedRoots" | "consentDialog" | "revokedNotice" | "themeConsent";
 
 /**
  * Every class each surface puts in the DOM, including the shared utilities it borrows.
@@ -121,6 +126,16 @@ export const SECURITY_SURFACE_CLASSES: Record<
     "plugin-revoked__remove",
     "plugin-revoked__title",
   ],
+  themeConsent: [
+    "btn-unstyled",
+    "theme-consent",
+    "theme-consent-actions",
+    "theme-consent-cancel",
+    "theme-consent-confirm",
+    "theme-consent-list",
+    "theme-consent-overlay",
+    "theme-consent-title",
+  ],
 };
 
 /**
@@ -128,7 +143,7 @@ export const SECURITY_SURFACE_CLASSES: Record<
  * its three utilities are the weakest thing a surface applies; the others never define
  * the same class, so their order between themselves does not decide anything today.
  */
-const CLASS_SHEETS = [pluginsCss, modalCss, vaultCss, baseCss];
+const CLASS_SHEETS = [pluginsCss, modalCss, vaultCss, themeCss, baseCss];
 
 /** At-rules whose block holds ordinary rules that must be carried across with it. */
 const NESTING_ATRULES = new Set(["media", "supports"]);

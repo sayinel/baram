@@ -1,9 +1,9 @@
 // §361 — every theme mutation the settings UI starts (spec 0049 §10), mirroring the shape
 // `usePluginActions.ts` gave the plugin marketplace: install with a consent gate, an
 // in-flight guard before the first await, and one place that owns the source-based branch
-// removal needs — `theme-gallery.tsx` and `ThemeBrowser.tsx` call `removeTheme`/
-// `handleInstall` without ever comparing `theme.source` themselves (theme-sources.ts's
-// whole point).
+// removal needs — `theme-gallery.tsx` and `ThemeBrowser.tsx`/`ThemeConsentDialog.tsx` call
+// `removeTheme`/`handleInstall` without ever comparing `theme.source` themselves
+// (theme-sources.ts's whole point).
 //
 // Unlike plugins, a theme carries no `capabilities` (spec §9.3), so there is no escalation
 // question on update and no per-capability list to show — the consent is three fixed
@@ -37,6 +37,28 @@ import {
 /** What the consent dialog is currently asking about, if anything. */
 export interface PendingThemeConsent {
   entry: RegistryEntry;
+}
+
+/**
+ * §9.3's three fixed sentences, translated — the single home for them.
+ * `ThemeConsentDialog.tsx` and `showConsentHistory` below both call this instead of each
+ * spelling out the three `t(...)` calls, which is what fix round 1 did and
+ * is exactly the duplicated-predicate shape F7 fixed one file over
+ * (`registry-client.ts`'s `matchesQuery`): a sentence added or reworded in one call site
+ * and not the other would silently show the install-time gate and the after-the-fact
+ * recall different copy for the same three-sentence disclosure.
+ *
+ * Also the theme-domain counterpart of `consentCovers` for
+ * `src/utils/security-surfaces.ts`'s effect scan — see that file's header comment
+ * ("보안 표면"의 정의는 이름이 아니라 효과다) for why a shared named function, not a
+ * filename, is what the scan keys on.
+ */
+export function themeConsentSentences(t: Translate): string[] {
+  return [
+    t("settings.appearance.installConsent.appearance"),
+    t("settings.appearance.installConsent.noCode"),
+    t("settings.appearance.installConsent.noNetwork"),
+  ];
 }
 
 /**
@@ -247,9 +269,7 @@ export function useThemeActions() {
             date,
             version: installed.consentedVersion,
           }),
-          t("settings.appearance.installConsent.appearance"),
-          t("settings.appearance.installConsent.noCode"),
-          t("settings.appearance.installConsent.noNetwork"),
+          ...themeConsentSentences(t),
         ].join(" "),
       );
     },

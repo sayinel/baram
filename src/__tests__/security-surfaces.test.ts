@@ -47,22 +47,34 @@ function filesUnder(dir: string, out: string[] = []): string[] {
  * 이 중 하나라도 부르면 보안 표면이다. 코퍼스는 `src/components` 아래 `.ts`+`.tsx`
  * 전부, `__tests__` 디렉터리는 제외한다.
  *
- * ‼️ 통제자가 실행 전에 이 코퍼스로 전수 스캔해 확정했다. 정확히 네 파일을 낸다:
- * PluginConsentDialog.tsx · PluginRevokedNotice.tsx · ApprovedRootsSection.tsx ·
- * usePluginActions.ts — 그중 그리는 셋은 `SECURITY_SURFACE_FILES`, 그리지 않는
- * 하나는 `NON_RENDERING_EFFECT_CALLERS`(둘 다 `security-surfaces.ts`)에 있다.
+ * ‼️ 통제자가 실행 전에 이 코퍼스로 전수 스캔해 확정했다(2026-09-19). 그때는 정확히
+ * 네 파일을 냈다: PluginConsentDialog.tsx · PluginRevokedNotice.tsx ·
+ * ApprovedRootsSection.tsx · usePluginActions.ts. §361 review round 2 가
+ * `themeConsentSentences`(테마 도메인의 다섯 번째 효과)를 더하면서 여섯으로 늘었다 —
+ * ThemeConsentDialog.tsx · use-theme-actions.ts. 그리는 넷(PluginConsentDialog.tsx ·
+ * PluginRevokedNotice.tsx · ApprovedRootsSection.tsx · ThemeConsentDialog.tsx)은
+ * `SECURITY_SURFACE_FILES`, 그리지 않는 둘(usePluginActions.ts ·
+ * use-theme-actions.ts)은 `NON_RENDERING_EFFECT_CALLERS`(둘 다
+ * `security-surfaces.ts`)에 있다.
  *
  * `consentCovers` 가 핵심이다 — 처음에 쓴 목록은 `consentRequired`·`consentGaps`·
  * `grantableCapabilities` 였는데, **동의 대화상자는 그중 아무것도 부르지 않는다**
  * (능력 목록을 props 로 받는다). 가장 중요한 표면을 놓치는 목록이었다.
  *
+ * `themeConsentSentences` 가 다섯 번째로 필요했던 이유도 같은 모양이다: 테마는
+ * capabilities 가 없어 `consentCovers`(이미 승인된 범위인지 판정)에 대응하는 개념
+ * 자체가 없고, 기존 넷 중 무엇도 테마 설치 동의 화면의 실제 소스에 나타나지
+ * 않는다 — 이름이 아니라 효과로 찾는다는 이 파일의 원칙을 테마에도 지키려면 그
+ * 화면이 실제로 부르는 것을 이름으로 올려야 했다.
+ *
  * 코퍼스가 `.tsx` 만이 아니라 `.ts` 도 보는 이유가 `usePluginActions.ts` 다: 이
  * 디렉터리의 `plugin-ui-i18n.test.tsx` 가 `.tsx` 만 스캔한다는 이유로 JSX 없는 훅을
  * `.ts` 로 갈라 둔 기존 관례가 있다(파일 자체 헤더 :17-19) — `.tsx` 로만 스캔했다면
- * `revocationReason`(:187,:333) 호출이 조용히 빠졌을 것이다.
+ * `revocationReason`(:187,:333) 호출이 조용히 빠졌을 것이다. `use-theme-actions.ts`
+ * 도 같은 모양(JSX 없는 훅)이라 같은 이유로 `.ts` 다.
  *
- * 넷을 부르지 않지만 같은 종류(승인을 주거나 거두는) 효과인데 일부러 뺀 것 셋,
- * 이유와 함께(코퍼스 표기는 위와 같다):
+ * 다섯을 부르지 않지만 같은 종류(승인을 주거나 거두는, 혹은 동의 문장을 그리는)
+ * 효과인데 일부러 뺀 것 넷, 이유와 함께(코퍼스 표기는 위와 같다):
  *  - `pickApprovedDir` — 코퍼스 안 소비자 7개 파일 / 8호출지점(FileTree.tsx,
  *    TasksTab.tsx, JournalTab.tsx, ZettelkastenTab.tsx, VaultTab.tsx,
  *    PluginDeveloperSection.tsx, ContextAddMenu.tsx 는 :66·:90 두 번), 코퍼스 밖에
@@ -83,12 +95,22 @@ function filesUnder(dir: string, out: string[] = []): string[] {
  *    넘기며, usePluginActions 는 그 결과로 설치를 코드에서 막는다(에러 텍스트는
  *    `revocationReason` 이 만든다 — 그래서 그 효과는 위 넷에 있다). 회수 **고지**
  *    자체는 PluginRevokedNotice 가 `revocationReason` 을 불러 그린다.
+ *  - `showConsentHistory` — 코퍼스 안 소비자는 `theme-gallery.tsx`(ⓘ 버튼의
+ *    `onInfo` 핸들러) 하나. `revocationFor`의 세 소비자와 같은 모양으로 빠진다:
+ *    `theme-gallery.tsx` 자신은 `themeConsentSentences`를 부르지 않고
+ *    `showConsentHistory`만 호출하며, 그 함수가 만드는 세 문장은
+ *    `theme-gallery.tsx`의 JSX가 아니라 `utils/confirm-dialog.ts`의 `showAlert`가
+ *    그린다(코퍼스 밖). `showConsentHistory` 자체(정의부)는 `use-theme-actions.ts`에
+ *    있고 그 파일이 위 목록에 오른 것은 `themeConsentSentences`를 부르기
+ *    때문이다 — 이 두 번째 알림 표면은 §361 review round 2 가 shadow-isolate 하기로
+ *    정한 설치 동의 대화상자와 다른 화면이고, 이번 라운드가 다루는 범위 밖이다.
  */
 const EFFECTS = [
   "consentCovers",
   "listApprovedRoots",
   "revocationReason",
   "revokeApprovedRoot",
+  "themeConsentSentences",
 ];
 
 it("보안 표면 목록과 그리지 않는 목록이 겹치지 않는다", () => {

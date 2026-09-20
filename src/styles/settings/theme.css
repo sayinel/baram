@@ -514,39 +514,63 @@
   color: var(--color-status-danger);
 }
 
-/* Theme install consent dialog (§361) — nested inside the settings modal's own
-   stacking context (rendered from ThemeBrowser, which replaces AppearanceTab's body), so
-   this backdrop is deliberately NOT named "*-overlay": settings-dialog-layering.test.ts
-   scans for that suffix among components/settings siblings of the Settings modal, and a
-   nested dialog like this one needs no z-index above .settings-overlay to be visible.
-   ‼️ It IS a security surface by `src/utils/security-surfaces.ts`'s own definition
-   ("보안 표면의 정의는 이름이 아니라 효과다") — a hostile ALREADY-INSTALLED theme is exactly
-   what could want to hide it before a SECOND install's consent. That module's scan keys on
-   four plugin-specific effect names and cannot reach a theme dialog; not extended here
-   (review round 1, F10) — recorded for Task 6 or a follow-up.
+/* Theme install consent dialog (§361).
 
-   ‼️ §8's `@layer baram-theme` alone is NOT the guarantee that closes this (review round 1,
-   F3) — C-11 is about two declarations of the SAME property competing, and this dialog's
-   critical properties (display/opacity/visibility) were previously undeclared here, so a
-   layered *normal* rule for one of them from an installed theme would apply unopposed.
-   What actually closes it: every property below is declared EXPLICITLY and UNLAYERED, and
-   for *normal*-importance declarations, cascade layers rank BELOW unlayered styles
-   regardless of selector specificity or source order (CSS Cascade Layers §6) — so an
-   unlayered normal declaration here always beats a layered normal declaration for the same
-   property, full stop. That holds only because a theme's stored CSS can never carry
-   `!important` anywhere in the text: `verifyStoredThemeCss`'s `hasImportantSpelledAnywhere`
-   is a lexer-level token scan over the WHOLE string (not an AST walk, so nesting depth
-   cannot hide it from this one), and it runs at LOAD TIME on every apply
-   (`utils/theme-vars.ts`'s `applyThemeCss`) — not only once at install — so every
-   declaration a currently-applied theme makes is guaranteed *normal* importance for the
-   whole time it is on the page. If that guarantee is ever loosened, this comment's claim
-   goes false and nothing here would notice — same shape as the third consent sentence's
-   0089 dependency. Residual NOT closed by this: `pointer-events` sabotage (undeclared here)
-   and any property besides the three below. */
-.theme-consent-backdrop {
+   ‼️ SHADOW-ISOLATED (review round 2, F3) — that is the real closure now, not the CSS below.
+   Fix round 1 tried a property allowlist instead: declare display/opacity/visibility
+   EXPLICITLY and UNLAYERED, reasoning that for *normal*-importance declarations an unlayered
+   rule beats ANY layered one regardless of selector specificity (CSS Cascade Layers §6), and
+   that a theme's stored CSS structurally cannot carry `!important` anywhere in the text
+   (`verifyStoredThemeCss`'s `hasImportantSpelledAnywhere` is a lexer-level token scan,
+   independent of AST nesting, re-run on every apply via `utils/theme-vars.ts`'s
+   `applyThemeCss` — not only once at install). Both of those premises are true and stay
+   true; the re-review mapped every node the dialog renders against the allowlist and found
+   it incomplete on three of eight: `.theme-consent-list li` — THE THREE SENTENCES
+   THEMSELVES — and both buttons, none of which declared `display`.
+   `@layer baram-theme { .theme-consent-list li { display: none } }` would have hidden the
+   disclosure unopposed. The deeper problem was not those three specific gaps: a
+   property-by-property allowlist has to be complete on two axes — every element × every
+   property a hostile theme could use — and the second axis is open-ended (`transform`,
+   `clip-path`, `height`+`overflow`, `position`+offsets, `font-size`, colour-matched-to-
+   background, …), which is not closable by enumeration. That is exactly why spec §8.2
+   prescribes shadow DOM for a consent gate rather than CSS hardening.
+
+   So `ThemeConsentDialog.tsx` now renders through `ShadowIsolated`
+   (`variant="overlay"`, same tier as `PluginConsentDialog`) — see that component's own
+   header for what the boundary buys (a document stylesheet cannot match a selector inside a
+   shadow tree, in a real browser) and does not (HIDING the light-DOM host, pinned
+   separately in `security-surface-host.css`). ‼️ jsdom 30.0.1 does NOT implement that
+   boundary for style matching (measured — the same limitation §359 already recorded for the
+   plugin dialog), so this repo's tests assert the MECHANISM is attached (a shadow root
+   exists, the host carries `security-surface-host`) and never that a document rule fails to
+   reach shadow content in jsdom, because it would reach there and the assertion would be
+   testing a false premise.
+
+   The per-node properties below are kept as belt-and-braces — the same framing
+   `security-surface-host.css` gives its own redundant `!important` pins once its real gate
+   (the token scan) was solid — and deliberately NOT extended to the three gap nodes the
+   re-review found. Completing that enumeration now would buy nothing real: the shadow
+   boundary already makes the whole class of CSS-only attack impossible in a real browser,
+   and finishing the allowlist would misstate what is doing the work.
+
+   Registered in `src/utils/security-surfaces.ts` (`SECURITY_SURFACE_FILES`), closing F10:
+   that scan previously keyed on four plugin-specific effect names and could not reach a
+   theme dialog. `themeConsentSentences` (`use-theme-actions.ts`) is the theme-domain effect
+   it now also keys on — found BY EFFECT, not by this file's name, per that module's own
+   stated definition ("보안 표면"의 정의는 이름이 아니라 효과다"). */
+.theme-consent-overlay {
   position: fixed;
   inset: 0;
-  z-index: 10;
+
+  /* §361 review round 2 — named honestly now that this is a real overlay (shadow-isolated,
+     ShadowIsolated variant="overlay") instead of the deliberately-not-"*-overlay" name fix
+     round 1 chose to dodge settings-dialog-layering.test.ts. That test's own header already
+     blesses this exact shape for `.plugin-consent-overlay`: a nested dialog swept into the
+     scan "loses nothing by clearing 1000 anyway, since its own value is scoped and
+     arbitrary" — this class lives inside the shadow content, so the number below governs
+     nothing about real page stacking (the light-DOM host's `z-index: 1100 !important` in
+     security-surface-host.css does that); it exists only to satisfy the scan honestly. */
+  z-index: 1050;
   display: flex;
   visibility: visible;
   align-items: center;
