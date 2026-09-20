@@ -379,17 +379,49 @@ describe("every seeded entry agrees with the example it names", () => {
   it.each(seeded.map((p) => p.id))("%s", (id) => {
     const entry = seed().plugins.find((p) => p.id === id);
     const manifest = byId.get(id);
-    expect(entry?.version).toBe(manifest?.version);
+
+    // ‼️ THE SEED MAY LAG THE MANIFEST, AND MUST NEVER LEAD IT.
+    //
+    // The first version of this check demanded equality, which reads right and is wrong:
+    // bumping a plugin's version is a commit, publishing it is a later tag, and the seed
+    // cannot be updated in between because the checksum does not exist until the workflow
+    // has built the ZIP. So equality failed on the bump — a gate breaking on exactly the
+    // release it exists to guard, which is the shape the word-count floor test one screen
+    // up documents avoiding. It was caught by the very next version bump.
+    //
+    // A seed AHEAD of the manifest has no such excuse: nothing produces it but a hand-edit
+    // naming a version that was never built.
+    const order = (v: string) => v.split(".").map(Number);
+    const [seedV, manifestV] = [
+      order(entry?.version ?? "0.0.0"),
+      order(manifest?.version ?? "0.0.0"),
+    ];
+    const leads =
+      seedV[0] !== manifestV[0]
+        ? seedV[0] > manifestV[0]
+        : seedV[1] !== manifestV[1]
+          ? seedV[1] > manifestV[1]
+          : seedV[2] > manifestV[2];
+    expect(
+      leads,
+      `the seed names ${entry?.version} but the manifest is ${manifest?.version} — a seed entry cannot be ahead of the plugin`,
+    ).toBe(false);
+
+    // Tier and capabilities, on the other hand, are compared exactly. They are what the
+    // consent dialog is built from, and unlike the version they have no legitimate window
+    // in which the two disagree: changing either is the escalation the install gate exists
+    // to catch, so the snapshot must not quietly describe a different bargain.
     expect(entry?.trust).toBe(manifest?.trust);
     expect([...(entry?.capabilities ?? [])].sort()).toEqual(
       [...(manifest?.capabilities ?? [])].sort(),
     );
-    // The archive the entry points at must be the one this version would produce. The
-    // checksum cannot be checked from here — the ZIP lives in the registry repo, which is
-    // what `validate-registry-assets.ts` covers at publish time — but a downloadUrl naming
-    // another version is a mismatch this side CAN see, and it is the one a stale hand-edit
-    // produces.
-    expect(entry?.downloadUrl).toContain(`-${manifest?.version}.zip`);
+
+    // The entry must at least be consistent WITH ITSELF: its downloadUrl names its own
+    // version. The checksum cannot be checked from here — the ZIP lives in the registry
+    // repo, which is what `validate-registry-assets.ts` covers at publish time — but an
+    // entry whose URL and version disagree is a mismatch this side CAN see, and it is what
+    // a half-finished hand-edit produces.
+    expect(entry?.downloadUrl).toContain(`-${entry?.version}.zip`);
   });
 });
 
