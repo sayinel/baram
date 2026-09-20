@@ -271,6 +271,32 @@ describe("subscribeHighlightStyle", () => {
     }
   });
 
+  it("keeps watching while another listener remains (refcount, not a toggle)", async () => {
+    // Fix round 1 (F3). The watcher is attached on the FIRST subscribe and torn down on the
+    // LAST unsubscribe; nothing pinned the "last" half, so an implementation that detached
+    // on any unsubscribe passed every other case in this file — each of which subscribes
+    // exactly once.
+    const media = installMatchMedia(false);
+    const first: unknown[] = [];
+    const second: unknown[] = [];
+    const unsubscribeFirst = subscribeHighlightStyle((s) => first.push(s));
+    const unsubscribeSecond = subscribeHighlightStyle((s) => second.push(s));
+    try {
+      unsubscribeFirst();
+
+      document.documentElement.dataset.theme = "dark";
+      await settle();
+
+      expect(second).toEqual([darkHighlightStyle]);
+      // …and the one that left really did stop, so this is a refcount rather than "the
+      // teardown never runs".
+      expect(first).toEqual([]);
+    } finally {
+      unsubscribeSecond();
+      media.restore();
+    }
+  });
+
   it("stops delivering after the last listener leaves", async () => {
     const media = installMatchMedia(false);
     const seen: unknown[] = [];

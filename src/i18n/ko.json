@@ -838,7 +838,6 @@
   "settings.appearance.themeCssError.substitutionNotAllowed": "테마 CSS가 var()로 주소를 만들어, 설치 전에 확인할 수 없습니다",
   "settings.appearance.themeCssError.tooLarge": "테마가 담은 파일이 너무 큽니다",
   "settings.appearance.updateAvailable": "v{version}으로 업데이트",
-  "settings.appearance.updateThemeAction": "업데이트",
   "settings.appearance.updateThemeNamed": "{name}을(를) v{version}으로 업데이트",
   "settings.appearance.updatedToast": "'{name}'을(를) v{version}으로 업데이트했습니다",
   "settings.appearance.updatingTheme": "업데이트 중…",

@@ -122,6 +122,15 @@
   opacity: 0.6;
 }
 
+/* §361 Task 6 fix round 1 (F1) — an update failure, on the card it failed for. Same
+   colour and size as `.theme-import-error` below; separate because it sits inside the
+   card wrapper's column rather than under the gallery. */
+.theme-card-error {
+  margin-top: 4px;
+  font-size: 0.7rem;
+  color: var(--color-status-danger);
+}
+
 .theme-import-error {
   margin-top: 8px;
   font-size: 0.8rem;

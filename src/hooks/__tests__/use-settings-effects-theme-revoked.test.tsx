@@ -4,7 +4,9 @@
 // only the one that acts: the two that must NOT deactivate are what distinguishes the
 // implemented rule from "any withdrawal yanks the theme", which is how §9.4's unqualified
 // sentence reads at face value.
-import { render, waitFor } from "@testing-library/react";
+import { StrictMode } from "react";
+
+import { act, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Same three-module mock as the sibling settings-effects suites, for the same reason: this
@@ -122,7 +124,12 @@ function themeStyleText(): null | string {
   return document.querySelector("style[data-baram-theme]")?.textContent ?? null;
 }
 
+const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
 const originalMatchMedia = window.matchMedia;
+/** Replaced by the dedupe case below, and put back after it — the store is module state
+ *  shared with every other case in this file. */
+const originalShowToast = useUIStore.getState().showToast;
 
 beforeEach(() => {
   clearThemeVars(document.documentElement);
@@ -152,6 +159,7 @@ beforeEach(() => {
 
 afterEach(() => {
   window.matchMedia = originalMatchMedia;
+  useUIStore.setState({ showToast: originalShowToast });
   clearThemeVars(document.documentElement);
   document
     .querySelectorAll("style[data-baram-theme]")
@@ -187,6 +195,56 @@ describe("a MALICIOUS withdrawal takes the theme off", () => {
       expect(useUIStore.getState().toast?.message).toContain("Dracula");
     });
     expect(useUIStore.getState().toast?.type).toBe("warning");
+  });
+
+  it("announces a SECOND attempt too, rather than reverting in silence", async () => {
+    // Fix round 1 (F2). The gallery leaves the withdrawn card selectable — it is a theme
+    // the user owns and may want to open in order to remove — so choosing it again is an
+    // ordinary action. With a dedupe that only ever grew, the second choice reverted with
+    // no toast at all and read as a card that simply does nothing.
+    revoke("malicious");
+    render(<Host />);
+    await waitFor(() => {
+      expect(useUIStore.getState().toast?.message).toContain("Dracula");
+    });
+
+    useUIStore.getState().dismissToast();
+    act(() => {
+      useSettingsStore.getState().setActiveTheme("dracula");
+    });
+
+    await waitFor(() => {
+      expect(useUIStore.getState().toast?.message).toContain("Dracula");
+    });
+    expect(useSettingsStore.getState().activeThemeId).toBe("system");
+  });
+
+  it("does not announce twice for one refusal", async () => {
+    // The half the reset must not break: within a single force-deactivation the effect
+    // runs twice (React's development double-invoke, which `StrictMode` turns on here),
+    // and only one toast belongs to one refusal.
+    //
+    // ‼️ THE COUNT IS TAKEN FROM A SPY, NOT FROM THE STORE. The first version of this case
+    // re-rendered with a fresh `installedThemes` identity and asserted `toast === null` —
+    // vacuous twice over: by then `activeThemeId` is already `"system"` so the effect
+    // early-returns whatever the dedupe does, and `showToast` replaces rather than
+    // stacks, so two calls leave one toast either way. Deleting the dedupe outright left
+    // that version green (measured, fix round 1).
+    const showToast = vi.fn();
+    useUIStore.setState({ showToast });
+    revoke("malicious");
+
+    render(
+      <StrictMode>
+        <Host />
+      </StrictMode>,
+    );
+    await waitFor(() => {
+      expect(useSettingsStore.getState().activeThemeId).toBe("system");
+    });
+    await settle();
+
+    expect(showToast).toHaveBeenCalledTimes(1);
   });
 
   it("takes it off when the withdrawal lands while the theme is already applied", async () => {

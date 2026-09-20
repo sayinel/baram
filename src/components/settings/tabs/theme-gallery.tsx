@@ -66,8 +66,13 @@ export function ThemeGallery({
   const { handleImport, importError } = useThemeImport();
   // §361 — owns the source-based branch (custom → deleteCustomTheme, community →
   // uninstall + removeInstalledTheme) so this component only ever calls `removeTheme`.
-  const { handleUpdate, installing, removeTheme, showConsentHistory } =
-    useThemeActions();
+  const {
+    handleUpdate,
+    installErrors,
+    installing,
+    removeTheme,
+    showConsentHistory,
+  } = useThemeActions();
   const registryUrl = usePluginStore((s) => s.registryUrl);
   const revocations = usePluginStore((s) => s.revocations);
   const { index, updates } = useThemeUpdates();
@@ -115,6 +120,7 @@ export function ThemeGallery({
                       ? t("settings.appearance.customBadge")
                       : undefined
                   }
+                  error={installErrors[theme.id]}
                   isActive={activeThemeId === theme.id}
                   key={theme.id}
                   onDelete={() => void removeTheme(theme)}
@@ -173,6 +179,7 @@ export function ThemeGallery({
 
 function ThemeCard({
   badge,
+  error,
   isActive,
   onDelete,
   onInfo,
@@ -184,6 +191,18 @@ function ThemeCard({
   updating,
 }: {
   badge: string | undefined;
+  /**
+   * §361 Task 6 fix round 1 (F1) — why an update failure needs a surface HERE.
+   *
+   * Both of `handleUpdate`'s failure paths write `installErrors[id]` and return false: a
+   * withdrawn target, and any `installTheme` refusal. Without this the button read
+   * "Updating…" and then went back to offering the same version, saying nothing — which is
+   * the state `registry-client.ts` calls "promising an action that cannot succeed" three
+   * lines above the kind filter next to it. `ThemeBrowser.tsx` renders the same map for
+   * install, but it holds its OWN `useThemeActions()` instance, so nothing it shows can
+   * reach this screen.
+   */
+  error: string | undefined;
   isActive: boolean;
   onDelete: () => void;
   /** §361 — present only when `themeActions(theme.source).consentHistory` is true AND the
@@ -250,6 +269,11 @@ function ThemeCard({
                 version: updateVersion,
               })}
         </button>
+      )}
+      {error !== undefined && (
+        <div className="theme-card-error" role="alert">
+          {error}
+        </div>
       )}
       <PluginRevokedNotice
         kind="theme"

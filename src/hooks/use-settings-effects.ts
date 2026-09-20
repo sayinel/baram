@@ -93,16 +93,29 @@ export function useSettingsEffects(editor: Editor | null) {
   );
   const forceDeactivated = themeBlocksApply(activeRevocation);
   const effectiveThemeId = forceDeactivated ? "system" : activeThemeId;
-  /** Theme ids already announced, so React's double-invoked effects (and any later
-   *  re-render that still sees the withdrawal) do not stack identical toasts. */
-  const announcedRevocations = useRef<Set<string>>(new Set());
+  /**
+   * The id whose withdrawal has already been announced, so React's double-invoked effects
+   * do not stack two identical toasts for one refusal.
+   *
+   * ‼️ CLEARED WHENEVER NOTHING IS FORCE-DEACTIVATED, which is what makes a SECOND attempt
+   * audible (fix round 1, F2). The first version of this was a Set that only grew, so
+   * re-selecting the withdrawn card — which the gallery still allows, because the card is a
+   * theme the user owns and can choose to remove — reverted to `system` in total silence
+   * and read as a card that simply does not work. The reset is safe against a loop: the
+   * revert makes `forceDeactivated` false, this effect runs once more to clear, and nothing
+   * re-arms until the user chooses that theme again.
+   */
+  const announcedRevocation = useRef<null | string>(null);
 
   useEffect(() => {
-    if (!forceDeactivated) return;
+    if (!forceDeactivated) {
+      announcedRevocation.current = null;
+      return;
+    }
     const withdrawn = installedThemes[activeThemeId];
     useSettingsStore.getState().setActiveTheme("system");
-    if (announcedRevocations.current.has(activeThemeId)) return;
-    announcedRevocations.current.add(activeThemeId);
+    if (announcedRevocation.current === activeThemeId) return;
+    announcedRevocation.current = activeThemeId;
     // The light DOM is sound HERE specifically, and the reason is ordering rather than
     // trust: the only community CSS this document can be carrying is the theme that was
     // just refused, and the apply effect — which reads `effectiveThemeId`, already

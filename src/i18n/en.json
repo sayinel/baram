@@ -838,7 +838,6 @@
   "settings.appearance.themeCssError.substitutionNotAllowed": "The theme's CSS builds an address with var(), which cannot be checked before install",
   "settings.appearance.themeCssError.tooLarge": "The files the theme bundles are too large",
   "settings.appearance.updateAvailable": "Update to v{version}",
-  "settings.appearance.updateThemeAction": "Update",
   "settings.appearance.updateThemeNamed": "Update {name} to v{version}",
   "settings.appearance.updatedToast": "'{name}' updated to v{version}",
   "settings.appearance.updatingTheme": "Updating…",

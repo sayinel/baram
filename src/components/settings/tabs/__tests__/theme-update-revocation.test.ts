@@ -251,6 +251,36 @@ describe("handleUpdate", () => {
   );
 });
 
+describe("handleInstall", () => {
+  it("forgets any cached CSS for that id, the same as an update does", async () => {
+    // Fix round 1 (F4). The clear lives in `stageAndRecord`, which BOTH callers reach, so
+    // it is structurally shared — but only update and uninstall were pinned, and a clear
+    // moved out of the shared helper into `handleUpdate` would have stayed green. The
+    // reachable case: uninstall leaves the record gone, the user installs the same id
+    // again in the same session, and the cache still holds the deleted copy's bytes.
+    useThemeCssCacheStore.setState({
+      entries: { [themeCssCacheKey("dracula", "light")]: ".deleted{}" },
+    });
+    installTheme.mockResolvedValue({ installed: installedV2(), ok: true });
+    const { result } = renderHook(() => useThemeActions());
+
+    act(() => {
+      void result.current.handleInstall(entry(), REGISTRY);
+    });
+    await act(async () => {
+      result.current.settleConsent(true);
+      await Promise.resolve();
+    });
+
+    expect(installTheme).toHaveBeenCalledTimes(1);
+    expect(
+      useThemeCssCacheStore.getState().entries[
+        themeCssCacheKey("dracula", "light")
+      ],
+    ).toBeUndefined();
+  });
+});
+
 describe("handleInstall and a withdrawn version", () => {
   it.each(["malicious", "unlisted", "vulnerable"] as const)(
     "refuses a %s withdrawal before the consent dialog opens",

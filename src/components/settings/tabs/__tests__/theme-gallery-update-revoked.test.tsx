@@ -4,7 +4,13 @@
 // ‼️ THE NOTICE IS ASSERTED THROUGH `shadowRoot`, NOT `screen`. Testing Library's queries do
 // not pierce a shadow root, so a `getByText` here would fail whether the notice rendered or
 // not — the shape `shadow-isolation.test.tsx` records for the consent dialog.
-import { render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const fetchRegistry = vi.fn();
@@ -147,6 +153,28 @@ describe("the update control", () => {
     expect(controls).toHaveLength(1);
     // And two cards really are on screen, or the count above would be trivially right.
     expect(screen.getAllByText("Nord")).toHaveLength(2);
+  });
+
+  it("says why an update failed, on the card it failed for", async () => {
+    // Fix round 1 (F1). Both of `handleUpdate`'s failure paths write `installErrors[id]`
+    // and return false, and before this the card rendered none of them: the button read
+    // "Updating…" and then went back to offering the same version, telling the user
+    // nothing. The withdrawn-target case is used here because it needs no IPC to reach.
+    revoke("malicious");
+    render(gallery());
+
+    const button = await screen.findByTitle("Update Dracula to v2.0.0");
+    await act(async () => {
+      fireEvent.click(button);
+      await Promise.resolve();
+    });
+
+    const alerts = screen
+      .getAllByRole("alert")
+      .map((el) => el.textContent ?? "");
+    expect(alerts.some((text) => text.includes("compromised build"))).toBe(
+      true,
+    );
   });
 
   it("asks the registry nothing when no theme is installed", async () => {

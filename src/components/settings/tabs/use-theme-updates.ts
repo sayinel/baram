@@ -6,9 +6,10 @@
 // background `update-checker.ts` drives — iterates `usePluginStore`'s `installedPlugins`.
 // A theme is never written there: `installTheme`'s record goes to the settings store via
 // `addInstalledTheme`, and the one action that puts a NEW id into `installedPlugins` is
-// `addPlugin` (`stores/system/plugin.ts` — its two other writers, `setEnabled` and
-// `updatePluginVersion`, both bail on an id that is not already present), which nothing on
-// the theme path calls. So themes stay out of that tab by
+// `addPlugin` (`stores/system/plugin.ts` — its three other writers are `setEnabled` and
+// `updatePluginVersion`, which both bail on an id that is not already present, and
+// `removePlugin`, which only ever drops one), which nothing on the theme path calls. So
+// themes stay out of that tab by
 // construction rather than by a filter, and the price is that a theme update is discovered
 // when the Appearance tab is opened rather than in the background. That is the right price
 // for a badge nothing else renders.
