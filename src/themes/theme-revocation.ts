@@ -7,17 +7,25 @@
 // `revocationFor(id, installedThemes[id]?.manifest.version, revocations)` again.
 //
 // ‼️ THE WITHDRAWAL LIST HAS NO `kind` FIELD (`RevocationEntry`), so a theme and a plugin
-// share one id namespace here. That is coherent rather than sloppy: `registry-client.ts`'s
-// `dropAmbiguousIds` makes an id claimed by two registry entries resolve to NEITHER, so the
-// registry cannot publish a theme and a plugin under one id in the first place, and a
-// withdrawal naming that id can only mean the one thing that exists. What this module does
-// NOT do is guess — it resolves against the installed THEME records, so a withdrawal for a
-// plugin id reaches no theme unless a theme of that id is installed.
+// share one id namespace here. `registry-client.ts`'s `dropAmbiguousIds` makes an id claimed
+// by two entries **of one index** resolve to NEITHER, so no single snapshot can offer a
+// theme and a plugin under one id.
+//
+// ‼️ THAT IS A PER-SNAPSHOT PROPERTY, NOT A PERMANENT ONE (0090 final review, L2). An
+// earlier version of this paragraph said the registry "cannot publish a theme and a plugin
+// under one id in the first place", and that is false over time: install plugin `foo`, let
+// the index later republish `foo` as a theme, install that, and both records exist while no
+// index ever listed both. A withdrawal for `foo` then reaches both — which is the right
+// outcome for a withdrawal and the wrong strength for that sentence.
+//
+// What this module does NOT do is guess: it resolves against the installed THEME records, so
+// a withdrawal for a plugin id reaches no theme unless a theme of that id is installed.
 
 import type { RevocationEntry, RevocationList } from "../plugins/revocation";
 import type { InstalledTheme } from "./theme-install";
 
 import { blocksLoad, revocationFor } from "../plugins/revocation";
+import { RESERVED_THEME_IDS } from "../types/theme";
 
 /**
  * Whether this theme must stop being applied — the same threshold `blocksLoad` sets for a
@@ -45,6 +53,13 @@ export function themeRevocationFor(
   installedThemes: Record<string, InstalledTheme>,
   revocations: null | RevocationList,
 ): null | RevocationEntry {
+  // ‼️ A RESERVED ID SPEAKS FOR NOBODY (0090 final review, M2). `installTheme` refuses these
+  // now, but a record written by an earlier build can still be in the store, and that record
+  // is inert: `findThemeById` resolves the id to the SHIPPED theme, so the installed copy
+  // can never be worn. Answering a withdrawal for it would therefore decorate — and
+  // force-deactivate — a built-in theme whose files are in the binary and which no registry
+  // entry describes. Nothing is lost by staying silent: there is nothing applied to take off.
+  if (RESERVED_THEME_IDS.has(themeId)) return null;
   const installed = installedThemes[themeId];
   if (installed === undefined) return null;
   return revocationFor(themeId, installed.manifest.version, revocations);

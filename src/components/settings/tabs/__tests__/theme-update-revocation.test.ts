@@ -20,6 +20,11 @@ vi.mock("../../../../ipc/theme", () => ({
   themeUninstall: (...a: unknown[]) => themeUninstall(...a),
 }));
 
+/** The running app version, as `engines-app.ts` asks the backend for it. Mocked rather than
+ *  stubbed at `@tauri-apps/api` so the floor arithmetic under test is the real one. */
+const appVersion = vi.hoisted(() => vi.fn(() => Promise.resolve("0.7.3")));
+vi.mock("@tauri-apps/api/app", () => ({ getVersion: appVersion }));
+
 import type { RevocationSeverity } from "../../../../plugins/revocation";
 import type { RegistryEntry, RegistryIndex } from "../../../../plugins/types";
 import type { InstalledTheme } from "../../../../themes/theme-install";
@@ -111,6 +116,7 @@ beforeEach(() => {
   });
   usePluginStore.setState({ revocations: null });
   useThemeCssCacheStore.setState({ entries: {} });
+  appVersion.mockResolvedValue("0.7.3");
 });
 
 describe("handleUpdate", () => {
@@ -251,6 +257,169 @@ describe("handleUpdate", () => {
   );
 });
 
+/**
+ * Let `handleInstall` reach its consent dialog.
+ *
+ * ‼️ MORE THAN ONE MICROTASK TURN. The M1 floor gate added an `await` before `askConsent`
+ * (it asks the backend for the app version), so the single `Promise.resolve()` these cases
+ * used to do now lands BEFORE the dialog opens and `settleConsent` resolves nothing. Three
+ * turns is slack, not a measured requirement — every case that uses this asserts the dialog
+ * is actually open, so too few turns fails loudly rather than silently.
+ */
+async function reachConsent(): Promise<void> {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
+describe("the engines.baram floor (M1)", () => {
+  it("refuses an install whose entry states a floor this app is below, before the dialog", async () => {
+    // Spec §9.1 lists the floor among what themes reuse from §69, and until the final fix
+    // round nothing on the theme path called it — `validateThemeManifest` checks the field
+    // is a non-empty string and stops. Refused BEFORE `askConsent` for the same reason a
+    // withdrawal is: nobody should approve an install already decided against.
+    const { result } = renderHook(() => useThemeActions());
+
+    let ok: boolean | undefined;
+    await act(async () => {
+      ok = await result.current.handleInstall(
+        entry({ engines: { baram: ">=9.0.0" } }),
+        REGISTRY,
+      );
+    });
+
+    expect(ok).toBe(false);
+    expect(result.current.pendingConsent).toBeNull();
+    expect(installTheme).not.toHaveBeenCalled();
+    expect(result.current.installErrors.dracula).toContain("9.0.0");
+  });
+
+  it("refuses an update to a target this app is below", async () => {
+    useSettingsStore.setState({
+      installedThemes: { dracula: installedTheme() },
+    });
+    const { result } = renderHook(() => useThemeActions());
+
+    let ok: boolean | undefined;
+    await act(async () => {
+      ok = await result.current.handleUpdate(
+        "dracula",
+        index([entry({ engines: { baram: ">=9.0.0" } })]),
+        REGISTRY,
+      );
+    });
+
+    expect(ok).toBe(false);
+    expect(installTheme).not.toHaveBeenCalled();
+  });
+
+  it("lets a met floor through", async () => {
+    // The positive half. Without it "refuse everything with an engines field" would pass
+    // both cases above.
+    const { result } = renderHook(() => useThemeActions());
+
+    act(() => {
+      void result.current.handleInstall(
+        entry({ engines: { baram: ">=0.7.0" } }),
+        REGISTRY,
+      );
+    });
+    await reachConsent();
+
+    expect(result.current.pendingConsent?.entry.id).toBe("dracula");
+  });
+
+  it("has no opinion when the app version cannot be read", async () => {
+    // `engines.ts`'s direction of doubt: an unreadable version is not a refusal. Without
+    // this the gate could be "refuse whenever a floor is stated", which would deny every
+    // install the moment `getVersion` failed.
+    appVersion.mockRejectedValue(new Error("no backend"));
+    const { result } = renderHook(() => useThemeActions());
+
+    act(() => {
+      void result.current.handleInstall(
+        entry({ engines: { baram: ">=9.0.0" } }),
+        REGISTRY,
+      );
+    });
+    await reachConsent();
+
+    expect(result.current.pendingConsent?.entry.id).toBe("dracula");
+  });
+});
+
+describe("removeTheme when the directory is already gone (M3)", () => {
+  it("drops the record, because Rust now reports that as success", async () => {
+    // The dead end this closes: the frontend deletes the directory and only then drops the
+    // record, so a crash between the two — or any external loss of the directory — left a
+    // card whose Remove button could never work. `uninstall_in` returns Ok for an absent
+    // directory now; the Rust side of that is pinned in `install.rs`'s own tests.
+    useSettingsStore.setState({
+      installedThemes: { dracula: installedTheme() },
+    });
+    const { result } = renderHook(() => useThemeActions());
+
+    await act(async () => {
+      await result.current.removeTheme({
+        id: "dracula",
+        modes: { light: {} },
+        name: "Dracula",
+        source: "community",
+      });
+    });
+
+    expect(useSettingsStore.getState().installedThemes.dracula).toBeUndefined();
+  });
+
+  it("keeps the record AND says why when the uninstall really fails", async () => {
+    useSettingsStore.setState({
+      installedThemes: { dracula: installedTheme() },
+    });
+    themeUninstall.mockRejectedValue(new Error("EBUSY"));
+    const { result } = renderHook(() => useThemeActions());
+
+    await act(async () => {
+      await result.current.removeTheme({
+        id: "dracula",
+        modes: { light: {} },
+        name: "Dracula",
+        source: "community",
+      });
+    });
+
+    expect(useSettingsStore.getState().installedThemes.dracula).toBeDefined();
+    // Until this round the failure was logged and nothing else: no error, no removal.
+    expect(result.current.installErrors.dracula).toBeTruthy();
+  });
+
+  it("clears a stale error once a later remove succeeds", async () => {
+    useSettingsStore.setState({
+      installedThemes: { dracula: installedTheme() },
+    });
+    themeUninstall.mockRejectedValueOnce(new Error("EBUSY"));
+    const { result } = renderHook(() => useThemeActions());
+    const remove = () =>
+      result.current.removeTheme({
+        id: "dracula",
+        modes: { light: {} },
+        name: "Dracula",
+        source: "community",
+      });
+
+    await act(async () => {
+      await remove();
+    });
+    expect(result.current.installErrors.dracula).toBeTruthy();
+
+    await act(async () => {
+      await remove();
+    });
+    expect(result.current.installErrors.dracula).toBeUndefined();
+  });
+});
+
 describe("handleInstall", () => {
   it("forgets any cached CSS for that id, the same as an update does", async () => {
     // Fix round 1 (F4). The clear lives in `stageAndRecord`, which BOTH callers reach, so
@@ -267,6 +436,7 @@ describe("handleInstall", () => {
     act(() => {
       void result.current.handleInstall(entry(), REGISTRY);
     });
+    await reachConsent();
     await act(async () => {
       result.current.settleConsent(true);
       await Promise.resolve();
@@ -325,6 +495,7 @@ describe("handleInstall and a withdrawn version", () => {
     act(() => {
       void result.current.handleInstall(entry(), REGISTRY);
     });
+    await reachConsent();
     // Reaching the dialog at all is the assertion: the range check is real rather than
     // "any entry with this id refuses everything".
     expect(result.current.pendingConsent?.entry.id).toBe("dracula");

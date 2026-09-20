@@ -20,6 +20,10 @@ const themeInstallDiscard = vi.fn();
 const themeStageRead =
   vi.fn<(stageId: string, path: string) => Promise<Uint8Array>>();
 
+/** The running app version, so the M1 floor gate below has a real number to compare. */
+const appVersion = vi.hoisted(() => vi.fn(() => Promise.resolve("0.7.3")));
+vi.mock("@tauri-apps/api/app", () => ({ getVersion: appVersion }));
+
 vi.mock("../../ipc/theme", () => ({
   themeInstallCommit: (...a: unknown[]) => {
     calls.push("commit");
@@ -113,6 +117,7 @@ beforeEach(() => {
   themeInstallDiscard.mockReset();
   themeInstallDiscard.mockResolvedValue(undefined);
   themeStageRead.mockReset();
+  appVersion.mockResolvedValue("0.7.3");
 });
 
 describe("parseThemeManifestText caps the raw text before it parses it (§360)", () => {
@@ -151,6 +156,94 @@ describe("parseThemeManifestText caps the raw text before it parses it (§360)",
     expect(result.valid === false && result.errors[0].message).toContain(
       "not valid JSON",
     );
+  });
+});
+
+describe("installTheme refuses a reserved id (0090 final review, M2)", () => {
+  // `findThemeById` searches `BUILT_IN_THEMES` first, so a community theme on one of these
+  // ids is consented to, downloaded, committed — and then unreachable: it can never be
+  // applied, the gallery shows two cards with one name, and a WITHDRAWAL for that id would
+  // decorate and force-deactivate the theme that ships in the binary.
+  it.each(["nord", "default-light", "system"])(
+    "refuses the id %s and installs nothing",
+    async (id) => {
+      stageWith(
+        {},
+        manifestText({ id, modes: { light: { tokens: "t.json" } } }),
+      );
+
+      const result = await installTheme(entry({ id }), "https://reg.test");
+
+      expect(result.ok).toBe(false);
+      expect(result.ok === false && result.reason).toBe("reservedId");
+      expect(themeInstallCommit).not.toHaveBeenCalled();
+      expect(themeInstallDiscard).toHaveBeenCalledWith("stage-1");
+    },
+  );
+
+  it("leaves an ordinary id alone", async () => {
+    // The positive half: the gate is a set membership, not "refuse every install".
+    stageWith({}, manifestText({ modes: { light: { tokens: "t.json" } } }));
+    themeStageRead.mockResolvedValue(enc("{}"));
+
+    const result = await installTheme(entry(), "https://reg.test");
+
+    expect(result.ok).toBe(true);
+  });
+});
+
+describe("installTheme applies the engines.baram floor (0090 final review, M1)", () => {
+  it("refuses a manifest whose floor this app is below, and installs nothing", async () => {
+    // The ARCHIVE side of the two-sided check; the listing side is in
+    // `use-theme-actions`'s suite. The entry is judged before the download, this after —
+    // the entry is a claim, the archive is the truth (the plugin path's own doctrine).
+    stageWith(
+      {},
+      manifestText({
+        engines: { baram: ">=9.0.0" },
+        modes: { light: { tokens: "t.json" } },
+      }),
+    );
+
+    const result = await installTheme(entry(), "https://reg.test");
+
+    expect(result.ok).toBe(false);
+    expect(result.ok === false && result.reason).toBe("appTooOld");
+    expect(result.ok === false && result.detail).toBe("9.0.0");
+    expect(themeInstallCommit).not.toHaveBeenCalled();
+    expect(themeInstallDiscard).toHaveBeenCalledWith("stage-1");
+  });
+
+  it("installs when the floor is met", async () => {
+    stageWith(
+      {},
+      manifestText({
+        engines: { baram: ">=0.7.0" },
+        modes: { light: { tokens: "t.json" } },
+      }),
+    );
+    themeStageRead.mockResolvedValue(enc("{}"));
+
+    const result = await installTheme(entry(), "https://reg.test");
+
+    expect(result.ok).toBe(true);
+  });
+
+  it("has no opinion about a grammar it cannot parse", async () => {
+    // `engines.ts`'s direction of doubt, at this layer too: `^0.7.0` is not a floor this
+    // understands, and "cannot read" must not become "refuse".
+    stageWith(
+      {},
+      manifestText({
+        engines: { baram: "^9.0.0" },
+        modes: { light: { tokens: "t.json" } },
+      }),
+    );
+    themeStageRead.mockResolvedValue(enc("{}"));
+
+    const result = await installTheme(entry(), "https://reg.test");
+
+    expect(result.ok).toBe(true);
   });
 });
 

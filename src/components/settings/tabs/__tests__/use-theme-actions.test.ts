@@ -102,6 +102,25 @@ afterEach(() => {
 // reported defect in usePluginActions (a dialog that disappears with the component must
 // resolve as a REFUSAL, or the awaiting caller hangs forever) but had no test of its own;
 // review round 1's M-F (deleting the guard) passed the whole suite green.
+/**
+ * Let `handleInstall` get as far as opening its consent dialog.
+ *
+ * ‼️ THE DIALOG IS NO LONGER SYNCHRONOUS (0090 final review, M1). `handleInstall` now awaits
+ * the `engines.baram` floor gate before `askConsent`, so `pendingConsent` is null for a
+ * microtask or two after the call — every case below that used to assert it immediately, or
+ * settle it on the next turn, was reading the state before the dialog existed.
+ *
+ * Turn count is slack rather than measured: each caller asserts the dialog IS open, so too
+ * few turns fails loudly.
+ */
+async function reachConsent(): Promise<void> {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
 describe("the pending consent promise settles even if nothing else does", () => {
   it("unmounting while a consent is pending resolves handleInstall's promise as false — RED under M-F", async () => {
     const { result, unmount } = renderHook(() => useThemeActions());
@@ -115,6 +134,7 @@ describe("the pending consent promise settles even if nothing else does", () => 
           settled = true;
         });
     });
+    await reachConsent();
     expect(result.current.pendingConsent).not.toBeNull();
 
     unmount();
@@ -137,6 +157,7 @@ describe("the pending consent promise settles even if nothing else does", () => 
           firstResolved = v;
         });
     });
+    await reachConsent();
     expect(result.current.pendingConsent?.entry.id).toBe("first");
 
     // A second entry asks before the first was ever answered.
@@ -146,9 +167,7 @@ describe("the pending consent promise settles even if nothing else does", () => 
         "https://reg.test",
       );
     });
-    await act(async () => {
-      await Promise.resolve();
-    });
+    await reachConsent();
 
     expect(firstResolved).toBe(false);
     expect(result.current.pendingConsent?.entry.id).toBe("second");
@@ -166,6 +185,7 @@ describe("handleInstall", () => {
           installed = v;
         });
     });
+    await reachConsent();
     expect(result.current.pendingConsent?.entry.id).toBe("dracula");
     expect(installTheme).not.toHaveBeenCalled();
 
@@ -193,6 +213,7 @@ describe("handleInstall", () => {
           installed = v;
         });
     });
+    await reachConsent();
     await act(async () => {
       result.current.settleConsent(true);
       await Promise.resolve();
@@ -236,6 +257,7 @@ describe("handleInstall", () => {
           installed = v;
         });
     });
+    await reachConsent();
     await act(async () => {
       result.current.settleConsent(true);
       await Promise.resolve();

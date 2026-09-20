@@ -1106,14 +1106,29 @@ pub async fn uninstall_installed(kind: InstallKind, plugin_id: &str) -> Result<(
     uninstall_in(&install_root(kind)?, plugin_id)
 }
 
+/// ‼️ AN ABSENT DIRECTORY IS SUCCESS, NOT [`PluginError::NotFound`] (0090 final review, M3).
+///
+/// This used to refuse, and the refusal produced a record nobody could remove. The frontend
+/// keeps the list of what is installed (themes deliberately so — `theme-store-fs.ts`'s
+/// header), and it deletes the directory BEFORE dropping its record. A crash between the two,
+/// a manual `rm` of the install directory, a restored backup of `config.json` — any of them
+/// leaves a record whose directory is gone, and every later Remove hit this branch, failed,
+/// and left the record exactly where it was. The card stayed forever.
+///
+/// "Uninstall" asks for a postcondition, not for a deletion event: afterwards this id is not
+/// installed. When the directory is already absent that postcondition already holds, so
+/// reporting failure was both wrong and unrecoverable.
+///
+/// The backup drop below still runs in that case, and must: an interrupted swap is the other
+/// way the install path goes missing, and leaving its backup behind would let
+/// `recover_orphaned_backups` restore a theme the user just asked to remove.
 fn uninstall_in(plugin_root: &Path, plugin_id: &str) -> Result<(), PluginError> {
     let seg = single_segment(plugin_id)
         .ok_or_else(|| PluginError::InvalidManifest(format!("invalid plugin id: {plugin_id}")))?;
     let target_dir = plugin_root.join(seg);
-    if !target_dir.exists() {
-        return Err(PluginError::NotFound(plugin_id.to_string()));
+    if target_dir.exists() {
+        std::fs::remove_dir_all(&target_dir)?;
     }
-    std::fs::remove_dir_all(&target_dir)?;
     // ‼️ Or `recover_orphaned_backups` would put it straight back: a deliberate uninstall
     // leaves the install path missing, which is the same shape as an interrupted swap.
     if let Ok(root) = staging_root_in(plugin_root) {
@@ -1580,6 +1595,45 @@ mod tests {
             backup.exists(),
             "the sweep deleted a backup — this is the user's only copy of the plugin"
         );
+    }
+
+    /// 0090 final review (M3) — uninstalling something already gone SUCCEEDS.
+    ///
+    /// The frontend deletes the directory and only then drops its record, so a crash between
+    /// the two leaves a record whose directory is absent. While this returned `NotFound`,
+    /// every later Remove failed and the record could never be dropped: a permanent card.
+    ///
+    /// The sibling below is what keeps this from being satisfiable by deleting the whole
+    /// function: uninstalling a plugin that IS there still removes its directory.
+    #[test]
+    fn uninstalling_something_already_gone_succeeds() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path()).unwrap();
+
+        uninstall_in(root.path(), "never-installed").unwrap();
+
+        assert!(!root.path().join("never-installed").exists());
+    }
+
+    /// The positive half of the pair above, and the reason it is here rather than assumed:
+    /// "absent is fine" must not become "nothing is ever deleted".
+    #[test]
+    fn uninstalling_something_present_removes_its_directory() {
+        let root = tempfile::tempdir().unwrap();
+        install_by_hand(root.path(), "demo", "v2");
+        assert!(root.path().join("demo").exists());
+
+        uninstall_in(root.path(), "demo").unwrap();
+
+        assert!(!root.path().join("demo").exists());
+    }
+
+    /// An id that is not a single path segment is still refused — idempotence is about a
+    /// MISSING directory, not about relaxing containment.
+    #[test]
+    fn uninstalling_a_traversing_id_is_still_refused() {
+        let root = tempfile::tempdir().unwrap();
+        assert!(uninstall_in(root.path(), "../escape").is_err());
     }
 
     /// …but an uninstall must not leave one for the recovery to resurrect.

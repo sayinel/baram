@@ -411,6 +411,31 @@ export const BUILT_IN_THEMES: ThemeDef[] = [
   },
 ];
 
+/**
+ * Ids a community theme may not claim (0090 final review, M2).
+ *
+ * ‼️ `findThemeById` below searches {@link BUILT_IN_THEMES} FIRST, so a community theme
+ * that took one of these ids would be consented to, downloaded, committed to disk — and
+ * then never resolvable, because every lookup finds the shipped theme instead. It cannot be
+ * worn, cannot be previewed, and the gallery shows two cards with the same name. Worse, a
+ * WITHDRAWAL naming that id reaches the built-in card: `themeRevocationFor` keys on the id
+ * alone, so a malicious entry for `nord` would decorate — and force-deactivate — the theme
+ * that ships in the binary.
+ *
+ * `"system"` is here for the same reason from the other direction: `setActiveTheme` special-
+ * cases it (`appearance-settings.ts`), so a theme with that id can never be selected, while
+ * a withdrawal for it would still resolve against the installed record and announce a revert
+ * to a theme that was never applied.
+ *
+ * DERIVED from `BUILT_IN_THEMES` rather than listed, so a ninth shipped theme is reserved by
+ * the act of shipping it. The two consumers are `installTheme` (refuses the install) and
+ * `scripts/validate-index.ts` (refuses the publish, so the operator hears it first).
+ */
+export const RESERVED_THEME_IDS: ReadonlySet<string> = new Set([
+  ...BUILT_IN_THEMES.map((theme) => theme.id),
+  "system",
+]);
+
 // ---------------------------------------------------------------------------
 // 4. Helper — find a theme by ID across built-in and custom themes
 // ---------------------------------------------------------------------------

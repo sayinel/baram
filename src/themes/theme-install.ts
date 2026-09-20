@@ -22,7 +22,12 @@ import {
   themeInstallDiscard,
   themeInstallStage,
 } from "../ipc/theme";
-import { THEME_COLOR_KEYS, THEME_COLOR_VALUE_RE } from "../types/theme";
+import { unmetFloorAgainstApp } from "../plugins/engines-app";
+import {
+  RESERVED_THEME_IDS,
+  THEME_COLOR_KEYS,
+  THEME_COLOR_VALUE_RE,
+} from "../types/theme";
 import { logger } from "../utils/logger";
 import { ThemeCssError } from "../utils/theme-css/errors";
 import { inlineThemeAssets } from "../utils/theme-css/inline-assets";
@@ -275,6 +280,10 @@ export const THEME_INSTALL_FAILURE_REASONS = [
   "manifestInvalid",
   /** 위생을 통과한 뒤 Rust 쪽 commit(디스크 쓰기·원자적 swap)이 실패했다. */
   "commitFailed",
+  /** 매니페스트가 선언한 `engines.baram` 하한을 이 앱 버전이 만족하지 못한다 (M1). */
+  "appTooOld",
+  /** id 가 내장 테마(또는 `system`)의 것이다 — {@link RESERVED_THEME_IDS} (M2). */
+  "reservedId",
 ] as const;
 
 export type ThemeInstallFailure =
@@ -327,6 +336,33 @@ export async function installTheme(
         ok: false,
         reason: "idMismatch",
         detail: `${entry.id} → ${manifest.id}`,
+      });
+    }
+
+    // M2 — an id the built-in themes already own can be installed but never worn:
+    // `findThemeById` searches `BUILT_IN_THEMES` first. The set's own doc comment carries
+    // the rest, including what a WITHDRAWAL for such an id would reach. Checked against the
+    // DOWNLOADED manifest's id, which is the one just compared to the listing, so the gate
+    // cannot be sidestepped by a listing that disagrees with its archive.
+    if (RESERVED_THEME_IDS.has(manifest.id)) {
+      return await discard(stageId, {
+        ok: false,
+        reason: "reservedId",
+        detail: manifest.id,
+      });
+    }
+
+    // M1 — the `engines.baram` floor, against the ARCHIVE. Spec §9.1 lists this as reused
+    // from §69 and nothing on the theme path applied it; `validateThemeManifest` checks the
+    // field is a non-empty string and stops. The listing is judged separately, before the
+    // download, in `use-theme-actions.ts` — same two-sided shape as the plugin path, and
+    // for its reason: the entry is a claim, the archive is the truth.
+    const unmetFloor = await unmetFloorAgainstApp(manifest.engines);
+    if (unmetFloor !== null) {
+      return await discard(stageId, {
+        ok: false,
+        reason: "appTooOld",
+        detail: unmetFloor.floor,
       });
     }
 

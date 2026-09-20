@@ -24,6 +24,7 @@ import { useShallow } from "zustand/shallow";
 
 import { useTranslation } from "../../../i18n/useTranslation";
 import { themeUninstall } from "../../../ipc/theme";
+import { unmetFloorAgainstApp } from "../../../plugins/engines-app";
 import { themeUpdatesFor } from "../../../plugins/registry-client";
 import { revocationFor, revocationReason } from "../../../plugins/revocation";
 import { useSettingsStore } from "../../../stores/settings/store";
@@ -94,6 +95,17 @@ export function installFailureMessage(
     THEME_CSS_ERROR_CODES_SET.has(result.detail)
   ) {
     return t(themeCssErrorKey(result.detail as ThemeCssErrorCode));
+  }
+  // M1/M2 — the two reasons whose sentence needs the value that caused it. `detail` is the
+  // floor and the id respectively (`installTheme` sets both), and the fallback empty string
+  // is unreachable from that function: both arms set `detail` on the same line as `reason`.
+  // Spelled anyway rather than asserted, because `detail` is optional in the type and a
+  // `{required}` placeholder rendered literally is worse than an empty one.
+  if (result.reason === "appTooOld" || result.reason === "reservedId") {
+    return t(`settings.appearance.installError.${result.reason}`, {
+      id: result.detail ?? "",
+      required: result.detail ?? "",
+    });
   }
   return t(`settings.appearance.installError.${result.reason}`);
 }
@@ -186,6 +198,38 @@ export function useThemeActions() {
   );
 
   /**
+   * M1 — the `engines.baram` floor, against the LISTING, before anything is downloaded.
+   *
+   * Spec §9.1 lists the floor among the things themes reuse from §69, and until this round
+   * nothing on the theme path called it: `validateThemeManifest` checks `engines.baram` is a
+   * non-empty string and stops. A theme declaring `>=9.0.0` installed on 0.7.x in silence.
+   *
+   * Two-sided, the same shape `usePluginActions` uses: this judges the entry, and
+   * `installTheme` re-judges the downloaded manifest. The entry is a claim; the archive is
+   * the truth. This side exists to keep a pointless download off the wire and to refuse
+   * before the consent dialog, so nobody approves an install that is already decided
+   * against.
+   *
+   * Direction of doubt is `engines.ts`'s, unchanged: an absent floor, a grammar it cannot
+   * parse, or an unreadable app version all mean "no opinion" and the install proceeds.
+   */
+  const refuseIfAppTooOld = useCallback(
+    async (entry: RegistryEntry): Promise<boolean> => {
+      const unmet = await unmetFloorAgainstApp(entry.engines);
+      if (unmet === null) return false;
+      setInstallErrors((prev) => ({
+        ...prev,
+        [entry.id]: t("settings.appearance.installError.appTooOld", {
+          current: unmet.appVersion,
+          required: unmet.floor,
+        }),
+      }));
+      return true;
+    },
+    [t],
+  );
+
+  /**
    * Stage → hygiene → commit → record, shared by install and update.
    *
    * The consent gate is NOT here: install asks, update does not (see `handleUpdate`), and
@@ -260,6 +304,7 @@ export function useThemeActions() {
         // Before the dialog, not after: asking someone to approve an install that is
         // already decided against wastes the one decision this screen exists to collect.
         if (refuseIfRevoked(entry)) return false;
+        if (await refuseIfAppTooOld(entry)) return false;
         const consented = await askConsent(entry);
         if (!consented) return false;
 
@@ -284,7 +329,14 @@ export function useThemeActions() {
         inFlight.current.delete(entry.id);
       }
     },
-    [askConsent, refuseIfRevoked, setActiveTheme, stageAndRecord, t],
+    [
+      askConsent,
+      refuseIfAppTooOld,
+      refuseIfRevoked,
+      setActiveTheme,
+      stageAndRecord,
+      t,
+    ],
   );
 
   /**
@@ -326,6 +378,7 @@ export function useThemeActions() {
       inFlight.current.add(entry.id);
       try {
         if (refuseIfRevoked(entry)) return false;
+        if (await refuseIfAppTooOld(entry)) return false;
         const updated = await stageAndRecord(entry, registryUrl);
         if (updated === null) return false;
         useUIStore.getState().showToast(
@@ -340,7 +393,7 @@ export function useThemeActions() {
         inFlight.current.delete(entry.id);
       }
     },
-    [refuseIfRevoked, stageAndRecord, t],
+    [refuseIfAppTooOld, refuseIfRevoked, stageAndRecord, t],
   );
 
   /**
@@ -351,6 +404,15 @@ export function useThemeActions() {
    * A failed uninstall leaves the record, same order as the plugin marketplace's
    * `handleUninstall`: a user clicking remove wants an error, not a record that silently
    * claims the theme is gone while the directory is still on disk.
+   *
+   * ‼️ "Failed" no longer includes "the directory was already gone" (0090 final review, M3).
+   * `uninstall_in` (`src-tauri/src/plugin/install.rs`) treats an absent install directory as
+   * success, because the postcondition the user asked for already holds. While it refused,
+   * a record whose directory had been lost — a crash between the disk delete and the store
+   * write, a manual `rm`, a restored `config.json` — produced a card that could never be
+   * removed by any sequence of clicks. That is the INVERSE of the orphan
+   * `theme-store-fs.ts`'s header discusses and defers: that one is inert and self-healing;
+   * this one was a dead end.
    */
   const removeTheme = useCallback(
     async (theme: ThemeDef): Promise<void> => {
@@ -362,16 +424,30 @@ export function useThemeActions() {
       try {
         await themeUninstall(theme.id);
       } catch (err) {
+        // ‼️ SURFACED, NOT ONLY LOGGED (0090 final review, M3). The doc comment above has
+        // said since §361 that "a user clicking remove wants an error"; until this round the
+        // code delivered neither an error nor a removal — it logged and returned, leaving a
+        // card whose Remove button did nothing visible. The same map the update path uses,
+        // so the card already has a place to show it.
         logger.error("[Theme] uninstall failed:", err);
+        setInstallErrors((prev) => ({
+          ...prev,
+          [theme.id]: t("settings.appearance.removeFailed"),
+        }));
         return;
       }
+      setInstallErrors((prev) => {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { [theme.id]: _removed, ...rest } = prev;
+        return rest;
+      });
       removeInstalledTheme(theme.id);
       // The cached CSS text outlives the record otherwise, and installing the same id again
       // in this session would re-apply the bytes of the copy just deleted — `clearTheme`'s
       // doc comment has the mechanism.
       clearThemeCssCache(theme.id);
     },
-    [clearThemeCssCache, deleteCustomTheme, removeInstalledTheme],
+    [clearThemeCssCache, deleteCustomTheme, removeInstalledTheme, t],
   );
 
   /**
