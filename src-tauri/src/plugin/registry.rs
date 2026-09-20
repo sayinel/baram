@@ -38,7 +38,14 @@ pub struct PluginManifest {
     pub keywords: Vec<String>,
     #[serde(default)]
     pub trust: Option<PluginTrust>,
-    #[serde(default)]
+    /// `skip_serializing_if` (unlike the other `Option` fields above): this struct is
+    /// re-serialized on the way back to the frontend (dev-folder loading, `InstalledPluginInfo`),
+    /// and `validateManifest` (`src/plugins/manifest.ts`) treats an explicit JSON `null` as a
+    /// present-but-invalid value (`contributions must be an object`) while treating an absent
+    /// key as "not declared". Without this, every manifest that never wrote `contributions`
+    /// round-tripped as `null` and became unloadable (#620-adjacent — this repo's own
+    /// `examples/plugins/ai-summary` has no `contributions` and hit exactly this).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub contributions: Option<serde_json::Value>,
 }
 
@@ -285,6 +292,28 @@ mod tests {
         let json = r#"{"id":"x","name":"X","description":"d","version":"1.0.0","author":"a","license":"MIT","main":"index.mjs","engines":{"baram":"*"},"capabilities":[]}"#;
         let m: PluginManifest = serde_json::from_str(json).unwrap();
         assert_eq!(m.trust, None);
+    }
+
+    /// A manifest with no `contributions` field must round-trip WITHOUT one — `None` here
+    /// means "the author never wrote this key", not "the author wrote `null`". This struct
+    /// is re-serialized on its way back to the frontend (`read_manifest_at` for dev plugins,
+    /// `PluginManifest` embedded in `InstalledPluginInfo` elsewhere), and TypeScript's
+    /// `validateManifest` treats an explicit JSON `null` as a present-but-wrong value
+    /// (`contributions must be an object`) while treating an absent key as "not declared,
+    /// fine". A bare `#[serde(default)]` deserializes a missing key to `None` correctly but
+    /// still serializes `None` back out as `null`, which is what broke every dev plugin that
+    /// omits `contributions` (e.g. `examples/plugins/ai-summary`).
+    #[test]
+    fn manifest_without_contributions_serializes_without_the_key() {
+        let json = r#"{"id":"x","name":"X","description":"d","version":"1.0.0","author":"a","license":"MIT","main":"index.mjs","engines":{"baram":"*"},"capabilities":[]}"#;
+        let m: PluginManifest = serde_json::from_str(json).unwrap();
+        assert_eq!(m.contributions, None);
+
+        let value = serde_json::to_value(&m).unwrap();
+        assert!(
+            !value.as_object().unwrap().contains_key("contributions"),
+            "expected no `contributions` key when the manifest never declared one, got: {value}",
+        );
     }
 
     #[test]

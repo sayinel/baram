@@ -310,6 +310,40 @@ describe("validateManifest — trust tier (§260)", () => {
     }
   });
 
+  // Regression: a manifest that never writes `contributions` used to round-trip through
+  // Rust's `PluginManifest` (dev-folder loading, `InstalledPluginInfo`) as an explicit JSON
+  // `null` rather than an absent key, which this check rejects as "must be an object" — this
+  // check is correct about `null`, the serializer was the bug (fixed with
+  // `skip_serializing_if` in `src-tauri/src/plugin/registry.rs`). This fixture is the actual
+  // `serde_json::to_value(&PluginManifest { .. })` output for a manifest built from the same
+  // minimal JSON as the Rust test `manifest_without_contributions_serializes_without_the_key`,
+  // captured AFTER the fix — i.e. the real shape that now crosses the boundary.
+  it("accepts the exact JSON shape Rust now emits for a manifest with no contributions", () => {
+    const rustEmitted = {
+      author: "a",
+      capabilities: [],
+      dependencies: [],
+      description: "d",
+      engines: { baram: "*" },
+      homepage: null,
+      icon: null,
+      id: "x",
+      keywords: [],
+      license: "MIT",
+      main: "index.mjs",
+      name: "X",
+      repository: null,
+      tiptapExtensions: [],
+      trust: null,
+      version: "1.0.0",
+    };
+    expect("contributions" in rustEmitted).toBe(false);
+    // `trust: null` is legitimately rejected (trust is required), so assert the OTHER
+    // fields don't trip anything by adding a valid trust on top of the exact shape.
+    const r = validateManifest({ ...rustEmitted, trust: "trusted" });
+    expect(r.valid).toBe(true);
+  });
+
   // §260 Phase 4a security review (HIGH-2) — the entries, not just the container.
   // `"statusBar": [{}]` used to pass validation and then throw inside the LOADER, after
   // the sandbox had started: no rollback ran, `this.loaded` never got the plugin, and
