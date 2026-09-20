@@ -118,6 +118,33 @@ describe("validate-index", () => {
     expect(status).toBe(1);
   });
 
+  // §360 fix round 1 (MAJOR) — `kind` had a type check but no value check, so a typo like
+  // `"themes"` was a valid string, passed this gate, and only failed at the door of every
+  // client (`dropUnknownKinds` in `registry-client.ts`), silently, via a `logger.warn`
+  // nobody reads. This is the test that would have caught it.
+  it("rejects an unknown kind, naming the consequence (dropped, not demoted)", () => {
+    const { output, status } = run({
+      plugins: [validEntry({ kind: "themes" })],
+    });
+    expect(output).toContain("unknown kind");
+    expect(output).toContain("DROPPED from the index entirely");
+    expect(status).toBe(1);
+  });
+
+  it("accepts an entry with no kind at all — every index published before §360 has none", () => {
+    const { output, status } = run({ plugins: [validEntry()] });
+    expect(output).toContain("✓");
+    expect(status).toBe(0);
+  });
+
+  it("accepts a `theme` kind", () => {
+    const { output, status } = run({
+      plugins: [validEntry({ kind: "theme" })],
+    });
+    expect(output).toContain("✓");
+    expect(status).toBe(0);
+  });
+
   it("rejects duplicate ids, which shadow each other silently", () => {
     const { output, status } = run({
       plugins: [validEntry(), validEntry({ version: "2.0.0" })],
@@ -174,6 +201,7 @@ describe("validate-index", () => {
     ["downloads", "many"],
     ["keywords", "word"],
     ["repository", 5],
+    ["kind", 5],
     // `downloads` is `u64` in Rust and JS has one numeric type, so "a number" was still
     // too loose — review round 3 caught these three surviving the presence-vs-type fix.
     ["downloads", 1.5],
@@ -200,6 +228,7 @@ describe("validate-index", () => {
       "repository",
       "icon",
       "homepage",
+      "kind",
     ]) {
       delete (entry as Record<string, unknown>)[field];
     }

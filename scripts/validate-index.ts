@@ -2,17 +2,20 @@
  * Validates a plugin registry `index.json` before it is published (§69).
  *
  * The sibling of `validate-revocations.ts`, and it exists for the same reason. The app is
- * deliberately FORGIVING about this document in three directions, each of which hides an
+ * deliberately FORGIVING about this document in four directions, each of which hides an
  * authoring mistake from the person who made it:
  *
  * - an entry Rust cannot deserialize is DROPPED and the rest of the index stands
  *   (`tolerant_entries` in `src-tauri/src/plugin/mod.rs`)
  * - an entry naming an unknown tier or capability is demoted to legacy — listed, but with
  *   Install disabled (`normalizeIndex` in `src/plugins/registry-client.ts`)
+ * - an entry naming an unknown `kind` is DROPPED, not demoted — it never appears in any
+ *   marketplace at all (`dropUnknownKinds`, same file), which is a HARSHER and less visible
+ *   failure than the demotion above, not a milder one
  * - an `engines.baram` that is absent or not `>=X.Y.Z` reads as "no floor", so the version
  *   gate simply stops protecting anyone (`unmetBaramFloor` in `src/plugins/engines.ts`)
  *
- * All three are right at runtime: one contributor's typo must not empty the marketplace for
+ * All four are right at runtime: one contributor's typo must not empty the marketplace for
  * every user, nor block installs the app is perfectly able to perform. But together they
  * mean a mis-authored entry deploys cleanly, serves a 200, and is invisible, un-installable,
  * or unprotected — with no signal reaching the operator. This is the one place that can tell
@@ -98,8 +101,8 @@ const FIELDS: Record<
     type: "an array of strings",
   },
   // §360 — optional to READ (absence means a legacy "plugin" entry), same as `trust`. This
-  // table only pins the WIRE TYPE serde demands; the value itself (`"plugin"` | `"theme"`) is
-  // enforced at runtime by `normalizeIndex`, which drops an entry naming anything else.
+  // table only pins the WIRE TYPE serde demands; the VALUE (`"plugin"` | `"theme"`) is
+  // checked below, against `KIND_VALUES`.
   kind: { check: isString, required: false, type: "a string" },
   license: { check: isString, required: true, type: "a string" },
   name: { check: isString, required: true, type: "a string" },
@@ -108,6 +111,20 @@ const FIELDS: Record<
   trust: { check: isString, required: false, type: "a string" },
   version: { check: isString, required: true, type: "a string" },
 };
+
+/**
+ * The two kinds of §360, as a literal list so an unknown value cannot ship.
+ *
+ * ‼️ MAJOR (fix round 1) — this gate was missing entirely; `kind` had a type check in
+ * `FIELDS` above but no value check here, so `kind: "themes"` (a typo) was a valid string,
+ * passed CI green, and only failed at the door of every client: `dropUnknownKinds`
+ * (`src/plugins/registry-client.ts`) removes the entry with nothing louder than a
+ * `logger.warn` nobody reads. The asymmetry with `trust` argues FOR this gate, not against
+ * it: an unknown `trust` still leaves the entry listed and visibly un-installable, while an
+ * unknown `kind` makes it disappear — the harsher and less visible the runtime failure, the
+ * more the publish gate is the only place that can catch it.
+ */
+const KIND_VALUES = ["plugin", "theme"];
 
 /** The two tiers of §260, as a literal list so an unknown value cannot ship. */
 const TRUST_VALUES = ["sandboxed", "trusted"];
@@ -200,6 +217,21 @@ plugins.forEach((value, position) => {
     errors.push(
       `${where}: unknown trust tier ${JSON.stringify(entry.trust)} — must be one of ` +
         `${TRUST_VALUES.join(", ")}; anything else is demoted to legacy and cannot be installed`,
+    );
+  }
+
+  // §360 — unlike `trust` above, ABSENCE is not an error here: every index published
+  // before today has no `kind` at all, and the app reads that as a legacy "plugin" entry
+  // on purpose (`RegistryEntry.kind`'s doc comment). Only a PRESENT-but-unrecognized value
+  // is checked — and it is checked precisely BECAUSE the runtime failure is harsher than
+  // trust's: `dropUnknownKinds` removes the entry outright, with nothing louder than a
+  // `logger.warn` nobody reads, so this gate is the only place an author's typo surfaces.
+  if (entry.kind !== undefined && !KIND_VALUES.includes(entry.kind as string)) {
+    // Its type is already guaranteed by FIELDS above; only the VALUE is open here.
+    errors.push(
+      `${where}: unknown kind ${JSON.stringify(entry.kind)} — must be one of ` +
+        `${KIND_VALUES.join(", ")}; anything else is DROPPED from the index entirely and ` +
+        "never appears in any marketplace (not merely demoted, the way an unknown trust tier is)",
     );
   }
 
