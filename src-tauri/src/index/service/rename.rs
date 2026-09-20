@@ -1,9 +1,9 @@
 use crate::context::manager::{resolve_canonical, Registered};
 use crate::context::ContextManager;
 use crate::index::{
-    backlink_keys, collect_md_files, own_block_reference_lines, replace_block_id_refs_to,
-    replace_block_reference_target, replace_wikilink_target, rewrite_relative_wikilinks,
-    IndexStats,
+    backlink_keys, block_references_to, collect_md_files, own_block_reference_lines,
+    replace_block_id_refs_to, replace_block_reference_target, replace_wikilink_target,
+    rewrite_relative_wikilinks, IndexStats,
 };
 use serde::Serialize;
 use std::collections::HashMap;
@@ -159,8 +159,9 @@ pub(crate) async fn rename_file_with_links_inner(
                 .get(path)
                 .is_some_and(|&lines| own_block_reference_lines(content, None) >= lines)
     };
-    // A rename that keeps the stem (`old.md` → `old.txt`) changes no
-    // reference: nothing is rewritten and no referrer is stale news.
+    // A rename that keeps the stem — `old.md` → `old.txt`, or `Note.md` →
+    // `note.md`, whose case the passes respell in every referrer — leaves no
+    // referrer stale: none the index named is news.
     let stem_unchanged = crate::index::normalizer::normalize_target(&new_target) == old_key;
 
     // The canonical identity of the file being renamed, resolved before it
@@ -198,9 +199,29 @@ pub(crate) async fn rename_file_with_links_inner(
             unless: &named_for_its_own_references,
         }
     };
+    // A new stem no block reference can spell — `)`, `#` or `|` end its
+    // target — is not written into one. The wikilinks, which can spell it,
+    // are rewritten; the block references stay, and every file they stay in
+    // is reported, rewritten or not (`Rewrite::left_behind`).
+    let block_references_spellable = !new_target.contains([')', '#', '|']);
     let rewrite = |content: &str, ref_path: &str| {
         let content = replace_wikilink_target(content, &old_target, &new_target);
-        replace_block_reference_target(&content, ref_path, &old_target, &new_target)
+        if block_references_spellable {
+            return Rewrite {
+                content: replace_block_reference_target(
+                    &content,
+                    ref_path,
+                    &old_target,
+                    &new_target,
+                ),
+                left_behind: false,
+            };
+        }
+        let left_behind = block_references_to(&content, ref_path, &old_target) > 0;
+        Rewrite {
+            content,
+            left_behind,
+        }
     };
     let mut rewritten =
         rewrite_referrers(&referring_files, old_path, &dirs, &unchanged, &rewrite).await;
@@ -210,37 +231,37 @@ pub(crate) async fn rename_file_with_links_inner(
     // under the new name those would dangle. The passes run on it under the
     // new path, so `((#^id))`, which names no target, resolves to the new stem
     // and stays. What they change is written where the file is now, and the
-    // note joins updated_files so an open tab follows the disk. Nothing to
-    // change is stale news on the same terms as for a referrer: the index
-    // named the note under the old key, and its own `((#^id))` references do
-    // not account for every line it was named for.
-    let own_rewritten = rewrite(&renamed_content, new_path);
-    let renamed_content = if own_rewritten != renamed_content {
+    // note joins updated_files so an open tab follows the disk. It is stale
+    // news on the same terms as a referrer: a reference left behind, a write
+    // that failed, or nothing to change although the index named the note
+    // under the old key for more than its own `((#^id))` references.
+    let Rewrite {
+        content: own_rewritten,
+        left_behind: own_left_behind,
+    } = rewrite(&renamed_content, new_path);
+    let (renamed_content, own_stale) = if own_rewritten != renamed_content {
         match crate::fs::write_file(new_path, &own_rewritten).await {
             Ok(()) => {
                 rewritten.updated.push(new_path.to_owned());
-                own_rewritten
+                (own_rewritten, own_left_behind)
             }
             Err(e) => {
-                log::warn!(
-                    "rename: {new_path} could not be rewritten, its references to its old name are left as they are: {e}"
-                );
-                rewritten.skipped.push(new_path.to_owned());
-                renamed_content
+                log::warn!("rename: {new_path} could not be rewritten: {e}");
+                (renamed_content, true)
             }
         }
     } else {
-        if matches!(unchanged, Unchanged::Report { .. })
+        let named_for_more = matches!(unchanged, Unchanged::Report { .. })
             && named_lines.contains_key(old_path)
-            && !named_for_its_own_references(old_path, &renamed_content)
-        {
-            log::warn!(
-                "rename: {new_path} was named by the index for references to its old name that are not there to rename now — its references are left as they are"
-            );
-            rewritten.skipped.push(new_path.to_owned());
-        }
-        renamed_content
+            && !named_for_its_own_references(old_path, &renamed_content);
+        (renamed_content, own_left_behind || named_for_more)
     };
+    if own_stale {
+        log::warn!(
+            "rename: {new_path} still holds references to its old name; they are left as they are"
+        );
+        rewritten.skipped.push(new_path.to_owned());
+    }
 
     // 4. Update every containing index: drop the old entry, re-index the
     //    referring files from the content we already have — each into the
@@ -346,8 +367,9 @@ pub(crate) async fn rename_block_id_inner(
         &Unchanged::Report {
             unless: &named_for_its_own_references,
         },
-        |content, ref_path| {
-            replace_block_id_refs_to(content, ref_path, &target_keys, old_id, new_id)
+        |content, ref_path| Rewrite {
+            content: replace_block_id_refs_to(content, ref_path, &target_keys, old_id, new_id),
+            left_behind: false,
         },
     )
     .await;
@@ -384,6 +406,15 @@ struct Rewritten {
     contents: Vec<(PathBuf, String)>,
 }
 
+/// What `rewrite` made of one referrer: the content to write, and whether it
+/// left a reference to the old name in it on purpose — a file rename does,
+/// for block references to a stem none can spell. Such a file is reported
+/// whether or not anything else in it changed.
+struct Rewrite {
+    content: String,
+    left_behind: bool,
+}
+
 /// What to make of a referrer the index named whose content `rewrite` did not
 /// change (issue 668).
 enum Unchanged<'a> {
@@ -411,7 +442,7 @@ async fn rewrite_referrers(
     own_path: &str,
     dirs: &[Registered],
     unchanged: &Unchanged<'_>,
-    rewrite: impl Fn(&str, &str) -> String,
+    rewrite: impl Fn(&str, &str) -> Rewrite,
 ) -> Rewritten {
     let mut result = Rewritten {
         updated: Vec::new(),
@@ -432,16 +463,23 @@ async fn rewrite_referrers(
                 continue;
             }
         };
-        let new_content = rewrite(&content, ref_path);
+        let Rewrite {
+            content: new_content,
+            left_behind,
+        } = rewrite(&content, ref_path);
         if new_content == content {
-            if let Unchanged::Report { unless } = unchanged {
-                if unless(ref_path, &content) {
-                    continue;
-                }
+            if left_behind {
                 log::warn!(
-                    "rename: {ref_path} was named by the index but holds no reference to rename now — the index was stale; its links are left as they are"
+                    "rename: {ref_path} holds block references that cannot spell the new name; they are left as they are"
                 );
                 result.skipped.push(ref_path.clone());
+            } else if let Unchanged::Report { unless } = unchanged {
+                if !unless(ref_path, &content) {
+                    log::warn!(
+                        "rename: {ref_path} was named by the index but holds no reference to rename now — the index was stale; its links are left as they are"
+                    );
+                    result.skipped.push(ref_path.clone());
+                }
             }
             continue;
         }
@@ -467,6 +505,12 @@ async fn rewrite_referrers(
             continue;
         }
         result.updated.push(ref_path.clone());
+        if left_behind {
+            log::warn!(
+                "rename: {ref_path} was rewritten, but its block references cannot spell the new name and are left as they are"
+            );
+            result.skipped.push(ref_path.clone());
+        }
         result.contents.push((identity, new_content));
     }
     result

@@ -2361,13 +2361,15 @@ async fn a_rename_that_keeps_the_stem_rewrites_nothing_and_reports_nothing() {
 async fn a_rename_to_a_stem_no_block_reference_can_spell_reports_the_referrers_it_leaves() {
     // issue 678: `((target#^id))` cannot hold `)` in its target, so the
     // block references are left as they are — pointing at the old name —
-    // and the file is reported. The wikilink, which can spell the name, is
-    // rewritten.
+    // and every file they are left in is reported, whether or not a wikilink
+    // beside them, which can spell the name, was rewritten: `both.md` is
+    // updated AND reported.
     let ctx = ContextManager::new();
     let (dir, root) = vault_with_a_link(&ctx, "ctx-678e", true).await;
     std::fs::write(dir.path().join("old.md"), "para ^b1\n").unwrap();
     std::fs::write(dir.path().join("r.md"), "see ((old#^b1))\n").unwrap();
     std::fs::write(dir.path().join("w.md"), "see [[old]]\n").unwrap();
+    std::fs::write(dir.path().join("both.md"), "[[old]] ((old#^b1))\n").unwrap();
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
 
@@ -2379,8 +2381,14 @@ async fn a_rename_to_a_stem_no_block_reference_can_spell_reports_the_referrers_i
     )
     .await
     .unwrap();
-    assert_eq!(result.updated_files, vec![format!("{root}/w.md")]);
-    assert_eq!(result.skipped_files, vec![format!("{root}/r.md")]);
+    assert_eq!(
+        result.updated_files,
+        vec![format!("{root}/both.md"), format!("{root}/w.md")]
+    );
+    assert_eq!(
+        result.skipped_files,
+        vec![format!("{root}/both.md"), format!("{root}/r.md")]
+    );
     assert_eq!(
         std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
         "see ((old#^b1))\n"
@@ -2388,6 +2396,10 @@ async fn a_rename_to_a_stem_no_block_reference_can_spell_reports_the_referrers_i
     assert_eq!(
         std::fs::read_to_string(dir.path().join("w.md")).unwrap(),
         "see [[old (draft)]]\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("both.md")).unwrap(),
+        "[[old (draft)]] ((old#^b1))\n"
     );
 }
 
@@ -2503,6 +2515,38 @@ async fn a_rename_to_a_stem_no_block_reference_can_spell_reports_the_renamed_not
     assert_eq!(
         std::fs::read_to_string(dir.path().join("old (draft).md")).unwrap(),
         "para ^b1\n\nsee ((old#^b1))\n"
+    );
+}
+
+#[tokio::test]
+async fn a_rename_to_a_stem_no_block_reference_can_spell_reports_the_renamed_note_it_partly_rewrote(
+) {
+    // issue 678: the renamed note's own wikilink is rewritten and its block
+    // reference is left, so the note is updated (an open tab follows the
+    // disk) AND reported (a reference still says the old name).
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-678i", true).await;
+    std::fs::write(
+        dir.path().join("old.md"),
+        "para ^b1\n\nsee ((old#^b1)) and [[old]]\n",
+    )
+    .unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/old.md"),
+        &format!("{root}/old (draft).md"),
+    )
+    .await
+    .unwrap();
+    assert_eq!(result.updated_files, vec![format!("{root}/old (draft).md")]);
+    assert_eq!(result.skipped_files, vec![format!("{root}/old (draft).md")]);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("old (draft).md")).unwrap(),
+        "para ^b1\n\nsee ((old#^b1)) and [[old (draft)]]\n"
     );
 }
 

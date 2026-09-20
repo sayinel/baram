@@ -448,11 +448,13 @@ pub fn replace_block_id_refs_to(
 /// never touched (issue 620).
 ///
 /// A stem no reference can spell — one holding `)`, `#` or `|`, which end the
-/// target of `REF_REPLACE_RE` — is not written: the reference would parse as
-/// nothing, silently. The content comes back as it is, and the caller reports
-/// the file as one whose references still say the old name. The frontend's
-/// percent-escapes (§275.4) have no reader on this side, so escaping here
-/// would file the reference under a key nothing resolves.
+/// target of `REF_REPLACE_RE` — is never written: the reference would parse
+/// as nothing, silently. The content comes back as it is. The file rename
+/// decides that before calling and asks `block_references_to` what it leaves,
+/// so the user hears of the file whether or not a wikilink in it was
+/// rewritten; this refusal is the writer's own, for any caller. The
+/// frontend's percent-escapes (§275.4) have no reader on this side, so
+/// escaping here would file the reference under a key nothing resolves.
 pub fn replace_block_reference_target(
     content: &str,
     ref_path: &str,
@@ -462,6 +464,31 @@ pub fn replace_block_reference_target(
     if new_target.contains([')', '#', '|']) {
         return content.to_owned();
     }
+    visit_block_references_to(content, ref_path, old_target, |id, display| {
+        Some(format!("(({new_target}#^{id}{display}))"))
+    })
+    .0
+}
+
+/// How many block references (embeds included) to `old_target` `content`
+/// holds in prose — exactly the ones `replace_block_reference_target` would
+/// rewrite: not a self-reference, which names no target, not a path-qualified
+/// one, not one in a literal region. A file rename to a stem no reference can
+/// spell asks this to report the files whose references it leaves.
+pub fn block_references_to(content: &str, ref_path: &str, old_target: &str) -> usize {
+    visit_block_references_to(content, ref_path, old_target, |_, _| None).1
+}
+
+/// The pass under both: on the lines the index's own grammar reads as a
+/// reference to `old_target`, every block reference to it in prose is offered
+/// to `respell` (block id, display) — `Some` replaces it, `None` keeps it —
+/// and counted. Returns the content and that count.
+fn visit_block_references_to(
+    content: &str,
+    ref_path: &str,
+    old_target: &str,
+    respell: impl Fn(&str, &str) -> Option<String>,
+) -> (String, usize) {
     let old_key = normalize_target(old_target);
     let refers_to_old = |raw_target: &str| {
         let t = raw_target.trim();
@@ -473,9 +500,10 @@ pub fn replace_block_reference_target(
         .map(|entry| entry.line)
         .collect();
     if lines.is_empty() {
-        return content.to_owned();
+        return (content.to_owned(), 0);
     }
     let mut literal: Option<Literal> = None;
+    let mut visited = 0;
     let mut out = String::with_capacity(content.len());
     for line in source_lines(content) {
         if lines.contains(&line.number) {
@@ -490,7 +518,8 @@ pub fn replace_block_reference_target(
                         .overlaps(line.offset + whole.start()..line.offset + whole.end())
                 };
                 if refers_to_old(target) && in_prose() {
-                    format!("(({new_target}#^{id}{display}))")
+                    visited += 1;
+                    respell(id, display).unwrap_or_else(|| whole.as_str().to_string())
                 } else {
                     whole.as_str().to_string()
                 }
@@ -501,7 +530,7 @@ pub fn replace_block_reference_target(
         }
         out.push_str(line.terminator);
     }
-    out
+    (out, visited)
 }
 
 /// issue 668: how many lines of `content` refer, in prose, to ITS OWN block
@@ -1157,6 +1186,26 @@ mod tests {
                 "{stem}"
             );
         }
+    }
+
+    #[test]
+    fn a_file_rename_counts_the_block_references_it_would_rewrite() {
+        // issue 678: what a stem no reference can spell leaves behind is what
+        // the rewrite would have touched — the references in prose that name
+        // the old stem; not a self-reference (whichever file holds it), not a
+        // path-qualified one, not one inside code, and never a wikilink.
+        let content =
+            "((old#^a)) {{embed ((old#^b|shown))}} ((#^c)) ((dir/old#^d)) `((old#^e))`\n[[old]]\n";
+        assert_eq!(block_references_to(content, "/v/referrer.md", "old"), 2);
+        assert_eq!(block_references_to(content, "/v/old.md", "old"), 2);
+        assert_eq!(
+            block_references_to("see [[old]] only\n", "/v/r.md", "old"),
+            0
+        );
+        assert_eq!(
+            replace_block_reference_target(content, "/v/referrer.md", "old", "new"),
+            "((new#^a)) {{embed ((new#^b|shown))}} ((#^c)) ((dir/old#^d)) `((old#^e))`\n[[old]]\n"
+        );
     }
 
     #[test]
