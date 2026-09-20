@@ -260,18 +260,19 @@ describe("handleUpdate", () => {
 /**
  * Let `handleInstall` reach its consent dialog.
  *
- * ‼️ MORE THAN ONE MICROTASK TURN. The M1 floor gate added an `await` before `askConsent`
- * (it asks the backend for the app version), so the single `Promise.resolve()` these cases
- * used to do now lands BEFORE the dialog opens and `settleConsent` resolves nothing. Three
- * turns is slack, not a measured requirement — every case that uses this asserts the dialog
- * is actually open, so too few turns fails loudly rather than silently.
+ * ‼️ WHAT DOES THE WORK IS THE `act` BOUNDARY, NOT THE TURN COUNT (0090 re-review, R2). An
+ * earlier comment here said three `Promise.resolve()` turns were needed because M1 put an
+ * `await` in front of `askConsent`, and that "too few turns fails loudly". Measured: three
+ * turns green, one turn green, and **zero** turns — a bare `await act(async () => {})` —
+ * green too. Deleting the calls entirely fails 10 cases. So the flush is load-bearing and
+ * the turns are decorative: exiting an async `act` scope drains the pending microtask work
+ * and flushes the re-render that follows, which is the whole requirement.
+ *
+ * What keeps this from being a vacuous wait is the caller, not this function: every case
+ * that uses it asserts the dialog IS open, or settles it and asserts what followed.
  */
 async function reachConsent(): Promise<void> {
-  await act(async () => {
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
-  });
+  await act(async () => {});
 }
 
 describe("the engines.baram floor (M1)", () => {

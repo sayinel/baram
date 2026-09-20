@@ -16,6 +16,19 @@ vi.mock("../../../../ipc/theme", () => ({
   themeUninstall: (...a: unknown[]) => themeUninstall(...a),
 }));
 
+/**
+ * The running app version (0090 re-review, R4).
+ *
+ * ‼️ MOCKED SO THE FIXTURES BELOW EXERCISE THE PATH THEY LOOK LIKE THEY EXERCISE. Without
+ * it, `engines-app.ts`'s `getVersion()` throws in jsdom, the M1 floor gate catches it, and
+ * every `engines: { baram: ">=0.7.0" }` fixture in this file resolves as "no opinion" —
+ * green, correct, and never once comparing a version. It also logged a warning per case.
+ * The comparison itself is exercised on both sides in `theme-update-revocation.test.ts`;
+ * this mock is what keeps THIS file's cases from passing through a branch nobody meant.
+ */
+const appVersion = vi.hoisted(() => vi.fn(() => Promise.resolve("0.7.3")));
+vi.mock("@tauri-apps/api/app", () => ({ getVersion: appVersion }));
+
 // Bare `vi.fn()`: a typed `async () => undefined` implementation narrows the inferred
 // signature to zero params, which the spread wrapper below (and `.mock.calls[0][0]` further
 // down) then fails to typecheck against.
@@ -86,6 +99,7 @@ beforeEach(() => {
   themeUninstall.mockReset();
   themeUninstall.mockResolvedValue(undefined);
   showAlert.mockClear();
+  appVersion.mockResolvedValue("0.7.3");
   useSettingsStore.setState({
     activeThemeId: "system",
     customThemes: [],
@@ -103,22 +117,21 @@ afterEach(() => {
 // resolve as a REFUSAL, or the awaiting caller hangs forever) but had no test of its own;
 // review round 1's M-F (deleting the guard) passed the whole suite green.
 /**
- * Let `handleInstall` get as far as opening its consent dialog.
+ * Let `handleInstall` reach its consent dialog.
  *
- * ‼️ THE DIALOG IS NO LONGER SYNCHRONOUS (0090 final review, M1). `handleInstall` now awaits
- * the `engines.baram` floor gate before `askConsent`, so `pendingConsent` is null for a
- * microtask or two after the call — every case below that used to assert it immediately, or
- * settle it on the next turn, was reading the state before the dialog existed.
+ * ‼️ WHAT DOES THE WORK IS THE `act` BOUNDARY, NOT THE TURN COUNT (0090 re-review, R2). An
+ * earlier comment here said three `Promise.resolve()` turns were needed because M1 put an
+ * `await` in front of `askConsent`, and that "too few turns fails loudly". Measured: three
+ * turns green, one turn green, and **zero** turns — a bare `await act(async () => {})` —
+ * green too. Deleting the calls entirely fails 10 cases. So the flush is load-bearing and
+ * the turns are decorative: exiting an async `act` scope drains the pending microtask work
+ * and flushes the re-render that follows, which is the whole requirement.
  *
- * Turn count is slack rather than measured: each caller asserts the dialog IS open, so too
- * few turns fails loudly.
+ * What keeps this from being a vacuous wait is the caller, not this function: every case
+ * that uses it asserts the dialog IS open, or settles it and asserts what followed.
  */
 async function reachConsent(): Promise<void> {
-  await act(async () => {
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
-  });
+  await act(async () => {});
 }
 
 describe("the pending consent promise settles even if nothing else does", () => {

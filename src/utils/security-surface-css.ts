@@ -17,11 +17,19 @@
 //   btn-unstyled          base.css:96     ) the shared utilities CLAUDE.md pins to
 //   flex-header           base.css:103    ) base.css, used across the app
 //   text-truncate         base.css:110    )
-//   plugin-revoked__note  plugins.css:479 PluginMarketplace.tsx:297,306,311 — its OWN
-//                                         staleness notices, in the light DOM
+//   plugin-revoked__note  plugins.css:479 PluginMarketplace.tsx:290,308,317,322 — its OWN
+//                                         staleness notices plus §10.2's theme pointer,
+//                                         all in the light DOM
 //
-// The last one is the concrete payoff: a move would have unstyled three paragraphs of
-// the marketplace with nothing to catch it. `settings-section-title` is shared too (3
+// The last one is the concrete payoff: a move would have unstyled four paragraphs of
+// the marketplace with nothing to catch it.
+//
+// ‼️ THOSE FOUR POSITIONS WENT STALE INSIDE ONE COMMIT (0090 re-review, R3). They read
+// `:297,306,311` — three — until 0049 §10.2's "looking for themes?" pointer was added to
+// that file in the same round, which both moved the existing three and added a fourth. The
+// class list and the shared-class argument were unaffected; only the transcription was
+// wrong, which is exactly the self-invalidating-citation shape CLAUDE.md warns about. Both
+// numbers above were re-measured at this writing. `settings-section-title` is shared too (3
 // other files) but has no rule anywhere, so moving it would break nothing — not counted.
 // The seven are unchanged by `themeConsent` (§361 review round 2): every `theme-consent-*`
 // class is single-purpose, defined only in `theme.css`, used only by `ThemeBrowser.tsx` —
