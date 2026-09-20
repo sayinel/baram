@@ -2,6 +2,7 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
+import { lookupThemes } from "../../themes/installed-theme-defs";
 import {
   defaultColorsForBase,
   findThemeById,
@@ -141,6 +142,9 @@ export const useSettingsStore = create<SettingsState>()(
         theme: state.theme,
         activeThemeId: state.activeThemeId,
         customThemes: state.customThemes,
+        // §361 — installed (community) theme records. tauriStorage only, never
+        // localStorage: sandbox webviews share this origin (no-local-storage.test.ts).
+        installedThemes: state.installedThemes,
         wikilinkFormat: state.wikilinkFormat,
         autoUpdateLinks: state.autoUpdateLinks,
         inlineMath: state.inlineMath,
@@ -628,7 +632,10 @@ export const useSettingsStore = create<SettingsState>()(
         }
         // Theme sync: ensure theme field matches activeThemeId
         if (state.activeThemeId && state.activeThemeId !== "system") {
-          const t = findThemeById(state.activeThemeId, state.customThemes);
+          const t = findThemeById(
+            state.activeThemeId,
+            lookupThemes(state.customThemes, state.installedThemes ?? {}),
+          );
           const field = themeFieldFor(t);
           if (t && state.theme !== field) {
             useSettingsStore.setState({ theme: field });

@@ -7,6 +7,7 @@ import type { ViewUpdate } from "@codemirror/view";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { NodeView, EditorView as PMView } from "@tiptap/pm/view";
 
+import { syntaxHighlighting } from "@codemirror/language";
 import { EditorState as CMState, Compartment } from "@codemirror/state";
 import { EditorView as CMView } from "@codemirror/view";
 
@@ -16,6 +17,7 @@ import { useAIStore } from "../../../stores/ai/ai";
 import { useSettingsStore } from "../../../stores/settings/store";
 import { showNodeViewAIMenu } from "../../../utils/nodeview-ai-menu";
 import { withVimExternalEdit } from "../../plugins/vim/vim-keys";
+import { subscribeHighlightStyle } from "../code-block-highlight";
 import {
   getLanguageExtension,
   LANGUAGE_OPTIONS,
@@ -38,6 +40,10 @@ export class CodeBlockNodeView implements NodeView {
   private destroyed = false;
   private detachAiTooltip: (() => void) | null = null;
   private getPos: () => number | undefined;
+  /** §361 / 0088 M3 — the syntax-highlighting slot, so a light/dark change reconfigures
+   *  instead of recreating. Owned here because it must outlive every CM this view builds. */
+  private highlightCompartment = new Compartment();
+  private highlightUnsub: (() => void) | null = null;
   private initGeneration = 0;
   private langGeneration = 0;
   private langSelect: HTMLSelectElement;
@@ -211,14 +217,32 @@ export class CodeBlockNodeView implements NodeView {
       view,
     });
 
+    // §361 / 0088 M3 — the highlight style follows the DOCUMENT's light/dark answer, not
+    // the settings store's `theme` field, and it RECONFIGURES rather than recreating.
+    //
+    // Two defects in one change. The field could not see an OS switch at all (the
+    // `subscribeHighlightStyle` doc comment has the measurement), and the settings
+    // subscription below answers a change by tearing CodeMirror down and building it again
+    // — `snapshotFocusForRecreate` exists because that is disruptive, and on a document full
+    // of code blocks it is a real cost. Nothing else in `buildCodeBlockExtensions` reads the
+    // theme (`getHighlightStyle` is its only theme-dependent call, and
+    // `wrapper.dataset.style` below is set outside the `cmInitialized` branch), so the
+    // recreate bought nothing the compartment does not.
+    this.highlightUnsub = subscribeHighlightStyle((style) => {
+      this.cmView?.dispatch({
+        effects: this.highlightCompartment.reconfigure(
+          syntaxHighlighting(style),
+        ),
+      });
+    });
+
     // Subscribe to settings changes for live updates
     this.settingsUnsub = useSettingsStore.subscribe((state, prev) => {
       if (
         state.tabSize !== prev.tabSize ||
         state.codeBlockLineNumbers !== prev.codeBlockLineNumbers ||
         state.autoPairBrackets !== prev.autoPairBrackets ||
-        state.codeBlockStyle !== prev.codeBlockStyle ||
-        state.theme !== prev.theme
+        state.codeBlockStyle !== prev.codeBlockStyle
       ) {
         wrapper.dataset.style = state.codeBlockStyle;
         // Only recreate CodeMirror if already initialized; otherwise the
@@ -250,6 +274,10 @@ export class CodeBlockNodeView implements NodeView {
     if (this.settingsUnsub) {
       this.settingsUnsub();
       this.settingsUnsub = null;
+    }
+    if (this.highlightUnsub) {
+      this.highlightUnsub();
+      this.highlightUnsub = null;
     }
     if (this.detachAiTooltip) {
       this.detachAiTooltip();
@@ -479,6 +507,7 @@ export class CodeBlockNodeView implements NodeView {
 
     const extensions = buildCodeBlockExtensions({
       autoPairBrackets,
+      highlightCompartment: this.highlightCompartment,
       keymapExtension: customKeys,
       langExt,
       languageCompartment: this.languageCompartment,

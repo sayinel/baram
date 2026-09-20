@@ -30,7 +30,10 @@ import {
 } from "@codemirror/view";
 import { useShallow } from "zustand/shallow";
 
-import { getHighlightStyle } from "../../extensions/nodes/code-block-highlight";
+import {
+  getHighlightStyle,
+  subscribeHighlightStyle,
+} from "../../extensions/nodes/code-block-highlight";
 import { getLanguageExtension } from "../../extensions/nodes/code-block-languages";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
@@ -182,6 +185,14 @@ export function SourceCodeEditor({
     // (editable=false) in normal/visual mode so WebKit's non-cancelable
     // composition path can never start. Empty = default (editable).
     const vimEditableCompartment = new Compartment();
+    // §361 Task 6 / 0088 M3 — the syntax highlighting slot. Source mode had the same
+    // defect the WYSIWYG code block had: `getHighlightStyle()` is read once, this view is
+    // built in a `[]`-deps effect and is deliberately never rebuilt (see that effect's
+    // closing comment), so an OS light/dark switch left the highlighting behind. A
+    // compartment rather than a rebuild for the stronger reason here — rebuilding would
+    // discard the undo stack, the caret and the scroll position, which is exactly what
+    // that comment forbids.
+    const highlightCompartment = new Compartment();
 
     const state = EditorState.create({
       doc: content,
@@ -213,7 +224,7 @@ export function SourceCodeEditor({
         ...(showLineNumbers ? [lineNumbers()] : []),
         drawSelection(),
         bracketMatching(),
-        syntaxHighlighting(getHighlightStyle()),
+        highlightCompartment.of(syntaxHighlighting(getHighlightStyle())),
         ...(autoPair ? [closeBrackets()] : []),
         langCompartment.of(initialLang),
         updateListener,
@@ -253,6 +264,16 @@ export function SourceCodeEditor({
     });
 
     viewRef.current = view;
+
+    // §361 Task 6 — follow the document's light/dark answer. `isDestroyingRef` is the
+    // same guard the async language load below uses, and for the same reason: this
+    // callback can land after the cleanup has begun.
+    const unsubscribeHighlight = subscribeHighlightStyle((style) => {
+      if (isDestroyingRef.current) return;
+      view.dispatch({
+        effects: highlightCompartment.reconfigure(syntaxHighlighting(style)),
+      });
+    });
 
     // Async language loading for non-markdown languages
     if (!isMarkdown && language) {
@@ -330,6 +351,7 @@ export function SourceCodeEditor({
 
     return () => {
       isDestroyingRef.current = true;
+      unsubscribeHighlight();
       vimController.dispose();
       unsubscribeVim();
       view.destroy();

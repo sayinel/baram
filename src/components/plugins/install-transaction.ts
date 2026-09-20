@@ -10,7 +10,6 @@
 // join below), and `plugin-ui-i18n.test.tsx` scans only `.tsx` files in this directory
 // for hardcoded strings. Renaming this to `.tsx` would put that literal back in scope
 // and turn the scanner red.
-import { getVersion } from "@tauri-apps/api/app";
 
 import type { Translate } from "../../i18n/useTranslation";
 import type { RustCommittedPluginInfo } from "../../ipc/plugin-invoke";
@@ -25,7 +24,8 @@ import {
   pluginInstallDiscard,
   pluginInstallStage,
 } from "../../ipc/plugin-invoke";
-import { parseBaramFloor, unmetBaramFloor } from "../../plugins/engines";
+import { parseBaramFloor } from "../../plugins/engines";
+import { unmetFloorAgainstApp } from "../../plugins/engines-app";
 import { validateManifest } from "../../plugins/manifest";
 import { consentGaps } from "../../plugins/plugin-consent";
 import { pluginLoader } from "../../plugins/plugin-loader";
@@ -217,18 +217,6 @@ export async function stageValidateAndCommit(
   }
 }
 
-/** The running app version, or null when it cannot be read. */
-async function currentAppVersion(): Promise<null | string> {
-  try {
-    return (await getVersion()) ?? null;
-  } catch (err) {
-    // Not an install failure. Nothing about the plugin is known to be wrong, so the
-    // caller proceeds — see the direction-of-doubt note in `plugins/engines.ts`.
-    logger.warn("[Marketplace] could not read the app version:", err);
-    return null;
-  }
-}
-
 /**
  * The refusal to show when the running app is below `engines`' floor, else null.
  *
@@ -246,12 +234,10 @@ export async function floorRefusal(
   engines: undefined | { baram: string },
   t: Translate,
 ): Promise<null | string> {
-  if (parseBaramFloor(engines?.baram) === null) return null;
-  const appVersion = await currentAppVersion();
-  // `unmetBaramFloor` treats an unreadable version as "no opinion" too; narrowing it here
-  // is what lets the refusal name the version the reader is actually on.
-  if (appVersion === null) return null;
-  const floor = unmetBaramFloor(appVersion, engines);
-  if (floor === null) return null;
-  return t("plugin.error.appTooOld", { current: appVersion, required: floor });
+  const unmet = await unmetFloorAgainstApp(engines);
+  if (unmet === null) return null;
+  return t("plugin.error.appTooOld", {
+    current: unmet.appVersion,
+    required: unmet.floor,
+  });
 }

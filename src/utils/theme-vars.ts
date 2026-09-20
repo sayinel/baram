@@ -93,9 +93,43 @@ export function appliesInlineVars(themeId: string): boolean {
  */
 let previewOwned = false;
 
-/** Claim (`true`) or release (`false`) the ownership {@link themePreviewOwned} reports. */
+/** Who wants to know when the preview lets go. See {@link subscribeThemePreviewRelease}. */
+const previewReleaseListeners = new Set<() => void>();
+
+/**
+ * Claim (`true`) or release (`false`) the ownership {@link themePreviewOwned} reports.
+ *
+ * Releasing NOTIFIES (external review #1) — see {@link subscribeThemePreviewRelease} for
+ * what could not be recovered without it.
+ */
 export function setThemePreviewOwner(owned: boolean): void {
+  if (previewOwned === owned) return;
   previewOwned = owned;
+  // A copy: a listener may unsubscribe itself while being notified.
+  if (!owned) for (const listener of [...previewReleaseListeners]) listener();
+}
+
+/**
+ * Run `listener` when the theme editor stops owning `<html>`.
+ *
+ * ‼️ THIS EXISTS BECAUSE ONE SKIPPED APPLY HAD NO RECOVERY PATH (external review #1). The
+ * settings effect stands down while a preview is live, and the comment at its listener says
+ * skipped transitions are not lost — closing the editor calls `restorePreview()`, saving
+ * re-runs the effect. Both are true of an OS light/dark switch, which only moves inline
+ * variables and `data-theme`, and both are FALSE of a community theme's CSS arriving from
+ * the hydration hook:
+ *
+ * - `restorePreview` deliberately does not touch `<style data-baram-theme>` —
+ *   {@link clearThemeCss}'s own doc comment records why, and its `lookupThemes` call omits
+ *   the cache argument, so it has no CSS to restore even in principle;
+ * - closing WITHOUT saving changes no dependency of that effect, so nothing re-runs it.
+ *
+ * So a theme whose CSS landed while the editor was open would have stayed colour-only until
+ * something unrelated moved. This is the signal that closes it.
+ */
+export function subscribeThemePreviewRelease(listener: () => void): () => void {
+  previewReleaseListeners.add(listener);
+  return () => previewReleaseListeners.delete(listener);
 }
 
 /** @see setThemePreviewOwner */
@@ -115,6 +149,30 @@ export function themePreviewOwned(): boolean {
  * 않는다: 로드 시점의 예외는 테마 하나가 앱 시작을 막는다는 뜻이다.
  */
 export function applyThemeCss(root: Document, css: string | undefined): void {
+  const attached = root.querySelector<HTMLStyleElement>(
+    `style[${THEME_STYLE_ATTR}]`,
+  );
+  // ‼️ 같은 바이트면 검증도 건너뛴다 — **이미 주입된 것에 한해서**(외부 리뷰 #3).
+  //
+  // 왜 안전한가. 이 `<style>` 에 들어 있는 문자열이 거기 있는 이유는 **이 함수가 아래에서
+  // 검증에 통과시킨 뒤 넣었기 때문**이다. 이 모듈이 `<style data-baram-theme>` 를 붙이는
+  // 유일한 곳이고(머리주석), 문자열은 불변이며, `textContent` 는 넣은 값을 그대로 돌려준다.
+  // 그러니 같은 문자열을 다시 검증하는 것은 **같은 술어를 같은 값에** 또 적용하는 일이고,
+  // 결과가 달라질 수 있는 입력이 없다.
+  //
+  // 왜 값어치가 있는가. 실측(외부 리뷰 검증 문서, 이 리포 `.superpowers/…`): 4 MiB 상한
+  // 근처의 저장 CSS 에서 `verifyStoredThemeCss` 한 번이 122~352 ms 이고, 그 뒤에 있는
+  // 문자열 비교는 0.066 ms 다. 그리고 **CSS 를 실은 커뮤니티 테마는 시작할 때마다 이
+  // 비용을 두 번 낸다** — 하이드레이션이 `readStoredThemeCss` 에서 한 번 검증하고,
+  // 캐시가 차면 이 이펙트가 다시 돌아 같은 바이트를 또 검증한다.
+  //
+  // ‼️ **검증을 없애는 것이 아니다.** 아직 붙지 않은 바이트는 전부 아래를 지난다. 그 경로가
+  // 죽지 않은 이유가 있다: `customThemes[i].modes[mode].css` 는 `config.json` 에 영속되고
+  // 리하이드레이트 때 아무도 다시 보지 않으므로, 손으로 고친 설정 파일이 실어 오는 CSS 는
+  // `readStoredThemeCss` 가 구조적으로 볼 수 없고 오직 이 관문만이 본다.
+  if (css !== undefined && attached !== null && attached.textContent === css) {
+    return;
+  }
   if (css === undefined || !verifyStoredThemeCss(css)) {
     if (css !== undefined) {
       logger.error("[theme] stored CSS failed verification — not injected");
@@ -122,11 +180,8 @@ export function applyThemeCss(root: Document, css: string | undefined): void {
     clearThemeCss(root);
     return;
   }
-  const existing = root.querySelector<HTMLStyleElement>(
-    `style[${THEME_STYLE_ATTR}]`,
-  );
-  const style = existing ?? root.createElement("style");
-  if (existing === null) {
+  const style = attached ?? root.createElement("style");
+  if (attached === null) {
     style.setAttribute(THEME_STYLE_ATTR, "");
     root.head.appendChild(style);
   }

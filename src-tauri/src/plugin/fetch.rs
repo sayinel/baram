@@ -535,12 +535,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn stage_plugin_refuses_an_archive_outside_the_registry_that_listed_it() {
+    async fn stage_install_refuses_an_archive_outside_the_registry_that_listed_it() {
         // ‼️ WIRED IN, not merely available. `is_within_registry` having the right answer is
         // worth nothing if the download path never asks it — the same reason the scheme guard
         // has its own wiring test next door. Nothing here reaches the network: the refusal
         // happens before the request.
-        let err = stage_plugin(
+        let err = stage_install(
+            InstallKind::Plugin,
             "https://evil.example/plugins/x-1.0.0.zip",
             LIVE_INDEX,
             None,
@@ -556,11 +557,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn stage_plugin_refuses_a_redirect_that_leaves_the_registry() {
+    async fn stage_install_refuses_a_redirect_that_leaves_the_registry() {
         // The first hop is in-registry and compliant; the redirect is where it leaves. Served
         // over loopback so the policy really runs, rather than being reasoned about.
         let url = serve_redirect("https://evil.example/x-1.0.0.zip");
-        let err = stage_plugin(&url, &url, None, None)
+        let err = stage_install(InstallKind::Plugin, &url, &url, None, None)
             .await
             .expect_err("a redirect off the registry must be refused");
         let msg = err.to_string();
@@ -708,11 +709,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn stage_plugin_gives_up_on_an_in_registry_redirect_loop() {
+    async fn stage_install_gives_up_on_an_in_registry_redirect_loop() {
         // Every hop is same-origin and under the base, so containment never refuses it — the hop
         // COUNT is the only bound, and without it this spins until the total timeout.
         let url = serve_redirect_loop();
-        let err = stage_plugin(&url, &url, None, None)
+        let err = stage_install(InstallKind::Plugin, &url, &url, None, None)
             .await
             .expect_err("a redirect loop must be given up on");
         assert!(
@@ -722,7 +723,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn stage_plugin_follows_a_redirect_that_stays_inside_the_registry() {
+    async fn stage_install_follows_a_redirect_that_stays_inside_the_registry() {
         // The permissive half: pinning must not break a registry that redirects internally,
         // or the rule stops being "same registry" and becomes "no redirects", which would
         // refuse legitimate hosting without saying so.
@@ -730,7 +731,7 @@ mod tests {
         // The proof that the hop was FOLLOWED is which error comes back: the second response
         // is not a ZIP, so it fails in extraction. A refused redirect could not reach that.
         let url = serve_self_redirect(b"not a zip".to_vec());
-        let err = stage_plugin(&url, &url, None, None)
+        let err = stage_install(InstallKind::Plugin, &url, &url, None, None)
             .await
             .expect_err("a non-zip body cannot install");
         let msg = err.to_string();
@@ -980,12 +981,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn stage_plugin_refuses_an_archive_over_its_cap() {
+    async fn stage_install_refuses_an_archive_over_its_cap() {
         // 32 MiB over loopback, which is the whole point: this cap is reached before the
         // checksum, the manifest or the tier can say anything, so nothing downstream would
         // ever catch an unbounded download.
         let url = serve_once("200 OK", vec![0u8; MAX_PLUGIN_ARCHIVE_BYTES + 1]);
-        let err = stage_plugin(&url, &url, None, None)
+        let err = stage_install(InstallKind::Plugin, &url, &url, None, None)
             .await
             .expect_err("over the cap");
         assert!(
@@ -995,9 +996,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn stage_plugin_refuses_a_non_success_status() {
+    async fn stage_install_refuses_a_non_success_status() {
         let url = serve_once("503 Service Unavailable", b"down".to_vec());
-        let err = stage_plugin(&url, &url, None, None)
+        let err = stage_install(InstallKind::Plugin, &url, &url, None, None)
             .await
             .expect_err("503 is not an archive");
         assert!(
@@ -1016,11 +1017,11 @@ mod tests {
     /// anything writes to the user's real plugin directory, which a fully successful install
     /// would do.
     #[tokio::test]
-    async fn stage_plugin_reaches_the_blocking_stage_and_reports_from_inside_it() {
+    async fn stage_install_reaches_the_blocking_stage_and_reports_from_inside_it() {
         let archive = zip_of(&[("not-a-manifest.txt", b"hello")]);
         let url = serve_once("200 OK", archive);
 
-        let err = stage_plugin(&url, &url, None, None)
+        let err = stage_install(InstallKind::Plugin, &url, &url, None, None)
             .await
             .expect_err("an archive with no manifest cannot install");
 

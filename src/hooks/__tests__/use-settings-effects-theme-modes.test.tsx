@@ -191,9 +191,14 @@ describe("paired theme follows the OS", () => {
   });
 
   it("언마운트하면 리스너를 떼어 둔다", () => {
+    // §361 — 2다, 1이 아니다: `use-theme-css-hydration.ts`가 어느 커뮤니티 테마가
+    // 활성인지와 무관하게 자기 것을 하나 더 붙인다(OS 전환이 나면 어느 모드의 CSS를
+    // 데워야 할지 알아야 하므로, 이 파일의 mql과 별개로 필요하다 — `installMatchMedia`가
+    // 질의 문자열과 무관하게 같은 가짜 객체를 돌려주므로 여기 둘 다 잡힌다). 이 테스트가
+    // 지키는 성질은 "붙인 만큼 뗀다"이지 정확히 하나라는 숫자가 아니다.
     const media = installMatchMedia(false);
     const { unmount } = render(<Host />);
-    expect(media.listenerCount()).toBe(1);
+    expect(media.listenerCount()).toBe(2);
 
     unmount();
     expect(media.listenerCount()).toBe(0);

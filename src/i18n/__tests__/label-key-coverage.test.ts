@@ -20,6 +20,7 @@ import {
   KEYBINDING_REGISTRY,
 } from "../../keybindings/keybinding-registry";
 import { DEFAULT_ACTIVITY_BAR_CONFIG } from "../../stores/settings/activity-bar-config";
+import { THEME_INSTALL_FAILURE_REASONS } from "../../themes/theme-install";
 import { AI_ACTION_LABEL_KEYS } from "../../utils/contextual-ai-actions";
 import { MERMAID_TYPE_LABEL_KEYS } from "../../utils/markdown/mermaid-utils";
 import {
@@ -331,6 +332,44 @@ describe("theme CSS rejection reasons", () => {
       const orphaned = Object.keys(locale).filter(
         (k) =>
           k.startsWith("settings.appearance.themeCssError.") &&
+          !referenced.has(k),
+      );
+      expect(orphaned).toEqual([]);
+    },
+  );
+});
+
+describe("theme install failure reasons", () => {
+  // §361 — same shape as the theme CSS rejection reasons above, one layer up: a theme
+  // install can fail before the CSS pipeline ever runs (a bad download, a mismatched id, an
+  // invalid manifest, a failed commit), and `use-theme-actions.ts`'s `installFailureMessage`
+  // turns each `ThemeInstallFailure` into `settings.appearance.installError.<reason>`. Derived
+  // from the array rather than a copy, for the same reason THEME_CSS_ERROR_CODES is an array.
+  it("has every reason represented, so the checks below are not vacuous", () => {
+    expect(THEME_INSTALL_FAILURE_REASONS.length).toBeGreaterThan(3);
+  });
+
+  it.each(LOCALES)(
+    "defines every install failure reason in %s",
+    (_name, locale) => {
+      const missing = THEME_INSTALL_FAILURE_REASONS.map(
+        (reason) => `settings.appearance.installError.${reason}`,
+      ).filter((k) => !(k in locale));
+      expect(missing).toEqual([]);
+    },
+  );
+
+  it.each(LOCALES)(
+    "has no orphaned install failure reason in %s",
+    (_name, locale) => {
+      const referenced = new Set<string>(
+        THEME_INSTALL_FAILURE_REASONS.map(
+          (reason) => `settings.appearance.installError.${reason}`,
+        ),
+      );
+      const orphaned = Object.keys(locale).filter(
+        (k) =>
+          k.startsWith("settings.appearance.installError.") &&
           !referenced.has(k),
       );
       expect(orphaned).toEqual([]);

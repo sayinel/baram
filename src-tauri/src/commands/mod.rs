@@ -16,4 +16,5 @@ pub mod search_cmd;
 pub mod snapshot_cmd;
 pub mod tag_cmd;
 pub mod task_cmd;
+pub mod theme_cmd;
 pub mod thumbnail_cmd;

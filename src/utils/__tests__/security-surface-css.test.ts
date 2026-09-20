@@ -31,6 +31,7 @@ const SURFACE_OF_FILE: Record<string, SecuritySurface> = {
   "src/components/plugins/PluginConsentDialog.tsx": "consentDialog",
   "src/components/plugins/PluginRevokedNotice.tsx": "revokedNotice",
   "src/components/settings/tabs/ApprovedRootsSection.tsx": "approvedRoots",
+  "src/components/settings/tabs/ThemeConsentDialog.tsx": "themeConsent",
 };
 
 /**
@@ -139,6 +140,10 @@ describe("§359 표면별 클래스 목록", () => {
       classesInSource("src/components/settings/tabs/ApprovedRootsSection.tsx")
         .size,
     ).toBeGreaterThanOrEqual(10);
+    expect(
+      classesInSource("src/components/settings/tabs/ThemeConsentDialog.tsx")
+        .size,
+    ).toBeGreaterThanOrEqual(8);
   });
 });
 
@@ -288,6 +293,9 @@ describe("§359 shadow 안으로 들어가는 CSS", () => {
     );
     expect(selectorsIn(securitySurfaceCss("approvedRoots"))).not.toContain(
       ".plugin-revoked",
+    );
+    expect(selectorsIn(securitySurfaceCss("themeConsent"))).not.toContain(
+      ".plugin-consent",
     );
   });
 });

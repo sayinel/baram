@@ -170,3 +170,82 @@ export function getHighlightStyle(): HighlightStyle {
       window.matchMedia("(prefers-color-scheme: dark)").matches);
   return isDark ? darkHighlightStyle : lightHighlightStyle;
 }
+
+// ---------------------------------------------------------------------------
+// Watching what getHighlightStyle() answers (§361 / 0088 M3)
+// ---------------------------------------------------------------------------
+
+/**
+ * Everyone currently watching. One shared observer serves all of them — a document with
+ * many code blocks must not attach one `MutationObserver` per block.
+ */
+const styleListeners = new Set<(style: HighlightStyle) => void>();
+
+/** What the listeners were last told, so an input change that does not move the answer is
+ *  not broadcast (switching `default-light` → a custom light theme moves `data-theme`
+ *  nowhere the highlight can see). */
+let lastBroadcastStyle: HighlightStyle | null = null;
+
+/** Torn down with the last listener — see {@link subscribeHighlightStyle}. */
+let styleWatchDispose: (() => void) | null = null;
+
+/**
+ * Call `listener` whenever the style {@link getHighlightStyle} would return CHANGES.
+ *
+ * ‼️ 0088 final review M3. A mounted CodeMirror bakes its `HighlightStyle` in at
+ * construction, and the one signal the NodeView used to watch — the settings store's
+ * `theme` field — cannot see an OS light/dark switch: that field is `"system"` for the
+ * `system` theme and, since §357, for any paired theme as well (`themeFieldFor`), so it
+ * does not move when the OS does. Measured on this branch before the fix: with
+ * `data-theme` absent and `prefers-color-scheme` flipped to dark, a mounted block still
+ * resolved `tags.keyword` to the LIGHT class.
+ *
+ * It watches exactly the two inputs `getHighlightStyle` reads — `document.documentElement`'s
+ * `data-theme` attribute and the `(prefers-color-scheme: dark)` query, both transcribed from
+ * that function directly above. Watching the INPUTS rather than whoever writes them is what
+ * `use-graph-colors.ts` already does for the same three writers (§54's settings effect, the
+ * theme editor's live preview, and the media query itself), and for the same reason: a
+ * fourth writer needs no wiring here.
+ *
+ * Delivery is asynchronous — `MutationObserver` records are delivered at the end of a
+ * microtask checkpoint — so a caller that needs the CURRENT answer reads
+ * {@link getHighlightStyle} itself rather than waiting for a callback.
+ */
+export function subscribeHighlightStyle(
+  listener: (style: HighlightStyle) => void,
+): () => void {
+  styleListeners.add(listener);
+  if (styleWatchDispose === null) {
+    lastBroadcastStyle = getHighlightStyle();
+    styleWatchDispose = watchHighlightInputs();
+  }
+  return () => {
+    styleListeners.delete(listener);
+    if (styleListeners.size > 0) return;
+    styleWatchDispose?.();
+    styleWatchDispose = null;
+    lastBroadcastStyle = null;
+  };
+}
+
+/** Attach the two input watchers and return their teardown. */
+function watchHighlightInputs(): () => void {
+  const broadcast = () => {
+    const next = getHighlightStyle();
+    if (next === lastBroadcastStyle) return;
+    lastBroadcastStyle = next;
+    // A copy, because a listener may unsubscribe itself while being notified.
+    for (const listener of [...styleListeners]) listener(next);
+  };
+  const observer = new MutationObserver(broadcast);
+  observer.observe(document.documentElement, {
+    attributeFilter: ["data-theme"],
+    attributes: true,
+  });
+  const media = window.matchMedia("(prefers-color-scheme: dark)");
+  media.addEventListener("change", broadcast);
+  return () => {
+    observer.disconnect();
+    media.removeEventListener("change", broadcast);
+  };
+}

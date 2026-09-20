@@ -240,7 +240,7 @@ pub(super) fn redirect_within_registry(base: reqwest::Url) -> reqwest::redirect:
 ///
 /// ‼️ NOT origin-pinned, and that is correct: this is the capability-gated proxy a plugin
 /// uses for its OWN network calls, where an arbitrary host is the entire point. Pinning it
-/// would break every plugin that talks to an API. The pinning belongs on `stage_plugin`,
+/// would break every plugin that talks to an API. The pinning belongs on `stage_install`,
 /// which fetches CODE named by an index.
 pub async fn http_fetch(
     url: String,
@@ -705,11 +705,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn stage_plugin_refuses_an_encoded_separator_before_it_downloads_anything() {
+    async fn stage_install_refuses_an_encoded_separator_before_it_downloads_anything() {
         // ‼️ WIRING for the `%2f` guard: its other test drives the predicate directly, which
         // says nothing about whether the download path consults it. Nothing here reaches the
         // network — the refusal precedes the request.
-        let err = stage_plugin(
+        let err = stage_install(
+            InstallKind::Plugin,
             "https://sayinel.github.io/baram-plugins/%2f..%2f..%2fevil/x-1.0.0.zip",
             LIVE_INDEX,
             None,
@@ -730,10 +731,16 @@ mod tests {
     /// `file:` URL by itself, so `is_err()` holds with or without the guard. Nothing here
     /// reaches the network.
     #[tokio::test]
-    async fn test_stage_plugin_refuses_non_http_schemes() {
-        let err = stage_plugin("file:///etc/passwd", LIVE_INDEX, None, None)
-            .await
-            .expect_err("a file:// download URL must be refused");
+    async fn test_stage_install_refuses_non_http_schemes() {
+        let err = stage_install(
+            InstallKind::Plugin,
+            "file:///etc/passwd",
+            LIVE_INDEX,
+            None,
+            None,
+        )
+        .await
+        .expect_err("a file:// download URL must be refused");
         assert!(
             err.to_string().contains("blocked URL scheme 'file'"),
             "expected the scheme guard's refusal, got: {err}"

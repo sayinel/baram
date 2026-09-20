@@ -1917,6 +1917,92 @@
       "spec": "§350",
       "status": "implemented",
       "description": "설치된 서체 패밀리 목록. 경로 인자를 받지 않으므로 승인 게이트 대상이 아니다. 첫 호출 뒤 결과를 캐시하고, refresh=true 로 비운다"
+    },
+    {
+      "name": "theme_install_stage",
+      "input": {
+        "url": "string",
+        "registryUrl": "string",
+        "checksum": "string?",
+        "expectedId": "string?"
+      },
+      "output": "StagedThemeInfo",
+      "module": "theme",
+      "spec": "§360",
+      "phase": 3,
+      "milestone": "M11",
+      "status": "implemented",
+      "description": "테마 스테이징 — plugin_install_stage 와 같은 기계(다운로드·checksum·origin·ExtractBounds)를 ~/.baram/themes/.staging/ 에 대고 돌린다. 매니페스트는 baram-theme.json 이고 원문 그대로 돌려준다 — Rust 는 id 만 읽고 구조 검증은 validateThemeManifest 가 한다"
+    },
+    {
+      "name": "theme_install_commit",
+      "input": {
+        "stageId": "string",
+        "expectedId": "string",
+        "manifestSha256": "string",
+        "storedCss": "StoredThemeCss"
+      },
+      "output": "CommittedThemeInfo",
+      "module": "theme",
+      "spec": "§360",
+      "phase": 3,
+      "milestone": "M11",
+      "status": "implemented",
+      "description": "위생 처리된 CSS 를 staged 트리에 쓰고 원자적으로 설치한다. storedCss 가 commit 의 인자인 것이 §358 의 순서 보장이다 — 설치 경로를 만드는 것이 곧 이 swap 이므로 검증 안 된 CSS 가 그 경로에 앉아 있는 창이 없다"
+    },
+    {
+      "name": "theme_install_discard",
+      "input": {
+        "stageId": "string"
+      },
+      "output": "void",
+      "module": "theme",
+      "spec": "§360",
+      "phase": 3,
+      "milestone": "M11",
+      "status": "implemented",
+      "description": "스테이징된 테마 폐기 — 설치된 것은 건드리지 않음"
+    },
+    {
+      "name": "theme_stage_read",
+      "input": {
+        "stageId": "string",
+        "path": "string"
+      },
+      "output": "ArrayBuffer",
+      "module": "theme",
+      "spec": "§360",
+      "phase": 3,
+      "milestone": "M11",
+      "status": "implemented",
+      "description": "staged 테마 안의 파일 하나를 바이트로 (저자 CSS·tokens.json·동봉 자산). path 는 canonicalize 봉쇄만 거치고 퍼센트 디코드하지 않는다 — ThemeAssetReader 계약이 그것을 요구한다. 8 MiB 상한"
+    },
+    {
+      "name": "theme_read_stored_css",
+      "input": {
+        "themeId": "string",
+        "mode": "\"light\" | \"dark\""
+      },
+      "output": "string",
+      "module": "theme",
+      "spec": "§360",
+      "phase": 3,
+      "milestone": "M11",
+      "status": "implemented",
+      "description": "설치된 테마의 저장(위생 처리된) CSS 한 모드. 경로 조각을 호출자가 고를 수 없다 — themeId 는 single_segment, mode 는 닫힌 enum 이다. 그 모드에 CSS 가 없으면 NotFound"
+    },
+    {
+      "name": "theme_uninstall",
+      "input": {
+        "themeId": "string"
+      },
+      "output": "void",
+      "module": "theme",
+      "spec": "§361",
+      "phase": 3,
+      "milestone": "M11",
+      "status": "implemented",
+      "description": "설치된 테마 제거. plugin_uninstall 과 같은 함수(uninstall_installed)를 InstallKind::Theme 로 호출한다 — Task 3 이 이미 kind 로 일반화해 두어 새 Rust 로직 없이 래퍼 하나로 끝난다"
     }
   ],
   "events": [

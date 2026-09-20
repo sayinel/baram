@@ -51,6 +51,124 @@ function validEntry(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/**
+ * A theme entry the script accepts — no `trust`, empty `capabilities` (0090, L1).
+ *
+ * ‼️ The `trust` deletion happens BEFORE the overrides are applied, not after. The first
+ * version deleted last and silently ate `{ trust: "sandboxed" }`, so the case that asserts
+ * the warning had no tier to warn about and saw a clean ✓.
+ */
+function validThemeEntry(overrides: Record<string, unknown> = {}) {
+  const base = validEntry({
+    capabilities: [],
+    id: "dracula-theme",
+    kind: "theme",
+    name: "Dracula",
+  });
+  delete (base as { trust?: unknown }).trust;
+  return { ...base, ...overrides };
+}
+
+describe('validate-index and a kind:"theme" entry (0090 final review, L1/M2/L5)', () => {
+  it("accepts one with no trust tier at all", () => {
+    // The gate used to make this an ERROR, with a message about Phase 5 disabling Install —
+    // false for a theme, whose install path never reads `trust`. The plan's out-of-code
+    // precondition is publishing exactly this entry.
+    const { output, status } = run({ plugins: [validThemeEntry()] });
+    expect(status).toBe(0);
+    expect(output).toContain("✓");
+  });
+
+  it("still requires a plugin entry to carry one", () => {
+    // The sibling that keeps the fix from being "trust is never required": the branch is on
+    // `kind`, not a removal.
+    const entry = validEntry();
+    delete (entry as { trust?: unknown }).trust;
+    const { output, status } = run({ plugins: [entry] });
+    expect(status).toBe(1);
+    expect(output).toContain("no trust tier");
+  });
+
+  it("warns, without failing, about a trust tier on a theme", () => {
+    const { output, status } = run({
+      plugins: [validThemeEntry({ trust: "sandboxed" })],
+    });
+    expect(status).toBe(0);
+    expect(output).toContain("it is a plugin field");
+  });
+
+  it("still requires capabilities, because Rust cannot deserialize without it", () => {
+    const entry = validThemeEntry();
+    delete (entry as { capabilities?: unknown }).capabilities;
+    const { output, status } = run({ plugins: [entry] });
+    expect(status).toBe(1);
+    expect(output).toContain("capabilities is missing");
+  });
+
+  it.each(["nord", "default-light", "system"])(
+    "rejects the reserved id %s",
+    (id) => {
+      // M2 — `findThemeById` resolves these to the shipped theme, so an entry using one
+      // could be consented to and installed and then never applied.
+      const { output, status } = run({ plugins: [validThemeEntry({ id })] });
+      expect(status).toBe(1);
+      expect(output).toContain("a built-in theme already uses");
+    },
+  );
+
+  it("leaves a plugin free to use an id a built-in theme has", () => {
+    // The namespaces are separate: `findThemeById` never looks at installed plugins.
+    const { status } = run({ plugins: [validEntry({ id: "nord" })] });
+    expect(status).toBe(0);
+  });
+});
+
+describe("validate-index checks the name the consent dialog renders (L5)", () => {
+  it.each([
+    ["a bidi override", "Drac\u202eula"],
+    ["a control character", "Drac\u0007ula"],
+  ])("rejects %s", (_label, name) => {
+    const { output, status } = run({ plugins: [validThemeEntry({ name })] });
+    expect(status).toBe(1);
+    expect(output).toContain("control or bidi-override character");
+  });
+
+  it("rejects a name past the length limit", () => {
+    const { output, status } = run({
+      plugins: [validThemeEntry({ name: "a".repeat(101) })],
+    });
+    expect(status).toBe(1);
+    expect(output).toContain("must be 1-100 characters");
+  });
+
+  it("rejects an empty name", () => {
+    const { output, status } = run({
+      plugins: [validThemeEntry({ name: "  " })],
+    });
+    expect(status).toBe(1);
+    expect(output).toContain("must be 1-100 characters");
+  });
+
+  it("applies to a PLUGIN entry too", () => {
+    // `PluginConsentDialog` renders the entry's name for the same reason; the check is not
+    // theme-specific and a test per kind is what keeps it that way.
+    const { output, status } = run({
+      plugins: [validEntry({ name: "Word\u202eCount" })],
+    });
+    expect(status).toBe(1);
+    expect(output).toContain("control or bidi-override character");
+  });
+
+  it("accepts an ordinary name with non-Latin characters", () => {
+    // The limits are about control and bidi-OVERRIDE codepoints, not about scripts. A
+    // Korean or Arabic theme name must publish.
+    const { status } = run({
+      plugins: [validThemeEntry({ name: "바람 테마" })],
+    });
+    expect(status).toBe(0);
+  });
+});
+
 describe("validate-index", () => {
   it("accepts a well-formed index", () => {
     const { output, status } = run({ plugins: [validEntry()] });
@@ -118,6 +236,33 @@ describe("validate-index", () => {
     expect(status).toBe(1);
   });
 
+  // §360 fix round 1 (MAJOR) — `kind` had a type check but no value check, so a typo like
+  // `"themes"` was a valid string, passed this gate, and only failed at the door of every
+  // client (`dropUnknownKinds` in `registry-client.ts`), silently, via a `logger.warn`
+  // nobody reads. This is the test that would have caught it.
+  it("rejects an unknown kind, naming the consequence (dropped, not demoted)", () => {
+    const { output, status } = run({
+      plugins: [validEntry({ kind: "themes" })],
+    });
+    expect(output).toContain("unknown kind");
+    expect(output).toContain("DROPPED from the index entirely");
+    expect(status).toBe(1);
+  });
+
+  it("accepts an entry with no kind at all — every index published before §360 has none", () => {
+    const { output, status } = run({ plugins: [validEntry()] });
+    expect(output).toContain("✓");
+    expect(status).toBe(0);
+  });
+
+  it("accepts a `theme` kind", () => {
+    const { output, status } = run({
+      plugins: [validEntry({ kind: "theme" })],
+    });
+    expect(output).toContain("✓");
+    expect(status).toBe(0);
+  });
+
   it("rejects duplicate ids, which shadow each other silently", () => {
     const { output, status } = run({
       plugins: [validEntry(), validEntry({ version: "2.0.0" })],
@@ -174,6 +319,7 @@ describe("validate-index", () => {
     ["downloads", "many"],
     ["keywords", "word"],
     ["repository", 5],
+    ["kind", 5],
     // `downloads` is `u64` in Rust and JS has one numeric type, so "a number" was still
     // too loose — review round 3 caught these three surviving the presence-vs-type fix.
     ["downloads", 1.5],
@@ -200,6 +346,7 @@ describe("validate-index", () => {
       "repository",
       "icon",
       "homepage",
+      "kind",
     ]) {
       delete (entry as Record<string, unknown>)[field];
     }

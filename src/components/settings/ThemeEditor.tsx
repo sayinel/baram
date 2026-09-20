@@ -15,6 +15,7 @@ import { useShallow } from "zustand/shallow";
 import { useTranslation } from "../../i18n/useTranslation";
 import { writeFile } from "../../ipc/invoke";
 import { useSettingsStore } from "../../stores/settings/store";
+import { lookupThemes } from "../../themes/installed-theme-defs";
 import {
   BUILT_IN_THEMES,
   defaultColorsForBase,
@@ -36,25 +37,38 @@ interface ThemeEditorProps {
 
 export function ThemeEditor({ onClose }: ThemeEditorProps) {
   const { t } = useTranslation();
-  const { activeThemeId, customThemes, saveCustomTheme, setActiveTheme } =
-    useSettingsStore(
-      useShallow((s) => ({
-        activeThemeId: s.activeThemeId,
-        customThemes: s.customThemes,
-        saveCustomTheme: s.saveCustomTheme,
-        setActiveTheme: s.setActiveTheme,
-      })),
-    );
+  const {
+    activeThemeId,
+    customThemes,
+    installedThemes,
+    saveCustomTheme,
+    setActiveTheme,
+  } = useSettingsStore(
+    useShallow((s) => ({
+      activeThemeId: s.activeThemeId,
+      customThemes: s.customThemes,
+      installedThemes: s.installedThemes,
+      saveCustomTheme: s.saveCustomTheme,
+      setActiveTheme: s.setActiveTheme,
+    })),
+  );
 
   // The active theme, when it has colours of its own. `system` has none by design,
   // and an id that resolves to nothing means the settings effect cleared the
   // variables too — both editing sessions start from the default-light palette.
+  //
+  // §361 — `installedThemes` is in this lookup so "Customize" duplicates a COMMUNITY
+  // theme's actual colours when one is active, rather than silently falling back to
+  // Default Light (`themeActions("community").duplicate` says this path applies to it too).
   const resolvedTheme = useMemo(
     () =>
       activeThemeId === "system"
         ? undefined
-        : findThemeById(activeThemeId, customThemes),
-    [activeThemeId, customThemes],
+        : findThemeById(
+            activeThemeId,
+            lookupThemes(customThemes, installedThemes),
+          ),
+    [activeThemeId, customThemes, installedThemes],
   );
 
   // Resolve the starting theme
@@ -146,8 +160,23 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
     // 편집하지 않은 반대쪽 모드가 경고도 되돌리기도 없이 사라진다 — startMode가
     // themeModes()[0]이라 항상 light에서 출발하므로, 쌍을 가진 테마를 열어 색 하나만
     // 고치고 저장하면 다크 팔레트를 잃는 것이 기본 경로가 된다(계획 0090의 설치
-    // 테마가 그런 쌍을 들고 온다). 편집 중인 모드 안쪽도 펼쳐, 편집기가 다루지 않는
-    // 자산(§358의 css)을 색만 고쳤다는 이유로 떨구지 않는다.
+    // 테마가 그런 쌍을 들고 온다). 편집 중인 모드 안쪽도 펼친다.
+    //
+    // ‼️ **그 안쪽 펼치기가 §358의 `css`를 옮기지는 않는다** — 앞 판의 이 주석은
+    // "편집기가 다루지 않는 자산(§358의 css)을 색만 고쳤다는 이유로 떨구지 않는다"고
+    // 적었고 그것은 거짓이다(0090 Task 6 실측). `sourceTheme`이 오는
+    // `resolvedTheme`(이 파일 위쪽의 `useMemo`)이 `lookupThemes(customThemes,
+    // installedThemes)`를 **캐시 인자 없이** 부르므로 `installedThemeToDef`가 모든 모드에 `css: undefined`를 채우고,
+    // 이 스프레드는 그 `undefined`를 옮긴다. 즉 CSS를 싣는 설치 테마를 "복제해 편집"하면
+    // 색만 있는 사본이 나온다.
+    //
+    // ‼️ **그런데 그 `lookupThemes` 호출에 캐시를 넘기지 말 것.** 그 누락이 `customThemes`에 테마 CSS
+    // 텍스트가 들어가지 못하게 막는 것이고, "위생 파이프라인을 거치지 않은 CSS가 화면에
+    // 닿는 경로는 없다"는 §360의 논거가 그 사실에 기댄다(Task 6 리포트의 열거).
+    // `customThemes`는 설정 스토어에 영속되고 설치 기록과 짝이 맞지 않으므로, 회수된
+    // 설치 테마의 CSS가 사본으로 살아남는 길이 그때 열린다. 복제본이 CSS까지 갖게 하려면
+    // 그 사본을 어떻게 검증하고 회수할지를 먼저 정해야 한다 — 0091 이후의 일이다.
+    //
     // 부수 효과 하나: 한 모드짜리 테마에서 base 토글을 반대쪽으로 넘겨 저장하면
     // 결과가 쌍이 된다 — 원래 모드는 손대지 않은 원본 팔레트 그대로 남는다.
     const themeDef: ThemeDef = {
@@ -270,8 +299,12 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
  */
 function restorePreview(): void {
   const root = document.documentElement;
-  const { activeThemeId, customThemes } = useSettingsStore.getState();
-  const resolved = findThemeById(activeThemeId, customThemes);
+  const { activeThemeId, customThemes, installedThemes } =
+    useSettingsStore.getState();
+  const resolved = findThemeById(
+    activeThemeId,
+    lookupThemes(customThemes, installedThemes),
+  );
   // 적용될 모드는 OS 설정이 정한다 — use-settings-effects와 같은 규칙이어야
   // 복원이 그 효과가 남겨둘 상태와 일치한다. 편집 중인 모드는 여기 쓰지 않는다:
   // 그것은 미리보기의 것이고, 복원은 미리보기를 지우는 일이다.

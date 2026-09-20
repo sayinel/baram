@@ -16,6 +16,25 @@ import { THEME_COLOR_VALUE_RE } from "./theme-color-keys";
 
 export type ThemeMode = "dark" | "light";
 
+/**
+ * The closed universe of theme modes, in the order every walker should use.
+ *
+ * ‼️ FOUR COPIES OF THIS ARRAY EXISTED (external review #8), one of them the literal inside
+ * {@link themeModes} below — in the file the review named as canonical. The other three were
+ * `const MODE_KEYS: readonly ThemeMode[] = ["light", "dark"]` in `installed-theme-defs.ts`,
+ * `theme-manifest.ts` and `theme-install.ts`, all doing the same thing: walking a
+ * `Partial<Record<ThemeMode, …>>` in a fixed order.
+ *
+ * ‼️ `themeModes` IS NOT THAT CONSTANT, which is why exporting one was the fix rather than
+ * pointing the three at it. That function takes a `ThemeDef` and returns which modes THAT
+ * theme declares — a projection of one theme, not the universe — and two of the three sites
+ * have no `ThemeDef` at all (a manifest, and the installer that is still building one).
+ *
+ * `light` first is load-bearing where order is observable: `theme-gallery.tsx`'s card
+ * preview draws `themeModes(theme)[0]`, so a paired theme shows its light palette.
+ */
+export const THEME_MODES: readonly ThemeMode[] = ["light", "dark"];
+
 /** 한 모드가 제공하는 것. 토큰과 CSS 모두 선택이지만 최소 하나는 있어야 한다(§355). */
 export interface ThemeModeAssets {
   colors?: ThemeColors;
@@ -38,9 +57,7 @@ export interface ThemeDef {
 
 /** 선언 순서가 아니라 고정 순서로 돌려준다 — UI가 정렬을 다시 하지 않도록. */
 export function themeModes(theme: ThemeDef): ThemeMode[] {
-  return (["light", "dark"] as const).filter(
-    (m) => theme.modes[m] !== undefined,
-  );
+  return THEME_MODES.filter((m) => theme.modes[m] !== undefined);
 }
 
 /**
@@ -410,6 +427,31 @@ export const BUILT_IN_THEMES: ThemeDef[] = [
     },
   },
 ];
+
+/**
+ * Ids a community theme may not claim (0090 final review, M2).
+ *
+ * ‼️ `findThemeById` below searches {@link BUILT_IN_THEMES} FIRST, so a community theme
+ * that took one of these ids would be consented to, downloaded, committed to disk — and
+ * then never resolvable, because every lookup finds the shipped theme instead. It cannot be
+ * worn, cannot be previewed, and the gallery shows two cards with the same name. Worse, a
+ * WITHDRAWAL naming that id reaches the built-in card: `themeRevocationFor` keys on the id
+ * alone, so a malicious entry for `nord` would decorate — and force-deactivate — the theme
+ * that ships in the binary.
+ *
+ * `"system"` is here for the same reason from the other direction: `setActiveTheme` special-
+ * cases it (`appearance-settings.ts`), so a theme with that id can never be selected, while
+ * a withdrawal for it would still resolve against the installed record and announce a revert
+ * to a theme that was never applied.
+ *
+ * DERIVED from `BUILT_IN_THEMES` rather than listed, so a ninth shipped theme is reserved by
+ * the act of shipping it. The two consumers are `installTheme` (refuses the install) and
+ * `scripts/validate-index.ts` (refuses the publish, so the operator hears it first).
+ */
+export const RESERVED_THEME_IDS: ReadonlySet<string> = new Set([
+  ...BUILT_IN_THEMES.map((theme) => theme.id),
+  "system",
+]);
 
 // ---------------------------------------------------------------------------
 // 4. Helper — find a theme by ID across built-in and custom themes

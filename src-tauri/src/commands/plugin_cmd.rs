@@ -21,13 +21,18 @@ pub async fn plugin_install_stage(
     checksum: Option<String>,
     expected_id: Option<String>,
 ) -> Result<plugin::StagedPluginInfo, String> {
-    plugin::stage_plugin(
+    // §360 — `InstallKind::Plugin` fixed here, at the command that only ever installs
+    // plugins, rather than accepted as an argument: the caller (the webview) chooses which
+    // COMMAND to invoke, never which root a command resolves to. See `plugin::InstallKind`.
+    plugin::stage_install(
+        plugin::InstallKind::Plugin,
         &url,
         &registry_url,
         checksum.as_deref(),
         expected_id.as_deref(),
     )
     .await
+    .and_then(plugin::StagedInstall::into_plugin)
     .map_err(|e| e.to_string())
 }
 
@@ -38,22 +43,31 @@ pub async fn plugin_install_commit(
     expected_id: String,
     manifest_sha256: String,
 ) -> Result<plugin::CommittedPluginInfo, String> {
-    plugin::commit_staged_plugin(&stage_id, &expected_id, &manifest_sha256)
-        .await
-        .map_err(|e| e.to_string())
+    plugin::commit_staged_install(
+        plugin::InstallKind::Plugin,
+        &stage_id,
+        &expected_id,
+        &manifest_sha256,
+        // §360 — no stored CSS: that parameter belongs to a theme commit, and passing
+        // `Some` here is refused rather than ignored.
+        None,
+    )
+    .await
+    .and_then(plugin::CommittedInstall::into_plugin)
+    .map_err(|e| e.to_string())
 }
 
 /// Throw away a staged plugin. Nothing installed is touched.
 #[tauri::command]
 pub async fn plugin_install_discard(stage_id: String) -> Result<(), String> {
-    plugin::discard_staged_plugin(&stage_id)
+    plugin::discard_staged_install(plugin::InstallKind::Plugin, &stage_id)
         .await
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn plugin_uninstall(plugin_id: String) -> Result<(), String> {
-    plugin::uninstall_plugin(&plugin_id)
+    plugin::uninstall_installed(plugin::InstallKind::Plugin, &plugin_id)
         .await
         .map_err(|e| e.to_string())
 }

@@ -71,6 +71,66 @@ export const URL_BEARING_FUNCTIONS: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * computed-value 시점에 값이 정해지는 CSS 치환 함수.
+ *
+ * ‼️ `sanitize.ts` 에서 여기로 옮겼다(0090 최종 리뷰, M4). 이 집합과 위
+ * {@link URL_BEARING_FUNCTIONS} 가 **함께** 한 규칙을 이루는데, 규칙을 sanitize 만
+ * 갖고 있었고 verify 는 갖고 있지 않았다 — 이 파일 머리주석이 경계하는 "판정이 두 벌이
+ * 되는" 모양 그대로다. 이제 아래 {@link substitutionInsideResourceName} 하나가 그
+ * 판정이고 두 층이 같은 것을 부른다.
+ */
+export const SUBSTITUTION_FUNCTIONS: ReadonlySet<string> = new Set([
+  "attr",
+  "env",
+  "var",
+]);
+
+/**
+ * 자원 이름을 받는 함수 **안**(중첩 어디든)에 치환 함수가 있으면 그 자리를 돌려준다.
+ *
+ * ‼️ **왜 필요한가.** `--x:"https://e.com/x"; background:image-set(var(--x) 1x)` 에는
+ * URL **토큰**이 하나도 없다 — 주소는 커스텀 속성 안의 문자열이고, 자원 자리에 도달하는
+ * 것은 computed-value 시점이다. 그래서 `hasOnlyDataUrls` 의 토큰 스캔이 아무것도 보지
+ * 못한다. 0090 최종 리뷰가 다섯 형태를 실측했다: `image-set(var())`,
+ * `-webkit-image-set(var())`, `image(var())`, `src(var())`, `image-set(env() 1x)`.
+ *
+ * ‼️ **깊이는 "어디든" 이다.** sanitize 가 쓰던 walk 판정은 **바로 위** 함수만 봤고
+ * (`this.function`), 그래서 `image-set(cross-fade(var(--x)) 1x)` 는 통과하는데 같은 자리에
+ * 문자열을 직접 쓴 `image-set(cross-fade("https://…") 1x)` 는 문자열 스캔이 거부했다 —
+ * 같은 개념에 두 깊이. 리뷰어는 `<image>` 문법상 전자가 무해할 것이라고 읽었지만
+ * **브라우저로 측정하지는 않았다**. 측정하지 않은 무해함에 기대는 대신 닫는다: 문자열
+ * 쪽과 같은 깊이 규칙(`forEachResourceName` 의 `bearing`)을 쓰면 두 규칙이 어긋날 자리가
+ * 없어진다. 대가는 `cross-fade(var(--x))` 를 거부하는 것이고, 그 자리에 문자열을 쓰는
+ * 형태는 이미 거부되므로 정당한 테마가 잃는 것은 없다.
+ *
+ * 토큰 스캔인 이유는 `forEachResourceName` 과 같다 — AST 워크는 파서가 `Raw` 로 남긴
+ * 구간을 보지 못하고, 이 판정이 지키는 것은 사람이 편집할 수 있는 바이트다.
+ *
+ * 돌려주는 문자열은 오류 메시지용 위치 꼬리표다(`image-set(var())` 형태). null 은
+ * "그런 자리가 없다" 이다.
+ */
+export function substitutionInsideResourceName(css: string): null | string {
+  const stream = new csstree.TokenStream(css, csstree.tokenize);
+  const open: Array<{ close: number; name: string }> = [];
+  let found: null | string = null;
+  stream.forEachToken((type, start, end, index) => {
+    while (open.length > 0 && index >= open[open.length - 1].close) open.pop();
+    if (type !== csstree.tokenTypes.Function) return;
+    const name = cssName(css.slice(start, end - 1));
+    const bearing = open.find((f) => URL_BEARING_FUNCTIONS.has(f.name));
+    if (bearing !== undefined && SUBSTITUTION_FUNCTIONS.has(name)) {
+      found ??= `${bearing.name}(${name}())`;
+    }
+    const close = stream.getBlockTokenPairIndex(index);
+    open.push({
+      close: close === -1 ? stream.tokenCount : close,
+      name,
+    });
+  });
+  return found;
+}
+
+/**
  * at-rule 이름과 함수 이름을 비교 가능한 형태로. **반드시 이것을 거쳐서 비교한다** —
  * css-tree 는 이름을 원문 그대로 준다(`@\69 mport` 는 AST 에서도 `\69 mport` 다).
  * 디코드하지 않고 비교하면 `@\69 mport "x.css"` 와 `\69 mage-set("https://…")` 가

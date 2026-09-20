@@ -1,4 +1,9 @@
-import type { PluginTrust, RegistryEntry, RegistryIndex } from "./types";
+import type {
+  PluginTrust,
+  RegistryEntry,
+  RegistryEntryKind,
+  RegistryIndex,
+} from "./types";
 
 import { pluginFetchRegistry } from "../ipc/plugin-invoke";
 // §69 Plugin Registry Client — GitHub-based registry with 24h cache
@@ -7,6 +12,9 @@ import { logger } from "../utils/logger";
 import { VALID_CAPABILITIES } from "./manifest";
 
 const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
+
+/** §360 — the two kinds `normalizeIndex` recognizes; see `RegistryEntryKind` for the rest. */
+const KIND_VALUES: readonly RegistryEntryKind[] = ["plugin", "theme"];
 
 const TRUST_VALUES: readonly PluginTrust[] = ["sandboxed", "trusted"];
 
@@ -26,7 +34,16 @@ export async function checkForUpdates(): Promise<Record<string, string>> {
   const updates: Record<string, string> = {};
 
   for (const [id, plugin] of Object.entries(store.installedPlugins)) {
-    const registryEntry = index.plugins.find((p) => p.id === id);
+    // §361 Task 6 — the KIND is part of the match, not just the id. `dropAmbiguousIds` above
+    // already makes an id claimed twice resolve to neither entry, so a theme cannot shadow a
+    // plugin by colliding with it; what this closes is the other shape, an entry that USED to
+    // be a plugin and is now published as `kind: "theme"`. Without the filter that entry
+    // raises an update badge on an installed plugin and `handleUpdate` then downloads a theme
+    // archive over it, which can only fail after the user has clicked. Absence still reads as
+    // `"plugin"`, the default `RegistryEntry.kind` documents.
+    const registryEntry = index.plugins.find(
+      (p) => p.id === id && (p.kind ?? "plugin") === "plugin",
+    );
     // §260 Phase 6 code review (L1) — skip an entry the install path will refuse. A legacy
     // entry (no tier, or one normalized away above) can only produce an error, so offering an
     // update badge and an enabled button for it promises an action that cannot succeed.
@@ -82,22 +99,91 @@ export async function fetchRegistryIndex(
   }
 }
 
-/** Search registry plugins by query */
+/**
+ * Search registry plugins by query.
+ *
+ * §360 — this is the plugin marketplace's Browse tab, and only that tab: it is the sole
+ * caller in the app (`checkForUpdates` and the install path key `index.plugins` directly).
+ * A theme entry belongs in the theme gallery, not here, so it is filtered out before the
+ * query even runs — an empty query must not surface it either. Absence still reads as
+ * `"plugin"`, the same default `RegistryEntry.kind`'s doc comment describes.
+ */
 export function searchRegistry(
   index: RegistryIndex,
   query: string,
 ): RegistryEntry[] {
-  if (!query.trim()) return index.plugins;
+  const plugins = index.plugins.filter(
+    (p) => (p.kind ?? "plugin") === "plugin",
+  );
+  if (!query.trim()) return plugins;
 
   const lower = query.toLowerCase();
-  return index.plugins.filter(
-    (p) =>
-      p.name.toLowerCase().includes(lower) ||
-      p.description.toLowerCase().includes(lower) ||
-      p.id.toLowerCase().includes(lower) ||
-      p.keywords?.some((k) => k.toLowerCase().includes(lower)) ||
-      p.author.toLowerCase().includes(lower),
+  return plugins.filter((p) => matchesQuery(p, lower));
+}
+
+/**
+ * §361 fix round 1 (F7) — the five-field match `searchRegistry`/`searchThemeRegistry` both
+ * ran, factored out after review found the two copies were byte-identical: a field added to
+ * one silently stopped matching in the other. `lower` is already lower-cased by the caller,
+ * once per query rather than once per field per entry.
+ */
+function matchesQuery(entry: RegistryEntry, lower: string): boolean {
+  return (
+    entry.name.toLowerCase().includes(lower) ||
+    entry.description.toLowerCase().includes(lower) ||
+    entry.id.toLowerCase().includes(lower) ||
+    (entry.keywords?.some((k) => k.toLowerCase().includes(lower)) ?? false) ||
+    entry.author.toLowerCase().includes(lower)
   );
+}
+
+/**
+ * §361 — the theme browser's list (`ThemeBrowser.tsx`). Mirror of `searchRegistry`, filtering
+ * the opposite way: only `kind: "theme"` rows, so an entry with no `kind` (read as
+ * `"plugin"` — see `RegistryEntry.kind`'s doc comment) never appears here either. Reuses the
+ * same `fetchRegistryIndex` cache — themes and plugins are one registry, one fetch.
+ */
+export function searchThemeRegistry(
+  index: RegistryIndex,
+  query: string,
+): RegistryEntry[] {
+  const themes = index.plugins.filter((p) => p.kind === "theme");
+  if (!query.trim()) return themes;
+
+  const lower = query.toLowerCase();
+  return themes.filter((p) => matchesQuery(p, lower));
+}
+
+/**
+ * §361 Task 6 — the registry entry offering a newer version of each installed theme.
+ *
+ * Deliberately NOT routed through {@link checkForUpdates}: that function iterates
+ * `usePluginStore`'s `installedPlugins`, installed themes live in the settings store's
+ * `installedThemes`, and spec §10.2 says a theme update must not appear in the plugin
+ * Updates tab. Keeping the two functions apart is what makes that true by construction
+ * rather than by a filter someone could drop.
+ *
+ * Pure — the caller passes the records, so this can be exercised without either store.
+ * `kind === "theme"` is required rather than defaulted, matching `searchThemeRegistry`
+ * next door: an entry with no `kind` is a plugin and must never be offered as a theme
+ * update, whatever its id says.
+ *
+ * "Newer" is `!==`, the same comparison `checkForUpdates` makes, and it is not a mistake:
+ * a registry that rolls a bad version back publishes a LOWER number, and an editor that
+ * only ever counts upwards would leave every user on the version being withdrawn.
+ */
+export function themeUpdatesFor(
+  index: RegistryIndex,
+  installedThemes: Record<string, { manifest: { version: string } }>,
+): Record<string, RegistryEntry> {
+  const updates: Record<string, RegistryEntry> = {};
+  for (const [id, installed] of Object.entries(installedThemes)) {
+    const entry = index.plugins.find((p) => p.id === id && p.kind === "theme");
+    if (entry === undefined) continue;
+    if (entry.version === installed.manifest.version) continue;
+    updates[id] = entry;
+  }
+  return updates;
 }
 
 /**
@@ -137,6 +223,34 @@ function dropAmbiguousIds(plugins: RegistryEntry[]): RegistryEntry[] {
 }
 
 /**
+ * §360 — drop an entry whose `kind` is present but not one this build recognizes.
+ *
+ * The same fail-closed reasoning `VALID_CAPABILITIES` applies to an unknown capability below:
+ * an unrecognized kind names a marketplace this build does not know how to install from (a
+ * future kind) or no longer does (one withdrawn), so nothing about it can be enforced here —
+ * do not let it reach a consent screen.
+ *
+ * DROPPED, not demoted to legacy the way an unknown `trust` or `capabilities` value is a few
+ * lines down. Legacy means "readable as a plugin, just missing the tier a plugin needs to
+ * install" — there is no equivalent readable-as-a-plugin fallback for an entry that names a
+ * marketplace this build has never heard of.
+ */
+function dropUnknownKinds(plugins: RegistryEntry[]): RegistryEntry[] {
+  const unknown = plugins.filter(
+    (entry) => entry.kind !== undefined && !KIND_VALUES.includes(entry.kind),
+  );
+  if (unknown.length === 0) return plugins;
+
+  logger.warn(
+    `[Registry] dropping ${unknown.length} entr${unknown.length === 1 ? "y" : "ies"} with a kind this build does not recognize: ` +
+      unknown.map((e) => `${e.id} (${JSON.stringify(e.kind)})`).join(", "),
+  );
+  return plugins.filter(
+    (entry) => entry.kind === undefined || KIND_VALUES.includes(entry.kind),
+  );
+}
+
+/**
  * §260 Phase 6 — drop a `trust` this app does not recognise.
  *
  * `RegistryEntry.trust` is typed `PluginTrust`, but nothing checks that at runtime: the
@@ -152,7 +266,7 @@ function dropAmbiguousIds(plugins: RegistryEntry[]): RegistryEntry[] {
 function normalizeIndex(index: RegistryIndex): RegistryIndex {
   return {
     ...index,
-    plugins: dropAmbiguousIds(index.plugins).map((raw) => {
+    plugins: dropUnknownKinds(dropAmbiguousIds(index.plugins)).map((raw) => {
       // §260 Phase 6 code review round 3 (MEDIUM-2) — `demotedBecause` is OURS, and the type
       // says so ("NOT a registry field"), but nothing enforced it. A remote entry with no
       // `trust` and only valid capabilities takes the early return below unchanged, so a

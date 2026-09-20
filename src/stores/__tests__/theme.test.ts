@@ -1,4 +1,4 @@
-import type { ThemeDef } from "../../types/theme";
+import type { ThemeDef, ThemeMode } from "../../types/theme";
 
 // §54 Theme System — settings store theme functionality tests
 import { beforeEach, describe, expect, it } from "vitest";
@@ -8,6 +8,7 @@ import {
   BUILT_IN_THEMES,
   findThemeById,
   THEME_COLOR_KEYS,
+  THEME_MODES,
   themeModes,
 } from "../../types/theme";
 import { useSettingsStore } from "../settings/store";
@@ -313,5 +314,37 @@ describe("Theme migration v0/v1 → v2 (logic verification)", () => {
     }
     // Should not overwrite existing value
     expect(persisted.activeThemeId).toBe("tokyo-night");
+  });
+});
+
+// ‼️ External review #8 — `["light", "dark"]` was written four times: three `MODE_KEYS`
+// declarations in `src/themes/` plus the literal inside `themeModes` itself, in the file the
+// reviewer named as canonical. `themeModes` could not BE the canonical form — it takes a
+// `ThemeDef` and projects one theme's declared modes, while two of the three sites have no
+// `ThemeDef` at all. `THEME_MODES` is the universe those three walk.
+describe("THEME_MODES (external review #8)", () => {
+  it("is the closed universe of modes, light first", () => {
+    // Order is observable: `theme-gallery.tsx` draws `themeModes(theme)[0]`, so a paired
+    // theme's card shows its light palette. A reversal would be silent everywhere else.
+    expect([...THEME_MODES]).toEqual(["light", "dark"]);
+  });
+
+  it("is what themeModes filters, so the two cannot disagree", () => {
+    // The pin that makes the de-duplication real rather than cosmetic: a theme declaring
+    // both modes must project to exactly the shared list.
+    const paired: ThemeDef = {
+      id: "paired",
+      modes: { dark: {}, light: {} },
+      name: "Paired",
+      source: "custom",
+    };
+    expect(themeModes(paired)).toEqual([...THEME_MODES]);
+  });
+
+  it("covers every mode a ThemeMode can be", () => {
+    // Non-vacuity for the two above: if `THEME_MODES` were ever emptied, both would still
+    // pass against a `themeModes` that returned nothing.
+    const modes: Record<ThemeMode, true> = { dark: true, light: true };
+    expect([...THEME_MODES].sort()).toEqual(Object.keys(modes).sort());
   });
 });

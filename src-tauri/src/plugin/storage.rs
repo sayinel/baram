@@ -7,6 +7,7 @@
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use super::PluginError;
@@ -24,6 +25,64 @@ pub fn get_plugin_dir() -> Result<PathBuf, PluginError> {
         std::fs::create_dir_all(&plugin_dir)?;
     }
     Ok(plugin_dir)
+}
+
+/// Returns the theme installation base directory: ~/.baram/themes/
+///
+/// §360 (dev/plans/0090-theme-marketplace-plan Task 3) — a SIBLING tree to
+/// [`get_plugin_dir`], not a child of it: removal, enumeration and permission all mean
+/// something different for a theme than for a plugin, even though the staging/commit/
+/// uninstall machinery in `install.rs` is now shared between the two trees via
+/// [`InstallKind`].
+///
+/// Deliberately its own 13 lines rather than a shared helper with [`get_plugin_dir`]: that
+/// function has no test of its OWN in this crate — every existing caller resolves the real
+/// `$HOME` (see `install_root_resolves_each_kind_to_its_own_directory_name` below, the only
+/// test in this module that does). Factoring its body out to save one directory-name
+/// literal would mean editing code an existing, live install path depends on; duplicating
+/// it costs 13 lines and edits nothing that already works.
+pub fn get_theme_dir() -> Result<PathBuf, PluginError> {
+    let home = dirs_next().ok_or_else(|| {
+        PluginError::Io(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "Could not determine home directory",
+        ))
+    })?;
+    let theme_dir = home.join(".baram").join("themes");
+    if !theme_dir.exists() {
+        std::fs::create_dir_all(&theme_dir)?;
+    }
+    Ok(theme_dir)
+}
+
+/// Which installable-asset tree a caller wants resolved to a filesystem root.
+///
+/// §360 — the reason this enum exists rather than a root parameter. Generalizing the
+/// staging/commit/discard/uninstall functions in `install.rs` to accept a root directly
+/// would open a surface where whatever calls them chooses the install path, and if that
+/// caller is ever a webview-facing command taking a path STRING, that reopens §329–§336
+/// ("the vault boundary cannot authorise itself" — src-tauri/CLAUDE.md); this crate's
+/// `no_new_asset_scope_grant_outside_the_allowlist` guards exactly this family of mistake.
+/// Naming a closed KIND instead keeps every legal root Rust's own choice — see
+/// [`install_root`], the only function that turns one of these into a path.
+///
+/// The shape follows [`super::registry::PluginTrust`]: a small enum crossing the IPC
+/// boundary via `#[serde(rename_all = "lowercase")]`, not [`super::PluginOp`]'s
+/// `#[serde(tag = "kind")]` tagged union — there is no payload here beyond the choice
+/// itself, so the heavier pattern buys nothing.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum InstallKind {
+    Plugin,
+    Theme,
+}
+
+/// Resolves `kind` to the base directory installs of that kind live under.
+pub fn install_root(kind: InstallKind) -> Result<PathBuf, PluginError> {
+    match kind {
+        InstallKind::Plugin => get_plugin_dir(),
+        InstallKind::Theme => get_theme_dir(),
+    }
 }
 
 fn dirs_next() -> Option<PathBuf> {
@@ -161,21 +220,50 @@ const MAX_BUNDLE_BYTES: u64 = 4 * 1024 * 1024;
 /// untrusted input: both paths are canonicalized and the file must resolve inside
 /// `dir`, so a crafted manifest cannot walk out with `../` or a symlink.
 pub async fn read_bundle_in(dir: &Path, main: &str) -> Result<String, String> {
-    let canonical_dir =
-        std::fs::canonicalize(dir).map_err(|e| format!("plugin directory is unreadable: {e}"))?;
-    let candidate = canonical_dir.join(main);
-    let canonical_file = std::fs::canonicalize(&candidate)
-        .map_err(|e| format!("plugin entry \"{main}\" is unreadable: {e}"))?;
-    if !canonical_file.starts_with(&canonical_dir) {
-        return Err(format!(
-            "plugin entry \"{main}\" resolves outside its own directory"
-        ));
-    }
-    // Space-joined, not colon-joined: the helper's messages are written to read as
+    // Space-joined, not colon-joined: both helpers' messages are written to read as
     // predicates ("is N bytes, over the …"), so this composes into a sentence.
+    //
+    // ‼️ That claim was false for one of `resolve_within`'s three branches until the
+    // external review found it — see the note at that branch. The strings below are pinned
+    // by `composed_error_messages_read_as_sentences`, because "reads as a sentence" is
+    // exactly the property no `is_err()` assertion can see.
+    let canonical_file = resolve_within(dir, main).map_err(|e| format!("plugin entry {e}"))?;
     read_text_capped(&canonical_file, MAX_BUNDLE_BYTES)
         .await
         .map_err(|e| format!("plugin entry \"{main}\" {e}"))
+}
+
+/// Resolve `rel` inside `dir`, refusing anything that lands outside it.
+///
+/// ‼️ BOTH SIDES ARE CANONICALIZED BEFORE THE COMPARISON, and that is what makes one test
+/// cover two escapes: `../` and a symlink both differ from the literal join only after
+/// resolution, so a rule written on the string `rel` would have to enumerate them
+/// separately and would miss the second. It also means the refusal does not depend on how
+/// the escape was SPELLED — a percent-encoded `%2e%2e` is not decoded by anything here, so
+/// it resolves to a directory literally named `%2e%2e` (§360: `ThemeAssetReader` in
+/// `src/utils/theme-css/inline-assets.ts` requires exactly that, because its own path
+/// verdict is worthless if the reader re-parses what it was handed).
+///
+/// Shared by [`read_bundle_in`] and §360's staged-theme read so there is one
+/// implementation of the containment rule rather than one per caller.
+pub(super) fn resolve_within(dir: &Path, rel: &str) -> Result<PathBuf, String> {
+    // ‼️ THIS BRANCH CARRIES ITS OWN SUBJECT; THE OTHER TWO ALREADY DID (external review
+    // #10). The two below name `rel`, so `read_bundle_in`'s `plugin entry {e}` prefix
+    // composes with them into "plugin entry \"main.js\" is unreadable: …". This one named
+    // nothing, and the result was `plugin entry its own directory is unreadable: …` — and
+    // through `read_staged_file`, which adds no prefix at all, the bare predicate
+    // `its own directory is unreadable: …` with no subject anywhere in the string.
+    //
+    // Naming the directory rather than adding a slot to the caller, because the caller
+    // that had no prefix is the one whose message was worst.
+    let canonical_dir = std::fs::canonicalize(dir)
+        .map_err(|e| format!("the directory {} is unreadable: {e}", dir.display()))?;
+    let canonical_file = std::fs::canonicalize(canonical_dir.join(rel))
+        .map_err(|e| format!("\"{rel}\" is unreadable: {e}"))?;
+    if !canonical_file.starts_with(&canonical_dir) {
+        return Err(format!("\"{rel}\" resolves outside its own directory"));
+    }
+    Ok(canonical_file)
 }
 
 /// Read a file as text, refusing an over-cap file by `metadata` FIRST.
@@ -191,6 +279,25 @@ pub async fn read_bundle_in(dir: &Path, main: &str) -> Result<String, String> {
 /// plugin stall unrelated IPC — autosave, search, the editor's own file work — which
 /// is a denial of service on the app rather than on the plugin.
 pub async fn read_text_capped(path: &Path, cap: u64) -> Result<String, String> {
+    refuse_over_cap(path, cap).await?;
+    tokio::fs::read_to_string(path)
+        .await
+        .map_err(|e| format!("could not be read: {e}"))
+}
+
+/// [`read_text_capped`] for bytes. §360 — a theme's bundled assets are fonts and images,
+/// and `inlineThemeAssets` wants them as bytes to base64-encode; decoding them as text
+/// first would be lossy for exactly the files this exists to carry.
+pub(super) async fn read_bytes_capped(path: &Path, cap: u64) -> Result<Vec<u8>, String> {
+    refuse_over_cap(path, cap).await?;
+    tokio::fs::read(path)
+        .await
+        .map_err(|e| format!("could not be read: {e}"))
+}
+
+/// The stat-before-read half of the two helpers above, so the "never allocate to measure"
+/// rule has one implementation rather than one per element type.
+async fn refuse_over_cap(path: &Path, cap: u64) -> Result<(), String> {
     let size = tokio::fs::metadata(path)
         .await
         // Distinct from a read failure, so a diagnosis can tell "cannot be stat'ed"
@@ -200,9 +307,7 @@ pub async fn read_text_capped(path: &Path, cap: u64) -> Result<String, String> {
     if size > cap {
         return Err(format!("is {size} bytes, over the {cap}-byte limit"));
     }
-    tokio::fs::read_to_string(path)
-        .await
-        .map_err(|e| format!("could not be read: {e}"))
+    Ok(())
 }
 
 /// Resolves `key` to a path inside `dir`, rejecting any key that is not a
@@ -244,6 +349,62 @@ mod tests {
         let escaped = read_bundle_in(&plugin, "../secret.mjs").await;
         assert!(escaped.is_err(), "traversal must be refused: {escaped:?}");
         assert!(read_bundle_in(&plugin, "nope.mjs").await.is_err());
+
+        std::fs::remove_dir_all(&base).ok();
+    }
+
+    /// ‼️ THE STRINGS, NOT ONLY THE `is_err()` (external review #10).
+    ///
+    /// `read_bundle_in`'s own comment says both helpers' messages "compose into a
+    /// sentence", and one of `resolve_within`'s three branches did not: its directory
+    /// failure carried no subject, so the composition read `plugin entry its own directory
+    /// is unreadable: …`. Nothing anywhere asserted any of these literals — the two tests
+    /// that exercise this function check `is_ok()`/`is_err()` and, for the cap, a substring
+    /// of the CAP message. A property that only a reader can see needs a reader's test.
+    #[tokio::test]
+    async fn composed_error_messages_read_as_sentences() {
+        let base = std::env::temp_dir().join(format!("baram-msg-{}", std::process::id()));
+        let plugin = base.join("plugin-a");
+        std::fs::create_dir_all(&plugin).unwrap();
+        std::fs::write(plugin.join("index.mjs"), "export {}").unwrap();
+
+        // The branch that had no subject. `resolve_within` is called directly because
+        // making `read_bundle_in`'s own `dir` unreadable is not portable.
+        let missing = base.join("no-such-directory");
+        let directory_error = resolve_within(&missing, "index.mjs").unwrap_err();
+        assert!(
+            directory_error.starts_with("the directory "),
+            "the directory branch must name its subject, got: {directory_error}"
+        );
+        assert!(
+            !format!("plugin entry {directory_error}").contains("plugin entry its own"),
+            "composing must not produce a subjectless sentence: {directory_error}"
+        );
+
+        // The two branches that already composed, so this test would notice if a fix to
+        // the first broke them.
+        std::fs::write(base.join("outside.mjs"), "export {}").unwrap();
+        let escaped = resolve_within(&plugin, "../outside.mjs").unwrap_err();
+        // ‼️ `&&`, NOT `||`. An earlier spelling had a stale first disjunct naming a path
+        // this fixture no longer uses, which the second disjunct made unreachable — the
+        // branch could have stopped naming the path and this would still have passed.
+        assert!(
+            escaped.contains("\"../outside.mjs\"") && escaped.contains("resolves outside"),
+            "the escape branch must name the path it refused, got: {escaped}"
+        );
+        let unreadable = resolve_within(&plugin, "nope.mjs").unwrap_err();
+        assert_eq!(
+            format!("plugin entry {unreadable}")
+                .split_once(' ')
+                .map(|(a, _)| a),
+            Some("plugin"),
+            "sanity: the prefix is still a prefix"
+        );
+        assert!(
+            format!("plugin entry {unreadable}")
+                .starts_with("plugin entry \"nope.mjs\" is unreadable:"),
+            "got: plugin entry {unreadable}"
+        );
 
         std::fs::remove_dir_all(&base).ok();
     }
@@ -344,5 +505,54 @@ mod tests {
 
         let out = list_storage_keys(tmp.path()).unwrap();
         assert_eq!(out, vec!["foo".to_string()]);
+    }
+
+    /// §360 (Task 3) — the security property in `InstallKind`'s doc comment, pinned:
+    /// whatever crosses the IPC boundary as a `kind` is one of exactly two lowercase
+    /// strings, never an arbitrary path. Serde is the machinery doing the enforcing, so
+    /// this is checked against it rather than asserted from reading our own code.
+    #[test]
+    fn install_kind_is_a_closed_lowercase_enum_on_the_wire() {
+        assert_eq!(
+            serde_json::from_str::<InstallKind>("\"plugin\"").unwrap(),
+            InstallKind::Plugin
+        );
+        assert_eq!(
+            serde_json::from_str::<InstallKind>("\"theme\"").unwrap(),
+            InstallKind::Theme
+        );
+        // Neither the Rust variant name (PascalCase) nor an arbitrary string — in
+        // particular, not a path — deserializes.
+        assert!(serde_json::from_str::<InstallKind>("\"Plugin\"").is_err());
+        assert!(serde_json::from_str::<InstallKind>("\"/etc/passwd\"").is_err());
+
+        assert_eq!(
+            serde_json::to_string(&InstallKind::Plugin).unwrap(),
+            "\"plugin\""
+        );
+        assert_eq!(
+            serde_json::to_string(&InstallKind::Theme).unwrap(),
+            "\"theme\""
+        );
+    }
+
+    /// §360 fix round 1 (MEDIUM-1) — the previous version of this test asserted
+    /// `install_root(kind) == get_plugin_dir()/get_theme_dir()`, which is TAUTOLOGICAL for
+    /// the `Theme` arm: `install_root(Theme)` IS a call to `get_theme_dir()`, so both sides
+    /// of that equality move together no matter what `get_theme_dir` returns. A mutation
+    /// that broke the DESTINATION — `Theme` resolving into the plugin tree, precisely what
+    /// `InstallKind` exists to prevent (spec §9.2) — passed it. Asserting the actual last
+    /// path component instead can catch that, and it is the one test in this module that
+    /// resolves the real `$HOME` to do it.
+    #[test]
+    fn install_root_resolves_each_kind_to_its_own_directory_name() {
+        assert_eq!(
+            install_root(InstallKind::Plugin).unwrap().file_name(),
+            Some(OsStr::new("plugins"))
+        );
+        assert_eq!(
+            install_root(InstallKind::Theme).unwrap().file_name(),
+            Some(OsStr::new("themes"))
+        );
     }
 }

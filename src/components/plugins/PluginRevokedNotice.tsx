@@ -9,6 +9,13 @@
 //
 // A second copy of this JSX in that tab would have drifted from this one the first time
 // either changed, which is the failure mode this file exists to prevent.
+//
+// §361 Task 6 — and a THIRD surface, the theme gallery, for the same reason. An installed
+// theme can be withdrawn too (spec 0049 §9.4), and the notice a withdrawn theme needs
+// differs from this one in its five strings and nothing else: same severities, same
+// shadow isolation, same "the files are still there" note, same named Remove. `kind`
+// selects the wording; the file stays in `SECURITY_SURFACE_FILES` as the one place the
+// withdrawal notice is drawn.
 
 import type { RevocationEntry } from "../../plugins/revocation";
 
@@ -17,15 +24,48 @@ import { revocationReason } from "../../plugins/revocation";
 import { securitySurfaceCss } from "../../utils/security-surface-css";
 import { ShadowIsolated } from "../ui/ShadowIsolated";
 
+/**
+ * §361 Task 6 — the wording, per kind. Everything else about the notice is identical, which
+ * is why this is a key table and not a second component.
+ *
+ * A theme gets its own five strings rather than reusing the plugin ones because two of them
+ * would be false ("This plugin has been withdrawn and is not running" — a theme does not
+ * run) and because Korean splits where English does not: the plugin row's own button is
+ * 삭제 and this one is 제거, a distinction `plugin.revoked.remove`'s comment below already
+ * records. `reason` stays shared — it is the single word "Reason".
+ */
+const REVOKED_KEYS = {
+  plugin: {
+    blockedLoad: "plugin.revoked.blockedLoad",
+    keepFiles: "plugin.revoked.keepFiles",
+    remove: "plugin.revoked.remove",
+    removeNamed: "plugin.revoked.removeNamed",
+    vulnerable: "plugin.revoked.vulnerable",
+  },
+  theme: {
+    blockedLoad: "theme.revoked.blockedLoad",
+    keepFiles: "theme.revoked.keepFiles",
+    remove: "theme.revoked.remove",
+    removeNamed: "theme.revoked.removeNamed",
+    vulnerable: "theme.revoked.vulnerable",
+  },
+} as const;
+
 export function PluginRevokedNotice({
+  kind = "plugin",
   name,
   onRemove,
   revocation,
 }: {
   /**
-   * The plugin this notice is about. Required, not optional — see the button below:
-   * an unnamed Remove is the defect this prop exists to fix, and a default would let a
-   * new call site reintroduce it silently.
+   * Which wording to use. Defaults to `"plugin"` so the two existing call sites
+   * (`PluginRow`, `PluginDetail`) read exactly as they did.
+   */
+  kind?: keyof typeof REVOKED_KEYS;
+  /**
+   * The plugin — or, under `kind: "theme"`, the theme — this notice is about. Required,
+   * not optional: see the button below, where an unnamed Remove is the defect this prop
+   * exists to fix, and a default would let a new call site reintroduce it silently.
    */
   name: string;
   /**
@@ -44,6 +84,7 @@ export function PluginRevokedNotice({
   // notice shown for all of it would be worth ignoring by the time one matters.
   if (revocation === null || revocation.severity === "unlisted") return null;
 
+  const keys = REVOKED_KEYS[kind];
   const stopped = revocation.severity === "malicious";
   return (
     // §359 — the LOWEST tier in `ShadowIsolated`'s header. Isolated but NOT portaled:
@@ -59,9 +100,7 @@ export function PluginRevokedNotice({
         }
       >
         <span className="plugin-revoked__title">
-          {stopped
-            ? t("plugin.revoked.blockedLoad")
-            : t("plugin.revoked.vulnerable")}
+          {stopped ? t(keys.blockedLoad) : t(keys.vulnerable)}
         </span>
         <span className="plugin-revoked__reason">
           {t("plugin.revoked.reason")}: {revocationReason(revocation, t)}
@@ -71,9 +110,7 @@ export function PluginRevokedNotice({
             {/* Says the files were kept. Without it "not running" reads as "gone", and
               the whole reason we refuse the load instead of deleting is that the user
               stays in control of that choice. */}
-            <span className="plugin-revoked__note">
-              {t("plugin.revoked.keepFiles")}
-            </span>
+            <span className="plugin-revoked__note">{t(keys.keepFiles)}</span>
             {/* §69 — the NAME goes in the accessible name, not in the visible text.
                 Both call sites render this inside a list: two withdrawn plugins put two
                 "Remove it" buttons on screen, identical to anyone navigating by control,
@@ -92,12 +129,12 @@ export function PluginRevokedNotice({
                 button's announced verb in ko as a side effect. */}
             {onRemove && (
               <button
-                aria-label={t("plugin.revoked.removeNamed", { name })}
+                aria-label={t(keys.removeNamed, { name })}
                 className="plugin-revoked__remove"
                 onClick={onRemove}
-                title={t("plugin.revoked.removeNamed", { name })}
+                title={t(keys.removeNamed, { name })}
               >
-                {t("plugin.revoked.remove")}
+                {t(keys.remove)}
               </button>
             )}
           </>

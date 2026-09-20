@@ -280,6 +280,17 @@ export function PluginMarketplace() {
             value={searchQuery}
           />
         )}
+        {/* 0049 §10.2 — the pointer to the other marketplace (0090 final review, L4).
+            `searchRegistry` hides every `kind: "theme"` row from this list, so without a
+            line saying where they went, a user who came here looking for a theme finds an
+            empty search and no reason for it. Prose rather than a button: this panel is a
+            sidebar and the theme browser lives inside the settings modal, so there is no
+            navigation it could perform from here. */}
+        {activeTab === "browse" && (
+          <p className="plugin-revoked__note">
+            {t("plugin.marketplace.themesElsewhere")}
+          </p>
+        )}
       </div>
 
       {/* Content */}

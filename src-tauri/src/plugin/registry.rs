@@ -103,6 +103,24 @@ pub struct RegistryEntry {
     /// whole index. The frontend normalizes it (`fetchRegistryIndex`) and fails closed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trust: Option<String>,
+    /// §360 — which marketplace an entry belongs to: a plugin or a theme.
+    ///
+    /// Same pipe, same defect shape as `trust` right above: `fetch_registry` deserializes the
+    /// live index into this struct and Tauri re-serializes it on the way back, so a
+    /// discriminator that is not a field here is one the frontend never sees. Publishing
+    /// `kind: "theme"` in `index.json` without this field would make every theme entry
+    /// deserialize successfully (unknown fields are ignored) and then reach the frontend with
+    /// no way to tell it apart from a plugin — the same "looks legacy" failure `trust` already
+    /// records, one layer earlier.
+    ///
+    /// `Option<String>` rather than an enum, for the reason `trust`'s comment gives: this
+    /// layer is a pipe, and rejecting an unknown kind here would turn a future registry
+    /// addition into a hard fetch failure for the whole index. Absent means a legacy plugin
+    /// entry (every index published before §360); the frontend normalizes an unrecognized
+    /// value and fails closed (`normalizeIndex` drops the entry, rather than demoting it —
+    /// there is no "legacy kind" to demote to).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
     #[serde(default)]
     pub keywords: Vec<String>,
     #[serde(default)]
@@ -443,6 +461,38 @@ mod tests {
                 .get("trust")
                 .is_none(),
             "an absent tier must not be serialized as null"
+        );
+    }
+
+    /// §360 — `kind` must survive the round trip through this struct, the exact defect shape
+    /// `registry_entry_carries_trust_back_out` above pins for `trust`.
+    ///
+    /// THE DEFECT THIS PINS: `fetch_registry` deserializes the live index into
+    /// `RegistryEntry` and Tauri re-serializes it to the frontend. Without a `kind` field,
+    /// serde ignores the unknown JSON key on the way in (so deserialization alone would NOT
+    /// have caught this) and there is nothing to re-serialize on the way out — every entry
+    /// would reach the marketplace unable to say whether it is a plugin or a theme.
+    #[test]
+    fn registry_entry_carries_kind_back_out() {
+        let json = r#"{"id":"p","name":"P","description":"d","version":"1.0.0",
+        "author":"a","license":"MIT","downloadUrl":"https://example.test/p.zip",
+        "checksum":"ab","capabilities":["events"],"kind":"theme",
+        "engines":{"baram":">=0.4.0"}}"#;
+        let entry: RegistryEntry = serde_json::from_str(json).unwrap();
+        assert_eq!(entry.kind.as_deref(), Some("theme"));
+
+        let back = serde_json::to_value(&entry).unwrap();
+        assert_eq!(back["kind"], "theme", "the frontend must see the kind");
+
+        // A legacy entry (published before §360) stays legacy rather than acquiring a
+        // default kind: the key is absent, not `null`, so the frontend reads absence as
+        // "plugin" itself rather than finding it already stamped on the wire.
+        let legacy: RegistryEntry =
+            serde_json::from_str(&json.replace(r#""kind":"theme","#, "")).unwrap();
+        assert_eq!(legacy.kind, None);
+        assert!(
+            serde_json::to_value(&legacy).unwrap().get("kind").is_none(),
+            "an absent kind must not be serialized as null"
         );
     }
 

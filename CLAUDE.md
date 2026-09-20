@@ -36,7 +36,7 @@ baram/
 │   └── src/
 │       ├── commands/       # IPC 커맨드 핸들러 (thin layer): {approval,config,context,embedding,
 │       │                   #   export,fs,git,index,keyring,llm,plugin,search,snapshot,tag,
-│       │                   #   task,thumbnail}_cmd.rs
+│       │                   #   task,theme,thumbnail}_cmd.rs
 │       ├── approval/       # vault 경계 승인 저장소 (§331) context/ # ContextManager (§88)
 │       ├── search/         # regex 전문 검색 (§5.11)      index/     # 링크 인덱서 (§29)
 │       ├── plugin/         # 플러그인 설치/레지스트리 (§69) snapshot/  # 버전 히스토리 (§71)
@@ -55,6 +55,8 @@ baram/
 │   │                       #   generated/ = Style Dictionary 자동 생성 (DO NOT EDIT)
 │   ├── ipc/                # Tauri IPC 래퍼 (types.ts, invoke.ts)
 │   ├── sandbox/            # 플러그인 샌드박스 호스트/브리지 (§260) — 신뢰 티어 경계
+│   ├── themes/             # 테마 패키지 (§360): theme-manifest.ts 검증 · theme-install.ts
+│   │                       #   위생 파이프라인(sanitize→inline→저장→commit) · theme-store-fs.ts 파일 접근
 │   └── hooks/ contexts/ i18n/(en,ko) keybindings/ plugins/ services/ spaces/ utils/ types/ spike/
 ├── tokens/                 # W3C DTCG 디자인 토큰: primitive/ semantic/ tokens-studio.json
 ├── scripts/                # audit-css-vars.ts, export-tokens-studio.ts
