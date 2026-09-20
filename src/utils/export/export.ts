@@ -28,8 +28,14 @@ import { imagePolicyNotice, preparePandocImages } from "./pandoc-image-policy";
 import { resolveZettelLinksForExport } from "./zettel-link-resolve";
 
 /**
- * §353 — the user's chosen fonts, read by the caller (this module does not
- * touch the settings store — export utilities stay pure) and passed through.
+ * §353 — the user's chosen fonts, read by the caller (the HTML/PDF path does not
+ * touch the settings store — those export utilities stay pure) and passed through.
+ *
+ * ‼️ "this path", not "this module": `useSettingsStore` appears once here, at
+ * `exportWithPandoc`'s `locale` read. The universal was written when it was true of
+ * the whole file and stopped being true without the sentence being revisited; §362's
+ * two new citations of it are scoped to the HTML/PDF entry points, which is what the
+ * sentence now claims.
  */
 export interface FontExportOptions {
   bodyFont?: string;
