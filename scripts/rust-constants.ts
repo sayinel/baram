@@ -109,11 +109,13 @@ export function inlineMediaExtensions(rustSource: string): Set<string> {
     /MEDIA_MIME_TYPES\s*:\s*&\[\(&str,\s*&str\)\]\s*=\s*&\[([^\]]*)\]/gu,
     "MEDIA_MIME_TYPES",
   );
-  const extensions = [...body.matchAll(/\(\s*"([^"]+)"\s*,\s*"[^"]+"\s*\)/gu)].map(
-    (m) => m[1],
-  );
+  const extensions = [
+    ...body.matchAll(/\(\s*"([^"]+)"\s*,\s*"[^"]+"\s*\)/gu),
+  ].map((m) => m[1]);
   if (extensions.length === 0) {
-    throw new Error("MEDIA_MIME_TYPES parsed to an empty table — refusing to compare");
+    throw new Error(
+      "MEDIA_MIME_TYPES parsed to an empty table — refusing to compare",
+    );
   }
   return new Set(extensions);
 }
@@ -131,7 +133,9 @@ export function inlineMediaByteCap(rustSource: string): number {
   return literal.split("*").reduce((product, part) => {
     const value = Number(part.replaceAll("_", "").trim());
     if (!Number.isSafeInteger(value) || value <= 0) {
-      throw new Error(`cannot read MAX_INLINE_MEDIA_BYTES: "${literal.trim()}"`);
+      throw new Error(
+        `cannot read MAX_INLINE_MEDIA_BYTES: "${literal.trim()}"`,
+      );
     }
     return product * value;
   }, 1);
@@ -252,6 +256,45 @@ export function rustPluginCapabilities(rustSource: string): Set<string> {
     throw new Error("valid_caps parsed to an empty list — refusing to compare");
   }
   return new Set(capabilities);
+}
+
+/**
+ * §360 The byte cap `MAX_STORED_THEME_CSS_BYTES` puts on one mode's stored theme CSS, read out of
+ * the Rust that refuses the write (`src-tauri/src/plugin/install.rs`).
+ *
+ * ‼️ WHY SCRAPING RATHER THAN A SECOND LITERAL — the same reasoning as every scrape above, and the
+ * drift is silent in both directions. The frontend refuses first so the author gets `tooLarge`
+ * naming the stylesheet rather than an opaque commit failure; Rust refuses because the frontend is
+ * not entitled to be believed about what it is asking to have written. If the frontend copy drifted
+ * HIGHER, a theme would sail through the hygiene pipeline and die at the commit with the wrong
+ * diagnosis; if it drifted LOWER, themes the backend would happily store would be refused with no
+ * way for the author to find out why. Neither shows up in a test that hard-codes the same number on
+ * both sides.
+ *
+ * ‼️ THE COUNT ASSERTION IS LOAD-BEARING, as everywhere above: this identifier also appears at its
+ * two use sites and in that module's own tests, so "a match exists" would not mean it is the value
+ * that ships. The pattern therefore requires the DECLARATION form (`: usize = …;`). A FUNCTION OVER
+ * SOURCE TEXT rather than a file reader, so a test can feed crafted source and watch the refusal.
+ *
+ * The consumer is `src/themes/__tests__/stored-css-cap-parity.test.ts`.
+ *
+ * Same product-of-integers form as the two byte caps above, and for the same reason.
+ */
+export function storedThemeCssByteCap(rustSource: string): number {
+  const literal = soleDeclaration(
+    rustSource,
+    /MAX_STORED_THEME_CSS_BYTES\s*:\s*usize\s*=\s*([0-9_ *]+);/gu,
+    "MAX_STORED_THEME_CSS_BYTES",
+  );
+  return literal.split("*").reduce((product, part) => {
+    const value = Number(part.replaceAll("_", "").trim());
+    if (!Number.isSafeInteger(value) || value <= 0) {
+      throw new Error(
+        `cannot read MAX_STORED_THEME_CSS_BYTES: "${literal.trim()}"`,
+      );
+    }
+    return product * value;
+  }, 1);
 }
 
 /** Exactly one declaration must match, or we are guessing which value ships. */

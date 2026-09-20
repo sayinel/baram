@@ -17,7 +17,7 @@ context/      ← 컨텍스트 관리자 — Vault 시스템 (§88)
 approval/     ← vault 경계 승인 저장소 — 웹뷰가 못 건드리는 인가 기록 (§331)
 task/         ← 태스크 인덱스/필드 파싱 (§302~§318)
 embedding/    ← 임베딩 — Knowledge Q&A (§11.4)
-plugin/       ← 플러그인 설치/레지스트리 (§69)
+plugin/       ← 플러그인 **및 테마** 설치/레지스트리 (§69 · §360 — 같은 staging·swap 기계, InstallKind 로 트리만 가른다)
 tag/          ← Vault 태그 인덱스 (§56m)
 git/          ← git2 crate 기반 Git 연동 (vendored-openssl)
 snapshot/     ← 파일 스냅샷/버전 히스토리 (similar + sha2)
@@ -95,6 +95,7 @@ app_handle.emit("file:changed", FileChangedPayload {
 | git | status/stage/commit/diff/branch + 고급(§67: log, stash, remote, pull/push) |
 | keyring | Keychain store/get/delete |
 | plugin | 설치/제거/레지스트리 (§69) |
+| theme | 테마 스테이징/커밋/폐기, staged 파일 읽기, 설치된 테마의 저장 CSS 읽기 (§360) |
 | snapshot | 생성/목록/diff/복원/삭제/히스토리 (§71) |
 | tag | Vault 태그 조회/검색/rename (§56m) |
 | approval | 피커 경유 승인, 승인 목록 조회/회수, 경로 승인 여부 질의 (§331~§335) |

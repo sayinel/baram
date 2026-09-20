@@ -220,21 +220,36 @@ const MAX_BUNDLE_BYTES: u64 = 4 * 1024 * 1024;
 /// untrusted input: both paths are canonicalized and the file must resolve inside
 /// `dir`, so a crafted manifest cannot walk out with `../` or a symlink.
 pub async fn read_bundle_in(dir: &Path, main: &str) -> Result<String, String> {
-    let canonical_dir =
-        std::fs::canonicalize(dir).map_err(|e| format!("plugin directory is unreadable: {e}"))?;
-    let candidate = canonical_dir.join(main);
-    let canonical_file = std::fs::canonicalize(&candidate)
-        .map_err(|e| format!("plugin entry \"{main}\" is unreadable: {e}"))?;
-    if !canonical_file.starts_with(&canonical_dir) {
-        return Err(format!(
-            "plugin entry \"{main}\" resolves outside its own directory"
-        ));
-    }
-    // Space-joined, not colon-joined: the helper's messages are written to read as
+    // Space-joined, not colon-joined: both helpers' messages are written to read as
     // predicates ("is N bytes, over the …"), so this composes into a sentence.
+    let canonical_file = resolve_within(dir, main).map_err(|e| format!("plugin entry {e}"))?;
     read_text_capped(&canonical_file, MAX_BUNDLE_BYTES)
         .await
         .map_err(|e| format!("plugin entry \"{main}\" {e}"))
+}
+
+/// Resolve `rel` inside `dir`, refusing anything that lands outside it.
+///
+/// ‼️ BOTH SIDES ARE CANONICALIZED BEFORE THE COMPARISON, and that is what makes one test
+/// cover two escapes: `../` and a symlink both differ from the literal join only after
+/// resolution, so a rule written on the string `rel` would have to enumerate them
+/// separately and would miss the second. It also means the refusal does not depend on how
+/// the escape was SPELLED — a percent-encoded `%2e%2e` is not decoded by anything here, so
+/// it resolves to a directory literally named `%2e%2e` (§360: `ThemeAssetReader` in
+/// `src/utils/theme-css/inline-assets.ts` requires exactly that, because its own path
+/// verdict is worthless if the reader re-parses what it was handed).
+///
+/// Shared by [`read_bundle_in`] and §360's staged-theme read so there is one
+/// implementation of the containment rule rather than one per caller.
+pub(super) fn resolve_within(dir: &Path, rel: &str) -> Result<PathBuf, String> {
+    let canonical_dir =
+        std::fs::canonicalize(dir).map_err(|e| format!("its own directory is unreadable: {e}"))?;
+    let canonical_file = std::fs::canonicalize(canonical_dir.join(rel))
+        .map_err(|e| format!("\"{rel}\" is unreadable: {e}"))?;
+    if !canonical_file.starts_with(&canonical_dir) {
+        return Err(format!("\"{rel}\" resolves outside its own directory"));
+    }
+    Ok(canonical_file)
 }
 
 /// Read a file as text, refusing an over-cap file by `metadata` FIRST.
@@ -250,6 +265,25 @@ pub async fn read_bundle_in(dir: &Path, main: &str) -> Result<String, String> {
 /// plugin stall unrelated IPC — autosave, search, the editor's own file work — which
 /// is a denial of service on the app rather than on the plugin.
 pub async fn read_text_capped(path: &Path, cap: u64) -> Result<String, String> {
+    refuse_over_cap(path, cap).await?;
+    tokio::fs::read_to_string(path)
+        .await
+        .map_err(|e| format!("could not be read: {e}"))
+}
+
+/// [`read_text_capped`] for bytes. §360 — a theme's bundled assets are fonts and images,
+/// and `inlineThemeAssets` wants them as bytes to base64-encode; decoding them as text
+/// first would be lossy for exactly the files this exists to carry.
+pub(super) async fn read_bytes_capped(path: &Path, cap: u64) -> Result<Vec<u8>, String> {
+    refuse_over_cap(path, cap).await?;
+    tokio::fs::read(path)
+        .await
+        .map_err(|e| format!("could not be read: {e}"))
+}
+
+/// The stat-before-read half of the two helpers above, so the "never allocate to measure"
+/// rule has one implementation rather than one per element type.
+async fn refuse_over_cap(path: &Path, cap: u64) -> Result<(), String> {
     let size = tokio::fs::metadata(path)
         .await
         // Distinct from a read failure, so a diagnosis can tell "cannot be stat'ed"
@@ -259,9 +293,7 @@ pub async fn read_text_capped(path: &Path, cap: u64) -> Result<String, String> {
     if size > cap {
         return Err(format!("is {size} bytes, over the {cap}-byte limit"));
     }
-    tokio::fs::read_to_string(path)
-        .await
-        .map_err(|e| format!("could not be read: {e}"))
+    Ok(())
 }
 
 /// Resolves `key` to a path inside `dir`, rejecting any key that is not a

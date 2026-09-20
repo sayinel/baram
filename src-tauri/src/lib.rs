@@ -34,7 +34,7 @@ use std::sync::Mutex;
 use commands::{
     approval_cmd, config_cmd, context_cmd, embedding_cmd, export_cmd, font_cmd, fs_cmd, git_cmd,
     index_cmd, keyring_cmd, llm_cmd, plugin_cmd, search_cmd, snapshot_cmd, tag_cmd, task_cmd,
-    thumbnail_cmd,
+    theme_cmd, thumbnail_cmd,
 };
 use tauri::{Emitter, Manager};
 
@@ -433,6 +433,11 @@ pub fn run() {
             approval_cmd::list_approved_roots,
             approval_cmd::revoke_approved_root,
             font_cmd::font_list,
+            theme_cmd::theme_install_stage,
+            theme_cmd::theme_install_commit,
+            theme_cmd::theme_install_discard,
+            theme_cmd::theme_stage_read,
+            theme_cmd::theme_read_stored_css,
         ])
         // Unsaved-changes guard: intercept the window close (red X) and ask the
         // frontend to confirm. `confirm_quit` flips QuitGuard to let it through.

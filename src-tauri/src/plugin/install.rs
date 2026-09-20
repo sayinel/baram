@@ -10,7 +10,7 @@ use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::archive::extract_zip_bytes;
 use super::limits::MAX_PLUGIN_ARCHIVE_BYTES;
@@ -19,7 +19,10 @@ use super::origin::{
     validate_http_url,
 };
 use super::registry::{InstalledPluginInfo, PluginManifest};
-use super::storage::{get_plugin_dir, hex_sha256, install_root, single_segment, InstallKind};
+use super::storage::{
+    get_plugin_dir, get_theme_dir, hex_sha256, install_root, read_bytes_capped, read_text_capped,
+    resolve_within, single_segment, InstallKind,
+};
 use super::{validate_manifest, PluginError};
 
 /// Where an in-flight install lives until something commits it: `~/.baram/plugins/.staging/`
@@ -64,6 +67,70 @@ const BACKUP_PREFIX: &str = "backup-";
 /// which decides by whether the plugin is present rather than by age.
 const STALE_STAGE_AFTER: Duration = Duration::from_secs(24 * 60 * 60);
 
+/// The manifest at the root of a plugin archive.
+const PLUGIN_MANIFEST_FILE: &str = "baram-plugin.json";
+
+/// The manifest at the root of a theme archive (§360, spec 0049 §4).
+const THEME_MANIFEST_FILE: &str = "baram-theme.json";
+
+/// §360 — where an installed theme's SANITIZED CSS lives, one file per mode
+/// (`.stored/light.css`, `.stored/dark.css`), under the theme's own directory.
+///
+/// ‼️ A FIXED NAME, NOT A PATH OUT OF THE MANIFEST. `baram-theme.json` names the CSS the
+/// AUTHOR wrote (`modes.light.css`); what gets injected at load is the output of
+/// `sanitizeThemeCss` → `inlineThemeAssets`, which is a different document. Reading the
+/// manifest-named path back at load would aim the injector at a file nothing sanitized, and
+/// the installed directory is one a person can open afterwards — the same reason
+/// `verifyStoredThemeCss` exists at all. So the load path never follows a path the manifest
+/// chose. [`write_stored_theme_css`] additionally removes any `.stored/` the ARCHIVE
+/// shipped before writing, so nothing under here is ever archive content.
+const STORED_CSS_DIR: &str = ".stored";
+
+/// §360 — upper bound on one mode's stored theme CSS.
+///
+/// ‼️ NOT DERIVABLE FROM THE ASSET BUDGET, and that is why it is a separate number.
+/// `MAX_THEME_ASSET_BYTES` (2 MiB, `src/utils/theme-css/inline-assets.ts`) counts each
+/// asset PATH once, but inlining re-emits the whole `data:` URI at every REFERENCE site —
+/// ten rules naming one 1 MiB font produce ~14 MiB of CSS out of a budget that only ever
+/// saw 1 MiB. The expansion factor is unbounded in the number of reference sites, so the
+/// OUTPUT needs a bound of its own and the input budget cannot supply it.
+///
+/// 4 MiB, picked to sit above what a package respecting the other two caps can honestly
+/// produce, so this never fires first on a legitimate theme: 2 MiB of assets base64-encode
+/// to 2,796,204 characters (⌈2097152/3⌉ × 4), the authored stylesheet is capped at 512 KiB
+/// before it is parsed (`MAX_THEME_CSS_BYTES`, same TypeScript file), and the
+/// `data:<media type>;base64,` prefixes cost ~23 bytes per reference — roughly 3.3 MiB
+/// together, leaving about 850 KiB of headroom.
+///
+/// ‼️ `scripts/rust-constants.ts` scrapes this literal and
+/// `src/themes/__tests__/stored-css-cap-parity.test.ts` binds the TypeScript copy to it, so
+/// the frontend cannot refuse at a different size than the backend enforces. Written as a
+/// product of integers because that scrape accepts no other form.
+const MAX_STORED_THEME_CSS_BYTES: usize = 4 * 1024 * 1024;
+
+/// §360 — upper bound on `baram-theme.json` as Rust reads it out of a staged archive.
+///
+/// The same 64 KiB `use-theme-import.ts` applies to an imported theme file, for the same
+/// reason: a theme manifest is a few lines of metadata, so anything three orders of
+/// magnitude larger is a mistake or an attempt to make the reader pay for it.
+///
+/// ‼️ THE FRONTEND CAPS AGAIN AT THE SAME VALUE, before its own `JSON.parse`
+/// (`parseThemeManifestText`). Not redundant: this layer bounds what Rust's `serde_json`
+/// walks and what crosses IPC, and the TypeScript layer is the one that runs for every
+/// caller of that function — including a manifest that never came through an archive
+/// (spec 0049 §12.2's dev-folder themes). Neither is entitled to assume the other ran; the
+/// Pandoc image policy in this repo is built the same way, three layers deep.
+const MAX_THEME_MANIFEST_BYTES: u64 = 64 * 1024;
+
+/// §360 — upper bound on any single file [`read_staged_file`] hands the frontend.
+///
+/// ‼️ DELIBERATELY ABOVE `MAX_THEME_ASSET_BYTES` (2 MiB), not below. The asset budget is
+/// the cap that SHOULD refuse an oversized asset, because it reports `tooLarge` naming the
+/// path the author has to shrink. If this one were the lower of the two it would fire
+/// first, the reader would report "no such file", and the author would go looking for a
+/// missing asset that is sitting right there.
+const MAX_STAGED_FILE_BYTES: u64 = 8 * 1024 * 1024;
+
 /// A downloaded, extracted, validated plugin that is NOT yet installed.
 ///
 /// The point of naming this state (#261) is that everything expensive and everything
@@ -88,6 +155,184 @@ pub struct StagedPluginInfo {
 pub struct CommittedPluginInfo {
     pub install_path: String,
     pub manifest: PluginManifest,
+}
+
+/// §360 — the theme counterpart of [`StagedPluginInfo`].
+#[derive(Debug, Clone, Serialize)]
+pub struct StagedThemeInfo {
+    pub stage_id: String,
+    pub checksum: String,
+    /// The staged `baram-theme.json`, as TEXT.
+    ///
+    /// ‼️ Not a deserialized struct, and the difference is a decision rather than a
+    /// convenience. Rust reads exactly one field out of a theme manifest — the id, because
+    /// the id names the install directory and that is the one thing this layer cannot
+    /// delegate. Everything else is decided by `validateThemeManifest`
+    /// (`src/themes/theme-manifest.ts`, spec 0049 §4), which takes already-parsed data; a
+    /// typed deserialize here would either duplicate those rules in a second language or,
+    /// worse, silently drop the fields it did not model before the real validator ever saw
+    /// them. The text is what [`manifest_sha256`](Self::manifest_sha256) digests, so the
+    /// frontend validates the same bytes the commit pins.
+    pub manifest: String,
+    /// SHA-256 of the staged `baram-theme.json`, to be handed back to
+    /// [`commit_staged_install`]. Same TOCTOU guard as the plugin one — see
+    /// [`read_staged_manifest`].
+    pub manifest_sha256: String,
+}
+
+/// §360 — what a committed theme install turned out to be, read back AFTER the swap.
+///
+/// Carries the id rather than the manifest: the frontend already holds the manifest it
+/// validated, and re-serializing 64 KiB of text it just sent would buy nothing.
+#[derive(Debug, Clone, Serialize)]
+pub struct CommittedThemeInfo {
+    pub install_path: String,
+    pub id: String,
+}
+
+/// §360 — a theme's sanitized CSS, handed to [`commit_staged_install`] to be written into
+/// the staged tree just before the swap publishes it.
+///
+/// ‼️ A CLOSED STRUCT, NOT A MAP. Each field name IS a file name under [`STORED_CSS_DIR`],
+/// so a `HashMap<String, String>` would let the webview choose a path component — the
+/// §329–§336 mistake in miniature. Spec 0049 §4 defines exactly two modes, and these are
+/// they.
+///
+/// Both fields absent is legal: a theme may declare only `tokens` for every mode.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct StoredThemeCss {
+    pub dark: Option<String>,
+    pub light: Option<String>,
+}
+
+/// §360 — one of spec 0049 §4's two theme modes.
+///
+/// Its own closed enum rather than a string, for the reason above: this is what
+/// [`read_stored_theme_css`] turns into a file name, and a string parameter there would be
+/// a path component supplied by the caller.
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ThemeMode {
+    Dark,
+    Light,
+}
+
+impl ThemeMode {
+    /// The file this mode's stored CSS is written to under [`STORED_CSS_DIR`].
+    fn file_name(self) -> &'static str {
+        match self {
+            ThemeMode::Dark => "dark.css",
+            ThemeMode::Light => "light.css",
+        }
+    }
+}
+
+/// What Rust read out of the manifest at the root of a staged tree.
+///
+/// Both arms carry an id, and the id is the only thing the two have in common that this
+/// module needs: it names the install directory. What they do NOT have in common is who
+/// validates the rest — a plugin manifest decides trust tier and capabilities, so Rust
+/// validates it here; a theme manifest decides neither, so the frontend does (see
+/// [`StagedThemeInfo::manifest`]).
+#[derive(Debug, Clone)]
+pub enum StagedManifest {
+    // Boxed because the two variants are otherwise wildly different sizes and clippy's
+    // `large_enum_variant` is right about it: every `Theme` would otherwise carry a
+    // plugin manifest's worth of unused space.
+    Plugin(Box<PluginManifest>),
+    Theme { id: String, text: String },
+}
+
+impl StagedManifest {
+    /// The id this archive declares — what names the install directory.
+    fn id(&self) -> &str {
+        match self {
+            StagedManifest::Plugin(manifest) => &manifest.id,
+            StagedManifest::Theme { id, .. } => id,
+        }
+    }
+}
+
+/// A staged install of either kind, before the command layer narrows it to one.
+#[derive(Debug, Clone)]
+pub struct StagedInstall {
+    pub stage_id: String,
+    pub checksum: String,
+    pub manifest: StagedManifest,
+    pub manifest_sha256: String,
+}
+
+impl StagedInstall {
+    /// Narrow to the plugin wire type, for `plugin_install_stage`.
+    ///
+    /// ‼️ The error arm is unreachable from a caller that passed [`InstallKind::Plugin`] —
+    /// [`stage_install`] picks the manifest reader off the same `kind`. It is a refusal
+    /// rather than an `expect` because this runs inside an IPC handler, where a panic takes
+    /// the command's whole task down and tells the user nothing.
+    pub fn into_plugin(self) -> Result<StagedPluginInfo, PluginError> {
+        match self.manifest {
+            StagedManifest::Plugin(manifest) => Ok(StagedPluginInfo {
+                stage_id: self.stage_id,
+                checksum: self.checksum,
+                manifest: *manifest,
+                manifest_sha256: self.manifest_sha256,
+            }),
+            StagedManifest::Theme { .. } => Err(PluginError::Refused(
+                "a theme was staged where a plugin was expected".into(),
+            )),
+        }
+    }
+
+    /// Narrow to the theme wire type, for `theme_install_stage`. See [`Self::into_plugin`]
+    /// for why the mismatch is a refusal.
+    pub fn into_theme(self) -> Result<StagedThemeInfo, PluginError> {
+        match self.manifest {
+            StagedManifest::Theme { text, .. } => Ok(StagedThemeInfo {
+                stage_id: self.stage_id,
+                checksum: self.checksum,
+                manifest: text,
+                manifest_sha256: self.manifest_sha256,
+            }),
+            StagedManifest::Plugin(_) => Err(PluginError::Refused(
+                "a plugin was staged where a theme was expected".into(),
+            )),
+        }
+    }
+}
+
+/// A committed install of either kind, before the command layer narrows it to one.
+#[derive(Debug, Clone)]
+pub struct CommittedInstall {
+    pub install_path: String,
+    pub manifest: StagedManifest,
+}
+
+impl CommittedInstall {
+    /// Narrow to the plugin wire type. See [`StagedInstall::into_plugin`].
+    pub fn into_plugin(self) -> Result<CommittedPluginInfo, PluginError> {
+        match self.manifest {
+            StagedManifest::Plugin(manifest) => Ok(CommittedPluginInfo {
+                install_path: self.install_path,
+                manifest: *manifest,
+            }),
+            StagedManifest::Theme { .. } => Err(PluginError::Refused(
+                "a theme was committed where a plugin was expected".into(),
+            )),
+        }
+    }
+
+    /// Narrow to the theme wire type. See [`StagedInstall::into_plugin`].
+    pub fn into_theme(self) -> Result<CommittedThemeInfo, PluginError> {
+        match self.manifest {
+            StagedManifest::Theme { id, .. } => Ok(CommittedThemeInfo {
+                install_path: self.install_path,
+                id,
+            }),
+            StagedManifest::Plugin(_) => Err(PluginError::Refused(
+                "a plugin was committed where a theme was expected".into(),
+            )),
+        }
+    }
 }
 
 /// `<plugin_root>/.staging/` — the path only, no side effects.
@@ -347,24 +592,20 @@ fn swap_into_place(staged: &Path, target: &Path, backup: &Path) -> Result<(), Pl
 /// download from anywhere, which is the protection being opt-out by forgetfulness.
 ///
 /// `kind` (§360) chooses which installable-asset tree this stages into — see
-/// [`InstallKind`]. Nothing above this line cares which one it is: the download, the
-/// checksum check and the size cap are the same regardless of what gets installed.
+/// [`InstallKind`] — AND which manifest the archive must carry: `baram-plugin.json` for a
+/// plugin, `baram-theme.json` for a theme. Nothing above the extraction cares which one it
+/// is: the download, the checksum check and the size cap are the same regardless of what
+/// gets installed, which is why they are not duplicated per kind.
 ///
-/// ‼️ THAT DOES NOT MEAN A THEME CAN STAGE YET. `kind` picks the TREE but not the manifest
-/// FORMAT: [`read_staged_manifest`], called below, still requires `baram-plugin.json` and
-/// deserializes it as [`PluginManifest`], so `stage_install(InstallKind::Theme, …)` against
-/// a real theme archive (which ships `baram-theme.json`) fails there with
-/// `InvalidManifest("baram-plugin.json not found in archive")` — a diagnosable refusal,
-/// not data loss, but a refusal all the same. Generalizing that seam (raw-capped
-/// `baram-theme.json` text for the frontend's `validateThemeManifest`, which takes
-/// already-parsed data) is Task 4's, deliberately not done here.
+/// The return type is narrowed to one kind's wire shape by the command layer — see
+/// [`StagedInstall::into_plugin`] / [`StagedInstall::into_theme`].
 pub async fn stage_install(
     kind: InstallKind,
     url: &str,
     registry_url: &str,
     expected_checksum: Option<&str>,
     expected_id: Option<&str>,
-) -> Result<StagedPluginInfo, PluginError> {
+) -> Result<StagedInstall, PluginError> {
     // 1. Download the ZIP.
     //
     // Guarded like `fetch_registry` and `fetch_revocations`, and this is the path where it
@@ -465,8 +706,8 @@ pub async fn stage_install(
     // blocking pool for no gain.
     let expected_id = expected_id.map(str::to_owned);
     let (stage_id, manifest, manifest_sha256) = tokio::task::spawn_blocking(
-        move || -> Result<(String, PluginManifest, String), PluginError> {
-            stage_archive_in(&install_root(kind)?, &bytes, expected_id.as_deref())
+        move || -> Result<(String, StagedManifest, String), PluginError> {
+            stage_archive_in(&install_root(kind)?, kind, &bytes, expected_id.as_deref())
         },
     )
     .await
@@ -476,7 +717,7 @@ pub async fn stage_install(
     // it is actionable for the user; the shape of the failure is.
     .map_err(|_| PluginError::Refused("the plugin install task did not finish".into()))??;
 
-    Ok(StagedPluginInfo {
+    Ok(StagedInstall {
         stage_id,
         checksum: actual_checksum,
         manifest,
@@ -487,9 +728,10 @@ pub async fn stage_install(
 /// Steps 3–5 of a stage: extract, read the manifest, check the id. Touches nothing installed.
 fn stage_archive_in(
     plugin_root: &Path,
+    kind: InstallKind,
     bytes: &[u8],
     expected_id: Option<&str>,
-) -> Result<(String, PluginManifest, String), PluginError> {
+) -> Result<(String, StagedManifest, String), PluginError> {
     let root = staging_root_in(plugin_root)?;
     // ‼️ BEFORE the sweep and before anything else this install does: a backup stranded by
     // an interrupted swap is the user's ONLY copy of that plugin, and putting it back
@@ -508,14 +750,14 @@ fn stage_archive_in(
     extract_zip_bytes(bytes, staged.path())?;
 
     // 4. Read and validate the manifest.
-    let (manifest, manifest_sha256) = read_staged_manifest(staged.path())?;
+    let (manifest, manifest_sha256) = read_staged_manifest_of(kind, staged.path())?;
 
     // 5. The archive must be the plugin the caller asked for.
     if let Some(expected) = expected_id {
-        if manifest.id != expected {
+        if manifest.id() != expected {
             return Err(PluginError::InvalidManifest(format!(
                 "archive declares id \"{}\" but \"{expected}\" was requested",
-                manifest.id
+                manifest.id()
             )));
         }
     }
@@ -549,16 +791,89 @@ fn stage_archive_in(
 /// buying an attacker nothing the manifest does not already gate — the manifest is what
 /// decides which realm the code runs in and which capabilities it gets.
 fn read_staged_manifest(dir: &Path) -> Result<(PluginManifest, String), PluginError> {
-    let manifest_path = dir.join("baram-plugin.json");
+    let manifest_path = dir.join(PLUGIN_MANIFEST_FILE);
     if !manifest_path.exists() {
-        return Err(PluginError::InvalidManifest(
-            "baram-plugin.json not found in archive".to_string(),
-        ));
+        return Err(PluginError::InvalidManifest(format!(
+            "{PLUGIN_MANIFEST_FILE} not found in archive"
+        )));
     }
     let manifest_str = std::fs::read_to_string(&manifest_path)?;
     let manifest: PluginManifest = serde_json::from_str(&manifest_str)?;
     validate_manifest(&manifest)?;
     Ok((manifest, hex_sha256(manifest_str.as_bytes())))
+}
+
+/// [`read_staged_manifest`] for whichever kind is being staged (§360).
+///
+/// The digest contract is identical for both — see [`read_staged_manifest`] for why it
+/// exists — and both commit paths re-run this function and compare, so a theme manifest is
+/// pinned across the staging window exactly as a plugin one is.
+fn read_staged_manifest_of(
+    kind: InstallKind,
+    dir: &Path,
+) -> Result<(StagedManifest, String), PluginError> {
+    match kind {
+        InstallKind::Plugin => {
+            let (manifest, digest) = read_staged_manifest(dir)?;
+            Ok((StagedManifest::Plugin(Box::new(manifest)), digest))
+        }
+        InstallKind::Theme => {
+            let (id, text, digest) = read_staged_theme_manifest(dir)?;
+            Ok((StagedManifest::Theme { id, text }, digest))
+        }
+    }
+}
+
+/// The id Rust needs out of a staged `baram-theme.json`, and nothing else.
+#[derive(Deserialize)]
+struct ThemeManifestId {
+    id: String,
+}
+
+/// Read the staged `baram-theme.json`, returning `(id, raw text, digest)`.
+///
+/// ‼️ THIS IS NOT A THEME MANIFEST VALIDATOR, and it must not grow into one. The structural
+/// rules of spec 0049 §4 — `modes`, `engines.baram`, the refusal of `capabilities`/`main`,
+/// the text-field limits — live in `validateThemeManifest`
+/// (`src/themes/theme-manifest.ts`), in one language, with one set of error messages the UI
+/// already renders. A second copy here would be a second place for them to drift, and this
+/// one would be the copy nobody reads when the rules change.
+///
+/// What Rust does read is the `id`, because Rust cannot delegate it: the id becomes a
+/// directory name under `~/.baram/themes/`, so it is checked against the same
+/// `[a-z0-9-]` rule [`validate_manifest`] applies to a plugin id — and [`single_segment`]
+/// in `commit_staged_in`'s join is the backstop behind that.
+fn read_staged_theme_manifest(dir: &Path) -> Result<(String, String, String), PluginError> {
+    let manifest_path = dir.join(THEME_MANIFEST_FILE);
+    if !manifest_path.exists() {
+        return Err(PluginError::InvalidManifest(format!(
+            "{THEME_MANIFEST_FILE} not found in archive"
+        )));
+    }
+    // Measured before it is read, the same "never allocate to measure" rule
+    // `read_text_capped` follows: the file is attacker-shipped, and the cost of refusing
+    // must not scale with the size being refused.
+    let size = std::fs::metadata(&manifest_path)?.len();
+    if size > MAX_THEME_MANIFEST_BYTES {
+        return Err(PluginError::Refused(format!(
+            "{THEME_MANIFEST_FILE} is {size} bytes, over the {MAX_THEME_MANIFEST_BYTES}-byte limit"
+        )));
+    }
+    let text = std::fs::read_to_string(&manifest_path)?;
+    let head: ThemeManifestId = serde_json::from_str(&text)?;
+    if head.id.is_empty()
+        || !head
+            .id
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+    {
+        return Err(PluginError::InvalidManifest(
+            "theme id must be non-empty and contain only lowercase letters, digits, and hyphens"
+                .to_string(),
+        ));
+    }
+    let digest = hex_sha256(text.as_bytes());
+    Ok((head.id, text, digest))
 }
 
 /// Install a staged plugin, atomically replacing any version already installed.
@@ -577,21 +892,37 @@ fn read_staged_manifest(dir: &Path) -> Result<(PluginManifest, String), PluginEr
 /// one fails safely, though: `resolve_stage_in` looks for `stage_id` under the OTHER tree's
 /// `.staging/`, will not find it there, and returns [`PluginError::NotFound`] rather than
 /// resolving to some unrelated directory.
+///
+/// ‼️ `stored_css` (§360) IS WHY THE HYGIENE PIPELINE IS SAFE, and it is a parameter of the
+/// COMMIT rather than a write of its own. `sanitizeThemeCss` → `inlineThemeAssets` runs on
+/// the frontend against the staged tree; its output is written into that staged tree here,
+/// immediately before [`swap_into_place`] publishes it. So there is no moment at which the
+/// installed directory holds CSS that nothing sanitized: the swap is what creates the
+/// directory, and the sanitized files are already in it. A separate "write into the stage"
+/// command would have opened that window AND handed the webview a write path; this closes
+/// both by making the write something only a commit can do.
+///
+/// `Some` for a theme (even an empty one — a theme may declare only `tokens`), `None` for a
+/// plugin. A mismatch is refused rather than ignored: silently dropping CSS that a caller
+/// asked to store would install a theme whose stylesheet never arrives.
 pub async fn commit_staged_install(
     kind: InstallKind,
     stage_id: &str,
     expected_id: &str,
     expected_manifest_sha256: &str,
-) -> Result<CommittedPluginInfo, PluginError> {
+    stored_css: Option<StoredThemeCss>,
+) -> Result<CommittedInstall, PluginError> {
     let stage_id = stage_id.to_owned();
     let expected_id = expected_id.to_owned();
     let expected_digest = expected_manifest_sha256.to_owned();
     tokio::task::spawn_blocking(move || {
         commit_staged_in(
             &install_root(kind)?,
+            kind,
             &stage_id,
             &expected_id,
             &expected_digest,
+            stored_css.as_ref(),
         )
     })
     .await
@@ -600,12 +931,14 @@ pub async fn commit_staged_install(
 
 fn commit_staged_in(
     plugin_root: &Path,
+    kind: InstallKind,
     stage_id: &str,
     expected_id: &str,
     expected_manifest_sha256: &str,
-) -> Result<CommittedPluginInfo, PluginError> {
+    stored_css: Option<&StoredThemeCss>,
+) -> Result<CommittedInstall, PluginError> {
     let staged = resolve_stage_in(plugin_root, stage_id)?;
-    let (manifest, digest) = read_staged_manifest(&staged)?;
+    let (manifest, digest) = read_staged_manifest_of(kind, &staged)?;
     // ‼️ The manifest must be the one the caller judged, byte for byte. See
     // `read_staged_manifest`: everything the caller checked between staging and now — tier,
     // capabilities, version floor — was checked against a file that anything with write
@@ -616,21 +949,117 @@ fn commit_staged_in(
              {expected_manifest_sha256}, found {digest})"
         )));
     }
-    if manifest.id != expected_id {
+    if manifest.id() != expected_id {
         return Err(PluginError::InvalidManifest(format!(
             "staged plugin declares id \"{}\" but \"{expected_id}\" was requested",
-            manifest.id
+            manifest.id()
         )));
     }
-    // Safe to join: `validate_manifest` admits only `[a-z0-9-]`, so the id is a single
-    // segment that cannot escape the plugin directory.
-    let target_dir = plugin_root.join(&manifest.id);
-    let backup = staging_root_in(plugin_root)?.join(backup_name(&manifest.id));
+    match (&manifest, stored_css) {
+        (StagedManifest::Theme { .. }, Some(css)) => write_stored_theme_css(&staged, css)?,
+        (StagedManifest::Theme { .. }, None) => {
+            return Err(PluginError::Refused(
+                "a theme commit must carry its sanitized CSS".into(),
+            ))
+        }
+        (StagedManifest::Plugin(_), Some(_)) => {
+            return Err(PluginError::Refused(
+                "a plugin commit cannot carry theme CSS".into(),
+            ))
+        }
+        (StagedManifest::Plugin(_), None) => {}
+    }
+    // Safe to join: both manifest readers admit only `[a-z0-9-]` as an id, so it is a
+    // single segment that cannot escape the install root.
+    let target_dir = plugin_root.join(manifest.id());
+    let backup = staging_root_in(plugin_root)?.join(backup_name(manifest.id()));
     swap_into_place(&staged, &target_dir, &backup)?;
-    Ok(CommittedPluginInfo {
+    Ok(CommittedInstall {
         install_path: target_dir.to_string_lossy().to_string(),
         manifest,
     })
+}
+
+/// §360 — write a theme's sanitized CSS into the STAGED tree, under [`STORED_CSS_DIR`].
+///
+/// ‼️ THE DIRECTORY IS REMOVED FIRST, and that is not tidiness. An archive may ship a
+/// `.stored/` of its own; anything left in it would be un-sanitized author CSS sitting at
+/// the exact path the load path reads, for any mode this call does not overwrite. Removing
+/// the whole directory makes "everything under `.stored/` came out of the hygiene pipeline"
+/// structural rather than a property of which modes happened to declare CSS.
+fn write_stored_theme_css(staged: &Path, css: &StoredThemeCss) -> Result<(), PluginError> {
+    let dir = staged.join(STORED_CSS_DIR);
+    if dir.exists() {
+        std::fs::remove_dir_all(&dir)?;
+    }
+    std::fs::create_dir_all(&dir)?;
+    for (mode, body) in [
+        (ThemeMode::Dark, css.dark.as_deref()),
+        (ThemeMode::Light, css.light.as_deref()),
+    ] {
+        let Some(body) = body else { continue };
+        if body.len() > MAX_STORED_THEME_CSS_BYTES {
+            return Err(PluginError::Refused(format!(
+                "stored theme CSS for {} is {} bytes, over the {MAX_STORED_THEME_CSS_BYTES}-byte \
+                 limit",
+                mode.file_name(),
+                body.len()
+            )));
+        }
+        std::fs::write(dir.join(mode.file_name()), body)?;
+    }
+    Ok(())
+}
+
+/// §360 — read one file out of a staged tree, for the frontend's hygiene pipeline.
+///
+/// This is what lets `theme-install.ts` read the authored CSS, a mode's `tokens.json` and
+/// every bundled asset out of a tree that has not been installed yet. `rel` crosses the IPC
+/// boundary, so containment is [`resolve_within`]'s canonicalize-and-compare rather than
+/// anything spelled on the string; `stage_id` is `resolve_stage_in`'s, so the worst a
+/// malformed one can name is another staging tree.
+///
+/// ‼️ NOTHING HERE DECODES `rel`. A reference spelled `%2e%2e/x.png` names a directory
+/// literally called `%2e%2e`, which is exactly what `ThemeAssetReader`'s contract
+/// (`src/utils/theme-css/inline-assets.ts`) requires: that module refuses `%` in a
+/// reference precisely because a reader that percent-decoded would make its containment
+/// verdict meaningless, and a reader is only as good as that promise.
+pub async fn read_staged_file(
+    kind: InstallKind,
+    stage_id: &str,
+    rel: &str,
+) -> Result<Vec<u8>, PluginError> {
+    let staged = resolve_stage_in(&install_root(kind)?, stage_id)?;
+    let path = resolve_within(&staged, rel).map_err(PluginError::Refused)?;
+    read_bytes_capped(&path, MAX_STAGED_FILE_BYTES)
+        .await
+        .map_err(|e| PluginError::Refused(format!("\"{rel}\" {e}")))
+}
+
+/// §360 — read an installed theme's stored CSS for one mode.
+///
+/// The load-time counterpart of [`write_stored_theme_css`]. Neither argument can contribute
+/// a path component the caller chose: `theme_id` goes through [`single_segment`] and `mode`
+/// is a closed enum whose file name this module owns.
+///
+/// [`PluginError::NotFound`] when that mode has no stored CSS — a theme may declare only
+/// `tokens`, so absence is ordinary rather than a failure.
+pub async fn read_stored_theme_css(theme_id: &str, mode: ThemeMode) -> Result<String, PluginError> {
+    let seg = single_segment(theme_id)
+        .ok_or_else(|| PluginError::InvalidManifest(format!("invalid theme id: {theme_id}")))?;
+    let path = get_theme_dir()?
+        .join(seg)
+        .join(STORED_CSS_DIR)
+        .join(mode.file_name());
+    if !path.exists() {
+        return Err(PluginError::NotFound(format!(
+            "{theme_id}/{}",
+            mode.file_name()
+        )));
+    }
+    read_text_capped(&path, MAX_STORED_THEME_CSS_BYTES as u64)
+        .await
+        .map_err(PluginError::Refused)
 }
 
 /// Throw away a staged plugin without installing it.
@@ -747,6 +1176,44 @@ mod tests {
     use super::super::test_support::zip_of;
     use super::*;
 
+    /// The PLUGIN arm of [`stage_archive_in`], unwrapped.
+    ///
+    /// §360 gave that core a `kind` and an enum return so a theme archive could use the
+    /// same sequence. Every #261 test below stages a plugin and asserts on plugin manifest
+    /// fields, so they call this instead of carrying the same two-line `match` thirteen
+    /// times. The panic is a test-harness assertion, not a code path: the arm is chosen by
+    /// the `kind` this function itself passes.
+    fn stage_plugin_archive_in(
+        plugin_root: &Path,
+        bytes: &[u8],
+        expected_id: Option<&str>,
+    ) -> Result<(String, PluginManifest, String), PluginError> {
+        let (stage_id, manifest, digest) =
+            stage_archive_in(plugin_root, InstallKind::Plugin, bytes, expected_id)?;
+        match manifest {
+            StagedManifest::Plugin(manifest) => Ok((stage_id, *manifest, digest)),
+            StagedManifest::Theme { .. } => panic!("a plugin archive yielded a theme manifest"),
+        }
+    }
+
+    /// The PLUGIN arm of [`commit_staged_in`], unwrapped. See [`stage_plugin_archive_in`].
+    fn commit_plugin_staged_in(
+        plugin_root: &Path,
+        stage_id: &str,
+        expected_id: &str,
+        expected_manifest_sha256: &str,
+    ) -> Result<CommittedPluginInfo, PluginError> {
+        commit_staged_in(
+            plugin_root,
+            InstallKind::Plugin,
+            stage_id,
+            expected_id,
+            expected_manifest_sha256,
+            None,
+        )?
+        .into_plugin()
+    }
+
     #[test]
     fn test_hex_sha256() {
         let hash = hex_sha256(b"hello");
@@ -809,7 +1276,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let installed = install_by_hand(root.path(), "demo", "v1");
 
-        let (stage_id, manifest, _digest) = stage_archive_in(
+        let (stage_id, manifest, _digest) = stage_plugin_archive_in(
             root.path(),
             &plugin_zip("demo", "2.0.0", "v2"),
             Some("demo"),
@@ -832,13 +1299,13 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let installed = install_by_hand(root.path(), "demo", "v1");
 
-        let (stage_id, _, digest) = stage_archive_in(
+        let (stage_id, _, digest) = stage_plugin_archive_in(
             root.path(),
             &plugin_zip("demo", "2.0.0", "v2"),
             Some("demo"),
         )
         .unwrap();
-        let committed = commit_staged_in(root.path(), &stage_id, "demo", &digest).unwrap();
+        let committed = commit_plugin_staged_in(root.path(), &stage_id, "demo", &digest).unwrap();
 
         assert_eq!(committed.install_path, installed.to_string_lossy());
         assert_eq!(
@@ -858,8 +1325,8 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
 
         let (stage_id, _, digest) =
-            stage_archive_in(root.path(), &plugin_zip("demo", "1.0.0", "v1"), None).unwrap();
-        commit_staged_in(root.path(), &stage_id, "demo", &digest).unwrap();
+            stage_plugin_archive_in(root.path(), &plugin_zip("demo", "1.0.0", "v1"), None).unwrap();
+        commit_plugin_staged_in(root.path(), &stage_id, "demo", &digest).unwrap();
 
         assert_eq!(
             std::fs::read_to_string(root.path().join("demo").join("main.js")).unwrap(),
@@ -934,8 +1401,9 @@ mod tests {
         let victim = install_by_hand(root.path(), "victim", "untouched");
 
         let (stage_id, _, digest) =
-            stage_archive_in(root.path(), &plugin_zip("attacker", "1.0.0", "evil"), None).unwrap();
-        let err = commit_staged_in(root.path(), &stage_id, "victim", &digest)
+            stage_plugin_archive_in(root.path(), &plugin_zip("attacker", "1.0.0", "evil"), None)
+                .unwrap();
+        let err = commit_plugin_staged_in(root.path(), &stage_id, "victim", &digest)
             .expect_err("a stage declaring another id must not install as that id");
 
         assert!(err.to_string().contains("was requested"), "{err}");
@@ -955,7 +1423,7 @@ mod tests {
     fn staging_refuses_an_archive_declaring_another_plugins_id() {
         let root = tempfile::tempdir().unwrap();
 
-        let err = stage_archive_in(
+        let err = stage_plugin_archive_in(
             root.path(),
             &plugin_zip("attacker", "1.0.0", "evil"),
             Some("victim"),
@@ -974,7 +1442,7 @@ mod tests {
     fn discard_removes_the_stage_and_leaves_installs_alone() {
         let root = tempfile::tempdir().unwrap();
         let installed = install_by_hand(root.path(), "demo", "v1");
-        let (stage_id, _, _digest) = stage_archive_in(
+        let (stage_id, _, _digest) = stage_plugin_archive_in(
             root.path(),
             &plugin_zip("demo", "2.0.0", "v2"),
             Some("demo"),
@@ -1012,7 +1480,7 @@ mod tests {
         install_by_hand(root.path(), "demo", "v1");
         // A real staged tree, so the failures below are about the ID and not about an
         // empty staging directory.
-        let (real, _, _) = stage_archive_in(
+        let (real, _, _) = stage_plugin_archive_in(
             root.path(),
             &plugin_zip("demo", "2.0.0", "v2"),
             Some("demo"),
@@ -1069,7 +1537,7 @@ mod tests {
         std::fs::write(backup.join("main.js"), "v1").unwrap();
         assert!(!root.path().join("demo").exists());
 
-        stage_archive_in(root.path(), &plugin_zip("other", "1.0.0", "x"), None).unwrap();
+        stage_plugin_archive_in(root.path(), &plugin_zip("other", "1.0.0", "x"), None).unwrap();
 
         assert_eq!(
             std::fs::read_to_string(root.path().join("demo").join("main.js")).unwrap(),
@@ -1132,7 +1600,7 @@ mod tests {
         assert!(!root.path().join("demo").exists());
 
         // The next install must NOT bring the plugin back from that backup.
-        stage_archive_in(root.path(), &plugin_zip("other", "1.0.0", "x"), None).unwrap();
+        stage_plugin_archive_in(root.path(), &plugin_zip("other", "1.0.0", "x"), None).unwrap();
         assert!(
             !root.path().join("demo").exists(),
             "an uninstalled plugin was resurrected by backup recovery"
@@ -1194,7 +1662,7 @@ mod tests {
     fn commit_refuses_a_manifest_edited_after_it_was_staged() {
         let root = tempfile::tempdir().unwrap();
         let installed = install_by_hand(root.path(), "demo", "v1");
-        let (stage_id, manifest, digest) = stage_archive_in(
+        let (stage_id, manifest, digest) = stage_plugin_archive_in(
             root.path(),
             &plugin_zip("demo", "2.0.0", "v2"),
             Some("demo"),
@@ -1212,7 +1680,7 @@ mod tests {
             );
         std::fs::write(staged.join("baram-plugin.json"), &tampered).unwrap();
 
-        let err = commit_staged_in(root.path(), &stage_id, "demo", &digest)
+        let err = commit_plugin_staged_in(root.path(), &stage_id, "demo", &digest)
             .expect_err("a manifest that changed after it was checked must not install");
 
         assert!(
@@ -1251,9 +1719,11 @@ mod tests {
     fn staging_does_not_sweep_another_install_in_flight() {
         let root = tempfile::tempdir().unwrap();
         let (first, _, _) =
-            stage_archive_in(root.path(), &plugin_zip("one", "1.0.0", "a"), Some("one")).unwrap();
+            stage_plugin_archive_in(root.path(), &plugin_zip("one", "1.0.0", "a"), Some("one"))
+                .unwrap();
         let (second, _, _) =
-            stage_archive_in(root.path(), &plugin_zip("two", "1.0.0", "b"), Some("two")).unwrap();
+            stage_plugin_archive_in(root.path(), &plugin_zip("two", "1.0.0", "b"), Some("two"))
+                .unwrap();
 
         assert_ne!(first, second);
         assert_eq!(stage_dirs(root.path()), {
@@ -1272,8 +1742,9 @@ mod tests {
     #[test]
     fn the_staging_directory_can_never_be_mistaken_for_a_plugin() {
         let root = tempfile::tempdir().unwrap();
-        let err = stage_archive_in(root.path(), &plugin_zip(STAGING_DIR, "1.0.0", "x"), None)
-            .expect_err("a plugin claiming the staging directory's name must be refused");
+        let err =
+            stage_plugin_archive_in(root.path(), &plugin_zip(STAGING_DIR, "1.0.0", "x"), None)
+                .expect_err("a plugin claiming the staging directory's name must be refused");
 
         assert!(
             err.to_string().contains("lowercase letters"),
@@ -1296,4 +1767,355 @@ mod tests {
     // `install_root_resolves_each_kind_to_its_own_directory_name`, the one test that
     // mentions `InstallKind` and the only one a mutation of `install_root`'s theme arm
     // could fail.
+
+    // --- §360: the theme arm --------------------------------------------------------
+    //
+    // These DO have a proposition to prove, unlike the two deleted above: each one drives
+    // a branch that reads `kind`, or a step that exists only for a theme. Every assertion
+    // below fails if the theme arm is removed, which the tests above cannot say.
+
+    /// A theme archive: `baram-theme.json` plus whatever else `entries` names.
+    fn theme_zip(id: &str, entries: &[(&str, &[u8])]) -> Vec<u8> {
+        let manifest = format!(
+            r#"{{"id":"{id}","name":"N","description":"d","version":"1.0.0",
+             "author":"a","license":"MIT","engines":{{"baram":">=0.1.0"}},
+             "modes":{{"light":{{"css":"light/theme.css"}}}}}}"#
+        );
+        let mut all: Vec<(&str, &[u8])> = vec![("baram-theme.json", manifest.as_bytes())];
+        all.extend_from_slice(entries);
+        zip_of(&all)
+    }
+
+    fn stage_theme_archive_in(
+        theme_root: &Path,
+        bytes: &[u8],
+        expected_id: Option<&str>,
+    ) -> Result<(String, String, String), PluginError> {
+        let (stage_id, manifest, digest) =
+            stage_archive_in(theme_root, InstallKind::Theme, bytes, expected_id)?;
+        match manifest {
+            StagedManifest::Theme { id, .. } => Ok((stage_id, id, digest)),
+            StagedManifest::Plugin(_) => panic!("a theme archive yielded a plugin manifest"),
+        }
+    }
+
+    /// The seam Task 3 left open and this task closes: a theme archive ships
+    /// `baram-theme.json`, and until `read_staged_manifest_of` branched on `kind` the theme
+    /// arm refused every real package with "baram-plugin.json not found in archive".
+    #[test]
+    fn a_theme_archive_stages_from_its_own_manifest_file() {
+        let root = tempfile::tempdir().unwrap();
+        let (_stage_id, id, _digest) = stage_theme_archive_in(
+            root.path(),
+            &theme_zip("dracula", &[("light/theme.css", b"a{color:red}")]),
+            Some("dracula"),
+        )
+        .unwrap();
+        assert_eq!(id, "dracula");
+    }
+
+    /// The two kinds do not accept each other's manifests. Both directions, because a
+    /// branch that fell through to the plugin reader would pass the first half alone.
+    #[test]
+    fn neither_kind_accepts_the_other_kinds_manifest() {
+        let root = tempfile::tempdir().unwrap();
+        let as_plugin =
+            stage_plugin_archive_in(root.path(), &theme_zip("dracula", &[]), None).unwrap_err();
+        assert!(
+            as_plugin
+                .to_string()
+                .contains("baram-plugin.json not found"),
+            "unexpected: {as_plugin}"
+        );
+        let as_theme = stage_archive_in(
+            root.path(),
+            InstallKind::Theme,
+            &plugin_zip("demo", "1.0.0", "v1"),
+            None,
+        )
+        .unwrap_err();
+        assert!(
+            as_theme.to_string().contains("baram-theme.json not found"),
+            "unexpected: {as_theme}"
+        );
+    }
+
+    /// The id names the install directory, so it is the one theme-manifest field Rust
+    /// cannot delegate to `validateThemeManifest`.
+    #[test]
+    fn a_theme_id_outside_the_allowed_charset_is_refused() {
+        let root = tempfile::tempdir().unwrap();
+        for bad in ["../escape", "Upper", "with space", ""] {
+            let manifest = format!(
+                r#"{{"id":"{bad}","name":"N","version":"1.0.0","modes":{{"light":{{"css":"c"}}}}}}"#
+            );
+            let zip = zip_of(&[("baram-theme.json", manifest.as_bytes())]);
+            let err = stage_archive_in(root.path(), InstallKind::Theme, &zip, None).unwrap_err();
+            assert!(
+                err.to_string().contains("theme id must be"),
+                "id {bad:?} was not refused for its charset: {err}"
+            );
+        }
+    }
+
+    /// ‼️ The ordering property in one assertion: the sanitized CSS is already at the
+    /// install path the instant that path exists. Nothing writes it afterwards, so there is
+    /// no window in which the installed directory holds CSS that never went through the
+    /// hygiene pipeline.
+    #[test]
+    fn committing_a_theme_publishes_the_stored_css_with_the_swap() {
+        let root = tempfile::tempdir().unwrap();
+        let (stage_id, _id, digest) = stage_theme_archive_in(
+            root.path(),
+            &theme_zip("dracula", &[("light/theme.css", b"a{color:red}")]),
+            None,
+        )
+        .unwrap();
+        let committed = commit_staged_in(
+            root.path(),
+            InstallKind::Theme,
+            &stage_id,
+            "dracula",
+            &digest,
+            Some(&StoredThemeCss {
+                dark: None,
+                light: Some("@layer baram-theme{a{color:red}}".into()),
+            }),
+        )
+        .unwrap()
+        .into_theme()
+        .unwrap();
+
+        assert_eq!(committed.id, "dracula");
+        let stored = root.path().join("dracula").join(STORED_CSS_DIR);
+        assert_eq!(
+            std::fs::read_to_string(stored.join("light.css")).unwrap(),
+            "@layer baram-theme{a{color:red}}"
+        );
+        // The mode that declared no CSS gets no file — absence is how the load path learns
+        // that mode has tokens only.
+        assert!(!stored.join("dark.css").exists());
+        // The AUTHORED css is still in the package and still un-sanitized; that is fine,
+        // and it is also why the load path reads `.stored/` rather than the manifest's
+        // path. See `STORED_CSS_DIR`.
+        assert!(root.path().join("dracula/light/theme.css").exists());
+    }
+
+    /// ‼️ An archive may ship its own `.stored/`, and anything left in it would be
+    /// un-sanitized author CSS sitting at the exact path the load path reads. Removing the
+    /// whole directory before writing is what makes "everything under `.stored/` came out
+    /// of the pipeline" true for modes this commit does not write.
+    #[test]
+    fn an_archive_shipped_stored_directory_does_not_survive_the_commit() {
+        let root = tempfile::tempdir().unwrap();
+        let smuggled: &[(&str, &[u8])] = &[
+            (".stored/dark.css", b"a{background:url(https://evil/x)}"),
+            (".stored/extra.css", b"a{color:blue}"),
+        ];
+        let (stage_id, _id, digest) =
+            stage_theme_archive_in(root.path(), &theme_zip("dracula", smuggled), None).unwrap();
+        commit_staged_in(
+            root.path(),
+            InstallKind::Theme,
+            &stage_id,
+            "dracula",
+            &digest,
+            // Only `light` is written; `dark.css` and `extra.css` are the archive's.
+            Some(&StoredThemeCss {
+                dark: None,
+                light: Some("@layer baram-theme{}".into()),
+            }),
+        )
+        .unwrap();
+
+        let stored = root.path().join("dracula").join(STORED_CSS_DIR);
+        assert!(stored.join("light.css").exists());
+        assert!(
+            !stored.join("dark.css").exists(),
+            "an archive-shipped .stored/dark.css survived the commit"
+        );
+        assert!(!stored.join("extra.css").exists());
+    }
+
+    /// The cap the frontend refuses at is the cap the backend enforces — see
+    /// `MAX_STORED_THEME_CSS_BYTES`. A commit that got past the frontend's check must not
+    /// write the file anyway.
+    #[test]
+    fn stored_css_over_the_cap_is_refused_and_nothing_is_installed() {
+        let root = tempfile::tempdir().unwrap();
+        let (stage_id, _id, digest) =
+            stage_theme_archive_in(root.path(), &theme_zip("dracula", &[]), None).unwrap();
+        let err = commit_staged_in(
+            root.path(),
+            InstallKind::Theme,
+            &stage_id,
+            "dracula",
+            &digest,
+            Some(&StoredThemeCss {
+                dark: None,
+                light: Some("x".repeat(MAX_STORED_THEME_CSS_BYTES + 1)),
+            }),
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("over the"), "unexpected: {err}");
+        assert!(
+            !root.path().join("dracula").exists(),
+            "the refusal still installed the theme"
+        );
+    }
+
+    /// The `stored_css` parameter is not optional decoration on either side: a theme
+    /// commit without it, or a plugin commit with it, is refused rather than silently
+    /// installing a theme whose stylesheet never arrives.
+    #[test]
+    fn stored_css_must_match_the_kind_being_committed() {
+        let root = tempfile::tempdir().unwrap();
+        let (theme_stage, _id, theme_digest) =
+            stage_theme_archive_in(root.path(), &theme_zip("dracula", &[]), None).unwrap();
+        let err = commit_staged_in(
+            root.path(),
+            InstallKind::Theme,
+            &theme_stage,
+            "dracula",
+            &theme_digest,
+            None,
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("must carry its sanitized CSS"),
+            "unexpected: {err}"
+        );
+
+        let (plugin_stage, _m, plugin_digest) =
+            stage_plugin_archive_in(root.path(), &plugin_zip("demo", "1.0.0", "v1"), None).unwrap();
+        let err = commit_staged_in(
+            root.path(),
+            InstallKind::Plugin,
+            &plugin_stage,
+            "demo",
+            &plugin_digest,
+            Some(&StoredThemeCss::default()),
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("cannot carry theme CSS"),
+            "unexpected: {err}"
+        );
+    }
+
+    /// The TOCTOU digest covers a theme manifest exactly as it covers a plugin one — the
+    /// frontend validates `baram-theme.json` between the two IPC calls, so the commit must
+    /// refuse a file that changed since.
+    #[test]
+    fn a_theme_manifest_edited_after_staging_is_refused_at_commit() {
+        let root = tempfile::tempdir().unwrap();
+        let (stage_id, _id, digest) =
+            stage_theme_archive_in(root.path(), &theme_zip("dracula", &[]), None).unwrap();
+        let staged = resolve_stage_in(root.path(), &stage_id).unwrap();
+        std::fs::write(
+            staged.join("baram-theme.json"),
+            br#"{"id":"dracula","name":"Swapped","version":"9.9.9",
+                "modes":{"light":{"css":"light/theme.css"}}}"#,
+        )
+        .unwrap();
+        let err = commit_staged_in(
+            root.path(),
+            InstallKind::Theme,
+            &stage_id,
+            "dracula",
+            &digest,
+            Some(&StoredThemeCss::default()),
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("changed after it was checked"),
+            "unexpected: {err}"
+        );
+        assert!(!root.path().join("dracula").exists());
+    }
+
+    /// A theme manifest past the raw cap is refused BEFORE `serde_json` walks it. Measured
+    /// by metadata, so the refusal does not allocate what it is refusing.
+    #[test]
+    fn an_oversized_theme_manifest_is_refused() {
+        let root = tempfile::tempdir().unwrap();
+        let padding = "x".repeat(MAX_THEME_MANIFEST_BYTES as usize);
+        let manifest =
+            format!(r#"{{"id":"dracula","description":"{padding}","modes":{{"light":{{}}}}}}"#);
+        let zip = zip_of(&[("baram-theme.json", manifest.as_bytes())]);
+        let err = stage_archive_in(root.path(), InstallKind::Theme, &zip, None).unwrap_err();
+        assert!(
+            err.to_string().contains("over the") && err.to_string().contains("baram-theme.json"),
+            "unexpected: {err}"
+        );
+    }
+
+    /// ‼️ `ThemeAssetReader`'s contract, enforced at the layer that actually opens files.
+    ///
+    /// `inline-assets.ts` promises that a package-relative reference is handled as a FILE
+    /// NAME — nothing percent-decodes it or re-reads it as a URL — because its own
+    /// containment verdict is worthless otherwise. Two halves, and each fails on its own:
+    /// a name that merely LOOKS encoded is read literally, and a name that would ESCAPE if
+    /// decoded does not.
+    #[tokio::test]
+    async fn the_staged_reader_treats_a_path_as_a_literal_file_name() {
+        let root = tempfile::tempdir().unwrap();
+        let (stage_id, _id, _digest) = stage_theme_archive_in(
+            root.path(),
+            &theme_zip(
+                "dracula",
+                &[
+                    ("assets/a%2eb.png", b"literal-percent"),
+                    ("assets/with space.png", b"literal-space"),
+                    ("assets/plain.png", b"plain"),
+                ],
+            ),
+            None,
+        )
+        .unwrap();
+        let staged = resolve_stage_in(root.path(), &stage_id).unwrap();
+        // A sibling of the STAGE, i.e. what `%2e%2e/` would reach if anything decoded it.
+        std::fs::write(staged.parent().unwrap().join("outside.png"), b"secret").unwrap();
+
+        let read = |rel: &'static str| {
+            let staged = staged.clone();
+            async move {
+                let path = resolve_within(&staged, rel)?;
+                read_bytes_capped(&path, MAX_STAGED_FILE_BYTES).await
+            }
+        };
+
+        // Read by the name as written, percent sequence and space intact.
+        assert_eq!(read("assets/a%2eb.png").await.unwrap(), b"literal-percent");
+        assert_eq!(
+            read("assets/with space.png").await.unwrap(),
+            b"literal-space"
+        );
+        assert_eq!(read("assets/plain.png").await.unwrap(), b"plain");
+
+        // `%2e%2e` is a directory name that does not exist, NOT `..`.
+        let encoded = read("%2e%2e/outside.png").await.unwrap_err();
+        assert!(
+            encoded.contains("is unreadable"),
+            "an encoded traversal was decoded: {encoded}"
+        );
+        // And the un-encoded form is refused by containment rather than by spelling.
+        assert!(read("../outside.png").await.is_err());
+        assert!(read("/etc/hosts").await.is_err());
+    }
+
+    /// The load-time read finds what the commit wrote, and refuses an id that is not a
+    /// single path segment.
+    #[tokio::test]
+    async fn the_stored_css_read_refuses_an_id_that_is_not_one_segment() {
+        for bad in ["../plugins/demo", "a/b", ""] {
+            let err = read_stored_theme_css(bad, ThemeMode::Light)
+                .await
+                .unwrap_err();
+            assert!(
+                err.to_string().contains("invalid theme id"),
+                "id {bad:?} was not refused: {err}"
+            );
+        }
+    }
 }

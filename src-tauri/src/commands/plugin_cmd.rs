@@ -32,6 +32,7 @@ pub async fn plugin_install_stage(
         expected_id.as_deref(),
     )
     .await
+    .and_then(plugin::StagedInstall::into_plugin)
     .map_err(|e| e.to_string())
 }
 
@@ -47,8 +48,12 @@ pub async fn plugin_install_commit(
         &stage_id,
         &expected_id,
         &manifest_sha256,
+        // §360 — no stored CSS: that parameter belongs to a theme commit, and passing
+        // `Some` here is refused rather than ignored.
+        None,
     )
     .await
+    .and_then(plugin::CommittedInstall::into_plugin)
     .map_err(|e| e.to_string())
 }
 
