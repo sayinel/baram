@@ -2,13 +2,16 @@
 // pairing of a converter's delimiters across them.
 import { describe, expect, it } from "vitest";
 
+import { fencedCodeRegions } from "../markdown-block-regions";
 import {
   collectCodeRegions,
   inlineMathSpans,
-  inlineSpans,
+  orderedRegions,
   replaceOutsideCode,
-  splitLines,
 } from "../markdown-code-regions";
+import { inlineSpans } from "../markdown-inline-spans";
+import { markupRegions } from "../markdown-markup-regions";
+import { splitLines } from "../markdown-source";
 
 const spansOf = (md: string, mathCrossesLines = true) =>
   inlineSpans(md, splitLines(md), { mathCrossesLines, skip: [] }).map(
@@ -103,7 +106,7 @@ describe("inlineMathSpans", () => {
 });
 
 describe("collectCodeRegions", () => {
-  it("merges fences, display math, code spans and — on request — one-dollar formulas and markup", () => {
+  it("collects fences, display math, code spans and — on request — one-dollar formulas and markup", () => {
     const md = "`a\nb` $c\nd$ x";
     expect(collectCodeRegions(md)).toEqual([{ end: 5, start: 0 }]);
     expect(collectCodeRegions(md, { inlineMath: true })).toEqual([
@@ -116,6 +119,63 @@ describe("collectCodeRegions", () => {
       [{ end: 8, start: 2 }],
     );
   });
+
+  it("keeps touching regions apart: a caller reads a destination by its start", () => {
+    // `balanceBrackets` (pandoc underline) drops the regions that start
+    // with `](` so a link's closing bracket is still counted. Fusing a
+    // code span flush against a destination into one region hid that
+    // start — on one side the `]` inside the code was escaped, on the
+    // other the link's `[` was.
+    expect(
+      collectCodeRegions("[x](u)`a]b` c", { inlineMath: true, markup: true }),
+    ).toEqual([
+      { end: 6, start: 2 },
+      { end: 11, start: 6 },
+    ]);
+    expect(
+      collectCodeRegions("[`x`](u) $E$", { inlineMath: true, markup: true }),
+    ).toEqual([
+      { end: 4, start: 1 },
+      { end: 8, start: 4 },
+      { end: 12, start: 9 },
+    ]);
+  });
+
+  // The inline scanner's output contract, read off the scanner itself —
+  // before `orderedRegions` sees it, so this is a pin of the scanner and
+  // not of the check. Skip candidates may nest and overlap (a destination
+  // inside a tag's attribute, a tag inside a destination, a fence holding
+  // both); the scanner honours the outer one and drops what begins inside
+  // it, so the shadow needs no merge — and a merge step is where touching
+  // regions were once fused (see above).
+  it.each([
+    '<a href="[x](u)">t</a> `a` $b$',
+    "[x](<u>) `y`",
+    "[a](b) <b [c](d)> $e$",
+    '<img alt="`x`" src="p/$a$.png">`q`',
+    "`a<b>`<b>`c`</b> $x<u>y</u>$",
+    "[id]: <p/`x`.png> `y` [z](w)",
+    "```\n[x](u) $a$\n```\n`b`[c](d)",
+    "> $$\n> [x](u)\n> $$\n`a`",
+    "$a `b` c$ [d](e`f`) `g$h` $i$",
+    '<a\n\nhref="[x](u)">`y`</a>',
+    "- ```\n  [x](u)\n- `a` $b$ [c](d)",
+  ])(
+    "yields sorted, non-overlapping spans for %j, with and without markup",
+    (md) => {
+      const lines = splitLines(md);
+      for (const markup of [false, true]) {
+        const skip = [
+          ...fencedCodeRegions(md, lines),
+          ...(markup ? markupRegions(md) : []),
+        ].sort((a, b) => a.start - b.start);
+        const spans = inlineSpans(md, lines, { mathCrossesLines: true, skip });
+        for (let i = 1; i < spans.length; i++) {
+          expect(spans[i].start).toBeGreaterThanOrEqual(spans[i - 1].end);
+        }
+      }
+    },
+  );
 
   it("closes a fence on a CRLF or lone-CR line, and an unclosed display block runs to the end", () => {
     expect(collectCodeRegions("```\r\nx\r\n```\r\ny")).toEqual([
@@ -146,6 +206,44 @@ describe("collectCodeRegions", () => {
     // a paragraph ends there — and a `$$` inside a code span is code.
     expect(collectCodeRegions("$$_{a\n\nb}$$ x")).toEqual([]);
     expect(collectCodeRegions("`$$` x $$")).toEqual([{ end: 4, start: 0 }]);
+  });
+});
+
+describe("orderedRegions", () => {
+  it("refuses a region that begins before the last one ended, or ends before it begins", () => {
+    // With the merge step gone, nothing reorders or fuses regions before
+    // they reach a consumer. A region out of order or overlapping the last
+    // would put its filler on the shadow twice, and the Notion math pass
+    // would copy text twice, so every offset after it would point at the
+    // wrong byte of the original — silently. The check turns that into an
+    // error the export surfaces.
+    expect(() =>
+      orderedRegions([
+        { end: 2, start: 0 },
+        { end: 3, start: 1 },
+      ]),
+    ).toThrow(/begins before the last one ended/);
+    expect(() =>
+      orderedRegions([
+        { end: 3, start: 2 },
+        { end: 1, start: 0 },
+      ]),
+    ).toThrow(/begins before the last one ended/);
+    // An inverted region would move the cursor backwards — the same
+    // lengthened shadow by another route.
+    expect(() =>
+      orderedRegions([
+        { end: 1, start: 2 },
+        { end: 4, start: 3 },
+      ]),
+    ).toThrow(/ends before it begins/);
+    // Touching and empty regions are in order and pass through unchanged.
+    const ok = [
+      { end: 2, start: 0 },
+      { end: 2, start: 2 },
+      { end: 3, start: 2 },
+    ];
+    expect(orderedRegions(ok)).toBe(ok);
   });
 });
 

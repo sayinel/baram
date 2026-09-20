@@ -364,6 +364,27 @@ describe("§55 convertUnderlineForPandoc", () => {
     expect(convertUnderlineForPandoc("$<u>x</u>$")).toBe("$<u>x</u>$");
   });
 
+  it("counts a link's brackets when code, math or a tag sits flush against its destination", () => {
+    // `balanceBrackets` tells a destination region apart by its start
+    // offset; a scanner that fused a touching code span into it hid that
+    // start, so the destination's `]` was skipped and the link's `[` was
+    // escaped — or the fused span began at `](` and was dropped whole, so
+    // the `]` inside the code span AFTER it was escaped: a backslash
+    // written into code.
+    expect(convertUnderlineForPandoc("<u>[x](u)`a]b` c</u>")).toBe(
+      "[[x](u)`a]b` c]{.underline}",
+    );
+    expect(
+      convertUnderlineForPandoc("<u>see [`x`](https://e.test/p) now</u>"),
+    ).toBe("[see [`x`](https://e.test/p) now]{.underline}");
+    expect(convertUnderlineForPandoc("<u>[$E$](u)</u>")).toBe(
+      "[[$E$](u)]{.underline}",
+    );
+    expect(convertUnderlineForPandoc("<u>[<b>x</b>](u)</u>")).toBe(
+      "[[<b>x</b>](u)]{.underline}",
+    );
+  });
+
   it("keeps a link inside, escapes brackets that do not pair, spans a soft break, allows <", () => {
     expect(convertUnderlineForPandoc("<u>see [x](y)</u>")).toBe(
       "[see [x](y)]{.underline}",

@@ -229,6 +229,9 @@ describe("convertInlineMathForNotion", () => {
         "[a](https://x/?q=$1) and [b](https://y/?q=$2)",
       ),
     ).toBe("[a](https://x/?q=$1) and [b](https://y/?q=$2)");
+    expect(convertInlineMathForNotion('[id]: p/$a$.png "t"')).toBe(
+      '[id]: p/$a$.png "t"',
+    );
     // A formula opened before a link owns it, as the editor's does.
     expect(convertInlineMathForNotion("$a [x](u) b$")).toBe("$$a [x](u) b$$");
   });
@@ -339,7 +342,7 @@ describe("convertHighlightForNotion", () => {
     );
   });
 
-  describe("finds its closer past a `==` inside code (issue 636)", () => {
+  describe("pairs across code and honours the block rules, as the editor does (issue 636)", () => {
     it("pairs across a code span holding the delimiter", () => {
       // The match is found on a shadow in which the code span is filler:
       // the `==` inside it is no closer, and the real closer behind the
@@ -449,6 +452,14 @@ describe("convertSubscriptForNotion", () => {
     expect(convertSubscriptForNotion("~a <u>x</u> c~d~")).toBe(
       "~a <u>x</u> c~d~",
     );
+  });
+
+  it("neither this pass nor the superscript one protects `$…$`: in the pipeline the math pass has already rewritten it", () => {
+    // The pandoc passes ask for `inlineMath`; these must not, or a formula
+    // the math pass left alone would hide the mark inside it. Standalone,
+    // the mark inside a single-dollar pair converts.
+    expect(convertSubscriptForNotion("$a ~x y~ b$")).toBe("$a $$_{x y}$$ b$");
+    expect(convertSuperscriptForNotion("$a ^x y^ b$")).toBe("$a $$^{x y}$$ b$");
   });
 
   it("converts digit subscript to Unicode", () => {
