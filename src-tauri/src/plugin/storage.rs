@@ -324,6 +324,34 @@ mod tests {
     /// §260 3c-2b — the bundle read backing `SourceRead`. `main` is manifest-supplied
     /// and therefore untrusted: it must not be able to name a file outside the
     /// plugin's own directory, or the op would become the file-read capability that
+    /// dropping `asset:` exists to remove.
+    #[tokio::test]
+    async fn read_bundle_in_reads_own_entry_and_refuses_escapes() {
+        let base = std::env::temp_dir().join(format!("baram-src-{}", std::process::id()));
+        let plugin = base.join("plugin-a");
+        std::fs::create_dir_all(plugin.join("nested")).unwrap();
+        std::fs::write(
+            plugin.join("index.mjs"),
+            "export const activate = () => {};",
+        )
+        .unwrap();
+        std::fs::write(plugin.join("nested").join("deep.mjs"), "// deep").unwrap();
+        std::fs::write(base.join("secret.mjs"), "// another plugin's code").unwrap();
+
+        // The declared entry, and a nested file inside the plugin, are both fine.
+        assert!(read_bundle_in(&plugin, "index.mjs")
+            .await
+            .unwrap()
+            .contains("activate"));
+        assert!(read_bundle_in(&plugin, "nested/deep.mjs").await.is_ok());
+
+        // Traversal out of the plugin dir is refused, as is a missing entry.
+        let escaped = read_bundle_in(&plugin, "../secret.mjs").await;
+        assert!(escaped.is_err(), "traversal must be refused: {escaped:?}");
+        assert!(read_bundle_in(&plugin, "nope.mjs").await.is_err());
+
+        std::fs::remove_dir_all(&base).ok();
+    }
 
     /// ‼️ THE STRINGS, NOT ONLY THE `is_err()` (external review #10).
     ///
@@ -357,9 +385,11 @@ mod tests {
         // the first broke them.
         std::fs::write(base.join("outside.mjs"), "export {}").unwrap();
         let escaped = resolve_within(&plugin, "../outside.mjs").unwrap_err();
+        // ‼️ `&&`, NOT `||`. An earlier spelling had a stale first disjunct naming a path
+        // this fixture no longer uses, which the second disjunct made unreachable — the
+        // branch could have stopped naming the path and this would still have passed.
         assert!(
-            escaped.starts_with("\"../plugin-a/index.mjs\"")
-                || escaped.contains("resolves outside"),
+            escaped.contains("\"../outside.mjs\"") && escaped.contains("resolves outside"),
             "the escape branch must name the path it refused, got: {escaped}"
         );
         let unreadable = resolve_within(&plugin, "nope.mjs").unwrap_err();
@@ -375,35 +405,6 @@ mod tests {
                 .starts_with("plugin entry \"nope.mjs\" is unreadable:"),
             "got: plugin entry {unreadable}"
         );
-
-        std::fs::remove_dir_all(&base).ok();
-    }
-
-    /// dropping `asset:` exists to remove.
-    #[tokio::test]
-    async fn read_bundle_in_reads_own_entry_and_refuses_escapes() {
-        let base = std::env::temp_dir().join(format!("baram-src-{}", std::process::id()));
-        let plugin = base.join("plugin-a");
-        std::fs::create_dir_all(plugin.join("nested")).unwrap();
-        std::fs::write(
-            plugin.join("index.mjs"),
-            "export const activate = () => {};",
-        )
-        .unwrap();
-        std::fs::write(plugin.join("nested").join("deep.mjs"), "// deep").unwrap();
-        std::fs::write(base.join("secret.mjs"), "// another plugin's code").unwrap();
-
-        // The declared entry, and a nested file inside the plugin, are both fine.
-        assert!(read_bundle_in(&plugin, "index.mjs")
-            .await
-            .unwrap()
-            .contains("activate"));
-        assert!(read_bundle_in(&plugin, "nested/deep.mjs").await.is_ok());
-
-        // Traversal out of the plugin dir is refused, as is a missing entry.
-        let escaped = read_bundle_in(&plugin, "../secret.mjs").await;
-        assert!(escaped.is_err(), "traversal must be refused: {escaped:?}");
-        assert!(read_bundle_in(&plugin, "nope.mjs").await.is_err());
 
         std::fs::remove_dir_all(&base).ok();
     }
