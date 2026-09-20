@@ -227,9 +227,11 @@ export function pickApprovedDirParams(rustSource: string): string[] {
  * from the `PluginCapability` union via `CAPABILITY_DESCRIPTIONS`, so it cannot fall behind
  * the union by construction — but Rust keeps its own hand-written array, and nothing forced
  * the two to agree. A capability present in TS but missing here rejects every manifest that
- * declares it, at the dev-folder load path, before TypeScript ever sees the manifest — which
- * is exactly the defect this scrape exists to catch (a capability added to the union without
- * a matching entry here failed silently until someone tried to load a plugin that used it).
+ * declares it at BOTH of `validate_manifest`'s call sites in the crate — `read_manifest_at`
+ * (dev folder, before TypeScript ever sees the manifest) and `read_staged_manifest` (install
+ * from an archive) — so such a plugin is neither loadable nor installable. That is exactly
+ * the defect this scrape exists to catch (a capability added to the union without a matching
+ * entry here failed silently until someone tried to load a plugin that used it).
  *
  * The consumer is `src/plugins/__tests__/capability-parity.test.ts`.
  *

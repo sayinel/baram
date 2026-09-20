@@ -34,9 +34,14 @@ export interface FakeEditorHooks {
  *
  * `on`/`off`/`emit` are a minimal stand-in for Tiptap's real `EventEmitter` — just enough
  * to let a test fire `"destroy"`, assert what a listener registered via `on("destroy",
- * ...)` does, and check that the listener was taken off again. The real Editor invokes
- * destroy handlers with an event payload; callers here only ever pass zero-arg handlers,
- * so `emit` takes no payload either.
+ * ...)` does, and check that the listener was taken off again. Tiptap emits `"destroy"`
+ * with no payload (`EditorEvents["destroy"]` is `void`, and `Editor.destroy` calls
+ * `this.emit("destroy")` with no argument), so `emit` takes none either.
+ *
+ * Not modelled: the real `unregisterPlugin` also returns early when the editor is already
+ * destroyed (`if (this.isDestroyed) return`, before it looks at the plugin list at all).
+ * This fake has no destroyed state, so every removal a test here drives is one on a live
+ * editor; a caller that must survive removal-after-destroy has no coverage from this file.
  */
 export function fakeEditor(hooks: FakeEditorHooks = {}) {
   const plugins: Plugin[] = [];

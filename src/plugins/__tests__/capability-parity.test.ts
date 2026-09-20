@@ -4,9 +4,10 @@
 // ‼️ 이 파일이 존재하는 이유는 이 드리프트가 조용하기 때문이다: TS의
 // `VALID_CAPABILITIES`는 `PluginCapability` 유니온에서 DERIVE되어 그 유니온에
 // 뒤처질 수 없지만, Rust는 자기만의 손으로 쓴 배열을 따로 들고 있다. 유니온에
-// 캡퍼빌리티를 더해도 Rust 쪽을 잊으면 dev-folder 로드 경로(`read_manifest_at`
-// → `validate_manifest`)가 TypeScript가 보기도 전에 그 매니페스트를
-// `unknown capability: …`로 거절한다 — 타입 오류도, TS 쪽 실패도 없다.
+// 캡퍼빌리티를 더해도 Rust 쪽을 잊으면 `validate_manifest`를 거치는 경로가 모두
+// 그 매니페스트를 `unknown capability: …`로 거절한다 — 크레이트 안 호출부는 둘로,
+// dev-folder 로드(`read_manifest_at`)는 TypeScript가 보기도 전에, 아카이브
+// 설치(`read_staged_manifest`)는 설치 자체를 막는다. 타입 오류도, TS 쪽 실패도 없다.
 //
 // 스크레이프 쪽 doctrine(카운트 단정 · 소스 텍스트를 받는 함수)은
 // `scripts/rust-constants.ts` 헤더에 있다.

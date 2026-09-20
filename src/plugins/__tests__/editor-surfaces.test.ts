@@ -50,14 +50,21 @@ describe("editor-surfaces", () => {
   });
 
   test("removes only the named plugin's contributions", () => {
+    // Which plugin survives, not how many: a count alone passes just as happily when
+    // the WRONG one was removed, which is the failure this test's name describes.
     const editor = fakeEditor();
     registerEditorSurface(editor as never);
-    addPluginContributions("p1", new Map([["a", obedient]]), {});
-    addPluginContributions("p2", new Map([["b", obedient]]), {});
+    const keyOf = new Map<string, unknown>();
+    const recording = (ctx: TiptapPluginContext) => {
+      keyOf.set(ctx.pluginId, ctx.key);
+      return new Plugin({ key: ctx.key });
+    };
+    addPluginContributions("p1", new Map([["a", recording]]), {});
+    addPluginContributions("p2", new Map([["b", recording]]), {});
 
     removePluginContributions("p1");
 
-    expect(editor.plugins).toHaveLength(1);
+    expect(editor.keys()).toEqual([keyOf.get("p2")]);
   });
 
   test("refuses a contribution that ignores the key the host minted", () => {
@@ -182,10 +189,11 @@ describe("editor-surfaces", () => {
   test("leaves no registry entry when installing a contribution throws", () => {
     // `registerPlugin` belongs to the EDITOR, not to us: a destroyed editor or a key
     // collision rejects there, after every factory has already built cleanly. Recording
-    // the contribution before that call would leave a failed install's pluginId in the
-    // registry with nothing that ever removes it — the plugin never enters the loader's
-    // `loaded` map, so `removePluginContributions` is never called — and every surface
-    // created afterwards would install a dead plugin's contribution.
+    // the contribution before that call, and leaving it there, would mean every surface
+    // created afterwards installs a dead plugin's contribution — which is what this case
+    // reaches for, with no loader in it. The loader does unwind this throw on its own
+    // (`unwindAfterActivate` → `removePluginContributions`), but `addPluginContributions`
+    // is exported and owns this guarantee whoever calls it.
     const hostile = fakeEditor();
     hostile.registerPlugin = () => {
       throw new Error("editor refused");

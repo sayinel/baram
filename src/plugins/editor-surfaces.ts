@@ -84,10 +84,15 @@ export function addPluginContributions(
   } catch (err) {
     // `registerPlugin` is the EDITOR's, not ours — a destroyed editor or a key collision
     // rejects here, long after every factory built cleanly. The entry above must not
-    // outlive that: the loader does not put a failed load into `loaded`, so nothing ever
-    // calls `removePluginContributions` for it, and every surface registered afterwards
-    // would install a dead plugin's contribution. Unwinding also takes back whatever this
-    // call already registered, so a refusal leaves nothing half-installed either.
+    // outlive that: every surface registered afterwards would install a dead plugin's
+    // contribution. Unwinding also takes back whatever this call already registered, so a
+    // refusal leaves nothing half-installed either.
+    //
+    // The loader does unwind this throw itself — its `try` around `addPluginContributions`
+    // calls `unwindAfterActivate`, whose first statement is `removePluginContributions`.
+    // That is not what this `catch` rests on: `addPluginContributions` is exported, and an
+    // all-or-nothing contract that depended on a caller cleaning up after it would not be
+    // one.
     removePluginContributions(pluginId);
     throw err;
   }
