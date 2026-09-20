@@ -10,11 +10,12 @@
 import type {
   PluginManifest,
   PluginSettingField,
+  PluginSettingOption,
   PluginSettingValue,
 } from "./types";
 
 import { sanitizePluginText } from "./plugin-text";
-import { SETTING_TYPES } from "./types";
+import { SETTING_TYPES, SETTING_VALUE_TYPES } from "./types";
 
 /**
  * How many fields one plugin may declare, and how long a string value may be.
@@ -127,6 +128,47 @@ export function resolvePluginSettings(
 }
 
 /**
+ * What a `color` value may contain — the host's half of the check (§0054).
+ *
+ * Exported because the VALIDATOR needs the same rule: a `default` the resolver would refuse
+ * has to be an install-time error, not a value that silently disappears. One definition, so
+ * the two cannot drift.
+ *
+ * ‼️ This does NOT relieve a plugin of validating the string itself, and Bullet Threading's
+ * own `SAFE_COLOR` stays. The value's destination is a stylesheet the PLUGIN builds, so the
+ * plugin is the one that knows where it is pasted; this is the type keeping its own promise
+ * (a `color` field yields something that is plausibly a colour) so that a hand-edited record
+ * cannot hand a well-behaved plugin a declaration terminator.
+ *
+ * A character allowlist rather than a colour parser, for the same reason as the plugin's:
+ * every character that could end a declaration and start a rule of its own (`;`, `{`, `}`,
+ * `:`, `/`, `@`) is absent from the set, which is the property that matters. Wide enough for
+ * hex, `rgb()`, `hsl()`, `color-mix()`, a colour name, and `var(--token)` — pointing a plugin
+ * at one of the app's own tokens is what the form's swatches do.
+ *
+ * ‼️ The modern slash syntax (`rgb(0 0 0 / 30%)`) is REFUSED, because `/` is in that set.
+ * Deliberate, and the same refusal the plugin already makes; the comma forms are accepted and
+ * the swatches produce tokens.
+ */
+export function isSafeSettingColor(value: unknown): boolean {
+  if (typeof value !== "string") return false;
+  const trimmed = value.trim();
+  return trimmed.length > 0 && SAFE_COLOR.test(trimmed);
+}
+
+/**
+ * §0054 — the same treatment for a field's `description`, on its own longer cap.
+ *
+ * Longer because the purpose is different: a `label` names the field in one glance, a
+ * description is the sentence that used to be exiled to the plugin's README ("any CSS
+ * colour, or one of Baram's theme tokens"). Still capped, and still sanitised, for the
+ * reason `label` is — author text rendered in the app's own chrome.
+ */
+export function sanitizeSettingDescription(raw: string): string {
+  return sanitizePluginText(raw, MAX_SETTING_DESCRIPTION_CHARS);
+}
+
+/**
  * Author-supplied text on its way into the app's own settings pane.
  *
  * Same class as the status-bar text (§260 Phase 4a): a `label` is written by the plugin
@@ -137,6 +179,12 @@ export function resolvePluginSettings(
 export function sanitizeSettingLabel(raw: string): string {
   return sanitizePluginText(raw, MAX_SETTING_LABEL_CHARS);
 }
+
+/** Two rows of help text under a field, at the settings pane's width. */
+const MAX_SETTING_DESCRIPTION_CHARS = 160;
+
+/** The colour allowlist — see `isSafeSettingColor` for what each part of the set is for. */
+const SAFE_COLOR = /^[\w#(),.%\s-]{1,64}$/u;
 
 /** As long as a settings row can show without wrapping into the next field. */
 const MAX_SETTING_LABEL_CHARS = 80;
@@ -156,16 +204,50 @@ function clampChars(value: string): string {
   return isLoneHighSurrogate ? cut.slice(0, -1) : cut;
 }
 
-/** `undefined` for anything that is not a usable value of `type`. */
+/**
+ * `undefined` for anything that is not a usable value of `field`.
+ *
+ * Takes the whole FIELD, not just its type, because §0054's constraints live on the field:
+ * a number's `min`/`max`, an enum's `options`. Every one of them refuses the same way a type
+ * mismatch does, so `resolveOne`'s persisted → default → zero chain needs no new branch —
+ * which also means a declared `default` outside its own `min`/`max` is skipped rather than
+ * handed over. The validator rejects that manifest at install; this keeps a hand-edited one
+ * from getting a value its own field says is illegal.
+ */
 function coerce(
   value: unknown,
-  type: PluginSettingField["type"],
+  field: Pick<PluginSettingField, "max" | "min" | "options" | "type">,
 ): PluginSettingValue | undefined {
-  if (typeof value !== type) return undefined;
-  if (type === "number" && !Number.isFinite(value)) return undefined;
-  if (type === "string") {
-    return clampChars(value as string);
+  const { type } = field;
+  // ‼️ `SETTING_VALUE_TYPES[type]`, not `type`: `color` and `enum` are carried as strings,
+  // and comparing `typeof value` against the DECLARED name would refuse every value they
+  // ever hold. See that table's comment.
+  if (typeof value !== SETTING_VALUE_TYPES[type]) return undefined;
+  if (type === "number") {
+    const n = value as number;
+    if (!Number.isFinite(n)) return undefined;
+    if (field.min !== undefined && n < field.min) return undefined;
+    if (field.max !== undefined && n > field.max) return undefined;
+    return n;
   }
+  if (type === "enum") {
+    // Membership, not shape: an `options` list the validator refused cannot reach here for an
+    // installed plugin, and `isUsableField` drops such a field from `declaredSettingsFor`.
+    return field.options?.some((o) => o.value === value)
+      ? (value as string)
+      : undefined;
+  }
+  if (type === "color") {
+    // Trimmed, not just tested: `isSafeSettingColor` trims before matching, so returning the
+    // raw string would let `" red "` pass a check its own value never took.
+    const trimmed = (value as string).trim();
+    return isSafeSettingColor(trimmed) ? trimmed : undefined;
+  }
+  // ‼️ `string` NAMED, not left as the fallthrough. Writing this as a trailing
+  // `return clampChars(value as string)` typechecks — the cast hides it — and sent every
+  // BOOLEAN through a string clamp, where `value.slice` is not a function. The existing
+  // sandbox tests caught it; the cast is why the compiler did not.
+  if (type === "string") return clampChars(value as string);
   return value as PluginSettingValue;
 }
 
@@ -180,12 +262,37 @@ function coerce(
  * would only have held if the sanitiser tolerated a non-string, and it does not.
  */
 function isUsableField(field: PluginSettingField): boolean {
-  return (
-    typeof field?.key === "string" &&
-    field.key.length > 0 &&
-    typeof field.label === "string" &&
-    SETTING_TYPES.includes(field.type)
-  );
+  if (
+    typeof field?.key !== "string" ||
+    field.key.length === 0 ||
+    typeof field.label !== "string" ||
+    !SETTING_TYPES.includes(field.type)
+  ) {
+    return false;
+  }
+  // §0054 — two shapes that would render a control the user cannot answer. Dropped rather
+  // than repaired, the same way a missing `label` is: the field is gone from the form AND
+  // from what the plugin is told, so the two can never disagree about which fields exist.
+  //
+  // An `enum` with no usable option renders an empty `<select>`, and its resolved value
+  // would have to be the `""` that `zeroFor` reserves for exactly this unreachable case.
+  if (field.type === "enum" && !field.options?.some(isUsableOption))
+    return false;
+  // A range that admits nothing. Every value coerces away, so the form would show a number
+  // the field itself calls illegal — and `ZERO.number` is `0`, which is outside most such
+  // ranges too. The validator refuses this manifest at install; a hand-edited one gets here.
+  if (
+    field.min !== undefined &&
+    field.max !== undefined &&
+    field.min > field.max
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function isUsableOption(option: PluginSettingOption): boolean {
+  return typeof option?.value === "string" && typeof option.label === "string";
 }
 
 function resolveOne(
@@ -193,21 +300,47 @@ function resolveOne(
   persisted: unknown,
 ): PluginSettingValue {
   return (
-    coerce(persisted, field.type) ??
-    coerce(field.default, field.type) ??
-    // `?? ""` because `ZERO[type]` is `undefined` for a type outside the set, and an
-    // `undefined` here is DROPPED by `JSON.stringify` on the way to the sandbox (§260
-    // Phase 4c code review, M5) — which would break the one promise this API makes, stated
-    // in `SandboxSettingsAPI` and in the plugin guide: one value per declared field. The
-    // callers all pass `declaredSettingsFor` output, which filters such a field out
-    // already; this makes the exported function safe on its own rather than by luck.
-    ZERO[field.type] ??
-    ""
+    coerce(persisted, field) ?? coerce(field.default, field) ?? zeroFor(field)
   );
 }
 
+/**
+ * The value a field falls back to when neither the persisted record nor the declared
+ * `default` yields a usable one.
+ *
+ * `enum` cannot use the table: its zero is not a constant but the field's own first option,
+ * which is the only value that keeps this function's promise — one value per declared field,
+ * and for an enum always one of `options`. `?? ""` for a field whose options are unusable;
+ * `declaredSettingsFor` drops those, so that arm is reachable only by calling this exported
+ * function with a raw manifest field.
+ */
+function zeroFor(field: PluginSettingField): PluginSettingValue {
+  if (field.type === "enum") return field.options?.[0]?.value ?? "";
+  // `?? ""` because `ZERO[type]` is `undefined` for a type outside the set, and an
+  // `undefined` here is DROPPED by `JSON.stringify` on the way to the sandbox (§260
+  // Phase 4c code review, M5) — which would break the one promise this API makes, stated
+  // in `SandboxSettingsAPI` and in the plugin guide: one value per declared field. The
+  // callers all pass `declaredSettingsFor` output, which filters such a field out
+  // already; this makes the exported function safe on its own rather than by luck.
+  return ZERO[field.type] ?? "";
+}
+
+/**
+ * `transparent` rather than `""` for a colour (§0054).
+ *
+ * This is only reached by a manifest that declares a `color` field and gives it no usable
+ * `default` — an author bug. `""` would be the parallel of the other zeros, but the value's
+ * destination is a stylesheet, where an empty string makes the declaration invalid and the
+ * failure surfaces as "the rule did nothing" with no way to tell it from a selector that did
+ * not match. `transparent` is a real CSS colour that renders as the author's omission looks.
+ *
+ * The `enum` entry is required by the `Record` and never read — `zeroFor` answers that type
+ * from the field's own `options` before reaching here.
+ */
 const ZERO: Record<PluginSettingField["type"], PluginSettingValue> = {
   boolean: false,
+  color: "transparent",
+  enum: "",
   number: 0,
   string: "",
 };

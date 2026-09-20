@@ -1,16 +1,13 @@
-// §260 Phase 4c — the host side of `settings`: what a plugin may read, when it is told,
-// and what never rides a frame.
+// §260 Phase 4c — the host side of `settings`: what a plugin may read, and what never rides
+// a frame.
+//
+// WHEN it is told moved to `plugins/__tests__/settings-change-notifier.test.ts` with the
+// watcher itself (§0054) — both tiers share it now.
 import type { PluginCapability, PluginSettingField } from "../../types";
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { usePluginStore } from "../../../stores/system/plugin";
-import {
-  createSettingsRequestHandler,
-  SETTINGS_CHANGED_EVENT,
-  SETTINGS_NOTIFY_DEBOUNCE_MS,
-  watchPluginSettings,
-} from "../host-settings-bridge";
+import { createSettingsRequestHandler } from "../host-settings-bridge";
 
 const DECLARED: PluginSettingField[] = [
   { default: true, key: "compact", label: "Compact", type: "boolean" },
@@ -94,135 +91,5 @@ describe("createSettingsRequestHandler", () => {
     const { call, staged } = handler(["settings"], undefined, []);
     await call({ kind: "settings_read" });
     expect(staged).toEqual(["{}"]);
-  });
-});
-
-describe("watchPluginSettings", () => {
-  const wait = (ms: number) =>
-    new Promise((resolve) => globalThis.setTimeout(resolve, ms));
-
-  beforeEach(() => vi.useFakeTimers());
-  afterEach(() => vi.useRealTimers());
-
-  /** A subscription this test drives by hand, standing in for the store's. */
-  function fakeSubscribe() {
-    const listeners: Array<() => void> = [];
-    return {
-      change: () => listeners.forEach((l) => l()),
-      stopped: () => listeners.length === 0,
-      subscribe: (listener: () => void) => {
-        listeners.push(listener);
-        return () => void listeners.splice(listeners.indexOf(listener), 1);
-      },
-    };
-  }
-
-  it("tells the plugin its settings changed, once, after the values settle", () => {
-    // A string field writes on every keystroke; undebounced, that is one frame per
-    // character and a pull for each.
-    const deliverEvent = vi.fn();
-    const store = fakeSubscribe();
-    watchPluginSettings({
-      capabilities: ["settings"],
-      pluginId: "p",
-      session: { deliverEvent },
-      subscribe: store.subscribe,
-    });
-
-    store.change();
-    store.change();
-    store.change();
-    expect(deliverEvent).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(SETTINGS_NOTIFY_DEBOUNCE_MS);
-
-    expect(deliverEvent).toHaveBeenCalledTimes(1);
-    // No payload: the values travel only as a staged pull the plugin asks for.
-    expect(deliverEvent).toHaveBeenCalledWith(SETTINGS_CHANGED_EVENT, []);
-  });
-
-  it("does not subscribe a plugin without the settings capability", () => {
-    // It could not read the values, so the frame would only invite a call that refuses.
-    const deliverEvent = vi.fn();
-    const store = fakeSubscribe();
-    watchPluginSettings({
-      capabilities: ["storage"],
-      pluginId: "p",
-      session: { deliverEvent },
-      subscribe: store.subscribe,
-    });
-
-    store.change();
-    vi.advanceTimersByTime(SETTINGS_NOTIFY_DEBOUNCE_MS);
-
-    expect(deliverEvent).not.toHaveBeenCalled();
-    expect(store.stopped()).toBe(true);
-  });
-
-  it("drops a pending notification when the plugin unloads", () => {
-    // The debounce can outlive an unload by up to its delay; delivering then would reach a
-    // session the loader has already torn down.
-    const deliverEvent = vi.fn();
-    const store = fakeSubscribe();
-    const stop = watchPluginSettings({
-      capabilities: ["settings"],
-      pluginId: "p",
-      session: { deliverEvent },
-      subscribe: store.subscribe,
-    });
-
-    store.change();
-    stop();
-    vi.advanceTimersByTime(SETTINGS_NOTIFY_DEBOUNCE_MS * 4);
-
-    expect(deliverEvent).not.toHaveBeenCalled();
-    expect(store.stopped()).toBe(true);
-  });
-
-  it("wakes the right plugin, once, against the REAL store", async () => {
-    // §260 Phase 4c code review (L9) — every other test in this file injects `subscribe`,
-    // so the production half was unpinned: zustand's two-argument listener contract, the
-    // slice-identity predicate, and "one plugin's edit does not wake another sandbox". That
-    // is this project's own "a test double hides the defect" class, so this one drives the
-    // real store and lets the real `liveSubscribe` run.
-    vi.useRealTimers();
-    usePluginStore.setState({ pluginSettings: {} });
-    const mine = vi.fn();
-    const stop = watchPluginSettings({
-      capabilities: ["settings"],
-      pluginId: "p",
-      session: { deliverEvent: mine },
-    });
-
-    usePluginStore.getState().setPluginSetting("other", "k", 1);
-    await wait(SETTINGS_NOTIFY_DEBOUNCE_MS * 2);
-    expect(mine).not.toHaveBeenCalled(); // another plugin's slice is a different object
-
-    usePluginStore.getState().setPluginSetting("p", "k", 1);
-    await wait(SETTINGS_NOTIFY_DEBOUNCE_MS * 2);
-    expect(mine).toHaveBeenCalledTimes(1);
-    expect(mine).toHaveBeenCalledWith(SETTINGS_CHANGED_EVENT, []);
-
-    stop();
-    usePluginStore.getState().setPluginSetting("p", "k", 2);
-    await wait(SETTINGS_NOTIFY_DEBOUNCE_MS * 2);
-    expect(mine).toHaveBeenCalledTimes(1); // unsubscribed for real, not just debounced
-  });
-
-  it("survives a session that rejects the delivery", () => {
-    const deliverEvent = vi.fn(() => {
-      throw new Error("session is closed");
-    });
-    const store = fakeSubscribe();
-    watchPluginSettings({
-      capabilities: ["settings"],
-      pluginId: "p",
-      session: { deliverEvent },
-      subscribe: store.subscribe,
-    });
-
-    store.change();
-    expect(() =>
-      vi.advanceTimersByTime(SETTINGS_NOTIFY_DEBOUNCE_MS),
-    ).not.toThrow();
   });
 });

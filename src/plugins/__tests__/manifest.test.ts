@@ -624,6 +624,163 @@ describe("validateManifest — trust tier (§260)", () => {
       );
       expect(sandboxed({ settings: many.slice(1) }).valid).toBe(true);
     });
+
+    // §0054 — the constraints a field may carry. Every case is an author intention that
+    // would otherwise vanish between the manifest and the running app with nothing said,
+    // which is the same argument the `default` type check above was built on.
+    describe("field constraints (§0054)", () => {
+      const marker = {
+        default: "halo",
+        key: "m",
+        label: "Marker",
+        options: [
+          { label: "Halo", value: "halo" },
+          { label: "Filled", value: "filled" },
+        ],
+        type: "enum",
+      };
+
+      it("accepts a well-formed enum, colour, bounded number and description", () => {
+        // The positive case first: without it every refusal below would also pass on a
+        // validator that refused everything.
+        const r = sandboxed({
+          settings: [
+            marker,
+            {
+              default: "var(--color-accent-default)",
+              description: "Any CSS colour, or one of Baram's theme tokens",
+              key: "c",
+              label: "Colour",
+              type: "color",
+            },
+            {
+              default: 2,
+              key: "w",
+              label: "Width",
+              max: 8,
+              min: 0.5,
+              type: "number",
+            },
+          ],
+        });
+        expect(fieldsOf(r)).toEqual([]);
+        expect(r.valid).toBe(true);
+      });
+
+      it("rejects a constraint declared on a type that never reads it", () => {
+        // Silently ignoring it is the defect class this whole section exists to close.
+        expect(
+          fieldsOf(
+            sandboxed({
+              settings: [{ key: "s", label: "S", min: 1, type: "string" }],
+            }),
+          ),
+        ).toContain("contributions.settings[0].min");
+        expect(
+          fieldsOf(
+            sandboxed({
+              settings: [
+                {
+                  key: "b",
+                  label: "B",
+                  options: [{ label: "x", value: "x" }],
+                  type: "boolean",
+                },
+              ],
+            }),
+          ),
+        ).toContain("contributions.settings[0].options");
+      });
+
+      it("rejects a range no value can satisfy", () => {
+        expect(
+          fieldsOf(
+            sandboxed({
+              settings: [
+                { key: "w", label: "W", max: 1, min: 5, type: "number" },
+              ],
+            }),
+          ),
+        ).toContain("contributions.settings[0].min");
+      });
+
+      it("requires an enum to declare usable, unique options", () => {
+        for (const options of [
+          undefined,
+          [],
+          [{ label: "A" }],
+          [{ value: "a" }],
+          [
+            { label: "A", value: "a" },
+            { label: "B", value: "a" },
+          ],
+        ]) {
+          expect(
+            fieldsOf(sandboxed({ settings: [{ ...marker, options }] })).join(),
+            `options ${JSON.stringify(options)} must be refused`,
+          ).toMatch(/contributions\.settings\[0\]\.options/u);
+        }
+      });
+
+      it("rejects a default its own field would refuse", () => {
+        // ‼️ The type check alone is not enough now. `"gone"` IS a string, and the old
+        // comparison would have passed it straight through to a resolver that drops it.
+        expect(
+          fieldsOf(sandboxed({ settings: [{ ...marker, default: "gone" }] })),
+        ).toContain("contributions.settings[0].default");
+        expect(
+          fieldsOf(
+            sandboxed({
+              settings: [
+                {
+                  default: 99,
+                  key: "w",
+                  label: "W",
+                  max: 8,
+                  min: 0.5,
+                  type: "number",
+                },
+              ],
+            }),
+          ),
+        ).toContain("contributions.settings[0].default");
+        expect(
+          fieldsOf(
+            sandboxed({
+              settings: [
+                {
+                  default: "red; } body {",
+                  key: "c",
+                  label: "C",
+                  type: "color",
+                },
+              ],
+            }),
+          ),
+        ).toContain("contributions.settings[0].default");
+      });
+
+      it("compares a default against the PRIMITIVE a type is carried as", () => {
+        // `typeof "halo"` is "string", not "enum". Comparing against the declared name
+        // would reject every legal enum and colour default there is.
+        expect(sandboxed({ settings: [marker] }).valid).toBe(true);
+        expect(
+          fieldsOf(sandboxed({ settings: [{ ...marker, default: 1 }] })),
+        ).toContain("contributions.settings[0].default");
+      });
+
+      it("requires a description to be a non-empty string when present", () => {
+        expect(
+          fieldsOf(
+            sandboxed({
+              settings: [
+                { description: 5, key: "s", label: "S", type: "string" },
+              ],
+            }),
+          ),
+        ).toContain("contributions.settings[0].description");
+      });
+    });
   });
 
   it("accepts the extensions capability", () => {

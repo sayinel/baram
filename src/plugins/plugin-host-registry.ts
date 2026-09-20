@@ -31,6 +31,67 @@ export const commandHandlers = new Map<
 export type EventHandler = (...args: unknown[]) => void;
 export const eventListeners = new Map<string, Set<EventHandler>>();
 
+// --- Per-plugin event bus (§0054) ---
+/**
+ * Subscriptions that must reach ONE plugin, keyed `pluginId → event → handlers`.
+ *
+ * ‼️ `eventListeners` above is shared by every trusted plugin: two plugins subscribing to the
+ * same name land in the same `Set`, and `emitPluginEvent` calls all of them. That is correct
+ * for APP events — "a file was opened" happened to everyone — and wrong for anything that
+ * happened to a particular plugin. `settings:changed` is the first such event, and putting it
+ * on the shared bus would have woken every trusted plugin whenever any one of them had a
+ * setting edited, each re-reading its own unchanged values.
+ *
+ * The sandboxed tier never had this problem: its delivery is a frame to one webview
+ * (`session.deliverEvent`), so scoping is structural there. This is the trusted tier's
+ * equivalent.
+ */
+const scopedListeners = new Map<string, Map<string, Set<EventHandler>>>();
+
+/** Subscribe `handler` to one plugin's own `event`. Returns the unsubscriber. */
+export function onScopedPluginEvent(
+  pluginId: string,
+  event: string,
+  handler: EventHandler,
+): () => void {
+  const byEvent = scopedListeners.get(pluginId) ?? new Map();
+  scopedListeners.set(pluginId, byEvent);
+  const handlers = byEvent.get(event) ?? new Set<EventHandler>();
+  byEvent.set(event, handlers);
+  handlers.add(handler);
+  return () => {
+    handlers.delete(handler);
+    // Both levels are pruned when they empty, so an app that loads and unloads plugins does
+    // not accumulate a `Map` entry per plugin that ever ran.
+    if (handlers.size === 0) byEvent.delete(event);
+    if (byEvent.size === 0) scopedListeners.delete(pluginId);
+  };
+}
+
+/**
+ * Emit `event` to ONE plugin's handlers.
+ *
+ * A throwing handler is logged and the rest still run — same contract as `emitPluginEvent`,
+ * and the reason the caller may treat this as non-throwing.
+ */
+export function emitScopedPluginEvent(
+  pluginId: string,
+  event: string,
+  ...args: unknown[]
+): void {
+  // Copied before iterating: a handler that unsubscribes itself (or a sibling) would
+  // otherwise mutate the `Set` mid-forEach.
+  const handlers = scopedListeners.get(pluginId)?.get(event);
+  if (!handlers) return;
+  for (const handler of [...handlers]) {
+    try {
+      handler(...args);
+    } catch (e) {
+      logger.error(`[Plugin Event Error] ${pluginId} ${event}:`, e);
+    }
+  }
+}
+
 // --- Editor handle ---
 /**
  * What the plugin tiers need from the live editor.

@@ -40,7 +40,6 @@ import { legacyInstallMessage, pluginTrustOf } from "./plugin-trust";
 import { usePluginUIStore } from "./plugin-ui-store";
 import { blocksLoad, revocationFor, revocationReason } from "./revocation";
 import { createHostRequestHandler } from "./sandbox/host-request-router";
-import { watchPluginSettings } from "./sandbox/host-settings-bridge";
 import {
   sanitizeStatusBarText,
   statusBarItemId,
@@ -50,6 +49,10 @@ import {
   subscribeSandbox,
 } from "./sandbox/sandbox-event-bridge";
 import { SandboxHost } from "./sandbox/sandbox-host";
+import {
+  SETTINGS_CHANGED_EVENT,
+  watchPluginSettings,
+} from "./settings-change-notifier";
 
 const ACTIVATE_TIMEOUT = 5000; // 5 seconds
 /** §260 3c-2a — bound on closing a sandbox webview, so a wedged close cannot eat
@@ -777,8 +780,9 @@ export class PluginLoader {
     disposables.push({
       dispose: watchPluginSettings({
         capabilities: manifest.capabilities,
+        deliver: () => session.deliverEvent(SETTINGS_CHANGED_EVENT, []),
+        label: "Sandbox",
         pluginId: manifest.id,
-        session,
       }),
     });
     // …and tell it what is already open, so its first useful moment does not depend on

@@ -6,8 +6,8 @@ import type { HostToSandbox } from "../protocol";
 import { describe, expect, it } from "vitest";
 
 import { MAX_SETTING_VALUE_CHARS } from "../../plugin-settings";
+import { SETTINGS_CHANGED_EVENT } from "../../settings-change-notifier";
 import { createHostRequestHandler } from "../host-request-router";
-import { SETTINGS_CHANGED_EVENT } from "../host-settings-bridge";
 import { startSandboxClient } from "../sandbox-client";
 import { SandboxSession } from "../sandbox-session";
 import { createChannelPair } from "./channel-pair";
