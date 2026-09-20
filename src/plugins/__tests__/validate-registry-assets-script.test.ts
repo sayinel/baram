@@ -101,6 +101,25 @@ function run(
   return exec([build(entries, archives)]);
 }
 
+/**
+ * The same registry, plus `readme/` holding the named files.
+ *
+ * Separate from `build`'s `archives` because the whole point is that the two directories can
+ * disagree with the index independently — an entry can name a readme that is missing while
+ * its archive is perfectly present, which is the defect worth catching.
+ */
+function runWithReadmes(
+  entries: unknown,
+  readmes: string[],
+): { output: string; status: null | number } {
+  const dir = build(entries);
+  if (readmes.length > 0) mkdirSync(join(dir, "readme"));
+  for (const name of readmes) {
+    writeFileSync(join(dir, "readme", name), "# hello\n");
+  }
+  return exec([dir]);
+}
+
 /** An entry the script accepts, so each case can break exactly one thing. */
 function validEntry(overrides: Record<string, unknown> = {}) {
   return {
@@ -149,7 +168,11 @@ describe("validate-registry-assets", () => {
     ]);
     expect(status).toBe(1);
     expect(output).toContain("is not under");
-    expect(output).toContain("no gate has ever checked");
+    // The wording went field-neutral when `readme` started sharing this resolver — it said
+    // "the archive cannot be verified here", which would have been a false claim about a
+    // readme (nothing hashes one). The consequence is what this assertion is for, and it is
+    // unchanged: an entry no gate has looked at must not be reported as checked.
+    expect(output).toContain("no gate has ever looked at");
   });
 
   it("says nothing about a SUPERSEDED archive", () => {
@@ -628,5 +651,63 @@ describe("validate-registry-assets", () => {
       .filter((l) => l.includes("line-one") || l.includes("line-three"));
     expect(complaint).toHaveLength(1);
     expect(complaint[0]).toContain("⏎");
+  });
+
+  describe("readme (§69)", () => {
+    const withReadme = (readme: string) => [validEntry({ readme })];
+
+    it("accepts an entry whose readme is present", () => {
+      const { status } = runWithReadmes(
+        withReadme(`${BASE}readme/baram-word-count-1.0.0.md`),
+        ["baram-word-count-1.0.0.md"],
+      );
+      expect(status).toBe(0);
+    });
+
+    it("accepts an entry with NO readme (the permanent legal state)", () => {
+      // Every entry published before the field existed, and every plugin whose archive has
+      // no README. Asserted so a future `required` cannot be added without this going red.
+      expect(runWithReadmes([validEntry()], []).status).toBe(0);
+    });
+
+    it("refuses a readme that is not in the registry", () => {
+      // ‼️ THE DEFECT THIS EXISTS FOR, and it is the same one the archive check exists for,
+      // one field over: the index deploys cleanly, `validate-index.ts` passes it (that
+      // script judges the document, not the deployment), and every user lands on the
+      // plugin's page with the README section silently absent — on the screen they read to
+      // decide about full trust.
+      const { output, status } = runWithReadmes(
+        withReadme(`${BASE}readme/not-published.md`),
+        ["baram-word-count-1.0.0.md"],
+      );
+      expect(status).toBe(1);
+      expect(output).toContain("is not a regular file in the registry");
+      // Named as the README because the message is what sends an operator to the right line.
+      expect(output).toContain("no README at all");
+    });
+
+    it("refuses a readme hosted outside the registry, and says which field", () => {
+      const { output, status } = runWithReadmes(
+        withReadme("https://evil.example/readme.md"),
+        ["baram-word-count-1.0.0.md"],
+      );
+      expect(status).toBe(1);
+      // ‼️ The message must say `readme`, not `downloadUrl`. Before the field name was
+      // parameterised, every refusal on this path blamed the download — which is a
+      // correct-looking message pointing at the wrong line of the index.
+      expect(output).toContain("readme ");
+      expect(output).not.toContain("downloadUrl");
+    });
+
+    it("refuses a percent-encoded readme path, like the archive's", () => {
+      // The HIGH-3 class, inherited by reusing `resolveInRegistry` rather than writing a
+      // second resolver: Pages decodes before it resolves, so a gate that checked the raw
+      // string would look at a different file than users get.
+      const { status } = runWithReadmes(
+        withReadme(`${BASE}readme/baram-word-count-1%2e0%2e0.md`),
+        ["baram-word-count-1.0.0.md"],
+      );
+      expect(status).toBe(1);
+    });
   });
 });

@@ -2,7 +2,7 @@
   "id": "baram-bullet-threading",
   "name": "Bullet Threading",
   "description": "Draws the outline path from the outermost ancestor down to the list item holding the caret.",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "author": "Baram",
   "license": "Apache-2.0",
   "main": "dist/index.mjs",

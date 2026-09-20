@@ -65,6 +65,21 @@ export async function pluginFetchRegistry(url: string): Promise<RegistryIndex> {
   return invoke<RegistryIndex>("plugin_fetch_registry", { url });
 }
 
+/**
+ * A listing's README, for the page of a plugin that is not installed yet.
+ *
+ * ‼️ BOTH URLs, and the registry one is load-bearing rather than context. Rust refuses a
+ * `readmeUrl` that is not under `registryUrl` — an index that could point the reader at any
+ * host would be a request-forgery primitive reachable by opening a plugin's page, and unlike
+ * the archive there is no checksum here attesting anything.
+ */
+export async function pluginFetchReadme(
+  registryUrl: string,
+  readmeUrl: string,
+): Promise<string> {
+  return invoke<string>("plugin_fetch_readme", { readmeUrl, registryUrl });
+}
+
 export async function pluginFetchRevocations(
   url: string,
 ): Promise<FetchedRevocations> {

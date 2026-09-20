@@ -94,6 +94,29 @@ describe("the Bullet Threading example", () => {
     expect(defaults).toEqual(built.DEFAULT_SETTINGS);
   });
 
+  it("does not document a numeric default the code contradicts", () => {
+    // The README is what the app shows on the plugin's page, so a wrong default here is
+    // read by users, not just by authors — and it was wrong: it said `1.5` for the line
+    // width while the code has always used 2, the same drift the manifest carried.
+    //
+    // Scoped to NUMBERS on purpose. They are the only defaults the README can state
+    // exactly; the colour is described as "the app's accent colour" and the boolean as
+    // "on", which is better prose for the reader and not something to assert against a
+    // literal. A check that forced raw values into user-facing text would be trading the
+    // reader's clarity for the test's convenience.
+    const readme = readFileSync(join(DIR, "README.md"), "utf8");
+    const numeric = Object.entries(built.DEFAULT_SETTINGS).filter(
+      ([, v]) => typeof v === "number",
+    );
+    expect(numeric.length, "no numeric setting — this test is vacuous").toBe(1);
+    for (const [key, value] of numeric) {
+      expect(
+        readme,
+        `README must state ${key}'s real default (\`${value}\`)`,
+      ).toContain(`\`${value}\``);
+    }
+  });
+
   it("ships a bundle that carries no ProseMirror of its own", () => {
     // The property `ctx.pm` exists to make possible. A bundled copy is not a heavier
     // build, it is the launch crash — see contributed-decorations.test.ts.

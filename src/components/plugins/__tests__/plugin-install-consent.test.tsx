@@ -216,6 +216,54 @@ describe("install consent + registry cross-check (§260 Phase 5)", () => {
     expect(loadPlugin).toHaveBeenCalledWith("/p/demo", MANIFEST);
   });
 
+  it("LOADS a successfully installed tiptapExtensions plugin — it does not need a restart", async () => {
+    // ‼️ THE DEFECT THIS PINS, found by the repo owner installing the first real editor
+    // plugin from the registry. `handleInstall` skipped `loadPlugin` whenever the manifest
+    // declared `tiptapExtensions`, under the comment "those need restart".
+    //
+    // That was true when it was written (2026-08-06): nothing consumed the field, so a
+    // contribution could only reach an editor constructed afterwards. §260 스펙 0050 made
+    // `addPluginContributions` install into every editor already registered as a surface,
+    // and nobody revisited the skip. The plugin installed, showed no error, and did
+    // nothing — and the way out was toggling Enabled off and on, which calls exactly the
+    // `loadPlugin` the install had declined to call.
+    //
+    // The neighbouring tiptapExtensions test cannot catch this: its install is REFUSED
+    // over a consent gap, so its `loadPlugin` assertion holds for that reason and would
+    // hold with the skip either present or gone.
+    // The entry must advertise what the archive declares, or the install is refused over
+    // the consent gap and this test would pass without ever reaching the load.
+    listed = [
+      {
+        ...ENTRY,
+        capabilities: ["editor", "extensions"],
+        trust: "trusted",
+      },
+    ];
+    const withExtensions: PluginManifest = {
+      ...MANIFEST,
+      capabilities: ["editor", "extensions"],
+      tiptapExtensions: [
+        { exportName: "X", name: "x", type: "plugin" as const },
+      ],
+      trust: "trusted" as const,
+    };
+    downloadReturns(withExtensions);
+
+    render(<PluginMarketplace />);
+    fireEvent.click(await screen.findByRole("button", { name: /^Install$/ }));
+    const dialog = (await findSurface(".plugin-consent")).getByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("checkbox"));
+    fireEvent.click(within(dialog).getByRole("button", { name: /^Install$/ }));
+
+    await waitFor(() =>
+      expect(usePluginStore.getState().installedPlugins.demo).toBeDefined(),
+    );
+    // The install succeeded, so there is no refusal standing in for the assertion.
+    expect(usePluginStore.getState().pluginErrors.demo).toBeFalsy();
+    expect(loadPlugin).toHaveBeenCalledWith("/p/demo", withExtensions);
+  });
+
   it("persists nothing when the download's trust exceeds what was approved", async () => {
     // The registry advertised "sandboxed"; the archive declares "trusted".
     downloadReturns({ ...MANIFEST, trust: "trusted" });
@@ -280,9 +328,13 @@ describe("install consent + registry cross-check (§260 Phase 5)", () => {
   });
 
   it("does not check a tiptapExtensions plugin any more loosely", async () => {
-    // This path skips `loadPlugin` entirely (tiptap extensions need a restart), and
-    // `loadPlugin` was where validation used to live — so before Phase 5 this was the
-    // one install that reached the store with a manifest nothing had ever inspected.
+    // `loadPlugin` was where validation used to live, and this path used to skip it
+    // entirely for a tiptapExtensions manifest — so before Phase 5 this was the one
+    // install that reached the store with a manifest nothing had ever inspected.
+    //
+    // The skip is gone (see the test above); this case survives it unchanged because the
+    // install here is REFUSED over the `network` consent gap, which is what it is about.
+    // Its `loadPlugin` assertion therefore proves the refusal, not the old skip.
     //
     // It has to be a TRUSTED manifest: the validator only permits `tiptapExtensions`
     // for the trusted tier, since they run in the main realm.

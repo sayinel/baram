@@ -9,10 +9,21 @@
 // gate this crate cannot see fail.
 use std::time::Duration;
 
-use super::origin::{validate_http_url, verify_revocation_signature};
+use super::origin::{
+    error_chain, is_within_registry, redirect_within_registry, registry_base, shown,
+    validate_http_url, verify_revocation_signature,
+};
 use super::registry::RegistryIndex;
 use super::PluginError;
 use super::{FIRST_PARTY_REVOCATION_PREFIX, MAX_REVOCATION_BYTES, REVOCATION_PUBLIC_KEY};
+
+/// Largest README we will read out of a registry.
+///
+/// ‼️ PAIRED WITH `MAX_README_BYTES` in `src/components/plugins/plugin-readme.ts`, which caps
+/// the INSTALLED copy. The two render through the same component, so bounds that differed
+/// would mean the same document was legible on one side of an install and truncated on the
+/// other. `registry-readme-cap.test.ts` reads both declarations and fails if they part.
+const MAX_README_BYTES: usize = 256 * 1024;
 
 /// Largest registry index we will read.
 ///
@@ -59,6 +70,44 @@ pub async fn fetch_registry(url: &str) -> Result<RegistryIndex, PluginError> {
     }
     let index: RegistryIndex = serde_json::from_slice(&buf)?;
     Ok(index)
+}
+
+/// Fetch a listing's README, so the marketplace can show it BEFORE anything is installed.
+///
+/// The installed copy is read off disk by `plugin-readme.ts`; this is the same document one
+/// step earlier, and it is the only thing on the pre-install screen that can say what a
+/// plugin actually does — a registry entry carries one line of `description`.
+///
+/// ‼️ THE URL COMES OUT OF THE INDEX, so it gets the same three-part guard `downloadUrl` gets
+/// in `install.rs`, and for a sharper reason: the archive at least has a checksum beside it,
+/// while a README has nothing attesting anything. An index free to name any host would be a
+/// request-forgery primitive reachable by opening a plugin's page.
+///
+///  1. the base is derived from the index URL that LISTED the entry, not from the entry,
+///  2. the URL must be under that base, and
+///  3. every redirect hop is re-checked — without which 1 and 2 are decorative, because
+///     reqwest follows up to 10 hops by default and the first one could go anywhere.
+///
+/// Returns the raw markdown. It is rendered by `MarkdownRenderer` at its UNTRUSTED default,
+/// the same call `PluginDetail` already makes for the installed copy, so link and image URLs
+/// are sanitised there rather than here.
+pub async fn fetch_registry_readme(registry_url: &str, readme_url: &str) -> Result<String, String> {
+    let base = registry_base(registry_url)?;
+    let parsed = validate_http_url(readme_url)?;
+    if !is_within_registry(&parsed, &base) {
+        return Err(format!(
+            "readme {} is not under the registry that listed it ({}) — an index may not send \
+             the reader elsewhere",
+            shown(&parsed),
+            shown(&base)
+        ));
+    }
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .redirect(redirect_within_registry(base))
+        .build()
+        .map_err(|e| e.to_string())?;
+    fetch_capped_text_with(&client, readme_url, MAX_README_BYTES, "readme").await
 }
 
 /// Fetch the plugin revocation list as raw JSON text (§69).
@@ -284,7 +333,24 @@ async fn fetch_capped_text_with(
     what: &str,
 ) -> Result<String, String> {
     let parsed = validate_http_url(url)?;
-    let mut resp = client.get(parsed).send().await.map_err(|e| e.to_string())?;
+    // ‼️ A CUSTOM REDIRECT POLICY'S REFUSAL ARRIVES WRAPPED, and `to_string()` does not walk
+    // `source()` — so the reason the policy took care to write is replaced by reqwest's
+    // "error following redirect for url (…)", naming the ORIGINAL url rather than the hop and
+    // reading like connectivity. `install.rs` hit this as code review MEDIUM-1 and this caller
+    // reproduced it the moment `fetch_registry_readme` started passing a policy; the executing
+    // test is what caught it.
+    //
+    // ‼️ ONLY THE REDIRECT ARM. Every other error keeps `to_string()`, because
+    // `revocation-client.ts`'s classifier decides a LOG LEVEL from this text against nine
+    // alternatives, and appending a source chain to transport errors could make one match by
+    // accident — turning a quiet offline refresh loud. The revocation path passes no custom
+    // policy, so for it this arm means only "too many redirects", where the chain is strictly
+    // more informative.
+    let mut resp = match client.get(parsed).send().await {
+        Ok(resp) => resp,
+        Err(err) if err.is_redirect() => return Err(error_chain(&err)),
+        Err(err) => return Err(err.to_string()),
+    };
     let status = resp.status();
     if !status.is_success() {
         return Err(format!("{what} returned HTTP {status}"));
@@ -518,6 +584,67 @@ mod tests {
         assert!(
             !msg.contains("returned HTTP 302"),
             "the refusal must carry its reason, not surface as a bare 302: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn readme_is_read_when_it_is_under_the_index_that_listed_it() {
+        // ‼️ THE CONTROL FIRST. The three refusals below would all be satisfied by a function
+        // that refused everything, which is the shape an over-tight guard takes — and the one
+        // the redirect test next door records this feature shipping once already.
+        let url = serve_once("200 OK", b"# Bullet Threading\n".to_vec());
+        let body = fetch_registry_readme(&url, &url)
+            .await
+            .expect("an in-registry readme must be read");
+        assert_eq!(body, "# Bullet Threading\n");
+    }
+
+    #[tokio::test]
+    async fn readme_outside_the_registry_that_listed_it_is_refused() {
+        // Same rule as the archive's, and it matters MORE here: an archive has a checksum
+        // beside it, a readme has nothing attesting anything. Nothing reaches the network —
+        // the refusal happens before the request, which is why an unroutable host is fine.
+        let err = fetch_registry_readme(LIVE_INDEX, "https://evil.example/readme.md")
+            .await
+            .expect_err("an off-registry readme must be refused");
+        assert!(
+            err.contains("is not under the registry that listed it"),
+            "expected the containment refusal, got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn readme_redirected_off_the_registry_is_refused() {
+        // ‼️ WITHOUT THIS, THE CHECK ABOVE IS DECORATIVE. reqwest follows up to 10 hops by
+        // default, so a compliant first URL could hand the read to any host — the same defect
+        // the archive path had, tested the same way: over loopback, so the policy really runs.
+        let url = serve_redirect("https://evil.example/readme.md");
+        let err = fetch_registry_readme(&url, &url)
+            .await
+            .expect_err("a redirect off the registry must be refused");
+        assert!(
+            err.contains("outside the registry that listed it"),
+            "expected the policy's own refusal, got: {err}"
+        );
+        assert!(
+            err.contains("evil.example"),
+            "the refusal must name the hop it refused: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn readme_over_the_cap_is_refused_rather_than_buffered() {
+        // Streamed, so the bound applies before the body is in memory. The TypeScript cap on
+        // the installed copy is applied to a string that is already read — its own comment
+        // says so — which is exactly why this side has to be the real one.
+        let oversized = vec![b'#'; MAX_README_BYTES + 1];
+        let url = serve_once("200 OK", oversized);
+        let err = fetch_registry_readme(&url, &url)
+            .await
+            .expect_err("a readme over the cap must be refused");
+        assert!(
+            err.contains("readme too large"),
+            "expected the cap refusal, got: {err}"
         );
     }
 

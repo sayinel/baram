@@ -87,6 +87,21 @@ pub async fn plugin_fetch_revocations(url: String) -> Result<plugin::FetchedRevo
     plugin::fetch_revocations(&url).await
 }
 
+/// §69 — a listing's README, for the marketplace page of a plugin that is not installed yet.
+///
+/// ‼️ BOTH URLs, and the registry one is not decoration. The readme URL comes out of the index
+/// and is checked against the index it came from, so the caller must say which registry it is
+/// reading — an entry cannot vouch for itself. The webview cannot make this request directly
+/// in any case: `connect-src` in the CSP does not list the registry host, which is the same
+/// reason `plugin_fetch_registry` exists.
+#[tauri::command]
+pub async fn plugin_fetch_readme(
+    registry_url: String,
+    readme_url: String,
+) -> Result<String, String> {
+    plugin::fetch_registry_readme(&registry_url, &readme_url).await
+}
+
 #[tauri::command]
 pub async fn plugin_get_dir() -> Result<String, String> {
     plugin::get_plugin_dir()

@@ -281,6 +281,19 @@ export interface RegistryEntry {
     keywords?: string[];
     license: string;
     name: string;
+    /**
+     * Where this listing's README lives, so the marketplace can show it BEFORE an install.
+     *
+     * Absent is legal and permanent: a plugin whose archive has no README, and every entry
+     * published before this field existed.
+     *
+     * ‼️ NOT FETCHED FROM THE WEBVIEW. The CSP's `connect-src` does not list any registry
+     * host, and it must not — the whole point of `plugin_fetch_registry` is that the registry
+     * is reached through Rust. `fetchPluginReadme` passes this URL *and* the index URL it came
+     * from, because the check that matters is "is this under the registry that listed it", and
+     * an entry cannot answer that about itself.
+     */
+    readme?: string;
     repository?: string;
     trust?: PluginTrust;
     version: string;

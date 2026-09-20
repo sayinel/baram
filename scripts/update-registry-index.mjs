@@ -75,6 +75,17 @@ if (!/^[a-z0-9][a-z0-9.-]*\.zip$/.test(args["zip-name"])) {
   fail("--zip-name must match /^[a-z0-9][a-z0-9.-]*\\.zip$/");
 }
 
+// §69 — OPTIONAL, and shaped like the zip name for the same reason: this string is pasted
+// into a URL, so anything that could leave the `readme/` directory (a `/`, a `..`, a `%2f`)
+// must not survive the pattern. The charset admits neither, `.` only between name
+// characters.
+if (
+  args["readme-name"] !== undefined &&
+  !/^[a-z0-9][a-z0-9.-]*\.md$/.test(args["readme-name"])
+) {
+  fail("--readme-name must match /^[a-z0-9][a-z0-9.-]*\\.md$/");
+}
+
 const manifest = JSON.parse(readFileSync(args.manifest, "utf8"));
 for (const field of MANIFEST_REQUIRED) {
   if (manifest[field] === undefined)
@@ -159,6 +170,14 @@ const entry = {
 };
 if (manifest.icon !== undefined) entry.icon = manifest.icon;
 if (manifest.keywords !== undefined) entry.keywords = manifest.keywords;
+// §69 — where the README published beside this archive can be read before an install.
+//
+// ‼️ OMITTED, NOT EMPTIED, when the archive had none. An entry carrying `"readme": ""`
+// would make every consumer test truthiness on a field the schema says is a URL, and the
+// app would try to dereference it once someone forgot.
+if (args["readme-name"] !== undefined) {
+  entry.readme = `${baseUrl}readme/${args["readme-name"]}`;
+}
 
 const index = JSON.parse(readFileSync(args.index, "utf8"));
 if (!Array.isArray(index.plugins)) fail("index.json has no plugins array");

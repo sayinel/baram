@@ -83,6 +83,7 @@
     "allow-pick-approved-dir",
     "allow-pick-approved-file",
     "allow-plugin-add-dev-folder",
+    "allow-plugin-fetch-readme",
     "allow-plugin-fetch-registry",
     "allow-plugin-fetch-revocations",
     "allow-plugin-get-dir",

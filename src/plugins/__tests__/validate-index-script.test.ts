@@ -277,6 +277,58 @@ describe("validate-index", () => {
     expect(status).toBe(1);
   });
 
+  it("accepts an entry with no readme, and one with an https readme", () => {
+    // ABSENT IS LEGAL AND PERMANENT: a plugin whose archive has no README, and every entry
+    // published before the field existed. A required field here would delist them.
+    expect(run({ plugins: [validEntry()] }).status).toBe(0);
+    expect(
+      run({
+        plugins: [
+          validEntry({
+            readme: "https://sayinel.github.io/baram-plugins/readme/w-1.0.0.md",
+          }),
+        ],
+      }).status,
+    ).toBe(0);
+  });
+
+  it("refuses a readme that is not https — an ERROR, unlike the download's warning", () => {
+    // ‼️ THE ASYMMETRY IS THE POINT, and asserting only the exit code would not show it. A
+    // plain-http `downloadUrl` is a WARNING because the checksum still attests the bytes; a
+    // readme has nothing attesting it and is rendered as markdown on the screen a user reads
+    // to decide about full trust. So this one fails the publish.
+    const { output, status } = run({
+      plugins: [
+        validEntry({
+          readme: "http://sayinel.github.io/baram-plugins/readme/w-1.0.0.md",
+        }),
+      ],
+    });
+    expect(status).toBe(1);
+    expect(output).toContain("readme must be an https URL");
+
+    // The control that makes the asymmetry a measurement rather than a claim: the same
+    // scheme on `downloadUrl` is accepted, with a warning.
+    const download = run({
+      plugins: [
+        validEntry({
+          downloadUrl:
+            "http://sayinel.github.io/baram-plugins/plugins/w-1.0.0.zip",
+        }),
+      ],
+    });
+    expect(download.status).toBe(0);
+    expect(download.output).toContain("downloadUrl is not https");
+  });
+
+  it("refuses a readme that is not a string", () => {
+    const { output, status } = run({
+      plugins: [validEntry({ readme: 42 })],
+    });
+    expect(status).toBe(1);
+    expect(output).toContain("readme");
+  });
+
   it("validates the committed seed", () => {
     // The file this repo actually ships, through the same gate CI uses.
     const result = spawnSync(
