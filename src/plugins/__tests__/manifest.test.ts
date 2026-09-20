@@ -1,4 +1,6 @@
 // §69 Plugin Manifest validation tests
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it, test } from "vitest";
 
 import { validateManifest } from "../manifest";
@@ -310,38 +312,43 @@ describe("validateManifest — trust tier (§260)", () => {
     }
   });
 
-  // Regression: a manifest that never writes `contributions` used to round-trip through
-  // Rust's `PluginManifest` (dev-folder loading, `InstalledPluginInfo`) as an explicit JSON
-  // `null` rather than an absent key, which this check rejects as "must be an object" — this
-  // check is correct about `null`, the serializer was the bug (fixed with
-  // `skip_serializing_if` in `src-tauri/src/plugin/registry.rs`). This fixture is the actual
-  // `serde_json::to_value(&PluginManifest { .. })` output for a manifest built from the same
-  // minimal JSON as the Rust test `manifest_without_contributions_serializes_without_the_key`,
-  // captured AFTER the fix — i.e. the real shape that now crosses the boundary.
-  it("accepts the exact JSON shape Rust now emits for a manifest with no contributions", () => {
-    const rustEmitted = {
-      author: "a",
-      capabilities: [],
-      dependencies: [],
-      description: "d",
-      engines: { baram: "*" },
-      homepage: null,
-      icon: null,
-      id: "x",
-      keywords: [],
-      license: "MIT",
-      main: "index.mjs",
-      name: "X",
-      repository: null,
-      tiptapExtensions: [],
-      trust: null,
-      version: "1.0.0",
+  // The cross-language contract: `src-tauri/src/plugin/fixtures/manifest-boundary.json`
+  // holds the shape a manifest has once Rust has re-serialized it on the way back here
+  // (dev-folder loading, `InstalledPluginInfo`). The Rust test
+  // `the_manifest_boundary_fixture_shared_with_the_frontend_holds` pins that file against
+  // `serde_json::to_value(&PluginManifest)`, field for field — so this side never
+  // transcribes the shape by hand, and a field added to the struct updates this test's
+  // input through that file rather than silently leaving it behind.
+  //
+  // The case worth pinning: a manifest that declares no `contributions` must arrive with
+  // no `contributions` KEY. It used to arrive as an explicit `null`, which the check
+  // below rejects as "must be an object" — the check is right about `null`, the
+  // serializer was the bug (fixed with `skip_serializing_if`).
+  it("accepts a manifest as Rust re-serializes it, with no contributions declared", () => {
+    const fixture = JSON.parse(
+      readFileSync(
+        join(
+          process.cwd(),
+          "src-tauri/src/plugin/fixtures/manifest-boundary.json",
+        ),
+        "utf8",
+      ),
+    ) as {
+      input: Record<string, unknown>;
+      serialized: Record<string, unknown>;
     };
-    expect("contributions" in rustEmitted).toBe(false);
-    // `trust: null` is legitimately rejected (trust is required), so assert the OTHER
-    // fields don't trip anything by adding a valid trust on top of the exact shape.
-    const r = validateManifest({ ...rustEmitted, trust: "trusted" });
-    expect(r.valid).toBe(true);
+
+    expect(fixture.input).not.toHaveProperty("contributions");
+    expect(fixture.serialized).not.toHaveProperty("contributions");
+    expect(validateManifest(fixture.serialized).valid).toBe(true);
+
+    // The positive half: this check DOES reject the null it used to receive, so the
+    // assertion above is load-bearing rather than passing because nothing looks.
+    const r = validateManifest({ ...fixture.serialized, contributions: null });
+    expect(r.valid).toBe(false);
+    if (!r.valid) {
+      expect(r.errors.map((e) => e.field)).toContain("contributions");
+    }
   });
 
   // §260 Phase 4a security review (HIGH-2) — the entries, not just the container.
