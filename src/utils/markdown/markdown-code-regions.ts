@@ -11,13 +11,13 @@
  * scanner (`markdown-block-regions.ts` — fences, display math), the markup
  * scanner (`markdown-markup-regions.ts` — tags, destinations, definitions)
  * and the inline scanner (`markdown-inline-spans.ts` — code spans, inline
- * math). `markdown-source.ts` holds what they share.
+ * math). `markdown-source.ts` holds what they and the converters share.
  */
 
 import { fencedCodeRegions } from "./markdown-block-regions";
 import { inlineSpans } from "./markdown-inline-spans";
 import { markupRegions } from "./markdown-markup-regions";
-import { type CodeRegion, orderedRegions, splitLines } from "./markdown-source";
+import { type CodeRegion, splitLines } from "./markdown-source";
 
 /** What `collectCodeRegions` protects beyond fences, block math and inline
  *  code. Inline math is opt-in: a converter that REWRITES `$…$` (the Notion
@@ -38,8 +38,8 @@ export interface CodeRegionOptions {
  *  escape the spaces inside it, so a swallowed code span (`~a \`x y\` b~`)
  *  would have its own bytes rewritten; the Notion ones map it to Unicode,
  *  or keep it verbatim in a `$$_{…}$$` wrapper that is math to every
- *  later pass. A refused match is consumed, as the editor
- *  consumes a pair it rejects: its closer is not offered to a later opener.
+ *  later pass. A refused match is consumed, as the editor consumes a pair
+ *  it rejects: its closer is not offered to a later opener.
  *
  *  `"delimiters"` refuses only when one of the match's own ends sits inside
  *  a region. It is the rule for a replacer that keeps the interior verbatim
@@ -79,6 +79,30 @@ function blankRegions(md: string, regions: readonly CodeRegion[]): string {
   }
   parts.push(md.slice(cursor));
   return parts.join("");
+}
+
+/** `regions` as given, once each begins at or past the end of the one
+ *  before it and at or before its own end — the inline scanner's output
+ *  contract, which the consumers rely on and nothing re-establishes: the
+ *  shadow would carry a region's filler twice and grow, the Notion math
+ *  pass would copy text twice, and every later offset would point at the
+ *  wrong byte of the original, silently. A merge step once hid such a
+ *  fault instead of reporting it, and fused touching regions on the way
+ *  (issue 691). So the fault is an error the export surfaces. */
+export function orderedRegions<R extends readonly CodeRegion[]>(regions: R): R {
+  let cursor = 0;
+  for (const { end, start } of regions) {
+    if (start < cursor) {
+      throw new Error(
+        `code region [${start}, ${end}) begins before the last one ended at ${cursor}`,
+      );
+    }
+    if (end < start) {
+      throw new Error(`code region [${start}, ${end}) ends before it begins`);
+    }
+    cursor = end;
+  }
+  return regions;
 }
 
 /**
@@ -161,7 +185,8 @@ export function replaceOutsideCode(
 ): string {
   const regions = collectCodeRegions(md, options);
   const shadow = blankRegions(md, regions);
-  // A cursor over the sorted regions: matches come in text order.
+  // A cursor over the sorted regions: matches come in text order. Both
+  // closures below advance it, but only one of them runs per call.
   let r = 0;
   const holds = (pos: number): boolean => {
     while (r < regions.length && regions[r].end <= pos) r++;

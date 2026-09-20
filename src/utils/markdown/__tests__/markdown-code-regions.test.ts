@@ -2,13 +2,16 @@
 // pairing of a converter's delimiters across them.
 import { describe, expect, it } from "vitest";
 
+import { fencedCodeRegions } from "../markdown-block-regions";
 import {
   collectCodeRegions,
   inlineMathSpans,
+  orderedRegions,
   replaceOutsideCode,
 } from "../markdown-code-regions";
 import { inlineSpans } from "../markdown-inline-spans";
-import { orderedRegions, splitLines } from "../markdown-source";
+import { markupRegions } from "../markdown-markup-regions";
+import { splitLines } from "../markdown-source";
 
 const spansOf = (md: string, mathCrossesLines = true) =>
   inlineSpans(md, splitLines(md), { mathCrossesLines, skip: [] }).map(
@@ -138,34 +141,41 @@ describe("collectCodeRegions", () => {
     ]);
   });
 
-  it("yields sorted, non-overlapping regions without a merge step: the shadow relies on it", () => {
-    // Skip candidates may nest and overlap (a destination inside a tag's
-    // attribute, a tag inside a destination, a fence holding both); the
-    // scanner honours the outer one and drops what begins inside it, so
-    // `blankRegions` needs no merge — and a merge step is where touching
-    // regions were once fused (see above).
-    const inputs = [
-      '<a href="[x](u)">t</a> `a` $b$',
-      "[x](<u>) `y`",
-      "[a](b) <b [c](d)> $e$",
-      '<img alt="`x`" src="p/$a$.png">`q`',
-      "`a<b>`<b>`c`</b> $x<u>y</u>$",
-      "[id]: <p/`x`.png> `y` [z](w)",
-      "```\n[x](u) $a$\n```\n`b`[c](d)",
-      "> $$\n> [x](u)\n> $$\n`a`",
-      "$a `b` c$ [d](e`f`) `g$h` $i$",
-      '<a\n\nhref="[x](u)">`y`</a>',
-      "- ```\n  [x](u)\n- `a` $b$ [c](d)",
-    ];
-    for (const md of inputs) {
+  // The inline scanner's output contract, read off the scanner itself —
+  // before `orderedRegions` sees it, so this is a pin of the scanner and
+  // not of the check. Skip candidates may nest and overlap (a destination
+  // inside a tag's attribute, a tag inside a destination, a fence holding
+  // both); the scanner honours the outer one and drops what begins inside
+  // it, so the shadow needs no merge — and a merge step is where touching
+  // regions were once fused (see above).
+  it.each([
+    '<a href="[x](u)">t</a> `a` $b$',
+    "[x](<u>) `y`",
+    "[a](b) <b [c](d)> $e$",
+    '<img alt="`x`" src="p/$a$.png">`q`',
+    "`a<b>`<b>`c`</b> $x<u>y</u>$",
+    "[id]: <p/`x`.png> `y` [z](w)",
+    "```\n[x](u) $a$\n```\n`b`[c](d)",
+    "> $$\n> [x](u)\n> $$\n`a`",
+    "$a `b` c$ [d](e`f`) `g$h` $i$",
+    '<a\n\nhref="[x](u)">`y`</a>',
+    "- ```\n  [x](u)\n- `a` $b$ [c](d)",
+  ])(
+    "yields sorted, non-overlapping spans for %j, with and without markup",
+    (md) => {
+      const lines = splitLines(md);
       for (const markup of [false, true]) {
-        const regions = collectCodeRegions(md, { inlineMath: true, markup });
-        for (let i = 1; i < regions.length; i++) {
-          expect(regions[i].start).toBeGreaterThanOrEqual(regions[i - 1].end);
+        const skip = [
+          ...fencedCodeRegions(md, lines),
+          ...(markup ? markupRegions(md) : []),
+        ].sort((a, b) => a.start - b.start);
+        const spans = inlineSpans(md, lines, { mathCrossesLines: true, skip });
+        for (let i = 1; i < spans.length; i++) {
+          expect(spans[i].start).toBeGreaterThanOrEqual(spans[i - 1].end);
         }
       }
-    }
-  });
+    },
+  );
 
   it("closes a fence on a CRLF or lone-CR line, and an unclosed display block runs to the end", () => {
     expect(collectCodeRegions("```\r\nx\r\n```\r\ny")).toEqual([
@@ -200,7 +210,7 @@ describe("collectCodeRegions", () => {
 });
 
 describe("orderedRegions", () => {
-  it("refuses a region that begins before the last one ended, or before its own start", () => {
+  it("refuses a region that begins before the last one ended, or ends before it begins", () => {
     // With the merge step gone, nothing reorders or fuses regions before
     // they reach a consumer. A region out of order or overlapping the last
     // would put its filler on the shadow twice, and the Notion math pass

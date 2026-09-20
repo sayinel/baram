@@ -454,7 +454,7 @@ describe("convertSubscriptForNotion", () => {
     );
   });
 
-  it("does not protect `$…$` itself: in the pipeline the math pass has already rewritten it", () => {
+  it("neither this pass nor the superscript one protects `$…$`: in the pipeline the math pass has already rewritten it", () => {
     // The pandoc passes ask for `inlineMath`; these must not, or a formula
     // the math pass left alone would hide the mark inside it. Standalone,
     // the mark inside a single-dollar pair converts.

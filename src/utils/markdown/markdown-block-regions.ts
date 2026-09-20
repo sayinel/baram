@@ -23,10 +23,10 @@ import type { CodeRegion, SourceLine } from "./markdown-source";
  * line is inline math, the scanner's, and so is the `$$_{a\nb}$$` the
  * Notion subscript pass writes across a line break — a `$$ meta` line the
  * editor would read as a block is not one here, and the editor never
- * writes one. Lines are read without
- * their break, so a CRLF or lone-CR file closes its blocks too (issue 636).
- * Indentation of four or more is read as a prefix here, not as indented
- * code — the approximation the fence rule always made.
+ * writes one. Lines are read without their break, so a CRLF or lone-CR
+ * file closes its blocks too (issue 636). Indentation of four or more is
+ * read as a prefix here, not as indented code — the approximation the
+ * fence rule always made.
  */
 export function fencedCodeRegions(
   md: string,
