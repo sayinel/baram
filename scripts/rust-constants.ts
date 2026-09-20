@@ -297,6 +297,42 @@ export function storedThemeCssByteCap(rustSource: string): number {
   }, 1);
 }
 
+/**
+ * The byte cap `MAX_THEME_MANIFEST_BYTES` applies to a staged theme's `baram-theme.json`.
+ *
+ * ‼️ ADDED BECAUSE THE PROSE CLAIMED THE PARITY AND NOTHING CHECKED IT (0090 final review,
+ * N3). `src/themes/theme-install.ts` says of its own copy "Rust 도 staged 아카이브를 읽을
+ * 때 같은 값으로 자른다" — a true sentence with no way to stay true. The two drifts are the
+ * same silent pair the stored-CSS cap has: a frontend copy that drifted HIGHER lets a
+ * manifest past the parse-cost bound and dies in Rust with a diagnosis about staging, and one
+ * that drifted LOWER refuses manifests the backend would have read.
+ *
+ * ‼️ AND THIS ONE HAS A SECOND CONSUMER THE CSS CAP DOES NOT: `installTheme` is documented as
+ * the ONLY gate for a caller that never went through an archive (spec §12.2's development
+ * folder theme), so its number is load-bearing on its own rather than merely early.
+ *
+ * Same declaration-form requirement and product-of-integers parsing as the caps above, for
+ * the reasons their comments give. The Rust type is `u64` here, not `usize` — transcribed
+ * from `install.rs` at writing time, and the difference is why the pattern is not copied
+ * verbatim from its neighbour.
+ */
+export function themeManifestByteCap(rustSource: string): number {
+  const literal = soleDeclaration(
+    rustSource,
+    /MAX_THEME_MANIFEST_BYTES\s*:\s*u64\s*=\s*([0-9_ *]+);/gu,
+    "MAX_THEME_MANIFEST_BYTES",
+  );
+  return literal.split("*").reduce((product, part) => {
+    const value = Number(part.replaceAll("_", "").trim());
+    if (!Number.isSafeInteger(value) || value <= 0) {
+      throw new Error(
+        `cannot read MAX_THEME_MANIFEST_BYTES: "${literal.trim()}"`,
+      );
+    }
+    return product * value;
+  }, 1);
+}
+
 /** Exactly one declaration must match, or we are guessing which value ships. */
 function soleDeclaration(
   rustSource: string,

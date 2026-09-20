@@ -29,6 +29,11 @@
 import { readFileSync } from "node:fs";
 
 import { parseBaramFloor } from "../src/plugins/engines";
+import {
+  MAX_TEXT_FIELD_CHARS,
+  UNSAFE_TEXT_CHARS_RE,
+} from "../src/themes/theme-manifest";
+import { RESERVED_THEME_IDS } from "../src/types/theme";
 import { VALID_CAPABILITIES } from "../src/plugins/manifest";
 import { label } from "./gha-label";
 
@@ -207,7 +212,39 @@ plugins.forEach((value, position) => {
     );
   }
 
-  if (entry.trust === undefined) {
+  // §360 / 0090 final review (L1) — `trust` is a PLUGIN field, and demanding it of a theme
+  // told the operator something false. The theme install path never reads `trust`
+  // (`themes/theme-install.ts`), so a tier-less theme entry is not "legacy with Install
+  // disabled" — it is an ordinary theme entry. The plan's own out-of-code precondition is
+  // publishing one theme, so this gate met that operator on their first attempt with a
+  // reason that did not apply.
+  //
+  // `capabilities` stays required for BOTH kinds, a few lines up in `FIELDS`, and for a
+  // reason that has nothing to do with capabilities: Rust's `RegistryEntry`
+  // (`src-tauri/src/plugin/registry.rs`) has no serde default for it, so an entry without
+  // it fails deserialization and is dropped at fetch with only a `droppedCount` warning.
+  // That is a WIRE-SHAPE requirement; a theme publishes `"capabilities": []`.
+  const isTheme = entry.kind === "theme";
+  if (isTheme && entry.trust !== undefined) {
+    // Not an error: an entry is readable either way. But a tier on a theme is a field
+    // nothing reads, and saying so is how it stops being copied into the next one.
+    warnings.push(
+      `${where}: trust tier ${JSON.stringify(entry.trust)} on a kind:"theme" entry — the ` +
+        "theme install path never reads it; it is a plugin field",
+    );
+  }
+  if (isTheme) {
+    // M2 — an id a built-in theme already owns can be installed and then never applied:
+    // `findThemeById` resolves it to the shipped theme. `installTheme` refuses it too; this
+    // is the copy that reaches the operator before any user sees it.
+    if (RESERVED_THEME_IDS.has(entry.id as string)) {
+      errors.push(
+        `${where}: id ${JSON.stringify(entry.id)} is one a built-in theme already uses ` +
+          '(or the reserved "system") — the app resolves that id to the shipped theme, so ' +
+          "this entry could be installed and then never applied",
+      );
+    }
+  } else if (entry.trust === undefined) {
     errors.push(
       `${where}: no trust tier — Phase 5 reads a tier-less entry as legacy and DISABLES ` +
         "Install, so this entry can only be looked at",
@@ -233,6 +270,39 @@ plugins.forEach((value, position) => {
         `${KIND_VALUES.join(", ")}; anything else is DROPPED from the index entirely and ` +
         "never appears in any marketplace (not merely demoted, the way an unknown trust tier is)",
     );
+  }
+
+  // 0090 final review (L5) — the `name` a consent dialog renders, checked where it is
+  // published.
+  //
+  // ‼️ THE MANIFEST'S NAME IS ALREADY CHECKED AND THIS ONE WAS NOT. Both theme and plugin
+  // consent dialogs show the REGISTRY entry's name (`ThemeBrowser.tsx` passes
+  // `pendingConsent.entry.name`), which until now had to be a string and nothing else —
+  // `theme-manifest.ts`'s length and control/bidi rules apply to the downloaded manifest,
+  // i.e. to the name the card shows AFTERWARDS. Two rounds went into isolating that dialog
+  // from a hostile theme's CSS; leaving the string inside it unbounded gives back part of
+  // what that bought, because a bidi override or a 4,000-character name deceives without
+  // needing any CSS at all.
+  //
+  // ‼️ The limit and the character class are IMPORTED from `src/themes/theme-manifest.ts`,
+  // not restated. The two layers check the same field for the same reason, and a second
+  // literal here is the shape that drifts. Applies to BOTH kinds — `PluginConsentDialog`
+  // renders the entry's name too.
+  const name = entry.name;
+  if (typeof name === "string") {
+    if (name.trim() === "" || name.length > MAX_TEXT_FIELD_CHARS) {
+      errors.push(
+        `${where}: name must be 1-${MAX_TEXT_FIELD_CHARS} characters (got ${name.length}) — ` +
+          "it is rendered verbatim in the install consent dialog",
+      );
+    }
+    if (UNSAFE_TEXT_CHARS_RE.test(name)) {
+      errors.push(
+        `${where}: name contains a control or bidi-override character — those reorder or ` +
+          "hide text in the install consent dialog, which is the one screen that must read " +
+          "as written",
+      );
+    }
   }
 
   const checksum = entry.checksum;

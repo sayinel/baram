@@ -19,15 +19,26 @@ import type { ThemeMode } from "../types/theme";
  */
 const THEME_ID_RE = /^[a-z0-9-]+$/;
 
-/** 이름·설명 길이 상한 — `use-theme-import.ts`의 이름 상한과 같은 값. */
-const MAX_TEXT_FIELD_CHARS = 100;
+/**
+ * 이름·설명 길이 상한 — `use-theme-import.ts`의 이름 상한과 같은 값.
+ *
+ * 0090 최종 리뷰(L5) 에서 export 로 열었다: `scripts/validate-index.ts` 가 **레지스트리
+ * 항목**의 `name` 에 같은 상한을 걸어야 하는데(동의 대화상자가 그리는 것은 매니페스트가
+ * 아니라 그 항목의 이름이다), 숫자를 두 번 적는 대신 하나를 나눠 쓴다.
+ */
+export const MAX_TEXT_FIELD_CHARS = 100;
 
 /**
  * 제어·bidi 문자 거부 — `use-theme-import.ts`의 이름 검사와 같은 문자 집합. 카드·삭제
  * 라벨을 속이는 표기(bidi override 등)를 막는다.
+ *
+ * {@link MAX_TEXT_FIELD_CHARS} 와 같은 이유로 export 다 — 발행 게이트가 같은 집합을 쓴다.
  */
-// eslint-disable-next-line no-control-regex -- 제어문자 거부가 목적이다
-const UNSAFE_TEXT_CHARS_RE = /[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/;
+export const UNSAFE_TEXT_CHARS_RE =
+  // ‼️ 이 자리다 — 선언 위가 아니라. export 로 열면서 선언이 두 줄로 접혔고, 위에 두면
+  // `-next-line` 이 가리키는 것은 `export const …` 줄이라 정규식에 닿지 않는다(실측).
+  // eslint-disable-next-line no-control-regex -- 제어문자 거부가 목적이다
+  /[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/;
 
 /**
  * 매니페스트 직렬화 크기 상한 — `use-theme-import.ts`가 import 파일 전체에 거는 상한과
