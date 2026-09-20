@@ -3,17 +3,23 @@ title: "Quick start"
 ---
 
 
-The fastest way to start a new plugin is to copy one of the two reference
+The fastest way to start a new plugin is to copy one of the three reference
 examples in [`examples/plugins/`](https://github.com/sayinel/baram/tree/main/examples/plugins):
 
 - [`examples/plugins/word-count/`](https://github.com/sayinel/baram/tree/main/examples/plugins/word-count) — **the sandboxed
   reference, and the one to copy.** A declared status-bar item written by an
   `editor:readonly` + `events` + `statusbar` plugin. It needs nothing from the main
   realm, which is the point.
+- [`examples/plugins/bullet-threading/`](https://github.com/sayinel/baram/tree/main/examples/plugins/bullet-threading) — **the
+  trusted reference.** A ProseMirror decoration plugin contributed through
+  `tiptapExtensions`, plus a settings tab. Copy it when your plugin has to run *inside*
+  the editor: that needs the main realm, so such a plugin is `trust: "trusted"` by
+  construction — the sandboxed tier refuses `tiptapExtensions`.
 - [`examples/plugins/ai-summary/`](https://github.com/sayinel/baram/tree/main/examples/plugins/ai-summary) — the **trusted**
-  tier: Shadow-DOM sidebar panel + settings tab, `ai` + `storage`. Copy it only if you
-  genuinely need arbitrary DOM; it is **not published to the registry**, because there
-  is no declarative `sidebar` contribution yet and a trusted plugin cannot be sandboxed.
+  tier with arbitrary DOM: Shadow-DOM sidebar panel + settings tab, `ai` + `storage`.
+  Copy it only if you genuinely need arbitrary DOM. It is **not in the release
+  workflow's publish allowlist**; its 1.x line was withdrawn from the registry in
+  v0.5.0, and there is still no declarative `sidebar` contribution.
 
 Two further folders are internal **test fixtures — not templates**. Both are single
 hand-written files with no build step, and `plugin-release.yml` refuses to publish either:

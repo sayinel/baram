@@ -40,7 +40,9 @@ jobs:
           [[ "$TAG" =~ ^plugin-(.+)-v([0-9]+\.[0-9]+\.[0-9]+)$ ]] \
             || fail "tag $TAG does not match plugin-<dir>-v<semver>"
           DIR="${BASH_REMATCH[1]}"; VERSION="${BASH_REMATCH[2]}"
-          # §260 Phase 6 — WHAT MAY BE PUBLISHED, as an ALLOWLIST.
+          # §260 Phase 6 — WHAT MAY BE PUBLISHED, AND AT WHICH TIER. One allowlist answering
+          # both, because the second answer turned out to be a property of the individual
+          # plugin rather than of a tier as a class (see the revisit note below).
           #
           # This was a denylist naming the two test fixtures, and round 3 of the code review
           # showed why that was the wrong shape: it enumerated 2 of the 4 directories under
@@ -51,11 +53,34 @@ jobs:
           # decided not to ship. The withdrawal was enforced only by a unit test asserting the
           # LOCAL seed, a file this workflow never reads.
           #
-          # Deny by default. Adding an example must not make it publishable; publishing must be a
-          # deliberate edit here. Pinned by src/plugins/__tests__/malicious-fixture.test.ts, which
-          # EXECUTES this step rather than scanning it.
+          # ‼️ WHY THE TIER IS NO LONGER A BLANKET REFUSAL (스펙 0050, 2026-09-20). Phase 6 wrote
+          # `[[ "$TRUST" == "sandboxed" ]]` in ce61c21c on 2026-07-29, and its argument was sound
+          # for what existed then: a published trusted plugin trains users to click through the
+          # full-trust acknowledgement for ordinary functionality, which is the opposite of what
+          # that acknowledgement exists for.
+          #
+          # What changed is the premise, not the argument. On 2026-07-29 `tiptapExtensions` was a
+          # manifest field with NO CONSUMER — `src/plugins/editor-surfaces.ts`, the code that
+          # carries a contribution into an editor, landed 2026-09-19 in e6818f27 (PR #693). The
+          # class "plugin that extends the editor" did not exist when the blanket rule was
+          # written. It does now, and every member of it is trusted BY CONSTRUCTION: the
+          # sandboxed tier refuses `tiptapExtensions` structurally (separate webview; its
+          # declarative contributions are exactly `commands`, `statusBar`, `settings`, `menu` —
+          # enumerated from `validateContributions` in src/plugins/manifest.ts — and none of them
+          # decorates). A blanket tier refusal therefore does not mean "publish sandboxed
+          # plugins first"; it means the registry can never carry an editor plugin at all.
+          #
+          # So the habituation argument survives, as a PER-PLUGIN one. A directory ships at
+          # exactly the tier named here and nowhere else. Publishing a trusted plugin stays a
+          # deliberate edit to this table rather than a door left open, and an allowlisted
+          # directory that later flips tier fails the release instead of shipping.
+          #
+          # Deny by default in both dimensions. Pinned by
+          # src/plugins/__tests__/malicious-fixture.test.ts, which EXECUTES this step rather than
+          # scanning it.
           case "$DIR" in
-            word-count) ;;
+            word-count)       EXPECTED_TRUST=sandboxed ;;
+            bullet-threading) EXPECTED_TRUST=trusted ;;
             *) fail "$DIR is not in this workflow's publishable allowlist — add it deliberately if that is the intent" ;;
           esac
           MANIFEST="examples/plugins/$DIR/baram-plugin.json"
@@ -68,15 +93,16 @@ jobs:
           PLUGIN_ID="$(node -p "require('./$MANIFEST').id")"
           [[ "$PLUGIN_ID" =~ ^[a-z0-9][a-z0-9-]*$ ]] \
             || fail "manifest id '$PLUGIN_ID' must match ^[a-z0-9][a-z0-9-]*$"
-          # §260 Phase 6 — only the SANDBOXED tier is published, independently of the allowlist
-          # above. Two conditions rather than one because they fail for different reasons: the
-          # allowlist is "is this directory meant to ship", this is "is this tier fit to ship".
-          # A published trusted plugin would train users to click through the full-trust
-          # acknowledgement for ordinary functionality, which is the opposite of what that
-          # acknowledgement exists for.
+          # §260 Phase 6 — the tier the allowlist named, asserted against the manifest on disk.
+          # Still two conditions rather than one, and they still fail for different reasons: the
+          # allowlist answers "is this directory meant to ship", this answers "is it shipping as
+          # the plugin that was allowlisted". A directory whose manifest flips tier —
+          # sandboxed→trusted is the escalation — fails here rather than publishing an entry the
+          # marketplace would present behind a different consent dialog than the one this table
+          # signed off on.
           TRUST="$(node -p "require('./$MANIFEST').trust || ''")"
-          [[ "$TRUST" == "sandboxed" ]] \
-            || fail "manifest trust is '$TRUST'; only sandboxed plugins are published"
+          [[ "$TRUST" == "$EXPECTED_TRUST" ]] \
+            || fail "manifest trust is '$TRUST'; this workflow publishes $DIR at trust '$EXPECTED_TRUST'"
           # §260 Phase 6 code review (H1) — the app must not be BEHIND the floor the plugin
           # declares. `engines.baram` is validated nowhere at install time (the frontend only
           # checks that the field is a non-empty string), so publishing a plugin whose floor the
@@ -140,6 +166,7 @@ jobs:
             echo "dir=$DIR"
             echo "version=$VERSION"
             echo "plugin_id=$PLUGIN_ID"
+            echo "expected_trust=$EXPECTED_TRUST"
             echo "zip_name=$PLUGIN_ID-$VERSION.zip"
           } >> "$GITHUB_OUTPUT"
 
@@ -175,6 +202,10 @@ jobs:
       - name: Verify the packaged artifact is the plugin that was verified
         id: artifact
         env:
+          # The tier the meta step's allowlist named, carried here the same way `plugin_id` and
+          # `version` are: it is the value that step VERIFIED, and this step's whole job is to
+          # hold the bytes to what that step verified.
+          EXPECTED_TRUST: ${{ steps.meta.outputs.expected_trust }}
           PLUGIN_ID: ${{ steps.meta.outputs.plugin_id }}
           VERSION: ${{ steps.meta.outputs.version }}
           ZIP_NAME: ${{ steps.meta.outputs.zip_name }}
@@ -206,8 +237,16 @@ jobs:
             || fail "the archive contains version '$ZIP_VERSION' but '$VERSION' was verified"
           # The tier, asserted again on the artifact. The meta step's check judged a repo path; this
           # one judges the bytes about to be published, so it holds however they got here.
-          [[ "$ZIP_TRUST" == "sandboxed" ]] \
-            || fail "the archive declares trust '$ZIP_TRUST'; only sandboxed plugins are published"
+          #
+          # ‼️ An EMPTY `$EXPECTED_TRUST` must not make this vacuous. The meta step always sets it
+          # (every `case` arm either assigns or aborts), but this step reads it through the step
+          # outputs, and a typo in that plumbing would silently compare against "" — which a
+          # manifest with no `trust` would then MATCH, publishing a tier-less entry the app
+          # disables on sight. Checked rather than assumed, because the failure is silent.
+          [[ "$EXPECTED_TRUST" == "sandboxed" || "$EXPECTED_TRUST" == "trusted" ]] \
+            || fail "the verified tier did not reach this step (got '$EXPECTED_TRUST') — this is a bug in this workflow, not a refusal"
+          [[ "$ZIP_TRUST" == "$EXPECTED_TRUST" ]] \
+            || fail "the archive declares trust '$ZIP_TRUST' but '$EXPECTED_TRUST' was verified"
           echo "manifest=$MANIFEST" >> "$GITHUB_OUTPUT"
 
       - name: Compute checksum

@@ -42,7 +42,10 @@ an exhaustive `Record<PluginOp["kind"], …>` and the Rust side a `match` with n
 
 ## Never published
 
-`plugin-release.yml` refuses this directory (and `sandbox-smoke`) by name in its tag-parsing
-step, so a mistyped `plugin-malicious-fixture-v1.0.0` tag cannot push an attack plugin to the
-public registry. `malicious-fixture.test.ts` pins that refusal, and the fixture is absent from
-`registry/index.json`.
+`plugin-release.yml`'s tag-parsing step holds a publish allowlist that DENIES BY DEFAULT, so
+a mistyped `plugin-malicious-fixture-v1.0.0` tag cannot push an attack plugin to the public
+registry — this directory is refused by not being listed, not by being named. (It was a
+denylist naming this fixture once; review round 3 replaced it, because a denylist enumerated
+2 of the 4 example directories and the withheld one was already the counterexample.)
+`malicious-fixture.test.ts` pins that refusal by RUNNING the step, and the fixture is absent
+from `registry/index.json`.
