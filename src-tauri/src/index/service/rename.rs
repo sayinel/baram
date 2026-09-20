@@ -198,17 +198,49 @@ pub(crate) async fn rename_file_with_links_inner(
             unless: &named_for_its_own_references,
         }
     };
-    let rewritten = rewrite_referrers(
-        &referring_files,
-        old_path,
-        &dirs,
-        &unchanged,
-        |content, ref_path| {
-            let content = replace_wikilink_target(content, &old_target, &new_target);
-            replace_block_reference_target(&content, ref_path, &old_target, &new_target)
-        },
-    )
-    .await;
+    let rewrite = |content: &str, ref_path: &str| {
+        let content = replace_wikilink_target(content, &old_target, &new_target);
+        replace_block_reference_target(&content, ref_path, &old_target, &new_target)
+    };
+    let mut rewritten =
+        rewrite_referrers(&referring_files, old_path, &dirs, &unchanged, &rewrite).await;
+
+    // The renamed note itself, which rewrite_referrers skips: it may spell its
+    // own name — `((old#^b1))` pasted from another note, `[[old]]` — and
+    // under the new name those would dangle. The passes run on it under the
+    // new path, so `((#^id))`, which names no target, resolves to the new stem
+    // and stays. What they change is written where the file is now, and the
+    // note joins updated_files so an open tab follows the disk. Nothing to
+    // change is stale news on the same terms as for a referrer: the index
+    // named the note under the old key, and its own `((#^id))` references do
+    // not account for every line it was named for.
+    let own_rewritten = rewrite(&renamed_content, new_path);
+    let renamed_content = if own_rewritten != renamed_content {
+        match crate::fs::write_file(new_path, &own_rewritten).await {
+            Ok(()) => {
+                rewritten.updated.push(new_path.to_owned());
+                own_rewritten
+            }
+            Err(e) => {
+                log::warn!(
+                    "rename: {new_path} could not be rewritten, its references to its old name are left as they are: {e}"
+                );
+                rewritten.skipped.push(new_path.to_owned());
+                renamed_content
+            }
+        }
+    } else {
+        if matches!(unchanged, Unchanged::Report { .. })
+            && named_lines.contains_key(old_path)
+            && !named_for_its_own_references(old_path, &renamed_content)
+        {
+            log::warn!(
+                "rename: {new_path} was named by the index for references to its old name that are not there to rename now — its references are left as they are"
+            );
+            rewritten.skipped.push(new_path.to_owned());
+        }
+        renamed_content
+    };
 
     // 4. Update every containing index: drop the old entry, re-index the
     //    referring files from the content we already have — each into the
@@ -369,9 +401,11 @@ enum Unchanged<'a> {
 }
 
 /// Rewrite every referring file with `rewrite`, skipping `own_path` (the file
-/// whose links are being renamed). A referrer that cannot be read, resolves
-/// outside `dirs`, or cannot be written is reported in `skipped`; nothing here
-/// fails the rename, because the caller is past its point of no return.
+/// whose links are being renamed — a file rename has moved it by now and
+/// rewrites its content itself; a block ID rename leaves it to the editor's
+/// buffer). A referrer that cannot be read, resolves outside `dirs`, or cannot
+/// be written is reported in `skipped`; nothing here fails the rename, because
+/// the caller is past its point of no return.
 async fn rewrite_referrers(
     referring_files: &[String],
     own_path: &str,

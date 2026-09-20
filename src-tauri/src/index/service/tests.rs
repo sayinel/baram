@@ -2392,6 +2392,121 @@ async fn a_rename_to_a_stem_no_block_reference_can_spell_reports_the_referrers_i
 }
 
 #[tokio::test]
+async fn a_file_rename_rewrites_the_renamed_notes_own_references_to_its_old_name() {
+    // issue 678: the renamed note may spell its own name — `((old#^b1))`
+    // pasted from another note, `[[old]]` — and under the new name those
+    // would dangle. They follow it as a referrer's do; `((#^b1))` names no
+    // target and stays. The note is in updated_files, so an open tab follows
+    // the disk, and the index holds what the file says now.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-678f", true).await;
+    std::fs::write(
+        dir.path().join("old.md"),
+        "para ^b1\n\nsee ((old#^b1)) and [[old]] and ((#^b1))\n",
+    )
+    .unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/old.md"),
+        &format!("{root}/new.md"),
+    )
+    .await
+    .unwrap();
+    assert_eq!(result.updated_files, vec![format!("{root}/new.md")]);
+    assert!(
+        result.skipped_files.is_empty(),
+        "{:?}",
+        result.skipped_files
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("new.md")).unwrap(),
+        "para ^b1\n\nsee ((new#^b1)) and [[new]] and ((#^b1))\n"
+    );
+    let key = active_index_key(&ctx).await.unwrap();
+    let to_old = state
+        .with_index(&key, |idx| idx.unwrap().referring_lines_to("old"))
+        .await;
+    assert!(to_old.is_empty(), "{to_old:?}");
+    let to_new: Vec<String> = state
+        .with_index(&key, |idx| idx.unwrap().referring_lines_to("new"))
+        .await
+        .into_iter()
+        .map(|(source, _)| source)
+        .collect();
+    assert_eq!(to_new, vec![format!("{root}/new.md")]);
+}
+
+#[tokio::test]
+async fn a_file_rename_does_not_report_the_renamed_note_for_its_own_self_references() {
+    // issue 678: the index names the note under its own stem for `((#^b1))`.
+    // A rename rewrites nothing in it — the reference names no target — and
+    // that is not stale news, as for a same-stem note elsewhere.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-678g", true).await;
+    std::fs::write(dir.path().join("old.md"), "para ^b1\n\nsee ((#^b1))\n").unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/old.md"),
+        &format!("{root}/new.md"),
+    )
+    .await
+    .unwrap();
+    assert!(
+        result.updated_files.is_empty(),
+        "{:?}",
+        result.updated_files
+    );
+    assert!(
+        result.skipped_files.is_empty(),
+        "{:?}",
+        result.skipped_files
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("new.md")).unwrap(),
+        "para ^b1\n\nsee ((#^b1))\n"
+    );
+}
+
+#[tokio::test]
+async fn a_rename_to_a_stem_no_block_reference_can_spell_reports_the_renamed_note_too() {
+    // issue 678: the renamed note's own `((old#^b1))` is left pointing at
+    // the old name for the same reason a referrer's is, and it is reported
+    // the same way — under its new path, the one the user can open.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-678h", true).await;
+    std::fs::write(dir.path().join("old.md"), "para ^b1\n\nsee ((old#^b1))\n").unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/old.md"),
+        &format!("{root}/old (draft).md"),
+    )
+    .await
+    .unwrap();
+    assert!(
+        result.updated_files.is_empty(),
+        "{:?}",
+        result.updated_files
+    );
+    assert_eq!(result.skipped_files, vec![format!("{root}/old (draft).md")]);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("old (draft).md")).unwrap(),
+        "para ^b1\n\nsee ((old#^b1))\n"
+    );
+}
+
+#[tokio::test]
 async fn a_block_reference_in_a_notes_own_front_matter_is_not_a_backlink() {
     // issue 667: `note.md` names its own block in its front matter. Nothing
     // renames YAML — so the index does not count it, and the backlink panel
