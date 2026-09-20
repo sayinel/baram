@@ -85,6 +85,21 @@ export function useSettingsEffects(editor: Editor | null) {
   //
   // Only `malicious` — `themeBlocksApply` is `blocksLoad`, and that file carries the reading
   // of §9.4 that makes it so.
+  //
+  // ‼️ §9.4 SAYS "즉시", AND THAT IS NOT "BEFORE FIRST PAINT" (0090 final review, L6). This
+  // reads `revocations` out of the PLUGIN store, which is `null` until that store's async
+  // persist hydration lands; the settings store hydrates independently and can land first.
+  // When it does, a withdrawn theme's CSS paints until the plugin store arrives or
+  // `refreshRevocations` returns — milliseconds, but real. Plugins do not have this window:
+  // `plugin-lifecycle.ts` waits on the bounded refresh before loading any of them.
+  //
+  // Left as it is, on purpose. The exposure is cosmetic rather than structural, because
+  // those bytes went through the hygiene pipeline and are re-verified at injection — no
+  // code, no network, no `!important` reaching a security surface. Closing it would mean
+  // holding the whole theme layer behind another store's hydration, which trades a
+  // guaranteed unstyled flash for every launch against milliseconds in the rare one. What
+  // must not happen is someone reading §9.4's "즉시" as a pre-paint guarantee: it is
+  // "as soon as the withdrawal is known", and this is where "known" is decided.
   const revocations = usePluginStore((s) => s.revocations);
   const activeRevocation = themeRevocationFor(
     activeThemeId,

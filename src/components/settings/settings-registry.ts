@@ -562,6 +562,20 @@ export function useSettingsRegistry(): SearchableSetting[] {
       keywords: ["dark", "light", "color", "theme"],
       control: NAVIGATE_CONTROL,
     },
+    // 0049 §10.4 — the theme marketplace, findable from settings search (0090 final
+    // review, L4). It lives two screens deep (Appearance → Browse Themes) and nothing
+    // named it here, so searching "install theme" or "marketplace" found the plugin panel
+    // and nothing else. `NAVIGATE_CONTROL` like its neighbour: search takes the user to
+    // the Appearance tab, which is where the entry point is.
+    {
+      id: "browseThemes",
+      label: "settings.appearance.browseThemes",
+      description: "settings.appearance.themeBrowser.title",
+      category: "appearance",
+      section: "settings.appearance.theme",
+      keywords: ["theme", "install", "marketplace", "browse", "download"],
+      control: NAVIGATE_CONTROL,
+    },
     // ── Markdown ─────────────────────────────────────────────────────────────
     {
       id: "inlineMath",

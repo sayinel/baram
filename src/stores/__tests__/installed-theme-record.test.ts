@@ -95,6 +95,38 @@ describe("addInstalledTheme", () => {
     expect(record.consentedVersion).toBe("2.0.0");
   });
 
+  it("keeps the FRESH stamp when the caller says consent was just given", () => {
+    // 0090 final review (N2). Reinstalling a theme you already have goes through
+    // `handleInstall`, which opens the consent dialog — and the carry-forward then threw
+    // away the answer the user had just given and kept an older one. Asking and discarding
+    // is the worst of both.
+    useSettingsStore.getState().addInstalledTheme(installedTheme());
+    useSettingsStore.getState().addInstalledTheme(v2(), { freshConsent: true });
+
+    const record = useSettingsStore.getState().installedThemes.dracula;
+    expect(record.consentedAt).toBe("2026-09-20T00:00:00.000Z");
+    expect(record.consentedVersion).toBe("2.0.0");
+  });
+
+  it("still carries forward when the flag is absent or false", () => {
+    // The default must stay the UPDATE behaviour: `handleUpdate` asks nothing, and a flag
+    // that defaulted the other way would re-stamp a consent nobody gave. Both spellings,
+    // because `options` being optional and `freshConsent` being optional are two ways to
+    // say no and only one of them is what `handleUpdate` writes.
+    useSettingsStore.getState().addInstalledTheme(installedTheme());
+    useSettingsStore.getState().addInstalledTheme(v2(), {});
+    expect(
+      useSettingsStore.getState().installedThemes.dracula.consentedVersion,
+    ).toBe("1.0.0");
+
+    useSettingsStore
+      .getState()
+      .addInstalledTheme(v2(), { freshConsent: false });
+    expect(
+      useSettingsStore.getState().installedThemes.dracula.consentedVersion,
+    ).toBe("1.0.0");
+  });
+
   it("leaves other installed themes alone", () => {
     useSettingsStore.getState().addInstalledTheme(installedTheme());
     useSettingsStore

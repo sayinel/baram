@@ -247,6 +247,7 @@ export function useThemeActions() {
     async (
       entry: RegistryEntry,
       registryUrl: string,
+      options?: { freshConsent?: boolean },
     ): Promise<InstalledTheme | null> => {
       setInstalling((prev) => ({ ...prev, [entry.id]: true }));
       try {
@@ -273,7 +274,7 @@ export function useThemeActions() {
         // Record first, then forget the old CSS: `addInstalledTheme` is what carries the
         // consent stamp forward on an update (its doc comment in `appearance-settings.ts`),
         // and the hydration hook re-reads on the next render either way.
-        addInstalledTheme(result.installed);
+        addInstalledTheme(result.installed, options);
         clearThemeCssCache(result.installed.id);
         return result.installed;
       } finally {
@@ -308,7 +309,14 @@ export function useThemeActions() {
         const consented = await askConsent(entry);
         if (!consented) return false;
 
-        const installed = await stageAndRecord(entry, registryUrl);
+        // ‼️ `freshConsent`, because this path just ASKED (0090 final review, N2). It
+        // matters only when a record already exists — reinstalling a theme you have — and
+        // there the dialog the user just answered is the consent the record should carry.
+        // `handleUpdate` deliberately omits it: it asks nothing, so it must keep the old
+        // stamp.
+        const installed = await stageAndRecord(entry, registryUrl, {
+          freshConsent: true,
+        });
         if (installed === null) return false;
 
         const previousActiveThemeId = useSettingsStore.getState().activeThemeId;

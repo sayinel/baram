@@ -39,8 +39,11 @@ vi.mock("../use-theme-actions", async (importOriginal) => ({
   }),
 }));
 
+import type { InstalledTheme } from "../../../../themes/theme-install";
+
 import { findSurface } from "../../../../__tests__/helpers/security-surface";
 import en from "../../../../i18n/en.json";
+import { useSettingsStore } from "../../../../stores/settings/store";
 import { usePluginStore } from "../../../../stores/system/plugin";
 import { ThemeBrowser } from "../ThemeBrowser";
 
@@ -70,10 +73,94 @@ beforeEach(() => {
   settleConsent.mockClear();
   pendingConsent = null;
   usePluginStore.setState({ registryUrl: "https://reg.test/index.json" });
+  useSettingsStore.setState({ installedThemes: {} });
 });
 
 afterEach(() => {
   fetchResult = Promise.resolve({ plugins: [] });
+  useSettingsStore.setState({ installedThemes: {} });
+});
+
+/** A record for the browse entry above, at whatever version the case needs. */
+function installedAt(version: string): Record<string, InstalledTheme> {
+  return {
+    dracula: {
+      checksum: "c".repeat(64),
+      consentedAt: "2026-09-01T00:00:00.000Z",
+      consentedVersion: version,
+      id: "dracula",
+      installedAt: "2026-09-01T00:00:00.000Z",
+      installPath: "/home/u/.baram/themes/dracula",
+      manifest: {
+        author: "Someone",
+        description: "A dark theme",
+        engines: { baram: ">=0.7.0" },
+        id: "dracula",
+        license: "MIT",
+        modes: { light: { tokens: "t.json" } },
+        name: "Dracula",
+        version,
+      },
+      modes: { light: { css: false } },
+    },
+  };
+}
+
+describe("a browse card for something already installed (0090 final review, N5)", () => {
+  it("says Install when nothing is installed", async () => {
+    // The anchor. Without it every assertion below could hold for a screen that says
+    // "Installed" unconditionally.
+    fetchResult = Promise.resolve({ plugins: [themeEntry()] });
+    render(<ThemeBrowser onBack={() => {}} />);
+
+    expect(
+      await screen.findByText(EN["settings.appearance.themeBrowser.install"]),
+    ).toBeTruthy();
+    expect(
+      screen.queryByText(EN["settings.appearance.themeBrowser.installed"]),
+    ).toBeNull();
+  });
+
+  it("says Installed, and offers Reinstall, at the same version", async () => {
+    // With N2 the button re-asks consent and re-downloads, so the card has to say the
+    // theme is already here before the click rather than after it.
+    useSettingsStore.setState({ installedThemes: installedAt("1.0.0") });
+    fetchResult = Promise.resolve({ plugins: [themeEntry()] });
+    render(<ThemeBrowser onBack={() => {}} />);
+
+    expect(
+      await screen.findByText(EN["settings.appearance.themeBrowser.installed"]),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(EN["settings.appearance.themeBrowser.reinstall"]),
+    ).toBeTruthy();
+  });
+
+  it("names the installed version when it differs from the listing", async () => {
+    useSettingsStore.setState({ installedThemes: installedAt("0.9.0") });
+    fetchResult = Promise.resolve({ plugins: [themeEntry()] });
+    render(<ThemeBrowser onBack={() => {}} />);
+
+    // The two states read differently on purpose: only this one is a version the user
+    // might want to move off, and the gallery's own badge is where that action lives.
+    expect(await screen.findByText("Installed: v0.9.0")).toBeTruthy();
+    expect(
+      screen.queryByText(EN["settings.appearance.themeBrowser.installed"]),
+    ).toBeNull();
+  });
+
+  it("does not mark a card for a DIFFERENT theme as installed", async () => {
+    useSettingsStore.setState({ installedThemes: installedAt("1.0.0") });
+    fetchResult = Promise.resolve({
+      plugins: [themeEntry({ id: "nord-ish", name: "Nordish" })],
+    });
+    render(<ThemeBrowser onBack={() => {}} />);
+
+    expect(await screen.findByText("Nordish")).toBeTruthy();
+    expect(
+      screen.queryByText(EN["settings.appearance.themeBrowser.installed"]),
+    ).toBeNull();
+  });
 });
 
 describe("ThemeBrowser", () => {

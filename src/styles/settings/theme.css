@@ -131,6 +131,13 @@
   color: var(--color-status-danger);
 }
 
+/* 0090 final review (N5) — "already installed" on a browse card. Muted, beside the
+   author line: it is a fact about the reader's machine, not a call to act. */
+.theme-browser-card-installed {
+  font-size: 0.7rem;
+  color: var(--color-text-secondary);
+}
+
 .theme-import-error {
   margin-top: 8px;
   font-size: 0.8rem;

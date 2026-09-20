@@ -451,6 +451,50 @@ describe("handleInstall", () => {
   });
 });
 
+describe("reinstalling something already installed (N2)", () => {
+  it("records the consent the user just gave, not the old one", async () => {
+    // The pairing that makes this reachable: `handleInstall` is what the browse screen
+    // calls for EVERY card, installed or not, so a reinstall really does open the dialog.
+    useSettingsStore.setState({
+      installedThemes: { dracula: installedTheme() },
+    });
+    installTheme.mockResolvedValue({ installed: installedV2(), ok: true });
+    const { result } = renderHook(() => useThemeActions());
+
+    act(() => {
+      void result.current.handleInstall(entry(), REGISTRY);
+    });
+    await reachConsent();
+    await act(async () => {
+      result.current.settleConsent(true);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const record = useSettingsStore.getState().installedThemes.dracula;
+    expect(record.consentedAt).toBe("2026-09-20T00:00:00.000Z");
+    expect(record.consentedVersion).toBe("2.0.0");
+  });
+
+  it("but an update still carries the old stamp forward", async () => {
+    // The sibling. Without it the N2 fix reads as "always take the new stamp", which is the
+    // defect `consentedAt` was introduced for.
+    useSettingsStore.setState({
+      installedThemes: { dracula: installedTheme() },
+    });
+    installTheme.mockResolvedValue({ installed: installedV2(), ok: true });
+    const { result } = renderHook(() => useThemeActions());
+
+    await act(async () => {
+      await result.current.handleUpdate("dracula", index([entry()]), REGISTRY);
+    });
+
+    const record = useSettingsStore.getState().installedThemes.dracula;
+    expect(record.consentedAt).toBe("2026-09-01T00:00:00.000Z");
+    expect(record.consentedVersion).toBe("1.0.0");
+  });
+});
+
 describe("handleInstall and a withdrawn version", () => {
   it.each(["malicious", "unlisted", "vulnerable"] as const)(
     "refuses a %s withdrawal before the consent dialog opens",

@@ -19,6 +19,7 @@ import {
   fetchRegistryIndex,
   searchThemeRegistry,
 } from "../../../plugins/registry-client";
+import { useSettingsStore } from "../../../stores/settings/store";
 import { usePluginStore } from "../../../stores/system/plugin";
 import { ThemeConsentDialog } from "./ThemeConsentDialog";
 import { useThemeActions } from "./use-theme-actions";
@@ -45,6 +46,10 @@ export function ThemeBrowser({ onBack }: ThemeBrowserProps) {
     pendingConsent,
     settleConsent,
   } = useThemeActions();
+  // 0090 final review (N5) — a card for something already installed used to read "Install"
+  // like every other. With N2 keeping the freshly-given consent, clicking it re-asks and
+  // re-downloads a theme the user already has, and nothing on screen said so beforehand.
+  const installedThemes = useSettingsStore((s) => s.installedThemes);
 
   const load = useCallback((forceRefresh = false) => {
     setLoading(true);
@@ -140,6 +145,7 @@ export function ThemeBrowser({ onBack }: ThemeBrowserProps) {
             <ThemeBrowserCard
               entry={entry}
               error={installErrors[entry.id]}
+              installedVersion={installedThemes[entry.id]?.manifest.version}
               installing={installing[entry.id] === true}
               key={entry.id}
               onInstall={() => void handleInstall(entry, registryUrl)}
@@ -156,15 +162,24 @@ export function ThemeBrowser({ onBack }: ThemeBrowserProps) {
 function ThemeBrowserCard({
   entry,
   error,
+  installedVersion,
   installing,
   onInstall,
 }: {
   entry: RegistryEntry;
   error: string | undefined;
+  /** The version of this theme already on disk, if any (0090 final review, N5). */
+  installedVersion: string | undefined;
   installing: boolean;
   onInstall: () => void;
 }) {
   const { t } = useTranslation();
+  // Three states, and the middle one is the point: "installed" and "installed at another
+  // version" want different words, because only the second is an action worth taking from
+  // this screen. Updating from the gallery's own badge is the ordinary path; this button
+  // reinstalls, which is why it says so rather than saying "Update".
+  const isInstalled = installedVersion !== undefined;
+  const isSameVersion = installedVersion === entry.version;
   return (
     <div className="theme-browser-card">
       <div className="theme-browser-card-info">
@@ -174,6 +189,15 @@ function ThemeBrowserCard({
         </div>
         <p className="theme-browser-card-description">{entry.description}</p>
         <span className="theme-browser-card-author">{entry.author}</span>
+        {isInstalled && (
+          <span className="theme-browser-card-installed">
+            {isSameVersion
+              ? t("settings.appearance.themeBrowser.installed")
+              : t("settings.appearance.themeBrowser.installedOther", {
+                  version: installedVersion,
+                })}
+          </span>
+        )}
         {error !== undefined && (
           <div className="theme-browser-card-error" role="alert">
             {error}
@@ -188,7 +212,9 @@ function ThemeBrowserCard({
       >
         {installing
           ? t("settings.appearance.themeBrowser.installing")
-          : t("settings.appearance.themeBrowser.install")}
+          : isInstalled
+            ? t("settings.appearance.themeBrowser.reinstall")
+            : t("settings.appearance.themeBrowser.install")}
       </button>
     </div>
   );

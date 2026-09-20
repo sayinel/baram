@@ -15,10 +15,15 @@ export interface AppearanceSettingsSlice {
    * §361 — record an installed community theme. The record IS the enumeration
    * (`theme-store-fs.ts`'s header explains why nothing re-reads the install tree).
    *
-   * ‼️ An id already present is an UPDATE, and an update KEEPS the consent the first install
-   * recorded — see the implementation for why that rule lives here.
+   * ‼️ An id already present is an UPDATE by default, and an update KEEPS the consent the
+   * first install recorded. `freshConsent` is how the one caller that DID ask says so —
+   * see the implementation for why the rule lives here and why the flag is a caller's
+   * knowledge rather than something this store could infer.
    */
-  addInstalledTheme: (theme: InstalledTheme) => void;
+  addInstalledTheme: (
+    theme: InstalledTheme,
+    options?: { freshConsent?: boolean },
+  ) => void;
   customThemes: ThemeDef[];
   deleteCustomTheme: (id: string) => void;
   /** §361 — installed (community/registry) themes, keyed by id. Persisted via
@@ -102,7 +107,7 @@ export const createAppearanceSettingsSlice: StateCreator<
         state.activeThemeId === id ? "system" : state.activeThemeId,
       theme: state.activeThemeId === id ? "system" : state.theme,
     })),
-  addInstalledTheme: (theme) =>
+  addInstalledTheme: (theme, options) =>
     set((state) => {
       const prior = state.installedThemes[theme.id];
       // §361 Task 6 — the consent carry-forward, HERE rather than in the update caller.
@@ -121,14 +126,35 @@ export const createAppearanceSettingsSlice: StateCreator<
       // is no case where an update should produce a NEW consent moment. The three fixed
       // sentences hold for every version the hygiene pipeline will accept, which is what
       // makes carrying the old stamp forward true rather than merely convenient.
+      //
+      // ‼️ `freshConsent` IS THE CALLER'S KNOWLEDGE, NOT SOMETHING THIS STORE CAN DERIVE
+      // (0090 final review, N2). Reinstalling a theme you already have goes through
+      // `handleInstall`, which opens the consent dialog — and then this writer discarded
+      // the stamp the user had just produced and kept an older one. Asking and discarding
+      // is the worst of both: the dialog was not a formality, and the record then says the
+      // agreement happened at a moment it did not. Nothing about the RECORD distinguishes
+      // that from an update, because both are "an id that is already here"; only the code
+      // path knows whether a human was asked. So it is a parameter, defaulting to the
+      // update behaviour, which keeps every existing caller correct by omission.
       const merged: InstalledTheme =
-        prior === undefined
+        prior === undefined || options?.freshConsent === true
           ? theme
           : {
               ...theme,
               consentedAt: prior.consentedAt,
               consentedVersion: prior.consentedVersion,
             };
+      // ‼️ THE `theme` FIELD IS NOT RE-DERIVED HERE, and that is safe only by contingency
+      // (0090 final review, N4). An update can change a theme's MODE SET — a light-only
+      // v1 becoming a light+dark v2 — which would move `themeFieldFor`'s answer for the
+      // active theme. Nothing outside this store reads that field any more: 0088's M3 fix
+      // moved the code block's highlighting onto the document's own light/dark answer, and
+      // it was the last renderer that watched it. The launch-time rehydrate sync in
+      // `store.ts` repairs the value on the next start.
+      //
+      // So a future reader of `theme` reintroduces the defect silently. If one appears,
+      // this is where the re-derivation goes — `setActiveTheme` has the rule, and it takes
+      // the same `lookupThemes` call.
       return {
         installedThemes: { ...state.installedThemes, [theme.id]: merged },
       };
