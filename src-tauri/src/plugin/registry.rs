@@ -341,11 +341,36 @@ mod tests {
     fn test_committed_registry_seed_deserializes() {
         const SEED: &str = include_str!("../../../registry/index.json");
         let idx: RegistryIndex = serde_json::from_str(SEED).unwrap();
-        // §260 Phase 6 — one entry: `baram-ai-summary` was withdrawn from the index because
-        // it needs a declarative `sidebar` contribution that does not exist yet, so it
-        // cannot be a sandboxed plugin and must not be published as a trusted one.
         let ids: Vec<&str> = idx.plugins.iter().map(|p| p.id.as_str()).collect();
-        assert_eq!(ids, vec!["baram-word-count"]);
+
+        // ‼️ PROPERTIES, NOT A ROSTER. This asserted `ids == ["baram-word-count"]` and that
+        // every entry was `sandboxed`. Both were true when written and both are now claims
+        // about WHICH PLUGINS EXIST — so publishing a second one broke this test, and it broke
+        // it in a PR that never ran it (see below). A roster here has to be re-typed on every
+        // release, which is churn that teaches the next person to update the expectation
+        // rather than read it.
+        //
+        // ‼️ AND IT BROKE SILENTLY. `include_str!` makes this crate depend on a file OUTSIDE
+        // `src-tauri/`, while `ci.yml`'s paths filter decides whether the rust job runs at all
+        // from `src-tauri/**`. Editing only the seed therefore changes what this test compiles
+        // against and skips the job that would notice — which is exactly what happened: the
+        // seed gained an entry in #695, rust was "skipping", and the failure surfaced one PR
+        // later against changes that had nothing to do with it. The filter now names the file;
+        // `rust-job-path-filter.test.ts` keeps that honest for the next `include_str!`.
+        assert!(
+            !ids.is_empty(),
+            "an empty seed would make every check below vacuous"
+        );
+
+        // The withdrawal the old roster was really guarding, said directly. §260 Phase 6:
+        // `baram-ai-summary` needs a declarative `sidebar` contribution that does not exist,
+        // so it cannot be sandboxed — and it is not in the publish allowlist. Absence is the
+        // invariant; the rest of the roster is not.
+        assert!(
+            !ids.contains(&"baram-ai-summary"),
+            "the withdrawn plugin must not reappear in the seed: {ids:?}"
+        );
+
         for entry in &idx.plugins {
             assert!(
                 entry
@@ -369,10 +394,18 @@ mod tests {
             assert!(entry.checksum.chars().all(|c| c.is_ascii_hexdigit()));
             // §260 Phase 6 — an entry without a tier is one the app refuses to install
             // (Phase 5 reads it as legacy), so a seed missing it would model a dead registry.
-            assert_eq!(
-                entry.trust.as_deref(),
-                Some("sandboxed"),
-                "{} must declare its tier",
+            //
+            // ‼️ A KNOWN TIER, not `sandboxed`. Pinning the value made this a claim about
+            // which plugins are published rather than about the seed being well-formed, and
+            // 스펙 0050 opened the registry to `trusted` for plugins that extend the editor —
+            // which are trusted by construction, so the old assertion made a legitimate entry
+            // look like a defect. WHICH directory may ship at WHICH tier is decided in
+            // `plugin-release.yml`'s allowlist and executed by `malicious-fixture.test.ts`;
+            // this checks that whatever shipped names a tier the app can enforce.
+            let tier = entry.trust.as_deref();
+            assert!(
+                tier == Some("sandboxed") || tier == Some("trusted"),
+                "{} must declare a tier this build can enforce, got {tier:?}",
                 entry.id
             );
         }

@@ -50,6 +50,20 @@ jobs:
               - '.cargo/**'
               - '.github/workflows/ci.yml'
               - '.github/actions/setup-node/**'
+              # ‼️ FILES OUTSIDE `src-tauri/` THAT THE CRATE COMPILES IN via `include_str!`.
+              # They are build inputs, so editing one changes what the Rust tests assert
+              # against — and without them here the job that would notice does not run.
+              #
+              # That is not hypothetical: #695 added an entry to `registry/index.json`, rust
+              # was "skipping", it merged green, and the seed test failed one PR later against
+              # changes that had nothing to do with it. `revocation-client.ts` had the same
+              # exposure and had simply not been edited yet.
+              #
+              # Kept in step by `src/plugins/__tests__/rust-job-path-filter.test.ts`, which
+              # scans the crate for these inclusions and fails when one is missing here — a
+              # list maintained by hand is how this happened the first time.
+              - 'registry/index.json'
+              - 'src/plugins/revocation-client.ts'
       - name: Determine rust job necessity
         id: decide
         shell: bash
