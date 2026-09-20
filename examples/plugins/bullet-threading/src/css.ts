@@ -8,7 +8,7 @@ export interface ThreadSettings {
 
 export const DEFAULT_SETTINGS: ThreadSettings = {
   color: "var(--color-accent-default)",
-  lineWidth: 1.5,
+  lineWidth: 2,
   showElbow: true,
 };
 
@@ -24,6 +24,13 @@ export const DEFAULT_SETTINGS: ThreadSettings = {
  * app's own tokens is a reasonable thing to want.
  */
 const SAFE_COLOR = /^[\w#(),.%\s-]{1,64}$/;
+
+/**
+ * Bumped whenever the stylesheet changes. Emitted as `--bt-build` so a running app can
+ * say which build it is showing — without it, "the rule did not apply" and "the reload
+ * kept the old module" are indistinguishable from a screenshot.
+ */
+const STYLE_REVISION = "4";
 
 const MIN_WIDTH = 0.5;
 const MAX_WIDTH = 8;
@@ -59,6 +66,12 @@ export function resolveSettings(raw: Record<string, unknown>): ThreadSettings {
  */
 export function buildCss(settings: ThreadSettings): string {
   const railX = `calc(-1 * (var(--list-gutter, 1.4em) + 1em))`;
+  // `railX` is the axis the editor's own indent guide sits on, but the two draw around
+  // it differently: lists.css gives the guide `width: --guide-width` and pulls it back
+  // by half (`margin-left: calc(var(--guide-width) / -2)`), so it is CENTRED on the
+  // axis, while a `border-left` starts at the axis and grows right. The guide's left
+  // half therefore showed past the thread. Same correction, same reason.
+  const centreOnRail = `calc(var(--bt-width) / -2)`;
   const stroke = `var(--bt-width) solid var(--bt-color)`;
   // Both list shapes Baram produces: a plain nested list sits directly in the item, a
   // nested TASK list sits inside the task item's content `<div>`.
@@ -66,6 +79,9 @@ export function buildCss(settings: ThreadSettings): string {
   // `:not(.bt-thread-cursor)` on the PARENT is what stops the thread at the caret.
   // Without it the caret's own item is still a thread member, so its children get
   // segments too and the thread runs on past the end into the subtree below.
+  // How far the first segment has to climb to meet the parent's marker.
+  const reachUp = `calc(-1 * (var(--bt-gap) + var(--editor-line-height, 1.75) * 0.5em))`;
+  const firstChild = (suffix: string) => childItem(`${suffix}:first-child`);
   const childItem = (suffix: string) =>
     [
       `.tiptap li.${THREAD_CLASS}:not(.${CURSOR_CLASS}) > :is(ul, ol) > li${suffix}::after`,
@@ -78,7 +94,13 @@ export function buildCss(settings: ThreadSettings): string {
     // what lets consecutive segments meet across the collapsed margin between two items.
     // If that margin changes, the thread grows a hairline gap between siblings — a
     // cosmetic drift, not a break, but this is the line to come back to.
-    `.tiptap{--bt-color:${settings.color};--bt-width:${settings.lineWidth}px;--bt-gap:0.15em;--bt-radius:0.45em}`,
+    // `--bt-build` is a version marker with no visual effect: it is the only way to
+    // tell from a running app WHICH build of this plugin is live, and a reload that
+    // silently kept the old module looks exactly like a rule that did not apply.
+    // Read it with
+    //   getComputedStyle(document.querySelector(".tiptap")).getPropertyValue("--bt-build")
+    `.tiptap{--bt-build:"${STYLE_REVISION}";--bt-color:${settings.color};` +
+      `--bt-width:${settings.lineWidth}px;--bt-gap:0.15em;--bt-radius:0.6em}`,
 
     // The elbow: one box carrying a left and a bottom border, curved where they meet.
     // Only on an item that is itself inside a list item — a top-level item has no parent
@@ -86,9 +108,11 @@ export function buildCss(settings: ThreadSettings): string {
     `.tiptap li li.${THREAD_CLASS}::after{` +
       `position:absolute;` +
       `left:${railX};` +
+      `margin-left:${centreOnRail};` +
       `top:calc(-1 * var(--bt-gap));` +
       `width:calc(var(--list-gutter, 1.4em) + 0.5em);` +
-      `height:calc(var(--bt-gap) + var(--editor-line-height, 1.75) * 0.5em);` +
+      `height:calc(var(--bt-gap) + var(--editor-line-height, 1.75) * 0.5em + ` +
+      `var(--bt-width) / 2);` +
       `border-left:${stroke};` +
       (settings.showElbow
         ? `border-bottom:${stroke};border-bottom-left-radius:var(--bt-radius);`
@@ -101,6 +125,7 @@ export function buildCss(settings: ThreadSettings): string {
     `${childItem(`:not(.${THREAD_CLASS})`)}{` +
       `position:absolute;` +
       `left:${railX};` +
+      `margin-left:${centreOnRail};` +
       `top:calc(-1 * var(--bt-gap));` +
       `bottom:0;` +
       `border-left:${stroke};` +
@@ -111,15 +136,70 @@ export function buildCss(settings: ThreadSettings): string {
     // on the way to anywhere.
     `${childItem(`.${THREAD_CLASS} ~ li`)}{border-color:transparent}`,
 
-    // The bullets along the thread. The markers paint with `currentcolor`, so setting
-    // `color` is all it takes.
+    // Reach up to the PARENT's own marker, so the thread leaves a bullet rather than
+    // appearing out of the gap below it. The distance is exact rather than tuned:
+    // `li p` has no margin in lists.css, so a child list's top edge is the parent's
+    // first line-box bottom, and the marker is centred half a line-box above that.
+    // Both first-child shapes need it — a plain sibling segment (top/bottom) and a
+    // threaded item's elbow (top/height), which has to grow by what it moved up.
+    `${firstChild(`:not(.${THREAD_CLASS})`)}{top:${reachUp}}`,
+    `${firstChild(`.${THREAD_CLASS}`)}{` +
+      `top:${reachUp};` +
+      `height:calc(var(--bt-gap) + var(--editor-line-height, 1.75) * 1em + ` +
+      `var(--bt-width) / 2)}`,
+
+    // The bullets along the thread become rings, which is what makes the stroke read as
+    // ending in something rather than stopping near it. The centre is filled with the
+    // editor's background, so the segment running underneath is masked by the ring
+    // itself and no arithmetic is needed to stop the line short of the marker —
+    // `z-index` is only needed because `::after` would otherwise paint over `::before`.
+    // Ordered markers are text and task items draw no marker at all (`content: none`),
+    // so both fall through to the colour rule below.
+    `.tiptap ul > li.${THREAD_CLASS}::before{` +
+      `z-index:1;` +
+      `background:var(--color-editor-bg);` +
+      `box-shadow:0 0 0 var(--bt-width) var(--bt-color)}`,
+
+    // Everything else on the thread that paints with `currentcolor` — ordered numbers,
+    // and the bullet's fallback if the rule above is ever overridden.
     `.tiptap li.${THREAD_CLASS}::before{color:var(--bt-color)}`,
 
-    // The one at the end carries a ring as well: in a deep outline the thread alone says
-    // which BRANCH you are on, not which item.
-    `.tiptap li.${CURSOR_CLASS}::before{` +
+    // The end of the thread is filled rather than hollow, with a soft halo: in a deep
+    // outline the stroke alone says which BRANCH you are on, not which item.
+    `.tiptap ul > li.${CURSOR_CLASS}::before{` +
+      `background:var(--bt-color);` +
+      `box-shadow:0 0 0 var(--bt-width) var(--bt-color),` +
+      `0 0 0 calc(var(--bt-width) * 3) color-mix(in srgb, var(--bt-color) 25%, transparent)}`,
+
+    // ...and the ordered-list equivalent, where there is no dot to fill. A box around
+    // the number reads as a form field; a glow on the glyph itself is the same gesture
+    // as the bullet's halo, so `text-shadow` rather than `box-shadow` — the latter would
+    // outline the marker's rectangular box.
+    `.tiptap ol > li.${CURSOR_CLASS}::before{` +
       `color:var(--bt-color);` +
-      `box-shadow:0 0 0 var(--bt-width) var(--bt-color)}`,
+      `font-weight:700;` +
+      `text-shadow:0 0 calc(var(--bt-width) * 2.5) ` +
+      `color-mix(in srgb, var(--bt-color) 55%, transparent)}`,
+
+    // Ordered markers are TEXT, and text has nothing to hide the stroke the way a
+    // bullet's ring does — so the line ran into the digits at the end of the elbow AND
+    // through them on the way down, because the guide axis falls inside a number's box
+    // while it falls inside a bullet's too (the ring is simply what conceals it there).
+    //
+    // Cutting the elbow short by a computed length was the first attempt and it cannot
+    // work: the gap it leaves is the gutter minus the GLYPH, and lists.css floors the
+    // gutter at 1.4em, so the same length reads as loose behind `a.` and tight behind
+    // `iii.`. CSS cannot measure a glyph.
+    //
+    // Masking can. The marker gets the editor's own background and a left padding, and
+    // because it is anchored `right: 100%` the padding grows the box LEFTWARD without
+    // moving the number. Whatever runs underneath is hidden for exactly that distance
+    // past the glyph's left edge — one constant gap for every marker width, and the
+    // same mechanism the ring already uses.
+    `.tiptap ol > li.${THREAD_CLASS}::before{` +
+      `z-index:1;` +
+      `background:var(--color-editor-bg);` +
+      `padding-left:0.3em}`,
   ].join("\n");
 }
 
