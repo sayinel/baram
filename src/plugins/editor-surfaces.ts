@@ -18,6 +18,8 @@ import type { Plugin } from "@tiptap/pm/state";
 
 import { PluginKey } from "@tiptap/pm/state";
 
+import { logger } from "../utils/logger";
+
 export interface TiptapPluginContext {
   editor: Editor;
   /**
@@ -220,20 +222,44 @@ function installPlugins(
   plugins: Map<string, Plugin>,
 ): void {
   const keysInstalled: PluginKey[] = [];
-  // Recorded BEFORE the first `registerPlugin`, not after the last one: the map holds this
-  // very array, so a `registerPlugin` that throws part-way still leaves what already
-  // landed recorded — and therefore removable by the callers' unwind. Recording at the end
-  // meant a partial install was invisible and stuck on the editor for good.
+  // The array enters the map BEFORE anything is registered, and each key enters the array
+  // before ITS OWN `registerPlugin`. Both halves are needed for the callers' unwind to
+  // find what landed, and it is the second one that covers the plugin that actually
+  // fails: `registerPlugin` is `state.reconfigure({ plugins })` and THEN
+  // `view.updateState(state)`, and `updateState` assigns `view.state` before it renders.
+  // A plugin whose rendering throws — a bad decoration, say — is therefore already in
+  // `editor.state.plugins` when the call throws, so a key pushed once the call RETURNS is
+  // never pushed for exactly that plugin. Unrecorded, it is stuck on this editor for
+  // good; and since `keyFor` reuses one key per contribution across loads, every later
+  // load of that contribution then hands ProseMirror a second instance of the same key —
+  // "Adding different instances of a keyed plugin" — until the app restarts.
+  //
+  // Recording a key that never landed costs nothing: `unregisterPlugin` filters by key
+  // and returns without touching the view when the filter removed nothing.
   installed.get(editor)?.set(pluginId, keysInstalled);
   for (const [name, plugin] of plugins) {
-    editor.registerPlugin(plugin);
     keysInstalled.push(keyFor(pluginId, name));
+    editor.registerPlugin(plugin);
   }
 }
 
 function uninstall(editor: Editor, pluginId: string): void {
   const installedKeys = installed.get(editor)?.get(pluginId);
   if (!installedKeys) return;
-  for (const key of installedKeys) editor.unregisterPlugin(key);
+  for (const key of installedKeys) {
+    // Per key, because `unregisterPlugin` updates the view too — on an editor that, when
+    // this runs as an unwind, is already failing to render. One removal that throws must
+    // not strand the keys after it, nor replace the error that explains why we are
+    // unwinding. The plugin itself is off either way: the removal reaches `view.state`
+    // before the rendering that can throw, exactly as the install does.
+    try {
+      editor.unregisterPlugin(key);
+    } catch (err) {
+      logger.error(
+        `[EditorSurfaces] ${pluginId}: removing a plugin failed`,
+        err,
+      );
+    }
+  }
   installed.get(editor)?.delete(pluginId);
 }

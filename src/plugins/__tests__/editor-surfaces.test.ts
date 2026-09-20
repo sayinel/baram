@@ -1,8 +1,9 @@
 import type { TiptapPluginContext } from "../editor-surfaces";
 
 import { Plugin, PluginKey } from "@tiptap/pm/state";
-import { beforeEach, describe, expect, test } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 
+import { logger } from "../../utils/logger";
 import {
   __resetEditorSurfaces,
   addPluginContributions,
@@ -225,6 +226,121 @@ describe("editor-surfaces", () => {
     // Half an installation is worse than none: the first plugin is live on the editor
     // with no record anyone can use to take it off again.
     expect(editor.plugins).toHaveLength(0);
+  });
+
+  test("unwinds a plugin whose own registerPlugin threw after it had landed", () => {
+    // The failure the owner hit. `registerPlugin` reconfigures the state first and
+    // updates the view second, so a plugin whose rendering throws is ALREADY in
+    // `editor.state.plugins` when the call throws. A key recorded only once the call
+    // returns is therefore never recorded at all for exactly the plugin that landed,
+    // and the unwind walks past it.
+    const editor = fakeEditor();
+    registerEditorSurface(editor as never);
+    editor.hooks.afterRegister = () => {
+      throw new TypeError(
+        "undefined is not an object (evaluating 'localsInner')",
+      );
+    };
+
+    expect(() =>
+      addPluginContributions("p1", new Map([["a", obedient]]), {}),
+    ).toThrow(/localsInner/);
+
+    expect(editor.plugins).toHaveLength(0);
+  });
+
+  test("lets the same contribution be installed again after one threw mid-registration", () => {
+    // What a leaked plugin costs: the host mints one key per contribution and reuses it
+    // across loads, so a plugin left on the editor makes every RETRY hand ProseMirror a
+    // second instance of that key — "Adding different instances of a keyed plugin". The
+    // owner saw a launch-time render failure turn into that on every load afterwards.
+    const editor = fakeEditor();
+    registerEditorSurface(editor as never);
+    editor.hooks.afterRegister = () => {
+      throw new Error("view update failed");
+    };
+    expect(() =>
+      addPluginContributions("p1", new Map([["a", obedient]]), {}),
+    ).toThrow(/view update failed/);
+
+    editor.hooks.afterRegister = undefined;
+    addPluginContributions("p1", new Map([["a", obedient]]), {});
+
+    expect(editor.plugins).toHaveLength(1);
+  });
+
+  test("unwinds the earlier plugins too when a later one throws after landing", () => {
+    const editor = fakeEditor();
+    registerEditorSurface(editor as never);
+    let registered = 0;
+    editor.hooks.afterRegister = () => {
+      registered += 1;
+      if (registered > 1) throw new Error("view update failed");
+    };
+
+    expect(() =>
+      addPluginContributions(
+        "p1",
+        new Map([
+          ["a", obedient],
+          ["b", obedient],
+        ]),
+        {},
+      ),
+    ).toThrow(/view update failed/);
+
+    expect(editor.plugins).toHaveLength(0);
+  });
+
+  test("unwinds a new surface whose registerPlugin throws after the plugin lands", () => {
+    // Same defect on the other install path: `registerEditorSurface` re-runs every
+    // loaded contribution on the new editor, and its unwind reads the same record.
+    const editor = fakeEditor();
+    addPluginContributions("p1", new Map([["a", obedient]]), {});
+    editor.hooks.afterRegister = () => {
+      throw new Error("view update failed");
+    };
+
+    expect(() => registerEditorSurface(editor as never)).toThrow(
+      /view update failed/,
+    );
+
+    expect(editor.plugins).toHaveLength(0);
+  });
+
+  test("keeps unwinding when one removal throws, and reports the original failure", () => {
+    // `unregisterPlugin` updates the view too, on an editor that is — by definition
+    // here — already failing to render. A throw from one removal must not strand the
+    // rest or replace the error that explains why we are unwinding at all.
+    const loud = vi.spyOn(logger, "error").mockImplementation(() => {});
+    const editor = fakeEditor();
+    registerEditorSurface(editor as never);
+    let registered = 0;
+    editor.hooks.afterRegister = () => {
+      registered += 1;
+      if (registered > 1) throw new Error("view update failed");
+    };
+    const removals: unknown[] = [];
+    editor.hooks.afterUnregister = (key) => {
+      removals.push(key);
+      if (removals.length === 1) throw new Error("teardown boom");
+    };
+
+    expect(() =>
+      addPluginContributions(
+        "p1",
+        new Map([
+          ["a", obedient],
+          ["b", obedient],
+        ]),
+        {},
+      ),
+    ).toThrow(/view update failed/);
+
+    expect(removals).toHaveLength(2);
+    expect(editor.plugins).toHaveLength(0);
+    expect(loud).toHaveBeenCalled();
+    loud.mockRestore();
   });
 
   test("re-adding the same pluginId replaces its contributions instead of duplicating them", () => {
