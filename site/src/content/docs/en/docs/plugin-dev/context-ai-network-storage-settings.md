@@ -80,6 +80,50 @@ move. Use `context.storage` for state of your own.
 const { prefix = "»" } = context.settings.getAll();
 ```
 
+### Being told when a value changes
+
+```javascript
+context.events.on("settings:changed", () => {
+  rebuild(context.settings.getAll()); // the event carries no values
+});
+```
+
+This one event is gated on **`settings`**, not on `events`, in both tiers — it carries no
+payload, and requiring `events` would make your install dialog claim you watch what the
+user does to their files. It is debounced, so a string field being typed into notifies you
+once the value settles rather than once per keystroke.
+
+‼️ The `settings` object a `tiptapExtensions` factory receives is a **snapshot** taken when
+the plugin loads. The factory is not re-run, so read `context.settings.getAll()` when you
+need a current value.
+
+### What a field may declare
+
+```typescript
+interface PluginSettingField {
+  key: string;
+  label: string;
+  type: "boolean" | "color" | "enum" | "number" | "string";
+  default?: boolean | number | string;
+  description?: string;   // one line under the label
+  min?: number;           // number only, inclusive
+  max?: number;           // number only, inclusive
+  options?: { value: string; label: string }[]; // enum only, required
+}
+```
+
+`color` renders the app's theme swatches beside a text input, and its value is whatever
+you would write in CSS — a hex value, `rgb(…)`, a colour name, or a `var(--token)` that
+follows the user's theme. `enum` renders a select over `options`.
+
+A value outside `min`/`max`, or not among `options`, falls back the same way a type
+mismatch does: to your declared `default`, then to the type's zero (an enum's first
+option). A `default` your own field would refuse is an install-time error.
+
+‼️ None of this relieves you of checking the value yourself. Constraints are resolved
+against your *current* manifest by *whatever Baram the user is running* — one older than a
+constraint resolves the field without it.
+
 ## `context.subscriptions`
 
 `Disposable[]` — every `Disposable` returned by `commands.register`,

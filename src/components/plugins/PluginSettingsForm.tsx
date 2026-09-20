@@ -1,9 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
-
-import type {
-  PluginSettingField,
-  PluginSettingValue,
-} from "../../plugins/types";
+import { useMemo } from "react";
 
 import { useShallow } from "zustand/shallow";
 
@@ -13,12 +8,11 @@ import { useTranslation } from "../../i18n/useTranslation";
 // `plugin-settings.ts` for why a plugin may only read them).
 import {
   declaredSettingsFor,
-  MAX_SETTING_VALUE_CHARS,
   resolvePluginSettings,
-  sanitizeSettingLabel,
 } from "../../plugins/plugin-settings";
 import { selectManifest } from "../../plugins/plugin-sources";
 import { usePluginStore } from "../../stores/system/plugin";
+import { PluginSettingRow } from "./PluginSettingRow";
 
 interface PluginSettingsFormProps {
   pluginId: string;
@@ -36,6 +30,9 @@ interface PluginSettingsFormProps {
  *
  * The section heading is localised (#329); the field labels themselves come from the
  * manifest and are the author's, so they are rendered as authored.
+ *
+ * §0054 moved the controls to `PluginSettingRow` — four types and a swatch palette do not
+ * fit beside the shell, and the shell is the part with the capability argument above.
  */
 export function PluginSettingsForm({ pluginId }: PluginSettingsFormProps) {
   const { t } = useTranslation();
@@ -65,20 +62,13 @@ export function PluginSettingsForm({ pluginId }: PluginSettingsFormProps) {
   if (declared.length === 0) return null;
 
   return (
-    <div style={{ marginBottom: "20px" }}>
-      <h3
-        style={{
-          fontSize: "14px",
-          fontWeight: 600,
-          marginBottom: "8px",
-          color: "var(--color-text-primary)",
-        }}
-      >
+    <div className="plugin-settings-form">
+      <h3 className="plugin-settings-form__title">
         {t("plugin.settings.title")}
       </h3>
-      <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+      <div className="plugin-settings-form__rows">
         {declared.map((field) => (
-          <SettingRow
+          <PluginSettingRow
             field={field}
             key={field.key}
             onChange={(value) => setPluginSetting(pluginId, field.key, value)}
@@ -87,95 +77,5 @@ export function PluginSettingsForm({ pluginId }: PluginSettingsFormProps) {
         ))}
       </div>
     </div>
-  );
-}
-
-const CONTROL_STYLE = {
-  backgroundColor: "var(--color-bg-default)",
-  border: "1px solid var(--color-border-default)",
-  borderRadius: "4px",
-  color: "var(--color-text-primary)",
-  fontSize: "13px",
-  padding: "4px 6px",
-} as const;
-
-const LABEL_STYLE = {
-  alignItems: "center",
-  color: "var(--color-text-secondary)",
-  display: "flex",
-  fontSize: "13px",
-  gap: "8px",
-  justifyContent: "space-between",
-} as const;
-
-/**
- * A number input keeps a local draft; the others are plain controlled inputs.
- *
- * Why the draft: clearing the box to type a new number makes it momentarily empty, and a
- * controlled input backed by the store would snap straight back to the old value — the
- * field could never be retyped. So the draft is what the user sees, and only a finite
- * number is committed. `resolvePluginSettings` refuses a non-finite value on the way out
- * too, but that would arrive as a persisted `null`, which is worth not writing at all.
- */
-function SettingRow({
-  field,
-  onChange,
-  value,
-}: {
-  field: PluginSettingField;
-  onChange: (value: PluginSettingValue) => void;
-  value: PluginSettingValue;
-}) {
-  const label = sanitizeSettingLabel(field.label);
-  const [draft, setDraft] = useState(String(value));
-  // Resync when the value moves underneath us — a settings reset, a reinstall, or the
-  // record being cleared on uninstall.
-  useEffect(() => {
-    if (field.type === "number") setDraft(String(value));
-  }, [field.type, value]);
-
-  if (field.type === "boolean") {
-    return (
-      <label style={LABEL_STYLE}>
-        {label}
-        <input
-          checked={value === true}
-          onChange={(e) => onChange(e.target.checked)}
-          type="checkbox"
-        />
-      </label>
-    );
-  }
-  if (field.type === "number") {
-    return (
-      <label style={LABEL_STYLE}>
-        {label}
-        <input
-          onChange={(e) => {
-            setDraft(e.target.value);
-            const next = Number(e.target.value);
-            if (e.target.value !== "" && Number.isFinite(next)) onChange(next);
-          }}
-          style={{ ...CONTROL_STYLE, width: "96px" }}
-          type="number"
-          value={draft}
-        />
-      </label>
-    );
-  }
-  return (
-    <label style={LABEL_STYLE}>
-      {label}
-      <input
-        // Capped where it is TYPED as well as where it is read: the read-side clamp keeps
-        // the payload bounded, but silently truncating what the user typed would be its
-        // own bug.
-        maxLength={MAX_SETTING_VALUE_CHARS}
-        onChange={(e) => onChange(e.target.value)}
-        style={{ ...CONTROL_STYLE, width: "180px" }}
-        type="text"
-        value={String(value)}
-      />
-    </label>
   );
 }

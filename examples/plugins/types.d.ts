@@ -211,15 +211,40 @@ export interface PluginModule {
  * §260 Phase 4c — one declared settings field. The manifest asks the question; the user's
  * answer is host-owned (see `plugin-settings.ts`), and a plugin only ever READS it.
  *
- * No range, pattern or enum in v1 — a `number` field is any finite number. A plugin that
- * needs a bounded value validates it itself, which it must do anyway: the persisted record
- * is a config file the user can edit.
+ * §0054 added `description`, `min`/`max` and `options`. An earlier version of this comment
+ * said "No range, pattern or enum in v1 — a plugin that needs a bounded value validates it
+ * itself, which it must do anyway". The second half is still true and the constraints below
+ * do NOT relieve a plugin of it: the persisted record is a config file the user can edit,
+ * and `resolvePluginSettings` is the only thing between it and plugin code. What the first
+ * half missed is that a bound the plugin keeps to itself is a bound the USER never sees —
+ * Bullet Threading clamped `lineWidth` to 0.5–8 and silently returned its default for
+ * anything else, so typing `100` changed nothing and explained nothing. These fields move
+ * that knowledge to where it can be rendered.
  */
 export interface PluginSettingField {
     default?: PluginSettingValue;
+    /**
+     * One line under the label. Author-written text in the app's own chrome, so it is
+     * sanitised on the way out like `label` (§260 Phase 4a).
+     */
+    description?: string;
     key: string;
     label: string;
+    /** `number` only — inclusive. A value outside [`min`, `max`] falls back like a type mismatch. */
+    max?: number;
+    /** `number` only — inclusive. */
+    min?: number;
+    /** `enum` only — the values this field may take. Required for `enum`, ignored otherwise. */
+    options?: PluginSettingOption[];
     type: PluginSettingType;
+}
+/**
+ * One choice in an `enum` field. `value` is what the plugin is told; `label` is what the
+ * user picks, and is sanitised like every other author-written string in the settings pane.
+ */
+export interface PluginSettingOption {
+    label: string;
+    value: string;
 }
 export interface PluginSettingsTabOptions {
     id: string;
@@ -488,6 +513,14 @@ export interface SandboxUIAPI {
  * portable spelling, not a boundary.
  */
 export interface SettingsAPI {
+    /**
+     * Every field declared in `contributions.settings`, with its current value.
+     *
+     * Subscribe to `"settings:changed"` through `events.on` to learn when to call this again;
+     * that notification carries no values, so re-reading is how a plugin sees them. Requires
+     * only `settings` — not `events` — which is the same rule the sandboxed tier follows
+     * (§0054).
+     */
     getAll(): Record<string, PluginSettingValue>;
 }
 export interface StatusBarItem {
@@ -600,11 +633,28 @@ export declare const EDITOR_WRITE_CAPABILITIES: readonly PluginCapability[];
  *
  * A `const` array rather than a bare union because three separate places need to branch on
  * the SAME set: the validator (is this `type` legal?), the form (which control to render),
- * and the resolver (`typeof value === type`). That last one is why the members are spelled
- * exactly as `typeof` returns them — the resolver compares against `typeof` directly, so a
- * friendlier name here ("text", "toggle") would need a mapping table whose two halves could
- * drift.
+ * and the resolver.
+ *
+ * ‼️ This comment used to end by arguing AGAINST the table below — the members were spelled
+ * exactly as `typeof` returns them, the resolver compared against `typeof` directly, and a
+ * friendlier name "would need a mapping table whose two halves could drift". That argument
+ * held only while every member was a `typeof` name, and §0054 ended that: `enum` and `color`
+ * are both carried as strings but need a different CONTROL and a different validity rule, so
+ * the set the form branches on and the set `typeof` produces are no longer the same set.
+ *
+ * The drift it warned about is answered structurally rather than by avoidance:
+ * `SETTING_VALUE_TYPES` is a `Record<PluginSettingType, …>`, so adding a member here without
+ * giving it a primitive is a type error, not a silent hole.
  */
-export declare const SETTING_TYPES: readonly ["boolean", "number", "string"];
+export declare const SETTING_TYPES: readonly ["boolean", "color", "enum", "number", "string"];
+/**
+ * Which primitive each declared type is CARRIED as — the resolver's `typeof` comparison.
+ *
+ * `color` and `enum` are both strings on the wire and in the store; what makes them their own
+ * types is the control the form renders and the extra check the resolver applies (a character
+ * allowlist, membership in `options`). Nothing outside `plugin-settings.ts` should compare a
+ * value's `typeof` against a `PluginSettingType` directly — that is what this is for.
+ */
+export declare const SETTING_VALUE_TYPES: Record<PluginSettingType, "boolean" | "number" | "string">;
 /** Human-readable descriptions for capabilities */
 export declare const CAPABILITY_DESCRIPTIONS: Record<PluginCapability, string>;

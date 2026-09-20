@@ -59,7 +59,7 @@ depths, and decorations let the view do the writing. The result has no event lis
 nothing to unsubscribe, and no cached previous state that can drift out of step with the
 document.
 
-## Settings, and the limit they expose
+## Settings — what is live, and what is a snapshot
 
 The declared fields live under `contributions.settings` in the manifest — **not** at the
 top level, which is a mistake this plugin actually shipped: `PluginManifest` has no
@@ -71,16 +71,28 @@ rendered nowhere and nothing failed.
 before use — see `src/css.ts` for what that does and does not guarantee. The host
 guarantees a setting's declared *type*, not that its value is usable.
 
-**Changing a setting takes effect on the next plugin load, not immediately.** The plugin
-API has no settings-change event — `PluginEventName` is `editor:ready`, `file:open`,
-`file:save` — and `SettingsAPI` offers only `getAll()`, so nothing calls back into a
-plugin when a value changes. This plugin builds its stylesheet once, in `activate`, which
-is where that limit becomes visible.
+**Changing a setting takes effect immediately** — since Baram 0.7.4. This plugin
+subscribes to `settings:changed` in `activate` and rebuilds its stylesheet from
+`getAll()` each time, disposing the previous sheet first.
 
-A prop that runs per state change *is* live, because it can call
-`context.settings.getAll()` each time it runs; a stylesheet injected once cannot. If you
-are writing a plugin whose settings must apply immediately, put what they control on the
-decoration rather than in the stylesheet.
+‼️ That event is gated on the **`settings`** capability, not on `events`, in both trust
+tiers. It carries no payload, so re-reading is how you see the new values. An earlier
+version of this section said the plugin API had no such event; it was true of the trusted
+tier only, and §0054 closed that gap — see
+`dev/design/specs/0054-plugin-settings-affordances-design.md`.
+
+‼️ **The `settings` a `tiptapExtensions` factory receives is a SNAPSHOT.** The host reads
+it once when the plugin loads and never re-runs the factory, so a contribution that closes
+over a value there goes stale on the next edit. This plugin reads none, deliberately: every
+setting it has is a stylesheet term. A prop that runs per state change can stay current by
+calling `context.settings.getAll()` when it runs — which is the shape to use if a factory
+of yours needs a value the user can change.
+
+An older host hands over a **denied proxy** for `context.events` when the capability is not
+granted, and every property access on that object throws — `?.` does not help, because the
+object is present and it is the `.on` read that raises. `src/index.ts` wraps the
+subscription in a `try`/`catch` for exactly that: a plugin cannot ask the host what it
+supports, and the settings still apply on the next load either way.
 
 The manifest's declared defaults are asserted against this plugin's own
 `DEFAULT_SETTINGS` by `bullet-threading-example.test.ts`, because the two drifting apart

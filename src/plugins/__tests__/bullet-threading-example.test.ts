@@ -15,17 +15,21 @@ import { join } from "node:path";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { createBaramExtensions } from "../../extensions/index";
+import { usePluginStore } from "../../stores/system/plugin";
 import {
   __resetEditorSurfaces,
   addPluginContributions,
   registerEditorSurface,
 } from "../editor-surfaces";
+import { createExtensionContext } from "../extension-context";
 import { validateManifest } from "../manifest";
 import { declaredSettingsFor } from "../plugin-settings";
 
 const DIR = join(process.cwd(), "examples/plugins/bullet-threading");
 
 interface Built {
+  activate: (ctx: unknown) => void;
+  deactivate: () => void;
   /** The plugin's own fallbacks — the manifest's declared defaults are asserted against these. */
   DEFAULT_SETTINGS: Record<string, boolean | number | string>;
   Threading: (ctx: unknown) => never;
@@ -117,11 +121,99 @@ describe("the Bullet Threading example", () => {
     }
   });
 
+  it("documents every setting under the label the app shows", () => {
+    // ‼️ A THIRD instance of the same defect class, pre-empted. The manifest/README pair has
+    // now drifted twice — a `lineWidth` default of 1.5 against a code default of 2, and a
+    // `settings` block in a position `PluginManifest` has no field for — and both times the
+    // README kept describing what the app had stopped doing.
+    //
+    // This one is about the LABEL, which is what a user reads in the settings pane and then
+    // looks for here. §0054 renamed "Curve into each item" to "Branch into each item"
+    // because the old name described a curve while the setting removes the whole horizontal
+    // connector; nothing would have caught the README keeping the old name.
+    const manifest = JSON.parse(
+      readFileSync(join(DIR, "baram-plugin.json"), "utf8"),
+    ) as PluginManifest;
+    const readme = readFileSync(join(DIR, "README.md"), "utf8");
+    const declared = declaredSettingsFor(manifest);
+    expect(declared.length, "no declared field — this test is vacuous").toBe(5);
+    for (const field of declared) {
+      expect(
+        readme,
+        `README must name "${field.label}" — that is what the settings pane shows`,
+      ).toContain(field.label);
+    }
+  });
+
+  it("rebuilds its stylesheet when the user changes a setting", async () => {
+    // ‼️ THE DEFECT THE OWNER REPORTED, at the layer it happened. Every other test here
+    // proves a PIECE: the host delivers `settings:changed`
+    // (`trusted-settings-changed.test.ts`), and `buildCss` honours each field (the plugin's
+    // own suite). Neither notices if `activate` forgets to subscribe, or subscribes and
+    // never re-injects — which is exactly the state the plugin shipped in, where a setting
+    // only took effect after toggling the plugin off and on.
+    //
+    // Driven through the REAL `createExtensionContext`, so the EVENTS gate is the production
+    // one: this plugin declares `settings` and not `events`, and that is the combination that
+    // used to hand it a denied proxy. `ctx.ui` is stubbed below and is therefore NOT the
+    // production gate — it happens to be granted in production because `UI_CAPABILITIES`
+    // includes `settings`, which is worth knowing on its own: declaring `settings` also buys
+    // `ui.addStyle`.
+    const manifest = JSON.parse(
+      readFileSync(join(DIR, "baram-plugin.json"), "utf8"),
+    ) as PluginManifest;
+    usePluginStore.setState({ pluginSettings: {} });
+    const sheets: string[] = [];
+    let disposed = 0;
+    const ctx = createExtensionContext(manifest, DIR);
+    // `ui.addStyle` needs a document in the real API; the stylesheet TEXT is what this is
+    // about, so the capture stands in for the DOM write.
+    (ctx as unknown as { ui: unknown }).ui = {
+      addStyle: (css: string) => {
+        sheets.push(css);
+        return { dispose: () => void disposed++ };
+      },
+    };
+
+    try {
+      built.activate(ctx);
+      expect(sheets).toHaveLength(1);
+      expect(sheets[0]).toContain("--bt-width:2px");
+
+      usePluginStore.getState().setPluginSetting(manifest.id, "lineWidth", 5);
+      await new Promise((r) => globalThis.setTimeout(r, 600));
+
+      expect(sheets, "no rebuild — activate did not subscribe").toHaveLength(2);
+      expect(sheets[1]).toContain("--bt-width:5px");
+      // The previous sheet goes, or two builds with identical selectors are both live and
+      // the winner is decided by insertion order.
+      expect(disposed).toBe(1);
+    } finally {
+      built.deactivate();
+      ctx.subscriptions.forEach((d) => d.dispose());
+      usePluginStore.setState({ pluginSettings: {} });
+    }
+  });
+
   it("ships a bundle that carries no ProseMirror of its own", () => {
     // The property `ctx.pm` exists to make possible. A bundled copy is not a heavier
     // build, it is the launch crash — see contributed-decorations.test.ts.
+    //
+    // ‼️ The check used to be `not.toMatch(/prosemirror/i)`, which is wider than the
+    // property: §0054 added an `onlyWhenFocused` setting whose whole implementation is the
+    // selector `.tiptap.ProseMirror-focused`, and a CSS CLASS NAME is not a bundled library.
+    // So this names the two shapes a copy actually takes — a bare-specifier import the
+    // bundler left in place, and inlined library source, which esbuild marks with the
+    // `// node_modules/prosemirror-…/` banner it writes above every inlined module.
     const bundle = readFileSync(join(DIR, "dist/index.mjs"), "utf8");
-    expect(bundle).not.toMatch(/prosemirror/i);
+    expect(bundle, "a bare prosemirror import survived bundling").not.toMatch(
+      /from\s*["'](?:@tiptap\/pm|prosemirror-)/u,
+    );
+    expect(bundle, "prosemirror source was inlined").not.toMatch(
+      /node_modules\/(?:@tiptap\/pm|prosemirror-)/u,
+    );
+    // …and the scan is not vacuous: esbuild does write that banner for what it DOES inline.
+    expect(bundle).toContain("// src/thread.ts");
   });
 
   it("threads the ancestor chain of the item holding the caret", () => {

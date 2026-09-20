@@ -31,15 +31,21 @@ import {
   commandHandlers,
   editorRefusalMessage,
   editorSurfaceBlocked,
+  emitScopedPluginEvent,
   type EventHandler,
   eventListeners,
   getEditorInstance,
   NO_EDITOR_OPEN,
+  onScopedPluginEvent,
   type PluginEditorHandle,
   readSelection,
 } from "./plugin-host-registry";
 import { declaredSettingsFor, resolvePluginSettings } from "./plugin-settings";
 import { usePluginUIStore } from "./plugin-ui-store";
+import {
+  SETTINGS_CHANGED_EVENT,
+  watchPluginSettings,
+} from "./settings-change-notifier";
 import { createUIAPI } from "./trusted/ui-api";
 import {
   EDITOR_READ_CAPABILITIES,
@@ -139,22 +145,70 @@ function createDeniedProxy(
   );
 }
 
-function createEventsAPI(disposables: Disposable[]): EventsAPI {
+/**
+ * §0054 — the events API, with TWO grants rather than one.
+ *
+ * `settings:changed` is gated on `settings` and every other name on `events`, which is the
+ * rule the sandboxed tier already followed (see `settings-change-notifier`). Before this, the
+ * whole API was gated on `events` alone, so a plugin declaring `["extensions", "settings"]`
+ * — Bullet Threading — got a `DeniedProxy` for the one event that is about its own settings.
+ *
+ * `settings:changed` also routes to the PER-PLUGIN bus, not the shared one. See
+ * `scopedListeners` in `plugin-host-registry` for why the shared bus is wrong for it.
+ *
+ * ‼️ Subscribing to `settings:changed` WITHOUT the `settings` capability is accepted and
+ * simply never fires, rather than throwing. That is not an oversight: it is what the
+ * sandboxed tier does (the guest's `events.on` is a local registry and
+ * `watchPluginSettings` declines to install a watcher), and making the two tiers differ on
+ * this is the exact defect §0054 exists to remove. The author's real error — no `settings`
+ * capability — surfaces with a clear message the moment they call `settings.getAll()`.
+ *
+ * ‼️ Which is why there is only ONE grant here, despite `settings` being the second way into
+ * this API. An earlier version took `{ app, own }` and never read `own` — a parameter shaped
+ * like a gate that gated nothing, which is what later gets "tightened" by someone assuming it
+ * already did something (§0054 code review, LOW). WHO may be told is decided by the watcher,
+ * not here; `settings` buys the subscription, delivery is what it gates.
+ */
+function createEventsAPI(
+  pluginId: string,
+  disposables: Disposable[],
+  grants: { app: boolean },
+): EventsAPI {
+  const requireApp = (member: string) => {
+    if (grants.app) return;
+    throw new Error(
+      `Plugin requires "events" capability to access events.${member}. ` +
+        `Add "events" to the capabilities array in baram-plugin.json.`,
+    );
+  };
   return {
     on(event: string, handler: EventHandler): Disposable {
-      if (!eventListeners.has(event)) {
-        eventListeners.set(event, new Set());
+      let disposable: Disposable;
+      if (event === SETTINGS_CHANGED_EVENT) {
+        const off = onScopedPluginEvent(pluginId, event, handler);
+        disposable = { dispose: off };
+      } else {
+        requireApp(`on("${event}")`);
+        if (!eventListeners.has(event)) {
+          eventListeners.set(event, new Set());
+        }
+        eventListeners.get(event)!.add(handler);
+        disposable = {
+          dispose: () => {
+            eventListeners.get(event)?.delete(handler);
+          },
+        };
       }
-      eventListeners.get(event)!.add(handler);
-      const disposable: Disposable = {
-        dispose: () => {
-          eventListeners.get(event)?.delete(handler);
-        },
-      };
       disposables.push(disposable);
       return disposable;
     },
     emit(event: string, ...args: unknown[]): void {
+      // Always `events`, including for `settings:changed`: the settings grant buys the right
+      // to be TOLD that the user's answers moved, never the right to tell other plugins so.
+      // An `events`-holder emitting that name reaches the SHARED bus, where by construction
+      // nothing is ever listening — subscriptions to it go to the scoped bus — so it is a
+      // silent no-op rather than a way to fake another plugin's settings moving.
+      requireApp(`emit("${event}")`);
       eventListeners.get(event)?.forEach((handler) => {
         try {
           handler(...args);
@@ -182,9 +236,14 @@ function createNetworkAPI(): NetworkAPI {
  * manifest.
  *
  * Synchronous here because the store is in this realm. Read on every call rather than
- * captured: the user can change a value while the plugin is loaded, and a trusted plugin
- * has no `settings:changed` frame — it runs in the main realm and can subscribe to
- * `usePluginStore` itself if it wants to be told.
+ * captured: the user can change a value while the plugin is loaded.
+ *
+ * ‼️ This comment used to end "a trusted plugin has no `settings:changed` frame — it runs in
+ * the main realm and can subscribe to `usePluginStore` itself if it wants to be told". Both
+ * halves were problems. It had no such event, which made the portability this API claims a
+ * few lines down false; and the suggested workaround is not available to a real third-party
+ * plugin, which cannot import the app's store. §0054 gave the tier the event — see
+ * `createEventsAPI` and `settings-change-notifier`.
  *
  * A trusted plugin could of course read the store directly. That is not what this is for:
  * it is the tier-portable spelling, so the same plugin source works in both tiers, and it
@@ -267,9 +326,14 @@ export function createExtensionContext(
       ? createFilesAPI(true)
       : (createDeniedProxy("files", "files") as FilesAPI);
 
-  const events: EventsAPI = hasCapability("events")
-    ? createEventsAPI(disposables)
-    : (createDeniedProxy("events", "events") as EventsAPI);
+  // §0054 — `settings` is now a second way in, for `settings:changed` alone. A plugin with
+  // NEITHER grant still gets the denied proxy, unchanged.
+  const events: EventsAPI =
+    hasCapability("events") || hasCapability("settings")
+      ? createEventsAPI(manifest.id, disposables, {
+          app: hasCapability("events"),
+        })
+      : (createDeniedProxy("events", "events") as EventsAPI);
 
   const network: NetworkAPI = hasCapability("network")
     ? createNetworkAPI()
@@ -290,6 +354,27 @@ export function createExtensionContext(
   const ui: UIAPI = UI_CAPABILITIES.some(hasCapability)
     ? createUIAPI(manifest.id, capabilities, disposables, manifest.name)
     : (createDeniedProxy("ui", "sidebar") as UIAPI);
+
+  // §0054 — the trusted tier's half of `settings:changed`. Installed HERE rather than on the
+  // load path for one reason: `disposables` is `context.subscriptions`, so the watcher is torn
+  // down by the same unload that disposes everything else the plugin registered, with nothing
+  // to remember.
+  //
+  // The capability is checked again although `watchPluginSettings` also declines without it:
+  // pushing its no-op unsubscriber unconditionally would put a disposable in every plugin's
+  // `subscriptions` that undoes nothing, and that list is a public part of the context — the
+  // existing tests count it to assert that registering one thing adds one entry.
+  if (hasCapability("settings")) {
+    disposables.push({
+      dispose: watchPluginSettings({
+        capabilities: manifest.capabilities,
+        deliver: () =>
+          emitScopedPluginEvent(manifest.id, SETTINGS_CHANGED_EVENT),
+        label: "Plugin",
+        pluginId: manifest.id,
+      }),
+    });
+  }
 
   return {
     ai,

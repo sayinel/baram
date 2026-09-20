@@ -10,11 +10,12 @@
 import type {
   PluginManifest,
   PluginSettingField,
+  PluginSettingOption,
   PluginSettingValue,
 } from "./types";
 
 import { sanitizePluginText } from "./plugin-text";
-import { SETTING_TYPES } from "./types";
+import { SETTING_TYPES, SETTING_VALUE_TYPES } from "./types";
 
 /**
  * How many fields one plugin may declare, and how long a string value may be.
@@ -39,12 +40,20 @@ export const MAX_SETTING_VALUE_CHARS = 512;
  * than three checks, so the form cannot show a field the plugin will never be told about.
  *
  * ‼️ NOTHING about the manifest is trusted here, for the same reason the resolver distrusts
- * a persisted value — and the gap is wider than it looks. `validateManifest` runs on the
- * LOAD path (`plugin-loader.ts`), but the record this reads is written on the INSTALL path,
- * BEFORE and independently of it: `PluginMarketplace` calls `addPlugin` and only then
- * `loadPlugin`, whose failure is caught and turned into an error badge — the record stays.
- * Rust does not cover the gap either: it types `contributions` as an opaque
- * `serde_json::Value` and never inspects it.
+ * a persisted value.
+ *
+ * ‼️ THE REASON GIVEN HERE USED TO BE WRONG, and it was wrong in the direction that matters —
+ * it described a gap that has since been closed, which would have let a later reader delete
+ * these guards. It said the record was written on the install path "BEFORE and independently
+ * of" validation. Re-measured: `usePluginActions.ts` awaits `stageValidateAndCommit` and only
+ * then calls `addPlugin`, and that transaction runs `validateManifest` and throws on failure
+ * (`install-transaction.ts`). A fresh registry install cannot seat an invalid manifest.
+ *
+ * What is still true, and is the actual reason: `installedPlugins` — manifest included — is
+ * PERSISTED (`stores/system/plugin.ts`'s `partialize`). Its neighbours in that same block are
+ * commented against exactly two threats, "a hand-edited config" and an in-realm attacker, and
+ * a trusted plugin shares this realm by design (§259). So the shape that reaches this
+ * function is whatever is on disk at launch, not whatever the installer approved.
  *
  * So a manifest reaching this function may be ANY shape, and the app's only error boundary
  * is at the root (`App.tsx`): a throw while rendering a settings row replaces the entire
@@ -127,6 +136,54 @@ export function resolvePluginSettings(
 }
 
 /**
+ * What a `color` value may contain — the host's half of the check (§0054).
+ *
+ * Exported because the VALIDATOR needs the same rule: a `default` the resolver would refuse
+ * has to be an install-time error, not a value that silently disappears. One definition, so
+ * the two cannot drift.
+ *
+ * ‼️ This does NOT relieve a plugin of validating the string itself, and Bullet Threading's
+ * own `SAFE_COLOR` stays. The value's destination is a stylesheet the PLUGIN builds, so the
+ * plugin is the one that knows where it is pasted; this is the type keeping its own promise
+ * (a `color` field yields something that is plausibly a colour) so that a hand-edited record
+ * cannot hand a well-behaved plugin a declaration terminator.
+ *
+ * A character allowlist rather than a colour parser, for the same reason as the plugin's:
+ * every character that could end a declaration and start a rule of its own (`;`, `{`, `}`,
+ * `:`, `/`, `@`) is absent from the set, which is the property that matters. Wide enough for
+ * hex, `rgb()`, `hsl()`, `color-mix()`, a colour name, and `var(--…)` — pointing a plugin
+ * at one of the app's own tokens is what the form's swatches do.
+ *
+ * ‼️ The modern slash syntax (`rgb(0 0 0 / 30%)`) is REFUSED, because `/` is in that set.
+ * Deliberate, and the same refusal the plugin already makes; the comma forms are accepted and
+ * the swatches produce tokens.
+ *
+ * ‼️ WHAT THIS DOES ADMIT, stated so the bound is not left implicit: a FUNCTIONAL value such
+ * as `url(x)` or `image-set(x)`, which a plugin pasting the value into a `background`
+ * shorthand would turn into a fetch. It cannot be an off-origin one — `:` and `/` are both
+ * outside the set, so no scheme and no path separator — leaving a same-directory relative
+ * path on the app's own origin. That bound rests on the absence of exactly those two
+ * characters; widening the set means re-deciding it (§0054 code review, LOW).
+ */
+export function isSafeSettingColor(value: unknown): boolean {
+  if (typeof value !== "string") return false;
+  const trimmed = value.trim();
+  return trimmed.length > 0 && SAFE_COLOR.test(trimmed);
+}
+
+/**
+ * §0054 — the same treatment for a field's `description`, on its own longer cap.
+ *
+ * Longer because the purpose is different: a `label` names the field in one glance, a
+ * description is the sentence that used to be exiled to the plugin's README ("any CSS
+ * colour, or one of Baram's theme tokens"). Still capped, and still sanitised, for the
+ * reason `label` is — author text rendered in the app's own chrome.
+ */
+export function sanitizeSettingDescription(raw: string): string {
+  return sanitizePluginText(raw, MAX_SETTING_DESCRIPTION_CHARS);
+}
+
+/**
  * Author-supplied text on its way into the app's own settings pane.
  *
  * Same class as the status-bar text (§260 Phase 4a): a `label` is written by the plugin
@@ -137,6 +194,12 @@ export function resolvePluginSettings(
 export function sanitizeSettingLabel(raw: string): string {
   return sanitizePluginText(raw, MAX_SETTING_LABEL_CHARS);
 }
+
+/** Two rows of help text under a field, at the settings pane's width. */
+const MAX_SETTING_DESCRIPTION_CHARS = 160;
+
+/** The colour allowlist — see `isSafeSettingColor` for what each part of the set is for. */
+const SAFE_COLOR = /^[\w#(),.%\s-]{1,64}$/u;
 
 /** As long as a settings row can show without wrapping into the next field. */
 const MAX_SETTING_LABEL_CHARS = 80;
@@ -156,16 +219,56 @@ function clampChars(value: string): string {
   return isLoneHighSurrogate ? cut.slice(0, -1) : cut;
 }
 
-/** `undefined` for anything that is not a usable value of `type`. */
+/**
+ * `undefined` for anything that is not a usable value of `field`.
+ *
+ * Takes the whole FIELD, not just its type, because §0054's constraints live on the field:
+ * a number's `min`/`max`, an enum's `options`. Every one of them refuses the same way a type
+ * mismatch does, so `resolveOne`'s persisted → default → zero chain needs no new branch —
+ * which also means a declared `default` outside its own `min`/`max` is skipped rather than
+ * handed over. The validator rejects that manifest at install; this keeps a hand-edited one
+ * from getting a value its own field says is illegal.
+ */
 function coerce(
   value: unknown,
-  type: PluginSettingField["type"],
+  field: Pick<PluginSettingField, "max" | "min" | "options" | "type">,
 ): PluginSettingValue | undefined {
-  if (typeof value !== type) return undefined;
-  if (type === "number" && !Number.isFinite(value)) return undefined;
-  if (type === "string") {
-    return clampChars(value as string);
+  const { type } = field;
+  // ‼️ `SETTING_VALUE_TYPES[type]`, not `type`: `color` and `enum` are carried as strings,
+  // and comparing `typeof value` against the DECLARED name would refuse every value they
+  // ever hold. See that table's comment.
+  if (typeof value !== SETTING_VALUE_TYPES[type]) return undefined;
+  if (type === "number") {
+    const n = value as number;
+    if (!Number.isFinite(n)) return undefined;
+    // `typeof === "number"`, not `!== undefined`: a hand-edited `"min": null` passes the
+    // latter and `n < null` coerces to `n < 0`, silently refusing every negative value the
+    // field never said anything about. Same spelling as the validator's (§0054 review, LOW).
+    if (typeof field.min === "number" && n < field.min) return undefined;
+    if (typeof field.max === "number" && n > field.max) return undefined;
+    return n;
   }
+  if (type === "enum") {
+    // ‼️ Membership only — this callback does NOT re-check each option's shape, and that is
+    // safe exactly because `isUsableField` now requires EVERY option to be usable. The first
+    // version of that gate required only one, this line then dereferenced `o.value` on the
+    // others, and the comment here asserted it could not happen (§0054 code review, HIGH).
+    // If the gate is ever loosened again, this is the line that throws.
+    return field.options?.some((o) => o.value === value)
+      ? (value as string)
+      : undefined;
+  }
+  if (type === "color") {
+    // Trimmed, not just tested: `isSafeSettingColor` trims before matching, so returning the
+    // raw string would let `" red "` pass a check its own value never took.
+    const trimmed = (value as string).trim();
+    return isSafeSettingColor(trimmed) ? trimmed : undefined;
+  }
+  // ‼️ `string` NAMED, not left as the fallthrough. Writing this as a trailing
+  // `return clampChars(value as string)` typechecks — the cast hides it — and sent every
+  // BOOLEAN through a string clamp, where `value.slice` is not a function. The existing
+  // sandbox tests caught it; the cast is why the compiler did not.
+  if (type === "string") return clampChars(value as string);
   return value as PluginSettingValue;
 }
 
@@ -180,11 +283,59 @@ function coerce(
  * would only have held if the sanitiser tolerated a non-string, and it does not.
  */
 function isUsableField(field: PluginSettingField): boolean {
+  if (
+    typeof field?.key !== "string" ||
+    field.key.length === 0 ||
+    typeof field.label !== "string" ||
+    !SETTING_TYPES.includes(field.type)
+  ) {
+    return false;
+  }
+  // §0054 — two shapes that would render a control the user cannot answer. Dropped rather
+  // than repaired, the same way a missing `label` is: the field is gone from the form AND
+  // from what the plugin is told, so the two can never disagree about which fields exist.
+  //
+  // ‼️ `every`, not `some` (§0054 code review, HIGH). The first version admitted a list with
+  // ONE usable option, and both consumers walk them ALL: `SettingControl` maps every option
+  // into a `<option>` reading `.value` and `.label`, and `coerce` compares `value` against
+  // every one. So `[{value:"a",label:"A"}, null]` passed this gate and then threw on the
+  // `null` — during render, which at the root error boundary replaces the whole app on the
+  // route that holds Uninstall. A partly-good list is dropped whole, like a bad `label`.
+  if (
+    field.type === "enum" &&
+    !(field.options?.length && field.options.every(isUsableOption))
+  ) {
+    return false;
+  }
+  // A range that admits nothing. Every value coerces away, so the form would show a number
+  // the field itself calls illegal — and `ZERO.number` is `0`, which is outside most such
+  // ranges too. The validator refuses this manifest at install, so what reaches here is a
+  // record edited on disk afterwards — see the note on `declaredSettingsFor` for why that,
+  // and not the install path, is this function's threat model.
+  if (
+    typeof field.min === "number" &&
+    typeof field.max === "number" &&
+    field.min > field.max
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * ‼️ The length cap is what keeps `MAX_SETTING_VALUE_CHARS`'s payload argument true
+ * (§0054 code review, MEDIUM). An enum value is never clamped — `clampChars` runs on the
+ * `string` type only, and clamping an enum value would produce something that is no longer
+ * one of `options` — so without a bound here, one option could carry a megabyte and
+ * "16 × 512 is ~9 KiB" would be a stated bound that is not one. The validator reports it to
+ * the author; this is the read-side half, for a record edited after install.
+ */
+function isUsableOption(option: PluginSettingOption): boolean {
   return (
-    typeof field?.key === "string" &&
-    field.key.length > 0 &&
-    typeof field.label === "string" &&
-    SETTING_TYPES.includes(field.type)
+    typeof option?.value === "string" &&
+    option.value.length > 0 &&
+    option.value.length <= MAX_SETTING_VALUE_CHARS &&
+    typeof option.label === "string"
   );
 }
 
@@ -193,21 +344,54 @@ function resolveOne(
   persisted: unknown,
 ): PluginSettingValue {
   return (
-    coerce(persisted, field.type) ??
-    coerce(field.default, field.type) ??
-    // `?? ""` because `ZERO[type]` is `undefined` for a type outside the set, and an
-    // `undefined` here is DROPPED by `JSON.stringify` on the way to the sandbox (§260
-    // Phase 4c code review, M5) — which would break the one promise this API makes, stated
-    // in `SandboxSettingsAPI` and in the plugin guide: one value per declared field. The
-    // callers all pass `declaredSettingsFor` output, which filters such a field out
-    // already; this makes the exported function safe on its own rather than by luck.
-    ZERO[field.type] ??
-    ""
+    coerce(persisted, field) ?? coerce(field.default, field) ?? zeroFor(field)
   );
 }
 
+/**
+ * The value a field falls back to when neither the persisted record nor the declared
+ * `default` yields a usable one.
+ *
+ * `enum` cannot use the table: its zero is not a constant but the field's own first USABLE
+ * option, which is the only value that keeps `resolvePluginSettings`'s promise — one value
+ * per declared field, and for an enum always one of `options`, of the declared primitive.
+ *
+ * ‼️ `find(isUsableOption)`, not `[0]` (§0054 code review, MEDIUM). Reading the first option
+ * unchecked handed a plugin a NUMBER for its own declared enum when `options[0].value` was
+ * numeric — a primitive no declared type is carried as, which is a value that could not reach
+ * plugin code before §0054 at all. `declaredSettingsFor` now drops such a field, but
+ * `resolvePluginSettings` is exported and takes fields directly, so it holds this by checking
+ * rather than by luck. The `?? ""` arm is then reachable only that way.
+ */
+function zeroFor(field: PluginSettingField): PluginSettingValue {
+  if (field.type === "enum") {
+    return field.options?.find(isUsableOption)?.value ?? "";
+  }
+  // `?? ""` because `ZERO[type]` is `undefined` for a type outside the set, and an
+  // `undefined` here is DROPPED by `JSON.stringify` on the way to the sandbox (§260
+  // Phase 4c code review, M5) — which would break the one promise this API makes, stated
+  // in `SandboxSettingsAPI` and in the plugin guide: one value per declared field. The
+  // callers all pass `declaredSettingsFor` output, which filters such a field out
+  // already; this makes the exported function safe on its own rather than by luck.
+  return ZERO[field.type] ?? "";
+}
+
+/**
+ * `transparent` rather than `""` for a colour (§0054).
+ *
+ * This is only reached by a manifest that declares a `color` field and gives it no usable
+ * `default` — an author bug. `""` would be the parallel of the other zeros, but the value's
+ * destination is a stylesheet, where an empty string makes the declaration invalid and the
+ * failure surfaces as "the rule did nothing" with no way to tell it from a selector that did
+ * not match. `transparent` is a real CSS colour that renders as the author's omission looks.
+ *
+ * The `enum` entry is required by the `Record` and never read — `zeroFor` answers that type
+ * from the field's own `options` before reaching here.
+ */
 const ZERO: Record<PluginSettingField["type"], PluginSettingValue> = {
   boolean: false,
+  color: "transparent",
+  enum: "",
   number: 0,
   string: "",
 };

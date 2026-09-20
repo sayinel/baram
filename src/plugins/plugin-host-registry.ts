@@ -31,6 +31,88 @@ export const commandHandlers = new Map<
 export type EventHandler = (...args: unknown[]) => void;
 export const eventListeners = new Map<string, Set<EventHandler>>();
 
+// --- Per-plugin event bus (§0054) ---
+/**
+ * Subscriptions that must reach ONE plugin, keyed `pluginId → event → handlers`.
+ *
+ * ‼️ `eventListeners` above is shared by every trusted plugin: two plugins subscribing to the
+ * same name land in the same `Set`, and `emitPluginEvent` calls all of them. That is correct
+ * for APP events — "a file was opened" happened to everyone — and wrong for anything that
+ * happened to a particular plugin. `settings:changed` is the first such event, and putting it
+ * on the shared bus would have woken every trusted plugin whenever any one of them had a
+ * setting edited, each re-reading its own unchanged values.
+ *
+ * The sandboxed tier never had this problem: its delivery is a frame to one webview
+ * (`session.deliverEvent`), so scoping is structural there. This is the trusted tier's
+ * equivalent.
+ */
+const scopedListeners = new Map<string, Map<string, Set<EventHandler>>>();
+
+/** Subscribe `handler` to one plugin's own `event`. Returns the unsubscriber. */
+export function onScopedPluginEvent(
+  pluginId: string,
+  event: string,
+  handler: EventHandler,
+): () => void {
+  const byEvent = scopedListeners.get(pluginId) ?? new Map();
+  scopedListeners.set(pluginId, byEvent);
+  const handlers = byEvent.get(event) ?? new Set<EventHandler>();
+  byEvent.set(event, handlers);
+  handlers.add(handler);
+  // ‼️ IDEMPOTENT (§0054 code review, MEDIUM). Without the flag, the second call on a stale
+  // handle prunes the maps that have REPLACED the ones it closed over: its own `Set` is
+  // already empty, so `byEvent.delete` and `scopedListeners.delete` run against whatever a
+  // later subscription rebuilt, orphaning a live handler no further `dispose()` can restore.
+  //
+  // Double-dispose is the ordinary shape here, not a contrivance: `events.on` both returns
+  // the disposable AND pushes it into `context.subscriptions`, and a plugin's `deactivate()`
+  // runs before the loader walks that list — the shipped Bullet Threading example does
+  // exactly this on every unload. Every other `dispose` in this stack is already idempotent
+  // (`commandHandlers.delete`, `eventListeners.get(event)?.delete(handler)`); this was the
+  // odd one out.
+  let done = false;
+  return () => {
+    if (done) return;
+    done = true;
+    handlers.delete(handler);
+    // Both levels are pruned when they empty, so an app that loads and unloads plugins does
+    // not accumulate a `Map` entry per plugin that ever ran.
+    if (handlers.size === 0) byEvent.delete(event);
+    if (byEvent.size === 0) scopedListeners.delete(pluginId);
+  };
+}
+
+/**
+ * Emit `event` to ONE plugin's handlers.
+ *
+ * A throwing handler is logged and the rest still run — same contract as `emitPluginEvent`,
+ * and the reason the caller may treat this as non-throwing.
+ */
+export function emitScopedPluginEvent(
+  pluginId: string,
+  event: string,
+  ...args: unknown[]
+): void {
+  const handlers = scopedListeners.get(pluginId)?.get(event);
+  if (!handlers) return;
+  // `[...handlers]` fixes the delivery list at the moment this event fires, and that is
+  // the ONLY thing it buys — governing this loop alone.
+  //
+  // ‼️ It is NOT protection against a handler disposing itself. A `Set` iterator tolerates
+  // deleting an element it has already visited, so that case is safe either way; removing
+  // the copy and re-running the self-disposal test below leaves it green, which is how this
+  // comment got rewritten. What the copy actually prevents is the other direction: a `Set`
+  // iterator DOES visit elements added during iteration, so a handler that subscribes while
+  // being delivered to would otherwise receive the very event already in flight.
+  for (const handler of [...handlers]) {
+    try {
+      handler(...args);
+    } catch (e) {
+      logger.error(`[Plugin Event Error] ${pluginId} ${event}:`, e);
+    }
+  }
+}
+
 // --- Editor handle ---
 /**
  * What the plugin tiers need from the live editor.

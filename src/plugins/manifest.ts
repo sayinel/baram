@@ -5,8 +5,16 @@ import type {
   PluginSettingType,
 } from "./types";
 
-import { MAX_SETTING_FIELDS } from "./plugin-settings";
-import { CAPABILITY_DESCRIPTIONS, SETTING_TYPES } from "./types";
+import {
+  isSafeSettingColor,
+  MAX_SETTING_FIELDS,
+  MAX_SETTING_VALUE_CHARS,
+} from "./plugin-settings";
+import {
+  CAPABILITY_DESCRIPTIONS,
+  SETTING_TYPES,
+  SETTING_VALUE_TYPES,
+} from "./types";
 
 /**
  * Every capability the app knows how to enforce.
@@ -418,6 +426,13 @@ function validateContributions(
     // out of it — the same rule the status bar's ids follow.
     requireId(field.key, `contributions.settings[${i}].key`);
     requireString(field.label, `contributions.settings[${i}].label`);
+    requireString(
+      field.description,
+      `contributions.settings[${i}].description`,
+      {
+        optional: true,
+      },
+    );
     const type = field.type;
     if (
       typeof type !== "string" ||
@@ -429,14 +444,64 @@ function validateContributions(
       });
       return; // without a valid type there is nothing to check `default` against
     }
+    const settingType = type as PluginSettingType;
+    const at = `contributions.settings[${i}]`;
+    const optionValues = validateSettingShape(settingType, field, at, errors);
     // A `default` of the wrong type is rejected at install rather than silently ignored
     // at read time: the resolver falls back to the type's zero when a default does not
     // match, so a `"default": "10"` on a number field would leave the author's stated
     // default nowhere in the running app and no error anywhere.
-    if (field.default !== undefined && typeof field.default !== type) {
+    //
+    // ‼️ §0054 — `SETTING_VALUE_TYPES[type]`, not `type`. `color` and `enum` are carried as
+    // strings, so comparing against the declared NAME would reject every legal default they
+    // could have. The same substitution the resolver's `coerce` makes, for the same reason.
+    if (
+      field.default !== undefined &&
+      typeof field.default !== SETTING_VALUE_TYPES[settingType]
+    ) {
       errors.push({
-        field: `contributions.settings[${i}].default`,
-        message: `default must be a ${type} to match this field's type`,
+        field: `${at}.default`,
+        message: `default must be a ${SETTING_VALUE_TYPES[settingType]} to match this field's "${settingType}" type`,
+      });
+      return; // the checks below all read a default of the right primitive
+    }
+    // §0054 — and the same argument one level deeper: a default the FIELD's own constraints
+    // refuse is silently skipped by the resolver, leaving the author's stated default
+    // nowhere in the running app. Every constraint that can refuse a value is checked here.
+    if (field.default === undefined) return;
+    // `as string` is safe and not inferrable: the `typeof` check above compared against
+    // `SETTING_VALUE_TYPES["enum"]`, and TypeScript cannot narrow through that lookup.
+    if (
+      settingType === "enum" &&
+      optionValues &&
+      !optionValues.has(field.default as string)
+    ) {
+      errors.push({
+        field: `${at}.default`,
+        message: `default must be one of this field's option values`,
+      });
+    }
+    if (settingType === "number") {
+      const value = field.default as number;
+      if (!Number.isFinite(value)) {
+        errors.push({
+          field: `${at}.default`,
+          message: `default must be finite`,
+        });
+      } else if (
+        (typeof field.min === "number" && value < field.min) ||
+        (typeof field.max === "number" && value > field.max)
+      ) {
+        errors.push({
+          field: `${at}.default`,
+          message: `default must be within this field's min/max`,
+        });
+      }
+    }
+    if (settingType === "color" && !isSafeSettingColor(field.default)) {
+      errors.push({
+        field: `${at}.default`,
+        message: `default must be a CSS colour — a hex value, a colour name, rgb()/hsl(), or var(--color-accent-default)`,
       });
     }
   });
@@ -451,4 +516,124 @@ function validateContributions(
   // as the status bar does, and `CONTRIBUTION_ID` is what keeps the separator unambiguous.
   entries("menu");
   return errors;
+}
+
+/**
+ * §0054 — the shape checks for one settings field's `min`/`max`/`options`.
+ *
+ * Returns the enum's option values when they are usable, so the caller can check `default`
+ * against them without walking the list twice; `null` means "already reported, do not check
+ * `default` against it".
+ *
+ * ‼️ A constraint declared on a type that does not use it is an ERROR, not a silent no-op.
+ * `options` on a `boolean` field, `min` on a `string` — these are the author writing down an
+ * intention the app will never honour, and the whole reason this section exists is that such
+ * intentions used to disappear between the manifest and the running app with nothing said.
+ */
+function validateSettingShape(
+  type: PluginSettingType,
+  field: Record<string, unknown>,
+  at: string,
+  errors: ManifestValidationError[],
+): null | Set<string> {
+  const rejectUnusable = (key: string, usedBy: string) => {
+    if (field[key] !== undefined) {
+      errors.push({
+        field: `${at}.${key}`,
+        message: `${key} applies only to a "${usedBy}" field, and this one is "${type}"`,
+      });
+    }
+  };
+
+  if (type !== "number") {
+    rejectUnusable("min", "number");
+    rejectUnusable("max", "number");
+  } else {
+    for (const key of ["min", "max"] as const) {
+      const bound = field[key];
+      if (bound !== undefined && !Number.isFinite(bound)) {
+        errors.push({
+          field: `${at}.${key}`,
+          message: `${key} must be a finite number`,
+        });
+      }
+    }
+    const { max, min } = field;
+    if (
+      typeof min === "number" &&
+      typeof max === "number" &&
+      Number.isFinite(min) &&
+      Number.isFinite(max) &&
+      min > max
+    ) {
+      // A range no value can satisfy. `declaredSettingsFor` drops such a field rather than
+      // render a control whose every answer its own field calls illegal; this tells the
+      // author at install instead of leaving the field mysteriously absent.
+      errors.push({
+        field: `${at}.min`,
+        message: `min must not be greater than max`,
+      });
+    }
+  }
+
+  if (type !== "enum") {
+    rejectUnusable("options", "enum");
+    return null;
+  }
+
+  const options = field.options;
+  if (!Array.isArray(options) || options.length === 0) {
+    errors.push({
+      field: `${at}.options`,
+      message: `an "enum" field must declare a non-empty options array`,
+    });
+    return null;
+  }
+  const values = new Set<string>();
+  let usable = true;
+  options.forEach((option, j) => {
+    const entry = option as null | Record<string, unknown>;
+    if (typeof entry?.value !== "string" || entry.value.length === 0) {
+      errors.push({
+        field: `${at}.options[${j}].value`,
+        message: `option value must be a non-empty string`,
+      });
+      usable = false;
+      return;
+    }
+    // ‼️ §0054 code review (MEDIUM) — an enum value is never CLAMPED. `clampChars` runs on
+    // the `string` type only, and clamping an enum value would yield something that is no
+    // longer one of `options`. Without this cap, `MAX_SETTING_VALUE_CHARS`'s "16 × 512 is
+    // ~9 KiB" stopped being a bound the moment enums existed: one option could carry a
+    // megabyte straight through to the sandbox settings pull. Same defect class as the id
+    // length cap above, one level down.
+    if (entry.value.length > MAX_SETTING_VALUE_CHARS) {
+      errors.push({
+        field: `${at}.options[${j}].value`,
+        message: `option value must be at most ${MAX_SETTING_VALUE_CHARS} characters`,
+      });
+      usable = false;
+      return;
+    }
+    if (typeof entry.label !== "string" || entry.label.length === 0) {
+      errors.push({
+        field: `${at}.options[${j}].label`,
+        message: `option label must be a non-empty string`,
+      });
+      usable = false;
+      return;
+    }
+    if (values.has(entry.value)) {
+      // Two options with one value render two rows the user cannot tell apart, and picking
+      // either stores the same answer — the same argument as `rejectDuplicateIds`.
+      errors.push({
+        field: `${at}.options[${j}].value`,
+        message: `duplicate option value "${entry.value}"`,
+      });
+      usable = false;
+      return;
+    }
+    values.add(entry.value);
+  });
+  return usable ? values : null;
 }

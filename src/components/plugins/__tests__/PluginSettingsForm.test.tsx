@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { usePluginStore } from "../../../stores/system/plugin";
 import { PluginSettingsForm } from "../PluginSettingsForm";
+import { SETTING_COLOR_SWATCHES } from "../setting-color-swatches";
 
 const install = (
   settings: PluginSettingField[],
@@ -153,5 +154,188 @@ describe("PluginSettingsForm", () => {
     });
     expect(screen.getByText("New Field")).toBeTruthy();
     expect(screen.queryByText("Old Field")).toBeNull();
+  });
+});
+
+// §0054 — the controls the new field shapes call for.
+describe("PluginSettingsForm — field affordances (§0054)", () => {
+  beforeEach(() => {
+    usePluginStore.setState({
+      devPlugins: {},
+      installedPlugins: {},
+      pluginSettings: {},
+    });
+  });
+
+  it("shows a field's description under its label", () => {
+    // The sentence that used to be exiled to the plugin's README, where the person
+    // changing the value never sees it.
+    install([
+      {
+        default: "»",
+        description: "Shown before every line",
+        key: "prefix",
+        label: "Prefix",
+        type: "string",
+      },
+    ]);
+    render(<PluginSettingsForm pluginId="p-1" />);
+    expect(screen.getByText("Shown before every line")).toBeTruthy();
+  });
+
+  it("puts min and max on a number input", () => {
+    // Not a gate — a typed value outside the range still reaches the resolver, which is
+    // what refuses it. These are what make the stepper obey the range and what a screen
+    // reader announces.
+    install([
+      {
+        default: 2,
+        key: "w",
+        label: "Width",
+        max: 8,
+        min: 0.5,
+        type: "number",
+      },
+    ]);
+    render(<PluginSettingsForm pluginId="p-1" />);
+    const input = screen.getByRole("spinbutton") as HTMLInputElement;
+    expect(input.min).toBe("0.5");
+    expect(input.max).toBe("8");
+  });
+
+  it("renders an enum as a select over its declared options", () => {
+    install([
+      {
+        default: "halo",
+        key: "m",
+        label: "Marker",
+        options: [
+          { label: "Halo", value: "halo" },
+          { label: "Filled", value: "filled" },
+        ],
+        type: "enum",
+      },
+    ]);
+    render(<PluginSettingsForm pluginId="p-1" />);
+    const select = screen.getByRole("combobox") as HTMLSelectElement;
+    expect(select.value).toBe("halo");
+    expect([...select.options].map((o) => o.textContent)).toEqual([
+      "Halo",
+      "Filled",
+    ]);
+
+    act(() => {
+      fireEvent.change(select, { target: { value: "filled" } });
+    });
+    expect(valuesOf("p-1")).toEqual({ m: "filled" });
+  });
+
+  it("offers recommended colours as swatches that write a THEME TOKEN", () => {
+    // ‼️ The stored value is `var(--color-…)`, not a resolved hex. That is the entire
+    // point of the swatch: a hex would stop following the theme, which is also why there
+    // is no `<input type="color">` beside it — that control cannot hold a token.
+    install([
+      {
+        default: "var(--color-accent-default)",
+        key: "c",
+        label: "Colour",
+        type: "color",
+      },
+    ]);
+    render(<PluginSettingsForm pluginId="p-1" />);
+    const swatches = screen.getAllByRole("button");
+    expect(swatches.length).toBe(SETTING_COLOR_SWATCHES.length);
+    // The one holding the current value reports itself as pressed…
+    expect(
+      swatches.filter((b) => b.getAttribute("aria-pressed") === "true").length,
+    ).toBe(1);
+
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: /danger/iu }));
+    });
+    expect(valuesOf("p-1")).toEqual({ c: "var(--color-status-danger)" });
+  });
+
+  it("selects no swatch for a hand-typed colour", () => {
+    // Correct rather than tidy: none of the eight is what the field holds.
+    install([{ default: "#123456", key: "c", label: "Colour", type: "color" }]);
+    render(<PluginSettingsForm pluginId="p-1" />);
+    expect(
+      screen
+        .getAllByRole("button")
+        .filter((b) => b.getAttribute("aria-pressed") === "true"),
+    ).toEqual([]);
+    expect((screen.getByRole("textbox") as HTMLInputElement).value).toBe(
+      "#123456",
+    );
+  });
+});
+
+// §0054 code review (MEDIUM) — the number draft against a bounded field.
+//
+// The existing draft tests use a field with no `min`/`max`, so neither case below was pinned.
+// Both are Bullet Threading's real `lineWidth`: min 0.5, max 8, default 2.
+describe("PluginSettingsForm — a bounded number field", () => {
+  const bounded = () =>
+    install([
+      {
+        default: 2,
+        key: "w",
+        label: "Width",
+        max: 8,
+        min: 0.5,
+        type: "number",
+      },
+    ]);
+
+  beforeEach(() => {
+    usePluginStore.setState({
+      devPlugins: {},
+      installedPlugins: {},
+      pluginSettings: {},
+    });
+  });
+
+  it("lets a value below the minimum be typed THROUGH on the way to a valid one", () => {
+    // ‼️ `0.5` starts with `0`, which is below the minimum. Committing that intermediate
+    // made the resolver fall back to the default, which CHANGED the resolved value, which
+    // fired the resync effect and rewrote the box to "2" under the user's fingers — so the
+    // next keystrokes produced "2.5" and 0.5 was unreachable. State-dependent, too: from the
+    // default it worked, because the resolved value never moved.
+    bounded();
+    usePluginStore.getState().setPluginSetting("p-1", "w", 3);
+    render(<PluginSettingsForm pluginId="p-1" />);
+    const input = screen.getByRole("spinbutton") as HTMLInputElement;
+
+    act(() => {
+      fireEvent.change(input, { target: { value: "0" } });
+    });
+    expect(input.value, "the box was rewritten mid-typing").toBe("0");
+
+    act(() => {
+      fireEvent.change(input, { target: { value: "0.5" } });
+    });
+    expect(valuesOf("p-1")).toEqual({ w: 0.5 });
+  });
+
+  it("never persists a value the resolver would refuse", () => {
+    // Otherwise the box reads 9, the store holds 9, the plugin is told 2, and nothing says
+    // so — the disagreement is only visible by reopening the pane.
+    bounded();
+    render(<PluginSettingsForm pluginId="p-1" />);
+    const input = screen.getByRole("spinbutton") as HTMLInputElement;
+
+    act(() => {
+      fireEvent.change(input, { target: { value: "9" } });
+    });
+    expect(usePluginStore.getState().pluginSettings["p-1"]?.w).not.toBe(9);
+    // …and the control says it is refusing, rather than looking accepted.
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+
+    act(() => {
+      fireEvent.change(input, { target: { value: "8" } });
+    });
+    expect(valuesOf("p-1")).toEqual({ w: 8 }); // inclusive, and the flag clears
+    expect(input.getAttribute("aria-invalid")).toBe("false");
   });
 });

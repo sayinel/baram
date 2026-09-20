@@ -89,7 +89,8 @@ narrower, data-only context. Two differences matter when writing one:
   - **There is no setter.** A value the user chose must not move underneath them. Use
     `ctx.storage` for state of your own.
   - **`settings:changed` carries nothing** — re-read. (The values are kept out of pushed
-    frames on purpose.)
+    frames on purpose.) It is gated on `settings`, not on `events`, in both tiers, and it
+    is debounced so a field being typed into notifies you once the value settles.
   - **A value is resolved against your CURRENT manifest**, so if an update changes a
     field's type or drops a key, the plugin sees the new default rather than the old
     value. Renaming a key resets it; that is the trade for never handing you a `string`

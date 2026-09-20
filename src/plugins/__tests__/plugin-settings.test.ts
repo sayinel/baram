@@ -1,6 +1,6 @@
 // §260 Phase 4c — the value model. What is PERSISTED and what a plugin is TOLD are
 // different things, and every case below is a way the two can disagree.
-import type { PluginSettingField } from "../types";
+import type { PluginSettingField, PluginSettingOption } from "../types";
 
 import { describe, expect, it } from "vitest";
 
@@ -9,6 +9,7 @@ import {
   MAX_SETTING_FIELDS,
   MAX_SETTING_VALUE_CHARS,
   resolvePluginSettings,
+  sanitizeSettingDescription,
   sanitizeSettingLabel,
 } from "../plugin-settings";
 
@@ -240,5 +241,258 @@ describe("sanitizeSettingLabel", () => {
     // A label IS rendered in the app's own chrome, so unlike a value it is sanitised.
     expect(sanitizeSettingLabel("Two\nlines")).toBe("Two lines");
     expect(sanitizeSettingLabel("x".repeat(200))).toHaveLength(80);
+  });
+});
+
+// §0054 — the constraints a field may now carry, and the two new types.
+//
+// ‼️ Every case below is a value the resolver must REFUSE and replace. What makes that worth
+// asserting rather than assuming: the persisted record is a config file the user can edit, and
+// before §0054 a bound existed only inside the plugin (`css.ts`'s 0.5–8 clamp on `lineWidth`),
+// so typing `100` produced the default with nothing anywhere saying why.
+describe("field constraints (§0054)", () => {
+  const width: PluginSettingField = {
+    default: 2,
+    key: "w",
+    label: "Width",
+    max: 8,
+    min: 0.5,
+    type: "number",
+  };
+  const marker: PluginSettingField = {
+    default: "halo",
+    key: "m",
+    label: "Marker",
+    options: [
+      { label: "Halo", value: "halo" },
+      { label: "Filled", value: "filled" },
+      { label: "None", value: "none" },
+    ],
+    type: "enum",
+  };
+  const colour: PluginSettingField = {
+    default: "var(--color-accent-default)",
+    key: "c",
+    label: "Colour",
+    type: "color",
+  };
+
+  describe("min/max", () => {
+    it("takes a persisted value inside the range", () => {
+      // The positive half: without it, "refuses 100" would also pass on a resolver that
+      // refused everything.
+      expect(resolvePluginSettings([width], { w: 4 })).toEqual({ w: 4 });
+      // Inclusive at both ends.
+      expect(resolvePluginSettings([width], { w: 0.5 })).toEqual({ w: 0.5 });
+      expect(resolvePluginSettings([width], { w: 8 })).toEqual({ w: 8 });
+    });
+
+    it("falls back to the default outside it, like a type mismatch", () => {
+      expect(resolvePluginSettings([width], { w: 100 })).toEqual({ w: 2 });
+      expect(resolvePluginSettings([width], { w: 0 })).toEqual({ w: 2 });
+    });
+
+    it("skips a DEFAULT outside its own range and reaches the zero", () => {
+      // A hand-edited manifest; the validator refuses this one at install. `0` is
+      // `ZERO.number` — itself outside the range, which is why the validator has to refuse
+      // the manifest rather than this being the whole answer.
+      const broken = { ...width, default: 99 };
+      expect(resolvePluginSettings([broken], {})).toEqual({ w: 0 });
+    });
+
+    it("drops a field whose range admits nothing", () => {
+      // Every value coerces away, so the form would show a number the field calls illegal.
+      expect(
+        declaredSettingsFor({
+          capabilities: ["settings"],
+          contributions: { settings: [{ ...width, max: 1, min: 5 }] },
+        }),
+      ).toEqual([]);
+    });
+  });
+
+  describe("enum", () => {
+    it("takes a persisted value that is one of the options", () => {
+      expect(resolvePluginSettings([marker], { m: "filled" })).toEqual({
+        m: "filled",
+      });
+    });
+
+    it("refuses a value no option declares", () => {
+      // A renamed option in a plugin update leaves the old answer in the record.
+      expect(resolvePluginSettings([marker], { m: "glow" })).toEqual({
+        m: "halo",
+      });
+    });
+
+    it("falls back to the FIRST option when the default is unusable too", () => {
+      // ‼️ Not `""`. The promise is one value per field, and for an enum always one of
+      // `options` — `""` is in none of them, and a plugin switching on the value would hit
+      // its own unreachable branch.
+      const broken = { ...marker, default: "gone" };
+      expect(resolvePluginSettings([broken], {})).toEqual({ m: "halo" });
+    });
+
+    it("drops a field with no usable options", () => {
+      expect(
+        declaredSettingsFor({
+          capabilities: ["settings"],
+          contributions: { settings: [{ ...marker, options: [] }] },
+        }),
+      ).toEqual([]);
+      expect(
+        declaredSettingsFor({
+          capabilities: ["settings"],
+          contributions: {
+            // Cast because the TYPE forbids this and a hand-edited manifest does not —
+            // which is the whole reason `declaredSettingsFor` re-checks what the validator
+            // already checked. See its own comment on the install/load gap.
+            settings: [
+              { ...marker, options: [{ value: "x" } as PluginSettingOption] },
+            ],
+          },
+        }),
+      ).toEqual([]);
+    });
+  });
+
+  describe("color", () => {
+    it("keeps the shapes a colour actually takes", () => {
+      for (const value of [
+        "#3b82f6",
+        "rebeccapurple",
+        "rgb(59, 130, 246)",
+        "rgba(59,130,246,0.5)",
+        "var(--color-status-danger)",
+        "color-mix(in srgb, red 50%, blue)",
+      ]) {
+        expect(resolvePluginSettings([colour], { c: value })).toEqual({
+          c: value,
+        });
+      }
+    });
+
+    it("refuses a string that could end the declaration it is pasted into", () => {
+      // The plugin builds a stylesheet from this. Its own check stays — this is the type
+      // keeping its promise, not a replacement for the plugin's guard.
+      for (const value of [
+        "red; } body { display: none",
+        "url(http://x/y)",
+        "@import 'x'",
+        "x".repeat(100),
+        "   ",
+      ]) {
+        expect(resolvePluginSettings([colour], { c: value })).toEqual({
+          c: "var(--color-accent-default)",
+        });
+      }
+    });
+
+    it("trims, so the stored value is the one that passed the check", () => {
+      expect(resolvePluginSettings([colour], { c: "  red  " })).toEqual({
+        c: "red",
+      });
+    });
+
+    it("falls back to transparent when the field declares no usable default", () => {
+      // An author bug, and `""` would make the declaration invalid — indistinguishable from
+      // a selector that never matched.
+      const broken = { ...colour, default: undefined };
+      expect(resolvePluginSettings([broken], {})).toEqual({ c: "transparent" });
+    });
+  });
+});
+
+describe("sanitizeSettingDescription", () => {
+  it("flattens and caps a description, on its own longer bound", () => {
+    // Longer than a label because it holds the sentence that used to live in the README.
+    expect(sanitizeSettingDescription("Two\nlines")).toBe("Two lines");
+    expect(sanitizeSettingDescription("x".repeat(400))).toHaveLength(160);
+  });
+});
+
+// §0054 code review (HIGH) — a PARTLY malformed options list.
+//
+// ‼️ `isUsableField` gated on `.some(isUsableOption)` — one good option was enough — while
+// both consumers walk EVERY option: the form maps all of them, and `coerce` compares against
+// all of them. So a list with one good entry and one bad one survived the gate and then threw
+// on the bad one, during render, which at the root error boundary replaces the whole app on
+// the very route that holds Uninstall.
+//
+// The comment above that gate asserted the opposite ("an `options` list the validator refused
+// cannot reach here"), which is what stopped the gap being seen. Universal quantifier,
+// unverified — the exact shape CLAUDE.md 「주석·문서의 주장」 is about.
+describe("a partly malformed enum (§0054 review, HIGH)", () => {
+  const mixed = (options: unknown[]) => ({
+    capabilities: ["settings"],
+    contributions: {
+      settings: [{ default: "a", key: "m", label: "M", options, type: "enum" }],
+    },
+  });
+
+  it("drops a field where ANY option is unusable, not just where all are", () => {
+    for (const options of [
+      [{ label: "A", value: "a" }, null],
+      [
+        { label: "A", value: "a" },
+        { label: 42, value: "b" },
+      ],
+      [
+        { label: "A", value: "a" },
+        { label: "B", value: 99 },
+      ],
+      [{ label: "A", value: "a" }, "b"],
+    ]) {
+      expect(
+        declaredSettingsFor(mixed(options) as never),
+        `options ${JSON.stringify(options)} must drop the field`,
+      ).toEqual([]);
+    }
+  });
+
+  it("still keeps a wholly well-formed list — the gate is not just 'refuse everything'", () => {
+    expect(
+      declaredSettingsFor(
+        mixed([
+          { label: "A", value: "a" },
+          { label: "B", value: "b" },
+        ]) as never,
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("refuses an option value long enough to break the stated payload bound", () => {
+    // `MAX_SETTING_VALUE_CHARS`'s comment argues the transport decision from
+    // "16 × 512 is ~9 KiB". An enum value is never clamped — `clampChars` runs for `string`
+    // only — so an unbounded option value made that a stated bound that is not a bound.
+    expect(
+      declaredSettingsFor(
+        mixed([
+          { label: "A", value: "a".repeat(MAX_SETTING_VALUE_CHARS + 1) },
+        ]) as never,
+      ),
+    ).toEqual([]);
+  });
+
+  it("never yields a non-string for a declared enum, even from a raw field", () => {
+    // `resolvePluginSettings` is exported and takes fields directly, so it has to hold this
+    // on its own: `zeroFor` read `options[0]` without the check that decided the field
+    // survives, so a first option with a numeric `value` reached plugin code as a number.
+    const resolved = resolvePluginSettings(
+      [
+        {
+          key: "m",
+          label: "M",
+          options: [
+            { label: "x", value: 99 },
+            { label: "B", value: "b" },
+          ],
+          type: "enum",
+        } as never,
+      ],
+      {},
+    );
+    expect(typeof resolved.m).toBe("string");
+    expect(resolved.m).toBe("b");
   });
 });
