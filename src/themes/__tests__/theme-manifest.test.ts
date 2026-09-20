@@ -283,7 +283,7 @@ describe("validateThemeManifest", () => {
     }
   });
 
-  test("rejects a manifest with neither capabilities nor main together as separate errors", () => {
+  test("rejects a manifest with both capabilities and main, as separate errors", () => {
     const result = validateThemeManifest({
       ...validManifest,
       capabilities: ["editor:readonly"],
