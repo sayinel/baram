@@ -10,6 +10,15 @@ const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 
 const TRUST_VALUES: readonly PluginTrust[] = ["sandboxed", "trusted"];
 
+/**
+ * Longest `readme` URL this build will carry out of an index.
+ *
+ * Not a security boundary — Rust's origin check is — but a URL this long is not a URL, and
+ * without a bound an index could park megabytes per entry in the store, which is persisted
+ * and re-read on every launch. Generous enough that no real URL meets it.
+ */
+const MAX_README_URL_CHARS = 2048;
+
 /** Check for updates for all installed plugins */
 export async function checkForUpdates(): Promise<Record<string, string>> {
   const store = usePluginStore.getState();
@@ -152,6 +161,21 @@ function normalizeIndex(index: RegistryIndex): RegistryIndex {
       // the trust model. Stripped on INGEST, before any branch can preserve it.
       const entry = { ...raw };
       delete entry.demotedBecause;
+
+      // The same ingest rule one line up, applied to `readme`: a registry-authored value is
+      // constrained before anything downstream can act on it. Rust refuses a URL outside the
+      // registry that listed it, which is the check that matters and the only one that can
+      // know which index the entry came from — this drops the shapes that would reach that
+      // call as nonsense (a number, an empty string, a whole README inlined as the "URL").
+      // `RegistryEntry.readme` is typed `string`, and nothing checks a type at runtime.
+      if (
+        entry.readme !== undefined &&
+        (typeof entry.readme !== "string" ||
+          entry.readme.length === 0 ||
+          entry.readme.length > MAX_README_URL_CHARS)
+      ) {
+        delete entry.readme;
+      }
 
       const unknownTier =
         entry.trust !== undefined && !TRUST_VALUES.includes(entry.trust);

@@ -116,6 +116,38 @@ describe("fetchRegistryIndex normalizes the trust tier (§260 Phase 6)", () => {
     expect(cap.capabilities).toEqual(["events"]);
   });
 
+  it("carries a plausible readme through untouched", async () => {
+    // The control. Without it the three refusals below would all be satisfied by an ingest
+    // that deleted every readme, which is the shape a too-eager guard takes.
+    const [kept] = await load(
+      entry({
+        id: "has-readme",
+        readme: "https://sayinel.github.io/baram-plugins/readme/x-1.0.0.md",
+      } as never),
+    );
+    expect(kept.readme).toBe(
+      "https://sayinel.github.io/baram-plugins/readme/x-1.0.0.md",
+    );
+  });
+
+  it("drops a readme that is not a non-empty, bounded string", async () => {
+    // ‼️ `RegistryEntry.readme` is typed `string`, and NOTHING CHECKS A TYPE AT RUNTIME —
+    // the same premise the tier and capability strips rest on. What reaches Rust must be a
+    // URL-shaped thing or nothing; the origin rule itself is enforced there, at the moment
+    // of dereference, because only that side knows which index the entry came from.
+    //
+    // ONE `load` PER CASE would be served from the cache the first wrote (see the comment
+    // above the tier tests), so the shapes travel as separate entries in one index.
+    const [num, empty, huge] = await load(
+      entry({ id: "n", readme: 42 } as never),
+      entry({ id: "e", readme: "" } as never),
+      entry({ id: "h", readme: `https://x/${"a".repeat(4000)}` } as never),
+    );
+    expect(num.readme).toBeUndefined();
+    expect(empty.readme).toBeUndefined();
+    expect(huge.readme).toBeUndefined();
+  });
+
   it("refuses to let the REGISTRY set the demotion reason", async () => {
     // §260 Phase 6 code review round 3 (MEDIUM-2). `demotedBecause` is ours — the type says
     // "NOT a registry field" — but nothing enforced it, and the round-3 reviewer found the exact

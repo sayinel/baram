@@ -125,7 +125,7 @@ pub use storage::{
     storage_write,
 };
 // Re-exported: registry/revocation network fetch (src-tauri/src/commands/plugin_cmd.rs).
-pub use fetch::{fetch_registry, fetch_revocations, FetchedRevocations};
+pub use fetch::{fetch_registry, fetch_registry_readme, fetch_revocations, FetchedRevocations};
 // Re-exported: the plugin network proxy + its request/response shape
 // (src-tauri/src/commands/plugin_cmd.rs, and plugin/authorizer.rs for the request shape).
 pub use origin::{http_fetch, PluginFetchInit, PluginFetchResponse};

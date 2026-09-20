@@ -17,7 +17,9 @@
     },
     {
       "name": "read_media_data_url",
-      "input": { "path": "string" },
+      "input": {
+        "path": "string"
+      },
       "output": "string",
       "module": "fs",
       "spec": "§324-e",
@@ -1100,6 +1102,20 @@
       "milestone": "M10",
       "status": "implemented",
       "description": "플러그인 레지스트리 인덱스 조회"
+    },
+    {
+      "name": "plugin_fetch_readme",
+      "input": {
+        "registryUrl": "string",
+        "readmeUrl": "string"
+      },
+      "output": "string",
+      "module": "plugin",
+      "spec": "§69",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "레지스트리 목록의 README 원문 조회 — 설치 전 상세 화면용. readmeUrl 은 registryUrl 로 만든 base 아래여야 하고 리다이렉트 매 홉을 다시 검사한다(install 의 downloadUrl 과 같은 가드). 렌더는 MarkdownRenderer 의 UNTRUSTED 기본값"
     },
     {
       "name": "plugin_fetch_revocations",

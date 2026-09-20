@@ -113,6 +113,25 @@ pub struct RegistryEntry {
     pub homepage: Option<String>,
     #[serde(default)]
     pub icon: Option<String>,
+    /// Where this listing's README lives, so the marketplace can show it BEFORE an install.
+    ///
+    /// ‼️ THIS LAYER IS A PIPE, AND A FIELD IT DOES NOT NAME IS A FIELD THE FRONTEND NEVER
+    /// SEES. `fetch_registry` deserializes the live index into this struct and Tauri
+    /// re-serializes it on the way back, so serde's default of ignoring unknown keys drops
+    /// the value silently — the index would carry it, `validate-index.ts` would pass it, and
+    /// the app would render a page with no README and nothing reporting why. That is exactly
+    /// how `trust` shipped broken in Phase 5 and how `contributions` did in 스펙 0050; this is
+    /// the third instance, written down rather than rediscovered.
+    ///
+    /// `Option<String>`: an entry without one is legal and always will be — a plugin whose
+    /// archive has no README, and every entry published before this field existed.
+    /// `skip_serializing_if` keeps those entries byte-identical through the round trip.
+    ///
+    /// NOT validated here. `fetch_registry_readme` refuses a URL outside the registry that
+    /// listed it, at the moment it is dereferenced, which is the only place that can know
+    /// which index the entry came from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub readme: Option<String>,
     /// The declared minimum app version — ABSENT is a legal state here, meaning "no floor".
     ///
     /// Authors are still required to declare it (`docs/plugin-development.md`, and
