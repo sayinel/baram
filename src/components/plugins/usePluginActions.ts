@@ -246,7 +246,20 @@ export function usePluginActions(registryIndex: null | RegistryIndex) {
           addPlugin(plugin);
           setError(entry.id, null);
 
-          // Load the plugin if it doesn't have tiptap extensions (those need restart)
+          // Load what was just installed — EVERY plugin, including one contributing
+          // tiptapExtensions.
+          //
+          // ‼️ THIS SKIPPED A `tiptapExtensions` MANIFEST until §260 스펙 0050, under the
+          // comment "those need restart". That was true when it was written: nothing
+          // consumed the field, so a contribution could only reach an editor constructed
+          // after the plugin loaded. `src/plugins/editor-surfaces.ts` changed it —
+          // `addPluginContributions` installs into every editor already registered as a
+          // surface, so a contribution takes effect on the open document immediately.
+          //
+          // The skip did not tell the user to restart either; it just did nothing. A
+          // freshly installed editor plugin sat there inert with no error against it, and
+          // the way out was to toggle Enabled off and on — which calls the very
+          // `loadPlugin` this line was declining to call. That is how it was found.
           //
           // ‼ ACTIVATION FAILURE IS NOT ROLLED BACK (#261, the policy the issue asks be
           // stated). The files are installed and stay installed: they passed the checksum,
@@ -260,15 +273,13 @@ export function usePluginActions(registryIndex: null | RegistryIndex) {
           // Caught HERE rather than left to propagate, so this still reports success: the
           // new version is on disk and recorded, and returning false would leave the
           // "update available" badge up and invite the user to install it again.
-          if (!committed.manifest.tiptapExtensions?.length) {
-            try {
-              await pluginLoader.loadPlugin(
-                committed.install_path,
-                committed.manifest,
-              );
-            } catch (activationError) {
-              setError(entry.id, String(activationError));
-            }
+          try {
+            await pluginLoader.loadPlugin(
+              committed.install_path,
+              committed.manifest,
+            );
+          } catch (activationError) {
+            setError(entry.id, String(activationError));
           }
           return true;
         } finally {
