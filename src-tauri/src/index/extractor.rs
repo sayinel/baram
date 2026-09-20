@@ -324,6 +324,11 @@ pub(crate) fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
 /// §33 Replace wikilink targets in file content.
 /// Handles [[old]], [[old|display]], [[old#heading]], [[old#heading|display]], [[old^blockId]], etc.
 /// Only replaces the target portion, preserving display, heading, and blockId.
+///
+/// issue 678: the target test is the index's filing rule, `normalize_target`
+/// — `.md` stripped, case folded — so every link the index counted for the
+/// old name is rewritten, and none is left to be reported as stale. A link
+/// spelled with `.md` keeps that spelling on the new name.
 pub fn replace_wikilink_target(content: &str, old_target: &str, new_target: &str) -> String {
     // Match all wikilink forms: [[target]], [[target|display]], [[target#heading]], etc.
     // Capture groups: (1) target, (2) rest — #heading, ^blockId, |display in any combo
@@ -331,6 +336,7 @@ pub fn replace_wikilink_target(content: &str, old_target: &str, new_target: &str
     // never counted it, the editor never read it. The literal set is read
     // only once a match names the old target: a vault-wide rename visits
     // every note, and most hold no such link.
+    let old_key = normalize_target(old_target);
     let mut literal: Option<Literal> = None;
     REPLACE_RE
         .replace_all(content, |caps: &regex::Captures| {
@@ -339,15 +345,17 @@ pub fn replace_wikilink_target(content: &str, old_target: &str, new_target: &str
             let captured_target = caps.get(2).map(|m| m.as_str()).unwrap_or("");
             let rest = caps.get(3).map(|m| m.as_str()).unwrap_or("");
 
-            // Case-insensitive comparison for target matching
-            if captured_target
-                .trim()
-                .eq_ignore_ascii_case(old_target.trim())
+            if normalize_target(captured_target) == old_key
                 && !literal
                     .get_or_insert_with(|| Literal::of(content))
                     .overlaps(whole.range())
             {
-                format!("[[{alias_prefix}{}{rest}]]", new_target)
+                let suffix = if captured_target.trim().ends_with(".md") {
+                    ".md"
+                } else {
+                    ""
+                };
+                format!("[[{alias_prefix}{new_target}{suffix}{rest}]]")
             } else {
                 // No match — return original
                 whole.as_str().to_string()
@@ -430,6 +438,72 @@ pub fn replace_block_id_refs_to(
     out
 }
 
+/// issue 678: a file rename's block references — `((old#^id))`, with a
+/// display, and the `((…))` inside `{{embed ((old#^id))}}` — spelled with the
+/// new stem, in every referrer line the index's own grammar reads as a
+/// reference to the old one (`extract_links`, as `replace_block_id_refs_to`
+/// does since issue 668). The target test is `normalize_target`: a
+/// path-qualified `((dir/old#^id))` is filed elsewhere and stays (issue 619),
+/// a self-reference names no target and stays, and a literal region is
+/// never touched (issue 620).
+///
+/// A stem no reference can spell — one holding `)`, `#` or `|`, which end the
+/// target of `REF_REPLACE_RE` — is not written: the reference would parse as
+/// nothing, silently. The content comes back as it is, and the caller reports
+/// the file as one whose references still say the old name. The frontend's
+/// percent-escapes (§275.4) have no reader on this side, so escaping here
+/// would file the reference under a key nothing resolves.
+pub fn replace_block_reference_target(
+    content: &str,
+    ref_path: &str,
+    old_target: &str,
+    new_target: &str,
+) -> String {
+    if new_target.contains([')', '#', '|']) {
+        return content.to_owned();
+    }
+    let old_key = normalize_target(old_target);
+    let refers_to_old = |raw_target: &str| {
+        let t = raw_target.trim();
+        !t.is_empty() && normalize_target(t) == old_key
+    };
+    let lines: std::collections::HashSet<u32> = extract_links(ref_path, content)
+        .into_iter()
+        .filter(|entry| entry.link_type != "wikilink" && refers_to_old(&entry.target))
+        .map(|entry| entry.line)
+        .collect();
+    if lines.is_empty() {
+        return content.to_owned();
+    }
+    let mut literal: Option<Literal> = None;
+    let mut out = String::with_capacity(content.len());
+    for line in source_lines(content) {
+        if lines.contains(&line.number) {
+            let rewritten = REF_REPLACE_RE.replace_all(line.text, |caps: &regex::Captures| {
+                let whole = caps.get(0).unwrap();
+                let target = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+                let id = caps.get(2).map(|m| m.as_str()).unwrap_or("");
+                let display = caps.get(3).map(|m| m.as_str()).unwrap_or("");
+                let mut in_prose = || {
+                    !literal
+                        .get_or_insert_with(|| Literal::of(content))
+                        .overlaps(line.offset + whole.start()..line.offset + whole.end())
+                };
+                if refers_to_old(target) && in_prose() {
+                    format!("(({new_target}#^{id}{display}))")
+                } else {
+                    whole.as_str().to_string()
+                }
+            });
+            out.push_str(&rewritten);
+        } else {
+            out.push_str(line.text);
+        }
+        out.push_str(line.terminator);
+    }
+    out
+}
+
 /// issue 668: how many lines of `content` refer, in prose, to ITS OWN block
 /// `^id` naming no target — `((#^id))`, or that inside `{{embed ((#^id))}}`.
 /// The index files such a reference under the note's own stem, so renaming
@@ -438,7 +512,10 @@ pub fn replace_block_id_refs_to(
 /// alone. Against the lines the index named the file for, this tells whether
 /// it was named for them alone: a same-stem note whose `((note#^id))` to the
 /// target has gone since holds fewer, and is stale like any other.
-pub fn own_block_reference_lines(content: &str, id: &str) -> usize {
+///
+/// issue 678: with no `id`, every own block counts — a file rename names a
+/// same-stem note for all of its self-references, whatever the block.
+pub fn own_block_reference_lines(content: &str, id: Option<&str>) -> usize {
     let body_start = front_matter_end(content);
     let mut literal: Option<Literal> = None;
     let mut lines = 0;
@@ -446,7 +523,7 @@ pub fn own_block_reference_lines(content: &str, id: &str) -> usize {
         let holds_one = BLOCK_REF_RE.captures_iter(line.text).any(|cap| {
             let raw_target = cap.get(1).map(|m| m.as_str().trim()).unwrap_or("");
             let block_id = cap.get(2).map(|m| m.as_str()).unwrap_or("");
-            if !raw_target.is_empty() || block_id != id {
+            if !raw_target.is_empty() || id.is_some_and(|id| block_id != id) {
                 return false;
             }
             let whole = cap.get(0).unwrap();
@@ -988,23 +1065,118 @@ mod tests {
         // past the front matter, with the block ID in question, counted by
         // line as the index names them. A reference that names the target,
         // even its own stem, is the rewriter's.
-        assert_eq!(own_block_reference_lines("mine ^b1 ((#^b1))\n", "b1"), 1);
-        assert_eq!(own_block_reference_lines("{{embed ((#^b1))}}\n", "b1"), 1);
-        assert_eq!(own_block_reference_lines("see ((#^b1|shown))\n", "b1"), 1);
+        let b1 = Some("b1");
+        assert_eq!(own_block_reference_lines("mine ^b1 ((#^b1))\n", b1), 1);
+        assert_eq!(own_block_reference_lines("{{embed ((#^b1))}}\n", b1), 1);
+        assert_eq!(own_block_reference_lines("see ((#^b1|shown))\n", b1), 1);
         assert_eq!(
-            own_block_reference_lines("((#^b1)) ((#^b1))\n((#^b1))\n", "b1"),
+            own_block_reference_lines("((#^b1)) ((#^b1))\n((#^b1))\n", b1),
             2
         );
-        assert_eq!(own_block_reference_lines("see ((note#^b1))\n", "b1"), 0);
-        assert_eq!(own_block_reference_lines("mine ((#^b2))\n", "b1"), 0);
-        assert_eq!(own_block_reference_lines("`((#^b1))`\n", "b1"), 0);
+        assert_eq!(own_block_reference_lines("see ((note#^b1))\n", b1), 0);
+        assert_eq!(own_block_reference_lines("mine ((#^b2))\n", b1), 0);
+        assert_eq!(own_block_reference_lines("`((#^b1))`\n", b1), 0);
         assert_eq!(
-            own_block_reference_lines("---\nrelated: ((#^b1))\n---\nbody\n", "b1"),
+            own_block_reference_lines("---\nrelated: ((#^b1))\n---\nbody\n", b1),
             0
         );
+        assert_eq!(own_block_reference_lines("the reference is gone\n", b1), 0);
+    }
+
+    #[test]
+    fn a_notes_own_references_of_any_block_count_when_no_id_is_asked() {
+        // issue 678: a file rename names a same-stem note for every
+        // self-reference it holds, whatever the block, so the exemption
+        // counts them all — still one per line, in prose, past the front
+        // matter, and never a reference that names a target.
         assert_eq!(
-            own_block_reference_lines("the reference is gone\n", "b1"),
+            own_block_reference_lines("((#^b1)) and ((#^b2))\n((#^c3))\n", None),
+            2
+        );
+        assert_eq!(own_block_reference_lines("see ((note#^b1))\n", None), 0);
+        assert_eq!(own_block_reference_lines("`((#^b1))`\n", None), 0);
+        assert_eq!(
+            own_block_reference_lines("---\nrelated: ((#^b1))\n---\nbody\n", None),
             0
+        );
+    }
+
+    // issue 678 — replace_block_reference_target: a file rename's block references
+    #[test]
+    fn a_file_rename_rewrites_block_references_and_embeds_to_the_new_stem() {
+        let content =
+            "See ((old#^abc)) and ((old#^abc|label)).\n{{embed ((old#^abc))}} and [[old]]";
+        assert_eq!(
+            replace_block_reference_target(content, "/v/referrer.md", "old", "new"),
+            "See ((new#^abc)) and ((new#^abc|label)).\n{{embed ((new#^abc))}} and [[old]]"
+        );
+    }
+
+    #[test]
+    fn a_file_rename_matches_the_target_the_way_the_index_does_and_keeps_the_rest() {
+        // Case and `.md` normalize away as the index's key does; a
+        // path-qualified target is filed elsewhere (issue 619) and a
+        // self-reference names no target — both stay. Another note's block
+        // with the same ID is another note's.
+        let content = "((Old#^a)) ((old.md#^a)) ((dir/old#^a)) ((#^a)) ((other#^a))";
+        assert_eq!(
+            replace_block_reference_target(content, "/v/referrer.md", "old", "new"),
+            "((new#^a)) ((new#^a)) ((dir/old#^a)) ((#^a)) ((other#^a))"
+        );
+    }
+
+    #[test]
+    fn a_file_rename_leaves_a_block_reference_inside_code_and_keeps_offsets_and_crlf() {
+        // issue 620: the reference in the code span is literal; the prose one
+        // beside it is rewritten with a stem of another length, and the line
+        // after keeps its CRLF.
+        let content = "`((old#^a))` then ((old#^a)) end\r\nnext ((old#^b))\r\n";
+        assert_eq!(
+            replace_block_reference_target(content, "/v/referrer.md", "old", "longer-name"),
+            "`((old#^a))` then ((longer-name#^a)) end\r\nnext ((longer-name#^b))\r\n"
+        );
+        let untouched = "no reference here\n((other#^a))";
+        assert_eq!(
+            replace_block_reference_target(untouched, "/v/referrer.md", "old", "new"),
+            untouched
+        );
+    }
+
+    #[test]
+    fn a_file_rename_to_a_stem_no_block_reference_can_spell_leaves_the_references_alone() {
+        // `((target#^id))` cannot hold `)`, `#` or `|` in its target — the
+        // reference regex stops at them — and the Rust side has no escape
+        // convention (the frontend's percent-escapes are its own). Writing
+        // such a stem would leave a reference nothing parses, silently; the
+        // references stay, and the rename reports the file instead.
+        for stem in ["note (draft)", "c#", "a|b"] {
+            let content = "see ((old#^a)) and {{embed ((old#^a))}}";
+            assert_eq!(
+                replace_block_reference_target(content, "/v/referrer.md", "old", stem),
+                content,
+                "{stem}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_wikilink_rename_matches_the_target_the_way_the_index_does() {
+        // issue 678: the index files `[[old.md]]` and `[[OLD]]` under the key
+        // `old` (normalize_target); a rename that left them would report the
+        // file as stale. The `.md` spelling is kept on the new name; the
+        // rest of the link — heading, block, display — is untouched.
+        assert_eq!(
+            replace_wikilink_target(
+                "[[old.md]] [[OLD|shown]] [[old#h]] [[Old.md^b1]]",
+                "old",
+                "new"
+            ),
+            "[[new.md]] [[new|shown]] [[new#h]] [[new.md^b1]]"
+        );
+        // Unicode case folds as the index folds it.
+        assert_eq!(
+            replace_wikilink_target("[[ÉCOLE]]", "école", "school"),
+            "[[school]]"
         );
     }
 

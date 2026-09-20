@@ -2,7 +2,8 @@ use crate::context::manager::{resolve_canonical, Registered};
 use crate::context::ContextManager;
 use crate::index::{
     backlink_keys, collect_md_files, own_block_reference_lines, replace_block_id_refs_to,
-    replace_wikilink_target, rewrite_relative_wikilinks, IndexStats,
+    replace_block_reference_target, replace_wikilink_target, rewrite_relative_wikilinks,
+    IndexStats,
 };
 use serde::Serialize;
 use std::collections::HashMap;
@@ -133,10 +134,34 @@ pub(crate) async fn rename_file_with_links_inner(
     // 1. Get referencing files from every containing index (inside lock, quick
     //    reads) — a reference from outside a nested root is known only to the
     //    enclosing index. An index gone since the gate is a refusal.
-    let mut referring_files =
-        read_indexes(state, &dirs, |i| i.get_files_linking_to(&old_target)).await?;
+    //    issue 678: with the lines each file was named for (dedup across
+    //    indexes), for the same-stem exemption below — as the block ID
+    //    rename keeps them (issue 668). The files are what the rewrite visits.
+    let mut named: Vec<(String, u32)> =
+        read_indexes(state, &dirs, |i| i.referring_lines_to(&old_target)).await?;
+    named.sort();
+    named.dedup();
+    let mut named_lines: HashMap<String, usize> = HashMap::new();
+    for (source, _) in &named {
+        *named_lines.entry(source.clone()).or_default() += 1;
+    }
+    let mut referring_files: Vec<String> = named_lines.keys().cloned().collect();
     referring_files.sort();
-    referring_files.dedup();
+    // A same-stem note elsewhere (`b/old.md` beside `a/old.md`) is named by
+    // the index for its own `((#^id))` references, filed under its stem —
+    // the old name's key. The rewrite rightly leaves those alone, and the
+    // note is not stale news while its prose self-references, of any block,
+    // account for every line the index named it for.
+    let old_key = crate::index::normalizer::normalize_target(&old_target);
+    let named_for_its_own_references = |path: &str, content: &str| {
+        crate::index::normalizer::normalize_file_path(path) == old_key
+            && named_lines
+                .get(path)
+                .is_some_and(|&lines| own_block_reference_lines(content, None) >= lines)
+    };
+    // A rename that keeps the stem (`old.md` → `old.txt`) changes no
+    // reference: nothing is rewritten and no referrer is stale news.
+    let stem_unchanged = crate::index::normalizer::normalize_target(&new_target) == old_key;
 
     // The canonical identity of the file being renamed, resolved before it
     // moves (the new path does not exist yet: resolve_canonical builds it on
@@ -161,15 +186,27 @@ pub(crate) async fn rename_file_with_links_inner(
     //    file has moved, so a failure here is never a failed rename: the
     //    referrer is skipped and REPORTED (issue 594) — its links still spell
     //    the old name, and only the user can do something about that.
-    //    A referrer whose content does not change is not news here: the index
-    //    names files that refer by a block reference or an embed as well, and
-    //    this rewrite handles wikilinks only (see `Unchanged`).
+    //    issue 678: wikilinks, then block references and embeds — each pass
+    //    reads the content the other produced, so offsets and literal regions
+    //    are its own. A referrer the index named in which no reference to the
+    //    old name is found any more is REPORTED (issue 668), as for a block
+    //    ID rename; a same-stem note named for its own references is not.
+    let unchanged = if stem_unchanged {
+        Unchanged::Ignore
+    } else {
+        Unchanged::Report {
+            unless: &named_for_its_own_references,
+        }
+    };
     let rewritten = rewrite_referrers(
         &referring_files,
         old_path,
         &dirs,
-        &Unchanged::Ignore,
-        |content, _| replace_wikilink_target(content, &old_target, &new_target),
+        &unchanged,
+        |content, ref_path| {
+            let content = replace_wikilink_target(content, &old_target, &new_target);
+            replace_block_reference_target(&content, ref_path, &old_target, &new_target)
+        },
     )
     .await;
 
@@ -258,7 +295,7 @@ pub(crate) async fn rename_block_id_inner(
         target_keys.contains(&crate::index::normalizer::normalize_file_path(path))
             && named_lines
                 .get(path)
-                .is_some_and(|&lines| own_block_reference_lines(content, old_id) >= lines)
+                .is_some_and(|&lines| own_block_reference_lines(content, Some(old_id)) >= lines)
     };
 
     // 2. Read + replace + write (outside lock). The first referrer written is
@@ -326,9 +363,8 @@ enum Unchanged<'a> {
     Report {
         unless: &'a (dyn Fn(&str, &str) -> bool + Sync),
     },
-    /// Not news: the index names referrers this rewrite does not cover (a file
-    /// rename rewrites wikilinks; a referrer may refer by a block reference or
-    /// an embed alone).
+    /// Not news: the rewrite could not have changed anything (a file rename
+    /// that keeps the stem, issue 678).
     Ignore,
 }
 

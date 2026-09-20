@@ -14,8 +14,8 @@ use thiserror::Error;
 // Re-export public API consumed by `service/` and the IPC layer
 pub use extractor::{
     collect_all_files, collect_md_files, find_unlinked_mentions, own_block_reference_lines,
-    replace_block_id_refs_to, replace_wikilink_target, rewrite_relative_wikilinks,
-    UnlinkedMentionResult,
+    replace_block_id_refs_to, replace_block_reference_target, replace_wikilink_target,
+    rewrite_relative_wikilinks, UnlinkedMentionResult,
 };
 
 use extractor::{extract_file_tags, extract_links};
@@ -253,6 +253,27 @@ impl LinkIndex {
         out
     }
 
+    /// §33 · issue 678: every `(file, line)` the index holds a reference to
+    /// `target` on — wikilink, block reference or embed alike, filed under
+    /// the one key of the normalized target. A file rename rewrites all
+    /// three kinds, and counts the lines each referrer was named for to tell
+    /// a same-stem note's own references apart from a stale index.
+    pub fn referring_lines_to(&self, target: &str) -> Vec<(String, u32)> {
+        let mut out: Vec<(String, u32)> = self
+            .incoming
+            .get(&normalize_target(target))
+            .map(|entries| {
+                entries
+                    .iter()
+                    .map(|e| (e.source_path.clone(), e.line))
+                    .collect()
+            })
+            .unwrap_or_default();
+        out.sort();
+        out.dedup();
+        out
+    }
+
     /// Get backlinks for a given file path
     pub fn get_backlinks(&self, file_path: &str) -> Vec<BacklinkResult> {
         let keys = backlink_keys(file_path);
@@ -445,21 +466,6 @@ impl LinkIndex {
         }
     }
 
-    /// §33 Get list of source files that link to a given target (normalized)
-    pub fn get_files_linking_to(&self, target: &str) -> Vec<String> {
-        let normalized = normalize_target(target);
-        self.incoming
-            .get(&normalized)
-            .map(|entries| {
-                let mut paths: Vec<String> =
-                    entries.iter().map(|e| e.source_path.clone()).collect();
-                paths.sort();
-                paths.dedup();
-                paths
-            })
-            .unwrap_or_default()
-    }
-
     /// Update index for a single file using already-read content (sync, no I/O)
     pub fn update_file_from_content(&mut self, file_path: &str, content: &str) {
         self.remove_file(file_path);
@@ -521,9 +527,31 @@ mod tests {
         assert_eq!(backlinks[0].source_path, "/vault/overview.md");
     }
 
-    // §33 get_files_linking_to tests
     #[test]
-    fn test_get_files_linking_to() {
+    fn a_file_rename_reads_every_line_that_refers_to_the_stem_whatever_the_link_kind() {
+        // issue 678: the rename needs the referrers AND how many lines the
+        // index named each for — wikilinks, block references and embeds
+        // alike, one entry per (file, line), a path-qualified target filed
+        // elsewhere (issue 619) not among them.
+        let mut index = LinkIndex::new();
+        index.update_file_from_content(
+            "/vault/r.md",
+            "see [[target]] and ((target#^b1))\n{{embed ((target#^b2))}}\n((dir/target#^b1))",
+        );
+        index.update_file_from_content("/vault/s.md", "[[other]]");
+        assert_eq!(
+            index.referring_lines_to("target"),
+            vec![
+                ("/vault/r.md".to_string(), 1),
+                ("/vault/r.md".to_string(), 2)
+            ]
+        );
+        assert!(index.referring_lines_to("nothing").is_empty());
+    }
+
+    // §33 the referrers of a stem, as a file rename reads them
+    #[test]
+    fn test_referring_lines_name_every_file_that_links_to_a_target() {
         let mut index = LinkIndex::new();
 
         // a.md links to "target", b.md links to "target", c.md links to "other"
@@ -531,17 +559,20 @@ mod tests {
         index.update_file_from_content("/vault/b.md", "Also [[target|alias]].");
         index.update_file_from_content("/vault/c.md", "Unrelated [[other]].");
 
-        let mut files = index.get_files_linking_to("target");
-        files.sort();
-        assert_eq!(files, vec!["/vault/a.md", "/vault/b.md"]);
-
+        let files = |target: &str| -> Vec<String> {
+            let mut files: Vec<String> = index
+                .referring_lines_to(target)
+                .into_iter()
+                .map(|(file, _)| file)
+                .collect();
+            files.dedup();
+            files
+        };
+        assert_eq!(files("target"), vec!["/vault/a.md", "/vault/b.md"]);
         // Case-insensitive
-        let files2 = index.get_files_linking_to("Target");
-        assert_eq!(files2.len(), 2);
-
+        assert_eq!(files("Target").len(), 2);
         // No match
-        let files3 = index.get_files_linking_to("nonexistent");
-        assert!(files3.is_empty());
+        assert!(files("nonexistent").is_empty());
     }
 
     #[test]

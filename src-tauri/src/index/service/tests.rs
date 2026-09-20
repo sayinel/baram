@@ -447,7 +447,7 @@ async fn a_first_build_save_is_replayed_in_the_pending_symlink_roots_spelling() 
         .any(|n| n.starts_with(&format!("{root}/sub/"))));
     assert!(graph.edges.is_empty());
     let stale = state
-        .with_index(&key, |idx| idx.unwrap().get_files_linking_to("target"))
+        .with_index(&key, |idx| idx.unwrap().referring_lines_to("target"))
         .await;
     assert!(stale.is_empty());
 }
@@ -2193,15 +2193,22 @@ async fn a_block_id_rename_reports_a_same_stem_note_whose_cross_reference_went_b
 }
 
 #[tokio::test]
-async fn a_file_rename_does_not_report_a_referrer_that_refers_by_a_block_reference_alone() {
-    // issue 668 (control): a file rename rewrites wikilinks; a referrer the
-    // index names for a block reference alone is unchanged by it, and that
-    // is not a stale index — it is not reported.
+async fn a_file_rename_rewrites_block_references_and_embeds_as_it_rewrites_wikilinks() {
+    // issue 678: a referrer that points at the note by a block reference or an
+    // embed — with or without a wikilink beside it, on the same line or not —
+    // follows the new name too, and the new file's backlinks still name it.
+    // A path-qualified reference is filed elsewhere (issue 619) and stays.
     let ctx = ContextManager::new();
-    let (dir, root) = vault_with_a_link(&ctx, "ctx-668c", true).await;
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-678a", true).await;
     std::fs::write(dir.path().join("old.md"), "para ^b1\n").unwrap();
     std::fs::write(dir.path().join("w.md"), "see [[old]]\n").unwrap();
     std::fs::write(dir.path().join("r.md"), "see ((old#^b1))\n").unwrap();
+    std::fs::write(dir.path().join("e.md"), "{{embed ((old#^b1))}}\n").unwrap();
+    std::fs::write(
+        dir.path().join("both.md"),
+        "[[old]] ((old#^b1)) and ((old#^b1|shown)) ((dir/old#^b1))\n",
+    )
+    .unwrap();
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
 
@@ -2213,11 +2220,174 @@ async fn a_file_rename_does_not_report_a_referrer_that_refers_by_a_block_referen
     )
     .await
     .unwrap();
-    assert_eq!(result.updated_files, vec![format!("{root}/w.md")]);
+    assert_eq!(
+        result.updated_files,
+        vec![
+            format!("{root}/both.md"),
+            format!("{root}/e.md"),
+            format!("{root}/r.md"),
+            format!("{root}/w.md"),
+        ]
+    );
     assert!(
         result.skipped_files.is_empty(),
         "{:?}",
         result.skipped_files
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
+        "see ((new#^b1))\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("e.md")).unwrap(),
+        "{{embed ((new#^b1))}}\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("both.md")).unwrap(),
+        "[[new]] ((new#^b1)) and ((new#^b1|shown)) ((dir/old#^b1))\n"
+    );
+    let backlinks = get_backlinks_inner(&state, &ctx, &format!("{root}/new.md"))
+        .await
+        .unwrap();
+    let mut from = sources(&backlinks);
+    from.sort();
+    from.dedup();
+    assert_eq!(
+        from,
+        vec![
+            format!("{root}/both.md"),
+            format!("{root}/e.md"),
+            format!("{root}/r.md"),
+            format!("{root}/w.md"),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn a_file_rename_reports_a_referrer_whose_reference_is_gone() {
+    // issue 678: with block references rewritten too, a file rename reports
+    // a stale index the way a block ID rename does (issue 668) — a referrer
+    // the index named in which no reference to the old name is found now
+    // still says the old name, and the user hears it.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-678b", true).await;
+    std::fs::write(dir.path().join("old.md"), "para ^b1\n").unwrap();
+    std::fs::write(dir.path().join("r.md"), "see ((old#^b1))\n").unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    // Edited outside the app after the index was built.
+    std::fs::write(dir.path().join("r.md"), "the reference is gone\n").unwrap();
+
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/old.md"),
+        &format!("{root}/new.md"),
+    )
+    .await
+    .unwrap();
+    assert_eq!(result.updated_files, Vec::<String>::new());
+    assert_eq!(result.skipped_files, vec![format!("{root}/r.md")]);
+}
+
+#[tokio::test]
+async fn a_file_rename_does_not_report_a_same_stem_note_named_for_its_own_references() {
+    // issue 678: `b/old.md` refers to its OWN blocks with `((#^x))`, which the
+    // index files under the stem `old` — the key `a/old.md`'s rename looks up.
+    // Nothing in it changes, rightly, and that is not a stale index.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-678c", true).await;
+    std::fs::create_dir_all(dir.path().join("a")).unwrap();
+    std::fs::create_dir_all(dir.path().join("b")).unwrap();
+    std::fs::write(dir.path().join("a/old.md"), "para ^b1\n").unwrap();
+    std::fs::write(
+        dir.path().join("b/old.md"),
+        "mine ^b1 ((#^b1))\nalso ((#^b2))\n",
+    )
+    .unwrap();
+    std::fs::write(dir.path().join("r.md"), "see ((old#^b1))\n").unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/a/old.md"),
+        &format!("{root}/a/new.md"),
+    )
+    .await
+    .unwrap();
+    assert_eq!(result.updated_files, vec![format!("{root}/r.md")]);
+    assert!(
+        result.skipped_files.is_empty(),
+        "{:?}",
+        result.skipped_files
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("b/old.md")).unwrap(),
+        "mine ^b1 ((#^b1))\nalso ((#^b2))\n"
+    );
+}
+
+#[tokio::test]
+async fn a_rename_that_keeps_the_stem_rewrites_nothing_and_reports_nothing() {
+    // issue 678: `old.md` → `old.txt` changes no reference — every referrer
+    // is unchanged, and none of them is stale news.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-678d", true).await;
+    std::fs::write(dir.path().join("old.md"), "para ^b1\n").unwrap();
+    std::fs::write(dir.path().join("r.md"), "see ((old#^b1)) [[old]]\n").unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/old.md"),
+        &format!("{root}/old.txt"),
+    )
+    .await
+    .unwrap();
+    assert!(dir.path().join("old.txt").exists());
+    assert_eq!(result.updated_files, Vec::<String>::new());
+    assert!(
+        result.skipped_files.is_empty(),
+        "{:?}",
+        result.skipped_files
+    );
+}
+
+#[tokio::test]
+async fn a_rename_to_a_stem_no_block_reference_can_spell_reports_the_referrers_it_leaves() {
+    // issue 678: `((target#^id))` cannot hold `)` in its target, so the
+    // block references are left as they are — pointing at the old name —
+    // and the file is reported. The wikilink, which can spell the name, is
+    // rewritten.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-678e", true).await;
+    std::fs::write(dir.path().join("old.md"), "para ^b1\n").unwrap();
+    std::fs::write(dir.path().join("r.md"), "see ((old#^b1))\n").unwrap();
+    std::fs::write(dir.path().join("w.md"), "see [[old]]\n").unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/old.md"),
+        &format!("{root}/old (draft).md"),
+    )
+    .await
+    .unwrap();
+    assert_eq!(result.updated_files, vec![format!("{root}/w.md")]);
+    assert_eq!(result.skipped_files, vec![format!("{root}/r.md")]);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
+        "see ((old#^b1))\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("w.md")).unwrap(),
+        "see [[old (draft)]]\n"
     );
 }
 
