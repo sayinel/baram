@@ -1,6 +1,6 @@
 ---
 title: "개요와 권한"
-sourceHash: "aba4bc4bdc08"
+sourceHash: "eee2711cdcb2"
 ---
 
 ## 개요
@@ -16,10 +16,12 @@ Baram 플러그인은 매니페스트(`baram-plugin.json`)와 ESM 번들 하나(
   JavaScript에 닿지 못하는 격리된 웹뷰에서 돌고, 권한이 필요한 모든 작업이 Rust 브로커를 거쳐
   플러그인에 부여된 권한과 대조됩니다. 여기서 권한 목록은 **실제 경계**입니다.
 - **`"trust": "trusted"`** — 에디터와 같은 JavaScript 컨텍스트, Obsidian의 모델입니다.
-  `tiptapExtensions`에는 필요합니다 — 격리된 플러그인에게 줄 수 없는 살아 있는 ProseMirror
-  `Schema`에 직접 닿아야 하기 때문입니다. 여기서 권한 체계는 **API 관문**일 뿐입니다. 플러그인이
-  그것을 우회할 수 있으므로, 목록은 무엇을 하려는지 알려 줄 뿐 아무것도 제한하지 않습니다.
-  설치할 때 정확히 그 점을 명시적으로 확인받습니다.
+  `tiptapExtensions`에는 필요합니다 — 살아 있는 **에디터**에 직접 닿아 ProseMirror 플러그인을
+  등록해야 하기 때문입니다. 스키마가 아닙니다 — `"plugin"` 기여는 스키마를 전혀 건드리지 못하고,
+  그것이 바로 `node`/`mark` 기여가 지원되지 않는 이유입니다([Tiptap 확장 플러그인](/ko/docs/plugin-dev/commands-and-tiptap-extensions/#tiptap-확장-플러그인)
+  참조). 여기서 권한 체계는 **API 관문**일 뿐입니다. 플러그인이 그것을 우회할 수 있으므로, 목록은
+  무엇을 하려는지 알려 줄 뿐 아무것도 제한하지 않습니다. 설치할 때 정확히 그 점을 명시적으로
+  확인받습니다.
 
 Tiptap 확장이나 DOM에 붙는 UI를 기여하는 경우가 아니면 sandboxed로 쓰십시오. 민감한 것을 설치하거나
 만들기 전에 [신뢰 모델과 보안](/ko/docs/plugin-dev/trust-model-and-errors/#신뢰-모델과-보안)을 보십시오.
@@ -39,6 +41,7 @@ Tiptap 확장이나 DOM에 붙는 UI를 기여하는 경우가 아니면 sandbox
 | `editor`          | 문서 내용 읽기·수정                      |               |
 | `editor:readonly` | 문서 내용 읽기(수정 불가)                |               |
 | `events`          | 에디터 이벤트 수신                       |               |
+| `extensions`      | 에디터에 ProseMirror 플러그인 기여(trusted 티어 전용) | |
 | `files`           | 볼트 안 파일 읽기·쓰기                   | 민감          |
 | `files:readonly`  | 볼트 안 파일 읽기(쓰기 불가)             |               |
 | `sidebar`         | 사이드바에 패널 추가                     |               |

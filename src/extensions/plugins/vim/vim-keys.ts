@@ -51,8 +51,16 @@ export const vimPluginKey = new PluginKey<VimStateSnapshot>("wysiwygVim");
  * making the view non-editable is vim's modal state". A plain
  * `editor.isEditable` gate would lock chrome and input islands during vim
  * normal; a plain OR would let modal state bypass a real read-only editor.
- * Attributing non-editability to vim is only safe because §12-⑪ pins that
- * nothing else in the repo contributes an `editable` prop (invariant test).
+ * Attributing non-editability to vim rests on §12-⑪'s invariant that nothing
+ * else IN THE REPO contributes an `editable` prop (invariant test ⓑ in
+ * editable-ownership.test.tsx). A loaded plugin is not in the repo: §260 lets
+ * one register a ProseMirror plugin through the app, and the host's
+ * registration-time refusal of `props.editable` cannot bind an instance the
+ * plugin still holds (control ⓓ, same file). So with such a plugin loaded this
+ * can report chrome as usable while the view is non-editable for a reason that
+ * is not vim. Closing that would mean giving a trusted plugin less than the
+ * main-realm powers its tier already grants it — a §260 tier question, not one
+ * this function can answer.
  *
  * Render-time use is not enough — mutation callbacks must re-check this at
  * event time (a stale-rendered button outlives any render condition).

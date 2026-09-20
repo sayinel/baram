@@ -218,6 +218,42 @@ export function pickApprovedDirParams(rustSource: string): string[] {
   return names;
 }
 
+/**
+ * §69/§260 The capability allowlist `valid_caps` enforces in `validate_manifest`
+ * (`src-tauri/src/plugin/mod.rs`), read out of the array literal that ships.
+ *
+ * ‼️ WHY SCRAPING RATHER THAN A SECOND LITERAL — the same reasoning as the scrapes above.
+ * TypeScript's canonical list, `VALID_CAPABILITIES` (`src/plugins/manifest.ts`), is DERIVED
+ * from the `PluginCapability` union via `CAPABILITY_DESCRIPTIONS`, so it cannot fall behind
+ * the union by construction — but Rust keeps its own hand-written array, and nothing forced
+ * the two to agree. A capability present in TS but missing here rejects every manifest that
+ * declares it at BOTH of `validate_manifest`'s call sites in the crate — `read_manifest_at`
+ * (dev folder, before TypeScript ever sees the manifest) and `read_staged_manifest` (install
+ * from an archive) — so such a plugin is neither loadable nor installable. That is exactly
+ * the defect this scrape exists to catch (a capability added to the union without a matching
+ * entry here failed silently until someone tried to load a plugin that used it).
+ *
+ * The consumer is `src/plugins/__tests__/capability-parity.test.ts`.
+ *
+ * ‼️ THE COUNT ASSERTION IS LOAD-BEARING, as for every scrape above: `valid_caps` is also
+ * named at its `.contains(&cap.as_str())` call site, so "a match exists" would not mean it is
+ * the array that ships. The pattern therefore requires the `let valid_caps = [...]`
+ * DECLARATION form. A FUNCTION OVER SOURCE TEXT rather than a file reader, so a test can feed
+ * crafted source and watch the refusal.
+ */
+export function rustPluginCapabilities(rustSource: string): Set<string> {
+  const body = soleDeclaration(
+    rustSource,
+    /let\s+valid_caps\s*=\s*\[([^\]]*)\]/gu,
+    "valid_caps",
+  );
+  const capabilities = [...body.matchAll(/"([^"]+)"/gu)].map((m) => m[1]);
+  if (capabilities.length === 0) {
+    throw new Error("valid_caps parsed to an empty list — refusing to compare");
+  }
+  return new Set(capabilities);
+}
+
 /** Exactly one declaration must match, or we are guessing which value ships. */
 function soleDeclaration(
   rustSource: string,

@@ -21,6 +21,10 @@ import { useAppStartup } from "./hooks/use-app-startup";
 import { useCodeAutoSave } from "./hooks/use-code-auto-save";
 import { useEditorEffects } from "./hooks/use-editor-effects";
 import { useEditorFeatures } from "./hooks/use-editor-features";
+import {
+  registerKeepaliveEditorSurface,
+  useEditorSurface,
+} from "./hooks/use-editor-surface";
 import { useFileOperations } from "./hooks/use-file-operations";
 import { useFindReplaceRouting } from "./hooks/use-find-replace-routing";
 import { useJournal } from "./hooks/use-journal";
@@ -157,6 +161,7 @@ function App() {
   // below this edge; THIS call-site order is the actual contract.
   usePerfInstrumentation(activeEditor);
   usePluginLifecycle(editor);
+  useEditorSurface(editor);
 
   const { inlineAI, isSkill } = useEditorFeatures(activeEditor);
 
@@ -254,7 +259,7 @@ function App() {
   // Placed after useNavigation so navigateRef et al. are already declared.
   // TiptapCoreEditor === @tiptap/react Editor (same class, re-exported via @tiptap/core).
   const createKeepaliveEditor = useCallback(() => {
-    return new TiptapCoreEditor({
+    const created = new TiptapCoreEditor({
       extensions: createBaramExtensions({
         // §perf-large-file C4: this is the large-doc editor — enable windowing.
         isLargeKeepaliveEditor: true,
@@ -267,6 +272,10 @@ function App() {
           mentionNavigateRef.current(type, value),
       }),
     });
+    // §260 스펙 0050 §4 — keepalive 에디터는 플러그인이 로드된 뒤에도 새로 생긴다.
+    // 등록하지 않으면 탭을 바꾸는 순간 기여분이 사라진다.
+    registerKeepaliveEditorSurface(created);
+    return created;
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Tab switching ---

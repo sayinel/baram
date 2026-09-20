@@ -205,6 +205,7 @@ fn validate_manifest(manifest: &PluginManifest) -> Result<(), PluginError> {
         "statusbar",
         "settings",
         "events",
+        "extensions",
         "ai",
         "network",
         "storage",

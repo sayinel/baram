@@ -1,4 +1,6 @@
 // §69 Plugin Manifest validation tests
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it, test } from "vitest";
 
 import { validateManifest } from "../manifest";
@@ -48,6 +50,7 @@ describe("validateManifest", () => {
   test("accepts tiptapExtensions on the trusted tier", () => {
     const result = validateManifest({
       ...validManifest,
+      capabilities: ["editor:readonly", "statusbar", "extensions"],
       trust: "trusted",
       tiptapExtensions: [
         { type: "plugin", name: "wordCount", exportName: "WordCountExtension" },
@@ -177,7 +180,7 @@ describe("validateManifest", () => {
   test("rejects tiptapExtension with missing name", () => {
     const result = validateManifest({
       ...validManifest,
-      tiptapExtensions: [{ type: "node", exportName: "Test" }],
+      tiptapExtensions: [{ type: "plugin", exportName: "Test" }],
     });
     expect(result.valid).toBe(false);
   });
@@ -185,7 +188,7 @@ describe("validateManifest", () => {
   test("rejects tiptapExtension with missing exportName", () => {
     const result = validateManifest({
       ...validManifest,
-      tiptapExtensions: [{ type: "node", name: "test" }],
+      tiptapExtensions: [{ type: "plugin", name: "test" }],
     });
     expect(result.valid).toBe(false);
   });
@@ -241,7 +244,7 @@ describe("validateManifest — trust tier (§260)", () => {
     const r = validateManifest({
       ...base,
       trust: "sandboxed",
-      tiptapExtensions: [{ type: "node", name: "x", exportName: "X" }],
+      tiptapExtensions: [{ type: "plugin", name: "x", exportName: "X" }],
     });
     expect(r.valid).toBe(false);
     if (!r.valid) {
@@ -251,10 +254,33 @@ describe("validateManifest — trust tier (§260)", () => {
     expect(
       validateManifest({
         ...base,
+        capabilities: ["extensions"],
         trust: "trusted",
-        tiptapExtensions: [{ type: "node", name: "x", exportName: "X" }],
+        tiptapExtensions: [{ type: "plugin", name: "x", exportName: "X" }],
       }).valid,
     ).toBe(true);
+  });
+
+  // Task 7 fix round 1 — the "extensions" capability check must not fire for a
+  // sandboxed manifest: sandboxed plugins are barred from tiptapExtensions outright
+  // (the check above), regardless of capabilities, so telling the author to declare
+  // "extensions" there is actively misleading — they would add it, reinstall, and be
+  // refused again with no new information. A test that only asserts "some error
+  // mentions tiptapExtensions" cannot see this: it passes whether or not the wrong
+  // error is ALSO added beside the right one.
+  it("does not also blame the missing capability on a sandboxed manifest", () => {
+    const r = validateManifest({
+      ...base,
+      capabilities: [],
+      trust: "sandboxed",
+      tiptapExtensions: [{ type: "plugin", name: "x", exportName: "X" }],
+    });
+    expect(r.valid).toBe(false);
+    if (!r.valid) {
+      expect(r.errors.some((e) => e.message.includes("extensions"))).toBe(
+        false,
+      );
+    }
   });
 
   it("requires a sandboxed main to be a single relative bundle file", () => {
@@ -282,6 +308,45 @@ describe("validateManifest — trust tier (§260)", () => {
     expect(r.valid).toBe(false);
     if (!r.valid) {
       expect(r.errors.some((e) => e.field === "contributions")).toBe(true);
+    }
+  });
+
+  // The cross-language contract: `src-tauri/src/plugin/fixtures/manifest-boundary.json`
+  // holds the shape a manifest has once Rust has re-serialized it on the way back here
+  // (dev-folder loading, `InstalledPluginInfo`). The Rust test
+  // `the_manifest_boundary_fixture_shared_with_the_frontend_holds` pins that file against
+  // `serde_json::to_value(&PluginManifest)`, field for field — so this side never
+  // transcribes the shape by hand, and a field added to the struct updates this test's
+  // input through that file rather than silently leaving it behind.
+  //
+  // The case worth pinning: a manifest that declares no `contributions` must arrive with
+  // no `contributions` KEY. It used to arrive as an explicit `null`, which the check
+  // below rejects as "must be an object" — the check is right about `null`, the
+  // serializer was the bug (fixed with `skip_serializing_if`).
+  it("accepts a manifest as Rust re-serializes it, with no contributions declared", () => {
+    const fixture = JSON.parse(
+      readFileSync(
+        join(
+          process.cwd(),
+          "src-tauri/src/plugin/fixtures/manifest-boundary.json",
+        ),
+        "utf8",
+      ),
+    ) as {
+      input: Record<string, unknown>;
+      serialized: Record<string, unknown>;
+    };
+
+    expect(fixture.input).not.toHaveProperty("contributions");
+    expect(fixture.serialized).not.toHaveProperty("contributions");
+    expect(validateManifest(fixture.serialized).valid).toBe(true);
+
+    // The positive half: this check DOES reject the null it used to receive, so the
+    // assertion above is load-bearing rather than passing because nothing looks.
+    const r = validateManifest({ ...fixture.serialized, contributions: null });
+    expect(r.valid).toBe(false);
+    if (!r.valid) {
+      expect(r.errors.map((e) => e.field)).toContain("contributions");
     }
   });
 
@@ -559,5 +624,111 @@ describe("validateManifest — trust tier (§260)", () => {
       );
       expect(sandboxed({ settings: many.slice(1) }).valid).toBe(true);
     });
+  });
+
+  it("accepts the extensions capability", () => {
+    const result = validateManifest({
+      ...base,
+      trust: "trusted",
+      capabilities: ["extensions"],
+    });
+    expect(result.valid).toBe(true);
+  });
+
+  // §260 spec 0050 §3.2 — `node`/`mark` change the SCHEMA, which is fixed when its
+  // editor is created; and there is more than one editor to reach, including
+  // keep-alive editors built for large documents after plugins have loaded. Passing
+  // them through and then dropping them silently was this field's original defect;
+  // reject them instead.
+  it("rejects a node contribution, which the editor cannot take at runtime", () => {
+    const result = validateManifest({
+      ...base,
+      trust: "trusted",
+      tiptapExtensions: [{ exportName: "X", name: "x", type: "node" }],
+    });
+    expect(result.valid).toBe(false);
+  });
+
+  it("rejects a mark contribution for the same reason", () => {
+    const result = validateManifest({
+      ...base,
+      trust: "trusted",
+      tiptapExtensions: [{ exportName: "X", name: "x", type: "mark" }],
+    });
+    expect(result.valid).toBe(false);
+  });
+
+  it("tells the author what to use instead", () => {
+    const result = validateManifest({
+      ...base,
+      trust: "trusted",
+      tiptapExtensions: [{ exportName: "X", name: "x", type: "node" }],
+    });
+    if (result.valid) throw new Error("expected the manifest to be rejected");
+    const message = result.errors
+      .filter((e) => e.field.includes("tiptapExtensions"))
+      .map((e) => e.message)
+      .join(" ");
+    expect(message).toContain("plugin");
+  });
+
+  it("still accepts a plugin contribution", () => {
+    const result = validateManifest({
+      ...base,
+      capabilities: ["extensions"],
+      trust: "trusted",
+      tiptapExtensions: [{ exportName: "X", name: "x", type: "plugin" }],
+    });
+    expect(result.valid).toBe(true);
+  });
+
+  // §260 spec 0050 §6 (Task 7) — declaring `tiptapExtensions` without also declaring the
+  // `extensions` capability leaves the install-consent dialog with nothing to say about a
+  // plugin that runs code inside the editor. The capability is the upper bound AND the
+  // description the dialog renders, so it must actually be required.
+  test("rejects a tiptap contribution from a manifest that did not ask for the capability", () => {
+    const result = validateManifest({
+      ...base,
+      capabilities: ["settings"],
+      trust: "trusted",
+      tiptapExtensions: [{ exportName: "X", name: "x", type: "plugin" }],
+    });
+
+    expect(result.valid).toBe(false);
+  });
+
+  test("names the capability the manifest is missing", () => {
+    const result = validateManifest({
+      ...base,
+      capabilities: [],
+      trust: "trusted",
+      tiptapExtensions: [{ exportName: "X", name: "x", type: "plugin" }],
+    });
+
+    if (result.valid) throw new Error("expected the manifest to be rejected");
+    expect(result.errors.map((e) => e.message).join(" ")).toContain(
+      "extensions",
+    );
+  });
+
+  test("accepts it once the capability is declared", () => {
+    const result = validateManifest({
+      ...base,
+      capabilities: ["extensions"],
+      trust: "trusted",
+      tiptapExtensions: [{ exportName: "X", name: "x", type: "plugin" }],
+    });
+
+    expect(result.valid).toBe(true);
+  });
+
+  test("leaves a manifest with no tiptap contribution alone", () => {
+    const result = validateManifest({
+      ...base,
+      capabilities: ["settings"],
+      trust: "trusted",
+    });
+
+    expect(result.valid).toBe(true);
   });
 });

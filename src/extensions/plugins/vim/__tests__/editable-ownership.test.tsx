@@ -12,9 +12,14 @@
 //    the rule can be relaxed.
 // ⓑ Suppressor-absence invariant — with the production extension set and vim
 //    off, nothing else may veto editability. canUseEditorChrome's "modal is
-//    the only suppressor" premise rests on this.
+//    the only suppressor" premise rests on this. Scope: the app's OWN
+//    extensions, no plugin loaded — ⓓ is the case this one does not cover.
 // ⓒ Architecture scan — the silent third paths (registerPlugin/unregister-
 //    Plugin, view.setProps, editable inside editorProps) are banned in src.
+// ⓓ Contributed-plugin boundary — §260 lets a loaded plugin register a
+//    ProseMirror plugin through the app. The contract above predates that and
+//    never covered it; the control marks where it stops rather than leaving
+//    the allowlist entry in ⓒ to imply more than it earns.
 
 import { useEffect, useMemo } from "react";
 
@@ -161,7 +166,28 @@ const SRC_DIR = join(import.meta.dirname, "..", "..", "..", "..");
 /** Any .registerPlugin/.unregisterPlugin — silent reconfigure path. */
 const REGISTER_RE = /\.(un)?registerPlugin\s*\(/;
 /** Baram's plugin-UI store shares the method name; not Tiptap's editor. */
-const REGISTER_ALLOW = [join("plugins", "trusted", "ui-api.ts")];
+const REGISTER_ALLOW = [
+  join("plugins", "trusted", "ui-api.ts"),
+  // §260 (스펙 0050) — the one runtime registration path in the app. What earns the
+  // entry is that this file is a CONDUIT, not an owner: nothing in it decides
+  // `view.editable`, and the plugin it hands to `registerPlugin` was built by a loaded
+  // plugin, which this contract never governed.
+  //
+  // `build()` in plugins/editor-surfaces.ts refuses a contribution whose plugin defines
+  // `props.editable`, reading `plugin.props` rather than `spec.props` so a getter cannot
+  // hand the function over once and hide it after. That refusal is worth keeping — it
+  // turns an honest author's mistake into a clear error at load — but it is a
+  // registration-time check, not a boundary, and this entry does not rest on it.
+  //
+  // The routes to editability that stay open to a contributed plugin, enumerated:
+  // mutating `plugin.props` after registration (ⓓ pins this one, because it runs
+  // through the app's own `registerPlugin` call and so is the one a reader would
+  // wrongly assume `build()` closed), `editor.setEditable`, `view.setProps`, and a
+  // `spec.view()`. None are in `src/` and this scan was never going to see them: a
+  // trusted plugin runs in the main realm holding the editor, which is a tier decision
+  // (§260), not something a source scan can police.
+  join("plugins", "editor-surfaces.ts"),
+];
 /** Direct view.setProps — bypasses every signal. */
 const SET_PROPS_RE = /\.setProps\s*\(/;
 /** Direct setEditable — silent with emitUpdate=false; the wrapper notifies. */
@@ -262,5 +288,32 @@ describe("ⓒ editable third-path ban (§12-⑪ 규약)", () => {
       inlineInUseEditor.test(readFileSync(file, "utf8")),
     );
     expect(offending).toEqual([]);
+  });
+});
+
+describe("ⓓ a contributed plugin sits OUTSIDE this contract (§260, 스펙 0050)", () => {
+  it("CONTROL: a registered plugin can add props.editable after the host checked it", () => {
+    // plugins/editor-surfaces.ts refuses a contribution whose plugin defines
+    // `props.editable`, and reads `plugin.props` (not `spec.props`) so a getter
+    // cannot hand out the function once and hide it after. That check is read
+    // ONCE, at registration. This control shows what it therefore cannot cover,
+    // so the allowlist entry beside it is not read as more than it is.
+    const key = new PluginKey("contributedAfterTheFact");
+    const plugin = new Plugin({ key });
+    const editor = new TiptapEditor({ extensions: createBaramExtensions() });
+    try {
+      editor.registerPlugin(plugin);
+      expect(editor.view.editable).toBe(true);
+
+      // The factory still holds this instance. `props` is a plain object that
+      // prosemirror-state's `bindProps` populated, and `view.someProp` re-reads
+      // it on every `updateState` — so assigning here is enough.
+      plugin.props.editable = () => false;
+      editor.view.updateState(editor.state);
+
+      expect(editor.view.editable).toBe(false);
+    } finally {
+      editor.destroy();
+    }
   });
 });

@@ -69,17 +69,9 @@ export function PluginDeveloperSection() {
       });
       addDevPlugin(fresh);
       setError(fresh.manifest.id, null); // the reload worked — drop the stale failure
-      if (fresh.manifest.tiptapExtensions?.length) {
-        showToast(
-          t("plugin.dev.toast.reloadedRestart", {
-            name: fresh.manifest.name,
-          }),
-        );
-      } else {
-        showToast(
-          t("plugin.dev.toast.reloaded", { name: fresh.manifest.name }),
-        );
-      }
+      // Tiptap contributions (`type: "plugin"`) install/uninstall on the live editor
+      // (`editor-surfaces.ts`) exactly like activate/deactivate — no restart branch.
+      showToast(t("plugin.dev.toast.reloaded", { name: fresh.manifest.name }));
     } catch (err) {
       setError(plugin.manifest.id, String(err));
       showToast(t("plugin.dev.toast.reloadFailed", { error: String(err) }));

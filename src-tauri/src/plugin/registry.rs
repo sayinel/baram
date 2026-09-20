@@ -38,7 +38,18 @@ pub struct PluginManifest {
     pub keywords: Vec<String>,
     #[serde(default)]
     pub trust: Option<PluginTrust>,
-    #[serde(default)]
+    /// `skip_serializing_if`, unlike the other `Option` fields above. This struct is
+    /// re-serialized on the way back to the frontend (dev-folder loading,
+    /// `InstalledPluginInfo`), and `validateManifest` (`src/plugins/manifest.ts`) treats an
+    /// explicit JSON `null` as a present-but-invalid value (`contributions must be an
+    /// object`) while treating an absent key as "not declared". Without this, a manifest
+    /// that never wrote `contributions` round-tripped as `null` and would not load —
+    /// `examples/plugins/ai-summary` is one such manifest in this repo.
+    ///
+    /// The exact shape this emits is pinned against the frontend in
+    /// `fixtures/manifest-boundary.json`, read by the Rust test below and by
+    /// `src/plugins/__tests__/manifest.test.ts`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub contributions: Option<serde_json::Value>,
 }
 
@@ -50,7 +61,7 @@ pub struct EngineRequirement {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TiptapExtensionDef {
     #[serde(rename = "type")]
-    pub ext_type: String, // "node" | "mark" | "plugin"
+    pub ext_type: String, // "plugin"
     pub name: String,
     #[serde(rename = "exportName")]
     pub export_name: String,
@@ -285,6 +296,26 @@ mod tests {
         let json = r#"{"id":"x","name":"X","description":"d","version":"1.0.0","author":"a","license":"MIT","main":"index.mjs","engines":{"baram":"*"},"capabilities":[]}"#;
         let m: PluginManifest = serde_json::from_str(json).unwrap();
         assert_eq!(m.trust, None);
+    }
+
+    /// The cross-language contract for what a manifest looks like once Rust has
+    /// re-serialized it. The expectations live in the JSON, not in either implementation;
+    /// the vitest side (`src/plugins/__tests__/manifest.test.ts`) reads the same file and
+    /// feeds `serialized` to `validateManifest`.
+    ///
+    /// The case that made this worth pinning: `None` for `contributions` means "the author
+    /// never wrote this key", not "the author wrote `null`". A bare `#[serde(default)]`
+    /// deserializes a missing key to `None` correctly but serializes `None` back out as
+    /// `null`, and `validateManifest` rejects an explicit `null` as a present-but-wrong
+    /// value while accepting an absent key. Every field is compared, not just that one, so
+    /// a field added to `PluginManifest` fails HERE — which is the signal to update the
+    /// fixture, and so to tell the frontend test what now crosses the boundary.
+    #[test]
+    fn the_manifest_boundary_fixture_shared_with_the_frontend_holds() {
+        let doc: serde_json::Value =
+            serde_json::from_str(include_str!("fixtures/manifest-boundary.json")).unwrap();
+        let manifest: PluginManifest = serde_json::from_value(doc["input"].clone()).unwrap();
+        assert_eq!(serde_json::to_value(&manifest).unwrap(), doc["serialized"]);
     }
 
     #[test]

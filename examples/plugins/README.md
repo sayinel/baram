@@ -27,6 +27,20 @@ examples/plugins/
   malicious-fixture/    # internal test fixture — NOT a template (see below)
 ```
 
+**Looking for an editor-contribution example?** Neither `word-count/` nor
+`ai-summary/` contributes a Tiptap/ProseMirror extension — both stick to UI
+and events, not editor behavior. A plugin can contribute ProseMirror
+`Plugin`s (decorations, keyboard handlers, input rules — not a new node or
+mark; see below) to the live editor via `tiptapExtensions` + the
+`extensions` capability: one per `tiptapExtensions` entry, and the
+manifest validator sets no limit on how many entries one plugin
+declares. For the factory shape, the two traps that catch
+editor-touching plugins, and why `type: "node"`/`"mark"` are rejected, see
+[Tiptap Extension plugins](https://baram.ing/en/docs/plugin-dev/commands-and-tiptap-extensions/#tiptap-extension-plugins)
+in the docs. There is no such example plugin in this directory yet —
+`bullet-threading`, the plugin that exercises this path, ships in a
+separate follow-up.
+
 **Copy `word-count/`.** It is the reference sandboxed plugin: `trust: "sandboxed"`, published
 to the registry as v2.0.0, and the shape a new plugin should start from.
 

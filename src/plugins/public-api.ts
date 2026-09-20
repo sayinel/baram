@@ -23,6 +23,7 @@ export type {
   PluginFileViewerContext,
   PluginFileViewerOptions,
   PluginManifest,
+  PluginProseMirror,
   PluginSettingField,
   PluginSettingsTabOptions,
   PluginSettingValue,
@@ -40,5 +41,9 @@ export type {
   StatusBarItem,
   StorageAPI,
   TiptapExtensionDef,
+  // §260 (스펙 0050) — the TRUSTED tier's per-surface factory context. Same argument as
+  // SandboxContext above: without it an author writing a tiptapExtensions factory has no
+  // type to name, and the reference plugin had to spell the shape out by hand.
+  TiptapPluginContext,
   UIAPI,
 } from "./types";

@@ -289,8 +289,13 @@ describe("install consent + registry cross-check (§260 Phase 5)", () => {
     listed = [{ ...ENTRY, capabilities: ["editor"], trust: "trusted" }];
     downloadReturns({
       ...MANIFEST,
-      capabilities: ["editor", "network"],
-      tiptapExtensions: [{ exportName: "X", name: "x", type: "node" as const }],
+      // `extensions` is required by `validateManifest` for any tiptapExtensions
+      // contribution (§260 Task 7) — present so this test still exercises the
+      // consent-gap check on `network`, not the capability requirement.
+      capabilities: ["editor", "network", "extensions"],
+      tiptapExtensions: [
+        { exportName: "X", name: "x", type: "plugin" as const },
+      ],
       trust: "trusted",
     });
 

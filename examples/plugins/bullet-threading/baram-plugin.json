@@ -1,0 +1,50 @@
+{
+  "id": "baram-bullet-threading",
+  "name": "Bullet Threading",
+  "description": "Draws the outline path from the outermost ancestor down to the list item holding the caret.",
+  "version": "2.0.0",
+  "author": "Baram",
+  "license": "Apache-2.0",
+  "main": "dist/index.mjs",
+  "engines": {
+    "baram": ">=0.7.0"
+  },
+  "trust": "trusted",
+  "capabilities": [
+    "extensions",
+    "settings"
+  ],
+  "tiptapExtensions": [
+    {
+      "type": "plugin",
+      "name": "threading",
+      "exportName": "Threading"
+    }
+  ],
+  "icon": "🧵",
+  "keywords": [
+    "outline",
+    "list",
+    "focus"
+  ],
+  "settings": [
+    {
+      "key": "color",
+      "type": "string",
+      "label": "Thread colour",
+      "default": "var(--color-accent-default)"
+    },
+    {
+      "key": "lineWidth",
+      "type": "number",
+      "label": "Line width (px)",
+      "default": 1.5
+    },
+    {
+      "key": "showElbow",
+      "type": "boolean",
+      "label": "Curve into each item",
+      "default": true
+    }
+  ]
+}

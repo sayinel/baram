@@ -188,12 +188,45 @@ export function validateManifest(
         message: "tiptapExtensions must be an array",
       });
     } else {
+      // §260 스펙 0050 §6 — 기여는 `extensions` capability 를 선언해야 한다. capability 는
+      // 권한의 상한이자 **설치 동의 화면이 사용자에게 보여 주는 설명**이다. 선언을 강제하지
+      // 않으면 플러그인은 그냥 적지 않으면 되고, 에디터 안에서 코드를 돌린다는 사실이
+      // 동의 화면에 영영 나타나지 않는다 — 이 capability 를 만든 이유가 그것이다.
+      if (
+        obj.tiptapExtensions.length > 0 &&
+        // Sandboxed manifests never reach a valid state via this branch — the check
+        // above already refuses ANY tiptapExtensions on that tier, whatever the
+        // capabilities say. Firing here too would tell the author to declare
+        // "extensions", which would not fix anything: reinstalling still fails, with
+        // no new information (Task 7 fix round 1).
+        obj.trust !== "sandboxed" &&
+        Array.isArray(obj.capabilities) &&
+        !obj.capabilities.includes("extensions")
+      ) {
+        errors.push({
+          field: "capabilities",
+          message:
+            'a plugin that declares tiptapExtensions must also declare the "extensions" ' +
+            "capability — it runs code inside the editor, and the install dialog has to " +
+            "be able to say so.",
+        });
+      }
       for (let i = 0; i < obj.tiptapExtensions.length; i++) {
         const ext = obj.tiptapExtensions[i] as Record<string, unknown>;
-        if (!["mark", "node", "plugin"].includes(ext.type as string)) {
+        // §260 스펙 0050 §3.2 — `node`/`mark` 는 SCHEMA 를 바꾸는데, 스키마는 그것을 쓰는
+        // 에디터를 만들 때 고정되고, 닿아야 할 에디터도 하나가 아니다: 큰 문서를 열 때마다
+        // 자기 스키마를 가진 keep-alive 에디터가 플러그인이 로드된 뒤에도 새로 생긴다. 그래서
+        // 지금은 받을 수 없다. 통과시킨 뒤 버리는 것이 이 필드의 원래 결함이었으므로,
+        // 여기서 거부한다.
+        if (ext.type !== "plugin") {
           errors.push({
             field: `tiptapExtensions[${i}].type`,
-            message: "type must be node, mark, or plugin",
+            message:
+              'type must be "plugin". Contributing a node or a mark changes the ' +
+              "schema, which is fixed when its editor is created — and the app " +
+              "creates more than one editor, some of them after plugins have " +
+              "loaded — so it is not supported yet. Decorations, keyboard " +
+              'handlers and input rules all fit in a "plugin" contribution.',
           });
         }
         if (!ext.name || typeof ext.name !== "string") {

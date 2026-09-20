@@ -1,14 +1,17 @@
 {
-  "name": "baram-ai-summary",
-  "version": "1.0.0",
+  "name": "baram-bullet-threading",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "esbuild src/index.ts --bundle --format=esm --outfile=dist/index.mjs",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "esbuild": "^0.28.1",
-    "typescript": "^6.0.3"
+    "prosemirror-model": "^1.25.11",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.1"
   }
 }
