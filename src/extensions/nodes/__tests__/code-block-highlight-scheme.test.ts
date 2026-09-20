@@ -61,6 +61,7 @@ const DARK_KEYWORD = darkHighlightStyle.style([tags.keyword]);
  *  `getHighlightStyle` can be exercised through it; overridden here and restored after. */
 function installMatchMedia(matches: boolean): {
   fire: (next: boolean) => void;
+  listenerCount: () => number;
   restore: () => void;
 } {
   const listeners = new Set<(e: MediaQueryListEvent) => void>();
@@ -81,6 +82,9 @@ function installMatchMedia(matches: boolean): {
       for (const fn of [...listeners])
         fn({ matches: next } as MediaQueryListEvent);
     },
+    /** How many listeners the watcher currently holds on this query — the observable half
+     *  of its teardown (0090 final review, F3). */
+    listenerCount: () => listeners.size,
     restore() {
       window.matchMedia = original;
     },
@@ -293,6 +297,30 @@ describe("subscribeHighlightStyle", () => {
       expect(first).toEqual([]);
     } finally {
       unsubscribeSecond();
+      media.restore();
+    }
+  });
+
+  it("releases both watchers when the last listener leaves — RED if the teardown body is emptied", () => {
+    // 0090 final review (F3). The refcount GUARD was pinned (the case above), the teardown
+    // BODY was not: replacing it with `() => {}` left both highlight suites green, 11/11.
+    // Delivery alone cannot catch that — the listeners that leak are idle, and the equality
+    // gate makes a duplicate broadcast a no-op — so this watches the two release calls.
+    const disconnect = vi.spyOn(MutationObserver.prototype, "disconnect");
+    const media = installMatchMedia(false);
+    try {
+      const before = disconnect.mock.calls.length;
+      const unsubscribe = subscribeHighlightStyle(() => {});
+      // The positive half: subscribing really did attach, so the 0 below is a release
+      // rather than an attach that never happened.
+      expect(media.listenerCount()).toBe(1);
+
+      unsubscribe();
+
+      expect(media.listenerCount()).toBe(0);
+      expect(disconnect.mock.calls.length).toBe(before + 1);
+    } finally {
+      disconnect.mockRestore();
       media.restore();
     }
   });

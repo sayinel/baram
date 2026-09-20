@@ -18,6 +18,14 @@
 //   2. 자원의 이름이 전부 `data:` — `type()` 인자만 예외다(css-refs.ts 가 그 이유를 적는다).
 //      더불어 `url(` 이 **함수 토큰**으로 나타나면 거부한다 — 그 형태가 2 의 스캔을
 //      통째로 우회하는 자리다(`hasUrlSpelledAsFunction` 이 실측과 함께 적는다)
+//      ‼️ 그리고 **셋째 반쪽**(0090 최종 리뷰, M4): 자원 이름을 받는 함수 안에
+//      `var()`·`env()`·`attr()` 가 없다. 그 형태는 URL **토큰**을 하나도 남기지 않으므로
+//      위 `data:` 스캔이 통째로 지나친다 — `--x:"https://e.com/x";
+//      background:image-set(var(--x) 1x)` 가 그것이고, 리뷰가 다섯 형태를 실측했다.
+//      sanitize 는 설치 시점에 같은 판정을 하고 있었고 여기에는 없었다
+//      (`substitutionInsideResourceName` 이 이제 두 층의 한 집이다). **설치 경로는 그때도
+//      막혀 있었다** — 이 규칙이 혼자 지키는 것은 `.stored/*.css` 를 설치 뒤에 사람이 고친
+//      바이트이고, 그것이 이 파일 머리주석이 스스로의 존재 이유로 적은 바로 그 위협이다
 //   3. `!important` 가 없다 — layered `!important` 는 unlayered 를 이긴다(Cascade 5),
 //      즉 레이어로 감싸는 것만으로는 막히지 않는다(§359, sanitize 가 같은 이유로 제거한다).
 //      계약 2 와 마찬가지로 **토큰 스캔이 먼저**다(`hasImportantSpelledAnywhere`) — 아래
@@ -43,6 +51,7 @@ import {
   forEachResourceName,
   isDataUrl,
   NON_RESOURCE_ARGUMENT_FUNCTIONS,
+  substitutionInsideResourceName,
 } from "./css-refs";
 import { THEME_LAYER_NAME } from "./sanitize";
 
@@ -190,6 +199,7 @@ export function verifyStoredThemeCss(css: string): boolean {
   // 훑으므로, 계약 2 와 3 은 파싱 결과와 무관하게 CSS 전체에 걸린다.
   if (
     hasUrlSpelledAsFunction(css) ||
+    substitutionInsideResourceName(css) !== null ||
     !hasOnlyDataUrls(css) ||
     hasImportantSpelledAnywhere(css)
   ) {

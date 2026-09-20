@@ -25,6 +25,7 @@ import {
   cssName,
   forEachResourceName,
   isRemoteUrl,
+  substitutionInsideResourceName,
   URL_BEARING_FUNCTIONS,
   where,
 } from "./css-refs";
@@ -46,14 +47,6 @@ const RESOURCE_NAMING_TOKENS: ReadonlySet<number> = new Set([
   csstree.tokenTypes.Function,
   csstree.tokenTypes.String,
   csstree.tokenTypes.Url,
-]);
-
-// computed-value 시점에 값이 정해지는 CSS 치환 함수. 설치 시점에는 무엇이 될지 증명할
-// 수 없으므로, 자원 이름을 받는 함수 안에서는 거부한다.
-const SUBSTITUTION_FUNCTIONS: ReadonlySet<string> = new Set([
-  "attr",
-  "env",
-  "var",
 ]);
 
 // 입력이 끝까지 닫혀 있는지 토크나이저에게 묻는다. 직접 중괄호를 세지 않는 이유는
@@ -129,6 +122,24 @@ function resourceNamingToken(value: string): null | string {
 export function sanitizeThemeCss(css: string): string {
   assertWellFormed(css, "input");
 
+  // 자원 이름을 받는 함수 안의 치환 함수. `image-set(var(--x) 1x)` 는 `--x` 가 무엇이든
+  // 그 자리에서 fetch 대상이 되는데, 그 값은 computed-value 시점에야 정해진다 — 설치
+  // 시점에 증명할 수 없는 것은 통과시키지 않는다.
+  //
+  // ‼️ 코드는 `absoluteUrl` 이 아니다. `--x` 가 순전히 로컬이어도 거부하므로 "절대 URL 을
+  // 썼다" 는 제작자에게 **거짓 원인**이다 — 고칠 곳을 엉뚱한 데로 보낸다. 거부 사유가
+  // "증명할 수 없는 치환" 인 것이 실제 사실이다.
+  //
+  // ‼️ AST 워크의 `case "Function"` 에서 이 토큰 스캔으로 옮겼다(0090 최종 리뷰, M4).
+  // 워크는 **바로 위** 함수만 봤고(`this.function`) `Raw` 안을 보지 못했다. 같은 판정을
+  // verify 도 써야 했으므로 `css-refs.ts` 로 옮겼고, 옮기면서 깊이가 문자열 규칙과
+  // 같아졌다 — 그쪽 함수의 주석이 근거를 갖고 있다. 위치 꼬리표(`where`)를 잃는 대신
+  // 어느 두 함수가 겹쳤는지를 그대로 싣는다.
+  const substitution = substitutionInsideResourceName(css);
+  if (substitution !== null) {
+    throw new ThemeCssError("substitutionNotAllowed", substitution);
+  }
+
   // 1차 — 구조만 본다. 커스텀 속성 값은 **파싱하지 않는다**: CSS Variables 는 값 자리에
   // 거의 아무 토큰열이나 허용하는데 그것을 값 문법으로 읽으면 합법한 테마가 문법 오류로
   // 거부된다(`--raw:{a:b}`·`--x:https://e.com/x.png` 이 실제로 그랬다). 그래서 여기서
@@ -164,25 +175,6 @@ export function sanitizeThemeCss(css: string): string {
         // §359: layered `!important` 는 unlayered `!important` 를 이긴다(Cascade 5).
         // 레이어 래핑만으로는 보안 표면을 못 지키므로 여기서 제거한다.
         node.important = false;
-        break;
-      case "Function":
-        // 자원 이름을 받는 함수 안의 치환 함수. `image-set(var(--x) 1x)` 는 `--x` 가
-        // 무엇이든 그 자리에서 fetch 대상이 되는데, 그 값은 computed-value 시점에야
-        // 정해진다 — 설치 시점에 증명할 수 없는 것은 통과시키지 않는다.
-        //
-        // ‼️ 코드는 `absoluteUrl` 이 아니다. `--x` 가 순전히 로컬이어도 거부하므로
-        // "절대 URL 을 썼다" 는 제작자에게 **거짓 원인**이다 — 고칠 곳을 엉뚱한 데로
-        // 보낸다. 거부 사유가 "증명할 수 없는 치환" 인 것이 실제 사실이다.
-        if (
-          this.function !== null &&
-          URL_BEARING_FUNCTIONS.has(cssName(this.function.name)) &&
-          SUBSTITUTION_FUNCTIONS.has(cssName(node.name))
-        ) {
-          throw new ThemeCssError(
-            "substitutionNotAllowed",
-            `${this.function.name}(${node.name}())${where(node)}`,
-          );
-        }
         break;
       case "Raw": {
         // 파서가 읽기를 포기한 조각이다. 그 안은 다른 워크가 들여다보지 못했으므로,

@@ -36,6 +36,7 @@ import type { ThemeMode } from "../types/theme";
 import type { ThemeAssetReader } from "../utils/theme-css/inline-assets";
 
 import { themeReadStoredCss, themeStageRead } from "../ipc/theme";
+import { logger } from "../utils/logger";
 import { ThemeCssError } from "../utils/theme-css/errors";
 import { verifyStoredThemeCss } from "../utils/theme-css/verify";
 
@@ -126,5 +127,17 @@ export async function readStoredThemeCss(
     // CSS 가 없다" 이지 실패가 아니다 — 토큰 층은 별개로 적용된다.
     return null;
   }
-  return verifyStoredThemeCss(css) ? css : null;
+  if (verifyStoredThemeCss(css)) return css;
+  // ‼️ LOUD, for the reason `applyThemeCss` states and could not deliver here (0090 final
+  // review, L3). That function says a rejection must not be silent — "테마가 색은 그대로인데
+  // CSS 만 사라지는 증상은 로그 없이는 진단할 수 없다" — and it logs. But for an installed
+  // theme verify runs HERE first and drops the bytes one step earlier, so `applyThemeCss`
+  // only ever sees `undefined` and its log never fires. The claim was true of the function
+  // that made it and false of the path that actually carries a community theme.
+  logger.error(
+    "[Theme] stored CSS no longer satisfies its contract — not applied:",
+    themeId,
+    mode,
+  );
+  return null;
 }

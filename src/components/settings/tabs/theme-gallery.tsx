@@ -197,8 +197,10 @@ function ThemeCard({
    * Both of `handleUpdate`'s failure paths write `installErrors[id]` and return false: a
    * withdrawn target, and any `installTheme` refusal. Without this the button read
    * "Updating…" and then went back to offering the same version, saying nothing — which is
-   * the state `registry-client.ts` calls "promising an action that cannot succeed" three
-   * lines above the kind filter next to it. `ThemeBrowser.tsx` renders the same map for
+   * the state `registry-client.ts` calls "promising an action that cannot succeed" — the
+   * sentence immediately BELOW the kind filter this plan added there (an earlier copy of
+   * this comment said "three lines above"; the review measured it the other way).
+   * `ThemeBrowser.tsx` renders the same map for
    * install, but it holds its OWN `useThemeActions()` instance, so nothing it shows can
    * reach this screen.
    */
