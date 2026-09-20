@@ -79,10 +79,17 @@ export function emitScopedPluginEvent(
   event: string,
   ...args: unknown[]
 ): void {
-  // Copied before iterating: a handler that unsubscribes itself (or a sibling) would
-  // otherwise mutate the `Set` mid-forEach.
   const handlers = scopedListeners.get(pluginId)?.get(event);
   if (!handlers) return;
+  // `[...handlers]` fixes the delivery list at the moment this event fires, and that is
+  // the ONLY thing it buys — governing this loop alone.
+  //
+  // ‼️ It is NOT protection against a handler disposing itself. A `Set` iterator tolerates
+  // deleting an element it has already visited, so that case is safe either way; removing
+  // the copy and re-running the self-disposal test below leaves it green, which is how this
+  // comment got rewritten. What the copy actually prevents is the other direction: a `Set`
+  // iterator DOES visit elements added during iteration, so a handler that subscribes while
+  // being delivered to would otherwise receive the very event already in flight.
   for (const handler of [...handlers]) {
     try {
       handler(...args);

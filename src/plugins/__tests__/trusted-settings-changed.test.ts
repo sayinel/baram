@@ -120,6 +120,56 @@ describe("a trusted plugin is told when its own settings change", () => {
     expect(heard).not.toHaveBeenCalled();
   });
 
+  it("fixes the delivery list at the moment the event fires", async () => {
+    // ‼️ THE FIRST VERSION OF THIS TEST PROVED NOTHING. It had a handler dispose itself and
+    // asserted its sibling still ran — which passes with or without the copy, because a
+    // `Set` iterator tolerates deleting an element it has already visited. Removing
+    // `[...handlers]` left it green, so the property it claimed to pin was never pinned.
+    //
+    // This is the direction that is real: a `Set` iterator DOES visit elements added during
+    // iteration, so a handler subscribing mid-delivery would receive the event already in
+    // flight — and a handler that subscribes on every delivery would never terminate.
+    const ctx = context("p", ["settings"]);
+    const late = vi.fn();
+    const first = vi.fn(() => void ctx.events.on("settings:changed", late));
+    ctx.events.on("settings:changed", first);
+
+    usePluginStore.getState().setPluginSetting("p", "width", 7);
+    await settle();
+
+    expect(first).toHaveBeenCalledTimes(1);
+    expect(
+      late,
+      "a handler added mid-delivery got the event in flight",
+    ).not.toHaveBeenCalled();
+
+    // …and it IS subscribed, so this is not passing because the subscription failed.
+    usePluginStore.getState().setPluginSetting("p", "width", 8);
+    await settle();
+    expect(late).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps delivering to the siblings of a handler that disposes itself", async () => {
+    // Not the copy's doing (see above) — this pins the ORDINARY case so the loop cannot
+    // regress into skipping handlers while the test above watches only re-entrancy.
+    const ctx = context("p", ["settings"]);
+    const second = vi.fn();
+    const first = vi.fn(() => void self.dispose());
+    const self = ctx.events.on("settings:changed", first);
+    ctx.events.on("settings:changed", second);
+
+    usePluginStore.getState().setPluginSetting("p", "width", 7);
+    await settle();
+
+    expect(first).toHaveBeenCalledTimes(1);
+    expect(second).toHaveBeenCalledTimes(1);
+
+    usePluginStore.getState().setPluginSetting("p", "width", 8);
+    await settle();
+    expect(first, "dispose() did not take effect").toHaveBeenCalledTimes(1);
+    expect(second).toHaveBeenCalledTimes(2);
+  });
+
   it('still refuses every OTHER event without "events"', () => {
     // The settings grant buys one payload-free notification about this plugin's own
     // configuration. It is not a way around the events capability.
