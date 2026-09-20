@@ -28,7 +28,9 @@ export function useThemeCssHydration(
   installedThemes: Record<string, InstalledTheme>,
 ): void {
   const entries = useThemeCssCacheStore((s) => s.entries);
+  const rejected = useThemeCssCacheStore((s) => s.rejected);
   const setCss = useThemeCssCacheStore((s) => s.setCss);
+  const setRejected = useThemeCssCacheStore((s) => s.setRejected);
 
   // Its own `prefers-color-scheme` listener rather than sharing the one in
   // `use-settings-effects.ts`: this hook needs to know the OS preference to decide WHICH
@@ -53,13 +55,27 @@ export function useThemeCssHydration(
     if (mode === undefined) return;
     if (installed.modes[mode]?.css !== true) return;
     const key = themeCssCacheKey(installed.id, mode);
-    if (entries[key] !== undefined) return;
+    // ‼️ A REFUSAL IS REMEMBERED TOO (external review, verification item A). Only `entries`
+    // was consulted, so the one outcome this layer exists to produce — bytes edited after
+    // install and refused by `verifyStoredThemeCss` — re-ran the IPC read and the verify on
+    // every re-render of this effect, while the success path paid it once.
+    if (entries[key] !== undefined || rejected[key] === true) return;
     let active = true;
     void readStoredThemeCss(installed.id, mode).then((css) => {
-      if (active && css !== null) setCss(key, css);
+      if (!active) return;
+      if (css === null) setRejected(key);
+      else setCss(key, css);
     });
     return () => {
       active = false;
     };
-  }, [activeThemeId, installedThemes, prefersDark, entries, setCss]);
+  }, [
+    activeThemeId,
+    installedThemes,
+    prefersDark,
+    entries,
+    rejected,
+    setCss,
+    setRejected,
+  ]);
 }

@@ -84,12 +84,21 @@ export async function themeInstallDiscard(stageId: string): Promise<void> {
  * `path` 는 패키지 루트 기준 상대 경로이고, **파일 이름 그대로** 다뤄진다 —
  * 퍼센트 디코드도 URL 재파싱도 어느 층에서도 하지 않는다(`plugin::read_staged_file`).
  * `ThemeAssetReader` 계약이 요구하는 것이 그것이다.
+ *
+ * ‼️ `maxBytes` 는 **재려고 할당하지 않기 위한** 것이다(외부 리뷰 #2). 이 값을 주면 Rust 가
+ * 읽기 **전에** stat 으로 거부하므로, 상한을 넘는 파일이 직렬화돼 IPC 를 건너온 뒤에야
+ * 거부되는 일이 없어진다 — 그 규칙의 구현은 이 리포에 이미 하나 있고(`refuse_over_cap`),
+ * 테마 경로만 그것을 우회하고 있었다. 보안 경계가 아니다: Rust 는 이 값과 자기
+ * `MAX_STAGED_FILE_BYTES` 의 **최솟값**을 쓰므로 웹뷰가 천장을 올릴 수는 없고, 틀린 값을
+ * 말하면 자기 뒤 검사가 거부할 뿐이다. 생략하면 Rust 의 상한만 걸린다.
  */
 export async function themeStageRead(
   stageId: string,
   path: string,
+  maxBytes?: number,
 ): Promise<Uint8Array> {
   const buffer = await invoke<ArrayBuffer>("theme_stage_read", {
+    maxBytes,
     path,
     stageId,
   });

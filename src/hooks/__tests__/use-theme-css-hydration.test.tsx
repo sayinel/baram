@@ -54,7 +54,10 @@ const originalMatchMedia = window.matchMedia;
 
 beforeEach(() => {
   readStoredThemeCss.mockReset();
-  useThemeCssCacheStore.setState({ entries: {} });
+  // ‼️ BOTH maps. `rejected` is module state like `entries`, and leaving it behind made a
+  // later case short-circuit on a refusal an earlier one had recorded — which is the new
+  // behaviour working, arriving as a confusing failure two tests away.
+  useThemeCssCacheStore.setState({ entries: {}, rejected: {} });
   window.matchMedia = ((query: string) => ({
     addEventListener: () => {},
     matches: false,
@@ -155,6 +158,83 @@ describe("useThemeCssHydration", () => {
     );
     await flush();
     expect(readStoredThemeCss).toHaveBeenCalledWith("dracula", "light");
+  });
+
+  // ‼️ The refusal is the case this whole layer exists for (external review, item A), and
+  // it was the one that paid the most: `readStoredThemeCss` returns null both for a missing
+  // file and for bytes `verifyStoredThemeCss` refused, and only the success path was
+  // remembered — so the refused theme re-ran the IPC read and a 122-352 ms verify on every
+  // re-render of this effect, for the session.
+  describe("a read that produces nothing usable is remembered", () => {
+    it("records the rejection and does not read again", async () => {
+      readStoredThemeCss.mockResolvedValue(null);
+      const view = render(
+        <Host
+          activeThemeId="dracula"
+          installedThemes={{ dracula: installed() }}
+        />,
+      );
+      await flush();
+      expect(readStoredThemeCss).toHaveBeenCalledTimes(1);
+      expect(useThemeCssCacheStore.getState().rejected["dracula:light"]).toBe(
+        true,
+      );
+
+      // A re-render with a new `installedThemes` identity — the shape an unrelated store
+      // write produces, and the one that used to re-read.
+      view.rerender(
+        <Host
+          activeThemeId="dracula"
+          installedThemes={{ dracula: installed() }}
+        />,
+      );
+      await flush();
+      expect(readStoredThemeCss).toHaveBeenCalledTimes(1);
+    });
+
+    it("reads again once the theme's record is cleared", async () => {
+      // The other half: the verdict is about bytes, so an update or a reinstall — which is
+      // what `clearTheme` follows — must be able to reach the disk again.
+      readStoredThemeCss.mockResolvedValue(null);
+      const view = render(
+        <Host
+          activeThemeId="dracula"
+          installedThemes={{ dracula: installed() }}
+        />,
+      );
+      await flush();
+      expect(readStoredThemeCss).toHaveBeenCalledTimes(1);
+
+      readStoredThemeCss.mockResolvedValue("body{color:red}");
+      useThemeCssCacheStore.getState().clearTheme("dracula");
+      view.rerender(
+        <Host
+          activeThemeId="dracula"
+          installedThemes={{ dracula: installed() }}
+        />,
+      );
+      await flush();
+      expect(readStoredThemeCss).toHaveBeenCalledTimes(2);
+      expect(useThemeCssCacheStore.getState().entries["dracula:light"]).toBe(
+        "body{color:red}",
+      );
+    });
+
+    it("still reads once for a theme that succeeds", async () => {
+      // The anchor: without it "never reads twice" would hold for a hook that never reads.
+      readStoredThemeCss.mockResolvedValue("body{color:red}");
+      render(
+        <Host
+          activeThemeId="dracula"
+          installedThemes={{ dracula: installed() }}
+        />,
+      );
+      await flush();
+      expect(readStoredThemeCss).toHaveBeenCalledTimes(1);
+      expect(
+        useThemeCssCacheStore.getState().rejected["dracula:light"],
+      ).toBeUndefined();
+    });
   });
 
   it("does not throw and settles cleanly on unmount mid-fetch", async () => {

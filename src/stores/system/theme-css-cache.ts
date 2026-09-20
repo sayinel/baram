@@ -31,11 +31,30 @@ interface ThemeCssCacheState {
   clearTheme: (themeId: string) => void;
   /** Keyed by `installed-theme-defs.ts`'s `themeCssCacheKey`. */
   entries: Record<string, string>;
+  /**
+   * Keys whose disk read produced nothing usable — a missing file, or bytes
+   * `verifyStoredThemeCss` refused (external review, verification item A).
+   *
+   * ‼️ WITHOUT THIS THE REFUSAL IS THE EXPENSIVE CASE. `readStoredThemeCss` returns `null`
+   * for both outcomes and the hydration hook only writes `entries` on a string, so the
+   * rejected theme — the one `verify.ts` exists for, whose `.stored/*.css` was edited after
+   * install — re-ran the IPC read and a 122-352 ms verify on EVERY change to
+   * `activeThemeId`, `installedThemes`, `prefersDark` or `entries`, for the session. The
+   * success path paid it once. Remembering the refusal costs a boolean and makes the two
+   * paths symmetric.
+   *
+   * Cleared by {@link clearTheme}, alongside `entries`, because an update or a reinstall
+   * replaces the bytes this verdict was about.
+   */
+  rejected: Record<string, true>;
   setCss: (key: string, css: string) => void;
+  /** Remember that this key's disk read produced nothing usable. @see rejected */
+  setRejected: (key: string) => void;
 }
 
 export const useThemeCssCacheStore = create<ThemeCssCacheState>((set) => ({
   entries: {},
+  rejected: {},
   clearTheme: (themeId) =>
     set((state) => {
       // The key is `${themeId}:${mode}` (`themeCssCacheKey`), so the prefix — WITH the
@@ -45,11 +64,24 @@ export const useThemeCssCacheStore = create<ThemeCssCacheState>((set) => ({
       const kept = Object.entries(state.entries).filter(
         ([key]) => !key.startsWith(prefix),
       );
+      const keptRejected = Object.entries(state.rejected).filter(
+        ([key]) => !key.startsWith(prefix),
+      );
       // Equality gate, same reasoning as `setCss` below: clearing a theme that has nothing
       // cached is the common case (every theme with no CSS, and every uninstall of one that
-      // was never applied this session).
-      if (kept.length === Object.keys(state.entries).length) return state;
-      return { entries: Object.fromEntries(kept) };
+      // was never applied this session). Both maps have to be unchanged for this to be a
+      // no-op — a theme that only ever failed has entries in `rejected` and none in
+      // `entries`, and that is precisely the record an update must drop.
+      if (
+        kept.length === Object.keys(state.entries).length &&
+        keptRejected.length === Object.keys(state.rejected).length
+      ) {
+        return state;
+      }
+      return {
+        entries: Object.fromEntries(kept),
+        rejected: Object.fromEntries(keptRejected),
+      };
     }),
   setCss: (key, css) =>
     set((state) =>
@@ -59,5 +91,14 @@ export const useThemeCssCacheStore = create<ThemeCssCacheState>((set) => ({
       state.entries[key] === css
         ? state
         : { entries: { ...state.entries, [key]: css } },
+    ),
+  setRejected: (key) =>
+    set((state) =>
+      // Same equality gate, and it matters more here: the hook consults `rejected` before
+      // it reads, so without the gate a second attempt could not even happen — but a
+      // redundant `set` still wakes the apply effect, which is the 122-352 ms one.
+      state.rejected[key] === true
+        ? state
+        : { rejected: { ...state.rejected, [key]: true } },
     ),
 }));

@@ -101,13 +101,22 @@ pub async fn theme_install_discard(stage_id: String) -> Result<(), String> {
 /// the way across. This hands the webview an `ArrayBuffer`.
 ///
 /// Containment and the no-decoding rule are `plugin::read_staged_file`'s — see its doc
-/// comment for why `%2e%2e` must stay a directory name.
+/// comment for why `%2e%2e` must stay a directory name, and for why `max_bytes` narrows
+/// this crate's cap rather than replacing it.
+///
+/// ‼️ `max_bytes` IS AN OPTIMISATION, NOT A SECURITY BOUNDARY, and the difference matters
+/// for how much this command has to trust it. The webview states the cap it is about to
+/// apply anyway, so stating a wrong one can only make its OWN later check refuse — it
+/// cannot enlarge anything, because `read_staged_file` takes the minimum of this and
+/// `MAX_STAGED_FILE_BYTES`. What it buys is not reading, serializing and transferring
+/// megabytes in order to measure them (external review #2).
 #[tauri::command]
 pub async fn theme_stage_read(
     stage_id: String,
     path: String,
+    max_bytes: Option<u64>,
 ) -> Result<tauri::ipc::Response, String> {
-    plugin::read_staged_file(plugin::InstallKind::Theme, &stage_id, &path)
+    plugin::read_staged_file(plugin::InstallKind::Theme, &stage_id, &path, max_bytes)
         .await
         .map(tauri::ipc::Response::new)
         .map_err(|e| e.to_string())

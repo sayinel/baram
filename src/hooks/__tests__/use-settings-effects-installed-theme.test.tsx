@@ -43,7 +43,7 @@ import type { InstalledTheme } from "../../themes/theme-install";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useThemeCssCacheStore } from "../../stores/system/theme-css-cache";
 import { defaultColorsForBase } from "../../types/theme";
-import { clearThemeVars } from "../../utils/theme-vars";
+import { clearThemeVars, setThemePreviewOwner } from "../../utils/theme-vars";
 import { useSettingsEffects } from "../use-settings-effects";
 
 /** Valid per `verifyStoredThemeCss`'s four contracts — `@layer baram-theme`, no URL besides
@@ -51,6 +51,9 @@ import { useSettingsEffects } from "../use-settings-effects";
  *  to inject it and this file's own assertions would be testing the refusal path instead. */
 const STORED_CSS =
   "@layer baram-theme {\n.theme-probe-marker { color: rgb(1, 2, 3); }\n}\n";
+
+/** A colour no theme in this file carries, so finding it proves the preview survived. */
+const PREVIEW_SENTINEL = "#abcdef";
 
 function bgVar(): string {
   return document.documentElement.style.getPropertyValue("--color-bg-default");
@@ -97,7 +100,7 @@ beforeEach(() => {
   document
     .querySelectorAll("style[data-baram-theme]")
     .forEach((el) => el.remove());
-  useThemeCssCacheStore.setState({ entries: {} });
+  useThemeCssCacheStore.setState({ entries: {}, rejected: {} });
   readStoredThemeCss.mockReset();
   readStoredThemeCss.mockResolvedValue(STORED_CSS);
   window.matchMedia = ((query: string) => ({
@@ -115,12 +118,100 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // Module state: a case that takes ownership and fails before releasing would make every
+  // later case in this file skip its apply, which reads as an unrelated failure.
+  setThemePreviewOwner(false);
   window.matchMedia = originalMatchMedia;
   clearThemeVars(document.documentElement);
   document
     .querySelectorAll("style[data-baram-theme]")
     .forEach((el) => el.remove());
   useSettingsStore.setState({ activeThemeId: "system", installedThemes: {} });
+});
+
+// ‼️ External review #1 — the preview guard was on ONE of the two doors.
+//
+// `themePreviewOwned()` wrapped only the `prefers-color-scheme` listener; the effect BODY
+// applied unconditionally. That was equivalent while the only thing that re-ran the effect
+// was a user action, and stopped being equivalent when §361 put `installedThemes` and
+// `cssCacheEntries` in the deps: the hydration hook's own OS listener writes the cache, the
+// effect re-runs, and `clearThemeVars` + the stored palette + `data-theme` land on top of a
+// live preview. The gate was right; not every input reached it.
+describe("a live theme-editor preview is not overwritten (external review #1)", () => {
+  it("skips the apply while the preview owns the document", async () => {
+    render(<Host />);
+    await waitFor(() => expect(themeStyleText()).not.toBeNull());
+
+    // The editor takes ownership and paints its own preview value.
+    setThemePreviewOwner(true);
+    document.documentElement.style.setProperty(
+      "--color-bg-default",
+      PREVIEW_SENTINEL,
+    );
+
+    // The async door: the hydration cache changes, which is a dep of the apply effect.
+    act(() => {
+      useThemeCssCacheStore.getState().setCss(
+        "dracula:light",
+        `${STORED_CSS}
+/* second */
+`,
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // The preview survives. Before this fix `clearThemeVars` ran and the stored palette
+    // replaced the sentinel.
+    expect(bgVar()).toBe(PREVIEW_SENTINEL);
+    setThemePreviewOwner(false);
+  });
+
+  it("applies what it skipped once the preview is released", async () => {
+    // ‼️ THE HALF THAT HAD NO RECOVERY PATH. The effect's own comment says a skipped
+    // transition is not lost — `restorePreview()` on close, a re-run on save. Both are true
+    // of an OS switch and neither covers this: `restorePreview` does not touch
+    // `<style data-baram-theme>`, and closing without saving moves no dependency.
+    render(<Host />);
+    await waitFor(() => expect(themeStyleText()).not.toBeNull());
+
+    setThemePreviewOwner(true);
+    const arrived = `@layer baram-theme {\n.arrived-during-preview { color: rgb(4, 5, 6); }\n}\n`;
+    act(() => {
+      useThemeCssCacheStore.getState().setCss("dracula:light", arrived);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(themeStyleText()).not.toContain("arrived-during-preview");
+
+    act(() => {
+      setThemePreviewOwner(false);
+    });
+    await waitFor(() => {
+      expect(themeStyleText()).toContain("arrived-during-preview");
+    });
+  });
+
+  it("does not re-apply on release when nothing was skipped", async () => {
+    // The negative control: a release must not become a second unconditional apply, or the
+    // guard would just be a delay. Nothing was skipped here, so the `<style>` element that
+    // is already in the document must be the same one afterwards.
+    render(<Host />);
+    await waitFor(() => expect(themeStyleText()).not.toBeNull());
+    const before = document.querySelector("style[data-baram-theme]");
+
+    act(() => {
+      setThemePreviewOwner(true);
+      setThemePreviewOwner(false);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(document.querySelector("style[data-baram-theme]")).toBe(before);
+  });
 });
 
 describe("useSettingsEffects paints an installed (community) theme (F1)", () => {

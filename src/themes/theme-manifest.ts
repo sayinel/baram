@@ -170,7 +170,52 @@ export function validateThemeManifest(
     return { valid: false, errors };
   }
 
-  return { valid: true, manifest: obj as unknown as ThemeManifest };
+  return { valid: true, manifest: rebuildManifest(obj) };
+}
+
+/**
+ * The validated fields, and only those — a whitelist REBUILD, not a cast.
+ *
+ * ‼️ THE CAST STORED UNKNOWN KEYS FOR THE LIFE OF THE INSTALL (external review #6). Every
+ * field above is checked and none was copied, so `obj as unknown as ThemeManifest` carried
+ * whatever else the JSON held: `installTheme` puts that object in the record,
+ * `partialize` (`stores/settings/store.ts`) includes `installedThemes`, and
+ * `tauriStorage.setItem` has no debounce and no diff — so zustand serializes the whole blob
+ * and IPCs it to `config.json` after every `set`. `MAX_MANIFEST_JSON_CHARS` bounds it at
+ * 64 KiB, which is the size of the rider, not a reason to carry one.
+ *
+ * `readModeColors` (`theme-install.ts`) already does exactly this for `tokens.json`, and its
+ * doc comment names the audit BLOCKER that forced it: checking that a key EXISTS and then
+ * storing the whole object lets everything unnamed through. Same rule, the other file.
+ *
+ * Every read here is preceded by a check above, so the assertions are narrowings of values
+ * already proven — `modes` is the only one that needs its own walk, because the checker
+ * validates entries in place rather than collecting them.
+ */
+function rebuildManifest(obj: Record<string, unknown>): ThemeManifest {
+  const modes: ThemeManifest["modes"] = {};
+  for (const mode of MODE_KEYS) {
+    const declared = obj.modes as Record<string, unknown>;
+    const entry = declared[mode];
+    if (entry === undefined) continue;
+    const assets = entry as Record<string, unknown>;
+    // Present-and-a-string is what `validateModes` proved; an absent one stays absent
+    // rather than becoming `undefined`-valued, so a round trip through JSON is identical.
+    const rebuilt: ThemeManifestModeAssets = {};
+    if (typeof assets.css === "string") rebuilt.css = assets.css;
+    if (typeof assets.tokens === "string") rebuilt.tokens = assets.tokens;
+    modes[mode] = rebuilt;
+  }
+  return {
+    author: obj.author as string,
+    description: obj.description as string,
+    engines: { baram: (obj.engines as { baram: string }).baram },
+    id: obj.id as string,
+    license: obj.license as string,
+    modes,
+    name: obj.name as string,
+    version: obj.version as string,
+  };
 }
 
 function validateTextField(

@@ -426,3 +426,107 @@ describe("validateThemeManifest", () => {
     expect(result.valid).toBe(true);
   });
 });
+
+// ‼️ External review #6 — the validator CHECKED fields and then stored the whole object.
+//
+// `obj as unknown as ThemeManifest` carried every unnamed key into the record, which
+// `partialize` includes and `tauriStorage.setItem` re-serializes and IPCs to `config.json`
+// on every settings write, with no debounce and no diff — bounded only by the 64 KiB
+// manifest cap. `readModeColors` had already been forced to rebuild rather than cast, by an
+// audit BLOCKER its own doc comment names; this is the same rule in the other file.
+describe("validateThemeManifest rebuilds rather than casting (external review #6)", () => {
+  const valid = () => ({
+    author: "a",
+    description: "d",
+    engines: { baram: ">=0.7.0" },
+    id: "dracula",
+    license: "MIT",
+    modes: { light: { tokens: "light/tokens.json" } },
+    name: "Dracula",
+    version: "1.0.0",
+  });
+
+  it("drops keys nothing validated", () => {
+    const result = validateThemeManifest({
+      ...valid(),
+      author_note: "x".repeat(1000),
+      __proto__polluter: { a: 1 },
+      nested: { deep: { deeper: [1, 2, 3] } },
+    });
+
+    expect(result.valid).toBe(true);
+    if (!result.valid) return;
+    expect(Object.keys(result.manifest).sort()).toEqual([
+      "author",
+      "description",
+      "engines",
+      "id",
+      "license",
+      "modes",
+      "name",
+      "version",
+    ]);
+  });
+
+  it("drops an unknown key from engines, keeping only baram", () => {
+    // `engines` is an object the checker only reaches into for one field, so a spread would
+    // have carried the rest — the same shape as the top level, one nesting deeper.
+    const result = validateThemeManifest({
+      ...valid(),
+      engines: { baram: ">=0.7.0", node: "22", rider: "x".repeat(500) },
+    });
+    expect(result.valid).toBe(true);
+    if (!result.valid) return;
+    expect(Object.keys(result.manifest.engines)).toEqual(["baram"]);
+  });
+
+  it("drops an unknown key from a mode", () => {
+    const result = validateThemeManifest({
+      ...valid(),
+      modes: { light: { extra: "x".repeat(500), tokens: "light/tokens.json" } },
+    });
+    expect(result.valid).toBe(true);
+    if (!result.valid) return;
+    expect(Object.keys(result.manifest.modes.light ?? {})).toEqual(["tokens"]);
+  });
+
+  it("keeps every field that WAS validated, at both modes", () => {
+    // The anchor. Without it the rebuild could drop everything and every case above would
+    // still pass — and dropping `modes.dark` is the shape that silently turns a paired
+    // theme into a single-mode one.
+    const result = validateThemeManifest({
+      ...valid(),
+      modes: {
+        dark: { css: "dark/theme.css" },
+        light: { css: "light/theme.css", tokens: "light/tokens.json" },
+      },
+    });
+    expect(result.valid).toBe(true);
+    if (!result.valid) return;
+    expect(result.manifest).toEqual({
+      author: "a",
+      description: "d",
+      engines: { baram: ">=0.7.0" },
+      id: "dracula",
+      license: "MIT",
+      modes: {
+        dark: { css: "dark/theme.css" },
+        light: { css: "light/theme.css", tokens: "light/tokens.json" },
+      },
+      name: "Dracula",
+      version: "1.0.0",
+    });
+  });
+
+  it("returns an object that survives a JSON round trip unchanged", () => {
+    // What the record is actually subjected to: `partialize` → `JSON.stringify` → IPC. An
+    // absent optional must stay absent rather than become `undefined`-valued, or the two
+    // spellings would differ across a restart.
+    const result = validateThemeManifest(valid());
+    expect(result.valid).toBe(true);
+    if (!result.valid) return;
+    expect(JSON.parse(JSON.stringify(result.manifest))).toEqual(
+      result.manifest,
+    );
+  });
+});

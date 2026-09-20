@@ -1026,14 +1026,31 @@ fn write_stored_theme_css(staged: &Path, css: &StoredThemeCss) -> Result<(), Plu
 /// (`src/utils/theme-css/inline-assets.ts`) requires: that module refuses `%` in a
 /// reference precisely because a reader that percent-decoded would make its containment
 /// verdict meaningless, and a reader is only as good as that promise.
+///
+/// ‼️ `max_bytes` IS THE CALLER'S OWN CAP, AND ITS ABSENCE IS NOT A LOOPHOLE (external
+/// review #2). [`MAX_STAGED_FILE_BYTES`] still bounds every read; a caller that states a
+/// TIGHTER one gets the tighter one, and one that states a larger one still gets ours —
+/// `min` rather than a replacement, so the webview cannot raise the ceiling by asking.
+///
+/// It exists because the theme path was the one input that bypassed the rule this crate
+/// already implements. `read_bytes_capped` stats before it reads, and `refuse_over_cap`'s
+/// own doc calls that "the 'never allocate to measure' rule has one implementation" — but
+/// the frontend's real caps for a staged manifest and stylesheet are 64 KiB and 512 KiB
+/// (`src/themes/theme-store-fs.ts`), applied to a `Uint8Array` that had already been read,
+/// serialized and transferred. A 7.9 MiB file passed our 8 MiB cap, crossed the IPC
+/// boundary, and was refused after every one of those costs was paid.
 pub async fn read_staged_file(
     kind: InstallKind,
     stage_id: &str,
     rel: &str,
+    max_bytes: Option<u64>,
 ) -> Result<Vec<u8>, PluginError> {
     let staged = resolve_stage_in(&install_root(kind)?, stage_id)?;
     let path = resolve_within(&staged, rel).map_err(PluginError::Refused)?;
-    read_bytes_capped(&path, MAX_STAGED_FILE_BYTES)
+    let cap = max_bytes.map_or(MAX_STAGED_FILE_BYTES, |requested| {
+        requested.min(MAX_STAGED_FILE_BYTES)
+    });
+    read_bytes_capped(&path, cap)
         .await
         .map_err(|e| PluginError::Refused(format!("\"{rel}\" {e}")))
 }

@@ -4,6 +4,25 @@ import type { ThemeColors } from "../../types/theme";
 // colour and the foreground derived from it can never be written out of step.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+/**
+ * Counts `verifyStoredThemeCss` calls without stubbing it — the wrapper calls through, so
+ * every assertion in this file still runs against the real contract check.
+ *
+ * A `vi.mock` wrapper rather than `vi.spyOn` on the namespace: `theme-vars.ts` binds the
+ * import at module load, and a namespace spy would not be the function it calls.
+ */
+const verifyCalls = vi.hoisted(() => vi.fn());
+vi.mock("../theme-css/verify", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../theme-css/verify")>();
+  return {
+    ...actual,
+    verifyStoredThemeCss: (css: string): boolean => {
+      verifyCalls(css);
+      return actual.verifyStoredThemeCss(css);
+    },
+  };
+});
+
 import {
   soleMode,
   solePalette,
@@ -302,6 +321,57 @@ describe("적용과 제거는 짝이다 (#330, 열거가 아니라 관측으로)
     expect(styles[0].textContent).toBe(
       "@layer baram-theme{.probe{color:blue}}",
     );
+  });
+
+  // ‼️ 외부 리뷰 #3 — 같은 바이트의 재검증. 실측은 4 MiB 상한 근처에서 122~352 ms 였고,
+  // 그 뒤에 있던 문자열 비교는 0.066 ms 였다. 단락은 **이미 붙어 있는 바이트**에만 건다.
+  describe("같은 바이트면 검증을 건너뛴다 (외부 리뷰 #3)", () => {
+    const CSS = "@layer baram-theme{.probe{color:red}}";
+
+    it("이미 붙인 것과 같은 문자열이면 verify 를 다시 돌리지 않는다", () => {
+      verifyCalls.mockClear();
+      {
+        applyThemeCss(document, CSS);
+        expect(verifyCalls).toHaveBeenCalledTimes(1);
+
+        // 같은 값. 문자열 identity 까지 다르게 만들어, 비교가 참조가 아니라 값으로
+        // 이뤄진다는 것도 함께 고정한다.
+        applyThemeCss(document, `${CSS.slice(0, 5)}${CSS.slice(5)}`);
+        expect(verifyCalls).toHaveBeenCalledTimes(1);
+      }
+    });
+
+    it("붙어 있지 않은 바이트는 전부 verify 를 지난다", () => {
+      // ‼️ 이것이 단락의 안전성을 지탱하는 절반이다. `<style>` 안의 문자열이 거기 있는
+      // 이유는 이 함수가 검증에 통과시킨 뒤 넣었기 때문이고, 그 밖의 어떤 입력도 검사를
+      // 건너뛰지 않는다 — `customThemes[i].modes[mode].css` 처럼 `config.json` 에서
+      // 곧장 오는 CSS 가 그 "밖" 이다.
+      verifyCalls.mockClear();
+      applyThemeCss(document, CSS);
+      applyThemeCss(document, "@layer baram-theme{.probe{color:blue}}");
+      expect(verifyCalls).toHaveBeenCalledTimes(2);
+
+      // 떼어 낸 뒤 같은 바이트를 다시 주면, 붙어 있지 않으므로 다시 검증한다.
+      clearThemeCss(document);
+      applyThemeCss(document, CSS);
+      expect(verifyCalls).toHaveBeenCalledTimes(3);
+    });
+
+    it("단락이 거부를 삼키지 않는다", () => {
+      // 계약을 어긴 CSS 는 절대 붙지 않으므로 `<style>` 과 같을 수 없고, 따라서 단락에
+      // 걸릴 수 없다 — 그 사실을 관측으로 고정한다.
+      const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        applyThemeCss(document, ".probe{color:red}");
+        applyThemeCss(document, ".probe{color:red}");
+        expect(
+          document.querySelectorAll("style[data-baram-theme]"),
+        ).toHaveLength(0);
+        expect(logged).toHaveBeenCalledTimes(2);
+      } finally {
+        logged.mockRestore();
+      }
+    });
   });
 
   it("계약을 어긴 css 는 붙이지 않고, 앞 테마의 것도 떼어 낸다", () => {

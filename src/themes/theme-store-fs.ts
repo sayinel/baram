@@ -96,7 +96,15 @@ export async function readStagedThemeText(
   relPath: string,
   maxBytes: number,
 ): Promise<string> {
-  const bytes = await themeStageRead(stageId, relPath);
+  // ‼️ THE CAP GOES DOWN WITH THE REQUEST, and the check below stays (external review #2).
+  // Rust stats before it reads, so an oversized file is refused without ever being
+  // allocated, serialized or transferred — the "never allocate to measure" rule the crate
+  // already implements for every other reader. The `byteLength` check after it is NOT
+  // redundant: `themeStageRead` throws on a refusal and this function's contract is a
+  // `ThemeCssError` naming the path, so the local check is what still produces that error
+  // for any caller reaching this line, and it is the only gate if `maxBytes` is ever
+  // dropped from the wire.
+  const bytes = await themeStageRead(stageId, relPath, maxBytes);
   if (bytes.byteLength > maxBytes) {
     throw new ThemeCssError(
       "tooLarge",
