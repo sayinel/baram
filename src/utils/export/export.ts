@@ -58,8 +58,11 @@ export interface ThemeExportOptions {
   /**
    * §362 — the active theme's def + resolved mode, read by the caller
    * (`ExportDialog`, which already reads the settings store) rather than
-   * here — export utilities stay pure (see `FontExportOptions`'s doc comment
-   * above). Consulted only when `themeInExport === "tokens"`; leave both
+   * here. Narrower than `FontExportOptions`'s doc comment above claims for
+   * the whole module (it isn't — `exportWithPandoc` reads `locale` off the
+   * settings store directly): this HTML/PDF path specifically takes its
+   * palette as an argument and does not read the store itself. Consulted
+   * only when `themeInExport === "tokens"`; leave both
    * undefined when there is no palette to carry (`activeThemeId === "system"`,
    * or `findThemeById` found nothing for it) — `themeTokensBlock` treats a
    * missing theme the same as one with no colours for the mode and returns

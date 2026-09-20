@@ -127,4 +127,40 @@ describe("themeInExport reaches both export paths as a resolved themeTokens stri
     expect(warnSpy).toHaveBeenCalled();
     warnSpy.mockRestore();
   });
+
+  // Fix round 1, Major 1 (task-2-review.md) — the "옵션이 없으면 default" tests
+  // above only exercise the shape a UNIT TEST constructs. Production never
+  // does: `ExportDialog.tsx` passes `activeTheme`/`activeThemeMode`
+  // UNCONDITIONALLY on every export, whatever `themeInExport` is (it can't
+  // know a user is about to pick "Default" — it resolves the theme once, up
+  // front). So the call shape that actually happens is `themeInExport:
+  // "default"` TOGETHER WITH a real `activeTheme`, and nothing pinned that
+  // combination: `if (theme === undefined) return undefined;` in place of
+  // `resolveThemeTokens`'s real `themeInExport !== "tokens"` guard left all
+  // prior tests green, because none of them supplied both at once (reviewer's
+  // mutation M1b). "Default" must ignore an active theme, not merely handle
+  // one that happens to be absent.
+  it("HTML — 활성 테마가 있어도 default 는 그것을 싣지 않는다 (실제 다이얼로그 호출 모양)", async () => {
+    const { exportAsHTML } = await import("../export");
+    await exportAsHTML(fakeEditor(), "t", {
+      activeTheme: tokyo,
+      activeThemeMode: "dark",
+      themeInExport: "default",
+    });
+    expect(generateStandaloneHTML.mock.calls[0]?.[2]).toMatchObject({
+      themeTokens: undefined,
+    });
+  });
+
+  it("PDF — 활성 테마가 있어도 default 는 그것을 싣지 않는다 (실제 다이얼로그 호출 모양)", async () => {
+    const { exportAsPDF } = await import("../export");
+    await exportAsPDF(fakeEditor(), "t", {
+      activeTheme: tokyo,
+      activeThemeMode: "dark",
+      themeInExport: "default",
+    });
+    expect(generateStandaloneHTML.mock.calls[0]?.[2]).toMatchObject({
+      themeTokens: undefined,
+    });
+  });
 });

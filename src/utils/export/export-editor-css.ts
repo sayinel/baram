@@ -200,7 +200,7 @@ export function editorContentCSS(): string {
  * nothing to a standalone page, so it becomes a plain `:root`.
  *
  * §362 — `buildExportStylesheet` may follow this with a theme's own `:root`
- * block (`themeTokensBlock`), which overrides the keys it declares.
+ * block (`themeTokensBlock`), which overrides the keys this function declares.
  *
  * ‼️ Both files are needed, in this order. semantic-light.css is entirely
  * `var()` references into primitives.css — on its own every token in it

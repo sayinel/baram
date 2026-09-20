@@ -33,6 +33,7 @@ vi.mock("../export-html", async (importOriginal) => ({
 }));
 
 import { exportBinaryFile, exportPdf } from "../../../ipc/invoke";
+import { BUILT_IN_THEMES } from "../../../types/theme";
 import { bundledFont } from "../../font/bundled-fonts";
 import { exportAsHTML, exportAsPDF } from "../export";
 import { captureEditorHTML } from "../export-html";
@@ -143,8 +144,18 @@ describe("exportAsPDF — always embeds, no checkbox to gate it (§353 review Im
     expect(htmlPrinted()).toContain("data:font/woff2;base64,");
   });
 
-  it("keeps bodyFont/codeFont out of the PdfOptions object handed to the Rust IPC call", async () => {
+  it("keeps bodyFont/codeFont/activeTheme out of the PdfOptions object handed to the Rust IPC call", async () => {
+    // §362 review Info 4 — `activeTheme`/`activeThemeMode` MUST actually be
+    // supplied here for this to be a real check: if the input never carries
+    // them, their absence from `pdfOptions` proves nothing (they were never
+    // going to be there either way) — this is destructured off before
+    // `...pdfOptions`, same as bodyFont/codeFont, and for the same reason:
+    // this object goes straight to the Rust `exportPdf` command, and a rest
+    // spread isn't excess-property-checked — a missed destructure would
+    // compile clean and ship a whole `ThemeDef` over IPC.
     await exportAsPDF(fakeEditor, "t", {
+      activeTheme: BUILT_IN_THEMES.find((t) => t.id === "tokyo-night"),
+      activeThemeMode: "dark",
       bodyFont: "Noto Sans KR",
       codeFont: "D2Coding",
       paperSize: "a4",
@@ -153,6 +164,8 @@ describe("exportAsPDF — always embeds, no checkbox to gate it (§353 review Im
     const pdfOptions = vi.mocked(exportPdf).mock.calls[0][2];
     expect(pdfOptions).not.toHaveProperty("bodyFont");
     expect(pdfOptions).not.toHaveProperty("codeFont");
+    expect(pdfOptions).not.toHaveProperty("activeTheme");
+    expect(pdfOptions).not.toHaveProperty("activeThemeMode");
     expect(pdfOptions).toMatchObject({ paperSize: "a4" });
   });
 

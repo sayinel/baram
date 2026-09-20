@@ -173,11 +173,13 @@ export function ExportDialog({ editor }: ExportDialogProps) {
     })),
   );
   // §362 — the palette `tokens` carries, resolved here rather than in
-  // export.ts: export utilities stay pure and do not read the settings store
-  // (export.ts's own FontExportOptions doc comment states that rule). Mirrors
-  // ThemeEditor.tsx's `resolvedTheme`/`restorePreview` — same lookup, same
-  // `resolveThemeMode` call, so a theme that resolves for editing resolves
-  // the same way for export.
+  // export.ts: the HTML/PDF export path (exportAsHTML/exportAsPDF) takes its
+  // palette as an argument rather than reading the settings store itself
+  // (export.ts's `ThemeExportOptions` doc states that for this path — the
+  // module as a whole is not store-free; exportWithPandoc reads `locale`
+  // directly). Mirrors ThemeEditor.tsx's `resolvedTheme`/`restorePreview` —
+  // same lookup, same `resolveThemeMode` call, so a theme that resolves for
+  // editing resolves the same way for export.
   const resolvedTheme = useMemo(
     () =>
       activeThemeId === "system"

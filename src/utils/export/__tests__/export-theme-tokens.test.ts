@@ -57,4 +57,21 @@ describe("themeTokensBlock → generateStandaloneHTML (통합)", () => {
     expect(semanticIdx).toBeGreaterThan(-1);
     expect(themeIdx).toBeGreaterThan(semanticIdx);
   });
+
+  // Fix round 1, Minor 1 (task-2-review.md) — buildExportStylesheet's doc
+  // comment claims "`themeTokens` is empty by default, like `fontFaceCSS`,
+  // so every existing caller's output is unaffected", which is really a
+  // claim about `.filter((block) => block !== "")` in its body: with both
+  // slots empty, the filtered array is unchanged from before this task
+  // (base commit), and the join produces no stray blank-line artifact from
+  // the two new empty entries. Nothing checked that. Measured what removing
+  // the filter actually does (both empty slots survive as extra `\n\n`
+  // joins): the sheet gains a leading blank run before `exportTokensCSS()`'s
+  // `:root {`, and a 4-newline run where `themeTokens`'s empty slot sits
+  // between two joins.
+  it("빈 fontFaceCSS/themeTokens 슬롯이 <style> 안에 빈 줄로 남지 않는다 (필터 고정)", () => {
+    const sheet = buildExportStylesheet();
+    expect(sheet.startsWith(":root")).toBe(true);
+    expect(sheet).not.toMatch(/\n{3,}/u);
+  });
 });

@@ -217,10 +217,11 @@ export const PRINT_CSS = `
  *
  * Tokens next (everything below resolves `var()` against them), then §362's
  * `themeTokens` — the active theme's own `:root` block, built by
- * `themeTokensBlock` and resolved by the caller. It MUST sit right after
- * `exportTokensCSS()` rather than before it: a custom property resolves to
- * its LAST declaration in source order, so a theme block placed earlier would
- * be overridden BY the semantic tokens instead of overriding them. Then the
+ * `themeTokensBlock` and resolved by the caller. It comes after
+ * `exportTokensCSS()`, never before: a custom property resolves to its LAST
+ * declaration in source order, so a theme block placed earlier would be
+ * overridden BY the semantic tokens instead of overriding them — anywhere
+ * after works, this file just picks "right after" for simplicity. Then the
  * editor's own appearance, then the export-only frame, then print.
  *
  * `themeTokens` is empty by default, like `fontFaceCSS`, so every existing
