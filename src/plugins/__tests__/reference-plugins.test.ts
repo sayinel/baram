@@ -7,7 +7,7 @@
 import type { PluginManifest, RegistryIndex } from "../types";
 
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -35,6 +35,53 @@ const invalidFields = (manifest: PluginManifest) => {
     ? []
     : result.errors.map((e) => `${e.field}: ${e.message}`);
 };
+
+describe("no example manifest carries a key the host never reads", () => {
+  // ‼️ THE CLASS, NOT THE INSTANCE. `bullet-threading` shipped its settings as a TOP-LEVEL
+  // `settings` key. `PluginManifest` has no such field — the host reads
+  // `contributions.settings` — so the three controls it advertised rendered nowhere, and
+  // nothing failed: `validateManifest` ignores unknown keys by design (an install must not
+  // break because a manifest carries a field a newer app added). That design is right, and
+  // it is exactly what makes this silent for OUR OWN examples, which are also the templates
+  // people copy.
+  //
+  // ‼️ THE KEY LIST IS DERIVED, NOT RESTATED. A hand-written list here would be a second
+  // copy of `PluginManifest` to keep in step, and the first field added to the interface
+  // would make this fail on a correct manifest. It is parsed out of
+  // `examples/plugins/types.d.ts`, which `npm run types:plugin` generates FROM
+  // `src/plugins/types.ts` and `types:plugin:check` fails the build over if it is stale.
+  const declaredKeys = (): string[] => {
+    const dts = readFileSync(resolve(EXAMPLES, "types.d.ts"), "utf8");
+    const at = dts.indexOf("export interface PluginManifest {");
+    if (at < 0)
+      throw new Error("no PluginManifest in the generated types.d.ts");
+    const body = dts.slice(at, dts.indexOf("\n}", at));
+    // Only the interface's OWN members: four leading spaces, then the name. A nested
+    // object type (`engines: { baram: string }`) indents its members deeper.
+    return [...body.matchAll(/^ {4}(\w+)\??:/gmu)].map((m) => m[1]);
+  };
+
+  const exampleDirs = readdirSync(EXAMPLES, { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .map((e) => e.name)
+    .filter((d) => existsSync(resolve(EXAMPLES, d, "baram-plugin.json")));
+
+  it("reads the generated interface and every example (empty would be vacuous)", () => {
+    expect(declaredKeys()).toContain("contributions");
+    expect(declaredKeys()).toContain("tiptapExtensions");
+    expect(exampleDirs.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it.each(exampleDirs)("%s", (dir) => {
+    const extra = Object.keys(
+      JSON.parse(read(dir, "baram-plugin.json")) as Record<string, unknown>,
+    ).filter((k) => !declaredKeys().includes(k));
+    expect(
+      extra,
+      `${dir}/baram-plugin.json declares ${extra.join(", ")}, which PluginManifest does not define — the host will never read it`,
+    ).toEqual([]);
+  });
+});
 
 describe("baram-word-count — the reference SANDBOXED plugin (§260 Phase 6)", () => {
   const manifest = manifestOf("word-count");
@@ -390,6 +437,14 @@ describe("baram-ai-summary — the trusted example, withdrawn from the registry"
     // exists, and this tier has nowhere to show a summary), and publishing it as a TRUSTED
     // plugin would teach users to click through the full-trust warning for something as
     // ordinary as summarising a document. So it ships as a repo example only.
+    //
+    // ‼️ THE SECOND CLAUSE IS NO LONGER A BLANKET RULE (스펙 0050). `plugin-release.yml` now
+    // names a tier per directory instead of refusing `trusted` outright, because the
+    // sandboxed tier cannot express an editor plugin at all — see the revisit note in that
+    // workflow. What holds this example back is unchanged and specific to it: it is not in
+    // that allowlist, its 1.x line is withdrawn, and there is still no `sidebar`
+    // contribution. Left standing rather than deleted: the argument is why publishing a
+    // trusted plugin stays a per-directory decision.
     expect(seed().plugins.map((p) => p.id)).not.toContain(manifest.id);
   });
 

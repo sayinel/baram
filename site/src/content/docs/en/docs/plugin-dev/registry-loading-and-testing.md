@@ -51,11 +51,20 @@ which builds the plugin, packages the ZIP per the contract above, computes
 its SHA-256, and pushes the ZIP plus an updated `index.json` to the registry
 repo.
 
-Two refusals happen before anything is built: a manifest without a valid
-`trust` fails the release outright (an entry without a tier can only describe
-a plugin nobody can install), and the directories `malicious-fixture` and
-`sandbox-smoke` are denied by name, so a mistyped tag cannot publish a test
-fixture to the public registry.
+Two refusals happen before anything is built, and they answer different
+questions. **Which directory** may ship: the workflow holds a publish
+allowlist that denies by default, so a mistyped tag cannot publish a test
+fixture, and adding an example does not make it publishable. **At which
+tier** it ships: the same allowlist names one tier per directory, and a
+manifest whose `trust` is not that tier fails the release rather than
+publishing an entry the marketplace would present behind a different consent
+dialog.
+
+Both tiers can be published, but `trusted` is a per-directory decision rather
+than a default. A plugin that contributes a Tiptap extension runs in the main
+realm and is therefore `trusted` by construction — the sandboxed tier refuses
+`tiptapExtensions` — so refusing that tier as a class would mean the registry
+could never carry an editor plugin at all.
 
 ## Local testing
 

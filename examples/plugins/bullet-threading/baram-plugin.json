@@ -27,24 +27,26 @@
     "list",
     "focus"
   ],
-  "settings": [
-    {
-      "key": "color",
-      "type": "string",
-      "label": "Thread colour",
-      "default": "var(--color-accent-default)"
-    },
-    {
-      "key": "lineWidth",
-      "type": "number",
-      "label": "Line width (px)",
-      "default": 1.5
-    },
-    {
-      "key": "showElbow",
-      "type": "boolean",
-      "label": "Curve into each item",
-      "default": true
-    }
-  ]
+  "contributions": {
+    "settings": [
+      {
+        "key": "color",
+        "type": "string",
+        "label": "Thread colour",
+        "default": "var(--color-accent-default)"
+      },
+      {
+        "key": "lineWidth",
+        "type": "number",
+        "label": "Line width (px)",
+        "default": 2
+      },
+      {
+        "key": "showElbow",
+        "type": "boolean",
+        "label": "Curve into each item",
+        "default": true
+      }
+    ]
+  }
 }

@@ -7,6 +7,8 @@
 // against a minimal schema; they cannot see any of this.
 //
 // It loads `dist/index.mjs` — the built artifact a user actually installs, not `src/`.
+import type { PluginManifest } from "../types";
+
 import { Editor } from "@tiptap/core";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -19,10 +21,13 @@ import {
   registerEditorSurface,
 } from "../editor-surfaces";
 import { validateManifest } from "../manifest";
+import { declaredSettingsFor } from "../plugin-settings";
 
 const DIR = join(process.cwd(), "examples/plugins/bullet-threading");
 
 interface Built {
+  /** The plugin's own fallbacks — the manifest's declared defaults are asserted against these. */
+  DEFAULT_SETTINGS: Record<string, boolean | number | string>;
   Threading: (ctx: unknown) => never;
 }
 
@@ -58,6 +63,35 @@ describe("the Bullet Threading example", () => {
       );
     }
     expect(result.valid).toBe(true);
+  });
+
+  it("declares settings the HOST can actually see, at the plugin's own defaults", () => {
+    // ‼️ THIS MANIFEST SHIPPED THE FIELDS ONE LEVEL TOO HIGH. `settings` was a TOP-LEVEL
+    // key, and `PluginManifest` has no such field — the host reads
+    // `contributions.settings` (`declaredSettingsFor`). Nothing failed: `validateManifest`
+    // ignores keys it does not know, so the manifest was valid, the plugin ran on its own
+    // fallbacks, and the settings tab would have rendered EMPTY for anyone who installed
+    // it. The test above passes either way, which is why this one exists.
+    //
+    // The second half is the defect that fix would have introduced on its own. The dead
+    // field declared `lineWidth: 1.5` while the plugin's own default is 2, so merely
+    // moving it into place would have changed the rendering — quietly, since nothing
+    // compared the two. Asserted against the BUILT bundle's `DEFAULT_SETTINGS` rather
+    // than a literal, so the manifest and the code cannot drift apart again.
+    const manifest = JSON.parse(
+      readFileSync(join(DIR, "baram-plugin.json"), "utf8"),
+    ) as PluginManifest;
+
+    const declared = declaredSettingsFor(manifest);
+    expect(
+      declared.map((f) => f.key).sort(),
+      "the host must see every field the plugin reads",
+    ).toEqual(Object.keys(built.DEFAULT_SETTINGS).sort());
+
+    const defaults = Object.fromEntries(
+      declared.map((f) => [f.key, f.default]),
+    );
+    expect(defaults).toEqual(built.DEFAULT_SETTINGS);
   });
 
   it("ships a bundle that carries no ProseMirror of its own", () => {

@@ -320,6 +320,61 @@ function stepScript(stepName: string): string {
   return body.join("\n");
 }
 
+/**
+ * Runs the meta step against a SYNTHETIC cwd holding just the two files it reads —
+ * `package.json` and `examples/plugins/<dir>/baram-plugin.json`.
+ *
+ * Module-level because two tests need it: the case-by-case one below, and the one that
+ * enumerates the allowlist's arms out of the workflow itself.
+ */
+function runMetaStepSynthetically(opts: {
+  appVersion?: string;
+  /** Which allowlisted directory to stand up. Defaults to the sandboxed arm. */
+  dir?: string;
+  manifest: Record<string, unknown>;
+  tag: string;
+}): { output: string; status: null | number } {
+  const root = mkdtempSync(join(tmpdir(), "baram-meta-syn-"));
+  writeFileSync(
+    join(root, "package.json"),
+    JSON.stringify({ version: opts.appVersion ?? "9.9.9" }),
+  );
+  const pluginDir = join(root, "examples", "plugins", opts.dir ?? "word-count");
+  mkdirSync(pluginDir, { recursive: true });
+  writeFileSync(
+    join(pluginDir, "baram-plugin.json"),
+    JSON.stringify(opts.manifest),
+  );
+  const result = spawnSync("bash", ["-e", "-c", metaStepScript()], {
+    cwd: root,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      GITHUB_OUTPUT: join(root, "output"),
+      GITHUB_REF_NAME: opts.tag,
+      GITHUB_SHA: "HEAD",
+    },
+  });
+  return { output: result.stderr + result.stdout, status: result.status };
+}
+
+/**
+ * The directory patterns the meta step's allowlist names, read out of the workflow.
+ *
+ * Derived rather than restated so that ADDING an arm cannot escape the coverage below: a
+ * hand-written list would keep passing while a third directory shipped with nothing asserting
+ * its tier. `*` — the deny-by-default arm — is excluded; it is covered by the refusal cases.
+ */
+function allowlistedDirs(): string[] {
+  const script = metaStepScript();
+  const open = script.indexOf('case "$DIR" in');
+  const close = script.indexOf("esac", open);
+  if (open < 0 || close < 0) throw new Error("no allowlist case block");
+  return [...script.slice(open, close).matchAll(/^\s*([\w.-]+)\)/gmu)].map(
+    (m) => m[1],
+  );
+}
+
 describe("the malicious fixture stays a fixture (§260 Phase 6)", () => {
   it("is a valid sandboxed manifest, or it would not load to be refused", () => {
     const result = validateManifest(manifest);
@@ -408,14 +463,24 @@ describe("the malicious fixture stays a fixture (§260 Phase 6)", () => {
       "the tag-on-main check must exist (presence only — unreachable in this harness)",
     ).toContain('git merge-base --is-ancestor "$GITHUB_SHA" origin/main');
 
-    // …and the one allowlisted plugin gets PAST the allowlist and the tier check. It still stops
-    // at the release-order gate while the app is behind the floor, which is that gate working —
-    // asserted here so this case cannot silently become a refusal for the wrong reason.
+    // …and the allowlisted plugins get PAST the allowlist and the tier check — one per tier, so
+    // neither arm of the table can rot unnoticed. They still stop at the release-order gate while
+    // the app is behind the floor, which is that gate working — asserted below so these cases
+    // cannot silently become refusals for the wrong reason.
+    const allowedTags = [
+      "plugin-word-count-v2.1.0",
+      "plugin-bullet-threading-v2.0.0",
+    ];
+    for (const tag of allowedTags) {
+      const { output } = runFor(tag);
+      expect(output, `${tag} must clear the allowlist`).not.toContain(
+        "publishable allowlist",
+      );
+      expect(output, `${tag} must clear the tier check`).not.toContain(
+        "this workflow publishes",
+      );
+    }
     const allowed = runFor("plugin-word-count-v2.1.0");
-    expect(allowed.output).not.toContain("publishable allowlist");
-    expect(allowed.output).not.toContain(
-      "only sandboxed plugins are published",
-    );
     if (allowed.status !== 0) {
       // §260 Phase 6 code review round 4 (MEDIUM-1) — this asserted `engines.baram` alone, which
       // was calibrated to TODAY (app 0.4.1 vs floor >=0.5.0). Bump the app to 0.5.0 and the
@@ -451,7 +516,15 @@ describe("the malicious fixture stays a fixture (§260 Phase 6)", () => {
     );
     expect(script).toContain("unzip -p");
 
-    const runFor = (manifest: null | Record<string, unknown>) => {
+    const runFor = (
+      manifest: null | Record<string, unknown>,
+      /**
+       * What the meta step verified. Defaults to the sandboxed arm of the allowlist, so every
+       * case that predates the per-directory tier table reads unchanged; the trusted arm and
+       * the empty-value guard pass it explicitly.
+       */
+      expectedTrust = "sandboxed",
+    ) => {
       const tmp = mkdtempSync(join(tmpdir(), "baram-artifact-"));
       const stage = join(tmp, "stage");
       mkdirSync(stage, { recursive: true });
@@ -481,6 +554,7 @@ describe("the malicious fixture stays a fixture (§260 Phase 6)", () => {
         encoding: "utf8",
         env: {
           ...process.env,
+          EXPECTED_TRUST: expectedTrust,
           GITHUB_OUTPUT: join(tmp, "output"),
           PLUGIN_ID: "baram-word-count",
           RUNNER_TEMP: tmp,
@@ -514,10 +588,33 @@ describe("the malicious fixture stays a fixture (§260 Phase 6)", () => {
     // Refused on identity first, which is the more specific complaint.
     expect(trusted.output).toContain("was verified");
 
-    // …and the tier is re-asserted on the bytes even when the id matches.
+    // …and the tier is re-asserted on the bytes even when the id matches. `declares trust` rather
+    // than `was verified`: the identity refusal above ends in those same two words, so asserting
+    // them here would pass on a build that had lost the tier check entirely.
     const wrongTier = runFor({ ...good, trust: "trusted" });
     expect(wrongTier.status).not.toBe(0);
-    expect(wrongTier.output).toContain("only sandboxed plugins are published");
+    expect(wrongTier.output).toContain("declares trust");
+
+    // BOTH DIRECTIONS, now that the allowlist names a tier per directory (스펙 0050). The check
+    // is an equality against what the meta step verified, not a constant, so a trusted release
+    // must accept trusted bytes and refuse sandboxed ones — the exact mirror of the two cases
+    // above. Without this pair, rewriting the comparison as `!= "sandboxed"` would still pass.
+    const trustedOk = runFor({ ...good, trust: "trusted" }, "trusted");
+    expect(trustedOk.status, trustedOk.output).toBe(0);
+
+    const trustedGotSandboxed = runFor(good, "trusted");
+    expect(trustedGotSandboxed.status).not.toBe(0);
+    expect(trustedGotSandboxed.output).toContain("declares trust");
+
+    // ‼️ AN EMPTY VERIFIED TIER IS A BUG, NOT A PASS. If the `steps.meta.outputs.expected_trust`
+    // plumbing ever breaks, this step reads "" — and a manifest with no `trust` at all would then
+    // COMPARE EQUAL and publish a tier-less entry, which the app disables on sight. The failure
+    // is silent in every other gate, so the step checks the value it was handed.
+    const tierlessArchive = { ...good };
+    delete (tierlessArchive as { trust?: unknown }).trust;
+    const noVerifiedTier = runFor(tierlessArchive, "");
+    expect(noVerifiedTier.status).not.toBe(0);
+    expect(noVerifiedTier.output).toContain("did not reach this step");
 
     const wrongVersion = runFor({ ...good, version: "9.9.9" });
     expect(wrongVersion.status).not.toBe(0);
@@ -579,37 +676,8 @@ describe("the malicious fixture stays a fixture (§260 Phase 6)", () => {
     // `examples/plugins/$DIR/baram-plugin.json`. So a SYNTHETIC cwd makes every one of these
     // reachable without touching the repo — and without the guard being calibrated to the repo's
     // current version, which is what made the `allowed` case above fragile (see MEDIUM-1 below).
-    const script = metaStepScript();
-
-    const runSynthetic = (opts: {
-      appVersion?: string;
-      manifest: Record<string, unknown>;
-      tag: string;
-    }) => {
-      const root = mkdtempSync(join(tmpdir(), "baram-meta-syn-"));
-      writeFileSync(
-        join(root, "package.json"),
-        JSON.stringify({ version: opts.appVersion ?? "9.9.9" }),
-      );
-      // Always the allowlisted directory: this exercises the checks AFTER the allowlist.
-      const pluginDir = join(root, "examples", "plugins", "word-count");
-      mkdirSync(pluginDir, { recursive: true });
-      writeFileSync(
-        join(pluginDir, "baram-plugin.json"),
-        JSON.stringify(opts.manifest),
-      );
-      const result = spawnSync("bash", ["-e", "-c", script], {
-        cwd: root,
-        encoding: "utf8",
-        env: {
-          ...process.env,
-          GITHUB_OUTPUT: join(root, "output"),
-          GITHUB_REF_NAME: opts.tag,
-          GITHUB_SHA: "HEAD",
-        },
-      });
-      return { output: result.stderr + result.stdout, status: result.status };
-    };
+    // Always an allowlisted directory: this exercises the checks AFTER the allowlist.
+    const runSynthetic = runMetaStepSynthetically;
 
     const base = {
       capabilities: ["events"],
@@ -620,20 +688,49 @@ describe("the malicious fixture stays a fixture (§260 Phase 6)", () => {
     };
     const TAG = "plugin-word-count-v1.0.0";
 
-    // 1. The tier check, executed. This is the assertion that was missing.
-    const trusted = runSynthetic({
-      manifest: { ...base, trust: "trusted" },
-      tag: TAG,
-    });
-    expect(trusted.status).not.toBe(0);
-    expect(trusted.output).toContain("only sandboxed plugins are published");
+    // 1. The tier check, executed — and since 스펙 0050 the allowlist names a tier PER
+    //    DIRECTORY, so the check is an equality rather than a constant. Both arms get both
+    //    cases: pass at the declared tier, refuse at the other one. A table rewritten to accept
+    //    either tier, or a comparison collapsed back to a constant, fails one of these four.
+    //
+    //    `word-count` is declared sandboxed and `bullet-threading` trusted; those directory
+    //    names are the allowlist's own keys, so this reads them the way the step does.
+    const tierCases = [
+      { declared: "sandboxed", dir: "word-count", id: "baram-word-count" },
+      {
+        declared: "trusted",
+        dir: "bullet-threading",
+        id: "baram-bullet-threading",
+      },
+    ] as const;
+    for (const { declared, dir, id } of tierCases) {
+      const other = declared === "sandboxed" ? "trusted" : "sandboxed";
+      const tag = `plugin-${dir}-v1.0.0`;
 
-    // …and its control: the same manifest, sandboxed, must get PAST the tier check. (It stops
-    // later at `git merge-base`, since a temp dir is not a git repo — that is fine and expected.)
-    const sandboxed = runSynthetic({ manifest: base, tag: TAG });
-    expect(sandboxed.output).not.toContain(
-      "only sandboxed plugins are published",
-    );
+      const wrongTier = runSynthetic({
+        dir,
+        manifest: { ...base, id, trust: other },
+        tag,
+      });
+      expect(wrongTier.status, `${dir} must refuse trust '${other}'`).not.toBe(
+        0,
+      );
+      expect(wrongTier.output).toContain(
+        `this workflow publishes ${dir} at trust '${declared}'`,
+      );
+
+      // …and its control: the declared tier must get PAST the check. (It stops later at
+      // `git merge-base`, since a temp dir is not a git repo — that is fine and expected.)
+      const right = runSynthetic({
+        dir,
+        manifest: { ...base, id, trust: declared },
+        tag,
+      });
+      expect(
+        right.output,
+        `${dir} must accept its declared trust '${declared}'`,
+      ).not.toContain("this workflow publishes");
+    }
 
     // 2. The plugin-id regex, which had no guard at all.
     const badId = runSynthetic({
@@ -700,12 +797,53 @@ describe("the malicious fixture stays a fixture (§260 Phase 6)", () => {
     // fewer cores than the machine that number came from.
   }, 30_000);
 
-  it("names only the sandboxed tier as publishable", () => {
-    // An independent condition from the allowlist, and it fails for a different reason: the
-    // allowlist answers "is this directory meant to ship", this answers "is this tier fit to
-    // ship". Exercised by pointing the step at the trusted example, which IS a real manifest.
-    const script = metaStepScript();
-    expect(script).toContain("only sandboxed plugins are published");
+  it("binds EVERY allowlisted directory to exactly one tier — arms read from the workflow", () => {
+    // The tier condition is independent of the allowlist and fails for a different reason: the
+    // allowlist answers "is this directory meant to ship", this answers "is it shipping as the
+    // plugin that was allowlisted".
+    //
+    // ‼️ THE ARMS ARE DERIVED, NOT RESTATED (스펙 0050). The test one above enumerates the two
+    // directories by hand, which covers them and nothing else: adding a third arm — or adding
+    // one that binds no tier at all, `foo) ;;` — would ship with nothing asserting its tier and
+    // the whole suite green. That is the same shape as the denylist Phase 6's round 3 replaced,
+    // reappearing in the test instead of the workflow. So the arms come out of the workflow.
+    //
+    // For each one: the declared tier passes the check, the other tier is refused. An arm that
+    // binds nothing leaves `EXPECTED_TRUST` unset, so BOTH tiers are refused and its pass case
+    // fails here — which is the defect being guarded against, reported rather than silent.
+    const dirs = allowlistedDirs();
+    // The extraction must have found real arms, or every loop below is vacuous.
+    expect(dirs).toContain("word-count");
+    expect(dirs.length).toBeGreaterThanOrEqual(2);
+
+    for (const dir of dirs) {
+      const manifestFor = (trust: string) => ({
+        capabilities: ["events"],
+        engines: { baram: ">=0.5.0" },
+        // Not the real plugin's id: the id only has to clear the regex, and hardcoding the
+        // real ones would make this list a second place to update when an arm is added.
+        id: "baram-example",
+        trust,
+        version: "1.0.0",
+      });
+      const tag = `plugin-${dir}-v1.0.0`;
+      const results = (["sandboxed", "trusted"] as const).map((trust) => ({
+        run: runMetaStepSynthetically({
+          dir,
+          manifest: manifestFor(trust),
+          tag,
+        }),
+        trust,
+      }));
+      const accepted = results.filter(
+        (r) => !r.run.output.includes("this workflow publishes"),
+      );
+      expect(
+        accepted.map((r) => r.trust),
+        `${dir} must be publishable at exactly one tier — the allowlist arm has to bind EXPECTED_TRUST`,
+      ).toHaveLength(1);
+    }
+
     // …and this step runs before anything is built. Asserted as STEP ORDER in the workflow, not
     // as the absence of a string in the script: the first draft of this checked that the script
     // does not contain "npm ci", which failed the moment a comment in the script mentioned it.
@@ -717,7 +855,11 @@ describe("the malicious fixture stays a fixture (§260 Phase 6)", () => {
     const build = workflow.indexOf("- name: Build plugin");
     expect(meta).toBeGreaterThan(0);
     expect(build).toBeGreaterThan(meta);
-  });
+    // An explicit budget for the same reason the synthetic test above carries one: this now
+    // spawns bash twice per allowlist arm, and vitest's 5 s default is not sized for that on a
+    // CI runner. It also grows with the allowlist, which is precisely when it must not start
+    // failing for a reason unrelated to the gate.
+  }, 30_000);
 
   it("ships a single self-contained ESM with no build step", () => {
     const source = readFileSync(resolve(DIR, manifest.main), "utf8");

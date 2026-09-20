@@ -1,19 +1,24 @@
 ---
 title: "빠르게 시작하기"
-sourceHash: "7726c0cc3e7e"
+sourceHash: "38b04ea64ba0"
 ---
 
 
 새 플러그인을 시작하는 가장 빠른 길은 [`examples/plugins/`](https://github.com/sayinel/baram/tree/main/examples/plugins)의
-참조 예제 둘 중 하나를 복사하는 것입니다.
+참조 예제 셋 중 하나를 복사하는 것입니다.
 
 - [`examples/plugins/word-count/`](https://github.com/sayinel/baram/tree/main/examples/plugins/word-count) — **샌드박스
   참조이고, 복사할 것은 이쪽입니다.** `editor:readonly` + `events` + `statusbar` 플러그인이 쓴
   선언형 상태바 항목입니다. 메인 렐름에서 아무것도 필요로 하지 않는다는 점이 핵심입니다.
-- [`examples/plugins/ai-summary/`](https://github.com/sayinel/baram/tree/main/examples/plugins/ai-summary) — **trusted**
-  티어입니다: Shadow DOM 사이드바 패널 + 설정 탭, `ai` + `storage`. 임의의 DOM이 정말로 필요할
-  때만 복사하십시오. **레지스트리에 올라가지 않습니다** — 아직 선언형 `sidebar` 기여가 없고,
-  trusted 플러그인은 샌드박스로 만들 수 없기 때문입니다.
+- [`examples/plugins/bullet-threading/`](https://github.com/sayinel/baram/tree/main/examples/plugins/bullet-threading) — **trusted
+  참조입니다.** `tiptapExtensions`로 기여하는 ProseMirror 데코레이션 플러그인과 설정 탭입니다.
+  플러그인이 에디터 *안에서* 돌아야 한다면 이쪽을 복사하십시오 — 그것은 메인 렐름을 필요로 하고,
+  따라서 그런 플러그인은 구조적으로 `trust: "trusted"`입니다. 샌드박스 티어는 `tiptapExtensions`를
+  거부합니다.
+- [`examples/plugins/ai-summary/`](https://github.com/sayinel/baram/tree/main/examples/plugins/ai-summary) — 임의의 DOM을
+  쓰는 **trusted** 티어입니다: Shadow DOM 사이드바 패널 + 설정 탭, `ai` + `storage`. 임의의 DOM이
+  정말로 필요할 때만 복사하십시오. **릴리스 워크플로의 배포 allowlist에 없습니다** — 1.x 계열은
+  v0.5.0에서 레지스트리에서 철회됐고, 선언형 `sidebar` 기여는 아직 없습니다.
 
 폴더 둘은 내부 **테스트 픽스처이고 템플릿이 아닙니다**. 둘 다 빌드 단계 없이 손으로 쓴 파일
 하나이고, `plugin-release.yml`이 둘 다 배포를 거부합니다.
