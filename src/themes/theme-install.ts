@@ -27,6 +27,7 @@ import {
   RESERVED_THEME_IDS,
   THEME_COLOR_KEYS,
   THEME_COLOR_VALUE_RE,
+  THEME_MODES,
 } from "../types/theme";
 import { logger } from "../utils/logger";
 import { ThemeCssError } from "../utils/theme-css/errors";
@@ -86,8 +87,6 @@ export interface InstalledThemeMode {
   /** 이 모드의 저장 CSS 가 디스크에 있는가. 내용은 로드 시점에 읽는다. */
   css: boolean;
 }
-
-const MODE_KEYS: readonly ThemeMode[] = ["light", "dark"];
 
 /**
  * 매니페스트 원문을 검증된 {@link ThemeManifest} 로.
@@ -374,7 +373,7 @@ export async function installTheme(
     phase = "cssRejected";
     const modes: Partial<Record<ThemeMode, InstalledThemeMode>> = {};
     const storedCss: Partial<Record<ThemeMode, string>> = {};
-    for (const mode of MODE_KEYS) {
+    for (const mode of THEME_MODES) {
       const declared = manifest.modes[mode];
       if (declared === undefined) continue;
       const colors =

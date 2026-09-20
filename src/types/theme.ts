@@ -16,6 +16,25 @@ import { THEME_COLOR_VALUE_RE } from "./theme-color-keys";
 
 export type ThemeMode = "dark" | "light";
 
+/**
+ * The closed universe of theme modes, in the order every walker should use.
+ *
+ * ‼️ FOUR COPIES OF THIS ARRAY EXISTED (external review #8), one of them the literal inside
+ * {@link themeModes} below — in the file the review named as canonical. The other three were
+ * `const MODE_KEYS: readonly ThemeMode[] = ["light", "dark"]` in `installed-theme-defs.ts`,
+ * `theme-manifest.ts` and `theme-install.ts`, all doing the same thing: walking a
+ * `Partial<Record<ThemeMode, …>>` in a fixed order.
+ *
+ * ‼️ `themeModes` IS NOT THAT CONSTANT, which is why exporting one was the fix rather than
+ * pointing the three at it. That function takes a `ThemeDef` and returns which modes THAT
+ * theme declares — a projection of one theme, not the universe — and two of the three sites
+ * have no `ThemeDef` at all (a manifest, and the installer that is still building one).
+ *
+ * `light` first is load-bearing where order is observable: `theme-gallery.tsx`'s card
+ * preview draws `themeModes(theme)[0]`, so a paired theme shows its light palette.
+ */
+export const THEME_MODES: readonly ThemeMode[] = ["light", "dark"];
+
 /** 한 모드가 제공하는 것. 토큰과 CSS 모두 선택이지만 최소 하나는 있어야 한다(§355). */
 export interface ThemeModeAssets {
   colors?: ThemeColors;
@@ -38,9 +57,7 @@ export interface ThemeDef {
 
 /** 선언 순서가 아니라 고정 순서로 돌려준다 — UI가 정렬을 다시 하지 않도록. */
 export function themeModes(theme: ThemeDef): ThemeMode[] {
-  return (["light", "dark"] as const).filter(
-    (m) => theme.modes[m] !== undefined,
-  );
+  return THEME_MODES.filter((m) => theme.modes[m] !== undefined);
 }
 
 /**

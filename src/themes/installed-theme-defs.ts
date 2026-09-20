@@ -11,7 +11,7 @@ import type { ThemeDef, ThemeMode } from "../types/theme";
 // disk read lives in that hook, not here.
 import type { InstalledTheme } from "./theme-install";
 
-const MODE_KEYS: readonly ThemeMode[] = ["light", "dark"];
+import { THEME_MODES } from "../types/theme";
 
 /** The key `useThemeCssCacheStore` stores a mode's stored CSS under. */
 export function themeCssCacheKey(themeId: string, mode: ThemeMode): string {
@@ -30,7 +30,7 @@ export function installedThemeToDef(
   cssByKey: Record<string, string> = {},
 ): ThemeDef {
   const modes: ThemeDef["modes"] = {};
-  for (const mode of MODE_KEYS) {
+  for (const mode of THEME_MODES) {
     const declared = installed.modes[mode];
     if (declared === undefined) continue;
     modes[mode] = {

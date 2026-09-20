@@ -222,6 +222,11 @@ const MAX_BUNDLE_BYTES: u64 = 4 * 1024 * 1024;
 pub async fn read_bundle_in(dir: &Path, main: &str) -> Result<String, String> {
     // Space-joined, not colon-joined: both helpers' messages are written to read as
     // predicates ("is N bytes, over the …"), so this composes into a sentence.
+    //
+    // ‼️ That claim was false for one of `resolve_within`'s three branches until the
+    // external review found it — see the note at that branch. The strings below are pinned
+    // by `composed_error_messages_read_as_sentences`, because "reads as a sentence" is
+    // exactly the property no `is_err()` assertion can see.
     let canonical_file = resolve_within(dir, main).map_err(|e| format!("plugin entry {e}"))?;
     read_text_capped(&canonical_file, MAX_BUNDLE_BYTES)
         .await
@@ -242,8 +247,17 @@ pub async fn read_bundle_in(dir: &Path, main: &str) -> Result<String, String> {
 /// Shared by [`read_bundle_in`] and §360's staged-theme read so there is one
 /// implementation of the containment rule rather than one per caller.
 pub(super) fn resolve_within(dir: &Path, rel: &str) -> Result<PathBuf, String> {
-    let canonical_dir =
-        std::fs::canonicalize(dir).map_err(|e| format!("its own directory is unreadable: {e}"))?;
+    // ‼️ THIS BRANCH CARRIES ITS OWN SUBJECT; THE OTHER TWO ALREADY DID (external review
+    // #10). The two below name `rel`, so `read_bundle_in`'s `plugin entry {e}` prefix
+    // composes with them into "plugin entry \"main.js\" is unreadable: …". This one named
+    // nothing, and the result was `plugin entry its own directory is unreadable: …` — and
+    // through `read_staged_file`, which adds no prefix at all, the bare predicate
+    // `its own directory is unreadable: …` with no subject anywhere in the string.
+    //
+    // Naming the directory rather than adding a slot to the caller, because the caller
+    // that had no prefix is the one whose message was worst.
+    let canonical_dir = std::fs::canonicalize(dir)
+        .map_err(|e| format!("the directory {} is unreadable: {e}", dir.display()))?;
     let canonical_file = std::fs::canonicalize(canonical_dir.join(rel))
         .map_err(|e| format!("\"{rel}\" is unreadable: {e}"))?;
     if !canonical_file.starts_with(&canonical_dir) {
@@ -310,6 +324,61 @@ mod tests {
     /// §260 3c-2b — the bundle read backing `SourceRead`. `main` is manifest-supplied
     /// and therefore untrusted: it must not be able to name a file outside the
     /// plugin's own directory, or the op would become the file-read capability that
+
+    /// ‼️ THE STRINGS, NOT ONLY THE `is_err()` (external review #10).
+    ///
+    /// `read_bundle_in`'s own comment says both helpers' messages "compose into a
+    /// sentence", and one of `resolve_within`'s three branches did not: its directory
+    /// failure carried no subject, so the composition read `plugin entry its own directory
+    /// is unreadable: …`. Nothing anywhere asserted any of these literals — the two tests
+    /// that exercise this function check `is_ok()`/`is_err()` and, for the cap, a substring
+    /// of the CAP message. A property that only a reader can see needs a reader's test.
+    #[tokio::test]
+    async fn composed_error_messages_read_as_sentences() {
+        let base = std::env::temp_dir().join(format!("baram-msg-{}", std::process::id()));
+        let plugin = base.join("plugin-a");
+        std::fs::create_dir_all(&plugin).unwrap();
+        std::fs::write(plugin.join("index.mjs"), "export {}").unwrap();
+
+        // The branch that had no subject. `resolve_within` is called directly because
+        // making `read_bundle_in`'s own `dir` unreadable is not portable.
+        let missing = base.join("no-such-directory");
+        let directory_error = resolve_within(&missing, "index.mjs").unwrap_err();
+        assert!(
+            directory_error.starts_with("the directory "),
+            "the directory branch must name its subject, got: {directory_error}"
+        );
+        assert!(
+            !format!("plugin entry {directory_error}").contains("plugin entry its own"),
+            "composing must not produce a subjectless sentence: {directory_error}"
+        );
+
+        // The two branches that already composed, so this test would notice if a fix to
+        // the first broke them.
+        std::fs::write(base.join("outside.mjs"), "export {}").unwrap();
+        let escaped = resolve_within(&plugin, "../outside.mjs").unwrap_err();
+        assert!(
+            escaped.starts_with("\"../plugin-a/index.mjs\"")
+                || escaped.contains("resolves outside"),
+            "the escape branch must name the path it refused, got: {escaped}"
+        );
+        let unreadable = resolve_within(&plugin, "nope.mjs").unwrap_err();
+        assert_eq!(
+            format!("plugin entry {unreadable}")
+                .split_once(' ')
+                .map(|(a, _)| a),
+            Some("plugin"),
+            "sanity: the prefix is still a prefix"
+        );
+        assert!(
+            format!("plugin entry {unreadable}")
+                .starts_with("plugin entry \"nope.mjs\" is unreadable:"),
+            "got: plugin entry {unreadable}"
+        );
+
+        std::fs::remove_dir_all(&base).ok();
+    }
+
     /// dropping `asset:` exists to remove.
     #[tokio::test]
     async fn read_bundle_in_reads_own_entry_and_refuses_escapes() {

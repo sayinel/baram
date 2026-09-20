@@ -28,14 +28,28 @@ let pendingConsent: null | { entry: RegistryEntry } = null;
 // undefined — the exact trap `plugin-install-consent.test.tsx` names for the same reason
 // (its mock of `plugin-loader.ts` needs `importOriginal` because sibling exports are used
 // elsewhere in the same import graph).
+/**
+ * ‼️ THE WRAPPERS ARE HOISTED, so their identity is stable across calls.
+ *
+ * The real `settleConsent` is `useCallback(…, [])` and never changes, which is what makes
+ * `ThemeBrowser`'s memoised dialog callbacks stable (external review #11). A mock that
+ * returned a fresh arrow per render would model the opposite and make the attach-count test
+ * below measure the fixture instead of the component — it did, on the first run: 6 attaches
+ * where production has 1.
+ */
+const stableHandleInstall = (...a: unknown[]) => handleInstall(...a);
+const stableSettleConsent = (...a: unknown[]) => settleConsent(...a);
+const stableInstallErrors: Record<string, string> = {};
+const stableInstalling: Record<string, boolean> = {};
+
 vi.mock("../use-theme-actions", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../use-theme-actions")>()),
   useThemeActions: () => ({
-    handleInstall: (...a: unknown[]) => handleInstall(...a),
-    installErrors: {} as Record<string, string>,
-    installing: {} as Record<string, boolean>,
+    handleInstall: stableHandleInstall,
+    installErrors: stableInstallErrors,
+    installing: stableInstalling,
     pendingConsent,
-    settleConsent: (...a: unknown[]) => settleConsent(...a),
+    settleConsent: stableSettleConsent,
   }),
 }));
 
@@ -105,6 +119,44 @@ function installedAt(version: string): Record<string, InstalledTheme> {
     },
   };
 }
+
+describe("the consent dialog's Escape listener is attached once (external review #11)", () => {
+  it("does not re-attach while the user types in the search box", async () => {
+    // `ThemeConsentDialog`'s effect depends on `onCancel`; a fresh arrow at the call site
+    // made it detach and re-attach a `window` listener on every render of this component,
+    // and this component re-renders on every keystroke. It could not drop a key — React
+    // flushes a commit's passive cleanups and setups in one synchronous job — so nothing
+    // here asserts behaviour; it asserts the churn, which is the whole finding.
+    const add = vi.spyOn(window, "addEventListener");
+    pendingConsent = { entry: themeEntry() };
+    fetchResult = Promise.resolve({ plugins: [themeEntry()] });
+    try {
+      render(<ThemeBrowser onBack={() => {}} />);
+      await findSurface(".theme-consent");
+      const keydownAttachesAfterMount = add.mock.calls.filter(
+        ([type]) => type === "keydown",
+      ).length;
+      // The anchor: the dialog really did attach one, so "no more" below is about the
+      // re-attach rather than about a listener that was never there.
+      expect(keydownAttachesAfterMount).toBeGreaterThanOrEqual(1);
+
+      const search = screen.getByPlaceholderText(
+        EN["settings.appearance.themeBrowser.search"],
+      );
+      fireEvent.change(search, { target: { value: "d" } });
+      fireEvent.change(search, { target: { value: "dr" } });
+      fireEvent.change(search, { target: { value: "dra" } });
+      await waitFor(() => expect(search).toHaveValue("dra"));
+
+      expect(add.mock.calls.filter(([type]) => type === "keydown").length).toBe(
+        keydownAttachesAfterMount,
+      );
+    } finally {
+      add.mockRestore();
+      pendingConsent = null;
+    }
+  });
+});
 
 describe("a browse card for something already installed (0090 final review, N5)", () => {
   it("says Install when nothing is installed", async () => {

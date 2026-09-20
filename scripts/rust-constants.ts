@@ -54,13 +54,7 @@ export function revocationByteCap(rustSource: string): number {
     /MAX_REVOCATION_BYTES\s*:\s*usize\s*=\s*([0-9_ *]+);/gu,
     "MAX_REVOCATION_BYTES",
   );
-  return literal.split("*").reduce((product, part) => {
-    const value = Number(part.replaceAll("_", "").trim());
-    if (!Number.isSafeInteger(value) || value <= 0) {
-      throw new Error(`cannot read MAX_REVOCATION_BYTES: "${literal.trim()}"`);
-    }
-    return product * value;
-  }, 1);
+  return integerProduct(literal, "MAX_REVOCATION_BYTES");
 }
 
 /**
@@ -130,15 +124,7 @@ export function inlineMediaByteCap(rustSource: string): number {
     /MAX_INLINE_MEDIA_BYTES\s*:\s*u64\s*=\s*([0-9_ *]+);/gu,
     "MAX_INLINE_MEDIA_BYTES",
   );
-  return literal.split("*").reduce((product, part) => {
-    const value = Number(part.replaceAll("_", "").trim());
-    if (!Number.isSafeInteger(value) || value <= 0) {
-      throw new Error(
-        `cannot read MAX_INLINE_MEDIA_BYTES: "${literal.trim()}"`,
-      );
-    }
-    return product * value;
-  }, 1);
+  return integerProduct(literal, "MAX_INLINE_MEDIA_BYTES");
 }
 
 /**
@@ -286,15 +272,7 @@ export function storedThemeCssByteCap(rustSource: string): number {
     /MAX_STORED_THEME_CSS_BYTES\s*:\s*usize\s*=\s*([0-9_ *]+);/gu,
     "MAX_STORED_THEME_CSS_BYTES",
   );
-  return literal.split("*").reduce((product, part) => {
-    const value = Number(part.replaceAll("_", "").trim());
-    if (!Number.isSafeInteger(value) || value <= 0) {
-      throw new Error(
-        `cannot read MAX_STORED_THEME_CSS_BYTES: "${literal.trim()}"`,
-      );
-    }
-    return product * value;
-  }, 1);
+  return integerProduct(literal, "MAX_STORED_THEME_CSS_BYTES");
 }
 
 /**
@@ -322,12 +300,26 @@ export function themeManifestByteCap(rustSource: string): number {
     /MAX_THEME_MANIFEST_BYTES\s*:\s*u64\s*=\s*([0-9_ *]+);/gu,
     "MAX_THEME_MANIFEST_BYTES",
   );
+  return integerProduct(literal, "MAX_THEME_MANIFEST_BYTES");
+}
+
+/**
+ * A Rust byte-cap literal written as a product of integers (`4 * 1024 * 1024`), as a number.
+ *
+ * ‼️ ONE IMPLEMENTATION, NOT FOUR (external review #7). Each of the four scrapers above
+ * carried a byte-identical copy of this reduce, differing only in the identifier inside the
+ * throw — so it is passed in. The *patterns* legitimately differ (`usize` vs `u64`, and
+ * `themeManifestByteCap`'s doc comment says so); the parsing of what they capture does not.
+ *
+ * Anything but a product of positive safe integers throws rather than being read as a
+ * smaller number: the callers use the result as a publish-time bound, and a value silently
+ * read as `0` or `NaN` would refuse everything or nothing.
+ */
+function integerProduct(literal: string, constant: string): number {
   return literal.split("*").reduce((product, part) => {
     const value = Number(part.replaceAll("_", "").trim());
     if (!Number.isSafeInteger(value) || value <= 0) {
-      throw new Error(
-        `cannot read MAX_THEME_MANIFEST_BYTES: "${literal.trim()}"`,
-      );
+      throw new Error(`cannot read ${constant}: "${literal.trim()}"`);
     }
     return product * value;
   }, 1);

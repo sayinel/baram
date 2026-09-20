@@ -70,11 +70,27 @@ export function ThemeBrowser({ onBack }: ThemeBrowserProps) {
     ? searchThemeRegistry(registryIndex, query)
     : [];
 
+  // ‼️ STABLE, not fresh arrows (external review #11). `ThemeConsentDialog`'s Escape effect
+  // depends on `onCancel`, and this component re-renders on every keystroke in its search
+  // box — so a fresh arrow made the dialog detach and re-attach a `window` listener per
+  // keystroke while it was open. It could not drop a key (React flushes a commit's passive
+  // cleanups and setups in one synchronous job, and the old listener closes over the same
+  // `settleConsent`), so this is waste rather than a defect — but it is waste on the one
+  // surface whose whole job is to be dependable. `settleConsent` is `useCallback(…, [])`.
+  const onCancelConsent = useCallback(
+    () => settleConsent(false),
+    [settleConsent],
+  );
+  const onConfirmConsent = useCallback(
+    () => settleConsent(true),
+    [settleConsent],
+  );
+
   const consentDialog = pendingConsent && (
     <ThemeConsentDialog
       name={pendingConsent.entry.name}
-      onCancel={() => settleConsent(false)}
-      onConfirm={() => settleConsent(true)}
+      onCancel={onCancelConsent}
+      onConfirm={onConfirmConsent}
     />
   );
 

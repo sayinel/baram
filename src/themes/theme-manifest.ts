@@ -8,6 +8,8 @@
 // 다른 wire 포맷(`{name, base, colors}`)을 검증하므로 셰이프가 아니라 값만 재사용한다.
 import type { ThemeMode } from "../types/theme";
 
+import { THEME_MODES } from "../types/theme";
+
 /**
  * `[a-z0-9-]` — 플러그인 id 규칙과 동일(스펙 0049 §4: "플러그인 id 규칙과 동일").
  *
@@ -48,8 +50,6 @@ export const UNSAFE_TEXT_CHARS_RE =
  * (예: `description` 필드에 거대한 문자열을 채워) 그 비용을 부풀리려는 시도다.
  */
 const MAX_MANIFEST_JSON_CHARS = 64 * 1024;
-
-const MODE_KEYS: readonly ThemeMode[] = ["light", "dark"];
 
 export interface ManifestValidationError {
   field: string;
@@ -194,7 +194,7 @@ export function validateThemeManifest(
  */
 function rebuildManifest(obj: Record<string, unknown>): ThemeManifest {
   const modes: ThemeManifest["modes"] = {};
-  for (const mode of MODE_KEYS) {
+  for (const mode of THEME_MODES) {
     const declared = obj.modes as Record<string, unknown>;
     const entry = declared[mode];
     if (entry === undefined) continue;
@@ -257,7 +257,7 @@ function validateModes(value: unknown): ManifestValidationError[] {
 
   const modes = value as Record<string, unknown>;
   let declaredCount = 0;
-  for (const mode of MODE_KEYS) {
+  for (const mode of THEME_MODES) {
     const entry = modes[mode];
     if (entry === undefined) continue;
     declaredCount++;

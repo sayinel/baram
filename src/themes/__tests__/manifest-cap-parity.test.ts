@@ -58,3 +58,60 @@ describe("the theme manifest cap is one number", () => {
     );
   });
 });
+
+// ‼️ External review #7 — the integer-product parser was four byte-identical copies, one
+// per scraper, differing only in the identifier inside the throw. They are one helper now,
+// and this is the only place that exercises its refusal: every other test feeds it a real
+// declaration, so a helper that stopped refusing would have stayed green everywhere.
+//
+// The refusal matters because the callers use the result as a publish-time bound. A literal
+// read as `NaN` or `0` — which is what dropping the guard produces — would make the gate
+// refuse everything or nothing, silently, on a number nobody looks at twice.
+describe("the shared integer-product parser refuses what it cannot read", () => {
+  const declare = (literal: string) =>
+    `const MAX_THEME_MANIFEST_BYTES: u64 = ${literal};`;
+
+  // ‼️ ONLY INPUTS THAT REACH THE PARSER. The capture class is `[0-9_ *]+`, so a float or a
+  // negative never matches the declaration at all and `soleDeclaration` refuses first with
+  // "found 0 declarations" — a different gate, pinned below. What gets THROUGH the pattern
+  // and still has to be refused is a zero, an empty factor, and a magnitude past
+  // `Number.MAX_SAFE_INTEGER`.
+  it.each([
+    ["a zero factor", "64 * 0"],
+    ["an empty factor", "64 * "],
+    ["a value past the safe-integer range", "9007199254740993"],
+  ])("throws on %s", (_label, literal) => {
+    expect(() => themeManifestByteCap(declare(literal))).toThrow(
+      /cannot read MAX_THEME_MANIFEST_BYTES/u,
+    );
+  });
+
+  it.each([
+    ["a float", "64.5 * 1024"],
+    ["a negative", "-64 * 1024"],
+  ])(
+    "refuses %s at the pattern, before the parser sees it",
+    (_label, literal) => {
+      // Recorded rather than assumed: the two layers refuse different things, and a reader
+      // who saw only the cases above would think the parser handles these.
+      expect(() => themeManifestByteCap(declare(literal))).toThrow(
+        /found 0 declarations/u,
+      );
+    },
+  );
+
+  it("names the constant it was reading", () => {
+    // The identifier is the only thing the four copies differed by, so it is the thing a
+    // shared helper could lose. A caller staring at "cannot read" with no name has to go
+    // find which of four caps failed.
+    expect(() => themeManifestByteCap(declare("64 * 0"))).toThrow(
+      /cannot read MAX_THEME_MANIFEST_BYTES/u,
+    );
+  });
+
+  it("still reads underscores and plain products", () => {
+    // The anchor: the guard must not have become "throw on everything".
+    expect(themeManifestByteCap(declare("64 * 1_024"))).toBe(64 * 1024);
+    expect(themeManifestByteCap(declare("65536"))).toBe(65536);
+  });
+});
