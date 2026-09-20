@@ -4,6 +4,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import type { Locale } from "../../i18n";
 import type { PandocFormat, PdfOptions } from "../../ipc/types";
 import type { BundledFont } from "../font/bundled-fonts";
+import type { ExportHTMLOptions } from "./export-html";
 // §5.12 Export — HTML file save + PDF via headless Chrome backend + §53 Notion + §55 Pandoc
 import type { Editor } from "@tiptap/core";
 
@@ -33,7 +34,8 @@ export interface FontExportOptions {
   codeFont?: string;
 }
 
-export interface HTMLExportOptions extends FontExportOptions {
+export interface HTMLExportOptions
+  extends FontExportOptions, ThemeExportOptions {
   /**
    * Embed the bundled faces as data URIs (§353). Off by default: ~2.7MB of
    * base64 for the body face alone is not something every export should pay
@@ -41,6 +43,20 @@ export interface HTMLExportOptions extends FontExportOptions {
    */
   embedFonts?: boolean;
 }
+
+/**
+ * ‼️ 자기 인터페이스를 갖는 이유: `exportAsPDF` 의 파라미터는
+ * `FontExportOptions & PdfOptions` 라 `HTMLExportOptions` 를 보지 않는다(`:110`).
+ * 스펙 §11 은 "`HTMLExportOptions` 에 더한다" 고 적고 뒤에서 PDF 동작을 약속하는데,
+ * 그 둘은 오늘 코드에서 양립하지 않는다. 서체 옵션이 아니므로 `FontExportOptions`
+ * 에 얹지도 않는다.
+ */
+export interface ThemeExportOptions {
+  themeInExport?: ThemeInExport;
+}
+
+/** §362 — export 가 활성 테마를 얼마나 실어 나르는가. */
+export type ThemeInExport = "default" | "full" | "tokens";
 
 /**
  * The family a slot will ACTUALLY render in, which is the question embedding
@@ -78,17 +94,28 @@ export async function exportAsHTML(
 ): Promise<void> {
   const bodyFont = options?.bodyFont ?? "";
   const codeFont = options?.codeFont ?? "";
+  const themeInExport = options?.themeInExport ?? "default";
   const fontFaceCSS = options?.embedFonts
     ? await buildFontFaceCSS([
         effectiveFamily(bodyFont, "body"),
         effectiveFamily(codeFont, "code"),
       ])
     : "";
-  const html = generateStandaloneHTML(await captureEditorHTML(editor), title, {
+  // §362 — `themeInExport` is not yet a field of `ExportHTMLOptions` (Task 2
+  // adds that); typing this through `ThemeExportOptions` rather than as a
+  // bare object literal keeps it off `generateStandaloneHTML`'s excess-
+  // property check while still reaching its third argument at runtime.
+  const htmlOptions: ExportHTMLOptions & ThemeExportOptions = {
     bodyFont,
     codeFont,
     fontFaceCSS,
-  });
+    themeInExport,
+  };
+  const html = generateStandaloneHTML(
+    await captureEditorHTML(editor),
+    title,
+    htmlOptions,
+  );
 
   const path = await save({
     filters: [{ name: "HTML", extensions: ["html"] }],
@@ -107,9 +134,14 @@ export async function exportAsHTML(
 export async function exportAsPDF(
   editor: Editor,
   title: string,
-  options?: FontExportOptions & PdfOptions,
+  options?: FontExportOptions & PdfOptions & ThemeExportOptions,
 ): Promise<void> {
-  const { bodyFont = "", codeFont = "", ...pdfOptions } = options ?? {};
+  const {
+    bodyFont = "",
+    codeFont = "",
+    themeInExport = "default",
+    ...pdfOptions
+  } = options ?? {};
   // §353 — PDF always embeds bundled faces, unconditionally: `generate_pdf`
   // renders from a temp directory a relative font URL cannot resolve against
   // (export-font-embed.ts). There is no checkbox for PDF.
@@ -117,12 +149,22 @@ export async function exportAsPDF(
     effectiveFamily(bodyFont, "body"),
     effectiveFamily(codeFont, "code"),
   ]);
+  // §362 — see the matching comment in exportAsHTML: `theme: "light"` here is
+  // the Task-2-removed dead argument (export-html.ts:242 discards it today);
+  // `themeInExport` rides beside it through the same typed local.
+  const htmlOptions: ExportHTMLOptions & ThemeExportOptions = {
+    theme: "light",
+    bodyFont,
+    codeFont,
+    fontFaceCSS,
+    themeInExport,
+  };
   const html = generateStandaloneHTML(
     // §301 fix (I4): PDF can never play video — captureEditorHTML replaces it
     // with a link instead of leaving an inert `<video>`.
     await captureEditorHTML(editor, { forPdf: true }),
     title,
-    { theme: "light", bodyFont, codeFont, fontFaceCSS },
+    htmlOptions,
   );
 
   const path = await save({

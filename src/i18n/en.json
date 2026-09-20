@@ -150,6 +150,8 @@
   "export.imagesLeftOutUnscoped": "{count} image(s) left out: relative image paths need the note saved inside an open vault or folder.",
   "export.imagesNoSource": "{count} image tag(s) had no source and became their alt text.",
   "export.imagesOverCap": "Only the first {max} images were embedded; {count} more became their alt text.",
+  "export.themeInExport.default": "Default (Baram's built-in look)",
+  "export.themeInExport.tokens": "Match my active theme",
   "export.unsavedNote": "This note is not saved yet: its relative image paths can be embedded only after it is saved inside an open vault or folder.",
   "export.unscopedNote": "This note is not inside an open vault or folder: its relative image paths cannot be embedded. Open the folder that holds it.",
   "fileEditor.conflict.keepLocal": "Keep Local",

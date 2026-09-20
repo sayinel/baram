@@ -3,7 +3,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { open } from "@tauri-apps/plugin-dialog";
 
+import type { Translate } from "../../i18n/useTranslation";
 import type { PandocInfo } from "../../ipc/types";
+import type { ThemeInExport } from "../../utils/export/export";
 import type { ExportFormatGroup } from "./ExportFormatDropdown";
 import type { Editor } from "@tiptap/react";
 
@@ -149,6 +151,8 @@ export function ExportDialog({ editor }: ExportDialogProps) {
     pandocPath,
     wordTemplatePath,
     setWordTemplatePath,
+    themeInExport,
+    setThemeInExport,
   } = useSettingsStore(
     useShallow((s) => ({
       codeFontFamily: s.codeFontFamily,
@@ -156,6 +160,8 @@ export function ExportDialog({ editor }: ExportDialogProps) {
       pandocPath: s.pandocPath,
       wordTemplatePath: s.wordTemplatePath,
       setWordTemplatePath: s.setWordTemplatePath,
+      themeInExport: s.themeInExport,
+      setThemeInExport: s.setThemeInExport,
     })),
   );
   const [title, setTitle] = useState("Untitled");
@@ -216,6 +222,7 @@ export function ExportDialog({ editor }: ExportDialogProps) {
           bodyFont: fontFamily,
           codeFont: codeFontFamily,
           embedFonts,
+          themeInExport,
         });
       } else if (exportFormat === "pdf") {
         await exportAsPDF(editor, title, {
@@ -223,6 +230,7 @@ export function ExportDialog({ editor }: ExportDialogProps) {
           scale: scale / 100,
           bodyFont: fontFamily,
           codeFont: codeFontFamily,
+          themeInExport,
         });
       } else if (exportFormat === "notion") {
         await exportForNotion(editor, title);
@@ -257,6 +265,7 @@ export function ExportDialog({ editor }: ExportDialogProps) {
     pandocPath,
     pandocInfo,
     wordTemplatePath,
+    themeInExport,
     exporting,
     closeExportDialog,
     tabs,
@@ -357,6 +366,14 @@ export function ExportDialog({ editor }: ExportDialogProps) {
             </div>
           )}
 
+          {exportFormat === "html" && (
+            <ThemeInExportField
+              onChange={setThemeInExport}
+              t={t}
+              value={themeInExport}
+            />
+          )}
+
           {exportFormat === "pdf" && (
             <div className="export-dialog-field">
               <label className="export-dialog-label">Paper Size</label>
@@ -394,6 +411,14 @@ export function ExportDialog({ editor }: ExportDialogProps) {
                 value={scale}
               />
             </div>
+          )}
+
+          {exportFormat === "pdf" && (
+            <ThemeInExportField
+              onChange={setThemeInExport}
+              t={t}
+              value={themeInExport}
+            />
           )}
 
           {exportFormat === "notion" && (
@@ -461,4 +486,36 @@ export function ExportDialog({ editor }: ExportDialogProps) {
 
 function isPandocFormat(f: string): f is (typeof PANDOC_FORMATS)[number] {
   return (PANDOC_FORMATS as readonly string[]).includes(f);
+}
+
+// §362 — shared between the HTML and PDF blocks: both formats carry the same
+// persisted setting (setThemeInExport, not dialog-local state — see
+// appearance-settings.ts). `"full"` is a valid `ThemeInExport` value but is
+// not offered here (R4): this dialog exports one document, not a theme
+// package, and only `default`/`tokens` are meaningful choices for that.
+function ThemeInExportField({
+  onChange,
+  t,
+  value,
+}: {
+  onChange: (value: ThemeInExport) => void;
+  t: Translate;
+  value: ThemeInExport;
+}) {
+  return (
+    <div className="export-dialog-field">
+      <label className="export-dialog-label" htmlFor="export-theme-in-export">
+        Theme
+      </label>
+      <select
+        className="export-dialog-select"
+        id="export-theme-in-export"
+        onChange={(e) => onChange(e.target.value as ThemeInExport)}
+        value={value}
+      >
+        <option value="default">{t("export.themeInExport.default")}</option>
+        <option value="tokens">{t("export.themeInExport.tokens")}</option>
+      </select>
+    </div>
+  );
 }

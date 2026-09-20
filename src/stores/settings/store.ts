@@ -182,6 +182,10 @@ export const useSettingsStore = create<SettingsState>()(
         pandocPath: state.pandocPath,
         wordTemplatePath: state.wordTemplatePath,
         customExports: state.customExports,
+        // §362 — export 가 활성 테마를 얼마나 실어 나르는지. partialize 는
+        // whitelist 다. 기본값 "default" 가 오늘 출력과 동일해 version 은
+        // 그대로 둔다(appearance-settings.ts 의 필드 doc 주석 참조).
+        themeInExport: state.themeInExport,
         tagColors: state.tagColors,
         tasksEnabled: state.tasksEnabled,
         tasksExcludePaths: state.tasksExcludePaths,
