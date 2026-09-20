@@ -1,5 +1,5 @@
 // §5.12 Export Dialog — HTML/PDF/Notion + §55 Pandoc Extended Export
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { open } from "@tauri-apps/plugin-dialog";
 
@@ -17,6 +17,8 @@ import { useContextStore } from "../../stores/context/context";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
+import { lookupThemes } from "../../themes/installed-theme-defs";
+import { findThemeById, resolveThemeMode } from "../../types/theme";
 import {
   exportAsHTML,
   exportAsPDF,
@@ -146,8 +148,11 @@ export function ExportDialog({ editor }: ExportDialogProps) {
       : "export.unscopedNote";
   })();
   const {
+    activeThemeId,
     codeFontFamily,
+    customThemes,
     fontFamily,
+    installedThemes,
     pandocPath,
     wordTemplatePath,
     setWordTemplatePath,
@@ -155,14 +160,43 @@ export function ExportDialog({ editor }: ExportDialogProps) {
     setThemeInExport,
   } = useSettingsStore(
     useShallow((s) => ({
+      activeThemeId: s.activeThemeId,
       codeFontFamily: s.codeFontFamily,
+      customThemes: s.customThemes,
       fontFamily: s.fontFamily,
+      installedThemes: s.installedThemes,
       pandocPath: s.pandocPath,
       wordTemplatePath: s.wordTemplatePath,
       setWordTemplatePath: s.setWordTemplatePath,
       themeInExport: s.themeInExport,
       setThemeInExport: s.setThemeInExport,
     })),
+  );
+  // §362 — the palette `tokens` carries, resolved here rather than in
+  // export.ts: export utilities stay pure and do not read the settings store
+  // (export.ts's own FontExportOptions doc comment states that rule). Mirrors
+  // ThemeEditor.tsx's `resolvedTheme`/`restorePreview` — same lookup, same
+  // `resolveThemeMode` call, so a theme that resolves for editing resolves
+  // the same way for export.
+  const resolvedTheme = useMemo(
+    () =>
+      activeThemeId === "system"
+        ? undefined
+        : findThemeById(
+            activeThemeId,
+            lookupThemes(customThemes, installedThemes),
+          ),
+    [activeThemeId, customThemes, installedThemes],
+  );
+  const resolvedMode = useMemo(
+    () =>
+      resolvedTheme === undefined
+        ? undefined
+        : resolveThemeMode(
+            resolvedTheme,
+            window.matchMedia("(prefers-color-scheme: dark)").matches,
+          ),
+    [resolvedTheme],
   );
   const [title, setTitle] = useState("Untitled");
   const [exporting, setExporting] = useState(false);
@@ -219,6 +253,8 @@ export function ExportDialog({ editor }: ExportDialogProps) {
     try {
       if (exportFormat === "html") {
         await exportAsHTML(editor, title, {
+          activeTheme: resolvedTheme,
+          activeThemeMode: resolvedMode,
           bodyFont: fontFamily,
           codeFont: codeFontFamily,
           embedFonts,
@@ -226,6 +262,8 @@ export function ExportDialog({ editor }: ExportDialogProps) {
         });
       } else if (exportFormat === "pdf") {
         await exportAsPDF(editor, title, {
+          activeTheme: resolvedTheme,
+          activeThemeMode: resolvedMode,
           paperSize,
           scale: scale / 100,
           bodyFont: fontFamily,
@@ -266,6 +304,8 @@ export function ExportDialog({ editor }: ExportDialogProps) {
     pandocInfo,
     wordTemplatePath,
     themeInExport,
+    resolvedTheme,
+    resolvedMode,
     exporting,
     closeExportDialog,
     tabs,
@@ -420,6 +460,14 @@ export function ExportDialog({ editor }: ExportDialogProps) {
               value={themeInExport}
             />
           )}
+
+          {exportFormat === "pdf" &&
+            themeInExport === "tokens" &&
+            resolvedMode === "dark" && (
+              <p className="export-dialog-hint">
+                {t("export.themeInExport.darkPrintHint")}
+              </p>
+            )}
 
           {exportFormat === "notion" && (
             <p className="export-dialog-hint">

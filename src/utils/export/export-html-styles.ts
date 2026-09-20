@@ -215,15 +215,28 @@ export const PRINT_CSS = `
  * by default, so every existing caller (and every test that calls this with no
  * arguments) is unaffected.
  *
- * Tokens next (everything below resolves `var()` against them), then the
- * editor's own appearance, then the export-only frame, then print. Exported as
- * one function so the tests can assert against exactly what ships rather than
- * against one of the pieces.
+ * Tokens next (everything below resolves `var()` against them), then §362's
+ * `themeTokens` — the active theme's own `:root` block, built by
+ * `themeTokensBlock` and resolved by the caller. It MUST sit right after
+ * `exportTokensCSS()` rather than before it: a custom property resolves to
+ * its LAST declaration in source order, so a theme block placed earlier would
+ * be overridden BY the semantic tokens instead of overriding them. Then the
+ * editor's own appearance, then the export-only frame, then print.
+ *
+ * `themeTokens` is empty by default, like `fontFaceCSS`, so every existing
+ * caller's output is unaffected.
+ *
+ * Exported as one function so the tests can assert against exactly what
+ * ships rather than against one of the pieces.
  */
-export function buildExportStylesheet(fontFaceCSS = ""): string {
+export function buildExportStylesheet(
+  fontFaceCSS = "",
+  themeTokens = "",
+): string {
   return [
     fontFaceCSS,
     exportTokensCSS(),
+    themeTokens,
     editorContentCSS(),
     EXPORT_BASE_CSS.trim(),
     PRINT_CSS.trim(),

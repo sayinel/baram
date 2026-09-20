@@ -3,6 +3,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 
 import type { Locale } from "../../i18n";
 import type { PandocFormat, PdfOptions } from "../../ipc/types";
+import type { ThemeDef, ThemeMode } from "../../types/theme";
 import type { BundledFont } from "../font/bundled-fonts";
 import type { ExportHTMLOptions } from "./export-html";
 // §5.12 Export — HTML file save + PDF via headless Chrome backend + §53 Notion + §55 Pandoc
@@ -19,6 +20,7 @@ import { logger } from "../logger";
 import { buildFontFaceCSS } from "./export-font-embed";
 import { captureEditorHTML, generateStandaloneHTML } from "./export-html";
 import { stripDisallowedMarkdownLinks } from "./export-markdown-links";
+import { themeTokensBlock } from "./export-theme-tokens";
 import { rewriteMermaidForPandoc } from "./mermaid-export-assets";
 import { convertForNotion } from "./notion-export";
 import { convertForPandoc } from "./pandoc-export";
@@ -46,12 +48,25 @@ export interface HTMLExportOptions
 
 /**
  * ‼️ 자기 인터페이스를 갖는 이유: `exportAsPDF` 의 파라미터는
- * `FontExportOptions & PdfOptions` 라 `HTMLExportOptions` 를 보지 않는다(`:110`).
- * 스펙 §11 은 "`HTMLExportOptions` 에 더한다" 고 적고 뒤에서 PDF 동작을 약속하는데,
- * 그 둘은 오늘 코드에서 양립하지 않는다. 서체 옵션이 아니므로 `FontExportOptions`
- * 에 얹지도 않는다.
+ * `FontExportOptions & PdfOptions & ThemeExportOptions` 라 `HTMLExportOptions`
+ * 를 보지 않는다(아래 `exportAsPDF` 자신의 시그니처 참조 — 행 번호가 아니라
+ * 심볼로 찾을 것). 스펙 §11 은 "`HTMLExportOptions` 에 더한다" 고 적고 뒤에서
+ * PDF 동작을 약속하는데, 그 둘은 오늘 코드에서 양립하지 않는다. 서체 옵션이
+ * 아니므로 `FontExportOptions` 에 얹지도 않는다.
  */
 export interface ThemeExportOptions {
+  /**
+   * §362 — the active theme's def + resolved mode, read by the caller
+   * (`ExportDialog`, which already reads the settings store) rather than
+   * here — export utilities stay pure (see `FontExportOptions`'s doc comment
+   * above). Consulted only when `themeInExport === "tokens"`; leave both
+   * undefined when there is no palette to carry (`activeThemeId === "system"`,
+   * or `findThemeById` found nothing for it) — `themeTokensBlock` treats a
+   * missing theme the same as one with no colours for the mode and returns
+   * `""`.
+   */
+  activeTheme?: ThemeDef;
+  activeThemeMode?: ThemeMode;
   themeInExport?: ThemeInExport;
 }
 
@@ -84,6 +99,33 @@ function effectiveFamily(slot: string, role: BundledFont["role"]): string {
 }
 
 /**
+ * §362 R4 — the one place both entry points decide what `themeInExport`
+ * actually ships as `themeTokens`.
+ *
+ * `"full"` is a valid `ThemeInExport` value with no implementation yet: spec
+ * §3.5 defers it because `rescopeEditorCSS` is a regex-based string
+ * transform (`export-editor-css.ts`) and cannot safely be pointed at a
+ * theme's own, potentially untrusted, CSS. Silently promoting it to
+ * `"tokens"` would claim the theme's CSS shipped when it did not — next to a
+ * feature that already has to handle untrusted CSS carefully — so it
+ * degrades to `"default"` instead, loudly.
+ */
+function resolveThemeTokens(
+  themeInExport: ThemeInExport,
+  theme: ThemeDef | undefined,
+  mode: ThemeMode | undefined,
+): string | undefined {
+  if (themeInExport === "full") {
+    logger.warn(
+      '[Baram Export] themeInExport "full" is not implemented yet — falling back to "default"',
+    );
+    return undefined;
+  }
+  if (themeInExport !== "tokens") return undefined;
+  return themeTokensBlock(theme, mode ?? "light");
+}
+
+/**
  * Export editor content as a standalone HTML file.
  * Opens native save dialog, then writes via Rust atomic write.
  */
@@ -101,15 +143,16 @@ export async function exportAsHTML(
         effectiveFamily(codeFont, "code"),
       ])
     : "";
-  // §362 — `themeInExport` is not yet a field of `ExportHTMLOptions` (Task 2
-  // adds that); typing this through `ThemeExportOptions` rather than as a
-  // bare object literal keeps it off `generateStandaloneHTML`'s excess-
-  // property check while still reaching its third argument at runtime.
-  const htmlOptions: ExportHTMLOptions & ThemeExportOptions = {
+  const themeTokens = resolveThemeTokens(
+    themeInExport,
+    options?.activeTheme,
+    options?.activeThemeMode,
+  );
+  const htmlOptions: ExportHTMLOptions = {
     bodyFont,
     codeFont,
     fontFaceCSS,
-    themeInExport,
+    themeTokens,
   };
   const html = generateStandaloneHTML(
     await captureEditorHTML(editor),
@@ -137,6 +180,8 @@ export async function exportAsPDF(
   options?: FontExportOptions & PdfOptions & ThemeExportOptions,
 ): Promise<void> {
   const {
+    activeTheme,
+    activeThemeMode,
     bodyFont = "",
     codeFont = "",
     themeInExport = "default",
@@ -149,15 +194,16 @@ export async function exportAsPDF(
     effectiveFamily(bodyFont, "body"),
     effectiveFamily(codeFont, "code"),
   ]);
-  // §362 — see the matching comment in exportAsHTML: `theme: "light"` here is
-  // the Task-2-removed dead argument (export-html.ts:242 discards it today);
-  // `themeInExport` rides beside it through the same typed local.
-  const htmlOptions: ExportHTMLOptions & ThemeExportOptions = {
-    theme: "light",
+  const themeTokens = resolveThemeTokens(
+    themeInExport,
+    activeTheme,
+    activeThemeMode,
+  );
+  const htmlOptions: ExportHTMLOptions = {
     bodyFont,
     codeFont,
     fontFaceCSS,
-    themeInExport,
+    themeTokens,
   };
   const html = generateStandaloneHTML(
     // §301 fix (I4): PDF can never play video — captureEditorHTML replaces it

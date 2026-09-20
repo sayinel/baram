@@ -194,10 +194,13 @@ export function editorContentCSS(): string {
 /**
  * Design tokens for the export.
  *
- * Light only, matching `exportAsPDF`'s `{ theme: "light" }`: a document printed
- * on paper, or read in a PDF viewer's own white frame, has no theme of its own
- * to follow. `@theme` is Tailwind 4's token-registration at-rule and means
+ * Light only, because this function hard-imports `semanticLightCSS` (the
+ * `semantic-light.css` import above) rather than reading the document's own
+ * theme. `@theme` is Tailwind 4's token-registration at-rule and means
  * nothing to a standalone page, so it becomes a plain `:root`.
+ *
+ * §362 — `buildExportStylesheet` may follow this with a theme's own `:root`
+ * block (`themeTokensBlock`), which overrides the keys it declares.
  *
  * ‼️ Both files are needed, in this order. semantic-light.css is entirely
  * `var()` references into primitives.css — on its own every token in it

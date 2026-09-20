@@ -1,13 +1,20 @@
 // src/utils/export/__tests__/theme-export-options.test.ts
 // §362 — exportAsHTML/exportAsPDF are the two entry points, and the thing
-// this task produces is that they hand `themeInExport` to the SAME place:
-// generateStandaloneHTML's third argument. Spec §11 only names
-// HTMLExportOptions, but exportAsPDF's parameter is
-// `FontExportOptions & PdfOptions & ThemeExportOptions`, not that type
-// (export.ts:138) — so a fix that only touched exportAsHTML would leave PDF
-// silently stuck on "default" forever. generateStandaloneHTML itself is
-// stubbed: what it DOES with themeInExport (the actual palette) is Task 2's
-// output, not this task's.
+// this task produces is that they hand a computed `themeTokens` string to the
+// SAME place: generateStandaloneHTML's third argument. Spec §11 only names
+// HTMLExportOptions, but exportAsPDF's own parameter type is
+// `FontExportOptions & PdfOptions & ThemeExportOptions` — a different type
+// (see exportAsPDF's own signature in export.ts, not a line number: it moves
+// every time something is inserted above it) — so a fix that only touched
+// exportAsHTML would leave PDF silently stuck on "default" forever.
+//
+// Task 2 (§362) changed the contract this file pins: `themeInExport` itself
+// no longer reaches `generateStandaloneHTML` — only the `themeTokens` string
+// `resolveThemeTokens`/`themeTokensBlock` compute from it does (export.ts).
+// What `themeTokensBlock` itself does with a palette is
+// export-theme-tokens.test.ts's job, not this file's — here we only check
+// that SOME non-empty block reaches the third argument for "tokens" with a
+// theme, and that nothing does for the absent-options default (both paths).
 //
 // captureEditorHTML and buildFontFaceCSS are stubbed too — no shared
 // fakeEditor helper exists in this directory (export-font-wiring.test.ts
@@ -17,6 +24,9 @@
 import type { Editor } from "@tiptap/core";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { BUILT_IN_THEMES } from "../../../types/theme";
+import { logger } from "../../logger";
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({
   save: vi.fn(async () => "/tmp/baram-theme-export-test-out"),
@@ -41,6 +51,8 @@ vi.mock("../export-html", () => ({
   generateStandaloneHTML,
 }));
 
+const tokyo = BUILT_IN_THEMES.find((t) => t.id === "tokyo-night");
+
 function fakeEditor(): Editor {
   return {} as unknown as Editor;
 }
@@ -49,28 +61,70 @@ afterEach(() => {
   generateStandaloneHTML.mockClear();
 });
 
-describe("themeInExport reaches both export paths", () => {
-  it("HTML 경로가 옵션을 넘긴다", async () => {
+describe("themeInExport reaches both export paths as a resolved themeTokens string", () => {
+  it("HTML 경로가 tokens 를 themeTokensBlock 의 결과로 바꿔 넘긴다", async () => {
     const { exportAsHTML } = await import("../export");
-    await exportAsHTML(fakeEditor(), "t", { themeInExport: "tokens" });
-    expect(generateStandaloneHTML.mock.calls[0][2]).toMatchObject({
+    await exportAsHTML(fakeEditor(), "t", {
+      activeTheme: tokyo,
+      activeThemeMode: "dark",
       themeInExport: "tokens",
     });
+    const options = generateStandaloneHTML.mock.calls[0]?.[2] as {
+      themeTokens?: string;
+    };
+    expect(options.themeTokens).toContain("#1a1b26");
   });
 
-  it("PDF 경로도 같은 옵션을 넘긴다 — 스펙이 HTMLExportOptions 만 말했지만 PDF 의 타입은 다르다", async () => {
+  it("PDF 경로도 같은 것을 넘긴다 — 스펙이 HTMLExportOptions 만 말했지만 PDF 의 타입은 다르다", async () => {
     const { exportAsPDF } = await import("../export");
-    await exportAsPDF(fakeEditor(), "t", { themeInExport: "tokens" });
-    expect(generateStandaloneHTML.mock.calls[0][2]).toMatchObject({
+    await exportAsPDF(fakeEditor(), "t", {
+      activeTheme: tokyo,
+      activeThemeMode: "dark",
       themeInExport: "tokens",
     });
+    const options = generateStandaloneHTML.mock.calls[0]?.[2] as {
+      themeTokens?: string;
+    };
+    expect(options.themeTokens).toContain("#1a1b26");
   });
 
-  it("옵션이 없으면 default 다", async () => {
+  it("HTML — 옵션이 없으면 themeTokens 가 없다(default)", async () => {
     const { exportAsHTML } = await import("../export");
     await exportAsHTML(fakeEditor(), "t");
-    expect(generateStandaloneHTML.mock.calls[0][2]).toMatchObject({
-      themeInExport: "default",
+    expect(generateStandaloneHTML.mock.calls[0]?.[2]).toMatchObject({
+      themeTokens: undefined,
     });
+  });
+
+  // Task 1 review's coverage gap (Finding 1): exportAsPDF's own bare default
+  // (`themeInExport = "default"` in its destructure) was untested — the
+  // "옵션이 없으면 default" case only ever exercised exportAsHTML.
+  it("PDF — 옵션이 없으면 themeTokens 가 없다(default)", async () => {
+    const { exportAsPDF } = await import("../export");
+    await exportAsPDF(fakeEditor(), "t");
+    expect(generateStandaloneHTML.mock.calls[0]?.[2]).toMatchObject({
+      themeTokens: undefined,
+    });
+  });
+
+  // R4 — "full"은 아직 구현되지 않았다. "default"로 조용히 처리되는 것과 "tokens"로
+  // 조용히 승격되는 것은 겉으로 같아 보이지만(둘 다 지금은 themeTokens가 없다) 의미가
+  // 다르다 — 후자는 "테마의 CSS가 실렸다"는 거짓을 향해 가는 길이다. 팔레트가 있어도
+  // 승격되지 않는다는 것과, 그 결정이 조용하지 않다는 것(logger.warn) 둘 다 고정한다.
+  it('R4 — "full" 은 팔레트가 있어도 tokens 로 승격되지 않고 경고한다', async () => {
+    const warnSpy = vi
+      .spyOn(logger, "warn")
+      .mockImplementation(() => undefined);
+    const { exportAsHTML } = await import("../export");
+    await exportAsHTML(fakeEditor(), "t", {
+      activeTheme: tokyo,
+      activeThemeMode: "dark",
+      themeInExport: "full",
+    });
+    expect(generateStandaloneHTML.mock.calls[0]?.[2]).toMatchObject({
+      themeTokens: undefined,
+    });
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
   });
 });

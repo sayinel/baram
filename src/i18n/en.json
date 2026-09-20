@@ -150,6 +150,7 @@
   "export.imagesLeftOutUnscoped": "{count} image(s) left out: relative image paths need the note saved inside an open vault or folder.",
   "export.imagesNoSource": "{count} image tag(s) had no source and became their alt text.",
   "export.imagesOverCap": "Only the first {max} images were embedded; {count} more became their alt text.",
+  "export.themeInExport.darkPrintHint": "Your active theme is dark — the PDF will print with a dark background, which can use a lot of ink on paper.",
   "export.themeInExport.default": "Default (Baram's built-in look)",
   "export.themeInExport.tokens": "Match my active theme",
   "export.unsavedNote": "This note is not saved yet: its relative image paths can be embedded only after it is saved inside an open vault or folder.",
