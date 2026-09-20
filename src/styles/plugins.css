@@ -756,6 +756,14 @@
   width: 96px;
 }
 
+/* A value the resolver would refuse. The control does not commit it, so without a cue the
+   box would read one number while the plugin keeps another — which is the state this
+   replaces. `aria-invalid` rather than `:invalid` so the styling and what a screen reader
+   announces come from the same attribute. */
+.plugin-setting-control[aria-invalid="true"] {
+  border-color: var(--color-status-danger);
+}
+
 .plugin-setting-swatches {
   display: flex;
   flex-wrap: wrap;

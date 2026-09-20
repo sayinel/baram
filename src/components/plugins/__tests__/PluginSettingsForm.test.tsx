@@ -270,3 +270,72 @@ describe("PluginSettingsForm — field affordances (§0054)", () => {
     );
   });
 });
+
+// §0054 code review (MEDIUM) — the number draft against a bounded field.
+//
+// The existing draft tests use a field with no `min`/`max`, so neither case below was pinned.
+// Both are Bullet Threading's real `lineWidth`: min 0.5, max 8, default 2.
+describe("PluginSettingsForm — a bounded number field", () => {
+  const bounded = () =>
+    install([
+      {
+        default: 2,
+        key: "w",
+        label: "Width",
+        max: 8,
+        min: 0.5,
+        type: "number",
+      },
+    ]);
+
+  beforeEach(() => {
+    usePluginStore.setState({
+      devPlugins: {},
+      installedPlugins: {},
+      pluginSettings: {},
+    });
+  });
+
+  it("lets a value below the minimum be typed THROUGH on the way to a valid one", () => {
+    // ‼️ `0.5` starts with `0`, which is below the minimum. Committing that intermediate
+    // made the resolver fall back to the default, which CHANGED the resolved value, which
+    // fired the resync effect and rewrote the box to "2" under the user's fingers — so the
+    // next keystrokes produced "2.5" and 0.5 was unreachable. State-dependent, too: from the
+    // default it worked, because the resolved value never moved.
+    bounded();
+    usePluginStore.getState().setPluginSetting("p-1", "w", 3);
+    render(<PluginSettingsForm pluginId="p-1" />);
+    const input = screen.getByRole("spinbutton") as HTMLInputElement;
+
+    act(() => {
+      fireEvent.change(input, { target: { value: "0" } });
+    });
+    expect(input.value, "the box was rewritten mid-typing").toBe("0");
+
+    act(() => {
+      fireEvent.change(input, { target: { value: "0.5" } });
+    });
+    expect(valuesOf("p-1")).toEqual({ w: 0.5 });
+  });
+
+  it("never persists a value the resolver would refuse", () => {
+    // Otherwise the box reads 9, the store holds 9, the plugin is told 2, and nothing says
+    // so — the disagreement is only visible by reopening the pane.
+    bounded();
+    render(<PluginSettingsForm pluginId="p-1" />);
+    const input = screen.getByRole("spinbutton") as HTMLInputElement;
+
+    act(() => {
+      fireEvent.change(input, { target: { value: "9" } });
+    });
+    expect(usePluginStore.getState().pluginSettings["p-1"]?.w).not.toBe(9);
+    // …and the control says it is refusing, rather than looking accepted.
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+
+    act(() => {
+      fireEvent.change(input, { target: { value: "8" } });
+    });
+    expect(valuesOf("p-1")).toEqual({ w: 8 }); // inclusive, and the flag clears
+    expect(input.getAttribute("aria-invalid")).toBe("false");
+  });
+});

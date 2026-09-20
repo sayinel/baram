@@ -83,9 +83,14 @@ export function watchPluginSettings(
       try {
         deliver();
       } catch (err) {
-        // A closed session — or, in the trusted tier, a handler that threw — is the ordinary
-        // case for a debounce that outlived an unload by less than its delay; nothing here is
-        // worth failing a store update over.
+        // A closed session is the ordinary case for a debounce that outlived an unload by
+        // less than its delay; nothing here is worth failing a store update over.
+        //
+        // ‼️ This does NOT catch a trusted plugin's throwing handler, and an earlier version
+        // of this comment claimed it did (§0054 code review, LOW). The trusted `deliver` is
+        // `emitScopedPluginEvent`, which catches and logs every handler throw itself — its
+        // own doc says the caller may treat it as non-throwing — so nothing from plugin code
+        // reaches here. Kept because `deliver` is a seam any tier may fill.
         logger.debug(`[${label}] ${pluginId}: settings notify skipped`, err);
       }
     }, SETTINGS_NOTIFY_DEBOUNCE_MS);

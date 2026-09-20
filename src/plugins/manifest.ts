@@ -5,7 +5,11 @@ import type {
   PluginSettingType,
 } from "./types";
 
-import { isSafeSettingColor, MAX_SETTING_FIELDS } from "./plugin-settings";
+import {
+  isSafeSettingColor,
+  MAX_SETTING_FIELDS,
+  MAX_SETTING_VALUE_CHARS,
+} from "./plugin-settings";
 import {
   CAPABILITY_DESCRIPTIONS,
   SETTING_TYPES,
@@ -593,6 +597,20 @@ function validateSettingShape(
       errors.push({
         field: `${at}.options[${j}].value`,
         message: `option value must be a non-empty string`,
+      });
+      usable = false;
+      return;
+    }
+    // ‼️ §0054 code review (MEDIUM) — an enum value is never CLAMPED. `clampChars` runs on
+    // the `string` type only, and clamping an enum value would yield something that is no
+    // longer one of `options`. Without this cap, `MAX_SETTING_VALUE_CHARS`'s "16 × 512 is
+    // ~9 KiB" stopped being a bound the moment enums existed: one option could carry a
+    // megabyte straight through to the sandbox settings pull. Same defect class as the id
+    // length cap above, one level down.
+    if (entry.value.length > MAX_SETTING_VALUE_CHARS) {
+      errors.push({
+        field: `${at}.options[${j}].value`,
+        message: `option value must be at most ${MAX_SETTING_VALUE_CHARS} characters`,
       });
       usable = false;
       return;

@@ -170,6 +170,34 @@ describe("a trusted plugin is told when its own settings change", () => {
     expect(second).toHaveBeenCalledTimes(2);
   });
 
+  it("tolerates a stale disposer being called twice", async () => {
+    // §0054 code review (MEDIUM). The unsubscriber closes over the handler `Set` and its
+    // parent `Map` and prunes both when they empty, so calling a disposer whose maps were
+    // already pruned deleted whatever had replaced them — orphaning a live subscription that
+    // no later `dispose()` could restore.
+    //
+    // Double-dispose is the normal shape here, not a contrivance: `events.on` both RETURNS
+    // the disposable and pushes it into `context.subscriptions`, and Bullet Threading's own
+    // `deactivate()` disposes its handle before the loader walks that list.
+    const ctx = context("p", ["settings"]);
+    const first = vi.fn();
+    const stale = ctx.events.on("settings:changed", first);
+    stale.dispose(); // prunes this plugin out of the scoped registry entirely
+
+    const second = vi.fn();
+    ctx.events.on("settings:changed", second);
+    stale.dispose(); // the stale handle again — must not touch the new subscription
+
+    usePluginStore.getState().setPluginSetting("p", "width", 9);
+    await settle();
+
+    expect(
+      second,
+      "a stale disposer wiped a live subscription",
+    ).toHaveBeenCalledTimes(1);
+    expect(first).not.toHaveBeenCalled();
+  });
+
   it('still refuses every OTHER event without "events"', () => {
     // The settings grant buys one payload-free notification about this plugin's own
     // configuration. It is not a way around the events capability.

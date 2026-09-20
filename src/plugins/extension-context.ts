@@ -162,11 +162,17 @@ function createDeniedProxy(
  * `watchPluginSettings` declines to install a watcher), and making the two tiers differ on
  * this is the exact defect §0054 exists to remove. The author's real error — no `settings`
  * capability — surfaces with a clear message the moment they call `settings.getAll()`.
+ *
+ * ‼️ Which is why there is only ONE grant here, despite `settings` being the second way into
+ * this API. An earlier version took `{ app, own }` and never read `own` — a parameter shaped
+ * like a gate that gated nothing, which is what later gets "tightened" by someone assuming it
+ * already did something (§0054 code review, LOW). WHO may be told is decided by the watcher,
+ * not here; `settings` buys the subscription, delivery is what it gates.
  */
 function createEventsAPI(
   pluginId: string,
   disposables: Disposable[],
-  grants: { app: boolean; own: boolean },
+  grants: { app: boolean },
 ): EventsAPI {
   const requireApp = (member: string) => {
     if (grants.app) return;
@@ -199,6 +205,9 @@ function createEventsAPI(
     emit(event: string, ...args: unknown[]): void {
       // Always `events`, including for `settings:changed`: the settings grant buys the right
       // to be TOLD that the user's answers moved, never the right to tell other plugins so.
+      // An `events`-holder emitting that name reaches the SHARED bus, where by construction
+      // nothing is ever listening — subscriptions to it go to the scoped bus — so it is a
+      // silent no-op rather than a way to fake another plugin's settings moving.
       requireApp(`emit("${event}")`);
       eventListeners.get(event)?.forEach((handler) => {
         try {
@@ -323,7 +332,6 @@ export function createExtensionContext(
     hasCapability("events") || hasCapability("settings")
       ? createEventsAPI(manifest.id, disposables, {
           app: hasCapability("events"),
-          own: hasCapability("settings"),
         })
       : (createDeniedProxy("events", "events") as EventsAPI);
 

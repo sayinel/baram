@@ -153,9 +153,12 @@ describe("the Bullet Threading example", () => {
     // never re-injects — which is exactly the state the plugin shipped in, where a setting
     // only took effect after toggling the plugin off and on.
     //
-    // Driven through the REAL `createExtensionContext`, so the capability gate is the
-    // production one: this plugin declares `settings` and not `events`, and that is the
-    // combination that used to hand it a denied proxy.
+    // Driven through the REAL `createExtensionContext`, so the EVENTS gate is the production
+    // one: this plugin declares `settings` and not `events`, and that is the combination that
+    // used to hand it a denied proxy. `ctx.ui` is stubbed below and is therefore NOT the
+    // production gate — it happens to be granted in production because `UI_CAPABILITIES`
+    // includes `settings`, which is worth knowing on its own: declaring `settings` also buys
+    // `ui.addStyle`.
     const manifest = JSON.parse(
       readFileSync(join(DIR, "baram-plugin.json"), "utf8"),
     ) as PluginManifest;

@@ -59,7 +59,21 @@ export function onScopedPluginEvent(
   const handlers = byEvent.get(event) ?? new Set<EventHandler>();
   byEvent.set(event, handlers);
   handlers.add(handler);
+  // ‼️ IDEMPOTENT (§0054 code review, MEDIUM). Without the flag, the second call on a stale
+  // handle prunes the maps that have REPLACED the ones it closed over: its own `Set` is
+  // already empty, so `byEvent.delete` and `scopedListeners.delete` run against whatever a
+  // later subscription rebuilt, orphaning a live handler no further `dispose()` can restore.
+  //
+  // Double-dispose is the ordinary shape here, not a contrivance: `events.on` both returns
+  // the disposable AND pushes it into `context.subscriptions`, and a plugin's `deactivate()`
+  // runs before the loader walks that list — the shipped Bullet Threading example does
+  // exactly this on every unload. Every other `dispose` in this stack is already idempotent
+  // (`commandHandlers.delete`, `eventListeners.get(event)?.delete(handler)`); this was the
+  // odd one out.
+  let done = false;
   return () => {
+    if (done) return;
+    done = true;
     handlers.delete(handler);
     // Both levels are pruned when they empty, so an app that loads and unloads plugins does
     // not accumulate a `Map` entry per plugin that ever ran.

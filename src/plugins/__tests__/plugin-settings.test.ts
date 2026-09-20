@@ -410,3 +410,89 @@ describe("sanitizeSettingDescription", () => {
     expect(sanitizeSettingDescription("x".repeat(400))).toHaveLength(160);
   });
 });
+
+// §0054 code review (HIGH) — a PARTLY malformed options list.
+//
+// ‼️ `isUsableField` gated on `.some(isUsableOption)` — one good option was enough — while
+// both consumers walk EVERY option: the form maps all of them, and `coerce` compares against
+// all of them. So a list with one good entry and one bad one survived the gate and then threw
+// on the bad one, during render, which at the root error boundary replaces the whole app on
+// the very route that holds Uninstall.
+//
+// The comment above that gate asserted the opposite ("an `options` list the validator refused
+// cannot reach here"), which is what stopped the gap being seen. Universal quantifier,
+// unverified — the exact shape CLAUDE.md 「주석·문서의 주장」 is about.
+describe("a partly malformed enum (§0054 review, HIGH)", () => {
+  const mixed = (options: unknown[]) => ({
+    capabilities: ["settings"],
+    contributions: {
+      settings: [{ default: "a", key: "m", label: "M", options, type: "enum" }],
+    },
+  });
+
+  it("drops a field where ANY option is unusable, not just where all are", () => {
+    for (const options of [
+      [{ label: "A", value: "a" }, null],
+      [
+        { label: "A", value: "a" },
+        { label: 42, value: "b" },
+      ],
+      [
+        { label: "A", value: "a" },
+        { label: "B", value: 99 },
+      ],
+      [{ label: "A", value: "a" }, "b"],
+    ]) {
+      expect(
+        declaredSettingsFor(mixed(options) as never),
+        `options ${JSON.stringify(options)} must drop the field`,
+      ).toEqual([]);
+    }
+  });
+
+  it("still keeps a wholly well-formed list — the gate is not just 'refuse everything'", () => {
+    expect(
+      declaredSettingsFor(
+        mixed([
+          { label: "A", value: "a" },
+          { label: "B", value: "b" },
+        ]) as never,
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("refuses an option value long enough to break the stated payload bound", () => {
+    // `MAX_SETTING_VALUE_CHARS`'s comment argues the transport decision from
+    // "16 × 512 is ~9 KiB". An enum value is never clamped — `clampChars` runs for `string`
+    // only — so an unbounded option value made that a stated bound that is not a bound.
+    expect(
+      declaredSettingsFor(
+        mixed([
+          { label: "A", value: "a".repeat(MAX_SETTING_VALUE_CHARS + 1) },
+        ]) as never,
+      ),
+    ).toEqual([]);
+  });
+
+  it("never yields a non-string for a declared enum, even from a raw field", () => {
+    // `resolvePluginSettings` is exported and takes fields directly, so it has to hold this
+    // on its own: `zeroFor` read `options[0]` without the check that decided the field
+    // survives, so a first option with a numeric `value` reached plugin code as a number.
+    const resolved = resolvePluginSettings(
+      [
+        {
+          key: "m",
+          label: "M",
+          options: [
+            { label: "x", value: 99 },
+            { label: "B", value: "b" },
+          ],
+          type: "enum",
+        } as never,
+      ],
+      {},
+    );
+    expect(typeof resolved.m).toBe("string");
+    expect(resolved.m).toBe("b");
+  });
+});
