@@ -46,6 +46,10 @@ jobs:
           filters: |
             rust:
               - 'src-tauri/**'
+              # The committed registry seed is a Rust test input
+              # (`include_str!` in plugin/registry.rs): a seed edit that
+              # skipped the rust job landed red on main (#695).
+              - 'registry/**'
               - 'rust-toolchain*'
               - '.cargo/**'
               - '.github/workflows/ci.yml'
