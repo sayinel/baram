@@ -349,6 +349,50 @@ describe("baram-word-count — the reference SANDBOXED plugin (§260 Phase 6)", 
   });
 });
 
+describe("every seeded entry agrees with the example it names", () => {
+  // The check above is scoped to word-count, so the SECOND published plugin arrived with
+  // nothing comparing its seed entry to its manifest — and a third would too. Stated over the
+  // seed instead of over a list of plugins.
+  //
+  // ‼️ THE DIRECTION MATTERS. This is "every SEED ENTRY that names an example agrees with it",
+  // not "every example is seeded". The seed is a snapshot updated by hand AFTER a release
+  // (the checksum only exists once the workflow has built the ZIP), so a plugin that is
+  // allowlisted but not yet released legitimately has no entry — and the other direction
+  // would fail on that perfectly correct state.
+  const byId = new Map(
+    readdirSync(EXAMPLES, { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name)
+      .filter((d) => existsSync(resolve(EXAMPLES, d, "baram-plugin.json")))
+      .map((d) => [manifestOf(d).id, manifestOf(d)] as const),
+  );
+
+  const seeded = seed().plugins.filter((p) => byId.has(p.id));
+
+  it("finds entries to check (an empty seed would make the rows below vacuous)", () => {
+    expect(seeded.map((p) => p.id).sort()).toEqual([
+      "baram-bullet-threading",
+      "baram-word-count",
+    ]);
+  });
+
+  it.each(seeded.map((p) => p.id))("%s", (id) => {
+    const entry = seed().plugins.find((p) => p.id === id);
+    const manifest = byId.get(id);
+    expect(entry?.version).toBe(manifest?.version);
+    expect(entry?.trust).toBe(manifest?.trust);
+    expect([...(entry?.capabilities ?? [])].sort()).toEqual(
+      [...(manifest?.capabilities ?? [])].sort(),
+    );
+    // The archive the entry points at must be the one this version would produce. The
+    // checksum cannot be checked from here — the ZIP lives in the registry repo, which is
+    // what `validate-registry-assets.ts` covers at publish time — but a downloadUrl naming
+    // another version is a mismatch this side CAN see, and it is the one a stale hand-edit
+    // produces.
+    expect(entry?.downloadUrl).toContain(`-${manifest?.version}.zip`);
+  });
+});
+
 describe("the plugin guide's copy-paste examples are valid (§260 Phase 6)", () => {
   // §260 Phase 6 code review round 2, pre-existing finding: the guide's headline
   // `baram-plugin.json` example omitted `trust` — which the same document calls required — and
