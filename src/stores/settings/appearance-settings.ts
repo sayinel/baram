@@ -11,8 +11,13 @@ import { logger } from "../../utils/logger";
 export interface AppearanceSettingsSlice {
   activeThemeId: string;
   activityBarConfig: ActivityBarItemConfig[];
-  /** §361 — record a freshly installed community theme. The record IS the enumeration
-   *  (`theme-store-fs.ts`'s header explains why nothing re-reads the install tree). */
+  /**
+   * §361 — record an installed community theme. The record IS the enumeration
+   * (`theme-store-fs.ts`'s header explains why nothing re-reads the install tree).
+   *
+   * ‼️ An id already present is an UPDATE, and an update KEEPS the consent the first install
+   * recorded — see the implementation for why that rule lives here.
+   */
   addInstalledTheme: (theme: InstalledTheme) => void;
   customThemes: ThemeDef[];
   deleteCustomTheme: (id: string) => void;
@@ -98,9 +103,36 @@ export const createAppearanceSettingsSlice: StateCreator<
       theme: state.activeThemeId === id ? "system" : state.theme,
     })),
   addInstalledTheme: (theme) =>
-    set((state) => ({
-      installedThemes: { ...state.installedThemes, [theme.id]: theme },
-    })),
+    set((state) => {
+      const prior = state.installedThemes[theme.id];
+      // §361 Task 6 — the consent carry-forward, HERE rather than in the update caller.
+      //
+      // `installTheme` stamps `consentedAt`/`consentedVersion` with "now" and the version it
+      // just installed, which is right for a first install and wrong for an update: nothing
+      // was agreed to at that moment, and `showConsentHistory` would then tell the user they
+      // approved v2.0 today when what they approved was v1.0 whenever they installed it.
+      // `InstalledTheme.consentedAt`'s doc comment states that contract.
+      //
+      // Enforced at the single writer instead of at each call site so a future third caller
+      // cannot reintroduce the defect by forgetting. A record that is ABSENT is a genuine
+      // first install (uninstall removes it), so the stamp from `installTheme` stands.
+      //
+      // Themes never re-ask: there is no capability tuple to escalate (spec §9.3), so there
+      // is no case where an update should produce a NEW consent moment. The three fixed
+      // sentences hold for every version the hygiene pipeline will accept, which is what
+      // makes carrying the old stamp forward true rather than merely convenient.
+      const merged: InstalledTheme =
+        prior === undefined
+          ? theme
+          : {
+              ...theme,
+              consentedAt: prior.consentedAt,
+              consentedVersion: prior.consentedVersion,
+            };
+      return {
+        installedThemes: { ...state.installedThemes, [theme.id]: merged },
+      };
+    }),
   removeInstalledTheme: (id) =>
     set((state) => {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars

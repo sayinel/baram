@@ -243,6 +243,29 @@ describe("checkForUpdates skips entries the install path refuses (§260 Phase 6)
     expect(await checkForUpdates()).toEqual({});
   });
 
+  it("offers nothing when the registry now publishes that id as a THEME", async () => {
+    // §361 Task 6 — spec §10.2 keeps theme updates out of this tab, and the separation is
+    // structural (themes live in the settings store, which this function never reads). What
+    // this closes is the remaining overlap: an id that WAS a plugin and is now published as
+    // `kind: "theme"`. Matching on id alone would badge the installed plugin and then hand
+    // `handleUpdate` a theme archive.
+    fetchRegistry.mockResolvedValue({
+      plugins: [entry({ kind: "theme", version: "2.0.0" })],
+    });
+    expect(await checkForUpdates()).toEqual({});
+  });
+
+  it("still offers an update for an entry with no kind at all", async () => {
+    // The sibling that keeps the filter honest: absence reads as "plugin", so every entry
+    // published before `kind` existed must keep working. Without this, a filter written as
+    // `p.kind === "plugin"` would pass the test above and silently end updates for the
+    // whole live registry.
+    const legacyKind = entry({ version: "2.0.0" });
+    delete legacyKind.kind;
+    fetchRegistry.mockResolvedValue({ plugins: [legacyKind] });
+    expect(await checkForUpdates()).toEqual({ p: "2.0.0" });
+  });
+
   it("offers nothing for an id claimed twice, so the hijack never reaches a badge", async () => {
     // The first link in the MEDIUM-2 chain. If `checkForUpdates` still resolved the
     // attacker's entry the badge would appear unprompted, and the user's single click would

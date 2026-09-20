@@ -34,7 +34,16 @@ export async function checkForUpdates(): Promise<Record<string, string>> {
   const updates: Record<string, string> = {};
 
   for (const [id, plugin] of Object.entries(store.installedPlugins)) {
-    const registryEntry = index.plugins.find((p) => p.id === id);
+    // §361 Task 6 — the KIND is part of the match, not just the id. `dropAmbiguousIds` above
+    // already makes an id claimed twice resolve to neither entry, so a theme cannot shadow a
+    // plugin by colliding with it; what this closes is the other shape, an entry that USED to
+    // be a plugin and is now published as `kind: "theme"`. Without the filter that entry
+    // raises an update badge on an installed plugin and `handleUpdate` then downloads a theme
+    // archive over it, which can only fail after the user has clicked. Absence still reads as
+    // `"plugin"`, the default `RegistryEntry.kind` documents.
+    const registryEntry = index.plugins.find(
+      (p) => p.id === id && (p.kind ?? "plugin") === "plugin",
+    );
     // §260 Phase 6 code review (L1) — skip an entry the install path will refuse. A legacy
     // entry (no tier, or one normalized away above) can only produce an error, so offering an
     // update badge and an enabled button for it promises an action that cannot succeed.
@@ -143,6 +152,38 @@ export function searchThemeRegistry(
 
   const lower = query.toLowerCase();
   return themes.filter((p) => matchesQuery(p, lower));
+}
+
+/**
+ * §361 Task 6 — the registry entry offering a newer version of each installed theme.
+ *
+ * Deliberately NOT routed through {@link checkForUpdates}: that function iterates
+ * `usePluginStore`'s `installedPlugins`, installed themes live in the settings store's
+ * `installedThemes`, and spec §10.2 says a theme update must not appear in the plugin
+ * Updates tab. Keeping the two functions apart is what makes that true by construction
+ * rather than by a filter someone could drop.
+ *
+ * Pure — the caller passes the records, so this can be exercised without either store.
+ * `kind === "theme"` is required rather than defaulted, matching `searchThemeRegistry`
+ * next door: an entry with no `kind` is a plugin and must never be offered as a theme
+ * update, whatever its id says.
+ *
+ * "Newer" is `!==`, the same comparison `checkForUpdates` makes, and it is not a mistake:
+ * a registry that rolls a bad version back publishes a LOWER number, and an editor that
+ * only ever counts upwards would leave every user on the version being withdrawn.
+ */
+export function themeUpdatesFor(
+  index: RegistryIndex,
+  installedThemes: Record<string, { manifest: { version: string } }>,
+): Record<string, RegistryEntry> {
+  const updates: Record<string, RegistryEntry> = {};
+  for (const [id, installed] of Object.entries(installedThemes)) {
+    const entry = index.plugins.find((p) => p.id === id && p.kind === "theme");
+    if (entry === undefined) continue;
+    if (entry.version === installed.manifest.version) continue;
+    updates[id] = entry;
+  }
+  return updates;
 }
 
 /**

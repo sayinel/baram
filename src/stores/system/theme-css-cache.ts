@@ -13,6 +13,22 @@
 import { create } from "zustand";
 
 interface ThemeCssCacheState {
+  /**
+   * §361 Task 6 — forget every mode cached for one theme, so the next hydration reads the
+   * disk again.
+   *
+   * ‼️ WITHOUT THIS AN UPDATE IS INVISIBLE. `use-theme-css-hydration.ts` skips its read when
+   * `entries[key] !== undefined`, so after `installTheme` has swapped a new version onto
+   * disk the cached text of the OLD one keeps being applied, for the rest of the session and
+   * every session after it (this store is rebuilt on each launch, so the first read after a
+   * restart does get the new bytes — which is what makes the stale window look like "the
+   * update did nothing until I restarted" rather than a permanent failure).
+   *
+   * Uninstall needs it for the same reason and a worse outcome: the entry outlives the
+   * record, so uninstalling and installing the same id again re-applies the CSS of the copy
+   * that was deleted.
+   */
+  clearTheme: (themeId: string) => void;
   /** Keyed by `installed-theme-defs.ts`'s `themeCssCacheKey`. */
   entries: Record<string, string>;
   setCss: (key: string, css: string) => void;
@@ -20,6 +36,21 @@ interface ThemeCssCacheState {
 
 export const useThemeCssCacheStore = create<ThemeCssCacheState>((set) => ({
   entries: {},
+  clearTheme: (themeId) =>
+    set((state) => {
+      // The key is `${themeId}:${mode}` (`themeCssCacheKey`), so the prefix — WITH the
+      // separator — is what distinguishes this theme's modes from those of a theme whose id
+      // merely starts with the same characters. `dracula` must not drop `dracula-pro:dark`.
+      const prefix = `${themeId}:`;
+      const kept = Object.entries(state.entries).filter(
+        ([key]) => !key.startsWith(prefix),
+      );
+      // Equality gate, same reasoning as `setCss` below: clearing a theme that has nothing
+      // cached is the common case (every theme with no CSS, and every uninstall of one that
+      // was never applied this session).
+      if (kept.length === Object.keys(state.entries).length) return state;
+      return { entries: Object.fromEntries(kept) };
+    }),
   setCss: (key, css) =>
     set((state) =>
       // Equality gate: a store write on every hydration attempt (even a redundant one

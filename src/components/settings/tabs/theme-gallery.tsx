@@ -10,6 +10,7 @@
 //
 // 카드가 무엇을 할 수 있는지는 themeActions(source)가 정한다. 컴포넌트가
 // `source === "builtin"` 같은 비교를 직접 하면 출처가 하나 늘 때 조용히 틀린다.
+import type { RevocationEntry } from "../../../plugins/revocation";
 import type { ThemeColors, ThemeDef } from "../../../types/theme";
 import type { ThemeSource } from "../../../types/theme-sources";
 
@@ -17,12 +18,16 @@ import { useShallow } from "zustand/shallow";
 
 import { useTranslation } from "../../../i18n/useTranslation";
 import { useSettingsStore } from "../../../stores/settings/store";
+import { usePluginStore } from "../../../stores/system/plugin";
 import { installedThemeDefs } from "../../../themes/installed-theme-defs";
+import { themeRevocationFor } from "../../../themes/theme-revocation";
 import { BUILT_IN_THEMES, themeModes } from "../../../types/theme";
 import { themeActions } from "../../../types/theme-sources";
 import { showConfirm } from "../../../utils/confirm-dialog";
+import { PluginRevokedNotice } from "../../plugins/PluginRevokedNotice";
 import { useThemeActions } from "./use-theme-actions";
 import { useThemeImport } from "./use-theme-import";
+import { useThemeUpdates } from "./use-theme-updates";
 
 /**
  * 그룹 제목이자 화면에 나오는 순서 — 선언 순서가 곧 표시 순서다.
@@ -61,7 +66,11 @@ export function ThemeGallery({
   const { handleImport, importError } = useThemeImport();
   // §361 — owns the source-based branch (custom → deleteCustomTheme, community →
   // uninstall + removeInstalledTheme) so this component only ever calls `removeTheme`.
-  const { removeTheme, showConsentHistory } = useThemeActions();
+  const { handleUpdate, installing, removeTheme, showConsentHistory } =
+    useThemeActions();
+  const registryUrl = usePluginStore((s) => s.registryUrl);
+  const revocations = usePluginStore((s) => s.revocations);
+  const { index, updates } = useThemeUpdates();
 
   const allThemes = [
     ...BUILT_IN_THEMES,
@@ -88,31 +97,54 @@ export function ThemeGallery({
                 onSelect={() => setActiveTheme("system")}
               />
             )}
-            {rows.map((theme) => (
-              <ThemeCard
-                // 출처가 붙인 배지. 그룹 제목은 보조기기에만 읽히므로, 눈으로
-                // 커스텀을 알아보던 기존 표식은 그대로 둔다.
-                badge={
-                  source === "custom"
-                    ? t("settings.appearance.customBadge")
-                    : undefined
-                }
-                isActive={activeThemeId === theme.id}
-                key={theme.id}
-                onDelete={() => void removeTheme(theme)}
-                onInfo={
-                  // themeActions(source).consentHistory 는 community 만 true 다.
-                  // installedThemes[theme.id] 는 그래서 항상 있다 — 없으면(이론상
-                  // 스토어 불일치) 정보 버튼을 그리지 않는다.
-                  themeActions(source).consentHistory &&
-                  installedThemes[theme.id]
-                    ? () => showConsentHistory(installedThemes[theme.id])
-                    : undefined
-                }
-                onSelect={setActiveTheme}
-                theme={theme}
-              />
-            ))}
+            {rows.map((theme) => {
+              // §361 Task 6 — resolved per card so the notice sits with the theme it is
+              // about. Returns null for every built-in and custom row (they have no
+              // installed record) without the component needing a `source` comparison.
+              const revocation = themeRevocationFor(
+                theme.id,
+                installedThemes,
+                revocations,
+              );
+              return (
+                <ThemeCard
+                  // 출처가 붙인 배지. 그룹 제목은 보조기기에만 읽히므로, 눈으로
+                  // 커스텀을 알아보던 기존 표식은 그대로 둔다.
+                  badge={
+                    source === "custom"
+                      ? t("settings.appearance.customBadge")
+                      : undefined
+                  }
+                  isActive={activeThemeId === theme.id}
+                  key={theme.id}
+                  onDelete={() => void removeTheme(theme)}
+                  onInfo={
+                    // themeActions(source).consentHistory 는 community 만 true 다.
+                    // installedThemes[theme.id] 는 그래서 항상 있다 — 없으면(이론상
+                    // 스토어 불일치) 정보 버튼을 그리지 않는다.
+                    themeActions(source).consentHistory &&
+                    installedThemes[theme.id]
+                      ? () => showConsentHistory(installedThemes[theme.id])
+                      : undefined
+                  }
+                  onSelect={setActiveTheme}
+                  onUpdate={
+                    // themeActions(source).update is community-only, and an entry only
+                    // exists here when the registry lists a different version — so the
+                    // button appears exactly when there is something to install.
+                    index !== null &&
+                    themeActions(source).update &&
+                    updates[theme.id]
+                      ? () => void handleUpdate(theme.id, index, registryUrl)
+                      : undefined
+                  }
+                  revocation={revocation}
+                  theme={theme}
+                  updateVersion={updates[theme.id]?.version}
+                  updating={installing[theme.id] === true}
+                />
+              );
+            })}
           </div>
         );
       })}
@@ -145,7 +177,11 @@ function ThemeCard({
   onDelete,
   onInfo,
   onSelect,
+  onUpdate,
+  revocation,
   theme,
+  updateVersion,
+  updating,
 }: {
   badge: string | undefined;
   isActive: boolean;
@@ -154,7 +190,17 @@ function ThemeCard({
    *  caller has something to show (`theme-gallery.tsx` decides both). */
   onInfo?: () => void;
   onSelect: (id: string) => void;
+  /** §361 Task 6 — present only when the registry lists a different version AND
+   *  `themeActions(theme.source).update` allows it (`theme-gallery.tsx` decides both). */
+  onUpdate?: () => void;
+  /** The withdrawal governing this theme, or null. Rendered by `PluginRevokedNotice`,
+   *  which itself returns null for `unlisted` — the severity policy stays in that one
+   *  component rather than being re-decided per call site. */
+  revocation: null | RevocationEntry;
   theme: ThemeDef;
+  /** The version {@link onUpdate} would install, for the badge. */
+  updateVersion?: string;
+  updating: boolean;
 }) {
   const { t } = useTranslation();
   const colors = previewColors(theme);
@@ -181,6 +227,36 @@ function ThemeCard({
           <span className="theme-card-badge">{badge}</span>
         )}
       </button>
+      {onUpdate && updateVersion !== undefined && (
+        // The badge and the action are one control, not a badge plus a button: the badge
+        // names the version and clicking it installs that version, so there is nothing on
+        // screen that announces an update the user cannot act on.
+        <button
+          aria-label={t("settings.appearance.updateThemeNamed", {
+            name: theme.name,
+            version: updateVersion,
+          })}
+          className="theme-card-update"
+          disabled={updating}
+          onClick={onUpdate}
+          title={t("settings.appearance.updateThemeNamed", {
+            name: theme.name,
+            version: updateVersion,
+          })}
+        >
+          {updating
+            ? t("settings.appearance.updatingTheme")
+            : t("settings.appearance.updateAvailable", {
+                version: updateVersion,
+              })}
+        </button>
+      )}
+      <PluginRevokedNotice
+        kind="theme"
+        name={theme.name}
+        onRemove={actions.remove ? onDelete : undefined}
+        revocation={revocation}
+      />
       {actions.remove && (
         // 삭제 대상 이름을 accessible name에 포함한다 — 커스텀 테마가
         // 여럿이면 "테마 삭제"만으로는 어느 버튼인지 구분할 수 없다.

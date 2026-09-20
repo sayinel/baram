@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { Translate } from "../../../i18n/useTranslation";
-import type { RegistryEntry } from "../../../plugins/types";
+import type { RegistryEntry, RegistryIndex } from "../../../plugins/types";
 import type {
   InstalledTheme,
   ThemeInstallResult,
@@ -24,7 +24,11 @@ import { useShallow } from "zustand/shallow";
 
 import { useTranslation } from "../../../i18n/useTranslation";
 import { themeUninstall } from "../../../ipc/theme";
+import { themeUpdatesFor } from "../../../plugins/registry-client";
+import { revocationFor, revocationReason } from "../../../plugins/revocation";
 import { useSettingsStore } from "../../../stores/settings/store";
+import { usePluginStore } from "../../../stores/system/plugin";
+import { useThemeCssCacheStore } from "../../../stores/system/theme-css-cache";
 import { useUIStore } from "../../../stores/ui/ui";
 import { installTheme } from "../../../themes/theme-install";
 import { showAlert } from "../../../utils/confirm-dialog";
@@ -109,6 +113,11 @@ export function useThemeActions() {
       setActiveTheme: s.setActiveTheme,
     })),
   );
+  // §69's withdrawal list. It lives in the PLUGIN store because that is where the fetch and
+  // the monotonic counter live (`revocation-client.ts`); it is not plugin-only data — the
+  // entries carry no `kind` at all (`themes/theme-revocation.ts`'s header).
+  const revocations = usePluginStore((s) => s.revocations);
+  const clearThemeCssCache = useThemeCssCacheStore((s) => s.clearTheme);
 
   // §260 Phase 5's shape, reused: the install flow awaits a decision, modelled as a promise
   // the user resolves. The resolver lives in a ref so settling it does not depend on a
@@ -151,6 +160,90 @@ export function useThemeActions() {
   );
 
   /**
+   * §69's install-time refusal, for themes. True means "do not acquire this".
+   *
+   * Refused for ANY severity, exactly as `usePluginActions.handleInstall` does and for the
+   * argument recorded there: a withdrawal always means "do not newly acquire this", while
+   * only `malicious` is worth taking a working copy away from someone who already has it
+   * (`themes/theme-revocation.ts` carries that second half). Newly installing a version
+   * already known to be vulnerable, or merely withdrawn, has no upside to weigh against.
+   *
+   * ‼️ Resolved against the REGISTRY entry's version, not an installed record — this runs
+   * before anything is downloaded, and on the update path the version at issue is the
+   * target's, not the one already on disk.
+   */
+  const refuseIfRevoked = useCallback(
+    (entry: RegistryEntry): boolean => {
+      const blocked = revocationFor(entry.id, entry.version, revocations);
+      if (blocked === null) return false;
+      setInstallErrors((prev) => ({
+        ...prev,
+        [entry.id]: `${t("plugin.revoked.blockedInstall")} ${revocationReason(blocked, t)}`,
+      }));
+      return true;
+    },
+    [revocations, t],
+  );
+
+  /**
+   * Stage → hygiene → commit → record, shared by install and update.
+   *
+   * The consent gate is NOT here: install asks, update does not (see `handleUpdate`), and
+   * folding the two would put that difference behind a boolean parameter where it is easy
+   * to pass wrongly. What IS shared is everything that must not differ — the in-flight
+   * badge, the failure-to-sentence mapping, the record write, and the cache invalidation.
+   *
+   * ‼️ The cache clear is unconditional on success rather than left to the update caller.
+   * `use-theme-css-hydration.ts` will not re-read a key it already has, so a stale entry
+   * keeps being applied over new bytes; making it the responsibility of whoever knows this
+   * was "an update" is precisely the rule a third caller forgets (see `clearTheme`'s own
+   * doc comment for what the two stale shapes look like).
+   */
+  const stageAndRecord = useCallback(
+    async (
+      entry: RegistryEntry,
+      registryUrl: string,
+    ): Promise<InstalledTheme | null> => {
+      setInstalling((prev) => ({ ...prev, [entry.id]: true }));
+      try {
+        const result = await installTheme(entry, registryUrl);
+        if (!result.ok) {
+          logger.error(
+            "[Theme] install failed:",
+            entry.id,
+            result.reason,
+            result.detail,
+            result.errors,
+          );
+          setInstallErrors((prev) => ({
+            ...prev,
+            [entry.id]: installFailureMessage(result, t),
+          }));
+          return null;
+        }
+        setInstallErrors((prev) => {
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const { [entry.id]: _removed, ...rest } = prev;
+          return rest;
+        });
+        // Record first, then forget the old CSS: `addInstalledTheme` is what carries the
+        // consent stamp forward on an update (its doc comment in `appearance-settings.ts`),
+        // and the hydration hook re-reads on the next render either way.
+        addInstalledTheme(result.installed);
+        clearThemeCssCache(result.installed.id);
+        return result.installed;
+      } finally {
+        setInstalling((prev) => {
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const { [entry.id]: _removed, ...rest } = prev;
+          return rest;
+        });
+      }
+    },
+    [addInstalledTheme, clearThemeCssCache, t],
+  );
+
+  /**
    * Install, apply immediately, and offer a free undo (spec §10.3 — a theme only has to
    * remember the one previous `activeThemeId`, which plugins cannot do).
    *
@@ -164,60 +257,90 @@ export function useThemeActions() {
       if (inFlight.current.has(entry.id)) return false;
       inFlight.current.add(entry.id);
       try {
+        // Before the dialog, not after: asking someone to approve an install that is
+        // already decided against wastes the one decision this screen exists to collect.
+        if (refuseIfRevoked(entry)) return false;
         const consented = await askConsent(entry);
         if (!consented) return false;
 
-        setInstalling((prev) => ({ ...prev, [entry.id]: true }));
-        try {
-          const result = await installTheme(entry, registryUrl);
-          if (!result.ok) {
-            logger.error(
-              "[Theme] install failed:",
-              entry.id,
-              result.reason,
-              result.detail,
-              result.errors,
-            );
-            setInstallErrors((prev) => ({
-              ...prev,
-              [entry.id]: installFailureMessage(result, t),
-            }));
-            return false;
-          }
-          setInstallErrors((prev) => {
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
-            const { [entry.id]: _removed, ...rest } = prev;
-            return rest;
-          });
+        const installed = await stageAndRecord(entry, registryUrl);
+        if (installed === null) return false;
 
-          const previousActiveThemeId =
-            useSettingsStore.getState().activeThemeId;
-          addInstalledTheme(result.installed);
-          setActiveTheme(result.installed.id);
-          useUIStore.getState().showToast(
-            t("settings.appearance.installedToast", {
-              name: result.installed.manifest.name,
-            }),
-            "info",
-            undefined,
-            {
-              label: t("settings.appearance.revertAction"),
-              onClick: () => setActiveTheme(previousActiveThemeId),
-            },
-          );
-          return true;
-        } finally {
-          setInstalling((prev) => {
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
-            const { [entry.id]: _removed, ...rest } = prev;
-            return rest;
-          });
-        }
+        const previousActiveThemeId = useSettingsStore.getState().activeThemeId;
+        setActiveTheme(installed.id);
+        useUIStore.getState().showToast(
+          t("settings.appearance.installedToast", {
+            name: installed.manifest.name,
+          }),
+          "info",
+          undefined,
+          {
+            label: t("settings.appearance.revertAction"),
+            onClick: () => setActiveTheme(previousActiveThemeId),
+          },
+        );
+        return true;
       } finally {
         inFlight.current.delete(entry.id);
       }
     },
-    [addInstalledTheme, askConsent, setActiveTheme, t],
+    [askConsent, refuseIfRevoked, setActiveTheme, stageAndRecord, t],
+  );
+
+  /**
+   * Update one installed theme to the version the registry now lists (spec §5.2's
+   * `community` row, §10.2's badge).
+   *
+   * ‼️ THE LISTING IS RE-RESOLVED HERE, from the index, rather than trusted from the caller
+   * — the shape of §260 Phase 5's H2 fix next door, where the Installed tab synthesised an
+   * entry with `downloadUrl: ""` and an update from that tab destroyed the plugin every
+   * time. Resolving through {@link themeUpdatesFor} rather than a hand-written `.find`
+   * reuses ONE rule for "which entry updates this theme" (id, `kind === "theme"`, and a
+   * version that differs), so the badge and the button can never disagree about what the
+   * click will install.
+   *
+   * ‼️ NO CONSENT IS RE-ASKED, and that is a decision rather than an omission. A theme
+   * carries no capability tuple (spec §9.3), so `consentRequired`'s escalation question —
+   * the thing that would catch a hostile plugin update — has no theme analogue and could
+   * never fire. What makes the silence acceptable is structural and not comfort: the
+   * replacement CSS goes through the full hygiene pipeline again inside `installTheme`
+   * (sanitize → inline → verify), and `applyThemeCss` verifies once more at injection, so
+   * all three consent sentences hold for the new version exactly as they did for the old.
+   * The guarantees are enforced per APPLY, not per version. If a path is ever added by
+   * which a theme's CSS reaches the screen without the pipeline, this reasoning collapses
+   * and re-consent becomes necessary.
+   *
+   * Returns whether the update landed.
+   */
+  const handleUpdate = useCallback(
+    async (
+      themeId: string,
+      index: RegistryIndex,
+      registryUrl: string,
+    ): Promise<boolean> => {
+      const installed = useSettingsStore.getState().installedThemes[themeId];
+      if (installed === undefined) return false;
+      const entry = themeUpdatesFor(index, { [themeId]: installed })[themeId];
+      if (entry === undefined) return false;
+      if (inFlight.current.has(entry.id)) return false;
+      inFlight.current.add(entry.id);
+      try {
+        if (refuseIfRevoked(entry)) return false;
+        const updated = await stageAndRecord(entry, registryUrl);
+        if (updated === null) return false;
+        useUIStore.getState().showToast(
+          t("settings.appearance.updatedToast", {
+            name: updated.manifest.name,
+            version: updated.manifest.version,
+          }),
+          "info",
+        );
+        return true;
+      } finally {
+        inFlight.current.delete(entry.id);
+      }
+    },
+    [refuseIfRevoked, stageAndRecord, t],
   );
 
   /**
@@ -243,8 +366,12 @@ export function useThemeActions() {
         return;
       }
       removeInstalledTheme(theme.id);
+      // The cached CSS text outlives the record otherwise, and installing the same id again
+      // in this session would re-apply the bytes of the copy just deleted — `clearTheme`'s
+      // doc comment has the mechanism.
+      clearThemeCssCache(theme.id);
     },
-    [deleteCustomTheme, removeInstalledTheme],
+    [clearThemeCssCache, deleteCustomTheme, removeInstalledTheme],
   );
 
   /**
@@ -259,6 +386,20 @@ export function useThemeActions() {
    * moves `installedAt` and `manifest.version` without asking again — reading those here
    * would have this screen assert a consent at a date and version nothing was ever agreed to.
    * `InstalledTheme.consentedAt`'s doc comment is the contract Task 6 must not break.
+   * (Task 6 keeps it at the single writer — `addInstalledTheme` in `appearance-settings.ts`
+   * carries both fields forward when a record for that id already exists.)
+   *
+   * ‼️ §361 Task 6 ruling — this screen stays in the LIGHT DOM, unlike the install consent
+   * dialog (§359/§361 round 2 shadow-isolated that one). A hostile installed theme's CSS can
+   * therefore hide or restyle it, and the reason that is acceptable is that nothing is
+   * decided here: no gate, no action, no IPC. CSS cannot alter text, only hide it, and
+   * `showAlert` renders the four sentences as one string, so the worst a theme achieves is a
+   * blank recall dialog — which misleads nobody into granting anything, and is itself
+   * conspicuous. The surface where a decision IS made is already isolated.
+   *
+   * What would overturn this: the moment this screen grows an action — "withdraw consent",
+   * "uninstall from here" — it becomes a gate and has to move into `ShadowIsolated` like
+   * `ThemeConsentDialog.tsx`.
    */
   const showConsentHistory = useCallback(
     (installed: InstalledTheme): void => {
@@ -278,6 +419,7 @@ export function useThemeActions() {
 
   return {
     handleInstall,
+    handleUpdate,
     installErrors,
     installing,
     pendingConsent,

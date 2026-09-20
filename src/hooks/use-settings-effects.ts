@@ -1,13 +1,15 @@
 // §4.2 Settings effects hook — apply theme, font, spellcheck to DOM
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 import type { FeatureKey } from "../stores/settings/feature-keys";
 import type { Editor } from "@tiptap/core";
 
 import { useShallow } from "zustand/shallow";
 
+import { useTranslation } from "../i18n/useTranslation";
 import { useFeatureFlags } from "../stores/settings/features";
 import { useSettingsStore } from "../stores/settings/store";
+import { usePluginStore } from "../stores/system/plugin";
 import { useThemeCssCacheStore } from "../stores/system/theme-css-cache";
 import {
   RIGHT_PANEL_MODE_FEATURE,
@@ -15,6 +17,10 @@ import {
 } from "../stores/ui/panel-feature";
 import { useUIStore } from "../stores/ui/ui";
 import { lookupThemes } from "../themes/installed-theme-defs";
+import {
+  themeBlocksApply,
+  themeRevocationFor,
+} from "../themes/theme-revocation";
 import { findThemeById, resolveThemeMode } from "../types/theme";
 import { applyFontVariables } from "../utils/editor/font-surfaces";
 import { resolveCodeMetrics } from "../utils/font/code-metrics";
@@ -29,6 +35,7 @@ import {
 import { useThemeCssHydration } from "./use-theme-css-hydration";
 
 export function useSettingsEffects(editor: Editor | null) {
+  const { t } = useTranslation();
   const {
     activeThemeId,
     codeFontFamily,
@@ -58,11 +65,63 @@ export function useSettingsEffects(editor: Editor | null) {
       editorMaxWidth: s.editorMaxWidth,
     })),
   );
+  // §361 Task 6 / spec 0049 §9.4 — a theme the registry has withdrawn as MALICIOUS stops
+  // being applied, and the app falls back to `system`.
+  //
+  // ‼️ COMPUTED DURING RENDER AND USED BY THE APPLY EFFECT AND THE HYDRATION HOOK, rather
+  // than fixed afterwards by an effect that writes the store. The store write happens too
+  // (below — `activeThemeId` has to stop naming a theme that must not be worn), but the
+  // derived id is what keeps the withdrawn theme from ever reaching `<html>`.
+  //
+  // Measured on this branch (2026-09-20), because the first version of this comment guessed
+  // and guessed wrong. Reverting to the effect-only shape — every reader below on
+  // `activeThemeId` — does NOT leave a `<style>` behind for a commit, because the store
+  // revert re-runs the apply effect and its first line is `clearThemeVars`. What it does is
+  // write the withdrawn theme's colours to `<html>` and take them off again inside one
+  // update, which the DOM cannot be asked about afterwards. `applyThemeVars` being called at
+  // all is the observable difference, and that is what
+  // `use-settings-effects-theme-revoked.test.tsx` records. The stored CSS is the plainer
+  // half: with the derived id the hydration hook never asks the disk for it.
+  //
+  // Only `malicious` — `themeBlocksApply` is `blocksLoad`, and that file carries the reading
+  // of §9.4 that makes it so.
+  const revocations = usePluginStore((s) => s.revocations);
+  const activeRevocation = themeRevocationFor(
+    activeThemeId,
+    installedThemes,
+    revocations,
+  );
+  const forceDeactivated = themeBlocksApply(activeRevocation);
+  const effectiveThemeId = forceDeactivated ? "system" : activeThemeId;
+  /** Theme ids already announced, so React's double-invoked effects (and any later
+   *  re-render that still sees the withdrawal) do not stack identical toasts. */
+  const announcedRevocations = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!forceDeactivated) return;
+    const withdrawn = installedThemes[activeThemeId];
+    useSettingsStore.getState().setActiveTheme("system");
+    if (announcedRevocations.current.has(activeThemeId)) return;
+    announcedRevocations.current.add(activeThemeId);
+    // The light DOM is sound HERE specifically, and the reason is ordering rather than
+    // trust: the only community CSS this document can be carrying is the theme that was
+    // just refused, and the apply effect — which reads `effectiveThemeId`, already
+    // `"system"` — has taken its `<style>` out before this runs. A withdrawn theme that was
+    // NOT active never had a `<style>` on the page to begin with, and reaches the user
+    // through the gallery's `PluginRevokedNotice`, which IS shadow-isolated.
+    useUIStore.getState().showToast(
+      t("settings.appearance.revokedDeactivatedToast", {
+        name: withdrawn?.manifest.name ?? activeThemeId,
+      }),
+      "warning",
+    );
+  }, [activeThemeId, forceDeactivated, installedThemes, t]);
+
   // §361 — a community theme's CSS text is not in the settings store (only a `css: boolean`
   // flag is; see `InstalledTheme`'s doc comment), so it has to be re-read off disk. This
   // hook does that re-read and drops the result in `useThemeCssCacheStore`, which the apply
   // effect below reads via `cssCacheEntries`.
-  useThemeCssHydration(activeThemeId, installedThemes);
+  useThemeCssHydration(effectiveThemeId, installedThemes);
   const cssCacheEntries = useThemeCssCacheStore((s) => s.entries);
 
   useEffect(() => {
@@ -83,10 +142,10 @@ export function useSettingsEffects(editor: Editor | null) {
       // 남는다. 그것이 #330 의 모양이다. 그래서 `data-theme` 도 `applyThemeCss` 도
       // 아래 한 자리에서만 결정된다.
       const themeDef =
-        activeThemeId === "system"
+        effectiveThemeId === "system"
           ? undefined
           : findThemeById(
-              activeThemeId,
+              effectiveThemeId,
               lookupThemes(customThemes, installedThemes, cssCacheEntries),
             );
       const mode =
@@ -112,7 +171,7 @@ export function useSettingsEffects(editor: Editor | null) {
       const colors = assets?.colors;
       if (
         mode !== undefined &&
-        appliesInlineVars(activeThemeId) &&
+        appliesInlineVars(effectiveThemeId) &&
         colors !== undefined
       ) {
         applyThemeVars(root, colors, mode);
@@ -144,7 +203,7 @@ export function useSettingsEffects(editor: Editor | null) {
     // AFTER this effect's first run (the hydration hook above fetches it asynchronously),
     // so the effect has to re-run once the cache fills in, or the theme stays colour-only
     // until something else happens to change activeThemeId/customThemes.
-  }, [activeThemeId, customThemes, installedThemes, cssCacheEntries]);
+  }, [effectiveThemeId, customThemes, installedThemes, cssCacheEntries]);
 
   useEffect(() => {
     // §perf-large-file C3.4: resolve via editor.view.dom rather than a global

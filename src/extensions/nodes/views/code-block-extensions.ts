@@ -25,6 +25,12 @@ import { getHighlightStyle } from "../code-block-highlight";
 
 export interface CodeBlockExtensionOptions {
   autoPairBrackets: boolean;
+  /**
+   * §361 / 0088 M3 — the syntax highlighting slot, reconfigured (never recreated) when the
+   * document's light/dark answer changes. The caller owns it for the same reason it owns
+   * the other four: a compartment has to outlive the CM it configures.
+   */
+  highlightCompartment: Compartment;
   /** The PM ↔ CM boundary keymap; placed FIRST so it wins over defaults. */
   keymapExtension: Extension;
   langExt: Extension | null;
@@ -55,7 +61,7 @@ export function buildCodeBlockExtensions(
     drawSelection(),
     bracketMatching(),
     ...(autoPairBrackets ? [closeBrackets()] : []),
-    syntaxHighlighting(getHighlightStyle()),
+    options.highlightCompartment.of(syntaxHighlighting(getHighlightStyle())),
     CMView.lineWrapping,
     CMState.tabSize.of(tabSize),
     indentUnit.of(" ".repeat(tabSize)),

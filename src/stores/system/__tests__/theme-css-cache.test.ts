@@ -47,3 +47,34 @@ describe("useThemeCssCacheStore", () => {
     expect(useThemeCssCacheStore.getState().entries["a:dark"]).toBe("2");
   });
 });
+
+// §361 Task 6 — `clearTheme` is what makes an update and an uninstall visible: the
+// hydration hook will not re-read a key it already has, so a stale entry keeps being
+// applied over bytes that have already been replaced on disk.
+describe("useThemeCssCacheStore.clearTheme", () => {
+  it("drops every mode of the named theme", () => {
+    useThemeCssCacheStore.getState().setCss("dracula:dark", "1");
+    useThemeCssCacheStore.getState().setCss("dracula:light", "2");
+    useThemeCssCacheStore.getState().clearTheme("dracula");
+    expect(useThemeCssCacheStore.getState().entries).toEqual({});
+  });
+
+  it("keeps a theme whose id merely starts with the same characters", () => {
+    // The separator is load-bearing: a `startsWith(themeId)` without the `:` would take
+    // `dracula-pro` down with `dracula`, which reads as "the other theme lost its CSS for
+    // no reason" long after the uninstall that caused it.
+    useThemeCssCacheStore.getState().setCss("dracula:dark", "1");
+    useThemeCssCacheStore.getState().setCss("dracula-pro:dark", "2");
+    useThemeCssCacheStore.getState().clearTheme("dracula");
+    expect(useThemeCssCacheStore.getState().entries).toEqual({
+      "dracula-pro:dark": "2",
+    });
+  });
+
+  it("does not replace entries when the theme has nothing cached (equality gate)", () => {
+    useThemeCssCacheStore.getState().setCss("a:dark", "1");
+    const before = useThemeCssCacheStore.getState().entries;
+    useThemeCssCacheStore.getState().clearTheme("nothing-cached");
+    expect(useThemeCssCacheStore.getState().entries).toBe(before);
+  });
+});

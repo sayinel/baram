@@ -75,6 +75,13 @@
 .theme-card-wrap {
   position: relative;
   display: flex;
+
+  /* §361 Task 6 — a column, because a card can now carry an update control and a
+     withdrawal notice beneath it. The delete and info buttons are position: absolute, so
+     they are out of flow and unaffected by the direction; the card keeps `flex: 1` and now
+     grows vertically instead of horizontally, which changes nothing for a card that has
+     neither extra (it is the only in-flow child). */
+  flex-direction: column;
 }
 
 .theme-card-wrap .theme-card {
@@ -90,6 +97,29 @@
 .theme-card-delete:hover {
   color: var(--color-status-danger-on-solid);
   background: var(--color-status-danger);
+}
+
+/* §361 Task 6 — the update badge IS the update button (theme-gallery.tsx explains why
+   they are one control). Full width under the card so a long version string wraps rather
+   than widening the grid column. */
+.theme-card-update {
+  padding: 3px 6px;
+  margin-top: 4px;
+  font-size: 0.7rem;
+  color: var(--color-accent-on-solid);
+  cursor: pointer;
+  background: var(--color-accent-solid);
+  border: none;
+  border-radius: 4px;
+}
+
+.theme-card-update:hover:not(:disabled) {
+  background: var(--color-accent-solid-hover);
+}
+
+.theme-card-update:disabled {
+  cursor: default;
+  opacity: 0.6;
 }
 
 .theme-import-error {
