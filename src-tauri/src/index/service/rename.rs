@@ -1,9 +1,9 @@
 use crate::context::manager::{resolve_canonical, Registered};
 use crate::context::ContextManager;
 use crate::index::{
-    backlink_keys, block_references_to, collect_md_files, own_block_reference_lines,
-    replace_block_id_refs_to, replace_block_reference_target, replace_wikilink_target,
-    rewrite_relative_wikilinks, IndexStats,
+    backlink_keys, block_reference_can_spell, block_references_to, collect_md_files,
+    own_block_reference_lines, replace_block_id_refs_to, replace_block_reference_target,
+    replace_wikilink_target, rewrite_relative_wikilinks, IndexStats,
 };
 use serde::Serialize;
 use std::collections::HashMap;
@@ -171,6 +171,10 @@ pub(crate) async fn rename_file_with_links_inner(
     // The canonical identity of the file being renamed, resolved before it
     // moves (the new path does not exist yet: resolve_canonical builds it on
     // its existing parent).
+    // Where the file was, for the write-time gate on its own content below:
+    // a standalone File context (no directory) confines the destination to
+    // this parent, as the check above did.
+    let old_parent = old_identity.parent().map(Path::to_path_buf);
     let remove_old = Mutation::Remove { path: old_identity };
 
     // The file's own content, read BEFORE it moves: it is what the index will
@@ -203,11 +207,11 @@ pub(crate) async fn rename_file_with_links_inner(
             unless: &named_for_its_own_references,
         }
     };
-    // A new stem no block reference can spell — `)`, `#` or `|` end its
-    // target — is not written into one. The wikilinks, which can spell it,
-    // are rewritten; the block references stay, and every file they stay in
-    // is reported, rewritten or not (`Rewrite::left_behind`).
-    let block_references_spellable = !new_target.contains([')', '#', '|']);
+    // A new stem no block reference can spell is not written into one. The
+    // wikilinks, which can spell it, are rewritten; the block references
+    // stay, and every file they stay in is reported, rewritten or not
+    // (`Rewrite::left_behind`).
+    let block_references_spellable = block_reference_can_spell(&new_target);
     let rewrite = |content: &str, ref_path: &str| {
         let content = replace_wikilink_target(content, &old_target, &new_target);
         if block_references_spellable {
@@ -243,7 +247,29 @@ pub(crate) async fn rename_file_with_links_inner(
         content: own_rewritten,
         left_behind: own_left_behind,
     } = rewrite(&renamed_content, new_path);
-    let (renamed_content, own_stale) = if own_rewritten != renamed_content {
+    // The gate every referrer passes right before it is written, for the
+    // renamed note too: its destination is resolved again NOW — after the
+    // move and every referrer write, not before them — and must still lie
+    // inside the file's contexts. A note that no longer does is not written,
+    // and the user hears that its references were left.
+    let still_confined = || {
+        resolve_canonical(new_path).is_ok_and(|identity| {
+            if dirs.is_empty() {
+                identity.parent() == old_parent.as_deref()
+            } else {
+                confined_by(&identity, &dirs)
+            }
+        })
+    };
+    let (renamed_content, own_stale) = if own_rewritten == renamed_content {
+        let named_for_more = matches!(unchanged, Unchanged::Report { .. })
+            && named_lines.contains_key(old_path)
+            && !named_for_its_own_references(old_path, &renamed_content);
+        (renamed_content, own_left_behind || named_for_more)
+    } else if !still_confined() {
+        log::warn!("rename: {new_path} no longer resolves inside the file's contexts, its references are left as they are");
+        (renamed_content, true)
+    } else {
         match crate::fs::write_file(new_path, &own_rewritten).await {
             Ok(()) => {
                 rewritten.updated.push(new_path.to_owned());
@@ -254,11 +280,6 @@ pub(crate) async fn rename_file_with_links_inner(
                 (renamed_content, true)
             }
         }
-    } else {
-        let named_for_more = matches!(unchanged, Unchanged::Report { .. })
-            && named_lines.contains_key(old_path)
-            && !named_for_its_own_references(old_path, &renamed_content);
-        (renamed_content, own_left_behind || named_for_more)
     };
     if own_stale {
         log::warn!(

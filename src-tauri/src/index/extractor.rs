@@ -452,27 +452,37 @@ pub fn replace_block_id_refs_to(
 /// touched (issue 620), and a file whose stem ends in `.md` never claims
 /// the note's references.
 ///
-/// A stem no reference can spell — one holding `)`, `#` or `|`, which end the
-/// target of `REF_REPLACE_RE` — is never written: the reference would parse
-/// as nothing, silently. The content comes back as it is. The file rename
-/// decides that before calling and asks `block_references_to` what it leaves,
-/// so the user hears of the file whether or not a wikilink in it was
-/// rewritten; this refusal is the writer's own, for any caller. The
-/// frontend's percent-escapes (§275.4) have no reader on this side, so
-/// escaping here would file the reference under a key nothing resolves.
+/// A stem no reference can spell (`block_reference_can_spell`) is never
+/// written: the reference would parse as nothing, silently. The content comes
+/// back as it is. The file rename decides that before calling and asks
+/// `block_references_to` what it leaves, so the user hears of the file
+/// whether or not a wikilink in it was rewritten; this refusal is the
+/// writer's own, for any caller.
 pub fn replace_block_reference_target(
     content: &str,
     ref_path: &str,
     old_target: &str,
     new_target: &str,
 ) -> String {
-    if new_target.contains([')', '#', '|']) {
+    if !block_reference_can_spell(new_target) {
         return content.to_owned();
     }
     visit_block_references_to(content, ref_path, old_target, |id, display| {
         Some(format!("(({new_target}#^{id}{display}))"))
     })
     .0
+}
+
+/// Whether a block reference can name a file with this stem. `)`, `#` and `|`
+/// end the target of `REF_REPLACE_RE` (and of the index's `BLOCK_REF_RE`);
+/// a line break ends the line every scanner reads, so a reference holding one
+/// straddles two lines and parses as nothing. A file name may hold any of
+/// these on macOS and Linux (only `/` and NUL are refused). The frontend's
+/// percent-escapes (§275.4) have no reader on this side, so escaping here
+/// would file the reference under a key nothing resolves; the rename leaves
+/// such references and reports their files instead.
+pub fn block_reference_can_spell(stem: &str) -> bool {
+    !stem.contains([')', '#', '|', '\n', '\r'])
 }
 
 /// How many block references (embeds included) to `old_target` `content`
@@ -1179,11 +1189,12 @@ mod tests {
     #[test]
     fn a_file_rename_to_a_stem_no_block_reference_can_spell_leaves_the_references_alone() {
         // `((target#^id))` cannot hold `)`, `#` or `|` in its target — the
-        // reference regex stops at them — and the Rust side has no escape
+        // reference regex stops at them — nor a line break, which the
+        // scanners never read across; and the Rust side has no escape
         // convention (the frontend's percent-escapes are its own). Writing
         // such a stem would leave a reference nothing parses, silently; the
         // references stay, and the rename reports the file instead.
-        for stem in ["note (draft)", "c#", "a|b"] {
+        for stem in ["note (draft)", "c#", "a|b", "two\nlines", "cr\rhere"] {
             let content = "see ((old#^a)) and {{embed ((old#^a))}}";
             assert_eq!(
                 replace_block_reference_target(content, "/v/referrer.md", "old", stem),
