@@ -138,7 +138,6 @@ export const useSettingsStore = create<SettingsState>()(
         lineNumbers: state.lineNumbers,
         autoPairBrackets: state.autoPairBrackets,
         autoLoadVideoEmbeds: state.autoLoadVideoEmbeds,
-        editorMaxWidth: state.editorMaxWidth,
         pdfRailWidth: state.pdfRailWidth,
         zoomLevel: state.zoomLevel,
         theme: state.theme,

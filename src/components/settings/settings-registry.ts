@@ -9,11 +9,22 @@ import type { TaskScanScope } from "../../utils/tasks/task-scan-scope";
 
 import { useShallow } from "zustand/shallow";
 
+import { DIALS } from "../../appearance/dials";
+import { resolveDials } from "../../appearance/merge";
 import { AVAILABLE_LOCALES, LOCALE_LABELS } from "../../i18n";
 import { useAIStore } from "../../stores/ai/ai";
 import { AI_PROVIDER_IDS, AI_PROVIDERS } from "../../stores/ai/providers";
 import { useSettingsStore } from "../../stores/settings/store";
 import { TASK_SCAN_SCOPES } from "../../utils/tasks/task-scan-scope";
+
+// §366 — editorMaxWidth 항목의 슬라이더 범위는 다이얼의 `range`에서 가져온다
+// (브리프 Step 5). 리터럴로 다시 적으면 슬라이더 끝에서 값이 parse에 걸려
+// 조용히 버려지는 §364 dials.ts의 함정을 여기서도 반복하게 된다.
+const editorMaxWidthDial = DIALS.find((d) => d.id === "editorMaxWidth");
+if (!editorMaxWidthDial) {
+  throw new Error("§366 editorMaxWidth dial missing from DIALS");
+}
+const editorMaxWidthRange = editorMaxWidthDial.range;
 
 export interface SearchableSetting {
   category: SettingsTab;
@@ -72,12 +83,12 @@ export const NAVIGATE_CONTROL: SettingControlMeta = {
  *  (a keybinding override, an extension setting, a recent folder) does not rebuild it
  *  (issue 267). Add a field here when a new entry reads it. */
 const selectRegistrySettings = (s: SettingsState) => ({
+  appearanceOverrides: s.appearanceOverrides,
   autoLoadVideoEmbeds: s.autoLoadVideoEmbeds,
   autoPairBrackets: s.autoPairBrackets,
   autoSave: s.autoSave,
   autoSaveDelay: s.autoSaveDelay,
   autoUpdateLinks: s.autoUpdateLinks,
-  editorMaxWidth: s.editorMaxWidth,
   fontSize: s.fontSize,
   highlight: s.highlight,
   inlineMath: s.inlineMath,
@@ -92,7 +103,7 @@ const selectRegistrySettings = (s: SettingsState) => ({
   setAutoSave: s.setAutoSave,
   setAutoSaveDelay: s.setAutoSaveDelay,
   setAutoUpdateLinks: s.setAutoUpdateLinks,
-  setEditorMaxWidth: s.setEditorMaxWidth,
+  setDial: s.setDial,
   setFontSize: s.setFontSize,
   setHighlight: s.setHighlight,
   setInlineMath: s.setInlineMath,
@@ -540,19 +551,23 @@ export function useSettingsRegistry(): SearchableSetting[] {
         settings.setAutoLoadVideoEmbeds,
       ),
     },
+    // ── Appearance ───────────────────────────────────────────────────────────
+    // §366 — editorMaxWidth은 외관 다이얼이 됐다(Task 7). 키 namespace는 옛
+    // `editor` 이력을 그대로 쓴다 — 위 주석(§342 규칙 3)과 같은 이유로, 탭을
+    // 정하는 것은 이 값이 아니라 `category`다.
     {
       id: "editorMaxWidth",
       label: "settings.editor.maxWidth",
       description: "settings.editor.maxWidth.desc",
-      category: "editor",
-      section: "settings.editor.display",
+      category: "appearance",
+      section: "settings.appearance.layout",
       control: makeSliderControl(
-        () => settings.editorMaxWidth,
-        settings.setEditorMaxWidth,
-        { min: 0, max: 2048, step: 50 },
+        () =>
+          resolveDials({}, settings.appearanceOverrides).editorMaxWidth.value,
+        (v) => settings.setDial("editorMaxWidth", v),
+        editorMaxWidthRange,
       ),
     },
-    // ── Appearance ───────────────────────────────────────────────────────────
     {
       id: "activeThemeId",
       label: "settings.appearance.theme",

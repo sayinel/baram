@@ -169,6 +169,12 @@ const ALLOWLIST = new Set([
   // 돌기 전에도 스타일시트 혼자 맞다.
   "--editor-code-font-size",
   "--editor-code-line-height",
+  // §364/§366 외관 다이얼 — `resolveDials`가 사용자 층에만 값이 있을 때 (희소하게)
+  // `useAppearanceDials`를 통해 `<html>`에 인라인으로 쓴다(dials.ts, apply.ts).
+  // `editor/base.css`의 `var(--editor-max-width, none)` fallback이 다이얼을 쓴
+  // 적 없는 사용자에게도 스타일시트 혼자 맞게 만든다 — --editor-line-height와
+  // 같은 이유로 토큰이 아니다.
+  "--editor-max-width",
   "--editor-zoom",
   "--journal-font-family",
   "--journal-header-bg",
