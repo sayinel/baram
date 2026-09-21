@@ -78,7 +78,7 @@
     "author": "Fixture Author",
     "description": "A theme used only by the cross-language round-trip test (0091 fix round 1, Finding 3).",
     "engines": {
-      "baram": ">=0.0.0"
+      "baram": ">=0.7.4"
     },
     "id": "fixture-theme",
     "license": "MIT",
