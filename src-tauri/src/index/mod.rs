@@ -561,6 +561,41 @@ mod tests {
         assert!(index.referring_lines_to("nothing").is_empty());
     }
 
+    #[test]
+    fn every_reference_the_index_files_under_a_stem_is_visited_by_one_rewrite_pass() {
+        // issue 678: what the index counts must be what the rename rewrites.
+        // The index files a link of ANY kind under its target's key — one
+        // arm of `extract_links` away from a fourth kind joining the bucket —
+        // while the rewrite is the union of two syntax-specific passes. A
+        // kind in the bucket that no pass visits is left in every referrer
+        // and reported, which reaches a maintainer as a toast, not a failing
+        // test. So compare the two as COUNTS, not as a list of the kinds we
+        // know: the `.md` guard taught that an enumeration slides into
+        // "therefore the rest is safe".
+        //
+        // The fixture must hold no self-reference: `((#^id))` is filed under
+        // the REFERRER's own stem, so it is not in this bucket and no pass
+        // visits it. A path-qualified reference is filed elsewhere too.
+        let content =
+            "see [[target]] and ((target#^b1))\n{{embed ((target#^b2))}}\n((dir/target#^b1))";
+        let mut index = LinkIndex::new();
+        index.update_file_from_content("/vault/r.md", content);
+        let filed = index
+            .incoming
+            .get(&file_key("target"))
+            .map_or(0, |entries| {
+                entries
+                    .iter()
+                    .filter(|e| e.source_path == "/vault/r.md")
+                    .count()
+            });
+        assert_eq!(
+            wikilinks_to(content, "target") + block_references_to(content, "/vault/r.md", "target"),
+            filed,
+            "the index files a reference under this stem that neither rewrite pass visits"
+        );
+    }
+
     // §33 the referrers of a stem, as a file rename reads them
     #[test]
     fn test_referring_lines_name_every_file_that_links_to_a_target() {

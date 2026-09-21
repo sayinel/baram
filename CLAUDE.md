@@ -160,6 +160,21 @@ baram/
   불변), 줄 단위 스캔은 `content.lines()` 가 아니라 `source_lines`(CRLF 에서 오프셋이 샌다). frontmatter 는 잘라내되 텍스트(속성
   링크는 링크). 프런트 `block-id-rename-markdown.ts` 와의 계약은 `src-tauri/src/md/fixtures/literal-regions.json` 이 양쪽에서 읽힌다.
   tag·task 스캐너의 느슨한 fence 규칙은 별개 계약이라 여기 얹지 말 것
+- **파일 rename 은 index 가 세는 것을 전부 고치거나, 못 고친 것을 보고한다 (#678)**: 불변식 셋이다 —
+  ① index 가 세는 것 = rename 이 고치는 것, ② 문법이 쓸 수 없는 이름은 쓰지 말고 남긴다, ③ 남긴 것은 보고한다.
+  ‼️ **링크 종류를 더하면 ①이 먼저 깨진다** — `mod.rs` 의 `incoming` 은 `extract_links` 가 내는 **모든** 항목을
+  target 키 아래 담으므로 새 종류는 추출되는 순간 바구니에 들어오는데, `rewriter.rs` 의 치환은 문법별 패스의
+  합집합이고 후보 필터가 `link_type != "wikilink"` 라는 **부정** 필터다(새 종류가 block 참조 후보로 흘러들어
+  아무것도 매치되지 않는다). 손댈 곳 순서: `extractor.rs`(regex + `link_type` arm) → `rewriter.rs`(visitor·counter·
+  `…_can_spell` 삼종) → `rename/file.rs` 의 `LinkPasses`(②③이 여기에만 산다) → `own_block_reference_lines`
+  (같은 stem 예외가 새 종류의 자기 참조를 놓치면 과소 계수). 게이트는 `mod.rs` 의
+  `every_reference_the_index_files_under_a_stem_is_visited_by_one_rewrite_pass` 하나 — **개수로 비교**한다
+  (종류를 열거하면 "그러므로 나머지는 안전" 으로 미끄러진다). 쓸 수 있는 이름인가의 판정은 문자 열거가 아니라
+  `link_reads_back_as_the_file`(읽는 쪽이 그 파일로 되돌려 읽는가)이 본체다
+  - **`rename/file.rs` 를 베껴 "폴더로 이동" 을 만들면 상대 경로 링크가 조용히 끊긴다** — 이동은 stem 을 바꾸지
+    않아 `stem_unchanged` 가 `Unchanged::Ignore` 로 가고 두 패스가 no-op 이 된다. `rewrite_relative_wikilinks`
+    (호출자는 `rename/namespace.rs` 하나)도 답이 아니다 — 그건 *옮겨진 디렉터리로 들어가는* 링크를 고치지,
+    옮겨진 노트 자신의 `[[./sibling]]` 을 고치지 않는다
 - **vault 경계는 자기를 인가할 수 없다 (§329–§336)**: 웹뷰가 준 경로로 asset scope를 부여하는
   커맨드는 부여 **전에** `approval_cmd::ensure_approved`를 통과해야 한다. 승인 기록은 Rust 소유
   `{app_data_dir}/approved-roots.json` — `config.json`은 웹뷰가 임의 키로 쓸 수 있어 거기 두면 무효다
