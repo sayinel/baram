@@ -175,9 +175,10 @@ export function ExportDialog({ editor }: ExportDialogProps) {
   // §362 — the palette `tokens` carries, resolved here rather than in
   // export.ts: the palette specifically arrives at exportAsHTML/exportAsPDF
   // as an argument, not a store read (0091 final review MEDIUM-1 — not "the
-  // HTML/PDF path", which does read the store elsewhere: export.ts's
-  // `FontExportOptions` doc enumerates those reads — `codeBlockLineNumbers`,
-  // `locale`). Mirrors ThemeEditor.tsx's `resolvedTheme`/`restorePreview` —
+  // HTML/PDF path is store-free": that path reads `codeBlockLineNumbers` in
+  // `captureEditorHTML`; `locale` is read by `exportWithPandoc`, a sibling
+  // entry point this dialog also calls, not by the HTML/PDF path. `export.ts`'s
+  // `FontExportOptions` doc holds the enumeration.). Mirrors ThemeEditor.tsx's `resolvedTheme`/`restorePreview` —
   // same lookup, same `resolveThemeMode` call, so a theme that resolves for
   // editing resolves the same way for export.
   const resolvedTheme = useMemo(

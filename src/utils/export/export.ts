@@ -31,16 +31,16 @@ import { resolveZettelLinksForExport } from "./zettel-link-resolve";
  * §353 — the user's chosen fonts, read by the caller and passed through as
  * arguments here, rather than by this module reading the store itself.
  *
- * ‼️ That does NOT make this module store-free (0091 final review MEDIUM-1 —
- * the fix round 1 wording here claimed the HTML/PDF *path*, and was still
- * wrong: it measured the FILE, not the path it was making a claim about).
- * `useSettingsStore` is read twice on paths both `exportAsHTML` and
- * `exportAsPDF` reach: `captureEditorHTML` (`export-html.ts`) reads
- * `codeBlockLineNumbers`, and both entry points call it; `exportWithPandoc`
- * reads `locale` directly, below. What IS true, and what §362's two
- * citations of this comment actually mean: fonts and the theme palette
- * specifically arrive as arguments from the caller (`ExportDialog`), not
- * from a third read here.
+ * ‼️ That does NOT make this module store-free. Measured over this file's
+ * transitive value-import closure (131 files; `import type` excluded; stores
+ * recorded, not descended), `useSettingsStore` is read at exactly two sites.
+ * One IS on the HTML/PDF path: `captureEditorHTML` (`export-html.ts`) reads
+ * `codeBlockLineNumbers`, and both `exportAsHTML` and `exportAsPDF` call it.
+ * The other is NOT: `exportWithPandoc`, below, reads `locale`, and neither
+ * HTML/PDF entry point reaches it. What IS true, and what §362's two
+ * citations of this comment mean: fonts and the theme palette arrive at
+ * `exportAsHTML`/`exportAsPDF` as arguments from the caller (`ExportDialog`),
+ * not from a third read here.
  */
 export interface FontExportOptions {
   bodyFont?: string;

@@ -193,13 +193,18 @@ article.baram-export a.footnote-definition-label { text-decoration: none; }
  * (`src-tauri/src/export/mod.rs`), so this sheet's print rules are what
  * actually ships, not a screen-only formality.
  *
- * The reset is still correct with NO theme block: `exportTokensCSS()`
- * (`export-editor-css.ts`) hard-imports the light semantic tokens, so
- * `--color-editor-bg` is light already in the common case, but the page
- * still needs to survive a `system`-theme document printed while the OS
- * prefers dark — `system` sets no inline override, so without this reset
- * `prefers-color-scheme: dark` could otherwise reach the page at print
- * time with nothing here to out-rank it.
+ * ‼️ The reset stays with NO theme block for one reason, and it is not the
+ * one an earlier draft of this comment gave. That draft said the page had to
+ * survive `prefers-color-scheme: dark` reaching it at print time; the 0091
+ * final review probed that and disproved it — no export-bound CSS file
+ * contains `prefers-color-scheme`, and the plain sheet with this reset
+ * REMOVED, printed under print + dark emulation in Chrome, still resolves
+ * `body` to `rgb(255,255,255)` and `--color-editor-bg` to `#fff`.
+ *
+ * The real reason is compatibility: `printCSS(false)` has to reproduce the
+ * pre-§362 text exactly, because "`default` output is byte-identical to
+ * before" is this feature's stated promise (plan 0091, R3). Removing the
+ * reset would change those bytes for no gain.
  */
 export function printCSS(hasThemeBlock: boolean): string {
   const resetBackground = hasThemeBlock
