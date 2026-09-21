@@ -197,7 +197,7 @@ function reportPostRenameOutcomes(
   }
   if (result.skippedFiles.length > 0) {
     logger.warn(
-      "[FileTree] Renamed, but these referring files could not be updated:",
+      "[FileTree] Renamed, but these files may still link to the old name:",
       result.skippedFiles,
     );
     sentences.push(

@@ -532,7 +532,9 @@ pub fn replace_block_reference_target(
 /// end the target of `REF_REPLACE_RE` (and of the index's `BLOCK_REF_RE`);
 /// a line break ends the line every scanner reads, so a reference holding one
 /// straddles two lines and parses as nothing. A file name may hold any of
-/// these on macOS and Linux (only `/` and NUL are refused). The frontend's
+/// these on the file systems macOS and Linux use natively (APFS and ext4
+/// refuse only `/` and NUL; others refuse more, which only shrinks what
+/// reaches here). The frontend's
 /// percent-escapes (§275.4) have no reader on this side, so escaping here
 /// would file the reference under a key nothing resolves; the rename leaves
 /// such references and reports their files instead.

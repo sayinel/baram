@@ -322,12 +322,13 @@ export interface RecentMenuEntry {
 // means nothing changed on disk; what fails after the point of no return is
 // reported here (issue 594).
 export interface RenameResult {
-  /** Files whose references, some or all, still spell the old name: a
-   *  referrer that could not be read, written or resolved; one the index
-   *  named that holds nothing to rename (issue 668); one holding block
-   *  references no reference can spell the new file name in (issue 678) —
-   *  such a file is in `updatedFiles` too when its wikilinks were rewritten;
-   *  and, for a file rename, the renamed note itself under its NEW path. */
+  /** Files the rename cannot vouch for — each MAY still spell the old name:
+   *  a referrer that could not be read, written or resolved; one the index
+   *  named that holds nothing to rename now (issue 668). For a file rename
+   *  only (issue 678): a file holding links (wikilinks, block references)
+   *  that cannot spell the new file name — it is in `updatedFiles` too when
+   *  its other links were rewritten — and the renamed note itself under its
+   *  NEW path. A block ID rename lists referrers only. */
   skippedFiles: string[];
   /** Files rewritten on disk; a clean open surface of each follows the disk. */
   updatedFiles: string[];

@@ -26,13 +26,14 @@ use super::state::{LinkIndexState, Mutation};
 #[serde(rename_all = "camelCase")]
 pub struct RenameResult {
     pub updated_files: Vec<String>,
-    /// Files whose references, some or all, still spell the old name after
-    /// the rename. A referrer the index named that is unreadable, unwritable,
-    /// or resolves outside the file's contexts; one named but holding nothing
-    /// to rename (a stale index, issue 668); one holding block references no
-    /// reference can spell the new name in (issue 678) — such a file may be in
-    /// `updated_files` too, for the wikilinks that were rewritten; and the
-    /// renamed note itself, under its new path, on the same terms.
+    /// Files the rename cannot vouch for: each MAY still spell the old name.
+    /// A referrer the index named that is unreadable, unwritable, or resolves
+    /// outside the file's contexts; one named but holding nothing to rename
+    /// now (a stale index, issue 668 — the reference may live elsewhere).
+    /// And, for a file rename only (issue 678): a file holding links that
+    /// cannot spell the new stem — it may be in `updated_files` too, for the
+    /// links that were rewritten — and the renamed note itself, under its
+    /// new path, on the same terms. A block ID rename lists referrers only.
     pub skipped_files: Vec<String>,
 }
 
