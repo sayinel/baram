@@ -196,9 +196,11 @@
      inline-block is shrink-to-fit — i.e. sized from the image, so that rule
      alone can never clamp anything. Clamping the wrapper against the
      paragraph is what actually keeps a 640px crop inside a narrower editor
-     column (`.tiptap` has no max-width and loses 4rem of padding per side,
-     so a 640px preview needs a ~768px pane — routinely not the case with the
-     file tree and a right panel open). */
+     column (`.tiptap`'s max-width defaults to none (§369) and it loses
+     4rem of padding per side either way, so a 640px preview needs a
+     ~768px pane — routinely not the case with the file tree and a right
+     panel open, and still not the case once a user has dialed the max
+     width down). */
   max-width: 100%;
   padding: 0;
   background-color: transparent;

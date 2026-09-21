@@ -20,11 +20,14 @@ import { TASK_SCAN_SCOPES } from "../../utils/tasks/task-scan-scope";
 // §366 — editorMaxWidth 항목의 슬라이더 범위는 다이얼의 `range`에서 가져온다
 // (브리프 Step 5). 리터럴로 다시 적으면 슬라이더 끝에서 값이 parse에 걸려
 // 조용히 버려지는 §364 dials.ts의 함정을 여기서도 반복하게 된다.
-const editorMaxWidthDial = DIALS.find((d) => d.id === "editorMaxWidth");
-if (!editorMaxWidthDial) {
-  throw new Error("§366 editorMaxWidth dial missing from DIALS");
-}
-const editorMaxWidthRange = editorMaxWidthDial.range;
+//
+// non-null 단정은 타입이 이미 보장하는 것을 런타임에 다시 확인하지 않는다는
+// 뜻이다 — `DIALS`는 `as const satisfies readonly DialDef[]`라 "editorMaxWidth"
+// id 를 가진 항목이 배열 리터럴에 존재함을 컴파일 타임에 고정하고, `find`가
+// 그 보장을 다시 좁혀 주지 못할 뿐이다. 모듈 최상단 `throw`였던 이전 형태는,
+// 만에 하나 이 가정이 깨지면 레지스트리를 쓰는 모든 화면(설정 전체)의 모듈
+// 로드를 막아 버렸다 — 깨져도 이 항목 하나만 무너지는 편이 낫다.
+const editorMaxWidthRange = DIALS.find((d) => d.id === "editorMaxWidth")!.range;
 
 export interface SearchableSetting {
   category: SettingsTab;
