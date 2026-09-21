@@ -1,3 +1,5 @@
+import type { DialValues } from "../dials";
+
 import { describe, expect, it } from "vitest";
 
 import { DIALS } from "../dials";
@@ -47,5 +49,14 @@ describe("DIALS", () => {
   it("emits the padding dial in rem, matching base.css's unit", () => {
     const pad = DIALS.find((d) => d.id === "editorPadding");
     expect(pad?.toVars(4)).toEqual({ "--editor-padding": "4rem" });
+  });
+
+  it("is keyed by dial ids and stays sparse", () => {
+    // 무엇이 이것을 실패시키는가: DialValues 가 total `Record<DialId, number>` 로
+    // 바뀌면 이 희소 리터럴이 타입 오류가 되어 파일이 컴파일되지 않는다. 희소성은
+    // §364.2 의 불변식이다 — 사용자 층은 명시적으로 바꾼 다이얼만 담는다.
+    const sparse: DialValues = { editorPadding: 2 };
+    expect(Object.keys(sparse)).toEqual(["editorPadding"]);
+    expect("editorMaxWidth" in sparse).toBe(false);
   });
 });
