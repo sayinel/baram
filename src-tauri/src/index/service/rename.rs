@@ -3,7 +3,8 @@ use crate::context::ContextManager;
 use crate::index::{
     backlink_keys, block_reference_can_spell, block_references_to, collect_md_files,
     own_block_reference_lines, replace_block_id_refs_to, replace_block_reference_target,
-    replace_wikilink_target, rewrite_relative_wikilinks, IndexStats,
+    replace_wikilink_target, rewrite_relative_wikilinks, wikilink_can_spell, wikilinks_to,
+    IndexStats,
 };
 use serde::Serialize;
 use std::collections::HashMap;
@@ -207,25 +208,28 @@ pub(crate) async fn rename_file_with_links_inner(
             unless: &named_for_its_own_references,
         }
     };
-    // A new stem no block reference can spell is not written into one. The
-    // wikilinks, which can spell it, are rewritten; the block references
-    // stay, and every file they stay in is reported, rewritten or not
-    // (`Rewrite::left_behind`).
+    // A new stem a link cannot spell is not written into one — a wikilink
+    // and a block reference are judged apart (`wikilink_can_spell`,
+    // `block_reference_can_spell`: `[[a^b]]` names the note `a`, `((a^b#^id))`
+    // is fine; `((a)b#^id))` parses as nothing, `[[a)b]]` is fine). The links
+    // the stem can be spelled in are rewritten; the others stay, and every
+    // file they stay in is reported, rewritten or not (`Rewrite::left_behind`).
+    let wikilinks_spellable = wikilink_can_spell(&new_target);
     let block_references_spellable = block_reference_can_spell(&new_target);
     let rewrite = |content: &str, ref_path: &str| {
-        let content = replace_wikilink_target(content, &old_target, &new_target);
-        if block_references_spellable {
-            return Rewrite {
-                content: replace_block_reference_target(
-                    &content,
-                    ref_path,
-                    &old_target,
-                    &new_target,
-                ),
-                left_behind: false,
-            };
-        }
-        let left_behind = block_references_to(&content, ref_path, &old_target) > 0;
+        let mut left_behind = false;
+        let content = if wikilinks_spellable {
+            replace_wikilink_target(content, &old_target, &new_target)
+        } else {
+            left_behind |= wikilinks_to(content, &old_target) > 0;
+            content.to_owned()
+        };
+        let content = if block_references_spellable {
+            replace_block_reference_target(&content, ref_path, &old_target, &new_target)
+        } else {
+            left_behind |= block_references_to(&content, ref_path, &old_target) > 0;
+            content
+        };
         Rewrite {
             content,
             left_behind,
@@ -433,8 +437,8 @@ struct Rewritten {
 
 /// What `rewrite` made of one referrer: the content to write, and whether it
 /// left a reference to the old name in it on purpose — a file rename does,
-/// for block references to a stem none can spell. Such a file is reported
-/// whether or not anything else in it changed.
+/// for the links (wikilinks, block references) that cannot spell the new
+/// stem. Such a file is reported whether or not anything else in it changed.
 struct Rewrite {
     content: String,
     left_behind: bool,

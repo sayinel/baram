@@ -54,6 +54,11 @@ static REPLACE_RE: LazyLock<Regex> = LazyLock::new(|| {
     .unwrap()
 });
 
+// §87 What `WIKILINK_RE`/`REPLACE_RE` read as a vault alias at the head of a
+// target — a stem that begins this way cannot be spelled in a wikilink.
+static ALIAS_PREFIX_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^[a-zA-Z][\w-]*::").unwrap());
+
 // §30a Block ref replace regex: ((target#^ID)) or ((target#^ID|display)) — also the
 // `((…))` inside `{{embed ((target#^ID))}}`, so an embed needs no pass of its own.
 static REF_REPLACE_RE: LazyLock<Regex> =
@@ -332,16 +337,68 @@ pub(crate) fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
 /// file whose stem itself ends in `.md` (`diagram.md.txt`) never claims the
 /// note `diagram.md`'s links. A link spelled with `.md` keeps that spelling
 /// on the new name.
+///
+/// A stem no wikilink can spell (`wikilink_can_spell`) is never written: the
+/// content comes back as it is, and the file rename, which decides that
+/// before calling, reports the files whose links it left (`wikilinks_to`).
 pub fn replace_wikilink_target(content: &str, old_target: &str, new_target: &str) -> String {
+    if !wikilink_can_spell(new_target) {
+        return content.to_owned();
+    }
+    visit_wikilinks_to(
+        content,
+        old_target,
+        |alias_prefix, captured_target, rest| {
+            let suffix = if captured_target.trim().ends_with(".md") {
+                ".md"
+            } else {
+                ""
+            };
+            Some(format!("[[{alias_prefix}{new_target}{suffix}{rest}]]"))
+        },
+    )
+    .0
+}
+
+/// Whether a wikilink can name a file with this stem. `]`, `|`, `#` and `^`
+/// end the target of `REPLACE_RE` (and of the index's `WIKILINK_RE`, the same
+/// class) — and `|`, `#` and `^` do worse than end it: what follows reads as
+/// a display, a heading or a block, so `[[a^b]]` silently names the note `a`.
+/// A leading `word::` reads as a vault alias (§87) the same way. A line break
+/// ends the line every scanner reads. A stem a wikilink cannot spell is never
+/// written into one: the rename leaves those links and reports their files,
+/// as it does for block references (`block_reference_can_spell` — a different
+/// set, judged apart: `)` is a wikilink's to spell, `^` a block reference's).
+pub fn wikilink_can_spell(stem: &str) -> bool {
+    !stem.contains([']', '|', '#', '^', '\n', '\r']) && !ALIAS_PREFIX_RE.is_match(stem)
+}
+
+/// How many wikilinks to `old_target` `content` holds in prose — exactly the
+/// ones `replace_wikilink_target` would rewrite. A file rename to a stem no
+/// wikilink can spell asks this to report the files whose links it leaves.
+pub fn wikilinks_to(content: &str, old_target: &str) -> usize {
+    visit_wikilinks_to(content, old_target, |_, _, _| None).1
+}
+
+/// The pass under both: every wikilink to `old_target` outside a literal
+/// region is offered to `respell` (alias prefix, target as spelled, rest) —
+/// `Some` replaces it, `None` keeps it — and counted. Returns the content and
+/// that count.
+fn visit_wikilinks_to(
+    content: &str,
+    old_target: &str,
+    respell: impl Fn(&str, &str, &str) -> Option<String>,
+) -> (String, usize) {
     // Match all wikilink forms: [[target]], [[target|display]], [[target#heading]], etc.
-    // Capture groups: (1) target, (2) rest — #heading, ^blockId, |display in any combo
+    // Capture groups: (1) alias, (2) target, (3) rest — #heading, ^blockId, |display in any combo
     // issue 620: a match inside a literal region is left as it is — the index
     // never counted it, the editor never read it. The literal set is read
     // only once a match names the old target: a vault-wide rename visits
     // every note, and most hold no such link.
     let old_key = file_key(old_target);
     let mut literal: Option<Literal> = None;
-    REPLACE_RE
+    let mut visited = 0;
+    let out = REPLACE_RE
         .replace_all(content, |caps: &regex::Captures| {
             let whole = caps.get(0).unwrap();
             let alias_prefix = caps.get(1).map(|m| m.as_str()).unwrap_or("");
@@ -353,18 +410,16 @@ pub fn replace_wikilink_target(content: &str, old_target: &str, new_target: &str
                     .get_or_insert_with(|| Literal::of(content))
                     .overlaps(whole.range())
             {
-                let suffix = if captured_target.trim().ends_with(".md") {
-                    ".md"
-                } else {
-                    ""
-                };
-                format!("[[{alias_prefix}{new_target}{suffix}{rest}]]")
+                visited += 1;
+                respell(alias_prefix, captured_target, rest)
+                    .unwrap_or_else(|| whole.as_str().to_string())
             } else {
                 // No match — return original
                 whole.as_str().to_string()
             }
         })
-        .to_string()
+        .to_string();
+    (out, visited)
 }
 
 /// §30a Rename `^old_id` → `^new_id` in the references a file makes TO ONE
@@ -1221,6 +1276,49 @@ mod tests {
         assert_eq!(
             replace_block_reference_target(content, "/v/referrer.md", "old", "new"),
             "((new#^a)) {{embed ((new#^b|shown))}} ((#^c)) ((dir/old#^d)) `((old#^e))`\n[[old]]\n"
+        );
+    }
+
+    #[test]
+    fn a_file_rename_to_a_stem_no_wikilink_can_spell_leaves_the_links_alone() {
+        // `[[a^b]]`, `[[a#b]]`, `[[a|b]]` read as the note `a` (a block, a
+        // heading, a display), `[[x::y]]` as the note `y` in the vault `x`,
+        // `[[a]b]]` and a line break as nothing. Writing such a stem would
+        // silently link another note or none; the links stay and the rename
+        // reports the file. `)` is a wikilink's to spell (only a block
+        // reference breaks on it), so that stem IS written — the pair.
+        let content = "see [[old]] and [[old#h|shown]] and [[old.md]]";
+        for stem in [
+            "c# notes",
+            "a|b",
+            "a^b",
+            "a]b",
+            "std::fs",
+            "two\nlines",
+            "cr\rhere",
+        ] {
+            assert_eq!(
+                replace_wikilink_target(content, "old", stem),
+                content,
+                "{stem:?}"
+            );
+            assert!(!wikilink_can_spell(stem), "{stem:?}");
+        }
+        assert_eq!(
+            replace_wikilink_target(content, "old", "note (draft)"),
+            "see [[note (draft)]] and [[note (draft)#h|shown]] and [[note (draft).md]]"
+        );
+        // `::` reads as an alias only behind a leading word; `1::2` does not.
+        assert!(wikilink_can_spell("1::2"));
+        assert!(wikilink_can_spell("note (draft)"));
+        // What the rename reports it left: the links in prose that name the
+        // old file — not a path-qualified one, one in code, or a block reference.
+        assert_eq!(
+            wikilinks_to(
+                "[[old]] [[OLD.md|x]] [[dir/old]] `[[old]]` ((old#^a))\n",
+                "old"
+            ),
+            2
         );
     }
 

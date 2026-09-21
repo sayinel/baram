@@ -16,7 +16,7 @@ pub use extractor::{
     block_reference_can_spell, block_references_to, collect_all_files, collect_md_files,
     find_unlinked_mentions, own_block_reference_lines, replace_block_id_refs_to,
     replace_block_reference_target, replace_wikilink_target, rewrite_relative_wikilinks,
-    UnlinkedMentionResult,
+    wikilink_can_spell, wikilinks_to, UnlinkedMentionResult,
 };
 
 use extractor::{extract_file_tags, extract_links};

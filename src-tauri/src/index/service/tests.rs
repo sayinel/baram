@@ -2412,6 +2412,52 @@ async fn renaming_a_file_whose_stem_ends_in_md_leaves_the_notes_referrers_alone(
 }
 
 #[tokio::test]
+async fn a_rename_to_a_stem_no_wikilink_can_spell_leaves_the_links_and_reports_the_files() {
+    // `[[a^b]]` reads as the note `a` with the block `b`: a wikilink cannot
+    // spell that stem, and writing it would silently link another note. The
+    // wikilinks stay and their files are reported; a block reference CAN
+    // spell `a^b` (its target ends at `)`, `#` or `|`), so it is rewritten —
+    // the two grammars are judged apart. `both.md` is updated AND reported.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-678l", true).await;
+    std::fs::write(dir.path().join("old.md"), "para ^b1\n").unwrap();
+    std::fs::write(dir.path().join("w.md"), "see [[old]] and [[old#h|shown]]\n").unwrap();
+    std::fs::write(dir.path().join("r.md"), "see ((old#^b1))\n").unwrap();
+    std::fs::write(dir.path().join("both.md"), "[[old]] ((old#^b1))\n").unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/old.md"),
+        &format!("{root}/a^b.md"),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        result.updated_files,
+        vec![format!("{root}/both.md"), format!("{root}/r.md")]
+    );
+    assert_eq!(
+        result.skipped_files,
+        vec![format!("{root}/both.md"), format!("{root}/w.md")]
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("w.md")).unwrap(),
+        "see [[old]] and [[old#h|shown]]\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
+        "see ((a^b#^b1))\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("both.md")).unwrap(),
+        "[[old]] ((a^b#^b1))\n"
+    );
+}
+
+#[tokio::test]
 async fn a_rename_that_keeps_the_stem_rewrites_nothing_and_reports_nothing() {
     // issue 678: `old.md` → `old.txt` changes no reference — every referrer
     // is unchanged, and none of them is stale news.
