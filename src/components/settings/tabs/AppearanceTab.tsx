@@ -10,7 +10,6 @@
 import { useState } from "react";
 
 import { useTranslation } from "../../../i18n/useTranslation";
-import { AppearanceDialRow } from "../appearance-dial-row";
 import { SettingsSectionHeader } from "../settings-shared";
 import { ThemeEditor } from "../ThemeEditor";
 import { ThemeGallery } from "./theme-gallery";
@@ -41,16 +40,6 @@ export function AppearanceTab() {
         title={t("settings.appearance.workspacePresets")}
       />
       <WorkspacePresets />
-      {/* §366 다이얼 두 개 — 출처 배지와 되돌리기는 AppearanceDialRow 안에 산다. */}
-      <SettingsSectionHeader title={t("settings.appearance.layout")} />
-      <AppearanceDialRow
-        dialId="editorMaxWidth"
-        label={t("settings.appearance.lineWidth")}
-      />
-      <AppearanceDialRow
-        dialId="editorPadding"
-        label={t("settings.appearance.editorPadding")}
-      />
     </div>
   );
 }

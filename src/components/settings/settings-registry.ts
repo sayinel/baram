@@ -532,6 +532,22 @@ export function useSettingsRegistry(): SearchableSetting[] {
         settings.setLineNumbers,
       ),
     },
+    // §366 되돌림 — editorMaxWidth는 잠시 외관 다이얼로 Appearance 탭에
+    // 옮겨졌다가(Task 7) 돌아왔다. 다이얼 기계(병합·출처·되돌리기)는 그대로
+    // AppearanceDialRow가 맡고, 여기서 바뀌는 것은 분류(category/section)뿐이다.
+    {
+      id: "editorMaxWidth",
+      label: "settings.editor.maxWidth",
+      description: "settings.editor.maxWidth.desc",
+      category: "editor",
+      section: "settings.editor.display",
+      control: makeSliderControl(
+        () =>
+          resolveDials({}, settings.appearanceOverrides).editorMaxWidth.value,
+        (v) => settings.setDial("editorMaxWidth", v),
+        editorMaxWidthRange,
+      ),
+    },
     {
       id: "virtualizeLargeDocs",
       label: "settings.editor.virtualizeLargeDocs",
@@ -555,22 +571,6 @@ export function useSettingsRegistry(): SearchableSetting[] {
       ),
     },
     // ── Appearance ───────────────────────────────────────────────────────────
-    // §366 — editorMaxWidth은 외관 다이얼이 됐다(Task 7). 키 namespace는 옛
-    // `editor` 이력을 그대로 쓴다 — 위 주석(§342 규칙 3)과 같은 이유로, 탭을
-    // 정하는 것은 이 값이 아니라 `category`다.
-    {
-      id: "editorMaxWidth",
-      label: "settings.editor.maxWidth",
-      description: "settings.editor.maxWidth.desc",
-      category: "appearance",
-      section: "settings.appearance.layout",
-      control: makeSliderControl(
-        () =>
-          resolveDials({}, settings.appearanceOverrides).editorMaxWidth.value,
-        (v) => settings.setDial("editorMaxWidth", v),
-        editorMaxWidthRange,
-      ),
-    },
     {
       id: "activeThemeId",
       label: "settings.appearance.theme",
