@@ -58,6 +58,12 @@ pub(super) async fn apply_queued(state: &LinkIndexState, per_key: HashMap<String
 pub(super) struct Rewritten {
     pub(super) updated: Vec<String>,
     pub(super) skipped: Vec<String>,
+    /// ‼️ Not parallel to `updated`: a caller may add a file to `updated`
+    /// and queue that file's `Mutation` itself instead of putting it here.
+    /// The file rename does, for the renamed note — its `Mutation` carries
+    /// the identity resolved before the move, which only the caller holds.
+    /// Adding it here "for symmetry" queues a second `Update` for that path;
+    /// the two are identical, so nothing fails and no test catches it.
     pub(super) contents: Vec<(PathBuf, String)>,
 }
 

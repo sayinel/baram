@@ -9,8 +9,11 @@ pub(crate) fn normalize_target(target: &str) -> String {
     t.to_lowercase()
 }
 
-/// Normalize a file path to match against wikilink targets
-/// e.g., "/vault/notes/architecture.md" → "architecture"
+/// The key a FILE at this path is filed under — its stem through `file_key`,
+/// e.g. "/vault/notes/architecture.md" → "architecture". Read `file_key`
+/// before reaching for this or for `normalize_target`: they agree on a note
+/// and part ways on a file whose stem itself ends in `.md`, and picking the
+/// link rule for a file is how a rename once claimed another note's links.
 pub(crate) fn normalize_file_path(path: &str) -> String {
     let file_name = Path::new(path)
         .file_stem()

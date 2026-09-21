@@ -250,6 +250,12 @@ async fn rewrite_renamed_note(
         let named_for_more = named_for_more(&content);
         (content, left_behind || named_for_more)
     } else if !still_confined() {
+        // The note is still indexed under the identity resolved before the
+        // move, and rightly: `fs::rename` moved it to the literal `new_path`,
+        // so that is where it is. What this branch refuses is WRITING to a
+        // destination that no longer resolves inside the contexts — unlike a
+        // referrer, which was never moved and whose stale resolution would
+        // make the index describe a file the rename never touched.
         log::warn!("rename: {new_path} no longer resolves inside the file's contexts, its references are left as they are");
         (content, true)
     } else {
