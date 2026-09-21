@@ -260,13 +260,16 @@ impl LinkIndex {
         out
     }
 
-    /// §33 · issue 678: every `(file, line)` the index holds a reference to
-    /// the file with this `stem` on — wikilink, block reference or embed
-    /// alike, filed under the file's key (`file_key`, as `get_backlinks`
-    /// looks a file up; not `normalize_target`, which would read a stem
-    /// ending in `.md` as another note's). A file rename rewrites all three
-    /// kinds, and counts the lines each referrer was named for to tell a
-    /// same-stem note's own references apart from a stale index.
+    /// §33 · issue 678: every `(file, line)` filed under this `stem`'s own
+    /// key (`file_key`, not `normalize_target`, which would read a stem
+    /// ending in `.md` as another note's) — wikilink, block reference and
+    /// embed alike. NOT the zettel-id key that `backlink_keys` adds and
+    /// `get_backlinks` also reads: a bare `[[202607051530]]` is filed under
+    /// the id, so a rename neither rewrites nor reports it (as on main,
+    /// whose `get_files_linking_to` read the one key too). A file rename
+    /// rewrites all three kinds, and counts the lines each referrer was
+    /// named for to tell a same-stem note's own references apart from a
+    /// stale index.
     pub fn referring_lines_to(&self, stem: &str) -> Vec<(String, u32)> {
         let mut out: Vec<(String, u32)> = self
             .incoming

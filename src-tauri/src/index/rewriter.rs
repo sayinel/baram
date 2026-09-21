@@ -33,8 +33,8 @@ static REF_REPLACE_RE: LazyLock<Regex> =
 ///
 /// issue 678: the target test is the index's filing rule — the link's target
 /// through `normalize_target` (`.md` stripped, case folded) against the
-/// file's key, `file_key` of its stem — so every link the index counted for
-/// the old file is rewritten, none is left to be reported as stale, and a
+/// file's key, `file_key` of its stem — so every link the index filed under
+/// that key is rewritten, none is left to be reported as stale, and a
 /// file whose stem itself ends in `.md` (`diagram.md.txt`) never claims the
 /// note `diagram.md`'s links. A link spelled with `.md` keeps that spelling
 /// on the new name.
@@ -61,21 +61,38 @@ pub fn replace_wikilink_target(content: &str, old_target: &str, new_target: &str
     .0
 }
 
+/// Whether a link naming this stem would read back as the file whose stem it
+/// is. A link's target is read with `normalize_target`, which trims and
+/// strips a trailing `.md`; a file is filed under `file_key`, which does
+/// neither. They agree on an ordinary stem and part ways on one ending in
+/// `.md` — the file `foo.md.md`, whose `[[foo.md]]` names the note `foo` —
+/// or one padded with spaces. That is the `diagram.md.txt` confusion seen
+/// from the writing side: there a file claimed a note's links, here a file
+/// would hand its links to a note.
+fn link_reads_back_as_the_file(stem: &str) -> bool {
+    normalize_target(stem) == file_key(stem)
+}
+
 /// Whether a wikilink can name a file with this stem. `]`, `|`, `#` and `^`
 /// end the target of `REPLACE_RE` (and of the index's `WIKILINK_RE`, the same
 /// class) — and `|`, `#` and `^` do worse than end it: what follows reads as
 /// a display, a heading or a block, so `[[a^b]]` silently names the note `a`.
 /// A leading `word::` reads as a vault alias (§87) the same way. A line break
-/// ends the line every scanner reads. A stem a wikilink cannot spell is never
+/// ends the line every scanner reads, and a stem the reader would fold to
+/// another key is refused too (`link_reads_back_as_the_file`). A stem a
+/// wikilink cannot spell is never
 /// written into one: the rename leaves those links and reports their files,
 /// as it does for block references (`block_reference_can_spell` — a different
 /// set, judged apart: `)` is a wikilink's to spell, `^` a block reference's).
 pub fn wikilink_can_spell(stem: &str) -> bool {
-    !stem.contains([']', '|', '#', '^', '\n', '\r']) && !ALIAS_PREFIX_RE.is_match(stem)
+    !stem.contains([']', '|', '#', '^', '\n', '\r'])
+        && !ALIAS_PREFIX_RE.is_match(stem)
+        && link_reads_back_as_the_file(stem)
 }
 
-/// How many wikilinks to `old_target` `content` holds in prose — exactly the
-/// ones `replace_wikilink_target` would rewrite. A file rename to a stem no
+/// How many wikilinks to `old_target` `content` holds in prose — the ones
+/// `replace_wikilink_target` would rewrite if the new stem were one a
+/// wikilink can spell, which is the only case this is asked in. A file rename to a stem no
 /// wikilink can spell asks this to report the files whose links it leaves.
 pub fn wikilinks_to(content: &str, old_target: &str) -> usize {
     visit_wikilinks_to(content, old_target, |_, _, _| None).1
@@ -233,19 +250,21 @@ pub fn replace_block_reference_target(
 /// end the target of `REF_REPLACE_RE` (and of the index's `BLOCK_REF_RE`);
 /// a line break ends the line every scanner reads, so a reference holding one
 /// straddles two lines and parses as nothing. A file name may hold any of
-/// these on the file systems macOS and Linux use natively (APFS and ext4
-/// refuse only `/` and NUL; others refuse more, which only shrinks what
-/// reaches here). The frontend's
+/// these: APFS and ext4 permit them, refusing only `/` and NUL. A stricter
+/// file system only shrinks what reaches here, which this gate, refusing
+/// rather than trusting, does not mind. The frontend's
 /// percent-escapes (§275.4) have no reader on this side, so escaping here
 /// would file the reference under a key nothing resolves; the rename leaves
-/// such references and reports their files instead.
+/// such references and reports their files instead. A stem the reader would
+/// fold to another key is refused too (`link_reads_back_as_the_file`).
 pub fn block_reference_can_spell(stem: &str) -> bool {
-    !stem.contains([')', '#', '|', '\n', '\r'])
+    !stem.contains([')', '#', '|', '\n', '\r']) && link_reads_back_as_the_file(stem)
 }
 
 /// How many block references (embeds included) to `old_target` `content`
-/// holds in prose — exactly the ones `replace_block_reference_target` would
-/// rewrite: not a self-reference, which names no target, not a path-qualified
+/// holds in prose — the ones `replace_block_reference_target` would rewrite
+/// if the new stem were one a reference can spell, which is the only case
+/// this is asked in: not a self-reference, which names no target, not a path-qualified
 /// one, not one in a literal region. A file rename to a stem no reference can
 /// spell asks this to report the files whose references it leaves.
 pub fn block_references_to(content: &str, ref_path: &str, old_target: &str) -> usize {
@@ -519,7 +538,15 @@ mod tests {
         // convention (the frontend's percent-escapes are its own). Writing
         // such a stem would leave a reference nothing parses, silently; the
         // references stay, and the rename reports the file instead.
-        for stem in ["note (draft)", "c#", "a|b", "two\nlines", "cr\rhere"] {
+        for stem in [
+            "note (draft)",
+            "c#",
+            "a|b",
+            "two\nlines",
+            "cr\rhere",
+            "foo.md",
+            " padded ",
+        ] {
             let content = "see ((old#^a)) and {{embed ((old#^a))}}";
             assert_eq!(
                 replace_block_reference_target(content, "/v/referrer.md", "old", stem),
@@ -553,10 +580,13 @@ mod tests {
     fn a_file_rename_to_a_stem_no_wikilink_can_spell_leaves_the_links_alone() {
         // `[[a^b]]`, `[[a#b]]`, `[[a|b]]` read as the note `a` (a block, a
         // heading, a display), `[[x::y]]` as the note `y` in the vault `x`,
-        // `[[a]b]]` and a line break as nothing. Writing such a stem would
-        // silently link another note or none; the links stay and the rename
-        // reports the file. `)` is a wikilink's to spell (only a block
-        // reference breaks on it), so that stem IS written — the pair.
+        // `[[a]b]]` and a line break as nothing. A stem ending in `.md`
+        // (the file `foo.md.md`) is the same failure by another road: the
+        // reader strips that `.md` and `[[foo.md]]` names the note `foo`.
+        // Writing such a stem would silently link another note or none; the
+        // links stay and the rename reports the file. `)` is a wikilink's to
+        // spell (only a block reference breaks on it), so that stem IS
+        // written — the pair.
         let content = "see [[old]] and [[old#h|shown]] and [[old.md]]";
         for stem in [
             "c# notes",
@@ -566,6 +596,8 @@ mod tests {
             "std::fs",
             "two\nlines",
             "cr\rhere",
+            "foo.md",
+            " padded ",
         ] {
             assert_eq!(
                 replace_wikilink_target(content, "old", stem),
