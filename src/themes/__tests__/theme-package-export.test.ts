@@ -7,7 +7,12 @@ import type { PackageMeta } from "../theme-package-export";
 
 import { describe, expect, it } from "vitest";
 
-import { defaultColorsForBase } from "../../types/theme";
+import { parseBaramFloor } from "../../plugins/engines";
+import {
+  defaultColorsForBase,
+  THEME_COLOR_KEYS,
+  THEME_COLOR_VALUE_RE,
+} from "../../types/theme";
 import { validateThemeManifest } from "../theme-manifest";
 import { themePackageEntries } from "../theme-package-export";
 
@@ -118,5 +123,53 @@ describe("themePackageEntries", () => {
     const manifest = decodeManifest(entries) as Record<string, unknown>;
     delete (manifest as { engines?: unknown }).engines;
     expect(validateThemeManifest(manifest).valid).toBe(false);
+  });
+
+  it("engines.baram은 앱의 floor 파서가 실제로 이해하는 문법이다 (값이 아니라 문법을 고정)", () => {
+    // ‼️ 0091 fix round 1 리뷰 뮤테이션 D: MIN_BARAM_FOR_TOKENS_PACKAGE를 "banana"로
+    // 바꿔도 validateThemeManifest는 여전히 통과했다 — 그 함수는 "비어있지 않은
+    // 문자열"만 요구할 뿐 문법을 모른다. 문법을 실제로 아는 것은 설치 시점에 이 값을
+    // 읽는 unmetFloorAgainstApp이 쓰는 parseBaramFloor이고, 파싱 불가한 값은
+    // "floor 없음"으로 **조용히** 읽혀 — 이 필드가 아예 없는 것과 똑같이 동작하면서도
+    // 있는 것처럼 보인다. 미래에 이 상수가 실제 버전으로 바뀔 때 오타로
+    // ">= v0.8.0" 같은 값이 들어가도 이 테스트가 잡는다.
+    const entries = themePackageEntries(pairedTheme(), META);
+    const manifest = decodeManifest(entries) as { engines: { baram: string } };
+    expect(parseBaramFloor(manifest.engines.baram)).not.toBeNull();
+  });
+
+  it("light/tokens.json·dark/tokens.json은 THEME_COLOR_KEYS 24개를 모두 담고 값은 색 형식이다", () => {
+    // ‼️ 0091 fix round 1 리뷰 뮤테이션 G: 이 페이로드를 "{}"로 바꿔도 이 파일의 다른
+    // 테스트는 전부 초록이었다 — baram-theme.json의 모양만 보고 tokens.json의 내용은
+    // 아무것도 보지 않았기 때문이다. 설치측 readModeColors(theme-install.ts)가 거는
+    // 규칙과 같은 규칙(24키 전부 존재 + THEME_COLOR_VALUE_RE)을 여기서 고정한다 — 하나만
+    // 빠지거나 형식이 틀려도 readModeColors는 그 모드 전체를 조용히 undefined로
+    // 돌린다(설치는 성공하지만 색이 하나도 적용되지 않는다).
+    const entries = themePackageEntries(pairedTheme(), META);
+    for (const mode of ["light", "dark"] as const) {
+      const decoded = JSON.parse(
+        new TextDecoder().decode(entries[`${mode}/tokens.json`]),
+      ) as Record<string, unknown>;
+      for (const { key } of THEME_COLOR_KEYS) {
+        expect(decoded[key]).toEqual(expect.any(String));
+        expect(THEME_COLOR_VALUE_RE.test(decoded[key] as string)).toBe(true);
+      }
+    }
+  });
+
+  it("색을 가진 모드가 하나도 없으면 설치 검증에 실패한다 (버튼이 막지 못하는 유일한 조합)", () => {
+    // ThemeEditor는 항상 편집 중인 base 모드에 colors를 채우므로 이 입력은 오늘의 UI에서
+    // 닿을 수 없다 — 그래도 이 함수 자체의 계약으로 고정해 둔다(0091 fix round 1 리뷰
+    // Finding 5): 가드가 막는 것은 메타 필드뿐이고, modes:{}는 가드를 통과한 뒤에도
+    // validateModes(theme-manifest.ts)가 거부하는 설치 불가능한 패키지다.
+    const theme: ThemeDef = {
+      id: "custom-no-colors",
+      name: "No Colours",
+      source: "custom",
+      modes: { light: { css: "body { color: red; }" } },
+    };
+    const entries = themePackageEntries(theme, META);
+    expect(Object.keys(entries)).toEqual(["baram-theme.json"]);
+    expect(validateThemeManifest(decodeManifest(entries)).valid).toBe(false);
   });
 });

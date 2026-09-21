@@ -15,8 +15,13 @@
 // CSS 는 다루지 않는다. `ThemeEditor` 의 `resolvedTheme` 은 `lookupThemes` 를 캐시 인자
 // 없이 불러 설치 테마의 CSS 를 절대 `customThemes` 로 옮기지 않는데(그 파일의 주석이
 // §360 의 보안 논거가 거기 기댄다고 적어 두었다), 그 CSS 를 여기서 따로 읽어와 실으면 그
-// 논거가 깨진다. 그래서 이 함수는 `colors` 만 본다 — `css` 를 가진 모드는 `tokens.json`
-// 이 없으므로(관계는 `tokens`·`css` 각각 optional, §355) 통째로 건너뛴다.
+// 논거가 깨진다. 그래서 이 함수가 거는 규칙은 "`colors` 가 없으면 건너뛴다"이지
+// "`css` 를 가지면 건너뛴다"가 아니다 — 둘은 각각 optional이라(§355) `css`가 있어도
+// `colors`가 있을 수 있고, 그 경우 `tokens.json`은 그대로 실린다. 리뷰(0091 fix round 1,
+// Finding 8)가 짚었다: 예전 문구는 "css를 가진 모드는 tokens.json이 없다"는, 코드가
+// 실제로 하지 않는 함의를 담고 있었다. 오늘 `ThemeModeAssets.css`가 "이 계획 범위에서는
+// 항상 undefined"(`types/theme.ts`)라 둘이 실제로 갈리는 입력은 아직 없지만, 주장은
+// 코드가 하는 일을 말해야 한다.
 import type { ThemeDef, ThemeMode } from "../types/theme";
 import type { ThemeManifest } from "./theme-manifest";
 
@@ -31,17 +36,46 @@ export interface PackageMeta {
 }
 
 /**
- * `baram-theme.json` 이 요구하는 `engines.baram` 값.
+ * 이 함수가 만드는 패키지 포맷(모드별 `tokens.json` + 이 모양의 `baram-theme.json`)을
+ * 처음으로 설치할 수 있는 Baram 버전. `baram-theme.json`의 `engines.baram`에 그대로 쓴다.
  *
- * ‼️ 실행 중인 앱 버전(`getVersion()`)에서 유도하지 **않는다** — 그러려면 IPC 가 필요하고
- * 이 함수는 순수해야 한다(§363 인터페이스, `Promise` 가 아니다). `PackageMeta` 도 이 값을
- * 받지 않는다(0091 Task 3 브리프의 고정 인터페이스). 그래서 항상 통과하는 최소 하한을
- * 쓴다: 이 패키지가 쓰는 모드 맵 셰이프를 실제로 요구하는 최저 버전을 이 순수 함수 안에서
- * 확인할 방법이 없는 이상, 틀릴 수 있는 구체적 하한보다 항상-충족 하한이 정직하다.
- * `validateThemeManifest` 는 이 필드가 비어있지 않은 문자열이기만을 요구한다(§4) — semver
- * 형식 자체는 검증하지 않는다.
+ * ‼️ `">=0.0.0"`으로 두지 않는다(0091 fix round 1, Finding 3 — 리뷰가 잡았다). 실측:
+ * `git tag --contains e07eeb44`(§360 커밋, 테마 설치 경로를 처음 들여온 커밋)가
+ * **비어 있다** — 최신 태그는 `v0.7.3`이고 `package.json`도 `0.7.3`이다. 즉 **테마 설치
+ * 경로 자체가 아직 릴리스된 적이 없다**. `">=0.0.0"`은 "릴리스된 모든 Baram이 설치할 수
+ * 있다"는 주장인데, 사실은 "릴리스된 어떤 Baram도 테마 패키지를 설치할 수 없다"이므로 그
+ * 값은 정직하지 않다.
+ *
+ * (이 함수가 순수해서 `getVersion()`을 부를 수 없다는 것은 이 필드가 상수인 이유가 아니다
+ * — 앞 판의 이 주석이 그렇게 적었고 그것은 비약이었다. floor는 **런타임 값이 아니라
+ * 릴리스 사실**이라 상수로 두는 것 자체는 항상 순수하다. 값을 못 정하는 진짜 이유는
+ * 아래에 적힌 대로다: 그 릴리스가 아직 이름이 없다.)
+ *
+ * 그래서 지금은 **정확한 값을 쓸 수 없다** — 이 포맷을 처음 싣고 나갈 릴리스가 아직
+ * 존재하지 않기 때문이다. §360(테마 설치 경로)이 실제로 릴리스되는 날, 그 버전 번호로
+ * 이 상수를 바꿀 것. 그때까지는 어떤 값을 적어도 틀리므로, 최소한 문법은 유효해야 한다는
+ * 요구만 `parseBaramFloor`로 고정한다(테스트가 `"banana"` 같은 파싱 불가 문자열을 막는다
+ * — 그런 값은 `unmetFloorAgainstApp`에서 "의견 없음"으로 조용히 읽혀, 이 필드가 아예 없는
+ * 것과 똑같이 동작하면서도 있는 것처럼 보인다).
  */
-const PACKAGE_ENGINES_BARAM = ">=0.0.0";
+const MIN_BARAM_FOR_TOKENS_PACKAGE = ">=0.0.0";
+
+/**
+ * 테마 이름에서 패키지 id 기본값을 만든다 — `THEME_ID_RE`(`theme-manifest.ts`)가 요구하는
+ * `[a-z0-9-]+`만 남기고 나머지는 하이픈으로 접는다.
+ *
+ * ‼️ 제안일 뿐이다(0091 fix round 1, Finding 4) — `ThemeEditor`가 이 값을 id 입력의
+ * **초기값**으로만 쓰고, 저자가 그 뒤 자유롭게 고친다. 이름이 ASCII 영숫자·하이픈을 하나도
+ * 담지 않으면(예: 순한글 이름) 빈 문자열이 나올 수 있다 — 그 경우 저자가 직접 채워야
+ * 하고, 이 함수가 임의의 대체 문자열을 지어내지 않는다.
+ */
+export function slugifyThemeId(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
 
 export function themePackageEntries(
   theme: ThemeDef,
@@ -63,7 +97,7 @@ export function themePackageEntries(
   const manifest: ThemeManifest = {
     author: meta.author,
     description: meta.description,
-    engines: { baram: PACKAGE_ENGINES_BARAM },
+    engines: { baram: MIN_BARAM_FOR_TOKENS_PACKAGE },
     id: theme.id,
     license: meta.license,
     modes: manifestModes,

@@ -240,3 +240,78 @@ describe("ThemeEditor — leaving the editor", () => {
     expect(menuIpc.syncRecentMenu).toHaveBeenCalled();
   });
 });
+
+// §363 / 0091 fix round 1, Finding 1 (MAJOR) — the package-export guard
+// (`canExportPackage`, ThemeEditor.tsx) had zero coverage. Mutation C2
+// (`&&` → `||` in the guard) and mutation C (deleting `disabled={...}`
+// outright) were both green before these tests existed.
+describe("ThemeEditor — package export guard", () => {
+  beforeEach(() => {
+    document.documentElement.style.cssText = "";
+    useSettingsStore.setState({
+      activeThemeId: "system",
+      customThemes: [],
+      locale: "en",
+    });
+  });
+
+  function packageButton(): HTMLButtonElement {
+    return screen.getByRole("button", { name: "Export Theme Package" });
+  }
+
+  // `system` resolves to the "default-light" built-in, whose editor `name`
+  // starts as "Custom Default Light" (builtin source), so the id field's
+  // slugified default ("custom-default-light") is already valid — these
+  // tests only fill the four fields the id-default cannot supply.
+  function fillEveryFieldButOne(skip: string): void {
+    const fields: Record<string, string> = {
+      Author: "Ada",
+      Description: "A theme",
+      "License (e.g. MIT)": "MIT",
+      "Version (e.g. 1.0.0)": "1.0.0",
+    };
+    for (const [label, value] of Object.entries(fields)) {
+      if (label === skip) continue;
+      fireEvent.change(screen.getByLabelText(label), {
+        target: { value },
+      });
+    }
+  }
+
+  it("is disabled until all four meta fields are filled, then enables", () => {
+    render(<ThemeEditor onClose={() => {}} />);
+    expect(packageButton().disabled).toBe(true);
+
+    fillEveryFieldButOne("Version (e.g. 1.0.0)");
+    // Mutation C2 kill: three of four filled must NOT be enough if the
+    // guard genuinely requires every field (an `&&`→`||` mutant would
+    // already be enabled here, on the very first filled field).
+    expect(packageButton().disabled).toBe(true);
+
+    fireEvent.change(screen.getByLabelText("Version (e.g. 1.0.0)"), {
+      target: { value: "1.0.0" },
+    });
+    expect(packageButton().disabled).toBe(false);
+  });
+
+  it("stays disabled when only one of the four fields is filled (mutation C2)", () => {
+    render(<ThemeEditor onClose={() => {}} />);
+
+    fireEvent.change(screen.getByLabelText("Author"), {
+      target: { value: "Ada" },
+    });
+
+    expect(packageButton().disabled).toBe(true);
+  });
+
+  it("rejects a package id outside [a-z0-9-], even with everything else filled", () => {
+    render(<ThemeEditor onClose={() => {}} />);
+    fillEveryFieldButOne("");
+
+    fireEvent.change(screen.getByLabelText("id (e.g. my-theme)"), {
+      target: { value: "Not Valid!" },
+    });
+
+    expect(packageButton().disabled).toBe(true);
+  });
+});

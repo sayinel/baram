@@ -233,7 +233,10 @@
     color 0.15s;
 }
 
-.theme-action-btn:hover {
+/* 0091 fix round 1, Finding 9 — `:not(:disabled)` 없이는 disabled 버튼도 포인터
+   아래서 밝아졌다: `:disabled`(아래)는 cursor·opacity만 걸고 이 규칙과 같은
+   color·background-color 프로퍼티를 겹쳐 걸지 않기 때문이다. */
+.theme-action-btn:hover:not(:disabled) {
   color: var(--color-text-primary);
   background-color: var(--color-bg-subtle);
 }

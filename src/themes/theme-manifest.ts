@@ -18,8 +18,13 @@ import { THEME_MODES } from "../types/theme";
  * (`/^[A-Za-z0-9_-]+$/`, 대문자·언더스코어까지 허용하는 contribution id 규칙, 여기
  * 대상이 아니다). 테마 id는 설치 디렉터리 이름이 되므로, 느슨한 쪽을 쓰면 대소문자
  * 구분 없는 파일시스템에서 두 테마가 같은 디렉터리로 충돌한다.
+ *
+ * export한다(0091 fix round 1, Finding 4) — `ThemeEditor`의 패키지 id 입력이 여기 있는
+ * 것과 같은 규칙으로 미리 거부해야 하고(설치 시점에야 Rust가 독립적으로 재확인하는
+ * 규칙과 같은 값), 로컬로 다시 적으면 세 번째 사본이 생긴다. 이미 둘(TS 여기, Rust
+ * `install.rs`의 `read_staged_theme_manifest`)이 같은 문자 집합을 따로 적고 있다.
  */
-const THEME_ID_RE = /^[a-z0-9-]+$/;
+export const THEME_ID_RE = /^[a-z0-9-]+$/;
 
 /**
  * 이름·설명 길이 상한 — `use-theme-import.ts`의 이름 상한과 같은 값.

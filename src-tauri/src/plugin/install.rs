@@ -2123,6 +2123,48 @@ mod tests {
         );
     }
 
+    /// 0091 fix round 1, Finding 3 (MAJOR) — makes the reviewer's manual probe
+    /// (`task-3-review.md`) permanent. Shares `fixtures/theme-package.json` with the
+    /// frontend (`src/themes/__tests__/theme-package-fixture.test.ts`): that side asserts
+    /// `themePackageEntries(fixture.theme, fixture.meta)` reproduces `expectedManifest` and
+    /// `expectedEntryNames` exactly; this side builds a package to that same spec and proves
+    /// the REAL install functions accept it — the exact chain `theme_cmd::theme_package_build`
+    /// 's bytes go through once installed (`build_zip_bytes` → `extract_zip_bytes` →
+    /// `read_staged_theme_manifest`). Neither side derives from the other at test time; both
+    /// independently read the fixture, the same idiom `fixtures/manifest-boundary.json`
+    /// already uses for the plugin-manifest boundary (`registry.rs`).
+    #[test]
+    fn the_theme_package_fixture_shared_with_the_frontend_installs() {
+        let doc: serde_json::Value =
+            serde_json::from_str(include_str!("fixtures/theme-package.json")).unwrap();
+
+        let manifest_bytes = serde_json::to_vec(&doc["expectedManifest"]).unwrap();
+        let light_tokens = serde_json::to_vec(&doc["theme"]["modes"]["light"]["colors"]).unwrap();
+        let dark_tokens = serde_json::to_vec(&doc["theme"]["modes"]["dark"]["colors"]).unwrap();
+
+        let entries = vec![
+            ("baram-theme.json".to_string(), manifest_bytes),
+            ("light/tokens.json".to_string(), light_tokens.clone()),
+            ("dark/tokens.json".to_string(), dark_tokens.clone()),
+        ];
+
+        let bytes = crate::plugin::build_zip_bytes(&entries).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        extract_zip_bytes(&bytes, dir.path()).unwrap();
+
+        let (id, _text, _digest) = read_staged_theme_manifest(dir.path()).unwrap();
+        assert_eq!(id, doc["theme"]["id"].as_str().unwrap());
+
+        assert_eq!(
+            std::fs::read(dir.path().join("light/tokens.json")).unwrap(),
+            light_tokens
+        );
+        assert_eq!(
+            std::fs::read(dir.path().join("dark/tokens.json")).unwrap(),
+            dark_tokens
+        );
+    }
+
     /// ‼️ `ThemeAssetReader`'s contract, enforced at the layer that actually opens files.
     ///
     /// `inline-assets.ts` promises that a package-relative reference is handled as a FILE

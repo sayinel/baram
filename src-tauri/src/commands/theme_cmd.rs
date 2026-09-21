@@ -12,7 +12,7 @@
 // an install step; `theme_uninstall` (also §361) is unrelated lifecycle — removal rather
 // than installation; `theme_package_build` (§363) is the OTHER direction entirely — an
 // author exporting a theme, not this app installing one — and touches none of the install
-// tree at all. Neither of the three has an ordering to preserve.
+// tree at all. None of the three has an ordering to preserve.
 //
 //   theme_install_stage   → download + extract, installs nothing
 //   theme_stage_read      → the frontend reads the authored CSS, tokens and assets
