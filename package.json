@@ -144,7 +144,7 @@
     "jsdom": "^30.0.1",
     "knip": "^6.32.2",
     "lint-staged": "^17.5.1",
-    "prettier": "^3.9.6",
+    "prettier": "^3.9.8",
     "prettier-plugin-tailwindcss": "^0.8.1",
     "style-dictionary": "^5.5.0",
     "stylelint": "^17.15.0",
