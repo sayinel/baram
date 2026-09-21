@@ -131,7 +131,7 @@ pub(super) async fn rewrite_referrers(
         if new_content == content {
             if left_behind {
                 log::warn!(
-                    "rename: {ref_path} holds block references that cannot spell the new name; they are left as they are"
+                    "rename: {ref_path} holds links that cannot spell the new name; they are left as they are"
                 );
                 result.skipped.push(ref_path.clone());
             } else if let Unchanged::Report { unless } = unchanged {
@@ -168,7 +168,7 @@ pub(super) async fn rewrite_referrers(
         result.updated.push(ref_path.clone());
         if left_behind {
             log::warn!(
-                "rename: {ref_path} was rewritten, but its block references cannot spell the new name and are left as they are"
+                "rename: {ref_path} was rewritten, but some of its links cannot spell the new name and are left as they are"
             );
             result.skipped.push(ref_path.clone());
         }

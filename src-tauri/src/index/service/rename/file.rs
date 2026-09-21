@@ -271,8 +271,11 @@ async fn rewrite_renamed_note(
         }
     };
     if stale {
+        // "may": one cause counted the links it left, the other found none
+        // to rewrite and cannot say where the index's are — which is what
+        // `RenameResult::skipped_files` promises, so the log says no more.
         log::warn!(
-            "rename: {new_path} still holds references to its old name; they are left as they are"
+            "rename: {new_path} may still hold links to its old name; they are left as they are"
         );
         rewritten.skipped.push(new_path.to_owned());
     }
