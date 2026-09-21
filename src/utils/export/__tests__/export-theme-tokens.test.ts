@@ -1,4 +1,6 @@
 // src/utils/export/__tests__/export-theme-tokens.test.ts
+import type { ThemeColors, ThemeDef } from "../../../types/theme";
+
 import { describe, expect, it } from "vitest";
 
 import { BUILT_IN_THEMES } from "../../../types/theme";
@@ -73,5 +75,82 @@ describe("themeTokensBlock → generateStandaloneHTML (통합)", () => {
     const sheet = buildExportStylesheet();
     expect(sheet.startsWith(":root")).toBe(true);
     expect(sheet).not.toMatch(/\n{3,}/u);
+  });
+
+  // Final review HIGH-1 — PDF + tokens + a dark theme printed unreadable:
+  // `body { background: white; }` in `@media print` sat AFTER the theme
+  // block at the same `body {}` specificity and reset only the background,
+  // never `color`. So a dark theme's light `--color-editor-text` landed on
+  // a forced-white page — and `export.themeInExport.darkPrintHint` told the
+  // user to expect the opposite. The lead's ruling: when a theme block is
+  // present, print must NOT force the background back to white (the page
+  // stays dark, matching the hint and the HTML export); with no theme block
+  // (default/system), the reset must still happen — pinned both directions.
+  it("테마 블록이 있으면 print media가 배경을 흰색으로 되돌리지 않는다 — 안 그러면 다크 테마가 흰 바탕에 밝은 글씨로 인쇄된다", () => {
+    const sheet = buildExportStylesheet("", themeTokensBlock(tokyo, "dark"));
+    const printBlock = sheet.slice(sheet.indexOf("@media print"));
+    expect(printBlock).not.toMatch(/body\s*\{[^}]*background:\s*white/u);
+  });
+
+  it("테마 블록이 없으면(default/system) print media는 여전히 배경을 흰색으로 되돌린다 — 기존 동작 보존", () => {
+    const sheet = buildExportStylesheet();
+    const printBlock = sheet.slice(sheet.indexOf("@media print"));
+    expect(printBlock).toMatch(/body\s*\{[^}]*background:\s*white/u);
+  });
+});
+
+// Final review MEDIUM-3 — this function's sink (a raw string later embedded
+// as `<style>` text) is weaker than applyThemeVars's `setProperty` sink, and
+// nothing pinned that the whitelist added actually rejects an untrusted
+// object rather than merely never encountering one. `as ThemeColors` below
+// is deliberate: production's five writers of `colors` already validate,
+// so this bypasses that and hands the function exactly what CLAUDE.md's
+// "every ingress sanitises" universal says never reaches it in practice —
+// the case the hardening exists FOR, not the case it normally sees.
+describe("themeTokensBlock — an untrusted colour object (final review MEDIUM-3)", () => {
+  it("화이트리스트에 없는 키와 육각색이 아닌 값은 :root 블록에 새지 않는다", () => {
+    const malicious = {
+      ...tokyo!.modes.dark!.colors,
+      "--color-bg-default": "red; } </style><script>alert(1)</script>",
+      display: "none", // 진짜 CSS 프로퍼티 이름을 흉내 낸 임의 키
+    } as ThemeColors;
+    const evilTheme: ThemeDef = {
+      ...tokyo!,
+      modes: { dark: { colors: malicious } },
+    };
+    const css = themeTokensBlock(evilTheme, "dark");
+    expect(css).not.toContain("</style>");
+    expect(css).not.toContain("<script>");
+    expect(css).not.toContain("display:");
+    // 걸러진 키를 뺀 나머지 유효한 값은 그대로 남는다 — 통짜로 빈 문자열을
+    // 돌려주는 것도 "새지 않는다"를 통과하므로, 그건 별개로 확인한다.
+    expect(css).toContain("--color-bg-subtle:");
+  });
+
+  // §54 accentSolidFill(colors, base) — dark base에서는 accent 원본을
+  // 검증 없이 그대로 돌려준다(color-contrast.ts). 그래서 원본 24키만 걸러도
+  // 파생 9키 쪽으로 악성 값이 새어 나갈 수 있다 — derivedVars 의 결과물도
+  // 같은 정규식으로 다시 걸러야 하는 이유가 바로 이 통로다.
+  it("dark accentSolidFill의 원본 통과를 통해 악성 값이 파생 --color-accent-solid로 샐 수 없다", () => {
+    const evilValue = "red; } </style><script>alert(1)</script>";
+    const malicious = {
+      ...tokyo!.modes.dark!.colors,
+      "--color-accent-default": evilValue,
+    } as ThemeColors;
+    const evilTheme: ThemeDef = {
+      ...tokyo!,
+      modes: { dark: { colors: malicious } },
+    };
+    const css = themeTokensBlock(evilTheme, "dark");
+    expect(css).not.toContain("</style>");
+    expect(css).not.toContain("<script>");
+    expect(css).not.toContain("--color-accent-default:");
+    expect(css).not.toContain("--color-accent-solid:");
+    expect(css).not.toContain("--color-accent-solid-hover:");
+    // onSolidForeground는 입력을 되읽지 않고 항상 안전한 상수(WHITE/BLACK)를
+    // 돌려주므로(color-contrast.ts, 파싱 불가 입력은 WHITE 유지가 문서화된
+    // pre-#330 동작) 그 한 줄은 걸러지지 않고 그대로 남아야 한다 —
+    // "필터가 파생 블록 전체를 지운다"는 다른 결함과 구분하기 위한 양성 대조.
+    expect(css).toContain("--color-accent-on-solid: #ffffff;");
   });
 });

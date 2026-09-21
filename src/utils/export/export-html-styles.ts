@@ -174,13 +174,42 @@ article.baram-export a.footnote-definition-label { text-decoration: none; }
 .video-export-path { display: inline-block; max-width: 100%; overflow-wrap: anywhere; }
 `;
 
-/** Print-specific CSS */
-export const PRINT_CSS = `
+/**
+ * Print-specific CSS.
+ *
+ * §362 final review HIGH-1 — `body { background: white; }` ships ONLY when
+ * `hasThemeBlock` is false.
+ *
+ * ‼️ Without that split, this rule was a silent lie for `tokens` + a dark
+ * theme + PDF. `body` in `EXPORT_BASE_CSS` sets `background:
+ * var(--color-editor-bg)`, which a theme block resolves to the theme's dark
+ * fill — but this `@media print` rule sits LATER in the sheet at the same
+ * `body {}` specificity, so it always won and reset the background to
+ * white regardless. `color: var(--color-editor-text)` is never touched
+ * here, so the body kept the theme's LIGHT text — light text on a forced
+ * white page, while `export.themeInExport.darkPrintHint` told the user to
+ * expect the opposite (a dark background). Chrome's headless PDF renders
+ * with print media and `print_background: true`
+ * (`src-tauri/src/export/mod.rs`), so this sheet's print rules are what
+ * actually ships, not a screen-only formality.
+ *
+ * The reset is still correct with NO theme block: `exportTokensCSS()`
+ * (`export-editor-css.ts`) hard-imports the light semantic tokens, so
+ * `--color-editor-bg` is light already in the common case, but the page
+ * still needs to survive a `system`-theme document printed while the OS
+ * prefers dark — `system` sets no inline override, so without this reset
+ * `prefers-color-scheme: dark` could otherwise reach the page at print
+ * time with nothing here to out-rank it.
+ */
+export function printCSS(hasThemeBlock: boolean): string {
+  const resetBackground = hasThemeBlock
+    ? ""
+    : "\n  body { background: white; }";
+  return `
 @page {
   margin: 15mm;
 }
-@media print {
-  body { background: white; }
+@media print {${resetBackground}
   article.baram-export { max-width: none; padding: 0; margin: 0; }
   h1, h2, h3, h4, h5, h6 { page-break-after: avoid; }
   pre, blockquote, table, img, .math-block, .mermaid-block, .code-block-export,
@@ -205,6 +234,7 @@ export const PRINT_CSS = `
   }
 }
 `;
+}
 
 /**
  * The complete stylesheet an exported document carries, in cascade order.
@@ -240,7 +270,7 @@ export function buildExportStylesheet(
     themeTokens,
     editorContentCSS(),
     EXPORT_BASE_CSS.trim(),
-    PRINT_CSS.trim(),
+    printCSS(themeTokens !== "").trim(),
   ]
     .filter((block) => block !== "")
     .join("\n\n");
