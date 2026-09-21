@@ -39,12 +39,15 @@ export interface PackageMeta {
  * 이 함수가 만드는 패키지 포맷(모드별 `tokens.json` + 이 모양의 `baram-theme.json`)을
  * 처음으로 설치할 수 있는 Baram 버전. `baram-theme.json`의 `engines.baram`에 그대로 쓴다.
  *
- * ‼️ `">=0.0.0"`으로 두지 않는다(0091 fix round 1, Finding 3 — 리뷰가 잡았다). 실측:
- * `git tag --contains e07eeb44`(§360 커밋, 테마 설치 경로를 처음 들여온 커밋)가
- * **비어 있다** — 최신 태그는 `v0.7.3`이고 `package.json`도 `0.7.3`이다. 즉 **테마 설치
- * 경로 자체가 아직 릴리스된 적이 없다**. `">=0.0.0"`은 "릴리스된 모든 Baram이 설치할 수
- * 있다"는 주장인데, 사실은 "릴리스된 어떤 Baram도 테마 패키지를 설치할 수 없다"이므로 그
- * 값은 정직하지 않다.
+ * ‼️ 지금 이 상수는 `">=0.0.0"`이다 — 그러나 이것은 "이 버전 이상이면 전부 설치할 수
+ * 있다"는 하한 주장이 아니라, 정직한 값을 아직 쓸 수 없어서 남긴 자리표시자다(0091 fix
+ * round 1, Finding 3 — 리뷰가 "두지 않는다"고 잘못 읽히는 문구를 잡았고, 이 문단은 final
+ * review가 다시 잡은 재발을 고친 것). 실측: `git tag --contains e07eeb44`(§360 커밋,
+ * 테마 설치 경로를 처음 들여온 커밋)가 **비어 있다** — 최신 태그는 `v0.7.3`이고
+ * `package.json`도 `0.7.3`이다. 즉 **테마 설치 경로 자체가 아직 릴리스된 적이 없다**.
+ * `">=0.0.0"`이 진짜 하한이라면 "릴리스된 모든 Baram이 설치할 수 있다"는 뜻이 되는데,
+ * 사실은 "릴리스된 어떤 Baram도 테마 패키지를 설치할 수 없다"이므로 그 값 자체는
+ * 정직하지 않다.
  *
  * (이 함수가 순수해서 `getVersion()`을 부를 수 없다는 것은 이 필드가 상수인 이유가 아니다
  * — 앞 판의 이 주석이 그렇게 적었고 그것은 비약이었다. floor는 **런타임 값이 아니라
@@ -57,6 +60,10 @@ export interface PackageMeta {
  * 요구만 `parseBaramFloor`로 고정한다(테스트가 `"banana"` 같은 파싱 불가 문자열을 막는다
  * — 그런 값은 `unmetFloorAgainstApp`에서 "의견 없음"으로 조용히 읽혀, 이 필드가 아예 없는
  * 것과 똑같이 동작하면서도 있는 것처럼 보인다).
+ *
+ * ‼️ 이 상수를 바꾸는 날 `src-tauri/src/plugin/fixtures/theme-package.json`의
+ * `expectedManifest.engines.baram`도 같은 문자열을 박아 두므로 **함께** 바꿔야 한다 —
+ * 안 그러면 그 fixture 교차-언어 테스트가 (옛 값을 기대하며) 실패한다.
  */
 const MIN_BARAM_FOR_TOKENS_PACKAGE = ">=0.0.0";
 

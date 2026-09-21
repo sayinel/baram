@@ -103,9 +103,11 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
 
   // §363 — 배포용 패키지의 매니페스트가 요구하지만 이 편집기는 모르는 값들
   // (`PackageMeta`, theme-package-export.ts). 빈 채로 내보내면 설치되지 않는
-  // 패키지가 나오는 것이 이 기능의 유일한 실패 모드이므로, 아래 값이 전부
-  // 채워지기(그리고 id는 형식도 맞기) 전에는 패키지 내보내기 버튼을
-  // 비활성한다(canExportPackage).
+  // 패키지가 나온다 — 0091 final review가 잡았듯 이것이 "유일한" 실패 모드는
+  // 아니다(색 없는 모드가 조용히 빠지는 것도 별도 실패 모드이고, 아래
+  // handleExportPackage의 droppedModes 토스트가 그것을 알린다). 이 값들이
+  // 전부 채워지기(그리고 id는 형식도 맞기) 전에는 이 실패 모드 하나만
+  // 막으려고 패키지 내보내기 버튼을 비활성한다(canExportPackage).
   const [packageAuthor, setPackageAuthor] = useState("");
   const [packageDescription, setPackageDescription] = useState("");
   const [packageLicense, setPackageLicense] = useState("");
@@ -460,7 +462,9 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
         </button>
         {/* 배포 가능한 zip. 위 필드가 다 차고 id 형식이 맞을 때까지
             비활성(§363) — 비운 채 내보내면 이 앱조차 설치할 수 없는 패키지가
-            나온다. title은 disabled일 때만 이유를 알린다(0091 fix round 1,
+            나온다(이 버튼이 막는 실패 모드 하나일 뿐 — 색 없는 모드가 빠지는
+            것은 별도이고, handleExportPackage의 droppedModes 토스트가 그것을
+            알린다). title은 disabled일 때만 이유를 알린다(0091 fix round 1,
             Finding 9 — 예전에는 비활성 상태가 이유 없이 회색이었다). */}
         <button
           className="theme-action-btn"
