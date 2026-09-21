@@ -41,4 +41,37 @@ describe("resolveDials", () => {
     const r = resolveDials({ display: "none" } as never, {});
     expect(Object.keys(r).sort()).toEqual(["editorMaxWidth", "editorPadding"]);
   });
+
+  it("falls back to defaults when the theme layer is null", () => {
+    // 무엇이 이것을 실패시키는가: 컨테이너를 값처럼 다뤄 `theme[id]`를 바로
+    // 인덱싱하면, `null["editorMaxWidth"]`가 TypeError를 던진다. zustand의
+    // 기본 얕은 병합이 persisted `"appearanceOverrides": null`을 그대로
+    // state에 앉히므로(store.ts에 커스텀 merge:가 없다), 이 경로는 매 앱
+    // 시작마다 도는 effect 안에서 실제로 일어난다.
+    const r = resolveDials(null as never, {});
+    expect(r.editorMaxWidth).toEqual({ origin: "default", value: 800 });
+  });
+
+  it("falls back to defaults when the user layer is null", () => {
+    const r = resolveDials({}, null as never);
+    expect(r.editorMaxWidth).toEqual({ origin: "default", value: 800 });
+  });
+
+  it("falls back to defaults when a layer is undefined", () => {
+    // 무엇이 이것을 실패시키는가: undefined도 null과 같은 방식으로 인덱싱하면
+    // 던진다 — 가드가 null만 잡고 undefined를 놓치면 이 케이스만 따로 깨진다.
+    const r = resolveDials(undefined as never, undefined as never);
+    expect(r.editorMaxWidth).toEqual({ origin: "default", value: 800 });
+    expect(r.editorPadding).toEqual({ origin: "default", value: 4 });
+  });
+
+  it("treats a non-object layer as speaking for nothing", () => {
+    // 무엇이 이것을 실패시키는가: 가드가 "null만" 걸러내고 "객체가 아니면"을
+    // 놓치면, 문자열 층을 넘겨도 죽지는 않겠지만 (인덱싱이 undefined를 주므로)
+    // 이 테스트는 그 관용을 규칙으로 고정한다 — 스칼라도 컨테이너 취급을
+    // 받지 않는다는 것을 던짐 없이 보인다.
+    const r = resolveDials("corrupt" as never, 42 as never);
+    expect(r.editorMaxWidth).toEqual({ origin: "default", value: 800 });
+    expect(r.editorPadding).toEqual({ origin: "default", value: 4 });
+  });
 });
