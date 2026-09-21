@@ -175,6 +175,10 @@ const ALLOWLIST = new Set([
   // 적 없는 사용자에게도 스타일시트 혼자 맞게 만든다 — --editor-line-height와
   // 같은 이유로 토큰이 아니다.
   "--editor-max-width",
+  // §368 줄바꿈 규칙 — 같은 다이얼 기계(dials.ts, apply.ts)가 값이 있을 때만
+  // 인라인으로 쓴다. fallback(`normal`)이 오늘의 스타일시트 값과 같다.
+  "--editor-overflow-wrap",
+  "--editor-word-break",
   "--editor-zoom",
   "--journal-font-family",
   "--journal-header-bg",

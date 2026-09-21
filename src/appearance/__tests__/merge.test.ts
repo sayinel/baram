@@ -39,7 +39,11 @@ describe("resolveDials", () => {
     // 저장분·매니페스트는 외부 입력이다. 결과는 DIALS 를 순회해 만들어지므로
     // 낯선 키는 결과에 자리가 없다.
     const r = resolveDials({ display: "none" } as never, {});
-    expect(Object.keys(r).sort()).toEqual(["editorMaxWidth", "editorPadding"]);
+    expect(Object.keys(r).sort()).toEqual([
+      "editorLineBreak",
+      "editorMaxWidth",
+      "editorPadding",
+    ]);
   });
 
   it("falls back to defaults when the theme layer is null", () => {

@@ -2,7 +2,7 @@
 // 잃으면 설정 UI 의 배지도 되돌리기도 만들 수 없고, 나중에 소급할 방법이 없다
 // (스펙 0055 §366.2).
 
-import type { DialId, DialValues } from "./dials";
+import type { DialId, DialValue, DialValues } from "./dials";
 
 import { DIALS } from "./dials";
 
@@ -10,7 +10,7 @@ export type DialOrigin = "default" | "theme" | "user";
 
 export interface ResolvedDial {
   readonly origin: DialOrigin;
-  readonly value: number;
+  readonly value: DialValue;
 }
 
 /**

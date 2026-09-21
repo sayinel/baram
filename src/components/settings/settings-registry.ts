@@ -2,6 +2,7 @@
 // Phase 2: each entry carries SettingControlMeta for data-driven rendering
 import type React from "react";
 
+import type { NumberDialDef } from "../../appearance/dials";
 import type { Locale } from "../../i18n";
 import type { AIProvider } from "../../stores/ai/ai";
 import type { SettingsState } from "../../stores/settings/store";
@@ -27,7 +28,14 @@ import { TASK_SCAN_SCOPES } from "../../utils/tasks/task-scan-scope";
 // 그 보장을 다시 좁혀 주지 못할 뿐이다. 모듈 최상단 `throw`였던 이전 형태는,
 // 만에 하나 이 가정이 깨지면 레지스트리를 쓰는 모든 화면(설정 전체)의 모듈
 // 로드를 막아 버렸다 — 깨져도 이 항목 하나만 무너지는 편이 낫다.
-const editorMaxWidthRange = DIALS.find((d) => d.id === "editorMaxWidth")!.range;
+//
+// §368 — `kind`가 갈리면서 `find`의 반환 타입은 `NumberDialDef | EnumDialDef`가
+// 됐고, `.range`는 그중 `NumberDialDef`에만 있다. `as NumberDialDef`는 위
+// non-null 단정과 같은 성격의 단정이다 — editorMaxWidth가 number 다이얼이라는
+// 것도 리터럴에 고정돼 있고, TS가 `find`를 통해 그것까지 좁혀 주지 못할 뿐이다.
+const editorMaxWidthRange = (
+  DIALS.find((d) => d.id === "editorMaxWidth") as NumberDialDef
+).range;
 
 export interface SearchableSetting {
   category: SettingsTab;
@@ -532,6 +540,34 @@ export function useSettingsRegistry(): SearchableSetting[] {
         settings.setLineNumbers,
       ),
     },
+    // §368 — editorLineBreak도 editorMaxWidth와 같은 다이얼 기계를 쓰는
+    // 외관 다이얼이다. 행(EditorTab.tsx)이 editorMaxWidth 바로 위에 있는
+    // 이유와 같은 이유로 여기서도 그 앞에 둔다(§4.4: 검색 결과 라벨은 행과
+    // 같은 순서·같은 키를 따른다).
+    {
+      id: "editorLineBreak",
+      label: "settings.editor.editorLineBreak",
+      description: "settings.editor.editorLineBreak.desc",
+      category: "editor",
+      section: "settings.editor.display",
+      control: makeSelectControl(
+        // `makeSelectControl`의 selector는 `() => number | string`이라
+        // `DialValue`가 그대로 맞는다 — String()으로 감싸지 않는다.
+        () =>
+          resolveDials({}, settings.appearanceOverrides).editorLineBreak.value,
+        (v) => settings.setDial("editorLineBreak", v),
+        [
+          {
+            value: "normal",
+            label: "settings.editor.editorLineBreak.normal",
+          },
+          {
+            value: "keepAll",
+            label: "settings.editor.editorLineBreak.keepAll",
+          },
+        ],
+      ),
+    },
     // §366 되돌림 — editorMaxWidth는 잠시 외관 다이얼로 Appearance 탭에
     // 옮겨졌다가(Task 7) 돌아왔다. 다이얼 기계(병합·출처·되돌리기)는 그대로
     // AppearanceDialRow가 맡고, 여기서 바뀌는 것은 분류(category/section)뿐이다.
@@ -542,8 +578,13 @@ export function useSettingsRegistry(): SearchableSetting[] {
       category: "editor",
       section: "settings.editor.display",
       control: makeSliderControl(
+        // §368: `.value`는 이제 `DialValue`(number | string)다. editorMaxWidth는
+        // number 다이얼로 리터럴에 고정돼 있어(위 `editorMaxWidthRange`와 같은
+        // 근거) `parse`를 통과한 값은 항상 number다 — makeSliderControl의
+        // `() => number` 셀렉터에 맞추는 단정이다.
         () =>
-          resolveDials({}, settings.appearanceOverrides).editorMaxWidth.value,
+          resolveDials({}, settings.appearanceOverrides).editorMaxWidth
+            .value as number,
         (v) => settings.setDial("editorMaxWidth", v),
         editorMaxWidthRange,
       ),

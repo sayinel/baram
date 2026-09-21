@@ -50,6 +50,10 @@ const INHERITED_FROM_DOCUMENT_SURFACE = new Set([
   "min-height",
   // The container draws its own focus ring on `:focus-within`.
   "outline",
+  "overflow-wrap",
+  // §368: 줄바꿈 규칙은 "같은 글을 쓰는 도구" 의 성질이라 캡처 상자도 따라간다.
+  // 폭이 달라도 한글 단어를 자르지 않는다는 규칙은 같아야 한다.
+  "word-break",
 ]);
 
 function declaration(selector: string, prop: string): string {

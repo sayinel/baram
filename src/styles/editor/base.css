@@ -10,6 +10,11 @@
   font-size: 1rem;
   line-height: 1.75;
   color: var(--color-editor-text);
+
+  /* §368 줄바꿈 규칙. fallback 이 브라우저 기본이므로 다이얼을 쓴 적 없는
+     사용자의 화면은 바뀌지 않는다. */
+  word-break: var(--editor-word-break, normal);
+  overflow-wrap: var(--editor-overflow-wrap, normal);
   outline: none;
 }
 

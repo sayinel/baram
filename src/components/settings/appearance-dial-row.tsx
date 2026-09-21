@@ -6,7 +6,7 @@
 // (§371)이 테마 층에 실제 값을 실으면 되돌리기의 실제 의미는 "테마 값으로
 // 되돌리기"가 된다 — 그때 이 라벨도 같이 바뀌어야 하고, 이 파일이 그 자리다.
 
-import type { DialId } from "../../appearance/dials";
+import type { DialId, DialValue } from "../../appearance/dials";
 import type { Translate } from "../../i18n/useTranslation";
 
 import { useShallow } from "zustand/shallow";
@@ -32,8 +32,8 @@ export function AppearanceDialRow({ dialId, label }: AppearanceDialRowProps) {
 
   const resolved = resolveDials({}, appearanceOverrides)[dialId];
 
-  return (
-    <SettingsRow description={describeDial(dialId, t)} label={label}>
+  const control =
+    dial.kind === "number" ? (
       <input
         className="settings-range"
         max={dial.range.max}
@@ -43,8 +43,34 @@ export function AppearanceDialRow({ dialId, label }: AppearanceDialRowProps) {
         }
         step={dial.range.step}
         type="range"
-        value={resolved.value}
+        value={
+          typeof resolved.value === "number"
+            ? resolved.value
+            : dial.defaultValue
+        }
       />
+    ) : (
+      // 열거는 슬라이더가 아니라 select 다. `.settings-select`(`src/styles/
+      // settings/modal.css:365`)는 이 모달의 다른 select 들이 이미 쓰는
+      // 클래스다 — 새 스타일을 만들지 않는다.
+      <select
+        className="settings-select"
+        onChange={(e) =>
+          useSettingsStore.getState().setDial(dialId, e.target.value)
+        }
+        value={String(resolved.value)}
+      >
+        {dial.options.map((option) => (
+          <option key={option} value={option}>
+            {t(`settings.editor.${dialId}.${option}`)}
+          </option>
+        ))}
+      </select>
+    );
+
+  return (
+    <SettingsRow description={describeDial(dialId, t)} label={label}>
+      {control}
       {/* 값 읽기 전용 슬롯(`.settings-dial-value`, modal.css) — 값을 description
           안 괄호에서 꺼내 여기로 옮겼다(§366 후속 수정). description은 이제
           로케일별 상수라 줄바꿈 여부가 값 길이에 따라 흔들리지 않는다: 드래그로
@@ -107,6 +133,8 @@ export function AppearanceDialRow({ dialId, label }: AppearanceDialRowProps) {
  */
 function describeDial(dialId: DialId, t: Translate): string {
   switch (dialId) {
+    case "editorLineBreak":
+      return t("settings.editor.editorLineBreak.desc");
     case "editorMaxWidth":
       return t("settings.editor.maxWidth.desc");
     case "editorPadding":
@@ -116,11 +144,17 @@ function describeDial(dialId: DialId, t: Translate): string {
 
 /**
  * 값 읽기 문구 — 단위(px/rem)와 "제한 없음" 표기가 다이얼마다 다르다.
- * 다이얼이 둘뿐이라 분기로 충분하다 — `dials.ts` 머리말과 같은 이유로, 쓰지
- * 않을 일반성을 다이얼 정의 쪽에 미리 만들지 않는다.
+ * `editorLineBreak`는 빈 문자열을 돌려준다 — 열거의 값 readout은 select
+ * 자체가 이미 보여 주므로, 여기서 같은 값을 문장으로 또 적으면 중복이다.
  */
-function formatDialValue(dialId: DialId, value: number, t: Translate): string {
+function formatDialValue(
+  dialId: DialId,
+  value: DialValue,
+  t: Translate,
+): string {
   switch (dialId) {
+    case "editorLineBreak":
+      return "";
     case "editorMaxWidth":
       return value === 0 ? t("settings.editor.maxWidth.noLimit") : `${value}px`;
     case "editorPadding":
