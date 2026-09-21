@@ -10,28 +10,29 @@ describe("AppearanceDialRow", () => {
     useSettingsStore.setState({ appearanceOverrides: {}, locale: "en" });
   });
 
-  it("shows the default origin and offers no revert", () => {
+  it("shows the default origin with no badge and no revert", () => {
     render(<AppearanceDialRow dialId="editorMaxWidth" label="Line width" />);
-    // 무엇이 이것을 실패시키는가: 배지가 원시 origin("default")을 그대로
-    // 보여주면 이 단정은 여전히 통과한다 — `data-origin`이 그 회귀를 잡고,
-    // textContent 단정은 화면에 실제로 번역된 문구가 실리는지를 잡는다.
-    const badge = screen.getByTestId("dial-origin");
-    expect(badge).toHaveAttribute("data-origin", "default");
-    expect(badge).toHaveTextContent(
-      en["settings.appearance.dialOrigin.default"],
-    );
-    // 무엇이 이것을 실패시키는가: 이 클래스가 빠지면 배지가 본문 크기·
-    // 기본 텍스트색으로 렌더돼 라벨과 시각적으로 경쟁한다(§366 버그 리포트).
-    expect(badge).toHaveClass("settings-dial-origin-badge");
+    // 무엇이 이것을 실패시키는가: `data-origin`이 슬롯(항상 렌더)이 아니라
+    // 배지(default에서는 렌더되지 않는다)에 있었다면, 이 단정 자체가 할
+    // 대상을 잃는다 — 슬롯에 거는 것이 그 회귀를 막는다.
+    const slot = screen.getByTestId("dial-origin");
+    expect(slot).toHaveAttribute("data-origin", "default");
+    // default는 값이 이미 description에 있으므로 배지를 아예 렌더하지
+    // 않는다("아무 일도 없었다"는 정보 없는 배지를 막기 위해, §366 후속 수정).
+    expect(screen.queryByTestId("dial-origin-badge")).toBeNull();
     expect(screen.queryByTestId("dial-revert")).toBeNull();
   });
 
-  it("flips to the user origin and offers a revert once changed", () => {
+  it("flips to the user origin, shows a localized badge, and offers a revert", () => {
     render(<AppearanceDialRow dialId="editorMaxWidth" label="Line width" />);
     fireEvent.change(screen.getByRole("slider"), { target: { value: "640" } });
-    const badge = screen.getByTestId("dial-origin");
-    expect(badge).toHaveAttribute("data-origin", "user");
+    const slot = screen.getByTestId("dial-origin");
+    expect(slot).toHaveAttribute("data-origin", "user");
+    const badge = screen.getByTestId("dial-origin-badge");
     expect(badge).toHaveTextContent(en["settings.appearance.dialOrigin.user"]);
+    // 무엇이 이것을 실패시키는가: 이 클래스가 빠지면 배지가 본문 크기·
+    // 기본 텍스트색으로 렌더돼 라벨과 시각적으로 경쟁한다(§366 버그 리포트).
+    expect(badge).toHaveClass("settings-dial-origin-badge");
     expect(screen.getByTestId("dial-revert")).toBeInTheDocument();
   });
 

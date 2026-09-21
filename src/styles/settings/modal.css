@@ -269,18 +269,25 @@
 }
 
 /* §366 다이얼 출처 슬롯 — 배지 문구 길이가 origin마다 달라지면(되돌리기
-   버튼이 붙고 안 붙는 것도 포함) 오른쪽 정렬된 슬라이더가 origin에 따라
-   옆으로 밀린다. 폭을 고정해 슬라이더 위치를 origin과 무관하게 만든다.
-   min-width는 settings.appearance.dialOrigin.{default,theme,user}
-   (en/ko 여섯 문구) 중 가장 넓은 것 + 되돌리기 글리프 버튼 + 사이 여백을
-   어림해 여유를 둔 값이다 — origin이 하나 더 생기면(§371 테마 층) 그
-   문구도 포함해 다시 잴 것. */
+   버튼이 붙고 안 붙는 것도 포함) 슬라이더가 origin에 따라 옆으로 밀린다.
+   폭을 고정해 슬라이더 위치를 origin과 무관하게 만든다.
+
+   `space-between`인 이유: default는 배지를 아예 렌더하지 않고(§366 후속
+   수정), theme/user는 배지만 또는 배지+버튼을 렌더한다 — 오른쪽 정렬이면
+   버튼 유무에 따라 배지의 x 좌표가 달라져 세로로 훑을 때 들쭉날쭉해진다.
+   양끝 정렬은 세 상태 전부를 공짜로 맞춘다: 배지는 항상 왼쪽 끝, 버튼은
+   항상 오른쪽 끝, 아무것도 없으면 빈 슬롯이 폭만 차지한다.
+
+   min-width는 이제 default를 뺀 settings.appearance.dialOrigin.{theme,user}
+   (en/ko 네 문구) 중 가장 넓은 것 + 되돌리기 글리프 버튼 + 사이 여백을
+   어림해 여유를 둔 값이다 — theme/user 쪽이 이미 더 넓어서 84px는 바뀌지
+   않았다. origin enum에 네 번째 값이 생기면 그 문구도 포함해 다시 잴 것. */
 .settings-dial-origin {
   display: flex;
   flex-shrink: 0;
   gap: 4px;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   min-width: 84px;
   margin-left: 8px;
 }

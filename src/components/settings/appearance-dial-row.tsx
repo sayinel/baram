@@ -51,19 +51,28 @@ export function AppearanceDialRow({ dialId, label }: AppearanceDialRowProps) {
       {/* 고정 폭 슬롯(`.settings-dial-origin`, modal.css) 하나로 배지와
           되돌리기 버튼을 함께 묶는다 — 슬라이더는 `settings-row-control`
           안에서 오른쪽 정렬이라, 슬롯 폭이 origin마다 바뀌면(문구 길이·
-          버튼 유무 차이) 슬라이더 위치도 함께 밀린다. */}
-      <span className="settings-dial-origin">
-        {/* `data-origin`은 병합 결과의 원시 origin — 로케일과 무관한 시험용
-            걸쇠다. 사람이 읽는 텍스트는 로케일을 탄다(§366 스펙: 출처 배지는
-            사용자에게 보이는 문구여야 한다 — title 툴팁으로만 두면 화면에는
-            여전히 미번역 영단어가 남는다). */}
-        <span
-          className="settings-dial-origin-badge"
-          data-origin={resolved.origin}
-          data-testid="dial-origin"
-        >
-          {t(`settings.appearance.dialOrigin.${resolved.origin}`)}
-        </span>
+          버튼 유무 차이) 슬라이더 위치도 함께 밀린다. `data-origin`은 병합
+          결과의 원시 origin — 로케일과 무관한 시험용 걸쇠다. 슬롯 자체(배지가
+          아니라)에 다는 이유는, default에서는 배지가 아예 렌더되지 않아서다
+          — 걸쇠가 배지에 있으면 "이 행이 default다"를 확인할 자리가 사라진다. */}
+      <span
+        className="settings-dial-origin"
+        data-origin={resolved.origin}
+        data-testid="dial-origin"
+      >
+        {/* default는 배지를 아예 렌더하지 않는다 — 값은 이미 위 description에
+            있으므로 "기본값" 배지는 "아무 일도 없었다"는 뜻뿐이고, 앞으로 늘
+            다이얼(0094)마다 그 무의미한 배지가 한 줄씩 쌓인다. 사람이 읽는
+            텍스트는 로케일을 탄다(§366 스펙: title 툴팁만으로는 화면에 여전히
+            미번역 영단어가 남는다). */}
+        {resolved.origin === "default" ? null : (
+          <span
+            className="settings-dial-origin-badge"
+            data-testid="dial-origin-badge"
+          >
+            {t(`settings.appearance.dialOrigin.${resolved.origin}`)}
+          </span>
+        )}
         {resolved.origin === "user" ? (
           <button
             className="btn-unstyled"
