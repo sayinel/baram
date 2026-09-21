@@ -33,7 +33,12 @@ describe("AppearanceDialRow", () => {
     // 무엇이 이것을 실패시키는가: 이 클래스가 빠지면 배지가 본문 크기·
     // 기본 텍스트색으로 렌더돼 라벨과 시각적으로 경쟁한다(§366 버그 리포트).
     expect(badge).toHaveClass("settings-dial-origin-badge");
-    expect(screen.getByTestId("dial-revert")).toBeInTheDocument();
+    const revert = screen.getByTestId("dial-revert");
+    expect(revert).toBeInTheDocument();
+    // 무엇이 이것을 실패시키는가: `btn-unstyled`로 되돌아가면 버튼이 다시
+    // 맨 글리프로 보인다 — "버튼처럼 안 보인다"는 사용자 리포트가 되돌아온다.
+    expect(revert).toHaveClass("icon-btn", "settings-dial-revert");
+    expect(revert).toHaveAccessibleName(en["settings.appearance.dialRevert"]);
   });
 
   it("reverting removes the key rather than pinning the default", () => {

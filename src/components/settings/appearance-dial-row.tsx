@@ -74,8 +74,14 @@ export function AppearanceDialRow({ dialId, label }: AppearanceDialRowProps) {
           </span>
         )}
         {resolved.origin === "user" ? (
+          // `icon-btn`(base.css)이 중앙 정렬·cursor를 맡고, `settings-dial-revert`
+          // (modal.css)가 크기·색·hover를 맡는다 — `.settings-close`/
+          // `.settings-search-clear`와 같은 아이콘 버튼 관용구다. `btn-unstyled`는
+          // 여기서 쓰지 않는다: 그 클래스의 목적 자체가 버튼을 텍스트처럼 벗기는
+          // 것이라, 버튼처럼 보이게 만들고 싶은 이 자리와는 반대다.
           <button
-            className="btn-unstyled"
+            aria-label={t("settings.appearance.dialRevert")}
+            className="icon-btn settings-dial-revert"
             data-testid="dial-revert"
             onClick={() => useSettingsStore.getState().resetDial(dialId)}
             title={t("settings.appearance.dialRevert")}

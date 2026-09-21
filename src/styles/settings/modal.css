@@ -278,24 +278,61 @@
    양끝 정렬은 세 상태 전부를 공짜로 맞춘다: 배지는 항상 왼쪽 끝, 버튼은
    항상 오른쪽 끝, 아무것도 없으면 빈 슬롯이 폭만 차지한다.
 
-   min-width는 이제 default를 뺀 settings.appearance.dialOrigin.{theme,user}
-   (en/ko 네 문구) 중 가장 넓은 것 + 되돌리기 글리프 버튼 + 사이 여백을
-   어림해 여유를 둔 값이다 — theme/user 쪽이 이미 더 넓어서 84px는 바뀌지
-   않았다. origin enum에 네 번째 값이 생기면 그 문구도 포함해 다시 잴 것. */
+   min-width는 칩이 된 뒤 다시 잰 값이다(아래 `.settings-dial-origin-badge`
+   의 padding·font-size 확정 후) — default를 뺀
+   settings.appearance.dialOrigin.{theme,user}(en/ko 네 문구) 중 가장 넓은
+   것의 칩 전체 폭(글자 + 좌우 padding) + 되돌리기 버튼(20px) + 사이 여백을
+   어림해 여유를 둔 값이다. origin enum에 네 번째 값이 생기거나 칩의
+   padding·font-size가 바뀌면 다시 잴 것. */
 .settings-dial-origin {
   display: flex;
   flex-shrink: 0;
   gap: 4px;
   align-items: center;
   justify-content: space-between;
-  min-width: 84px;
+  min-width: 92px;
   margin-left: 8px;
 }
 
+/* 이 앱에 배지/칩 전례가 없어 여기서 하나 정한다 — 조용한 메타데이터로
+   읽혀야지 라벨과 겨루면 안 된다(§366 버그 리포트: 이전엔 배지가 본문
+   크기·기본색이라 라벨과 시각적으로 경쟁했다). `--radius-full`(알약형)을
+   골랐다: 앱에 이미 있는 유일한 배지인 `.plugin-consent__new`
+   (plugins.css)도 알약형(9999px)이라, 새 모양을 하나 더 들이기보다 그
+   관용구를 따른다 — 다만 그건 진하게 칠한 "NEW" 강조 배지이고, 이건 조용한
+   출처 표시라 배경·글자색은 따로 간다(muted-on-subtle). accent 틴트는
+   시도하지 않았다: `--color-accent-subtle` 배경에 색 있는 글자를 얹는 조합은
+   사용자가 고른 accent 색마다 대비가 보장되지 않는다고 이미 이 코드베이스가
+   기록해 두었다(plugins.css `.plugin-consent__new` 주석, #330) — 무채색
+   글자라 그 특정 실패 사례는 아니지만, 스크린샷으로 직접 확인할 수 없는
+   채로 밀어 넣을 만큼 이 배지에 꼭 필요한 구분도 아니다. */
 .settings-dial-origin-badge {
-  font-size: 0.75rem;
+  padding: 2px 7px;
+  font-size: 0.7rem;
+  line-height: 1;
   color: var(--color-text-muted);
   white-space: nowrap;
+  background: var(--color-bg-subtle);
+  border-radius: var(--radius-full);
+}
+
+/* `.settings-close`(위)·`.settings-search-clear`(아래) 아이콘 버튼과 같은
+   관용구 — 정사각형 박스에 글리프를 가운데 놓고, 옅은 색에서 hover 시
+   짙어진다. 두 기존 크기(24px/18px) 사이인 20px을 썼다: 칩 옆에 붙는
+   자리라 24px는 크고, 18px는 이 글리프(↺)치고 좁다. */
+.settings-dial-revert {
+  width: 20px;
+  height: 20px;
+  font-size: 15px;
+  color: var(--color-text-muted);
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+}
+
+.settings-dial-revert:hover {
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-subtle);
 }
 
 /* Form controls */
