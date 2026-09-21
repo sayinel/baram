@@ -421,6 +421,22 @@
   border-top: 1px solid var(--color-border-subtle);
 }
 
+.theme-action-btn:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+/* §363 — package-export metadata inputs (author/description/license/version). Reuses
+   `.theme-editor-name`'s look for each `<input>`; this class only stacks them. */
+.theme-editor-package-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 12px;
+  margin-top: 16px;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
 /* Theme Card — install-info button (§361) */
 .theme-card-info {
   position: absolute;

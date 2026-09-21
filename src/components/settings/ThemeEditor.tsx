@@ -13,9 +13,12 @@ import type {
 import { useShallow } from "zustand/shallow";
 
 import { useTranslation } from "../../i18n/useTranslation";
+import { exportBinaryFile } from "../../ipc/fs";
 import { writeFile } from "../../ipc/invoke";
+import { themePackageBuild } from "../../ipc/theme";
 import { useSettingsStore } from "../../stores/settings/store";
 import { lookupThemes } from "../../themes/installed-theme-defs";
+import { themePackageEntries } from "../../themes/theme-package-export";
 import {
   BUILT_IN_THEMES,
   defaultColorsForBase,
@@ -92,6 +95,20 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
     ...(sourceTheme.modes[startMode]?.colors ??
       defaultColorsForBase(startMode)),
   }));
+
+  // §363 — 배포용 패키지의 매니페스트가 요구하지만 이 편집기는 모르는 값들
+  // (`PackageMeta`, theme-package-export.ts). 빈 채로 내보내면 설치되지 않는
+  // 패키지가 나오는 것이 이 기능의 유일한 실패 모드이므로, 아래 네 값이 전부
+  // 채워지기 전에는 패키지 내보내기 버튼을 비활성한다(canExportPackage).
+  const [packageAuthor, setPackageAuthor] = useState("");
+  const [packageDescription, setPackageDescription] = useState("");
+  const [packageLicense, setPackageLicense] = useState("");
+  const [packageVersion, setPackageVersion] = useState("");
+  const canExportPackage =
+    packageAuthor.trim() !== "" &&
+    packageDescription.trim() !== "" &&
+    packageLicense.trim() !== "" &&
+    packageVersion.trim() !== "";
 
   // Set once the edited colours have been adopted as a real theme, so the unmount
   // cleanup knows there is no preview left to undo. Without it, correctness depends
@@ -218,6 +235,54 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
     await writeFile(path, data);
   }, [name, base, colors]);
 
+  // §363 — 배포 가능한 패키지(zip)를 내보낸다. 위 `handleExport`와는 별개 동작이다
+  // (R5): 저것은 `{name, base, colors}`를 쓰고 `use-theme-import.ts`가 오늘도
+  // 읽는, 이 앱으로만 되읽는 색 설정이다. 이것은 `baram-theme.json` + 모드별
+  // `tokens.json`을 담은 zip이고, 남의 Baram이 설치할 수 있는 패키지다.
+  //
+  // ‼️ 디렉터리가 아니라 파일 하나를 쓴다(R6) — `exportBinaryFile`은 vault
+  // 검사가 없고, 그것이 무해한 이유는 대화상자가 고른 파일 하나만 쓰기
+  // 때문이다. 트리를 쓰면 그 전제가 깨진다.
+  const handleExportPackage = useCallback(async () => {
+    const path = await save({
+      filters: [{ name: "Baram Theme Package", extensions: ["zip"] }],
+      defaultPath: `${name}.zip`,
+    });
+    if (!path) return;
+
+    // handleSave(§357)와 같은 병합 — 편집 중인 base 모드만 갈아끼우고 나머지
+    // 모드는 sourceTheme 그대로 둔다. 스토어에 저장하지 않고도 지금 편집
+    // 중인 색을 내보낼 수 있어야 하므로 handleSave와 별도로 구성한다.
+    const isCustom = sourceTheme.source === "custom";
+    const themeDef: ThemeDef = {
+      id: isCustom ? sourceTheme.id : `custom-${Date.now()}`,
+      name,
+      source: "custom",
+      modes: {
+        ...sourceTheme.modes,
+        [base]: { ...sourceTheme.modes[base], colors: { ...colors } },
+      },
+    };
+
+    const entries = themePackageEntries(themeDef, {
+      author: packageAuthor,
+      description: packageDescription,
+      license: packageLicense,
+      version: packageVersion,
+    });
+    const zipBytes = await themePackageBuild(entries);
+    await exportBinaryFile(path, zipBytes);
+  }, [
+    sourceTheme,
+    name,
+    base,
+    colors,
+    packageAuthor,
+    packageDescription,
+    packageLicense,
+    packageVersion,
+  ]);
+
   return (
     <div className="theme-editor">
       <div className="theme-editor-header">
@@ -268,6 +333,44 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
         </div>
       ))}
 
+      {/* §363 — 배포용 패키지 매니페스트가 요구하지만 이 편집기가 모르는 값들.
+          전부 필수: 하나라도 비면 "패키지로 내보내기" 버튼이 비활성 상태로
+          남는다(canExportPackage). */}
+      <div className="theme-editor-package-meta">
+        <input
+          aria-label={t("settings.theme.packageAuthorPlaceholder")}
+          className="theme-editor-name"
+          onChange={(e) => setPackageAuthor(e.target.value)}
+          placeholder={t("settings.theme.packageAuthorPlaceholder")}
+          type="text"
+          value={packageAuthor}
+        />
+        <input
+          aria-label={t("settings.theme.packageDescriptionPlaceholder")}
+          className="theme-editor-name"
+          onChange={(e) => setPackageDescription(e.target.value)}
+          placeholder={t("settings.theme.packageDescriptionPlaceholder")}
+          type="text"
+          value={packageDescription}
+        />
+        <input
+          aria-label={t("settings.theme.packageLicensePlaceholder")}
+          className="theme-editor-name"
+          onChange={(e) => setPackageLicense(e.target.value)}
+          placeholder={t("settings.theme.packageLicensePlaceholder")}
+          type="text"
+          value={packageLicense}
+        />
+        <input
+          aria-label={t("settings.theme.packageVersionPlaceholder")}
+          className="theme-editor-name"
+          onChange={(e) => setPackageVersion(e.target.value)}
+          placeholder={t("settings.theme.packageVersionPlaceholder")}
+          type="text"
+          value={packageVersion}
+        />
+      </div>
+
       <div className="theme-editor-actions">
         <button className="theme-action-btn" onClick={handleSave}>
           {t("common.save")}
@@ -275,8 +378,20 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
         <button className="theme-action-btn" onClick={handleCancel}>
           {t("common.cancel")}
         </button>
+        {/* 색 설정만 담는 JSON — use-theme-import.ts가 오늘 되읽는 §355 이전
+            포맷(R5). 라이선스·저자 같은 필드가 없어 배포용 패키지가 아니고,
+            이 앱 말고는 아무도 설치할 수 없다. */}
         <button className="theme-action-btn" onClick={handleExport}>
           {t("settings.theme.export")}
+        </button>
+        {/* 배포 가능한 zip. 위 네 필드가 다 찰 때까지 비활성(§363) — 비운 채
+            내보내면 이 앱조차 설치할 수 없는 패키지가 나온다. */}
+        <button
+          className="theme-action-btn"
+          disabled={!canExportPackage}
+          onClick={handleExportPackage}
+        >
+          {t("settings.theme.exportPackage")}
         </button>
       </div>
     </div>

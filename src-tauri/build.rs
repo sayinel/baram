@@ -142,6 +142,7 @@ fn main() {
         "theme_install_commit",
         "theme_install_discard",
         "theme_install_stage",
+        "theme_package_build",
         "theme_read_stored_css",
         "theme_stage_read",
         "theme_uninstall",

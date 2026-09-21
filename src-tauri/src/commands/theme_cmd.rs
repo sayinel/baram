@@ -5,12 +5,14 @@
 // (`~/.baram/themes/`, §9.2), the manifest (`baram-theme.json`, §4), and one extra step —
 // the CSS hygiene pipeline, which runs on the FRONTEND between staging and committing.
 //
-// ‼️ THIS FILE HAS SIX `#[tauri::command]`s (verified by re-count at each edit — see
+// ‼️ THIS FILE HAS SEVEN `#[tauri::command]`s (verified by re-count at each edit — see
 // CLAUDE.md's "수정도 새 주장이다"). THE ORDER IS THE SECURITY PROPERTY for exactly FOUR of
-// them, the install pipeline below. The other two are NOT part of that order:
+// them, the install pipeline below. The other three are NOT part of that order:
 // `theme_read_stored_css` is a LOAD-TIME read this task (§361) gave its first consumer, not
 // an install step; `theme_uninstall` (also §361) is unrelated lifecycle — removal rather
-// than installation. Neither has an ordering to preserve.
+// than installation; `theme_package_build` (§363) is the OTHER direction entirely — an
+// author exporting a theme, not this app installing one — and touches none of the install
+// tree at all. Neither of the three has an ordering to preserve.
 //
 //   theme_install_stage   → download + extract, installs nothing
 //   theme_stage_read      → the frontend reads the authored CSS, tokens and assets
@@ -150,4 +152,20 @@ pub async fn theme_uninstall(theme_id: String) -> Result<(), String> {
     plugin::uninstall_installed(plugin::InstallKind::Theme, &theme_id)
         .await
         .map_err(|e| e.to_string())
+}
+
+/// §363 — build a ZIP archive from `entries`, the entry map `themePackageEntries`
+/// (frontend, pure) produced. A pure byte builder: it validates nothing about `entries` and
+/// touches no path — see `plugin::build_zip_bytes`'s doc comment for what that does and does
+/// not guarantee.
+///
+/// ‼️ NOT a "write to disk" command on purpose (0091 Task 3 brief). The frontend already has
+/// one of those for an arbitrary, user-chosen path — `export_binary_file` (`fs_cmd.rs`) — and
+/// the fact that it writes only the single file a native save dialog returned is what stands
+/// in for a vault check there. A second command that both builds bytes AND picks where they
+/// land would duplicate that surface for no reason: the frontend calls this, then hands the
+/// result to `exportBinaryFile` exactly as it would any other exported bytes.
+#[tauri::command]
+pub async fn theme_package_build(entries: Vec<(String, Vec<u8>)>) -> Result<Vec<u8>, String> {
+    plugin::build_zip_bytes(&entries).map_err(|e| e.to_string())
 }
