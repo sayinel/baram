@@ -144,28 +144,31 @@ describe("exportAsPDF — always embeds, no checkbox to gate it (§353 review Im
     expect(htmlPrinted()).toContain("data:font/woff2;base64,");
   });
 
-  it("keeps bodyFont/codeFont/activeTheme out of the PdfOptions object handed to the Rust IPC call", async () => {
-    // §362 review Info 4 — `activeTheme`/`activeThemeMode` MUST actually be
-    // supplied here for this to be a real check: if the input never carries
-    // them, their absence from `pdfOptions` proves nothing (they were never
-    // going to be there either way) — this is destructured off before
-    // `...pdfOptions`, same as bodyFont/codeFont, and for the same reason:
-    // this object goes straight to the Rust `exportPdf` command, and a rest
-    // spread isn't excess-property-checked — a missed destructure would
-    // compile clean and ship a whole `ThemeDef` over IPC.
+  it("keeps everything but PdfOptions's own fields out of the object handed to the Rust IPC call", async () => {
+    // §362 review Info 4, then final review LOW-1 — a `not.toHaveProperty`
+    // blocklist over a fixed name list only catches a leak of a name someone
+    // thought to list. It also MUST actually be supplied in the input to be
+    // a real check at all: if the input never carries a key, its absence
+    // from `pdfOptions` proves nothing. Two fixes: supply every non-PdfOptions
+    // field this call can take (including `themeInExport`, which the
+    // blocklist never covered — Rust's `PdfOptions` has no
+    // `deny_unknown_fields`, so that specific leak was silent end to end),
+    // and assert the EXACT key set rather than four names — closing both a
+    // present and a future leak, not just the ones on the list.
     await exportAsPDF(fakeEditor, "t", {
       activeTheme: BUILT_IN_THEMES.find((t) => t.id === "tokyo-night"),
       activeThemeMode: "dark",
       bodyFont: "Noto Sans KR",
       codeFont: "D2Coding",
       paperSize: "a4",
+      themeInExport: "tokens",
     });
 
-    const pdfOptions = vi.mocked(exportPdf).mock.calls[0][2];
-    expect(pdfOptions).not.toHaveProperty("bodyFont");
-    expect(pdfOptions).not.toHaveProperty("codeFont");
-    expect(pdfOptions).not.toHaveProperty("activeTheme");
-    expect(pdfOptions).not.toHaveProperty("activeThemeMode");
+    // exportPdf's own signature makes its 3rd arg optional, but the real
+    // call site (export.ts) always passes one — non-null assertion, not a
+    // widened type, keeps Object.keys() honest about what's actually there.
+    const pdfOptions = vi.mocked(exportPdf).mock.calls[0][2]!;
+    expect(Object.keys(pdfOptions).sort()).toEqual(["paperSize"]);
     expect(pdfOptions).toMatchObject({ paperSize: "a4" });
   });
 
