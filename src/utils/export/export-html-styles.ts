@@ -174,13 +174,47 @@ article.baram-export a.footnote-definition-label { text-decoration: none; }
 .video-export-path { display: inline-block; max-width: 100%; overflow-wrap: anywhere; }
 `;
 
-/** Print-specific CSS */
-export const PRINT_CSS = `
+/**
+ * Print-specific CSS.
+ *
+ * §362 final review HIGH-1 — `body { background: white; }` ships ONLY when
+ * `hasThemeBlock` is false.
+ *
+ * ‼️ Without that split, this rule was a silent lie for `tokens` + a dark
+ * theme + PDF. `body` in `EXPORT_BASE_CSS` sets `background:
+ * var(--color-editor-bg)`, which a theme block resolves to the theme's dark
+ * fill — but this `@media print` rule sits LATER in the sheet at the same
+ * `body {}` specificity, so it always won and reset the background to
+ * white regardless. `color: var(--color-editor-text)` is never touched
+ * here, so the body kept the theme's LIGHT text — light text on a forced
+ * white page, while `export.themeInExport.darkPrintHint` told the user to
+ * expect the opposite (a dark background). Chrome's headless PDF renders
+ * with print media and `print_background: true`
+ * (`src-tauri/src/export/mod.rs`), so this sheet's print rules are what
+ * actually ships, not a screen-only formality.
+ *
+ * ‼️ The reset stays with NO theme block for one reason, and it is not the
+ * one an earlier draft of this comment gave. That draft said the page had to
+ * survive `prefers-color-scheme: dark` reaching it at print time; the 0091
+ * final review probed that and disproved it — no export-bound CSS file
+ * contains `prefers-color-scheme`, and the plain sheet with this reset
+ * REMOVED, printed under print + dark emulation in Chrome, still resolves
+ * `body` to `rgb(255,255,255)` and `--color-editor-bg` to `#fff`.
+ *
+ * The real reason is compatibility: `printCSS(false)` has to reproduce the
+ * pre-§362 text exactly, because "`default` output is byte-identical to
+ * before" is this feature's stated promise (plan 0091, R3). Removing the
+ * reset would change those bytes for no gain.
+ */
+export function printCSS(hasThemeBlock: boolean): string {
+  const resetBackground = hasThemeBlock
+    ? ""
+    : "\n  body { background: white; }";
+  return `
 @page {
   margin: 15mm;
 }
-@media print {
-  body { background: white; }
+@media print {${resetBackground}
   article.baram-export { max-width: none; padding: 0; margin: 0; }
   h1, h2, h3, h4, h5, h6 { page-break-after: avoid; }
   pre, blockquote, table, img, .math-block, .mermaid-block, .code-block-export,
@@ -205,6 +239,7 @@ export const PRINT_CSS = `
   }
 }
 `;
+}
 
 /**
  * The complete stylesheet an exported document carries, in cascade order.
@@ -215,18 +250,32 @@ export const PRINT_CSS = `
  * by default, so every existing caller (and every test that calls this with no
  * arguments) is unaffected.
  *
- * Tokens next (everything below resolves `var()` against them), then the
- * editor's own appearance, then the export-only frame, then print. Exported as
- * one function so the tests can assert against exactly what ships rather than
- * against one of the pieces.
+ * Tokens next (everything below resolves `var()` against them), then §362's
+ * `themeTokens` — the active theme's own `:root` block, built by
+ * `themeTokensBlock` and resolved by the caller. It comes after
+ * `exportTokensCSS()`, never before: a custom property resolves to its LAST
+ * declaration in source order, so a theme block placed earlier would be
+ * overridden BY the semantic tokens instead of overriding them — anywhere
+ * after works, this file just picks "right after" for simplicity. Then the
+ * editor's own appearance, then the export-only frame, then print.
+ *
+ * `themeTokens` is empty by default, like `fontFaceCSS`, so every existing
+ * caller's output is unaffected.
+ *
+ * Exported as one function so the tests can assert against exactly what
+ * ships rather than against one of the pieces.
  */
-export function buildExportStylesheet(fontFaceCSS = ""): string {
+export function buildExportStylesheet(
+  fontFaceCSS = "",
+  themeTokens = "",
+): string {
   return [
     fontFaceCSS,
     exportTokensCSS(),
+    themeTokens,
     editorContentCSS(),
     EXPORT_BASE_CSS.trim(),
-    PRINT_CSS.trim(),
+    printCSS(themeTokens !== "").trim(),
   ]
     .filter((block) => block !== "")
     .join("\n\n");

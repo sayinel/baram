@@ -135,6 +135,11 @@ pub use fetch::{fetch_registry, fetch_registry_readme, fetch_revocations, Fetche
 // Re-exported: the plugin network proxy + its request/response shape
 // (src-tauri/src/commands/plugin_cmd.rs, and plugin/authorizer.rs for the request shape).
 pub use origin::{http_fetch, PluginFetchInit, PluginFetchResponse};
+// Re-exported: §363's pure zip byte-builder (src-tauri/src/commands/theme_cmd.rs). Every
+// other `archive` item stays `pub(super)` — install/extraction, reached only from
+// `install.rs` inside this module — because this is the one write-side function a command
+// outside `plugin` needs.
+pub use archive::build_zip_bytes;
 
 // ‼️ THE THREE DECLARATIONS BELOW STAY IN THIS FILE, not in `fetch.rs` / `origin.rs` where they
 // are used. `scripts/rust-constants.ts` (`revocationByteCap`, `shippedRevocationPublicKey`) and

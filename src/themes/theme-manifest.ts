@@ -18,8 +18,13 @@ import { THEME_MODES } from "../types/theme";
  * (`/^[A-Za-z0-9_-]+$/`, 대문자·언더스코어까지 허용하는 contribution id 규칙, 여기
  * 대상이 아니다). 테마 id는 설치 디렉터리 이름이 되므로, 느슨한 쪽을 쓰면 대소문자
  * 구분 없는 파일시스템에서 두 테마가 같은 디렉터리로 충돌한다.
+ *
+ * export한다(0091 fix round 1, Finding 4) — `ThemeEditor`의 패키지 id 입력이 여기 있는
+ * 것과 같은 규칙으로 미리 거부해야 하고(설치 시점에야 Rust가 독립적으로 재확인하는
+ * 규칙과 같은 값), 로컬로 다시 적으면 세 번째 사본이 생긴다. 이미 둘(TS 여기, Rust
+ * `install.rs`의 `read_staged_theme_manifest`)이 같은 문자 집합을 따로 적고 있다.
  */
-const THEME_ID_RE = /^[a-z0-9-]+$/;
+export const THEME_ID_RE = /^[a-z0-9-]+$/;
 
 /**
  * 이름·설명 길이 상한 — `use-theme-import.ts`의 이름 상한과 같은 값.
@@ -48,6 +53,28 @@ export const UNSAFE_TEXT_CHARS_RE =
  * 것은 파싱 비용이 아니라, 그 뒤를 잇는 필드별 검사가 거대한 문자열을 반복해서 훑는
  * 비용이다. `baram-theme.json`은 메타데이터 몇 줄이면 충분하니, 이보다 크면 실수이거나
  * (예: `description` 필드에 거대한 문자열을 채워) 그 비용을 부풀리려는 시도다.
+ *
+ * ‼️ 이 숫자는 Rust `MAX_THEME_MANIFEST_BYTES`(`src-tauri/src/plugin/install.rs`)와
+ * 값이 같을 뿐, **단위와 대상이 다르다**(0091 fix round 1 리뷰, LOW 6 — 값을 맞추는 것이
+ * 아니라 여기 적어 두는 것으로 처리하기로 판정됨). 여기는 `JSON.stringify(data)`(이미
+ * 파싱된 객체를 compact 하게 다시 직렬화한 것)의 **문자** 수를 잰다. Rust 쪽은 디스크에
+ * 있는 파일의 **바이트** 수를 잰다(`std::fs::metadata`) — 그 파일이 어떻게 포매팅돼
+ * 있든. 들여쓴 JSON은 이 익스포터가 쓰는 패키지의 성질이지 Rust 가 재는 대상의 성질이
+ * 아니다: 이 검증기의 다른 호출자는 커뮤니티 설치 경로이고, 거기 오는 매니페스트는 다른
+ * 도구가 만든 compact JSON 일 수 있다. 한글처럼
+ * UTF-16 코드 유닛 하나가 UTF-8 세 바이트가 되는 문자가 많으면 이 관문이 더 느슨하게
+ * 통과시킬 수 있다는 뜻이다. 두 층 모두 "먼저 도는" 쪽이 상대가 이미 걸렀다고 가정하지
+ * 않으므로 구조적으로 안전하지만(§360 문서 순서: 상한 → parse → 검증, 두 언어 각각),
+ * 값 자체를 맞추려면 어느 쪽이 단위를 바꿀지 정해야 하고 양쪽 다 자기 값을 다른 곳에서
+ * 인용하는 주석을 이미 갖고 있다 — 그래서 여기는 값을 맞추지 않고 이 사실만 적어 둔다.
+ *
+ * ‼️ 그리고 이 필드별 검사(`validateTextField`)는 `name`·`description` 둘에만 걸린다. `author`·`license`·`version`은 이 함수 안에서 "빈 문자열이
+ * 아닌 string" 검사만 받고, `MAX_TEXT_FIELD_CHARS`(100자) 상한도 `UNSAFE_TEXT_CHARS_RE`
+ * (제어·bidi 문자 거부)도 받지 않는다 — 매니페스트 전체 상한(위) 안에서라면 임의 길이의
+ * `author` 문자열이 통과한다. 이 파일이 §360 커뮤니티 테마 설치 경로의 유일한 구조
+ * 검증기이므로(`read_staged_theme_manifest`가 이 검증을 재구현하지 않고 위임한다), 세 필드를
+ * 여기 추가하는 것은 이 함수 하나만 고치면 되는 일이 아니라 오늘 설치되는 실제 커뮤니티
+ * 매니페스트들에 대한 행동 변경이다 — 그래서 고치지 않고 이 자리에 남겨 둔다.
  */
 const MAX_MANIFEST_JSON_CHARS = 64 * 1024;
 

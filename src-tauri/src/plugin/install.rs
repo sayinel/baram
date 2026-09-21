@@ -2123,6 +2123,73 @@ mod tests {
         );
     }
 
+    /// 0091 fix round 1, Finding 3 (MAJOR) — makes the reviewer's manual probe
+    /// (`task-3-review.md`) permanent. Shares `fixtures/theme-package.json` with the
+    /// frontend (`src/themes/__tests__/theme-package-fixture.test.ts`): that side asserts
+    /// `themePackageEntries(fixture.theme, fixture.meta)` reproduces `expectedManifest` and
+    /// `expectedEntryNames` exactly; this side builds a package to that same spec and proves
+    /// the REAL install functions accept it — the exact chain `theme_cmd::theme_package_build`
+    /// 's bytes go through once installed (`build_zip_bytes` → `extract_zip_bytes` →
+    /// `read_staged_theme_manifest`). Neither side derives from the other at test time; both
+    /// independently read the fixture, the same idiom `fixtures/manifest-boundary.json`
+    /// already uses for the plugin-manifest boundary (`registry.rs`).
+    #[test]
+    fn the_theme_package_fixture_shared_with_the_frontend_installs() {
+        let doc: serde_json::Value =
+            serde_json::from_str(include_str!("fixtures/theme-package.json")).unwrap();
+
+        let manifest_bytes = serde_json::to_vec(&doc["expectedManifest"]).unwrap();
+
+        // ‼️ 0091 fix round 2, Finding N2 (re-review) — entry paths come from `theme.modes`'
+        // OWN keys and the `"{mode}/tokens.json"` convention `themePackageEntries` (TS)
+        // actually uses, not three hardcoded literals. The prior version wrote
+        // `"light/tokens.json"`/`"dark/tokens.json"` directly, which meant a fixture edit
+        // that renamed those paths (mutation F2: `expectedEntryNames` AND
+        // `expectedManifest.modes.*.tokens` both renamed) left this test on GREEN — it was
+        // pinned to its own copy of the names, not to what the fixture claims.
+        let theme_modes = doc["theme"]["modes"].as_object().unwrap();
+        let mut entries = vec![("baram-theme.json".to_string(), manifest_bytes)];
+        let mut written: std::collections::HashMap<String, Vec<u8>> =
+            std::collections::HashMap::new();
+        for (mode, assets) in theme_modes {
+            let bytes = serde_json::to_vec(&assets["colors"]).unwrap();
+            let path = format!("{mode}/tokens.json");
+            entries.push((path.clone(), bytes.clone()));
+            written.insert(path, bytes);
+        }
+
+        let bytes = crate::plugin::build_zip_bytes(&entries).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        extract_zip_bytes(&bytes, dir.path()).unwrap();
+
+        let (id, _text, _digest) = read_staged_theme_manifest(dir.path()).unwrap();
+        assert_eq!(id, doc["theme"]["id"].as_str().unwrap());
+
+        // The assertion the hardcoded version did not have: walk what the MANIFEST ITSELF
+        // (which this test just wrote to disk, unmodified from the fixture) claims each
+        // mode's tokens path is, and require that exact path to exist with the exact bytes
+        // this test wrote under the convention path above. If a fixture edit renames
+        // `expectedManifest.modes.<mode>.tokens` without the write side following (or vice
+        // versa), `declared_path` and the file this loop actually wrote diverge and
+        // `std::fs::read` fails — this is what turns RED under mutation F2.
+        let declared_modes = doc["expectedManifest"]["modes"].as_object().unwrap();
+        for (mode, assets) in declared_modes {
+            let declared_path = assets["tokens"].as_str().unwrap();
+            let expected_bytes = written
+                .get(&format!("{mode}/tokens.json"))
+                .unwrap_or_else(|| {
+                    panic!("fixture declares mode \"{mode}\" but this test never wrote it")
+                });
+            let on_disk = std::fs::read(dir.path().join(declared_path)).unwrap_or_else(|e| {
+                panic!(
+                    "{declared_path} (declared by expectedManifest.modes.{mode}.tokens) \
+                     not found in the extracted package: {e}"
+                )
+            });
+            assert_eq!(&on_disk, expected_bytes, "{declared_path}");
+        }
+    }
+
     /// ‼️ `ThemeAssetReader`'s contract, enforced at the layer that actually opens files.
     ///
     /// `inline-assets.ts` promises that a package-relative reference is handled as a FILE

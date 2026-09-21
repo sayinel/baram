@@ -136,6 +136,7 @@
     "allow-theme-install-commit",
     "allow-theme-install-discard",
     "allow-theme-install-stage",
+    "allow-theme-package-build",
     "allow-theme-read-stored-css",
     "allow-theme-stage-read",
     "allow-theme-uninstall",

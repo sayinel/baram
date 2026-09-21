@@ -1,5 +1,6 @@
 import type { InstalledTheme } from "../../themes/theme-install";
 import type { ThemeDef } from "../../types/theme";
+import type { ThemeInExport } from "../../utils/export/export";
 import type { ActivityBarItemConfig } from "./activity-bar-config";
 import type { StateCreator } from "zustand";
 
@@ -42,8 +43,18 @@ export interface AppearanceSettingsSlice {
   setLocale: (locale: string) => void;
   setTagColor: (tag: string, color: string) => void;
   setTheme: (theme: Theme) => void;
+  /** §362 — set `themeInExport`. */
+  setThemeInExport: (themeInExport: ThemeInExport) => void;
   tagColors: Record<string, string>;
   theme: Theme;
+  /**
+   * §362 — how much of the active theme an export carries: `"default"` (today's
+   * output, unchanged), `"full"`, or `"tokens"`. Defaults to `"default"`, which
+   * is byte-identical to pre-§362 output, so this key needs no `store.ts`
+   * `version` bump — CLAUDE.md's migration rule only requires one when an
+   * EXISTING user would see a different default than what they have today.
+   */
+  themeInExport: ThemeInExport;
 }
 
 type Theme = "dark" | "light" | "system";
@@ -59,6 +70,7 @@ export const createAppearanceSettingsSlice: StateCreator<
   activeThemeId: "system",
   customThemes: [],
   installedThemes: {},
+  themeInExport: "default",
 
   // Activity Bar config
   activityBarConfig: [], // default set in main store via DEFAULT_ACTIVITY_BAR_CONFIG
@@ -92,6 +104,7 @@ export const createAppearanceSettingsSlice: StateCreator<
       );
       return { activeThemeId: id, theme: themeFieldFor(theme) };
     }),
+  setThemeInExport: (themeInExport) => set({ themeInExport }),
   saveCustomTheme: (theme) =>
     set((state) => {
       const idx = state.customThemes.findIndex((t) => t.id === theme.id);

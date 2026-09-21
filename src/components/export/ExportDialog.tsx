@@ -1,9 +1,11 @@
 // §5.12 Export Dialog — HTML/PDF/Notion + §55 Pandoc Extended Export
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { open } from "@tauri-apps/plugin-dialog";
 
+import type { Translate } from "../../i18n/useTranslation";
 import type { PandocInfo } from "../../ipc/types";
+import type { ThemeInExport } from "../../utils/export/export";
 import type { ExportFormatGroup } from "./ExportFormatDropdown";
 import type { Editor } from "@tiptap/react";
 
@@ -15,6 +17,8 @@ import { useContextStore } from "../../stores/context/context";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
+import { lookupThemes } from "../../themes/installed-theme-defs";
+import { findThemeById, resolveThemeMode } from "../../types/theme";
 import {
   exportAsHTML,
   exportAsPDF,
@@ -144,19 +148,58 @@ export function ExportDialog({ editor }: ExportDialogProps) {
       : "export.unscopedNote";
   })();
   const {
+    activeThemeId,
     codeFontFamily,
+    customThemes,
     fontFamily,
+    installedThemes,
     pandocPath,
     wordTemplatePath,
     setWordTemplatePath,
+    themeInExport,
+    setThemeInExport,
   } = useSettingsStore(
     useShallow((s) => ({
+      activeThemeId: s.activeThemeId,
       codeFontFamily: s.codeFontFamily,
+      customThemes: s.customThemes,
       fontFamily: s.fontFamily,
+      installedThemes: s.installedThemes,
       pandocPath: s.pandocPath,
       wordTemplatePath: s.wordTemplatePath,
       setWordTemplatePath: s.setWordTemplatePath,
+      themeInExport: s.themeInExport,
+      setThemeInExport: s.setThemeInExport,
     })),
+  );
+  // §362 — the palette `tokens` carries, resolved here rather than in
+  // export.ts: the palette specifically arrives at exportAsHTML/exportAsPDF
+  // as an argument, not a store read (0091 final review MEDIUM-1 — not "the
+  // HTML/PDF path is store-free": that path reads `codeBlockLineNumbers` in
+  // `captureEditorHTML`; `locale` is read by `exportWithPandoc`, a sibling
+  // entry point this dialog also calls, not by the HTML/PDF path. `export.ts`'s
+  // `FontExportOptions` doc holds the enumeration.). Mirrors ThemeEditor.tsx's `resolvedTheme`/`restorePreview` —
+  // same lookup, same `resolveThemeMode` call, so a theme that resolves for
+  // editing resolves the same way for export.
+  const resolvedTheme = useMemo(
+    () =>
+      activeThemeId === "system"
+        ? undefined
+        : findThemeById(
+            activeThemeId,
+            lookupThemes(customThemes, installedThemes),
+          ),
+    [activeThemeId, customThemes, installedThemes],
+  );
+  const resolvedMode = useMemo(
+    () =>
+      resolvedTheme === undefined
+        ? undefined
+        : resolveThemeMode(
+            resolvedTheme,
+            window.matchMedia("(prefers-color-scheme: dark)").matches,
+          ),
+    [resolvedTheme],
   );
   const [title, setTitle] = useState("Untitled");
   const [exporting, setExporting] = useState(false);
@@ -213,16 +256,22 @@ export function ExportDialog({ editor }: ExportDialogProps) {
     try {
       if (exportFormat === "html") {
         await exportAsHTML(editor, title, {
+          activeTheme: resolvedTheme,
+          activeThemeMode: resolvedMode,
           bodyFont: fontFamily,
           codeFont: codeFontFamily,
           embedFonts,
+          themeInExport,
         });
       } else if (exportFormat === "pdf") {
         await exportAsPDF(editor, title, {
+          activeTheme: resolvedTheme,
+          activeThemeMode: resolvedMode,
           paperSize,
           scale: scale / 100,
           bodyFont: fontFamily,
           codeFont: codeFontFamily,
+          themeInExport,
         });
       } else if (exportFormat === "notion") {
         await exportForNotion(editor, title);
@@ -257,6 +306,9 @@ export function ExportDialog({ editor }: ExportDialogProps) {
     pandocPath,
     pandocInfo,
     wordTemplatePath,
+    themeInExport,
+    resolvedTheme,
+    resolvedMode,
     exporting,
     closeExportDialog,
     tabs,
@@ -357,6 +409,14 @@ export function ExportDialog({ editor }: ExportDialogProps) {
             </div>
           )}
 
+          {exportFormat === "html" && (
+            <ThemeInExportField
+              onChange={setThemeInExport}
+              t={t}
+              value={themeInExport}
+            />
+          )}
+
           {exportFormat === "pdf" && (
             <div className="export-dialog-field">
               <label className="export-dialog-label">Paper Size</label>
@@ -395,6 +455,22 @@ export function ExportDialog({ editor }: ExportDialogProps) {
               />
             </div>
           )}
+
+          {exportFormat === "pdf" && (
+            <ThemeInExportField
+              onChange={setThemeInExport}
+              t={t}
+              value={themeInExport}
+            />
+          )}
+
+          {exportFormat === "pdf" &&
+            themeInExport === "tokens" &&
+            resolvedMode === "dark" && (
+              <p className="export-dialog-hint">
+                {t("export.themeInExport.darkPrintHint")}
+              </p>
+            )}
 
           {exportFormat === "notion" && (
             <p className="export-dialog-hint">
@@ -461,4 +537,36 @@ export function ExportDialog({ editor }: ExportDialogProps) {
 
 function isPandocFormat(f: string): f is (typeof PANDOC_FORMATS)[number] {
   return (PANDOC_FORMATS as readonly string[]).includes(f);
+}
+
+// §362 — shared between the HTML and PDF blocks: both formats carry the same
+// persisted setting (setThemeInExport, not dialog-local state — see
+// appearance-settings.ts). `"full"` is a valid `ThemeInExport` value but is
+// not offered here (R4): this dialog exports one document, not a theme
+// package, and only `default`/`tokens` are meaningful choices for that.
+function ThemeInExportField({
+  onChange,
+  t,
+  value,
+}: {
+  onChange: (value: ThemeInExport) => void;
+  t: Translate;
+  value: ThemeInExport;
+}) {
+  return (
+    <div className="export-dialog-field">
+      <label className="export-dialog-label" htmlFor="export-theme-in-export">
+        Theme
+      </label>
+      <select
+        className="export-dialog-select"
+        id="export-theme-in-export"
+        onChange={(e) => onChange(e.target.value as ThemeInExport)}
+        value={value}
+      >
+        <option value="default">{t("export.themeInExport.default")}</option>
+        <option value="tokens">{t("export.themeInExport.tokens")}</option>
+      </select>
+    </div>
+  );
 }

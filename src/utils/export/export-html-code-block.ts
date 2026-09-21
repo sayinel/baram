@@ -199,7 +199,16 @@ export function extractHighlightedLineHTML(lineEl: HTMLElement): string {
       // ‼️ Read the token's CLASS and resolve it to the LIGHT palette, rather
       // than reading `getComputedStyle().color` — which returns whatever the
       // EDITOR is wearing. A dark-theme export used to put light-grey code onto
-      // the white page an export always is, where it is very nearly invisible.
+      // a white page, where it is very nearly invisible.
+      //
+      // §362 final review LOW-2 — "an export always is [white]" stopped being
+      // true when `tokens` + a dark theme made the REST of the page able to
+      // go dark. This fallback still forces code blocks to the light palette
+      // regardless (same for `CODE_STYLE_MAP`'s literals and the `mark`
+      // highlight colour) — readable either way, but an island against a dark
+      // page. Whether `tokens` should reach code blocks too is a spec
+      // question, not decided here.
+      //
       // See lightHighlightDeclarations for why the fix cannot be a
       // colour→colour map.
       const decls = lightHighlightDeclarations(child.classList);

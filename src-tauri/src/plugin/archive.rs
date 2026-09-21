@@ -43,6 +43,39 @@ pub(super) fn extract_zip_bytes(data: &[u8], output_dir: &Path) -> Result<(), Pl
     extract_zip_bounded(data, output_dir, ExtractBounds::DEFAULT)
 }
 
+/// §363 — the write-side counterpart of [`extract_zip_bytes`] above: build a ZIP archive in
+/// memory from `entries`, deflate-compressed. Used by `theme_cmd::theme_package_build` to
+/// turn `themePackageEntries`'s (frontend, pure) entry map into installable bytes.
+///
+/// Pure and unbounded on purpose — no path is touched, nothing here decides what belongs in
+/// the archive or refuses anything about it. `entries` is already the exact set the caller
+/// wants written, at the exact names it wants them written under (§363's `themePackageEntries`
+/// is what puts `baram-theme.json` at the root rather than under a nested folder, which is
+/// what `install.rs`'s `dir.join("baram-theme.json")` requires — see that module's header).
+/// This function does not know or enforce that; it only writes what it is given. Bounding what
+/// a THEME PACKAGE may contain, should that ever matter, belongs where the download-side
+/// bounds already live (`limits.rs`) — nothing here is a download, so nothing here borrows
+/// that budget.
+///
+/// Mirrors `test_support::zip_of`'s `ZipWriter` idiom (that one stays test-only — `#[cfg(test)]`
+/// gates the whole module — this is its production counterpart, now that a first production
+/// caller exists).
+pub fn build_zip_bytes(entries: &[(String, Vec<u8>)]) -> Result<Vec<u8>, PluginError> {
+    use std::io::Write;
+    let mut buf = std::io::Cursor::new(Vec::<u8>::new());
+    {
+        let mut writer = zip::write::ZipWriter::new(&mut buf);
+        let opts = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+        for (name, body) in entries {
+            writer.start_file(name, opts)?;
+            writer.write_all(body)?;
+        }
+        writer.finish()?;
+    }
+    Ok(buf.into_inner())
+}
+
 /// The limits `extract_zip_bounded` enforces.
 ///
 /// A parameter rather than five constants read directly, so the tests can drive the same
@@ -156,6 +189,42 @@ fn extract_zip_bounded(
 mod tests {
     use super::super::test_support::zip_of;
     use super::*;
+
+    // ── §363 build_zip_bytes ────────────────────────────────────────────────────────
+    //
+    // The frontend's `themePackageEntries` round trip only sees the ENTRY MAP it hands
+    // this function (there is no zip reader in the frontend) — this is the half of the
+    // round trip that has to see the actual bytes.
+
+    #[test]
+    fn build_zip_bytes_round_trips_every_entry() {
+        let entries = vec![
+            ("baram-theme.json".to_string(), b"{\"a\":1}".to_vec()),
+            ("light/tokens.json".to_string(), b"{\"b\":2}".to_vec()),
+            ("dark/tokens.json".to_string(), b"{\"c\":3}".to_vec()),
+        ];
+        let bytes = build_zip_bytes(&entries).unwrap();
+        let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+        // Not just "each named entry is readable" — a dropped entry would still pass a
+        // by-name loop over the SURVIVORS. The count is what a dropped write actually
+        // breaks (mutation-tested: removing one `writer.start_file`/`write_all` pair from
+        // `build_zip_bytes` turns this red on the count, before the by-name reads below
+        // would ever get to the missing one).
+        assert_eq!(archive.len(), entries.len());
+        for (name, body) in &entries {
+            let mut file = archive.by_name(name).unwrap();
+            let mut out = Vec::new();
+            std::io::Read::read_to_end(&mut file, &mut out).unwrap();
+            assert_eq!(&out, body, "{name}");
+        }
+    }
+
+    #[test]
+    fn build_zip_bytes_of_no_entries_is_a_valid_empty_archive() {
+        let bytes = build_zip_bytes(&[]).unwrap();
+        let archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+        assert_eq!(archive.len(), 0);
+    }
 
     // ── #261 archive expansion bounds ────────────────────────────────────────────────
     //

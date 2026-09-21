@@ -3,7 +3,9 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 
 import type { Locale } from "../../i18n";
 import type { PandocFormat, PdfOptions } from "../../ipc/types";
+import type { ThemeDef, ThemeMode } from "../../types/theme";
 import type { BundledFont } from "../font/bundled-fonts";
+import type { ExportHTMLOptions } from "./export-html";
 // §5.12 Export — HTML file save + PDF via headless Chrome backend + §53 Notion + §55 Pandoc
 import type { Editor } from "@tiptap/core";
 
@@ -18,6 +20,7 @@ import { logger } from "../logger";
 import { buildFontFaceCSS } from "./export-font-embed";
 import { captureEditorHTML, generateStandaloneHTML } from "./export-html";
 import { stripDisallowedMarkdownLinks } from "./export-markdown-links";
+import { themeTokensBlock } from "./export-theme-tokens";
 import { rewriteMermaidForPandoc } from "./mermaid-export-assets";
 import { convertForNotion } from "./notion-export";
 import { convertForPandoc } from "./pandoc-export";
@@ -25,15 +28,27 @@ import { imagePolicyNotice, preparePandocImages } from "./pandoc-image-policy";
 import { resolveZettelLinksForExport } from "./zettel-link-resolve";
 
 /**
- * §353 — the user's chosen fonts, read by the caller (this module does not
- * touch the settings store — export utilities stay pure) and passed through.
+ * §353 — the user's chosen fonts, read by the caller and passed through as
+ * arguments here, rather than by this module reading the store itself.
+ *
+ * ‼️ That does NOT make this module store-free. Measured over this file's
+ * transitive value-import closure (131 files; `import type` excluded; stores
+ * recorded, not descended), `useSettingsStore` is read at exactly two sites.
+ * One IS on the HTML/PDF path: `captureEditorHTML` (`export-html.ts`) reads
+ * `codeBlockLineNumbers`, and both `exportAsHTML` and `exportAsPDF` call it.
+ * The other is NOT: `exportWithPandoc`, below, reads `locale`, and neither
+ * HTML/PDF entry point reaches it. What IS true, and what §362's two
+ * citations of this comment mean: fonts and the theme palette arrive at
+ * `exportAsHTML`/`exportAsPDF` as arguments from the caller (`ExportDialog`),
+ * not from a third read here.
  */
 export interface FontExportOptions {
   bodyFont?: string;
   codeFont?: string;
 }
 
-export interface HTMLExportOptions extends FontExportOptions {
+export interface HTMLExportOptions
+  extends FontExportOptions, ThemeExportOptions {
   /**
    * Embed the bundled faces as data URIs (§353). Off by default: ~2.7MB of
    * base64 for the body face alone is not something every export should pay
@@ -41,6 +56,36 @@ export interface HTMLExportOptions extends FontExportOptions {
    */
   embedFonts?: boolean;
 }
+
+/**
+ * ‼️ 자기 인터페이스를 갖는 이유: `exportAsPDF` 의 파라미터는
+ * `FontExportOptions & PdfOptions & ThemeExportOptions` 라 `HTMLExportOptions`
+ * 를 보지 않는다(아래 `exportAsPDF` 자신의 시그니처 참조 — 행 번호가 아니라
+ * 심볼로 찾을 것). 스펙 §11 은 "`HTMLExportOptions` 에 더한다" 고 적고 뒤에서
+ * PDF 동작을 약속하는데, 그 둘은 오늘 코드에서 양립하지 않는다. 서체 옵션이
+ * 아니므로 `FontExportOptions` 에 얹지도 않는다.
+ */
+export interface ThemeExportOptions {
+  /**
+   * §362 — the active theme's def + resolved mode, read by the caller
+   * (`ExportDialog`, which already reads the settings store) rather than
+   * here. `FontExportOptions`'s doc above enumerates the reads this
+   * module's HTML/PDF path DOES make (`codeBlockLineNumbers`, `locale`) —
+   * the palette follows the fonts' discipline, not a third one: it arrives
+   * as an argument, same as `bodyFont`/`codeFont`. Consulted
+   * only when `themeInExport === "tokens"`; leave both
+   * undefined when there is no palette to carry (`activeThemeId === "system"`,
+   * or `findThemeById` found nothing for it) — `themeTokensBlock` treats a
+   * missing theme the same as one with no colours for the mode and returns
+   * `""`.
+   */
+  activeTheme?: ThemeDef;
+  activeThemeMode?: ThemeMode;
+  themeInExport?: ThemeInExport;
+}
+
+/** §362 — export 가 활성 테마를 얼마나 실어 나르는가. */
+export type ThemeInExport = "default" | "full" | "tokens";
 
 /**
  * The family a slot will ACTUALLY render in, which is the question embedding
@@ -68,6 +113,33 @@ function effectiveFamily(slot: string, role: BundledFont["role"]): string {
 }
 
 /**
+ * §362 R4 — the one place both entry points decide what `themeInExport`
+ * actually ships as `themeTokens`.
+ *
+ * `"full"` is a valid `ThemeInExport` value with no implementation yet: spec
+ * §3.5 defers it because `rescopeEditorCSS` is a regex-based string
+ * transform (`export-editor-css.ts`) and cannot safely be pointed at a
+ * theme's own, potentially untrusted, CSS. Silently promoting it to
+ * `"tokens"` would claim the theme's CSS shipped when it did not — next to a
+ * feature that already has to handle untrusted CSS carefully — so it
+ * degrades to `"default"` instead, loudly.
+ */
+function resolveThemeTokens(
+  themeInExport: ThemeInExport,
+  theme: ThemeDef | undefined,
+  mode: ThemeMode | undefined,
+): string | undefined {
+  if (themeInExport === "full") {
+    logger.warn(
+      '[Baram Export] themeInExport "full" is not implemented yet — falling back to "default"',
+    );
+    return undefined;
+  }
+  if (themeInExport !== "tokens") return undefined;
+  return themeTokensBlock(theme, mode ?? "light");
+}
+
+/**
  * Export editor content as a standalone HTML file.
  * Opens native save dialog, then writes via Rust atomic write.
  */
@@ -78,17 +150,29 @@ export async function exportAsHTML(
 ): Promise<void> {
   const bodyFont = options?.bodyFont ?? "";
   const codeFont = options?.codeFont ?? "";
+  const themeInExport = options?.themeInExport ?? "default";
   const fontFaceCSS = options?.embedFonts
     ? await buildFontFaceCSS([
         effectiveFamily(bodyFont, "body"),
         effectiveFamily(codeFont, "code"),
       ])
     : "";
-  const html = generateStandaloneHTML(await captureEditorHTML(editor), title, {
+  const themeTokens = resolveThemeTokens(
+    themeInExport,
+    options?.activeTheme,
+    options?.activeThemeMode,
+  );
+  const htmlOptions: ExportHTMLOptions = {
     bodyFont,
     codeFont,
     fontFaceCSS,
-  });
+    themeTokens,
+  };
+  const html = generateStandaloneHTML(
+    await captureEditorHTML(editor),
+    title,
+    htmlOptions,
+  );
 
   const path = await save({
     filters: [{ name: "HTML", extensions: ["html"] }],
@@ -107,9 +191,16 @@ export async function exportAsHTML(
 export async function exportAsPDF(
   editor: Editor,
   title: string,
-  options?: FontExportOptions & PdfOptions,
+  options?: FontExportOptions & PdfOptions & ThemeExportOptions,
 ): Promise<void> {
-  const { bodyFont = "", codeFont = "", ...pdfOptions } = options ?? {};
+  const {
+    activeTheme,
+    activeThemeMode,
+    bodyFont = "",
+    codeFont = "",
+    themeInExport = "default",
+    ...pdfOptions
+  } = options ?? {};
   // §353 — PDF always embeds bundled faces, unconditionally: `generate_pdf`
   // renders from a temp directory a relative font URL cannot resolve against
   // (export-font-embed.ts). There is no checkbox for PDF.
@@ -117,12 +208,23 @@ export async function exportAsPDF(
     effectiveFamily(bodyFont, "body"),
     effectiveFamily(codeFont, "code"),
   ]);
+  const themeTokens = resolveThemeTokens(
+    themeInExport,
+    activeTheme,
+    activeThemeMode,
+  );
+  const htmlOptions: ExportHTMLOptions = {
+    bodyFont,
+    codeFont,
+    fontFaceCSS,
+    themeTokens,
+  };
   const html = generateStandaloneHTML(
     // §301 fix (I4): PDF can never play video — captureEditorHTML replaces it
     // with a link instead of leaving an inert `<video>`.
     await captureEditorHTML(editor, { forPdf: true }),
     title,
-    { theme: "light", bodyFont, codeFont, fontFaceCSS },
+    htmlOptions,
   );
 
   const path = await save({
