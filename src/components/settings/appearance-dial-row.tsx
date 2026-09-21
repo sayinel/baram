@@ -48,24 +48,34 @@ export function AppearanceDialRow({ dialId, label }: AppearanceDialRowProps) {
         type="range"
         value={resolved.value}
       />
-      {/* `data-origin`은 병합 결과의 원시 origin — 로케일과 무관한 시험용
-          걸쇠다. 사람이 읽는 텍스트는 로케일을 탄다(§366 스펙: 출처 배지는
-          사용자에게 보이는 문구여야 한다 — title 툴팁으로만 두면 화면에는
-          여전히 미번역 영단어가 남는다). */}
-      <span data-origin={resolved.origin} data-testid="dial-origin">
-        {t(`settings.appearance.dialOrigin.${resolved.origin}`)}
-      </span>
-      {resolved.origin === "user" ? (
-        <button
-          className="btn-unstyled"
-          data-testid="dial-revert"
-          onClick={() => useSettingsStore.getState().resetDial(dialId)}
-          title={t("settings.appearance.dialRevert")}
-          type="button"
+      {/* 고정 폭 슬롯(`.settings-dial-origin`, modal.css) 하나로 배지와
+          되돌리기 버튼을 함께 묶는다 — 슬라이더는 `settings-row-control`
+          안에서 오른쪽 정렬이라, 슬롯 폭이 origin마다 바뀌면(문구 길이·
+          버튼 유무 차이) 슬라이더 위치도 함께 밀린다. */}
+      <span className="settings-dial-origin">
+        {/* `data-origin`은 병합 결과의 원시 origin — 로케일과 무관한 시험용
+            걸쇠다. 사람이 읽는 텍스트는 로케일을 탄다(§366 스펙: 출처 배지는
+            사용자에게 보이는 문구여야 한다 — title 툴팁으로만 두면 화면에는
+            여전히 미번역 영단어가 남는다). */}
+        <span
+          className="settings-dial-origin-badge"
+          data-origin={resolved.origin}
+          data-testid="dial-origin"
         >
-          ↺
-        </button>
-      ) : null}
+          {t(`settings.appearance.dialOrigin.${resolved.origin}`)}
+        </span>
+        {resolved.origin === "user" ? (
+          <button
+            className="btn-unstyled"
+            data-testid="dial-revert"
+            onClick={() => useSettingsStore.getState().resetDial(dialId)}
+            title={t("settings.appearance.dialRevert")}
+            type="button"
+          >
+            ↺
+          </button>
+        ) : null}
+      </span>
     </SettingsRow>
   );
 }

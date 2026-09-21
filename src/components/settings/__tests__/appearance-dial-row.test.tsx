@@ -20,6 +20,9 @@ describe("AppearanceDialRow", () => {
     expect(badge).toHaveTextContent(
       en["settings.appearance.dialOrigin.default"],
     );
+    // 무엇이 이것을 실패시키는가: 이 클래스가 빠지면 배지가 본문 크기·
+    // 기본 텍스트색으로 렌더돼 라벨과 시각적으로 경쟁한다(§366 버그 리포트).
+    expect(badge).toHaveClass("settings-dial-origin-badge");
     expect(screen.queryByTestId("dial-revert")).toBeNull();
   });
 

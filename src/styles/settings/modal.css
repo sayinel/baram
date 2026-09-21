@@ -268,6 +268,29 @@
   justify-content: flex-end;
 }
 
+/* §366 다이얼 출처 슬롯 — 배지 문구 길이가 origin마다 달라지면(되돌리기
+   버튼이 붙고 안 붙는 것도 포함) 오른쪽 정렬된 슬라이더가 origin에 따라
+   옆으로 밀린다. 폭을 고정해 슬라이더 위치를 origin과 무관하게 만든다.
+   min-width는 settings.appearance.dialOrigin.{default,theme,user}
+   (en/ko 여섯 문구) 중 가장 넓은 것 + 되돌리기 글리프 버튼 + 사이 여백을
+   어림해 여유를 둔 값이다 — origin이 하나 더 생기면(§371 테마 층) 그
+   문구도 포함해 다시 잴 것. */
+.settings-dial-origin {
+  display: flex;
+  flex-shrink: 0;
+  gap: 4px;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 84px;
+  margin-left: 8px;
+}
+
+.settings-dial-origin-badge {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
 /* Form controls */
 .settings-select {
   padding: 5px 10px;
