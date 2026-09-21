@@ -268,6 +268,32 @@
   justify-content: flex-end;
 }
 
+/* §366 다이얼 값 읽기 슬롯 — description 괄호 안에 살던 값을 여기로 옮겼다
+   (§366 후속 수정, 버그: 드래그로 "(6rem)"이 "(6.5rem)"이 되면 description
+   이 한 줄에서 두 줄로 넘어가 아래 모든 행이 튀어 올랐다 — 사용자 표현으로
+   "떨려 보인다"). description을 로케일별 상수로 만들면 그 자체로는 줄바꿈을
+   막지 못한다(상수도 원래부터 길면 계속 두 줄이다) — 진짜 고정은 값이 더 이상
+   description 폭에 얹히지 않는다는 것과, 아래에서 상수 문장을 실측해 여유
+   있게 줄인 것 둘이 함께 한다.
+
+   width는 이 두 다이얼의 값 문구 중 가장 넓은 것(`No limit`)을 실측(San
+   Francisco 12px 기준 43–44px, Inter는 그 근방으로 가정)해 여유를 둔 값이다.
+   `4000px`(editorMaxWidth 최댓값)도 43–44px로 비슷하게 넓다. 세 번째 다이얼이
+   더 넓은 값 문구를 쓰게 되면 다시 잴 것. `font-variant-numeric:
+   tabular-nums`는 드래그 중 자릿수가 같은 숫자끼리 폭이 흔들리는 것(그 자체가
+   더 작은 버전의 같은 떨림 버그다)을 막는다. */
+.settings-dial-value {
+  flex-shrink: 0;
+  width: 52px;
+  margin-left: 8px;
+  overflow: hidden;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-secondary);
+  text-align: right;
+  white-space: nowrap;
+}
+
 /* §366 다이얼 출처 슬롯 — 배지 문구 길이가 origin마다 달라지면(되돌리기
    버튼이 붙고 안 붙는 것도 포함) 슬라이더가 origin에 따라 옆으로 밀린다.
    폭을 고정해 슬라이더 위치를 origin과 무관하게 만든다.

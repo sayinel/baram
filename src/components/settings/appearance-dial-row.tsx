@@ -33,10 +33,7 @@ export function AppearanceDialRow({ dialId, label }: AppearanceDialRowProps) {
   const resolved = resolveDials({}, appearanceOverrides)[dialId];
 
   return (
-    <SettingsRow
-      description={describeValue(dialId, resolved.value, t)}
-      label={label}
-    >
+    <SettingsRow description={describeDial(dialId, t)} label={label}>
       <input
         className="settings-range"
         max={dial.range.max}
@@ -48,6 +45,14 @@ export function AppearanceDialRow({ dialId, label }: AppearanceDialRowProps) {
         type="range"
         value={resolved.value}
       />
+      {/* 값 읽기 전용 슬롯(`.settings-dial-value`, modal.css) — 값을 description
+          안 괄호에서 꺼내 여기로 옮겼다(§366 후속 수정). description은 이제
+          로케일별 상수라 줄바꿈 여부가 값 길이에 따라 흔들리지 않는다: 드래그로
+          "(6rem)"이 "(6.5rem)"이 되던 예전에는 그 한 글자가 description 줄 수를
+          뒤집어 아래 모든 행을 밀어 올렸다(§366 버그 리포트, "떨려 보인다"). */}
+      <span className="settings-dial-value" data-testid="dial-value">
+        {formatDialValue(dialId, resolved.value, t)}
+      </span>
       {/* 고정 폭 슬롯(`.settings-dial-origin`, modal.css) 하나로 배지와
           되돌리기 버튼을 함께 묶는다 — 슬라이더는 `settings-row-control`
           안에서 오른쪽 정렬이라, 슬롯 폭이 origin마다 바뀌면(문구 길이·
@@ -96,20 +101,29 @@ export function AppearanceDialRow({ dialId, label }: AppearanceDialRowProps) {
 }
 
 /**
+ * 행 설명 — 값이 빠진 로케일별 상수 문장. `settings.editor.maxWidth.desc` /
+ * `settings.appearance.editorPadding.desc`는 더 이상 `{value}` 자리표시자를
+ * 신지 않는다(§366 후속 수정) — 값은 `formatDialValue`가 따로 반환한다.
+ */
+function describeDial(dialId: DialId, t: Translate): string {
+  switch (dialId) {
+    case "editorMaxWidth":
+      return t("settings.editor.maxWidth.desc");
+    case "editorPadding":
+      return t("settings.appearance.editorPadding.desc");
+  }
+}
+
+/**
  * 값 읽기 문구 — 단위(px/rem)와 "제한 없음" 표기가 다이얼마다 다르다.
  * 다이얼이 둘뿐이라 분기로 충분하다 — `dials.ts` 머리말과 같은 이유로, 쓰지
  * 않을 일반성을 다이얼 정의 쪽에 미리 만들지 않는다.
  */
-function describeValue(dialId: DialId, value: number, t: Translate): string {
+function formatDialValue(dialId: DialId, value: number, t: Translate): string {
   switch (dialId) {
-    case "editorMaxWidth": {
-      const formatted =
-        value === 0 ? t("settings.editor.maxWidth.noLimit") : `${value}px`;
-      return t("settings.editor.maxWidth.desc", { value: formatted });
-    }
+    case "editorMaxWidth":
+      return value === 0 ? t("settings.editor.maxWidth.noLimit") : `${value}px`;
     case "editorPadding":
-      return t("settings.appearance.editorPadding.desc", {
-        value: `${value}rem`,
-      });
+      return `${value}rem`;
   }
 }

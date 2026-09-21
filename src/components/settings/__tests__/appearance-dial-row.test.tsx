@@ -53,9 +53,10 @@ describe("AppearanceDialRow", () => {
   it("shows a px readout that tracks the slider value", () => {
     render(<AppearanceDialRow dialId="editorMaxWidth" label="Line width" />);
     fireEvent.change(screen.getByRole("slider"), { target: { value: "640" } });
-    expect(
-      screen.getByText("Maximum content width (640px)"),
-    ).toBeInTheDocument();
+    // 값은 더 이상 description 괄호 안이 아니라 전용 읽기 슬롯에 산다(§366
+    // 후속 수정) — description은 값과 무관한 상수 문장으로 남는다.
+    expect(screen.getByText("Maximum content width")).toBeInTheDocument();
+    expect(screen.getByTestId("dial-value")).toHaveTextContent("640px");
   });
 
   it("labels zero as 'no limit' instead of showing a bare 0px", () => {
@@ -63,16 +64,21 @@ describe("AppearanceDialRow", () => {
     // 에디터가 갑자기 무제한 폭이 됐는지 설명이 없다.
     render(<AppearanceDialRow dialId="editorMaxWidth" label="Line width" />);
     fireEvent.change(screen.getByRole("slider"), { target: { value: "0" } });
-    expect(
-      screen.getByText("Maximum content width (No limit)"),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("dial-value")).toHaveTextContent("No limit");
   });
 
   it("shows a rem readout for the padding dial", () => {
     render(<AppearanceDialRow dialId="editorPadding" label="Editor padding" />);
     fireEvent.change(screen.getByRole("slider"), { target: { value: "6" } });
-    expect(
-      screen.getByText("Space around the editor content (6rem)"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Space around the content")).toBeInTheDocument();
+    expect(screen.getByTestId("dial-value")).toHaveTextContent("6rem");
+  });
+
+  it("keeps the readout's class so the value stays a fixed-width, tabular-nums slot", () => {
+    // 무엇이 이것을 실패시키는가: 이 클래스가 빠지면 값이 고정 폭 밖으로
+    // 나가 드래그 중 자릿수가 바뀔 때마다 슬라이더 위치가 옆으로 흔들린다
+    // (§366 버그 리포트 — description 두 줄 넘침과 같은 종류의 떨림).
+    render(<AppearanceDialRow dialId="editorMaxWidth" label="Line width" />);
+    expect(screen.getByTestId("dial-value")).toHaveClass("settings-dial-value");
   });
 });
