@@ -22,13 +22,7 @@ export function applyDialVars(
   for (const dial of DIALS) {
     const current = resolved[dial.id];
     // 말하지 않은 층뿐인 다이얼은 cascade 에 맡긴다.
-    //
-    // 타입을 명시한다: `dial` 은 DIALS 원소들의 유니온이라, `dial.toVars` 호출 결과가
-    // `Record<string, string> | { "--editor-padding": string }` 처럼 다이얼별 리터럴로
-    // 좁아진다. 아래에서 `dial.vars` 의 원소(같은 유니온의 다른 좁은 타입)로 이 값을
-    // 인덱싱하면 TS2322/TS7053 이 난다 — `emitted` 를 여기서 `Record<string, string>`
-    // 으로 넓혀 두면 해소된다(`dials.ts` 의 반환 타입 명시 주석과 같은 종류의 함정).
-    const emitted: Record<string, string> =
+    const emitted =
       current.origin === "default" ? {} : dial.toVars(current.value);
     for (const name of dial.vars) {
       const value = emitted[name];

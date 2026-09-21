@@ -51,6 +51,13 @@ const inRange =
       ? raw
       : undefined;
 
+// ‼️ 모든 다이얼의 `toVars` 는 반환 타입을 명시한다. 두 가지 이유가 있고 둘 다
+// 실측으로 확인됐다. (a) 조건부로 다른 객체를 돌려주면 TS 가 삼항의 두 갈래를
+// `{} | { "--editor-max-width": string }` 유니온으로 추론해 `Record<string,
+// string>` 에 대입되지 않는다(TS2322). (b) 다이얼마다 반환 타입이 갈라지면
+// `DIALS` 를 순회하는 소비자가 `dial.toVars(...)` 의 결과를 인덱싱할 때
+// TS7053 이 난다 — `apply.ts` 가 실제로 그렇게 깨졌다. `readonly` 조절로는
+// 어느 쪽도 고쳐지지 않는다.
 export const DIALS = [
   {
     // 기본값 800 은 `editor-settings.ts` 의 `editorMaxWidth` 와 같아야 한다 —
@@ -60,11 +67,6 @@ export const DIALS = [
     id: "editorMaxWidth",
     parse: inRange(WIDTH_RANGE),
     range: WIDTH_RANGE,
-    // ‼️ 반환 타입을 명시한다. 조건부로 다른 객체를 돌려주면 TS 가 삼항의 두 갈래를
-    // `{} | { "--editor-max-width": string }` 유니온으로 추론하고, 그것은
-    // `Record<string, string>` 에 대입되지 않는다(TS2322). `readonly` 조절로는
-    // 고쳐지지 않는다 — 실측으로 확인했다. 조건부로 변수를 내는 새 다이얼은 전부
-    // 이 주석을 따른다.
     toVars: (value: number): Record<string, string> =>
       value > 0 ? { "--editor-max-width": `${value}px` } : {},
     vars: ["--editor-max-width"],
@@ -75,7 +77,9 @@ export const DIALS = [
     id: "editorPadding",
     parse: inRange(PADDING_RANGE),
     range: PADDING_RANGE,
-    toVars: (value: number) => ({ "--editor-padding": `${value}rem` }),
+    toVars: (value: number): Record<string, string> => ({
+      "--editor-padding": `${value}rem`,
+    }),
     vars: ["--editor-padding"],
   },
 ] as const satisfies readonly DialDef[];
