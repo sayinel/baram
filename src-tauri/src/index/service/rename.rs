@@ -108,19 +108,14 @@ pub(crate) async fn rename_file_with_links_inner(
     ensure_indexes(state, ctx_mgr, &contexts).await?;
     let dirs = buildable(&contexts);
     let keys = keys_of(&dirs);
-    // The destination stays inside the file's contexts: under one of its
-    // directory contexts, or — for a file opened on its own — in the same
-    // directory. A rename that would carry the file out of every context is
-    // refused before anything is written (fs_cmd's rename validates both ends
-    // the same way).
+    // The destination stays inside the file's contexts (`destination_confined`).
+    // A rename that would carry the file out of every context is refused
+    // before anything is written (fs_cmd's rename validates both ends the
+    // same way).
     let old_identity = resolve_canonical(old_path)?;
     let renamed_identity = resolve_canonical(new_path)?;
-    let allowed = if dirs.is_empty() {
-        renamed_identity.parent() == old_identity.parent()
-    } else {
-        confined_by(&renamed_identity, &dirs)
-    };
-    if !allowed {
+    let old_parent = old_identity.parent().map(Path::to_path_buf);
+    if !destination_confined(&renamed_identity, &dirs, old_parent.as_deref()) {
         return Err(format!("{new_path} is outside the contexts of {old_path}"));
     }
     // `fs::rename` replaces an existing destination on Unix; a rename is not a
@@ -128,14 +123,8 @@ pub(crate) async fn rename_file_with_links_inner(
     if Path::new(new_path).exists() {
         return Err(format!("{new_path} already exists"));
     }
-    let old_target = Path::new(old_path)
-        .file_stem()
-        .map(|s| s.to_string_lossy().to_string())
-        .ok_or("Invalid old path")?;
-    let new_target = Path::new(new_path)
-        .file_stem()
-        .map(|s| s.to_string_lossy().to_string())
-        .ok_or("Invalid new path")?;
+    let old_target = stem_of(old_path).ok_or("Invalid old path")?;
+    let new_target = stem_of(new_path).ok_or("Invalid new path")?;
 
     // 1. Get referencing files from every containing index (inside lock, quick
     //    reads) — a reference from outside a nested root is known only to the
@@ -143,16 +132,8 @@ pub(crate) async fn rename_file_with_links_inner(
     //    issue 678: with the lines each file was named for (dedup across
     //    indexes), for the same-stem exemption below — as the block ID
     //    rename keeps them (issue 668). The files are what the rewrite visits.
-    let mut named: Vec<(String, u32)> =
-        read_indexes(state, &dirs, |i| i.referring_lines_to(&old_target)).await?;
-    named.sort();
-    named.dedup();
-    let mut named_lines: HashMap<String, usize> = HashMap::new();
-    for (source, _) in &named {
-        *named_lines.entry(source.clone()).or_default() += 1;
-    }
-    let mut referring_files: Vec<String> = named_lines.keys().cloned().collect();
-    referring_files.sort();
+    let (named_lines, referring_files) =
+        named_referrers(read_indexes(state, &dirs, |i| i.referring_lines_to(&old_target)).await?);
     // A same-stem note elsewhere (`b/old.md` beside `a/old.md`) is named by
     // the index for its own `((#^id))` references, filed under its stem —
     // the old name's key. The rewrite rightly leaves those alone, and the
@@ -173,10 +154,6 @@ pub(crate) async fn rename_file_with_links_inner(
     // The canonical identity of the file being renamed, resolved before it
     // moves (the new path does not exist yet: resolve_canonical builds it on
     // its existing parent).
-    // Where the file was, for the write-time gate on its own content below:
-    // a standalone File context (no directory) confines the destination to
-    // this parent, as the check above did.
-    let old_parent = old_identity.parent().map(Path::to_path_buf);
     let remove_old = Mutation::Remove { path: old_identity };
 
     // The file's own content, read BEFORE it moves: it is what the index will
@@ -197,11 +174,9 @@ pub(crate) async fn rename_file_with_links_inner(
     //    file has moved, so a failure here is never a failed rename: the
     //    referrer is skipped and REPORTED (issue 594) — its links still spell
     //    the old name, and only the user can do something about that.
-    //    issue 678: wikilinks, then block references and embeds — each pass
-    //    reads the content the other produced, so offsets and literal regions
-    //    are its own. A referrer the index named in which no reference to the
-    //    old name is found any more is REPORTED (issue 668), as for a block
-    //    ID rename; a same-stem note named for its own references is not.
+    //    A referrer the index named in which no reference to the old name is
+    //    found any more is REPORTED (issue 668), as for a block ID rename; a
+    //    same-stem note named for its own references is not.
     let unchanged = if stem_unchanged {
         Unchanged::Ignore
     } else {
@@ -209,89 +184,32 @@ pub(crate) async fn rename_file_with_links_inner(
             unless: &named_for_its_own_references,
         }
     };
-    // A new stem a link cannot spell is not written into one — a wikilink
-    // and a block reference are judged apart (`wikilink_can_spell`,
-    // `block_reference_can_spell`: `[[a^b]]` names the note `a`, `((a^b#^id))`
-    // is fine; `((a)b#^id))` parses as nothing, `[[a)b]]` is fine). The links
-    // the stem can be spelled in are rewritten; the others stay, and every
-    // file they stay in is reported, rewritten or not (`Rewrite::left_behind`).
-    let wikilinks_spellable = wikilink_can_spell(&new_target);
-    let block_references_spellable = block_reference_can_spell(&new_target);
-    let rewrite = |content: &str, ref_path: &str| {
-        let mut left_behind = false;
-        let content = if wikilinks_spellable {
-            replace_wikilink_target(content, &old_target, &new_target)
-        } else {
-            left_behind |= wikilinks_to(content, &old_target) > 0;
-            content.to_owned()
-        };
-        let content = if block_references_spellable {
-            replace_block_reference_target(&content, ref_path, &old_target, &new_target)
-        } else {
-            left_behind |= block_references_to(&content, ref_path, &old_target) > 0;
-            content
-        };
-        Rewrite {
-            content,
-            left_behind,
-        }
-    };
+    let passes = LinkPasses::new(&old_target, &new_target);
+    let rewrite = |content: &str, ref_path: &str| passes.rewrite(content, ref_path);
     let mut rewritten =
         rewrite_referrers(&referring_files, old_path, &dirs, &unchanged, &rewrite).await;
-
-    // The renamed note itself, which rewrite_referrers skips: it may spell its
-    // own name — `((old#^b1))` pasted from another note, `[[old]]` — and
-    // under the new name those would dangle. The passes run on it under the
-    // new path, so `((#^id))`, which names no target, resolves to the new stem
-    // and stays. What they change is written where the file is now, and the
-    // note joins updated_files so an open tab follows the disk. It is stale
-    // news on the same terms as a referrer: a reference left behind, a write
-    // that failed, or nothing to change although the index named the note
-    // under the old key for more than its own `((#^id))` references.
-    let Rewrite {
-        content: own_rewritten,
-        left_behind: own_left_behind,
-    } = rewrite(&renamed_content, new_path);
-    // The gate every referrer passes right before it is written, for the
-    // renamed note too: its destination is resolved again NOW — after the
-    // move and every referrer write, not before them — and must still lie
-    // inside the file's contexts. A note that no longer does is not written,
-    // and the user hears that its references were left.
-    let still_confined = || {
-        resolve_canonical(new_path).is_ok_and(|identity| {
-            if dirs.is_empty() {
-                identity.parent() == old_parent.as_deref()
-            } else {
-                confined_by(&identity, &dirs)
-            }
-        })
-    };
-    let (renamed_content, own_stale) = if own_rewritten == renamed_content {
-        let named_for_more = matches!(unchanged, Unchanged::Report { .. })
-            && named_lines.contains_key(old_path)
-            && !named_for_its_own_references(old_path, &renamed_content);
-        (renamed_content, own_left_behind || named_for_more)
-    } else if !still_confined() {
-        log::warn!("rename: {new_path} no longer resolves inside the file's contexts, its references are left as they are");
-        (renamed_content, true)
-    } else {
-        match crate::fs::write_file(new_path, &own_rewritten).await {
-            Ok(()) => {
-                rewritten.updated.push(new_path.to_owned());
-                (own_rewritten, own_left_behind)
-            }
-            Err(e) => {
-                log::warn!("rename: {new_path} could not be rewritten: {e}");
-                (renamed_content, true)
-            }
-        }
-    };
-    if own_stale {
-        log::warn!(
-            "rename: {new_path} still holds references to its old name; they are left as they are"
-        );
-        rewritten.skipped.push(new_path.to_owned());
-    }
+    //    Then the renamed note itself, which rewrite_referrers skips. Its
+    //    destination passes the gate every referrer passes right before it is
+    //    written: resolved again NOW — after the move and every referrer
+    //    write, not before them — it must still lie inside the file's
+    //    contexts. It is stale news on a referrer's terms: the index named it
+    //    under the old key for more than its own `((#^id))` references.
+    let renamed_content = rewrite_renamed_note(
+        new_path,
+        renamed_content,
+        &rewrite,
+        || {
+            resolve_canonical(new_path)
+                .is_ok_and(|identity| destination_confined(&identity, &dirs, old_parent.as_deref()))
+        },
+        |content| {
+            matches!(unchanged, Unchanged::Report { .. })
+                && named_lines.contains_key(old_path)
+                && !named_for_its_own_references(old_path, content)
+        },
+        &mut rewritten,
+    )
+    .await;
 
     // 4. Update every containing index: drop the old entry, re-index the
     //    referring files from the content we already have — each into the
@@ -299,17 +217,7 @@ pub(crate) async fn rename_file_with_links_inner(
     //    paths its own way (Mutation::apply_to).
     let mut per_key: HashMap<String, Vec<Mutation>> = HashMap::new();
     push_for_keys(&mut per_key, &keys, &remove_old);
-    for (identity, content) in rewritten.contents {
-        let covering = keys_covering(ctx_mgr, &keys, &identity.to_string_lossy()).await;
-        push_for_keys(
-            &mut per_key,
-            &covering,
-            &Mutation::Update {
-                path: identity,
-                content,
-            },
-        );
-    }
+    queue_rewritten(&mut per_key, ctx_mgr, &keys, rewritten.contents).await;
     push_for_keys(
         &mut per_key,
         &keys,
@@ -318,14 +226,124 @@ pub(crate) async fn rename_file_with_links_inner(
             content: renamed_content,
         },
     );
-    for (key, list) in per_key {
-        state.apply(&key, list).await;
-    }
+    apply_queued(state, per_key).await;
 
     Ok(RenameResult {
         updated_files: rewritten.updated,
         skipped_files: rewritten.skipped,
     })
+}
+
+fn stem_of(path: &str) -> Option<String> {
+    Path::new(path)
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+}
+
+/// Whether a renamed file's destination stays inside the file's contexts:
+/// under one of its directory contexts, or — for a file opened on its own
+/// (§89, no directory context) — in the directory the file was in.
+fn destination_confined(identity: &Path, dirs: &[Registered], old_parent: Option<&Path>) -> bool {
+    if dirs.is_empty() {
+        identity.parent() == old_parent
+    } else {
+        confined_by(identity, dirs)
+    }
+}
+
+/// The two link passes of a file rename (issue 678), judged apart. A new stem
+/// a link cannot spell is not written into one (`wikilink_can_spell`,
+/// `block_reference_can_spell`: `[[a^b]]` names the note `a`, `((a^b#^id))`
+/// is fine; `((a)b#^id))` parses as nothing, `[[a)b]]` is fine). The links
+/// the stem can be spelled in are rewritten; the others stay, and every file
+/// they stay in is reported, rewritten or not (`Rewrite::left_behind`).
+struct LinkPasses<'a> {
+    old_target: &'a str,
+    new_target: &'a str,
+    wikilinks_spellable: bool,
+    block_references_spellable: bool,
+}
+
+impl<'a> LinkPasses<'a> {
+    fn new(old_target: &'a str, new_target: &'a str) -> Self {
+        Self {
+            old_target,
+            new_target,
+            wikilinks_spellable: wikilink_can_spell(new_target),
+            block_references_spellable: block_reference_can_spell(new_target),
+        }
+    }
+
+    /// Wikilinks, then block references and embeds — each pass reads the
+    /// content the other produced, so offsets and literal regions are its own.
+    fn rewrite(&self, content: &str, ref_path: &str) -> Rewrite {
+        let mut left_behind = false;
+        let content = if self.wikilinks_spellable {
+            replace_wikilink_target(content, self.old_target, self.new_target)
+        } else {
+            left_behind |= wikilinks_to(content, self.old_target) > 0;
+            content.to_owned()
+        };
+        let content = if self.block_references_spellable {
+            replace_block_reference_target(&content, ref_path, self.old_target, self.new_target)
+        } else {
+            left_behind |= block_references_to(&content, ref_path, self.old_target) > 0;
+            content
+        };
+        Rewrite {
+            content,
+            left_behind,
+        }
+    }
+}
+
+/// The renamed note itself, which rewrite_referrers skips: it may spell its
+/// own name — `((old#^b1))` pasted from another note, `[[old]]` — and under
+/// the new name those would dangle. The passes run on it under the new path,
+/// so `((#^id))`, which names no target, resolves to the new stem and stays.
+/// What they change is written where the file is now — if `still_confined`
+/// says the destination still is where it may be — and the note joins
+/// `updated`, so an open tab follows the disk. It joins `skipped` on the same
+/// terms as a referrer: a reference left behind, a write refused or failed,
+/// or nothing to change although the index named it for more
+/// (`named_for_more`). Returns the content the file holds now, for the index.
+async fn rewrite_renamed_note(
+    new_path: &str,
+    content: String,
+    rewrite: impl Fn(&str, &str) -> Rewrite,
+    still_confined: impl Fn() -> bool,
+    named_for_more: impl Fn(&str) -> bool,
+    rewritten: &mut Rewritten,
+) -> String {
+    let Rewrite {
+        content: own_rewritten,
+        left_behind,
+    } = rewrite(&content, new_path);
+    let (content, stale) = if own_rewritten == content {
+        let named_for_more = named_for_more(&content);
+        (content, left_behind || named_for_more)
+    } else if !still_confined() {
+        log::warn!("rename: {new_path} no longer resolves inside the file's contexts, its references are left as they are");
+        (content, true)
+    } else {
+        match crate::fs::write_file(new_path, &own_rewritten).await {
+            Ok(()) => {
+                rewritten.updated.push(new_path.to_owned());
+                (own_rewritten, left_behind)
+            }
+            Err(e) => {
+                log::warn!("rename: {new_path} could not be rewritten: {e}");
+                (content, true)
+            }
+        }
+    };
+    if stale {
+        log::warn!(
+            "rename: {new_path} still holds references to its old name; they are left as they are"
+        );
+        rewritten.skipped.push(new_path.to_owned());
+    }
+    content
 }
 
 pub(crate) async fn rename_block_id_inner(
@@ -352,18 +370,12 @@ pub(crate) async fn rename_block_id_inner(
     //    issue 668: the index says WHICH FILES refer; the lines it remembers
     //    are not trusted — the rewriter reads each file as it is now. How
     //    many lines it named each file for is kept, for the exemption below.
-    let mut named: Vec<(String, u32)> = read_indexes(state, &dirs, |index| {
-        index.block_reference_lines(file_path, old_id)
-    })
-    .await?;
-    named.sort();
-    named.dedup();
-    let mut named_lines: HashMap<String, usize> = HashMap::new();
-    for (source, _) in &named {
-        *named_lines.entry(source.clone()).or_default() += 1;
-    }
-    let mut referring_files: Vec<String> = named_lines.keys().cloned().collect();
-    referring_files.sort();
+    let (named_lines, referring_files) = named_referrers(
+        read_indexes(state, &dirs, |index| {
+            index.block_reference_lines(file_path, old_id)
+        })
+        .await?,
+    );
     let target_keys = backlink_keys(file_path);
     // A referrer that shares the target's stem — another `note.md` in some
     // other folder — is named by the index for its own self-references
@@ -407,10 +419,43 @@ pub(crate) async fn rename_block_id_inner(
     // 3. Update the containing indexes — each rewritten file goes into the
     //    indexes that cover it, spelled each index's way.
     let mut per_key: HashMap<String, Vec<Mutation>> = HashMap::new();
-    for (identity, content) in rewritten.contents {
-        let covering = keys_covering(ctx_mgr, &keys, &identity.to_string_lossy()).await;
+    queue_rewritten(&mut per_key, ctx_mgr, &keys, rewritten.contents).await;
+    apply_queued(state, per_key).await;
+
+    Ok(RenameResult {
+        updated_files: rewritten.updated,
+        skipped_files: rewritten.skipped,
+    })
+}
+
+/// What an index query named — `(file, line)`, possibly from several
+/// containing indexes, so deduplicated — as how many lines each file was
+/// named for, and the files in order. The files are what the rewrite visits;
+/// the counts are what the same-stem exemption weighs (issue 668).
+fn named_referrers(mut named: Vec<(String, u32)>) -> (HashMap<String, usize>, Vec<String>) {
+    named.sort();
+    named.dedup();
+    let mut named_lines: HashMap<String, usize> = HashMap::new();
+    for (source, _) in &named {
+        *named_lines.entry(source.clone()).or_default() += 1;
+    }
+    let mut referring_files: Vec<String> = named_lines.keys().cloned().collect();
+    referring_files.sort();
+    (named_lines, referring_files)
+}
+
+/// Queue each rewritten referrer, with the content it holds now, into the
+/// indexes that cover it — each spelled that index's way (Mutation::apply_to).
+async fn queue_rewritten(
+    per_key: &mut HashMap<String, Vec<Mutation>>,
+    ctx_mgr: &ContextManager,
+    keys: &[String],
+    contents: Vec<(PathBuf, String)>,
+) {
+    for (identity, content) in contents {
+        let covering = keys_covering(ctx_mgr, keys, &identity.to_string_lossy()).await;
         push_for_keys(
-            &mut per_key,
+            per_key,
             &covering,
             &Mutation::Update {
                 path: identity,
@@ -418,14 +463,12 @@ pub(crate) async fn rename_block_id_inner(
             },
         );
     }
+}
+
+async fn apply_queued(state: &LinkIndexState, per_key: HashMap<String, Vec<Mutation>>) {
     for (key, list) in per_key {
         state.apply(&key, list).await;
     }
-
-    Ok(RenameResult {
-        updated_files: rewritten.updated,
-        skipped_files: rewritten.skipped,
-    })
 }
 
 /// What rewriting a set of referring files produced: the files rewritten (and
