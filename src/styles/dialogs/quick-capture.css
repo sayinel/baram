@@ -220,7 +220,12 @@
    성질이 아니다 — 캡처 상자의 여백은 컨테이너의 `padding: 8px 10px`이 이미
    담당한다. `.tiptap` 자체는 손대지 않으므로 문서창의 모습은 그대로다. */
 .quick-capture-editor .tiptap {
+  /* §369 캡처 상자는 페이지가 아니다 — 위 padding·font-size 를 되돌리는 것과
+     같은 이유로, 문서 본문 폭 다이얼도 여기서는 무의미하다. 상자의 폭은
+     이미 `.quick-capture-editor`(위, width: 100%)가 정한다. */
+  max-width: none;
   padding: 0;
+  margin-inline: 0;
   font-size: inherit;
 }
 

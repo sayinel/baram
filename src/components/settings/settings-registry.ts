@@ -9,11 +9,25 @@ import type { TaskScanScope } from "../../utils/tasks/task-scan-scope";
 
 import { useShallow } from "zustand/shallow";
 
+import { DIALS } from "../../appearance/dials";
+import { resolveDials } from "../../appearance/merge";
 import { AVAILABLE_LOCALES, LOCALE_LABELS } from "../../i18n";
 import { useAIStore } from "../../stores/ai/ai";
 import { AI_PROVIDER_IDS, AI_PROVIDERS } from "../../stores/ai/providers";
 import { useSettingsStore } from "../../stores/settings/store";
 import { TASK_SCAN_SCOPES } from "../../utils/tasks/task-scan-scope";
+
+// §366 — editorMaxWidth 항목의 슬라이더 범위는 다이얼의 `range`에서 가져온다
+// (브리프 Step 5). 리터럴로 다시 적으면 슬라이더 끝에서 값이 parse에 걸려
+// 조용히 버려지는 §364 dials.ts의 함정을 여기서도 반복하게 된다.
+//
+// non-null 단정은 타입이 이미 보장하는 것을 런타임에 다시 확인하지 않는다는
+// 뜻이다 — `DIALS`는 `as const satisfies readonly DialDef[]`라 "editorMaxWidth"
+// id 를 가진 항목이 배열 리터럴에 존재함을 컴파일 타임에 고정하고, `find`가
+// 그 보장을 다시 좁혀 주지 못할 뿐이다. 모듈 최상단 `throw`였던 이전 형태는,
+// 만에 하나 이 가정이 깨지면 레지스트리를 쓰는 모든 화면(설정 전체)의 모듈
+// 로드를 막아 버렸다 — 깨져도 이 항목 하나만 무너지는 편이 낫다.
+const editorMaxWidthRange = DIALS.find((d) => d.id === "editorMaxWidth")!.range;
 
 export interface SearchableSetting {
   category: SettingsTab;
@@ -72,12 +86,12 @@ export const NAVIGATE_CONTROL: SettingControlMeta = {
  *  (a keybinding override, an extension setting, a recent folder) does not rebuild it
  *  (issue 267). Add a field here when a new entry reads it. */
 const selectRegistrySettings = (s: SettingsState) => ({
+  appearanceOverrides: s.appearanceOverrides,
   autoLoadVideoEmbeds: s.autoLoadVideoEmbeds,
   autoPairBrackets: s.autoPairBrackets,
   autoSave: s.autoSave,
   autoSaveDelay: s.autoSaveDelay,
   autoUpdateLinks: s.autoUpdateLinks,
-  editorMaxWidth: s.editorMaxWidth,
   fontSize: s.fontSize,
   highlight: s.highlight,
   inlineMath: s.inlineMath,
@@ -92,7 +106,7 @@ const selectRegistrySettings = (s: SettingsState) => ({
   setAutoSave: s.setAutoSave,
   setAutoSaveDelay: s.setAutoSaveDelay,
   setAutoUpdateLinks: s.setAutoUpdateLinks,
-  setEditorMaxWidth: s.setEditorMaxWidth,
+  setDial: s.setDial,
   setFontSize: s.setFontSize,
   setHighlight: s.setHighlight,
   setInlineMath: s.setInlineMath,
@@ -518,6 +532,22 @@ export function useSettingsRegistry(): SearchableSetting[] {
         settings.setLineNumbers,
       ),
     },
+    // §366 되돌림 — editorMaxWidth는 잠시 외관 다이얼로 Appearance 탭에
+    // 옮겨졌다가(Task 7) 돌아왔다. 다이얼 기계(병합·출처·되돌리기)는 그대로
+    // AppearanceDialRow가 맡고, 여기서 바뀌는 것은 분류(category/section)뿐이다.
+    {
+      id: "editorMaxWidth",
+      label: "settings.editor.maxWidth",
+      description: "settings.editor.maxWidth.desc",
+      category: "editor",
+      section: "settings.editor.display",
+      control: makeSliderControl(
+        () =>
+          resolveDials({}, settings.appearanceOverrides).editorMaxWidth.value,
+        (v) => settings.setDial("editorMaxWidth", v),
+        editorMaxWidthRange,
+      ),
+    },
     {
       id: "virtualizeLargeDocs",
       label: "settings.editor.virtualizeLargeDocs",
@@ -538,18 +568,6 @@ export function useSettingsRegistry(): SearchableSetting[] {
       control: makeToggleControl(
         () => settings.autoLoadVideoEmbeds,
         settings.setAutoLoadVideoEmbeds,
-      ),
-    },
-    {
-      id: "editorMaxWidth",
-      label: "settings.editor.maxWidth",
-      description: "settings.editor.maxWidth.desc",
-      category: "editor",
-      section: "settings.editor.display",
-      control: makeSliderControl(
-        () => settings.editorMaxWidth,
-        settings.setEditorMaxWidth,
-        { min: 0, max: 2048, step: 50 },
       ),
     },
     // ── Appearance ───────────────────────────────────────────────────────────

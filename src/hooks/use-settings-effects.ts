@@ -33,10 +33,12 @@ import {
   subscribeThemePreviewRelease,
   themePreviewOwned,
 } from "../utils/theme-vars";
+import { useAppearanceDials } from "./use-appearance-dials";
 import { useThemeCssHydration } from "./use-theme-css-hydration";
 
 export function useSettingsEffects(editor: Editor | null) {
   const { t } = useTranslation();
+  useAppearanceDials();
   const {
     activeThemeId,
     codeFontFamily,
@@ -49,7 +51,6 @@ export function useSettingsEffects(editor: Editor | null) {
     lineHeight,
     linkFontMetrics,
     spellCheck,
-    editorMaxWidth,
   } = useSettingsStore(
     useShallow((s) => ({
       activeThemeId: s.activeThemeId,
@@ -63,7 +64,6 @@ export function useSettingsEffects(editor: Editor | null) {
       lineHeight: s.lineHeight,
       linkFontMetrics: s.linkFontMetrics,
       spellCheck: s.spellCheck,
-      editorMaxWidth: s.editorMaxWidth,
     })),
   );
   // §361 Task 6 / spec 0049 §9.4 — a theme the registry has withdrawn as MALICIOUS stops
@@ -313,9 +313,6 @@ export function useSettingsEffects(editor: Editor | null) {
       "--editor-code-line-height",
       String(code.lineHeight),
     );
-    tiptap.style.maxWidth = editorMaxWidth > 0 ? `${editorMaxWidth}px` : "";
-    tiptap.style.marginLeft = editorMaxWidth > 0 ? "auto" : "";
-    tiptap.style.marginRight = editorMaxWidth > 0 ? "auto" : "";
   }, [
     fontSize,
     fontFamily,
@@ -324,7 +321,6 @@ export function useSettingsEffects(editor: Editor | null) {
     codeLineHeight,
     linkFontMetrics,
     lineHeight,
-    editorMaxWidth,
     editor,
   ]);
 

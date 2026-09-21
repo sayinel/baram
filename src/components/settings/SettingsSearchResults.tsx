@@ -36,7 +36,15 @@ export function SettingsSearchResults({
               <div className="settings-row-info">
                 <span className="settings-row-label">{t(item.label)}</span>
                 <span className="settings-row-description">
-                  {t(item.section)} &middot; {t(item.description)}
+                  {/* item.description may carry a {value} placeholder
+                      (settings.editor.maxWidth.desc) — substituting the
+                      control's live value unconditionally is harmless for
+                      every other entry, since t() only replaces a token that
+                      is actually present in the string. */}
+                  {t(item.section)} &middot;{" "}
+                  {t(item.description, {
+                    value: String(item.control.storeSelector()),
+                  })}
                 </span>
               </div>
               <div className="settings-row-control">

@@ -1,4 +1,6 @@
 // §3.5 사용자 설정 스토어
+import type { DialValues } from "../../appearance/dials";
+
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
@@ -136,12 +138,14 @@ export const useSettingsStore = create<SettingsState>()(
         lineNumbers: state.lineNumbers,
         autoPairBrackets: state.autoPairBrackets,
         autoLoadVideoEmbeds: state.autoLoadVideoEmbeds,
-        editorMaxWidth: state.editorMaxWidth,
         pdfRailWidth: state.pdfRailWidth,
         zoomLevel: state.zoomLevel,
         theme: state.theme,
         activeThemeId: state.activeThemeId,
         customThemes: state.customThemes,
+        // §364 partialize 는 whitelist 다 — 빠뜨리면 재시작마다 외관 다이얼이
+        // 전부 기본값으로 돌아간다.
+        appearanceOverrides: state.appearanceOverrides,
         // §361 — installed (community) theme records. tauriStorage only, never
         // localStorage: sandbox webviews share this origin (no-local-storage.test.ts).
         installedThemes: state.installedThemes,
@@ -211,7 +215,7 @@ export const useSettingsStore = create<SettingsState>()(
         // would silently drop the setting on every restart.
         vimMode: state.vimMode,
       }),
-      version: 26,
+      version: 27,
       migrate: (persisted: unknown, version: number) => {
         const state = persisted as Record<string, unknown>;
 
@@ -608,6 +612,24 @@ export const useSettingsStore = create<SettingsState>()(
                 modes: { [mode]: { colors } },
               };
             });
+          }
+        }
+
+        // v26 → v27: §364 `editorMaxWidth` 는 외관 다이얼이 되었다. 기본값(800)과 다른 값을
+        // 쓰던 사용자만 사용자 층으로 옮긴다 — 전부 옮기면 희소성이 깨져
+        // `system` 테마의 OS 추종이 죽는다(§364.2). 기본값을 쓰던 사용자는
+        // 오늘과 똑같은 화면을 보므로 backfill 이 필요 없다.
+        if (version < 27) {
+          const appearanceState = state as {
+            appearanceOverrides?: DialValues;
+            editorMaxWidth?: unknown;
+          };
+          const legacy = appearanceState.editorMaxWidth;
+          if (typeof legacy === "number" && legacy !== 800) {
+            appearanceState.appearanceOverrides = {
+              ...appearanceState.appearanceOverrides,
+              editorMaxWidth: legacy,
+            };
           }
         }
 

@@ -1,7 +1,11 @@
 /* Tiptap editor styles */
 .tiptap {
+  /* §369 본문 폭. 변수가 없으면 `none` — 무제한이 기본이고, 그때 auto 마진은
+     width:auto 인 블록에서 0 으로 계산되므로 레이아웃이 오늘과 같다. */
+  max-width: var(--editor-max-width, none);
   min-height: 100%;
   padding: 2rem var(--editor-padding);
+  margin-inline: auto;
   font-family: var(--font-family-editor);
   font-size: 1rem;
   line-height: 1.75;
