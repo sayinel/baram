@@ -28,14 +28,19 @@ import { imagePolicyNotice, preparePandocImages } from "./pandoc-image-policy";
 import { resolveZettelLinksForExport } from "./zettel-link-resolve";
 
 /**
- * §353 — the user's chosen fonts, read by the caller (the HTML/PDF path does not
- * touch the settings store — those export utilities stay pure) and passed through.
+ * §353 — the user's chosen fonts, read by the caller and passed through as
+ * arguments here, rather than by this module reading the store itself.
  *
- * ‼️ "this path", not "this module": `useSettingsStore` appears once here, at
- * `exportWithPandoc`'s `locale` read. The universal was written when it was true of
- * the whole file and stopped being true without the sentence being revisited; §362's
- * two new citations of it are scoped to the HTML/PDF entry points, which is what the
- * sentence now claims.
+ * ‼️ That does NOT make this module store-free (0091 final review MEDIUM-1 —
+ * the fix round 1 wording here claimed the HTML/PDF *path*, and was still
+ * wrong: it measured the FILE, not the path it was making a claim about).
+ * `useSettingsStore` is read twice on paths both `exportAsHTML` and
+ * `exportAsPDF` reach: `captureEditorHTML` (`export-html.ts`) reads
+ * `codeBlockLineNumbers`, and both entry points call it; `exportWithPandoc`
+ * reads `locale` directly, below. What IS true, and what §362's two
+ * citations of this comment actually mean: fonts and the theme palette
+ * specifically arrive as arguments from the caller (`ExportDialog`), not
+ * from a third read here.
  */
 export interface FontExportOptions {
   bodyFont?: string;
@@ -64,10 +69,10 @@ export interface ThemeExportOptions {
   /**
    * §362 — the active theme's def + resolved mode, read by the caller
    * (`ExportDialog`, which already reads the settings store) rather than
-   * here. Narrower than `FontExportOptions`'s doc comment above claims for
-   * the whole module (it isn't — `exportWithPandoc` reads `locale` off the
-   * settings store directly): this HTML/PDF path specifically takes its
-   * palette as an argument and does not read the store itself. Consulted
+   * here. `FontExportOptions`'s doc above enumerates the reads this
+   * module's HTML/PDF path DOES make (`codeBlockLineNumbers`, `locale`) —
+   * the palette follows the fonts' discipline, not a third one: it arrives
+   * as an argument, same as `bodyFont`/`codeFont`. Consulted
    * only when `themeInExport === "tokens"`; leave both
    * undefined when there is no palette to carry (`activeThemeId === "system"`,
    * or `findThemeById` found nothing for it) — `themeTokensBlock` treats a
