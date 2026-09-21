@@ -16,7 +16,18 @@ pub(crate) fn normalize_file_path(path: &str) -> String {
         .file_stem()
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_default();
-    file_name.to_lowercase()
+    file_key(&file_name)
+}
+
+/// The key a FILE is filed under, from its stem: the case folded, nothing
+/// stripped. For a note it is what its links normalize to (`[[Note]]`,
+/// `[[note.md]]` → `note`); for a file whose stem itself ends in `.md`
+/// (`diagram.md.txt` → `diagram.md`) it is not — `normalize_target` would
+/// strip that `.md` and hand back the NOTE `diagram.md`'s key. A rename that
+/// asks which links name a file must ask by this key, or it claims the
+/// note's links.
+pub(crate) fn file_key(stem: &str) -> String {
+    stem.to_lowercase()
 }
 
 /// Resolve a wikilink target to a possible file path

@@ -9,7 +9,7 @@ use serde::Serialize;
 use std::path::Path;
 use std::sync::LazyLock;
 
-use super::normalizer::normalize_target;
+use super::normalizer::{file_key, normalize_target};
 use super::{IndexError, LinkEntry};
 use crate::md::literal::{front_matter_end, source_lines, Literal};
 
@@ -325,10 +325,13 @@ pub(crate) fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
 /// Handles [[old]], [[old|display]], [[old#heading]], [[old#heading|display]], [[old^blockId]], etc.
 /// Only replaces the target portion, preserving display, heading, and blockId.
 ///
-/// issue 678: the target test is the index's filing rule, `normalize_target`
-/// — `.md` stripped, case folded — so every link the index counted for the
-/// old name is rewritten, and none is left to be reported as stale. A link
-/// spelled with `.md` keeps that spelling on the new name.
+/// issue 678: the target test is the index's filing rule — the link's target
+/// through `normalize_target` (`.md` stripped, case folded) against the
+/// file's key, `file_key` of its stem — so every link the index counted for
+/// the old file is rewritten, none is left to be reported as stale, and a
+/// file whose stem itself ends in `.md` (`diagram.md.txt`) never claims the
+/// note `diagram.md`'s links. A link spelled with `.md` keeps that spelling
+/// on the new name.
 pub fn replace_wikilink_target(content: &str, old_target: &str, new_target: &str) -> String {
     // Match all wikilink forms: [[target]], [[target|display]], [[target#heading]], etc.
     // Capture groups: (1) target, (2) rest — #heading, ^blockId, |display in any combo
@@ -336,7 +339,7 @@ pub fn replace_wikilink_target(content: &str, old_target: &str, new_target: &str
     // never counted it, the editor never read it. The literal set is read
     // only once a match names the old target: a vault-wide rename visits
     // every note, and most hold no such link.
-    let old_key = normalize_target(old_target);
+    let old_key = file_key(old_target);
     let mut literal: Option<Literal> = None;
     REPLACE_RE
         .replace_all(content, |caps: &regex::Captures| {
@@ -442,10 +445,12 @@ pub fn replace_block_id_refs_to(
 /// display, and the `((…))` inside `{{embed ((old#^id))}}` — spelled with the
 /// new stem, in every referrer line the index's own grammar reads as a
 /// reference to the old one (`extract_links`, as `replace_block_id_refs_to`
-/// does since issue 668). The target test is `normalize_target`: a
+/// does since issue 668). The target test is the index's — the reference's
+/// target through `normalize_target`, against `file_key` of the old stem: a
 /// path-qualified `((dir/old#^id))` is filed elsewhere and stays (issue 619),
-/// a self-reference names no target and stays, and a literal region is
-/// never touched (issue 620).
+/// a self-reference names no target and stays, a literal region is never
+/// touched (issue 620), and a file whose stem ends in `.md` never claims
+/// the note's references.
 ///
 /// A stem no reference can spell — one holding `)`, `#` or `|`, which end the
 /// target of `REF_REPLACE_RE` — is never written: the reference would parse
@@ -489,7 +494,7 @@ fn visit_block_references_to(
     old_target: &str,
     respell: impl Fn(&str, &str) -> Option<String>,
 ) -> (String, usize) {
-    let old_key = normalize_target(old_target);
+    let old_key = file_key(old_target);
     let refers_to_old = |raw_target: &str| {
         let t = raw_target.trim();
         !t.is_empty() && normalize_target(t) == old_key
@@ -1206,6 +1211,31 @@ mod tests {
             replace_block_reference_target(content, "/v/referrer.md", "old", "new"),
             "((new#^a)) {{embed ((new#^b|shown))}} ((#^c)) ((dir/old#^d)) `((old#^e))`\n[[old]]\n"
         );
+    }
+
+    #[test]
+    fn a_file_whose_stem_ends_in_md_does_not_claim_the_notes_links() {
+        // The index files a FILE under its lowercased stem (`normalize_file_path`)
+        // and a LINK under `normalize_target`, which also strips `.md`. For a
+        // note the two agree; for `diagram.md.txt` the file's key is
+        // `diagram.md` while `[[diagram]]` and `[[diagram.md]]` are the note
+        // `diagram.md`'s links, filed under `diagram`. Renaming the file must
+        // not touch them — and renaming the note must (the pair below).
+        let content = "see [[diagram]] [[diagram.md]] [[diagram.md.txt]] ((diagram#^a))\n";
+        assert_eq!(
+            replace_wikilink_target(content, "diagram.md", "chart"),
+            content
+        );
+        assert_eq!(
+            replace_block_reference_target(content, "/v/r.md", "diagram.md", "chart"),
+            content
+        );
+        assert_eq!(block_references_to(content, "/v/r.md", "diagram.md"), 0);
+        assert_eq!(
+            replace_wikilink_target(content, "diagram", "chart"),
+            "see [[chart]] [[chart.md]] [[diagram.md.txt]] ((diagram#^a))\n"
+        );
+        assert_eq!(block_references_to(content, "/v/r.md", "diagram"), 1);
     }
 
     #[test]

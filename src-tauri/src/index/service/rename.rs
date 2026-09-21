@@ -156,7 +156,7 @@ pub(crate) async fn rename_file_with_links_inner(
     // the old name's key. The rewrite rightly leaves those alone, and the
     // note is not stale news while its prose self-references, of any block,
     // account for every line the index named it for.
-    let old_key = crate::index::normalizer::normalize_target(&old_target);
+    let old_key = crate::index::normalizer::normalize_file_path(old_path);
     let named_for_its_own_references = |path: &str, content: &str| {
         crate::index::normalizer::normalize_file_path(path) == old_key
             && named_lines
@@ -166,7 +166,7 @@ pub(crate) async fn rename_file_with_links_inner(
     // A rename that keeps the stem — `old.md` → `old.txt`, or `Note.md` →
     // `note.md`, whose case the passes respell in every referrer — leaves no
     // referrer stale: none the index named is news.
-    let stem_unchanged = crate::index::normalizer::normalize_target(&new_target) == old_key;
+    let stem_unchanged = crate::index::normalizer::normalize_file_path(new_path) == old_key;
 
     // The canonical identity of the file being renamed, resolved before it
     // moves (the new path does not exist yet: resolve_canonical builds it on

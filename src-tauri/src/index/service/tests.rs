@@ -2366,6 +2366,52 @@ async fn a_reference_left_on_purpose_is_reported_before_the_same_stem_exemption_
 }
 
 #[tokio::test]
+async fn renaming_a_file_whose_stem_ends_in_md_leaves_the_notes_referrers_alone() {
+    // `diagram.md.txt` has the stem `diagram.md`; the note `diagram.md` has
+    // the stem `diagram`, and `[[diagram]]`·`((diagram#^b1))` are ITS links.
+    // Renaming the text file finds no referrer under its own key, rewrites
+    // nothing and reports nothing — and the note keeps its backlink.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-678k", true).await;
+    std::fs::write(dir.path().join("diagram.md"), "para ^b1\n").unwrap();
+    std::fs::write(dir.path().join("diagram.md.txt"), "plain text\n").unwrap();
+    std::fs::write(dir.path().join("r.md"), "[[diagram]] ((diagram#^b1))\n").unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/diagram.md.txt"),
+        &format!("{root}/chart.txt"),
+    )
+    .await
+    .unwrap();
+    assert!(
+        result.updated_files.is_empty(),
+        "{:?}",
+        result.updated_files
+    );
+    assert!(
+        result.skipped_files.is_empty(),
+        "{:?}",
+        result.skipped_files
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
+        "[[diagram]] ((diagram#^b1))\n"
+    );
+    assert!(dir.path().join("chart.txt").exists());
+    let backlinks = get_backlinks_inner(&state, &ctx, &format!("{root}/diagram.md"))
+        .await
+        .unwrap();
+    let mut from = sources(&backlinks);
+    from.sort();
+    from.dedup();
+    assert_eq!(from, vec![format!("{root}/r.md")]);
+}
+
+#[tokio::test]
 async fn a_rename_that_keeps_the_stem_rewrites_nothing_and_reports_nothing() {
     // issue 678: `old.md` → `old.txt` changes no reference — every referrer
     // is unchanged, and none of them is stale news.

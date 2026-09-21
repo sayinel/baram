@@ -20,7 +20,8 @@ pub use extractor::{
 
 use extractor::{extract_file_tags, extract_links};
 use normalizer::{
-    extract_id_from_stem, is_id_target, normalize_file_path, normalize_target, resolve_target,
+    extract_id_from_stem, file_key, is_id_target, normalize_file_path, normalize_target,
+    resolve_target,
 };
 
 /// The keys under which references TO `file_path` are filed in `incoming`:
@@ -254,14 +255,16 @@ impl LinkIndex {
     }
 
     /// §33 · issue 678: every `(file, line)` the index holds a reference to
-    /// `target` on — wikilink, block reference or embed alike, filed under
-    /// the one key of the normalized target. A file rename rewrites all
-    /// three kinds, and counts the lines each referrer was named for to tell
-    /// a same-stem note's own references apart from a stale index.
-    pub fn referring_lines_to(&self, target: &str) -> Vec<(String, u32)> {
+    /// the file with this `stem` on — wikilink, block reference or embed
+    /// alike, filed under the file's key (`file_key`, as `get_backlinks`
+    /// looks a file up; not `normalize_target`, which would read a stem
+    /// ending in `.md` as another note's). A file rename rewrites all three
+    /// kinds, and counts the lines each referrer was named for to tell a
+    /// same-stem note's own references apart from a stale index.
+    pub fn referring_lines_to(&self, stem: &str) -> Vec<(String, u32)> {
         let mut out: Vec<(String, u32)> = self
             .incoming
-            .get(&normalize_target(target))
+            .get(&file_key(stem))
             .map(|entries| {
                 entries
                     .iter()
