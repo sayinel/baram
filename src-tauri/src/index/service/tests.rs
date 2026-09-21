@@ -2490,6 +2490,83 @@ async fn a_rename_that_keeps_the_stem_rewrites_nothing_and_reports_nothing() {
 }
 
 #[tokio::test]
+async fn a_rename_that_keeps_the_stem_does_not_report_the_renamed_note_for_its_own_references() {
+    // issue 678: the note itself spells its own name — `((old#^b1))`, which
+    // the index files under `old`, its own key — and `old.md` → `old.txt`
+    // leaves it rightly untouched. Under `Unchanged::Ignore` nothing is news,
+    // so the note is not reported either; without that test the note would
+    // be, because its self-references name a target and so account for none
+    // of the lines the index named it for.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-678m", true).await;
+    std::fs::write(dir.path().join("old.md"), "para ^b1\n\nsee ((old#^b1))\n").unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/old.md"),
+        &format!("{root}/old.txt"),
+    )
+    .await
+    .unwrap();
+    assert!(
+        result.updated_files.is_empty(),
+        "{:?}",
+        result.updated_files
+    );
+    assert!(
+        result.skipped_files.is_empty(),
+        "{:?}",
+        result.skipped_files
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("old.txt")).unwrap(),
+        "para ^b1\n\nsee ((old#^b1))\n"
+    );
+}
+
+#[tokio::test]
+async fn a_reference_left_in_the_renamed_note_is_reported_though_its_own_references_excuse_it() {
+    // issue 678: the renamed note holds a self-reference and a reference to
+    // its own old name ON ONE LINE, so the index names it for one line and
+    // its self-references account for that line — the exemption would spare
+    // it. But `old (draft)` is a stem no block reference can spell, so the
+    // reference to the old name is left on purpose, and that is reported
+    // ahead of the exemption. Without the left-behind disjunct the note
+    // would go unmentioned while still naming a note that no longer exists.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-678n", true).await;
+    std::fs::write(
+        dir.path().join("old.md"),
+        "mine ^x\n\nsee ((#^x)) and ((old#^b1))\n",
+    )
+    .unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/old.md"),
+        &format!("{root}/old (draft).md"),
+    )
+    .await
+    .unwrap();
+    assert!(
+        result.updated_files.is_empty(),
+        "{:?}",
+        result.updated_files
+    );
+    assert_eq!(result.skipped_files, vec![format!("{root}/old (draft).md")]);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("old (draft).md")).unwrap(),
+        "mine ^x\n\nsee ((#^x)) and ((old#^b1))\n"
+    );
+}
+
+#[tokio::test]
 async fn a_rename_to_a_stem_no_block_reference_can_spell_reports_the_referrers_it_leaves() {
     // issue 678: `((target#^id))` cannot hold `)` in its target, so the
     // block references are left as they are — pointing at the old name —
