@@ -112,9 +112,11 @@ export function useFileTreeRename(
         // `renameFileEntry` re-keys openFiles (`rekeyOpenFilesPrefix`,
         // stores/file/file-tree-ops.ts). Read the map after it.
         const { openFiles } = useFileStore.getState();
-        // The referrers the backend rewrote: every CLEAN open surface of each
-        // follows the disk (issue 594); a referrer with unsaved work keeps its
-        // edits and takes the conflict path, as for any external write.
+        // The files the backend rewrote — referrers, and since issue 678 the
+        // renamed note itself under its NEW path (re-keyed above, so it is
+        // found here): every CLEAN open surface of each follows the disk
+        // (issue 594); one with unsaved work keeps its edits and takes the
+        // conflict path, as for any external write.
         for (const updatedFile of result.updatedFiles) {
           if (openFiles.has(updatedFile)) {
             try {
