@@ -12,11 +12,18 @@ import { useState } from "react";
 
 import type { ThemeDef } from "../../../types/theme";
 
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useSettingsEffects } from "../../../hooks/use-settings-effects";
 import { useSettingsStore } from "../../../stores/settings/store";
+import { useUIStore } from "../../../stores/ui/ui";
 import { solePalette } from "../../../types/__tests__/helpers/theme-palette";
 import {
   BUILT_IN_THEMES,
@@ -49,6 +56,23 @@ vi.mock("../../../ipc/recent-menu", () => ({
 }));
 vi.mock("../../../ipc/menu-enabled", () => ({
   syncMenuEnabled: menuIpc.syncMenuEnabled,
+}));
+
+// 0091 fix round 2 — the package-export click chain (item 3 / N4) needs these three
+// mocked: the native save dialog, and the two IPC calls `handleExportPackage` makes
+// after it. None of the existing tests in this file click either export button, so
+// mocking these file-wide cannot affect them.
+const dialogMock = vi.hoisted(() => ({ save: vi.fn() }));
+vi.mock("@tauri-apps/plugin-dialog", () => ({ save: dialogMock.save }));
+
+const themeIpcMock = vi.hoisted(() => ({ themePackageBuild: vi.fn() }));
+vi.mock("../../../ipc/theme", () => ({
+  themePackageBuild: themeIpcMock.themePackageBuild,
+}));
+
+const fsIpcMock = vi.hoisted(() => ({ exportBinaryFile: vi.fn() }));
+vi.mock("../../../ipc/fs", () => ({
+  exportBinaryFile: fsIpcMock.exportBinaryFile,
 }));
 
 const NORD = BUILT_IN_THEMES.find((t) => t.id === "nord")!;
@@ -313,5 +337,152 @@ describe("ThemeEditor — package export guard", () => {
     });
 
     expect(packageButton().disabled).toBe(true);
+  });
+});
+
+// 0091 fix round 2, Finding N1 (MEDIUM, re-review) — the id default's danger was not
+// "empty before a name exists" (that's guarded: an unslugifiable name leaves the id
+// empty, and the guard blocks on that same as any other empty field). It is a RENAME
+// after the default landed: open on `system` → id defaults to "custom-default-light" →
+// rename the theme → id is STILL "custom-default-light" and the guard, which only
+// checks the id's FORMAT, stays satisfied. Standard slug-field fix: sync the id from
+// the name until the id field itself is edited, then stop.
+describe("ThemeEditor — package id follows the name until touched", () => {
+  beforeEach(() => {
+    document.documentElement.style.cssText = "";
+    useSettingsStore.setState({
+      activeThemeId: "system",
+      customThemes: [],
+      locale: "en",
+    });
+  });
+
+  function idInput(): HTMLInputElement {
+    return screen.getByLabelText("id (e.g. my-theme)");
+  }
+
+  it("re-slugifies the id when the name changes, before the id field is touched", () => {
+    render(<ThemeEditor onClose={() => {}} />);
+    expect(idInput().value).toBe("custom-default-light");
+
+    fireEvent.change(screen.getByLabelText("Theme name..."), {
+      target: { value: "Solar Flare" },
+    });
+
+    expect(idInput().value).toBe("solar-flare");
+  });
+
+  it("stops following the name once the id field has been edited directly", () => {
+    render(<ThemeEditor onClose={() => {}} />);
+
+    fireEvent.change(idInput(), { target: { value: "my-own-id" } });
+    fireEvent.change(screen.getByLabelText("Theme name..."), {
+      target: { value: "Solar Flare" },
+    });
+
+    // The bug this pins: without the touched flag, this silently becomes
+    // "solar-flare", clobbering the id the author just typed by hand.
+    expect(idInput().value).toBe("my-own-id");
+  });
+});
+
+// 0091 fix round 2, Item 3 (re-review) — `handleExportPackage`'s success path, its
+// dropped-mode warning, and its error handling were all added across this task and its
+// first fix round with zero coverage: deleting the `themePackageBuild` →
+// `exportBinaryFile` pair outright stayed green throughout (Task 2's Major 2 shape).
+describe("ThemeEditor — package export click chain", () => {
+  beforeEach(() => {
+    document.documentElement.style.cssText = "";
+    useSettingsStore.setState({
+      activeThemeId: "system",
+      customThemes: [],
+      locale: "en",
+    });
+    useUIStore.setState({ toast: null });
+    dialogMock.save.mockReset().mockResolvedValue("/tmp/exported.zip");
+    themeIpcMock.themePackageBuild.mockReset().mockResolvedValue([1, 2, 3]);
+    fsIpcMock.exportBinaryFile.mockReset().mockResolvedValue(undefined);
+  });
+
+  function packageButton(): HTMLButtonElement {
+    return screen.getByRole("button", { name: "Export Theme Package" });
+  }
+
+  function fillAllPackageMeta(): void {
+    fireEvent.change(screen.getByLabelText("Author"), {
+      target: { value: "Ada" },
+    });
+    fireEvent.change(screen.getByLabelText("Description"), {
+      target: { value: "A theme" },
+    });
+    fireEvent.change(screen.getByLabelText("License (e.g. MIT)"), {
+      target: { value: "MIT" },
+    });
+    fireEvent.change(screen.getByLabelText("Version (e.g. 1.0.0)"), {
+      target: { value: "1.0.0" },
+    });
+  }
+
+  it("a successful click builds the entry map and exports the bytes it got back", async () => {
+    render(<ThemeEditor onClose={() => {}} />);
+    fillAllPackageMeta();
+
+    fireEvent.click(packageButton());
+
+    await waitFor(() => expect(fsIpcMock.exportBinaryFile).toHaveBeenCalled());
+
+    expect(themeIpcMock.themePackageBuild).toHaveBeenCalledTimes(1);
+    const entries = themeIpcMock.themePackageBuild.mock.calls[0]?.[0] as Record<
+      string,
+      Uint8Array
+    >;
+    expect(Object.keys(entries)).toEqual(
+      expect.arrayContaining(["baram-theme.json", "light/tokens.json"]),
+    );
+    expect(fsIpcMock.exportBinaryFile).toHaveBeenCalledWith(
+      "/tmp/exported.zip",
+      [1, 2, 3],
+    );
+  });
+
+  it("warns when a declared mode has no colours to export", async () => {
+    const CSS_ONLY_DARK: ThemeDef = {
+      id: "custom-css-only",
+      modes: {
+        dark: { css: "body { color: red; }" },
+        light: { colors: { ...defaultColorsForBase("light") } },
+      },
+      name: "CSS Only Dark",
+      source: "custom",
+    };
+    useSettingsStore.setState({
+      activeThemeId: CSS_ONLY_DARK.id,
+      customThemes: [CSS_ONLY_DARK],
+    });
+    render(<ThemeEditor onClose={() => {}} />);
+    fillAllPackageMeta();
+
+    fireEvent.click(packageButton());
+
+    await waitFor(() => expect(fsIpcMock.exportBinaryFile).toHaveBeenCalled());
+
+    // "Dark", not the raw mode id "dark" — the toast reuses the same key the base
+    // toggle two rows above it already renders (0091 fix round 2, Finding N4).
+    expect(useUIStore.getState().toast?.type).toBe("warning");
+    expect(useUIStore.getState().toast?.message).toContain("Dark");
+  });
+
+  it("shows an error toast instead of an unhandled rejection when the export IPC fails", async () => {
+    fsIpcMock.exportBinaryFile.mockReset();
+    fsIpcMock.exportBinaryFile.mockRejectedValueOnce(new Error("disk full"));
+    render(<ThemeEditor onClose={() => {}} />);
+    fillAllPackageMeta();
+
+    fireEvent.click(packageButton());
+
+    await waitFor(() =>
+      expect(useUIStore.getState().toast?.type).toBe("error"),
+    );
+    expect(useUIStore.getState().toast?.message).toContain("disk full");
   });
 });

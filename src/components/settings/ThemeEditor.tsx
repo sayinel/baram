@@ -116,6 +116,18 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
   // 넣어 두되(slugifyThemeId), 저자가 자유롭게 고칠 수 있는 평범한 입력이다.
   // `name`이 이미 위에서 초기화됐으므로 이 초기값 계산은 그 값을 그대로 읽는다.
   const [packageId, setPackageId] = useState(() => slugifyThemeId(name));
+  // 0091 fix round 2, Finding N1(MEDIUM, 재리뷰) — 위 초기값만으로는 부족했다.
+  // 빌트인 테마를 열면 id가 예: "custom-default-light"로 채워지는데, 그 뒤
+  // name을 "Solar Flare"로 바꿔도 id는 그대로 남는다 — 형식은 여전히
+  // 유효하므로 canExportPackage 가드를 그대로 통과해, "Solar Flare"라는
+  // 이름의 테마가 아무 경고 없이 custom-default-light라는 id로 나간다. 표준
+  // 슬러그 필드 패턴으로 고친다: id 입력을 직접 건드리기 전까지는 name을
+  // 따라가고, 한 번 건드리면 더 이상 따라가지 않는다.
+  const [packageIdTouched, setPackageIdTouched] = useState(false);
+  useEffect(() => {
+    if (packageIdTouched) return;
+    setPackageId(slugifyThemeId(name));
+  }, [name, packageIdTouched]);
   const canExportPackage =
     packageAuthor.trim() !== "" &&
     packageDescription.trim() !== "" &&
@@ -294,10 +306,16 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
       (mode) => !(`${mode}/tokens.json` in entries),
     );
     if (droppedModes.length > 0) {
+      // 0091 fix round 2, Finding N4(재리뷰) — 새 i18n 키를 만들지 않고
+      // 위 base 토글이 이미 쓰는 settings.theme.light/dark를 그대로
+      // 쓴다. 같은 패널 안에서 "dark"라는 영문 문자열과 "다크"라는 번역이
+      // 동시에 보이면 한 대상에 두 이름이 붙는다.
+      const modeLabel = (mode: ThemeMode): string =>
+        mode === "light" ? t("settings.theme.light") : t("settings.theme.dark");
       useUIStore.getState().showToast(
         t("settings.theme.exportPackageDroppedModes", {
           count: String(droppedModes.length),
-          modes: droppedModes.join(", "),
+          modes: droppedModes.map(modeLabel).join(", "),
         }),
         "warning",
       );
@@ -399,7 +417,12 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
         <input
           aria-label={t("settings.theme.packageIdPlaceholder")}
           className="theme-editor-name"
-          onChange={(e) => setPackageId(e.target.value)}
+          onChange={(e) => {
+            // 직접 건드리는 순간부터는 name을 더 이상 따라가지 않는다 —
+            // 위 useEffect가 packageIdTouched를 보는 이유가 이 한 줄이다.
+            setPackageIdTouched(true);
+            setPackageId(e.target.value);
+          }}
           placeholder={t("settings.theme.packageIdPlaceholder")}
           type="text"
           value={packageId}
