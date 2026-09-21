@@ -87,7 +87,15 @@ export function ThemeGallery({
     <>
       {GROUPS.map(([source, labelKey]) => {
         const rows = allThemes.filter((theme) => theme.source === source);
-        // dev·community는 대개 비어 있다 — 빈 제목만 남기지 않는다.
+        // 빈 제목만 남기지 않는다.
+        //
+        // ‼️ `community`는 설치한 테마가 없으면 비고, `dev`는 **언제나** 빈다 — "대개"가
+        // 아니다(앞 판의 이 주석이 그렇게 적었다). `allThemes`를 만드는 세 출처가 각각
+        // `builtin`·`custom`·`community`만 내고, `src/` 안에서 `ThemeDef.source`에 `"dev"`를
+        // 넣는 자리가 없다(`__tests__` 제외 전수 스캔, 0091 Task 4). `themeActions`의
+        // `reload` 어포던스도 같은 이유로 읽는 쪽이 없다. 둘 다 스펙 §363 §12.2(dev 폴더
+        // 로드)가 착지해야 살아난다 — 그 계획은 리로드보다 **로드 경로**를 먼저 설계해야
+        // 한다는 것이 0091 이 멈춰서 알아낸 것이다.
         if (rows.length === 0) return null;
         return (
           <div
