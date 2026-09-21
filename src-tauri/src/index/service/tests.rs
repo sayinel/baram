@@ -2330,6 +2330,42 @@ async fn a_file_rename_does_not_report_a_same_stem_note_named_for_its_own_refere
 }
 
 #[tokio::test]
+async fn a_reference_left_on_purpose_is_reported_before_the_same_stem_exemption_is_asked() {
+    // issue 678: `b/old.md` holds `((#^x))` and `((old#^b1))` on ONE line, so
+    // the index names it for one line and its own self-reference accounts for
+    // it — the exemption would spare it. But a block reference to the old
+    // name was left on purpose (no reference can spell `old (draft)`), and
+    // that is reported first: a reference in it still says the old name.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-678j", true).await;
+    std::fs::create_dir_all(dir.path().join("a")).unwrap();
+    std::fs::create_dir_all(dir.path().join("b")).unwrap();
+    std::fs::write(dir.path().join("a/old.md"), "para ^b1\n").unwrap();
+    std::fs::write(dir.path().join("b/old.md"), "mine ^x ((#^x)) ((old#^b1))\n").unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/a/old.md"),
+        &format!("{root}/a/old (draft).md"),
+    )
+    .await
+    .unwrap();
+    assert!(
+        result.updated_files.is_empty(),
+        "{:?}",
+        result.updated_files
+    );
+    assert_eq!(result.skipped_files, vec![format!("{root}/b/old.md")]);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("b/old.md")).unwrap(),
+        "mine ^x ((#^x)) ((old#^b1))\n"
+    );
+}
+
+#[tokio::test]
 async fn a_rename_that_keeps_the_stem_rewrites_nothing_and_reports_nothing() {
     // issue 678: `old.md` → `old.txt` changes no reference — every referrer
     // is unchanged, and none of them is stale news.
