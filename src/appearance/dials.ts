@@ -60,6 +60,11 @@ export const DIALS = [
     id: "editorMaxWidth",
     parse: inRange(WIDTH_RANGE),
     range: WIDTH_RANGE,
+    // ‼️ 반환 타입을 명시한다. 조건부로 다른 객체를 돌려주면 TS 가 삼항의 두 갈래를
+    // `{} | { "--editor-max-width": string }` 유니온으로 추론하고, 그것은
+    // `Record<string, string>` 에 대입되지 않는다(TS2322). `readonly` 조절로는
+    // 고쳐지지 않는다 — 실측으로 확인했다. 조건부로 변수를 내는 새 다이얼은 전부
+    // 이 주석을 따른다.
     toVars: (value: number): Record<string, string> =>
       value > 0 ? { "--editor-max-width": `${value}px` } : {},
     vars: ["--editor-max-width"],
