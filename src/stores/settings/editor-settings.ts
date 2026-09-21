@@ -25,7 +25,6 @@ export interface EditorSettingsSlice {
   codeFontSize: number;
   codeLineHeight: number;
   diagrams: boolean;
-  editorMaxWidth: number;
   extensionSettings: Record<string, unknown>;
   fontFamily: string;
   fontSize: number;
@@ -49,7 +48,6 @@ export interface EditorSettingsSlice {
   setCodeFontSize: (size: number) => void;
   setCodeLineHeight: (height: number) => void;
   setDiagrams: (enabled: boolean) => void;
-  setEditorMaxWidth: (width: number) => void;
   setExtensionSetting: (key: string, value: unknown) => void;
   setFontFamily: (family: string) => void;
   setFontSize: (size: number) => void;
@@ -111,7 +109,6 @@ export const createEditorSettingsSlice: StateCreator<
   lineNumbers: false,
   autoPairBrackets: true,
   autoLoadVideoEmbeds: true,
-  editorMaxWidth: 800,
   pdfRailWidth: PDF_RAIL_DEFAULT_WIDTH_PX,
   zoomLevel: 1,
   spellCheck: false,
@@ -176,7 +173,6 @@ export const createEditorSettingsSlice: StateCreator<
   setLineNumbers: (lineNumbers) => set({ lineNumbers }),
   setAutoPairBrackets: (autoPairBrackets) => set({ autoPairBrackets }),
   setAutoLoadVideoEmbeds: (autoLoadVideoEmbeds) => set({ autoLoadVideoEmbeds }),
-  setEditorMaxWidth: (editorMaxWidth) => set({ editorMaxWidth }),
   // ‼️ 정규화는 clampZoomLevel 한 곳에만 있다. 여기에 범위/정밀도를 다시 적으면
   // use-zoom.ts와 갈라져 "한쪽만 고쳐진" 상태가 되고, 그게 부드러운 핀치가
   // 죽어 있던 원인이었다 (utils/zoom.ts 주석의 측정값 참조).

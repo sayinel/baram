@@ -1,4 +1,5 @@
 // §4.2 3-Column resizable layout
+import type { CSSProperties } from "react";
 import { lazy, Suspense, useCallback } from "react";
 
 import { useShallow } from "zustand/shallow";
@@ -124,7 +125,9 @@ export function AppLayout({ children, statusBar }: AppLayoutProps) {
           <>
             <aside
               className="app-sidebar"
-              style={{ width: `${sidebarWidth}px` }}
+              style={
+                { "--sidebar-width": `${sidebarWidth}px` } as CSSProperties
+              }
             >
               <Sidebar />
             </aside>

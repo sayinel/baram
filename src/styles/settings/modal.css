@@ -268,6 +268,99 @@
   justify-content: flex-end;
 }
 
+/* §366 다이얼 값 읽기 슬롯 — description 괄호 안에 살던 값을 여기로 옮겼다
+   (§366 후속 수정, 버그: 드래그로 "(6rem)"이 "(6.5rem)"이 되면 description
+   이 한 줄에서 두 줄로 넘어가 아래 모든 행이 튀어 올랐다 — 사용자 표현으로
+   "떨려 보인다"). description을 로케일별 상수로 만들면 그 자체로는 줄바꿈을
+   막지 못한다(상수도 원래부터 길면 계속 두 줄이다) — 진짜 고정은 값이 더 이상
+   description 폭에 얹히지 않는다는 것과, 아래에서 상수 문장을 실측해 여유
+   있게 줄인 것 둘이 함께 한다.
+
+   width는 이 두 다이얼의 값 문구 중 가장 넓은 것(`No limit`)을 실측(San
+   Francisco 12px 기준 43–44px, Inter는 그 근방으로 가정)해 여유를 둔 값이다.
+   `4000px`(editorMaxWidth 최댓값)도 43–44px로 비슷하게 넓다. 세 번째 다이얼이
+   더 넓은 값 문구를 쓰게 되면 다시 잴 것. `font-variant-numeric:
+   tabular-nums`는 드래그 중 자릿수가 같은 숫자끼리 폭이 흔들리는 것(그 자체가
+   더 작은 버전의 같은 떨림 버그다)을 막는다. */
+.settings-dial-value {
+  flex-shrink: 0;
+  width: 52px;
+  margin-left: 8px;
+  overflow: hidden;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-secondary);
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* §366 다이얼 출처 슬롯 — 배지 문구 길이가 origin마다 달라지면(되돌리기
+   버튼이 붙고 안 붙는 것도 포함) 슬라이더가 origin에 따라 옆으로 밀린다.
+   폭을 고정해 슬라이더 위치를 origin과 무관하게 만든다.
+
+   `space-between`인 이유: default는 배지를 아예 렌더하지 않고(§366 후속
+   수정), theme/user는 배지만 또는 배지+버튼을 렌더한다 — 오른쪽 정렬이면
+   버튼 유무에 따라 배지의 x 좌표가 달라져 세로로 훑을 때 들쭉날쭉해진다.
+   양끝 정렬은 세 상태 전부를 공짜로 맞춘다: 배지는 항상 왼쪽 끝, 버튼은
+   항상 오른쪽 끝, 아무것도 없으면 빈 슬롯이 폭만 차지한다.
+
+   min-width는 칩이 된 뒤 다시 잰 값이다(아래 `.settings-dial-origin-badge`
+   의 padding·font-size 확정 후) — default를 뺀
+   settings.appearance.dialOrigin.{theme,user}(en/ko 네 문구) 중 가장 넓은
+   것의 칩 전체 폭(글자 + 좌우 padding) + 되돌리기 버튼(20px) + 사이 여백을
+   어림해 여유를 둔 값이다. origin enum에 네 번째 값이 생기거나 칩의
+   padding·font-size가 바뀌면 다시 잴 것. */
+.settings-dial-origin {
+  display: flex;
+  flex-shrink: 0;
+  gap: 4px;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 92px;
+  margin-left: 8px;
+}
+
+/* 이 앱에 배지/칩 전례가 없어 여기서 하나 정한다 — 조용한 메타데이터로
+   읽혀야지 라벨과 겨루면 안 된다(§366 버그 리포트: 이전엔 배지가 본문
+   크기·기본색이라 라벨과 시각적으로 경쟁했다). `--radius-full`(알약형)을
+   골랐다: 앱에 이미 있는 유일한 배지인 `.plugin-consent__new`
+   (plugins.css)도 알약형(9999px)이라, 새 모양을 하나 더 들이기보다 그
+   관용구를 따른다 — 다만 그건 진하게 칠한 "NEW" 강조 배지이고, 이건 조용한
+   출처 표시라 배경·글자색은 따로 간다(muted-on-subtle). accent 틴트는
+   시도하지 않았다: `--color-accent-subtle` 배경에 색 있는 글자를 얹는 조합은
+   사용자가 고른 accent 색마다 대비가 보장되지 않는다고 이미 이 코드베이스가
+   기록해 두었다(plugins.css `.plugin-consent__new` 주석, #330) — 무채색
+   글자라 그 특정 실패 사례는 아니지만, 스크린샷으로 직접 확인할 수 없는
+   채로 밀어 넣을 만큼 이 배지에 꼭 필요한 구분도 아니다. */
+.settings-dial-origin-badge {
+  padding: 2px 7px;
+  font-size: 0.7rem;
+  line-height: 1;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  background: var(--color-bg-subtle);
+  border-radius: var(--radius-full);
+}
+
+/* `.settings-close`(위)·`.settings-search-clear`(아래) 아이콘 버튼과 같은
+   관용구 — 정사각형 박스에 글리프를 가운데 놓고, 옅은 색에서 hover 시
+   짙어진다. 두 기존 크기(24px/18px) 사이인 20px을 썼다: 칩 옆에 붙는
+   자리라 24px는 크고, 18px는 이 글리프(↺)치고 좁다. */
+.settings-dial-revert {
+  width: 20px;
+  height: 20px;
+  font-size: 15px;
+  color: var(--color-text-muted);
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+}
+
+.settings-dial-revert:hover {
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-subtle);
+}
+
 /* Form controls */
 .settings-select {
   padding: 5px 10px;
