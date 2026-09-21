@@ -101,6 +101,10 @@ export function useFileTreeRename(
       // failure as "Rename failed" would tell the user the opposite of what
       // happened, so this half only logs.
       let referrersHeldBack = 0;
+      // issue 678: the renamed note is counted apart from the referrers. Its
+      // tab is the one the person is looking at, so "reload it to see the new
+      // name" would tell them to throw away the edit they are making.
+      let renamedNoteHeldBack = false;
       try {
         renameFileEntry(oldPath, newPath, newName);
         if (isNamespaceRename) {
@@ -123,8 +127,10 @@ export function useFileTreeRename(
               const newContent = await readFile(updatedFile);
               if (
                 !syncCleanSurfacesAfterReferrerRewrite(updatedFile, newContent)
-              )
-                referrersHeldBack += 1;
+              ) {
+                if (updatedFile === newPath) renamedNoteHeldBack = true;
+                else referrersHeldBack += 1;
+              }
             } catch {
               /* ignore */
             }
@@ -145,6 +151,7 @@ export function useFileTreeRename(
         result,
         isNamespaceRename ? rootPath : null,
         referrersHeldBack,
+        renamedNoteHeldBack,
       );
     },
     [treeRef, renameFileEntry, renameTab, fileTree, rootPath],
@@ -185,9 +192,17 @@ function reportPostRenameOutcomes(
   result: NamespaceRenameResult | RenameResult,
   rebuildRoot: null | string,
   referrersHeldBack: number,
+  renamedNoteHeldBack = false,
 ): void {
   const { locale } = useSettingsStore.getState();
   const sentences: string[] = [];
+  // issue 678: the renamed note's own links were rewritten on disk, but the
+  // tab holding it has unsaved work, so the buffer still says the old name
+  // and saving it writes that back. Telling the person to reload would cost
+  // them the edit; telling them what a save will do lets them choose.
+  if (renamedNoteHeldBack) {
+    sentences.push(t("fileTree.rename.selfUnsaved.toast", locale as Locale));
+  }
   if (referrersHeldBack > 0) {
     sentences.push(
       t("fileTree.rename.referrersUnsaved.toast", locale as Locale, {
