@@ -15,6 +15,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { THEME_COLOR_KEYS, THEME_COLOR_VALUE_RE } from "../../types/theme";
+import { validateThemeManifest } from "../theme-manifest";
 import { themePackageEntries } from "../theme-package-export";
 
 interface Fixture {
@@ -78,5 +79,21 @@ describe("the theme-package fixture shared with the backend", () => {
         expect(THEME_COLOR_VALUE_RE.test(colors?.[key] as string)).toBe(true);
       }
     }
+  });
+
+  // §362 final review LOW-3 — the drift table this file pins (TS-only → TS
+  // red, TS+fixture → Rust red, Rust-only → Rust red) never actually ran the
+  // real TS validator over the fixture's OWN checked-in manifest.
+  // theme-package-export.test.ts validates a DIFFERENT theme (`pairedTheme`)
+  // through `validateThemeManifest`, which is not the same claim as "the
+  // fixture certifies a package the app would actually accept". Today it
+  // does (description is 86/100 chars against MAX_TEXT_FIELD_CHARS), but
+  // nothing pinned that — lengthen it past 100 and this file's other tests
+  // (which only compare `themePackageEntries`'s output to
+  // `expectedManifest`, a fixture-to-fixture check) would stay green while
+  // certifying a package the real validator refuses.
+  it("the fixture's own expectedManifest passes the real TS validator, not just its own round-trip", () => {
+    const result = validateThemeManifest(fixture.expectedManifest);
+    expect(result.valid).toBe(true);
   });
 });
