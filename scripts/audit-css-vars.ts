@@ -83,13 +83,17 @@ const tsxFiles = findFiles("src", [".tsx", ".ts"]).filter(
 // 메타데이터(types/theme-color-keys.ts의 THEME_COLOR_KEYS)는 24키 전부를,
 // 기본 팔레트 생성물(types/generated/palette-{light,dark}.ts)은 그 24키의 값을,
 // 내장 테마 데이터(types/theme.ts)는 테마마다 그 24키를, 테마 적용기
-// (utils/theme-vars.ts의 setProperty·DERIVED_KEYS)는 쓰는 쪽 이름을 언급한다.
+// (utils/theme-vars.ts의 setProperty·DERIVED_KEYS)는 쓰는 쪽 이름을, 색 파생
+// 엔진(appearance/color-derive.ts의 DERIVED_COLOR_KEYS·RULES[].key)은 **낼**
+// 키 이름을 언급한다.
 // 이들을 소비로 세면 "사용자가 편집까지 하는데 아무 효과 없는" 죽은 editable
 // 토큰(editor-line-highlight가 실사례)이 advisory에서 구조적으로 숨는다.
 // 알려진 한계(적대 리뷰): 트레일링 주석 속 "--x" 리터럴은 소비로 오집계될 수
 // 있다 — stripTsComments가 URL 오탐을 피하려고 줄 머리 주석만 벗기기 때문.
 // advisory 전용 경로라 게이트 우회는 아니며, 정밀화는 AST 스캐너가 필요하다.
 const LITERAL_NON_CONSUMERS = new Set([
+  // 파생 **대상**의 이름표다 — theme-vars.ts의 DERIVED_KEYS와 같은 이유.
+  "src/appearance/color-derive.ts",
   "src/types/generated/palette-dark.ts",
   "src/types/generated/palette-light.ts",
   "src/types/theme-color-keys.ts",
@@ -257,13 +261,15 @@ if (undefinedVars.length > 0) {
 // writer·메타데이터 파일은 LITERAL_NON_CONSUMERS로 제외).
 //
 // 출력만 하던 advisory에서 **baseline ratchet**으로 승격(적대 리뷰): 목록이
-// 자라도 아무도 모르는 침묵은 이슈 515가 제기한 것과 동형이다. 알려진 잔존과
-// 다르면 — 늘든 줄든 — 실패시켜, 늘면 소비를 붙이거나 토큰을 지우고, 줄면
-// baseline을 갱신하게 한다.
-// (git-staged: §367 색 파생 규칙표(`color-derive.ts`의 RULES)가 문자열
-//  리터럴로 들어 baseline에서 빠졌다. warning-solid-hover: danger/success
-//  파생 쌍과의 대칭 유지 — derivedVars가 쓰지만 읽는 곳 없음.)
-const EXPECTED_UNCONSUMED = new Set(["--color-status-warning-solid-hover"]);
+// 자라도 아무도 모르는 침묵은 이슈 515가 제기한 것과 동형이다. 알려진 잔존
+// 2개와 다르면 — 늘든 줄든 — 실패시켜, 늘면 소비를 붙이거나 토큰을 지우고,
+// 줄면 baseline을 갱신하게 한다.
+// (git-staged: git 상태색 세트의 의도적 예비. warning-solid-hover:
+//  danger/success 파생 쌍과의 대칭 유지 — derivedVars가 쓰지만 읽는 곳 없음.)
+const EXPECTED_UNCONSUMED = new Set([
+  "--color-git-staged",
+  "--color-status-warning-solid-hover",
+]);
 const unusedColorTokens: string[] = [];
 for (const name of semanticDefined) {
   if (!name.startsWith("--color-")) continue;
