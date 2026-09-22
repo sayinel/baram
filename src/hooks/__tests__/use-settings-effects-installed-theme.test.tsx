@@ -194,22 +194,38 @@ describe("a live theme-editor preview is not overwritten (external review #1)", 
     });
   });
 
-  it("does not re-apply on release when nothing was skipped", async () => {
-    // The negative control: a release must not become a second unconditional apply, or the
-    // guard would just be a delay. Nothing was skipped here, so the `<style>` element that
-    // is already in the document must be the same one afterwards.
+  it("re-applies on release even when nothing was skipped, without re-parsing the <style>", async () => {
+    // ‼️ 계약이 바뀌었다(§367 리뷰 I3). 예전에는 "건너뛴 것이 있을 때만" 다시 적용했고,
+    // 그 조건은 되찾아야 하는 것을 하나만 셌다. 미리보기가 **끝나는 방식** 자체가 두
+    // 번째다: `ThemeEditor` 의 `restorePreview` 는 저장된 팔레트만 알아 색 다이얼이
+    // 옮긴 값을 덮으면서 끝낸다. 그때 이 이펙트는 건너뛴 적이 없다.
     render(<Host />);
     await waitFor(() => expect(themeStyleText()).not.toBeNull());
     const before = document.querySelector("style[data-baram-theme]");
+    const applied = bgVar();
+    expect(applied).not.toBe("");
 
     act(() => {
       setThemePreviewOwner(true);
+      // 편집기가 미리보기로 덮은 상태를 흉내 낸다. 이 이펙트의 deps 는 움직이지 않는다.
+      document.documentElement.style.setProperty(
+        "--color-bg-default",
+        PREVIEW_SENTINEL,
+      );
+    });
+    act(() => {
       setThemePreviewOwner(false);
     });
     await act(async () => {
       await Promise.resolve();
     });
 
+    // 저장된 팔레트가 다시 주장된다 — 옛 계약에서는 센티넬이 그대로 남았다.
+    expect(bgVar()).toBe(applied);
+    // ‼️ 그러면서도 `<style>` 은 다시 만들어지지 않는다. 이것이 예전 부정 대조가
+    // 지키던 성질이고(무조건 적용이 "그저 지연" 이 되지 않는다), `applyThemeCss` 의
+    // 동등성 관문이 그것을 보장한다 — 무엇이 이것을 실패시키는가: 그 관문을 빼면
+    // 같은 바이트에도 새 요소가 붙는다.
     expect(document.querySelector("style[data-baram-theme]")).toBe(before);
   });
 });

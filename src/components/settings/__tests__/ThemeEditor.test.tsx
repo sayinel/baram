@@ -81,6 +81,8 @@ const NORD_COLORS = solePalette(NORD);
 const ACCENT = "--color-accent-default";
 const ACCENT_LABEL = THEME_COLOR_KEYS.find((e) => e.key === ACCENT)!.label;
 const SENTINEL = "#123456";
+/** 기본 라이트 강조 `#3b82f6` 을 `accentHueShift: 60` 으로 돌린 값(§367, 실측). */
+const SHIFTED_ACCENT = "#af3bf6";
 
 function accentValue(): string {
   return document.documentElement.style.getPropertyValue(ACCENT);
@@ -117,6 +119,9 @@ describe("ThemeEditor — leaving the editor", () => {
     // inherit whatever the store defaults to.
     useSettingsStore.setState({
       activeThemeId: "system",
+      // 다이얼은 이 describe 의 한 케이스만 쓴다 — 모듈 상태라 비워 두지 않으면
+      // 그 케이스가 뒤의 인라인 변수 개수 단언을 오염시킨다.
+      appearanceOverrides: {},
       customThemes: [],
       locale: "en",
     });
@@ -206,6 +211,40 @@ describe("ThemeEditor — leaving the editor", () => {
     act(() => closeEditor());
 
     expect(accentValue()).toBe(SENTINEL);
+  });
+
+  // §367 리뷰 I3 — 편집기를 닫는 것이 강조 다이얼의 이동을 되돌렸다.
+  //
+  // `restorePreview()` 는 저장된 테마의 시드만 알고 다이얼을 모른다. 예전에는 그것이
+  // 마지막 작성자였고(소유권 해제가 **먼저** 돌아 테마 이펙트를 다시 돌린 뒤 되돌리기가
+  // 그 결과를 덮었다), 그 뒤로 `<html>` 은 테마 id·`customThemes`·`installedThemes`·
+  // CSS 캐시·다이얼 값 중 하나가 움직일 때까지 이동 없는 강조를 들고 있었다.
+  it("keeps the accent dial's shift after the editor closes", () => {
+    useSettingsStore.setState({ appearanceOverrides: { accentHueShift: 60 } });
+    let closeEditor = (): void => {};
+    let openEditor = (): void => {};
+    function Host() {
+      useSettingsEffects(null);
+      const [open, setOpen] = useState(false);
+      closeEditor = () => setOpen(false);
+      openEditor = () => setOpen(true);
+      return open ? <ThemeEditor onClose={() => {}} /> : null;
+    }
+
+    render(<Host />);
+    // 양성 기준선: 다이얼이 실제로 무언가를 쓴다. 이것이 없으면 아래 마지막 단언은
+    // "다이얼이 아예 동작하지 않는다" 와 구별되지 않는다. `#af3bf6` 는 기본 라이트
+    // 강조 `#3b82f6` 을 +60° 돌린 값이다(`accent-dials.test.ts` 의 실측 표).
+    expect(accentValue()).toBe(SHIFTED_ACCENT);
+
+    act(() => openEditor());
+    // 미리보기는 저장된 팔레트를 그대로 깐다 — 이동이 사라진 상태가 실제로 생긴다.
+    // 이 단언이 없으면 마지막 단언은 "편집기가 아무것도 안 했다" 로도 통과한다.
+    expect(accentValue()).not.toBe(SHIFTED_ACCENT);
+
+    act(() => closeEditor());
+
+    expect(accentValue()).toBe(SHIFTED_ACCENT);
   });
 
   it("keeps the mode it did not edit when a paired theme is saved", () => {

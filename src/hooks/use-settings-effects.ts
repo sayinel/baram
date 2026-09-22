@@ -256,25 +256,26 @@ export function useSettingsEffects(editor: Editor | null) {
     //
     // deps 가 늘어난 이유(늦게 도착하는 CSS 를 적용해야 한다)는 그대로 지킨다 — 건너뛴
     // 적용은 버리지 않고, 소유권이 풀릴 때 다시 돌린다.
-    let skippedWhilePreviewing = false;
     const applyUnlessPreviewing = () => {
-      if (themePreviewOwned()) {
-        skippedWhilePreviewing = true;
-        return;
-      }
-      skippedWhilePreviewing = false;
+      if (themePreviewOwned()) return;
       apply();
     };
 
     applyUnlessPreviewing();
-    // ‼️ 건너뛴 것을 되찾는 자리. 아래 주석은 "편집기를 닫으면 restorePreview()가,
-    // 저장하면 이 이펙트의 재실행이" 복구한다고 적는데, 그것은 **OS 전환**에 대해서만
-    // 참이다(그 전환이 움직이는 것은 인라인 변수와 `data-theme` 뿐이고 restorePreview 가
-    // 정확히 그 둘을 되돌린다). 하이드레이션이 실어 오는 `<style>` 은 restorePreview 가
-    // 손대지 않고(`clearThemeCss` 주석), 저장하지 않고 닫으면 이 이펙트의 deps 도 움직이지
-    // 않는다 — 그래서 그 경로만은 알림이 필요하다(`subscribeThemePreviewRelease`).
+    // ‼️ 미리보기가 놓이면 **무조건** 다시 주장한다. 한때는 "이 이펙트가 건너뛴 적이
+    // 있을 때만" 이었고, 그 조건이 참이 되는 경우를 열거하는 방식이 두 번 틀렸다.
+    //
+    // 되찾아야 하는 것이 둘이기 때문이다. ① 미리보기 중에 도착한 것 — 하이드레이션이
+    // 실어 오는 `<style>` 은 `restorePreview` 가 손대지 않고(`clearThemeCss` 주석),
+    // 저장하지 않고 닫으면 이 이펙트의 deps 도 움직이지 않는다. ② **미리보기가
+    // 끝나면서 잘못 되돌려진 것** — `restorePreview` 는 저장된 팔레트만 알아 색 다이얼이
+    // 옮긴 강조를 이동 없는 값으로 덮는다(§367 리뷰 I3). ②에서는 이 이펙트가 건너뛴
+    // 적이 없으므로 옛 조건으로는 아무 일도 일어나지 않았다.
+    //
+    // 무조건 다시 도는 비용은 미리보기를 놓는 순간 한 번이고, `applyThemeCss` 의 동등성
+    // 관문이 같은 바이트의 `<style>` 을 다시 파싱하지 않는다.
     const unsubscribeRelease = subscribeThemePreviewRelease(() => {
-      if (skippedWhilePreviewing) applyUnlessPreviewing();
+      applyUnlessPreviewing();
     });
     // ‼️ 테마 편집기가 열려 있는 동안에는 OS 전환을 **듣기만 하고 적용하지 않는다**.
     // apply()의 첫 줄이 clearThemeVars이므로, 색을 드래그하는 중에 해가 져서 macOS가

@@ -134,6 +134,12 @@ export function setThemePreviewOwner(owned: boolean): void {
  *
  * So a theme whose CSS landed while the editor was open would have stayed colour-only until
  * something unrelated moved. This is the signal that closes it.
+ *
+ * ‼️ §367 리뷰 I3 이 **두 번째 이유**를 더했고, 그래서 구독자는 이제 조건 없이 다시
+ * 적용한다(`use-settings-effects.ts`). 되찾아야 하는 것은 "미리보기 중에 도착한 것"
+ * 만이 아니다 — `restorePreview` 자신이 저장된 팔레트만 알아, 색 다이얼이 옮긴 강조를
+ * 이동 없는 값으로 **덮으면서** 미리보기를 끝낸다. 그 경우 이펙트는 건너뛴 적이 없으므로
+ * "건너뛴 것이 있을 때만" 이라는 옛 조건으로는 아무 일도 일어나지 않았다.
  */
 export function subscribeThemePreviewRelease(listener: () => void): () => void {
   previewReleaseListeners.add(listener);

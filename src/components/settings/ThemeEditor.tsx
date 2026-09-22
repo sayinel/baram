@@ -172,20 +172,18 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
   // 알려, use-settings-effects의 prefers-color-scheme 리스너가 미리보기를 지우고
   // 저장된 테마를 다시 깔지 않도록 한다 — 왜 그것이 위 주석이 막으려던 혼합
   // 미리보기와 같은 결함인지는 그 리스너 옆에 적혀 있다.
+  //
+  // ‼️ **되돌리기와 소유권 해제가 한 정리 함수 안에 있고, 그 순서가 계약이다**
+  // ({@link endPreview}). 이펙트 둘로 나뉘어 있을 때는 선언 순서가 그 둘을 정렬했고
+  // — 해제가 먼저 돌아 테마 이펙트를 다시 돌린 뒤 `restorePreview()` 가 그 결과를
+  // 덮었다 — 그래서 강조 다이얼이 옮긴 색이 편집기를 닫는 것만으로 사라졌다
+  // (§367 리뷰 I3).
   useEffect(() => {
     setThemePreviewOwner(true);
-    return () => setThemePreviewOwner(false);
-  }, []);
-
-  // Restore original colors on unmount (cancel / navigate away)
-  useEffect(() => {
     // Aliased so the cleanup reads the ref through a stable local (lint rule), not
     // a value captured at effect time — `saved` must be read AT cleanup.
     const saved = savedRef;
-    return () => {
-      if (saved.current) return;
-      restorePreview();
-    };
+    return () => endPreview(!saved.current);
   }, []);
 
   const handleColorChange = useCallback((key: ThemeColorKey, value: string) => {
@@ -247,8 +245,10 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
   ]);
 
   const handleCancel = useCallback(() => {
-    // Restore original colors before closing
-    restorePreview();
+    // Restore original colors before closing. 언마운트 정리와 **같은 순서**여야 한다
+    // (`endPreview`) — 이 버튼이 두 번째 되돌리기 자리이고, 두 자리가 갈리면 하나만
+    // 고치는 날이 온다.
+    endPreview(true);
     onClose();
   }, [onClose]);
 
@@ -484,7 +484,31 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
 }
 
 /**
+ * 미리보기를 끝내고 `<html>` 의 주인을 테마 이펙트에 돌려준다.
+ *
+ * ‼️ **순서가 계약이다.** {@link restorePreview} 는 저장된 팔레트만 알고 **색 다이얼도
+ * 테마 CSS 도 모른다** — 그래서 마지막 말은 테마 이펙트가 해야 한다. 소유권을 놓는
+ * 것이 그 이펙트를 다시 돌리는 신호이고(`subscribeThemePreviewRelease`,
+ * `theme-vars.ts`), 둘의 순서가 뒤집히면 되돌리기가 그 재적용을 덮는다 — §367 리뷰
+ * I3 가 실측한 모양이 정확히 그것이다(강조 다이얼을 움직여 둔 채 편집기를 닫으면
+ * 이동 없는 강조가 `<html>` 에 남았고, 테마 id·다이얼 값 같은 그 이펙트의 deps 중
+ * 하나가 움직일 때까지 그대로였다).
+ *
+ * `restore` 가 거짓인 자리는 저장 직후다: 그 색은 이제 진짜 테마라 되돌릴 미리보기가
+ * 없지만, 소유권은 그때도 놓아야 한다.
+ */
+function endPreview(restore: boolean): void {
+  if (restore) restorePreview();
+  setThemePreviewOwner(false);
+}
+
+/**
  * Undo the live preview the way the settings effect would have applied the theme.
+ *
+ * ‼️ 이것이 **마지막 작성자가 아니다** — {@link endPreview} 가 이 함수를 부른 뒤
+ * 소유권을 놓고, 그 신호를 받은 테마 이펙트가 다시 주장한다. 이 함수가 남아 있는
+ * 이유는 그 이펙트가 없는 트리에서도 미리보기가 걷혀야 하기 때문이다(`ThemeEditor`
+ * 를 홀로 렌더하는 테스트가 그 경우다).
  *
  * Cascade-only themes (`system`, the two defaults) and an `activeThemeId` that
  * resolves to nothing carry NO inline variables, so restoring them by SETTING the
