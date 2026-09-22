@@ -11,7 +11,7 @@ import { themeTokensBlock } from "../export-theme-tokens";
 const tokyo = BUILT_IN_THEMES.find((t) => t.id === "tokyo-night");
 
 describe("themeTokensBlock", () => {
-  it("팔레트의 24키와 파생 9키를 :root 블록으로 낸다", () => {
+  it("팔레트의 24키와 파생 9+29키를 :root 블록으로 낸다", () => {
     const css = themeTokensBlock(tokyo, "dark");
     expect(css).toContain("--color-bg-default: #1a1b26");
     // derivedVars 가 따라온다는 것이 스펙 §11 의 `tokens` 정의다.
@@ -19,10 +19,26 @@ describe("themeTokensBlock", () => {
     // 원본 팔레트에도 `--color-accent-default`/`-hover`/`-subtle`/`-ai` 가 있어 그
     // 정규식이 derivedVars 없이도 매치한다(실측: 뺐더니 초록으로 남았다). 그래서
     // derivedVars 전용 키(`--color-accent-solid`, 원본 24키에는 없다)와 총 키 개수
-    // (24+9=33)로 구분한다 — 하나는 derivedVars가 빠지면, 하나는 일부만 빠지면 잡는다.
+    // (24+9+29=62)로 구분한다 — 하나는 derivedVars가 빠지면, 하나는 일부만 빠지면 잡는다.
     expect(css).toContain("--color-accent-solid:");
-    expect([...css.matchAll(/^ {2}--color-[a-z-]+: /gmu)]).toHaveLength(33);
+    expect([...css.matchAll(/^ {2}--color-[a-z-]+: /gmu)]).toHaveLength(62);
     expect(css.startsWith(":root")).toBe(true);
+  });
+
+  // §367 리뷰 I2 — 파생 29키(`DERIVED_COLOR_KEYS`)가 이 블록에서 빠져 있었다.
+  //
+  // 무엇이 이것을 실패시키는가: `deriveColorVars` 호출을 빼면 이 세 줄이 통째로
+  // 사라진다. 개수 단언(62)과 나누는 점은 **값**이다 — 개수만으로는 "29줄이
+  // 나가긴 했다" 까지만 알고 그것이 이 테마의 색인지는 모른다.
+  it("파생 29키가 이 테마의 시드에서 계산된 값으로 나간다", () => {
+    const css = themeTokensBlock(tokyo, "dark");
+    // `--color-callout-info` 는 `hue: 0`·`lift: null` 규칙이라 강조 시드 그대로다
+    // (`color-derive.ts` 의 RULES). tokyo-night 다크의 강조가 `#7aa2f7` 이다.
+    expect(css).toContain("--color-callout-info: #7aa2f7;");
+    // 배경 계열 둘도 같은 집합이다 — 이것이 빠지면 내보낸 문서의 호버·선택 배경이
+    // `semantic-light.css` 의 기본 팔레트로 남는다.
+    expect(css).toContain("--color-bg-hover: #1a1a23;");
+    expect(css).toContain("--color-bg-selection: #072870;");
   });
 
   it("‼️ 실을 팔레트가 없으면 빈 문자열 — system 이 그 경우다 (R3)", () => {
@@ -56,6 +72,18 @@ describe("themeTokensBlock → generateStandaloneHTML (통합)", () => {
     const sheet = buildExportStylesheet("", themeTokensBlock(tokyo, "dark"));
     const semanticIdx = sheet.indexOf("--color-bg-default:");
     const themeIdx = sheet.indexOf("--color-bg-default: #1a1b26");
+    expect(semanticIdx).toBeGreaterThan(-1);
+    expect(themeIdx).toBeGreaterThan(semanticIdx);
+  });
+
+  // §367 리뷰 I2 — 같은 순서 계약이 파생 29키에도 걸려야 한다. `exportTokensCSS()` 가
+  // 번들하는 `semantic-light.css` 는 이 키들을 **기본 팔레트 값으로** 선언하므로,
+  // 테마 블록이 그 뒤에서 덮지 않으면 내보낸 문서가 앱과 다른 색을 그린다 — 29키가
+  // 이 블록에 없던 동안 실제로 그랬다(callout 이 stock 파랑·에메랄드로 인쇄됐다).
+  it("파생 29키도 exportTokensCSS() 의 같은 키 선언보다 뒤에 온다", () => {
+    const sheet = buildExportStylesheet("", themeTokensBlock(tokyo, "dark"));
+    const semanticIdx = sheet.indexOf("--color-callout-info:");
+    const themeIdx = sheet.indexOf("--color-callout-info: #7aa2f7");
     expect(semanticIdx).toBeGreaterThan(-1);
     expect(themeIdx).toBeGreaterThan(semanticIdx);
   });

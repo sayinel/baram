@@ -5,6 +5,7 @@
 // CSS 에 쓸 수 없다).
 import type { ThemeDef, ThemeMode } from "../../types/theme";
 
+import { deriveColorVars } from "../../appearance/color-derive";
 import { THEME_COLOR_KEYS, THEME_COLOR_VALUE_RE } from "../../types/theme";
 import { derivedVars } from "../theme-vars";
 
@@ -49,9 +50,21 @@ export function themeTokensBlock(
   // dark 모드에서 `accent` 를 검증 없이 그대로 돌려주고(color-contrast.ts),
   // `solidHoverFill` 도 `shiftToward` 가 파싱하지 못하면 입력을 그대로 돌려준다
   // (`?? solid`) — 즉 RAW `colors` 의 값이 파생 값으로 그대로 흘러들 수 있다.
-  // 그래서 화이트리스트는 원본 24키와 파생 9키 **양쪽 다**, 최종 직렬화
+  // 그래서 화이트리스트는 원본 24키와 파생값 **양쪽 다**, 최종 직렬화
   // 직전에 건다(아래 루프) — derivedVars 호출 자체를 거르는 대신.
-  const derived = derivedVars(colors, mode);
+  //
+  // ‼️ §367 파생 29키도 **같은 자리에서** 나가야 한다. 앱에서는 `applyThemeVars` 가
+  // 시드와 `derivedVars` 바로 뒤에 `deriveColorVars` 를 쓰는데(`theme-vars.ts`),
+  // 여기서 그것을 빠뜨리면 내보낸 문서는 `export-editor-css.ts` 가 번들하는
+  // `semantic-light.css` 의 기본 팔레트 값을 쓴다 — 이 `:root` 블록이 그 29키를
+  // 덮지 않기 때문이다. 증상: 테마를 깔고 HTML·PDF 로 내보내면 callout 이 앱에서는
+  // 테마 색인데 출력물에서는 stock 파랑·에메랄드로 나온다(`--color-bg-hover` ·
+  // `--color-bg-selection` 도 같은 집합이다). 이 갈래가 생긴 것은 §367 이고, 그 전에는
+  // 양쪽이 모두 기본값이라 우연히 일치했다.
+  //
+  // 위 두 이유가 이 호출에도 그대로 걸린다: 원본 `colors` 를 넘기고(파생 안에서
+  // 값이 그대로 흘러나올 수 있다), 걸러내는 것은 직렬화 직전의 아래 루프다.
+  const derived = { ...derivedVars(colors, mode), ...deriveColorVars(colors) };
   const lines: string[] = [];
   for (const { key } of THEME_COLOR_KEYS) {
     const value = colors[key];
@@ -60,9 +73,11 @@ export function themeTokensBlock(
     }
   }
   for (const [key, value] of Object.entries(derived)) {
-    // derived 의 KEY 는 `derivedVars` 자신이 고정된 리터럴에서 만드므로(사용자
-    // 색 객체의 임의 키가 여기 섞여 들 통로가 없다) 화이트리스트가 필요 없다 —
-    // VALUE 만 같은 정규식으로 거른다.
+    // derived 의 KEY 는 `derivedVars` 와 `deriveColorVars` 가 **각자 고정된 리터럴**
+    // 에서 만드므로(저쪽은 `DERIVED_KEYS` 의 문자열, 이쪽은 `RULES[].key`; 둘 다
+    // 사용자 색 객체의 임의 키가 섞여 들 통로가 없다 — `deriveColorVars` 는 입력이
+    // 아니라 규칙표를 순회한다) 화이트리스트가 필요 없다 — VALUE 만 같은 정규식으로
+    // 거른다.
     if (THEME_COLOR_VALUE_RE.test(value)) {
       lines.push(`  ${key}: ${value};`);
     }
