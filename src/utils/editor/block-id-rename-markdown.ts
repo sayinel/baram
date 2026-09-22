@@ -12,13 +12,9 @@
 // way the parser leaves it alone: the very parser the pipeline uses says where
 // the code is (fenced or indented, inside a list or a quote, a code span across
 // lines), and those stretches are never touched.
-import remarkFrontmatter from "remark-frontmatter";
-import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
-import remarkParse from "remark-parse";
-import { unified } from "unified";
 
 import { BLOCK_REF_RE, unescapeBlockRefTarget } from "../../pipeline/block-id";
+import { markdownParser } from "../../pipeline/markdown-parser";
 import { basename, dirname } from "../path-utils";
 
 type Range = [start: number, end: number];
@@ -105,13 +101,6 @@ export function renameBlockIdInMarkdown(
   return out;
 }
 
-/** The pipeline's own reader (see `pipeline/parse-mdast.ts`). */
-const parser = unified()
-  .use(remarkParse)
-  .use(remarkGfm, { singleTilde: false })
-  .use(remarkMath)
-  .use(remarkFrontmatter, ["yaml"]);
-
 /**
  * Node types whose text is literal — never a block ID, never a reference. An
  * image's alt text (inline or reference-style) and a reference-style link
@@ -165,7 +154,9 @@ function parsedRanges(markdown: string): { literal: Range[]; table: Range[] } {
     }
     for (const child of node.children ?? []) visit(child as typeof node);
   };
-  visit(parser.parse(markdown) as unknown as Parameters<typeof visit>[0]);
+  visit(
+    markdownParser.parse(markdown) as unknown as Parameters<typeof visit>[0],
+  );
   return { literal, table };
 }
 

@@ -345,6 +345,10 @@ export function buildPipelineClosure(): Set<string> {
  * relocation of existing MD→PM code, not new production surface.
  * `reference-links.ts` was added the same way (2026-09-07, nine → ten): the
  * issue-546 reference resolution pass moved out of `md-to-pm.ts` unchanged.
+ * `markdown-parser.ts` likewise (2026-09-22, ten → eleven, issue 669): the
+ * `unified()` construction lifted unchanged out of `parse-mdast.ts` so the
+ * text-path rename and the parity oracle read markdown with the same stack
+ * the pipeline does. It carries no conversion logic — construction only.
  */
 export const MD_TO_PM_ROUTE_FILES: ReadonlySet<string> = new Set([
   join(PIPELINE_DIR, "convert-block-special.ts"),
@@ -353,6 +357,7 @@ export const MD_TO_PM_ROUTE_FILES: ReadonlySet<string> = new Set([
   join(PIPELINE_DIR, "convert-inline.ts"),
   join(PIPELINE_DIR, "convert-list.ts"),
   join(PIPELINE_DIR, "convert-table-colwidths.ts"),
+  join(PIPELINE_DIR, "markdown-parser.ts"),
   join(PIPELINE_DIR, "md-to-pm.ts"),
   join(PIPELINE_DIR, "parse-async.ts"),
   join(PIPELINE_DIR, "parse-mdast.ts"),
