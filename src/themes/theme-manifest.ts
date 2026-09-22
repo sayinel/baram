@@ -6,8 +6,10 @@
 // 거부, 매니페스트 크기 상한 값은 카드 라벨 위장을 이미 막고 있는
 // `src/components/settings/tabs/use-theme-import.ts`와 같은 값을 그대로 쓴다 — 그 파일은
 // 다른 wire 포맷(`{name, base, colors}`)을 검증하므로 셰이프가 아니라 값만 재사용한다.
+import type { DialValue } from "../appearance/dials";
 import type { ThemeMode } from "../types/theme";
 
+import { DIALS } from "../appearance/dials";
 import { THEME_MODES } from "../types/theme";
 
 /**
@@ -86,6 +88,27 @@ export interface ManifestValidationError {
 export interface ThemeManifest {
   author: string;
   description: string;
+  /**
+   * §371.1 테마가 **제안하는** 다이얼 값. 강제가 아니다 — 사용자 층이 언제나 이긴다
+   * (§366 의 층 순서).
+   *
+   * ‼️ 모드별이 아니라 최상위다. 지금 있는 다이얼 중 라이트/다크에 따라 갈릴 값이
+   * **하나도 없고**(본문 폭·여백·줄바꿈은 해가 져도 그대로다), 모드에 의존하는 값은
+   * `data-theme` 과 `prefers-color-scheme` 리스너를 소유한 이펙트에서 적용해야 한다
+   * — 붙이는 곳과 떼는 곳이 갈리면 #330 이 다시 난다(`use-settings-effects.ts` 와
+   * `theme-vars.ts` 가 그 사고를 기록한다). 모드별 다이얼(`modes.{light,dark}.dials`)
+   * 은 그런 다이얼이 처음 생기는 계획(0095, §367 강조색)이 함께 들여온다.
+   *
+   * ‼️ 설치 시점에 앱이 모르는 다이얼 id 는 **버려지고, 앱을 올려도 되살아나지 않는다**
+   * — `rebuildManifest` 의 결과가 그대로 `InstalledTheme.manifest` 로 저장되기 때문이다.
+   * 되살리려면 재설치다. `engines.baram` 은 이 사실을 표현하지 못한다 — 그 필드가
+   * 답하는 것은 "이 패키지 포맷을 설치하고 쓸 수 있는가" 뿐이고 "이 안의 모든 필드를
+   * 읽는가" 가 아니다(`src/themes/reference/README.md`). v0.7.4 가 정확히 그 간극을
+   * 보인다: 이 포맷을 설치할 수 있는 첫 태그된 릴리스이면서, 동시에 `dials` 를
+   * 검사도 참조도 하지 않아 조용히 버리는 릴리스이기도 하다 — 버려짐이 곧
+   * `engines.baram` 만으로는 알 수 없는 것이다.
+   */
+  dials?: Readonly<Record<string, DialValue>>;
   engines: { baram: string };
   id: string;
   license: string;
@@ -192,6 +215,7 @@ export function validateThemeManifest(
   }
 
   errors.push(...validateModes(obj.modes));
+  errors.push(...validateDials(obj.dials));
 
   if (errors.length > 0) {
     return { valid: false, errors };
@@ -233,9 +257,27 @@ function rebuildManifest(obj: Record<string, unknown>): ThemeManifest {
     if (typeof assets.tokens === "string") rebuilt.tokens = assets.tokens;
     modes[mode] = rebuilt;
   }
+
+  // ‼️ `DIALS` 를 돈다 — 입력을 돌면 낯선 키가 저장분에 실린다. 값은 그 다이얼의
+  // `parse` 를 지나야 하고, 그것은 설정 UI·사용자 층이 쓰는 **같은** 관문이다.
+  const dials: Record<string, DialValue> = {};
+  const declared = obj.dials;
+  if (
+    typeof declared === "object" &&
+    declared !== null &&
+    !Array.isArray(declared)
+  ) {
+    const source = declared as Record<string, unknown>;
+    for (const dial of DIALS) {
+      const parsed = dial.parse(source[dial.id]);
+      if (parsed !== undefined) dials[dial.id] = parsed;
+    }
+  }
+
   return {
     author: obj.author as string,
     description: obj.description as string,
+    ...(Object.keys(dials).length > 0 ? { dials } : {}),
     engines: { baram: (obj.engines as { baram: string }).baram },
     id: obj.id as string,
     license: obj.license as string,
@@ -264,6 +306,23 @@ function validateTextField(
       message: `${field} may not contain control or bidi-override characters`,
     });
   }
+}
+
+/**
+ * `dials` 는 **선택**이다. 있으면 객체여야 하고, 내용은 여기서 거부하지 않는다 —
+ * 모르는 id 와 통과하지 못한 값은 `rebuildManifest` 가 **조용히 버린다.**
+ *
+ * 거부가 아니라 버리기인 이유: 이 필드는 보안 경계가 아니라 호환성 표면이다. 새
+ * 다이얼을 쓰는 테마가 구 버전 앱에서 설치조차 되지 않으면, 테마 저자는 다이얼을
+ * 쓰지 않는 쪽을 고르게 된다. 값이 `<html>` 에 도달하는 경로는 `DIALS` 화이트리스트
+ * 순회 하나뿐이라(§366), 버려진 값은 아무 데도 닿지 않는다.
+ */
+function validateDials(value: unknown): ManifestValidationError[] {
+  if (value === undefined) return [];
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return [{ field: "dials", message: "dials must be an object" }];
+  }
+  return [];
 }
 
 /**

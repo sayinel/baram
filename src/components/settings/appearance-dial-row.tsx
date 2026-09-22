@@ -1,18 +1,25 @@
 // §366 다이얼 한 줄. 출처 배지와 되돌리기가 여기 사는 이유는, 그 둘이 병합
 // 결과의 부산물이라 값과 같은 자리에서 읽어야 어긋나지 않기 때문이다.
 //
-// ‼️ `settings.appearance.dialRevert`("기본값으로 되돌리기")는 테마 층이 비어
-// 있는 지금만 정확하다. `resetDial`은 사용자 층 키를 지울 뿐이므로, 0096
-// (§371)이 테마 층에 실제 값을 실으면 되돌리기의 실제 의미는 "테마 값으로
-// 되돌리기"가 된다 — 그때 이 라벨도 같이 바뀌어야 하고, 이 파일이 그 자리다.
+// ‼️ 되돌리기 라벨은 층을 따라간다. `resetDial`은 사용자 층 키를 **지울** 뿐이므로,
+// 그 다이얼에 대해 테마가 말을 했으면 되돌아가는 자리는 기본값이 아니라 테마 값이다
+// — §371이 매니페스트에 `dials`를 실으면서 그 상태가 실제로 생겼고(이 주석의 앞
+// 판본은 그것을 예고로 적어 두었다), 그래서 라벨이 둘로 갈린다.
+//
+// 어느 쪽인지는 `resolveDials(themeDials, {})`에게 묻는다 — 사용자 층을 뺀 병합
+// 결과가 곧 되돌린 **뒤의** 상태이므로, 라벨이 같은 화면의 배지와 어긋날 방법이
+// 구조적으로 없다. `themeDials[dialId] !== undefined`로 판정하면 테마가 말했지만
+// `parse`에 걸린 값(앱이 범위를 좁힌 뒤에 남은 낡은 매니페스트)에서 둘이 갈린다:
+// 라벨은 "테마 값으로"라고 하고 실제 결과는 기본값이 된다.
 
-import type { DialId } from "../../appearance/dials";
+import type { DialId, DialValue } from "../../appearance/dials";
 import type { Translate } from "../../i18n/useTranslation";
 
 import { useShallow } from "zustand/shallow";
 
 import { DIALS } from "../../appearance/dials";
 import { resolveDials } from "../../appearance/merge";
+import { useThemeDials } from "../../hooks/use-theme-dials";
 import { useTranslation } from "../../i18n/useTranslation";
 import { useSettingsStore } from "../../stores/settings/store";
 import { SettingsRow } from "./settings-shared";
@@ -27,13 +34,22 @@ export function AppearanceDialRow({ dialId, label }: AppearanceDialRowProps) {
   const { appearanceOverrides } = useSettingsStore(
     useShallow((s) => ({ appearanceOverrides: s.appearanceOverrides })),
   );
+  const themeDials = useThemeDials();
   const dial = DIALS.find((d) => d.id === dialId);
   if (!dial) return null;
 
-  const resolved = resolveDials({}, appearanceOverrides)[dialId];
+  const resolved = resolveDials(themeDials, appearanceOverrides)[dialId];
+  // "이 행이 사용자 층 없이는 무엇을 보여 줄까" — 되돌리기 라벨이 테마로
+  // 가는지 기본값으로 가는지는 이 질문 하나로 정해진다. 이름을 한 번 붙여
+  // 그 질문을 한 곳에서만 말한다.
+  const revertedToNonUserLayer = resolveDials(themeDials, {})[dialId];
+  const revertLabel =
+    revertedToNonUserLayer.origin === "theme"
+      ? t("settings.appearance.dialRevertToTheme")
+      : t("settings.appearance.dialRevert");
 
-  return (
-    <SettingsRow description={describeDial(dialId, t)} label={label}>
+  const control =
+    dial.kind === "number" ? (
       <input
         className="settings-range"
         max={dial.range.max}
@@ -43,8 +59,34 @@ export function AppearanceDialRow({ dialId, label }: AppearanceDialRowProps) {
         }
         step={dial.range.step}
         type="range"
-        value={resolved.value}
+        value={
+          typeof resolved.value === "number"
+            ? resolved.value
+            : dial.defaultValue
+        }
       />
+    ) : (
+      // 열거는 슬라이더가 아니라 select 다. `.settings-select`(`src/styles/
+      // settings/modal.css:365`)는 이 모달의 다른 select 들이 이미 쓰는
+      // 클래스다 — 새 스타일을 만들지 않는다.
+      <select
+        className="settings-select"
+        onChange={(e) =>
+          useSettingsStore.getState().setDial(dialId, e.target.value)
+        }
+        value={String(resolved.value)}
+      >
+        {dial.options.map((option) => (
+          <option key={option} value={option}>
+            {t(`settings.editor.${dialId}.${option}`)}
+          </option>
+        ))}
+      </select>
+    );
+
+  return (
+    <SettingsRow description={describeDial(dialId, t)} label={label}>
+      {control}
       {/* 값 읽기 전용 슬롯(`.settings-dial-value`, modal.css) — 값을 description
           안 괄호에서 꺼내 여기로 옮겼다(§366 후속 수정). description은 이제
           로케일별 상수라 줄바꿈 여부가 값 길이에 따라 흔들리지 않는다: 드래그로
@@ -85,11 +127,11 @@ export function AppearanceDialRow({ dialId, label }: AppearanceDialRowProps) {
           // 여기서 쓰지 않는다: 그 클래스의 목적 자체가 버튼을 텍스트처럼 벗기는
           // 것이라, 버튼처럼 보이게 만들고 싶은 이 자리와는 반대다.
           <button
-            aria-label={t("settings.appearance.dialRevert")}
+            aria-label={revertLabel}
             className="icon-btn settings-dial-revert"
             data-testid="dial-revert"
             onClick={() => useSettingsStore.getState().resetDial(dialId)}
-            title={t("settings.appearance.dialRevert")}
+            title={revertLabel}
             type="button"
           >
             ↺
@@ -107,23 +149,74 @@ export function AppearanceDialRow({ dialId, label }: AppearanceDialRowProps) {
  */
 function describeDial(dialId: DialId, t: Translate): string {
   switch (dialId) {
+    case "editorEmphasisStyle":
+      return t("settings.editor.editorEmphasisStyle.desc");
+    case "editorLetterSpacing":
+      return t("settings.editor.editorLetterSpacing.desc");
+    case "editorLineBreak":
+      return t("settings.editor.editorLineBreak.desc");
     case "editorMaxWidth":
       return t("settings.editor.maxWidth.desc");
     case "editorPadding":
       return t("settings.appearance.editorPadding.desc");
+    case "editorParagraphSpacing":
+      return t("settings.editor.editorParagraphSpacing.desc");
   }
 }
 
 /**
- * 값 읽기 문구 — 단위(px/rem)와 "제한 없음" 표기가 다이얼마다 다르다.
- * 다이얼이 둘뿐이라 분기로 충분하다 — `dials.ts` 머리말과 같은 이유로, 쓰지
- * 않을 일반성을 다이얼 정의 쪽에 미리 만들지 않는다.
+ * `step`이 함의하는 소수 자릿수. `editorLetterSpacing`(step 0.005)처럼 소수
+ * step을 가진 다이얼은 range 슬라이더가 부동소수 오차가 낀 값(예:
+ * `-0.019999999999999997`)을 돌려줄 수 있다 — `inRange`는 step 정렬을
+ * 검사하지 않으므로 그 값도 그대로 통과한다. 여기서 반올림하지 않으면 그
+ * 오차가 고정폭 `.settings-dial-value` 슬롯을 넘쳐 §366이 막으려던 떨림이
+ * 되돌아온다.
  */
-function formatDialValue(dialId: DialId, value: number, t: Translate): string {
+function stepDecimalPlaces(step: number): number {
+  const s = step.toString();
+  const dot = s.indexOf(".");
+  return dot === -1 ? 0 : s.length - dot - 1;
+}
+
+/**
+ * `dialId`의 `range.step`에서 소수 자릿수를 파생해 `value`를 반올림한다.
+ * 값 자체(저장분)는 건드리지 않는다 — 이 함수는 표시 문구에서만 쓴다.
+ * enum 다이얼이나 알 수 없는 id는 그대로 돌려준다.
+ */
+function roundToDialStep(dialId: DialId, value: number): number {
+  const dial = DIALS.find((d) => d.id === dialId);
+  if (!dial || dial.kind !== "number") return value;
+  return Number(value.toFixed(stepDecimalPlaces(dial.range.step)));
+}
+
+/**
+ * 값 읽기 문구 — 단위(px/rem)와 "제한 없음" 표기가 다이얼마다 다르다.
+ * `editorLineBreak`는 빈 문자열을 돌려준다 — 열거의 값 readout은 select
+ * 자체가 이미 보여 주므로, 여기서 같은 값을 문장으로 또 적으면 중복이다.
+ */
+function formatDialValue(
+  dialId: DialId,
+  value: DialValue,
+  t: Translate,
+): string {
+  const rounded =
+    typeof value === "number" ? roundToDialStep(dialId, value) : value;
   switch (dialId) {
+    case "editorEmphasisStyle":
+      // editorLineBreak와 같은 이유로 빈 문자열이다 — 열거의 값 readout은
+      // select 자체가 이미 보여 준다.
+      return "";
+    case "editorLetterSpacing":
+      return `${rounded}em`;
+    case "editorLineBreak":
+      return "";
     case "editorMaxWidth":
-      return value === 0 ? t("settings.editor.maxWidth.noLimit") : `${value}px`;
+      return rounded === 0
+        ? t("settings.editor.maxWidth.noLimit")
+        : `${rounded}px`;
     case "editorPadding":
-      return `${value}rem`;
+      return `${rounded}rem`;
+    case "editorParagraphSpacing":
+      return `${rounded}em`;
   }
 }

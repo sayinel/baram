@@ -2,7 +2,7 @@
 // 잃으면 설정 UI 의 배지도 되돌리기도 만들 수 없고, 나중에 소급할 방법이 없다
 // (스펙 0055 §366.2).
 
-import type { DialId, DialValues } from "./dials";
+import type { DialId, DialValue, DialValues } from "./dials";
 
 import { DIALS } from "./dials";
 
@@ -10,7 +10,7 @@ export type DialOrigin = "default" | "theme" | "user";
 
 export interface ResolvedDial {
   readonly origin: DialOrigin;
-  readonly value: number;
+  readonly value: DialValue;
 }
 
 /**
@@ -29,8 +29,12 @@ export function resolveDials(
   // `"appearanceOverrides": null` 을 그대로 state 에 앉힌다 — `theme[id]`가
   // `null[id]`가 되어 TypeError 를 던진다(그 값은 앱 시작마다 도는 effect 안이라
   // 트리 전체가 언마운트된다). `store.ts`가 `installedThemes`에 이미 쓰는
-  // `?? {}` 관용구와 같은 방어를 여기서 한다 — 호출부 셋(과 이후 매니페스트를
-  // 더하는 0096)이 각자 갖추는 대신 병합기 하나가 갖춰야 전부가 지켜진다.
+  // `?? {}` 관용구와 같은 방어를 여기서 한다 — 호출부마다 각자 갖추는 대신
+  // 병합기 하나가 갖춰야 전부가 지켜진다.
+  //
+  // `theme-dials.ts`가 하는 같은 모양의 방어는 중복이 아니라 **다른 컨테이너**를
+  // 지킨다: 거기는 `installedThemes` 맵이 `null`일 때이고, 여기는 그 맵에서 꺼낸
+  // 층 하나가 객체가 아닐 때다.
   const themeLayer = asDialValues(theme);
   const userLayer = asDialValues(user);
   const out = {} as Record<DialId, ResolvedDial>;

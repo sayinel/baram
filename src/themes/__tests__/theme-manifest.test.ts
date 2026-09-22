@@ -530,3 +530,56 @@ describe("validateThemeManifest rebuilds rather than casting (external review #6
     );
   });
 });
+
+describe("§371.1 매니페스트의 dials", () => {
+  it("앱이 아는 다이얼의 유효한 값을 남긴다", () => {
+    const result = validateThemeManifest({
+      ...validManifest,
+      dials: { editorLineBreak: "keepAll", editorMaxWidth: 720 },
+    });
+    expect(result.valid).toBe(true);
+    if (!result.valid) return;
+    expect(result.manifest.dials).toEqual({
+      editorLineBreak: "keepAll",
+      editorMaxWidth: 720,
+    });
+  });
+
+  it("모르는 다이얼 id 를 저장하지 않는다", () => {
+    const result = validateThemeManifest({
+      ...validManifest,
+      dials: { editorMaxWidth: 720, notADial: 1 },
+    });
+    expect(result.valid).toBe(true);
+    if (!result.valid) return;
+    expect(result.manifest.dials).toEqual({ editorMaxWidth: 720 });
+  });
+
+  it("아는 다이얼이라도 범위 밖·타입 불일치 값을 저장하지 않는다", () => {
+    const result = validateThemeManifest({
+      ...validManifest,
+      dials: {
+        editorLineBreak: "nope",
+        editorMaxWidth: 999999,
+        editorPadding: "4rem",
+      },
+    });
+    expect(result.valid).toBe(true);
+    if (!result.valid) return;
+    expect(result.manifest.dials).toBeUndefined();
+  });
+
+  it("dials 가 객체가 아니면 필드 오류를 낸다", () => {
+    const result = validateThemeManifest({ ...validManifest, dials: [] });
+    expect(result.valid).toBe(false);
+    if (result.valid) return;
+    expect(result.errors.map((e) => e.field)).toContain("dials");
+  });
+
+  it("dials 가 없는 매니페스트는 그대로 유효하다 (선택 필드)", () => {
+    const result = validateThemeManifest(validManifest);
+    expect(result.valid).toBe(true);
+    if (!result.valid) return;
+    expect(result.manifest.dials).toBeUndefined();
+  });
+});

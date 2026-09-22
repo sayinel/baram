@@ -2,6 +2,7 @@
 // Phase 2: each entry carries SettingControlMeta for data-driven rendering
 import type React from "react";
 
+import type { DialId, DialValue, DialValues } from "../../appearance/dials";
 import type { Locale } from "../../i18n";
 import type { AIProvider } from "../../stores/ai/ai";
 import type { SettingsState } from "../../stores/settings/store";
@@ -11,23 +12,12 @@ import { useShallow } from "zustand/shallow";
 
 import { DIALS } from "../../appearance/dials";
 import { resolveDials } from "../../appearance/merge";
+import { useThemeDials } from "../../hooks/use-theme-dials";
 import { AVAILABLE_LOCALES, LOCALE_LABELS } from "../../i18n";
 import { useAIStore } from "../../stores/ai/ai";
 import { AI_PROVIDER_IDS, AI_PROVIDERS } from "../../stores/ai/providers";
 import { useSettingsStore } from "../../stores/settings/store";
 import { TASK_SCAN_SCOPES } from "../../utils/tasks/task-scan-scope";
-
-// §366 — editorMaxWidth 항목의 슬라이더 범위는 다이얼의 `range`에서 가져온다
-// (브리프 Step 5). 리터럴로 다시 적으면 슬라이더 끝에서 값이 parse에 걸려
-// 조용히 버려지는 §364 dials.ts의 함정을 여기서도 반복하게 된다.
-//
-// non-null 단정은 타입이 이미 보장하는 것을 런타임에 다시 확인하지 않는다는
-// 뜻이다 — `DIALS`는 `as const satisfies readonly DialDef[]`라 "editorMaxWidth"
-// id 를 가진 항목이 배열 리터럴에 존재함을 컴파일 타임에 고정하고, `find`가
-// 그 보장을 다시 좁혀 주지 못할 뿐이다. 모듈 최상단 `throw`였던 이전 형태는,
-// 만에 하나 이 가정이 깨지면 레지스트리를 쓰는 모든 화면(설정 전체)의 모듈
-// 로드를 막아 버렸다 — 깨져도 이 항목 하나만 무너지는 편이 낫다.
-const editorMaxWidthRange = DIALS.find((d) => d.id === "editorMaxWidth")!.range;
 
 export interface SearchableSetting {
   category: SettingsTab;
@@ -170,6 +160,11 @@ export function useSettingsRegistry(): SearchableSetting[] {
       setProvider: s.setProvider,
     })),
   );
+  // §366 — 검색 결과의 다이얼 컨트롤은 `AppearanceDialRow`와 **같은** 병합 결과를
+  // 보여야 한다. 같은 설정이 두 표면에서 다른 값을 말하면 그중 하나는 거짓말이다.
+  // 위 M-11 정정과 같은 규율로, 이 훅도 스토어를 좁게 읽는다(`activeThemeId` ·
+  // `installedThemes` · 플러그인 스토어의 `revocations`).
+  const themeDials = useThemeDials();
 
   return [
     // ── General ──────────────────────────────────────────────────────────────
@@ -532,22 +527,126 @@ export function useSettingsRegistry(): SearchableSetting[] {
         settings.setLineNumbers,
       ),
     },
+    // §368 — editorLineBreak도 editorMaxWidth와 같은 다이얼 기계를 쓰는
+    // 외관 다이얼이다. 행(EditorTab.tsx)이 editorMaxWidth 바로 위에 있는
+    // 이유와 같은 이유로 여기서도 그 앞에 둔다(§4.4: 검색 결과 라벨은 행과
+    // 같은 순서·같은 키를 따른다).
+    {
+      id: "editorLineBreak",
+      label: "settings.editor.editorLineBreak",
+      description: "settings.editor.editorLineBreak.desc",
+      category: "editor",
+      section: "settings.editor.display",
+      control: makeSelectControl(
+        // `makeSelectControl`의 selector는 `() => number | string`이라
+        // `DialValue`가 그대로 맞는다 — String()으로 감싸지 않는다.
+        () =>
+          resolveDials(themeDials, settings.appearanceOverrides).editorLineBreak
+            .value,
+        (v) => settings.setDial("editorLineBreak", v),
+        [
+          {
+            value: "normal",
+            label: "settings.editor.editorLineBreak.normal",
+          },
+          {
+            value: "keepAll",
+            label: "settings.editor.editorLineBreak.keepAll",
+          },
+        ],
+      ),
+    },
+    // §368 — 자간·문단 간격도 editorMaxWidth와 같은 다이얼 기계를 쓰는 number
+    // 다이얼이다. 행(EditorTab.tsx)이 editorLineBreak 바로 다음, editorMaxWidth
+    // 바로 앞에 있는 것과 같은 순서로 여기도 둔다(§4.4).
+    ...dialSliderSetting(
+      {
+        id: "editorLetterSpacing",
+        label: "settings.editor.editorLetterSpacing",
+        description: "settings.editor.editorLetterSpacing.desc",
+        category: "editor",
+        section: "settings.editor.display",
+      },
+      "editorLetterSpacing",
+      themeDials,
+      settings.appearanceOverrides,
+      settings.setDial,
+    ),
+    ...dialSliderSetting(
+      {
+        id: "editorParagraphSpacing",
+        label: "settings.editor.editorParagraphSpacing",
+        description: "settings.editor.editorParagraphSpacing.desc",
+        category: "editor",
+        section: "settings.editor.display",
+      },
+      "editorParagraphSpacing",
+      themeDials,
+      settings.appearanceOverrides,
+      settings.setDial,
+    ),
+    // §368.2 — 강조 렌더링도 editorLineBreak와 같은 다이얼 기계를 쓰는 enum
+    // 다이얼이다. 조판 다이얼들(줄바꿈·자간·문단 간격) 끝에 둔다(§4.4).
+    {
+      id: "editorEmphasisStyle",
+      label: "settings.editor.editorEmphasisStyle",
+      description: "settings.editor.editorEmphasisStyle.desc",
+      category: "editor",
+      section: "settings.editor.display",
+      control: makeSelectControl(
+        () =>
+          resolveDials(themeDials, settings.appearanceOverrides)
+            .editorEmphasisStyle.value,
+        (v) => settings.setDial("editorEmphasisStyle", v),
+        [
+          {
+            value: "italic",
+            label: "settings.editor.editorEmphasisStyle.italic",
+          },
+          {
+            value: "color",
+            label: "settings.editor.editorEmphasisStyle.color",
+          },
+          {
+            value: "weight",
+            label: "settings.editor.editorEmphasisStyle.weight",
+          },
+        ],
+      ),
+    },
     // §366 되돌림 — editorMaxWidth는 잠시 외관 다이얼로 Appearance 탭에
     // 옮겨졌다가(Task 7) 돌아왔다. 다이얼 기계(병합·출처·되돌리기)는 그대로
     // AppearanceDialRow가 맡고, 여기서 바뀌는 것은 분류(category/section)뿐이다.
-    {
-      id: "editorMaxWidth",
-      label: "settings.editor.maxWidth",
-      description: "settings.editor.maxWidth.desc",
-      category: "editor",
-      section: "settings.editor.display",
-      control: makeSliderControl(
-        () =>
-          resolveDials({}, settings.appearanceOverrides).editorMaxWidth.value,
-        (v) => settings.setDial("editorMaxWidth", v),
-        editorMaxWidthRange,
-      ),
-    },
+    ...dialSliderSetting(
+      {
+        id: "editorMaxWidth",
+        label: "settings.editor.maxWidth",
+        description: "settings.editor.maxWidth.desc",
+        category: "editor",
+        section: "settings.editor.display",
+      },
+      "editorMaxWidth",
+      themeDials,
+      settings.appearanceOverrides,
+      settings.setDial,
+    ),
+    // §368 — 검색에서 이 설정을 찾을 방법이 없었다(행은 EditorTab.tsx에 이미
+    // 있었지만 레지스트리에 항목이 없었다). §4.4: 검색 결과 라벨·설명은 행과
+    // 같은 i18n 키를 그대로 재사용한다 — 키 이름 자체는 `settings.appearance.*`
+    // 이력을 그대로 두고(이 태스크의 개명 대상이 아니다), category만 editor다.
+    ...dialSliderSetting(
+      {
+        id: "editorPadding",
+        label: "settings.appearance.editorPadding",
+        description: "settings.appearance.editorPadding.desc",
+        category: "editor",
+        section: "settings.editor.display",
+      },
+      "editorPadding",
+      themeDials,
+      settings.appearanceOverrides,
+      settings.setDial,
+    ),
     {
       id: "virtualizeLargeDocs",
       label: "settings.editor.virtualizeLargeDocs",
@@ -790,4 +889,55 @@ function makeToggleControl(
     storeSelector: selector,
     storeSetter: setter as (v: unknown) => void,
   };
+}
+
+// §368 — number 다이얼(editorMaxWidth·editorPadding·editorLetterSpacing·
+// editorParagraphSpacing) 넷 다 슬라이더 컨트롤을 만드는 두 단정을 반복한다:
+// `DIALS.find()`는 id-동등 predicate 로는 `DialDef`의 `kind` 판별 유니언을
+// 좁혀 주지 않고, `resolveDials(...)[id].value`는 어떤 id 든 `DialValue`
+// (number | string)라 슬라이더 셀렉터의 `() => number` 에 맞추려면 단정이
+// 필요하다. `numberDialSliderControl`이 그 둘을 이 자리 하나로 모은다 — 단,
+// 첫 번째는 단정이 아니라 `dial.kind === "number"` 런타임 판별로 좁혀서
+// 캐스트 없이 `.range`에 접근한다(단정보다 이쪽이 실패를 삼키지 않는다).
+//
+// `id`가 number 다이얼로 풀리지 않으면(오타·다이얼 제거) `undefined`를
+// 돌려줄 뿐, 던지지 않는다 — 이전에 있던 모듈 최상단 `throw`는 이 가정이
+// 딱 한 번 깨졌을 때 레지스트리를 쓰는 모든 화면(설정 전체)의 모듈 로드를
+// 막았다. `dialSliderSetting`이 `undefined`를 받으면 그 항목 하나만 검색
+// 목록에서 빠진다 — 나머지 설정 검색은 계속 동작한다.
+function numberDialSliderControl(
+  id: DialId,
+  themeDials: DialValues,
+  userOverrides: DialValues,
+  setDial: (dialId: DialId, value: DialValue) => void,
+): SettingControlMeta | undefined {
+  const dial = DIALS.find((d) => d.id === id);
+  if (!dial || dial.kind !== "number") return undefined;
+  return makeSliderControl(
+    () => resolveDials(themeDials, userOverrides)[id].value as number,
+    (v) => setDial(id, v),
+    dial.range,
+  );
+}
+
+/**
+ * A searchable-settings entry for a number dial — an array of 0 or 1 elements
+ * so a call site can splice it into the registry list with `...` instead of
+ * a ternary. Empty when `dialId` does not resolve to a number dial; see
+ * {@link numberDialSliderControl} for why that is a silent skip, not a throw.
+ */
+function dialSliderSetting(
+  entry: Omit<SearchableSetting, "control">,
+  dialId: DialId,
+  themeDials: DialValues,
+  userOverrides: DialValues,
+  setDial: (id: DialId, value: DialValue) => void,
+): SearchableSetting[] {
+  const control = numberDialSliderControl(
+    dialId,
+    themeDials,
+    userOverrides,
+    setDial,
+  );
+  return control ? [{ ...entry, control }] : [];
 }

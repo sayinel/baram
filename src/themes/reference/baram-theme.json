@@ -1,0 +1,21 @@
+{
+  "id": "baram-hangul",
+  "name": "Hangul Reading",
+  "description": "한글 본문 조판을 우선하는 레퍼런스 테마. 다이얼 스키마의 적합성을 시험한다.",
+  "author": "Baram",
+  "license": "Apache-2.0",
+  "version": "0.1.0",
+  "engines": { "baram": ">=0.7.4" },
+  "modes": {
+    "light": { "tokens": "light/tokens.json" },
+    "dark": { "tokens": "dark/tokens.json" }
+  },
+  "dials": {
+    "editorEmphasisStyle": "weight",
+    "editorLetterSpacing": -0.01,
+    "editorLineBreak": "keepAll",
+    "editorMaxWidth": 720,
+    "editorPadding": 5,
+    "editorParagraphSpacing": 1
+  }
+}

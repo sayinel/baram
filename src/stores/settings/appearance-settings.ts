@@ -1,4 +1,4 @@
-import type { DialId, DialValues } from "../../appearance/dials";
+import type { DialId, DialValue, DialValues } from "../../appearance/dials";
 import type { InstalledTheme } from "../../themes/theme-install";
 import type { ThemeDef } from "../../types/theme";
 import type { ThemeInExport } from "../../utils/export/export";
@@ -48,7 +48,7 @@ export interface AppearanceSettingsSlice {
   saveCustomTheme: (theme: ThemeDef) => void;
   setActiveTheme: (id: string) => void;
   setActivityBarConfig: (config: ActivityBarItemConfig[]) => void;
-  setDial: (id: DialId, value: number) => void;
+  setDial: (id: DialId, value: DialValue) => void;
   setLocale: (locale: string) => void;
   setTagColor: (tag: string, color: string) => void;
   setTheme: (theme: Theme) => void;
