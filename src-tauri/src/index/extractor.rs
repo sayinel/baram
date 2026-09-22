@@ -10,7 +10,7 @@ use std::path::Path;
 use std::sync::LazyLock;
 
 use super::IndexError;
-use super::LinkEntry;
+use super::{LinkEntry, LinkKind};
 use crate::md::literal::{front_matter_end, source_lines, Literal};
 
 // Wikilink regex: [[target]], [[alias::target]], [[target|display]], [[target#heading]], etc.
@@ -208,7 +208,7 @@ pub(crate) fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
                 target: target.to_string(),
                 line: line.number,
                 context: build_context(line.text),
-                link_type: "wikilink".to_string(),
+                link_type: LinkKind::Wikilink,
                 block_id: None,
                 target_vault_alias: vault_alias,
             });
@@ -244,7 +244,7 @@ pub(crate) fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
                 target,
                 line: line.number,
                 context: build_context(line.text),
-                link_type: "blockEmbed".to_string(),
+                link_type: LinkKind::BlockEmbed,
                 block_id: Some(block_id.to_string()),
                 target_vault_alias: None,
             });
@@ -289,7 +289,7 @@ pub(crate) fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
                 target,
                 line: line.number,
                 context: build_context(line.text),
-                link_type: "blockRef".to_string(),
+                link_type: LinkKind::BlockRef,
                 block_id: Some(block_id.to_string()),
                 target_vault_alias: None,
             });
@@ -422,7 +422,7 @@ mod tests {
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].target, "architecture");
         assert_eq!(entries[0].line, 1);
-        assert_eq!(entries[0].link_type, "wikilink");
+        assert_eq!(entries[0].link_type, LinkKind::Wikilink);
         assert!(entries[0].block_id.is_none());
     }
 
@@ -464,7 +464,7 @@ mod tests {
         let entries = extract_links("/test.md", "See ((notes#^abc123)) for context.");
         let block_refs: Vec<_> = entries
             .iter()
-            .filter(|e| e.link_type == "blockRef")
+            .filter(|e| e.link_type == LinkKind::BlockRef)
             .collect();
         assert_eq!(block_refs.len(), 1);
         assert_eq!(block_refs[0].target, "notes");
@@ -476,7 +476,7 @@ mod tests {
         let entries = extract_links("/test.md", "{{embed ((notes#^def456))}}");
         let embeds: Vec<_> = entries
             .iter()
-            .filter(|e| e.link_type == "blockEmbed")
+            .filter(|e| e.link_type == LinkKind::BlockEmbed)
             .collect();
         assert_eq!(embeds.len(), 1);
         assert_eq!(embeds[0].target, "notes");
@@ -484,7 +484,7 @@ mod tests {
         // Embed should NOT also produce a blockRef
         let refs: Vec<_> = entries
             .iter()
-            .filter(|e| e.link_type == "blockRef")
+            .filter(|e| e.link_type == LinkKind::BlockRef)
             .collect();
         assert_eq!(refs.len(), 0);
     }
@@ -495,7 +495,7 @@ mod tests {
         let entries = extract_links("/vault/notes.md", "See ((#^myid)) here.");
         let block_refs: Vec<_> = entries
             .iter()
-            .filter(|e| e.link_type == "blockRef")
+            .filter(|e| e.link_type == LinkKind::BlockRef)
             .collect();
         assert_eq!(block_refs.len(), 1);
         assert_eq!(block_refs[0].target, "notes");
@@ -508,15 +508,15 @@ mod tests {
         let entries = extract_links("/test.md", content);
         let wikilinks: Vec<_> = entries
             .iter()
-            .filter(|e| e.link_type == "wikilink")
+            .filter(|e| e.link_type == LinkKind::Wikilink)
             .collect();
         let refs: Vec<_> = entries
             .iter()
-            .filter(|e| e.link_type == "blockRef")
+            .filter(|e| e.link_type == LinkKind::BlockRef)
             .collect();
         let embeds: Vec<_> = entries
             .iter()
-            .filter(|e| e.link_type == "blockEmbed")
+            .filter(|e| e.link_type == LinkKind::BlockEmbed)
             .collect();
         assert_eq!(wikilinks.len(), 1);
         assert_eq!(wikilinks[0].target, "foo");
@@ -531,7 +531,7 @@ mod tests {
         let entries = extract_links("/test.md", "See ((notes#^abc|my label)) here.");
         let block_refs: Vec<_> = entries
             .iter()
-            .filter(|e| e.link_type == "blockRef")
+            .filter(|e| e.link_type == LinkKind::BlockRef)
             .collect();
         assert_eq!(block_refs.len(), 1);
         assert_eq!(block_refs[0].target, "notes");
@@ -579,7 +579,7 @@ mod tests {
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].target, "2026-03-22");
         assert_eq!(entries[0].target_vault_alias, Some("journal".to_string()));
-        assert_eq!(entries[0].link_type, "wikilink");
+        assert_eq!(entries[0].link_type, LinkKind::Wikilink);
     }
 
     #[test]

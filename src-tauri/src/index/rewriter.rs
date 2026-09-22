@@ -6,6 +6,7 @@ use std::sync::LazyLock;
 
 use super::extractor::{extract_links, BLOCK_REF_RE};
 use super::normalizer::{file_key, normalize_target};
+use super::RewritePass;
 use crate::md::literal::{front_matter_end, source_lines, Literal};
 
 // §33 Wikilink replace regex: captures (alias, target, rest) for replace_wikilink_target
@@ -170,7 +171,7 @@ pub fn replace_block_id_refs_to(
     let lines: std::collections::HashSet<u32> = extract_links(ref_path, content)
         .into_iter()
         .filter(|entry| {
-            entry.link_type != "wikilink"
+            entry.link_type.pass() == RewritePass::BlockReferences
                 && entry.block_id.as_deref() == Some(old_id)
                 && refers_to_target(&entry.target)
         })
@@ -288,7 +289,9 @@ fn visit_block_references_to(
     };
     let lines: std::collections::HashSet<u32> = extract_links(ref_path, content)
         .into_iter()
-        .filter(|entry| entry.link_type != "wikilink" && refers_to_old(&entry.target))
+        .filter(|entry| {
+            entry.link_type.pass() == RewritePass::BlockReferences && refers_to_old(&entry.target)
+        })
         .map(|entry| entry.line)
         .collect();
     if lines.is_empty() {
@@ -364,6 +367,7 @@ pub fn own_block_reference_lines(content: &str, id: Option<&str>) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::index::LinkKind;
 
     // §30a replace_block_id_refs_to tests
     fn keys(list: &[&str]) -> Vec<String> {
@@ -824,11 +828,17 @@ mod tests {
     fn a_block_reference_in_the_front_matter_is_not_a_reference() {
         let md = "---\nrelated: ((#^b1)) ((note#^b1))\nlink: \"[[x]]\"\n---\nbody ((note#^b1))\n";
         let entries = extract_links("/v/a.md", md);
-        let kinds: Vec<(&str, &str, u32)> = entries
+        let kinds: Vec<(LinkKind, &str, u32)> = entries
             .iter()
-            .map(|e| (e.link_type.as_str(), e.target.as_str(), e.line))
+            .map(|e| (e.link_type, e.target.as_str(), e.line))
             .collect();
-        assert_eq!(kinds, vec![("wikilink", "x", 3), ("blockRef", "note", 5)]);
+        assert_eq!(
+            kinds,
+            vec![
+                (LinkKind::Wikilink, "x", 3),
+                (LinkKind::BlockRef, "note", 5)
+            ]
+        );
         let keys = crate::index::backlink_keys("/v/note.md");
         assert_eq!(
             replace_block_id_refs_to(md, "/v/a.md", &keys, "b1", "b2"),
@@ -836,11 +846,11 @@ mod tests {
         );
         // Behind a byte order mark, and an embed in the front matter, the same.
         let bom = "\u{FEFF}---\nx: {{embed ((note#^b1))}}\n---\n{{embed ((note#^b1))}}\n";
-        let kinds: Vec<(String, u32)> = extract_links("/v/a.md", bom)
+        let kinds: Vec<(LinkKind, u32)> = extract_links("/v/a.md", bom)
             .into_iter()
             .map(|e| (e.link_type, e.line))
             .collect();
-        assert_eq!(kinds, vec![("blockEmbed".to_string(), 4)]);
+        assert_eq!(kinds, vec![(LinkKind::BlockEmbed, 4)]);
     }
 
     /// issue 620 — the cross-language contract: the editor's text path
