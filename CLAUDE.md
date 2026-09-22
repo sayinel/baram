@@ -164,13 +164,20 @@ baram/
   ① index 가 세는 것 = rename 이 고치는 것, ② 문법이 쓸 수 없는 이름은 쓰지 말고 남긴다, ③ 남긴 것은 보고한다.
   ‼️ **링크 종류를 더하면 ①이 먼저 깨진다** — `mod.rs` 의 `incoming` 은 `extract_links` 가 내는 **모든** 항목을
   target 키 아래 담으므로 새 종류는 추출되는 순간 바구니에 들어오는데, `rewriter.rs` 의 치환은 문법별 패스의
-  합집합이고 후보 필터가 `link_type != "wikilink"` 라는 **부정** 필터다(새 종류가 block 참조 후보로 흘러들어
-  아무것도 매치되지 않는다). 손댈 곳 순서: `extractor.rs`(regex + `link_type` arm) → `rewriter.rs`(visitor·counter·
-  `…_can_spell` 삼종) → `rename/file.rs` 의 `LinkPasses`(②③이 여기에만 산다) → `own_block_reference_lines`
-  (같은 stem 예외가 새 종류의 자기 참조를 놓치면 과소 계수). 게이트는 `mod.rs` 의
-  `every_reference_the_index_files_under_a_stem_is_visited_by_one_rewrite_pass` 하나 — **개수로 비교**한다
-  (종류를 열거하면 "그러므로 나머지는 안전" 으로 미끄러진다). 쓸 수 있는 이름인가의 판정은 문자 열거가 아니라
-  `link_reads_back_as_the_file`(읽는 쪽이 그 파일로 되돌려 읽는가)이 본체다
+  합집합이다. 그래서 종류는 문자열이 아니라 `mod.rs` 의 `LinkKind` 다 — `link_kinds!` 한 목록이 enum 과 테스트용
+  `ALL` 을 함께 만들고, `LinkKind::pass()` 가 `_` 없는 `match` 로 종류마다 패스를 지정하며, `rewriter.rs` 의 후보 필터
+  둘은 그 `pass()` 를 읽는다. 변형을 더하면 `pass()`·테스트의 `spelled()` 에서 **컴파일이 멎는다**. 컴파일러가 못
+  보는 나머지 반 — 지정한 패스의 regex 가 정말 그 문법을 읽는가 — 는 `mod.rs` 의
+  `every_reference_the_index_files_under_a_stem_is_visited_by_one_rewrite_pass` 가 `ALL` 로 픽스처를 짜서 개수로
+  비교한다(실측: `@@target@@` 종류를 BlockReferences 에 배선하면 3 != 4. `<<target>>` 은 literal 분석이 HTML 로
+  읽어 색인되지 않으니 프로브로 쓰지 말 것). 손댈 곳 순서: `LinkKind` 변형 → 컴파일러가 가리키는 `pass()`·`spelled()`
+  → `extractor.rs`(regex + arm) → 그 패스의 regex 가 새 문법을 읽게(못 읽으면 위 테스트) → `…_can_spell` →
+  `own_block_reference_lines`(같은 stem 예외가 새 종류의 자기 참조를 놓치면 과소 계수).
+  ② 의 판정은 두 층이다 — stem 만 보는 `…_can_spell`(본체는 문자 열거가 아니라 `link_reads_back_as_the_file`)과,
+  두 패스가 낸 내용을 `extract_links` 로 **되읽는** `index_reads_the_rename_back`(`LinkPasses::rewrite`). 술어를 통과한
+  stem 도 referrer 줄의 백틱과 짝을 지어 링크를 literal 로 만들 수 있고, 그건 stem 이 아니라 **줄**의 성질이라 되읽어야
+  보인다. ③ 의 `skipped.push` 는 한 곳이 아니다 — `rename/referrers.rs` 여섯(referrer 의 원인별)과 `rename/file.rs`
+  하나(rename 되는 노트); `LinkPasses` 는 `left_behind` 플래그만 세운다
   - **`rename/file.rs` 를 베껴 "폴더로 이동" 을 만들면 상대 경로 링크가 조용히 끊긴다** — 이동은 stem 을 바꾸지
     않아 `stem_unchanged` 가 `Unchanged::Ignore` 로 가고 두 패스가 no-op 이 된다. `rewrite_relative_wikilinks`
     (호출자는 `rename/namespace.rs` 하나)도 답이 아니다 — 그건 *옮겨진 디렉터리로 들어가는* 링크를 고치지,
