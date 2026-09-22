@@ -37,6 +37,16 @@ import { useSettingsEffects } from "../use-settings-effects";
 const ACCENT = "--color-accent-default";
 /** 강조에서 **파생되는** 키(`color-derive.ts` 의 규칙 `seed: ACCENT`, `hue: 0`). */
 const FROM_ACCENT = "--color-callout-info";
+/**
+ * 채워진 표면(버튼 배경). 파생 29키(`DERIVED_COLOR_KEYS`)가 아니라 `DERIVED_KEYS`
+ * 쪽이라, 이것을 내는 `derivedVars` 는 `applyThemeVars` 안에 있어 **인라인 갈래에서만**
+ * 돈다 — cascade 갈래가 따로 챙기지 않으면 링크만 돌고 버튼은 옛 색으로 남았다.
+ */
+const ACCENT_SOLID = "--color-accent-solid";
+/** 라이트 +60° 의 강조 짝(실측 2026-09-22). 라이트에서 solid 는 hover 시드를 고른다. */
+const SHIFTED_SOLID = "#ad25eb";
+/** 이동 없는 기본 라이트 팔레트의 같은 계산. 위 값과 **다르다는 것**이 전제다. */
+const UNSHIFTED_SOLID = "#2563eb";
 /** 강조와 무관한 시드. cascade 가 소유하므로 인라인에 나타나면 안 된다. */
 const NOT_ACCENT = "--color-bg-default";
 /** 강조와 무관한 시드에서 파생되는 키(`seed: --color-status-danger`). */
@@ -102,6 +112,12 @@ afterEach(() => {
 });
 
 describe("§367 강조색 다이얼이 cascade 테마에 닿는다", () => {
+  // 전제를 주석이 아니라 값으로 증명한다. 두 짝이 같은 색이면 "옮겨진 강조를
+  // 따라갔다" 는 아래 단언이 아무것도 보지 못한 채로 통과한다.
+  it("옮긴 강조의 짝과 안 옮긴 강조의 짝이 서로 다르다 — 아래 단언의 전제", () => {
+    expect(SHIFTED_SOLID).not.toBe(UNSHIFTED_SOLID);
+  });
+
   it("system 에서 강조색 이동이 강조 계열과 그 파생만 인라인으로 쓴다", () => {
     installMatchMedia(false);
     useSettingsStore.setState({ appearanceOverrides: { accentHueShift: 60 } });
@@ -111,10 +127,22 @@ describe("§367 강조색 다이얼이 cascade 테마에 닿는다", () => {
     expect(varOf(ACCENT)).toBe("#af3bf6");
     // 강조에서 나오는 파생은 따라온다. `hue: 0` 규칙이라 강조와 같은 hex 다.
     expect(varOf(FROM_ACCENT)).toBe("#af3bf6");
+    // ‼️ 채워진 표면의 짝도 따라온다. 무엇이 이것을 실패시키는가: 이 셋을 cascade
+    // 갈래에서 빠뜨리면(고침 전 동작) `root.style` 에 아무것도 없어 빈 문자열이
+    // 된다 — 화면에는 링크만 색이 돌고 버튼 배경은 옛 파랑으로 남는 모양이다.
+    // `getComputedStyle` 이 아니라 `root.style` 을 읽는 것이 "우리가 박았다" 와
+    // "cascade 가 갖고 있다" 를 가른다(생성 스타일시트도 이 변수를 정의한다).
+    expect(varOf(ACCENT_SOLID)).toBe(SHIFTED_SOLID);
+    expect(varOf("--color-accent-on-solid")).toBe("#ffffff");
+    expect(varOf("--color-accent-solid-hover")).toBe("#9821cf");
     // ‼️ 강조와 무관한 시드·파생은 **쓰지 않는다** — cascade 가 소유한다(§364.2).
     // 여기에 값이 있으면 `prefers-color-scheme` 가 눌려 OS 전환이 멎는다.
     expect(varOf(NOT_ACCENT)).toBe("");
     expect(varOf(NOT_FROM_ACCENT)).toBe("");
+    // ‼️ status 계열의 짝 여섯도 뺀다. 강조 다이얼은 status 시드를 움직이지 않으므로
+    // 그 값들은 그대로이고, 박으면 얻지 않은 지식을 주장하는 것이 된다.
+    expect(varOf("--color-status-danger-solid-hover")).toBe("");
+    expect(varOf("--color-status-danger-on-solid")).toBe("");
   });
 
   // 비공허성: 위 테스트의 빈 문자열 단언 둘은 **아무것도 적용되지 않아도** 통과한다.
@@ -127,6 +155,7 @@ describe("§367 강조색 다이얼이 cascade 테마에 닿는다", () => {
 
     expect(varOf(ACCENT)).toBe("");
     expect(varOf(FROM_ACCENT)).toBe("");
+    expect(varOf(ACCENT_SOLID)).toBe("");
   });
 
   // ‼️ 이 계획이 "첫 모드 의존 다이얼" 이라고 부르는 것의 시험이다. 코드에 모드
@@ -142,5 +171,9 @@ describe("§367 강조색 다이얼이 cascade 테마에 닿는다", () => {
     media.fire(true);
 
     expect(varOf(ACCENT)).toBe("#b560fa");
+    // 짝도 함께 모드를 탄다. 라이트에서는 대비 때문에 hover 시드가 solid 로 뽑혔고
+    // (`accentSolidFill` 의 AA 갈래), 다크에서는 강조 자신이 그대로 뽑힌다 —
+    // 그래서 이 값이 `SHIFTED_SOLID` 와 다른 것이 정상이다.
+    expect(varOf(ACCENT_SOLID)).toBe("#b560fa");
   });
 });

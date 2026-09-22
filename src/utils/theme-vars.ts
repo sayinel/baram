@@ -266,6 +266,35 @@ export function clearThemeVars(root: HTMLElement): void {
 }
 
 /**
+ * §367 강조 시드 둘에서 나오는 대비 짝 셋 — `--color-accent-solid` 와 그 전경·hover.
+ *
+ * ‼️ **호출자가 둘이고, 그것이 이 함수가 존재하는 이유다.** {@link derivedVars} 가
+ * 테마 전체를 계산할 때 부르고, 테마 이펙트의 cascade 갈래(`use-settings-effects.ts`)
+ * 가 강조 다이얼이 옮긴 시드로 부른다. 저쪽에서 이 셋을 다시 구현하면 파생 목록이
+ * 둘로 갈리고, 목록이 둘로 갈려 서로 어긋난 것이 이 파일 머리주석이 적는 #330 이다.
+ *
+ * 전체 팔레트가 아니라 **부분 맵**을 받는다. cascade 갈래가 넘기는 것은 강조 계열
+ * 넷뿐이고, 그것이 "강조와 거기서 나오는 것만 쓴다"(§364.2)를 호출 자리에서 눈으로
+ * 볼 수 있게 한다. 두 시드 중 하나라도 없으면 계산할 수 없으므로 빈 맵이다 —
+ * `deriveColorVars` 의 같은 규칙이고, `ThemeColors` 는 두 키가 모두 있는 total 타입이라
+ * {@link derivedVars} 경로에서는 이 갈래가 **탈 수 없다**(그래서 그쪽 동작은 그대로다).
+ */
+export function accentPairingVars(
+  colors: Readonly<Partial<Record<string, string>>>,
+  base: "dark" | "light",
+): Record<string, string> {
+  const accent = colors["--color-accent-default"];
+  const hover = colors["--color-accent-hover"];
+  if (accent === undefined || hover === undefined) return {};
+  const solid = accentSolidFill(accent, hover, base);
+  return {
+    "--color-accent-on-solid": onSolidForeground(solid),
+    "--color-accent-solid": solid,
+    "--color-accent-solid-hover": solidHoverFill(solid),
+  };
+}
+
+/**
  * Every foreground and fill this module computes from a theme's own colours.
  *
  * The status families get the same treatment as the accent because they are also
@@ -277,16 +306,9 @@ export function derivedVars(
   colors: ThemeColors,
   base: "dark" | "light",
 ): Record<string, string> {
-  const solid = accentSolidFill(
-    colors["--color-accent-default"],
-    colors["--color-accent-hover"],
-    base,
-  );
-  const derived: Record<string, string> = {
-    "--color-accent-on-solid": onSolidForeground(solid),
-    "--color-accent-solid": solid,
-    "--color-accent-solid-hover": solidHoverFill(solid),
-  };
+  // 강조 셋은 {@link accentPairingVars} 가 낸다 — 반환이 매번 새 객체라 아래에서
+  // status 계열을 그 위에 더해도 된다.
+  const derived: Record<string, string> = accentPairingVars(colors, base);
   for (const family of STATUS_FAMILIES) {
     const fill = colors[`--color-status-${family}`];
     derived[`--color-status-${family}-on-solid`] = onSolidForeground(fill);

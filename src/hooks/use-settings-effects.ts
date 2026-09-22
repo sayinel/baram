@@ -28,6 +28,7 @@ import { applyFontVariables } from "../utils/editor/font-surfaces";
 import { resolveCodeMetrics } from "../utils/font/code-metrics";
 import { logger } from "../utils/logger";
 import {
+  accentPairingVars,
   appliesInlineVars,
   applyThemeCss,
   applyThemeVars,
@@ -191,9 +192,21 @@ export function useSettingsEffects(editor: Editor | null) {
         // 거기서 나오는 것만** 쓴다: `deriveColorVars` 에 강조만 넘기면 그것이
         // 자동으로 지켜진다(실측 2026-09-22, 강조 네 키만 준 입력은 7키를 내고
         // `--color-bg-selection` 은 내지 않는다 — 그 규칙의 anchor 시드가 없다).
+        //
+        // ‼️ `accentPairingVars` 도 여기 있어야 한다. 그것이 없으면 강조를 돌렸을 때
+        // 링크·본문 강조는 따라 돌고 **채워진 버튼 배경만 옛 색으로 남는다** — 그
+        // 셋은 `DERIVED_COLOR_KEYS`(29) 가 아니라 `DERIVED_KEYS` 에 있고, 그 목록을
+        // 계산하는 `derivedVars` 는 인라인 갈래에서만 도는 `applyThemeVars` 안에
+        // 있기 때문이다. `deriveColorVars` 와 달리 이 셋은 강조 시드 둘만으로
+        // 계산되므로, 여기서 내보내도 §364.2 가 금지하는 "모르는 값 박기" 가 아니다.
+        // status 계열 여섯은 일부러 뺀다 — 강조 다이얼은 status 시드를 움직이지
+        // 않으므로 그 값들은 그대로이고, 박으면 얻지 않은 지식을 주장하는 것이 된다.
+        // 지우는 쪽은 손댈 필요가 없다: `clearThemeVars` 가 `DERIVED_KEYS` 를 조건
+        // 없이 전부 지운다.
         for (const [key, value] of Object.entries({
           ...accent,
           ...deriveColorVars(accent),
+          ...accentPairingVars(accent, colorMode),
         })) {
           root.style.setProperty(key, value);
         }
