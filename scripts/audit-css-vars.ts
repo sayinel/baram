@@ -190,6 +190,10 @@ const ALLOWLIST = new Set([
   "--editor-emphasis-color",
   "--editor-emphasis-font-style",
   "--editor-emphasis-font-weight",
+  // §368.2 후속 — `.tiptap strong em`(media.css) 전용. `weight` 모드에서만
+  // `bolder`를 내고, fallback(`inherit`)은 이 규칙이 생기기 전과 계산값이
+  // 같아 다이얼을 쓴 적 없는 화면은 그대로다.
+  "--editor-emphasis-font-weight-nested",
   "--editor-zoom",
   "--journal-font-family",
   "--journal-header-bg",

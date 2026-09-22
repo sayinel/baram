@@ -88,12 +88,40 @@
 /* §368.2 강조 렌더링. 한글에는 진짜 italic 이 없어 `*강조*` 가 합성 기울임으로
    찌그러진다 — 색·굵기로 그리는 선택지를 다이얼이 준다. 세 fallback 중 첫째는
    이 규칙이 원래 갖고 있던 `italic` 이고, 나머지 둘은 선언이 없던 자리의
-   브라우저 기본(물려받음)이다. 그래서 다이얼을 쓴 적 없으면 화면이 바뀌지 않는다.
+   브라우저 기본(물려받음)이다. 그래서 다이얼을 쓴 적 없으면 화면이 바뀌지 않는다
+   — 단, 설치된 테마가 `em` 의 색·굵기나 `.tiptap` 의 자간을 직접 스타일링했던
+   경우는 예외다: 이 선언들은 layer 밖(unlayered)이고 설치된 테마 CSS 는
+   `sanitizeThemeCss`(`src/utils/theme-css/sanitize.ts`)가 `@layer baram-theme`
+   로 감싸므로, 명세상 layer 밖 선언이 특정도와 무관하게 layer 안 선언을 이긴다
+   — 전에는 테마가 이겼을 자리를 지금은 이 규칙의 fallback(`inherit`)이 가린다.
+   지금 배포된 테마 중 CSS 를 싣는 것 자체가 없어(실측: 전부 토큰만 배포) 오늘은
+   무해하고, 테마 쪽에는 오히려 `--editor-emphasis-color` 등을 직접 선언하는
+   더 나은 훅이 생긴다.
    ‼️ 문서 모델에는 닿지 않는다. `italic.ts` 의 renderHTML 은 언제나 <em> 이다. */
 .tiptap em {
   font-style: var(--editor-emphasis-font-style, italic);
   font-weight: var(--editor-emphasis-font-weight, inherit);
   color: var(--editor-emphasis-color, inherit);
+}
+
+/* §368.2 `***볼드 이탤릭***` → `<strong><em>`. `weight` 모드가 평문 강조에
+   내는 절대값(semibold, 600)은 `strong`(700)보다 가벼워 중첩되면 "강조"가
+   오히려 "덜 굵게"로 뒤집힌다(실측: `.tiptap strong { font-weight: 700 }`
+   위 `.tiptap em`이 600을 물려 계산값이 부모보다 낮다). `bolder` 는 상대값이라 계산값
+   시점에 물려받은 굵기(여기서는 strong 의 700) 기준으로 계산되고, CSS Fonts 4
+   가 700 → 900 으로 매핑하므로 바깥보다 항상 무겁다 — `strong` 의 700 이
+   바뀌어도 따라간다.
+   특정도 (0,1,2) 가 `.tiptap em` 의 (0,1,1) 을 이겨 중첩된 em 에는 이 규칙
+   하나만 적용된다. 자손 결합자는 의도적이다 — `<strong><a><em>` 처럼 사이에
+   다른 태그가 끼어도 걸려야 한다.
+   `*__x__*`(`<em><strong>`) 는 이 규칙이 필요 없다: em 이 600, 안쪽 strong 이
+   700 으로 이미 바깥보다 무겁고, 이 규칙은 `strong` 의 자손인 `em` 에만
+   걸리므로 이 트리에서는 원래 발동하지 않는다.
+   ‼️ 경계: `strong > em > strong` 세 겹은 안쪽 strong 이 900 인 부모 아래
+   700 으로 남는다 — CommonMark 의 `**`/`_` 중첩만으로는 이 트리가 나오지
+   않고(리터럴 HTML 이 있어야 한다), 그 좁은 코퍼스 안에서는 역전이 없다. */
+.tiptap strong em {
+  font-weight: var(--editor-emphasis-font-weight-nested, inherit);
 }
 
 .tiptap del {

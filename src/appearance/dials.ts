@@ -208,17 +208,23 @@ export const DIALS = [
       if (value === "weight") {
         return {
           "--editor-emphasis-font-style": "normal",
-          "--editor-emphasis-font-weight": "600",
+          "--editor-emphasis-font-weight": "var(--font-weight-semibold)",
+          // `.tiptap strong em`(media.css) 전용 — `***x***`(<strong><em>)에서
+          // 절대값 semibold(600)가 strong 의 700보다 가벼워 "강조"가 "덜
+          // 굵게"로 뒤집히는 것을 막는다. `bolder`는 물려받은 계산값 기준
+          // 상대값이라 부모(여기서는 700)보다 항상 무겁게 계산된다.
+          "--editor-emphasis-font-weight-nested": "bolder",
         };
       }
       return {};
     },
-    // 셋 전부. 한 값이 내지 않는 변수도 여기 있어야 `clearDialVars` 와
+    // 넷 전부. 한 값이 내지 않는 변수도 여기 있어야 `clearDialVars` 와
     // `applyDialVars` 의 removeProperty 가 값을 남기지 않는다.
     vars: [
       "--editor-emphasis-color",
       "--editor-emphasis-font-style",
       "--editor-emphasis-font-weight",
+      "--editor-emphasis-font-weight-nested",
     ],
   },
 ] as const satisfies readonly DialDef[];
