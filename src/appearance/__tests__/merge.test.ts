@@ -40,6 +40,7 @@ describe("resolveDials", () => {
     // 낯선 키는 결과에 자리가 없다.
     const r = resolveDials({ display: "none" } as never, {});
     expect(Object.keys(r).sort()).toEqual([
+      "editorEmphasisStyle",
       "editorLetterSpacing",
       "editorLineBreak",
       "editorMaxWidth",

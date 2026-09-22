@@ -314,6 +314,13 @@ export function EditorTab() {
         label={t("settings.editor.editorParagraphSpacing")}
       />
 
+      {/* §368.2 — 강조 렌더링도 같은 다이얼 기계를 쓰는 조판 축이라 문단 간격
+          바로 다음, 조판 다이얼들의 끝에 둔다. */}
+      <AppearanceDialRow
+        dialId="editorEmphasisStyle"
+        label={t("settings.editor.editorEmphasisStyle")}
+      />
+
       {/* §366 되돌림 — 이 둘은 §366에서 외관 다이얼로 바뀌며 잠시 Appearance
           탭으로 옮겨졌다가, 되돌아왔다(§366 후속 수정). 다이얼 기계(병합·테마
           층·출처 배지·되돌리기)는 AppearanceDialRow 안에 그대로 있다 — 탭을

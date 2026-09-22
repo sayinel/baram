@@ -184,6 +184,12 @@ const ALLOWLIST = new Set([
   // 문단 간격의 fallback(`0.5em`)은 다이얼이 생기기 전 `blocks.css`의 값 그대로다.
   "--editor-letter-spacing",
   "--editor-paragraph-spacing",
+  // §368.2 강조 렌더링 — 같은 다이얼 기계. fallback(`italic`·`inherit`·`inherit`)이
+  // 다이얼이 생기기 전 `.tiptap em`의 값과 같아, 다이얼을 쓴 적 없는 화면은
+  // 그대로다.
+  "--editor-emphasis-color",
+  "--editor-emphasis-font-style",
+  "--editor-emphasis-font-weight",
   "--editor-zoom",
   "--journal-font-family",
   "--journal-header-bg",

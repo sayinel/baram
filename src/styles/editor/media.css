@@ -85,8 +85,15 @@
   font-weight: 700;
 }
 
+/* §368.2 강조 렌더링. 한글에는 진짜 italic 이 없어 `*강조*` 가 합성 기울임으로
+   찌그러진다 — 색·굵기로 그리는 선택지를 다이얼이 준다. 세 fallback 중 첫째는
+   이 규칙이 원래 갖고 있던 `italic` 이고, 나머지 둘은 선언이 없던 자리의
+   브라우저 기본(물려받음)이다. 그래서 다이얼을 쓴 적 없으면 화면이 바뀌지 않는다.
+   ‼️ 문서 모델에는 닿지 않는다. `italic.ts` 의 renderHTML 은 언제나 <em> 이다. */
 .tiptap em {
-  font-style: italic;
+  font-style: var(--editor-emphasis-font-style, italic);
+  font-weight: var(--editor-emphasis-font-weight, inherit);
+  color: var(--editor-emphasis-color, inherit);
 }
 
 .tiptap del {

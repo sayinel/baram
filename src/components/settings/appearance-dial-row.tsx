@@ -149,6 +149,8 @@ export function AppearanceDialRow({ dialId, label }: AppearanceDialRowProps) {
  */
 function describeDial(dialId: DialId, t: Translate): string {
   switch (dialId) {
+    case "editorEmphasisStyle":
+      return t("settings.editor.editorEmphasisStyle.desc");
     case "editorLetterSpacing":
       return t("settings.editor.editorLetterSpacing.desc");
     case "editorLineBreak":
@@ -173,6 +175,10 @@ function formatDialValue(
   t: Translate,
 ): string {
   switch (dialId) {
+    case "editorEmphasisStyle":
+      // editorLineBreak와 같은 이유로 빈 문자열이다 — 열거의 값 readout은
+      // select 자체가 이미 보여 준다.
+      return "";
     case "editorLetterSpacing":
       return `${value}em`;
     case "editorLineBreak":

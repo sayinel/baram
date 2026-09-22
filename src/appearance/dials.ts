@@ -69,6 +69,15 @@ const LETTER_SPACING_RANGE = { max: 0.1, min: -0.05, step: 0.005 } as const;
 // §368 문단 간격. `blocks.css` 의 `.tiptap p { margin: 0.5em 0 }` 이 기본값의 출처다.
 const PARAGRAPH_SPACING_RANGE = { max: 2, min: 0, step: 0.05 } as const;
 
+/**
+ * §368.2 강조 렌더링. 값 셋 전부가 **CSS 변수만** 낸다 — 이것이 계약이다.
+ *
+ * `italic` 이 빈 맵인 것은 희소성이면서 동시에 "오늘과 같다" 는 뜻이다. `color`·
+ * `weight` 는 `font-style: normal` 을 **반드시 함께** 내야 한다. 내지 않으면 기울임
+ * 위에 색이 얹혀 둘 다 적용된 상태가 되고, 그것은 어느 사용자도 고른 적 없는 값이다.
+ */
+const EMPHASIS_OPTIONS = ["italic", "color", "weight"] as const;
+
 const inRange =
   (range: { readonly max: number; readonly min: number }) =>
   (raw: unknown): number | undefined =>
@@ -182,6 +191,35 @@ export const DIALS = [
         ? { "--editor-paragraph-spacing": `${value}em` }
         : {},
     vars: ["--editor-paragraph-spacing"],
+  },
+  {
+    defaultValue: "italic",
+    id: "editorEmphasisStyle",
+    kind: "enum",
+    options: EMPHASIS_OPTIONS,
+    parse: oneOf(EMPHASIS_OPTIONS),
+    toVars: (value: DialValue): Record<string, string> => {
+      if (value === "color") {
+        return {
+          "--editor-emphasis-color": "var(--color-accent-default)",
+          "--editor-emphasis-font-style": "normal",
+        };
+      }
+      if (value === "weight") {
+        return {
+          "--editor-emphasis-font-style": "normal",
+          "--editor-emphasis-font-weight": "600",
+        };
+      }
+      return {};
+    },
+    // 셋 전부. 한 값이 내지 않는 변수도 여기 있어야 `clearDialVars` 와
+    // `applyDialVars` 의 removeProperty 가 값을 남기지 않는다.
+    vars: [
+      "--editor-emphasis-color",
+      "--editor-emphasis-font-style",
+      "--editor-emphasis-font-weight",
+    ],
   },
 ] as const satisfies readonly DialDef[];
 

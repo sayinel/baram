@@ -64,6 +64,10 @@ const INHERITED_FROM_DOCUMENT_SURFACE = new Set([
 // `.tiptap` 선언이 아니라서 위 allowlist/override 게이트가 보지 않는다 — 하지만
 // 캡처 상자도 `.tiptap p`를 그대로 물려받으므로 문단 간격 다이얼은 여기서도
 // 공유된다. 게이트가 못 보는 자리라는 것을 기록해 둔다.
+// §368.2: `--editor-emphasis-*`를 읽는 `.tiptap em`도 같은 이유로 이 파일의
+// 코퍼스 밖이다 — 캡처 상자는 `.tiptap em`을 그대로 물려받으므로 강조 렌더링
+// 다이얼(이탤릭/색/굵기) 역시 여기서 공유된다. 판정은 "물려받는다": 캡처
+// 상자는 같은 글쓰기 도구이므로 강조도 문서와 같게 보여야 한다.
 
 function declaration(selector: string, prop: string): string {
   const value = cssDeclarations(rule(selector).body).find(

@@ -585,6 +585,35 @@ export function useSettingsRegistry(): SearchableSetting[] {
       settings.appearanceOverrides,
       settings.setDial,
     ),
+    // §368.2 — 강조 렌더링도 editorLineBreak와 같은 다이얼 기계를 쓰는 enum
+    // 다이얼이다. 조판 다이얼들(줄바꿈·자간·문단 간격) 끝에 둔다(§4.4).
+    {
+      id: "editorEmphasisStyle",
+      label: "settings.editor.editorEmphasisStyle",
+      description: "settings.editor.editorEmphasisStyle.desc",
+      category: "editor",
+      section: "settings.editor.display",
+      control: makeSelectControl(
+        () =>
+          resolveDials(themeDials, settings.appearanceOverrides)
+            .editorEmphasisStyle.value,
+        (v) => settings.setDial("editorEmphasisStyle", v),
+        [
+          {
+            value: "italic",
+            label: "settings.editor.editorEmphasisStyle.italic",
+          },
+          {
+            value: "color",
+            label: "settings.editor.editorEmphasisStyle.color",
+          },
+          {
+            value: "weight",
+            label: "settings.editor.editorEmphasisStyle.weight",
+          },
+        ],
+      ),
+    },
     // §366 되돌림 — editorMaxWidth는 잠시 외관 다이얼로 Appearance 탭에
     // 옮겨졌다가(Task 7) 돌아왔다. 다이얼 기계(병합·출처·되돌리기)는 그대로
     // AppearanceDialRow가 맡고, 여기서 바뀌는 것은 분류(category/section)뿐이다.
