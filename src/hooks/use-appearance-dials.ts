@@ -1,28 +1,28 @@
-// §364 병합 결과를 문서 루트에 주입한다. 테마 층은 아직 비어 있다 —
-// 매니페스트가 다이얼 값을 싣는 것은 후속 계획(0096 · §371)이다. 자리를
-// 지금 비워 두는 것은 병합기의 층 순서를 뒤에 바꾸지 않기 위해서다.
+// §364 병합 결과를 문서 루트에 주입한다. 세 층(기본 → 테마 → 사용자)이 모두
+// 실데이터로 흐른다 — 테마 층은 §371 이 매니페스트에 `dials` 를 실으면서 채워졌고,
+// `useThemeDials` 가 그 층의 단일 출처다.
 
 import { useEffect } from "react";
-
-import type { DialValues } from "../appearance/dials";
 
 import { useShallow } from "zustand/shallow";
 
 import { applyDialVars } from "../appearance/apply";
 import { resolveDials } from "../appearance/merge";
 import { useSettingsStore } from "../stores/settings/store";
-
-const NO_THEME_DIALS: DialValues = {};
+import { useThemeDials } from "./use-theme-dials";
 
 export function useAppearanceDials(): void {
   const { appearanceOverrides } = useSettingsStore(
     useShallow((s) => ({ appearanceOverrides: s.appearanceOverrides })),
   );
+  // 참조가 안정적이라 deps 로 쓸 수 있다 — `use-theme-dials.ts` 의 계약이고,
+  // 깨지면 이 이펙트가 매 렌더 돌며 `<html>` 에 같은 값을 다시 쓴다.
+  const themeDials = useThemeDials();
 
   useEffect(() => {
     applyDialVars(
       document.documentElement,
-      resolveDials(NO_THEME_DIALS, appearanceOverrides),
+      resolveDials(themeDials, appearanceOverrides),
     );
-  }, [appearanceOverrides]);
+  }, [themeDials, appearanceOverrides]);
 }

@@ -38,7 +38,9 @@ describe("DIALS", () => {
   it("parses exactly the range the slider exposes", () => {
     // 무엇이 이것을 실패시키는가: parse 와 range 가 서로 다른 상수를 읽으면
     // 슬라이더 끝에서 값이 조용히 버려진다 — UI 는 움직이는데 저장은 안 된다.
+    // §368: `range`는 숫자 다이얼만 갖는다 — 열거 다이얼은 여기서 건너뛴다.
     for (const dial of DIALS) {
+      if (dial.kind !== "number") continue;
       expect(dial.parse(dial.range.min)).toBe(dial.range.min);
       expect(dial.parse(dial.range.max)).toBe(dial.range.max);
       expect(dial.parse(dial.range.min - dial.range.step)).toBeUndefined();

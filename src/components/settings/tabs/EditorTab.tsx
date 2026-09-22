@@ -296,10 +296,35 @@ export function EditorTab() {
         <ToggleSwitch checked={lineNumbers} onChange={setLineNumbers} />
       </SettingsRow>
 
+      {/* §368 — 줄바꿈 규칙은 본문이 어떻게 흐르는지에 대한 것이라 폭·여백과
+          한 덩어리다(스펙 §4.4). editorMaxWidth 바로 위에 둔다. */}
+      <AppearanceDialRow
+        dialId="editorLineBreak"
+        label={t("settings.editor.editorLineBreak")}
+      />
+
+      {/* §368 — 자간·문단 간격도 같은 다이얼 기계를 쓰는 본문 조판 축이라
+          줄바꿈 바로 다음에 둔다. */}
+      <AppearanceDialRow
+        dialId="editorLetterSpacing"
+        label={t("settings.editor.editorLetterSpacing")}
+      />
+      <AppearanceDialRow
+        dialId="editorParagraphSpacing"
+        label={t("settings.editor.editorParagraphSpacing")}
+      />
+
+      {/* §368.2 — 강조 렌더링도 같은 다이얼 기계를 쓰는 조판 축이라 문단 간격
+          바로 다음, 조판 다이얼들의 끝에 둔다. */}
+      <AppearanceDialRow
+        dialId="editorEmphasisStyle"
+        label={t("settings.editor.editorEmphasisStyle")}
+      />
+
       {/* §366 되돌림 — 이 둘은 §366에서 외관 다이얼로 바뀌며 잠시 Appearance
-          탭으로 옮겨졌다가, 되돌아왔다(§366 후속 수정). 다이얼 기계(병합·출처
-          배지·되돌리기, 0096이 더할 테마 층)는 AppearanceDialRow 안에 그대로
-          있다 — 탭을 옮겨도 그 로직은 건드리지 않는다. */}
+          탭으로 옮겨졌다가, 되돌아왔다(§366 후속 수정). 다이얼 기계(병합·테마
+          층·출처 배지·되돌리기)는 AppearanceDialRow 안에 그대로 있다 — 탭을
+          옮겨도 그 로직은 건드리지 않는다. */}
       <AppearanceDialRow
         dialId="editorMaxWidth"
         label={t("settings.editor.maxWidth")}

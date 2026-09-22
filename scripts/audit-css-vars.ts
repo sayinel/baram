@@ -175,6 +175,25 @@ const ALLOWLIST = new Set([
   // 적 없는 사용자에게도 스타일시트 혼자 맞게 만든다 — --editor-line-height와
   // 같은 이유로 토큰이 아니다.
   "--editor-max-width",
+  // §368 줄바꿈 규칙 — 같은 다이얼 기계(dials.ts, apply.ts)가 값이 있을 때만
+  // 인라인으로 쓴다. fallback(`normal`)이 오늘의 스타일시트 값과 같다.
+  "--editor-overflow-wrap",
+  "--editor-word-break",
+  // §368 자간·문단 간격 — 같은 다이얼 기계. 자간의 fallback(`normal`)은
+  // `letter-spacing: 0em`과 다른 값이라 다이얼을 쓴 적 없는 화면과 여전히 같다.
+  // 문단 간격의 fallback(`0.5em`)은 다이얼이 생기기 전 `blocks.css`의 값 그대로다.
+  "--editor-letter-spacing",
+  "--editor-paragraph-spacing",
+  // §368.2 강조 렌더링 — 같은 다이얼 기계. fallback(`italic`·`inherit`·`inherit`)이
+  // 다이얼이 생기기 전 `.tiptap em`의 값과 같아, 다이얼을 쓴 적 없는 화면은
+  // 그대로다.
+  "--editor-emphasis-color",
+  "--editor-emphasis-font-style",
+  "--editor-emphasis-font-weight",
+  // §368.2 후속 — `.tiptap strong em`(media.css) 전용. `weight` 모드에서만
+  // `bolder`를 내고, fallback(`inherit`)은 이 규칙이 생기기 전과 계산값이
+  // 같아 다이얼을 쓴 적 없는 화면은 그대로다.
+  "--editor-emphasis-font-weight-nested",
   "--editor-zoom",
   "--journal-font-family",
   "--journal-header-bg",

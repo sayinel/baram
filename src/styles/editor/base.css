@@ -10,6 +10,15 @@
   font-size: 1rem;
   line-height: 1.75;
   color: var(--color-editor-text);
+
+  /* §368 자간 다이얼. fallback `normal`은 `0em`과 같지 않다(조판 엔진이 자간을
+     조정할 여지를 남긴다) — 다이얼을 쓴 적 없는 사용자의 화면은 바뀌지 않는다. */
+  letter-spacing: var(--editor-letter-spacing, normal);
+
+  /* §368 줄바꿈 규칙. fallback 이 브라우저 기본이므로 다이얼을 쓴 적 없는
+     사용자의 화면은 바뀌지 않는다. */
+  word-break: var(--editor-word-break, normal);
+  overflow-wrap: var(--editor-overflow-wrap, normal);
   outline: none;
 }
 
