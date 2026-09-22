@@ -2,7 +2,7 @@
 // CSS 를 이긴다 — 그것이 테마 CSS 가 `@layer baram-theme` 에 갇힌 이 앱에서
 // 외관 값이 실제로 도달하는 유일한 통로다(스펙 0055 §1.2).
 
-import type { DialId } from "./dials";
+import type { DialContext, DialId } from "./dials";
 import type { ResolvedDial } from "./merge";
 
 import { DIALS } from "./dials";
@@ -18,12 +18,21 @@ import { DIALS } from "./dials";
 export function applyDialVars(
   root: HTMLElement,
   resolved: Record<DialId, ResolvedDial>,
+  ctx: DialContext,
 ): void {
   for (const dial of DIALS) {
+    // ‼️ 색 채널은 여기서 쓰지 않는다 — 작성자가 하나여야 한다(Task 4).
+    // `clearDialVars` 도 같은 필터를 쓴다: 쓰지 않는 것을 지우면 테마 이펙트가
+    // 방금 쓴 값을 이 함수가 걷어 간다.
+    //
+    // ‼️ `!== "layout"` 이지 `=== "color"` 가 아니다 — 실측 근거는 Task 1 브리프
+    // Step 8 끝: 이 시점의 `DIALS` 는 여섯 원소 전부 `channel: "layout"` 이라
+    // `=== "color"` 는 TS2367(겹치지 않는 리터럴 비교)로 멎는다.
+    if (dial.channel !== "layout") continue;
     const current = resolved[dial.id];
     // 말하지 않은 층뿐인 다이얼은 cascade 에 맡긴다.
     const emitted =
-      current.origin === "default" ? {} : dial.toVars(current.value);
+      current.origin === "default" ? {} : dial.toVars(current.value, ctx);
     for (const name of dial.vars) {
       const value = emitted[name];
       // `undefined` 를 setProperty 에 넘기면 리터럴 "undefined" 커스텀 프로퍼티가
@@ -37,6 +46,7 @@ export function applyDialVars(
 /** {@link applyDialVars} 가 쓸 수 있는 변수를 전부 지워 cascade 가 다시 지배하게 한다. */
 export function clearDialVars(root: HTMLElement): void {
   for (const dial of DIALS) {
+    if (dial.channel !== "layout") continue;
     for (const name of dial.vars) root.style.removeProperty(name);
   }
 }

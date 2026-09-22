@@ -49,6 +49,7 @@ const schema = new Schema({
 const EMPHASIS = DIALS.find((d) => d.id === "editorEmphasisStyle");
 const EMPHASIS_OPTIONS: readonly string[] =
   EMPHASIS && "options" in EMPHASIS ? EMPHASIS.options : [];
+const CTX = { mode: "light", seeds: {} } as const;
 
 describe("라운드트립 기계장치가 살아 있다 (긍정)", () => {
   // 무엇이 이것을 실패시키는가: md-to-pm 이나 pm-to-md 가 문법을 깨거나,
@@ -77,7 +78,7 @@ describe("모든 강조 값에서 직렬화가 같다 (검증 5)", () => {
   it.each(EMPHASIS_OPTIONS)("값 %s", (option) => {
     // 다이얼을 그 값으로 두는 것은 CSS 변수를 쓰는 일뿐이므로, 여기서는
     // 그 변수를 실제로 만들어 본 뒤 직렬화가 영향받지 않음을 확인한다.
-    const vars = EMPHASIS?.toVars(option) ?? {};
+    const vars = EMPHASIS?.toVars(option, CTX) ?? {};
     for (const [k, v] of Object.entries(vars)) {
       document.documentElement.style.setProperty(k, v);
     }
@@ -91,7 +92,7 @@ describe("강조 다이얼은 CSS 커스텀 프로퍼티만 낸다 (구조)", ()
   // 노드 속성 이름, data-* 어트리뷰트 키)를 내면 실패한다.
   it("모든 값의 모든 키가 `--` 로 시작한다", () => {
     for (const option of EMPHASIS_OPTIONS) {
-      for (const key of Object.keys(EMPHASIS?.toVars(option) ?? {})) {
+      for (const key of Object.keys(EMPHASIS?.toVars(option, CTX) ?? {})) {
         expect(key.startsWith("--")).toBe(true);
       }
     }
@@ -102,9 +103,9 @@ describe("강조 다이얼은 CSS 커스텀 프로퍼티만 낸다 (구조)", ()
     // 무엇이 이것을 실패시키는가: `italic` 값이 변수를 내기 시작하거나,
     // `color`/`weight` 가 `--editor-emphasis-font-style: normal` 을 빠뜨리면
     // (기울임 위에 색·굵기가 겹쳐 얹히는 회귀, dials.ts 주석의 그 사례) 실패한다.
-    expect(EMPHASIS?.toVars("italic")).toEqual({});
+    expect(EMPHASIS?.toVars("italic", CTX)).toEqual({});
     for (const option of ["color", "weight"]) {
-      expect(EMPHASIS?.toVars(option)).toHaveProperty(
+      expect(EMPHASIS?.toVars(option, CTX)).toHaveProperty(
         "--editor-emphasis-font-style",
         "normal",
       );

@@ -1,12 +1,33 @@
 // §364 외관 다이얼의 단일 출처 — 타입·병합·적용·설정 UI 가 전부 이 배열에서 파생한다.
 //
-// ‼️ 이 모듈은 아무것도 import 하지 않는다. `settings/store.ts` 가 이것을 import
-// 하므로, 여기서 스토어를 알면 순환이 된다 — `settings/feature-keys.ts` 가 같은
-// 이유로 잎 모듈이다.
+// ‼️ 이 모듈은 아무것도 import 하지 않는다 — `import type` 은 예외다.
+// `settings/store.ts` 가 이것을 import 하므로, 여기서 스토어를 알면 순환이
+// 된다(`settings/feature-keys.ts` 가 같은 이유로 잎 모듈이다). `ColorMode` 의
+// `import type` 은 `verbatimModuleSyntax`(CLAUDE.md · `tsconfig`) 하에서 컴파일
+// 시 지워지고 런타임 간선을 만들지 않으므로 그 순환에 참여할 수 없다.
+
+import type { ColorMode } from "./color-mode";
 
 export type DialDef = EnumDialDef | NumberDialDef;
 
 export type DialValue = number | string;
+
+/**
+ * `toVars` 가 값 말고 읽는 것.
+ *
+ * `seeds` 는 지금 `<html>` 에 실릴 시드 집합이다 — 설치 테마면 그 테마의
+ * `modes[mode].colors`, cascade 가 소유하는 테마(`system` · 기본 둘)면 그 모드의
+ * 기본 팔레트다. 색 다이얼이 채도·명도를 **물려받는** 출처이고, 그래서 같은
+ * 다이얼 값이 테마마다·모드마다 다른 hex 를 낸다.
+ *
+ * 레이아웃 다이얼은 둘 다 읽지 않는다. 그럼에도 인자에 있는 이유는 `DIALS` 를
+ * 순회하는 소비자가 갈래를 좁히지 않고 `toVars` 를 부를 수 있어야 하기 때문이다 —
+ * 0094 가 `toVars` 를 `DialValue` 로 넓힌 것과 같은 이유다.
+ */
+export interface DialContext {
+  readonly mode: ColorMode;
+  readonly seeds: Readonly<Partial<Record<string, string>>>;
+}
 
 export interface EnumDialDef extends DialBase {
   /** 이 다이얼이 없을 때의 값. 출처가 `default` 면 변수를 쓰지 않는다. */
@@ -22,8 +43,11 @@ export interface EnumDialDef extends DialBase {
   /**
    * 값 → CSS 변수 맵. 비어 있는 맵은 "변수를 쓰지 말라" 는 뜻이고,
    * 그때 CSS 의 fallback 이 지배한다.
+   *
+   * `ctx` 를 받는 이유: 같은 다이얼 값이 모드마다·테마마다 다른 색을 내야 한다
+   * (§367 — 강조색). 색을 내지 않는 다이얼은 이 인자를 무시한다.
    */
-  toVars: (value: DialValue) => Record<string, string>;
+  toVars: (value: DialValue, ctx: DialContext) => Record<string, string>;
 }
 
 export interface NumberDialDef extends DialBase {
@@ -48,11 +72,23 @@ export interface NumberDialDef extends DialBase {
   /**
    * 값 → CSS 변수 맵. 비어 있는 맵은 "변수를 쓰지 말라" 는 뜻이고,
    * 그때 CSS 의 fallback 이 지배한다.
+   *
+   * `ctx` 를 받는 이유: 같은 다이얼 값이 모드마다·테마마다 다른 색을 내야 한다
+   * (§367 — 강조색). 색을 내지 않는 다이얼은 이 인자를 무시한다.
    */
-  toVars: (value: DialValue) => Record<string, string>;
+  toVars: (value: DialValue, ctx: DialContext) => Record<string, string>;
 }
 
 interface DialBase {
+  /**
+   * 이 다이얼의 변수를 **누가 `<html>` 에 쓰는가**.
+   *
+   * `"layout"` 은 `applyDialVars` 가 쓴다. `"color"` 는 쓰지 않는다 — `--color-*`
+   * 인라인의 작성자는 테마 이펙트 하나이고, 그 이유는 실측이다: `applyDialVars`
+   * 가 먼저 돌고 `clearThemeVars` 가 나중에 돈다(Task 4 의 회귀 테스트가 그
+   * 순서를 고정한다). 다이얼이 `--color-*` 를 직접 쓰면 그 다음 줄에서 지워진다.
+   */
+  readonly channel: "color" | "layout";
   readonly id: string;
   /**
    * 이 다이얼이 **어떤 값에서든** 쓸 수 있는 변수 전부. `clearDialVars` 가 이 목록을
@@ -127,12 +163,13 @@ export const DIALS = [
     // 기본값 800 은 `editor-settings.ts` 의 `editorMaxWidth` 와 같아야 한다 —
     // 마이그레이션(Task 4)이 기존 값을 사용자 층으로 옮기고, 그때 기본과 같은
     // 값은 옮기지 않기 때문이다.
+    channel: "layout",
     defaultValue: 800,
     id: "editorMaxWidth",
     kind: "number",
     parse: inRange(WIDTH_RANGE),
     range: WIDTH_RANGE,
-    toVars: (value: DialValue): Record<string, string> =>
+    toVars: (value: DialValue, _ctx: DialContext): Record<string, string> =>
       typeof value === "number" && value > 0
         ? { "--editor-max-width": `${value}px` }
         : {},
@@ -140,22 +177,24 @@ export const DIALS = [
   },
   {
     // `src/styles/base.css` 의 `--editor-padding: 4rem` 과 같은 값·같은 단위.
+    channel: "layout",
     defaultValue: 4,
     id: "editorPadding",
     kind: "number",
     parse: inRange(PADDING_RANGE),
     range: PADDING_RANGE,
-    toVars: (value: DialValue): Record<string, string> =>
+    toVars: (value: DialValue, _ctx: DialContext): Record<string, string> =>
       typeof value === "number" ? { "--editor-padding": `${value}rem` } : {},
     vars: ["--editor-padding"],
   },
   {
+    channel: "layout",
     defaultValue: "normal",
     id: "editorLineBreak",
     kind: "enum",
     options: LINE_BREAK_OPTIONS,
     parse: oneOf(LINE_BREAK_OPTIONS),
-    toVars: (value: DialValue): Record<string, string> =>
+    toVars: (value: DialValue, _ctx: DialContext): Record<string, string> =>
       value === "keepAll"
         ? {
             "--editor-overflow-wrap": "break-word",
@@ -165,6 +204,7 @@ export const DIALS = [
     vars: ["--editor-overflow-wrap", "--editor-word-break"],
   },
   {
+    channel: "layout",
     defaultValue: 0,
     id: "editorLetterSpacing",
     kind: "number",
@@ -173,7 +213,7 @@ export const DIALS = [
     // ‼️ `value !== 0` 갈래가 있는 이유: `letter-spacing: 0em` 과 `letter-spacing:
     // normal` 은 **같지 않다**(`normal` 은 폰트/조판 엔진이 자간을 조정할 여지를
     // 남긴다). 기본값에서 아무것도 내지 않아야 오늘 화면과 같다.
-    toVars: (value: DialValue): Record<string, string> =>
+    toVars: (value: DialValue, _ctx: DialContext): Record<string, string> =>
       typeof value === "number" && value !== 0
         ? { "--editor-letter-spacing": `${value}em` }
         : {},
@@ -181,24 +221,26 @@ export const DIALS = [
   },
   {
     // `blocks.css` 의 `.tiptap p { margin: 0.5em 0 }` 과 같은 값·같은 단위.
+    channel: "layout",
     defaultValue: 0.5,
     id: "editorParagraphSpacing",
     kind: "number",
     parse: inRange(PARAGRAPH_SPACING_RANGE),
     range: PARAGRAPH_SPACING_RANGE,
-    toVars: (value: DialValue): Record<string, string> =>
+    toVars: (value: DialValue, _ctx: DialContext): Record<string, string> =>
       typeof value === "number"
         ? { "--editor-paragraph-spacing": `${value}em` }
         : {},
     vars: ["--editor-paragraph-spacing"],
   },
   {
+    channel: "layout",
     defaultValue: "italic",
     id: "editorEmphasisStyle",
     kind: "enum",
     options: EMPHASIS_OPTIONS,
     parse: oneOf(EMPHASIS_OPTIONS),
-    toVars: (value: DialValue): Record<string, string> => {
+    toVars: (value: DialValue, _ctx: DialContext): Record<string, string> => {
       if (value === "color") {
         return {
           "--editor-emphasis-color": "var(--color-accent-default)",

@@ -4,6 +4,8 @@
 
 import { useEffect } from "react";
 
+import type { DialContext } from "../appearance/dials";
+
 import { useShallow } from "zustand/shallow";
 
 import { applyDialVars } from "../appearance/apply";
@@ -20,9 +22,15 @@ export function useAppearanceDials(): void {
   const themeDials = useThemeDials();
 
   useEffect(() => {
+    // ‼️ 아직 관측되지 않는 값이다 — 적용되는 여섯 다이얼 전부가 `channel: "layout"`
+    // 이고 그중 어느 것도 컨텍스트를 읽지 않는다. `prefers-color-scheme` 를 여기서
+    // 읽으면 아무도 소비하지 않는 다섯 번째 리스너가 생긴다. Task 5 가 색 다이얼을
+    // 들이면서 이 자리를 테마 인지 컨텍스트로 교체한다.
+    const ctx: DialContext = { mode: "light", seeds: {} };
     applyDialVars(
       document.documentElement,
       resolveDials(themeDials, appearanceOverrides),
+      ctx,
     );
   }, [themeDials, appearanceOverrides]);
 }

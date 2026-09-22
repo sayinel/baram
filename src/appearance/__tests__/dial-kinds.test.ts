@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import { DIALS } from "../dials";
 import { resolveDials } from "../merge";
 
+const CTX = { mode: "light", seeds: {} } as const;
+
 describe("열거 다이얼", () => {
   const lineBreak = DIALS.find((d) => d.id === "editorLineBreak");
 
@@ -21,7 +23,7 @@ describe("열거 다이얼", () => {
   });
 
   it("기본값에서는 변수를 하나도 내지 않는다 (희소성)", () => {
-    expect(lineBreak?.toVars("normal")).toEqual({});
+    expect(lineBreak?.toVars("normal", CTX)).toEqual({});
   });
 
   it("vars 는 enum 다이얼에서 toVars 가 낼 수 있는 키를 전부 담는다", () => {
@@ -35,9 +37,36 @@ describe("열거 다이얼", () => {
     for (const dial of DIALS) {
       if (dial.kind !== "enum") continue;
       for (const option of dial.options) {
-        for (const key of Object.keys(dial.toVars(option))) {
+        for (const key of Object.keys(dial.toVars(option, CTX))) {
           expect(dial.vars).toContain(key);
         }
+      }
+    }
+  });
+});
+
+describe("채널", () => {
+  // 무엇이 이것을 실패시키는가: `channel: "layout"` 인 다이얼이 `--color-*` 를
+  // 선언하면 `applyDialVars` 가 그것을 쓰고, 테마 이펙트가 그 다음에 지운다 —
+  // 사용자에게는 "설정이 안 먹는다" 로 보이고 어느 테스트도 빨개지지 않는다.
+  // 반대 방향도 함께 고정한다: `channel: "color"` 인데 `--color-*` 를 하나도
+  // 선언하지 않으면 그 다이얼은 아무 데서도 적용되지 않는다(양쪽이 건너뛴다).
+  // ‼️ 갈래 판정도 `!== "layout"` 이다. 이 파일이 컴파일되는 시점의 `DIALS` 는
+  // 전부 layout 이라 `=== "color"` 가 TS2367 로 멎는다(실측: Step 8 끝의 프로브).
+  it("채널과 변수 접두가 일치한다", () => {
+    for (const dial of DIALS) {
+      const colorVars = dial.vars.filter((v) => v.startsWith("--color-"));
+      if (dial.channel !== "layout") {
+        expect(
+          colorVars.length,
+          `${dial.id} declares no --color-* var`,
+        ).toBeGreaterThan(0);
+        expect(colorVars, `${dial.id} mixes channels`).toEqual([...dial.vars]);
+      } else {
+        expect(
+          colorVars,
+          `${dial.id} is layout but declares --color-*`,
+        ).toEqual([]);
       }
     }
   });
