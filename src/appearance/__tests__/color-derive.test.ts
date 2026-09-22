@@ -4,7 +4,11 @@
 import { describe, expect, it } from "vitest";
 
 import { defaultColorsForBase } from "../../types/theme";
-import { deriveColorVars, DERIVED_COLOR_KEYS } from "../color-derive";
+import {
+  deriveColorVars,
+  DERIVED_COLOR_KEYS,
+  deriveIdentityColorVars,
+} from "../color-derive";
 import { hexToHsl } from "../color-hsl";
 
 /** 두 색상 사이의 최단 각. */
@@ -151,5 +155,82 @@ describe("deriveColorVars — 모드 차이는 시드에서 온다", () => {
     expect(light["--color-callout-danger"]).toBe(
       dark["--color-callout-danger"],
     );
+  });
+});
+
+describe("deriveIdentityColorVars — cascade 갈래가 쓰는 동일자 규칙만", () => {
+  const ACCENT_ONLY = {
+    "--color-accent-ai": "#8b5cf6",
+    "--color-accent-default": "#3b82f6",
+    "--color-accent-hover": "#2563eb",
+    "--color-accent-subtle": "#eff6ff",
+  };
+
+  // ‼️ 이것이 이 함수의 존재 이유다. 동일자 규칙(`hue === 0 && lift === null`)은
+  // `hslToHex(hexToHsl(seed))` 라 시드를 그대로 재현하므로, 생성 스타일시트의
+  // 저작값 위에 얹어도 틈이 없다. 무엇이 이것을 실패시키는가: 필터가 색상 오프셋을
+  // 가진 규칙을 통과시키면 그 값은 시드 어디에도 없는 새 색이 된다.
+  it("내는 값이 전부 입력 시드 중 하나와 글자까지 같다", () => {
+    for (const mode of ["light", "dark"] as const) {
+      const seeds = defaultColorsForBase(mode);
+      const values = Object.values(seeds as Record<string, string>);
+      for (const [key, value] of Object.entries(
+        deriveIdentityColorVars(seeds),
+      )) {
+        expect(values, `${mode} ${key}`).toContain(value);
+      }
+    }
+  });
+
+  // 비공허성: 위 단언은 규칙표가 **전부** 동일자여도 통과한다. 이것이 그 세계를
+  // 배제한다 — 전체 파생은 시드에 없는 값을 실제로 낸다.
+  it("전체 파생은 시드에 없는 값을 낸다", () => {
+    const seeds = defaultColorsForBase("light");
+    const values = Object.values(seeds as Record<string, string>);
+    const strangers = Object.values(deriveColorVars(seeds)).filter(
+      (v) => !values.includes(v),
+    );
+    expect(strangers.length).toBeGreaterThan(0);
+  });
+
+  // 무엇이 이것을 실패시키는가: 술어가 모든 규칙을 통과시키면 두 집합이 같아진다 —
+  // 그러면 필터가 필터링을 멈춘 것이고, cascade 갈래는 다시 1° 에서 튄다.
+  it("키 집합이 전체 파생의 진부분집합이다", () => {
+    const seeds = defaultColorsForBase("light");
+    const identity = Object.keys(deriveIdentityColorVars(seeds));
+    const all = Object.keys(deriveColorVars(seeds));
+    for (const key of identity) expect(all).toContain(key);
+    expect(identity.length).toBeGreaterThan(0);
+    expect(identity.length).toBeLessThan(all.length);
+  });
+
+  // cascade 갈래가 실제로 넘기는 입력. 강조 넷만 주면 강조를 시드로 삼는 동일자
+  // 규칙 셋만 남고, 그 값은 전부 `--color-accent-default` 그 자체다 — 생성
+  // 스타일시트에서도 이 셋은 accent 와 같은 primitive 를 가리킨다(실측
+  // 2026-09-22, `semantic-{light,dark}.css` 에서 셋 다 blue-500 / blue-400).
+  it("강조만 준 입력은 강조와 같은 값의 세 키를 낸다", () => {
+    const out = deriveIdentityColorVars(ACCENT_ONLY);
+    expect(Object.keys(out).sort()).toEqual([
+      "--color-callout-info",
+      "--color-git-staged",
+      "--color-status-info",
+    ]);
+    for (const value of Object.values(out)) {
+      expect(value).toBe(ACCENT_ONLY["--color-accent-default"]);
+    }
+  });
+
+  // 색상 오프셋을 가진 규칙이 빠졌다는 것을 이름으로 못 박는다. 이 넷이 §367
+  // 고침 2회차가 cascade 갈래에서 빼기로 한 바로 그 키들이다.
+  it("색상 오프셋을 가진 규칙은 내지 않는다", () => {
+    const out = deriveIdentityColorVars(defaultColorsForBase("light"));
+    for (const key of [
+      "--color-callout-abstract",
+      "--color-callout-todo",
+      "--color-graph-neighbor",
+      "--color-graph-cross-vault",
+    ]) {
+      expect(out[key], key).toBeUndefined();
+    }
   });
 });

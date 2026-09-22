@@ -30,6 +30,8 @@ vi.mock("../../ipc/menu-enabled", () => ({
   syncMenuEnabled: menuIpc.syncMenuEnabled,
 }));
 
+import type { ThemeDef } from "../../types/theme";
+
 import { useSettingsStore } from "../../stores/settings/store";
 import { clearThemeVars } from "../../utils/theme-vars";
 import { useSettingsEffects } from "../use-settings-effects";
@@ -143,6 +145,13 @@ describe("§367 강조색 다이얼이 cascade 테마에 닿는다", () => {
     // 그 값들은 그대로이고, 박으면 얻지 않은 지식을 주장하는 것이 된다.
     expect(varOf("--color-status-danger-solid-hover")).toBe("");
     expect(varOf("--color-status-danger-on-solid")).toBe("");
+    // ‼️ 색상 오프셋을 가진 파생 규칙도 뺀다 — 여기서 내면 다이얼을 1° 만 움직여도
+    // 이 키들이 저작값에서 **튄다**(실측: `--color-callout-abstract` 는 `#8b5cf6`
+    // 에서 `#773bf6` 으로). 근거는 `deriveIdentityColorVars` 의 doc 주석이고,
+    // 무엇이 이것을 실패시키는가: 이 갈래가 `deriveColorVars` 로 되돌아가는 것이다.
+    expect(varOf("--color-callout-abstract")).toBe("");
+    expect(varOf("--color-callout-todo")).toBe("");
+    expect(varOf("--color-graph-neighbor")).toBe("");
   });
 
   // 비공허성: 위 테스트의 빈 문자열 단언 둘은 **아무것도 적용되지 않아도** 통과한다.
@@ -175,5 +184,55 @@ describe("§367 강조색 다이얼이 cascade 테마에 닿는다", () => {
     // (`accentSolidFill` 의 AA 갈래), 다크에서는 강조 자신이 그대로 뽑힌다 —
     // 그래서 이 값이 `SHIFTED_SOLID` 와 다른 것이 정상이다.
     expect(varOf(ACCENT_SOLID)).toBe("#b560fa");
+  });
+});
+
+/**
+ * 모드가 `css` 만 싣고 `tokens` 는 싣지 않는 테마 — `theme-manifest.ts` 가 허용하는
+ * 모양이고, `readModeColors` 가 읽기 실패를 삼켜도 같은 결과가 된다. 이 테마의
+ * 강조는 자기 스타일시트 안에 있어 우리가 읽을 수 없다.
+ */
+const CSS_ONLY: ThemeDef = {
+  id: "custom-css-only",
+  modes: { light: { css: ":root { --color-accent-default: #00ff00; }" } },
+  name: "CSS only",
+  source: "custom",
+};
+
+describe("§367 시드를 읽을 수 없는 테마는 건드리지 않는다", () => {
+  // ‼️ 무엇이 이것을 실패시키는가: cascade 갈래의 가드가 `!inlineSeeded` 가 아니라
+  // `colors === undefined` 이기만 하면, 이 테마가 그 갈래로 들어온다. 거기서 `base`
+  // 는 `defaultColorsForBase` 로 되돌아가므로 **기본 팔레트**를 돌린 값을 이 테마의
+  // CSS 강조 위에 박게 된다 — 사용자가 고른 적 없는 색이고, 모르는 것을 옮기지
+  // 않는다는 이 계획의 규칙을 정면으로 어긴다.
+  it("css 만 실은 테마에는 강조 다이얼이 아무것도 쓰지 않는다", () => {
+    installMatchMedia(false);
+    useSettingsStore.setState({
+      activeThemeId: CSS_ONLY.id,
+      appearanceOverrides: { accentHueShift: 60 },
+      customThemes: [CSS_ONLY],
+    });
+
+    render(<Host />);
+
+    expect(varOf(ACCENT)).toBe("");
+    expect(varOf(FROM_ACCENT)).toBe("");
+    expect(varOf(ACCENT_SOLID)).toBe("");
+  });
+
+  // 비공허성: 위 단언 셋은 다이얼이 아예 동작하지 않아도 통과한다. 같은 다이얼
+  // 값이 `system` 에서는 쓰인다는 것이 이 파일 위쪽 테스트이고, 여기서는 그 대비가
+  // 테마 id 하나뿐임을 고정한다.
+  it("같은 다이얼 값이 system 에서는 쓰인다 — 위 단언의 대조군", () => {
+    installMatchMedia(false);
+    useSettingsStore.setState({
+      activeThemeId: "system",
+      appearanceOverrides: { accentHueShift: 60 },
+      customThemes: [CSS_ONLY],
+    });
+
+    render(<Host />);
+
+    expect(varOf(ACCENT)).toBe("#af3bf6");
   });
 });

@@ -73,8 +73,47 @@ export const DERIVED_COLOR_KEYS: readonly string[] = [
 export function deriveColorVars(
   seeds: Readonly<Partial<Record<string, string>>>,
 ): Record<string, string> {
+  return deriveMatching(seeds, () => true);
+}
+
+/**
+ * §367 규칙표에서 **시드의 동일자**인 것만. `hue === 0 && lift === null` 인 규칙은
+ * `hslToHex(hexToHsl(seed))` 이므로 시드를 그대로 재현한다(`color-hsl.ts` 머리주석의
+ * 왕복 성질).
+ *
+ * ‼️ **cascade 갈래 전용이고, 그 이유는 연속성이다.** 생성 스타일시트의 값은 손으로
+ * 쓴 것이라 파생식이 낸 값과 같지 않다. 동일자가 아닌 규칙을 그 위에 얹으면 다이얼을
+ * 1° 만 움직여도 그 키들이 **튄다** — 실측(2026-09-22, 기본 팔레트, `accentHueShift: 1`):
+ * 라이트 `--color-callout-abstract` 는 저작값 `#8b5cf6` 에서 `#773bf6` 으로, `--color-
+ * callout-todo` 는 `#06b6d4` 에서 `#3bd6f6` 으로 건너뛴다. 다크도 같다(`#a78bfa` →
+ * `#8760fa`, `#22d3ee` → `#60eafa`). 색상 오프셋을 가진 규칙이 저작 토큰이 아니라
+ * **강조의** 채도·명도를 물려받기 때문이고, 시드를 직접 싣는 테마에서는 보이지 않다가
+ * 생성 스타일시트 위에 얹는 순간 드러나는 파생 모델의 한계다.
+ *
+ * 동일자 규칙에는 그 틈이 **구조적으로** 생길 수 없다 — 저작값이 곧 시드이기 때문이고,
+ * 맞춘 상수가 아니라 정의가 그것을 보장한다. 실측으로 확인한 저작값 일치: 기본 팔레트
+ * 라이트·다크 모두에서 `--color-callout-info`·`--color-git-staged`·`--color-status-info`
+ * 가 `--color-accent-default` 와 같은 primitive(`blue-500` / `blue-400`)를 가리킨다
+ * (`src/styles/generated/semantic-{light,dark}.css`).
+ */
+export function deriveIdentityColorVars(
+  seeds: Readonly<Partial<Record<string, string>>>,
+): Record<string, string> {
+  return deriveMatching(seeds, (rule) => rule.hue === 0 && rule.lift === null);
+}
+
+/**
+ * {@link RULES} 순회 한 벌. 두 export 가 이것을 술어만 바꿔 부른다 — 목록을 둘로
+ * 나누면 규칙을 더할 때 한쪽만 자라고, 목록 둘이 어긋난 것이 `theme-vars.ts` 머리
+ * 주석의 #330 이다.
+ */
+function deriveMatching(
+  seeds: Readonly<Partial<Record<string, string>>>,
+  accept: (rule: Rule) => boolean,
+): Record<string, string> {
   const out: Record<string, string> = {};
   for (const rule of RULES) {
+    if (!accept(rule)) continue;
     const source = hexToHsl(seeds[rule.seed] ?? "");
     if (source === null) continue;
     let lightness = source.l;

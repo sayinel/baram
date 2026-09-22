@@ -1,6 +1,9 @@
 // §368 Task 1 — 열거 다이얼이 가능해졌다는 것과, 그 확장이 저장분을 깨지 않는다는 것.
 import { describe, expect, it } from "vitest";
 
+import { THEME_COLOR_KEYS } from "../../types/theme";
+import { DERIVED_KEYS } from "../../utils/theme-vars";
+import { DERIVED_COLOR_KEYS } from "../color-derive";
 import { DIALS } from "../dials";
 import { resolveDials } from "../merge";
 
@@ -118,5 +121,38 @@ describe("숫자 다이얼의 저장분은 확장을 견딘다", () => {
       editorMaxWidth: "1200px",
     } as Record<string, unknown>);
     expect(resolved.editorMaxWidth.origin).toBe("default");
+  });
+});
+
+describe("색 채널 다이얼의 변수는 누군가 지운다", () => {
+  /** `clearThemeVars` 가 지우는 키 전부 — 세 목록의 합집합이 그 함수의 본문이다. */
+  const CLEARED: ReadonlySet<string> = new Set([
+    ...THEME_COLOR_KEYS.map((e) => e.key),
+    ...DERIVED_KEYS,
+    ...DERIVED_COLOR_KEYS,
+  ]);
+
+  // ‼️ `clearDialVars` 는 색 채널을 **건너뛴다**(단일 작성자 규약: `--color-*` 는
+  // `theme-vars.ts` 가 쓰고 지운다). 그래서 색 다이얼의 변수는 `clearThemeVars` 의
+  // 세 목록 중 하나에 들어 있어야만 지워진다.
+  //
+  // 무엇이 이것을 실패시키는가: 어느 목록에도 없는 키 — 이를테면
+  // `--color-editor-highlight` — 를 선언한 색 다이얼을 더하면, 테마 이펙트가 그것을
+  // `<html>` 에 쓰고 **아무도 지우지 않는다**. 다이얼을 0 으로 되돌리거나 테마를
+  // 바꿔도 그 색이 남는다. 제거 목록이 25키 중 16키만 덮어 아홉이 살아남은 것이
+  // `theme-vars.ts` 머리주석이 적는 #330 이고, 이 테스트가 그 문을 닫는다.
+  //
+  // 오늘 통과하는 이유는 우연에 가깝다: 강조 다이얼 둘이 선언하는 네 키가 마침
+  // `THEME_COLOR_KEYS` 의 원소다. 그 우연이 다음 색 다이얼에도 성립한다는 보장은
+  // 없으므로 검사로 바꿔 둔다.
+  it("색 다이얼이 선언한 변수는 전부 clearThemeVars 가 지운다", () => {
+    const colorDials = DIALS.filter((d) => d.channel !== "layout");
+    // 비공허성: 색 다이얼이 하나도 없으면 아래 루프가 돌지 않는다.
+    expect(colorDials.length).toBeGreaterThan(0);
+    for (const dial of colorDials) {
+      for (const name of dial.vars) {
+        expect([...CLEARED], `${dial.id} declares ${name}`).toContain(name);
+      }
+    }
   });
 });
