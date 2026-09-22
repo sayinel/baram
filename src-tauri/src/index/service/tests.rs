@@ -2207,7 +2207,7 @@ async fn a_file_rename_rewrites_block_references_and_embeds_as_it_rewrites_wikil
     std::fs::write(dir.path().join("old.md"), "para ^b1\n").unwrap();
     std::fs::write(dir.path().join("w.md"), "see [[old]]\n").unwrap();
     std::fs::write(dir.path().join("r.md"), "see ((old#^b1))\n").unwrap();
-    std::fs::write(dir.path().join("e.md"), "{{embed ((old#^b1))}}\n").unwrap();
+    std::fs::write(dir.path().join("e.md"), "{{embed ((old#^b1))}} [[old]]\n").unwrap();
     std::fs::write(
         dir.path().join("both.md"),
         "[[old]] ((old#^b1)) and ((old#^b1|shown)) ((dir/old#^b1))\n",
@@ -2244,7 +2244,7 @@ async fn a_file_rename_rewrites_block_references_and_embeds_as_it_rewrites_wikil
     );
     assert_eq!(
         std::fs::read_to_string(dir.path().join("e.md")).unwrap(),
-        "{{embed ((new#^b1))}}\n"
+        "{{embed ((new#^b1))}} [[new]]\n"
     );
     assert_eq!(
         std::fs::read_to_string(dir.path().join("both.md")).unwrap(),
@@ -2847,4 +2847,92 @@ async fn a_reference_inside_a_code_fence_is_neither_a_backlink_nor_renamed() {
         .await
         .unwrap();
     assert!(!sources(&backlinks).contains(&guide_path.as_str()));
+}
+
+#[tokio::test]
+async fn a_file_rename_to_a_longer_stem_rewrites_both_grammars_on_one_line_before_a_code_span() {
+    // issue 678 (review): `LinkPasses::rewrite` hands the block-reference
+    // pass the wikilink pass's OUTPUT, so that pass's offsets and literal
+    // regions are its own. A block pass that judged prose against the
+    // wikilink pass's INPUT left the other 176 tests green (measured with a
+    // probe doing exactly that): the headline test renames `old` → `new`,
+    // the same length, and the `old (draft)` renames let only the wikilink
+    // pass write. Here the stem grows by four bytes, both grammars stand on
+    // one line, and a code span follows them closer than those four bytes.
+    // What fails this: the block pass taking its literal regions from the
+    // pre-wikilink bytes — the span `x` then lies over `((old#^b1))` at its
+    // new offset, the reference is left as literal, and the file reads
+    // `[[renamed]] ((old#^b1))`.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-678h3", true).await;
+    std::fs::write(dir.path().join("old.md"), "para ^b1\n").unwrap();
+    std::fs::write(dir.path().join("both.md"), "[[old]] ((old#^b1)) `x`\n").unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/old.md"),
+        &format!("{root}/renamed.md"),
+    )
+    .await
+    .unwrap();
+    assert_eq!(result.updated_files, vec![format!("{root}/both.md")]);
+    assert!(
+        result.skipped_files.is_empty(),
+        "{:?}",
+        result.skipped_files
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("both.md")).unwrap(),
+        "[[renamed]] ((renamed#^b1)) `x`\n"
+    );
+}
+
+#[tokio::test]
+async fn a_file_rename_reports_a_same_stem_note_named_for_more_than_its_own_references() {
+    // issue 678 (review): the same-stem exemption in `rename/file.rs` weighs
+    // the note's own `((#^id))` lines against the lines the index named it
+    // for — `own_block_reference_lines(content, None) >= lines`. Its sibling
+    // tests pin that the exemption EXISTS (a note named for its own
+    // references alone is not reported) and stayed green with the comparison
+    // replaced by `true`; this one pins the arithmetic. `b/old.md` was
+    // named for two lines — its own `((#^b1))` and `((old#^b1))` to a/old's
+    // block — and the second was made code outside the app since. One own
+    // line does not account for two: the note is stale, and reported.
+    // What fails this: the exemption ignoring the count (`>= lines` → true).
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-678h2", true).await;
+    std::fs::create_dir_all(dir.path().join("a")).unwrap();
+    std::fs::create_dir_all(dir.path().join("b")).unwrap();
+    std::fs::write(dir.path().join("a/old.md"), "para ^b1\n").unwrap();
+    std::fs::write(
+        dir.path().join("b/old.md"),
+        "mine ^b1 ((#^b1))\nsee ((old#^b1))\n",
+    )
+    .unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    let edited = "mine ^b1 ((#^b1))\nsee `((old#^b1))`\n";
+    std::fs::write(dir.path().join("b/old.md"), edited).unwrap();
+
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/a/old.md"),
+        &format!("{root}/a/new.md"),
+    )
+    .await
+    .unwrap();
+    assert!(
+        result.updated_files.is_empty(),
+        "{:?}",
+        result.updated_files
+    );
+    assert_eq!(result.skipped_files, vec![format!("{root}/b/old.md")]);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("b/old.md")).unwrap(),
+        edited
+    );
 }
