@@ -230,6 +230,14 @@ export function applyThemeVars(
   // 둘 다 "시드의 결과" 이기 때문이고, 나누는 이유는 서로 다른 질문에 답하기
   // 때문이다 — `derivedVars` 는 대비를 보장하는 전경/채움이고(#330), 이쪽은
   // 색상환에서 계산한 의미 색이다. 대비 하한이 없는 쪽이 이쪽이다.
+  //
+  // ‼️ **이 함수를 거치지 않는 갈래가 있다.** 강조 다이얼이 cascade 소유 테마
+  // (`CASCADE_ONLY_THEME_IDS`)에 닿을 때 `use-settings-effects.ts` 의 테마 이펙트는
+  // 이 파생 29키가 아니라 `deriveIdentityColorVars` 의 동일자 부분집합만 쓴다 —
+  // 이유(저작 토큰과 파생식이 어긋나 1° 에서 네 토큰이 튄다)는 그 자리와
+  // `deriveIdentityColorVars` 의 doc 주석에 있다. 여기서부터 읽는 사람에게 두 경로가
+  // 같아 보이면 안 되므로 그것을 가리킨다: 갈린 목록이 서로를 모르는 것이 이 파일
+  // 머리주석의 #330 이다.
   for (const [key, value] of Object.entries(deriveColorVars(colors))) {
     root.style.setProperty(key, value);
   }
@@ -282,8 +290,18 @@ export function clearThemeVars(root: HTMLElement): void {
  * 전체 팔레트가 아니라 **부분 맵**을 받는다. cascade 갈래가 넘기는 것은 강조 계열
  * 넷뿐이고, 그것이 "강조와 거기서 나오는 것만 쓴다"(§364.2)를 호출 자리에서 눈으로
  * 볼 수 있게 한다. 두 시드 중 하나라도 없으면 계산할 수 없으므로 빈 맵이다 —
- * `deriveColorVars` 의 같은 규칙이고, `ThemeColors` 는 두 키가 모두 있는 total 타입이라
- * {@link derivedVars} 경로에서는 이 갈래가 **탈 수 없다**(그래서 그쪽 동작은 그대로다).
+ * `deriveColorVars` 의 같은 규칙이다.
+ *
+ * ‼️ 그 빈 맵 갈래는 {@link derivedVars} 경로에서도 **탈 수 있다**. `ThemeColors` 는
+ * 두 키가 모두 있는 total 타입이지만 저장분은 runtime cast 라 키가 빠질 수 있고, 그것이
+ * `applyThemeVars` 의 `value !== undefined` 가드가 있는 이유와 같다(이 파일 그 자리
+ * 주석). 강조 시드가 빠진 팔레트에서 이 함수 이전의 동작은 "없는 채움에 전경을 골라
+ * 준다" 가 아니라 **던지는 것**이었다: 어느 모드로 가든 `parseHexColor` 의
+ * `color.trim()` 이 `undefined` 위에서 TypeError 를 낸다 — 라이트는
+ * `accentSolidFill` → `clearsAA` → `contrastRatio` → `relativeLuminance` 로,
+ * 다크는 `accentSolidFill` 이 accent 를 그대로 돌려준 뒤 `onSolidForeground` 로
+ * (`color-contrast.ts`, 2026-09-22 두 갈래 모두 실측). 빈 맵은 그래서 순수한
+ * 개선이다: 계산할 수 없는 셋을 내지 않고 cascade 에 맡긴다.
  */
 export function accentPairingVars(
   colors: Readonly<Partial<Record<string, string>>>,
