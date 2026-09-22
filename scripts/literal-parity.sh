@@ -17,6 +17,7 @@ set -euo pipefail
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 manifest="$repo/src-tauri/Cargo.toml"
 inventory="$repo/src-tauri/src/md/fixtures/literal-parity-inventory.json"
+fixture="$repo/src-tauri/src/md/fixtures/literal-parity.json"
 
 dump_to() {
   local out="$1"
@@ -43,11 +44,13 @@ case "${1:-}" in
     tmp="$(mktemp -t literal-parity)"
     trap 'rm -f "$tmp" "$tmp.now"' EXIT
     dump_to "$tmp"
-    [ -f "$inventory" ] || { echo "literal-parity: $inventory is missing" >&2; exit 1; }
-    # Compare identity only — test, ordinal, sha256, bytes — never the
-    # document body, so an inventory drift reads as a short list rather than
-    # a diff of megabytes.
+    for f in "$inventory" "$fixture"; do
+      [ -f "$f" ] || { echo "literal-parity: $f is missing" >&2; exit 1; }
+    done
+    # Compare identities — test, ordinal, digest — never the document body,
+    # so a drift reads as a short list rather than a diff of megabytes.
     node -e '
+      const crypto = require("node:crypto");
       const fs = require("node:fs");
       const now = fs.readFileSync(process.argv[1], "utf8").trim().split("\n")
         .map((l) => { const r = JSON.parse(l); return {test: r.test, ordinal: r.ordinal, sha256: r.sha256, bytes: r.bytes}; });
@@ -66,8 +69,43 @@ case "${1:-}" in
         console.error("Regenerate: scripts/literal-parity.sh dump /tmp/corpus.jsonl  (then rebuild the fixture)");
         process.exit(1);
       }
-      console.error(`literal-parity: ${now.length} documents match the committed inventory`);
-    ' "$tmp" "$inventory"
+      // ‼️ The inventory says which documents exist; the fixture says what
+      // each marker in them should be. Comparing only the first leaves the
+      // second free to shrink: deleting cases from the fixture was measured
+      // to pass this check, the Rust reader (its floor is a count, not the
+      // corpus) and — by luck of a second count — almost the vitest one too.
+      // Every document the inventory names is either excluded or a case.
+      const fixture = JSON.parse(fs.readFileSync(process.argv[3], "utf8"));
+      const cases = new Map(fixture.cases.map((c) => [key(c), c]));
+      // Duplicate keys would be collapsed by these maps and the collapse would
+      // look like agreement.
+      for (const [what, list, map] of [["the dump", now, b], ["the inventory", committed, a], ["the fixture", fixture.cases, cases]]) {
+        if (map.size !== list.length) {
+          console.error(`literal-parity: ${what} holds ${list.length - map.size} duplicate identit(ies)`);
+          process.exit(1);
+        }
+      }
+      const missing = committed.filter((r) => !r.excluded && !cases.has(key(r)));
+      const orphaned = [...cases.keys()].filter((k) => !a.has(k));
+      // ‼️ Identity alone is not enough: a document can change while its key
+      // does not. Recomputing the digest from what the fixture will actually
+      // be tested against is what ties the two files together — without it,
+      // updating the inventory hash and leaving the fixture stale passes.
+      const stale = [...cases.values()].filter((c) => {
+        const digest = crypto.createHash("sha256").update(c.markdown, "utf8").digest("hex");
+        const inventoryEntry = a.get(key(c));
+        return digest !== c.sha256 || (inventoryEntry && inventoryEntry.sha256 !== digest);
+      });
+      if (missing.length || orphaned.length || stale.length) {
+        console.error("literal-parity: the fixture and the recorded corpus disagree.");
+        for (const r of missing) console.error(`  no case for      ${key(r)}`);
+        for (const k of orphaned) console.error(`  no document      ${k}`);
+        for (const c of stale) console.error(`  stale document   ${key(c)}`);
+        console.error("Regenerate: scripts/literal-parity.sh dump /tmp/corpus.jsonl && npx tsx scripts/build-literal-parity.ts /tmp/corpus.jsonl");
+        process.exit(1);
+      }
+      console.error(`literal-parity: ${now.length} documents match the committed inventory, ${cases.size} of them with a case whose digest checks out`);
+    ' "$tmp" "$inventory" "$fixture"
     ;;
   *)
     echo "usage: $0 {dump <out.jsonl>|check}" >&2

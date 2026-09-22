@@ -208,10 +208,13 @@ jobs:
       # committed parity fixture is generated from that corpus, so a PR that
       # adds, changes or removes a `refs()` case leaves the fixture describing
       # a corpus that no longer exists — and both parity readers would keep
-      # passing against the stale one. This compares the two.
+      # passing against the stale one. This records the corpus afresh and
+      # checks it against BOTH generated files: identities against the
+      # inventory, and each fixture case's document against its own digest,
+      # so updating one file and not the other cannot pass.
       #
-      # Cargo is invoked with the `parity-dump` feature, which is off
-      # everywhere else, so the recorder compiles nowhere but here. Like the
+      # Cargo is invoked with the `parity-dump` feature, which no other job
+      # and no default build turns on. Like the
       # pandoc step below, the script refuses an empty dump: a recorder that
       # silently did not run would otherwise be a green check of nothing.
       - name: Literal parity corpus matches the tests

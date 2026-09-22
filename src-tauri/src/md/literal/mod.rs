@@ -381,10 +381,12 @@ mod tests {
     use regex::Regex;
     use std::sync::LazyLock;
 
-    /// issue 669 — the parity corpus recorder. Every case in this module
-    /// reaches `Literal` through `refs`, so this one place sees the whole
-    /// corpus, including the three documents that are built at run time and
-    /// that no scan of this source could find.
+    /// issue 669 — the parity corpus recorder. Every document in the `refs`
+    /// assertion corpus reaches `Literal` through that helper, so this one
+    /// place sees all of it — including the documents two call sites build at
+    /// run time, which no scan of this source could find. Tests that call
+    /// `Literal::of` or `Literal::analyse` directly are outside it; they
+    /// measure the analysis, not the classification this corpus compares.
     ///
     /// Off unless the `parity-dump` feature is on, so an ordinary
     /// `cargo test` compiles none of it. Turning the feature on is still not
@@ -399,10 +401,11 @@ mod tests {
     /// would merge unrelated cases.
     #[cfg(feature = "parity-dump")]
     mod parity_dump {
+        use super::{LazyLock, Regex};
         use sha2::{Digest, Sha256};
         use std::collections::HashMap;
         use std::io::Write;
-        use std::sync::{LazyLock, Mutex};
+        use std::sync::Mutex;
 
         /// How many documents each test has recorded so far. The ordinal is
         /// the case's identity within its test, so several `refs` calls in
@@ -410,10 +413,27 @@ mod tests {
         static ORDINALS: LazyLock<Mutex<HashMap<String, usize>>> =
             LazyLock::new(|| Mutex::new(HashMap::new()));
 
+        /// The marker as production's `BLOCK_REF_RE` spells it: a display
+        /// needs at least one character and cannot hold a line break. The
+        /// `refs` helper above is wider on both counts, so this is where the
+        /// two can part — and the assertion below makes that loud instead of
+        /// letting the parity corpus quietly describe a different grammar.
+        static PRODUCTION_MARKER: LazyLock<Regex> =
+            LazyLock::new(|| Regex::new(r"\(\(n#\^o(?:\|[^)\n\r]+)?\)\)").unwrap());
+
         pub(super) fn record(md: &str, literal_alone: &[bool]) {
             let Some(path) = std::env::var_os("BARAM_PARITY_DUMP") else {
                 return;
             };
+            let markers = PRODUCTION_MARKER.find_iter(md).count();
+            assert_eq!(
+                markers,
+                literal_alone.len(),
+                "parity-dump: `refs` saw {} marker(s) and production's grammar sees {} in {md:?} \
+                 — the corpus has grown a shape the parity fixture cannot describe",
+                literal_alone.len(),
+                markers
+            );
             let test = std::thread::current()
                 .name()
                 .expect(
@@ -439,6 +459,7 @@ mod tests {
                 "sha256": format!("{:x}", Sha256::digest(md.as_bytes())),
                 "bytes": md.len(),
                 "markdown": md,
+                "markers": markers,
                 // What `Literal` alone said, which is what the assertion in
                 // this file compares against. The generator derives the index
                 // expectation from it and compares that with the oracle, so
@@ -476,17 +497,20 @@ mod tests {
     /// outside those 58 documents failed nothing.
     ///
     /// The expectations here were measured by parsing each document with the
-    /// editor's own stack (`scripts/build-literal-parity.ts`), never by
-    /// copying what this side already believed. The vitest reader asserts the
+    /// editor's own reader (`scripts/build-literal-parity.ts`), never by
+    /// copying what this side already believed. Generating them also compared
+    /// them with what `Literal` answers today, and the dump that produced
+    /// them only completes if the `refs` assertions above accept that answer
+    /// — so the two agreed at the moment the fixture was written. The vitest reader asserts the
     /// same numbers against the frontend's classifier, so a remark change
     /// turns that side red on the exact document; this test turns red when
     /// the emulation drifts from what was measured.
     ///
     /// What fails this (measured, each mutation applied alone): dropping the
     /// `overlaps` half of the predicate reddens the first fenced case;
-    /// dropping the `m.start() >= body_start` half reddens the BOM front
-    /// matter case, which is the one place the two sides classify the same
-    /// bytes differently on purpose. ‼️ Removing `walk.prose.push(0..
+    /// dropping the `m.start() >= body_start` half reddens a front matter
+    /// case — front matter is the one category where the two sides classify
+    /// the same bytes differently on purpose. ‼️ Removing `walk.prose.push(0..
     /// body_start)` from `Literal` does NOT redden this — the front-matter
     /// half of the predicate covers those markers either way. That line is
     /// pinned by the `refs()` assertions above, which ask `Literal` alone.
@@ -505,7 +529,7 @@ mod tests {
             why: Vec<String>,
         }
         static MARKER: LazyLock<Regex> =
-            LazyLock::new(|| Regex::new(r"\(\(n#\^o(?:\|[^)\n\r]*)?\)\)").unwrap());
+            LazyLock::new(|| Regex::new(r"\(\(n#\^o(?:\|[^)\n\r]+)?\)\)").unwrap());
 
         let fixture: Fixture =
             serde_json::from_str(include_str!("../fixtures/literal-parity.json")).unwrap();

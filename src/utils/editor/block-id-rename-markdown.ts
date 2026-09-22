@@ -70,8 +70,7 @@ export function renameBlockIdInMarkdown(
   newId: string,
 ): string {
   if (oldId === newId || !markdown.includes(oldId)) return markdown;
-  const outside = (ranges: Range[], start: number, end: number): boolean =>
-    !ranges.some(([from, to]) => start < to && end > from);
+  const outside = isOutsideRanges;
 
   // A definition is a block's trailing ` ^id` — of a paragraph or heading.
   // The converter never reads one off a table cell (md-to-pm's table branch
@@ -107,7 +106,7 @@ export function renameBlockIdInMarkdown(
  * definition are attributes on the PM side, not text a blockReference could
  * live in.
  */
-export const LITERAL_TYPES = new Set([
+export const LITERAL_TYPES: ReadonlySet<string> = new Set([
   "code",
   "definition",
   "html",
@@ -134,13 +133,25 @@ export function referenceIsEditable(
   start: number,
   end: number,
 ): boolean {
-  return !parsedRanges(markdown).literal.some(
-    ([from, to]) => start < to && end > from,
-  );
+  return isOutsideRanges(parsedRanges(markdown).literal, start, end);
 }
 
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Is `[start, end)` clear of every range? Half-open overlap, not containment:
+ * `((n#^o|`x`))` holds an `inlineCode` child, so no literal range contains the
+ * reference and one overlaps it.
+ *
+ * ‼️ One function, because `renameBlockIdInMarkdown` and the parity export
+ * both decide with it. They each had their own copy of this expression, and a
+ * mutation of production's copy left the parity corpus green — a test that
+ * re-implements the rule passes while production drifts.
+ */
+function isOutsideRanges(ranges: Range[], start: number, end: number): boolean {
+  return !ranges.some(([from, to]) => start < to && end > from);
 }
 
 /**

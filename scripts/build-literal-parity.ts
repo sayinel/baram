@@ -14,6 +14,7 @@
 //
 // Writes src-tauri/src/md/fixtures/literal-parity.json and
 //        src-tauri/src/md/fixtures/literal-parity-inventory.json
+import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
@@ -24,7 +25,7 @@ import {
 import { markdownParser } from "../src/pipeline/markdown-parser";
 
 /** The corpus marker, and the grammar production applies to it: one line. */
-const MARKER = /\(\(n#\^o(?:\|[^)\n\r]*)?\)\)/g;
+const MARKER = /\(\(n#\^o(?:\|[^)\n\r]+)?\)\)/g;
 
 /** Payloads this big are excluded from the fixture; the inventory keeps the
  *  hash so the absence is recorded rather than silent. */
@@ -102,9 +103,11 @@ const byKey = new Map<string, boolean[]>(
   records.map((r) => [`${r.test}#${r.ordinal}`, r.literalAlone as boolean[]]),
 );
 interface Case {
+  bytes: number;
   editable: boolean[];
   markdown: string;
   ordinal: number;
+  sha256: string;
   test: string;
   why: string[];
 }
@@ -113,6 +116,14 @@ const inventory: Record<string, unknown>[] = [];
 for (const record of records) {
   const { markdown, test, ordinal, sha256, bytes } = record;
   const occurrences = [...markdown.matchAll(MARKER)];
+  // The recorder counted with the same grammar; if these part, one of the
+  // two regexes moved and the fixture would describe a corpus nobody runs.
+  if (occurrences.length !== record.markers) {
+    console.error(
+      `build-literal-parity: ${test}#${ordinal} — the recorder counted ${record.markers} marker(s), this counts ${occurrences.length}`,
+    );
+    process.exit(1);
+  }
   if (occurrences.length === 0) {
     console.error(`build-literal-parity: ${test}#${ordinal} holds no marker`);
     process.exit(1);
@@ -126,6 +137,8 @@ for (const record of records) {
   cases.push({
     test,
     ordinal,
+    sha256,
+    bytes,
     markdown,
     editable: occurrences.map((m) =>
       referenceIsEditable(markdown, m.index, m.index + m[0].length),
@@ -151,11 +164,16 @@ const contract = [
   "the shared stack and OVERLAPS every literal mdast node against the range — not containment:",
   "`((n#^o|`x`))` holds an inlineCode child, so no literal node contains the reference and one",
   "overlaps it. `why` is provenance for diffs and failure messages and is never asserted.",
+  "`sha256`/`bytes` are of `markdown`: scripts/literal-parity.sh check recomputes them, so a",
+  "case whose document drifted from the recorded corpus cannot pass by updating the inventory.",
   "",
   "The marker is one line, target `n`, id `o`, optional display. The conditions `extract_links`",
   "applies that this predicate omits are unreachable for this corpus, measured: 0 embeds, 0",
   "empty displays `((n#^o|))`, 0 markers with a line break in the display, never an empty",
-  "target, never an empty id. Adding such a case to `refs()` breaks that boundary.",
+  "target, never an empty id. The marker grammar here is production's — a display needs one",
+  "character and no line break — while the `refs` helper is wider on both counts; the recorder",
+  "asserts the two see the same number of markers, so a case in a shape this fixture cannot",
+  "describe stops the dump instead of being silently left out.",
   "",
   "GENERATED — do not edit. Regenerate with:",
   "  scripts/literal-parity.sh dump /tmp/corpus.jsonl",

@@ -19,9 +19,11 @@ import {
 
 interface Fixture {
   cases: {
+    bytes: number;
     editable: boolean[];
     markdown: string;
     ordinal: number;
+    sha256: string;
     test: string;
     why: string[];
   }[];
@@ -30,7 +32,7 @@ interface Fixture {
 }
 
 /** The marker and its grammar, as the contract states it: one line. */
-const MARKER = /\(\(n#\^o(?:\|[^)\n\r]*)?\)\)/g;
+const MARKER = /\(\(n#\^o(?:\|[^)\n\r]+)?\)\)/g;
 
 const fixture = JSON.parse(
   readFileSync(
