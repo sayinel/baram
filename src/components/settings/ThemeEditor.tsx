@@ -155,7 +155,18 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
   // ‼️ **모듈 전역인 `themePreviewOwned()` 로 판정하면 안 된다.** 편집기가 떠 있는
   // 동안 다른 무언가가 소유권을 놓는 날이 오면 그 술어는 "이미 끝났다" 로 읽혀
   // 되돌리기를 통째로 건너뛰고, 미리보기가 `<html>` 에 박힌 채 남는다. 판정 대상은
-  // 문서의 상태가 아니라 **이 인스턴스의 이력**이다.
+  // 문서의 상태가 아니라 이 미리보기 **한 벌의 이력**이다.
+  //
+  // ‼️ **그래서 아래 이펙트 본문이 이 ref 를 다시 `false` 로 되돌린다 — 지우지 말 것.**
+  // 한 벌의 경계는 컴포넌트 인스턴스가 아니라 **이펙트 실행**이다: `React.StrictMode`
+  // (`src/main.tsx`)는 마운트 → 정리 → 재실행을 한 번 더 돌리므로, 인스턴스 단위 ref 는
+  // 그 정리에서 켜진 뒤 다시 꺼지지 않는다. 그러면 재실행이 `setThemePreviewOwner(true)`
+  // 로 소유권을 다시 쥐는데 그것을 놓을 `endPreview` 는 전부 이른 반환하고, 소유권이
+  // 프로세스가 끝날 때까지 참으로 굳어 **테마 적용 이펙트가 영영 서 있는다** — 실측
+  // 증상: Cancel 이 강조 이동을 되살리지 않고, 그 뒤 테마를 바꿔도 아무 일도 일어나지
+  // 않으며, 앱을 다시 켜면 적용된다(모듈 상태가 새로 지어지므로). 테스트 스위트는
+  // StrictMode 를 쓰지 않아 이것을 보지 못했다 — `ThemeEditor.test.tsx` 의
+  // StrictMode 케이스가 그 구멍을 메운다.
   const previewEndedRef = useRef(false);
 
   // Group color keys by category
@@ -193,6 +204,10 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
   // 덮었다 — 그래서 강조 다이얼이 옮긴 색이 편집기를 닫는 것만으로 사라졌다
   // (§367 리뷰 I3).
   useEffect(() => {
+    // ‼️ 이 두 줄은 짝이다 — 소유권을 쥐는 것과 "아직 놓지 않았다" 를 세우는 것.
+    // 짝을 풀면 StrictMode 의 재실행에서 소유권만 다시 서고 관문은 켜진 채로 남는다
+    // (`previewEndedRef` 의 주석이 그 결과를 적는다).
+    previewEndedRef.current = false;
     setThemePreviewOwner(true);
     // Aliased so the cleanup reads the refs through stable locals (lint rule), not
     // values captured at effect time — both must be read AT cleanup.
@@ -518,7 +533,8 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
  * 없지만, 소유권은 그때도 놓아야 한다. 저장 경로는 이 함수를 언마운트 정리에서 **한 번**
  * 부르고 그때 소유권을 아직 쥐고 있으므로, 아래 관문에 걸리지 않고 해제까지 간다.
  *
- * ‼️ **한 인스턴스에서 한 번만 실행된다**(`ended`). Cancel 이 이 함수를 두 번 부르기
+ * ‼️ **미리보기 한 벌에서 한 번만 실행된다**(`ended` — 그 경계를 긋는 것은 인스턴스가
+ * 아니라 이펙트 실행이고, 이유는 호출자 쪽 주석이 적는다). Cancel 이 이 함수를 두 번 부르기
  * 때문이다 — 버튼에서 한 번, 그 `onClose()` 가 일으키는 언마운트의 정리에서 한 번. 관문이
  * 없으면 둘째 호출이 되돌리기만 다시 실행하고 `setThemePreviewOwner(false)` 는 이미
  * 풀린 소유권 위에서 조용히 이른 반환한다(`theme-vars.ts` 의 `previewOwned === owned`).

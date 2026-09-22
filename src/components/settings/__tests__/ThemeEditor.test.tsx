@@ -8,7 +8,7 @@
 // theme was left with a light UI, and only switching themes recovered it, because
 // the settings effect depends on [activeThemeId, customThemes] and cancel changes
 // neither.
-import { useState } from "react";
+import { StrictMode, useState } from "react";
 
 import type { ThemeDef } from "../../../types/theme";
 
@@ -285,6 +285,56 @@ describe("ThemeEditor — leaving the editor", () => {
     fireEvent.click(screen.getByText("Cancel"));
 
     expect(accentValue()).toBe(SHIFTED_ACCENT);
+  });
+
+  // §367 3라운드 — **앱은 `React.StrictMode` 안에서 돌고 이 스위트는 그러지 않았다**
+  // (`src/main.tsx`). 그 차이가 실제 앱에서만 나는 결함을 하나 숨겼고, 그것을 찾은 것은
+  // 리뷰가 아니라 손으로 해 본 조작이다.
+  //
+  // StrictMode 는 마운트 → 정리 → 재실행을 한 번 더 돈다. 인스턴스 단위 ref 로 "이미
+  // 끝냈다" 를 세우면 그 정리에서 켜진 뒤 재실행이 끄지 않으므로, 재실행이 다시 쥔
+  // 소유권을 놓을 사람이 없어진다 — `previewOwned` 가 프로세스가 끝날 때까지 참이고
+  // 테마 적용 이펙트가 영영 선다.
+  //
+  // ‼️ 단언 셋째가 이 케이스의 이유다. 강조색만 보는 테스트는 **테마 전환이 죽은
+  // 빌드에서도 통과한다** — 사용자가 본 둘째 증상이 그것이고, 이 결함을 성가심이 아니라
+  // 심각한 것으로 만드는 쪽도 그것이다.
+  it("survives StrictMode's double-invoked effects on the Cancel path", () => {
+    useSettingsStore.setState({ appearanceOverrides: { accentHueShift: 60 } });
+    let openEditor = (): void => {};
+    function Host() {
+      useSettingsEffects(null);
+      const [open, setOpen] = useState(false);
+      openEditor = () => setOpen(true);
+      return open ? <ThemeEditor onClose={() => setOpen(false)} /> : null;
+    }
+
+    render(
+      <StrictMode>
+        <Host />
+      </StrictMode>,
+    );
+    expect(accentValue()).toBe(SHIFTED_ACCENT);
+
+    act(() => openEditor());
+    expect(accentValue()).not.toBe(SHIFTED_ACCENT);
+
+    fireEvent.click(screen.getByText("Cancel"));
+
+    // ① 이동이 살아남는다.
+    expect(accentValue()).toBe(SHIFTED_ACCENT);
+    // ② 소유권이 실제로 풀렸다 — ①은 되돌리기가 아예 돌지 않아도 통과할 수 있다.
+    expect(themePreviewOwned()).toBe(false);
+    // ③ 그 다음 테마 전환이 여전히 적용된다. `nord` 는 다크 한 모드만 선언하므로
+    //    `data-theme` 과 인라인 시드가 **둘 다** 따라와야 한다. 소유권이 굳은 빌드에서는
+    //    `applyUnlessPreviewing` 이 서서 이 이펙트가 다시 돌아도 아무것도 쓰지 않는다.
+    act(() => {
+      useSettingsStore.setState({ activeThemeId: "nord" });
+    });
+    expect(document.documentElement.dataset.theme).toBe("dark");
+    expect(
+      document.documentElement.style.getPropertyValue("--color-bg-default"),
+    ).toBe(NORD_COLORS["--color-bg-default"]);
   });
 
   it("keeps the mode it did not edit when a paired theme is saved", () => {
