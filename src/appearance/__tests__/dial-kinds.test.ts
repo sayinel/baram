@@ -24,9 +24,13 @@ describe("열거 다이얼", () => {
     expect(lineBreak?.toVars("normal")).toEqual({});
   });
 
-  it("vars 는 toVars 가 낼 수 있는 키를 전부 담는다", () => {
-    // 되돌리기가 값을 남기지 않는다는 것의 구조적 확인 — 다이얼이 낼 수 있는
-    // 모든 값에 대해 검사한다. options 를 도는 것이 핵심이다: 한 값만 보면
+  it("vars 는 enum 다이얼에서 toVars 가 낼 수 있는 키를 전부 담는다", () => {
+    // 되돌리기가 값을 남기지 않는다는 것의 구조적 확인 — enum 다이얼이 낼 수 있는
+    // 모든 값(= options 전체)에 대해 검사한다. 경계: 이 루프는 kind === "enum" 만
+    // 돈다. number 다이얼은 range 가 연속이라 "모든 값"을 열거할 수 없고, 그쪽은
+    // `dials.test.ts` 의 경계 테스트(양 끝 min/max)가 대신 표본을 검사한다 —
+    // 이 테스트 하나가 "다이얼이 낼 수 있는 모든 값"을 전부 덮는다고 읽으면 안 된다.
+    // options 를 도는 것이 핵심이다: 한 값만 보면
     // keepAll 이 내는 둘 중 하나를 vars 에서 빠뜨려도 통과한다.
     for (const dial of DIALS) {
       if (dial.kind !== "enum") continue;

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { DIALS } from "../dials";
 import { resolveDials } from "../merge";
 
 describe("resolveDials", () => {
@@ -37,16 +38,14 @@ describe("resolveDials", () => {
 
   it("ignores keys that are not dials", () => {
     // 저장분·매니페스트는 외부 입력이다. 결과는 DIALS 를 순회해 만들어지므로
-    // 낯선 키는 결과에 자리가 없다.
+    // 낯선 키는 결과에 자리가 없다. 기대값을 DIALS 에서 파생시키는 이유는
+    // 다이얼이 늘 때마다(이 브랜치에서 세 번, 그 뒤 계획에서도 더) 이 배열을
+    // 손으로 다시 옮겨 적는 것이 매번 그대로 베끼는 일이라서다 — 그래도
+    // 공허하지 않다: 입력에는 여전히 다이얼이 아닌 `display` 키가 있으므로,
+    // `resolveDials` 가 DIALS 대신 입력의 키를 돌면 `display` 가 결과에
+    // 남아 DIALS 파생 목록과 어긋난다.
     const r = resolveDials({ display: "none" } as never, {});
-    expect(Object.keys(r).sort()).toEqual([
-      "editorEmphasisStyle",
-      "editorLetterSpacing",
-      "editorLineBreak",
-      "editorMaxWidth",
-      "editorPadding",
-      "editorParagraphSpacing",
-    ]);
+    expect(Object.keys(r).sort()).toEqual(DIALS.map((d) => d.id).sort());
   });
 
   it("falls back to defaults when the theme layer is null", () => {

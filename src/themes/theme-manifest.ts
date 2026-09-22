@@ -101,7 +101,12 @@ export interface ThemeManifest {
    *
    * ‼️ 설치 시점에 앱이 모르는 다이얼 id 는 **버려지고, 앱을 올려도 되살아나지 않는다**
    * — `rebuildManifest` 의 결과가 그대로 `InstalledTheme.manifest` 로 저장되기 때문이다.
-   * 되살리려면 재설치다. `engines.baram` 이 그 계약을 선언하는 자리다.
+   * 되살리려면 재설치다. `engines.baram` 은 이 사실을 표현하지 못한다 — 그 필드가
+   * 답하는 것은 "이 패키지 포맷을 설치하고 쓸 수 있는가" 뿐이고 "이 안의 모든 필드를
+   * 읽는가" 가 아니다(`src/themes/reference/README.md`). v0.7.4 가 정확히 그 간극을
+   * 보인다: 이 포맷을 설치할 수 있는 첫 태그된 릴리스이면서, 동시에 `dials` 를
+   * 검사도 참조도 하지 않아 조용히 버리는 릴리스이기도 하다 — 버려짐이 곧
+   * `engines.baram` 만으로는 알 수 없는 것이다.
    */
   dials?: Readonly<Record<string, DialValue>>;
   engines: { baram: string };

@@ -165,6 +165,31 @@ function describeDial(dialId: DialId, t: Translate): string {
 }
 
 /**
+ * `step`이 함의하는 소수 자릿수. `editorLetterSpacing`(step 0.005)처럼 소수
+ * step을 가진 다이얼은 range 슬라이더가 부동소수 오차가 낀 값(예:
+ * `-0.019999999999999997`)을 돌려줄 수 있다 — `inRange`는 step 정렬을
+ * 검사하지 않으므로 그 값도 그대로 통과한다. 여기서 반올림하지 않으면 그
+ * 오차가 고정폭 `.settings-dial-value` 슬롯을 넘쳐 §366이 막으려던 떨림이
+ * 되돌아온다.
+ */
+function stepDecimalPlaces(step: number): number {
+  const s = step.toString();
+  const dot = s.indexOf(".");
+  return dot === -1 ? 0 : s.length - dot - 1;
+}
+
+/**
+ * `dialId`의 `range.step`에서 소수 자릿수를 파생해 `value`를 반올림한다.
+ * 값 자체(저장분)는 건드리지 않는다 — 이 함수는 표시 문구에서만 쓴다.
+ * enum 다이얼이나 알 수 없는 id는 그대로 돌려준다.
+ */
+function roundToDialStep(dialId: DialId, value: number): number {
+  const dial = DIALS.find((d) => d.id === dialId);
+  if (!dial || dial.kind !== "number") return value;
+  return Number(value.toFixed(stepDecimalPlaces(dial.range.step)));
+}
+
+/**
  * 값 읽기 문구 — 단위(px/rem)와 "제한 없음" 표기가 다이얼마다 다르다.
  * `editorLineBreak`는 빈 문자열을 돌려준다 — 열거의 값 readout은 select
  * 자체가 이미 보여 주므로, 여기서 같은 값을 문장으로 또 적으면 중복이다.
@@ -174,20 +199,24 @@ function formatDialValue(
   value: DialValue,
   t: Translate,
 ): string {
+  const rounded =
+    typeof value === "number" ? roundToDialStep(dialId, value) : value;
   switch (dialId) {
     case "editorEmphasisStyle":
       // editorLineBreak와 같은 이유로 빈 문자열이다 — 열거의 값 readout은
       // select 자체가 이미 보여 준다.
       return "";
     case "editorLetterSpacing":
-      return `${value}em`;
+      return `${rounded}em`;
     case "editorLineBreak":
       return "";
     case "editorMaxWidth":
-      return value === 0 ? t("settings.editor.maxWidth.noLimit") : `${value}px`;
+      return rounded === 0
+        ? t("settings.editor.maxWidth.noLimit")
+        : `${rounded}px`;
     case "editorPadding":
-      return `${value}rem`;
+      return `${rounded}rem`;
     case "editorParagraphSpacing":
-      return `${value}em`;
+      return `${rounded}em`;
   }
 }

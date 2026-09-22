@@ -1,8 +1,9 @@
 // §361 Task 6 / spec 0049 §9.4 — a theme the registry has withdrawn as MALICIOUS stops
 // being applied, and the app falls back to `system`.
 //
-// ‼️ COMPUTED DURING RENDER AND USED BY THE APPLY EFFECT AND THE HYDRATION HOOK, rather
-// than fixed afterwards by an effect that writes the store. The store write happens too
+// ‼️ COMPUTED DURING RENDER AND USED BY THE APPLY EFFECT, THE HYDRATION HOOK, AND THE
+// DIAL LAYER (`use-theme-dials.ts`), rather than fixed afterwards by an effect that
+// writes the store. The store write happens too
 // (`use-settings-effects.ts` — `activeThemeId` has to stop naming a theme that must not be
 // worn), but the derived id is what keeps the withdrawn theme from ever reaching `<html>`.
 //
