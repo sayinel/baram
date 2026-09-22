@@ -222,10 +222,13 @@ describe("a live theme-editor preview is not overwritten (external review #1)", 
 
     // 저장된 팔레트가 다시 주장된다 — 옛 계약에서는 센티넬이 그대로 남았다.
     expect(bgVar()).toBe(applied);
-    // ‼️ 그러면서도 `<style>` 은 다시 만들어지지 않는다. 이것이 예전 부정 대조가
-    // 지키던 성질이고(무조건 적용이 "그저 지연" 이 되지 않는다), `applyThemeCss` 의
-    // 동등성 관문이 그것을 보장한다 — 무엇이 이것을 실패시키는가: 그 관문을 빼면
-    // 같은 바이트에도 새 요소가 붙는다.
+    // ‼️ 그러면서도 `<style>` **요소 자체는 그대로**다. 이 단언이 지키는 것은 동등성
+    // 관문이 아니라 붙이는 **방식**이다: `applyThemeCss` 는 이미 붙어 있는 요소를 찾아
+    // 재사용한다(`attached ?? root.createElement`). 무엇이 이것을 실패시키는가 —
+    // 떼고 다시 붙이는 구현(`clearThemeCss` 뒤 새 요소)이다. 그 구현에서는 미리보기를
+    // 놓을 때마다 스타일시트가 다시 파싱되고, 무조건 재적용이 그 비용을 실제로 치르게
+    // 된다. 같은 바이트의 재파싱을 막는 것은 이 단언이 아니라 그 아래의
+    // `if (style.textContent !== css)` 다.
     expect(document.querySelector("style[data-baram-theme]")).toBe(before);
   });
 });
