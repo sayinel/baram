@@ -7,6 +7,7 @@ import { render, renderHook, screen } from "@testing-library/react";
 import { CircleCheck, Sparkles } from "lucide-react";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { DIALS } from "../../../appearance/dials";
 import { useAIStore } from "../../../stores/ai/ai";
 import { FEATURE_KEYS } from "../../../stores/settings/feature-keys";
 import { useSettingsStore } from "../../../stores/settings/store";
@@ -96,6 +97,22 @@ describe("settings tab structure (§342)", () => {
     for (const cat of registryTabs) {
       expect(tabIds).toContain(cat);
     }
+  });
+
+  it("gives every appearance dial a registry entry under its own id", () => {
+    // §368 이 남긴 결함의 일반형: 그때 `editorPadding` 의 행은 EditorTab.tsx 에
+    // **있었는데** 레지스트리에 항목이 없어서, 설정 검색으로는 찾을 방법이 전혀
+    // 없었다. 화면을 열어 눈으로 보면 멀쩡했다는 것이 요점이다 — 그 결함은 오직
+    // 검색에서만 보인다.
+    //
+    // 무엇이 이것을 실패시키는가: `DIALS` 에 다이얼을 더하고 레지스트리에
+    // `dialSliderSetting`/열거 항목을 더하지 않으면 실패한다. 오늘 여섯 다이얼의
+    // 레지스트리 id 는 전부 다이얼 id 와 같고(실측), 그 동일성이 이 단정의 전제다 —
+    // 항목 id 를 일부러 다르게 지으려면 이 테스트를 함께 고쳐야 한다.
+    const { result } = renderHook(() => useSettingsRegistry());
+    const registered = new Set(result.current.map((s) => s.id));
+    const missing = DIALS.map((d) => d.id).filter((id) => !registered.has(id));
+    expect(missing).toEqual([]);
   });
 
   it("leaves no feature setting in the general category", () => {

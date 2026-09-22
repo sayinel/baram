@@ -58,11 +58,11 @@ StyleDictionary.registerFormat({
 });
 
 // ---------------------------------------------------------------------------
-// Custom format: 편집 가능한 24키만 뽑은 TypeScript 팔레트 상수
+// Custom format: 편집 가능한 키만 뽑은 TypeScript 팔레트 상수
 // ---------------------------------------------------------------------------
-// semantic 트리에는 24키보다 많은 토큰이 있다. 테마 에디터가 보여주는 것은 그중
-// 24개뿐이고, 팔레트는 정확히 그 집합이어야 한다 — 여분 키가 섞이면 ThemeColors
-// 타입과 어긋나고, 빠지면 테마 에디터가 빈 색 피커를 그린다.
+// semantic 트리에는 THEME_COLOR_KEYS 보다 많은 토큰이 있다. 테마 에디터가 보여주는
+// 것은 그 배열에 있는 것뿐이고, 팔레트는 정확히 그 집합이어야 한다 — 여분 키가
+// 섞이면 ThemeColors 타입과 어긋나고, 빠지면 테마 에디터가 빈 색 피커를 그린다.
 const EDITABLE = new Set<string>(THEME_COLOR_KEYS.map((k) => k.key));
 
 StyleDictionary.registerFormat({

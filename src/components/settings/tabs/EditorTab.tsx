@@ -334,6 +334,15 @@ export function EditorTab() {
         label={t("settings.appearance.editorPadding")}
       />
 
+      {/* §369 — 리스트 들여쓰기 안내선의 농도. 조판 다이얼이 아니라 여백·폭과
+          같은 "화면에 무엇이 얼마나 드러나는가" 축이라 그 둘 다음에 둔다.
+          안내선의 **색조**는 여기 없다 — 그쪽은 테마가 고르는
+          `--color-editor-guide-tint` 이고 Appearance 탭의 테마 편집기가 맡는다. */}
+      <AppearanceDialRow
+        dialId="editorListGuideStrength"
+        label={t("settings.editor.editorListGuideStrength")}
+      />
+
       <SettingsRow
         description={t("settings.editor.virtualizeLargeDocs.desc")}
         label={t("settings.editor.virtualizeLargeDocs")}

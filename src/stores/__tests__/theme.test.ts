@@ -44,9 +44,10 @@ describe("Built-in themes", () => {
   });
 
   it("every built-in theme has exactly the THEME_COLOR_KEYS palette", () => {
-    // 매직 넘버(25)로 세지 않는다 — line-highlight 슬롯 제거(24키)에서 숫자
-    // 핀이 깨졌듯, 계약의 단일 출처는 THEME_COLOR_KEYS다. 개수는 파생으로
-    // 따라오고, 키 집합까지 대조해 이름 drift도 함께 잡는다.
+    // 개수를 매직 넘버로 세지 않는다. 예전에 line-highlight 슬롯이 빠지며 키가
+    // 하나 줄었을 때 숫자 핀이 깨졌고, 그 뒤로도 개수는 또 바뀌었다 — 계약의 단일
+    // 출처는 THEME_COLOR_KEYS다. 개수는 파생으로 따라오고, 키 집합까지 대조해
+    // 이름 drift도 함께 잡는다.
     const expected = new Set<string>(THEME_COLOR_KEYS.map((e) => e.key));
     for (const theme of BUILT_IN_THEMES) {
       expect(new Set(Object.keys(solePalette(theme)))).toEqual(expected);

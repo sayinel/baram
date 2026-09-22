@@ -68,6 +68,12 @@ const PADDING_RANGE = { max: 16, min: 0, step: 0.5 } as const;
 const LETTER_SPACING_RANGE = { max: 0.1, min: -0.05, step: 0.005 } as const;
 // §368 문단 간격. `blocks.css` 의 `.tiptap p { margin: 0.5em 0 }` 이 기본값의 출처다.
 const PARAGRAPH_SPACING_RANGE = { max: 2, min: 0, step: 0.05 } as const;
+// §369 리스트 들여쓰기 가이드의 농도(%). 상한이 40 인 것은 가이드가 **배경 쪽으로**
+// 섞이는 값이기 때문이다 — 100 은 본문 글자와 같은 색이 되어 중첩 리스트마다
+// 검은 세로줄이 서고, 그 구간은 고를 이유가 없는 구간이다. `lists.css` 의 fallback
+// 22% 가 기본값의 출처이고, 둘의 일치는 `styles/__tests__/list-styling.test.ts` 가
+// 두 파일을 함께 읽어 고정한다.
+const GUIDE_STRENGTH_RANGE = { max: 40, min: 0, step: 1 } as const;
 
 /**
  * §368.2 강조 렌더링. 값 셋 전부가 **CSS 변수만** 낸다 — 이것이 계약이다.
@@ -191,6 +197,27 @@ export const DIALS = [
         ? { "--editor-paragraph-spacing": `${value}em` }
         : {},
     vars: ["--editor-paragraph-spacing"],
+  },
+  {
+    // `lists.css` 의 `var(--editor-guide-strength, 22%)` 와 같은 수·같은 단위.
+    defaultValue: 22,
+    id: "editorListGuideStrength",
+    kind: "number",
+    parse: inRange(GUIDE_STRENGTH_RANGE),
+    range: GUIDE_STRENGTH_RANGE,
+    // ‼️ 0 에서 빈 맵을 돌려주지 **않는다**. `editorMaxWidth` 는 0 을 "무제한" 으로
+    // 읽어 비우지만, 여기서 0 은 "배경색 100%" 즉 사용자가 고른 끄기다 — 비우면
+    // fallback 22% 가 지배해서 끄기가 켜기가 된다.
+    //
+    // 끄기를 불투명도로 만들지 않은 것도 같은 자리의 결정이다. `lists.css` 가 알파
+    // 대신 `color-mix` 를 쓰는 이유를 그 파일이 적어 두었다 — 레일이 불투명해야
+    // 선택 영역이 그 위를 지나가도 물들지 않는다. 0% 혼합은 배경색과 같은 색이면서
+    // 여전히 불투명하므로 그 성질을 지키면서 보이지 않게 한다.
+    toVars: (value: DialValue): Record<string, string> =>
+      typeof value === "number"
+        ? { "--editor-guide-strength": `${value}%` }
+        : {},
+    vars: ["--editor-guide-strength"],
   },
   {
     defaultValue: "italic",

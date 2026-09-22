@@ -1,16 +1,16 @@
 // §54 테마 색 키 — 생성기와 앱이 함께 읽는 잎 모듈.
 //
-// `style-dictionary.config.ts`가 기본 팔레트를 생성하려면 24키 목록이 필요하고,
+// `style-dictionary.config.ts`가 기본 팔레트를 생성하려면 25키 목록이 필요하고,
 // `theme.ts`는 그 생성물을 import 한다. 키 목록이 `theme.ts`에 있으면 생성기 →
 // theme.ts → 생성물 → (아직 없음) 의 순환이 된다. 그래서 키 목록만 여기 있다.
 //
 // ‼️ 이 파일은 아무것도 import 하지 않는다. 테스트가 그것을 고정한다.
 
 // ---------------------------------------------------------------------------
-// 1. ThemeColors — 24 CSS custom property keys
+// 1. ThemeColors — 25 CSS custom property keys
 // ---------------------------------------------------------------------------
 
-// 감사 순서 6: 24키를 손으로 두 번 적지 않는다 — 아래 THEME_COLOR_KEYS(값,
+// 감사 순서 6: 25키를 손으로 두 번 적지 않는다 — 아래 THEME_COLOR_KEYS(값,
 // 색 피커 메타데이터)가 단일 출처이고, 이 타입은 그 배열에서 파생된다. 키를
 // 추가/삭제하려면 배열 한 곳만 고치면 타입·에디터 UI·clearThemeVars의 제거
 // 목록이 함께 따라온다. (배열은 2번 섹션에 있다 — 타입 공간의 typeof 참조는
@@ -74,6 +74,21 @@ export const THEME_COLOR_KEYS = [
     category: "Editor",
   },
   { key: "--color-editor-cursor", label: "Editor Cursor", category: "Editor" },
+  // §369 중첩 리스트의 들여쓰기 가이드가 섞이는 색. 최종 색이 아니라 **색조**다 —
+  // `lists.css` 가 이것을 `--color-editor-bg` 쪽으로 섞고, 섞는 비율은 사용자
+  // 다이얼(`editorListGuideStrength`)이 정한다. 두 축이 직교하므로 테마가 색조를
+  // 골라도 사용자의 농도 선택이 살아남는다.
+  //
+  // 이 키가 여기 있어야만 테마가 색조에 닿는다: 테마 패키지의 CSS 는
+  // `utils/theme-css/sanitize.ts` 가 `@layer baram-theme` 로 감싸고 그 안의
+  // `!important` 를 떼므로(`node.important = false`), 레이어 밖에 있는
+  // `styles/generated/semantic-*.css` 의 선언을 이기지 못한다. 이 배열만
+  // `applyThemeVars` 의 `<html>` 인라인 경로로 가고, 인라인은 레이어를 이긴다.
+  {
+    key: "--color-editor-guide-tint",
+    label: "List Guide",
+    category: "Editor",
+  },
 
   // Status
   { key: "--color-status-danger", label: "Danger", category: "Status" },

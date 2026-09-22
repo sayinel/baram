@@ -206,4 +206,8 @@
   --color-text-muted: var(
     --color-text-disabled
   ); /** Low-emphasis text (labels, metadata, timestamps) — follows disabled token for theme consistency */
+
+  --color-editor-guide-tint: var(
+    --color-editor-text
+  ); /** List indent guide tint (§369) — the colour `lists.css` mixes toward `--color-editor-bg`; the mix ratio is the user's `editorListGuideStrength` dial, so a theme picking a tint leaves that choice intact. Aliases editor text, which is what the guide was hardcoded to mix from before it became theme-settable */
 }

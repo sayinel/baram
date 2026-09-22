@@ -22,6 +22,7 @@ export const DEFAULT_DARK_PALETTE: ThemeColors = {
   "--color-editor-text": "#e2e8f0",
   "--color-editor-selection": "#1e3a5f",
   "--color-editor-cursor": "#e2e8f0",
+  "--color-editor-guide-tint": "#e2e8f0",
   "--color-status-danger": "#ef4444",
   "--color-status-warning": "#f59e0b",
   "--color-status-success": "#10b981",

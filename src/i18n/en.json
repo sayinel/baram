@@ -892,6 +892,8 @@
   "settings.editor.editorLineBreak.desc": "How lines wrap in the document",
   "settings.editor.editorLineBreak.keepAll": "Keep words whole (Korean)",
   "settings.editor.editorLineBreak.normal": "Default",
+  "settings.editor.editorListGuideStrength": "List guide strength",
+  "settings.editor.editorListGuideStrength.desc": "How strongly the indent guide in nested lists stands out. 0 hides it",
   "settings.editor.editorParagraphSpacing": "Paragraph spacing",
   "settings.editor.editorParagraphSpacing.desc": "Space between paragraphs",
   "settings.editor.font": "Font",

@@ -647,6 +647,22 @@ export function useSettingsRegistry(): SearchableSetting[] {
       settings.appearanceOverrides,
       settings.setDial,
     ),
+    // §369 — 리스트 들여쓰기 가이드의 농도. 색조는 여기 없다: 그쪽은 테마가
+    // 고르는 `--color-editor-guide-tint` 이고 테마 편집기의 색 피커가 맡는다
+    // (`THEME_COLOR_KEYS`). 두 축이 서로 다른 화면에 있는 것이 설계다.
+    ...dialSliderSetting(
+      {
+        id: "editorListGuideStrength",
+        label: "settings.editor.editorListGuideStrength",
+        description: "settings.editor.editorListGuideStrength.desc",
+        category: "editor",
+        section: "settings.editor.display",
+      },
+      "editorListGuideStrength",
+      themeDials,
+      settings.appearanceOverrides,
+      settings.setDial,
+    ),
     {
       id: "virtualizeLargeDocs",
       label: "settings.editor.virtualizeLargeDocs",
