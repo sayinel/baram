@@ -101,6 +101,10 @@ export function useFileTreeRename(
       // failure as "Rename failed" would tell the user the opposite of what
       // happened, so this half only logs.
       let referrersHeldBack = 0;
+      // issue 678: the renamed note is counted apart from the referrers. Its
+      // tab is the one the person is looking at, so "reload it to see the new
+      // name" would tell them to throw away the edit they are making.
+      let renamedNoteHeldBack = false;
       try {
         renameFileEntry(oldPath, newPath, newName);
         if (isNamespaceRename) {
@@ -112,17 +116,21 @@ export function useFileTreeRename(
         // `renameFileEntry` re-keys openFiles (`rekeyOpenFilesPrefix`,
         // stores/file/file-tree-ops.ts). Read the map after it.
         const { openFiles } = useFileStore.getState();
-        // The referrers the backend rewrote: every CLEAN open surface of each
-        // follows the disk (issue 594); a referrer with unsaved work keeps its
-        // edits and takes the conflict path, as for any external write.
+        // The files the backend rewrote — referrers, and since issue 678 the
+        // renamed note itself under its NEW path (re-keyed above, so it is
+        // found here): every CLEAN open surface of each follows the disk
+        // (issue 594); one with unsaved work keeps its edits and takes the
+        // conflict path, as for any external write.
         for (const updatedFile of result.updatedFiles) {
           if (openFiles.has(updatedFile)) {
             try {
               const newContent = await readFile(updatedFile);
               if (
                 !syncCleanSurfacesAfterReferrerRewrite(updatedFile, newContent)
-              )
-                referrersHeldBack += 1;
+              ) {
+                if (updatedFile === newPath) renamedNoteHeldBack = true;
+                else referrersHeldBack += 1;
+              }
             } catch {
               /* ignore */
             }
@@ -143,6 +151,7 @@ export function useFileTreeRename(
         result,
         isNamespaceRename ? rootPath : null,
         referrersHeldBack,
+        renamedNoteHeldBack,
       );
     },
     [treeRef, renameFileEntry, renameTab, fileTree, rootPath],
@@ -183,9 +192,17 @@ function reportPostRenameOutcomes(
   result: NamespaceRenameResult | RenameResult,
   rebuildRoot: null | string,
   referrersHeldBack: number,
+  renamedNoteHeldBack = false,
 ): void {
   const { locale } = useSettingsStore.getState();
   const sentences: string[] = [];
+  // issue 678: the renamed note's own links were rewritten on disk, but the
+  // tab holding it has unsaved work, so the buffer still says the old name
+  // and saving it writes that back. Telling the person to reload would cost
+  // them the edit; telling them what a save will do lets them choose.
+  if (renamedNoteHeldBack) {
+    sentences.push(t("fileTree.rename.selfUnsaved.toast", locale as Locale));
+  }
   if (referrersHeldBack > 0) {
     sentences.push(
       t("fileTree.rename.referrersUnsaved.toast", locale as Locale, {
@@ -195,7 +212,7 @@ function reportPostRenameOutcomes(
   }
   if (result.skippedFiles.length > 0) {
     logger.warn(
-      "[FileTree] Renamed, but these referring files could not be updated:",
+      "[FileTree] Renamed, but these files may still link to the old name:",
       result.skippedFiles,
     );
     sentences.push(

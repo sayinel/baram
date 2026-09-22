@@ -5,6 +5,8 @@
 
 mod extractor;
 mod normalizer;
+mod relative_links;
+mod rewriter;
 pub mod service;
 
 use serde::Serialize;
@@ -13,14 +15,19 @@ use thiserror::Error;
 
 // Re-export public API consumed by `service/` and the IPC layer
 pub use extractor::{
-    collect_all_files, collect_md_files, find_unlinked_mentions, own_block_reference_lines,
-    replace_block_id_refs_to, replace_wikilink_target, rewrite_relative_wikilinks,
-    UnlinkedMentionResult,
+    collect_all_files, collect_md_files, find_unlinked_mentions, UnlinkedMentionResult,
+};
+pub use relative_links::rewrite_relative_wikilinks;
+pub use rewriter::{
+    block_reference_can_spell, block_references_to, index_reads_the_rename_back,
+    own_block_reference_lines, replace_block_id_refs_to, replace_block_reference_target,
+    replace_wikilink_target, wikilink_can_spell, wikilinks_to,
 };
 
 use extractor::{extract_file_tags, extract_links};
 use normalizer::{
-    extract_id_from_stem, is_id_target, normalize_file_path, normalize_target, resolve_target,
+    extract_id_from_stem, file_key, is_id_target, normalize_file_path, normalize_target,
+    resolve_target,
 };
 
 /// The keys under which references TO `file_path` are filed in `incoming`:
@@ -42,6 +49,72 @@ pub enum IndexError {
     IoError(#[from] std::io::Error),
 }
 
+/// The grammars a reference is read with, in ONE list, so that what the index
+/// files under a stem and what a rename rewrites cannot drift apart (issue
+/// 678). `LinkKind::pass` names the rewrite pass that spells each kind and has
+/// no `_` arm, so a fourth grammar is a compile error until it is given one —
+/// not a runtime count that a hand-written fixture cannot foresee. `ALL`
+/// (tests only) is spelled from the same list as the enum, so the test that walks it
+/// (`every_reference_the_index_files_under_a_stem_is_visited_by_one_rewrite_pass`)
+/// holds the fourth kind without anyone remembering to add it.
+///
+/// On the wire the kinds are the strings the frontend has always read —
+/// `ipc/types.ts` `linkType`: "wikilink" | "blockRef" | "blockEmbed".
+macro_rules! link_kinds {
+    ($($kind:ident),+ $(,)?) => {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+        #[serde(rename_all = "camelCase")]
+        pub enum LinkKind { $($kind),+ }
+
+        #[cfg(test)]
+        impl LinkKind {
+            /// Every kind, in the order the enum lists them — the same list,
+            /// for the tests that must hold every kind.
+            pub(crate) const ALL: &'static [LinkKind] = &[$(LinkKind::$kind),+];
+        }
+    };
+}
+link_kinds!(Wikilink, BlockRef, BlockEmbed);
+
+impl LinkKind {
+    /// The rewrite pass that spells this kind (issue 678). ‼️ No `_` arm, on
+    /// purpose: a kind this `match` does not name does not compile. That is
+    /// the half of the invariant "what the index files, one pass visits" the
+    /// compiler can hold; the other half — that the pass's regex actually
+    /// reads the kind — is the count test named on `LinkKind`, whose fixture
+    /// `ALL` spells.
+    pub fn pass(self) -> RewritePass {
+        match self {
+            LinkKind::Wikilink => RewritePass::Wikilinks,
+            LinkKind::BlockRef | LinkKind::BlockEmbed => RewritePass::BlockReferences,
+        }
+    }
+}
+
+#[cfg(test)]
+impl LinkKind {
+    /// One reference of this kind to `target`, as prose spells it — what the
+    /// count test builds its fixture from, kind by kind over `ALL`. No `_`
+    /// arm: a new kind must say how it is spelled before the suite compiles.
+    pub(crate) fn spelled(self, target: &str, id: &str) -> String {
+        match self {
+            LinkKind::Wikilink => format!("[[{target}]]"),
+            LinkKind::BlockRef => format!("(({target}#^{id}))"),
+            LinkKind::BlockEmbed => format!("{{{{embed (({target}#^{id}))}}}}"),
+        }
+    }
+}
+
+/// The two passes a file rename runs over a referrer (`rename/file.rs`,
+/// `LinkPasses`) — one per grammar a new stem may or may not be spelled in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RewritePass {
+    /// `replace_wikilink_target`: `[[stem]]`, `[[alias::stem|display]]`, …
+    Wikilinks,
+    /// `replace_block_reference_target`: `((stem#^id))`, and the embed around one.
+    BlockReferences,
+}
+
 /// A single link found in a source file (wikilink, block ref, or block embed)
 #[derive(Debug, Clone, Serialize)]
 pub struct LinkEntry {
@@ -53,8 +126,9 @@ pub struct LinkEntry {
     pub line: u32,
     /// Context text around the link
     pub context: String,
-    /// Link type: "wikilink", "blockRef", "blockEmbed"
-    pub link_type: String,
+    /// The grammar the link was read with — on the wire, the strings the
+    /// frontend has always seen (`LinkKind` serializes as camelCase)
+    pub link_type: LinkKind,
     /// Block ID for block refs/embeds (e.g., "abc123" from ^abc123)
     pub block_id: Option<String>,
     /// §87 Vault alias for cross-vault links (e.g., "journal" from [[journal::note]])
@@ -69,7 +143,7 @@ pub struct BacklinkResult {
     pub target_path: String,
     pub context: String,
     pub line: u32,
-    pub link_type: String,
+    pub link_type: LinkKind,
     pub block_id: Option<String>,
 }
 
@@ -253,6 +327,32 @@ impl LinkIndex {
         out
     }
 
+    /// §33 · issue 678: every `(file, line)` filed under this `stem`'s own
+    /// key (`file_key`, not `normalize_target`, which would read a stem
+    /// ending in `.md` as another note's) — wikilink, block reference and
+    /// embed alike. NOT the zettel-id key that `backlink_keys` adds and
+    /// `get_backlinks` also reads: a bare `[[202607051530]]` is filed under
+    /// the id, so a rename neither rewrites nor reports it (as on main,
+    /// whose `get_files_linking_to` read the one key too). A file rename
+    /// rewrites all three kinds, and counts the lines each referrer was
+    /// named for to tell a same-stem note's own references apart from a
+    /// stale index.
+    pub fn referring_lines_to(&self, stem: &str) -> Vec<(String, u32)> {
+        let mut out: Vec<(String, u32)> = self
+            .incoming
+            .get(&file_key(stem))
+            .map(|entries| {
+                entries
+                    .iter()
+                    .map(|e| (e.source_path.clone(), e.line))
+                    .collect()
+            })
+            .unwrap_or_default();
+        out.sort();
+        out.dedup();
+        out
+    }
+
     /// Get backlinks for a given file path
     pub fn get_backlinks(&self, file_path: &str) -> Vec<BacklinkResult> {
         let keys = backlink_keys(file_path);
@@ -268,7 +368,7 @@ impl LinkIndex {
                             target_path: file_path.to_string(),
                             context: e.context.clone(),
                             line: e.line,
-                            link_type: e.link_type.clone(),
+                            link_type: e.link_type,
                             block_id: e.block_id.clone(),
                         });
                     }
@@ -445,21 +545,6 @@ impl LinkIndex {
         }
     }
 
-    /// §33 Get list of source files that link to a given target (normalized)
-    pub fn get_files_linking_to(&self, target: &str) -> Vec<String> {
-        let normalized = normalize_target(target);
-        self.incoming
-            .get(&normalized)
-            .map(|entries| {
-                let mut paths: Vec<String> =
-                    entries.iter().map(|e| e.source_path.clone()).collect();
-                paths.sort();
-                paths.dedup();
-                paths
-            })
-            .unwrap_or_default()
-    }
-
     /// Update index for a single file using already-read content (sync, no I/O)
     pub fn update_file_from_content(&mut self, file_path: &str, content: &str) {
         self.remove_file(file_path);
@@ -501,7 +586,7 @@ mod tests {
             target: "architecture".to_string(),
             line: 5,
             context: "See [[architecture]] for details".to_string(),
-            link_type: "wikilink".to_string(),
+            link_type: LinkKind::Wikilink,
             block_id: None,
             target_vault_alias: None,
         };
@@ -521,9 +606,93 @@ mod tests {
         assert_eq!(backlinks[0].source_path, "/vault/overview.md");
     }
 
-    // §33 get_files_linking_to tests
     #[test]
-    fn test_get_files_linking_to() {
+    fn a_file_rename_reads_every_line_that_refers_to_the_stem_whatever_the_link_kind() {
+        // issue 678: the rename needs the referrers AND how many lines the
+        // index named each for — one entry per (file, line), for every kind
+        // `LinkKind::ALL` lists, each on a line of its own here (a fourth
+        // kind is in this fixture the moment the enum has one); a
+        // path-qualified target filed elsewhere (issue 619) not among them.
+        let mut lines: Vec<String> = LinkKind::ALL
+            .iter()
+            .map(|kind| format!("see {}", kind.spelled("target", "b1")))
+            .collect();
+        lines.push("((dir/target#^b1))".to_string());
+        let mut index = LinkIndex::new();
+        index.update_file_from_content("/vault/r.md", &lines.join("\n"));
+        index.update_file_from_content("/vault/s.md", "[[other]]");
+        let one_per_kind: Vec<(String, u32)> = (1..=LinkKind::ALL.len() as u32)
+            .map(|line| ("/vault/r.md".to_string(), line))
+            .collect();
+        assert_eq!(index.referring_lines_to("target"), one_per_kind);
+        assert!(index.referring_lines_to("nothing").is_empty());
+    }
+
+    #[test]
+    fn every_reference_the_index_files_under_a_stem_is_visited_by_one_rewrite_pass() {
+        // issue 678: what the index counts must be what the rename rewrites.
+        // The index files a link of ANY kind under its target's key, while
+        // the rewrite is the union of two syntax-specific passes. A kind in
+        // the bucket that no pass visits is left in every referrer and
+        // reported, which reaches a maintainer as a toast, not a failing
+        // test. `LinkKind::pass` makes a kind WITHOUT a pass a compile error;
+        // this test holds the half the compiler cannot see — that the pass a
+        // kind names actually reads that kind's syntax — so its fixture is
+        // not a list of the kinds we know (an enumeration slides into
+        // "therefore the rest is safe", and a fixture written by hand holds
+        // only the kinds its author knew): it is spelled from `LinkKind::ALL`.
+        //
+        // What fails this: a kind whose `pass` names a pass whose regex does
+        // not read it — `filed` grows by one, the visit count does not
+        // (measured: an `@@target@@` kind given `BlockReferences`, 3 != 4. Not
+        // `<<target>>` — the literal analysis reads `<target>` as an HTML tag
+        // and files nothing, so that probe stays green and proves nothing).
+        //
+        // The fixture must hold no self-reference: `((#^id))` is filed under
+        // the REFERRER's own stem, so it is not in this bucket and no pass
+        // visits it. A path-qualified reference is filed elsewhere too.
+        let mut content = LinkKind::ALL
+            .iter()
+            .map(|kind| kind.spelled("target", "b1"))
+            .collect::<Vec<_>>()
+            .join(" and ");
+        content.push_str("\n((dir/target#^b1))");
+        let content = content.as_str();
+        let mut index = LinkIndex::new();
+        index.update_file_from_content("/vault/r.md", content);
+        let filed = index
+            .incoming
+            .get(&file_key("target"))
+            .map_or(0, |entries| {
+                entries
+                    .iter()
+                    .filter(|e| e.source_path == "/vault/r.md")
+                    .count()
+            });
+        assert_eq!(
+            wikilinks_to(content, "target") + block_references_to(content, "/vault/r.md", "target"),
+            filed,
+            "the index files a reference under this stem that neither rewrite pass visits"
+        );
+    }
+
+    #[test]
+    fn a_link_kind_crosses_the_wire_as_the_string_the_frontend_reads() {
+        // `ipc/types.ts` documents `linkType` as "wikilink" | "blockRef" |
+        // "blockEmbed"; the enum must keep spelling them, and a fourth kind
+        // must be given its string here and there. What fails this: renaming
+        // a variant, or dropping `rename_all = "camelCase"` (measured: the
+        // latter spells "BlockRef").
+        let spelled: Vec<String> = LinkKind::ALL
+            .iter()
+            .map(|kind| serde_json::to_string(kind).unwrap())
+            .collect();
+        assert_eq!(spelled, ["\"wikilink\"", "\"blockRef\"", "\"blockEmbed\""]);
+    }
+
+    // §33 the referrers of a stem, as a file rename reads them
+    #[test]
+    fn test_referring_lines_name_every_file_that_links_to_a_target() {
         let mut index = LinkIndex::new();
 
         // a.md links to "target", b.md links to "target", c.md links to "other"
@@ -531,17 +700,20 @@ mod tests {
         index.update_file_from_content("/vault/b.md", "Also [[target|alias]].");
         index.update_file_from_content("/vault/c.md", "Unrelated [[other]].");
 
-        let mut files = index.get_files_linking_to("target");
-        files.sort();
-        assert_eq!(files, vec!["/vault/a.md", "/vault/b.md"]);
-
+        let files = |target: &str| -> Vec<String> {
+            let mut files: Vec<String> = index
+                .referring_lines_to(target)
+                .into_iter()
+                .map(|(file, _)| file)
+                .collect();
+            files.dedup();
+            files
+        };
+        assert_eq!(files("target"), vec!["/vault/a.md", "/vault/b.md"]);
         // Case-insensitive
-        let files2 = index.get_files_linking_to("Target");
-        assert_eq!(files2.len(), 2);
-
+        assert_eq!(files("Target").len(), 2);
         // No match
-        let files3 = index.get_files_linking_to("nonexistent");
-        assert!(files3.is_empty());
+        assert!(files("nonexistent").is_empty());
     }
 
     #[test]
@@ -553,7 +725,7 @@ mod tests {
             target: "b".to_string(),
             line: 1,
             context: "[[b]]".to_string(),
-            link_type: "wikilink".to_string(),
+            link_type: LinkKind::Wikilink,
             block_id: None,
             target_vault_alias: None,
         };

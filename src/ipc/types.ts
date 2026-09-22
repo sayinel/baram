@@ -318,10 +318,19 @@ export interface RecentMenuEntry {
   label?: string; // present for kind:"item"
 }
 
-// §33 Rename result (file rename, block ID rename). See NamespaceRenameResult
-// for the contract behind `skippedFiles`.
+// §33 Rename result (file rename, block ID rename). `Err` from the command
+// means nothing changed on disk; what fails after the point of no return is
+// reported here (issue 594).
 export interface RenameResult {
+  /** Files the rename cannot vouch for — each MAY still spell the old name:
+   *  a referrer that could not be read, written or resolved; one the index
+   *  named that holds nothing to rename now (issue 668). For a file rename
+   *  only (issue 678): a file holding links (wikilinks, block references)
+   *  that cannot spell the new file name — it is in `updatedFiles` too when
+   *  its other links were rewritten — and the renamed note itself under its
+   *  NEW path. A block ID rename lists referrers only. */
   skippedFiles: string[];
+  /** Files rewritten on disk; a clean open surface of each follows the disk. */
   updatedFiles: string[];
 }
 

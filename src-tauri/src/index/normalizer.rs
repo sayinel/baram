@@ -9,14 +9,28 @@ pub(crate) fn normalize_target(target: &str) -> String {
     t.to_lowercase()
 }
 
-/// Normalize a file path to match against wikilink targets
-/// e.g., "/vault/notes/architecture.md" → "architecture"
+/// The key a FILE at this path is filed under — its stem through `file_key`,
+/// e.g. "/vault/notes/architecture.md" → "architecture". Read `file_key`
+/// before reaching for this or for `normalize_target`: they agree on a note
+/// and part ways on a file whose stem itself ends in `.md`, and picking the
+/// link rule for a file is how a rename once claimed another note's links.
 pub(crate) fn normalize_file_path(path: &str) -> String {
     let file_name = Path::new(path)
         .file_stem()
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_default();
-    file_name.to_lowercase()
+    file_key(&file_name)
+}
+
+/// The key a FILE is filed under, from its stem: the case folded, nothing
+/// stripped. For a note it is what its links normalize to (`[[Note]]`,
+/// `[[note.md]]` → `note`); for a file whose stem itself ends in `.md`
+/// (`diagram.md.txt` → `diagram.md`) it is not — `normalize_target` would
+/// strip that `.md` and hand back the NOTE `diagram.md`'s key. A rename that
+/// asks which links name a file must ask by this key, or it claims the
+/// note's links.
+pub(crate) fn file_key(stem: &str) -> String {
+    stem.to_lowercase()
 }
 
 /// Resolve a wikilink target to a possible file path

@@ -209,6 +209,37 @@ describe("post-commit outcomes reach the user as warnings (issue 594)", () => {
     expect(message).toContain("unsaved");
   });
 
+  // issue 678: the renamed note is rewritten too — its own `[[old]]` and
+  // `((old#^id))` — and comes back in `updatedFiles` under its NEW path. Its
+  // tab is the one the person is looking at, so when it has unsaved work the
+  // toast says what a save will do, not "reload it" (which would cost them
+  // the edit). What fails this: counting the note among the referrers — the
+  // referrer sentence then appears and this one does not.
+  it("says what a save will do when the renamed note itself has unsaved changes", async () => {
+    vi.mocked(renameFileWithLinks).mockResolvedValue({
+      skippedFiles: [],
+      updatedFiles: ["/vault/c.md"],
+    });
+    // `renameFileEntry` is a mock here, so the cache is keyed under the new
+    // path by hand — in the app `rekeyOpenFilesPrefix` does that.
+    useFileStore.setState({
+      openFiles: new Map([["/vault/c.md", "see [[b]] and ((b#^b1))"]]),
+    } as never);
+    useEditorStore.setState({
+      activeTabId: "t3",
+      tabs: [
+        { filePath: "/vault/c.md", id: "t3", isDirty: true, type: "file" },
+      ],
+    } as never);
+    await rename();
+
+    expect(showToast).toHaveBeenCalledTimes(1);
+    const [message, type] = showToast.mock.calls[0]!;
+    expect(type).toBe("warning");
+    expect(message).toContain("This note has unsaved changes");
+    expect(message).not.toContain("open file(s)");
+  });
+
   it("CONTROL: a directory rename whose index was rebuilt toasts nothing and rebuilds nothing", async () => {
     vi.mocked(renameNamespace).mockResolvedValue({
       filesMoved: 3,
