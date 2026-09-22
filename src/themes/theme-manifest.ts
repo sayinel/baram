@@ -117,7 +117,15 @@ export interface ThemeManifest {
   version: string;
 }
 
-/** 한 모드가 선언하는 자산 경로. 패키지 루트 기준 상대 경로(스펙 0049 §4). */
+/**
+ * 한 모드가 선언하는 자산 경로. 패키지 루트 기준 상대 경로(스펙 0049 §4).
+ *
+ * ‼️ **둘을 함께 선언하면 `css` 가 못 이기는 키가 있다.** `tokens` 를 실은 테마는
+ * 시드 24키와 거기서 계산되는 파생 38키가 `<html>` 인라인으로 쓰이고(§367,
+ * `applyThemeVars`), 인라인은 테마 CSS 가 갇힌 `@layer baram-theme` 를 이긴다.
+ * 어느 키들이고 그래서 무엇을 대신 고쳐야 하는지는 `src/themes/reference/README.md`
+ * 의 "테마 CSS 로는 되찾을 수 없는 키" 가 한 집으로 적는다.
+ */
 export interface ThemeManifestModeAssets {
   css?: string;
   tokens?: string;

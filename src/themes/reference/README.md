@@ -42,3 +42,30 @@
 강조색 **이동량** 다이얼(`accentHueShift` · `accentSaturationShift`)은 쓰지 않는다.
 이동량의 기준은 테마 자신의 강조 시드인데 이 테마는 그것을 직접 선언하므로, 이동량
 0 이 옳고 0 은 기본값이라 선언할 값이 없다.
+
+### 테마 CSS 로는 되찾을 수 없는 키 (§367)
+
+`colors` 를 싣는 테마에서 앱은 **시드 24키와 파생 38키를 `<html>` 의 인라인 커스텀
+프로퍼티로 쓴다**(`applyThemeVars`, `src/utils/theme-vars.ts`). 인라인은 테마 CSS 가
+갇혀 있는 `@layer baram-theme` 를 이기고, 위생 검사가 `!important` 를 CSS 어디에
+있든 토큰 단위로 거부하므로(`hasImportantSpelledAnywhere`,
+`src/utils/theme-css/verify.ts`), **`tokens` 와 `css` 를 함께 싣는 테마는 이 키들을
+자기 스타일시트에서 다시 선언해도 화면에 닿지 않는다.** 시드 24키는 §358 부터 이미
+그랬고, §367 이 파생 29키를 그 계약 안으로 들여왔다.
+
+| 집합 | 개수 | 어디서 오는가 |
+|---|---|---|
+| 시드 | 24 | 테마가 선언한 `tokens` 그대로 |
+| 대비 짝 | 9 | `DERIVED_KEYS` — 강조·status 의 채움과 그 전경(#330) |
+| 의미 색 | 29 | `DERIVED_COLOR_KEYS` — callout 13 · graph 7 · git 4 · status 3 · bg 2 |
+
+세 목록의 canonical 한 집은 코드다(`src/utils/theme-vars.ts` 의 `DERIVED_KEYS`,
+`src/appearance/color-derive.ts` 의 `DERIVED_COLOR_KEYS`) — 여기 키 이름을 베껴 적으면
+낡는다.
+
+**그래서 이 키들을 바꾸는 방법은 CSS 가 아니라 시드다.** 파생값은 시드에서 계산되므로
+(`color-derive.ts` 의 규칙표 — 예: `--color-callout-info` 는 `--color-accent-default`
+그대로, `--color-bg-selection` 은 강조의 명도를 `--color-bg-default` 쪽으로 82%
+옮긴 값), 원하는 파생색이
+나오도록 시드를 고르는 것이 지원되는 유일한 통로다. 테마 CSS 는 이 62키 **밖**의
+것 — 선택자·간격·모양·아직 파생되지 않는 9키 — 을 위한 자리다.
