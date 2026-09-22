@@ -11,6 +11,7 @@
 // is a single entry rather than a list).
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import type { ContrastWarning } from "../../../appearance/contrast-report";
 import type { Translate } from "../../../i18n/useTranslation";
 import type { RegistryEntry, RegistryIndex } from "../../../plugins/types";
 import type {
@@ -242,13 +243,24 @@ export function useThemeActions() {
    * keeps being applied over new bytes; making it the responsibility of whoever knows this
    * was "an update" is precisely the rule a third caller forgets (see `clearTheme`'s own
    * doc comment for what the two stale shapes look like).
+   *
+   * ‼️ Does NOT show a toast itself, and must not (§367.3 fix round 1). `useUIStore`'s
+   * `showToast` holds a single slot (`src/stores/ui/ui.ts`'s `set` replaces `toast`
+   * wholesale, `Toast.tsx` renders only the current one) — a toast shown here and a second
+   * one shown synchronously after by the caller would leave only the second on screen, with
+   * no repaint between them to save the first. `installTheme`'s contrast warnings are
+   * therefore handed back to the caller, which composes exactly ONE toast that says
+   * everything there is to say about this install/update.
    */
   const stageAndRecord = useCallback(
     async (
       entry: RegistryEntry,
       registryUrl: string,
       options?: { freshConsent?: boolean },
-    ): Promise<InstalledTheme | null> => {
+    ): Promise<null | {
+      installed: InstalledTheme;
+      warnings: ContrastWarning[];
+    }> => {
       setInstalling((prev) => ({ ...prev, [entry.id]: true }));
       try {
         const result = await installTheme(entry, registryUrl);
@@ -276,18 +288,7 @@ export function useThemeActions() {
         // and the hydration hook re-reads on the next render either way.
         addInstalledTheme(result.installed, options);
         clearThemeCssCache(result.installed.id);
-        // §367.3 — a second, "warning" toast next to whichever success toast the caller
-        // (install or update) shows. It never blocks `installTheme`'s success above; this
-        // only decides whether to ALSO say something about it.
-        if (result.warnings !== undefined && result.warnings.length > 0) {
-          useUIStore.getState().showToast(
-            t("theme.install.contrastWarning", {
-              count: String(result.warnings.length),
-            }),
-            "warning",
-          );
-        }
-        return result.installed;
+        return { installed: result.installed, warnings: result.warnings ?? [] };
       } finally {
         setInstalling((prev) => {
           // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -325,18 +326,27 @@ export function useThemeActions() {
         // there the dialog the user just answered is the consent the record should carry.
         // `handleUpdate` deliberately omits it: it asks nothing, so it must keep the old
         // stamp.
-        const installed = await stageAndRecord(entry, registryUrl, {
+        const staged = await stageAndRecord(entry, registryUrl, {
           freshConsent: true,
         });
-        if (installed === null) return false;
+        if (staged === null) return false;
+        const { installed, warnings } = staged;
 
         const previousActiveThemeId = useSettingsStore.getState().activeThemeId;
         setActiveTheme(installed.id);
+        // §367.3 — ONE toast (`useUIStore`'s `showToast` has a single slot, see
+        // `stageAndRecord`'s doc comment). When there are contrast warnings, the toast says
+        // so as well as saying the theme installed — a user is not told only the happy half.
         useUIStore.getState().showToast(
-          t("settings.appearance.installedToast", {
-            name: installed.manifest.name,
-          }),
-          "info",
+          warnings.length > 0
+            ? t("settings.appearance.installedToastWithWarning", {
+                count: String(warnings.length),
+                name: installed.manifest.name,
+              })
+            : t("settings.appearance.installedToast", {
+                name: installed.manifest.name,
+              }),
+          warnings.length > 0 ? "warning" : "info",
           undefined,
           {
             label: t("settings.appearance.revertAction"),
@@ -398,14 +408,22 @@ export function useThemeActions() {
       try {
         if (refuseIfRevoked(entry)) return false;
         if (await refuseIfAppTooOld(entry)) return false;
-        const updated = await stageAndRecord(entry, registryUrl);
-        if (updated === null) return false;
+        const staged = await stageAndRecord(entry, registryUrl);
+        if (staged === null) return false;
+        const { installed: updated, warnings } = staged;
+        // §367.3 — ONE toast, same reasoning as `handleInstall` above.
         useUIStore.getState().showToast(
-          t("settings.appearance.updatedToast", {
-            name: updated.manifest.name,
-            version: updated.manifest.version,
-          }),
-          "info",
+          warnings.length > 0
+            ? t("settings.appearance.updatedToastWithWarning", {
+                count: String(warnings.length),
+                name: updated.manifest.name,
+                version: updated.manifest.version,
+              })
+            : t("settings.appearance.updatedToast", {
+                name: updated.manifest.name,
+                version: updated.manifest.version,
+              }),
+          warnings.length > 0 ? "warning" : "info",
         );
         return true;
       } finally {
