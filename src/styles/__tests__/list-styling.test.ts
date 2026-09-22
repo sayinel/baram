@@ -558,6 +558,36 @@ describe("list geometry", () => {
     );
   });
 
+  it("lets padding grow the ordered marker's box, not eat its glyph column", () => {
+    // Tailwind preflight 은 모든 상자를 `border-box` 로 만든다. 바닥(`min-width`)과
+    // padding 이 함께 있으면 그 조합에서 padding 은 바닥이 잡아 둔 **글자 열에서**
+    // 나오고, `left` 정렬은 글자를 padding 안쪽 모서리에 놓으므로 padding 이 숫자를
+    // 민다. 마커 뒤에 무언가를 칠하려고 padding 을 쓰는 코드는 실재한다 — 번들된
+    // `bullet-threading` 예제가 커서가 있는 항목에 `padding-left: 0.3em` 을 건다.
+    //
+    // 무엇이 이것을 실패시키는가: 이 선언을 지우면 그 예제를 켠 사용자의 커서 항목만
+    // 번호가 오른쪽으로 밀린다(실측 4.83px @18px, 고친 뒤 0.56px). 반대로 글머리 기호
+    // 쪽에 같은 선언이 붙어도 red 다 — 깊이 2 의 링은 `border-box` 라야 바깥 지름이
+    // 원의 지름과 같다(이 파일 마커 절 주석).
+    const ordered = LIST_RULES.find(
+      (rule) =>
+        rule.selector.replaceAll(/\s+/gu, " ") === ".tiptap ol > li::before",
+    );
+    expect(ordered).toBeDefined();
+    expect(
+      cssDeclarations(ordered?.body ?? "").find((d) => d.prop === "box-sizing")
+        ?.value,
+    ).toBe("content-box");
+
+    const bulletSide = LIST_RULES.filter(
+      (rule) =>
+        /\bul\b/u.test(rule.selector) &&
+        /li::before/u.test(rule.selector) &&
+        cssDeclarations(rule.body).some((d) => d.prop === "box-sizing"),
+    ).map(where);
+    expect(bulletSide).toEqual([]);
+  });
+
   it("hangs the indent guide in the parent's marker gutter", () => {
     // The structural half of "the rail descends from the parent's bullet": whatever the
     // tuned offset is, it has to be NEGATIVE — a guide at `left: 0` sits at the parent's

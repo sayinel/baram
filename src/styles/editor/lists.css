@@ -364,11 +364,12 @@
  *   text-align: right  (period) — periods line up in a column and digits grow left, which
  *                                 is where this section stood before the dial.
  *   text-align: left   (number) — first digits line up, and the period travels right. The
- *                                 default, because it is the alignment where a marker's
- *                                 distance from the fold arrow does not depend on its
- *                                 digit count: `1.` and `10.` in one list start at the
- *                                 same offset, where under `period` the `1.` sits 0.63em
- *                                 further from the arrow than the `10.` does (measured).
+ *                                 default, and the reason it is worth changing what an
+ *                                 existing reader sees: a marker's distance from the fold
+ *                                 arrow stops depending on its digit count. `1.` and `10.`
+ *                                 of one list start at the same offset, where under
+ *                                 `period` the `1.` sits 0.63em further from the arrow
+ *                                 than the `10.` does (measured).
  *
  * `min-width`, not `width`, and that is what keeps the dial out of a case it should not
  * decide. `<ol start="100">` with fewer than ten items still gets the two-digit gutter,
@@ -377,6 +378,23 @@
  * has, under either alignment. A fixed width would have made the same marker overflow
  * whichever way the text was aligned, so `number` would have pushed it right into the
  * 0.5em gap before the text: the dial would have been choosing the side a defect lands on.
+ *
+ * ‼️ `box-sizing: content-box`, AND IT IS A CONTRACT, not a tidy-up. Tailwind's preflight
+ * makes every box `border-box`, which the bullet ring two rules up depends on — so this
+ * opts out for ordered markers only. Under `border-box` a floor and a padding fight: the
+ * padding comes out of the column the floor reserved, and since `left` alignment puts the
+ * glyph at the padding edge, padding MOVES THE NUMBER. Under `content-box` the floor
+ * measures the glyph column alone and padding grows the box leftward past it, which is
+ * what anything painting behind a marker needs and what the ordered-list rules of the
+ * bundled `bullet-threading` example already assume in as many words. Measured with that
+ * example's own two rules applied (Chrome, 18px): the caret's marker started 4.83px right
+ * of its siblings' before this line and with them after it.
+ *
+ * What that line does NOT buy: a plugin is still free to change the marker's FONT, and
+ * `ch` in the gutter above resolves against whichever font the box ends up with — the same
+ * example's `font-weight: 700` widens the caret item's box by 0.58px at 18px. That is
+ * under half a pixel and it is left alone; the fix for it would be to register
+ * `--list-gutter` with `@property` so its `ch` resolves once, on the list.
  *
  * ‼️ THE FLOOR IS THE GUTTER, so it is only ever as right as the gutter is. That is not a
  * remark — it is where this section's one reported defect came from: the gutter counted
@@ -388,21 +406,24 @@
  * it shows up here too, as a marker parked further from its own text than it needs to be.
  *
  * Measured, not only derived — headless Chrome, 16px `-apple-system, sans-serif`, this
- * file linked as it stands, reading the markers' used boxes. Under `left`, every decimal
- * marker of a twelve-item list starts at the same offset (-24.95px) and sits 5.81px from
- * the fold triangle, where a bullet sits 5.48px — the two kinds of list within 0.02em of
- * one another. Under `right`, the `1.` of that same list sits 21.43px from the triangle
- * and the `10.` 11.34px: the 0.63em spread the default removes. Letter and roman markers
- * line up on their periods instead, their starts differing by design (`i.` at -7.25px,
- * `xxviii.` at -37.66px), and no marker's start moves with its index. Chrome supplies
- * these pixel numbers through its fallback digit advance; the app renders in WKWebView,
- * where the numbers — not the relationships — will differ.
+ * file linked as it stands, reading the markers' used boxes. Under `left`, the markers of
+ * one list start at ONE offset whatever they are: a twelve-item decimal list at -24.95px,
+ * a twelve-letter one at -21.16px, a thirty-item roman one at -51.41px for every marker
+ * from `i.` to `xxx.` — and each of them sits 5.8px from the fold triangle, where a bullet
+ * sits 5.48px, the two kinds of list within 0.02em of one another. `<ol start="2">` with
+ * three items takes the same 22.4px gutter as `1. 2. 3.` does, and `<ol start="9">` with
+ * three the two-digit 29.76px, because it reaches `10.`. Under `right` the starts are
+ * ragged by construction, and what that costs is the arrow: the `1.` of that twelve-item
+ * list sits 21.43px from the triangle and its `10.` 11.34px. Chrome supplies these pixel
+ * numbers through its fallback digit advance; the app renders in WKWebView, where the
+ * numbers — not the relationships — will differ.
  *
  * The style steps with ordered depth so nested numbering reads as a hierarchy instead of
  * three identical `1.` columns. Display only — the serializer never reads a marker, so
  * markdown output is unchanged. */
 .tiptap ol > li::before {
   top: 0;
+  box-sizing: content-box;
   min-width: calc(var(--list-gutter) - 0.3em);
   font-variant-numeric: tabular-nums;
   text-align: var(--editor-ordered-marker-align, left);
