@@ -15,6 +15,10 @@
 
 import type { ThemeColors } from "../types/theme";
 
+import {
+  deriveColorVars,
+  DERIVED_COLOR_KEYS,
+} from "../appearance/color-derive";
 import { THEME_COLOR_KEYS } from "../types/theme";
 import {
   accentSolidFill,
@@ -41,6 +45,10 @@ const THEME_STYLE_ATTR = "data-baram-theme";
  * does pick, so exposing them in the theme editor would let a user save a pairing
  * that fails contrast. `src/styles/generated/` carries the matching values for the
  * default themes and for `system`, which apply no inline overrides at all.
+ *
+ * §367 이후 파생 목록은 둘이다. 이것은 **대비를 보장하는** 전경·채움(#330)이고,
+ * `appearance/color-derive.ts` 의 `DERIVED_COLOR_KEYS` 는 색상환에서 계산한 의미
+ * 색 29키다. 둘 다 `applyThemeVars` 가 쓰고 `clearThemeVars` 가 지운다.
  */
 export const DERIVED_KEYS = [
   "--color-accent-on-solid",
@@ -212,6 +220,13 @@ export function applyThemeVars(
   for (const [key, value] of Object.entries(derivedVars(colors, base))) {
     root.style.setProperty(key, value);
   }
+  // §367 시드에서 계산되는 의미 고정 계열 29키. `derivedVars` 와 나란히 두는 이유는
+  // 둘 다 "시드의 결과" 이기 때문이고, 나누는 이유는 서로 다른 질문에 답하기
+  // 때문이다 — `derivedVars` 는 대비를 보장하는 전경/채움이고(#330), 이쪽은
+  // 색상환에서 계산한 의미 색이다. 대비 하한이 없는 쪽이 이쪽이다.
+  for (const [key, value] of Object.entries(deriveColorVars(colors))) {
+    root.style.setProperty(key, value);
+  }
 }
 
 /**
@@ -239,6 +254,13 @@ export function clearThemeVars(root: HTMLElement): void {
     root.style.removeProperty(key);
   }
   for (const key of DERIVED_KEYS) {
+    root.style.removeProperty(key);
+  }
+  // ‼️ 이 루프가 빠지면 테마를 바꿔도 앞 테마의 callout·graph·git 색이 남는다 —
+  // #330 이 정확히 그 모양이었다(제거 목록이 25키 중 16키만 덮어 아홉이 살아남았다).
+  // 목록이 `color-derive.ts` 에서 오는 것이 그 재발을 막는다: 규칙을 더하면
+  // 지우는 목록도 함께 자란다.
+  for (const key of DERIVED_COLOR_KEYS) {
     root.style.removeProperty(key);
   }
 }

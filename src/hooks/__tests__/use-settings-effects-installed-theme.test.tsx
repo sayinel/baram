@@ -260,6 +260,28 @@ describe("useSettingsEffects paints an installed (community) theme (F1)", () => 
     expect(themeStyleText()).toBeNull();
     expect(bgVar()).toBe("");
   });
+
+  // §367 — 무엇이 이것을 실패시키는가: 파생을 `applyThemeVars` 에 배선하지 않으면
+  // 설치 테마를 입어도 callout 색이 기본 팔레트에 남는다 — 이 계획이 고치려는
+  // 결함 그 자체다.
+  it("설치 테마를 입으면 파생 색이 인라인으로 실린다", async () => {
+    render(<Host />);
+    await waitFor(() => expect(bgVar()).not.toBe(""));
+    const root = document.documentElement;
+    expect(root.style.getPropertyValue("--color-callout-info")).not.toBe("");
+    expect(root.style.getPropertyValue("--color-git-added")).not.toBe("");
+  });
+
+  // 비공허성: 위 단언은 파생이 **무엇이든** 쓰기만 하면 통과한다.
+  // 이것이 "테마의 강조색에서 나왔다" 를 요구한다.
+  it("파생된 callout-info 는 그 테마의 강조색과 같은 색상이다", async () => {
+    render(<Host />);
+    await waitFor(() => expect(bgVar()).not.toBe(""));
+    const root = document.documentElement;
+    const accent = root.style.getPropertyValue("--color-accent-default");
+    const info = root.style.getPropertyValue("--color-callout-info");
+    expect(info).toBe(accent);
+  });
 });
 
 // §361 fix round 2 — re-review named the narrowness of these two tests honestly, and
