@@ -25,9 +25,12 @@ export function applyDialVars(
     // `clearDialVars` 도 같은 필터를 쓴다: 쓰지 않는 것을 지우면 테마 이펙트가
     // 방금 쓴 값을 이 함수가 걷어 간다.
     //
-    // ‼️ `!== "layout"` 이지 `=== "color"` 가 아니다 — 실측 근거는 Task 1 브리프
-    // Step 8 끝: 이 시점의 `DIALS` 는 여섯 원소 전부 `channel: "layout"` 이라
-    // `=== "color"` 는 TS2367(겹치지 않는 리터럴 비교)로 멎는다.
+    // ‼️ `!== "layout"` 이지 `=== "color"` 가 아니다 — 처음 쓰일 때의 이유는
+    // 타입이었다(§364 당시 `DIALS` 는 원소 전부가 `channel: "layout"` 이라
+    // `=== "color"` 가 TS2367, 겹치지 않는 리터럴 비교로 멎었다). §367 이 색
+    // 다이얼 둘을 들이면서 그 제약은 사라졌고, 지금 이 형태를 지키는 이유는
+    // `clearDialVars` 와 **같은 술어여야 한다**는 것뿐이다 — 둘이 갈리면 쓰는
+    // 집합과 지우는 집합이 어긋난다.
     if (dial.channel !== "layout") continue;
     const current = resolved[dial.id];
     // 말하지 않은 층뿐인 다이얼은 cascade 에 맡긴다.
@@ -49,4 +52,29 @@ export function clearDialVars(root: HTMLElement): void {
     if (dial.channel !== "layout") continue;
     for (const name of dial.vars) root.style.removeProperty(name);
   }
+}
+
+/**
+ * §367 색 채널 다이얼이 내는 시드 오버라이드 — {@link applyDialVars} 가 건너뛰는
+ * 쪽을 맡는 짝이다. 다만 **쓰지 않고 돌려준다**: `--color-*` 인라인의 작성자는 테마
+ * 이펙트 하나여야 하고(`DialBase.channel` 의 주석이 그 이유를 적는다), 그 이펙트가
+ * 이 결과를 시드 위에 얹은 뒤 파생을 계산한다.
+ *
+ * `channel` 이 두 값뿐이므로 여기의 `=== "layout"` 과 {@link applyDialVars} 의
+ * `!== "layout"` 은 같은 집합을 가른다. 저쪽이 부정형인 것은 이력 때문이고
+ * (그 자리 주석이 적는다), 여기서는 긍정형이 읽기 쉬워 그대로 둔다.
+ */
+export function colorDialVars(
+  resolved: Record<DialId, ResolvedDial>,
+  ctx: DialContext,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const dial of DIALS) {
+    if (dial.channel === "layout") continue;
+    const current = resolved[dial.id];
+    // 말하지 않은 층뿐인 다이얼은 cascade 에 맡긴다 — `applyDialVars` 와 같은 규칙.
+    if (current.origin === "default") continue;
+    Object.assign(out, dial.toVars(current.value, ctx));
+  }
+  return out;
 }

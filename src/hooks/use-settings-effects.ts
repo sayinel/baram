@@ -6,6 +6,9 @@ import type { Editor } from "@tiptap/core";
 
 import { useShallow } from "zustand/shallow";
 
+import { colorDialVars } from "../appearance/apply";
+import { deriveColorVars } from "../appearance/color-derive";
+import { resolveColorMode } from "../appearance/color-mode";
 import { useTranslation } from "../i18n/useTranslation";
 import { useFeatureFlags } from "../stores/settings/features";
 import { useSettingsStore } from "../stores/settings/store";
@@ -16,7 +19,11 @@ import {
 } from "../stores/ui/panel-feature";
 import { useUIStore } from "../stores/ui/ui";
 import { lookupThemes } from "../themes/installed-theme-defs";
-import { findThemeById, resolveThemeMode } from "../types/theme";
+import {
+  defaultColorsForBase,
+  findThemeById,
+  resolveThemeMode,
+} from "../types/theme";
 import { applyFontVariables } from "../utils/editor/font-surfaces";
 import { resolveCodeMetrics } from "../utils/font/code-metrics";
 import { logger } from "../utils/logger";
@@ -34,7 +41,9 @@ import { useThemeCssHydration } from "./use-theme-css-hydration";
 
 export function useSettingsEffects(editor: Editor | null) {
   const { t } = useTranslation();
-  useAppearanceDials();
+  // §367 레이아웃 채널은 이 훅 안에서 이미 적용됐다. 반환값이 필요한 것은 색
+  // 채널뿐이고, 그것은 아래 테마 이펙트가 시드 위에 얹는다.
+  const resolvedDials = useAppearanceDials();
   const {
     activeThemeId,
     codeFontFamily,
@@ -154,12 +163,40 @@ export function useSettingsEffects(editor: Editor | null) {
       // need none: src/styles/generated/ already carries their values, including the
       // accent pairing that applyThemeVars derives for everyone else (#330).
       const colors = assets?.colors;
-      if (
-        mode !== undefined &&
-        appliesInlineVars(effectiveThemeId) &&
-        colors !== undefined
-      ) {
-        applyThemeVars(root, colors, mode);
+
+      // §367 색 채널 다이얼은 **시드를 고친다**. 그래서 파생보다 먼저 얹고, 그
+      // 결과가 `deriveColorVars` 의 입력이 된다.
+      //
+      // `colorMode` 는 `mode` 와 다른 질문에 답한다(`appearance/color-mode.ts` 의
+      // 머리주석): `mode` 는 "어느 모드 자산을 적용하는가" 라 없을 수 있고, 이쪽은
+      // "지금 화면이 밝은가" 라 언제나 답이 있다. 다이얼은 자산이 없는 `system`
+      // 에서도 시드를 물려받아야 하므로 후자가 필요하다. deps 에 넣지 않는 것은
+      // `mode` 와 같은 이유다 — `mql.matches` 에서 계산되는 지역값이고, OS 전환은
+      // 이 이펙트가 이미 갖고 있는 `change` 리스너가 `apply()` 를 다시 돌려 잡는다.
+      const colorMode = resolveColorMode(themeDef, mql.matches);
+      const base = colors ?? defaultColorsForBase(colorMode);
+      const accent = colorDialVars(resolvedDials, {
+        mode: colorMode,
+        seeds: base,
+      });
+
+      if (appliesInlineVars(effectiveThemeId) && colors !== undefined) {
+        // 테마가 인라인 시드를 쓰는 갈래 — 시드 + 파생 전부. `colors !== undefined`
+        // 는 `mode !== undefined` 를 함의한다(`assets` 가 `mode` 로만 풀린다).
+        applyThemeVars(root, { ...colors, ...accent }, colorMode);
+      } else if (Object.keys(accent).length > 0) {
+        // ‼️ cascade 가 시드를 소유하는 갈래(`system` · 기본 둘). 여기서 시드를
+        // 통째로 인라인에 박으면 §364.2 가 금지한 바로 그 일이 된다 — 인라인이
+        // `prefers-color-scheme` 를 눌러 이겨 OS 전환이 멎는다. 그래서 **강조 계열과
+        // 거기서 나오는 것만** 쓴다: `deriveColorVars` 에 강조만 넘기면 그것이
+        // 자동으로 지켜진다(실측 2026-09-22, 강조 네 키만 준 입력은 7키를 내고
+        // `--color-bg-selection` 은 내지 않는다 — 그 규칙의 anchor 시드가 없다).
+        for (const [key, value] of Object.entries({
+          ...accent,
+          ...deriveColorVars(accent),
+        })) {
+          root.style.setProperty(key, value);
+        }
       }
 
       // §358 스펙 §6 의 순서 — generated → 토큰 → CSS. 테마 CSS 가 마지막인 이유는
@@ -219,7 +256,17 @@ export function useSettingsEffects(editor: Editor | null) {
     // AFTER this effect's first run (the hydration hook above fetches it asynchronously),
     // so the effect has to re-run once the cache fills in, or the theme stays colour-only
     // until something else happens to change activeThemeId/customThemes.
-  }, [effectiveThemeId, customThemes, installedThemes, cssCacheEntries]);
+    //
+    // §367 — `resolvedDials` added: a colour dial changes what this effect writes, so
+    // dragging the accent slider has to re-run it. Its reference is stable across renders
+    // (`use-appearance-dials.ts` memoises it), so it moves only when a layer's value does.
+  }, [
+    effectiveThemeId,
+    customThemes,
+    installedThemes,
+    cssCacheEntries,
+    resolvedDials,
+  ]);
 
   useEffect(() => {
     // §perf-large-file C3.4: resolve via editor.view.dom rather than a global

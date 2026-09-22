@@ -693,6 +693,38 @@ export function useSettingsRegistry(): SearchableSetting[] {
       keywords: ["theme", "install", "marketplace", "browse", "download"],
       control: NAVIGATE_CONTROL,
     },
+    // §367 — 강조색 다이얼 둘. 행은 AppearanceTab.tsx 에 있고, 여기 있는 것은
+    // **검색**이다. 둘이 갈리면 검색해서 찾은 설정이 아무 데도 데려가지 않는
+    // 구멍이 된다 — 0093 이 `editorPadding` 에서 정확히 그 구멍을 냈고 0094 가
+    // 메웠다. label 은 행이 쓰는 키와 **같은 문자열**이어야 한다(§4.4).
+    ...dialSliderSetting(
+      {
+        id: "accentHueShift",
+        label: "settings.appearance.accentHueShift",
+        description: "settings.appearance.accentHueShift.desc",
+        category: "appearance",
+        section: "settings.appearance.theme",
+        keywords: ["accent", "colour", "color", "hue", "tint"],
+      },
+      "accentHueShift",
+      themeDials,
+      settings.appearanceOverrides,
+      settings.setDial,
+    ),
+    ...dialSliderSetting(
+      {
+        id: "accentSaturationShift",
+        label: "settings.appearance.accentSaturationShift",
+        description: "settings.appearance.accentSaturationShift.desc",
+        category: "appearance",
+        section: "settings.appearance.theme",
+        keywords: ["accent", "colour", "color", "saturation", "vivid"],
+      },
+      "accentSaturationShift",
+      themeDials,
+      settings.appearanceOverrides,
+      settings.setDial,
+    ),
     // ── Markdown ─────────────────────────────────────────────────────────────
     {
       id: "inlineMath",

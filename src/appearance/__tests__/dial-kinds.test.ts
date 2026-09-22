@@ -51,8 +51,10 @@ describe("채널", () => {
   // 사용자에게는 "설정이 안 먹는다" 로 보이고 어느 테스트도 빨개지지 않는다.
   // 반대 방향도 함께 고정한다: `channel: "color"` 인데 `--color-*` 를 하나도
   // 선언하지 않으면 그 다이얼은 아무 데서도 적용되지 않는다(양쪽이 건너뛴다).
-  // ‼️ 갈래 판정도 `!== "layout"` 이다. 이 파일이 컴파일되는 시점의 `DIALS` 는
-  // 전부 layout 이라 `=== "color"` 가 TS2367 로 멎는다(실측: Step 8 끝의 프로브).
+  // ‼️ 갈래 판정도 `!== "layout"` 이다 — `applyDialVars`·`clearDialVars` 와 같은
+  // 술어를 쓴다. 이 형태로 쓰인 원래 이유(§364 당시 `DIALS` 가 전부 layout 이라
+  // `=== "color"` 가 TS2367 로 멎었다)는 §367 이 색 다이얼 둘을 들이면서 사라졌다.
+  // 그 둘이 생긴 지금에야 아래 `if` 의 색 갈래가 처음으로 실제로 돈다.
   it("채널과 변수 접두가 일치한다", () => {
     for (const dial of DIALS) {
       const colorVars = dial.vars.filter((v) => v.startsWith("--color-"));

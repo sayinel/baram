@@ -10,6 +10,7 @@
 import { useState } from "react";
 
 import { useTranslation } from "../../../i18n/useTranslation";
+import { AppearanceDialRow } from "../appearance-dial-row";
 import { SettingsSectionHeader } from "../settings-shared";
 import { ThemeEditor } from "../ThemeEditor";
 import { ThemeGallery } from "./theme-gallery";
@@ -35,6 +36,18 @@ export function AppearanceTab() {
       <ThemeGallery
         onBrowseThemes={() => setSubScreen("browser")}
         onCustomize={() => setSubScreen("editor")}
+      />
+      {/* §367 — 강조색 다이얼은 앱 전체의 겉모습을 바꾸므로 에디터 탭이 아니라
+          여기다(§365.4: 색 스킴·강조색·밀도·모서리는 외관). 갤러리 바로 아래에
+          두는 이유는 이 둘이 **고른 테마의 강조색을 옮기는** 조정이라, 무엇을
+          옮기는지가 바로 위에 보여야 하기 때문이다. */}
+      <AppearanceDialRow
+        dialId="accentHueShift"
+        label={t("settings.appearance.accentHueShift")}
+      />
+      <AppearanceDialRow
+        dialId="accentSaturationShift"
+        label={t("settings.appearance.accentSaturationShift")}
       />
       <SettingsSectionHeader
         title={t("settings.appearance.workspacePresets")}
