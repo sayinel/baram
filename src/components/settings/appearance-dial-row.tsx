@@ -1,10 +1,16 @@
 // §366 다이얼 한 줄. 출처 배지와 되돌리기가 여기 사는 이유는, 그 둘이 병합
 // 결과의 부산물이라 값과 같은 자리에서 읽어야 어긋나지 않기 때문이다.
 //
-// ‼️ `settings.appearance.dialRevert`("기본값으로 되돌리기")는 테마 층이 비어
-// 있는 지금만 정확하다. `resetDial`은 사용자 층 키를 지울 뿐이므로, 0096
-// (§371)이 테마 층에 실제 값을 실으면 되돌리기의 실제 의미는 "테마 값으로
-// 되돌리기"가 된다 — 그때 이 라벨도 같이 바뀌어야 하고, 이 파일이 그 자리다.
+// ‼️ 되돌리기 라벨은 층을 따라간다. `resetDial`은 사용자 층 키를 **지울** 뿐이므로,
+// 그 다이얼에 대해 테마가 말을 했으면 되돌아가는 자리는 기본값이 아니라 테마 값이다
+// — §371이 매니페스트에 `dials`를 실으면서 그 상태가 실제로 생겼고(이 주석의 앞
+// 판본은 그것을 예고로 적어 두었다), 그래서 라벨이 둘로 갈린다.
+//
+// 어느 쪽인지는 `resolveDials(themeDials, {})`에게 묻는다 — 사용자 층을 뺀 병합
+// 결과가 곧 되돌린 **뒤의** 상태이므로, 라벨이 같은 화면의 배지와 어긋날 방법이
+// 구조적으로 없다. `themeDials[dialId] !== undefined`로 판정하면 테마가 말했지만
+// `parse`에 걸린 값(앱이 범위를 좁힌 뒤에 남은 낡은 매니페스트)에서 둘이 갈린다:
+// 라벨은 "테마 값으로"라고 하고 실제 결과는 기본값이 된다.
 
 import type { DialId, DialValue } from "../../appearance/dials";
 import type { Translate } from "../../i18n/useTranslation";
@@ -13,6 +19,7 @@ import { useShallow } from "zustand/shallow";
 
 import { DIALS } from "../../appearance/dials";
 import { resolveDials } from "../../appearance/merge";
+import { useThemeDials } from "../../hooks/use-theme-dials";
 import { useTranslation } from "../../i18n/useTranslation";
 import { useSettingsStore } from "../../stores/settings/store";
 import { SettingsRow } from "./settings-shared";
@@ -27,10 +34,15 @@ export function AppearanceDialRow({ dialId, label }: AppearanceDialRowProps) {
   const { appearanceOverrides } = useSettingsStore(
     useShallow((s) => ({ appearanceOverrides: s.appearanceOverrides })),
   );
+  const themeDials = useThemeDials();
   const dial = DIALS.find((d) => d.id === dialId);
   if (!dial) return null;
 
-  const resolved = resolveDials({}, appearanceOverrides)[dialId];
+  const resolved = resolveDials(themeDials, appearanceOverrides)[dialId];
+  const revertLabel =
+    resolveDials(themeDials, {})[dialId].origin === "theme"
+      ? t("settings.appearance.dialRevertToTheme")
+      : t("settings.appearance.dialRevert");
 
   const control =
     dial.kind === "number" ? (
@@ -111,11 +123,11 @@ export function AppearanceDialRow({ dialId, label }: AppearanceDialRowProps) {
           // 여기서 쓰지 않는다: 그 클래스의 목적 자체가 버튼을 텍스트처럼 벗기는
           // 것이라, 버튼처럼 보이게 만들고 싶은 이 자리와는 반대다.
           <button
-            aria-label={t("settings.appearance.dialRevert")}
+            aria-label={revertLabel}
             className="icon-btn settings-dial-revert"
             data-testid="dial-revert"
             onClick={() => useSettingsStore.getState().resetDial(dialId)}
-            title={t("settings.appearance.dialRevert")}
+            title={revertLabel}
             type="button"
           >
             ↺

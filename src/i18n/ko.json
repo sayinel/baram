@@ -808,6 +808,7 @@
   "settings.appearance.dialOrigin.theme": "테마",
   "settings.appearance.dialOrigin.user": "직접 설정",
   "settings.appearance.dialRevert": "기본값으로 되돌리기",
+  "settings.appearance.dialRevertToTheme": "테마 값으로 되돌리기",
   "settings.appearance.editorPadding": "본문 여백",
   "settings.appearance.editorPadding.desc": "본문 내용 둘레의 여백",
   "settings.appearance.groupBuiltin": "기본",

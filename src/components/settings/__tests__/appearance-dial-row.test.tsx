@@ -1,3 +1,5 @@
+import type { InstalledTheme } from "../../../themes/theme-install";
+
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -5,9 +7,40 @@ import en from "../../../i18n/en.json";
 import { useSettingsStore } from "../../../stores/settings/store";
 import { AppearanceDialRow } from "../appearance-dial-row";
 
+/** `src/themes/__tests__/theme-revocation.test.ts` 의 픽스처 모양 + `dials`. */
+function installedTheme(
+  dials: Record<string, number | string>,
+): InstalledTheme {
+  return {
+    checksum: "c".repeat(64),
+    consentedAt: "2026-09-01T00:00:00.000Z",
+    consentedVersion: "1.0.0",
+    id: "prose",
+    installedAt: "2026-09-01T00:00:00.000Z",
+    installPath: "/home/u/.baram/themes/prose",
+    manifest: {
+      author: "a",
+      description: "d",
+      dials,
+      engines: { baram: ">=0.7.0" },
+      id: "prose",
+      license: "MIT",
+      modes: { light: { tokens: "t.json" } },
+      name: "prose",
+      version: "1.0.0",
+    },
+    modes: { light: { css: false } },
+  };
+}
+
 describe("AppearanceDialRow", () => {
   beforeEach(() => {
-    useSettingsStore.setState({ appearanceOverrides: {}, locale: "en" });
+    useSettingsStore.setState({
+      activeThemeId: "system",
+      appearanceOverrides: {},
+      installedThemes: {},
+      locale: "en",
+    });
   });
 
   it("shows the default origin with no badge and no revert", () => {
@@ -72,6 +105,56 @@ describe("AppearanceDialRow", () => {
     fireEvent.change(screen.getByRole("slider"), { target: { value: "6" } });
     expect(screen.getByText("Space around the content")).toBeInTheDocument();
     expect(screen.getByTestId("dial-value")).toHaveTextContent("6rem");
+  });
+
+  it("wears the theme's value with a theme badge and no revert", () => {
+    // §366 — 이 행이 처음으로 `theme` origin 을 실데이터로 본다. 무엇이 이것을
+    // 실패시키는가: 이 컴포넌트가 병합기에 `{}` 를 계속 넘기면(테마 층을 끊으면)
+    // `<html>` 에는 720px 이 적용되는데 화면은 기본값 800 을 배지 없이 보여 준다.
+    useSettingsStore.setState({
+      activeThemeId: "prose",
+      installedThemes: { prose: installedTheme({ editorMaxWidth: 720 }) },
+    });
+    render(<AppearanceDialRow dialId="editorMaxWidth" label="Line width" />);
+    expect(screen.getByTestId("dial-origin")).toHaveAttribute(
+      "data-origin",
+      "theme",
+    );
+    expect(screen.getByTestId("dial-origin-badge")).toHaveTextContent(
+      en["settings.appearance.dialOrigin.theme"],
+    );
+    expect(screen.getByTestId("dial-value")).toHaveTextContent("720px");
+    // 되돌릴 사용자 값이 없다 — 되돌리기는 `user` origin 에서만 뜬다.
+    expect(screen.queryByTestId("dial-revert")).toBeNull();
+  });
+
+  it("names the revert for the layer it actually returns to", () => {
+    // 무엇이 이것을 실패시키는가: 라벨이 `dialRevert`("기본값으로 되돌리기")로
+    // 고정돼 있으면, 테마가 말한 다이얼에서 그 문장이 거짓이 된다 — `resetDial`
+    // 은 사용자 층 키를 지울 뿐이라 되돌아가는 자리는 테마 값이다.
+    useSettingsStore.setState({
+      activeThemeId: "prose",
+      installedThemes: { prose: installedTheme({ editorMaxWidth: 720 }) },
+    });
+    render(<AppearanceDialRow dialId="editorMaxWidth" label="Line width" />);
+    fireEvent.change(screen.getByRole("slider"), { target: { value: "960" } });
+    expect(screen.getByTestId("dial-revert")).toHaveAccessibleName(
+      en["settings.appearance.dialRevertToTheme"],
+    );
+  });
+
+  it("keeps the default wording when the theme said nothing about THAT dial", () => {
+    // 비공허성 — 라벨이 "테마가 설치돼 있는가" 가 아니라 "이 다이얼에 대해
+    // 테마가 말했는가" 로 갈린다는 것의 핀. 같은 테마, 다른 행.
+    useSettingsStore.setState({
+      activeThemeId: "prose",
+      installedThemes: { prose: installedTheme({ editorMaxWidth: 720 }) },
+    });
+    render(<AppearanceDialRow dialId="editorPadding" label="Editor padding" />);
+    fireEvent.change(screen.getByRole("slider"), { target: { value: "6" } });
+    expect(screen.getByTestId("dial-revert")).toHaveAccessibleName(
+      en["settings.appearance.dialRevert"],
+    );
   });
 
   it("keeps the readout's class so the value stays a fixed-width, tabular-nums slot", () => {

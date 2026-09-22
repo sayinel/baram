@@ -12,6 +12,7 @@ import { useShallow } from "zustand/shallow";
 
 import { DIALS } from "../../appearance/dials";
 import { resolveDials } from "../../appearance/merge";
+import { useThemeDials } from "../../hooks/use-theme-dials";
 import { AVAILABLE_LOCALES, LOCALE_LABELS } from "../../i18n";
 import { useAIStore } from "../../stores/ai/ai";
 import { AI_PROVIDER_IDS, AI_PROVIDERS } from "../../stores/ai/providers";
@@ -178,6 +179,11 @@ export function useSettingsRegistry(): SearchableSetting[] {
       setProvider: s.setProvider,
     })),
   );
+  // §366 — 검색 결과의 다이얼 컨트롤은 `AppearanceDialRow`와 **같은** 병합 결과를
+  // 보여야 한다. 같은 설정이 두 표면에서 다른 값을 말하면 그중 하나는 거짓말이다.
+  // 위 M-11 정정과 같은 규율로, 이 훅도 스토어를 좁게 읽는다(`activeThemeId` ·
+  // `installedThemes` · 플러그인 스토어의 `revocations`).
+  const themeDials = useThemeDials();
 
   return [
     // ── General ──────────────────────────────────────────────────────────────
@@ -554,7 +560,8 @@ export function useSettingsRegistry(): SearchableSetting[] {
         // `makeSelectControl`의 selector는 `() => number | string`이라
         // `DialValue`가 그대로 맞는다 — String()으로 감싸지 않는다.
         () =>
-          resolveDials({}, settings.appearanceOverrides).editorLineBreak.value,
+          resolveDials(themeDials, settings.appearanceOverrides).editorLineBreak
+            .value,
         (v) => settings.setDial("editorLineBreak", v),
         [
           {
@@ -583,7 +590,7 @@ export function useSettingsRegistry(): SearchableSetting[] {
         // 근거) `parse`를 통과한 값은 항상 number다 — makeSliderControl의
         // `() => number` 셀렉터에 맞추는 단정이다.
         () =>
-          resolveDials({}, settings.appearanceOverrides).editorMaxWidth
+          resolveDials(themeDials, settings.appearanceOverrides).editorMaxWidth
             .value as number,
         (v) => settings.setDial("editorMaxWidth", v),
         editorMaxWidthRange,

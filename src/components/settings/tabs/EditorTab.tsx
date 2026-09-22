@@ -304,9 +304,9 @@ export function EditorTab() {
       />
 
       {/* §366 되돌림 — 이 둘은 §366에서 외관 다이얼로 바뀌며 잠시 Appearance
-          탭으로 옮겨졌다가, 되돌아왔다(§366 후속 수정). 다이얼 기계(병합·출처
-          배지·되돌리기, 0096이 더할 테마 층)는 AppearanceDialRow 안에 그대로
-          있다 — 탭을 옮겨도 그 로직은 건드리지 않는다. */}
+          탭으로 옮겨졌다가, 되돌아왔다(§366 후속 수정). 다이얼 기계(병합·테마
+          층·출처 배지·되돌리기)는 AppearanceDialRow 안에 그대로 있다 — 탭을
+          옮겨도 그 로직은 건드리지 않는다. */}
       <AppearanceDialRow
         dialId="editorMaxWidth"
         label={t("settings.editor.maxWidth")}

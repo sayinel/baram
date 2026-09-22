@@ -808,6 +808,7 @@
   "settings.appearance.dialOrigin.theme": "Theme",
   "settings.appearance.dialOrigin.user": "Custom",
   "settings.appearance.dialRevert": "Revert to default",
+  "settings.appearance.dialRevertToTheme": "Revert to theme value",
   "settings.appearance.editorPadding": "Editor padding",
   "settings.appearance.editorPadding.desc": "Space around the content",
   "settings.appearance.groupBuiltin": "Built-in",
