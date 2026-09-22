@@ -1,0 +1,3431 @@
+{
+  "contract": "issue 669. One boolean per `((n#^o))` occurrence: would the link index read it as a\nrewritable reference? Rust answers `!Literal::of(md).overlaps(range) && range.start >=\nfront_matter_end(md)`; the frontend answers with `referenceIsEditable`, which parses with\nthe shared stack and OVERLAPS every literal mdast node against the range — not containment:\n`((n#^o|`x`))` holds an inlineCode child, so no literal node contains the reference and one\noverlaps it. `why` is provenance for diffs and failure messages and is never asserted.\n\nThe marker is one line, target `n`, id `o`, optional display. The conditions `extract_links`\napplies that this predicate omits are unreachable for this corpus, measured: 0 embeds, 0\nempty displays `((n#^o|))`, 0 markers with a line break in the display, never an empty\ntarget, never an empty id. Adding such a case to `refs()` breaks that boundary.\n\nGENERATED — do not edit. Regenerate with:\n  scripts/literal-parity.sh dump /tmp/corpus.jsonl\n  npx tsx scripts/build-literal-parity.ts /tmp/corpus.jsonl",
+  "literalNodeTypes": [
+    "code",
+    "definition",
+    "html",
+    "image",
+    "imageReference",
+    "inlineCode",
+    "inlineMath",
+    "math",
+    "yaml"
+  ],
+  "cases": [
+    {
+      "test": "md::literal::tests::a_bare_carriage_return_ends_a_line_for_the_offsets_too",
+      "ordinal": 0,
+      "markdown": "```\r((n#^o))\r```\r((n#^o))\r",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "code",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_bare_carriage_return_ends_a_line_for_the_offsets_too",
+      "ordinal": 1,
+      "markdown": "text\r```\r((n#^o))\r```\r",
+      "editable": [
+        false
+      ],
+      "why": [
+        "code"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_bare_carriage_return_ends_a_line_for_the_offsets_too",
+      "ordinal": 2,
+      "markdown": "a `((n#^o))` b\r((n#^o))\r",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "inlineCode",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_bare_carriage_return_ends_a_line_for_the_offsets_too",
+      "ordinal": 3,
+      "markdown": "$$\r((n#^o))\r$$\r\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_chain_of_hidden_code_spans_resolves_read_by_read_or_ends_safe",
+      "ordinal": 0,
+      "markdown": "$ a ` b $ $ a `` b $ $ a ``` b $ $ a ```` b $ $ a ````` b $ $ a `````` b $ <i title=\"((n#^o))\"> `````` ````` ```` ``` `` ` \n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "html"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_chain_of_hidden_code_spans_resolves_read_by_read_or_ends_safe",
+      "ordinal": 1,
+      "markdown": "$ a ` b $ $ a `` b $ $ a ``` b $ $ a ```` b $ $ a ````` b $ $ a `````` b $ $ a ``````` b $ $ a ```````` b $ $ a ````````` b $ $ a `````````` b $ $ a ``````````` b $ $ a ```````````` b $ <i title=\"((n#^o))\"> ```````````` ``````````` `````````` ````````` ```````` ``````` `````` ````` ```` ``` `` ` \n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "html"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_closing_dollar_run_is_indented_at_most_three_columns",
+      "ordinal": 0,
+      "markdown": "$$\n   $$\n((n#^o))\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_closing_dollar_run_is_indented_at_most_three_columns",
+      "ordinal": 1,
+      "markdown": "$$\n   $$   \n((n#^o))\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_closing_dollar_run_is_indented_at_most_three_columns",
+      "ordinal": 2,
+      "markdown": "$$\n    $$\n((n#^o))\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "math"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_closing_dollar_run_is_indented_at_most_three_columns",
+      "ordinal": 3,
+      "markdown": "$$\n\t$$\n((n#^o))\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "math"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_closing_dollar_run_is_indented_at_most_three_columns",
+      "ordinal": 4,
+      "markdown": "- $$\n     $$\n  ((n#^o))\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_closing_dollar_run_is_indented_at_most_three_columns",
+      "ordinal": 5,
+      "markdown": "- $$\n      $$\n  ((n#^o))\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "math"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_closing_dollar_run_is_indented_at_most_three_columns",
+      "ordinal": 6,
+      "markdown": "- $$\n  \t$$\n  ((n#^o))\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_closing_dollar_run_is_indented_at_most_three_columns",
+      "ordinal": 7,
+      "markdown": "- $$\n      \t$$\n  ((n#^o))\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "math"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_closing_dollar_run_is_indented_at_most_three_columns",
+      "ordinal": 8,
+      "markdown": "> $$\n>    $$\n> ((n#^o))\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_closing_dollar_run_is_indented_at_most_three_columns",
+      "ordinal": 9,
+      "markdown": "> $$\n>     $$\n> ((n#^o))\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "math"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_closing_dollar_run_is_indented_at_most_three_columns",
+      "ordinal": 10,
+      "markdown": "[^1]: $$\n       $$\n    ((n#^o))\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_closing_dollar_run_is_indented_at_most_three_columns",
+      "ordinal": 11,
+      "markdown": "[^1]: $$\n        $$\n    ((n#^o))\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "math"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_closing_dollar_run_is_indented_at_most_three_columns",
+      "ordinal": 12,
+      "markdown": "- $$\n\t$$\n  ((n#^o))\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_closing_dollar_run_is_indented_at_most_three_columns",
+      "ordinal": 13,
+      "markdown": "- $$\n\t $$\n  ((n#^o))\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_closing_dollar_run_is_indented_at_most_three_columns",
+      "ordinal": 14,
+      "markdown": "- $$\n\t   $$\n  ((n#^o))\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "math"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_closing_dollar_run_is_indented_at_most_three_columns",
+      "ordinal": 15,
+      "markdown": "> $$\n>\t$$\n> ((n#^o))\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_closing_dollar_run_is_indented_at_most_three_columns",
+      "ordinal": 16,
+      "markdown": "> $$\n>\t $$\n> ((n#^o))\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_closing_dollar_run_is_indented_at_most_three_columns",
+      "ordinal": 17,
+      "markdown": "> $$\n>\t  $$\n> ((n#^o))\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "math"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_closing_dollar_run_is_indented_at_most_three_columns",
+      "ordinal": 18,
+      "markdown": "> - $$\n>\t   $$\n>   ((n#^o))\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_closing_dollar_run_is_indented_at_most_three_columns",
+      "ordinal": 19,
+      "markdown": "[^1]: $$\n\t   $$\n    ((n#^o))\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_closing_dollar_run_is_indented_at_most_three_columns",
+      "ordinal": 20,
+      "markdown": "[^1]: $$\n\t\t$$\n    ((n#^o))\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "math"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_closing_dollar_run_is_indented_at_most_three_columns",
+      "ordinal": 21,
+      "markdown": ">\t$$\n>\t((n#^o))\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_construct_that_opened_earlier_destroys_the_tag_image_or_code_span_it_runs_into",
+      "ordinal": 0,
+      "markdown": "$x<i title=\"$ ((n#^o))\">\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_construct_that_opened_earlier_destroys_the_tag_image_or_code_span_it_runs_into",
+      "ordinal": 1,
+      "markdown": "![((n#^o)) $](p.png) tail $\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_construct_that_opened_earlier_destroys_the_tag_image_or_code_span_it_runs_into",
+      "ordinal": 2,
+      "markdown": "$ x ` $ ((n#^o)) `\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_construct_that_opened_earlier_destroys_the_tag_image_or_code_span_it_runs_into",
+      "ordinal": 3,
+      "markdown": "<b>`</b> ((n#^o)) `\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "inlineCode"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_in_a_link_or_image_resource_opens_nothing",
+      "ordinal": 0,
+      "markdown": "[x](https://x.test/`) $((n#^o))$ `\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "inlineMath"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_in_a_link_or_image_resource_opens_nothing",
+      "ordinal": 1,
+      "markdown": "[x](u$) ((n#^o)) $\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_in_a_link_or_image_resource_opens_nothing",
+      "ordinal": 2,
+      "markdown": "[x](u \"$\") ((n#^o)) $\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_in_a_link_or_image_resource_opens_nothing",
+      "ordinal": 3,
+      "markdown": "![a](u$) ((n#^o)) $\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_in_a_link_or_image_resource_opens_nothing",
+      "ordinal": 4,
+      "markdown": "[x][r$] ((n#^o)) $\n\n[r$]: u\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_in_a_link_or_image_resource_opens_nothing",
+      "ordinal": 5,
+      "markdown": "[`x`](u) `((n#^o))`\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "inlineCode"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_a_bare_url_or_address_opens_nothing",
+      "ordinal": 0,
+      "markdown": "https://api.test/?$filter=x ((n#^o)) $\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_a_bare_url_or_address_opens_nothing",
+      "ordinal": 1,
+      "markdown": "https://x.test/`a` ((n#^o)) `\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_a_bare_url_or_address_opens_nothing",
+      "ordinal": 2,
+      "markdown": "www.x.test/$ ((n#^o)) $\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_a_bare_url_or_address_opens_nothing",
+      "ordinal": 3,
+      "markdown": "WWW.X.TEST/$ ((n#^o)) $\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_a_bare_url_or_address_opens_nothing",
+      "ordinal": 4,
+      "markdown": "*https://x.test/$* ((n#^o)) $\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_a_bare_url_or_address_opens_nothing",
+      "ordinal": 5,
+      "markdown": "(https://x.test/$) ((n#^o)) $\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_a_bare_url_or_address_opens_nothing",
+      "ordinal": 6,
+      "markdown": "https://x.test/(a$) ((n#^o)) $\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_a_bare_url_or_address_opens_nothing",
+      "ordinal": 7,
+      "markdown": "see https://x.test/a$. ((n#^o)) $\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_a_bare_url_or_address_opens_nothing",
+      "ordinal": 8,
+      "markdown": "https://x.test/a$&amp; ((n#^o)) $\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_a_bare_url_or_address_opens_nothing",
+      "ordinal": 9,
+      "markdown": "https://a-.test/$ ((n#^o)) $\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_a_bare_url_or_address_opens_nothing",
+      "ordinal": 10,
+      "markdown": "https://a.-b.test/$ ((n#^o)) $\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_a_bare_url_or_address_opens_nothing",
+      "ordinal": 11,
+      "markdown": "https://a.test-/$ ((n#^o)) $\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_a_bare_url_or_address_opens_nothing",
+      "ordinal": 12,
+      "markdown": "https://a..test/$ ((n#^o)) $\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_a_bare_url_or_address_opens_nothing",
+      "ordinal": 13,
+      "markdown": "https://a.test./$ ((n#^o)) $\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_a_bare_url_or_address_opens_nothing",
+      "ordinal": 14,
+      "markdown": "https://1.2.3.4/$ ((n#^o)) $\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_a_bare_url_or_address_opens_nothing",
+      "ordinal": 15,
+      "markdown": "https://a.test:8080/$ ((n#^o)) $\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_a_bare_url_or_address_opens_nothing",
+      "ordinal": 16,
+      "markdown": "http://localhost/$ ((n#^o)) $\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_a_bare_url_or_address_opens_nothing",
+      "ordinal": 17,
+      "markdown": "https://a/$ ((n#^o)) $\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_a_bare_url_or_address_opens_nothing",
+      "ordinal": 18,
+      "markdown": "https://a_b.c.test/$ ((n#^o)) $\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_a_bare_url_or_address_opens_nothing",
+      "ordinal": 19,
+      "markdown": "https://ä.test/$ ((n#^o)) $\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_a_bare_url_or_address_opens_nothing",
+      "ordinal": 20,
+      "markdown": "https://１.test/$ ((n#^o)) $\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_a_bare_url_or_address_opens_nothing",
+      "ordinal": 21,
+      "markdown": "https://a。b.test/$ ((n#^o)) $\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_a_bare_url_or_address_opens_nothing",
+      "ordinal": 22,
+      "markdown": "www.-a.test/$ ((n#^o)) $\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_a_bare_url_or_address_opens_nothing",
+      "ordinal": 23,
+      "markdown": "https://a.test$ ((n#^o)) $\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_a_bare_url_or_address_opens_nothing",
+      "ordinal": 24,
+      "markdown": "xhttps://x.test/$ ((n#^o)) $\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "inlineMath"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_a_bare_url_or_address_opens_nothing",
+      "ordinal": 25,
+      "markdown": "https://x_y.test/$ ((n#^o)) $\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "inlineMath"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_a_bare_url_or_address_opens_nothing",
+      "ordinal": 26,
+      "markdown": "https://a.b_c.test/$ ((n#^o)) $\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "inlineMath"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_a_bare_url_or_address_opens_nothing",
+      "ordinal": 27,
+      "markdown": "https://-a.test/$ ((n#^o)) $\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "inlineMath"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_a_bare_url_or_address_opens_nothing",
+      "ordinal": 28,
+      "markdown": "https://.a.test/$ ((n#^o)) $\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "inlineMath"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_a_bare_url_or_address_opens_nothing",
+      "ordinal": 29,
+      "markdown": "https://_..a/$ ((n#^o)) $\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "inlineMath"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_a_bare_url_or_address_opens_nothing",
+      "ordinal": 30,
+      "markdown": "https://_a.test/$ ((n#^o)) $\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "inlineMath"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_a_bare_url_or_address_opens_nothing",
+      "ordinal": 31,
+      "markdown": "https://。/$ ((n#^o)) $\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "inlineMath"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_a_bare_url_or_address_opens_nothing",
+      "ordinal": 32,
+      "markdown": "https://→.test/$ ((n#^o)) $\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "inlineMath"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_a_bare_url_or_address_opens_nothing",
+      "ordinal": 33,
+      "markdown": "a@b.test$ ((n#^o)) $\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "inlineMath"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_a_bare_url_or_address_opens_nothing",
+      "ordinal": 34,
+      "markdown": "a.b+c@d-e.test$ ((n#^o)) $\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "inlineMath"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_a_bare_url_or_address_opens_nothing",
+      "ordinal": 35,
+      "markdown": "a-@b.test$ ((n#^o)) $\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "inlineMath"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_a_bare_url_or_address_opens_nothing",
+      "ordinal": 36,
+      "markdown": "-a@b.test$ ((n#^o)) $\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "inlineMath"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_a_bare_url_or_address_opens_nothing",
+      "ordinal": 37,
+      "markdown": "a@-b.test$ ((n#^o)) $\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "inlineMath"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_a_bare_url_or_address_opens_nothing",
+      "ordinal": 38,
+      "markdown": "https://a.test/x<y$ ((n#^o)) $\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "inlineMath"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_a_bare_url_or_address_opens_nothing",
+      "ordinal": 39,
+      "markdown": "[https://x.test/$](u) ((n#^o)) $\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "inlineMath"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_a_bare_url_or_address_opens_nothing",
+      "ordinal": 40,
+      "markdown": "$ x https://a.test/$b ((n#^o))\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_an_autolink_opens_nothing",
+      "ordinal": 0,
+      "markdown": "<https://x.com/$> ((n#^o)) $\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_an_autolink_opens_nothing",
+      "ordinal": 1,
+      "markdown": "<https://x.com/((n#^o))> $ ((n#^o)) $\n",
+      "editable": [
+        true,
+        false
+      ],
+      "why": [
+        "prose",
+        "inlineMath"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_an_autolink_opens_nothing",
+      "ordinal": 2,
+      "markdown": "<a$b@example.test> ((n#^o)) $\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_an_autolink_opens_nothing",
+      "ordinal": 3,
+      "markdown": "$ x <i a=\"$ y $ ((n#^o)) $\">\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "inlineMath"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_an_inline_html_tag_opens_nothing",
+      "ordinal": 0,
+      "markdown": "<i title=\"$\"> ((n#^o)) $\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_an_inline_html_tag_opens_nothing",
+      "ordinal": 1,
+      "markdown": "<i title=\"`\"> $ ((n#^o)) $ `\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "inlineMath"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_an_inline_html_tag_opens_nothing",
+      "ordinal": 2,
+      "markdown": "$ <i> ((n#^o)) $\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "inlineMath"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_delimiter_inside_an_inline_html_tag_opens_nothing",
+      "ordinal": 3,
+      "markdown": "$ <i title=\"$\"> ((n#^o))\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formula_opens_on_a_line_the_parser_read_as_a_heading_or_a_table",
+      "ordinal": 0,
+      "markdown": "$$\n===\n((n#^o))\n$$\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "math"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formula_opens_on_a_line_the_parser_read_as_a_heading_or_a_table",
+      "ordinal": 1,
+      "markdown": "$$\n---\n((n#^o))\n$$\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "math"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formula_opens_on_a_line_the_parser_read_as_a_heading_or_a_table",
+      "ordinal": 2,
+      "markdown": "$$\n|---|\n((n#^o))\n$$\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "math"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formula_opens_on_a_line_the_parser_read_as_a_heading_or_a_table",
+      "ordinal": 3,
+      "markdown": "# $$\n((n#^o))\n$$\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formula_opens_on_a_line_the_parser_read_as_a_heading_or_a_table",
+      "ordinal": 4,
+      "markdown": "| a |\n|---|\n| $$ |\n((n#^o))\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 0,
+      "markdown": "- a\n  $$\n  ((n#^o))\n\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 1,
+      "markdown": "- a\n\n  $$\n  ((n#^o))\n\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 2,
+      "markdown": "- a\n  $$\n    $$\n  ((n#^o))\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 3,
+      "markdown": "   > - $$\n>   ((n#^o))\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "math"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 4,
+      "markdown": "  [^1]: $$\n    ((n#^o))\n\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 5,
+      "markdown": "  [^1]: $$\n      ((n#^o))\n\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 6,
+      "markdown": "- a\n  - b\n    $$\n    ((n#^o))\n  ((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 7,
+      "markdown": "> - a\n>   $$\n>   ((n#^o))\n> ((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 8,
+      "markdown": "10. a\n    $$\n    ((n#^o))\n   ((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 9,
+      "markdown": "  - a\n    $$\n    ((n#^o))\n   ((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 10,
+      "markdown": "[^1]: a\n    $$\n    ((n#^o))\n\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 11,
+      "markdown": "-\ta\n\t$$\n\t((n#^o))\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 12,
+      "markdown": "> - $$\n   >   ((n#^o))\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "math"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 13,
+      "markdown": "> - a\n>   $$\n>      $$\n> ((n#^o))\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 14,
+      "markdown": "> - a\n>   $$\n>       $$\n>   ((n#^o))\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "math"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 15,
+      "markdown": "-\n  $$\n  ((n#^o))\n\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 16,
+      "markdown": "-      a\n  $$\n  ((n#^o))\n\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 17,
+      "markdown": "> a\n> $$\n> ((n#^o))\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 18,
+      "markdown": "- > a\n  > $$\n  > ((n#^o))\n  ((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 19,
+      "markdown": "> 1. $$\n>    ((n#^o))\n>   ((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 20,
+      "markdown": "> [^1]: $$\n>     ((n#^o))\n> ((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 21,
+      "markdown": "1. a\n   $$\n   ((n#^o))\n  ((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 22,
+      "markdown": "- a\r\n  $$\r\n  ((n#^o))\r\n\r\n((n#^o))\r\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 23,
+      "markdown": "> -\ta\n>\t$$\n>\t((n#^o))\n> ((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 24,
+      "markdown": "- a\n\n  b\n  $$\n  ((n#^o))\n\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 25,
+      "markdown": "* a\n  $$\n  ((n#^o))\n  $$\n  ((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 26,
+      "markdown": "- a\n  > $$\n  > ((n#^o))\n\n  ((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 27,
+      "markdown": "---\ntitle: x\n---\n- a\n  $$\n  ((n#^o))\n\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 28,
+      "markdown": "1) a\n   - b\n     $$\n     ((n#^o))\n   ((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 29,
+      "markdown": "- a\n\t- b\n\t  $$\n\t  ((n#^o))\n  ((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 30,
+      "markdown": "[^a]: a\n    [^b]: $$\n        ((n#^o))\n    ((n#^o))\n((n#^o))\n",
+      "editable": [
+        false,
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 31,
+      "markdown": "-\n\n  $$\n  ((n#^o))\n((n#^o))\n",
+      "editable": [
+        false,
+        false
+      ],
+      "why": [
+        "math",
+        "math"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 32,
+      "markdown": "> > $$\n> \t> ((n#^o))\n> ((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 33,
+      "markdown": "- [^1]: $$\n      ((n#^o))\n  ((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 34,
+      "markdown": "[^1]: - $$\n      ((n#^o))\n    ((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 35,
+      "markdown": "- a\r  $$\r  ((n#^o))\r((n#^o))\r",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 36,
+      "markdown": "---\r\nx: y\r\n---\r\n- a\r\n  $$\r\n  ((n#^o))\r\n((n#^o))\r\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 37,
+      "markdown": "-\n  a\n\n  $$\n  ((n#^o))\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 38,
+      "markdown": "1. a\n\n   [^x]: b\n       $$\n       ((n#^o))\n   ((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 39,
+      "markdown": "- a\n\t- b\n\t\t- c\n\t\t  $$\n\t\t  ((n#^o))\n\t  ((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 40,
+      "markdown": "> > $$\n>\t> ((n#^o))\n> ((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 41,
+      "markdown": "> \t> $$\n> > ((n#^o))\n> ((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 42,
+      "markdown": "1. a\n\t$$\n\t((n#^o))\n  ((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 43,
+      "markdown": "- a\n\n\n  $$\n  ((n#^o))\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 44,
+      "markdown": "> \t$$\n> \t((n#^o))\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 45,
+      "markdown": "-   a\n    $$\n    ((n#^o))\n   ((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_display_formulas_containers_come_from_the_frames_in_relative_widths",
+      "ordinal": 46,
+      "markdown": "[^1]: [^1]: $$\n((n#^o))\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_dollar_in_link_text_opens_a_formula_and_one_closed_inside_an_alt_leaves_the_image",
+      "ordinal": 0,
+      "markdown": "[x $](p) ((n#^o)) $\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "inlineMath"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_dollar_in_link_text_opens_a_formula_and_one_closed_inside_an_alt_leaves_the_image",
+      "ordinal": 1,
+      "markdown": "![x $y$](p.png) ((n#^o))\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_formula_that_runs_over_a_links_opening_bracket_destroys_the_link",
+      "ordinal": 0,
+      "markdown": "$ [a $ b](u$) ((n#^o)) $\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "inlineMath"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_formula_that_runs_over_a_links_opening_bracket_destroys_the_link",
+      "ordinal": 1,
+      "markdown": "[a $b$ c](u$) ((n#^o)) $\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_leading_byte_order_mark_does_not_hide_the_first_block_from_the_parser",
+      "ordinal": 0,
+      "markdown": "﻿```\n((n#^o))\n```\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "code",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_leading_byte_order_mark_does_not_hide_the_first_block_from_the_parser",
+      "ordinal": 1,
+      "markdown": "﻿<div>\n((n#^o))\n</div>\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "html"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_leading_byte_order_mark_does_not_hide_the_first_block_from_the_parser",
+      "ordinal": 2,
+      "markdown": "﻿    ((n#^o))\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "code"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_leading_byte_order_mark_does_not_hide_the_first_block_from_the_parser",
+      "ordinal": 3,
+      "markdown": "﻿> ```\n> ((n#^o))\n> ```\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "code"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_leading_byte_order_mark_does_not_hide_the_first_block_from_the_parser",
+      "ordinal": 4,
+      "markdown": "﻿﻿```\n((n#^o))\n```\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_reference_that_runs_into_a_code_span_is_left_alone",
+      "ordinal": 0,
+      "markdown": "((n#^o|`x`))\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "inlineCode"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_reference_that_runs_into_a_code_span_is_left_alone",
+      "ordinal": 1,
+      "markdown": "see `((n#^o))` and ((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "inlineCode",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_run_the_editor_leaves_unmatched_is_text_whatever_the_parser_would_pair",
+      "ordinal": 0,
+      "markdown": "$((n#^o))$$ b\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_run_the_editor_leaves_unmatched_is_text_whatever_the_parser_would_pair",
+      "ordinal": 1,
+      "markdown": "$$ ((n#^o)) $$$\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_second_read_and_a_footnote_label_keep_the_containers",
+      "ordinal": 0,
+      "markdown": "- $ x ` y $ <i title=\"((n#^o))\"> `\n  $$\n  ((n#^o))\n((n#^o))\n",
+      "editable": [
+        false,
+        false,
+        true
+      ],
+      "why": [
+        "html",
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_second_read_and_a_footnote_label_keep_the_containers",
+      "ordinal": 1,
+      "markdown": "- a $$ x `\n  $$\n  ((n#^o))\n`\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_second_read_and_a_footnote_label_keep_the_containers",
+      "ordinal": 2,
+      "markdown": "[^😀]: -\t$$\n      ((n#^o))\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_second_read_and_a_footnote_label_keep_the_containers",
+      "ordinal": 3,
+      "markdown": "[^a\\]:b]: - a\n          $$\n      ((n#^o))\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_second_read_and_a_footnote_label_keep_the_containers",
+      "ordinal": 4,
+      "markdown": "[^a\\]]: $$\n    ((n#^o))\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_stray_double_dollar_does_not_close_on_the_line_that_opens_a_display_formula",
+      "ordinal": 0,
+      "markdown": "Write $$ to open display math.\n((n#^o))\n$$\nE = mc^2\n$$\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_stray_double_dollar_does_not_close_on_the_line_that_opens_a_display_formula",
+      "ordinal": 1,
+      "markdown": "> a $$ b\n> ((n#^o))\n> $$ c\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_stray_double_dollar_does_not_close_on_the_line_that_opens_a_display_formula",
+      "ordinal": 2,
+      "markdown": "- a $$ b\n  ((n#^o))\n  $$ c\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_stray_double_dollar_does_not_close_on_the_line_that_opens_a_display_formula",
+      "ordinal": 3,
+      "markdown": "1. a $$ b\n   ((n#^o))\n   $$ c\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_stray_double_dollar_does_not_close_on_the_line_that_opens_a_display_formula",
+      "ordinal": 4,
+      "markdown": "a $$ b\r\n((n#^o))\r\n$$ c\r\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_stray_double_dollar_does_not_close_on_the_line_that_opens_a_display_formula",
+      "ordinal": 5,
+      "markdown": "Write $$ here.\n$$\n((n#^o))\n$$\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::a_thematic_break_inside_a_list_item_does_not_swallow_the_text_around_it",
+      "ordinal": 0,
+      "markdown": "- ((n#^o))\n\n  ---\n\n  ((n#^o))\n",
+      "editable": [
+        true,
+        true
+      ],
+      "why": [
+        "prose",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::an_opener_the_editor_reads_as_lazy_or_as_text_opens_less_or_nothing",
+      "ordinal": 0,
+      "markdown": "- a\n  $$\n  ((n#^o))\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::an_opener_the_editor_reads_as_lazy_or_as_text_opens_less_or_nothing",
+      "ordinal": 1,
+      "markdown": "> a\n$$\n((n#^o))\n\n((n#^o))\n",
+      "editable": [
+        false,
+        false
+      ],
+      "why": [
+        "math",
+        "math"
+      ]
+    },
+    {
+      "test": "md::literal::tests::an_opener_the_editor_reads_as_lazy_or_as_text_opens_less_or_nothing",
+      "ordinal": 2,
+      "markdown": "- a\n$$\n((n#^o))\n\n((n#^o))\n",
+      "editable": [
+        false,
+        false
+      ],
+      "why": [
+        "math",
+        "math"
+      ]
+    },
+    {
+      "test": "md::literal::tests::an_opener_the_editor_reads_as_lazy_or_as_text_opens_less_or_nothing",
+      "ordinal": 3,
+      "markdown": "- a\nb\n  $$\n  ((n#^o))\n\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::an_opener_the_editor_reads_as_lazy_or_as_text_opens_less_or_nothing",
+      "ordinal": 4,
+      "markdown": "- a\n\n      $$\n  ((n#^o))\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::an_opener_the_editor_reads_as_lazy_or_as_text_opens_less_or_nothing",
+      "ordinal": 5,
+      "markdown": "> - a\n> $$\n> ((n#^o))\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::an_opener_the_editor_reads_as_lazy_or_as_text_opens_less_or_nothing",
+      "ordinal": 6,
+      "markdown": "- a\n     $$\n  ((n#^o))\n\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::an_opener_the_editor_reads_as_lazy_or_as_text_opens_less_or_nothing",
+      "ordinal": 7,
+      "markdown": "- a\n  - b\n  $$\n  ((n#^o))\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::an_opener_the_editor_reads_as_lazy_or_as_text_opens_less_or_nothing",
+      "ordinal": 8,
+      "markdown": "123456789. a\n    $$\n    ((n#^o))\n((n#^o))\n",
+      "editable": [
+        true,
+        true
+      ],
+      "why": [
+        "prose",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::an_opener_the_editor_reads_as_lazy_or_as_text_opens_less_or_nothing",
+      "ordinal": 9,
+      "markdown": "- a\n    $$\n  ((n#^o))\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "math"
+      ]
+    },
+    {
+      "test": "md::literal::tests::an_opener_the_editor_reads_as_lazy_or_as_text_opens_less_or_nothing",
+      "ordinal": 10,
+      "markdown": "> a\n    $$\n((n#^o))\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::an_opener_the_editor_reads_as_lazy_or_as_text_opens_less_or_nothing",
+      "ordinal": 11,
+      "markdown": "- a\n      $$\n  ((n#^o))\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::an_opener_the_editor_reads_as_lazy_or_as_text_opens_less_or_nothing",
+      "ordinal": 12,
+      "markdown": "a\n    $$\n((n#^o))\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::an_opener_the_editor_reads_as_lazy_or_as_text_opens_less_or_nothing",
+      "ordinal": 13,
+      "markdown": "- a\n     $$\n  ((n#^o))\n\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::an_opener_the_editor_reads_as_lazy_or_as_text_opens_less_or_nothing",
+      "ordinal": 14,
+      "markdown": "> a\n>     $$\n> ((n#^o))\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::an_opener_the_editor_reads_as_lazy_or_as_text_opens_less_or_nothing",
+      "ordinal": 15,
+      "markdown": "> - a\n>  $$\n> ((n#^o))\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::an_unclosed_display_formula_ends_where_the_editors_container_ends",
+      "ordinal": 0,
+      "markdown": "> $$\n((n#^o))\n\n((n#^o))\n",
+      "editable": [
+        true,
+        true
+      ],
+      "why": [
+        "prose",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::an_unclosed_display_formula_ends_where_the_editors_container_ends",
+      "ordinal": 1,
+      "markdown": "> $$\n> ((n#^o))\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::an_unclosed_display_formula_ends_where_the_editors_container_ends",
+      "ordinal": 2,
+      "markdown": "> > $$\n> > ((n#^o))\n> ((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::an_unclosed_display_formula_ends_where_the_editors_container_ends",
+      "ordinal": 3,
+      "markdown": "   > $$\n   > ((n#^o))\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::an_unclosed_display_formula_ends_where_the_editors_container_ends",
+      "ordinal": 4,
+      "markdown": ">\t$$\n> ((n#^o))\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::an_unclosed_display_formula_ends_where_the_editors_container_ends",
+      "ordinal": 5,
+      "markdown": "> $$\n\n> ((n#^o))\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::an_unclosed_display_formula_ends_where_the_editors_container_ends",
+      "ordinal": 6,
+      "markdown": "- $$\n\n  ((n#^o))\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "math"
+      ]
+    },
+    {
+      "test": "md::literal::tests::an_unclosed_display_formula_ends_where_the_editors_container_ends",
+      "ordinal": 7,
+      "markdown": "- $$\n  ((n#^o))\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::an_unclosed_display_formula_ends_where_the_editors_container_ends",
+      "ordinal": 8,
+      "markdown": "- $$\n ((n#^o))\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::an_unclosed_display_formula_ends_where_the_editors_container_ends",
+      "ordinal": 9,
+      "markdown": "-   $$\n    ((n#^o))\n  ((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::an_unclosed_display_formula_ends_where_the_editors_container_ends",
+      "ordinal": 10,
+      "markdown": "1. $$\n   ((n#^o))\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::an_unclosed_display_formula_ends_where_the_editors_container_ends",
+      "ordinal": 11,
+      "markdown": "> - $$\n>   ((n#^o))\n> ((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::an_unclosed_display_formula_ends_where_the_editors_container_ends",
+      "ordinal": 12,
+      "markdown": "- > $$\n  > ((n#^o))\n  ((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::an_unclosed_display_formula_ends_where_the_editors_container_ends",
+      "ordinal": 13,
+      "markdown": "> $$\n$$\n((n#^o))\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "math"
+      ]
+    },
+    {
+      "test": "md::literal::tests::an_unclosed_display_formula_ends_where_the_editors_container_ends",
+      "ordinal": 14,
+      "markdown": "> $$\n> ((n#^o))\n> $$\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::an_unclosed_display_formula_ends_where_the_editors_container_ends",
+      "ordinal": 15,
+      "markdown": "> $$\r> ((n#^o))\r((n#^o))\r",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::an_unclosed_display_formula_ends_where_the_editors_container_ends",
+      "ordinal": 16,
+      "markdown": "[^1]: $$\n    ((n#^o))\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::an_unclosed_display_formula_ends_where_the_editors_container_ends",
+      "ordinal": 17,
+      "markdown": "[^1]: $$\n    ((n#^o))\n\n    ((n#^o))\n((n#^o))\n",
+      "editable": [
+        false,
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::an_unclosed_display_formula_ends_where_the_editors_container_ends",
+      "ordinal": 18,
+      "markdown": "[^1]: $$\n   ((n#^o))\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::an_unclosed_display_formula_ends_where_the_editors_container_ends",
+      "ordinal": 19,
+      "markdown": "[^note]: $$\n    ((n#^o))\n  ((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::an_unclosed_display_formula_ends_where_the_editors_container_ends",
+      "ordinal": 20,
+      "markdown": "> [^1]: $$\n>     ((n#^o))\n> ((n#^o))\n((n#^o))\n",
+      "editable": [
+        false,
+        true,
+        true
+      ],
+      "why": [
+        "math",
+        "prose",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::code_is_literal_where_the_parser_finds_it_containers_included",
+      "ordinal": 0,
+      "markdown": "> ```\n> ((n#^o))\n> ```\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "code",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::code_is_literal_where_the_parser_finds_it_containers_included",
+      "ordinal": 1,
+      "markdown": "> ```\n> ((n#^o))\n\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "code",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::code_is_literal_where_the_parser_finds_it_containers_included",
+      "ordinal": 2,
+      "markdown": "    ((n#^o))\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "code"
+      ]
+    },
+    {
+      "test": "md::literal::tests::code_is_literal_where_the_parser_finds_it_containers_included",
+      "ordinal": 3,
+      "markdown": "\t((n#^o))\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "code"
+      ]
+    },
+    {
+      "test": "md::literal::tests::code_is_literal_where_the_parser_finds_it_containers_included",
+      "ordinal": 4,
+      "markdown": "```\n((n#^o))\n~~~\n((n#^o))\n```\n",
+      "editable": [
+        false,
+        false
+      ],
+      "why": [
+        "code",
+        "code"
+      ]
+    },
+    {
+      "test": "md::literal::tests::code_is_literal_where_the_parser_finds_it_containers_included",
+      "ordinal": 5,
+      "markdown": "`a\n((n#^o)) b`\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "inlineCode",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::display_math_runs_to_its_closing_line_or_to_the_end_of_its_container",
+      "ordinal": 0,
+      "markdown": "$$\n((n#^o))\n\n((n#^o))\n",
+      "editable": [
+        false,
+        false
+      ],
+      "why": [
+        "math",
+        "math"
+      ]
+    },
+    {
+      "test": "md::literal::tests::display_math_runs_to_its_closing_line_or_to_the_end_of_its_container",
+      "ordinal": 1,
+      "markdown": "$$\n((n#^o))\n\n((n#^o))\n$$\n((n#^o))\n",
+      "editable": [
+        false,
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::display_math_runs_to_its_closing_line_or_to_the_end_of_its_container",
+      "ordinal": 2,
+      "markdown": "$$\n((n#^o))\n$$ y\n((n#^o))\n",
+      "editable": [
+        false,
+        false
+      ],
+      "why": [
+        "math",
+        "math"
+      ]
+    },
+    {
+      "test": "md::literal::tests::display_math_runs_to_its_closing_line_or_to_the_end_of_its_container",
+      "ordinal": 3,
+      "markdown": "$$latex\n((n#^o))\n$$\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::display_math_runs_to_its_closing_line_or_to_the_end_of_its_container",
+      "ordinal": 4,
+      "markdown": "text\n$$\n((n#^o))\n$$\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::display_math_runs_to_its_closing_line_or_to_the_end_of_its_container",
+      "ordinal": 5,
+      "markdown": "> $$\n> ((n#^o))\n\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::display_math_runs_to_its_closing_line_or_to_the_end_of_its_container",
+      "ordinal": 6,
+      "markdown": "- $$\n  ((n#^o))\n\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::display_math_runs_to_its_closing_line_or_to_the_end_of_its_container",
+      "ordinal": 7,
+      "markdown": "> a\n> $$\n> ((n#^o))\n>\n> ((n#^o))\n\n((n#^o))\n",
+      "editable": [
+        false,
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::display_math_runs_to_its_closing_line_or_to_the_end_of_its_container",
+      "ordinal": 8,
+      "markdown": "$$$\n((n#^o))\n$$\n((n#^o))\n$$$\n((n#^o))\n",
+      "editable": [
+        false,
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::escapes_apply_to_openers_not_to_closers",
+      "ordinal": 0,
+      "markdown": "$a\\$$b$ x ((n#^o))\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::escapes_apply_to_openers_not_to_closers",
+      "ordinal": 1,
+      "markdown": "\\\\$ ((n#^o)) $\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "inlineMath"
+      ]
+    },
+    {
+      "test": "md::literal::tests::escapes_apply_to_openers_not_to_closers",
+      "ordinal": 2,
+      "markdown": "$$ ((n#^o)) \\$$ y $$ ((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "inlineMath",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::escapes_apply_to_openers_not_to_closers",
+      "ordinal": 3,
+      "markdown": "\\$$ ((n#^o)) $ and \\\\$ ((n#^o)) $\n",
+      "editable": [
+        false,
+        false
+      ],
+      "why": [
+        "inlineMath",
+        "inlineMath"
+      ]
+    },
+    {
+      "test": "md::literal::tests::four_spaces_after_a_list_item_are_a_paragraph_not_code",
+      "ordinal": 0,
+      "markdown": "- item\n\n    ((n#^o))\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::front_matter_behind_a_byte_order_mark_is_still_prose",
+      "ordinal": 0,
+      "markdown": "﻿---\nrefs:\n\n    - ((n#^o))\n---\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "frontmatter",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::front_matter_is_prose_and_is_not_handed_to_the_parser",
+      "ordinal": 0,
+      "markdown": "---\nref: ((n#^o))\n    - ((n#^o))\n---\n((n#^o))\n",
+      "editable": [
+        false,
+        false,
+        true
+      ],
+      "why": [
+        "frontmatter",
+        "frontmatter",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::front_matter_is_prose_and_is_not_handed_to_the_parser",
+      "ordinal": 1,
+      "markdown": "--- \nref: x\n\n    ((n#^o))\n---  \n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "frontmatter"
+      ]
+    },
+    {
+      "test": "md::literal::tests::front_matter_is_prose_and_is_not_handed_to_the_parser",
+      "ordinal": 2,
+      "markdown": "---\r\nref: x\r\n\r\n    ((n#^o))\r\n---\r\n((n#^o))\r\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "frontmatter",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::front_matter_is_prose_and_is_not_handed_to_the_parser",
+      "ordinal": 3,
+      "markdown": "---\n---\n((n#^o))\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::html_blocks_end_at_a_blank_line_and_inline_tags_cover_only_themselves",
+      "ordinal": 0,
+      "markdown": "<div>\n((n#^o))\n</div>\n((n#^o))\n\n((n#^o))\n",
+      "editable": [
+        false,
+        false,
+        true
+      ],
+      "why": [
+        "html",
+        "html",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::html_blocks_end_at_a_blank_line_and_inline_tags_cover_only_themselves",
+      "ordinal": 1,
+      "markdown": "<span>((n#^o))</span>\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::html_blocks_end_at_a_blank_line_and_inline_tags_cover_only_themselves",
+      "ordinal": 2,
+      "markdown": "<!-- ((n#^o)) -->\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "html",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::html_blocks_end_at_a_blank_line_and_inline_tags_cover_only_themselves",
+      "ordinal": 3,
+      "markdown": "<?php ((n#^o)) ?>\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "html"
+      ]
+    },
+    {
+      "test": "md::literal::tests::html_blocks_end_at_a_blank_line_and_inline_tags_cover_only_themselves",
+      "ordinal": 4,
+      "markdown": "<details>\n<summary>x</summary>\n\n((n#^o))\n\n</details>\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::images_are_literal_alt_text_included_but_links_are_prose",
+      "ordinal": 0,
+      "markdown": "![a ((n#^o))](x.png) ((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "image",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::images_are_literal_alt_text_included_but_links_are_prose",
+      "ordinal": 1,
+      "markdown": "[t ((n#^o))](https://x) ((n#^o))\n",
+      "editable": [
+        true,
+        true
+      ],
+      "why": [
+        "prose",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::inline_math_follows_the_editors_rule",
+      "ordinal": 0,
+      "markdown": "$ ((n#^o)) $ x ((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "inlineMath",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::inline_math_follows_the_editors_rule",
+      "ordinal": 1,
+      "markdown": "$5 ((n#^o)) $6 ((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "inlineMath",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::inline_math_follows_the_editors_rule",
+      "ordinal": 2,
+      "markdown": "$a\n((n#^o)) b$ ((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "inlineMath",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::inline_math_follows_the_editors_rule",
+      "ordinal": 3,
+      "markdown": "\\$((n#^o))$ ((n#^o))$\n",
+      "editable": [
+        true,
+        false
+      ],
+      "why": [
+        "prose",
+        "inlineMath"
+      ]
+    },
+    {
+      "test": "md::literal::tests::inline_math_follows_the_editors_rule",
+      "ordinal": 4,
+      "markdown": "`$` ((n#^o)) $\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::inline_math_follows_the_editors_rule",
+      "ordinal": 5,
+      "markdown": "$ x `y` ((n#^o)) $\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "inlineMath"
+      ]
+    },
+    {
+      "test": "md::literal::tests::inline_math_follows_the_editors_rule",
+      "ordinal": 6,
+      "markdown": "$$ ((n#^o)) $$ ((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "inlineMath",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::inline_math_follows_the_editors_rule",
+      "ordinal": 7,
+      "markdown": "$$ ((n#^o)) $ ((n#^o)) $$\n",
+      "editable": [
+        false,
+        false
+      ],
+      "why": [
+        "inlineMath",
+        "inlineMath"
+      ]
+    },
+    {
+      "test": "md::literal::tests::link_reference_definitions_are_literal_duplicates_included",
+      "ordinal": 0,
+      "markdown": "[r]: ((n#^o))\n[r]: ((n#^o))\n\n((n#^o)) [r]\n",
+      "editable": [
+        false,
+        false,
+        true
+      ],
+      "why": [
+        "definition",
+        "definition",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::list_items_tables_headings_and_footnotes_are_prose",
+      "ordinal": 0,
+      "markdown": "- ((n#^o))\n- [ ] ((n#^o))\n  - ((n#^o))\n",
+      "editable": [
+        true,
+        true,
+        true
+      ],
+      "why": [
+        "prose",
+        "prose",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::list_items_tables_headings_and_footnotes_are_prose",
+      "ordinal": 1,
+      "markdown": "1. ((n#^o))\n\n   ((n#^o))\n",
+      "editable": [
+        true,
+        true
+      ],
+      "why": [
+        "prose",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::list_items_tables_headings_and_footnotes_are_prose",
+      "ordinal": 2,
+      "markdown": "- ((n#^o))\n\n  ```\n  ((n#^o))\n  ```\n\n  ((n#^o))\n",
+      "editable": [
+        true,
+        false,
+        true
+      ],
+      "why": [
+        "prose",
+        "code",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::list_items_tables_headings_and_footnotes_are_prose",
+      "ordinal": 3,
+      "markdown": "| ((n#^o)) | `((n#^o))` |\n|---|---|\n| ((n#^o)) | x |\n",
+      "editable": [
+        true,
+        false,
+        true
+      ],
+      "why": [
+        "prose",
+        "inlineCode",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::list_items_tables_headings_and_footnotes_are_prose",
+      "ordinal": 4,
+      "markdown": "# ((n#^o)) #\n\n((n#^o))\n===\n",
+      "editable": [
+        true,
+        true
+      ],
+      "why": [
+        "prose",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::list_items_tables_headings_and_footnotes_are_prose",
+      "ordinal": 5,
+      "markdown": "x[^1]\n\n[^1]: ((n#^o))\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::list_items_tables_headings_and_footnotes_are_prose",
+      "ordinal": 6,
+      "markdown": "> ((n#^o))\n> - ((n#^o))\n",
+      "editable": [
+        true,
+        true
+      ],
+      "why": [
+        "prose",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::math_is_literal",
+      "ordinal": 0,
+      "markdown": "$((n#^o))$ and ((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "inlineMath",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::math_is_literal",
+      "ordinal": 1,
+      "markdown": "$$\n((n#^o))\n$$\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::no_formula_is_read_inside_the_front_matter",
+      "ordinal": 0,
+      "markdown": "---\nprice: $5 ((n#^o)) $6\n---\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "frontmatter"
+      ]
+    },
+    {
+      "test": "md::literal::tests::offsets_are_bytes_of_the_original_crlf_bom_and_multibyte_text_included",
+      "ordinal": 0,
+      "markdown": "a `x` b\r\n((n#^o))\r\n```\r\n((n#^o))\r\n```\r\n",
+      "editable": [
+        true,
+        false
+      ],
+      "why": [
+        "prose",
+        "code"
+      ]
+    },
+    {
+      "test": "md::literal::tests::offsets_are_bytes_of_the_original_crlf_bom_and_multibyte_text_included",
+      "ordinal": 1,
+      "markdown": "﻿((n#^o))`x`\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::offsets_are_bytes_of_the_original_crlf_bom_and_multibyte_text_included",
+      "ordinal": 2,
+      "markdown": "한글 ((n#^o)) 🙂 `((n#^o))` é((n#^o))\n",
+      "editable": [
+        true,
+        false,
+        true
+      ],
+      "why": [
+        "prose",
+        "inlineCode",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::prose_is_measured_by_blocks_so_escapes_and_emphasis_inside_a_reference_stay_prose",
+      "ordinal": 0,
+      "markdown": "((n#^o|a\\*b)) ((n#^o|*x* **y**))\n",
+      "editable": [
+        true,
+        true
+      ],
+      "why": [
+        "prose",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::prose_is_measured_by_blocks_so_escapes_and_emphasis_inside_a_reference_stay_prose",
+      "ordinal": 1,
+      "markdown": "\\((n#^o))\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::reference_style_images_are_literal_like_inline_ones",
+      "ordinal": 0,
+      "markdown": "![a ((n#^o))][pic] ![((n#^o))] ((n#^o))\n\n[pic]: x.png\n[((n#^o))]: z.png\n",
+      "editable": [
+        false,
+        false,
+        true,
+        false
+      ],
+      "why": [
+        "imageReference",
+        "imageReference",
+        "prose",
+        "definition"
+      ]
+    },
+    {
+      "test": "md::literal::tests::reference_style_images_are_literal_like_inline_ones",
+      "ordinal": 1,
+      "markdown": "![a ((n#^o))][nodef]\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::what_a_destroyed_code_span_hid_surfaces_on_the_second_read",
+      "ordinal": 0,
+      "markdown": "$ x ` y $ <i title=\"((n#^o))\"> `\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "html"
+      ]
+    },
+    {
+      "test": "md::literal::tests::what_a_destroyed_code_span_hid_surfaces_on_the_second_read",
+      "ordinal": 1,
+      "markdown": "$ x ` y $ ![((n#^o))](u) `\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "image"
+      ]
+    },
+    {
+      "test": "md::literal::tests::what_a_destroyed_code_span_hid_surfaces_on_the_second_read",
+      "ordinal": 2,
+      "markdown": "$ x ` y $ [z](u$) ((n#^o)) $ `\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::what_follows_a_formula_is_a_block_of_its_own_to_the_editor",
+      "ordinal": 0,
+      "markdown": "> $$\n    ((n#^o))\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "code"
+      ]
+    },
+    {
+      "test": "md::literal::tests::what_follows_a_formula_is_a_block_of_its_own_to_the_editor",
+      "ordinal": 1,
+      "markdown": "$$\n$$\n    ((n#^o))\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "code"
+      ]
+    },
+    {
+      "test": "md::literal::tests::what_follows_a_formula_is_a_block_of_its_own_to_the_editor",
+      "ordinal": 2,
+      "markdown": "a\n> $$\n    ((n#^o))\n\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "code",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::what_follows_a_formula_is_a_block_of_its_own_to_the_editor",
+      "ordinal": 3,
+      "markdown": "- a\n  $$\n  $$\n      ((n#^o))\n  ((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "code",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::what_follows_a_formula_is_a_block_of_its_own_to_the_editor",
+      "ordinal": 4,
+      "markdown": "> $$\n\n    ((n#^o))\n   ((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "code",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::what_follows_a_formula_is_a_block_of_its_own_to_the_editor",
+      "ordinal": 5,
+      "markdown": "> $$\n\t((n#^o))\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "code",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::what_follows_a_formula_is_a_block_of_its_own_to_the_editor",
+      "ordinal": 6,
+      "markdown": "- $$\n((n#^o))\n  $$\n((n#^o))\n",
+      "editable": [
+        true,
+        false
+      ],
+      "why": [
+        "prose",
+        "math"
+      ]
+    },
+    {
+      "test": "md::literal::tests::what_follows_a_formula_is_a_block_of_its_own_to_the_editor",
+      "ordinal": 7,
+      "markdown": "> $$\na\n> $$\n> ((n#^o))\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::what_follows_a_formula_is_a_block_of_its_own_to_the_editor",
+      "ordinal": 8,
+      "markdown": "- - $$\n((n#^o))\n  $$\n  ((n#^o))\n((n#^o))\n",
+      "editable": [
+        true,
+        false,
+        false
+      ],
+      "why": [
+        "prose",
+        "math",
+        "math"
+      ]
+    },
+    {
+      "test": "md::literal::tests::what_follows_a_formula_is_a_block_of_its_own_to_the_editor",
+      "ordinal": 9,
+      "markdown": "- $$\nx\n  - $$\n    ((n#^o))\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::what_follows_a_formula_is_a_block_of_its_own_to_the_editor",
+      "ordinal": 10,
+      "markdown": "* > > ((n#^o))\n    $$\n$$\n ((n#^o))\n",
+      "editable": [
+        true,
+        false
+      ],
+      "why": [
+        "prose",
+        "math"
+      ]
+    },
+    {
+      "test": "md::literal::tests::what_follows_a_formula_is_a_block_of_its_own_to_the_editor",
+      "ordinal": 11,
+      "markdown": "- $$\n  $$\n\t- $$\n\t  ((n#^o))\n  ((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::what_follows_a_formula_is_a_block_of_its_own_to_the_editor",
+      "ordinal": 12,
+      "markdown": "-   $$\nx\n    - $$\n        ((n#^o))\n((n#^o))\n",
+      "editable": [
+        true,
+        true
+      ],
+      "why": [
+        "prose",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::what_follows_a_formula_is_a_block_of_its_own_to_the_editor",
+      "ordinal": 13,
+      "markdown": "- $$\n  $$\n  $$\n  $$\n  $$\n  $$\n  ((n#^o))\n",
+      "editable": [
+        true
+      ],
+      "why": [
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::what_follows_a_formula_is_a_block_of_its_own_to_the_editor",
+      "ordinal": 14,
+      "markdown": "- $$\nx\n   - $$\n     ((n#^o))\n((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::what_follows_a_formula_is_a_block_of_its_own_to_the_editor",
+      "ordinal": 15,
+      "markdown": "- a\n      - $$\n        ((n#^o))\n((n#^o))\n",
+      "editable": [
+        true,
+        true
+      ],
+      "why": [
+        "prose",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::what_follows_a_formula_is_a_block_of_its_own_to_the_editor",
+      "ordinal": 16,
+      "markdown": "> - $$\n> x\n>   - $$\n>     ((n#^o))\n> ((n#^o))\n",
+      "editable": [
+        false,
+        true
+      ],
+      "why": [
+        "math",
+        "prose"
+      ]
+    },
+    {
+      "test": "md::literal::tests::what_is_not_front_matter_by_the_editors_rule_is_parsed_as_markdown",
+      "ordinal": 0,
+      "markdown": "\n---\nref: x\n\n    ((n#^o))\n---\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "code"
+      ]
+    },
+    {
+      "test": "md::literal::tests::what_is_not_front_matter_by_the_editors_rule_is_parsed_as_markdown",
+      "ordinal": 1,
+      "markdown": "---\nref: x\n\n    ((n#^o))\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "code"
+      ]
+    },
+    {
+      "test": "md::literal::tests::what_is_not_front_matter_by_the_editors_rule_is_parsed_as_markdown",
+      "ordinal": 2,
+      "markdown": "---\nref: x\n\n    ((n#^o))\n...\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "code"
+      ]
+    },
+    {
+      "test": "md::literal::tests::what_is_not_front_matter_by_the_editors_rule_is_parsed_as_markdown",
+      "ordinal": 3,
+      "markdown": " ---\nref: x\n\n    ((n#^o))\n---\n",
+      "editable": [
+        false
+      ],
+      "why": [
+        "code"
+      ]
+    }
+  ]
+}

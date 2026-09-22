@@ -109,6 +109,10 @@ tauri-plugin-global-shortcut = "2"
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
 devtools = ["tauri/devtools"]
+# issue 669: compiles the parity-corpus recorder in `md::literal`'s tests. Off
+# by default, so an ordinary `cargo test` builds none of it. See
+# `scripts/literal-parity.sh` for the one command that turns it on.
+parity-dump = []
 
 # §56d 디코더만 개발 빌드에서도 최적화한다.
 #

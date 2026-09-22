@@ -107,7 +107,7 @@ export function renameBlockIdInMarkdown(
  * definition are attributes on the PM side, not text a blockReference could
  * live in.
  */
-const LITERAL_TYPES = new Set([
+export const LITERAL_TYPES = new Set([
   "code",
   "definition",
   "html",
@@ -118,6 +118,26 @@ const LITERAL_TYPES = new Set([
   "math",
   "yaml",
 ]);
+
+/**
+ * issue 669 — is the reference at `[start, end)` one this path may rewrite?
+ * The parity corpus asks the Rust `Literal` the same question about the same
+ * documents, so this is exported rather than re-derived in the test: a test
+ * that re-implemented the rule would pass while production drifted.
+ *
+ * ‼️ Overlap, not containment. `((n#^o|`x`))` holds an `inlineCode` child, so
+ * no literal node contains the reference and one overlaps it — the same
+ * half-open test `renameBlockIdInMarkdown` applies above.
+ */
+export function referenceIsEditable(
+  markdown: string,
+  start: number,
+  end: number,
+): boolean {
+  return !parsedRanges(markdown).literal.some(
+    ([from, to]) => start < to && end > from,
+  );
+}
 
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
