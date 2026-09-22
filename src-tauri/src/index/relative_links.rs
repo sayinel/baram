@@ -371,11 +371,11 @@ mod tests {
             ),
             "[[./ns2/c]] [[./NS-OLD/e]]"
         );
-        // Mixed case on both sides, which a fold restricted to uniformly
-        // cased components would miss — every other spelling in this file is
-        // all-upper or all-lower, so nothing else here would catch that.
+        // Mixed case on BOTH sides of the comparison — the shape a fold
+        // restricted to uniformly cased components refuses.
         // What fails this: `windows && uniform_case && a.eq_ignore_ascii_case(b)`
-        // for any `uniform_case` test — the link stays `[[./nS/c]]`.
+        // for any `uniform_case` test — the link stays `[[./nS/c]]` (measured;
+        // that mutant reddens the UNC assertion and the unit ones too).
         assert_eq!(
             rewrite(
                 "[[./nS/c]]",
@@ -527,9 +527,9 @@ mod tests {
             ),
             "./ns2/c"
         );
-        // Mixed case, both sides: a fold that only accepted a uniformly
-        // upper- or lowercase component would pass every other assertion
-        // here, because every other spelling in this file is uniform.
+        // Mixed case on both sides — the shape a fold restricted to
+        // uniformly cased components refuses (measured: that mutant reddens
+        // this assertion, the rename test and the UNC one).
         assert!(same_component("VaUlT", "vAuLt", true));
         assert!(!same_component("VaUlT", "vAuLt", false));
         // The fold is case, not similarity: two drives stay two. And the
