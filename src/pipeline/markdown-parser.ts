@@ -20,10 +20,14 @@ import { unified } from "unified";
 /**
  * The parser the pipeline, the text-path rename and the parity oracle share.
  *
- * `singleTilde: false` and `["yaml"]` are part of the grammar, not defaults:
- * with `singleTilde` on, `~x~` is strikethrough and its bytes are not text;
- * without the `yaml` argument, front matter is not a node and a reference in
- * it would read as prose.
+ * ‼️ The options are grammar, but what makes them worth sharing is not that
+ * each one is observable downstream. `["yaml"]` is: drop it and front matter
+ * stops being a node, so a reference in it reads as prose (measured — the
+ * parity corpus holds six such markers). `singleTilde: false` is not: `delete`
+ * is not a literal type, and flipping the option moved the classification in
+ * none of nine probed strikethrough shapes. A copy of this stack drifts on
+ * either, and the corpus would only notice one — which is the gap the version
+ * sentinel (`literal-measured-stack.test.ts`) covers.
  */
 export const markdownParser = unified()
   .use(remarkParse)
