@@ -413,19 +413,30 @@ mod tests {
         static ORDINALS: LazyLock<Mutex<HashMap<String, usize>>> =
             LazyLock::new(|| Mutex::new(HashMap::new()));
 
-        /// The marker as production's `BLOCK_REF_RE` spells it: a display
-        /// needs at least one character and cannot hold a line break. The
-        /// `refs` helper above is wider on both counts, so this is where the
-        /// two can part — and the assertion below makes that loud instead of
-        /// letting the parity corpus quietly describe a different grammar.
+        /// The marker as production's `BLOCK_REF_RE` spells it — a display of
+        /// at least one character, line breaks included, because that regex is
+        /// `(?:\|([^)]+))?` and matches `((n#^o|a\nb))` (measured). What keeps
+        /// a line break out of an extracted reference is that `extract_links`
+        /// runs the regex per source line, not the regex itself.
+        ///
+        /// The `refs` helper above is wider by one shape: an empty display,
+        /// which production rejects. The assertion below is where that parts —
+        /// a case production could not see would otherwise be filed in a
+        /// corpus that claims to describe it.
         static PRODUCTION_MARKER: LazyLock<Regex> =
-            LazyLock::new(|| Regex::new(r"\(\(n#\^o(?:\|[^)\n\r]+)?\)\)").unwrap());
+            LazyLock::new(|| Regex::new(r"\(\(n#\^o(?:\|[^)]+)?\)\)").unwrap());
 
         pub(super) fn record(md: &str, literal_alone: &[bool]) {
             let Some(path) = std::env::var_os("BARAM_PARITY_DUMP") else {
                 return;
             };
             let markers = PRODUCTION_MARKER.find_iter(md).count();
+            // A document with no marker proves nothing and would reach the
+            // fixture as a case with an empty expectation.
+            assert!(
+                markers > 0,
+                "parity-dump: no marker in {md:?} — a case with nothing to classify"
+            );
             assert_eq!(
                 markers,
                 literal_alone.len(),
@@ -529,7 +540,7 @@ mod tests {
             why: Vec<String>,
         }
         static MARKER: LazyLock<Regex> =
-            LazyLock::new(|| Regex::new(r"\(\(n#\^o(?:\|[^)\n\r]+)?\)\)").unwrap());
+            LazyLock::new(|| Regex::new(r"\(\(n#\^o(?:\|[^)]+)?\)\)").unwrap());
 
         let fixture: Fixture =
             serde_json::from_str(include_str!("../fixtures/literal-parity.json")).unwrap();

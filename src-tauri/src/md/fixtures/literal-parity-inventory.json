@@ -1,5 +1,6 @@
 {
-  "contract": "issue 669. Identity of every document `refs()` exercises. scripts/literal-parity.sh check compares this with a fresh dump, so an added, replaced or removed case fails.",
+  "contract": "issue 669. Identity of every document `refs()` exercises. scripts/literal-parity.sh check compares this with a fresh dump, so an added, replaced or removed case fails. A document may carry `excluded` only if its recorded size is above `maxDocumentBytes` — the check re-derives that from the fresh dump, so marking a case excluded is not a way to drop it.",
+  "maxDocumentBytes": 8192,
   "documents": [
     {
       "test": "md::literal::tests::a_bare_carriage_return_ends_a_line_for_the_offsets_too",

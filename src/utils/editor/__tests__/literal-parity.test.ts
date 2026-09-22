@@ -32,7 +32,7 @@ interface Fixture {
 }
 
 /** The marker and its grammar, as the contract states it: one line. */
-const MARKER = /\(\(n#\^o(?:\|[^)\n\r]+)?\)\)/g;
+const MARKER = /\(\(n#\^o(?:\|[^)]+)?\)\)/g;
 
 const fixture = JSON.parse(
   readFileSync(

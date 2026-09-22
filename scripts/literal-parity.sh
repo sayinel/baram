@@ -58,6 +58,20 @@ case "${1:-}" in
       const key = (r) => `${r.test}#${r.ordinal}`;
       const a = new Map(committed.map((r) => [key(r), r]));
       const b = new Map(now.map((r) => [key(r), r]));
+      // ‼️ Before any comparison: a duplicate key collapses inside these maps,
+      // and every check below would then run on one entry while the file holds
+      // two. The reason reported must be the duplicate, not the drift it hides.
+      const fixture = JSON.parse(fs.readFileSync(process.argv[3], "utf8"));
+      const cases = new Map(fixture.cases.map((c) => [key(c), c]));
+      // Duplicate keys would be collapsed by these maps and the collapse would
+      // look like agreement.
+      for (const [what, list, map] of [["the dump", now, b], ["the inventory", committed, a], ["the fixture", fixture.cases, cases]]) {
+        if (map.size !== list.length) {
+          console.error(`literal-parity: ${what} holds ${list.length - map.size} duplicate identit(ies)`);
+          process.exit(1);
+        }
+      }
+
       const added = [...b.keys()].filter((k) => !a.has(k));
       const removed = [...a.keys()].filter((k) => !b.has(k));
       const changed = [...b.keys()].filter((k) => a.has(k) && a.get(k).sha256 !== b.get(k).sha256);
@@ -75,15 +89,22 @@ case "${1:-}" in
       // to pass this check, the Rust reader (its floor is a count, not the
       // corpus) and — by luck of a second count — almost the vitest one too.
       // Every document the inventory names is either excluded or a case.
-      const fixture = JSON.parse(fs.readFileSync(process.argv[3], "utf8"));
-      const cases = new Map(fixture.cases.map((c) => [key(c), c]));
-      // Duplicate keys would be collapsed by these maps and the collapse would
-      // look like agreement.
-      for (const [what, list, map] of [["the dump", now, b], ["the inventory", committed, a], ["the fixture", fixture.cases, cases]]) {
-        if (map.size !== list.length) {
-          console.error(`literal-parity: ${what} holds ${list.length - map.size} duplicate identit(ies)`);
-          process.exit(1);
-        }
+      // ‼️ `excluded` is a claim the committed file makes about itself. Taken
+      // on trust, deleting a case and marking its entry excluded would pass
+      // every check below. The fresh dump decides instead: only a document
+      // the recorder just measured as oversized may carry the flag.
+      const limit = JSON.parse(fs.readFileSync(process.argv[2], "utf8")).maxDocumentBytes;
+      if (typeof limit !== "number") {
+        console.error("literal-parity: the inventory does not say maxDocumentBytes");
+        process.exit(1);
+      }
+      const wrongly = committed.filter(
+        (r) => Boolean(r.excluded) !== (b.get(key(r)).bytes > limit),
+      );
+      if (wrongly.length) {
+        console.error(`literal-parity: ${wrongly.length} document(s) carry an exclusion the recorded size does not support.`);
+        for (const r of wrongly) console.error(`  ${key(r)}  ${b.get(key(r)).bytes} bytes, excluded=${JSON.stringify(r.excluded ?? null)}`);
+        process.exit(1);
       }
       const missing = committed.filter((r) => !r.excluded && !cases.has(key(r)));
       const orphaned = [...cases.keys()].filter((k) => !a.has(k));
@@ -92,9 +113,14 @@ case "${1:-}" in
       // be tested against is what ties the two files together — without it,
       // updating the inventory hash and leaving the fixture stale passes.
       const stale = [...cases.values()].filter((c) => {
-        const digest = crypto.createHash("sha256").update(c.markdown, "utf8").digest("hex");
-        const inventoryEntry = a.get(key(c));
-        return digest !== c.sha256 || (inventoryEntry && inventoryEntry.sha256 !== digest);
+        const body = Buffer.from(c.markdown, "utf8");
+        const digest = crypto.createHash("sha256").update(body).digest("hex");
+        const entry = a.get(key(c));
+        return (
+          digest !== c.sha256 ||
+          body.length !== c.bytes ||
+          (entry && (entry.sha256 !== digest || entry.bytes !== body.length))
+        );
       });
       if (missing.length || orphaned.length || stale.length) {
         console.error("literal-parity: the fixture and the recorded corpus disagree.");

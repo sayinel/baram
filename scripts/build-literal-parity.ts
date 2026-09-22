@@ -25,7 +25,7 @@ import {
 import { markdownParser } from "../src/pipeline/markdown-parser";
 
 /** The corpus marker, and the grammar production applies to it: one line. */
-const MARKER = /\(\(n#\^o(?:\|[^)\n\r]+)?\)\)/g;
+const MARKER = /\(\(n#\^o(?:\|[^)]+)?\)\)/g;
 
 /** Payloads this big are excluded from the fixture; the inventory keeps the
  *  hash so the absence is recorded rather than silent. */
@@ -164,16 +164,17 @@ const contract = [
   "the shared stack and OVERLAPS every literal mdast node against the range — not containment:",
   "`((n#^o|`x`))` holds an inlineCode child, so no literal node contains the reference and one",
   "overlaps it. `why` is provenance for diffs and failure messages and is never asserted.",
-  "`sha256`/`bytes` are of `markdown`: scripts/literal-parity.sh check recomputes them, so a",
-  "case whose document drifted from the recorded corpus cannot pass by updating the inventory.",
+  "`sha256` and `bytes` are of `markdown` as UTF-8: scripts/literal-parity.sh check recomputes",
+  "both, so a case whose document drifted from the recorded corpus cannot pass by updating the",
+  "inventory alone.",
   "",
   "The marker is one line, target `n`, id `o`, optional display. The conditions `extract_links`",
   "applies that this predicate omits are unreachable for this corpus, measured: 0 embeds, 0",
   "empty displays `((n#^o|))`, 0 markers with a line break in the display, never an empty",
-  "target, never an empty id. The marker grammar here is production's — a display needs one",
-  "character and no line break — while the `refs` helper is wider on both counts; the recorder",
-  "asserts the two see the same number of markers, so a case in a shape this fixture cannot",
-  "describe stops the dump instead of being silently left out.",
+  "target, never an empty id. The marker grammar here is production's `BLOCK_REF_RE`: a display",
+  "of at least one character, line breaks included. The `refs` helper is wider by one shape —",
+  "an empty display, which production rejects — and the recorder asserts the two counts agree,",
+  "so a case production could not see stops the dump instead of being filed here.",
   "",
   "GENERATED — do not edit. Regenerate with:",
   "  scripts/literal-parity.sh dump /tmp/corpus.jsonl",
@@ -186,7 +187,16 @@ writeFileSync(
 );
 writeFileSync(
   path.join(fixtures, "literal-parity-inventory.json"),
-  `${JSON.stringify({ contract: "issue 669. Identity of every document `refs()` exercises. scripts/literal-parity.sh check compares this with a fresh dump, so an added, replaced or removed case fails.", documents: inventory }, null, 2)}\n`,
+  `${JSON.stringify(
+    {
+      contract:
+        "issue 669. Identity of every document `refs()` exercises. scripts/literal-parity.sh check compares this with a fresh dump, so an added, replaced or removed case fails. A document may carry `excluded` only if its recorded size is above `maxDocumentBytes` — the check re-derives that from the fresh dump, so marking a case excluded is not a way to drop it.",
+      maxDocumentBytes: MAX_DOCUMENT_BYTES,
+      documents: inventory,
+    },
+    null,
+    2,
+  )}\n`,
 );
 
 const excluded = inventory.filter((d) => d.excluded).length;
