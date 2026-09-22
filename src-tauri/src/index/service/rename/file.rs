@@ -3,8 +3,9 @@
 use crate::context::manager::{resolve_canonical, Registered};
 use crate::context::ContextManager;
 use crate::index::{
-    block_reference_can_spell, block_references_to, own_block_reference_lines,
-    replace_block_reference_target, replace_wikilink_target, wikilink_can_spell, wikilinks_to,
+    block_reference_can_spell, block_references_to, index_reads_the_rename_back,
+    own_block_reference_lines, replace_block_reference_target, replace_wikilink_target,
+    wikilink_can_spell, wikilinks_to, RewritePass,
 };
 use std::collections::HashMap;
 use std::path::Path;
@@ -183,7 +184,11 @@ fn destination_confined(identity: &Path, dirs: &[Registered], old_parent: Option
 /// `block_reference_can_spell`: `[[a^b]]` names the note `a`, `((a^b#^id))`
 /// is fine; `((a)b#^id))` parses as nothing, `[[a)b]]` is fine). The links
 /// the stem can be spelled in are rewritten; the others stay, and every file
-/// they stay in is reported, rewritten or not (`Rewrite::left_behind`).
+/// they stay in is reported, rewritten or not (`Rewrite::left_behind`). What
+/// the passes wrote is then read back with the index's reader before it is
+/// handed over (`index_reads_the_rename_back`): a stem the predicates pass
+/// can still turn a link literal where it lands — a backtick pairing with
+/// one on the line — and such a file is left as it was, and reported.
 struct LinkPasses<'a> {
     old_target: &'a str,
     new_target: &'a str,
@@ -201,9 +206,17 @@ impl<'a> LinkPasses<'a> {
         }
     }
 
+    fn spellable(&self, pass: RewritePass) -> bool {
+        match pass {
+            RewritePass::Wikilinks => self.wikilinks_spellable,
+            RewritePass::BlockReferences => self.block_references_spellable,
+        }
+    }
+
     /// Wikilinks, then block references and embeds — each pass reads the
     /// content the other produced, so offsets and literal regions are its own.
     fn rewrite(&self, content: &str, ref_path: &str) -> Rewrite {
+        let before = content;
         let mut left_behind = false;
         let content = if self.wikilinks_spellable {
             replace_wikilink_target(content, self.old_target, self.new_target)
@@ -217,6 +230,26 @@ impl<'a> LinkPasses<'a> {
             left_behind |= block_references_to(&content, ref_path, self.old_target) > 0;
             content
         };
+        // READ-BACK GATE (issue 678, review): what was written must be read
+        // as a link to the new name where it stands, or it is not written.
+        if content != before
+            && !index_reads_the_rename_back(
+                ref_path,
+                before,
+                &content,
+                self.old_target,
+                self.new_target,
+                |kind| self.spellable(kind.pass()),
+            )
+        {
+            log::warn!(
+                "rename: {ref_path} would not read back as linking to the new name where its links stand; they are left as they are"
+            );
+            return Rewrite {
+                content: before.to_owned(),
+                left_behind: true,
+            };
+        }
         Rewrite {
             content,
             left_behind,

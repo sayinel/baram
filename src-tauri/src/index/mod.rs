@@ -19,9 +19,9 @@ pub use extractor::{
 };
 pub use relative_links::rewrite_relative_wikilinks;
 pub use rewriter::{
-    block_reference_can_spell, block_references_to, own_block_reference_lines,
-    replace_block_id_refs_to, replace_block_reference_target, replace_wikilink_target,
-    wikilink_can_spell, wikilinks_to,
+    block_reference_can_spell, block_references_to, index_reads_the_rename_back,
+    own_block_reference_lines, replace_block_id_refs_to, replace_block_reference_target,
+    replace_wikilink_target, wikilink_can_spell, wikilinks_to,
 };
 
 use extractor::{extract_file_tags, extract_links};
@@ -62,7 +62,7 @@ pub enum IndexError {
 /// `ipc/types.ts` `linkType`: "wikilink" | "blockRef" | "blockEmbed".
 macro_rules! link_kinds {
     ($($kind:ident),+ $(,)?) => {
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
         #[serde(rename_all = "camelCase")]
         pub enum LinkKind { $($kind),+ }
 

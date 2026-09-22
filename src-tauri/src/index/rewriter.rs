@@ -6,7 +6,7 @@ use std::sync::LazyLock;
 
 use super::extractor::{extract_links, BLOCK_REF_RE};
 use super::normalizer::{file_key, normalize_target};
-use super::RewritePass;
+use super::{LinkKind, RewritePass};
 use crate::md::literal::{front_matter_end, source_lines, Literal};
 
 // §33 Wikilink replace regex: captures (alias, target, rest) for replace_wikilink_target
@@ -247,6 +247,47 @@ pub fn replace_block_reference_target(
     .0
 }
 
+/// Whether the index reads `after` — a referrer as the two rename passes
+/// left it — as it read `before` with every reference the passes respelled
+/// filed under the new key, and nothing else changed: the same lines, kinds
+/// and block ids (issue 678, review). A stem the predicates pass can still
+/// make prose literal where it lands: `[[a`b`c]]` closes a code span around
+/// itself, and `[[a`b]]` pairs with a backtick already on the line, so the
+/// link the rename wrote is read by nobody — a backlink gone, in a file
+/// reported as updated. The predicates look at the stem alone and cannot see
+/// the line; this reads the output back with the index's own reader, and
+/// the file rename leaves a file whose reading changed.
+///
+/// `respelled` says which kinds the rename rewrote — the passes that could
+/// spell the new stem; a kind it left keeps the old key on both sides.
+pub fn index_reads_the_rename_back(
+    ref_path: &str,
+    before: &str,
+    after: &str,
+    old_target: &str,
+    new_target: &str,
+    respelled: impl Fn(LinkKind) -> bool,
+) -> bool {
+    let old_key = file_key(old_target);
+    let new_key = file_key(new_target);
+    let reading = |content: &str, renamed: bool| {
+        let mut seen: Vec<(u32, LinkKind, String, Option<String>)> =
+            extract_links(ref_path, content)
+                .into_iter()
+                .map(|e| {
+                    let mut key = normalize_target(&e.target);
+                    if renamed && key == old_key && respelled(e.link_type) {
+                        key.clone_from(&new_key);
+                    }
+                    (e.line, e.link_type, key, e.block_id)
+                })
+                .collect();
+        seen.sort();
+        seen
+    };
+    reading(before, true) == reading(after, false)
+}
+
 /// Whether a block reference can name a file with this stem. `)`, `#` and `|`
 /// end the target of `REF_REPLACE_RE` (and of the index's `BLOCK_REF_RE`);
 /// a line break ends the line every scanner reads, so a reference holding one
@@ -368,6 +409,46 @@ pub fn own_block_reference_lines(content: &str, id: Option<&str>) -> usize {
 mod tests {
     use super::*;
     use crate::index::LinkKind;
+
+    /// issue 678 (review) — what the read-back gate compares, on the case
+    /// that made it necessary. What fails this: dropping the `respelled`
+    /// condition from the key mapping (the second case then reads as a
+    /// change), or reading the written line as a link (the third).
+    #[test]
+    fn the_index_reads_a_rename_back_unless_the_new_stem_made_a_link_literal() {
+        let before = "`x [[old]] and ((old#^b1))\n";
+        // A correct rewrite: the same reading, under the new key.
+        assert!(index_reads_the_rename_back(
+            "/v/r.md",
+            before,
+            "`x [[new]] and ((new#^b1))\n",
+            "old",
+            "new",
+            |_| true
+        ));
+        // A pass the rename could not spell keeps the old key on both sides.
+        assert!(index_reads_the_rename_back(
+            "/v/r.md",
+            before,
+            "`x [[new]] and ((old#^b1))\n",
+            "old",
+            "new",
+            |kind| kind == LinkKind::Wikilink
+        ));
+        // The stem `a`b` pairs with the backtick already on the line: the
+        // index reads the written line as nothing, so the rename must not
+        // write it.
+        let written = "`x [[a`b]]\n";
+        assert!(extract_links("/v/r.md", written).is_empty());
+        assert!(!index_reads_the_rename_back(
+            "/v/r.md",
+            "`x [[old]]\n",
+            written,
+            "old",
+            "a`b",
+            |_| true
+        ));
+    }
 
     // §30a replace_block_id_refs_to tests
     fn keys(list: &[&str]) -> Vec<String> {

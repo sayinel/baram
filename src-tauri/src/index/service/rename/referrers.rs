@@ -71,7 +71,9 @@ pub(super) struct Rewritten {
 /// What `rewrite` made of one referrer: the content to write, and whether it
 /// left a reference to the old name in it on purpose — a file rename does,
 /// for the links (wikilinks, block references) that cannot spell the new
-/// stem. Such a file is reported whether or not anything else in it changed.
+/// stem, and for a file whose rewritten links the index would not read back
+/// where they stand (`index_reads_the_rename_back`). Such a file is reported
+/// whether or not anything else in it changed.
 pub(super) struct Rewrite {
     pub(super) content: String,
     pub(super) left_behind: bool,
