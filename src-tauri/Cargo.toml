@@ -34,7 +34,14 @@ regex = "1"
 # §29 (issue 620) — reads which bytes of a note are prose so the link index and its
 # rewriters can leave code, HTML, math and images alone. Structure only: link syntax
 # stays regex on the source. default-features drops the HTML renderer and the CLI.
-pulldown-cmark = { version = "0.13", default-features = false }
+# issue 669: exact, not a range. The literal analysis reads block structure
+# from this crate, and its rules were measured against this version — a patch
+# release can change what a fence or a container encloses with no review, and
+# the parity corpus only covers the documents it names. The npm side of the
+# same grammar has a version sentinel (`literal-measured-stack.test.ts`); this
+# is Rust's. Moving it means re-running `scripts/literal-parity.sh` and the
+# `md::literal` corpus, then updating this line deliberately.
+pulldown-cmark = { version = "=0.13.4", default-features = false }
 keyring = { version = "3", features = ["apple-native"] }
 # vendored-openssl builds OpenSSL from source so the x86_64 slice of the
 # macOS Universal Binary cross-compiles without a host-arch system OpenSSL.

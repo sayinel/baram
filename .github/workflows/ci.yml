@@ -64,6 +64,10 @@ jobs:
               # list maintained by hand is how this happened the first time.
               - 'registry/index.json'
               - 'src/plugins/revocation-client.ts'
+              # issue 669: the literal-parity check below runs these, so a PR that
+              # edits one must run the job that would notice it broke.
+              - 'scripts/literal-parity.sh'
+              - 'scripts/build-literal-parity.ts'
       - name: Determine rust job necessity
         id: decide
         shell: bash
@@ -198,6 +202,20 @@ jobs:
 
       - name: Cargo test
         run: npm run rust:_test
+
+      # issue 669: the Rust literal analysis re-implements what the editor's
+      # remark stack reads, and `md/literal`'s own corpus is the evidence. The
+      # committed parity fixture is generated from that corpus, so a PR that
+      # adds, changes or removes a `refs()` case leaves the fixture describing
+      # a corpus that no longer exists — and both parity readers would keep
+      # passing against the stale one. This compares the two.
+      #
+      # Cargo is invoked with the `parity-dump` feature, which is off
+      # everywhere else, so the recorder compiles nowhere but here. Like the
+      # pandoc step below, the script refuses an empty dump: a recorder that
+      # silently did not run would otherwise be a green check of nothing.
+      - name: Literal parity corpus matches the tests
+        run: scripts/literal-parity.sh check
 
       # Ignored on purpose in the normal run (needs the pandoc binary); the
       # name filter keeps the other ignored tests — live OpenRouter calls, the
