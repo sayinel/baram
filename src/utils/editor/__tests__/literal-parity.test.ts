@@ -43,11 +43,14 @@ const fixture = JSON.parse(
 
 describe("the literal parity corpus (issue 669)", () => {
   // A fixture that lost its cases would be a green run of zero assertions.
+  // ‼️ The measured corpus, not a round number. A floor of 200 cases and 400
+  // markers let a third of them be deleted and still pass; lowering these is
+  // the edit that says a removal was deliberate.
   it("holds the corpus it was generated from", () => {
-    expect(fixture.cases.length).toBeGreaterThan(200);
+    expect(fixture.cases.length).toBeGreaterThanOrEqual(283);
     expect(
       fixture.cases.reduce((n, c) => n + c.editable.length, 0),
-    ).toBeGreaterThan(400);
+    ).toBeGreaterThanOrEqual(434);
   });
 
   // The oracle classified by this set. If production's set moves, the numbers

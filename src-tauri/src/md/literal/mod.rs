@@ -391,15 +391,19 @@ mod tests {
     /// Off unless the `parity-dump` feature is on, so an ordinary
     /// `cargo test` compiles none of it. Turning the feature on is still not
     /// enough: the run also has to name a file in `BARAM_PARITY_DUMP`.
-    /// `scripts/literal-parity.sh` is the one command that does both, and it
-    /// passes `--test-threads=1` — the records are appended as they happen,
-    /// so one writer is what keeps them ordered and whole.
+    /// `scripts/literal-parity.sh` is the one command that does both.
+    ///
+    /// Records are appended as the cases run, in whatever order the harness
+    /// runs them: the mutex below keeps each line whole and the generator
+    /// sorts by `(test, ordinal)`, so the dump needs no `--test-threads=1`
+    /// to reproduce. Measured — a parallel dump rebuilds the committed
+    /// fixture byte for byte.
     ///
     /// ‼️ Fails closed. The test name comes from the thread libtest names
     /// after the test, which is not a promised interface; if it is missing or
     /// is `main`, the run stops rather than filing records under a name that
     /// would merge unrelated cases.
-    #[cfg(feature = "parity-dump")]
+    #[cfg(all(test, feature = "parity-dump"))]
     mod parity_dump {
         use super::{LazyLock, Regex};
         use sha2::{Digest, Sha256};
@@ -457,8 +461,13 @@ mod tests {
                 "parity-dump: the case ran on the main thread, so every record \
                  would be filed under one name"
             );
+            // ‼️ The lock is held across the write, not only across the
+            // ordinal. While it covered only the ordinal, appending from
+            // several test threads tore the lines apart — 267 of 284 were
+            // unparseable. Serialising the write costs nothing here: this
+            // compiles only under the dump feature.
+            let mut seen = ORDINALS.lock().unwrap();
             let ordinal = {
-                let mut seen = ORDINALS.lock().unwrap();
                 let next = seen.entry(test.clone()).or_insert(0);
                 let ordinal = *next;
                 *next += 1;
@@ -483,6 +492,7 @@ mod tests {
                 .open(&path)
                 .expect("parity-dump: could not open BARAM_PARITY_DUMP for appending");
             writeln!(file, "{line}").expect("parity-dump: could not append a record");
+            drop(seen);
         }
     }
 
@@ -495,7 +505,7 @@ mod tests {
             .find_iter(md)
             .map(|m| !literal.overlaps(m.range()))
             .collect();
-        #[cfg(feature = "parity-dump")]
+        #[cfg(all(test, feature = "parity-dump"))]
         parity_dump::record(md, &editable);
         editable
     }
@@ -544,9 +554,15 @@ mod tests {
 
         let fixture: Fixture =
             serde_json::from_str(include_str!("../fixtures/literal-parity.json")).unwrap();
-        // A fixture that lost its cases would be a green run of zero
-        // assertions — the same trap the corpus recorder guards against.
-        assert!(fixture.cases.len() > 200, "{}", fixture.cases.len());
+        // ‼️ The baseline is the measured corpus, not a round number: a floor
+        // of 200 let a third of the cases be deleted and still pass. Removing
+        // a case is a deliberate edit and belongs in review, so lowering this
+        // is the edit that says so.
+        assert!(
+            fixture.cases.len() >= 283,
+            "the parity corpus shrank to {} cases",
+            fixture.cases.len()
+        );
         for case in &fixture.cases {
             let literal = Literal::of(&case.markdown);
             let body_start = front_matter_end(&case.markdown);
