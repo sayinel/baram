@@ -2,13 +2,15 @@
 # issue 669 — record the `md::literal` parity corpus, or check the committed
 # one against what the tests actually exercise.
 #
-#   scripts/literal-parity.sh dump <out.jsonl>   record the corpus
-#   scripts/literal-parity.sh check              compare with the committed inventory
+#   scripts/literal-parity.sh regenerate         rewrite both generated files
+#   scripts/literal-parity.sh check              compare them with a fresh dump
+#   scripts/literal-parity.sh dump <out.jsonl>   record the corpus only
 #
 # The recorder lives in `src-tauri/src/md/literal/mod.rs` behind the
 # `parity-dump` feature, so an ordinary `cargo test` compiles none of it. It
-# appends one JSON line per document as the case runs, which is why this runs
-# single-threaded: one writer keeps the records ordered and whole.
+# appends one JSON line per document as the case runs; the recorder holds its
+# lock across the write and the generator sorts, so the harness may run the
+# cases in any order and on any number of threads.
 #
 # ‼️ The dump is written to a fresh file every time. An append to a stale file
 # would look like a corpus that grew.
@@ -21,9 +23,34 @@ fixture="$repo/src-tauri/src/md/fixtures/literal-parity.json"
 
 dump_to() {
   local out="$1"
-  rm -f "$out"
-  BARAM_PARITY_DUMP="$out" cargo test --manifest-path "$manifest" \
-    --features parity-dump --lib -- md::literal --test-threads=1 >/dev/null
+  # ‼️ The recorder appends, so a stale file would read as a corpus that grew
+  # — and this deletes whatever is at that path first. Refuse the two
+  # generated artifacts by name and anything that is not a `.jsonl`: following
+  # the regeneration instructions with the wrong similarly-named argument
+  # would otherwise overwrite a committed fixture.
+  case "$out" in
+    *.jsonl) ;;
+    *) echo "literal-parity: the dump goes to a .jsonl file, not $out" >&2; exit 2 ;;
+  esac
+  if [ "$out" = "$inventory" ] || [ "$out" = "$fixture" ]; then
+    echo "literal-parity: $out is a generated artifact, not a dump destination" >&2
+    exit 2
+  fi
+  rm -f -- "$out"
+  # ‼️ cargo's output is captured, not discarded. The filter includes the test
+  # that reads the committed fixture, so a fixture the corpus outgrew makes
+  # THIS step fail — and with the output on /dev/null all that reached the log
+  # was `error: test failed, to rerun pass --lib`, with no assertion message.
+  local log
+  log="$(mktemp "${TMPDIR:-/tmp}/literal-parity-cargo.XXXXXX")"
+  if ! BARAM_PARITY_DUMP="$out" cargo test --manifest-path "$manifest" \
+    --features parity-dump --lib -- md::literal > "$log" 2>&1; then
+    echo "literal-parity: the corpus run failed before it could be compared:" >&2
+    cat "$log" >&2
+    rm -f -- "$log"
+    exit 1
+  fi
+  rm -f -- "$log"
   # A filter that matches nothing is a green run of zero tests (the discipline
   # the pandoc smoke step in ci.yml states). An empty dump means the feature
   # did not compile in, the env var did not reach the recorder, or the module
@@ -40,9 +67,21 @@ case "${1:-}" in
     [ $# -eq 2 ] || { echo "usage: $0 dump <out.jsonl>" >&2; exit 2; }
     dump_to "$2"
     ;;
+  regenerate)
+    # One command, so the two generated files are always written from the same
+    # dump. Every drift message points here.
+    dir="$(mktemp -d "${TMPDIR:-/tmp}/literal-parity.XXXXXX")"
+    trap 'rm -rf -- "$dir"' EXIT
+    dump_to "$dir/corpus.jsonl"
+    npx tsx "$repo/scripts/build-literal-parity.ts" "$dir/corpus.jsonl"
+    ;;
   check)
-    tmp="$(mktemp -t literal-parity)"
-    trap 'rm -f "$tmp" "$tmp.now"' EXIT
+    # `mktemp -d` and a fresh name inside it: deleting the file mktemp made
+    # and reopening the name would hand the window to whoever guessed it.
+    # `-t` without a template is not portable, so the template is explicit.
+    dir="$(mktemp -d "${TMPDIR:-/tmp}/literal-parity.XXXXXX")"
+    trap 'rm -rf -- "$dir"' EXIT
+    tmp="$dir/corpus.jsonl"
     dump_to "$tmp"
     for f in "$inventory" "$fixture"; do
       [ -f "$f" ] || { echo "literal-parity: $f is missing" >&2; exit 1; }
@@ -80,7 +119,7 @@ case "${1:-}" in
         for (const k of added) console.error(`  added    ${k}`);
         for (const k of removed) console.error(`  removed  ${k}`);
         for (const k of changed) console.error(`  changed  ${k}`);
-        console.error("Regenerate: scripts/literal-parity.sh dump /tmp/corpus.jsonl  (then rebuild the fixture)");
+        console.error("Regenerate: scripts/literal-parity.sh regenerate");
         process.exit(1);
       }
       // ‼️ The inventory says which documents exist; the fixture says what
@@ -94,8 +133,10 @@ case "${1:-}" in
       // every check below. The fresh dump decides instead: only a document
       // the recorder just measured as oversized may carry the flag.
       const limit = JSON.parse(fs.readFileSync(process.argv[2], "utf8")).maxDocumentBytes;
-      if (typeof limit !== "number") {
-        console.error("literal-parity: the inventory does not say maxDocumentBytes");
+      // The threshold is data in a file this check is checking, so it is not
+      // free to move: a larger one would let a case be dropped as "oversized".
+      if (limit !== 8192) {
+        console.error(`literal-parity: the inventory says maxDocumentBytes=${JSON.stringify(limit)}, expected 8192`);
         process.exit(1);
       }
       const wrongly = committed.filter(
@@ -127,14 +168,32 @@ case "${1:-}" in
         for (const r of missing) console.error(`  no case for      ${key(r)}`);
         for (const k of orphaned) console.error(`  no document      ${k}`);
         for (const c of stale) console.error(`  stale document   ${key(c)}`);
-        console.error("Regenerate: scripts/literal-parity.sh dump /tmp/corpus.jsonl && npx tsx scripts/build-literal-parity.ts /tmp/corpus.jsonl");
+        console.error("Regenerate: scripts/literal-parity.sh regenerate");
         process.exit(1);
       }
       console.error(`literal-parity: ${now.length} documents match the committed inventory, ${cases.size} of them with a case whose digest checks out`);
     ' "$tmp" "$inventory" "$fixture"
+    # ‼️ Last: rebuild both files from the same dump and compare bytes. The
+    # comparison above reports WHICH document drifted, which is why it runs
+    # first; this one is the catch-all — it covers everything the generator
+    # derives and the identities do not reach, contract text included.
+    mkdir -p "$dir/rebuilt"
+    npx tsx "$repo/scripts/build-literal-parity.ts" "$tmp" "$dir/rebuilt" >/dev/null
+    for f in literal-parity.json literal-parity-inventory.json; do
+      if ! cmp -s "$dir/rebuilt/$f" "$repo/src-tauri/src/md/fixtures/$f"; then
+        echo "literal-parity: $f is not what the generator produces from this corpus." >&2
+        # Cut the lines: the contract is a single long string and an
+        # untrimmed diff of it buries the change it is reporting.
+        diff "$repo/src-tauri/src/md/fixtures/$f" "$dir/rebuilt/$f" \
+          | head -20 | cut -c1-160 >&2 || true
+        echo "Regenerate: scripts/literal-parity.sh regenerate" >&2
+        exit 1
+      fi
+    done
+    echo "literal-parity: both generated files match a rebuild from this corpus" >&2
     ;;
   *)
-    echo "usage: $0 {dump <out.jsonl>|check}" >&2
+    echo "usage: $0 {dump <out.jsonl>|check|regenerate}" >&2
     exit 2
     ;;
 esac

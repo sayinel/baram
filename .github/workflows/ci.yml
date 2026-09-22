@@ -210,8 +210,10 @@ jobs:
       # a corpus that no longer exists — and both parity readers would keep
       # passing against the stale one. This records the corpus afresh and
       # checks it against BOTH generated files: identities against the
-      # inventory, and each fixture case's document against its own digest,
-      # so updating one file and not the other cannot pass.
+      # inventory, each fixture case's document against its own digest, and
+      # finally both files against a rebuild from the same dump — so updating
+      # one file and not the other cannot pass, and neither can hand-editing
+      # anything else the generator derives.
       #
       # Cargo is invoked with the `parity-dump` feature, which no other job
       # and no default build turns on. Like the

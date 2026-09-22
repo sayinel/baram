@@ -82,22 +82,40 @@ function reason(markdown: string, start: number, end: number): string {
   return overlapping.size > 0 ? [...overlapping].sort().join("+") : "prose";
 }
 
-const [corpusPath] = process.argv.slice(2);
+const [corpusPath, outDir] = process.argv.slice(2);
 if (!corpusPath) {
   console.error(
-    "usage: npx tsx scripts/build-literal-parity.ts <corpus.jsonl>",
+    "usage: npx tsx scripts/build-literal-parity.ts <corpus.jsonl> [outDir]",
   );
   process.exit(2);
 }
 
-const records: Record<string, any>[] = readFileSync(corpusPath, "utf8")
-  .trim()
-  .split("\n")
-  .map((l) => JSON.parse(l));
-if (records.length === 0) {
-  console.error("build-literal-parity: the corpus is empty");
+const source = readFileSync(corpusPath, "utf8").trim();
+if (source === "") {
+  console.error(
+    `build-literal-parity: ${corpusPath} is empty — the recorder did not run`,
+  );
   process.exit(1);
 }
+// Parsed line by line so a truncated record names its line instead of
+// arriving as a bare SyntaxError from deep inside a map.
+const records: Record<string, any>[] = source.split("\n").map((line, i) => {
+  try {
+    return JSON.parse(line) as Record<string, any>;
+  } catch {
+    console.error(
+      `build-literal-parity: ${corpusPath}:${i + 1} is not a JSON record — a dump taken without a single writer tears its lines`,
+    );
+    process.exit(1);
+  }
+});
+// ‼️ Sorted, so the fixture does not depend on the order the test harness
+// happened to run in. With this, a dump taken in parallel and one taken
+// single-threaded produce the same two files — the flag guards against torn
+// lines, not against a reshuffled fixture.
+records.sort((x, y) =>
+  x.test === y.test ? x.ordinal - y.ordinal : x.test < y.test ? -1 : 1,
+);
 
 const byKey = new Map<string, boolean[]>(
   records.map((r) => [`${r.test}#${r.ordinal}`, r.literalAlone as boolean[]]),
@@ -149,14 +167,24 @@ for (const record of records) {
   });
 }
 
-const fixtures = path.join(
-  import.meta.dirname,
-  "..",
-  "src-tauri",
-  "src",
-  "md",
-  "fixtures",
-);
+// `outDir` exists so `scripts/literal-parity.sh check` can build into a
+// temporary directory and compare the result with what is committed. Without
+// it the check compared document identities only, and everything else this
+// file derives — the contract text, the ordering — could sit stale in the
+// fixture with nothing to say so. It did: a regenerated contract was reverted
+// by hand twice and every gate stayed green.
+//
+// The gates that read the fixture are the three that name it —
+//   find src src-tauri/src scripts .github -type f \
+//     \( -name '*.ts' -o -name '*.rs' -o -name '*.sh' -o -name '*.yml' \) \
+//     -print0 | xargs -0 grep -lF literal-parity
+// — and none of them reaches `contract`: the Rust reader's `Fixture` struct
+// deserialises `cases` alone, and the vitest reader declares the field in its
+// interface without asserting it. `literalNodeTypes` is the exception; that
+// one the vitest reader does compare against production.
+const fixtures =
+  outDir ??
+  path.join(import.meta.dirname, "..", "src-tauri", "src", "md", "fixtures");
 const contract = [
   "issue 669. One boolean per `((n#^o))` occurrence: would the link index read it as a",
   "rewritable reference? Rust answers `!Literal::of(md).overlaps(range) && range.start >=",
@@ -176,9 +204,17 @@ const contract = [
   "an empty display, which production rejects — and the recorder asserts the two counts agree,",
   "so a case production could not see stops the dump instead of being filed here.",
   "",
+  "What the corpus reaches, counted from `why` over its markers: prose 227, math 118,",
+  "inlineMath 36, code 23, html 9, inlineCode 8, frontmatter 6, definition 3, image 2,",
+  "imageReference 2. `yaml` never appears as a label because the front-matter clause is",
+  "answered first — those are the 6 `frontmatter` markers. So a grammar change under",
+  "definitions, images or reference images is thinly covered here, and one that only moves",
+  "strikethrough is not covered at all: `delete` is not a literal type, and flipping remark-gfm",
+  "`singleTilde` moved no classification in nine probed shapes. That is the blind spot the",
+  "49-package version sentinel (`literal-measured-stack.test.ts`) exists for.",
+  "",
   "GENERATED — do not edit. Regenerate with:",
-  "  scripts/literal-parity.sh dump /tmp/corpus.jsonl",
-  "  npx tsx scripts/build-literal-parity.ts /tmp/corpus.jsonl",
+  "  scripts/literal-parity.sh regenerate",
 ].join("\n");
 
 writeFileSync(
