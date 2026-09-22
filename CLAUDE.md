@@ -178,6 +178,10 @@ baram/
   stem 도 referrer 줄의 백틱과 짝을 지어 링크를 literal 로 만들 수 있고, 그건 stem 이 아니라 **줄**의 성질이라 되읽어야
   보인다. ③ 의 `skipped.push` 는 한 곳이 아니다 — `rename/referrers.rs` 여섯(referrer 의 원인별)과 `rename/file.rs`
   하나(rename 되는 노트); `LinkPasses` 는 `left_behind` 플래그만 세운다
+  ‼️ **이 판정 두 층은 파일 rename 입구에만 있다** — 디렉터리 rename 이 `relative_links.rs` 로 고쳐 쓰는 `[[./x]]`·`[[../x]]` 는
+  거치지 않고(폴더를 `C# notes` 로 바꾸면 `[[./C# notes/x]]` 가 쓰여 `./C` 로 읽힌다 — 실측), block ID rename 의 새 id 는 프런트
+  `BLOCK_ID_PATTERN` 이 거르며 Rust 는 재검증하지 않는다. 프런트의 블록 메뉴 "링크 복사" 도 판정 없이 쓴다. 링크를 쓰는
+  입구를 더하거나 고칠 때 이 층을 같이 걸 것
   - **`rename/file.rs` 를 베껴 "폴더로 이동" 을 만들면 상대 경로 링크가 조용히 끊긴다** — 이동은 stem 을 바꾸지
     않아 `stem_unchanged` 가 `Unchanged::Ignore` 로 가고 두 패스가 no-op 이 된다. `rewrite_relative_wikilinks`
     (호출자는 `rename/namespace.rs` 하나)도 답이 아니다 — 그건 *옮겨진 디렉터리로 들어가는* 링크를 고치지,
