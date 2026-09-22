@@ -53,6 +53,22 @@ describe("DIALS", () => {
     expect(pad?.toVars(4)).toEqual({ "--editor-padding": "4rem" });
   });
 
+  it("emits the list guide strength as a percentage, and emits it at zero", () => {
+    // 무엇이 이것을 실패시키는가, 둘이다.
+    //
+    // 단위: `color-mix()` 의 비율 인자는 <percentage> 다. 맨 숫자 `22` 를 내보내면
+    // 그 선언 전체가 무효가 되어 가이드가 통째로 사라진다 — 조용한 실패라서
+    // 단위를 여기서 고정한다.
+    //
+    // 0 에서 **비우지 않는 것**: `editorMaxWidth` 는 0 을 "무제한" 으로 읽어 빈 맵을
+    // 돌려주지만, 여기서 0 은 "배경색과 같은 색" 즉 끄기다. 빈 맵을 돌려주면
+    // `lists.css` 의 fallback 22% 가 지배해서 끄기가 켜기가 된다.
+    const guide = DIALS.find((d) => d.id === "editorListGuideStrength");
+    expect(guide?.defaultValue).toBe(22);
+    expect(guide?.toVars(22)).toEqual({ "--editor-guide-strength": "22%" });
+    expect(guide?.toVars(0)).toEqual({ "--editor-guide-strength": "0%" });
+  });
+
   it("is keyed by dial ids and stays sparse", () => {
     // 무엇이 이것을 실패시키는가: DialValues 가 total `Record<DialId, number>` 로
     // 바뀌면 이 희소 리터럴이 타입 오류가 되어 파일이 컴파일되지 않는다. 희소성은

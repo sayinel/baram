@@ -892,6 +892,8 @@
   "settings.editor.editorLineBreak.desc": "본문에서 줄이 바뀌는 방식",
   "settings.editor.editorLineBreak.keepAll": "단어 단위 (한글)",
   "settings.editor.editorLineBreak.normal": "기본",
+  "settings.editor.editorListGuideStrength": "리스트 가이드 농도",
+  "settings.editor.editorListGuideStrength.desc": "중첩 리스트의 들여쓰기 안내선이 드러나는 정도입니다. 0 이면 보이지 않습니다",
   "settings.editor.editorParagraphSpacing": "문단 간격",
   "settings.editor.editorParagraphSpacing.desc": "문단 사이 간격",
   "settings.editor.font": "글꼴",

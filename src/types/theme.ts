@@ -202,6 +202,7 @@ export const BUILT_IN_THEMES: ThemeDef[] = [
           "--color-editor-text": "#a9b1d6",
           "--color-editor-selection": "#283457",
           "--color-editor-cursor": "#c0caf5",
+          "--color-editor-guide-tint": "#a9b1d6",
 
           "--color-status-danger": "#f7768e",
           "--color-status-warning": "#e0af68",
@@ -244,6 +245,7 @@ export const BUILT_IN_THEMES: ThemeDef[] = [
           "--color-editor-text": "#657b83",
           "--color-editor-selection": "#e0dbc8",
           "--color-editor-cursor": "#586e75",
+          "--color-editor-guide-tint": "#657b83",
 
           "--color-status-danger": "#dc322f",
           "--color-status-warning": "#b58900",
@@ -286,6 +288,7 @@ export const BUILT_IN_THEMES: ThemeDef[] = [
           "--color-editor-text": "#839496",
           "--color-editor-selection": "#094a5c",
           "--color-editor-cursor": "#93a1a1",
+          "--color-editor-guide-tint": "#839496",
 
           "--color-status-danger": "#dc322f",
           "--color-status-warning": "#b58900",
@@ -328,6 +331,7 @@ export const BUILT_IN_THEMES: ThemeDef[] = [
           "--color-editor-text": "#d8dee9",
           "--color-editor-selection": "#434c5e",
           "--color-editor-cursor": "#d8dee9",
+          "--color-editor-guide-tint": "#d8dee9",
 
           "--color-status-danger": "#bf616a",
           "--color-status-warning": "#ebcb8b",
@@ -370,6 +374,7 @@ export const BUILT_IN_THEMES: ThemeDef[] = [
           "--color-editor-text": "#123d96",
           "--color-editor-selection": "#d8e6b3",
           "--color-editor-cursor": "#123d96",
+          "--color-editor-guide-tint": "#123d96",
 
           "--color-status-danger": "#ef4444",
           "--color-status-warning": "#eab308",
@@ -412,6 +417,7 @@ export const BUILT_IN_THEMES: ThemeDef[] = [
           "--color-editor-text": "#eec2da",
           "--color-editor-selection": "#2e4a28",
           "--color-editor-cursor": "#b4d156",
+          "--color-editor-guide-tint": "#eec2da",
 
           "--color-status-danger": "#ef4444",
           "--color-status-warning": "#eab308",

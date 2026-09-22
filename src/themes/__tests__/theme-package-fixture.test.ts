@@ -67,7 +67,7 @@ describe("the theme-package fixture shared with the backend", () => {
   // deleted a key from `theme.modes.light.colors` and changed another value, and every
   // existing assertion here stayed green (they only pin "the function copies `colors`
   // through unchanged", which is still true of a broken palette). This is the same
-  // 24-key / `THEME_COLOR_VALUE_RE` rule `theme-package-export.test.ts` already runs over
+  // `THEME_COLOR_KEYS` / `THEME_COLOR_VALUE_RE` rule `theme-package-export.test.ts` already runs over
   // `defaultColorsForBase`'s output, run here over the fixture's own literal data instead.
   it("the fixture's own palettes are complete THEME_COLOR_KEYS sets with THEME_COLOR_VALUE_RE-shaped values", () => {
     for (const mode of Object.keys(

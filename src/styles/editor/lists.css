@@ -128,13 +128,34 @@
  * push each level one step further right than the last. `::before` on the list is free —
  * markers live on `li::before`, and the windowing spacers on `.tiptap::before`.
  *
- * The colour is mixed from the editor's own two colours rather than borrowing
- * `--color-border-subtle`, which is theme-set and would have followed the theme too — but
- * it is tuned against the PANEL backgrounds, and `--color-editor-bg` is a separate theme
- * key. A theme is free to tint the editor surface without touching the chrome, and then a
- * chrome border sits at the wrong contrast on it. Mixing toward the background rather
- * than using an alpha keeps the rail opaque, so a selection sweeping across it does not
- * tint it.
+ * The colour is a mix of two channels that are deliberately kept apart (§369): a THEME
+ * picks the tint, a USER picks how much of it to mix in, and neither overwrites the
+ * other's choice.
+ *
+ * The tint is `--color-editor-guide-tint`, a `THEME_COLOR_KEYS` entry that aliases
+ * `--color-editor-text` by default, so an untouched theme looks exactly as it did when
+ * this read the text colour directly. It has to be that key rather than the text colour
+ * itself: a theme package's own CSS is wrapped in `@layer baram-theme` and stripped of
+ * `!important` by `utils/theme-css/sanitize.ts`, so it cannot outrank the unlayered
+ * `styles/generated/semantic-*.css`. `THEME_COLOR_KEYS` is applied as an inline custom
+ * property on `<html>` by `applyThemeVars`, and inline beats every layer — that list is
+ * the only way a theme reaches this declaration.
+ *
+ * The strength is the `editorListGuideStrength` dial. The `22%` here is the fallback that
+ * governs until the user moves the slider, because `appearance/apply.ts` deliberately
+ * writes no variable for a dial still on its default. `appearance/dials.ts` carries the
+ * same number as that dial's `defaultValue`, and `styles/__tests__/list-styling.test.ts`
+ * reads both files to keep them equal.
+ *
+ * Not `--color-border-subtle`, which is theme-set and would have followed the theme too —
+ * but it is tuned against the PANEL backgrounds, and `--color-editor-bg` is a separate
+ * theme key. A theme is free to tint the editor surface without touching the chrome, and
+ * then a chrome border sits at the wrong contrast on it.
+ *
+ * Mixing toward the background rather than using an alpha keeps the rail opaque, so a
+ * selection sweeping across it does not tint it. That is also what lets the dial's 0
+ * serve as "off": a 0% mix is the background colour, invisible while still opaque, so
+ * turning the guide off costs none of the property an alpha of 0 would have cost.
  *
  * The width is em, not a device pixel: a fixed-pixel rail reads as heavy chrome at a small
  * editor font and as a hairline at a large one. 0.09em is ~1.4px at the default 16px.
@@ -155,7 +176,7 @@
   content: "";
   background: color-mix(
     in srgb,
-    var(--color-editor-text) 22%,
+    var(--color-editor-guide-tint) var(--editor-guide-strength, 22%),
     var(--color-editor-bg)
   );
 }

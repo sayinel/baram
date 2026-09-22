@@ -20,6 +20,7 @@
 // someone adds inherits the constraint instead of re-opening the hole.
 import { describe, expect, it } from "vitest";
 
+import { DIALS } from "../../appearance/dials";
 import { THEME_COLOR_KEYS } from "../../types/theme";
 import { DERIVED_KEYS } from "../../utils/theme-vars";
 import {
@@ -279,6 +280,60 @@ describe("list geometry", () => {
       .filter(({ left }) => left === undefined || !left.startsWith("-"))
       .map(({ rule }) => where(rule));
     expect(wrongSide).toEqual([]);
+  });
+
+  it("mixes the indent guide from a theme key and the user's strength dial", () => {
+    // §369 — 가이드는 두 축으로 열려 있고, 이 테스트는 그 둘이 실제로 선언에
+    // 도달하는지를 본다. 무엇이 이것을 실패시키는가, 셋이다.
+    //
+    // ① 색조가 `--color-editor-guide-tint` 가 아니면 테마는 가이드에 닿지 못한다.
+    //    테마가 색을 싣는 통로는 `THEME_COLOR_KEYS` → `applyThemeVars` 의 `<html>`
+    //    인라인 하나뿐이다(테마 패키지 CSS 는 `@layer baram-theme` 안이고
+    //    `sanitize.ts` 가 `!important` 를 뗀다). 그래서 `--color-editor-text` 를
+    //    직접 읽는 선언으로 되돌리면 그 통로가 사라진다 — 두 변수 모두 오늘
+    //    같은 색으로 해석되므로 **화면으로는 구별되지 않는** 회귀다.
+    //
+    // ② fallback 과 다이얼 기본값이 갈리면, 사용자가 슬라이더를 처음 건드리는
+    //    순간 화면이 튄다(기본 출처인 다이얼은 변수를 쓰지 않으므로 — `apply.ts` —
+    //    건드리기 전까지는 fallback 이 지배한다). 한쪽만 고치는 것을 막으려고
+    //    두 파일을 여기서 함께 읽는다.
+    //
+    // ③ 농도 변수를 아예 읽지 않으면 다이얼이 조용히 무의미해진다.
+    const guides = LIST_RULES.filter((rule) =>
+      selectorParts(rule.selector).some(
+        (part) =>
+          /\bli\b/u.test(part) &&
+          /^(?:ul|ol)::before$/u.test(selectorTarget(part)),
+      ),
+    );
+    expect(guides.length).toBeGreaterThan(0);
+
+    const dial = DIALS.find((d) => d.id === "editorListGuideStrength");
+    expect(dial).toBeDefined();
+
+    const offenders: string[] = [];
+    for (const rule of guides) {
+      const background = cssDeclarations(rule.body).find(
+        (d) => d.prop === "background",
+      )?.value;
+      if (background === undefined) {
+        offenders.push(`${where(rule)} — no background`);
+        continue;
+      }
+      if (!background.includes("var(--color-editor-guide-tint)")) {
+        offenders.push(`${where(rule)} — tint is not the theme key`);
+      }
+      const fallback =
+        /var\(\s*--editor-guide-strength\s*,\s*(\d+)%\s*\)/u.exec(background);
+      if (fallback === null) {
+        offenders.push(`${where(rule)} — no strength var with a % fallback`);
+      } else if (Number(fallback[1]) !== dial?.defaultValue) {
+        offenders.push(
+          `${where(rule)} — fallback ${fallback[1]}% != dial default ${String(dial?.defaultValue)}`,
+        );
+      }
+    }
+    expect(offenders).toEqual([]);
   });
 
   it("derives every vertical placement from the line height setting", () => {
