@@ -159,6 +159,8 @@ function describeDial(dialId: DialId, t: Translate): string {
       return t("settings.editor.editorListGuideStrength.desc");
     case "editorMaxWidth":
       return t("settings.editor.maxWidth.desc");
+    case "editorOrderedMarkerAlign":
+      return t("settings.editor.editorOrderedMarkerAlign.desc");
     case "editorPadding":
       return t("settings.appearance.editorPadding.desc");
     case "editorParagraphSpacing":
@@ -221,6 +223,10 @@ function formatDialValue(
       return rounded === 0
         ? t("settings.editor.maxWidth.noLimit")
         : `${rounded}px`;
+    // editorLineBreak·editorEmphasisStyle 과 같은 이유로 빈 문자열이다 — 열거의
+    // 값 readout 은 select 자체가 이미 보여 준다.
+    case "editorOrderedMarkerAlign":
+      return "";
     case "editorPadding":
       return `${rounded}rem`;
     case "editorParagraphSpacing":

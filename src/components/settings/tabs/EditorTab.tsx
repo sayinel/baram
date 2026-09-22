@@ -343,6 +343,13 @@ export function EditorTab() {
         label={t("settings.editor.editorListGuideStrength")}
       />
 
+      {/* §5.1 — 순서 있는 리스트의 번호가 어느 쪽으로 자라는가. 안내선 농도와 같은
+          리스트 기하 축이라 바로 다음에 둔다. */}
+      <AppearanceDialRow
+        dialId="editorOrderedMarkerAlign"
+        label={t("settings.editor.editorOrderedMarkerAlign")}
+      />
+
       <SettingsRow
         description={t("settings.editor.virtualizeLargeDocs.desc")}
         label={t("settings.editor.virtualizeLargeDocs")}

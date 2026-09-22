@@ -200,6 +200,12 @@ const ALLOWLIST = new Set([
   // 없다 — `--color-editor-guide-tint` 는 런타임 변수가 아니라 생성된 토큰이라
   // `styles/generated/semantic-*.css` 에 정의가 있다.
   "--editor-guide-strength",
+  // §5.1 순서 있는 마커의 정렬 — 같은 다이얼 기계. ‼️ 다른 다이얼과 달리 이
+  // fallback(`left`)은 "다이얼이 생기기 전과 같다" 가 **아니다**: 그 전의 렌더는
+  // 마침표 기준(`right`)이었고, 기본값을 숫자 기준으로 바꾼 것이 그 변경의 의도다.
+  // fallback 이 지켜야 하는 것은 옛 화면이 아니라 다이얼의 `defaultValue` 이고,
+  // 둘의 일치는 `styles/__tests__/list-styling.test.ts` 가 두 파일을 함께 읽어 고정한다.
+  "--editor-ordered-marker-align",
   "--editor-zoom",
   "--journal-font-family",
   "--journal-header-bg",
