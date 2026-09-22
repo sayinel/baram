@@ -52,28 +52,138 @@
 .tiptap ul,
 .tiptap ol {
   --list-gutter: 1.4em;
-  --list-arrow-offset: 0.2em;
+  --list-arrow-offset: 0.3em;
 
   padding-left: var(--list-gutter);
   margin: 0.5em 0;
   list-style: none;
 }
 
-/* Ordered markers are text, not a fixed column, so the arrow clears them from further out.
+/* How far the hover fold arrow sits OUTSIDE the list's left edge, and with it the only
+ * thing that sets the gap between the arrow's triangle and the marker it points at.
+ *
+ * That gap is `offset − 0.5em − 0.1875em + <where the marker's own left edge sits>`: the
+ * arrow's 1em box starts at `-offset`, and of it only a 0.375em triangle paints, centred.
+ * Both offsets were raised in §5.1 because both gaps read as touching — an ordered list
+ * had 0.11em and a bullet list 0.24em, and the ordered one is the tighter of the two
+ * precisely because its marker is text that fills its gutter. They now land within 0.02em
+ * of each other, so the two list kinds read as one system rather than two spacings.
+ *
  * Declared on the base rule too, so a bullet list nested inside an ordered one resets it
  * rather than inheriting the ordered offset. */
 .tiptap ol {
-  --list-arrow-offset: 0.5em;
+  --list-arrow-offset: 0.75em;
 }
 
+/* TWO DIGITS. `:has(> li:nth-child(10))` asks "does this list reach ten items?" — the only
+ * way CSS can count. `[start]` is the companion question: it is emitted only when a list
+ * does not begin at 1, and such a list reaches two digits with far fewer items.
+ *
+ * Asked as a bare attribute it over-reserves, and under `number` alignment a reader sees
+ * that: `2. 3. 4.` never reaches two digits, yet every marker in it sat a digit's width
+ * further from its own text. CSS cannot read `start` as a NUMBER — but it does not have to.
+ * A list starting at s reaches ten at its (11 − s)-th item, and the single-digit values of
+ * s are a finite set, so the rules below hand the one-digit gutter BACK to the lists that
+ * cannot reach two digits. Written as a reset rather than as an exclusion on the rule above
+ * because `:not(:has(…))` takes one pseudo-class — a `:not()` of a selector LIST is a newer
+ * grammar than the `:has()` this file already depends on, and an unsupported selector list
+ * does not degrade, it drops every rule in it.
+ *
+ * A start of ten or more keeps the bare `[start]`, which is correct at its first item. */
 .tiptap ol[start],
 .tiptap ol:has(> li:nth-child(10)) {
   --list-gutter: max(1.4em, calc(2ch + 0.6em));
 }
 
-/* Must follow the two-digit rule — same specificity, so source order decides. */
-.tiptap ol:has(> li:nth-child(100)) {
+.tiptap ol[start="0"]:not(:has(> li:nth-child(11))),
+.tiptap ol[start="2"]:not(:has(> li:nth-child(9))),
+.tiptap ol[start="3"]:not(:has(> li:nth-child(8))),
+.tiptap ol[start="4"]:not(:has(> li:nth-child(7))),
+.tiptap ol[start="5"]:not(:has(> li:nth-child(6))),
+.tiptap ol[start="6"]:not(:has(> li:nth-child(5))),
+.tiptap ol[start="7"]:not(:has(> li:nth-child(4))),
+.tiptap ol[start="8"]:not(:has(> li:nth-child(3))),
+.tiptap ol[start="9"]:not(:has(> li:nth-child(2))) {
+  --list-gutter: 1.4em;
+}
+
+/* Must follow the two-digit rules — `[start]` raises their specificity above the plain
+ * count rule, so the three-digit rule carries `[start]` too and wins on source order.
+ * The gap left over is a list that STARTS in the hundreds with fewer than a hundred items:
+ * `start` cannot be compared numerically, only enumerated, and enumerating three-digit
+ * starts is nine hundred selectors. Its cost is a three-digit marker hanging into the
+ * margin, which is what the whole of this file already does for a marker it cannot
+ * measure. */
+.tiptap ol:has(> li:nth-child(100)),
+.tiptap ol[start]:has(> li:nth-child(100)) {
   --list-gutter: max(1.4em, calc(3ch + 0.6em));
+}
+
+/* ── Gutters for the markers that are not digits ─────────────────────────────
+ *
+ * Everything above counts DIGITS, and from depth two the markers are letters and roman
+ * numerals. Reserving digit-width for them is a guess, and it failed in the direction a
+ * reader sees: a roman list was inside its gutter through `xv.` and from `xvi.` on each
+ * marker overflowed, so shrink-to-fit grew its box leftwards and the first letters stopped
+ * lining up (reported from the app). These rules reserve what those markers actually need.
+ *
+ * The reserve is the marker's own measured width plus the 0.3em the marker box gives back
+ * on the arrow side, and unlike the digit rules it includes the period — `m.` and `xvii.`
+ * were measured whole. Roman width steps at 8, 18, 28 and 38 items (`viii.`, `xviii.`,
+ * `xxviii.`, `xxxviii.`), which is where the tiers are; a list past 37 items is left to
+ * overflow, as the three-digit decimal case is.
+ *
+ * Measured in Chrome at 16px over four fonts — the bundled Pretendard Variable, this
+ * machine's `-apple-system`, Helvetica Neue and Georgia — as a multiple of that font's own
+ * `ch`, then rounded up past the widest of the four:
+ *
+ *   widest              Pretendard  system  Helvetica  Georgia   reserved
+ *   `m.`                    1.83     1.63      2.03      1.87      2.1ch
+ *   `mm.` (27+ items)       3.23     2.90      3.56      3.31      3.7ch
+ *   `vii.`  (≤7 items)      2.05     1.86      2.20      2.20      2.3ch
+ *   `xvii.` (≤17)           2.91     2.61      3.13      3.02      3.2ch
+ *   `xxvii.` (≤27)          3.77     3.37      4.06      3.85      4.2ch
+ *   `xxxvii.` (≤37)         4.63     4.13      4.99      4.67      5.1ch
+ *
+ * A font outside that corpus with wider letters than Helvetica's overflows the reserve,
+ * and the failure is the same shrink-to-fit drift this replaces — bounded, and visible
+ * only in the list that hits it. Digits need no such corpus: `ch` IS the digit advance.
+ *
+ * ‼️ CASCADE. These compete with the digit rules above for one variable, and the digit
+ * rules are more specific (`:has()`, and `[start]` on top of it). Two things buy the
+ * depth rules the win: `.tiptap` written twice, and a `[start]` variant of each — a nested
+ * list can carry `start` too (a sub-list written `3.`), and without the variant that
+ * list's start rule would outrank its own depth rule. What is left is a tie, which source
+ * order settles, so this block MUST stay below the digit rules. `list-styling.test.ts`
+ * pins the order and the doubling. */
+.tiptap.tiptap ol ol,
+.tiptap.tiptap ol ol[start] {
+  --list-gutter: max(1.4em, calc(2.1ch + 0.3em));
+}
+
+.tiptap.tiptap ol ol:has(> li:nth-child(27)),
+.tiptap.tiptap ol ol[start]:has(> li:nth-child(27)) {
+  --list-gutter: max(1.4em, calc(3.7ch + 0.3em));
+}
+
+.tiptap.tiptap ol ol ol,
+.tiptap.tiptap ol ol ol[start] {
+  --list-gutter: max(1.4em, calc(2.3ch + 0.3em));
+}
+
+.tiptap.tiptap ol ol ol:has(> li:nth-child(8)),
+.tiptap.tiptap ol ol ol[start]:has(> li:nth-child(8)) {
+  --list-gutter: max(1.4em, calc(3.2ch + 0.3em));
+}
+
+.tiptap.tiptap ol ol ol:has(> li:nth-child(18)),
+.tiptap.tiptap ol ol ol[start]:has(> li:nth-child(18)) {
+  --list-gutter: max(1.4em, calc(4.2ch + 0.3em));
+}
+
+.tiptap.tiptap ol ol ol:has(> li:nth-child(28)),
+.tiptap.tiptap ol ol ol[start]:has(> li:nth-child(28)) {
+  --list-gutter: max(1.4em, calc(5.1ch + 0.3em));
 }
 
 /* A nested list is part of its parent item, not a block that follows it. `position` is
@@ -234,17 +344,89 @@
 
 /* Ordered markers stay text, because their width has to follow the digits.
  * `counter(list-item)` is the built-in counter, so `<ol start>` is honoured with no
- * manual counter-reset, and right-alignment at `right: 100%` lines the periods up in a
- * column. `tabular-nums` evens out the digits themselves, which a proportional font
- * staggers. Line height is inherited rather than declared: matching the paragraph's line
- * box is what puts the two baselines together, and inheritance matches it by definition.
+ * manual counter-reset. `tabular-nums` evens out the digits themselves, which a
+ * proportional font staggers. Line height is inherited rather than declared: matching the
+ * paragraph's line box is what puts the two baselines together, and inheritance matches
+ * it by definition.
+ *
+ * WHICH EDGE THE DIGITS GROW FROM IS A DIAL (§5.1 `editorOrderedMarkerAlign`), and the two
+ * settings are two alignments inside ONE box rather than two anchors — a second anchor is
+ * how the two modes would drift apart the next time the gutter formula moves.
+ *
+ * The box keeps the marker's right edge at `right: 100%`, and its floor is the gutter less
+ * 0.3em. That 0.3em is the period's own advance, which this file's gutter formula above
+ * estimates at ~0.3em; the arrow clearance is NOT in it, because the arrow is positioned
+ * from the list's left edge and `--list-arrow-offset` carries that gap on its own (see the
+ * offsets above). Wherever the digit formula wins over the 1.4em floor, the box is
+ * therefore `N·ch + 0.3em` wide — the widest marker that gutter was sized for, give or
+ * take however far the rendering font's period departs from that ~0.3em estimate.
+ *
+ *   text-align: right  (period) — periods line up in a column and digits grow left, which
+ *                                 is where this section stood before the dial.
+ *   text-align: left   (number) — first digits line up, and the period travels right. The
+ *                                 default, and the reason it is worth changing what an
+ *                                 existing reader sees: a marker's distance from the fold
+ *                                 arrow stops depending on its digit count. `1.` and `10.`
+ *                                 of one list start at the same offset, where under
+ *                                 `period` the `1.` sits 0.63em further from the arrow
+ *                                 than the `10.` does (measured).
+ *
+ * `min-width`, not `width`, and that is what keeps the dial out of a case it should not
+ * decide. `<ol start="100">` with fewer than ten items still gets the two-digit gutter,
+ * because CSS cannot read `start` as a number. Shrink-to-fit survives a floor, so that
+ * marker grows the box LEFTWARDS past the arrow — hanging into the margin as it always
+ * has, under either alignment. A fixed width would have made the same marker overflow
+ * whichever way the text was aligned, so `number` would have pushed it right into the
+ * 0.5em gap before the text: the dial would have been choosing the side a defect lands on.
+ *
+ * ‼️ `box-sizing: content-box`, AND IT IS A CONTRACT, not a tidy-up. Tailwind's preflight
+ * makes every box `border-box`, which the bullet ring two rules up depends on — so this
+ * opts out for ordered markers only. Under `border-box` a floor and a padding fight: the
+ * padding comes out of the column the floor reserved, and since `left` alignment puts the
+ * glyph at the padding edge, padding MOVES THE NUMBER. Under `content-box` the floor
+ * measures the glyph column alone and padding grows the box leftward past it, which is
+ * what anything painting behind a marker needs and what the ordered-list rules of the
+ * bundled `bullet-threading` example already assume in as many words. Measured with that
+ * example's own two rules applied (Chrome, 18px): the caret's marker started 4.83px right
+ * of its siblings' before this line and with them after it.
+ *
+ * What that line does NOT buy: a plugin is still free to change the marker's FONT, and
+ * `ch` in the gutter above resolves against whichever font the box ends up with — the same
+ * example's `font-weight: 700` widens the caret item's box by 0.58px at 18px. That is
+ * under half a pixel and it is left alone; the fix for it would be to register
+ * `--list-gutter` with `@property` so its `ch` resolves once, on the list.
+ *
+ * ‼️ THE FLOOR IS THE GUTTER, so it is only ever as right as the gutter is. That is not a
+ * remark — it is where this section's one reported defect came from: the gutter counted
+ * digits for every ordered list, so a `lower-roman` list was inside its box through `xv.`
+ * and from `xvi.` on each marker overflowed, shrink-to-fit grew that box leftwards, and
+ * the first letters stopped lining up. The gutter rules at the top of this file now
+ * reserve what a letter and a roman numeral actually measure, which is what makes this one
+ * line correct at every depth. Anything that widens a gutter without a marker to justify
+ * it shows up here too, as a marker parked further from its own text than it needs to be.
+ *
+ * Measured, not only derived — headless Chrome, 16px `-apple-system, sans-serif`, this
+ * file linked as it stands, reading the markers' used boxes. Under `left`, the markers of
+ * one list start at ONE offset whatever they are: a twelve-item decimal list at -24.95px,
+ * a twelve-letter one at -21.16px, a thirty-item roman one at -51.41px for every marker
+ * from `i.` to `xxx.` — and each of them sits 5.8px from the fold triangle, where a bullet
+ * sits 5.48px, the two kinds of list within 0.02em of one another. `<ol start="2">` with
+ * three items takes the same 22.4px gutter as `1. 2. 3.` does, and `<ol start="9">` with
+ * three the two-digit 29.76px, because it reaches `10.`. Under `right` the starts are
+ * ragged by construction, and what that costs is the arrow: the `1.` of that twelve-item
+ * list sits 21.43px from the triangle and its `10.` 11.34px. Chrome supplies these pixel
+ * numbers through its fallback digit advance; the app renders in WKWebView, where the
+ * numbers — not the relationships — will differ.
  *
  * The style steps with ordered depth so nested numbering reads as a hierarchy instead of
  * three identical `1.` columns. Display only — the serializer never reads a marker, so
  * markdown output is unchanged. */
 .tiptap ol > li::before {
   top: 0;
+  box-sizing: content-box;
+  min-width: calc(var(--list-gutter) - 0.3em);
   font-variant-numeric: tabular-nums;
+  text-align: var(--editor-ordered-marker-align, left);
   content: counter(list-item) ".";
 }
 

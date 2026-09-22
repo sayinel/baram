@@ -69,6 +69,34 @@ describe("DIALS", () => {
     expect(guide?.toVars(0)).toEqual({ "--editor-guide-strength": "0%" });
   });
 
+  it("emits a text-align only for the non-default marker alignment", () => {
+    // §5.1 순서 있는 마커의 정렬 축. 무엇이 이것을 실패시키는가, 셋이다.
+    //
+    // ① 기본값이 `number` 가 아니게 되면 — `lists.css` 의 fallback 이 `left` 이고,
+    //    기본 출처의 다이얼은 변수를 쓰지 않으므로(`apply.ts`) 둘이 갈리는 순간
+    //    사용자가 select 를 처음 건드릴 때 화면이 튄다. 그 일치는
+    //    `styles/__tests__/list-styling.test.ts` 가 두 파일을 함께 읽어 고정하고,
+    //    여기서는 이쪽 절반을 고정한다.
+    //
+    // ② 값 이름(`number`/`period`)과 CSS 값(`left`/`right`)을 같은 것으로 쓰면,
+    //    이름이 무엇을 정렬하는지가 아니라 어느 쪽으로 미는지를 말하게 된다 —
+    //    그리고 `toVars` 가 항등함수가 되어 매핑이 있었다는 사실이 사라진다.
+    //
+    // ③ `number` 에서 빈 맵을 돌려주지 않으면 기본값이 인라인으로 굳어,
+    //    테마가 이 다이얼로 말할 여지를 사용자 층 없이도 눌러 이긴다.
+    const align = DIALS.find((d) => d.id === "editorOrderedMarkerAlign");
+    // 이름이 바뀌면 아래 `?.` 단언들이 공허하게 통과할 수 있다 — 먼저 존재를 고정한다.
+    expect(align).toBeDefined();
+    expect(align?.defaultValue).toBe("number");
+    expect(align?.toVars("number")).toEqual({});
+    expect(align?.toVars("period")).toEqual({
+      "--editor-ordered-marker-align": "right",
+    });
+    // CSS 값은 다이얼 값이 아니다 — 저장분에 `left` 가 있어도 그 층은 없었던 것이다.
+    expect(align?.parse("left")).toBeUndefined();
+    expect(align?.parse("period")).toBe("period");
+  });
+
   it("is keyed by dial ids and stays sparse", () => {
     // 무엇이 이것을 실패시키는가: DialValues 가 total `Record<DialId, number>` 로
     // 바뀌면 이 희소 리터럴이 타입 오류가 되어 파일이 컴파일되지 않는다. 희소성은
