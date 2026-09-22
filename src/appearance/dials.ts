@@ -63,6 +63,11 @@ interface DialBase {
 
 const WIDTH_RANGE = { max: 4000, min: 0, step: 20 } as const;
 const PADDING_RANGE = { max: 16, min: 0, step: 0.5 } as const;
+// §368 자간. 한글 본문은 약간의 음수 자간이 관례다 — `tokens/primitive/typography.json`
+// 에 letter-spacing 계열이 **없어서**(실측) 토큰 승격이 아니라 새 축이다.
+const LETTER_SPACING_RANGE = { max: 0.1, min: -0.05, step: 0.005 } as const;
+// §368 문단 간격. `blocks.css` 의 `.tiptap p { margin: 0.5em 0 }` 이 기본값의 출처다.
+const PARAGRAPH_SPACING_RANGE = { max: 2, min: 0, step: 0.05 } as const;
 
 const inRange =
   (range: { readonly max: number; readonly min: number }) =>
@@ -149,6 +154,34 @@ export const DIALS = [
           }
         : {},
     vars: ["--editor-overflow-wrap", "--editor-word-break"],
+  },
+  {
+    defaultValue: 0,
+    id: "editorLetterSpacing",
+    kind: "number",
+    parse: inRange(LETTER_SPACING_RANGE),
+    range: LETTER_SPACING_RANGE,
+    // ‼️ `value !== 0` 갈래가 있는 이유: `letter-spacing: 0em` 과 `letter-spacing:
+    // normal` 은 **같지 않다**(`normal` 은 폰트/조판 엔진이 자간을 조정할 여지를
+    // 남긴다). 기본값에서 아무것도 내지 않아야 오늘 화면과 같다.
+    toVars: (value: DialValue): Record<string, string> =>
+      typeof value === "number" && value !== 0
+        ? { "--editor-letter-spacing": `${value}em` }
+        : {},
+    vars: ["--editor-letter-spacing"],
+  },
+  {
+    // `blocks.css` 의 `.tiptap p { margin: 0.5em 0 }` 과 같은 값·같은 단위.
+    defaultValue: 0.5,
+    id: "editorParagraphSpacing",
+    kind: "number",
+    parse: inRange(PARAGRAPH_SPACING_RANGE),
+    range: PARAGRAPH_SPACING_RANGE,
+    toVars: (value: DialValue): Record<string, string> =>
+      typeof value === "number"
+        ? { "--editor-paragraph-spacing": `${value}em` }
+        : {},
+    vars: ["--editor-paragraph-spacing"],
   },
 ] as const satisfies readonly DialDef[];
 

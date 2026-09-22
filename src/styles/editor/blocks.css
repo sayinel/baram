@@ -71,9 +71,9 @@
   margin-top: 0.4em;
 }
 
-/* Paragraph */
+/* Paragraph — §368 문단 간격 다이얼. fallback 0.5em 이 다이얼이 생기기 전의 값이다. */
 .tiptap p {
-  margin: 0.5em 0;
+  margin: var(--editor-paragraph-spacing, 0.5em) 0;
 }
 
 /* §5.1 Blockquote */

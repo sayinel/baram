@@ -39,8 +39,12 @@ export function AppearanceDialRow({ dialId, label }: AppearanceDialRowProps) {
   if (!dial) return null;
 
   const resolved = resolveDials(themeDials, appearanceOverrides)[dialId];
+  // "이 행이 사용자 층 없이는 무엇을 보여 줄까" — 되돌리기 라벨이 테마로
+  // 가는지 기본값으로 가는지는 이 질문 하나로 정해진다. 이름을 한 번 붙여
+  // 그 질문을 한 곳에서만 말한다.
+  const revertedToNonUserLayer = resolveDials(themeDials, {})[dialId];
   const revertLabel =
-    resolveDials(themeDials, {})[dialId].origin === "theme"
+    revertedToNonUserLayer.origin === "theme"
       ? t("settings.appearance.dialRevertToTheme")
       : t("settings.appearance.dialRevert");
 
@@ -145,12 +149,16 @@ export function AppearanceDialRow({ dialId, label }: AppearanceDialRowProps) {
  */
 function describeDial(dialId: DialId, t: Translate): string {
   switch (dialId) {
+    case "editorLetterSpacing":
+      return t("settings.editor.editorLetterSpacing.desc");
     case "editorLineBreak":
       return t("settings.editor.editorLineBreak.desc");
     case "editorMaxWidth":
       return t("settings.editor.maxWidth.desc");
     case "editorPadding":
       return t("settings.appearance.editorPadding.desc");
+    case "editorParagraphSpacing":
+      return t("settings.editor.editorParagraphSpacing.desc");
   }
 }
 
@@ -165,11 +173,15 @@ function formatDialValue(
   t: Translate,
 ): string {
   switch (dialId) {
+    case "editorLetterSpacing":
+      return `${value}em`;
     case "editorLineBreak":
       return "";
     case "editorMaxWidth":
       return value === 0 ? t("settings.editor.maxWidth.noLimit") : `${value}px`;
     case "editorPadding":
       return `${value}rem`;
+    case "editorParagraphSpacing":
+      return `${value}em`;
   }
 }

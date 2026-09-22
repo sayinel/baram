@@ -33,8 +33,11 @@ const CAPTURE_SURFACE = ".quick-capture-editor .tiptap";
  * defects got in.
  */
 const INHERITED_FROM_DOCUMENT_SURFACE = new Set([
-  // `color`, `font-family` and `line-height`: same typeface, ink and rhythm as
-  // the document — the capture box is the same writing tool, just smaller.
+  // `color`, `font-family`, `letter-spacing` and `line-height`: same typeface,
+  // ink, spacing and rhythm as the document — the capture box is the same
+  // writing tool, just smaller. §368 added `letter-spacing` on the same
+  // reasoning: a capture box with a different word rhythm from the document
+  // it feeds into would be a defect, not a feature.
   //
   // §349: `font-family` here keeps the DOCUMENT's declaration, which reads a
   // variable rather than naming a family. The two font variables are KEEP too —
@@ -45,16 +48,22 @@ const INHERITED_FROM_DOCUMENT_SURFACE = new Set([
   // declaration. The §349 describe block at the bottom registers them instead.
   "color",
   "font-family",
+  "letter-spacing",
   "line-height",
   // Fills the container so a click anywhere in the box lands in the editor.
   "min-height",
   // The container draws its own focus ring on `:focus-within`.
   "outline",
+  // §368: 아래 두 항목(`overflow-wrap`·`word-break`)을 지배한다 — 줄바꿈
+  // 규칙은 "같은 글을 쓰는 도구" 의 성질이라 캡처 상자도 따라간다. 폭이
+  // 달라도 한글 단어를 자르지 않는다는 규칙은 문서와 같아야 한다.
   "overflow-wrap",
-  // §368: 줄바꿈 규칙은 "같은 글을 쓰는 도구" 의 성질이라 캡처 상자도 따라간다.
-  // 폭이 달라도 한글 단어를 자르지 않는다는 규칙은 같아야 한다.
   "word-break",
 ]);
+// §368: `--editor-paragraph-spacing`을 읽는 `.tiptap p`는 이 파일의 코퍼스인
+// `.tiptap` 선언이 아니라서 위 allowlist/override 게이트가 보지 않는다 — 하지만
+// 캡처 상자도 `.tiptap p`를 그대로 물려받으므로 문단 간격 다이얼은 여기서도
+// 공유된다. 게이트가 못 보는 자리라는 것을 기록해 둔다.
 
 function declaration(selector: string, prop: string): string {
   const value = cssDeclarations(rule(selector).body).find(

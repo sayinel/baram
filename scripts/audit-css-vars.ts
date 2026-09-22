@@ -179,6 +179,11 @@ const ALLOWLIST = new Set([
   // 인라인으로 쓴다. fallback(`normal`)이 오늘의 스타일시트 값과 같다.
   "--editor-overflow-wrap",
   "--editor-word-break",
+  // §368 자간·문단 간격 — 같은 다이얼 기계. 자간의 fallback(`normal`)은
+  // `letter-spacing: 0em`과 다른 값이라 다이얼을 쓴 적 없는 화면과 여전히 같다.
+  // 문단 간격의 fallback(`0.5em`)은 다이얼이 생기기 전 `blocks.css`의 값 그대로다.
+  "--editor-letter-spacing",
+  "--editor-paragraph-spacing",
   "--editor-zoom",
   "--journal-font-family",
   "--journal-header-bg",
