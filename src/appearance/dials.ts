@@ -122,6 +122,19 @@ const ACCENT_SEED_KEYS = [
   "--color-accent-subtle",
 ] as const;
 
+/**
+ * §367 강조의 두 축이 **어느 다이얼인가**. 색상과 채도는 다이얼이 둘이지만 색은
+ * 하나이고, `colorDialVars`(`apply.ts`)가 그 둘만 순회에서 빼내 {@link accentFamilyVars}
+ * 로 함께 계산한다 — 그 자리 주석이 왜인지를 적는다.
+ *
+ * 색 다이얼을 새로 더할 때 여기 넣을지 말지가 곧 "그것이 같은 색의 또 한 축인가" 라는
+ * 질문이다. 아니라면 넣지 않는다 — 그러면 `colorDialVars` 의 일반 순회가 맡는다.
+ */
+export const ACCENT_AXIS_DIAL_IDS = {
+  h: "accentHueShift",
+  s: "accentSaturationShift",
+} as const satisfies Record<"h" | "s", DialId>;
+
 // ‼️ 아래 두 범위가 담는 것은 **이동량**이지 절대값이 아니다. 절대값이면 기본값을
 // 정할 수 없다 — 슬라이더가 217 에 서 있는데 지금 테마의 강조가 다른 색상이면 그
 // 숫자는 거짓말이고, 테마를 갈아탈 때마다 사용자가 만진 적 없는 값을 가리킨다.
@@ -157,25 +170,55 @@ const oneOf =
       : undefined;
 
 /**
- * §367 강조 시드를 HSL 한 축만 바꿔 다시 쓴다. 이동이 0 이면 빈 맵 — 희소성(§364.2).
+ * §367 강조 시드를 HSL 두 축에서 다시 쓴다. 두 이동량이 모두 0 이면 빈 맵 — 희소성(§364.2).
+ *
+ * ‼️ **두 축을 한 번에 받는 것이 계약이다.** 색상 다이얼과 채도 다이얼은 둘 다
+ * {@link ACCENT_SEED_KEYS} **전부**를 내므로, 축마다 따로 계산해 결과를 합치면 나중
+ * 것이 앞 것을 통째로 덮는다 — 그것이 리뷰 C1 이 실측한 결함이다(채도를 이미 옮긴
+ * 상태에서 색상 슬라이더를 끌면 값은 저장되고 화면은 한 픽셀도 변하지 않았다).
+ *
+ * 축을 차례로 적용하는 누산기도 답이 아니다. 두 축은 직교해 보이지만 {@link hslToHex}
+ * 가 채도를 0~100 으로 자르고 8비트로 양자화하므로 교환법칙을 따르지 않고, 그러면
+ * {@link DIALS} 의 **순서**가 결과를 정하게 된다 — 눈에 보이는 무동작을 조용한 순서
+ * 의존으로 바꾸는 거래다.
  *
  * 모드 분기가 **없다**. 같은 값이 모드마다 다른 hex 를 내는 것은 `ctx.seeds` 가
  * 그 모드의 팔레트이기 때문이고, 채도·명도를 시드에서 물려받는 것이 그 통로다.
+ */
+export const accentFamilyVars = (
+  shift: { readonly h: number; readonly s: number },
+  ctx: DialContext,
+): Record<string, string> => {
+  if (shift.h === 0 && shift.s === 0) return {};
+  const out: Record<string, string> = {};
+  for (const key of ACCENT_SEED_KEYS) {
+    const hsl = hexToHsl(ctx.seeds[key] ?? "");
+    // 시드가 없거나 읽을 수 없으면 그 키는 계산할 수 없다 — 내지 않는다.
+    if (hsl === null) continue;
+    out[key] = hslToHex({ h: hsl.h + shift.h, l: hsl.l, s: hsl.s + shift.s });
+  }
+  return out;
+};
+
+/**
+ * 한 축짜리 어댑터 — `DialDef.toVars` 는 다이얼 **하나**의 값만 받기 때문이다.
+ *
+ * ‼️ **적용 경로는 이것을 부르지 않는다.** 이 함수가 내는 것은 "다른 축이 0 일 때" 의
+ * 강조 계열이고, `<html>` 에 실제로 쓰이는 값은 `colorDialVars` 가 두 축을 함께 읽어
+ * {@link accentFamilyVars} 에서 얻는다. 여기 남아 있는 이유는 `DIALS` 를 다이얼 단위로
+ * 순회하는 소비자 — `dials.test.ts` 의 `vars` 전수 검사와 `accent-dials.test.ts` 의
+ * 축별 테스트 — 가 `toVars` 를 부를 수 있어야 하기 때문이다.
  */
 const shiftAccent = (
   shift: DialValue,
   ctx: DialContext,
   axis: "h" | "s",
 ): Record<string, string> => {
-  if (typeof shift !== "number" || shift === 0) return {};
-  const out: Record<string, string> = {};
-  for (const key of ACCENT_SEED_KEYS) {
-    const hsl = hexToHsl(ctx.seeds[key] ?? "");
-    // 시드가 없거나 읽을 수 없으면 그 키는 계산할 수 없다 — 내지 않는다.
-    if (hsl === null) continue;
-    out[key] = hslToHex({ ...hsl, [axis]: hsl[axis] + shift });
-  }
-  return out;
+  if (typeof shift !== "number") return {};
+  return accentFamilyVars(
+    axis === "h" ? { h: shift, s: 0 } : { h: 0, s: shift },
+    ctx,
+  );
 };
 
 /**

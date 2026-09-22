@@ -5,7 +5,15 @@
 import type { DialContext, DialId } from "./dials";
 import type { ResolvedDial } from "./merge";
 
-import { DIALS } from "./dials";
+import { ACCENT_AXIS_DIAL_IDS, accentFamilyVars, DIALS } from "./dials";
+
+/**
+ * {@link colorDialVars} 의 일반 순회가 건너뛰는 다이얼 — 강조의 두 축이다.
+ * `Object.values` 에서 짓는다: 이름을 두 번 적으면 한쪽만 고치는 날이 온다.
+ */
+const ACCENT_AXES: ReadonlySet<string> = new Set(
+  Object.values(ACCENT_AXIS_DIAL_IDS),
+);
 
 /**
  * 출처가 `default` 가 **아닌** 다이얼의 변수만 쓴다.
@@ -63,6 +71,9 @@ export function clearDialVars(root: HTMLElement): void {
  * `channel` 이 두 값뿐이므로 여기의 `=== "layout"` 과 {@link applyDialVars} 의
  * `!== "layout"` 은 같은 집합을 가른다. 저쪽이 부정형인 것은 이력 때문이고
  * (그 자리 주석이 적는다), 여기서는 긍정형이 읽기 쉬워 그대로 둔다.
+ *
+ * ‼️ 색 다이얼 전부가 이 순회로 처리되는 것은 **아니다** — 강조의 두 축은 한 계산으로
+ * 빠져 있고, 그 이유는 아래 그 자리에 적는다.
  */
 export function colorDialVars(
   resolved: Record<DialId, ResolvedDial>,
@@ -71,10 +82,49 @@ export function colorDialVars(
   const out: Record<string, string> = {};
   for (const dial of DIALS) {
     if (dial.channel === "layout") continue;
+    // ‼️ 강조의 두 축은 이 순회에서 **빠진다** — 아래에서 한 번에 계산한다.
+    if (ACCENT_AXES.has(dial.id)) continue;
     const current = resolved[dial.id];
     // 말하지 않은 층뿐인 다이얼은 cascade 에 맡긴다 — `applyDialVars` 와 같은 규칙.
     if (current.origin === "default") continue;
     Object.assign(out, dial.toVars(current.value, ctx));
   }
+  // ‼️ **`accentHueShift` 와 `accentSaturationShift` 는 한 색의 두 축이다.** 다이얼이
+  // 둘이라는 사실을 `DIALS` 순회에 맡겼던 것이 리뷰 C1 의 결함이다: 둘 다 강조 시드
+  // 네 키를 **전부** 내므로 `DIALS` 에서 뒤에 오는 쪽이 앞의 결과를 통째로 덮었고,
+  // 채도를 이미 옮겨 둔 상태에서 색상 슬라이더를 끌면 값은 저장되면서 화면은 변하지
+  // 않았다(실측: 기본 라이트 시드에 `accentHueShift: 60` + `accentSaturationShift: -40`
+  // 의 출력이 채도만 준 출력과 바이트 단위로 같았다).
+  //
+  // 계산 한 번이 그 결합을 구조로 만든다 — `DIALS` 의 순서에 의존하지 않는다.
+  // `accentFamilyVars` 는 두 이동량이 모두 0 이면 빈 맵을 돌려주므로, 둘 다 기본값일
+  // 때 강조 계열을 내지 않는 희소성(§364.2)도 그대로다.
+  Object.assign(
+    out,
+    accentFamilyVars(
+      {
+        h: accentAxisShift(resolved, ACCENT_AXIS_DIAL_IDS.h),
+        s: accentAxisShift(resolved, ACCENT_AXIS_DIAL_IDS.s),
+      },
+      ctx,
+    ),
+  );
   return out;
+}
+
+/**
+ * 강조 축 하나의 이동량. 말하지 않은 층뿐이면 0 이다 — 위 루프의
+ * `origin === "default"` 건너뛰기와 **같은 규칙**이지만, 축 둘이 한 계산을 공유하므로
+ * 건너뛰기가 아니라 값으로 표현해야 한다(한 축만 기본값인 경우가 있다).
+ */
+function accentAxisShift(
+  resolved: Record<DialId, ResolvedDial>,
+  id: DialId,
+): number {
+  const current = resolved[id];
+  if (current.origin === "default") return 0;
+  // `parse` 와 `toVars` 를 짝지어 주는 타입은 없다(`dials.ts` 의 같은 주석) — 낡은
+  // 저장분이나 적대적 매니페스트에서 숫자가 아닌 값이 도달하면 그 축은 움직이지
+  // 않은 것으로 친다.
+  return typeof current.value === "number" ? current.value : 0;
 }
