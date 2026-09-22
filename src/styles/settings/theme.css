@@ -233,7 +233,10 @@
     color 0.15s;
 }
 
-.theme-action-btn:hover {
+/* 0091 fix round 1, Finding 9 — `:not(:disabled)` 없이는 disabled 버튼도 포인터
+   아래서 밝아졌다: `:disabled`(아래)는 cursor·opacity만 걸고 이 규칙과 같은
+   color·background-color 프로퍼티를 겹쳐 걸지 않기 때문이다. */
+.theme-action-btn:hover:not(:disabled) {
   color: var(--color-text-primary);
   background-color: var(--color-bg-subtle);
 }
@@ -416,6 +419,22 @@
 .theme-editor-actions {
   display: flex;
   gap: 8px;
+  padding-top: 12px;
+  margin-top: 16px;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.theme-action-btn:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+/* §363 — package-export metadata inputs (author/description/license/version). Reuses
+   `.theme-editor-name`'s look for each `<input>`; this class only stacks them. */
+.theme-editor-package-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   padding-top: 12px;
   margin-top: 16px;
   border-top: 1px solid var(--color-border-subtle);

@@ -13,9 +13,17 @@ import type {
 import { useShallow } from "zustand/shallow";
 
 import { useTranslation } from "../../i18n/useTranslation";
+import { exportBinaryFile } from "../../ipc/fs";
 import { writeFile } from "../../ipc/invoke";
+import { themePackageBuild } from "../../ipc/theme";
 import { useSettingsStore } from "../../stores/settings/store";
+import { useUIStore } from "../../stores/ui/ui";
 import { lookupThemes } from "../../themes/installed-theme-defs";
+import { THEME_ID_RE } from "../../themes/theme-manifest";
+import {
+  slugifyThemeId,
+  themePackageEntries,
+} from "../../themes/theme-package-export";
 import {
   BUILT_IN_THEMES,
   defaultColorsForBase,
@@ -92,6 +100,42 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
     ...(sourceTheme.modes[startMode]?.colors ??
       defaultColorsForBase(startMode)),
   }));
+
+  // §363 — 배포용 패키지의 매니페스트가 요구하지만 이 편집기는 모르는 값들
+  // (`PackageMeta`, theme-package-export.ts). 빈 채로 내보내면 설치되지 않는
+  // 패키지가 나온다 — 0091 final review가 잡았듯 이것이 "유일한" 실패 모드는
+  // 아니다(색 없는 모드가 조용히 빠지는 것도 별도 실패 모드이고, 아래
+  // handleExportPackage의 droppedModes 토스트가 그것을 알린다). 이 값들이
+  // 전부 채워지기(그리고 id는 형식도 맞기) 전에는 이 실패 모드 하나만
+  // 막으려고 패키지 내보내기 버튼을 비활성한다(canExportPackage).
+  const [packageAuthor, setPackageAuthor] = useState("");
+  const [packageDescription, setPackageDescription] = useState("");
+  const [packageLicense, setPackageLicense] = useState("");
+  const [packageVersion, setPackageVersion] = useState("");
+  // 0091 fix round 1, Finding 4(MEDIUM 4 판정): 배포 패키지의 id는 저자가
+  // 가장 소유해야 하는 필드인데, 예전 코드는 그것을 저자가 보지도 못하는
+  // 내부 타임스탬프(`custom-${Date.now()}`)로 정했다. 이름에서 뽑은 기본값을
+  // 넣어 두되(slugifyThemeId), 저자가 자유롭게 고칠 수 있는 평범한 입력이다.
+  // `name`이 이미 위에서 초기화됐으므로 이 초기값 계산은 그 값을 그대로 읽는다.
+  const [packageId, setPackageId] = useState(() => slugifyThemeId(name));
+  // 0091 fix round 2, Finding N1(MEDIUM, 재리뷰) — 위 초기값만으로는 부족했다.
+  // 빌트인 테마를 열면 id가 예: "custom-default-light"로 채워지는데, 그 뒤
+  // name을 "Solar Flare"로 바꿔도 id는 그대로 남는다 — 형식은 여전히
+  // 유효하므로 canExportPackage 가드를 그대로 통과해, "Solar Flare"라는
+  // 이름의 테마가 아무 경고 없이 custom-default-light라는 id로 나간다. 표준
+  // 슬러그 필드 패턴으로 고친다: id 입력을 직접 건드리기 전까지는 name을
+  // 따라가고, 한 번 건드리면 더 이상 따라가지 않는다.
+  const [packageIdTouched, setPackageIdTouched] = useState(false);
+  useEffect(() => {
+    if (packageIdTouched) return;
+    setPackageId(slugifyThemeId(name));
+  }, [name, packageIdTouched]);
+  const canExportPackage =
+    packageAuthor.trim() !== "" &&
+    packageDescription.trim() !== "" &&
+    packageLicense.trim() !== "" &&
+    packageVersion.trim() !== "" &&
+    THEME_ID_RE.test(packageId);
 
   // Set once the edited colours have been adopted as a real theme, so the unmount
   // cleanup knows there is no preview left to undo. Without it, correctness depends
@@ -218,6 +262,90 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
     await writeFile(path, data);
   }, [name, base, colors]);
 
+  // §363 — 배포 가능한 패키지(zip)를 내보낸다. 위 `handleExport`와는 별개 동작이다
+  // (R5): 저것은 `{name, base, colors}`를 쓰고 `use-theme-import.ts`가 오늘도
+  // 읽는, 이 앱으로만 되읽는 색 설정이다. 이것은 `baram-theme.json` + 모드별
+  // `tokens.json`을 담은 zip이고, 남의 Baram이 설치할 수 있는 패키지다.
+  //
+  // ‼️ 디렉터리가 아니라 파일 하나를 쓴다(R6) — `exportBinaryFile`은 vault
+  // 검사가 없고, 그것이 무해한 이유는 대화상자가 고른 파일 하나만 쓰기
+  // 때문이다. 트리를 쓰면 그 전제가 깨진다.
+  const handleExportPackage = useCallback(async () => {
+    const path = await save({
+      filters: [{ name: "Baram Theme Package", extensions: ["zip"] }],
+      defaultPath: `${packageId}.zip`,
+    });
+    if (!path) return;
+
+    // handleSave(§357)와 같은 병합 — 편집 중인 base 모드만 갈아끼우고 나머지
+    // 모드는 sourceTheme 그대로 둔다. id는 handleSave의 내부 식별자
+    // (isCustom ? sourceTheme.id : `custom-${Date.now()}`)가 아니라 저자가
+    // 위에서 고른 packageId다 — 배포 패키지의 id는 저장 스토어의 키가
+    // 아니라 남이 설치할 디렉터리 이름이므로 서로 다른 값이어야 맞다.
+    const themeDef: ThemeDef = {
+      id: packageId,
+      name,
+      source: "custom",
+      modes: {
+        ...sourceTheme.modes,
+        [base]: { ...sourceTheme.modes[base], colors: { ...colors } },
+      },
+    };
+
+    const entries = themePackageEntries(themeDef, {
+      author: packageAuthor,
+      description: packageDescription,
+      license: packageLicense,
+      version: packageVersion,
+    });
+
+    // 0091 fix round 1, Finding 5(MEDIUM) — themePackageEntries가 색 없는
+    // 모드를 조용히 건너뛰는 것은 옳지만(파일 헤더의 CSS 논거), 저자에게
+    // 알리지 않는 것은 옳지 않다. themePackageEntries 자신은 순수해야
+    // 하므로 이 비교는 순수 함수 밖, 호출자인 여기서 한다.
+    const declaredModes = themeModes(themeDef);
+    const droppedModes = declaredModes.filter(
+      (mode) => !(`${mode}/tokens.json` in entries),
+    );
+    if (droppedModes.length > 0) {
+      // 0091 fix round 2, Finding N4(재리뷰) — 새 i18n 키를 만들지 않고
+      // 위 base 토글이 이미 쓰는 settings.theme.light/dark를 그대로
+      // 쓴다. 같은 패널 안에서 "dark"라는 영문 문자열과 "다크"라는 번역이
+      // 동시에 보이면 한 대상에 두 이름이 붙는다.
+      const modeLabel = (mode: ThemeMode): string =>
+        mode === "light" ? t("settings.theme.light") : t("settings.theme.dark");
+      useUIStore.getState().showToast(
+        t("settings.theme.exportPackageDroppedModes", {
+          count: String(droppedModes.length),
+          modes: droppedModes.map(modeLabel).join(", "),
+        }),
+        "warning",
+      );
+    }
+
+    // 0091 fix round 1, Finding 7(LOW) — 원래 이 아래는 try/catch가 없었다.
+    // themePackageBuild(zip 쓰기 실패)·exportBinaryFile(경로 거부·IO 오류)
+    // 모두 reject할 수 있고, async onClick 핸들러 안에서는 처리되지 않은
+    // 거부가 사용자에게 아무 표시도 없이 사라진다.
+    try {
+      const zipBytes = await themePackageBuild(entries);
+      await exportBinaryFile(path, zipBytes);
+    } catch (err) {
+      useUIStore.getState().showToast(String(err), "error");
+    }
+  }, [
+    sourceTheme,
+    name,
+    base,
+    colors,
+    packageId,
+    packageAuthor,
+    packageDescription,
+    packageLicense,
+    packageVersion,
+    t,
+  ]);
+
   return (
     <div className="theme-editor">
       <div className="theme-editor-header">
@@ -268,6 +396,57 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
         </div>
       ))}
 
+      {/* §363 — 배포용 패키지 매니페스트가 요구하지만 이 편집기가 모르는 값들.
+          전부 필수(id는 형식도): 하나라도 비거나 id가 [a-z0-9-] 밖이면
+          "패키지로 내보내기" 버튼이 비활성 상태로 남는다(canExportPackage). */}
+      <div className="theme-editor-package-meta">
+        <input
+          aria-label={t("settings.theme.packageAuthorPlaceholder")}
+          className="theme-editor-name"
+          onChange={(e) => setPackageAuthor(e.target.value)}
+          placeholder={t("settings.theme.packageAuthorPlaceholder")}
+          type="text"
+          value={packageAuthor}
+        />
+        <input
+          aria-label={t("settings.theme.packageDescriptionPlaceholder")}
+          className="theme-editor-name"
+          onChange={(e) => setPackageDescription(e.target.value)}
+          placeholder={t("settings.theme.packageDescriptionPlaceholder")}
+          type="text"
+          value={packageDescription}
+        />
+        <input
+          aria-label={t("settings.theme.packageIdPlaceholder")}
+          className="theme-editor-name"
+          onChange={(e) => {
+            // 직접 건드리는 순간부터는 name을 더 이상 따라가지 않는다 —
+            // 위 useEffect가 packageIdTouched를 보는 이유가 이 한 줄이다.
+            setPackageIdTouched(true);
+            setPackageId(e.target.value);
+          }}
+          placeholder={t("settings.theme.packageIdPlaceholder")}
+          type="text"
+          value={packageId}
+        />
+        <input
+          aria-label={t("settings.theme.packageLicensePlaceholder")}
+          className="theme-editor-name"
+          onChange={(e) => setPackageLicense(e.target.value)}
+          placeholder={t("settings.theme.packageLicensePlaceholder")}
+          type="text"
+          value={packageLicense}
+        />
+        <input
+          aria-label={t("settings.theme.packageVersionPlaceholder")}
+          className="theme-editor-name"
+          onChange={(e) => setPackageVersion(e.target.value)}
+          placeholder={t("settings.theme.packageVersionPlaceholder")}
+          type="text"
+          value={packageVersion}
+        />
+      </div>
+
       <div className="theme-editor-actions">
         <button className="theme-action-btn" onClick={handleSave}>
           {t("common.save")}
@@ -275,8 +454,29 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
         <button className="theme-action-btn" onClick={handleCancel}>
           {t("common.cancel")}
         </button>
+        {/* 색 설정만 담는 JSON — use-theme-import.ts가 오늘 되읽는 §355 이전
+            포맷(R5). 라이선스·저자 같은 필드가 없어 배포용 패키지가 아니고,
+            이 앱 말고는 아무도 설치할 수 없다. */}
         <button className="theme-action-btn" onClick={handleExport}>
           {t("settings.theme.export")}
+        </button>
+        {/* 배포 가능한 zip. 위 필드가 다 차고 id 형식이 맞을 때까지
+            비활성(§363) — 비운 채 내보내면 이 앱조차 설치할 수 없는 패키지가
+            나온다(이 버튼이 막는 실패 모드 하나일 뿐 — 색 없는 모드가 빠지는
+            것은 별도이고, handleExportPackage의 droppedModes 토스트가 그것을
+            알린다). title은 disabled일 때만 이유를 알린다(0091 fix round 1,
+            Finding 9 — 예전에는 비활성 상태가 이유 없이 회색이었다). */}
+        <button
+          className="theme-action-btn"
+          disabled={!canExportPackage}
+          onClick={handleExportPackage}
+          title={
+            canExportPackage
+              ? undefined
+              : t("settings.theme.exportPackageDisabledHint")
+          }
+        >
+          {t("settings.theme.exportPackage")}
         </button>
       </div>
     </div>

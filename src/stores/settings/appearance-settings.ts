@@ -1,8 +1,11 @@
+import type { DialId, DialValues } from "../../appearance/dials";
 import type { InstalledTheme } from "../../themes/theme-install";
 import type { ThemeDef } from "../../types/theme";
+import type { ThemeInExport } from "../../utils/export/export";
 import type { ActivityBarItemConfig } from "./activity-bar-config";
 import type { StateCreator } from "zustand";
 
+import { DIALS } from "../../appearance/dials";
 import { setConfig } from "../../ipc/config";
 import { lookupThemes } from "../../themes/installed-theme-defs";
 import { findThemeById, themeFieldFor } from "../../types/theme";
@@ -24,6 +27,11 @@ export interface AppearanceSettingsSlice {
     theme: InstalledTheme,
     options?: { freshConsent?: boolean },
   ) => void;
+  /**
+   * §364 사용자 층. **희소하다** — 사용자가 명시적으로 바꾼 다이얼만 담는다.
+   * 기본값을 전부 채워 넣으면 `system` 테마의 OS 추종이 죽는다(§364.2).
+   */
+  appearanceOverrides: DialValues;
   customThemes: ThemeDef[];
   deleteCustomTheme: (id: string) => void;
   /** §361 — installed (community/registry) themes, keyed by id. Persisted via
@@ -36,14 +44,26 @@ export interface AppearanceSettingsSlice {
   removeInstalledTheme: (id: string) => void;
   removeTagColor: (tag: string) => void;
   resetActivityBarConfig: () => void;
+  resetDial: (id: DialId) => void;
   saveCustomTheme: (theme: ThemeDef) => void;
   setActiveTheme: (id: string) => void;
   setActivityBarConfig: (config: ActivityBarItemConfig[]) => void;
+  setDial: (id: DialId, value: number) => void;
   setLocale: (locale: string) => void;
   setTagColor: (tag: string, color: string) => void;
   setTheme: (theme: Theme) => void;
+  /** §362 — set `themeInExport`. */
+  setThemeInExport: (themeInExport: ThemeInExport) => void;
   tagColors: Record<string, string>;
   theme: Theme;
+  /**
+   * §362 — how much of the active theme an export carries: `"default"` (today's
+   * output, unchanged), `"full"`, or `"tokens"`. Defaults to `"default"`, which
+   * is byte-identical to pre-§362 output, so this key needs no `store.ts`
+   * `version` bump — CLAUDE.md's migration rule only requires one when an
+   * EXISTING user would see a different default than what they have today.
+   */
+  themeInExport: ThemeInExport;
 }
 
 type Theme = "dark" | "light" | "system";
@@ -59,6 +79,8 @@ export const createAppearanceSettingsSlice: StateCreator<
   activeThemeId: "system",
   customThemes: [],
   installedThemes: {},
+  themeInExport: "default",
+  appearanceOverrides: {},
 
   // Activity Bar config
   activityBarConfig: [], // default set in main store via DEFAULT_ACTIVITY_BAR_CONFIG
@@ -92,6 +114,7 @@ export const createAppearanceSettingsSlice: StateCreator<
       );
       return { activeThemeId: id, theme: themeFieldFor(theme) };
     }),
+  setThemeInExport: (themeInExport) => set({ themeInExport }),
   saveCustomTheme: (theme) =>
     set((state) => {
       const idx = state.customThemes.findIndex((t) => t.id === theme.id);
@@ -176,6 +199,28 @@ export const createAppearanceSettingsSlice: StateCreator<
   // Activity Bar setters
   setActivityBarConfig: (activityBarConfig) => set({ activityBarConfig }),
   resetActivityBarConfig: () => set({}), // overridden in main store
+
+  // §364 사용자 층 다이얼 setter/reset
+  resetDial: (id) =>
+    set((state) => {
+      if (!(id in state.appearanceOverrides)) return {};
+      // 키를 지운다 — 기본값을 쓰면 사용자 층이 그 다이얼을 계속 소유한다.
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { [id]: _removed, ...rest } = state.appearanceOverrides;
+      return { appearanceOverrides: rest };
+    }),
+  setDial: (id, value) =>
+    set((state) => {
+      const dial = DIALS.find((d) => d.id === id);
+      // 검증은 다이얼이 소유한다. UI 가 범위를 두 번 적지 않게 하려는 것이고,
+      // 매니페스트에서 오는 값과 같은 관문을 지나게 하려는 것이다.
+      const parsed = dial?.parse(value);
+      if (parsed === undefined) return {};
+      if (state.appearanceOverrides[id] === parsed) return {};
+      return {
+        appearanceOverrides: { ...state.appearanceOverrides, [id]: parsed },
+      };
+    }),
 
   // i18n setter
   setLocale: (locale) => {

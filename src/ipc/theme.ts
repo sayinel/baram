@@ -1,12 +1,14 @@
 // §360 테마 설치 IPC 래퍼 (스펙 0049 §9).
 //
-// 이 파일은 export 여섯 개다. 그중 **설치 파이프라인 넷**(themeInstallStage·
+// 이 파일은 export 일곱 개다. 그중 **설치 파이프라인 넷**(themeInstallStage·
 // themeStageRead·themeInstallCommit·themeInstallDiscard)의 순서가 보안 속성이다 — 근거는
 // Rust 쪽 `src-tauri/src/commands/theme_cmd.rs` 머리주석에 한 번만 적혀 있다. 여기서
 // 되풀이하지 않는 이유는 그 순서를 강제하는 것이 이 파일이 아니라 커맨드 집합의
-// 모양이기 때문이다(스테이징 트리에 쓰는 커맨드가 아예 없다). 나머지 둘은 그 순서 밖이다
+// 모양이기 때문이다(스테이징 트리에 쓰는 커맨드가 아예 없다). 나머지 셋은 그 순서 밖이다
 // — `themeReadStoredCss`는 로드 시점 읽기(§361이 첫 호출자를 줬다), `themeUninstall`(§361)은
-// 제거로, 설치 순서와 무관한 별개의 생명주기 동작이다.
+// 제거로, 설치 순서와 무관한 별개의 생명주기 동작이다. `themePackageBuild`(§363)는 반대
+// 방향이다 — 이 앱이 설치하는 것이 아니라 테마 제작자가 내보내는 것이고, 설치 트리를
+// 전혀 건드리지 않는다.
 import { invoke } from "@tauri-apps/api/core";
 
 import type { ThemeMode } from "../types/theme";
@@ -122,4 +124,24 @@ export async function themeReadStoredCss(
  */
 export async function themeUninstall(themeId: string): Promise<void> {
   return invoke<void>("theme_uninstall", { themeId });
+}
+
+/**
+ * §363 — `entries`(`themePackageEntries`가 만든, 프런트가 순수하게 구성한 맵)를 zip
+ * 바이트로. 순수 빌더다 — 경로를 쓰지 않고 `entries`에 대해 아무것도 검증하지 않는다
+ * (`plugin::build_zip_bytes`). 결과를 디스크에 쓰는 것은 호출자의 몫이다 —
+ * `exportBinaryFile`(`src/ipc/fs.ts`)로, 사용자 지정 경로 하나에.
+ *
+ * Rust 커맨드의 시그니처가 `Vec<(String, Vec<u8>)>`라 튜플의 배열로 보낸다 — 맵이 아니라
+ * 배열인 이유는 이 커맨드를 받는 쪽(0091 Task 3 브리프)이 그렇게 고정했다.
+ */
+export async function themePackageBuild(
+  entries: Record<string, Uint8Array>,
+): Promise<number[]> {
+  return invoke<number[]>("theme_package_build", {
+    entries: Object.entries(entries).map(([name, bytes]) => [
+      name,
+      Array.from(bytes),
+    ]),
+  });
 }

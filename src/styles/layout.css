@@ -77,6 +77,9 @@
 
 .app-sidebar {
   flex-shrink: 0;
+
+  /* §369 폭은 인라인이 아니라 변수로 온다. base.css 의 260px 가 fallback 이다. */
+  width: var(--sidebar-width, 260px);
   height: 100%;
   overflow: hidden;
   background-color: var(--color-bg-panel);

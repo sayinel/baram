@@ -53,7 +53,14 @@ export interface ExportHTMLOptions {
    * existing call site's output unchanged.
    */
   fontFaceCSS?: string;
-  theme?: "dark" | "light";
+  /**
+   * §362 — the active theme's `:root` block, built by `themeTokensBlock` and
+   * resolved by the caller (`export.ts`'s two entry points, gated on
+   * `themeInExport === "tokens"`). Forwarded straight into
+   * `buildExportStylesheet`, which places it right after `exportTokensCSS()`
+   * so it overrides the semantic tokens rather than being overridden by them.
+   */
+  themeTokens?: string;
 }
 
 /**
@@ -239,7 +246,6 @@ export function generateStandaloneHTML(
   options?: ExportHTMLOptions,
 ): string {
   const safeTitle = escapeHTML(title);
-  void options?.theme; // reserved for future dark theme export
 
   // §353 — the article's inline font-variable declaration.
   //
@@ -266,7 +272,7 @@ export function generateStandaloneHTML(
   <meta name="generator" content="Baram">
   <title>${safeTitle}</title>
   ${katexStyles(editorHTML)}
-  <style>${buildExportStylesheet(options?.fontFaceCSS)}</style>
+  <style>${buildExportStylesheet(options?.fontFaceCSS, options?.themeTokens)}</style>
 </head>
 <body>
   <article class="baram-export"${articleStyleAttr}>${editorHTML}</article>

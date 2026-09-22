@@ -2003,6 +2003,19 @@
       "milestone": "M11",
       "status": "implemented",
       "description": "설치된 테마 제거. plugin_uninstall 과 같은 함수(uninstall_installed)를 InstallKind::Theme 로 호출한다 — Task 3 이 이미 kind 로 일반화해 두어 새 Rust 로직 없이 래퍼 하나로 끝난다"
+    },
+    {
+      "name": "theme_package_build",
+      "input": {
+        "entries": "Array<[string, Vec<u8>]>"
+      },
+      "output": "Vec<u8> (number[])",
+      "module": "theme",
+      "spec": "§363",
+      "phase": 3,
+      "milestone": "M11",
+      "status": "implemented",
+      "description": "순수 zip 바이트 빌더 — themePackageEntries(프런트, 순수)가 만든 엔트리 맵을 압축한다. 경로를 쓰지 않고 아무것도 검증하지 않는다: 사용자 지정 경로에 쓰는 것은 기존 export_binary_file 이 한다"
     }
   ],
   "events": [

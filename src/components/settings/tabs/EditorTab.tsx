@@ -17,6 +17,7 @@ import {
   fontSizeNumber,
   lineHeightNumber,
 } from "../../../utils/font/font-metric-text";
+import { AppearanceDialRow } from "../appearance-dial-row";
 import { FontBrowser } from "../FontBrowser";
 import { FontSlotPicker } from "../FontSlotPicker";
 import {
@@ -49,8 +50,6 @@ export function EditorTab() {
     setLineNumbers,
     autoPairBrackets,
     setAutoPairBrackets,
-    editorMaxWidth,
-    setEditorMaxWidth,
     virtualizeLargeDocs,
     setVirtualizeLargeDocs,
     autoLoadVideoEmbeds,
@@ -64,7 +63,6 @@ export function EditorTab() {
       codeFontFamily: s.codeFontFamily,
       codeFontSize: s.codeFontSize,
       codeLineHeight: s.codeLineHeight,
-      editorMaxWidth: s.editorMaxWidth,
       fontFamily: s.fontFamily,
       fontSize: s.fontSize,
       lineHeight: s.lineHeight,
@@ -76,7 +74,6 @@ export function EditorTab() {
       setCodeFontFamily: s.setCodeFontFamily,
       setCodeFontSize: s.setCodeFontSize,
       setCodeLineHeight: s.setCodeLineHeight,
-      setEditorMaxWidth: s.setEditorMaxWidth,
       setFontFamily: s.setFontFamily,
       setFontSize: s.setFontSize,
       setLineHeight: s.setLineHeight,
@@ -299,6 +296,19 @@ export function EditorTab() {
         <ToggleSwitch checked={lineNumbers} onChange={setLineNumbers} />
       </SettingsRow>
 
+      {/* §366 되돌림 — 이 둘은 §366에서 외관 다이얼로 바뀌며 잠시 Appearance
+          탭으로 옮겨졌다가, 되돌아왔다(§366 후속 수정). 다이얼 기계(병합·출처
+          배지·되돌리기, 0096이 더할 테마 층)는 AppearanceDialRow 안에 그대로
+          있다 — 탭을 옮겨도 그 로직은 건드리지 않는다. */}
+      <AppearanceDialRow
+        dialId="editorMaxWidth"
+        label={t("settings.editor.maxWidth")}
+      />
+      <AppearanceDialRow
+        dialId="editorPadding"
+        label={t("settings.appearance.editorPadding")}
+      />
+
       <SettingsRow
         description={t("settings.editor.virtualizeLargeDocs.desc")}
         label={t("settings.editor.virtualizeLargeDocs")}
@@ -316,26 +326,6 @@ export function EditorTab() {
         <ToggleSwitch
           checked={autoLoadVideoEmbeds}
           onChange={setAutoLoadVideoEmbeds}
-        />
-      </SettingsRow>
-
-      <SettingsRow
-        description={t("settings.editor.maxWidth.desc").replace(
-          "{value}",
-          editorMaxWidth === 0
-            ? t("settings.editor.maxWidth.noLimit")
-            : editorMaxWidth + "px",
-        )}
-        label={t("settings.editor.maxWidth")}
-      >
-        <input
-          className="settings-range"
-          max={2048}
-          min={0}
-          onChange={(e) => setEditorMaxWidth(Number(e.target.value))}
-          step={50}
-          type="range"
-          value={editorMaxWidth}
         />
       </SettingsRow>
     </div>
