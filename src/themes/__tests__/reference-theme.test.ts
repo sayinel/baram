@@ -9,11 +9,24 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import {
+  deriveColorVars,
+  DERIVED_COLOR_KEYS,
+} from "../../appearance/color-derive";
+import { contrastWarningsFor } from "../../appearance/contrast-report";
 import { DIALS } from "../../appearance/dials";
 import { validateThemeManifest } from "../theme-manifest";
 
 const SOURCE = resolve(__dirname, "../reference/baram-theme.json");
 const raw = JSON.parse(readFileSync(SOURCE, "utf8")) as unknown;
+
+/** `src/themes/reference/{mode}/tokens.json` 을 시드 24키로 읽는다. */
+function readReferenceTokens(
+  mode: "dark" | "light",
+): Readonly<Partial<Record<string, string>>> {
+  const path = resolve(__dirname, `../reference/${mode}/tokens.json`);
+  return JSON.parse(readFileSync(path, "utf8")) as Record<string, string>;
+}
 
 /**
  * 레퍼런스가 **일부러** 행사하지 않는 다이얼과 그 이유.
@@ -23,8 +36,9 @@ const raw = JSON.parse(readFileSync(SOURCE, "utf8")) as unknown;
  * 반드시 한 번 답하게 된다 — 스펙 §15.6 이 요구하는 것이 그것이다.
  */
 const NOT_EXERCISED: Readonly<Record<string, string>> = {
-  // 지금은 비어 있다. 0095 가 색 다이얼을, 0097 이 밀도·모서리·배경 대비를
-  // 더하면 그 각각에 대해 여기 한 줄이 생기거나 레퍼런스가 값을 싣는다.
+  accentHueShift:
+    "이동량 다이얼이라 기준이 테마 자신의 강조 시드다. 레퍼런스는 그 시드를 직접 선언하므로 이동량 0 이 옳고, 0 은 기본값이라 선언할 값이 없다.",
+  accentSaturationShift: "위와 같다 — 채도도 시드가 직접 정한다.",
 };
 
 describe("레퍼런스 테마 초안", () => {
@@ -49,5 +63,34 @@ describe("레퍼런스 테마 초안", () => {
     );
     const covered = [...declared, ...Object.keys(NOT_EXERCISED)].sort();
     expect(covered).toEqual(DIALS.map((d) => d.id).sort());
+  });
+
+  // 무엇이 이것을 실패시키는가: 레퍼런스 시드에 파생의 입력 키가 빠지면
+  // 29키가 다 나오지 않는다 — 그러면 이 테마를 입은 사용자에게 callout 색이
+  // 기본 팔레트로 남는다. 그것이 이 계획이 고치려던 결함 그 자체다.
+  it("레퍼런스 시드에서 파생 29키가 전부 나온다", () => {
+    for (const mode of ["light", "dark"] as const) {
+      const seeds = readReferenceTokens(mode);
+      expect(Object.keys(deriveColorVars(seeds)).sort()).toEqual(
+        [...DERIVED_COLOR_KEYS].sort(),
+      );
+    }
+  });
+
+  // 비공허성: 위 단언은 두 모드가 **같은** 색을 내도 통과한다.
+  // 레퍼런스가 모드별 팔레트를 갖는다는 것이 이것으로 관측된다.
+  it("두 모드의 파생이 서로 다르다", () => {
+    const light = deriveColorVars(readReferenceTokens("light"));
+    const dark = deriveColorVars(readReferenceTokens("dark"));
+    for (const key of DERIVED_COLOR_KEYS) {
+      expect(light[key], key).not.toBe(dark[key]);
+    }
+  });
+
+  // §15 검증 4 — 파생 대비. 레퍼런스는 시험 도구이므로 경고가 없어야 한다.
+  it("레퍼런스는 대비 경고를 내지 않는다", () => {
+    for (const mode of ["light", "dark"] as const) {
+      expect(contrastWarningsFor(mode, readReferenceTokens(mode))).toEqual([]);
+    }
   });
 });
