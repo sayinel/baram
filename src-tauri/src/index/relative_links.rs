@@ -33,8 +33,9 @@ pub fn rewrite_relative_wikilinks(
 /// Windows — and the webview's `old_dir` may spell either. A comparison that
 /// split on `/` alone read `C:\vault\notes` as one component, so `..` popped
 /// the whole path and no link ever resolved into the directory. Paths are
-/// handled as components here (`/`, and `\` when `windows`), a leading drive
-/// letter compares without regard to case as `std::path` does, and the
+/// handled as components here (`/`, and `\` when `windows`), every component
+/// compares without regard to ASCII case when `windows` (issue 675 — see
+/// `same_component` for what that does and does not promise), and the
 /// wikilink the rewrite writes is joined with `/`: it is markdown, not a
 /// native path. The Rust tests run on Linux, so the Windows shape is tested
 /// by passing `windows = true`, never behind `cfg(windows)`.
@@ -129,11 +130,38 @@ fn resolve_components<'a>(
     resolved
 }
 
-/// Do two components name the same entry? Equal bytes — or, as the first
-/// component of a Windows path, the same drive letter in either case, the
-/// one exception `std::path` makes to case-sensitive comparison.
-fn same_component(a: &str, b: &str, first: bool, windows: bool) -> bool {
-    a == b || (first && windows && is_drive(a) && is_drive(b) && a.eq_ignore_ascii_case(b))
+/// Do two components name the same entry? Equal bytes — or, on Windows, the
+/// same but for ASCII case. Only the drive letter was folded here until
+/// issue 675, and Windows by default folds the rest too: a link or a note
+/// path spelled `C:\VAULT\a\NS` named the same directory as `C:\vault\a\ns`
+/// to the filesystem and a different one to this comparison, so a namespace
+/// rename left the link pointing at a directory that no longer exists —
+/// silently, because `commit_namespace_rename` reports nothing for a file
+/// whose content it did not change.
+///
+/// ‼️ ASCII only, which is NARROWER than Windows, not equal to it: its fold
+/// covers non-ASCII letters too, so `ÉCOLE` and `école` still do not match
+/// here and a rename across that pair keeps the silent break this issue is
+/// about. That is deliberate, because the two errors do not cost the same.
+/// Folding too little leaves a link exactly as the user wrote it — the
+/// behaviour of every release so far. Folding too much rewrites a link to
+/// name a DIFFERENT directory, which is the failure this whole area exists
+/// to prevent. `to_lowercase` folds more (measured: it equates `É` and `é`)
+/// but it is Unicode's table, not the filesystem's, so adopting it would
+/// widen the match on a rule nothing here can check. The frontend made the
+/// same choice for the same reason (`foldAsciiCase`, `isUnderRoot`, issue
+/// 631). Widening this needs a source for what Windows actually folds.
+///
+/// ‼️ `windows` here means "the platform folds ASCII case on every path
+/// component", which is what Windows does by default and not what it can be
+/// told to do: a directory carrying the per-directory case-sensitivity flag
+/// (Windows 10+, for WSL) holds `ns` and `NS` at once, and this comparison
+/// calls them one — a link into such a sibling was left alone before issue
+/// 675 and is rewritten into the renamed directory after it. Narrowing that
+/// needs an answer from the filesystem, which a pure function over two
+/// strings cannot ask for.
+fn same_component(a: &str, b: &str, windows: bool) -> bool {
+    a == b || (windows && a.eq_ignore_ascii_case(b))
 }
 
 fn is_drive(part: &str) -> bool {
@@ -151,8 +179,7 @@ fn strip_dir_prefix<'a>(dir: &[&str], path: &'a [&'a str], windows: bool) -> Opt
     let under = dir
         .iter()
         .zip(path)
-        .enumerate()
-        .all(|(k, (d, p))| same_component(d, p, k == 0, windows));
+        .all(|(d, p)| same_component(d, p, windows));
     under.then(|| &path[dir.len()..])
 }
 
@@ -163,8 +190,7 @@ fn relative_components(source_dir: &[&str], target: &[&str], windows: bool) -> S
     let common = source_dir
         .iter()
         .zip(target)
-        .enumerate()
-        .take_while(|(k, (a, b))| same_component(a, b, *k == 0, windows))
+        .take_while(|(a, b)| same_component(a, b, windows))
         .count();
     let ups = source_dir.len() - common;
     let mut result = String::new();
@@ -322,6 +348,109 @@ mod tests {
         );
     }
 
+    /// issue 675 — a Windows filesystem folds case on every path component.
+    /// A link or a note path spelled in another case named the same directory
+    /// to the filesystem, and a different one to this rewrite, so a namespace
+    /// rename left the link behind. `commit_namespace_rename` treats content
+    /// it did not change as nothing to report, so the break was silent.
+    #[test]
+    fn a_windows_rename_follows_a_link_spelled_in_another_case() {
+        let rewrite = |content: &str, source: &str, old: &str, new: &str| {
+            rewrite_relative_wikilinks_with(content, source, old, new, true)
+        };
+        // The LINK spells the directory in another case. The all-caps sibling
+        // stays: folding the comparison did not make it a prefix test.
+        // What fails this: restoring `first && is_drive(a) && is_drive(b)` in
+        // `same_component` — the link stays `[[./NS/c]]` (measured).
+        assert_eq!(
+            rewrite(
+                "[[./NS/c]] [[./NS-OLD/e]]",
+                r"C:\vault\a\note.md",
+                r"C:\vault\a\ns",
+                r"C:\vault\a\ns2",
+            ),
+            "[[./ns2/c]] [[./NS-OLD/e]]"
+        );
+        // Mixed case on both sides, which a fold restricted to uniformly
+        // cased components would miss — every other spelling in this file is
+        // all-upper or all-lower, so nothing else here would catch that.
+        // What fails this: `windows && uniform_case && a.eq_ignore_ascii_case(b)`
+        // for any `uniform_case` test — the link stays `[[./nS/c]]`.
+        assert_eq!(
+            rewrite(
+                "[[./nS/c]]",
+                r"C:\VaUlT\a\note.md",
+                r"C:\vAuLt\a\Ns",
+                r"C:\vault\a\ns2",
+            ),
+            "[[./ns2/c]]"
+        );
+        // The NOTE path spells a parent in another case, so BOTH comparisons
+        // must fold: `strip_dir_prefix` to see the link as one that points
+        // into the directory at all, and `relative_components` to count that
+        // parent as shared.
+        // What fails this: folding in `strip_dir_prefix` alone, which writes
+        // `[[../../vault/a/ns2/c]]` — correct, and a spelling churn nobody
+        // asked for (measured).
+        assert_eq!(
+            rewrite(
+                "[[./ns/c]]",
+                r"C:\VAULT\a\note.md",
+                r"C:\vault\a\ns",
+                r"C:\vault\a\ns2",
+            ),
+            "[[./ns2/c]]"
+        );
+    }
+
+    /// issue 675 — the fold is the platform's to define and ours to bound:
+    /// off on Unix, and ASCII-only on Windows, which is less than Windows
+    /// folds (see `same_component` for why less, not more).
+    #[test]
+    fn the_case_fold_is_windows_only_and_ascii_only() {
+        // Unix tells `NS` and `ns` apart, so the link names a directory the
+        // rename did not touch.
+        // What fails this: dropping the `windows &&` guard.
+        assert_eq!(
+            rewrite_relative_wikilinks_with(
+                "[[./NS/c]]",
+                "/v/a/note.md",
+                "/v/a/ns",
+                "/v/a/ns2",
+                false,
+            ),
+            "[[./NS/c]]"
+        );
+        // A UNC server and share fold as any other component does now; the
+        // drive-only comparison left this link alone (measured, both ways).
+        // What fails this: restoring the `is_drive(a) && is_drive(b)` gate.
+        assert_eq!(
+            rewrite_relative_wikilinks_with(
+                "[[./ns/c]]",
+                r"\\SERVER\Share\a\note.md",
+                r"\\server\share\a\ns",
+                r"\\server\share\a\ns2",
+                true,
+            ),
+            "[[./ns2/c]]"
+        );
+        // The ASCII bound, pinned as the limitation it is: this link is one
+        // Windows would follow and we do not. Changing it is a decision
+        // about what Windows folds, not a refactor.
+        // What fails this: comparing `a.to_lowercase() == b.to_lowercase()`,
+        // which equates `É` and `é` and rewrites the link to `[[./ns2/c]]`.
+        assert_eq!(
+            rewrite_relative_wikilinks_with(
+                "[[./école/c]]",
+                r"C:\vault\a\note.md",
+                r"C:\vault\a\ÉCOLE",
+                r"C:\vault\a\ns2",
+                true,
+            ),
+            "[[./école/c]]"
+        );
+    }
+
     #[test]
     fn windows_paths_resolve_and_compare_as_components() {
         assert_eq!(
@@ -374,5 +503,39 @@ mod tests {
             relative_components(&["v", "notes", "sub"], &["v", "ml"], false),
             "../../ml"
         );
+        // issue 675: every component folds on Windows, not the drive alone —
+        // and the fold does not turn the comparison into a prefix test.
+        assert_eq!(
+            strip_dir_prefix(&["c:", "v", "NS"], &["C:", "v", "ns", "x"], true),
+            Some(&["x"][..])
+        );
+        assert_eq!(
+            strip_dir_prefix(&["c:", "v", "NS"], &["C:", "v", "ns", "x"], false),
+            None
+        );
+        assert_eq!(
+            strip_dir_prefix(&["v", "NS"], &["v", "ns-old", "x"], true),
+            None
+        );
+        // The note's own directory folds too, or the link climbs out of
+        // `VAULT` and back down into `vault` instead of staying at `./`.
+        assert_eq!(
+            relative_components(
+                &["C:", "VAULT", "a"],
+                &["C:", "vault", "a", "ns2", "c"],
+                true
+            ),
+            "./ns2/c"
+        );
+        // Mixed case, both sides: a fold that only accepted a uniformly
+        // upper- or lowercase component would pass every other assertion
+        // here, because every other spelling in this file is uniform.
+        assert!(same_component("VaUlT", "vAuLt", true));
+        assert!(!same_component("VaUlT", "vAuLt", false));
+        // The fold is case, not similarity: two drives stay two. And the
+        // ASCII bound holds — `É`/`é` stay two, which is narrower than
+        // Windows on purpose (`same_component`).
+        assert!(!same_component("C:", "D:", true));
+        assert!(!same_component("É", "é", true));
     }
 }
