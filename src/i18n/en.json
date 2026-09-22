@@ -1399,6 +1399,7 @@
   "tasks.triage.uncancel": "Reopen task",
   "tasks.triage.writeFailed": "Couldn't save the task change.",
   "tasks.unsavedConflict": "That line changed in your unsaved edits. Save the file and try again.",
+  "theme.install.contrastWarning": "{count} text pairs in this theme fall below the AA contrast minimum. It is installed — this is a note, not a rejection.",
   "theme.revoked.blockedLoad": "This theme has been withdrawn and is no longer applied.",
   "theme.revoked.keepFiles": "Its files are left in place — nothing has been deleted.",
   "theme.revoked.remove": "Remove it",

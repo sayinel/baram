@@ -13,10 +13,12 @@
 //
 // 실패는 전부 `discard` 로 끝난다 — 설치된 것은 아무것도 건드리지 않았으므로 "복구" 가
 // 아니라 "내려받은 것을 버린다" 이다(#261).
+import type { ContrastWarning } from "../appearance/contrast-report";
 import type { RegistryEntry } from "../plugins/types";
 import type { ThemeColors, ThemeMode } from "../types/theme";
 import type { ThemeManifest } from "./theme-manifest";
 
+import { contrastWarningsFor } from "../appearance/contrast-report";
 import {
   themeInstallCommit,
   themeInstallDiscard,
@@ -259,7 +261,16 @@ export type ThemeInstallResult =
       ok: false;
       reason: ThemeInstallFailure;
     }
-  | { installed: InstalledTheme; ok: true };
+  | {
+      installed: InstalledTheme;
+      ok: true;
+      /**
+       * §367.3 설치를 막지 **않은** 대비 경고. 비어 있으면 필드를 싣지 않는다.
+       * 실패 갈래(`THEME_INSTALL_FAILURE_REASONS`)에 값을 더하지 않는 것이
+       * 요점이다 — 이것은 실패가 아니다.
+       */
+      warnings?: ContrastWarning[];
+    };
 
 /**
  * 설치가 멈춘 이유. UI 가 locale 문장으로 바꾼다.
@@ -406,6 +417,11 @@ export async function installTheme(
     // 같은 순간·같은 값으로 한 번 정해진다. 이 함수는 오늘 최초 설치만 호출하므로 셋이
     // 같은 것이 옳다 — `InstalledTheme.consentedAt`의 doc 주석이 그 계약을 적어 둔다.
     const now = new Date().toISOString();
+    // §367.3 — 위생과 무관한 미학 판단이라 commit 뒤, 실패로 셀 수 없는 자리에서 잰다.
+    const warnings = THEME_MODES.flatMap((mode) => {
+      const colors = modes[mode]?.colors;
+      return colors === undefined ? [] : contrastWarningsFor(mode, colors);
+    });
     return {
       ok: true,
       installed: {
@@ -418,6 +434,7 @@ export async function installTheme(
         manifest,
         modes,
       },
+      ...(warnings.length > 0 && { warnings }),
     };
   } catch (err) {
     logger.error("[Theme] install failed:", err);

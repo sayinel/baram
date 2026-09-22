@@ -1399,6 +1399,7 @@
   "tasks.triage.uncancel": "태스크 되살리기",
   "tasks.triage.writeFailed": "태스크 변경을 저장하지 못했습니다.",
   "tasks.unsavedConflict": "저장하지 않은 편집에서 그 줄이 바뀌었습니다. 파일을 저장한 뒤 다시 시도하세요.",
+  "theme.install.contrastWarning": "이 테마의 텍스트 조합 {count}개가 AA 대비 최소치에 못 미칩니다. 설치는 됐습니다 — 거부가 아니라 안내입니다.",
   "theme.revoked.blockedLoad": "이 테마는 회수되어 더 이상 적용되지 않습니다.",
   "theme.revoked.keepFiles": "파일은 그대로 두었습니다 — 삭제된 것은 없습니다.",
   "theme.revoked.remove": "제거하기",

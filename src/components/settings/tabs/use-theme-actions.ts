@@ -276,6 +276,17 @@ export function useThemeActions() {
         // and the hydration hook re-reads on the next render either way.
         addInstalledTheme(result.installed, options);
         clearThemeCssCache(result.installed.id);
+        // §367.3 — a second, "warning" toast next to whichever success toast the caller
+        // (install or update) shows. It never blocks `installTheme`'s success above; this
+        // only decides whether to ALSO say something about it.
+        if (result.warnings !== undefined && result.warnings.length > 0) {
+          useUIStore.getState().showToast(
+            t("theme.install.contrastWarning", {
+              count: String(result.warnings.length),
+            }),
+            "warning",
+          );
+        }
         return result.installed;
       } finally {
         setInstalling((prev) => {
