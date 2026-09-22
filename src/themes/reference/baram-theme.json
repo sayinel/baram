@@ -5,7 +5,7 @@
   "author": "Baram",
   "license": "Apache-2.0",
   "version": "0.1.0",
-  "engines": { "baram": ">=0.0.0" },
+  "engines": { "baram": ">=0.7.4" },
   "modes": {
     "light": { "tokens": "light/tokens.json" },
     "dark": { "tokens": "dark/tokens.json" }
