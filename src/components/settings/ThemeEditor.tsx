@@ -144,6 +144,20 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
   // before creates), and silently false the moment the close is deferred.
   const savedRef = useRef(false);
 
+  // ‼️ 이 편집기 인스턴스가 미리보기를 **이미 끝냈는가**. `endPreview` 를 한 번만
+  // 실행시키는 관문이고, 그 이유는 Cancel 이 두 번 부르기 때문이다 — 버튼에서 한 번,
+  // 그 `onClose()` 가 일으키는 언마운트의 정리에서 한 번(실제 앱의 `onClose` 는
+  // 언마운트한다: `tabs/AppearanceTab.tsx` 가 하위 화면을 `null` 로 되돌린다).
+  // 관문이 없으면 둘째 호출이 되돌리기를 다시 실행하고, 그때 소유권은 이미 풀려 있어
+  // `setThemePreviewOwner(false)` 가 조용히 이른 반환한다 — 재적용 신호가 발화하지
+  // 않으므로 그 되돌리기를 고칠 사람이 없다(§367 재리뷰).
+  //
+  // ‼️ **모듈 전역인 `themePreviewOwned()` 로 판정하면 안 된다.** 편집기가 떠 있는
+  // 동안 다른 무언가가 소유권을 놓는 날이 오면 그 술어는 "이미 끝났다" 로 읽혀
+  // 되돌리기를 통째로 건너뛰고, 미리보기가 `<html>` 에 박힌 채 남는다. 판정 대상은
+  // 문서의 상태가 아니라 **이 인스턴스의 이력**이다.
+  const previewEndedRef = useRef(false);
+
   // Group color keys by category
   const categories = useMemo(() => {
     const map = new Map<string, (typeof THEME_COLOR_KEYS)[number][]>();
@@ -180,10 +194,11 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
   // (§367 리뷰 I3).
   useEffect(() => {
     setThemePreviewOwner(true);
-    // Aliased so the cleanup reads the ref through a stable local (lint rule), not
-    // a value captured at effect time — `saved` must be read AT cleanup.
+    // Aliased so the cleanup reads the refs through stable locals (lint rule), not
+    // values captured at effect time — both must be read AT cleanup.
     const saved = savedRef;
-    return () => endPreview(!saved.current);
+    const ended = previewEndedRef;
+    return () => endPreview(!saved.current, ended);
   }, []);
 
   const handleColorChange = useCallback((key: ThemeColorKey, value: string) => {
@@ -248,7 +263,12 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
     // Restore original colors before closing. 언마운트 정리와 **같은 순서**여야 한다
     // (`endPreview`) — 이 버튼이 두 번째 되돌리기 자리이고, 두 자리가 갈리면 하나만
     // 고치는 날이 온다.
-    endPreview(true);
+    //
+    // ‼️ 여기서 지우고 `onClose()` 에만 맡길 수 없다. 그러면 정확성이 **호출자가
+    // 언마운트하는가**에 달리고, 언마운트하지 않는 호출자에게는 Cancel 이 미리보기를
+    // 화면에 남긴다(`ThemeEditor` 를 홀로 렌더하는 테스트 넷이 그 경우다). 대신 두 번
+    // 불려도 안전하게 만든다 — `previewEndedRef` 가 그 관문이다.
+    endPreview(true, previewEndedRef);
     onClose();
   }, [onClose]);
 
@@ -495,9 +515,21 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
  * 하나가 움직일 때까지 그대로였다).
  *
  * `restore` 가 거짓인 자리는 저장 직후다: 그 색은 이제 진짜 테마라 되돌릴 미리보기가
- * 없지만, 소유권은 그때도 놓아야 한다.
+ * 없지만, 소유권은 그때도 놓아야 한다. 저장 경로는 이 함수를 언마운트 정리에서 **한 번**
+ * 부르고 그때 소유권을 아직 쥐고 있으므로, 아래 관문에 걸리지 않고 해제까지 간다.
+ *
+ * ‼️ **한 인스턴스에서 한 번만 실행된다**(`ended`). Cancel 이 이 함수를 두 번 부르기
+ * 때문이다 — 버튼에서 한 번, 그 `onClose()` 가 일으키는 언마운트의 정리에서 한 번. 관문이
+ * 없으면 둘째 호출이 되돌리기만 다시 실행하고 `setThemePreviewOwner(false)` 는 이미
+ * 풀린 소유권 위에서 조용히 이른 반환한다(`theme-vars.ts` 의 `previewOwned === owned`).
+ * 그러면 재적용 신호가 발화하지 않아 그 되돌리기를 고칠 사람이 없고, 색 다이얼이 옮긴
+ * 강조가 사라진다 — 실측(§367 재리뷰): 언마운트하는 `onClose` 로 Cancel 을 누르면
+ * `--color-accent-default` 가 빈 문자열로 끝났다. 관문이 **이 인스턴스의 ref** 인
+ * 이유는 호출자 쪽 주석(`previewEndedRef`)이 적는다.
  */
-function endPreview(restore: boolean): void {
+function endPreview(restore: boolean, ended: { current: boolean }): void {
+  if (ended.current) return;
+  ended.current = true;
   if (restore) restorePreview();
   setThemePreviewOwner(false);
 }

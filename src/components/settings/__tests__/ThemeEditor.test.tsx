@@ -30,6 +30,7 @@ import {
   defaultColorsForBase,
   THEME_COLOR_KEYS,
 } from "../../../types/theme";
+import { themePreviewOwned } from "../../../utils/theme-vars";
 import { ThemeEditor } from "../ThemeEditor";
 
 // ‼️ `useSettingsEffects` syncs two native menus through a LAZY `import()` (§82). This file
@@ -211,6 +212,12 @@ describe("ThemeEditor — leaving the editor", () => {
     act(() => closeEditor());
 
     expect(accentValue()).toBe(SENTINEL);
+    // ‼️ 위 단언은 **되돌리지 않는 것**만 본다 — 저장한 색은 미리보기가 이미 써 둔
+    // 값이라, 소유권을 영영 놓지 않는 구현에서도 통과한다(실측: `endPreview` 의 해제를
+    // `restore` 갈래로만 옮긴 mutant 가 초록이었다). 그러면 이 모듈 전역이 참으로
+    // 굳어 이후의 모든 테마 적용이 조용히 건너뛰어진다. 저장 경로도 반드시 놓는다는
+    // 것을 따로 못 박는다 — `endPreview` 의 1회 실행 관문이 삼킬 수 있는 자리다.
+    expect(themePreviewOwned()).toBe(false);
   });
 
   // §367 리뷰 I3 — 편집기를 닫는 것이 강조 다이얼의 이동을 되돌렸다.
@@ -243,6 +250,39 @@ describe("ThemeEditor — leaving the editor", () => {
     expect(accentValue()).not.toBe(SHIFTED_ACCENT);
 
     act(() => closeEditor());
+
+    expect(accentValue()).toBe(SHIFTED_ACCENT);
+  });
+
+  // §367 재리뷰 — **닫는 길이 둘이고, 하나만 고쳐도 다른 하나는 초록이었다.**
+  //
+  // 위 케이스는 언마운트로만 닫으므로 `endPreview` 가 한 번 돈다. Cancel 은 실제 앱에서
+  // 두 번 돌린다 — 버튼에서 한 번, 그 `onClose()` 가 일으키는 언마운트의 정리에서 한 번
+  // (`tabs/AppearanceTab.tsx:27` 의 `onClose` 가 하위 화면을 `null` 로 되돌린다). 둘째
+  // 호출이 되돌리기를 다시 실행하고 소유권 해제는 이미 풀려 있어 조용히 이른 반환하므로,
+  // 재적용 신호가 없어 그 되돌리기가 마지막 말이 됐다.
+  //
+  // 이 파일 위쪽의 Cancel 케이스 넷은 이것을 실을 수 없다: `useSettingsEffects` 가 트리에
+  // 없어 잃을 재적용이 애초에 없고, `onClose` 도 언마운트하지 않는다.
+  it("keeps the accent dial's shift when Cancel closes the editor", () => {
+    useSettingsStore.setState({ appearanceOverrides: { accentHueShift: 60 } });
+    let openEditor = (): void => {};
+    function Host() {
+      useSettingsEffects(null);
+      const [open, setOpen] = useState(false);
+      openEditor = () => setOpen(true);
+      // ‼️ 이 `onClose` 가 **언마운트한다** — 실제 앱과 같은 모양이고, 그것이 두 번째
+      // `endPreview` 호출을 만드는 것이다. no-op `onClose` 로는 이 결함이 보이지 않는다.
+      return open ? <ThemeEditor onClose={() => setOpen(false)} /> : null;
+    }
+
+    render(<Host />);
+    expect(accentValue()).toBe(SHIFTED_ACCENT);
+
+    act(() => openEditor());
+    expect(accentValue()).not.toBe(SHIFTED_ACCENT);
+
+    fireEvent.click(screen.getByText("Cancel"));
 
     expect(accentValue()).toBe(SHIFTED_ACCENT);
   });
