@@ -752,7 +752,7 @@
   color: var(--color-text-muted);
   text-align: center;
   background: var(--color-bg-subtle);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-full);
 }
 
 /* §324-b 후속 — 노트 항목의 라벨. `tag-suggest-count`(짧은 숫자 하나를 가정한
@@ -818,7 +818,7 @@
   color: var(--color-text-muted);
   text-align: center;
   background: var(--color-bg-subtle);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-full);
 }
 
 /* §375 — Editor inline `:` symbol and emoji autocomplete popup */

@@ -647,7 +647,7 @@
   line-height: 1;
   color: var(--color-accent-on-solid);
   background: var(--color-accent-solid);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-full);
 }
 
 .notes-card-preview {

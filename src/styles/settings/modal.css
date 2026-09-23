@@ -419,7 +419,7 @@
   cursor: pointer;
   background-color: var(--color-border-default);
   border: none;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-full);
   transition: background-color 0.2s;
 }
 

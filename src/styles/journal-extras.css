@@ -132,7 +132,7 @@
   padding: var(--space-px) var(--space-1-5);
   font-size: 0.7rem;
   background: var(--color-bg-subtle);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-full);
 }
 
 .photo-gallery-grid {

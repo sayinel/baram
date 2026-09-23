@@ -300,7 +300,7 @@
   cursor: pointer;
   background: var(--color-bg-elevated);
   border: none;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-full);
   transition: background 0.15s ease;
 }
 
