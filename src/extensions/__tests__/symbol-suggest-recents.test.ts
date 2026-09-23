@@ -5,8 +5,8 @@
 // symbol-suggest.ts, not a helper called by hand.
 import type { SymbolSuggestionItem } from "../plugins/symbol-search";
 
-import { Editor } from "@tiptap/core";
-import { TextSelection } from "@tiptap/pm/state";
+import { Editor, Extension } from "@tiptap/core";
+import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 type Command = (item: SymbolSuggestionItem) => void;
@@ -33,6 +33,25 @@ import { createBaramExtensions } from "../index";
 import { typeChars } from "./helpers/type-chars";
 
 let editor: Editor;
+let rejectDocChanges = false;
+
+/**
+ * Once `rejectDocChanges` is set, rejects every transaction that changes the
+ * document — a `filterTransaction` veto such as an optimistic lock. Unset, it
+ * lets everything through, so the ` :ar` typing still lands and opens the menu;
+ * a test sets it after `openMenu()` to reject only the pick.
+ */
+const RejectDocChangesWhenSet = Extension.create({
+  name: "rejectDocChangesWhenSet",
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        filterTransaction: (tr) => !(rejectDocChanges && tr.docChanged),
+        key: new PluginKey("rejectDocChangesWhenSet"),
+      }),
+    ];
+  },
+});
 
 /** Type ` :ar` after "alpha" and let the suggestion view fetch its items. */
 async function openMenu(): Promise<Command> {
@@ -44,6 +63,7 @@ async function openMenu(): Promise<Command> {
 
 beforeEach(() => {
   menu.command = null;
+  rejectDocChanges = false;
   useSettingsStore.setState({
     locale: "en",
     recentSymbols: [],
@@ -51,7 +71,7 @@ beforeEach(() => {
   });
   editor = new Editor({
     content: "<p>alpha</p>",
-    extensions: createBaramExtensions(),
+    extensions: [...createBaramExtensions(), RejectDocChangesWhenSet],
   });
   editor.view.dispatch(
     editor.state.tr.setSelection(TextSelection.create(editor.state.doc, 6)),
@@ -73,5 +93,15 @@ describe("the : menu and the recent list (§377)", () => {
     command({ char: "→", id: "→", label: "right arrow" });
     expect(editor.getText()).toBe("alpha →");
     expect(useSettingsStore.getState().recentSymbols).toEqual(["→"]);
+  });
+
+  it("records nothing when a filterTransaction plugin rejects the pick", async () => {
+    // Negative twin of "records the character a pick writes" above: same
+    // editor and pick, but the write is vetoed, so there is nothing to record.
+    const command = await openMenu();
+    rejectDocChanges = true;
+    command({ char: "→", id: "→", label: "right arrow" });
+    expect(editor.getText()).toBe("alpha :ar");
+    expect(useSettingsStore.getState().recentSymbols).toEqual([]);
   });
 });
