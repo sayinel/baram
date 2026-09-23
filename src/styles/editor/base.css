@@ -69,7 +69,7 @@
 }
 
 .mode-toggle-btn {
-  padding: var(--space-0-5) 10px;
+  padding: var(--space-0-5) var(--space-2);
   font-family: var(--font-family-mono);
   font-size: 0.75rem;
   color: var(--color-text-secondary);
@@ -276,7 +276,7 @@
   cursor: pointer;
   user-select: none;
   background: var(--color-bg-subtle);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .fold-ellipsis:hover {

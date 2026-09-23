@@ -289,7 +289,7 @@
   font-size: 0.78rem;
   color: var(--color-text-primary);
   background: color-mix(in srgb, var(--color-accent-default) 12%, transparent);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
 }
 
 .properties-chip.file-ref {
@@ -321,7 +321,7 @@
   cursor: pointer;
   background: none;
   border: 1px dashed var(--color-border-default);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
 }
 
 .properties-chip-add:hover {
@@ -403,7 +403,7 @@
   font-size: 0.75rem;
   color: var(--color-accent-ai);
   background: color-mix(in srgb, var(--color-accent-ai) 15%, transparent);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .skill-preview-content {
@@ -557,7 +557,7 @@
   align-items: center;
   padding: var(--space-0-5) var(--space-1);
   font-size: 0.78rem;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .dep-list-item:hover {
@@ -641,7 +641,7 @@
 
 .dep-chain-btn {
   align-self: flex-start;
-  padding: var(--space-1) 10px;
+  padding: var(--space-1) var(--space-2);
   font-size: 0.75rem;
   color: var(--color-text-primary);
   cursor: pointer;
@@ -755,10 +755,10 @@
   justify-content: center;
   min-width: 18px;
   height: 18px;
-  padding: 0 5px;
+  padding: 0 var(--space-1);
   font-size: 11px;
   font-weight: 600;
-  border-radius: 9px;
+  border-radius: var(--radius-lg);
 }
 
 .skill-lint-badge--error {
@@ -822,7 +822,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-px);
-  padding: var(--space-1-5) 10px;
+  padding: var(--space-1-5) var(--space-2);
   font-size: 13px;
   cursor: pointer;
   border-radius: var(--radius-default);
@@ -938,7 +938,7 @@
 
 .skill-gallery-search {
   width: 100%;
-  padding: var(--space-1-5) 10px;
+  padding: var(--space-1-5) var(--space-2);
   font-size: 12px;
   color: var(--color-text-primary);
   outline: none;
@@ -980,7 +980,7 @@
 }
 
 .skill-gallery-card {
-  padding: 10px var(--space-3);
+  padding: var(--space-2) var(--space-3);
   margin-bottom: var(--space-1-5);
   cursor: pointer;
   border: 1px solid var(--color-border-default);
@@ -1159,7 +1159,7 @@
 }
 
 .skill-optimize-card {
-  padding: var(--space-2) 10px;
+  padding: var(--space-2) var(--space-2);
   border: 1px solid var(--color-border-default);
   border-radius: var(--radius-md);
 }
@@ -1215,7 +1215,7 @@
 }
 
 .skill-optimize-apply {
-  padding: var(--space-0-5) 10px;
+  padding: var(--space-0-5) var(--space-2);
   font-size: 11px;
   color: var(--color-accent-default);
   cursor: pointer;

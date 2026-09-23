@@ -15,7 +15,7 @@
   display: inline-flex;
   gap: var(--space-1-5);
   align-items: center;
-  padding: 3px 10px;
+  padding: var(--space-0-5) var(--space-2);
   font-size: 12px;
   color: var(--color-text-muted);
   white-space: nowrap;
@@ -63,7 +63,7 @@
   outline: none;
   background: transparent;
   border: 1px solid var(--color-accent-default);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 /* Close button on tab — always laid out (space reserved) so revealing the X on
@@ -78,7 +78,7 @@
   padding: var(--space-px);
   margin-left: var(--space-1);
   color: var(--color-text-muted);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   transition:
     color 0.1s,
     background 0.1s;
@@ -113,7 +113,7 @@
 
 /* Add (+) button */
 .context-tab--add {
-  padding: 3px var(--space-1-5);
+  padding: var(--space-0-5) var(--space-1-5);
   color: var(--color-text-muted);
 }
 
@@ -147,7 +147,7 @@
 .context-ctx-menu__item {
   display: block;
   width: 100%;
-  padding: var(--space-1-5) 10px;
+  padding: var(--space-1-5) var(--space-2);
   font-size: 13px;
   color: var(--color-text-default);
   text-align: left;
@@ -181,7 +181,7 @@
 }
 
 .context-add-menu__label {
-  padding: var(--space-1-5) 10px var(--space-0-5);
+  padding: var(--space-1-5) var(--space-2) var(--space-0-5);
   font-size: 11px;
   font-weight: 600;
   color: var(--color-text-muted);
@@ -242,7 +242,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-1);
-  padding: var(--space-1-5) 10px;
+  padding: var(--space-1-5) var(--space-2);
 }
 
 .context-ctx-menu__color-btn {

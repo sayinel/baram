@@ -20,14 +20,14 @@
 
 .settings-key-toggle {
   flex-shrink: 0;
-  padding: 5px var(--space-2);
+  padding: var(--space-1) var(--space-2);
   font-family: var(--font-family-sans);
   font-size: 0.75rem;
   color: var(--color-text-secondary);
   cursor: pointer;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 5px;
+  border-radius: var(--radius-default);
 }
 
 .settings-key-toggle:hover {
@@ -69,7 +69,7 @@
 
 .settings-model-refresh {
   flex-shrink: 0;
-  padding: 5px var(--space-2);
+  padding: var(--space-1) var(--space-2);
   font-family: var(--font-family-sans);
   font-size: 0.875rem;
   line-height: 1;
@@ -171,7 +171,7 @@
   font-size: 0.7rem;
   font-weight: 500;
   white-space: nowrap;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
 }
 
 /* review Important 5: `--color-accent-on-solid` is contrast-checked against
@@ -202,7 +202,7 @@
    버튼(`.settings-model-refresh`)과 같은 차림새를 쓴다. */
 .settings-font-more {
   flex-shrink: 0;
-  padding: var(--space-1) 10px;
+  padding: var(--space-1) var(--space-2);
   font-family: var(--font-family-sans);
   font-size: 0.75rem;
   line-height: 1;
@@ -239,7 +239,7 @@
 }
 
 .settings-font-strip {
-  padding: var(--space-2) 10px;
+  padding: var(--space-2) var(--space-2);
   overflow: hidden;
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-border-default);
@@ -301,7 +301,7 @@
   display: flex;
   overflow: hidden;
   border: 1px solid var(--color-border-default);
-  border-radius: 5px;
+  border-radius: var(--radius-default);
 }
 
 .font-browser-slot-btn {
@@ -346,13 +346,13 @@
 }
 
 .font-browser-chip {
-  padding: 3px 10px;
+  padding: var(--space-0-5) var(--space-2);
   font-size: 0.72rem;
   color: var(--color-text-secondary);
   cursor: pointer;
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-border-default);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
 }
 
 .font-browser-chip:hover {
@@ -420,7 +420,7 @@
 }
 
 .font-browser-row {
-  padding: 5px var(--space-1);
+  padding: var(--space-1) var(--space-1);
   font-size: 0.85rem;
   color: var(--color-text-primary);
   text-align: left;
@@ -475,7 +475,7 @@
 
 .font-browser-preview-body,
 .font-browser-preview-code {
-  padding: var(--space-3) 14px;
+  padding: var(--space-3) var(--space-3);
   overflow: auto;
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-border-default);

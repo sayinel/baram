@@ -132,7 +132,7 @@
 }
 
 .zettel-hub-inbox-action {
-  padding: 3px;
+  padding: var(--space-0-5);
   color: var(--color-text-muted);
   border-radius: var(--radius-default);
 }
@@ -168,7 +168,7 @@
 /* Row favorite-toggle star — hidden until hover/focus, always shown once active. */
 .zettel-hub-fav-btn {
   flex-shrink: 0;
-  padding: 3px;
+  padding: var(--space-0-5);
   color: var(--color-text-muted);
   border-radius: var(--radius-default);
   opacity: 0;
@@ -198,7 +198,7 @@
   align-items: center;
   padding: var(--space-px) var(--space-0-5);
   color: var(--color-text-muted);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   transition: color 0.15s;
 }
 
@@ -213,7 +213,7 @@
 /* ── Empty / not-configured hints ── */
 
 .zettel-hub-empty-hint {
-  padding: var(--space-1-5) var(--space-2) 10px var(--space-8);
+  padding: var(--space-1-5) var(--space-2) var(--space-2) var(--space-8);
   font-size: 12px;
   color: var(--color-text-muted);
 }
@@ -230,7 +230,7 @@
 
 .zettel-hub-hint-link {
   align-self: center;
-  padding: var(--space-1) 10px;
+  padding: var(--space-1) var(--space-2);
   font-size: 12px;
   color: var(--color-accent-default);
   border: 1px solid var(--color-border-default);
@@ -244,7 +244,7 @@
 /* §307 C 허브의 태스크 섹션 — "전체 보기". 형제 섹션에는 없는 조작이라 링크처럼 읽히되
    목록 항목으로는 읽히지 않도록 들여쓰기와 크기를 빈 문구와 맞춘다. */
 .zettel-hub-more {
-  padding: var(--space-1) var(--space-2) var(--space-0-5) 26px;
+  padding: var(--space-1) var(--space-2) var(--space-0-5) var(--space-6);
   font-size: 0.75rem;
   color: var(--color-accent-default);
   cursor: pointer;

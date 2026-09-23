@@ -92,7 +92,7 @@
   color: var(--color-text-muted);
   background-color: var(--color-bg-subtle);
   border: 1px solid var(--color-border-subtle);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 /* ============================================
@@ -177,7 +177,7 @@
   color: var(--color-text-muted);
   background-color: var(--color-bg-subtle);
   border: 1px solid var(--color-border-subtle);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 /* ============================================
@@ -262,7 +262,7 @@
 .floating-toolbar-ai-item {
   display: block;
   width: 100%;
-  padding: var(--space-1-5) 10px;
+  padding: var(--space-1-5) var(--space-2);
   font-size: 0.8rem;
   color: var(--color-text-secondary);
   text-align: left;
@@ -295,7 +295,7 @@
   padding: var(--space-5);
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   box-shadow: 0 8px 32px rgb(0 0 0 / 25%);
 }
 
@@ -317,11 +317,11 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-1-5);
-  margin-bottom: 10px;
+  margin-bottom: var(--space-2);
 }
 
 .ai-prompt-preset-btn {
-  padding: 5px 14px;
+  padding: var(--space-1) var(--space-3);
   font-size: 13px;
   color: var(--color-text-primary);
   cursor: pointer;
@@ -343,7 +343,7 @@
 .ai-prompt-input {
   box-sizing: border-box;
   width: 100%;
-  padding: var(--space-2) 10px;
+  padding: var(--space-2) var(--space-2);
   font-size: 14px;
   color: var(--color-text-primary);
   outline: none;
@@ -446,7 +446,7 @@
   cursor: grab;
   background: transparent;
   border: none;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 /* Handle stays faint (muted) until hovered, then darkens to primary. */
@@ -474,7 +474,7 @@
   cursor: pointer;
   background: transparent;
   border: none;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .block-handle-add-btn:hover {
@@ -506,7 +506,7 @@ body.block-dragging * {
   gap: var(--space-2);
   align-items: center;
   width: 100%;
-  padding: 5px var(--space-3);
+  padding: var(--space-1) var(--space-3);
   font-size: 0.8rem;
   color: var(--color-text-primary);
   text-align: left;
@@ -634,7 +634,7 @@ body.block-dragging * {
 .nodeview-ai-menu-item {
   display: block;
   width: 100%;
-  padding: 5px var(--space-3);
+  padding: var(--space-1) var(--space-3);
   font-size: 0.8rem;
   color: var(--color-text-primary);
   text-align: left;
@@ -756,12 +756,12 @@ body.block-dragging * {
   display: inline-flex;
   gap: var(--space-1-5);
   align-items: center;
-  padding: 5px 14px;
+  padding: var(--space-1) var(--space-3);
   font-size: 0.78rem;
   font-weight: 500;
   cursor: pointer;
   border: 1px solid var(--color-border-default);
-  border-radius: 5px;
+  border-radius: var(--radius-default);
   transition:
     background 0.15s,
     border-color 0.15s;
@@ -773,7 +773,7 @@ body.block-dragging * {
   font-size: 0.7rem;
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-border-subtle);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   opacity: 0.7;
 }
 

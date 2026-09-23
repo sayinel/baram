@@ -112,7 +112,7 @@
   width: 2px;
   content: "";
   background-color: var(--color-accent-default);
-  border-radius: 1px;
+  border-radius: var(--radius-sm);
 }
 
 .app-sidebar {
@@ -367,7 +367,7 @@
   cursor: pointer;
   background: transparent;
   border: none;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .tab-close:hover {
@@ -462,7 +462,7 @@
   cursor: pointer;
   background-color: var(--color-bg-default);
   border: 1px solid var(--color-border-subtle);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   transition: background-color 0.1s;
 }
 

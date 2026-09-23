@@ -19,7 +19,7 @@
   align-items: center;
   width: 90%;
   max-width: 420px;
-  padding: var(--space-6) 28px;
+  padding: var(--space-6) var(--space-6);
   text-align: center;
   background-color: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
@@ -146,7 +146,7 @@
   gap: var(--space-3);
   width: 90%;
   max-width: 420px;
-  padding: var(--space-6) 28px;
+  padding: var(--space-6) var(--space-6);
   background-color: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
   border-radius: var(--radius-lg);
@@ -266,7 +266,7 @@
 }
 
 .merge-btn {
-  padding: var(--space-1-5) 14px;
+  padding: var(--space-1-5) var(--space-3);
   font-size: 0.875rem;
   color: var(--color-text-default);
   cursor: pointer;
@@ -314,7 +314,7 @@
 }
 
 .merge-choice {
-  padding: 3px 10px;
+  padding: var(--space-0-5) var(--space-2);
   font-size: 0.75rem;
   cursor: pointer;
   background-color: var(--color-bg-default);

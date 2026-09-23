@@ -71,7 +71,7 @@
   line-height: 1.4;
   color: var(--color-accent-on-solid);
   background: var(--color-accent-solid);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 /* Mini Calendar */
@@ -239,7 +239,7 @@
   font-weight: 500;
   color: var(--color-accent-default);
   background: color-mix(in srgb, var(--color-accent-default) 12%, transparent);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
 }
 
 .memories-content {
@@ -273,7 +273,7 @@
 }
 
 .memories-mode-btn {
-  padding: 3px 10px;
+  padding: var(--space-0-5) var(--space-2);
   font-size: 0.7rem;
   color: var(--color-text-secondary);
   cursor: pointer;
@@ -349,7 +349,7 @@
 }
 
 .memories-year-card-body {
-  padding: 10px var(--space-3);
+  padding: var(--space-2) var(--space-3);
 }
 
 .memories-oneline {
@@ -429,7 +429,7 @@
   padding: var(--space-px) var(--space-1);
   font-size: 0.85em;
   background: var(--color-bg-subtle);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .memories-md-render hr {
@@ -469,7 +469,7 @@
 
 .notes-search-input {
   width: 100%;
-  padding: 5px var(--space-6) 5px var(--space-2);
+  padding: var(--space-1) var(--space-6) var(--space-1) var(--space-2);
   font-size: 0.75rem;
   color: var(--color-text-primary);
   outline: none;
@@ -600,7 +600,7 @@
   flex-direction: column;
   gap: var(--space-1);
   width: 100%;
-  padding: var(--space-2) 10px;
+  padding: var(--space-2) var(--space-2);
   text-align: left;
   cursor: pointer;
   background: var(--color-bg-default);
@@ -640,13 +640,13 @@
   justify-content: center;
   min-width: 18px;
   height: 18px;
-  padding: 0 5px;
+  padding: 0 var(--space-1);
   font-size: 0.6rem;
   font-weight: 700;
   line-height: 1;
   color: var(--color-accent-on-solid);
   background: var(--color-accent-solid);
-  border-radius: 9px;
+  border-radius: var(--radius-lg);
 }
 
 .notes-card-preview {
@@ -713,7 +713,7 @@
   gap: var(--space-1-5);
   align-items: center;
   width: 100%;
-  padding: var(--space-1-5) 10px;
+  padding: var(--space-1-5) var(--space-2);
   font-size: 0.78rem;
   color: var(--color-text-primary);
   text-align: left;
@@ -798,7 +798,7 @@
   cursor: pointer;
   background: transparent;
   border: 1px solid var(--color-border-default);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .journal-search-close:hover {
@@ -837,7 +837,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 3px var(--space-3) var(--space-0-5);
+  padding: var(--space-0-5) var(--space-3) var(--space-0-5);
   font-size: 0.68rem;
   font-weight: 600;
   color: var(--color-text-secondary);
@@ -848,7 +848,7 @@
 
 .journal-search-category-count {
   min-width: 16px;
-  padding: 0 5px;
+  padding: 0 var(--space-1);
   font-size: 0.65rem;
   color: var(--color-text-muted);
   text-align: center;
@@ -909,7 +909,7 @@
   cursor: pointer;
   background: transparent;
   border: 1px solid var(--color-border-default);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .journal-search-filter-toggle:hover,

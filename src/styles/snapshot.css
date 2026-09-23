@@ -43,7 +43,7 @@
   cursor: pointer;
   background: none;
   border: 1px solid var(--color-border-subtle);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .snapshot-action-btn:hover {
@@ -151,7 +151,7 @@
   text-transform: uppercase;
   letter-spacing: 0.03em;
   border: 1px solid var(--color-border-subtle);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .snapshot-item-label {
@@ -192,7 +192,7 @@
   cursor: pointer;
   background: none;
   border: none;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .file-history-version-open:hover {
@@ -219,7 +219,7 @@
   cursor: pointer;
   background: none;
   border: 1px solid var(--color-border-subtle);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .file-history-version-restore:hover {
@@ -253,7 +253,7 @@
   cursor: pointer;
   background: none;
   border: 1px solid var(--color-border-subtle);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .snapshot-back-btn:hover {

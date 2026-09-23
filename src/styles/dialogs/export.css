@@ -54,7 +54,7 @@
 .export-dialog-body {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--space-3);
   padding: var(--space-4);
 }
 
@@ -85,13 +85,13 @@
 
 .export-pandoc-badge {
   flex-shrink: 0;
-  padding: var(--space-px) 5px;
+  padding: var(--space-px) var(--space-1);
   font-family: var(--font-family-mono);
   font-size: 0.65rem;
   color: var(--color-text-muted);
   white-space: nowrap;
   background-color: var(--color-bg-elevated);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 /* §5.12 Export format dropdown */
@@ -255,7 +255,7 @@
 }
 
 .export-dialog-input {
-  padding: var(--space-2) 10px;
+  padding: var(--space-2) var(--space-2);
   font-family: var(--font-family-sans);
   font-size: 0.9rem;
   color: var(--color-text-primary);
@@ -271,7 +271,7 @@
 
 /* §362 — the "theme in export" select, HTML and PDF blocks both. */
 .export-dialog-select {
-  padding: var(--space-2) 10px;
+  padding: var(--space-2) var(--space-2);
   font-family: var(--font-family-sans);
   font-size: 0.9rem;
   color: var(--color-text-primary);

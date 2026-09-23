@@ -31,7 +31,7 @@
   cursor: pointer;
   background: none;
   border: none;
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   transition:
     color 0.12s,
     background 0.12s;
@@ -62,7 +62,7 @@
 
 .calendar-title-group {
   display: flex;
-  gap: 5px;
+  gap: var(--space-1);
   align-items: center;
 }
 
@@ -250,7 +250,7 @@
 
 .contribution-heatmap::-webkit-scrollbar-thumb {
   background: var(--color-border-default);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .contribution-heatmap::-webkit-scrollbar-track {
@@ -471,9 +471,9 @@
 
 .journal-stats-row {
   display: flex;
-  gap: 7px;
+  gap: var(--space-1-5);
   align-items: center;
-  padding: 7px 10px;
+  padding: var(--space-1-5) var(--space-2);
   font-size: 12px;
   color: var(--color-text-primary);
 }
@@ -511,13 +511,13 @@
 }
 
 .journal-stats-pct {
-  padding: var(--space-px) 7px;
+  padding: var(--space-px) var(--space-1-5);
   margin-left: auto;
   font-size: 10px;
   font-variant-numeric: tabular-nums;
   color: var(--color-text-muted);
   background: var(--color-bg-elevated);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
 }
 
 .journal-stats-dim {

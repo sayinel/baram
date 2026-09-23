@@ -58,7 +58,7 @@
   outline: none;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .block-id-input:focus {
@@ -114,7 +114,7 @@
 }
 
 .wikilink-date-icon {
-  margin-right: 3px;
+  margin-right: var(--space-0-5);
   font-size: 12px;
 }
 
@@ -123,7 +123,7 @@
   display: inline-block;
   width: 6px;
   height: 6px;
-  margin-right: 3px;
+  margin-right: var(--space-0-5);
   vertical-align: middle;
   border-radius: 50%;
 }
@@ -419,7 +419,7 @@
   display: flex;
   gap: var(--space-1-5);
   align-items: baseline;
-  padding: 5px 10px;
+  padding: var(--space-1) var(--space-2);
   margin: var(--space-1-5) var(--space-3) var(--space-1-5) var(--space-4);
   font-size: 0.8rem;
   color: var(--color-text-secondary);
@@ -429,7 +429,7 @@
     var(--color-bg-default) 85%,
     var(--color-bg-panel)
   );
-  border-radius: 5px;
+  border-radius: var(--radius-default);
   transition: background-color 0.15s ease;
 }
 
@@ -466,7 +466,7 @@
   cursor: pointer;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   opacity: 1;
   transition:
     opacity 0.15s ease,
@@ -499,7 +499,7 @@
   cursor: pointer;
   background: transparent;
   border: 1px solid var(--color-accent-default);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   opacity: 0;
   transition:
     opacity 0.15s ease,
@@ -583,7 +583,7 @@
    배지에 같은 색을 쓰면 하필 **지금 보고 있는 줄**에서 배지가 사라진다. */
 .wikilink-item-ext {
   flex-shrink: 0;
-  padding: var(--space-px) 5px;
+  padding: var(--space-px) var(--space-1);
   margin-left: var(--space-2);
   font-size: 0.65rem;
   font-weight: 600;
@@ -591,7 +591,7 @@
   letter-spacing: 0.02em;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 /* §95 이름이 겹친 행에만 붙는 상위 폴더. 배지(.wikilink-item-ext)와 같은 이유로
@@ -645,7 +645,7 @@
   display: flex;
   gap: var(--space-1);
   align-items: center;
-  padding: var(--space-1) 10px;
+  padding: var(--space-1) var(--space-2);
   font-size: 0.75rem;
   font-weight: 600;
   color: var(--color-text-muted);
@@ -690,5 +690,5 @@
 }
 
 .wikilink-item-indented {
-  padding-left: 28px;
+  padding-left: var(--space-6);
 }

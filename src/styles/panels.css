@@ -143,7 +143,7 @@
   font-size: 0.75rem;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 /* ── EmptyWorkspace ── */
@@ -187,7 +187,7 @@
 }
 
 .tab-switcher-header {
-  padding: 10px 14px;
+  padding: var(--space-2) var(--space-3);
   font-size: 0.75rem;
   font-weight: 600;
   color: var(--color-text-muted);
@@ -205,7 +205,7 @@
   display: flex;
   gap: var(--space-2);
   align-items: center;
-  padding: var(--space-2) 14px;
+  padding: var(--space-2) var(--space-3);
   font-size: 0.875rem;
   color: var(--color-text-primary);
   cursor: default;
@@ -355,7 +355,7 @@
 }
 
 :is(.plugin-detail-readme, .update-dialog-notes) .markdown-rendered h2 {
-  margin: var(--space-5) 0 10px;
+  margin: var(--space-5) 0 var(--space-2);
   font-size: 16px;
   font-weight: 600;
   color: var(--color-text-primary);
@@ -376,7 +376,7 @@
 }
 
 :is(.plugin-detail-readme, .update-dialog-notes) .markdown-rendered p {
-  margin: 0 0 10px;
+  margin: 0 0 var(--space-2);
   color: var(--color-text-secondary);
 }
 
@@ -416,12 +416,12 @@
   font-size: 12px;
   color: var(--color-text-primary);
   background: var(--color-bg-subtle);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 :is(.plugin-detail-readme, .update-dialog-notes) .markdown-rendered pre {
-  padding: var(--space-2) 10px;
-  margin: 0 0 10px;
+  padding: var(--space-2) var(--space-2);
+  margin: 0 0 var(--space-2);
   overflow-x: auto;
   font-size: 12px;
   background: var(--color-bg-subtle);
@@ -434,8 +434,8 @@
 }
 
 :is(.plugin-detail-readme, .update-dialog-notes) .markdown-rendered blockquote {
-  padding-left: 10px;
-  margin: 0 0 10px;
+  padding-left: var(--space-2);
+  margin: 0 0 var(--space-2);
   color: var(--color-text-muted);
   border-left: 3px solid var(--color-border-default);
 }
@@ -449,7 +449,7 @@
 :is(.plugin-detail-readme, .update-dialog-notes) .markdown-rendered ul,
 :is(.plugin-detail-readme, .update-dialog-notes) .markdown-rendered ol {
   padding-left: var(--space-5);
-  margin: 0 0 10px;
+  margin: 0 0 var(--space-2);
   color: var(--color-text-secondary);
 }
 
@@ -466,7 +466,7 @@
 .workspace-gallery {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 10px;
+  gap: var(--space-2);
   margin-bottom: var(--space-4);
 }
 
@@ -476,7 +476,7 @@
   flex-direction: column;
   gap: var(--space-1-5);
   align-items: center;
-  padding: 14px var(--space-3) var(--space-3);
+  padding: var(--space-3) var(--space-3) var(--space-3);
   font-family: var(--font-family-sans);
   cursor: pointer;
   background: var(--color-bg-default);
@@ -615,14 +615,14 @@
 }
 
 .workspace-action-btn {
-  padding: 5px 14px;
+  padding: var(--space-1) var(--space-3);
   font-family: var(--font-family-sans);
   font-size: 0.8rem;
   color: var(--color-text-secondary);
   cursor: pointer;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 5px;
+  border-radius: var(--radius-default);
   transition:
     background-color 0.15s,
     color 0.15s;
@@ -642,14 +642,14 @@
 
 .workspace-save-input {
   flex: 1;
-  padding: 5px 10px;
+  padding: var(--space-1) var(--space-2);
   font-family: var(--font-family-sans);
   font-size: 0.8rem;
   color: var(--color-text-primary);
   outline: none;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 5px;
+  border-radius: var(--radius-default);
   transition: border-color 0.15s;
 }
 
@@ -658,14 +658,14 @@
 }
 
 .workspace-save-confirm {
-  padding: 5px var(--space-3);
+  padding: var(--space-1) var(--space-3);
   font-family: var(--font-family-sans);
   font-size: 0.8rem;
   color: var(--color-accent-on-solid);
   cursor: pointer;
   background: var(--color-accent-solid);
   border: none;
-  border-radius: 5px;
+  border-radius: var(--radius-default);
   transition: opacity 0.15s;
 }
 
@@ -679,14 +679,14 @@
 }
 
 .workspace-save-cancel {
-  padding: 5px var(--space-3);
+  padding: var(--space-1) var(--space-3);
   font-family: var(--font-family-sans);
   font-size: 0.8rem;
   color: var(--color-text-secondary);
   cursor: pointer;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 5px;
+  border-radius: var(--radius-default);
   transition: background-color 0.15s;
 }
 
@@ -752,7 +752,7 @@
   color: var(--color-text-muted);
   text-align: center;
   background: var(--color-bg-subtle);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
 }
 
 /* §324-b 후속 — 노트 항목의 라벨. `tag-suggest-count`(짧은 숫자 하나를 가정한
@@ -790,7 +790,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-1-5) 10px;
+  padding: var(--space-1-5) var(--space-2);
   font-family: var(--font-family-sans);
   font-size: 13px;
   color: var(--color-text-primary);
@@ -818,7 +818,7 @@
   color: var(--color-text-muted);
   text-align: center;
   background: var(--color-bg-subtle);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
 }
 
 /* §375 — Editor inline `:` symbol and emoji autocomplete popup */
@@ -844,9 +844,9 @@
 
 .symbol-menu-item {
   display: flex;
-  gap: 10px;
+  gap: var(--space-2);
   align-items: center;
-  padding: 5px 10px;
+  padding: var(--space-1) var(--space-2);
   font-family: var(--font-family-sans);
   font-size: 13px;
   color: var(--color-text-primary);
@@ -899,7 +899,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 5px 9px;
+  padding: var(--space-1) var(--space-2);
   color: var(--color-text-muted);
   cursor: pointer;
   background: transparent;
@@ -971,7 +971,7 @@
 }
 
 .plugin-dev-btn {
-  padding: 5px 14px;
+  padding: var(--space-1) var(--space-3);
   font-size: 12px;
   color: var(--color-text-default);
   cursor: pointer;

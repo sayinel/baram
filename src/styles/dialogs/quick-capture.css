@@ -15,7 +15,7 @@
 .quick-capture-dialog {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-2);
   align-self: flex-start;
   width: min(720px, 90vw);
 
@@ -32,7 +32,7 @@
   overscroll-behavior: contain;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   box-shadow: 0 8px 32px rgb(0 0 0 / 20%);
 }
 
@@ -56,7 +56,7 @@
   padding: var(--space-4) var(--space-5);
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   box-shadow: 0 8px 32px rgb(0 0 0 / 20%);
 }
 
@@ -80,7 +80,7 @@
 
 .zettel-title-dialog input {
   width: 100%;
-  padding: var(--space-2) 10px;
+  padding: var(--space-2) var(--space-2);
   font-size: 14px;
   color: var(--color-text-primary);
   background: var(--color-bg-default);
@@ -100,7 +100,7 @@
 }
 
 .zettel-title-dialog-actions button {
-  padding: var(--space-1-5) 14px;
+  padding: var(--space-1-5) var(--space-3);
   font-size: 13px;
   color: var(--color-text-secondary);
   cursor: pointer;
@@ -142,7 +142,7 @@
 .quick-capture-input {
   box-sizing: border-box;
   width: 100%;
-  padding: var(--space-2) 10px;
+  padding: var(--space-2) var(--space-2);
   font-size: 13px;
   color: var(--color-text-primary);
   outline: none;
@@ -178,7 +178,7 @@
      있던 바닥이지 이번 변경이 새로 만든 문제가 아니며, 실사용 창 크기에서는
      닿지 않는다. */
   max-height: calc(85vh - 260px);
-  padding: var(--space-2) 10px;
+  padding: var(--space-2) var(--space-2);
   overflow-y: auto;
   font-size: 13px;
   color: var(--color-text-primary);
@@ -264,7 +264,7 @@
   margin-top: var(--space-1);
   content: "";
   background: var(--color-border-default);
-  border-radius: 1px;
+  border-radius: var(--radius-sm);
   transition: background-color 0.15s;
 }
 
@@ -298,7 +298,7 @@
 }
 
 .quick-capture-cancel {
-  padding: var(--space-1-5) 14px;
+  padding: var(--space-1-5) var(--space-3);
   font-size: 12px;
   color: var(--color-text-secondary);
   cursor: pointer;
@@ -312,7 +312,7 @@
 }
 
 .quick-capture-save {
-  padding: var(--space-1-5) 14px;
+  padding: var(--space-1-5) var(--space-3);
   font-size: 12px;
   font-weight: 600;
   color: var(--color-accent-on-solid);

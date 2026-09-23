@@ -113,7 +113,7 @@
 /* §5.3 Math Inline — atom render-only */
 .tiptap .math-inline {
   cursor: pointer;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .tiptap .math-inline-rendered {
@@ -142,7 +142,7 @@
   /* Mounted on `document.body` (math-inline-edit.ts) — see `--z-editor-popup`. */
   z-index: var(--z-editor-popup);
   max-width: 400px;
-  padding: var(--space-1-5) 10px;
+  padding: var(--space-1-5) var(--space-2);
   overflow-x: auto;
   pointer-events: none;
   background-color: var(--color-bg-default);

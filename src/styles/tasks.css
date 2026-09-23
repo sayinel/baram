@@ -27,7 +27,7 @@
    "눌러도 되는 것처럼 보이는 꺼진 버튼"이 되어 있었다. */
 .task-panel-search .icon-btn {
   flex-shrink: 0;
-  padding: 3px;
+  padding: var(--space-0-5);
   color: var(--color-text-secondary);
   border-radius: var(--radius-default);
 }
@@ -77,7 +77,7 @@
    the old <h3> never had. 네이티브 disclosure 마커는 사이드바의 다른 헤더와
    어긋난다 — list-style: none으로 지우고 ::before로 직접 그린다(아래). */
 .task-bucket-header {
-  margin: 10px 0 var(--space-1);
+  margin: var(--space-2) 0 var(--space-1);
   font-size: 11px;
   font-weight: 600;
   color: var(--color-text-secondary);
@@ -116,7 +116,7 @@
      **없는** 행에도 똑같이 두어 제목의 왼쪽 선이 흔들리지 않게 한다 — 레일 유무로
      들여쓰기가 달라지면 목록이 지그재그로 읽힌다. 그래서 거터는 남기되 레일이 그
      폭을 거의 다 채우도록 좁혀 두었다. */
-  padding: 3px var(--space-1) 3px 7px;
+  padding: var(--space-0-5) var(--space-1) var(--space-0-5) var(--space-1-5);
   user-select: none;
   border-radius: var(--radius-default);
 }
@@ -421,12 +421,12 @@
   max-height: 78vh;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-xl);
 }
 
 .weekly-review-header {
-  gap: 10px;
+  gap: var(--space-2);
   padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--color-border-subtle);
 }
@@ -456,7 +456,7 @@
 }
 
 .weekly-review-section + .weekly-review-section {
-  margin-top: 14px;
+  margin-top: var(--space-3);
 }
 
 .weekly-review-section-title {
@@ -486,7 +486,7 @@
   gap: var(--space-3);
   align-items: center;
   justify-content: space-between;
-  padding: 10px var(--space-4);
+  padding: var(--space-2) var(--space-4);
   border-top: 1px solid var(--color-border-subtle);
 }
 
@@ -574,7 +574,7 @@
   padding: var(--space-4);
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-xl);
 }
 
@@ -699,7 +699,7 @@
 .task-chip:focus-visible {
   outline: 2px solid var(--color-accent-default);
   outline-offset: 2px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 /* §308 M3-c 태스크 줄에서 알아본 날짜 표현.

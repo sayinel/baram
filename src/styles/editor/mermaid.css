@@ -122,7 +122,7 @@
   color: var(--color-text-muted);
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-subtle);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .tiptap .mermaid-block-actions {
@@ -140,7 +140,7 @@
   cursor: pointer;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-subtle);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .tiptap .mermaid-template-btn:hover,

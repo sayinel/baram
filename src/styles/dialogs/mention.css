@@ -6,7 +6,7 @@
   display: inline-flex;
   gap: var(--space-0-5);
   align-items: center;
-  padding: 0 5px;
+  padding: 0 var(--space-1);
   font-size: 0.9em;
   cursor: pointer;
   background: color-mix(in srgb, var(--color-accent-default) 10%, transparent);

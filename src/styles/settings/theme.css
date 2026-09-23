@@ -103,7 +103,7 @@
    they are one control). Full width under the card so a long version string wraps rather
    than widening the grid column. */
 .theme-card-update {
-  padding: 3px var(--space-1-5);
+  padding: var(--space-0-5) var(--space-1-5);
   margin-top: var(--space-1);
   font-size: 0.7rem;
   color: var(--color-accent-on-solid);
@@ -167,7 +167,7 @@
 .theme-preview-sidebar {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: var(--space-0-5);
   width: 28%;
   padding: var(--space-1-5) var(--space-1);
 }
@@ -182,7 +182,7 @@
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 3px;
+  gap: var(--space-0-5);
   padding: var(--space-1-5) var(--space-2);
   overflow: hidden;
 }
@@ -220,14 +220,14 @@
 }
 
 .theme-action-btn {
-  padding: 5px 14px;
+  padding: var(--space-1) var(--space-3);
   font-family: var(--font-family-sans);
   font-size: 0.8rem;
   color: var(--color-text-secondary);
   cursor: pointer;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 5px;
+  border-radius: var(--radius-default);
   transition:
     background-color 0.15s,
     color 0.15s;
@@ -269,7 +269,7 @@
   touch-action: none;
   cursor: grab;
   user-select: none;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .activity-bar-config-drag-handle:hover {
@@ -314,14 +314,14 @@
 
 .theme-editor-name {
   flex: 1;
-  padding: 5px 10px;
+  padding: var(--space-1) var(--space-2);
   font-family: var(--font-family-sans);
   font-size: 0.85rem;
   color: var(--color-text-primary);
   outline: none;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 5px;
+  border-radius: var(--radius-default);
 }
 
 .theme-editor-name:focus {
@@ -332,11 +332,11 @@
   display: flex;
   overflow: hidden;
   border: 1px solid var(--color-border-default);
-  border-radius: 5px;
+  border-radius: var(--radius-default);
 }
 
 .theme-editor-base-btn {
-  padding: 5px var(--space-3);
+  padding: var(--space-1) var(--space-3);
   font-family: var(--font-family-sans);
   font-size: 0.78rem;
   color: var(--color-text-secondary);
@@ -366,7 +366,7 @@
 }
 
 .theme-editor-category {
-  padding: 10px 0 var(--space-1);
+  padding: var(--space-2) 0 var(--space-1);
   margin-bottom: var(--space-1);
   font-size: 0.75rem;
   font-weight: 600;
@@ -378,9 +378,9 @@
 
 .theme-editor-row {
   display: flex;
-  gap: 10px;
+  gap: var(--space-2);
   align-items: center;
-  padding: 3px 0;
+  padding: var(--space-0-5) 0;
 }
 
 .theme-editor-label {
@@ -494,7 +494,7 @@
 }
 
 .theme-browser-search {
-  padding: var(--space-1-5) 10px;
+  padding: var(--space-1-5) var(--space-2);
   font-family: var(--font-family-sans);
   font-size: 0.82rem;
   color: var(--color-text-primary);
@@ -516,7 +516,7 @@
 }
 
 .theme-browser-error {
-  padding: 10px var(--space-3);
+  padding: var(--space-2) var(--space-3);
   font-size: 0.82rem;
   color: var(--color-status-danger);
   background: var(--color-bg-subtle);
@@ -534,7 +534,7 @@
   gap: var(--space-3);
   align-items: center;
   justify-content: space-between;
-  padding: 10px var(--space-3);
+  padding: var(--space-2) var(--space-3);
   border: 1px solid var(--color-border-default);
   border-radius: var(--radius-lg);
 }
@@ -652,7 +652,7 @@
   width: min(400px, 90vw);
   padding: var(--space-5);
   background: var(--color-bg-default);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
   opacity: 1;
 }
@@ -700,7 +700,7 @@
 
 .theme-consent-confirm {
   visibility: visible;
-  padding: var(--space-1-5) 14px;
+  padding: var(--space-1-5) var(--space-3);
   font-size: 0.82rem;
   font-weight: 500;
   color: var(--color-accent-on-solid);

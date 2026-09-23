@@ -23,7 +23,7 @@
   flex-direction: column;
   width: 420px;
   max-width: 90vw;
-  padding: var(--space-6) 28px;
+  padding: var(--space-6) var(--space-6);
   overscroll-behavior: contain;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
@@ -52,7 +52,7 @@
    of one section. */
 .update-dialog-notes {
   max-height: 320px;
-  padding: 10px var(--space-3);
+  padding: var(--space-2) var(--space-3);
   margin: 0 0 var(--space-4);
   overflow-y: auto;
   font-size: 13px;
@@ -70,7 +70,7 @@
 }
 
 .update-dialog-error {
-  padding: 10px var(--space-3);
+  padding: var(--space-2) var(--space-3);
   margin-bottom: var(--space-4);
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-status-danger);
@@ -101,7 +101,7 @@
   height: 6px;
   overflow: hidden;
   background: var(--color-bg-subtle);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .update-dialog-progress-fill {

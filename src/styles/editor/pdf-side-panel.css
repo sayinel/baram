@@ -185,11 +185,11 @@
   display: flex;
   gap: var(--space-1);
   align-items: center;
-  padding: 3px var(--space-2);
+  padding: var(--space-0-5) var(--space-2);
   font-size: 0.6875rem;
   color: var(--color-text-muted);
   cursor: pointer;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
 }
 
 .pdf-highlight-list-view:hover {
@@ -244,7 +244,7 @@
 .pdf-highlight-row-action {
   flex: 1 1 auto;
   min-width: 0;
-  padding: 3px var(--space-1-5);
+  padding: var(--space-0-5) var(--space-1-5);
   font-size: 0.6875rem;
   color: var(--color-text-secondary);
   text-align: center;

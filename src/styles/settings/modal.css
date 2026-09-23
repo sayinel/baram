@@ -24,13 +24,13 @@
   overscroll-behavior: contain;
   background-color: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   box-shadow: 0 8px 30px rgb(0 0 0 / 20%);
 }
 
 .settings-header {
   flex-shrink: 0;
-  padding: 14px var(--space-5);
+  padding: var(--space-3) var(--space-5);
   border-bottom: 1px solid var(--color-border-subtle);
 }
 
@@ -74,7 +74,7 @@
 }
 
 .settings-nav-item {
-  padding: 7px var(--space-4);
+  padding: var(--space-1-5) var(--space-4);
   font-size: 0.85rem;
   color: var(--color-text-secondary);
   text-align: left;
@@ -165,14 +165,14 @@
 
 .settings-search {
   width: 100%;
-  padding: 5px 28px 5px 10px;
+  padding: var(--space-1) var(--space-6) var(--space-1) var(--space-2);
   font-family: var(--font-family-sans);
   font-size: 0.8rem;
   color: var(--color-text-primary);
   outline: none;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
-  border-radius: 5px;
+  border-radius: var(--radius-default);
 }
 
 .settings-search:focus {
@@ -238,7 +238,7 @@
   align-items: center;
   justify-content: space-between;
   min-height: 44px;
-  padding: 10px 0;
+  padding: var(--space-2) 0;
 }
 
 .settings-row-info {
@@ -333,7 +333,7 @@
    글자라 그 특정 실패 사례는 아니지만, 스크린샷으로 직접 확인할 수 없는
    채로 밀어 넣을 만큼 이 배지에 꼭 필요한 구분도 아니다. */
 .settings-dial-origin-badge {
-  padding: var(--space-0-5) 7px;
+  padding: var(--space-0-5) var(--space-1-5);
   font-size: 0.7rem;
   line-height: 1;
   color: var(--color-text-muted);
@@ -363,7 +363,7 @@
 
 /* Form controls */
 .settings-select {
-  padding: 5px 10px;
+  padding: var(--space-1) var(--space-2);
   font-family: var(--font-family-sans);
   font-size: 0.8rem;
   color: var(--color-text-primary);
@@ -371,7 +371,7 @@
   outline: none;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 5px;
+  border-radius: var(--radius-default);
 }
 
 .settings-select:focus {
@@ -380,14 +380,14 @@
 
 .settings-input {
   width: 180px;
-  padding: 5px 10px;
+  padding: var(--space-1) var(--space-2);
   font-family: var(--font-family-sans);
   font-size: 0.8rem;
   color: var(--color-text-primary);
   outline: none;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 5px;
+  border-radius: var(--radius-default);
 }
 
 .settings-input:focus {
@@ -419,7 +419,7 @@
   cursor: pointer;
   background-color: var(--color-border-default);
   border: none;
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   transition: background-color 0.2s;
 }
 
@@ -448,11 +448,11 @@
   display: flex;
   overflow: hidden;
   border: 1px solid var(--color-border-default);
-  border-radius: 5px;
+  border-radius: var(--radius-default);
 }
 
 .settings-scheme-btn {
-  padding: 5px 14px;
+  padding: var(--space-1) var(--space-3);
   font-family: var(--font-family-sans);
   font-size: 0.8rem;
   color: var(--color-text-secondary);

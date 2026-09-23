@@ -5,7 +5,7 @@
 .vim-cursor {
   color: var(--color-accent-on-solid);
   background: var(--color-accent-default);
-  border-radius: 1px;
+  border-radius: var(--radius-sm);
 }
 
 /* issue 473 동계열(잔상 커서 전수 진단, 표면 2) — 포커스가 앱 크롬

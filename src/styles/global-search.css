@@ -28,7 +28,7 @@
 .global-search-input {
   box-sizing: border-box;
   width: 100%;
-  padding: 5px var(--space-2);
+  padding: var(--space-1) var(--space-2);
   font-size: 0.85rem;
   color: var(--color-text-primary);
   outline: none;
@@ -55,7 +55,7 @@
   cursor: pointer;
   background: transparent;
   border: 1px solid var(--color-border-default);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .global-search-toggle:hover {
@@ -99,7 +99,7 @@
   display: flex;
   gap: var(--space-1);
   align-items: center;
-  padding: 5px var(--space-3);
+  padding: var(--space-1) var(--space-3);
   font-size: 0.85rem;
   font-weight: 500;
   color: var(--color-text-primary);
@@ -124,7 +124,7 @@
 
 .global-search-file-count {
   flex-shrink: 0;
-  padding: 0 5px;
+  padding: 0 var(--space-1);
   font-size: 0.7rem;
   color: var(--color-accent-default);
   background: color-mix(in srgb, var(--color-accent-default) 15%, transparent);
@@ -135,7 +135,7 @@
   display: flex;
   gap: var(--space-1-5);
   align-items: baseline;
-  padding: 3px var(--space-3) 3px 28px;
+  padding: var(--space-0-5) var(--space-3) var(--space-0-5) var(--space-6);
   font-size: 0.8rem;
   color: var(--color-text-secondary);
   cursor: pointer;
@@ -166,7 +166,7 @@
 
 .global-search-replace-btn {
   flex: 1;
-  padding: 3px var(--space-2);
+  padding: var(--space-0-5) var(--space-2);
   font-size: 12px;
   color: var(--color-text-primary);
   cursor: pointer;
@@ -197,7 +197,7 @@
   cursor: pointer;
   background: none;
   border: 1px solid var(--color-border-default);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .global-search-replace-one:hover {

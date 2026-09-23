@@ -59,7 +59,7 @@
   align-items: center;
   padding: var(--space-0-5) var(--space-1);
   color: var(--color-text-muted);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .graph-view-expand-btn:hover {
@@ -100,7 +100,7 @@
   align-items: center;
   padding: var(--space-0-5) var(--space-1);
   color: var(--color-text-muted);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .graph-view-settings-btn:hover {
@@ -160,7 +160,7 @@
 }
 
 .graph-settings-section {
-  padding: 0 10px;
+  padding: 0 var(--space-2);
   border-bottom: 1px solid var(--color-border-default);
 }
 
@@ -258,7 +258,7 @@
 
 .graph-settings-search {
   flex: 1;
-  padding: 3px var(--space-1-5);
+  padding: var(--space-0-5) var(--space-1-5);
   font-size: 11px;
   color: var(--color-text-primary);
   outline: none;
@@ -300,7 +300,7 @@
   cursor: pointer;
   background: var(--color-bg-elevated);
   border: none;
-  border-radius: 9px;
+  border-radius: var(--radius-lg);
   transition: background 0.15s ease;
 }
 

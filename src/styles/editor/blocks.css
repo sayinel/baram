@@ -170,7 +170,7 @@
 .tiptap .callout-type-option {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: var(--space-0-5);
   align-items: center;
   justify-content: center;
   padding: var(--space-1-5) var(--space-1);
@@ -213,7 +213,7 @@
   outline: none;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .tiptap .callout-collapse-btn {
@@ -225,7 +225,7 @@
   cursor: pointer;
   background: none;
   border: none;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .tiptap .callout-collapse-btn:hover {
@@ -392,7 +392,7 @@
   z-index: 50;
   width: max-content;
   max-width: 320px;
-  padding: var(--space-1-5) 10px;
+  padding: var(--space-1-5) var(--space-2);
   font-size: 0.85rem;
   font-weight: 400;
   line-height: 1.4;
