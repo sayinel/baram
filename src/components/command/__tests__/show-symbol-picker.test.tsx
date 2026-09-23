@@ -25,8 +25,18 @@ beforeEach(() => {
   useSettingsStore.setState({ locale: "en", recentSymbols: [] });
 });
 
+/** Elements a test put on the body, removed even when it fails midway. */
+const added: HTMLElement[] = [];
+
 afterEach(() => {
   vi.restoreAllMocks();
+  for (const el of added.splice(0)) el.remove();
+  // A test that failed before the picker settled leaves its overlay. Its React
+  // root is local to showSymbolPicker and cannot be unmounted from here —
+  // removing the element keeps the next test's queries off it.
+  for (const el of document.querySelectorAll(".symbol-picker-overlay")) {
+    el.remove();
+  }
 });
 
 function open(): Promise<null | string> {
@@ -44,6 +54,7 @@ const search = () => screen.getByRole("textbox");
 describe("showSymbolPicker", () => {
   it("opens with the search box focused and hands focus back on Escape", async () => {
     const before = document.createElement("button");
+    added.push(before);
     document.body.append(before);
     before.focus();
     const result = open();
@@ -52,7 +63,6 @@ describe("showSymbolPicker", () => {
     await expect(result).resolves.toBeNull();
     expect(overlay()).toBeNull();
     expect(document.activeElement).toBe(before);
-    before.remove();
   });
 
   it("resolves with the clicked character and removes itself", async () => {
