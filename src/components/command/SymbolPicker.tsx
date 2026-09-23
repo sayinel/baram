@@ -3,8 +3,10 @@
 // For the symbol whose name you do not know; the `:` autocomplete (§375) is
 // for the one you do. Searching here calls that autocomplete's
 // `searchSymbols`, so both find the same things in the same order. Focus stays
-// in the search box for the picker's whole life — cells and tabs refuse it on
-// mousedown — so every key arrives at the one handler on the root.
+// in the search box for the picker's whole life — one mousedown handler on
+// the root prevents default for every target except the search input itself,
+// so cells, tabs, section titles, the footer and the gaps between them all
+// leave focus alone — every key still arrives at the one handler on the root.
 import type {
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
@@ -98,6 +100,7 @@ export function SymbolPicker({ onCancel, onPick }: SymbolPickerProps) {
   const [query, setQuery] = useState("");
   const [position, setPosition] = useState(ORIGIN);
   const gridRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   // The first open in a session fetches the emoji chunk and shows it when it
   // lands. A failed load leaves `emoji` null (emoji-data.ts logs it); the
@@ -178,11 +181,19 @@ export function SymbolPicker({ onCancel, onPick }: SymbolPickerProps) {
     // Tab does nothing: focus stays in the search box.
   };
 
+  // The only target a mousedown may focus is the search input itself —
+  // everywhere else in the dialog (cells, tabs, section titles, the footer,
+  // the gaps between them) default-prevents so focus never leaves it.
+  const onMouseDown = (event: ReactMouseEvent<HTMLDivElement>): void => {
+    if (event.target !== searchRef.current) event.preventDefault();
+  };
+
   return (
     <div
       aria-label={t("symbolPicker.title")}
       className="symbol-picker"
       onKeyDown={onKeyDown}
+      onMouseDown={onMouseDown}
       role="dialog"
     >
       <input
@@ -194,25 +205,31 @@ export function SymbolPicker({ onCancel, onPick }: SymbolPickerProps) {
           setPosition(ORIGIN);
         }}
         placeholder={t("symbolPicker.search")}
+        ref={searchRef}
         spellCheck={false}
         type="text"
         value={query}
       />
       <div className="symbol-picker-tabs" role="toolbar">
-        {TABS.map(({ icon: Icon, label, target }) => (
-          <Tooltip key={target} label={t(label)} placement="bottom">
-            <button
-              className="symbol-picker-tab btn-unstyled"
-              disabled={searching || !rows.some((r) => r.sectionId === target)}
-              onClick={() => jumpTo(target)}
-              onMouseDown={keepFocus}
-              tabIndex={-1}
-              type="button"
-            >
-              <Icon size={14} />
-            </button>
-          </Tooltip>
-        ))}
+        {TABS.map(({ icon: Icon, label, target }) => {
+          const tabDisabled =
+            searching || !rows.some((r) => r.sectionId === target);
+          return (
+            <Tooltip key={target} label={t(label)} placement="bottom">
+              <button
+                aria-disabled={tabDisabled}
+                className="symbol-picker-tab btn-unstyled"
+                onClick={() => {
+                  if (!tabDisabled) jumpTo(target);
+                }}
+                tabIndex={-1}
+                type="button"
+              >
+                <Icon size={14} />
+              </button>
+            </Tooltip>
+          );
+        })}
       </div>
       <div className="symbol-picker-grid" ref={gridRef} role="listbox">
         {rows.length === 0 ? (
@@ -262,11 +279,6 @@ function isComposing(event: ReactKeyboardEvent): boolean {
   return event.nativeEvent.isComposing || event.keyCode === 229;
 }
 
-/** Cells and tabs leave focus in the search box, where the key handler is. */
-function keepFocus(event: ReactMouseEvent): void {
-  event.preventDefault();
-}
-
 /**
  * One row of cells. Memoised so a highlight move re-renders the row it leaves
  * and the row it enters, not the whole grid — hovering moves it on every cell
@@ -291,10 +303,9 @@ const PickerRow = memo(function PickerRow({
         <button
           aria-label={item.label}
           aria-selected={col === selectedCol}
-          className={`symbol-picker-cell btn-unstyled${col === selectedCol ? "symbol-picker-cell-selected" : ""}`}
+          className={`symbol-picker-cell btn-unstyled ${col === selectedCol ? "symbol-picker-cell-selected" : ""}`}
           key={item.id}
           onClick={() => onPick(item.char)}
-          onMouseDown={keepFocus}
           onMouseEnter={() => onHover(index, col)}
           role="option"
           tabIndex={-1}

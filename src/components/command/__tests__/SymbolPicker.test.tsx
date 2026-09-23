@@ -29,11 +29,12 @@ function setup() {
     key: string,
     init: KeyboardEventInit & { keyCode?: number } = {},
   ) => fireEvent.keyDown(search, { key, ...init });
-  const selected = () =>
+  const selectedElement = () =>
     screen
       .queryAllByRole("option")
-      .find((o) => o.getAttribute("aria-selected") === "true")?.textContent;
-  return { onCancel, onPick, press, search, selected };
+      .find((o) => o.getAttribute("aria-selected") === "true");
+  const selected = () => selectedElement()?.textContent;
+  return { onCancel, onPick, press, search, selected, selectedElement };
 }
 
 const titles = () =>
@@ -86,9 +87,16 @@ describe("SymbolPicker", () => {
   });
 
   it("moves with the arrow keys and picks with Enter", () => {
-    const { onPick, press, selected } = setup();
+    const { onPick, press, selected, selectedElement } = setup();
     press("ArrowRight");
     expect(selected()).toBe("←");
+    // The highlight is a real class, not just a footer update — regression
+    // pin for the template-literal bug prettier-plugin-tailwindcss
+    // introduced (it strips the leading space before an interpolated class).
+    expect(
+      selectedElement()?.classList.contains("symbol-picker-cell-selected"),
+    ).toBe(true);
+    expect(selectedElement()?.classList.contains("btn-unstyled")).toBe(true);
     press("ArrowDown"); // arrows fill one row of 8; the next row is Math's
     expect(selected()).toBe("≥");
     press("ArrowUp");
@@ -137,7 +145,13 @@ describe("SymbolPicker", () => {
       ...document.querySelectorAll<HTMLButtonElement>(".symbol-picker-tab"),
     ];
     expect(tabs).toHaveLength(11);
-    expect(tabs.every((tab) => tab.disabled)).toBe(true);
+    expect(
+      tabs.every((tab) => tab.getAttribute("aria-disabled") === "true"),
+    ).toBe(true);
+    // A disabled tab's click does nothing — the selection stays on the
+    // search result, not the section the tab would otherwise jump to.
+    fireEvent.click(screen.getByRole("button", { name: "Flags" }));
+    expect(selected()).toBe("❤️");
   });
 
   it("says so when nothing matches, and Enter picks nothing", () => {
@@ -158,12 +172,29 @@ describe("SymbolPicker", () => {
   it("disables the recent tab while nothing was picked", () => {
     setup();
     expect(
-      (
-        screen.getByRole("button", {
-          name: "Recently used",
-        }) as HTMLButtonElement
-      ).disabled,
-    ).toBe(true);
+      screen
+        .getByRole("button", { name: "Recently used" })
+        .getAttribute("aria-disabled"),
+    ).toBe("true");
+  });
+
+  it("enables the recent tab once something was picked", () => {
+    useSettingsStore.setState({ recentSymbols: ["→"] });
+    setup();
+    expect(
+      screen
+        .getByRole("button", { name: "Recently used" })
+        .getAttribute("aria-disabled"),
+    ).toBe("false");
+  });
+
+  it("keeps focus in the search box on mousedown anywhere else in the dialog", () => {
+    const { search } = setup();
+    const title = document.querySelector(".symbol-picker-section-title")!;
+    const disabledTab = screen.getByRole("button", { name: "Recently used" });
+    expect(fireEvent.mouseDown(title)).toBe(false); // default prevented
+    expect(fireEvent.mouseDown(disabledTab)).toBe(false); // default prevented
+    expect(fireEvent.mouseDown(search)).toBe(true); // not prevented
   });
 
   it("highlights the cell under the pointer and picks the one clicked", () => {
