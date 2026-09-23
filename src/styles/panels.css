@@ -887,8 +887,7 @@
 
 /* §377 Symbol & emoji picker (components/command/SymbolPicker.tsx). Rows are
    built in TS (symbol-grid-nav.ts), one element each, so no column count is
-   repeated here. `.btn-unstyled` does not reset padding — the cells and tabs
-   do, or the browser's button padding widens them. */
+   repeated here. */
 .symbol-picker {
   display: flex;
   flex-direction: column;
@@ -930,7 +929,6 @@
   justify-content: center;
   width: 24px;
   height: 24px;
-  padding: 0;
   color: var(--color-text-secondary);
   border-radius: 4px;
 }
@@ -969,7 +967,6 @@
   justify-content: center;
   width: 34px;
   height: 34px;
-  padding: 0;
   font-family: var(--font-family-editor);
   font-size: 20px;
   line-height: 1;
