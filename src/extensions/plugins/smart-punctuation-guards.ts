@@ -6,6 +6,7 @@
 // ‼️ Tiptap's own input-rule check skips code nodes and marks whose spec says
 // `code: true`. Baram's `Code` mark does not say so (§7.2 — see `code.ts`), so
 // that check never covers inline code; `shouldSubstitute` checks the mark.
+import type { ResolvedPos } from "@tiptap/pm/model";
 import type { EditorState } from "@tiptap/pm/state";
 
 import { useSettingsStore } from "../../stores/settings/store";
@@ -24,6 +25,8 @@ const UNCLOSED_PAIRS: readonly (readonly [string, string])[] = [
   ["((", "))"],
   ["[^", "]"],
   ["](", ")"],
+  // An HTML comment being typed: its body is not prose, and `-->` must close it.
+  ["<!--", "-->"],
 ];
 
 /** A tag being typed — `tag-node.ts` turns `#name` into a node on the space. */
@@ -32,8 +35,13 @@ const TAG_IN_PROGRESS = new RegExp(`#${TAG_BODY}$`);
 /**
  * Whether the text replaced at `range` may be turned into a symbol.
  *
- * `range` is the input rule's range — its `from` is where the matched text
- * starts, so everything checked here is what precedes the rule's own match.
+ * `range` is the input rule's range: `from` is where the matched text starts
+ * in the document, `to` is the caret, and the key just typed is not in the
+ * document yet. So there are two places to look for code — the matched text
+ * (`--` typed as the first characters of code opened with Mod+E carries the
+ * mark, while the text before it does not) and the marks the typed key will
+ * take at the caret. The mark just BEFORE `from` decides nothing: right after
+ * code closed with its backtick it is still code, yet `->` typed there is not.
  */
 export function shouldSubstitute(
   state: EditorState,
@@ -42,23 +50,19 @@ export function shouldSubstitute(
   if (useSettingsStore.getState().smartPunctuation !== true) return false;
   if (isSkillFile(state)) return false;
 
-  const $from = state.doc.resolve(range.from);
-  const marks = state.storedMarks ?? $from.marks();
-  if (marks.some((mark) => mark.type.name === "code")) return false;
+  const code = state.schema.marks.code;
+  if (code) {
+    if (state.doc.rangeHasMark(range.from, range.to, code)) return false;
+    const incoming = state.storedMarks ?? state.doc.resolve(range.to).marks();
+    if (code.isInSet(incoming)) return false;
+  }
 
   const math = mathEditKey.getState(state);
   if (math?.active && math.from <= range.from && range.from <= math.to) {
     return false;
   }
 
-  // Leaf nodes read as U+FFFC so they neither vanish nor pair with anything.
-  const before = state.doc.textBetween(
-    $from.start(),
-    range.from,
-    undefined,
-    "￼",
-  );
-  return !isLiteralContext(before);
+  return !isLiteralContext(literalScanText(state.doc.resolve(range.from)));
 }
 
 /**
@@ -77,6 +81,35 @@ function isLiteralContext(before: string): boolean {
   const token = before.slice(before.search(/\S*$/));
   if (token.includes("://")) return true;
   return TAG_IN_PROGRESS.test(before);
+}
+
+/**
+ * The textblock's text from its start to `$from`, as the pair and backtick
+ * checks should see it. Text inside inline code and inline leaf nodes reads
+ * as U+FFFC: code keeps its characters already, and a `((` or a backtick in it
+ * must not look like an opener for the rest of the line.
+ */
+function literalScanText($from: ResolvedPos): string {
+  const start = $from.start();
+  const end = $from.pos;
+  let out = "";
+  $from.doc.nodesBetween(start, end, (node, pos) => {
+    if (node.isText) {
+      const text = node.text!.slice(
+        Math.max(start, pos) - pos,
+        Math.min(end, pos + node.nodeSize) - pos,
+      );
+      const isCode = node.marks.some((mark) => mark.type.name === "code");
+      out += isCode ? "\ufffc".repeat(text.length) : text;
+      return false;
+    }
+    if (node.isInline) {
+      out += "\ufffc";
+      return false;
+    }
+    return true;
+  });
+  return out;
 }
 
 /**

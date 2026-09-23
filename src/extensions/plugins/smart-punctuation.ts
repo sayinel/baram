@@ -21,8 +21,9 @@ export interface SmartPunctuationRule {
 /**
  * The table in spec 0056 §373, in the order the rules are tried.
  *
- * Rules match the textblock's text before the caret plus the key just typed,
- * so lookbehinds and `^` see the whole line. Two rules look for another
+ * Rules match the key just typed appended to the text before the caret in its
+ * textblock — at most the last 500 characters of it (Tiptap's
+ * `getTextContentFromNodes`), which is ample for one-character lookbehinds. Two rules look for another
  * rule's RESULT, because the intermediate replacement has already happened
  * by the time the third key arrives: `<->` is `←` then `>`, and `<=>` is `≤`
  * then `>`.
@@ -49,8 +50,11 @@ export const SMART_PUNCTUATION_RULES: readonly SmartPunctuationRule[] = [
   // extension (50) is asked; the `\n` exclusion keeps that from depending on
   // the order, and has its own test. The lookbehind asks for one
   // character that is neither `-` nor `!`: that keeps out a fourth dash, the
-  // `<!--` of an HTML comment, and the start of a textblock.
-  { find: /(?<=[^!-])--([^>\n-])$/, id: "emDash", replace: "—$1" },
+  // `<!--` of an HTML comment, and the start of a textblock. `|` on either
+  // side keeps out a table delimiter row, where one dash per cell is enough
+  // (`|--|`). The `u` flag makes the next key one code point, so an emoji
+  // after `--` counts as the one character it is.
+  { find: /(?<=[^!|-])--([^>|\n-])$/u, id: "emDash", replace: "—$1" },
 ];
 
 export const SmartPunctuation = Extension.create({

@@ -79,6 +79,63 @@ describe("SmartPunctuation in the full extension set", () => {
     expect(text.marks.map((mark) => mark.type.name)).toContain("code");
   });
 
+  it("keeps a dash pair typed as the first characters of code opened with the shortcut", () => {
+    // Measured by review: the guard read the marks BEFORE the match, which is
+    // the plain text in front of the code, and let `--f` become `—f` in code.
+    create();
+    typeChars(editor!, "use ");
+    editor!.commands.toggleCode();
+    typeChars(editor!, "--flag ");
+    const code = editor!.state.doc.firstChild!.lastChild!;
+    expect(code.text).toBe("--flag ");
+    expect(code.marks.map((mark) => mark.type.name)).toContain("code");
+  });
+
+  it("keeps an arrow typed as the first characters of code opened with the shortcut", () => {
+    create();
+    typeChars(editor!, "a ");
+    editor!.commands.toggleCode();
+    typeChars(editor!, "->x");
+    expect(editor!.state.doc.firstChild!.lastChild!.text).toBe("->x");
+  });
+
+  it("keeps dashes typed in code when the next key is typed after turning code off", () => {
+    // The caret's marks are plain here; only the matched `--` carries code.
+    create();
+    typeChars(editor!, "a ");
+    editor!.commands.toggleCode();
+    typeChars(editor!, "--");
+    editor!.commands.toggleCode();
+    typeChars(editor!, "f");
+    const para = editor!.state.doc.firstChild!;
+    expect(para.textContent).toBe("a --f");
+    expect(para.child(1).text).toBe("--");
+    expect(para.child(1).marks.map((mark) => mark.type.name)).toContain("code");
+  });
+
+  it("substitutes right after inline code closed with its backtick", () => {
+    // The pair of the two above: out of the code, the rule fires again.
+    const doc = typed("`x`-> ").state.doc;
+    expect(doc.textContent).toBe("x→ ");
+    expect(doc.firstChild!.lastChild!.marks).toEqual([]);
+  });
+
+  it("is not blocked for the rest of the line by an opener inside inline code", () => {
+    expect(typed("`f((x` then a -> b").state.doc.textContent).toBe(
+      "f((x then a → b",
+    );
+  });
+
+  it("keeps the arrow typed inside an HTML comment being written", () => {
+    expect(typed("<!-- a -> b").state.doc.textContent).toBe("<!-- a -> b");
+  });
+
+  it("substitutes after an HTML comment is closed", () => {
+    expect(typed("<!-- a --> b -> c").state.doc.textContent).toBe(
+      "<!-- a --> b → c",
+    );
+  });
+
   it("keeps the arrow typed inside an inline math edit", () => {
     expect(typed("$a->b").state.doc.textContent).toContain("a->b");
   });

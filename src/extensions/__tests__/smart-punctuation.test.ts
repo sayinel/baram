@@ -59,6 +59,8 @@ describe("SmartPunctuation — the rule table (spec 0056 §373)", () => {
     ["wait...", "wait…"],
     ["a -- b", "a — b"],
     ["a--b", "a—b"],
+    // The key after `--` can be one character in two UTF-16 units.
+    ["a--😀", "a—😀"],
   ])("turns %j into %j", (input, expected) => {
     expect(typed(input)).toBe(expected);
   });
@@ -74,6 +76,9 @@ describe("SmartPunctuation — the rule table (spec 0056 §373)", () => {
     "a--->b",
     // At the start of a textblock `--` may be the start of `---`.
     "--x",
+    // A GFM delimiter row needs only one dash per cell.
+    "|--|--|",
+    "| --|",
   ])("leaves %j as typed", (input) => {
     expect(typed(input)).toBe(input);
   });
