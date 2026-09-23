@@ -2,8 +2,10 @@
 // write the pick as typed text and record it — or write and record nothing.
 // Real Editor and real mutation-tasks: mocking either would hide the gap
 // (§12-9b) these tests are about. Only the picker itself is replaced.
-import { Editor } from "@tiptap/core";
-import { TextSelection } from "@tiptap/pm/state";
+import type { Extensions } from "@tiptap/core";
+
+import { Editor, Extension } from "@tiptap/core";
+import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createBaramExtensions } from "..";
@@ -43,9 +45,33 @@ async function flush(): Promise<void> {
 
 const editors: Editor[] = [];
 
+/**
+ * Rejects any transaction that changes the document — the fixture's own
+ * selection-only dispatch in `makeEditor` still passes. Simulates a
+ * `filterTransaction` veto (e.g. an optimistic-lock plugin) downstream of the
+ * chrome check, for the "record only when the document took it" guard.
+ */
+const RejectDocChanges = Extension.create({
+  name: "rejectDocChanges",
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        filterTransaction: (tr) => !tr.docChanged,
+        key: new PluginKey("rejectDocChanges"),
+      }),
+    ];
+  },
+});
+
 /** An editor with the caret at the end of its first paragraph's text. */
-function makeEditor(content = "<p>ab</p>"): Editor {
-  const editor = new Editor({ content, extensions: createBaramExtensions() });
+function makeEditor(
+  content = "<p>ab</p>",
+  extraExtensions: Extensions = [],
+): Editor {
+  const editor = new Editor({
+    content,
+    extensions: [...createBaramExtensions(), ...extraExtensions],
+  });
   editors.push(editor);
   editor.view.dispatch(
     editor.state.tr.setSelection(TextSelection.create(editor.state.doc, 3)),
@@ -90,6 +116,18 @@ describe("pickSymbolIntoEditor (§377)", () => {
     expect(tagged).toEqual([true]);
     expect(useSettingsStore.getState().recentSymbols).toEqual(["→"]);
     expect(countLiveEditorMutationTasks(editor.view)).toBe(0);
+  });
+
+  it("writes and records nothing when a filterTransaction plugin rejects the write", async () => {
+    // Negative twin of the test above ("writes the pick at the caret…"): that
+    // one confirms recording when the write lands; this confirms nothing is
+    // recorded when it's rejected downstream of the chrome check (plan:
+    // "슬래시 경로는 문서가 실제로 바뀐 경우에만 — filterTransaction 이 거부하면
+    // 아무것도 쓰이지 않는다").
+    const editor = makeEditor("<p>ab</p>", [RejectDocChanges]);
+    await pick(editor, "→");
+    expect(editor.getText()).toBe("ab");
+    expect(useSettingsStore.getState().recentSymbols).toEqual([]);
   });
 
   it("takes a stored mark, as typing there would", async () => {
