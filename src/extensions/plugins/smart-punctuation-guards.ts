@@ -49,20 +49,47 @@ export function shouldSubstitute(
 ): boolean {
   if (useSettingsStore.getState().smartPunctuation !== true) return false;
   if (isSkillFile(state)) return false;
+  if (isCodeOrMathEditAt(state, range)) return false;
+  return !isLiteralContext(literalScanText(state.doc.resolve(range.from)));
+}
 
+/** Whether `before` holds an odd number of backticks — a code span still open. */
+function hasOpenBacktick(before: string): boolean {
+  return (before.match(/`/g)?.length ?? 0) % 2 === 1;
+}
+
+/**
+ * Whether `$from` sits after an unclosed backtick in its textblock (§374-3):
+ * inline code not yet closed, or inline code the caret is in, which
+ * SyntaxReveal has expanded to literal backticks — no `code` mark is left
+ * there for `isCodeOrMathEditAt` to see. Text in inline code that is still
+ * marked reads as U+FFFC (see literalScanText), so its backticks do not count.
+ * Shared with the `:` autocomplete (§375) so both agree on what counts as code.
+ */
+export function insideOpenBacktick($from: ResolvedPos): boolean {
+  return hasOpenBacktick(literalScanText($from));
+}
+
+/**
+ * Whether `range` is inside inline code or an open inline-math edit — the
+ * literal contexts a typed key can be in without its textblock being code.
+ * Shared with the `:` autocomplete (§375), which must not open there either.
+ * (See shouldSubstitute for why the match and the caret are both checked.)
+ */
+export function isCodeOrMathEditAt(
+  state: EditorState,
+  range: { from: number; to: number },
+): boolean {
   const code = state.schema.marks.code;
   if (code) {
-    if (state.doc.rangeHasMark(range.from, range.to, code)) return false;
+    if (state.doc.rangeHasMark(range.from, range.to, code)) return true;
     const incoming = state.storedMarks ?? state.doc.resolve(range.to).marks();
-    if (code.isInSet(incoming)) return false;
+    if (code.isInSet(incoming)) return true;
   }
-
   const math = mathEditKey.getState(state);
-  if (math?.active && math.from <= range.from && range.from <= math.to) {
-    return false;
-  }
-
-  return !isLiteralContext(literalScanText(state.doc.resolve(range.from)));
+  return Boolean(
+    math?.active && math.from <= range.from && range.from <= math.to,
+  );
 }
 
 /**
@@ -77,7 +104,7 @@ function isLiteralContext(before: string): boolean {
       return true;
     }
   }
-  if ((before.match(/`/g)?.length ?? 0) % 2 === 1) return true;
+  if (hasOpenBacktick(before)) return true;
   const token = before.slice(before.search(/\S*$/));
   if (token.includes("://")) return true;
   return TAG_IN_PROGRESS.test(before);

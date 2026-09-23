@@ -1,4 +1,4 @@
-// §298 Phase 1 (§12-1) — canonical PluginKeys for the 5 suggestion popups.
+// §298 Phase 1 (§12-1) — canonical PluginKeys for the suggestion popups.
 //
 // Leaf module by design: imports nothing but prosemirror-state, so the vim
 // Esc arbiter (§4) can read popup activity without pulling in the suggestion
@@ -14,12 +14,15 @@ export const tagSuggestPluginKey = new PluginKey("tagSuggest");
 export const skillVariableSuggestPluginKey = new PluginKey(
   "skillVariableSuggest",
 );
+// §375 — `:` symbol & emoji autocomplete.
+export const symbolSuggestPluginKey = new PluginKey("symbolSuggest");
 
-/** All five, for callers that arbitrate against "any suggestion popup open". */
+/** All of them, for callers that arbitrate against "any suggestion popup open". */
 export const suggestionPluginKeys = [
   slashCommandPluginKey,
   wikilinkSuggestPluginKey,
   mentionSuggestPluginKey,
   tagSuggestPluginKey,
   skillVariableSuggestPluginKey,
+  symbolSuggestPluginKey,
 ] as const;

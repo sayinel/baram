@@ -1,0 +1,140 @@
+// §375 `:` symbol & emoji autocomplete — Tiptap Extension using Suggestion API.
+//
+// Picking an entry writes the character itself; a `:smile:` shortcode is not
+// CommonMark or GFM and would show as those letters anywhere else (spec 0056).
+import type { Editor, Range } from "@tiptap/core";
+import type { EditorState } from "@tiptap/pm/state";
+
+import { Extension } from "@tiptap/core";
+import { Suggestion } from "@tiptap/suggestion";
+
+import { SymbolMenuList } from "../../components/command/SymbolMenu";
+import { useSettingsStore } from "../../stores/settings/store";
+import { focusEditorView } from "../../utils/editor/focus-editor-view";
+import { ensureEmojiLoaded, loadedEmoji } from "./emoji-data";
+import {
+  insideOpenBacktick,
+  isCodeOrMathEditAt,
+} from "./smart-punctuation-guards";
+import { symbolSuggestPluginKey } from "./suggestion-keys";
+import { createSuggestionRenderer } from "./suggestion-renderer";
+import { searchSymbols, type SymbolSuggestionItem } from "./symbol-search";
+
+/**
+ * When `:` is a trigger, in the shape `findSuggestionMatch` takes, so tests can
+ * feed the library's own matcher real strings.
+ *
+ * `allowedPrefixes` holds the colon to a space or the start of the text node:
+ * `10:30`, `https://`, `due:` (§303) and `key:: value` pass over. The library
+ * looks at one text node only — `symbolSuggestAllowed` extends the same rule
+ * across mark boundaries and inline atoms.
+ */
+export const SYMBOL_TRIGGER = {
+  allowSpaces: false,
+  allowToIncludeChar: false,
+  allowedPrefixes: [" "],
+  char: ":",
+  startOfLine: false,
+};
+
+/** Characters a query needs before anything is suggested (spec 0056 §375). */
+export const SYMBOL_MIN_QUERY = 2;
+
+const SYMBOL_MENU_HEIGHT = 280;
+
+/**
+ * Whether `:` at `range` may open the menu: the setting is on, the text is not
+ * code, and the colon starts a word — the character before it in the
+ * textblock is nothing, whitespace or a hard break. Right after bold text, a
+ * link or an inline atom the library would open (the text node starts there);
+ * `a:b` is the same shape and it does not.
+ *
+ * "Not code" takes two checks, the same two smart punctuation makes. The mark
+ * check (`isCodeOrMathEditAt`) alone is not enough: while the caret is inside
+ * inline code, SyntaxReveal expands it to literal backticks with no `code`
+ * mark, so the colon is plain text after an opening backtick. That state, and
+ * a code span whose closing backtick is not typed yet, is `insideOpenBacktick`.
+ */
+export function symbolSuggestAllowed(
+  state: EditorState,
+  range: { from: number; to: number },
+): boolean {
+  if (useSettingsStore.getState().symbolSuggest !== true) return false;
+  const $from = state.doc.resolve(range.from);
+  if ($from.parent.type.spec.code) return false;
+  if (isCodeOrMathEditAt(state, range)) return false;
+  if (insideOpenBacktick($from)) return false;
+  const before = state.doc.textBetween(
+    Math.max($from.start(), range.from - 1),
+    range.from,
+    undefined,
+    (leaf) => (leaf.type.name === "hardBreak" ? "\n" : "￼"),
+  );
+  return before === "" || /\s/u.test(before);
+}
+
+/** Replace the `:query` at `range` with `char`, keeping the marks at the caret. */
+export function insertSymbol(editor: Editor, range: Range, char: string): void {
+  const { view } = editor;
+  view.dispatch(
+    view.state.tr.insertText(char, range.from, range.to).scrollIntoView(),
+  );
+  focusEditorView(view);
+}
+
+const locale = (): string => useSettingsStore.getState().locale;
+
+export const SymbolSuggest = Extension.create({
+  name: "symbolSuggest",
+
+  addProseMirrorPlugins() {
+    const editor = this.editor;
+    let emojiRequested = false;
+
+    /**
+     * Start loading emoji on the first `:` query character. When the table
+     * lands, dispatch an empty transaction: the suggestion plugin re-matches on
+     * every transaction, so a query that only emoji answer (`:웃음`) opens then,
+     * without waiting for another key.
+     */
+    const requestEmoji = (): void => {
+      if (emojiRequested) return;
+      emojiRequested = true;
+      void ensureEmojiLoaded().then(() => {
+        emojiRequested = false;
+        if (editor.isDestroyed || loadedEmoji() === null) return;
+        editor.view.dispatch(editor.state.tr.setMeta("addToHistory", false));
+      });
+    };
+
+    return [
+      Suggestion<SymbolSuggestionItem>({
+        editor,
+        pluginKey: symbolSuggestPluginKey,
+        ...SYMBOL_TRIGGER,
+        allow: ({ state, range }) => symbolSuggestAllowed(state, range),
+        // ‼️ Decides `active`, which swallows Esc whether or not a menu is drawn
+        // (@tiptap/suggestion plugin/props.ts) and which the vim Esc arbiter
+        // reads. So an empty result must be decided here, never in the renderer.
+        shouldShow: ({ query }) => {
+          if (query.length === 0) return false;
+          const emoji = loadedEmoji();
+          if (emoji === null) requestEmoji();
+          return (
+            query.length >= SYMBOL_MIN_QUERY &&
+            searchSymbols(query, emoji, locale(), 1).length > 0
+          );
+        },
+        items: ({ query }) => searchSymbols(query, loadedEmoji(), locale()),
+        command: ({ editor: ed, range, props }) => {
+          insertSymbol(ed, range, props.char);
+        },
+        render: createSuggestionRenderer<SymbolSuggestionItem>({
+          component: SymbolMenuList,
+          menuHeight: SYMBOL_MENU_HEIGHT,
+          popupClass: "symbol-menu-popup",
+        }),
+      }),
+    ];
+  },
+});

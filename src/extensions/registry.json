@@ -805,6 +805,18 @@
       "_note": "Input rules that turn typed -> <- <-> => <= >= != <=> -- ... into symbols while the smartPunctuation setting is on (off by default: it changes the bytes a user saves). Every rule asks shouldSubstitute (smart-punctuation-guards.ts) first: the setting, skill files (frontmatter text via isSkillFrontmatter, not the yaml attribute, which goes stale after edits), inline code (Baram's Code mark has no code: true, so Tiptap's own check misses it), an open inline math edit, and unclosed [[ {{ (( [^ ]( <!-- spans, backticks, URLs and tags (text inside inline code is masked so an opener in code does not block the rest of the line). Two rules match another rule's result: <-> is ← then >, <=> is ≤ then >. The em dash fires on the key after --, so --- still makes a horizontal rule, and stays out next to | so a |--| delimiter row survives. Priority 50, below the core keymap's default 100, so Enter reaches the keymap first; the em dash rule also excludes \\n so that does not depend on the order. No paste rules and no transformer: the result is plain text."
     },
     {
+      "name": "symbolSuggest",
+      "file": "plugins/symbol-suggest.ts",
+      "spec": "§375",
+      "phase": 3,
+      "milestone": "M11",
+      "status": "implemented",
+      "shortcuts": {
+        ":": "symbol & emoji autocomplete"
+      },
+      "_note": "Suggestion plugin: ':' plus two or more characters lists curated text symbols (symbol-data.ts) and emoji (emoji-data.generated.json, pruned from emojibase-data by scripts/build-emoji-data.ts and loaded by dynamic import on the first query character). English and Korean keywords are searched together. Picking writes the Unicode character, never a :shortcode:. shouldShow keeps the suggestion inactive below two characters and when nothing matches, because an active suggestion swallows Esc even with no menu drawn. allow requires the colon to start a word across mark boundaries and inline atoms, and skips code blocks, inline code and open inline math with the checks smart punctuation uses: isCodeOrMathEditAt for the code mark and math, and insideOpenBacktick for an unclosed backtick, which is also what inline code becomes while the caret is inside it (SyntaxReveal expands it to literal backticks, leaving no mark). Gated by the symbolSuggest setting (on by default)."
+    },
+    {
       "name": "taskFieldChips",
       "file": "plugins/task-field-chips.ts",
       "spec": "§308",

@@ -83,6 +83,7 @@ import { PromptLint } from "./plugins/prompt-lint";
 import { SkillVariableSuggest } from "./plugins/skill-variable-suggest";
 import { SlashCommands } from "./plugins/slash-command";
 import { SmartPunctuation } from "./plugins/smart-punctuation";
+import { SymbolSuggest } from "./plugins/symbol-suggest";
 import { SyntaxReveal } from "./plugins/syntax-reveal";
 import { TagClick } from "./plugins/tag-click";
 import { TagSuggest } from "./plugins/tag-suggest";
@@ -299,6 +300,9 @@ export function createBaramExtensions(
 
     // Plugins — §56l Tag Autocomplete (#)
     TagSuggest,
+
+    // Plugins — §375 Symbol & emoji autocomplete (:)
+    SymbolSuggest,
 
     // Plugins — §56m Tag Click → Search (Cmd/Ctrl+Click on #tag)
     TagClick,
