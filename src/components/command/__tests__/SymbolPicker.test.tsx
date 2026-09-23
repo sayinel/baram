@@ -108,9 +108,10 @@ describe("SymbolPicker", () => {
     expect(onPick).toHaveBeenCalledWith("→");
   });
 
-  it("leaves an arrow with a modifier to the search box", () => {
-    // Positive twin: "moves with the arrow keys and picks with Enter" above —
-    // there a plain ArrowRight moves the highlight; here it does too, last.
+  it("leaves an arrow with a modifier to the search box, and stops it there", () => {
+    // Positive twins: "x" below reaches the window listener, so the "never
+    // reaches it" assertion can fail; and a plain ArrowRight, last, moves the
+    // highlight (as in "moves with the arrow keys and picks with Enter").
     const { press, selected } = setup();
     const outside = vi.fn();
     window.addEventListener("keydown", outside);
@@ -118,10 +119,15 @@ describe("SymbolPicker", () => {
       ["altKey", "ctrlKey", "metaKey", "shiftKey"] as const
     ).map((modifier) => !press("ArrowRight", { [modifier]: true }));
     const afterModified = selected();
+    press("x"); // not the picker's key — reaches the window
     press("ArrowRight");
     window.removeEventListener("keydown", outside);
     expect(prevented).toEqual([false, false, false, false]);
-    expect(outside).toHaveBeenCalledTimes(4); // the plain one stops at the picker
+    // No modified arrow reaches the window — where use-global-keyboard.ts's
+    // listener would navigate back/forward on Alt+←/→ behind the picker.
+    expect(outside.mock.calls.map(([e]) => (e as KeyboardEvent).key)).toEqual([
+      "x",
+    ]);
     expect(afterModified).toBe("→");
     expect(selected()).toBe("←");
   });

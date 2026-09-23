@@ -161,10 +161,15 @@ export function SymbolPicker({ onCancel, onPick }: SymbolPickerProps) {
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
     if (isComposing(event)) return;
     const { key } = event;
-    // An arrow with a modifier is left to the search box, not prevented or
-    // stopped — Shift+arrow extends its text selection, for one. Only a plain
-    // arrow moves the grid.
-    if (isGridArrow(key) && hasModifier(event)) return;
+    // An arrow with a modifier is the search box's: not default-prevented, so
+    // the input's own action runs (Shift+arrow extends its text selection, for
+    // one), and not a grid move — only a plain arrow moves the grid. It is
+    // still stopped, so listeners further up the page do not act on it too:
+    // use-global-keyboard.ts's window listener navigates back/forward on Alt+←/→.
+    if (isGridArrow(key) && hasModifier(event)) {
+      event.stopPropagation();
+      return;
+    }
     if (
       key !== "Enter" &&
       key !== "Escape" &&
