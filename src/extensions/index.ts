@@ -82,6 +82,7 @@ import { PromptHighlight } from "./plugins/prompt-highlight";
 import { PromptLint } from "./plugins/prompt-lint";
 import { SkillVariableSuggest } from "./plugins/skill-variable-suggest";
 import { SlashCommands } from "./plugins/slash-command";
+import { SmartPunctuation } from "./plugins/smart-punctuation";
 import { SyntaxReveal } from "./plugins/syntax-reveal";
 import { TagClick } from "./plugins/tag-click";
 import { TagSuggest } from "./plugins/tag-suggest";
@@ -334,6 +335,9 @@ export function createBaramExtensions(
 
     // Plugins — §303 Word-trigger input rules (due:/sched:/start:/prio:, !1-!5)
     TaskInputRules,
+
+    // Plugins — §373 Smart punctuation (typed -> becomes →; off by default)
+    SmartPunctuation,
 
     // Plugins — §308 Task metadata chips (decoration-only, never touches the doc)
     TaskFieldChips,
