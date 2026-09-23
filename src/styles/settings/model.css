@@ -109,6 +109,7 @@
 .settings-model-error {
   max-height: 100px;
   padding: var(--space-2) var(--space-3);
+  /* stylelint-disable-next-line declaration-property-value-disallowed-list -- 음수 값이다; var() 앞에 `-`를 붙여 부호를 뒤집을 수 없다(0097 R-C). 나머지 값(8px)은 Task 2 에서 이미 --space-2 로 치환됐다 */
   margin: -4px 0 var(--space-2);
   overflow-y: auto;
   font-size: 0.75rem;

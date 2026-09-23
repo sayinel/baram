@@ -391,5 +391,6 @@
    들어가지 않게 왼쪽 여백을 직접 준다. `.pdf-preview`의 `padding: 24px`에서
    왼쪽만 덮어쓴다(align-items: center의 중심도 이 여백을 반영해 옮겨간다). */
 .pdf-preview-with-rail {
+  /* stylelint-disable-next-line declaration-property-value-disallowed-list -- calc() 안의 리터럴이다; 토큰으로 바꾸면 치환이 이 calc() 문법을 깨뜨린다(0097 R-C) */
   padding-left: calc(24px + var(--pdf-rail-width, 200px));
 }

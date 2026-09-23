@@ -55,6 +55,7 @@
   width: 1px;
   height: 1px;
   padding: 0;
+  /* stylelint-disable-next-line declaration-property-value-disallowed-list -- 음수 값이다; var() 앞에 `-`를 붙여 부호를 뒤집을 수 없다(0097 R-C) */
   margin: -1px;
   overflow: hidden;
   border: 0;

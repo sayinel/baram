@@ -26,9 +26,16 @@ export const SPACE_TOKENS: Readonly<Record<string, string>> =
 export const RADIUS_TOKENS: Readonly<Record<string, string>> =
   tokenTable("radius");
 
-/** 이 계획이 다루는 속성. `border-radius` 계열은 접두 네 방향까지 포함한다. */
-const SPACING_PROPS = /^(padding|margin|gap|row-gap|column-gap)(-[a-z]+)?$/u;
-const RADIUS_PROPS = /^border(-[a-z]+)*-radius$|^border-radius$/u;
+/**
+ * 이 계획이 다루는 속성. `border-radius` 계열은 접두 네 방향까지 포함한다.
+ *
+ * `stylelint.config.mjs` 의 `declaration-property-value-disallowed-list` 키와
+ * **같은 집합**이어야 한다(0097 Task 4 개정 4) — 관문이 잡는 것과 스냅샷이 지키는
+ * 것이 갈리면, 그 차집합에 들어온 선언은 관문은 빨갛게 만드는데 스냅샷은 값이
+ * 바뀌어도 초록이다.
+ */
+const SPACING_PROPS = /^(padding|margin|gap|row-gap|column-gap)(-[a-z]+)*$/u;
+const RADIUS_PROPS = /^border(-[a-z]+)*-radius$/u;
 
 /**
  * 간격·모서리 선언 하나하나를 **계산된 px** 로 펴서 정렬해 돌려준다.

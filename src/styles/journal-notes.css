@@ -361,6 +361,7 @@
 
 .memories-oneline-editable {
   padding: var(--space-0-5) var(--space-1);
+  /* stylelint-disable-next-line declaration-property-value-disallowed-list -- 음수 값이다; var() 앞에 `-`를 붙여 부호를 뒤집을 수 없다(0097 R-C) */
   margin: -2px -4px;
   cursor: text;
   border-radius: var(--radius-default);

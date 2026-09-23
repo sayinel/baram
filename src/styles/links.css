@@ -146,6 +146,7 @@
      value. Routing it through the token would not change what a real browser
      renders — only what the jsdom test harness can read back — so this one
      declaration is excluded from §365's token adoption. */
+  /* stylelint-disable-next-line declaration-property-value-disallowed-list -- jsdom의 getComputedStyle이 커스텀 프로퍼티를 풀지 못해 토큰화하면 export-html-block-reference-styles.test.ts의 계산값 단언을 잃는다(위 주석 참조, 0097) */
   padding: 0 4px;
 
   /* §276.5 A text-highlight ref renders the full original sentence, so the chip
