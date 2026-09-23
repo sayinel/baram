@@ -44,7 +44,7 @@ Drag any editor tab outside the tab bar to detach it into a separate window. The
 
 ## Perspectives
 
-A **perspective** is a saved layout — sidebar panel, right panel, and theme — that you can restore in one keystroke. Baram ships four and you can add your own.
+A **perspective** is a saved layout — sidebar panel, right panel, and theme — that you can restore in one keystroke. Baram ships five and you can add your own.
 
 ### Built-in Perspectives
 
@@ -54,23 +54,40 @@ A **perspective** is a saved layout — sidebar panel, right panel, and theme �
 | Zettel  | `Cmd+Alt+2`      | `Ctrl+Alt+2`         | Zettel hub (actions + inbox + MOCs + recent) — atomic Zettelkasten notes |
 | Journal | `Cmd+Alt+3`      | `Ctrl+Alt+3`         | Calendar sidebar + today's journal + Memories view           |
 | Skills  | `Cmd+Alt+4`      | `Ctrl+Alt+4`         | File tree + Properties panel — LLM Skills editing            |
+| Focus   | `Cmd+Alt+5`      | `Ctrl+Alt+5`         | Sidebar, right panel, activity bar, status bar, and file tab bar all hidden — editor alone |
 
-> All four are customizable in **Settings > Keybindings** (category **Perspective**) and available from the **Perspective** menu. Switching to a space never force-closes an open folder tree.
+> All five are customizable in **Settings > Keybindings** (category **Perspective**) and available from the **Perspective** menu. Choosing a perspective applies its saved layout exactly — Writing and Focus, for example, do close the sidebar. Baram itself never force-closes an open folder tree: the one automatic fallback (returning to Writing when the Journal or Zettel context tab closes) only reopens the sidebar if it was already open, and expanded folders stay expanded either way.
+
+### Hiding Interface Chrome
+
+Independently of perspectives, the Activity Bar, Status Bar, and file Tab Bar can each be hidden on their own. Hiding a bar only changes whether it's drawn — the feature underneath keeps working (hiding the Tab Bar does not close your tabs; hiding the Activity Bar does not turn any feature off).
+
+| Action               | Shortcut (macOS) | Shortcut (Win/Linux) |
+| --------------------- | ---------------- | --------------------- |
+| Toggle Activity Bar  | `Cmd+Alt+A`      | `Ctrl+Alt+A`          |
+| Toggle Status Bar    | `Cmd+Alt+S`      | `Ctrl+Alt+S`          |
+| Toggle Tab Bar       | `Cmd+Alt+B`      | `Ctrl+Alt+B`          |
+
+The same three toggles are also in **Settings > Layout**, under **Show or Hide**.
+
+The **Focus** perspective above applies all three of these at once, together with closing the sidebar and right panel. The Context Tab Bar (your open vaults/folders, spanning the very top of the window) is a separate surface and stays visible.
+
+If you hide all three bars and want them back: use the shortcuts again, switch to any other perspective, or hover the very top edge of the window (or Tab to it with the keyboard) to reveal a thin **Reveal hidden bars** button.
 
 ### Custom Perspectives
 
-Create your own in **Settings > Appearance**:
+Create your own in **Settings > Layout**:
 
 1. Arrange the layout you want (sidebar panel, right panel, theme)
-2. Go to **Settings > Appearance** and click **Save Current Layout**
+2. Go to **Settings > Layout** and click **Save Current Layout**
 3. Give it a name
 
 Custom perspectives can be renamed, deleted, and applied from the same Settings tab.
 
 ### Applying a Perspective
 
-- **Keyboard shortcuts** — `Cmd+Alt+1` (Writing), `Cmd+Alt+2` (Zettel), `Cmd+Alt+3` (Journal), `Cmd+Alt+4` (Skills)
+- **Keyboard shortcuts** — `Cmd+Alt+1` (Writing), `Cmd+Alt+2` (Zettel), `Cmd+Alt+3` (Journal), `Cmd+Alt+4` (Skills), `Cmd+Alt+5` (Focus)
 - **Perspective menu** — in the menu bar
-- **Settings > Appearance** — for custom perspectives
+- **Settings > Layout** — for custom perspectives
 
 ---

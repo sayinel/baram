@@ -58,7 +58,7 @@ Baram uses a 3-column layout:
 </figure>
 
 - **Context Tab Bar** — one tab for every vault or folder you have open. It spans the full width at the very top of the window, and hides when no vault or folder is open.
-- **Activity Bar** — the icon strip that chooses what the left sidebar and the right panel show. Pick which icons appear, and in what order, under **Settings > Activity Bar**. It hides when no folder is open.
+- **Activity Bar** — the icon strip that chooses what the left sidebar and the right panel show. Pick which icons appear, and in what order, under **Settings > Layout**. It hides when no folder is open.
 - **Left Sidebar** — File tree, backlinks panel, bookmarks, global search, Git source control, and version history. Toggle with `Cmd+Shift+L` (macOS) / `Ctrl+Shift+L` (Windows/Linux).
 - **Document Tab Bar** — the documents open in the current context. Drag a tab out of the bar to tear it off into its own window.
 - **Main Editor** — The WYSIWYG editing area where you write.

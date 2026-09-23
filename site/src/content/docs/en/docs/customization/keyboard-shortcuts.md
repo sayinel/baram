@@ -91,6 +91,9 @@ Complete list of keyboard shortcuts available in Baram.
 | Reload              | `Cmd+R`       | `Ctrl+R`        |
 | Source Mode Toggle  | `Cmd+/`       | `Ctrl+/`        |
 | Toggle Left Sidebar | `Cmd+Shift+L` | `Ctrl+Shift+L`  |
+| Toggle Activity Bar | `Cmd+Alt+A`   | `Ctrl+Alt+A`    |
+| Toggle Status Bar   | `Cmd+Alt+S`   | `Ctrl+Alt+S`    |
+| Toggle Tab Bar      | `Cmd+Alt+B`   | `Ctrl+Alt+B`    |
 | Zoom In             | `Cmd+=`       | `Ctrl+=`        |
 | Zoom Out            | `Cmd+-`       | `Ctrl+-`        |
 | Reset Zoom          | `Cmd+0`       | `Ctrl+0`        |
@@ -104,6 +107,10 @@ there, and menu accelerators can't defer to it. Instead, `Ctrl+R` is a customiza
 isn't actively handling the key (vim mode off, or outside a vim redo context), so a real vim redo
 is never shadowed. On macOS, `Cmd+R` is the native menu accelerator and vim mode never sees it
 (`Cmd` isn't vim's redo modifier there), so there's no such handoff to make.
+
+On Windows and Linux, `Ctrl+Alt` is physically **AltGr** — on some keyboard layouts (Polish,
+for example) `Ctrl+Alt+A`/`S`/`B` can collide with typing accented characters. All three are
+customizable in **Settings > Keybindings** if that happens on your layout.
 
 ## Navigation
 
@@ -151,8 +158,9 @@ is never shadowed. On macOS, `Cmd+R` is the native menu accelerator and vim mode
 | Zettel Perspective  | `Cmd+Option+2` | `Ctrl+Alt+2`    |
 | Journal Perspective | `Cmd+Option+3` | `Ctrl+Alt+3`    |
 | Skills Perspective  | `Cmd+Option+4` | `Ctrl+Alt+4`    |
+| Focus Perspective   | `Cmd+Option+5` | `Ctrl+Alt+5`    |
 
-> All four are customizable in **Settings > Keybindings**, under the **Perspective** category. Switching to a space never force-closes an open folder tree.
+> All five are customizable in **Settings > Keybindings**, under the **Perspective** category. Choosing a perspective applies its saved layout exactly, so Writing and Focus do close the sidebar — that's what they're for. Baram itself never force-closes an open folder tree: the one automatic fallback (returning to Writing when you close the Journal or Zettel context tab) only reopens the sidebar if it was already open, and your expanded folders stay expanded either way.
 
 ## Journal
 

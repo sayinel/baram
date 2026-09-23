@@ -58,18 +58,18 @@ Click the reset button (↺) next to any customized shortcut to restore its defa
 
 ### What is a perspective?
 
-A perspective is a saved layout — sidebar panel, right panel, and theme — under a name you can apply later. Baram ships four (Writing, Zettel, Journal, Skills) and you can add your own.
+A perspective is a saved layout — sidebar panel, right panel, and theme — under a name you can apply later. Baram ships five (Writing, Zettel, Journal, Skills, Focus) and you can add your own.
 
 ### How do I switch perspectives?
 
 Two ways:
 
-1. **Keyboard shortcuts** — `Cmd+Alt+1` (Writing), `Cmd+Alt+2` (Zettel), `Cmd+Alt+3` (Journal), `Cmd+Alt+4` (Skills)
+1. **Keyboard shortcuts** — `Cmd+Alt+1` (Writing), `Cmd+Alt+2` (Zettel), `Cmd+Alt+3` (Journal), `Cmd+Alt+4` (Skills), `Cmd+Alt+5` (Focus)
 2. **Perspective menu** — in the menu bar
 
 ### Can I create my own?
 
-Yes. Go to **Settings > Appearance**, arrange your layout, and click **Save Current Layout**. Custom perspectives can be renamed or deleted from the same tab.
+Yes. Go to **Settings > Layout**, arrange your layout, and click **Save Current Layout**. Custom perspectives can be renamed or deleted from the same tab.
 
 ---
 
