@@ -25,7 +25,7 @@ describe("AppLayout activity bar render gate (§370)", () => {
     expect(container.querySelector(".activity-bar")).toBeNull();
   });
 
-  it("negative control: renders .activity-bar when activityBarVisible is true and rootPath is set", () => {
+  it("positive control: renders .activity-bar when activityBarVisible is true and rootPath is set", () => {
     useUIStore.setState({ activityBarVisible: true });
     const { container } = render(<AppLayout>{null}</AppLayout>);
     expect(container.querySelector(".activity-bar")).not.toBeNull();

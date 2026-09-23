@@ -353,9 +353,11 @@ export const useUIStore = create<UIState>((set) => ({
       return next;
     }),
 
-  // §370 개별 토글 — `setChromeVisibility`(프리셋 입구)와 끝까지 다른 입구로 남는다.
-  // Task 6이 토글에만 "사용자가 이 표면을 손댔다"는 기록을 덧대므로, 여기서
-  // `setChromeVisibility` 호출로 구현하면 그 구분이 무너진다.
+  // §370 개별 토글 셋(아래 `toggleActivityBar`·`toggleStatusBar`·`toggleTabBar` 세
+  // 함수만 지배 — 바로 다음의 `togglePdfRail`은 별개다) — `setChromeVisibility`
+  // (프리셋 입구)와 끝까지 다른 입구로 남는다. Task 6이 이 셋에만 "사용자가 이
+  // 표면을 손댔다"는 기록을 덧대므로, 여기서 `setChromeVisibility` 호출로
+  // 구현하면 그 구분이 무너진다.
   toggleActivityBar: () =>
     set((state) => ({ activityBarVisible: !state.activityBarVisible })),
 
@@ -364,6 +366,7 @@ export const useUIStore = create<UIState>((set) => ({
 
   toggleTabBar: () => set((state) => ({ tabBarVisible: !state.tabBarVisible })),
 
+  // §370과 무관 — PDF 사이드 레일은 크롬 표면이 아니다(§282).
   togglePdfRail: () => set((state) => ({ pdfRailOpen: !state.pdfRailOpen })),
 
   setPdfRailTab: (tab) => set({ pdfRailTab: tab }),
