@@ -232,6 +232,8 @@ interface UIState {
   /** Transient toast notification (null = hidden) */
   toast: null | ToastState;
   toggleAbout: () => void;
+  /** §370 크롬 표면 토글 — `setChromeVisibility`와 다른 입구다(위 주석 참조). */
+  toggleActivityBar: () => void;
   toggleCommandPalette: () => void;
   togglePdfRail: () => void;
   toggleQuickCapture: () => void;
@@ -242,6 +244,11 @@ interface UIState {
   toggleSkillGeneratorDialog: () => void;
   toggleSkillTestDialog: () => void;
   toggleSmartTemplateDialog: () => void;
+  /** §370 크롬 표면 토글 — `setChromeVisibility`와 다른 입구다(위 주석 참조). */
+  toggleStatusBar: () => void;
+  /** §370 크롬 표면 토글 — `tabBarVisible`이 지배하는 것은 **파일 탭 바**뿐이다
+   *  (ContextTabBar는 별개, 이 계획의 범위 밖). `setChromeVisibility`와 다른 입구다. */
+  toggleTabBar: () => void;
   /** §315 주간 리뷰 화면 — 아젠다 헤더 버튼과 커맨드 팔레트가 연다 */
   toggleWeeklyReview: () => void;
   triggerContentReload: (cursorEnd?: boolean) => void;
@@ -345,6 +352,17 @@ export const useUIStore = create<UIState>((set) => ({
       }
       return next;
     }),
+
+  // §370 개별 토글 — `setChromeVisibility`(프리셋 입구)와 끝까지 다른 입구로 남는다.
+  // Task 6이 토글에만 "사용자가 이 표면을 손댔다"는 기록을 덧대므로, 여기서
+  // `setChromeVisibility` 호출로 구현하면 그 구분이 무너진다.
+  toggleActivityBar: () =>
+    set((state) => ({ activityBarVisible: !state.activityBarVisible })),
+
+  toggleStatusBar: () =>
+    set((state) => ({ statusBarVisible: !state.statusBarVisible })),
+
+  toggleTabBar: () => set((state) => ({ tabBarVisible: !state.tabBarVisible })),
 
   togglePdfRail: () => set((state) => ({ pdfRailOpen: !state.pdfRailOpen })),
 

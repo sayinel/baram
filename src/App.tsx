@@ -3,6 +3,7 @@ import { lazy, Suspense, useCallback, useMemo, useRef, useState } from "react";
 
 import { Editor as TiptapCoreEditor } from "@tiptap/core";
 import { useEditor } from "@tiptap/react";
+import { useShallow } from "zustand/shallow";
 
 import { PromptLintPanel } from "./components/ai/PromptLintPanel";
 import { PreviewToggleButton } from "./components/editor/PreviewToggleButton";
@@ -41,6 +42,7 @@ import { useTabSwitching } from "./hooks/use-tab-switching";
 import { notifyEditorReady } from "./plugins/plugin-lifecycle";
 import { isImeProbeEnabled } from "./spike/ime-probe/ime-probe-enabled";
 import { isVimWysiwygProbeEnabled } from "./spike/vim-wysiwyg-probe/vim-probe-enabled";
+import { useUIStore } from "./stores/ui/ui";
 import { FILE_MODE_PATH } from "./utils/file-mode";
 import { logAppReady } from "./utils/perf";
 // Stylesheet moved to `main.tsx` (§260 Phase 5 re-review, R3): App is dynamically
@@ -80,6 +82,15 @@ function App() {
     markDirty,
     rootPath,
   } = activeSurface;
+
+  // §370 크롬 표면 가시성 — App은 StatusBar/TabBar 두 곳만 게이팅한다.
+  // ActivityBar/ContextTabBar/Sidebar는 AppLayout이 직접 읽는다.
+  const { statusBarVisible, tabBarVisible } = useUIStore(
+    useShallow((s) => ({
+      statusBarVisible: s.statusBarVisible,
+      tabBarVisible: s.tabBarVisible,
+    })),
+  );
 
   const {
     findReplaceMode,
@@ -369,12 +380,12 @@ function App() {
     <EditorContext value={activeEditor}>
       <AppLayout
         statusBar={
-          rootPath ? (
+          rootPath && statusBarVisible ? (
             <StatusBar editor={activeEditor} mode={statusBarMode} />
           ) : undefined
         }
       >
-        {!!rootPath && <TabBar />}
+        {!!rootPath && tabBarVisible && <TabBar />}
         <EditorArea
           find={{
             findReplaceMode,

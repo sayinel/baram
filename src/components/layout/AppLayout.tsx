@@ -46,6 +46,7 @@ const MAX_RIGHT_PANEL = 500;
 
 export function AppLayout({ children, statusBar }: AppLayoutProps) {
   const {
+    activityBarVisible,
     sidebarOpen,
     sidebarWidth,
     setSidebarWidth,
@@ -55,6 +56,7 @@ export function AppLayout({ children, statusBar }: AppLayoutProps) {
     setRightPanelWidth,
   } = useUIStore(
     useShallow((s) => ({
+      activityBarVisible: s.activityBarVisible,
       sidebarOpen: s.sidebarOpen,
       sidebarWidth: s.sidebarWidth,
       setSidebarWidth: s.setSidebarWidth,
@@ -117,8 +119,8 @@ export function AppLayout({ children, statusBar }: AppLayoutProps) {
       <ContextTabBar />
       {/* Body: sidebar + main + right panel */}
       <div className="app-layout-body">
-        {/* Activity Bar — hidden when no folder open */}
-        {!!rootPath && <ActivityBar />}
+        {/* Activity Bar — hidden when no folder open, or when §370 hides the surface */}
+        {!!rootPath && activityBarVisible && <ActivityBar />}
 
         {/* Left Sidebar */}
         {showSidebar && (

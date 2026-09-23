@@ -203,6 +203,30 @@ export const KEYBINDING_REGISTRY: KeybindingEntry[] = [
     defaultKey: "Mod+D",
     customizable: true,
   },
+  // §370 — `Mod+Shift+*`는 남은 자리가 없다(전 카테고리 + menu.rs를 합치면 26글자
+  // 전부 쓰였거나 예약돼 있다 — `TASK_INPUT_COMMAND` 주석 참조). `Mod+Alt+*`는
+  // `Mod+Alt+1..4`·`Mod+Alt+C`·`Mod+Alt+T`뿐이라 A/S/B가 비어 있다.
+  {
+    id: "view.toggleActivityBar",
+    label: "keybindings.view.toggleActivityBar",
+    category: "view",
+    defaultKey: "Mod+Alt+A",
+    customizable: true,
+  },
+  {
+    id: "view.toggleStatusBar",
+    label: "keybindings.view.toggleStatusBar",
+    category: "view",
+    defaultKey: "Mod+Alt+S",
+    customizable: true,
+  },
+  {
+    id: "view.toggleTabBar",
+    label: "keybindings.view.toggleTabBar",
+    category: "view",
+    defaultKey: "Mod+Alt+B",
+    customizable: true,
+  },
 
   // ── search ────────────────────────────────────────────────────────────────
   {

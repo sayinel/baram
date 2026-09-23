@@ -127,6 +127,17 @@ export function useKeybindingActions({
     registerAction("view.commandPalette", () => toggleCommandPalette());
     registerAction("view.quickSwitcher", () => toggleQuickSwitcher());
     registerAction("view.settings", () => toggleSettings());
+    // §370 복귀 경로 ① — 표면 가시성 토글. `setChromeVisibility`(프리셋)와 다른 입구로
+    // 남기기 위해 각 토글을 직접 부른다(ui.ts의 §370 주석 참조).
+    registerAction("view.toggleActivityBar", () =>
+      useUIStore.getState().toggleActivityBar(),
+    );
+    registerAction("view.toggleStatusBar", () =>
+      useUIStore.getState().toggleStatusBar(),
+    );
+    registerAction("view.toggleTabBar", () =>
+      useUIStore.getState().toggleTabBar(),
+    );
     registerAction("view.bookmark", () => {
       const bs = useBookmarkStore.getState();
       const es = useEditorStore.getState();
