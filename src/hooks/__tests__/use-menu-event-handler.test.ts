@@ -25,12 +25,16 @@ import type { MenuEventHandlerDeps } from "../use-menu-event-handler";
 
 import { t } from "../../i18n";
 import { MENU_FEATURE_MAP } from "../../ipc/menu-enabled";
+import { MENU_I18N_MAP } from "../../ipc/menu-locale";
 import {
   clearActions,
   registerAction,
 } from "../../keybindings/keybinding-actions";
 import { useAIStore } from "../../stores/ai/ai";
-import { useWorkspaceStore } from "../../stores/file/workspace";
+import {
+  BUILTIN_PRESETS,
+  useWorkspaceStore,
+} from "../../stores/file/workspace";
 import { useSettingsStore } from "../../stores/settings/store";
 import {
   RIGHT_PANEL_MODE_FEATURE,
@@ -354,4 +358,62 @@ describe("MENU_FEATURE_MAP values are independently verifiable (Fix G)", () => {
     expect(MENU_FEATURE_MAP.workspace_journal).toBe("journal");
     expect(MENU_FEATURE_MAP.workspace_zettel).toBe("zettelkasten");
   });
+});
+
+// §370 fix round 1 — this switch was the one surface among the ten places a
+// built-in preset must appear that no derived test pinned: the suite above
+// only exercises workspace_journal/workspace_zettel by name, so a typo'd
+// payload (`applyPreset("Focus")`) or a missing `case` for a new preset
+// leaves Perspective ▸ <preset> a silent no-op with everything else green.
+//
+// ‼️ The native menu id is NOT `workspace_${preset.id}` — that is exactly the
+// bug `zettelkasten`'s `nameKey` comment (workspace.ts) already names: its
+// preset id is `zettelkasten` but its menu id is `workspace_zettel`. Deriving
+// the id by string interpolation would reproduce that mismatch instead of
+// catching it. Two pieces of data already exist and agree on a shared i18n
+// key: `preset.nameKey` (preset → i18n key, workspace.ts) and
+// `MENU_I18N_MAP` (native menu id → i18n key, menu-locale.ts, itself pinned
+// against menu.rs by menu-locale-keys.test.ts). Joining on that key recovers
+// the native id without hand-listing it.
+function menuEventIdFor(preset: { id: string; nameKey: string }): string {
+  const found = Object.entries(MENU_I18N_MAP).find(
+    ([nativeId, i18nKey]) =>
+      nativeId.startsWith("workspace_") && i18nKey === preset.nameKey,
+  );
+  if (!found) {
+    throw new Error(
+      `menuEventIdFor: no MENU_I18N_MAP entry maps a workspace_* native id to ` +
+        `"${preset.nameKey}" (preset "${preset.id}") — add one in ` +
+        `src/ipc/menu-locale.ts, or this preset has no native menu wiring to test`,
+    );
+  }
+  return found[0];
+}
+
+describe("every built-in preset's native menu item applies that preset (§370)", () => {
+  // Built eagerly (not inside `it`) so a broken derivation throws at describe-collection
+  // time — failing every test in this block loudly — rather than `it.each` silently
+  // iterating zero cases.
+  const presetsWithMenuIds = BUILTIN_PRESETS.map((preset) => ({
+    menuId: menuEventIdFor(preset),
+    presetId: preset.id,
+  }));
+
+  // Non-vacuity: if BUILTIN_PRESETS were ever emptied, `it.each` below would iterate
+  // zero cases and the whole describe would report "0 tests, all passing".
+  it("checked at least one preset, so the sweep below is not vacuous", () => {
+    expect(presetsWithMenuIds.length).toBeGreaterThan(0);
+  });
+
+  it.each(presetsWithMenuIds)(
+    "dispatching $menuId calls applyPreset with $presetId, not a lookalike string",
+    ({ menuId, presetId }) => {
+      const applyPreset = vi.spyOn(useWorkspaceStore.getState(), "applyPreset");
+      renderHook(() => useMenuEventHandler(makeDeps()));
+
+      menuEventHandler()({ payload: menuId });
+
+      expect(applyPreset).toHaveBeenCalledWith(presetId);
+    },
+  );
 });
