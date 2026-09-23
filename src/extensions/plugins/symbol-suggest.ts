@@ -194,6 +194,9 @@ export const SymbolSuggest = Extension.create({
         items: ({ query }) => searchSymbols(query, loadedEmoji(), locale()),
         command: ({ editor: ed, range, props }) => {
           insertSymbol(ed, range, props.char);
+          // §377 The symbol picker's "Recently used" section reads this. The
+          // `:` ranking does not — the same query keeps the same order.
+          useSettingsStore.getState().pushRecentSymbol(props.char);
         },
         render: createSuggestionRenderer<SymbolSuggestionItem>({
           component: SymbolMenuList,

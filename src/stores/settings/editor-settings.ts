@@ -38,8 +38,12 @@ export interface EditorSettingsSlice {
    * clampRailWidth 범위 밖의 값은 setter가 자른다. */
   pdfRailWidth: number;
   pushRecentFont: (family: string) => void;
+  /** §377 기호·이모지를 넣을 때마다 — 격자 선택기와 `:` 자동완성 둘 다 부른다. */
+  pushRecentSymbol: (char: string) => void;
   /** §348 최근 사용 서체 — 최신이 앞, 최대 5개. 두 슬롯이 공유한다. */
   recentFonts: string[];
+  /** §377 최근 넣은 기호·이모지 — 최신이 앞, 최대 {@link RECENT_SYMBOLS_MAX}개. 격자의 "최근" 절만 읽는다. */
+  recentSymbols: string[];
   setAutoLoadVideoEmbeds: (enabled: boolean) => void;
   setAutoPairBrackets: (enabled: boolean) => void;
   setCodeBlockLineNumbers: (enabled: boolean) => void;
@@ -80,6 +84,12 @@ export interface EditorSettingsSlice {
 }
 
 type CodeBlockStyle = "contrast" | "default" | "minimal" | "paper";
+
+/**
+ * §377 최근 사용 기호의 상한. 격자 한 줄이 8칸(`components/command/symbol-grid-nav.ts` 의
+ * `SYMBOL_GRID_COLUMNS`)이라 세 줄이다.
+ */
+export const RECENT_SYMBOLS_MAX = 24;
 
 export const createEditorSettingsSlice: StateCreator<
   EditorSettingsSlice,
@@ -126,6 +136,8 @@ export const createEditorSettingsSlice: StateCreator<
   codeBlockStyle: "default",
   smartPunctuation: false,
   symbolSuggest: true,
+  // §377 기본값 `[]` 은 오늘 동작(최근 절 없음)과 같다 — store version 을 올리지 않는다.
+  recentSymbols: [],
 
   // Extension settings (dynamic key-value)
   extensionSettings: {},
@@ -153,6 +165,17 @@ export const createEditorSettingsSlice: StateCreator<
           name,
           ...state.recentFonts.filter((f) => f !== name),
         ].slice(0, 5),
+      };
+    }),
+  // §377 pushRecentFont 와 같은 모양. 무동작이면 state 를 그대로 돌려준다 — 동등성 관문.
+  pushRecentSymbol: (char) =>
+    set((state) => {
+      if (char === "" || state.recentSymbols[0] === char) return state;
+      return {
+        recentSymbols: [
+          char,
+          ...state.recentSymbols.filter((c) => c !== char),
+        ].slice(0, RECENT_SYMBOLS_MAX),
       };
     }),
   setFontSize: (fontSize) => set({ fontSize }),
