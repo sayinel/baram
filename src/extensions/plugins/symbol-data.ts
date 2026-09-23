@@ -8,6 +8,21 @@
 // ≡ ∈ ∀ ∃ ∧ ∨ ∩ ∪ ⊂ are in the editor's bundled face; those nine fall back to
 // the next family in `--font-family-editor`.
 
+/**
+ * The table's `#` headings, in order — each names the category of the rows
+ * under it, and the symbol picker (§377) shows one section per category.
+ */
+export const SYMBOL_CATEGORIES = [
+  "arrows",
+  "math",
+  "currency",
+  "punctuation",
+  "marks",
+  "other",
+] as const;
+
+export type SymbolCategory = (typeof SYMBOL_CATEGORIES)[number];
+
 export interface SymbolEntry {
   readonly char: string;
   readonly en: string;
@@ -18,10 +33,25 @@ export interface SymbolEntry {
   readonly shortcodes?: readonly string[];
 }
 
+/** A curated symbol: every row of `TABLE` is under a heading. */
+export interface CuratedSymbol extends SymbolEntry {
+  readonly category: SymbolCategory;
+}
+
+/** Heading text in `TABLE` → category. A heading not listed here throws. */
+const HEADINGS: Readonly<Partial<Record<string, SymbolCategory>>> = {
+  Arrows: "arrows",
+  Currency: "currency",
+  "Marks and shapes": "marks",
+  Math: "math",
+  Other: "other",
+  Punctuation: "punctuation",
+};
+
 /**
  * One symbol per line: `char | English label | Korean label | keywords`,
- * keywords separated by spaces. `#` lines are group headings. A table rather
- * than object literals so formatting keeps one symbol on one line.
+ * keywords separated by spaces. `#` lines are headings (`HEADINGS`). A table
+ * rather than object literals so formatting keeps one symbol on one line.
  */
 const TABLE = `
 # Arrows
@@ -111,18 +141,27 @@ const TABLE = `
 № | numero | 번호 | no number
 `;
 
-function parse(table: string): SymbolEntry[] {
-  return table
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line !== "" && !line.startsWith("#"))
-    .map((line) => {
-      const fields = line.split(" | ");
-      if (fields.length !== 4)
-        throw new Error(`symbol-data: bad row "${line}"`);
-      const [char, en, ko, keywords] = fields;
-      return { char, en, keywords: keywords.split(" "), ko };
-    });
+function parse(table: string): CuratedSymbol[] {
+  const rows: CuratedSymbol[] = [];
+  let category: SymbolCategory | undefined;
+  for (const raw of table.split("\n")) {
+    const line = raw.trim();
+    if (line === "") continue;
+    if (line.startsWith("#")) {
+      const heading = line.slice(1).trim();
+      category = HEADINGS[heading];
+      if (!category)
+        throw new Error(`symbol-data: unknown heading "${heading}"`);
+      continue;
+    }
+    if (!category)
+      throw new Error(`symbol-data: row before any heading "${line}"`);
+    const fields = line.split(" | ");
+    if (fields.length !== 4) throw new Error(`symbol-data: bad row "${line}"`);
+    const [char, en, ko, keywords] = fields;
+    rows.push({ category, char, en, keywords: keywords.split(" "), ko });
+  }
+  return rows;
 }
 
-export const SYMBOLS: readonly SymbolEntry[] = parse(TABLE);
+export const SYMBOLS: readonly CuratedSymbol[] = parse(TABLE);

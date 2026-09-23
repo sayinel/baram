@@ -2,8 +2,9 @@
 //
 // The en + ko `data.json` pair read here is 1.58 MB (775,157 + 806,066 bytes,
 // emojibase-data 17.0.0); the rows kept are the character, both labels, the
-// merged keywords and the GitHub shortcodes. The output is committed and
-// `npm run emoji:check` fails when it no longer matches a rebuild.
+// merged keywords, the GitHub shortcodes and the emojibase group (the picker's
+// sections, §377). The output is committed and `npm run emoji:check` fails
+// when it no longer matches a rebuild.
 import en from "emojibase-data/en/data.json";
 import github from "emojibase-data/en/shortcodes/github.json";
 import ko from "emojibase-data/ko/data.json";
@@ -63,7 +64,14 @@ const rows = en
     const shortcodes = [shortcodesByHex.get(e.hexcode) ?? []]
       .flat()
       .map((s) => s.toLowerCase());
-    return [e.emoji, e.label, k.label.normalize("NFC"), keywords, shortcodes];
+    return [
+      e.emoji,
+      e.label,
+      k.label.normalize("NFC"),
+      keywords,
+      shortcodes,
+      e.group,
+    ];
   });
 
 writeFileSync(OUT, `[\n${rows.map((r) => JSON.stringify(r)).join(",\n")}\n]\n`);
