@@ -81,6 +81,24 @@ describe("searchSymbols with the real emoji table", () => {
     expect(all.indexOf("❤️")).toBeLessThan(all.indexOf("🥰"));
   });
 
+  // GitHub shortcodes (§376): the name a `:` typist already knows ranks first.
+  it.each([
+    ["heart", "❤️"],
+    ["smile", "😄"],
+    ["+1", "\u{1F44D}\u{FE0F}"], // 👍 as the table spells it, with VS16
+    ["thumbsup", "\u{1F44D}\u{FE0F}"],
+  ])(
+    "puts the emoji whose GitHub shortcode is %j first",
+    async (query, char) => {
+      expect(chars(query, await emoji())[0]).toBe(char);
+    },
+  );
+
+  it("finds an emoji by the start of a shortcode no keyword or label has", async () => {
+    // `thumbsu` starts only `thumbsup`: 👍's label words are "thumbs" and "up".
+    expect(chars("thumbsu", await emoji())[0]).toBe("\u{1F44D}\u{FE0F}");
+  });
+
   it("still finds 🇰🇷 by its name in either language", async () => {
     const table = await emoji();
     expect(chars("korea", table)).toContain("🇰🇷");
@@ -89,7 +107,17 @@ describe("searchSymbols with the real emoji table", () => {
 });
 
 describe("hasSymbolMatch", () => {
-  const QUERIES = ["ar", "ARROW", "pilc", "웃음", "heart", "korea", "zzqq", ""];
+  const QUERIES = [
+    "ar",
+    "ARROW",
+    "pilc",
+    "웃음",
+    "heart",
+    "korea",
+    "thumbsu",
+    "zzqq",
+    "",
+  ];
 
   it.each(QUERIES)("agrees with searchSymbols on %j, symbols only", (query) => {
     expect(hasSymbolMatch(query, null)).toBe(chars(query).length > 0);

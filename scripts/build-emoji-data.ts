@@ -1,10 +1,11 @@
 // §376 Prune emojibase-data to what the `:` autocomplete searches.
 //
 // The en + ko `data.json` pair read here is 1.58 MB (775,157 + 806,066 bytes,
-// emojibase-data 17.0.0); the rows kept are the character, both labels and
-// the merged keywords. The output is committed and
+// emojibase-data 17.0.0); the rows kept are the character, both labels, the
+// merged keywords and the GitHub shortcodes. The output is committed and
 // `npm run emoji:check` fails when it no longer matches a rebuild.
 import en from "emojibase-data/en/data.json";
+import github from "emojibase-data/en/shortcodes/github.json";
 import ko from "emojibase-data/ko/data.json";
 import { writeFileSync } from "node:fs";
 
@@ -31,6 +32,14 @@ const OUT = "src/extensions/plugins/emoji-data.generated.json";
 const strip = (c: string): string => c.replaceAll("️", "");
 const symbolChars = new Set(SYMBOLS.map((s) => s.char));
 const koByHex = new Map(ko.map((e) => [e.hexcode, e]));
+/**
+ * GitHub's shortcodes (`heart`, `+1`) by hexcode — the names a `:` typist
+ * knows from GitHub. Search keywords only: picking writes the
+ * character (spec 0056 §375).
+ */
+const shortcodesByHex = new Map<string, string | string[]>(
+  Object.entries(github),
+);
 
 const rows = en
   .filter(
@@ -51,7 +60,10 @@ const rows = en
         ),
       ),
     ].filter((t) => e.group !== FLAGS_GROUP || !REGION_CODE.test(t));
-    return [e.emoji, e.label, k.label.normalize("NFC"), keywords];
+    const shortcodes = [shortcodesByHex.get(e.hexcode) ?? []]
+      .flat()
+      .map((s) => s.toLowerCase());
+    return [e.emoji, e.label, k.label.normalize("NFC"), keywords, shortcodes];
   });
 
 writeFileSync(OUT, `[\n${rows.map((r) => JSON.stringify(r)).join(",\n")}\n]\n`);

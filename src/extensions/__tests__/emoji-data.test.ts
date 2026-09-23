@@ -44,6 +44,19 @@ describe("emoji data", () => {
       expect(symbols.has(strip(e.char))).toBe(false);
   });
 
+  it("carries GitHub shortcodes, every name of each", async () => {
+    const table = await load();
+    const find = (char: string) => table.find((e) => e.char === char);
+    expect(find("😄")?.shortcodes).toEqual(["smile"]);
+    expect(find("\u{1F44D}\u{FE0F}")?.shortcodes).toEqual(["+1", "thumbsup"]);
+  });
+
+  it("keeps shortcodes lowercase", async () => {
+    for (const e of await load()) {
+      for (const s of e.shortcodes ?? []) expect(s).toBe(s.toLowerCase());
+    }
+  });
+
   it("keeps keywords lowercase", async () => {
     for (const e of await load()) {
       for (const k of e.keywords) expect(k).toBe(k.toLowerCase());

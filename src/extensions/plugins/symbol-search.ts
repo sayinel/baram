@@ -19,31 +19,40 @@ export interface SymbolSuggestionItem {
 /**
  * Rank of one entry for `q` (already lowercase); lower is better, -1 is no match.
  *
- * 0 — a whole word of either label (`heart` in "red heart")
- * 1 — a whole keyword
- * 2 — the start of a keyword
- * 3 — the start of a word of either label
- * 4 — anywhere inside a keyword or a label
+ * 0 — a whole GitHub shortcode (`heart` is ❤️'s)
+ * 1 — a whole word of either label (`heart` in "red heart")
+ * 2 — a whole keyword
+ * 3 — the start of a keyword or of a shortcode
+ * 4 — the start of a word of either label
+ * 5 — anywhere inside a keyword, a shortcode or a label
  *
- * Label words come first because a label names the entry while a keyword only
- * relates to it: `heart` is a keyword of 🥰 ("smiling face with hearts") too.
- * Words are split on spaces only, so "heart-eyes" is one word.
+ * A shortcode names one emoji (no two rows of the generated table share one)
+ * and is the name a `:` typist already knows from GitHub, so typing all of it
+ * picks that emoji: `smile` is 😄's shortcode, while 23 other emoji have
+ * "smile" as a keyword or a label word (emojibase-data 17.0.0). A shortcode's
+ * start ranks with a keyword's start — it is a search term like one.
+ * Label words come before keywords because a label names the entry while a
+ * keyword only relates to it: `heart` is a keyword of 🥰 ("smiling face with
+ * hearts") too. Words are split on spaces only, so "heart-eyes" is one word.
  */
 function rank(entry: SymbolEntry, q: string): number {
+  if (entry.shortcodes?.includes(q)) return 0;
   let best = -1;
   const consider = (r: number): void => {
     if (best === -1 || r < best) best = r;
   };
   for (const label of [entry.en.toLowerCase(), entry.ko]) {
     const words = label.split(" ");
-    if (words.includes(q)) return 0;
-    if (words.some((word) => word.startsWith(q))) consider(3);
-    else if (label.includes(q)) consider(4);
+    if (words.includes(q)) return 1;
+    if (words.some((word) => word.startsWith(q))) consider(4);
+    else if (label.includes(q)) consider(5);
   }
-  for (const keyword of entry.keywords) {
-    if (keyword === q) consider(1);
-    else if (keyword.startsWith(q)) consider(2);
-    else if (keyword.includes(q)) consider(4);
+  for (const terms of [entry.keywords, entry.shortcodes ?? []]) {
+    for (const term of terms) {
+      if (term === q) consider(2);
+      else if (term.startsWith(q)) consider(3);
+      else if (term.includes(q)) consider(5);
+    }
   }
   return best;
 }

@@ -91,6 +91,7 @@ describe("SYMBOL_TRIGGER", () => {
   it.each([
     [":ar", "ar"],
     ["a :화살", "화살"],
+    [":+1", "+1"],
   ])("opens on %j with query %j", (text, query) => {
     expect(match(text)?.query).toBe(query);
   });

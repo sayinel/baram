@@ -14,6 +14,8 @@ export interface SymbolEntry {
   /** Lowercase search terms, English and Korean together. */
   readonly keywords: readonly string[];
   readonly ko: string;
+  /** GitHub shortcodes (`heart`, `+1`), lowercase. Emoji only — symbols have none. */
+  readonly shortcodes?: readonly string[];
 }
 
 /**
