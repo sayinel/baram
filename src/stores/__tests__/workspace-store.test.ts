@@ -24,6 +24,12 @@ describe("§52 Workspace Store", () => {
       sidebarPanel: "files",
       rightPanelOpen: false,
       rightPanelMode: "chat",
+      // §370 모든 내장 프리셋은 셋 다 true 다 — false 로 리셋해야 "프리셋이
+      // 적용했다" 는 단언이 비공허하다(true 로 리셋하면 프리셋이 손도 안
+      // 대도 통과한다).
+      activityBarVisible: false,
+      statusBarVisible: false,
+      tabBarVisible: false,
     });
   });
 
@@ -62,7 +68,8 @@ describe("§52 Workspace Store", () => {
   // §370 A preset chosen by hand ("writing"'s own description says "Hide
   // sidebar and focus on the editor") now closes the sidebar just like it
   // opens one — the old asymmetric guard (open-only) is narrowed to the
-  // implicit revert path only (see the describe block below).
+  // implicit revert path only (see "implicit applyPreset (opts.implicit)
+  // never force-closes an open sidebar" below, same describe block).
   it("explicit applyPreset('writing') closes an open sidebar, closes right panel", () => {
     // §82 sidebar starts open (beforeEach).
     useWorkspaceStore.getState().applyPreset("writing");
@@ -92,6 +99,41 @@ describe("§52 Workspace Store", () => {
     useUIStore.setState({ sidebarOpen: true });
     useWorkspaceStore.getState().applyPreset("writing", { implicit: true });
     expect(useUIStore.getState().sidebarOpen).toBe(true);
+  });
+
+  // §370 The implicit path skips chrome visibility entirely — not "open-only"
+  // like the sidebar. The sidebar's open-only rule exists because a preset
+  // may legitimately want to REVEAL something on a revert; chrome has no such
+  // case, since the revert target is always "writing" and forcing chrome back
+  // on is exactly the override this rule set out to exclude. Corpus: the one
+  // implicit caller is revertSpaceIfContextClosed (§82).
+  it("implicit applyPreset never touches chrome visibility, even to reveal it", () => {
+    useUIStore.setState({
+      activityBarVisible: false,
+      statusBarVisible: false,
+      tabBarVisible: false,
+    });
+    useWorkspaceStore.getState().applyPreset("writing", { implicit: true });
+    const ui = useUIStore.getState();
+    expect(ui.activityBarVisible).toBe(false);
+    expect(ui.statusBarVisible).toBe(false);
+    expect(ui.tabBarVisible).toBe(false);
+  });
+
+  // 비공허성 짝: 같은 시작 상태에서 명시적 호출은 셋 다 바꾼다(writing 의
+  // 레이아웃은 셋 다 true) — 위 단언이 "applyPreset 이 크롬을 아예 안
+  // 건드린다"는 일반 버그를 우연히 통과시키는 것이 아님을 확인한다.
+  it("explicit applyPreset does change chrome visibility (non-vacuity pair)", () => {
+    useUIStore.setState({
+      activityBarVisible: false,
+      statusBarVisible: false,
+      tabBarVisible: false,
+    });
+    useWorkspaceStore.getState().applyPreset("writing");
+    const ui = useUIStore.getState();
+    expect(ui.activityBarVisible).toBe(true);
+    expect(ui.statusBarVisible).toBe(true);
+    expect(ui.tabBarVisible).toBe(true);
   });
 
   // §370 옛 프리셋에는 가시성 필드가 없다. 그것이 "숨김" 으로 읽히면 사용자가

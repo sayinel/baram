@@ -106,6 +106,14 @@ export const BUILTIN_PRESETS: BuiltinPreset[] = [
         rightPanelOpen: false,
         rightPanelMode: "none",
       }),
+      // 아래 셋은 스프레드 뒤에 와서 늘 이긴다 — 오늘은 안전하다: `SpaceLayout`
+      // (spaces/types.ts:19-24)은 이 세 키를 선언하지 않으므로 스프레드가
+      // 채울 값이 없다. 전수(방금 실측): `SpaceLayout`을 구현하는
+      // `SpaceDefinition`은 `journal-space.ts`·`zettelkasten-space.ts` 둘뿐이고,
+      // `getSpace(...)?.layout`을 읽는 곳은 src 전체에서 이 줄 하나뿐이다
+      // (`grep -rn "getSpace(.*)?\.layout" src` = 1건). `SpaceLayout`이 이
+      // 셋을 갖게 되면 이 줄이 조용히 그 값을 덮어쓰므로, 그때 이 자리를
+      // 다시 볼 것.
       activityBarVisible: true,
       statusBarVisible: true,
       tabBarVisible: true,
@@ -317,12 +325,16 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         const tabBarVisible = layout.tabBarVisible ?? true;
 
         // Apply layout to ui-store.
-        // §82/§370 사이드바만 비대칭이다 — 아래 한 줄에만 걸리는 주석이다.
-        // 암묵적 적용(`revertSpaceIfContextClosed` 하나뿐)은 사용자가 고른 적
-        // 없는 전이라, 열어 둔 폴더 트리를 빼앗지 않는다. 명시적 선택은 레이아웃을
-        // 그대로 지킨다 — 그러지 않으면 `writing`("Hide sidebar and focus on the
-        // editor")과 `focus` 가 이름·설명·레이아웃으로는 감춘다고 말하면서
-        // 동작만 다른 상태가 된다.
+        // §82/§370 이 주석은 바로 아래 사이드바 if/else-if 블록(다음 5줄)에만
+        // 걸린다 — 그 뒤 sidebarPanel·rightPanelOpen·rightPanelMode 적용은
+        // 명시/암묵을 가리지 않고 그대로 대칭이다(크롬 적용은 별도 예외가
+        // 있다 — `setChromeVisibility` 호출 바로 위 주석 참조).
+        //
+        // 사이드바만 여기서 비대칭이다: 암묵적 적용(`revertSpaceIfContextClosed`
+        // 하나뿐)은 사용자가 고른 적 없는 전이라, 열어 둔 폴더 트리를 빼앗지
+        // 않는다. 명시적 선택은 레이아웃을 그대로 지킨다 — 그러지 않으면
+        // `writing`("Hide sidebar and focus on the editor")과 `focus` 가
+        // 이름·설명·레이아웃으로는 감춘다고 말하면서 동작만 다른 상태가 된다.
         if (opts?.implicit) {
           if (layout.sidebarOpen && !ui.sidebarOpen) ui.toggleSidebar();
         } else if (ui.sidebarOpen !== layout.sidebarOpen) {
@@ -331,11 +343,19 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         ui.setSidebarPanel(layout.sidebarPanel);
         if (ui.rightPanelOpen !== rightPanelOpen) ui.toggleRightPanel();
         ui.setRightPanelMode(rightPanelMode);
-        ui.setChromeVisibility({
-          activityBarVisible,
-          statusBarVisible,
-          tabBarVisible,
-        });
+        // §82/§370 암묵적 적용은 크롬을 아예 건드리지 않는다 — 사이드바의
+        // "열기만" 규칙과는 다른 처리다. 사이드바는 프리셋이 정당하게 무언가를
+        // 드러낼 수 있어 여는 것만 허용하지만, 크롬엔 그런 사례가 없다: 되돌림
+        // 대상은 늘 `writing` 하나뿐이므로 크롬을 도로 켜는 것은 정확히 우리가
+        // 배제하려는 그 override 다. 코퍼스: 암묵 호출자는
+        // `revertSpaceIfContextClosed` 하나뿐이다(§82).
+        if (!opts?.implicit) {
+          ui.setChromeVisibility({
+            activityBarVisible,
+            statusBarVisible,
+            tabBarVisible,
+          });
+        }
 
         // §85 M2b: When switching away from journal, activate the first non-journal context
         if (id !== "journal") {
