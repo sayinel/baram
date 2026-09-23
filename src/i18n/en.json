@@ -1096,7 +1096,7 @@
   "settings.markdown.inlineMath": "Inline Math",
   "settings.markdown.inlineMath.desc": "Enable $...$ and $$...$$ math expressions",
   "settings.markdown.smartPunctuation": "Smart Punctuation",
-  "settings.markdown.smartPunctuation.desc": "Convert straight quotes and dashes to typographic equivalents",
+  "settings.markdown.smartPunctuation.desc": "Turn typed arrows, dashes, ellipses and comparison signs into symbols (-> →, -- —, ... …, <= ≤). Off in skill files.",
   "settings.markdown.strikethrough": "Strikethrough",
   "settings.markdown.strikethrough.desc": "Enable ~~strikethrough~~ syntax",
   "settings.markdown.typography": "Typography",
