@@ -23,7 +23,7 @@
      is a hit that misses the icon it describes. */
   pointer-events: none;
   background-color: var(--color-bg-tooltip);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   box-shadow: var(--shadow-md);
 
   /* Painted at the origin for one frame before floating-ui reports a position, so it starts

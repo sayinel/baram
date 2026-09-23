@@ -18,7 +18,7 @@
   display: block;
   width: 100%;
   background-color: var(--color-bg-subtle);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 /* 임베드는 100% 폭 고정 + 16:9 (§17.2-6) */
@@ -40,7 +40,7 @@
   justify-content: center;
   cursor: pointer;
   background-color: var(--color-bg-subtle);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .tiptap .video-embed-host {
@@ -60,7 +60,7 @@
   overflow-wrap: anywhere;
   background-color: var(--color-status-error-bg);
   border: 1px solid var(--color-status-error-border);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 /* §296 UX2: for video only, move the hover toolbar OUT of the frame, above

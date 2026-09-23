@@ -24,7 +24,7 @@
 }
 
 .smart-template-header {
-  padding: 16px 20px 12px;
+  padding: var(--space-4) var(--space-5) var(--space-3);
   border-bottom: 1px solid var(--color-border-subtle);
 }
 
@@ -42,7 +42,7 @@
   color: var(--color-text-muted);
   background: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .smart-template-close:hover {
@@ -53,20 +53,20 @@
 .smart-template-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
-  padding: 16px 20px;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-5);
 }
 
 .smart-template-card {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 12px;
+  gap: var(--space-1);
+  padding: var(--space-3);
   text-align: left;
   cursor: pointer;
   background-color: var(--color-bg-subtle);
   border: 1px solid var(--color-border-subtle);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   transition:
     border-color 0.15s,
     background-color 0.15s;
@@ -91,8 +91,8 @@
 .smart-template-custom {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 12px 20px 16px;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5) var(--space-4);
   border-top: 1px solid var(--color-border-subtle);
 }
 
@@ -104,18 +104,18 @@
 
 .smart-template-custom-row {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .smart-template-custom-input {
   flex: 1;
-  padding: 6px 10px;
+  padding: var(--space-1-5) 10px;
   font-size: 0.85rem;
   color: var(--color-text-primary);
   outline: none;
   background-color: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .smart-template-custom-input:focus {
@@ -123,14 +123,14 @@
 }
 
 .smart-template-custom-btn {
-  padding: 6px 14px;
+  padding: var(--space-1-5) 14px;
   font-size: 0.8rem;
   font-weight: 500;
   color: var(--color-accent-on-solid);
   cursor: pointer;
   background-color: var(--color-accent-solid);
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .smart-template-custom-btn:hover {

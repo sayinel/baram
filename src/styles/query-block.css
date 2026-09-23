@@ -10,7 +10,7 @@
   overflow: hidden;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
 }
 
 /* §12-⑩ standby — mounted so vim's `i` preflight has something to focus
@@ -34,9 +34,9 @@
 
 .tiptap .qb-header {
   display: flex;
-  gap: 6px;
+  gap: var(--space-1-5);
   align-items: center;
-  padding: 6px 12px;
+  padding: var(--space-1-5) var(--space-3);
   font-size: 13px;
   font-weight: 500;
   background: var(--color-bg-elevated);
@@ -57,19 +57,19 @@
 .tiptap .qb-builder {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 10px 12px;
+  gap: var(--space-2);
+  padding: 10px var(--space-3);
 }
 
 .tiptap .qb-section {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .tiptap .qb-section.qb-row {
   flex-flow: row wrap;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: center;
 }
 
@@ -84,18 +84,18 @@
 .tiptap .qb-filter-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: var(--space-1);
   align-items: center;
 }
 
 .tiptap .qb-select,
 .tiptap .qb-input {
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   font-size: 12px;
   color: var(--color-text-primary);
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .tiptap .qb-select:focus,
@@ -126,13 +126,13 @@
 }
 
 .tiptap .qb-btn {
-  padding: 4px 10px;
+  padding: var(--space-1) 10px;
   font-size: 12px;
   color: var(--color-text-primary);
   cursor: pointer;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .tiptap .qb-btn:hover {
@@ -174,18 +174,18 @@
 
 /* Results */
 .tiptap .qb-results {
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
 }
 
 .tiptap .qb-empty {
-  padding: 12px;
+  padding: var(--space-3);
   font-size: 13px;
   color: var(--color-text-muted);
   text-align: center;
 }
 
 .tiptap .qb-error {
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   font-size: 12px;
   color: var(--color-status-danger);
   background: var(--color-status-error-bg);
@@ -194,9 +194,9 @@
 /* List display */
 .tiptap .qb-list-item {
   display: flex;
-  gap: 6px;
+  gap: var(--space-1-5);
   align-items: center;
-  padding: 4px 0;
+  padding: var(--space-1) 0;
   font-size: 13px;
   cursor: pointer;
 }
@@ -224,7 +224,7 @@
 
 .tiptap .qb-table th,
 .tiptap .qb-table td {
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   text-align: left;
   border: 1px solid var(--color-border-default);
 }
@@ -254,15 +254,15 @@
 .tiptap .qb-cards {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .tiptap .qb-card {
-  padding: 8px;
+  padding: var(--space-2);
   cursor: pointer;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .tiptap .qb-card:hover {
@@ -270,13 +270,13 @@
 }
 
 .tiptap .qb-card-name {
-  margin-bottom: 2px;
+  margin-bottom: var(--space-0-5);
   font-size: 13px;
   font-weight: 500;
 }
 
 .tiptap .qb-card-path {
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
   font-size: 11px;
   color: var(--color-text-muted);
 }
@@ -284,11 +284,11 @@
 .tiptap .qb-card-tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .tiptap .qb-tag {
-  padding: 1px 6px;
+  padding: var(--space-px) var(--space-1-5);
   font-size: 11px;
   color: var(--color-text-secondary);
   background: var(--color-bg-elevated);

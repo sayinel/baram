@@ -18,7 +18,7 @@
   overflow: hidden;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-subtle);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   box-shadow: 0 8px 32px rgb(0 0 0 / 20%);
 }
 
@@ -45,7 +45,7 @@
   cursor: pointer;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .git-diff-close:hover {

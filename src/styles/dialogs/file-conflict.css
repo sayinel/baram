@@ -15,15 +15,15 @@
 .conflict-modal {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
   align-items: center;
   width: 90%;
   max-width: 420px;
-  padding: 24px 28px;
+  padding: var(--space-6) 28px;
   text-align: center;
   background-color: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-xl);
 }
 
@@ -54,19 +54,19 @@
 .conflict-modal-actions {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
   width: 100%;
-  margin-top: 4px;
+  margin-top: var(--space-1);
 }
 
 .conflict-modal-btn {
   width: 100%;
-  padding: 8px 16px;
+  padding: var(--space-2) var(--space-4);
   font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   transition: opacity 0.15s;
 }
 
@@ -112,11 +112,11 @@
 .conflict-modal-diff {
   width: 100%;
   max-height: 50vh;
-  margin-top: 4px;
+  margin-top: var(--space-1);
   overflow: auto;
   text-align: left;
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .conflict-modal-btn-merge {
@@ -143,13 +143,13 @@
 .unsaved-modal {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
   width: 90%;
   max-width: 420px;
-  padding: 24px 28px;
+  padding: var(--space-6) 28px;
   background-color: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-xl);
 }
 
@@ -169,18 +169,18 @@
 
 .unsaved-modal-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   justify-content: flex-end;
-  margin-top: 8px;
+  margin-top: var(--space-2);
 }
 
 .unsaved-modal-btn {
-  padding: 8px 16px;
+  padding: var(--space-2) var(--space-4);
   font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   transition: opacity 0.15s;
 }
 
@@ -224,7 +224,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  padding: var(--space-6);
   background-color: rgb(0 0 0 / 50%);
 }
 
@@ -238,17 +238,17 @@
   overflow: hidden;
   background-color: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-xl);
 }
 
 .merge-header {
   display: flex;
   flex-shrink: 0;
-  gap: 12px;
+  gap: var(--space-3);
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
+  padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--color-border-default);
 }
 
@@ -262,17 +262,17 @@
 .merge-header-actions {
   display: flex;
   flex-shrink: 0;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .merge-btn {
-  padding: 6px 14px;
+  padding: var(--space-1-5) 14px;
   font-size: 0.875rem;
   color: var(--color-text-default);
   cursor: pointer;
   background-color: var(--color-bg-elevated);
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .merge-btn-apply {
@@ -288,7 +288,7 @@
 
 .merge-body {
   flex: 1;
-  padding: 12px 16px;
+  padding: var(--space-3) var(--space-4);
   overflow-y: auto;
   font-family: var(--font-family-mono);
   font-size: 0.8125rem;
@@ -301,15 +301,15 @@
 }
 
 .merge-conflict {
-  margin: 8px 0;
+  margin: var(--space-2) 0;
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .merge-choice-row {
   display: flex;
-  gap: 6px;
-  padding: 6px 8px;
+  gap: var(--space-1-5);
+  padding: var(--space-1-5) var(--space-2);
   border-bottom: 1px solid var(--color-border-default);
 }
 
@@ -319,7 +319,7 @@
   cursor: pointer;
   background-color: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .merge-choice-active {
@@ -334,7 +334,7 @@
 }
 
 .merge-candidate {
-  padding: 6px 8px;
+  padding: var(--space-1-5) var(--space-2);
   margin: 0;
   white-space: pre-wrap;
 }
@@ -352,15 +352,15 @@
 }
 
 .merge-change {
-  margin: 8px 0;
+  margin: var(--space-2) 0;
   overflow: hidden;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .merge-line {
   display: flex;
-  gap: 8px;
-  padding: 1px 8px;
+  gap: var(--space-2);
+  padding: var(--space-px) var(--space-2);
   white-space: pre-wrap;
 }
 

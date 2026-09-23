@@ -8,7 +8,7 @@
   position: relative;
   padding: 0.5em;
   cursor: pointer;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .tiptap .mermaid-block-preview:hover {
@@ -19,7 +19,7 @@
   padding: 0.75em 1em;
   background-color: var(--color-bg-subtle);
   border: 1px solid var(--color-border-subtle);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .tiptap .mermaid-block-label {
@@ -44,7 +44,7 @@
   outline: none;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 /* §12-⑩ standby — mounted so vim's `i` preflight has something to focus
@@ -97,7 +97,7 @@
   color: var(--color-status-danger);
   background-color: var(--color-status-error-bg);
   border: 1px solid var(--color-status-error-border);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 [data-theme="dark"] .tiptap .mermaid-block-error {
@@ -165,7 +165,7 @@
   margin-top: 0.25em;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
   box-shadow: 0 4px 12px rgb(0 0 0 / 15%);
 }
 
@@ -210,7 +210,7 @@
   overflow: hidden;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-subtle);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   box-shadow: 0 8px 32px rgb(0 0 0 / 20%);
 }
 
@@ -238,7 +238,7 @@
   cursor: pointer;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .mermaid-fullscreen-close:hover {
@@ -273,7 +273,7 @@
   outline: none;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .mermaid-fullscreen-editor .mermaid-block-textarea:focus {
@@ -306,18 +306,18 @@
 
 .mermaid-context-menu {
   min-width: 160px;
-  padding: 4px 0;
+  padding: var(--space-1) 0;
   font-size: 13px;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   box-shadow: 0 4px 12px rgb(0 0 0 / 15%);
 }
 
 .mermaid-context-menu-item {
   display: block;
   width: 100%;
-  padding: 6px 12px;
+  padding: var(--space-1-5) var(--space-3);
   font-size: 13px;
   color: var(--color-text-primary);
   text-align: left;
@@ -351,7 +351,7 @@
 
 .mermaid-context-menu-divider {
   height: 1px;
-  margin: 4px 0;
+  margin: var(--space-1) 0;
   background: var(--color-border-default);
 }
 
@@ -367,7 +367,7 @@
   overflow: hidden;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-subtle);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   box-shadow: 0 8px 32px rgb(0 0 0 / 20%);
 }
 

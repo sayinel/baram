@@ -34,7 +34,7 @@
  * 지우면 스크린리더에서 메타데이터가 양쪽 다 사라진다. */
 .task-chip {
   display: inline-flex;
-  gap: 4px;
+  gap: var(--space-1);
   align-items: center;
   font-size: 0.82em;
   line-height: 1.65;

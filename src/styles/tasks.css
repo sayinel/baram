@@ -10,12 +10,12 @@
 .task-panel-header {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 6px 8px;
+  gap: var(--space-1-5);
+  padding: var(--space-1-5) var(--space-2);
 }
 
 .task-panel-search {
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 /* 헤더의 액션 아이콘은 앱의 아이콘 언어(lucide SVG)를 쓴다 — 종전에는 이모지(🗄️ ⏩)와
@@ -29,7 +29,7 @@
   flex-shrink: 0;
   padding: 3px;
   color: var(--color-text-secondary);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .task-panel-search .icon-btn:not(:disabled):hover {
@@ -40,18 +40,18 @@
 .task-panel-filter {
   flex: 1;
   min-width: 0;
-  padding: 4px 6px;
+  padding: var(--space-1) var(--space-1-5);
   font-size: 12px;
   color: var(--color-text-default);
   background: var(--color-bg-input);
   border: 1px solid var(--color-border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .task-panel-selects {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 /* 작은 기본(260px) 사이드바나 MIN_SIDEBAR(180px)에서 3개가 flex:1로 나뉘면
@@ -59,17 +59,17 @@
 .task-panel-select {
   flex: 1 1 96px;
   min-width: 0;
-  padding: 4px 6px;
+  padding: var(--space-1) var(--space-1-5);
   font-size: 12px;
   color: var(--color-text-default);
   background: var(--color-bg-input);
   border: 1px solid var(--color-border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .task-panel-body {
   flex: 1;
-  padding: 0 8px 8px;
+  padding: 0 var(--space-2) var(--space-2);
   overflow-y: auto;
 }
 
@@ -77,7 +77,7 @@
    the old <h3> never had. 네이티브 disclosure 마커는 사이드바의 다른 헤더와
    어긋난다 — list-style: none으로 지우고 ::before로 직접 그린다(아래). */
 .task-bucket-header {
-  margin: 10px 0 4px;
+  margin: 10px 0 var(--space-1);
   font-size: 11px;
   font-weight: 600;
   color: var(--color-text-secondary);
@@ -109,16 +109,16 @@
 .task-row {
   position: relative;
   display: flex;
-  gap: 6px;
+  gap: var(--space-1-5);
   align-items: baseline;
 
   /* 왼쪽 7px는 우선순위 레일의 거터다(레일 4px + 체크박스까지 3px). 우선순위가
      **없는** 행에도 똑같이 두어 제목의 왼쪽 선이 흔들리지 않게 한다 — 레일 유무로
      들여쓰기가 달라지면 목록이 지그재그로 읽힌다. 그래서 거터는 남기되 레일이 그
      폭을 거의 다 채우도록 좁혀 두었다. */
-  padding: 3px 4px 3px 7px;
+  padding: 3px var(--space-1) 3px 7px;
   user-select: none;
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .task-row:hover {
@@ -181,7 +181,7 @@
 
 .task-bucket-header::before {
   display: inline-block;
-  margin-right: 4px;
+  margin-right: var(--space-1);
   font-size: 9px;
   content: "▸";
   transition: transform 0.12s ease;
@@ -241,7 +241,7 @@
   left: 0;
   width: 4px;
   content: "";
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
 }
 
 .task-row[data-priority="urgent"]::before {
@@ -280,9 +280,9 @@
 .task-panel-someday {
   display: flex;
   flex: 0 1 auto;
-  gap: 4px;
+  gap: var(--space-1);
   align-items: center;
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   font-size: 12px;
   color: var(--color-text-default);
   white-space: nowrap;
@@ -290,7 +290,7 @@
   user-select: none;
   background: var(--color-bg-input);
   border: 1px solid var(--color-border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 /* 필터가 실제로 켜졌을 때(체크됨)는 대기 상태와 갈려야 "걸려 있다"는 사실이
@@ -318,7 +318,7 @@
      좋지만 무한정 넓어지면 행 위를 덮는다. */
   min-width: 140px;
   max-width: 280px;
-  padding: 4px 0;
+  padding: var(--space-1) 0;
 
   /* §312 메뉴 글자는 어떤 경우에도 선택되지 않는다. 우클릭이 남긴 문서 선택 범위 안에
      메뉴가 들어가 항목 전부가 선택색으로 칠해지던 결함의 처방이고, 위의 `.task-row`
@@ -329,16 +329,16 @@
   user-select: none;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   box-shadow: var(--shadow-md);
 }
 
 .task-row-menu-item {
   display: flex;
-  gap: 16px;
+  gap: var(--space-4);
   align-items: baseline;
   justify-content: space-between;
-  padding: 6px 12px;
+  padding: var(--space-1-5) var(--space-3);
   font-size: 0.8rem;
   color: var(--color-text-secondary);
   cursor: pointer;
@@ -365,8 +365,8 @@
    색만으로 가르면 색각 이상에서 구분이 사라진다. `.task-row-menu-item-active` 뒤에
    와야 강조된 상태에서도 경고색이 남는다(같은 특이도, 나중 규칙이 이긴다). */
 .task-row-menu-item-danger {
-  padding-top: 6px;
-  margin-top: 4px;
+  padding-top: var(--space-1-5);
+  margin-top: var(--space-1);
   color: var(--color-status-danger);
   border-top: 1px solid var(--color-border-default);
 }
@@ -427,7 +427,7 @@
 
 .weekly-review-header {
   gap: 10px;
-  padding: 12px 16px;
+  padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--color-border-subtle);
 }
 
@@ -450,7 +450,7 @@
 .weekly-review-body {
   flex: 1;
   min-height: 0;
-  padding: 8px 12px 12px;
+  padding: var(--space-2) var(--space-3) var(--space-3);
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -460,7 +460,7 @@
 }
 
 .weekly-review-section-title {
-  margin: 0 0 4px;
+  margin: 0 0 var(--space-1);
   font-size: 11px;
   font-weight: 600;
   color: var(--color-text-secondary);
@@ -475,7 +475,7 @@
 }
 
 .weekly-review-empty {
-  margin: 24px 0;
+  margin: var(--space-6) 0;
   font-size: 12px;
   color: var(--color-text-secondary);
   text-align: center;
@@ -483,10 +483,10 @@
 
 .weekly-review-footer {
   display: flex;
-  gap: 12px;
+  gap: var(--space-3);
   align-items: center;
   justify-content: space-between;
-  padding: 10px 16px;
+  padding: 10px var(--space-4);
   border-top: 1px solid var(--color-border-subtle);
 }
 
@@ -499,15 +499,15 @@
 .weekly-review-archive {
   display: flex;
   flex-shrink: 0;
-  gap: 6px;
+  gap: var(--space-1-5);
   align-items: center;
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   font-size: 12px;
   color: var(--color-text-default);
   text-align: left;
   cursor: pointer;
   border: 1px solid var(--color-border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .weekly-review-archive:not(:disabled):hover {
@@ -612,7 +612,7 @@
   gap: var(--space-1);
   padding: var(--space-2);
   background: var(--color-bg-subtle);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .task-edit-preview-label {
@@ -638,7 +638,7 @@
   color: var(--color-text-default);
   background: var(--color-status-error-bg);
   border: 1px solid var(--color-status-error-border);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .task-edit-actions {
@@ -648,12 +648,12 @@
 }
 
 .task-edit-save {
-  padding: 4px 12px;
+  padding: var(--space-1) var(--space-3);
   color: var(--color-accent-on-solid);
   cursor: pointer;
   background: var(--color-accent-solid);
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .task-edit-save:disabled {
@@ -665,12 +665,12 @@
    헤더는 `.backlinks-header`를 그대로 입어 형제 섹션(백링크·언링크드 멘션)과 같은
    높이·같은 무게로 읽힌다. 여기서 더하는 것은 그 둘과 갈라 주는 경계선뿐이다. */
 .note-tasks {
-  padding-bottom: 8px;
+  padding-bottom: var(--space-2);
 }
 
 .note-tasks-header {
-  padding-top: 8px;
-  margin-top: 8px;
+  padding-top: var(--space-2);
+  margin-top: var(--space-2);
   border-top: 1px solid var(--color-border-default);
 }
 
@@ -735,7 +735,7 @@
 /* 가운데 라벨은 버튼이다 — 누르면 달·해를 고르는 층으로 넓어진다. */
 .date-picker-month {
   min-width: 8ch;
-  padding: 2px var(--space-2);
+  padding: var(--space-0-5) var(--space-2);
   font-size: var(--font-size-sm);
   font-weight: 600;
   color: var(--color-text-primary);
@@ -774,11 +774,11 @@
 .date-picker-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  gap: 2px;
+  gap: var(--space-0-5);
 }
 
 .date-picker-weekdays span {
-  padding: 2px 0;
+  padding: var(--space-0-5) 0;
   font-size: var(--font-size-xs);
   color: var(--color-text-secondary);
   text-align: center;

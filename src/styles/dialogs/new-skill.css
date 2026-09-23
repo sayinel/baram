@@ -12,7 +12,7 @@
 .new-skill-dialog {
   width: 480px;
   max-height: 80vh;
-  padding: 20px;
+  padding: var(--space-5);
   overflow-y: auto;
   overscroll-behavior: contain;
   background: var(--color-bg-default);
@@ -21,7 +21,7 @@
 }
 
 .new-skill-title {
-  margin: 0 0 16px;
+  margin: 0 0 var(--space-4);
   font-size: 16px;
   font-weight: 600;
   color: var(--color-text-primary);
@@ -29,9 +29,9 @@
 
 .new-skill-name-row {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: var(--space-4);
 }
 
 .new-skill-label {
@@ -42,28 +42,28 @@
 
 .new-skill-input {
   flex: 1;
-  padding: 6px 10px;
+  padding: var(--space-1-5) 10px;
   font-size: 14px;
   color: var(--color-text-primary);
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .new-skill-templates {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-bottom: 16px;
+  gap: var(--space-1-5);
+  margin-bottom: var(--space-4);
 }
 
 .new-skill-template {
-  padding: 10px 12px;
+  padding: 10px var(--space-3);
   text-align: left;
   cursor: pointer;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .new-skill-template:hover {
@@ -82,35 +82,35 @@
 }
 
 .new-skill-template-desc {
-  margin-top: 2px;
+  margin-top: var(--space-0-5);
   font-size: 12px;
   color: var(--color-text-secondary);
 }
 
 .new-skill-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   justify-content: flex-end;
 }
 
 .new-skill-cancel {
-  padding: 6px 16px;
+  padding: var(--space-1-5) var(--space-4);
   font-size: 13px;
   color: var(--color-text-secondary);
   cursor: pointer;
   background: none;
   border: 1px solid var(--color-border-default);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .new-skill-create {
-  padding: 6px 16px;
+  padding: var(--space-1-5) var(--space-4);
   font-size: 13px;
   color: var(--color-accent-on-solid);
   cursor: pointer;
   background: var(--color-accent-solid);
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .new-skill-create:disabled {

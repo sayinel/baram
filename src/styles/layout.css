@@ -36,14 +36,14 @@
   top: 0;
   left: 50%;
   z-index: 1000;
-  padding: 4px 12px;
+  padding: var(--space-1) var(--space-3);
   font-size: 0.75rem;
   color: var(--color-text-secondary);
   cursor: pointer;
   background-color: var(--color-bg-elevated);
   border: 1px solid var(--color-border-default);
   border-top: none;
-  border-radius: 0 0 6px 6px;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
   opacity: 0;
   transform: translate(-50%, calc(-100% + 4px));
   transition:
@@ -73,9 +73,9 @@
 .activity-bar-bottom {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0-5);
   align-items: center;
-  padding: 4px 0;
+  padding: var(--space-1) 0;
 }
 
 .activity-bar-btn {
@@ -89,7 +89,7 @@
   cursor: pointer;
   background: transparent;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   transition:
     color 0.15s,
     background-color 0.15s;
@@ -180,7 +180,7 @@
   margin: 3rem auto;
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
 }
 
 .tab-surface-error-title {
@@ -217,7 +217,7 @@
   cursor: pointer;
   background: var(--color-bg-input);
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .tab-surface-error-actions button:hover {
@@ -304,10 +304,10 @@
 .tab-item {
   display: flex;
   flex: 0 1 180px;
-  gap: 6px;
+  gap: var(--space-1-5);
   align-items: center;
   min-width: 60px;
-  padding: 0 12px;
+  padding: 0 var(--space-3);
   font-size: 0.8rem;
   color: var(--color-text-secondary);
   white-space: nowrap;
@@ -350,7 +350,7 @@
   flex-shrink: 0;
   width: 6px;
   height: 6px;
-  margin-right: 4px;
+  margin-right: var(--space-1);
   border-radius: 50%;
 }
 
@@ -393,7 +393,7 @@
 .tab-pin-divider {
   flex-shrink: 0;
   width: 1px;
-  margin: 4px 0;
+  margin: var(--space-1) 0;
   background: var(--color-border-default);
 }
 
@@ -402,15 +402,15 @@
   position: fixed;
   z-index: 1000;
   min-width: 180px;
-  padding: 4px 0;
+  padding: var(--space-1) 0;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   box-shadow: 0 4px 12px rgb(0 0 0 / 15%);
 }
 
 .tab-context-item {
-  padding: 6px 24px;
+  padding: var(--space-1-5) var(--space-6);
   font-size: 0.8rem;
   color: var(--color-text-primary);
   cursor: pointer;
@@ -453,9 +453,9 @@
 
 .status-space-btn {
   display: inline-flex;
-  gap: 4px;
+  gap: var(--space-1);
   align-items: center;
-  padding: 1px 6px;
+  padding: var(--space-px) var(--space-1-5);
   font-family: var(--font-family-mono);
   font-size: 0.7rem;
   color: var(--color-text-muted);
@@ -479,25 +479,25 @@
   display: flex;
   flex-direction: column;
   min-width: max-content;
-  padding: 4px;
+  padding: var(--space-1);
   background-color: var(--color-bg-default);
   border: 1px solid var(--color-border-subtle);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   box-shadow: var(--shadow-md);
 }
 
 .status-space-menu-item {
   display: flex;
-  gap: 6px;
+  gap: var(--space-1-5);
   align-items: center;
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   font-family: var(--font-family-mono);
   font-size: 0.7rem;
   color: var(--color-text-secondary);
   cursor: pointer;
   background: none;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .status-space-menu-item:hover {

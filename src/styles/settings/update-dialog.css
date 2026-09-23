@@ -23,23 +23,23 @@
   flex-direction: column;
   width: 420px;
   max-width: 90vw;
-  padding: 24px 28px;
+  padding: var(--space-6) 28px;
   overscroll-behavior: contain;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   box-shadow: 0 16px 48px rgb(0 0 0 / 20%);
 }
 
 .update-dialog-title {
-  margin-bottom: 8px;
+  margin-bottom: var(--space-2);
   font-size: 16px;
   font-weight: 700;
   color: var(--color-text-primary);
 }
 
 .update-dialog-versions {
-  margin-bottom: 12px;
+  margin-bottom: var(--space-3);
   font-size: 13px;
   color: var(--color-text-secondary);
 }
@@ -52,15 +52,15 @@
    of one section. */
 .update-dialog-notes {
   max-height: 320px;
-  padding: 10px 12px;
-  margin: 0 0 16px;
+  padding: 10px var(--space-3);
+  margin: 0 0 var(--space-4);
   overflow-y: auto;
   font-size: 13px;
   line-height: 1.6;
   color: var(--color-text-primary);
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
 }
 
 /* The document's first heading opens the box — the 20px top margin the shared
@@ -70,15 +70,15 @@
 }
 
 .update-dialog-error {
-  padding: 10px 12px;
-  margin-bottom: 16px;
+  padding: 10px var(--space-3);
+  margin-bottom: var(--space-4);
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-status-danger);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
 }
 
 .update-dialog-error-title {
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
   font-size: 13px;
   font-weight: 600;
   color: var(--color-status-danger);
@@ -92,8 +92,8 @@
 .update-dialog-progress {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-bottom: 16px;
+  gap: var(--space-1-5);
+  margin-bottom: var(--space-4);
 }
 
 .update-dialog-progress-track {
@@ -117,18 +117,18 @@
 
 .update-dialog-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   justify-content: flex-end;
 }
 
 .update-dialog-cancel {
-  padding: 6px 16px;
+  padding: var(--space-1-5) var(--space-4);
   font-size: 13px;
   color: var(--color-text-primary);
   cursor: pointer;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .update-dialog-cancel:hover {
@@ -136,13 +136,13 @@
 }
 
 .update-dialog-primary {
-  padding: 6px 16px;
+  padding: var(--space-1-5) var(--space-4);
   font-size: 13px;
   color: var(--color-accent-on-solid);
   cursor: pointer;
   background: var(--color-accent-solid);
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .update-dialog-primary:hover {

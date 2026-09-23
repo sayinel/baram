@@ -41,5 +41,5 @@
 .vim-modal .ProseMirror-selectednode {
   outline: 2px solid var(--color-accent-default);
   outline-offset: 1px;
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
 }

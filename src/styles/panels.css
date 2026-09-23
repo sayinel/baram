@@ -42,7 +42,7 @@
   font-size: 0.85rem;
   cursor: pointer;
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   transition:
     background 0.15s,
     border-color 0.15s;
@@ -102,7 +102,7 @@
   cursor: pointer;
   background: none;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .home-recent-item:hover {
@@ -182,7 +182,7 @@
   overflow: hidden;
   background-color: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   box-shadow: 0 8px 30px rgb(0 0 0 / 20%);
 }
 
@@ -203,9 +203,9 @@
 
 .tab-switcher-item {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: center;
-  padding: 8px 14px;
+  padding: var(--space-2) 14px;
   font-size: 0.875rem;
   color: var(--color-text-primary);
   cursor: default;
@@ -251,12 +251,12 @@
   overscroll-behavior: contain;
   background-color: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   box-shadow: 0 8px 30px rgb(0 0 0 / 20%);
 }
 
 .quick-switcher-input {
-  padding: 12px 16px;
+  padding: var(--space-3) var(--space-4);
   font-family: var(--font-family-sans);
   font-size: 0.95rem;
   color: var(--color-text-primary);
@@ -272,12 +272,12 @@
 
 .quick-switcher-list {
   flex: 1;
-  padding: 4px 0;
+  padding: var(--space-1) 0;
   overflow-y: auto;
 }
 
 .quick-switcher-empty {
-  padding: 20px;
+  padding: var(--space-5);
   font-size: 0.875rem;
   color: var(--color-text-muted);
   text-align: center;
@@ -285,9 +285,9 @@
 
 .quick-switcher-item {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: center;
-  padding: 6px 16px;
+  padding: var(--space-1-5) var(--space-4);
   cursor: pointer;
   transition: background-color 0.05s;
 }
@@ -315,7 +315,7 @@
 .quick-switcher-detail {
   display: flex;
   flex-shrink: 0;
-  gap: 4px;
+  gap: var(--space-1);
   align-items: center;
   margin-left: auto;
   font-size: 0.75rem;
@@ -348,28 +348,28 @@
 }
 
 :is(.plugin-detail-readme, .update-dialog-notes) .markdown-rendered h1 {
-  margin: 0 0 12px;
+  margin: 0 0 var(--space-3);
   font-size: 18px;
   font-weight: 600;
   color: var(--color-text-primary);
 }
 
 :is(.plugin-detail-readme, .update-dialog-notes) .markdown-rendered h2 {
-  margin: 20px 0 10px;
+  margin: var(--space-5) 0 10px;
   font-size: 16px;
   font-weight: 600;
   color: var(--color-text-primary);
 }
 
 :is(.plugin-detail-readme, .update-dialog-notes) .markdown-rendered h3 {
-  margin: 16px 0 6px;
+  margin: var(--space-4) 0 var(--space-1-5);
   font-size: 13px;
   font-weight: 600;
   color: var(--color-text-secondary);
 }
 
 :is(.plugin-detail-readme, .update-dialog-notes) .markdown-rendered h4 {
-  margin: 12px 0 4px;
+  margin: var(--space-3) 0 var(--space-1);
   font-size: 13px;
   font-weight: 600;
   color: var(--color-text-secondary);
@@ -382,14 +382,14 @@
 
 :is(.plugin-detail-readme, .update-dialog-notes) .markdown-rendered table {
   display: block;
-  margin: 0 0 12px;
+  margin: 0 0 var(--space-3);
   overflow-x: auto;
   font-size: 12px;
   border-collapse: collapse;
 }
 
 :is(.plugin-detail-readme, .update-dialog-notes) .markdown-rendered th {
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   font-weight: 600;
   color: var(--color-text-primary);
   text-align: left;
@@ -397,7 +397,7 @@
 }
 
 :is(.plugin-detail-readme, .update-dialog-notes) .markdown-rendered td {
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   vertical-align: top;
   border-bottom: 1px solid var(--color-border-subtle);
 }
@@ -406,12 +406,12 @@
   .markdown-rendered
   td:first-child {
   width: 1%;
-  padding-right: 16px;
+  padding-right: var(--space-4);
   white-space: nowrap;
 }
 
 :is(.plugin-detail-readme, .update-dialog-notes) .markdown-rendered code {
-  padding: 1px 4px;
+  padding: var(--space-px) var(--space-1);
   font-family: var(--font-family-mono);
   font-size: 12px;
   color: var(--color-text-primary);
@@ -420,12 +420,12 @@
 }
 
 :is(.plugin-detail-readme, .update-dialog-notes) .markdown-rendered pre {
-  padding: 8px 10px;
+  padding: var(--space-2) 10px;
   margin: 0 0 10px;
   overflow-x: auto;
   font-size: 12px;
   background: var(--color-bg-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 :is(.plugin-detail-readme, .update-dialog-notes) .markdown-rendered pre code {
@@ -441,20 +441,20 @@
 }
 
 :is(.plugin-detail-readme, .update-dialog-notes) .markdown-rendered hr {
-  margin: 16px 0;
+  margin: var(--space-4) 0;
   border: none;
   border-top: 1px solid var(--color-border-subtle);
 }
 
 :is(.plugin-detail-readme, .update-dialog-notes) .markdown-rendered ul,
 :is(.plugin-detail-readme, .update-dialog-notes) .markdown-rendered ol {
-  padding-left: 20px;
+  padding-left: var(--space-5);
   margin: 0 0 10px;
   color: var(--color-text-secondary);
 }
 
 :is(.plugin-detail-readme, .update-dialog-notes) .markdown-rendered li {
-  margin: 2px 0;
+  margin: var(--space-0-5) 0;
 }
 
 :is(.plugin-detail-readme, .update-dialog-notes) .markdown-rendered a {
@@ -467,21 +467,21 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: 10px;
-  margin-bottom: 16px;
+  margin-bottom: var(--space-4);
 }
 
 .workspace-card {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-1-5);
   align-items: center;
-  padding: 14px 12px 12px;
+  padding: 14px var(--space-3) var(--space-3);
   font-family: var(--font-family-sans);
   cursor: pointer;
   background: var(--color-bg-default);
   border: 2px solid var(--color-border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   transition:
     border-color 0.15s,
     box-shadow 0.15s;
@@ -535,24 +535,24 @@
 }
 
 .workspace-card-layout {
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
 }
 
 /* Mini layout diagram */
 .workspace-diagram {
   display: flex;
-  gap: 2px;
+  gap: var(--space-0-5);
   width: 72px;
   height: 36px;
   overflow: hidden;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .workspace-diagram-panel {
   height: 100%;
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
 }
 
 .workspace-diagram-sidebar {
@@ -600,18 +600,18 @@
 }
 
 .workspace-card-badge {
-  padding: 1px 6px;
+  padding: var(--space-px) var(--space-1-5);
   font-size: 0.6rem;
   color: var(--color-text-muted);
   background: var(--color-bg-elevated);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 /* Actions row */
 .workspace-actions {
   display: flex;
-  gap: 8px;
-  margin-top: 8px;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
 }
 
 .workspace-action-btn {
@@ -636,7 +636,7 @@
 /* Inline save form (replaces window.prompt) */
 .workspace-save-form {
   display: flex;
-  gap: 6px;
+  gap: var(--space-1-5);
   align-items: center;
 }
 
@@ -658,7 +658,7 @@
 }
 
 .workspace-save-confirm {
-  padding: 5px 12px;
+  padding: 5px var(--space-3);
   font-family: var(--font-family-sans);
   font-size: 0.8rem;
   color: var(--color-accent-on-solid);
@@ -679,7 +679,7 @@
 }
 
 .workspace-save-cancel {
-  padding: 5px 12px;
+  padding: 5px var(--space-3);
   font-family: var(--font-family-sans);
   font-size: 0.8rem;
   color: var(--color-text-secondary);
@@ -706,22 +706,22 @@
   left: 0;
   z-index: 1000;
   max-height: 200px;
-  padding: 4px 0;
+  padding: var(--space-1) 0;
   margin: 0;
   overflow-y: auto;
   list-style: none;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   box-shadow: 0 4px 12px rgb(0 0 0 / 15%);
 }
 
 .tag-suggest-item {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: center;
   justify-content: space-between;
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   font-family: var(--font-family-sans);
   font-size: 0.85rem;
   color: var(--color-text-primary);
@@ -747,7 +747,7 @@
 
 .tag-suggest-count {
   min-width: 20px;
-  padding: 1px 6px;
+  padding: var(--space-px) var(--space-1-5);
   font-size: 0.75rem;
   color: var(--color-text-muted);
   text-align: center;
@@ -782,7 +782,7 @@
   overflow-y: auto;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   box-shadow: 0 4px 12px rgb(0 0 0 / 15%);
 }
 
@@ -790,7 +790,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 10px;
+  padding: var(--space-1-5) 10px;
   font-family: var(--font-family-sans);
   font-size: 13px;
   color: var(--color-text-primary);
@@ -813,7 +813,7 @@
 
 .tag-menu-count {
   min-width: 20px;
-  padding: 1px 6px;
+  padding: var(--space-px) var(--space-1-5);
   font-size: 0.75rem;
   color: var(--color-text-muted);
   text-align: center;
@@ -838,7 +838,7 @@
   overflow-y: auto;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-md);
 }
 
@@ -873,20 +873,20 @@
 
 /* §69 Plugin Developer section — master-detail dev plugin load/reload/remove */
 .plugin-dev-section {
-  gap: 4px;
-  padding-top: 16px;
-  margin-top: 16px;
+  gap: var(--space-1);
+  padding-top: var(--space-4);
+  margin-top: var(--space-4);
   border-top: 1px solid var(--color-border-default);
 }
 
 .plugin-dev-load-row {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .plugin-dev-load-row__label {
@@ -904,7 +904,7 @@
   cursor: pointer;
   background: transparent;
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   transition:
     color 0.15s,
     background 0.15s,
@@ -918,30 +918,30 @@
 }
 
 .plugin-dev-detail {
-  padding: 12px;
-  margin-top: 12px;
+  padding: var(--space-3);
+  margin-top: var(--space-3);
   border: 1px solid var(--color-border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
 }
 
 .plugin-dev-detail__name {
-  margin: 0 0 4px;
+  margin: 0 0 var(--space-1);
   font-size: 13px;
   font-weight: 600;
   color: var(--color-text-primary);
 }
 
 .plugin-dev-detail__meta {
-  margin: 0 0 8px;
+  margin: 0 0 var(--space-2);
   font-size: 11px;
   color: var(--color-text-muted);
 }
 
 .plugin-dev-detail__row {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: center;
-  padding: 4px 0;
+  padding: var(--space-1) 0;
 }
 
 .plugin-dev-detail__row-label {
@@ -961,13 +961,13 @@
 .plugin-dev-detail__capabilities {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .plugin-dev-detail__actions {
   display: flex;
-  gap: 8px;
-  margin-top: 12px;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
 }
 
 .plugin-dev-btn {
@@ -977,7 +977,7 @@
   cursor: pointer;
   background: transparent;
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   transition:
     color 0.15s,
     background 0.15s,
@@ -1001,7 +1001,7 @@
 }
 
 .plugin-dev-detail__error {
-  margin: 8px 0 0;
+  margin: var(--space-2) 0 0;
   font-size: 12px;
   color: var(--color-status-danger);
 }

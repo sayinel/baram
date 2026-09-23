@@ -9,24 +9,24 @@
 
 .zettel-hub-actions {
   display: flex;
-  gap: 6px;
-  padding: 8px;
+  gap: var(--space-1-5);
+  padding: var(--space-2);
   border-bottom: 1px solid var(--color-border-default);
 }
 
 .zettel-hub-action {
   display: flex;
   flex: 1;
-  gap: 4px;
+  gap: var(--space-1);
   align-items: center;
   justify-content: center;
-  padding: 6px 8px;
+  padding: var(--space-1-5) var(--space-2);
   font-size: 12px;
   color: var(--color-text-secondary);
   cursor: pointer;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   transition:
     color 0.15s,
     border-color 0.15s;
@@ -45,7 +45,7 @@
 
 .zettel-hub-section-header {
   width: 100%;
-  padding: 8px;
+  padding: var(--space-2);
   font-size: 11px;
   font-weight: 600;
   color: var(--color-text-secondary);
@@ -60,14 +60,14 @@
 
 .zettel-hub-section-title {
   display: flex;
-  gap: 4px;
+  gap: var(--space-1);
   align-items: center;
 }
 
 .zettel-hub-section-body {
   display: flex;
   flex-direction: column;
-  padding-bottom: 4px;
+  padding-bottom: var(--space-1);
 }
 
 /* Per-row note marker — distinguishes file names from the section header. */
@@ -79,8 +79,8 @@
 /* ── Inbox rows ── */
 
 .zettel-hub-inbox-row {
-  gap: 6px;
-  padding: 6px 8px 6px 32px;
+  gap: var(--space-1-5);
+  padding: var(--space-1-5) var(--space-2) var(--space-1-5) var(--space-8);
   cursor: pointer;
   transition: background 0.15s;
 }
@@ -92,7 +92,7 @@
 .zettel-hub-inbox-main {
   display: flex;
   flex: 1;
-  gap: 6px;
+  gap: var(--space-1-5);
   align-items: center;
   min-width: 0;
   font-size: 12px;
@@ -106,22 +106,22 @@
 .zettel-hub-tag-pills {
   display: flex;
   flex-shrink: 0;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .zettel-hub-tag-pill {
-  padding: 0 6px;
+  padding: 0 var(--space-1-5);
   font-size: 10px;
   color: var(--color-accent-default);
   white-space: nowrap;
   background: var(--color-bg-elevated);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
 }
 
 .zettel-hub-inbox-actions {
   display: flex;
   flex-shrink: 0;
-  gap: 2px;
+  gap: var(--space-0-5);
   opacity: 0;
   transition: opacity 0.15s;
 }
@@ -134,7 +134,7 @@
 .zettel-hub-inbox-action {
   padding: 3px;
   color: var(--color-text-muted);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .zettel-hub-inbox-action:hover {
@@ -146,10 +146,10 @@
 
 .zettel-hub-list-row {
   display: flex;
-  gap: 6px;
+  gap: var(--space-1-5);
   align-items: center;
   width: 100%;
-  padding: 6px 8px 6px 32px;
+  padding: var(--space-1-5) var(--space-2) var(--space-1-5) var(--space-8);
   font-size: 12px;
   color: var(--color-text-primary);
   text-align: left;
@@ -170,7 +170,7 @@
   flex-shrink: 0;
   padding: 3px;
   color: var(--color-text-muted);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
   opacity: 0;
   transition:
     opacity 0.15s,
@@ -196,7 +196,7 @@
 .status-fav-btn {
   display: inline-flex;
   align-items: center;
-  padding: 1px 2px;
+  padding: var(--space-px) var(--space-0-5);
   color: var(--color-text-muted);
   border-radius: 3px;
   transition: color 0.15s;
@@ -213,7 +213,7 @@
 /* ── Empty / not-configured hints ── */
 
 .zettel-hub-empty-hint {
-  padding: 6px 8px 10px 32px;
+  padding: var(--space-1-5) var(--space-2) 10px var(--space-8);
   font-size: 12px;
   color: var(--color-text-muted);
 }
@@ -221,8 +221,8 @@
 .zettel-hub-hint {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 16px 12px;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-3);
   font-size: 12px;
   color: var(--color-text-muted);
   text-align: center;
@@ -230,11 +230,11 @@
 
 .zettel-hub-hint-link {
   align-self: center;
-  padding: 4px 10px;
+  padding: var(--space-1) 10px;
   font-size: 12px;
   color: var(--color-accent-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .zettel-hub-hint-link:hover {
@@ -244,7 +244,7 @@
 /* §307 C 허브의 태스크 섹션 — "전체 보기". 형제 섹션에는 없는 조작이라 링크처럼 읽히되
    목록 항목으로는 읽히지 않도록 들여쓰기와 크기를 빈 문구와 맞춘다. */
 .zettel-hub-more {
-  padding: 4px 8px 2px 26px;
+  padding: var(--space-1) var(--space-2) var(--space-0-5) 26px;
   font-size: 0.75rem;
   color: var(--color-accent-default);
   cursor: pointer;

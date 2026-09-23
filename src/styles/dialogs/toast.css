@@ -9,12 +9,12 @@
 }
 
 .toast {
-  padding: 10px 16px;
+  padding: 10px var(--space-4);
   font-size: 0.8125rem;
   color: var(--color-text-default);
   background-color: var(--color-bg-elevated);
   border: 1px solid var(--color-border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
 }
 
@@ -22,13 +22,13 @@
    message text cannot occupy or imitate it. */
 .toast-source {
   display: inline-block;
-  padding: 1px 6px;
-  margin-right: 6px;
+  padding: var(--space-px) var(--space-1-5);
+  margin-right: var(--space-1-5);
   font-size: 0.6875rem;
   color: var(--color-text-muted);
   background-color: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .toast-info {
@@ -57,13 +57,13 @@
    the affordance that must never be dead, and this way it survives a change to the
    parent rule. */
 .toast-action {
-  padding: 2px 8px;
+  padding: var(--space-0-5) var(--space-2);
   margin-left: 10px;
   font-size: 0.75rem;
   font-weight: 500;
   color: var(--color-accent-default);
   pointer-events: auto;
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .toast-action:hover {

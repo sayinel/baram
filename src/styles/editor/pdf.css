@@ -11,12 +11,12 @@
 .pdf-preview {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--space-4);
   align-items: center;
   width: max-content;
   min-width: 100%;
   min-height: 100%;
-  padding: 24px;
+  padding: var(--space-6);
 }
 
 .pdf-page {
@@ -137,7 +137,7 @@
 .pdf-text-layer .pdf-find-match {
   position: static;
   background: var(--color-editor-find-match);
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
 }
 
 .pdf-text-layer .pdf-find-match-current {
@@ -151,12 +151,12 @@
   right: 16px;
   z-index: 50;
   display: flex;
-  gap: 4px;
+  gap: var(--space-1);
   align-items: center;
-  padding: 6px 8px;
+  padding: var(--space-1-5) var(--space-2);
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-md);
 }
 
@@ -166,14 +166,14 @@
 
 .pdf-find-input {
   min-width: 180px;
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   font-family: var(--font-family-sans);
   font-size: 13px;
   color: var(--color-text-primary);
   outline: none;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
   transition: border-color 0.15s;
 }
 
@@ -290,7 +290,7 @@
    애니메이션(.pdf-hl-mark-flash, 아래)만 얹힌다. */
 .pdf-hl-mark {
   position: absolute;
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
 }
 
 /* §276.3 영역 하이라이트 드래그 중 실시간 미리보기 — 저장된 하이라이트가
@@ -300,7 +300,7 @@
   position: absolute;
   background: color-mix(in srgb, var(--color-accent-default) 12%, transparent);
   border: 1.5px dashed var(--color-accent-default);
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
 }
 
 /* §274 선택 팝업 — pdf-find-bar와 같은 배치/스타일 관례. anchor는 .pdf-page
@@ -309,12 +309,12 @@
   position: absolute;
   z-index: 10;
   display: flex;
-  gap: 4px;
+  gap: var(--space-1);
   align-items: center;
-  padding: 6px 8px;
+  padding: var(--space-1-5) var(--space-2);
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-md);
 }
 
@@ -324,7 +324,7 @@
 
 .pdf-hl-swatch-row {
   display: flex;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .pdf-hl-swatch {
@@ -371,12 +371,12 @@
 }
 
 .pdf-hl-action-btn {
-  padding: 4px 6px;
+  padding: var(--space-1) var(--space-1-5);
   font-family: var(--font-family-sans);
   font-size: 12px;
   color: var(--color-text-secondary);
   white-space: nowrap;
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .pdf-hl-action-btn:hover {
@@ -390,7 +390,7 @@
   width: 24px;
   height: 24px;
   color: var(--color-status-danger);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .pdf-hl-delete-btn:hover {
@@ -425,12 +425,12 @@
   left: 50%;
   z-index: 50;
   display: flex;
-  gap: 4px;
+  gap: var(--space-1);
   align-items: center;
-  padding: 6px 8px;
+  padding: var(--space-1-5) var(--space-2);
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-md);
   transform: translateX(-50%);
 }

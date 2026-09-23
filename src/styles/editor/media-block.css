@@ -84,7 +84,7 @@
   top: 6px;
   left: 50%;
   z-index: 3;
-  padding: 2px 8px;
+  padding: var(--space-0-5) var(--space-2);
   font-family: var(--font-family-mono);
   font-size: 11px;
   color: var(--color-accent-on-solid);
@@ -103,7 +103,7 @@
   right: 8px;
   z-index: 4;
   display: flex;
-  gap: 4px;
+  gap: var(--space-1);
   pointer-events: none;
   opacity: 0;
   transition: opacity 0.15s ease;
@@ -152,7 +152,7 @@
   cursor: pointer;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-subtle);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   box-shadow: 0 1px 4px rgb(0 0 0 / 10%);
   transition:
     color 0.15s ease,
@@ -192,7 +192,7 @@
    `.block-caption-input`, which wins ties by coming later in this file. */
 .tiptap .media-caption-input {
   width: 100%;
-  padding: 2px 6px;
+  padding: var(--space-0-5) var(--space-1-5);
   font-size: 0.85em;
   color: var(--color-text-primary);
   text-align: center;
@@ -222,14 +222,14 @@
 .tiptap .block-caption-input {
   width: 80%;
   max-width: 100%;
-  padding: 2px 6px;
+  padding: var(--space-0-5) var(--space-1-5);
   font-size: 1em;
   color: var(--color-text-primary);
   text-align: center;
   outline: none;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .tiptap .block-caption-input:focus {
