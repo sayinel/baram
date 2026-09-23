@@ -10,7 +10,7 @@
 }
 
 .memories-header {
-  padding: 12px 16px;
+  padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--color-border-default);
 }
 
@@ -22,7 +22,7 @@
 
 .memories-date-nav {
   display: flex;
-  gap: 2px;
+  gap: var(--space-0-5);
   align-items: center;
 }
 
@@ -37,7 +37,7 @@
   cursor: pointer;
   background: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .memories-date-nav-btn:hover {
@@ -47,16 +47,16 @@
 
 .memories-date-nav-label {
   display: flex;
-  gap: 4px;
+  gap: var(--space-1);
   align-items: center;
-  padding: 2px 6px;
+  padding: var(--space-0-5) var(--space-1-5);
   font-size: 0.75rem;
   font-weight: 600;
   color: var(--color-accent-default);
   cursor: pointer;
   background: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .memories-date-nav-label:hover,
@@ -65,24 +65,24 @@
 }
 
 .memories-date-nav-today {
-  padding: 0 4px;
+  padding: 0 var(--space-1);
   font-size: 0.6rem;
   font-weight: 500;
   line-height: 1.4;
   color: var(--color-accent-on-solid);
   background: var(--color-accent-solid);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 /* Mini Calendar */
 .memories-mini-calendar {
   position: relative;
   z-index: 10;
-  padding: 8px;
-  margin: 0 8px 4px;
+  padding: var(--space-2);
+  margin: 0 var(--space-2) var(--space-1);
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   box-shadow: 0 4px 12px rgb(0 0 0 / 15%);
 }
 
@@ -90,7 +90,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 6px;
+  margin-bottom: var(--space-1-5);
 }
 
 .memories-mini-calendar-title {
@@ -111,7 +111,7 @@
   cursor: pointer;
   background: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .memories-mini-calendar-nav:hover {
@@ -122,11 +122,11 @@
 .memories-mini-calendar-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  gap: 1px;
+  gap: var(--space-px);
 }
 
 .memories-mini-calendar-dow {
-  padding: 2px 0;
+  padding: var(--space-0-5) 0;
   font-size: 0.6rem;
   font-weight: 500;
   color: var(--color-text-secondary);
@@ -173,14 +173,14 @@
 }
 
 .memories-mini-calendar-title-btn {
-  padding: 2px 4px;
+  padding: var(--space-0-5) var(--space-1);
   font-size: 0.75rem;
   font-weight: 600;
   color: var(--color-text-primary);
   cursor: pointer;
   background: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .memories-mini-calendar-title-btn:hover {
@@ -197,21 +197,21 @@
 .memories-mini-calendar-picker {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 4px;
-  padding: 4px 0;
+  gap: var(--space-1);
+  padding: var(--space-1) 0;
 }
 
 .memories-mini-calendar-pick-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 6px 4px;
+  padding: var(--space-1-5) var(--space-1);
   font-size: 0.7rem;
   color: var(--color-text-primary);
   cursor: pointer;
   background: transparent;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .memories-mini-calendar-pick-btn:hover {
@@ -234,23 +234,23 @@
 }
 
 .memories-header-date {
-  padding: 2px 8px;
+  padding: var(--space-0-5) var(--space-2);
   font-size: 0.7rem;
   font-weight: 500;
   color: var(--color-accent-default);
   background: color-mix(in srgb, var(--color-accent-default) 12%, transparent);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
 }
 
 .memories-content {
   flex: 1;
-  padding: 12px 16px;
+  padding: var(--space-3) var(--space-4);
   overflow-y: auto;
 }
 
 .memories-loading,
 .memories-empty {
-  padding: 32px 16px;
+  padding: var(--space-8) var(--space-4);
   font-size: 0.8rem;
   color: var(--color-text-secondary);
   text-align: center;
@@ -260,26 +260,26 @@
 .memories-journal-tab {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .memories-mode-toggle {
   display: flex;
-  gap: 2px;
+  gap: var(--space-0-5);
   align-self: flex-start;
-  padding: 2px;
+  padding: var(--space-0-5);
   background: var(--color-bg-subtle);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .memories-mode-btn {
-  padding: 3px 10px;
+  padding: var(--space-0-5) var(--space-2);
   font-size: 0.7rem;
   color: var(--color-text-secondary);
   cursor: pointer;
   background: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-default);
   transition:
     background-color 0.15s,
     color 0.15s;
@@ -296,7 +296,7 @@
   overflow: hidden;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
 }
 
 .memories-year-card-current {
@@ -307,13 +307,13 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--color-border-default);
 }
 
 .memories-year-card-year {
   display: flex;
-  gap: 6px;
+  gap: var(--space-1-5);
   align-items: center;
   font-size: 0.8rem;
   font-weight: 600;
@@ -321,23 +321,23 @@
 }
 
 .memories-year-card-badge {
-  padding: 1px 6px;
+  padding: var(--space-px) var(--space-1-5);
   font-size: 0.65rem;
   font-weight: 500;
   color: var(--color-accent-default);
   background: color-mix(in srgb, var(--color-accent-default) 12%, transparent);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
 }
 
 .memories-year-card-open {
   display: flex;
   align-items: center;
-  padding: 2px;
+  padding: var(--space-0-5);
   color: var(--color-text-secondary);
   cursor: pointer;
   background: none;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-default);
   transition:
     background-color 0.15s,
     color 0.15s;
@@ -349,7 +349,7 @@
 }
 
 .memories-year-card-body {
-  padding: 10px 12px;
+  padding: var(--space-2) var(--space-3);
 }
 
 .memories-oneline {
@@ -360,10 +360,11 @@
 }
 
 .memories-oneline-editable {
-  padding: 2px 4px;
+  padding: var(--space-0-5) var(--space-1);
+  /* stylelint-disable-next-line declaration-property-value-disallowed-list -- 음수 값이다; var() 앞에 `-`를 붙여 부호를 뒤집을 수 없다(0097 R-C) */
   margin: -2px -4px;
   cursor: text;
-  border-radius: 4px;
+  border-radius: var(--radius-default);
   transition: background 0.15s;
 }
 
@@ -373,14 +374,14 @@
 
 .memories-oneline-input {
   width: 100%;
-  padding: 4px 6px;
+  padding: var(--space-1) var(--space-1-5);
   font-size: 0.8rem;
   line-height: 1.5;
   color: var(--color-text-primary);
   outline: none;
   background: var(--color-bg-default);
   border: 1px solid var(--color-accent-default);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .memories-full {
@@ -396,18 +397,18 @@
 .memories-md-render img {
   max-width: 100%;
   height: auto;
-  margin: 4px 0;
-  border-radius: 6px;
+  margin: var(--space-1) 0;
+  border-radius: var(--radius-md);
 }
 
 .memories-md-render p {
-  margin: 4px 0;
+  margin: var(--space-1) 0;
 }
 
 .memories-md-render h1,
 .memories-md-render h2,
 .memories-md-render h3 {
-  margin: 6px 0 2px;
+  margin: var(--space-1-5) 0 var(--space-0-5);
   font-size: 0.85rem;
   font-weight: 600;
 }
@@ -415,25 +416,25 @@
 .memories-md-render ul,
 .memories-md-render ol {
   padding-left: 1.2em;
-  margin: 4px 0;
+  margin: var(--space-1) 0;
 }
 
 .memories-md-render blockquote {
-  padding-left: 8px;
-  margin: 4px 0;
+  padding-left: var(--space-2);
+  margin: var(--space-1) 0;
   color: var(--color-text-secondary);
   border-left: 2px solid var(--color-border-default);
 }
 
 .memories-md-render code {
-  padding: 1px 4px;
+  padding: var(--space-px) var(--space-1);
   font-size: 0.85em;
   background: var(--color-bg-subtle);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .memories-md-render hr {
-  margin: 6px 0;
+  margin: var(--space-1-5) 0;
   border: none;
   border-top: 1px solid var(--color-border-default);
 }
@@ -451,15 +452,15 @@
 .memories-notes-tab {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 /* Notes toolbar: search + create */
 .notes-toolbar {
   display: flex;
-  gap: 4px;
+  gap: var(--space-1);
   align-items: center;
-  padding: 4px 0;
+  padding: var(--space-1) 0;
 }
 
 .notes-search-wrap {
@@ -469,13 +470,13 @@
 
 .notes-search-input {
   width: 100%;
-  padding: 5px 24px 5px 8px;
+  padding: var(--space-1) var(--space-6) var(--space-1) var(--space-2);
   font-size: 0.75rem;
   color: var(--color-text-primary);
   outline: none;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .notes-search-input:focus {
@@ -486,7 +487,7 @@
   position: absolute;
   top: 50%;
   right: 4px;
-  padding: 0 2px;
+  padding: 0 var(--space-0-5);
   font-size: 0.85rem;
   line-height: 1;
   color: var(--color-text-secondary);
@@ -509,7 +510,7 @@
   cursor: pointer;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .notes-create-btn:hover {
@@ -520,35 +521,35 @@
 /* New note creation row */
 .notes-create-row {
   display: flex;
-  gap: 4px;
+  gap: var(--space-1);
   align-items: center;
-  padding: 2px 0;
+  padding: var(--space-0-5) 0;
 }
 
 .notes-create-input {
   flex: 1;
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   font-size: 0.75rem;
   color: var(--color-text-primary);
   outline: none;
   background: var(--color-bg-default);
   border: 1px solid var(--color-accent-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .notes-create-confirm {
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   font-size: 0.7rem;
   color: var(--color-accent-on-solid);
   white-space: nowrap;
   cursor: pointer;
   background: var(--color-accent-solid);
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .notes-create-cancel {
-  padding: 0 4px;
+  padding: 0 var(--space-1);
   font-size: 0.85rem;
   color: var(--color-text-secondary);
   cursor: pointer;
@@ -560,19 +561,19 @@
 .notes-tag-bar {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-  padding: 2px 0 4px;
+  gap: var(--space-1);
+  padding: var(--space-0-5) 0 var(--space-1);
 }
 
 .notes-tag-chip {
-  padding: 2px 8px;
+  padding: var(--space-0-5) var(--space-2);
   font-size: 0.65rem;
   color: var(--color-text-secondary);
   white-space: nowrap;
   cursor: pointer;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
 }
 
 .notes-tag-chip:hover {
@@ -598,14 +599,14 @@
 .notes-card {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
   width: 100%;
-  padding: 8px 10px;
+  padding: var(--space-2) var(--space-2);
   text-align: left;
   cursor: pointer;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   transition:
     border-color 0.15s,
     box-shadow 0.15s;
@@ -618,7 +619,7 @@
 
 .notes-card-header {
   display: flex;
-  gap: 6px;
+  gap: var(--space-1-5);
   align-items: center;
   justify-content: space-between;
 }
@@ -640,13 +641,13 @@
   justify-content: center;
   min-width: 18px;
   height: 18px;
-  padding: 0 5px;
+  padding: 0 var(--space-1);
   font-size: 0.6rem;
   font-weight: 700;
   line-height: 1;
   color: var(--color-accent-on-solid);
   background: var(--color-accent-solid);
-  border-radius: 9px;
+  border-radius: var(--radius-full);
 }
 
 .notes-card-preview {
@@ -661,7 +662,7 @@
 .notes-card-tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .notes-card-tag {
@@ -677,7 +678,7 @@
 }
 
 .notes-tag-count {
-  margin-left: 1px;
+  margin-left: var(--space-px);
   font-size: 0.58rem;
   opacity: 0.6;
 }
@@ -685,16 +686,16 @@
 /* Notes subfolder navigation */
 .notes-back-btn {
   display: flex;
-  gap: 4px;
+  gap: var(--space-1);
   align-items: center;
-  padding: 4px 8px;
-  margin-bottom: 4px;
+  padding: var(--space-1) var(--space-2);
+  margin-bottom: var(--space-1);
   font-size: 0.72rem;
   color: var(--color-accent-default);
   cursor: pointer;
   background: none;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .notes-back-btn:hover {
@@ -704,23 +705,23 @@
 .notes-folders {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  margin-bottom: 4px;
+  gap: var(--space-0-5);
+  margin-bottom: var(--space-1);
 }
 
 .notes-folder-item {
   display: flex;
-  gap: 6px;
+  gap: var(--space-1-5);
   align-items: center;
   width: 100%;
-  padding: 6px 10px;
+  padding: var(--space-1-5) var(--space-2);
   font-size: 0.78rem;
   color: var(--color-text-primary);
   text-align: left;
   cursor: pointer;
   background: none;
   border: 1px solid var(--color-border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   transition: border-color 0.15s;
 }
 
@@ -743,46 +744,46 @@
 
 .notes-folder-count {
   flex-shrink: 0;
-  padding: 1px 6px;
+  padding: var(--space-px) var(--space-1-5);
   font-size: 0.65rem;
   color: var(--color-text-muted);
   background: var(--color-bg-subtle);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
 }
 
 /* §56k Journal Search */
 .journal-search {
   display: flex;
   flex-direction: column;
-  padding: 6px 0 4px;
-  margin: 4px 0;
+  padding: var(--space-1-5) 0 var(--space-1);
+  margin: var(--space-1) 0;
   border-top: 1px solid var(--color-border-default);
   border-bottom: 1px solid var(--color-border-default);
 }
 
 .journal-search-disabled {
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   font-size: 0.8rem;
   color: var(--color-text-secondary);
 }
 
 .journal-search-input-row {
   display: flex;
-  gap: 4px;
+  gap: var(--space-1);
   align-items: center;
-  padding: 0 8px 4px;
+  padding: 0 var(--space-2) var(--space-1);
 }
 
 .journal-search-input {
   box-sizing: border-box;
   flex: 1;
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   font-size: 0.82rem;
   color: var(--color-text-primary);
   outline: none;
   background: var(--color-bg-input);
   border: 1px solid var(--color-border-default);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .journal-search-input:focus {
@@ -791,14 +792,14 @@
 
 .journal-search-close {
   flex-shrink: 0;
-  padding: 2px 6px;
+  padding: var(--space-0-5) var(--space-1-5);
   font-size: 0.75rem;
   line-height: 1;
   color: var(--color-text-secondary);
   cursor: pointer;
   background: transparent;
   border: 1px solid var(--color-border-default);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .journal-search-close:hover {
@@ -807,19 +808,19 @@
 }
 
 .journal-search-status {
-  padding: 0 12px 4px;
+  padding: 0 var(--space-3) var(--space-1);
   font-size: 0.72rem;
   color: var(--color-text-secondary);
 }
 
 .journal-search-error {
-  padding: 2px 12px 4px;
+  padding: var(--space-0-5) var(--space-3) var(--space-1);
   font-size: 0.78rem;
   color: var(--color-status-danger);
 }
 
 .journal-search-empty {
-  padding: 4px 12px;
+  padding: var(--space-1) var(--space-3);
   font-size: 0.8rem;
   color: var(--color-text-secondary);
 }
@@ -830,14 +831,14 @@
 }
 
 .journal-search-category-group {
-  margin-bottom: 2px;
+  margin-bottom: var(--space-0-5);
 }
 
 .journal-search-category {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 3px 12px 2px;
+  padding: var(--space-0-5) var(--space-3) var(--space-0-5);
   font-size: 0.68rem;
   font-weight: 600;
   color: var(--color-text-secondary);
@@ -848,16 +849,16 @@
 
 .journal-search-category-count {
   min-width: 16px;
-  padding: 0 5px;
+  padding: 0 var(--space-1);
   font-size: 0.65rem;
   color: var(--color-text-muted);
   text-align: center;
   background: var(--color-bg-subtle);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
 }
 
 .journal-search-result {
-  padding: 4px 12px;
+  padding: var(--space-1) var(--space-3);
   cursor: pointer;
   border-bottom: 1px solid transparent;
 }
@@ -867,7 +868,7 @@
 }
 
 .journal-search-result-filename {
-  margin-bottom: 1px;
+  margin-bottom: var(--space-px);
   overflow: hidden;
   text-overflow: ellipsis;
   font-size: 0.78rem;
@@ -885,15 +886,15 @@
 }
 
 .journal-search-result-snippet mark {
-  padding: 0 1px;
+  padding: 0 var(--space-px);
   font-style: normal;
   color: var(--color-accent-on-solid);
   background: var(--color-accent-solid);
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
 }
 
 .journal-search-overflow {
-  padding: 2px 12px 4px;
+  padding: var(--space-0-5) var(--space-3) var(--space-1);
   font-size: 0.7rem;
   font-style: italic;
   color: var(--color-text-secondary);
@@ -902,14 +903,14 @@
 /* §56k Journal Search Filters */
 .journal-search-filter-toggle {
   flex-shrink: 0;
-  padding: 2px 6px;
+  padding: var(--space-0-5) var(--space-1-5);
   font-size: 0.75rem;
   line-height: 1;
   color: var(--color-text-secondary);
   cursor: pointer;
   background: transparent;
   border: 1px solid var(--color-border-default);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .journal-search-filter-toggle:hover,
@@ -926,14 +927,14 @@
 .journal-search-filters {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 6px 8px;
+  gap: var(--space-1-5);
+  padding: var(--space-1-5) var(--space-2);
   border-bottom: 1px solid var(--color-border-default);
 }
 
 .jsf-row {
   display: flex;
-  gap: 6px;
+  gap: var(--space-1-5);
   align-items: center;
   font-size: 0.82em;
 }
@@ -947,36 +948,36 @@
 
 .jsf-row input[type="date"] {
   width: 128px;
-  padding: 2px 4px;
+  padding: var(--space-0-5) var(--space-1);
   font-size: 0.82em;
   color: var(--color-text-primary);
   background: var(--color-bg-input);
   border: 1px solid var(--color-border-default);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .jsf-row input[type="text"] {
   flex: 1;
-  padding: 2px 6px;
+  padding: var(--space-0-5) var(--space-1-5);
   font-size: 0.82em;
   color: var(--color-text-primary);
   background: var(--color-bg-input);
   border: 1px solid var(--color-border-default);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .jsf-row select {
-  padding: 2px 4px;
+  padding: var(--space-0-5) var(--space-1);
   font-size: 0.82em;
   color: var(--color-text-primary);
   background: var(--color-bg-input);
   border: 1px solid var(--color-border-default);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .jsf-checkbox-label {
   display: flex;
-  gap: 4px;
+  gap: var(--space-1);
   align-items: center;
   font-size: 0.82em;
   cursor: pointer;

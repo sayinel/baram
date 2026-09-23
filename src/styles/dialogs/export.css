@@ -21,12 +21,12 @@
   overscroll-behavior: contain;
   background-color: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   box-shadow: 0 8px 30px rgb(0 0 0 / 20%);
 }
 
 .export-dialog-header {
-  padding: 12px 16px;
+  padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--color-border-subtle);
 }
 
@@ -43,7 +43,7 @@
   color: var(--color-text-muted);
   background: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .export-dialog-close:hover {
@@ -54,14 +54,14 @@
 .export-dialog-body {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 16px;
+  gap: var(--space-3);
+  padding: var(--space-4);
 }
 
 .export-dialog-field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-1-5);
 }
 
 .export-dialog-label {
@@ -74,24 +74,24 @@
 
 .export-ext-badge {
   flex-shrink: 0;
-  padding: 2px 6px;
+  padding: var(--space-0-5) var(--space-1-5);
   font-family: var(--font-family-mono);
   font-size: 0.7rem;
   color: var(--color-text-secondary);
   white-space: nowrap;
   background-color: var(--color-bg-elevated);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .export-pandoc-badge {
   flex-shrink: 0;
-  padding: 1px 5px;
+  padding: var(--space-px) var(--space-1);
   font-family: var(--font-family-mono);
   font-size: 0.65rem;
   color: var(--color-text-muted);
   white-space: nowrap;
   background-color: var(--color-bg-elevated);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 /* §5.12 Export format dropdown */
@@ -186,7 +186,7 @@
 }
 
 .export-pandoc-warning {
-  margin: 4px 0 0;
+  margin: var(--space-1) 0 0;
   font-size: 0.8rem;
   line-height: 1.4;
   color: var(--color-status-warning);
@@ -199,7 +199,7 @@
 .export-dialog-template-row {
   display: flex;
   flex-direction: row;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 /* PDF Paper Size tabs */
@@ -208,12 +208,12 @@
   gap: 0;
   overflow: hidden;
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .export-paper-tab {
   flex: 1;
-  padding: 6px 0;
+  padding: var(--space-1-5) 0;
   font-size: 0.85rem;
   font-weight: 500;
   color: var(--color-text-secondary);
@@ -255,14 +255,14 @@
 }
 
 .export-dialog-input {
-  padding: 8px 10px;
+  padding: var(--space-2) var(--space-2);
   font-family: var(--font-family-sans);
   font-size: 0.9rem;
   color: var(--color-text-primary);
   outline: none;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .export-dialog-input:focus {
@@ -271,7 +271,7 @@
 
 /* §362 — the "theme in export" select, HTML and PDF blocks both. */
 .export-dialog-select {
-  padding: 8px 10px;
+  padding: var(--space-2) var(--space-2);
   font-family: var(--font-family-sans);
   font-size: 0.9rem;
   color: var(--color-text-primary);
@@ -279,7 +279,7 @@
   outline: none;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .export-dialog-select:focus {
@@ -288,20 +288,20 @@
 
 .export-dialog-footer {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   justify-content: flex-end;
-  padding: 12px 16px;
+  padding: var(--space-3) var(--space-4);
   border-top: 1px solid var(--color-border-subtle);
 }
 
 .export-dialog-btn {
-  padding: 6px 16px;
+  padding: var(--space-1-5) var(--space-4);
   font-family: var(--font-family-sans);
   font-size: 0.85rem;
   font-weight: 500;
   cursor: pointer;
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   transition:
     background-color 0.1s,
     border-color 0.1s;
@@ -333,14 +333,14 @@
 }
 
 .export-dialog-error {
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   font-size: 0.8rem;
   line-height: 1.4;
   color: var(--color-status-danger);
   overflow-wrap: break-word;
   background-color: var(--color-status-error-bg);
   border: 1px solid var(--color-status-error-border);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 [data-theme="dark"] .export-dialog-error {
@@ -358,6 +358,6 @@
 
 /* §353 — the "Embed fonts" checkbox row, HTML format only. */
 .export-dialog-checkbox-label {
-  gap: 6px;
+  gap: var(--space-1-5);
   cursor: pointer;
 }

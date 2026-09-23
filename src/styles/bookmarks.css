@@ -9,7 +9,7 @@
 }
 
 .bookmark-header {
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   font-size: 0.8rem;
   font-weight: 600;
   color: var(--color-text-secondary);
@@ -17,7 +17,7 @@
 }
 
 .bookmark-add-btn {
-  padding: 0 4px;
+  padding: 0 var(--space-1);
   font-size: 1rem;
   line-height: 1;
   color: var(--color-text-muted);
@@ -38,7 +38,7 @@
 }
 
 .bookmark-empty {
-  padding: 16px 12px;
+  padding: var(--space-4) var(--space-3);
   font-size: 0.8rem;
   line-height: 1.5;
   color: var(--color-text-muted);
@@ -46,11 +46,11 @@
 }
 
 .bookmark-group {
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
 }
 
 .bookmark-group-name {
-  padding: 6px 12px 2px;
+  padding: var(--space-1-5) var(--space-3) var(--space-0-5);
   font-size: 0.7rem;
   font-weight: 600;
   color: var(--color-text-muted);
@@ -62,7 +62,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 12px;
+  padding: var(--space-1) var(--space-3);
   cursor: pointer;
   transition: background-color 0.1s ease;
 }
@@ -78,7 +78,7 @@
 .bookmark-item-label {
   display: flex;
   flex: 1;
-  gap: 6px;
+  gap: var(--space-1-5);
   align-items: center;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -94,7 +94,7 @@
 
 .bookmark-remove-btn {
   flex-shrink: 0;
-  padding: 0 4px;
+  padding: 0 var(--space-1);
   font-size: 0.9rem;
   color: var(--color-text-muted);
   opacity: 0;

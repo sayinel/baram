@@ -5,7 +5,7 @@
 .vim-cursor {
   color: var(--color-accent-on-solid);
   background: var(--color-accent-default);
-  border-radius: 1px;
+  border-radius: var(--radius-sm);
 }
 
 /* issue 473 동계열(잔상 커서 전수 진단, 표면 2) — 포커스가 앱 크롬
@@ -30,6 +30,7 @@
   display: inline-block;
   width: 0;
   height: 1em;
+  /* stylelint-disable-next-line declaration-property-value-disallowed-list -- 음수 값이다; var() 앞에 `-`를 붙여 부호를 뒤집을 수 없다(0097 R-C) */
   margin-left: -1px;
   vertical-align: text-bottom;
   border-left: 2px solid var(--color-accent-default);
@@ -41,5 +42,5 @@
 .vim-modal .ProseMirror-selectednode {
   outline: 2px solid var(--color-accent-default);
   outline-offset: 1px;
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
 }

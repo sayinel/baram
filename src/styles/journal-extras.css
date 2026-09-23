@@ -11,7 +11,7 @@
   flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
+  padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--color-border-default);
 }
 
@@ -24,20 +24,20 @@
 
 .photo-gallery-mode-toggle {
   display: flex;
-  gap: 2px;
-  padding: 2px;
+  gap: var(--space-0-5);
+  padding: var(--space-0-5);
   background: var(--color-bg-subtle);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .photo-gallery-mode-btn {
-  padding: 3px 10px;
+  padding: var(--space-0-5) var(--space-2);
   font-size: 0.75rem;
   color: var(--color-text-secondary);
   cursor: pointer;
   background: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-default);
   transition:
     background-color 0.15s,
     color 0.15s;
@@ -56,15 +56,15 @@
   display: flex;
   flex-shrink: 0;
   justify-content: center;
-  padding: 8px 16px 0;
+  padding: var(--space-2) var(--space-4) 0;
 }
 
 .photo-gallery-nav {
   display: flex;
-  gap: 12px;
+  gap: var(--space-3);
   align-items: center;
   justify-content: center;
-  padding: 6px 16px;
+  padding: var(--space-1-5) var(--space-4);
   border-bottom: 1px solid var(--color-border-default);
 }
 
@@ -79,7 +79,7 @@
   cursor: pointer;
   background: none;
   border: 1px solid var(--color-border-default);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
   transition:
     background-color 0.15s,
     color 0.15s;
@@ -100,28 +100,28 @@
 
 .photo-gallery-content {
   flex: 1;
-  padding: 12px;
+  padding: var(--space-3);
   overflow-y: auto;
 }
 
 .photo-gallery-loading,
 .photo-gallery-empty {
-  padding: 24px 16px;
+  padding: var(--space-6) var(--space-4);
   font-size: 0.85rem;
   color: var(--color-text-secondary);
   text-align: center;
 }
 
 .photo-gallery-group {
-  margin-bottom: 20px;
+  margin-bottom: var(--space-5);
 }
 
 .photo-gallery-group-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding-bottom: 4px;
-  margin-bottom: 8px;
+  padding-bottom: var(--space-1);
+  margin-bottom: var(--space-2);
   font-size: 0.8rem;
   font-weight: 600;
   color: var(--color-text-secondary);
@@ -129,16 +129,16 @@
 }
 
 .photo-gallery-group-count {
-  padding: 1px 6px;
+  padding: var(--space-px) var(--space-1-5);
   font-size: 0.7rem;
   background: var(--color-bg-subtle);
-  border-radius: 10px;
+  border-radius: var(--radius-full);
 }
 
 .photo-gallery-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .photo-gallery-item {
@@ -147,7 +147,7 @@
   overflow: hidden;
   cursor: pointer;
   background: var(--color-bg-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 /* ‼️ `opacity`가 아니다. 그건 하이라이트가 아니라 칸을 반투명하게 만드는 것이라 합성이
@@ -186,15 +186,15 @@
   top: 4px;
   left: 4px;
   display: flex;
-  gap: 3px;
+  gap: var(--space-0-5);
   align-items: center;
-  padding: 1px 5px;
+  padding: var(--space-px) var(--space-1);
   font-size: 0.65rem;
   font-variant-numeric: tabular-nums;
   line-height: 1.4;
   color: #fff;
   background: rgb(0 0 0 / 78%);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .photo-gallery-item-caption {
@@ -202,7 +202,7 @@
   right: 0;
   bottom: 0;
   left: 0;
-  padding: 2px 4px;
+  padding: var(--space-0-5) var(--space-1);
   overflow: hidden;
   text-overflow: ellipsis;
   font-size: 0.65rem;
@@ -240,7 +240,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 8px;
+  padding: var(--space-2);
   color: #fff;
   cursor: pointer;
   background: rgb(255 255 255 / 10%);
@@ -298,7 +298,7 @@
   max-width: 80vw;
   max-height: 78vh;
   object-fit: contain;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 /* §56d 큰 프리뷰가 만들어지기 전에 그리드 썸네일(320px)을 늘려 놓은 상태. 늘린 것을
@@ -312,14 +312,14 @@
   max-width: 80vw;
   max-height: 78vh;
   background: #000;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .photo-lightbox-info {
   display: flex;
-  gap: 12px;
+  gap: var(--space-3);
   align-items: center;
-  margin-top: 14px;
+  margin-top: var(--space-3);
   font-size: 0.85rem;
   color: #ccc;
 }
@@ -337,13 +337,13 @@
 /* 라이트박스 하단의 동등한 액션 둘 — 같은 모양이어야 하므로 규칙을 공유한다. */
 .photo-lightbox-open-journal,
 .photo-lightbox-view-original {
-  padding: 4px 12px;
+  padding: var(--space-1) var(--space-3);
   font-size: 0.8rem;
   color: #fff;
   cursor: pointer;
   background: rgb(255 255 255 / 12%);
   border: 1px solid rgb(255 255 255 / 25%);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   transition: background-color 0.15s;
 }
 
@@ -374,7 +374,7 @@
 
 .tag-panel-header {
   flex-shrink: 0;
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   font-size: 0.8rem;
   font-weight: 600;
   color: var(--color-text-secondary);
@@ -383,18 +383,18 @@
 
 .tag-panel-actions {
   display: flex;
-  gap: 2px;
+  gap: var(--space-0-5);
 }
 
 .tag-panel-action-btn {
-  padding: 2px 4px;
+  padding: var(--space-0-5) var(--space-1);
   font-size: 0.85rem;
   line-height: 1;
   color: var(--color-text-muted);
   cursor: pointer;
   background: none;
   border: none;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   transition:
     color 0.15s ease,
     background 0.15s ease;
@@ -412,19 +412,19 @@
 
 .tag-panel-filter {
   flex-shrink: 0;
-  padding: 6px 8px;
+  padding: var(--space-1-5) var(--space-2);
   border-bottom: 1px solid var(--color-border-subtle);
 }
 
 .tag-panel-filter-input {
   width: 100%;
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   font-size: 0.78rem;
   color: var(--color-text-primary);
   outline: none;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
   transition: border-color 0.15s ease;
 }
 
@@ -437,7 +437,7 @@
 }
 
 .tag-panel-empty {
-  padding: 16px 12px;
+  padding: var(--space-4) var(--space-3);
   font-size: 0.8rem;
   line-height: 1.5;
   color: var(--color-text-muted);
@@ -446,14 +446,14 @@
 
 .tag-panel-tree {
   flex: 1;
-  padding: 4px 0;
+  padding: var(--space-1) 0;
   overflow-y: auto;
 }
 
 .tag-tree-item {
   display: flex;
   align-items: center;
-  padding: 3px 8px;
+  padding: var(--space-0-5) var(--space-2);
   font-size: 0.8rem;
   color: var(--color-text-primary);
   cursor: pointer;
@@ -483,7 +483,7 @@
 
 .tag-tree-hash {
   flex-shrink: 0;
-  margin-right: 2px;
+  margin-right: var(--space-0-5);
   font-size: 0.75rem;
   color: var(--color-accent-default);
 }
@@ -494,14 +494,14 @@
 
 .tag-tree-count {
   flex-shrink: 0;
-  margin-left: 6px;
+  margin-left: var(--space-1-5);
   font-size: 0.7rem;
   color: var(--color-text-muted);
 }
 
 .tag-panel-stats {
-  padding: 8px 12px;
-  margin-top: 4px;
+  padding: var(--space-2) var(--space-3);
+  margin-top: var(--space-1);
   font-size: 0.7rem;
   color: var(--color-text-muted);
   text-align: center;
@@ -512,24 +512,24 @@
 .fm-tag-bar {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: var(--space-1);
   align-items: center;
   min-height: 28px;
-  padding: 6px 12px;
+  padding: var(--space-1-5) var(--space-3);
   border-top: 1px dashed var(--color-border-default);
 }
 
 .fm-tag-pill {
   display: inline-flex;
-  gap: 2px;
+  gap: var(--space-0-5);
   align-items: center;
-  padding: 1px 8px;
+  padding: var(--space-px) var(--space-2);
   font-size: 0.75rem;
   color: var(--color-accent-default);
   cursor: pointer;
   user-select: none;
   background: var(--color-bg-elevated);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   transition: background 0.15s ease;
 }
 
@@ -538,8 +538,8 @@
 }
 
 .fm-tag-pill-remove {
-  padding: 0 2px;
-  margin-left: 2px;
+  padding: 0 var(--space-0-5);
+  margin-left: var(--space-0-5);
   font-size: 0.7rem;
   line-height: 1;
   color: var(--color-text-muted);
@@ -554,7 +554,7 @@
 
 .fm-tag-input {
   min-width: 80px;
-  padding: 2px 4px;
+  padding: var(--space-0-5) var(--space-1);
   font-size: 0.75rem;
   color: var(--color-text-primary);
   outline: none;
@@ -567,7 +567,7 @@
 }
 
 .fm-tag-label {
-  margin-right: 4px;
+  margin-right: var(--space-1);
   font-size: 0.7rem;
   color: var(--color-text-muted);
 }
@@ -578,7 +578,7 @@
   vertical-align: baseline;
   color: var(--color-accent-default);
   cursor: pointer;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   transition: background 0.15s ease;
 }
 
@@ -616,24 +616,24 @@
   position: fixed;
   z-index: 1000;
   min-width: 160px;
-  padding: 4px;
+  padding: var(--space-1);
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   box-shadow: 0 4px 12px rgb(0 0 0 / 15%);
 }
 
 .tag-context-menu button {
   display: block;
   width: 100%;
-  padding: 6px 12px;
+  padding: var(--space-1-5) var(--space-3);
   font-size: 0.8rem;
   color: var(--color-text-primary);
   text-align: left;
   cursor: pointer;
   background: none;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .tag-context-menu button:hover {
@@ -644,18 +644,18 @@
 .tag-rename-input {
   flex: 1;
   min-width: 0;
-  padding: 1px 4px;
+  padding: var(--space-px) var(--space-1);
   font-size: 0.8rem;
   color: var(--color-text-primary);
   outline: none;
   background: var(--color-bg-default);
   border: 1px solid var(--color-accent-default);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 /* §56m Tag panel rename notification */
 .tag-panel-notification {
-  padding: 6px 10px;
+  padding: var(--space-1-5) var(--space-2);
   font-size: 0.75rem;
   color: var(--color-text-secondary);
   background: color-mix(in srgb, var(--color-accent-default) 10%, transparent);
@@ -667,7 +667,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 12px;
+  padding: var(--space-1) var(--space-3);
   font-size: 0.75rem;
   background: color-mix(
     in srgb,
@@ -687,7 +687,7 @@
 }
 
 .filetree-tag-filter-clear {
-  padding: 0 4px;
+  padding: 0 var(--space-1);
   font-size: 1rem;
   line-height: 1;
   color: var(--color-text-muted);
@@ -705,10 +705,10 @@
   display: flex;
   flex: 1;
   flex-wrap: wrap;
-  gap: 6px 10px;
+  gap: var(--space-1-5) var(--space-2);
   align-items: center;
   justify-content: center;
-  padding: 12px;
+  padding: var(--space-3);
   overflow-y: auto;
 }
 
@@ -731,8 +731,8 @@
 /* Tag color dots in context menu */
 .tag-color-palette {
   display: flex;
-  gap: 4px;
-  padding: 6px 12px;
+  gap: var(--space-1);
+  padding: var(--space-1-5) var(--space-3);
 }
 
 .tag-color-dot {
@@ -765,22 +765,22 @@
 
 /* §56f Journal Dynamic Code Block */
 .journal-block-nodeview {
-  margin: 8px 0;
+  margin: var(--space-2) 0;
 }
 
 .journal-dynamic-block {
-  padding: 12px;
-  margin: 8px 0;
+  padding: var(--space-3);
+  margin: var(--space-2) 0;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
 }
 
 .journal-dynamic-block-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
+  margin-bottom: var(--space-2);
   font-size: 0.85em;
   color: var(--color-text-secondary);
 }
@@ -790,14 +790,14 @@
 }
 
 .journal-dynamic-block-source-btn {
-  padding: 1px 6px;
+  padding: var(--space-px) var(--space-1-5);
   font-family: monospace;
   font-size: 0.8em;
   color: var(--color-text-muted);
   cursor: pointer;
   background: none;
   border: 1px solid var(--color-border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .journal-dynamic-block-source-btn:hover {
@@ -807,7 +807,7 @@
 
 .journal-block-loading,
 .journal-block-empty {
-  padding: 4px 0;
+  padding: var(--space-1) 0;
   font-size: 0.85em;
   color: var(--color-text-muted);
 }
@@ -821,11 +821,11 @@
 
 .journal-list-item {
   display: flex;
-  gap: 10px;
-  padding: 4px 6px;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-1-5);
   font-size: 0.9em;
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .journal-list-item:hover {
@@ -849,7 +849,7 @@
 /* journal-photos */
 .journal-photos-grid {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
   overflow-x: auto;
 }
 
@@ -858,19 +858,19 @@
   width: 100%;
   aspect-ratio: 1;
   object-fit: cover;
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 /* journal source edit textarea */
 .journal-block-source-edit {
   box-sizing: border-box;
   width: 100%;
-  padding: 8px;
+  padding: var(--space-2);
   font-family: var(--font-family-mono);
   font-size: 0.85em;
   color: var(--color-text-primary);
   resize: vertical;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }

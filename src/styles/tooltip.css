@@ -11,7 +11,7 @@
      is shifted back in by floating-ui as a single unreadable strip. Short labels stay on one
      line anyway — the pill shrinks to its content. */
   max-width: 340px;
-  padding: 5px 9px;
+  padding: var(--space-1) var(--space-2);
   font-family: var(--font-family-sans);
   font-size: 0.75rem;
   font-weight: 500;
@@ -23,7 +23,7 @@
      is a hit that misses the icon it describes. */
   pointer-events: none;
   background-color: var(--color-bg-tooltip);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   box-shadow: var(--shadow-md);
 
   /* Painted at the origin for one frame before floating-ui reports a position, so it starts

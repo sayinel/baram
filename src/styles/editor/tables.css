@@ -156,7 +156,7 @@
   margin-bottom: 1em;
   background-color: var(--color-bg-subtle);
   border: 1px dashed var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .tiptap .frontmatter pre {

@@ -20,25 +20,25 @@
   align-items: center;
   width: 400px;
   max-width: 90vw;
-  padding: 32px 40px;
+  padding: var(--space-8) var(--space-10);
   overscroll-behavior: contain;
   text-align: center;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   box-shadow: 0 16px 48px rgb(0 0 0 / 20%);
 }
 
 .about-symbol {
   width: 96px;
   height: auto;
-  margin-bottom: 8px;
+  margin-bottom: var(--space-2);
   user-select: none;
   -webkit-user-drag: none;
 }
 
 .about-wordmark {
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
   font-size: 28px;
   font-weight: 700;
   color: var(--color-text-primary);
@@ -46,19 +46,19 @@
 }
 
 .about-tagline {
-  margin-bottom: 16px;
+  margin-bottom: var(--space-4);
   font-size: 13px;
   color: var(--color-text-secondary);
 }
 
 .about-version {
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
   font-size: 13px;
   color: var(--color-text-secondary);
 }
 
 .about-description {
-  margin-bottom: 20px;
+  margin-bottom: var(--space-5);
   font-size: 14px;
   color: var(--color-text-primary);
 }
@@ -66,10 +66,10 @@
 .about-details {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
   width: 100%;
-  padding-top: 16px;
-  margin-bottom: 16px;
+  padding-top: var(--space-4);
+  margin-bottom: var(--space-4);
   border-top: 1px solid var(--color-border-default);
 }
 
@@ -103,7 +103,7 @@
 .about-license-text {
   width: 100%;
   max-height: 180px;
-  padding: 8px 10px;
+  padding: var(--space-2) var(--space-2);
   margin: 0;
   overflow-y: auto;
   font-family: var(--font-family-mono);
@@ -114,17 +114,17 @@
   white-space: pre-wrap;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .about-copyright {
-  margin-bottom: 2px;
+  margin-bottom: var(--space-0-5);
   font-size: 11px;
   color: var(--color-text-muted);
 }
 
 .about-authors {
-  margin-bottom: 20px;
+  margin-bottom: var(--space-5);
   font-size: 11px;
   color: var(--color-text-muted);
 }
@@ -140,13 +140,13 @@
 }
 
 .about-close {
-  padding: 6px 24px;
+  padding: var(--space-1-5) var(--space-6);
   font-size: 13px;
   color: var(--color-text-primary);
   cursor: pointer;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .about-close:hover {
@@ -155,7 +155,7 @@
 
 /* §206 "Check for updates" link near the version row */
 .about-check-updates {
-  margin-bottom: 12px;
+  margin-bottom: var(--space-3);
   font-size: 12px;
   color: var(--color-accent-default);
   cursor: pointer;
