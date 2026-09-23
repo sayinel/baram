@@ -196,10 +196,15 @@ describe("the Symbols & Emoji slash item (§377)", () => {
   it("stays the last Basic item with the : autocomplete turned off", () => {
     // The symbolSuggest setting turns off only the `:` autocomplete — the slash
     // item is the explicit entrance and is always there (spec 0056 §377).
-    useSettingsStore.setState({ symbolSuggest: false });
     const editor = makeEditor();
-    // Precondition: the `:` entrance does read the setting as off here.
-    expect(symbolSuggestAllowed(editor.state, { from: 3, to: 3 })).toBe(false);
+    // Precondition: at the paragraph's start (position 1) the `:` entrance's
+    // `allow` check passes with the setting on and fails with it off — so the
+    // setting, and nothing else, is what is off below.
+    const paragraphStart = { from: 1, to: 1 };
+    useSettingsStore.setState({ symbolSuggest: true });
+    expect(symbolSuggestAllowed(editor.state, paragraphStart)).toBe(true);
+    useSettingsStore.setState({ symbolSuggest: false });
+    expect(symbolSuggestAllowed(editor.state, paragraphStart)).toBe(false);
     const basic = buildSlashItems(editor).filter((i) => i.category === "Basic");
     expect(basic.at(-1)?.id).toBe("symbols");
   });
