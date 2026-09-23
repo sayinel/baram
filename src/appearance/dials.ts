@@ -108,6 +108,33 @@ const PADDING_RANGE = { max: 16, min: 0, step: 0.5 } as const;
 const LETTER_SPACING_RANGE = { max: 0.1, min: -0.05, step: 0.005 } as const;
 // §368 문단 간격. `blocks.css` 의 `.tiptap p { margin: 0.5em 0 }` 이 기본값의 출처다.
 const PARAGRAPH_SPACING_RANGE = { max: 2, min: 0, step: 0.05 } as const;
+// §369 리스트 들여쓰기 가이드의 농도(%). 상한이 40 인 것은 가이드가 **배경 쪽으로**
+// 섞이는 값이기 때문이다 — 100 은 본문 글자와 같은 색이 되어 중첩 리스트마다
+// 검은 세로줄이 서고, 그 구간은 고를 이유가 없는 구간이다. `lists.css` 의 fallback
+// 22% 가 기본값의 출처이고, 둘의 일치는 `styles/__tests__/list-styling.test.ts` 가
+// 두 파일을 함께 읽어 고정한다.
+const GUIDE_STRENGTH_RANGE = { max: 40, min: 0, step: 1 } as const;
+
+/**
+ * §5.1 순서 있는 리스트의 마커 정렬. 값 이름은 **무엇이 줄 맞춰지는가** 이지
+ * 어느 쪽으로 미는가가 아니다 — `left`/`right` 로 이름 지으면 `toVars` 가 항등함수가
+ * 되어, 이름과 CSS 값이 갈라질 수 있다는 사실 자체가 코드에서 사라진다.
+ *
+ *   number — 숫자의 시작점이 고정되고 마침표가 뒤로 밀린다(Logseq). CSS `text-align: left`
+ *   period — 마침표가 고정되고 숫자가 앞으로 자란다. `text-align: right`
+ *
+ * 기본은 `number` 다. 다이얼이 생기기 전 화면(`period`)과 다른 쪽을 기본으로 고른
+ * 것이고, 그 근거는 기하에 있다 — 마침표 기준에서 마커가 접기 화살표에서 떨어진 거리는
+ * 그 항목의 **자릿수를 따라가서**, 한 리스트 안의 `1.` 과 `10.` 이 서로 다른 자리에서
+ * 시작한다(실측: 16px 에서 21.43px 대 11.34px, 0.63em 차이). 숫자 기준은 시작점을
+ * 고정해 그 차이를 없앤다. ‼️ 기본값을 바꾸는 것은 기존 사용자의 화면을 바꾸는 것이라
+ * 릴리스 노트에 적을 변경이고, 되돌리기(backfill)는 하지 않는다 — 모두를 옛 모양에
+ * 고정시키면 이 선택이 무효가 된다.
+ * ‼️ "닿는다" 고는 쓰지 말 것 — 거터 공식이 가장 넓은 마커에도 여유를 남기므로 실제로
+ * 닿지는 않고, 안내선은 마커에서 1.3em 넘게 떨어져 있다(`lists.css` 의 `left: -1em` 을
+ * 전사해 계산).
+ */
+const ORDERED_MARKER_ALIGN_OPTIONS = ["number", "period"] as const;
 
 /**
  * §367 강조 계열의 시드 네 키. 다이얼이 **함께** 돌리므로 팔레트가 갖고 있던
@@ -322,6 +349,43 @@ export const DIALS = [
         ? { "--editor-paragraph-spacing": `${value}em` }
         : {},
     vars: ["--editor-paragraph-spacing"],
+  },
+  {
+    // `lists.css` 의 `var(--editor-guide-strength, 22%)` 와 같은 수·같은 단위.
+    channel: "layout",
+    defaultValue: 22,
+    id: "editorListGuideStrength",
+    kind: "number",
+    parse: inRange(GUIDE_STRENGTH_RANGE),
+    range: GUIDE_STRENGTH_RANGE,
+    // ‼️ 0 에서 빈 맵을 돌려주지 **않는다**. `editorMaxWidth` 는 0 을 "무제한" 으로
+    // 읽어 비우지만, 여기서 0 은 "배경색 100%" 즉 사용자가 고른 끄기다 — 비우면
+    // fallback 22% 가 지배해서 끄기가 켜기가 된다.
+    //
+    // 끄기를 불투명도로 만들지 않은 것도 같은 자리의 결정이다. `lists.css` 가 알파
+    // 대신 `color-mix` 를 쓰는 이유를 그 파일이 적어 두었다 — 레일이 불투명해야
+    // 선택 영역이 그 위를 지나가도 물들지 않는다. 0% 혼합은 배경색과 같은 색이면서
+    // 여전히 불투명하므로 그 성질을 지키면서 보이지 않게 한다.
+    toVars: (value: DialValue): Record<string, string> =>
+      typeof value === "number"
+        ? { "--editor-guide-strength": `${value}%` }
+        : {},
+    vars: ["--editor-guide-strength"],
+  },
+  {
+    // `lists.css` 의 `var(--editor-ordered-marker-align, left)` 와 같은 쪽.
+    // 둘의 일치는 `styles/__tests__/list-styling.test.ts` 가 두 파일을 함께 읽어
+    // 고정한다 — 기본 출처의 다이얼은 변수를 쓰지 않으므로(`apply.ts`), 갈리면
+    // 사용자가 select 를 처음 건드리는 순간 화면이 튄다.
+    channel: "layout",
+    defaultValue: "number",
+    id: "editorOrderedMarkerAlign",
+    kind: "enum",
+    options: ORDERED_MARKER_ALIGN_OPTIONS,
+    parse: oneOf(ORDERED_MARKER_ALIGN_OPTIONS),
+    toVars: (value: DialValue): Record<string, string> =>
+      value === "period" ? { "--editor-ordered-marker-align": "right" } : {},
+    vars: ["--editor-ordered-marker-align"],
   },
   {
     channel: "layout",

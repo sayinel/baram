@@ -381,14 +381,201 @@ mod tests {
     use regex::Regex;
     use std::sync::LazyLock;
 
+    /// issue 669 — the parity corpus recorder. Every document in the `refs`
+    /// assertion corpus reaches `Literal` through that helper, so this one
+    /// place sees all of it — including the documents two call sites build at
+    /// run time, which no scan of this source could find. Tests that call
+    /// `Literal::of` or `Literal::analyse` directly are outside it; they
+    /// measure the analysis, not the classification this corpus compares.
+    ///
+    /// Off unless the `parity-dump` feature is on, so an ordinary
+    /// `cargo test` compiles none of it. Turning the feature on is still not
+    /// enough: the run also has to name a file in `BARAM_PARITY_DUMP`.
+    /// `scripts/literal-parity.sh` is the one command that does both.
+    ///
+    /// Records are appended as the cases run, in whatever order the harness
+    /// runs them: the mutex below keeps each line whole and the generator
+    /// sorts by `(test, ordinal)`, so the dump needs no `--test-threads=1`
+    /// to reproduce. Measured — a parallel dump rebuilds the committed
+    /// fixture byte for byte.
+    ///
+    /// ‼️ Fails closed. The test name comes from the thread libtest names
+    /// after the test, which is not a promised interface; if it is missing or
+    /// is `main`, the run stops rather than filing records under a name that
+    /// would merge unrelated cases.
+    #[cfg(all(test, feature = "parity-dump"))]
+    mod parity_dump {
+        use super::{LazyLock, Regex};
+        use sha2::{Digest, Sha256};
+        use std::collections::HashMap;
+        use std::io::Write;
+        use std::sync::Mutex;
+
+        /// How many documents each test has recorded so far. The ordinal is
+        /// the case's identity within its test, so several `refs` calls in
+        /// one test stay apart and stay stable across runs.
+        static ORDINALS: LazyLock<Mutex<HashMap<String, usize>>> =
+            LazyLock::new(|| Mutex::new(HashMap::new()));
+
+        /// The marker as production's `BLOCK_REF_RE` spells it — a display of
+        /// at least one character, line breaks included, because that regex is
+        /// `(?:\|([^)]+))?` and matches `((n#^o|a\nb))` (measured). What keeps
+        /// a line break out of an extracted reference is that `extract_links`
+        /// runs the regex per source line, not the regex itself.
+        ///
+        /// The `refs` helper above is wider by one shape: an empty display,
+        /// which production rejects. The assertion below is where that parts —
+        /// a case production could not see would otherwise be filed in a
+        /// corpus that claims to describe it.
+        static PRODUCTION_MARKER: LazyLock<Regex> =
+            LazyLock::new(|| Regex::new(r"\(\(n#\^o(?:\|[^)]+)?\)\)").unwrap());
+
+        pub(super) fn record(md: &str, literal_alone: &[bool]) {
+            let Some(path) = std::env::var_os("BARAM_PARITY_DUMP") else {
+                return;
+            };
+            let markers = PRODUCTION_MARKER.find_iter(md).count();
+            // A document with no marker proves nothing and would reach the
+            // fixture as a case with an empty expectation.
+            assert!(
+                markers > 0,
+                "parity-dump: no marker in {md:?} — a case with nothing to classify"
+            );
+            assert_eq!(
+                markers,
+                literal_alone.len(),
+                "parity-dump: `refs` saw {} marker(s) and production's grammar sees {} in {md:?} \
+                 — the corpus has grown a shape the parity fixture cannot describe",
+                literal_alone.len(),
+                markers
+            );
+            let test = std::thread::current()
+                .name()
+                .expect(
+                    "parity-dump: libtest did not name this thread; the recorder \
+                     cannot identify the case (run it through scripts/literal-parity.sh)",
+                )
+                .to_owned();
+            assert_ne!(
+                test, "main",
+                "parity-dump: the case ran on the main thread, so every record \
+                 would be filed under one name"
+            );
+            // ‼️ The lock is held across the write, not only across the
+            // ordinal. While it covered only the ordinal, appending from
+            // several test threads tore the lines apart — 267 of 284 were
+            // unparseable. Serialising the write costs nothing here: this
+            // compiles only under the dump feature.
+            let mut seen = ORDINALS.lock().unwrap();
+            let ordinal = {
+                let next = seen.entry(test.clone()).or_insert(0);
+                let ordinal = *next;
+                *next += 1;
+                ordinal
+            };
+            let line = serde_json::json!({
+                "test": test,
+                "ordinal": ordinal,
+                "sha256": format!("{:x}", Sha256::digest(md.as_bytes())),
+                "bytes": md.len(),
+                "markdown": md,
+                "markers": markers,
+                // What `Literal` alone said, which is what the assertion in
+                // this file compares against. The generator derives the index
+                // expectation from it and compares that with the oracle, so
+                // the historical measurement keeps its own meaning.
+                "literalAlone": literal_alone,
+            });
+            let mut file = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&path)
+                .expect("parity-dump: could not open BARAM_PARITY_DUMP for appending");
+            writeln!(file, "{line}").expect("parity-dump: could not append a record");
+            drop(seen);
+        }
+    }
+
     /// Every `((n#^o…))` reference in `md`, in order: is it editable (prose)?
     fn refs(md: &str) -> Vec<bool> {
         static REF: LazyLock<Regex> =
             LazyLock::new(|| Regex::new(r"\(\(n#\^o(?:\|[^)]*)?\)\)").unwrap());
         let literal = Literal::of(md);
-        REF.find_iter(md)
+        let editable: Vec<bool> = REF
+            .find_iter(md)
             .map(|m| !literal.overlaps(m.range()))
-            .collect()
+            .collect();
+        #[cfg(all(test, feature = "parity-dump"))]
+        parity_dump::record(md, &editable);
+        editable
+    }
+
+    /// issue 669 — the parity corpus. The emulation in this module is not an
+    /// implementation of a spec: it re-implements what the editor's remark
+    /// stack reads, measured rule by rule (issue 620). What kept the two
+    /// sides together was 58 curated rename fixtures; the corpus this module
+    /// exercises was never re-derived, so a grammar change or a wrong rule
+    /// outside those 58 documents failed nothing.
+    ///
+    /// The expectations here were measured by parsing each document with the
+    /// editor's own reader (`scripts/build-literal-parity.ts`), never by
+    /// copying what this side already believed. Generating them also compared
+    /// them with what `Literal` answers today, and the dump that produced
+    /// them only completes if the `refs` assertions above accept that answer
+    /// — so the two agreed at the moment the fixture was written. The vitest reader asserts the
+    /// same numbers against the frontend's classifier, so a remark change
+    /// turns that side red on the exact document; this test turns red when
+    /// the emulation drifts from what was measured.
+    ///
+    /// What fails this (measured, each mutation applied alone): dropping the
+    /// `overlaps` half of the predicate reddens the first fenced case;
+    /// dropping the `m.start() >= body_start` half reddens a front matter
+    /// case — front matter is the one category where the two sides classify
+    /// the same bytes differently on purpose. ‼️ Removing `walk.prose.push(0..
+    /// body_start)` from `Literal` does NOT redden this — the front-matter
+    /// half of the predicate covers those markers either way. That line is
+    /// pinned by the `refs()` assertions above, which ask `Literal` alone.
+    #[test]
+    fn the_literal_parity_corpus_holds() {
+        #[derive(serde::Deserialize)]
+        struct Fixture {
+            cases: Vec<Case>,
+        }
+        #[derive(serde::Deserialize)]
+        struct Case {
+            test: String,
+            ordinal: usize,
+            markdown: String,
+            editable: Vec<bool>,
+            why: Vec<String>,
+        }
+        static MARKER: LazyLock<Regex> =
+            LazyLock::new(|| Regex::new(r"\(\(n#\^o(?:\|[^)]+)?\)\)").unwrap());
+
+        let fixture: Fixture =
+            serde_json::from_str(include_str!("../fixtures/literal-parity.json")).unwrap();
+        // ‼️ The baseline is the measured corpus, not a round number: a floor
+        // of 200 let a third of the cases be deleted and still pass. Removing
+        // a case is a deliberate edit and belongs in review, so lowering this
+        // is the edit that says so.
+        assert!(
+            fixture.cases.len() >= 283,
+            "the parity corpus shrank to {} cases",
+            fixture.cases.len()
+        );
+        for case in &fixture.cases {
+            let literal = Literal::of(&case.markdown);
+            let body_start = front_matter_end(&case.markdown);
+            let editable: Vec<bool> = MARKER
+                .find_iter(&case.markdown)
+                .map(|m| !literal.overlaps(m.range()) && m.start() >= body_start)
+                .collect();
+            assert_eq!(
+                editable, case.editable,
+                "{}#{} {:?}\n  the editor's parser read these as {:?}",
+                case.test, case.ordinal, case.markdown, case.why
+            );
+        }
     }
 
     /// issue 663 — a note broken with bare carriage returns (classic Mac OS)

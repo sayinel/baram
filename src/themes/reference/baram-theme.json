@@ -20,6 +20,7 @@
     "editorLetterSpacing": -0.01,
     "editorLineBreak": "keepAll",
     "editorMaxWidth": 720,
+    "editorOrderedMarkerAlign": "period",
     "editorPadding": 5,
     "editorParagraphSpacing": 1
   }

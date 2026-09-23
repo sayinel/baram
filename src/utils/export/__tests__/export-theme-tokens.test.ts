@@ -11,17 +11,17 @@ import { themeTokensBlock } from "../export-theme-tokens";
 const tokyo = BUILT_IN_THEMES.find((t) => t.id === "tokyo-night");
 
 describe("themeTokensBlock", () => {
-  it("팔레트의 24키와 파생 9+29키를 :root 블록으로 낸다", () => {
+  it("팔레트의 25키와 파생 9+29키를 :root 블록으로 낸다", () => {
     const css = themeTokensBlock(tokyo, "dark");
     expect(css).toContain("--color-bg-default: #1a1b26");
     // derivedVars 가 따라온다는 것이 스펙 §11 의 `tokens` 정의다.
     // ‼️ `/--color-accent-[a-z-]+:/` 만으로는 이 mutation을 못 잡는다 — tokyo-night의
     // 원본 팔레트에도 `--color-accent-default`/`-hover`/`-subtle`/`-ai` 가 있어 그
     // 정규식이 derivedVars 없이도 매치한다(실측: 뺐더니 초록으로 남았다). 그래서
-    // derivedVars 전용 키(`--color-accent-solid`, 원본 24키에는 없다)와 총 키 개수
-    // (24+9+29=62)로 구분한다 — 하나는 derivedVars가 빠지면, 하나는 일부만 빠지면 잡는다.
+    // derivedVars 전용 키(`--color-accent-solid`, 원본 팔레트에는 없다)와 총 키 개수
+    // (25+9+29=63)로 구분한다 — 하나는 derivedVars가 빠지면, 하나는 일부만 빠지면 잡는다.
     expect(css).toContain("--color-accent-solid:");
-    expect([...css.matchAll(/^ {2}--color-[a-z-]+: /gmu)]).toHaveLength(62);
+    expect([...css.matchAll(/^ {2}--color-[a-z-]+: /gmu)]).toHaveLength(63);
     expect(css.startsWith(":root")).toBe(true);
   });
 
@@ -156,7 +156,7 @@ describe("themeTokensBlock — an untrusted colour object (final review MEDIUM-3
   });
 
   // §54 accentSolidFill(colors, base) — dark base에서는 accent 원본을
-  // 검증 없이 그대로 돌려준다(color-contrast.ts). 그래서 원본 24키만 걸러도
+  // 검증 없이 그대로 돌려준다(color-contrast.ts). 그래서 원본 팔레트 키만 걸러도
   // 파생 9키 쪽으로 악성 값이 새어 나갈 수 있다 — derivedVars 의 결과물도
   // 같은 정규식으로 다시 걸러야 하는 이유가 바로 이 통로다.
   it("dark accentSolidFill의 원본 통과를 통해 악성 값이 파생 --color-accent-solid로 샐 수 없다", () => {

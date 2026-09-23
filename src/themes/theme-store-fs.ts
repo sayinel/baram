@@ -52,7 +52,8 @@ import { verifyStoredThemeCss } from "../utils/theme-css/verify";
 export const MAX_THEME_CSS_BYTES = 512 * 1024;
 
 /**
- * 한 모드의 `tokens.json` 상한. 24개 키의 hex 색 지도이므로 64 KiB 면 세 자릿수 여유다 —
+ * 한 모드의 `tokens.json` 상한. `THEME_COLOR_KEYS` 개수만큼의 hex 색 지도이므로 64 KiB 면
+ * 세 자릿수 여유다 —
  * 매니페스트에 거는 것과 같은 값이고, 같은 이유다(그보다 크면 테마가 아니다).
  */
 export const MAX_THEME_TOKENS_BYTES = 64 * 1024;

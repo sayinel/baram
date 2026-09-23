@@ -662,6 +662,47 @@ export function useSettingsRegistry(): SearchableSetting[] {
       settings.appearanceOverrides,
       settings.setDial,
     ),
+    // §369 — 리스트 들여쓰기 가이드의 농도. 색조는 여기 없다: 그쪽은 테마가
+    // 고르는 `--color-editor-guide-tint` 이고 테마 편집기의 색 피커가 맡는다
+    // (`THEME_COLOR_KEYS`). 두 축이 서로 다른 화면에 있는 것이 설계다.
+    ...dialSliderSetting(
+      {
+        id: "editorListGuideStrength",
+        label: "settings.editor.editorListGuideStrength",
+        description: "settings.editor.editorListGuideStrength.desc",
+        category: "editor",
+        section: "settings.editor.display",
+      },
+      "editorListGuideStrength",
+      themeDials,
+      settings.appearanceOverrides,
+      settings.setDial,
+    ),
+    // §5.1 — 순서 있는 마커의 정렬. editorEmphasisStyle 과 같은 enum 다이얼이고,
+    // 행(EditorTab.tsx)이 가이드 농도 바로 다음에 있는 것과 같은 순서로 둔다.
+    {
+      id: "editorOrderedMarkerAlign",
+      label: "settings.editor.editorOrderedMarkerAlign",
+      description: "settings.editor.editorOrderedMarkerAlign.desc",
+      category: "editor",
+      section: "settings.editor.display",
+      control: makeSelectControl(
+        () =>
+          resolveDials(themeDials, settings.appearanceOverrides)
+            .editorOrderedMarkerAlign.value,
+        (v) => settings.setDial("editorOrderedMarkerAlign", v),
+        [
+          {
+            value: "number",
+            label: "settings.editor.editorOrderedMarkerAlign.number",
+          },
+          {
+            value: "period",
+            label: "settings.editor.editorOrderedMarkerAlign.period",
+          },
+        ],
+      ),
+    },
     {
       id: "virtualizeLargeDocs",
       label: "settings.editor.virtualizeLargeDocs",

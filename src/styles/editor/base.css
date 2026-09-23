@@ -204,12 +204,17 @@
    at all any more: it is computed from the font's digit width, so nothing here could
    restate it correctly even in principle.
 
-   Because the offset is measured from the list's LEFT EDGE, the arrow keeps a constant
-   0.81em clearance from a nested list's indent guide no matter how wide the gutter gets.
-   Its clearance from the MARKER is the thing the gutter has to pay for, which is why the
-   floor lives next to the gutter definition. (The -1.8em that an earlier version used for
-   bullet lists was measured in WebKit across zoom 1.0–2.5; the derivation is unchanged but
-   the constant is not, so that measurement no longer covers today's value literally.)
+   Because the offset is measured from the list's LEFT EDGE, the arrow's distance from a
+   nested list's indent guide does not move when the gutter widens — the guide sits at -1em
+   from that same edge (editor/lists.css), so the painted triangle stays 1.3125em − offset
+   away from it: 1.01em in a bullet list and 0.56em in an ordered one, at any gutter width.
+   The transparent box reaches closer (1em − offset, so 0.25em for an ordered list) and is
+   allowed to, because nothing of it paints. Its distance from the MARKER is the other side
+   of the same offset and is the gap a reader actually sees; both offsets were raised in
+   §5.1 for that reason, and lists.css derives the gap next to where they are declared.
+   (The -1.8em that an earlier version used for bullet lists was measured in WebKit across
+   zoom 1.0–2.5; the derivation is unchanged but the constant is not, so that measurement
+   no longer covers today's value literally.)
 
    The arrow sits just outside the list's left edge; `contain: layout` (not `paint`) on
    top-level lists in editor/tables.css is what keeps that overflow visible. No

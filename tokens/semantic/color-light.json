@@ -118,6 +118,10 @@
         "$value": "{color.text.primary}",
         "$description": "Editor cursor (alias of color.text.primary, was --color-editor-cursor: #1a1a1a)"
       },
+      "guideTint": {
+        "$value": "{color.editor.text}",
+        "$description": "List indent guide tint (§369) — the colour `lists.css` mixes toward `--color-editor-bg`; the mix ratio is the user's `editorListGuideStrength` dial, so a theme picking a tint leaves that choice intact. Aliases editor text, which is what the guide was hardcoded to mix from before it became theme-settable"
+      },
       "findMatch": {
         "$value": "rgba(251, 191, 36, 0.45)",
         "$description": "PDF find match highlight (§272) — translucent so the canvas glyph underneath stays legible; no exact primitive match (alpha over yellow.400)"

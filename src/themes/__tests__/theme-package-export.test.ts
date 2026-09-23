@@ -142,7 +142,7 @@ describe("themePackageEntries", () => {
     // ‼️ 0091 fix round 1 리뷰 뮤테이션 G: 이 페이로드를 "{}"로 바꿔도 이 파일의 다른
     // 테스트는 전부 초록이었다 — baram-theme.json의 모양만 보고 tokens.json의 내용은
     // 아무것도 보지 않았기 때문이다. 설치측 readModeColors(theme-install.ts)가 거는
-    // 규칙과 같은 규칙(24키 전부 존재 + THEME_COLOR_VALUE_RE)을 여기서 고정한다 — 하나만
+    // 규칙과 같은 규칙(THEME_COLOR_KEYS 전부 존재 + THEME_COLOR_VALUE_RE)을 여기서 고정한다 — 하나만
     // 빠지거나 형식이 틀려도 readModeColors는 그 모드 전체를 조용히 undefined로
     // 돌린다(설치는 성공하지만 색이 하나도 적용되지 않는다).
     const entries = themePackageEntries(pairedTheme(), META);

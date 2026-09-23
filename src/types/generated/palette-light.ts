@@ -22,6 +22,7 @@ export const DEFAULT_LIGHT_PALETTE: ThemeColors = {
   "--color-editor-text": "#1a1a1a",
   "--color-editor-selection": "#bfdbfe",
   "--color-editor-cursor": "#1a1a1a",
+  "--color-editor-guide-tint": "#1a1a1a",
   "--color-status-danger": "#ef4444",
   "--color-status-warning": "#f59e0b",
   "--color-status-success": "#10b981",
