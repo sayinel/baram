@@ -494,6 +494,13 @@ export function buildCommands(deps: CommandDeps): CommandItem[] {
       action: () => useWorkspaceStore.getState().applyPreset("skills"),
     },
     {
+      id: "workspace:focus",
+      label: "Focus Perspective",
+      category: "Perspective",
+      shortcut: "⌥⌘5",
+      action: () => useWorkspaceStore.getState().applyPreset("focus"),
+    },
+    {
       id: "journal:open-today",
       label: "Open Today's Journal",
       category: "Journal",

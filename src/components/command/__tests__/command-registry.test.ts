@@ -42,13 +42,14 @@ describe("command registry — palette text is English", () => {
 });
 
 describe("command registry — perspectives", () => {
-  it("registers all four perspectives the app ships", () => {
+  it("registers all five perspectives the app ships", () => {
     const perspectives = buildCommands(DEPS)
       .filter((c) => c.category === "Perspective")
       .map((c) => c.label)
       .sort();
 
     expect(perspectives).toEqual([
+      "Focus Perspective",
       "Journal Perspective",
       "Skills Perspective",
       "Writing Perspective",
@@ -68,6 +69,7 @@ describe("command registry — perspectives", () => {
 // question and not one this test should decide.
 describe("command registry — a perspective's shortcut is the one bound to it", () => {
   const PALETTE_TO_BINDING: Record<string, string> = {
+    "workspace:focus": "workspace.focus",
     "workspace:journal": "workspace.journal",
     "workspace:skills": "workspace.skills",
     "workspace:writing": "workspace.writing",

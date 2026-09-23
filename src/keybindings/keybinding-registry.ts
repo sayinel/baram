@@ -203,6 +203,39 @@ export const KEYBINDING_REGISTRY: KeybindingEntry[] = [
     defaultKey: "Mod+D",
     customizable: true,
   },
+  // §370 — `Mod+Shift+*`는 남은 자리가 없다(전 카테고리 + menu.rs를 합치면 26글자
+  // 전부 쓰였거나 예약돼 있다 — `TASK_INPUT_COMMAND` 주석 참조). 이 셋을 넣기 전
+  // `Mod+Alt+*`는 `Mod+Alt+1..4`·`Mod+Alt+C`·`Mod+Alt+T`뿐이라 A/S/B가 비어
+  // 있었다(레지스트리 전수 + `menu.rs`의 `Alt+CmdOrCtrl+*`/`CmdOrCtrl+Alt+*` 확인,
+  // 09c1603d 시점). 이 항목들이 들어온 뒤로는 A/S/B도 채워졌으니 다음 사람은 이
+  // 파일의 `Mod+Alt` 항목을 다시 grep해서 확인할 것 — 아래 `TASK_INPUT_COMMAND`
+  // 주석도 참고.
+  //
+  // ‼️ Windows/Linux에서 `Mod`는 `Ctrl`이라 `Mod+Alt`는 물리적으로 `Ctrl+Alt` =
+  // AltGr이다. 폴란드어 등 일부 레이아웃은 AltGr+A/S가 ą/ś 같은 문자를 낸다 — 이
+  // 세 단축키(그리고 기존 `Mod+Alt+C`/`Mod+Alt+T`)는 그 레이아웃의 평범한 타이핑과
+  // 겹친다. 셋 다 customizable이라 리매핑은 가능하다.
+  {
+    id: "view.toggleActivityBar",
+    label: "keybindings.view.toggleActivityBar",
+    category: "view",
+    defaultKey: "Mod+Alt+A",
+    customizable: true,
+  },
+  {
+    id: "view.toggleStatusBar",
+    label: "keybindings.view.toggleStatusBar",
+    category: "view",
+    defaultKey: "Mod+Alt+S",
+    customizable: true,
+  },
+  {
+    id: "view.toggleTabBar",
+    label: "keybindings.view.toggleTabBar",
+    category: "view",
+    defaultKey: "Mod+Alt+B",
+    customizable: true,
+  },
 
   // ── search ────────────────────────────────────────────────────────────────
   {
@@ -288,6 +321,13 @@ export const KEYBINDING_REGISTRY: KeybindingEntry[] = [
     defaultKey: "Mod+Alt+4",
     customizable: true,
   },
+  {
+    id: "workspace.focus",
+    label: "keybindings.workspace.focus",
+    category: "workspace",
+    defaultKey: "Mod+Alt+5",
+    customizable: true,
+  },
 
   // ── journal ───────────────────────────────────────────────────────────────
   {
@@ -307,8 +347,10 @@ export const KEYBINDING_REGISTRY: KeybindingEntry[] = [
     // `Mod+Shift+*`는 남은 자리가 없다. 레지스트리와 `src-tauri/src/menu.rs`를
     // 합치면 K·Q·Z만 비는데, 바로 아래 `zettelkasten.newNote`의 주석대로 그 셋은
     // 전역 런처 충돌(K) 또는 시스템 예약(Q=macOS 로그아웃, Z=실행 취소)이다.
-    // 그래서 거의 비어 있는 `Mod+Alt` 네임스페이스를 쓴다 — 여기는 `Mod+Alt+C`와
-    // `Mod+Alt+1..4`뿐이라 T가 free이고, §307D가 의도한 T(=task) 니모닉도 지킨다.
+    // 그래서 `Mod+Alt` 네임스페이스를 쓴다 — 이 항목이 들어올 때는 `Mod+Alt+C`와
+    // `Mod+Alt+1..4`뿐이라 T가 free였고, §307D가 의도한 T(=task) 니모닉도 지켰다.
+    // ‼️ 지금은 더 이상 "거의 비어" 있지 않다 — §370의 세 토글이 A·S·B를 추가로
+    // 채워, 이 파일의 `Mod+Alt+*` 항목을 전수(grep)하면 A·B·C·S·T·1·2·3·4가 쓰인다.
     // 새 바인딩을 넣을 때는 `zettelkasten.promote`의 주석대로 **두 파일 모두**
     // 확인할 것. 레지스트리만 보면 menu.rs가 잡은 E·P를 놓친다.
     defaultKey: "Mod+Alt+T",

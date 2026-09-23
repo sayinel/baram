@@ -63,6 +63,31 @@ describe("레퍼런스 테마 초안", () => {
     expect(result.manifest.dials).toEqual(declared);
   });
 
+  // §370.3 "레퍼런스 테마는 포커스 모드를 기본으로 제안한다". 위 다이얼 케이스와 같은
+  // 모양인 이유도 같다 — `chrome` 검증은 모르는 키를 **조용히 버리는** 태도라
+  // (`theme-manifest.ts` 의 `validateChrome`), 표면 이름에 오타가 나면 매니페스트는
+  // 그대로 유효하고 제안만 사라진다. 그 무증상을 관측하는 것이 이 케이스다.
+  it("선언한 chrome 이 하나도 버려지지 않는다", () => {
+    const declared = (raw as { chrome: Record<string, unknown> }).chrome;
+    const result = validateThemeManifest(raw);
+    expect(result.valid).toBe(true);
+    if (!result.valid) return;
+    expect(result.manifest.chrome).toEqual(declared);
+  });
+
+  // 비공허성: 위 케이스는 레퍼런스가 `chrome` 을 빈 객체로 싣거나 셋을 `true` 로
+  // 실어도 통과한다. 포커스를 제안한다는 것은 셋이 모두 `false` 라는 뜻이다.
+  it("세 표면을 모두 감출 것을 제안한다 (포커스)", () => {
+    const result = validateThemeManifest(raw);
+    expect(result.valid).toBe(true);
+    if (!result.valid) return;
+    expect(result.manifest.chrome).toEqual({
+      activityBar: false,
+      statusBar: false,
+      tabBar: false,
+    });
+  });
+
   it("행사하지 않는 다이얼이 명시적으로 열거돼 있다 (검증 6)", () => {
     const declared = Object.keys(
       (raw as { dials: Record<string, unknown> }).dials,

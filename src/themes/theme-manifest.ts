@@ -80,6 +80,22 @@ export const UNSAFE_TEXT_CHARS_RE =
  */
 const MAX_MANIFEST_JSON_CHARS = 64 * 1024;
 
+/**
+ * 매니페스트가 아는 크롬 표면 — `ThemeManifest["chrome"]` 의 키가 여기서 파생된다.
+ *
+ * ‼️ 이 목록은 `CHROME_SURFACES`(`stores/ui/ui.ts`)의 **두 번째 사본**이다. 공유하지
+ * 않는 이유는 방향이다: 이 파일은 스토어를 import 하지 않는 레이어이고, `src/themes/`
+ * 전체가 오늘 그 성질을 갖는다. 대신 두 목록이 어긋나면
+ * `__tests__/theme-manifest.test.ts` 의 parity 케이스가 **런타임으로** 실패한다 —
+ * 컴파일러가 못 보는 자리라 테스트가 그 역할을 맡는다.
+ */
+const CHROME_SURFACE_KEYS = ["activityBar", "statusBar", "tabBar"] as const;
+
+/** 위 목록의 원소 — 목록을 타입으로 두 번 적지 않으려고 파생한다. */
+type ChromeManifestSurface = (typeof CHROME_SURFACE_KEYS)[number];
+
+/** 거부된 필드 하나와 그 이유 — UI 가 제작자에게 그대로 보여 준다. 이 검증기는
+ *  첫 건에서 멈추지 않고 이것을 모아 돌려준다(머리주석). */
 export interface ManifestValidationError {
   field: string;
   message: string;
@@ -87,6 +103,20 @@ export interface ManifestValidationError {
 
 export interface ThemeManifest {
   author: string;
+  /**
+   * §370.3 테마가 **제안하는** 초기 크롬 가시성(표시줄 셋). `dials` 와 같은 뜻의
+   * 제안이고 강제가 아니지만, 그 규칙은 다른 모양으로 구현된다 — 다이얼은 층 병합
+   * (§366)이 사용자 층을 이기게 하고, 크롬은 사용자가 이번 세션에 **손댄** 표면을
+   * 건너뛴다(`stores/ui/ui.ts` 의 `chromeTouched`).
+   *
+   * 키는 `…Visible` 접미사가 없는 짧은 이름이라 상태 필드 이름과 다르다 — 둘을 잇는
+   * 표는 `CHROME_SURFACE_FIELD`(`stores/ui/ui.ts`) 하나다.
+   *
+   * ‼️ `dials` 와 같은 함정이 여기도 있다: 설치 시점에 앱이 모르는 표면 이름은
+   * **버려지고, 앱을 올려도 되살아나지 않는다**(`rebuildManifest` 의 결과가 그대로
+   * `InstalledTheme.manifest` 로 저장된다). 되살리려면 재설치다.
+   */
+  chrome?: Readonly<Partial<Record<ChromeManifestSurface, boolean>>>;
   description: string;
   /**
    * §371.1 테마가 **제안하는** 다이얼 값. 강제가 아니다 — 사용자 층이 언제나 이긴다
@@ -223,6 +253,7 @@ export function validateThemeManifest(
 
   errors.push(...validateModes(obj.modes));
   errors.push(...validateDials(obj.dials));
+  errors.push(...validateChrome(obj.chrome));
 
   if (errors.length > 0) {
     return { valid: false, errors };
@@ -281,8 +312,27 @@ function rebuildManifest(obj: Record<string, unknown>): ThemeManifest {
     }
   }
 
+  // ‼️ `DIALS` 순회와 같은 이유로 **아는 표면**을 돈다 — 입력을 돌면 낯선 키가
+  // 저장분에 실린다. 값은 boolean 이어야 하고, 아닌 것은 그 키가 없는 것과 같다.
+  const chrome: Partial<Record<ChromeManifestSurface, boolean>> = {};
+  const declaredChrome = obj.chrome;
+  if (
+    typeof declaredChrome === "object" &&
+    declaredChrome !== null &&
+    !Array.isArray(declaredChrome)
+  ) {
+    const source = declaredChrome as Record<string, unknown>;
+    for (const surface of CHROME_SURFACE_KEYS) {
+      const value = source[surface];
+      if (typeof value === "boolean") chrome[surface] = value;
+    }
+  }
+
   return {
     author: obj.author as string,
+    // `dials` 와 같다 — 빈 객체는 아예 싣지 않는다. 그래야 JSON 왕복이 동일하고,
+    // "제안하지 않는 테마" 와 "빈 제안을 하는 테마" 가 같은 모양이 된다.
+    ...(Object.keys(chrome).length > 0 ? { chrome } : {}),
     description: obj.description as string,
     ...(Object.keys(dials).length > 0 ? { dials } : {}),
     engines: { baram: (obj.engines as { baram: string }).baram },
@@ -313,6 +363,25 @@ function validateTextField(
       message: `${field} may not contain control or bidi-override characters`,
     });
   }
+}
+
+/**
+ * `chrome` 은 **선택**이다. `validateDials` 와 같은 태도다 — 있으면 객체여야 하고,
+ * 내용은 여기서 거부하지 않는다. 모르는 표면 이름과 boolean 이 아닌 값은
+ * `rebuildManifest` 가 **조용히 버린다.**
+ *
+ * 버리기인 이유도 같다(아래 `validateDials` 주석): 보안 경계가 아니라 호환성 표면이고,
+ * 값이 화면에 닿는 경로는 `CHROME_SURFACES` 화이트리스트 순회 하나뿐이라
+ * (`stores/ui/ui.ts` 의 `proposeChromeVisibility`) 버려진 값은 아무 데도 닿지 않는다.
+ * 대신 오타가 무증상이 되므로, 레퍼런스 테마의 선언은
+ * `__tests__/reference-theme.test.ts` 가 "하나도 버려지지 않는다" 로 고정한다.
+ */
+function validateChrome(value: unknown): ManifestValidationError[] {
+  if (value === undefined) return [];
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return [{ field: "chrome", message: "chrome must be an object" }];
+  }
+  return [];
 }
 
 /**

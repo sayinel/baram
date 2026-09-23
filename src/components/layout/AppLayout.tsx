@@ -9,6 +9,7 @@ import { useFeatureFlags } from "../../stores/settings/features";
 import { isRightPanelUsable } from "../../stores/ui/panel-feature";
 import { useUIStore } from "../../stores/ui/ui";
 import { ActivityBar } from "./ActivityBar";
+import { ChromeReveal } from "./chrome-reveal";
 import { ContextTabBar } from "./ContextTabBar";
 import { Sidebar } from "./Sidebar";
 import { Splitter } from "./Splitter";
@@ -46,6 +47,7 @@ const MAX_RIGHT_PANEL = 500;
 
 export function AppLayout({ children, statusBar }: AppLayoutProps) {
   const {
+    activityBarVisible,
     sidebarOpen,
     sidebarWidth,
     setSidebarWidth,
@@ -55,6 +57,7 @@ export function AppLayout({ children, statusBar }: AppLayoutProps) {
     setRightPanelWidth,
   } = useUIStore(
     useShallow((s) => ({
+      activityBarVisible: s.activityBarVisible,
       sidebarOpen: s.sidebarOpen,
       sidebarWidth: s.sidebarWidth,
       setSidebarWidth: s.setSidebarWidth,
@@ -111,14 +114,19 @@ export function AppLayout({ children, statusBar }: AppLayoutProps) {
 
   return (
     <div className="app-layout">
+      {/* §370.2 복귀 경로 ② — 첫 자식으로 둬서 Tab이 다른 무엇보다 먼저 여기 닿는다
+          (position: fixed라 DOM 순서가 화면 위치를 바꾸지 않는다). `rootPath`가 없으면
+          렌더하지 않는다 — 이 버튼이 되살리는 세 표면(ActivityBar/StatusBar/TabBar) 전부
+          `!!rootPath`로도 게이트돼 있어, 폴더 없이 뜨면 되살릴 것이 없는 약속을 한다. */}
+      {!!rootPath && <ChromeReveal />}
       {/* §82 Context Tab Bar — hidden only when NO vault/folder context is open.
           It stays up for a single one so the "+" that adds the next is reachable;
           `ContextTabBar` returns null on `visibleContexts.length === 0`. */}
       <ContextTabBar />
       {/* Body: sidebar + main + right panel */}
       <div className="app-layout-body">
-        {/* Activity Bar — hidden when no folder open */}
-        {!!rootPath && <ActivityBar />}
+        {/* Activity Bar — hidden when no folder open, or when §370 hides the surface */}
+        {!!rootPath && activityBarVisible && <ActivityBar />}
 
         {/* Left Sidebar */}
         {showSidebar && (

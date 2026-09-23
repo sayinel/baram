@@ -17,6 +17,7 @@ import { AVAILABLE_LOCALES, LOCALE_LABELS } from "../../i18n";
 import { useAIStore } from "../../stores/ai/ai";
 import { AI_PROVIDER_IDS, AI_PROVIDERS } from "../../stores/ai/providers";
 import { useSettingsStore } from "../../stores/settings/store";
+import { useUIStore } from "../../stores/ui/ui";
 import { TASK_SCAN_SCOPES } from "../../utils/tasks/task-scan-scope";
 
 export interface SearchableSetting {
@@ -165,6 +166,20 @@ export function useSettingsRegistry(): SearchableSetting[] {
   // 위 M-11 정정과 같은 규율로, 이 훅도 스토어를 좁게 읽는다(`activeThemeId` ·
   // `installedThemes` · 플러그인 스토어의 `revocations`).
   const themeDials = useThemeDials();
+  // §370 — the chrome-visibility toggles only need these six fields. A bare
+  // `useUIStore()` would rebuild this registry on every UI-store write, including
+  // ones this settings modal itself causes (e.g. `settingsOpen` while it is open) —
+  // the same M-11 shape the `ai` block above already guards against.
+  const ui = useUIStore(
+    useShallow((s) => ({
+      activityBarVisible: s.activityBarVisible,
+      statusBarVisible: s.statusBarVisible,
+      tabBarVisible: s.tabBarVisible,
+      toggleActivityBar: s.toggleActivityBar,
+      toggleStatusBar: s.toggleStatusBar,
+      toggleTabBar: s.toggleTabBar,
+    })),
+  );
 
   return [
     // ── General ──────────────────────────────────────────────────────────────
@@ -877,7 +892,54 @@ export function useSettingsRegistry(): SearchableSetting[] {
       section: "settings.ai.privacy",
       control: makeToggleControl(() => ai.privacyMode, ai.setPrivacyMode),
     },
-    // ── Activity Bar ─────────────────────────────────────────────────────────
+    // ── Activity Bar (화면 배치 축 — §365.4) ───────────────────────────────────
+    {
+      id: "activityBarVisible",
+      label: "settings.activitybar.chromeVisibility.activityBar",
+      description: "settings.activitybar.chromeVisibility.activityBar.desc",
+      category: "activitybar",
+      section: "settings.activitybar.chromeVisibility",
+      keywords: ["chrome", "show", "hide", "toolbar"],
+      // `toggleActivityBar` has no `(value)` form — it just flips. Every other
+      // toggle entry's setter genuinely respects the boolean it's handed, so an
+      // idempotency-respecting wrapper (no-op when already at `next`) keeps that
+      // contract here too, in case a future caller ever sets an explicit value
+      // instead of going through `ToggleSwitch`'s `onChange(!checked)`.
+      control: makeToggleControl(
+        () => ui.activityBarVisible,
+        (next) => {
+          if (next !== ui.activityBarVisible) ui.toggleActivityBar();
+        },
+      ),
+    },
+    {
+      id: "statusBarVisible",
+      label: "settings.activitybar.chromeVisibility.statusBar",
+      description: "settings.activitybar.chromeVisibility.statusBar.desc",
+      category: "activitybar",
+      section: "settings.activitybar.chromeVisibility",
+      keywords: ["chrome", "show", "hide", "bottom"],
+      control: makeToggleControl(
+        () => ui.statusBarVisible,
+        (next) => {
+          if (next !== ui.statusBarVisible) ui.toggleStatusBar();
+        },
+      ),
+    },
+    {
+      id: "tabBarVisible",
+      label: "settings.activitybar.chromeVisibility.tabBar",
+      description: "settings.activitybar.chromeVisibility.tabBar.desc",
+      category: "activitybar",
+      section: "settings.activitybar.chromeVisibility",
+      keywords: ["chrome", "show", "hide", "tabs"],
+      control: makeToggleControl(
+        () => ui.tabBarVisible,
+        (next) => {
+          if (next !== ui.tabBarVisible) ui.toggleTabBar();
+        },
+      ),
+    },
     {
       id: "activityBarConfig",
       label: "settings.tab.activitybar",

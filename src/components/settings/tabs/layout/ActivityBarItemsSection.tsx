@@ -1,0 +1,191 @@
+// §370 활동표시줄 항목 섹션 — 표시/숨기기 및 드래그 순서.
+//
+// ActivityBarTab.tsx 에서 나왔다(그 파일이 조립만 하도록, task-5-brief.md 부록-4).
+// 드래그 순서 상태(draggingId·dropIndicator·rowRefs·dragRef·dropRef·configRef)는
+// 한 덩어리로 응집해 있어 쪼개지 않는다.
+import { useCallback, useRef, useState } from "react";
+
+import type { ActivityBarItemConfig } from "../../../../stores/settings/store";
+
+import { useShallow } from "zustand/shallow";
+
+import { useTranslation } from "../../../../i18n/useTranslation";
+import { isActivityBarItemVisible } from "../../../../stores/settings/activity-bar-config";
+import { useFeatureFlags } from "../../../../stores/settings/features";
+import { useSettingsStore } from "../../../../stores/settings/store";
+import { SettingsSectionHeader, ToggleSwitch } from "../../settings-shared";
+
+export function ActivityBarItemsSection() {
+  const { activityBarConfig, setActivityBarConfig, resetActivityBarConfig } =
+    useSettingsStore(
+      useShallow((s) => ({
+        activityBarConfig: s.activityBarConfig,
+        setActivityBarConfig: s.setActivityBarConfig,
+        resetActivityBarConfig: s.resetActivityBarConfig,
+      })),
+    );
+  const { t } = useTranslation();
+
+  const [draggingId, setDraggingId] = useState<null | string>(null);
+  const [dropIndicator, setDropIndicator] = useState<null | {
+    id: string;
+    position: "after" | "before";
+  }>(null);
+  const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const dragRef = useRef<null | { id: string; section: string }>(null);
+  const dropRef = useRef<null | { id: string; position: "after" | "before" }>(
+    null,
+  );
+  const configRef = useRef(activityBarConfig);
+  configRef.current = activityBarConfig;
+
+  const featureFlags = useFeatureFlags();
+  // 기능이 꺼져 있으면 이 행의 visible 토글은 아무 효과가 없다 — 오늘 이미 태스크에서
+  // 그렇다. 행 자체를 숨긴다. activityBarConfig 는 그대로이므로 되켜면 돌아온다.
+  const topItems = activityBarConfig.filter(
+    (i) => i.section === "top" && isActivityBarItemVisible(i.id, featureFlags),
+  );
+  const bottomItems = activityBarConfig.filter(
+    (i) =>
+      i.section === "bottom" && isActivityBarItemVisible(i.id, featureFlags),
+  );
+
+  const toggleItem = (id: string) => {
+    setActivityBarConfig(
+      activityBarConfig.map((item) =>
+        item.id === id ? { ...item, visible: !item.visible } : item,
+      ),
+    );
+  };
+
+  const onPointerDown = useCallback(
+    (id: string, section: string, e: React.PointerEvent) => {
+      e.preventDefault();
+      dragRef.current = { id, section };
+      setDraggingId(id);
+
+      const onMove = (moveE: PointerEvent) => {
+        const state = dragRef.current;
+        if (!state) return;
+
+        let closestId: null | string = null;
+        let closestPos: "after" | "before" = "before";
+        let closestDist = Infinity;
+
+        for (const [rowId, el] of rowRefs.current.entries()) {
+          const rowItem = configRef.current.find((i) => i.id === rowId);
+          if (
+            !rowItem ||
+            rowItem.section !== state.section ||
+            rowId === state.id
+          )
+            continue;
+
+          const rect = el.getBoundingClientRect();
+          const midY = rect.top + rect.height / 2;
+          const dist = Math.abs(moveE.clientY - midY);
+
+          if (dist < closestDist) {
+            closestDist = dist;
+            closestId = rowId;
+            closestPos = moveE.clientY < midY ? "before" : "after";
+          }
+        }
+
+        dropRef.current = closestId
+          ? { id: closestId, position: closestPos }
+          : null;
+        setDropIndicator(dropRef.current);
+      };
+
+      const onUp = () => {
+        const state = dragRef.current;
+        const drop = dropRef.current;
+
+        if (state && drop && state.id !== drop.id) {
+          const config = [...configRef.current];
+          const fromIdx = config.findIndex((i) => i.id === state.id);
+          if (fromIdx !== -1) {
+            const [item] = config.splice(fromIdx, 1);
+            let toIdx = config.findIndex((i) => i.id === drop.id);
+            if (toIdx !== -1) {
+              if (drop.position === "after") toIdx += 1;
+              config.splice(toIdx, 0, item);
+              setActivityBarConfig(config);
+            }
+          }
+        }
+
+        dragRef.current = null;
+        dropRef.current = null;
+        setDraggingId(null);
+        setDropIndicator(null);
+        document.removeEventListener("pointermove", onMove);
+        document.removeEventListener("pointerup", onUp);
+      };
+
+      document.addEventListener("pointermove", onMove);
+      document.addEventListener("pointerup", onUp);
+    },
+    [setActivityBarConfig],
+  );
+
+  const setRowRef = useCallback((id: string, el: HTMLDivElement | null) => {
+    if (el) rowRefs.current.set(id, el);
+    else rowRefs.current.delete(id);
+  }, []);
+
+  const renderSection = (title: string, items: ActivityBarItemConfig[]) => (
+    <>
+      <SettingsSectionHeader title={title} />
+      {items.map((item) => (
+        <div
+          className={`settings-row activity-bar-config-row${
+            draggingId === item.id ? "activity-bar-dragging" : ""
+          }${
+            dropIndicator?.id === item.id
+              ? ` activity-bar-drop-${dropIndicator.position}`
+              : ""
+          }`}
+          key={item.id}
+          ref={(el) => setRowRef(item.id, el)}
+        >
+          <div className="activity-bar-config-left">
+            <div
+              className="activity-bar-config-drag-handle"
+              onPointerDown={(e) => onPointerDown(item.id, item.section, e)}
+            >
+              {"⠇"}
+            </div>
+            <span
+              className={`settings-row-label ${!item.visible ? "activity-bar-config-hidden" : ""}`}
+            >
+              {t(`settings.activitybar.item.${item.id}`)}
+            </span>
+          </div>
+          <div className="settings-row-control">
+            <ToggleSwitch
+              checked={item.visible}
+              onChange={() => toggleItem(item.id)}
+            />
+          </div>
+        </div>
+      ))}
+    </>
+  );
+
+  return (
+    <>
+      <div className="settings-row-description" style={{ marginBottom: 12 }}>
+        {t("settings.activitybar.desc")}
+      </div>
+      {renderSection(t("settings.activitybar.sidebarPanels"), topItems)}
+      {renderSection(t("settings.activitybar.rightPanels"), bottomItems)}
+      <div style={{ marginTop: 16 }}>
+        <button className="theme-action-btn" onClick={resetActivityBarConfig}>
+          {t("settings.activitybar.resetDefault")}
+        </button>
+      </div>
+    </>
+  );
+}

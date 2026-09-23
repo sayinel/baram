@@ -13,7 +13,7 @@ Available settings tabs, grouped by nav section:
 | ------------ | ---------------- | --------------------------------------------------------------------------------------------------- |
 | **General**  | **General**      | Startup behavior, auto-save, links, file snapshots, updates          |
 | **General**  | **Editor**       | Fonts, typing behavior, vim mode, editor width                      |
-| **General**  | **Appearance**   | Theme gallery, custom themes, layout presets                         |
+| **General**  | **Appearance**   | Theme gallery, custom themes                                         |
 | **General**  | **Markdown**     | Serialization rules                                                  |
 | **General**  | **Language**     | UI language                                                          |
 | **General**  | **Keybindings**  | Shortcut customization                                               |
@@ -21,7 +21,7 @@ Available settings tabs, grouped by nav section:
 | **Features** | **Zettel**       | Enable Zettel, its directory, startup action, home note              |
 | **Features** | **Tasks**        | Enable Tasks, tasks home, capture, agenda scope                      |
 | **Features** | **AI**           | Enable AI, provider, models, privacy, Ghost Text                     |
-| **System**   | **Activity Bar** | Which icons show, and in what order                                  |
+| **System**   | **Layout**       | Show/hide the activity bar, status bar, and tab bar; perspective presets; activity bar icon order |
 | **System**   | **Plugins**      | Install, enable, and configure plugins                               |
 | **System**   | **Vault**        | Initialize vaults, approved folders                                  |
 

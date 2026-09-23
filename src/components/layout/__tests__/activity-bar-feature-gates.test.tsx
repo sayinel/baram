@@ -53,8 +53,9 @@ describe("activity-bar item classification (§338)", () => {
 });
 
 describe("isActivityBarItemVisible (§338)", () => {
-  // 스토어 없이 순수 함수 자체를 고정한다 — ActivityBar.tsx와 ActivityBarTab.tsx가
-  // 각자 지역 클로저로 복제했던 로직이 이제 여기 하나뿐이라는 것의 증거.
+  // 스토어 없이 순수 함수 자체를 고정한다 — ActivityBar.tsx와
+  // ActivityBarItemsSection.tsx가 각자 지역 클로저로 복제했던 로직이 이제 여기
+  // 하나뿐이라는 것의 증거.
   const allOff = {
     ai: false,
     journal: false,

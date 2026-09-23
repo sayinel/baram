@@ -386,13 +386,16 @@ export function useMenuEventHandler({
           break;
         }
 
+        // --- Workspace menu handlers (§52) ---
+        case "workspace_focus":
+          useWorkspaceStore.getState().applyPreset("focus");
+          break;
         case "workspace_journal":
           useWorkspaceStore.getState().applyPreset("journal");
           break;
         case "workspace_skills":
           useWorkspaceStore.getState().applyPreset("skills");
           break;
-        // --- Workspace menu handlers (§52) ---
         case "workspace_writing":
           useWorkspaceStore.getState().applyPreset("writing");
           break;

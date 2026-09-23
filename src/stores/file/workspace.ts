@@ -31,10 +31,13 @@ import { useFileStore } from "./file";
 // --- Types ---
 
 export interface WorkspaceLayout {
+  activityBarVisible: boolean;
   rightPanelMode: RightPanelMode;
   rightPanelOpen: boolean;
   sidebarOpen: boolean;
   sidebarPanel: SidebarPanel;
+  statusBarVisible: boolean;
+  tabBarVisible: boolean;
 }
 
 export interface WorkspacePreset {
@@ -78,6 +81,10 @@ export const BUILTIN_PRESETS: BuiltinPreset[] = [
       sidebarPanel: "files",
       rightPanelOpen: false,
       rightPanelMode: "none",
+      // §370 오늘 이 넷은 크롬을 감추지 않는다 — 값이 곧 현재 동작이다.
+      activityBarVisible: true,
+      statusBarVisible: true,
+      tabBarVisible: true,
     },
   },
   {
@@ -90,11 +97,30 @@ export const BUILTIN_PRESETS: BuiltinPreset[] = [
     description: "Capture ideas fast and refine them into linked notes.",
     descKey: "settings.workspace.preset.zettelkasten.desc",
     builtIn: true,
-    layout: getSpace("zettelkasten")?.layout ?? {
-      sidebarOpen: true,
-      sidebarPanel: "files",
-      rightPanelOpen: false,
-      rightPanelMode: "none",
+    layout: {
+      // §370 `SpaceLayout`(spaces/types.ts) 은 이 셋을 모르므로 병합한다 —
+      // getSpace() 쪽이 옛 넷과 같은 이유로 오늘 크롬을 감추지 않는다.
+      ...(getSpace("zettelkasten")?.layout ?? {
+        sidebarOpen: true,
+        sidebarPanel: "files",
+        rightPanelOpen: false,
+        rightPanelMode: "none",
+      }),
+      // 아래 셋은 스프레드 뒤에 와서 늘 이긴다 — 오늘은 안전하다: `SpaceLayout`
+      // (spaces/types.ts:19-24)은 이 세 키를 선언하지 않으므로 스프레드가
+      // 채울 값이 없다. 코퍼스는 `SpaceDefinition` 타입의 객체 리터럴 전체 —
+      // 소스 파일 3개(production 2, test fixture 1)에 있다. 경계는
+      // "production 구현"으로 좁힌다: `journal-space.ts`·`zettelkasten-space.ts`
+      // 둘만 센다 — `spaces/__tests__/registry.test.ts`의 픽스처는
+      // production 코드 경로에 닿지 않으므로 제외한다. 그 둘의 layout을
+      // production에서 읽는 지점은 이 스프레드 한 곳뿐이다. (이 문단은 재현
+      // 가능한 검색 패턴을 그대로 인용하지 않는다 — 파일 안의 인용은 다시
+      // 실행하면 자기 자신도 세어 숫자를 흔든다, CLAUDE.md.) `SpaceLayout`이
+      // 이 셋을 갖게 되면 이 줄이 조용히 그 값을 덮어쓰므로, 그때 이 자리를
+      // 다시 볼 것.
+      activityBarVisible: true,
+      statusBarVisible: true,
+      tabBarVisible: true,
     },
   },
   {
@@ -109,6 +135,10 @@ export const BUILTIN_PRESETS: BuiltinPreset[] = [
       sidebarPanel: "calendar",
       rightPanelOpen: true,
       rightPanelMode: "memories",
+      // §370 오늘 이 넷은 크롬을 감추지 않는다 — 값이 곧 현재 동작이다.
+      activityBarVisible: true,
+      statusBarVisible: true,
+      tabBarVisible: true,
     },
   },
   {
@@ -123,6 +153,32 @@ export const BUILTIN_PRESETS: BuiltinPreset[] = [
       sidebarPanel: "files",
       rightPanelOpen: true,
       rightPanelMode: "properties",
+      // §370 오늘 이 넷은 크롬을 감추지 않는다 — 값이 곧 현재 동작이다.
+      activityBarVisible: true,
+      statusBarVisible: true,
+      tabBarVisible: true,
+    },
+  },
+  {
+    id: "focus",
+    name: "Focus",
+    nameKey: "menu.workspace.focus",
+    description:
+      "Hide the sidebar, right panel, activity bar, status bar, and file tab bar to focus on the editor alone.",
+    descKey: "settings.workspace.preset.focus.desc",
+    builtIn: true,
+    // §370.2 포커스 모드는 상태들의 프리셋이지 별도 모드 플래그가 아니다 —
+    // 다섯 표면을 전부 감추는 값 하나로 충분하다. `PRESET_FEATURE` 에는
+    // 넣지 않는다: 포커스는 어느 기능에도 속하지 않으므로, 넣으면 기능
+    // 하나를 끈 사용자가 포커스 모드를 잃는다(위 `PRESET_FEATURE` 주석 참조).
+    layout: {
+      activityBarVisible: false,
+      rightPanelMode: "none",
+      rightPanelOpen: false,
+      sidebarOpen: false,
+      sidebarPanel: "files",
+      statusBarVisible: false,
+      tabBarVisible: false,
     },
   },
 ];
@@ -152,7 +208,7 @@ export function presetDisplayDescription(
 
 /**
  * §338/I-8 어느 프리셋이 어느 기능에 속하는가. 기능이 꺼지면 이 프리셋은
- * StatusBar 드롭다운·AppearanceTab 목록에서 사라지고(`isPresetVisible`),
+ * StatusBar 드롭다운·workspace-presets.tsx 목록에서 사라지고(`isPresetVisible`),
  * `applyPreset`도 적용 시점에 한 번 더 막는다(렌더 필터를 우회해도 진입은
  * 막힌다) — 셋 다 이 맵 하나를 쓴다.
  *
@@ -171,7 +227,7 @@ export const PRESET_FEATURE: Readonly<Record<string, FeatureKey>> = {
  * 이 프리셋이 기능 게이트를 통과하는가. 기능에 속하지 않는 프리셋과 커스텀
  * 프리셋(둘 다 맵에 없음)은 늘 통과한다.
  *
- * 표를 읽는 유일한 함수 — `StatusBar.tsx`와 `AppearanceTab.tsx`가 각자 지역
+ * 표를 읽는 유일한 함수 — `StatusBar.tsx`와 `workspace-presets.tsx`가 각자 지역
  * 클로저로 이 로직을 복제하면 표류면이 생긴다(`ACTIVITY_BAR_ITEM_FEATURE`와
  * 같은 이유로 `isActivityBarItemVisible`을 공유 함수로 뒀다).
  */
@@ -187,7 +243,13 @@ export function isPresetVisible(
 
 interface WorkspaceState {
   activePresetId: null | string;
-  applyPreset: (id: string) => void;
+  /**
+   * §370 `opts.implicit` 는 사용자가 고르지 않은 전이(현재는
+   * `revertSpaceIfContextClosed` 하나)를 가리킨다 — 사이드바 적용이 그
+   * 구분으로 갈린다(§82, applyPreset 본문의 주석 참조). 생략하면 명시적
+   * 호출이다.
+   */
+  applyPreset: (id: string, opts?: { implicit?: boolean }) => void;
 
   customPresets: WorkspacePreset[];
   deleteCustomPreset: (id: string) => void;
@@ -208,15 +270,15 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       activePresetId: null,
       customPresets: [],
 
-      applyPreset: (id) => {
+      applyPreset: (id, opts) => {
         const preset = get().getPreset(id);
         if (!preset) return;
 
         // §338/I-8 One chokepoint for "does this preset need a feature on":
-        // PRESET_FEATURE also drives the StatusBar dropdown and AppearanceTab
-        // list filters (isPresetVisible below), so the id set this blocks and
-        // the id set those two hide from is the SAME map, not two hand-kept
-        // copies that can drift.
+        // PRESET_FEATURE also drives the StatusBar dropdown and
+        // workspace-presets.tsx's gallery filter (isPresetVisible below), so
+        // the id set this blocks and the id set those two hide from is the
+        // SAME map, not two hand-kept copies that can drift.
         const feature = PRESET_FEATURE[id];
         if (feature && !featureReady(feature)) return;
 
@@ -277,13 +339,49 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             ? layout.rightPanelOpen
             : false;
 
+        // §370 옛 사용자 프리셋에는 이 셋이 없다 — `partialize` 가 `customPresets`
+        // 를 저장하므로 디스크에 있는 것은 그것뿐이고, 내장 넷은 코드에서 온다.
+        // 없으면 **보임**이 옳다: 저장되던 시절에는 감출 수단이 없었으므로 저장된
+        // 화면이 곧 전부 보이는 화면이었다. `?? true` 는 `false` 를 살린다.
+        //
+        // 위 `rightPanelMode` 와 같은 자리·같은 이유다(§4.2) — 영속 `version` 을
+        // 올리는 대신 적용 시점에 떨어뜨린다. 관문이 하나면 어긋날 곳이 없다.
+        const activityBarVisible = layout.activityBarVisible ?? true;
+        const statusBarVisible = layout.statusBarVisible ?? true;
+        const tabBarVisible = layout.tabBarVisible ?? true;
+
         // Apply layout to ui-store.
-        // §82 Preserve an open folder tree across space switches: a preset may
-        // OPEN the sidebar but must never force-close one the user has open.
-        if (layout.sidebarOpen && !ui.sidebarOpen) ui.toggleSidebar();
+        // §82/§370 이 주석은 바로 아래 사이드바 if/else-if 블록(다음 5줄)에만
+        // 걸린다 — 그 뒤 sidebarPanel·rightPanelOpen·rightPanelMode 적용은
+        // 명시/암묵을 가리지 않고 그대로 대칭이다(크롬 적용은 별도 예외가
+        // 있다 — `setChromeVisibility` 호출 바로 위 주석 참조).
+        //
+        // 사이드바만 여기서 비대칭이다: 암묵적 적용(`revertSpaceIfContextClosed`
+        // 하나뿐)은 사용자가 고른 적 없는 전이라, 열어 둔 폴더 트리를 빼앗지
+        // 않는다. 명시적 선택은 레이아웃을 그대로 지킨다 — 그러지 않으면
+        // `writing`("Hide sidebar and focus on the editor")과 `focus` 가
+        // 이름·설명·레이아웃으로는 감춘다고 말하면서 동작만 다른 상태가 된다.
+        if (opts?.implicit) {
+          if (layout.sidebarOpen && !ui.sidebarOpen) ui.toggleSidebar();
+        } else if (ui.sidebarOpen !== layout.sidebarOpen) {
+          ui.toggleSidebar();
+        }
         ui.setSidebarPanel(layout.sidebarPanel);
         if (ui.rightPanelOpen !== rightPanelOpen) ui.toggleRightPanel();
         ui.setRightPanelMode(rightPanelMode);
+        // §82/§370 암묵적 적용은 크롬을 아예 건드리지 않는다 — 사이드바의
+        // "열기만" 규칙과는 다른 처리다. 사이드바는 프리셋이 정당하게 무언가를
+        // 드러낼 수 있어 여는 것만 허용하지만, 크롬엔 그런 사례가 없다: 되돌림
+        // 대상은 늘 `writing` 하나뿐이므로 크롬을 도로 켜는 것은 정확히 우리가
+        // 배제하려는 그 override 다. 코퍼스: 암묵 호출자는
+        // `revertSpaceIfContextClosed` 하나뿐이다(§82).
+        if (!opts?.implicit) {
+          ui.setChromeVisibility({
+            activityBarVisible,
+            statusBarVisible,
+            tabBarVisible,
+          });
+        }
 
         // §85 M2b: When switching away from journal, activate the first non-journal context
         if (id !== "journal") {
@@ -394,9 +492,12 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         }
         // Preset ids ("journal"/"zettelkasten") match the VaultType strings.
         if (get().activePresetId !== closedVaultType) return;
-        // applyPreset preserves an open folder tree (it never force-closes the
-        // sidebar), so reverting to Writing keeps the tree exactly as it was.
-        get().applyPreset("writing");
+        // §82/§370 Revert implicitly — the user never chose this transition
+        // (the context tab closed out from under them), so it must not take
+        // an open folder tree away. `{ implicit: true }` routes applyPreset
+        // into its asymmetric sidebar branch (open-only, never close),
+        // keeping the tree exactly as it was.
+        get().applyPreset("writing", { implicit: true });
       },
 
       saveCustomPreset: (name, description) => {
@@ -412,6 +513,10 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             sidebarPanel: ui.sidebarPanel,
             rightPanelOpen: ui.rightPanelOpen,
             rightPanelMode: ui.rightPanelMode,
+            // §370 현재 크롬 가시성도 함께 스냅샷한다 — 다른 넷과 같은 자리·이유다.
+            activityBarVisible: ui.activityBarVisible,
+            statusBarVisible: ui.statusBarVisible,
+            tabBarVisible: ui.tabBarVisible,
           },
         };
         set((state) => ({

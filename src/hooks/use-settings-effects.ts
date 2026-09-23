@@ -13,6 +13,7 @@ import { useTranslation } from "../i18n/useTranslation";
 import { useFeatureFlags } from "../stores/settings/features";
 import { useSettingsStore } from "../stores/settings/store";
 import { useThemeCssCacheStore } from "../stores/system/theme-css-cache";
+import { applyThemeChrome } from "../stores/ui/chrome-proposal";
 import {
   RIGHT_PANEL_MODE_FEATURE,
   SIDEBAR_PANEL_FEATURE,
@@ -306,6 +307,25 @@ export function useSettingsEffects(editor: Editor | null) {
     cssCacheEntries,
     resolvedDials,
   ]);
+
+  // §370.3 테마가 **제안하는** 초기 크롬 가시성. 위 적용 이펙트와 **합치지 않는다** —
+  // 그쪽 deps 는 바로 위에 다섯 개가 적혀 있고, 그래서 그 이펙트는 OS 모드 전환 · CSS
+  // 캐시 하이드레이션 · 다이얼 변경으로도 다시 돈다. 제안을 거기 얹으면 사용자가
+  // 상태바를 켠 뒤 강조색 슬라이더를 움직이는 것만으로 다시 꺼진다.
+  //
+  // ‼️ 전이 감지를 `useRef` 가드로 만들지 않는다 — deps 가 하나면 React 의 비교가 그
+  // 일을 이미 한다. ref 였다면 StrictMode 의 마운트 → 정리 → 재마운트를 ref 가
+  // 살아남아, 버려지는 첫 마운트에서 세운 가드가 이후 **진짜** 전이를 영영 건너뛴다
+  // (계획 0095 가 그 모양으로 사용자 눈에 띄는 결함을 냈다). deps 비교에는 그 실패
+  // 모드가 없다: 두 번 도는 것은 같은 id 로 두 번 도는 것이고, 제안 적용은 멱등이다
+  // (손대지 않은 표면에 같은 값을 다시 쓴다). 그 두 성질을
+  // `__tests__/use-settings-effects-theme-chrome.test.tsx` 가 `<StrictMode>` 로 센다.
+  //
+  // `activeThemeId` 가 아니라 `effectiveThemeId` 를 읽으므로, 철회된 테마는 색을 못
+  // 입히듯 크롬도 제안하지 못한다(`use-effective-theme-id.ts`).
+  useEffect(() => {
+    applyThemeChrome(effectiveThemeId);
+  }, [effectiveThemeId]);
 
   useEffect(() => {
     // §perf-large-file C3.4: resolve via editor.view.dom rather than a global
