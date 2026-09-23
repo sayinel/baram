@@ -1212,7 +1212,7 @@
   "settings.workspace.deletePreset": "Delete perspective",
   "settings.workspace.deletePresetConfirm": "Delete perspective '{name}'? This cannot be undone.",
   "settings.workspace.editor": "Editor",
-  "settings.workspace.preset.focus.desc": "Hide every chrome surface and focus on the editor alone.",
+  "settings.workspace.preset.focus.desc": "Hide the sidebar, right panel, activity bar, status bar, and file tab bar to focus on the editor alone.",
   "settings.workspace.preset.journal.desc": "Open calendar, today's journal, and Memories view together.",
   "settings.workspace.preset.skills.desc": "Layout optimized for editing LLM Skills files.",
   "settings.workspace.preset.writing.desc": "Hide sidebar and focus on the editor.",

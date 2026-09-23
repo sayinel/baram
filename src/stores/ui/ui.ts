@@ -497,8 +497,12 @@ export const useUIStore = create<UIState>((set) => ({
     }),
 
   // §370.3 테마의 제안을 받는다. "제안이지 강제가 아니다"는 `chromeTouched` 를 보는
-  // 아래 `continue` 한 줄로 구현된다 — 그 규칙을 아는 코드는 이 절 하나다
-  // (`chromeTouched` 를 **읽는** 프로덕션 코드 전수, 2026-09-23).
+  // 아래 `continue` 한 줄로 구현된다 — 이 규칙(손댄 표면은 건너뛴다)을 아는 코드는
+  // 이 절 하나다. `chromeTouched` 자체를 읽는 코드는 더 있다: 세 토글
+  // (`toggleActivityBar`·`toggleStatusBar`·`toggleTabBar`)과 `revealAllChrome`도
+  // 각자 `markTouched(state.chromeTouched, …)`로 읽지만, 그건 손댐을 **더하기**
+  // 위해서지 제안을 건너뛰기 위해서가 아니다 — 이 파일(`ui.ts`)을 훑은 전수다
+  // (2026-09-23).
   //
   // ‼️ 여기서는 손댐을 기록하지 않는다(인터페이스의 `chromeTouched` 주석의 표).
   proposeChromeVisibility: (proposal) =>

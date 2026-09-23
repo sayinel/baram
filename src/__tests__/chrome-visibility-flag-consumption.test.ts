@@ -5,8 +5,8 @@
 // renders it directly — the closest precedent for pinning an invariant in it without a
 // render is `bootstrap-order.test.ts`'s source scan on main.tsx, which this follows.
 // Asserting the literal `rootPath && statusBarVisible ? … : undefined` text would fail on
-// a `prettier` rewrap far more often than it would ever catch a real regression, and four
-// more tasks in this plan (0096) still touch App.tsx, so that shape WILL move.
+// a `prettier` rewrap far more often than it would ever catch a real regression — a
+// reformat, not a rewrite, is the likelier way this shape moves.
 //
 // What this pins instead, at the level a reformat cannot disturb:
 //   1. each of the three §370 visibility flags is at least REFERENCED by the two files

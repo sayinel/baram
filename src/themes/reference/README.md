@@ -81,8 +81,10 @@
 그 판정을 아는 것은 `chromeTouched`(`src/stores/ui/ui.ts`)이고, 적용은 테마 id 가
 바뀌는 전이에서 한 번이다(`src/stores/ui/chrome-proposal.ts`).
 
-되돌리는 길은 앱 안에 있다. 되살린 표면은 — 어느 길로 되살리든 — 그 세션 동안
-"사용자가 고른 것" 이 되어 테마가 다시 감추지 못한다:
+되돌리는 길은 앱 안에 있다. 아래 세 경로로 되살린 표면은 그 세션 동안 "사용자가
+고른 것" 이 되어 테마가 다시 감추지 못한다 — 셋 다 `chromeTouched` 를 기록하는
+입구(`toggleActivityBar`·`toggleStatusBar`·`toggleTabBar`·`revealAllChrome`,
+`src/stores/ui/ui.ts`)로 이어지기 때문이다:
 
 - **단축키** — `Mod+Alt+A`(활동 표시줄) · `Mod+Alt+S`(상태 표시줄) · `Mod+Alt+B`
   (탭 표시줄). 하나씩 되살린다. `Mod` 는 macOS 에서 ⌘, 그 밖에서 Ctrl 이고, 셋 다
@@ -94,6 +96,14 @@
   "모두 숨음" 이라, 단축키를 모르는 사용자에게도 길이 남는다.
 - **설정 > 화면 배치**의 "표시 여부" 토글 셋. 단축키와 같은 입구를 쓴다
   (`src/components/settings/tabs/layout/ChromeVisibilitySection.tsx`).
+
+**화면구성(Perspective)을 고르는 것은 이 목록에 들지 않는다.** `Writing` 등 다른
+프리셋을 골라 크롬을 되살리는 것은 `applyPreset`(`src/stores/file/workspace.ts`)이
+부르는 `setChromeVisibility`(`src/stores/ui/ui.ts`)를 거치는데, 이 입구는 표면
+하나가 아니라 화면 전체를 고르는 행위라 의도적으로 아무것도 기록하지 않는다
+(`src/stores/ui/ui.ts` 의 `setChromeVisibility` doc 주석).
+그래서 이 테마가 감춘 채로 시작한 뒤 프리셋으로 크롬을 되살려도 "손댄 것" 으로
+남지 않고, 다음에 고르는 테마(또는 이 테마로의 재전이)가 다시 감출 수 있다.
 
 기록은 세션 범위다 — 앱을 다시 켜면 가시성도 기록도 기본으로 돌아가고, 제안이 다시
 닿는다. 그 이유는 `chromeTouched` 의 doc 주석에 있다.

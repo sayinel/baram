@@ -163,7 +163,8 @@ export const BUILTIN_PRESETS: BuiltinPreset[] = [
     id: "focus",
     name: "Focus",
     nameKey: "menu.workspace.focus",
-    description: "Hide every chrome surface and focus on the editor alone.",
+    description:
+      "Hide the sidebar, right panel, activity bar, status bar, and file tab bar to focus on the editor alone.",
     descKey: "settings.workspace.preset.focus.desc",
     builtIn: true,
     // §370.2 포커스 모드는 상태들의 프리셋이지 별도 모드 플래그가 아니다 —
