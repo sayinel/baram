@@ -161,3 +161,16 @@ describe("Roundtrip: inline code inside other marks (data-loss regression)", () 
     );
   });
 });
+
+// §373 Smart punctuation writes these characters into the document as plain
+// text; the file must hold them exactly, with nothing escaped around them.
+describe("Roundtrip: smart punctuation symbols", () => {
+  it.each([
+    ["arrows", "a → b ← c ↔ d ⇒ e ⇔ f\n"],
+    ["comparisons", "a ≤ b ≥ c ≠ d\n"],
+    ["dash and ellipsis", "a — b…\n"],
+    ["inside a mark", "**a→b** and ==c ≤ d==\n"],
+  ])("%s", (_, input) => {
+    expect(roundtrip(input)).toBe(input);
+  });
+});

@@ -1096,7 +1096,7 @@
   "settings.markdown.inlineMath": "인라인 수식",
   "settings.markdown.inlineMath.desc": "$...$ 및 $$...$$ 수식 활성화",
   "settings.markdown.smartPunctuation": "스마트 구두점",
-  "settings.markdown.smartPunctuation.desc": "직선형 따옴표와 대시를 타이포그래피 기호로 변환합니다",
+  "settings.markdown.smartPunctuation.desc": "타이핑한 화살표·대시·줄임표·비교 기호를 기호로 바꿉니다 (-> →, -- —, ... …, <= ≤). 스킬 파일에서는 동작하지 않습니다.",
   "settings.markdown.strikethrough": "취소선",
   "settings.markdown.strikethrough.desc": "~~취소선~~ 구문 활성화",
   "settings.markdown.typography": "타이포그래피",
