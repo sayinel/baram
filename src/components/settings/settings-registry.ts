@@ -112,6 +112,7 @@ const selectRegistrySettings = (s: SettingsState) => ({
   setSnapshotMaxCount: s.setSnapshotMaxCount,
   setSpellCheck: s.setSpellCheck,
   setStrikethrough: s.setStrikethrough,
+  setSymbolSuggest: s.setSymbolSuggest,
   setTabSize: s.setTabSize,
   setTasksEnabled: s.setTasksEnabled,
   setTasksRecordDoneDate: s.setTasksRecordDoneDate,
@@ -127,6 +128,7 @@ const selectRegistrySettings = (s: SettingsState) => ({
   snapshotMaxCount: s.snapshotMaxCount,
   spellCheck: s.spellCheck,
   strikethrough: s.strikethrough,
+  symbolSuggest: s.symbolSuggest,
   tabSize: s.tabSize,
   tasksEnabled: s.tasksEnabled,
   tasksRecordDoneDate: s.tasksRecordDoneDate,
@@ -825,6 +827,17 @@ export function useSettingsRegistry(): SearchableSetting[] {
       control: makeToggleControl(
         () => settings.smartPunctuation,
         settings.setSmartPunctuation,
+      ),
+    },
+    {
+      id: "symbolSuggest",
+      label: "settings.markdown.symbolSuggest",
+      description: "settings.markdown.symbolSuggest.desc",
+      category: "markdown",
+      section: "settings.markdown.typography",
+      control: makeToggleControl(
+        () => settings.symbolSuggest,
+        settings.setSymbolSuggest,
       ),
     },
     // ── AI ───────────────────────────────────────────────────────────────────

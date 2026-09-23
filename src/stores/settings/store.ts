@@ -158,6 +158,7 @@ export const useSettingsStore = create<SettingsState>()(
         codeBlockLineNumbers: state.codeBlockLineNumbers,
         codeBlockStyle: state.codeBlockStyle,
         smartPunctuation: state.smartPunctuation,
+        symbolSuggest: state.symbolSuggest,
         extensionSettings: state.extensionSettings,
         journalEnabled: state.journalEnabled,
         journalDirectory: state.journalDirectory,

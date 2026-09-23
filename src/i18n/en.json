@@ -1118,6 +1118,8 @@
   "settings.markdown.smartPunctuation.desc": "Turn typed arrows, dashes, ellipses and comparison signs into symbols (-> →, -- —, ... …, <= ≤). Off in skill files.",
   "settings.markdown.strikethrough": "Strikethrough",
   "settings.markdown.strikethrough.desc": "Enable ~~strikethrough~~ syntax",
+  "settings.markdown.symbolSuggest": "Symbol & Emoji Suggestions",
+  "settings.markdown.symbolSuggest.desc": "Type : and two letters to insert a symbol or emoji (:arrow → →, :smile → 😄). English and Korean keywords both work.",
   "settings.markdown.typography": "Typography",
   "settings.panels.backlinks": "Backlinks",
   "settings.panels.bookmarks": "Bookmarks",

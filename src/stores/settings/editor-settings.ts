@@ -60,6 +60,7 @@ export interface EditorSettingsSlice {
   setSmartPunctuation: (enabled: boolean) => void;
   setSpellCheck: (enabled: boolean) => void;
   setStrikethrough: (enabled: boolean) => void;
+  setSymbolSuggest: (enabled: boolean) => void;
   setTabSize: (size: number) => void;
   setVimMode: (enabled: boolean) => void;
   setVirtualizeLargeDocs: (enabled: boolean) => void;
@@ -67,6 +68,7 @@ export interface EditorSettingsSlice {
   smartPunctuation: boolean;
   spellCheck: boolean;
   strikethrough: boolean;
+  symbolSuggest: boolean;
   tabSize: number;
   // §298 Vim keybindings in source mode (Phase 0a). Off by default; the vim
   // module is dynamically imported only when enabled.
@@ -123,6 +125,7 @@ export const createEditorSettingsSlice: StateCreator<
   codeBlockLineNumbers: false,
   codeBlockStyle: "default",
   smartPunctuation: false,
+  symbolSuggest: true,
 
   // Extension settings (dynamic key-value)
   extensionSettings: {},
@@ -188,6 +191,7 @@ export const createEditorSettingsSlice: StateCreator<
   setHighlight: (highlight) => set({ highlight }),
   setStrikethrough: (strikethrough) => set({ strikethrough }),
   setSmartPunctuation: (smartPunctuation) => set({ smartPunctuation }),
+  setSymbolSuggest: (symbolSuggest) => set({ symbolSuggest }),
 
   // Extension settings setter (with backward-compat sync)
   setExtensionSetting: (key, value) =>

@@ -47,6 +47,8 @@ export function MarkdownTab() {
     setStrikethrough,
     smartPunctuation,
     setSmartPunctuation,
+    symbolSuggest,
+    setSymbolSuggest,
   } = useSettingsStore(
     useShallow((s) => ({
       inlineMath: s.inlineMath,
@@ -57,6 +59,8 @@ export function MarkdownTab() {
       setStrikethrough: s.setStrikethrough,
       smartPunctuation: s.smartPunctuation,
       setSmartPunctuation: s.setSmartPunctuation,
+      symbolSuggest: s.symbolSuggest,
+      setSymbolSuggest: s.setSymbolSuggest,
     })),
   );
 
@@ -95,6 +99,13 @@ export function MarkdownTab() {
           checked={smartPunctuation}
           onChange={setSmartPunctuation}
         />
+      </SettingsRow>
+
+      <SettingsRow
+        description={t("settings.markdown.symbolSuggest.desc")}
+        label={t("settings.markdown.symbolSuggest")}
+      >
+        <ToggleSwitch checked={symbolSuggest} onChange={setSymbolSuggest} />
       </SettingsRow>
 
       {/* Extension Settings (merged from ExtensionsTab) */}
