@@ -15,6 +15,7 @@ import {
 import { buildSlashItems } from "../plugins/slash-command-items";
 import { pickSymbolIntoEditor } from "../plugins/symbol-picker-action";
 import { isVimExternalEdit } from "../plugins/vim/vim-keys";
+import { typeChars } from "./helpers/type-chars";
 
 vi.mock("../../components/command/show-symbol-picker", () => ({
   showSymbolPicker: vi.fn(),
@@ -91,10 +92,30 @@ describe("pickSymbolIntoEditor (§377)", () => {
     expect(countLiveEditorMutationTasks(editor.view)).toBe(0);
   });
 
-  it("takes the marks at the caret, as typing there would", async () => {
-    const editor = makeEditor("<p><strong>ab</strong></p>");
+  it("takes a stored mark, as typing there would", async () => {
+    const editor = makeEditor();
+    editor.commands.setBold();
+    // Precondition: the empty selection carries bold as a stored mark, not
+    // yet applied to any text — this is what discriminates an insert that
+    // takes stored marks from one that drops them.
+    expect(editor.state.storedMarks?.some((m) => m.type.name === "bold")).toBe(
+      true,
+    );
     await pick(editor, "→");
-    expect(editor.getHTML()).toContain("<strong>ab→</strong>");
+    expect(editor.getHTML()).toContain("ab<strong>→</strong>");
+  });
+
+  it("lands where typing would at the end of bold text", async () => {
+    // SyntaxReveal (§5.1) expands the mark into literal `**` delimiters the
+    // moment the caret rests at its end, before this action ever runs — so
+    // both a typed character and a picked one land after the revealed `**`,
+    // outside the (then re-collapsed) mark. Pin that shared landing spot
+    // instead of asserting a fixed HTML string against SyntaxReveal's output.
+    const typed = makeEditor("<p><strong>ab</strong></p>");
+    typeChars(typed, "→");
+    const picked = makeEditor("<p><strong>ab</strong></p>");
+    await pick(picked, "→");
+    expect(picked.getHTML()).toBe(typed.getHTML());
   });
 
   it("writes and records nothing when the picker is cancelled", async () => {
