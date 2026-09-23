@@ -159,9 +159,11 @@ export type PopupAnchor = Pick<DOMRect, "bottom" | "left" | "top">;
 const VIEWPORT_MARGIN = 8;
 
 /**
- * Width to clamp by when the popup has not been laid out yet (jsdom always,
- * and the very first frame in a browser). Every menu that uses this is 280px
- * wide — `.slash-menu` and `.mention-menu` alike.
+ * Width to clamp by when the popup measures 0 wide — always in jsdom, and in a
+ * browser while its content is not laid out yet. 280px is the width of
+ * `.slash-menu` and `.mention-menu`; not every popup placed here has it
+ * (`.symbol-menu` is 200–320px, `.symbol-picker` 312px), and a popup that
+ * measures wider than 0 is placed by its measured width, not this.
  */
 const FALLBACK_MENU_WIDTH = 280;
 
