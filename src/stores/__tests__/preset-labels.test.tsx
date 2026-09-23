@@ -27,6 +27,7 @@ const KO = ko as Record<string, string>;
 // The canonical Korean names §343 settled on (`menu.workspace.*`) — glossed inline so a
 // mismatch reads as "expected X, got Y" rather than "expected EXPECTED_KO_NAME.zettelkasten".
 const EXPECTED_KO_NAME: Record<string, string> = {
+  focus: "포커스",
   journal: "저널",
   skills: "스킬 편집",
   writing: "글쓰기",

@@ -85,7 +85,7 @@ describe("perspective order is one order everywhere (§343)", () => {
     }
   });
 
-  it("assigns Mod+Alt+1..4 in the canonical order", () => {
+  it("assigns Mod+Alt+1..5 in the canonical order", () => {
     PERSPECTIVES.forEach((p, i) => {
       const entry = KEYBINDING_REGISTRY.find((k) => k.id === `workspace.${p}`);
       expect(entry!.defaultKey).toBe(`Mod+Alt+${i + 1}`);

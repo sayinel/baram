@@ -426,10 +426,10 @@ pub fn build_menu(
         .build()?;
 
     // --- Workspace menu (§52) ---
-    // §343 order and accelerators are one with `keybinding-registry.ts`:
-    // Writing 1 · Zettel 2 · Journal 3 · Skills 4. This file used to be the
-    // lone outlier with 2 and 3 swapped, so one chord invoked a different
-    // preset in each layer.
+    // §343/§370 order and accelerators are one with `keybinding-registry.ts`:
+    // Writing 1 · Zettel 2 · Journal 3 · Skills 4 · Focus 5. This file used to
+    // be the lone outlier with 2 and 3 swapped, so one chord invoked a
+    // different preset in each layer.
     let workspace_writing = MenuItemBuilder::new("Writing")
         .id("workspace_writing")
         .accelerator("Alt+CmdOrCtrl+1")
@@ -446,12 +446,17 @@ pub fn build_menu(
         .id("workspace_skills")
         .accelerator("Alt+CmdOrCtrl+4")
         .build(app)?;
+    let workspace_focus = MenuItemBuilder::new("Focus")
+        .id("workspace_focus")
+        .accelerator("Alt+CmdOrCtrl+5")
+        .build(app)?;
 
     let workspace_menu = SubmenuBuilder::new(app, "Perspective")
         .item(&workspace_writing)
         .item(&workspace_zettel)
         .item(&workspace_journal)
         .item(&workspace_skills)
+        .item(&workspace_focus)
         .build()?;
 
     // --- Window menu (macOS standard) ---
@@ -592,6 +597,7 @@ pub fn build_menu(
     menu_items.insert("workspace_journal".into(), workspace_journal);
     menu_items.insert("workspace_skills".into(), workspace_skills);
     menu_items.insert("workspace_zettel".into(), workspace_zettel);
+    menu_items.insert("workspace_focus".into(), workspace_focus);
     menu_items.insert("help_user_guide".into(), help_user_guide);
     menu_items.insert("help_shortcuts".into(), help_shortcuts);
     menu_items.insert("help_faq".into(), help_faq);

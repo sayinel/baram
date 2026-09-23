@@ -35,13 +35,14 @@ describe("§52 Workspace Store", () => {
 
   // --- Built-in Presets ---
 
-  it("has 4 built-in presets", () => {
-    expect(BUILTIN_PRESETS).toHaveLength(4);
+  it("has 5 built-in presets", () => {
+    expect(BUILTIN_PRESETS).toHaveLength(5);
     expect(BUILTIN_PRESETS.map((p) => p.id)).toEqual([
       "writing",
       "zettelkasten",
       "journal",
       "skills",
+      "focus",
     ]);
   });
 
@@ -53,7 +54,7 @@ describe("§52 Workspace Store", () => {
 
   it("getAllPresets returns built-in + custom presets", () => {
     const store = useWorkspaceStore.getState();
-    expect(store.getAllPresets()).toHaveLength(4);
+    expect(store.getAllPresets()).toHaveLength(5);
   });
 
   it("getPreset finds built-in preset by id", () => {
@@ -240,10 +241,10 @@ describe("§52 Workspace Store", () => {
     useWorkspaceStore.getState().saveCustomPreset("Custom 2");
 
     const all = useWorkspaceStore.getState().getAllPresets();
-    expect(all).toHaveLength(6);
+    expect(all).toHaveLength(7);
     expect(all[0].builtIn).toBe(true);
-    expect(all[4].builtIn).toBe(false);
-    expect(all[4].name).toBe("Custom 1");
+    expect(all[5].builtIn).toBe(false);
+    expect(all[5].name).toBe("Custom 1");
   });
 
   it("deleteCustomPreset removes preset and clears activePresetId when active", () => {
@@ -342,6 +343,43 @@ describe("§52 Workspace Store", () => {
     expect(ui.sidebarPanel).toBe("graph");
     expect(ui.rightPanelOpen).toBe(true);
     expect(ui.rightPanelMode).toBe("memories");
+  });
+});
+
+// §370.2 포커스 모드는 상태들의 프리셋이다, 별도 모드 플래그가 아니다 — 그것이
+// 이 describe 의 주제다: 적용 결과가 개별 상태로 관측된다.
+describe("§370 focus preset — the fifth built-in", () => {
+  beforeEach(() => {
+    useWorkspaceStore.setState({ activePresetId: null, customPresets: [] });
+    useUIStore.setState({
+      activityBarVisible: true,
+      rightPanelMode: "chat",
+      rightPanelOpen: true,
+      sidebarOpen: true,
+      sidebarPanel: "files",
+      statusBarVisible: true,
+      tabBarVisible: true,
+    });
+  });
+
+  it("applyPreset('focus') hides all five chrome surfaces", () => {
+    useWorkspaceStore.getState().applyPreset("focus");
+    const ui = useUIStore.getState();
+    expect(ui.activityBarVisible).toBe(false);
+    expect(ui.statusBarVisible).toBe(false);
+    expect(ui.tabBarVisible).toBe(false);
+    expect(ui.sidebarOpen).toBe(false);
+    expect(ui.rightPanelOpen).toBe(false);
+  });
+
+  // 포커스에서 나오는 길 — §370.2 의 복귀 경로가 프리셋 층에도 있어야 한다.
+  it("choosing another preset brings the chrome back", () => {
+    useWorkspaceStore.getState().applyPreset("focus");
+    useWorkspaceStore.getState().applyPreset("writing");
+    const ui = useUIStore.getState();
+    expect(ui.activityBarVisible).toBe(true);
+    expect(ui.statusBarVisible).toBe(true);
+    expect(ui.tabBarVisible).toBe(true);
   });
 });
 

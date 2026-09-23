@@ -321,6 +321,13 @@ export const KEYBINDING_REGISTRY: KeybindingEntry[] = [
     defaultKey: "Mod+Alt+4",
     customizable: true,
   },
+  {
+    id: "workspace.focus",
+    label: "keybindings.workspace.focus",
+    category: "workspace",
+    defaultKey: "Mod+Alt+5",
+    customizable: true,
+  },
 
   // ── journal ───────────────────────────────────────────────────────────────
   {

@@ -105,6 +105,7 @@ export const MENU_I18N_MAP: Record<string, string> = {
   workspace_zettel: "menu.workspace.zettel",
   workspace_journal: "menu.workspace.journal",
   workspace_skills: "menu.workspace.skills",
+  workspace_focus: "menu.workspace.focus",
 
   // Window menu (predefined)
   win_minimize: "menu.window.minimize",

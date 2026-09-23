@@ -213,7 +213,7 @@ export function useKeybindingActions({
       useUIStore.getState().toggleSkillTestDialog();
     });
 
-    // Workspace (§343: writing · zettelkasten · journal · skills everywhere)
+    // Workspace (§343: writing · zettelkasten · journal · skills · focus everywhere)
     registerAction("workspace.writing", () =>
       useWorkspaceStore.getState().applyPreset("writing"),
     );
@@ -225,6 +225,9 @@ export function useKeybindingActions({
     );
     registerAction("workspace.skills", () =>
       useWorkspaceStore.getState().applyPreset("skills"),
+    );
+    registerAction("workspace.focus", () =>
+      useWorkspaceStore.getState().applyPreset("focus"),
     );
 
     // Journal

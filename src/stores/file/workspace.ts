@@ -159,6 +159,27 @@ export const BUILTIN_PRESETS: BuiltinPreset[] = [
       tabBarVisible: true,
     },
   },
+  {
+    id: "focus",
+    name: "Focus",
+    nameKey: "menu.workspace.focus",
+    description: "Hide every chrome surface and focus on the editor alone.",
+    descKey: "settings.workspace.preset.focus.desc",
+    builtIn: true,
+    // §370.2 포커스 모드는 상태들의 프리셋이지 별도 모드 플래그가 아니다 —
+    // 다섯 표면을 전부 감추는 값 하나로 충분하다. `PRESET_FEATURE` 에는
+    // 넣지 않는다: 포커스는 어느 기능에도 속하지 않으므로, 넣으면 기능
+    // 하나를 끈 사용자가 포커스 모드를 잃는다(위 `PRESET_FEATURE` 주석 참조).
+    layout: {
+      activityBarVisible: false,
+      rightPanelMode: "none",
+      rightPanelOpen: false,
+      sidebarOpen: false,
+      sidebarPanel: "files",
+      statusBarVisible: false,
+      tabBarVisible: false,
+    },
+  },
 ];
 
 /**
