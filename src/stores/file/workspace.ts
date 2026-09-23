@@ -226,7 +226,7 @@ export const PRESET_FEATURE: Readonly<Record<string, FeatureKey>> = {
  * 이 프리셋이 기능 게이트를 통과하는가. 기능에 속하지 않는 프리셋과 커스텀
  * 프리셋(둘 다 맵에 없음)은 늘 통과한다.
  *
- * 표를 읽는 유일한 함수 — `StatusBar.tsx`와 `AppearanceTab.tsx`가 각자 지역
+ * 표를 읽는 유일한 함수 — `StatusBar.tsx`와 `workspace-presets.tsx`가 각자 지역
  * 클로저로 이 로직을 복제하면 표류면이 생긴다(`ACTIVITY_BAR_ITEM_FEATURE`와
  * 같은 이유로 `isActivityBarItemVisible`을 공유 함수로 뒀다).
  */
@@ -274,10 +274,10 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         if (!preset) return;
 
         // §338/I-8 One chokepoint for "does this preset need a feature on":
-        // PRESET_FEATURE also drives the StatusBar dropdown and AppearanceTab
-        // list filters (isPresetVisible below), so the id set this blocks and
-        // the id set those two hide from is the SAME map, not two hand-kept
-        // copies that can drift.
+        // PRESET_FEATURE also drives the StatusBar dropdown and
+        // workspace-presets.tsx's gallery filter (isPresetVisible below), so
+        // the id set this blocks and the id set those two hide from is the
+        // SAME map, not two hand-kept copies that can drift.
         const feature = PRESET_FEATURE[id];
         if (feature && !featureReady(feature)) return;
 

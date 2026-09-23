@@ -12,7 +12,7 @@ import { fireEvent, render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { StatusBar } from "../../components/layout/StatusBar";
-import { AppearanceTab } from "../../components/settings/tabs/AppearanceTab";
+import { WorkspacePresets } from "../../components/settings/tabs/workspace-presets";
 import { t } from "../../i18n";
 import en from "../../i18n/en.json";
 import ko from "../../i18n/ko.json";
@@ -77,7 +77,7 @@ describe("(c) built-in presets translate to the canonical menu.workspace.* Korea
   });
 });
 
-describe("(d) StatusBar dropdown and the AppearanceTab gallery agree, in ko", () => {
+describe("(d) StatusBar dropdown and workspace-presets.tsx's gallery agree, in ko", () => {
   it("render the identical Korean name for every built-in preset", () => {
     resetStoresForRender();
 
@@ -88,16 +88,20 @@ describe("(d) StatusBar dropdown and the AppearanceTab gallery agree, in ko", ()
     ].map((el) => el.textContent?.trim());
     statusBar.unmount();
 
-    const appearanceTab = render(<AppearanceTab />);
-    const appearanceNames = [
+    // Rendered directly, not through a host tab — `workspace-presets.tsx` is the actual
+    // consumer of `isPresetVisible`/`presetDisplayName` (task-5-brief.md controller
+    // correction); the tab that renders it moved from AppearanceTab to ActivityBarTab
+    // in §370/task-5, but that move must not change which names this test compares.
+    const gallery = render(<WorkspacePresets />);
+    const galleryNames = [
       ...document.querySelectorAll(".workspace-card-name"),
     ].map((el) => el.textContent?.trim());
-    appearanceTab.unmount();
+    gallery.unmount();
 
     // Pin the actual expected values, not just cross-surface equality — two surfaces sharing
     // the SAME wrong string would still pass a bare `toEqual` between them.
     const expected = BUILTIN_PRESETS.map((p) => EXPECTED_KO_NAME[p.id]);
     expect(statusBarNames).toEqual(expected);
-    expect(appearanceNames).toEqual(expected);
+    expect(galleryNames).toEqual(expected);
   });
 });

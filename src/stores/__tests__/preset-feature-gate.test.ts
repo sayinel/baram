@@ -1,6 +1,6 @@
 // §338/I-8 — the preset id set `applyPreset` gates on a feature must be
 // EXACTLY `PRESET_FEATURE`'s key set — the same map also drives the
-// StatusBar dropdown filter and the AppearanceTab list filter
+// StatusBar dropdown filter and workspace-presets.tsx's gallery filter
 // (isPresetVisible), so a mismatch here would mean a preset that renders in
 // one surface's list still refuses to apply (or vice versa: applies from a
 // place it should have been hidden).

@@ -1,12 +1,16 @@
-// issue 523 — deleting a custom theme or perspective asks first.
+// issue 523 — deleting a custom theme asks first.
 //
-// Both are persisted data the user built by hand (a palette of 24 colours, a
-// layout), and both were removed by one click on a small × overlaid on the
-// card, with no way back. The file tree already confirms far less final
-// deletions (a move to the trash) through the shared showConfirm dialog; the
-// settings cards now use the same one. The dialog itself is mocked here — what
-// is pinned is that the store does not change until it answers yes, and that
-// the question names the item.
+// It is persisted data the user built by hand (a palette of 24 colours), and
+// it used to be removed by one click on a small × overlaid on the card, with
+// no way back. The file tree already confirms far less final deletions (a
+// move to the trash) through the shared showConfirm dialog; the settings card
+// now uses the same one. The dialog itself is mocked here — what is pinned is
+// that the store does not change until it answers yes, and that the question
+// names the item.
+//
+// The perspective-deletion sibling of this test, and the §338/I-8 preset
+// feature-gate tests, moved to `tabs/__tests__/workspace-presets.test.tsx`
+// when task-5 (§370) moved the workspace-presets section out of this tab.
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -31,11 +35,9 @@ vi.mock("../../../ipc/theme", () => ({
   themeUninstall: (...a: unknown[]) => themeUninstall(...a),
 }));
 
-import type { WorkspacePreset } from "../../../stores/file/workspace";
 import type { InstalledTheme } from "../../../themes/theme-install";
 import type { ThemeDef } from "../../../types/theme";
 
-import { useWorkspaceStore } from "../../../stores/file/workspace";
 import { useSettingsStore } from "../../../stores/settings/store";
 import { defaultColorsForBase } from "../../../types/theme";
 import { showAlert, showConfirm } from "../../../utils/confirm-dialog";
@@ -46,22 +48,6 @@ const CUSTOM_THEME: ThemeDef = {
   modes: { dark: { colors: defaultColorsForBase("light") } },
   name: "Mine",
   source: "custom",
-};
-
-const CUSTOM_PRESET: WorkspacePreset = {
-  builtIn: false,
-  description: "",
-  id: "preset-1",
-  layout: {
-    activityBarVisible: true,
-    rightPanelMode: "none",
-    rightPanelOpen: false,
-    sidebarOpen: true,
-    sidebarPanel: "files",
-    statusBarVisible: true,
-    tabBarVisible: true,
-  },
-  name: "Deep work",
 };
 
 async function settle(): Promise<void> {
@@ -78,15 +64,10 @@ beforeEach(() => {
     customThemes: [CUSTOM_THEME],
     locale: "en",
   });
-  useWorkspaceStore.setState({
-    activePresetId: null,
-    customPresets: [CUSTOM_PRESET],
-  });
 });
 
 afterEach(() => {
   useSettingsStore.setState({ customThemes: [], installedThemes: {} });
-  useWorkspaceStore.setState({ customPresets: [] });
   themeUninstall.mockClear();
 });
 
@@ -109,14 +90,6 @@ const INSTALLED_THEME: InstalledTheme = {
   },
   modes: { light: { css: false } },
 };
-
-function presetDeleteButton(): HTMLElement {
-  const button = document.querySelector<HTMLElement>(
-    "button.workspace-card-delete",
-  );
-  if (!button) throw new Error("preset delete button did not mount");
-  return button;
-}
 
 function themeDeleteButton(): HTMLElement {
   return screen.getByRole("button", { name: "Delete theme 'Mine'" });
@@ -192,57 +165,6 @@ describe("theme gallery — groups by source (§356)", () => {
   });
 });
 
-describe("deleting a custom perspective", () => {
-  it("asks first, naming the perspective, and keeps it when the answer is no", async () => {
-    render(<AppearanceTab />);
-
-    fireEvent.click(presetDeleteButton());
-    await settle();
-
-    expect(vi.mocked(showConfirm)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(showConfirm).mock.calls[0][0]).toContain("Deep work");
-    expect(useWorkspaceStore.getState().customPresets).toEqual([CUSTOM_PRESET]);
-  });
-
-  it("deletes when the answer is yes", async () => {
-    vi.mocked(showConfirm).mockResolvedValue(true);
-    render(<AppearanceTab />);
-
-    fireEvent.click(presetDeleteButton());
-    await settle();
-
-    expect(useWorkspaceStore.getState().customPresets).toEqual([]);
-  });
-});
-
-// §338/I-8 — the workspace gallery used to render `BUILTIN_PRESETS`
-// unconditionally, so a disabled Journal/Zettel still offered a card here
-// even though applying it (workspace.ts) already refused and toasted. This is
-// the "render" half of that completeness pair (preset-feature-gate.test.ts is
-// the "applyPreset agrees with PRESET_FEATURE" half). Custom presets are
-// never filtered — "Deep work" (CUSTOM_PRESET) stays regardless.
-describe("workspace gallery — preset feature gate (§338/I-8)", () => {
-  // ‼️ en-only — `menu.workspace.*` and the (now-removed) `settings.workspace.preset.*` name
-  // keys were BOTH "Writing"/"Journal"/"Skills" in en.json, so this assertion cannot see a wrong
-  // or missing `nameKey` (§343; see `preset-labels.test.tsx` for the ko-locale assertions).
-  it("hides the Journal card but keeps Writing/Skills/the custom preset when journal is off", () => {
-    useSettingsStore.setState({ journalEnabled: false });
-    render(<AppearanceTab />);
-
-    expect(screen.queryByText("Journal")).toBeNull();
-    expect(screen.getByText("Writing")).toBeInTheDocument();
-    expect(screen.getByText("Skills")).toBeInTheDocument();
-    expect(screen.getByText("Deep work")).toBeInTheDocument();
-  });
-
-  it("shows the Journal card when journal is on — positive control", () => {
-    useSettingsStore.setState({ journalEnabled: true });
-    render(<AppearanceTab />);
-
-    expect(screen.getByText("Journal")).toBeInTheDocument();
-  });
-});
-
 // §361 — the sub-screen router. A single union rather than two booleans (AppearanceTab.tsx's
 // header comment) — these tests are the "no if-order accident" half; ThemeBrowser.test.tsx
 // and ThemeEditor.test.tsx each cover their own screen's content.
@@ -255,16 +177,14 @@ describe("sub-screen routing (§361)", () => {
 
     expect(screen.getByPlaceholderText(/search themes/i)).toBeInTheDocument();
     expect(screen.queryByText("System (Auto)")).toBeNull();
-    expect(screen.queryByText("Perspectives")).toBeNull();
   });
 
-  it("뒤로 가면 갤러리와 워크스페이스 섹션이 돌아온다", () => {
+  it("뒤로 가면 갤러리가 돌아온다", () => {
     render(<AppearanceTab />);
     fireEvent.click(screen.getByRole("button", { name: /browse themes/i }));
     fireEvent.click(screen.getByText(/back/i));
 
     expect(screen.getByText("System (Auto)")).toBeInTheDocument();
-    expect(screen.getByText("Perspectives")).toBeInTheDocument();
   });
 
   it("커스터마이즈로 들어간 뒤에는 브라우저가 아니라 편집기가 보인다", () => {

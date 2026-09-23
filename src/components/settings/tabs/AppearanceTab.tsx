@@ -1,6 +1,7 @@
-// §54 외관 설정 — 섹션 조립과 하위 화면 라우팅만 한다.
-//
-// 갤러리·워크스페이스 프리셋은 각자의 파일로 나갔다(이 파일이 516줄이었다).
+// §54 외관 설정 — 섹션 조립과 하위 화면 라우팅만 한다. 꾸밈(테마 · 강조색
+// 다이얼)만 남긴다 — 화면에 무엇이 있는가(화면구성 프리셋 등)는 `ActivityBarTab.tsx`
+// 로 옮겨 갔다(§365.4, task-5-brief.md). 테마 갤러리는 여전히 각자의 파일에 있다
+// (이 파일이 한때 516줄이었다).
 // 하위 화면(ThemeEditor, ThemeBrowser)은 탭 본문을 통째로 교체한다 —
 // 설정 모달을 닫지 않기 위해서다(스펙 0049 §10.2).
 //
@@ -15,7 +16,6 @@ import { SettingsSectionHeader } from "../settings-shared";
 import { ThemeEditor } from "../ThemeEditor";
 import { ThemeGallery } from "./theme-gallery";
 import { ThemeBrowser } from "./ThemeBrowser";
-import { WorkspacePresets } from "./workspace-presets";
 
 type SubScreen = "browser" | "editor" | null;
 
@@ -49,10 +49,6 @@ export function AppearanceTab() {
         dialId="accentSaturationShift"
         label={t("settings.appearance.accentSaturationShift")}
       />
-      <SettingsSectionHeader
-        title={t("settings.appearance.workspacePresets")}
-      />
-      <WorkspacePresets />
     </div>
   );
 }
