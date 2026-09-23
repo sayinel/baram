@@ -1,8 +1,12 @@
 // §375 `:` symbol & emoji autocomplete menu.
 //
-// `items` is never empty while this is mounted: `shouldShow` in
+// `items` is empty only while a fetch is pending: the suggestion view
+// (@tiptap/suggestion plugin/view.ts) hands the menu `items: []` when the
+// suggestion starts and on every query change, then the fetched list a
+// promise later. Once fetched it is not empty — `shouldShow` in
 // symbol-suggest.ts keeps the suggestion inactive when a query has no
-// candidates, so there is no empty state to draw.
+// candidates — so there is no empty state to draw, and `onKeyDown` lets keys
+// through while it waits.
 import {
   forwardRef,
   useCallback,

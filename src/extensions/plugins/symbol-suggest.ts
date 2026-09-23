@@ -18,7 +18,11 @@ import {
 } from "./smart-punctuation-guards";
 import { symbolSuggestPluginKey } from "./suggestion-keys";
 import { createSuggestionRenderer } from "./suggestion-renderer";
-import { searchSymbols, type SymbolSuggestionItem } from "./symbol-search";
+import {
+  hasSymbolMatch,
+  searchSymbols,
+  type SymbolSuggestionItem,
+} from "./symbol-search";
 
 /**
  * When `:` is a trigger, in the shape `findSuggestionMatch` takes, so tests can
@@ -73,7 +77,12 @@ export function symbolSuggestAllowed(
   return before === "" || /\s/u.test(before);
 }
 
-/** Replace the `:query` at `range` with `char`, keeping the marks at the caret. */
+/**
+ * Replace the `:query` at `range` with `char`. The character takes the stored
+ * marks if there are any, else those of the `:query` it replaces — the marks
+ * at its start, less non-inclusive ones that stop before its end
+ * (`Transaction.insertText` with a range uses `ResolvedPos.marksAcross`).
+ */
 export function insertSymbol(editor: Editor, range: Range, char: string): void {
   const { view } = editor;
   view.dispatch(
@@ -95,7 +104,10 @@ export const SymbolSuggest = Extension.create({
      * Start loading emoji on the first `:` query character. When the table
      * lands, dispatch an empty transaction: the suggestion plugin re-matches on
      * every transaction, so a query that only emoji answer (`:웃음`) opens then,
-     * without waiting for another key.
+     * without waiting for another key. A query symbols already answered keeps
+     * its symbol-only list until the next key: the suggestion view's `update`
+     * returns early when query, text and range are unchanged, so `items` is
+     * not asked again.
      */
     const requestEmoji = (): void => {
       if (emojiRequested) return;
@@ -121,8 +133,7 @@ export const SymbolSuggest = Extension.create({
           const emoji = loadedEmoji();
           if (emoji === null) requestEmoji();
           return (
-            query.length >= SYMBOL_MIN_QUERY &&
-            searchSymbols(query, emoji, locale(), 1).length > 0
+            query.length >= SYMBOL_MIN_QUERY && hasSymbolMatch(query, emoji)
           );
         },
         items: ({ query }) => searchSymbols(query, loadedEmoji(), locale()),

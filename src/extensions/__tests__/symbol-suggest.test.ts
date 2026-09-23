@@ -130,6 +130,8 @@ describe("when the suggestion is active", () => {
   it("stays inactive inside a code block", () => {
     create("<pre><code>x :ar</code></pre>");
     caretAtEnd();
+    expect(editor.state.selection.$from.parent.type.name).toBe("codeBlock");
+    expect(queryAtCaret()).toBe("ar");
     expect(active()).toBe(false);
   });
 
@@ -229,7 +231,7 @@ describe("insertSymbol", () => {
     expect(editor.state.selection.from).toBe(4);
   });
 
-  it("keeps the marks at the caret", () => {
+  it("keeps the marks of the :query it replaces", () => {
     create("<p><strong>x :ar</strong></p>");
     insertSymbol(editor, { from: 3, to: 6 }, "→");
     const node = editor.state.doc.firstChild?.firstChild;
