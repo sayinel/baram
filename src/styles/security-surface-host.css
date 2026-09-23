@@ -104,6 +104,8 @@
      `.table-grid-overlay`, `.ai-prompt-overlay`, `.block-ai-diff-overlay` — and every
      other one that declares a z-index is at 1010 or below, so 1100 clears those but
      not the eight. Those eight were above the consent dialog before this change and
-     still are; this change does not touch them. */
+     still are; this change does not touch them.
+
+     Added since that measurement: .symbol-picker-overlay (§377) takes var(--z-editor-popup), 1050 — under 1100 as well. */
   z-index: 1100 !important;
 }

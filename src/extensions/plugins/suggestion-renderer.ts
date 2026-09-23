@@ -152,6 +152,9 @@ export function createSuggestionRenderer<TItem>(
   };
 }
 
+/** Where a popup hangs from — a caret's box (`coordsAtPos`) or a suggestion's `clientRect`. */
+export type PopupAnchor = Pick<DOMRect, "bottom" | "left" | "top">;
+
 /** Gap kept between the popup and the viewport edge. */
 const VIEWPORT_MARGIN = 8;
 
@@ -169,7 +172,7 @@ const FALLBACK_MENU_WIDTH = 280;
  */
 export function positionPopup(
   popup: HTMLDivElement,
-  coords: DOMRect,
+  coords: PopupAnchor,
   menuHeight: number,
 ): void {
   // ‼️ Clamp horizontally. The caret's x was used as the left edge directly, so

@@ -871,6 +871,20 @@
   white-space: nowrap;
 }
 
+/* §377 Mounted on `document.body` (show-symbol-picker.tsx) — see `--z-editor-popup`.
+   It covers the window so a mousedown outside the picker lands on it and cancels. */
+.symbol-picker-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-editor-popup);
+}
+
+/* `max-content` pins the width so positionPopup can measure it (its comment). */
+.symbol-picker-popup {
+  position: fixed;
+  width: max-content;
+}
+
 /* §377 Symbol & emoji picker (components/command/SymbolPicker.tsx). Rows are
    built in TS (symbol-grid-nav.ts), one element each, so no column count is
    repeated here. `.btn-unstyled` does not reset padding — the cells and tabs
