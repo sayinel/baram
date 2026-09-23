@@ -5,21 +5,10 @@
 
 import type { Content, List, ListItem, Paragraph, Root } from "mdast";
 
-import remarkFrontmatter from "remark-frontmatter";
-import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
-import remarkParse from "remark-parse";
-import { unified } from "unified";
+import { markdownParser } from "./markdown-parser";
 
 /** 내용 없는 체크박스 한 짝 — `- [ ]` / `- [x]` / `- [X]` / `- [/]` / `- [-]` */
 const EMPTY_CHECKBOX_RE = /^\[([ xX/-])\]$/;
-
-/** remark parser — markdown string → mdast */
-const parser = unified()
-  .use(remarkParse)
-  .use(remarkGfm, { singleTilde: false })
-  .use(remarkMath)
-  .use(remarkFrontmatter, ["yaml"]);
 
 /**
  * Detect extra blank lines between top-level blocks in the original markdown
@@ -65,7 +54,7 @@ export function enrichWithEmptyParagraphs(root: Root, markdown: string): Root {
 
 /** Parse markdown string to mdast tree */
 export function parseMdast(markdown: string): Root {
-  const root = parser.parse(markdown) as Root;
+  const root = markdownParser.parse(markdown) as Root;
   normalizeEmptyTaskItems(root);
   return root;
 }
