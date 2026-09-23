@@ -10,6 +10,11 @@
     "light": { "tokens": "light/tokens.json" },
     "dark": { "tokens": "dark/tokens.json" }
   },
+  "chrome": {
+    "activityBar": false,
+    "statusBar": false,
+    "tabBar": false
+  },
   "dials": {
     "editorEmphasisStyle": "weight",
     "editorLetterSpacing": -0.01,

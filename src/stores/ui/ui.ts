@@ -1,6 +1,36 @@
 // §3.5 UI 레이아웃 스토어
 import { create } from "zustand";
 
+/**
+ * §370.3 크롬 표면의 짧은 이름 → 그 표면을 담는 상태 필드.
+ *
+ * ‼️ **이름 공간이 둘이다.** 상태 필드는 `…Visible` 접미사를 달고(`statusBarVisible`),
+ * 이 표의 키 — 그리고 테마 매니페스트의 `chrome` 키 — 는 접미사가 없다(`statusBar`).
+ * 둘을 잇는 자리는 이 표 하나다. `` `${surface}Visible` `` 처럼 문자열로 조립하지 말
+ * 것: 같은 부류의 사고가 `stores/file/workspace.ts` 의 `zettelkasten` 프리셋에 있다
+ * (id 는 `zettelkasten` 인데 i18n 키는 `menu.workspace.zettel` 이라 조립이 틀린다).
+ *
+ * 매니페스트 쪽은 이 표를 import 하지 않고 자기 키를 따로 적는다 —
+ * `themes/theme-manifest.ts` 는 스토어를 import 하지 않는 레이어이고, 그 성질을 이
+ * 필드 하나 때문에 깨지 않는다. 두 목록이 어긋나는지는
+ * `themes/__tests__/theme-manifest.test.ts` 의 parity 케이스가 런타임으로 본다.
+ */
+export const CHROME_SURFACE_FIELD = {
+  activityBar: "activityBarVisible",
+  statusBar: "statusBarVisible",
+  tabBar: "tabBarVisible",
+} as const;
+
+/** 크롬 표면의 짧은 이름. 목록을 두 번 적지 않으려고 위 표의 키에서 파생한다
+ *  (`RIGHT_PANEL_MODES` 와 같은 이유). */
+export type ChromeSurface = keyof typeof CHROME_SURFACE_FIELD;
+
+/** 위 표의 키 전부 — 표면을 순회하는 쪽이 읽는다. 오늘 읽는 곳은 이 파일의
+ *  `revealAllChrome` · `proposeChromeVisibility` 와 매니페스트 parity 테스트다. */
+export const CHROME_SURFACES = Object.keys(
+  CHROME_SURFACE_FIELD,
+) as ChromeSurface[];
+
 export interface ConflictModalState {
   /** Snapshot of the common-ancestor content captured when the conflict was
    *  detected (before reading the external change) — used as the 3-way base. */
@@ -124,10 +154,30 @@ export interface VimStatus {
  *  because ui.ts is the canonical home for UI-facing unions. */
 export type VimStatusMode = "insert" | "normal" | "replace" | "visual";
 
+/** 크롬 표면의 상태 필드 이름 — 위 표의 값들. 제안이 쓰는 partial 의 키 타입이다. */
+type ChromeVisibilityField = (typeof CHROME_SURFACE_FIELD)[ChromeSurface];
+
 interface UIState {
   aboutOpen: boolean;
   /** §370 크롬 표면의 표시 여부. 기본은 전부 보임 — 감추는 것은 늘 명시적 선택이다. */
   activityBarVisible: boolean;
+  /**
+   * §370.3 이번 세션에서 사용자가 **명시적으로** 토글한 표면.
+   *
+   * 테마의 제안은 여기 없는 표면에만 적용된다 — 그것이 "제안이지 강제가 아니다" 의
+   * 실제 구현이다(`proposeChromeVisibility`). 세션 범위인 이유는 이 스토어 전체와
+   * 같다(`PdfRailTab` 의 doc 주석이 그 계약을 적는다 — persist 를 쓰지 않는다):
+   * 라이브 가시성이 재시작에 남지 않는데 그 이력만 남으면, 사용자가 만진 적 없는
+   * 표면을 테마가 영영 못 건드린다.
+   *
+   * 기록하는 입구는 토글 셋과 `revealAllChrome` 뿐이다(이 파일에서 `markTouched`
+   * 를 부르는 곳 전부 — 그 함수가 이 필드를 쓰는 유일한 통로다). 프리셋 적용
+   * (`setChromeVisibility`)은 기록하지 **않는다** — 프리셋은 표면 하나가 아니라
+   * 화면 전체를 고르는 행위라, 그것을 "이 표면을 손댔다" 로 세면 프리셋 한 번에
+   * 모든 표면이 잠긴다. 제안 적용 자신도 기록하지 않는다 — 세면 두 번째 테마가
+   * 영영 제안할 수 없다.
+   */
+  chromeTouched: Readonly<Partial<Record<ChromeSurface, true>>>;
   /** §Phase5: Close the conflict modal (without resolution — used internally) */
   closeConflictModal: () => void;
   closeExportDialog: () => void;
@@ -180,6 +230,17 @@ interface UIState {
    */
   pendingInsertTasks: null | string;
   pendingSearchHighlight: null | string;
+  /**
+   * §370.3 테마의 **제안**을 받는 입구. 프리셋 입구(`setChromeVisibility`)와 다른
+   * 이유는 그쪽 주석과 같은 이유의 반대편이다 — 제안은 손대지 않은 표면만 옮기고,
+   * 프리셋은 셋을 한꺼번에 정한다.
+   *
+   * 키는 `ChromeSurface`(접미사 없는 짧은 이름)이고, 선언하지 않은 표면은 건드리지
+   * 않는다. 부르는 쪽은 `chrome-proposal.ts` 의 `applyThemeChrome` 하나다.
+   */
+  proposeChromeVisibility: (
+    proposal: Readonly<Partial<Record<ChromeSurface, boolean>>>,
+  ) => void;
   quickCaptureOpen: boolean;
   /** §313 이번 열기가 태스크를 잡으려는 것인가 — 여는 쪽이 정하고, 닫히면 사라진다 */
   quickCaptureTaskIntent: boolean;
@@ -191,11 +252,10 @@ interface UIState {
    * 한다" 이다. 오늘은 버튼이 셋 다 숨었을 때만 떠서 결과가 같지만, 그 조건이
    * 바뀌면 뒤집기는 켜야 할 것을 끈다.
    *
-   * ‼️ 이것은 **사용자의 명시적 선택**이다 — 0096 Task 6 이 `chromeTouched` 를
-   * 들일 때 이 액션도 세 표면을 손댄 것으로 기록해야 한다. 기록하지 않으면
-   * 사용자가 크롬을 되살린 직후 테마가 다시 감출 수 있고, 그것은 §370.3 의
-   * "제안이지 강제가 아니다" 를 어긴다. 프리셋 입구(`setChromeVisibility`)와는
-   * 반대다 — 그쪽은 기록하지 않는다.
+   * ‼️ 이것은 **사용자의 명시적 선택**이므로 세 표면을 전부 `chromeTouched` 에
+   * 기록한다. 기록하지 않으면 사용자가 크롬을 되살린 직후 테마가 다시 감출 수
+   * 있고, 그것은 §370.3 의 "제안이지 강제가 아니다" 를 어긴다. 프리셋 입구
+   * (`setChromeVisibility`)와는 반대다 — 그쪽은 기록하지 않는다.
    */
   revealAllChrome: () => void;
   rightPanelMode: RightPanelMode;
@@ -203,8 +263,8 @@ interface UIState {
   rightPanelWidth: number;
   /**
    * §370 프리셋이 크롬 가시성을 한 번에 적용하는 입구. 사용자의 개별 토글과
-   * **다른 입구여야 한다** — 0096 Task 6 이 "사용자가 이 표면을 손댔는가" 를
-   * 기록하는데, 프리셋 적용은 손댐으로 세지 않기 때문이다. 입구가 하나면
+   * **다른 입구다** — 토글은 "사용자가 이 표면을 손댔다"를 `chromeTouched` 에
+   * 기록하고 프리셋 적용은 기록하지 않기 때문이다(§370.3). 입구가 하나면
    * 그 구분을 호출자에게 되물어야 한다.
    */
   setChromeVisibility: (next: {
@@ -285,6 +345,22 @@ interface UIState {
   };
 }
 
+/**
+ * §370.3 손댐 기록을 덧댄다. 이미 전부 기록돼 있으면 **같은 객체**를 돌려준다 —
+ * 그래야 호출자가 "바뀐 것이 없다" 를 참조 비교로 판정할 수 있고, 값이 같은 write 로
+ * `chromeTouched` 셀렉터를 깨우지 않는다(CLAUDE.md 의 동등성 관문).
+ */
+function markTouched(
+  prev: Readonly<Partial<Record<ChromeSurface, true>>>,
+  surfaces: readonly ChromeSurface[],
+): Readonly<Partial<Record<ChromeSurface, true>>> {
+  const missing = surfaces.filter((surface) => !prev[surface]);
+  if (missing.length === 0) return prev;
+  const next = { ...prev };
+  for (const surface of missing) next[surface] = true;
+  return next;
+}
+
 export const useUIStore = create<UIState>((set) => ({
   sidebarOpen: true,
   sidebarPanel: "files",
@@ -292,8 +368,10 @@ export const useUIStore = create<UIState>((set) => ({
   rightPanelOpen: false,
   rightPanelWidth: 360,
   rightPanelMode: "chat" as const,
-  // §370 크롬 표면 — 기본은 전부 보임.
+  // §370 크롬 표면 — 기본은 전부 보임. `chromeTouched` 가 비어 있다는 것은 이번
+  // 세션에 사용자가 어느 표면도 고른 적이 없다는 뜻이고, 그래서 테마가 제안할 수 있다.
   activityBarVisible: true,
+  chromeTouched: {},
   statusBarVisible: true,
   tabBarVisible: true,
   commandPaletteOpen: false,
@@ -369,34 +447,76 @@ export const useUIStore = create<UIState>((set) => ({
 
   // §370 개별 토글 셋(아래 `toggleActivityBar`·`toggleStatusBar`·`toggleTabBar` 세
   // 함수만 지배 — 바로 다음의 `togglePdfRail`은 별개다) — `setChromeVisibility`
-  // (프리셋 입구)와 끝까지 다른 입구로 남는다. Task 6이 이 셋에만 "사용자가 이
+  // (프리셋 입구)와 끝까지 다른 입구로 남는다. §370.3이 이 셋에만 "사용자가 이
   // 표면을 손댔다"는 기록을 덧대므로, 여기서 `setChromeVisibility` 호출로
-  // 구현하면 그 구분이 무너진다.
+  // 구현하면 그 구분이 무너진다. 각자 **자기 키만** 기록한다.
   toggleActivityBar: () =>
-    set((state) => ({ activityBarVisible: !state.activityBarVisible })),
+    set((state) => ({
+      activityBarVisible: !state.activityBarVisible,
+      chromeTouched: markTouched(state.chromeTouched, ["activityBar"]),
+    })),
 
   toggleStatusBar: () =>
-    set((state) => ({ statusBarVisible: !state.statusBarVisible })),
+    set((state) => ({
+      chromeTouched: markTouched(state.chromeTouched, ["statusBar"]),
+      statusBarVisible: !state.statusBarVisible,
+    })),
 
-  toggleTabBar: () => set((state) => ({ tabBarVisible: !state.tabBarVisible })),
+  toggleTabBar: () =>
+    set((state) => ({
+      chromeTouched: markTouched(state.chromeTouched, ["tabBar"]),
+      tabBarVisible: !state.tabBarVisible,
+    })),
 
   // §370.2 복귀 경로 — 가장자리 호버/포커스 버튼(ChromeReveal)이 부른다. 토글이 아니라
-  // "전부 보이게" 이므로 동등성 관문은 이미 셋 다 true인지로 본다(위 토글 셋과 다른 이유는
-  // 인터페이스의 §370.2 주석 참조).
+  // "전부 보이게" 이므로 뒤집지 않는다(위 토글 셋과 다른 이유는 인터페이스의 §370.2
+  // 주석 참조).
+  //
+  // §370.3 그리고 **셋 모두를 손댄 것으로 기록한다** — "크롬을 보이게 해라"는 셋에 대한
+  // 명시적 선택이다. 기록하지 않으면 사용자가 되살린 직후 테마가 다시 감출 수 있고,
+  // 그것이 §370.3이 금지한 강제다. 그래서 동등성 관문은 가시성만으로 판정하지 않는다:
+  // 셋이 이미 보이면서 **기록까지 그대로일 때**만 아무것도 쓰지 않는다 — 셋이 보이지만
+  // 기록이 없는 상태(기본 상태)에서 이것을 부르면 기록만 남긴다.
   revealAllChrome: () =>
     set((state) => {
+      const chromeTouched = markTouched(state.chromeTouched, CHROME_SURFACES);
       if (
         state.activityBarVisible &&
         state.statusBarVisible &&
-        state.tabBarVisible
+        state.tabBarVisible &&
+        chromeTouched === state.chromeTouched
       ) {
         return state;
       }
       return {
         activityBarVisible: true,
+        chromeTouched,
         statusBarVisible: true,
         tabBarVisible: true,
       };
+    }),
+
+  // §370.3 테마의 제안을 받는다. "제안이지 강제가 아니다"는 `chromeTouched` 를 보는
+  // 아래 `continue` 한 줄로 구현된다 — 그 규칙을 아는 코드는 이 절 하나다
+  // (`chromeTouched` 를 **읽는** 프로덕션 코드 전수, 2026-09-23).
+  //
+  // ‼️ 여기서는 손댐을 기록하지 않는다(인터페이스의 `chromeTouched` 주석의 표).
+  proposeChromeVisibility: (proposal) =>
+    set((state) => {
+      const next: Partial<Record<ChromeVisibilityField, boolean>> = {};
+      for (const surface of CHROME_SURFACES) {
+        const proposed = proposal[surface];
+        // 선언하지 않은 표면은 옮기지 않는다 — 모르는 것은 옮기지 않는다.
+        if (proposed === undefined) continue;
+        if (state.chromeTouched[surface]) continue;
+        const field = CHROME_SURFACE_FIELD[surface];
+        if (state[field] === proposed) continue;
+        next[field] = proposed;
+      }
+      // 동등성 관문 — partial 은 새 root 가 되어 모든 리스너를 깨운다(CLAUDE.md).
+      // 이 입구는 테마 전이마다 도는데, 그 대부분은 옮길 것이 없는 호출이다.
+      if (Object.keys(next).length === 0) return state;
+      return next;
     }),
 
   // §370과 무관 — PDF 사이드 레일은 크롬 표면이 아니다(§282).

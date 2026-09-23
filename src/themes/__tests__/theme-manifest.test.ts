@@ -1,6 +1,7 @@
 // §360 테마 매니페스트 검증 테스트 (스펙 0049 §4)
 import { describe, expect, test } from "vitest";
 
+import { CHROME_SURFACES } from "../../stores/ui/ui";
 import { validateThemeManifest } from "../theme-manifest";
 
 const validManifest = {
@@ -581,5 +582,88 @@ describe("§371.1 매니페스트의 dials", () => {
     expect(result.valid).toBe(true);
     if (!result.valid) return;
     expect(result.manifest.dials).toBeUndefined();
+  });
+});
+
+describe("§370.3 매니페스트의 chrome", () => {
+  it("아는 표면의 boolean 값을 남긴다", () => {
+    const result = validateThemeManifest({
+      ...validManifest,
+      chrome: { activityBar: false, statusBar: false, tabBar: false },
+    });
+    expect(result.valid).toBe(true);
+    if (!result.valid) return;
+    expect(result.manifest.chrome).toEqual({
+      activityBar: false,
+      statusBar: false,
+      tabBar: false,
+    });
+  });
+
+  it("선언한 표면만 남긴다 — 나머지는 키 자체가 없다", () => {
+    const result = validateThemeManifest({
+      ...validManifest,
+      chrome: { statusBar: true },
+    });
+    expect(result.valid).toBe(true);
+    if (!result.valid) return;
+    expect(result.manifest.chrome).toEqual({ statusBar: true });
+  });
+
+  it("모르는 표면 이름을 저장하지 않는다", () => {
+    const result = validateThemeManifest({
+      ...validManifest,
+      chrome: { sidebar: false, statusBar: false },
+    });
+    expect(result.valid).toBe(true);
+    if (!result.valid) return;
+    expect(result.manifest.chrome).toEqual({ statusBar: false });
+  });
+
+  it("아는 표면이라도 boolean 이 아닌 값을 저장하지 않는다", () => {
+    const result = validateThemeManifest({
+      ...validManifest,
+      chrome: { activityBar: "false", statusBar: 0, tabBar: null },
+    });
+    expect(result.valid).toBe(true);
+    if (!result.valid) return;
+    expect(result.manifest.chrome).toBeUndefined();
+  });
+
+  it("chrome 이 객체가 아니면 필드 오류를 낸다", () => {
+    const result = validateThemeManifest({ ...validManifest, chrome: [] });
+    expect(result.valid).toBe(false);
+    if (result.valid) return;
+    expect(result.errors.map((e) => e.field)).toContain("chrome");
+  });
+
+  it("chrome 이 없는 매니페스트는 그대로 유효하다 (선택 필드)", () => {
+    const result = validateThemeManifest(validManifest);
+    expect(result.valid).toBe(true);
+    if (!result.valid) return;
+    expect(result.manifest.chrome).toBeUndefined();
+  });
+
+  // ‼️ 이름 공간이 둘이라 목록도 둘이다 — 매니페스트가 아는 키(이 파일이 적는다)와
+  // UI 스토어의 표면(`CHROME_SURFACES`). `theme-manifest.ts` 는 스토어를 import 하지
+  // 않는 레이어라 목록을 공유하지 않으므로, 어긋남을 잡는 것은 이 케이스뿐이다.
+  //
+  // 무엇이 이것을 실패시키는가: 넷째 표면을 한쪽에만 더하면 양방향 어느 쪽으로든
+  // 집합이 달라진다 — 스토어에만 더하면 매니페스트가 그 키를 버리고, 매니페스트에만
+  // 더하면 왼쪽에 없는 키가 남는다.
+  it("매니페스트가 아는 표면 집합이 UI 스토어의 표면 집합과 같다", () => {
+    const declared: Record<string, boolean> = { notASurface: false };
+    for (const surface of CHROME_SURFACES) declared[surface] = false;
+
+    const result = validateThemeManifest({
+      ...validManifest,
+      chrome: declared,
+    });
+
+    expect(result.valid).toBe(true);
+    if (!result.valid) return;
+    expect(Object.keys(result.manifest.chrome ?? {}).sort()).toEqual(
+      [...CHROME_SURFACES].sort(),
+    );
   });
 });

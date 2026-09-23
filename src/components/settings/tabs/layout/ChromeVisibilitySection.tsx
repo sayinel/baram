@@ -5,8 +5,9 @@
 //
 // ‼️ `setChromeVisibility`를 부르지 않는다 — 그건 프리셋 전용 입구다
 // (`stores/ui/ui.ts`의 `setChromeVisibility` 주석). 이 세 토글은 각자
-// `toggleActivityBar` · `toggleStatusBar` · `toggleTabBar`를 불러, 0096 Task 6이
-// "사용자가 이 표면을 손댔다"를 토글에만 기록하게 한다.
+// `toggleActivityBar` · `toggleStatusBar` · `toggleTabBar`를 부르고, 그 셋만이
+// "사용자가 이 표면을 손댔다"를 `chromeTouched`에 기록한다(§370.3) — 여기서
+// 프리셋 입구를 부르면 테마의 제안이 사용자의 선택을 덮게 된다.
 import { useShallow } from "zustand/shallow";
 
 import { useTranslation } from "../../../../i18n/useTranslation";
