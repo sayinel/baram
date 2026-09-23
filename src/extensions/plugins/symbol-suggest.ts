@@ -93,22 +93,41 @@ export function symbolSuggestAllowed(
  * transaction.
  *
  * A transaction appended by another plugin (`appendTransaction`) does not
- * start from `editor.state`. If the document changed before it, the old
- * positions cannot be mapped, so it refuses whenever an edit was active before
- * the root transaction or this transaction's meta activates one.
+ * start from `editor.state`; ProseMirror tags it with the root transaction as
+ * meta `"appendedTransaction"` (prosemirror-state 1.4.4, `applyTransaction`).
+ * When it is the first one appended, it starts where the root ends, so the
+ * step is replayed over both: SyntaxReveal appends a collapse to the click
+ * that re-edits a math atom, and the root's activation meta must count.
+ * Further down a chain the transactions in between are not at hand, so
+ * nothing is mapped: it refuses when the edit was active before the root, or
+ * the root or this transaction activates one. Left uncovered: an edit
+ * activated by the meta of an appended transaction in between. In `src/`
+ * only MathInlineEdit's own handlers set that meta, each on a transaction it
+ * dispatches, and MathInlineEdit has no `appendTransaction`.
  */
 function insideMathEdit(
   editor: Editor,
   transaction: Transaction,
   range: { from: number; to: number },
 ): boolean {
-  const before = mathEditKey.getState(editor.state);
-  if (!before) return false;
-  if (transaction.before !== editor.state.doc) {
-    const meta = transaction.getMeta(mathEditKey) as typeof before | undefined;
-    return before.active || meta?.active === true;
+  const start = mathEditKey.getState(editor.state);
+  if (!start) return false;
+  const root = transaction.getMeta("appendedTransaction") as
+    Transaction | undefined;
+  const chain = root ? [root, transaction] : [transaction];
+  const replayable =
+    chain[0].before === editor.state.doc &&
+    (!root || transaction.before === root.doc);
+  if (!replayable) {
+    return (
+      start.active ||
+      chain.some((tr) => {
+        const meta = tr.getMeta(mathEditKey) as typeof start | undefined;
+        return meta?.active === true;
+      })
+    );
   }
-  const math = nextMathEditState(transaction, before);
+  const math = chain.reduce((state, tr) => nextMathEditState(tr, state), start);
   return math.active && math.from <= range.from && range.from <= math.to;
 }
 

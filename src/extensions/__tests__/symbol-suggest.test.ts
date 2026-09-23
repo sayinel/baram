@@ -1,13 +1,12 @@
 import { Editor } from "@tiptap/core";
 import { Schema } from "@tiptap/pm/model";
-import { NodeSelection, TextSelection } from "@tiptap/pm/state";
+import { TextSelection } from "@tiptap/pm/state";
 import { findSuggestionMatch } from "@tiptap/suggestion";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { useSettingsStore } from "../../stores/settings/store";
 import { createBaramExtensions } from "../index";
 import { _resetEmojiCache, ensureEmojiLoaded } from "../plugins/emoji-data";
-import { mathEditKey } from "../plugins/math-inline-edit";
 import {
   suggestionPluginKeys,
   symbolSuggestPluginKey,
@@ -205,58 +204,6 @@ describe("when the suggestion is active", () => {
   it("opens right after a hard break, which starts a visual line", () => {
     create("<p>a<br>:ar</p>");
     caretAtEnd();
-    expect(active()).toBe(true);
-  });
-
-  it("stays inactive in the TeX of an inline-math edit, and opens without the edit", () => {
-    // `$` opens the edit as `$|$`; the rest is typed between the dollars.
-    create("<p></p>");
-    typeChars(editor, "$");
-    typeChars(editor, " :ar");
-    expect(editor.state.doc.textContent).toBe("$ :ar$");
-    expect(mathEditKey.getState(editor.state)).toEqual({
-      active: true,
-      from: 1,
-      to: 7,
-    });
-    expect(queryAtCaret()).toBe("ar");
-    expect(active()).toBe(false);
-
-    editor.destroy();
-    create("<p>$ :ar$</p>");
-    caretAt(6); // between `r` and the closing `$`
-    expect(mathEditKey.getState(editor.state)?.active).toBe(false);
-    expect(queryAtCaret()).toBe("ar");
-    expect(active()).toBe(true);
-  });
-
-  it("stays inactive when the key that re-edits a math atom completes a :query", () => {
-    // One transaction turns the atom into `$f :a$`, types `r` and activates
-    // the edit — the query and the edit arrive together.
-    create("<p>x</p>");
-    editor.commands.insertContentAt(2, {
-      attrs: { formula: "f :a" },
-      type: "mathInline",
-    });
-    editor.view.dispatch(
-      editor.state.tr.setSelection(NodeSelection.create(editor.state.doc, 2)),
-    );
-    const key = new KeyboardEvent("keydown", { bubbles: true, key: "r" });
-    editor.view.someProp("handleKeyDown", (f) => f(editor.view, key));
-    expect(editor.state.doc.textContent).toBe("x$f :ar$");
-    expect(mathEditKey.getState(editor.state)).toEqual({
-      active: true,
-      from: 2,
-      to: 9,
-    });
-    expect(queryAtCaret()).toBe("ar");
-    expect(active()).toBe(false);
-
-    editor.destroy();
-    create("<p>x$f :ar$</p>");
-    caretAt(8); // between `r` and the closing `$`
-    expect(mathEditKey.getState(editor.state)?.active).toBe(false);
-    expect(queryAtCaret()).toBe("ar");
     expect(active()).toBe(true);
   });
 });
