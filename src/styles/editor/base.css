@@ -63,20 +63,20 @@
 .mode-indicator {
   display: flex;
   justify-content: flex-end;
-  padding: 4px 12px;
+  padding: var(--space-1) var(--space-3);
   background-color: var(--color-bg-subtle);
   border-bottom: 1px solid var(--color-border-subtle);
 }
 
 .mode-toggle-btn {
-  padding: 2px 10px;
+  padding: var(--space-0-5) var(--space-2);
   font-family: var(--font-family-mono);
   font-size: 0.75rem;
   color: var(--color-text-secondary);
   cursor: pointer;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
   transition:
     background-color 0.15s,
     color 0.15s,
@@ -267,8 +267,8 @@
 /* Ellipsis indicator */
 .fold-ellipsis {
   display: inline-block;
-  padding: 0 6px;
-  margin-left: 4px;
+  padding: 0 var(--space-1-5);
+  margin-left: var(--space-1);
   font-size: 0.85em;
   line-height: 1.4;
   vertical-align: middle;
@@ -276,7 +276,7 @@
   cursor: pointer;
   user-select: none;
   background: var(--color-bg-subtle);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .fold-ellipsis:hover {

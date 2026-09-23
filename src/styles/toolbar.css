@@ -21,12 +21,12 @@
   overscroll-behavior: contain;
   background-color: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   box-shadow: 0 8px 30px rgb(0 0 0 / 20%);
 }
 
 .command-palette-input {
-  padding: 12px 16px;
+  padding: var(--space-3) var(--space-4);
   font-family: var(--font-family-sans);
   font-size: 0.95rem;
   color: var(--color-text-primary);
@@ -42,23 +42,23 @@
 
 .command-palette-list {
   flex: 1;
-  padding: 4px 0;
+  padding: var(--space-1) 0;
   overflow-y: auto;
 }
 
 .command-palette-empty {
-  padding: 20px;
+  padding: var(--space-5);
   font-size: 0.875rem;
   color: var(--color-text-muted);
   text-align: center;
 }
 
 .command-palette-group {
-  padding: 2px 0;
+  padding: var(--space-0-5) 0;
 }
 
 .command-palette-category {
-  padding: 6px 16px 2px;
+  padding: var(--space-1-5) var(--space-4) var(--space-0-5);
   font-size: 0.7rem;
   font-weight: 600;
   color: var(--color-text-muted);
@@ -70,7 +70,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 16px;
+  padding: var(--space-1-5) var(--space-4);
   cursor: pointer;
   transition: background-color 0.05s;
 }
@@ -86,13 +86,13 @@
 }
 
 .command-item-shortcut {
-  padding: 1px 6px;
+  padding: var(--space-px) var(--space-1-5);
   font-family: var(--font-family-mono);
   font-size: 0.75rem;
   color: var(--color-text-muted);
   background-color: var(--color-bg-subtle);
   border: 1px solid var(--color-border-subtle);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 /* ============================================
@@ -112,27 +112,27 @@
 .slash-menu {
   width: 280px;
   max-height: 320px;
-  padding: 4px 0;
+  padding: var(--space-1) 0;
   overflow-y: auto;
   background-color: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   box-shadow: 0 4px 16px rgb(0 0 0 / 15%);
 }
 
 .slash-menu-empty {
-  padding: 16px;
+  padding: var(--space-4);
   font-size: 0.875rem;
   color: var(--color-text-muted);
   text-align: center;
 }
 
 .slash-menu-group {
-  padding: 2px 0;
+  padding: var(--space-0-5) 0;
 }
 
 .slash-menu-category {
-  padding: 6px 12px 2px;
+  padding: var(--space-1-5) var(--space-3) var(--space-0-5);
   font-size: 0.65rem;
   font-weight: 600;
   color: var(--color-text-muted);
@@ -144,7 +144,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 12px;
+  padding: var(--space-1-5) var(--space-3);
   cursor: pointer;
   transition: background-color 0.05s;
 }
@@ -157,7 +157,7 @@
 .slash-item-info {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: var(--space-px);
 }
 
 .slash-item-label {
@@ -171,13 +171,13 @@
 }
 
 .slash-item-hint {
-  padding: 1px 6px;
+  padding: var(--space-px) var(--space-1-5);
   font-family: var(--font-family-mono);
   font-size: 0.7rem;
   color: var(--color-text-muted);
   background-color: var(--color-bg-subtle);
   border: 1px solid var(--color-border-subtle);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 /* ============================================
@@ -186,12 +186,12 @@
 
 .floating-toolbar {
   display: flex;
-  gap: 2px;
+  gap: var(--space-0-5);
   align-items: center;
-  padding: 4px 6px;
+  padding: var(--space-1) var(--space-1-5);
   background-color: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   box-shadow: 0 4px 12px rgb(0 0 0 / 15%);
 }
 
@@ -208,7 +208,7 @@
   cursor: pointer;
   background: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-default);
   transition:
     background-color 0.1s,
     color 0.1s;
@@ -232,7 +232,7 @@
 .floating-toolbar-separator {
   width: 1px;
   height: 20px;
-  margin: 0 2px;
+  margin: 0 var(--space-0-5);
   background-color: var(--color-border-subtle);
 }
 
@@ -247,10 +247,10 @@
   right: 0;
   z-index: 100;
   min-width: 140px;
-  padding: 4px;
+  padding: var(--space-1);
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   box-shadow: 0 4px 12px rgb(0 0 0 / 15%);
 }
 
@@ -262,7 +262,7 @@
 .floating-toolbar-ai-item {
   display: block;
   width: 100%;
-  padding: 6px 10px;
+  padding: var(--space-1-5) var(--space-2);
   font-size: 0.8rem;
   color: var(--color-text-secondary);
   text-align: left;
@@ -270,7 +270,7 @@
   cursor: pointer;
   background: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .floating-toolbar-ai-item:hover {
@@ -292,15 +292,15 @@
 .ai-prompt-dialog {
   min-width: 340px;
   max-width: 460px;
-  padding: 20px;
+  padding: var(--space-5);
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   box-shadow: 0 8px 32px rgb(0 0 0 / 25%);
 }
 
 .ai-prompt-label {
-  margin: 0 0 12px;
+  margin: 0 0 var(--space-3);
   font-size: 14px;
   line-height: 1.4;
   color: var(--color-text-primary);
@@ -316,18 +316,18 @@
 .ai-prompt-presets {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 10px;
+  gap: var(--space-1-5);
+  margin-bottom: var(--space-2);
 }
 
 .ai-prompt-preset-btn {
-  padding: 5px 14px;
+  padding: var(--space-1) var(--space-3);
   font-size: 13px;
   color: var(--color-text-primary);
   cursor: pointer;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   transition:
     background-color 0.1s,
     color 0.1s,
@@ -343,13 +343,13 @@
 .ai-prompt-input {
   box-sizing: border-box;
   width: 100%;
-  padding: 8px 10px;
+  padding: var(--space-2) var(--space-2);
   font-size: 14px;
   color: var(--color-text-primary);
   outline: none;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .ai-prompt-input:focus {
@@ -359,17 +359,17 @@
 
 .ai-prompt-buttons {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   justify-content: flex-end;
-  margin-top: 16px;
+  margin-top: var(--space-4);
 }
 
 .ai-prompt-btn {
-  padding: 6px 16px;
+  padding: var(--space-1-5) var(--space-4);
   font-size: 13px;
   cursor: pointer;
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .ai-prompt-btn-cancel {
@@ -407,14 +407,14 @@
 
 .field-dialog-label {
   display: block;
-  margin-bottom: 12px;
+  margin-bottom: var(--space-3);
   font-size: 12px;
   font-weight: 500;
   color: var(--color-text-secondary);
 }
 
 .field-dialog-label .ai-prompt-input {
-  margin-top: 4px;
+  margin-top: var(--space-1);
 }
 
 /* ============================================
@@ -425,7 +425,7 @@
   position: fixed;
   z-index: 30;
   display: flex;
-  gap: 2px;
+  gap: var(--space-0-5);
   opacity: 1;
   transition: opacity 0.15s;
 }
@@ -446,7 +446,7 @@
   cursor: grab;
   background: transparent;
   border: none;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 /* Handle stays faint (muted) until hovered, then darkens to primary. */
@@ -474,7 +474,7 @@
   cursor: pointer;
   background: transparent;
   border: none;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .block-handle-add-btn:hover {
@@ -493,20 +493,20 @@ body.block-dragging * {
   position: fixed;
   z-index: 40;
   min-width: 140px;
-  padding: 4px 0;
-  margin-top: 24px;
+  padding: var(--space-1) 0;
+  margin-top: var(--space-6);
   background-color: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   box-shadow: 0 4px 12px rgb(0 0 0 / 12%);
 }
 
 .block-handle-menu-item {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: center;
   width: 100%;
-  padding: 5px 12px;
+  padding: var(--space-1) var(--space-3);
   font-size: 0.8rem;
   color: var(--color-text-primary);
   text-align: left;
@@ -527,13 +527,13 @@ body.block-dragging * {
 /* Left group (icon + label) of a submenu trigger; the ▸ arrow stays right. */
 .block-handle-item-left {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: center;
 }
 
 .block-handle-separator {
   height: 1px;
-  margin: 4px 0;
+  margin: var(--space-1) 0;
   background-color: var(--color-border-subtle);
 }
 
@@ -549,7 +549,7 @@ body.block-dragging * {
 }
 
 .block-handle-ai-arrow {
-  margin-left: 8px;
+  margin-left: var(--space-2);
   font-size: 0.7rem;
   color: var(--color-text-muted);
 }
@@ -561,11 +561,11 @@ body.block-dragging * {
   z-index: 50;
   min-width: 150px;
   max-height: 70vh;
-  padding: 4px 0;
+  padding: var(--space-1) 0;
   overflow-y: auto;
   background-color: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   box-shadow: 0 4px 12px rgb(0 0 0 / 12%);
 }
 
@@ -575,14 +575,14 @@ body.block-dragging * {
   top: 4px;
   right: 4px;
   z-index: 10;
-  padding: 2px 8px;
+  padding: var(--space-0-5) var(--space-2);
   font-size: 0.7rem;
   font-weight: 600;
   color: var(--color-text-muted);
   cursor: pointer;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
   opacity: 0;
   transition:
     opacity 0.15s,
@@ -624,17 +624,17 @@ body.block-dragging * {
   position: fixed;
   z-index: 60;
   min-width: 150px;
-  padding: 4px 0;
+  padding: var(--space-1) 0;
   background-color: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   box-shadow: 0 4px 12px rgb(0 0 0 / 12%);
 }
 
 .nodeview-ai-menu-item {
   display: block;
   width: 100%;
-  padding: 5px 12px;
+  padding: var(--space-1) var(--space-3);
   font-size: 0.8rem;
   color: var(--color-text-primary);
   text-align: left;
@@ -649,7 +649,7 @@ body.block-dragging * {
 
 .nodeview-ai-menu-separator {
   height: 1px;
-  margin: 4px 0;
+  margin: var(--space-1) 0;
   background-color: var(--color-border-subtle);
 }
 
@@ -672,15 +672,15 @@ body.block-dragging * {
   font-size: 0.85rem;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   box-shadow: 0 8px 32px rgb(0 0 0 / 18%);
 }
 
 .block-ai-diff-header {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: center;
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   font-size: 0.8rem;
   font-weight: 600;
   color: var(--color-text-secondary);
@@ -707,7 +707,7 @@ body.block-dragging * {
 
 .block-ai-diff-content {
   flex: 1;
-  padding: 12px;
+  padding: var(--space-3);
   overflow-y: auto;
   font-family: var(--font-family-mono);
   font-size: 0.82rem;
@@ -724,13 +724,13 @@ body.block-dragging * {
   color: var(--color-status-danger);
   text-decoration: line-through;
   background: color-mix(in srgb, var(--color-status-danger) 8%, transparent);
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
 }
 
 .block-ai-diff-insert {
   color: var(--color-status-success);
   background: color-mix(in srgb, var(--color-status-success) 8%, transparent);
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
 }
 
 .block-ai-diff-original {
@@ -738,7 +738,7 @@ body.block-dragging * {
 }
 
 .block-ai-diff-error {
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   font-size: 0.78rem;
   color: var(--color-status-danger);
   background: color-mix(in srgb, var(--color-status-danger) 6%, transparent);
@@ -746,34 +746,34 @@ body.block-dragging * {
 
 .block-ai-diff-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   justify-content: flex-end;
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   border-top: 1px solid var(--color-border-subtle);
 }
 
 .block-ai-diff-btn {
   display: inline-flex;
-  gap: 6px;
+  gap: var(--space-1-5);
   align-items: center;
-  padding: 5px 14px;
+  padding: var(--space-1) var(--space-3);
   font-size: 0.78rem;
   font-weight: 500;
   cursor: pointer;
   border: 1px solid var(--color-border-default);
-  border-radius: 5px;
+  border-radius: var(--radius-default);
   transition:
     background 0.15s,
     border-color 0.15s;
 }
 
 .block-ai-diff-btn kbd {
-  padding: 1px 4px;
+  padding: var(--space-px) var(--space-1);
   font-family: var(--font-family-mono);
   font-size: 0.7rem;
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-border-subtle);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   opacity: 0.7;
 }
 
@@ -798,7 +798,7 @@ body.block-dragging * {
 
 /* Callout AI button */
 .callout-ai-btn {
-  padding: 2px 8px;
+  padding: var(--space-0-5) var(--space-2);
   margin-left: auto;
   font-size: 0.7rem;
   font-weight: 600;
@@ -806,7 +806,7 @@ body.block-dragging * {
   cursor: pointer;
   background: transparent;
   border: 1px solid var(--color-border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
   opacity: 0;
   transition: opacity 0.15s;
 }

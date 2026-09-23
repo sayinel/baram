@@ -72,7 +72,7 @@ export function TagSuggest({
           <span className="tag-suggest-name">#{s.name}</span>
           {/* ‼️ 리뷰 MEDIUM — 노트 라벨은 숫자 배지(`tag-suggest-count`)를
               재사용하지 않는다. 그 배지는 `panels.css`에서 짧은 숫자 하나를
-              가정한 원형 pill(`min-width: 20px`, `border-radius: 10px`,
+              가정한 원형 pill(`min-width: 20px`, `border-radius: var(--radius-full)`,
               가운데 정렬)이라 문구를 넣으면 그 안에서 줄바꿈된다. 태그 행은
               그대로 숫자 pill을, 노트 행은 별도 클래스를 쓴다. */}
           {s.isNote ? (

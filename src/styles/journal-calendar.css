@@ -1,10 +1,10 @@
 /* §56 Calendar Panel */
 .calendar-panel {
-  padding: 12px;
+  padding: var(--space-3);
 }
 
 .calendar-empty {
-  padding: 20px 12px;
+  padding: var(--space-5) var(--space-3);
   font-size: 13px;
   line-height: 1.5;
   color: var(--color-text-muted);
@@ -15,7 +15,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
+  margin-bottom: var(--space-3);
 }
 
 .calendar-nav-btn {
@@ -31,7 +31,7 @@
   cursor: pointer;
   background: none;
   border: none;
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   transition:
     color 0.12s,
     background 0.12s;
@@ -62,28 +62,28 @@
 
 .calendar-title-group {
   display: flex;
-  gap: 5px;
+  gap: var(--space-1);
   align-items: center;
 }
 
 .calendar-picker {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 4px;
-  padding: 8px 4px;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-1);
 }
 
 .calendar-pick-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 8px 4px;
+  padding: var(--space-2) var(--space-1);
   font-size: 0.75rem;
   color: var(--color-text-primary);
   cursor: pointer;
   background: transparent;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .calendar-pick-btn:hover {
@@ -111,7 +111,7 @@
   /* minmax(0, 1fr): equal columns that can shrink below content width so the
      grid never overflows or blocks the sidebar from shrinking. */
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 2px;
+  gap: var(--space-0-5);
 }
 
 .calendar-grid-with-weeks {
@@ -119,7 +119,7 @@
 }
 
 .calendar-week-header {
-  padding: 4px 0;
+  padding: var(--space-1) 0;
   font-size: 10px;
   font-weight: 600;
   color: var(--color-text-muted);
@@ -136,7 +136,7 @@
   cursor: pointer;
   background: none;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .calendar-week-num:hover:not(:disabled) {
@@ -145,7 +145,7 @@
 }
 
 .calendar-day-name {
-  padding: 2px 0 6px;
+  padding: var(--space-0-5) 0 var(--space-1-5);
   font-size: 10px;
   font-weight: 600;
   color: var(--color-text-muted);
@@ -158,7 +158,7 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0-5);
   align-items: center;
   justify-content: center;
   min-width: 0;
@@ -176,7 +176,7 @@
   cursor: pointer;
   background: none;
   border: 1px solid var(--color-border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   transition:
     color 0.12s,
     background 0.12s,
@@ -250,7 +250,7 @@
 
 .contribution-heatmap::-webkit-scrollbar-thumb {
   background: var(--color-border-default);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .contribution-heatmap::-webkit-scrollbar-track {
@@ -258,7 +258,7 @@
 }
 
 .contribution-heatmap-month-labels {
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
 }
 
 .contribution-heatmap-month {
@@ -273,14 +273,14 @@
   display: inline-grid;
   grid-template-rows: repeat(7, 10px);
   grid-auto-flow: column;
-  gap: 2px;
+  gap: var(--space-0-5);
 }
 
 .contribution-heatmap-cell {
   width: 10px;
   height: 10px;
   cursor: pointer;
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   box-shadow: inset 0 0 0 1px
     color-mix(in srgb, var(--color-text-primary) 8%, transparent);
 }
@@ -325,10 +325,10 @@
 .contribution-heatmap-day-labels {
   display: grid;
   grid-template-rows: repeat(7, 10px);
-  gap: 2px;
+  gap: var(--space-0-5);
   align-items: center;
   min-width: 24px;
-  margin-right: 6px;
+  margin-right: var(--space-1-5);
 }
 
 .contribution-heatmap-day-label {
@@ -340,17 +340,17 @@
 
 .contribution-heatmap-legend {
   display: flex;
-  gap: 4px;
+  gap: var(--space-1);
   align-items: center;
   justify-content: flex-end;
-  margin-top: 8px;
+  margin-top: var(--space-2);
   font-size: 9px;
   color: var(--color-text-muted);
 }
 
 .contribution-heatmap-legend-cells {
   display: flex;
-  gap: 2px;
+  gap: var(--space-0-5);
 }
 
 .contribution-heatmap-legend-cell {
@@ -376,8 +376,8 @@
    ============================================ */
 
 .journal-section {
-  padding-top: 4px;
-  margin-top: 8px;
+  padding-top: var(--space-1);
+  margin-top: var(--space-2);
   border-top: 1px solid var(--color-border-default);
 }
 
@@ -391,9 +391,9 @@
 .journal-section-toggle {
   display: flex;
   flex: 1;
-  gap: 6px;
+  gap: var(--space-1-5);
   align-items: center;
-  padding: 4px 0;
+  padding: var(--space-1) 0;
   color: var(--color-text-muted);
   text-align: left;
   cursor: pointer;
@@ -427,7 +427,7 @@
 }
 
 .journal-section-body {
-  padding: 4px 0 8px;
+  padding: var(--space-1) 0 var(--space-2);
 }
 
 /* ============================================
@@ -444,7 +444,7 @@
   cursor: pointer;
   background: none;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   transition:
     color 0.15s,
     background 0.15s;
@@ -466,14 +466,14 @@
   overflow: hidden;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
 }
 
 .journal-stats-row {
   display: flex;
-  gap: 7px;
+  gap: var(--space-1-5);
   align-items: center;
-  padding: 7px 10px;
+  padding: var(--space-1-5) var(--space-2);
   font-size: 12px;
   color: var(--color-text-primary);
 }
@@ -506,18 +506,18 @@
 .journal-stats-sep {
   width: 1px;
   height: 11px;
-  margin: 0 1px;
+  margin: 0 var(--space-px);
   background: var(--color-border-default);
 }
 
 .journal-stats-pct {
-  padding: 1px 7px;
+  padding: var(--space-px) var(--space-1-5);
   margin-left: auto;
   font-size: 10px;
   font-variant-numeric: tabular-nums;
   color: var(--color-text-muted);
   background: var(--color-bg-elevated);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
 }
 
 .journal-stats-dim {

@@ -62,6 +62,18 @@ export function cssDeclarations(
 }
 
 /**
+ * Every stylesheet path outside `generated/`, which Style Dictionary owns.
+ *
+ * The corpus a guard walks. {@link cssRules} uses this so parsed rules and raw-source
+ * scans (comments included) agree on which files exist — two callers computing the
+ * same file list independently is how one of them drifts (0097 Task 1's `generated/`
+ * exclusion had the same rationale).
+ */
+export function cssFiles(): string[] {
+  return walk(STYLES, ".css").filter((file) => !file.includes("/generated/"));
+}
+
+/**
  * Every CSS rule outside `generated/`, which Style Dictionary owns.
  *
  * Nested at-rules yield their INNER rule: the outer `@media (...)` cannot be captured
@@ -71,8 +83,7 @@ export function cssDeclarations(
  */
 export function cssRules(): Rule[] {
   const rules: Rule[] = [];
-  for (const file of walk(STYLES, ".css")) {
-    if (file.includes("/generated/")) continue;
+  for (const file of cssFiles()) {
     const css = readFileSync(file, "utf8").replace(/\/\*[\s\S]*?\*\//gu, "");
     for (const match of css.matchAll(/([^{}]+)\{([^{}]*)\}/gu)) {
       rules.push({

@@ -1,13 +1,13 @@
 /* ── Keybindings Tab ── */
 .keybindings-filter {
-  margin-bottom: 12px;
+  margin-bottom: var(--space-3);
 }
 
 .keybinding-row {
   display: flex;
-  gap: 12px;
+  gap: var(--space-3);
   align-items: center;
-  padding: 6px 0;
+  padding: var(--space-1-5) 0;
   border-bottom: 1px solid var(--color-border-default);
 }
 
@@ -36,18 +36,18 @@
 }
 
 .keybinding-kbd {
-  padding: 2px 6px;
+  padding: var(--space-0-5) var(--space-1-5);
   font-family: var(--font-family-mono);
   font-size: 12px;
   color: var(--color-text-secondary);
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .keybinding-actions {
   display: flex;
-  gap: 4px;
+  gap: var(--space-1);
   align-items: center;
   justify-content: flex-end;
   min-width: 80px;
@@ -55,13 +55,13 @@
 
 .keybinding-edit-btn,
 .keybinding-reset-btn {
-  padding: 2px 8px;
+  padding: var(--space-0-5) var(--space-2);
   font-size: 12px;
   color: var(--color-text-muted);
   cursor: pointer;
   background: transparent;
   border: none;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .keybinding-edit-btn:hover,
@@ -72,7 +72,7 @@
 
 .keybinding-capture {
   display: flex;
-  gap: 6px;
+  gap: var(--space-1-5);
   align-items: center;
 }
 
@@ -95,16 +95,16 @@
 }
 
 .keybinding-capture-key {
-  padding: 2px 6px;
+  padding: var(--space-0-5) var(--space-1-5);
   font-family: var(--font-family-mono);
   font-size: 12px;
   color: var(--color-accent-on-solid);
   background: var(--color-accent-solid);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .keybinding-confirm-btn {
-  padding: 0 4px;
+  padding: 0 var(--space-1);
   font-size: 14px;
   color: var(--color-accent-default);
   cursor: pointer;
@@ -118,6 +118,6 @@
 }
 
 .keybinding-reset-all {
-  margin-top: 16px;
+  margin-top: var(--space-4);
   text-align: center;
 }

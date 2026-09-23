@@ -2,10 +2,10 @@
 
 .context-tab-bar {
   display: flex;
-  gap: 4px;
+  gap: var(--space-1);
   align-items: center;
   min-height: 28px;
-  padding: 2px 8px;
+  padding: var(--space-0-5) var(--space-2);
   overflow-x: auto;
   background: var(--color-bg-subtle);
   border-bottom: 1px solid var(--color-border-default);
@@ -13,16 +13,16 @@
 
 .context-tab {
   display: inline-flex;
-  gap: 6px;
+  gap: var(--space-1-5);
   align-items: center;
-  padding: 3px 10px;
+  padding: var(--space-0-5) var(--space-2);
   font-size: 12px;
   color: var(--color-text-muted);
   white-space: nowrap;
   cursor: pointer;
   background: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-default);
   transition:
     background 0.15s,
     color 0.15s;
@@ -57,13 +57,13 @@
 /* Inline rename input on tab (double-click) */
 .context-tab__rename-input {
   max-width: 120px;
-  padding: 0 4px;
+  padding: 0 var(--space-1);
   font-size: inherit;
   color: inherit;
   outline: none;
   background: transparent;
   border: 1px solid var(--color-accent-default);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 /* Close button on tab — always laid out (space reserved) so revealing the X on
@@ -75,10 +75,10 @@
   visibility: hidden;
   align-items: center;
   justify-content: center;
-  padding: 1px;
-  margin-left: 4px;
+  padding: var(--space-px);
+  margin-left: var(--space-1);
   color: var(--color-text-muted);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   transition:
     color 0.1s,
     background 0.1s;
@@ -113,7 +113,7 @@
 
 /* Add (+) button */
 .context-tab--add {
-  padding: 3px 6px;
+  padding: var(--space-0-5) var(--space-1-5);
   color: var(--color-text-muted);
 }
 
@@ -131,10 +131,10 @@
   position: fixed;
   z-index: 1000;
   min-width: 160px;
-  padding: 4px;
+  padding: var(--space-1);
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   box-shadow: var(--shadow-md);
 }
 
@@ -147,14 +147,14 @@
 .context-ctx-menu__item {
   display: block;
   width: 100%;
-  padding: 6px 10px;
+  padding: var(--space-1-5) var(--space-2);
   font-size: 13px;
   color: var(--color-text-default);
   text-align: left;
   cursor: pointer;
   background: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .context-add-menu__item:hover,
@@ -171,7 +171,7 @@
 .context-ctx-menu__sep,
 .context-add-menu__sep {
   height: 1px;
-  margin: 4px 0;
+  margin: var(--space-1) 0;
   background: var(--color-border-default);
 }
 
@@ -181,7 +181,7 @@
 }
 
 .context-add-menu__label {
-  padding: 6px 10px 2px;
+  padding: var(--space-1-5) var(--space-2) var(--space-0-5);
   font-size: 11px;
   font-weight: 600;
   color: var(--color-text-muted);
@@ -189,7 +189,7 @@
 
 .context-add-menu__item--recent {
   display: flex;
-  gap: 6px;
+  gap: var(--space-1-5);
   align-items: center;
 }
 
@@ -207,12 +207,12 @@
 
 .context-add-menu__badge {
   flex-shrink: 0;
-  padding: 1px 6px;
+  padding: var(--space-px) var(--space-1-5);
   font-size: 10px;
   font-weight: 600;
   color: var(--color-accent-default);
   border: 1px solid var(--color-accent-default);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .context-add-menu__item--muted {
@@ -223,14 +223,14 @@
 /* Context menu inline rename input */
 .context-ctx-menu__input {
   width: calc(100% - 8px);
-  padding: 4px 8px;
-  margin: 4px;
+  padding: var(--space-1) var(--space-2);
+  margin: var(--space-1);
   font-size: 13px;
   color: var(--color-text-default);
   outline: none;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 [data-theme="dark"] .context-ctx-menu__input {
@@ -241,8 +241,8 @@
 .context-ctx-menu__colors {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-  padding: 6px 10px;
+  gap: var(--space-1);
+  padding: var(--space-1-5) var(--space-2);
 }
 
 .context-ctx-menu__color-btn {

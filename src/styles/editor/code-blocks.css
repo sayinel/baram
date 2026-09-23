@@ -6,15 +6,15 @@
 .code-block-header {
   display: flex;
   justify-content: flex-start;
-  padding: 2px 8px;
+  padding: var(--space-0-5) var(--space-2);
   background-color: var(--color-bg-subtle);
   border: 1px solid var(--color-border-subtle);
   border-bottom: none;
-  border-radius: 6px 6px 0 0;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
 }
 
 .code-block-lang-select {
-  padding: 1px 4px;
+  padding: var(--space-px) var(--space-1);
   font-family: var(--font-family-mono);
   font-size: 0.7rem;
   color: var(--color-text-muted);
@@ -42,11 +42,11 @@
   font-size: var(--editor-code-font-size, 0.875em);
   line-height: var(--editor-code-line-height, inherit);
   border: 1px solid var(--color-border-subtle);
-  border-radius: 0 0 6px 6px;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
 }
 
 .code-block-editor .cm-editor .cm-content {
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
 }
 
 /* issue 468 — tiptap core가 `.ProseMirror [contenteditable="false"]
@@ -104,7 +104,7 @@
 
 /* Code Block Style: Minimal — no background/border, bottom divider only */
 .code-block-wrapper[data-style="minimal"] .code-block-header {
-  padding: 2px 4px;
+  padding: var(--space-0-5) var(--space-1);
   background: transparent;
   border: none;
 }
@@ -193,10 +193,10 @@
   top: -2px;
   right: 12px;
   z-index: 1;
-  padding: 1px 6px;
+  padding: var(--space-px) var(--space-1-5);
   background-color: var(--color-bg-elevated);
   border: none;
-  border-radius: 4px 4px 0 0;
+  border-radius: var(--radius-default) var(--radius-default) 0 0;
   box-shadow: 0 -1px 3px rgb(0 0 0 / 6%);
   transform: translateY(-100%);
 }
@@ -209,7 +209,7 @@
 .code-block-wrapper[data-style="paper"] .code-block-editor .cm-editor {
   background-color: var(--color-bg-elevated);
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .code-block-wrapper[data-style="paper"]

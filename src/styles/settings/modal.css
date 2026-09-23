@@ -24,13 +24,13 @@
   overscroll-behavior: contain;
   background-color: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   box-shadow: 0 8px 30px rgb(0 0 0 / 20%);
 }
 
 .settings-header {
   flex-shrink: 0;
-  padding: 14px 20px;
+  padding: var(--space-3) var(--space-5);
   border-bottom: 1px solid var(--color-border-subtle);
 }
 
@@ -48,7 +48,7 @@
   color: var(--color-text-muted);
   background: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .settings-close:hover {
@@ -67,14 +67,14 @@
   display: flex;
   flex-shrink: 0;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0-5);
   width: 160px;
-  padding: 8px 0;
+  padding: var(--space-2) 0;
   border-right: 1px solid var(--color-border-subtle);
 }
 
 .settings-nav-item {
-  padding: 7px 16px;
+  padding: var(--space-1-5) var(--space-4);
   font-size: 0.85rem;
   color: var(--color-text-secondary);
   text-align: left;
@@ -109,14 +109,14 @@
 .settings-nav-icon {
   display: inline-block;
   width: 20px;
-  margin-right: 6px;
+  margin-right: var(--space-1-5);
   font-size: 0.8rem;
   text-align: center;
 }
 
 /* Plugin-contributed tabs group label (§69) */
 .settings-nav-group {
-  padding: 8px 16px 4px;
+  padding: var(--space-2) var(--space-4) var(--space-1);
   font-size: 0.7rem;
   font-weight: 600;
   color: var(--color-text-muted);
@@ -128,7 +128,7 @@
 .settings-content {
   flex: 1;
   min-height: 360px;
-  padding: 4px 24px 24px;
+  padding: var(--space-1) var(--space-6) var(--space-6);
   overflow-y: auto;
 }
 
@@ -140,8 +140,8 @@
 
 /* Section header */
 .settings-section-header {
-  padding: 16px 0 8px;
-  margin-top: 4px;
+  padding: var(--space-4) 0 var(--space-2);
+  margin-top: var(--space-1);
   font-size: 0.7rem;
   font-weight: 600;
   color: var(--color-text-muted);
@@ -151,7 +151,7 @@
 }
 
 .settings-section-header:first-child {
-  padding-top: 12px;
+  padding-top: var(--space-3);
   margin-top: 0;
 }
 
@@ -160,19 +160,19 @@
   position: relative;
   flex: 1;
   max-width: 240px;
-  margin: 0 16px;
+  margin: 0 var(--space-4);
 }
 
 .settings-search {
   width: 100%;
-  padding: 5px 28px 5px 10px;
+  padding: var(--space-1) var(--space-6) var(--space-1) var(--space-2);
   font-family: var(--font-family-sans);
   font-size: 0.8rem;
   color: var(--color-text-primary);
   outline: none;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
-  border-radius: 5px;
+  border-radius: var(--radius-default);
 }
 
 .settings-search:focus {
@@ -207,7 +207,7 @@
 }
 
 .settings-search-empty {
-  padding: 40px 20px;
+  padding: var(--space-10) var(--space-5);
   font-size: 0.85rem;
   color: var(--color-text-muted);
   text-align: center;
@@ -215,16 +215,16 @@
 
 .settings-search-result-row {
   display: flex;
-  gap: 12px;
+  gap: var(--space-3);
   align-items: center;
   justify-content: space-between;
-  padding: 8px 4px;
+  padding: var(--space-2) var(--space-1);
   border-bottom: 1px solid var(--color-border-subtle);
 }
 
 .settings-search-result-row:hover {
   background: var(--color-bg-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .settings-search-result-row .settings-row-control {
@@ -234,18 +234,18 @@
 /* Setting row — Obsidian-style: label + description left, control right */
 .settings-row {
   display: flex;
-  gap: 16px;
+  gap: var(--space-4);
   align-items: center;
   justify-content: space-between;
   min-height: 44px;
-  padding: 10px 0;
+  padding: var(--space-2) 0;
 }
 
 .settings-row-info {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0-5);
   min-width: 0;
 }
 
@@ -285,7 +285,7 @@
 .settings-dial-value {
   flex-shrink: 0;
   width: 52px;
-  margin-left: 8px;
+  margin-left: var(--space-2);
   overflow: hidden;
   font-size: 0.75rem;
   font-variant-numeric: tabular-nums;
@@ -313,11 +313,11 @@
 .settings-dial-origin {
   display: flex;
   flex-shrink: 0;
-  gap: 4px;
+  gap: var(--space-1);
   align-items: center;
   justify-content: space-between;
   min-width: 92px;
-  margin-left: 8px;
+  margin-left: var(--space-2);
 }
 
 /* 이 앱에 배지/칩 전례가 없어 여기서 하나 정한다 — 조용한 메타데이터로
@@ -333,7 +333,7 @@
    글자라 그 특정 실패 사례는 아니지만, 스크린샷으로 직접 확인할 수 없는
    채로 밀어 넣을 만큼 이 배지에 꼭 필요한 구분도 아니다. */
 .settings-dial-origin-badge {
-  padding: 2px 7px;
+  padding: var(--space-0-5) var(--space-1-5);
   font-size: 0.7rem;
   line-height: 1;
   color: var(--color-text-muted);
@@ -353,7 +353,7 @@
   color: var(--color-text-muted);
   background: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .settings-dial-revert:hover {
@@ -363,7 +363,7 @@
 
 /* Form controls */
 .settings-select {
-  padding: 5px 10px;
+  padding: var(--space-1) var(--space-2);
   font-family: var(--font-family-sans);
   font-size: 0.8rem;
   color: var(--color-text-primary);
@@ -371,7 +371,7 @@
   outline: none;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 5px;
+  border-radius: var(--radius-default);
 }
 
 .settings-select:focus {
@@ -380,14 +380,14 @@
 
 .settings-input {
   width: 180px;
-  padding: 5px 10px;
+  padding: var(--space-1) var(--space-2);
   font-family: var(--font-family-sans);
   font-size: 0.8rem;
   color: var(--color-text-primary);
   outline: none;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 5px;
+  border-radius: var(--radius-default);
 }
 
 .settings-input:focus {
@@ -419,7 +419,7 @@
   cursor: pointer;
   background-color: var(--color-border-default);
   border: none;
-  border-radius: 10px;
+  border-radius: var(--radius-full);
   transition: background-color 0.2s;
 }
 
@@ -448,11 +448,11 @@
   display: flex;
   overflow: hidden;
   border: 1px solid var(--color-border-default);
-  border-radius: 5px;
+  border-radius: var(--radius-default);
 }
 
 .settings-scheme-btn {
-  padding: 5px 14px;
+  padding: var(--space-1) var(--space-3);
   font-family: var(--font-family-sans);
   font-size: 0.8rem;
   color: var(--color-text-secondary);

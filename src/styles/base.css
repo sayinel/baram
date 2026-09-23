@@ -204,7 +204,7 @@ body {
     var(--color-bg-subtle) 75%
   );
   background-size: 200% 100%;
-  border-radius: 4px;
+  border-radius: var(--radius-default);
   animation: skeleton-shimmer 1.5s ease-in-out infinite;
 }
 

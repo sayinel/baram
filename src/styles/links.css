@@ -10,7 +10,7 @@
 
 /* §30a Block ID Decoration — Focus-Reveal + Hint */
 .block-id-hint {
-  margin-left: 4px;
+  margin-left: var(--space-1);
   font-size: 0.7em;
   color: var(--color-text-muted);
   cursor: default;
@@ -23,7 +23,7 @@
 }
 
 .block-id-focused {
-  margin-left: 2px;
+  margin-left: var(--space-0-5);
   font-family: var(--font-family-mono);
   font-size: 0.85em;
   color: var(--color-text-muted);
@@ -40,7 +40,7 @@
 .block-id-editing {
   display: inline-flex;
   align-items: center;
-  margin-left: 2px;
+  margin-left: var(--space-0-5);
 }
 
 .block-id-caret {
@@ -51,14 +51,14 @@
 
 .block-id-input {
   min-width: 40px;
-  padding: 0 4px;
+  padding: 0 var(--space-1);
   font-family: var(--font-family-mono);
   font-size: 0.85em;
   color: var(--color-text-primary);
   outline: none;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .block-id-input:focus {
@@ -70,11 +70,11 @@
 }
 
 .wikilink {
-  padding: 0 1px;
+  padding: 0 var(--space-px);
   color: var(--color-accent-default);
   cursor: pointer;
   border-bottom: 1px dashed var(--color-accent-default);
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   transition:
     background-color 0.15s ease,
     color 0.15s ease;
@@ -97,15 +97,15 @@
     var(--color-accent-default) 15%,
     transparent
   );
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
 }
 
 /* §56 Date Wikilink Styling */
 .wikilink-date {
-  padding: 1px 6px;
+  padding: var(--space-px) var(--space-1-5);
   cursor: pointer;
   background: var(--color-bg-elevated);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .wikilink-date:hover {
@@ -114,7 +114,7 @@
 }
 
 .wikilink-date-icon {
-  margin-right: 3px;
+  margin-right: var(--space-0-5);
   font-size: 12px;
 }
 
@@ -123,7 +123,7 @@
   display: inline-block;
   width: 6px;
   height: 6px;
-  margin-right: 3px;
+  margin-right: var(--space-0-5);
   vertical-align: middle;
   border-radius: 50%;
 }
@@ -140,6 +140,13 @@
 
 /* §30c Block Reference — inline chip */
 .block-reference {
+  /* ‼️ Left as a literal px, not var(--space-1): jsdom's getComputedStyle does
+     not resolve CSS custom properties (verified directly against jsdom), and
+     export-html-block-reference-styles.test.ts asserts this exact computed
+     value. Routing it through the token would not change what a real browser
+     renders — only what the jsdom test harness can read back — so this one
+     declaration is excluded from §365's token adoption. */
+  /* stylelint-disable-next-line declaration-property-value-disallowed-list -- jsdom의 getComputedStyle이 커스텀 프로퍼티를 풀지 못해 토큰화하면 export-html-block-reference-styles.test.ts의 계산값 단언을 잃는다(위 주석 참조, 0097) */
   padding: 0 4px;
 
   /* §276.5 A text-highlight ref renders the full original sentence, so the chip
@@ -169,7 +176,7 @@
   );
   border: 1px solid
     color-mix(in srgb, var(--color-accent-default) 25%, transparent);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .block-reference:hover {
@@ -216,7 +223,7 @@
   max-width: 100%;
   height: auto;
   border: 1px solid var(--color-border-default);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 /* §276.6 Per-reference width. The percentage lives on the WRAPPER (it resolves
@@ -246,15 +253,15 @@
 
 /* §30c Block Embed — bordered preview container */
 .block-embed {
-  margin: 8px 0;
+  margin: var(--space-2) 0;
   overflow: hidden;
   border: 1px solid var(--color-border-default);
   border-left: 3px solid var(--color-accent-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .block-embed-header {
-  padding: 6px 12px;
+  padding: var(--space-1-5) var(--space-3);
   font-size: 0.75rem;
   color: var(--color-accent-default);
   cursor: pointer;
@@ -267,7 +274,7 @@
 }
 
 .block-embed-content {
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   font-size: 0.9rem;
   white-space: pre-wrap;
 }
@@ -285,7 +292,7 @@
 .block-embed-textarea {
   display: block;
   width: 100%;
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   overflow: hidden;
   font-family: inherit;
   font-size: 0.9rem;
@@ -308,13 +315,13 @@
   overflow: hidden;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   box-shadow: 0 8px 24px rgb(0 0 0 / 30%);
 }
 
 .hover-preview-title {
   flex-shrink: 0;
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   overflow: hidden;
   text-overflow: ellipsis;
   font-size: 0.8rem;
@@ -332,7 +339,7 @@
 .hover-preview-content {
   flex: 1;
   min-height: 0;
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   overflow-y: auto;
 }
 
@@ -351,15 +358,15 @@
    ============================================ */
 
 .backlinks {
-  padding: 8px 0;
+  padding: var(--space-2) 0;
   overflow-y: auto;
 }
 
 .backlinks-header {
   display: flex;
-  gap: 6px;
+  gap: var(--space-1-5);
   align-items: center;
-  padding: 4px 12px 8px;
+  padding: var(--space-1) var(--space-3) var(--space-2);
   font-size: 0.75rem;
   font-weight: 600;
   color: var(--color-text-muted);
@@ -368,7 +375,7 @@
 }
 
 .backlinks-empty {
-  padding: 16px 12px;
+  padding: var(--space-4) var(--space-3);
   font-size: 0.85rem;
   color: var(--color-text-muted);
   text-align: center;
@@ -383,7 +390,7 @@
 }
 
 .backlinks-ns-header {
-  padding: 6px 12px 2px;
+  padding: var(--space-1-5) var(--space-3) var(--space-0-5);
   font-size: 0.7rem;
   color: var(--color-text-muted);
   text-transform: uppercase;
@@ -392,16 +399,16 @@
 }
 
 .backlinks-group {
-  margin-bottom: 8px;
+  margin-bottom: var(--space-2);
 }
 
 .backlinks-source {
-  padding: 6px 12px;
+  padding: var(--space-1-5) var(--space-3);
   font-size: 0.85rem;
   font-weight: 500;
   color: var(--color-text-primary);
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: var(--radius-default);
   transition: background-color 0.1s ease;
 }
 
@@ -411,10 +418,10 @@
 
 .backlinks-context {
   display: flex;
-  gap: 6px;
+  gap: var(--space-1-5);
   align-items: baseline;
-  padding: 5px 10px;
-  margin: 6px 12px 6px 16px;
+  padding: var(--space-1) var(--space-2);
+  margin: var(--space-1-5) var(--space-3) var(--space-1-5) var(--space-4);
   font-size: 0.8rem;
   color: var(--color-text-secondary);
   cursor: pointer;
@@ -423,7 +430,7 @@
     var(--color-bg-default) 85%,
     var(--color-bg-panel)
   );
-  border-radius: 5px;
+  border-radius: var(--radius-default);
   transition: background-color 0.15s ease;
 }
 
@@ -452,7 +459,7 @@
 
 .backlinks-wrap-toggle {
   flex-shrink: 0;
-  padding: 0 4px;
+  padding: 0 var(--space-1);
   margin-left: auto;
   font-size: 0.7rem;
   line-height: 1;
@@ -460,7 +467,7 @@
   cursor: pointer;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   opacity: 1;
   transition:
     opacity 0.15s ease,
@@ -474,26 +481,26 @@
 
 /* §34 Unlinked mentions */
 .backlinks-header-unlinked {
-  padding-top: 8px;
-  margin-top: 8px;
+  padding-top: var(--space-2);
+  margin-top: var(--space-2);
   border-top: 1px solid var(--color-border-default);
 }
 
 .backlinks-empty-inline {
-  padding: 4px 12px 8px;
+  padding: var(--space-1) var(--space-3) var(--space-2);
   font-size: 0.8rem;
   color: var(--color-text-muted);
 }
 
 .backlinks-linkify-btn {
   flex-shrink: 0;
-  padding: 1px 6px;
+  padding: var(--space-px) var(--space-1-5);
   font-size: 0.7rem;
   color: var(--color-accent-default);
   cursor: pointer;
   background: transparent;
   border: 1px solid var(--color-accent-default);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   opacity: 0;
   transition:
     opacity 0.15s ease,
@@ -523,16 +530,16 @@
 .wikilink-menu {
   width: 280px;
   max-height: 280px;
-  padding: 4px 0;
+  padding: var(--space-1) 0;
   overflow-y: auto;
   background-color: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   box-shadow: 0 4px 16px rgb(0 0 0 / 15%);
 }
 
 .wikilink-menu-empty {
-  padding: 12px 16px;
+  padding: var(--space-3) var(--space-4);
   font-size: 0.85rem;
   color: var(--color-text-muted);
   text-align: center;
@@ -541,10 +548,10 @@
 .wikilink-menu-item {
   display: flex;
   align-items: center;
-  padding: 6px 12px;
-  margin: 0 4px;
+  padding: var(--space-1-5) var(--space-3);
+  margin: 0 var(--space-1);
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: var(--radius-default);
   transition: background-color 0.1s ease;
 }
 
@@ -577,15 +584,15 @@
    배지에 같은 색을 쓰면 하필 **지금 보고 있는 줄**에서 배지가 사라진다. */
 .wikilink-item-ext {
   flex-shrink: 0;
-  padding: 1px 5px;
-  margin-left: 8px;
+  padding: var(--space-px) var(--space-1);
+  margin-left: var(--space-2);
   font-size: 0.65rem;
   font-weight: 600;
   color: var(--color-text-muted);
   letter-spacing: 0.02em;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 /* §95 이름이 겹친 행에만 붙는 상위 폴더. 배지(.wikilink-item-ext)와 같은 이유로
@@ -594,7 +601,7 @@
    다르고, 둘이 한 줄에 함께 설 수 있어(id 접두 PDF) 같은 모양이면 헷갈린다. */
 .wikilink-item-folder {
   flex-shrink: 0;
-  margin-left: 8px;
+  margin-left: var(--space-2);
   font-size: 0.7rem;
   color: var(--color-text-muted);
   white-space: nowrap;
@@ -607,7 +614,7 @@
 
 .wikilink-item-icon {
   flex-shrink: 0;
-  margin-right: 6px;
+  margin-right: var(--space-1-5);
   font-size: 0.85rem;
   font-weight: 600;
   color: var(--color-accent-default);
@@ -616,7 +623,7 @@
 .wikilink-heading-icon {
   flex-shrink: 0;
   min-width: 20px;
-  margin-right: 4px;
+  margin-right: var(--space-1);
   font-family: var(--font-family-mono);
   font-size: 0.7rem;
   color: var(--color-text-muted);
@@ -624,7 +631,7 @@
 
 /* §87 Cross-vault hint in wikilink menu */
 .wikilink-menu-hint {
-  padding: 6px 12px;
+  padding: var(--space-1-5) var(--space-3);
   font-size: 0.75rem;
   color: var(--color-text-muted);
   border-top: 1px solid var(--color-border-default);
@@ -637,9 +644,9 @@
 /* §87 Cross-vault folder group headers */
 .wikilink-menu-folder-header {
   display: flex;
-  gap: 4px;
+  gap: var(--space-1);
   align-items: center;
-  padding: 4px 10px;
+  padding: var(--space-1) var(--space-2);
   font-size: 0.75rem;
   font-weight: 600;
   color: var(--color-text-muted);
@@ -671,12 +678,12 @@
 
 .wikilink-folder-count {
   flex-shrink: 0;
-  padding: 0 4px;
+  padding: 0 var(--space-1);
   font-size: 10px;
   font-weight: 400;
   color: var(--color-text-muted);
   background: var(--color-bg-default);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
 }
 
 [data-theme="dark"] .wikilink-folder-count {
@@ -684,5 +691,5 @@
 }
 
 .wikilink-item-indented {
-  padding-left: 28px;
+  padding-left: var(--space-6);
 }

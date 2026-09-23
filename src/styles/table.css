@@ -2,11 +2,11 @@
 
 /* ── Table of Contents NodeView ────────────────────────────────── */
 .tiptap .table-of-contents {
-  padding: 12px 16px;
-  margin: 8px 0;
+  padding: var(--space-3) var(--space-4);
+  margin: var(--space-2) 0;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .tiptap .table-of-contents-selected {
@@ -15,7 +15,7 @@
 }
 
 .tiptap .table-of-contents-header {
-  margin-bottom: 8px;
+  margin-bottom: var(--space-2);
   font-size: 12px;
   font-weight: 600;
   color: var(--color-text-secondary);
@@ -36,12 +36,12 @@
 }
 
 .tiptap .table-of-contents-item {
-  margin: 2px 0;
+  margin: var(--space-0-5) 0;
 }
 
 .tiptap .table-of-contents-link {
   width: 100%;
-  padding: 2px 4px;
+  padding: var(--space-0-5) var(--space-1);
   margin: 0;
   font-size: 14px;
   color: var(--color-accent-default);
@@ -49,7 +49,7 @@
   cursor: pointer;
   background: none;
   border: none;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .tiptap .table-of-contents-link:hover {
@@ -67,13 +67,13 @@
   position: absolute;
   z-index: 20;
   display: flex;
-  gap: 2px;
+  gap: var(--space-0-5);
   align-items: center;
-  padding: 4px 6px;
+  padding: var(--space-1) var(--space-1-5);
   pointer-events: auto;
   background-color: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   box-shadow: 0 2px 8px rgb(0 0 0 / 12%);
   transform: translateX(-50%);
 }
@@ -90,7 +90,7 @@
   cursor: pointer;
   background: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-default);
   transition:
     background-color 0.15s,
     color 0.15s;
@@ -103,7 +103,7 @@
 
 .table-toolbar-btn-wide {
   width: auto;
-  padding: 0 5px;
+  padding: 0 var(--space-1);
 }
 
 .table-toolbar-btn-active {
@@ -124,7 +124,7 @@
 .table-toolbar-separator {
   width: 1px;
   height: 20px;
-  margin: 0 2px;
+  margin: 0 var(--space-0-5);
   background-color: var(--color-border-subtle);
 }
 
@@ -141,15 +141,15 @@
 .table-grid-picker {
   position: fixed;
   z-index: 10000;
-  padding: 8px;
+  padding: var(--space-2);
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   box-shadow: 0 4px 16px rgb(0 0 0 / 15%);
 }
 
 .table-grid-label {
-  margin-bottom: 6px;
+  margin-bottom: var(--space-1-5);
   font-size: 0.75rem;
   color: var(--color-text-secondary);
   text-align: center;
@@ -160,7 +160,7 @@
   display: grid;
   grid-template-rows: repeat(10, 22px);
   grid-template-columns: repeat(10, 22px);
-  gap: 2px;
+  gap: var(--space-0-5);
 }
 
 .table-grid-cell {
@@ -168,7 +168,7 @@
   height: 22px;
   background: transparent;
   border: 1px solid var(--color-border-default);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   transition:
     background-color 0.1s,
     border-color 0.1s;
@@ -227,7 +227,7 @@
   cursor: pointer;
   background: var(--color-accent-solid);
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-default);
   box-shadow: 0 1px 4px rgb(0 0 0 / 15%);
   opacity: 0.9;
   transition:
@@ -256,7 +256,7 @@
   z-index: 51;
   pointer-events: none;
   background: var(--color-accent-default);
-  border-radius: 1px;
+  border-radius: var(--radius-sm);
 }
 
 body.table-dragging {

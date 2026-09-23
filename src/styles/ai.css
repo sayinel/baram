@@ -18,11 +18,11 @@
 }
 
 .prompt-variable {
-  padding: 0 2px;
+  padding: 0 var(--space-0-5);
   font-weight: 500;
   color: var(--color-accent-ai);
   background: color-mix(in srgb, var(--color-accent-ai) 8%, transparent);
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
 }
 
 [data-theme="dark"] .prompt-variable {
@@ -47,13 +47,13 @@
 
 .ai-chat-header {
   flex-shrink: 0;
-  padding: 12px 16px;
+  padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--color-border-default);
 }
 
 .ai-chat-header-actions {
   display: flex;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .ai-chat-new-btn {
@@ -67,7 +67,7 @@
   cursor: pointer;
   background: none;
   border: 1px solid var(--color-border-default);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .ai-chat-new-btn:hover {
@@ -81,16 +81,16 @@
 
 .ai-chat-session-trigger {
   display: flex;
-  gap: 4px;
+  gap: var(--space-1);
   align-items: center;
-  padding: 2px 4px;
+  padding: var(--space-0-5) var(--space-1);
   font-size: 14px;
   font-weight: 600;
   color: var(--color-text-primary);
   cursor: pointer;
   background: none;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .ai-chat-session-trigger:hover {
@@ -105,12 +105,12 @@
   z-index: 200;
   min-width: 220px;
   max-height: 300px;
-  padding: 4px;
-  margin-top: 4px;
+  padding: var(--space-1);
+  margin-top: var(--space-1);
   overflow-y: auto;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   box-shadow: 0 4px 12px rgb(0 0 0 / 12%);
 }
 
@@ -119,7 +119,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .ai-chat-dropdown-item.active {
@@ -128,7 +128,7 @@
 
 .ai-chat-dropdown-item-label {
   flex: 1;
-  padding: 6px 8px;
+  padding: var(--space-1-5) var(--space-2);
   overflow: hidden;
   text-overflow: ellipsis;
   font-size: 13px;
@@ -145,13 +145,13 @@
 }
 
 .ai-chat-dropdown-item-delete {
-  padding: 4px 6px;
+  padding: var(--space-1) var(--space-1-5);
   font-size: 14px;
   color: var(--color-text-muted);
   cursor: pointer;
   background: none;
   border: none;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   opacity: 0;
   transition: opacity 0.15s;
 }
@@ -169,13 +169,13 @@
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px;
+  gap: var(--space-3);
+  padding: var(--space-4);
   overflow-y: auto;
 }
 
 .ai-chat-empty {
-  padding: 40px 20px;
+  padding: var(--space-10) var(--space-5);
   font-size: 13px;
   color: var(--color-text-muted);
   text-align: center;
@@ -183,7 +183,7 @@
 
 .chat-message {
   display: flex;
-  gap: 10px;
+  gap: var(--space-2);
   align-items: flex-start;
 }
 
@@ -216,18 +216,18 @@
 
 .chat-message-actions {
   display: flex;
-  gap: 6px;
-  margin-top: 6px;
+  gap: var(--space-1-5);
+  margin-top: var(--space-1-5);
 }
 
 .chat-message-apply-btn {
-  padding: 3px 10px;
+  padding: var(--space-0-5) var(--space-2);
   font-size: 11px;
   color: var(--color-text-secondary);
   cursor: pointer;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
   transition:
     background 0.15s,
     color 0.15s;
@@ -241,8 +241,8 @@
 
 .ai-chat-error {
   max-height: 150px;
-  padding: 8px 12px;
-  margin: 8px 12px;
+  padding: var(--space-2) var(--space-3);
+  margin: var(--space-2) var(--space-3);
   overflow-y: auto;
   font-size: 12px;
   color: var(--color-status-danger);
@@ -250,12 +250,12 @@
   white-space: pre-wrap;
   background: var(--color-status-error-bg);
   border: 1px solid var(--color-status-error-border);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .ai-chat-error strong {
   display: block;
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
   font-weight: 600;
 }
 
@@ -268,8 +268,8 @@
 /* Shared error style for AI dialogs (SkillGenerator, SkillTest, etc.) */
 .ai-error-message {
   max-height: 120px;
-  padding: 8px 12px;
-  margin-top: 8px;
+  padding: var(--space-2) var(--space-3);
+  margin-top: var(--space-2);
   overflow-y: auto;
   font-size: 13px;
   color: var(--color-status-danger);
@@ -277,12 +277,12 @@
   white-space: pre-wrap;
   background: var(--color-status-error-bg);
   border: 1px solid var(--color-status-error-border);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .ai-error-message strong {
   display: block;
-  margin-bottom: 2px;
+  margin-bottom: var(--space-0-5);
   font-weight: 600;
 }
 
@@ -294,13 +294,13 @@
 
 .ai-chat-input-area {
   flex-shrink: 0;
-  padding: 12px;
+  padding: var(--space-3);
   border-top: 1px solid var(--color-border-default);
 }
 
 .ai-chat-input {
   width: 100%;
-  padding: 8px 10px;
+  padding: var(--space-2) var(--space-2);
   font-family: inherit;
   font-size: 13px;
   line-height: 1.4;
@@ -308,7 +308,7 @@
   resize: none;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .ai-chat-input:focus {
@@ -323,16 +323,16 @@
 .ai-chat-input-actions {
   display: flex;
   justify-content: flex-end;
-  margin-top: 6px;
+  margin-top: var(--space-1-5);
 }
 
 .ai-chat-send-btn,
 .ai-chat-stop-btn {
-  padding: 5px 14px;
+  padding: var(--space-1) var(--space-3);
   font-size: 12px;
   cursor: pointer;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .ai-chat-send-btn {
@@ -362,27 +362,27 @@
   left: 8px;
   z-index: 210;
   max-height: 200px;
-  padding: 4px;
-  margin-bottom: 4px;
+  padding: var(--space-1);
+  margin-bottom: var(--space-1);
   overflow-y: auto;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   box-shadow: 0 -4px 12px rgb(0 0 0 / 10%);
 }
 
 .ref-autocomplete-item {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: var(--space-px);
   width: 100%;
-  padding: 6px 8px;
+  padding: var(--space-1-5) var(--space-2);
   font-size: 13px;
   text-align: left;
   cursor: pointer;
   background: none;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .ref-autocomplete-item-active {
@@ -434,7 +434,7 @@
 }
 
 .prompt-lint-header {
-  padding: 4px 12px;
+  padding: var(--space-1) var(--space-3);
   font-size: 11px;
   font-weight: 600;
   color: var(--color-text-secondary);
@@ -444,12 +444,12 @@
 
 .prompt-lint-count {
   min-width: 16px;
-  padding: 0 6px;
+  padding: 0 var(--space-1-5);
   font-size: 10px;
   color: var(--color-accent-on-solid);
   text-align: center;
   background: var(--color-accent-solid);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
 }
 
 .prompt-lint-list {
@@ -459,9 +459,9 @@
 
 .prompt-lint-item {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: flex-start;
-  padding: 4px 12px;
+  padding: var(--space-1) var(--space-3);
   font-size: 12px;
   line-height: 1.4;
   color: var(--color-text-primary);
@@ -481,7 +481,7 @@
 
 .prompt-lint-severity-icon {
   flex-shrink: 0;
-  margin-top: 2px;
+  margin-top: var(--space-0-5);
 }
 
 .prompt-lint-item-error .prompt-lint-severity-icon {
@@ -529,23 +529,23 @@
   z-index: 100;
   min-width: 300px;
   max-width: 500px;
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   box-shadow: 0 4px 16px rgb(0 0 0 / 15%);
 }
 
 .inline-ai-prompt-input {
   box-sizing: border-box;
   width: 100%;
-  padding: 6px 8px;
+  padding: var(--space-1-5) var(--space-2);
   font-size: 13px;
   color: var(--color-text-primary);
   outline: none;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .inline-ai-prompt-input:focus {
@@ -554,9 +554,9 @@
 
 .inline-ai-prompt-status {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: center;
-  padding: 4px 0;
+  padding: var(--space-1) 0;
   font-size: 13px;
   color: var(--color-text-secondary);
 }
@@ -580,28 +580,28 @@
 .ai-diff-completed-panel {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-top: 6px;
+  gap: var(--space-1-5);
+  margin-top: var(--space-1-5);
 }
 
 .ai-diff-action-bar {
   display: flex;
-  gap: 6px;
+  gap: var(--space-1-5);
   align-items: center;
 }
 
 .inline-ai-prompt > .ai-diff-action-bar {
-  margin-top: 6px;
+  margin-top: var(--space-1-5);
 }
 
 .ai-diff-action-btn {
-  padding: 4px 12px;
+  padding: var(--space-1) var(--space-3);
   font-size: 12px;
   color: var(--color-text-primary);
   cursor: pointer;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .ai-diff-action-btn:hover {
@@ -650,7 +650,7 @@
 }
 
 .ai-diff-hunk-status {
-  padding: 2px 4px;
+  padding: var(--space-0-5) var(--space-1);
   font-size: 11px;
   color: var(--color-text-secondary);
   white-space: nowrap;

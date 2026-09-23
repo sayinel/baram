@@ -1,7 +1,7 @@
 /* API key row */
 .settings-key-row {
   display: flex;
-  gap: 6px;
+  gap: var(--space-1-5);
   width: 180px;
 }
 
@@ -20,14 +20,14 @@
 
 .settings-key-toggle {
   flex-shrink: 0;
-  padding: 5px 8px;
+  padding: var(--space-1) var(--space-2);
   font-family: var(--font-family-sans);
   font-size: 0.75rem;
   color: var(--color-text-secondary);
   cursor: pointer;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 5px;
+  border-radius: var(--radius-default);
 }
 
 .settings-key-toggle:hover {
@@ -38,14 +38,14 @@
 /* Model selector row */
 .settings-model-row {
   display: flex;
-  gap: 6px;
+  gap: var(--space-1-5);
   width: 180px;
 }
 
 /* Task model selector (provider + model dropdowns) */
 .settings-task-model-row {
   display: flex;
-  gap: 6px;
+  gap: var(--space-1-5);
   align-items: center;
   width: 280px;
 }
@@ -69,7 +69,7 @@
 
 .settings-model-refresh {
   flex-shrink: 0;
-  padding: 5px 8px;
+  padding: var(--space-1) var(--space-2);
   font-family: var(--font-family-sans);
   font-size: 0.875rem;
   line-height: 1;
@@ -77,7 +77,7 @@
   cursor: pointer;
   background-color: var(--color-bg-elevated);
   border: 1px solid var(--color-border-default);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .settings-model-refresh:hover:not(:disabled) {
@@ -108,8 +108,9 @@
 
 .settings-model-error {
   max-height: 100px;
-  padding: 8px 12px;
-  margin: -4px 0 8px;
+  padding: var(--space-2) var(--space-3);
+  /* stylelint-disable-next-line declaration-property-value-disallowed-list -- 음수 값이다; var() 앞에 `-`를 붙여 부호를 뒤집을 수 없다(0097 R-C). 나머지 값(8px)은 Task 2 에서 이미 --space-2 로 치환됐다 */
+  margin: -4px 0 var(--space-2);
   overflow-y: auto;
   font-size: 0.75rem;
   line-height: 1.4;
@@ -118,12 +119,12 @@
   white-space: pre-wrap;
   background: var(--color-status-error-bg);
   border: 1px solid var(--color-status-error-border);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .settings-model-error strong {
   display: block;
-  margin-bottom: 2px;
+  margin-bottom: var(--space-0-5);
   font-weight: 600;
 }
 
@@ -138,13 +139,13 @@
    row in the family it named and made a missing font look installed
    (§346 defect 4). `.flex-col`/`.text-truncate` come from base.css. */
 .settings-font-slot {
-  gap: 6px;
+  gap: var(--space-1-5);
   width: 320px;
 }
 
 .settings-font-value {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: center;
 }
 
@@ -167,11 +168,11 @@
 
 .settings-font-badge {
   flex-shrink: 0;
-  padding: 2px 8px;
+  padding: var(--space-0-5) var(--space-2);
   font-size: 0.7rem;
   font-weight: 500;
   white-space: nowrap;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
 }
 
 /* review Important 5: `--color-accent-on-solid` is contrast-checked against
@@ -202,7 +203,7 @@
    버튼(`.settings-model-refresh`)과 같은 차림새를 쓴다. */
 .settings-font-more {
   flex-shrink: 0;
-  padding: 4px 10px;
+  padding: var(--space-1) var(--space-2);
   font-family: var(--font-family-sans);
   font-size: 0.75rem;
   line-height: 1;
@@ -210,7 +211,7 @@
   cursor: pointer;
   background-color: var(--color-bg-elevated);
   border: 1px solid var(--color-border-default);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .settings-font-more:hover {
@@ -224,12 +225,12 @@
    접근 가능한 이름은 `aria-label`/`title` 이 갖는다. */
 .settings-font-edit {
   flex-shrink: 0;
-  padding: 4px;
+  padding: var(--space-1);
   color: var(--color-text-muted);
   cursor: pointer;
   background-color: transparent;
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .settings-font-edit:hover {
@@ -239,11 +240,11 @@
 }
 
 .settings-font-strip {
-  padding: 8px 10px;
+  padding: var(--space-2) var(--space-2);
   overflow: hidden;
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 /* `em`, `rem` 이 아니다 — 세 줄의 크기는 스트립에 인라인으로 걸린 설정값에서
@@ -255,13 +256,13 @@
 }
 
 .settings-font-strip-secondary {
-  margin-top: 2px;
+  margin-top: var(--space-0-5);
   font-size: 0.8em;
   color: var(--color-text-secondary);
 }
 
 .settings-font-strip-glyphs {
-  margin-top: 4px;
+  margin-top: var(--space-1);
   font-size: 0.75em;
   color: var(--color-text-muted);
 }
@@ -279,12 +280,12 @@
    올라가서, 예제를 보려고도 되돌아가려고도 스크롤을 다시 올려야 했다(동훈님 보고).
    `font-browser-scroll.test.ts` 가 이 세 조건을 함께 지킨다. */
 .font-browser {
-  gap: 12px;
+  gap: var(--space-3);
   height: 100%;
 }
 
 .font-browser-topbar {
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .font-browser-back {
@@ -301,11 +302,11 @@
   display: flex;
   overflow: hidden;
   border: 1px solid var(--color-border-default);
-  border-radius: 5px;
+  border-radius: var(--radius-default);
 }
 
 .font-browser-slot-btn {
-  padding: 4px 12px;
+  padding: var(--space-1) var(--space-3);
   font-family: var(--font-family-sans);
   font-size: 0.78rem;
   color: var(--color-text-secondary);
@@ -330,7 +331,7 @@
 
 .font-browser-toolbar {
   display: flex;
-  gap: 12px;
+  gap: var(--space-3);
   align-items: center;
 }
 
@@ -342,17 +343,17 @@
 .font-browser-chips {
   display: flex;
   flex-shrink: 0;
-  gap: 6px;
+  gap: var(--space-1-5);
 }
 
 .font-browser-chip {
-  padding: 3px 10px;
+  padding: var(--space-0-5) var(--space-2);
   font-size: 0.72rem;
   color: var(--color-text-secondary);
   cursor: pointer;
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-border-default);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
 }
 
 .font-browser-chip:hover {
@@ -376,18 +377,18 @@
 .font-browser-body {
   display: flex;
   flex: 1;
-  gap: 16px;
+  gap: var(--space-4);
   min-height: 0;
 }
 
 .font-browser-list {
   flex: 0 0 42%;
-  gap: 12px;
+  gap: var(--space-3);
   overflow-y: auto;
 }
 
 .font-browser-list-loading {
-  padding: 24px 0;
+  padding: var(--space-6) 0;
   font-size: 0.8rem;
   color: var(--color-text-muted);
   text-align: center;
@@ -396,17 +397,17 @@
 /* §350 폴백 알림 — 목록 위에 한 줄. 경고가 아니라 사실 진술이므로
    status-danger 가 아니라 muted 계열이다: 사용자가 잘못한 것이 없다. */
 .font-browser-list-notice {
-  padding: 6px 8px;
+  padding: var(--space-1-5) var(--space-2);
   font-size: 0.72rem;
   line-height: 1.4;
   color: var(--color-text-muted);
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .font-browser-group-title {
-  padding-bottom: 4px;
+  padding-bottom: var(--space-1);
   font-size: 0.68rem;
   font-weight: 600;
   color: var(--color-text-muted);
@@ -420,11 +421,11 @@
 }
 
 .font-browser-row {
-  padding: 5px 4px;
+  padding: var(--space-1) var(--space-1);
   font-size: 0.85rem;
   color: var(--color-text-primary);
   text-align: left;
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .font-browser-row:hover {
@@ -438,7 +439,7 @@
 
 .font-browser-preview {
   flex: 1;
-  gap: 12px;
+  gap: var(--space-3);
   min-width: 0;
   overflow-y: auto;
 }
@@ -446,13 +447,13 @@
 .font-browser-preview-controls {
   display: flex;
   flex-wrap: wrap;
-  gap: 16px;
+  gap: var(--space-4);
 }
 
 .font-browser-preview-control {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
   font-size: 0.7rem;
   color: var(--color-text-secondary);
 }
@@ -461,7 +462,7 @@
    그 수치를, 브라우저에서는 조절하는 자리 바로 위에 둔다(동훈님 요청). */
 .font-browser-preview-control-head {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: baseline;
   justify-content: space-between;
 }
@@ -475,15 +476,15 @@
 
 .font-browser-preview-body,
 .font-browser-preview-code {
-  padding: 12px 14px;
+  padding: var(--space-3) var(--space-3);
   overflow: auto;
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .font-browser-preview-body p {
-  margin: 0 0 8px;
+  margin: 0 0 var(--space-2);
   color: var(--color-text-primary);
 }
 

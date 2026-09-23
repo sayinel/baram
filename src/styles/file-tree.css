@@ -8,7 +8,7 @@
      tree whose rect ended at 850) and the empty-area context menu
      (`handleEmptyAreaContextMenu`, which requires e.target to be .file-tree). */
   min-height: 100%;
-  padding: 4px 0;
+  padding: var(--space-1) 0;
 }
 
 .file-tree-header {
@@ -18,9 +18,9 @@
   top: 0;
   z-index: 10;
   display: flex;
-  gap: 4px;
+  gap: var(--space-1);
   align-items: center;
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   background: var(--color-bg-panel);
   border-bottom: 1px solid var(--color-border-default);
 }
@@ -28,14 +28,14 @@
 .file-tree-search-input {
   flex: 1;
   min-width: 0;
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   font-family: inherit;
   font-size: 0.8rem;
   color: var(--color-text-primary);
   outline: none;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .file-tree-search-input:focus {
@@ -55,7 +55,7 @@
   cursor: pointer;
   background: none;
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .file-tree-action-btn:hover {
@@ -65,7 +65,7 @@
 }
 
 .file-tree-results {
-  padding: 4px 0;
+  padding: var(--space-1) 0;
 }
 
 .file-tree-result-path {
@@ -80,7 +80,7 @@
 .file-tree-empty {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
   align-items: center;
   justify-content: center;
   height: 200px;
@@ -89,13 +89,13 @@
 }
 
 .file-tree-open-btn {
-  padding: 6px 16px;
+  padding: var(--space-1-5) var(--space-4);
   font-size: 0.8rem;
   color: var(--color-text-secondary);
   cursor: pointer;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .file-tree-open-btn:hover {
@@ -106,9 +106,9 @@
 
 .file-tree-item {
   display: flex;
-  gap: 4px;
+  gap: var(--space-1);
   align-items: center;
-  padding: 3px 8px;
+  padding: var(--space-0-5) var(--space-2);
   font-size: 0.8rem;
   color: var(--color-text-secondary);
   cursor: pointer;
@@ -149,7 +149,7 @@
   flex: 0 0 auto;
   width: 6px;
   height: 6px;
-  margin-right: 4px;
+  margin-right: var(--space-1);
   margin-left: auto;
   border-radius: 50%;
 }
@@ -194,7 +194,7 @@
   position: fixed;
   z-index: 100;
   max-width: 200px;
-  padding: 2px 8px;
+  padding: var(--space-0-5) var(--space-2);
   overflow: hidden;
   text-overflow: ellipsis;
   font-family: inherit;
@@ -204,7 +204,7 @@
   pointer-events: none;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
   box-shadow: 0 2px 8px rgb(0 0 0 / 15%);
 }
 
@@ -212,14 +212,14 @@
 .file-tree-rename-input {
   flex: 1;
   min-width: 0;
-  padding: 1px 4px;
+  padding: var(--space-px) var(--space-1);
   font-family: inherit;
   font-size: 0.8rem;
   color: var(--color-text-primary);
   outline: none;
   background: var(--color-bg-default);
   border: 1px solid var(--color-accent-default);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 /* File tree context menu */
@@ -227,15 +227,15 @@
   position: fixed;
   z-index: 60;
   min-width: 140px;
-  padding: 4px 0;
+  padding: var(--space-1) 0;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   box-shadow: 0 4px 12px rgb(0 0 0 / 15%);
 }
 
 .file-tree-context-menu-item {
-  padding: 6px 12px;
+  padding: var(--space-1-5) var(--space-3);
   font-size: 0.8rem;
   color: var(--color-text-secondary);
   cursor: pointer;
@@ -262,7 +262,7 @@
 
 .file-tree-context-menu-separator {
   height: 1px;
-  margin: 4px 0;
+  margin: var(--space-1) 0;
   background: var(--color-border-default);
 }
 
@@ -278,21 +278,21 @@
   right: 0;
   z-index: 20;
   min-width: 160px;
-  padding: 4px;
-  margin: 2px 0 0;
+  padding: var(--space-1);
+  margin: var(--space-0-5) 0 0;
   list-style: none;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   box-shadow: var(--shadow-md);
 }
 
 .file-tree-sort-option {
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   font-size: 0.8rem;
   white-space: nowrap;
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .file-tree-sort-option:hover {
@@ -307,14 +307,14 @@
 .file-tree-drop-target {
   outline: 1px dashed var(--color-accent-default);
   background: var(--color-accent-subtle);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 /* External file drop (Tauri onDragDropEvent) visual feedback */
 .file-tree-ext-drop-target {
   outline: 2px dashed var(--color-accent-default);
   background: var(--color-accent-subtle);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 /* Editor drop indicator bar — shows the exact insertion line */
@@ -349,7 +349,7 @@
 
 /* §4.3 Outline */
 .outline {
-  padding: 4px 0;
+  padding: var(--space-1) 0;
 }
 
 .outline-empty {
@@ -363,9 +363,9 @@
 
 .outline-item {
   display: flex;
-  gap: 6px;
+  gap: var(--space-1-5);
   align-items: center;
-  padding: 3px 8px;
+  padding: var(--space-0-5) var(--space-2);
   font-size: 0.8rem;
   color: var(--color-text-secondary);
   cursor: pointer;
@@ -395,7 +395,7 @@
   align-items: center;
   justify-content: space-between;
   height: 28px;
-  padding: 0 12px;
+  padding: 0 var(--space-3);
   font-family: var(--font-family-mono);
   font-size: 0.7rem;
   color: var(--color-text-muted);
@@ -406,21 +406,21 @@
 .status-bar-left,
 .status-bar-right {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: center;
 }
 
 .status-mode {
-  padding: 1px 6px;
+  padding: var(--space-px) var(--space-1-5);
   background-color: var(--color-bg-default);
   border: 1px solid var(--color-border-subtle);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 /* §298 vim `/` — StatusBar의 실제 검색 입력 (IME 조합 목적지) */
 .status-vim-search {
   display: inline-flex;
-  gap: 1px;
+  gap: var(--space-px);
   align-items: center;
 }
 
@@ -440,12 +440,12 @@
 
 .status-git-branch {
   display: inline-flex;
-  gap: 4px;
+  gap: var(--space-1);
   align-items: center;
-  padding: 1px 6px;
+  padding: var(--space-px) var(--space-1-5);
   background-color: var(--color-bg-default);
   border: 1px solid var(--color-border-subtle);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .status-git-dirty {
@@ -461,12 +461,12 @@
 }
 
 .status-privacy {
-  padding: 0 6px;
+  padding: 0 var(--space-1-5);
   font-size: 11px;
   font-weight: 500;
   color: var(--color-status-warning-on-solid);
   background: var(--color-status-warning);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .status-plugin-item {
@@ -530,7 +530,7 @@
   outline: none;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .git-commit-input:focus {
@@ -548,7 +548,7 @@
   cursor: pointer;
   background: var(--color-accent-solid);
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .git-commit-btn:hover:not(:disabled) {
@@ -589,7 +589,7 @@
   font-size: 0.7rem;
   font-weight: 400;
   background: var(--color-bg-default);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .git-section-header .git-action-btn {
@@ -666,7 +666,7 @@
   cursor: pointer;
   background: none;
   border: 1px solid var(--color-border-subtle);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .git-action-btn:hover {
@@ -693,27 +693,27 @@
   overflow: hidden;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
 }
 
 .move-modal-title {
-  padding: 12px;
+  padding: var(--space-3);
   font-weight: 600;
   color: var(--color-text-default);
   border-bottom: 1px solid var(--color-border-default);
 }
 
 .move-modal-search {
-  padding: 4px 8px;
-  margin: 8px 12px;
+  padding: var(--space-1) var(--space-2);
+  margin: var(--space-2) var(--space-3);
   font-family: inherit;
   font-size: 0.8rem;
   color: var(--color-text-primary);
   outline: none;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .move-modal-search:focus {
@@ -721,15 +721,15 @@
 }
 
 .move-modal-list {
-  padding: 4px 0;
+  padding: var(--space-1) 0;
   overflow-y: auto;
 }
 
 .move-modal-item {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: center;
-  padding: 6px 16px;
+  padding: var(--space-1-5) var(--space-4);
   overflow: hidden;
   font-size: 0.875rem;
   color: var(--color-text-primary);
@@ -750,7 +750,7 @@
 }
 
 .move-modal-empty {
-  padding: 24px 12px;
+  padding: var(--space-6) var(--space-3);
   font-size: 0.8rem;
   color: var(--color-text-muted);
   text-align: center;

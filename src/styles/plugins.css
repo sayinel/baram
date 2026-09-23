@@ -51,12 +51,12 @@
 .plugin-consent {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--space-3);
   align-self: flex-start;
   width: 480px;
   max-width: calc(100vw - 32px);
   max-height: 76vh;
-  padding: 22px 24px 18px;
+  padding: var(--space-5) var(--space-6) var(--space-4);
 
   /* NOT `overflow-y: auto`. The dialog itself must never be the scroll container — that put
      the acknowledgement checkbox and both buttons inside the scrolled region, so a plugin
@@ -66,7 +66,7 @@
   overflow: hidden;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 14px;
+  border-radius: var(--radius-xl);
   box-shadow: var(--shadow-xl);
   animation: plugin-consent-rise 140ms ease-out;
 }
@@ -75,7 +75,7 @@
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--space-3);
 
   /* Belt-and-braces only. A re-review overrode this at runtime and measured no change:
      flexbox's automatic minimum size applies solely to items whose `overflow` is `visible`,
@@ -118,8 +118,8 @@
 .plugin-consent__danger {
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  padding: 12px 14px;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-3);
   font-size: 13px;
   line-height: 1.6;
   color: var(--color-text-primary);
@@ -130,12 +130,12 @@
      so this now matches them in both themes. */
   background: var(--color-status-error-bg);
   border: 1px solid var(--color-status-error-border);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
 }
 
 .plugin-consent__danger-title {
   display: flex;
-  gap: 6px;
+  gap: var(--space-1-5);
   align-items: baseline;
   font-size: 13px;
   font-weight: 600;
@@ -168,14 +168,14 @@
   list-style: none;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
 }
 
 .plugin-consent__cap {
   display: flex;
-  gap: 10px;
+  gap: var(--space-2);
   align-items: flex-start;
-  padding: 10px 14px;
+  padding: var(--space-2) var(--space-3);
   font-size: 13px;
   line-height: 1.5;
 }
@@ -188,7 +188,7 @@
   flex: none;
   width: 5px;
   height: 5px;
-  margin-top: 7px;
+  margin-top: var(--space-1-5);
   content: "";
   background: var(--color-accent-default);
   border-radius: 50%;
@@ -204,29 +204,29 @@
    way the solid pairing can (#330). Matches the app's other accent badges. */
 .plugin-consent__new {
   flex: none;
-  padding: 1px 7px;
+  padding: var(--space-px) var(--space-1-5);
   font-size: 10px;
   font-weight: 600;
   color: var(--color-accent-on-solid);
   letter-spacing: 0.04em;
   background: var(--color-accent-solid);
-  border-radius: 9999px;
+  border-radius: var(--radius-full);
 }
 
 /* Boxed, so the trusted-tier gate looks like a thing you must pass rather than a
    footnote under the list. */
 .plugin-consent__ack {
   display: flex;
-  gap: 10px;
+  gap: var(--space-2);
   align-items: flex-start;
-  padding: 10px 14px;
+  padding: var(--space-2) var(--space-3);
   font-size: 12px;
   line-height: 1.5;
   color: var(--color-text-primary);
   cursor: pointer;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   transition: border-color 120ms ease;
 }
 
@@ -236,26 +236,26 @@
 
 .plugin-consent__ack input {
   flex: none;
-  margin-top: 1px;
+  margin-top: var(--space-px);
   accent-color: var(--color-status-danger);
   cursor: pointer;
 }
 
 .plugin-consent__actions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   justify-content: flex-end;
-  padding-top: 4px;
+  padding-top: var(--space-1);
 }
 
 .plugin-consent__cancel,
 .plugin-consent__confirm {
   min-width: 88px;
-  padding: 8px 16px;
+  padding: var(--space-2) var(--space-4);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   transition:
     background-color 120ms ease,
     border-color 120ms ease,
@@ -292,7 +292,7 @@
 /* §260 Phase 5 — a registry entry predating the trust model cannot be installed;
  * the marketplace explains why rather than letting the click fail after a download. */
 .plugin-legacy-note {
-  margin: 8px 0 0;
+  margin: var(--space-2) 0 0;
   font-size: 12px;
   line-height: 1.5;
   color: var(--color-text-muted);
@@ -382,9 +382,9 @@
   --capability-badge-hue: #6b7280;
 
   display: inline-flex;
-  gap: 4px;
+  gap: var(--space-1);
   align-items: center;
-  padding: 2px 8px;
+  padding: var(--space-0-5) var(--space-2);
   font-size: 11px;
   font-weight: 500;
   line-height: 18px;
@@ -410,7 +410,7 @@
      carries no text, so it needs visibility, not a guaranteed ratio. */
   border: 1px solid
     color-mix(in srgb, var(--capability-badge-hue) 30%, var(--color-bg-default));
-  border-radius: 9999px;
+  border-radius: var(--radius-full);
 }
 
 /* No `opacity` on the badge or its description. The guard rejects it on any rule in
@@ -444,15 +444,15 @@
 .plugin-revoked {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 12px 14px;
-  margin-bottom: 16px;
+  gap: var(--space-1-5);
+  padding: var(--space-3) var(--space-3);
+  margin-bottom: var(--space-4);
   font-size: 13px;
   line-height: 1.6;
   color: var(--color-text-primary);
   background: var(--color-status-error-bg);
   border: 1px solid var(--color-status-error-border);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
 }
 
 .plugin-revoked--warn {
@@ -483,15 +483,15 @@
 
 .plugin-revoked__remove {
   align-self: flex-start;
-  padding: 5px 14px;
-  margin-top: 2px;
+  padding: var(--space-1) var(--space-3);
+  margin-top: var(--space-0-5);
   font-size: 12px;
   font-weight: 500;
   color: var(--color-status-danger-on-solid);
   cursor: pointer;
   background: var(--color-status-danger);
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .plugin-revoked__remove:hover {
@@ -503,13 +503,13 @@
    `-on-solid` pairing is what makes a filled danger chip safe in every theme (#341). */
 .plugin-revoked-badge {
   flex: none;
-  padding: 1px 7px;
+  padding: var(--space-px) var(--space-1-5);
   font-size: 10px;
   font-weight: 600;
   color: var(--color-status-danger-on-solid);
   letter-spacing: 0.04em;
   background: var(--color-status-danger);
-  border-radius: 9999px;
+  border-radius: var(--radius-full);
 }
 
 /* §69 — 한 행. 사이드바(~280px)와 설정 모달(넓음) 양쪽에서 같은 레이아웃으로 동작한다:
@@ -526,10 +526,10 @@
 .plugin-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 12px;
+  gap: var(--space-2) var(--space-3);
   align-items: flex-start;
   justify-content: space-between;
-  padding: 12px 16px;
+  padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--color-border-default);
 }
 
@@ -555,7 +555,7 @@
 .plugin-row__head {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: center;
 }
 
@@ -585,23 +585,23 @@
    갈라지고, 갈라진 두 칩은 "같은 것"이라는 신호를 잃는다. */
 .plugin-detail__badge,
 .plugin-row__badge {
-  padding: 1px 6px;
+  padding: var(--space-px) var(--space-1-5);
   font-size: 11px;
   color: var(--color-text-muted);
   background-color: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .plugin-row__desc {
-  margin: 2px 0 0;
+  margin: var(--space-0-5) 0 0;
   font-size: 12px;
   color: var(--color-text-secondary);
 }
 
 .plugin-row__error {
-  padding: 6px 10px;
-  margin: 6px 0 0;
+  padding: var(--space-1-5) var(--space-2);
+  margin: var(--space-1-5) 0 0;
   font-size: 12px;
   line-height: 1.5;
   color: var(--color-status-danger);
@@ -610,14 +610,14 @@
   overflow-wrap: anywhere;
   background-color: var(--color-status-error-bg);
   border: 1px solid var(--color-status-error-border);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .plugin-row__caps {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 6px;
+  gap: var(--space-1);
+  margin-top: var(--space-1-5);
 }
 
 /* ‼️ 여기 있던 `flex-shrink: 0`이 결함이었다. 줄바꿈만 켜면 묶음이 자기 줄로 내려오지만,
@@ -629,7 +629,7 @@
 .plugin-row__actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: center;
   justify-content: flex-end;
   margin-left: auto;
@@ -640,14 +640,14 @@
    낮춰 버튼 안에서 접히게 한다. `max-width`는 축소 해석에 기대지 않는 상한이다. */
 .plugin-row__btn {
   max-width: 100%;
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   font-size: 12px;
   color: var(--color-text-primary);
   overflow-wrap: anywhere;
   cursor: pointer;
   background-color: transparent;
   border: 1px solid var(--color-border-default);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .plugin-row__btn--warn {
@@ -664,7 +664,7 @@
 /* 버튼과 같은 이유의 상한. 액션 묶음의 직계 자식은 모두 줄 폭 안에 갇혀야 한다. */
 .plugin-row__toggle {
   display: flex;
-  gap: 4px;
+  gap: var(--space-1);
   align-items: center;
   max-width: 100%;
   font-size: 12px;
@@ -675,10 +675,10 @@
 /* §69 — 접이식 섹션 머리. `.btn-unstyled`는 base.css의 공유 유틸리티다. */
 .plugin-section__head {
   display: flex;
-  gap: 6px;
+  gap: var(--space-1-5);
   align-items: center;
   width: 100%;
-  padding: 8px 16px 4px;
+  padding: var(--space-2) var(--space-4) var(--space-1);
   text-align: left;
   cursor: pointer;
 }
@@ -704,11 +704,11 @@
 /* ─── Plugin settings form (§260 Phase 4c, controls widened in §0054) ─── */
 
 .plugin-settings-form {
-  margin-bottom: 20px;
+  margin-bottom: var(--space-5);
 }
 
 .plugin-settings-form__title {
-  margin-bottom: 8px;
+  margin-bottom: var(--space-2);
   font-size: 14px;
   font-weight: 600;
   color: var(--color-text-primary);
@@ -717,18 +717,18 @@
 .plugin-settings-form__rows {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--space-3);
 }
 
 .plugin-setting-row {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .plugin-setting-row__line {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: center;
   justify-content: space-between;
   font-size: 13px;
@@ -744,12 +744,12 @@
 
 .plugin-setting-control {
   width: 180px;
-  padding: 4px 6px;
+  padding: var(--space-1) var(--space-1-5);
   font-size: 13px;
   color: var(--color-text-primary);
   background-color: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 4px;
+  border-radius: var(--radius-default);
 }
 
 .plugin-setting-control--number {
@@ -767,7 +767,7 @@
 .plugin-setting-swatches {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--space-1-5);
 }
 
 /* The swatch's own colour is an inline style — it is the field's data, not a theme choice. */
