@@ -16,6 +16,7 @@ import {
 } from "../../utils/editor/mutation-tasks";
 import { buildSlashItems } from "../plugins/slash-command-items";
 import { pickSymbolIntoEditor } from "../plugins/symbol-picker-action";
+import { symbolSuggestAllowed } from "../plugins/symbol-suggest";
 import { isVimExternalEdit } from "../plugins/vim/vim-keys";
 import { typeChars } from "./helpers/type-chars";
 
@@ -182,6 +183,27 @@ describe("pickSymbolIntoEditor (§377)", () => {
 });
 
 describe("the Symbols & Emoji slash item (§377)", () => {
+  let symbolSuggest: boolean;
+
+  beforeEach(() => {
+    symbolSuggest = useSettingsStore.getState().symbolSuggest;
+  });
+
+  afterEach(() => {
+    useSettingsStore.setState({ symbolSuggest });
+  });
+
+  it("stays the last Basic item with the : autocomplete turned off", () => {
+    // The symbolSuggest setting turns off only the `:` autocomplete — the slash
+    // item is the explicit entrance and is always there (spec 0056 §377).
+    useSettingsStore.setState({ symbolSuggest: false });
+    const editor = makeEditor();
+    // Precondition: the `:` entrance does read the setting as off here.
+    expect(symbolSuggestAllowed(editor.state, { from: 3, to: 3 })).toBe(false);
+    const basic = buildSlashItems(editor).filter((i) => i.category === "Basic");
+    expect(basic.at(-1)?.id).toBe("symbols");
+  });
+
   it("is the last Basic item and opens the picker", async () => {
     const editor = makeEditor();
     const basic = buildSlashItems(editor).filter((i) => i.category === "Basic");
