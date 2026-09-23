@@ -114,6 +114,11 @@ export function AppLayout({ children, statusBar }: AppLayoutProps) {
 
   return (
     <div className="app-layout">
+      {/* §370.2 복귀 경로 ② — 첫 자식으로 둬서 Tab이 다른 무엇보다 먼저 여기 닿는다
+          (position: fixed라 DOM 순서가 화면 위치를 바꾸지 않는다). `rootPath`가 없으면
+          렌더하지 않는다 — 이 버튼이 되살리는 세 표면(ActivityBar/StatusBar/TabBar) 전부
+          `!!rootPath`로도 게이트돼 있어, 폴더 없이 뜨면 되살릴 것이 없는 약속을 한다. */}
+      {!!rootPath && <ChromeReveal />}
       {/* §82 Context Tab Bar — hidden only when NO vault/folder context is open.
           It stays up for a single one so the "+" that adds the next is reachable;
           `ContextTabBar` returns null on `visibleContexts.length === 0`. */}
@@ -166,9 +171,6 @@ export function AppLayout({ children, statusBar }: AppLayoutProps) {
 
       {/* Status Bar */}
       {statusBar}
-
-      {/* §370.2 복귀 경로 ② — 세 표면이 전부 숨었을 때만 자체적으로 렌더된다 */}
-      <ChromeReveal />
     </div>
   );
 }

@@ -19,7 +19,18 @@
 
 /* §370.2 복귀 경로 ② — 세 크롬 표면이 전부 숨었을 때만 렌더되는 버튼(ChromeReveal).
    opacity로만 숨긴다 — display/visibility로 숨기면 탭 순서에서 빠져 키보드 경로가
-   사라진다. 지연 없이 :hover·:focus-visible 양쪽에서 즉시 드러난다. */
+   사라진다(이 계약은 src/styles/__tests__/chrome-reveal-css-contract.test.ts가 이
+   규칙 블록을 스캔해 고정한다). 지연 없이 :hover·:focus-visible 양쪽에서 즉시
+   드러난다 — transition은 상태가 바뀐 "뒤"의 시각적 연출일 뿐, 상태가 바뀌기까지
+   걸리는 시간이 아니다.
+
+   숨은 채로도 세로 폭 전체(패딩 포함 약 20px)가 뷰포트 위에 남아 있으면 그 자리가
+   에디터 첫 줄 위 클릭을 가로챈다 — 이 앱은 크롬이 전부 사라진 상태에서 대체할
+   타이틀바 드래그 영역이 없다(`data-tauri-drag-region`·`titlebar` 둘 다 src/ 안에
+   없다). 그래서 숨었을 때는 `transform`으로 자기 높이만큼 위로 밀어 올려 맨 위
+   가장자리에 몇 px만 남기고(포인터가 우연히 그 몇 px에 닿아야 드러난다), 드러날
+   때만 원래 자리로 되돌린다. 폭(~130px)은 줄이지 않았다 — 세로로 겹치는 줄이
+   문제였지, 가로 폭 자체가 클릭을 가로막지는 않는다. */
 .chrome-reveal {
   position: fixed;
   top: 0;
@@ -34,13 +45,16 @@
   border-top: none;
   border-radius: 0 0 6px 6px;
   opacity: 0;
-  transform: translateX(-50%);
-  transition: opacity 0.15s;
+  transform: translate(-50%, calc(-100% + 4px));
+  transition:
+    opacity 0.15s,
+    transform 0.15s;
 }
 
 .chrome-reveal:hover,
 .chrome-reveal:focus-visible {
   opacity: 1;
+  transform: translate(-50%, 0);
 }
 
 /* Activity Bar — 48px fixed vertical icon strip */
