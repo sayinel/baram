@@ -126,6 +126,8 @@ export type VimStatusMode = "insert" | "normal" | "replace" | "visual";
 
 interface UIState {
   aboutOpen: boolean;
+  /** §370 크롬 표면의 표시 여부. 기본은 전부 보임 — 감추는 것은 늘 명시적 선택이다. */
+  activityBarVisible: boolean;
   /** §Phase5: Close the conflict modal (without resolution — used internally) */
   closeConflictModal: () => void;
   closeExportDialog: () => void;
@@ -185,6 +187,17 @@ interface UIState {
   rightPanelMode: RightPanelMode;
   rightPanelOpen: boolean;
   rightPanelWidth: number;
+  /**
+   * §370 프리셋이 크롬 가시성을 한 번에 적용하는 입구. 사용자의 개별 토글과
+   * **다른 입구여야 한다** — 0096 Task 6 이 "사용자가 이 표면을 손댔는가" 를
+   * 기록하는데, 프리셋 적용은 손댐으로 세지 않기 때문이다. 입구가 하나면
+   * 그 구분을 호출자에게 되물어야 한다.
+   */
+  setChromeVisibility: (next: {
+    activityBarVisible: boolean;
+    statusBarVisible: boolean;
+    tabBarVisible: boolean;
+  }) => void;
   setPdfRailTab: (tab: PdfRailTab) => void;
   setPendingApplyContent: (content: null | string) => void;
   setPendingInsertTasks: (tasks: null | string) => void;
@@ -210,6 +223,10 @@ interface UIState {
   skillGeneratorDialogOpen: boolean;
   skillTestDialogOpen: boolean;
   smartTemplateDialogOpen: boolean;
+  /** §370 크롬 표면의 표시 여부. 기본은 전부 보임 — 감추는 것은 늘 명시적 선택이다. */
+  statusBarVisible: boolean;
+  /** §370 크롬 표면의 표시 여부. 기본은 전부 보임 — 감추는 것은 늘 명시적 선택이다. */
+  tabBarVisible: boolean;
   /** M2-b4 태스크 편집 모달이 열려 있는가 */
   taskEditOpen: boolean;
   /** Transient toast notification (null = hidden) */
@@ -254,6 +271,10 @@ export const useUIStore = create<UIState>((set) => ({
   rightPanelOpen: false,
   rightPanelWidth: 360,
   rightPanelMode: "chat" as const,
+  // §370 크롬 표면 — 기본은 전부 보임.
+  activityBarVisible: true,
+  statusBarVisible: true,
+  tabBarVisible: true,
   commandPaletteOpen: false,
   quickSwitcherOpen: false,
   settingsOpen: false,
@@ -312,6 +333,18 @@ export const useUIStore = create<UIState>((set) => ({
   setRightPanelWidth: (width) => set({ rightPanelWidth: width }),
 
   setRightPanelMode: (mode) => set({ rightPanelMode: mode }),
+
+  setChromeVisibility: (next) =>
+    set((state) => {
+      if (
+        state.activityBarVisible === next.activityBarVisible &&
+        state.statusBarVisible === next.statusBarVisible &&
+        state.tabBarVisible === next.tabBarVisible
+      ) {
+        return state;
+      }
+      return next;
+    }),
 
   togglePdfRail: () => set((state) => ({ pdfRailOpen: !state.pdfRailOpen })),
 

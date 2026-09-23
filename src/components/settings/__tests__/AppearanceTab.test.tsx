@@ -53,10 +53,13 @@ const CUSTOM_PRESET: WorkspacePreset = {
   description: "",
   id: "preset-1",
   layout: {
+    activityBarVisible: true,
     rightPanelMode: "none",
     rightPanelOpen: false,
     sidebarOpen: true,
     sidebarPanel: "files",
+    statusBarVisible: true,
+    tabBarVisible: true,
   },
   name: "Deep work",
 };

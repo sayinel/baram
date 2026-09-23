@@ -31,10 +31,13 @@ import { useFileStore } from "./file";
 // --- Types ---
 
 export interface WorkspaceLayout {
+  activityBarVisible: boolean;
   rightPanelMode: RightPanelMode;
   rightPanelOpen: boolean;
   sidebarOpen: boolean;
   sidebarPanel: SidebarPanel;
+  statusBarVisible: boolean;
+  tabBarVisible: boolean;
 }
 
 export interface WorkspacePreset {
@@ -78,6 +81,10 @@ export const BUILTIN_PRESETS: BuiltinPreset[] = [
       sidebarPanel: "files",
       rightPanelOpen: false,
       rightPanelMode: "none",
+      // §370 오늘 이 넷은 크롬을 감추지 않는다 — 값이 곧 현재 동작이다.
+      activityBarVisible: true,
+      statusBarVisible: true,
+      tabBarVisible: true,
     },
   },
   {
@@ -90,11 +97,18 @@ export const BUILTIN_PRESETS: BuiltinPreset[] = [
     description: "Capture ideas fast and refine them into linked notes.",
     descKey: "settings.workspace.preset.zettelkasten.desc",
     builtIn: true,
-    layout: getSpace("zettelkasten")?.layout ?? {
-      sidebarOpen: true,
-      sidebarPanel: "files",
-      rightPanelOpen: false,
-      rightPanelMode: "none",
+    layout: {
+      // §370 `SpaceLayout`(spaces/types.ts) 은 이 셋을 모르므로 병합한다 —
+      // getSpace() 쪽이 옛 넷과 같은 이유로 오늘 크롬을 감추지 않는다.
+      ...(getSpace("zettelkasten")?.layout ?? {
+        sidebarOpen: true,
+        sidebarPanel: "files",
+        rightPanelOpen: false,
+        rightPanelMode: "none",
+      }),
+      activityBarVisible: true,
+      statusBarVisible: true,
+      tabBarVisible: true,
     },
   },
   {
@@ -109,6 +123,10 @@ export const BUILTIN_PRESETS: BuiltinPreset[] = [
       sidebarPanel: "calendar",
       rightPanelOpen: true,
       rightPanelMode: "memories",
+      // §370 오늘 이 넷은 크롬을 감추지 않는다 — 값이 곧 현재 동작이다.
+      activityBarVisible: true,
+      statusBarVisible: true,
+      tabBarVisible: true,
     },
   },
   {
@@ -123,6 +141,10 @@ export const BUILTIN_PRESETS: BuiltinPreset[] = [
       sidebarPanel: "files",
       rightPanelOpen: true,
       rightPanelMode: "properties",
+      // §370 오늘 이 넷은 크롬을 감추지 않는다 — 값이 곧 현재 동작이다.
+      activityBarVisible: true,
+      statusBarVisible: true,
+      tabBarVisible: true,
     },
   },
 ];
@@ -187,7 +209,13 @@ export function isPresetVisible(
 
 interface WorkspaceState {
   activePresetId: null | string;
-  applyPreset: (id: string) => void;
+  /**
+   * §370 `opts.implicit` 는 사용자가 고르지 않은 전이(현재는
+   * `revertSpaceIfContextClosed` 하나)를 가리킨다 — 사이드바 적용이 그
+   * 구분으로 갈린다(§82, applyPreset 본문의 주석 참조). 생략하면 명시적
+   * 호출이다.
+   */
+  applyPreset: (id: string, opts?: { implicit?: boolean }) => void;
 
   customPresets: WorkspacePreset[];
   deleteCustomPreset: (id: string) => void;
@@ -208,7 +236,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       activePresetId: null,
       customPresets: [],
 
-      applyPreset: (id) => {
+      applyPreset: (id, opts) => {
         const preset = get().getPreset(id);
         if (!preset) return;
 
@@ -277,13 +305,37 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             ? layout.rightPanelOpen
             : false;
 
+        // §370 옛 사용자 프리셋에는 이 셋이 없다 — `partialize` 가 `customPresets`
+        // 를 저장하므로 디스크에 있는 것은 그것뿐이고, 내장 넷은 코드에서 온다.
+        // 없으면 **보임**이 옳다: 저장되던 시절에는 감출 수단이 없었으므로 저장된
+        // 화면이 곧 전부 보이는 화면이었다. `?? true` 는 `false` 를 살린다.
+        //
+        // 위 `rightPanelMode` 와 같은 자리·같은 이유다(§4.2) — 영속 `version` 을
+        // 올리는 대신 적용 시점에 떨어뜨린다. 관문이 하나면 어긋날 곳이 없다.
+        const activityBarVisible = layout.activityBarVisible ?? true;
+        const statusBarVisible = layout.statusBarVisible ?? true;
+        const tabBarVisible = layout.tabBarVisible ?? true;
+
         // Apply layout to ui-store.
-        // §82 Preserve an open folder tree across space switches: a preset may
-        // OPEN the sidebar but must never force-close one the user has open.
-        if (layout.sidebarOpen && !ui.sidebarOpen) ui.toggleSidebar();
+        // §82/§370 사이드바만 비대칭이다 — 아래 한 줄에만 걸리는 주석이다.
+        // 암묵적 적용(`revertSpaceIfContextClosed` 하나뿐)은 사용자가 고른 적
+        // 없는 전이라, 열어 둔 폴더 트리를 빼앗지 않는다. 명시적 선택은 레이아웃을
+        // 그대로 지킨다 — 그러지 않으면 `writing`("Hide sidebar and focus on the
+        // editor")과 `focus` 가 이름·설명·레이아웃으로는 감춘다고 말하면서
+        // 동작만 다른 상태가 된다.
+        if (opts?.implicit) {
+          if (layout.sidebarOpen && !ui.sidebarOpen) ui.toggleSidebar();
+        } else if (ui.sidebarOpen !== layout.sidebarOpen) {
+          ui.toggleSidebar();
+        }
         ui.setSidebarPanel(layout.sidebarPanel);
         if (ui.rightPanelOpen !== rightPanelOpen) ui.toggleRightPanel();
         ui.setRightPanelMode(rightPanelMode);
+        ui.setChromeVisibility({
+          activityBarVisible,
+          statusBarVisible,
+          tabBarVisible,
+        });
 
         // §85 M2b: When switching away from journal, activate the first non-journal context
         if (id !== "journal") {
@@ -394,9 +446,12 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         }
         // Preset ids ("journal"/"zettelkasten") match the VaultType strings.
         if (get().activePresetId !== closedVaultType) return;
-        // applyPreset preserves an open folder tree (it never force-closes the
-        // sidebar), so reverting to Writing keeps the tree exactly as it was.
-        get().applyPreset("writing");
+        // §82/§370 Revert implicitly — the user never chose this transition
+        // (the context tab closed out from under them), so it must not take
+        // an open folder tree away. `{ implicit: true }` routes applyPreset
+        // into its asymmetric sidebar branch (open-only, never close),
+        // keeping the tree exactly as it was.
+        get().applyPreset("writing", { implicit: true });
       },
 
       saveCustomPreset: (name, description) => {
@@ -412,6 +467,10 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             sidebarPanel: ui.sidebarPanel,
             rightPanelOpen: ui.rightPanelOpen,
             rightPanelMode: ui.rightPanelMode,
+            // §370 현재 크롬 가시성도 함께 스냅샷한다 — 다른 넷과 같은 자리·이유다.
+            activityBarVisible: ui.activityBarVisible,
+            statusBarVisible: ui.statusBarVisible,
+            tabBarVisible: ui.tabBarVisible,
           },
         };
         set((state) => ({

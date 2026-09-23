@@ -59,26 +59,101 @@ describe("§52 Workspace Store", () => {
 
   // --- Apply Preset ---
 
-  it("applyPreset('writing') preserves an open folder tree, closes right panel", () => {
-    // §82 sidebar starts open (beforeEach) — Writing must NOT force-close it.
+  // §370 A preset chosen by hand ("writing"'s own description says "Hide
+  // sidebar and focus on the editor") now closes the sidebar just like it
+  // opens one — the old asymmetric guard (open-only) is narrowed to the
+  // implicit revert path only (see the describe block below).
+  it("explicit applyPreset('writing') closes an open sidebar, closes right panel", () => {
+    // §82 sidebar starts open (beforeEach).
     useWorkspaceStore.getState().applyPreset("writing");
 
     const ui = useUIStore.getState();
-    expect(ui.sidebarOpen).toBe(true);
+    expect(ui.sidebarOpen).toBe(false);
     expect(ui.rightPanelOpen).toBe(false);
     expect(useWorkspaceStore.getState().activePresetId).toBe("writing");
   });
 
-  it("applyPreset never force-closes the sidebar but opens it when a preset wants it", () => {
-    // §82 closed → Writing (sidebarOpen:false) keeps it closed
-    useUIStore.setState({ sidebarOpen: false });
-    useWorkspaceStore.getState().applyPreset("writing");
-    expect(useUIStore.getState().sidebarOpen).toBe(false);
-
+  it("explicit applyPreset matches the sidebar to the preset in both directions", () => {
     // closed → Skills (sidebarOpen:true) opens it
     useUIStore.setState({ sidebarOpen: false });
     useWorkspaceStore.getState().applyPreset("skills");
     expect(useUIStore.getState().sidebarOpen).toBe(true);
+
+    // open → Writing (sidebarOpen:false) now closes it too (explicit calls
+    // are symmetric since §370 — see the narrowed guard's own comment in
+    // workspace.ts).
+    useWorkspaceStore.getState().applyPreset("writing");
+    expect(useUIStore.getState().sidebarOpen).toBe(false);
+  });
+
+  // §370/§82 The narrowed guard (open-only, never close) survives for the ONE
+  // caller that never chose the transition — revertSpaceIfContextClosed.
+  it("implicit applyPreset (opts.implicit) never force-closes an open sidebar", () => {
+    useUIStore.setState({ sidebarOpen: true });
+    useWorkspaceStore.getState().applyPreset("writing", { implicit: true });
+    expect(useUIStore.getState().sidebarOpen).toBe(true);
+  });
+
+  // §370 옛 프리셋에는 가시성 필드가 없다. 그것이 "숨김" 으로 읽히면 사용자가
+  // 저장해 둔 화면구성을 고르는 것만으로 크롬이 사라진다.
+  it("가시성 필드가 없는 사용자 프리셋은 전부 보임으로 적용된다", () => {
+    useWorkspaceStore.setState({
+      customPresets: [
+        {
+          builtIn: false,
+          description: "",
+          id: "legacy",
+          // 옛 저장분의 모양 그대로 — 런타임 캐스트다.
+          layout: {
+            rightPanelMode: "none",
+            rightPanelOpen: false,
+            sidebarOpen: true,
+            sidebarPanel: "files",
+          } as WorkspaceLayout,
+          name: "Legacy",
+        },
+      ],
+    });
+    useUIStore.setState({
+      activityBarVisible: false,
+      statusBarVisible: false,
+      tabBarVisible: false,
+    });
+    useWorkspaceStore.getState().applyPreset("legacy");
+    const ui = useUIStore.getState();
+    expect(ui.activityBarVisible).toBe(true);
+    expect(ui.statusBarVisible).toBe(true);
+    expect(ui.tabBarVisible).toBe(true);
+  });
+
+  // 비공허성: 위 단언은 `applyPreset` 이 가시성을 **아예 안 건드려도** 통과할 수 있다
+  // (초기값이 true 라면). 이것이 그 구현을 배제한다 — 값을 가진 프리셋은 그 값을 쓴다.
+  it("가시성 필드를 가진 프리셋은 그 값을 적용한다", () => {
+    useWorkspaceStore.setState({
+      customPresets: [
+        {
+          builtIn: false,
+          description: "",
+          id: "quiet",
+          layout: {
+            activityBarVisible: false,
+            rightPanelMode: "none",
+            rightPanelOpen: false,
+            sidebarOpen: false,
+            sidebarPanel: "files",
+            statusBarVisible: false,
+            tabBarVisible: true,
+          },
+          name: "Quiet",
+        },
+      ],
+    });
+    useUIStore.setState({ activityBarVisible: true, statusBarVisible: true });
+    useWorkspaceStore.getState().applyPreset("quiet");
+    const ui = useUIStore.getState();
+    expect(ui.activityBarVisible).toBe(false);
+    expect(ui.statusBarVisible).toBe(false);
+    expect(ui.tabBarVisible).toBe(true);
   });
 
   it("applyPreset with unknown id does nothing", () => {
@@ -142,6 +217,9 @@ describe("§52 Workspace Store", () => {
           sidebarPanel: "files" as const,
           rightPanelOpen: false,
           rightPanelMode: "none" as const,
+          activityBarVisible: true,
+          statusBarVisible: true,
+          tabBarVisible: true,
         },
       },
       {
@@ -154,6 +232,9 @@ describe("§52 Workspace Store", () => {
           sidebarPanel: "files" as const,
           rightPanelOpen: true,
           rightPanelMode: "chat" as const,
+          activityBarVisible: true,
+          statusBarVisible: true,
+          tabBarVisible: true,
         },
       },
     ];
@@ -212,9 +293,10 @@ describe("§52 Workspace Store", () => {
     useWorkspaceStore.getState().applyPreset(id);
 
     const ui = useUIStore.getState();
-    // §82 sidebar was open → preserved (a preset never force-closes it), even
-    // though this custom preset was saved with sidebarOpen:false.
-    expect(ui.sidebarOpen).toBe(true);
+    // §370 explicit applyPreset is symmetric — sidebar was open, but this
+    // custom preset was saved with sidebarOpen:false, so it closes (the
+    // narrowed open-only guard applies only to the implicit revert path).
+    expect(ui.sidebarOpen).toBe(false);
     expect(ui.sidebarPanel).toBe("graph");
     expect(ui.rightPanelOpen).toBe(true);
     expect(ui.rightPanelMode).toBe("memories");
@@ -296,13 +378,13 @@ describe("§4.2 applyPreset guards against a removed rightPanelMode", () => {
           name: "Stale",
           description: "",
           builtIn: false,
+          // §4.2 predates §370 — old-format layout, no visibility fields.
           layout: {
             sidebarOpen: true,
             sidebarPanel: "files",
             rightPanelOpen: true,
-            rightPanelMode:
-              "help" as unknown as WorkspaceLayout["rightPanelMode"],
-          },
+            rightPanelMode: "help",
+          } as unknown as WorkspaceLayout,
         },
       ],
     });
@@ -322,12 +404,13 @@ describe("§4.2 applyPreset guards against a removed rightPanelMode", () => {
           name: "Valid",
           description: "",
           builtIn: false,
+          // §4.2 predates §370 — old-format layout, no visibility fields.
           layout: {
             sidebarOpen: true,
             sidebarPanel: "files",
             rightPanelOpen: true,
             rightPanelMode: "memories",
-          },
+          } as WorkspaceLayout,
         },
       ],
     });
