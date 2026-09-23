@@ -16,29 +16,61 @@ export interface SymbolSuggestionItem {
   label: string;
 }
 
-/** Rank of one entry for `q` (already lowercase); lower is better, -1 is no match. */
+/**
+ * Rank of one entry for `q` (already lowercase); lower is better, -1 is no match.
+ *
+ * 0 — a whole word of either label (`heart` in "red heart")
+ * 1 — a whole keyword
+ * 2 — the start of a keyword
+ * 3 — the start of a word of either label
+ * 4 — anywhere inside a keyword or a label
+ *
+ * Label words come first because a label names the entry while a keyword only
+ * relates to it: `heart` is a keyword of 🥰 ("smiling face with hearts") too.
+ * Words are split on spaces only, so "heart-eyes" is one word.
+ */
 function rank(entry: SymbolEntry, q: string): number {
   let best = -1;
   const consider = (r: number): void => {
     if (best === -1 || r < best) best = r;
   };
-  for (const keyword of entry.keywords) {
-    if (keyword === q) return 0;
-    if (keyword.startsWith(q)) consider(1);
-    else if (keyword.includes(q)) consider(3);
-  }
   for (const label of [entry.en.toLowerCase(), entry.ko]) {
-    if (label === q) return 0;
-    if (label.split(" ").some((word) => word.startsWith(q))) consider(2);
-    else if (label.includes(q)) consider(3);
+    const words = label.split(" ");
+    if (words.includes(q)) return 0;
+    if (words.some((word) => word.startsWith(q))) consider(3);
+    else if (label.includes(q)) consider(4);
+  }
+  for (const keyword of entry.keywords) {
+    if (keyword === q) consider(1);
+    else if (keyword.startsWith(q)) consider(2);
+    else if (keyword.includes(q)) consider(4);
   }
   return best;
 }
 
+const normalize = (query: string): string =>
+  query.normalize("NFC").toLowerCase();
+
 /**
- * Candidates for `query`: symbols first, then emoji (when loaded), each group
- * in its own order within a rank. English and Korean keywords are searched
- * whatever the interface language; `locale` only picks the label shown.
+ * Whether `searchSymbols` would return anything for `query` — the same match,
+ * but it stops at the first entry instead of ranking the whole pool. For
+ * `shouldShow`, which runs on every transaction.
+ */
+export function hasSymbolMatch(
+  query: string,
+  emoji: null | readonly SymbolEntry[],
+): boolean {
+  const q = normalize(query);
+  if (q === "") return false;
+  const matches = (entry: SymbolEntry): boolean => rank(entry, q) !== -1;
+  return SYMBOLS.some(matches) || (emoji?.some(matches) ?? false);
+}
+
+/**
+ * Candidates for `query`, best rank first; within a rank, symbols before
+ * emoji (when loaded), each group in its own order. English and Korean
+ * keywords and labels are searched whatever the interface language; `locale`
+ * only picks the label shown.
  */
 export function searchSymbols(
   query: string,
@@ -46,7 +78,7 @@ export function searchSymbols(
   locale: string,
   limit = SYMBOL_MENU_LIMIT,
 ): SymbolSuggestionItem[] {
-  const q = query.normalize("NFC").toLowerCase();
+  const q = normalize(query);
   if (q === "") return [];
 
   const ranked: { entry: SymbolEntry; order: number; rank: number }[] = [];

@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
+import { ensureEmojiLoaded, loadedEmoji } from "../plugins/emoji-data";
 import { type SymbolEntry, SYMBOLS } from "../plugins/symbol-data";
-import { searchSymbols, SYMBOL_MENU_LIMIT } from "../plugins/symbol-search";
+import {
+  hasSymbolMatch,
+  searchSymbols,
+  SYMBOL_MENU_LIMIT,
+} from "../plugins/symbol-search";
 
 const SMILE: SymbolEntry = {
   char: "😄",
@@ -53,6 +58,55 @@ describe("searchSymbols", () => {
 
   it("returns nothing for a query nothing contains", () => {
     expect(chars("zzqq", [SMILE])).toEqual([]);
+  });
+});
+
+describe("searchSymbols with the real emoji table", () => {
+  async function emoji() {
+    await ensureEmojiLoaded();
+    const table = loadedEmoji();
+    if (!table) throw new Error("emoji did not load");
+    return table;
+  }
+
+  it("puts the arrow first for `ar`, not the flag whose region code it is", async () => {
+    expect(chars("ar", await emoji())[0]).toBe("→");
+  });
+
+  it("ranks ❤️, whose label has the word `heart`, above 🥰, whose keyword only is", async () => {
+    const all = searchSymbols("heart", await emoji(), "en", Infinity).map(
+      (item) => item.char,
+    );
+    expect(all).toContain("❤️");
+    expect(all.indexOf("❤️")).toBeLessThan(all.indexOf("🥰"));
+  });
+
+  it("still finds 🇰🇷 by its name in either language", async () => {
+    const table = await emoji();
+    expect(chars("korea", table)).toContain("🇰🇷");
+    expect(chars("대한민국", table)).toContain("🇰🇷");
+  });
+});
+
+describe("hasSymbolMatch", () => {
+  const QUERIES = ["ar", "ARROW", "pilc", "웃음", "heart", "korea", "zzqq", ""];
+
+  it.each(QUERIES)("agrees with searchSymbols on %j, symbols only", (query) => {
+    expect(hasSymbolMatch(query, null)).toBe(chars(query).length > 0);
+  });
+
+  it.each(QUERIES)(
+    "agrees with searchSymbols on %j, emoji loaded",
+    async (query) => {
+      await ensureEmojiLoaded();
+      const table = loadedEmoji();
+      expect(hasSymbolMatch(query, table)).toBe(chars(query, table).length > 0);
+    },
+  );
+
+  it("sees an emoji-only match only once the table is given", () => {
+    expect(hasSymbolMatch("웃음", null)).toBe(false);
+    expect(hasSymbolMatch("웃음", [SMILE])).toBe(true);
   });
 });
 

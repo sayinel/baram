@@ -1,7 +1,8 @@
 // §376 Prune emojibase-data to what the `:` autocomplete searches.
 //
-// The full ko + en `data.json` pair is ~1.2 MB; the rows kept here are the
-// character, both labels and the merged keywords. The output is committed and
+// The en + ko `data.json` pair read here is 1.58 MB (775,157 + 806,066 bytes,
+// emojibase-data 17.0.0); the rows kept are the character, both labels and
+// the merged keywords. The output is committed and
 // `npm run emoji:check` fails when it no longer matches a rebuild.
 import en from "emojibase-data/en/data.json";
 import ko from "emojibase-data/ko/data.json";
@@ -17,6 +18,14 @@ import { SYMBOLS } from "../src/extensions/plugins/symbol-data";
 const EMOJI_VERSION_CAP = 14;
 /** emojibase group 2, "component": skin tone and hair pieces, not typed alone. */
 const COMPONENT_GROUP = 2;
+/**
+ * emojibase group 9, "flags". A country flag's tags include its ISO region
+ * code (`AR`, `SM`), which as an exact keyword outranked every word it starts:
+ * `:ar` put 🇦🇷 above →. The two-letter codes are dropped; in emojibase-data
+ * 17.0.0 no other tag in this group is two ASCII letters.
+ */
+const FLAGS_GROUP = 9;
+const REGION_CODE = /^[a-z]{2}$/;
 const OUT = "src/extensions/plugins/emoji-data.generated.json";
 
 const strip = (c: string): string => c.replaceAll("️", "");
@@ -41,7 +50,7 @@ const rows = en
           t.normalize("NFC").toLowerCase(),
         ),
       ),
-    ];
+    ].filter((t) => e.group !== FLAGS_GROUP || !REGION_CODE.test(t));
     return [e.emoji, e.label, k.label.normalize("NFC"), keywords];
   });
 
