@@ -821,6 +821,56 @@
   border-radius: 10px;
 }
 
+/* §375 — Editor inline `:` symbol and emoji autocomplete popup */
+.symbol-menu-popup {
+  position: fixed;
+
+  /* Mounted on `document.body` (suggestion-renderer.ts) — see `--z-editor-popup`.
+     `max-content` pins the width so positionPopup can measure it (its comment). */
+  z-index: var(--z-editor-popup);
+  width: max-content;
+}
+
+.symbol-menu {
+  min-width: 200px;
+  max-width: 320px;
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 8px;
+  box-shadow: var(--shadow-md);
+}
+
+.symbol-menu-item {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 5px 10px;
+  font-family: var(--font-family-sans);
+  font-size: 13px;
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+
+.symbol-menu-item-selected {
+  background-color: var(--color-bg-subtle);
+}
+
+.symbol-menu-char {
+  width: 1.5em;
+  font-family: var(--font-family-editor);
+  font-size: 16px;
+  text-align: center;
+}
+
+.symbol-menu-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
 /* §69 Plugin Developer section — master-detail dev plugin load/reload/remove */
 .plugin-dev-section {
   gap: 4px;
