@@ -37,13 +37,15 @@ export function ChromeReveal() {
   // 빈 상태에 결합하지 않는다 — 서로 무관한 두 렌더를 묶는 것이 이 간극보다 나쁜
   // 구조다.
   //
-  // 그래도 §370.2가 성립하는 것은, 이 렌더와 무관하게 실제로 동작하는 경로가 셋
-  // 있어서다(코드로 확인함): 단축키(`Mod+Alt+A/S/B` — 문서 레벨 키다운이라 DOM에
-  // 그려진 크롬과 무관), 네이티브 "Perspective" 메뉴(`menu.rs`의 OS 메뉴바 — Writing 등
-  // 다른 프리셋을 고르면 `applyPreset`이 `setChromeVisibility`로 셋을 되살린다), 그리고
-  // 명령 팔레트(전역 단축키로 열어 "Writing Perspective" 실행)와 설정(전역 단축키로
-  // 열어 `ChromeVisibilitySection`의 토글). 이 버튼은 그 위에 얹힌 추가 편의이지 유일한
-  // 복귀 경로가 아니다.
+  // 그래도 §370.2가 성립하는 것은, 이 렌더와 무관하게 실제로 동작하는 경로가 넷
+  // 있어서다(코드로 확인함): ① 단축키 `Mod+Alt+A/S/B`(`use-global-keyboard.ts:214`가
+  // `window`에 건 키다운이라 DOM에 그려진 크롬과 무관하다), ② 네이티브 "Perspective"
+  // 메뉴(`menu.rs`의 OS 메뉴바 — Writing 등 다른 프리셋을 고르면 `applyPreset`이
+  // `setChromeVisibility`로 셋을 되살린다), ③ 명령 팔레트(전역 단축키로 열어 "Writing
+  // Perspective" 실행), ④ 설정(전역 단축키로 열어 `ChromeVisibilitySection`의 토글).
+  // ②는 포인터만으로 닿고 ①은 키보드만으로 닿으므로, 이 버튼이 없는 위 간극에서도
+  // §370.2가 요구하는 "둘 이상"이 두 입력 방식 모두에서 남는다. 이 버튼은 그 위에
+  // 얹힌 추가 편의이지 유일한 복귀 경로가 아니다.
   if (activityBarVisible || statusBarVisible || tabBarVisible) return null;
 
   return (
