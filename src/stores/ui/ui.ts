@@ -184,6 +184,20 @@ interface UIState {
   /** §313 이번 열기가 태스크를 잡으려는 것인가 — 여는 쪽이 정하고, 닫히면 사라진다 */
   quickCaptureTaskIntent: boolean;
   quickSwitcherOpen: boolean;
+  /**
+   * §370.2 숨은 크롬을 한 번에 되살린다 — 포인터·키보드 복귀 경로가 부르는 입구다.
+   *
+   * 토글 셋이 아니라 별도 액션인 이유: 의도가 "뒤집는다" 가 아니라 "전부 보이게
+   * 한다" 이다. 오늘은 버튼이 셋 다 숨었을 때만 떠서 결과가 같지만, 그 조건이
+   * 바뀌면 뒤집기는 켜야 할 것을 끈다.
+   *
+   * ‼️ 이것은 **사용자의 명시적 선택**이다 — 0096 Task 6 이 `chromeTouched` 를
+   * 들일 때 이 액션도 세 표면을 손댄 것으로 기록해야 한다. 기록하지 않으면
+   * 사용자가 크롬을 되살린 직후 테마가 다시 감출 수 있고, 그것은 §370.3 의
+   * "제안이지 강제가 아니다" 를 어긴다. 프리셋 입구(`setChromeVisibility`)와는
+   * 반대다 — 그쪽은 기록하지 않는다.
+   */
+  revealAllChrome: () => void;
   rightPanelMode: RightPanelMode;
   rightPanelOpen: boolean;
   rightPanelWidth: number;
@@ -365,6 +379,25 @@ export const useUIStore = create<UIState>((set) => ({
     set((state) => ({ statusBarVisible: !state.statusBarVisible })),
 
   toggleTabBar: () => set((state) => ({ tabBarVisible: !state.tabBarVisible })),
+
+  // §370.2 복귀 경로 — 가장자리 호버/포커스 버튼(ChromeReveal)이 부른다. 토글이 아니라
+  // "전부 보이게" 이므로 동등성 관문은 이미 셋 다 true인지로 본다(위 토글 셋과 다른 이유는
+  // 인터페이스의 §370.2 주석 참조).
+  revealAllChrome: () =>
+    set((state) => {
+      if (
+        state.activityBarVisible &&
+        state.statusBarVisible &&
+        state.tabBarVisible
+      ) {
+        return state;
+      }
+      return {
+        activityBarVisible: true,
+        statusBarVisible: true,
+        tabBarVisible: true,
+      };
+    }),
 
   // §370과 무관 — PDF 사이드 레일은 크롬 표면이 아니다(§282).
   togglePdfRail: () => set((state) => ({ pdfRailOpen: !state.pdfRailOpen })),

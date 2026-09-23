@@ -17,6 +17,32 @@
   overflow: hidden;
 }
 
+/* §370.2 복귀 경로 ② — 세 크롬 표면이 전부 숨었을 때만 렌더되는 버튼(ChromeReveal).
+   opacity로만 숨긴다 — display/visibility로 숨기면 탭 순서에서 빠져 키보드 경로가
+   사라진다. 지연 없이 :hover·:focus-visible 양쪽에서 즉시 드러난다. */
+.chrome-reveal {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  z-index: 1000;
+  padding: 4px 12px;
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  background-color: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-default);
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  opacity: 0;
+  transform: translateX(-50%);
+  transition: opacity 0.15s;
+}
+
+.chrome-reveal:hover,
+.chrome-reveal:focus-visible {
+  opacity: 1;
+}
+
 /* Activity Bar — 48px fixed vertical icon strip */
 .activity-bar {
   display: flex;

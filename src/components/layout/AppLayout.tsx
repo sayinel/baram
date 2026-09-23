@@ -9,6 +9,7 @@ import { useFeatureFlags } from "../../stores/settings/features";
 import { isRightPanelUsable } from "../../stores/ui/panel-feature";
 import { useUIStore } from "../../stores/ui/ui";
 import { ActivityBar } from "./ActivityBar";
+import { ChromeReveal } from "./chrome-reveal";
 import { ContextTabBar } from "./ContextTabBar";
 import { Sidebar } from "./Sidebar";
 import { Splitter } from "./Splitter";
@@ -165,6 +166,9 @@ export function AppLayout({ children, statusBar }: AppLayoutProps) {
 
       {/* Status Bar */}
       {statusBar}
+
+      {/* §370.2 복귀 경로 ② — 세 표면이 전부 숨었을 때만 자체적으로 렌더된다 */}
+      <ChromeReveal />
     </div>
   );
 }

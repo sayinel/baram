@@ -112,6 +112,7 @@
   "callout.type.tip": "Tip",
   "callout.type.todo": "Todo",
   "callout.type.warning": "Warning",
+  "chromeReveal.button": "Reveal hidden bars",
   "command.closeFolder": "Close Workspace",
   "common.browse": "Browse",
   "common.cancel": "Cancel",
