@@ -108,6 +108,24 @@ describe("SymbolPicker", () => {
     expect(onPick).toHaveBeenCalledWith("→");
   });
 
+  it("leaves an arrow with a modifier to the search box", () => {
+    // Positive twin: "moves with the arrow keys and picks with Enter" above —
+    // there a plain ArrowRight moves the highlight; here it does too, last.
+    const { press, selected } = setup();
+    const outside = vi.fn();
+    window.addEventListener("keydown", outside);
+    const prevented = (
+      ["altKey", "ctrlKey", "metaKey", "shiftKey"] as const
+    ).map((modifier) => !press("ArrowRight", { [modifier]: true }));
+    const afterModified = selected();
+    press("ArrowRight");
+    window.removeEventListener("keydown", outside);
+    expect(prevented).toEqual([false, false, false, false]);
+    expect(outside).toHaveBeenCalledTimes(4); // the plain one stops at the picker
+    expect(afterModified).toBe("→");
+    expect(selected()).toBe("←");
+  });
+
   it("leaves Enter to an IME that is composing, and picks once it is not", () => {
     const { onPick, press } = setup();
     press("Enter", { isComposing: true });

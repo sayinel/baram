@@ -161,6 +161,10 @@ export function SymbolPicker({ onCancel, onPick }: SymbolPickerProps) {
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
     if (isComposing(event)) return;
     const { key } = event;
+    // An arrow with a modifier is left to the search box, not prevented or
+    // stopped — Shift+arrow extends its text selection, for one. Only a plain
+    // arrow moves the grid.
+    if (isGridArrow(key) && hasModifier(event)) return;
     if (
       key !== "Enter" &&
       key !== "Escape" &&
@@ -272,6 +276,11 @@ export function SymbolPicker({ onCancel, onPick }: SymbolPickerProps) {
       </div>
     </div>
   );
+}
+
+/** Whether Alt, Ctrl, Meta or Shift is held with the key. */
+function hasModifier(event: ReactKeyboardEvent): boolean {
+  return event.altKey || event.ctrlKey || event.metaKey || event.shiftKey;
 }
 
 /** A key the IME is still composing with — Enter then commits a syllable, not a pick. */
