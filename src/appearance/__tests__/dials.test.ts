@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 
 import { DIALS } from "../dials";
 
+const CTX = { mode: "light", seeds: {} } as const;
+
 describe("DIALS", () => {
   it("has unique ids", () => {
     const ids = DIALS.map((d) => d.id);
@@ -14,7 +16,7 @@ describe("DIALS", () => {
     // 무엇이 이것을 실패시키는가: toVars 가 vars 에 없는 키를 내보내면, apply 는
     // 그것을 쓰지만 clear 는 지우지 못해 되돌려도 값이 남는다.
     for (const dial of DIALS) {
-      const emitted = Object.keys(dial.toVars(dial.defaultValue));
+      const emitted = Object.keys(dial.toVars(dial.defaultValue, CTX));
       for (const key of emitted) expect(dial.vars).toContain(key);
     }
   });
@@ -31,8 +33,8 @@ describe("DIALS", () => {
   it("emits no variable when the width dial is unbounded", () => {
     // 0 = 무제한. 변수를 비워 두면 CSS 의 `none` fallback 이 지배한다.
     const width = DIALS.find((d) => d.id === "editorMaxWidth");
-    expect(width?.toVars(0)).toEqual({});
-    expect(width?.toVars(800)).toEqual({ "--editor-max-width": "800px" });
+    expect(width?.toVars(0, CTX)).toEqual({});
+    expect(width?.toVars(800, CTX)).toEqual({ "--editor-max-width": "800px" });
   });
 
   it("parses exactly the range the slider exposes", () => {
@@ -50,7 +52,7 @@ describe("DIALS", () => {
 
   it("emits the padding dial in rem, matching base.css's unit", () => {
     const pad = DIALS.find((d) => d.id === "editorPadding");
-    expect(pad?.toVars(4)).toEqual({ "--editor-padding": "4rem" });
+    expect(pad?.toVars(4, CTX)).toEqual({ "--editor-padding": "4rem" });
   });
 
   it("emits the list guide strength as a percentage, and emits it at zero", () => {

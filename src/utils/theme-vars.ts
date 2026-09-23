@@ -15,6 +15,10 @@
 
 import type { ThemeColors } from "../types/theme";
 
+import {
+  deriveColorVars,
+  DERIVED_COLOR_KEYS,
+} from "../appearance/color-derive";
 import { THEME_COLOR_KEYS } from "../types/theme";
 import {
   accentSolidFill,
@@ -41,6 +45,10 @@ const THEME_STYLE_ATTR = "data-baram-theme";
  * does pick, so exposing them in the theme editor would let a user save a pairing
  * that fails contrast. `src/styles/generated/` carries the matching values for the
  * default themes and for `system`, which apply no inline overrides at all.
+ *
+ * §367 이후 파생 목록은 둘이다. 이것은 **대비를 보장하는** 전경·채움(#330)이고,
+ * `appearance/color-derive.ts` 의 `DERIVED_COLOR_KEYS` 는 색상환에서 계산한 의미
+ * 색 29키다. 둘 다 `applyThemeVars` 가 쓰고 `clearThemeVars` 가 지운다.
  */
 export const DERIVED_KEYS = [
   "--color-accent-on-solid",
@@ -126,6 +134,12 @@ export function setThemePreviewOwner(owned: boolean): void {
  *
  * So a theme whose CSS landed while the editor was open would have stayed colour-only until
  * something unrelated moved. This is the signal that closes it.
+ *
+ * ‼️ §367 리뷰 I3 이 **두 번째 이유**를 더했고, 그래서 구독자는 이제 조건 없이 다시
+ * 적용한다(`use-settings-effects.ts`). 되찾아야 하는 것은 "미리보기 중에 도착한 것"
+ * 만이 아니다 — `restorePreview` 자신이 저장된 팔레트만 알아, 색 다이얼이 옮긴 강조를
+ * 이동 없는 값으로 **덮으면서** 미리보기를 끝낸다. 그 경우 이펙트는 건너뛴 적이 없으므로
+ * "건너뛴 것이 있을 때만" 이라는 옛 조건으로는 아무 일도 일어나지 않았다.
  */
 export function subscribeThemePreviewRelease(listener: () => void): () => void {
   previewReleaseListeners.add(listener);
@@ -212,6 +226,21 @@ export function applyThemeVars(
   for (const [key, value] of Object.entries(derivedVars(colors, base))) {
     root.style.setProperty(key, value);
   }
+  // §367 시드에서 계산되는 의미 고정 계열 29키. `derivedVars` 와 나란히 두는 이유는
+  // 둘 다 "시드의 결과" 이기 때문이고, 나누는 이유는 서로 다른 질문에 답하기
+  // 때문이다 — `derivedVars` 는 대비를 보장하는 전경/채움이고(#330), 이쪽은
+  // 색상환에서 계산한 의미 색이다. 대비 하한이 없는 쪽이 이쪽이다.
+  //
+  // ‼️ **이 함수를 거치지 않는 갈래가 있다.** 강조 다이얼이 cascade 소유 테마
+  // (`CASCADE_ONLY_THEME_IDS`)에 닿을 때 `use-settings-effects.ts` 의 테마 이펙트는
+  // 이 파생 29키가 아니라 `deriveIdentityColorVars` 의 동일자 부분집합만 쓴다 —
+  // 이유(저작 토큰과 파생식이 어긋나 1° 에서 네 토큰이 튄다)는 그 자리와
+  // `deriveIdentityColorVars` 의 doc 주석에 있다. 여기서부터 읽는 사람에게 두 경로가
+  // 같아 보이면 안 되므로 그것을 가리킨다: 갈린 목록이 서로를 모르는 것이 이 파일
+  // 머리주석의 #330 이다.
+  for (const [key, value] of Object.entries(deriveColorVars(colors))) {
+    root.style.setProperty(key, value);
+  }
 }
 
 /**
@@ -241,6 +270,52 @@ export function clearThemeVars(root: HTMLElement): void {
   for (const key of DERIVED_KEYS) {
     root.style.removeProperty(key);
   }
+  // ‼️ 이 루프가 빠지면 테마를 바꿔도 앞 테마의 callout·graph·git 색이 남는다 —
+  // #330 이 정확히 그 모양이었다(제거 목록이 25키 중 16키만 덮어 아홉이 살아남았다).
+  // 목록이 `color-derive.ts` 에서 오는 것이 그 재발을 막는다: 규칙을 더하면
+  // 지우는 목록도 함께 자란다.
+  for (const key of DERIVED_COLOR_KEYS) {
+    root.style.removeProperty(key);
+  }
+}
+
+/**
+ * §367 강조 시드 둘에서 나오는 대비 짝 셋 — `--color-accent-solid` 와 그 전경·hover.
+ *
+ * ‼️ **호출자가 둘이고, 그것이 이 함수가 존재하는 이유다.** {@link derivedVars} 가
+ * 테마 전체를 계산할 때 부르고, 테마 이펙트의 cascade 갈래(`use-settings-effects.ts`)
+ * 가 강조 다이얼이 옮긴 시드로 부른다. 저쪽에서 이 셋을 다시 구현하면 파생 목록이
+ * 둘로 갈리고, 목록이 둘로 갈려 서로 어긋난 것이 이 파일 머리주석이 적는 #330 이다.
+ *
+ * 전체 팔레트가 아니라 **부분 맵**을 받는다. cascade 갈래가 넘기는 것은 강조 계열
+ * 넷뿐이고, 그것이 "강조와 거기서 나오는 것만 쓴다"(§364.2)를 호출 자리에서 눈으로
+ * 볼 수 있게 한다. 두 시드 중 하나라도 없으면 계산할 수 없으므로 빈 맵이다 —
+ * `deriveColorVars` 의 같은 규칙이다.
+ *
+ * ‼️ 그 빈 맵 갈래는 {@link derivedVars} 경로에서도 **탈 수 있다**. `ThemeColors` 는
+ * 두 키가 모두 있는 total 타입이지만 저장분은 runtime cast 라 키가 빠질 수 있고, 그것이
+ * `applyThemeVars` 의 `value !== undefined` 가드가 있는 이유와 같다(이 파일 그 자리
+ * 주석). 강조 시드가 빠진 팔레트에서 이 함수 이전의 동작은 "없는 채움에 전경을 골라
+ * 준다" 가 아니라 **던지는 것**이었다: 어느 모드로 가든 `parseHexColor` 의
+ * `color.trim()` 이 `undefined` 위에서 TypeError 를 낸다 — 라이트는
+ * `accentSolidFill` → `clearsAA` → `contrastRatio` → `relativeLuminance` 로,
+ * 다크는 `accentSolidFill` 이 accent 를 그대로 돌려준 뒤 `onSolidForeground` 로
+ * (`color-contrast.ts`, 2026-09-22 두 갈래 모두 실측). 빈 맵은 그래서 순수한
+ * 개선이다: 계산할 수 없는 셋을 내지 않고 cascade 에 맡긴다.
+ */
+export function accentPairingVars(
+  colors: Readonly<Partial<Record<string, string>>>,
+  base: "dark" | "light",
+): Record<string, string> {
+  const accent = colors["--color-accent-default"];
+  const hover = colors["--color-accent-hover"];
+  if (accent === undefined || hover === undefined) return {};
+  const solid = accentSolidFill(accent, hover, base);
+  return {
+    "--color-accent-on-solid": onSolidForeground(solid),
+    "--color-accent-solid": solid,
+    "--color-accent-solid-hover": solidHoverFill(solid),
+  };
 }
 
 /**
@@ -255,16 +330,9 @@ export function derivedVars(
   colors: ThemeColors,
   base: "dark" | "light",
 ): Record<string, string> {
-  const solid = accentSolidFill(
-    colors["--color-accent-default"],
-    colors["--color-accent-hover"],
-    base,
-  );
-  const derived: Record<string, string> = {
-    "--color-accent-on-solid": onSolidForeground(solid),
-    "--color-accent-solid": solid,
-    "--color-accent-solid-hover": solidHoverFill(solid),
-  };
+  // 강조 셋은 {@link accentPairingVars} 가 낸다 — 반환이 매번 새 객체라 아래에서
+  // status 계열을 그 위에 더해도 된다.
+  const derived: Record<string, string> = accentPairingVars(colors, base);
   for (const family of STATUS_FAMILIES) {
     const fill = colors[`--color-status-${family}`];
     derived[`--color-status-${family}-on-solid`] = onSolidForeground(fill);

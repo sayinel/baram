@@ -194,22 +194,41 @@ describe("a live theme-editor preview is not overwritten (external review #1)", 
     });
   });
 
-  it("does not re-apply on release when nothing was skipped", async () => {
-    // The negative control: a release must not become a second unconditional apply, or the
-    // guard would just be a delay. Nothing was skipped here, so the `<style>` element that
-    // is already in the document must be the same one afterwards.
+  it("re-applies on release even when nothing was skipped, without re-parsing the <style>", async () => {
+    // ‼️ 계약이 바뀌었다(§367 리뷰 I3). 예전에는 "건너뛴 것이 있을 때만" 다시 적용했고,
+    // 그 조건은 되찾아야 하는 것을 하나만 셌다. 미리보기가 **끝나는 방식** 자체가 두
+    // 번째다: `ThemeEditor` 의 `restorePreview` 는 저장된 팔레트만 알아 색 다이얼이
+    // 옮긴 값을 덮으면서 끝낸다. 그때 이 이펙트는 건너뛴 적이 없다.
     render(<Host />);
     await waitFor(() => expect(themeStyleText()).not.toBeNull());
     const before = document.querySelector("style[data-baram-theme]");
+    const applied = bgVar();
+    expect(applied).not.toBe("");
 
     act(() => {
       setThemePreviewOwner(true);
+      // 편집기가 미리보기로 덮은 상태를 흉내 낸다. 이 이펙트의 deps 는 움직이지 않는다.
+      document.documentElement.style.setProperty(
+        "--color-bg-default",
+        PREVIEW_SENTINEL,
+      );
+    });
+    act(() => {
       setThemePreviewOwner(false);
     });
     await act(async () => {
       await Promise.resolve();
     });
 
+    // 저장된 팔레트가 다시 주장된다 — 옛 계약에서는 센티넬이 그대로 남았다.
+    expect(bgVar()).toBe(applied);
+    // ‼️ 그러면서도 `<style>` **요소 자체는 그대로**다. 이 단언이 지키는 것은 동등성
+    // 관문이 아니라 붙이는 **방식**이다: `applyThemeCss` 는 이미 붙어 있는 요소를 찾아
+    // 재사용한다(`attached ?? root.createElement`). 무엇이 이것을 실패시키는가 —
+    // 떼고 다시 붙이는 구현(`clearThemeCss` 뒤 새 요소)이다. 그 구현에서는 미리보기를
+    // 놓을 때마다 스타일시트가 다시 파싱되고, 무조건 재적용이 그 비용을 실제로 치르게
+    // 된다. 같은 바이트의 재파싱을 막는 것은 이 단언이 아니라 그 아래의
+    // `if (style.textContent !== css)` 다.
     expect(document.querySelector("style[data-baram-theme]")).toBe(before);
   });
 });
@@ -259,6 +278,28 @@ describe("useSettingsEffects paints an installed (community) theme (F1)", () => 
     await waitFor(() => expect(readStoredThemeCss).not.toHaveBeenCalled());
     expect(themeStyleText()).toBeNull();
     expect(bgVar()).toBe("");
+  });
+
+  // §367 — 무엇이 이것을 실패시키는가: 파생을 `applyThemeVars` 에 배선하지 않으면
+  // 설치 테마를 입어도 callout 색이 기본 팔레트에 남는다 — 이 계획이 고치려는
+  // 결함 그 자체다.
+  it("설치 테마를 입으면 파생 색이 인라인으로 실린다", async () => {
+    render(<Host />);
+    await waitFor(() => expect(bgVar()).not.toBe(""));
+    const root = document.documentElement;
+    expect(root.style.getPropertyValue("--color-callout-info")).not.toBe("");
+    expect(root.style.getPropertyValue("--color-git-added")).not.toBe("");
+  });
+
+  // 비공허성: 위 단언은 파생이 **무엇이든** 쓰기만 하면 통과한다.
+  // 이것이 "테마의 강조색에서 나왔다" 를 요구한다.
+  it("파생된 callout-info 는 그 테마의 강조색과 같은 색상이다", async () => {
+    render(<Host />);
+    await waitFor(() => expect(bgVar()).not.toBe(""));
+    const root = document.documentElement;
+    const accent = root.style.getPropertyValue("--color-accent-default");
+    const info = root.style.getPropertyValue("--color-callout-info");
+    expect(info).toBe(accent);
   });
 });
 

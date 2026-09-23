@@ -4,6 +4,8 @@ import { applyDialVars, clearDialVars } from "../apply";
 import { DIALS } from "../dials";
 import { resolveDials } from "../merge";
 
+const CTX = { mode: "light", seeds: {} } as const;
+
 describe("sparse overrides keep the cascade in charge", () => {
   beforeEach(() => {
     document.documentElement.removeAttribute("style");
@@ -14,7 +16,7 @@ describe("sparse overrides keep the cascade in charge", () => {
     // 깨진다. 그 상태에서 `system` 테마는 `prefers-color-scheme` 를 따라가지
     // 못한다 — 인라인이 미디어 쿼리를 이기기 때문이다. `theme-vars.ts` 의
     // `CASCADE_ONLY_THEME_IDS` 주석이 그 사고를 기록한다.
-    applyDialVars(document.documentElement, resolveDials({}, {}));
+    applyDialVars(document.documentElement, resolveDials({}, {}), CTX);
     expect(document.documentElement.getAttribute("style")).toBeNull();
   });
 
@@ -22,6 +24,7 @@ describe("sparse overrides keep the cascade in charge", () => {
     applyDialVars(
       document.documentElement,
       resolveDials({}, { editorPadding: 2 }),
+      CTX,
     );
     const written = document.documentElement.getAttribute("style") ?? "";
     const untouched = DIALS.filter((d) => d.id !== "editorPadding").flatMap(
@@ -36,6 +39,7 @@ describe("sparse overrides keep the cascade in charge", () => {
     applyDialVars(
       document.documentElement,
       resolveDials({}, { editorPadding: 2, editorMaxWidth: 640 }),
+      CTX,
     );
     expect(document.documentElement.getAttribute("style")).not.toBeNull();
     clearDialVars(document.documentElement);

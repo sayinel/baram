@@ -37,7 +37,7 @@ vi.mock("../../../../utils/confirm-dialog", () => ({
   showAlert: (...a: unknown[]) => showAlert(...a),
 }));
 
-import type { RegistryEntry } from "../../../../plugins/types";
+import type { RegistryEntry, RegistryIndex } from "../../../../plugins/types";
 import type { InstalledTheme } from "../../../../themes/theme-install";
 import type { ThemeDef } from "../../../../types/theme";
 
@@ -255,6 +255,73 @@ describe("handleInstall", () => {
     );
   });
 
+  // §367.3 fix round 1 — `useUIStore`'s `showToast` has a single slot: a toast shown inside
+  // `stageAndRecord` and a second one shown synchronously after by the caller left only the
+  // second on screen, so the first (the contrast warning) was set and immediately discarded
+  // with nothing ever rendering it. Pinning the CALL COUNT, not just the final toast's
+  // contents, is what catches a regression here — asserting only the last toast would pass
+  // the broken two-call version too, since the success toast is what survives.
+  it("shows exactly one toast on a clean install with no contrast warnings", async () => {
+    installTheme.mockResolvedValue({
+      installed: installedTheme(),
+      ok: true,
+    });
+    const showToastSpy = vi.spyOn(useUIStore.getState(), "showToast");
+    const { result } = renderHook(() => useThemeActions());
+
+    act(() => {
+      void result.current.handleInstall(entry(), "https://reg.test");
+    });
+    await reachConsent();
+    await act(async () => {
+      result.current.settleConsent(true);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(showToastSpy).toHaveBeenCalledTimes(1);
+    expect(showToastSpy.mock.calls[0]?.[1]).toBe("info");
+    showToastSpy.mockRestore();
+  });
+
+  it("shows exactly one toast, folding the contrast warning into it, when installTheme reports warnings", async () => {
+    installTheme.mockResolvedValue({
+      installed: installedTheme(),
+      ok: true,
+      warnings: [
+        {
+          background: "--color-bg-panel",
+          foreground: "--color-text-secondary",
+          mode: "light",
+          ratio: 4.35,
+        },
+      ],
+    });
+    const showToastSpy = vi.spyOn(useUIStore.getState(), "showToast");
+    const { result } = renderHook(() => useThemeActions());
+
+    act(() => {
+      void result.current.handleInstall(entry(), "https://reg.test");
+    });
+    await reachConsent();
+    await act(async () => {
+      result.current.settleConsent(true);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(showToastSpy).toHaveBeenCalledTimes(1);
+    const [message, type] = showToastSpy.mock.calls[0]!;
+    expect(type).toBe("warning");
+    expect(message).toBe(
+      T("settings.appearance.installedToastWithWarning", {
+        count: "1",
+        name: "Dracula",
+      }),
+    );
+    showToastSpy.mockRestore();
+  });
+
   it("records an error and does not apply anything on a failed install", async () => {
     installTheme.mockResolvedValue({
       ok: false,
@@ -311,6 +378,56 @@ describe("handleInstall", () => {
       await Promise.resolve();
       await Promise.resolve();
     });
+  });
+});
+
+describe("handleUpdate", () => {
+  // §367.3 fix round 1 — same single-slot toast fix as `handleInstall` above, and the same
+  // reason for pinning the call count: `handleUpdate` composes its own toast now instead of
+  // `stageAndRecord` showing one that the update toast right after it would have clobbered.
+  it("shows exactly one toast, folding the contrast warning into it, when installTheme reports warnings", async () => {
+    useSettingsStore.setState({
+      installedThemes: { dracula: installedTheme() },
+    });
+    installTheme.mockResolvedValue({
+      installed: installedTheme({
+        manifest: { ...installedTheme().manifest, version: "2.0.0" },
+      }),
+      ok: true,
+      warnings: [
+        {
+          background: "--color-bg-panel",
+          foreground: "--color-text-secondary",
+          mode: "light",
+          ratio: 4.35,
+        },
+      ],
+    });
+    const index: RegistryIndex = { plugins: [entry({ version: "2.0.0" })] };
+    const showToastSpy = vi.spyOn(useUIStore.getState(), "showToast");
+    const { result } = renderHook(() => useThemeActions());
+
+    let updated: boolean | undefined;
+    await act(async () => {
+      updated = await result.current.handleUpdate(
+        "dracula",
+        index,
+        "https://reg.test",
+      );
+    });
+
+    expect(updated).toBe(true);
+    expect(showToastSpy).toHaveBeenCalledTimes(1);
+    const [message, type] = showToastSpy.mock.calls[0]!;
+    expect(type).toBe("warning");
+    expect(message).toBe(
+      T("settings.appearance.updatedToastWithWarning", {
+        count: "1",
+        name: "Dracula",
+        version: "2.0.0",
+      }),
+    );
+    showToastSpy.mockRestore();
   });
 });
 

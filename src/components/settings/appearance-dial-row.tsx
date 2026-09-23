@@ -149,6 +149,10 @@ export function AppearanceDialRow({ dialId, label }: AppearanceDialRowProps) {
  */
 function describeDial(dialId: DialId, t: Translate): string {
   switch (dialId) {
+    case "accentHueShift":
+      return t("settings.appearance.accentHueShift.desc");
+    case "accentSaturationShift":
+      return t("settings.appearance.accentSaturationShift.desc");
     case "editorEmphasisStyle":
       return t("settings.editor.editorEmphasisStyle.desc");
     case "editorLetterSpacing":
@@ -206,6 +210,13 @@ function formatDialValue(
   const rounded =
     typeof value === "number" ? roundToDialStep(dialId, value) : value;
   switch (dialId) {
+    // §367 두 강조 다이얼은 **이동량**이라 부호가 값의 일부다 — `+60°` 와 `60°` 는
+    // 같은 값이지만 `-60°` 와는 다르고, 0 을 기준으로 양쪽으로 움직이는 슬라이더에서
+    // 부호 없는 readout 은 어느 쪽인지 말하지 않는다. 음수는 `-` 가 이미 붙는다.
+    case "accentHueShift":
+      return `${signOf(rounded)}${rounded}°`;
+    case "accentSaturationShift":
+      return `${signOf(rounded)}${rounded}%`;
     case "editorEmphasisStyle":
       // editorLineBreak와 같은 이유로 빈 문자열이다 — 열거의 값 readout은
       // select 자체가 이미 보여 준다.
@@ -232,4 +243,13 @@ function formatDialValue(
     case "editorParagraphSpacing":
       return `${rounded}em`;
   }
+}
+
+/**
+ * 양수 앞의 `+`. 음수는 숫자 자체가 `-` 를 싣고, 0 은 부호가 없다.
+ * `DialValue` 는 문자열일 수 있으므로(열거 다이얼) 숫자일 때만 판정한다 —
+ * 이 헬퍼를 부르는 자리는 오늘 number 다이얼 둘뿐이지만, 타입은 그것을 모른다.
+ */
+function signOf(value: DialValue): string {
+  return typeof value === "number" && value > 0 ? "+" : "";
 }

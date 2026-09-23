@@ -144,6 +144,31 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
   // before creates), and silently false the moment the close is deferred.
   const savedRef = useRef(false);
 
+  // ‼️ 이 편집기 인스턴스가 미리보기를 **이미 끝냈는가**. `endPreview` 를 한 번만
+  // 실행시키는 관문이고, 그 이유는 Cancel 이 두 번 부르기 때문이다 — 버튼에서 한 번,
+  // 그 `onClose()` 가 일으키는 언마운트의 정리에서 한 번(실제 앱의 `onClose` 는
+  // 언마운트한다: `tabs/AppearanceTab.tsx` 가 하위 화면을 `null` 로 되돌린다).
+  // 관문이 없으면 둘째 호출이 되돌리기를 다시 실행하고, 그때 소유권은 이미 풀려 있어
+  // `setThemePreviewOwner(false)` 가 조용히 이른 반환한다 — 재적용 신호가 발화하지
+  // 않으므로 그 되돌리기를 고칠 사람이 없다(§367 재리뷰).
+  //
+  // ‼️ **모듈 전역인 `themePreviewOwned()` 로 판정하면 안 된다.** 편집기가 떠 있는
+  // 동안 다른 무언가가 소유권을 놓는 날이 오면 그 술어는 "이미 끝났다" 로 읽혀
+  // 되돌리기를 통째로 건너뛰고, 미리보기가 `<html>` 에 박힌 채 남는다. 판정 대상은
+  // 문서의 상태가 아니라 이 미리보기 **한 벌의 이력**이다.
+  //
+  // ‼️ **그래서 아래 이펙트 본문이 이 ref 를 다시 `false` 로 되돌린다 — 지우지 말 것.**
+  // 한 벌의 경계는 컴포넌트 인스턴스가 아니라 **이펙트 실행**이다: `React.StrictMode`
+  // (`src/main.tsx`)는 마운트 → 정리 → 재실행을 한 번 더 돌리므로, 인스턴스 단위 ref 는
+  // 그 정리에서 켜진 뒤 다시 꺼지지 않는다. 그러면 재실행이 `setThemePreviewOwner(true)`
+  // 로 소유권을 다시 쥐는데 그것을 놓을 `endPreview` 는 전부 이른 반환하고, 소유권이
+  // 프로세스가 끝날 때까지 참으로 굳어 **테마 적용 이펙트가 영영 서 있는다** — 실측
+  // 증상: Cancel 이 강조 이동을 되살리지 않고, 그 뒤 테마를 바꿔도 아무 일도 일어나지
+  // 않으며, 앱을 다시 켜면 적용된다(모듈 상태가 새로 지어지므로). 테스트 스위트는
+  // StrictMode 를 쓰지 않아 이것을 보지 못했다 — `ThemeEditor.test.tsx` 의
+  // StrictMode 케이스가 그 구멍을 메운다.
+  const previewEndedRef = useRef(false);
+
   // Group color keys by category
   const categories = useMemo(() => {
     const map = new Map<string, (typeof THEME_COLOR_KEYS)[number][]>();
@@ -172,20 +197,23 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
   // 알려, use-settings-effects의 prefers-color-scheme 리스너가 미리보기를 지우고
   // 저장된 테마를 다시 깔지 않도록 한다 — 왜 그것이 위 주석이 막으려던 혼합
   // 미리보기와 같은 결함인지는 그 리스너 옆에 적혀 있다.
+  //
+  // ‼️ **되돌리기와 소유권 해제가 한 정리 함수 안에 있고, 그 순서가 계약이다**
+  // ({@link endPreview}). 이펙트 둘로 나뉘어 있을 때는 선언 순서가 그 둘을 정렬했고
+  // — 해제가 먼저 돌아 테마 이펙트를 다시 돌린 뒤 `restorePreview()` 가 그 결과를
+  // 덮었다 — 그래서 강조 다이얼이 옮긴 색이 편집기를 닫는 것만으로 사라졌다
+  // (§367 리뷰 I3).
   useEffect(() => {
+    // ‼️ 이 두 줄은 짝이다 — 소유권을 쥐는 것과 "아직 놓지 않았다" 를 세우는 것.
+    // 짝을 풀면 StrictMode 의 재실행에서 소유권만 다시 서고 관문은 켜진 채로 남는다
+    // (`previewEndedRef` 의 주석이 그 결과를 적는다).
+    previewEndedRef.current = false;
     setThemePreviewOwner(true);
-    return () => setThemePreviewOwner(false);
-  }, []);
-
-  // Restore original colors on unmount (cancel / navigate away)
-  useEffect(() => {
-    // Aliased so the cleanup reads the ref through a stable local (lint rule), not
-    // a value captured at effect time — `saved` must be read AT cleanup.
+    // Aliased so the cleanup reads the refs through stable locals (lint rule), not
+    // values captured at effect time — both must be read AT cleanup.
     const saved = savedRef;
-    return () => {
-      if (saved.current) return;
-      restorePreview();
-    };
+    const ended = previewEndedRef;
+    return () => endPreview(!saved.current, ended);
   }, []);
 
   const handleColorChange = useCallback((key: ThemeColorKey, value: string) => {
@@ -247,8 +275,15 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
   ]);
 
   const handleCancel = useCallback(() => {
-    // Restore original colors before closing
-    restorePreview();
+    // Restore original colors before closing. 언마운트 정리와 **같은 순서**여야 한다
+    // (`endPreview`) — 이 버튼이 두 번째 되돌리기 자리이고, 두 자리가 갈리면 하나만
+    // 고치는 날이 온다.
+    //
+    // ‼️ 여기서 지우고 `onClose()` 에만 맡길 수 없다. 그러면 정확성이 **호출자가
+    // 언마운트하는가**에 달리고, 언마운트하지 않는 호출자에게는 Cancel 이 미리보기를
+    // 화면에 남긴다(`ThemeEditor` 를 홀로 렌더하는 테스트 넷이 그 경우다). 대신 두 번
+    // 불려도 안전하게 만든다 — `previewEndedRef` 가 그 관문이다.
+    endPreview(true, previewEndedRef);
     onClose();
   }, [onClose]);
 
@@ -484,7 +519,44 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
 }
 
 /**
+ * 미리보기를 끝내고 `<html>` 의 주인을 테마 이펙트에 돌려준다.
+ *
+ * ‼️ **순서가 계약이다.** {@link restorePreview} 는 저장된 팔레트만 알고 **색 다이얼도
+ * 테마 CSS 도 모른다** — 그래서 마지막 말은 테마 이펙트가 해야 한다. 소유권을 놓는
+ * 것이 그 이펙트를 다시 돌리는 신호이고(`subscribeThemePreviewRelease`,
+ * `theme-vars.ts`), 둘의 순서가 뒤집히면 되돌리기가 그 재적용을 덮는다 — §367 리뷰
+ * I3 가 실측한 모양이 정확히 그것이다(강조 다이얼을 움직여 둔 채 편집기를 닫으면
+ * 이동 없는 강조가 `<html>` 에 남았고, 테마 id·다이얼 값 같은 그 이펙트의 deps 중
+ * 하나가 움직일 때까지 그대로였다).
+ *
+ * `restore` 가 거짓인 자리는 저장 직후다: 그 색은 이제 진짜 테마라 되돌릴 미리보기가
+ * 없지만, 소유권은 그때도 놓아야 한다. 저장 경로는 이 함수를 언마운트 정리에서 **한 번**
+ * 부르고 그때 소유권을 아직 쥐고 있으므로, 아래 관문에 걸리지 않고 해제까지 간다.
+ *
+ * ‼️ **미리보기 한 벌에서 한 번만 실행된다**(`ended` — 그 경계를 긋는 것은 인스턴스가
+ * 아니라 이펙트 실행이고, 이유는 호출자 쪽 주석이 적는다). Cancel 이 이 함수를 두 번 부르기
+ * 때문이다 — 버튼에서 한 번, 그 `onClose()` 가 일으키는 언마운트의 정리에서 한 번. 관문이
+ * 없으면 둘째 호출이 되돌리기만 다시 실행하고 `setThemePreviewOwner(false)` 는 이미
+ * 풀린 소유권 위에서 조용히 이른 반환한다(`theme-vars.ts` 의 `previewOwned === owned`).
+ * 그러면 재적용 신호가 발화하지 않아 그 되돌리기를 고칠 사람이 없고, 색 다이얼이 옮긴
+ * 강조가 사라진다 — 실측(§367 재리뷰): 언마운트하는 `onClose` 로 Cancel 을 누르면
+ * `--color-accent-default` 가 빈 문자열로 끝났다. 관문이 **이 인스턴스의 ref** 인
+ * 이유는 호출자 쪽 주석(`previewEndedRef`)이 적는다.
+ */
+function endPreview(restore: boolean, ended: { current: boolean }): void {
+  if (ended.current) return;
+  ended.current = true;
+  if (restore) restorePreview();
+  setThemePreviewOwner(false);
+}
+
+/**
  * Undo the live preview the way the settings effect would have applied the theme.
+ *
+ * ‼️ 이것이 **마지막 작성자가 아니다** — {@link endPreview} 가 이 함수를 부른 뒤
+ * 소유권을 놓고, 그 신호를 받은 테마 이펙트가 다시 주장한다. 이 함수가 남아 있는
+ * 이유는 그 이펙트가 없는 트리에서도 미리보기가 걷혀야 하기 때문이다(`ThemeEditor`
+ * 를 홀로 렌더하는 테스트가 그 경우다).
  *
  * Cascade-only themes (`system`, the two defaults) and an `activeThemeId` that
  * resolves to nothing carry NO inline variables, so restoring them by SETTING the

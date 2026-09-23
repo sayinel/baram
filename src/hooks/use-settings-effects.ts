@@ -6,6 +6,9 @@ import type { Editor } from "@tiptap/core";
 
 import { useShallow } from "zustand/shallow";
 
+import { colorDialVars } from "../appearance/apply";
+import { deriveIdentityColorVars } from "../appearance/color-derive";
+import { resolveColorMode } from "../appearance/color-mode";
 import { useTranslation } from "../i18n/useTranslation";
 import { useFeatureFlags } from "../stores/settings/features";
 import { useSettingsStore } from "../stores/settings/store";
@@ -16,11 +19,16 @@ import {
 } from "../stores/ui/panel-feature";
 import { useUIStore } from "../stores/ui/ui";
 import { lookupThemes } from "../themes/installed-theme-defs";
-import { findThemeById, resolveThemeMode } from "../types/theme";
+import {
+  defaultColorsForBase,
+  findThemeById,
+  resolveThemeMode,
+} from "../types/theme";
 import { applyFontVariables } from "../utils/editor/font-surfaces";
 import { resolveCodeMetrics } from "../utils/font/code-metrics";
 import { logger } from "../utils/logger";
 import {
+  accentPairingVars,
   appliesInlineVars,
   applyThemeCss,
   applyThemeVars,
@@ -34,7 +42,9 @@ import { useThemeCssHydration } from "./use-theme-css-hydration";
 
 export function useSettingsEffects(editor: Editor | null) {
   const { t } = useTranslation();
-  useAppearanceDials();
+  // §367 레이아웃 채널은 이 훅 안에서 이미 적용됐다. 반환값이 필요한 것은 색
+  // 채널뿐이고, 그것은 아래 테마 이펙트가 시드 위에 얹는다.
+  const resolvedDials = useAppearanceDials();
   const {
     activeThemeId,
     codeFontFamily,
@@ -154,12 +164,77 @@ export function useSettingsEffects(editor: Editor | null) {
       // need none: src/styles/generated/ already carries their values, including the
       // accent pairing that applyThemeVars derives for everyone else (#330).
       const colors = assets?.colors;
-      if (
-        mode !== undefined &&
-        appliesInlineVars(effectiveThemeId) &&
-        colors !== undefined
-      ) {
-        applyThemeVars(root, colors, mode);
+
+      // §367 색 채널 다이얼은 **시드를 고친다**. 그래서 파생보다 먼저 얹고, 그
+      // 결과가 파생의 입력이 된다(어느 파생인지는 아래 두 갈래가 갈린다).
+      //
+      // `colorMode` 는 `mode` 와 다른 질문에 답한다(`appearance/color-mode.ts` 의
+      // 머리주석): `mode` 는 "어느 모드 자산을 적용하는가" 라 없을 수 있고, 이쪽은
+      // "지금 화면이 밝은가" 라 언제나 답이 있다. 다이얼은 자산이 없는 `system`
+      // 에서도 시드를 물려받아야 하므로 후자가 필요하다. deps 에 넣지 않는 것은
+      // `mode` 와 같은 이유다 — `mql.matches` 에서 계산되는 지역값이고, OS 전환은
+      // 이 이펙트가 이미 갖고 있는 `change` 리스너가 `apply()` 를 다시 돌려 잡는다.
+      const colorMode = resolveColorMode(themeDef, mql.matches);
+      const base = colors ?? defaultColorsForBase(colorMode);
+      const accent = colorDialVars(resolvedDials, {
+        mode: colorMode,
+        seeds: base,
+      });
+
+      // 이 테마의 시드를 우리가 읽을 수 있는가. `appliesInlineVars` 가 거짓인 쪽은
+      // 생성 스타일시트가 시드를 갖고, 참인 나머지는 자기 `colors` 를 싣는다 —
+      // 다만 **싣지 않을 수도 있다**.
+      const inlineSeeded = appliesInlineVars(effectiveThemeId);
+
+      // ‼️ 아래 사슬의 갈래는 **셋**이고, 이 주석은 그 셋 전부를 지배한다.
+      //
+      // 셋째 — `inlineSeeded` 인데 `colors` 가 없는 테마 — 는 사슬에 절이 없다.
+      // **의도적 무동작**이고, 그것이 이 사슬에서 가장 놓치기 쉬운 결정이다.
+      // `theme-manifest.ts` 는 모드가 `tokens` 없이 `css` 만 싣는 것을 허용하고,
+      // `readModeColors` 가 읽기 실패를 삼켜도 같은 모양이 된다. 그런 테마의 강조는
+      // 자기 스타일시트 안에 있어 우리가 읽을 수 없다 — 위 `base` 가
+      // `defaultColorsForBase` 로 되돌아가므로, 둘째 절의 `!inlineSeeded` 가 없으면
+      // **기본 팔레트**를 돌린 값을 그 테마의 CSS 강조 위에 박는다. 모르는 것은
+      // 옮기지 않는다는 이 계획의 규칙이 여기에도 걸린다. 오늘 내장 테마 중 `css`
+      // 만 싣는 것은 없고 레지스트리도 비어 있어 닿지 않는 경로지만, 조건 하나가
+      // 그날의 조용한 놀람보다 싸다.
+      if (inlineSeeded && colors !== undefined) {
+        // 테마가 인라인 시드를 쓰는 갈래 — 시드 + 파생 전부. `colors !== undefined`
+        // 는 `mode !== undefined` 를 함의한다(`assets` 가 `mode` 로만 풀린다).
+        applyThemeVars(root, { ...colors, ...accent }, colorMode);
+      } else if (!inlineSeeded && Object.keys(accent).length > 0) {
+        // ‼️ cascade 가 시드를 소유하는 갈래. 도달 집합은 `appliesInlineVars` 가
+        // 거짓인 테마, 즉 `theme-vars.ts` 의 `CASCADE_ONLY_THEME_IDS` 그 자체다 —
+        // 여기 셋을 이름으로 베껴 적지 않는 이유는 그 집합이 저쪽에서 자랄 수
+        // 있기 때문이다. 여기서 시드를 통째로 인라인에 박으면 §364.2 가 금지한 바로
+        // 그 일이 된다 — 인라인이 `prefers-color-scheme` 를 눌러 이겨 OS 전환이
+        // 멎는다. 그래서 **강조 계열과 거기서 나오는 것만** 쓴다: 파생에 강조만
+        // 넘기면 그것이 자동으로 지켜진다(실측 2026-09-22, 강조 네 키만 준 입력은
+        // `--color-bg-selection` 을 내지 않는다 — 그 규칙의 anchor 시드가 없다).
+        //
+        // ‼️ 파생은 `deriveColorVars` 가 아니라 **동일자만** 내는 쪽이다. 저작값과
+        // 파생값이 어긋나 1° 에서 네 토큰이 튀기 때문이고, 근거와 실측값은
+        // `deriveIdentityColorVars` 의 doc 주석에 있다. 인라인 갈래는 그대로 전부
+        // (`applyThemeVars` → `deriveColorVars`) 쓴다 — 거기는 시드도 파생도 모두
+        // 우리가 계산한 것이라 어긋날 틈이 없다.
+        //
+        // ‼️ `accentPairingVars` 도 여기 있어야 한다. 그것이 없으면 강조를 돌렸을 때
+        // 링크·본문 강조는 따라 돌고 **채워진 버튼 배경만 옛 색으로 남는다** — 그
+        // 셋은 `DERIVED_COLOR_KEYS`(29) 가 아니라 `DERIVED_KEYS` 에 있고, 그 목록을
+        // 계산하는 `derivedVars` 는 인라인 갈래에서만 도는 `applyThemeVars` 안에
+        // 있기 때문이다. 파생 29키와 달리 이 셋은 강조 시드 둘만으로
+        // 계산되므로, 여기서 내보내도 §364.2 가 금지하는 "모르는 값 박기" 가 아니다.
+        // status 계열 여섯은 일부러 뺀다 — 강조 다이얼은 status 시드를 움직이지
+        // 않으므로 그 값들은 그대로이고, 박으면 얻지 않은 지식을 주장하는 것이 된다.
+        // 지우는 쪽은 손댈 필요가 없다: `clearThemeVars` 가 `DERIVED_KEYS` 를 조건
+        // 없이 전부 지운다.
+        for (const [key, value] of Object.entries({
+          ...accent,
+          ...deriveIdentityColorVars(accent),
+          ...accentPairingVars(accent, colorMode),
+        })) {
+          root.style.setProperty(key, value);
+        }
       }
 
       // §358 스펙 §6 의 순서 — generated → 토큰 → CSS. 테마 CSS 가 마지막인 이유는
@@ -181,25 +256,26 @@ export function useSettingsEffects(editor: Editor | null) {
     //
     // deps 가 늘어난 이유(늦게 도착하는 CSS 를 적용해야 한다)는 그대로 지킨다 — 건너뛴
     // 적용은 버리지 않고, 소유권이 풀릴 때 다시 돌린다.
-    let skippedWhilePreviewing = false;
     const applyUnlessPreviewing = () => {
-      if (themePreviewOwned()) {
-        skippedWhilePreviewing = true;
-        return;
-      }
-      skippedWhilePreviewing = false;
+      if (themePreviewOwned()) return;
       apply();
     };
 
     applyUnlessPreviewing();
-    // ‼️ 건너뛴 것을 되찾는 자리. 아래 주석은 "편집기를 닫으면 restorePreview()가,
-    // 저장하면 이 이펙트의 재실행이" 복구한다고 적는데, 그것은 **OS 전환**에 대해서만
-    // 참이다(그 전환이 움직이는 것은 인라인 변수와 `data-theme` 뿐이고 restorePreview 가
-    // 정확히 그 둘을 되돌린다). 하이드레이션이 실어 오는 `<style>` 은 restorePreview 가
-    // 손대지 않고(`clearThemeCss` 주석), 저장하지 않고 닫으면 이 이펙트의 deps 도 움직이지
-    // 않는다 — 그래서 그 경로만은 알림이 필요하다(`subscribeThemePreviewRelease`).
+    // ‼️ 미리보기가 놓이면 **무조건** 다시 주장한다. 한때는 "이 이펙트가 건너뛴 적이
+    // 있을 때만" 이었고, 그 조건이 참이 되는 경우를 열거하는 방식이 두 번 틀렸다.
+    //
+    // 되찾아야 하는 것이 둘이기 때문이다. ① 미리보기 중에 도착한 것 — 하이드레이션이
+    // 실어 오는 `<style>` 은 `restorePreview` 가 손대지 않고(`clearThemeCss` 주석),
+    // 저장하지 않고 닫으면 이 이펙트의 deps 도 움직이지 않는다. ② **미리보기가
+    // 끝나면서 잘못 되돌려진 것** — `restorePreview` 는 저장된 팔레트만 알아 색 다이얼이
+    // 옮긴 강조를 이동 없는 값으로 덮는다(§367 리뷰 I3). ②에서는 이 이펙트가 건너뛴
+    // 적이 없으므로 옛 조건으로는 아무 일도 일어나지 않았다.
+    //
+    // 무조건 다시 도는 비용은 미리보기를 놓는 순간 한 번이고, `applyThemeCss` 의 동등성
+    // 관문이 같은 바이트의 `<style>` 을 다시 파싱하지 않는다.
     const unsubscribeRelease = subscribeThemePreviewRelease(() => {
-      if (skippedWhilePreviewing) applyUnlessPreviewing();
+      applyUnlessPreviewing();
     });
     // ‼️ 테마 편집기가 열려 있는 동안에는 OS 전환을 **듣기만 하고 적용하지 않는다**.
     // apply()의 첫 줄이 clearThemeVars이므로, 색을 드래그하는 중에 해가 져서 macOS가
@@ -219,7 +295,17 @@ export function useSettingsEffects(editor: Editor | null) {
     // AFTER this effect's first run (the hydration hook above fetches it asynchronously),
     // so the effect has to re-run once the cache fills in, or the theme stays colour-only
     // until something else happens to change activeThemeId/customThemes.
-  }, [effectiveThemeId, customThemes, installedThemes, cssCacheEntries]);
+    //
+    // §367 — `resolvedDials` added: a colour dial changes what this effect writes, so
+    // dragging the accent slider has to re-run it. Its reference is stable across renders
+    // (`use-appearance-dials.ts` memoises it), so it moves only when a layer's value does.
+  }, [
+    effectiveThemeId,
+    customThemes,
+    installedThemes,
+    cssCacheEntries,
+    resolvedDials,
+  ]);
 
   useEffect(() => {
     // §perf-large-file C3.4: resolve via editor.view.dom rather than a global

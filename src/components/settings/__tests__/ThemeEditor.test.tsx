@@ -8,7 +8,7 @@
 // theme was left with a light UI, and only switching themes recovered it, because
 // the settings effect depends on [activeThemeId, customThemes] and cancel changes
 // neither.
-import { useState } from "react";
+import { StrictMode, useState } from "react";
 
 import type { ThemeDef } from "../../../types/theme";
 
@@ -30,6 +30,7 @@ import {
   defaultColorsForBase,
   THEME_COLOR_KEYS,
 } from "../../../types/theme";
+import { themePreviewOwned } from "../../../utils/theme-vars";
 import { ThemeEditor } from "../ThemeEditor";
 
 // ‼️ `useSettingsEffects` syncs two native menus through a LAZY `import()` (§82). This file
@@ -81,6 +82,8 @@ const NORD_COLORS = solePalette(NORD);
 const ACCENT = "--color-accent-default";
 const ACCENT_LABEL = THEME_COLOR_KEYS.find((e) => e.key === ACCENT)!.label;
 const SENTINEL = "#123456";
+/** 기본 라이트 강조 `#3b82f6` 을 `accentHueShift: 60` 으로 돌린 값(§367, 실측). */
+const SHIFTED_ACCENT = "#af3bf6";
 
 function accentValue(): string {
   return document.documentElement.style.getPropertyValue(ACCENT);
@@ -117,6 +120,9 @@ describe("ThemeEditor — leaving the editor", () => {
     // inherit whatever the store defaults to.
     useSettingsStore.setState({
       activeThemeId: "system",
+      // 다이얼은 이 describe 의 한 케이스만 쓴다 — 모듈 상태라 비워 두지 않으면
+      // 그 케이스가 뒤의 인라인 변수 개수 단언을 오염시킨다.
+      appearanceOverrides: {},
       customThemes: [],
       locale: "en",
     });
@@ -206,6 +212,129 @@ describe("ThemeEditor — leaving the editor", () => {
     act(() => closeEditor());
 
     expect(accentValue()).toBe(SENTINEL);
+    // ‼️ 위 단언은 **되돌리지 않는 것**만 본다 — 저장한 색은 미리보기가 이미 써 둔
+    // 값이라, 소유권을 영영 놓지 않는 구현에서도 통과한다(실측: `endPreview` 의 해제를
+    // `restore` 갈래로만 옮긴 mutant 가 초록이었다). 그러면 이 모듈 전역이 참으로
+    // 굳어 이후의 모든 테마 적용이 조용히 건너뛰어진다. 저장 경로도 반드시 놓는다는
+    // 것을 따로 못 박는다 — `endPreview` 의 1회 실행 관문이 삼킬 수 있는 자리다.
+    expect(themePreviewOwned()).toBe(false);
+  });
+
+  // §367 리뷰 I3 — 편집기를 닫는 것이 강조 다이얼의 이동을 되돌렸다.
+  //
+  // `restorePreview()` 는 저장된 테마의 시드만 알고 다이얼을 모른다. 예전에는 그것이
+  // 마지막 작성자였고(소유권 해제가 **먼저** 돌아 테마 이펙트를 다시 돌린 뒤 되돌리기가
+  // 그 결과를 덮었다), 그 뒤로 `<html>` 은 테마 id·`customThemes`·`installedThemes`·
+  // CSS 캐시·다이얼 값 중 하나가 움직일 때까지 이동 없는 강조를 들고 있었다.
+  it("keeps the accent dial's shift after the editor closes", () => {
+    useSettingsStore.setState({ appearanceOverrides: { accentHueShift: 60 } });
+    let closeEditor = (): void => {};
+    let openEditor = (): void => {};
+    function Host() {
+      useSettingsEffects(null);
+      const [open, setOpen] = useState(false);
+      closeEditor = () => setOpen(false);
+      openEditor = () => setOpen(true);
+      return open ? <ThemeEditor onClose={() => {}} /> : null;
+    }
+
+    render(<Host />);
+    // 양성 기준선: 다이얼이 실제로 무언가를 쓴다. 이것이 없으면 아래 마지막 단언은
+    // "다이얼이 아예 동작하지 않는다" 와 구별되지 않는다. `#af3bf6` 는 기본 라이트
+    // 강조 `#3b82f6` 을 +60° 돌린 값이다(`accent-dials.test.ts` 의 실측 표).
+    expect(accentValue()).toBe(SHIFTED_ACCENT);
+
+    act(() => openEditor());
+    // 미리보기는 저장된 팔레트를 그대로 깐다 — 이동이 사라진 상태가 실제로 생긴다.
+    // 이 단언이 없으면 마지막 단언은 "편집기가 아무것도 안 했다" 로도 통과한다.
+    expect(accentValue()).not.toBe(SHIFTED_ACCENT);
+
+    act(() => closeEditor());
+
+    expect(accentValue()).toBe(SHIFTED_ACCENT);
+  });
+
+  // §367 재리뷰 — **닫는 길이 둘이고, 하나만 고쳐도 다른 하나는 초록이었다.**
+  //
+  // 위 케이스는 언마운트로만 닫으므로 `endPreview` 가 한 번 돈다. Cancel 은 실제 앱에서
+  // 두 번 돌린다 — 버튼에서 한 번, 그 `onClose()` 가 일으키는 언마운트의 정리에서 한 번
+  // (`tabs/AppearanceTab.tsx:27` 의 `onClose` 가 하위 화면을 `null` 로 되돌린다). 둘째
+  // 호출이 되돌리기를 다시 실행하고 소유권 해제는 이미 풀려 있어 조용히 이른 반환하므로,
+  // 재적용 신호가 없어 그 되돌리기가 마지막 말이 됐다.
+  //
+  // 이 파일 위쪽의 Cancel 케이스 넷은 이것을 실을 수 없다: `useSettingsEffects` 가 트리에
+  // 없어 잃을 재적용이 애초에 없고, `onClose` 도 언마운트하지 않는다.
+  it("keeps the accent dial's shift when Cancel closes the editor", () => {
+    useSettingsStore.setState({ appearanceOverrides: { accentHueShift: 60 } });
+    let openEditor = (): void => {};
+    function Host() {
+      useSettingsEffects(null);
+      const [open, setOpen] = useState(false);
+      openEditor = () => setOpen(true);
+      // ‼️ 이 `onClose` 가 **언마운트한다** — 실제 앱과 같은 모양이고, 그것이 두 번째
+      // `endPreview` 호출을 만드는 것이다. no-op `onClose` 로는 이 결함이 보이지 않는다.
+      return open ? <ThemeEditor onClose={() => setOpen(false)} /> : null;
+    }
+
+    render(<Host />);
+    expect(accentValue()).toBe(SHIFTED_ACCENT);
+
+    act(() => openEditor());
+    expect(accentValue()).not.toBe(SHIFTED_ACCENT);
+
+    fireEvent.click(screen.getByText("Cancel"));
+
+    expect(accentValue()).toBe(SHIFTED_ACCENT);
+  });
+
+  // §367 3라운드 — **앱은 `React.StrictMode` 안에서 돌고 이 스위트는 그러지 않았다**
+  // (`src/main.tsx`). 그 차이가 실제 앱에서만 나는 결함을 하나 숨겼고, 그것을 찾은 것은
+  // 리뷰가 아니라 손으로 해 본 조작이다.
+  //
+  // StrictMode 는 마운트 → 정리 → 재실행을 한 번 더 돈다. 인스턴스 단위 ref 로 "이미
+  // 끝냈다" 를 세우면 그 정리에서 켜진 뒤 재실행이 끄지 않으므로, 재실행이 다시 쥔
+  // 소유권을 놓을 사람이 없어진다 — `previewOwned` 가 프로세스가 끝날 때까지 참이고
+  // 테마 적용 이펙트가 영영 선다.
+  //
+  // ‼️ 단언 셋째가 이 케이스의 이유다. 강조색만 보는 테스트는 **테마 전환이 죽은
+  // 빌드에서도 통과한다** — 사용자가 본 둘째 증상이 그것이고, 이 결함을 성가심이 아니라
+  // 심각한 것으로 만드는 쪽도 그것이다.
+  it("survives StrictMode's double-invoked effects on the Cancel path", () => {
+    useSettingsStore.setState({ appearanceOverrides: { accentHueShift: 60 } });
+    let openEditor = (): void => {};
+    function Host() {
+      useSettingsEffects(null);
+      const [open, setOpen] = useState(false);
+      openEditor = () => setOpen(true);
+      return open ? <ThemeEditor onClose={() => setOpen(false)} /> : null;
+    }
+
+    render(
+      <StrictMode>
+        <Host />
+      </StrictMode>,
+    );
+    expect(accentValue()).toBe(SHIFTED_ACCENT);
+
+    act(() => openEditor());
+    expect(accentValue()).not.toBe(SHIFTED_ACCENT);
+
+    fireEvent.click(screen.getByText("Cancel"));
+
+    // ① 이동이 살아남는다.
+    expect(accentValue()).toBe(SHIFTED_ACCENT);
+    // ② 소유권이 실제로 풀렸다 — ①은 되돌리기가 아예 돌지 않아도 통과할 수 있다.
+    expect(themePreviewOwned()).toBe(false);
+    // ③ 그 다음 테마 전환이 여전히 적용된다. `nord` 는 다크 한 모드만 선언하므로
+    //    `data-theme` 과 인라인 시드가 **둘 다** 따라와야 한다. 소유권이 굳은 빌드에서는
+    //    `applyUnlessPreviewing` 이 서서 이 이펙트가 다시 돌아도 아무것도 쓰지 않는다.
+    act(() => {
+      useSettingsStore.setState({ activeThemeId: "nord" });
+    });
+    expect(document.documentElement.dataset.theme).toBe("dark");
+    expect(
+      document.documentElement.style.getPropertyValue("--color-bg-default"),
+    ).toBe(NORD_COLORS["--color-bg-default"]);
   });
 
   it("keeps the mode it did not edit when a paired theme is saved", () => {
