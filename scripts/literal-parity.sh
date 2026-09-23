@@ -20,6 +20,8 @@ repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 manifest="$repo/src-tauri/Cargo.toml"
 inventory="$repo/src-tauri/src/md/fixtures/literal-parity-inventory.json"
 fixture="$repo/src-tauri/src/md/fixtures/literal-parity.json"
+# The Rust test that reads the committed fixture. Recording must not run it.
+reader="the_literal_parity_corpus_holds"
 
 dump_to() {
   local out="$1"
@@ -37,14 +39,28 @@ dump_to() {
     exit 2
   fi
   rm -f -- "$out"
-  # ‼️ cargo's output is captured, not discarded. The filter includes the test
-  # that reads the committed fixture, so a fixture the corpus outgrew makes
-  # THIS step fail — and with the output on /dev/null all that reached the log
-  # was `error: test failed, to rerun pass --lib`, with no assertion message.
+  # ‼️ The reader of the committed fixture is skipped while recording. It is a
+  # test of the fixture, not of the corpus, and leaving it in made the one
+  # advertised recovery command unusable in the case that needs it: change the
+  # grammar and the emulation together, and `regenerate` would fail on the old
+  # fixture before it could write the new one. CI still runs that test in the
+  # ordinary Rust job.
+  #
+  # A `--skip` that matches nothing fails open — the test would quietly return
+  # to the dump and take the deadlock with it — so the name is confirmed
+  # present first, the way the pandoc step confirms its filter matched.
+  if ! cargo test --manifest-path "$manifest" --features parity-dump --lib -- \
+    md::literal --list 2>/dev/null | grep -q "$reader"; then
+    echo "literal-parity: $reader is not in the md::literal filter, so the skip below stopped meaning anything" >&2
+    exit 1
+  fi
+  # ‼️ cargo's output is captured, not discarded. With the output on /dev/null
+  # all that reached the log when a corpus test failed was `error: test failed,
+  # to rerun pass --lib`, with no assertion message.
   local log
   log="$(mktemp "${TMPDIR:-/tmp}/literal-parity-cargo.XXXXXX")"
   if ! BARAM_PARITY_DUMP="$out" cargo test --manifest-path "$manifest" \
-    --features parity-dump --lib -- md::literal > "$log" 2>&1; then
+    --features parity-dump --lib -- md::literal --skip "$reader" > "$log" 2>&1; then
     echo "literal-parity: the corpus run failed before it could be compared:" >&2
     cat "$log" >&2
     rm -f -- "$log"
