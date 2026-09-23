@@ -330,7 +330,7 @@ export function buildPipelineClosure(): Set<string> {
 // `buildAllowlist()`'s entries are added.
 
 /**
- * The ten production files that make up the OTHER side of this pipeline —
+ * The production files that make up the OTHER side of this pipeline —
  * the actual MD→PM ("parse") route (`md-to-pm.ts` and its own helper
  * modules) — audited 2026-09-07 as exactly `productionSourceFiles(PIPELINE_DIR)`
  * minus `buildPipelineClosure()` minus the barrel (tracked separately below,
@@ -345,7 +345,9 @@ export function buildPipelineClosure(): Set<string> {
  * relocation of existing MD→PM code, not new production surface.
  * `reference-links.ts` was added the same way (2026-09-07, nine → ten): the
  * issue-546 reference resolution pass moved out of `md-to-pm.ts` unchanged.
- * `markdown-parser.ts` likewise (2026-09-22, ten → eleven, issue 669): the
+ * The step between them is `convert-inline-custom-marks.ts` (2026-09-14,
+ * ten → eleven, commit 6b2819f3), which reached the set without a line here.
+ * `markdown-parser.ts` likewise (2026-09-22, eleven → twelve, issue 669): the
  * `unified()` construction lifted unchanged out of `parse-mdast.ts` so the
  * text-path rename and the parity oracle read markdown with the same stack
  * the pipeline does. It carries no conversion logic — construction only.
