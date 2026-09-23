@@ -15,7 +15,7 @@
 // Writes src-tauri/src/md/fixtures/literal-parity.json and
 //        src-tauri/src/md/fixtures/literal-parity-inventory.json
 import { createHash } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import {
@@ -185,6 +185,18 @@ for (const record of records) {
 const fixtures =
   outDir ??
   path.join(import.meta.dirname, "..", "src-tauri", "src", "md", "fixtures");
+// ‼️ Counted from the cases being written, never typed in. Frozen as prose it
+// would keep saying `definition 3` after a fourth definition marker arrived,
+// and the rebuild comparison would reproduce the stale sentence exactly.
+const tally = new Map<string, number>();
+for (const c of cases)
+  for (const w of c.why)
+    for (const t of w.split("+")) tally.set(t, (tally.get(t) ?? 0) + 1);
+const histogram = [...tally.entries()]
+  .sort((a, b) => (b[1] === a[1] ? a[0].localeCompare(b[0]) : b[1] - a[1]))
+  .map(([t, n]) => `${t} ${n}`)
+  .join(", ");
+
 const contract = [
   "issue 669. One boolean per `((n#^o))` occurrence: would the link index read it as a",
   "rewritable reference? Rust answers `!Literal::of(md).overlaps(range) && range.start >=",
@@ -204,19 +216,19 @@ const contract = [
   "an empty display, which production rejects — and the recorder asserts the two counts agree,",
   "so a case production could not see stops the dump instead of being filed here.",
   "",
-  "What the corpus reaches, counted from `why` over its markers: prose 227, math 118,",
-  "inlineMath 36, code 23, html 9, inlineCode 8, frontmatter 6, definition 3, image 2,",
-  "imageReference 2. `yaml` never appears as a label because the front-matter clause is",
-  "answered first — those are the 6 `frontmatter` markers. So a grammar change under",
-  "definitions, images or reference images is thinly covered here, and one that only moves",
-  "strikethrough is not covered at all: `delete` is not a literal type, and flipping remark-gfm",
-  "`singleTilde` moved no classification in nine probed shapes. That is the blind spot the",
-  "49-package version sentinel (`literal-measured-stack.test.ts`) exists for.",
+  "What the corpus reaches, counted from `why` over its markers:",
+  `  ${histogram}.`,
+  "`yaml` never appears as a label because the front-matter clause is answered first — those",
+  "are the `frontmatter` markers. A label with a thin count is thinly covered, and a grammar",
+  "change that only moves strikethrough is not covered at all: `delete` is not a literal type,",
+  "and flipping remark-gfm `singleTilde` moved no classification in nine probed shapes. That",
+  "is the blind spot the 49-package version sentinel (`literal-measured-stack.test.ts`) is for.",
   "",
   "GENERATED — do not edit. Regenerate with:",
   "  scripts/literal-parity.sh regenerate",
 ].join("\n");
 
+mkdirSync(fixtures, { recursive: true });
 writeFileSync(
   path.join(fixtures, "literal-parity.json"),
   `${JSON.stringify({ contract, literalNodeTypes: [...LITERAL_TYPES].sort(), cases }, null, 2)}\n`,
@@ -247,7 +259,15 @@ console.error(
 let disagreements = 0;
 for (const c of cases) {
   const historical = byKey.get(`${c.test}#${c.ordinal}`);
-  if (!historical) continue;
+  // Both sides come from the same records, so a miss is impossible until the
+  // derivation changes — and a `continue` would then drop cases out of the
+  // validation while still reporting zero disagreements.
+  if (!historical) {
+    console.error(
+      `build-literal-parity: ${c.test}#${c.ordinal} has no recorded literal-alone measurement`,
+    );
+    process.exit(1);
+  }
   const occurrences = [...c.markdown.matchAll(MARKER)];
   const derived = historical.map(
     (literalAlone, i) =>
