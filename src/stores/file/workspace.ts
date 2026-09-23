@@ -207,7 +207,7 @@ export function presetDisplayDescription(
 
 /**
  * §338/I-8 어느 프리셋이 어느 기능에 속하는가. 기능이 꺼지면 이 프리셋은
- * StatusBar 드롭다운·AppearanceTab 목록에서 사라지고(`isPresetVisible`),
+ * StatusBar 드롭다운·workspace-presets.tsx 목록에서 사라지고(`isPresetVisible`),
  * `applyPreset`도 적용 시점에 한 번 더 막는다(렌더 필터를 우회해도 진입은
  * 막힌다) — 셋 다 이 맵 하나를 쓴다.
  *

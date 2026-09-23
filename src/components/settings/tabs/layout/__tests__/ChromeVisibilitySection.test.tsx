@@ -1,6 +1,6 @@
 // §370 — the three chrome-visibility toggles.
 //
-// Two things this pins:
+// Three things this pins:
 // (a) a click flips only that surface's own boolean through `toggleActivityBar` /
 //     `toggleStatusBar` / `toggleTabBar` — NOT `setChromeVisibility` (the preset-only entry
 //     point, task-5-brief.md 부록-5). A regression that swapped the toggle for
@@ -9,6 +9,16 @@
 // (b) the row label is the exact key `settings-registry.ts` declares for the matching search
 //     entry (§365.4) — a drift here means a user who finds this setting through search lands on
 //     a row with a different name than the one they searched for (0093's `editorPadding` gap).
+// (c) the registry entry's `storeSetter` respects the boolean it's handed rather than blindly
+//     flipping — `toggleActivityBar` etc. have no `(value)` form, so `settings-registry.ts` wraps
+//     each in a guard that only calls the toggle when the requested value actually differs from
+//     the current one. Every other toggle entry in the registry is a real `set(value)` function;
+//     these three are the first backed by a flip-only action, so this is the one place that
+//     contract could quietly break. `SearchSettingControl`'s `ToggleSwitch` only ever calls
+//     `onChange(!checked)` today, which happens to make a bare flip behaviourally identical — but
+//     that safety lives in the caller, not the type (`storeSetter: (v: boolean) => void` promises
+//     "set to v"), so a future caller that sets an explicit value directly must still see the
+//     idempotent behaviour the signature promises.
 import { render, renderHook, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -102,6 +112,43 @@ describe("search label / row label parity (§365.4)", () => {
       render(<ChromeVisibilitySection />);
 
       expect(screen.getByText(t(entry!.label, "en"))).toBeInTheDocument();
+    },
+  );
+});
+
+// `[id, getter]` pairs — the getter reads the LIVE store, not the registry entry's own
+// `storeSelector` closure (that closure snapshots `ui` at the `renderHook` call and would
+// not observe a write the setter makes afterwards).
+const CHROME_FIELDS = [
+  ["activityBarVisible", () => useUIStore.getState().activityBarVisible],
+  ["statusBarVisible", () => useUIStore.getState().statusBarVisible],
+  ["tabBarVisible", () => useUIStore.getState().tabBarVisible],
+] as const;
+
+describe("registry storeSetter respects its argument (item 4 — idempotency)", () => {
+  it.each(CHROME_FIELDS)(
+    "id=%s: setting the value it already has is a no-op",
+    (id, getValue) => {
+      const { result } = renderHook(() => useSettingsRegistry());
+      const entry = result.current.find((s) => s.id === id)!;
+      const before = getValue();
+
+      entry.control.storeSetter(before);
+
+      expect(getValue()).toBe(before);
+    },
+  );
+
+  it.each(CHROME_FIELDS)(
+    "id=%s: setting the opposite value flips it — non-vacuity for the no-op case above",
+    (id, getValue) => {
+      const { result } = renderHook(() => useSettingsRegistry());
+      const entry = result.current.find((s) => s.id === id)!;
+      const before = getValue();
+
+      entry.control.storeSetter(!before);
+
+      expect(getValue()).toBe(!before);
     },
   );
 });

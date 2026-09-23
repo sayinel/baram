@@ -851,7 +851,7 @@ export function useSettingsRegistry(): SearchableSetting[] {
       section: "settings.ai.privacy",
       control: makeToggleControl(() => ai.privacyMode, ai.setPrivacyMode),
     },
-    // ── Activity Bar (레이아웃 축 — §365.4) ────────────────────────────────────
+    // ── Activity Bar (화면 배치 축 — §365.4) ───────────────────────────────────
     {
       id: "activityBarVisible",
       label: "settings.activitybar.chromeVisibility.activityBar",
@@ -859,9 +859,16 @@ export function useSettingsRegistry(): SearchableSetting[] {
       category: "activitybar",
       section: "settings.activitybar.chromeVisibility",
       keywords: ["chrome", "show", "hide", "toolbar"],
+      // `toggleActivityBar` has no `(value)` form — it just flips. Every other
+      // toggle entry's setter genuinely respects the boolean it's handed, so an
+      // idempotency-respecting wrapper (no-op when already at `next`) keeps that
+      // contract here too, in case a future caller ever sets an explicit value
+      // instead of going through `ToggleSwitch`'s `onChange(!checked)`.
       control: makeToggleControl(
         () => ui.activityBarVisible,
-        () => ui.toggleActivityBar(),
+        (next) => {
+          if (next !== ui.activityBarVisible) ui.toggleActivityBar();
+        },
       ),
     },
     {
@@ -873,7 +880,9 @@ export function useSettingsRegistry(): SearchableSetting[] {
       keywords: ["chrome", "show", "hide", "bottom"],
       control: makeToggleControl(
         () => ui.statusBarVisible,
-        () => ui.toggleStatusBar(),
+        (next) => {
+          if (next !== ui.statusBarVisible) ui.toggleStatusBar();
+        },
       ),
     },
     {
@@ -885,7 +894,9 @@ export function useSettingsRegistry(): SearchableSetting[] {
       keywords: ["chrome", "show", "hide", "tabs"],
       control: makeToggleControl(
         () => ui.tabBarVisible,
-        () => ui.toggleTabBar(),
+        (next) => {
+          if (next !== ui.tabBarVisible) ui.toggleTabBar();
+        },
       ),
     },
     {
