@@ -108,11 +108,15 @@ export const BUILTIN_PRESETS: BuiltinPreset[] = [
       }),
       // 아래 셋은 스프레드 뒤에 와서 늘 이긴다 — 오늘은 안전하다: `SpaceLayout`
       // (spaces/types.ts:19-24)은 이 세 키를 선언하지 않으므로 스프레드가
-      // 채울 값이 없다. 전수(방금 실측): `SpaceLayout`을 구현하는
-      // `SpaceDefinition`은 `journal-space.ts`·`zettelkasten-space.ts` 둘뿐이고,
-      // `getSpace(...)?.layout`을 읽는 곳은 src 전체에서 이 줄 하나뿐이다
-      // (`grep -rn "getSpace(.*)?\.layout" src` = 1건). `SpaceLayout`이 이
-      // 셋을 갖게 되면 이 줄이 조용히 그 값을 덮어쓰므로, 그때 이 자리를
+      // 채울 값이 없다. 코퍼스는 `SpaceDefinition` 타입의 객체 리터럴 전체 —
+      // 소스 파일 3개(production 2, test fixture 1)에 있다. 경계는
+      // "production 구현"으로 좁힌다: `journal-space.ts`·`zettelkasten-space.ts`
+      // 둘만 센다 — `spaces/__tests__/registry.test.ts`의 픽스처는
+      // production 코드 경로에 닿지 않으므로 제외한다. 그 둘의 layout을
+      // production에서 읽는 지점은 이 스프레드 한 곳뿐이다. (이 문단은 재현
+      // 가능한 검색 패턴을 그대로 인용하지 않는다 — 파일 안의 인용은 다시
+      // 실행하면 자기 자신도 세어 숫자를 흔든다, CLAUDE.md.) `SpaceLayout`이
+      // 이 셋을 갖게 되면 이 줄이 조용히 그 값을 덮어쓰므로, 그때 이 자리를
       // 다시 볼 것.
       activityBarVisible: true,
       statusBarVisible: true,
