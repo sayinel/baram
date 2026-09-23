@@ -193,7 +193,16 @@ export const SymbolSuggest = Extension.create({
         },
         items: ({ query }) => searchSymbols(query, loadedEmoji(), locale()),
         command: ({ editor: ed, range, props }) => {
+          const before = ed.state.doc;
           insertSymbol(ed, range, props.char);
+          // §377 The symbol picker's "Recently used" section reads this. The
+          // `:` ranking does not — the same query keeps the same order.
+          // Recorded only when the document took the pick, as the slash
+          // entrance does (symbol-picker-action.ts): a filtered transaction
+          // writes nothing.
+          if (ed.state.doc !== before) {
+            useSettingsStore.getState().pushRecentSymbol(props.char);
+          }
         },
         render: createSuggestionRenderer<SymbolSuggestionItem>({
           component: SymbolMenuList,

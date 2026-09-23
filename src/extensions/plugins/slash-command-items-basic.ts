@@ -1,6 +1,7 @@
 import type { SlashMenuItem } from "../../components/command/slash-menu-item";
 import type { Editor } from "@tiptap/core";
 
+import { pickSymbolIntoEditor } from "./symbol-picker-action";
 import { chainWithVimExternalEdit } from "./vim/vim-keys";
 
 export function buildBasicItems(editor: Editor): SlashMenuItem[] {
@@ -155,6 +156,15 @@ export function buildBasicItems(editor: Editor): SlashMenuItem[] {
       description: "Term-definition list",
       mdHint: ": ",
       action: () => chainWithVimExternalEdit(editor).setDefinitionList().run(),
+    },
+    {
+      id: "symbols",
+      label: "Symbols & Emoji",
+      category: "Basic",
+      description: "Browse symbols and emoji",
+      mdHint: ":",
+      // §377 the grid picker — for a symbol whose `:` name you do not know.
+      action: () => pickSymbolIntoEditor(editor),
     },
   ];
 }

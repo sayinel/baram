@@ -1,13 +1,23 @@
 // §376 Emoji for the `:` autocomplete, loaded on first use.
 //
-// Dynamic import keeps the ~301 KB table (90 KB gzip) off the startup path —
+// Dynamic import keeps the ~304 KB table (90 KB gzip) off the startup path —
 // Vite emits it as its own chunk. `symbol-suggest.ts` asks for it when a `:`
-// query first gets a character, and re-evaluates the suggestion when it lands.
-// Sizes are the generated JSON's, 300,580 bytes and 89,724 through `gzip` at
-// its default level (emojibase-data 17.0.0, with GitHub shortcodes).
+// query first gets a character, and re-evaluates the suggestion when it lands;
+// the symbol picker asks when it opens (§377). Sizes are the generated JSON's,
+// 304,270 bytes and 90,016 through `gzip` at its default level (emojibase-data
+// 17.0.0, with GitHub shortcodes and groups).
 import type { SymbolEntry } from "./symbol-data";
 
 import { logger } from "../../utils/logger";
+
+/**
+ * An emoji as the app uses it. `group` is emojibase's — 0 smileys & emotion
+ * through 9 flags; 2, components, is not in the table. The symbol picker shows
+ * one section per group (spec 0056 §377).
+ */
+export interface EmojiEntry extends SymbolEntry {
+  readonly group: number;
+}
 
 /** One generated row: `scripts/build-emoji-data.ts` writes exactly this shape. */
 type EmojiRow = [
@@ -16,18 +26,20 @@ type EmojiRow = [
   ko: string,
   keywords: string[],
   shortcodes: string[],
+  group: number,
 ];
 
-let emoji: null | readonly SymbolEntry[] = null;
+let emoji: null | readonly EmojiEntry[] = null;
 let loading: null | Promise<void> = null;
 
 export function ensureEmojiLoaded(): Promise<void> {
   loading ??= import("./emoji-data.generated.json")
     .then((mod) => {
       emoji = (mod.default as EmojiRow[]).map(
-        ([char, en, ko, keywords, shortcodes]) => ({
+        ([char, en, ko, keywords, shortcodes, group]) => ({
           char,
           en,
+          group,
           keywords,
           ko,
           shortcodes,
@@ -42,7 +54,7 @@ export function ensureEmojiLoaded(): Promise<void> {
   return loading;
 }
 
-export function loadedEmoji(): null | readonly SymbolEntry[] {
+export function loadedEmoji(): null | readonly EmojiEntry[] {
   return emoji;
 }
 

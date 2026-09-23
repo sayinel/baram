@@ -53,6 +53,8 @@ function bodyMountedPopupClasses(): string[] {
   for (const file of [
     ...walk("src/extensions", ".ts"),
     ...walk("src/utils/editor", ".ts"),
+    // §377 the symbol picker mounts from a component module.
+    ...walk("src/components/command", ".tsx"),
   ]) {
     if (file.includes("__tests__")) continue;
     const source = readFileSync(file, "utf8");
@@ -111,6 +113,9 @@ describe("§323 body-mounted 편집기 팝업의 레이어링", () => {
     // §324-e the second scanned root — drop `src/utils/editor` from the walk
     // above and this is what stops being checked.
     expect(classes).toContain("drop-indicator-bar");
+    // §377 the third scanned root — drop `src/components/command` from the
+    // walk above and this is what stops being checked.
+    expect(classes).toContain("symbol-picker-overlay");
   });
 
   it.each(bodyMountedPopupClasses())(

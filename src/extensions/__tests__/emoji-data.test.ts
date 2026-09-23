@@ -62,4 +62,21 @@ describe("emoji data", () => {
       for (const k of e.keywords) expect(k).toBe(k.toLowerCase());
     }
   });
+
+  it("carries each emoji's emojibase group — every group but components (2)", async () => {
+    // Rows are in emojibase order, which runs group by group.
+    const groups = [...new Set((await load()).map((e) => e.group))];
+    expect(groups).toEqual([0, 1, 3, 4, 5, 6, 7, 8, 9]);
+  });
+
+  it.each([
+    ["😄", 0],
+    ["👋", 1],
+    ["🐵", 3],
+    ["🍇", 4],
+    ["🎃", 6],
+    ["🏁", 9],
+  ])("puts %s in group %i", async (char, group) => {
+    expect((await load()).find((e) => e.char === char)?.group).toBe(group);
+  });
 });

@@ -98,9 +98,19 @@ export function searchSymbols(
   });
   ranked.sort((a, b) => a.rank - b.rank || a.order - b.order);
 
-  return ranked.slice(0, limit).map(({ entry }) => ({
+  return ranked
+    .slice(0, limit)
+    .map(({ entry }) => toSuggestionItem(entry, locale));
+}
+
+/** An entry as a menu row or picker cell shows it — `locale` only picks the label. */
+export function toSuggestionItem(
+  entry: SymbolEntry,
+  locale: string,
+): SymbolSuggestionItem {
+  return {
     char: entry.char,
     id: entry.char,
     label: locale === "ko" ? entry.ko : entry.en,
-  }));
+  };
 }
