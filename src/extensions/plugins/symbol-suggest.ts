@@ -3,7 +3,7 @@
 // Picking an entry writes the character itself; a `:smile:` shortcode is not
 // CommonMark or GFM and would show as those letters anywhere else (spec 0056).
 import type { Editor, Range } from "@tiptap/core";
-import type { EditorState } from "@tiptap/pm/state";
+import type { EditorState, Transaction } from "@tiptap/pm/state";
 
 import { Extension } from "@tiptap/core";
 import { Suggestion } from "@tiptap/suggestion";
@@ -12,10 +12,8 @@ import { SymbolMenuList } from "../../components/command/SymbolMenu";
 import { useSettingsStore } from "../../stores/settings/store";
 import { focusEditorView } from "../../utils/editor/focus-editor-view";
 import { ensureEmojiLoaded, loadedEmoji } from "./emoji-data";
-import {
-  insideOpenBacktick,
-  isCodeOrMathEditAt,
-} from "./smart-punctuation-guards";
+import { mathEditKey, nextMathEditState } from "./math-inline-edit";
+import { insideOpenBacktick, isCodeAt } from "./smart-punctuation-guards";
 import { symbolSuggestPluginKey } from "./suggestion-keys";
 import { createSuggestionRenderer } from "./suggestion-renderer";
 import {
@@ -54,10 +52,12 @@ const SYMBOL_MENU_HEIGHT = 280;
  * `a:b` is the same shape and it does not.
  *
  * "Not code" takes two checks, the same two smart punctuation makes. The mark
- * check (`isCodeOrMathEditAt`) alone is not enough: while the caret is inside
- * inline code, SyntaxReveal expands it to literal backticks with no `code`
- * mark, so the colon is plain text after an opening backtick. That state, and
- * a code span whose closing backtick is not typed yet, is `insideOpenBacktick`.
+ * check (`isCodeAt`) alone is not enough: while the caret is inside inline
+ * code, SyntaxReveal expands it to literal backticks with no `code` mark, so
+ * the colon is plain text after an opening backtick. That state, and a code
+ * span whose closing backtick is not typed yet, is `insideOpenBacktick`.
+ *
+ * An open inline-math edit is not checked here — see `insideMathEdit`.
  */
 export function symbolSuggestAllowed(
   state: EditorState,
@@ -66,7 +66,7 @@ export function symbolSuggestAllowed(
   if (useSettingsStore.getState().symbolSuggest !== true) return false;
   const $from = state.doc.resolve(range.from);
   if ($from.parent.type.spec.code) return false;
-  if (isCodeOrMathEditAt(state, range)) return false;
+  if (isCodeAt(state, range)) return false;
   if (insideOpenBacktick($from)) return false;
   const before = state.doc.textBetween(
     Math.max($from.start(), range.from - 1),
@@ -75,6 +75,41 @@ export function symbolSuggestAllowed(
     (leaf) => (leaf.type.name === "hardBreak" ? "\n" : "￼"),
   );
   return before === "" || /\s/u.test(before);
+}
+
+/**
+ * Whether `range` is inside the TeX source of an inline-math edit once
+ * `transaction` is applied.
+ *
+ * ‼️ Not in `allow`, and not read from the new state. Tiptap puts a
+ * later-registered extension's plugins first, so this suggestion plugin's
+ * state is computed before MathInlineEdit's, and `mathEditKey.getState` on
+ * the state `allow` gets is still undefined. Instead this takes the edit state
+ * of `editor.state` — the view's state, which `apply` has not replaced yet,
+ * so the state `transaction` starts from — and steps it through
+ * `transaction` with MathInlineEdit's own `nextMathEditState`. That step
+ * reads the transaction's meta too: re-editing a math atom by typing a key
+ * activates the edit and can leave a `:query` before the caret in one
+ * transaction.
+ *
+ * A transaction appended by another plugin (`appendTransaction`) does not
+ * start from `editor.state`. If the document changed before it, the old
+ * positions cannot be mapped, so it refuses whenever an edit was active before
+ * the root transaction or this transaction's meta activates one.
+ */
+function insideMathEdit(
+  editor: Editor,
+  transaction: Transaction,
+  range: { from: number; to: number },
+): boolean {
+  const before = mathEditKey.getState(editor.state);
+  if (!before) return false;
+  if (transaction.before !== editor.state.doc) {
+    const meta = transaction.getMeta(mathEditKey) as typeof before | undefined;
+    return before.active || meta?.active === true;
+  }
+  const math = nextMathEditState(transaction, before);
+  return math.active && math.from <= range.from && range.from <= math.to;
 }
 
 /**
@@ -128,8 +163,9 @@ export const SymbolSuggest = Extension.create({
         // ‼️ Decides `active`, which swallows Esc whether or not a menu is drawn
         // (@tiptap/suggestion plugin/props.ts) and which the vim Esc arbiter
         // reads. So an empty result must be decided here, never in the renderer.
-        shouldShow: ({ query }) => {
+        shouldShow: ({ editor: ed, query, range, transaction }) => {
           if (query.length === 0) return false;
+          if (insideMathEdit(ed, transaction, range)) return false;
           const emoji = loadedEmoji();
           if (emoji === null) requestEmoji();
           return (

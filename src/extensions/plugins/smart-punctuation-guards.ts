@@ -62,7 +62,7 @@ function hasOpenBacktick(before: string): boolean {
  * Whether `$from` sits after an unclosed backtick in its textblock (§374-3):
  * inline code not yet closed, or inline code the caret is in, which
  * SyntaxReveal has expanded to literal backticks — no `code` mark is left
- * there for `isCodeOrMathEditAt` to see. Text in inline code that is still
+ * there for `isCodeAt` to see. Text in inline code that is still
  * marked reads as U+FFFC (see literalScanText), so its backticks do not count.
  * Shared with the `:` autocomplete (§375) so both agree on what counts as code.
  */
@@ -71,21 +71,36 @@ export function insideOpenBacktick($from: ResolvedPos): boolean {
 }
 
 /**
+ * Whether `range` is inside inline code: the matched text has the `code` mark,
+ * or the key typed at `range.to` will take it. Shared with the `:`
+ * autocomplete (§375), which must not open there either. (See
+ * shouldSubstitute for why the match and the caret are both checked.)
+ */
+export function isCodeAt(
+  state: EditorState,
+  range: { from: number; to: number },
+): boolean {
+  const code = state.schema.marks.code;
+  if (!code) return false;
+  if (state.doc.rangeHasMark(range.from, range.to, code)) return true;
+  const incoming = state.storedMarks ?? state.doc.resolve(range.to).marks();
+  return code.isInSet(incoming) !== undefined;
+}
+
+/**
  * Whether `range` is inside inline code or an open inline-math edit — the
  * literal contexts a typed key can be in without its textblock being code.
- * Shared with the `:` autocomplete (§375), which must not open there either.
- * (See shouldSubstitute for why the match and the caret are both checked.)
+ *
+ * ‼️ The math half reads MathInlineEdit's state from `state`, which is right
+ * for an input rule (it runs on the view's finished state) and wrong inside
+ * another plugin's state `apply`, where that field may not be computed yet.
+ * The `:` autocomplete therefore uses `isCodeAt` and its own math check.
  */
 export function isCodeOrMathEditAt(
   state: EditorState,
   range: { from: number; to: number },
 ): boolean {
-  const code = state.schema.marks.code;
-  if (code) {
-    if (state.doc.rangeHasMark(range.from, range.to, code)) return true;
-    const incoming = state.storedMarks ?? state.doc.resolve(range.to).marks();
-    if (code.isInSet(incoming)) return true;
-  }
+  if (isCodeAt(state, range)) return true;
   const math = mathEditKey.getState(state);
   return Boolean(
     math?.active && math.from <= range.from && range.from <= math.to,

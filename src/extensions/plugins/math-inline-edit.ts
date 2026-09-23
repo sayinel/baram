@@ -53,6 +53,37 @@ const INACTIVE: MathEditState = { active: false, from: 0, to: 0 };
 // vim must not consume Esc (§4 arbitration list).
 export const mathEditKey = new PluginKey<MathEditState>("mathInlineEdit");
 
+/**
+ * The edit state after `tr`, given the state before it — the plugin's `apply`.
+ * Exported for the `:` autocomplete (§375): its suggestion plugin's state is
+ * computed before this plugin's, so it cannot read this plugin's new state and
+ * computes it from the previous one instead (symbol-suggest.ts).
+ * `tr.doc` is the new state's document, the one `apply` would be handed.
+ */
+export function nextMathEditState(
+  tr: Transaction,
+  value: MathEditState,
+): MathEditState {
+  const meta = tr.getMeta(mathEditKey) as MathEditState | undefined;
+  if (meta !== undefined) return meta;
+  if (!value.active) return value;
+
+  // Map positions through the transaction
+  const from = tr.mapping.map(value.from, -1);
+  const to = tr.mapping.map(value.to, 1);
+
+  // Validate delimiters still exist
+  try {
+    const fromChar = tr.doc.textBetween(from, from + 1);
+    const toChar = tr.doc.textBetween(to - 1, to);
+    if (fromChar !== "$" || toChar !== "$") return INACTIVE;
+  } catch {
+    return INACTIVE;
+  }
+
+  return { active: true, from, to };
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────
 
 function confirmEdit(view: EditorView, es: MathEditState) {
@@ -84,31 +115,7 @@ function createMathEditPlugin(): Plugin<MathEditState> {
         return INACTIVE;
       },
 
-      apply(
-        tr: Transaction,
-        value: MathEditState,
-        _old: EditorState,
-        newState: EditorState,
-      ): MathEditState {
-        const meta = tr.getMeta(mathEditKey) as MathEditState | undefined;
-        if (meta !== undefined) return meta;
-        if (!value.active) return value;
-
-        // Map positions through the transaction
-        const from = tr.mapping.map(value.from, -1);
-        const to = tr.mapping.map(value.to, 1);
-
-        // Validate delimiters still exist
-        try {
-          const fromChar = newState.doc.textBetween(from, from + 1);
-          const toChar = newState.doc.textBetween(to - 1, to);
-          if (fromChar !== "$" || toChar !== "$") return INACTIVE;
-        } catch {
-          return INACTIVE;
-        }
-
-        return { active: true, from, to };
-      },
+      apply: nextMathEditState,
     },
 
     // ── Decorations ─────────────────────────────────────────────────
