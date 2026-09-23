@@ -1,5 +1,6 @@
 // §5.1 Horizontal Rule Extension
 import { InputRule, mergeAttributes, Node } from "@tiptap/core";
+import { Selection } from "@tiptap/pm/state";
 
 import { htmlAttributesOptions } from "../utils/html-attributes-options";
 
@@ -39,23 +40,22 @@ export const HorizontalRule = Node.create<HorizontalRuleOptions>({
             .insertContent({ type: this.name })
             .command(({ tr, dispatch }) => {
               if (dispatch) {
+                // The selection now sits right after the rule, between blocks.
                 const { $to } = tr.selection;
                 const posAfter = $to.end();
                 if ($to.nodeAfter) {
-                  tr.setSelection(
-                    // @ts-expect-error TextSelection available at runtime
-                    tr.selection.constructor.near(tr.doc.resolve(posAfter)),
-                  );
+                  // ‼️ Search forward from the rule, not from `posAfter`. That
+                  // is the end of the rule's PARENT — the whole document when
+                  // the rule is top-level — so the caret used to land on the
+                  // document's last line, or leave the blockquote it was in.
+                  tr.setSelection(Selection.near($to, 1));
                 } else {
                   const node =
                     $to.parent.type.contentMatch.defaultType?.create();
                   if (node) {
                     tr.insert(posAfter, node);
                     tr.setSelection(
-                      // @ts-expect-error TextSelection available at runtime
-                      tr.selection.constructor.near(
-                        tr.doc.resolve(posAfter + 1),
-                      ),
+                      Selection.near(tr.doc.resolve(posAfter + 1)),
                     );
                   }
                 }
