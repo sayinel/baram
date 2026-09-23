@@ -246,6 +246,14 @@ export function buildCss(settings: ThreadSettings): string {
     // moving the number. Whatever runs underneath is hidden for exactly that distance
     // past the glyph's left edge — one constant gap for every marker width, and the
     // same mechanism the ring already uses.
+    //
+    // ‼️ "Without moving the number" is a claim about the HOST, and the host is what makes
+    // it true: `editor/lists.css` gives the ordered marker `box-sizing: content-box` and
+    // says why, naming this rule. Under the app-wide `border-box` the same padding comes
+    // out of the glyph column that the marker's `min-width` floor reserved, and every
+    // number on the threaded branch shifts right by this length (measured at 4.83px with
+    // an 18px editor font). If a future host drops that declaration, mask with a
+    // `::after` overlay instead of padding rather than restoring it here.
     `${root} ol > li.${THREAD_CLASS}::before{` +
       `z-index:1;` +
       `background:var(--color-editor-bg);` +

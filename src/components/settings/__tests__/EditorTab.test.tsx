@@ -4,10 +4,13 @@
 // the real component: <FontBrowser/> owns its own back control the way
 // AppearanceTab's <ThemeEditor/> does, and using it restores the tab's
 // normal font rows.
-import { act, render, screen } from "@testing-library/react";
+import { act, render, renderHook, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { DIALS } from "../../../appearance/dials";
+import en from "../../../i18n/en.json";
 import { useSettingsStore } from "../../../stores/settings/store";
+import { useSettingsRegistry } from "../settings-registry";
 import { EditorTab } from "../tabs/EditorTab";
 
 const initialState = useSettingsStore.getState();
@@ -221,5 +224,31 @@ describe("EditorTab — code metrics", () => {
     });
     expect(parenthesised(/Size of code text/u)).toBe("14px");
     expect(parenthesised(/Size of text in the editor/u)).toBe("30px");
+  });
+});
+
+describe("EditorTab — 다이얼 행", () => {
+  it("renders a row for every appearance dial", () => {
+    // §368 이 실제로 물린 자리의 **반대 방향**이다. 그때는 행이 있고 레지스트리
+    // 항목이 없어서 검색에서 사라졌다. 여기서 막는 것은 레지스트리 항목만 있고
+    // 행이 없는 경우다 — 그러면 검색 결과를 눌러 온 사용자가 빈 탭을 본다.
+    // 두 방향 모두 한쪽 표면만 보면 멀쩡해 보인다.
+    //
+    // 무엇이 이것을 실패시키는가: `DIALS` 에 다이얼을 더하고 `EditorTab.tsx` 에
+    // `<AppearanceDialRow/>` 를 더하지 않으면 실패한다. 기대 문자열을 손으로
+    // 적지 않고 레지스트리의 label 키 → en.json 으로 **파생**시키는 이유는, 손으로
+    // 적으면 레지스트리와 행이 서로 다른 키를 가리켜도 초록이기 때문이다.
+    const { result } = renderHook(() => useSettingsRegistry());
+    const labelKeyById = new Map(result.current.map((s) => [s.id, s.label]));
+    render(<EditorTab />);
+
+    const missing = DIALS.map((d) => d.id).filter((id) => {
+      const key = labelKeyById.get(id);
+      if (key === undefined) return true;
+      const text = (en as Record<string, string>)[key];
+      if (text === undefined) return true;
+      return screen.queryAllByText(text).length === 0;
+    });
+    expect(missing).toEqual([]);
   });
 });

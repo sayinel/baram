@@ -796,6 +796,15 @@
       "_note": "Word triggers (due:/sched:/start:/prio:, plus !1-!5) expand to Obsidian Tasks emoji fields so metadata is never typed as emoji. !3/prio:3 (normal priority) clears the trigger without inserting an emoji — only !1/!2/!4/!5 produce one. Triggers must be preceded by line-start or whitespace (a lookbehind), so e.g. \"overdue:\" does not misfire as \"due:\". Fires only inside taskItem; triggers and values are ASCII-only to avoid misfiring during Hangul IME composition. A trigger left at the end of the line also fires on Enter — Tiptap feeds input rules a trailing \\n on Enter and the rules' `\\s$` matches it — and a fired rule consumes the keydown before any keymap sees it, so the handler splits the task item itself in the same transaction: one Enter both converts the trigger and starts the next item."
     },
     {
+      "name": "smartPunctuation",
+      "file": "plugins/smart-punctuation.ts",
+      "spec": "§373",
+      "phase": 3,
+      "milestone": "M11",
+      "status": "implemented",
+      "_note": "Input rules that turn typed -> <- <-> => <= >= != <=> -- ... into symbols while the smartPunctuation setting is on (off by default: it changes the bytes a user saves). Every rule asks shouldSubstitute (smart-punctuation-guards.ts) first: the setting, skill files (frontmatter text via isSkillFrontmatter, not the yaml attribute, which goes stale after edits), inline code (Baram's Code mark has no code: true, so Tiptap's own check misses it), an open inline math edit, and unclosed [[ {{ (( [^ ]( <!-- spans, backticks, URLs and tags (text inside inline code is masked so an opener in code does not block the rest of the line). Two rules match another rule's result: <-> is ← then >, <=> is ≤ then >. The em dash fires on the key after --, so --- still makes a horizontal rule, and stays out next to | so a |--| delimiter row survives. Priority 50, below the core keymap's default 100, so Enter reaches the keymap first; the em dash rule also excludes \\n so that does not depend on the order. No paste rules and no transformer: the result is plain text."
+    },
+    {
       "name": "taskFieldChips",
       "file": "plugins/task-field-chips.ts",
       "spec": "§308",

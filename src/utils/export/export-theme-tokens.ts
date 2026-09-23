@@ -50,7 +50,7 @@ export function themeTokensBlock(
   // dark 모드에서 `accent` 를 검증 없이 그대로 돌려주고(color-contrast.ts),
   // `solidHoverFill` 도 `shiftToward` 가 파싱하지 못하면 입력을 그대로 돌려준다
   // (`?? solid`) — 즉 RAW `colors` 의 값이 파생 값으로 그대로 흘러들 수 있다.
-  // 그래서 화이트리스트는 원본 24키와 파생값 **양쪽 다**, 최종 직렬화
+  // 그래서 화이트리스트는 원본 팔레트 키와 파생 9키 **양쪽 다**, 최종 직렬화
   // 직전에 건다(아래 루프) — derivedVars 호출 자체를 거르는 대신.
   //
   // ‼️ §367 파생 29키도 **같은 자리에서** 나가야 한다. 앱에서는 `applyThemeVars` 가

@@ -159,8 +159,12 @@ function describeDial(dialId: DialId, t: Translate): string {
       return t("settings.editor.editorLetterSpacing.desc");
     case "editorLineBreak":
       return t("settings.editor.editorLineBreak.desc");
+    case "editorListGuideStrength":
+      return t("settings.editor.editorListGuideStrength.desc");
     case "editorMaxWidth":
       return t("settings.editor.maxWidth.desc");
+    case "editorOrderedMarkerAlign":
+      return t("settings.editor.editorOrderedMarkerAlign.desc");
     case "editorPadding":
       return t("settings.appearance.editorPadding.desc");
     case "editorParagraphSpacing":
@@ -221,10 +225,19 @@ function formatDialValue(
       return `${rounded}em`;
     case "editorLineBreak":
       return "";
+    // `editorMaxWidth` 처럼 0 에 별도 문구를 두지 않는다. 거기서 0 은 "무제한" 이라
+    // `0px` 가 정반대를 읽히게 하지만, 여기서 0 은 글자 그대로 "색조를 0% 섞는다" 다
+    // — `0%` 가 사실이고, 그것이 보이지 않는다는 것은 설명문이 말한다.
+    case "editorListGuideStrength":
+      return `${rounded}%`;
     case "editorMaxWidth":
       return rounded === 0
         ? t("settings.editor.maxWidth.noLimit")
         : `${rounded}px`;
+    // editorLineBreak·editorEmphasisStyle 과 같은 이유로 빈 문자열이다 — 열거의
+    // 값 readout 은 select 자체가 이미 보여 준다.
+    case "editorOrderedMarkerAlign":
+      return "";
     case "editorPadding":
       return `${rounded}rem`;
     case "editorParagraphSpacing":
