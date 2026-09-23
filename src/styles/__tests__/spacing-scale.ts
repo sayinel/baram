@@ -30,9 +30,10 @@ export const RADIUS_TOKENS: Readonly<Record<string, string>> =
  * 이 계획이 다루는 속성. `border-radius` 계열은 접두 네 방향까지 포함한다.
  *
  * `stylelint.config.mjs` 의 `declaration-property-value-disallowed-list` 키와
- * **같은 집합**이어야 한다(0097 Task 4 개정 4) — 관문이 잡는 것과 스냅샷이 지키는
- * 것이 갈리면, 그 차집합에 들어온 선언은 관문은 빨갛게 만드는데 스냅샷은 값이
- * 바뀌어도 초록이다.
+ * **같은 집합**이어야 한다 — 관문이 잡는 것과 스냅샷이 지키는 것이 갈리면, 그
+ * 차집합에 들어온 선언은 관문은 빨갛게 만드는데 스냅샷은 값이 바뀌어도 초록이다.
+ * 두 정규식의 본문은 그 규칙의 두 키와 글자가 같다(`0c4209bf` 가 맞췄다). 그 일치를
+ * 검사하는 테스트는 없다 — 한쪽을 고치면 다른 쪽도 손으로 고친다.
  */
 const SPACING_PROPS = /^(padding|margin|gap|row-gap|column-gap)(-[a-z]+)*$/u;
 const RADIUS_PROPS = /^border(-[a-z]+)*-radius$/u;
@@ -43,14 +44,18 @@ const RADIUS_PROPS = /^border(-[a-z]+)*-radius$/u;
  * `var(--space-2)` 와 `8px` 은 같은 줄을 낸다 — 그것이 이 함수의 요점이다.
  * 리팩터가 값을 보존했다면 이 배열은 한 줄도 움직이지 않는다.
  *
- * ‼️ 해석하지 않는 것(R-C): `calc(…)`·`clamp(…)` 안, 백분율, `em`·`rem`,
- * 음수. 그대로 문자열로 싣는다 — 그래야 그것들이 **변하지 않았음**도 함께 고정된다.
+ * ‼️ 푸는 것은 `var(--space-*)`·`var(--radius-*)` 참조뿐이고, 값 안 어디에 있든
+ * 푼다 — `calc(…)`·`clamp(…)` 안에 있는 참조도 푼다. 리터럴은 어디에 있든 풀지
+ * 않는다(R-C 가 남긴 `calc()` 안의 px · 백분율 · `em`·`rem` · 음수): 그대로 문자열로
+ * 싣는다 — 그래야 그것들이 **변하지 않았음**도 함께 고정된다. 이름 바로 뒤에 `)` 가
+ * 오지 않는 참조(fallback 을 단 `var(--space-2, 8px)`)와 속성의 축이 아닌 표의 이름
+ * (`padding` 에 쓴 `var(--radius-sm)`)도 풀지 않고 `var(…)` 글자 그대로 싣는다.
  */
 export function resolvedSpacingDeclarations(): string[] {
   const lines: string[] = [];
   for (const rule of cssRules()) {
     // ‼️ `cssDeclarations` 는 튜플이 아니라 `{ prop, value }[]` 를 돌려준다
-    // (`css-rules.ts:35-37` 전사). 구조분해를 배열로 쓰면 컴파일이 멎는다.
+    // (`css-rules.ts` 의 `cssDeclarations` 반환 타입). 구조분해를 배열로 쓰면 컴파일이 멎는다.
     for (const { prop, value } of cssDeclarations(rule.body)) {
       const isSpacing = SPACING_PROPS.test(prop);
       const isRadius = RADIUS_PROPS.test(prop);

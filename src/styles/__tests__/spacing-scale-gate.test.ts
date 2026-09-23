@@ -21,7 +21,7 @@ const RULE = "declaration-property-value-disallowed-list";
  *
  * ‼️ 왜 텍스트 매치(`toMatch(/radius/u)`)가 아닌가: 리뷰가 radius 키를 지우고
  * 돌려 봤더니 이 테스트가 그대로 초록이었다. 규칙 바로 위 `‼️` 주석과 규칙의
- * `message`("Use a --space-* or --radius-* token") 양쪽 모두에 "radius" 라는 글자가
+ * `message`(`--space-*` 와 `--radius-*` 를 함께 부르는 한 줄) 양쪽 모두에 "radius" 라는 글자가
  * 남아 있어서, 파일 **텍스트** 안 어딘가에 그 단어가 있는지만 보는 검사는
  * 키가 사라져도 계속 통과했다. 주석을 지워도 `message` 가 남아 같은 문제가
  * 재현된다 — 텍스트 매치 자체가 잘못된 도구였다. 규칙 객체의 키를 직접 읽으면
@@ -137,8 +137,9 @@ it("규칙을 끄는 주석에는 전부 이유가 붙어 있다", () => {
   }
   // 비공허성 2: `offenders` 는 `disableCount` 가 0 이어도(스캔이 아무 disable
   // 주석도 찾지 못해도) 빈 배열이라 통과한다 — 스캔이 실제로 뭔가 찾았는지
-  // 세어야 그 무증상을 관측한다. 오늘의 disable 주석은 정확히 10개다(Task 4
-  // 개정 2 의 9건 + 개정 5 의 links.css 1건).
+  // 세어야 그 무증상을 관측한다. 오늘의 disable 주석은 정확히 10개다 — R-C 가 리터럴로
+  // 남긴 9건(음수 8 · `calc()` 안 1)과, jsdom 계산값 단언 때문에 리터럴로 남긴
+  // `links.css` `.block-reference` 1건.
   expect(disableCount).toBe(10);
   expect(offenders).toEqual([]);
 });
