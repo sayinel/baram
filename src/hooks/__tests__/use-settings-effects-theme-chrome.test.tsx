@@ -207,11 +207,22 @@ describe("§370.3 제안은 테마 전이에서만 적용된다", () => {
     expect(s.chromeTouched).toEqual({});
   });
 
-  // ‼️ 이것이 0095 의 결함을 배제하는 케이스다. ref 가드였다면 버려지는 첫 마운트가
-  // 가드를 세우고, 두 번째 마운트의 적용이 건너뛰어진다 — 위 케이스는 그래도 통과할
-  // 수 있다(첫 마운트가 이미 썼으므로). 사용자가 되돌린 뒤에도 덮지 않는 것까지
-  // 봐야 "전이에서만 한 번" 이 관측된다.
-  it("StrictMode 로 마운트한 뒤 사용자가 켠 것을 다시 덮지 않는다", async () => {
+  // ‼️ 이 케이스는 `ref` 가드를 배제하지 **못한다.** id 별 ref 든 한 번만 도는 boolean
+  // ref 든, StrictMode 의 버려지는 첫 마운트가 이미 적용을 수행하므로 두 번째가
+  // 건너뛰어도 결과가 같다. 그 배제는 이 파일 **마지막** 케이스가 맡는다(거기 주석).
+  //
+  // 무엇이 이것을 실패시키는가, 둘:
+  //  ① **멱등하지 않은 제안** — `proposeChromeVisibility` 가 제안값을 쓰는 대신 현재
+  //     값을 뒤집게 바꾸면 두 번째 마운트가 첫 마운트를 되돌려 빨개진다(실측
+  //     2026-09-23). 같은 구현을 StrictMode 없이 한 번만 마운트하면 "감춰졌다" 는
+  //     올바른 결과를 내므로, 그것을 잡는 것은 이 래퍼다.
+  //  ② **deps 가 없거나 틀린 이펙트** — deps 배열을 빼면 아래 `rerender` 가 제안을 다시
+  //     적용해, 프리셋이 되살린 크롬을 도로 감춘다.
+  //
+  // 되살리기를 토글이 아니라 프리셋 입구로 하는 이유는 `restoreChromeAsAPresetWould`
+  // 의 주석에 있다. 토글 쪽 계약("사용자가 토글한 표면은 테마가 덮지 않는다")은
+  // `stores/ui/__tests__/chrome-proposal.test.ts` 가 직접 센다.
+  it("StrictMode 로 마운트한 뒤 재렌더가 제안을 다시 적용하지 않는다", async () => {
     const { rerender } = render(
       <StrictMode>
         <Host />
@@ -221,10 +232,7 @@ describe("§370.3 제안은 테마 전이에서만 적용된다", () => {
       expect(useUIStore.getState().statusBarVisible).toBe(false);
     });
 
-    act(() => {
-      useUIStore.getState().toggleStatusBar();
-    });
-    expect(useUIStore.getState().statusBarVisible).toBe(true);
+    restoreChromeAsAPresetWould();
 
     rerender(
       <StrictMode>
@@ -232,7 +240,7 @@ describe("§370.3 제안은 테마 전이에서만 적용된다", () => {
       </StrictMode>,
     );
 
-    expect(useUIStore.getState().statusBarVisible).toBe(true);
+    expectChromeVisible();
   });
 
   it("다이얼이 바뀌어도 제안이 다시 적용되지 않는다", async () => {
@@ -288,8 +296,18 @@ describe("§370.3 제안은 테마 전이에서만 적용된다", () => {
     expectChromeVisible();
   });
 
-  // 위 셋의 비공허성: "제안이 아예 적용되지 않는다" 는 구현으로도 셋 다 통과한다.
-  // 진짜 전이에서는 새 테마의 제안이 닿는다는 것이 그 구현을 배제한다.
+  // ‼️ 이 케이스가 혼자 보는 것은 **두 번째 전이**다 — 그래서 이것이 `ref` 가드를
+  // 배제하는 자리다.
+  //
+  // 위 넷의 비공허성 때문이 아니다: 위 넷은 각자 첫
+  // `waitFor(statusBarVisible === false)` 로 "제안이 아예 적용되지 않는다" 를 이미
+  // 배제한다. 배제되지 않고 남는 것은 **마운트 때 한 번 적용하고 그 뒤로는 영영
+  // 적용하지 않는** 구현이다(한 번만 세우는 boolean ref·모듈 플래그 — 계획 0095 가 낸
+  // 결함의 모양). 그 구현은 위 넷을 전부 통과하고, 아래 마지막 단언에서만 빨개진다.
+  //
+  // StrictMode 는 여기서 필요하지 않다 — 그런 가드는 한 번만 마운트해도 두 번째
+  // 전이를 건너뛴다. id 별 ref 는 이 케이스도 통과하지만, 그쪽은 deps 비교와 동작이
+  // 같아서 배제할 대상이 아니다(불필요할 뿐이다).
   it("테마 id 가 실제로 바뀌면 새 테마의 제안이 닿는다", async () => {
     render(<Host />);
     await waitFor(() => {

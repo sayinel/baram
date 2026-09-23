@@ -644,13 +644,19 @@ describe("§370.3 매니페스트의 chrome", () => {
     expect(result.manifest.chrome).toBeUndefined();
   });
 
-  // ‼️ 이름 공간이 둘이라 목록도 둘이다 — 매니페스트가 아는 키(이 파일이 적는다)와
-  // UI 스토어의 표면(`CHROME_SURFACES`). `theme-manifest.ts` 는 스토어를 import 하지
-  // 않는 레이어라 목록을 공유하지 않으므로, 어긋남을 잡는 것은 이 케이스뿐이다.
+  // ‼️ 이름 공간이 둘이라 목록도 둘이다 — 매니페스트가 아는 키(`CHROME_SURFACE_KEYS`,
+  // `theme-manifest.ts` 가 적는다)와 UI 스토어의 표면(`CHROME_SURFACES`). 저 파일은
+  // 스토어를 import 하지 않는 레이어라 목록을 공유하지 않는다.
   //
-  // 무엇이 이것을 실패시키는가: 넷째 표면을 한쪽에만 더하면 양방향 어느 쪽으로든
-  // 집합이 달라진다 — 스토어에만 더하면 매니페스트가 그 키를 버리고, 매니페스트에만
-  // 더하면 왼쪽에 없는 키가 남는다.
+  // 무엇이 이것을 실패시키는가: **스토어에만** 넷째 표면을 더하는 것. 그러면 아래
+  // `declared` 가 그 키를 싣는데 매니페스트는 모르는 키라 버리므로, 재구성 결과가
+  // 기대보다 하나 적다. 그쪽이 위험한 방향이다 — 테마가 선언한 표면이 조용히 사라진다.
+  //
+  // ‼️ **반대 방향은 잡지 못한다.** `declared` 를 `CHROME_SURFACES` 로 짓기 때문에,
+  // 매니페스트에만 더한 키는 프로브 매니페스트에 애초에 들어가지 않고 양쪽 집합이
+  // 그대로 셋으로 같다. 그 방향의 결과는 무해한 쪽이다: 스토어가 모르는 키는
+  // `proposeChromeVisibility` 의 `CHROME_SURFACES` 순회에 걸리지 않아 어느 표면에도
+  // 닿지 못하고 저장된 매니페스트에만 남는다.
   it("매니페스트가 아는 표면 집합이 UI 스토어의 표면 집합과 같다", () => {
     const declared: Record<string, boolean> = { notASurface: false };
     for (const surface of CHROME_SURFACES) declared[surface] = false;
