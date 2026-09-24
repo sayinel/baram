@@ -155,6 +155,10 @@ function describeDial(dialId: DialId, t: Translate): string {
       return t("settings.appearance.accentHueShift.desc");
     case "accentSaturationShift":
       return t("settings.appearance.accentSaturationShift.desc");
+    case "backgroundContrastDark":
+      return t("settings.appearance.backgroundContrastDark.desc");
+    case "backgroundContrastLight":
+      return t("settings.appearance.backgroundContrastLight.desc");
     case "cornerRadius":
       return t("settings.appearance.cornerRadius.desc");
     case "density":
@@ -225,6 +229,8 @@ function formatDialValue(
       return `${signOf(rounded)}${rounded}%`;
     // editorLineBreak 과 같은 이유로 빈 문자열이다 — 열거의 값 readout 은 select
     // 자체가 이미 보여 준다.
+    case "backgroundContrastDark":
+    case "backgroundContrastLight":
     case "cornerRadius":
     case "density":
       return "";

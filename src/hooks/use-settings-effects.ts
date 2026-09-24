@@ -177,7 +177,7 @@ export function useSettingsEffects(editor: Editor | null) {
       // 이 이펙트가 이미 갖고 있는 `change` 리스너가 `apply()` 를 다시 돌려 잡는다.
       const colorMode = resolveColorMode(themeDef, mql.matches);
       const base = colors ?? defaultColorsForBase(colorMode);
-      const accent = colorDialVars(resolvedDials, {
+      const colorDials = colorDialVars(resolvedDials, {
         mode: colorMode,
         seeds: base,
       });
@@ -198,20 +198,29 @@ export function useSettingsEffects(editor: Editor | null) {
       // **기본 팔레트**를 돌린 값을 그 테마의 CSS 강조 위에 박는다. 모르는 것은
       // 옮기지 않는다는 이 계획의 규칙이 여기에도 걸린다. 오늘 내장 테마 중 `css`
       // 만 싣는 것은 없고 레지스트리도 비어 있어 닿지 않는 경로지만, 조건 하나가
-      // 그날의 조용한 놀람보다 싸다.
+      // 그날의 조용한 놀람보다 싸다. 배경 대비 다이얼도 같은 이유로 이 테마에는 아무것도
+      // 쓰지 않는다 — `base` 의 본문·크롬 색이 그 테마의 것이 아니다(스펙 0059 §5).
       if (inlineSeeded && colors !== undefined) {
         // 테마가 인라인 시드를 쓰는 갈래 — 시드 + 파생 전부. `colors !== undefined`
         // 는 `mode !== undefined` 를 함의한다(`assets` 가 `mode` 로만 풀린다).
-        applyThemeVars(root, { ...colors, ...accent }, colorMode);
-      } else if (!inlineSeeded && Object.keys(accent).length > 0) {
+        applyThemeVars(root, { ...colors, ...colorDials }, colorMode);
+      } else if (!inlineSeeded && Object.keys(colorDials).length > 0) {
         // ‼️ cascade 가 시드를 소유하는 갈래. 도달 집합은 `appliesInlineVars` 가
         // 거짓인 테마, 즉 `theme-vars.ts` 의 `CASCADE_ONLY_THEME_IDS` 그 자체다 —
         // 여기 셋을 이름으로 베껴 적지 않는 이유는 그 집합이 저쪽에서 자랄 수
         // 있기 때문이다. 여기서 시드를 통째로 인라인에 박으면 §364.2 가 금지한 바로
         // 그 일이 된다 — 인라인이 `prefers-color-scheme` 를 눌러 이겨 OS 전환이
-        // 멎는다. 그래서 **강조 계열과 거기서 나오는 것만** 쓴다: 파생에 강조만
-        // 넘기면 그것이 자동으로 지켜진다(실측 2026-09-22, 강조 네 키만 준 입력은
-        // `--color-bg-selection` 을 내지 않는다 — 그 규칙의 anchor 시드가 없다).
+        // 멎는다. 그래서 **색 다이얼이 낸 키와 거기서 나오는 것만** 쓴다 — 강조 다이얼은
+        // 강조 계열을, 배경 대비 다이얼은 본문·크롬 배경과 역할 토큰 둘을 낸다(스펙 0059
+        // §5). 파생에 다이얼 출력만 넘기면 그것이 자동으로 지켜진다(실측 2026-09-22, 강조
+        // 네 키만 준 입력은 `--color-bg-selection` 을 내지 않는다 — 그 규칙의 anchor
+        // 시드가 없다).
+        //
+        // ‼️ 배경 대비가 본문을 옮겨도(`black`) 본문에 기대는 **비동일자** 파생 키는 여기서
+        // 저작값에 머문다 — 아래 동일자 규칙 때문이다. 그 값들은 옮겨진 본문 위에서 오히려
+        // 더 잘 보인다(실측 2026-09-24, `system-dark.css` 의 저작값: `#1a1a2e` 대 `#000`
+        // 에서 `bg-selection` 1.65→2.03 · `status-error-bg` 1.09→1.34, `anchor: BG` 여섯
+        // 전부가 오른다 — 계획 0103 P3).
         //
         // ‼️ 파생은 `deriveColorVars` 가 아니라 **동일자만** 내는 쪽이다. 저작값과
         // 파생값이 어긋나 1° 에서 네 토큰이 튀기 때문이고, 근거와 실측값은
@@ -230,9 +239,9 @@ export function useSettingsEffects(editor: Editor | null) {
         // 지우는 쪽은 손댈 필요가 없다: `clearThemeVars` 가 `DERIVED_KEYS` 를 조건
         // 없이 전부 지운다.
         for (const [key, value] of Object.entries({
-          ...accent,
-          ...deriveIdentityColorVars(accent),
-          ...accentPairingVars(accent, colorMode),
+          ...colorDials,
+          ...deriveIdentityColorVars(colorDials),
+          ...accentPairingVars(colorDials, colorMode),
         })) {
           root.style.setProperty(key, value);
         }

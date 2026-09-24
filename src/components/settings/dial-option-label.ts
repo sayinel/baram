@@ -20,6 +20,8 @@ function optionNamespace(
   switch (dialId) {
     case "accentHueShift":
     case "accentSaturationShift":
+    case "backgroundContrastDark":
+    case "backgroundContrastLight":
     case "cornerRadius":
     case "density":
     case "editorPadding":

@@ -1,5 +1,5 @@
-// §54 외관 설정 — 섹션 조립과 하위 화면 라우팅만 한다. 꾸밈(테마 · 강조색 · 간격과
-// 모서리 다이얼)만 남긴다 — 화면에 무엇이 있는가(화면구성 프리셋 등)는 `ActivityBarTab.tsx`
+// §54 외관 설정 — 섹션 조립과 하위 화면 라우팅만 한다. 꾸밈(테마 · 강조색 · 배경 대비 ·
+// 간격과 모서리 다이얼)만 남긴다 — 화면에 무엇이 있는가(화면구성 프리셋 등)는 `ActivityBarTab.tsx`
 // 로 옮겨 갔다(§365.4, task-5-brief.md). 테마 갤러리는 여전히 각자의 파일에 있다
 // (이 파일이 한때 516줄이었다).
 // 하위 화면(ThemeEditor, ThemeBrowser)은 탭 본문을 통째로 교체한다 —
@@ -48,6 +48,18 @@ export function AppearanceTab() {
       <AppearanceDialRow
         dialId="accentSaturationShift"
         label={t("settings.appearance.accentSaturationShift")}
+      />
+      {/* §365 다이얼 2a·2b — 배경 대비(스펙 0059). 강조색과 같은 섹션인 이유는 둘 다 고른
+          테마의 색을 **다시 배치하는** 조정이라, 무엇을 옮기는지가 바로 위 갤러리에 보여야
+          하기 때문이다. 모드마다 한 행이고, 지금 모드가 아닌 행의 값은 그 모드가 되었을 때
+          적용된다 — 설명 문구가 모드를 먼저 말한다. */}
+      <AppearanceDialRow
+        dialId="backgroundContrastLight"
+        label={t("settings.appearance.backgroundContrastLight")}
+      />
+      <AppearanceDialRow
+        dialId="backgroundContrastDark"
+        label={t("settings.appearance.backgroundContrastDark")}
       />
       {/* §365 다이얼 4·5 — 앱 전체의 간격과 모서리(0055 §4.4: 외관). 강조색 아래에
           별도 섹션으로 둔다: 강조색 둘은 고른 테마의 색을 옮기는 조정이라 갤러리에
