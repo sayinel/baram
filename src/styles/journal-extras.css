@@ -45,7 +45,7 @@
 
 .photo-gallery-mode-btn-active {
   color: var(--color-text-primary);
-  background: var(--color-bg-default);
+  background: var(--color-bg-chrome-fill);
   box-shadow: 0 1px 2px rgb(0 0 0 / 10%);
 }
 

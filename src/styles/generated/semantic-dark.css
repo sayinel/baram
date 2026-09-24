@@ -235,6 +235,14 @@
   --color-git-added: var(--color-green-400); /** Git added/new file dark */
   --color-git-deleted: var(--color-red-400); /** Git deleted file dark */
   --color-git-staged: var(--color-blue-400); /** Git staged file dark */
+  --color-bg-bar: var(
+    --color-bg-subtle
+  ); /** Chrome bars — tab bar, status bar, context tab bar (§365 dial 2, spec 0059). Aliases bg.subtle, so today's look is unchanged; split out because bg.subtle also paints code blocks and callouts, which the background contrast dial must not move */
+
+  --color-bg-chrome-fill: var(
+    --color-bg-default
+  ); /** Fills that sit ON the chrome or a bar — hover, the active file row, buttons, chips, cards on the sidebar, activity bar, right panel, tab bar or status bar (§365 dial 2, spec 0059). Aliases bg.default, so today's look is unchanged; the background contrast dial moves the chrome to the page colour and this to a colour that still stands apart. A new fill on those surfaces should use this, not bg.default */
+
   --color-text-default: var(
     --color-text-primary
   ); /** Default body text (alias of text.primary; was undefined --color-text-default) */

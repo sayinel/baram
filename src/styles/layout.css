@@ -97,7 +97,7 @@
 
 .activity-bar-btn:hover {
   color: var(--color-text-primary);
-  background-color: var(--color-bg-default);
+  background-color: var(--color-bg-chrome-fill);
 }
 
 .activity-bar-btn-active {
@@ -256,7 +256,7 @@
   flex-shrink: 0;
   align-items: stretch;
   height: 34px;
-  background-color: var(--color-bg-subtle);
+  background-color: var(--color-bg-bar);
   border-bottom: 1px solid var(--color-border-subtle);
 }
 
@@ -284,7 +284,7 @@
   font-size: 16px;
   color: var(--color-text-secondary);
   cursor: pointer;
-  background-color: var(--color-bg-subtle);
+  background-color: var(--color-bg-bar);
   border: none;
 }
 
@@ -298,7 +298,7 @@
 
 .tab-scroll-btn:hover {
   color: var(--color-text-primary);
-  background-color: var(--color-bg-default);
+  background-color: var(--color-bg-chrome-fill);
 }
 
 .tab-item {
@@ -318,7 +318,7 @@
 }
 
 .tab-item:hover {
-  background-color: var(--color-bg-default);
+  background-color: var(--color-bg-chrome-fill);
 }
 
 .tab-active {
@@ -460,7 +460,7 @@
   font-size: 0.7rem;
   color: var(--color-text-muted);
   cursor: pointer;
-  background-color: var(--color-bg-default);
+  background-color: var(--color-bg-chrome-fill);
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-sm);
   transition: background-color 0.1s;

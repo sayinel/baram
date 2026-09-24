@@ -427,7 +427,7 @@
   cursor: pointer;
   background-color: color-mix(
     in srgb,
-    var(--color-bg-default) 85%,
+    var(--color-bg-chrome-fill) 85%,
     var(--color-bg-panel)
   );
   border-radius: var(--radius-default);
