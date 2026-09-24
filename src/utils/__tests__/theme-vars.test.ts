@@ -279,6 +279,17 @@ describe("§365 배경 역할 토큰 (스펙 0059 §5)", () => {
     expect(root.style.getPropertyValue("--color-bg-chrome-fill")).toBe("");
   });
 
+  // 무엇이 이것을 실패시키는가: 둘째 화이트리스트에서 지우는 분기를 빼면 — 테마
+  // 편집기의 미리보기(`ThemeEditor.tsx`)는 시드만 넘기고 다시 부르므로, 다이얼이
+  // 먼저 쓴 바·채움 색이 이 두 번째 호출 뒤에도 인라인에 남는다.
+  it("먼저 받은 역할 토큰을 다음 호출이 넘기지 않으면 지운다", () => {
+    const root = document.createElement("div");
+    applyThemeVars(root, { ...NORD_COLORS, ...ROLE }, NORD_MODE);
+    applyThemeVars(root, NORD_COLORS, NORD_MODE);
+    expect(root.style.getPropertyValue("--color-bg-bar")).toBe("");
+    expect(root.style.getPropertyValue("--color-bg-chrome-fill")).toBe("");
+  });
+
   it("clearThemeVars 가 역할 토큰을 지운다", () => {
     const root = document.createElement("div");
     applyThemeVars(root, { ...NORD_COLORS, ...ROLE }, NORD_MODE);

@@ -75,7 +75,8 @@
 나오도록 시드를 고르는 것이 지원되는 유일한 통로다. 테마 CSS 는 이 62키 **밖**의
 것 — 선택자·간격·모양·아직 파생되지 않는 9키 — 을 위한 자리다.
 
-**배경 대비 다이얼이 기본이 아니면 다섯 키가 더 다이얼의 것이다.** 역할 토큰
+**배경 대비 다이얼이 기본이 아니면 최대 다섯 키 — `flat` 은 셋(`bg-panel` 과 역할
+토큰 둘), `white`·`black` 은 다섯 — 이 더 다이얼의 것이다.** 역할 토큰
 `--color-bg-bar` · `--color-bg-chrome-fill`(`src/appearance/background-contrast.ts` 의
 `BG_ROLE_KEYS`)이 인라인에 실리고, 시드 `--color-bg-default` · `--color-editor-bg` ·
 `--color-bg-panel` 은 테마의 선언 대신 다이얼의 재배선을 따른다(스펙 0059 §3.2). 이

@@ -22,6 +22,8 @@ vi.mock("../../ipc/menu-enabled", () => ({
   syncMenuEnabled: menuIpc.syncMenuEnabled,
 }));
 
+import type { ThemeDef } from "../../types/theme";
+
 import { deriveColorVars } from "../../appearance/color-derive";
 import { useSettingsStore } from "../../stores/settings/store";
 import { BUILT_IN_THEMES } from "../../types/theme";
@@ -80,6 +82,18 @@ function varOf(key: string): string {
   return document.documentElement.style.getPropertyValue(key);
 }
 
+/**
+ * 이름이 `--color-` 로 시작하는 인라인 커스텀 프로퍼티 전부 — `CSSStyleDeclaration` 은
+ * 위치로 인덱싱된다(`style.item(i)`). 다섯 다이얼 키를 하나씩 짚는 것과 달리, 이 채널
+ * 위의 다른 작성자가 남긴 값도 놓치지 않는다.
+ */
+function inlineColorPropertyNames(): string[] {
+  const style = document.documentElement.style;
+  return Array.from({ length: style.length }, (_, i) => style.item(i)).filter(
+    (name) => name.startsWith("--color-"),
+  );
+}
+
 const originalMatchMedia = window.matchMedia;
 
 beforeEach(() => {
@@ -122,7 +136,13 @@ describe("§365 배경 대비 — cascade 테마(system)", () => {
   // 0055 §15.1 의 모양 — 희소성 회귀. 무엇이 이것을 실패시키는가: 모드 판정이 없거나
   // `clearThemeVars` 가 역할 토큰을 놓치면 #000000 이 라이트 화면에 남는다. 마지막
   // 단언이 짝이다 — 지워진 것이 "다시는 안 쓴다" 가 아니라 "이 모드에서 안 쓴다" 임을 보인다.
-  it("OS 를 라이트로 바꾸면 인라인이 하나도 남지 않고, 되돌리면 다시 쓴다", () => {
+  //
+  // 다섯 키 루프는 이 다이얼이 낸 것만 본다 — 이 채널의 다른 작성자(강조 다이얼 등)가
+  // 남긴 `--color-*` 인라인은 그 루프를 그대로 통과한다. 아래 전수 스윕이 그 이름의
+  // 주장("색 인라인이 하나도 남지 않고") 을 실제로 검사한다. `<html>` 의 인라인은 색
+  // 채널만 있는 것이 아니므로(예: 폰트·간격 변수, 이 파일 밖의 다른 설정 이펙트) 전체
+  // `style.length === 0` 은 걸지 않는다.
+  it("OS 를 라이트로 바꾸면 색 인라인이 하나도 남지 않고, 되돌리면 다시 쓴다", () => {
     const media = installMatchMedia(true);
     useSettingsStore.setState({
       appearanceOverrides: { backgroundContrastDark: "black" },
@@ -132,6 +152,7 @@ describe("§365 배경 대비 — cascade 테마(system)", () => {
 
     media.fire(false);
     for (const key of [...SURFACES, FILL]) expect(varOf(key), key).toBe("");
+    expect(inlineColorPropertyNames()).toEqual([]);
 
     media.fire(true);
     expect(varOf("--color-bg-bar")).toBe("#000000");
@@ -233,5 +254,52 @@ describe("§365 배경 대비 — 인라인 테마", () => {
 
     expect(varOf("--color-bg-bar")).toBe("");
     expect(varOf(FILL)).toBe("");
+  });
+});
+
+/**
+ * 모드가 `css` 만 싣고 `tokens` 는 싣지 않는 테마 — `theme-manifest.ts` 가 허용하는
+ * 모양이고, `readModeColors` 가 읽기 실패를 삼켜도 같은 결과가 된다
+ * (`use-settings-effects-accent-dial.test.tsx` 의 같은 이름 픽스처와 동일).
+ */
+const CSS_ONLY: ThemeDef = {
+  id: "custom-css-only",
+  modes: { light: { css: ":root { --color-accent-default: #00ff00; }" } },
+  name: "CSS only",
+  source: "custom",
+};
+
+describe("§365 시드를 읽을 수 없는 테마는 건드리지 않는다", () => {
+  // ‼️ 무엇이 이것을 실패시키는가: `use-settings-effects.ts` 의 셋째 갈래(`inlineSeeded`
+  // 인데 `colors` 가 없는 테마 — 의도적 무동작)가 없으면, `white` 는 표면 넷을 시드 없이도
+  // 낼 수 있으므로(`extremeVars` 의 `surface` 인자는 상수 `"#ffffff"`) 이 테마에도 값을
+  // 쓴다 — 사용자가 고른 적 없는 기본 팔레트 위의 계산이다. 그래서 이 값을 골라야
+  // "시드가 없으면 아무것도 안 쓴다" 는 주장이 실제로 시험된다.
+  it("css 만 실은 테마에는 배경 대비 다이얼이 아무것도 쓰지 않는다", () => {
+    installMatchMedia(false);
+    useSettingsStore.setState({
+      activeThemeId: CSS_ONLY.id,
+      appearanceOverrides: { backgroundContrastLight: "white" },
+      customThemes: [CSS_ONLY],
+    });
+
+    render(<Host />);
+
+    for (const key of [...SURFACES, FILL]) expect(varOf(key), key).toBe("");
+  });
+
+  // 비공허성: 위 단언 다섯은 다이얼이 아예 동작하지 않아도 통과한다. 같은 다이얼 값이
+  // system 에서는 쓰인다는 것이 대조군이고, 대비는 테마 id 하나뿐임을 고정한다.
+  it("같은 다이얼 값이 system 에서는 쓰인다 — 위 단언의 대조군", () => {
+    installMatchMedia(false);
+    useSettingsStore.setState({
+      activeThemeId: "system",
+      appearanceOverrides: { backgroundContrastLight: "white" },
+      customThemes: [CSS_ONLY],
+    });
+
+    render(<Host />);
+
+    expect(varOf("--color-bg-bar")).toBe("#ffffff");
   });
 });

@@ -39,9 +39,9 @@ export const BACKGROUND_CONTRAST_DARK_OPTIONS = [
 
 /**
  * 두 다이얼이 어떤 값에서든 쓸 수 있는 변수 전부 — `DialBase.vars`. 리터럴인 이유:
- * `...BG_ROLE_KEYS` 로 짓으면 선언 순서가 모듈 초기화의 TDZ 에 걸리고, perfectionist 가
- * 순서를 바꾸자고 할 때 그 위험을 다시 재야 한다. 역할 토큰 둘을 담는지는
- * `background-contrast-dials.test.ts` 의 "vars 는 다섯 키 …" 가 고정한다.
+ * 다섯 키를 그대로 늘어놓으면 다이얼이 쓸 수 있는 집합이 이 자리만 보고 한눈에
+ * 읽힌다. 역할 토큰 둘을 담는지는 `background-contrast-dials.test.ts` 의
+ * "vars 는 다섯 키이고 역할 토큰 둘을 담는다" 가 고정한다.
  */
 export const BACKGROUND_CONTRAST_VARS = [
   "--color-bg-default",

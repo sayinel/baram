@@ -7,6 +7,9 @@
 // derived from the theme's own colours live here too, so a colour and the
 // foreground computed from it can never be applied out of step.
 //
+// §365 배경 대비 역할 토큰 둘의 apply/clear 짝도 같은 원칙을 한 단 아래서 지킨다 —
+// 둘 다 `BG_ROLE_KEYS`(`appearance/background-contrast.ts`) 하나를 순회한다.
+//
 // §358 이 모듈은 이제 두 가지를 적용한다: `<html>` 의 인라인 CSS 변수와, 테마가 실어
 // 보낸 CSS 를 담는 `<style data-baram-theme>` 한 장. `<style>` 도 여기 있는 이유는
 // 변수가 여기 있는 이유와 같다 — 붙이는 곳과 떼는 곳이 갈리면 #330 이 다시 난다.
@@ -230,11 +233,14 @@ export function applyThemeVars(
   }
   // §365 배경 대비의 역할 토큰 둘(스펙 0059 §5). 시드가 아니라 위 화이트리스트에서
   // 떨어지므로 둘째 화이트리스트로 쓴다 — 입력을 순회하지 않는 이유는 위 감사 BLOCKER
-  // 와 같다. 넘어오지 않으면 쓰지 않는다: 그때는 생성 스타일시트의 별칭
-  // (`var(--color-bg-subtle)` · `var(--color-bg-default)`)이 위에서 쓴 시드를 따라간다.
+  // 와 같다. 넘어오지 않으면 지운다 — 테마 편집기의 미리보기(`ThemeEditor.tsx`)는
+  // 시드만 넘기므로, 지우지 않으면 다이얼이 전에 쓴 바·채움 색이 미리보기 위에
+  // 남는다. 그러면 생성 스타일시트의 별칭(`var(--color-bg-subtle)` ·
+  // `var(--color-bg-default)`)이 방금 쓴 시드를 따라간다.
   for (const key of BG_ROLE_KEYS) {
     const value = colors[key];
     if (value !== undefined) root.style.setProperty(key, value);
+    else root.style.removeProperty(key);
   }
   for (const [key, value] of Object.entries(derivedVars(colors, base))) {
     root.style.setProperty(key, value);
@@ -244,7 +250,7 @@ export function applyThemeVars(
   // 때문이다 — `derivedVars` 는 대비를 보장하는 전경/채움이고(#330), 이쪽은
   // 색상환에서 계산한 의미 색이다. 대비 하한이 없는 쪽이 이쪽이다.
   //
-  // ‼️ **이 함수를 거치지 않는 갈래가 있다.** 강조 다이얼이 cascade 소유 테마
+  // ‼️ **이 함수를 거치지 않는 갈래가 있다.** 색 다이얼(강조·배경 대비)이 cascade 소유 테마
   // (`CASCADE_ONLY_THEME_IDS`)에 닿을 때 `use-settings-effects.ts` 의 테마 이펙트는
   // 이 파생 29키가 아니라 `deriveIdentityColorVars` 의 동일자 부분집합만 쓴다 —
   // 이유(저작 토큰과 파생식이 어긋나 1° 에서 네 토큰이 튄다)는 그 자리와
