@@ -246,6 +246,47 @@ describe("clearThemeVars", () => {
   });
 });
 
+describe("§365 배경 역할 토큰 (스펙 0059 §5)", () => {
+  const ROLE = {
+    "--color-bg-bar": "#000000",
+    "--color-bg-chrome-fill": "#2e3440",
+  } as const;
+
+  it("applyThemeVars 가 넘겨받은 역할 토큰을 쓴다", () => {
+    const root = document.createElement("div");
+    applyThemeVars(root, { ...NORD_COLORS, ...ROLE }, NORD_MODE);
+    expect(root.style.getPropertyValue("--color-bg-bar")).toBe("#000000");
+    expect(root.style.getPropertyValue("--color-bg-chrome-fill")).toBe(
+      "#2e3440",
+    );
+  });
+
+  // 무엇이 이것을 실패시키는가: 둘째 화이트리스트를 "입력에서 `--color-bg-` 로 시작하는
+  // 키" 로 바꾸면 — 감사 BLOCKER 가 막은 입력 순회가 돌아온다.
+  it("화이트리스트 밖의 키는 역할 토큰처럼 생겨도 쓰지 않는다", () => {
+    const root = document.createElement("div");
+    const colors = { ...NORD_COLORS, "--color-bg-bogus": "#123456" };
+    applyThemeVars(root, colors, NORD_MODE);
+    expect(root.style.getPropertyValue("--color-bg-bogus")).toBe("");
+  });
+
+  // 다이얼이 기본이면 역할 토큰은 넘어오지 않는다 — 그때는 생성 스타일시트의 별칭이
+  // 이 테마의 시드를 따라가야 하므로 인라인에 아무것도 없어야 한다.
+  it("넘겨받지 않은 역할 토큰은 쓰지 않는다", () => {
+    const root = document.createElement("div");
+    applyThemeVars(root, NORD_COLORS, NORD_MODE);
+    expect(root.style.getPropertyValue("--color-bg-bar")).toBe("");
+    expect(root.style.getPropertyValue("--color-bg-chrome-fill")).toBe("");
+  });
+
+  it("clearThemeVars 가 역할 토큰을 지운다", () => {
+    const root = document.createElement("div");
+    applyThemeVars(root, { ...NORD_COLORS, ...ROLE }, NORD_MODE);
+    clearThemeVars(root);
+    expect(inlineKeys(root)).toEqual([]);
+  });
+});
+
 // §358 #330 의 불변식을 CSS 변수 **밖**까지 넓힌다.
 //
 // 위의 "removes everything applyThemeVars can set" 는 THEME_COLOR_KEYS + DERIVED_KEYS
@@ -294,13 +335,22 @@ describe("적용과 제거는 짝이다 (#330, 열거가 아니라 관측으로)
     const root = document.documentElement;
     const before = documentPrint();
 
-    applyThemeVars(root, NORD_COLORS, NORD_MODE);
+    applyThemeVars(
+      root,
+      {
+        ...NORD_COLORS,
+        "--color-bg-bar": "#000000",
+        "--color-bg-chrome-fill": "#2e3440",
+      },
+      NORD_MODE,
+    );
     applyThemeCss(document, "@layer baram-theme{.probe{color:red}}");
 
     // 스냅샷이 두 적용을 **본다**는 것부터 증명한다. 보지 못하면 아래 단언은
     // 아무것도 검사하지 않은 채로 통과한다.
     expect(documentPrint()).not.toBe(before);
     expect(root.style.getPropertyValue("--color-accent-default")).not.toBe("");
+    expect(root.style.getPropertyValue("--color-bg-bar")).toBe("#000000");
     expect(document.querySelectorAll("style[data-baram-theme]")).toHaveLength(
       1,
     );

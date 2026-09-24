@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { THEME_COLOR_KEYS } from "../../types/theme";
 import { DERIVED_KEYS } from "../../utils/theme-vars";
+import { BG_ROLE_KEYS } from "../background-contrast";
 import { DERIVED_COLOR_KEYS } from "../color-derive";
 import { DIALS } from "../dials";
 import { resolveDials } from "../merge";
@@ -125,16 +126,17 @@ describe("숫자 다이얼의 저장분은 확장을 견딘다", () => {
 });
 
 describe("색 채널 다이얼의 변수는 누군가 지운다", () => {
-  /** `clearThemeVars` 가 지우는 키 전부 — 세 목록의 합집합이 그 함수의 본문이다. */
+  /** `clearThemeVars` 가 지우는 키 전부 — 네 목록의 합집합이 그 함수의 본문이다. */
   const CLEARED: ReadonlySet<string> = new Set([
     ...THEME_COLOR_KEYS.map((e) => e.key),
     ...DERIVED_KEYS,
     ...DERIVED_COLOR_KEYS,
+    ...BG_ROLE_KEYS,
   ]);
 
   // ‼️ `clearDialVars` 는 색 채널을 **건너뛴다**(단일 작성자 규약: `--color-*` 는
   // `theme-vars.ts` 가 쓰고 지운다). 그래서 색 다이얼의 변수는 `clearThemeVars` 의
-  // 세 목록 중 하나에 들어 있어야만 지워진다.
+  // 네 목록 중 하나에 들어 있어야만 지워진다.
   //
   // 무엇이 이것을 실패시키는가: 어느 목록에도 없는 키 — 이를테면
   // `--color-editor-highlight` — 를 선언한 색 다이얼을 더하면, 테마 이펙트가 그것을

@@ -13,8 +13,10 @@
 // 짝이 맞는지는 `__tests__/theme-vars.test.ts` 가 목록이 아니라 **문서 스냅샷**으로
 // 고정한다: 적용했다가 지우면 문서가 원래대로 돌아와야 한다.
 
+import type { BgRoleKey } from "../appearance/background-contrast";
 import type { ThemeColors } from "../types/theme";
 
+import { BG_ROLE_KEYS } from "../appearance/background-contrast";
 import {
   deriveColorVars,
   DERIVED_COLOR_KEYS,
@@ -203,10 +205,13 @@ export function applyThemeCss(root: Document, css: string | undefined): void {
   if (style.textContent !== css) style.textContent = css;
 }
 
-/** Write a theme's colours and every foreground derived from them to `root`. */
+/**
+ * Write a theme's colours and every foreground derived from them to `root` — and the
+ * §365 background-contrast role tokens when the caller passes them (스펙 0059 §5).
+ */
 export function applyThemeVars(
   root: HTMLElement,
-  colors: ThemeColors,
+  colors: Partial<Record<BgRoleKey, string>> & ThemeColors,
   base: "dark" | "light",
 ): void {
   // 감사 BLOCKER: `colors`를 순회하지 않고 whitelist를 순회한다. 사용자가 import한
@@ -221,6 +226,14 @@ export function applyThemeVars(
     // setProperty에 넘기면 리터럴 "undefined" custom property가 되어 cascade
     // 기본값을 가리므로(적대 리뷰), 빠진 키는 쓰지 않는다 — 입력을 순회하던
     // 이전 동작과 같이 cascade가 지배한다.
+    if (value !== undefined) root.style.setProperty(key, value);
+  }
+  // §365 배경 대비의 역할 토큰 둘(스펙 0059 §5). 시드가 아니라 위 화이트리스트에서
+  // 떨어지므로 둘째 화이트리스트로 쓴다 — 입력을 순회하지 않는 이유는 위 감사 BLOCKER
+  // 와 같다. 넘어오지 않으면 쓰지 않는다: 그때는 생성 스타일시트의 별칭
+  // (`var(--color-bg-subtle)` · `var(--color-bg-default)`)이 위에서 쓴 시드를 따라간다.
+  for (const key of BG_ROLE_KEYS) {
+    const value = colors[key];
     if (value !== undefined) root.style.setProperty(key, value);
   }
   for (const [key, value] of Object.entries(derivedVars(colors, base))) {
@@ -275,6 +288,11 @@ export function clearThemeVars(root: HTMLElement): void {
   // 목록이 `color-derive.ts` 에서 오는 것이 그 재발을 막는다: 규칙을 더하면
   // 지우는 목록도 함께 자란다.
   for (const key of DERIVED_COLOR_KEYS) {
+    root.style.removeProperty(key);
+  }
+  // §365 배경 대비 역할 토큰(스펙 0059 §5). 빠지면 테마를 바꾸거나 다이얼을 되돌려도
+  // 앞의 바·채움 색이 남는다 — 위 주석이 적는 #330 의 모양 그대로다.
+  for (const key of BG_ROLE_KEYS) {
     root.style.removeProperty(key);
   }
 }
