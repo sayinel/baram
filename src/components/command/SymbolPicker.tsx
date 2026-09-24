@@ -165,7 +165,8 @@ export function SymbolPicker({ onCancel, onPick }: SymbolPickerProps) {
     // the input's own action runs (Shift+arrow extends its text selection, for
     // one), and not a grid move — only a plain arrow moves the grid. It is
     // still stopped, so listeners further up the page do not act on it too:
-    // use-global-keyboard.ts's window listener navigates back/forward on Alt+←/→.
+    // use-global-keyboard.ts's window listener navigates back/forward on Alt+←/→
+    // on Windows/Linux.
     if (isGridArrow(key) && hasModifier(event)) {
       event.stopPropagation();
       return;
