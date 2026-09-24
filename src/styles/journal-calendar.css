@@ -241,6 +241,9 @@
    ============================================ */
 
 .contribution-heatmap {
+  /* 요일 열 폭과 월 라벨 들여쓰기가 함께 읽는다 — 둘이 따로 적히면 어긋난다(28px 였을 때처럼). */
+  --contribution-heatmap-day-label-width: 24px;
+
   overflow-x: auto;
 }
 
@@ -258,7 +261,25 @@
 }
 
 .contribution-heatmap-month-labels {
+  padding-left: calc(
+    var(--contribution-heatmap-day-label-width) + var(--space-1-5)
+  );
   margin-bottom: var(--space-1);
+}
+
+/* The month row's inner grid. Its gap is the cell grid's gap (.contribution-heatmap-grid)
+   so the two grids line up column by column; the columns stay inline (week count). */
+.contribution-heatmap-month-grid {
+  position: relative;
+  display: grid;
+  gap: var(--space-0-5);
+  height: 14px;
+}
+
+/* The row that holds the day-label column and the cell grid. */
+.contribution-heatmap-body {
+  display: flex;
+  align-items: flex-start;
 }
 
 .contribution-heatmap-month {
@@ -327,7 +348,7 @@
   grid-template-rows: repeat(7, 10px);
   gap: var(--space-0-5);
   align-items: center;
-  min-width: 24px;
+  min-width: var(--contribution-heatmap-day-label-width);
   margin-right: var(--space-1-5);
 }
 
@@ -336,6 +357,19 @@
   font-size: 9px;
   line-height: 10px;
   color: var(--color-text-muted);
+}
+
+.contribution-heatmap-tooltip-fixed {
+  position: fixed;
+  z-index: 9999;
+  padding: var(--space-0-5) var(--space-1-5);
+  font-size: 0.75em;
+  white-space: nowrap;
+  pointer-events: none;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-default);
+  transform: translateX(-50%) translateY(-100%);
 }
 
 .contribution-heatmap-legend {

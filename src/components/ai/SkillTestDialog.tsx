@@ -57,29 +57,19 @@ export function SkillTestDialog({ open, onClose }: SkillTestDialogProps) {
 
   return (
     <div className="new-skill-overlay" onClick={onClose}>
-      <div
-        className="new-skill-dialog"
-        onClick={(e) => e.stopPropagation()}
-        style={{ width: 560 }}
-      >
+      <div className="new-skill-dialog" onClick={(e) => e.stopPropagation()}>
         <h3 className="new-skill-title">Test Skill</h3>
 
         {requiredVars.length === 0 ? (
-          <div
-            style={{
-              marginTop: 12,
-              color: "var(--color-text-secondary)",
-              fontSize: 13,
-            }}
-          >
+          <div className="new-skill-message">
             No template variables found in this Skill file. Make sure the
             current file contains {"<system>"} and/or {"<user>"} blocks with{" "}
             {`{{variable}}`} placeholders.
           </div>
         ) : (
-          <div style={{ marginTop: 12 }}>
+          <div className="new-skill-field">
             {requiredVars.map((v) => (
-              <div key={v} style={{ marginBottom: 12 }}>
+              <div className="new-skill-var-row" key={v}>
                 <label className="custom-ai-label">{`{{${v}}}`}</label>
                 <textarea
                   className="custom-ai-prompt-input"
@@ -93,7 +83,7 @@ export function SkillTestDialog({ open, onClose }: SkillTestDialogProps) {
           </div>
         )}
 
-        <div style={{ marginTop: 16, display: "flex", gap: 8 }}>
+        <div className="new-skill-run-row">
           <button
             className="custom-ai-btn custom-ai-btn-primary"
             disabled={isStreaming || !skillContent}
@@ -109,31 +99,13 @@ export function SkillTestDialog({ open, onClose }: SkillTestDialogProps) {
         </div>
 
         {(text || isStreaming) && (
-          <div style={{ marginTop: 16 }}>
+          <div className="new-skill-section">
             <label className="custom-ai-label">Result</label>
-            <pre
-              style={{
-                background: "var(--color-bg-subtle)",
-                border: "1px solid var(--color-border-default)",
-                borderRadius: 6,
-                padding: 12,
-                fontSize: 12,
-                maxHeight: 300,
-                overflow: "auto",
-                whiteSpace: "pre-wrap",
-                marginTop: 4,
-              }}
-            >
+            <pre className="skill-gen-preview">
               {text || "Waiting for response..."}
             </pre>
             {totalTokens > 0 && !isStreaming && (
-              <div
-                style={{
-                  marginTop: 8,
-                  fontSize: 12,
-                  color: "var(--color-text-secondary)",
-                }}
-              >
+              <div className="new-skill-token-count">
                 Tokens used: ~{totalTokens}
               </div>
             )}
@@ -151,7 +123,7 @@ export function SkillTestDialog({ open, onClose }: SkillTestDialogProps) {
             );
           })()}
 
-        <div style={{ marginTop: 12, textAlign: "right" }}>
+        <div className="new-skill-close-row">
           <button className="custom-ai-btn" onClick={onClose}>
             Close
           </button>

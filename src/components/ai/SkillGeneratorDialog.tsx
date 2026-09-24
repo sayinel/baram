@@ -96,14 +96,10 @@ export function SkillGeneratorDialog({
 
   return (
     <div className="new-skill-overlay" onClick={onClose}>
-      <div
-        className="new-skill-dialog"
-        onClick={(e) => e.stopPropagation()}
-        style={{ width: 560 }}
-      >
+      <div className="new-skill-dialog" onClick={(e) => e.stopPropagation()}>
         <h3 className="new-skill-title">Generate Skill with AI</h3>
 
-        <div style={{ marginTop: 12 }}>
+        <div className="new-skill-field">
           <label className="custom-ai-label">Description</label>
           <textarea
             autoFocus
@@ -115,19 +111,11 @@ export function SkillGeneratorDialog({
           />
         </div>
 
-        <div style={{ marginTop: 12 }}>
+        <div className="new-skill-field">
           <label className="custom-ai-label">Template Variables</label>
-          <div style={{ display: "flex", gap: 12, marginTop: 4 }}>
+          <div className="new-skill-checkbox-row">
             {VARIABLE_OPTIONS.map((v) => (
-              <label
-                key={v}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 4,
-                  fontSize: 13,
-                }}
-              >
+              <label className="new-skill-checkbox" key={v}>
                 <input
                   checked={selectedVars.has(v)}
                   onChange={() => toggleVar(v)}
@@ -139,14 +127,13 @@ export function SkillGeneratorDialog({
           </div>
         </div>
 
-        <div style={{ marginTop: 12 }}>
+        <div className="new-skill-field">
           <label className="custom-ai-label">Output Format</label>
           <select
-            className="settings-select"
+            className="settings-select new-skill-select"
             onChange={(e) =>
               setOutputFormat(e.target.value as "json" | "markdown" | "text")
             }
-            style={{ marginTop: 4 }}
             value={outputFormat}
           >
             <option value="text">Text</option>
@@ -155,7 +142,7 @@ export function SkillGeneratorDialog({
           </select>
         </div>
 
-        <div style={{ marginTop: 16, display: "flex", gap: 8 }}>
+        <div className="new-skill-run-row">
           <button
             className="custom-ai-btn custom-ai-btn-primary"
             disabled={!description.trim() || isStreaming}
@@ -171,29 +158,13 @@ export function SkillGeneratorDialog({
         </div>
 
         {displayText && (
-          <div style={{ marginTop: 16 }}>
+          <div className="new-skill-section">
             <label className="custom-ai-label">Preview</label>
-            <pre
-              className="skill-gen-preview"
-              style={{
-                background: "var(--color-bg-subtle)",
-                border: "1px solid var(--color-border-default)",
-                borderRadius: 6,
-                padding: 12,
-                fontSize: 12,
-                maxHeight: 300,
-                overflow: "auto",
-                whiteSpace: "pre-wrap",
-                marginTop: 4,
-              }}
-            >
-              {displayText}
-            </pre>
+            <pre className="skill-gen-preview">{displayText}</pre>
             {!isStreaming && displayText && (
               <button
-                className="custom-ai-btn custom-ai-btn-primary"
+                className="custom-ai-btn custom-ai-btn-primary new-skill-create-btn"
                 onClick={handleCreate}
-                style={{ marginTop: 8 }}
               >
                 Create Skill File
               </button>
@@ -212,7 +183,7 @@ export function SkillGeneratorDialog({
             );
           })()}
 
-        <div style={{ marginTop: 12, textAlign: "right" }}>
+        <div className="new-skill-close-row">
           <button className="custom-ai-btn" onClick={onClose}>
             Close
           </button>

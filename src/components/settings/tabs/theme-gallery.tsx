@@ -392,7 +392,10 @@ function ThemeMiniPreview({ colors }: { colors: ThemeColors }) {
           style={{ color: c["--color-editor-text"] }}
         >
           Some{" "}
-          <span style={{ color: c["--color-accent-default"], fontWeight: 600 }}>
+          <span
+            className="theme-preview-bold"
+            style={{ color: c["--color-accent-default"] }}
+          >
             bold
           </span>{" "}
           text
@@ -402,7 +405,6 @@ function ThemeMiniPreview({ colors }: { colors: ThemeColors }) {
           style={{
             borderLeft: `2px solid ${c["--color-accent-default"]}`,
             color: c["--color-text-secondary"],
-            paddingLeft: 6,
           }}
         >
           blockquote
@@ -462,8 +464,8 @@ function SystemCard({
             style={{ background: "#ffffff" }}
           >
             <div
-              className="theme-preview-heading"
-              style={{ color: "#1a1a1a", fontSize: 7 }}
+              className="theme-preview-heading theme-system-preview-heading"
+              style={{ color: "#1a1a1a" }}
             >
               Aa
             </div>
@@ -491,8 +493,8 @@ function SystemCard({
             style={{ background: "#1a1a2e" }}
           >
             <div
-              className="theme-preview-heading"
-              style={{ color: "#e2e8f0", fontSize: 7 }}
+              className="theme-preview-heading theme-system-preview-heading"
+              style={{ color: "#e2e8f0" }}
             >
               Aa
             </div>

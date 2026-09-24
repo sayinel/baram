@@ -68,19 +68,10 @@ export function ContributionHeatmap({
         onMouseLeave={() => setTooltip(null)}
       >
         {/* Month labels row */}
-        {/* 요일 열(min-width 24px + margin-right 6px)과 맞춘다 — 28 은 2px 모자랐다(0101 Task 5) */}
-        <div
-          className="contribution-heatmap-month-labels"
-          style={{ paddingLeft: 30 }}
-        >
+        <div className="contribution-heatmap-month-labels">
           <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: `repeat(${totalWeeks}, 10px)`,
-              gap: "2px",
-              position: "relative",
-              height: 14,
-            }}
+            className="contribution-heatmap-month-grid"
+            style={{ gridTemplateColumns: `repeat(${totalWeeks}, 10px)` }}
           >
             {monthLabels.map(({ month, weekIndex }, i) => (
               <div
@@ -95,7 +86,7 @@ export function ContributionHeatmap({
         </div>
 
         {/* Main grid: day labels + cells */}
-        <div style={{ display: "flex", alignItems: "flex-start" }}>
+        <div className="contribution-heatmap-body">
           {/* Day-of-week labels (Sunday first, matching `Date.getDay()` order) */}
           <div className="contribution-heatmap-day-labels">
             {dayLabels.map((label, dow) => (
@@ -149,20 +140,7 @@ export function ContributionHeatmap({
         {tooltip && (
           <div
             className="contribution-heatmap-tooltip-fixed"
-            style={{
-              position: "fixed",
-              left: tooltip.x,
-              top: tooltip.y - 4,
-              transform: "translateX(-50%) translateY(-100%)",
-              background: "var(--color-bg-default)",
-              border: "1px solid var(--color-border-default)",
-              padding: "2px 6px",
-              borderRadius: 4,
-              fontSize: "0.75em",
-              whiteSpace: "nowrap",
-              zIndex: 9999,
-              pointerEvents: "none",
-            }}
+            style={{ left: tooltip.x, top: tooltip.y - 4 }}
           >
             {t("journal.heatmap.cell", {
               date: tooltip.date,

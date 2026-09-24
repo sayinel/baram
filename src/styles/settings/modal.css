@@ -482,3 +482,18 @@
   color: var(--color-accent-on-solid);
   background-color: var(--color-accent-solid-hover);
 }
+
+/* §365 — JournalTab's template-init column and LanguageTab's reload notice, moved from inline
+   styles (plan 0101). The notice also carries .settings-row-description, which other settings
+   components share. */
+.journal-template-init-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  align-items: flex-end;
+}
+
+.language-reload-notice {
+  margin-top: var(--space-3);
+  font-style: italic;
+}

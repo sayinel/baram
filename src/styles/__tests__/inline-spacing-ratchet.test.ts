@@ -66,22 +66,6 @@ describe("스캐너 — 잡으면 안 되는 것", () => {
  * 이 자기 항목을 지운다** — 그 전까지는 오늘의 개수로 여기 있다.
  */
 const PINNED: Record<string, Partial<Record<Channel, number>>> = {
-  // Task 5 가 옮긴다 — 스킬 다이얼로그·저널 히트맵·설정 탭 넷·백링크.
-  "src/components/ai/SkillGeneratorDialog.tsx": { "style-number": 15 },
-  "src/components/ai/SkillTestDialog.tsx": { "style-number": 11 },
-  "src/components/journal/ContributionHeatmap.tsx": {
-    "style-number": 2,
-    "style-px": 2,
-  },
-  "src/components/settings/tabs/JournalTab.tsx": { "style-number": 1 },
-  "src/components/settings/tabs/LanguageTab.tsx": { "style-number": 1 },
-  "src/components/settings/tabs/VaultTab.tsx": { "style-number": 1 },
-  "src/components/settings/tabs/layout/ActivityBarItemsSection.tsx": {
-    "style-number": 2,
-  },
-  "src/components/settings/tabs/theme-gallery.tsx": { "style-number": 1 },
-  "src/components/sidebar/Backlinks.tsx": { "style-px": 2 },
-
   // Task 6 이 옮긴다 — 파일 트리·이동 모달·아웃라인·태그 패널·목차.
   "src/components/sidebar/FileTree.tsx": { "style-px": 3 },
   "src/components/sidebar/FileTreeNode.tsx": { "style-px": 1 },
