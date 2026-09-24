@@ -84,7 +84,16 @@ export function useZoom(editor: Editor | null): void {
     };
 
     const handleKeydown = (e: KeyboardEvent) => {
-      if (!e.metaKey && !e.ctrlKey) return;
+      // The platform's own modifier only — ⌘ on macOS, Ctrl elsewhere. The
+      // part4/part9 shortcut tables give zoom in/out as ⌘= ⌘- and Ctrl+= Ctrl+-;
+      // reset is part4's menu tree (Actual Size ⌘0). On macOS ⌃- is §37 Back,
+      // which use-global-keyboard.ts handles in the bubble phase; this listener
+      // runs first (capture) and does not stop propagation, so accepting Ctrl
+      // here made one ⌃- zoom out AND go back. html-preview-shim.js forwards
+      // these keys from inside the HTML preview and applies the same modifier
+      // test.
+      const isMac = navigator.platform.includes("Mac");
+      if (!(isMac ? e.metaKey : e.ctrlKey)) return;
 
       // Cmd+= / Cmd++ → zoom in
       if (e.key === "=" || e.key === "+") {

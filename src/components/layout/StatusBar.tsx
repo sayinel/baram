@@ -62,9 +62,9 @@ const MODE_LABEL_KEYS: Record<EditorMode, string> = {
   wysiwyg: "statusbar.mode.wysiwyg",
 };
 
-// ⌘0 on macOS, Ctrl+0 elsewhere. `use-zoom.ts` accepts EITHER Meta or Ctrl on every
-// platform, so both readings are true — but the tooltip said "Cmd+0" everywhere, which is
-// the wrong half on Windows and Linux. Derived, not spelled out.
+// ⌘0 on macOS, Ctrl+0 elsewhere — the same split `use-zoom.ts` applies. The tooltip used to
+// say "Cmd+0" everywhere, which is the wrong key on Windows and Linux. Derived, not spelled
+// out.
 const ZOOM_RESET_KEY = formatKeyForDisplay(
   "Mod+0",
   navigator.platform.includes("Mac"),

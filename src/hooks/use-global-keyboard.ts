@@ -73,17 +73,20 @@ export function useGlobalKeyboard({
         return;
       }
 
-      // §37 Ctrl+- — navigate back (macOS: ⌃-, Windows/Linux: Alt+←).
-      // Alt+←/→ is Windows/Linux only: on macOS Option+←/→ moves the caret
-      // by word in text fields, and preventDefault here cancels that. Neither
-      // editor engine stops the key before it gets here — prosemirror-view
-      // has no stopPropagation call, and CodeMirror's macOS word-move binding
-      // does not set it — so the platform test is what leaves it to the field.
-      // ‼️ The Ctrl+- half is NOT gated by platform, and use-zoom.ts's capture
-      // listener zooms out on the same key without stopping propagation, so
-      // Ctrl+- zooms out and goes back together, on macOS and Windows alike.
+      // §37 navigate back — macOS ⌃-, Windows/Linux Alt+←. Each half is its
+      // platform's only.
+      // - Alt+←/→ is not macOS's: there Option+←/→ moves the caret by word in
+      //   text fields, and preventDefault here cancels that. Neither editor
+      //   engine stops the key before it gets here — prosemirror-view has no
+      //   stopPropagation call, and CodeMirror's macOS word-move binding does
+      //   not set it — so the platform test is what leaves it to the field.
+      // - Ctrl+- and Ctrl+Shift+- are not Windows/Linux's: the design gives
+      //   those platforms Alt+←/→, and there Ctrl+- is Zoom Out, which
+      //   use-zoom.ts handles in the capture phase without stopping
+      //   propagation — accepting it here made one Ctrl+- zoom out AND go back.
       if (
-        (e.ctrlKey &&
+        (isMac &&
+          e.ctrlKey &&
           !e.shiftKey &&
           !e.metaKey &&
           (e.key === "-" || e.code === "Minus")) ||
@@ -94,10 +97,12 @@ export function useGlobalKeyboard({
         return;
       }
 
-      // §37 Ctrl+Shift+- — navigate forward (macOS: ⌃⇧-, Windows/Linux: Alt+→)
+      // §37 navigate forward — macOS ⌃⇧-, Windows/Linux Alt+→; each half is
+      // its platform's only, as above.
       // Note: Shift+- produces key="_" on most keyboards, so check both
       if (
-        (e.ctrlKey &&
+        (isMac &&
+          e.ctrlKey &&
           e.shiftKey &&
           !e.metaKey &&
           (e.key === "_" || e.key === "-" || e.code === "Minus")) ||
