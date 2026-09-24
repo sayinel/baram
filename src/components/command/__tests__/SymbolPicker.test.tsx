@@ -124,7 +124,8 @@ describe("SymbolPicker", () => {
     window.removeEventListener("keydown", outside);
     expect(prevented).toEqual([false, false, false, false]);
     // No modified arrow reaches the window — where use-global-keyboard.ts's
-    // listener would navigate back/forward on Alt+←/→ behind the picker.
+    // listener would navigate back/forward on Alt+←/→ (Windows/Linux) behind
+    // the picker.
     expect(outside.mock.calls.map(([e]) => (e as KeyboardEvent).key)).toEqual([
       "x",
     ]);

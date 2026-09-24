@@ -8,16 +8,9 @@ import { chainWithVimExternalEdit } from "../extensions/plugins/vim/vim-keys";
 import { normalizeKeyEvent } from "../keybindings/key-utils";
 import { getAction } from "../keybindings/keybinding-actions";
 import { findCommandByKey } from "../keybindings/use-keybindings";
-import {
-  ensureJournalFile,
-  openFileInTab,
-} from "../services/journal-file-service";
 import { useEditorStore } from "../stores/editor/editor";
-import { useFileStore } from "../stores/file/file";
 import { useSettingsStore } from "../stores/settings/store";
 import { useUIStore } from "../stores/ui/ui";
-import { isDateString } from "../utils/journal/journal";
-import { logger } from "../utils/logger";
 
 interface UseGlobalKeyboardParams {
   editor: Editor | null;
@@ -46,6 +39,7 @@ export function useGlobalKeyboard({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
+      const isMac = navigator.platform.includes("Mac");
 
       // §39 Escape closes tab switcher without switching
       if (e.key === "Escape" && tabSwitcherOpen) {
@@ -79,13 +73,18 @@ export function useGlobalKeyboard({
         return;
       }
 
-      // §37 Ctrl+- — navigate back (macOS: ⌃-, Windows/Linux: Alt+←)
+      // §37 Ctrl+- — navigate back (macOS: ⌃-, Windows/Linux: Alt+←).
+      // Alt+←/→ is Windows/Linux only: on macOS Option+←/→ moves the caret
+      // by word in text fields, and preventDefault here cancels that. Neither
+      // editor engine stops the key before it gets here — prosemirror-view
+      // has no stopPropagation call, and CodeMirror's macOS word-move binding
+      // does not set it — so the platform test is what leaves it to the field.
       if (
         (e.ctrlKey &&
           !e.shiftKey &&
           !e.metaKey &&
           (e.key === "-" || e.code === "Minus")) ||
-        (!e.metaKey && e.altKey && e.key === "ArrowLeft")
+        (!isMac && !e.metaKey && e.altKey && e.key === "ArrowLeft")
       ) {
         e.preventDefault();
         handleGoBack();
@@ -99,61 +98,11 @@ export function useGlobalKeyboard({
           e.shiftKey &&
           !e.metaKey &&
           (e.key === "_" || e.key === "-" || e.code === "Minus")) ||
-        (!e.metaKey && e.altKey && e.key === "ArrowRight")
+        (!isMac && !e.metaKey && e.altKey && e.key === "ArrowRight")
       ) {
         e.preventDefault();
         handleGoForward();
         return;
-      }
-
-      // §56b Alt+Left / Alt+Right — previous/next day journal
-      if (
-        e.altKey &&
-        !mod &&
-        !e.shiftKey &&
-        (e.code === "ArrowLeft" || e.code === "ArrowRight")
-      ) {
-        const {
-          journalEnabled,
-          journalDirectory,
-          journalFilenameFormat,
-          journalTemplatePath,
-          journalUseHierarchy,
-        } = useSettingsStore.getState();
-        const es = useEditorStore.getState();
-        const activeTab = es.tabs.find((t) => t.id === es.activeTabId);
-        const basename =
-          activeTab?.filePath?.split("/").pop()?.replace(/\.md$/, "") ?? "";
-        if (
-          journalEnabled &&
-          journalDirectory &&
-          activeTab?.filePath &&
-          isDateString(basename)
-        ) {
-          e.preventDefault();
-          const [y, m, d] = basename.split("-").map(Number);
-          const target = new Date(y, m - 1, d);
-          const delta = e.code === "ArrowLeft" ? -1 : 1;
-          target.setDate(target.getDate() + delta);
-
-          (async () => {
-            try {
-              const { rootPath } = useFileStore.getState();
-              const result = await ensureJournalFile(target, {
-                journalDirectory,
-                journalFilenameFormat,
-                journalTemplatePath,
-                journalUseHierarchy,
-                rootPath,
-              });
-              if (!result) return;
-              await openFileInTab(result.path, result.content);
-            } catch (err) {
-              logger.error("[JournalNav] Failed:", err);
-            }
-          })();
-          return;
-        }
       }
 
       // §5.5 Cmd+Enter — add row after in table (context-dependent)
@@ -164,7 +113,6 @@ export function useGlobalKeyboard({
       }
 
       // --- Registry-based dispatch for all other shortcuts ---
-      const isMac = navigator.platform.includes("Mac");
       const normalized = normalizeKeyEvent(e, isMac);
       if (!normalized) return;
 

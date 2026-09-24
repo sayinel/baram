@@ -85,11 +85,10 @@ describe("openFileInTab", () => {
 // `resolveJournalDir` only accepts ABSOLUTE paths, so the journal directory can sit
 // outside the open vault. `check_vault` then permits nothing there until the journal
 // context exists (the ContextManager is in-memory; startup re-registers only the
-// contexts the store already persisted). FIVE of the six `ensureJournalFile` call sites
-// skipped it — the shortcut (`use-global-keyboard.ts`), Alt+←/→ day navigation
-// (`:188`), the calendar (`CalendarPanel.tsx:202`), date-wikilink navigation
-// (`use-navigation.ts:73`) and the startup hook (`use-journal.ts:51`); only the journal
-// space (`spaces/journal-space.ts:33`) registered. So on first use from any of them,
+// contexts the store already persisted). FOUR of the five `ensureJournalFile` call sites
+// skipped it — the shortcut (`use-keybinding-actions.ts`), the calendar
+// (`CalendarPanel.tsx`), date-wikilink navigation (`use-navigation.ts`) and the startup
+// hook (`use-journal.ts`); only the journal space (`spaces/journal-space.ts`) registered. So on first use from any of them,
 // `readFile` was denied, this service read that as "file does not exist", `createDir`
 // was denied too, and every caller's catch swallowed it: a silent no-op that healed
 // itself only once the user had entered the journal space at least once.
