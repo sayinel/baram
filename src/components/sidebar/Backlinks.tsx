@@ -307,7 +307,7 @@ export function Backlinks() {
                           flexShrink: 0,
                           fontSize: "0.65rem",
                           padding: "0 4px",
-                          borderRadius: "3px",
+                          borderRadius: "2px",
                           background:
                             "color-mix(in srgb, var(--color-accent-default) 15%, transparent)",
                           color: "var(--color-accent-default)",

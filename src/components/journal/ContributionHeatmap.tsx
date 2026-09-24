@@ -68,9 +68,10 @@ export function ContributionHeatmap({
         onMouseLeave={() => setTooltip(null)}
       >
         {/* Month labels row */}
+        {/* 요일 열(min-width 24px + margin-right 6px)과 맞춘다 — 28 은 2px 모자랐다(0101 Task 5) */}
         <div
           className="contribution-heatmap-month-labels"
-          style={{ paddingLeft: 28 }}
+          style={{ paddingLeft: 30 }}
         >
           <div
             style={{
