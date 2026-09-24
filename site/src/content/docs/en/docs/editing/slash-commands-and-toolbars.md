@@ -4,7 +4,7 @@ title: "Slash commands and toolbars"
 
 ## Slash Commands
 
-Type `/` at the beginning of an empty line to open the slash command menu. This provides a quick way to insert any block element:
+Type `/` at the start of a line or after a space to open the slash command menu. This provides a quick way to insert any block element:
 
 **Basic:**
 
@@ -18,6 +18,7 @@ Type `/` at the beginning of an empty line to open the slash command menu. This 
 - `/toggle` — Insert a toggle (collapsible) block
 - `/toggle heading 1` – `/toggle heading 3` — Insert a toggle with heading summary
 - `/toc` — Insert a Table of Contents
+- `/symbols` — Open the symbol and emoji picker (see [Symbols, emoji, and smart punctuation](/en/docs/editing/symbols-and-punctuation/))
 
 **Rich Content:**
 

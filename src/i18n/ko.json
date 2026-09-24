@@ -1119,7 +1119,7 @@
   "settings.markdown.strikethrough": "취소선",
   "settings.markdown.strikethrough.desc": "~~취소선~~ 구문 활성화",
   "settings.markdown.symbolSuggest": "기호·이모지 제안",
-  "settings.markdown.symbolSuggest.desc": ": 뒤에 두 글자 이상 입력하면 기호나 이모지를 골라 넣습니다 (:화살 → →, :웃음 → 😄). 영어와 한국어 키워드를 모두 찾습니다.",
+  "settings.markdown.symbolSuggest.desc": ": 뒤에 두 글자 이상 입력하면 기호나 이모지를 골라 넣습니다 (:화살표 → →, :웃음 → 😀). 영어와 한국어 키워드를 모두 찾습니다.",
   "settings.markdown.typography": "타이포그래피",
   "settings.panels.backlinks": "백링크",
   "settings.panels.bookmarks": "북마크",
