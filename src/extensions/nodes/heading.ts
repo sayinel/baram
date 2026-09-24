@@ -115,9 +115,10 @@ export const Heading = Node.create<HeadingOptions>({
         {} as Record<string, () => boolean>,
       ),
       // `Mod-=` / `Mod--` were bound here and never worked. `use-zoom.ts` listens on `window`
-      // in the CAPTURE phase for `(metaKey || ctrlKey) + = / - / 0`, so it ran first and zoomed;
-      // it calls only `preventDefault()`, which does not stop propagation, but ProseMirror does
-      // not consult `defaultPrevented` either — so the observable result was zoom, and the
+      // in the CAPTURE phase for the platform modifier (⌘ on macOS, Ctrl elsewhere — what
+      // `Mod-` means) + = / - / 0, so it runs first, zooms and calls `preventDefault()`. That
+      // does not stop propagation, but prosemirror-view skips any keydown that arrives already
+      // `defaultPrevented` (`eventBelongsToView`), so the observable result was zoom, and the
       // keystroke never reached heading level. Two doc tables promised users otherwise.
       //
       // `increaseHeadingLevel` / `decreaseHeadingLevel` are KEPT: they are real commands with

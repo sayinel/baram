@@ -12,8 +12,11 @@ use tauri::menu::{Menu, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, Submen
 ///
 /// 1. A **literal** `Ctrl` rather than `CmdOrCtrl`, so macOS got `Ctrl+-` — not the platform
 ///    convention, which is `Cmd+[` / `Cmd+]` (Safari, Finder, Xcode).
-/// 2. `use-zoom.ts` handles `(metaKey || ctrlKey) + "-"` on a window listener, so `Ctrl+-`
-///    fired **Back and Zoom Out together**, on every platform.
+/// 2. `use-zoom.ts` then took `(metaKey || ctrlKey) + "-"` on a window listener, so `Ctrl+-`
+///    fired **Back and Zoom Out together**, on every platform. It now takes only the platform's
+///    own modifier (⌘ on macOS, Ctrl elsewhere). That is exactly what `CmdOrCtrl` resolves to,
+///    and a literal `Ctrl+-` on macOS would now land on §37's ⌃- Back instead, so the rule
+///    below still keeps every accelerator off these keys.
 ///
 /// `BracketLeft`/`BracketRight` are muda `Code` names (its parser maps `"BRACKETLEFT" | "["`),
 /// chosen over the literal `[` because they name the physical key rather than a character that
@@ -709,10 +712,10 @@ mod tests {
     #[test]
     fn no_accelerator_lands_on_a_key_editor_zoom_owns() {
         // Applies to EVERY accelerator, and ignores the other modifiers on purpose:
-        // `use-zoom.ts` guards only `if (!e.metaKey && !e.ctrlKey) return;` and then switches on
-        // `e.key`, so it does NOT require Shift and Alt to be absent. `Alt+CmdOrCtrl+0` would
-        // collide just as `CmdOrCtrl+0` did — which is why moving Paragraph to `Alt+Cmd+0` was
-        // rejected rather than chosen.
+        // `use-zoom.ts` checks only the platform modifier (⌘ on macOS, Ctrl elsewhere) and then
+        // switches on `e.key`, so it does NOT require Shift and Alt to be absent.
+        // `Alt+CmdOrCtrl+0` would collide just as `CmdOrCtrl+0` did — which is why moving
+        // Paragraph to `Alt+Cmd+0` was rejected rather than chosen.
         for accelerator in all_accelerators() {
             let key = key_of(accelerator);
             assert!(

@@ -100,10 +100,14 @@
   // was the first cut and it made every step read as less than it was: shrinking the
   // layout viewport just reflows a fluid page to fill the frame again.
 
+  // The same modifier test as the host's use-zoom.ts: the platform's own
+  // modifier only, Cmd on macOS and Ctrl elsewhere. On macOS Ctrl+- is Back, not
+  // Zoom Out, so taking Ctrl there would make the preview disagree with the host.
   document.addEventListener(
     "keydown",
     function (event) {
-      if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
+      var mac = navigator.platform.indexOf("Mac") !== -1;
+      if (!(mac ? event.metaKey : event.ctrlKey) || event.altKey) return;
       var action = null;
       if (event.key === "=" || event.key === "+") action = "in";
       else if (event.key === "-" || event.key === "_") action = "out";

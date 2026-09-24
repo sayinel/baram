@@ -13,7 +13,7 @@
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const SHIM_SOURCE = readFileSync(
   resolve(__dirname, "../../../../src-tauri/src/protocol/html-preview-shim.js"),
@@ -310,6 +310,17 @@ describe("external links", () => {
 });
 
 describe("zoom input forwarding", () => {
+  // The shim reads the platform the way the host's use-zoom.ts does: ⌘ on
+  // macOS, Ctrl elsewhere. jsdom's own platform is neither, so each case sets it.
+  const realPlatform = navigator.platform;
+  const setPlatform = (platform: string) =>
+    Object.defineProperty(navigator, "platform", {
+      configurable: true,
+      value: platform,
+    });
+  beforeEach(() => setPlatform("MacIntel"));
+  afterEach(() => setPlatform(realPlatform));
+
   it.each([
     ["=", "in"],
     ["+", "in"],
@@ -327,11 +338,24 @@ describe("zoom input forwarding", () => {
     });
   });
 
-  it("accepts Ctrl as well as Cmd", () => {
+  it("leaves Ctrl alone on macOS — ⌃- is Back there, not Zoom Out", () => {
     const { key, posted } = mount();
-    expect(key({ ctrlKey: true, key: "=" }).prevented).toBe(true);
-    expect(posted.at(-1)?.action).toBe("in");
+    expect(key({ ctrlKey: true, key: "-" }).prevented).toBe(false);
+    expect(key({ ctrlKey: true, key: "=" }).prevented).toBe(false);
+    expect(posted.some((m) => m.type === "zoom")).toBe(false);
   });
+
+  it.each(["Win32", "Linux x86_64"])(
+    "on %s takes Ctrl as the zoom modifier and leaves Meta alone",
+    (platform) => {
+      setPlatform(platform);
+      const { key, posted } = mount();
+      expect(key({ key: "=", metaKey: true }).prevented).toBe(false);
+      expect(posted.some((m) => m.type === "zoom")).toBe(false);
+      expect(key({ ctrlKey: true, key: "-" }).prevented).toBe(true);
+      expect(posted.at(-1)?.action).toBe("out");
+    },
+  );
 
   it("ignores keys that are not zoom, and zoom keys without a modifier", () => {
     const { key, posted } = mount();
