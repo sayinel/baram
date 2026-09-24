@@ -20,6 +20,21 @@ beforeEach(async () => {
   useSettingsStore.setState({ locale: "en", recentSymbols: [] });
 });
 
+// Every option cell, found with `hidden: true`. The default accessibility
+// filter reads each cell's computed style, and jsdom throws away its whole
+// style cache on any attribute or child change in the document — so the first
+// query after each key press that re-renders the picker recomputed style for
+// the full grid, and "moves with the arrow keys and picks with Enter" crossed
+// the 5 s timeout on CI. The filter has nothing to remove here: no cell or
+// ancestor has `hidden`, `aria-hidden` or an inline style, and the test
+// document loads no stylesheet. Measured in every state these tests query —
+// the default grid after each move, a tab jump and a hover, recent, Korean,
+// search, no match, emoji not yet loaded — both queries return the same cells
+// in the same order. The one option query left on the default filter is in
+// "highlights the cell under the pointer and picks the one clicked"; that test
+// is the one that fails if the grid is marked `aria-hidden`.
+const options = () => screen.queryAllByRole("option", { hidden: true });
+
 function setup() {
   const onCancel = vi.fn();
   const onPick = vi.fn();
@@ -34,16 +49,6 @@ function setup() {
   const selected = () => selectedElement()?.textContent;
   return { onCancel, onPick, press, search, selected, selectedElement };
 }
-
-// Every option cell, found with `hidden: true`. The default accessibility
-// filter reads each cell's computed style, and jsdom throws away its whole
-// style cache on any attribute or child change in the document — so every
-// query after a key press recomputed style for the full grid, and "moves with
-// the arrow keys and picks with Enter" crossed the 5 s timeout on CI. These
-// tests ask which cell is selected, not whether assistive tech sees it, and
-// the filter removed nothing: on the default grid both queries return the same
-// elements in the same order (measured).
-const options = () => screen.queryAllByRole("option", { hidden: true });
 
 const titles = () =>
   [...document.querySelectorAll(".symbol-picker-section-title")].map(
@@ -191,7 +196,7 @@ describe("SymbolPicker", () => {
     const { onPick, press, search } = setup();
     fireEvent.change(search, { target: { value: "zzzq" } });
     expect(screen.getByText("No matching symbols")).toBeTruthy();
-    expect(screen.queryAllByRole("option")).toHaveLength(0);
+    expect(options()).toHaveLength(0);
     press("Enter");
     expect(onPick).not.toHaveBeenCalled();
   });
