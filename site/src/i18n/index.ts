@@ -16,9 +16,6 @@ const DICTS: Record<Locale, Record<string, string>> = { en, ko };
 export const isLocale = (value: string): value is Locale =>
   (LOCALES as readonly string[]).includes(value);
 
-/** 그 로케일의 다른 짝 — 언어 전환 링크에 쓴다. */
-export const otherLocale = (locale: Locale): Locale => (locale === "en" ? "ko" : "en");
-
 export const LOCALE_LABELS: Record<Locale, string> = { en: "English", ko: "한국어" };
 
 export function useTranslations(locale: Locale) {

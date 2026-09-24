@@ -17,6 +17,7 @@ import {
   translationState,
 } from "../src/lib/source-hash.ts";
 import { EN_DOCS, pageFile, slugsOn, TRANSLATION_DIRS } from "./docs-fs.mjs";
+import { headSignals, searchSignalProblems, sitemapEntries } from "./search-signals.mjs";
 
 const DIST = join(dirname(fileURLToPath(import.meta.url)), "..", "dist");
 
@@ -292,6 +293,18 @@ for (const locale of ROUTES.locales) {
   if (selected !== withBase(`/${locale}/`)) {
     problems.push(`[현재 언어 표시] ${locale} 랜딩 → ${selected ?? "(없음)"} (기대 ${withBase(`/${locale}/`)})`);
   }
+
+  // hreflang 도 우리가 조립한다(문서 페이지 것은 Starlight 이 낸다). 문서 페이지와 같은 모양 —
+  // 자기 자신을 포함한 모든 로케일, 그리고 기본 로케일을 가리키는 x-default. 8번의 전수 검사는
+  // 태그가 **하나도 없으면** 공허하게 통과하므로 모양을 여기서 고정한다.
+  const alternates = headSignals(html).alternates.map((a) => `${a.hreflang} ${a.href}`).sort().join(", ");
+  const wantAlternates = [
+    ...ROUTES.locales.map((l) => `${l} ${absolute(`/${l}/`)}`),
+    `x-default ${absolute(`/${ROUTES.defaultLocale}/`)}`,
+  ].sort().join(", ");
+  if (alternates !== wantAlternates) {
+    problems.push(`[랜딩 hreflang] ${locale} → ${alternates || "(없음)"} (기대 ${wantAlternates})`);
+  }
 }
 if (!landings) problems.push("[랜딩 0개] 헤더 단정이 한 로케일에서도 돌지 않았다");
 
@@ -306,11 +319,53 @@ for (const locale of ROUTES.locales) {
   }
 }
 
+// ── 8. 검색엔진 신호 — robots · canonical · hreflang · 사이트맵을 서로 맞댄다
+//
+// ‼️ 각 신호는 제자리에서 옳아 보인다. 루트가 noindex 인 것도, 사이트맵이 난 것도 맞았는데
+//    사이트맵이 그 루트를 제출했다 — 어긋남은 맞대야 보인다(search-signals.mjs 머리 주석).
+//    그래서 dist 의 HTML 을 **전부** 읽고, 사이트맵은 routes 가 조립한 색인 파일에서 따라간다
+//    (그 URL 이 robots.txt 가 선언한 것과 같음은 6번이 단정한다).
+const isFile = (p) => existsSync(p) && statSync(p).isFile();
+const pageSignals = new Map();
+const walkHtml = (dir, prefix) => {
+  for (const name of readdirSync(dir)) {
+    const p = join(dir, name);
+    if (statSync(p).isDirectory()) walkHtml(p, `${prefix}${name}/`);
+    else if (name.endsWith(".html")) {
+      const path = name === "index.html" ? prefix : `${prefix}${name}`;
+      // 비교 상대가 모두 `URL#href` 로 조립된다(Starlight `localizedUrl(...).href` · 랜딩 ·
+      // @astrojs/sitemap) — 키도 같은 형태로 맞춰 퍼센트 인코딩이 갈리지 않게 한다.
+      pageSignals.set(new URL(absolute(`/${path}`)).href, headSignals(readFileSync(p, "utf8")));
+    }
+  }
+};
+walkHtml(DIST, "");
+
+const siteRoot = absolute("/");
+const distFileOf = (url) => (url.startsWith(siteRoot) ? join(DIST, url.slice(siteRoot.length)) : null);
+const sitemap = [];
+const sitemapIndex = distFileOf(wantSitemap);
+if (sitemapIndex && isFile(sitemapIndex)) {
+  for (const [, url] of readFileSync(sitemapIndex, "utf8").matchAll(/<loc>([^<]+)<\/loc>/g)) {
+    const file = distFileOf(url.trim());
+    if (!file || !isFile(file)) problems.push(`[사이트맵 부재] 색인 파일이 가리키는 ${url} 가 dist 안에 없다`);
+    else sitemap.push(...sitemapEntries(readFileSync(file, "utf8")));
+  }
+}
+if (!sitemap.length) problems.push("[사이트맵 항목 0개] 사이트맵 단정이 한 URL 에서도 돌지 않았다");
+// noindex 가 있어야 하는 자리 — 루트(언어 분기, `src/pages/index.astro`), 404
+// (`src/content/docs/404.md`), 구 URL 스텁(`src/integrations/legacy-redirects.mjs`).
+// 이 밖의 페이지가 noindex 이거나 이 중 하나가 noindex 가 아니면 실패다.
+const expectedNoindex = [absolute("/"), absolute("/404.html"), ...legacy.map(({ from }) => absolute(from))];
+problems.push(...searchSignalProblems({ noindex: expectedNoindex, pages: pageSignals, sitemap }));
+const withAlternates = [...pageSignals.values()].filter((p) => p.alternates.length).length;
+
 const total = PAGES.length;
 const done = PAGES.filter((p) => migrated(p.slug)).length;
 console.log(
   `이주 ${done}/${total} 페이지 · en ${enPages.length}개 · ko ${koPages.length}개 · ` +
-    `구 URL 스텁 ${legacy.length}개 · 문서 홈 주제 카드 ${expectedCardHrefs(ROUTES.defaultLocale).length}개 × ${cardLocales}로케일`,
+    `구 URL 스텁 ${legacy.length}개 · 문서 홈 주제 카드 ${expectedCardHrefs(ROUTES.defaultLocale).length}개 × ${cardLocales}로케일 · ` +
+    `사이트맵 ${sitemap.length}개 URL · hreflang 페이지 ${withAlternates}개`,
 );
 if (pending.length) {
   console.log(`\n⏳ 이주 대기 ${pending.length}건 (결함 아님)`);

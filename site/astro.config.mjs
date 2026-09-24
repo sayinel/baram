@@ -1,6 +1,7 @@
 // Baram 홈페이지 + 문서 사이트.
 // 설계: dev/design/specs/0044-docs-site-i18n-restructure-design.md
 // 페이지 트리: dev/design/specs/0045-docs-site-ia-tree.md (canonical = ./ia-tree.mjs)
+import sitemap from "@astrojs/sitemap";
 import starlight from "@astrojs/starlight";
 import { defineConfig } from "astro/config";
 import starlightLinksValidator from "starlight-links-validator";
@@ -59,6 +60,27 @@ export default defineConfig({
   trailingSlash: "always",
   integrations: [
     legacyRedirects({ absolute, targets: legacyTargets(), withBase }),
+    // 사이트맵은 Starlight 에 맡기지 않고 직접 단다 — 루트를 빼야 해서다. Starlight 은 이 이름의
+    // integration 이 이미 있으면 자기 것을 붙이지 않는다(`@astrojs/starlight` 의 `index.js`,
+    // `allIntegrations.find(... "@astrojs/sitemap")`). `i18n` 은 Starlight 이 넘기던 값과 같다
+    // (그쪽 `getSitemapConfig`: 로케일 → `lang`).
+    //
+    // ‼️ 루트는 언어 분기 페이지라 noindex 다. 사이트맵은 "색인해 달라" 는 목록이므로 거기 두면
+    //    스스로 모순이고 Search Console 이 그렇게 신고했다. 게다가 sitemap 의 i18n 은 로케일
+    //    접두사 없는 URL 을 기본 로케일로 읽어서 루트를 `/en/` 과 같은 en 대체로 묶었다.
+    //    필터는 대체 링크 계산 **전에** 돈다 — 빼면 그 묶음도 사라진다.
+    // ‼️ 필터를 넓히지 말 것. `scripts/check-dist.mjs` 8번이 짝을 지킨다 — noindex 는 정해진
+    //    자리(루트·404·구 URL 스텁)에만 있고, 색인되는 표준 URL 은 전부 사이트맵에 있어야 한다.
+    //    어떤 페이지가 사이트맵에 있어 실패한다면 필터가 아니라 그 페이지가 왜 noindex 인지를 볼 것.
+    sitemap({
+      i18n: {
+        defaultLocale: ROUTES.defaultLocale,
+        locales: Object.fromEntries(
+          Object.entries(starlightLocales()).map(([locale, { lang }]) => [locale, lang]),
+        ),
+      },
+      filter: (page) => page !== absolute("/"),
+    }),
     starlight({
       title: "Baram",
       // 사이드바 머리의 워드마크. 랜딩 nav 와 **같은 파일**을 쓴다 —

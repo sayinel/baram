@@ -17,6 +17,7 @@
     "verify": "npm run check:glossary && npm run build && npm run check:dist && npm run check:pages && npm test && astro check"
   },
   "dependencies": {
+    "@astrojs/sitemap": "3.7.4",
     "@astrojs/starlight": "0.42.0",
     "astro": "7.3.1",
     "sharp": "0.35.4"

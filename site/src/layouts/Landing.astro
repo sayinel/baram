@@ -1,10 +1,10 @@
 ---
 // 랜딩 페이지 셸 — nav · footer · head. Starlight 레이아웃 밖이다(디자인 자유도).
 // 언어는 URL 이 정한다 — 옛 `localStorage` + `data-i18n` 치환은 폐기했다.
-import { docPath, withBase } from "../../routes.mjs";
+import { docPath, ROUTES, withBase } from "../../routes.mjs";
 import logoDark from "../assets/baram-logo-dark.png";
 import logoLight from "../assets/baram-logo.png";
-import { LOCALE_LABELS, LOCALES, otherLocale, useTranslations, type Locale } from "../i18n";
+import { LOCALE_LABELS, LOCALES, useTranslations, type Locale } from "../i18n";
 import "../styles/site.css";
 
 interface Props {
@@ -13,7 +13,6 @@ interface Props {
 
 const { locale } = Astro.props;
 const t = useTranslations(locale);
-const other = otherLocale(locale);
 
 // nav·푸터의 "문서" 는 **문서 홈**으로 보낸다 — 거기가 시작 경로·주제 카드·자주
 // 찾는 것을 한자리에 놓은 안내면이다. 앱 도움말의 "사용 설명서" 는 이것과 별개로
@@ -22,7 +21,13 @@ const docsHome = withBase(docPath("index", locale));
 
 const title = "Baram — Lightweight WYSIWYG Markdown Editor";
 const description = t("hero.sub");
-const canonical = new URL(withBase(`/${locale}/`), Astro.site).href;
+const landingUrl = (l: string) => new URL(withBase(`/${l}/`), Astro.site).href;
+const canonical = landingUrl(locale);
+// hreflang 은 문서 페이지(Starlight 이 낸다)와 같은 모양이다 — 자기 자신을 포함한 모든 로케일,
+// 그리고 기본 로케일 랜딩을 가리키는 x-default. x-default 를 루트로 두지 않는다: 루트는
+// 언어 분기 페이지라 noindex 이고 canonical 도 `/en/` 이다 — 색인에 들어가지 않는 URL 이라
+// 대체 버전으로 대도 검색 결과에 내보일 페이지가 없다.
+const xDefault = landingUrl(ROUTES.defaultLocale);
 const ogImage = new URL(withBase("/assets/hero.png"), Astro.site).href;
 ---
 
@@ -33,8 +38,8 @@ const ogImage = new URL(withBase("/assets/hero.png"), Astro.site).href;
     <title>{title}</title>
     <meta name="description" content={description} />
     <link rel="canonical" href={canonical} />
-    <link rel="alternate" hreflang={other} href={new URL(withBase(`/${other}/`), Astro.site).href} />
-    <link rel="alternate" hreflang="x-default" href={new URL(withBase("/"), Astro.site).href} />
+    {LOCALES.map((l) => <link rel="alternate" hreflang={l} href={landingUrl(l)} />)}
+    <link rel="alternate" hreflang="x-default" href={xDefault} />
     <meta property="og:type" content="website" />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
