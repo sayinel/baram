@@ -16,6 +16,8 @@
     "tabBar": false
   },
   "dials": {
+    "cornerRadius": "round",
+    "density": "compact",
     "editorEmphasisStyle": "weight",
     "editorLetterSpacing": -0.01,
     "editorLineBreak": "keepAll",
