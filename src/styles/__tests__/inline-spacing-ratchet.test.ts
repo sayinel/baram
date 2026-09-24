@@ -19,6 +19,9 @@ describe("스캐너 — 잡아야 하는 것", () => {
     ["style-number", `const o = { gap: -4 };`],
     ["css-text", `el.style.cssText = "color:red;padding:32px";`],
     ["css-text", "const css = `.mark { border-radius: 2px }`;"],
+    // 삼항의 두 갈래가 모두 리터럴이면 새는 값이 있는지 본다 — 잎을 모아 판정한다.
+    ["style-px", `<div style={{ padding: cond ? "8px" : "0px" }} />`],
+    ["style-number", `<div style={{ marginTop: cond ? 12 : 0 }} />`],
   ] as const)("%s ← %s", (channel, source) => {
     expect(channels(source)).toEqual([channel]);
   });
@@ -46,6 +49,10 @@ describe("스캐너 — 잡으면 안 되는 것", () => {
     `/* marginTop: 12 */`,
     `<p className="italic font-semibold w-full" />`,
     `<div data-x="p-2" />`,
+    // 삼항의 두 갈래가 모두 0 이면(단위 섞여도) 셀 값이 없다.
+    `<div style={{ padding: cond ? 0 : "0" }} />`,
+    // 호출은 값이 아니라 인자다 — 안으로 내려가지 않는다.
+    `<div style={{ padding: toPx(8) }} />`,
   ])("%s", (source) => {
     expect(channels(source)).toEqual([]);
   });

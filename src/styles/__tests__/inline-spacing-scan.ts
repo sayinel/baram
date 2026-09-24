@@ -8,7 +8,11 @@
 //     리터럴 숫자와 `px` 를 담은 템플릿만 센다.
 //   - 축약 속성(`{ padding }`) · 스프레드 · 계산된 키.
 //   - `className` 속성 **밖**의 클래스 문자열(`const cls = "p-2"` 를 나중에 넘기는 것).
-// 이 경계 안에서 새 값이 생기면 래칫이 빨개진다. 경계 밖은 코드 리뷰의 몫이다.
+//   - DOM 프로퍼티 대입(`el.style.padding = "8px"`) — 객체 리터럴의 PropertyAssignment 가
+//     아니라서 스캐너가 보지 않는다.
+// 삼항(`?:`)·괄호·`??`·`||` 로 감싼 리터럴은 잎까지 내려가 본다(`toPx(8)` 같은 호출의
+// 인자는 값이 아니라서 내려가지 않는다). 이 경계 안에서 새 값이 생기면 래칫이 빨개진다.
+// 경계 밖은 코드 리뷰의 몫이다.
 import ts from "typescript";
 
 export type Channel = "css-text" | "style-number" | "style-px" | "tailwind";
@@ -56,24 +60,13 @@ export function scanSource(fileName: string, source: string): Hit[] {
       ts.isPropertyAssignment(node) &&
       STYLE_KEY.test(propertyName(node.name))
     ) {
-      const value = node.initializer;
-      if (
-        ts.isStringLiteral(value) ||
-        ts.isNoSubstitutionTemplateLiteral(value)
-      ) {
-        if (NONZERO_PX.test(value.text)) hit(node, "style-px");
-        return;
+      const leaves = collectLeaves(node.initializer);
+      if (leaves.some(leafIsPx)) {
+        hit(node, "style-px");
+      } else if (leaves.some(leafIsNonzeroNumber)) {
+        hit(node, "style-number");
       }
-      if (ts.isTemplateExpression(value)) {
-        if (templateTexts(value).some((t) => t.includes("px")))
-          hit(node, "style-px");
-        return;
-      }
-      const amount = numericValue(value);
-      if (amount !== undefined) {
-        if (amount !== 0) hit(node, "style-number");
-        return;
-      }
+      return;
     }
     if (
       ts.isJsxAttribute(node) &&
@@ -102,6 +95,45 @@ export function scanSource(fileName: string, source: string): Hit[] {
   };
   visit(sf);
   return hits;
+}
+
+/**
+ * STYLE_KEY 값을 잎(leaf) 리터럴까지 내려가며 모은다 — 값을 만드는 모양(삼항의 두 갈래 ·
+ * 괄호 · `??`·`||` 의 양쪽)만 내려가고, 그 밖(호출 등)은 잎 자신으로 멈춘다.
+ * `toPx(8)` 의 `8` 은 인자지 padding 값이 아니라서 내려가지 않는다.
+ */
+function collectLeaves(node: ts.Expression): ts.Expression[] {
+  if (ts.isConditionalExpression(node)) {
+    return [...collectLeaves(node.whenTrue), ...collectLeaves(node.whenFalse)];
+  }
+  if (ts.isParenthesizedExpression(node)) {
+    return collectLeaves(node.expression);
+  }
+  if (
+    ts.isBinaryExpression(node) &&
+    (node.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken ||
+      node.operatorToken.kind === ts.SyntaxKind.BarBarToken)
+  ) {
+    return [...collectLeaves(node.left), ...collectLeaves(node.right)];
+  }
+  return [node];
+}
+
+/** 잎 하나가 0 이 아닌 px 문자열/템플릿인가. */
+function leafIsPx(node: ts.Expression): boolean {
+  if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
+    return NONZERO_PX.test(node.text);
+  }
+  if (ts.isTemplateExpression(node)) {
+    return templateTexts(node).some((t) => t.includes("px"));
+  }
+  return false;
+}
+
+/** 잎 하나가 0 이 아닌 숫자 리터럴(음수 포함)인가. */
+function leafIsNonzeroNumber(node: ts.Expression): boolean {
+  const amount = numericValue(node);
+  return amount !== undefined && amount !== 0;
 }
 
 function numericValue(node: ts.Expression): number | undefined {
