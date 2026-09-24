@@ -83,10 +83,7 @@ function renderBlock(node: MdastBlockContent, key: number): ReactNode {
   switch (node.type) {
     case "blockquote":
       return (
-        <blockquote
-          className="mb-2 border-l-2 border-[var(--color-border-default)] pl-3 italic"
-          key={key}
-        >
+        <blockquote className="markdown-rendered__blockquote" key={key}>
           {node.children.map((child, i) =>
             renderBlock(child as MdastBlockContent, i),
           )}
@@ -94,10 +91,7 @@ function renderBlock(node: MdastBlockContent, key: number): ReactNode {
       );
     case "code":
       return (
-        <pre
-          className="mb-2 overflow-x-auto rounded bg-[var(--color-bg-elevated)] p-2 text-[0.85em]"
-          key={key}
-        >
+        <pre className="markdown-rendered__pre" key={key}>
           <code className={node.lang ? `language-${node.lang}` : ""}>
             {node.value}
           </code>
@@ -106,7 +100,7 @@ function renderBlock(node: MdastBlockContent, key: number): ReactNode {
     case "heading": {
       const Tag = `h${node.depth}` as "h1" | "h2" | "h3" | "h4" | "h5" | "h6";
       return (
-        <Tag className="mb-2 font-semibold" key={key}>
+        <Tag className="markdown-rendered__heading" key={key}>
           {node.children.map(renderInline)}
         </Tag>
       );
@@ -121,13 +115,13 @@ function renderBlock(node: MdastBlockContent, key: number): ReactNode {
     case "list":
       if (node.ordered) {
         return (
-          <ol className="mb-2 list-decimal pl-5" key={key}>
+          <ol className="markdown-rendered__ol" key={key}>
             {node.children.map((item, i) => renderBlock(item, i))}
           </ol>
         );
       }
       return (
-        <ul className="mb-2 list-disc pl-5" key={key}>
+        <ul className="markdown-rendered__ul" key={key}>
           {node.children.map((item, i) => renderBlock(item, i))}
         </ul>
       );
@@ -141,23 +135,20 @@ function renderBlock(node: MdastBlockContent, key: number): ReactNode {
       );
     case "paragraph":
       return (
-        <p className="mb-2 last:mb-0" key={key}>
+        <p className="markdown-rendered__p" key={key}>
           {node.children.map(renderInline)}
         </p>
       );
     case "table":
       return (
-        <table className="mb-2 w-full border-collapse text-[0.85em]" key={key}>
+        <table className="markdown-rendered__table" key={key}>
           <tbody>
             {node.children.map((row, ri) => (
               <tr key={ri}>
                 {row.children.map((cell, ci) => {
                   const CellTag = ri === 0 ? "th" : "td";
                   return (
-                    <CellTag
-                      className="border border-[var(--color-border-default)] px-2 py-1"
-                      key={ci}
-                    >
+                    <CellTag className="markdown-rendered__cell" key={ci}>
                       {cell.children.map(renderInline)}
                     </CellTag>
                   );
@@ -168,9 +159,7 @@ function renderBlock(node: MdastBlockContent, key: number): ReactNode {
         </table>
       );
     case "thematicBreak":
-      return (
-        <hr className="my-2 border-[var(--color-border-default)]" key={key} />
-      );
+      return <hr className="markdown-rendered__hr" key={key} />;
     default:
       return null;
   }
@@ -183,7 +172,7 @@ function renderInline(node: PhrasingContent, key: number): ReactNode {
       return <br key={key} />;
     case "delete":
       return (
-        <del className="line-through" key={key}>
+        <del className="markdown-rendered__del" key={key}>
           {node.children.map(renderInline)}
         </del>
       );
@@ -200,7 +189,7 @@ function renderInline(node: PhrasingContent, key: number): ReactNode {
       return (
         <img
           alt={node.alt ?? ""}
-          className="max-w-full"
+          className="markdown-rendered__img"
           key={key}
           src={safeImageSrc(node.url)}
           title={node.title ?? undefined}
@@ -208,17 +197,14 @@ function renderInline(node: PhrasingContent, key: number): ReactNode {
       );
     case "inlineCode":
       return (
-        <code
-          className="rounded bg-[var(--color-bg-elevated)] px-1 py-0.5 font-mono text-[0.85em]"
-          key={key}
-        >
+        <code className="markdown-rendered__code" key={key}>
           {node.value}
         </code>
       );
     case "link":
       return (
         <a
-          className="text-[var(--color-accent-default)] underline"
+          className="markdown-rendered__link"
           href={safeLinkHref(node.url)}
           key={key}
           rel="noopener noreferrer"
@@ -230,7 +216,7 @@ function renderInline(node: PhrasingContent, key: number): ReactNode {
       );
     case "strong":
       return (
-        <strong className="font-semibold" key={key}>
+        <strong className="markdown-rendered__strong" key={key}>
           {node.children.map(renderInline)}
         </strong>
       );

@@ -684,3 +684,96 @@
 [data-theme="dark"] .inline-ai-prompt {
   box-shadow: 0 4px 16px rgb(0 0 0 / 40%);
 }
+
+/* §365 — MarkdownRenderer, moved from Tailwind utilities (plan 0101 Task 7). One class per
+   element, not element selectors: raw HTML blocks and the code inside pre never had these
+   utilities, and single-class selectors stay below the README and update-notes overrides in
+   panels.css (0,2,1) whatever the import order. */
+.markdown-rendered__blockquote {
+  padding-left: var(--space-3);
+  margin-bottom: var(--space-2);
+  font-style: italic;
+  border-color: var(--color-border-default);
+  border-left-style: solid;
+  border-left-width: 2px;
+}
+
+.markdown-rendered__pre {
+  padding: var(--space-2);
+  margin-bottom: var(--space-2);
+  overflow-x: auto;
+  font-size: 0.85em;
+  background-color: var(--color-bg-elevated);
+  border-radius: var(--radius-default);
+}
+
+.markdown-rendered__heading {
+  margin-bottom: var(--space-2);
+  font-weight: var(--font-weight-semibold);
+}
+
+.markdown-rendered__ol {
+  padding-left: var(--space-5);
+  margin-bottom: var(--space-2);
+  list-style-type: decimal;
+}
+
+.markdown-rendered__ul {
+  padding-left: var(--space-5);
+  margin-bottom: var(--space-2);
+  list-style-type: disc;
+}
+
+.markdown-rendered__p {
+  margin-bottom: var(--space-2);
+}
+
+.markdown-rendered__p:last-child {
+  margin-bottom: 0;
+}
+
+.markdown-rendered__table {
+  width: 100%;
+  margin-bottom: var(--space-2);
+  font-size: 0.85em;
+  border-collapse: collapse;
+}
+
+.markdown-rendered__cell {
+  padding-block: var(--space-1);
+  padding-inline: var(--space-2);
+  border-color: var(--color-border-default);
+  border-style: solid;
+  border-width: 1px;
+}
+
+.markdown-rendered__hr {
+  margin-block: var(--space-2);
+  border-color: var(--color-border-default);
+}
+
+.markdown-rendered__del {
+  text-decoration-line: line-through;
+}
+
+.markdown-rendered__img {
+  max-width: 100%;
+}
+
+.markdown-rendered__code {
+  padding-block: var(--space-0-5);
+  padding-inline: var(--space-1);
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background-color: var(--color-bg-elevated);
+  border-radius: var(--radius-default);
+}
+
+.markdown-rendered__link {
+  color: var(--color-accent-default);
+  text-decoration-line: underline;
+}
+
+.markdown-rendered__strong {
+  font-weight: var(--font-weight-semibold);
+}

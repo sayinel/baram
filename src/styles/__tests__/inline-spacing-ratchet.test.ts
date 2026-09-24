@@ -66,9 +66,6 @@ describe("스캐너 — 잡으면 안 되는 것", () => {
  * 이 자기 항목을 지운다** — 그 전까지는 오늘의 개수로 여기 있다.
  */
 const PINNED: Record<string, Partial<Record<Channel, number>>> = {
-  // Task 7 이 옮긴다 — 마크다운 렌더러.
-  "src/components/ai/MarkdownRenderer.tsx": { tailwind: 19 },
-
   // 그대로 둔다(0057 §8.2) — 마운트되지 않는 Agent 컴포넌트 넷, 다이얼이 닿지 않는다.
   "src/components/ai/AgentDiffView.tsx": { tailwind: 9 },
   "src/components/ai/AgentPanel.tsx": { tailwind: 10 },
