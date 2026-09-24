@@ -50,6 +50,13 @@ const RADIUS_PROPS = /^border(-[a-z]+)*-radius$/u;
  * 싣는다 — 그래야 그것들이 **변하지 않았음**도 함께 고정된다. 이름 바로 뒤에 `)` 가
  * 오지 않는 참조(fallback 을 단 `var(--space-2, 8px)`)와 속성의 축이 아닌 표의 이름
  * (`padding` 에 쓴 `var(--radius-sm)`)도 풀지 않고 `var(…)` 글자 그대로 싣는다.
+ *
+ * 값의 공백은 싣기 전에 편다 — 연속 공백(줄바꿈 포함)은 한 칸으로, 여는 괄호 뒤와
+ * 닫는 괄호 앞의 공백은 없앤다. prettier 는 긴 `calc(…)` 를 괄호 안쪽에서 줄바꿈하고
+ * 들여쓰기는 규칙의 중첩 깊이를 따르므로, 펴지 않으면 값이 그대로인 재포맷이 줄을
+ * 바꿔 "이관 커밋은 `+` 줄만" 이라는 증명을 깬다. 괄호 안쪽 공백은 CSS 값에서 의미가
+ * 없다. 공백이 의미를 갖는 것은 따옴표 문자열 안뿐인데, 이 함수가 싣는 값에는 따옴표가
+ * 하나도 없다(2026-09-24, 스냅샷의 값 필드 전수).
  */
 export function resolvedSpacingDeclarations(): string[] {
   const lines: string[] = [];
@@ -61,7 +68,11 @@ export function resolvedSpacingDeclarations(): string[] {
       const isRadius = RADIUS_PROPS.test(prop);
       if (!isSpacing && !isRadius) continue;
       const table = isSpacing ? SPACE_TOKENS : RADIUS_TOKENS;
-      const resolved = value.replaceAll(
+      const flat = value
+        .replaceAll(/\s+/gu, " ")
+        .replaceAll("( ", "(")
+        .replaceAll(" )", ")");
+      const resolved = flat.replaceAll(
         /var\((--(?:space|radius)-[a-z0-9-]+)\)/gu,
         (whole, name: string) => table[name] ?? whole,
       );

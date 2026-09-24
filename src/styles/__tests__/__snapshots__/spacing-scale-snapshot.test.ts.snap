@@ -880,9 +880,7 @@ exports[`간격·모서리 선언의 계산값이 그대로다 1`] = `
   "src/styles/journal-calendar.css|.contribution-heatmap-legend|margin-top|8px",
   "src/styles/journal-calendar.css|.contribution-heatmap-month-grid|gap|2px",
   "src/styles/journal-calendar.css|.contribution-heatmap-month-labels|margin-bottom|4px",
-  "src/styles/journal-calendar.css|.contribution-heatmap-month-labels|padding-left|calc(
-    var(--contribution-heatmap-day-label-width) + 6px
-  )",
+  "src/styles/journal-calendar.css|.contribution-heatmap-month-labels|padding-left|calc(var(--contribution-heatmap-day-label-width) + 6px)",
   "src/styles/journal-calendar.css|.contribution-heatmap-tooltip-fixed|border-radius|4px",
   "src/styles/journal-calendar.css|.contribution-heatmap-tooltip-fixed|padding|2px 6px",
   "src/styles/journal-calendar.css|.contribution-heatmap::-webkit-scrollbar-thumb|border-radius|2px",
