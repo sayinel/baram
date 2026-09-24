@@ -483,7 +483,11 @@ mod tests {
             ("commands/fs_cmd.rs", "allow_directory(&path, true)"),
             // §260 설치된 플러그인 디렉터리 — 앱이 소유한 plugins 루트 하위.
             ("commands/plugin_cmd.rs", "allow_directory(&dir, true)"),
-            // §329.6 세 번째 입구. `plugin_add_dev_folder`가 ensure_approved 뒤에만 부른다.
+            // §329.6 세 번째 입구 `dev_info`. 부르는 곳은 둘이다 — `plugin_add_dev_folder` 는
+            // ensure_approved 뒤에, `plugin_list_dev` 는 승인 없이 `read_dev_folders` 의 목록에
+            // 대해 부른다. 그 목록은 dev 빌드에서만 비어 있지 않으므로(`dev_folders_for_this_build`)
+            // 릴리스 빌드에서 승인 없는 부여는 도달 불가다. dev 빌드에서는 config.json 에 적힌
+            // 폴더가 승인 없이 부여를 받는다 — 목록을 Rust 소유로 옮기는 개발자 모드(§379)의 몫.
             ("commands/plugin_cmd.rs", "allow_directory(folder, true)"),
         ];
 

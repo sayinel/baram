@@ -1187,7 +1187,7 @@
       "phase": 3,
       "milestone": "M10",
       "status": "implemented",
-      "description": "List registered dev plugin folders"
+      "description": "List registered dev plugin folders and grant each a recursive asset scope; always empty in release builds (§260 Phase 5)"
     },
     {
       "name": "plugin_http_fetch",
