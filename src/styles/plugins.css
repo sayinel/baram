@@ -792,3 +792,494 @@
     0 0 0 2px var(--color-bg-default),
     0 0 0 4px var(--color-accent-default);
 }
+
+/* §365 — marketplace shell · detail · card · trust badge, moved from inline styles (plan 0101). Values unchanged; the move lets the density and corner dials reach this surface. */
+.plugin-marketplace {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.plugin-marketplace__header {
+  padding: var(--space-3) var(--space-4) 0;
+}
+
+.plugin-marketplace__title {
+  margin: 0 0 var(--space-3);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.plugin-marketplace__tab-bar {
+  display: flex;
+  gap: 0;
+  margin-bottom: var(--space-2);
+  border-bottom: 1px solid var(--color-border-default);
+}
+
+/* The -1px pulls each tab's 2px underline over the tab bar's 1px bottom border. */
+.plugin-marketplace__tab-btn {
+  padding: var(--space-1-5) var(--space-3);
+  /* stylelint-disable-next-line declaration-property-value-disallowed-list -- 음수 값이다; var() 앞에 `-`를 붙여 부호를 뒤집을 수 없다(0097 R-C) */
+  margin-bottom: -1px;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background-color: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+}
+
+.plugin-marketplace__tab-btn--active {
+  font-weight: 600;
+  color: var(--color-accent-default);
+  border-bottom: 2px solid var(--color-accent-default);
+}
+
+.plugin-marketplace__search {
+  box-sizing: border-box;
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-2);
+  font-size: 13px;
+  color: var(--color-text-primary);
+  outline: none;
+  background-color: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+}
+
+/* Inline, the `outline: none` above beat a11y.css's `*:focus-visible` ring. As a class it
+   ties that rule's specificity and loses on import order (a11y.css is imported after this
+   file), so without this rule the move would add a focus ring the input never had. */
+.plugin-marketplace__search:focus-visible {
+  outline: none;
+}
+
+.plugin-marketplace__content {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.plugin-marketplace__message {
+  padding: var(--space-8) var(--space-4);
+  font-size: 13px;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.plugin-marketplace__error {
+  padding: var(--space-4);
+  font-size: 13px;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.plugin-marketplace__error-detail {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.plugin-marketplace__retry-btn {
+  padding: var(--space-1-5) var(--space-3);
+  margin-top: var(--space-2);
+  font-size: 12px;
+  color: var(--color-accent-on-solid);
+  cursor: pointer;
+  background-color: var(--color-accent-solid);
+  border: none;
+  border-radius: var(--radius-md);
+}
+
+.plugin-detail {
+  height: 100%;
+  padding: var(--space-4);
+  overflow-y: auto;
+}
+
+.plugin-detail__back-btn {
+  display: flex;
+  gap: var(--space-1);
+  align-items: center;
+  padding: var(--space-1) var(--space-2);
+  margin-bottom: var(--space-4);
+  font-size: 13px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background-color: transparent;
+  border: none;
+  border-radius: var(--radius-default);
+}
+
+.plugin-detail__header {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  margin-bottom: var(--space-4);
+}
+
+.plugin-detail__icon {
+  font-size: 32px;
+}
+
+.plugin-detail__title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.plugin-detail__meta-row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  margin-top: var(--space-1);
+}
+
+.plugin-detail__meta {
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.plugin-detail__license {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.plugin-detail__trust-row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  margin-top: var(--space-1-5);
+}
+
+.plugin-detail__error {
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-3);
+  font-size: 13px;
+  color: var(--color-status-danger);
+
+  /* Checksums are unbroken 64-char tokens — without this they overflow the banner
+     horizontally. */
+  overflow-wrap: anywhere;
+  background-color: var(--color-status-error-bg);
+  border: 1px solid var(--color-status-error-border);
+  border-radius: var(--radius-md);
+}
+
+.plugin-detail__actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+}
+
+.plugin-detail__installing-btn {
+  padding: var(--space-2) var(--space-5);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-disabled);
+  background-color: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+}
+
+.plugin-detail__toggle-btn {
+  padding: var(--space-2) var(--space-5);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  background-color: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+}
+
+.plugin-detail__toggle-btn--enabled {
+  color: var(--color-accent-on-solid);
+  background-color: var(--color-accent-solid);
+  border: none;
+}
+
+.plugin-detail__update-btn {
+  padding: var(--space-2) var(--space-5);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-status-warning-on-solid);
+  cursor: pointer;
+  background-color: var(--color-status-warning);
+  border: none;
+  border-radius: var(--radius-md);
+}
+
+.plugin-detail__remove-btn {
+  padding: var(--space-2) var(--space-5);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-status-danger);
+  cursor: pointer;
+  background-color: transparent;
+  border: 1px solid var(--color-status-danger);
+  border-radius: var(--radius-md);
+}
+
+.plugin-detail__install-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.plugin-detail__install-btn {
+  align-self: flex-start;
+  padding: var(--space-2) var(--space-5);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-accent-on-solid);
+  cursor: pointer;
+  background-color: var(--color-accent-solid);
+  border: none;
+  border-radius: var(--radius-md);
+  opacity: 1;
+}
+
+/* A legacy entry (no `trust`) cannot be installed; the component disables the button. */
+.plugin-detail__install-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.plugin-detail__section {
+  margin-bottom: var(--space-5);
+}
+
+.plugin-detail__section-title {
+  margin-bottom: var(--space-2);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.plugin-detail__description {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+}
+
+.plugin-detail__caps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+}
+
+.plugin-detail__none {
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.plugin-detail__links {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.plugin-detail__link {
+  font-size: 13px;
+  color: var(--color-accent-default);
+}
+
+.plugin-detail__keywords {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.plugin-detail__keyword {
+  padding: var(--space-0-5) var(--space-2);
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  background-color: var(--color-bg-subtle);
+  border-radius: var(--radius-default);
+}
+
+.plugin-card {
+  padding: var(--space-3) var(--space-4);
+  cursor: pointer;
+  border-bottom: 1px solid var(--color-border-default);
+  transition: background-color 0.15s;
+}
+
+/* Was an onMouseEnter/onMouseLeave pair writing `style.backgroundColor`. Leaving wrote
+   `transparent`, which is what the card shows with no rule at all. */
+.plugin-card:hover {
+  background-color: var(--color-bg-subtle);
+}
+
+.plugin-card__row {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.plugin-card__main {
+  flex: 1;
+  min-width: 0;
+}
+
+.plugin-card__head {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  margin-bottom: var(--space-1);
+}
+
+.plugin-card__icon {
+  font-size: 20px;
+}
+
+.plugin-card__name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.plugin-card__version {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.plugin-card__desc {
+  margin: 0 0 var(--space-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.plugin-card__error {
+  padding: var(--space-2) var(--space-3);
+  margin: 0 0 var(--space-2);
+  font-size: 12px;
+  color: var(--color-status-danger);
+
+  /* Checksums are unbroken 64-char tokens — without this they overflow the banner
+     horizontally. */
+  overflow-wrap: anywhere;
+  background-color: var(--color-status-error-bg);
+  border: 1px solid var(--color-status-error-border);
+  border-radius: var(--radius-md);
+}
+
+.plugin-card__meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1-5);
+  align-items: center;
+}
+
+.plugin-card__author {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.plugin-card__downloads {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.plugin-card__caps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-top: var(--space-1-5);
+}
+
+.plugin-card__more {
+  align-self: center;
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.plugin-card__action {
+  flex-shrink: 0;
+}
+
+.plugin-card__installing-btn {
+  padding: var(--space-1-5) var(--space-4);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-disabled);
+  cursor: not-allowed;
+  background-color: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+}
+
+.plugin-card__update-btn {
+  padding: var(--space-1-5) var(--space-4);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-status-warning-on-solid);
+  cursor: pointer;
+  background-color: var(--color-status-warning);
+  border: none;
+  border-radius: var(--radius-md);
+}
+
+.plugin-card__remove-btn {
+  padding: var(--space-1-5) var(--space-4);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-status-danger);
+  cursor: pointer;
+  background-color: transparent;
+  border: 1px solid var(--color-status-danger);
+  border-radius: var(--radius-md);
+}
+
+.plugin-card__install-btn {
+  padding: var(--space-1-5) var(--space-4);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-accent-on-solid);
+  cursor: pointer;
+  background-color: var(--color-accent-solid);
+  border: none;
+  border-radius: var(--radius-md);
+  opacity: 1;
+}
+
+/* A legacy entry (no `trust`) cannot be installed; the component disables the button. */
+.plugin-card__install-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* The border takes no colour here, so it follows `color` until a modifier names both. */
+.plugin-trust-badge {
+  align-self: flex-start;
+  padding: var(--space-0-5) var(--space-2);
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid;
+  border-radius: var(--radius-default);
+}
+
+.plugin-trust-badge--sandboxed {
+  color: var(--color-accent-default);
+  border-color: var(--color-accent-default);
+}
+
+.plugin-trust-badge--trusted {
+  color: var(--color-status-danger);
+  border-color: var(--color-status-danger);
+}
+
+.plugin-trust-badge--legacy {
+  color: var(--color-text-muted);
+  border-color: var(--color-text-muted);
+}

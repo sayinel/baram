@@ -28,7 +28,6 @@ import { useEditorStore } from "../../stores/editor/editor";
 import { usePluginStore } from "../../stores/system/plugin";
 import { useUIStore } from "../../stores/ui/ui";
 import { logger } from "../../utils/logger";
-import { STYLES } from "./marketplace-styles";
 import { PluginBrowseList } from "./PluginBrowseList";
 import { PluginConsentDialog } from "./PluginConsentDialog";
 import { PluginDeveloperSection } from "./PluginDeveloperSection";
@@ -225,24 +224,26 @@ export function PluginMarketplace() {
   );
 
   return (
-    <div className="plugin-marketplace" style={STYLES.container}>
+    <div className="plugin-marketplace">
       {consentDialog}
       {/* Header */}
-      <div style={STYLES.header}>
-        <h2 style={STYLES.title}>{t("plugin.marketplace.title")}</h2>
+      <div className="plugin-marketplace__header">
+        <h2 className="plugin-marketplace__title">
+          {t("plugin.marketplace.title")}
+        </h2>
 
         {/* Tabs */}
-        <div style={STYLES.tabBar}>
+        <div className="plugin-marketplace__tab-bar">
           {(["browse", "installed", "updates"] as MarketplaceTab[]).map(
             (tab) => (
               <button
+                className={
+                  activeTab === tab
+                    ? "plugin-marketplace__tab-btn plugin-marketplace__tab-btn--active"
+                    : "plugin-marketplace__tab-btn"
+                }
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                style={
-                  activeTab === tab
-                    ? STYLES.tabButtonActive
-                    : STYLES.tabButtonInactive
-                }
               >
                 {tab === "browse"
                   ? t("plugin.marketplace.tab.browse")
@@ -261,7 +262,6 @@ export function PluginMarketplace() {
               className="marketplace-refresh-btn"
               disabled={loading}
               onClick={handleRefresh}
-              style={STYLES.refreshButton}
             >
               {loading
                 ? t("plugin.marketplace.refreshing")
@@ -273,9 +273,9 @@ export function PluginMarketplace() {
         {/* Search (browse tab only) */}
         {activeTab === "browse" && (
           <input
+            className="plugin-marketplace__search"
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={t("plugin.marketplace.search")}
-            style={STYLES.searchInput}
             type="text"
             value={searchQuery}
           />
@@ -294,7 +294,7 @@ export function PluginMarketplace() {
       </div>
 
       {/* Content */}
-      <div style={STYLES.content}>
+      <div className="plugin-marketplace__content">
         {/* §69 — the withdrawal list is applied from disk whether or not it can be
             refreshed, so going offline never costs protection. It does cost freshness,
             and that is worth saying rather than hiding: this informs, it gates
@@ -331,13 +331,13 @@ export function PluginMarketplace() {
         )}
         {/* Error state */}
         {error && activeTab === "browse" && (
-          <div style={STYLES.errorMessage}>
+          <div className="plugin-marketplace__error">
             <p>{t("plugin.marketplace.registryFailed")}</p>
-            <p style={STYLES.errorSubtext}>{error}</p>
+            <p className="plugin-marketplace__error-detail">{error}</p>
             <button
+              className="plugin-marketplace__retry-btn"
               disabled={loading}
               onClick={handleRefresh}
-              style={STYLES.retryButton}
             >
               {t("plugin.action.retry")}
             </button>
@@ -346,7 +346,7 @@ export function PluginMarketplace() {
 
         {/* Loading state */}
         {loading && activeTab === "browse" && (
-          <div style={STYLES.loadingMessage}>
+          <div className="plugin-marketplace__message">
             {t("plugin.marketplace.loading")}
           </div>
         )}
@@ -356,7 +356,7 @@ export function PluginMarketplace() {
           !loading &&
           !error &&
           (filteredPlugins.length === 0 ? (
-            <div style={STYLES.centeredMessage}>
+            <div className="plugin-marketplace__message">
               {searchQuery
                 ? t("plugin.marketplace.emptySearch")
                 : t("plugin.marketplace.emptyRegistry")}
@@ -380,7 +380,7 @@ export function PluginMarketplace() {
         {/* Installed tab */}
         {activeTab === "installed" &&
           (rows.length === 0 ? (
-            <div style={STYLES.centeredMessage}>
+            <div className="plugin-marketplace__message">
               {t("plugin.marketplace.emptyInstalled")}
             </div>
           ) : (
@@ -404,7 +404,7 @@ export function PluginMarketplace() {
         {/* Updates tab */}
         {activeTab === "updates" &&
           (updatesCount === 0 ? (
-            <div style={STYLES.centeredMessage}>
+            <div className="plugin-marketplace__message">
               {t("plugin.marketplace.emptyUpdates")}
             </div>
           ) : (

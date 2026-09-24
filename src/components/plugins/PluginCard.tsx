@@ -38,59 +38,15 @@ export function PluginCard({
 }: PluginCardProps) {
   const { t } = useTranslation();
   return (
-    <div
-      className="plugin-card"
-      onClick={onSelect}
-      onMouseEnter={(e) =>
-        (e.currentTarget.style.backgroundColor = "var(--color-bg-subtle)")
-      }
-      onMouseLeave={(e) =>
-        (e.currentTarget.style.backgroundColor = "transparent")
-      }
-      style={{
-        padding: "12px 16px",
-        borderBottom: "1px solid var(--color-border-default)",
-        cursor: "pointer",
-        transition: "background-color 0.15s",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
-          gap: "12px",
-        }}
-      >
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              marginBottom: "4px",
-            }}
-          >
+    <div className="plugin-card" onClick={onSelect}>
+      <div className="plugin-card__row">
+        <div className="plugin-card__main">
+          <div className="plugin-card__head">
             {entry.icon && (
-              <span style={{ fontSize: "20px" }}>{entry.icon}</span>
+              <span className="plugin-card__icon">{entry.icon}</span>
             )}
-            <span
-              style={{
-                fontWeight: 600,
-                fontSize: "14px",
-                color: "var(--color-text-primary)",
-              }}
-            >
-              {entry.name}
-            </span>
-            <span
-              style={{
-                fontSize: "12px",
-                color: "var(--color-text-muted)",
-              }}
-            >
-              v{entry.version}
-            </span>
+            <span className="plugin-card__name">{entry.name}</span>
+            <span className="plugin-card__version">v{entry.version}</span>
             {/* §69 — visible in the LIST, not only after opening the detail. A user
                 scanning installed plugins should not have to click each one to find
                 out which has been withdrawn. */}
@@ -100,60 +56,12 @@ export function PluginCard({
               </span>
             )}
           </div>
-          <p
-            style={{
-              margin: "0 0 8px",
-              fontSize: "13px",
-              color: "var(--color-text-secondary)",
-              lineHeight: 1.4,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {entry.description}
-          </p>
-          {error && (
-            <div
-              style={{
-                padding: "8px 12px",
-                margin: "0 0 8px",
-                borderRadius: "6px",
-                backgroundColor: "var(--color-status-error-bg)",
-                color: "var(--color-status-danger)",
-                fontSize: "12px",
-                border: "1px solid var(--color-status-error-border)",
-                // Checksums are unbroken 64-char tokens — without this they
-                // overflow the banner horizontally.
-                overflowWrap: "anywhere",
-              }}
-            >
-              ⚠ {error}
-            </div>
-          )}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              flexWrap: "wrap",
-            }}
-          >
-            <span
-              style={{
-                fontSize: "12px",
-                color: "var(--color-text-muted)",
-              }}
-            >
-              {entry.author}
-            </span>
+          <p className="plugin-card__desc">{entry.description}</p>
+          {error && <div className="plugin-card__error">⚠ {error}</div>}
+          <div className="plugin-card__meta-row">
+            <span className="plugin-card__author">{entry.author}</span>
             {entry.downloads != null && (
-              <span
-                style={{
-                  fontSize: "11px",
-                  color: "var(--color-text-muted)",
-                }}
-              >
+              <span className="plugin-card__downloads">
                 {t("plugin.card.downloads", {
                   count: entry.downloads.toLocaleString(),
                 })}
@@ -161,14 +69,7 @@ export function PluginCard({
             )}
           </div>
           {entry.capabilities.length > 0 && (
-            <div
-              style={{
-                display: "flex",
-                gap: "4px",
-                marginTop: "6px",
-                flexWrap: "wrap",
-              }}
-            >
+            <div className="plugin-card__caps">
               {entry.capabilities.slice(0, 3).map((cap) => (
                 <PluginCapabilityBadge
                   capability={cap as PluginCapability}
@@ -176,13 +77,7 @@ export function PluginCard({
                 />
               ))}
               {entry.capabilities.length > 3 && (
-                <span
-                  style={{
-                    fontSize: "11px",
-                    color: "var(--color-text-muted)",
-                    alignSelf: "center",
-                  }}
-                >
+                <span className="plugin-card__more">
                   {t("plugin.card.moreCapabilities", {
                     count: String(entry.capabilities.length - 3),
                   })}
@@ -191,53 +86,20 @@ export function PluginCard({
             </div>
           )}
         </div>
-        <div onClick={(e) => e.stopPropagation()} style={{ flexShrink: 0 }}>
+        <div
+          className="plugin-card__action"
+          onClick={(e) => e.stopPropagation()}
+        >
           {status === "installing" ? (
-            <button
-              disabled
-              style={{
-                padding: "6px 16px",
-                borderRadius: "6px",
-                fontSize: "12px",
-                fontWeight: 500,
-                backgroundColor: "var(--color-bg-subtle)",
-                color: "var(--color-text-disabled)",
-                border: "1px solid var(--color-border-default)",
-                cursor: "not-allowed",
-              }}
-            >
+            <button className="plugin-card__installing-btn" disabled>
               {t("plugin.action.installing")}
             </button>
           ) : updateAvailable ? (
-            <button
-              onClick={onUpdate}
-              style={{
-                padding: "6px 16px",
-                borderRadius: "6px",
-                fontSize: "12px",
-                fontWeight: 500,
-                backgroundColor: "var(--color-status-warning)",
-                color: "var(--color-status-warning-on-solid)",
-                border: "none",
-                cursor: "pointer",
-              }}
-            >
+            <button className="plugin-card__update-btn" onClick={onUpdate}>
               {t("plugin.action.updateTo", { version: updateAvailable })}
             </button>
           ) : status === "enabled" || status === "disabled" ? (
-            <button
-              onClick={onUninstall}
-              style={{
-                padding: "6px 16px",
-                borderRadius: "6px",
-                fontSize: "12px",
-                fontWeight: 500,
-                backgroundColor: "transparent",
-                color: "var(--color-status-danger)",
-                border: "1px solid var(--color-status-danger)",
-                cursor: "pointer",
-              }}
-            >
+            <button className="plugin-card__remove-btn" onClick={onUninstall}>
               {t("plugin.action.uninstall")}
             </button>
           ) : !onInstall ? null : ( // nothing wired this card to an install
@@ -247,19 +109,9 @@ export function PluginCard({
             // are trust-less today, so this is the FIRST thing a user meets in Browse —
             // the detail view had the guard and the card did not.
             <button
+              className="plugin-card__install-btn"
               disabled={!entry.trust}
               onClick={onInstall}
-              style={{
-                padding: "6px 16px",
-                borderRadius: "6px",
-                fontSize: "12px",
-                fontWeight: 500,
-                backgroundColor: "var(--color-accent-solid)",
-                color: "var(--color-accent-on-solid)",
-                border: "none",
-                cursor: entry.trust ? "pointer" : "not-allowed",
-                opacity: entry.trust ? 1 : 0.5,
-              }}
               title={entry.trust ? undefined : t("plugin.card.legacyBlocked")}
             >
               {t("plugin.action.install")}

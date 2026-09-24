@@ -66,12 +66,6 @@ describe("스캐너 — 잡으면 안 되는 것", () => {
  * 이 자기 항목을 지운다** — 그 전까지는 오늘의 개수로 여기 있다.
  */
 const PINNED: Record<string, Partial<Record<Channel, number>>> = {
-  // Task 4 가 옮긴다 — 플러그인 마켓플레이스 카드·상세·신뢰 배지.
-  "src/components/plugins/PluginCard.tsx": { "style-px": 19 },
-  "src/components/plugins/PluginDetail.tsx": { "style-px": 41 },
-  "src/components/plugins/PluginTrustBadge.tsx": { "style-px": 2 },
-  "src/components/plugins/marketplace-styles.ts": { "style-px": 18 },
-
   // Task 5 가 옮긴다 — 스킬 다이얼로그·저널 히트맵·설정 탭 넷·백링크.
   "src/components/ai/SkillGeneratorDialog.tsx": { "style-number": 15 },
   "src/components/ai/SkillTestDialog.tsx": { "style-number": 11 },
