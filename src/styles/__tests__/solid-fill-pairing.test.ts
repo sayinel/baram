@@ -198,10 +198,10 @@ describe("hover fills on a solid surface", () => {
 describe("solid accent surfaces in inline styles", () => {
   // This scan was originally rooted at `src/components` and matched only JSX
   // `style={{…}}` literals. Both narrowings hid a live defect: PluginMarketplace
-  // keeps its styles in a module-level `STYLES` constant and has zero JSX style
-  // literals, so an `accent-default` + `#fff` retry button sat in the sweep's own
-  // directory, unseen, while this file reported green. It now walks all of `src`
-  // and reads brace-matched objects, whatever syntax holds them.
+  // kept its styles in a module-level `STYLES` constant (deleted by plan 0101) and
+  // had zero JSX style literals, so an `accent-default` + `#fff` retry button sat
+  // in the sweep's own directory, unseen, while this file reported green. It now
+  // walks all of `src` and reads brace-matched objects, whatever syntax holds them.
   // 0101 이후 이 스캔이 찾는 채움은 없다 — 다음 인라인 채움이 생기면 아래 offender
   // 검사가 그것을 본다.
 
@@ -259,8 +259,13 @@ describe("solid accent surfaces in inline styles", () => {
     expect(offenders).toEqual([]);
   });
 
-  // 0101 이 마켓플레이스를 스타일시트로 옮기면서 코퍼스의 인라인 채움은 0 이 됐다 —
-  // 그 채움들은 이제 위 "solid … surfaces in CSS" 가 셀렉터로 본다. 코퍼스의 개수로는
+  // 0101 이 마켓플레이스를 스타일시트로 옮기면서 코퍼스의 인라인 채움은 0 이 됐다.
+  // 옮긴 여덟 중 여섯(`--color-accent-solid` 채움 4 · `--color-status-warning` 채움 2)은
+  // 위 "solid accent surfaces in CSS" · "solid status surfaces in CSS" 가 셀렉터로 본다.
+  // 나머지 둘 — 오류 배너 `.plugin-detail__error` · `.plugin-card__error` 의
+  // `var(--color-status-error-bg)` — 은 `STATUS_FILL` 이 `danger|warning|success` 만 잡아
+  // 그 검사 밖이다. 인라인 쪽이 그 둘에 걸던 밝은 글자색 검사는 모든 규칙을 읽는
+  // "hardcoded light foregrounds anywhere in CSS" 가 대신한다. 코퍼스의 개수로는
   // 매처가 살아 있는지 알 수 없으므로(빈 목록에서 아래 offender 검사는 전부 통과한다),
   // 같은 매처를 픽스처에 돌려 양성 대조로 삼는다. 무엇이 이것을 실패시키는가:
   // `objectProperty` 나 두 판정이 깨져 채움을 못 알아보게 되면.
