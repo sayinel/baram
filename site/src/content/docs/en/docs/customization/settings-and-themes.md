@@ -14,7 +14,7 @@ Available settings tabs, grouped by nav section:
 | **General**  | **General**      | Startup behavior, auto-save, links, file snapshots, updates          |
 | **General**  | **Editor**       | Fonts, typing behavior, vim mode, editor width                      |
 | **General**  | **Appearance**   | Theme gallery, custom themes                                         |
-| **General**  | **Markdown**     | Serialization rules                                                  |
+| **General**  | **Markdown**     | Extended syntax, typography ([smart punctuation and symbol suggestions](/en/docs/editing/symbols-and-punctuation/)), code block and diagram options |
 | **General**  | **Language**     | UI language                                                          |
 | **General**  | **Keybindings**  | Shortcut customization                                               |
 | **Features** | **Journal**      | Enable Journal, its directory, templates, periodic notes             |

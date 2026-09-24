@@ -80,6 +80,7 @@ export const TITLES = {
   "editing/files-and-tabs": "Files, tabs, and saving",
   "editing/formatting": "Formatting text and blocks",
   "editing/slash-commands-and-toolbars": "Slash commands and toolbars",
+  "editing/symbols-and-punctuation": "Symbols, emoji, and smart punctuation",
   "editing/source-mode-and-find": "Source mode, find and replace",
   "rich-content/callouts-and-toggles": "Callouts and toggles",
   "rich-content/math-code-diagrams": "Math, code, and diagrams",
@@ -150,6 +151,8 @@ export const PAGES = [
     { h2: "Formatting" }, "Inline Formatting", "Block Formatting" ] },
   { slug: "editing/slash-commands-and-toolbars", src: UG, items: [
     "Slash Commands", "Floating Toolbar", "Block Handle", "Context Menu" ] },
+  // 이주 뒤에 새로 쓴 첫 페이지(스펙 0056 §373–§377) — 원문이 없으므로 src·items 이력 필드도 없다.
+  { slug: "editing/symbols-and-punctuation" },
   { slug: "editing/source-mode-and-find", src: UG, floorException: true, items: [
     "Source Mode", { h2: "Find & Replace" }, "Find (Cmd+F)", "Replace (Cmd+H)" ] },
 
