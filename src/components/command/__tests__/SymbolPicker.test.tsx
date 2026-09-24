@@ -30,12 +30,20 @@ function setup() {
     init: KeyboardEventInit & { keyCode?: number } = {},
   ) => fireEvent.keyDown(search, { key, ...init });
   const selectedElement = () =>
-    screen
-      .queryAllByRole("option")
-      .find((o) => o.getAttribute("aria-selected") === "true");
+    options().find((o) => o.getAttribute("aria-selected") === "true");
   const selected = () => selectedElement()?.textContent;
   return { onCancel, onPick, press, search, selected, selectedElement };
 }
+
+// Every option cell, found with `hidden: true`. The default accessibility
+// filter reads each cell's computed style, and jsdom throws away its whole
+// style cache on any attribute or child change in the document — so every
+// query after a key press recomputed style for the full grid, and "moves with
+// the arrow keys and picks with Enter" crossed the 5 s timeout on CI. These
+// tests ask which cell is selected, not whether assistive tech sees it, and
+// the filter removed nothing: on the default grid both queries return the same
+// elements in the same order (measured).
+const options = () => screen.queryAllByRole("option", { hidden: true });
 
 const titles = () =>
   [...document.querySelectorAll(".symbol-picker-section-title")].map(
@@ -75,7 +83,7 @@ describe("SymbolPicker", () => {
     useSettingsStore.setState({ recentSymbols: ["😄", "not-a-symbol", "→"] });
     setup();
     expect(titles()[0]).toBe("Recently used");
-    const chars = screen.getAllByRole("option").map((o) => o.textContent);
+    const chars = options().map((o) => o.textContent);
     expect(chars.slice(0, 2)).toEqual(["😄", "→"]);
   });
 
