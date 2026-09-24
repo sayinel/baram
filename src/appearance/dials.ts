@@ -183,10 +183,17 @@ const ACCENT_SATURATION_RANGE = { max: 50, min: -50, step: 1 } as const;
 const EMPHASIS_OPTIONS = ["italic", "color", "weight"] as const;
 
 /**
- * §365 밀도·모서리가 **곱하지 않는** 토큰. 0 은 곱해도 0 이고, `--space-px` 는 헤어라인,
+ * §365 밀도·모서리가 **곱하지 않는** 토큰. 0 은 곱해도 0 이라 곱하는 의미가 없고,
  * `--radius-full` 은 알약·원 sentinel 이다 — 0097 R-C 가 그렇게 정했고
- * `stylelint.config.mjs` 의 규칙 위 주석이 같은 말을 적는다. 곱하면 1px 선이 0.75px 가
- * 되고, "각지게" 에서 토글이 사각형이 된다.
+ * `stylelint.config.mjs` 의 규칙 위 주석이 같은 말을 적는다. 곱하면 "각지게" 에서
+ * 토글이 사각형이 된다(9999 × 0 = 0).
+ *
+ * `--space-px` 헤어라인을 빼는 이유는 곱수가 그 값을 바꾸기 때문이 아니다 — ties-down
+ * 반올림에서 compact(×0.75)·spacious(×1.25) 는 둘 다 1px 그대로다
+ * (`Math.ceil(1 × 0.75 − 0.5)` = `Math.ceil(1 × 1.25 − 0.5)` = 1). 빼는 이유는 셋이다:
+ * 곱해도 안 바뀌는 값을 인라인으로 다시 쓰면 cascade 를 누르고, ×0.5 이하에서는 선이
+ * 지워지며(예: ×0.5 는 `Math.ceil(1 × 0.5 − 0.5)` = `Math.ceil(0)` = 0), 헤어라인은
+ * 애초에 밀도 값이 아니라 스트로크다(0097 R-C).
  */
 const FIXED_SCALE_TOKENS: ReadonlySet<string> = new Set([
   "--radius-full",

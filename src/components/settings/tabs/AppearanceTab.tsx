@@ -51,7 +51,8 @@ export function AppearanceTab() {
       />
       {/* §365 다이얼 4·5 — 앱 전체의 간격과 모서리(0055 §4.4: 외관). 강조색 아래에
           별도 섹션으로 둔다: 강조색 둘은 고른 테마의 색을 옮기는 조정이라 갤러리에
-          붙어 있어야 하고, 이 둘은 테마와 무관한 공간의 축이다. */}
+          붙어 있어야 하지만, 이 둘은 색을 옮기지 않는 간격·모서리 축이라 갤러리와
+          떨어져 있다. */}
       <SettingsSectionHeader title={t("settings.appearance.spaceAndCorners")} />
       <AppearanceDialRow
         dialId="density"
