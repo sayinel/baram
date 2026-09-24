@@ -21,7 +21,7 @@ const GENERATED = [
   },
   {
     dir: "src/types/generated",
-    expected: new Set(["palette-light.ts", "palette-dark.ts"]),
+    expected: new Set(["palette-light.ts", "palette-dark.ts", "scale.ts"]),
   },
 ];
 
