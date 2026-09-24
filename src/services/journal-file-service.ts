@@ -49,10 +49,14 @@ export interface JournalFileOptions {
  * `resolveJournalDir` accepts absolute paths only, so the journal directory can sit
  * outside the open vault, and there `check_vault` permits nothing until the journal
  * context exists (the Rust ContextManager is in-memory; startup re-registers only the
- * contexts the store already persisted). Five call sites write under this directory and
- * four of them used to skip registration — the shortcut, the calendar, date-wikilink
- * navigation (`use-navigation.ts`) and the startup hook — each failing identically: readFile denied, read as "no such file", createDir denied,
- * swallowed by the caller's catch. Only the journal space registered.
+ * contexts the store already persisted). Five `ensureJournalFile` call sites write under
+ * this directory and four of them used to skip registration — the shortcut, the calendar,
+ * date-wikilink navigation (`use-navigation.ts`) and the startup hook — each failing
+ * identically: readFile denied, read as "no such file", createDir denied, swallowed by the
+ * caller's catch. Only the journal space registered. (A sixth, the §56b Alt+←/→ day
+ * navigation, skipped it too; it sat behind §37's Alt+←/→ branch in the same keydown
+ * handler and has been removed. CalendarPanel's periodic notes write here without
+ * `ensureJournalFile` and call `ensureJournalDirRegistered` themselves.)
  *
  * ‼️ Registers WITHOUT activating. `ensureSpaceContext` used to activate
  * unconditionally, and the subscription in `stores/file/file.ts` syncs `rootPath`

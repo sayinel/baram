@@ -1,7 +1,8 @@
 // §37 — Alt+←/→ navigates back/forward on Windows/Linux only. On macOS
-// Option+←/→ is the system's move-by-word key in every text field, and the
-// design gives macOS ⌃- / ⌃⇧- for back/forward instead (part4 shortcut table,
-// part9 appendix). Events are dispatched from REAL targets — the WYSIWYG
+// Option+←/→ is the text system's move-by-word binding (moveWordLeft: /
+// moveWordRight:), which WebKit's text fields and contenteditable follow, and
+// the design gives macOS ⌃- / ⌃⇧- for back/forward instead (part4 shortcut
+// table, part9 appendix). Events are dispatched from REAL targets — the WYSIWYG
 // editor's contenteditable with the app's extension set, and a plain <input> —
 // so what is tested is whether the key reaches the window listener and what
 // that listener does with it. The Windows/Linux cases are the positive pair:
@@ -17,6 +18,19 @@ import { createBaramExtensions } from "../../extensions";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useGlobalKeyboard } from "../use-global-keyboard";
+
+// The removed §56b branch opened the day's file through this before anything
+// else (the call precedes its first await), so a branch that reclaims Alt+←
+// for the journal shows up here even when it also falls through to §37.
+const { ensureJournalFile } = vi.hoisted(() => ({
+  ensureJournalFile: vi.fn(),
+}));
+vi.mock("../../services/journal-file-service", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../services/journal-file-service")
+  >()),
+  ensureJournalFile,
+}));
 
 const realPlatform = navigator.platform;
 
@@ -61,6 +75,7 @@ const initialSettings = useSettingsStore.getState();
 const initialEditor = useEditorStore.getState();
 
 beforeEach(() => {
+  ensureJournalFile.mockClear();
   handleGoBack = vi.fn();
   handleGoForward = vi.fn();
   renderHook(() =>
@@ -127,6 +142,7 @@ describe("§37 Option+←/→ on macOS — left to the text field", () => {
     openJournalDateFile();
     const e = altArrow(editor.view.dom, "ArrowLeft");
     expect(handleGoBack).not.toHaveBeenCalled();
+    expect(ensureJournalFile).not.toHaveBeenCalled();
     expect(e.defaultPrevented).toBe(false);
   });
 
@@ -173,6 +189,7 @@ describe.each(["Win32", "Linux x86_64"])(
       openJournalDateFile();
       altArrow(editor.view.dom, "ArrowLeft");
       expect(handleGoBack).toHaveBeenCalledTimes(1);
+      expect(ensureJournalFile).not.toHaveBeenCalled();
     });
   },
 );

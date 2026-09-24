@@ -79,6 +79,9 @@ export function useGlobalKeyboard({
       // editor engine stops the key before it gets here — prosemirror-view
       // has no stopPropagation call, and CodeMirror's macOS word-move binding
       // does not set it — so the platform test is what leaves it to the field.
+      // ‼️ The Ctrl+- half is NOT gated by platform, and use-zoom.ts's capture
+      // listener zooms out on the same key without stopping propagation, so
+      // Ctrl+- zooms out and goes back together, on macOS and Windows alike.
       if (
         (e.ctrlKey &&
           !e.shiftKey &&

@@ -88,10 +88,12 @@ describe("openFileInTab", () => {
 // contexts the store already persisted). FOUR of the five `ensureJournalFile` call sites
 // skipped it — the shortcut (`use-keybinding-actions.ts`), the calendar
 // (`CalendarPanel.tsx`), date-wikilink navigation (`use-navigation.ts`) and the startup
-// hook (`use-journal.ts`); only the journal space (`spaces/journal-space.ts`) registered. So on first use from any of them,
-// `readFile` was denied, this service read that as "file does not exist", `createDir`
-// was denied too, and every caller's catch swallowed it: a silent no-op that healed
-// itself only once the user had entered the journal space at least once.
+// hook (`use-journal.ts`); only the journal space (`spaces/journal-space.ts`) registered.
+// (A sixth, the §56b Alt+←/→ day navigation, skipped it too and has since been removed.)
+// So on first use from any of them, `readFile` was denied, this service read that as
+// "file does not exist", `createDir` was denied too, and every caller's catch swallowed
+// it: a silent no-op that healed itself only once the user had entered the journal
+// space at least once.
 // (CalendarPanel's periodic notes — weekly/monthly/yearly — do their own filesystem
 // work and call `ensureJournalDirRegistered` directly for the same reason.)
 const JOURNAL_DIR = "/tmp/baram-journal-test";
