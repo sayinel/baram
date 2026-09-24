@@ -34,7 +34,7 @@ export function useAppearanceDials(): Record<DialId, ResolvedDial> {
 
   useEffect(() => {
     // ‼️ `mode: "light"` 를 상수로 두는 것이 옳다. 이 호출이 쓰는 것은 레이아웃
-    // 채널뿐이고(`applyDialVars` 가 색 채널을 건너뛴다), 레이아웃 다이얼 여섯은
+    // 채널뿐이고(`applyDialVars` 가 색 채널을 건너뛴다), 레이아웃 다이얼은
     // 컨텍스트를 읽지 않는다 — Task 1 의 채널 테스트가 "레이아웃 다이얼은
     // `--color-*` 를 선언하지 않는다" 를 고정하므로 이 상수가 관측되는 경로가 없다.
     // 여기서 `matchMedia` 를 부르면 읽히지도 않는 값을 위해 여섯 번째

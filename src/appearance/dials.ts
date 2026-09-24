@@ -1,15 +1,18 @@
 // §364 외관 다이얼의 단일 출처 — 타입·병합·적용·설정 UI 가 전부 이 배열에서 파생한다.
 //
-// ‼️ 이 모듈이 값으로 import 하는 것은 `color-hsl.ts` **하나**뿐이고, 그 모듈은
-// 아무것도 import 하지 않는다(그 파일 머리주석이 그것을 계약으로 적는다).
+// ‼️ 이 모듈이 값으로 import 하는 것은 **잎 모듈 둘**뿐이다 — `color-hsl.ts`(그 파일
+// 머리주석이 "아무것도 import 하지 않는다" 를 계약으로 적는다)와 Style Dictionary 가
+// 내는 `types/generated/scale.ts`(생성 포맷 `ts/scale` 이 import 문을 쓰지 않는다 —
+// `style-dictionary.config.ts`).
 // `settings/store.ts` 가 이것을 import 하므로, 여기서 스토어를 알면 순환이
-// 된다(`settings/feature-keys.ts` 가 같은 이유로 잎 모듈이다) — 잎 하나를 거치는
+// 된다(`settings/feature-keys.ts` 가 같은 이유로 잎 모듈이다) — 잎을 거치는
 // 것은 순환을 만들 수 없다. `ColorMode` 의 `import type` 은
 // `verbatimModuleSyntax`(CLAUDE.md · `tsconfig`) 하에서 컴파일 시 지워지고
 // 런타임 간선을 만들지 않으므로 그 순환에 참여할 수 없다.
 
 import type { ColorMode } from "./color-mode";
 
+import { RADIUS_SCALE, SPACE_SCALE } from "../types/generated/scale";
 import { hexToHsl, hslToHex } from "./color-hsl";
 
 export type DialDef = EnumDialDef | NumberDialDef;
@@ -178,6 +181,62 @@ const ACCENT_SATURATION_RANGE = { max: 50, min: -50, step: 1 } as const;
  * 위에 색이 얹혀 둘 다 적용된 상태가 되고, 그것은 어느 사용자도 고른 적 없는 값이다.
  */
 const EMPHASIS_OPTIONS = ["italic", "color", "weight"] as const;
+
+/**
+ * §365 밀도·모서리가 **곱하지 않는** 토큰. 0 은 곱해도 0 이고, `--space-px` 는 헤어라인,
+ * `--radius-full` 은 알약·원 sentinel 이다 — 0097 R-C 가 그렇게 정했고
+ * `stylelint.config.mjs` 의 규칙 위 주석이 같은 말을 적는다. 곱하면 1px 선이 0.75px 가
+ * 되고, "각지게" 에서 토글이 사각형이 된다.
+ */
+const FIXED_SCALE_TOKENS: ReadonlySet<string> = new Set([
+  "--radius-full",
+  "--radius-none",
+  "--space-0",
+  "--space-px",
+]);
+
+/** 다이얼이 움직이는 스케일 — 생성 순서(값 오름차순)를 그대로 지킨다. */
+const MOVING_SPACE = SPACE_SCALE.filter(
+  ([name]) => !FIXED_SCALE_TOKENS.has(name),
+);
+const MOVING_RADIUS = RADIUS_SCALE.filter(
+  ([name]) => !FIXED_SCALE_TOKENS.has(name),
+);
+
+// §365 단별 곱수(스펙 0057 D4). ‼️ 전부 2진 소수로 정확히 표현되는 값이다
+// (0.75 · 1.25 · 1.5) — 기준 px 와의 곱에 부동소수 오차가 끼지 않아, 한가운데 값
+// (예: 6 × 0.75 = 4.5)이 정확히 한가운데로 남고 ties-down 이 그대로 작동한다.
+// 0.7 같은 값을 넣으면 그 성질이 깨진다.
+const DENSITY_OPTIONS = ["compact", "default", "spacious"] as const;
+const DENSITY_FACTOR: Record<(typeof DENSITY_OPTIONS)[number], number> = {
+  compact: 0.75,
+  default: 1,
+  spacious: 1.25,
+};
+const CORNER_OPTIONS = ["sharp", "default", "round"] as const;
+const CORNER_FACTOR: Record<(typeof CORNER_OPTIONS)[number], number> = {
+  default: 1,
+  round: 1.5,
+  sharp: 0,
+};
+
+/**
+ * 스케일 전체를 한 곱수로. 곱수 1 은 빈 맵이다 — 희소성(§364.2)이 기본 단의 계약이다.
+ *
+ * 반올림은 ties-down(`Math.ceil(x - 0.5)`) — 0097 R-A 의 스냅과 같은 방향이다
+ * (한가운데 값은 작은 쪽으로). `Math.round` 는 한가운데를 **위로** 올린다.
+ * `Math.ceil(-0.5)` 는 `-0` 이지만 템플릿 문자열이 `"0"` 으로 쓴다.
+ */
+const scaleVars = (
+  scale: readonly (readonly [name: string, px: number])[],
+  factor: number,
+): Record<string, string> => {
+  if (factor === 1) return {};
+  const out: Record<string, string> = {};
+  for (const [name, px] of scale)
+    out[name] = `${Math.ceil(px * factor - 0.5)}px`;
+  return out;
+};
 
 const inRange =
   (range: { readonly max: number; readonly min: number }) =>
@@ -450,6 +509,38 @@ export const DIALS = [
     toVars: (value: DialValue, ctx: DialContext): Record<string, string> =>
       shiftAccent(value, ctx, "s"),
     vars: [...ACCENT_SEED_KEYS],
+  },
+  // §365 다이얼 4·5 — 스케일 전체를 한 곱수로(스펙 0057). 행은 외관 탭이다
+  // (0055 §4.4: 앱 전체의 겉모습).
+  {
+    channel: "layout",
+    defaultValue: "default",
+    id: "density",
+    kind: "enum",
+    options: DENSITY_OPTIONS,
+    parse: oneOf(DENSITY_OPTIONS),
+    toVars: (value: DialValue, _ctx: DialContext): Record<string, string> => {
+      const option = oneOf(DENSITY_OPTIONS)(value);
+      return option === undefined
+        ? {}
+        : scaleVars(MOVING_SPACE, DENSITY_FACTOR[option]);
+    },
+    vars: MOVING_SPACE.map(([name]) => name),
+  },
+  {
+    channel: "layout",
+    defaultValue: "default",
+    id: "cornerRadius",
+    kind: "enum",
+    options: CORNER_OPTIONS,
+    parse: oneOf(CORNER_OPTIONS),
+    toVars: (value: DialValue, _ctx: DialContext): Record<string, string> => {
+      const option = oneOf(CORNER_OPTIONS)(value);
+      return option === undefined
+        ? {}
+        : scaleVars(MOVING_RADIUS, CORNER_FACTOR[option]);
+    },
+    vars: MOVING_RADIUS.map(([name]) => name),
   },
 ] as const satisfies readonly DialDef[];
 
