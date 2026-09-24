@@ -118,9 +118,11 @@
   opacity: 0.5;
 }
 
-/* §365 — the generator and test dialogs' inline styles, moved here (plan 0101) so the density
-   and corner dials reach them. Rendered values unchanged: .new-skill-dialog's width above
-   was 480px, but both dialogs set 560px inline over it. */
+/* §365 — the rules from here to .new-skill-token-count lay out SkillGeneratorDialog.tsx and
+   SkillTestDialog.tsx (src/components/ai/); each rule is used by one or both. They live in
+   this stylesheet, not inline, so the density and corner dials reach them. Those two
+   components are the only files under src/, outside tests and this stylesheet, that name
+   .new-skill-dialog, so its width above (560px) is the width both dialogs render at. */
 .new-skill-field {
   margin-top: var(--space-3);
 }

@@ -7,6 +7,8 @@
 //   - 숫자 **식**(`paddingLeft: depth * 16`) — 타입 검사기 없이 값인지 알 수 없다.
 //     리터럴 숫자와 `px` 를 담은 템플릿만 센다.
 //   - 축약 속성(`{ padding }`) · 스프레드 · 계산된 키.
+//   - 벤더 접두 키(`WebkitBorderRadius: "6px"`) — 리터럴을 단 PropertyAssignment 지만
+//     `STYLE_KEY` 가 접두 없는 이름에만 맞으므로 세지 않는다.
 //   - `className` 속성 **밖**의 클래스 문자열(`const cls = "p-2"` 를 나중에 넘기는 것).
 //   - DOM 프로퍼티 대입(`el.style.padding = "8px"`) — 객체 리터럴의 PropertyAssignment 가
 //     아니라서 스캐너가 보지 않는다.

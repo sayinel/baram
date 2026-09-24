@@ -687,8 +687,11 @@
 
 /* §365 — MarkdownRenderer, moved from Tailwind utilities (plan 0101 Task 7). One class per
    element, not element selectors: raw HTML blocks and the code inside pre never had these
-   utilities, and single-class selectors stay below the README and update-notes overrides in
-   panels.css (0,2,1) whatever the import order. */
+   utilities. Every selector from here through .markdown-rendered__strong is below (0,2,1):
+   fourteen are a single class (0,1,0), .markdown-rendered__pre > code is (0,1,1) and
+   .markdown-rendered__p:last-child is (0,2,0). So each loses to the README and update-notes
+   overrides in panels.css, whose selectors are :is(...) .markdown-rendered plus an element,
+   (0,2,1) or more, whatever the import order. */
 .markdown-rendered__blockquote {
   padding-left: var(--space-3);
   margin-bottom: var(--space-2);

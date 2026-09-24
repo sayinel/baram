@@ -59,11 +59,21 @@ describe("스캐너 — 잡으면 안 되는 것", () => {
 });
 
 /**
- * 오늘 남아 있는 값 — 파일별·갈래별 개수. 여기 없는 파일은 0 이어야 한다.
+ * 남아 있는 값 — 파일별·갈래별 개수. 여기 없는 파일은 0 이어야 한다.
  *
- * 항목은 두 부류뿐이다(스펙 0057 §7 검사 5): ① 스펙 §8 이 그대로 두는 파일,
- * ② 이관 태스크가 JS 기하와 맞물려 리터럴로 남긴 값. **이관 대상 파일은 Task 4·5·6·7
- * 이 자기 항목을 지운다** — 그 전까지는 오늘의 개수로 여기 있다.
+ * 항목 12개는 출처가 둘이다. 항목을 묶은 각 무리 위의 주석이 그 무리의 출처를 적는다.
+ *   ① 스펙 0057 §8 이 그대로 둔다고 적은 파일 11개 — §8.2 의 마운트되지 않는 Agent
+ *      컴포넌트 넷, §8.3 의 `src/spike/` 세 파일 · `main.tsx` · `katex-to-png.ts` ·
+ *      export 두 파일(`export-html-code-block.ts` · `export-html-styles.ts`).
+ *   ② style 이 아닌 객체의 값 1개 — `SkillDependencySection.tsx` 의 cytoscape 옵션
+ *      `padding`(스펙 0057 §7 검사 5 · 계획 0101 판정 P3: 래칫은 style 객체를 가려내지
+ *      않고 이유와 함께 싣는다).
+ * 스펙 §7 이 또 하나의 출처로 둔 "§5.2 의 기하 판정이 리터럴로 남긴 값" 은 항목을 내지
+ * 않았다 — 행 데이터인 깊이로 계산하는 들여쓰기(`file-tree-types.ts` 의 `treeIndent` ·
+ * `Outline.tsx` · `TagPanel.tsx` · `MoveToFolderModal.tsx` · `table-of-contents-view.tsx`)는
+ * 인라인에 남되 `calc(… var(--space-*))` 꼴이라 이 스캐너가 세는 px 리터럴이 없다.
+ * 새 항목은 ①·② 가운데 하나의 이유를 단다. 어느 쪽도 아니면 개수를 올리기 전에 그 값이
+ * 인라인에 남을 이유부터 판정받는다 — 오늘의 고정 목록에는 없는 이유다.
  */
 const PINNED: Record<string, Partial<Record<Channel, number>>> = {
   // 그대로 둔다(0057 §8.2) — 마운트되지 않는 Agent 컴포넌트 넷, 다이얼이 닿지 않는다.

@@ -25,11 +25,17 @@ describe("enum 다이얼 옵션 라벨", () => {
 
   // 무엇이 이것을 실패시키는가: 네임스페이스가 틀리면(외관 탭 다이얼이
   // `settings.editor.density.compact` 를 읽으면) 카탈로그에 그 키가 없다.
-  // 비공허성: enum 다이얼이 다섯(에디터 셋 + 이 계획의 둘)보다 적으면 루프가
-  // 덜 돈다.
+  // 비공허성: 아래 목록은 `DIALS` 의 enum 다이얼 다섯 전부다(에디터 셋 + §365 의 둘).
+  // 하나라도 필터에서 빠지면 루프가 그만큼 덜 돈다.
   it("모든 옵션의 라벨 키가 en·ko 에 있다", () => {
     expect(enumDials.map((d) => d.id)).toEqual(
-      expect.arrayContaining(["cornerRadius", "density", "editorLineBreak"]),
+      expect.arrayContaining([
+        "editorLineBreak",
+        "editorOrderedMarkerAlign",
+        "editorEmphasisStyle",
+        "density",
+        "cornerRadius",
+      ]),
     );
     for (const dial of enumDials) {
       for (const option of dial.options) {

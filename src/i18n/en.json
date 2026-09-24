@@ -829,7 +829,7 @@
   "settings.appearance.density": "Density",
   "settings.appearance.density.compact": "Compact",
   "settings.appearance.density.default": "Default",
-  "settings.appearance.density.desc": "Spacing in and around interface elements. Text in the document keeps the editor's spacing.",
+  "settings.appearance.density.desc": "Spacing in and around interface elements. Paragraph spacing and editor padding follow the editor settings.",
   "settings.appearance.density.spacious": "Spacious",
   "settings.appearance.dialOrigin.default": "Default",
   "settings.appearance.dialOrigin.theme": "Theme",

@@ -116,9 +116,12 @@
 **compact 인 이유:** 이 테마는 위 §370.3 절에서 크롬 세 표면을 모두 감추도록 제안한다
 (`chrome` 이 셋 다 `false`) — 본문 조판이 우선이고 크롬은 물러난다는 §371.3 의 성격
 그대로다. 밀도 다이얼이 옮기는 것은 UI 크롬의 간격(패널·팝오버·버튼 등, `--space-*`
-스케일)이고, 본문의 리듬(문단 간격·자간·줄 높이)은 에디터 다이얼이 따로 갖는다
-(`--editor-paragraph-spacing` · `--editor-letter-spacing` 등 —
-`src/styles/editor/blocks.css` 의 `.tiptap p { margin: var(--editor-paragraph-spacing, 0.5em) 0; }`).
+스케일)이고, 본문의 리듬은 따로 정해진다. 문단 간격·자간은 에디터 다이얼
+`editorParagraphSpacing` · `editorLetterSpacing` 이 갖고(변수 `--editor-paragraph-spacing` ·
+`--editor-letter-spacing` — 예: `src/styles/editor/blocks.css` 의
+`.tiptap p { margin: var(--editor-paragraph-spacing, 0.5em) 0; }`), 줄 높이는 다이얼이 아닌
+에디터 설정 `lineHeight` 가 갖는다(`src/hooks/use-settings-effects.ts` 가 에디터 DOM 에
+인라인 `line-height` 로 쓴다).
 그래서 `compact` 는 본문 조판을 건드리지 않고 크롬만 더 좁혀, "크롬이 물러난다" 는 이
 테마의 성격을 한 번 더 강하게 만든다.
 

@@ -829,7 +829,7 @@
   "settings.appearance.density": "밀도",
   "settings.appearance.density.compact": "촘촘하게",
   "settings.appearance.density.default": "기본",
-  "settings.appearance.density.desc": "화면 요소 안팎의 간격을 정합니다. 문서 본문의 간격은 에디터 설정을 따릅니다.",
+  "settings.appearance.density.desc": "화면 요소 안팎의 간격을 정합니다. 문단 간격과 본문 여백은 에디터 설정을 따릅니다.",
   "settings.appearance.density.spacious": "넉넉하게",
   "settings.appearance.dialOrigin.default": "기본값",
   "settings.appearance.dialOrigin.theme": "테마",
