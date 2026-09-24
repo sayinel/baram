@@ -707,6 +707,17 @@
   border-radius: var(--radius-default);
 }
 
+/* The fenced block's inner code, which the move left classless. This rule reaches it on
+   purpose: Tailwind's preflight sets the font of code elements directly, so a font on
+   the pre would not be inherited, and without this rule chat code blocks would stay on
+   Tailwind's mono stack while chat inline code uses the app's. The renderer puts
+   .markdown-rendered__pre only on the pre it builds from a markdown code block (fenced or
+   indented); a raw HTML block is inserted as markup and gets the class only if its author
+   writes it. */
+.markdown-rendered__pre > code {
+  font-family: var(--font-family-mono);
+}
+
 .markdown-rendered__heading {
   margin-bottom: var(--space-2);
   font-weight: var(--font-weight-semibold);
