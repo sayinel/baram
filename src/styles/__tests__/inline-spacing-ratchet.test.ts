@@ -72,8 +72,9 @@ describe("스캐너 — 잡으면 안 되는 것", () => {
  * 않았다 — 행 데이터인 깊이로 계산하는 들여쓰기(`file-tree-types.ts` 의 `treeIndent` ·
  * `Outline.tsx` · `TagPanel.tsx` · `MoveToFolderModal.tsx` · `table-of-contents-view.tsx`)는
  * 인라인에 남되 `calc(… var(--space-*))` 꼴이라 이 스캐너가 세는 px 리터럴이 없다.
- * 새 항목은 ①·② 가운데 하나의 이유를 단다. 어느 쪽도 아니면 개수를 올리기 전에 그 값이
- * 인라인에 남을 이유부터 판정받는다 — 오늘의 고정 목록에는 없는 이유다.
+ * 새 항목은 셋 가운데 하나의 이유를 단다 — ①, ②, 또는 ③ 스펙 §7 이 고정 목록의 출처로
+ * 적은 "§5.2 의 기하 판정이 리터럴로 남긴 값"(오늘은 항목이 없다). 셋 다 아니면 개수를
+ * 올리기 전에 그 값이 인라인에 남을 이유부터 판정받는다.
  */
 const PINNED: Record<string, Partial<Record<Channel, number>>> = {
   // 그대로 둔다(0057 §8.2) — 마운트되지 않는 Agent 컴포넌트 넷, 다이얼이 닿지 않는다.
