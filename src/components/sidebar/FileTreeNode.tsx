@@ -8,7 +8,7 @@ import type { CreatingEntryState } from "./file-tree-types";
 import { toBadgeKey } from "../../stores/system/git-badges";
 import { getFileIcon } from "./file-icon";
 import { IconFile, IconFolder } from "./file-tree-icons";
-import { TREE_BASE_PADDING_PX, TREE_INDENT_PX } from "./file-tree-types";
+import { treeIndent } from "./file-tree-types";
 import { useFileTreeContext } from "./FileTreeContext";
 
 // --- FileTreeNode ---
@@ -46,7 +46,7 @@ export function FileTreeNode({
     gitBadges,
   } = useFileTreeContext();
 
-  const paddingLeft = `${depth * TREE_INDENT_PX + TREE_BASE_PADDING_PX}px`;
+  const paddingLeft = treeIndent(depth);
   const isExpanded = expandedDirs.has(entry.path);
   const isRenaming = renamingPath === entry.path;
   const isSelected = selectedPaths.has(entry.path);
@@ -214,12 +214,7 @@ function CreateInputRow({
   }, []);
 
   return (
-    <div
-      className="file-tree-item"
-      style={{
-        paddingLeft: `${depth * TREE_INDENT_PX + TREE_BASE_PADDING_PX}px`,
-      }}
-    >
+    <div className="file-tree-item" style={{ paddingLeft: treeIndent(depth) }}>
       <span className="file-tree-icon">
         {creatingEntry.isDir ? <IconFolder /> : <IconFile />}
       </span>

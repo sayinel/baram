@@ -66,14 +66,6 @@ describe("스캐너 — 잡으면 안 되는 것", () => {
  * 이 자기 항목을 지운다** — 그 전까지는 오늘의 개수로 여기 있다.
  */
 const PINNED: Record<string, Partial<Record<Channel, number>>> = {
-  // Task 6 이 옮긴다 — 파일 트리·이동 모달·아웃라인·태그 패널·목차.
-  "src/components/sidebar/FileTree.tsx": { "style-px": 3 },
-  "src/components/sidebar/FileTreeNode.tsx": { "style-px": 1 },
-  "src/components/sidebar/MoveToFolderModal.tsx": { "style-px": 1 },
-  "src/components/sidebar/Outline.tsx": { "style-px": 1 },
-  "src/components/sidebar/TagPanel.tsx": { "style-px": 1 },
-  "src/extensions/nodes/table-of-contents-view.tsx": { "style-px": 1 },
-
   // Task 7 이 옮긴다 — 마크다운 렌더러.
   "src/components/ai/MarkdownRenderer.tsx": { tailwind: 19 },
 

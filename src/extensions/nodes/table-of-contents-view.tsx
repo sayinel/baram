@@ -73,7 +73,10 @@ export function TableOfContentsView({ editor, selected }: NodeViewProps) {
             <li
               className={`table-of-contents-item table-of-contents-level-${entry.level}`}
               key={i}
-              style={{ paddingLeft: `${(entry.level - 1) * 16}px` }}
+              /* 인라인에 남는다: 이 노드는 HTML export 로 복제되고 TOC 규칙이 사는 table.css 는 export CSS 에 없다. 토큰은 export 의 토큰 블록에 있다(0101 Task 6). */
+              style={{
+                paddingLeft: `calc(${entry.level - 1} * var(--space-4))`,
+              }}
             >
               <button
                 className="table-of-contents-link"

@@ -484,7 +484,9 @@ function TagTreeItem({
         className={`tag-tree-item ${depth === 0 ? "tag-tree-item-root" : ""}`}
         onClick={() => onClickTag(node.fullPath)}
         onContextMenu={(e) => onContextMenu(e, node.fullPath)}
-        style={{ paddingLeft: `${8 + depth * 16}px` }}
+        style={{
+          paddingLeft: `calc(var(--space-2) + ${depth} * var(--space-4))`,
+        }}
         title={`#${node.fullPath} (${totalCount})`}
       >
         {hasChildren ? (

@@ -88,6 +88,13 @@
   color: var(--color-text-muted);
 }
 
+/* §365 검색 결과 "일치하는 파일 없음" — 폴더 없음 빈 상태(.file-tree-empty 기반)와
+   달리 결과 목록 흐름 안에 앉는다: 고정 높이 대신 auto, 세로 여백만 */
+.file-tree-empty--inline {
+  height: auto;
+  padding: var(--space-4) 0;
+}
+
 .file-tree-open-btn {
   padding: var(--space-1-5) var(--space-4);
   font-size: 0.8rem;

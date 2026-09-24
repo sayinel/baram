@@ -28,7 +28,7 @@ import {
 } from "./file-tree-icons";
 import { someSelectedIsDir } from "./file-tree-multi-ops";
 import { ancestorDirs } from "./file-tree-reveal";
-import { DRAG_EXPAND_DELAY_MS, TREE_BASE_PADDING_PX } from "./file-tree-types";
+import { DRAG_EXPAND_DELAY_MS } from "./file-tree-types";
 import { computeVisibleEntries } from "./file-tree-visible";
 import { FileTreeContext } from "./FileTreeContext";
 import { FileTreeNode } from "./FileTreeNode";
@@ -612,7 +612,6 @@ export function FileTree(): React.JSX.Element {
                   );
                   setSearchQuery("");
                 }}
-                style={{ paddingLeft: `${TREE_BASE_PADDING_PX}px` }}
               >
                 <span className="file-tree-icon">{getFileIcon(file.name)}</span>
                 <span className="file-tree-name text-truncate">
@@ -624,10 +623,7 @@ export function FileTree(): React.JSX.Element {
               </div>
             ))}
             {searchResults.length === 0 && (
-              <div
-                className="file-tree-empty"
-                style={{ height: "auto", padding: "16px 0" }}
-              >
+              <div className="file-tree-empty file-tree-empty--inline">
                 No matching files
               </div>
             )}
@@ -635,10 +631,7 @@ export function FileTree(): React.JSX.Element {
         ) : (
           <>
             {creatingEntry && creatingEntry.parentPath === rootPath && (
-              <div
-                className="file-tree-item"
-                style={{ paddingLeft: `${TREE_BASE_PADDING_PX}px` }}
-              >
+              <div className="file-tree-item">
                 <span className="file-tree-icon">
                   {creatingEntry.isDir ? <IconFolder /> : <IconFile />}
                 </span>

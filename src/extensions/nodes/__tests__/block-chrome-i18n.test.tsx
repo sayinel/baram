@@ -103,6 +103,7 @@ const ALLOWED = new Set([
   "(paragraph | heading) block*", // PM schema content expression
   "(prefers-color-scheme: dark)", // media query
   ")\\s$", // input-rule regex tail
+  "* var(--space-4))", // calc() fragment straddling the `${entry.level - 1}` interpolation (0101 Task 6)
   ".qb-builder select, .qb-builder input", // CSS selector
   "[data-vim-suspend]", // attribute selector
   "[lazy-visible] deferred mount failed", // logger, not UI
