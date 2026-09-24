@@ -1499,8 +1499,8 @@ mod tests {
     /// §260 Phase 5 — the dev-folder list is gated where it is READ
     /// (`plugin::dev_folders_for_this_build`), because the stored value lives in
     /// `config.json`, which the webview can write under any key. A second reader of that
-    /// value would reopen what the gate closes, so: this file reads the key once, straight
-    /// into the gate, and no other file names the key at all.
+    /// value would reopen what the gate closes, so: every use of the key in this file is a
+    /// sanctioned shape — one read, straight into the gate — and no other file names it.
     #[test]
     fn the_dev_folder_list_is_read_once_and_only_through_the_build_gate() {
         let squash = |s: &str| -> String { s.chars().filter(|c| !c.is_whitespace()).collect() };
@@ -1511,25 +1511,35 @@ mod tests {
                 .0,
         );
 
+        // Every use of the key must be one of these shapes. Counting uses rather than
+        // matching `get_config(` calls is what catches the readers a call-shaped scan
+        // misses: a nested-paren argument (`get_config(window.app_handle(), …)`), a
+        // turbofish, an alias, a closure that captures `raw` inside a writer.
         let key = concat!("DEV_FOLDERS", "_KEY");
-        let reads = prod
-            .match_indices("get_config(")
-            .filter(|(at, _)| {
-                prod[*at..]
-                    .split_once(')')
-                    .is_some_and(|(args, _)| args.contains(key))
-            })
-            .count();
-        assert_eq!(
-            reads, 1,
-            "the dev-folder key must be read in exactly one place"
+        let gated_read = format!(
+            "get_config(app,{key}).map_err(|e|e.to_string())?;\
+             Ok(plugin::dev_folders_for_this_build(raw))"
         );
-        assert!(
-            prod.contains(&format!(
-                "get_config(app,{key}).map_err(|e|e.to_string())?;\
-                 Ok(plugin::dev_folders_for_this_build(raw))"
-            )),
-            "the one read must feed the build gate directly"
+        let sanctioned = [
+            format!("const{key}:&str="),
+            gated_read.clone(),
+            format!("update_config(&app,{key},|raw|{{plugin::edited_dev_folders_json(raw,"),
+        ];
+        assert_eq!(
+            prod.matches(gated_read.as_str()).count(),
+            1,
+            "the one read of the dev-folder key must feed the build gate directly"
+        );
+        let uses = prod.matches(key).count();
+        let accounted: usize = sanctioned
+            .iter()
+            .map(|shape| prod.matches(shape.as_str()).count())
+            .sum();
+        assert_eq!(
+            uses, accounted,
+            "a use of the dev-folder key is not one of the sanctioned shapes \
+             (definition, gated read, JSON write) — route it through \
+             plugin::dev_folders_for_this_build or plugin::edited_dev_folders_json"
         );
 
         let literal = concat!("\"plugin.", "devFolders\"");

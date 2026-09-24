@@ -252,8 +252,9 @@ fn normalize_dev_list(existing: &[String], add: Option<&str>, remove: Option<&st
 
 /// Parse the persisted dev-folder list; corrupt/missing values degrade to empty.
 ///
-/// Private, like the rest of the dev-list helpers: outside this module the stored value
-/// becomes a list only through `dev_folders_for_this_build`, which applies the build gate.
+/// Private, like `normalize_dev_list` and `visible_dev_folders`: outside this module the
+/// stored value becomes a list only through `dev_folders_for_this_build`, which applies
+/// the build gate.
 fn parse_dev_folders(raw: Option<String>) -> Vec<String> {
     match raw {
         Some(s) => serde_json::from_str(&s).unwrap_or_default(),
@@ -272,11 +273,12 @@ fn parse_dev_folders(raw: Option<String>) -> Vec<String> {
 /// `com.inel.baram`). A release build that read the list anyway loaded the folders it
 /// named on every launch (`initializePlugins` → `plugin_list_dev`) as dev plugins — no
 /// consent record to bound their tier or capabilities, exempt from revocation — granted
-/// each a recursive asset scope (`dev_info`), and `read_own_source` accepted them as
-/// plugin locations.
+/// each one with a valid manifest a recursive asset scope (`dev_info`), and
+/// `read_own_source` accepted them as plugin locations.
 ///
 /// It takes no build flag so that no caller can pass `true`. The one reader, in
-/// `plugin_cmd.rs`, is pinned to this call by a scan test there.
+/// `plugin_cmd.rs`, is pinned to this call by a scan test there, and the flag this passes
+/// is pinned by `the_public_dev_folder_reader_passes_the_real_build_gate`.
 pub fn dev_folders_for_this_build(raw: Option<String>) -> Vec<String> {
     visible_dev_folders(dev_plugin_loading_enabled(), raw)
 }
@@ -574,5 +576,23 @@ mod tests {
             edited_dev_folders_json(Some(r#"["/a","/b"]"#.to_string()), None, Some("/a")),
             r#"["/b"]"#
         );
+    }
+
+    /// The one line no behavioural test reaches: tests run as a debug build, where
+    /// `dev_plugin_loading_enabled()` is always true, so `visible_dev_folders(true, raw)`
+    /// here would pass every other test while a release build loaded the stored list again.
+    #[test]
+    fn the_public_dev_folder_reader_passes_the_real_build_gate() {
+        let prod: String = include_str!("mod.rs")
+            .split_once("#[cfg(test)]\nmod tests {")
+            .expect("this file has a test module")
+            .0
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect();
+        assert!(prod.contains(concat!(
+            "pubfndev_folders_for_this_build(raw:Option<String>)->Vec<String>{",
+            "visible_dev_folders(dev_plugin_loading_enabled(),raw)}"
+        )));
     }
 }
