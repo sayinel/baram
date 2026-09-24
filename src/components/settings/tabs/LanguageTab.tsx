@@ -37,10 +37,7 @@ export function LanguageTab() {
         </select>
       </SettingsRow>
 
-      <div
-        className="settings-row-description"
-        style={{ marginTop: 12, fontStyle: "italic" }}
-      >
+      <div className="settings-row-description language-reload-notice">
         {t("settings.language.reloadNotice")}
       </div>
     </div>

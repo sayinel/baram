@@ -19,6 +19,7 @@ import { AI_PROVIDER_IDS, AI_PROVIDERS } from "../../stores/ai/providers";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
 import { TASK_SCAN_SCOPES } from "../../utils/tasks/task-scan-scope";
+import { dialOptionLabelKey } from "./dial-option-label";
 
 export interface SearchableSetting {
   category: SettingsTab;
@@ -548,31 +549,19 @@ export function useSettingsRegistry(): SearchableSetting[] {
     // 외관 다이얼이다. 행(EditorTab.tsx)이 editorMaxWidth 바로 위에 있는
     // 이유와 같은 이유로 여기서도 그 앞에 둔다(§4.4: 검색 결과 라벨은 행과
     // 같은 순서·같은 키를 따른다).
-    {
-      id: "editorLineBreak",
-      label: "settings.editor.editorLineBreak",
-      description: "settings.editor.editorLineBreak.desc",
-      category: "editor",
-      section: "settings.editor.display",
-      control: makeSelectControl(
-        // `makeSelectControl`의 selector는 `() => number | string`이라
-        // `DialValue`가 그대로 맞는다 — String()으로 감싸지 않는다.
-        () =>
-          resolveDials(themeDials, settings.appearanceOverrides).editorLineBreak
-            .value,
-        (v) => settings.setDial("editorLineBreak", v),
-        [
-          {
-            value: "normal",
-            label: "settings.editor.editorLineBreak.normal",
-          },
-          {
-            value: "keepAll",
-            label: "settings.editor.editorLineBreak.keepAll",
-          },
-        ],
-      ),
-    },
+    ...dialSelectSetting(
+      {
+        id: "editorLineBreak",
+        label: "settings.editor.editorLineBreak",
+        description: "settings.editor.editorLineBreak.desc",
+        category: "editor",
+        section: "settings.editor.display",
+      },
+      "editorLineBreak",
+      themeDials,
+      settings.appearanceOverrides,
+      settings.setDial,
+    ),
     // §368 — 자간·문단 간격도 editorMaxWidth와 같은 다이얼 기계를 쓰는 number
     // 다이얼이다. 행(EditorTab.tsx)이 editorLineBreak 바로 다음, editorMaxWidth
     // 바로 앞에 있는 것과 같은 순서로 여기도 둔다(§4.4).
@@ -604,33 +593,19 @@ export function useSettingsRegistry(): SearchableSetting[] {
     ),
     // §368.2 — 강조 렌더링도 editorLineBreak와 같은 다이얼 기계를 쓰는 enum
     // 다이얼이다. 조판 다이얼들(줄바꿈·자간·문단 간격) 끝에 둔다(§4.4).
-    {
-      id: "editorEmphasisStyle",
-      label: "settings.editor.editorEmphasisStyle",
-      description: "settings.editor.editorEmphasisStyle.desc",
-      category: "editor",
-      section: "settings.editor.display",
-      control: makeSelectControl(
-        () =>
-          resolveDials(themeDials, settings.appearanceOverrides)
-            .editorEmphasisStyle.value,
-        (v) => settings.setDial("editorEmphasisStyle", v),
-        [
-          {
-            value: "italic",
-            label: "settings.editor.editorEmphasisStyle.italic",
-          },
-          {
-            value: "color",
-            label: "settings.editor.editorEmphasisStyle.color",
-          },
-          {
-            value: "weight",
-            label: "settings.editor.editorEmphasisStyle.weight",
-          },
-        ],
-      ),
-    },
+    ...dialSelectSetting(
+      {
+        id: "editorEmphasisStyle",
+        label: "settings.editor.editorEmphasisStyle",
+        description: "settings.editor.editorEmphasisStyle.desc",
+        category: "editor",
+        section: "settings.editor.display",
+      },
+      "editorEmphasisStyle",
+      themeDials,
+      settings.appearanceOverrides,
+      settings.setDial,
+    ),
     // §366 되돌림 — editorMaxWidth는 잠시 외관 다이얼로 Appearance 탭에
     // 옮겨졌다가(Task 7) 돌아왔다. 다이얼 기계(병합·출처·되돌리기)는 그대로
     // AppearanceDialRow가 맡고, 여기서 바뀌는 것은 분류(category/section)뿐이다.
@@ -682,29 +657,19 @@ export function useSettingsRegistry(): SearchableSetting[] {
     ),
     // §5.1 — 순서 있는 마커의 정렬. editorEmphasisStyle 과 같은 enum 다이얼이고,
     // 행(EditorTab.tsx)이 가이드 농도 바로 다음에 있는 것과 같은 순서로 둔다.
-    {
-      id: "editorOrderedMarkerAlign",
-      label: "settings.editor.editorOrderedMarkerAlign",
-      description: "settings.editor.editorOrderedMarkerAlign.desc",
-      category: "editor",
-      section: "settings.editor.display",
-      control: makeSelectControl(
-        () =>
-          resolveDials(themeDials, settings.appearanceOverrides)
-            .editorOrderedMarkerAlign.value,
-        (v) => settings.setDial("editorOrderedMarkerAlign", v),
-        [
-          {
-            value: "number",
-            label: "settings.editor.editorOrderedMarkerAlign.number",
-          },
-          {
-            value: "period",
-            label: "settings.editor.editorOrderedMarkerAlign.period",
-          },
-        ],
-      ),
-    },
+    ...dialSelectSetting(
+      {
+        id: "editorOrderedMarkerAlign",
+        label: "settings.editor.editorOrderedMarkerAlign",
+        description: "settings.editor.editorOrderedMarkerAlign.desc",
+        category: "editor",
+        section: "settings.editor.display",
+      },
+      "editorOrderedMarkerAlign",
+      themeDials,
+      settings.appearanceOverrides,
+      settings.setDial,
+    ),
     {
       id: "virtualizeLargeDocs",
       label: "settings.editor.virtualizeLargeDocs",
@@ -779,6 +744,36 @@ export function useSettingsRegistry(): SearchableSetting[] {
         keywords: ["accent", "colour", "color", "saturation", "vivid"],
       },
       "accentSaturationShift",
+      themeDials,
+      settings.appearanceOverrides,
+      settings.setDial,
+    ),
+    // §365 다이얼 4·5 — 행은 AppearanceTab.tsx 의 "간격과 모서리" 섹션이다. label 은
+    // 행이 쓰는 키와 같은 문자열이다(0055 §4.4).
+    ...dialSelectSetting(
+      {
+        id: "density",
+        label: "settings.appearance.density",
+        description: "settings.appearance.density.desc",
+        category: "appearance",
+        section: "settings.appearance.spaceAndCorners",
+        keywords: ["density", "compact", "spacious", "spacing", "padding"],
+      },
+      "density",
+      themeDials,
+      settings.appearanceOverrides,
+      settings.setDial,
+    ),
+    ...dialSelectSetting(
+      {
+        id: "cornerRadius",
+        label: "settings.appearance.cornerRadius",
+        description: "settings.appearance.cornerRadius.desc",
+        category: "appearance",
+        section: "settings.appearance.spaceAndCorners",
+        keywords: ["corner", "radius", "rounded", "sharp", "round"],
+      },
+      "cornerRadius",
       themeDials,
       settings.appearanceOverrides,
       settings.setDial,
@@ -1082,6 +1077,45 @@ function dialSliderSetting(
   setDial: (id: DialId, value: DialValue) => void,
 ): SearchableSetting[] {
   const control = numberDialSliderControl(
+    dialId,
+    themeDials,
+    userOverrides,
+    setDial,
+  );
+  return control ? [{ ...entry, control }] : [];
+}
+
+// §365 — enum 다이얼의 검색 항목. 옵션과 라벨을 `DIALS` 와 `dialOptionLabelKey` 에서
+// 파생한다: 손으로 나열하면 행이 보이는 옵션과 검색이 보이는 옵션이 갈리는 날이
+// 온다(스펙 0057 §6). `numberDialSliderControl` 과 같은 이유로, id 가 enum 다이얼로
+// 풀리지 않으면 던지지 않고 그 항목 하나만 뺀다.
+function enumDialSelectControl(
+  id: DialId,
+  themeDials: DialValues,
+  userOverrides: DialValues,
+  setDial: (dialId: DialId, value: DialValue) => void,
+): SettingControlMeta | undefined {
+  const dial = DIALS.find((d) => d.id === id);
+  if (!dial || dial.kind !== "enum") return undefined;
+  return makeSelectControl(
+    () => resolveDials(themeDials, userOverrides)[id].value,
+    (v) => setDial(id, v),
+    dial.options.map((option) => ({
+      label: dialOptionLabelKey(id, option),
+      value: option,
+    })),
+  );
+}
+
+/** {@link dialSliderSetting} 의 enum 짝 — 0 또는 1 원소 배열. */
+function dialSelectSetting(
+  entry: Omit<SearchableSetting, "control">,
+  dialId: DialId,
+  themeDials: DialValues,
+  userOverrides: DialValues,
+  setDial: (id: DialId, value: DialValue) => void,
+): SearchableSetting[] {
+  const control = enumDialSelectControl(
     dialId,
     themeDials,
     userOverrides,

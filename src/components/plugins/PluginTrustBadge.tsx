@@ -12,9 +12,9 @@ const LABEL_KEY: Record<PluginTrust, string> = {
   trusted: "plugin.trust.trusted",
 };
 
-const COLOR: Record<PluginTrust, string> = {
-  sandboxed: "var(--color-accent-default)",
-  trusted: "var(--color-status-danger)",
+const MODIFIER: Record<PluginTrust, string> = {
+  sandboxed: "plugin-trust-badge--sandboxed",
+  trusted: "plugin-trust-badge--trusted",
 };
 
 export function PluginTrustBadge({
@@ -24,20 +24,7 @@ export function PluginTrustBadge({
 }) {
   const { t } = useTranslation();
   const label = trust ? t(LABEL_KEY[trust]) : t("plugin.trust.legacy");
-  const color = trust ? COLOR[trust] : "var(--color-text-muted)";
-  return (
-    <span
-      style={{
-        alignSelf: "flex-start",
-        border: `1px solid ${color}`,
-        borderRadius: "4px",
-        color,
-        fontSize: "12px",
-        fontWeight: 500,
-        padding: "2px 8px",
-      }}
-    >
-      {label}
-    </span>
-  );
+  // The no-trust modifier is named after the label it renders, `plugin.trust.legacy`.
+  const modifier = trust ? MODIFIER[trust] : "plugin-trust-badge--legacy";
+  return <span className={`plugin-trust-badge ${modifier}`}>{label}</span>;
 }

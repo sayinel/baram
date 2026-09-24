@@ -260,14 +260,7 @@ export function JournalTab() {
               description={t("settings.general.createTemplateFiles.desc")}
               label={t("settings.general.createTemplateFiles")}
             >
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "flex-end",
-                  gap: 4,
-                }}
-              >
+              <div className="journal-template-init-actions">
                 <button
                   className="settings-key-toggle"
                   onClick={async () => {

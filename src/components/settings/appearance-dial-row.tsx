@@ -22,6 +22,7 @@ import { resolveDials } from "../../appearance/merge";
 import { useThemeDials } from "../../hooks/use-theme-dials";
 import { useTranslation } from "../../i18n/useTranslation";
 import { useSettingsStore } from "../../stores/settings/store";
+import { dialOptionLabelKey } from "./dial-option-label";
 import { SettingsRow } from "./settings-shared";
 
 interface AppearanceDialRowProps {
@@ -78,7 +79,7 @@ export function AppearanceDialRow({ dialId, label }: AppearanceDialRowProps) {
       >
         {dial.options.map((option) => (
           <option key={option} value={option}>
-            {t(`settings.editor.${dialId}.${option}`)}
+            {t(dialOptionLabelKey(dialId, option))}
           </option>
         ))}
       </select>
@@ -153,6 +154,10 @@ function describeDial(dialId: DialId, t: Translate): string {
       return t("settings.appearance.accentHueShift.desc");
     case "accentSaturationShift":
       return t("settings.appearance.accentSaturationShift.desc");
+    case "cornerRadius":
+      return t("settings.appearance.cornerRadius.desc");
+    case "density":
+      return t("settings.appearance.density.desc");
     case "editorEmphasisStyle":
       return t("settings.editor.editorEmphasisStyle.desc");
     case "editorLetterSpacing":
@@ -217,6 +222,11 @@ function formatDialValue(
       return `${signOf(rounded)}${rounded}°`;
     case "accentSaturationShift":
       return `${signOf(rounded)}${rounded}%`;
+    // editorLineBreak 과 같은 이유로 빈 문자열이다 — 열거의 값 readout 은 select
+    // 자체가 이미 보여 준다.
+    case "cornerRadius":
+    case "density":
+      return "";
     case "editorEmphasisStyle":
       // editorLineBreak와 같은 이유로 빈 문자열이다 — 열거의 값 readout은
       // select 자체가 이미 보여 준다.

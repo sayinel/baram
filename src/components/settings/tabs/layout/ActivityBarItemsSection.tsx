@@ -176,12 +176,12 @@ export function ActivityBarItemsSection() {
 
   return (
     <>
-      <div className="settings-row-description" style={{ marginBottom: 12 }}>
+      <div className="settings-row-description activity-bar-items-description">
         {t("settings.activitybar.desc")}
       </div>
       {renderSection(t("settings.activitybar.sidebarPanels"), topItems)}
       {renderSection(t("settings.activitybar.rightPanels"), bottomItems)}
-      <div style={{ marginTop: 16 }}>
+      <div className="activity-bar-reset-row">
         <button className="theme-action-btn" onClick={resetActivityBarConfig}>
           {t("settings.activitybar.resetDefault")}
         </button>

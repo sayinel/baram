@@ -1143,12 +1143,20 @@
   color: var(--color-status-danger);
 }
 
-/* §69 Marketplace header refresh button — inline styles (STYLES.refreshButton
-   in PluginMarketplace.tsx) can't express pseudo-classes, so hover/active/
-   disabled feedback lives here instead. */
+/* §69 Marketplace header refresh button. The hover/active/disabled feedback came here first,
+   because an inline style cannot express pseudo-classes; §365 moved the rest of the old
+   inline object (`STYLES.refreshButton`) here too (plan 0101). The -1px matches the tab
+   buttons beside it, which overlap the tab bar's bottom border. */
 .marketplace-refresh-btn {
+  padding: var(--space-1-5) var(--space-3);
+  /* stylelint-disable-next-line declaration-property-value-disallowed-list -- 음수 값이다; var() 앞에 `-`를 붙여 부호를 뒤집을 수 없다(0097 R-C) */
+  margin-bottom: -1px;
+  margin-left: auto;
+  font-size: 12px;
   color: var(--color-text-muted);
   cursor: pointer;
+  background-color: transparent;
+  border: none;
 }
 
 .marketplace-refresh-btn:hover:not(:disabled) {

@@ -200,6 +200,12 @@
 
 /* ─── §86 Vault Settings Override ─── */
 
+/* §365 — the "Overrides" heading's top margin, moved from an inline style (plan 0101).
+   Beside .settings-section-title, which has no rule and is shared by other headings. */
+.vault-overrides-title {
+  margin-top: var(--space-6);
+}
+
 .vault-settings-loading {
   padding: var(--space-2) 0;
   font-size: 13px;

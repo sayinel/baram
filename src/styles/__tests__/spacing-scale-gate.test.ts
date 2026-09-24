@@ -137,9 +137,9 @@ it("규칙을 끄는 주석에는 전부 이유가 붙어 있다", () => {
   }
   // 비공허성 2: `offenders` 는 `disableCount` 가 0 이어도(스캔이 아무 disable
   // 주석도 찾지 못해도) 빈 배열이라 통과한다 — 스캔이 실제로 뭔가 찾았는지
-  // 세어야 그 무증상을 관측한다. 오늘의 disable 주석은 정확히 10개다 — R-C 가 리터럴로
-  // 남긴 9건(음수 8 · `calc()` 안 1)과, jsdom 계산값 단언 때문에 리터럴로 남긴
+  // 세어야 그 무증상을 관측한다. 오늘의 disable 주석은 정확히 12개다 — R-C 가 리터럴로
+  // 남긴 11건(음수 10 · `calc()` 안 1)과, jsdom 계산값 단언 때문에 리터럴로 남긴
   // `links.css` `.block-reference` 1건.
-  expect(disableCount).toBe(10);
+  expect(disableCount).toBe(12);
   expect(offenders).toEqual([]);
 });

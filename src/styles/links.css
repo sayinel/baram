@@ -457,6 +457,16 @@
   white-space: normal;
 }
 
+/* §365 — the ^block-id badge on a backlink context, moved from an inline style (plan 0101). */
+.backlinks-block-id-badge {
+  flex-shrink: 0;
+  padding: 0 var(--space-1);
+  font-size: 0.65rem;
+  color: var(--color-accent-default);
+  background: color-mix(in srgb, var(--color-accent-default) 15%, transparent);
+  border-radius: var(--radius-sm);
+}
+
 .backlinks-wrap-toggle {
   flex-shrink: 0;
   padding: 0 var(--space-1);

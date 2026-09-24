@@ -346,7 +346,7 @@ function VaultSettingsSection({ contextPath }: { contextPath: string }) {
 
   return (
     <>
-      <h3 className="settings-section-title" style={{ marginTop: 24 }}>
+      <h3 className="settings-section-title vault-overrides-title">
         {t("settings.vault.override")}
       </h3>
       <p className="settings-section-desc">

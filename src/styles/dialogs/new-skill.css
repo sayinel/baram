@@ -10,7 +10,7 @@
 }
 
 .new-skill-dialog {
-  width: 480px;
+  width: 560px;
   max-height: 80vh;
   padding: var(--space-5);
   overflow-y: auto;
@@ -116,4 +116,80 @@
 .new-skill-create:disabled {
   cursor: not-allowed;
   opacity: 0.5;
+}
+
+/* §365 — the rules from here to .new-skill-token-count lay out SkillGeneratorDialog.tsx and
+   SkillTestDialog.tsx (src/components/ai/); each rule is used by one or both. They live in
+   this stylesheet, not inline, so the density and corner dials reach them. Those two
+   components are the only files under src/, outside tests and this stylesheet, that name
+   .new-skill-dialog, so its width above (560px) is the width both dialogs render at. */
+.new-skill-field {
+  margin-top: var(--space-3);
+}
+
+.new-skill-checkbox-row {
+  display: flex;
+  gap: var(--space-3);
+  margin-top: var(--space-1);
+}
+
+.new-skill-checkbox {
+  display: flex;
+  gap: var(--space-1);
+  align-items: center;
+  font-size: 13px;
+}
+
+.new-skill-select {
+  margin-top: var(--space-1);
+}
+
+/* Not `.new-skill-actions` above: that rule right-aligns, it is left over from the
+   NewSkillDialog removed in 8885a91b, and no .ts/.tsx file under src/ names it. This row
+   is left-aligned. */
+.new-skill-run-row {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.new-skill-section {
+  margin-top: var(--space-4);
+}
+
+.skill-gen-preview {
+  max-height: 300px;
+  padding: var(--space-3);
+  margin-top: var(--space-1);
+  overflow: auto;
+  font-size: 12px;
+  white-space: pre-wrap;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+}
+
+.new-skill-create-btn {
+  margin-top: var(--space-2);
+}
+
+.new-skill-close-row {
+  margin-top: var(--space-3);
+  text-align: right;
+}
+
+.new-skill-message {
+  margin-top: var(--space-3);
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.new-skill-var-row {
+  margin-bottom: var(--space-3);
+}
+
+.new-skill-token-count {
+  margin-top: var(--space-2);
+  font-size: 12px;
+  color: var(--color-text-secondary);
 }

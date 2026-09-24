@@ -198,45 +198,54 @@ describe("hover fills on a solid surface", () => {
 describe("solid accent surfaces in inline styles", () => {
   // This scan was originally rooted at `src/components` and matched only JSX
   // `style={{…}}` literals. Both narrowings hid a live defect: PluginMarketplace
-  // keeps its styles in a module-level `STYLES` constant and has zero JSX style
-  // literals, so an `accent-default` + `#fff` retry button sat in the sweep's own
-  // directory, unseen, while this file reported green. It now walks all of `src`
-  // and reads brace-matched objects, whatever syntax holds them.
-  const objects = walk(SRC, ".tsx")
-    .concat(walk(SRC, ".ts"))
-    .filter((file) => !file.includes("__tests__"))
-    .flatMap((file) => {
-      const source = readFileSync(file, "utf8");
-      return innermostObjects(source)
-        .filter((object) =>
-          /(?<![-\w])(background(?:Color)?|color)\s*:/.test(object.body),
-        )
-        .map((object) => ({
-          body: object.body,
-          file,
-          line: source.slice(0, object.start).split("\n").length,
-        }));
-    });
+  // kept its styles in a module-level `STYLES` constant (deleted by plan 0101) and
+  // had zero JSX style literals, so an `accent-default` + `#fff` retry button sat
+  // in the sweep's own directory, unseen, while this file reported green. It now
+  // walks all of `src` and reads brace-matched objects, whatever syntax holds them.
+  // 0101 이후 이 스캔이 찾는 채움은 없다 — 다음 인라인 채움이 생기면 아래 offender
+  // 검사가 그것을 본다.
+
+  /** 한 소스의 style 객체 중 배경·글자색을 가진 것. 코퍼스와 픽스처가 같이 쓴다. */
+  const styleObjects = (file: string, source: string) =>
+    innermostObjects(source)
+      .filter((object) =>
+        /(?<![-\w])(background(?:Color)?|color)\s*:/.test(object.body),
+      )
+      .map((object) => ({
+        body: object.body,
+        file,
+        line: source.slice(0, object.start).split("\n").length,
+      }));
 
   // Bound to the one property, not to the object. Scanning the whole object body
   // for an accent token flagged `backgroundColor: "transparent"` objects whose
   // *border* used the accent, and accent `color-mix()` tints whose text is meant to
   // be accent-coloured — neither is a filled surface.
-  const accentObjects = objects.filter((object) => {
+  const isAccentFill = (object: { body: string }) => {
     const fill = objectProperty(object.body, /^background(Color)?$/);
     return (
       fill !== null &&
       fill.includes("--color-accent-") &&
       !fill.includes("color-mix")
     );
-  });
+  };
+  const isStatusFill = (object: { body: string }) => {
+    const fill = objectProperty(object.body, /^background(Color)?$/);
+    return fill !== null && fill.includes("--color-status-");
+  };
+
+  const objects = walk(SRC, ".tsx")
+    .concat(walk(SRC, ".ts"))
+    .filter((file) => !file.includes("__tests__"))
+    .flatMap((file) => styleObjects(file, readFileSync(file, "utf8")));
+  const accentObjects = objects.filter(isAccentFill);
+  const statusObjects = objects.filter(isStatusFill);
 
   it("parsed style objects across the tree", () => {
     // A floor on the parse, not on the finding: if brace matching collapsed, every
     // assertion below would pass over an empty list. Deliberately not pinned to the
     // number of accent objects — that number is what a new defect would change.
     expect(objects.length).toBeGreaterThan(50);
-    expect(accentObjects.length).toBeGreaterThan(0);
   });
 
   it("fills from accent-solid, never from accent-default or accent-hover", () => {
@@ -250,15 +259,26 @@ describe("solid accent surfaces in inline styles", () => {
     expect(offenders).toEqual([]);
   });
 
-  const statusObjects = objects.filter((object) => {
-    const fill = objectProperty(object.body, /^background(Color)?$/);
-    return fill !== null && fill.includes("--color-status-");
-  });
-
-  it("found the inline status buttons", () => {
-    // Added because the accent-only version of this scan left the three TSX status
-    // buttons this commit converted entirely unguarded.
-    expect(statusObjects.length).toBeGreaterThan(0);
+  // 0101 이 마켓플레이스를 스타일시트로 옮기면서 코퍼스의 인라인 채움은 0 이 됐다.
+  // 옮긴 여덟 중 여섯(`--color-accent-solid` 채움 4 · `--color-status-warning` 채움 2)은
+  // 위 "solid accent surfaces in CSS" · "solid status surfaces in CSS" 가 셀렉터로 본다.
+  // 나머지 둘 — 오류 배너 `.plugin-detail__error` · `.plugin-card__error` 의
+  // `var(--color-status-error-bg)` — 은 `STATUS_FILL` 이 `danger|warning|success` 만 잡아
+  // 그 검사 밖이다. 인라인 쪽이 그 둘에 걸던 밝은 글자색 검사는 모든 규칙을 읽는
+  // "hardcoded light foregrounds anywhere in CSS" 가 대신한다. 코퍼스의 개수로는
+  // 매처가 살아 있는지 알 수 없으므로(빈 목록에서 아래 offender 검사는 전부 통과한다),
+  // 같은 매처를 픽스처에 돌려 양성 대조로 삼는다. 무엇이 이것을 실패시키는가:
+  // `objectProperty` 나 두 판정이 깨져 채움을 못 알아보게 되면.
+  it("still recognises an inline accent fill and an inline status fill", () => {
+    const fixture = [
+      'const A = { backgroundColor: "var(--color-accent-solid)", color: "var(--color-accent-on-solid)" };',
+      'const B = { backgroundColor: "var(--color-status-warning)", color: "var(--color-status-warning-on-solid)" };',
+      'const C = { backgroundColor: "transparent", border: "1px solid var(--color-accent-default)", color: "red" };',
+    ].join("\n");
+    const found = styleObjects("fixture.tsx", fixture);
+    expect(found).toHaveLength(3);
+    expect(found.filter(isAccentFill)).toHaveLength(1);
+    expect(found.filter(isStatusFill)).toHaveLength(1);
   });
 
   it("never hardcodes a light foreground on a status fill", () => {

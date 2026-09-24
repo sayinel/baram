@@ -1,16 +1,27 @@
 // §364 외관 다이얼의 단일 출처 — 타입·병합·적용·설정 UI 가 전부 이 배열에서 파생한다.
 //
-// ‼️ 이 모듈이 값으로 import 하는 것은 `color-hsl.ts` **하나**뿐이고, 그 모듈은
-// 아무것도 import 하지 않는다(그 파일 머리주석이 그것을 계약으로 적는다).
+// ‼️ 이 모듈이 값으로 import 하는 것은 **모듈 둘**뿐이다 — 잎 모듈 `color-hsl.ts`(그 파일
+// 머리주석이 "아무것도 import 하지 않는다" 를 계약으로 적는다)와 `scale-dials.ts`(그 머리주석대로
+// Style Dictionary 가 내는 `types/generated/scale.ts` 만 import 하고, 생성 포맷 `ts/scale` 은
+// import 문을 쓰지 않는다 — `style-dictionary.config.ts`). 값 import 는 그 세 파일에서 멈춘다.
 // `settings/store.ts` 가 이것을 import 하므로, 여기서 스토어를 알면 순환이
-// 된다(`settings/feature-keys.ts` 가 같은 이유로 잎 모듈이다) — 잎 하나를 거치는
-// 것은 순환을 만들 수 없다. `ColorMode` 의 `import type` 은
+// 된다(`settings/feature-keys.ts` 가 같은 이유로 잎 모듈이다) — import 가 잎에서
+// 끝나는 모듈을 거치는 것은 순환을 만들 수 없다. `ColorMode` 의 `import type` 은
 // `verbatimModuleSyntax`(CLAUDE.md · `tsconfig`) 하에서 컴파일 시 지워지고
 // 런타임 간선을 만들지 않으므로 그 순환에 참여할 수 없다.
 
 import type { ColorMode } from "./color-mode";
 
 import { hexToHsl, hslToHex } from "./color-hsl";
+import {
+  CORNER_FACTOR,
+  CORNER_OPTIONS,
+  DENSITY_FACTOR,
+  DENSITY_OPTIONS,
+  MOVING_RADIUS,
+  MOVING_SPACE,
+  scaleVars,
+} from "./scale-dials";
 
 export type DialDef = EnumDialDef | NumberDialDef;
 
@@ -450,6 +461,38 @@ export const DIALS = [
     toVars: (value: DialValue, ctx: DialContext): Record<string, string> =>
       shiftAccent(value, ctx, "s"),
     vars: [...ACCENT_SEED_KEYS],
+  },
+  // §365 다이얼 4·5 — 스케일 전체를 한 곱수로(스펙 0057). 행은 외관 탭이다
+  // (0055 §4.4: 앱 전체의 겉모습).
+  {
+    channel: "layout",
+    defaultValue: "default",
+    id: "density",
+    kind: "enum",
+    options: DENSITY_OPTIONS,
+    parse: oneOf(DENSITY_OPTIONS),
+    toVars: (value: DialValue, _ctx: DialContext): Record<string, string> => {
+      const option = oneOf(DENSITY_OPTIONS)(value);
+      return option === undefined
+        ? {}
+        : scaleVars(MOVING_SPACE, DENSITY_FACTOR[option]);
+    },
+    vars: MOVING_SPACE.map(([name]) => name),
+  },
+  {
+    channel: "layout",
+    defaultValue: "default",
+    id: "cornerRadius",
+    kind: "enum",
+    options: CORNER_OPTIONS,
+    parse: oneOf(CORNER_OPTIONS),
+    toVars: (value: DialValue, _ctx: DialContext): Record<string, string> => {
+      const option = oneOf(CORNER_OPTIONS)(value);
+      return option === undefined
+        ? {}
+        : scaleVars(MOVING_RADIUS, CORNER_FACTOR[option]);
+    },
+    vars: MOVING_RADIUS.map(([name]) => name),
   },
 ] as const satisfies readonly DialDef[];
 

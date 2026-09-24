@@ -106,9 +106,10 @@ describe("settings tab structure (§342)", () => {
     // 검색에서만 보인다.
     //
     // 무엇이 이것을 실패시키는가: `DIALS` 에 다이얼을 더하고 레지스트리에
-    // `dialSliderSetting`/열거 항목을 더하지 않으면 실패한다. 오늘 여섯 다이얼의
-    // 레지스트리 id 는 전부 다이얼 id 와 같고(실측), 그 동일성이 이 단정의 전제다 —
-    // 항목 id 를 일부러 다르게 지으려면 이 테스트를 함께 고쳐야 한다.
+    // `dialSliderSetting`/열거 항목을 더하지 않으면 실패한다. 이 단정의 전제는
+    // `DIALS` 전부가 자기 id 와 같은 id 의 레지스트리 항목을 갖는 것이고, 아래 단정이
+    // `DIALS` 를 순회해 그것을 다이얼마다 확인한다 — 항목 id 를 일부러 다르게 지으려면
+    // 이 테스트를 함께 고쳐야 한다.
     const { result } = renderHook(() => useSettingsRegistry());
     const registered = new Set(result.current.map((s) => s.id));
     const missing = DIALS.map((d) => d.id).filter((id) => !registered.has(id));

@@ -302,17 +302,7 @@ export function Backlinks() {
                       {entry.context}
                     </span>
                     {entry.blockId && (
-                      <span
-                        style={{
-                          flexShrink: 0,
-                          fontSize: "0.65rem",
-                          padding: "0 4px",
-                          borderRadius: "3px",
-                          background:
-                            "color-mix(in srgb, var(--color-accent-default) 15%, transparent)",
-                          color: "var(--color-accent-default)",
-                        }}
-                      >
+                      <span className="backlinks-block-id-badge">
                         ^{entry.blockId}
                       </span>
                     )}

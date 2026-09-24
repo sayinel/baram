@@ -193,12 +193,23 @@
   line-height: 1.2;
 }
 
+/* The system card's "Aa". It must stay after .theme-preview-heading: same specificity,
+   so source order is what makes 7px beat 8px. */
+.theme-system-preview-heading {
+  font-size: 7px;
+}
+
 .theme-preview-text {
   font-size: 6px;
   line-height: 1.3;
 }
 
+.theme-preview-bold {
+  font-weight: 600;
+}
+
 .theme-preview-quote {
+  padding-left: var(--space-1-5);
   font-size: 5.5px;
   font-style: italic;
   line-height: 1.3;
@@ -296,6 +307,17 @@
 .activity-bar-config-hidden {
   text-decoration: line-through;
   opacity: 0.4;
+}
+
+/* §365 — ActivityBarItemsSection's description and reset row, moved from inline styles
+   (plan 0101). The description also carries .settings-row-description, which other settings
+   components share. */
+.activity-bar-items-description {
+  margin-bottom: var(--space-3);
+}
+
+.activity-bar-reset-row {
+  margin-top: var(--space-4);
 }
 
 /* Theme Editor */

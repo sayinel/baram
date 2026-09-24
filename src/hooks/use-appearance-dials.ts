@@ -34,12 +34,13 @@ export function useAppearanceDials(): Record<DialId, ResolvedDial> {
 
   useEffect(() => {
     // ‼️ `mode: "light"` 를 상수로 두는 것이 옳다. 이 호출이 쓰는 것은 레이아웃
-    // 채널뿐이고(`applyDialVars` 가 색 채널을 건너뛴다), 레이아웃 다이얼 여섯은
+    // 채널뿐이고(`applyDialVars` 가 색 채널을 건너뛴다), 레이아웃 다이얼은
     // 컨텍스트를 읽지 않는다 — Task 1 의 채널 테스트가 "레이아웃 다이얼은
     // `--color-*` 를 선언하지 않는다" 를 고정하므로 이 상수가 관측되는 경로가 없다.
-    // 여기서 `matchMedia` 를 부르면 읽히지도 않는 값을 위해 여섯 번째
-    // `prefers-color-scheme` 리스너가 생긴다(오늘 넷: `code-block-highlight.ts` ·
-    // `use-graph-colors.ts` · `use-theme-css-hydration.ts` · `use-settings-effects.ts`).
+    // 여기서 모드를 `matchMedia` 로 따라가면 읽히지도 않는 값을 위해 다섯 번째
+    // `prefers-color-scheme` 리스너가 생긴다 — 테스트 밖 `src/**/*.{ts,tsx}` 에서 그
+    // 쿼리에 `change` 리스너를 거는 자리는 넷이다(2026-09-24): `code-block-highlight.ts` ·
+    // `use-graph-colors.ts` · `use-theme-css-hydration.ts` · `use-settings-effects.ts`.
     const ctx: DialContext = { mode: "light", seeds: {} };
     applyDialVars(document.documentElement, resolved, ctx);
   }, [resolved]);
