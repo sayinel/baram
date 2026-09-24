@@ -151,7 +151,7 @@ const DEV_FOLDERS_KEY: &str = "plugin.devFolders";
 
 fn read_dev_folders(app: &tauri::AppHandle) -> Result<Vec<String>, String> {
     let raw = config::get_config(app, DEV_FOLDERS_KEY).map_err(|e| e.to_string())?;
-    Ok(plugin::parse_dev_folders(raw))
+    Ok(plugin::dev_folders_for_this_build(raw))
 }
 
 fn dev_info<R: tauri::Runtime>(
@@ -193,8 +193,7 @@ pub async fn plugin_add_dev_folder<R: tauri::Runtime>(
         .await?;
     let info = dev_info(&app, &path)?; // validate manifest + grant scope BEFORE persisting
     config::update_config(&app, DEV_FOLDERS_KEY, |raw| {
-        let list = plugin::normalize_dev_list(&plugin::parse_dev_folders(raw), Some(&path), None);
-        serde_json::to_string(&list).unwrap_or_default()
+        plugin::edited_dev_folders_json(raw, Some(&path), None)
     })
     .map_err(|e| e.to_string())?;
     Ok(info)
@@ -203,8 +202,7 @@ pub async fn plugin_add_dev_folder<R: tauri::Runtime>(
 #[tauri::command]
 pub async fn plugin_remove_dev_folder(app: tauri::AppHandle, path: String) -> Result<(), String> {
     config::update_config(&app, DEV_FOLDERS_KEY, |raw| {
-        let list = plugin::normalize_dev_list(&plugin::parse_dev_folders(raw), None, Some(&path));
-        serde_json::to_string(&list).unwrap_or_default()
+        plugin::edited_dev_folders_json(raw, None, Some(&path))
     })
     .map_err(|e| e.to_string())
 }
@@ -429,8 +427,9 @@ async fn read_own_source(
     plugin::read_bundle_in(dir, &manifest.main).await
 }
 
-/// Is `dir` a plugin location — the installed plugin dir's child, or a registered
-/// dev folder? Canonicalized on both sides so a symlink cannot disguise the answer.
+/// Is `dir` a plugin location — the installed plugin dir's child, or (dev builds only,
+/// through `read_dev_folders`) a registered dev folder? Canonicalized on both sides so a
+/// symlink cannot disguise the answer.
 fn is_plugin_directory(app: &tauri::AppHandle, dir: &std::path::Path) -> Result<bool, String> {
     let canonical = std::fs::canonicalize(dir)
         .map_err(|e| format!("plugin source directory is unreadable: {e}"))?;
@@ -1495,6 +1494,80 @@ mod tests {
         assert_eq!(sandbox_window_guard("plugin-alpha").unwrap(), "alpha");
         assert!(sandbox_window_guard("main").is_err());
         assert!(sandbox_window_guard("file-1").is_err());
+    }
+
+    /// §260 Phase 5 — the dev-folder list is gated where it is READ
+    /// (`plugin::dev_folders_for_this_build`), because the stored value lives in
+    /// `config.json`, which the webview can write under any key. A second reader of that
+    /// value would reopen what the gate closes, so: every use of the key in this file is a
+    /// sanctioned shape — one read, straight into the gate — and no other file names it.
+    #[test]
+    fn the_dev_folder_list_is_read_once_and_only_through_the_build_gate() {
+        let squash = |s: &str| -> String { s.chars().filter(|c| !c.is_whitespace()).collect() };
+        let src = include_str!("plugin_cmd.rs");
+        let prod = squash(
+            src.split_once("#[cfg(test)]")
+                .expect("this file has a test module")
+                .0,
+        );
+
+        // Every use of the key must be one of these shapes. Counting uses rather than
+        // matching `get_config(` calls is what catches the readers a call-shaped scan
+        // misses: a nested-paren argument (`get_config(window.app_handle(), …)`), a
+        // turbofish, an alias, a closure that captures `raw` inside a writer.
+        let key = concat!("DEV_FOLDERS", "_KEY");
+        let gated_read = format!(
+            "get_config(app,{key}).map_err(|e|e.to_string())?;\
+             Ok(plugin::dev_folders_for_this_build(raw))"
+        );
+        let sanctioned = [
+            format!("const{key}:&str="),
+            gated_read.clone(),
+            format!("update_config(&app,{key},|raw|{{plugin::edited_dev_folders_json(raw,"),
+        ];
+        assert_eq!(
+            prod.matches(gated_read.as_str()).count(),
+            1,
+            "the one read of the dev-folder key must feed the build gate directly"
+        );
+        let uses = prod.matches(key).count();
+        let accounted: usize = sanctioned
+            .iter()
+            .map(|shape| prod.matches(shape.as_str()).count())
+            .sum();
+        assert_eq!(
+            uses, accounted,
+            "a use of the dev-folder key is not one of the sanctioned shapes \
+             (definition, gated read, JSON write) — route it through \
+             plugin::dev_folders_for_this_build or plugin::edited_dev_folders_json"
+        );
+
+        let literal = concat!("\"plugin.", "devFolders\"");
+        assert!(
+            src.contains(literal),
+            "the key literal moved — this scan would pass an offender"
+        );
+        let mut offenders = Vec::new();
+        let mut dirs = vec![std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src")];
+        while let Some(dir) = dirs.pop() {
+            for entry in std::fs::read_dir(&dir).expect("src is readable") {
+                let path = entry.expect("dir entry is readable").path();
+                if path.is_dir() {
+                    dirs.push(path);
+                } else if path.extension().is_some_and(|ext| ext == "rs")
+                    && !path.ends_with("commands/plugin_cmd.rs")
+                    && std::fs::read_to_string(&path)
+                        .expect("source is readable")
+                        .contains(literal)
+                {
+                    offenders.push(path);
+                }
+            }
+        }
+        assert!(
+            offenders.is_empty(),
+            "only plugin_cmd.rs may name the dev-folder key: {offenders:?}"
+        );
     }
 
     /// §329.6 — `dev_info`가 웹뷰가 준 경로에 asset scope를 재귀로 부여한다.

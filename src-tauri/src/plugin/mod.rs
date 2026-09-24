@@ -14,6 +14,10 @@ use thiserror::Error;
 /// checksum, the registry listing and the consent step entirely, and it exists to serve
 /// plugin authors — who run dev builds. The name says what it actually gates, because
 /// the old one read as "plugins work at all" and would invite exactly the wrong edit.
+///
+/// It is enforced at BOTH ends of the dev-folder list: `plugin_add_dev_folder` will not
+/// add an entry, and `dev_folders_for_this_build` hands back none of the stored ones. The
+/// second is the one that matters — the list has writers the first never sees; see there.
 pub fn dev_plugin_loading_enabled() -> bool {
     cfg!(debug_assertions)
 }
@@ -233,11 +237,7 @@ fn validate_manifest(manifest: &PluginManifest) -> Result<(), PluginError> {
 }
 
 /// Dedup-aware add/remove for the persisted dev-folder list.
-pub fn normalize_dev_list(
-    existing: &[String],
-    add: Option<&str>,
-    remove: Option<&str>,
-) -> Vec<String> {
+fn normalize_dev_list(existing: &[String], add: Option<&str>, remove: Option<&str>) -> Vec<String> {
     let mut out: Vec<String> = existing.to_vec();
     if let Some(r) = remove {
         out.retain(|p| p != r);
@@ -251,11 +251,64 @@ pub fn normalize_dev_list(
 }
 
 /// Parse the persisted dev-folder list; corrupt/missing values degrade to empty.
-pub fn parse_dev_folders(raw: Option<String>) -> Vec<String> {
+///
+/// Private, like `normalize_dev_list` and `visible_dev_folders`: outside this module the
+/// stored value becomes a list only through `dev_folders_for_this_build`, which applies
+/// the build gate.
+fn parse_dev_folders(raw: Option<String>) -> Vec<String> {
     match raw {
         Some(s) => serde_json::from_str(&s).unwrap_or_default(),
         None => Vec::new(),
     }
+}
+
+/// The dev folders this build may load from and treat as plugin locations: the stored
+/// list in a dev build, none in a release build.
+///
+/// ‼️ The gate has to sit where the list is READ, not only where it is written. The list
+/// lives in `config.json`, which the main webview can write under any key (`set_config`),
+/// and `plugin_add_dev_folder`'s refusal only stops the current release from adding to
+/// it. It is not the only writer, either: v0.4.0 and v0.4.1 added entries with no build
+/// gate, and a dev build shares the release build's app data directory (one identifier,
+/// `com.inel.baram`). A release build that read the list anyway loaded the folders it
+/// named on every launch (`initializePlugins` → `plugin_list_dev`) as dev plugins — no
+/// consent record to bound their tier or capabilities, exempt from revocation — granted
+/// each one with a valid manifest a recursive asset scope (`dev_info`), and
+/// `read_own_source` accepted them as plugin locations.
+///
+/// It takes no build flag so that no caller can pass `true`. The one reader, in
+/// `plugin_cmd.rs`, is pinned to this call by a scan test there, and the flag this passes
+/// is pinned by `the_public_dev_folder_reader_passes_the_real_build_gate`.
+pub fn dev_folders_for_this_build(raw: Option<String>) -> Vec<String> {
+    visible_dev_folders(dev_plugin_loading_enabled(), raw)
+}
+
+/// `dev_folders_for_this_build` with the build as a parameter, so the release branch can
+/// be tested: `cfg!(debug_assertions)` is fixed when a binary is compiled, and the test
+/// run is a debug build.
+fn visible_dev_folders(dev_loading_enabled: bool, raw: Option<String>) -> Vec<String> {
+    if !dev_loading_enabled {
+        let ignored = parse_dev_folders(raw).len();
+        if ignored > 0 {
+            log::warn!(
+                "[plugin] ignoring {ignored} stored dev folder(s): release builds do not load dev plugins"
+            );
+        }
+        return Vec::new();
+    }
+    parse_dev_folders(raw)
+}
+
+/// The stored dev-folder list after one add/remove, serialized for `update_config` — the
+/// WRITE path. It hands back JSON rather than a list, so reading the list through it
+/// would take a deliberate re-parse instead of a call that already looks like a reader.
+pub fn edited_dev_folders_json(
+    raw: Option<String>,
+    add: Option<&str>,
+    remove: Option<&str>,
+) -> String {
+    serde_json::to_string(&normalize_dev_list(&parse_dev_folders(raw), add, remove))
+        .unwrap_or_default()
 }
 
 /// Read + validate a manifest from an arbitrary folder (dev plugin source).
@@ -494,5 +547,52 @@ mod tests {
             parse_dev_folders(Some(r#"["/a","/b"]"#.to_string())),
             vec!["/a".to_string(), "/b".to_string()]
         );
+    }
+
+    /// The stored list can hold entries no current release wrote — see
+    /// `dev_folders_for_this_build` for who else writes it — and a release build must not
+    /// act on any of them.
+    #[test]
+    fn with_dev_loading_disabled_no_stored_folder_is_visible() {
+        let stored = Some(r#"["/stored/plugin"]"#.to_string());
+        assert_eq!(visible_dev_folders(false, stored), Vec::<String>::new());
+    }
+
+    #[test]
+    fn with_dev_loading_enabled_the_stored_folders_are_visible() {
+        assert_eq!(
+            visible_dev_folders(true, Some(r#"["/a","/b"]"#.to_string())),
+            vec!["/a".to_string(), "/b".to_string()]
+        );
+    }
+
+    #[test]
+    fn editing_the_dev_list_starts_from_the_stored_value() {
+        assert_eq!(
+            edited_dev_folders_json(Some(r#"["/a"]"#.to_string()), Some("/b"), None),
+            r#"["/a","/b"]"#
+        );
+        assert_eq!(
+            edited_dev_folders_json(Some(r#"["/a","/b"]"#.to_string()), None, Some("/a")),
+            r#"["/b"]"#
+        );
+    }
+
+    /// The one line no behavioural test reaches: tests run as a debug build, where
+    /// `dev_plugin_loading_enabled()` is always true, so `visible_dev_folders(true, raw)`
+    /// here would pass every other test while a release build loaded the stored list again.
+    #[test]
+    fn the_public_dev_folder_reader_passes_the_real_build_gate() {
+        let prod: String = include_str!("mod.rs")
+            .split_once("#[cfg(test)]\nmod tests {")
+            .expect("this file has a test module")
+            .0
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect();
+        assert!(prod.contains(concat!(
+            "pubfndev_folders_for_this_build(raw:Option<String>)->Vec<String>{",
+            "visible_dev_folders(dev_plugin_loading_enabled(),raw)}"
+        )));
     }
 }
