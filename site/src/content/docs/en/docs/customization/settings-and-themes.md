@@ -12,8 +12,8 @@ Available settings tabs, grouped by nav section:
 | Group        | Tab              | What it holds                                                        |
 | ------------ | ---------------- | --------------------------------------------------------------------------------------------------- |
 | **General**  | **General**      | Startup behavior, auto-save, links, file snapshots, updates          |
-| **General**  | **Editor**       | Fonts, typing behavior, vim mode, editor width                      |
-| **General**  | **Appearance**   | Theme gallery, custom themes                                         |
+| **General**  | **Editor**       | Fonts, typing behavior, vim mode, and [document dials](#appearance-dials) — width, spacing, line breaking, emphasis, lists |
+| **General**  | **Appearance**   | Theme gallery, custom themes, and [accent, background, density, and corner dials](#appearance-dials) |
 | **General**  | **Markdown**     | Extended syntax, typography ([smart punctuation and symbol suggestions](/en/docs/editing/symbols-and-punctuation/)), code block and diagram options |
 | **General**  | **Language**     | UI language                                                          |
 | **General**  | **Keybindings**  | Shortcut customization                                               |
@@ -64,6 +64,47 @@ Baram comes with 8 built-in themes and supports custom theme creation.
 
 - Click **Import Theme...** to load a `.json` theme file
 - Click **Export** in the theme editor to save the current theme as a `.json` file for sharing
+
+## Appearance dials
+
+A dial adjusts one part of how Baram looks. A dial you have changed shows **Custom** and a
+revert button that puts just that dial back, without touching the others. A dial your theme
+suggests a value for shows **Theme**. A dial with no badge is on Baram's default and writes
+nothing, so the theme and stylesheet decide.
+
+**Settings > Appearance** changes the whole app:
+
+| Dial                          | Choices                      | What it changes                                                                                  |
+| ----------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------ |
+| **Accent hue**                | −180° to +180°               | Turns the current theme's accent color around the color wheel                                    |
+| **Accent saturation**         | −50% to +50%                 | Makes the accent more or less vivid                                                              |
+| **Light background contrast** | Default · Flat · All white   | In light mode, how far the sidebars, activity bar, tab bar, and status bar stand apart from the document |
+| **Dark background contrast**  | Default · Flat · True black  | The same, in dark mode                                                                           |
+| **Density**                   | Compact · Default · Spacious | Spacing in and around interface elements                                                         |
+| **Corners**                   | Sharp · Default · Round      | How rounded buttons, panels, and fields are; pills and circles keep their shape                  |
+
+The accent dials shift the theme's own accent rather than replacing it, so the same shift
+carries over when you change themes. **Flat** gives the bars the document's color; **All
+white** and **True black** paint the document and the bars alike. Each background dial acts
+only in its own mode, so with **System (Auto)** the matching one takes over when your OS
+switches.
+
+**Settings > Editor**, under **Display**, changes the document:
+
+| Dial                      | Choices                              | What it changes                                                             |
+| ------------------------- | ------------------------------------ | --------------------------------------------------------------------------- |
+| **Line breaking**         | Default · Keep words whole (Korean)  | Keeps a Korean word on one line instead of breaking it; long URLs still wrap |
+| **Letter spacing**        | −0.05em to +0.1em                    | Space between characters                                                    |
+| **Paragraph spacing**     | 0 to 2em                             | Space between paragraphs                                                    |
+| **Emphasis style**        | Italic · Accent colour · Bolder      | How `*emphasis*` is drawn                                                   |
+| **Line width**            | Up to 4000px, or 0 for no limit      | Maximum content width                                                       |
+| **Editor padding**        | 0 to 16rem                           | Space around the content                                                    |
+| **List guide strength**   | 0 to 40                              | How strongly the indent guide in nested lists stands out; 0 hides it        |
+| **List number alignment** | Align numbers · Align periods        | Which edge list numbers grow from                                           |
+
+**Density** and **Corners** leave paragraph spacing and editor padding alone — those are the
+editor dials. The list guide's color is a theme color (**List Guide** in the theme editor);
+the dial only sets how strongly it shows.
 
 ## Fonts
 
