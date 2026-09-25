@@ -11,6 +11,8 @@
 import type { StoredThemeCssPayload } from "../../ipc/theme";
 import type { RegistryEntry } from "../../plugins/types";
 
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const calls: string[] = [];
@@ -244,6 +246,75 @@ describe("installTheme applies the engines.baram floor (0090 final review, M1)",
     const result = await installTheme(entry(), "https://reg.test");
 
     expect(result.ok).toBe(true);
+  });
+});
+
+describe("installTheme keeps a palette written before a key existed (#722 out of scope 1)", () => {
+  // A package declares `engines.baram: ">=0.7.4"`, and v0.7.4 exported 24 keys. #722 added a
+  // 25th, and `readModeColors` required every key, so such a package installed with
+  // `ok: true` and no palette at all — nothing said, and the theme looked like Default.
+  const lightTokens = (colors: Record<string, string>) => {
+    stageWith(
+      { "light/tokens.json": enc(JSON.stringify(colors)) },
+      manifestText({ modes: { light: { tokens: "light/tokens.json" } } }),
+    );
+    return installTheme(entry(), "https://reg.test/index.json");
+  };
+
+  const allKeys = async (value: string) =>
+    Object.fromEntries(
+      (await import("../../types/theme")).THEME_COLOR_KEYS.map(({ key }) => [
+        key,
+        value,
+      ]),
+    );
+
+  it("installs a 24-key palette and takes the list guide tint from editor text", async () => {
+    const before = await allKeys("#123456");
+    delete before["--color-editor-guide-tint"];
+    const result = await lightTokens({
+      ...before,
+      "--color-editor-text": "#abcdef",
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const colors = result.installed.modes.light?.colors;
+    expect(colors?.["--color-bg-default"]).toBe("#123456");
+    // The value the cascade draws when the key is absent (`semantic-*.css` aliases it to
+    // editor text), so the installed theme renders exactly as it did before #722.
+    expect(colors?.["--color-editor-guide-tint"]).toBe("#abcdef");
+  });
+
+  it("installs the reference theme's palette, which predates the guide tint", async () => {
+    const reference = JSON.parse(
+      readFileSync(
+        resolve(__dirname, "../reference/light/tokens.json"),
+        "utf8",
+      ),
+    ) as Record<string, string>;
+    expect(reference).not.toHaveProperty("--color-editor-guide-tint");
+
+    const result = await lightTokens(reference);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.installed.modes.light?.colors?.["--color-editor-text"]).toBe(
+      reference["--color-editor-text"],
+    );
+  });
+
+  // The fill must not turn into "any incomplete palette passes": a key the format has
+  // always required still drops the mode's colours, exactly as before this fix.
+  it("still drops a palette missing a key the format always required", async () => {
+    const incomplete = await allKeys("#123456");
+    delete incomplete["--color-bg-default"];
+
+    const result = await lightTokens(incomplete);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.installed.modes.light?.colors).toBeUndefined();
   });
 });
 
