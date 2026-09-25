@@ -170,7 +170,7 @@ pub async fn pick_approved_dir<R: tauri::Runtime>(
     let title = if is_korean(&app) {
         match purpose.as_str() {
             "journal" => "저널 폴더 선택",
-            "zettelkasten" => "Zettelkasten 폴더 선택",
+            "zettelkasten" => "제텔 폴더 선택",
             "tasks" => "작업 폴더 선택",
             "plugin-dev" => "개발 중인 플러그인 폴더 선택",
             _ => "폴더 열기 — 이 폴더 전체를 읽고 씁니다",

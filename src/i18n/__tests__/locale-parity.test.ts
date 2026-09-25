@@ -29,16 +29,16 @@ const KO = ko as Record<string, string>;
  * kept: allowlisting them cemented `Vault` and `Activity Bar` as untranslated while
  * `recent.vaultBadge` said `볼트`, `home.newVault` said `vault`, and every sibling of the
  * Activity Bar tab was translated. An allowlist must not become where untranslated labels go
- * to die — they are translated now.
+ * to die — they are translated now. The four `Zettel` entries (the settings tab, its section
+ * header, the activity-bar item and the keybinding category) left for the same reason: the
+ * Workspace menu already said `제텔`, so the same space had two names in the Korean UI.
  */
 const SHARED_VALUES = new Set<string>([
   "about.copyright", // Copyright © 2026 Baram Team
   "keybindings.category.ai", // AI
-  "keybindings.category.zettelkasten", // Zettel
   "menu.app", // Baram
   "menu.help.faq", // FAQ
   "plugin.detail.readme", // README — the filename the section renders, not a word
-  "settings.activitybar.item.zettel", // Zettel
   "settings.ai.ollamaUrl", // Ollama URL
   "settings.ai.ollamaUrl.placeholder", // http://localhost:11434
   "settings.ai.provider.claude", // Claude
@@ -48,10 +48,8 @@ const SHARED_VALUES = new Set<string>([
   "settings.general.tasksCaptureFile.placeholder", // tasks/inbox.md
   "settings.general.tasksExcludePaths.placeholder", // archive/, drafts/
   "settings.general.tasksHome.placeholder", // /Users/you/Notes/zettel
-  "settings.general.zettelkasten", // Zettel
   "settings.panels.git", // Git
   "settings.tab.ai", // AI
-  "settings.tab.zettelkasten", // Zettel — same term as settings.general.zettelkasten
   "settings.vault.extension.mermaid", // Mermaid — the diagram language, named after itself
   "settings.vault.group.ai", // AI
   "settings.vault.workLogFolder.placeholder", // daily — a folder name, not a word
