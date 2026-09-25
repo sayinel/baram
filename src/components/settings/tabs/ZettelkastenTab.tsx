@@ -1,11 +1,14 @@
 // §80~§90/§342 Zettelkasten settings tab, promoted out of GeneralTab.
 import { open } from "@tauri-apps/plugin-dialog";
 
+import type { ZettelStartupBehavior } from "../../../stores/settings/zettelkasten-settings";
+
 import { useShallow } from "zustand/shallow";
 
 import { useTranslation } from "../../../i18n/useTranslation";
 import { pickApprovedDir } from "../../../ipc/approval";
 import { useSettingsStore } from "../../../stores/settings/store";
+import { ZETTEL_STARTUP_BEHAVIORS } from "../../../stores/settings/zettelkasten-settings";
 import { useUIStore } from "../../../stores/ui/ui";
 import {
   relativeToRoot,
@@ -91,17 +94,16 @@ export function ZettelkastenTab() {
               className="settings-select"
               onChange={(e) =>
                 setZettelkastenStartupBehavior(
-                  e.target.value as "nothing" | "openHomeNote",
+                  e.target.value as ZettelStartupBehavior,
                 )
               }
               value={zettelkastenStartupBehavior}
             >
-              <option value="openHomeNote">
-                {t("settings.general.zettelkastenStartup.openHomeNote")}
-              </option>
-              <option value="nothing">
-                {t("settings.general.zettelkastenStartup.nothing")}
-              </option>
+              {ZETTEL_STARTUP_BEHAVIORS.map((behavior) => (
+                <option key={behavior} value={behavior}>
+                  {t(`settings.general.zettelkastenStartup.${behavior}`)}
+                </option>
+              ))}
             </select>
           </SettingsRow>
 

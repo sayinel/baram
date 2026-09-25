@@ -1,6 +1,6 @@
 // §340 / Fix E (M-11): `useSettingsRegistry` used to read `const ai = useAIStore()` — a
 // BARE call subscribing to the whole ai store, which also holds `ghostText`/`isStreaming`
-// (rewritten on every streamed token). Narrowed to the eight ai-store fields this file
+// (rewritten on every streamed token). Narrowed to the ai-store fields this file
 // actually reads/writes. Commit COUNT, not timing, via `React.Profiler.onRender` — see
 // `sidebar-bare-store-rerender.test.tsx` for why a plain render-body counter would not do
 // (it would also count React's discarded pre-commit re-invokes).

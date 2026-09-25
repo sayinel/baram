@@ -5,7 +5,9 @@ import type React from "react";
 import type { DialId, DialValue, DialValues } from "../../appearance/dials";
 import type { Locale } from "../../i18n";
 import type { AIProvider } from "../../stores/ai/ai";
+import type { JournalStartupBehavior } from "../../stores/settings/journal-settings";
 import type { SettingsState } from "../../stores/settings/store";
+import type { ZettelStartupBehavior } from "../../stores/settings/zettelkasten-settings";
 import type { TaskScanScope } from "../../utils/tasks/task-scan-scope";
 
 import { useShallow } from "zustand/shallow";
@@ -14,10 +16,24 @@ import { DIALS } from "../../appearance/dials";
 import { resolveDials } from "../../appearance/merge";
 import { useThemeDials } from "../../hooks/use-theme-dials";
 import { AVAILABLE_LOCALES, LOCALE_LABELS } from "../../i18n";
-import { useAIStore } from "../../stores/ai/ai";
+import {
+  GHOST_TEXT_DEBOUNCE_RANGE,
+  MAX_SUGGESTION_LENGTH_RANGE,
+  useAIStore,
+} from "../../stores/ai/ai";
 import { AI_PROVIDER_IDS, AI_PROVIDERS } from "../../stores/ai/providers";
+import {
+  JOURNAL_FILENAME_FORMATS,
+  JOURNAL_STARTUP_BEHAVIORS,
+} from "../../stores/settings/journal-settings";
 import { useSettingsStore } from "../../stores/settings/store";
+import { ZETTEL_STARTUP_BEHAVIORS } from "../../stores/settings/zettelkasten-settings";
 import { useUIStore } from "../../stores/ui/ui";
+import { resolveCodeMetrics } from "../../utils/font/code-metrics";
+import {
+  fontSizeNumber,
+  lineHeightNumber,
+} from "../../utils/font/font-metric-text";
 import { TASK_SCAN_SCOPES } from "../../utils/tasks/task-scan-scope";
 import { dialOptionLabelKey } from "./dial-option-label";
 
@@ -79,20 +95,26 @@ export const NAVIGATE_CONTROL: SettingControlMeta = {
  *  (issue 267). Add a field here when a new entry reads it. */
 const selectRegistrySettings = (s: SettingsState) => ({
   appearanceOverrides: s.appearanceOverrides,
+  autoCheckUpdates: s.autoCheckUpdates,
   autoLoadVideoEmbeds: s.autoLoadVideoEmbeds,
   autoPairBrackets: s.autoPairBrackets,
   autoSave: s.autoSave,
   autoSaveDelay: s.autoSaveDelay,
   autoUpdateLinks: s.autoUpdateLinks,
+  codeFontSize: s.codeFontSize,
+  codeLineHeight: s.codeLineHeight,
   fontSize: s.fontSize,
   highlight: s.highlight,
   inlineMath: s.inlineMath,
   journalEnabled: s.journalEnabled,
+  journalFilenameFormat: s.journalFilenameFormat,
+  journalStartupBehavior: s.journalStartupBehavior,
   lineHeight: s.lineHeight,
   lineNumbers: s.lineNumbers,
   linkFontMetrics: s.linkFontMetrics,
   locale: s.locale,
   onLaunch: s.onLaunch,
+  setAutoCheckUpdates: s.setAutoCheckUpdates,
   setAutoLoadVideoEmbeds: s.setAutoLoadVideoEmbeds,
   setAutoPairBrackets: s.setAutoPairBrackets,
   setAutoSave: s.setAutoSave,
@@ -103,6 +125,8 @@ const selectRegistrySettings = (s: SettingsState) => ({
   setHighlight: s.setHighlight,
   setInlineMath: s.setInlineMath,
   setJournalEnabled: s.setJournalEnabled,
+  setJournalFilenameFormat: s.setJournalFilenameFormat,
+  setJournalStartupBehavior: s.setJournalStartupBehavior,
   setLineHeight: s.setLineHeight,
   setLineNumbers: s.setLineNumbers,
   setLinkFontMetrics: s.setLinkFontMetrics,
@@ -121,9 +145,11 @@ const selectRegistrySettings = (s: SettingsState) => ({
   setTasksStampCreatedDate: s.setTasksStampCreatedDate,
   setTasksTrackTime: s.setTasksTrackTime,
   setTasksWeekStart: s.setTasksWeekStart,
+  setVimMode: s.setVimMode,
   setVirtualizeLargeDocs: s.setVirtualizeLargeDocs,
   setWikilinkFormat: s.setWikilinkFormat,
   setZettelkastenEnabled: s.setZettelkastenEnabled,
+  setZettelkastenStartupBehavior: s.setZettelkastenStartupBehavior,
   smartPunctuation: s.smartPunctuation,
   snapshotInterval: s.snapshotInterval,
   snapshotMaxCount: s.snapshotMaxCount,
@@ -131,15 +157,18 @@ const selectRegistrySettings = (s: SettingsState) => ({
   strikethrough: s.strikethrough,
   symbolSuggest: s.symbolSuggest,
   tabSize: s.tabSize,
+  tasksArchiveAfterDays: s.tasksArchiveAfterDays,
   tasksEnabled: s.tasksEnabled,
   tasksRecordDoneDate: s.tasksRecordDoneDate,
   tasksScanScope: s.tasksScanScope,
   tasksStampCreatedDate: s.tasksStampCreatedDate,
   tasksTrackTime: s.tasksTrackTime,
   tasksWeekStart: s.tasksWeekStart,
+  vimMode: s.vimMode,
   virtualizeLargeDocs: s.virtualizeLargeDocs,
   wikilinkFormat: s.wikilinkFormat,
   zettelkastenEnabled: s.zettelkastenEnabled,
+  zettelkastenStartupBehavior: s.zettelkastenStartupBehavior,
 });
 
 /**
@@ -151,15 +180,21 @@ export function useSettingsRegistry(): SearchableSetting[] {
   // §340 M-11 정정: bare `useAIStore()`는 ai 스토어의 **모든** write에 이 레지스트리
   // 전체를 재구성한다 — 스트리밍 토큰마다 바뀌는 `ghostText`·`isStreaming`도 포함해서.
   // 설정 모달이 열려 있는 동안만이지만, 이 브랜치가 `aiEnabled`를 여기서 읽게 만들며
-  // 그 비용이 커졌다. 아래 여덟 필드만 이 파일이 실제로 읽고 쓴다.
+  // 그 비용이 커졌다. 아래 필드만 이 파일이 실제로 읽고 쓴다.
   const ai = useAIStore(
     useShallow((s) => ({
       aiEnabled: s.aiEnabled,
+      autoModelEnabled: s.autoModelEnabled,
+      ghostTextDebounceMs: s.ghostTextDebounceMs,
       ghostTextEnabled: s.ghostTextEnabled,
+      maxSuggestionLength: s.maxSuggestionLength,
       privacyMode: s.privacyMode,
       provider: s.provider,
       setAIEnabled: s.setAIEnabled,
+      setAutoModelEnabled: s.setAutoModelEnabled,
+      setGhostTextDebounceMs: s.setGhostTextDebounceMs,
       setGhostTextEnabled: s.setGhostTextEnabled,
+      setMaxSuggestionLength: s.setMaxSuggestionLength,
       setPrivacyMode: s.setPrivacyMode,
       setProvider: s.setProvider,
     })),
@@ -183,6 +218,15 @@ export function useSettingsRegistry(): SearchableSetting[] {
       toggleTabBar: s.toggleTabBar,
     })),
   );
+  // §354 — 코드 크기·줄 높이 항목의 설명에 넣을 값. EditorTab 이 두 행에 보여 주는 값과
+  // 같아야 하므로 같은 함수(code-metrics.ts)로 구한다 — 연동 중이면 본문에서 파생한 값이다.
+  const codeMetrics = resolveCodeMetrics({
+    codeFontSize: settings.codeFontSize,
+    codeLineHeight: settings.codeLineHeight,
+    fontSize: settings.fontSize,
+    lineHeight: settings.lineHeight,
+    linkFontMetrics: settings.linkFontMetrics,
+  });
 
   return [
     // ── General ──────────────────────────────────────────────────────────────
@@ -294,6 +338,39 @@ export function useSettingsRegistry(): SearchableSetting[] {
         { min: 5, max: 200, step: 5 },
       ),
     },
+    // 업데이트 섹션(UpdatesSection.tsx). 버전은 표시 전용이고 "지금 확인"은 동작이라
+    // 둘 다 바꿀 값이 없다 — 검색에서 찾히게만 하고 탭으로 보낸다. 두 행 모두 설명
+    // 문구가 없어서 description 은 비워 둔다(keybindings 항목과 같은 형태).
+    {
+      id: "appVersion",
+      label: "settings.general.updates.version",
+      description: "",
+      category: "general",
+      section: "settings.general.updates",
+      keywords: ["version", "about"],
+      control: NAVIGATE_CONTROL,
+    },
+    {
+      id: "autoCheckUpdates",
+      label: "settings.general.updates.autoCheck",
+      description: "settings.general.updates.autoCheck.desc",
+      category: "general",
+      section: "settings.general.updates",
+      keywords: ["update", "upgrade"],
+      control: makeToggleControl(
+        () => settings.autoCheckUpdates,
+        settings.setAutoCheckUpdates,
+      ),
+    },
+    {
+      id: "checkForUpdates",
+      label: "settings.general.updates.checkNow",
+      description: "",
+      category: "general",
+      section: "settings.general.updates",
+      keywords: ["update", "upgrade"],
+      control: NAVIGATE_CONTROL,
+    },
     {
       id: "journalEnabled",
       label: "settings.general.journalEnabled",
@@ -305,6 +382,120 @@ export function useSettingsRegistry(): SearchableSetting[] {
         () => settings.journalEnabled,
         settings.setJournalEnabled,
       ),
+    },
+    // 저널 탭의 나머지 행. 이 아래 NAVIGATE 항목 가운데 폴더·파일 행(journalDirectory·
+    // journalTemplatePath·주간/월간/연간 템플릿)은 네이티브 대화상자를 여는 버튼이고 — 저널
+    // 폴더는 승인 경계 `pickApprovedDir` 도 거친다 — journalCreateTemplateFiles 는 파일을
+    // 만드는 동작 버튼이다. 모두 검색 결과의 단일 컨트롤로 옮길 수 없어서 탭으로 보낸다.
+    {
+      id: "journalDirectory",
+      label: "settings.general.journalDirectory",
+      description: "settings.general.journalDirectory.desc",
+      category: "journal",
+      section: "settings.general.journal",
+      keywords: ["journal", "folder", "path"],
+      control: NAVIGATE_CONTROL,
+    },
+    {
+      id: "journalFilenameFormat",
+      label: "settings.general.journalFilenameFormat",
+      description: "settings.general.journalFilenameFormat.desc",
+      category: "journal",
+      section: "settings.general.journal",
+      keywords: ["journal", "filename", "date"],
+      control: makeSelectControl(
+        () => settings.journalFilenameFormat,
+        settings.setJournalFilenameFormat,
+        JOURNAL_FILENAME_FORMATS.map((format) => ({
+          value: format,
+          label: format,
+        })),
+      ),
+    },
+    {
+      id: "journalTemplatePath",
+      label: "settings.general.journalTemplate",
+      description: "settings.general.journalTemplate.desc",
+      category: "journal",
+      section: "settings.general.journal",
+      keywords: ["journal", "template"],
+      control: NAVIGATE_CONTROL,
+    },
+    {
+      id: "journalStartupBehavior",
+      label: "settings.general.journalStartup",
+      description: "settings.general.journalStartup.desc",
+      category: "journal",
+      section: "settings.general.journal",
+      keywords: ["journal", "startup", "launch"],
+      control: makeSelectControl(
+        () => settings.journalStartupBehavior,
+        (v) => settings.setJournalStartupBehavior(v as JournalStartupBehavior),
+        JOURNAL_STARTUP_BEHAVIORS.map((behavior) => ({
+          value: behavior,
+          label: `settings.general.journalStartup.${behavior}`,
+        })),
+      ),
+    },
+    // 인라인 스위치로 두지 않는다 — 탭에서는 저널 폴더가 정해져 있으면 이 스위치 바로
+    // 아래에 기존 저널 파일을 옮기는 버튼 행이 있고, 스위치 값에 따라 그 행이 '폴더로
+    // 마이그레이션'(journalMigrate) ↔ '루트로 평탄화'(journalFlatten)로 바뀐다. 검색 결과에서
+    // 바로 바꾸면 그 버튼을 보지 못한 채 새 파일과 옛 파일의 배치가 갈린다. 그 버튼 행은
+    // 라벨이 바뀌어 따로 등록하지 않으므로(settings-search-coverage.test.ts) 그 말로도
+    // 여기가 찾히게 keywords 에 둔다.
+    {
+      id: "journalUseHierarchy",
+      label: "settings.general.journalHierarchy",
+      description: "settings.general.journalHierarchy.desc",
+      category: "journal",
+      section: "settings.general.journal",
+      keywords: [
+        "journal",
+        "folder",
+        "hierarchy",
+        "daily",
+        "migrate",
+        "flatten",
+        "마이그레이션",
+        "평탄화",
+      ],
+      control: NAVIGATE_CONTROL,
+    },
+    {
+      id: "journalWeeklyTemplate",
+      label: "settings.general.weeklyTemplate",
+      description: "settings.general.weeklyTemplate.desc",
+      category: "journal",
+      section: "settings.general.periodicTemplates",
+      keywords: ["journal", "template", "weekly"],
+      control: NAVIGATE_CONTROL,
+    },
+    {
+      id: "journalMonthlyTemplate",
+      label: "settings.general.monthlyTemplate",
+      description: "settings.general.monthlyTemplate.desc",
+      category: "journal",
+      section: "settings.general.periodicTemplates",
+      keywords: ["journal", "template", "monthly"],
+      control: NAVIGATE_CONTROL,
+    },
+    {
+      id: "journalYearlyTemplate",
+      label: "settings.general.yearlyTemplate",
+      description: "settings.general.yearlyTemplate.desc",
+      category: "journal",
+      section: "settings.general.periodicTemplates",
+      keywords: ["journal", "template", "yearly"],
+      control: NAVIGATE_CONTROL,
+    },
+    {
+      id: "journalCreateTemplateFiles",
+      label: "settings.general.createTemplateFiles",
+      description: "settings.general.createTemplateFiles.desc",
+      category: "journal",
+      section: "settings.general.periodicTemplates",
+      keywords: ["journal", "template"],
+      control: NAVIGATE_CONTROL,
     },
     {
       id: "tasksEnabled",
@@ -424,7 +615,10 @@ export function useSettingsRegistry(): SearchableSetting[] {
       category: "tasks",
       section: "settings.general.tasks",
       keywords: ["task", "archive", "done", "cleanup", "정리", "아카이브"],
-      control: NAVIGATE_CONTROL,
+      // 설명에 `{value}` 가 있다 — NAVIGATE_CONTROL 이면 결과에 "null일" 이 찍혔다.
+      control: navigateControlShowing(() =>
+        String(settings.tasksArchiveAfterDays),
+      ),
     },
     {
       id: "tasksExcludePaths",
@@ -446,6 +640,41 @@ export function useSettingsRegistry(): SearchableSetting[] {
         () => settings.zettelkastenEnabled,
         settings.setZettelkastenEnabled,
       ),
+    },
+    {
+      id: "zettelkastenDirectory",
+      label: "settings.general.zettelkastenDirectory",
+      description: "settings.general.zettelkastenDirectory.desc",
+      category: "zettelkasten",
+      section: "settings.general.zettelkasten",
+      keywords: ["zettel", "folder", "path"],
+      control: NAVIGATE_CONTROL,
+    },
+    {
+      id: "zettelkastenStartupBehavior",
+      label: "settings.general.zettelkastenStartup",
+      description: "settings.general.zettelkastenStartup.desc",
+      category: "zettelkasten",
+      section: "settings.general.zettelkasten",
+      keywords: ["zettel", "startup", "launch", "home"],
+      control: makeSelectControl(
+        () => settings.zettelkastenStartupBehavior,
+        (v) =>
+          settings.setZettelkastenStartupBehavior(v as ZettelStartupBehavior),
+        ZETTEL_STARTUP_BEHAVIORS.map((behavior) => ({
+          value: behavior,
+          label: `settings.general.zettelkastenStartup.${behavior}`,
+        })),
+      ),
+    },
+    {
+      id: "zettelkastenHomeNote",
+      label: "settings.general.zettelkastenHomeNote",
+      description: "settings.general.zettelkastenHomeNote.desc",
+      category: "zettelkasten",
+      section: "settings.general.zettelkasten",
+      keywords: ["zettel", "home", "index", "note"],
+      control: NAVIGATE_CONTROL,
     },
     // ── Editor ───────────────────────────────────────────────────────────────
     {
@@ -490,11 +719,11 @@ export function useSettingsRegistry(): SearchableSetting[] {
         { min: 1.0, max: 3.0, step: 0.05 },
       ),
     },
-    // §354 연동 스위치만 검색에 올린다. 코드 크기·줄 높이 슬라이더는 연동이
-    // 켜져 있는 동안 값이 무시되는데, 이 레지스트리의 슬라이더 컨트롤에는 끈
-    // 상태가 없다 — 검색 결과에 살아 있는 슬라이더로 나오면 움직여도 아무 일이
-    // 일어나지 않는, 고장과 구별되지 않는 컨트롤이 된다. 스위치는 그 두 행으로
-    // 가는 문이고, 그 자체로는 언제나 유효하다.
+    // §354 연동 스위치는 인라인으로, 그 아래 코드 크기·줄 높이 두 항목은 탭으로 보내는
+    // 버튼으로 둔다. 두 슬라이더의 값은 연동이 켜져 있는 동안 무시되는데, 이 레지스트리의
+    // 슬라이더 컨트롤에는 끈 상태가 없다 — 검색 결과에 살아 있는 슬라이더로 나오면 움직여도
+    // 아무 일이 일어나지 않는, 고장과 구별되지 않는 컨트롤이 된다. 탭은 그 상태를
+    // `disabled` 로 그린다. 스위치 자체는 언제나 유효하다.
     {
       id: "linkFontMetrics",
       label: "settings.editor.linkFontMetrics",
@@ -505,6 +734,28 @@ export function useSettingsRegistry(): SearchableSetting[] {
       control: makeToggleControl(
         () => settings.linkFontMetrics,
         settings.setLinkFontMetrics,
+      ),
+    },
+    {
+      id: "codeFontSize",
+      label: "settings.editor.codeFontSize",
+      description: "settings.editor.codeFontSize.desc",
+      category: "editor",
+      section: "settings.editor.font",
+      keywords: ["code", "font", "size"],
+      control: navigateControlShowing(() =>
+        fontSizeNumber(Math.round(codeMetrics.fontSize)),
+      ),
+    },
+    {
+      id: "codeLineHeight",
+      label: "settings.editor.codeLineHeight",
+      description: "settings.editor.codeLineHeight.desc",
+      category: "editor",
+      section: "settings.editor.font",
+      keywords: ["code", "line height", "spacing"],
+      control: navigateControlShowing(() =>
+        lineHeightNumber(codeMetrics.lineHeight),
       ),
     },
     {
@@ -533,6 +784,15 @@ export function useSettingsRegistry(): SearchableSetting[] {
         () => settings.autoPairBrackets,
         settings.setAutoPairBrackets,
       ),
+    },
+    {
+      id: "vimMode",
+      label: "settings.editor.vimMode",
+      description: "settings.editor.vimMode.desc",
+      category: "editor",
+      section: "settings.editor.behavior",
+      keywords: ["vim", "modal", "hjkl", "keybinding"],
+      control: makeToggleControl(() => settings.vimMode, settings.setVimMode),
     },
     {
       id: "lineNumbers",
@@ -909,12 +1169,77 @@ export function useSettingsRegistry(): SearchableSetting[] {
       section: "settings.ai.provider",
       control: NAVIGATE_CONTROL,
     },
+    // 텍스트 입력이라 다른 입력 행(tasksCaptureFile 등)처럼 탭으로 보낸다. ‼️ 탭은 이 행을
+    // 주 공급자가 Ollama 일 때만 그린다(AITab 의 `provider === "ollama"`). 그런데 자동 모델
+    // 선택이 켜져 있으면 값은 작업별 공급자만 Ollama 여도 쓰인다(model-selection.ts 의
+    // `baseUrl`) — 그 구성에서는 여기서 탭으로 가도 행이 없다. 좁은 쪽은 탭의 조건이고, 이
+    // 항목이 고치는 문제가 아니다.
+    {
+      id: "ollamaUrl",
+      label: "settings.ai.ollamaUrl",
+      description: "settings.ai.ollamaUrl.desc",
+      category: "ai",
+      section: "settings.ai.provider",
+      keywords: ["ollama", "url", "local", "server"],
+      control: NAVIGATE_CONTROL,
+    },
     {
       id: "model",
       label: "settings.ai.model",
       description: "settings.ai.model.desc",
       category: "ai",
       section: "settings.ai.provider",
+      control: NAVIGATE_CONTROL,
+    },
+    {
+      id: "autoModelEnabled",
+      label: "settings.ai.autoModel",
+      description: "settings.ai.autoModel.desc",
+      category: "ai",
+      section: "settings.ai.modelSelection",
+      keywords: ["model", "task", "auto"],
+      control: makeToggleControl(
+        () => ai.autoModelEnabled,
+        ai.setAutoModelEnabled,
+      ),
+    },
+    // 작업별 모델 넷(`TaskModelSelector`)은 공급자·모델 두 select 를 묶은 행이고
+    // 모델 목록을 공급자에게 비동기로 받아 온다 — 검색 결과의 단일 컨트롤로는
+    // 옮길 수 없어서 `model` 항목처럼 탭으로 보낸다.
+    {
+      id: "ghostTextModel",
+      label: "settings.ai.ghostTextModel",
+      description: "settings.ai.ghostTextModel.desc",
+      category: "ai",
+      section: "settings.ai.modelSelection",
+      keywords: ["model", "autocomplete"],
+      control: NAVIGATE_CONTROL,
+    },
+    {
+      id: "inlineEditModel",
+      label: "settings.ai.inlineEditModel",
+      description: "settings.ai.inlineEditModel.desc",
+      category: "ai",
+      section: "settings.ai.modelSelection",
+      keywords: ["model", "edit"],
+      control: NAVIGATE_CONTROL,
+    },
+    {
+      id: "chatModel",
+      label: "settings.ai.chatModel",
+      description: "settings.ai.chatModel.desc",
+      category: "ai",
+      section: "settings.ai.modelSelection",
+      keywords: ["model", "chat"],
+      control: NAVIGATE_CONTROL,
+    },
+    {
+      id: "agentModel",
+      label: "settings.ai.agentModel",
+      description: "settings.ai.agentModel.desc",
+      category: "ai",
+      section: "settings.ai.modelSelection",
+      keywords: ["model", "agent"],
       control: NAVIGATE_CONTROL,
     },
     {
@@ -927,6 +1252,34 @@ export function useSettingsRegistry(): SearchableSetting[] {
       control: makeToggleControl(
         () => ai.ghostTextEnabled,
         ai.setGhostTextEnabled,
+      ),
+    },
+    // 두 설명 문자열은 `{value}` 자리를 갖고 있다 — SettingsSearchResults 가 컨트롤의
+    // 현재 값으로 채운다. 범위는 AITab 의 range 입력과 같은 상수(stores/ai/ai.ts)다.
+    {
+      id: "ghostTextDebounceMs",
+      label: "settings.ai.debounce",
+      description: "settings.ai.debounce.desc",
+      category: "ai",
+      section: "settings.ai.ghostText",
+      keywords: ["delay", "autocomplete"],
+      control: makeSliderControl(
+        () => ai.ghostTextDebounceMs,
+        ai.setGhostTextDebounceMs,
+        GHOST_TEXT_DEBOUNCE_RANGE,
+      ),
+    },
+    {
+      id: "maxSuggestionLength",
+      label: "settings.ai.maxLength",
+      description: "settings.ai.maxLength.desc",
+      category: "ai",
+      section: "settings.ai.ghostText",
+      keywords: ["length", "autocomplete"],
+      control: makeSliderControl(
+        () => ai.maxSuggestionLength,
+        ai.setMaxSuggestionLength,
+        MAX_SUGGESTION_LENGTH_RANGE,
       ),
     },
     {
@@ -997,7 +1350,8 @@ export function useSettingsRegistry(): SearchableSetting[] {
     // ── Language ─────────────────────────────────────────────────────────────
     {
       id: "locale",
-      label: "settings.language.title",
+      // 행(LanguageTab)이 쓰는 라벨 키와 같은 문자열이다(0055 §4.4).
+      label: "settings.language.interface",
       description: "settings.language.interface.desc",
       category: "language",
       section: "settings.language.title",
@@ -1068,6 +1422,19 @@ function makeToggleControl(
     controlType: "toggle",
     storeSelector: selector,
     storeSetter: setter as (v: unknown) => void,
+  };
+}
+
+/**
+ * `NAVIGATE_CONTROL` 처럼 탭으로 보내는 버튼이지만, 설명 문자열의 `{value}` 에 넣을 값을
+ * 돌려준다. `NAVIGATE_CONTROL` 의 selector 는 null 이라 그런 설명에 쓰면 "null" 이 찍힌다.
+ * `SearchSettingControl` 은 `customRender` 없는 `custom` 을 이동 버튼으로 그린다.
+ */
+function navigateControlShowing(value: () => string): SettingControlMeta {
+  return {
+    controlType: "custom",
+    storeSelector: value,
+    storeSetter: () => undefined,
   };
 }
 

@@ -66,7 +66,19 @@ export interface JournalSettingsSlice {
   setMemoriesMode: (mode: MemoriesMode) => void;
 }
 
-type JournalStartupBehavior = "nothing" | "openJournal";
+/** The filename formats the Journal tab offers, in display order. The tab's `<select>` and
+ *  the settings-search entry both map this list, so a format added here shows up in both.
+ *  Showing it is not supporting it: utils/journal/journal.ts recognises journal files by name
+ *  in more than one place — e.g. `JOURNAL_FILENAME_RE` / `JOURNAL_FILENAME_COMPACT_RE`, and
+ *  `isDateString` on the flat↔hierarchy migration path — and a new format must be taught to
+ *  each of them. */
+export const JOURNAL_FILENAME_FORMATS = [
+  "YYYY-MM-DD.md",
+  "YYYYMMDD.md",
+] as const;
+/** Startup behaviours in display order — same single-list contract as the formats above. */
+export const JOURNAL_STARTUP_BEHAVIORS = ["openJournal", "nothing"] as const;
+export type JournalStartupBehavior = (typeof JOURNAL_STARTUP_BEHAVIORS)[number];
 type MemoriesMode = "full" | "oneline";
 
 /**
