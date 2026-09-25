@@ -101,6 +101,7 @@ Baram pairs a **beautiful WYSIWYG** editor with **lossless markdown**, **AI-nati
 - **Rich blocks** — Headings, lists, tables (with cell merge), task lists, Obsidian-compatible callouts, toggles, footnotes, definition lists, and YAML frontmatter — created by typing markdown, `/` slash commands, or shortcuts.
 - **Math, code & diagrams** — Inline/block LaTeX (KaTeX), syntax highlighting for 14+ languages (CodeMirror 6), and Mermaid diagrams — all with live preview.
 - **Images** — Drag-and-drop, paste from clipboard, resize, and edit alt text inline.
+- **Symbols & emoji** — Type `:` and a name (`:arrow`, `:heart`, or a Korean keyword) to insert a symbol or emoji, or browse a picker from the slash menu. Optional smart punctuation turns `->` into `→` and `...` into `…` as you type. The character itself is saved, never a shortcode. [See the guide →](https://baram.ing/en/docs/editing/symbols-and-punctuation/)
 - **Other file types** — Open HTML with a sandboxed live preview and a source-edit toggle, and images/SVG in a built-in viewer — all in place, without leaving the app. Plugins can add viewers for more types.
 
 ### Knowledge & Navigation
@@ -126,6 +127,7 @@ Baram pairs a **beautiful WYSIWYG** editor with **lossless markdown**, **AI-nati
 
 - **Export** — HTML, PDF, and — via Pandoc — Word, LaTeX, EPUB, and RST, plus Notion-compatible markdown.
 - **Themes** — 8 built-in editor themes (plus 6 journal themes) and a full color editor. A theme can carry both a light and a dark palette and follow your system appearance, be imported and exported as JSON, or be exported as an installable package. HTML and PDF exports can carry your active theme's colors.
+- **Appearance dials** — Adjust the accent color, how far the sidebars and bars stand apart from the document, interface density and corner rounding, and how the document is set: line width, padding, letter and paragraph spacing, Korean word-keeping line breaks, and how emphasis is drawn. Each dial marks a value that came from your theme or from you, and one you changed reverts on its own.
 - **Fonts** — Pretendard and JetBrains Mono ship with the app, so documents look the same on every platform. Pick body and code typefaces separately from a searchable browser that previews each one and says which are actually installed; HTML and PDF exports carry your choice — PDF always embeds the bundled faces, and HTML can on request.
 - **Plugins** — Install community plugins from a built-in marketplace, browse each one's README in a detail tab, and toggle any plugin — built-ins included — on or off. Plugins run **sandboxed**, isolated from the editor, and every privileged action is checked against the capabilities you approved in the install dialog. A plugin can instead ask for full trust — that comes with a warning and a separate confirmation. Installs are staged and atomic, and a signed withdrawal list stops a plugin that was later pulled or found vulnerable from running.
 - **Keyboard-first & i18n** — Command palette, quick switcher, slash commands, fully customizable shortcuts, and English/Korean UI.
@@ -236,9 +238,10 @@ Create your own slash commands in **Settings > AI > Custom Commands**. Use varia
 ### 3-Column Layout
 
 - **Context Tab Bar** — Switch between open vaults, folders, and files
-- **Left Sidebar** — Files, Search, Outline, Backlinks, Bookmarks, Graph View, Source Control, Calendar, Tags, Tasks, Zettel, Skills Gallery, and Plugins (`Cmd+Shift+L` to toggle). Reorder or hide any of them in **Settings > Activity Bar**.
+- **Left Sidebar** — Files, Search, Outline, Backlinks, Bookmarks, Graph View, Source Control, Calendar, Tags, Tasks, Zettel, Skills Gallery, and Plugins (`Cmd+Shift+L` to toggle). Reorder or hide any of them in **Settings > Layout**.
 - **Editor** — Main editing area with WYSIWYG or Source mode
 - **Right Sidebar** — AI Chat, Memories, Photo Gallery, or Version History
+- **Focus** — The Focus perspective (`Cmd+Alt+5`) hides both sidebars, the activity bar, the status bar, and the tab bar. Those three bars can also be hidden one at a time without turning off what they do.
 
 ### Toolbar & Menus
 
