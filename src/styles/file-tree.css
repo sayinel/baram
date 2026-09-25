@@ -60,7 +60,7 @@
 
 .file-tree-action-btn:hover {
   color: var(--color-text-primary);
-  background: var(--color-bg-default);
+  background: var(--color-bg-chrome-fill);
   border-color: var(--color-border-default);
 }
 
@@ -102,7 +102,7 @@
   font-size: 0.8rem;
   color: var(--color-text-secondary);
   cursor: pointer;
-  background: var(--color-bg-default);
+  background: var(--color-bg-chrome-fill);
   border: 1px solid var(--color-border-default);
   border-radius: var(--radius-default);
 }
@@ -131,7 +131,7 @@
 }
 
 .file-tree-item:hover {
-  background-color: var(--color-bg-default);
+  background-color: var(--color-bg-chrome-fill);
 }
 
 .file-tree-icon {
@@ -175,10 +175,14 @@
   background: var(--color-text-muted);
 }
 
+/* §365 배경 대비(스펙 0059) — 크롬(사이드바·액티비티 바·오른쪽 패널)과 바 위에 놓인
+   채움은 bg-default 가 아니라 --color-bg-chrome-fill 을 읽는다. 기본값은 bg-default 의
+   별칭이라 화면은 같지만, "균일"·"순흑" 에서 크롬이 본문 색이 될 때 이것만 크롬과 다른
+   색으로 남는다. bg-default 를 쓰면 그 값에서 활성 파일 강조가 사라진다. */
 .file-tree-item-active {
   font-weight: 500;
   color: var(--color-text-primary);
-  background-color: var(--color-bg-default);
+  background-color: var(--color-bg-chrome-fill);
 }
 
 .file-tree-chevron {
@@ -382,7 +386,7 @@
 }
 
 .outline-item:hover {
-  background-color: var(--color-bg-default);
+  background-color: var(--color-bg-chrome-fill);
 }
 
 .outline-level {
@@ -408,7 +412,7 @@
   font-family: var(--font-family-mono);
   font-size: 0.7rem;
   color: var(--color-text-muted);
-  background-color: var(--color-bg-subtle);
+  background-color: var(--color-bg-bar);
   border-top: 1px solid var(--color-border-subtle);
 }
 
@@ -421,7 +425,7 @@
 
 .status-mode {
   padding: var(--space-px) var(--space-1-5);
-  background-color: var(--color-bg-default);
+  background-color: var(--color-bg-chrome-fill);
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-sm);
 }
@@ -452,7 +456,7 @@
   gap: var(--space-1);
   align-items: center;
   padding: var(--space-px) var(--space-1-5);
-  background-color: var(--color-bg-default);
+  background-color: var(--color-bg-chrome-fill);
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-sm);
 }
@@ -846,7 +850,7 @@
   font-size: 0.85rem;
   color: var(--color-text-default);
   cursor: pointer;
-  background: var(--color-bg-default);
+  background: var(--color-bg-chrome-fill);
   border: 1px solid var(--color-border-default);
   border-radius: var(--radius-md);
 }

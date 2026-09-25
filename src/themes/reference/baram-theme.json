@@ -16,6 +16,7 @@
     "tabBar": false
   },
   "dials": {
+    "backgroundContrastLight": "flat",
     "cornerRadius": "round",
     "density": "compact",
     "editorEmphasisStyle": "weight",

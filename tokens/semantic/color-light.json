@@ -33,6 +33,14 @@
       "tooltip": {
         "$value": "{color.slate.900}",
         "$description": "Tooltip pill background — deliberately inverted against the light surface it floats over, not a step of it"
+      },
+      "bar": {
+        "$value": "{color.bg.subtle}",
+        "$description": "Chrome bars — tab bar, status bar, context tab bar (§365 dial 2, spec 0059). Aliases bg.subtle, so today's look is unchanged; split out because bg.subtle also paints code blocks and callouts, which the background contrast dial must not move"
+      },
+      "chromeFill": {
+        "$value": "{color.bg.default}",
+        "$description": "Fills that sit ON the chrome or a bar — hover, the active file row, buttons, chips, cards on the sidebar, activity bar, right panel, tab bar or status bar (§365 dial 2, spec 0059). Aliases bg.default, so today's look is unchanged; the background contrast dial moves the chrome to the page colour and this to a colour that still stands apart. A new fill on those surfaces should use this, not bg.default"
       }
     },
     "text": {

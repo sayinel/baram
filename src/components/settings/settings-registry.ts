@@ -748,6 +748,43 @@ export function useSettingsRegistry(): SearchableSetting[] {
       settings.appearanceOverrides,
       settings.setDial,
     ),
+    // §365 다이얼 2a·2b — 배경 대비(스펙 0059). 행은 AppearanceTab.tsx 의 테마 섹션,
+    // 강조색 두 행 아래다. label 은 행이 쓰는 키와 같은 문자열이다(0055 §4.4).
+    ...dialSelectSetting(
+      {
+        id: "backgroundContrastLight",
+        label: "settings.appearance.backgroundContrastLight",
+        description: "settings.appearance.backgroundContrastLight.desc",
+        category: "appearance",
+        section: "settings.appearance.theme",
+        keywords: ["background", "contrast", "sidebar", "flat", "white"],
+      },
+      "backgroundContrastLight",
+      themeDials,
+      settings.appearanceOverrides,
+      settings.setDial,
+    ),
+    ...dialSelectSetting(
+      {
+        id: "backgroundContrastDark",
+        label: "settings.appearance.backgroundContrastDark",
+        description: "settings.appearance.backgroundContrastDark.desc",
+        category: "appearance",
+        section: "settings.appearance.theme",
+        keywords: [
+          "background",
+          "contrast",
+          "sidebar",
+          "flat",
+          "black",
+          "oled",
+        ],
+      },
+      "backgroundContrastDark",
+      themeDials,
+      settings.appearanceOverrides,
+      settings.setDial,
+    ),
     // §365 다이얼 4·5 — 행은 AppearanceTab.tsx 의 "간격과 모서리" 섹션이다. label 은
     // 행이 쓰는 키와 같은 문자열이다(0055 §4.4).
     ...dialSelectSetting(

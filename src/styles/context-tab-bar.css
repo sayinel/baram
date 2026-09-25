@@ -7,7 +7,7 @@
   min-height: 28px;
   padding: var(--space-0-5) var(--space-2);
   overflow-x: auto;
-  background: var(--color-bg-subtle);
+  background: var(--color-bg-bar);
   border-bottom: 1px solid var(--color-border-default);
 }
 

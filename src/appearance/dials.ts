@@ -1,9 +1,10 @@
 // §364 외관 다이얼의 단일 출처 — 타입·병합·적용·설정 UI 가 전부 이 배열에서 파생한다.
 //
-// ‼️ 이 모듈이 값으로 import 하는 것은 **모듈 둘**뿐이다 — 잎 모듈 `color-hsl.ts`(그 파일
+// ‼️ 이 모듈이 값으로 import 하는 것은 **모듈 셋**뿐이다 — 잎 모듈 `color-hsl.ts`(그 파일
 // 머리주석이 "아무것도 import 하지 않는다" 를 계약으로 적는다)와 `scale-dials.ts`(그 머리주석대로
 // Style Dictionary 가 내는 `types/generated/scale.ts` 만 import 하고, 생성 포맷 `ts/scale` 은
-// import 문을 쓰지 않는다 — `style-dictionary.config.ts`). 값 import 는 그 세 파일에서 멈춘다.
+// import 문을 쓰지 않는다 — `style-dictionary.config.ts`)와 `background-contrast.ts`(그
+// 머리주석대로 아무것도 import 하지 않는다). 값 import 는 그 네 파일에서 멈춘다.
 // `settings/store.ts` 가 이것을 import 하므로, 여기서 스토어를 알면 순환이
 // 된다(`settings/feature-keys.ts` 가 같은 이유로 잎 모듈이다) — import 가 잎에서
 // 끝나는 모듈을 거치는 것은 순환을 만들 수 없다. `ColorMode` 의 `import type` 은
@@ -12,6 +13,12 @@
 
 import type { ColorMode } from "./color-mode";
 
+import {
+  BACKGROUND_CONTRAST_DARK_OPTIONS,
+  BACKGROUND_CONTRAST_LIGHT_OPTIONS,
+  BACKGROUND_CONTRAST_VARS,
+  backgroundContrastVars,
+} from "./background-contrast";
 import { hexToHsl, hslToHex } from "./color-hsl";
 import {
   CORNER_FACTOR,
@@ -33,7 +40,8 @@ export type DialValue = number | string;
  * `seeds` 는 지금 `<html>` 에 실릴 시드 집합이다 — 설치 테마면 그 테마의
  * `modes[mode].colors`, cascade 가 소유하는 테마(`system` · 기본 둘)면 그 모드의
  * 기본 팔레트다. 색 다이얼이 채도·명도를 **물려받는** 출처이고, 그래서 같은
- * 다이얼 값이 테마마다·모드마다 다른 hex 를 낸다.
+ * 다이얼 값이 테마마다·모드마다 다른 hex 를 낸다. 배경 대비 다이얼(스펙 0059)은
+ * 여기서 본문·크롬 색을 읽어 **다른 역할에 옮겨 싣는다**.
  *
  * 레이아웃 다이얼은 둘 다 읽지 않는다. 그럼에도 인자에 있는 이유는 `DIALS` 를
  * 순회하는 소비자가 갈래를 좁히지 않고 `toVars` 를 부를 수 있어야 하기 때문이다 —
@@ -461,6 +469,42 @@ export const DIALS = [
     toVars: (value: DialValue, ctx: DialContext): Record<string, string> =>
       shiftAccent(value, ctx, "s"),
     vars: [...ACCENT_SEED_KEYS],
+  },
+  // §365 다이얼 2a·2b — 배경 대비(스펙 0059). 모드마다 하나이고 제 모드가 아니면 아무것도
+  // 내지 않는다 — 한 다이얼에 5값을 두면 지금 모드에 없는 값을 골랐을 때 저장만 되고 화면이
+  // 바뀌지 않는다(D1). 모드는 `ctx.mode`(`resolveColorMode`)라 라이트 전용 테마에서는 다크
+  // 다이얼이 언제나 빈 맵이다. 재배선 표는 `background-contrast.ts` 에 있다.
+  {
+    channel: "color",
+    defaultValue: "default",
+    id: "backgroundContrastLight",
+    kind: "enum",
+    options: BACKGROUND_CONTRAST_LIGHT_OPTIONS,
+    parse: oneOf(BACKGROUND_CONTRAST_LIGHT_OPTIONS),
+    toVars: (value: DialValue, ctx: DialContext): Record<string, string> => {
+      if (ctx.mode !== "light") return {};
+      const option = oneOf(BACKGROUND_CONTRAST_LIGHT_OPTIONS)(value);
+      return option === undefined
+        ? {}
+        : backgroundContrastVars(option, ctx.seeds);
+    },
+    vars: BACKGROUND_CONTRAST_VARS,
+  },
+  {
+    channel: "color",
+    defaultValue: "default",
+    id: "backgroundContrastDark",
+    kind: "enum",
+    options: BACKGROUND_CONTRAST_DARK_OPTIONS,
+    parse: oneOf(BACKGROUND_CONTRAST_DARK_OPTIONS),
+    toVars: (value: DialValue, ctx: DialContext): Record<string, string> => {
+      if (ctx.mode !== "dark") return {};
+      const option = oneOf(BACKGROUND_CONTRAST_DARK_OPTIONS)(value);
+      return option === undefined
+        ? {}
+        : backgroundContrastVars(option, ctx.seeds);
+    },
+    vars: BACKGROUND_CONTRAST_VARS,
   },
   // §365 다이얼 4·5 — 스케일 전체를 한 곱수로(스펙 0057). 행은 외관 탭이다
   // (0055 §4.4: 앱 전체의 겉모습).
