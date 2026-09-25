@@ -61,4 +61,19 @@ describe("migrateThemeColors 누락 키 채움", () => {
       defaultColorsForBase("light")["--color-bg-input"],
     );
   });
+
+  // v0.7.4 가 내보낸 테마 JSON 에는 리스트 가이드 색조(#722)가 없다. 그 키가 없을 때
+  // cascade 는 테마 자신의 본문 글자색을 쓰므로(`semantic-*.css` 의 별칭), 기본 팔레트
+  // 값으로 채우면 가져온 테마의 안내선만 다른 테마의 색이 된다.
+  it("나중에 생긴 키는 기본 팔레트가 아니라 그 테마의 별칭 값으로 채운다", () => {
+    const dark = defaultColorsForBase("dark");
+    const filled = migrateThemeColors(
+      { "--color-editor-text": "#123abc" },
+      dark,
+    );
+    expect(filled["--color-editor-guide-tint"]).toBe("#123abc");
+    expect(filled["--color-editor-guide-tint"]).not.toBe(
+      dark["--color-editor-guide-tint"],
+    );
+  });
 });

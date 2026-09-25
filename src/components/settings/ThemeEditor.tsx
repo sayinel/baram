@@ -27,6 +27,7 @@ import {
 import {
   BUILT_IN_THEMES,
   defaultColorsForBase,
+  fillAliasedColors,
   findThemeById,
   resolveThemeMode,
   THEME_COLOR_KEYS,
@@ -96,10 +97,15 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
       : sourceTheme.name,
   );
   const [base, setBase] = useState<ThemeMode>(startMode);
-  const [colors, setColors] = useState<ThemeColors>(() => ({
-    ...(sourceTheme.modes[startMode]?.colors ??
-      defaultColorsForBase(startMode)),
-  }));
+  // `fillAliasedColors` — v0.7.4 가 저장한 사용자 테마는 그 뒤에 생긴 색(리스트 가이드
+  // 색조, #722)을 싣지 않는다. 채우지 않으면 그 피커의 값이 `undefined` 라 검정으로 그려지고
+  // 옆의 hex 가 빈다. 채우는 값은 그 키가 없을 때 cascade 가 이미 그리던 색이다.
+  const [colors, setColors] = useState<ThemeColors>(() =>
+    fillAliasedColors({
+      ...(sourceTheme.modes[startMode]?.colors ??
+        defaultColorsForBase(startMode)),
+    }),
+  );
 
   // §363 — 배포용 패키지의 매니페스트가 요구하지만 이 편집기는 모르는 값들
   // (`PackageMeta`, theme-package-export.ts). 빈 채로 내보내면 설치되지 않는

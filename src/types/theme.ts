@@ -1,14 +1,18 @@
 // §54 Theme System — Type definitions and built-in theme data
 
 export type { ThemeColorKey, ThemeColors } from "./theme-color-keys";
-export { THEME_COLOR_KEYS, THEME_COLOR_VALUE_RE } from "./theme-color-keys";
+export {
+  fillAliasedColors,
+  THEME_COLOR_KEYS,
+  THEME_COLOR_VALUE_RE,
+} from "./theme-color-keys";
 
 import type { ThemeColors } from "./theme-color-keys";
 import type { ThemeSource } from "./theme-sources";
 
 import { DEFAULT_DARK_PALETTE } from "./generated/palette-dark";
 import { DEFAULT_LIGHT_PALETTE } from "./generated/palette-light";
-import { THEME_COLOR_VALUE_RE } from "./theme-color-keys";
+import { fillAliasedColors, THEME_COLOR_VALUE_RE } from "./theme-color-keys";
 
 // ---------------------------------------------------------------------------
 // 1. ThemeDef — A complete theme definition
@@ -139,14 +143,21 @@ export function migrateThemeColors(
     migrated[newKey] = value;
   }
 
+  // 3차: 이 팔레트보다 늦게 생긴 키는 기본 팔레트가 아니라 이 팔레트 안의 별칭 값으로
+  // 채운다(`fillAliasedColors`). 그 키가 없을 때 cascade 가 그리는 값이 그것이라, 기본
+  // 팔레트로 채우면 가져온 테마의 그 색만 다른 테마의 것이 된다 — v0.7.4 가 내보낸 JSON
+  // 의 리스트 가이드 색조가 그 경우다. 옛 키 이주 **뒤**에 두는 이유: 별칭이 가리키는
+  // 키가 이주로 막 생긴 것일 수 있다.
+  const aliased = fillAliasedColors(migrated);
+
   // Fill any missing keys from fallback.
   for (const key of Object.keys(fallback)) {
-    if (!(key in migrated)) {
-      migrated[key] = fallback[key as keyof ThemeColors];
+    if (!(key in aliased)) {
+      aliased[key] = fallback[key as keyof ThemeColors];
     }
   }
 
-  return migrated as unknown as ThemeColors;
+  return aliased as unknown as ThemeColors;
 }
 
 /** 모드에 맞는 기본 팔레트 — migrateThemeColors의 fill 출처로 쓴다. */

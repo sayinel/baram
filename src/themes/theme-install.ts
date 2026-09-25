@@ -26,6 +26,7 @@ import {
 } from "../ipc/theme";
 import { unmetFloorAgainstApp } from "../plugins/engines-app";
 import {
+  fillAliasedColors,
   RESERVED_THEME_IDS,
   THEME_COLOR_KEYS,
   THEME_COLOR_VALUE_RE,
@@ -144,6 +145,11 @@ export function parseThemeManifestText(
  * 키가 하나라도 빠지거나 형식이 틀리면 `undefined` — 부분 팔레트를 기본값으로 메우지
  * 않는다. 가져오기 경로는 `base` 를 알기 때문에 그 모드의 기본 팔레트로 메울 수 있지만,
  * 패키지 테마는 두 모드를 함께 실을 수 있어 "이 모드의 기본값" 이 하나로 정해지지 않는다.
+ *
+ * 단 **포맷보다 늦게 생긴 키**는 빠진 것으로 세지 않는다 — 검사 전에 `fillAliasedColors`
+ * 가 그 키를 이 팔레트 안의 별칭 값으로 채운다. v0.7.4 가 내보낸 24키 패키지가 25키 빌드에서
+ * 팔레트를 통째로 잃던 것(#722 의 범위 밖 1)이 그 이유다. 채우는 값이 기본 팔레트가 아니라
+ * 같은 팔레트에서 오므로 위 규칙("기본값으로 메우지 않는다")은 그대로다.
  */
 async function readModeColors(
   stageId: string,
@@ -164,7 +170,7 @@ async function readModeColors(
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     return undefined;
   }
-  const source = parsed as Record<string, unknown>;
+  const source = fillAliasedColors(parsed as Record<string, unknown>);
   const colors = {} as ThemeColors;
   for (const { key } of THEME_COLOR_KEYS) {
     const value = source[key];

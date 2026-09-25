@@ -18,6 +18,19 @@
 export type ThemeColorKey = (typeof THEME_COLOR_KEYS)[number]["key"];
 export type ThemeColors = Record<ThemeColorKey, string>;
 
+// CLAUDE.md의 CSS 변수 규약: category는 9개뿐이다. 접두만 검사하면
+// --color-foo-bar도 컴파일을 통과하므로 union으로 좁힌다(적대 리뷰).
+type ThemeColorKeyName = `--color-${
+  | "accent"
+  | "bg"
+  | "border"
+  | "callout"
+  | "editor"
+  | "git"
+  | "graph"
+  | "status"
+  | "text"}-${string}`;
+
 // ---------------------------------------------------------------------------
 // 2. THEME_COLOR_KEYS — metadata for rendering color pickers in ThemeEditor
 // ---------------------------------------------------------------------------
@@ -84,10 +97,13 @@ export const THEME_COLOR_KEYS = [
   // `!important` 를 떼므로(`node.important = false`), 레이어 밖에 있는
   // `styles/generated/semantic-*.css` 의 선언을 이기지 못한다. 이 배열만
   // `applyThemeVars` 의 `<html>` 인라인 경로로 가고, 인라인은 레이어를 이긴다.
+  //
+  // `aliasOf` 는 이 키가 **팔레트보다 늦게 생겼다**는 표시다 — 아래 4번 절.
   {
     key: "--color-editor-guide-tint",
     label: "List Guide",
     category: "Editor",
+    aliasOf: "--color-editor-text",
   },
 
   // Status
@@ -100,19 +116,9 @@ export const THEME_COLOR_KEYS = [
   { key: "--color-graph-active", label: "Graph Active", category: "Graph" },
   { key: "--color-graph-edge", label: "Graph Edge", category: "Graph" },
 ] as const satisfies readonly {
+  aliasOf?: ThemeColorKeyName;
   category: string;
-  // CLAUDE.md의 CSS 변수 규약: category는 9개뿐이다. 접두만 검사하면
-  // --color-foo-bar도 컴파일을 통과하므로 union으로 좁힌다(적대 리뷰).
-  key: `--color-${
-    | "accent"
-    | "bg"
-    | "border"
-    | "callout"
-    | "editor"
-    | "git"
-    | "graph"
-    | "status"
-    | "text"}-${string}`;
+  key: ThemeColorKeyName;
   label: string;
 }[];
 
@@ -130,3 +136,39 @@ export const THEME_COLOR_KEYS = [
  * 무검증이라 통과시킨 alpha 테마는 v22 마이그레이션이 base 기본값으로 되돌린다.)
  */
 export const THEME_COLOR_VALUE_RE = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
+
+// ---------------------------------------------------------------------------
+// 4. Keys added after palettes were already being written
+// ---------------------------------------------------------------------------
+
+/**
+ * 팔레트에 **그 팔레트가 쓰인 뒤에 생긴 키**를 그 키의 별칭(`aliasOf`) 값으로 채운 사본.
+ *
+ * 테마 패키지 포맷은 v0.7.4 에 24키로 나갔다 — 그 릴리스가 내보낸 패키지·JSON 과 그때
+ * 저장된 사용자 테마가 전부 24키다. #722 가 25번째 키를 더했고, 전 키를 요구하는 읽기는
+ * 그 팔레트들을 불완전하다고 판정했다(설치기는 팔레트를 통째로 버리고, 테마 편집기는 빈
+ * 색 피커를 그렸다). 채우는 값은 그 키가 빠졌을 때 cascade 가 그리는 값이다 —
+ * `semantic-*.css` 의 별칭이 같은 키를 가리키고, 테스트가 둘의 일치를 고정한다. 그래서
+ * 채운 팔레트는 채우기 전과 똑같이 그려진다.
+ *
+ * 이 함수는 **불완전한 팔레트를 완전하게 만들지 않는다**: 별칭이 없는 키(v0.7.4 의 24키)가
+ * 빠진 팔레트는 여전히 그 키가 빠진 채로 돌아가고, 전 키를 요구하는 호출자가 그대로 거부한다.
+ * 채우는 것은 팔레트에 없는 키(`undefined`)뿐이다 — 있는데 형식이 틀린 값은 호출자의 검증에
+ * 맡긴다. 별칭의 값도 없으면 아무것도 지어내지 않는다.
+ *
+ * ‼️ 키를 더할 때 `aliasOf` 없이 더하면 그 키가 필수가 되고 그 전의 팔레트가 전부 불완전해진다.
+ * `theme-color-keys.test.ts` 가 별칭 없는 키 집합을 v0.7.4 의 24키로 고정해 그것을 막는다.
+ */
+export function fillAliasedColors<T extends Readonly<Record<string, unknown>>>(
+  colors: T,
+): Partial<Record<ThemeColorKey, T[keyof T]>> & T {
+  const filled: Record<string, unknown> = { ...colors };
+  for (const entry of THEME_COLOR_KEYS) {
+    if (!("aliasOf" in entry)) continue;
+    if (filled[entry.key] !== undefined) continue;
+    const alias = filled[entry.aliasOf];
+    if (alias !== undefined) filled[entry.key] = alias;
+  }
+  // 채운 값은 모두 같은 팔레트의 다른 칸에서 왔으므로 값 타입은 `T[keyof T]` 그대로다.
+  return filled as Partial<Record<ThemeColorKey, T[keyof T]>> & T;
+}

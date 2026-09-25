@@ -398,6 +398,45 @@ describe("ThemeEditor — leaving the editor", () => {
 // (`canExportPackage`, ThemeEditor.tsx) had zero coverage. Mutation C2
 // (`&&` → `||` in the guard) and mutation C (deleting `disabled={...}`
 // outright) were both green before these tests existed.
+describe("ThemeEditor — a theme saved before a colour existed", () => {
+  beforeEach(() => {
+    document.documentElement.style.cssText = "";
+    useSettingsStore.setState({ appearanceOverrides: {}, locale: "en" });
+  });
+
+  it("seeds the List Guide picker from editor text rather than leaving it empty", () => {
+    // A custom theme saved by v0.7.4 carries 24 colours; #722 added the 25th. Without a
+    // seed the picker's value is `undefined` — jsdom, like the browser, then shows
+    // #000000 and the hex beside it is blank. The seed is the colour the cascade draws
+    // for the missing key, so what the picker shows is what the list guide already is.
+    const before: Record<string, string> = { ...NORD_COLORS };
+    delete before["--color-editor-guide-tint"];
+    const OLD: ThemeDef = {
+      id: "custom-1720000000000",
+      modes: {
+        dark: {
+          colors: {
+            ...before,
+            "--color-editor-text": "#123abc",
+          } as typeof NORD_COLORS,
+        },
+      },
+      name: "Saved by v0.7.4",
+      source: "custom",
+    };
+    useSettingsStore.setState({
+      activeThemeId: OLD.id,
+      customThemes: [OLD],
+    });
+
+    render(<ThemeEditor onClose={() => {}} />);
+
+    expect(screen.getByLabelText<HTMLInputElement>("List Guide").value).toBe(
+      "#123abc",
+    );
+  });
+});
+
 describe("ThemeEditor — package export guard", () => {
   beforeEach(() => {
     document.documentElement.style.cssText = "";
