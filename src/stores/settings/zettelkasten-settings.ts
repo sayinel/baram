@@ -10,7 +10,10 @@ export interface ZettelkastenSettingsSlice {
   zettelkastenHomeNote: string;
   zettelkastenStartupBehavior: ZettelStartupBehavior;
 }
-type ZettelStartupBehavior = "nothing" | "openHomeNote";
+/** Startup behaviours in display order. The Zettel tab's `<select>` and the settings-search
+ *  entry both map this list, so a behaviour added here shows up in both. */
+export const ZETTEL_STARTUP_BEHAVIORS = ["openHomeNote", "nothing"] as const;
+export type ZettelStartupBehavior = (typeof ZETTEL_STARTUP_BEHAVIORS)[number];
 
 export const createZettelkastenSettingsSlice: StateCreator<
   ZettelkastenSettingsSlice,

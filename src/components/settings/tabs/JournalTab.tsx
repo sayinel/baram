@@ -3,12 +3,17 @@ import { useState } from "react";
 
 import { open } from "@tauri-apps/plugin-dialog";
 
+import type { JournalStartupBehavior } from "../../../stores/settings/journal-settings";
 import type { MigrationDirection } from "../../journal/MigrationDialog";
 
 import { useShallow } from "zustand/shallow";
 
 import { useTranslation } from "../../../i18n/useTranslation";
 import { pickApprovedDir } from "../../../ipc/approval";
+import {
+  JOURNAL_FILENAME_FORMATS,
+  JOURNAL_STARTUP_BEHAVIORS,
+} from "../../../stores/settings/journal-settings";
 import { useSettingsStore } from "../../../stores/settings/store";
 import { initJournalTemplatesDir } from "../../../utils/journal/journal-templates";
 import { resolveAbsoluteDirSetting } from "../../../utils/path-utils";
@@ -113,8 +118,11 @@ export function JournalTab() {
               onChange={(e) => setJournalFilenameFormat(e.target.value)}
               value={journalFilenameFormat}
             >
-              <option value="YYYY-MM-DD.md">YYYY-MM-DD.md</option>
-              <option value="YYYYMMDD.md">YYYYMMDD.md</option>
+              {JOURNAL_FILENAME_FORMATS.map((format) => (
+                <option key={format} value={format}>
+                  {format}
+                </option>
+              ))}
             </select>
           </SettingsRow>
 
@@ -144,17 +152,16 @@ export function JournalTab() {
               className="settings-select"
               onChange={(e) =>
                 setJournalStartupBehavior(
-                  e.target.value as "nothing" | "openJournal",
+                  e.target.value as JournalStartupBehavior,
                 )
               }
               value={journalStartupBehavior}
             >
-              <option value="openJournal">
-                {t("settings.general.journalStartup.openJournal")}
-              </option>
-              <option value="nothing">
-                {t("settings.general.journalStartup.nothing")}
-              </option>
+              {JOURNAL_STARTUP_BEHAVIORS.map((behavior) => (
+                <option key={behavior} value={behavior}>
+                  {t(`settings.general.journalStartup.${behavior}`)}
+                </option>
+              ))}
             </select>
           </SettingsRow>
 

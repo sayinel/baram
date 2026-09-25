@@ -36,15 +36,25 @@ export function SettingsSearchResults({
               <div className="settings-row-info">
                 <span className="settings-row-label">{t(item.label)}</span>
                 <span className="settings-row-description">
-                  {/* item.description may carry a {value} placeholder
-                      (settings.editor.maxWidth.desc) — substituting the
-                      control's live value unconditionally is harmless for
-                      every other entry, since t() only replaces a token that
-                      is actually present in the string. */}
-                  {t(item.section)} &middot;{" "}
-                  {t(item.description, {
-                    value: String(item.control.storeSelector()),
-                  })}
+                  {t(item.section)}
+                  {/* An entry with no description text (e.g. the app version
+                      row) gets no trailing separator. */}
+                  {item.description && (
+                    <>
+                      {" "}
+                      &middot;{" "}
+                      {/* item.description may carry a {value} placeholder
+                          (e.g. settings.ai.debounce.desc) — substituting the
+                          control's live value unconditionally is harmless for
+                          every other entry, since t() only replaces a token
+                          that is actually present in the string. An entry
+                          whose description has one must not use a selector
+                          that returns null (settings-search-coverage.test.ts). */}
+                      {t(item.description, {
+                        value: String(item.control.storeSelector()),
+                      })}
+                    </>
+                  )}
                 </span>
               </div>
               <div className="settings-row-control">

@@ -96,6 +96,19 @@ function isKeyringProvider(p: string): p is KeyringProvider {
   return (KEYRING_PROVIDERS as string[]).includes(p);
 }
 
+/** The ghost-text sliders' ranges. The AI tab's range inputs and the settings-search entries
+ *  both read these, so the two surfaces cannot offer different bounds. */
+export const GHOST_TEXT_DEBOUNCE_RANGE = {
+  max: 2000,
+  min: 200,
+  step: 100,
+} as const;
+export const MAX_SUGGESTION_LENGTH_RANGE = {
+  max: 500,
+  min: 20,
+  step: 10,
+} as const;
+
 export const useAIStore = create<AIState>()(
   persist(
     (set) => ({

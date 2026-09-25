@@ -7,7 +7,12 @@ import { useShallow } from "zustand/shallow";
 
 import { useTranslation } from "../../../i18n/useTranslation";
 import { llmListModels } from "../../../ipc/invoke";
-import { type AIProvider, useAIStore } from "../../../stores/ai/ai";
+import {
+  type AIProvider,
+  GHOST_TEXT_DEBOUNCE_RANGE,
+  MAX_SUGGESTION_LENGTH_RANGE,
+  useAIStore,
+} from "../../../stores/ai/ai";
 import { AI_PROVIDER_IDS, AI_PROVIDERS } from "../../../stores/ai/providers";
 import { formatAIError } from "../../../utils/format-error";
 import { CustomAICommandEditor } from "../CustomAICommandEditor";
@@ -416,12 +421,12 @@ export function AITab() {
               >
                 <input
                   className="settings-range"
-                  max={2000}
-                  min={200}
+                  max={GHOST_TEXT_DEBOUNCE_RANGE.max}
+                  min={GHOST_TEXT_DEBOUNCE_RANGE.min}
                   onChange={(e) =>
                     setGhostTextDebounceMs(Number(e.target.value))
                   }
-                  step={100}
+                  step={GHOST_TEXT_DEBOUNCE_RANGE.step}
                   type="range"
                   value={ghostTextDebounceMs}
                 />
@@ -436,12 +441,12 @@ export function AITab() {
               >
                 <input
                   className="settings-range"
-                  max={500}
-                  min={20}
+                  max={MAX_SUGGESTION_LENGTH_RANGE.max}
+                  min={MAX_SUGGESTION_LENGTH_RANGE.min}
                   onChange={(e) =>
                     setMaxSuggestionLength(Number(e.target.value))
                   }
-                  step={10}
+                  step={MAX_SUGGESTION_LENGTH_RANGE.step}
                   type="range"
                   value={maxSuggestionLength}
                 />

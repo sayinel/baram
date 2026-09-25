@@ -100,7 +100,7 @@ export function EditorTab() {
   const [browserSlot, setBrowserSlot] = useState<FontSlot | null>(null);
   // §354 코드 슬롯의 예제와 아래 두 슬라이더가 보여 주는 값 — 연동 중이면
   // 본문에서 파생한 것이고, 끄면 저장된 코드 값이다. 이 자리에서 다시 계산하지
-  // 않는다: 같은 답을 내야 하는 곳이 넷이라 계산은 code-metrics.ts 하나뿐이다.
+  // 않는다: 같은 답을 내야 하는 곳이 여럿이라 계산은 code-metrics.ts 하나뿐이다.
   const codeMetrics = resolveCodeMetrics({
     codeFontSize,
     codeLineHeight,
