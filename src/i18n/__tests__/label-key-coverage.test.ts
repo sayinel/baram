@@ -46,6 +46,7 @@ const LOCALES: Array<[string, Record<string, string>]> = [
  */
 const KEYBINDING_CHROME_KEYS = new Set<string>([
   "keybindings.capture.cancel",
+  "keybindings.capture.confirm",
   "keybindings.capture.prompt",
   "keybindings.conflict",
   "keybindings.conflict.swap",

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { ModelInfo } from "../../../ipc/types";
 
+import { RefreshCw } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
 import { useTranslation } from "../../../i18n/useTranslation";
@@ -301,7 +302,7 @@ export function AITab() {
                 {modelsLoading ? (
                   <span className="settings-model-spinner" />
                 ) : (
-                  "\u21BB"
+                  <RefreshCw className="icon-inline" size="1em" />
                 )}
               </button>
             </div>

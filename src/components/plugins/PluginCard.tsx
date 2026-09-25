@@ -4,6 +4,8 @@ import type {
   RegistryEntry,
 } from "../../plugins/types";
 
+import { TriangleAlert } from "lucide-react";
+
 // §69 Plugin Card — Compact card for marketplace listing
 import { useTranslation } from "../../i18n/useTranslation";
 import { PluginCapabilityBadge } from "./PluginCapabilityBadge";
@@ -57,7 +59,17 @@ export function PluginCard({
             )}
           </div>
           <p className="plugin-card__desc">{entry.description}</p>
-          {error && <div className="plugin-card__error">⚠ {error}</div>}
+          {error && (
+            <div className="plugin-card__error">
+              <TriangleAlert
+                aria-label={t("plugin.marketplace.error")}
+                className="icon-inline"
+                role="img"
+                size="1em"
+              />{" "}
+              {error}
+            </div>
+          )}
           <div className="plugin-card__meta-row">
             <span className="plugin-card__author">{entry.author}</span>
             {entry.downloads != null && (

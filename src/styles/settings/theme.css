@@ -60,7 +60,6 @@
   justify-content: center;
   width: 18px;
   height: 18px;
-  font-size: 0.7rem;
   color: var(--color-text-muted);
   cursor: pointer;
   background: var(--color-bg-elevated);
@@ -275,7 +274,6 @@
   justify-content: center;
   width: 20px;
   height: 24px;
-  font-size: 16px;
   color: var(--color-text-muted);
   touch-action: none;
   cursor: grab;
@@ -472,7 +470,6 @@
   justify-content: center;
   width: 18px;
   height: 18px;
-  font-size: 0.7rem;
   color: var(--color-text-muted);
   cursor: pointer;
   background: var(--color-bg-elevated);

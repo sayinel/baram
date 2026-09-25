@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import type { RegistryEntry, RegistryIndex } from "../../plugins/types";
 
+import { RefreshCw } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
 import { useTranslation } from "../../i18n/useTranslation";
@@ -263,6 +264,7 @@ export function PluginMarketplace() {
               disabled={loading}
               onClick={handleRefresh}
             >
+              <RefreshCw className="icon-inline" size="1em" />{" "}
               {loading
                 ? t("plugin.marketplace.refreshing")
                 : t("plugin.marketplace.refresh")}

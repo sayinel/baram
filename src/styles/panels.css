@@ -501,8 +501,6 @@
   position: absolute;
   top: 6px;
   left: 8px;
-  font-size: 0.7rem;
-  font-weight: 700;
   color: var(--color-accent-default);
 }
 
@@ -515,7 +513,6 @@
   justify-content: center;
   width: 18px;
   height: 18px;
-  font-size: 0.7rem;
   color: var(--color-text-muted);
   cursor: pointer;
   background: var(--color-bg-elevated);

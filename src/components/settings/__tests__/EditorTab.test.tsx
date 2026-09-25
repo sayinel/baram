@@ -84,7 +84,7 @@ describe("EditorTab — Browse…", () => {
 
     // Not blank: the browser's own chrome (back control, slot segment) is on
     // screen, and the tab's normal font rows are gone while it is up.
-    const back = screen.getByRole("button", { name: "← Editor settings" });
+    const back = screen.getByRole("button", { name: "Editor settings" });
     expect(screen.getByRole("button", { name: "Body" })).toBeTruthy();
     expect(screen.queryByText("Font Family")).toBeNull();
 

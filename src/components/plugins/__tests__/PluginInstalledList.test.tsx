@@ -103,7 +103,7 @@ describe("PluginInstalledList (§69)", () => {
     // ‼️ 카운트에는 자체 testid가 있다 (계획 수정, 2026-08-06). 앞선 초안은
     // `within(builtin).getByText(/1/)`이었는데, 섹션 안의 행이 `v1.0.0`을 포함하므로
     // 복수 매치로 던진다. 헤더 텍스트 전체를 보는 것도 안 된다 — textContent가
-    // "▾Built-in1"로 붙어 `\b1\b`가 성립하지 않는다.
+    // "Built-in1"로 붙어 `\b1\b`가 성립하지 않는다.
     render(<PluginInstalledList rows={ROWS} {...handlers} />);
     expect(screen.getByTestId("plugin-section-count-builtin").textContent).toBe(
       "1",
@@ -113,19 +113,21 @@ describe("PluginInstalledList (§69)", () => {
     ).toBe("1");
   });
 
-  it("keeps the caret glyph out of the section heading's name", () => {
-    // 캐럿은 장식이고 펼침 여부는 `aria-expanded`가 말한다. 감추지 않으면 헤딩 버튼의
-    // 접근 가능한 이름이 "▾ Built-in 1"이 된다 — 스크린리더가 읽을 이름이 아니다.
+  it("keeps the caret out of the section heading's name", () => {
+    // 캐럿은 장식이고 펼침 여부는 `aria-expanded`가 말한다. 문자 글리프(▾ ▸)였던 시절에는
+    // 감추지 않으면 헤딩 버튼의 이름이 "▾ Built-in 1"이 됐다. 지금은 lucide svg 라 글리프를
+    // 찾는 부재 단정은 무엇에도 실패할 수 없다 — 그래서 이름 **전체**를 고정한다. 캐럿
+    // 자리에 무엇이 들어오든 이름에 섞이면 이 단정이 깨진다.
     render(<PluginInstalledList rows={ROWS} {...handlers} />);
     const builtin = screen.getByTestId("plugin-section-builtin");
+    const head = builtin.querySelector(".plugin-section__head");
 
-    expect(within(builtin).queryByRole("button", { name: /[▾▸]/u })).toBeNull();
-    // 두 개의 보완 단정: 이름으로는 여전히 찾을 수 있어야 하고(이름을 통째로 지우면
-    // 위 단정도 통과한다), 글리프는 여전히 그려져야 한다.
-    expect(
-      within(builtin).getByRole("button", { name: /Built-in/u }),
-    ).toBeTruthy();
-    expect(builtin.textContent).toContain("▾");
+    expect(head).toHaveAccessibleName(/^Built-in\s*1$/u);
+    // 보완 단정: 캐럿은 여전히 그려진다(이름을 고정하는 것만으로는 캐럿을 통째로 지워도
+    // 통과한다). 펼친 상태는 ChevronDown 이다.
+    const caret = builtin.querySelector(".plugin-section__caret");
+    expect(caret?.getAttribute("aria-hidden")).toBe("true");
+    expect(caret?.querySelector("svg.lucide-chevron-down")).not.toBeNull();
   });
 
   it("shows no gear at all when the settings props are absent", () => {

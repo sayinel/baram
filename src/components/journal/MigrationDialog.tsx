@@ -1,6 +1,8 @@
 // §56a Journal Migration Dialog — bidirectional: flat ↔ hierarchy
 import { useCallback, useEffect, useState } from "react";
 
+import { ArrowRight } from "lucide-react";
+
 import { useTranslation } from "../../i18n/useTranslation";
 import {
   createDir,
@@ -173,7 +175,16 @@ export function MigrationDialog({
                         <span className="migration-dialog-from">
                           {fromRelative}
                         </span>
-                        <span className="migration-dialog-arrow">→</span>
+                        <span className="migration-dialog-arrow">
+                          {/* 두 경로의 관계를 말하는 유일한 자리라 장식으로 숨기지 않는다 */}
+                          <ArrowRight
+                            aria-label={t(
+                              "settings.general.journalMigrate.movesTo",
+                            )}
+                            role="img"
+                            size={12}
+                          />
+                        </span>
                         <span className="migration-dialog-to">
                           {toRelative}
                         </span>

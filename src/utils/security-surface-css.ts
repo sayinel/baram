@@ -2,22 +2,25 @@
 // reading the stylesheets that already own each rule rather than by copying them.
 //
 // Why read instead of move. The obvious shape is to cut these rules out of
-// `plugins.css`/`vault.css`/`modal.css`/`theme.css` into one file and inject that. SEVEN of
-// the 40 classes forbid it — the test that moving one breaks something is "another screen
+// `plugins.css`/`vault.css`/`modal.css`/`theme.css` into one file and inject that. EIGHT of
+// the 40 distinct classes forbid it (the lists below hold 42 entries; `btn-unstyled` is
+// listed by three surfaces) — the test that moving one breaks something is "another screen
 // uses it AND it has a rule", and these are the classes that pass it. The counts below come
 // from scanning the `.tsx` files under `src/components`, tests excluded. No `.ts` file
-// under that tree carries any of these seven strings today (measured), so the figures
+// under that tree, tests excluded, carries any of these eight strings today (measured —
+// one test comment mentions `btn-unstyled`), so the figures
 // happen to be the same for the wider corpus — but they were taken over the narrower
 // one, and saying which is the point: a class name parked in a `.ts` constant would
 // falsify them silently.
 //
-//   settings-section      modal.css:135   `className="settings-section"` in 15 files
+//   settings-section      modal.css:146   `className="settings-section"` in 15 files
 //   settings-section-desc vault.css:195   3 files
 //   vault-tab-empty       vault.css:9     3 files
 //   btn-unstyled          base.css:96     ) the shared utilities CLAUDE.md pins to
 //   flex-header           base.css:103    ) base.css, used across the app
 //   text-truncate         base.css:110    )
-//   plugin-revoked__note  plugins.css:479 PluginMarketplace.tsx:290,308,317,322 — its OWN
+//   icon-inline           base.css:140    9 files besides PluginConsentDialog.tsx
+//   plugin-revoked__note  plugins.css:478 PluginMarketplace.tsx:292,310,319,324 — its OWN
 //                                         staleness notices plus §10.2's theme pointer,
 //                                         all in the light DOM
 //
@@ -31,10 +34,13 @@
 // wrong, which is exactly the self-invalidating-citation shape CLAUDE.md warns about. Both
 // numbers above were re-measured at this writing. `settings-section-title` is shared too (3
 // other files) but has no rule anywhere, so moving it would break nothing — not counted.
-// The seven are unchanged by `themeConsent` (§361 review round 2): every `theme-consent-*`
-// class is single-purpose, defined only in `theme.css`, used only by `ThemeBrowser.tsx` —
-// only `btn-unstyled`, already on the list, is shared with it. The denominator moved
-// (32 → 40) because `theme.css` is read for the first time; the shared set did not.
+// The shared set, seven then, was unchanged by `themeConsent` (§361 review round 2): every
+// `theme-consent-*` class is single-purpose, defined only in `theme.css`, used only by
+// `ThemeBrowser.tsx` — only `btn-unstyled`, already on the list, is shared with it. The
+// entry count moved (32 → 40) because `theme.css` is read for the first time; the shared
+// set did not. It moved again (40 → 42 entries) when the consent dialog's `::before`
+// warning glyph became a lucide icon in its JSX: `plugin-consent__danger-icon` is
+// single-purpose, and `icon-inline` is the eighth shared class.
 //
 // Cutting those out breaks the screens left behind; copying them is the drift
 // `export-editor-css.ts` was written to end ("a copy has no way to notice that its
@@ -67,11 +73,14 @@
 // an extraction that silently matched nothing goes red instead of rendering unstyled.
 //
 // ‼️ The second of those matches on a CLASS BOUNDARY, not a substring, and that is not
-// a detail: three of the 40 classes are prefixes of siblings that are always present
-// (`plugin-consent` ⊂ `plugin-consent__body`, `plugin-revoked` ⊂ `plugin-revoked__title`,
-// `settings-section` ⊂ `settings-section-desc`). A substring test could not fail for any
-// of the three — review deleted the real `.plugin-consent` rule and the guard stayed
-// green. A third test in that file pins the boundary itself.
+// a detail: six of the 40 distinct classes are prefixes of a listed sibling (measured
+// over the lists below) — `plugin-consent` ⊂ `plugin-consent__body`,
+// `plugin-consent__cap` ⊂ `plugin-consent__caps`, `plugin-consent__danger` ⊂
+// `plugin-consent__danger-title`, `plugin-revoked` ⊂ `plugin-revoked__title`,
+// `settings-section` ⊂ `settings-section-desc`, `theme-consent` ⊂ `theme-consent-title`.
+// A substring test could not fail for any of the six — review deleted the real
+// `.plugin-consent` rule and the guard stayed green. A third test in that file pins the
+// boundary itself.
 import * as csstree from "css-tree";
 
 import a11yCss from "../styles/a11y.css?raw";
@@ -110,6 +119,7 @@ export const SECURITY_SURFACE_CLASSES: Record<
   ],
   consentDialog: [
     "btn-unstyled",
+    "icon-inline",
     "plugin-consent",
     "plugin-consent-overlay",
     "plugin-consent__ack",
@@ -121,6 +131,7 @@ export const SECURITY_SURFACE_CLASSES: Record<
     "plugin-consent__caps",
     "plugin-consent__confirm",
     "plugin-consent__danger",
+    "plugin-consent__danger-icon",
     "plugin-consent__danger-title",
     "plugin-consent__lead",
     "plugin-consent__new",
@@ -148,7 +159,8 @@ export const SECURITY_SURFACE_CLASSES: Record<
 
 /**
  * The stylesheets read for class rules, in cascade order. `base.css` is last because
- * its three utilities are the weakest thing a surface applies; the others never define
+ * its utilities (`btn-unstyled`, `flex-header`, `text-truncate`, `icon-inline`) are the
+ * weakest thing a surface applies; the others never define
  * the same class, so their order between themselves does not decide anything today.
  */
 const CLASS_SHEETS = [pluginsCss, modalCss, vaultCss, themeCss, baseCss];

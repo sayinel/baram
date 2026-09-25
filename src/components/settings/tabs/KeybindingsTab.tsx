@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
+import { CornerDownLeft, RotateCcw } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
 import { useTranslation } from "../../../i18n/useTranslation";
@@ -158,10 +159,12 @@ export function KeybindingsTab() {
                           </span>
                         )}
                         <button
+                          aria-label={t("keybindings.capture.confirm")}
                           className="keybinding-confirm-btn"
                           onClick={confirmCapture}
+                          title={t("keybindings.capture.confirm")}
                         >
-                          {"\u21A9"}
+                          <CornerDownLeft className="icon-inline" size="1em" />
                         </button>
                       </>
                     ) : (
@@ -185,7 +188,7 @@ export function KeybindingsTab() {
                         onClick={() => removeKeybindingOverride(entry.id)}
                         title={t("keybindings.reset")}
                       >
-                        {"\u21BA"}
+                        <RotateCcw className="icon-inline" size="1em" />
                       </button>
                     )}
                     <button

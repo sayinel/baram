@@ -132,6 +132,16 @@
   opacity: 0.4;
 }
 
+/* 글줄 안의 lucide 아이콘 — 문자 기호(← ↻ ⚠ 따위)가 있던 자리에 그대로 들어간다.
+   Tailwind preflight 가 svg 를 display: block 으로 만들어 줄을 끊으므로 인라인으로
+   되돌린다. 크기는 `size="1em"` 으로 글자 크기에 묶고, 그 전제에서 -0.125em 이 아이콘
+   중심을 첫 줄 중심에 맞춘다(12px 본문 Chrome 실측 0.00px — preflight 의 middle 은
+   1.22px 처졌다). 크기를 px 로 따로 주면 이 오프셋은 맞지 않는다. */
+.icon-inline {
+  display: inline-block;
+  vertical-align: -0.125em;
+}
+
 /* Flex column stack */
 .flex-col {
   display: flex;

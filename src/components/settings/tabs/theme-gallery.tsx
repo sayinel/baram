@@ -14,6 +14,7 @@ import type { RevocationEntry } from "../../../plugins/revocation";
 import type { ThemeColors, ThemeDef } from "../../../types/theme";
 import type { ThemeSource } from "../../../types/theme-sources";
 
+import { ArrowRight, Info, X } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
 import { useTranslation } from "../../../i18n/useTranslation";
@@ -178,7 +179,8 @@ export function ThemeGallery({
           {t("settings.appearance.import")}
         </button>
         <button className="theme-action-btn" onClick={onBrowseThemes}>
-          {t("settings.appearance.browseThemes")}
+          {t("settings.appearance.browseThemes")}{" "}
+          <ArrowRight className="icon-inline" size="1em" />
         </button>
       </div>
       {importError !== null && (
@@ -322,7 +324,7 @@ function ThemeCard({
             name: theme.name,
           })}
         >
-          {"×"}
+          <X size={12} />
         </button>
       )}
       {onInfo && (
@@ -338,7 +340,7 @@ function ThemeCard({
             name: theme.name,
           })}
         >
-          {"ⓘ"}
+          <Info size={12} />
         </button>
       )}
     </div>

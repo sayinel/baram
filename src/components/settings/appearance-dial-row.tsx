@@ -15,6 +15,7 @@
 import type { DialId, DialValue } from "../../appearance/dials";
 import type { Translate } from "../../i18n/useTranslation";
 
+import { RotateCcw } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
 import { DIALS } from "../../appearance/dials";
@@ -68,7 +69,7 @@ export function AppearanceDialRow({ dialId, label }: AppearanceDialRowProps) {
       />
     ) : (
       // 열거는 슬라이더가 아니라 select 다. `.settings-select`(`src/styles/
-      // settings/modal.css:365`)는 이 모달의 다른 select 들이 이미 쓰는
+      // settings/modal.css`)는 이 모달의 다른 select 들이 이미 쓰는
       // 클래스다 — 새 스타일을 만들지 않는다.
       <select
         className="settings-select"
@@ -135,7 +136,7 @@ export function AppearanceDialRow({ dialId, label }: AppearanceDialRowProps) {
             title={revertLabel}
             type="button"
           >
-            ↺
+            <RotateCcw size={14} />
           </button>
         ) : null}
       </span>

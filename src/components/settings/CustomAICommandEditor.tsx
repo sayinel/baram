@@ -3,6 +3,7 @@ import { useCallback, useState } from "react";
 
 import type { CustomAICommand } from "../../stores/ai/ai";
 
+import { Plus } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
 import { useTranslation } from "../../i18n/useTranslation";
@@ -119,6 +120,7 @@ export function CustomAICommandEditor() {
           className="custom-ai-btn custom-ai-btn-add"
           onClick={() => setIsAdding(true)}
         >
+          <Plus className="icon-inline" size="1em" />{" "}
           {t("settings.ai.customCommands.addNew")}
         </button>
       )}

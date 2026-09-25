@@ -7,6 +7,7 @@ import { useCallback, useRef, useState } from "react";
 
 import type { ActivityBarItemConfig } from "../../../../stores/settings/store";
 
+import { GripVertical } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
 import { useTranslation } from "../../../../i18n/useTranslation";
@@ -155,7 +156,7 @@ export function ActivityBarItemsSection() {
               className="activity-bar-config-drag-handle"
               onPointerDown={(e) => onPointerDown(item.id, item.section, e)}
             >
-              {"⠇"}
+              <GripVertical size={14} />
             </div>
             <span
               className={`settings-row-label ${!item.visible ? "activity-bar-config-hidden" : ""}`}

@@ -14,6 +14,8 @@ import { useCallback, useEffect, useState } from "react";
 
 import type { RegistryEntry, RegistryIndex } from "../../../plugins/types";
 
+import { ArrowLeft } from "lucide-react";
+
 import { useTranslation } from "../../../i18n/useTranslation";
 import {
   fetchRegistryIndex,
@@ -103,6 +105,7 @@ export function ThemeBrowser({ onBack }: ThemeBrowserProps) {
           onClick={onBack}
           type="button"
         >
+          <ArrowLeft className="icon-inline" size="1em" />{" "}
           {t("settings.appearance.themeBrowser.back")}
         </button>
         <h3 className="theme-browser-title">

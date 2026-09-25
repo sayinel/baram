@@ -5,6 +5,7 @@ import { useCallback, useState } from "react";
 
 import type { WorkspacePreset } from "../../../stores/file/workspace";
 
+import { Check, X } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
 import { useTranslation } from "../../../i18n/useTranslation";
@@ -186,8 +187,14 @@ function PresetCard({
       onClick={() => onApply(preset.id)}
     >
       {isActive && (
-        <span aria-label="Active" className="workspace-card-check">
-          &#10003;
+        // role="img" 가 있어야 aria-label 이 이름이 된다 — 역할 없는 span 의 aria-label 은
+        // ARIA 가 허용하지 않고, 안의 lucide svg 는 스스로 aria-hidden 이라 읽을 글자가 없다.
+        <span
+          aria-label={t("settings.workspace.active")}
+          className="workspace-card-check"
+          role="img"
+        >
+          <Check size={12} strokeWidth={3} />
         </span>
       )}
       {onDelete && (
@@ -199,7 +206,7 @@ function PresetCard({
           }}
           title={t("settings.workspace.deletePreset")}
         >
-          {"×"}
+          <X size={12} />
         </button>
       )}
 
