@@ -85,15 +85,28 @@ describe("settings-path strings (§342)", () => {
   });
 
   it("names the correct new tabs for moved features", () => {
-    // Verify the target tabs are correct
-    expect(en["space.journal.disabled"]).toContain("Settings › Journal");
-    expect(en["space.zettel.disabled"]).toContain("Settings › Zettel");
-    expect(en["query.tasksDisabled"]).toContain("Settings › Tasks");
+    // Verify the target tabs are correct. The tab name is read from `settings.tab.*` so a
+    // renamed tab (Zettel → 제텔 in ko) fails here unless the message is renamed with it.
+    expect(en["space.journal.disabled"]).toContain(
+      `Settings › ${en["settings.tab.journal"]}`,
+    );
+    expect(en["space.zettel.disabled"]).toContain(
+      `Settings › ${en["settings.tab.zettelkasten"]}`,
+    );
+    expect(en["query.tasksDisabled"]).toContain(
+      `Settings › ${en["settings.tab.tasks"]}`,
+    );
     expect(en["viewer.noPlugin"]).toContain("Plugins");
 
-    expect(ko["space.journal.disabled"]).toContain("설정 › 저널");
-    expect(ko["space.zettel.disabled"]).toContain("설정 › Zettel");
-    expect(ko["query.tasksDisabled"]).toContain("설정 › 태스크");
+    expect(ko["space.journal.disabled"]).toContain(
+      `설정 › ${ko["settings.tab.journal"]}`,
+    );
+    expect(ko["space.zettel.disabled"]).toContain(
+      `설정 › ${ko["settings.tab.zettelkasten"]}`,
+    );
+    expect(ko["query.tasksDisabled"]).toContain(
+      `설정 › ${ko["settings.tab.tasks"]}`,
+    );
     expect(ko["viewer.noPlugin"]).toContain("플러그인");
   });
 });
