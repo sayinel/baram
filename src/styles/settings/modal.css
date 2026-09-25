@@ -44,7 +44,6 @@
 .settings-close {
   width: 24px;
   height: 24px;
-  font-size: 18px;
   color: var(--color-text-muted);
   background: transparent;
   border: none;
@@ -73,7 +72,10 @@
   border-right: 1px solid var(--color-border-subtle);
 }
 
+/* 아이콘 칸을 라벨의 줄 상자 가운데에 세운다 — 아래 .settings-nav-icon 주석 참조. */
 .settings-nav-item {
+  display: flex;
+  align-items: center;
   padding: var(--space-1-5) var(--space-4);
   font-size: 0.85rem;
   color: var(--color-text-secondary);
@@ -106,12 +108,21 @@
   box-shadow: inset 2px 0 0 var(--color-accent-default);
 }
 
+/* 칸에 들어오는 입구는 둘이고 둘 다 lucide svg 다 — TABS 의 icon(settings-tabs.test.tsx 가
+   lucide svg 를 강제)과 플러그인 탭 행의 Puzzle(SettingsModal.tsx). 예전에는 문자
+   글리프(▤ ✎ ◑ M↓)가 섞였고, 이 칸은 inline-block + text-align: center 였다. Tailwind
+   preflight 가 svg 를 display: block 으로 만들므로 가운데 정렬은 글리프에만 먹고 svg 는
+   왼쪽에 붙었다(실측 3px). 블록 svg 만 담은 inline-block 은 줄 상자가 없어 아래
+   가장자리가 라벨 기준선에 놓이므로 svg 가 라벨보다 2px 떠 있었다 — 글리프와 섞인
+   그룹에서 아이콘 열이 들쭉날쭉해 보인 원인이다. flex 로 칸 안과 행 안 모두 가운데에
+   세운다. 글리프가 사라진 뒤에도 svg 의 이 두 어긋남은 그대로라 flex 가 필요하다. */
 .settings-nav-icon {
-  display: inline-block;
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
   width: 20px;
   margin-right: var(--space-1-5);
-  font-size: 0.8rem;
-  text-align: center;
 }
 
 /* Plugin-contributed tabs group label (§69) */
@@ -192,7 +203,6 @@
   justify-content: center;
   width: 18px;
   height: 18px;
-  font-size: 14px;
   color: var(--color-text-muted);
   cursor: pointer;
   background: transparent;
@@ -343,13 +353,12 @@
 }
 
 /* `.settings-close`(위)·`.settings-search-clear`(아래) 아이콘 버튼과 같은
-   관용구 — 정사각형 박스에 글리프를 가운데 놓고, 옅은 색에서 hover 시
+   관용구 — 정사각형 박스에 lucide 아이콘을 가운데 놓고, 옅은 색에서 hover 시
    짙어진다. 두 기존 크기(24px/18px) 사이인 20px을 썼다: 칩 옆에 붙는
-   자리라 24px는 크고, 18px는 이 글리프(↺)치고 좁다. */
+   자리라 24px는 크고, 18px는 안의 14px 아이콘(RotateCcw)에 여백이 2px뿐이다. */
 .settings-dial-revert {
   width: 20px;
   height: 20px;
-  font-size: 15px;
   color: var(--color-text-muted);
   background: transparent;
   border: none;

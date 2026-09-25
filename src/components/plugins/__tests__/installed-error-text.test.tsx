@@ -14,7 +14,7 @@
 // The registry is mocked EMPTY here, which is exactly that case.
 import type { InstalledPlugin, RegistryIndex } from "../../../plugins/types";
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../../plugins/plugin-loader", () => ({
@@ -108,6 +108,15 @@ describe("Installed tab surfaces the load error text", () => {
     expect(
       screen.getByText(/Use Remove on the Installed tab/),
     ).toBeInTheDocument();
+    // The region itself, by the selector the healthy-plugin test below asserts ABSENT —
+    // without this twin that absence could pass on a selector that never matches anything.
+    const region = document.querySelector<HTMLElement>(".plugin-row__error");
+    expect(region).not.toBeNull();
+    // The leading ⚠ used to be read aloud with the message; the lucide icon that replaced it
+    // would hide itself unless it is given a name.
+    expect(
+      within(region!).getByRole("img", { name: "Error" }),
+    ).toBeInTheDocument();
   });
 
   it("names a control that exists on this very tab", () => {
@@ -141,6 +150,8 @@ describe("Installed tab surfaces the load error text", () => {
     openInstalledTab();
 
     expect(screen.queryByText(/no longer be loaded/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/^⚠/)).not.toBeInTheDocument();
+    // Not the old `/^⚠/` text match: the warning is a lucide svg now, so no text starts with
+    // it and that query could no longer fail. The region's own class can.
+    expect(document.querySelector(".plugin-row__error")).toBeNull();
   });
 });

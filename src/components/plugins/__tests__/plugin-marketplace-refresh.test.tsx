@@ -163,7 +163,7 @@ describe("PluginMarketplace registry refresh button", () => {
 
     await waitFor(() =>
       expect(
-        screen.getByRole("button", { name: "↻ Refreshing…" }),
+        screen.getByRole("button", { name: "Refreshing…" }),
       ).toBeInTheDocument(),
     );
 
@@ -171,7 +171,7 @@ describe("PluginMarketplace registry refresh button", () => {
 
     await waitFor(() =>
       expect(
-        screen.getByRole("button", { name: "↻ Refresh" }),
+        screen.getByRole("button", { name: "Refresh" }),
       ).toBeInTheDocument(),
     );
   });

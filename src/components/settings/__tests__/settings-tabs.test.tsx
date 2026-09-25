@@ -4,7 +4,14 @@
 import type { ReactNode } from "react";
 
 import { render, renderHook, screen } from "@testing-library/react";
-import { CircleCheck, Sparkles } from "lucide-react";
+import {
+  CircleCheck,
+  Folder,
+  PanelsTopLeft,
+  Puzzle,
+  Sparkles,
+  StickyNote,
+} from "lucide-react";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { DIALS } from "../../../appearance/dials";
@@ -25,43 +32,62 @@ describe("settings tab structure (§342)", () => {
     expect(new Set(assigned).size).toBe(TABS.length);
   });
 
-  // 동훈님 요청: 설정 탭의 두 아이콘은 다른 표면과 **같은 모양**이어야 한다 —
-  // tasks 는 활동표시줄의 태스크 아이콘(`ActivityBar.tsx` 의 `CircleCheck`), ai 는
-  // 블록 팝업의 AI 버튼(`image-view.tsx`·`callout-view.tsx`·`math-block-view.tsx`·
-  // `svg-block-view.tsx` 가 모두 `<Sparkles size={14} />`).
+  // 동훈님 요청: 같은 것을 이미 그리는 표면이 있는 설정 탭은 그 표면과 **같은 모양**이어야
+  // 한다 — tasks·zettelkasten·plugins 는 활동표시줄(`ActivityBar.tsx` 의 `CircleCheck`·
+  // `StickyNote`·`Puzzle`), ai 는 블록 팝업의 AI 버튼(`image-view.tsx`·`callout-view.tsx`·
+  // `math-block-view.tsx`·`svg-block-view.tsx` 가 모두 `<Sparkles size={14} />`),
+  // activitybar(화면 배치)는 상태 표시줄의 화면구성 버튼(`StatusBar.tsx` 의
+  // `PanelsTopLeft`), vault 는 최근 폴더 목록의 볼트 행(`ContextAddMenu.tsx` 의 `Folder`).
   //
-  // ‼️ 클래스로 판별할 수 없다: 이 lucide 버전은 svg 에 `"lucide"` 하나만 붙이고
-  // 아이콘별 클래스를 붙이지 않는다(`mergeClasses("lucide", contextClass, className)`).
-  // 그래서 **경로 자체**를 비교한다 — 그것만이 모양이 같다는 증거다. 다른 lucide
-  // 아이콘으로 바꾸면 iconNode 가 달라 이 단정이 깨진다.
+  // ‼️ 클래스가 아니라 **경로 자체**를 비교한다: svg 의 `lucide-<이름>` 클래스는
+  // `createLucideIcon` 에 넘긴 이름일 뿐이고(실측 `class="lucide lucide-folder"`),
+  // 모양이 같다는 증거는 경로뿐이다. 다른 lucide 아이콘으로 바꾸면 iconNode 가 달라
+  // 이 단정이 깨진다.
   //
-  // ‼️ 이 결합은 **규약이고 파생이 아니다**: `ActivityBar.tsx` 의 `PANEL_ICONS` 와
-  // NodeView 들의 버튼은 export 되지 않아 여기서 읽을 수 없다. 즉 활동표시줄이 자기
-  // 아이콘을 바꾸면 이 테스트는 그것을 모른다. 그때는 두 자리를 같이 고쳐야 한다.
-  // 동훈님 요청: 설정 아이콘은 전부 모노톤이어야 한다. 컬러가 새어 들어오는 경로는
-  // **이모지 폴백** 하나다 — 문자 글리프 중 `Emoji=Yes` 인 코드포인트는 주 폰트에
-  // 없으면 Apple Color Emoji 로 떨어져 컬러로 그려진다(macOS 에서 실제로 그랬다:
-  // 📓🗂🧩📦🌐 는 물론이고 `⚙`(U+2699)·`⌨`(U+2328)도 `Emoji=Yes` 다).
-  //
-  // 그래서 목록을 베끼지 않고 **규칙**으로 고정한다: 어떤 탭 아이콘도 Emoji 코드포인트를
-  // 담지 않는다. 남아 있는 `✎ ◑ M↓ ▤` 는 측정으로 `Emoji=No` 이므로 통과한다.
-  // lucide 는 `currentColor` 로 stroke 하므로 컴포넌트 쪽은 정의상 모노톤이다.
-  it("draws no tab icon with an emoji codepoint — colour can only enter that way", () => {
-    const emoji = /\p{Emoji}/u;
-    const offenders = TABS.filter(
-      (t) => typeof t.icon === "string" && emoji.test(t.icon),
-    ).map((t) => `${t.id}=${String(t.icon)}`);
+  // ‼️ 이 결합은 **규약이고 파생이 아니다**: `ActivityBar.tsx` 의 `PANEL_ICONS`,
+  // NodeView 들의 버튼, 상태 표시줄·최근 폴더 목록의 아이콘은 export 되지 않아 여기서
+  // 읽을 수 없다. 즉 그 표면이 자기 아이콘을 바꾸면 이 테스트는 그것을 모른다. 그때는
+  // 두 자리를 같이 고쳐야 한다.
 
-    expect(offenders).toEqual([]);
+  // 동훈님 요청: 설정 아이콘은 전부 lucide 여야 한다. 문자 글리프가 남긴 결함 셋을 규칙
+  // 하나로 막는다 — ① 색: `Emoji=Yes` 코드포인트는 주 폰트에 없으면 Apple Color Emoji 로
+  // 떨어진다(macOS 에서 📓🗂🧩📦🌐 는 물론 `⚙`(U+2699)·`⌨`(U+2328)도 그랬다) ② 폭: 두
+  // 글자 `M↓` 는 20px 칸보다 넓어(0.8rem 에서 실측 22px) 라벨에 붙은 낱말로 읽혔다
+  // ③ 굵기: 글리프는 svg 와 선 굵기가 달라 열이 들쭉날쭉했다(`▤ ✎ ◑`). lucide 는
+  // `currentColor` 로 stroke 하므로 lucide svg 는 정의상 모노톤이다 — 아무 svg 나 그렇지는
+  // 않으므로(여러 색을 칠한 인라인 svg) lucide 가 붙이는 `lucide` 클래스까지 본다.
+  //
+  // `icon` 이 `ReactElement` 라 문자열 글리프는 컴파일에서 막히지만 `<span>✎</span>` 같은
+  // 요소는 통과한다 — 그래서 렌더해서 "lucide svg 가 있고 글자가 없다" 를 본다.
+  it("draws every tab icon as a text-free lucide svg", () => {
+    const isLucideIcon = (node: ReactNode) => {
+      const { container, unmount } = render(<>{node}</>);
+      const drawn =
+        container.querySelector("svg.lucide") !== null &&
+        container.textContent === "";
+      unmount();
+      return drawn;
+    };
 
-    // 비-공허성: 검사가 실제로 이모지를 판별한다. 이것이 없으면 정규식이 아무것도
-    // 매치하지 못하게 망가져도 위 단정이 조용히 통과한다.
-    expect(emoji.test("📓")).toBe(true);
-    expect(emoji.test("⚙")).toBe(true);
-    expect(emoji.test("◑")).toBe(false);
+    expect(TABS.filter((t) => !isLucideIcon(t.icon)).map((t) => t.id)).toEqual(
+      [],
+    );
+
+    // 비-공허성: 예전 글리프 모양과 lucide 가 아닌 svg 는 걸리고 lucide 는 통과한다.
+    // 이것이 없으면 판정이 무엇이든 참이 되게 망가져도 위 단정이 조용히 통과한다.
+    expect(isLucideIcon(<span>✎</span>)).toBe(false);
+    expect(isLucideIcon(<span>M↓</span>)).toBe(false);
+    expect(
+      isLucideIcon(
+        <svg>
+          <circle fill="red" r="4" />
+        </svg>,
+      ),
+    ).toBe(false);
+    expect(isLucideIcon(<Puzzle />)).toBe(true);
   });
 
-  it("draws the tasks and ai tabs with the icons their sibling surfaces use", () => {
+  it("draws each tab that has a sibling surface with that surface's icon", () => {
     const shapeOf = (node: ReactNode) => {
       const { container, unmount } = render(<>{node}</>);
       const svg = container.querySelector("svg");
@@ -73,17 +99,26 @@ describe("settings tab structure (§342)", () => {
     const tabIcon = (id: string) =>
       shapeOf(TABS.find((t) => t.id === id)?.icon);
 
-    expect(tabIcon("tasks")).not.toBeNull();
-    expect(tabIcon("tasks")).toBe(
-      shapeOf(<CircleCheck size={14} strokeWidth={1.5} />),
-    );
-    expect(tabIcon("ai")).toBe(
-      shapeOf(<Sparkles size={14} strokeWidth={1.5} />),
-    );
+    const siblings: [string, ReactNode][] = [
+      ["tasks", <CircleCheck key="tasks" />],
+      ["zettelkasten", <StickyNote key="zettelkasten" />],
+      ["plugins", <Puzzle key="plugins" />],
+      ["ai", <Sparkles key="ai" />],
+      ["activitybar", <PanelsTopLeft key="activitybar" />],
+      ["vault", <Folder key="vault" />],
+    ];
 
-    // 음성 대조군 — 두 아이콘이 서로 다르다. 없으면 "둘 다 같은 것을 그린다"와
-    // 구별되지 않는다(예: 양쪽이 실수로 같은 컴포넌트가 된 경우).
-    expect(tabIcon("tasks")).not.toBe(tabIcon("ai"));
+    for (const [id, sibling] of siblings) {
+      // 문자 글리프(예전 `▤`)는 svg 가 없어 null 이다 — null 끼리 같다고 통과하지 않게 먼저 막는다
+      expect(tabIcon(id), id).not.toBeNull();
+      expect(tabIcon(id), id).toBe(shapeOf(sibling));
+    }
+
+    // 음성 대조군 — 여섯 모양이 서로 다르다. 없으면 "전부 같은 것을 그린다"와
+    // 구별되지 않는다(예: 두 탭이 실수로 같은 컴포넌트가 된 경우).
+    expect(new Set(siblings.map(([id]) => tabIcon(id))).size).toBe(
+      siblings.length,
+    );
   });
 
   // ‼️ 이름을 실제 방향으로 좁혔다(M-8). 이 단정은 레지스트리 → TABS **한 방향**만

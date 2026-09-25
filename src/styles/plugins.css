@@ -143,14 +143,13 @@
   /* Deliberately NOT `--color-status-danger`. red-500 on the red-50/red-950 error surface
      measures 3.44:1 in light and 4.16:1 in dark — under AA for 13px text, which made the
      gravest sentence on the screen the least legible one. Primary text on the same surface
-     is 15.9:1 / 12.7:1; the ⚠ below carries the red instead. */
+     is 15.9:1 / 12.7:1; the warning icon below carries the red instead. */
   color: var(--color-text-primary);
 }
 
-.plugin-consent__danger-title::before {
+.plugin-consent__danger-icon {
   flex: none;
   color: var(--color-status-danger);
-  content: "⚠";
 }
 
 .plugin-consent__lead {
@@ -684,7 +683,6 @@
 }
 
 .plugin-section__caret {
-  font-size: 10px;
   color: var(--color-text-muted);
 }
 

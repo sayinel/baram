@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 
 import type { PluginConsent } from "../../plugins/types";
 
+import { TriangleAlert } from "lucide-react";
+
 import { useTranslation } from "../../i18n/useTranslation";
 import { consentCovers } from "../../plugins/plugin-consent";
 import { securitySurfaceCss } from "../../utils/security-surface-css";
@@ -96,6 +98,12 @@ export function PluginConsentDialog({
             {trusted && (
               <div className="plugin-consent__danger" role="alert">
                 <strong className="plugin-consent__danger-title">
+                  {/* 제목은 baseline 정렬 flex 다. svg 를 바로 flex 항목으로 두면 기준선이
+                      없어 아래 가장자리가 기준선에 앉아 떠 보이므로, 인라인 svg 를 span 에
+                      담아 그 span 이 첫 줄의 기준선을 갖게 한다. */}
+                  <span className="plugin-consent__danger-icon">
+                    <TriangleAlert className="icon-inline" size="1em" />
+                  </span>
                   {t("plugin.consent.fullTrust.title")}
                 </strong>
                 {t("plugin.consent.fullTrust.body")}

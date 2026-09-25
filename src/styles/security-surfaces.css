@@ -4,7 +4,8 @@
  * ‼️ This file is NOT imported by `index.css`. It is read with `?raw` by
  * `src/utils/security-surface-css.ts` and injected into each security surface's
  * shadow root. Everything else those surfaces need — their own class rules, the
- * three `base.css` utilities they borrow, and the two universal `a11y.css` rules —
+ * `base.css` utilities they borrow (`btn-unstyled`, `flex-header`, `text-truncate`,
+ * `icon-inline`), and the two universal `a11y.css` rules —
  * is EXTRACTED from the stylesheets that already own it, so that a change there
  * reaches the shadow too. Nothing below is a copy of a rule this repo has; it is
  * the third-party layer we cannot read.
@@ -32,7 +33,7 @@
  *
  * What is deliberately NOT restated: margins and list styling. The extracted rules
  * set those themselves where the UA default would differ — `plugins.css:107` and
- * `:156` zero the heading and lead margins, `:165` zeroes the capability list's
+ * `:155` zero the heading and lead margins, `:164` zeroes the capability list's
  * padding/margin and removes its markers — so restating them here would be a second
  * opinion about a value that already has an owner. */
 

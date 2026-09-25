@@ -1,6 +1,8 @@
 // §69 — 한 행. 액션 세트는 `actionsFor(source)`에서만 나온다.
 import type { PluginRow } from "../../plugins/plugin-sources";
 
+import { TriangleAlert } from "lucide-react";
+
 import { useTranslation } from "../../i18n/useTranslation";
 import { actionsFor } from "../../plugins/plugin-sources";
 import { PluginCapabilityBadge } from "./PluginCapabilityBadge";
@@ -66,7 +68,17 @@ export function PluginRowView({
             detail view every one of them iterate the REGISTRY. So for a plugin whose entry
             has been withdrawn, this was the only place the user could see it and the only
             place that explained nothing. Pinned by `installed-error-text.test.tsx`. */}
-        {row.error && <p className="plugin-row__error">⚠ {row.error}</p>}
+        {row.error && (
+          <p className="plugin-row__error">
+            <TriangleAlert
+              aria-label={t("plugin.marketplace.error")}
+              className="icon-inline"
+              role="img"
+              size="1em"
+            />{" "}
+            {row.error}
+          </p>
+        )}
         {manifest.capabilities.length > 0 && (
           <div className="plugin-row__caps">
             {manifest.capabilities.slice(0, 3).map((c) => (

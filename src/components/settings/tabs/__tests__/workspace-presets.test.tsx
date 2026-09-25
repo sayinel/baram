@@ -93,6 +93,28 @@ describe("deleting a custom perspective", () => {
   });
 });
 
+describe("active perspective badge", () => {
+  // The ✓ was text, so it was at least readable. It is a lucide svg now, which hides itself
+  // (`aria-hidden`), so the badge's name has to come from its own label — and a label on a
+  // role-less span is not a name, hence `role="img"`. Pinned in both locales: the label used
+  // to be a hard-coded English "Active".
+  it("names the active card's badge, in the current locale", () => {
+    useWorkspaceStore.setState({ activePresetId: CUSTOM_PRESET.id });
+    const { unmount } = render(<WorkspacePresets />);
+    expect(screen.getByRole("img", { name: "Active" })).toBeInTheDocument();
+    unmount();
+
+    useSettingsStore.setState({ locale: "ko" });
+    render(<WorkspacePresets />);
+    expect(screen.getByRole("img", { name: "사용 중" })).toBeInTheDocument();
+  });
+
+  it("draws no badge when no perspective is active — negative control", () => {
+    render(<WorkspacePresets />);
+    expect(screen.queryByRole("img", { name: "Active" })).toBeNull();
+  });
+});
+
 describe("workspace gallery — preset feature gate (§338/I-8)", () => {
   // ‼️ en-only — `menu.workspace.*` and the (now-removed) `settings.workspace.preset.*` name
   // keys were BOTH "Writing"/"Journal"/"Skills" in en.json, so this assertion cannot see a wrong

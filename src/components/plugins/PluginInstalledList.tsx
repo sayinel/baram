@@ -4,6 +4,8 @@ import { useState } from "react";
 
 import type { PluginRow, PluginSource } from "../../plugins/plugin-sources";
 
+import { ChevronDown, ChevronRight } from "lucide-react";
+
 import { useTranslation } from "../../i18n/useTranslation";
 import { PluginRowView } from "./PluginRow";
 
@@ -98,10 +100,15 @@ export function PluginInstalledList({
               }
               type="button"
             >
-              {/* 장식이다. 이것 없이는 글리프가 버튼의 접근 가능한 이름 안에 들어가
-                  "▾ 내장 2"처럼 읽힌다. 펼침 여부는 `aria-expanded`가 이미 말한다. */}
+              {/* 장식이다. 펼침 여부는 `aria-expanded`가 이미 말한다. lucide svg 는 스스로
+                  aria-hidden 이지만 span 의 aria-hidden 은 남긴다 — 문자 글리프였던 시절
+                  이것 없이는 "▾ 내장 2"처럼 읽혔고, 무엇이 들어오든 이름에서 빠지게 한다. */}
               <span aria-hidden="true" className="plugin-section__caret">
-                {isCollapsed ? "▸" : "▾"}
+                {isCollapsed ? (
+                  <ChevronRight size={12} />
+                ) : (
+                  <ChevronDown size={12} />
+                )}
               </span>
               <span className="plugin-section__title">
                 {t(SECTION_KEY[source])}

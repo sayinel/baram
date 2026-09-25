@@ -11,6 +11,7 @@ import type { SystemFont } from "../../ipc/types";
 import type { FontListState } from "../../utils/font/font-list-state";
 import type { FontSlot } from "./FontSlotPicker";
 
+import { ArrowLeft, X } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
 import { useTranslation } from "../../i18n/useTranslation";
@@ -165,7 +166,7 @@ export function FontBrowser({
           onClick={onClose}
           type="button"
         >
-          {"← "}
+          <ArrowLeft className="icon-inline" size="1em" />{" "}
           {t("settings.editor.fontBrowser.back")}
         </button>
         <div className="font-browser-slot-group">
@@ -212,11 +213,13 @@ export function FontBrowser({
           />
           {query && (
             <button
+              aria-label={t("common.clear")}
               className="settings-search-clear"
               onClick={() => setQuery("")}
+              title={t("common.clear")}
               type="button"
             >
-              {"×"}
+              <X size={12} />
             </button>
           )}
         </div>
