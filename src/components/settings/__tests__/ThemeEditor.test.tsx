@@ -394,10 +394,6 @@ describe("ThemeEditor — leaving the editor", () => {
   });
 });
 
-// §363 / 0091 fix round 1, Finding 1 (MAJOR) — the package-export guard
-// (`canExportPackage`, ThemeEditor.tsx) had zero coverage. Mutation C2
-// (`&&` → `||` in the guard) and mutation C (deleting `disabled={...}`
-// outright) were both green before these tests existed.
 describe("ThemeEditor — a theme saved before a colour existed", () => {
   beforeEach(() => {
     document.documentElement.style.cssText = "";
@@ -437,6 +433,10 @@ describe("ThemeEditor — a theme saved before a colour existed", () => {
   });
 });
 
+// §363 / 0091 fix round 1, Finding 1 (MAJOR) — the package-export guard
+// (`canExportPackage`, ThemeEditor.tsx) had zero coverage. Mutation C2
+// (`&&` → `||` in the guard) and mutation C (deleting `disabled={...}`
+// outright) were both green before these tests existed.
 describe("ThemeEditor — package export guard", () => {
   beforeEach(() => {
     document.documentElement.style.cssText = "";

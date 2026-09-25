@@ -74,6 +74,18 @@ describe("팔레트보다 늦게 생긴 키", () => {
     expect(checked).toBeGreaterThan(0);
   });
 
+  it("별칭은 늘 팔레트가 싣는 키, 즉 별칭 없는 키를 가리킨다", () => {
+    // 무엇이 이것을 실패시키는가: `aliasOf` 가 파생 키(`--color-bg-hover` 같은, 팔레트에
+    // 없는 것)나 다른 별칭 키를 가리키면 `fillAliasedColors` 가 채울 값을 찾지 못한다. 그러면
+    // 위의 두 테스트는 초록인 채로 설치기가 그 팔레트를 다시 통째로 버린다. 별칭끼리의
+    // 사슬은 한 번 도는 루프가 배열 순서에 따라 읽는 시점을 놓치므로 이것도 막는다.
+    const required = new Set<string>(KEYS_AT_V0_7_4);
+    for (const entry of THEME_COLOR_KEYS) {
+      if (!("aliasOf" in entry)) continue;
+      expect(required.has(entry.aliasOf), entry.key).toBe(true);
+    }
+  });
+
   it("팔레트에 없는 키를 그 별칭의 값으로 채운다", () => {
     const filled = fillAliasedColors({ "--color-editor-text": "#123abc" });
     expect(filled["--color-editor-guide-tint"]).toBe("#123abc");

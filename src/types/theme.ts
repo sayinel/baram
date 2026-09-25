@@ -146,8 +146,9 @@ export function migrateThemeColors(
   // 3차: 이 팔레트보다 늦게 생긴 키는 기본 팔레트가 아니라 이 팔레트 안의 별칭 값으로
   // 채운다(`fillAliasedColors`). 그 키가 없을 때 cascade 가 그리는 값이 그것이라, 기본
   // 팔레트로 채우면 가져온 테마의 그 색만 다른 테마의 것이 된다 — v0.7.4 가 내보낸 JSON
-  // 의 리스트 가이드 색조가 그 경우다. 옛 키 이주 **뒤**에 두는 이유: 별칭이 가리키는
-  // 키가 이주로 막 생긴 것일 수 있다.
+  // 의 리스트 가이드 색조가 그 경우다. 옛 키 이주 **뒤**에 두는 것은 방어다 — 별칭이
+  // 가리키는 키가 이주로 생기는 것이면 이주 전에는 읽을 값이 없다. 오늘 V10 표의 이주
+  // 대상에는 별칭 대상(`--color-editor-text`)이 없어, 순서를 바꿔도 지금은 결과가 같다.
   const aliased = fillAliasedColors(migrated);
 
   // Fill any missing keys from fallback.

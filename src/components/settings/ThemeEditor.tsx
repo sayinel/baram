@@ -99,7 +99,8 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
   const [base, setBase] = useState<ThemeMode>(startMode);
   // `fillAliasedColors` — v0.7.4 가 저장한 사용자 테마는 그 뒤에 생긴 색(리스트 가이드
   // 색조, #722)을 싣지 않는다. 채우지 않으면 그 피커의 값이 `undefined` 라 검정으로 그려지고
-  // 옆의 hex 가 빈다. 채우는 값은 그 키가 없을 때 cascade 가 이미 그리던 색이다.
+  // 옆의 hex 가 빈다. 채우는 값은 편집기를 **여는 순간** cascade 가 그리던 색이다 — 그 뒤로는
+  // 독립된 칸이라, 본문 글자색을 바꿔도 따라가지 않는다(그 이유는 헬퍼의 doc 주석).
   const [colors, setColors] = useState<ThemeColors>(() =>
     fillAliasedColors({
       ...(sourceTheme.modes[startMode]?.colors ??
@@ -187,7 +188,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
   }, []);
 
   // Apply editing colors to CSS variables in real-time. data-theme도 함께 —
-  // 24색 inline vars만 바꾸면 base를 토글해도 <html data-theme>는 이전 값에
+  // 25색 inline vars만 바꾸면 base를 토글해도 <html data-theme>는 이전 값에
   // 머물러, 25키 밖 semantic 토큰·native widget(color-scheme)·CodeMirror가
   // 옛 base로 남은 혼합 미리보기가 됐다(적대 리뷰).
   useEffect(() => {
@@ -423,7 +424,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
             <div className="theme-editor-row" key={entry.key}>
               <span className="theme-editor-label">{entry.label}</span>
               {/* 옆의 span은 시각 라벨일 뿐 input과 연결돼 있지 않다 — 스크린
-                  리더에는 24개가 전부 무명의 color picker로 읽힌다. */}
+                  리더에는 25개가 전부 무명의 color picker로 읽힌다. */}
               <input
                 aria-label={entry.label}
                 className="theme-editor-color"
