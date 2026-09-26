@@ -274,7 +274,7 @@ describe("list geometry", () => {
     //    건드리기 전까지는 fallback 이 지배한다. 한쪽만 고치는 것을 막으려고 두 파일을
     //    여기서 함께 읽는다(§369 농도 다이얼과 같은 형태).
     // ② `text-align` 을 리터럴로 적으면 다이얼이 조용히 무의미해진다.
-    // ③ 상자 폭을 상수로 다시 적으면 거터·폴딩 삼각형과 드리프트한다. 폭은
+    // ③ 상자 폭을 상수로 다시 적으면 거터·폴딩 화살표와 드리프트한다. 폭은
     //    `--list-gutter` 에서 파생돼야 하고, 그 변수 하나가 마커·안내선·화살표를
     //    같은 공간의 세 위치로 묶는다(이 파일 상단 주석).
     // ④ `left` 앵커를 더하면 `right: 100%` 와 싸워 "마침표 기준" 이 오늘 화면과
@@ -412,10 +412,9 @@ describe("list geometry", () => {
       em(arrowDecls.find((d) => d.prop === "width")?.value ?? "") * (8 / 24);
     expect(arrowWidth).toBeGreaterThan(0);
 
-    const triangleRight = (offset: number) => -offset + 0.5 + arrowWidth / 2;
-    const orderedGap = subtrahend - triangleRight(orderedOffset);
-    const bulletGap =
-      gutter - 0.5 - markerSize / 2 - triangleRight(bulletOffset);
+    const arrowRight = (offset: number) => -offset + 0.5 + arrowWidth / 2;
+    const orderedGap = subtrahend - arrowRight(orderedOffset);
+    const bulletGap = gutter - 0.5 - markerSize / 2 - arrowRight(bulletOffset);
 
     // 0.3em 은 보고를 받고 고른 바닥이다. 그 아래로 내려가면 다시 "붙어 보인다" 가 된다.
     expect(orderedGap).toBeGreaterThanOrEqual(0.3);

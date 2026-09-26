@@ -408,7 +408,7 @@
   transform: translateX(-50%);
 }
 
-/* §footnote Footnote definition — inline N. content ↩ layout */
+/* §footnote Footnote definition — inline layout: number, content, back-arrow button */
 .tiptap .footnote-definition {
   display: flex;
   gap: var(--space-1);

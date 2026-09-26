@@ -1,4 +1,4 @@
-// §footnote FootnoteDefinition NodeView — N. content ↩ layout with back navigation
+// §footnote FootnoteDefinition NodeView — number · content · back-arrow button layout, with back navigation
 import { useCallback } from "react";
 
 import type { Editor } from "@tiptap/core";

@@ -244,7 +244,7 @@ export function FindReplaceBar({
     [handleClose, handleReplaceCurrent],
   );
 
-  // ▲▼ navigation buttons also need to clear the ref
+  // The previous/next match buttons also need to clear the ref
   const handlePrevMatch = useCallback(() => {
     lastSelectedRef.current = null;
     dispatchPrevMatch(editor.view);

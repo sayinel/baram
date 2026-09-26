@@ -22,7 +22,7 @@ describe("settings-path strings (§342)", () => {
 
   it("still points at the tabs that did NOT move", () => {
     // Over-replacement controls — these should NOT be touched
-    // These four items are load-bearing: a global normalization sweep could corrupt them
+    // These three items are load-bearing: a global normalization sweep could corrupt them
 
     // plugin.error.updateUnverifiableFloor — contains `>=x.y.z` code syntax
     expect(en["plugin.error.updateUnverifiableFloor"]).toContain("`>=x.y.z`");
