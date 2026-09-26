@@ -24,6 +24,32 @@ describe("charsForWidth", () => {
       }),
     ).toBe(39);
   });
+
+  // Fix round 1 (Important 1) — `box-sizing: border-box` 에서 여백이 폭보다 크면 콘텐츠 폭은
+  // 0 에서 바닥을 친다(CSS Box Sizing 명세). 무엇이 이것을 실패시키는가: `Math.max(0, …)` 를
+  // 빼면 폭이 여백의 두 배보다 작을 때 음수 글자 수("-8자" 등)가 나온다.
+  it("여백의 두 배보다 좁으면 0으로 바닥을 친다", () => {
+    const base = {
+      advanceRatio: KO,
+      fontSizePx: 16,
+      letterSpacingEm: 0,
+      paddingPx: 64,
+    };
+    expect(charsForWidth(20, base)).toBe(0);
+    expect(charsForWidth(0, base)).toBe(0);
+  });
+
+  // 경계 — 정확히 여백의 두 배(콘텐츠 폭 0)도 0이지 반올림 방향에 따라 -1/+1로 흔들리지 않는다.
+  it("경계 — 폭이 정확히 여백의 두 배면 0", () => {
+    expect(
+      charsForWidth(128, {
+        advanceRatio: KO,
+        fontSizePx: 16,
+        letterSpacingEm: 0,
+        paddingPx: 64,
+      }),
+    ).toBe(0);
+  });
 });
 
 describe("widthForChars", () => {

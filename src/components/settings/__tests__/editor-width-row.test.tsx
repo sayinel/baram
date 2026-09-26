@@ -72,6 +72,21 @@ describe("EditorWidthRow", () => {
     expect(screen.getByTestId("dial-value").textContent).toBe("제한 없음");
   });
 
+  // Fix round 1 (Important 1) — 저장값이 여백의 두 배보다 작으면(box-sizing: border-box 에서
+  // 콘텐츠 폭이 0에서 바닥을 친다) 음수 글자 수("-8자")가 아니라 "0자"가 보여야 한다.
+  it("저장값이 여백의 두 배보다 작으면 음수 없이 0으로 보인다", async () => {
+    useSettingsStore.setState({
+      appearanceOverrides: {
+        editorFontSize: 17,
+        editorLetterSpacing: -0.01,
+        editorMaxWidth: 20,
+        editorPadding: 5,
+      },
+    });
+    render(<EditorWidthRow />);
+    expect(await screen.findByText("0자")).toBeTruthy();
+  });
+
   // 무엇이 이것을 실패시키는가: 재지 못한 채 자 슬라이더를 열어 두면 없는 비율로 px 를 쓴다.
   it("폭을 재지 못하면 px 로 보이고 단위 전환을 잠근다", async () => {
     measure.mockImplementation(() => Promise.resolve(null));

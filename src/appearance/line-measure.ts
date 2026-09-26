@@ -26,13 +26,15 @@ export function charWidthPx(input: MeasureInput): number {
 /**
  * px → 글자 수. `max-width` 는 좌우 여백을 **포함한다**(`src/styles/base.css` 의
  * `@import "tailwindcss"` 가 preflight 의 `box-sizing: border-box` 를 싣고, `.tiptap` 은
- * `padding: 2rem var(--editor-padding)` 이다) — 그래서 여백 둘을 뺀다. 폭 0("제한 없음")은 호출자가
- * 따로 다룬다.
+ * `padding: 2rem var(--editor-padding)` 이다) — 그래서 여백 둘을 뺀다. `box-sizing: border-box`
+ * 에서 여백이 지정한 폭보다 크면 콘텐츠 폭은 음수가 아니라 0 에서 바닥을 친다(CSS Box Sizing
+ * 명세) — 그러니 여백을 뺀 결과가 음수인 것은 "글자가 음수" 가 아니라 실제 글자 수 0 이고, 그래서
+ * `Math.max(0, …)` 로 그 바닥을 반영한다(장식이 아니다). 폭 0("제한 없음")은 호출자가 따로 다룬다.
  */
 export function charsForWidth(widthPx: number, input: MeasureInput): number {
   const perChar = charWidthPx(input);
   if (perChar <= 0) return 0;
-  return Math.round((widthPx - 2 * input.paddingPx) / perChar);
+  return Math.max(0, Math.round((widthPx - 2 * input.paddingPx) / perChar));
 }
 
 /**

@@ -196,16 +196,30 @@ describe("§349 document font surfaces", () => {
     );
   });
 
-  // §365 본문 슬롯의 스택 — `applyFontVariables` 가 `--font-family-editor` 에 쓰는 값과 같아야
-  // 서체 브라우저 미리보기 · 한 글자 폭 측정이 편집기와 같은 서체를 본다.
-  it("editorFontStack — 빈 이름은 토큰 스택, 아니면 인용한 이름을 앞에", () => {
-    expect(editorFontStack("")).toBe(BASE_EDITOR_STACK);
+  // §365 본문 슬롯의 스택 — 이름이 있을 때는 `applyFontVariables` 가 `--font-family-editor` 에
+  // 쓰는 값과 문자 그대로 같아야 서체 브라우저 미리보기 · 한 글자 폭 측정이 편집기와 같은 서체를
+  // 본다.
+  it("editorFontStack — 이름이 있으면 인용한 이름을 앞에, applyFontVariables 와 같은 값", () => {
     expect(editorFontStack("Inter")).toBe(`"Inter", ${BASE_EDITOR_STACK}`);
     const el = document.createElement("div");
     applyFontVariables(el, { bodyFont: "Inter", codeFont: "", which: "both" });
     expect(el.style.getPropertyValue("--font-family-editor")).toBe(
       editorFontStack("Inter"),
     );
+  });
+
+  // Fix round 1 (Important 2) — 빈 이름일 때는 "같다" 의 뜻이 다르다: `applyFontVariables` 는
+  // 인라인 속성을 아예 지워 캐스케이드가 토큰 스택을 쓰게 둔다(값을 다시 적지 않는다). 그래서
+  // `editorFontStack("")` 이 `BASE_EDITOR_STACK` 과 같다는 것과, 인라인 속성이 비어 있다는 것을
+  // 각각 확인한다. `BASE_EDITOR_STACK` 이 생성된 토큰과 같다는 것은 위
+  // "agrees with the generated token stacks after normalization" 테스트가 이미 지킨다.
+  // 무엇이 이것을 실패시키는가: `applyFontVariables` 가 빈 이름에도 인라인 값을 쓰게 되돌아가면
+  // (예: 토큰 스택을 문자열로 다시 적으면) 이 테스트가 그 인라인 값을 보고 실패한다.
+  it("editorFontStack — 빈 이름은 토큰 스택, applyFontVariables 는 인라인 속성을 지운다", () => {
+    expect(editorFontStack("")).toBe(BASE_EDITOR_STACK);
+    const el = document.createElement("div");
+    applyFontVariables(el, { bodyFont: "", codeFont: "", which: "both" });
+    expect(el.style.getPropertyValue("--font-family-editor")).toBe("");
   });
 });
 

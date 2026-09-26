@@ -157,9 +157,16 @@ export function applyFontVariables(el: HTMLElement, opts: ApplyOptions): void {
 }
 
 /**
- * 본문 슬롯의 서체 스택 — 빈 이름이면 토큰 스택 그대로. {@link applyFontVariables} 가
- * `--font-family-editor` 에 쓰는 값과 같다(테스트가 둘을 비교한다). 서체 브라우저 미리보기와
- * 한 글자 폭 측정이 편집기와 같은 서체를 보게 하려고 한 곳에 둔다.
+ * 본문 슬롯의 서체 스택. 서체 브라우저 미리보기와 한 글자 폭 측정이 편집기와 같은 서체를 보게
+ * 하려고 한 곳에 둔다.
+ *
+ * 두 갈래가 "같다" 의 뜻이 다르다(Fix round 1 Important 2) — 빈 이름일 때 {@link applyFontVariables}
+ * 는 `--font-family-editor` 를 아예 **지운다**(설정 없음이라 캐스케이드가 토큰 스택을 그대로
+ * 쓰게 두는 것이지, 그 값을 인라인으로 다시 적지 않는다). 그래서 빈 이름 갈래의 "같다" 는 이 함수가
+ * 돌려주는 {@link BASE_EDITOR_STACK} 이 생성된 토큰(`--font-family-editor`)과 같다는 뜻이고, 그
+ * 파생 비교는 이 파일의 "agrees with the generated token stacks" 테스트가 이미 지킨다. 이름이 있을
+ * 때는 {@link applyFontVariables} 가 그 인라인 속성에 쓰는 값과 문자 그대로 같고, 그 비교는 이
+ * 함수의 테스트가 직접 한다.
  */
 export function editorFontStack(family: string): string {
   const quoted = quoteFamily(family);
