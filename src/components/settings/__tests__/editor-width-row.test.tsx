@@ -87,6 +87,23 @@ describe("EditorWidthRow", () => {
     expect(await screen.findByText("0자")).toBeTruthy();
   });
 
+  // 무엇이 이것을 실패시키는가: `SettingsRow` 의 라벨은 입력과 이어지지 않은 `<span>` 이라, 슬라이더에
+  // 이름을 따로 주지 않으면 보조 기술에는 이름 없는 슬라이더다. 단위마다 다른 입력이라 둘 다 본다.
+  it("자 · px 슬라이더 둘 다 행 라벨을 이름으로 갖는다", async () => {
+    const { unmount } = render(<EditorWidthRow />);
+    await screen.findByText("39자");
+    expect(
+      screen.getByRole("slider", { name: "본문 폭" }).getAttribute("max"),
+    ).toBe("120");
+    unmount();
+    useSettingsStore.setState({ editorWidthUnit: "px" });
+    render(<EditorWidthRow />);
+    await screen.findByText("720px");
+    expect(
+      screen.getByRole("slider", { name: "본문 폭" }).getAttribute("max"),
+    ).toBe("4000");
+  });
+
   // 무엇이 이것을 실패시키는가: 재지 못한 채 자 슬라이더를 열어 두면 없는 비율로 px 를 쓴다.
   it("폭을 재지 못하면 px 로 보이고 단위 전환을 잠근다", async () => {
     measure.mockImplementation(() => Promise.resolve(null));

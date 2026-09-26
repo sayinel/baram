@@ -62,6 +62,7 @@ export function EditorWidthRow() {
   const control =
     unit === "chars" && input !== null ? (
       <input
+        aria-label={t("settings.editor.maxWidth")}
         className="settings-range"
         max={CHARS_RANGE.max}
         min={NO_LIMIT_POSITION}
@@ -87,6 +88,7 @@ export function EditorWidthRow() {
       />
     ) : (
       <input
+        aria-label={t("settings.editor.maxWidth")}
         className="settings-range"
         max={WIDTH_RANGE.max}
         min={WIDTH_RANGE.min}
