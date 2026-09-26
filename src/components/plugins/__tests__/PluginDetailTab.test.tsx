@@ -471,3 +471,65 @@ describe("PluginDetailTab — the tab label follows the manifest (§69)", () => 
     expect(tabs.find((t) => t.id === "f1")?.title).toBe("a.md");
   });
 });
+
+describe("PluginDetailTab — provenance (§382)", () => {
+  const COMMUNITY_LISTING = {
+    author: "Octo Cat",
+    capabilities: ["events"],
+    channel: "community",
+    checksum: "b".repeat(64),
+    description: "Counts things",
+    downloadUrl:
+      "https://sayinel.github.io/baram-plugins/plugins/hello-counter-1.2.0.zip",
+    engines: { baram: ">=0.8.0" },
+    id: "hello-counter",
+    license: "MIT",
+    name: "Hello Counter",
+    publisher: "octocat",
+    publisherId: 583231,
+    repoId: 1296269,
+    repository: "https://github.com/octocat/baram-hello-counter",
+    trust: "sandboxed",
+    version: "1.2.0",
+  };
+
+  it("reads an installed plugin's publisher from its consent record, with no listing at all", async () => {
+    usePluginStore.setState({
+      installedPlugins: {
+        sideloaded: {
+          ...unlisted,
+          consent: {
+            capabilities: ["editor:readonly"],
+            channel: "community",
+            publisher: "octocat",
+            publisherId: 583231,
+            trust: "sandboxed",
+          },
+        },
+      },
+    });
+    render(<PluginDetailTab pluginId="sideloaded" />);
+    await settleRegistryFetch();
+    expect(
+      screen.getByRole("link", { name: "@octocat" }).getAttribute("href"),
+    ).toBe("https://github.com/octocat");
+  });
+
+  it("marks nothing on an install that predates §382, even when its listing is community", async () => {
+    // The record wins over the listing: the listing may have changed hands since the install.
+    listed.plugins = [{ ...COMMUNITY_LISTING, id: "sideloaded" }];
+    render(<PluginDetailTab pluginId="sideloaded" />);
+    await settleRegistryFetch();
+    expect(screen.queryByText("Community")).toBeNull();
+    expect(screen.queryByRole("link", { name: /^@/u })).toBeNull();
+  });
+
+  it("shows a not-installed community listing's publisher", async () => {
+    usePluginStore.setState({ installedPlugins: {} });
+    listed.plugins = [COMMUNITY_LISTING];
+    render(<PluginDetailTab pluginId="hello-counter" />);
+    await settleRegistryFetch();
+    expect(await screen.findByRole("link", { name: "@octocat" })).toBeTruthy();
+    expect(screen.getByText("Community")).toBeTruthy();
+  });
+});

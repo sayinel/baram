@@ -5,7 +5,9 @@ import { TriangleAlert } from "lucide-react";
 
 import { useTranslation } from "../../i18n/useTranslation";
 import { actionsFor } from "../../plugins/plugin-sources";
+import { provenanceOf } from "../../plugins/provenance";
 import { PluginCapabilityBadge } from "./PluginCapabilityBadge";
+import { PluginChannelBadge } from "./PluginChannelBadge";
 import { PluginRevokedNotice } from "./PluginRevokedNotice";
 
 interface PluginRowViewProps {
@@ -45,6 +47,9 @@ export function PluginRowView({
   const can = actionsFor(row.source);
   const { manifest } = row;
   const named = { name: manifest.name };
+  // §382 — the RECORD's channel, not a listing's: an install from before §382 recorded
+  // none, and gets no badge until its next update records one (spec 0058 §9.3).
+  const provenance = provenanceOf(row.installed?.consent);
 
   return (
     <div className="plugin-row">
@@ -60,6 +65,7 @@ export function PluginRowView({
               {t("plugin.builtin.badge")}
             </span>
           )}
+          {provenance && <PluginChannelBadge channel={provenance.channel} />}
         </div>
         <p className="plugin-row__desc text-truncate">{manifest.description}</p>
         {/* The error TEXT, not just a badge — this doctrine moved here with the Installed

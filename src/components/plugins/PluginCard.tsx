@@ -8,7 +8,9 @@ import { TriangleAlert } from "lucide-react";
 
 // §69 Plugin Card — Compact card for marketplace listing
 import { useTranslation } from "../../i18n/useTranslation";
+import { provenanceOf } from "../../plugins/provenance";
 import { PluginCapabilityBadge } from "./PluginCapabilityBadge";
+import { PluginChannelBadge } from "./PluginChannelBadge";
 
 interface PluginCardProps {
   entry: RegistryEntry;
@@ -39,6 +41,7 @@ export function PluginCard({
   revoked,
 }: PluginCardProps) {
   const { t } = useTranslation();
+  const provenance = provenanceOf(entry);
   return (
     <div className="plugin-card" onClick={onSelect}>
       <div className="plugin-card__row">
@@ -72,6 +75,14 @@ export function PluginCard({
           )}
           <div className="plugin-card__meta-row">
             <span className="plugin-card__author">{entry.author}</span>
+            {/* §382 — the publisher's GitHub login beside the author's display name: the name
+                is whatever the author typed, the login is the account the registry verified. */}
+            {provenance?.channel === "community" && (
+              <span className="plugin-card__author">
+                @{provenance.publisher}
+              </span>
+            )}
+            {provenance && <PluginChannelBadge channel={provenance.channel} />}
             {entry.downloads != null && (
               <span className="plugin-card__downloads">
                 {t("plugin.card.downloads", {

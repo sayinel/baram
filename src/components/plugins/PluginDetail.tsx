@@ -1,4 +1,5 @@
 import type { PluginSource } from "../../plugins/plugin-sources";
+import type { Provenance } from "../../plugins/provenance";
 import type { RevocationEntry } from "../../plugins/revocation";
 import type {
   PluginCapability,
@@ -11,10 +12,12 @@ import { ArrowLeft } from "lucide-react";
 // §69 Plugin Detail Panel — Full info view for a selected plugin
 import { useTranslation } from "../../i18n/useTranslation";
 import { actionsFor } from "../../plugins/plugin-sources";
+import { publisherProfileUrl } from "../../plugins/provenance";
 import { safeLinkHref } from "../ai/markdown-url";
 import MarkdownRenderer from "../ai/MarkdownRenderer";
 import { legacyEntryMessage } from "./legacy-entry-message";
 import { PluginCapabilityBadge } from "./PluginCapabilityBadge";
+import { PluginChannelBadge } from "./PluginChannelBadge";
 import { PluginRevokedNotice } from "./PluginRevokedNotice";
 import { PluginSettingsForm } from "./PluginSettingsForm";
 import { PluginTrustBadge } from "./PluginTrustBadge";
@@ -27,6 +30,12 @@ interface PluginDetailProps {
   onToggleEnabled: () => void;
   onUninstall: () => void;
   onUpdate: () => void;
+  /**
+   * §382 — who distributes this plugin, resolved by the host (`PluginDetailTab`): for an
+   * installed plugin that is its consent record, for a listing the listing. `null` or absent
+   * draws neither the badge nor the publisher row.
+   */
+  provenance?: null | Provenance;
   readme?: null | string;
   revocation?: null | RevocationEntry;
   /**
@@ -52,6 +61,7 @@ export function PluginDetail({
   onUninstall,
   onUpdate,
   onToggleEnabled,
+  provenance = null,
   readme,
   onBack,
   revocation,
@@ -112,7 +122,27 @@ export function PluginDetail({
                 {t("plugin.builtin.badge")}
               </span>
             )}
+            {provenance && <PluginChannelBadge channel={provenance.channel} />}
           </div>
+          {/* §382 — a link, like Repository and Homepage below: the opener plugin sends a
+              `_blank` click to the system browser. Built from the login alone, which
+              `provenanceOf` has already held to GitHub's grammar, and passed through the
+              same `safeLinkHref` gate as its siblings (CLAUDE.md link-destination policy). */}
+          {provenance?.channel === "community" && (
+            <div className="plugin-detail__meta-row">
+              <span className="plugin-detail__meta">
+                {t("plugin.detail.publisher")}
+              </span>
+              <a
+                className="plugin-detail__link"
+                href={safeLinkHref(publisherProfileUrl(provenance.publisher))}
+                rel="noopener noreferrer"
+                target="_blank"
+              >
+                @{provenance.publisher}
+              </a>
+            </div>
+          )}
         </div>
       </div>
 

@@ -346,6 +346,18 @@ export function PluginMarketplace() {
           </div>
         )}
 
+        {/* §382 — the community list failed while Baram's own did not. Said rather than
+            hidden: an empty community half otherwise looks exactly like a registry with no
+            community plugins yet. It gates nothing; ↻ Refresh retries both files. */}
+        {activeTab === "browse" &&
+          !loading &&
+          !error &&
+          registryIndex?.communityError !== undefined && (
+            <p className="plugin-revoked__note">
+              {t("plugin.marketplace.communityFailed")}
+            </p>
+          )}
+
         {/* Loading state */}
         {loading && activeTab === "browse" && (
           <div className="plugin-marketplace__message">

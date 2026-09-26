@@ -1,6 +1,6 @@
 // §69 — 액션 세트가 `source`에서 파생되는지 행 단위로 고정한다.
 import type { PluginRow } from "../../../plugins/plugin-sources";
-import type { PluginManifest } from "../../../plugins/types";
+import type { PluginConsent, PluginManifest } from "../../../plugins/types";
 
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -251,5 +251,62 @@ describe("PluginRowView (§69)", () => {
         .filter((el) => !plain.includes(el))
         .map((el) => accessibleName(el)),
     ).toEqual([REMOVE_NAMED]);
+  });
+});
+
+describe("channel badge on an installed row (§382)", () => {
+  const withConsent = (consent?: PluginConsent) => {
+    const base = row({});
+    return row({
+      installed: {
+        checksum: "",
+        ...(consent === undefined ? {} : { consent }),
+        enabled: true,
+        installedAt: 0,
+        installPath: "/p/x",
+        manifest: base.manifest,
+        updatedAt: 0,
+      },
+    });
+  };
+
+  it("says Baram for a first-party install", () => {
+    render(
+      <PluginRowView
+        row={withConsent({
+          capabilities: [],
+          channel: "first-party",
+          trust: "sandboxed",
+        })}
+        {...handlers}
+      />,
+    );
+    expect(screen.getByText("Baram")).toBeTruthy();
+  });
+
+  it("says Community for a community install", () => {
+    render(
+      <PluginRowView
+        row={withConsent({
+          capabilities: [],
+          channel: "community",
+          publisher: "octocat",
+          publisherId: 583231,
+          trust: "sandboxed",
+        })}
+        {...handlers}
+      />,
+    );
+    expect(screen.getByText("Community")).toBeTruthy();
+  });
+
+  it("says nothing for an install recorded before §382 — the channel was never known", () => {
+    const { container } = render(
+      <PluginRowView
+        row={withConsent({ capabilities: [], trust: "sandboxed" })}
+        {...handlers}
+      />,
+    );
+    expect(container.querySelector(".plugin-channel-badge")).toBeNull();
   });
 });
