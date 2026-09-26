@@ -336,11 +336,12 @@ pub struct CommunityRegistryEntry {
 /// §382 — `community.json`, the community list beside `index.json`.
 ///
 /// ‼️ ITS KEY IS `communityPlugins`, NOT `plugins`, and that is G7 (spec 0058 §4, §8.4):
-/// every tagged release that has a registry parser — v0.3.0 through v0.7.4 when this was
-/// written (`git show <tag>:…/registry.rs` or `…/mod.rs`; v0.1.0 and v0.2.0 have none) —
-/// declares `plugins` with no `#[serde(default)]`, so those builds refuse this file even
-/// when someone points their registry URL at it. They install without a tier, a floor or a
-/// sandbox; not being able to read the file is the only protection they get.
+/// every tagged release that has a registry parser — v0.3.0 through v0.7.5, the latest
+/// tagged release as of this writing (`git show <tag>:…/registry.rs` or `…/mod.rs`; v0.1.0
+/// and v0.2.0 have none) — declares `plugins` with no `#[serde(default)]`, so those builds
+/// refuse this file even when someone points their registry URL at it. They install without
+/// a tier, a floor or a sandbox; not being able to read the file is the only protection they
+/// get.
 ///
 /// The same per-entry tolerance and total-loss error as `RegistryIndex` (`tolerant_entries`).
 /// `Default` is the empty list `fetch_community_registry` answers a 404 with.
