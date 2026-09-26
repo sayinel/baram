@@ -42,7 +42,9 @@ pub async fn plugin_install_stage(
 /// so the install would inherit what that folder's plugin wrote. The id judged is the committed
 /// manifest's, inside the commit core, and the folder records are read when the core calls the
 /// refusal — after its checks, right before the swap. A commit that lands clears the id from
-/// every dev-folder record, in any build.
+/// every dev-folder record, in any build, on a best-effort basis — see
+/// `plugin_dev_cmd::forget_installed_id`'s doc for the two ways that clear can miss and what
+/// missing it costs.
 #[tauri::command]
 pub async fn plugin_install_commit<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
@@ -1431,9 +1433,10 @@ mod tests {
 
     /// §379 (I4, the reverse direction) — the install boundary is `plugin_install_commit`'s
     /// wiring, and a command is out of reach of a unit test. So its body is pinned as text: it
-    /// commits through the refusing core with the dev-folder refusal, clears the record after,
-    /// and does not call the plain entry point, which would skip the refusal and still compile.
-    /// Only the production half of this file is scanned, so this test's own text cannot match.
+    /// calls `commit_staged_plugin_install` — the refusing core, never the plain entry point
+    /// that would skip the refusal and still compile — with `install_refusal` wired into that
+    /// call, and clears the record after through `forget_installed_id`. Only the production
+    /// half of this file is scanned, so this test's own text cannot match.
     #[test]
     fn the_plugin_install_commit_goes_through_the_dev_folder_boundary() {
         let src = include_str!("plugin_cmd.rs");
@@ -1457,7 +1460,11 @@ mod tests {
             "plugin_install_commit calls the plain commit entry point — a plugin committed \
              there skips the developer-mode refusal; use plugin::commit_staged_plugin_install"
         );
-        for wired in ["install_refusal(&app", "forget_installed_id(&app"] {
+        for wired in [
+            "commit_staged_plugin_install(",
+            "install_refusal(&app",
+            "forget_installed_id(&app",
+        ] {
             assert!(
                 body.contains(wired),
                 "plugin_install_commit no longer calls `{wired}…)` — the dev-folder boundary \

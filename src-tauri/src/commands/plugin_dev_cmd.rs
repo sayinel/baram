@@ -512,8 +512,12 @@ pub(crate) fn active_dev_folder_paths<R: Runtime>(app: &AppHandle<R>) -> Vec<Str
 /// 다이제스트·id 검사를 모두 지난 뒤, 교체 **직전에** 스테이지 매니페스트의 id 로 부른다 — 호출자가
 /// 준 인자가 아니다. 막을 id 는 그 **호출 때** R1 을 읽어 정한다(`dev_mode::held_ids`): 커맨드에
 /// 들어올 때 읽으면 그 뒤의 목록 변화를 못 본다. 그래서 파일 읽기도 커밋 코어의 `spawn_blocking`
-/// 안에서 한다. host 가 관리되지 않으면 아무것도 막지 않는다 — 그때는 dev 커맨드가 전부 닫혀 이
-/// 세션에 폴더가 로드될 수 없다(plan 0106 P25).
+/// 안에서 한다(dev 빌드는 `held_for` 가 그 읽기조차 건너뛴다 — 결과가 항상 빈 목록이라).
+///
+/// 아무것도 막지 못하는 경우가 둘이다(plan 0106 P25 의 비용). host 가 관리되지 않으면 — dev
+/// 커맨드가 전부 닫혀 이 세션에 폴더가 로드될 수 없을 때 — 이전 세션이 그 폴더의 플러그인으로
+/// 심어 둔 저장소는 이 거부가 막지 못한다. R1 파일이 읽히지 않거나 깨졌을 때도 마찬가지다 —
+/// `load_from` 이 기본값(꺼짐·빈 목록)을 돌려주므로 `held_ids` 도 빈 목록이다.
 pub(crate) fn install_refusal<R: Runtime>(
     app: &AppHandle<R>,
 ) -> impl FnOnce(&str) -> Result<(), plugin::PluginError> + Send + 'static {
@@ -535,7 +539,13 @@ fn refusal_at<R: Runtime>(
     }
 }
 
+/// 릴리스에서만 R1 을 읽는다 — dev 빌드는 `held_ids` 가 항상 빈 목록을 돌려주므로, 읽지 않고
+/// (그래서 R1 파일이 아직 없는 dev 빌드에서 이 호출이 옛 목록 이전을 트리거하지 않는다, P11)
+/// 곧장 빈 벡터를 돌려준다.
 fn held_for<R: Runtime>(app: &AppHandle<R>, host: &DevModeHost, build: Build) -> Vec<String> {
+    if build.is_dev() {
+        return Vec::new();
+    }
     dev_mode::held_ids(build, &host.load(app, build))
 }
 
@@ -553,9 +563,12 @@ fn refusal_for(
     }
 }
 
-/// I4 의 반대 방향 — 플러그인 설치 커밋이 성공했다. 이 id 를 모든 dev 폴더 기록에서 뺀다(plan
-/// 0106 P25) — 그 뒤의 저장소는 설치본의 것이지 폴더의 것이 아니다. host 가 관리되지 않거나 쓰기가
-/// 실패해도 설치 자체는 이미 끝난 뒤라 경고만 남긴다.
+/// I4 의 반대 방향 — 플러그인 설치 커밋이 성공했다. 이 id 를 모든 dev 폴더 기록에서 최선껏 뺀다
+/// (plan 0106 P25) — 그 뒤의 저장소는 설치본의 것이지 폴더의 것이 아니다. 두 실패는 서로 다르게
+/// 지나간다: host 가 관리되지 않으면 아무 경고 없이 그대로 돌아간다(그 세션엔 지울 R1 자체가 없다
+/// — dev 커맨드가 전부 닫혀 있다). `forget_id_in` 이 쓰기에 실패하면 경고만 남기고 설치는 이미
+/// 끝난 대로 성공한다 — 그 한 번은 기록이 남아, 개발자 모드를 다시 켰을 때 그 폴더가 방금 설치된
+/// 플러그인이 만든 저장소를 I4-3 없이 물려받는 구멍(M2a)을 되연다.
 pub(crate) fn forget_installed_id<R: Runtime>(app: &AppHandle<R>, id: &str) {
     let Some(host) = app.try_state::<DevModeHost>() else {
         return;
@@ -565,8 +578,10 @@ pub(crate) fn forget_installed_id<R: Runtime>(app: &AppHandle<R>, id: &str) {
     }
 }
 
-/// `forget_installed_id` 의 본체 — 빌드를 받으므로 테스트가 릴리스 분기에 닿는다. 어떤 항목도
-/// 이 id 를 기록하지 않았으면 R1 을 쓰지 않는다.
+/// `forget_installed_id` 의 본체 — 빌드를 받으므로 테스트가 릴리스 분기에 닿는다. 지우기 자체는
+/// 어느 빌드에서든 한다(dev 빌드도 릴리스가 심어 둔 기록을 물려받을 수 있다) — 이 함수가 쓰는 것은
+/// `records_id` 가 참일 때뿐이다. `host.load` 는 dev 빌드에서 R1 파일이 아직 없으면 옛 목록을
+/// 한 번 옮겨 쓸 수 있다(P11 의 1회 이전이지, 이 함수 자신의 쓰기는 아니다).
 fn forget_id_in<R: Runtime>(
     app: &AppHandle<R>,
     host: &DevModeHost,
@@ -1855,6 +1870,28 @@ mod tests {
         let app = tauri::test::mock_app();
 
         forget_id_in(app.handle(), &host(&f), Build::release(), "dev-x").unwrap();
+
+        let folders = r1(&f).folders;
+        assert_eq!(folders[0].ids, vec!["dev-y".to_string()]);
+        assert_eq!(folders[1].ids, Vec::<String>::new());
+    }
+
+    /// The twin, in a dev build (plan 0106 P25 — "어느 빌드든"): R1 is written FIRST so the load
+    /// is a plain read, never the legacy-list migration, and a dev build still clears a record a
+    /// release run left behind.
+    #[test]
+    fn a_plugin_commit_clears_the_id_from_every_record_in_a_dev_build_too() {
+        let f = fixture();
+        write_r1(
+            &f,
+            serde_json::json!({ "version": 1, "folders": [
+                { "path": "/dev/a", "ids": ["dev-x", "dev-y"] },
+                { "path": "/dev/b", "ids": ["dev-x"] }
+            ] }),
+        );
+        let app = tauri::test::mock_app();
+
+        forget_id_in(app.handle(), &host(&f), Build::dev(), "dev-x").unwrap();
 
         let folders = r1(&f).folders;
         assert_eq!(folders[0].ids, vec!["dev-y".to_string()]);

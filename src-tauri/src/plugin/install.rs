@@ -1,10 +1,12 @@
 // §69 Plugin Marketplace / #261 — staged install lifecycle.
 //
 // `stage_install` downloads, verifies and extracts a plugin to a staging directory without
-// touching anything installed; the commit is the only destructive step, an atomic swap, with
-// two entry points — `commit_staged_plugin_install` for a plugin (which may refuse on the
-// checked id first, §379) and `commit_staged_install` for a theme; `discard_staged_install`
-// and `uninstall_installed` are the two ways to undo. See
+// touching anything installed; the commit is the only destructive step, an atomic swap.
+// `commit_staged_install` takes `kind` and is the shared core underneath both — it does not
+// itself refuse a dev-folder-held id. A plugin commit does not call it directly:
+// `commands::plugin_cmd::plugin_install_commit` goes through `commit_staged_plugin_install`
+// (§379) instead, which adds that refusal on the checked id before the swap.
+// `discard_staged_install` and `uninstall_installed` are the two ways to undo. See
 // `swap_into_place` for why the previously installed version survives every failure, and
 // `STALE_STAGE_AFTER` / `recover_orphaned_backups` for the two kinds of interrupted install
 // this module cleans up after.
@@ -880,13 +882,16 @@ fn read_staged_theme_manifest(dir: &Path) -> Result<(String, String, String), Pl
     Ok((head.id, text, digest))
 }
 
-/// Install a staged theme, atomically replacing any version already installed.
+/// Atomically replace any version already installed with a staged one. `kind` (§360) is not
+/// narrowed by this function's signature — it still accepts `InstallKind::Plugin` — and this
+/// core does not itself check a dev-folder-held id.
 ///
-/// ‼️ A plugin does not commit here. `commands::plugin_cmd::plugin_install_commit` goes
-/// through [`commit_staged_plugin_install`] (§379): the same checks and the same swap, with
-/// the developer-mode refusal between them. A plugin committed here would skip that
-/// refusal, so `plugin_cmd.rs`'s `the_plugin_install_commit_goes_through_the_dev_folder_boundary`
-/// fails if that command calls this one.
+/// ‼️ A plugin should not commit here, though. `commands::plugin_cmd::plugin_install_commit`
+/// goes through [`commit_staged_plugin_install`] (§379) instead: the same checks and the same
+/// swap, with the developer-mode refusal between them — a check only that entry point makes. A
+/// plugin committed here would skip that refusal, so `plugin_cmd.rs`'s
+/// `the_plugin_install_commit_goes_through_the_dev_folder_boundary` fails if that command calls
+/// this one.
 ///
 /// The two are the only destructive half of an install, and the only thing they can destroy
 /// is the staged tree: see [`swap_into_place`] for why the previously installed version
@@ -964,10 +969,11 @@ pub async fn commit_staged_plugin_install(
     .map_err(|_| PluginError::Refused("the plugin install task did not finish".into()))?
 }
 
-/// Every refusal a commit makes before touching anything installed: the stage resolves, its
-/// manifest is the digest the caller judged and names the expected id, and the CSS argument
-/// matches the kind. Split from the swap so a plugin commit can refuse on the checked id in
-/// between (§379, `commit_staged_plugin_in`).
+/// The checks a commit makes before touching anything installed, up to but not including the
+/// one a plugin commit adds in between: the stage resolves, its manifest is the digest the
+/// caller judged and names the expected id, and the CSS argument matches the kind. Split from
+/// the swap so a plugin commit can refuse on the checked id after these checks return and
+/// before the swap runs (§379, `commit_staged_plugin_in`).
 ///
 /// ‼️ For a theme this also WRITES the sanitized CSS into the stage (`write_stored_theme_css`)
 /// — nothing may be inserted between it and the swap for a theme. See `stored_css` on
