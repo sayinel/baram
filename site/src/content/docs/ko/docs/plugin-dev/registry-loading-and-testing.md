@@ -1,6 +1,6 @@
 ---
 title: "레지스트리 불러오기와 로컬 시험"
-sourceHash: "771bf5cd9e68"
+sourceHash: "0dfb1bc534a4"
 ---
 
 ## Baram이 레지스트리를 불러오는 방식
@@ -27,11 +27,11 @@ https://sayinel.github.io/baram-plugins/index.json
   받으므로, 갖고 있던 선택지를 없애는 것은 아닙니다.
 - **`config.json`을 고쳐도 효과가 없습니다.** 거기 쓴 `registryUrl`은 앱이 재수화할 때 버려집니다.
 - 레지스트리 밖으로 배포하는 것은 **설정 → 플러그인** 아래쪽의 **개발자** 구역을 뜻합니다 —
-  사용자가 플러그인 폴더를 골라 직접 불러옵니다. **그 경로는 개발 빌드 전용입니다.** 폴더
-  사이드로드는 체크섬과 레지스트리 목록과 설치 동의 기록을 한꺼번에 우회하므로, 플러그인 저자를
-  위한 개발 빌드 편의로 남았습니다 — 패키징된 빌드는 그것을 거부합니다
-  (`dev_plugin_loading_enabled()`가 `cfg!(debug_assertions)`입니다). 그래서 커뮤니티 제출이
-  열리기 전까지는 릴리스 빌드 사용자에게 닿을 방법이 없습니다.
+  사용자가 **개발자 모드**를 켜고, 플러그인 폴더를 고르고, 권한을 승인합니다. 릴리스 빌드에서
+  그 경로는 **sandboxed 플러그인만** 받고, 이미 설치된 id도 받지 않습니다 — 사이드로드는 체크섬과
+  레지스트리 목록을 건너뛰므로, Rust 브로커가 강제하는 티어 안에 머물게 둡니다
+  ([로컬 개발 루프](/ko/docs/plugin-dev/local-development-and-bundling/#로컬-개발-루프) 참조).
+  `trusted` 플러그인이 릴리스 빌드에 닿는 길은 레지스트리뿐입니다.
 
 레지스트리는 [`sayinel/baram-plugins`](https://github.com/sayinel/baram-plugins)에 있습니다 —
 GitHub Pages로 서빙되는 공개 리포이고 `index.json`과 `plugins/` 아래의 플러그인 ZIP을

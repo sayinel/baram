@@ -59,9 +59,11 @@ calling `listModels()` is privacy-safe just because privacy mode is on.
 verified against a SHA-256 checksum before install; **dev-folder loads
 (the Developer section) skip this entirely** — loading a local folder is an
 explicit, deliberate act of trusting that code, with no cryptographic check
-in between. Dev-folder loading is also **development-builds only**: it bypasses
-the checksum, the registry listing and the consent record all at once, so a
-packaged build refuses it.
+in between. On a release build that act is fenced: it needs **Developer mode**
+switched on, takes only `sandboxed` plugins, refuses an id an installed plugin
+holds, asks for the folder's capabilities before its code runs — Baram records
+the answer and the loader grants no more than it — and applies the revocation
+list by id. A development build keeps none of these fences.
 
 **Installing records what you approved.** The install dialog lists the requested
 capabilities and, for `trust: "trusted"`, states plainly that the capability list does

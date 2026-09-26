@@ -151,4 +151,7 @@ my-plugin/
 
 5. Dev-load the plugin without packaging anything: **Settings → Plugins →
    Developer → Load dev plugin folder**, then point the folder picker at your
-   plugin directory. See [Local development loop](/en/docs/plugin-dev/local-development-and-bundling/#local-development-loop).
+   plugin directory. On a release build, turn on **Developer mode** in that
+   section first — the button stays hidden until you do — and give the plugin a
+   `sandboxed` tier and an id that does not start with `baram-`. See
+   [Local development loop](/en/docs/plugin-dev/local-development-and-bundling/#local-development-loop).
