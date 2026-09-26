@@ -1,6 +1,6 @@
 ---
 title: "레지스트리 불러오기와 로컬 시험"
-sourceHash: "771bf5cd9e68"
+sourceHash: "cd9a82b1c9f7"
 ---
 
 ## Baram이 레지스트리를 불러오는 방식
