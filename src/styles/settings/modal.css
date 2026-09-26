@@ -18,7 +18,11 @@
 .settings-modal {
   display: flex;
   flex-direction: column;
-  width: 720px;
+
+  /* §356 880px — 외관 탭 갤러리의 두 열 카드가 미리보기를 약 302px 로 그리는 폭(720px 이던
+     때는 약 222px). 창 폭에 묶는 이유: 앱 창의 최소 폭(`tauri.conf.json` 의 `minWidth`)이
+     이보다 좁다 — 고정 px 이던 때는 작은 창에서 설정 창이 넘쳤다. */
+  width: min(880px, calc(100vw - 48px));
   max-height: 85vh;
   overflow: hidden;
   overscroll-behavior: contain;

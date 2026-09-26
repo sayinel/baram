@@ -30,6 +30,11 @@ export const PREVIEW_COLOR_KEYS = [
   "--color-accent-subtle",
   "--color-editor-bg",
   "--color-editor-text",
+  "--color-editor-selection",
+  "--color-editor-cursor",
+  "--color-status-warning",
+  "--color-status-success",
+  "--color-status-danger",
 ] as const satisfies readonly ThemeColorKey[];
 
 export type PreviewColorKey = (typeof PREVIEW_COLOR_KEYS)[number];

@@ -26,6 +26,20 @@ describe("PREVIEW_COLOR_KEYS", () => {
   it("중복이 없다", () => {
     expect(new Set(PREVIEW_COLOR_KEYS).size).toBe(PREVIEW_COLOR_KEYS.length);
   });
+
+  // 설정 창이 880px 로 넓어지면서 그림에 더한 요소의 색 — 선택 영역 · 커서 · 파일 트리의
+  // git 상태 점 셋. 계약에서 빠지면 그림이 그 요소를 칠할 수 없다.
+  it("선택 영역 · 커서 · 상태 색을 싣는다", () => {
+    expect(PREVIEW_COLOR_KEYS).toEqual(
+      expect.arrayContaining([
+        "--color-editor-selection",
+        "--color-editor-cursor",
+        "--color-status-warning",
+        "--color-status-success",
+        "--color-status-danger",
+      ]),
+    );
+  });
 });
 
 describe("previewPaletteFrom", () => {

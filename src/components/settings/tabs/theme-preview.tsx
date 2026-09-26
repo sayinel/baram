@@ -1,6 +1,6 @@
 // §356 테마 미리보기 그림 — 팔레트 계약(`themes/theme-preview-palette.ts`)의 색으로 앱 화면을
-// 줄여 그린다. 사이드바(활성 항목 하나) · 탭 바 · 편집기(제목 · 링크와 인라인 코드가 든 본문 ·
-// 인용 · 코드 블록).
+// 줄여 그린다. 사이드바(활성 항목 하나 · git 상태 점이 붙은 파일 행 셋) · 탭 바 · 편집기(제목 ·
+// 선택 영역과 커서가 있는 줄 · 링크와 인라인 코드가 든 줄 · 인용 · 코드 블록).
 //
 // 인라인 스타일에는 **색만** 싣는다. 크기·간격·경계선 굵기는 `styles/settings/theme.css` 의
 // `.theme-preview-*` 가 갖는다 — 색은 테마마다 다른 데이터라 CSS 로 옮길 수 없지만, 모양은
@@ -64,18 +64,20 @@ function PreviewPane({
             style={{ backgroundColor: p["--color-text-primary"] }}
           />
         </div>
-        <div className="theme-preview-row">
-          <span
-            className="theme-preview-line"
-            style={{ backgroundColor: p["--color-text-secondary"] }}
-          />
-        </div>
-        <div className="theme-preview-row">
-          <span
-            className="theme-preview-line theme-preview-line-short"
-            style={{ backgroundColor: p["--color-text-secondary"] }}
-          />
-        </div>
+        {/* 파일 트리의 git 상태 점 — 수정 · 추가 · 삭제. */}
+        <StatusRow
+          line={p["--color-text-secondary"]}
+          status={p["--color-status-warning"]}
+        />
+        <StatusRow
+          line={p["--color-text-secondary"]}
+          short
+          status={p["--color-status-success"]}
+        />
+        <StatusRow
+          line={p["--color-text-secondary"]}
+          status={p["--color-status-danger"]}
+        />
       </div>
       <div className="theme-preview-main">
         <div
@@ -110,6 +112,19 @@ function PreviewPane({
         >
           <div className="theme-preview-heading">Heading</div>
           <div className="theme-preview-text">
+            <span
+              className="theme-preview-selection"
+              style={{ backgroundColor: p["--color-editor-selection"] }}
+            >
+              Selected
+            </span>{" "}
+            text
+            <span
+              className="theme-preview-caret"
+              style={{ backgroundColor: p["--color-editor-cursor"] }}
+            />
+          </div>
+          <div className="theme-preview-text">
             A <span style={{ color: p["--color-accent-default"] }}>link</span>{" "}
             and{" "}
             <span
@@ -136,6 +151,27 @@ function PreviewPane({
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** 사이드바의 파일 행 하나 — 이름 자리의 막대와 오른쪽 끝의 git 상태 점. */
+function StatusRow({
+  line,
+  short = false,
+  status,
+}: {
+  line: string;
+  short?: boolean;
+  status: string;
+}) {
+  return (
+    <div className="theme-preview-row">
+      <span
+        className={`theme-preview-line${short ? "theme-preview-line-short" : ""}`}
+        style={{ backgroundColor: line }}
+      />
+      <span className="theme-preview-dot" style={{ backgroundColor: status }} />
     </div>
   );
 }

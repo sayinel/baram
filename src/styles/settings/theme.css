@@ -1,7 +1,7 @@
-/* Theme Gallery — §356 두 열 격자의 세로 카드: 위 미리보기, 아래 정보 칸. 설정 창은 폭이
-   720px 로 고정이고 탭 목록 160px 과 좌우 여백을 빼면 내용 폭이 약 512px 이라, 두 열이면
-   카드가 약 250px 이다. `minmax(0, 1fr)` 인 이유: 그냥 `1fr` 은 최소가 내용 폭이라 긴
-   설명이 열을 넓힌다. */
+/* Theme Gallery — §356 두 열 격자의 세로 카드: 위 미리보기, 아래 정보 칸. 설정 창이 880px
+   이면(`modal.css` 의 `.settings-modal`) 탭 목록 160px 과 좌우 여백을 빼고 내용 폭이 약
+   672px 이라, 두 열이면 카드가 약 330px 이다. `minmax(0, 1fr)` 인 이유: 그냥 `1fr` 은 최소가
+   내용 폭이라 긴 설명이 열을 넓힌다. */
 .theme-gallery {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -180,12 +180,12 @@
 
 /* §356 테마 미리보기 그림 — 모양만 여기 있고 색은 `theme-preview.tsx` 가 인라인으로
    싣는다(테마마다 다른 데이터라서). 경계선은 굵기·모양만 여기서 정하고 색은 인라인의
-   `border-*-color` 가 덮는다. 카드 폭을 다 쓰고(약 222px), 모드가 둘이면 칸 둘이 폭을
+   `border-*-color` 가 덮는다. 카드 폭을 다 쓰고(약 302px), 모드가 둘이면 칸 둘이 폭을
    반씩 나눈다. */
 .theme-preview {
   display: flex;
   flex: none;
-  height: 140px;
+  height: 150px;
   overflow: hidden;
   border: 1px solid rgb(128 128 128 / 20%);
   border-radius: var(--radius-default);
@@ -207,8 +207,20 @@
 }
 
 .theme-preview-row {
+  display: flex;
+  gap: var(--space-1);
+  align-items: center;
+  justify-content: space-between;
   padding: var(--space-1);
   border-radius: var(--radius-sm);
+}
+
+/* 파일 행 오른쪽 끝의 git 상태 점. */
+.theme-preview-dot {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border-radius: var(--radius-full);
 }
 
 .theme-preview-line {
@@ -258,7 +270,7 @@
   line-height: 1.2;
 }
 
-/* 칸이 좁을 때(모드 둘이면 한 칸이 약 111px) 줄을 넘기지 않고 자른다. */
+/* 칸이 좁을 때(모드 둘이면 한 칸이 약 151px) 줄을 넘기지 않고 자른다. */
 .theme-preview-text,
 .theme-preview-quote,
 .theme-preview-code {
@@ -270,6 +282,19 @@
 .theme-preview-text {
   font-size: 11px;
   line-height: 1.4;
+}
+
+.theme-preview-selection {
+  padding: 0 var(--space-px);
+}
+
+/* 커서 — 글자 높이만큼의 세로 막대. */
+.theme-preview-caret {
+  display: inline-block;
+  width: 1px;
+  height: 1.1em;
+  margin-left: var(--space-px);
+  vertical-align: text-bottom;
 }
 
 .theme-preview-inline-code {
