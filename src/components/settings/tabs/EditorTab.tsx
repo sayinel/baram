@@ -10,6 +10,7 @@ import {
   EDITOR_LINE_HEIGHT_RANGE,
 } from "../../../appearance/typography-dials";
 import { useEditorTypography } from "../../../hooks/use-editor-typography";
+import { useThemeFontFamilies } from "../../../hooks/use-theme-font-families";
 import { useTranslation } from "../../../i18n/useTranslation";
 import { listFonts } from "../../../ipc/font";
 import { useSettingsStore } from "../../../stores/settings/store";
@@ -79,6 +80,7 @@ export function EditorTab() {
   );
   const { codeFontFamily, fontFamily, fontSize, lineHeight } =
     useEditorTypography();
+  const themeFamilies = useThemeFontFamilies();
 
   // ‼️ Three states, not two (final review I3). "Still loading" and "the
   // enumeration failed, here is a stand-in list" both have to render no
@@ -148,6 +150,7 @@ export function EditorTab() {
           }
           onOpenBrowser={setBrowserSlot}
           slot="body"
+          themeFamilies={themeFamilies}
           value={fontFamily}
         />
         <DialOriginSlot dialId="editorFontFamily" />
@@ -166,6 +169,7 @@ export function EditorTab() {
           }
           onOpenBrowser={setBrowserSlot}
           slot="code"
+          themeFamilies={themeFamilies}
           value={codeFontFamily}
         />
         <DialOriginSlot dialId="editorCodeFontFamily" />

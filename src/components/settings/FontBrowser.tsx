@@ -14,6 +14,7 @@ import type { FontSlot } from "./FontSlotPicker";
 import { ArrowLeft, X } from "lucide-react";
 
 import { useEditorTypography } from "../../hooks/use-editor-typography";
+import { useThemeFontFamilies } from "../../hooks/use-theme-font-families";
 import { useTranslation } from "../../i18n/useTranslation";
 import { listFonts } from "../../ipc/font";
 import { useSettingsStore } from "../../stores/settings/store";
@@ -78,6 +79,7 @@ export function FontBrowser({
 }: FontBrowserProps) {
   const { t } = useTranslation();
   const { codeFontFamily, fontFamily } = useEditorTypography();
+  const themeFamilies = useThemeFontFamilies();
   const pushRecentFont = useSettingsStore((s) => s.pushRecentFont);
 
   const [activeSlot, setActiveSlot] = useState<FontSlot>(slot);
@@ -257,6 +259,7 @@ export function FontBrowser({
           slot={activeSlot}
           status={effective.status}
           t={t}
+          themeFamilies={themeFamilies}
         />
         <FontBrowserPreview slot={activeSlot} />
       </div>

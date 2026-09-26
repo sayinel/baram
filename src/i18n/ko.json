@@ -966,6 +966,7 @@
   "settings.editor.fontPicker.system": "시스템",
   "settings.editor.fontPicker.systemDefault": "시스템 기본",
   "settings.editor.fontPicker.systemKorean": "시스템 · 한글",
+  "settings.editor.fontPicker.theme": "테마 제공",
   "settings.editor.fontSize": "글꼴 크기",
   "settings.editor.fontSize.desc": "에디터 텍스트 크기",
   "settings.editor.lineHeight": "줄 높이",

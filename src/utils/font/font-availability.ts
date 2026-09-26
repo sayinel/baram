@@ -12,7 +12,12 @@ import { BUNDLED_FAMILY_KEYS } from "./bundled-fonts";
 // review Critical 1 — 열거 목록이 아직 신뢰할 수 없는 동안(로딩 중이거나,
 // listFonts()가 폴백으로 떨어져 이 머신을 대표하지 않는 동안) 거짓 "없음"을
 // 말하지 않는다.
-export type FontAvailability = "bundled" | "missing" | "system" | "unknown";
+export type FontAvailability =
+  "bundled" | "missing" | "system" | "theme" | "unknown";
+
+/** `themeFamilies`를 넘기지 않는 호출자를 위한 기본값 — 오늘 동작(네 상태 중
+ *  `theme`는 결코 나오지 않는다) 그대로다. */
+const NO_THEME_FAMILIES: ReadonlySet<string> = new Set();
 
 /**
  * 이 이름이 이 머신에서 실제로 렌더되는가.
@@ -29,15 +34,22 @@ export type FontAvailability = "bundled" | "missing" | "system" | "unknown";
  * `GENERIC_FAMILIES`)는 "설치된 서체"라는 질문 자체가 성립하지 않는다 —
  * 브라우저가 항상 무언가로 해석하므로 `missing`도, 이 머신의 열거에 실제로
  * 있을 리 없으므로 `system`도 거짓이다. 같은 `unknown`으로 묶는다.
+ *
+ * 네 상태(bundled/system/theme/missing) 중 `theme`(§351 · 스펙 0060 §7.2)은
+ * 입고 있는 테마가 `@font-face`로 실어 온 서체다.
  */
 export function fontAvailability(
   name: string,
   fonts: null | readonly SystemFont[],
+  themeFamilies: ReadonlySet<string> = NO_THEME_FAMILIES,
 ): FontAvailability {
   const key = name.trim().toLowerCase();
   if (key === "") return "bundled";
   if (BUNDLED_FAMILY_KEYS.has(key)) return "bundled";
   if (GENERIC_FAMILIES.has(key)) return "unknown";
+  // §351 · 스펙 0060 §7.2 — 테마가 `@font-face`로 실어 온 서체. 열거(`listFonts`)에는 없지만
+  // 렌더된다. 열거보다 **먼저** 본다 — 열거가 아직 없을 때(`fonts === null`)도 이 답은 참이다.
+  if (themeFamilies.has(key)) return "theme";
   if (fonts === null) return "unknown";
   return fonts.some((f) => f.name.toLowerCase() === key) ? "system" : "missing";
 }

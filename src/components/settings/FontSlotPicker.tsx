@@ -28,13 +28,14 @@ export type FontSlot = "body" | "code";
 
 /**
  * "unknown"은 배지를 그리지 않는다 — 아직 확인 중이거나 확인할 근거가 없다는
- * 뜻이라, 세 상태(bundled/system/missing) 중 어느 것으로도 단정하면 거짓이
- * 된다(§351 리뷰 Critical 1).
+ * 뜻이라, 네 상태(bundled/system/theme/missing) 중 어느 것으로도 단정하면
+ * 거짓이 된다(§351 리뷰 Critical 1).
  */
 const BADGE_KEY: Record<Exclude<FontAvailability, "unknown">, string> = {
   bundled: "settings.editor.fontPicker.bundled",
   missing: "settings.editor.fontPicker.missing",
   system: "settings.editor.fontPicker.system",
+  theme: "settings.editor.fontPicker.theme",
 };
 
 /** 배지 색 클래스 — availability 를 문자열로 이어붙이지 않는다: 그러면 클래스
@@ -43,6 +44,7 @@ const BADGE_CLASS: Record<Exclude<FontAvailability, "unknown">, string> = {
   bundled: "settings-font-badge-bundled",
   missing: "settings-font-badge-missing",
   system: "settings-font-badge-system",
+  theme: "settings-font-badge-theme",
 };
 
 interface Props {
@@ -57,6 +59,8 @@ interface Props {
   onChange: (family: string) => void;
   onOpenBrowser: (slot: FontSlot) => void;
   slot: FontSlot;
+  /** §351 입고 있는 테마가 `@font-face`로 선언한 패밀리(소문자) — 없으면 빈 집합. */
+  themeFamilies?: ReadonlySet<string>;
   value: string;
 }
 
@@ -67,10 +71,11 @@ export function FontSlotPicker({
   onChange,
   onOpenBrowser,
   slot,
+  themeFamilies,
   value,
 }: Props) {
   const { t } = useTranslation();
-  const availability = fontAvailability(value, fonts);
+  const availability = fontAvailability(value, fonts, themeFamilies);
   const korean = fonts?.find(
     (f) => f.name.toLowerCase() === value.trim().toLowerCase(),
   )?.hasKorean;
