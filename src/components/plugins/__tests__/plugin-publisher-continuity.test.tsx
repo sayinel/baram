@@ -202,6 +202,35 @@ describe("publisher continuity (§382)", () => {
     expect(dialog.textContent).toContain("@octocat → @new-owner");
   });
 
+  it("approving a publisher-change update records the NEW publisher, not the old one (§382 F5)", async () => {
+    installedWith(LISTING, APPROVED_FROM_OCTOCAT, "1.3.0");
+    listed = [
+      {
+        ...LISTING,
+        publisher: "new-owner",
+        publisherId: 999001,
+        version: "1.3.0",
+      },
+    ];
+    downloadReturns(manifestOf(LISTING, "1.3.0"));
+    await clickUpdate();
+    const dialog = (await findSurface(".plugin-consent")).getByRole("dialog");
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: /^Update and install$/ }),
+    );
+    await waitFor(() =>
+      expect(
+        usePluginStore.getState().installedPlugins["hello-counter"]?.consent,
+      ).toEqual({
+        capabilities: ["editor"],
+        channel: "community",
+        publisher: "new-owner",
+        publisherId: 999001,
+        trust: "sandboxed",
+      }),
+    );
+  });
+
   it("does not ask when only the login changed, and records the new login", async () => {
     installedWith(LISTING, APPROVED_FROM_OCTOCAT, "1.3.0");
     listed = [{ ...LISTING, publisher: "octocat-renamed", version: "1.3.0" }];
