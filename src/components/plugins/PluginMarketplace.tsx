@@ -369,7 +369,7 @@ export function PluginMarketplace() {
               installedPlugins={installedPlugins}
               installing={installing}
               onInstall={(entry) => void handleInstall(entry)}
-              // A Browse listing is by definition a registry entry — community.
+              // A Browse listing is by definition a registry entry — source `registry`.
               onSelect={(entry) => openDetail(entry.id, entry.name)}
               onUninstall={(id) => void handleUninstall(id)}
               onUpdate={(entry) => void handleUpdate(entry)}

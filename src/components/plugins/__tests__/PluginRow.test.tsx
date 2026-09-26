@@ -39,7 +39,7 @@ function row(over: Partial<PluginRow>): PluginRow {
       trust: "sandboxed",
       version: "1.0.0",
     } as PluginManifest,
-    source: "community",
+    source: "registry",
     ...over,
   };
 }
@@ -93,8 +93,8 @@ describe("PluginRowView (§69)", () => {
     expect(screen.queryByRole("button", { name: /remove/i })).toBeNull();
   });
 
-  it("gives a community plugin a remove button", () => {
-    render(<PluginRowView row={row({ source: "community" })} {...handlers} />);
+  it("gives a registry plugin a remove button", () => {
+    render(<PluginRowView row={row({ source: "registry" })} {...handlers} />);
     expect(screen.getByRole("button", { name: /remove/i })).toBeTruthy();
   });
 
@@ -142,11 +142,11 @@ describe("PluginRowView (§69)", () => {
     expect(notice().queryByRole("button", { name: REMOVE_NAMED })).toBeNull();
   });
 
-  it("offers it to a community plugin, which can remove", () => {
+  it("offers it to a registry plugin, which can remove", () => {
     // 보완 단정: 위 단정만으로는 알림에서 버튼을 통째로 지운 구현도 통과한다.
     render(
       <PluginRowView
-        row={row({ revocation: REVOKED, source: "community" })}
+        row={row({ revocation: REVOKED, source: "registry" })}
         {...handlers}
       />,
     );
@@ -175,7 +175,7 @@ describe("PluginRowView (§69)", () => {
   // assertion with it and the test stays green. That is how the withdrawn row pins the
   // piercing — de-pierce the sweep and its count drops 4 → 3.
   it.each([
-    ["a default community row (Details, Remove)", row({}), handlers, 3],
+    ["a default registry row (Details, Remove)", row({}), handlers, 3],
     [
       "a row with an update offered (adds Update)",
       row({ updateVersion: "2.0.0" }),

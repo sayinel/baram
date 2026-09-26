@@ -152,12 +152,12 @@ describe("Installed tab detail route (§69)", () => {
     });
     render(<PluginMarketplace />);
     fireEvent.click(screen.getByRole("button", { name: /^Installed / }));
-    // §69 — scoped to the community section. Built-ins are listed on this tab now and carry
+    // §69 — scoped to the registry section. Built-ins are listed on this tab now and carry
     // their own Details button, so the unscoped query counts three rows for these two
     // installs. Same cause as the scoping in `plugin-marketplace-toggle.test.tsx`.
-    const community = await screen.findByTestId("plugin-section-community");
+    const registry = await screen.findByTestId("plugin-section-registry");
     const names = (
-      await within(community).findAllByRole("button", {
+      await within(registry).findAllByRole("button", {
         name: /^View details for /,
       })
     ).map((el) => el.getAttribute("aria-label"));

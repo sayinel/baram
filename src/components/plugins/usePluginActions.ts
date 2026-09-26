@@ -462,7 +462,7 @@ export function usePluginActions(registryIndex: null | RegistryIndex) {
   );
 
   /**
-   * §69 — 내장 토글. 커뮤니티 토글과 같은 형태(스토어 먼저, 그다음 런타임)이지만
+   * §69 — 내장 토글. 설치본 토글과 같은 형태(스토어 먼저, 그다음 런타임)이지만
    * 로더를 거치지 않는다: 내장은 디스크에 없고 `activateBuiltin`/`deactivateBuiltin`이
    * 그 수명을 소유한다.
    */

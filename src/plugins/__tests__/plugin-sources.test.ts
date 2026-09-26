@@ -53,8 +53,8 @@ describe("actionsFor (§69 §3.1)", () => {
     });
   });
 
-  it("gives a community plugin everything except reload", () => {
-    expect(actionsFor("community")).toEqual({
+  it("gives a registry plugin everything except reload", () => {
+    expect(actionsFor("registry")).toEqual({
       canReload: false,
       canRemove: true,
       canToggle: true,
@@ -74,14 +74,14 @@ describe("actionsFor (§69 §3.1)", () => {
 });
 
 describe("buildPluginRows (§69)", () => {
-  it("orders builtin, then community, then dev", () => {
+  it("orders builtin, then registry, then dev", () => {
     const rows = buildPluginRows({
       ...EMPTY,
       builtins: [{ manifest: manifest("bi"), module: {} }],
       devPlugins: { dv: installed("dv", true) },
       installedPlugins: { cm: installed("cm", true) },
     });
-    expect(rows.map((r) => r.source)).toEqual(["builtin", "community", "dev"]);
+    expect(rows.map((r) => r.source)).toEqual(["builtin", "registry", "dev"]);
     expect(rows.map((r) => r.manifest.id)).toEqual(["bi", "cm", "dv"]);
   });
 
@@ -111,7 +111,7 @@ describe("buildPluginRows (§69)", () => {
     expect(rows[0]?.enabled).toBe(true);
   });
 
-  it("carries the community plugin's own enabled flag, error and update", () => {
+  it("carries the registry plugin's own enabled flag, error and update", () => {
     const rows = buildPluginRows({
       ...EMPTY,
       installedPlugins: { cm: installed("cm", false) },
@@ -121,7 +121,7 @@ describe("buildPluginRows (§69)", () => {
     expect(rows[0]).toMatchObject({
       enabled: false,
       error: "boom",
-      source: "community",
+      source: "registry",
       updateVersion: "2.0.0",
     });
     expect(rows[0]?.installed?.installPath).toBe("/p/cm");

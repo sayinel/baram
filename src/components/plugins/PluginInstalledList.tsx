@@ -31,7 +31,7 @@ interface PluginInstalledListProps {
 }
 
 /** 표시 순서. `buildPluginRows`도 이 순서로 반환하지만, 표시는 표시가 정한다. */
-const ORDER: PluginSource[] = ["builtin", "community", "dev"];
+const ORDER: PluginSource[] = ["builtin", "registry", "dev"];
 
 /**
  * 섹션 제목 i18n 키. 템플릿 리터럴 `t(\`plugin.section.${source}\`)`로 조립하면 정적
@@ -41,8 +41,8 @@ const ORDER: PluginSource[] = ["builtin", "community", "dev"];
  */
 const SECTION_KEY: Record<PluginSource, string> = {
   builtin: "plugin.section.builtin",
-  community: "plugin.section.community",
   dev: "plugin.section.dev",
+  registry: "plugin.section.registry",
 };
 
 /**
@@ -52,14 +52,14 @@ const SECTION_KEY: Record<PluginSource, string> = {
  */
 const SECTION_TESTID: Record<PluginSource, string> = {
   builtin: "plugin-section-builtin",
-  community: "plugin-section-community",
   dev: "plugin-section-dev",
+  registry: "plugin-section-registry",
 };
 
 const SECTION_COUNT_TESTID: Record<PluginSource, string> = {
   builtin: "plugin-section-count-builtin",
-  community: "plugin-section-count-community",
   dev: "plugin-section-count-dev",
+  registry: "plugin-section-count-registry",
 };
 
 export function PluginInstalledList({

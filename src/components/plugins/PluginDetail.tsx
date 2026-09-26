@@ -32,8 +32,8 @@ interface PluginDetailProps {
   /**
    * ‼️ Where the plugin came from, so this screen offers the same action set the row does.
    *
-   * Optional and defaulting to `community` because every other caller renders a REGISTRY
-   * listing, which is what community means. The Installed tab is the one route that can
+   * Optional and defaulting to `registry` because every other caller renders a REGISTRY
+   * listing, which is what registry means. The Installed tab is the one route that can
    * reach a built-in, and a built-in is never in `installedPlugins` — it is compiled in,
    * not installed — so without this `status` read "not-installed" and this screen offered
    * an enabled Install button wired to an entry whose `downloadUrl` is `""`.
@@ -55,7 +55,7 @@ export function PluginDetail({
   readme,
   onBack,
   revocation,
-  source = "community",
+  source = "registry",
 }: PluginDetailProps) {
   const { t } = useTranslation();
   // The same single authority the rows use (§3.1). Install is not in that table — it is a
@@ -100,7 +100,7 @@ export function PluginDetail({
             <span className="plugin-detail__license">{entry.license}</span>
           </div>
           {/* ‼️ A POSITIVE SIGNAL, matching the row's chip. Without it a built-in's detail
-              screen differed from a community plugin's only by the ABSENCE of Update and
+              screen differed from a registry plugin's only by the ABSENCE of Update and
               Uninstall — and an absence explains nothing: it reads the same as a plugin
               whose update simply has not been found yet. `PluginRow` says "Built-in" here
               and this screen is reached from that row, so saying it twice is what makes
@@ -131,7 +131,7 @@ export function PluginDetail({
                 question — "is this thing installed enough to act on" — and reading the
                 toggle off it made this the one action here NOT decided by `actionsFor`,
                 while `canUpdate` and `canRemove` below both go through `can`. No live
-                defect: only `builtin` and `community` reach this screen and both toggle.
+                defect: only `builtin` and `registry` reach this screen and both toggle.
                 It becomes one the moment a dev row does, which is a planned follow-up,
                 and it would arrive as a control that does nothing. */}
             {can.canToggle && (

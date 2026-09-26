@@ -43,25 +43,25 @@ const handlers = {
 
 const ROWS = [
   row("bi", "builtin"),
-  row("cm", "community", { updateVersion: "2.0.0" }),
+  row("cm", "registry", { updateVersion: "2.0.0" }),
   row("dv", "dev"),
 ];
 
 describe("PluginInstalledList (§69)", () => {
-  it("renders the sections in order: builtin, community, dev", () => {
+  it("renders the sections in order: builtin, registry, dev", () => {
     render(<PluginInstalledList rows={ROWS} {...handlers} />);
     // ‼️ not /^plugin-section-/ alone — that also matches the count spans'
     // `plugin-section-count-{source}` testid, since it starts with the same prefix.
     const sections = screen.getAllByTestId(/^plugin-section-(?!count-)/);
     expect(sections.map((s) => s.dataset.testid)).toEqual([
       "plugin-section-builtin",
-      "plugin-section-community",
+      "plugin-section-registry",
       "plugin-section-dev",
     ]);
   });
 
   it("has no remove or update control INSIDE the built-in section", () => {
-    // ‼️ 전역 queryByRole("button", {name:/remove/i}) 금지 — 커뮤니티 행이 갖고 있다.
+    // ‼️ 전역 queryByRole("button", {name:/remove/i}) 금지 — 레지스트리 행이 갖고 있다.
     render(<PluginInstalledList rows={ROWS} {...handlers} />);
     const builtin = screen.getByTestId("plugin-section-builtin");
     expect(
@@ -73,14 +73,14 @@ describe("PluginInstalledList (§69)", () => {
     expect(within(builtin).getAllByRole("checkbox")).toHaveLength(1);
   });
 
-  it("has exactly one remove and one update inside the community section", () => {
+  it("has exactly one remove and one update inside the registry section", () => {
     render(<PluginInstalledList rows={ROWS} {...handlers} />);
-    const community = screen.getByTestId("plugin-section-community");
+    const registry = screen.getByTestId("plugin-section-registry");
     expect(
-      within(community).getAllByRole("button", { name: /remove/i }),
+      within(registry).getAllByRole("button", { name: /remove/i }),
     ).toHaveLength(1);
     expect(
-      within(community).getAllByRole("button", { name: /update/i }),
+      within(registry).getAllByRole("button", { name: /update/i }),
     ).toHaveLength(1);
   });
 
@@ -93,10 +93,10 @@ describe("PluginInstalledList (§69)", () => {
     ).toHaveLength(1);
   });
 
-  it("omits an empty builtin or community section", () => {
+  it("omits an empty builtin or registry section", () => {
     render(<PluginInstalledList rows={[row("dv", "dev")]} {...handlers} />);
     expect(screen.queryByTestId("plugin-section-builtin")).toBeNull();
-    expect(screen.queryByTestId("plugin-section-community")).toBeNull();
+    expect(screen.queryByTestId("plugin-section-registry")).toBeNull();
   });
 
   it("counts the rows in each section heading", () => {
@@ -109,7 +109,7 @@ describe("PluginInstalledList (§69)", () => {
       "1",
     );
     expect(
-      screen.getByTestId("plugin-section-count-community").textContent,
+      screen.getByTestId("plugin-section-count-registry").textContent,
     ).toBe("1");
   });
 
@@ -148,7 +148,7 @@ describe("PluginInstalledList (§69)", () => {
       />,
     );
     expect(
-      within(screen.getByTestId("plugin-section-community")).getAllByRole(
+      within(screen.getByTestId("plugin-section-registry")).getAllByRole(
         "button",
         { name: /settings/i },
       ),
@@ -159,5 +159,16 @@ describe("PluginInstalledList (§69)", () => {
         { name: /settings/i },
       ),
     ).toHaveLength(0);
+  });
+
+  it("titles the registry section by where the plugins came from (§382 9.4)", () => {
+    // 무엇이 이것을 실패시키는가: 제목이 "Community" 로 남으면, Task 5 가 행에 "Baram"
+    // 배지를 단 뒤 한 섹션이 자기 제목과 반대되는 행을 담는다 — §382 부터 "community" 는
+    // 채널의 이름이다.
+    render(<PluginInstalledList rows={ROWS} {...handlers} />);
+    const title = screen
+      .getByTestId("plugin-section-registry")
+      .querySelector(".plugin-section__title");
+    expect(title?.textContent).toBe("From the registry");
   });
 });
