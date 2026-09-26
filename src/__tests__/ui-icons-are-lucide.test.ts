@@ -275,12 +275,6 @@ const ALLOWED: Record<string, Exemption> = {
   },
 };
 
-/**
- * 아직 바꾸지 않은 파일과 그것을 바꾸는 계획 0108 의 태스크. 태스크마다 자기 줄을 먼저 지워
- * red 를 본 뒤 바꾼다. 마지막 태스크가 이 표와 그 분기를 지운다.
- */
-const PENDING: Record<string, string> = {};
-
 function allFindings(): Finding[] {
   return [
     ...sourceFiles().flatMap((file) =>
@@ -421,9 +415,7 @@ describe("UI icons are lucide, not text glyphs — the whole app", () => {
   });
 
   it("draws no icon with a text glyph, entity, escape, lone symbol or glyph-edged label", () => {
-    const offenders = open
-      .filter((f) => !(f.file in PENDING))
-      .map((f) => `${f.file}:${f.line} ${f.spelling}`);
+    const offenders = open.map((f) => `${f.file}:${f.line} ${f.spelling}`);
     expect(offenders).toEqual([]);
   });
 
@@ -480,7 +472,6 @@ describe("UI icons are lucide, not text glyphs — the whole app", () => {
 
   it("allows only exemptions that are still needed", () => {
     // 허용 목록이 낡으면(파일이 사라지거나 그 철자가 사라지면) 조용히 넓은 구멍으로 남는다.
-    // PENDING 도 같다 — 바꾼 파일을 목록에 남겨 두면 그 파일의 재발을 아무도 못 본다.
     const stale: string[] = [];
     for (const [file, entry] of Object.entries(ALLOWED)) {
       const mine = findings.filter((f) => f.file === file);
@@ -493,9 +484,6 @@ describe("UI icons are lucide, not text glyphs — the whole app", () => {
           stale.push(`${file} ${spelling}`);
         }
       }
-    }
-    for (const file of Object.keys(PENDING)) {
-      if (!open.some((f) => f.file === file)) stale.push(`${file} (PENDING)`);
     }
     expect(stale).toEqual([]);
   });
