@@ -123,6 +123,7 @@
   "common.empty": "(empty)",
   "common.reset": "Reset",
   "common.save": "Save",
+  "common.unsaved": "Unsaved changes",
   "contextAdd.initVault": "Initialize as Vault…",
   "contextAdd.openFile": "Open File…",
   "contextAdd.openFolder": "Open Folder…",

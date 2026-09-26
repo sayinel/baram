@@ -2,7 +2,14 @@
 // §38 Tab Pin — context menu, pinned rendering, drag boundary clamping
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { ExternalLink, Pin } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  CircleSmall,
+  ExternalLink,
+  Pin,
+  X,
+} from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
 import { useTranslation } from "../../i18n/useTranslation";
@@ -286,7 +293,7 @@ export function TabBar() {
           className="tab-scroll-btn tab-scroll-left"
           onClick={() => scroll(-1)}
         >
-          ‹
+          <ChevronLeft size={14} />
         </button>
       )}
       <div className="tab-scroll-area" onWheel={handleWheel} ref={scrollRef}>
@@ -350,10 +357,21 @@ export function TabBar() {
                   }
                 />
                 <span className="tab-title">
-                  {isTabUnsaved(tab, sourceEditedTabs) ? "\u25CF " : ""}
+                  {isTabUnsaved(tab, sourceEditedTabs) && (
+                    <>
+                      <CircleSmall
+                        aria-label={t("common.unsaved")}
+                        className="icon-inline"
+                        fill="currentColor"
+                        role="img"
+                        size="1em"
+                      />{" "}
+                    </>
+                  )}
                   {tab.title}
                 </span>
                 <button
+                  aria-label={t("tabBar.close")}
                   className="tab-close"
                   onClick={(e) => {
                     e.stopPropagation();
@@ -361,7 +379,7 @@ export function TabBar() {
                   }}
                   title={t("tabBar.close")}
                 >
-                  {"\u00D7"}
+                  <X size={12} />
                 </button>
               </div>
               {showDivider && <div className="tab-pin-divider" />}
@@ -381,7 +399,7 @@ export function TabBar() {
           className="tab-scroll-btn tab-scroll-right"
           onClick={() => scroll(1)}
         >
-          ›
+          <ChevronRight size={14} />
         </button>
       )}
 

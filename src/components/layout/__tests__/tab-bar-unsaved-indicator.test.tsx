@@ -1,7 +1,7 @@
 // §82 "이 탭은 저장 안 된 작업을 들고 있는가"의 답은 두 곳에 산다 — `isDirty`와
 // `sourceEditedTabs`다. 닫기 관문만 둘 다 읽고 나머지는 `isDirty`만 읽으면, 소스 모드로
 // 고치던 탭이 **점도 안 뜨고** 탭 X로 조용히 사라진다. 실앱에서 그렇게 보고됐다.
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../../services/vault-context-loader", () => ({
@@ -46,9 +46,12 @@ beforeEach(() => {
   });
 });
 
-/** The dirty marker the tab title carries (U+25CF). */
-function titleOf(name: string): string {
-  return screen.getByText(new RegExp(name)).textContent ?? "";
+/** The unsaved marker the tab title carries — a lucide dot named "Unsaved changes". */
+function unsavedMarker(): HTMLElement | null {
+  // getByText 는 요소의 **직계** 글 노드로 맞춘다 — 그래서 탭 제목 span 하나만 잡힌다.
+  return within(screen.getByText("note.md")).queryByRole("img", {
+    name: "Unsaved changes",
+  });
 }
 
 describe("TabBar — unsaved indicator", () => {
@@ -60,7 +63,8 @@ describe("TabBar — unsaved indicator", () => {
     // Markdown typed in source mode deliberately does not raise `isDirty`
     // (§312), so a dot driven by `isDirty` alone leaves the user with no sign
     // that the file has unsaved text in it.
-    expect(titleOf("note.md")).toContain("●");
+    expect(unsavedMarker()).not.toBeNull();
+    expect(screen.getByText("note.md").textContent).not.toContain("●");
   });
 
   it("still marks an ordinary dirty tab", () => {
@@ -68,13 +72,14 @@ describe("TabBar — unsaved indicator", () => {
 
     render(<TabBar />);
 
-    expect(titleOf("note.md")).toContain("●");
+    expect(unsavedMarker()).not.toBeNull();
+    expect(screen.getByText("note.md").textContent).not.toContain("●");
   });
 
   it("leaves a genuinely clean tab unmarked", () => {
     render(<TabBar />);
 
-    expect(titleOf("note.md")).not.toContain("●");
+    expect(unsavedMarker()).toBeNull();
   });
 });
 
