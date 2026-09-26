@@ -134,7 +134,7 @@ async function loadListed(
       // first folder's in-flight load (`plugin-loader.ts`'s own `inFlightLoads` map and its
       // own "already loading — joining that load" warning), which runs the FIRST folder's code
       // while the store above already recorded the LAST folder's row under that id. That
-      // mismatch is a known gap this round does not fix.
+      // mismatch is a known gap, left unfixed here.
       logger.warn(
         `[DevPlugins] dev plugin ${plugin.manifest.id} reloads an id that is already loaded`,
       );

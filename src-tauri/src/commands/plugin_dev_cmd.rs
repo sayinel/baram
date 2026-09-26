@@ -33,7 +33,7 @@ fn legacy_dev_folders<R: Runtime>(app: &AppHandle<R>) -> Option<String> {
 /// 대화상자를 띄운 적이 없었다 — 이 트레이트가 그 빈자리다.
 pub trait DevDialogs: Send + Sync {
     /// 폴더 피커. 고른 폴더, 또는 취소면 `Ok(None)` — 피커 자체의 실패(예: 경로 해석 실패)는
-    /// `Err` 다(§332 `pick_approved_dir` 와 같은 구분, M2 리뷰: 실패를 취소로 뭉개지 않는다).
+    /// `Err` 다(§332 `pick_approved_dir` 와 같은 구분 — 실패를 취소로 뭉개지 않는다).
     fn pick_folder(&self, title: String) -> oneshot::Receiver<Result<Option<PathBuf>, String>>;
     /// 확인 대화상자. 승낙이면 `true`.
     fn confirm(&self, copy: DialogCopy) -> oneshot::Receiver<bool>;
@@ -389,7 +389,7 @@ async fn pick_dev_folder<R: Runtime>(
     else {
         return Ok(None);
     };
-    // ‼️ M1 리뷰 — 피커는 사용자를 기다리는 열린 대기다. 그 사이 개발자 모드가 꺼질 수 있으니,
+    // ‼️ 피커는 사용자를 기다리는 열린 대기다. 그 사이 개발자 모드가 꺼질 수 있으니,
     // 위에서 읽은 `state` 로 admit_manifest 를 먹이면 안 된다 — 다시 읽고 다시 판정한다.
     let state = host.load(app, build);
     if !dev_mode::developer_mode_active(build, &state) {
@@ -456,8 +456,7 @@ async fn record_dev_consent<R: Runtime>(
 /// (거절하면 그대로 `false`). 끈 뒤의 언로드는 프런트가 한다.
 ///
 /// ‼️ 이 규칙은 릴리스 빌드에만 적용된다 — dev 빌드는 이미 항상 켜져 있으므로(
-/// `dev_mode::developer_mode_active`) 경고도, R1 쓰기도 없이 `true`를 그대로 돌려준다
-/// (fix round 1, M6).
+/// `dev_mode::developer_mode_active`) 경고도, R1 쓰기도 없이 `true`를 그대로 돌려준다.
 #[tauri::command]
 pub async fn plugin_set_developer_mode<R: Runtime>(
     app: AppHandle<R>,
@@ -477,7 +476,7 @@ async fn set_developer_mode<R: Runtime>(
     // state.enabled`) regardless of what R1 says, so this switch has nothing to do there: the
     // native warning it would show ("only sandboxed plugins can load") is FALSE in a dev
     // build, and writing `enabled` would touch the SAME `plugin-dev.json` a release build
-    // reads (fix round 1, M6).
+    // reads.
     if build.is_dev() {
         return Ok(true);
     }
@@ -568,7 +567,7 @@ fn refusal_for(
 /// 지나간다: host 가 관리되지 않으면 아무 경고 없이 그대로 돌아간다(그 세션엔 지울 R1 자체가 없다
 /// — dev 커맨드가 전부 닫혀 있다). `forget_id_in` 이 쓰기에 실패하면 경고만 남기고 설치는 이미
 /// 끝난 대로 성공한다 — 그 한 번은 기록이 남아, 개발자 모드를 다시 켰을 때 그 폴더가 방금 설치된
-/// 플러그인이 만든 저장소를 I4-3 없이 물려받는 구멍(M2a)을 되연다.
+/// 플러그인이 만든 저장소를 I4-3 없이 물려받는 구멍을 되연다.
 pub(crate) fn forget_installed_id<R: Runtime>(app: &AppHandle<R>, id: &str) {
     let Some(host) = app.try_state::<DevModeHost>() else {
         return;
@@ -1043,7 +1042,7 @@ mod tests {
         );
     }
 
-    /// The record is a set (verification pass, M2c): an author who renames the plugin keeps
+    /// The record is a set: an author who renames the plugin keeps
     /// the old id recorded, so the storage seeded under it is still held by this folder and the
     /// install boundary (`plugin_install_commit`) still sees it.
     #[test]
@@ -1471,7 +1470,7 @@ mod tests {
         assert!(log.lock().unwrap().is_empty());
     }
 
-    // §379 review round 1, M6 — these two exercise `Build::release()` explicitly rather than
+    // These two exercise `Build::release()` explicitly rather than
     // through `invoke` (which resolves `Build::current()`, and a test binary IS a debug build:
     // see `list_answers_from_the_rust_file_and_grants_an_approved_folder`'s own note above). A
     // release build's prompt-then-persist behavior can no longer be reached by asking Rust's
@@ -1540,7 +1539,7 @@ mod tests {
         );
     }
 
-    /// §379 review round 1, M6 — a dev build is always active regardless of R1's `enabled`, so
+    /// A dev build is always active regardless of R1's `enabled`, so
     /// the switch must not show the release-only native warning (false in a dev build: dev
     /// plugins are not sandboxed-only) or write the SAME `plugin-dev.json` a release build reads.
     #[tokio::test]
@@ -1619,7 +1618,7 @@ mod tests {
         assert_ne!(picker_title(false), picker_title(true));
     }
 
-    /// M1 (review round 1) — the picker is an open-ended user wait. Developer mode turning off
+    /// The picker is an open-ended user wait. Developer mode turning off
     /// DURING that wait must not be admitted against the state read before it.
     #[tokio::test]
     async fn a_release_pick_is_refused_if_developer_mode_turns_off_during_the_picker() {
@@ -1657,7 +1656,7 @@ mod tests {
         assert!(!f.data.path().join(approval::STORE_FILE).exists());
     }
 
-    /// M3 (review round 1) — this command has its own inactive gate, distinct from the pick and
+    /// This command has its own inactive gate, distinct from the pick and
     /// enable/disable commands', and it was deletable with no red test (every test here runs as
     /// a dev build, which is always active). Pin both halves through the build-taking core.
     #[tokio::test]
@@ -1817,7 +1816,7 @@ mod tests {
     }
 
     /// The refusal reads R1 when the commit core calls it — between the checks and the swap —
-    /// not when the command builds it (final verification, L-2). The folder's id is recorded
+    /// not when the command builds it. The folder's id is recorded
     /// AFTER the refusal is made; a refusal that read R1 up front would let this install through.
     #[test]
     fn the_install_refusal_reads_the_record_when_it_is_called() {
@@ -1930,7 +1929,7 @@ mod tests {
         assert!(!f.data.path().join(dev_mode::STORE_FILE).exists());
     }
 
-    /// The stale-record hole (verification pass, M2a), end to end on the cores: a folder
+    /// The stale-record hole, end to end on the cores: a folder
     /// recorded `dev-x`, its plugin used storage, the user switched developer mode off,
     /// installed and then uninstalled `dev-x` (which leaves `plugin-data/dev-x`), and switched
     /// it back on. The commit's `forget` is what makes I4-3 refuse the folder now — the twin

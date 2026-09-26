@@ -104,7 +104,7 @@ export function useDevPluginActions() {
     const { showToast } = useUIStore.getState();
     // Set once the pick has put the folder on Rust's list. From then on a failure leaves an
     // issue row rather than nothing: the folder IS listed, and in a release build it may
-    // already hold an id (verification pass, M2b).
+    // already hold an id.
     let picked: DevFolderRow | null = null;
     try {
       picked = await pluginPickDevFolder();
@@ -173,7 +173,7 @@ export function useDevPluginActions() {
         if (fresh === null) {
           // Declined: nothing changed. The previously loaded instance keeps running under its
           // old consent — `reloadPlugin` is never reached, so setting an error here would
-          // describe a plugin that is not, in fact, unloaded (fix round 1, M1). The next
+          // describe a plugin that is not, in fact, unloaded. The next
           // startup's `loadListed` shows `consentNeeded` instead, which is true THERE: nothing
           // is running yet at that point.
           return;
@@ -199,7 +199,7 @@ export function useDevPluginActions() {
   /**
    * Remove a folder from Rust's list; unload its plugin when there is one. Reports whether it
    * succeeded — the caller (the section) deselects only on success, so a failed removal does
-   * not lose the selection over a row that is, in fact, still there (fix round 1, M5).
+   * not lose the selection over a row that is, in fact, still there.
    */
   const handleRemove = useCallback(
     async (path: string, plugin?: InstalledPlugin): Promise<boolean> => {

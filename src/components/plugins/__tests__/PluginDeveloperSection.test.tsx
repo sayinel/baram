@@ -298,7 +298,7 @@ describe("PluginDeveloperSection — dev build (§379: unchanged)", () => {
     );
     expect(showToast).toHaveBeenCalledWith(expect.stringContaining("boom"));
     // No plugin card — but the pick put the folder on Rust's list, so it stays visible (and
-    // removable) as an issue row (verification pass, M2b).
+    // removable) as an issue row.
     expect(screen.queryByText("Dev X")).toBeNull();
     expect(await screen.findByText("/dev/dev-x")).toBeInTheDocument();
     expect(usePluginStore.getState().devFolderIssues).toEqual([
@@ -329,7 +329,7 @@ describe("PluginDeveloperSection — release build (§379 F1·F2)", () => {
     expect(mocks.unloadDevPlugins).not.toHaveBeenCalled();
   });
 
-  // M7(c) (fix round 1) — Rust's native warning can itself be declined; the resolved value is
+  // Rust's native warning can itself be declined; the resolved value is
   // the state AFTER the call, so a decline resolves `false` and the switch must stay off.
   it("a refused native warning leaves the switch off", async () => {
     usePluginStore.setState({ devMode: RELEASE_OFF });
@@ -343,7 +343,7 @@ describe("PluginDeveloperSection — release build (§379 F1·F2)", () => {
     );
   });
 
-  // M7(d) (fix round 1) — Rust itself can fail (not merely decline) to change the mode.
+  // Rust itself can fail (not merely decline) to change the mode.
   it("shows a toast when changing developer mode fails", async () => {
     usePluginStore.setState({ devMode: RELEASE_OFF });
     mocks.setDeveloperMode.mockRejectedValue(new Error("boom"));
@@ -440,7 +440,7 @@ describe("PluginDeveloperSection — release build (§379 F1·F2)", () => {
 
     const dialog = await findSurface(".plugin-consent");
     expect(dialog.getByText(en["plugin.consent.new"])).toBeTruthy();
-    // M7(a) (fix round 1) — before Confirm, nothing has run yet.
+    // Before Confirm, nothing has run yet.
     expect(pluginLoader.reloadPlugin).not.toHaveBeenCalled();
     fireEvent.click(
       dialog.getByRole("button", { name: en["plugin.consent.confirm.load"] }),
@@ -463,7 +463,7 @@ describe("PluginDeveloperSection — release build (§379 F1·F2)", () => {
     );
   });
 
-  // M1 (fix round 1) — declining a Reload escalation must leave the row alone: the previous
+  // Declining a Reload escalation must leave the row alone: the previous
   // instance keeps running under its old consent (`reloadPlugin` is never reached), so nothing
   // changed and no error should describe it as unloaded.
   it("declining a Reload escalation changes nothing", async () => {
@@ -501,7 +501,7 @@ describe("PluginDeveloperSection — release build (§379 F1·F2)", () => {
     expect(usePluginStore.getState().pluginErrors["dev-x"]).toBeUndefined();
   });
 
-  it("a release folder whose load threw keeps the ids it holds visible (M2b)", async () => {
+  it("a release folder whose load threw keeps the ids it holds visible", async () => {
     // Rust recorded the id at the pick, before the load; `activate` may have written storage
     // and then thrown. The issue row carries the ids so the install flow's early refusal
     // (`devFolderHoldsId`) still sees the folder.
