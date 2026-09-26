@@ -7,9 +7,11 @@ import type { HeadingResult } from "../../utils/quick-switcher-headings";
 import type { JournalPrefix } from "../../utils/quick-switcher-query";
 import type { Editor } from "@tiptap/react";
 
+import { FileText, Hash, Plus } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
 import { revealBlockInActiveEditor } from "../../extensions/plugins/viewport-virtualize";
+import { useTranslation } from "../../i18n/useTranslation";
 import { readFile } from "../../ipc/invoke";
 import { useContextStore } from "../../stores/context/context";
 import { useEditorStore } from "../../stores/editor/editor";
@@ -48,6 +50,8 @@ interface QuickSwitcherProps {
 }
 
 interface ResultItem {
+  /** 생성 행이 만들 이름 — 라벨은 번역되므로 거기서 되읽지 않는다 */
+  createName?: string;
   detail?: string;
   file?: FlatFile;
   heading?: HeadingResult;
@@ -56,6 +60,7 @@ interface ResultItem {
 }
 
 export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
+  const { t } = useTranslation();
   const { quickSwitcherOpen, toggleQuickSwitcher } = useUIStore(
     useShallow((s) => ({
       quickSwitcherOpen: s.quickSwitcherOpen,
@@ -260,12 +265,20 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
     ) {
       items.push({
         type: "create",
-        label: `+ Create "${q}"`,
+        createName: q,
+        label: t("quickSwitcher.create", { name: q }),
       });
     }
 
     return items;
-  }, [parsedQuery, allFiles, activeHeadings, headingFile, resolvedJournalDir]);
+  }, [
+    parsedQuery,
+    allFiles,
+    activeHeadings,
+    headingFile,
+    resolvedJournalDir,
+    t,
+  ]);
 
   const openFile = useCallback(
     async (file: FlatFile) => {
@@ -300,9 +313,7 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
       toggleQuickSwitcher();
 
       if (item.type === "create") {
-        // Extract the typed name from the label: '+ Create "name"' → "name"
-        const match = item.label.match(/\+ Create "(.+)"/);
-        onNewFile(match?.[1]);
+        onNewFile(item.createName);
         return;
       }
 
@@ -436,11 +447,13 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
             ref={idx === selectedIndex ? selectedRef : null}
           >
             <span className="quick-switcher-icon">
-              {item.type === "heading"
-                ? "#"
-                : item.type === "create"
-                  ? "+"
-                  : "\u{1F4C4}"}
+              {item.type === "heading" ? (
+                <Hash className="icon-inline" size="1em" />
+              ) : item.type === "create" ? (
+                <Plus className="icon-inline" size="1em" />
+              ) : (
+                <FileText className="icon-inline" size="1em" />
+              )}
             </span>
             <span className="quick-switcher-label">{item.label}</span>
             {(item.detail || (showContextBadge && item.type === "file")) && (

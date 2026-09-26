@@ -1,6 +1,9 @@
 // §11.8 Smart Template Dialog — template selection grid for document generation
 import { useCallback, useState } from "react";
 
+import { X } from "lucide-react";
+
+import { useTranslation } from "../../i18n/useTranslation";
 import { getBuiltinTemplates } from "../../utils/smart-templates";
 
 interface SmartTemplateDialogProps {
@@ -14,6 +17,7 @@ export function SmartTemplateDialog({
   onClose,
   onGenerate,
 }: SmartTemplateDialogProps) {
+  const { t } = useTranslation();
   const [customDescription, setCustomDescription] = useState("");
   const templates = getBuiltinTemplates();
 
@@ -40,11 +44,13 @@ export function SmartTemplateDialog({
         <div className="smart-template-header flex-header">
           <h2 className="smart-template-title">Smart Templates</h2>
           <button
+            aria-label={t("common.close")}
             className="smart-template-close icon-btn"
             onClick={onClose}
+            title={t("common.close")}
             type="button"
           >
-            &times;
+            <X size={16} />
           </button>
         </div>
 

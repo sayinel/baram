@@ -11,6 +11,8 @@ import {
 
 import type { WikilinkSuggestionItem } from "../../extensions/plugins/wikilink-suggest-utils";
 
+import { ChevronDown, ChevronRight, Folder, Plus } from "lucide-react";
+
 import { basename, dirname } from "../../utils/path-utils";
 
 export interface WikilinkMenuRef {
@@ -158,9 +160,15 @@ export const WikilinkMenuList = forwardRef<WikilinkMenuRef, WikilinkMenuProps>(
                 }
               >
                 <span className="wikilink-folder-arrow">
-                  {isCollapsed ? "▸" : "▾"}
+                  {isCollapsed ? (
+                    <ChevronRight className="icon-inline" size="1em" />
+                  ) : (
+                    <ChevronDown className="icon-inline" size="1em" />
+                  )}
                 </span>
-                <span className="wikilink-folder-icon">📁</span>
+                <span className="wikilink-folder-icon">
+                  <Folder className="icon-inline" size="1em" />
+                </span>
                 <span className="wikilink-folder-name">{item.label}</span>
                 <span className="wikilink-folder-count">{fileCount}</span>
               </div>
@@ -184,7 +192,9 @@ export const WikilinkMenuList = forwardRef<WikilinkMenuRef, WikilinkMenuProps>(
             >
               {item.kind === "create" ? (
                 <>
-                  <span className="wikilink-item-icon">+</span>
+                  <span className="wikilink-item-icon">
+                    <Plus className="icon-inline" size="1em" />
+                  </span>
                   <span className="wikilink-item-label">{item.label}</span>
                 </>
               ) : item.kind === "heading" ? (

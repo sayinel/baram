@@ -5,8 +5,10 @@ import type { PmLintResult } from "../../extensions/plugins/prompt-lint";
 import type { Editor } from "@tiptap/core";
 
 import { TextSelection } from "@tiptap/pm/state";
+import { CircleAlert, TriangleAlert } from "lucide-react";
 
 import { getPromptLintResults } from "../../extensions/plugins/prompt-lint";
+import { useTranslation } from "../../i18n/useTranslation";
 import { focusEditorView } from "../../utils/editor/focus-editor-view";
 
 interface PromptLintPanelProps {
@@ -14,6 +16,7 @@ interface PromptLintPanelProps {
 }
 
 export function PromptLintPanel({ editor }: PromptLintPanelProps) {
+  const { t } = useTranslation();
   const [results, setResults] = useState<PmLintResult[]>([]);
 
   useEffect(() => {
@@ -61,7 +64,21 @@ export function PromptLintPanel({ editor }: PromptLintPanelProps) {
             onClick={() => handleClick(r)}
           >
             <span className="prompt-lint-severity-icon">
-              {r.severity === "error" ? "\u25CF" : "\u25B2"}
+              {r.severity === "error" ? (
+                <CircleAlert
+                  aria-label={t("common.error")}
+                  className="icon-inline"
+                  role="img"
+                  size="1em"
+                />
+              ) : (
+                <TriangleAlert
+                  aria-label={t("common.warning")}
+                  className="icon-inline"
+                  role="img"
+                  size="1em"
+                />
+              )}
             </span>
             <span className="prompt-lint-message">{r.message}</span>
           </button>

@@ -3,9 +3,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { ResolvedReference } from "../../utils/chat-context";
 
+import { Plus, X } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
 import { useLLMStream } from "../../hooks/use-llm-stream";
+import { useTranslation } from "../../i18n/useTranslation";
 import { useAIStore } from "../../stores/ai/ai";
 import { useChatStore } from "../../stores/ai/chat";
 import { useUIStore } from "../../stores/ui/ui";
@@ -40,6 +42,7 @@ const ChevronIcon = ({ rotated }: { rotated: boolean }) => (
 );
 
 export function AIChatPanel() {
+  const { t } = useTranslation();
   // §340 ⓑ bare `useUIStore()` subscribes to the whole store — CLAUDE.md 규약을 따라
   // 필요한 두 값만 shallow-select 한다.
   const { rightPanelMode, rightPanelOpen } = useUIStore(
@@ -300,14 +303,15 @@ export function AIChatPanel() {
                     {s.title}
                   </button>
                   <button
+                    aria-label={t("ai.chat.deleteConversation")}
                     className="ai-chat-dropdown-item-delete"
                     onClick={(e) => {
                       e.stopPropagation();
                       deleteSession(s.id);
                     }}
-                    title="Delete conversation"
+                    title={t("ai.chat.deleteConversation")}
                   >
-                    ×
+                    <X className="icon-inline" size="1em" />
                   </button>
                 </div>
               ))}
@@ -316,11 +320,12 @@ export function AIChatPanel() {
         </div>
         <div className="ai-chat-header-actions">
           <button
+            aria-label={t("ai.chat.newConversation")}
             className="ai-chat-new-btn"
             onClick={() => createSession()}
-            title="New conversation"
+            title={t("ai.chat.newConversation")}
           >
-            +
+            <Plus size={14} />
           </button>
         </div>
       </div>

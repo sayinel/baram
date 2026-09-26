@@ -280,15 +280,6 @@ const ALLOWED: Record<string, Exemption> = {
  * red 를 본 뒤 바꾼다. 마지막 태스크가 이 표와 그 분기를 지운다.
  */
 const PENDING: Record<string, string> = {
-  "src/components/ai/AIChatPanel.tsx": "Task 6",
-  "src/components/ai/PromptLintPanel.tsx": "Task 6",
-  "src/components/ai/SkillPreviewPanel.tsx": "Task 6",
-  "src/components/ai/SmartTemplateDialog.tsx": "Task 6",
-  "src/components/command/QuickSwitcher.tsx": "Task 6",
-  "src/components/command/WikilinkMenu.tsx": "Task 6",
-  "src/components/editor/ConflictModal.tsx": "Task 6",
-  "src/components/editor/DiffView.tsx": "Task 6",
-  "src/components/editor/FindReplaceBar.tsx": "Task 6",
   "src/components/export/ExportDialog.tsx": "Task 7",
   "src/components/export/ExportFormatDropdown.tsx": "Task 7",
   "src/components/journal/CaptureTargetPreview.tsx": "Task 7",

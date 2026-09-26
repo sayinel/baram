@@ -30,6 +30,7 @@
 .conflict-modal-icon {
   font-size: 2rem;
   line-height: 1;
+  color: var(--color-status-warning);
 }
 
 .conflict-modal-title {
