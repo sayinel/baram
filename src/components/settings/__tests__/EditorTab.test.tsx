@@ -4,7 +4,6 @@
 // the real component: <FontBrowser/> owns its own back control the way
 // AppearanceTab's <ThemeEditor/> does, and using it restores the tab's
 // normal font rows.
-import type { DialId } from "../../../appearance/dials";
 import type { InstalledTheme } from "../../../themes/theme-install";
 
 import {
@@ -22,6 +21,7 @@ import { useSettingsStore } from "../../../stores/settings/store";
 import { useSettingsRegistry } from "../settings-registry";
 import { AppearanceTab } from "../tabs/AppearanceTab";
 import { EditorTab } from "../tabs/EditorTab";
+import { registryIdOf } from "./helpers/dial-registry-ids";
 
 const initialState = useSettingsStore.getState();
 
@@ -351,23 +351,14 @@ describe("EditorTab — 다이얼 행", () => {
     // 항목의 행은 이미 EditorTab 에 있다(옮기기 전 설정 화면 그대로) — `AppearanceDialRow`
     // 가 아니라 이 넷을 그린다. 계획 0107 Task 3(h)가 "항목 id 는 그대로 — 검색 결과의
     // 안정된 키다" 라고 판정해 이후 어느 태스크도 그 id 를 다이얼 id 로 바꾸지 않으므로,
-    // 건너뛰는 대신 아래 맵으로 옮겨 확인한다 — 맵의 키를 `DialId` 로 둬 오타(다이얼 id
-    // 변경)가 나면 타입체크가 멎는다.
-    const REGISTRY_ID_OVERRIDE: Partial<Record<DialId, string>> = {
-      editorCodeFontFamily: "codeFontFamily",
-      editorFontFamily: "fontFamily",
-      editorFontSize: "fontSize",
-      editorLineHeight: "lineHeight",
-    };
-    const missing = DIALS.map((d) => REGISTRY_ID_OVERRIDE[d.id] ?? d.id).filter(
-      (id) => {
-        const key = labelKeyById.get(id);
-        if (key === undefined) return true;
-        const text = (en as Record<string, string>)[key];
-        if (text === undefined) return true;
-        return screen.queryAllByText(text).length === 0;
-      },
-    );
+    // 건너뛰는 대신 그 대응을 `helpers/dial-registry-ids.ts` 의 `registryIdOf` 로 확인한다.
+    const missing = DIALS.map((d) => registryIdOf(d.id)).filter((id) => {
+      const key = labelKeyById.get(id);
+      if (key === undefined) return true;
+      const text = (en as Record<string, string>)[key];
+      if (text === undefined) return true;
+      return screen.queryAllByText(text).length === 0;
+    });
     expect(missing).toEqual([]);
   });
 });

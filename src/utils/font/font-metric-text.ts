@@ -5,7 +5,7 @@
 // 1.70) 사용자는 어느 쪽이 진짜인지 알 수 없고, 실제로는 둘 다 같은 병합값을
 // 읽고 있다는 사실이 가려진다. 그래서 모양을 만드는 자리를 하나로 둔다.
 //
-// 단위(px)는 여기 없다 — 부르는 쪽이 값 칸에 붙인다: 설정 행(`appearance-dial-row.tsx`
+// 단위(px)는 여기 없다 — 부르는 쪽이 값 칸에 붙인다: 설정 행(`dial-value-format.ts`
 // 의 `formatDialValue`, 코드 두 행은 `tabs/EditorTab.tsx`)과 브라우저 미리보기
 // (`font-browser-preview.tsx`). 갈라지면 안 되는 것은 단위가 아니라 숫자의
 // 자릿수다: `toFixed(2)` 를 한쪽만 바꾸면 두 표면이 어긋난다.
