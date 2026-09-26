@@ -702,7 +702,7 @@
   "plugin.trust.legacy": "레거시 — 재검증 필요",
   "plugin.trust.sandboxed": "샌드박스",
   "plugin.trust.trusted": "완전한 신뢰",
-  "query.addFilter": "+ 필터 추가",
+  "query.addFilter": "필터 추가",
   "query.clickToCreate": "클릭해서 쿼리 만들기",
   "query.clickToEdit": "클릭해서 쿼리 편집",
   "query.count": "결과 {count}건",

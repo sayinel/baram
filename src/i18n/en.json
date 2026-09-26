@@ -702,7 +702,7 @@
   "plugin.trust.legacy": "Legacy — needs re-validation",
   "plugin.trust.sandboxed": "Sandboxed",
   "plugin.trust.trusted": "Full trust",
-  "query.addFilter": "+ Add filter",
+  "query.addFilter": "Add filter",
   "query.clickToCreate": "Click to create a query",
   "query.clickToEdit": "Click to edit query",
   "query.count": "{count} results",

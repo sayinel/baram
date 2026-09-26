@@ -11,6 +11,7 @@ import type { QuerySource } from "../../utils/query-parser";
 
 import { NodeSelection } from "@tiptap/pm/state";
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
+import { Plus, X } from "lucide-react";
 
 import { TaskQueryResults } from "../../components/tasks/TaskQueryResults";
 import { Tooltip } from "../../components/Tooltip";
@@ -351,6 +352,7 @@ export function QueryBlockView({
                 />
               ))}
               <button className="qb-btn qb-add" onClick={handleAddFilter}>
+                <Plus className="icon-inline" size="1em" />{" "}
                 {t("query.addFilter")}
               </button>
             </div>
@@ -553,7 +555,7 @@ function FilterRow({
       )}
       <Tooltip label={t("query.removeFilter")} placement="top">
         <button className="qb-btn qb-remove" onClick={() => onRemove(index)}>
-          ×
+          <X className="icon-inline" size="1em" />
         </button>
       </Tooltip>
     </div>

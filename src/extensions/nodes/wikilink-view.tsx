@@ -6,6 +6,7 @@ import type { WikilinkOptions } from "./wikilink";
 import type { NodeViewProps } from "@tiptap/react";
 
 import { NodeViewWrapper } from "@tiptap/react";
+import { Calendar } from "lucide-react";
 
 import { Tooltip } from "../../components/Tooltip";
 import { useTranslation } from "../../i18n/useTranslation";
@@ -113,7 +114,11 @@ export function WikilinkView({ node, selected, extension }: NodeViewProps) {
           />
         </Tooltip>
       )}
-      {isDate && <span className="wikilink-date-icon">📅</span>}
+      {isDate && (
+        <span className="wikilink-date-icon">
+          <Calendar className="icon-inline" size="1em" />
+        </span>
+      )}
       {text}
     </NodeViewWrapper>
   );

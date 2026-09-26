@@ -5,6 +5,7 @@ import type { Editor } from "@tiptap/core";
 import type { NodeViewProps } from "@tiptap/react";
 
 import { NodeViewContent, NodeViewWrapper } from "@tiptap/react";
+import { CornerLeftUp } from "lucide-react";
 
 import { Tooltip } from "../../components/Tooltip";
 import { useTranslation } from "../../i18n/useTranslation";
@@ -61,7 +62,7 @@ export function FootnoteDefinitionView({ node, editor }: NodeViewProps) {
           contentEditable={false}
           onClick={handleBack}
         >
-          ↩
+          <CornerLeftUp className="icon-inline" size="1em" />
         </button>
       </Tooltip>
     </NodeViewWrapper>

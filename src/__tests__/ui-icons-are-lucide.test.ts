@@ -319,12 +319,6 @@ const PENDING: Record<string, string> = {
   "src/components/sidebar/SkillOptimizeSection.tsx": "Task 9",
   "src/components/sidebar/TagPanel.tsx": "Task 8",
   "src/components/sidebar/VersionHistoryPanel.tsx": "Task 9",
-  "src/extensions/nodes/callout-view.tsx": "Task 4",
-  "src/extensions/nodes/footnote-definition-view.tsx": "Task 4",
-  "src/extensions/nodes/frontmatter-view.tsx": "Task 4",
-  "src/extensions/nodes/query-block-view.tsx": "Task 4",
-  "src/extensions/nodes/views/MermaidBlockHeader.tsx": "Task 4",
-  "src/extensions/nodes/wikilink-view.tsx": "Task 4",
   "src/styles/tasks.css": "Task 7",
   "src/utils/date-picker.ts": "Task 7",
 };

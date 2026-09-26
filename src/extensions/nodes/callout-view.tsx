@@ -4,7 +4,7 @@ import type { NodeViewProps } from "@tiptap/react";
 
 // §5.9 Callout NodeView — React component for rendering callout blocks
 import { NodeViewContent, NodeViewWrapper } from "@tiptap/react";
-import { Sparkles } from "lucide-react";
+import { ChevronDown, ChevronRight, Sparkles } from "lucide-react";
 
 import { Tooltip } from "../../components/Tooltip";
 import { useEditorChrome } from "../../hooks/use-editor-chrome";
@@ -222,7 +222,11 @@ export function CalloutView({
             onClick={toggleCollapsed}
             type="button"
           >
-            {collapsed ? "▶" : "▼"}
+            {collapsed ? (
+              <ChevronRight className="icon-inline" size="1em" />
+            ) : (
+              <ChevronDown className="icon-inline" size="1em" />
+            )}
           </button>
         </Tooltip>
       </div>
