@@ -63,9 +63,9 @@ export interface DevFolderRow {
   /**
    * The ids this folder holds on the list — recorded by a release build each time it
    * admitted the folder (spec 0058 I4). Rust refuses installing them while developer mode
-   * is on. `refreshDevPlugins` keeps this array only on an ISSUE row (`devFolderIssues`) —
-   * for a folder that loaded, the install flow's earlier refusal instead reads the manifest
-   * id off the loaded record, not this field.
+   * is on, in a release build. `refreshDevPlugins` keeps this array only on an ISSUE row
+   * (`devFolderIssues`) — for a folder that loaded, the install flow's earlier refusal
+   * instead reads the manifest id off the loaded record, not this field.
    */
   ids: string[];
   path: string;

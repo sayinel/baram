@@ -174,6 +174,29 @@ describe("dev-folder loads declare isDev (§260 Phase 5)", () => {
         "it to one instead of the installed record's (§379)",
     ).toEqual([]);
   });
+
+  // §379 (F5) — `setDevMode` is R2's write into the store (`developer_mode_active`'s
+  // frontend mirror): every OTHER production call must go through the dev-plugins loop
+  // above, or a caller could flip the store without the load/unload it implies. Same shape
+  // as "calls the migration from exactly one place" above: a CALL, not a mention, so a
+  // comment naming the setter is not a violation, and the file that DEFINES it is excluded
+  // the same way `main.tsx` excludes itself above.
+  it("setDevMode has exactly one production caller besides its own store", () => {
+    const DEFINITION = "stores/system/plugin.ts";
+    const CALL = /\bsetDevMode\s*\(/;
+    const callers = sources(SRC)
+      .map((f) => f.slice(SRC.length + 1))
+      .filter(
+        (rel) =>
+          rel !== DEFINITION && CALL.test(readFileSync(join(SRC, rel), "utf8")),
+      );
+
+    expect(
+      callers,
+      "setDevMode must be called only from plugins/dev-plugins.ts — a second caller can " +
+        "desync the store from what actually got loaded or unloaded",
+    ).toEqual([DEV_PLUGINS]);
+  });
 });
 
 /** The text of each `pluginLoader.loadPlugin(...)` / `.reloadPlugin(...)` call in `src`. */

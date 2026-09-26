@@ -37,8 +37,10 @@ nothing asks.
 
 - **Load dev plugin folder** — opens a native folder picker. Pick a directory
   containing a `baram-plugin.json` + built `main` bundle; it joins the list and
-  loads immediately. Picking is the only way onto the list — Baram keeps it in its
-  own `plugin-dev.json`, a file separate from the app's settings (`config.json`).
+  loads immediately. Apart from a development build's one-time import of the
+  list it kept before, picking is the only way onto the list — Baram keeps it
+  in its own `plugin-dev.json`, a file separate from the app's settings
+  (`config.json`).
 - **Reload** — re-reads the manifest from disk and reloads the plugin's
   module (unload the old instance, re-`import()` the bundle, re-run
   `activate`). Use this after rebuilding your bundle (`npm run build`) to
