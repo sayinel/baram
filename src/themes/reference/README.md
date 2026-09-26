@@ -36,6 +36,10 @@
 참). 이 사실로 이 테마의 `engines.baram` 을 올릴지는 이 테마를 실제로 출고하는 §371 계획이
 정한다 — 올리면 v0.7.4 사용자는 다이얼 없이 입는 대신 설치를 거부당한다.
 
+단 **본문 타이포 네 키**(`editorFontFamily` · `editorCodeFontFamily` · `editorFontSize` · `editorLineHeight`)는
+v0.7.5 가 모른다 — 그 릴리스는 설치할 때 모르는 다이얼 id 를 버리고, 앱을 올려도 되살리지 않는다
+(`src/themes/theme-manifest.ts` 의 `dials` doc 주석). 이 키를 읽는 첫 릴리스 번호는 태그될 때 적는다.
+
 **있는 것:** 매니페스트와 다이얼 값, 그리고 `light/tokens.json` · `dark/tokens.json`
 (§367, 0095). `src/themes/__tests__/reference-theme.test.ts` 가 그것을 실제 관문에
 통과시키고, **레퍼런스가 행사하지 않는 다이얼을 명시적으로 열거하도록 강제한다.**
@@ -139,9 +143,8 @@
 스케일)이고, 본문의 리듬은 따로 정해진다. 문단 간격·자간은 에디터 다이얼
 `editorParagraphSpacing` · `editorLetterSpacing` 이 갖고(변수 `--editor-paragraph-spacing` ·
 `--editor-letter-spacing` — 예: `src/styles/editor/blocks.css` 의
-`.tiptap p { margin: var(--editor-paragraph-spacing, 0.5em) 0; }`), 줄 높이는 다이얼이 아닌
-에디터 설정 `lineHeight` 가 갖는다(`src/hooks/use-settings-effects.ts` 가 에디터 DOM 에
-인라인 `line-height` 로 쓴다).
+`.tiptap p { margin: var(--editor-paragraph-spacing, 0.5em) 0; }`), 줄 높이는 본문 타이포
+다이얼 `editorLineHeight` 가 갖는다(아래 "본문 타이포").
 그래서 `compact` 는 본문 조판을 건드리지 않고 크롬만 더 좁혀, "크롬이 물러난다" 는 이
 테마의 성격을 한 번 더 강하게 만든다.
 
@@ -152,3 +155,17 @@
 다이얼의 매니페스트 경로(값이 파싱되어 `<html>` 에 CSS 변수로 나오는 길)를 실제로 행사하는
 쪽을 택했다 — "약하게" 라는 지시가 이 3단 스키마에서 표현될 수 없었다는 사실을 여기
 기록한다.
+
+## 본문 타이포 (§365 다이얼 6)
+
+`editorFontFamily: "Pretendard Variable"` · `editorFontSize: 17` · `editorLineHeight: 1.8` 을 선언한다 —
+0055 §10.3 이 타이포(6)를 "강하게" 행사하라고 적는다.
+
+- **서체를 적는 이유:** 앱 기본 스택의 첫 항목과 같은 이름이다(`src/utils/font/bundled-fonts.ts`). 그래도
+  선언하는 것은 앱 기본이 바뀌어도 한글 본문 테마가 제 서체를 유지하게 하려는 것이고, 새 `text` 종류의
+  매니페스트 경로(파싱 → 병합 → 표면 적용)를 실제로 행사하려는 것이다. 서체 파일은 싣지 않는다 — 한글
+  서체는 수 MB 다.
+- **17 · 1.8:** 읽기 우선 테마의 비기본값이다(기본 16 · 1.75).
+- **본문 폭:** `editorMaxWidth: 720` 은 그대로 px 다. 설정 행은 이것을 글자 수로도 보이고, 이 테마의
+  값(여백 5rem · 자간 −0.01em · 17px)에서 Pretendard 로 약 39자다(스펙 0060 §8.2 의 식).
+- 코드 서체(`editorCodeFontFamily`)는 행사하지 않는다 — 코드는 이 테마의 초점이 아니다.
