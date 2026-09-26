@@ -9,7 +9,7 @@
 // 갤러리 렌더와 독립된 도메인이다). 검증이 막은 이유는 오류 **코드**로 던지고
 // 여기서 locale 문장으로 바꾼다 — Error 원문을 그대로 렌더하면 한국어 UI에
 // 영문 절반이 섞인다. 원문 상세는 logger에만 남는다.
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import type { RustStagedThemeInfo } from "../../../ipc/theme";
 import type { ThemeColors, ThemeDef, ThemeMode } from "../../../types/theme";
@@ -65,8 +65,14 @@ export function useThemeImport(
   // import 실패는 logger에만 남고 화면은 무반응이었다(감사 순서 10) — 사용자
   // 입장에선 버튼이 조용히 죽은 것. 막힌 이유를 locale 문장으로 보여준다.
   const [importError, setImportError] = useState<null | string>(null);
+  // 가져오기 하나가 끝날 때까지 다음 클릭은 아무것도 하지 않는다 — 두 번 누르면 네이티브 대화상자가 둘
+  // 열렸다(계획 0109 최종 리뷰). 대화상자 · 색 저장 · 패키지 설치(`onPackage`, 동의까지)가 모두 한 번의
+  // 가져오기이고, 첫 await 앞에서 막아야 두 번째 클릭이 `themeImportPick` 에 닿지 않는다.
+  const inFlight = useRef(false);
 
   const handleImport = useCallback(async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setImportError(null);
     try {
       // 대화상자도 try 안이다(적대 리뷰) — 권한 · 초기화 문제로 reject 되면 unhandled rejection 으로 죽는다.
@@ -144,6 +150,8 @@ export function useThemeImport(
       const code = err instanceof ThemeImportError ? err.code : "readFailed";
       const params = err instanceof ThemeImportError ? err.params : undefined;
       setImportError(t(`settings.appearance.importError.${code}`, params));
+    } finally {
+      inFlight.current = false;
     }
   }, [onPackage, saveCustomTheme, setActiveTheme, t]);
 

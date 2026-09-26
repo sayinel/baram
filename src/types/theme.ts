@@ -34,8 +34,11 @@ export type ThemeMode = "dark" | "light";
  * theme declares — a projection of one theme, not the universe — and two of the three sites
  * have no `ThemeDef` at all (a manifest, and the installer that is still building one).
  *
- * `light` first is load-bearing where order is observable: `theme-gallery-cards.tsx`'s card
- * preview draws `themeModes(theme)[0]`, so a paired theme shows its light palette.
+ * `light` first is load-bearing where order is observable on a gallery card: `ThemePreview`
+ * (`theme-preview.tsx`) lays its panes out in `THEME_MODES` order, so a paired theme shows its
+ * light pane first, and the card's mode line (`modesLabel(themeModes(theme))` in
+ * `theme-gallery-cards.tsx`) reads light · dark. The card's accent border is NOT this order —
+ * it names `palettes.light ?? palettes.dark` outright.
  */
 export const THEME_MODES: readonly ThemeMode[] = ["light", "dark"];
 

@@ -209,7 +209,7 @@ pub async fn theme_import_pick(
             if korean {
                 "색 설정"
             } else {
-                "Colour settings"
+                "Color settings"
             },
             &["json"],
         )

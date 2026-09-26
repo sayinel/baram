@@ -118,4 +118,29 @@ describe("useThemeImport", () => {
       error.mockRestore();
     }
   });
+
+  // 계획 0109 최종 리뷰 — 두 번 누르면 네이티브 대화상자가 둘 열렸다. 무엇이 이것을 실패시키는가:
+  // `inFlight` 관문을 지우면 두 번째 호출도 `themeImportPick` 에 닿아 2 가 된다. 끝난 뒤에는 다시 열린다는
+  // 세 번째 호출이 짝이다 — 관문을 풀지 않는(`finally` 를 지운) 구현은 그 단언에서 red 다.
+  it("가져오기가 진행 중이면 다음 호출은 대화상자를 열지 않고, 끝나면 다시 연다", async () => {
+    let answer: (pick: null) => void = () => {};
+    ipc.themeImportPick.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+    );
+    const { result } = renderHook(() => useThemeImport(onPackage));
+    await act(async () => {
+      const first = result.current.handleImport();
+      await result.current.handleImport();
+      answer(null);
+      await first;
+    });
+    expect(ipc.themeImportPick).toHaveBeenCalledTimes(1);
+
+    ipc.themeImportPick.mockResolvedValue(null);
+    await act(() => result.current.handleImport());
+    expect(ipc.themeImportPick).toHaveBeenCalledTimes(2);
+  });
 });

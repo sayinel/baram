@@ -325,8 +325,10 @@ describe("Theme migration v0/v1 → v2 (logic verification)", () => {
 // `ThemeDef` at all. `THEME_MODES` is the universe those three walk.
 describe("THEME_MODES (external review #8)", () => {
   it("is the closed universe of modes, light first", () => {
-    // Order is observable: `theme-gallery-cards.tsx` draws `themeModes(theme)[0]`, so a paired
-    // theme's card shows its light palette. A reversal would be silent everywhere else.
+    // Order is observable: `ThemePreview` lays a paired theme's panes out in `THEME_MODES`
+    // order (light first) and the card's mode line reads it through `themeModes` — the
+    // `THEME_MODES` doc in `src/types/theme.ts` has the details. A reversal would be silent
+    // everywhere else.
     expect([...THEME_MODES]).toEqual(["light", "dark"]);
   });
 

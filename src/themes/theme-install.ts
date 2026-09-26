@@ -12,7 +12,8 @@
 //   verifyStoredThemeCss 저장 CSS     → `data:` 만. 저장 직전과 로드 시점, 두 번 돈다
 //
 // 실패는 전부 `discard` 로 끝난다 — 설치된 것은 아무것도 건드리지 않았으므로 "복구" 가
-// 아니라 "내려받은 것을 버린다" 이다(#261).
+// 아니라 "스테이징한 것을 버린다" 이다(#261). 스테이징한 것은 레지스트리 입구에서는 내려받은
+// 아카이브, 파일 입구(§371 6a)에서는 사용자가 고른 파일을 푼 것이다.
 import type { ContrastWarning } from "../appearance/contrast-report";
 import type { RustStagedThemeInfo } from "../ipc/theme";
 import type { RegistryEntry } from "../plugins/types";
@@ -63,17 +64,23 @@ export const MAX_THEME_MANIFEST_BYTES = 64 * 1024;
 
 /** 설치가 남긴 기록. 스토어가 이것을 들고 있고, 디스크를 다시 열거하지 않는다. */
 export interface InstalledTheme {
-  /** 이 설치가 내려받은 아카이브의 SHA-256. */
+  /**
+   * 이 설치가 스테이징한 아카이브 바이트의 SHA-256 — 레지스트리 입구는 내려받은 아카이브, 파일
+   * 입구(`origin: "file"`)는 사용자가 고른 파일(`theme_import.rs` 의 `read_package` 가 잰다).
+   */
   checksum: string;
   /**
    * §361 스펙 §9.3 — §260 의 동의 기록 구조(승인 시각 + 승인한 버전)를 그대로 재사용한다.
-   * `installedAt`/`manifest.version` 에서 파생하지 **않는다** — 저 둘은 나중에 같은 함수가
-   * 업데이트로 다시 부를 때 새 값으로 갈리지만, 테마는 capabilities 가 없어 재동의를
-   * 요구할 일이 없으므로 동의는 **최초 설치 그 순간 한 번**이다.
+   * `installedAt`/`manifest.version` 에서 파생하지 **않는다** — 저 둘은 업데이트마다 새 값으로
+   * 갈리지만, 테마는 capabilities 가 없어 업데이트가 재동의를 요구할 일이 없으므로 동의는
+   * 설치 화면(테마 찾아보기의 설치 · 재설치, 파일 설치)이 **물은 그 순간**에만 새로 생긴다.
    *
-   * ‼️ **업데이트 경로(Task 6)는 이 두 필드를 다시 계산하지 말고 그대로 옮겨야 한다.**
-   * 이 함수는 오늘 최초 설치만 호출하므로 아래 값은 지금은 항상 옳다 — 업데이트가
-   * 생기는 순간 이 doc 주석이 그 계약이다.
+   * ‼️ **찍는 곳과 옮기는 곳이 다르다.** `finishStagedThemeInstall` 은 성공한 설치마다(두 입구,
+   * 최초 설치 · 업데이트 · 재설치 모두) 이 두 필드를 "지금" 과 방금 설치한 버전으로 찍는다 —
+   * 그 함수는 이것이 업데이트인지 모른다. 업데이트에서 앞선 동의를 이어 붙이는 것은 기록을
+   * 쓰는 `addInstalledTheme`(`stores/settings/appearance-settings.ts`)이다: 같은 id 의 기록이
+   * 이미 있으면 그 기록의 두 값을 옮기고, 호출자가 방금 동의를 물었다고 알릴 때(`freshConsent`
+   * — `handleInstall` 과 파일 설치)만 새 값을 남긴다.
    */
   consentedAt: string;
   /** @see consentedAt */
@@ -370,7 +377,13 @@ async function finishStagedThemeInstall(
   // `invalid stage id`·`write_stored_theme_css` 와 `swap_into_place` 의 모든 IO 오류가
   // 전부 `downloadFailed` 로 떨어졌다. 즉 디스크가 가득 찬 사용자에게 네트워크를
   // 확인하라고 말한다. 문자열은 Rust 쪽 문구가 바뀌면 조용히 더 틀려지는데, 이 변수는
-  // 다음에 던질 수 있는 await 을 코드가 스스로 선언하므로 그 방식으로 틀릴 수 없다.
+  // 각 구간의 실패가 무엇인지 코드가 스스로 선언하므로 그 방식으로 틀릴 수 없다.
+  //
+  // 초깃값 `"downloadFailed"` 는 닿지 않는 대비값이다 — 스테이징(내려받기)은 이 함수 **앞**에서
+  // 끝났다. `phase = "cssRejected"` 앞의 await 은 `discard`(자기 실패를 로그로 삼킨다)와
+  // `unmetFloorAgainstApp`(앱 버전을 못 읽으면 "의견 없음" 으로 돌아온다)뿐이고 둘 다 reject 하지
+  // 않으며, 그 앞의 `parseThemeManifestText` 는 실패를 반환값으로 낸다. 값을 이것으로 둔 것은
+  // 이 함수를 `installTheme` 에서 떼어 낼 때(§371 6a) 동작을 그대로 두기 위해서다.
   let phase: ThemeInstallFailure = "downloadFailed";
   const stageId = staged.stage_id;
   try {
@@ -451,7 +464,7 @@ async function finishStagedThemeInstall(
     phase = "commitFailed";
     const committed = await themeInstallCommit(
       stageId,
-      // 레지스트리 입구에서는 위 대조로 `entry.id` 와 같다.
+      // 레지스트리 입구에서는 위 대조로 `options.expectedId` 와 같다.
       manifest.id,
       // 이 digest 가 위 검증을 그 파일에 못 박는다. stage 는 두 IPC 호출 사이에
       // 디스크에 앉아 있고, commit 은 디스크에서 다시 읽는다(#261 보안 리뷰).

@@ -16,6 +16,7 @@ import { useThemeDials } from "../../hooks/use-theme-dials";
 import { useTranslation } from "../../i18n/useTranslation";
 import { exportBinaryFile } from "../../ipc/fs";
 import { themePackageBuild } from "../../ipc/theme";
+import { parseBaramFloor } from "../../plugins/engines";
 import { currentAppVersion } from "../../plugins/engines-app";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
@@ -84,14 +85,20 @@ export function AppearanceExport({ onBack }: { onBack: () => void }) {
     const showToast = useUIStore.getState().showToast;
     // D5 — 다이얼 · 크롬이 실리면 내보내는 앱의 버전이 하한이다. 모르는 id 를 조용히 버리는 옛 버전
     // (v0.7.4 는 `dials` · `chrome` 전체, v0.7.5 는 본문 타이포 넷)이 설치하지 못하게.
+    //
+    // ‼️ 하한은 설치하는 쪽이 **읽을 수 있어야** 하한이다. `parseBaramFloor`(`plugins/engines.ts`)는
+    // `>=X.Y.Z` 만 읽고, 못 읽는 하한은 "의견 없음" 으로 설치를 통과시킨다 — 프리릴리스 · 빌드
+    // 꼬리표가 붙은 앱 버전(`0.8.0-beta.1`)으로 쓴 하한은 옛 버전을 막지 못한다. 그래서 버전을 모를
+    // 때와 똑같이 내보내지 않는다.
     let minBaram: string | undefined;
     if (dials.length > 0 || input.chrome !== undefined) {
       const version = await currentAppVersion();
-      if (version === null) {
+      const floor = version === null ? null : `>=${version}`;
+      if (floor === null || parseBaramFloor(floor) === null) {
         showToast(t("settings.appearance.exportLook.versionUnknown"), "error");
         return;
       }
-      minBaram = `>=${version}`;
+      minBaram = floor;
     }
     const path = await save({
       defaultPath: `${packageMeta.id}.zip`,

@@ -205,6 +205,25 @@ describe("AppearanceExport — 내보내기", () => {
     );
   });
 
+  // 설치하는 쪽의 `parseBaramFloor` 는 `>=X.Y.Z` 만 읽는다 — 프리릴리스 앱 버전으로 쓴 하한은 "의견 없음" 이
+  // 되어 옛 버전을 막지 못한다. 무엇이 이것을 실패시키는가: `handleExport` 의 `parseBaramFloor` 관문을
+  // 지우면 `>=0.8.0-beta.1` 로 저장 대화상자까지 간다. 짝은 위의 "앱 버전을 하한으로" 테스트(0.7.6)다.
+  it("앱 버전이 하한 문법으로 쓸 수 없는 모양이면 다이얼이 실린 패키지를 쓰지 않는다", async () => {
+    appVersion.currentAppVersion.mockResolvedValue("0.8.0-beta.1");
+    render(<AppearanceExport onBack={() => {}} />);
+    fillMeta();
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", { name: T["settings.theme.exportPackage"] }),
+      );
+    });
+    expect(dialogMock.save).not.toHaveBeenCalled();
+    expect(themeIpc.themePackageBuild).not.toHaveBeenCalled();
+    expect(useUIStore.getState().toast?.message).toBe(
+      T["settings.appearance.exportLook.versionUnknown"],
+    );
+  });
+
   it("색만 담는 패키지는 앱 버전 없이도 지금 하한으로 쓴다", async () => {
     useSettingsStore.setState({ appearanceOverrides: {} });
     appVersion.currentAppVersion.mockResolvedValue(null);
