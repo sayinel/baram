@@ -58,7 +58,7 @@ aliases: [Baram-Dev-Note]
 
 Two things tell you where a capture is going:
 
-- **While you type**, a line under the tag field previews the destination — `→ Inspiration (12 captures)` for a single note, `→ 3 notes: …` for several, or `→ No matching note · saved to inbox`. It stays silent until the notes folder has actually been read, so a correct tag is never briefly accused of matching nothing.
+- **While you type**, a line under the tag field previews the destination — `Inspiration (12 captures)` for a single note, `3 notes: …` for several, or `No matching note · saved to inbox`. It stays silent until the notes folder has actually been read, so a correct tag is never briefly accused of matching nothing.
 - **After you save**, a toast names the note and offers **Open**. With more than one target it reports the count instead, because there is no way to know which one you meant to open.
 
 The tag field autocompletes from the names that can actually address a note — titles and aliases — alongside tags already used in the space.

@@ -72,7 +72,7 @@ Baram이 **편집**하는 것은 표준 마크다운 파일(`.md`, `.markdown`)�
 
 ## 토글(접히는) 블록은 어떻게 만드나요?
 
-슬래시 명령 `/toggle`을 쓰거나, 제목을 요약으로 쓰려면 `/toggle heading 1`을 씁니다. 삼각형 표시를 클릭하거나 `Cmd+Enter`로 열고 닫습니다. 마크다운에서는 토글이 HTML `<details>` / `<summary>` 문법을 씁니다.
+슬래시 명령 `/toggle`을 쓰거나, 제목을 요약으로 쓰려면 `/toggle heading 1`을 씁니다. 화살표 표시를 클릭하거나 `Cmd+Enter`로 열고 닫습니다. 마크다운에서는 토글이 HTML `<details>` / `<summary>` 문법을 씁니다.
 
 ## Mermaid 다이어그램은 어떻게 넣나요?
 
