@@ -10,17 +10,20 @@ deserializes it on every test run and fails if its shape stops looking like the
 live registry — including a missing `trust`, since an entry without one
 describes a plugin the app refuses to install.
 
-**Installing from the seed does not work right now, and not because of the
-seed.** The seed names the **next** release (`baram-word-count` 2.1.0) with a
-`checksum` of **64 zeros**, so an install attempt fails on the missing ZIP until
-that release ships. Older published ZIPs are no help either: §260's tier model
-requires every manifest to declare `trust`, and everything published before it —
-`baram-word-count` 1.0.0/1.0.1, `baram-ai-summary` 1.0.0 — has a manifest that
-predates the field, so `validateManifest` rejects the download whatever the
-index says about it. Until that release ships, use
-the seed to exercise the marketplace **UI** — listing, capability and tier
-badges, the legacy state, refresh — and dev-load from source
-(**Settings → Plugins → Developer**) to exercise a plugin actually running.
+**The seed's entries match the live registry's, and installing from a local
+copy of it still fails — by design.** Each entry carries the version and
+checksum the live `index.json` carries, and its `downloadUrl` points at the
+live registry. The app
+downloads archives only from under the registry it fetched the index from
+(`registry_base` / `is_within_registry` in
+`src-tauri/src/plugin/origin.rs`), so an app pointed at a local server (see
+[Local testing](/en/docs/plugin-dev/registry-loading-and-testing/#local-testing))
+lists those entries and refuses to install them. Use the seed to exercise the
+marketplace **UI** — listing, capability and tier badges, the legacy state,
+refresh — and dev-load from source (**Settings → Plugins → Developer**) to
+exercise a plugin actually running. To exercise the install path itself, serve
+the ZIPs next to your copy of the index and rewrite each `downloadUrl` to that
+server.
 
 Two further things the seed is **not**:
 
@@ -28,7 +31,7 @@ Two further things the seed is **not**:
   (the live file is written by `update-registry-index.mjs`), and it holds only
   entries worth publishing — `baram-ai-summary` is absent because it is not
   published.
-- The placeholder checksum is **not** filled in automatically. The release
+- A checksum is **not** filled in automatically. The release
   workflow clones `sayinel/baram-plugins` and updates only _that_ repo's
   `index.json`; nothing writes back here. After publishing a version, a
   maintainer copies the workflow's `sha256sum` output into this file by hand.
@@ -64,7 +67,7 @@ Two further things the seed is **not**:
   "version": "1.0.0",
   "author": "Your Name",
   "license": "MIT",
-  "downloadUrl": "https://github.com/user/my-word-count/releases/download/v1.0.0/my-word-count-1.0.0.zip",
+  "downloadUrl": "https://sayinel.github.io/baram-plugins/plugins/my-word-count-1.0.0.zip",
   "checksum": "sha256-hash-of-zip",
   "capabilities": ["editor:readonly", "events", "statusbar"],
   "trust": "sandboxed",
@@ -72,3 +75,11 @@ Two further things the seed is **not**:
   "engines": { "baram": ">=0.5.0" }
 }
 ```
+
+`downloadUrl` has to sit under the registry's own base URL: the app downloads
+archives only from under the registry it fetched the index from and refuses
+any other host (`registry_base` / `is_within_registry` in
+`src-tauri/src/plugin/origin.rs`). That is why the example points into
+`sayinel.github.io/baram-plugins/plugins/` rather than at the GitHub Release
+from step 4 — an entry naming the Release URL directly is listed and then
+fails to install.

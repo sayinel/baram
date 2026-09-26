@@ -406,8 +406,9 @@ function createEditorAPI(readonly: boolean): EditorAPI {
    * behaviour change, and the benign-looking defaults were the dangerous part: a plugin that
    * cannot tell "no editor" from "empty file" reads `""`, transforms it, writes it back, and has
    * emptied the document. The sandboxed tier made the same call in Phase 4b. The blast radius is
-   * plugin authors only — `plugin-release.yml` refuses to publish a non-sandboxed plugin, so no
-   * trusted plugin is installable from the registry.
+   * every trusted plugin granted an editor capability, registry installs included — the registry
+   * now carries a trusted tier (`bullet-threading`, which requests no editor capability and so
+   * is not itself affected).
    */
   const live = (method: string): PluginEditorHandle => {
     // Surface FIRST, exactly as the sandboxed tier orders it: an editor instance stays mounted in

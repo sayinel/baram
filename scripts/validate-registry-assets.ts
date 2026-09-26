@@ -206,9 +206,9 @@ function resolveInRegistry(
     //
     // It is also a policy statement worth making explicit: `plugin-release.yml` publishes
     // every archive into the registry's own Pages, so an off-registry URL today means a
-    // hand-edited entry. ‼️And it is enforced ONLY here — the app's `validate_http_url`
-    // checks the SCHEME and accepts any host — so this refusal is currently the only thing
-    // anywhere that says where a plugin may come from.
+    // hand-edited entry. The app enforces the same rule at install (`registry_base` /
+    // `is_within_registry` in `src-tauri/src/plugin/origin.rs`), so an off-registry entry
+    // would be listed and then refused on every machine; this refusal keeps it unpublished.
     return {
       error:
         `${field} ${label(JSON.stringify(url))} is not under ${baseUrl} — ` +

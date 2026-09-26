@@ -107,6 +107,9 @@ the app to pick up a new `registry/index.json`. The **Retry** button shown
 when the fetch errored does the same thing. The cache lives in memory only,
 so restarting the app also forces a fresh fetch if needed.
 `registry/index.json` is the canonical
-example of a valid `RegistryIndex`: it lists `baram-word-count` with every
-required field — including `trust` — populated from its real manifest. Note that
-**installing** from it is not possible until 2.1.0 is published; see below.
+example of a valid `RegistryIndex`: it lists `baram-word-count` and
+`baram-bullet-threading` with every required field — including `trust` —
+populated from their real manifests. Their `downloadUrl`s point at the live
+registry, so an app pointed at a local copy lists them but refuses to install
+them — see
+[The committed seed](/en/docs/plugin-dev/publishing/#the-committed-seed).

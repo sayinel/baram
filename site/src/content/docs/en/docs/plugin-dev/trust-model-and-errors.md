@@ -5,13 +5,19 @@ title: "Trust model, security, and errors"
 ## Trust model & security
 
 Read this before installing a plugin you didn't write, and before writing a
-plugin others will install. **Capabilities are install-time-approved intent
-declarations plus API gating — they are not a hard sandbox.** Only the
-Shadow-DOM boundary (see above) provides real isolation, and it isolates CSS
-only, not JavaScript. Plugins execute in the same JS context as the editor;
-a plugin with `editor` or `files` capability can, in principle, do anything
-that capability's API surface allows, and a malicious or buggy plugin can
-still misbehave within its granted APIs.
+plugin others will install. **What a capability means depends on the tier.**
+A `sandboxed` plugin runs in its own webview. Every call it makes leaves that
+webview through Rust, which stamps the plugin's identity from the window
+label, and is checked against the capabilities the user approved — by the
+Rust broker for files, network and storage, and by the host for the editor,
+AI, settings and UI. There the list is a real boundary: the plugin can do only
+what those capabilities' APIs allow. A `trusted` plugin runs in the same JavaScript
+context as the editor: the capability list gates its `ExtensionContext`, but
+the plugin can reach around it, so the list describes intent rather than
+limiting anything. The Shadow-DOM boundary
+([Context: UI and Shadow-DOM isolation](/en/docs/plugin-dev/context-ui-and-shadow-dom/))
+isolates a trusted plugin's CSS, not its JavaScript. In either tier, a
+malicious or buggy plugin can still misbehave within what it is allowed to do.
 
 **`network` is unrestricted egress by design.** `context.network.fetch()`
 can reach loopback addresses, private/RFC1918 IP ranges, and cloud

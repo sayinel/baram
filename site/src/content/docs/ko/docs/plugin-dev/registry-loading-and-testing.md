@@ -1,6 +1,6 @@
 ---
 title: "레지스트리 불러오기와 로컬 시험"
-sourceHash: "1a1f155c6862"
+sourceHash: "771bf5cd9e68"
 ---
 
 ## Baram이 레지스트리를 불러오는 방식
@@ -86,5 +86,6 @@ Tiptap 확장을 기여하는 플러그인은 메인 렐름에서 돌고 따라�
 새 `registry/index.json`을 반영하려고 앱을 재시작할 필요가 없습니다. 가져오기가 실패했을 때 나오는
 **다시 시도** 버튼도 같은 일을 합니다. 캐시는 메모리에만 있으므로, 필요하면 앱을 재시작해도 새로
 가져옵니다. `registry/index.json`은 유효한 `RegistryIndex`의 기준 예시입니다 —
-`baram-word-count`를 실제 매니페스트에서 채운 모든 필수 필드와 함께(`trust` 포함) 나열합니다.
-다만 2.1.0이 배포될 때까지 그것에서 **설치**하는 것은 불가능합니다 — 아래를 보십시오.
+`baram-word-count`와 `baram-bullet-threading`을 실제 매니페스트에서 채운 모든 필수 필드와 함께(`trust`
+포함) 나열합니다. 두 항목의 `downloadUrl`은 라이브 레지스트리를 가리키므로, 로컬 사본을 가리키는 앱은
+목록에는 띄우되 설치는 거부합니다 — [커밋된 시드](/ko/docs/plugin-dev/publishing/#커밋된-시드)를 보십시오.
