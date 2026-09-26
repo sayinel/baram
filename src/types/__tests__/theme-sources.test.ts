@@ -7,7 +7,7 @@ import { themeActions } from "../theme-sources";
 
 const TABLE: Record<ThemeSource, string[]> = {
   builtin: ["apply", "duplicate"],
-  community: ["apply", "duplicate", "update", "remove", "consentHistory"],
+  registry: ["apply", "duplicate", "update", "remove", "consentHistory"],
   custom: ["apply", "duplicate", "export", "remove"],
   dev: ["apply", "export", "remove", "reload"],
 };
@@ -25,7 +25,7 @@ describe("themeActions", () => {
   }
 
   it("네 출처를 모두 다룬다", () => {
-    const sources: ThemeSource[] = ["builtin", "community", "custom", "dev"];
+    const sources: ThemeSource[] = ["builtin", "registry", "custom", "dev"];
     expect(Object.keys(TABLE).sort()).toEqual([...sources].sort());
   });
 });

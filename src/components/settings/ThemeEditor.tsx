@@ -66,7 +66,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
   //
   // §361 — `installedThemes` is in this lookup so "Customize" duplicates a COMMUNITY
   // theme's actual colours when one is active, rather than silently falling back to
-  // Default Light (`themeActions("community").duplicate` says this path applies to it too).
+  // Default Light (`themeActions("registry").duplicate` says this path applies to it too).
   const resolvedTheme = useMemo(
     () =>
       activeThemeId === "system"
@@ -198,7 +198,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
   const handleSave = useCallback(() => {
     // From here the settings effect owns the DOM: these colours are a real theme.
     savedRef.current = true;
-    // ‼️ 부정(`!builtIn`)이 아니라 명시 비교다. 새 모델에는 community·dev도
+    // ‼️ 부정(`!builtIn`)이 아니라 명시 비교다. 새 모델에는 registry·dev도
     // 있고, 그것들을 "내 테마"로 취급하면 편집이 설치본을 덮어쓴다.
     const isCustom = sourceTheme.source === "custom";
     const themeId = isCustom ? sourceTheme.id : `custom-${Date.now()}`;

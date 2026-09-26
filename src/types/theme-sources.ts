@@ -24,8 +24,14 @@ export interface ThemeActionSet {
   update: boolean;
 }
 
-/** `custom`은 플러그인에 대응물이 없다 — 앱 안에서 사용자가 만든 테마다. */
-export type ThemeSource = "builtin" | "community" | "custom" | "dev";
+/**
+ * `custom`은 플러그인에 대응물이 없다 — 앱 안에서 사용자가 만든 테마다.
+ *
+ * §382 — `registry` 는 레지스트리에서 설치한 테마다. `community` 였던 이름을 플러그인
+ * 출처(`PluginSource`)와 함께 바꿨다: 커뮤니티는 이제 채널의 이름이고, 커뮤니티 테마를
+ * 열 때 같은 채널 규칙을 적용한다(스펙 0058 §9.4).
+ */
+export type ThemeSource = "builtin" | "custom" | "dev" | "registry";
 
 const NONE: ThemeActionSet = {
   apply: false,
@@ -40,7 +46,7 @@ const NONE: ThemeActionSet = {
 const BY_SOURCE: Record<ThemeSource, ThemeActionSet> = {
   // 내장은 지울 수도 갱신할 수도 없다 — 바이너리에 동봉되어 있다.
   builtin: { ...NONE, apply: true, duplicate: true },
-  community: {
+  registry: {
     ...NONE,
     apply: true,
     consentHistory: true,

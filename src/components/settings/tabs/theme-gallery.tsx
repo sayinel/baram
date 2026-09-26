@@ -43,7 +43,7 @@ import { useThemeUpdates } from "./use-theme-updates";
  */
 const GROUP_LABEL_KEYS: Record<ThemeSource, string> = {
   builtin: "settings.appearance.groupBuiltin",
-  community: "settings.appearance.groupInstalled",
+  registry: "settings.appearance.groupInstalled",
   custom: "settings.appearance.groupCustom",
   dev: "settings.appearance.groupDev",
 };
@@ -69,7 +69,7 @@ export function ThemeGallery({
         setActiveTheme: s.setActiveTheme,
       })),
     );
-  // §361 — owns the source-based branch (custom → deleteCustomTheme, community →
+  // §361 — owns the source-based branch (custom → deleteCustomTheme, registry →
   // uninstall + removeInstalledTheme) so this component only ever calls `removeTheme`.
   // 이름이 `themeActions` 가 아닌 것은 아래가 부르는 `theme-sources.ts` 의 `themeActions(source)` 를
   // 가리지 않기 위해서다.
@@ -119,12 +119,12 @@ export function ThemeGallery({
         const rows = allThemes.filter((theme) => theme.source === source);
         // 빈 제목만 남기지 않는다.
         //
-        // ‼️ `community`는 설치한 테마가 없으면 비고, `dev`는 **언제나** 빈다 — "대개"가
+        // ‼️ `registry`는 설치한 테마가 없으면 비고, `dev`는 **언제나** 빈다 — "대개"가
         // 아니다(앞 판의 이 주석이 그렇게 적었다). `src/` 안에서 `ThemeDef.source`에
         // `"dev"`를 넣는 자리가 없기 때문이다(`__tests__` 제외 전수 스캔, 0091 Task 4).
         //
         // ‼️ 세 출처가 내는 값의 근거는 서로 다르다 — `BUILT_IN_THEMES`의 리터럴과
-        // `installedThemeToDef`가 박아 넣는 `"community"`는 **구조적**이지만,
+        // `installedThemeToDef`가 박아 넣는 `"registry"`는 **구조적**이지만,
         // `customThemes`는 `config.json`에서 되살아나는 `ThemeDef[]`라 타입이 아니라
         // **그 세 writer**(`ThemeEditor`·`useThemeImport`·스토어 마이그레이션)가 `custom`을
         // 쓴다는 사실이 값을 정한다. 손으로 고친 `config.json`은 이 코드베이스가 실제로
@@ -156,7 +156,7 @@ export function ThemeGallery({
                 installedThemes,
                 revocations,
               );
-              // themeActions(source).consentHistory 는 community 만 true 다. 설치 기록은
+              // themeActions(source).consentHistory 는 registry 만 true 다. 설치 기록은
               // 그래서 그 출처에서만 읽는다 — id 로만 찾으면 예전 빌드가 남긴 예약 id
               // 기록(`themeRevocationFor` 의 주석)이 같은 이름의 내장 카드에 작성자·설명을
               // 붙인다. 기록이 없으면(이론상 스토어 불일치) 정보 버튼도 설치 정보도 없다.
@@ -182,7 +182,7 @@ export function ThemeGallery({
                   }
                   onSelect={setActiveTheme}
                   onUpdate={
-                    // themeActions(source).update is community-only, and an entry only
+                    // themeActions(source).update is registry-only, and an entry only
                     // exists here when the registry lists a different version — so the
                     // button appears exactly when there is something to install.
                     index !== null &&
