@@ -20,11 +20,12 @@
 //   flex-header           base.css:103    ) base.css, used across the app
 //   text-truncate         base.css:110    )
 //   icon-inline           base.css:140    9 files besides PluginConsentDialog.tsx
-//   plugin-revoked__note  plugins.css:478 PluginMarketplace.tsx:292,310,319,324 — its OWN
-//                                         staleness notices plus §10.2's theme pointer,
-//                                         all in the light DOM
+//   plugin-revoked__note  plugins.css:478 PluginMarketplace.tsx:292,310,319,324,356 — its OWN
+//                                         staleness notices, §10.2's theme pointer, and
+//                                         §382's community-registry-failure notice, all in
+//                                         the light DOM
 //
-// The last one is the concrete payoff: a move would have unstyled four paragraphs of
+// The last one is the concrete payoff: a move would have unstyled five paragraphs of
 // the marketplace with nothing to catch it.
 //
 // ‼️ THOSE FOUR POSITIONS WENT STALE INSIDE ONE COMMIT (0090 re-review, R3). They read

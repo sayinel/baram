@@ -146,8 +146,10 @@ export function PluginDetailTab({ pluginId }: { pluginId: string }) {
       // The store's URL, not the default constant — it is the one `fetchRegistryIndex` read.
       // §382 — a community entry's README came from `community.json`, not `index.json`, but
       // the check this URL feeds (`is_within_registry`, `origin.rs`) tests only the origin
-      // and the index's DIRECTORY, which the two files share — so passing the index URL
-      // checks the same directory the README actually came from either way.
+      // and the index's DIRECTORY, which the two files share by construction
+      // (`communityUrlFor` builds `community.json`'s URL relative to the registry URL,
+      // beside `index.json`) — so passing the index URL checks the same directory the
+      // README actually came from either way.
       const registryUrl = usePluginStore.getState().registryUrl;
       pluginFetchReadme(registryUrl, listedReadmeUrl).then(
         settle,
