@@ -19,6 +19,20 @@ export interface CommandsAPI {
     execute(id: string, ...args: unknown[]): Promise<unknown>;
     register(id: string, handler: (...args: unknown[]) => unknown, opts?: CommandRegisterOptions): Disposable;
 }
+/**
+ * §382 — `community.json` as Rust hands it over: the community list, beside `index.json`
+ * (spec 0058 contract C1). A 404 arrives as an empty list.
+ *
+ * ‼️ The top-level key is `communityPlugins`, never `plugins`: every tagged release with a
+ * registry parser (v0.3.0–v0.7.4 when this was written) requires `plugins`, so no build
+ * before §382 reads this file as an index (spec 0058 G7). `droppedCount` is Rust's, as on
+ * `RegistryIndex`.
+ */
+export interface CommunityRegistryIndex {
+    communityPlugins: RegistryEntry[];
+    droppedCount?: number;
+    updatedAt?: string;
+}
 export interface Disposable {
     dispose(): void;
 }

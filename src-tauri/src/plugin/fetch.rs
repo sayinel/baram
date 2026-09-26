@@ -13,7 +13,7 @@ use super::origin::{
     error_chain, is_within_registry, redirect_within_registry, registry_base, shown,
     validate_http_url, verify_revocation_signature,
 };
-use super::registry::RegistryIndex;
+use super::registry::{CommunityRegistryIndex, RegistryIndex};
 use super::PluginError;
 use super::{FIRST_PARTY_REVOCATION_PREFIX, MAX_REVOCATION_BYTES, REVOCATION_PUBLIC_KEY};
 
@@ -25,7 +25,7 @@ use super::{FIRST_PARTY_REVOCATION_PREFIX, MAX_REVOCATION_BYTES, REVOCATION_PUBL
 /// other. `registry-readme-cap.test.ts` reads both declarations and fails if they part.
 const MAX_README_BYTES: usize = 256 * 1024;
 
-/// Largest registry index we will read.
+/// Largest registry document — `index.json` or `community.json` — we will read.
 ///
 /// Four times the revocation cap, because this file grows with the registry itself:
 /// Obsidian's community index is roughly 2,000 entries and about 1 MB, and an index that
@@ -45,31 +45,65 @@ const MAX_REGISTRY_BYTES: usize = 4 * 1024 * 1024;
 /// trusted-tier plugin shares the realm that writes it. The guards therefore do not
 /// depend on where the string came from.
 pub async fn fetch_registry(url: &str) -> Result<RegistryIndex, PluginError> {
+    // A missing index is a broken registry, unlike a missing `community.json`. The message is
+    // the one this function produced before the two shared a fetch.
+    let body = fetch_registry_document(url, "registry")
+        .await?
+        .ok_or_else(|| {
+            PluginError::Refused(format!(
+                "registry returned HTTP {}",
+                reqwest::StatusCode::NOT_FOUND
+            ))
+        })?;
+    Ok(serde_json::from_slice(&body)?)
+}
+
+/// §382 — the community list, `community.json`, beside the index.
+///
+/// The same guards as `fetch_registry` — they share `fetch_registry_document` — and one
+/// difference: **HTTP 404 is an empty list, not an error.** A registry that has not published
+/// the file yet (before the empty seed deploys, or while Pages lags) has no community
+/// plugins; it is not broken, and it must not put an error on the Browse tab. Every other
+/// failure is still an error, and the frontend keeps the first-party list either way
+/// (`fetchRegistryIndex`).
+pub async fn fetch_community_registry(url: &str) -> Result<CommunityRegistryIndex, PluginError> {
+    match fetch_registry_document(url, "community registry").await? {
+        Some(body) => Ok(serde_json::from_slice(&body)?),
+        None => Ok(CommunityRegistryIndex::default()),
+    }
+}
+
+/// One registry document behind the guards both registry files share: scheme, a 15 s
+/// timeout, a streamed `MAX_REGISTRY_BYTES` cap. `None` is HTTP 404 — each caller decides
+/// whether a missing document is an error. `what` names the document in a refusal.
+async fn fetch_registry_document(url: &str, what: &str) -> Result<Option<Vec<u8>>, PluginError> {
     let parsed = validate_http_url(url).map_err(PluginError::Refused)?;
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(15))
         .build()?;
     let mut response = client.get(parsed).send().await?;
     let status = response.status();
+    if status == reqwest::StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
     if !status.is_success() {
         // `Refused`, not `InvalidManifest`. A 404 reached the user as "Invalid manifest:
         // Registry returned HTTP 404" — blaming a document that had not been downloaded,
         // which is the exact miscue `Refused` was added to remove (§69 code review).
         return Err(PluginError::Refused(format!(
-            "registry returned HTTP {status}"
+            "{what} returned HTTP {status}"
         )));
     }
     let mut buf: Vec<u8> = Vec::new();
     while let Some(chunk) = response.chunk().await? {
         if buf.len() + chunk.len() > MAX_REGISTRY_BYTES {
             return Err(PluginError::Refused(format!(
-                "registry index too large: exceeds {MAX_REGISTRY_BYTES} byte limit"
+                "{what} index too large: exceeds {MAX_REGISTRY_BYTES} byte limit"
             )));
         }
         buf.extend_from_slice(&chunk);
     }
-    let index: RegistryIndex = serde_json::from_slice(&buf)?;
-    Ok(index)
+    Ok(Some(buf))
 }
 
 /// Fetch a listing's README, so the marketplace can show it BEFORE anything is installed.
@@ -1040,5 +1074,76 @@ mod tests {
         // count at one. This assertion and the literal in `revocation-signature-verify.test.ts`
         // make that respelling a visible contradiction rather than a silent drift.
         assert_eq!(MAX_REGISTRY_BYTES, 4 * 1024 * 1024);
+    }
+
+    #[tokio::test]
+    async fn fetch_community_registry_reads_a_404_as_an_empty_list() {
+        // ‼️ The one place the two registry files differ. `index.json` 404ing is a broken
+        // registry (`fetch_registry_refuses_a_non_success_status` pins that it still errors);
+        // `community.json` 404ing is a registry that has not published one yet — before the
+        // seed deploys, or while Pages lags — and it must not put an error on the Browse tab.
+        let url = serve_once("404 Not Found", b"nope".to_vec());
+        let index = fetch_community_registry(&url)
+            .await
+            .expect("a 404 is an empty community list");
+        assert!(index.community_plugins.is_empty());
+        assert_eq!(index.dropped_count, 0);
+    }
+
+    #[tokio::test]
+    async fn fetch_community_registry_still_refuses_any_other_failure() {
+        let url = serve_once("500 Internal Server Error", b"down".to_vec());
+        let err = fetch_community_registry(&url)
+            .await
+            .expect_err("a 500 is not an empty list");
+        assert!(
+            err.to_string()
+                .contains("community registry returned HTTP 500"),
+            "{err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn fetch_community_registry_refuses_a_body_over_its_cap() {
+        let url = serve_once("200 OK", vec![b' '; MAX_REGISTRY_BYTES + 1]);
+        let err = fetch_community_registry(&url)
+            .await
+            .expect_err("over the cap");
+        assert!(
+            err.to_string()
+                .contains("community registry index too large"),
+            "{err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn fetch_community_registry_reads_the_community_key() {
+        let body = serde_json::json!({
+            "communityPlugins": [{
+                "id": "hello-counter",
+                "name": "Hello Counter",
+                "description": "Counts things",
+                "version": "1.2.0",
+                "author": "Octo Cat",
+                "license": "MIT",
+                "downloadUrl": "https://sayinel.github.io/baram-plugins/plugins/hello-counter-1.2.0.zip",
+                "checksum": "b".repeat(64),
+                "capabilities": ["events"],
+                "trust": "sandboxed",
+                "engines": { "baram": ">=0.8.0" },
+                "publisher": "octocat",
+                "publisherId": 583231,
+                "repoId": 1296269,
+                "repository": "https://github.com/octocat/baram-hello-counter"
+            }],
+            "updatedAt": "2026-09-24"
+        });
+        let url = serve_once("200 OK", body.to_string().into_bytes());
+        let index = fetch_community_registry(&url)
+            .await
+            .expect("a well-formed community list");
+        assert_eq!(index.community_plugins.len(), 1);
+        assert_eq!(index.community_plugins[0].publisher_id, Some(583231));
+        assert_eq!(index.updated_at.as_deref(), Some("2026-09-24"));
     }
 }

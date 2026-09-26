@@ -4,6 +4,7 @@ import type { Channel } from "@tauri-apps/api/core";
 
 import type { PluginOp } from "../plugins/sandbox/plugin-op";
 import type {
+  CommunityRegistryIndex,
   InstalledPlugin,
   PluginConsent,
   PluginFetchInit,
@@ -90,6 +91,19 @@ export async function pluginCall(op: PluginOp): Promise<unknown> {
 
 export async function pluginFetchRegistry(url: string): Promise<RegistryIndex> {
   return invoke<RegistryIndex>("plugin_fetch_registry", { url });
+}
+
+/**
+ * §382 — `community.json`, the community list beside the index. A 404 arrives as an EMPTY
+ * list, not an error: Rust decides that, since it is the side that sees the status. The URL
+ * is `communityUrlFor(registryUrl)`, never a setting of its own.
+ */
+export async function pluginFetchCommunityRegistry(
+  url: string,
+): Promise<CommunityRegistryIndex> {
+  return invoke<CommunityRegistryIndex>("plugin_fetch_community_registry", {
+    url,
+  });
 }
 
 /**

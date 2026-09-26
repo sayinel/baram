@@ -100,6 +100,18 @@ pub async fn plugin_fetch_registry(url: String) -> Result<plugin::RegistryIndex,
         .map_err(|e| e.to_string())
 }
 
+/// §382 — `community.json`, the community list beside the index. A 404 arrives as an empty
+/// list (`plugin::fetch_community_registry`). The frontend resolves `url` beside the registry
+/// URL, the way it resolves `revoked.json`.
+#[tauri::command]
+pub async fn plugin_fetch_community_registry(
+    url: String,
+) -> Result<plugin::CommunityRegistryIndex, String> {
+    plugin::fetch_community_registry(&url)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// §69 — the revocation list's raw JSON text, plus whether its signature was checked.
 ///
 /// Parsing and the drop-bad-entries rule stay on the TS side; see `plugin::fetch_revocations`.

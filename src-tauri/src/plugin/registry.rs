@@ -245,47 +245,137 @@ impl<'de> Deserialize<'de> for RegistryIndex {
         D: serde::Deserializer<'de>,
     {
         let raw = RawRegistryIndex::deserialize(deserializer)?;
-        let total = raw.plugins.len();
-        // NOT `with_capacity(total)`: `RegistryEntry` is ~368 bytes, so a 4 MiB document of
-        // millions of junk elements would reserve hundreds of MiB for entries that will
-        // never be kept. Growing on demand costs a few reallocations for a real index.
-        let mut kept: Vec<RegistryEntry> = Vec::new();
-        let mut named = 0usize;
-        for value in raw.plugins {
-            // Captured before the move, so the warning can name the offender.
-            let label = value
-                .get("id")
-                .and_then(serde_json::Value::as_str)
-                .map(str::to_owned);
-            match serde_json::from_value::<RegistryEntry>(value) {
-                Ok(entry) => kept.push(entry),
-                Err(err) => {
-                    if named < MAX_NAMED_DROPS {
-                        named += 1;
-                        log::warn!(
-                            "[registry] dropping unreadable index entry {}: {err}",
-                            label.as_deref().unwrap_or("<no id>")
-                        );
-                    }
+        let (plugins, dropped_count) = tolerant_entries::<RegistryEntry, D::Error>(raw.plugins)?;
+        Ok(RegistryIndex {
+            dropped_count,
+            plugins,
+            updated_at: raw.updated_at,
+        })
+    }
+}
+
+/// Deserialize each element on its own: keep what reads, name the first few that do not, and
+/// refuse a non-empty array from which NOTHING survives — the rule `RegistryIndex`'s doc
+/// comment argues for. §382 shares it with `CommunityRegistryIndex`, so the two registry
+/// files cannot come to read partial damage differently. Returns the survivors and how many
+/// were dropped.
+fn tolerant_entries<T, E>(values: Vec<serde_json::Value>) -> Result<(Vec<T>, usize), E>
+where
+    T: serde::de::DeserializeOwned,
+    E: serde::de::Error,
+{
+    let total = values.len();
+    // NOT `with_capacity(total)`: `RegistryEntry` is ~368 bytes, so a 4 MiB document of
+    // millions of junk elements would reserve hundreds of MiB for entries that will
+    // never be kept. Growing on demand costs a few reallocations for a real index.
+    let mut kept: Vec<T> = Vec::new();
+    let mut named = 0usize;
+    for value in values {
+        // Captured before the move, so the warning can name the offender.
+        let label = value
+            .get("id")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned);
+        match serde_json::from_value::<T>(value) {
+            Ok(entry) => kept.push(entry),
+            Err(err) => {
+                if named < MAX_NAMED_DROPS {
+                    named += 1;
+                    log::warn!(
+                        "[registry] dropping unreadable index entry {}: {err}",
+                        label.as_deref().unwrap_or("<no id>")
+                    );
                 }
             }
         }
-        let dropped = total - kept.len();
-        if dropped > named {
-            log::warn!(
-                "[registry] {} further unreadable entries were not named",
-                dropped - named
-            );
-        }
-        if total > 0 && kept.is_empty() {
-            return Err(serde::de::Error::custom(format!(
-                "every one of the {total} entries in this index was unreadable — treating \
-                 it as a broken document rather than an empty registry"
-            )));
-        }
-        Ok(RegistryIndex {
-            dropped_count: total - kept.len(),
-            plugins: kept,
+    }
+    let dropped = total - kept.len();
+    if dropped > named {
+        log::warn!(
+            "[registry] {} further unreadable entries were not named",
+            dropped - named
+        );
+    }
+    if total > 0 && kept.is_empty() {
+        return Err(E::custom(format!(
+            "every one of the {total} entries in this index was unreadable — treating \
+             it as a broken document rather than an empty registry"
+        )));
+    }
+    Ok((kept, dropped))
+}
+
+/// §382 — one entry of `community.json`: every `RegistryEntry` field, plus who published it
+/// (spec 0058 contract C1).
+///
+/// A struct of its own rather than three more fields on `RegistryEntry`, so an entry of the
+/// FIRST-PARTY index has no way to carry a publisher through this pipe. The channel is the
+/// file an entry came from (spec 0058 §9.1); a publisher on a first-party entry would be a
+/// second answer, and a contradicting one.
+///
+/// All three are `Option` and Rust decides nothing with them — the pipe argument `trust`
+/// makes above. The frontend drops an entry that lacks one (`applyCommunityRules`); refusing
+/// it here would only move that drop to where nothing reports it. Serialized FLAT, because
+/// the frontend reads one object per entry.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommunityRegistryEntry {
+    #[serde(flatten)]
+    pub entry: RegistryEntry,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub publisher: Option<String>,
+    #[serde(
+        default,
+        rename = "publisherId",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub publisher_id: Option<u64>,
+    #[serde(default, rename = "repoId", skip_serializing_if = "Option::is_none")]
+    pub repo_id: Option<u64>,
+}
+
+/// §382 — `community.json`, the community list beside `index.json`.
+///
+/// ‼️ ITS KEY IS `communityPlugins`, NOT `plugins`, and that is G7 (spec 0058 §4, §8.4):
+/// every tagged release that has a registry parser — v0.3.0 through v0.7.4 when this was
+/// written (`git show <tag>:…/registry.rs` or `…/mod.rs`; v0.1.0 and v0.2.0 have none) —
+/// declares `plugins` with no `#[serde(default)]`, so those builds refuse this file even
+/// when someone points their registry URL at it. They install without a tier, a floor or a
+/// sandbox; not being able to read the file is the only protection they get.
+///
+/// The same per-entry tolerance and total-loss error as `RegistryIndex` (`tolerant_entries`).
+/// `Default` is the empty list `fetch_community_registry` answers a 404 with.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct CommunityRegistryIndex {
+    #[serde(rename = "communityPlugins")]
+    pub community_plugins: Vec<CommunityRegistryEntry>,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: Option<String>,
+    /// Produced here, never read off the wire — the `RegistryIndex::dropped_count` rule.
+    #[serde(rename = "droppedCount")]
+    pub dropped_count: usize,
+}
+
+/// The community wire shape. No `#[serde(default)]` on the list, for `RawRegistryIndex`'s
+/// reason: a document without it is not a community list.
+#[derive(Deserialize)]
+struct RawCommunityRegistryIndex {
+    #[serde(rename = "communityPlugins")]
+    community_plugins: Vec<serde_json::Value>,
+    #[serde(default, rename = "updatedAt")]
+    updated_at: Option<String>,
+}
+
+impl<'de> Deserialize<'de> for CommunityRegistryIndex {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = RawCommunityRegistryIndex::deserialize(deserializer)?;
+        let (community_plugins, dropped_count) =
+            tolerant_entries::<CommunityRegistryEntry, D::Error>(raw.community_plugins)?;
+        Ok(CommunityRegistryIndex {
+            community_plugins,
+            dropped_count,
             updated_at: raw.updated_at,
         })
     }
@@ -810,5 +900,175 @@ mod tests {
     fn registry_index_without_plugins_array_is_an_error() {
         let err = serde_json::from_str::<RegistryIndex>(r#"{"updatedAt":"2026-01-01"}"#);
         assert!(err.is_err());
+    }
+
+    /// One `community.json` entry in the exact shape of spec 0058 contract C1: every
+    /// `RegistryEntry` field plus the three publisher fields and `repository`.
+    ///
+    /// ‼️ No id containing `junk-`, and never more than `MAX_NAMED_DROPS` drops per document:
+    /// `the_number_of_named_registry_drops_is_bounded` counts log records matching `junk-` or
+    /// `further unreadable` from a process-global capture, so a community test that produced
+    /// either would move that bound.
+    fn community_entry_json(id: &str) -> serde_json::Value {
+        serde_json::json!({
+            "id": id,
+            "name": "Hello Counter",
+            "description": "Counts things",
+            "version": "1.2.0",
+            "author": "Octo Cat",
+            "license": "MIT",
+            "downloadUrl": format!("https://sayinel.github.io/baram-plugins/plugins/{id}-1.2.0.zip"),
+            "checksum": "b".repeat(64),
+            "capabilities": ["events"],
+            "trust": "sandboxed",
+            "engines": { "baram": ">=0.8.0" },
+            "publisher": "octocat",
+            "publisherId": 583231,
+            "repoId": 1296269,
+            "repository": "https://github.com/octocat/baram-hello-counter"
+        })
+    }
+
+    /// THE DEFECT THIS WOULD BE: `trust`, `kind` and `readme` each shipped once as a field this
+    /// pipe did not name, so the frontend never saw it. Here there are two ways to lose one —
+    /// a publisher field that is not a field, or a FLATTENED `RegistryEntry` field that does
+    /// not come back out — and only the serialized form shows either.
+    #[test]
+    fn community_entry_carries_the_publisher_and_every_entry_field_back_out() {
+        let mut json = community_entry_json("hello-counter");
+        let object = json.as_object_mut().unwrap();
+        object.insert("kind".into(), serde_json::json!("plugin"));
+        object.insert(
+            "readme".into(),
+            serde_json::json!(
+                "https://sayinel.github.io/baram-plugins/readme/hello-counter-1.2.0.md"
+            ),
+        );
+        let entry: CommunityRegistryEntry = serde_json::from_value(json).unwrap();
+        let back = serde_json::to_value(&entry).unwrap();
+
+        assert_eq!(back["publisher"], "octocat");
+        assert_eq!(back["publisherId"], 583231);
+        assert_eq!(back["repoId"], 1296269);
+        assert_eq!(back["id"], "hello-counter");
+        assert_eq!(
+            back["downloadUrl"],
+            "https://sayinel.github.io/baram-plugins/plugins/hello-counter-1.2.0.zip"
+        );
+        assert_eq!(back["trust"], "sandboxed");
+        assert_eq!(back["kind"], "plugin");
+        assert_eq!(back["engines"]["baram"], ">=0.8.0");
+        assert_eq!(
+            back["repository"],
+            "https://github.com/octocat/baram-hello-counter"
+        );
+        // Flat, not nested: the frontend reads one object per entry.
+        assert!(
+            back.get("entry").is_none(),
+            "flatten must not surface the Rust field name"
+        );
+    }
+
+    /// The three fields are `Option` — Rust decides nothing with them, and the frontend drops
+    /// an entry that lacks one. Their absence must neither prune the entry here nor come back
+    /// as `null`, which TS would read as a present-but-wrong publisher.
+    #[test]
+    fn community_entry_without_publisher_fields_is_kept_and_stays_absent() {
+        let mut json = community_entry_json("anon");
+        for field in ["publisher", "publisherId", "repoId"] {
+            json.as_object_mut().unwrap().remove(field);
+        }
+        let entry: CommunityRegistryEntry = serde_json::from_value(json).unwrap();
+        let back = serde_json::to_value(&entry).unwrap();
+        for field in ["publisher", "publisherId", "repoId"] {
+            assert!(
+                back.get(field).is_none(),
+                "an absent {field} must not be serialized as null"
+            );
+        }
+    }
+
+    /// A wrong-typed field drops the entry — the rule
+    /// `a_wrong_typed_field_drops_the_entry_even_when_optional` pins for `RegistryEntry`, now
+    /// for both halves of the community entry. The flattened half is the one worth asking
+    /// about: flatten deserializes through a buffer, which is where a softer reading would
+    /// hide.
+    #[test]
+    fn a_wrong_typed_field_drops_a_community_entry() {
+        for (field, bad) in [
+            ("publisherId", serde_json::json!("583231")),
+            ("publisherId", serde_json::json!(-1)),
+            ("publisherId", serde_json::json!(1.5)),
+            ("repoId", serde_json::json!("1296269")),
+            ("publisher", serde_json::json!(42)),
+            ("downloads", serde_json::json!("many")),
+            ("license", serde_json::Value::Null),
+        ] {
+            let mut json = community_entry_json("x");
+            json.as_object_mut().unwrap().insert(field.into(), bad);
+            assert!(
+                serde_json::from_value::<CommunityRegistryEntry>(json).is_err(),
+                "a wrong-typed `{field}` must fail to deserialize"
+            );
+        }
+        // The contrast: the untouched fixture reads.
+        assert!(
+            serde_json::from_value::<CommunityRegistryEntry>(community_entry_json("x")).is_ok()
+        );
+    }
+
+    /// G7 from this build's side (spec 0058 §4, §8.4): each parser refuses the other file.
+    /// A first-party parser that accepted `community.json` would read a tier-checked list as
+    /// the index; the key differs so that it cannot.
+    #[test]
+    fn each_registry_parser_refuses_the_other_file() {
+        let community = serde_json::json!({ "communityPlugins": [community_entry_json("c")] });
+        let first_party = serde_json::json!({ "plugins": [entry_json("p")] });
+
+        assert!(serde_json::from_value::<RegistryIndex>(community.clone()).is_err());
+        assert!(serde_json::from_value::<CommunityRegistryIndex>(first_party.clone()).is_err());
+        // …and each reads its own, so the refusals above are about the key, not the entries.
+        assert_eq!(
+            serde_json::from_value::<RegistryIndex>(first_party)
+                .unwrap()
+                .plugins
+                .len(),
+            1
+        );
+        assert_eq!(
+            serde_json::from_value::<CommunityRegistryIndex>(community)
+                .unwrap()
+                .community_plugins
+                .len(),
+            1
+        );
+    }
+
+    /// The per-entry tolerance and the total-loss error, through the same `tolerant_entries`
+    /// the first-party index uses — so the community file cannot drift to a stricter reading,
+    /// or to a silently empty one.
+    #[test]
+    fn community_index_drops_only_the_unreadable_entry_and_counts_it() {
+        let mut broken = community_entry_json("broken");
+        broken.as_object_mut().unwrap().remove("license");
+        let doc = serde_json::json!({ "communityPlugins": [community_entry_json("kept"), broken] });
+
+        let idx: CommunityRegistryIndex = serde_json::from_value(doc).unwrap();
+        let ids: Vec<&str> = idx
+            .community_plugins
+            .iter()
+            .map(|p| p.entry.id.as_str())
+            .collect();
+        assert_eq!(ids, vec!["kept"]);
+        assert_eq!(idx.dropped_count, 1);
+        assert_eq!(serde_json::to_value(&idx).unwrap()["droppedCount"], 1);
+
+        let all_bad = serde_json::json!({ "communityPlugins": [{ "id": "only-an-id" }] });
+        assert!(serde_json::from_value::<CommunityRegistryIndex>(all_bad).is_err());
+
+        let empty: CommunityRegistryIndex =
+            serde_json::from_value(serde_json::json!({ "communityPlugins": [] })).unwrap();
+        assert!(empty.community_plugins.is_empty());
+        assert_eq!(empty.dropped_count, 0);
     }
 }
