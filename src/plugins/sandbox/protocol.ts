@@ -154,3 +154,45 @@ export type SandboxToHost =
   | { callId: string; ok: true; type: "callResult"; value: unknown }
   | { error: string; type: "activateError" }
   | { registered: SandboxRegisteredReport; type: "ready" };
+
+/**
+ * §260 Phase 4a security review (MEDIUM-1) — a string bounded before any work touches it.
+ *
+ * `ui_*` are the first frame types whose payload gets O(n) MAIN-REALM processing (two
+ * regex passes in `host-ui-bridge`, then a Zustand commit). Rust caps a frame at 8 MiB
+ * and allows 150/s, so without a length check here a plugin could aim ~1 GB/s of regex at
+ * the thread this tier exists to protect. The host truncates to 200 (toast) / 64 (status
+ * bar) anyway, so anything past this bound cannot be a real message — it is dropped like
+ * any other malformed frame.
+ */
+export const MAX_UI_TEXT_CHARS = 4096;
+
+/**
+ * §385 — the most bytes one sandbox→host report may carry: Rust's `MAX_SANDBOX_REPORT_BYTES`
+ * (`src-tauri/src/commands/plugin_cmd.rs`). Rust drops a larger report WITHOUT answering it,
+ * so the prompt pre-check (spec 0061 §9) measures against this before sending.
+ * `report-cap-parity.test.ts` reads the Rust declaration and pins the two together.
+ */
+export const MAX_SANDBOX_REPORT_BYTES = 8 * 1024 * 1024;
+
+/**
+ * §385 — the prompt limits (spec 0061 §7). ONE home: the gate (both tiers), the sandbox's
+ * pre-check and the host validator all read these, and the sandbox realm already imports this
+ * module. A second copy is a limit that drifts.
+ */
+export const PROMPT_LIMITS = {
+  /** An item `id` — a comparison key, so over-long is refused, never cut. */
+  idChars: 100,
+  /** Items in one quick pick. */
+  items: 5_000,
+  /** Shown characters of a `label` or `description`; longer is cut with "…". */
+  labelChars: 200,
+  /** Rows drawn at once, as the Quick Switcher does. */
+  rows: 50,
+  /** Any one string before it is cut — the bound on what sanitising costs. */
+  stringChars: MAX_UI_TEXT_CHARS,
+  /** Shown characters of a `title` or `placeholder`. */
+  titleChars: 100,
+  /** An input box's initial `value`, and what the user may type. */
+  valueChars: 1_000,
+} as const;

@@ -372,6 +372,24 @@ export function themeManifestByteCap(rustSource: string): number {
 }
 
 /**
+ * §385 — the byte cap `MAX_SANDBOX_REPORT_BYTES` Rust applies to one sandbox→host report
+ * (`src-tauri/src/commands/plugin_cmd.rs`). The prompt pre-check measures against the TS copy
+ * in `src/plugins/sandbox/protocol.ts`; a copy that drifted HIGHER lets through a frame Rust
+ * drops unanswered — the silent 150 s wait the pre-check exists to prevent.
+ *
+ * Declaration form and product-of-integers parsing, as the caps above. The consumer is
+ * `src/plugins/sandbox/__tests__/report-cap-parity.test.ts`.
+ */
+export function sandboxReportByteCap(rustSource: string): number {
+  const literal = soleDeclaration(
+    rustSource,
+    /MAX_SANDBOX_REPORT_BYTES\s*:\s*usize\s*=\s*([0-9_ *]+);/gu,
+    "MAX_SANDBOX_REPORT_BYTES",
+  );
+  return integerProduct(literal, "MAX_SANDBOX_REPORT_BYTES");
+}
+
+/**
  * A Rust byte-cap literal written as a product of integers (`4 * 1024 * 1024`), as a number.
  *
  * ‼️ ONE IMPLEMENTATION, NOT FOUR (external review #7). Each of the four scrapers above

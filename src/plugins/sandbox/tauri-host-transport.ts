@@ -15,6 +15,7 @@ import type { SandboxTransport } from "./transport";
 
 import { pluginSandboxSend } from "../../ipc/plugin-invoke";
 import { logger } from "../../utils/logger";
+import { MAX_UI_TEXT_CHARS } from "./protocol";
 
 type Fields = Record<string, unknown>;
 
@@ -179,18 +180,6 @@ const HOST_REQUEST_VALIDATORS: {
 // hand back a function and pass the truthiness test.
 const FRAME_LOOKUP = new Map(Object.entries(FRAME_VALIDATORS));
 const HOST_REQUEST_LOOKUP = new Map(Object.entries(HOST_REQUEST_VALIDATORS));
-
-/**
- * §260 Phase 4a security review (MEDIUM-1) — a string bounded before any work touches it.
- *
- * `ui_*` are the first frame types whose payload gets O(n) MAIN-REALM processing (two
- * regex passes in `host-ui-bridge`, then a Zustand commit). Rust caps a frame at 8 MiB
- * and allows 150/s, so without a length check here a plugin could aim ~1 GB/s of regex at
- * the thread this tier exists to protect. The host truncates to 200 (toast) / 64 (status
- * bar) anyway, so anything past this bound cannot be a real message — it is dropped like
- * any other malformed frame.
- */
-const MAX_UI_TEXT_CHARS = 4096;
 
 /**
  * §260 Phase 4b security review (MEDIUM-2) — the largest document a plugin may install.
