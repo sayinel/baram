@@ -22,7 +22,13 @@ function cssColor(value: string): string {
 }
 
 function gallery() {
-  return <ThemeGallery onBrowseThemes={() => {}} onCustomize={() => {}} />;
+  return (
+    <ThemeGallery
+      onBrowseThemes={() => {}}
+      onCustomize={() => {}}
+      onExportLook={() => {}}
+    />
+  );
 }
 
 function pairedInstalled(): InstalledTheme {

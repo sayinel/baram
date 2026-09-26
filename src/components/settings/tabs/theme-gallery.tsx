@@ -67,9 +67,11 @@ const GROUPS = Object.entries(GROUP_LABEL_KEYS) as [ThemeSource, string][];
 export function ThemeGallery({
   onBrowseThemes,
   onCustomize,
+  onExportLook,
 }: {
   onBrowseThemes: () => void;
   onCustomize: () => void;
+  onExportLook: () => void;
 }) {
   const { t } = useTranslation();
   const { activeThemeId, customThemes, installedThemes, setActiveTheme } =
@@ -196,6 +198,9 @@ export function ThemeGallery({
         </button>
         <button className="theme-action-btn" onClick={handleImport}>
           {t("settings.appearance.import")}
+        </button>
+        <button className="theme-action-btn" onClick={onExportLook}>
+          {t("settings.appearance.exportLook")}
         </button>
         <button className="theme-action-btn" onClick={onBrowseThemes}>
           {t("settings.appearance.browseThemes")}{" "}
