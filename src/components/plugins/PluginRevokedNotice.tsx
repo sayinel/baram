@@ -119,7 +119,7 @@ export function PluginRevokedNotice({
                 The visible text stays short because the surrounding markup already names
                 the plugin beside it — `PluginRow` in its header, `PluginDetail` at its
                 title — and because it reads as the end of the sentence above it ("Its
-                files are left in place… Remove it"). Same trade `theme-gallery.tsx` made
+                files are left in place… Remove it"). Same trade `theme-gallery-cards.tsx` made
                 for `settings.appearance.deleteThemeNamed`, including putting the named
                 form on `title` as well as `aria-label`.
 

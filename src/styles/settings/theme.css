@@ -133,7 +133,7 @@
   background: var(--color-status-danger);
 }
 
-/* §361 Task 6 — the update badge IS the update button (theme-gallery.tsx explains why
+/* §361 Task 6 — the update badge IS the update button (theme-gallery-cards.tsx explains why
    they are one control). Full width under the card so a long version string wraps rather
    than widening the grid column. */
 .theme-card-update {
