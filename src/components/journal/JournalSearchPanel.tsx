@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { SearchResult } from "../../ipc/types";
 
+import { ListFilter, X } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
 import { useTranslation } from "../../i18n/useTranslation";
@@ -223,7 +224,7 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
           onClick={() => setShowFilters((v) => !v)}
           title={t("journal.search.filters.toggle")}
         >
-          ⊟
+          <ListFilter className="icon-inline" size="1em" />
         </button>
         {onClose && (
           <button
@@ -232,7 +233,7 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
             onClick={onClose}
             title={t("journal.search.close")}
           >
-            ✕
+            <X className="icon-inline" size="1em" />
           </button>
         )}
       </div>

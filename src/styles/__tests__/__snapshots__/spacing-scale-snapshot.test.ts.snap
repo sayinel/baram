@@ -2068,7 +2068,7 @@ exports[`간격·모서리 선언의 계산값이 그대로다 1`] = `
   "src/styles/tasks.css|.note-tasks|padding-bottom|8px",
   "src/styles/tasks.css|.qb-task-list .task-bucket-list|margin|0",
   "src/styles/tasks.css|.qb-task-list .task-bucket-list|padding|0",
-  "src/styles/tasks.css|.task-bucket-header::before|margin-right|4px",
+  "src/styles/tasks.css|.task-bucket-chevron|margin-right|4px",
   "src/styles/tasks.css|.task-bucket-header|margin|8px 0 4px",
   "src/styles/tasks.css|.task-bucket-list|margin|0",
   "src/styles/tasks.css|.task-bucket-list|padding|0",

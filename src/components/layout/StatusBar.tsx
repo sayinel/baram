@@ -6,6 +6,7 @@ import type { Editor } from "@tiptap/react";
 import {
   Calendar,
   ChevronDown,
+  GitBranch,
   PanelsTopLeft,
   Pencil,
   Star,
@@ -353,7 +354,8 @@ export function StatusBar({ editor, mode }: StatusBarProps) {
                 : t("statusbar.git.branch", { branch })
             }
           >
-            ⎇ {branch}
+            <GitBranch size={12} strokeWidth={1.5} />
+            {branch}
             {hasChanges && <span className="status-git-dot" />}
           </span>
         )}

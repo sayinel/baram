@@ -280,16 +280,6 @@ const ALLOWED: Record<string, Exemption> = {
  * red 를 본 뒤 바꾼다. 마지막 태스크가 이 표와 그 분기를 지운다.
  */
 const PENDING: Record<string, string> = {
-  "src/components/export/ExportDialog.tsx": "Task 7",
-  "src/components/export/ExportFormatDropdown.tsx": "Task 7",
-  "src/components/journal/CaptureTargetPreview.tsx": "Task 7",
-  "src/components/journal/JournalSearchPanel.tsx": "Task 7",
-  "src/components/journal/JournalSection.tsx": "Task 7",
-  "src/components/journal/MiniCalendar.tsx": "Task 7",
-  "src/components/journal/PhotoGalleryPanel.tsx": "Task 7",
-  "src/components/layout/StatusBar.tsx": "Task 7",
-  "src/components/onboarding/HomeScreen.tsx": "Task 7",
-  "src/components/plugins/PluginDetail.tsx": "Task 7",
   "src/components/sidebar/Backlinks.tsx": "Task 8",
   "src/components/sidebar/BookmarkPanel.tsx": "Task 8",
   "src/components/sidebar/CalendarPanel.tsx": "Task 8",
@@ -307,8 +297,6 @@ const PENDING: Record<string, string> = {
   "src/components/sidebar/SkillOptimizeSection.tsx": "Task 9",
   "src/components/sidebar/TagPanel.tsx": "Task 8",
   "src/components/sidebar/VersionHistoryPanel.tsx": "Task 9",
-  "src/styles/tasks.css": "Task 7",
-  "src/utils/date-picker.ts": "Task 7",
 };
 
 function allFindings(): Finding[] {

@@ -3,6 +3,10 @@ import { useEffect, useRef, useState } from "react";
 
 import type { ExportFormat } from "../../stores/ui/ui";
 
+import { ChevronDown } from "lucide-react";
+
+import { useTranslation } from "../../i18n/useTranslation";
+
 export interface ExportFormatGroup {
   label: string;
   options: ExportFormatOption[];
@@ -29,6 +33,7 @@ export function ExportFormatDropdown({
   pandocAvailable,
   onChange,
 }: Props) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -57,9 +62,9 @@ export function ExportFormatDropdown({
       >
         {current && <span className="export-ext-badge">{current.ext}</span>}
         <span className="export-format-trigger-name">
-          {current ? current.name : "Select format"}
+          {current ? current.name : t("export.format.select")}
         </span>
-        <span className="export-format-trigger-caret">▾</span>
+        <ChevronDown className="export-format-trigger-caret" size={14} />
       </button>
 
       {open && (

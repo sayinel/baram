@@ -7,6 +7,8 @@
 import type { TaskEntry } from "../../ipc/types";
 import type { TaskBucket } from "../../utils/tasks/task-buckets";
 
+import { ChevronRight } from "lucide-react";
+
 import { TaskRowList } from "./TaskRowList";
 
 interface Props {
@@ -51,6 +53,7 @@ export function TaskBucketList({
       open={bucket !== "done"}
     >
       <summary className="task-bucket-header">
+        <ChevronRight className="task-bucket-chevron" size={10} />
         {label} <span className="task-bucket-count">({tasks.length})</span>
       </summary>
       <TaskRowList

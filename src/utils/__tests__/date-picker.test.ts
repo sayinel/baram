@@ -362,4 +362,15 @@ describe("머리글 배치", () => {
       "date-picker-nav",
     ]);
   });
+
+  it("그리는 화살표는 글자가 아니라 방향 속성이다", () => {
+    // CSS(.date-picker-nav::before)가 data-direction 으로 lucide chevron 을 고른다.
+    // 클래스는 "date-picker-nav" 하나로 둔다 — 위 순서 테스트가 그것을 단정한다.
+    mount();
+    const navs = [
+      ...calendar.querySelectorAll<HTMLElement>(".date-picker-nav"),
+    ];
+    expect(navs.map((b) => b.textContent)).toEqual(["", ""]);
+    expect(navs.map((b) => b.dataset.direction)).toEqual(["prev", "next"]);
+  });
 });

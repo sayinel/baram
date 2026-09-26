@@ -257,11 +257,11 @@ function buildHeader(spec: {
   const header = document.createElement("div");
   header.className = "date-picker-header";
 
-  const nav = (delta: -1 | 1, glyph: string, key: string): HTMLElement => {
+  const nav = (delta: -1 | 1, key: string): HTMLElement => {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "date-picker-nav";
-    button.textContent = glyph;
+    button.dataset.direction = delta < 0 ? "prev" : "next";
     button.setAttribute("aria-label", t(key, spec.locale));
     button.addEventListener("click", () => spec.onMove(delta));
     return button;
@@ -280,9 +280,9 @@ function buildHeader(spec: {
   }
 
   header.append(
-    nav(-1, "‹", "datePicker.prevMonth"),
+    nav(-1, "datePicker.prevMonth"),
     label,
-    nav(1, "›", "datePicker.nextMonth"),
+    nav(1, "datePicker.nextMonth"),
   );
   return header;
 }

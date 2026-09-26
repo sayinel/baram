@@ -9,6 +9,8 @@ import type React from "react";
 
 import type { CaptureTargets } from "./use-capture-targets";
 
+import { ArrowRight } from "lucide-react";
+
 import { useTranslation } from "../../i18n/useTranslation";
 
 interface CaptureTargetPreviewProps {
@@ -37,6 +39,7 @@ export function CaptureTargetPreview({
         className="quick-capture-target quick-capture-target-warn"
         role="status"
       >
+        <ArrowRight className="icon-inline" size="1em" />{" "}
         {t("journal.capture.target.scanFailed")}
       </div>
     );
@@ -63,6 +66,7 @@ export function CaptureTargetPreview({
         className="quick-capture-target quick-capture-target-warn"
         role="status"
       >
+        <ArrowRight className="icon-inline" size="1em" />{" "}
         {t("journal.capture.target.none")}
       </div>
     );
@@ -81,7 +85,7 @@ export function CaptureTargetPreview({
 
   return (
     <div aria-live="polite" className="quick-capture-target" role="status">
-      {message}
+      <ArrowRight className="icon-inline" size="1em" /> {message}
       {unmatched}
     </div>
   );

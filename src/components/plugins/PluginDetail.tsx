@@ -6,6 +6,8 @@ import type {
   RegistryEntry,
 } from "../../plugins/types";
 
+import { ArrowLeft } from "lucide-react";
+
 // §69 Plugin Detail Panel — Full info view for a selected plugin
 import { useTranslation } from "../../i18n/useTranslation";
 import { actionsFor } from "../../plugins/plugin-sources";
@@ -69,6 +71,7 @@ export function PluginDetail({
     <div className="plugin-detail">
       {/* Back button */}
       <button className="plugin-detail__back-btn" onClick={onBack}>
+        <ArrowLeft className="icon-inline" size="1em" />
         {t("plugin.action.back")}
       </button>
 

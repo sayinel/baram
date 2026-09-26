@@ -179,15 +179,14 @@
   display: none;
 }
 
-.task-bucket-header::before {
+.task-bucket-chevron {
   display: inline-block;
   margin-right: var(--space-1);
-  font-size: 9px;
-  content: "▸";
+  vertical-align: -0.0625em;
   transition: transform 0.12s ease;
 }
 
-.task-bucket[open] > .task-bucket-header::before {
+.task-bucket[open] > .task-bucket-header .task-bucket-chevron {
   transform: rotate(90deg);
 }
 
@@ -768,6 +767,22 @@
 .date-picker-nav:hover {
   color: var(--color-text-primary);
   background: var(--color-bg-hover);
+}
+
+.date-picker-nav::before {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.125em;
+  content: "";
+  background-color: currentcolor;
+  -webkit-mask: var(--icon-chevron-left) center / contain no-repeat;
+  mask: var(--icon-chevron-left) center / contain no-repeat;
+}
+
+.date-picker-nav[data-direction="next"]::before {
+  -webkit-mask-image: var(--icon-chevron-right);
+  mask-image: var(--icon-chevron-right);
 }
 
 .date-picker-weekdays,

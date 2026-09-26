@@ -32,15 +32,7 @@ describe("settings-path strings (§342)", () => {
     expect(en["update.dialog.versionChange"]).toContain("→");
     expect(ko["update.dialog.versionChange"]).toContain("→");
 
-    // journal.capture.target.* — contain target pointers
-    expect(en["journal.capture.target.one"]).toContain("→");
-    expect(en["journal.capture.target.many"]).toContain("→");
-    expect(en["journal.capture.target.none"]).toContain("→");
-    expect(en["journal.capture.target.scanFailed"]).toContain("→");
-    expect(ko["journal.capture.target.one"]).toContain("→");
-    expect(ko["journal.capture.target.many"]).toContain("→");
-    expect(ko["journal.capture.target.none"]).toContain("→");
-    expect(ko["journal.capture.target.scanFailed"]).toContain("→");
+    // journal.capture.target.* 는 대조군에서 뺐다 — 화살표가 문구에서 아이콘으로 옮겨가 문자열에 → 가 없다(계획 0108).
 
     // fileTree.accessDenied.* — quote macOS System Settings (unchanged)
     expect(en["fileTree.accessDenied.step1"]).toContain("System Settings");

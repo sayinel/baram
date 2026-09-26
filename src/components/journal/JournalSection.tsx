@@ -1,6 +1,8 @@
 // §56 Reusable collapsible section for the journal sidebar (unified header)
 import type { ReactNode } from "react";
 
+import { ChevronDown } from "lucide-react";
+
 import { useJournalLayoutStore } from "../../stores/ui/journal-layout";
 
 interface JournalSectionProps {
@@ -40,7 +42,7 @@ export function JournalSection({
               .filter(Boolean)
               .join(" ")}
           >
-            ▾
+            <ChevronDown size={12} />
           </span>
           <span className="journal-section-title">{title}</span>
         </button>

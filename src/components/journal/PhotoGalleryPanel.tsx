@@ -1,6 +1,7 @@
 // §56d Photo Gallery — full gallery view panel
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
 import { INTL_LOCALES } from "../../i18n";
@@ -301,17 +302,21 @@ export function PhotoGalleryPanel() {
       {groupMode !== "year" && (
         <div className="photo-gallery-nav">
           <button
+            aria-label={t("journal.calendar.previous")}
             className="photo-gallery-nav-btn"
             onClick={() => navigatePeriod(-1)}
+            title={t("journal.calendar.previous")}
           >
-            ‹
+            <ChevronLeft className="icon-inline" size="1em" />
           </button>
           <span className="photo-gallery-nav-label">{periodLabel}</span>
           <button
+            aria-label={t("journal.calendar.next")}
             className="photo-gallery-nav-btn"
             onClick={() => navigatePeriod(1)}
+            title={t("journal.calendar.next")}
           >
-            ›
+            <ChevronRight className="icon-inline" size="1em" />
           </button>
         </div>
       )}
