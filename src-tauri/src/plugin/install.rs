@@ -65,7 +65,7 @@ const BACKUP_PREFIX: &str = "backup-";
 /// or discard. A window closed or reloaded while the Rust dialog is open or while the consent
 /// is pending leaves a stage nobody discards; so does a discard that itself fails, which the
 /// frontend only logs. An owning screen that merely unmounts is NOT one of these: the
-/// frontend then refuses the consent and discards (plan 0109 security gate, Low-1).
+/// frontend then refuses the consent and discards (plan 0110 security gate, Low-1).
 ///
 /// For the registry entrances a day is far longer than any real gap between staging and
 /// committing (a few synchronous checks and an `unloadPlugin`; consent is collected BEFORE

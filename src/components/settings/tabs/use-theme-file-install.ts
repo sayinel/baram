@@ -6,19 +6,19 @@
 // 철회 · 교체 취소 · 동의 거절)은 `stop` 이 버리고, 테스트가 그 여섯 갈래마다 `themeInstallDiscard` 를 본다.
 // 그 뒤는 `installStagedThemeFromFile` 의 몫이다 — 성공하면 commit 이 stage 를 가져가고, 실패하면 그 함수가
 // 버린다. 화면(동의 상태의 주인 — `useThemeActions` 를 부른 화면)만 언마운트되는 것은 빈틈이 아니다: 그때
-// 열려 있던 동의 요청은 언마운트 정리가, 그 뒤의 요청은 `askConsent` 자신이(`mounted`, 계획 0109 보안 관문
+// 열려 있던 동의 요청은 언마운트 정리가, 그 뒤의 요청은 `askConsent` 자신이(`mounted`, 계획 0110 보안 관문
 // Low-1) 거절로 끝내므로 `stop` 이 버린다. 남는 빈틈은 이 코드가 더 돌지 못하는 경우다 — 웹뷰 자체가 사라지거나
 // (창을 닫거나 새로고침 — Rust 대화상자가 열려 있던 동안이든 동의를 기다리던 동안이든) 앱이 죽거나, 버리기
 // (`themeInstallDiscard`) 자체가 실패해 로그만 남는 경우. 그 stage 는 다음 스테이징이 부르는
 // `sweep_stale_stages`(`install.rs` — 하루 지난 stage)가 거둔다.
 //
-// 예약 id · 하한은 동의 **전**에 한 번, `finishStagedThemeInstall` 안에서 한 번 더 본다(계획 0109 P3). 철회는
+// 예약 id · 하한은 동의 **전**에 한 번, `finishStagedThemeInstall` 안에서 한 번 더 본다(계획 0110 P3). 철회는
 // 동의 전 여기서 한 번이다 — `finishStagedThemeInstall` 에는 철회 검사가 없다(레지스트리 입구도
 // `handleInstall` 의 `refuseIfRevoked` 한 번이다). 여기서 판정하는 id · 버전은 목록의 주장이 아니라 스테이징된
 // 매니페스트 자신이고, commit 은 그 원문의 SHA-256(`manifest_sha256`)으로 같은 파일에 묶인다.
 //
 // 동의 상태(`pendingConsent`)의 주인은 `useThemeActions` 다 — 대화상자를 그리는 화면이 그 훅을 부르므로,
-// 이 훅은 그쪽이 돌려주는 `askConsent` · `announceInstalled` 를 받아 쓴다(계획 0109 P4).
+// 이 훅은 그쪽이 돌려주는 `askConsent` · `announceInstalled` 를 받아 쓴다(계획 0110 P4).
 import { useCallback } from "react";
 
 import type { ContrastWarning } from "../../../appearance/contrast-report";
@@ -176,11 +176,11 @@ const CONSENT_FILE_NAME_UNSAFE_RE =
   /[\u0000-\u001f\u007f\u061c\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]/gu;
 
 /**
- * 동의 제목에 싣는 파일 이름을 속일 수 없게 만든다(계획 0109 보안 관문 Low-3a).
+ * 동의 제목에 싣는 파일 이름을 속일 수 없게 만든다(계획 0110 보안 관문 Low-3a).
  *
  * 파일 이름은 OS 가 준 그대로다 — Rust 는 `to_string_lossy` 만 거치므로 C0 제어 문자 · 방향 제어 문자 ·
  * 줄 · 문단 구분자가 지나오고, 길이는 파일 시스템의 상한(대개 255 바이트)까지다. 그 이름이 동의 제목의
- * 이름 칸에 실리므로(계획 0109 P2), 방향 제어로 매니페스트 이름과 순서를 뒤바꿔 보이거나 줄을 바꿔
+ * 이름 칸에 실리므로(계획 0110 P2), 방향 제어로 매니페스트 이름과 순서를 뒤바꿔 보이거나 줄을 바꿔
  * 제목을 두 줄로 꾸밀 수 있다. 아래 문자들을 U+FFFD 로 바꾸고 100 자로 자른다.
  *
  * 파일 이름에만 건다. 매니페스트 이름은 `validateThemeManifest` 가 이미 100 자 상한과

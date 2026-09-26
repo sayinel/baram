@@ -87,7 +87,7 @@ async function openConsent() {
 describe("the gallery's file install", () => {
   it("asks consent on this screen, naming the file, and installs on confirm", async () => {
     const dialog = await openConsent();
-    // 계획 0109 P2 — 파일 이름은 제목의 이름 칸에 실린다.
+    // 계획 0110 P2 — 파일 이름은 제목의 이름 칸에 실린다.
     expect(dialog.getByText(/My Look — look\.zip/)).toBeInTheDocument();
     expect(install.installStagedThemeFromFile).not.toHaveBeenCalled();
 

@@ -156,7 +156,7 @@ export function useThemeActions() {
   );
 
   const askConsent = useCallback((name: string): Promise<boolean> => {
-    // ‼️ Asked AFTER the owner unmounted (plan 0109 security gate, Low-1): there is no dialog
+    // ‼️ Asked AFTER the owner unmounted (plan 0110 security gate, Low-1): there is no dialog
     // left to answer, and the unmount cleanup below only refuses a request already open. A
     // promise made here would never settle — for the file install that meant a staged
     // package nobody discarded. The caller awaited something before asking (the floor check,

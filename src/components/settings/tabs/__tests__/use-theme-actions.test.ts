@@ -189,7 +189,7 @@ describe("the pending consent promise settles even if nothing else does", () => 
     expect(result.current.pendingConsent?.name).toBe("Second");
   });
 
-  // Plan 0109 security gate, Low-1. The test above covers a request that is OPEN at unmount;
+  // Plan 0110 security gate, Low-1. The test above covers a request that is OPEN at unmount;
   // this one covers a request that arrives AFTER it — the file install awaits the floor check
   // and the replace confirm before asking, and Settings can close in that gap. What fails it:
   // dropping `askConsent`'s `mounted` check leaves this promise unsettled, so "pending" wins.

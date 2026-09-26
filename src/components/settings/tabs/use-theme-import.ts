@@ -66,7 +66,7 @@ export function useThemeImport(
   // 입장에선 버튼이 조용히 죽은 것. 막힌 이유를 locale 문장으로 보여준다.
   const [importError, setImportError] = useState<null | string>(null);
   // 가져오기 하나가 끝날 때까지 다음 클릭은 아무것도 하지 않는다 — 두 번 누르면 네이티브 대화상자가 둘
-  // 열렸다(계획 0109 최종 리뷰). 대화상자 · 색 저장 · 패키지 설치(`onPackage`, 동의까지)가 모두 한 번의
+  // 열렸다(계획 0110 최종 리뷰). 대화상자 · 색 저장 · 패키지 설치(`onPackage`, 동의까지)가 모두 한 번의
   // 가져오기이고, 첫 await 앞에서 막아야 두 번째 클릭이 `themeImportPick` 에 닿지 않는다.
   const inFlight = useRef(false);
 
@@ -88,7 +88,7 @@ export function useThemeImport(
         if (message !== null) setImportError(message);
         return;
       }
-      // 64 KiB 는 Rust 가 읽기 전에 판정했다(`theme_import.rs` 의 `MAX_THEME_COLORS_IMPORT_BYTES`, 계획 0109 P8).
+      // 64 KiB 는 Rust 가 읽기 전에 판정했다(`theme_import.rs` 의 `MAX_THEME_COLORS_IMPORT_BYTES`, 계획 0110 P8).
       const data = JSON.parse(pick.text);
       const name = typeof data.name === "string" ? data.name.trim() : "";
       // 길이 상한과 제어·bidi 문자 거부 — 카드/삭제 라벨을 속이는 표기 방지.
@@ -140,7 +140,7 @@ export function useThemeImport(
       saveCustomTheme(newTheme);
       setActiveTheme(newTheme.id);
     } catch (err) {
-      // `JSON.parse` 의 `SyntaxError` 는 종류만 적는다(계획 0109 보안 관문) — V8 의 문구는 입력의 앞부분을
+      // `JSON.parse` 의 `SyntaxError` 는 종류만 적는다(계획 0110 보안 관문) — V8 의 문구는 입력의 앞부분을
       // 인용하므로(`Unexpected token 'S', "SECRET-TOK"... is not valid JSON`), 실수로 고른 테마가 아닌 파일의
       // 한 조각이 로그에 남는다. 그 밖의 오류(`ThemeImportError` · Rust 의 거부 문구)는 원문 그대로다.
       logger.error(

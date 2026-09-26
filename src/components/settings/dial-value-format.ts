@@ -1,6 +1,6 @@
 // §366 · §371 6a — 다이얼 값을 한 줄 문구로(단위 · 부호 · "제한 없음"). `appearance-dial-row.tsx` 에서
 // 옮겼다: 외관 내보내기의 요약(`dial-labels.ts`)이 설정 행과 같은 모양으로 적어야 하고, 컴포넌트 파일은
-// 함수를 내보낼 수 없다(`react-refresh/only-export-components`, 계획 0109 P7).
+// 함수를 내보낼 수 없다(`react-refresh/only-export-components`, 계획 0110 P7).
 
 import type { DialId, DialValue } from "../../appearance/dials";
 import type { Translate } from "../../i18n/useTranslation";

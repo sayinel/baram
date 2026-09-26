@@ -53,7 +53,7 @@ import {
  * ‼️ Task 2 의 `MAX_MANIFEST_JSON_CHARS` 와 중복이 아니다. `validateThemeManifest` 는
  * **이미 파싱된** `data`를 받으므로 그쪽 `JSON.stringify` 검사가 묶는 것은 필드별 검사
  * 비용이지 파싱 비용이 아니다. 여기가 파싱 비용을 묶는 자리다. 값이 같은 것은 우연이
- * 아니라 같은 근거다 — 색 설정 가져오기가 파일 전체에 거는 64 KiB(계획 0109 P8 로 `use-theme-import.ts`
+ * 아니라 같은 근거다 — 색 설정 가져오기가 파일 전체에 거는 64 KiB(계획 0110 P8 로 `use-theme-import.ts`
  * 에서 Rust `theme_import.rs` 의 `MAX_THEME_COLORS_IMPORT_BYTES` 로 옮겨 갔다).
  *
  * Rust 도 staged 아카이브를 읽을 때 같은 값으로 자른다(`MAX_THEME_MANIFEST_BYTES`).

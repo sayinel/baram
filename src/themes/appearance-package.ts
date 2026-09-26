@@ -20,7 +20,7 @@ import { lookupThemes } from "./installed-theme-defs";
 export interface AppearancePackageInput {
   /** 확인란이 켜졌고 숨긴 표면이 있을 때만(스펙 0062 D3). */
   readonly chrome: ChromeProposal | undefined;
-  /** 입은 설치 테마가 **저장한** CSS 가 있는 모드 — 실리지 않는다는 안내용(D4, 계획 0109 P1). */
+  /** 입은 설치 테마가 **저장한** CSS 가 있는 모드 — 실리지 않는다는 안내용(D4, 계획 0110 P1). */
   readonly cssModes: readonly ThemeMode[];
   readonly dials: DialValues;
   /** 지금 숨긴 표면 — 확인란 옆에 적고, 비면 확인란을 끈다. */

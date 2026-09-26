@@ -84,7 +84,7 @@ describe("useThemeFileInstall", () => {
     });
     const error = await hook().handleInstallFromFile(staged(), "look.zip");
     expect(error).toBeNull();
-    // 계획 0109 P2 — 파일 이름은 동의 제목의 이름 칸에 실린다.
+    // 계획 0110 P2 — 파일 이름은 동의 제목의 이름 칸에 실린다.
     expect(askConsent).toHaveBeenCalledWith("My Look — look.zip");
     expect(
       useSettingsStore.getState().installedThemes["my-look"],
@@ -110,7 +110,7 @@ describe("useThemeFileInstall", () => {
     expect(ipc.themeInstallDiscard).toHaveBeenCalledWith("stage-f");
   });
 
-  // 계획 0109 P3 — 이미 거절될 설치에 동의를 받지 않는다.
+  // 계획 0110 P3 — 이미 거절될 설치에 동의를 받지 않는다.
   it("예약 id 는 동의 전에 거부한다", async () => {
     const error = await hook().handleInstallFromFile(
       staged(manifest({ id: "nord" })),
@@ -212,7 +212,7 @@ describe("useThemeFileInstall", () => {
     expect(announceInstalled).not.toHaveBeenCalled();
   });
 
-  // 계획 0109 보안 관문 Low-1 — 화면(동의 상태의 주인)이 사라진 뒤 동의에 닿는 설치. 여기만 진짜
+  // 계획 0110 보안 관문 Low-1 — 화면(동의 상태의 주인)이 사라진 뒤 동의에 닿는 설치. 여기만 진짜
   // `useThemeActions` 를 쓴다. 무엇이 이것을 실패시키는가: `askConsent` 의 `mounted` 검사를 지우면 그
   // 약속이 끝나지 않아 아래 경주에서 "pending" 이 이기고, stage 도 버려지지 않는다.
   it("동의 상태의 주인이 언마운트된 뒤 동의에 닿으면 거절로 끝나고 stage 를 버린다", async () => {
@@ -228,7 +228,7 @@ describe("useThemeFileInstall", () => {
     expect(ipc.themeInstallDiscard).toHaveBeenCalledWith("stage-f");
   });
 
-  // 계획 0109 보안 관문 Low-3a. 무엇이 이것을 실패시키는가: `consentFileName` 을 거치지 않고 OS 가 준
+  // 계획 0110 보안 관문 Low-3a. 무엇이 이것을 실패시키는가: `consentFileName` 을 거치지 않고 OS 가 준
   // 이름을 그대로 넘기면 방향 override 와 줄바꿈이 동의 제목에 실린다.
   it("파일 이름의 방향 제어 · 줄바꿈은 동의 제목에 실리기 전에 U+FFFD 가 된다", async () => {
     askConsent.mockResolvedValue(false);

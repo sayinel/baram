@@ -23,7 +23,7 @@ use super::storage::{hex_sha256, install_root, InstallKind};
 use super::PluginError;
 
 /// The legacy colour settings file's cap — the 64 KiB `use-theme-import.ts` enforced in the webview
-/// before the read moved here (plan 0109 P8).
+/// before the read moved here (plan 0110 P8).
 pub const MAX_THEME_COLORS_IMPORT_BYTES: u64 = 64 * 1024;
 
 /// A ZIP local file header. The format is judged from the CONTENT, not the extension, so a renamed
@@ -66,7 +66,7 @@ pub async fn import_theme_file(path: PathBuf) -> Result<ThemeImportPick, PluginE
     .map_err(|_| PluginError::Refused("the theme import task did not finish".into()))?
 }
 
-/// ‼️ `theme_root` IS A PROVIDER, NOT A VALUE (plan 0109 review round 1). `install_root` both
+/// ‼️ `theme_root` IS A PROVIDER, NOT A VALUE (plan 0110 review round 1). `install_root` both
 /// resolves `~/.baram/themes/` AND creates it if absent, so calling it unconditionally would mean
 /// importing a colour settings file creates a directory it never uses, and fails outright on a
 /// machine where `$HOME` cannot be resolved — a failure that has nothing to do with the colour
@@ -74,7 +74,7 @@ pub async fn import_theme_file(path: PathBuf) -> Result<ThemeImportPick, PluginE
 /// failure mode, out of the colour path entirely. See
 /// `a_colour_file_never_resolves_a_theme_root` for the pin.
 ///
-/// ‼️ REGULAR FILES ONLY, CHECKED BEFORE `File::open` (plan 0109 security gate, Low-2). Opening a
+/// ‼️ REGULAR FILES ONLY, CHECKED BEFORE `File::open` (plan 0110 security gate, Low-2). Opening a
 /// FIFO blocks until a writer appears, and a tty or character device can block on `read` — inside
 /// `spawn_blocking` that is a worker stuck forever and an import that never answers. The dialog can
 /// hand back any path the user can name, so the kind is judged here: `std::fs::metadata` follows
@@ -120,7 +120,7 @@ fn not_a_regular_file() -> PluginError {
 /// check is provable from `a_package_over_the_registry_download_cap_is_refused_by_size` alone —
 /// see `read_package_refuses_by_the_stated_length_before_any_byte_is_read` and
 /// `read_package_refuses_the_bounded_read_when_the_file_grew_past_the_stated_length` for the
-/// tests that actually pin each one (plan 0109 review round 1).
+/// tests that actually pin each one (plan 0110 review round 1).
 fn read_package(
     file: File,
     len: u64,
@@ -175,7 +175,7 @@ fn read_colors(file: File, len: u64) -> Result<ThemeImportPick, PluginError> {
             format: ImportFormat::Colors,
         });
     }
-    // ‼️ BYTES, NOT `read_to_string` (plan 0109 review round 1). The bounded read above can stop
+    // ‼️ BYTES, NOT `read_to_string` (plan 0110 review round 1). The bounded read above can stop
     // exactly at the cap, and the cap is a byte count with no knowledge of UTF-8 boundaries — a
     // multi-byte character split there would make `read_to_string` surface `InvalidData` for a
     // file that is merely too large, before the size check even had a chance to say so.
@@ -267,7 +267,7 @@ mod tests {
         matches!(err, PluginError::Refused(message) if message == "not a regular file")
     }
 
-    /// Plan 0109 security gate, Low-2. 무엇이 이것을 실패시키는가: `import_theme_file_in` 의
+    /// Plan 0110 security gate, Low-2. 무엇이 이것을 실패시키는가: `import_theme_file_in` 의
     /// `is_file()` 검사 **둘 다**를 지우면 디렉터리는 `File::open` 을 통과하고(unix 에서 디렉터리는
     /// 읽기 전용으로 열린다) 첫 `read_exact` 의 `Io` 오류로 끝나 red 가 된다. 하나만 지우면 남은
     /// 하나가 거부하므로 green 이다 — 열기 전 검사 하나를 고정하는 것은 아래 FIFO 테스트다.
@@ -283,7 +283,7 @@ mod tests {
         assert!(is_not_a_regular_file(&err), "{err:?}");
     }
 
-    /// Plan 0109 security gate, Low-2 — the case the check exists for: `File::open` on a FIFO
+    /// Plan 0110 security gate, Low-2 — the case the check exists for: `File::open` on a FIFO
     /// waits for a writer that never comes. The call runs on its own thread with a deadline, so a
     /// regression FAILS this test instead of hanging the suite (the stuck thread is abandoned; the
     /// test binary exits when its main thread returns).

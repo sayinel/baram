@@ -1,6 +1,6 @@
 // §363 · §371 6a — 테마 패키지 매니페스트가 요구하지만 편집 화면이 모르는 값들(`PackageMeta`)과 id.
 // `ThemeEditor.tsx` 에서 떼어 냈다 — 외관 내보내기(`appearance-export.tsx`)가 같은 입력과 같은 관문을
-// 쓴다(스펙 0062 §4, 계획 0109 Task 2). 입력 컴포넌트는 `package-meta-fields.tsx` 다(컴포넌트 파일은
+// 쓴다(스펙 0062 §4, 계획 0110 Task 2). 입력 컴포넌트는 `package-meta-fields.tsx` 다(컴포넌트 파일은
 // 컴포넌트만 내보낸다 — `react-refresh/only-export-components`).
 import { useEffect, useState } from "react";
 
