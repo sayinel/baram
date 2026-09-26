@@ -23,6 +23,10 @@ import { resolveDials } from "../../appearance/merge";
 import { useThemeDials } from "../../hooks/use-theme-dials";
 import { useTranslation } from "../../i18n/useTranslation";
 import { useSettingsStore } from "../../stores/settings/store";
+import {
+  fontSizeNumber,
+  lineHeightNumber,
+} from "../../utils/font/font-metric-text";
 import { dialOptionLabelKey } from "./dial-option-label";
 import { SettingsRow } from "./settings-shared";
 
@@ -39,6 +43,9 @@ export function AppearanceDialRow({ dialId, label }: AppearanceDialRowProps) {
   const themeDials = useThemeDials();
   const dial = DIALS.find((d) => d.id === dialId);
   if (!dial) return null;
+  // §365 서체 다이얼(`text`)은 이 행이 그리지 않는다 — 입력이 슬라이더도 select 도 아닌 서체
+  // 선택기(`FontSlotPicker`)라, 에디터 탭이 그 선택기 옆에 출처 칸만 붙인다(스펙 0060 §7.1).
+  if (dial.kind === "text") return null;
 
   const resolved = resolveDials(themeDials, appearanceOverrides)[dialId];
   // "이 행이 사용자 층 없이는 무엇을 보여 줄까" — 되돌리기 라벨이 테마로
@@ -163,12 +170,20 @@ function describeDial(dialId: DialId, t: Translate): string {
       return t("settings.appearance.cornerRadius.desc");
     case "density":
       return t("settings.appearance.density.desc");
+    case "editorCodeFontFamily":
+      return t("settings.editor.codeFontFamily.desc");
     case "editorEmphasisStyle":
       return t("settings.editor.editorEmphasisStyle.desc");
+    case "editorFontFamily":
+      return t("settings.editor.fontFamily.desc");
+    case "editorFontSize":
+      return t("settings.editor.fontSize.desc");
     case "editorLetterSpacing":
       return t("settings.editor.editorLetterSpacing.desc");
     case "editorLineBreak":
       return t("settings.editor.editorLineBreak.desc");
+    case "editorLineHeight":
+      return t("settings.editor.lineHeight.desc");
     case "editorListGuideStrength":
       return t("settings.editor.editorListGuideStrength.desc");
     case "editorMaxWidth":
@@ -234,14 +249,24 @@ function formatDialValue(
     case "cornerRadius":
     case "density":
       return "";
+    // 서체 다이얼은 이 행이 그리지 않는다(위 `text` 거절) — switch 가 `default` 없는 전수라
+    // 자리만 있다.
+    case "editorCodeFontFamily":
+    case "editorFontFamily":
+      return typeof value === "string" ? value : "";
     case "editorEmphasisStyle":
       // editorLineBreak와 같은 이유로 빈 문자열이다 — 열거의 값 readout은
       // select 자체가 이미 보여 준다.
       return "";
+    // 서체 브라우저와 같은 자릿수 — `font-metric-text.ts` 가 두 표면의 모양을 한 곳에 둔다.
+    case "editorFontSize":
+      return typeof rounded === "number" ? `${fontSizeNumber(rounded)}px` : "";
     case "editorLetterSpacing":
       return `${rounded}em`;
     case "editorLineBreak":
       return "";
+    case "editorLineHeight":
+      return typeof rounded === "number" ? lineHeightNumber(rounded) : "";
     // `editorMaxWidth` 처럼 0 에 별도 문구를 두지 않는다. 거기서 0 은 "무제한" 이라
     // `0px` 가 정반대를 읽히게 하지만, 여기서 0 은 글자 그대로 "색조를 0% 섞는다" 다
     // — `0%` 가 사실이고, 그것이 보이지 않는다는 것은 설명문이 말한다.

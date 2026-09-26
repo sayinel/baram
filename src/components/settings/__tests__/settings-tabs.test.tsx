@@ -145,9 +145,15 @@ describe("settings tab structure (§342)", () => {
     // `DIALS` 전부가 자기 id 와 같은 id 의 레지스트리 항목을 갖는 것이고, 아래 단정이
     // `DIALS` 를 순회해 그것을 다이얼마다 확인한다 — 항목 id 를 일부러 다르게 지으려면
     // 이 테스트를 함께 고쳐야 한다.
+    // 계획 0107 Task 1 — `channel: "editor"` 넷(본문 타이포)은 이 전제에서 빠진다.
+    // 이 채널은 `<html>` 에 아무것도 쓰지 않고 소비자가 병합값을 읽는 다이얼이라
+    // (`dials.ts` 의 `DialBase.channel` 주석), 그 소비자와 전용 UI 는 이후 태스크(계획
+    // 0107 Task 2·4)가 배선한다 — 지금 검색에 실어도 누르면 아무 화면도 없다.
     const { result } = renderHook(() => useSettingsRegistry());
     const registered = new Set(result.current.map((s) => s.id));
-    const missing = DIALS.map((d) => d.id).filter((id) => !registered.has(id));
+    const missing = DIALS.filter((d) => d.channel !== "editor")
+      .map((d) => d.id)
+      .filter((id) => !registered.has(id));
     expect(missing).toEqual([]);
   });
 

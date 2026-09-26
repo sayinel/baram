@@ -250,13 +250,19 @@ describe("EditorTab — 다이얼 행", () => {
     render(<EditorTab />);
     render(<AppearanceTab />);
 
-    const missing = DIALS.map((d) => d.id).filter((id) => {
-      const key = labelKeyById.get(id);
-      if (key === undefined) return true;
-      const text = (en as Record<string, string>)[key];
-      if (text === undefined) return true;
-      return screen.queryAllByText(text).length === 0;
-    });
+    // 계획 0107 Task 1 — `channel: "editor"` 넷(본문 타이포)은 이 전제에서 빠진다.
+    // `AppearanceDialRow` 는 `kind === "text"` 를 그리지 않고(서체 선택기가 대신
+    // 그린다) `editorFontSize`·`editorLineHeight` 도 아직 이 행이 그리지 않는다 —
+    // 전용 화면은 계획 0107 Task 4 가 만든다.
+    const missing = DIALS.filter((d) => d.channel !== "editor")
+      .map((d) => d.id)
+      .filter((id) => {
+        const key = labelKeyById.get(id);
+        if (key === undefined) return true;
+        const text = (en as Record<string, string>)[key];
+        if (text === undefined) return true;
+        return screen.queryAllByText(text).length === 0;
+      });
     expect(missing).toEqual([]);
   });
 });

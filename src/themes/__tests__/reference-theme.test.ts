@@ -49,6 +49,12 @@ const NOT_EXERCISED: Readonly<Record<string, string>> = {
   // `fillAliasedColors` 가 본문 글자색으로 채운다. 다이얼로 농도를 싣는 것은 "농도는
   // 사용자 축" 이라는 설계를 레퍼런스가 거스르는 모양이 된다.
   editorListGuideStrength: "테마의 축은 색조(팔레트)이고, 농도는 사용자 축이다",
+  // 계획 0107 P2 — 소비자가 병합값을 읽기 전(Task 3 전)이라 행사를 미룬다. Task 7 이 앞의
+  // 셋을 매니페스트로 옮기고 이 넷을 지운다(`editorCodeFontFamily` 는 사유를 바꿔 남는다).
+  editorCodeFontFamily: "배선 전 — 계획 0107 Task 7 에서 정한다",
+  editorFontFamily: "배선 전 — 계획 0107 Task 7 에서 행사한다",
+  editorFontSize: "배선 전 — 계획 0107 Task 7 에서 행사한다",
+  editorLineHeight: "배선 전 — 계획 0107 Task 7 에서 행사한다",
 };
 
 describe("레퍼런스 테마 초안", () => {

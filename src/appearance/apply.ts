@@ -64,13 +64,14 @@ export function clearDialVars(root: HTMLElement): void {
 
 /**
  * §367 색 채널 다이얼이 내는 시드 오버라이드 — {@link applyDialVars} 가 건너뛰는
- * 쪽을 맡는 짝이다. 다만 **쓰지 않고 돌려준다**: `--color-*` 인라인의 작성자는 테마
+ * **색** 채널을 맡는 짝이다. 다만 **쓰지 않고 돌려준다**: `--color-*` 인라인의 작성자는 테마
  * 이펙트 하나여야 하고(`DialBase.channel` 의 주석이 그 이유를 적는다), 그 이펙트가
  * 이 결과를 시드 위에 얹은 뒤 파생을 계산한다.
  *
- * `channel` 이 두 값뿐이므로 여기의 `=== "layout"` 과 {@link applyDialVars} 의
- * `!== "layout"` 은 같은 집합을 가른다. 저쪽이 부정형인 것은 이력 때문이고
- * (그 자리 주석이 적는다), 여기서는 긍정형이 읽기 쉬워 그대로 둔다.
+ * 채널은 셋이다(`color` · `editor` · `layout`). 여기는 `color` 만 받고 {@link applyDialVars} 는
+ * `layout` 만 쓴다 — `editor` 는 어느 쪽도 쓰지 않는다(소비자가 병합값을 읽는다, 스펙 0060
+ * D3). 그래서 술어가 `!== "color"` 다: 예전의 `=== "layout"` 은 채널이 둘일 때만 같은 집합을
+ * 갈랐고, 셋째 채널을 색 순회에 흘려 넣는다(`apply-channels.test.ts` 가 그 호출을 센다).
  *
  * ‼️ 색 다이얼 전부가 이 순회로 처리되는 것은 **아니다** — 강조의 두 축은 한 계산으로
  * 빠져 있고, 그 이유는 아래 그 자리에 적는다.
@@ -81,7 +82,7 @@ export function colorDialVars(
 ): Record<string, string> {
   const out: Record<string, string> = {};
   for (const dial of DIALS) {
-    if (dial.channel === "layout") continue;
+    if (dial.channel !== "color") continue;
     // ‼️ 강조의 두 축은 이 순회에서 **빠진다** — 아래에서 한 번에 계산한다.
     if (ACCENT_AXES.has(dial.id)) continue;
     const current = resolved[dial.id];
