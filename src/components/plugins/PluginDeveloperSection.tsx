@@ -34,8 +34,8 @@ export function PluginDeveloperSection() {
   const selected = list.find((p) => p.manifest.id === selectedId);
 
   async function handleRemove(plugin: InstalledPlugin) {
-    await actions.handleRemove(plugin.installPath, plugin);
-    if (selectedId === plugin.manifest.id) setSelectedId(null);
+    const removed = await actions.handleRemove(plugin.installPath, plugin);
+    if (removed && selectedId === plugin.manifest.id) setSelectedId(null);
   }
 
   return (

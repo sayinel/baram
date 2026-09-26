@@ -27,6 +27,7 @@ import {
 } from "../../ipc/plugin-invoke";
 import {
   devConsentToAsk,
+  devRowConsent,
   refreshDevPlugins,
   unloadDevPlugins,
 } from "../../plugins/dev-plugins";
@@ -82,17 +83,15 @@ export function useDevPluginActions() {
    */
   const admit = useCallback(
     async (row: LoadableRow): Promise<InstalledPlugin | null> => {
-      const plugin = toInstalledDevPlugin(row.plugin, row.consent);
-      const request = devConsentToAsk(
-        usePluginStore.getState().devMode.devBuild,
-        row.consent,
-        plugin.manifest,
-      );
+      const devBuild = usePluginStore.getState().devMode.devBuild;
+      const consent = devRowConsent(devBuild, row);
+      const plugin = toInstalledDevPlugin(row.plugin, consent);
+      const request = devConsentToAsk(devBuild, consent, plugin.manifest);
       if (request === null) return plugin;
       const granted = await askConsent({
         consent: request,
         name: plugin.manifest.name,
-        ...(row.consent ? { prior: row.consent } : {}),
+        ...(consent ? { prior: consent } : {}),
       });
       if (!granted) return null;
       await pluginRecordDevConsent(row.path, request);
@@ -172,7 +171,11 @@ export function useDevPluginActions() {
         }
         const fresh = await admit({ ...row, plugin: row.plugin });
         if (fresh === null) {
-          setError(plugin.manifest.id, t("plugin.dev.error.consentNeeded"));
+          // Declined: nothing changed. The previously loaded instance keeps running under its
+          // old consent — `reloadPlugin` is never reached, so setting an error here would
+          // describe a plugin that is not, in fact, unloaded (fix round 1, M1). The next
+          // startup's `loadListed` shows `consentNeeded` instead, which is true THERE: nothing
+          // is running yet at that point.
           return;
         }
         await pluginLoader.reloadPlugin(fresh.installPath, fresh.manifest, {
@@ -193,9 +196,13 @@ export function useDevPluginActions() {
     [admit, t],
   );
 
-  /** Remove a folder from Rust's list; unload its plugin when there is one. */
+  /**
+   * Remove a folder from Rust's list; unload its plugin when there is one. Reports whether it
+   * succeeded — the caller (the section) deselects only on success, so a failed removal does
+   * not lose the selection over a row that is, in fact, still there (fix round 1, M5).
+   */
   const handleRemove = useCallback(
-    async (path: string, plugin?: InstalledPlugin) => {
+    async (path: string, plugin?: InstalledPlugin): Promise<boolean> => {
       const { showToast } = useUIStore.getState();
       try {
         await pluginRemoveDevFolder(path);
@@ -209,12 +216,14 @@ export function useDevPluginActions() {
             t("plugin.dev.toast.removed", { name: plugin.manifest.name }),
           );
         }
+        return true;
       } catch (err) {
         showToast(
           t("plugin.dev.toast.removeFailed", {
             error: describeDevError(err, t),
           }),
         );
+        return false;
       }
     },
     [t],

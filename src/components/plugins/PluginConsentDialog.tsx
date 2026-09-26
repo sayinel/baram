@@ -26,7 +26,10 @@ interface PluginConsentDialogProps {
   name: string;
   onCancel: () => void;
   onConfirm: () => void;
-  /** The recorded consent, when this is an update. Drives the "NEW" markers. */
+  /**
+   * The recorded consent, when there is one to diff against. Drives the "NEW" markers — set
+   * for an `"update"`, and also for a `"load"` reload whose capabilities grew (§379 F2).
+   */
   prior?: PluginConsent;
 }
 

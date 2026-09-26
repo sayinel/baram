@@ -346,9 +346,10 @@ export async function pluginUninstall(pluginId: string): Promise<void> {
 /**
  * Map a Rust-reported plugin info payload into a dev `InstalledPlugin`.
  *
- * `consent` is whatever the CALLER passes for this folder. `refreshDevPlugins` is the one
- * caller, and it applies the actual rule (§379): the record carries Rust's consent in a
- * release build; a dev build drops it even when the shared `plugin-dev.json` file has one.
+ * `consent` is whatever the CALLER passes for this folder. `devRowConsent` (`dev-plugins.ts`)
+ * is where the actual rule lives (§379): the record carries Rust's consent in a release
+ * build; a dev build drops it even when the shared `plugin-dev.json` file has one. Both
+ * callers — `refreshDevPlugins` and `use-dev-plugin-actions.ts`'s `admit` — read through it.
  */
 export function toInstalledDevPlugin(
   r: RustInstalledPluginInfo,

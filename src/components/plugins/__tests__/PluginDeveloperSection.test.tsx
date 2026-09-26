@@ -184,6 +184,69 @@ describe("PluginDeveloperSection — dev build (§379: unchanged)", () => {
     await waitFor(() => expect(screen.queryByText("Dev X")).toBeNull());
   });
 
+  // Fix round 1, M5 — the old code deselected unconditionally; a failed removal must not
+  // lose the selection over a row that is, in fact, still there.
+  it("keeps the selection when Remove fails", async () => {
+    usePluginStore.getState().setDevPlugins([devPlugin()]);
+    mocks.removeDevFolder.mockRejectedValue(new Error("fail"));
+    render(<PluginDeveloperSection />);
+    fireEvent.click(
+      screen.getByText("Dev X", { selector: ".vault-tab-item__name" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+    await waitFor(() =>
+      expect(mocks.removeDevFolder).toHaveBeenCalledWith("/dev/dev-x"),
+    );
+    expect(pluginLoader.unloadPlugin).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Reload" })).toBeInTheDocument();
+    expect(
+      screen.getByText("Dev X", { selector: ".vault-tab-item__name" }),
+    ).toBeInTheDocument();
+  });
+
+  // Fix round 1, I1 — a dev build must drop a consent the row carries (from a prior release
+  // run of the SAME shared `plugin-dev.json`) exactly as `refreshDevPlugins` already does; the
+  // hook's own `admit` path must read through the same rule (`devRowConsent`), not `row.consent`.
+  it("drops a recorded consent when loading a picked folder in a dev build", async () => {
+    mocks.pickDevFolder.mockResolvedValue(row({ consent: APPROVED }));
+    render(<PluginDeveloperSection />);
+    fireEvent.click(loadButton());
+
+    await waitFor(() =>
+      expect(pluginLoader.loadPlugin).toHaveBeenCalledWith(
+        "/dev/dev-x",
+        MANIFEST,
+        { devConsent: undefined, isDev: true },
+      ),
+    );
+    expect(mocks.recordDevConsent).not.toHaveBeenCalled();
+    expect(
+      usePluginStore.getState().devPlugins["dev-x"]?.consent,
+    ).toBeUndefined();
+  });
+
+  it("drops a recorded consent when reloading a folder in a dev build", async () => {
+    usePluginStore.getState().setDevPlugins([devPlugin()]);
+    mocks.reloadDevFolder.mockResolvedValue(row({ consent: APPROVED }));
+    render(<PluginDeveloperSection />);
+    fireEvent.click(
+      screen.getByText("Dev X", { selector: ".vault-tab-item__name" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+
+    await waitFor(() =>
+      expect(pluginLoader.reloadPlugin).toHaveBeenCalledWith(
+        "/dev/dev-x",
+        MANIFEST,
+        { devConsent: undefined, isDev: true },
+      ),
+    );
+    expect(mocks.recordDevConsent).not.toHaveBeenCalled();
+    expect(
+      usePluginStore.getState().devPlugins["dev-x"]?.consent,
+    ).toBeUndefined();
+  });
+
   it("toggles the detail panel on repeated title clicks", () => {
     usePluginStore.getState().setDevPlugins([devPlugin()]);
     render(<PluginDeveloperSection />);
@@ -264,6 +327,35 @@ describe("PluginDeveloperSection — release build (§379 F1·F2)", () => {
     await waitFor(() => expect(mocks.refreshDevPlugins).toHaveBeenCalled());
     expect(mocks.setDeveloperMode).toHaveBeenCalledWith(true);
     expect(mocks.unloadDevPlugins).not.toHaveBeenCalled();
+  });
+
+  // M7(c) (fix round 1) — Rust's native warning can itself be declined; the resolved value is
+  // the state AFTER the call, so a decline resolves `false` and the switch must stay off.
+  it("a refused native warning leaves the switch off", async () => {
+    usePluginStore.setState({ devMode: RELEASE_OFF });
+    mocks.setDeveloperMode.mockResolvedValue(false);
+    render(<PluginDeveloperSection />);
+    fireEvent.click(screen.getByRole("switch"));
+    await waitFor(() => expect(mocks.refreshDevPlugins).toHaveBeenCalled());
+    expect(mocks.setDeveloperMode).toHaveBeenCalledWith(true);
+    expect(screen.getByRole("switch").getAttribute("aria-checked")).toBe(
+      "false",
+    );
+  });
+
+  // M7(d) (fix round 1) — Rust itself can fail (not merely decline) to change the mode.
+  it("shows a toast when changing developer mode fails", async () => {
+    usePluginStore.setState({ devMode: RELEASE_OFF });
+    mocks.setDeveloperMode.mockRejectedValue(new Error("boom"));
+    const showToast = vi.spyOn(useUIStore.getState(), "showToast");
+    render(<PluginDeveloperSection />);
+    fireEvent.click(screen.getByRole("switch"));
+    await waitFor(() =>
+      expect(showToast).toHaveBeenCalledWith(
+        "Could not change developer mode: boom",
+      ),
+    );
+    expect(mocks.refreshDevPlugins).not.toHaveBeenCalled();
   });
 
   it("turning it off unloads the folders before the list is re-read", async () => {
@@ -348,6 +440,8 @@ describe("PluginDeveloperSection — release build (§379 F1·F2)", () => {
 
     const dialog = await findSurface(".plugin-consent");
     expect(dialog.getByText(en["plugin.consent.new"])).toBeTruthy();
+    // M7(a) (fix round 1) — before Confirm, nothing has run yet.
+    expect(pluginLoader.reloadPlugin).not.toHaveBeenCalled();
     fireEvent.click(
       dialog.getByRole("button", { name: en["plugin.consent.confirm.load"] }),
     );
@@ -363,6 +457,48 @@ describe("PluginDeveloperSection — release build (§379 F1·F2)", () => {
       ),
     );
     expect(mocks.recordDevConsent).toHaveBeenCalledWith("/dev/dev-x", widened);
+    // M7(a) — the record must land in Rust before the reload runs on it.
+    expect(mocks.recordDevConsent.mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(pluginLoader.reloadPlugin).mock.invocationCallOrder[0],
+    );
+  });
+
+  // M1 (fix round 1) — declining a Reload escalation must leave the row alone: the previous
+  // instance keeps running under its old consent (`reloadPlugin` is never reached), so nothing
+  // changed and no error should describe it as unloaded.
+  it("declining a Reload escalation changes nothing", async () => {
+    usePluginStore.setState({ devMode: RELEASE_ON });
+    usePluginStore.getState().setDevPlugins([devPlugin(MANIFEST, APPROVED)]);
+    const grown = {
+      ...MANIFEST,
+      capabilities: ["statusbar", "network"] as const,
+    };
+    mocks.reloadDevFolder.mockResolvedValue(
+      row({
+        consent: APPROVED,
+        plugin: {
+          checksum: "",
+          install_path: "/dev/dev-x",
+          is_dev: true,
+          manifest: { ...grown, capabilities: [...grown.capabilities] },
+        },
+      }),
+    );
+    render(<PluginDeveloperSection />);
+    fireEvent.click(
+      screen.getByText("Dev X", { selector: ".vault-tab-item__name" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+
+    const dialog = await findSurface(".plugin-consent");
+    fireEvent.click(
+      dialog.getByRole("button", { name: en["plugin.consent.cancel"] }),
+    );
+
+    await waitFor(() => expect(countAnywhere(".plugin-consent")).toBe(0));
+    expect(pluginLoader.reloadPlugin).not.toHaveBeenCalled();
+    expect(mocks.recordDevConsent).not.toHaveBeenCalled();
+    expect(usePluginStore.getState().pluginErrors["dev-x"]).toBeUndefined();
   });
 
   it("a release folder whose load threw keeps the ids it holds visible (M2b)", async () => {

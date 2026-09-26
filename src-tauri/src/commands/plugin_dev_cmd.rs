@@ -454,6 +454,10 @@ async fn record_dev_consent<R: Runtime>(
 
 /// R2 — 켜기는 네이티브 경고 확인 뒤, 끄기는 묻지 않는다. 호출 뒤의 켜짐 상태를 돌려준다
 /// (거절하면 그대로 `false`). 끈 뒤의 언로드는 프런트가 한다.
+///
+/// ‼️ 이 규칙은 릴리스 빌드에만 적용된다 — dev 빌드는 이미 항상 켜져 있으므로(
+/// `dev_mode::developer_mode_active`) 경고도, R1 쓰기도 없이 `true`를 그대로 돌려준다
+/// (fix round 1, M6).
 #[tauri::command]
 pub async fn plugin_set_developer_mode<R: Runtime>(
     app: AppHandle<R>,
@@ -469,6 +473,14 @@ async fn set_developer_mode<R: Runtime>(
     build: Build,
     enabled: bool,
 ) -> Result<bool, String> {
+    // A dev build is always active (`dev_mode::developer_mode_active` — `build.is_dev() ||
+    // state.enabled`) regardless of what R1 says, so this switch has nothing to do there: the
+    // native warning it would show ("only sandboxed plugins can load") is FALSE in a dev
+    // build, and writing `enabled` would touch the SAME `plugin-dev.json` a release build
+    // reads (fix round 1, M6).
+    if build.is_dev() {
+        return Ok(true);
+    }
     let current = host.load(app, build).enabled;
     if enabled && !current {
         let copy = enable_warning(crate::commands::approval_cmd::is_korean(app));
@@ -1370,74 +1382,102 @@ mod tests {
         assert!(log.lock().unwrap().is_empty());
     }
 
-    #[test]
-    fn enabling_asks_first_and_a_refusal_leaves_it_off() {
+    // §379 review round 1, M6 — these two exercise `Build::release()` explicitly rather than
+    // through `invoke` (which resolves `Build::current()`, and a test binary IS a debug build:
+    // see `list_answers_from_the_rust_file_and_grants_an_approved_folder`'s own note above). A
+    // release build's prompt-then-persist behavior can no longer be reached by asking Rust's
+    // own `Build::current()` for it. `enabling_when_already_on_shows_no_prompt` below still
+    // covers `generate_handler!` wiring for this command via `invoke`.
+    #[tokio::test]
+    async fn enabling_asks_first_and_a_refusal_leaves_it_off() {
         let f = fixture();
         write_r1(
             &f,
             serde_json::json!({ "version": 1, "enabled": false, "folders": [] }),
         );
         let log = shown();
-        let (_app, webview) = ipc_app(host_with(
+        let host = host_with(
             &f,
             ScriptedDialogs {
                 confirm: false,
                 shown: log.clone(),
                 ..ScriptedDialogs::default()
             },
-        ));
+        );
+        let app = tauri::test::mock_app();
 
-        let enabled = invoke(
-            &webview,
-            "plugin_set_developer_mode",
-            serde_json::json!({ "enabled": true }),
-        )
-        .expect("plugin_set_developer_mode must be registered");
+        let enabled = set_developer_mode(app.handle(), &host, Build::release(), true)
+            .await
+            .unwrap();
 
-        assert_eq!(enabled, false);
+        assert!(!enabled);
         assert_eq!(*log.lock().unwrap(), vec!["confirm"]);
         assert!(!r1(&f).enabled);
     }
 
-    #[test]
-    fn enabling_after_consent_persists_and_disabling_asks_nothing() {
+    #[tokio::test]
+    async fn enabling_after_consent_persists_and_disabling_asks_nothing() {
         let f = fixture();
         write_r1(
             &f,
             serde_json::json!({ "version": 1, "enabled": false, "folders": [] }),
         );
         let log = shown();
-        let (_app, webview) = ipc_app(host_with(
+        let host = host_with(
             &f,
             ScriptedDialogs {
                 confirm: true,
                 shown: log.clone(),
                 ..ScriptedDialogs::default()
             },
-        ));
+        );
+        let app = tauri::test::mock_app();
 
-        let on = invoke(
-            &webview,
-            "plugin_set_developer_mode",
-            serde_json::json!({ "enabled": true }),
-        )
-        .unwrap();
-        assert_eq!(on, true);
+        let on = set_developer_mode(app.handle(), &host, Build::release(), true)
+            .await
+            .unwrap();
+        assert!(on);
         assert!(r1(&f).enabled);
 
-        let off = invoke(
-            &webview,
-            "plugin_set_developer_mode",
-            serde_json::json!({ "enabled": false }),
-        )
-        .unwrap();
-        assert_eq!(off, false);
+        let off = set_developer_mode(app.handle(), &host, Build::release(), false)
+            .await
+            .unwrap();
+        assert!(!off);
         assert!(!r1(&f).enabled);
         assert_eq!(
             *log.lock().unwrap(),
             vec!["confirm"],
             "turning it off must not ask"
         );
+    }
+
+    /// §379 review round 1, M6 — a dev build is always active regardless of R1's `enabled`, so
+    /// the switch must not show the release-only native warning (false in a dev build: dev
+    /// plugins are not sandboxed-only) or write the SAME `plugin-dev.json` a release build reads.
+    #[tokio::test]
+    async fn a_dev_build_is_always_on_without_asking_or_writing() {
+        let f = fixture();
+        write_r1(
+            &f,
+            serde_json::json!({ "version": 1, "enabled": false, "folders": [] }),
+        );
+        let log = shown();
+        let host = host_with(
+            &f,
+            ScriptedDialogs {
+                shown: log.clone(),
+                ..ScriptedDialogs::default()
+            },
+        );
+        let app = tauri::test::mock_app();
+
+        let enabled = set_developer_mode(app.handle(), &host, Build::dev(), true)
+            .await
+            .unwrap();
+
+        assert!(enabled);
+        assert!(log.lock().unwrap().is_empty(), "a dev build must not ask");
+        assert!(!r1(&f).enabled, "a dev build must not write R1's switch");
     }
 
     #[test]

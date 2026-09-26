@@ -81,8 +81,8 @@ export interface InstalledPlugin {
    *
    * For a dev-folder plugin (§379): the record carries Rust's consent in a release build; a
    * dev build drops it even when the shared `plugin-dev.json` file has one, since choosing
-   * the directory there is its own deliberate act (`refreshDevPlugins` is what enforces the
-   * drop — this field itself is just storage).
+   * the directory there is its own deliberate act (`devRowConsent` in `dev-plugins.ts` is
+   * what enforces the drop — this field itself is just storage).
    */
   consent?: PluginConsent;
   enabled: boolean;

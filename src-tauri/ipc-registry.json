@@ -1199,7 +1199,7 @@
       "module": "plugin",
       "spec": "§379",
       "status": "implemented",
-      "description": "개발자 모드를 켜거나 끈다. 켜기는 네이티브 경고 확인 뒤(거절하면 false), 끄기는 묻지 않는다. 호출 뒤의 켜짐 상태를 돌려준다"
+      "description": "개발자 모드를 켜거나 끈다(릴리스 빌드). 켜기는 네이티브 경고 확인 뒤(거절하면 false), 끄기는 묻지 않는다. 호출 뒤의 켜짐 상태를 돌려준다. dev 빌드는 이미 항상 켜져 있어 경고·R1 쓰기 없이 true를 돌려준다"
     },
     {
       "name": "plugin_list_dev",

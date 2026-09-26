@@ -5,6 +5,7 @@
 // build loads a folder only in developer mode and only when the consent Rust recorded still
 // covers what its manifest asks; the rest stay listed with a "press Reload" error, because Reload
 // is where the Developer section asks (`use-dev-plugin-actions.ts`).
+import type { DevFolderRow } from "../ipc/plugin-invoke";
 import type { DevFolderIssue } from "../stores/system/plugin";
 import type { InstalledPlugin, PluginConsent, PluginManifest } from "./types";
 
@@ -16,6 +17,23 @@ import { logger } from "../utils/logger";
 import { consentRequired } from "./plugin-consent";
 import { pluginLoader } from "./plugin-loader";
 import { pluginTrustOf } from "./plugin-trust";
+
+/**
+ * What consent a dev folder's row carries INTO this build — the single rule both loaders
+ * (`refreshDevPlugins` here and `use-dev-plugin-actions.ts`'s `admit`) must read through
+ * instead of `row.consent` directly.
+ *
+ * `plugin-dev.json` is the SAME file in both builds, and Rust's `folder_row` copies whatever
+ * consent a row carries either way — a dev build must still drop it: choosing the directory
+ * there is its own deliberate act, and the stored record must not imply this build read a
+ * consent it never asked to narrow anything by.
+ */
+export function devRowConsent(
+  devBuild: boolean,
+  row: Pick<DevFolderRow, "consent">,
+): null | PluginConsent {
+  return devBuild ? null : row.consent;
+}
 
 /**
  * The consent to ask for before a dev folder's code runs — or `null` when nothing needs
@@ -58,11 +76,7 @@ export async function refreshDevPlugins(): Promise<void> {
   const issues: DevFolderIssue[] = [];
   for (const row of snapshot.folders) {
     if (row.plugin) {
-      // `plugin-dev.json` is the SAME file in both builds, and Rust copies whatever consent a
-      // row carries either way (`folder_row`) — a dev build must still drop it: choosing the
-      // directory there is its own deliberate act, and the stored record must not imply this
-      // build read a consent it never asked to narrow anything by.
-      const consent = snapshot.devBuild ? null : row.consent;
+      const consent = devRowConsent(snapshot.devBuild, row);
       plugins.push(toInstalledDevPlugin(row.plugin, consent));
     } else {
       issues.push({ error: row.error ?? "", ids: row.ids, path: row.path });
