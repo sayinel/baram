@@ -41,8 +41,8 @@ interface PluginDetailProps {
   /**
    * ‼️ Where the plugin came from, so this screen offers the same action set the row does.
    *
-   * Optional and defaulting to `registry` because every other caller renders a REGISTRY
-   * listing, which is what registry means. The Installed tab is the one route that can
+   * Optional and defaulting to `registry` because every other caller renders a listing from
+   * the registry (source `registry`). The Installed tab is the one route that can
    * reach a built-in, and a built-in is never in `installedPlugins` — it is compiled in,
    * not installed — so without this `status` read "not-installed" and this screen offered
    * an enabled Install button wired to an entry whose `downloadUrl` is `""`.

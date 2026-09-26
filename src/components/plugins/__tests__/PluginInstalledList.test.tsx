@@ -162,9 +162,9 @@ describe("PluginInstalledList (§69)", () => {
   });
 
   it("titles the registry section by where the plugins came from (§382 9.4)", () => {
-    // 무엇이 이것을 실패시키는가: 제목이 "Community" 로 남으면, Task 5 가 행에 "Baram"
-    // 배지를 단 뒤 한 섹션이 자기 제목과 반대되는 행을 담는다 — §382 부터 "community" 는
-    // 채널의 이름이다.
+    // 무엇이 이것을 실패시키는가: 제목이 "Community" 로 남으면, `PluginRowView` 의 채널
+    // 배지가 행에 "Baram" 을 단 뒤 한 섹션이 자기 제목과 반대되는 행을 담는다 — §382 부터
+    // "community" 는 채널의 이름이다.
     render(<PluginInstalledList rows={ROWS} {...handlers} />);
     const title = screen
       .getByTestId("plugin-section-registry")

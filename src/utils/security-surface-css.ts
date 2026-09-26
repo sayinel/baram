@@ -28,12 +28,15 @@
 // The last one is the concrete payoff: a move would have unstyled five paragraphs of
 // the marketplace with nothing to catch it.
 //
-// ‼️ THOSE FOUR POSITIONS WENT STALE INSIDE ONE COMMIT (0090 re-review, R3). They read
-// `:297,306,311` — three — until 0049 §10.2's "looking for themes?" pointer was added to
-// that file in the same round, which both moved the existing three and added a fourth. The
-// class list and the shared-class argument were unaffected; only the transcription was
-// wrong, which is exactly the self-invalidating-citation shape CLAUDE.md warns about. Both
-// numbers above were re-measured at this writing. `settings-section-title` is shared too (3
+// ‼️ THE POSITIONS ABOVE WENT STALE ONCE INSIDE ONE COMMIT (0090 re-review, R3) — four of
+// them then. They read `:297,306,311` — three — until 0049 §10.2's "looking for themes?"
+// pointer was added to that file in the same round, which both moved the existing three and
+// added a fourth. The class list and the shared-class argument were unaffected; only the
+// transcription was wrong, which is exactly the self-invalidating-citation shape CLAUDE.md
+// warns about. That three/four history is left as 0090 recorded it, not reverified; the
+// FIVE positions in the citation above (§382 added the fifth) were re-measured at this
+// writing (`git show HEAD:src/components/plugins/PluginMarketplace.tsx | grep -n
+// plugin-revoked__note` — 297,315,324,329,361). `settings-section-title` is shared too (3
 // other files) but has no rule anywhere, so moving it would break nothing — not counted.
 // The shared set, seven then, was unchanged by `themeConsent` (§361 review round 2): every
 // `theme-consent-*` class is single-purpose, defined only in `theme.css`, used only by

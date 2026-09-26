@@ -105,8 +105,10 @@ export interface InstalledPlugin {
    *
    * §382 — an update that asks NOTHING still re-records the listing's current claim (narrower
    * capabilities, the channel, the current login), rather than carrying the old record
-   * forward unchanged; it can never record a different `publisherId`, since a changed id is
-   * exactly what would have made it ask (`usePluginActions.ts`'s `handleUpdate`).
+   * forward unchanged; for a COMMUNITY listing it can never record a different `publisherId`,
+   * since a changed id is exactly what would have made it ask (`usePluginActions.ts`'s
+   * `handleUpdate`) — a first-party listing taking over an id records none, by design
+   * (`claimedConsent` copies `publisher`/`publisherId` for a community channel only).
    */
   consent?: PluginConsent;
   enabled: boolean;
@@ -171,8 +173,10 @@ export interface PluginConsent {
   /**
    * §382 — the login shown as the publisher. Display only; `publisherId` decides. An update
    * that asks nothing still re-records this field's current value (a rename is not a change
-   * of identity), never a different `publisherId` — a changed id is exactly what would have
-   * made it ask instead.
+   * of identity); for a COMMUNITY listing it never records a different `publisherId` either —
+   * a changed id is exactly what would have made it ask instead. A first-party listing
+   * taking over an id records neither field, by design (`claimedConsent` copies them for a
+   * community channel only).
    */
   publisher?: string;
   /** §382 — the publisher's numeric GitHub id, which `consentGaps` compares. Never the login. */

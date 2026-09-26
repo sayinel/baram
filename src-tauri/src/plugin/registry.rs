@@ -314,9 +314,9 @@ where
 /// second answer, and a contradicting one.
 ///
 /// All three are `Option` and Rust decides nothing with them — the pipe argument `trust`
-/// makes above. The frontend drops an entry that lacks one (`applyCommunityRules`); refusing
-/// it here would only move that drop to where nothing reports it. Serialized FLAT, because
-/// the frontend reads one object per entry.
+/// makes above. The frontend drops an entry that lacks one (`applyCommunityRules`) — one
+/// copy of the eligibility rule, in the frontend, so there is no second place for it to
+/// drift from. Serialized FLAT, because the frontend reads one object per entry.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CommunityRegistryEntry {
     #[serde(flatten)]
