@@ -4,6 +4,8 @@
 // the real component: <FontBrowser/> owns its own back control the way
 // AppearanceTab's <ThemeEditor/> does, and using it restores the tab's
 // normal font rows.
+import type { DialId } from "../../../appearance/dials";
+
 import { act, render, renderHook, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -250,19 +252,29 @@ describe("EditorTab — 다이얼 행", () => {
     render(<EditorTab />);
     render(<AppearanceTab />);
 
-    // 계획 0107 Task 1 — `channel: "editor"` 넷(본문 타이포)은 이 전제에서 빠진다.
-    // `AppearanceDialRow` 는 `kind === "text"` 를 그리지 않고(서체 선택기가 대신
-    // 그린다) `editorFontSize`·`editorLineHeight` 도 아직 이 행이 그리지 않는다 —
-    // 전용 화면은 계획 0107 Task 4 가 만든다.
-    const missing = DIALS.filter((d) => d.channel !== "editor")
-      .map((d) => d.id)
-      .filter((id) => {
+    // 계획 0107 Task 1 — `channel: "editor"` 넷(본문 타이포)의 id 는 레지스트리 항목의
+    // id 와 **다르다**. 이 넷은 옮기기 전부터 있던 항목(`fontFamily`·`codeFontFamily`·
+    // `fontSize`·`lineHeight`, `settings-registry.ts` 실측)을 그대로 물려받았고, 그
+    // 항목의 행은 이미 EditorTab 에 있다(옮기기 전 설정 화면 그대로) — `AppearanceDialRow`
+    // 가 아니라 이 넷을 그린다. 계획 0107 Task 3(h)가 "항목 id 는 그대로 — 검색 결과의
+    // 안정된 키다" 라고 판정해 이후 어느 태스크도 그 id 를 다이얼 id 로 바꾸지 않으므로,
+    // 건너뛰는 대신 아래 맵으로 옮겨 확인한다 — 맵의 키를 `DialId` 로 둬 오타(다이얼 id
+    // 변경)가 나면 타입체크가 멎는다.
+    const REGISTRY_ID_OVERRIDE: Partial<Record<DialId, string>> = {
+      editorCodeFontFamily: "codeFontFamily",
+      editorFontFamily: "fontFamily",
+      editorFontSize: "fontSize",
+      editorLineHeight: "lineHeight",
+    };
+    const missing = DIALS.map((d) => REGISTRY_ID_OVERRIDE[d.id] ?? d.id).filter(
+      (id) => {
         const key = labelKeyById.get(id);
         if (key === undefined) return true;
         const text = (en as Record<string, string>)[key];
         if (text === undefined) return true;
         return screen.queryAllByText(text).length === 0;
-      });
+      },
+    );
     expect(missing).toEqual([]);
   });
 });
