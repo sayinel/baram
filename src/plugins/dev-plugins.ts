@@ -1,9 +1,11 @@
 // §379 — the dev folders Rust lists (`plugin_list_dev`), loaded the way this build allows.
 //
-// A dev build loads every listed folder as before §379: unbounded, unrevoked, unasked. A release
+// A dev build loads every folder Rust admitted (unapproved, missing and broken-manifest rows
+// stay listed as issues, not loaded) as before §379: unbounded, unrevoked, unasked. A release
 // build loads a folder only in developer mode and only when the consent Rust recorded still
 // covers what its manifest asks; the rest stay listed with a "press Reload" error, because Reload
 // is where the Developer section asks (`use-dev-plugin-actions.ts`).
+import type { DevFolderIssue } from "../stores/system/plugin";
 import type { InstalledPlugin, PluginConsent, PluginManifest } from "./types";
 
 import { type Locale, t } from "../i18n";
@@ -53,10 +55,18 @@ export async function refreshDevPlugins(): Promise<void> {
     enabled: snapshot.enabled,
   });
   const plugins: InstalledPlugin[] = [];
-  const issues: { error: string; ids: string[]; path: string }[] = [];
+  const issues: DevFolderIssue[] = [];
   for (const row of snapshot.folders) {
-    if (row.plugin) plugins.push(toInstalledDevPlugin(row.plugin, row.consent));
-    else issues.push({ error: row.error ?? "", ids: row.ids, path: row.path });
+    if (row.plugin) {
+      // `plugin-dev.json` is the SAME file in both builds, and Rust copies whatever consent a
+      // row carries either way (`folder_row`) — a dev build must still drop it: choosing the
+      // directory there is its own deliberate act, and the stored record must not imply this
+      // build read a consent it never asked to narrow anything by.
+      const consent = snapshot.devBuild ? null : row.consent;
+      plugins.push(toInstalledDevPlugin(row.plugin, consent));
+    } else {
+      issues.push({ error: row.error ?? "", ids: row.ids, path: row.path });
+    }
   }
   store.setDevPlugins(plugins);
   store.setDevFolderIssues(issues);
@@ -70,18 +80,30 @@ async function loadListed(
   devBuild: boolean,
 ): Promise<void> {
   const { setError } = usePluginStore.getState();
-  if (devConsentToAsk(devBuild, plugin.consent, plugin.manifest) !== null) {
-    // Not loaded: asking happens on Reload, never unprompted at startup (plan 0106 P12).
-    setError(plugin.manifest.id, tr("plugin.dev.error.consentNeeded"));
-    return;
-  }
   try {
+    if (devConsentToAsk(devBuild, plugin.consent, plugin.manifest) !== null) {
+      // Not loaded: asking happens on Reload, never unprompted at startup (plan 0106 P12).
+      setError(plugin.manifest.id, tr("plugin.dev.error.consentNeeded"));
+      return;
+    }
     if (pluginLoader.isLoaded(plugin.manifest.id)) {
-      // Reachable two ways: in a dev build a folder may stand in for an installed plugin of
-      // the same id (spec R3), and in either build two listed folders may declare the same
-      // id — the later one then replaces the earlier (the store keeps one record per id).
+      // This id is already marked loaded (`this.loaded`, set only once a load FINISHES — see
+      // `plugin-loader.ts`) before this call even starts, which happens two ways: (1) an
+      // installed plugin of the same id loaded earlier in `initializePlugins` (spec R3) — this
+      // really does replace it with the folder's own code; (2) this exact folder's plugin was
+      // already loaded by an earlier `refreshDevPlugins` run in this session (the
+      // developer-mode switch moved, or Reload ran again) — this reloads itself, nothing else
+      // is "overridden".
+      //
+      // Two DIFFERENT folders sharing an id do NOT reach this branch within one call:
+      // `plugins.map` starts every `loadListed` before any of them finishes, so `isLoaded` is
+      // still false for the second one — its `pluginLoader.loadPlugin` call instead JOINS the
+      // first folder's in-flight load (`plugin-loader.ts`'s own `inFlightLoads` map and its
+      // own "already loading — joining that load" warning), which runs the FIRST folder's code
+      // while the store above already recorded the LAST folder's row under that id. That
+      // mismatch is a known gap this round does not fix.
       logger.warn(
-        `[DevPlugins] dev plugin ${plugin.manifest.id} overrides installed`,
+        `[DevPlugins] dev plugin ${plugin.manifest.id} reloads an id that is already loaded`,
       );
       await pluginLoader.reloadPlugin(plugin.installPath, plugin.manifest, {
         devConsent: plugin.consent,

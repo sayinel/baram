@@ -79,9 +79,10 @@ export interface InstalledPlugin {
    * later version can be compared against what was actually agreed to rather than
    * against the manifest that shipped with it. Absent for records written before Phase 5.
    *
-   * For a dev-folder plugin (§379): the consent Rust recorded for that folder in a release
-   * build's developer mode; absent until the user approves, and always absent in a dev
-   * build, where choosing the directory is its own deliberate act.
+   * For a dev-folder plugin (§379): the record carries Rust's consent in a release build; a
+   * dev build drops it even when the shared `plugin-dev.json` file has one, since choosing
+   * the directory there is its own deliberate act (`refreshDevPlugins` is what enforces the
+   * drop — this field itself is just storage).
    */
   consent?: PluginConsent;
   enabled: boolean;

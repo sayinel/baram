@@ -192,6 +192,14 @@ export function approvalErrorCodes(rustSource: string): {
  * Each name must be declared once — two declarations of one name leave no way to know which
  * ships. A FUNCTION OVER SOURCE TEXT, so a test can feed crafted source and watch the refusal.
  *
+ * ‼️ THE MAIN PATTERN REQUIRES `pub const …: &str = "…"` — it does not match a `pub(crate)
+ * const` (still a real declaration a caller in this crate could reach) or a name carrying a
+ * digit (`[A-Z_]+` has none). Either would silently NOT become a code this scrape returns,
+ * while `DEV_MODE_MUTEX` — a `static`, not a `const` — must keep NOT counting. So a second,
+ * looser scan (`\bconst\s+DEV_[A-Z0-9_]*\b`, catching any visibility and any digit) counts
+ * every `const DEV_…` declaration regardless of type, and its count is compared against
+ * `codes.size` — a mismatch means the strict pattern missed one.
+ *
  * The consumer is `src/ipc/__tests__/dev-mode-error-codes.test.ts`.
  */
 export function devModeErrorCodes(rustSource: string): Map<string, string> {
@@ -209,6 +217,16 @@ export function devModeErrorCodes(rustSource: string): Map<string, string> {
   if (codes.size === 0) {
     throw new Error(
       "found no DEV_ error codes — the pattern no longer matches dev_mode.rs",
+    );
+  }
+  const anyDevConst = [
+    ...rustSource.matchAll(/\bconst\s+DEV_[A-Z0-9_]*\b/gu),
+  ].length;
+  if (anyDevConst !== codes.size) {
+    throw new Error(
+      `found ${anyDevConst} "const DEV_…" declarations of any visibility but only ` +
+        `${codes.size} matched the strict "pub const …: &str" pattern — a pub(crate) or ` +
+        "digit-bearing DEV_ constant is going untranslated",
     );
   }
   return codes;

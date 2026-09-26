@@ -28,7 +28,7 @@ interface DevModeStatus {
 }
 
 /** §379 — a folder on Rust's developer list that could not become a plugin, and why. */
-interface DevFolderIssue {
+export interface DevFolderIssue {
   /** A `DEV_*` code or Rust's own message — translated where it is shown. */
   error: string;
   /** The ids R1 recorded for this folder while a release build admitted it (I4). */
@@ -50,12 +50,14 @@ interface PluginState {
    */
   builtinDisabled: string[];
   clearUpdateAvailable: (id: string) => void;
-  // Runtime state (not persisted). The note below covers `devMode` and `devPlugins`
-  // only — `getPluginSettings` is a plain getter over the PERSISTED `pluginSettings` map.
+  // Runtime state (not persisted). The note below covers `devMode`, `devPlugins` and
+  // `devFolderIssues` only — `getPluginSettings` is a plain getter over the PERSISTED
+  // `pluginSettings` map.
   //
   // `devMode` is set from Rust's `plugin_list_dev` snapshot: `active`/`enabled` come from
   // R1 (`plugin-dev.json`), `devBuild` comes from the compiled Rust build, not that file
-  // (§379). `devPlugins`'s source of truth is that same R1 file.
+  // (§379). `devPlugins` and `devFolderIssues` are sourced from that same snapshot too —
+  // neither is persisted, and both are rebuilt whenever `refreshDevPlugins` runs again.
   devFolderIssues: DevFolderIssue[];
   devMode: DevModeStatus;
   devPlugins: Record<string, InstalledPlugin>;

@@ -63,7 +63,9 @@ export interface DevFolderRow {
   /**
    * The ids this folder holds on the list — recorded by a release build each time it
    * admitted the folder (spec 0058 I4). Rust refuses installing them while developer mode
-   * is on; the install flow reads them only to refuse earlier, with a translated message.
+   * is on. `refreshDevPlugins` keeps this array only on an ISSUE row (`devFolderIssues`) —
+   * for a folder that loaded, the install flow's earlier refusal instead reads the manifest
+   * id off the loaded record, not this field.
    */
   ids: string[];
   path: string;
@@ -316,8 +318,9 @@ export async function pluginUninstall(pluginId: string): Promise<void> {
 /**
  * Map a Rust-reported plugin info payload into a dev `InstalledPlugin`.
  *
- * `consent` is the folder's recorded consent from `plugin_list_dev` (§379): set in a release
- * build's developer mode once the user approved it, absent otherwise and in a dev build.
+ * `consent` is whatever the CALLER passes for this folder. `refreshDevPlugins` is the one
+ * caller, and it applies the actual rule (§379): the record carries Rust's consent in a
+ * release build; a dev build drops it even when the shared `plugin-dev.json` file has one.
  */
 export function toInstalledDevPlugin(
   r: RustInstalledPluginInfo,

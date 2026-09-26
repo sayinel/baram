@@ -87,14 +87,35 @@ beforeEach(() => {
 
 describe("refreshDevPlugins (§379)", () => {
   it("records what Rust said about developer mode", async () => {
+    // `active` and `devBuild` are distinct values here on purpose — swapping the two
+    // fields must fail this assertion.
     mocks.pluginListDev.mockResolvedValue(
-      snapshot({ active: true, devBuild: true, enabled: false }),
+      snapshot({ active: true, devBuild: false, enabled: true }),
     );
     await refreshDevPlugins();
     expect(usePluginStore.getState().devMode).toEqual({
       active: true,
-      devBuild: true,
-      enabled: false,
+      devBuild: false,
+      enabled: true,
+    });
+  });
+
+  it("has devMode set before the first load starts", async () => {
+    mocks.pluginListDev.mockResolvedValue(
+      snapshot(
+        { active: true, devBuild: false, enabled: true },
+        { consent: APPROVED },
+      ),
+    );
+    let seenDevMode: unknown;
+    mocks.loadPlugin.mockImplementationOnce(async () => {
+      seenDevMode = usePluginStore.getState().devMode;
+    });
+    await refreshDevPlugins();
+    expect(seenDevMode).toEqual({
+      active: true,
+      devBuild: false,
+      enabled: true,
     });
   });
 
@@ -141,16 +162,35 @@ describe("refreshDevPlugins (§379)", () => {
     );
   });
 
-  it("lists a folder Rust refused as an issue row, with its code", async () => {
+  it("lists a folder Rust refused as an issue row, with its code and held ids", async () => {
     mocks.pluginListDev.mockResolvedValue(
-      snapshot({}, { error: "DEV_PLUGIN_NOT_SANDBOXED", plugin: null }),
+      snapshot(
+        {},
+        { error: "DEV_PLUGIN_NOT_SANDBOXED", ids: ["dev-x"], plugin: null },
+      ),
     );
     await refreshDevPlugins();
     expect(usePluginStore.getState().devFolderIssues).toEqual([
-      { error: "DEV_PLUGIN_NOT_SANDBOXED", ids: [], path: "/dev/dev-x" },
+      { error: "DEV_PLUGIN_NOT_SANDBOXED", ids: ["dev-x"], path: "/dev/dev-x" },
     ]);
     expect(usePluginStore.getState().devPlugins).toEqual({});
     expect(mocks.loadPlugin).not.toHaveBeenCalled();
+  });
+
+  it("drops a recorded consent from a dev build's record, though the shared file has one", async () => {
+    // `plugin-dev.json` is shared, and Rust's `folder_row` copies `entry.consent` in any
+    // build — the frontend, not Rust, is what must keep a dev build's own record clean.
+    mocks.pluginListDev.mockResolvedValue(
+      snapshot({ devBuild: true }, { consent: APPROVED }),
+    );
+    await refreshDevPlugins();
+    expect(
+      usePluginStore.getState().devPlugins["dev-x"]?.consent,
+    ).toBeUndefined();
+    expect(mocks.loadPlugin).toHaveBeenCalledWith("/dev/dev-x", MANIFEST, {
+      devConsent: undefined,
+      isDev: true,
+    });
   });
 });
 
