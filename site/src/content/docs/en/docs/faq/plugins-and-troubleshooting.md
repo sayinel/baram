@@ -6,7 +6,7 @@ title: "Plugins and troubleshooting"
 
 ### Does Baram support plugins?
 
-Yes. Open **Settings > Plugins** to browse, install, update, and manage plugins. The tab has three sections: Browse (discover plugins), Installed (everything you have, grouped into Built-in, Community, and In development), and Updates (apply new versions).
+Yes. Open **Settings > Plugins** to browse, install, update, and manage plugins. The tab has three sections: Browse (discover plugins), Installed (everything you have, grouped into Built-in, From the registry, and In development), and Updates (apply new versions).
 
 Clicking a plugin opens its detail page in an editor tab, with the full description, its rendered
 README, the capabilities it asks for, and links to its repository and homepage.

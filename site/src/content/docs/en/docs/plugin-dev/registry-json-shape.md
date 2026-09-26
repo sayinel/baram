@@ -5,8 +5,10 @@ title: "The registry JSON shape"
 
 ## The registry JSON shape
 
-The marketplace fetches a single JSON document — a `RegistryIndex` — and
-deserializes it on the Rust side (`fetch_registry`), entry by entry:
+The marketplace fetches two JSON documents from the registry: `index.json` — a
+`RegistryIndex`, below — and, beside it, the community list `community.json`
+(see [`community.json`](#communityjson)). Both are deserialized on the Rust
+side, entry by entry:
 
 ```typescript
 interface RegistryIndex {
@@ -162,3 +164,33 @@ Listing _fewer_ capabilities in the manifest than in the entry is fine — the c
 `editor` for `editor:readonly`.
 
 Keep the entry in step with the manifest you ship. A mismatch is not a warning.
+
+### `community.json`
+
+Community plugins are listed beside `index.json` in a second file, under a
+different top-level key — so no Baram build older than this file can read it
+as an index:
+
+```typescript
+interface CommunityIndex {
+  communityPlugins: CommunityEntry[]; // not `plugins`
+  updatedAt?: string;
+}
+
+interface CommunityEntry extends RegistryEntry {
+  publisher: string; // GitHub login, shown as @publisher
+  publisherId: number; // numeric GitHub user id
+  repoId: number; // numeric id of the plugin's GitHub repository
+  repository: string; // https://github.com/<owner>/<repo>
+}
+```
+
+The file is the channel: an entry cannot claim to be Baram's own. On top of
+the rules above, Baram drops a community entry whose id starts with `baram-`,
+whose `kind` is not `plugin`, or that lacks a valid `publisher`, `publisherId`
+or `repoId`; it lists but will not install one that declares
+`trust: "trusted"`; and an id found in both files is served from `index.json`.
+A missing `community.json` (HTTP 404) is an empty list, and any other failure
+leaves Baram's own plugins listed. `publisherId`, not the login, is what is
+remembered with a user's approval — a login can be renamed, or registered
+again by someone else.
