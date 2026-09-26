@@ -34,6 +34,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 import { type Locale, t } from "../../i18n";
+import en from "../../i18n/en.json";
 import { useSettingsStore } from "../../stores/settings/store";
 import { usePluginStore } from "../../stores/system/plugin";
 import { PluginLoader } from "../plugin-loader";
@@ -95,7 +96,13 @@ describe("plugin containment (#259 → §260 Phase 5)", () => {
     });
     sandboxStop.mockReset().mockResolvedValue(undefined);
     registerGrant.mockReset().mockResolvedValue(undefined);
-    usePluginStore.setState({ devPlugins: {}, installedPlugins: {} });
+    // The dev-folder cases in this describe pin DEV-BUILD semantics (a folder may shadow an
+    // installed id, nothing narrows it). §379's release branch has its own describe below.
+    usePluginStore.setState({
+      devMode: { active: true, devBuild: true, enabled: false },
+      devPlugins: {},
+      installedPlugins: {},
+    });
   });
 
   it("never imports a sandboxed plugin into the main realm", async () => {
@@ -427,5 +434,101 @@ describe("plugin containment (#259 → §260 Phase 5)", () => {
 
     expect(importer).not.toHaveBeenCalled();
     expect(sandboxStart).not.toHaveBeenCalled();
+  });
+});
+
+describe("developer mode in a release build (§379 F2)", () => {
+  // A function, not a describe-level constant: read at collection time, a catalogue that
+  // lacks the key would throw there and take every test in the file down with it.
+  const consentMissing = () =>
+    en["plugin.dev.error.consentMissing"].replace("{id}", "demo");
+
+  beforeEach(() => {
+    sandboxStart.mockReset().mockResolvedValue({
+      invokeCommand: vi.fn(),
+      stop: vi.fn().mockResolvedValue(undefined),
+    });
+    sandboxStop.mockReset().mockResolvedValue(undefined);
+    registerGrant.mockReset().mockResolvedValue(undefined);
+    useSettingsStore.setState({ locale: "en" });
+    usePluginStore.setState({
+      devMode: { active: true, devBuild: false, enabled: true },
+      devPlugins: {},
+      installedPlugins: {},
+    });
+  });
+
+  it("refuses a dev load that carries no consent, and runs nothing", async () => {
+    // What makes F2 more than UX: a caller that forgets the consent gets a refusal, not
+    // the unbounded dev-build load.
+    const { importer, loader } = loaderWithSpies();
+    await expect(
+      loader.loadPlugin("/dev/demo", BASE, { isDev: true }),
+    ).rejects.toThrow(consentMissing());
+    expect(registerGrant).not.toHaveBeenCalled();
+    expect(sandboxStart).not.toHaveBeenCalled();
+    expect(importer).not.toHaveBeenCalled();
+  });
+
+  it("narrows the dev load to the consent Rust recorded", async () => {
+    const { loader } = loaderWithSpies();
+    await loader.loadPlugin(
+      "/dev/demo",
+      { ...BASE, capabilities: ["statusbar", "network"] },
+      {
+        devConsent: { capabilities: ["statusbar"], trust: "sandboxed" },
+        isDev: true,
+      },
+    );
+    expect(registerGrant).toHaveBeenCalledWith(
+      "demo",
+      ["statusbar"],
+      "/dev/demo",
+    );
+  });
+
+  it("never applies an installed plugin's consent to a dev load", async () => {
+    usePluginStore.setState({
+      installedPlugins: {
+        demo: {
+          checksum: "c",
+          consent: { capabilities: ["editor"], trust: "sandboxed" },
+          enabled: true,
+          installedAt: 0,
+          installPath: "/p/demo",
+          manifest: BASE,
+          updatedAt: 0,
+        },
+      },
+    });
+    const { loader } = loaderWithSpies();
+    await loader.loadPlugin(
+      "/dev/demo",
+      { ...BASE, capabilities: ["statusbar", "network"] },
+      {
+        devConsent: {
+          capabilities: ["statusbar", "network"],
+          trust: "sandboxed",
+        },
+        isDev: true,
+      },
+    );
+    expect(registerGrant).toHaveBeenCalledWith(
+      "demo",
+      ["statusbar", "network"],
+      "/dev/demo",
+    );
+  });
+
+  it("refuses a tier above the recorded consent", async () => {
+    const { importer, loader } = loaderWithSpies();
+    await expect(
+      loader.loadPlugin(
+        "/dev/demo",
+        { ...BASE, trust: "trusted" },
+        { devConsent: { capabilities: [], trust: "sandboxed" }, isDev: true },
+      ),
+    ).rejects.toThrow(escalationRefusal());
+    expect(importer).not.toHaveBeenCalled();
   });
 });

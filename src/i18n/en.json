@@ -631,6 +631,7 @@
   "plugin.detail.unavailable": "This plugin is no longer available.",
   "plugin.dev.description": "Load and reload local plugin folders in dev.",
   "plugin.dev.empty": "No dev plugins loaded. Point at a folder with baram-plugin.json.",
+  "plugin.dev.error.consentMissing": "Plugin {id} was not loaded: its permissions have not been approved.",
   "plugin.dev.load": "Load dev plugin folder",
   "plugin.dev.loadTitle": "Load dev plugin folder…",
   "plugin.dev.meta": "ID {id} · Version {version} · Author {author}",

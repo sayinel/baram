@@ -631,6 +631,7 @@
   "plugin.detail.unavailable": "이 플러그인은 더 이상 제공되지 않습니다.",
   "plugin.dev.description": "개발 중인 로컬 플러그인 폴더를 불러오고 다시 불러옵니다.",
   "plugin.dev.empty": "불러온 개발 플러그인이 없습니다. baram-plugin.json이 있는 폴더를 지정하세요.",
+  "plugin.dev.error.consentMissing": "{id} 플러그인을 불러오지 않았습니다 — 권한이 승인되지 않았습니다.",
   "plugin.dev.load": "개발 플러그인 폴더 불러오기",
   "plugin.dev.loadTitle": "개발 플러그인 폴더 불러오기…",
   "plugin.dev.meta": "ID {id} · 버전 {version} · 제작자 {author}",

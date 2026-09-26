@@ -13,6 +13,20 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import { normalizeRevocationList } from "../../plugins/revocation";
 import { tauriStorage } from "./tauri-storage";
 
+/**
+ * §379 — what Rust last reported about developer mode (`plugin_list_dev`). In memory only:
+ * `merge` resets it, because the loader reads `devBuild` to decide whether a dev-folder load
+ * is bounded by a consent.
+ */
+interface DevModeStatus {
+  /** Rust's `developer_mode_active`: a dev build, or the user turned it on. */
+  active: boolean;
+  /** A dev build — a dev-folder load runs unbounded and unrevoked, and nothing asks. */
+  devBuild: boolean;
+  /** The switch's position. Only a release build shows the switch. */
+  enabled: boolean;
+}
+
 interface PluginState {
   // Actions
   addDevPlugin: (plugin: InstalledPlugin) => void;
@@ -27,7 +41,8 @@ interface PluginState {
    */
   builtinDisabled: string[];
   clearUpdateAvailable: (id: string) => void;
-  // Runtime state (not persisted; Rust config is the source of truth)
+  // Runtime state (not persisted; Rust's plugin-dev.json is the source of truth, §379)
+  devMode: DevModeStatus;
   devPlugins: Record<string, InstalledPlugin>;
   getPluginSettings: (pluginId: string) => Record<string, unknown>;
 
@@ -80,6 +95,7 @@ interface PluginState {
    */
   revocationsVerified: boolean;
   setBuiltinEnabled: (id: string, enabled: boolean) => void;
+  setDevMode: (status: DevModeStatus) => void;
   setDevPlugins: (list: InstalledPlugin[]) => void;
   setEnabled: (id: string, enabled: boolean) => void;
   setError: (id: string, error: null | string) => void;
@@ -276,7 +292,12 @@ export const usePluginStore = create<PluginState>()(
       revocationSequenceSeen: {},
       updateAvailable: {},
       installing: {},
+      // §379 FAIL-CLOSED: until Rust answers, treat this as a release build with developer
+      // mode off — the loader then refuses a dev load that carries no consent.
+      devMode: { active: false, devBuild: false, enabled: false },
       devPlugins: {},
+
+      setDevMode: (devMode) => set({ devMode }),
 
       setDevPlugins: (list) =>
         set({
@@ -542,6 +563,8 @@ export const usePluginStore = create<PluginState>()(
           // is reachable by exactly the writer the two resets below exist to contain.
           builtinDisabled: disabledBuiltinIds(stored.builtinDisabled),
           registryUrl: current.registryUrl,
+          // §379 — the loader's "is a dev load bounded?" answer; only Rust may set it, per launch.
+          devMode: current.devMode,
           revocationSequenceSeen: {},
         };
         // ‼️ THE STORED LIST GOES THROUGH THE SHIPPING VALIDATOR, like a fetched one does. It was the

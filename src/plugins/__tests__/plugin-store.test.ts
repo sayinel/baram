@@ -514,3 +514,33 @@ describe("consent migration (v2 -> v3, §260 Phase 5)", () => {
     ).toEqual({ installedPlugins: { demo: null } });
   });
 });
+
+describe("developer mode status (§379)", () => {
+  it("starts as a release build with developer mode off — the closed default", () => {
+    expect(usePluginStore.getInitialState().devMode).toEqual({
+      active: false,
+      devBuild: false,
+      enabled: false,
+    });
+  });
+
+  it("does not restore a status planted in storage", () => {
+    // The loader reads `devBuild` to decide whether a dev load is bounded, and storage is
+    // `config.json`, which the main realm can write. The positive half: a key that IS
+    // persisted comes back through the same merge, so the merge ran.
+    const merge = usePluginStore.persist.getOptions().merge;
+    const restored = merge?.(
+      {
+        devMode: { active: true, devBuild: true, enabled: true },
+        pluginSettings: { demo: { depth: 3 } },
+      },
+      usePluginStore.getInitialState(),
+    );
+    expect(restored?.devMode).toEqual({
+      active: false,
+      devBuild: false,
+      enabled: false,
+    });
+    expect(restored?.pluginSettings).toEqual({ demo: { depth: 3 } });
+  });
+});

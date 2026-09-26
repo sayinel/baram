@@ -59,7 +59,12 @@ function installedWithConsent(
 describe("plugin loader → tiptap contribution wiring", () => {
   beforeEach(() => {
     __resetEditorSurfaces();
-    usePluginStore.setState({ installedPlugins: {}, pluginErrors: {} });
+    // These loads are `isDev` with trusted manifests: they pin DEV-BUILD semantics (§379).
+    usePluginStore.setState({
+      devMode: { active: true, devBuild: true, enabled: false },
+      installedPlugins: {},
+      pluginErrors: {},
+    });
   });
 
   test("a loaded plugin's ProseMirror plugin reaches a registered editor", async () => {
