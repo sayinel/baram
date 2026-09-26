@@ -82,7 +82,9 @@ pub struct DevConsent {
     pub trust: PluginTrust,
 }
 
-/// R1 의 폴더 하나. `path` 는 canonical 경로다 — 피커가 canonicalize 한 것을 쓴다.
+/// R1 의 폴더 하나. 피커가 더한 항목의 `path` 는 canonical 경로다(피커가 canonicalize 한 것을
+/// 쓴다) — 단 dev 빌드가 `config.json` 의 옛 목록에서 옮긴 항목은 그 목록에 저장돼 있던
+/// 문자열을 그대로 옮긴 것이라 canonical 이라는 보장이 없다(`migrated`).
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct DevFolder {
     pub path: String,
@@ -147,7 +149,8 @@ impl DevModeState {
     }
 }
 
-/// R2 — 모든 dev 커맨드가 거치는 판정 하나: dev 빌드이거나, 사용자가 켰다.
+/// R2 — 목록을 읽거나 넓히는 dev 커맨드가 거치는 판정 하나: dev 빌드이거나, 사용자가 켰다.
+/// 제거(`plugin_remove_dev_folder`)는 거치지 않는다 — 좁히는 쓰기라 비활성 중에도 허용한다.
 pub fn developer_mode_active(build: Build, state: &DevModeState) -> bool {
     build.is_dev() || state.enabled
 }

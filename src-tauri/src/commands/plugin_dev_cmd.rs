@@ -183,7 +183,9 @@ fn folder_row<R: Runtime>(
     }
 }
 
-/// R2 — R1 파일만 읽는다. 비활성이면 빈 목록이다.
+/// R2 — R1 을 읽는다(dev 빌드의 첫 실행이라 파일이 아직 없으면 `config.json` 의 옛 목록을
+/// 한 번 옮겨 옴 — `dev_mode::load_or_migrate`). 비활성이면 빈 목록이다. 릴리스 빌드가 폴더를
+/// 받아들이며 매니페스트 id 를 새로 기록할 때는 R1 파일을 다시 쓴다(`admit_folder`).
 #[tauri::command]
 pub async fn plugin_list_dev<R: Runtime>(
     app: AppHandle<R>,
@@ -790,7 +792,11 @@ mod tests {
     /// §379 — the pre-#738 list in `config.json` is read in ONE place, and only as the
     /// closure the dev-build migration may call. `a_release_build_never_reads_the_legacy_list`
     /// (`dev_mode.rs`) pins that the migration does not call it in a release build; this pins
-    /// that nothing else reads the key. Replaces #738's
+    /// that nothing else reads the key. Every call to `legacy_dev_folders(` in this file's
+    /// production text — any argument, not just `(app)` — must be a `|| legacy_dev_folders(`
+    /// closure hand-off (the definition itself does not count: it squashes to
+    /// `fnlegacy_dev_folders<R:Runtime>(`, never `legacy_dev_folders(`, verified below), and the
+    /// key literal must appear exactly once. Replaces #738's
     /// `the_dev_folder_list_is_read_once_and_only_through_the_build_gate`.
     #[test]
     fn the_legacy_dev_folder_key_is_read_only_by_the_migration() {
@@ -811,21 +817,43 @@ mod tests {
             2,
             "a use of the legacy key is neither its definition nor its one read"
         );
-        // The reader is only ever handed to the migration, never called for its value.
-        let calls = prod.matches(concat!("legacy_dev_folders", "(app)")).count();
-        let handed = prod
-            .matches(concat!("||legacy_dev_folders", "(app)"))
-            .count();
+
+        // ‼️ Match the CALL, not one fixed argument spelling — `legacy_dev_folders(app)` misses
+        // `legacy_dev_folders(&app)`, which a direct (non-closure) read inside a command that
+        // owns `app: AppHandle<R>` would naturally be written as. The function DEFINITION does
+        // not confuse this count: it squashes to `fnlegacy_dev_folders<R:Runtime>(`, which does
+        // not contain `legacy_dev_folders(` — the generic parameter list sits between the name
+        // and the paren. Sanity-checked directly, not inferred:
+        let definition_shape = concat!(
+            "fnlegacy_dev_folders<R:Runtime>",
+            "(app:&AppHandle<R>)->Option<String>{"
+        );
+        assert!(
+            prod.contains(definition_shape),
+            "the function definition's squashed shape changed — recheck the sanity check below"
+        );
+        assert!(
+            !definition_shape.contains(concat!("legacy_dev_folders", "(")),
+            "sanity: the definition must not itself match the call needle, \
+             or `calls` below would count it"
+        );
+        let calls = prod.matches(concat!("legacy_dev_folders", "(")).count();
+        let handed = prod.matches(concat!("||legacy_dev_folders", "(")).count();
         assert!(handed >= 1, "the scan window does not reach the hand-offs");
         assert_eq!(
             calls, handed,
-            "legacy_dev_folders(app) is called outside a closure"
+            "a call to legacy_dev_folders( exists outside a `|| legacy_dev_folders(` closure hand-off"
         );
 
         let literal = concat!("\"plugin.", "devFolders\"");
         assert!(
             src.contains(literal),
             "the key literal moved — this scan would pass an offender"
+        );
+        assert_eq!(
+            prod.matches(literal).count(),
+            1,
+            "the legacy key literal must appear exactly once in this file's production text"
         );
         let mut offenders = Vec::new();
         let mut dirs = vec![std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src")];

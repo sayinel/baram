@@ -235,11 +235,10 @@ mod tests {
     use super::*;
 
     /// §260 3c-3 — the live smoke fixture is loaded through the dev-folder path
-    /// (`plugin_dev_cmd::admit_folder`), which calls `read_manifest_at`, which applies
-    /// the RUST validator (a separate
-    /// list from the TS one: its own capability allowlist and id rules). The TS test
-    /// beside the fixture cannot see those, so a fixture that passes there could still
-    /// fail at "Add dev folder" — during a scarce user-run smoke.
+    /// (`plugin_dev_cmd::admit_folder`), which calls `read_manifest_at`, which applies the RUST
+    /// validator (a separate list from the TS one: its own capability allowlist and id rules).
+    /// The TS test beside the fixture cannot see those, so a fixture that passes there could
+    /// still fail at "Add dev folder" — during a scarce user-run smoke.
     #[test]
     fn the_smoke_fixture_loads_through_the_rust_dev_folder_path() {
         let dir = Path::new(concat!(
