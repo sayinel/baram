@@ -14,10 +14,8 @@ import { useEffect, useState } from "react";
 
 import type { FontSurfaceScope } from "../utils/editor/font-surfaces";
 
-import { useShallow } from "zustand/shallow";
-
-import { useSettingsStore } from "../stores/settings/store";
 import { applyFontVariables } from "../utils/editor/font-surfaces";
+import { useEditorTypography } from "./use-editor-typography";
 
 /**
  * 표면 루트에 붙일 ref 콜백. 열려 있는 동안의 설정 변경도 따라간다.
@@ -29,12 +27,7 @@ export function useFontSurface(
   which: FontSurfaceScope,
 ): (el: HTMLElement | null) => void {
   const [surface, setSurface] = useState<HTMLElement | null>(null);
-  const { codeFontFamily, fontFamily } = useSettingsStore(
-    useShallow((s) => ({
-      codeFontFamily: s.codeFontFamily,
-      fontFamily: s.fontFamily,
-    })),
-  );
+  const { codeFontFamily, fontFamily } = useEditorTypography();
 
   useEffect(() => {
     if (!surface) return;

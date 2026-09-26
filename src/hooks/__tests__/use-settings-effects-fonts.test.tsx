@@ -61,12 +61,11 @@ describe("§349 use-settings-effects font wiring", () => {
     document.body.append(surface);
     editor = fakeEditor(surface);
     useSettingsStore.setState({
-      codeFontFamily: "",
+      activeThemeId: "system",
+      appearanceOverrides: {},
       codeFontSize: 14,
       codeLineHeight: 1.75,
-      fontFamily: "",
-      fontSize: 16,
-      lineHeight: 1.75,
+      installedThemes: {},
       linkFontMetrics: true,
     });
   });
@@ -77,8 +76,10 @@ describe("§349 use-settings-effects font wiring", () => {
 
   it("sets both font variables on the active editor surface", () => {
     useSettingsStore.setState({
-      codeFontFamily: "D2Coding",
-      fontFamily: "Noto Sans KR",
+      appearanceOverrides: {
+        editorCodeFontFamily: "D2Coding",
+        editorFontFamily: "Noto Sans KR",
+      },
     });
     renderHook(() => useSettingsEffects(editor));
     expect(surface.style.getPropertyValue("--font-family-editor")).toContain(
@@ -91,19 +92,23 @@ describe("§349 use-settings-effects font wiring", () => {
 
   // 결함 6의 회귀 가드: 인라인 font-family 로 돌아가면 실패한다.
   it("does not set an inline font-family on the surface", () => {
-    useSettingsStore.setState({ fontFamily: "Noto Sans KR" });
+    useSettingsStore.setState({
+      appearanceOverrides: { editorFontFamily: "Noto Sans KR" },
+    });
     renderHook(() => useSettingsEffects(editor));
     expect(surface.style.fontFamily).toBe("");
   });
 
   it("clears the variables when the settings go back to empty", () => {
     useSettingsStore.setState({
-      codeFontFamily: "D2Coding",
-      fontFamily: "Inter",
+      appearanceOverrides: {
+        editorCodeFontFamily: "D2Coding",
+        editorFontFamily: "Inter",
+      },
     });
     renderHook(() => useSettingsEffects(editor));
     act(() => {
-      useSettingsStore.setState({ codeFontFamily: "", fontFamily: "" });
+      useSettingsStore.setState({ appearanceOverrides: {} });
     });
     expect(surface.style.getPropertyValue("--font-family-editor")).toBe("");
     expect(surface.style.getPropertyValue("--font-family-mono")).toBe("");
@@ -114,7 +119,9 @@ describe("§349 use-settings-effects font wiring", () => {
   it("re-applies when only the code slot changes", () => {
     renderHook(() => useSettingsEffects(editor));
     act(() => {
-      useSettingsStore.setState({ codeFontFamily: "D2Coding" });
+      useSettingsStore.setState({
+        appearanceOverrides: { editorCodeFontFamily: "D2Coding" },
+      });
     });
     expect(surface.style.getPropertyValue("--font-family-mono")).toContain(
       '"D2Coding"',
@@ -139,10 +146,11 @@ describe("§354 use-settings-effects code metrics", () => {
     document.body.append(surface);
     editor = fakeEditor(surface);
     useSettingsStore.setState({
+      activeThemeId: "system",
+      appearanceOverrides: {},
       codeFontSize: 14,
       codeLineHeight: 1.75,
-      fontSize: 16,
-      lineHeight: 1.75,
+      installedThemes: {},
       linkFontMetrics: true,
     });
   });
@@ -152,7 +160,9 @@ describe("§354 use-settings-effects code metrics", () => {
   });
 
   it("derives the code variables from the body while linked", () => {
-    useSettingsStore.setState({ fontSize: 20, lineHeight: 2 });
+    useSettingsStore.setState({
+      appearanceOverrides: { editorFontSize: 20, editorLineHeight: 2 },
+    });
     renderHook(() => useSettingsEffects(editor));
     expect(surface.style.getPropertyValue("--editor-code-font-size")).toBe(
       "17.5px",
@@ -164,10 +174,9 @@ describe("§354 use-settings-effects code metrics", () => {
 
   it("uses the code values once unlinked", () => {
     useSettingsStore.setState({
+      appearanceOverrides: { editorFontSize: 20, editorLineHeight: 2 },
       codeFontSize: 11,
       codeLineHeight: 1.3,
-      fontSize: 20,
-      lineHeight: 2,
       linkFontMetrics: false,
     });
     renderHook(() => useSettingsEffects(editor));

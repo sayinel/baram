@@ -17,6 +17,8 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(async () => undefined),
 }));
 
+import type { InstalledTheme } from "../../themes/theme-install";
+
 import en from "../../i18n/en.json";
 import { useSettingsStore } from "../../stores/settings/store";
 import { DOCUMENT_FONT_SURFACES } from "../../utils/editor/font-surfaces";
@@ -36,6 +38,32 @@ async function flush(): Promise<void> {
     await Promise.resolve();
     await new Promise((r) => setTimeout(r, 0));
   });
+}
+
+/** `components/settings/__tests__/appearance-dial-row.test.tsx` 의 픽스처 그대로. */
+function installedTheme(
+  dials: Record<string, number | string>,
+): InstalledTheme {
+  return {
+    checksum: "c".repeat(64),
+    consentedAt: "2026-09-01T00:00:00.000Z",
+    consentedVersion: "1.0.0",
+    id: "prose",
+    installedAt: "2026-09-01T00:00:00.000Z",
+    installPath: "/home/u/.baram/themes/prose",
+    manifest: {
+      author: "a",
+      description: "d",
+      dials,
+      engines: { baram: ">=0.7.0" },
+      id: "prose",
+      license: "MIT",
+      modes: { light: { tokens: "t.json" } },
+      name: "prose",
+      version: "1.0.0",
+    },
+    modes: { light: { css: false } },
+  };
 }
 
 function overlay(id: string): HTMLElement {
@@ -58,8 +86,12 @@ afterEach(() => {
 
 beforeEach(() => {
   useSettingsStore.setState({
-    codeFontFamily: "D2Coding",
-    fontFamily: "Inter",
+    activeThemeId: "system",
+    appearanceOverrides: {
+      editorCodeFontFamily: "D2Coding",
+      editorFontFamily: "Inter",
+    },
+    installedThemes: {},
   });
 });
 
@@ -144,6 +176,25 @@ describe("§349 portaled overlays take the font variables", () => {
     ).toContain('"D2Coding"');
   });
 
+  // §365 테마가 준 코드 서체도 따른다 — 이 팝오버는 React 밖이라 `readEditorTypography` 로
+  // 읽는다. 사용자 층(`beforeEach` 의 D2Coding)을 비워야 테마 층이 보인다.
+  it("math inline preview popover takes a theme's code font", () => {
+    useSettingsStore.setState({
+      activeThemeId: "prose",
+      appearanceOverrides: {},
+      installedThemes: {
+        prose: installedTheme({ editorCodeFontFamily: "Theme Mono" }),
+      },
+    });
+    const editor = new Editor({ extensions: createBaramExtensions() });
+    editors.push(editor);
+    expect(
+      overlay("math-preview-popover").style.getPropertyValue(
+        "--font-family-mono",
+      ),
+    ).toContain('"Theme Mono"');
+  });
+
   // 열려 있는 동안의 설정 변경도 따라야 한다 — 설정 창과 오버레이를 동시에
   // 열어 두는 것은 서체를 고를 때의 정상 사용 흐름이다.
   it("follows a code-font change while the overlay is open", () => {
@@ -156,7 +207,12 @@ describe("§349 portaled overlays take the font variables", () => {
       />,
     );
     act(() => {
-      useSettingsStore.setState({ codeFontFamily: "Fira Code" });
+      useSettingsStore.setState({
+        appearanceOverrides: {
+          editorCodeFontFamily: "Fira Code",
+          editorFontFamily: "Inter",
+        },
+      });
     });
     expect(
       overlay("mermaid-fullscreen").style.getPropertyValue(

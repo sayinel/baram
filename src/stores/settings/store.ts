@@ -4,6 +4,7 @@ import type { DialValues } from "../../appearance/dials";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
+import { DIALS } from "../../appearance/dials";
 import { lookupThemes } from "../../themes/installed-theme-defs";
 import {
   defaultColorsForBase,
@@ -123,13 +124,9 @@ export const useSettingsStore = create<SettingsState>()(
         recentFiles: state.recentFiles,
         lastOpenedFolder: state.lastOpenedFolder,
         lastOpenedFile: state.lastOpenedFile,
-        // §348 서체 슬롯 둘과 최근 목록. partialize는 whitelist다 — 빠뜨리면
-        // 재시작마다 고른 서체가 사라진다.
-        codeFontFamily: state.codeFontFamily,
-        fontFamily: state.fontFamily,
+        // §348 최근 서체 목록. partialize 는 whitelist 다. 서체 슬롯 둘과 본문 크기 ·
+        // 줄 높이는 v28 부터 외관 다이얼(`appearanceOverrides`)이다.
         recentFonts: state.recentFonts,
-        fontSize: state.fontSize,
-        lineHeight: state.lineHeight,
         // §354 코드 전용 크기·줄 높이와 그 연동 스위치. partialize 는 whitelist다.
         linkFontMetrics: state.linkFontMetrics,
         codeFontSize: state.codeFontSize,
@@ -218,7 +215,7 @@ export const useSettingsStore = create<SettingsState>()(
         // would silently drop the setting on every restart.
         vimMode: state.vimMode,
       }),
-      version: 27,
+      version: 28,
       migrate: (persisted: unknown, version: number) => {
         const state = persisted as Record<string, unknown>;
 
@@ -633,6 +630,39 @@ export const useSettingsStore = create<SettingsState>()(
             appearanceState.appearanceOverrides = {
               ...appearanceState.appearanceOverrides,
               editorMaxWidth: legacy,
+            };
+          }
+        }
+
+        // v27 → v28: §365 본문 타이포 넷이 외관 다이얼이 되었다(스펙 0060 §6). v27 과 같은
+        // 규칙이다 — 다이얼의 `parse` 를 지나고 기본값과 **다른** 값만 사용자 층으로 옮긴다
+        // (전부 옮기면 사용자가 고른 적 없는 값이 테마의 제안을 이긴다, §364.2). `parse` 에
+        // 실패한 값(오늘 UI 로는 만들 수 없는 범위 밖 값)은 옮기지 않으므로 그 사용자는 기본값을
+        // 본다. 옛 키는 지운다 — v27 은 다음 저장의 `partialize` 에 맡겼지만, 그러면 마이그레이션
+        // 직후 state 에 두 출처가 공존한다.
+        if (version < 28) {
+          const moved: DialValues = {};
+          for (const [legacyKey, dialId] of [
+            ["codeFontFamily", "editorCodeFontFamily"],
+            ["fontFamily", "editorFontFamily"],
+            ["fontSize", "editorFontSize"],
+            ["lineHeight", "editorLineHeight"],
+          ] as const) {
+            const dial = DIALS.find((d) => d.id === dialId);
+            const value = dial?.parse(state[legacyKey]);
+            if (
+              dial !== undefined &&
+              value !== undefined &&
+              value !== dial.defaultValue
+            ) {
+              moved[dialId] = value;
+            }
+            Reflect.deleteProperty(state, legacyKey);
+          }
+          if (Object.keys(moved).length > 0) {
+            state.appearanceOverrides = {
+              ...(state.appearanceOverrides as DialValues | undefined),
+              ...moved,
             };
           }
         }

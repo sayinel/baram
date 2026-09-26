@@ -135,8 +135,9 @@ interface DialBase {
    *
    * `"editor"` 는 **아무도** `<html>` 에 쓰지 않는다 — 값이 CSS 변수가 아니라 소비자(활성
    * 편집기의 인라인 · §349 표면 변수 · 코드 크기 계산)가 읽는 입력이다. 그래서 `toVars` 는 빈
-   * 맵, `vars` 는 빈 배열이다(스펙 0060 D3). 소비자는 `hooks/use-editor-typography.ts` 로
-   * 병합값을 읽는다.
+   * 맵, `vars` 는 빈 배열이다(스펙 0060 D3). 그 값을 적용하는 소비자는
+   * `appearance/editor-typography.ts` 를 거쳐 병합값을 읽는다 — 입구는 그 파일의 머리주석이
+   * 열거한다.
    */
   readonly channel: "color" | "editor" | "layout";
   readonly id: string;

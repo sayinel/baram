@@ -14,6 +14,7 @@ import {
 } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 
+import { readEditorTypography } from "../../hooks/use-editor-typography";
 import { useSettingsStore } from "../../stores/settings/store";
 import { applyFontVariables } from "../../utils/editor/font-surfaces";
 import { parseKaTeXError } from "../../utils/katex/katex-error";
@@ -308,22 +309,30 @@ function createMathEditPlugin(): Plugin<MathEditState> {
       // `var(--font-family-mono)` 가 사용자의 코드 서체를 따라가려면 여기에
       // 직접 덮어야 한다. React 트리가 아니라 훅을 쓸 수 없어 스토어를 직접
       // 구독하고, 아래 `destroy()` 에서 해지한다.
+      //
+      // §365 서체는 병합값이다(테마가 줄 수 있다) — `readEditorTypography` 가 훅과 같은 계산으로
+      // 읽는다. 설정 스토어만 구독해도 되는 이유: 철회는 플러그인 스토어에서 오지만, 철회가 테마를
+      // 벗기면 `use-settings-effects.ts` 가 `setActiveTheme("system")`(설정 스토어 쓰기)을 부른다
+      // (계획 0107 P4).
+      let appliedFonts = readEditorTypography();
       const applyFonts = () => {
-        const { codeFontFamily, fontFamily } = useSettingsStore.getState();
         applyFontVariables(overlay, {
-          bodyFont: fontFamily,
-          codeFont: codeFontFamily,
+          bodyFont: appliedFonts.fontFamily,
+          codeFont: appliedFonts.codeFontFamily,
           which: "both",
         });
       };
       applyFonts();
-      const unsubscribeFonts = useSettingsStore.subscribe((next, prev) => {
+      const unsubscribeFonts = useSettingsStore.subscribe(() => {
+        const next = readEditorTypography();
         if (
-          next.codeFontFamily !== prev.codeFontFamily ||
-          next.fontFamily !== prev.fontFamily
+          next.codeFontFamily === appliedFonts.codeFontFamily &&
+          next.fontFamily === appliedFonts.fontFamily
         ) {
-          applyFonts();
+          return;
         }
+        appliedFonts = next;
+        applyFonts();
       });
 
       const previewContent = document.createElement("div");

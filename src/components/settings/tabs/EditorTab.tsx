@@ -5,6 +5,7 @@ import type { FontSlot } from "../FontSlotPicker";
 
 import { useShallow } from "zustand/shallow";
 
+import { useEditorTypography } from "../../../hooks/use-editor-typography";
 import { useTranslation } from "../../../i18n/useTranslation";
 import { listFonts } from "../../../ipc/font";
 import { useSettingsStore } from "../../../stores/settings/store";
@@ -29,15 +30,7 @@ import {
 export function EditorTab() {
   const { t } = useTranslation();
   const {
-    fontFamily,
-    setFontFamily,
-    codeFontFamily,
-    setCodeFontFamily,
     recentFonts,
-    fontSize,
-    setFontSize,
-    lineHeight,
-    setLineHeight,
     linkFontMetrics,
     setLinkFontMetrics,
     codeFontSize,
@@ -60,23 +53,15 @@ export function EditorTab() {
     useShallow((s) => ({
       autoLoadVideoEmbeds: s.autoLoadVideoEmbeds,
       autoPairBrackets: s.autoPairBrackets,
-      codeFontFamily: s.codeFontFamily,
       codeFontSize: s.codeFontSize,
       codeLineHeight: s.codeLineHeight,
-      fontFamily: s.fontFamily,
-      fontSize: s.fontSize,
-      lineHeight: s.lineHeight,
       lineNumbers: s.lineNumbers,
       linkFontMetrics: s.linkFontMetrics,
       recentFonts: s.recentFonts,
       setAutoLoadVideoEmbeds: s.setAutoLoadVideoEmbeds,
       setAutoPairBrackets: s.setAutoPairBrackets,
-      setCodeFontFamily: s.setCodeFontFamily,
       setCodeFontSize: s.setCodeFontSize,
       setCodeLineHeight: s.setCodeLineHeight,
-      setFontFamily: s.setFontFamily,
-      setFontSize: s.setFontSize,
-      setLineHeight: s.setLineHeight,
       setLineNumbers: s.setLineNumbers,
       setLinkFontMetrics: s.setLinkFontMetrics,
       setTabSize: s.setTabSize,
@@ -87,6 +72,8 @@ export function EditorTab() {
       virtualizeLargeDocs: s.virtualizeLargeDocs,
     })),
   );
+  const { codeFontFamily, fontFamily, fontSize, lineHeight } =
+    useEditorTypography();
 
   // ‼️ Three states, not two (final review I3). "Still loading" and "the
   // enumeration failed, here is a stand-in list" both have to render no
@@ -148,7 +135,9 @@ export function EditorTab() {
           fonts={badgeFonts(fontState)}
           fontSize={fontSize}
           lineHeight={lineHeight}
-          onChange={setFontFamily}
+          onChange={(family) =>
+            useSettingsStore.getState().setDial("editorFontFamily", family)
+          }
           onOpenBrowser={setBrowserSlot}
           slot="body"
           value={fontFamily}
@@ -163,7 +152,9 @@ export function EditorTab() {
           fonts={badgeFonts(fontState)}
           fontSize={codeMetrics.fontSize}
           lineHeight={codeMetrics.lineHeight}
-          onChange={setCodeFontFamily}
+          onChange={(family) =>
+            useSettingsStore.getState().setDial("editorCodeFontFamily", family)
+          }
           onOpenBrowser={setBrowserSlot}
           slot="code"
           value={codeFontFamily}
@@ -181,7 +172,11 @@ export function EditorTab() {
           className="settings-range"
           max={32}
           min={8}
-          onChange={(e) => setFontSize(Number(e.target.value))}
+          onChange={(e) =>
+            useSettingsStore
+              .getState()
+              .setDial("editorFontSize", Number(e.target.value))
+          }
           step={1}
           type="range"
           value={fontSize}
@@ -199,7 +194,11 @@ export function EditorTab() {
           className="settings-range"
           max={3.0}
           min={1.0}
-          onChange={(e) => setLineHeight(Number(e.target.value))}
+          onChange={(e) =>
+            useSettingsStore
+              .getState()
+              .setDial("editorLineHeight", Number(e.target.value))
+          }
           step={0.05}
           type="range"
           value={lineHeight}
@@ -210,7 +209,10 @@ export function EditorTab() {
         description={t("settings.editor.linkFontMetrics.desc")}
         label={t("settings.editor.linkFontMetrics")}
       >
-        <ToggleSwitch checked={linkFontMetrics} onChange={setLinkFontMetrics} />
+        <ToggleSwitch
+          checked={linkFontMetrics}
+          onChange={(on) => setLinkFontMetrics(on, { fontSize, lineHeight })}
+        />
       </SettingsRow>
 
       {/* 연동 중에도 두 행을 숨기지 않고 끈 채로 둔다 — 코드가 지금 몇 px 인지는

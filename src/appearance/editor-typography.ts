@@ -1,6 +1,7 @@
 // §365 다이얼 6 — 병합된 본문 타이포(스펙 0060 §4). 소비자는 전부 이것을 거쳐 읽는다: 훅
 // `useEditorTypography` 와 React 밖 `readEditorTypography`(둘 다 `hooks/use-editor-typography.ts`),
-// 그리고 병합 결과를 이미 가진 `use-settings-effects.ts`(`editorTypographyOf`, 계획 0107 P3).
+// 병합 결과를 이미 가진 `use-settings-effects.ts`(`editorTypographyOf`, 계획 0107 P3), 그리고 두
+// 층을 이미 가진 `components/settings/settings-registry.ts`(`resolveEditorTypography`).
 //
 // 필드 이름이 옮기기 전 설정 필드와 같은 이유: 소비자의 구조 분해가 그대로 남아, 바뀌는 것이
 // "어디서 읽는가" 하나로 좁혀진다.

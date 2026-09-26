@@ -50,8 +50,7 @@ describe("EditorTab — Browse…", () => {
   it("shows the same size and line height in the browser as in the settings rows", async () => {
     useSettingsStore.setState({
       ...initialState,
-      fontSize: 21,
-      lineHeight: 1.7,
+      appearanceOverrides: { editorFontSize: 21, editorLineHeight: 1.7 },
       locale: "en",
     });
     render(<EditorTab />);
@@ -133,7 +132,7 @@ describe("EditorTab — Browse…", () => {
   it("makes no missing claim about a chosen font while the enumeration is a fallback", async () => {
     useSettingsStore.setState({
       ...initialState,
-      fontFamily: "Comic Sans MS",
+      appearanceOverrides: { editorFontFamily: "Comic Sans MS" },
       locale: "en",
     });
     render(<EditorTab />);
@@ -160,8 +159,7 @@ describe("EditorTab — code metrics", () => {
   it("shows the code rows disabled, at the derived values, while linked", async () => {
     useSettingsStore.setState({
       ...initialState,
-      fontSize: 20,
-      lineHeight: 2,
+      appearanceOverrides: { editorFontSize: 20, editorLineHeight: 2 },
       locale: "en",
     });
     await renderTab();
@@ -182,14 +180,15 @@ describe("EditorTab — code metrics", () => {
   it("enables the code sliders at the values they were showing, once unlinked", async () => {
     useSettingsStore.setState({
       ...initialState,
-      fontSize: 20,
-      lineHeight: 2,
+      appearanceOverrides: { editorFontSize: 20, editorLineHeight: 2 },
       locale: "en",
     });
     await renderTab();
 
     act(() => {
-      useSettingsStore.getState().setLinkFontMetrics(false);
+      useSettingsStore
+        .getState()
+        .setLinkFontMetrics(false, { fontSize: 20, lineHeight: 2 });
     });
 
     expect(parenthesised(/Size of code text/u)).toBe("18px");
@@ -208,7 +207,11 @@ describe("EditorTab — code metrics", () => {
   // 코드 슬롯의 예제는 코드 크기로 그린다 — 본문 크기로 그리면 실제 에디터에는
   // 없는 조합을 보여 주게 되고, 예제를 보는 이유가 사라진다.
   it("previews the code slot at the code size, not the body size", async () => {
-    useSettingsStore.setState({ ...initialState, fontSize: 20, locale: "en" });
+    useSettingsStore.setState({
+      ...initialState,
+      appearanceOverrides: { editorFontSize: 20 },
+      locale: "en",
+    });
     await renderTab();
     const strips = screen.getAllByTestId("font-preview-strip");
     expect(strips).toHaveLength(2);
@@ -222,8 +225,10 @@ describe("EditorTab — code metrics", () => {
     useSettingsStore.setState({ ...initialState, locale: "en" });
     await renderTab();
     act(() => {
-      useSettingsStore.getState().setLinkFontMetrics(false);
-      useSettingsStore.getState().setFontSize(30);
+      useSettingsStore
+        .getState()
+        .setLinkFontMetrics(false, { fontSize: 16, lineHeight: 1.75 });
+      useSettingsStore.getState().setDial("editorFontSize", 30);
     });
     expect(parenthesised(/Size of code text/u)).toBe("14px");
     expect(parenthesised(/Size of text in the editor/u)).toBe("30px");

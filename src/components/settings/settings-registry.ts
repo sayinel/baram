@@ -13,6 +13,7 @@ import type { TaskScanScope } from "../../utils/tasks/task-scan-scope";
 import { useShallow } from "zustand/shallow";
 
 import { DIALS } from "../../appearance/dials";
+import { resolveEditorTypography } from "../../appearance/editor-typography";
 import { resolveDials } from "../../appearance/merge";
 import { useThemeDials } from "../../hooks/use-theme-dials";
 import { AVAILABLE_LOCALES, LOCALE_LABELS } from "../../i18n";
@@ -103,13 +104,11 @@ const selectRegistrySettings = (s: SettingsState) => ({
   autoUpdateLinks: s.autoUpdateLinks,
   codeFontSize: s.codeFontSize,
   codeLineHeight: s.codeLineHeight,
-  fontSize: s.fontSize,
   highlight: s.highlight,
   inlineMath: s.inlineMath,
   journalEnabled: s.journalEnabled,
   journalFilenameFormat: s.journalFilenameFormat,
   journalStartupBehavior: s.journalStartupBehavior,
-  lineHeight: s.lineHeight,
   lineNumbers: s.lineNumbers,
   linkFontMetrics: s.linkFontMetrics,
   locale: s.locale,
@@ -121,13 +120,11 @@ const selectRegistrySettings = (s: SettingsState) => ({
   setAutoSaveDelay: s.setAutoSaveDelay,
   setAutoUpdateLinks: s.setAutoUpdateLinks,
   setDial: s.setDial,
-  setFontSize: s.setFontSize,
   setHighlight: s.setHighlight,
   setInlineMath: s.setInlineMath,
   setJournalEnabled: s.setJournalEnabled,
   setJournalFilenameFormat: s.setJournalFilenameFormat,
   setJournalStartupBehavior: s.setJournalStartupBehavior,
-  setLineHeight: s.setLineHeight,
   setLineNumbers: s.setLineNumbers,
   setLinkFontMetrics: s.setLinkFontMetrics,
   setLocale: s.setLocale,
@@ -204,6 +201,10 @@ export function useSettingsRegistry(): SearchableSetting[] {
   // 위 M-11 정정과 같은 규율로, 이 훅도 스토어를 좁게 읽는다(`activeThemeId` ·
   // `installedThemes` · 플러그인 스토어의 `revocations`).
   const themeDials = useThemeDials();
+  const typography = resolveEditorTypography(
+    themeDials,
+    settings.appearanceOverrides,
+  );
   // §370 — the chrome-visibility toggles only need these six fields. A bare
   // `useUIStore()` would rebuild this registry on every UI-store write, including
   // ones this settings modal itself causes (e.g. `settingsOpen` while it is open) —
@@ -223,8 +224,8 @@ export function useSettingsRegistry(): SearchableSetting[] {
   const codeMetrics = resolveCodeMetrics({
     codeFontSize: settings.codeFontSize,
     codeLineHeight: settings.codeLineHeight,
-    fontSize: settings.fontSize,
-    lineHeight: settings.lineHeight,
+    fontSize: typography.fontSize,
+    lineHeight: typography.lineHeight,
     linkFontMetrics: settings.linkFontMetrics,
   });
 
@@ -695,30 +696,32 @@ export function useSettingsRegistry(): SearchableSetting[] {
       keywords: ["typeface", "font", "code", "monospace"],
       control: NAVIGATE_CONTROL,
     },
-    {
-      id: "fontSize",
-      label: "settings.editor.fontSize",
-      description: "settings.editor.fontSize.desc",
-      category: "editor",
-      section: "settings.editor.font",
-      control: makeSliderControl(
-        () => settings.fontSize,
-        settings.setFontSize,
-        { min: 8, max: 32, step: 1 },
-      ),
-    },
-    {
-      id: "lineHeight",
-      label: "settings.editor.lineHeight",
-      description: "settings.editor.lineHeight.desc",
-      category: "editor",
-      section: "settings.editor.font",
-      control: makeSliderControl(
-        () => settings.lineHeight,
-        settings.setLineHeight,
-        { min: 1.0, max: 3.0, step: 0.05 },
-      ),
-    },
+    ...dialSliderSetting(
+      {
+        id: "fontSize",
+        label: "settings.editor.fontSize",
+        description: "settings.editor.fontSize.desc",
+        category: "editor",
+        section: "settings.editor.font",
+      },
+      "editorFontSize",
+      themeDials,
+      settings.appearanceOverrides,
+      settings.setDial,
+    ),
+    ...dialSliderSetting(
+      {
+        id: "lineHeight",
+        label: "settings.editor.lineHeight",
+        description: "settings.editor.lineHeight.desc",
+        category: "editor",
+        section: "settings.editor.font",
+      },
+      "editorLineHeight",
+      themeDials,
+      settings.appearanceOverrides,
+      settings.setDial,
+    ),
     // §354 연동 스위치는 인라인으로, 그 아래 코드 크기·줄 높이 두 항목은 탭으로 보내는
     // 버튼으로 둔다. 두 슬라이더의 값은 연동이 켜져 있는 동안 무시되는데, 이 레지스트리의
     // 슬라이더 컨트롤에는 끈 상태가 없다 — 검색 결과에 살아 있는 슬라이더로 나오면 움직여도
@@ -733,7 +736,7 @@ export function useSettingsRegistry(): SearchableSetting[] {
       keywords: ["code", "size", "line height", "link"],
       control: makeToggleControl(
         () => settings.linkFontMetrics,
-        settings.setLinkFontMetrics,
+        (on) => settings.setLinkFontMetrics(on, typography),
       ),
     },
     {

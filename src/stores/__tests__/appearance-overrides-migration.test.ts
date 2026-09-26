@@ -41,9 +41,9 @@ describe("editorMaxWidth → appearanceOverrides 마이그레이션", () => {
   });
 
   it("editorMaxWidth 키 자체가 없던(v5 이전) 설치는 손대지 않는다", () => {
-    const out = migrate({ fontFamily: "D2Coding" });
+    const out = migrate({ tabSize: 4 });
     expect(out.appearanceOverrides).toBeUndefined();
-    expect(out.fontFamily).toBe("D2Coding");
+    expect(out.tabSize).toBe(4);
   });
 
   // 게이트가 없으면, 업그레이드 뒤 사용자가 appearanceOverrides 를 직접 비운

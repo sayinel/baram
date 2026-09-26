@@ -9,6 +9,7 @@ import { Profiler } from "react";
 import { act, render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
+import { readEditorTypography } from "../../../hooks/use-editor-typography";
 import { useAIStore } from "../../../stores/ai/ai";
 import { useSettingsStore } from "../../../stores/settings/store";
 import { useSettingsRegistry } from "../settings-registry";
@@ -84,13 +85,13 @@ describe("useSettingsRegistry re-render scope (§340 M-11)", () => {
   it("still commits when a settings field it reads changes — non-vacuity control", () => {
     const state = renderRegistryCountingCommits();
     const before = state.commits;
-    const size = useSettingsStore.getState().fontSize;
+    const size = readEditorTypography().fontSize;
 
     act(() => {
-      useSettingsStore.getState().setFontSize(size + 1);
+      useSettingsStore.getState().setDial("editorFontSize", size + 1);
     });
 
     expect(state.commits).toBeGreaterThan(before);
-    useSettingsStore.getState().setFontSize(size);
+    useSettingsStore.getState().setDial("editorFontSize", size);
   });
 });

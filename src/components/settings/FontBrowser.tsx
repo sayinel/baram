@@ -12,8 +12,8 @@ import type { FontListState } from "../../utils/font/font-list-state";
 import type { FontSlot } from "./FontSlotPicker";
 
 import { ArrowLeft, X } from "lucide-react";
-import { useShallow } from "zustand/shallow";
 
+import { useEditorTypography } from "../../hooks/use-editor-typography";
 import { useTranslation } from "../../i18n/useTranslation";
 import { listFonts } from "../../ipc/font";
 import { useSettingsStore } from "../../stores/settings/store";
@@ -77,21 +77,8 @@ export function FontBrowser({
   state,
 }: FontBrowserProps) {
   const { t } = useTranslation();
-  const {
-    codeFontFamily,
-    fontFamily,
-    pushRecentFont,
-    setCodeFontFamily,
-    setFontFamily,
-  } = useSettingsStore(
-    useShallow((s) => ({
-      codeFontFamily: s.codeFontFamily,
-      fontFamily: s.fontFamily,
-      pushRecentFont: s.pushRecentFont,
-      setCodeFontFamily: s.setCodeFontFamily,
-      setFontFamily: s.setFontFamily,
-    })),
-  );
+  const { codeFontFamily, fontFamily } = useEditorTypography();
+  const pushRecentFont = useSettingsStore((s) => s.pushRecentFont);
 
   const [activeSlot, setActiveSlot] = useState<FontSlot>(slot);
   const [query, setQuery] = useState("");
@@ -145,8 +132,12 @@ export function FontBrowser({
     activeSlot === "code" ? !chips.includes("all") : chips.includes("mono");
 
   const commit = (name: string) => {
-    if (activeSlot === "code") setCodeFontFamily(name);
-    else setFontFamily(name);
+    useSettingsStore
+      .getState()
+      .setDial(
+        activeSlot === "code" ? "editorCodeFontFamily" : "editorFontFamily",
+        name,
+      );
     pushRecentFont(name);
   };
 

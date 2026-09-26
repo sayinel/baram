@@ -24,7 +24,11 @@ beforeEach(() => {
     }),
     writable: true,
   });
-  useSettingsStore.setState({ codeFontFamily: "", fontFamily: "" });
+  useSettingsStore.setState({
+    activeThemeId: "system",
+    appearanceOverrides: {},
+    installedThemes: {},
+  });
 });
 
 function renderSource() {
@@ -42,7 +46,9 @@ function renderSource() {
 
 describe("§349 source mode font surface", () => {
   it("sets the mono variable on the CodeMirror wrapper", () => {
-    useSettingsStore.setState({ codeFontFamily: "D2Coding" });
+    useSettingsStore.setState({
+      appearanceOverrides: { editorCodeFontFamily: "D2Coding" },
+    });
     const wrapper = renderSource();
     expect(wrapper.style.getPropertyValue("--font-family-mono")).toContain(
       '"D2Coding"',
@@ -52,8 +58,10 @@ describe("§349 source mode font surface", () => {
   // 이 단정이 `which: "mono"` 를 고정한다. `"both"` 로 바뀌면 실패한다.
   it("never sets the body variable — raw markdown stays monospaced", () => {
     useSettingsStore.setState({
-      codeFontFamily: "D2Coding",
-      fontFamily: "Noto Sans KR",
+      appearanceOverrides: {
+        editorCodeFontFamily: "D2Coding",
+        editorFontFamily: "Noto Sans KR",
+      },
     });
     const wrapper = renderSource();
     expect(wrapper.style.getPropertyValue("--font-family-editor")).toBe("");
@@ -62,7 +70,9 @@ describe("§349 source mode font surface", () => {
   // 변수는 **래퍼**에 있어야 한다 — CodeMirror 가 만드는 `.cm-content` 는 이
   // 컴포넌트가 소유하지 않으므로 거기에 직접 쓰면 다음 재구성에 사라진다.
   it("puts the variable on an ancestor of .cm-content so it inherits", () => {
-    useSettingsStore.setState({ codeFontFamily: "D2Coding" });
+    useSettingsStore.setState({
+      appearanceOverrides: { editorCodeFontFamily: "D2Coding" },
+    });
     const wrapper = renderSource();
     const content = wrapper.querySelector(".cm-content");
     expect(content).not.toBeNull();
@@ -77,7 +87,9 @@ describe("§349 source mode font surface", () => {
     const before = wrapper.querySelector(".cm-editor");
     expect(before).not.toBeNull();
     act(() => {
-      useSettingsStore.setState({ codeFontFamily: "D2Coding" });
+      useSettingsStore.setState({
+        appearanceOverrides: { editorCodeFontFamily: "D2Coding" },
+      });
     });
     // 먼저 리렌더가 실제로 일어났음을 보인다 — 안 일어났다면 아래 "그대로다"는
     // 아무것도 증명하지 않는다.
