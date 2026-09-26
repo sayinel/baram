@@ -165,11 +165,9 @@ describe("the right-click menus paint the app's locale", () => {
     useSettingsStore.setState({ locale: "ko" });
     const labels = await openMenu(build, findPos, floor, identity);
 
-    // Every label must be a string ko.json actually holds. The alignment rows append a ✓ to
-    // mark the current value, which is markup rather than prose — stripped, not listed.
-    const stray = labels
-      .map((label) => label.replace(/ ✓$/, ""))
-      .filter((label) => !KO_VALUES.has(label));
+    // Every label must be a string ko.json actually holds. 선택 상태는 라벨이 아니라
+    // `checked` 로 온다(계획 0108).
+    const stray = labels.filter((label) => !KO_VALUES.has(label));
     expect(stray).toEqual([]);
   });
 });
@@ -205,12 +203,13 @@ describe("the math node menus", () => {
         ...buildMathInlineMenu(editor, inlineMathTarget(editor), t),
       ]
         .filter((item) => !item.separator)
-        .map((item) => item.label.replace(/ ✓$/, ""));
+        .map((item) => item.label);
 
       // 7 per builder — a returned `[]` (the shape `buildMathInlineMenu` uses for "not my node")
       // would otherwise satisfy "nothing is English".
       expect(labels.length).toBe(14);
       expect(labels.filter((label) => !values.has(label))).toEqual([]);
+      expect(labels.some((label) => label.includes("✓"))).toBe(false);
     },
   );
 });

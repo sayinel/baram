@@ -126,6 +126,7 @@
   "contextAdd.initVault": "볼트로 초기화…",
   "contextAdd.openFile": "파일 열기…",
   "contextAdd.openFolder": "폴더 열기…",
+  "contextMenu.checked": "선택됨",
   "contextMenu.selectAllInBlock": "블록 전체 선택",
   "contextTab.aliasPlaceholder": "볼트 별칭",
   "contextTab.changeColor": "색 변경",

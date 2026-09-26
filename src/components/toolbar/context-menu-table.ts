@@ -60,7 +60,8 @@ export function buildTableMenu(
     },
     { label: "", action: () => {}, separator: true },
     {
-      label: `${t("tableToolbar.alignLeft")}${currentAlign === "left" ? " \u2713" : ""}`,
+      label: t("tableToolbar.alignLeft"),
+      checked: currentAlign === "left",
       action: () =>
         chainWithVimExternalEdit(editor)
           .focus()
@@ -68,7 +69,8 @@ export function buildTableMenu(
           .run(),
     },
     {
-      label: `${t("tableToolbar.alignCenter")}${currentAlign === "center" ? " \u2713" : ""}`,
+      label: t("tableToolbar.alignCenter"),
+      checked: currentAlign === "center",
       action: () =>
         chainWithVimExternalEdit(editor)
           .focus()
@@ -76,7 +78,8 @@ export function buildTableMenu(
           .run(),
     },
     {
-      label: `${t("tableToolbar.alignRight")}${currentAlign === "right" ? " \u2713" : ""}`,
+      label: t("tableToolbar.alignRight"),
+      checked: currentAlign === "right",
       action: () =>
         chainWithVimExternalEdit(editor)
           .focus()
@@ -84,7 +87,8 @@ export function buildTableMenu(
           .run(),
     },
     {
-      label: `${t("tableMenu.noAlignment")}${currentAlign === null ? " \u2713" : ""}`,
+      label: t("tableMenu.noAlignment"),
+      checked: currentAlign === null,
       action: () =>
         chainWithVimExternalEdit(editor)
           .focus()

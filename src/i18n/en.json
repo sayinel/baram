@@ -126,6 +126,7 @@
   "contextAdd.initVault": "Initialize as Vault…",
   "contextAdd.openFile": "Open File…",
   "contextAdd.openFolder": "Open Folder…",
+  "contextMenu.checked": "Selected",
   "contextMenu.selectAllInBlock": "Select All in Block",
   "contextTab.aliasPlaceholder": "vault alias",
   "contextTab.changeColor": "Change Color",
