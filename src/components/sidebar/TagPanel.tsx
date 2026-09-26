@@ -517,6 +517,9 @@ function TagTreeItem({
               e.stopPropagation();
               onToggle(node.fullPath);
             }}
+            title={t(
+              node.expanded ? "blockChrome.collapse" : "blockChrome.expand",
+            )}
           >
             {node.expanded ? (
               <ChevronDown className="icon-inline" size="1em" />
