@@ -1386,8 +1386,8 @@ mod tests {
     // through `invoke` (which resolves `Build::current()`, and a test binary IS a debug build:
     // see `list_answers_from_the_rust_file_and_grants_an_approved_folder`'s own note above). A
     // release build's prompt-then-persist behavior can no longer be reached by asking Rust's
-    // own `Build::current()` for it. `enabling_when_already_on_shows_no_prompt` below still
-    // covers `generate_handler!` wiring for this command via `invoke`.
+    // own `Build::current()` for it. The one remaining `invoke`-based test of this command,
+    // further below, covers `generate_handler!` wiring instead.
     #[tokio::test]
     async fn enabling_asks_first_and_a_refusal_leaves_it_off() {
         let f = fixture();
@@ -1625,10 +1625,48 @@ mod tests {
         );
     }
 
-    /// M7(b) (review round 1) — the positive half of `enabling_asks_first_and_a_refusal_leaves_it_off`:
-    /// turning it on when it is already on must not prompt at all.
+    /// The positive half of `enabling_asks_first_and_a_refusal_leaves_it_off`: turning it on
+    /// when it is already on must not prompt at all, in a RELEASE build. Called directly with
+    /// `Build::release()` for the same reason those two are: going through `invoke` resolves
+    /// `Build::current()`, dev in a test binary, which would hit the dev-build short-circuit
+    /// below and never reach this check at all.
+    #[tokio::test]
+    async fn enabling_when_already_on_in_a_release_build_shows_no_prompt() {
+        let f = fixture();
+        write_r1(
+            &f,
+            serde_json::json!({ "version": 1, "enabled": true, "folders": [] }),
+        );
+        let log = shown();
+        let host = host_with(
+            &f,
+            ScriptedDialogs {
+                shown: log.clone(),
+                ..ScriptedDialogs::default()
+            },
+        );
+        let app = tauri::test::mock_app();
+
+        let enabled = set_developer_mode(app.handle(), &host, Build::release(), true)
+            .await
+            .unwrap();
+
+        assert!(enabled);
+        assert!(
+            log.lock().unwrap().is_empty(),
+            "already-on must not show a prompt"
+        );
+        assert!(r1(&f).enabled);
+    }
+
+    /// Through `generate_handler!`, in a test (debug, hence dev) build: enabling always answers
+    /// `true` without a dialog and without touching R1, whatever R1's own `enabled` says. This
+    /// is the ONE remaining `invoke`-based test of `plugin_set_developer_mode` — it pins that
+    /// the wiring reaches the command, and that what it reaches in THIS build is the dev-build
+    /// short-circuit, not R1's enable/prompt logic (which the direct-call tests above cover
+    /// under an explicit `Build::release()`).
     #[test]
-    fn enabling_when_already_on_shows_no_prompt() {
+    fn enabling_through_generate_handler_in_a_dev_build_is_the_short_circuit() {
         let f = fixture();
         write_r1(
             &f,
@@ -1648,13 +1686,10 @@ mod tests {
             "plugin_set_developer_mode",
             serde_json::json!({ "enabled": true }),
         )
-        .unwrap();
+        .expect("plugin_set_developer_mode must be registered");
 
         assert_eq!(enabled, true);
-        assert!(
-            log.lock().unwrap().is_empty(),
-            "already-on must not show a prompt"
-        );
-        assert!(r1(&f).enabled);
+        assert!(log.lock().unwrap().is_empty(), "a dev build must not ask");
+        assert!(r1(&f).enabled, "unchanged from what write_r1 set");
     }
 }
