@@ -62,8 +62,32 @@ Baram comes with 8 built-in themes and supports custom theme creation.
 
 **Import / Export:**
 
-- Click **Import Theme...** to load a `.json` theme file
-- Click **Export** in the theme editor to save the current theme as a `.json` file for sharing
+- Click **Import Theme...** to load a theme package or a color settings file — see [Install a theme from a file](#install-a-theme-from-a-file)
+- Click **Export Colors** in the theme editor to save the current theme's colors as a `.json` file for sharing
+
+### Export your look as a theme
+
+**Export Look as Theme...** in the Appearance tab saves what you see now as a theme package
+(`.zip`): the colors of the theme you are wearing, every [dial](#appearance-dials) and font
+setting (Font Family, Code Font, Font Size, Line Height) that differs from Baram's default, and
+— if you tick **Also suggest hiding the bars I hid** — the bars you have hidden. The screen lists
+all of this, with the same names and values as the settings rows, before you export. Fill in
+the name and every package detail to turn on **Export Theme Package**.
+
+The theme's CSS and any font files it ships are not included, so a font setting that points at
+one of those fonts shows **Not on this machine** for whoever installs the package. A package
+that carries settings or hidden bars needs the Baram version you exported it from, or newer.
+
+### Install a theme from a file
+
+**Import Theme...** takes two kinds of file: a theme package (`.zip`) and a color settings file
+(`.json`, what **Export Colors** saves). Baram tells them apart by their content, not by the
+extension. A package asks for the same consent as a theme from **Browse Themes**; the consent
+title shows the package name followed by the file name. A theme installed from a file does not
+receive updates from the theme registry. If a theme with the same id is already installed, Baram
+asks before replacing it — showing both versions when that theme also came from a file, or
+warning that it will stop receiving registry updates when it came from the registry. A package
+over 32 MB and a color settings file over 64 KB are refused.
 
 ## Appearance dials
 
