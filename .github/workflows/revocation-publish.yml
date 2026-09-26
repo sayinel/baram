@@ -106,7 +106,14 @@ jobs:
           # the permissions window as well.
           rm -f ~/.ssh/plugins_deploy
           install -m 600 /dev/null ~/.ssh/plugins_deploy
-          printf '%s' "$DEPLOY_KEY" > ~/.ssh/plugins_deploy
+          # ‼️ THE TRAILING NEWLINE IS LOAD-BEARING (2026-09-26 checkpoint failure, plan 0102 Step
+          # 9, run 36223382598). OpenSSH refuses a private key file whose last line has no
+          # newline, and the stored `PLUGINS_DEPLOY_KEY` secret does not end with one — `printf
+          # '%s'` writes exactly the secret's bytes and no more, so the key it wrote could not be
+          # loaded (`error in libcrypto` / `Permission denied (publickey)`). 81f3a697 dropped the
+          # newline when it replaced `echo "$DEPLOY_KEY" >` (which appends one) with this
+          # `printf`, and no run reached this step between that commit and 2026-09-26.
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/plugins_deploy
           ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
           git clone --depth 1 \
             --config core.sshCommand="ssh -i ~/.ssh/plugins_deploy -o IdentitiesOnly=yes" \
@@ -272,7 +279,7 @@ jobs:
           # Same guard as the clone step, and for the same reason — see there.
           rm -f ~/.ssh/plugins_deploy
           install -m 600 /dev/null ~/.ssh/plugins_deploy
-          printf '%s' "$DEPLOY_KEY" > ~/.ssh/plugins_deploy
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/plugins_deploy
           cd "$RUNNER_TEMP/registry"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
