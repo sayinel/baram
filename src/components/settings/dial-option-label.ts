@@ -26,9 +26,13 @@ function optionNamespace(
     case "density":
     case "editorPadding":
       return "settings.appearance";
+    case "editorCodeFontFamily":
     case "editorEmphasisStyle":
+    case "editorFontFamily":
+    case "editorFontSize":
     case "editorLetterSpacing":
     case "editorLineBreak":
+    case "editorLineHeight":
     case "editorListGuideStrength":
     case "editorMaxWidth":
     case "editorOrderedMarkerAlign":

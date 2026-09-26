@@ -2,17 +2,23 @@
 // 동시에 그려 body/code 페어링을 한눈에 보게 한다. 이름만으로는 "이게
 // 괜찮아 보이는가"에 답하지 못한다 — 서체가 실제로 깨지는 자리들이다.
 //
-// 크기·줄간격 슬라이더는 설정 행과 같은 store 값을 그대로 쓴다 — 하나의
-// 설정을 두 표면(행·브라우저)에서 조절하는 것이지, 별개의 설정이 아니다.
+// 크기·줄간격 슬라이더는 설정 행과 같은 다이얼(`editorFontSize` ·
+// `editorLineHeight`)을 쓴다 — 하나의 설정을 두 표면(행·브라우저)에서 조절하는
+// 것이지, 별개의 설정이 아니다.
 import type { FontSlot } from "./FontSlotPicker";
 
 import { useShallow } from "zustand/shallow";
 
+import {
+  EDITOR_FONT_SIZE_RANGE,
+  EDITOR_LINE_HEIGHT_RANGE,
+} from "../../appearance/typography-dials";
+import { useEditorTypography } from "../../hooks/use-editor-typography";
 import { useTranslation } from "../../i18n/useTranslation";
 import { useSettingsStore } from "../../stores/settings/store";
 import {
-  BASE_EDITOR_STACK,
   BASE_MONO_STACK,
+  editorFontStack,
 } from "../../utils/editor/font-surfaces";
 import { quoteFamily } from "../../utils/editor/quote-font-family";
 import { resolveCodeMetrics } from "../../utils/font/code-metrics";
@@ -33,27 +39,13 @@ interface Props {
 
 export function FontBrowserPreview({ slot }: Props) {
   const { t } = useTranslation();
-  const {
-    codeFontFamily,
-    codeFontSize,
-    codeLineHeight,
-    fontFamily,
-    fontSize,
-    lineHeight,
-    linkFontMetrics,
-    setFontSize,
-    setLineHeight,
-  } = useSettingsStore(
+  const { codeFontFamily, fontFamily, fontSize, lineHeight } =
+    useEditorTypography();
+  const { codeFontSize, codeLineHeight, linkFontMetrics } = useSettingsStore(
     useShallow((s) => ({
-      codeFontFamily: s.codeFontFamily,
       codeFontSize: s.codeFontSize,
       codeLineHeight: s.codeLineHeight,
-      fontFamily: s.fontFamily,
-      fontSize: s.fontSize,
-      lineHeight: s.lineHeight,
       linkFontMetrics: s.linkFontMetrics,
-      setFontSize: s.setFontSize,
-      setLineHeight: s.setLineHeight,
     })),
   );
 
@@ -69,22 +61,22 @@ export function FontBrowserPreview({ slot }: Props) {
     linkFontMetrics,
   });
 
-  const bodyStack =
-    fontFamily.trim() === ""
-      ? BASE_EDITOR_STACK
-      : `${quoteFamily(fontFamily)}, ${BASE_EDITOR_STACK}`;
+  const bodyStack = editorFontStack(fontFamily);
   const codeStack =
     codeFontFamily.trim() === ""
       ? BASE_MONO_STACK
       : `${quoteFamily(codeFontFamily)}, ${BASE_MONO_STACK}`;
 
   // 고빈도 경로의 store write는 동등성 관문 필수 — 값이 같으면 set을 호출하지
-  // 않는다(드래그 중 같은 스텝에 머무는 이벤트가 흔하다).
+  // 않는다(드래그 중 같은 스텝에 머무는 이벤트가 흔하다). §365 관문은 **병합값**에
+  // 건다 — 테마가 준 값과 같은 값을 사용자 층에 굳히지 않게.
   const onSize = (value: number) => {
-    if (value !== fontSize) setFontSize(value);
+    if (value !== fontSize)
+      useSettingsStore.getState().setDial("editorFontSize", value);
   };
   const onLineHeight = (value: number) => {
-    if (value !== lineHeight) setLineHeight(value);
+    if (value !== lineHeight)
+      useSettingsStore.getState().setDial("editorLineHeight", value);
   };
 
   return (
@@ -102,10 +94,10 @@ export function FontBrowserPreview({ slot }: Props) {
           </span>
           <input
             className="settings-range"
-            max={32}
-            min={8}
+            max={EDITOR_FONT_SIZE_RANGE.max}
+            min={EDITOR_FONT_SIZE_RANGE.min}
             onChange={(e) => onSize(Number(e.target.value))}
-            step={1}
+            step={EDITOR_FONT_SIZE_RANGE.step}
             type="range"
             value={fontSize}
           />
@@ -122,10 +114,10 @@ export function FontBrowserPreview({ slot }: Props) {
           </span>
           <input
             className="settings-range"
-            max={3.0}
-            min={1.0}
+            max={EDITOR_LINE_HEIGHT_RANGE.max}
+            min={EDITOR_LINE_HEIGHT_RANGE.min}
             onChange={(e) => onLineHeight(Number(e.target.value))}
-            step={0.05}
+            step={EDITOR_LINE_HEIGHT_RANGE.step}
             type="range"
             value={lineHeight}
           />

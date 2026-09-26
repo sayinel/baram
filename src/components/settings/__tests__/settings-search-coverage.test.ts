@@ -359,7 +359,10 @@ describe("settings search results", () => {
     const withValue = result.current.filter((s) =>
       EN[s.description]?.includes("{value}"),
     );
-    expect(withValue.map((s) => s.id)).toContain("codeFontSize"); // 비공허성
+    // 비공허성 — 계획 0107 §365 이 `codeFontSize`·`codeLineHeight`(§7.1, `{value}` 를 뺀 값 칸으로
+    // 옮겼다, P9) 를 이 증인에서 빼앗아 `tasksArchiveAfterDays` 로 옮겼다(`navigateControlShowing`
+    // 을 여전히 쓰는 항목, `settings-registry.ts` 실측).
+    expect(withValue.map((s) => s.id)).toContain("tasksArchiveAfterDays");
     const empty = withValue
       .filter((s) => s.control.storeSelector() == null)
       .map((s) => s.id);

@@ -3,6 +3,8 @@
 // remove the only way to turn that feature back on, so they dim instead.
 import type { ReactNode } from "react";
 
+import type { DialId } from "../../../appearance/dials";
+
 import { render, renderHook, screen } from "@testing-library/react";
 import {
   CircleCheck,
@@ -145,9 +147,25 @@ describe("settings tab structure (§342)", () => {
     // `DIALS` 전부가 자기 id 와 같은 id 의 레지스트리 항목을 갖는 것이고, 아래 단정이
     // `DIALS` 를 순회해 그것을 다이얼마다 확인한다 — 항목 id 를 일부러 다르게 지으려면
     // 이 테스트를 함께 고쳐야 한다.
+    // 계획 0107 Task 1 — `channel: "editor"` 넷(본문 타이포)의 id 는 레지스트리 항목의
+    // id 와 **다르다**. 이 넷은 옮기기 전부터 있던 항목(`fontFamily`·`codeFontFamily`·
+    // `fontSize`·`lineHeight`, `settings-registry.ts` 실측)을 그대로 물려받았고, 계획
+    // 0107 Task 3(h)가 "항목 id 는 그대로 — 검색 결과의 안정된 키다" 라고 판정해 이후
+    // 어느 태스크도 그 id 를 다이얼 id 로 바꾸지 않는다. 그래서 이 전제(다이얼 id ==
+    // 레지스트리 항목 id)는 이 넷에서 구조적으로 성립하지 않고, 건너뛰는 대신 아래 맵으로
+    // 옮겨 확인한다 — 맵의 키를 `DialId` 로 둬 오타(다이얼 id 변경)가 나면 타입체크가
+    // 멎는다.
+    const REGISTRY_ID_OVERRIDE: Partial<Record<DialId, string>> = {
+      editorCodeFontFamily: "codeFontFamily",
+      editorFontFamily: "fontFamily",
+      editorFontSize: "fontSize",
+      editorLineHeight: "lineHeight",
+    };
     const { result } = renderHook(() => useSettingsRegistry());
     const registered = new Set(result.current.map((s) => s.id));
-    const missing = DIALS.map((d) => d.id).filter((id) => !registered.has(id));
+    const missing = DIALS.map((d) => REGISTRY_ID_OVERRIDE[d.id] ?? d.id).filter(
+      (id) => !registered.has(id),
+    );
     expect(missing).toEqual([]);
   });
 

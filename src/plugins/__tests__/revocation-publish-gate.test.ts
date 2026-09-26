@@ -29,6 +29,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  rmSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -673,6 +674,63 @@ describe("the revocation publish workflow's shape", () => {
       ).toContain(`install -m 600 /dev/null ${writes[0]}`);
     }
   });
+
+  // A fake multi-line PEM-shaped key with NO trailing newline — the shape of the real secret
+  // (`PLUGINS_DEPLOY_KEY` has not changed since 2026-07-16 and does not end with one either).
+  const DEPLOY_KEY_FIXTURE = [
+    "-----BEGIN OPENSSH PRIVATE KEY-----",
+    "b3BlbnNzaC1rZXktdjEAAAAA",
+    "-----END OPENSSH PRIVATE KEY-----",
+  ].join("\n");
+
+  it.each([["Clone the registry"], ["Commit and push"]] as const)(
+    "writes the deploy key with a trailing newline in %s, which OpenSSH requires to load it",
+    (step) => {
+      // ‼️ THE 2026-09-26 CHECKPOINT FAILURE (plan 0102 Step 9, run 36223382598): step "Clone the
+      // registry" failed with `Load key "/home/runner/.ssh/plugins_deploy": error in libcrypto` →
+      // `Permission denied (publickey)`. OpenSSH refuses a private key file whose last line has
+      // no trailing newline, and `printf '%s'` — unlike the `echo` it replaced in 81f3a697 —
+      // writes none. The stored `PLUGINS_DEPLOY_KEY` secret itself does not end with one, so
+      // nothing upstream of this line supplies it. If this test fails, ssh cannot load the key
+      // on a real runner either — that is what makes it fail.
+      //
+      // Same derivation as the neighbouring test: the write site is found by path, not retyped.
+      const writePattern = /> (~\/\.ssh\/[A-Za-z0-9_-]+)$/gmu;
+      const body = stepScript(workflow, step);
+      const path = [...body.matchAll(writePattern)].map((match) => match[1])[0];
+      expect(path, `${step} must write the key`).toBeDefined();
+
+      const commands = body
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line !== "" && !line.startsWith("#"));
+      const line = commands.find((candidate) =>
+        candidate.includes(`> ${path}`),
+      );
+      expect(line, `${step} must have a write command line`).toBeDefined();
+
+      const dir = mkdtempSync(join(tmpdir(), "baram-deploy-key-"));
+      try {
+        mkdirSync(join(dir, ".ssh"));
+        const result = spawnSync("bash", ["-e", "-c", line as string], {
+          encoding: "utf8",
+          env: {
+            DEPLOY_KEY: DEPLOY_KEY_FIXTURE,
+            HOME: dir,
+            PATH: process.env.PATH,
+          },
+        });
+        expect(result.status, `${step}: ${result.stderr}`).toBe(0);
+        const written = readFileSync(join(dir, ".ssh/plugins_deploy"), "utf8");
+        expect(
+          written,
+          `${step} must end the key with a newline so OpenSSH can load it`,
+        ).toBe(`${DEPLOY_KEY_FIXTURE}\n`);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("keeps the token read-only and the registry push serialised", () => {
     // ‼️ NEITHER WAS ASSERTED (third-round code review MEDIUM-5), and the point of this block is that

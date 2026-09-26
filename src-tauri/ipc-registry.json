@@ -1030,7 +1030,8 @@
       "name": "plugin_install_commit",
       "input": {
         "stageId": "string",
-        "expectedId": "string"
+        "expectedId": "string",
+        "manifestSha256": "string"
       },
       "output": "CommittedPluginInfo",
       "module": "plugin",
@@ -1038,7 +1039,7 @@
       "phase": 3,
       "milestone": "M10",
       "status": "implemented",
-      "description": "스테이징된 플러그인 설치 — 원자적 교체, 실패 시 이전 버전 복구 (#261)"
+      "description": "스테이징된 플러그인 설치 — 원자적 교체, 실패 시 이전 버전 복구 (#261). §379: 릴리스 빌드의 개발자 모드가 켜져 있고 dev 폴더가 그 id 를 기록했으면 Err(\"DEV_PLUGIN_ID_HELD\") — 판정은 커밋 코어가 다이제스트를 확인한 매니페스트의 id 로, 검사를 마친 뒤 교체 직전에 R1 을 읽어 한다. 커밋이 성공하면 모든 dev 폴더 기록에서 그 id 를 지운다"
     },
     {
       "name": "plugin_install_discard",
@@ -1153,41 +1154,64 @@
       "description": "Grant asset protocol scope for the plugin install dir at startup"
     },
     {
-      "name": "plugin_add_dev_folder",
-      "input": {
-        "path": "string"
-      },
-      "output": "InstalledPluginInfo",
-      "module": "plugin",
-      "spec": "§69",
-      "phase": 3,
-      "milestone": "M10",
-      "status": "implemented",
-      "description": "Register a local dev plugin folder (validates manifest, grants asset scope, persists). The path must be approved (§331–§333); an unapproved but existing path raises a native confirmation dialog, and refusal returns Err(\"VAULT_APPROVAL_DENIED\")"
-    },
-    {
       "name": "plugin_remove_dev_folder",
       "input": {
         "path": "string"
       },
       "output": "void",
       "module": "plugin",
-      "spec": "§69",
+      "spec": "§379",
       "phase": 3,
       "milestone": "M10",
       "status": "implemented",
-      "description": "Remove a registered dev plugin folder"
+      "description": "Rust 소유 목록(plugin-dev.json)에서 폴더를 뺀다. 확인 없음"
+    },
+    {
+      "name": "plugin_reload_dev_folder",
+      "input": { "path": "string" },
+      "output": "DevFolderRow",
+      "module": "plugin",
+      "spec": "§379",
+      "status": "implemented",
+      "description": "Rust 소유 목록에 이미 있는 경로만 받아 매니페스트를 다시 읽는다. 확인창 없음. 목록에 없으면 Err(\"DEV_FOLDER_NOT_LISTED\"), 비활성이면 Err(\"DEV_MODE_INACTIVE\"), 거부 사유는 DEV_* 코드"
+    },
+    {
+      "name": "plugin_pick_dev_folder",
+      "input": {},
+      "output": "DevFolderRow | null",
+      "module": "plugin",
+      "spec": "§379",
+      "status": "implemented",
+      "description": "Rust 가 네이티브 폴더 피커를 띄운다(피커가 열려 있는 동안 개발자 모드가 꺼지면 다시 판정해 거부). 고른 폴더만 매니페스트·R3(릴리스: sandboxed 만, baram- 접두사·설치본 id·남은 저장소 거부) → 승인 기록 → plugin-dev.json 추가(릴리스는 매니페스트 id 도 기록) → asset scope 순으로 받는다. 취소면 null, 비활성이면 Err(\"DEV_MODE_INACTIVE\"), 거부는 DEV_* 코드이고 아무것도 쓰지 않는다. 성공해도 돌아온 행의 grant 재판정(승인·R3)이 실패하면 그 행은 plugin 대신 error 를 담을 수 있다"
+    },
+    {
+      "name": "plugin_record_dev_consent",
+      "input": { "path": "string", "consent": "PluginConsent" },
+      "output": "void",
+      "module": "plugin",
+      "spec": "§379",
+      "status": "implemented",
+      "description": "목록에 이미 있는 폴더의 동의를 plugin-dev.json 에 기록한다. 목록을 늘리지 못한다(없으면 Err(\"DEV_FOLDER_NOT_LISTED\")). 비활성이면 Err(\"DEV_MODE_INACTIVE\"). 릴리스 빌드는 trust 가 sandboxed 가 아닌 동의를 Err(\"DEV_PLUGIN_NOT_SANDBOXED\")로 거부한다"
+    },
+    {
+      "name": "plugin_set_developer_mode",
+      "input": { "enabled": "boolean" },
+      "output": "boolean",
+      "module": "plugin",
+      "spec": "§379",
+      "status": "implemented",
+      "description": "개발자 모드를 켜거나 끈다(릴리스 빌드). 켜기는 네이티브 경고 확인 뒤(거절하면 false), 끄기는 묻지 않는다. 호출 뒤의 켜짐 상태를 돌려준다. dev 빌드는 이미 항상 켜져 있어 경고·R1 쓰기 없이 true를 돌려준다"
     },
     {
       "name": "plugin_list_dev",
       "input": {},
-      "output": "InstalledPluginInfo[]",
+      "output": "DevModeSnapshot",
       "module": "plugin",
-      "spec": "§69",
+      "spec": "§379",
       "phase": 3,
       "milestone": "M10",
       "status": "implemented",
-      "description": "List registered dev plugin folders and grant each one with a valid manifest a recursive asset scope; always empty in release builds (§260 Phase 5)"
+      "description": "개발자 모드 상태와 Rust 소유 목록(plugin-dev.json)의 폴더들: { active, devBuild, enabled, folders: [{ path, ids, consent, plugin | error }] }. 비활성이면 folders 는 비고, 승인 저장소가 덮는 폴더에만 asset scope 를 준다. 릴리스 빌드는 sandboxed 가 아니거나 I4 의 id 판정(baram- 접두사·설치본 id·기록 없는 저장소)에 걸리는 폴더를 행 오류로 거부하고, 받아들인 폴더의 매니페스트 id 를 기록한다 (§379 R2·R3·I4)"
     },
     {
       "name": "plugin_http_fetch",
@@ -1859,7 +1883,7 @@
     {
       "name": "pick_approved_dir",
       "input": {
-        "purpose": "string (\"journal\" | \"zettelkasten\" | \"tasks\" | \"plugin-dev\" | \"open-folder\" — TS 쪽은 이 5개의 유니온이고 \"open-folder\"가 Rust의 _ 갈래를 친다)"
+        "purpose": "string (\"journal\" | \"zettelkasten\" | \"tasks\" | \"open-folder\" — TS 쪽은 이 4개의 유니온이고 \"open-folder\"가 Rust의 _ 갈래를 친다)"
       },
       "output": "string | null",
       "module": "approval",

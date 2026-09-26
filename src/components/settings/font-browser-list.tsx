@@ -33,6 +33,8 @@ interface Props {
   /** 열거의 세 상태 — `fallback` 은 `loading` 과 **다르게** 그린다 (final review I3). */
   status: FontListStatus;
   t: Translate;
+  /** §351 입고 있는 테마가 `@font-face`로 선언한 패밀리(소문자) — 없으면 빈 집합. */
+  themeFamilies: ReadonlySet<string>;
 }
 
 /** 번들 서체는 role로, 그 외는 allFonts의 monospaced 플래그로 판정한다. */
@@ -60,6 +62,7 @@ export function FontBrowserList({
   slot,
   status,
   t,
+  themeFamilies,
 }: Props) {
   if (status === "loading") {
     return (
@@ -85,6 +88,7 @@ export function FontBrowserList({
     query,
     chips,
     status === "ok",
+    themeFamilies,
   ).filter((name) => !includedKeys.has(name.toLowerCase()));
 
   // 최근 사용은 "설치된 서체" 에서 빼지 않는다 — 바로가기이지 이사가 아니다.
@@ -232,6 +236,10 @@ function FontRow({
  * `fontAvailability`를 물으면 실제로 설치된 최근 항목이 전부 "missing"으로
  * 나와 Recent 그룹이 통째로 사라진다 — 열거를 못 읽은 것에 대한 벌을 사용자의
  * 이력에 주는 셈이다. `null`을 넘기면 그 판정은 `unknown`이 되어 통과한다.
+ *
+ * `themeFamilies`(§351)도 같은 이유로 함께 넘긴다 — 넘기지 않으면 입고 있는 테마가
+ * `@font-face`로 실어 온 서체를 과거에 골랐을 때 이 머신의 열거에는 없다는 이유로
+ * "missing"이 되어 Recent 목록에서 걸러진다.
  */
 function recentForSlot(
   recentFonts: readonly string[],
@@ -240,12 +248,16 @@ function recentForSlot(
   query: string,
   chips: readonly FontChip[],
   authoritative: boolean,
+  themeFamilies: ReadonlySet<string>,
 ): string[] {
   const q = query.trim().toLowerCase();
   const monoDefault = slot === "code" && !chips.includes("all");
   return recentFonts.filter((name) => {
     if (q !== "" && !name.toLowerCase().includes(q)) return false;
-    if (fontAvailability(name, authoritative ? allFonts : null) === "missing")
+    if (
+      fontAvailability(name, authoritative ? allFonts : null, themeFamilies) ===
+      "missing"
+    )
       return false;
     if (monoDefault && !isMonospacedName(name, allFonts)) return false;
     if (chips.includes("korean") && !hasKoreanName(name, allFonts))

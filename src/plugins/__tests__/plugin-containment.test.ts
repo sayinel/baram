@@ -34,6 +34,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 import { type Locale, t } from "../../i18n";
+import en from "../../i18n/en.json";
 import { useSettingsStore } from "../../stores/settings/store";
 import { usePluginStore } from "../../stores/system/plugin";
 import { PluginLoader } from "../plugin-loader";
@@ -95,7 +96,13 @@ describe("plugin containment (#259 → §260 Phase 5)", () => {
     });
     sandboxStop.mockReset().mockResolvedValue(undefined);
     registerGrant.mockReset().mockResolvedValue(undefined);
-    usePluginStore.setState({ devPlugins: {}, installedPlugins: {} });
+    // The dev-folder cases in this describe pin DEV-BUILD semantics (a folder may shadow an
+    // installed id, nothing narrows it). §379's release branch has its own describe below.
+    usePluginStore.setState({
+      devMode: { active: true, devBuild: true, enabled: false },
+      devPlugins: {},
+      installedPlugins: {},
+    });
   });
 
   it("never imports a sandboxed plugin into the main realm", async () => {
@@ -156,6 +163,40 @@ describe("plugin containment (#259 → §260 Phase 5)", () => {
       ...BASE,
       capabilities: ["editor", "network", "files"],
     });
+
+    expect(registerGrant).toHaveBeenCalledWith("demo", ["editor"], "/p/demo");
+  });
+
+  it("ignores a devConsent on an INSTALLED load — only the installed record's consent narrows it", async () => {
+    // `resolveConsent`'s installed branch must not fall back to `opts.devConsent`: a caller
+    // passing one by mistake (or a future refactor reaching for `??`) must not widen or
+    // otherwise change what an installed plugin is bounded by — that consent belongs to a
+    // dev-folder load only (§379 F2).
+    usePluginStore.setState({
+      installedPlugins: {
+        demo: {
+          checksum: "c",
+          consent: { capabilities: ["editor"], trust: "sandboxed" },
+          enabled: true,
+          installedAt: 0,
+          installPath: "/p/demo",
+          manifest: BASE,
+          updatedAt: 0,
+        },
+      },
+    });
+    const { loader } = loaderWithSpies();
+
+    await loader.loadPlugin(
+      "/p/demo",
+      { ...BASE, capabilities: ["editor", "network", "files"] },
+      {
+        devConsent: {
+          capabilities: ["editor", "network", "files"],
+          trust: "sandboxed",
+        },
+      },
+    );
 
     expect(registerGrant).toHaveBeenCalledWith("demo", ["editor"], "/p/demo");
   });
@@ -259,7 +300,9 @@ describe("plugin containment (#259 → §260 Phase 5)", () => {
     // message telling the author to reinstall a directory they had just selected.
     //
     // Both earlier mirror tests seeded `devPlugins` first, which is exactly why they missed
-    // this. `isDev` is declared by the caller now, so the store is not consulted at all.
+    // this. `isDev` is declared by the caller now, so `devPlugins`/`installedPlugins` are not
+    // consulted to decide dev-ness at all — though `resolveConsent` still reads the store's
+    // `devMode` to decide whether THIS dev load is bounded by a consent (§379).
     usePluginStore.setState({
       devPlugins: {},
       installedPlugins: {
@@ -413,6 +456,29 @@ describe("plugin containment (#259 → §260 Phase 5)", () => {
     );
   });
 
+  it("ignores a devConsent in a DEV build — a dev build never narrows a dev load", async () => {
+    // The `LoadOptions` doc: "a dev build's dev load ignores it". `devLoadsAreUnbounded()`
+    // must be checked before `opts.devConsent` is ever read, or a caller passing one by
+    // mistake would silently narrow an author's own working copy on a build where nothing
+    // is supposed to ask.
+    const { loader } = loaderWithSpies();
+
+    await loader.loadPlugin(
+      "/dev/demo",
+      { ...BASE, capabilities: ["statusbar", "network"] },
+      {
+        devConsent: { capabilities: ["statusbar"], trust: "sandboxed" },
+        isDev: true,
+      },
+    );
+
+    expect(registerGrant).toHaveBeenCalledWith(
+      "demo",
+      ["statusbar", "network"],
+      "/dev/demo",
+    );
+  });
+
   it("refuses an unknown tier rather than defaulting to the main realm", async () => {
     // Fail-closed on a value from disk that matches neither tier. Defaulting to the
     // `trusted` branch — which is what an `=== "sandboxed"` check does if the refusal
@@ -427,5 +493,101 @@ describe("plugin containment (#259 → §260 Phase 5)", () => {
 
     expect(importer).not.toHaveBeenCalled();
     expect(sandboxStart).not.toHaveBeenCalled();
+  });
+});
+
+describe("developer mode in a release build (§379 F2)", () => {
+  // A function, not a describe-level constant: read at collection time, a catalogue that
+  // lacks the key would throw there and take every test in the file down with it.
+  const consentMissing = () =>
+    en["plugin.dev.error.consentMissing"].replace("{id}", "demo");
+
+  beforeEach(() => {
+    sandboxStart.mockReset().mockResolvedValue({
+      invokeCommand: vi.fn(),
+      stop: vi.fn().mockResolvedValue(undefined),
+    });
+    sandboxStop.mockReset().mockResolvedValue(undefined);
+    registerGrant.mockReset().mockResolvedValue(undefined);
+    useSettingsStore.setState({ locale: "en" });
+    usePluginStore.setState({
+      devMode: { active: true, devBuild: false, enabled: true },
+      devPlugins: {},
+      installedPlugins: {},
+    });
+  });
+
+  it("refuses a dev load that carries no consent, and runs nothing", async () => {
+    // What makes F2 more than UX: a caller that forgets the consent gets a refusal, not
+    // the unbounded dev-build load.
+    const { importer, loader } = loaderWithSpies();
+    await expect(
+      loader.loadPlugin("/dev/demo", BASE, { isDev: true }),
+    ).rejects.toThrow(consentMissing());
+    expect(registerGrant).not.toHaveBeenCalled();
+    expect(sandboxStart).not.toHaveBeenCalled();
+    expect(importer).not.toHaveBeenCalled();
+  });
+
+  it("narrows the dev load to the consent Rust recorded", async () => {
+    const { loader } = loaderWithSpies();
+    await loader.loadPlugin(
+      "/dev/demo",
+      { ...BASE, capabilities: ["statusbar", "network"] },
+      {
+        devConsent: { capabilities: ["statusbar"], trust: "sandboxed" },
+        isDev: true,
+      },
+    );
+    expect(registerGrant).toHaveBeenCalledWith(
+      "demo",
+      ["statusbar"],
+      "/dev/demo",
+    );
+  });
+
+  it("never applies an installed plugin's consent to a dev load", async () => {
+    usePluginStore.setState({
+      installedPlugins: {
+        demo: {
+          checksum: "c",
+          consent: { capabilities: ["editor"], trust: "sandboxed" },
+          enabled: true,
+          installedAt: 0,
+          installPath: "/p/demo",
+          manifest: BASE,
+          updatedAt: 0,
+        },
+      },
+    });
+    const { loader } = loaderWithSpies();
+    await loader.loadPlugin(
+      "/dev/demo",
+      { ...BASE, capabilities: ["statusbar", "network"] },
+      {
+        devConsent: {
+          capabilities: ["statusbar", "network"],
+          trust: "sandboxed",
+        },
+        isDev: true,
+      },
+    );
+    expect(registerGrant).toHaveBeenCalledWith(
+      "demo",
+      ["statusbar", "network"],
+      "/dev/demo",
+    );
+  });
+
+  it("refuses a tier above the recorded consent", async () => {
+    const { importer, loader } = loaderWithSpies();
+    await expect(
+      loader.loadPlugin(
+        "/dev/demo",
+        { ...BASE, trust: "trusted" },
+        { devConsent: { capabilities: [], trust: "sandboxed" }, isDev: true },
+      ),
+    ).rejects.toThrow(escalationRefusal());
+    expect(importer).not.toHaveBeenCalled();
   });
 });

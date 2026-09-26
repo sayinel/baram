@@ -13,6 +13,29 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import { normalizeRevocationList } from "../../plugins/revocation";
 import { tauriStorage } from "./tauri-storage";
 
+/**
+ * §379 — what Rust last reported about developer mode (`plugin_list_dev`). In memory only:
+ * `merge` resets it, because the loader reads `devBuild` to decide whether a dev-folder load
+ * is bounded by a consent.
+ */
+interface DevModeStatus {
+  /** Rust's `developer_mode_active`: a dev build, or the user turned it on. */
+  active: boolean;
+  /** A dev build — a dev-folder load runs unbounded and unrevoked, and nothing asks. */
+  devBuild: boolean;
+  /** The switch's position. Only a release build shows the switch. */
+  enabled: boolean;
+}
+
+/** §379 — a folder on Rust's developer list that could not become a plugin, and why. */
+export interface DevFolderIssue {
+  /** A `DEV_*` code or Rust's own message — translated where it is shown. */
+  error: string;
+  /** The ids R1 recorded for this folder while a release build admitted it (I4). */
+  ids: string[];
+  path: string;
+}
+
 interface PluginState {
   // Actions
   addDevPlugin: (plugin: InstalledPlugin) => void;
@@ -27,7 +50,16 @@ interface PluginState {
    */
   builtinDisabled: string[];
   clearUpdateAvailable: (id: string) => void;
-  // Runtime state (not persisted; Rust config is the source of truth)
+  // Runtime state (not persisted). The note below covers `devMode`, `devPlugins` and
+  // `devFolderIssues` only — `getPluginSettings` is a plain getter over the PERSISTED
+  // `pluginSettings` map.
+  //
+  // `devMode` is set from Rust's `plugin_list_dev` snapshot: `active`/`enabled` come from
+  // R1 (`plugin-dev.json`), `devBuild` comes from the compiled Rust build, not that file
+  // (§379). `devPlugins` and `devFolderIssues` are sourced from that same snapshot too —
+  // neither is persisted, and both are rebuilt whenever `refreshDevPlugins` runs again.
+  devFolderIssues: DevFolderIssue[];
+  devMode: DevModeStatus;
   devPlugins: Record<string, InstalledPlugin>;
   getPluginSettings: (pluginId: string) => Record<string, unknown>;
 
@@ -80,6 +112,8 @@ interface PluginState {
    */
   revocationsVerified: boolean;
   setBuiltinEnabled: (id: string, enabled: boolean) => void;
+  setDevFolderIssues: (issues: DevFolderIssue[]) => void;
+  setDevMode: (status: DevModeStatus) => void;
   setDevPlugins: (list: InstalledPlugin[]) => void;
   setEnabled: (id: string, enabled: boolean) => void;
   setError: (id: string, error: null | string) => void;
@@ -276,7 +310,15 @@ export const usePluginStore = create<PluginState>()(
       revocationSequenceSeen: {},
       updateAvailable: {},
       installing: {},
+      devFolderIssues: [],
+      // §379 FAIL-CLOSED: until Rust answers, treat this as a release build with developer
+      // mode off — the loader then refuses a dev load that carries no consent.
+      devMode: { active: false, devBuild: false, enabled: false },
       devPlugins: {},
+
+      setDevFolderIssues: (devFolderIssues) => set({ devFolderIssues }),
+
+      setDevMode: (devMode) => set({ devMode }),
 
       setDevPlugins: (list) =>
         set({
@@ -522,7 +564,7 @@ export const usePluginStore = create<PluginState>()(
       // Forcing it here makes "in memory only" true of the READ path, which is the only place
       // it can be made true. No `version` bump or migrate step: a key left in storage is now
       // inert, and `partialize` drops it on the next write.
-      // ‼️ BOTH RESETS LIVE HERE, because this is the only side that can make them true.
+      // ‼️ ALL THREE RESETS LIVE HERE, because this is the only side that can make them true.
       // Omitting a key from `partialize` above stops this app from WRITING it and does nothing
       // about a value already in storage — which is the mistake this feature made twice.
       // `current` is the initial state, so naming it is how each field says "keep the default,
@@ -539,9 +581,12 @@ export const usePluginStore = create<PluginState>()(
           ...(persisted as object),
           // ‼️ VALIDATED, NOT SPREAD — see `disabledBuiltinIds`. A malformed value here
           // is a permanent, self-sustaining plugin outage with no error surface, and it
-          // is reachable by exactly the writer the two resets below exist to contain.
+          // is reachable by exactly the writer the resets below exist to contain.
           builtinDisabled: disabledBuiltinIds(stored.builtinDisabled),
           registryUrl: current.registryUrl,
+          // §379 — the loader's "is a dev load bounded?" answer, set from the
+          // `plugin_list_dev` snapshot Rust returns each launch; never restored from storage.
+          devMode: current.devMode,
           revocationSequenceSeen: {},
         };
         // ‼️ THE STORED LIST GOES THROUGH THE SHIPPING VALIDATOR, like a fetched one does. It was the

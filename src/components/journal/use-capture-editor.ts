@@ -10,11 +10,10 @@ import type { PendingMedia } from "../../utils/media-data-url";
 import type { Editor } from "@tiptap/react";
 
 import { isNodeEmpty, Editor as TiptapEditor } from "@tiptap/core";
-import { useShallow } from "zustand/shallow";
 
 import { createBaramExtensions } from "../../extensions";
+import { useEditorTypography } from "../../hooks/use-editor-typography";
 import { useEditorStore } from "../../stores/editor/editor";
-import { useSettingsStore } from "../../stores/settings/store";
 import { applyFontVariables } from "../../utils/editor/font-surfaces";
 import {
   canonicalDoc,
@@ -113,12 +112,7 @@ export function useCaptureEditor(open: boolean): CaptureEditor {
   //
   // 배선이 편집기 인스턴스 옆에 있는 이유: 표면 요소의 수명이 곧 그 인스턴스의
   // 수명이다. 다이얼로그 쪽에 두면 "언제 새 인스턴스가 되는가"를 두 곳이 알아야 한다.
-  const { codeFontFamily, fontFamily } = useSettingsStore(
-    useShallow((s) => ({
-      codeFontFamily: s.codeFontFamily,
-      fontFamily: s.fontFamily,
-    })),
-  );
+  const { codeFontFamily, fontFamily } = useEditorTypography();
   useEffect(() => {
     if (!editor) return;
     applyFontVariables(editor.view.dom, {

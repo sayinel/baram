@@ -1,10 +1,11 @@
 // §364 외관 다이얼의 단일 출처 — 타입·병합·적용·설정 UI 가 전부 이 배열에서 파생한다.
 //
-// ‼️ 이 모듈이 값으로 import 하는 것은 **모듈 셋**뿐이다 — 잎 모듈 `color-hsl.ts`(그 파일
+// ‼️ 이 모듈이 값으로 import 하는 것은 **모듈 넷**뿐이다 — 잎 모듈 `color-hsl.ts`(그 파일
 // 머리주석이 "아무것도 import 하지 않는다" 를 계약으로 적는다)와 `scale-dials.ts`(그 머리주석대로
 // Style Dictionary 가 내는 `types/generated/scale.ts` 만 import 하고, 생성 포맷 `ts/scale` 은
-// import 문을 쓰지 않는다 — `style-dictionary.config.ts`)와 `background-contrast.ts`(그
-// 머리주석대로 아무것도 import 하지 않는다). 값 import 는 그 네 파일에서 멈춘다.
+// import 문을 쓰지 않는다 — `style-dictionary.config.ts`)와 `background-contrast.ts` ·
+// `typography-dials.ts`(둘 다 그 머리주석대로 아무것도 import 하지 않는다). 값 import 는 그
+// 다섯 파일에서 멈춘다.
 // `settings/store.ts` 가 이것을 import 하므로, 여기서 스토어를 알면 순환이
 // 된다(`settings/feature-keys.ts` 가 같은 이유로 잎 모듈이다) — import 가 잎에서
 // 끝나는 모듈을 거치는 것은 순환을 만들 수 없다. `ColorMode` 의 `import type` 은
@@ -29,8 +30,13 @@ import {
   MOVING_SPACE,
   scaleVars,
 } from "./scale-dials";
+import {
+  EDITOR_FONT_SIZE_RANGE,
+  EDITOR_LINE_HEIGHT_RANGE,
+  parseFontFamily,
+} from "./typography-dials";
 
-export type DialDef = EnumDialDef | NumberDialDef;
+export type DialDef = EnumDialDef | NumberDialDef | TextDialDef;
 
 export type DialValue = number | string;
 
@@ -102,6 +108,22 @@ export interface NumberDialDef extends DialBase {
   toVars: (value: DialValue, ctx: DialContext) => Record<string, string>;
 }
 
+/**
+ * §365 자유 문자열 다이얼 — 서체 이름처럼 열거할 수 없는 값(스펙 0060 D7). 테마가
+ * `@font-face` 로 제 서체를 실어 올 수 있어 목록을 앱이 알 수 없다.
+ */
+export interface TextDialDef extends DialBase {
+  /** 이 다이얼이 없을 때의 값. 출처가 `default` 면 변수를 쓰지 않는다. */
+  readonly defaultValue: string;
+  readonly kind: "text";
+  /**
+   * 저장분 · 매니페스트에서 온 unknown 을 검증한다. 실패는 `undefined` 이고, 그 층은 없었던
+   * 것으로 친다.
+   */
+  parse: (raw: unknown) => string | undefined;
+  toVars: (value: DialValue, ctx: DialContext) => Record<string, string>;
+}
+
 interface DialBase {
   /**
    * 이 다이얼의 변수를 **누가 `<html>` 에 쓰는가**.
@@ -110,8 +132,14 @@ interface DialBase {
    * 인라인의 작성자는 테마 이펙트 하나이고, 그 이유는 실측이다: `applyDialVars`
    * 가 먼저 돌고 `clearThemeVars` 가 나중에 돈다(Task 4 의 회귀 테스트가 그
    * 순서를 고정한다). 다이얼이 `--color-*` 를 직접 쓰면 그 다음 줄에서 지워진다.
+   *
+   * `"editor"` 는 **아무도** `<html>` 에 쓰지 않는다 — 값이 CSS 변수가 아니라 소비자(활성
+   * 편집기의 인라인 · §349 표면 변수 · 코드 크기 계산)가 읽는 입력이다. 그래서 `toVars` 는 빈
+   * 맵, `vars` 는 빈 배열이다(스펙 0060 D3). 그 값을 적용하는 소비자는
+   * `appearance/editor-typography.ts` 를 거쳐 병합값을 읽는다 — 입구는 그 파일의 머리주석이
+   * 열거한다.
    */
-  readonly channel: "color" | "layout";
+  readonly channel: "color" | "editor" | "layout";
   readonly id: string;
   /**
    * 이 다이얼이 **어떤 값에서든** 쓸 수 있는 변수 전부. `clearDialVars` 가 이 목록을
@@ -217,6 +245,12 @@ const oneOf =
     typeof raw === "string" && (options as readonly string[]).includes(raw)
       ? (raw as T)
       : undefined;
+
+/** `editor` 채널 다이얼의 `toVars` — 무엇도 내지 않는다(`DialBase.channel` 의 주석). */
+const noVars = (
+  _value: DialValue,
+  _ctx: DialContext,
+): Record<string, string> => ({});
 
 /**
  * §367 강조 시드를 HSL 두 축에서 다시 쓴다. 두 이동량이 모두 0 이면 빈 맵 — 희소성(§364.2).
@@ -444,6 +478,49 @@ export const DIALS = [
       "--editor-emphasis-font-weight",
       "--editor-emphasis-font-weight-nested",
     ],
+  },
+  // §365 다이얼 6 — 본문 타이포(스펙 0060). `channel: "editor"` 라 `<html>` 에 아무것도 쓰지
+  // 않는다 — 소비자가 병합값을 읽어 제 경로(활성 편집기의 인라인 · §349 표면 변수)로 적용한다.
+  // 기본값은 옮기기 전 `editor-settings.ts` 의 초기값이고, v28 마이그레이션(`store.ts`)이 그와
+  // 다른 저장값만 사용자 층으로 옮긴다. `""` 는 "설정 없음" — 토큰 스택(`--font-family-editor` ·
+  // `--font-family-mono`)을 그대로 쓴다.
+  {
+    channel: "editor",
+    defaultValue: "",
+    id: "editorFontFamily",
+    kind: "text",
+    parse: parseFontFamily,
+    toVars: noVars,
+    vars: [],
+  },
+  {
+    channel: "editor",
+    defaultValue: "",
+    id: "editorCodeFontFamily",
+    kind: "text",
+    parse: parseFontFamily,
+    toVars: noVars,
+    vars: [],
+  },
+  {
+    channel: "editor",
+    defaultValue: 16,
+    id: "editorFontSize",
+    kind: "number",
+    parse: inRange(EDITOR_FONT_SIZE_RANGE),
+    range: EDITOR_FONT_SIZE_RANGE,
+    toVars: noVars,
+    vars: [],
+  },
+  {
+    channel: "editor",
+    defaultValue: 1.75,
+    id: "editorLineHeight",
+    kind: "number",
+    parse: inRange(EDITOR_LINE_HEIGHT_RANGE),
+    range: EDITOR_LINE_HEIGHT_RANGE,
+    toVars: noVars,
+    vars: [],
   },
   // ‼️ 아래 둘이 첫 `channel: "color"` 다이얼이다 — `applyDialVars` 가 쓰지 않고
   // 테마 이펙트가 가져간다(`apply.ts` 의 채널 주석이 그 이유를 적는다).

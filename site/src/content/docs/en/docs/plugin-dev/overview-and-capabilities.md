@@ -33,8 +33,9 @@ sensitive.
 ## Capabilities
 
 Plugins must declare every capability they need in the manifest. Users
-approve these at install time (registry installs) or implicitly by choosing
-to load a dev folder (see [Trust model & security](/en/docs/plugin-dev/trust-model-and-errors/#trust-model--security)).
+approve these at install time (registry installs) and, on a release build,
+before a dev folder's code first runs; a development build loads a dev folder
+without asking (see [Trust model & security](/en/docs/plugin-dev/trust-model-and-errors/#trust-model--security)).
 Accessing an API whose capability was not declared throws a clear error
 ("Plugin requires `"X"` capability to access …") instead of silently no-oping
 — the context hands back a denied proxy for any ungranted API.

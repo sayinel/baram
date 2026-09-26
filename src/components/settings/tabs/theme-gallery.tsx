@@ -10,8 +10,18 @@
 //
 // 카드가 무엇을 할 수 있는지는 themeActions(source)가 정한다. 컴포넌트가
 // `source === "builtin"` 같은 비교를 직접 하면 출처가 하나 늘 때 조용히 틀린다.
+//
+// 카드는 두 열 격자의 세로 카드다(§356) — 위 미리보기(`theme-preview.tsx`), 아래 정보 칸.
+// 그림이 읽는 색 키는 `themes/theme-preview-palette.ts` 한 곳에 있다 — 테마 찾아보기
+// (`ThemeBrowser.tsx`)가 레지스트리 색인의 팔레트로 같은 그림을 그리게 될 자리다.
+import { useId } from "react";
+import type { CSSProperties } from "react";
+
+import type { Translate } from "../../../i18n/useTranslation";
 import type { RevocationEntry } from "../../../plugins/revocation";
-import type { ThemeColors, ThemeDef } from "../../../types/theme";
+import type { InstalledTheme } from "../../../themes/theme-install";
+import type { PreviewPalettes } from "../../../themes/theme-preview-palette";
+import type { ThemeDef, ThemeMode } from "../../../types/theme";
 import type { ThemeSource } from "../../../types/theme-sources";
 
 import { ArrowRight, Info, X } from "lucide-react";
@@ -21,11 +31,18 @@ import { useTranslation } from "../../../i18n/useTranslation";
 import { useSettingsStore } from "../../../stores/settings/store";
 import { usePluginStore } from "../../../stores/system/plugin";
 import { installedThemeDefs } from "../../../themes/installed-theme-defs";
+import {
+  previewPaletteFrom,
+  themePreviewPalettes,
+} from "../../../themes/theme-preview-palette";
 import { themeRevocationFor } from "../../../themes/theme-revocation";
+import { DEFAULT_DARK_PALETTE } from "../../../types/generated/palette-dark";
+import { DEFAULT_LIGHT_PALETTE } from "../../../types/generated/palette-light";
 import { BUILT_IN_THEMES, themeModes } from "../../../types/theme";
 import { themeActions } from "../../../types/theme-sources";
 import { showConfirm } from "../../../utils/confirm-dialog";
 import { PluginRevokedNotice } from "../../plugins/PluginRevokedNotice";
+import { ThemePreview } from "./theme-preview";
 import { useThemeActions } from "./use-theme-actions";
 import { useThemeImport } from "./use-theme-import";
 import { useThemeUpdates } from "./use-theme-updates";
@@ -127,6 +144,13 @@ export function ThemeGallery({
                 installedThemes,
                 revocations,
               );
+              // themeActions(source).consentHistory 는 community 만 true 다. 설치 기록은
+              // 그래서 그 출처에서만 읽는다 — id 로만 찾으면 예전 빌드가 남긴 예약 id
+              // 기록(`themeRevocationFor` 의 주석)이 같은 이름의 내장 카드에 작성자·설명을
+              // 붙인다. 기록이 없으면(이론상 스토어 불일치) 정보 버튼도 설치 정보도 없다.
+              const installed = themeActions(source).consentHistory
+                ? installedThemes[theme.id]
+                : undefined;
               return (
                 <ThemeCard
                   // 출처가 붙인 배지. 그룹 제목은 보조기기에만 읽히므로, 눈으로
@@ -139,15 +163,10 @@ export function ThemeGallery({
                   error={installErrors[theme.id]}
                   isActive={activeThemeId === theme.id}
                   key={theme.id}
+                  manifest={installed?.manifest}
                   onDelete={() => void removeTheme(theme)}
                   onInfo={
-                    // themeActions(source).consentHistory 는 community 만 true 다.
-                    // installedThemes[theme.id] 는 그래서 항상 있다 — 없으면(이론상
-                    // 스토어 불일치) 정보 버튼을 그리지 않는다.
-                    themeActions(source).consentHistory &&
-                    installedThemes[theme.id]
-                      ? () => showConsentHistory(installedThemes[theme.id])
-                      : undefined
+                    installed ? () => showConsentHistory(installed) : undefined
                   }
                   onSelect={setActiveTheme}
                   onUpdate={
@@ -198,6 +217,7 @@ function ThemeCard({
   badge,
   error,
   isActive,
+  manifest,
   onDelete,
   onInfo,
   onSelect,
@@ -223,6 +243,9 @@ function ThemeCard({
    */
   error: string | undefined;
   isActive: boolean;
+  /** 레지스트리에서 설치한 테마의 매니페스트 — 작성자 · 버전 · 설명을 정보 칸에 보인다.
+   *  내장 · 커스텀 테마는 그 정보가 없어 `undefined` 다. */
+  manifest?: InstalledTheme["manifest"];
   onDelete: () => void;
   /** §361 — present only when `themeActions(theme.source).consentHistory` is true AND the
    *  caller has something to show (`theme-gallery.tsx` decides both). */
@@ -241,7 +264,9 @@ function ThemeCard({
   updating: boolean;
 }) {
   const { t } = useTranslation();
-  const colors = previewColors(theme);
+  const palettes = themePreviewPalettes(theme);
+  // 활성 테두리는 그 테마의 강조색 — 쌍이면 라이트 쪽(미리보기 칸 순서와 같다).
+  const accent = (palettes.light ?? palettes.dark)?.["--color-accent-default"];
   const actions = themeActions(theme.source);
   return (
     // 카드와 삭제 버튼은 형제다 — button 안에 button은 HTML이 금지하는 중첩
@@ -249,22 +274,32 @@ function ThemeCard({
     // 삭제 버튼이 카드 레이블의 일부로 읽힌다. 겹쳐 보이는 배치는 wrapper의
     // position: relative가 맡는다.
     <div className="theme-card-wrap">
-      <button
-        aria-pressed={isActive}
-        className={`theme-card ${isActive ? "theme-card-active" : ""}`}
+      <CardButton
+        badge={badge}
+        isActive={isActive}
+        lines={[
+          {
+            className: "theme-card-modes",
+            text: modesLabel(themeModes(theme), t),
+          },
+          ...(manifest === undefined
+            ? []
+            : [
+                {
+                  className: "theme-card-author",
+                  text: `${manifest.author} · v${manifest.version}`,
+                },
+                {
+                  className: "theme-card-description",
+                  text: manifest.description,
+                },
+              ]),
+        ]}
+        name={theme.name}
         onClick={() => onSelect(theme.id)}
-        style={
-          isActive && colors
-            ? { borderColor: colors["--color-accent-default"] }
-            : undefined
-        }
-      >
-        {colors && <ThemeMiniPreview colors={colors} />}
-        <span className="theme-card-name">{theme.name}</span>
-        {badge !== undefined && (
-          <span className="theme-card-badge">{badge}</span>
-        )}
-      </button>
+        palettes={palettes}
+        style={isActive && accent ? { borderColor: accent } : undefined}
+      />
       {onUpdate && updateVersion !== undefined && (
         // The badge and the action are one control, not a badge plus a button: the badge
         // names the version and clicking it installs that version, so there is nothing on
@@ -347,85 +382,99 @@ function ThemeCard({
   );
 }
 
-// ─── Theme Mini Preview ─────────────────────────────────
+// ─── Card Button ────────────────────────────────────────
 
-function ThemeMiniPreview({ colors }: { colors: ThemeColors }) {
-  const c = colors;
+/** 정보 칸의 한 줄 — 클래스가 모양을, 글이 내용을 정한다. */
+interface CardLine {
+  className: string;
+  text: string;
+}
+
+/**
+ * 테마 카드와 시스템 카드가 함께 쓰는 버튼 뼈대 — 위 미리보기, 아래 정보 칸.
+ *
+ * 버튼의 **이름**은 테마 이름(+ 커스텀 배지)이고, 정보 칸의 나머지 줄(모드 · 작성자 · 설명)은
+ * 버튼의 **설명**이다. 버튼 안의 글을 그대로 이름으로 쓰면 보조기기가 카드마다 긴 문장을
+ * 이름으로 읽는다.
+ *
+ * ‼️ 이름과 설명을 요소 **여럿의 id** 로 모은다(`aria-labelledby` · `aria-describedby`). 한
+ * 요소를 가리키면 그 안의 inline span 들이 공백 없이 이어 읽힌다 — 이름과 배지가 붙은
+ * span 이던 때 커스텀 테마의 이름은 "MineCustom" 이었다. id 목록은 사이에 공백을 넣는다.
+ */
+function CardButton({
+  badge,
+  isActive,
+  lines,
+  name,
+  onClick,
+  palettes,
+  style,
+}: {
+  badge?: string;
+  isActive: boolean;
+  lines: readonly CardLine[];
+  name: string;
+  onClick: () => void;
+  palettes: PreviewPalettes;
+  style?: CSSProperties;
+}) {
+  const id = useId();
+  const nameId = `${id}-name`;
+  const badgeId = `${id}-badge`;
+  const lineIds = lines.map((_, i) => `${id}-line-${i}`);
   return (
-    // 장식 프리뷰 — 숨기지 않으면 카드 button의 accessible name에 프리뷰의
-    // 더미 텍스트(Heading, bold …)까지 전부 섞여 읽힌다(적대 리뷰).
-    <div
-      aria-hidden="true"
-      className="theme-preview"
-      style={{ background: c["--color-bg-default"] }}
+    <button
+      aria-describedby={lineIds.join(" ")}
+      aria-labelledby={badge === undefined ? nameId : `${nameId} ${badgeId}`}
+      aria-pressed={isActive}
+      className={`theme-card ${isActive ? "theme-card-active" : ""}`}
+      onClick={onClick}
+      style={style}
     >
-      <div
-        className="theme-preview-sidebar"
-        style={{
-          background: c["--color-bg-panel"],
-          borderRight: `1px solid ${c["--color-border-default"]}`,
-        }}
-      >
-        <div
-          className="theme-preview-sidebar-item"
-          style={{ background: c["--color-bg-elevated"] }}
-        />
-        <div
-          className="theme-preview-sidebar-item"
-          style={{ background: c["--color-bg-elevated"] }}
-        />
-        <div
-          className="theme-preview-sidebar-item"
-          style={{ background: c["--color-bg-elevated"] }}
-        />
-      </div>
-      <div
-        className="theme-preview-editor"
-        style={{ background: c["--color-editor-bg"] }}
-      >
-        <div
-          className="theme-preview-heading"
-          style={{ color: c["--color-editor-text"] }}
-        >
-          Heading
-        </div>
-        <div
-          className="theme-preview-text"
-          style={{ color: c["--color-editor-text"] }}
-        >
-          Some{" "}
-          <span
-            className="theme-preview-bold"
-            style={{ color: c["--color-accent-default"] }}
-          >
-            bold
-          </span>{" "}
-          text
-        </div>
-        <div
-          className="theme-preview-quote"
-          style={{
-            borderLeft: `2px solid ${c["--color-accent-default"]}`,
-            color: c["--color-text-secondary"],
-          }}
-        >
-          blockquote
-        </div>
-        <div
-          className="theme-preview-code"
-          style={{
-            background: c["--color-bg-elevated"],
-            color: c["--color-editor-text"],
-          }}
-        >
-          code
-        </div>
-      </div>
-    </div>
+      <ThemePreview palettes={palettes} />
+      <span className="theme-card-body">
+        <span className="theme-card-title">
+          <span className="theme-card-name" id={nameId}>
+            {name}
+          </span>
+          {badge !== undefined && (
+            <span className="theme-card-badge" id={badgeId}>
+              {badge}
+            </span>
+          )}
+        </span>
+        {lines.map((line, i) => (
+          <span className={line.className} id={lineIds[i]} key={line.className}>
+            {line.text}
+          </span>
+        ))}
+      </span>
+    </button>
   );
 }
 
+/** "라이트 · 다크" — 테마 편집기의 base 토글과 같은 키(`settings.theme.*`)를 쓴다. */
+function modesLabel(modes: readonly ThemeMode[], t: Translate): string {
+  return modes
+    .map((mode) =>
+      mode === "light" ? t("settings.theme.light") : t("settings.theme.dark"),
+    )
+    .join(" · ");
+}
+
 // ─── System Card ────────────────────────────────────────
+
+/**
+ * 시스템 카드의 그림 — 기본 라이트 · 다크 팔레트.
+ *
+ * `system` 은 인라인 색을 쓰지 않고 cascade 의 기본값을 입는다(`theme-vars.ts` 의
+ * `CASCADE_ONLY_THEME_IDS`). 그 기본값과 이 생성 팔레트는 같은 토큰 파일에서 나오므로, 이
+ * 그림이 입었을 때의 화면과 같다. 전에는 손으로 적은 hex 였고 기본 다크 팔레트와 달랐다.
+ */
+const SYSTEM_PALETTES: PreviewPalettes = {
+  dark: previewPaletteFrom(DEFAULT_DARK_PALETTE, "dark"),
+  light: previewPaletteFrom(DEFAULT_LIGHT_PALETTE, "light"),
+};
 
 function SystemCard({
   isActive,
@@ -436,88 +485,21 @@ function SystemCard({
 }) {
   const { t } = useTranslation();
   return (
-    <button
-      aria-pressed={isActive}
-      className={`theme-card theme-system-card ${isActive ? "theme-card-active" : ""}`}
+    <CardButton
+      isActive={isActive}
+      lines={[
+        {
+          className: "theme-card-modes",
+          text: modesLabel(["light", "dark"], t),
+        },
+        {
+          className: "theme-card-description",
+          text: t("settings.appearance.systemAuto.desc"),
+        },
+      ]}
+      name={t("settings.appearance.systemAuto")}
       onClick={onSelect}
-    >
-      {/* 프리뷰는 장식이다 — 숨기지 않으면 카드의 accessible name에
-          프리뷰 텍스트("Aa Aa")까지 섞여 읽힌다(적대 리뷰). */}
-      <div aria-hidden="true" className="theme-preview theme-preview-split">
-        <div className="theme-preview-half" style={{ background: "#ffffff" }}>
-          <div
-            className="theme-preview-sidebar"
-            style={{
-              background: "#f5f5f5",
-              borderRight: "1px solid #e5e5e5",
-            }}
-          >
-            <div
-              className="theme-preview-sidebar-item"
-              style={{ background: "#e0e0e0" }}
-            />
-            <div
-              className="theme-preview-sidebar-item"
-              style={{ background: "#e0e0e0" }}
-            />
-          </div>
-          <div
-            className="theme-preview-editor"
-            style={{ background: "#ffffff" }}
-          >
-            <div
-              className="theme-preview-heading theme-system-preview-heading"
-              style={{ color: "#1a1a1a" }}
-            >
-              Aa
-            </div>
-          </div>
-        </div>
-        <div className="theme-preview-half" style={{ background: "#1a1a2e" }}>
-          <div
-            className="theme-preview-sidebar"
-            style={{
-              background: "#16213e",
-              borderRight: "1px solid #2a2a4a",
-            }}
-          >
-            <div
-              className="theme-preview-sidebar-item"
-              style={{ background: "#2a2a4a" }}
-            />
-            <div
-              className="theme-preview-sidebar-item"
-              style={{ background: "#2a2a4a" }}
-            />
-          </div>
-          <div
-            className="theme-preview-editor"
-            style={{ background: "#1a1a2e" }}
-          >
-            <div
-              className="theme-preview-heading theme-system-preview-heading"
-              style={{ color: "#e2e8f0" }}
-            >
-              Aa
-            </div>
-          </div>
-        </div>
-      </div>
-      <span className="theme-card-name">
-        {t("settings.appearance.systemAuto")}
-      </span>
-    </button>
+      palettes={SYSTEM_PALETTES}
+    />
   );
-}
-
-/**
- * 카드가 그릴 팔레트 — 선언된 첫 모드의 것.
- *
- * 미리보기는 정지 화면이라 OS 설정을 따라가지 않는다. 쌍을 가진 테마는
- * 라이트 쪽이 보인다(themeModes가 light를 먼저 돌려준다). 토큰 없이 CSS만
- * 싣는 테마(§358)는 그릴 팔레트가 없으므로 undefined다.
- */
-function previewColors(theme: ThemeDef): ThemeColors | undefined {
-  const mode = themeModes(theme)[0];
-  return mode === undefined ? undefined : theme.modes[mode]?.colors;
 }

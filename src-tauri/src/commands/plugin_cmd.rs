@@ -1,5 +1,4 @@
 // §69 Plugin Marketplace — IPC command handlers
-use crate::config;
 use crate::plugin;
 use crate::plugin::vault_path::{
     authorized_path_str, plugin_target_path, redact_fs_error, reject_app_state_path,
@@ -37,24 +36,34 @@ pub async fn plugin_install_stage(
 }
 
 /// Install a staged plugin, atomically replacing any version already installed.
+///
+/// §379 (I4, the reverse direction) — refused with `DEV_PLUGIN_ID_HELD` while a release
+/// build's developer mode is on and a dev folder has recorded this id: storage is keyed by id,
+/// so the install would inherit what that folder's plugin wrote. The id judged is the committed
+/// manifest's, inside the commit core, and the folder records are read when the core calls the
+/// refusal — after its checks, right before the swap. A commit that lands clears the id from
+/// every dev-folder record, in any build, on a best-effort basis — see
+/// `plugin_dev_cmd::forget_installed_id`'s doc for the two ways that clear can miss and what
+/// missing it costs.
 #[tauri::command]
-pub async fn plugin_install_commit(
+pub async fn plugin_install_commit<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
     stage_id: String,
     expected_id: String,
     manifest_sha256: String,
 ) -> Result<plugin::CommittedPluginInfo, String> {
-    plugin::commit_staged_install(
-        plugin::InstallKind::Plugin,
+    // §360 — a plugin commit carries no stored CSS; `commit_staged_plugin_install` passes none.
+    let committed = plugin::commit_staged_plugin_install(
         &stage_id,
         &expected_id,
         &manifest_sha256,
-        // §360 — no stored CSS: that parameter belongs to a theme commit, and passing
-        // `Some` here is refused rather than ignored.
-        None,
+        super::plugin_dev_cmd::install_refusal(&app),
     )
     .await
     .and_then(plugin::CommittedInstall::into_plugin)
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?;
+    super::plugin_dev_cmd::forget_installed_id(&app, &committed.manifest.id);
+    Ok(committed)
 }
 
 /// Throw away a staged plugin. Nothing installed is touched.
@@ -145,80 +154,6 @@ pub async fn plugin_prepare_scopes(app: tauri::AppHandle) -> Result<(), String> 
         .forbid_directory(plugin::staging_dir_of(&dir), true)
         .map_err(|e| e.to_string())?;
     Ok(())
-}
-
-const DEV_FOLDERS_KEY: &str = "plugin.devFolders";
-
-fn read_dev_folders(app: &tauri::AppHandle) -> Result<Vec<String>, String> {
-    let raw = config::get_config(app, DEV_FOLDERS_KEY).map_err(|e| e.to_string())?;
-    Ok(plugin::dev_folders_for_this_build(raw))
-}
-
-fn dev_info<R: tauri::Runtime>(
-    app: &tauri::AppHandle<R>,
-    path: &str,
-) -> Result<plugin::InstalledPluginInfo, String> {
-    let folder = std::path::Path::new(path);
-    let manifest = plugin::read_manifest_at(folder).map_err(|e| e.to_string())?;
-    app.asset_protocol_scope()
-        .allow_directory(folder, true)
-        .map_err(|e| e.to_string())?;
-    Ok(plugin::InstalledPluginInfo {
-        manifest,
-        install_path: path.to_string(),
-        checksum: String::new(),
-        is_dev: true,
-    })
-}
-
-/// ‼️ 제네릭 런타임: `ensure_approved`가 이 함수 안에서 호출되고, `add_context`와 같은
-/// 이유로 그 체인(`ensure_approved` → `dev_info` → `config::update_config`) 전체가
-/// 런타임 제네릭이어야 `tauri::test::mock_builder()`가 `generate_handler!`로 이 커맨드를
-/// 실제 배선할 수 있다 ([[direct-call-test-cannot-see-an-unreachable-command]]).
-#[tauri::command]
-pub async fn plugin_add_dev_folder<R: tauri::Runtime>(
-    app: tauri::AppHandle<R>,
-    path: String,
-) -> Result<plugin::InstalledPluginInfo, String> {
-    // §260 Phase 5 — the ONE gate that did not lift. Side-loading a directory skips
-    // the checksum, the registry listing and the install consent record, so it stays a
-    // dev-build affordance for plugin authors.
-    if !plugin::dev_plugin_loading_enabled() {
-        return Err(plugin::plugins_disabled_error());
-    }
-    // §329.6 세 번째 입구. `dev_info`가 이 경로에 asset:// 재귀 부여를 한다 —
-    // 매니페스트 존재가 사실상의 장벽이었지만, 그 목록(`plugin.devFolders`)이
-    // 웹뷰가 쓸 수 있는 config.json에 산다. 막을 수 있을 때 막는다.
-    crate::commands::approval_cmd::ensure_approved(&app, &path, crate::approval::ApprovalKind::Dir)
-        .await?;
-    let info = dev_info(&app, &path)?; // validate manifest + grant scope BEFORE persisting
-    config::update_config(&app, DEV_FOLDERS_KEY, |raw| {
-        plugin::edited_dev_folders_json(raw, Some(&path), None)
-    })
-    .map_err(|e| e.to_string())?;
-    Ok(info)
-}
-
-#[tauri::command]
-pub async fn plugin_remove_dev_folder(app: tauri::AppHandle, path: String) -> Result<(), String> {
-    config::update_config(&app, DEV_FOLDERS_KEY, |raw| {
-        plugin::edited_dev_folders_json(raw, None, Some(&path))
-    })
-    .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub async fn plugin_list_dev(
-    app: tauri::AppHandle,
-) -> Result<Vec<plugin::InstalledPluginInfo>, String> {
-    let mut out = Vec::new();
-    for path in read_dev_folders(&app)? {
-        match dev_info(&app, &path) {
-            Ok(info) => out.push(info),
-            Err(e) => log::warn!("[plugin] skip dev folder {path}: {e}"),
-        }
-    }
-    Ok(out)
 }
 
 /// Plugin network proxy — reqwest fetch bypassing browser CORS (§69 Phase D).
@@ -427,9 +362,9 @@ async fn read_own_source(
     plugin::read_bundle_in(dir, &manifest.main).await
 }
 
-/// Is `dir` a plugin location — the installed plugin dir's child, or (dev builds only,
-/// through `read_dev_folders`) a registered dev folder? Canonicalized on both sides so a
-/// symlink cannot disguise the answer.
+/// Is `dir` a plugin location — the installed plugin dir's child, or a folder on Rust's
+/// developer list while developer mode is active (`plugin_dev_cmd::active_dev_folder_paths`,
+/// §379)? Canonicalized on both sides so a symlink cannot disguise the answer.
 fn is_plugin_directory(app: &tauri::AppHandle, dir: &std::path::Path) -> Result<bool, String> {
     let canonical = std::fs::canonicalize(dir)
         .map_err(|e| format!("plugin source directory is unreadable: {e}"))?;
@@ -440,7 +375,7 @@ fn is_plugin_directory(app: &tauri::AppHandle, dir: &std::path::Path) -> Result<
             }
         }
     }
-    for folder in read_dev_folders(app)? {
+    for folder in super::plugin_dev_cmd::active_dev_folder_paths(app) {
         if std::fs::canonicalize(&folder).is_ok_and(|dev| dev == canonical) {
             return Ok(true);
         }
@@ -1496,117 +1431,45 @@ mod tests {
         assert!(sandbox_window_guard("file-1").is_err());
     }
 
-    /// §260 Phase 5 — the dev-folder list is gated where it is READ
-    /// (`plugin::dev_folders_for_this_build`), because the stored value lives in
-    /// `config.json`, which the webview can write under any key. A second reader of that
-    /// value would reopen what the gate closes, so: every use of the key in this file is a
-    /// sanctioned shape — one read, straight into the gate — and no other file names it.
+    /// §379 (I4, the reverse direction) — the install boundary is `plugin_install_commit`'s
+    /// wiring, and a command is out of reach of a unit test. So its body is pinned as text: it
+    /// calls `commit_staged_plugin_install` — the refusing core, never the plain entry point
+    /// that would skip the refusal and still compile — with `install_refusal` wired into that
+    /// call, and clears the record after through `forget_installed_id`. Only the production
+    /// half of this file is scanned, so this test's own text cannot match.
     #[test]
-    fn the_dev_folder_list_is_read_once_and_only_through_the_build_gate() {
-        let squash = |s: &str| -> String { s.chars().filter(|c| !c.is_whitespace()).collect() };
+    fn the_plugin_install_commit_goes_through_the_dev_folder_boundary() {
         let src = include_str!("plugin_cmd.rs");
-        let prod = squash(
-            src.split_once("#[cfg(test)]")
-                .expect("this file has a test module")
-                .0,
-        );
+        let prod = src
+            .split_once("#[cfg(test)]")
+            .expect("this file has a test module")
+            .0;
+        let start = prod
+            .find("pub async fn plugin_install_commit")
+            .expect("the command is defined in this file");
+        let end = prod[start..]
+            .find("pub async fn plugin_install_discard")
+            .expect("the discard command follows the commit");
+        let body: String = prod[start..start + end]
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect();
 
-        // Every use of the key must be one of these shapes. Counting uses rather than
-        // matching `get_config(` calls is what catches the readers a call-shaped scan
-        // misses: a nested-paren argument (`get_config(window.app_handle(), …)`), a
-        // turbofish, an alias, a closure that captures `raw` inside a writer.
-        let key = concat!("DEV_FOLDERS", "_KEY");
-        let gated_read = format!(
-            "get_config(app,{key}).map_err(|e|e.to_string())?;\
-             Ok(plugin::dev_folders_for_this_build(raw))"
-        );
-        let sanctioned = [
-            format!("const{key}:&str="),
-            gated_read.clone(),
-            format!("update_config(&app,{key},|raw|{{plugin::edited_dev_folders_json(raw,"),
-        ];
-        assert_eq!(
-            prod.matches(gated_read.as_str()).count(),
-            1,
-            "the one read of the dev-folder key must feed the build gate directly"
-        );
-        let uses = prod.matches(key).count();
-        let accounted: usize = sanctioned
-            .iter()
-            .map(|shape| prod.matches(shape.as_str()).count())
-            .sum();
-        assert_eq!(
-            uses, accounted,
-            "a use of the dev-folder key is not one of the sanctioned shapes \
-             (definition, gated read, JSON write) — route it through \
-             plugin::dev_folders_for_this_build or plugin::edited_dev_folders_json"
-        );
-
-        let literal = concat!("\"plugin.", "devFolders\"");
         assert!(
-            src.contains(literal),
-            "the key literal moved — this scan would pass an offender"
+            !body.contains("commit_staged_install("),
+            "plugin_install_commit calls the plain commit entry point — a plugin committed \
+             there skips the developer-mode refusal; use plugin::commit_staged_plugin_install"
         );
-        let mut offenders = Vec::new();
-        let mut dirs = vec![std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src")];
-        while let Some(dir) = dirs.pop() {
-            for entry in std::fs::read_dir(&dir).expect("src is readable") {
-                let path = entry.expect("dir entry is readable").path();
-                if path.is_dir() {
-                    dirs.push(path);
-                } else if path.extension().is_some_and(|ext| ext == "rs")
-                    && !path.ends_with("commands/plugin_cmd.rs")
-                    && std::fs::read_to_string(&path)
-                        .expect("source is readable")
-                        .contains(literal)
-                {
-                    offenders.push(path);
-                }
-            }
+        for wired in [
+            "commit_staged_plugin_install(",
+            "install_refusal(&app",
+            "forget_installed_id(&app",
+        ] {
+            assert!(
+                body.contains(wired),
+                "plugin_install_commit no longer calls `{wired}…)` — the dev-folder boundary \
+                 (plan 0106 P25) is unwired"
+            );
         }
-        assert!(
-            offenders.is_empty(),
-            "only plugin_cmd.rs may name the dev-folder key: {offenders:?}"
-        );
-    }
-
-    /// §329.6 — `dev_info`가 웹뷰가 준 경로에 asset scope를 재귀로 부여한다.
-    /// `add_context`도 `set_vault_root`도 거치지 않는 세 번째 입구였다.
-    ///
-    /// ‼️ 기대값이 `VAULT_PATH_UNRESOLVABLE`인 이유는 `context_cmd`의 짝 테스트와 같다
-    /// (§335 리뷰 I3) — 존재하지 않는 경로는 거부가 아니라 해석 실패다.
-    #[test]
-    fn plugin_add_dev_folder_refuses_an_unapproved_path_through_generate_handler() {
-        let app = tauri::test::mock_builder()
-            .invoke_handler(tauri::generate_handler![super::plugin_add_dev_folder])
-            .build(tauri::test::mock_context(tauri::test::noop_assets()))
-            .expect("mock app must build");
-        let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
-            .build()
-            .expect("mock webview must build");
-
-        let res = tauri::test::get_ipc_response(
-            &webview,
-            tauri::webview::InvokeRequest {
-                cmd: "plugin_add_dev_folder".into(),
-                callback: tauri::ipc::CallbackFn(0),
-                error: tauri::ipc::CallbackFn(1),
-                url: if cfg!(any(windows, target_os = "android")) {
-                    "http://tauri.localhost"
-                } else {
-                    "tauri://localhost"
-                }
-                .parse()
-                .unwrap(),
-                body: tauri::ipc::InvokeBody::Json(serde_json::json!({
-                    "path": "/definitely/not/here/plugin"
-                })),
-                headers: Default::default(),
-                invoke_key: tauri::test::INVOKE_KEY.to_string(),
-            },
-        );
-
-        let err = res.expect_err("존재하지 않는 미승인 경로는 거부되어야 한다");
-        assert_eq!(err, serde_json::json!("VAULT_PATH_UNRESOLVABLE"));
     }
 }

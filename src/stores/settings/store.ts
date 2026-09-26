@@ -4,6 +4,7 @@ import type { DialValues } from "../../appearance/dials";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
+import { DIALS } from "../../appearance/dials";
 import { lookupThemes } from "../../themes/installed-theme-defs";
 import {
   defaultColorsForBase,
@@ -123,17 +124,15 @@ export const useSettingsStore = create<SettingsState>()(
         recentFiles: state.recentFiles,
         lastOpenedFolder: state.lastOpenedFolder,
         lastOpenedFile: state.lastOpenedFile,
-        // §348 서체 슬롯 둘과 최근 목록. partialize는 whitelist다 — 빠뜨리면
-        // 재시작마다 고른 서체가 사라진다.
-        codeFontFamily: state.codeFontFamily,
-        fontFamily: state.fontFamily,
+        // §348 최근 서체 목록. partialize 는 whitelist 다. 서체 슬롯 둘과 본문 크기 ·
+        // 줄 높이는 v28 부터 외관 다이얼(`appearanceOverrides`)이다.
         recentFonts: state.recentFonts,
-        fontSize: state.fontSize,
-        lineHeight: state.lineHeight,
         // §354 코드 전용 크기·줄 높이와 그 연동 스위치. partialize 는 whitelist다.
         linkFontMetrics: state.linkFontMetrics,
         codeFontSize: state.codeFontSize,
         codeLineHeight: state.codeLineHeight,
+        // §365 본문 폭 행의 표시 단위 — 표시 선택이라 다이얼이 아니다(계획 0107 P10).
+        editorWidthUnit: state.editorWidthUnit,
         tabSize: state.tabSize,
         lineNumbers: state.lineNumbers,
         autoPairBrackets: state.autoPairBrackets,
@@ -218,7 +217,7 @@ export const useSettingsStore = create<SettingsState>()(
         // would silently drop the setting on every restart.
         vimMode: state.vimMode,
       }),
-      version: 27,
+      version: 28,
       migrate: (persisted: unknown, version: number) => {
         const state = persisted as Record<string, unknown>;
 
@@ -633,6 +632,49 @@ export const useSettingsStore = create<SettingsState>()(
             appearanceState.appearanceOverrides = {
               ...appearanceState.appearanceOverrides,
               editorMaxWidth: legacy,
+            };
+          }
+        }
+
+        // v27 → v28: §365 본문 타이포 넷이 외관 다이얼이 되었다(스펙 0060 §6). v27 과 같은
+        // 규칙이다 — 다이얼의 `parse` 를 지나고 기본값과 **다른** 값만 사용자 층으로 옮긴다
+        // (전부 옮기면 사용자가 고른 적 없는 값이 테마의 제안을 이긴다, §364.2). 옛 키는
+        // 지운다 — v27 은 다음 저장의 `partialize` 에 맡겼지만, 그러면 마이그레이션 직후 state 에
+        // 두 출처가 공존한다.
+        //
+        // ‼️ `parse` 에 실패한 값도 지우고 옮기지 않는다 — 그 사용자는 **알림 없이** 기본값을
+        // 본다. 옛 쓰기 경로(c71a7745 기준 네 세터의 호출부: 설정 행과 그 서체 입력 칸 · 검색 ·
+        // 서체 브라우저와 그 미리보기)가 그런 값을 만들 수 있었는지는 종류마다 다르다:
+        // - 크기 · 줄 높이의 범위 밖 숫자: 만들 수 없었다. 옛 슬라이더(설정 행 · 검색 항목 · 서체
+        //   브라우저 미리보기에 크기 · 줄 높이 하나씩 — 7891e3b0 · c71a7745^ 에서 같다) 전부가
+        //   다이얼과 같은 범위(8–32 · 1–3)였다 — 손으로 고친 저장분에서만 온다.
+        // - 128자를 넘는 서체 이름: 만들 수 있었다. 옛 입력 칸(`FontSlotPicker` 의 `commit`)은
+        //   앞뒤 공백만 걷고 길이를 자르지 않았다.
+        // - 제어 문자가 든 서체 이름: 같은 칸이 `type="text"` 라 줄바꿈은 값 정제가 걷지만(HTML
+        //   규격), 나머지 제어 문자가 붙여넣기로 들어올 수 있었는지는 실측하지 않았다.
+        if (version < 28) {
+          const moved: DialValues = {};
+          for (const [legacyKey, dialId] of [
+            ["codeFontFamily", "editorCodeFontFamily"],
+            ["fontFamily", "editorFontFamily"],
+            ["fontSize", "editorFontSize"],
+            ["lineHeight", "editorLineHeight"],
+          ] as const) {
+            const dial = DIALS.find((d) => d.id === dialId);
+            const value = dial?.parse(state[legacyKey]);
+            if (
+              dial !== undefined &&
+              value !== undefined &&
+              value !== dial.defaultValue
+            ) {
+              moved[dialId] = value;
+            }
+            Reflect.deleteProperty(state, legacyKey);
+          }
+          if (Object.keys(moved).length > 0) {
+            state.appearanceOverrides = {
+              ...(state.appearanceOverrides as DialValues | undefined),
+              ...moved,
             };
           }
         }

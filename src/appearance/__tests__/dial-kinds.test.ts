@@ -1,4 +1,6 @@
 // §368 Task 1 — 열거 다이얼이 가능해졌다는 것과, 그 확장이 저장분을 깨지 않는다는 것.
+import type { DialContext } from "../dials";
+
 import { describe, expect, it } from "vitest";
 
 import { THEME_COLOR_KEYS } from "../../types/theme";
@@ -55,25 +57,47 @@ describe("채널", () => {
   // 사용자에게는 "설정이 안 먹는다" 로 보이고 어느 테스트도 빨개지지 않는다.
   // 반대 방향도 함께 고정한다: `channel: "color"` 인데 `--color-*` 를 하나도
   // 선언하지 않으면 그 다이얼은 아무 데서도 적용되지 않는다(양쪽이 건너뛴다).
-  // ‼️ 갈래 판정도 `!== "layout"` 이다 — `applyDialVars`·`clearDialVars` 와 같은
-  // 술어를 쓴다. 이 형태로 쓰인 원래 이유(§364 당시 `DIALS` 가 전부 layout 이라
-  // `=== "color"` 가 TS2367 로 멎었다)는 §367 이 색 다이얼 둘을 들이면서 사라졌다.
-  // 그 둘이 생긴 지금에야 아래 `if` 의 색 갈래가 처음으로 실제로 돈다.
   it("채널과 변수 접두가 일치한다", () => {
     for (const dial of DIALS) {
       const colorVars = dial.vars.filter((v) => v.startsWith("--color-"));
-      if (dial.channel !== "layout") {
-        expect(
-          colorVars.length,
-          `${dial.id} declares no --color-* var`,
-        ).toBeGreaterThan(0);
-        expect(colorVars, `${dial.id} mixes channels`).toEqual([...dial.vars]);
-      } else {
-        expect(
-          colorVars,
-          `${dial.id} is layout but declares --color-*`,
-        ).toEqual([]);
+      switch (dial.channel) {
+        case "color":
+          expect(
+            colorVars.length,
+            `${dial.id} declares no --color-* var`,
+          ).toBeGreaterThan(0);
+          expect(colorVars, `${dial.id} mixes channels`).toEqual([
+            ...dial.vars,
+          ]);
+          break;
+        case "editor":
+          expect(dial.vars, `${dial.id} is editor but declares vars`).toEqual(
+            [],
+          );
+          break;
+        case "layout":
+          expect(
+            colorVars,
+            `${dial.id} is layout but declares --color-*`,
+          ).toEqual([]);
+          break;
       }
+    }
+  });
+
+  // §365 editor 채널(스펙 0060 D3) — 변수를 선언하지도 내지도 않는다. 선언만 비고 `toVars` 가
+  // 무언가를 내면 어느 적용 경로도 그것을 쓰지 않아 조용히 버려진다.
+  it("editor 채널은 기본값에서 변수를 내지 않는다", () => {
+    const editorDials = DIALS.filter((d) => d.channel === "editor");
+    expect(editorDials.map((d) => d.id).sort()).toEqual([
+      "editorCodeFontFamily",
+      "editorFontFamily",
+      "editorFontSize",
+      "editorLineHeight",
+    ]);
+    const ctx: DialContext = { mode: "light", seeds: {} };
+    for (const dial of editorDials) {
+      expect(dial.toVars(dial.defaultValue, ctx), dial.id).toEqual({});
     }
   });
 });
@@ -148,7 +172,7 @@ describe("색 채널 다이얼의 변수는 누군가 지운다", () => {
   // `THEME_COLOR_KEYS` 의 원소다. 그 우연이 다음 색 다이얼에도 성립한다는 보장은
   // 없으므로 검사로 바꿔 둔다.
   it("색 다이얼이 선언한 변수는 전부 clearThemeVars 가 지운다", () => {
-    const colorDials = DIALS.filter((d) => d.channel !== "layout");
+    const colorDials = DIALS.filter((d) => d.channel === "color");
     // 비공허성: 색 다이얼이 하나도 없으면 아래 루프가 돌지 않는다.
     expect(colorDials.length).toBeGreaterThan(0);
     for (const dial of colorDials) {

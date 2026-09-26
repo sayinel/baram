@@ -134,7 +134,10 @@ describe("FontBrowser", () => {
   // 이므로 코드 칸은 코드 크기로 그려야 한다. 본문 크기로 그리면 실제 에디터에
   // 없는 조합을 보여 준다.
   it("draws the code sample at the code size, not the body size", () => {
-    useSettingsStore.setState({ fontSize: 20, linkFontMetrics: true });
+    useSettingsStore.setState({
+      appearanceOverrides: { editorFontSize: 20 },
+      linkFontMetrics: true,
+    });
     render(<FontBrowser {...props} recentFonts={[]} state={OK} />);
     expect(screen.getByTestId("font-browser-preview-body").style.fontSize).toBe(
       "20px",

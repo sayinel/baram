@@ -33,6 +33,7 @@ import { useShallow } from "zustand/shallow";
 
 import { useTranslation } from "../../i18n/useTranslation";
 import { pluginUninstall } from "../../ipc/plugin-invoke";
+import { devFolderHoldsId } from "../../plugins/dev-plugins";
 import { consentRequired } from "../../plugins/plugin-consent";
 import {
   activateBuiltin,
@@ -186,6 +187,12 @@ export function usePluginActions(registryIndex: null | RegistryIndex) {
             entry.id,
             `${t("plugin.revoked.blockedInstall")} ${revocationReason(blocked, t)}`,
           );
+          return false;
+        }
+        // §379 I4 — the reverse of what `plugin_pick_dev_folder` refuses. UX only: Rust's
+        // commit refuses a held id anyway; this says so before the dialog and the download.
+        if (devFolderHoldsId(entry.id)) {
+          setError(entry.id, t("plugin.dev.error.idHeld"));
           return false;
         }
         // §69 — the floor the manifest declares, compared to the running app at last.
@@ -343,6 +350,12 @@ export function usePluginActions(registryIndex: null | RegistryIndex) {
           entry.id,
           `${t("plugin.revoked.blockedInstall")} ${revocationReason(blockedUpdate, t)}`,
         );
+        return;
+      }
+      // §379 I4 — checked here as well as in `handleInstall`, so the refusal comes before the
+      // consent dialog rather than after it.
+      if (devFolderHoldsId(entry.id)) {
+        setError(entry.id, t("plugin.dev.error.idHeld"));
         return;
       }
       // §69 — and the version floor, for the same reason and in the same place.

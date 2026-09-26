@@ -12,6 +12,7 @@ import type { Editor } from "@tiptap/react";
 import { TriangleAlert, X } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
+import { useEditorTypography } from "../../hooks/use-editor-typography";
 import { useTranslation } from "../../i18n/useTranslation";
 import { detectPandoc } from "../../ipc/invoke";
 import { useContextStore } from "../../stores/context/context";
@@ -150,9 +151,7 @@ export function ExportDialog({ editor }: ExportDialogProps) {
   })();
   const {
     activeThemeId,
-    codeFontFamily,
     customThemes,
-    fontFamily,
     installedThemes,
     pandocPath,
     wordTemplatePath,
@@ -162,9 +161,7 @@ export function ExportDialog({ editor }: ExportDialogProps) {
   } = useSettingsStore(
     useShallow((s) => ({
       activeThemeId: s.activeThemeId,
-      codeFontFamily: s.codeFontFamily,
       customThemes: s.customThemes,
-      fontFamily: s.fontFamily,
       installedThemes: s.installedThemes,
       pandocPath: s.pandocPath,
       wordTemplatePath: s.wordTemplatePath,
@@ -173,6 +170,7 @@ export function ExportDialog({ editor }: ExportDialogProps) {
       setThemeInExport: s.setThemeInExport,
     })),
   );
+  const { codeFontFamily, fontFamily } = useEditorTypography();
   // §362 — the palette `tokens` carries, resolved here rather than in
   // export.ts: the palette specifically arrives at exportAsHTML/exportAsPDF
   // as an argument, not a store read (0091 final review MEDIUM-1 — not "the

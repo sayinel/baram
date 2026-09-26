@@ -55,7 +55,10 @@ function revoke(...entries: RevocationEntry[]): void {
 
 describe("PluginLoader revocation gate (§69)", () => {
   beforeEach(() => {
-    usePluginStore.setState({ revocations: null });
+    usePluginStore.setState({
+      devMode: { active: false, devBuild: false, enabled: false },
+      revocations: null,
+    });
     // The refusal is translated, so the locale is part of this suite's fixture.
     useSettingsStore.setState({ locale: "en" });
   });
@@ -134,13 +137,33 @@ describe("PluginLoader revocation gate (§69)", () => {
     expect(importer).toHaveBeenCalledTimes(1);
   });
 
-  it("exempts a dev load — a local folder is the author's own code", async () => {
+  it("exempts a DEV build's dev load — a local folder is the author's own code", async () => {
+    usePluginStore.setState({
+      devMode: { active: true, devBuild: true, enabled: false },
+    });
     revoke(entry());
     const importer = vi.fn(async () => ({ activate: () => undefined }));
     await new PluginLoader(importer).loadPlugin("/dev/revoked-x", manifest, {
       isDev: true,
     });
     expect(importer).toHaveBeenCalledTimes(1);
+  });
+
+  it("revokes a RELEASE build's dev load by id (§379 F3)", async () => {
+    // Weak by design — whoever hands over a folder can rename the id — but it stops a
+    // re-published copy under the same one.
+    usePluginStore.setState({
+      devMode: { active: true, devBuild: false, enabled: true },
+    });
+    revoke(entry());
+    const importer = vi.fn(async () => ({ activate: () => undefined }));
+    await expect(
+      new PluginLoader(importer).loadPlugin("/dev/revoked-x", manifest, {
+        devConsent: { capabilities: ["commands"], trust: "trusted" },
+        isDev: true,
+      }),
+    ).rejects.toThrow(BLOCKED_EN);
+    expect(importer).not.toHaveBeenCalled();
   });
 
   it("blocks a sandboxed plugin too, not just a trusted one", async () => {

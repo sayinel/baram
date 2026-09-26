@@ -120,50 +120,82 @@ describe("main.tsx bootstrap (§260 Phase 5)", () => {
 // bounds its region and checks how many matches it found, so it cannot pass by finding
 // none or by finding one somewhere else.
 describe("dev-folder loads declare isDev (§260 Phase 5)", () => {
-  const DEV_SECTION = "components/plugins/PluginDeveloperSection.tsx";
+  const DEV_ACTIONS = "components/plugins/use-dev-plugin-actions.ts";
+  const DEV_PLUGINS = "plugins/dev-plugins.ts";
   const LIFECYCLE = "plugins/plugin-lifecycle.ts";
 
-  it("every load in the developer section is marked as a dev load", () => {
-    // Every load from this component is by definition a dev-folder load — there is no
-    // other kind here — so the count of calls and the count carrying `isDev` must match.
-    const calls = loaderCalls(readFileSync(join(SRC, DEV_SECTION), "utf8"));
-
+  it("every load the Developer section starts is a dev load carrying its consent", () => {
+    // §379 — the section's loads live in its actions hook; the component renders only.
     expect(
-      calls.length,
-      "the developer section must load plugins",
-    ).toBeGreaterThan(0);
+      loaderCalls(
+        readFileSync(
+          join(SRC, "components/plugins/PluginDeveloperSection.tsx"),
+          "utf8",
+        ),
+      ),
+      "the section component must not load plugins itself",
+    ).toEqual([]);
+    const calls = loaderCalls(readFileSync(join(SRC, DEV_ACTIONS), "utf8"));
+    expect(calls.length, "the actions hook must load plugins").toBeGreaterThan(
+      0,
+    );
     expect(
       calls.filter((c) => !c.includes("isDev")),
       "a dev load without `isDev` gets the installed plugin's consent applied to it",
     ).toEqual([]);
+    expect(calls.filter((c) => !c.includes("devConsent"))).toEqual([]);
   });
 
-  it("the lifecycle's dev loop marks its loads, and its installed loop does not", () => {
+  it("every load in dev-plugins is a dev load carrying the consent Rust recorded (§379)", () => {
+    // Every load in this module is a dev-folder load, so the count of calls, of `isDev` and
+    // of `devConsent` must match. A missing `devConsent` is refused in a release build.
+    const calls = loaderCalls(readFileSync(join(SRC, DEV_PLUGINS), "utf8"));
+    expect(calls.length, "dev-plugins must load plugins").toBeGreaterThan(0);
+    expect(calls.filter((c) => !c.includes("isDev"))).toEqual([]);
+    expect(calls.filter((c) => !c.includes("devConsent"))).toEqual([]);
+  });
+
+  it("the lifecycle loads only installed plugins and hands dev folders to dev-plugins", () => {
     const src = readFileSync(join(SRC, LIFECYCLE), "utf8");
-    // Window to the dev loop: it starts at the only `pluginListDev()` call.
-    const devLoopStart = src.indexOf("pluginListDev()");
-    expect(occurrences(src, "pluginListDev()"), "one dev loop").toBe(1);
-
-    const devCalls = loaderCalls(src.slice(devLoopStart));
-    expect(devCalls.length, "the dev loop must load plugins").toBeGreaterThan(
-      0,
-    );
+    expect(occurrences(src, "refreshDevPlugins()"), "one dev hand-off").toBe(1);
     expect(
-      devCalls.filter((c) => !c.includes("isDev")),
-      "a dev load without `isDev` gets the installed plugin's consent applied to it",
-    ).toEqual([]);
-
-    // …and the installed auto-load, which runs BEFORE the dev loop, must NOT claim to be
-    // a dev load — that would widen it past its recorded consent.
-    const installedCalls = loaderCalls(src.slice(0, devLoopStart));
+      occurrences(src, "pluginListDev"),
+      "the lifecycle no longer lists dev folders itself",
+    ).toBe(0);
+    const installedCalls = loaderCalls(src);
     expect(
       installedCalls.length,
       "the installed loop must load plugins",
     ).toBeGreaterThan(0);
     expect(
       installedCalls.filter((c) => c.includes("isDev")),
-      "an installed load marked isDev skips the consent narrowing entirely",
+      "an installed load marked isDev would be treated as a dev load instead — unbounded " +
+        "only in a dev build; a release build refuses it without a devConsent or narrows " +
+        "it to one instead of the installed record's (§379)",
     ).toEqual([]);
+  });
+
+  // §379 — `setDevMode` is R2's write into the store (`developer_mode_active`'s
+  // frontend mirror): every OTHER production call must go through the dev-plugins loop
+  // above, or a caller could flip the store without the load/unload it implies. Same shape
+  // as "calls the migration from exactly one place" above: a CALL, not a mention, so a
+  // comment naming the setter is not a violation, and the file that DEFINES it is excluded
+  // the same way `main.tsx` excludes itself above.
+  it("setDevMode has exactly one production caller besides its own store", () => {
+    const DEFINITION = "stores/system/plugin.ts";
+    const CALL = /\bsetDevMode\s*\(/;
+    const callers = sources(SRC)
+      .map((f) => f.slice(SRC.length + 1))
+      .filter(
+        (rel) =>
+          rel !== DEFINITION && CALL.test(readFileSync(join(SRC, rel), "utf8")),
+      );
+
+    expect(
+      callers,
+      "setDevMode must be called only from plugins/dev-plugins.ts — a second caller can " +
+        "desync the store from what actually got loaded or unloaded",
+    ).toEqual([DEV_PLUGINS]);
   });
 });
 

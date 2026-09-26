@@ -59,7 +59,15 @@ function installedWithConsent(
 describe("plugin loader → tiptap contribution wiring", () => {
   beforeEach(() => {
     __resetEditorSurfaces();
-    usePluginStore.setState({ installedPlugins: {}, pluginErrors: {} });
+    // Most of these loads are `isDev` with trusted manifests, pinning DEV-BUILD semantics
+    // (§379). The one INSTALLED load below (`installs nothing when the GRANTED capabilities
+    // lack extensions`) never reads this `devMode` at all — `resolveConsent`'s installed
+    // branch is keyed on `isDev`, not on the build.
+    usePluginStore.setState({
+      devMode: { active: true, devBuild: true, enabled: false },
+      installedPlugins: {},
+      pluginErrors: {},
+    });
   });
 
   test("a loaded plugin's ProseMirror plugin reaches a registered editor", async () => {

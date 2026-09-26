@@ -10,11 +10,18 @@
 // 대해서 (final review I5).
 import { describe, expect, it } from "vitest";
 
+import { DIALS } from "../../appearance/dials";
 import { fontAvailability } from "../../utils/font/font-availability";
 import { useSettingsStore } from "../settings/store";
 
 function fontFamilyAfter(persisted: unknown, version: number): unknown {
-  return (migrate(persisted, version) as { fontFamily?: unknown }).fontFamily;
+  const out = migrate(persisted, version) as {
+    appearanceOverrides?: { editorFontFamily?: unknown };
+    fontFamily?: unknown;
+  };
+  // v28 이 옛 키를 다이얼로 옮긴다(스펙 0060 §6) — 기본값("")은 옮기지 않고 지우므로 둘 다
+  // 없으면 기본값이다. 게이트를 지난 버전에서는 v25 · v28 둘 다 돌지 않아 옛 키가 남는다.
+  return out.appearanceOverrides?.editorFontFamily ?? out.fontFamily ?? "";
 }
 
 function migrate(persisted: unknown, version: number): unknown {
@@ -69,6 +76,8 @@ describe("§348 the pre-branch fontFamily default is retired, not left to badge 
   });
 
   it("defaults a fresh install to the empty (token stack) value", () => {
-    expect(useSettingsStore.getInitialState().fontFamily).toBe("");
+    expect(DIALS.find((d) => d.id === "editorFontFamily")?.defaultValue).toBe(
+      "",
+    );
   });
 });

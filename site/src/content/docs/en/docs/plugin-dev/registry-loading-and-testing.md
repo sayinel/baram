@@ -29,13 +29,13 @@ Practical consequences for you as a plugin author:
 - **Editing `config.json` has no effect.** Any `registryUrl` written there is
   discarded when the app rehydrates.
 - Distributing outside the registry means the **Developer** section at the
-  bottom of **Settings → Plugins**: a user picks your plugin's folder and loads
-  it directly. **That path is development-builds only.** Side-loading a folder
-  skips the checksum, the registry listing and the install consent record all
-  at once, so it stayed a dev-build affordance for plugin authors — a packaged
-  build refuses it (`dev_plugin_loading_enabled()` is `cfg!(debug_assertions)`).
-  Until community submissions open there is therefore no way to reach a user on
-  a release build.
+  bottom of **Settings → Plugins**: a user turns on **Developer mode**, picks
+  your plugin's folder and approves its capabilities. On a release build that
+  path takes **sandboxed plugins only**, and not one whose id is already
+  installed — side-loading skips the checksum and the registry listing, so it
+  stays inside the tier the Rust broker enforces (see
+  [Local development loop](/en/docs/plugin-dev/local-development-and-bundling/#local-development-loop)).
+  A `trusted` plugin has no way onto a release build except the registry.
 
 The registry lives at
 [`sayinel/baram-plugins`](https://github.com/sayinel/baram-plugins) — a

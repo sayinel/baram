@@ -95,34 +95,6 @@ pub fn set_config(
     Ok(())
 }
 
-/// Atomically read-modify-write a single config key under CONFIG_MUTEX.
-/// `updater` receives the current raw string value (None if unset) and
-/// returns the new string value to store.
-///
-/// §329.6 generic over the runtime (same reason as `get_config`) — `plugin_add_dev_folder`
-/// calls this after `ensure_approved`, and that chain must stay runtime-generic end to end
-/// for a `tauri::test::mock_builder()` to dispatch it through `generate_handler!`. Every
-/// existing caller passes a concrete `tauri::AppHandle` (`= AppHandle<Wry>`) and is
-/// unaffected — `R` is inferred as `Wry`.
-pub fn update_config<R: tauri::Runtime>(
-    app_handle: &tauri::AppHandle<R>,
-    key: &str,
-    updater: impl FnOnce(Option<String>) -> String,
-) -> Result<(), ConfigError> {
-    let _guard = CONFIG_MUTEX.lock().map_err(|_| ConfigError::LockError)?;
-    let path = config_path(app_handle)?;
-    let mut map = read_config_map(&path)?;
-    let current = match map.get(key) {
-        Some(Value::String(s)) => Some(s.clone()),
-        Some(v) => Some(v.to_string()),
-        None => None,
-    };
-    let next = updater(current);
-    map.insert(key.to_string(), Value::String(next));
-    write_config_map(&path, &map)?;
-    Ok(())
-}
-
 /// Remove a config key (read-modify-write under mutex).
 pub fn remove_config(app_handle: &tauri::AppHandle, key: &str) -> Result<(), ConfigError> {
     let _guard = CONFIG_MUTEX.lock().map_err(|_| ConfigError::LockError)?;
