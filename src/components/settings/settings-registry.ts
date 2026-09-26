@@ -13,6 +13,7 @@ import type { TaskScanScope } from "../../utils/tasks/task-scan-scope";
 import { useShallow } from "zustand/shallow";
 
 import { DIALS } from "../../appearance/dials";
+import { resolveEditorTypography } from "../../appearance/editor-typography";
 import { resolveDials } from "../../appearance/merge";
 import { useThemeDials } from "../../hooks/use-theme-dials";
 import { AVAILABLE_LOCALES, LOCALE_LABELS } from "../../i18n";
@@ -29,11 +30,6 @@ import {
 import { useSettingsStore } from "../../stores/settings/store";
 import { ZETTEL_STARTUP_BEHAVIORS } from "../../stores/settings/zettelkasten-settings";
 import { useUIStore } from "../../stores/ui/ui";
-import { resolveCodeMetrics } from "../../utils/font/code-metrics";
-import {
-  fontSizeNumber,
-  lineHeightNumber,
-} from "../../utils/font/font-metric-text";
 import { TASK_SCAN_SCOPES } from "../../utils/tasks/task-scan-scope";
 import { dialOptionLabelKey } from "./dial-option-label";
 
@@ -101,15 +97,11 @@ const selectRegistrySettings = (s: SettingsState) => ({
   autoSave: s.autoSave,
   autoSaveDelay: s.autoSaveDelay,
   autoUpdateLinks: s.autoUpdateLinks,
-  codeFontSize: s.codeFontSize,
-  codeLineHeight: s.codeLineHeight,
-  fontSize: s.fontSize,
   highlight: s.highlight,
   inlineMath: s.inlineMath,
   journalEnabled: s.journalEnabled,
   journalFilenameFormat: s.journalFilenameFormat,
   journalStartupBehavior: s.journalStartupBehavior,
-  lineHeight: s.lineHeight,
   lineNumbers: s.lineNumbers,
   linkFontMetrics: s.linkFontMetrics,
   locale: s.locale,
@@ -121,13 +113,11 @@ const selectRegistrySettings = (s: SettingsState) => ({
   setAutoSaveDelay: s.setAutoSaveDelay,
   setAutoUpdateLinks: s.setAutoUpdateLinks,
   setDial: s.setDial,
-  setFontSize: s.setFontSize,
   setHighlight: s.setHighlight,
   setInlineMath: s.setInlineMath,
   setJournalEnabled: s.setJournalEnabled,
   setJournalFilenameFormat: s.setJournalFilenameFormat,
   setJournalStartupBehavior: s.setJournalStartupBehavior,
-  setLineHeight: s.setLineHeight,
   setLineNumbers: s.setLineNumbers,
   setLinkFontMetrics: s.setLinkFontMetrics,
   setLocale: s.setLocale,
@@ -204,6 +194,10 @@ export function useSettingsRegistry(): SearchableSetting[] {
   // 위 M-11 정정과 같은 규율로, 이 훅도 스토어를 좁게 읽는다(`activeThemeId` ·
   // `installedThemes` · 플러그인 스토어의 `revocations`).
   const themeDials = useThemeDials();
+  const typography = resolveEditorTypography(
+    themeDials,
+    settings.appearanceOverrides,
+  );
   // §370 — the chrome-visibility toggles only need these six fields. A bare
   // `useUIStore()` would rebuild this registry on every UI-store write, including
   // ones this settings modal itself causes (e.g. `settingsOpen` while it is open) —
@@ -218,16 +212,6 @@ export function useSettingsRegistry(): SearchableSetting[] {
       toggleTabBar: s.toggleTabBar,
     })),
   );
-  // §354 — 코드 크기·줄 높이 항목의 설명에 넣을 값. EditorTab 이 두 행에 보여 주는 값과
-  // 같아야 하므로 같은 함수(code-metrics.ts)로 구한다 — 연동 중이면 본문에서 파생한 값이다.
-  const codeMetrics = resolveCodeMetrics({
-    codeFontSize: settings.codeFontSize,
-    codeLineHeight: settings.codeLineHeight,
-    fontSize: settings.fontSize,
-    lineHeight: settings.lineHeight,
-    linkFontMetrics: settings.linkFontMetrics,
-  });
-
   return [
     // ── General ──────────────────────────────────────────────────────────────
     {
@@ -695,30 +679,32 @@ export function useSettingsRegistry(): SearchableSetting[] {
       keywords: ["typeface", "font", "code", "monospace"],
       control: NAVIGATE_CONTROL,
     },
-    {
-      id: "fontSize",
-      label: "settings.editor.fontSize",
-      description: "settings.editor.fontSize.desc",
-      category: "editor",
-      section: "settings.editor.font",
-      control: makeSliderControl(
-        () => settings.fontSize,
-        settings.setFontSize,
-        { min: 8, max: 32, step: 1 },
-      ),
-    },
-    {
-      id: "lineHeight",
-      label: "settings.editor.lineHeight",
-      description: "settings.editor.lineHeight.desc",
-      category: "editor",
-      section: "settings.editor.font",
-      control: makeSliderControl(
-        () => settings.lineHeight,
-        settings.setLineHeight,
-        { min: 1.0, max: 3.0, step: 0.05 },
-      ),
-    },
+    ...dialSliderSetting(
+      {
+        id: "fontSize",
+        label: "settings.editor.fontSize",
+        description: "settings.editor.fontSize.desc",
+        category: "editor",
+        section: "settings.editor.font",
+      },
+      "editorFontSize",
+      themeDials,
+      settings.appearanceOverrides,
+      settings.setDial,
+    ),
+    ...dialSliderSetting(
+      {
+        id: "lineHeight",
+        label: "settings.editor.lineHeight",
+        description: "settings.editor.lineHeight.desc",
+        category: "editor",
+        section: "settings.editor.font",
+      },
+      "editorLineHeight",
+      themeDials,
+      settings.appearanceOverrides,
+      settings.setDial,
+    ),
     // §354 연동 스위치는 인라인으로, 그 아래 코드 크기·줄 높이 두 항목은 탭으로 보내는
     // 버튼으로 둔다. 두 슬라이더의 값은 연동이 켜져 있는 동안 무시되는데, 이 레지스트리의
     // 슬라이더 컨트롤에는 끈 상태가 없다 — 검색 결과에 살아 있는 슬라이더로 나오면 움직여도
@@ -733,7 +719,7 @@ export function useSettingsRegistry(): SearchableSetting[] {
       keywords: ["code", "size", "line height", "link"],
       control: makeToggleControl(
         () => settings.linkFontMetrics,
-        settings.setLinkFontMetrics,
+        (on) => settings.setLinkFontMetrics(on, typography),
       ),
     },
     {
@@ -743,9 +729,7 @@ export function useSettingsRegistry(): SearchableSetting[] {
       category: "editor",
       section: "settings.editor.font",
       keywords: ["code", "font", "size"],
-      control: navigateControlShowing(() =>
-        fontSizeNumber(Math.round(codeMetrics.fontSize)),
-      ),
+      control: NAVIGATE_CONTROL,
     },
     {
       id: "codeLineHeight",
@@ -754,9 +738,7 @@ export function useSettingsRegistry(): SearchableSetting[] {
       category: "editor",
       section: "settings.editor.font",
       keywords: ["code", "line height", "spacing"],
-      control: navigateControlShowing(() =>
-        lineHeightNumber(codeMetrics.lineHeight),
-      ),
+      control: NAVIGATE_CONTROL,
     },
     {
       id: "tabSize",
@@ -868,20 +850,17 @@ export function useSettingsRegistry(): SearchableSetting[] {
     ),
     // §366 되돌림 — editorMaxWidth는 잠시 외관 다이얼로 Appearance 탭에
     // 옮겨졌다가(Task 7) 돌아왔다. 다이얼 기계(병합·출처·되돌리기)는 그대로
-    // AppearanceDialRow가 맡고, 여기서 바뀌는 것은 분류(category/section)뿐이다.
-    ...dialSliderSetting(
-      {
-        id: "editorMaxWidth",
-        label: "settings.editor.maxWidth",
-        description: "settings.editor.maxWidth.desc",
-        category: "editor",
-        section: "settings.editor.display",
-      },
-      "editorMaxWidth",
-      themeDials,
-      settings.appearanceOverrides,
-      settings.setDial,
-    ),
+    // `editor-width-row.tsx` 가 맡고, 여기서 바뀌는 것은 분류(category/section)뿐이다.
+    // §365 본문 폭은 탭으로 보낸다(스펙 0060 D9) — 검색 결과의 슬라이더에는 단위 전환도 서체 측정도
+    // 없어, 거기서 px 만 보이면 행과 다른 표현이 생긴다. 서체 항목 · 코드 슬라이더와 같은 처리다.
+    {
+      id: "editorMaxWidth",
+      label: "settings.editor.maxWidth",
+      description: "settings.editor.maxWidth.desc",
+      category: "editor",
+      section: "settings.editor.display",
+      control: NAVIGATE_CONTROL,
+    },
     // §368 — 검색에서 이 설정을 찾을 방법이 없었다(행은 EditorTab.tsx에 이미
     // 있었지만 레지스트리에 항목이 없었다). §4.4: 검색 결과 라벨·설명은 행과
     // 같은 i18n 키를 그대로 재사용한다 — 키 이름 자체는 `settings.appearance.*`
@@ -1438,8 +1417,7 @@ function navigateControlShowing(value: () => string): SettingControlMeta {
   };
 }
 
-// §368 — number 다이얼(editorMaxWidth·editorPadding·editorLetterSpacing·
-// editorParagraphSpacing) 넷 다 슬라이더 컨트롤을 만드는 두 단정을 반복한다:
+// §368 — number 다이얼마다 슬라이더 컨트롤을 만들면 같은 두 단정이 반복된다:
 // `DIALS.find()`는 id-동등 predicate 로는 `DialDef`의 `kind` 판별 유니언을
 // 좁혀 주지 않고, `resolveDials(...)[id].value`는 어떤 id 든 `DialValue`
 // (number | string)라 슬라이더 셀렉터의 `() => number` 에 맞추려면 단정이

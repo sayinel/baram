@@ -1,4 +1,4 @@
-// §348 서체 설정 키 3개 — 코드 슬롯, 그리고 최근 사용 목록의 승격·상한·무동작.
+// §348 서체 설정 — 코드 슬롯(§365 부터 외관 다이얼), 그리고 최근 사용 목록의 승격·상한·무동작.
 //
 // `recentFonts` 는 사용자가 서체를 고를 때마다 쓰이므로 고빈도 경로다. zustand 의
 // `setState` 는 반환값이 현재 state 와 **같은 객체**일 때만 리스너를 아예 부르지
@@ -7,17 +7,18 @@
 // "값이 같다"가 아니라 "알림이 0건이다"로 단정한다.
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { resolveEditorTypography } from "../../appearance/editor-typography";
+import { readEditorTypography } from "../../hooks/use-editor-typography";
 import { useSettingsStore } from "../settings/store";
 
-/** 이 파일이 건드리는 키만 되돌린다 — 다른 테스트의 전제를 뒤집지 않기 위해. */
+/** 이 파일이 건드리거나 읽는 키만 되돌린다 — 다른 테스트의 전제를 뒤집지 않기 위해. */
 beforeEach(() => {
   useSettingsStore.setState({
-    codeFontFamily: "",
+    activeThemeId: "system",
+    appearanceOverrides: {},
     codeFontSize: 14,
     codeLineHeight: 1.75,
-    fontFamily: "",
-    fontSize: 16,
-    lineHeight: 1.75,
+    installedThemes: {},
     linkFontMetrics: true,
     recentFonts: [],
   });
@@ -26,15 +27,16 @@ beforeEach(() => {
 describe("§348 font settings", () => {
   it("defaults both slots to the empty string — 토큰 스택을 그대로 쓴다는 뜻", () => {
     const initial = useSettingsStore.getInitialState();
-    expect(initial.codeFontFamily).toBe("");
-    expect(initial.fontFamily).toBe("");
+    const typography = resolveEditorTypography({}, initial.appearanceOverrides);
+    expect(typography.codeFontFamily).toBe("");
+    expect(typography.fontFamily).toBe("");
     expect(initial.recentFonts).toEqual([]);
   });
 
   it("sets the code slot independently of the body slot", () => {
-    useSettingsStore.getState().setCodeFontFamily("D2Coding");
-    expect(useSettingsStore.getState().codeFontFamily).toBe("D2Coding");
-    expect(useSettingsStore.getState().fontFamily).toBe("");
+    useSettingsStore.getState().setDial("editorCodeFontFamily", "D2Coding");
+    expect(readEditorTypography().codeFontFamily).toBe("D2Coding");
+    expect(readEditorTypography().fontFamily).toBe("");
   });
 
   it("keeps the most recent font first", () => {
@@ -102,20 +104,20 @@ describe("§348 font settings", () => {
 
   // partialize 는 whitelist 다 — 빠뜨리면 재시작마다 서체 설정이 사라지고,
   // 사용자는 "가끔 안 먹는다"로 겪는다.
-  it.each(["codeFontFamily", "fontFamily", "recentFonts"])(
-    "persists %s",
-    (key) => {
-      useSettingsStore.setState({
-        codeFontFamily: "D2Coding",
-        fontFamily: "Inter",
-        recentFonts: ["Inter"],
-      });
-      const persisted = useSettingsStore.persist
-        .getOptions()
-        .partialize?.(useSettingsStore.getState()) as Record<string, unknown>;
-      expect(Object.keys(persisted)).toContain(key);
-    },
-  );
+  // §365 두 슬롯은 `appearanceOverrides` 로 저장된다.
+  it.each(["appearanceOverrides", "recentFonts"])("persists %s", (key) => {
+    useSettingsStore.setState({
+      appearanceOverrides: {
+        editorCodeFontFamily: "D2Coding",
+        editorFontFamily: "Inter",
+      },
+      recentFonts: ["Inter"],
+    });
+    const persisted = useSettingsStore.persist
+      .getOptions()
+      .partialize?.(useSettingsStore.getState()) as Record<string, unknown>;
+    expect(Object.keys(persisted)).toContain(key);
+  });
 });
 
 // §354 연동 스위치. 규칙은 하나뿐이다: **끌 때만** 코드 값을 채운다. 켤 때
@@ -128,8 +130,9 @@ describe("§354 link switch", () => {
   });
 
   it("seeds the code values from the derived ones when unlinked", () => {
-    useSettingsStore.setState({ fontSize: 20, lineHeight: 2 });
-    useSettingsStore.getState().setLinkFontMetrics(false);
+    useSettingsStore
+      .getState()
+      .setLinkFontMetrics(false, { fontSize: 20, lineHeight: 2 });
     const s = useSettingsStore.getState();
     // 20 × 0.875 = 17.5 → 슬라이더가 표현할 수 있는 18.
     expect(s.codeFontSize).toBe(18);
@@ -139,15 +142,34 @@ describe("§354 link switch", () => {
   // 반올림은 파생이 아니라 **여기서만** 일어난다. 슬라이더의 스텝이 1px 이라
   // 표현 못 하는 값에서 출발하면 첫 드래그에 값이 튄다.
   it("rounds only the seeded value, to a step the slider can express", () => {
-    useSettingsStore.setState({ fontSize: 17 });
-    useSettingsStore.getState().setLinkFontMetrics(false);
+    useSettingsStore
+      .getState()
+      .setLinkFontMetrics(false, { fontSize: 17, lineHeight: 1.75 });
     expect(useSettingsStore.getState().codeFontSize).toBe(15);
   });
 
   it("leaves a custom code size alone when the link is switched back on", () => {
     useSettingsStore.getState().setCodeFontSize(11);
-    useSettingsStore.getState().setLinkFontMetrics(true);
+    useSettingsStore
+      .getState()
+      .setLinkFontMetrics(true, { fontSize: 16, lineHeight: 1.75 });
     expect(useSettingsStore.getState().codeFontSize).toBe(11);
     expect(useSettingsStore.getState().linkFontMetrics).toBe(true);
+  });
+
+  // §365 무엇이 이것을 실패시키는가: 세터가 스토어의 무엇(예: 사용자 층)에서 파생을 다시 읽으면
+  // 테마가 준 본문 크기를 무시한다 — 파생의 입력은 호출자가 넘긴 병합값이다.
+  it("연동을 끌 때 인자로 받은 본문 값에서 코드 값을 적는다", () => {
+    useSettingsStore.setState({
+      appearanceOverrides: { editorFontSize: 20 },
+      linkFontMetrics: true,
+    });
+    useSettingsStore
+      .getState()
+      .setLinkFontMetrics(false, { fontSize: 18, lineHeight: 1.6 });
+    const s = useSettingsStore.getState();
+    expect(s.codeFontSize).toBe(16); // Math.round(18 × 0.875 = 15.75)
+    expect(s.codeLineHeight).toBe(1.6);
+    expect(s.linkFontMetrics).toBe(false);
   });
 });

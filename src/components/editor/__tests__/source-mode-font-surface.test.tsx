@@ -24,7 +24,11 @@ beforeEach(() => {
     }),
     writable: true,
   });
-  useSettingsStore.setState({ codeFontFamily: "", fontFamily: "" });
+  useSettingsStore.setState({
+    activeThemeId: "system",
+    appearanceOverrides: {},
+    installedThemes: {},
+  });
 });
 
 function renderSource() {
@@ -42,7 +46,9 @@ function renderSource() {
 
 describe("§349 source mode font surface", () => {
   it("sets the mono variable on the CodeMirror wrapper", () => {
-    useSettingsStore.setState({ codeFontFamily: "D2Coding" });
+    useSettingsStore.setState({
+      appearanceOverrides: { editorCodeFontFamily: "D2Coding" },
+    });
     const wrapper = renderSource();
     expect(wrapper.style.getPropertyValue("--font-family-mono")).toContain(
       '"D2Coding"',
@@ -52,8 +58,10 @@ describe("§349 source mode font surface", () => {
   // 이 단정이 `which: "mono"` 를 고정한다. `"both"` 로 바뀌면 실패한다.
   it("never sets the body variable — raw markdown stays monospaced", () => {
     useSettingsStore.setState({
-      codeFontFamily: "D2Coding",
-      fontFamily: "Noto Sans KR",
+      appearanceOverrides: {
+        editorCodeFontFamily: "D2Coding",
+        editorFontFamily: "Noto Sans KR",
+      },
     });
     const wrapper = renderSource();
     expect(wrapper.style.getPropertyValue("--font-family-editor")).toBe("");
@@ -62,22 +70,29 @@ describe("§349 source mode font surface", () => {
   // 변수는 **래퍼**에 있어야 한다 — CodeMirror 가 만드는 `.cm-content` 는 이
   // 컴포넌트가 소유하지 않으므로 거기에 직접 쓰면 다음 재구성에 사라진다.
   it("puts the variable on an ancestor of .cm-content so it inherits", () => {
-    useSettingsStore.setState({ codeFontFamily: "D2Coding" });
+    useSettingsStore.setState({
+      appearanceOverrides: { editorCodeFontFamily: "D2Coding" },
+    });
     const wrapper = renderSource();
     const content = wrapper.querySelector(".cm-content");
     expect(content).not.toBeNull();
     expect(wrapper.contains(content)).toBe(true);
   });
 
-  // ‼️ 이 컴포넌트는 다른 설정을 전부 `getState()` 로 읽는다 — 코드 서체만
-  // 반응형 셀렉터를 새로 달았으므로, 그 리렌더가 CodeMirror 를 다시 만들지
-  // 않는다는 것을 고정한다. 다시 만들면 커서·실행 취소 스택·스크롤이 날아간다.
+  // ‼️ 이 컴포넌트는 설정 변경에 리렌더된다 — `useEditorTypography()`(사용자 층
+  // `appearanceOverrides` 와 테마 층의 다이얼)와 코드 세 설정(`codeFontSize` ·
+  // `codeLineHeight` · `linkFontMetrics`)의 셀렉터가 반응형이다. CodeMirror 를 만드는
+  // 이펙트는 deps 가 `[]` 이고 그 안의 설정(탭 크기 · 줄 번호 · 괄호 짝)은 `getState()`
+  // 로 읽으므로, 그 리렌더가 CodeMirror 를 다시 만들지 않는다는 것을 고정한다. 다시
+  // 만들면 커서·실행 취소 스택·스크롤이 날아간다.
   it("keeps the same CodeMirror instance across a code-font change", () => {
     const wrapper = renderSource();
     const before = wrapper.querySelector(".cm-editor");
     expect(before).not.toBeNull();
     act(() => {
-      useSettingsStore.setState({ codeFontFamily: "D2Coding" });
+      useSettingsStore.setState({
+        appearanceOverrides: { editorCodeFontFamily: "D2Coding" },
+      });
     });
     // 먼저 리렌더가 실제로 일어났음을 보인다 — 안 일어났다면 아래 "그대로다"는
     // 아무것도 증명하지 않는다.

@@ -120,6 +120,28 @@ describe("FontSlotPicker", () => {
     expect(screen.queryByText("System · Korean")).toBeNull();
   });
 
+  // §351 컨트롤러 판정 — brief 가 `fontAvailability`·훅만 테스트하고 눈에 보이는 절반(배지)은
+  // 비워 두어 여기서 짝을 채운다. 같은 값("Theme Serif")으로 `themeFamilies` 유무만 바꿔
+  // 대조하므로, 배지가 값이 아니라 그 집합을 실제로 읽는지가 갈린다 — 값만 보고 그리면
+  // (예: 이름에 "theme"이 있으면 무조건) 두 번째 case 도 통과해 버린다.
+  it("labels a family the worn theme ships as from-theme", () => {
+    render(
+      <FontSlotPicker
+        {...props}
+        slot="body"
+        themeFamilies={new Set(["theme serif"])}
+        value="Theme Serif"
+      />,
+    );
+    const badge = screen.getByText("From theme");
+    expect(badge.className).toContain("settings-font-badge-theme");
+  });
+
+  it("does not label the same family from-theme without themeFamilies", () => {
+    render(<FontSlotPicker {...props} slot="body" value="Theme Serif" />);
+    expect(screen.queryByText("From theme")).toBeNull();
+  });
+
   it("renders the preview strip in the selected family", () => {
     render(<FontSlotPicker {...props} slot="body" value="Noto Sans KR" />);
     const strip = screen.getByTestId("font-preview-strip");

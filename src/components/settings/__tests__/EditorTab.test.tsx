@@ -4,7 +4,16 @@
 // the real component: <FontBrowser/> owns its own back control the way
 // AppearanceTab's <ThemeEditor/> does, and using it restores the tab's
 // normal font rows.
-import { act, render, renderHook, screen } from "@testing-library/react";
+import type { DialId } from "../../../appearance/dials";
+import type { InstalledTheme } from "../../../themes/theme-install";
+
+import {
+  act,
+  render,
+  renderHook,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { DIALS } from "../../../appearance/dials";
@@ -27,13 +36,46 @@ async function flush(): Promise<void> {
   });
 }
 
-/** 설명문 괄호 안의 수치. 기대값을 손으로 적는 대신 화면에서 뽑는다 — 손으로
- *  적으면 두 표면이 함께 틀려도 초록이다. */
-function parenthesised(pattern: RegExp): string {
-  const text = screen.getByText(pattern).textContent ?? "";
-  const inside = /\(([^)]+)\)/u.exec(text);
-  expect(inside).not.toBeNull();
-  return (inside as RegExpExecArray)[1];
+/** `appearance-dial-row.test.tsx` 의 픽스처 그대로 — 활성 테마가 다이얼을 제안하게 한다. */
+function installedTheme(
+  dials: Record<string, number | string>,
+): InstalledTheme {
+  return {
+    checksum: "c".repeat(64),
+    consentedAt: "2026-09-01T00:00:00.000Z",
+    consentedVersion: "1.0.0",
+    id: "prose",
+    installedAt: "2026-09-01T00:00:00.000Z",
+    installPath: "/home/u/.baram/themes/prose",
+    manifest: {
+      author: "a",
+      description: "d",
+      dials,
+      engines: { baram: ">=0.7.0" },
+      id: "prose",
+      license: "MIT",
+      modes: { light: { tokens: "t.json" } },
+      name: "prose",
+      version: "1.0.0",
+    },
+    modes: { light: { css: false } },
+  };
+}
+
+/** 라벨로 행을 찾는다 — `.settings-row` 가 라벨과 컨트롤을 함께 싼다.
+ *  `editor-tab-typography-rows.test.tsx` 의 같은 이름 헬퍼와 같은 판정이다. */
+function row(label: string): HTMLElement {
+  const el = screen.getByText(label).closest(".settings-row");
+  if (!(el instanceof HTMLElement)) throw new Error(`no row for ${label}`);
+  return el;
+}
+
+/** 다이얼 행의 값 칸(`dial-value`) 글자. §365 후속 수정으로 값이 description 괄호에서
+ *  이 칸으로 옮겨졌다 — 기대값을 손으로 적는 대신 화면에서 뽑는다: 손으로 적으면 두
+ *  표면이 함께 틀려도 초록이다. 라벨로 행을 좁히는 이유는 `dial-value` testid가 이
+ *  탭의 다른 다이얼 행(줄바꿈·자간·문단 간격 등)에도 있어 전역 조회가 모호해서다. */
+function dialValue(label: string): string {
+  return within(row(label)).getByTestId("dial-value").textContent ?? "";
 }
 
 describe("EditorTab — Browse…", () => {
@@ -48,15 +90,14 @@ describe("EditorTab — Browse…", () => {
   it("shows the same size and line height in the browser as in the settings rows", async () => {
     useSettingsStore.setState({
       ...initialState,
-      fontSize: 21,
-      lineHeight: 1.7,
+      appearanceOverrides: { editorFontSize: 21, editorLineHeight: 1.7 },
       locale: "en",
     });
     render(<EditorTab />);
     await flush();
 
-    const size = parenthesised(/Size of text in the editor/u);
-    const height = parenthesised(/^Spacing between lines \(/u);
+    const size = dialValue(en["settings.editor.fontSize"]);
+    const height = dialValue(en["settings.editor.lineHeight"]);
     expect(size).toBe("21px");
     expect(height).toBe("1.70");
 
@@ -131,7 +172,7 @@ describe("EditorTab — Browse…", () => {
   it("makes no missing claim about a chosen font while the enumeration is a fallback", async () => {
     useSettingsStore.setState({
       ...initialState,
-      fontFamily: "Comic Sans MS",
+      appearanceOverrides: { editorFontFamily: "Comic Sans MS" },
       locale: "en",
     });
     render(<EditorTab />);
@@ -158,17 +199,18 @@ describe("EditorTab — code metrics", () => {
   it("shows the code rows disabled, at the derived values, while linked", async () => {
     useSettingsStore.setState({
       ...initialState,
-      fontSize: 20,
-      lineHeight: 2,
+      appearanceOverrides: { editorFontSize: 20, editorLineHeight: 2 },
       locale: "en",
     });
     await renderTab();
 
-    expect(parenthesised(/Size of code text/u)).toBe("18px");
-    expect(parenthesised(/Spacing between lines in code blocks/u)).toBe("2.00");
+    expect(screen.getByTestId("code-font-size-value").textContent).toBe("18px");
+    expect(screen.getByTestId("code-line-height-value").textContent).toBe(
+      "2.00",
+    );
     for (const slider of screen.getAllByRole("slider")) {
-      const row = slider.closest(".settings-row");
-      const label = row?.textContent ?? "";
+      const sliderRow = slider.closest(".settings-row");
+      const label = sliderRow?.textContent ?? "";
       if (label.includes("Code")) {
         expect((slider as HTMLInputElement).disabled).toBe(true);
       }
@@ -177,21 +219,41 @@ describe("EditorTab — code metrics", () => {
 
   // 연동을 끄면 슬라이더가 살아나고, 그 출발점은 방금까지 보이던 값이다 —
   // 다른 값에서 출발하면 스위치를 누른 것만으로 화면이 바뀐다.
+  //
+  // §365 "보이던 값" 은 **병합된** 본문에서 파생한 값이고, 그것을 정하는 것은 스위치의
+  // 호출부(`EditorTab.tsx` 가 `setLinkFontMetrics` 에 넘기는 본문 값)다. 그래서 본문 20 / 2 를
+  // 사용자 층이 아니라 **테마 층**에 두고 실제 스위치를 누른다. 무엇이 이것을 실패시키는가:
+  // 호출부가 기본값(16 / 1.75)을 넘기거나, 사용자 층만 보고 테마 층을 빠뜨리면(여기서는 빈 층 →
+  // 역시 기본값) 코드 값이 14px / 1.75 로 적힌다.
   it("enables the code sliders at the values they were showing, once unlinked", async () => {
     useSettingsStore.setState({
       ...initialState,
-      fontSize: 20,
-      lineHeight: 2,
+      activeThemeId: "prose",
+      appearanceOverrides: {},
+      installedThemes: {
+        prose: installedTheme({ editorFontSize: 20, editorLineHeight: 2 }),
+      },
+      linkFontMetrics: true,
       locale: "en",
     });
     await renderTab();
+    // 테마 층이 이 탭에 실제로 닿았다 — 아니면 아래 18px 가 무엇을 증명하는지 알 수 없다.
+    expect(dialValue(en["settings.editor.fontSize"])).toBe("20px");
 
+    const matchBody = screen
+      .getByText("Match Body Text")
+      .closest(".settings-row")
+      ?.querySelector<HTMLElement>('[role="switch"]');
+    expect(matchBody).toBeTruthy();
     act(() => {
-      useSettingsStore.getState().setLinkFontMetrics(false);
+      matchBody!.click();
     });
 
-    expect(parenthesised(/Size of code text/u)).toBe("18px");
-    expect(parenthesised(/Spacing between lines in code blocks/u)).toBe("2.00");
+    expect(useSettingsStore.getState().linkFontMetrics).toBe(false);
+    expect(screen.getByTestId("code-font-size-value").textContent).toBe("18px");
+    expect(screen.getByTestId("code-line-height-value").textContent).toBe(
+      "2.00",
+    );
     const codeSliders = screen
       .getAllByRole("slider")
       .filter((s) =>
@@ -203,10 +265,41 @@ describe("EditorTab — code metrics", () => {
     }
   });
 
+  // §365 검색 결과의 연동 스위치도 같은 계약이다 — 그 호출부는 `settings-registry.ts` 의
+  // `linkFontMetrics` 항목이 넘기는 `resolveEditorTypography(themeDials, …)` 다. 무엇이 이것을
+  // 실패시키는가: 위 테스트와 같다(기본값을 넘기거나 테마 층을 빠뜨리면 14 / 1.75).
+  it("seeds the code values from the merged body through the search entry's switch", () => {
+    useSettingsStore.setState({
+      ...initialState,
+      activeThemeId: "prose",
+      appearanceOverrides: {},
+      installedThemes: {
+        prose: installedTheme({ editorFontSize: 20, editorLineHeight: 2 }),
+      },
+      linkFontMetrics: true,
+    });
+    const { result } = renderHook(() => useSettingsRegistry());
+    const entry = result.current.find((s) => s.id === "linkFontMetrics");
+    expect(entry).toBeDefined();
+
+    act(() => {
+      entry!.control.storeSetter(false);
+    });
+
+    const s = useSettingsStore.getState();
+    expect(s.linkFontMetrics).toBe(false);
+    expect(s.codeFontSize).toBe(18); // Math.round(20 × 0.875 = 17.5)
+    expect(s.codeLineHeight).toBe(2);
+  });
+
   // 코드 슬롯의 예제는 코드 크기로 그린다 — 본문 크기로 그리면 실제 에디터에는
   // 없는 조합을 보여 주게 되고, 예제를 보는 이유가 사라진다.
   it("previews the code slot at the code size, not the body size", async () => {
-    useSettingsStore.setState({ ...initialState, fontSize: 20, locale: "en" });
+    useSettingsStore.setState({
+      ...initialState,
+      appearanceOverrides: { editorFontSize: 20 },
+      locale: "en",
+    });
     await renderTab();
     const strips = screen.getAllByTestId("font-preview-strip");
     expect(strips).toHaveLength(2);
@@ -220,11 +313,13 @@ describe("EditorTab — code metrics", () => {
     useSettingsStore.setState({ ...initialState, locale: "en" });
     await renderTab();
     act(() => {
-      useSettingsStore.getState().setLinkFontMetrics(false);
-      useSettingsStore.getState().setFontSize(30);
+      useSettingsStore
+        .getState()
+        .setLinkFontMetrics(false, { fontSize: 16, lineHeight: 1.75 });
+      useSettingsStore.getState().setDial("editorFontSize", 30);
     });
-    expect(parenthesised(/Size of code text/u)).toBe("14px");
-    expect(parenthesised(/Size of text in the editor/u)).toBe("30px");
+    expect(screen.getByTestId("code-font-size-value").textContent).toBe("14px");
+    expect(dialValue(en["settings.editor.fontSize"])).toBe("30px");
   });
 });
 
@@ -250,13 +345,29 @@ describe("EditorTab — 다이얼 행", () => {
     render(<EditorTab />);
     render(<AppearanceTab />);
 
-    const missing = DIALS.map((d) => d.id).filter((id) => {
-      const key = labelKeyById.get(id);
-      if (key === undefined) return true;
-      const text = (en as Record<string, string>)[key];
-      if (text === undefined) return true;
-      return screen.queryAllByText(text).length === 0;
-    });
+    // 계획 0107 Task 1 — `channel: "editor"` 넷(본문 타이포)의 id 는 레지스트리 항목의
+    // id 와 **다르다**. 이 넷은 옮기기 전부터 있던 항목(`fontFamily`·`codeFontFamily`·
+    // `fontSize`·`lineHeight`, `settings-registry.ts` 실측)을 그대로 물려받았고, 그
+    // 항목의 행은 이미 EditorTab 에 있다(옮기기 전 설정 화면 그대로) — `AppearanceDialRow`
+    // 가 아니라 이 넷을 그린다. 계획 0107 Task 3(h)가 "항목 id 는 그대로 — 검색 결과의
+    // 안정된 키다" 라고 판정해 이후 어느 태스크도 그 id 를 다이얼 id 로 바꾸지 않으므로,
+    // 건너뛰는 대신 아래 맵으로 옮겨 확인한다 — 맵의 키를 `DialId` 로 둬 오타(다이얼 id
+    // 변경)가 나면 타입체크가 멎는다.
+    const REGISTRY_ID_OVERRIDE: Partial<Record<DialId, string>> = {
+      editorCodeFontFamily: "codeFontFamily",
+      editorFontFamily: "fontFamily",
+      editorFontSize: "fontSize",
+      editorLineHeight: "lineHeight",
+    };
+    const missing = DIALS.map((d) => REGISTRY_ID_OVERRIDE[d.id] ?? d.id).filter(
+      (id) => {
+        const key = labelKeyById.get(id);
+        if (key === undefined) return true;
+        const text = (en as Record<string, string>)[key];
+        if (text === undefined) return true;
+        return screen.queryAllByText(text).length === 0;
+      },
+    );
     expect(missing).toEqual([]);
   });
 });

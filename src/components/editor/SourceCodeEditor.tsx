@@ -35,6 +35,7 @@ import {
   subscribeHighlightStyle,
 } from "../../extensions/nodes/code-block-highlight";
 import { getLanguageExtension } from "../../extensions/nodes/code-block-languages";
+import { useEditorTypography } from "../../hooks/use-editor-typography";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
 import { applyFontVariables } from "../../utils/editor/font-surfaces";
@@ -394,7 +395,7 @@ export function SourceCodeEditor({
   // (위 `EditorView.theme`)가 그 값을 읽는다.
   //
   // 본문 서체는 덮지 않는다 — 이 표면은 원문 마크다운을 고정폭으로 보여준다.
-  const codeFontFamily = useSettingsStore((s) => s.codeFontFamily);
+  const { codeFontFamily, fontSize, lineHeight } = useEditorTypography();
   useEffect(() => {
     if (!containerRef.current) return;
     applyFontVariables(containerRef.current, {
@@ -408,22 +409,27 @@ export function SourceCodeEditor({
   // §354 크기·줄 높이도 같은 래퍼에 건다 — 서체와 같은 이유(테마는 재구성마다
   // 사라지고, 래퍼는 EditorView 의 parent 라 상속으로 닿는다). 이 표면은 문서
   // 전체를 고정폭으로 보여 주므로 본문 설정이 아니라 코드 설정을 따른다.
-  const metrics = useSettingsStore(
+  // §365 본문 크기 · 줄 높이는 병합값이라(테마가 줄 수 있다) 위 훅에서 읽고, deps 는 원시값이다.
+  const { codeFontSize, codeLineHeight, linkFontMetrics } = useSettingsStore(
     useShallow((s) => ({
       codeFontSize: s.codeFontSize,
       codeLineHeight: s.codeLineHeight,
-      fontSize: s.fontSize,
-      lineHeight: s.lineHeight,
       linkFontMetrics: s.linkFontMetrics,
     })),
   );
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    const code = resolveCodeMetrics(metrics);
+    const code = resolveCodeMetrics({
+      codeFontSize,
+      codeLineHeight,
+      fontSize,
+      lineHeight,
+      linkFontMetrics,
+    });
     el.style.setProperty("--editor-code-font-size", `${code.fontSize}px`);
     el.style.setProperty("--editor-code-line-height", String(code.lineHeight));
-  }, [metrics]);
+  }, [codeFontSize, codeLineHeight, fontSize, lineHeight, linkFontMetrics]);
 
   return (
     <div

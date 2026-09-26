@@ -193,6 +193,13 @@
   background: var(--color-bg-elevated);
 }
 
+/* §351 테마가 실어 온 서체(스펙 0060 §7.2). 시스템 배지와 같은 중립 차림이다 — 둘 다 "여기서
+   렌더된다" 는 사실이고, 경고(없음)나 강조(기본 제공)가 아니다. */
+.settings-font-badge-theme {
+  color: var(--color-text-secondary);
+  background: var(--color-bg-elevated);
+}
+
 .settings-font-badge-missing {
   color: var(--color-status-danger);
   background: var(--color-status-error-bg);

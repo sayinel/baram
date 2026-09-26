@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { readEditorTypography } from "../../hooks/use-editor-typography";
 import { useAIStore } from "../ai/ai";
 import { useEditorStore } from "../editor/editor";
 import { useFileStore } from "../file/file";
@@ -78,7 +79,7 @@ describe("Zustand stores smoke test", () => {
   it("settings store has default state", () => {
     const state = useSettingsStore.getState();
     expect(state.theme).toBe("system");
-    expect(state.fontSize).toBe(16);
+    expect(readEditorTypography().fontSize).toBe(16);
     expect(state.autoSave).toBe(true);
   });
 

@@ -28,6 +28,26 @@ import { blocksLoad, revocationFor } from "../plugins/revocation";
 import { RESERVED_THEME_IDS } from "../types/theme";
 
 /**
+ * 입을 수 있는 테마 id — 철회로 막힌 테마면 `"system"`, 그리고 철회가 그것을 정했는가.
+ *
+ * `useEffectiveThemeId`(`hooks/use-effective-theme-id.ts`)와 React 밖 읽기(`readEditorTypography`)가
+ * **같은 계산**을 쓰려고 여기 있다 — 규칙의 근거는 그 훅의 머리주석이다.
+ */
+export function effectiveThemeIdOf(
+  activeThemeId: string,
+  installedThemes: Record<string, InstalledTheme>,
+  revocations: null | RevocationList,
+): { effectiveThemeId: string; forceDeactivated: boolean } {
+  const forceDeactivated = themeBlocksApply(
+    themeRevocationFor(activeThemeId, installedThemes, revocations),
+  );
+  return {
+    effectiveThemeId: forceDeactivated ? "system" : activeThemeId,
+    forceDeactivated,
+  };
+}
+
+/**
  * Whether this theme must stop being applied — the same threshold `blocksLoad` sets for a
  * plugin, deliberately reusing that function rather than restating it.
  *

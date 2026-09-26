@@ -49,6 +49,9 @@ const NOT_EXERCISED: Readonly<Record<string, string>> = {
   // `fillAliasedColors` 가 본문 글자색으로 채운다. 다이얼로 농도를 싣는 것은 "농도는
   // 사용자 축" 이라는 설계를 레퍼런스가 거스르는 모양이 된다.
   editorListGuideStrength: "테마의 축은 색조(팔레트)이고, 농도는 사용자 축이다",
+  // 스펙 0060 §9.1 — 코드는 이 테마의 초점이 아니다(한글 본문 조판 우선, 0055 §10.3).
+  editorCodeFontFamily:
+    "코드는 이 테마의 초점이 아니다 — 한글 본문 조판 우선(0055 §10.3)이고, 코드 서체는 사용자 축으로 둔다",
 };
 
 describe("레퍼런스 테마 초안", () => {

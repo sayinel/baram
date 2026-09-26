@@ -1,5 +1,5 @@
 // §4.2 Settings effects hook — apply theme, font, spellcheck to DOM
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 import type { FeatureKey } from "../stores/settings/feature-keys";
 import type { Editor } from "@tiptap/core";
@@ -9,6 +9,7 @@ import { useShallow } from "zustand/shallow";
 import { colorDialVars } from "../appearance/apply";
 import { deriveIdentityColorVars } from "../appearance/color-derive";
 import { resolveColorMode } from "../appearance/color-mode";
+import { editorTypographyOf } from "../appearance/editor-typography";
 import { useTranslation } from "../i18n/useTranslation";
 import { useFeatureFlags } from "../stores/settings/features";
 import { useSettingsStore } from "../stores/settings/store";
@@ -43,32 +44,36 @@ import { useThemeCssHydration } from "./use-theme-css-hydration";
 
 export function useSettingsEffects(editor: Editor | null) {
   const { t } = useTranslation();
-  // §367 레이아웃 채널은 이 훅 안에서 이미 적용됐다. 반환값이 필요한 것은 색
-  // 채널뿐이고, 그것은 아래 테마 이펙트가 시드 위에 얹는다.
+  // §367 레이아웃 채널은 이 훅 안에서 이미 적용됐다. 반환값이 필요한 것은 나머지
+  // 두 채널이다 — 색 채널은 아래 테마 이펙트가 시드 위에 얹고, §365 편집기 채널은
+  // 바로 아래에서 본문 타이포로 고른다.
   const resolvedDials = useAppearanceDials();
+  // §365 다이얼 6 — 본문 타이포는 `<html>` 다이얼과 **같은** 병합 결과에서 고른다(계획 0107 P3).
+  // 원시값 넷이라 아래 편집기 이펙트의 deps 가 그대로다.
+  //
+  // ‼️ `useMemo` 는 성능 때문이 아니다. 훅 밖 함수를 그냥 부른 결과를 아래 편집기 이펙트가
+  // 잡으면, React Compiler 가 그 이펙트 콜백을 "렌더 뒤에 `editor` 를 바꿀 수 있는 함수" 로
+  // 판정해 `react-hooks/immutability` 오류를 낸다(2026-09-26 실측 — 같은 넷을 `resolvedDials`
+  // 에서 직접 읽거나 이렇게 `useMemo` 로 감싸면 나지 않는다).
+  const { codeFontFamily, fontFamily, fontSize, lineHeight } = useMemo(
+    () => editorTypographyOf(resolvedDials),
+    [resolvedDials],
+  );
   const {
     activeThemeId,
-    codeFontFamily,
     codeFontSize,
     codeLineHeight,
     customThemes,
     installedThemes,
-    fontSize,
-    fontFamily,
-    lineHeight,
     linkFontMetrics,
     spellCheck,
   } = useSettingsStore(
     useShallow((s) => ({
       activeThemeId: s.activeThemeId,
-      codeFontFamily: s.codeFontFamily,
       codeFontSize: s.codeFontSize,
       codeLineHeight: s.codeLineHeight,
       customThemes: s.customThemes,
       installedThemes: s.installedThemes,
-      fontSize: s.fontSize,
-      fontFamily: s.fontFamily,
-      lineHeight: s.lineHeight,
       linkFontMetrics: s.linkFontMetrics,
       spellCheck: s.spellCheck,
     })),

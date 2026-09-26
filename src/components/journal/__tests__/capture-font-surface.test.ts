@@ -21,13 +21,19 @@ function surfaceOf(editor: null | { view: { dom: HTMLElement } }): HTMLElement {
 
 describe("§349 capture editor font surface", () => {
   beforeEach(() => {
-    useSettingsStore.setState({ codeFontFamily: "", fontFamily: "" });
+    useSettingsStore.setState({
+      activeThemeId: "system",
+      appearanceOverrides: {},
+      installedThemes: {},
+    });
   });
 
   it("sets both font variables on its own editor surface", () => {
     useSettingsStore.setState({
-      codeFontFamily: "D2Coding",
-      fontFamily: "Noto Sans KR",
+      appearanceOverrides: {
+        editorCodeFontFamily: "D2Coding",
+        editorFontFamily: "Noto Sans KR",
+      },
     });
     const { result } = renderHook(() => useCaptureEditor(true));
     const dom = surfaceOf(result.current.editor);
@@ -46,7 +52,9 @@ describe("§349 capture editor font surface", () => {
     const dom = surfaceOf(result.current.editor);
     expect(dom.style.getPropertyValue("--font-family-mono")).toBe("");
     act(() => {
-      useSettingsStore.setState({ codeFontFamily: "D2Coding" });
+      useSettingsStore.setState({
+        appearanceOverrides: { editorCodeFontFamily: "D2Coding" },
+      });
     });
     expect(dom.style.getPropertyValue("--font-family-mono")).toContain(
       '"D2Coding"',

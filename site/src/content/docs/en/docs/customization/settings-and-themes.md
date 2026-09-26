@@ -97,7 +97,7 @@ switches.
 | **Letter spacing**        | −0.05em to +0.1em                    | Space between characters                                                    |
 | **Paragraph spacing**     | 0 to 2em                             | Space between paragraphs                                                    |
 | **Emphasis style**        | Italic · Accent colour · Bolder      | How `*emphasis*` is drawn                                                   |
-| **Line width**            | Up to 4000px, or 0 for no limit      | Maximum content width                                                       |
+| **Line width**            | 20–120 characters, or up to 4000px; the far left is no limit | Maximum content width. Shown in characters measured from your body font (the Hangul 가 in Korean, a–z in English), or switch the row to px |
 | **Editor padding**        | 0 to 16rem                           | Space around the content                                                    |
 | **List guide strength**   | 0 to 40                              | How strongly the indent guide in nested lists stands out; 0 hides it        |
 | **List number alignment** | Align numbers · Align periods        | Which edge list numbers grow from                                           |
@@ -129,6 +129,7 @@ that family comes from:
 | Badge                   | Meaning                                                                                      |
 | ----------------------- | -------------------------------------------------------------------------------------------- |
 | **Included**            | One of the faces Baram ships, so it is present on every machine                                |
+| **From theme**          | Declared by the theme you are wearing, which ships the font file itself                     |
 | **System**              | Found among this machine's installed fonts (**System · Korean** when it also covers Hangul)    |
 | **Not on this machine** | The name is saved, but nothing here can render it — the text falls back to another face        |
 
@@ -163,3 +164,7 @@ machine** badge if nothing can render it.
 derives the code size and line height from them; turn it off and the two code sliders below
 become editable. Either way the sliders keep showing the values code is actually rendering
 at, so the answer to "how big is my code right now?" is always on screen.
+
+Your theme can suggest the body font, the code font, the font size, and the line height. Those
+rows then show **Theme**, and changing one shows **Custom** with a revert button, the same as the
+dials under **Display**.
