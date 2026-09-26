@@ -29,8 +29,9 @@ Two further things the seed is **not**:
 
 - It is not a byte-for-byte copy of the live index. It is Prettier-formatted
   (the live file is written by `update-registry-index.mjs`), and it holds only
-  entries worth publishing — `baram-ai-summary` is absent because it is not
-  published.
+  entries worth publishing — `baram-ai-summary` is absent not because it was
+  never published (its 1.0.0 archive is still in the registry), but because
+  it was withdrawn (see `registry/revoked.json`).
 - A checksum is **not** filled in automatically. The release
   workflow clones `sayinel/baram-plugins` and updates only _that_ repo's
   `index.json`; nothing writes back here. After publishing a version, a

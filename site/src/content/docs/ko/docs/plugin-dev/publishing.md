@@ -1,6 +1,6 @@
 ---
 title: "플러그인 배포하기"
-sourceHash: "01900dd282fb"
+sourceHash: "b218bbeae324"
 ---
 
 ## 커밋된 시드
@@ -24,7 +24,8 @@ Rust 드리프트 가드 테스트(`test_committed_registry_seed_deserializes`)�
 
 - 살아 있는 색인의 바이트 단위 사본이 아닙니다. Prettier로 서식이 잡혀 있고(살아 있는 파일은
   `update-registry-index.mjs`가 씁니다), 배포할 만한 항목만 담습니다 — `baram-ai-summary`는
-  배포되지 않았으므로 없습니다.
+  배포된 적이 없어서가 아니라(1.0.0 아카이브는 레지스트리에 여전히 남아 있습니다) 철회되어서
+  없습니다(`registry/revoked.json` 참고).
 - 체크섬은 자동으로 채워지지 **않습니다**. 릴리스 워크플로는
   `sayinel/baram-plugins`를 클론해 **그** 리포의 `index.json`만 갱신하고, 여기로 되쓰는 것은
   없습니다. 버전을 배포한 뒤 관리자가 워크플로의 `sha256sum` 출력을 이 파일에 손으로 옮깁니다.
