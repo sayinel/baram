@@ -1857,6 +1857,26 @@ mod tests {
         assert!(refuse("dev-x").is_ok());
     }
 
+    /// The reason `held_for` short-circuits: a dev build's install check must not create R1
+    /// out of a fresh machine by triggering the legacy-list migration for a result
+    /// (`held_ids(dev)`) that is always empty and gets thrown away.
+    #[test]
+    fn a_dev_build_install_check_never_creates_the_record() {
+        let f = fixture();
+        let app = tauri::test::mock_app();
+
+        assert!(held_for(app.handle(), &host(&f), Build::dev()).is_empty());
+
+        let app2 = tauri::test::mock_app();
+        app2.manage(host(&f));
+        assert!(refusal_at(app2.handle().clone(), Build::dev())("dev-x").is_ok());
+
+        assert!(
+            !f.data.path().join(dev_mode::STORE_FILE).exists(),
+            "no R1 file existed before the check, and none must exist after it"
+        );
+    }
+
     #[test]
     fn a_plugin_commit_clears_the_id_from_every_record() {
         let f = fixture();
