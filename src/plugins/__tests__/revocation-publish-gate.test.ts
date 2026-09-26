@@ -568,10 +568,12 @@ describe("the revocation publish workflow's shape", () => {
     // ‼️ WHAT THIS PROTECTS, STATED HONESTLY (security re-review M-3). It is a DRIFT GUARD for this
     // workflow: it catches an accidental widening, which is what it was written for. It is NOT an
     // anti-attacker control — capability to land a commit also covers adding a whole new workflow
-    // file this test never reads. The control for that is the `revocation-signing` environment
-    // (spec 0058 stage 0 (b)): the key is its secret, so a new workflow reaches it only by
-    // declaring that environment, and then waits for a reviewer before any step runs. The first
-    // version of this comment invited the attacker reading; the guard does not support it.
+    // file this test never reads. The key is the `revocation-signing` environment's secret
+    // (spec 0058 stage 0 (b)); once the same-named repository-level secrets are deleted (owner
+    // step, not this test), a new workflow reaches it only by declaring that environment, and
+    // then waits for a reviewer before any step runs. Until that deletion, a workflow naming the
+    // secret directly still reaches the repository copy. The first version of this comment
+    // invited the attacker reading; the guard does not support it.
     //
     // ‼️ AN ALLOWLIST OVER EVERY `secrets` REFERENCE, not a search for the one spelling I thought of.
     // Matching `secrets.BARAM_REVOCATION_SIGNING_KEY` left three evasions green — bracket indexing
