@@ -27,7 +27,13 @@
  * and `plugins/`.
  */
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+} from "node:fs";
 import { dirname, join, normalize, resolve, sep } from "node:path";
 
 import type {
@@ -41,9 +47,30 @@ import {
 } from "../src/plugins/revocation";
 import { compareVersions } from "../src/plugins/version-range";
 import { label } from "./gha-label";
+import { registryByteCap, revocationByteCap } from "./rust-constants";
 
 /** Where the registry serves from. An entry pointing elsewhere is refused; see below. */
 const DEFAULT_BASE_URL = "https://sayinel.github.io/baram-plugins/";
+
+/**
+ * The two caps the app enforces on what it fetches, read from the Rust that enforces them —
+ * see `rust-constants.ts`. Read once, before any PR-controlled file is parsed.
+ */
+const [INDEX_CAP, REVOKED_CAP] = ((): [number, number] => {
+  try {
+    const src = (file: string) =>
+      readFileSync(
+        resolve(import.meta.dirname, "../src-tauri/src/plugin", file),
+        "utf8",
+      );
+    return [registryByteCap(src("fetch.rs")), revocationByteCap(src("mod.rs"))];
+  } catch (error) {
+    console.error(
+      `✗ ${error instanceof Error ? error.message : String(error)}`,
+    );
+    process.exit(1);
+  }
+})();
 
 /**
  * ‼️ A REAL FLAG LOOP, not `args.find((a) => !a.startsWith("--"))` (review LOW-2).
@@ -95,6 +122,22 @@ let unchecked = 0;
 function fail(message: string): never {
   console.error(`✗ ${indexPath}: ${message}`);
   process.exit(1);
+}
+
+{
+  let size: number;
+  try {
+    size = statSync(indexPath).size;
+  } catch (error) {
+    fail(
+      `cannot be read — ${label(error instanceof Error ? error.message : String(error))}`,
+    );
+  }
+  if (size > INDEX_CAP) {
+    fail(
+      `${size} bytes exceeds the ${INDEX_CAP} bytes the app will fetch — every client would fail to read this index`,
+    );
+  }
 }
 
 let raw: unknown;
@@ -426,6 +469,13 @@ const { declaredIds, list } = ((): {
     );
   }
   if (!stat?.isFile()) return { declaredIds: [], list: null };
+  if (stat.size > REVOKED_CAP) {
+    warnings.push(
+      `revoked.json is larger than the ${REVOKED_CAP} bytes the app will fetch, so no ` +
+        "withdrawal below counts as acknowledged",
+    );
+    return { declaredIds: [], list: null };
+  }
   let raw: unknown;
   try {
     raw = JSON.parse(readFileSync(revokedPath, "utf8"));

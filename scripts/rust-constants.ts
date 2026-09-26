@@ -27,7 +27,8 @@
  * - the key has one: vitest binds the scraped key to the frozen at-arming pair and
  *   `mod.rs`'s own test binds the compiled key to the same two files, so a divergence is
  *   self-contradictory in both directions.
- * - the cap has a WEAKER one: `the_fetch_cap_is_the_number_the_publish_gate_scrapes` in `mod.rs`.
+ * - the caps have WEAKER ones: `the_fetch_cap_is_the_number_the_publish_gate_scrapes` in `origin.rs`
+ *   (MAX_REVOCATION_BYTES) and `the_registry_cap_is_the_number_the_publish_gate_scrapes` in `fetch.rs`.
  *   Without it, `const MAX_REVOCATION_BYTES: usize = ONE_MIB;` plus a decoy comment in the matched
  *   form left this returning 1 MiB while clients capped at whatever `ONE_MIB` said — and an
  *   oversized list then publishes green and no client can read it.
@@ -55,6 +56,21 @@ export function revocationByteCap(rustSource: string): number {
     "MAX_REVOCATION_BYTES",
   );
   return integerProduct(literal, "MAX_REVOCATION_BYTES");
+}
+
+/**
+ * The byte cap `MAX_REGISTRY_BYTES` applies to the registry index a client fetches
+ * (`fetch_registry` in `src-tauri/src/plugin/fetch.rs`).
+ *
+ * The same form rule as `revocationByteCap`: a product of integers, anything else throws.
+ */
+export function registryByteCap(rustSource: string): number {
+  const literal = soleDeclaration(
+    rustSource,
+    /MAX_REGISTRY_BYTES\s*:\s*usize\s*=\s*([0-9_ *]+);/gu,
+    "MAX_REGISTRY_BYTES",
+  );
+  return integerProduct(literal, "MAX_REGISTRY_BYTES");
 }
 
 /**

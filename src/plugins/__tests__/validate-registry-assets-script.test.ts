@@ -711,3 +711,54 @@ describe("validate-registry-assets", () => {
     });
   });
 });
+
+describe("validate-registry-assets and the sizes the app will fetch", () => {
+  const INDEX_CAP = 4 * 1024 * 1024;
+  const REVOKED_CAP = 1024 * 1024;
+
+  it("REFUSES an index one byte over the registry cap", () => {
+    const dir = build([validEntry()]);
+    const doc = JSON.stringify({
+      plugins: [validEntry()],
+      updatedAt: "2026-08-02",
+    });
+    writeFileSync(
+      join(dir, "index.json"),
+      doc + " ".repeat(INDEX_CAP - doc.length + 1),
+    );
+    const { output, status } = exec([dir]);
+    expect(output).toContain("exceeds the 4194304 bytes the app will fetch");
+    expect(status).toBe(1);
+  });
+
+  it("accepts an index of exactly the registry cap", () => {
+    const dir = build([validEntry()]);
+    const doc = JSON.stringify({
+      plugins: [validEntry()],
+      updatedAt: "2026-08-02",
+    });
+    writeFileSync(
+      join(dir, "index.json"),
+      doc + " ".repeat(INDEX_CAP - doc.length),
+    );
+    const { output, status } = exec([dir]);
+    expect(output).not.toContain("exceeds");
+    expect(status).toBe(0);
+  });
+
+  it("treats a revoked.json over the revocation cap as unreadable, not as acknowledgement", () => {
+    // P2: this script reads revoked.json only to acknowledge orphans; the file's own gate is
+    // validate-revocations.ts. An oversized list must not quietly acknowledge anything.
+    const list = JSON.stringify({ revoked: [], version: 1 });
+    const dir = build(
+      [validEntry()],
+      undefined,
+      list + " ".repeat(REVOKED_CAP - list.length + 1),
+    );
+    const { output, status } = exec([dir]);
+    expect(output).toContain(
+      "revoked.json is larger than the 1048576 bytes the app will fetch",
+    );
+    expect(status).toBe(0);
+  });
+});
