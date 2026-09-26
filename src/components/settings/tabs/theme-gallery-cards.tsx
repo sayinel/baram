@@ -59,7 +59,7 @@ export function ThemeCard({
    */
   error: string | undefined;
   isActive: boolean;
-  /** 레지스트리에서 설치한 테마의 매니페스트 — 작성자 · 버전 · 설명을 정보 칸에 보인다.
+  /** 설치한 테마(레지스트리 · 파일, §371 6a)의 매니페스트 — 작성자 · 버전 · 설명을 정보 칸에 보인다.
    *  내장 · 커스텀 테마는 그 정보가 없어 `undefined` 다. */
   manifest?: InstalledTheme["manifest"];
   onDelete: () => void;

@@ -165,25 +165,28 @@ describe("the pending consent promise settles even if nothing else does", () => 
     let firstResolved: boolean | undefined;
     act(() => {
       void result.current
-        .handleInstall(entry({ id: "first" }), "https://reg.test")
+        .handleInstall(
+          entry({ id: "first", name: "First" }),
+          "https://reg.test",
+        )
         .then((v) => {
           firstResolved = v;
         });
     });
     await reachConsent();
-    expect(result.current.pendingConsent?.entry.id).toBe("first");
+    expect(result.current.pendingConsent?.name).toBe("First");
 
     // A second entry asks before the first was ever answered.
     act(() => {
       void result.current.handleInstall(
-        entry({ id: "second" }),
+        entry({ id: "second", name: "Second" }),
         "https://reg.test",
       );
     });
     await reachConsent();
 
     expect(firstResolved).toBe(false);
-    expect(result.current.pendingConsent?.entry.id).toBe("second");
+    expect(result.current.pendingConsent?.name).toBe("Second");
   });
 });
 
@@ -199,7 +202,7 @@ describe("handleInstall", () => {
         });
     });
     await reachConsent();
-    expect(result.current.pendingConsent?.entry.id).toBe("dracula");
+    expect(result.current.pendingConsent?.name).toBe("Dracula");
     expect(installTheme).not.toHaveBeenCalled();
 
     await act(async () => {

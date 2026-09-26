@@ -12,6 +12,8 @@
 // `source === "builtin"` 같은 비교를 직접 하면 출처가 하나 늘 때 조용히 틀린다.
 //
 // 카드 자체(`ThemeCard` · `SystemCard`)는 `theme-gallery-cards.tsx` 에 있다.
+import { useCallback } from "react";
+
 import type { ThemeSource } from "../../../types/theme-sources";
 
 import { ArrowRight } from "lucide-react";
@@ -25,7 +27,9 @@ import { themeRevocationFor } from "../../../themes/theme-revocation";
 import { BUILT_IN_THEMES } from "../../../types/theme";
 import { themeActions } from "../../../types/theme-sources";
 import { SystemCard, ThemeCard } from "./theme-gallery-cards";
+import { ThemeConsentDialog } from "./ThemeConsentDialog";
 import { useThemeActions } from "./use-theme-actions";
+import { useThemeFileInstall } from "./use-theme-file-install";
 import { useThemeImport } from "./use-theme-import";
 import { useThemeUpdates } from "./use-theme-updates";
 
@@ -65,16 +69,33 @@ export function ThemeGallery({
         setActiveTheme: s.setActiveTheme,
       })),
     );
-  const { handleImport, importError } = useThemeImport();
   // §361 — owns the source-based branch (custom → deleteCustomTheme, community →
   // uninstall + removeInstalledTheme) so this component only ever calls `removeTheme`.
+  // 이름이 `themeActions` 가 아닌 것은 아래가 부르는 `theme-sources.ts` 의 `themeActions(source)` 를
+  // 가리지 않기 위해서다.
+  const actions = useThemeActions();
   const {
     handleUpdate,
     installErrors,
     installing,
+    pendingConsent,
     removeTheme,
+    settleConsent,
     showConsentHistory,
-  } = useThemeActions();
+  } = actions;
+  // §371 6a — 파일 설치의 동의는 이 화면이 그린다(대화상자 상태의 주인이 위 훅이다).
+  const { handleInstallFromFile } = useThemeFileInstall(actions);
+  const { handleImport, importError } = useThemeImport(handleInstallFromFile);
+  // `useCallback` 인 이유는 `ThemeBrowser.tsx` 의 같은 자리 주석 — 대화상자의 Escape 이펙트가
+  // `onCancel` 에 의존한다.
+  const onCancelConsent = useCallback(
+    () => settleConsent(false),
+    [settleConsent],
+  );
+  const onConfirmConsent = useCallback(
+    () => settleConsent(true),
+    [settleConsent],
+  );
   const registryUrl = usePluginStore((s) => s.registryUrl);
   const revocations = usePluginStore((s) => s.revocations);
   const { index, updates } = useThemeUpdates();
@@ -87,6 +108,13 @@ export function ThemeGallery({
 
   return (
     <>
+      {pendingConsent && (
+        <ThemeConsentDialog
+          name={pendingConsent.name}
+          onCancel={onCancelConsent}
+          onConfirm={onConfirmConsent}
+        />
+      )}
       {GROUPS.map(([source, labelKey]) => {
         const rows = allThemes.filter((theme) => theme.source === source);
         // 빈 제목만 남기지 않는다.

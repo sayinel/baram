@@ -1,4 +1,9 @@
-// §54 테마 JSON import — 파일 선택 → 검증 → sanitize → 저장.
+// §54 · §371 6a 테마 가져오기 — 대화상자(Rust) → 색 설정이면 검증 → sanitize → 저장, 패키지면 파일 설치
+// (`use-theme-file-install.ts`).
+//
+// 대화상자와 읽기는 Rust(`theme_import_pick`)가 한다 — 전에 쓰던 웹뷰의 `readFile` 은 `check_vault`(fs_cmd.rs)를
+// 거쳐 `~/Downloads` 에 받은 테마 같은 볼트 밖 파일을 거부하고, Rust 가 네이티브 대화상자에서 고른 파일 하나만
+// 읽으면 웹뷰의 경로 권한이 늘지 않는다(스펙 0062 §1.4 · D8).
 //
 // AppearanceTab에서 분리(적대 리뷰: 탭이 500줄 규칙을 넘었고, import 검증은
 // 갤러리 렌더와 독립된 도메인이다). 검증이 막은 이유는 오류 **코드**로 던지고
@@ -6,14 +11,13 @@
 // 영문 절반이 섞인다. 원문 상세는 logger에만 남는다.
 import { useCallback, useState } from "react";
 
-import { open } from "@tauri-apps/plugin-dialog";
-
+import type { RustStagedThemeInfo } from "../../../ipc/theme";
 import type { ThemeColors, ThemeDef, ThemeMode } from "../../../types/theme";
 
 import { useShallow } from "zustand/shallow";
 
 import { useTranslation } from "../../../i18n/useTranslation";
-import { readFile } from "../../../ipc/invoke";
+import { themeImportPick } from "../../../ipc/theme";
 import { useSettingsStore } from "../../../stores/settings/store";
 import {
   defaultColorsForBase,
@@ -29,6 +33,7 @@ type ImportErrorCode =
   | "invalidColors"
   | "invalidColorValue"
   | "invalidName"
+  | "packageTooLarge"
   | "readFailed"
   | "tooLarge";
 
@@ -41,7 +46,12 @@ class ThemeImportError extends Error {
   }
 }
 
-export function useThemeImport(): {
+export function useThemeImport(
+  onPackage: (
+    staged: RustStagedThemeInfo,
+    fileName: string,
+  ) => Promise<null | string>,
+): {
   handleImport: () => Promise<void>;
   importError: null | string;
 } {
@@ -59,20 +69,21 @@ export function useThemeImport(): {
   const handleImport = useCallback(async () => {
     setImportError(null);
     try {
-      // dialog 호출도 try 안이다(적대 리뷰): 권한/초기화 문제로 open()이
-      // reject되면 종전엔 unhandled rejection으로 죽고 화면은 무반응이었다.
-      const selected = await open({
-        filters: [{ name: "JSON", extensions: ["json"] }],
-      });
-      if (!selected) return;
-      const content = await readFile(selected);
-      // 테마 JSON은 이름+base+색 24개다 — 그보다 세 자릿수 큰 파일은 테마가
-      // 아니다. name이 무제한 문자열로 customThemes에 영구 저장되면 설정
-      // hydration·카드 렌더·aria-label이 매번 그 비용을 치른다(적대 리뷰).
-      if (content.length > 64 * 1024) {
-        throw new ThemeImportError("tooLarge");
+      // 대화상자도 try 안이다(적대 리뷰) — 권한 · 초기화 문제로 reject 되면 unhandled rejection 으로 죽는다.
+      const pick = await themeImportPick();
+      if (pick === null) return;
+      if (pick.kind === "tooLarge") {
+        throw new ThemeImportError(
+          pick.format === "package" ? "packageTooLarge" : "tooLarge",
+        );
       }
-      const data = JSON.parse(content);
+      if (pick.kind === "package") {
+        const message = await onPackage(pick.staged, pick.fileName);
+        if (message !== null) setImportError(message);
+        return;
+      }
+      // 64 KiB 는 Rust 가 읽기 전에 판정했다(`theme_import.rs` 의 `MAX_THEME_COLORS_IMPORT_BYTES`, 계획 0109 P8).
+      const data = JSON.parse(pick.text);
       const name = typeof data.name === "string" ? data.name.trim() : "";
       // 길이 상한과 제어·bidi 문자 거부 — 카드/삭제 라벨을 속이는 표기 방지.
       if (
@@ -128,7 +139,7 @@ export function useThemeImport(): {
       const params = err instanceof ThemeImportError ? err.params : undefined;
       setImportError(t(`settings.appearance.importError.${code}`, params));
     }
-  }, [saveCustomTheme, setActiveTheme, t]);
+  }, [onPackage, saveCustomTheme, setActiveTheme, t]);
 
   return { handleImport, importError };
 }

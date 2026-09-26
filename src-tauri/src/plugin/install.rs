@@ -120,9 +120,10 @@ const MAX_STORED_THEME_CSS_BYTES: usize = 4 * 1024 * 1024;
 
 /// §360 — upper bound on `baram-theme.json` as Rust reads it out of a staged archive.
 ///
-/// The same 64 KiB `use-theme-import.ts` applies to an imported theme file, for the same
-/// reason: a theme manifest is a few lines of metadata, so anything three orders of
-/// magnitude larger is a mistake or an attempt to make the reader pay for it.
+/// The same 64 KiB `MAX_THEME_COLORS_IMPORT_BYTES` (`theme_import.rs`) applies to an imported
+/// colour settings file, for the same reason: a theme manifest is a few lines of metadata, so
+/// anything three orders of magnitude larger is a mistake or an attempt to make the reader pay
+/// for it.
 ///
 /// ‼️ THE FRONTEND CAPS AGAIN AT THE SAME VALUE, before its own `JSON.parse`
 /// (`parseThemeManifestText`). Not redundant: this layer bounds what Rust's `serde_json`
