@@ -136,6 +136,11 @@ export function themePackageEntries(
   return entries;
 }
 
+/** `extras` 의 선택 필드 하나가 매니페스트에 실릴 만큼 채워져 있는가 — 빈 객체는 아니다. */
+function hasKeys(value: object | undefined): value is object {
+  return value !== undefined && Object.keys(value).length > 0;
+}
+
 /**
  * `theme` 가 선언한 모드 중 이 함수가 실제로 실을 수 있는 것 — 색이 있는 모드만.
  *
@@ -143,10 +148,6 @@ export function themePackageEntries(
  * 빠진다. 결과가 비어 있을 수 있다 — 호출자가 `ThemeEditor` 인 한 편집 중인 `base` 모드는
  * 항상 색을 갖지만, 이 함수 자체의 계약은 그 전제에 기대지 않는다.
  */
-function hasKeys(value: object | undefined): value is object {
-  return value !== undefined && Object.keys(value).length > 0;
-}
-
 function modesWithColors(theme: ThemeDef): ThemeMode[] {
   return themeModes(theme).filter(
     (mode) => theme.modes[mode]?.colors !== undefined,
