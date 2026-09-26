@@ -11,6 +11,15 @@ import type { FindReplaceState } from "../../extensions/plugins/find-replace";
 import type { Editor } from "@tiptap/react";
 
 import { TextSelection } from "@tiptap/pm/state";
+import {
+  CaseSensitive,
+  ChevronDown,
+  ChevronUp,
+  Regex,
+  Replace,
+  WholeWord,
+  X,
+} from "lucide-react";
 
 import {
   dispatchClearSearch,
@@ -26,6 +35,7 @@ import {
   findReplacePluginKey,
 } from "../../extensions/plugins/find-replace";
 import { revealBlockInActiveEditor } from "../../extensions/plugins/viewport-virtualize";
+import { useTranslation } from "../../i18n/useTranslation";
 
 interface FindReplaceBarProps {
   editor: Editor;
@@ -40,6 +50,7 @@ export function FindReplaceBar({
   onClose,
   onSetMode,
 }: FindReplaceBarProps) {
+  const { t } = useTranslation();
   const searchInputRef = useRef<HTMLInputElement>(null);
   const replaceInputRef = useRef<HTMLInputElement>(null);
 
@@ -233,7 +244,7 @@ export function FindReplaceBar({
     [handleClose, handleReplaceCurrent],
   );
 
-  // ▲▼ navigation buttons also need to clear the ref
+  // The previous/next match buttons also need to clear the ref
   const handlePrevMatch = useCallback(() => {
     lastSelectedRef.current = null;
     dispatchPrevMatch(editor.view);
@@ -272,28 +283,31 @@ export function FindReplaceBar({
 
         <div className="find-replace-toggles">
           <button
+            aria-label={t("searchToggle.matchCase")}
             aria-pressed={caseSensitive}
             className={`find-replace-toggle ${caseSensitive ? "active" : ""}`}
             onClick={() => dispatchToggleCaseSensitive(editor.view)}
-            title="Case Sensitive (Aa)"
+            title={t("searchToggle.matchCase")}
           >
-            Aa
+            <CaseSensitive className="icon-inline" size="1em" />
           </button>
           <button
+            aria-label={t("searchToggle.regex")}
             aria-pressed={useRegex}
             className={`find-replace-toggle ${useRegex ? "active" : ""}`}
             onClick={() => dispatchToggleRegex(editor.view)}
-            title="Regular Expression (.*)"
+            title={t("searchToggle.regex")}
           >
-            .*
+            <Regex className="icon-inline" size="1em" />
           </button>
           <button
+            aria-label={t("searchToggle.wholeWord")}
             aria-pressed={wholeWord}
             className={`find-replace-toggle ${wholeWord ? "active" : ""}`}
             onClick={() => dispatchToggleWholeWord(editor.view)}
-            title="Whole Word"
+            title={t("searchToggle.wholeWord")}
           >
-            W
+            <WholeWord className="icon-inline" size="1em" />
           </button>
         </div>
 
@@ -303,39 +317,47 @@ export function FindReplaceBar({
 
         <div className="find-replace-actions">
           <button
-            aria-label="Previous match"
+            aria-label={t("pdfFind.previous")}
             className="find-replace-nav-btn"
             disabled={matches.length === 0}
             onClick={handlePrevMatch}
-            title="Previous Match (Shift+Enter)"
+            title={t("findReplace.previousTitle")}
           >
-            &#9650;
+            <ChevronUp size={14} />
           </button>
           <button
-            aria-label="Next match"
+            aria-label={t("pdfFind.next")}
             className="find-replace-nav-btn"
             disabled={matches.length === 0}
             onClick={handleNextMatch}
-            title="Next Match (Enter)"
+            title={t("findReplace.nextTitle")}
           >
-            &#9660;
+            <ChevronDown size={14} />
           </button>
           <button
             aria-expanded={mode === "replace"}
-            aria-label={mode === "replace" ? "Hide replace" : "Show replace"}
+            aria-label={t(
+              mode === "replace"
+                ? "findReplace.hideReplace"
+                : "findReplace.showReplace",
+            )}
             className={`find-replace-toggle-replace ${mode === "replace" ? "active" : ""}`}
             onClick={() => onSetMode(mode === "replace" ? "find" : "replace")}
-            title={mode === "replace" ? "Hide Replace" : "Show Replace (Cmd+H)"}
+            title={t(
+              mode === "replace"
+                ? "findReplace.hideReplace"
+                : "findReplace.showReplaceTitle",
+            )}
           >
-            &#8644;
+            <Replace size={14} />
           </button>
           <button
-            aria-label="Close find"
+            aria-label={t("pdfFind.close")}
             className="find-replace-close-btn icon-btn"
             onClick={handleClose}
-            title="Close (Escape)"
+            title={t("findReplace.closeTitle")}
           >
-            &#10005;
+            <X size={14} />
           </button>
         </div>
       </div>

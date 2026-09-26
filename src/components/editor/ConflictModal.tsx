@@ -1,6 +1,7 @@
 // §Phase5: External file change conflict modal
 // Shown when a cached/open tab's file was modified externally while dirty.
 // Diff/compare is folded into Merge (the merge view doubles as a diff view).
+import { TriangleAlert } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
 import { useUIStore } from "../../stores/ui/ui";
@@ -30,7 +31,7 @@ export function ConflictModal({
         role="dialog"
       >
         <div aria-hidden="true" className="conflict-modal-icon">
-          ⚠️
+          <TriangleAlert className="icon-inline" size="1em" />
         </div>
         <h2 className="conflict-modal-title" id="conflict-modal-title">
           File Modified Externally

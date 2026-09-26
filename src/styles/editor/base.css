@@ -120,7 +120,9 @@
    The arrow is a real hit target (default pointer-events: auto on the pseudo):
    a click on it reports event.target = the heading, and fold.ts detects the
    gutter via offsetX < 0 — zoom-safe, since `.editor-area-scroll` uses CSS zoom
-   which breaks clientX/getBoundingClientRect (see resolveHeadingGutterFold). */
+   which breaks clientX/getBoundingClientRect (see resolveHeadingGutterFold).
+   The arrow is a lucide chevron painted through a mask (styles/icons.css); a mask does
+   not shrink this 18×18 hit box — measured, see the icons.css comment. */
 .tiptap > h1::before,
 .tiptap > h2::before,
 .tiptap > h3::before,
@@ -132,12 +134,12 @@
   left: -24px;
   width: 18px;
   height: 18px;
-  font-size: 9px;
-  line-height: 18px;
-  text-align: center;
   cursor: pointer;
-  content: "▶";
+  content: "";
+  background-color: currentcolor;
   opacity: 0;
+  -webkit-mask: var(--icon-chevron-right) center / 14px no-repeat;
+  mask: var(--icon-chevron-right) center / 14px no-repeat;
   transform: translateY(-50%) rotate(90deg);
   transition:
     opacity 0.15s ease,
@@ -206,8 +208,10 @@
 
    Because the offset is measured from the list's LEFT EDGE, the arrow's distance from a
    nested list's indent guide does not move when the gutter widens — the guide sits at -1em
-   from that same edge (editor/lists.css), so the painted triangle stays 1.3125em − offset
-   away from it: 1.01em in a bullet list and 0.56em in an ordered one, at any gutter width.
+   from that same edge (editor/lists.css), so the painted chevron (folded, pointing right)
+   stays 1.375em − offset away from it: 1.075em in a bullet list and 0.625em in an ordered
+   one, at any gutter width — lists.css gives the open item's figures with
+   `--list-arrow-offset`.
    The transparent box reaches closer (1em − offset, so 0.25em for an ordered list) and is
    allowed to, because nothing of it paints. Its distance from the MARKER is the other side
    of the same offset and is the gap a reader actually sees; both offsets were raised in
@@ -237,17 +241,19 @@
   opacity: 0.7 !important;
 }
 
-/* Triangle via border trick (same as toggle-arrow). Sized in em so it tracks the editor
-   font like the marker it points at — the former 4px/6px stayed put while everything
-   around it grew. 0.375em wide is the 6px this replaces at the default 16px font. */
+/* Chevron via mask (icons.css). Sized in em so it tracks the editor font like the marker
+   it points at. Folded (pointing right), the painted width is 8/24 of the box — the lucide
+   path spans x 9–15 and its 2-unit stroke widens that to 8–16 — so 0.75em paints 0.25em,
+   centred (list-styling.test.ts derives the arrow–marker gap from this). `.fold-arrow-open`
+   below turns it 90°, and then it paints its 14/24 height, 0.4375em, as width. */
 .fold-arrow::before {
   display: block;
-  width: 0;
-  height: 0;
+  width: 0.75em;
+  height: 0.75em;
   content: "";
-  border-color: transparent transparent transparent currentcolor;
-  border-style: solid;
-  border-width: 0.25em 0 0.25em 0.375em;
+  background-color: currentcolor;
+  -webkit-mask: var(--icon-chevron-right) center / contain no-repeat;
+  mask: var(--icon-chevron-right) center / contain no-repeat;
   transition: transform 0.2s ease;
 }
 
@@ -282,4 +288,15 @@
 .fold-ellipsis:hover {
   color: var(--color-text-secondary);
   background: var(--color-bg-elevated);
+}
+
+.fold-ellipsis::before {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  vertical-align: middle;
+  content: "";
+  background-color: currentcolor;
+  -webkit-mask: var(--icon-ellipsis) center / contain no-repeat;
+  mask: var(--icon-ellipsis) center / contain no-repeat;
 }

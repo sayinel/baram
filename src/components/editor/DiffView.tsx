@@ -3,6 +3,10 @@
 // diff_texts / get_snapshot_diff commands.
 import type { DiffResult } from "../../ipc/types";
 
+import { X } from "lucide-react";
+
+import { useTranslation } from "../../i18n/useTranslation";
+
 interface DiffViewProps {
   diff: DiffResult;
   filePath: string;
@@ -10,6 +14,7 @@ interface DiffViewProps {
 }
 
 export function DiffView({ diff, filePath, onClose }: DiffViewProps) {
+  const { t } = useTranslation();
   return (
     <div className="snapshot-diff-view">
       <div className="snapshot-diff-header">
@@ -20,11 +25,12 @@ export function DiffView({ diff, filePath, onClose }: DiffViewProps) {
         </span>
         {onClose && (
           <button
+            aria-label={t("versionHistory.closeDiff")}
             className="snapshot-action-btn"
             onClick={onClose}
-            title="Close diff"
+            title={t("versionHistory.closeDiff")}
           >
-            {"✕"}
+            <X className="icon-inline" size="1em" />
           </button>
         )}
       </div>

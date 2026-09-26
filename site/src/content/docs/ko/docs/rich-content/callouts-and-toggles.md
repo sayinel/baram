@@ -1,6 +1,6 @@
 ---
 title: "콜아웃과 토글"
-sourceHash: "ad8e9f33aec3"
+sourceHash: "6ca73c145596"
 ---
 
 
@@ -39,7 +39,7 @@ sourceHash: "ad8e9f33aec3"
 
 **기능:**
 
-- **접기/펼치기** — 삼각형 표시를 클릭하거나 `Cmd+Enter`를 누릅니다
+- **접기/펼치기** — 화살표 표시를 클릭하거나 `Cmd+Enter`를 누릅니다
 - **토글 제목** — 제목을 요약으로 써서 접히는 제목 구역을 만듭니다:
   ```markdown
   <details>

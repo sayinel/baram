@@ -13,6 +13,8 @@ import type { Editor } from "@tiptap/react";
 import {
   ArrowDown,
   ArrowUp,
+  Check,
+  ChevronRight,
   Copy,
   Hash,
   Link,
@@ -300,7 +302,9 @@ export function BlockHandleMenu({
               <Replace size={ICON_SIZE} />
               <span>{t("blockMenu.turnInto")}</span>
             </span>
-            <span className="block-handle-ai-arrow">{"▸"}</span>
+            <span className="block-handle-ai-arrow">
+              <ChevronRight size={12} />
+            </span>
           </button>
           {turnIntoOpen && (
             <div className="block-handle-ai-submenu" ref={turnIntoRef}>
@@ -311,7 +315,14 @@ export function BlockHandleMenu({
                     className="block-handle-menu-item"
                     onClick={() => handleMenuAction(() => item.run())}
                   >
-                    {item.isActive ? `✓ ${t(item.label)}` : t(item.label)}
+                    {item.isActive && (
+                      <Check
+                        aria-label={t("contextMenu.checked")}
+                        role="img"
+                        size={ICON_SIZE}
+                      />
+                    )}
+                    <span>{t(item.label)}</span>
                   </button>
                 </Fragment>
               ))}
@@ -350,7 +361,9 @@ export function BlockHandleMenu({
                 <Sparkles size={ICON_SIZE} />
                 <span>{t("blockMenu.askAI")}</span>
               </span>
-              <span className="block-handle-ai-arrow">{"▸"}</span>
+              <span className="block-handle-ai-arrow">
+                <ChevronRight size={12} />
+              </span>
             </button>
 
             {aiSubOpen && (

@@ -100,7 +100,7 @@ is the intended behaviour, and it is worth knowing so a local run's
 Once the constant points at the local seed, open **Settings → Plugins**
 (the "Browse" tab) — it calls `fetchRegistryIndex()` on mount. Note the
 registry response is cached for 24 hours; the **Browse** and **Updates** tabs
-show an always-available **↻ Refresh** button that bypasses the cache
+show an always-available **Refresh** button that bypasses the cache
 (`fetchRegistryIndex(true)`) and re-runs the update check
 (`checkForUpdates()`) against the fresh index, so you don't need to restart
 the app to pick up a new `registry/index.json`. The **Retry** button shown

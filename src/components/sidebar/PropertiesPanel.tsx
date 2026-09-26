@@ -7,8 +7,10 @@ import type {
   PropertyType,
 } from "../../utils/markdown/yaml-properties";
 
+import { CodeXml, FileText, Plus, Redo2, Undo2, X } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
+import { useTranslation } from "../../i18n/useTranslation";
 import { readFile } from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
@@ -35,6 +37,7 @@ import "./SkillOptimizeSection";
 // (types and parse/serialize functions now live in ../../utils/yaml-properties)
 
 export function PropertiesPanel() {
+  const { t } = useTranslation();
   const { rightPanelOpen, rightPanelMode } = useUIStore(
     useShallow((s) => ({
       rightPanelOpen: s.rightPanelOpen,
@@ -266,27 +269,30 @@ export function PropertiesPanel() {
         <span>Properties</span>
         <div className="properties-header-actions">
           <button
+            aria-label={t("menu.edit.undo")}
             className="properties-undo-btn"
             disabled={undoStackRef.current.length === 0}
             onClick={handleUndo}
-            title="Undo (Ctrl+Z)"
+            title={t("menu.edit.undo")}
           >
-            ↩
+            <Undo2 className="icon-inline" size="1em" />
           </button>
           <button
+            aria-label={t("menu.edit.redo")}
             className="properties-undo-btn"
             disabled={redoStackRef.current.length === 0}
             onClick={handleRedo}
-            title="Redo (Ctrl+Shift+Z)"
+            title={t("menu.edit.redo")}
           >
-            ↪
+            <Redo2 className="icon-inline" size="1em" />
           </button>
           <button
+            aria-label={t("properties.toggleSource")}
             className="properties-source-toggle"
             onClick={handleToggleSource}
-            title="Toggle source YAML"
+            title={t("properties.toggleSource")}
           >
-            {"</>"}
+            <CodeXml className="icon-inline" size="1em" />
           </button>
         </div>
       </div>
@@ -316,11 +322,12 @@ export function PropertiesPanel() {
                 <div className="properties-key">
                   <span>{entry.key}</span>
                   <button
+                    aria-label={t("properties.deleteKey", { key: entry.key })}
                     className="properties-key-delete"
                     onClick={() => handleDeleteProperty(entry.key)}
-                    title={`Delete "${entry.key}"`}
+                    title={t("properties.deleteKey", { key: entry.key })}
                   >
-                    ×
+                    <X className="icon-inline" size="1em" />
                   </button>
                 </div>
 
@@ -368,26 +375,31 @@ export function PropertiesPanel() {
                             isFileRef ? () => handleOpenFile(chip) : undefined
                           }
                         >
-                          {isFileRef && <span>📄</span>}
+                          {isFileRef && (
+                            <FileText className="icon-inline" size="1em" />
+                          )}
                           {chip}
                           <button
+                            aria-label={t("properties.removeItem")}
                             className="properties-chip-remove"
                             onClick={(e) => {
                               e.stopPropagation();
                               handleChipRemove(entry.key, idx);
                             }}
-                            title="Remove"
+                            title={t("properties.removeItem")}
                           >
-                            ×
+                            <X className="icon-inline" size="1em" />
                           </button>
                         </span>
                       );
                     })}
                     <button
+                      aria-label={t("properties.addItem")}
                       className="properties-chip-add"
                       onClick={() => handleChipAdd(entry.key)}
+                      title={t("properties.addItem")}
                     >
-                      +
+                      <Plus className="icon-inline" size="1em" />
                     </button>
                   </div>
                 )}
@@ -408,6 +420,7 @@ export function PropertiesPanel() {
 }
 
 function AddPropertyButton({ onAdd }: { onAdd: (key: string) => void }) {
+  const { t } = useTranslation();
   const [adding, setAdding] = useState(false);
   const [newKey, setNewKey] = useState("");
 
@@ -421,7 +434,8 @@ function AddPropertyButton({ onAdd }: { onAdd: (key: string) => void }) {
   if (!adding) {
     return (
       <button className="properties-add-btn" onClick={() => setAdding(true)}>
-        + 속성 추가
+        <Plus className="icon-inline" size="1em" />{" "}
+        {t("properties.addProperty")}
       </button>
     );
   }

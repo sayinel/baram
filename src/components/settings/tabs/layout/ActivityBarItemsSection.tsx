@@ -141,7 +141,7 @@ export function ActivityBarItemsSection() {
       <SettingsSectionHeader title={title} />
       {items.map((item) => (
         <div
-          className={`settings-row activity-bar-config-row${
+          className={`settings-row activity-bar-config-row ${
             draggingId === item.id ? "activity-bar-dragging" : ""
           }${
             dropIndicator?.id === item.id

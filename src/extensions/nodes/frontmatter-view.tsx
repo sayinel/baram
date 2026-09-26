@@ -4,6 +4,7 @@ import { type KeyboardEvent, useCallback, useRef, useState } from "react";
 import type { NodeViewProps } from "@tiptap/react";
 
 import { NodeViewContent, NodeViewWrapper } from "@tiptap/react";
+import { X } from "lucide-react";
 
 import { Tooltip } from "../../components/Tooltip";
 import { useEditorChrome } from "../../hooks/use-editor-chrome";
@@ -148,7 +149,7 @@ export function FrontmatterView({ node, editor, getPos }: NodeViewProps) {
                           removeTag(tag, "chrome");
                         }}
                       >
-                        ×
+                        <X className="icon-inline" size="1em" />
                       </button>
                     </Tooltip>
                   )}

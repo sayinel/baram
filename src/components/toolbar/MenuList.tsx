@@ -21,6 +21,9 @@ import {
 
 import type { MenuItem } from "./context-menu-types";
 
+import { Check } from "lucide-react";
+
+import { useTranslation } from "../../i18n/useTranslation";
 import { onCloseAllContextMenus } from "../../utils/editor/context-menu-exclusive";
 
 export interface MenuListProps {
@@ -34,6 +37,7 @@ export interface MenuListProps {
 }
 
 export function MenuList({ items, onClose, toggleRef, x, y }: MenuListProps) {
+  const { t } = useTranslation();
   const menuRef = useRef<HTMLDivElement>(null);
   const [adjusted, setAdjusted] = useState<null | { x: number; y: number }>(
     null,
@@ -102,6 +106,17 @@ export function MenuList({ items, onClose, toggleRef, x, y }: MenuListProps) {
             onClick={() => runItem(item)}
           >
             {item.label}
+            {item.checked && (
+              <>
+                {" "}
+                <Check
+                  aria-label={t("contextMenu.checked")}
+                  className="icon-inline"
+                  role="img"
+                  size="1em"
+                />
+              </>
+            )}
           </button>
         ),
       )}

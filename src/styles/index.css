@@ -5,6 +5,7 @@
 
 /* 1. Base: tokens, reset, utilities, dark mode */
 @import "./base.css";
+@import "./icons.css";
 
 /* 2. Editor */
 @import "./editor.css";

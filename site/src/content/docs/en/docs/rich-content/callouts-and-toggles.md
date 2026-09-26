@@ -38,7 +38,7 @@ Hidden content here. Supports any block type — paragraphs, lists, code blocks,
 
 **Features:**
 
-- **Collapse/expand** — Click the triangle indicator or press `Cmd+Enter`
+- **Collapse/expand** — Click the arrow indicator or press `Cmd+Enter`
 - **Toggle Heading** — Use a heading as the summary for collapsible heading sections:
   ```markdown
   <details>

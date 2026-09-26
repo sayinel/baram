@@ -1,6 +1,9 @@
 // §72 LLM 관점 미리보기 — 스킬 파일을 LLM이 받는 형태로 프리뷰
 import { useMemo } from "react";
 
+import { X } from "lucide-react";
+
+import { useTranslation } from "../../i18n/useTranslation";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { extractSkillPrompt } from "../../utils/skill/skill-test-runner";
@@ -18,6 +21,7 @@ export function SkillPreviewPanel({
   visible,
   onClose,
 }: SkillPreviewPanelProps) {
+  const { t } = useTranslation();
   const activeTabId = useEditorStore((s) => s.activeTabId);
   const tabs = useEditorStore((s) => s.tabs);
   const openFiles = useFileStore((s) => s.openFiles);
@@ -49,8 +53,13 @@ export function SkillPreviewPanel({
         <span className="skill-preview-tokens">
           ~{formatTokenCount(preview.tokenCount)} tokens
         </span>
-        <button className="skill-preview-close" onClick={onClose}>
-          ×
+        <button
+          aria-label={t("common.close")}
+          className="skill-preview-close"
+          onClick={onClose}
+          title={t("common.close")}
+        >
+          <X className="icon-inline" size="1em" />
         </button>
       </div>
       <div className="skill-preview-body">

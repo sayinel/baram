@@ -6,9 +6,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ContextMenuState } from "./file-tree-types";
 import type { FileTreeContextValue } from "./FileTreeContext";
 
+import { X } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
 import { useEditorContext } from "../../contexts/editor-context";
+import { useTranslation } from "../../i18n/useTranslation";
 import { pickApprovedDir } from "../../ipc/approval";
 import { readFile } from "../../ipc/invoke";
 import { openFolder } from "../../services/vault-context-loader";
@@ -45,6 +47,7 @@ import { useGitBadges } from "./hooks/use-git-badges";
 import { MoveToFolderModal } from "./MoveToFolderModal";
 
 export function FileTree(): React.JSX.Element {
+  const { t } = useTranslation();
   const editor = useEditorContext();
   const {
     collapseAllDirs,
@@ -591,11 +594,12 @@ export function FileTree(): React.JSX.Element {
               <span className="filetree-tag-filter-tag">#{tagFilter}</span>
             </span>
             <button
+              aria-label={t("fileTree.tagFilter.clear")}
               className="filetree-tag-filter-clear"
               onClick={() => setTagFilter(null)}
-              title="Clear filter"
+              title={t("fileTree.tagFilter.clear")}
             >
-              ×
+              <X className="icon-inline" size="1em" />
             </button>
           </div>
         )}

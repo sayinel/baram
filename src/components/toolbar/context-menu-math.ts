@@ -46,7 +46,8 @@ export function buildMathBlockMenu(
     },
     { label: "", action: () => {}, separator: true },
     {
-      label: `${t("mathMenu.sizeSmall")}${currentSize === "small" ? " \u2713" : ""}`,
+      label: t("mathMenu.sizeSmall"),
+      checked: currentSize === "small",
       action: () => {
         const tr = editor.state.tr;
         tr.setNodeMarkup(mathPos, undefined, {
@@ -57,7 +58,8 @@ export function buildMathBlockMenu(
       },
     },
     {
-      label: `${t("mathMenu.sizeNormal")}${currentSize === "normal" ? " \u2713" : ""}`,
+      label: t("mathMenu.sizeNormal"),
+      checked: currentSize === "normal",
       action: () => {
         const tr = editor.state.tr;
         tr.setNodeMarkup(mathPos, undefined, {
@@ -68,7 +70,8 @@ export function buildMathBlockMenu(
       },
     },
     {
-      label: `${t("mathMenu.sizeLarge")}${currentSize === "large" ? " \u2713" : ""}`,
+      label: t("mathMenu.sizeLarge"),
+      checked: currentSize === "large",
       action: () => {
         const tr = editor.state.tr;
         tr.setNodeMarkup(mathPos, undefined, {
@@ -137,7 +140,8 @@ export function buildMathInlineMenu(
     },
     { label: "", action: () => {}, separator: true },
     {
-      label: `${t("mathMenu.sizeSmall")}${currentSize === "small" ? " \u2713" : ""}`,
+      label: t("mathMenu.sizeSmall"),
+      checked: currentSize === "small",
       action: () => {
         const tr = editor.state.tr;
         tr.setNodeMarkup(nodePos, undefined, {
@@ -148,7 +152,8 @@ export function buildMathInlineMenu(
       },
     },
     {
-      label: `${t("mathMenu.sizeNormal")}${currentSize === "normal" ? " \u2713" : ""}`,
+      label: t("mathMenu.sizeNormal"),
+      checked: currentSize === "normal",
       action: () => {
         const tr = editor.state.tr;
         tr.setNodeMarkup(nodePos, undefined, {
@@ -159,7 +164,8 @@ export function buildMathInlineMenu(
       },
     },
     {
-      label: `${t("mathMenu.sizeLarge")}${currentSize === "large" ? " \u2713" : ""}`,
+      label: t("mathMenu.sizeLarge"),
+      checked: currentSize === "large",
       action: () => {
         const tr = editor.state.tr;
         tr.setNodeMarkup(nodePos, undefined, {

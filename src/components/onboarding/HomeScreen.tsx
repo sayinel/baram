@@ -1,5 +1,7 @@
 import { useCallback } from "react";
 
+import { FileText, Folder } from "lucide-react";
+
 import { useTranslation } from "../../i18n/useTranslation";
 import { useSettingsStore } from "../../stores/settings/store";
 
@@ -70,7 +72,9 @@ export function HomeScreen({
                     onClick={() => onOpenRecentFolder(f.path)}
                     title={f.path}
                   >
-                    <span className="home-recent-icon">📁</span>
+                    <span className="home-recent-icon">
+                      <Folder className="icon-inline" size="1em" />
+                    </span>
                     <span className="home-recent-path">
                       {f.path.split("/").pop()}
                     </span>
@@ -95,7 +99,9 @@ export function HomeScreen({
                     onClick={() => onOpenRecentFile(f.path)}
                     title={f.path}
                   >
-                    <span className="home-recent-icon">📄</span>
+                    <span className="home-recent-icon">
+                      <FileText className="icon-inline" size="1em" />
+                    </span>
                     <span className="home-recent-path">
                       {f.path.split("/").pop()}
                     </span>

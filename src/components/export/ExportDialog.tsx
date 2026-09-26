@@ -9,6 +9,7 @@ import type { ThemeInExport } from "../../utils/export/export";
 import type { ExportFormatGroup } from "./ExportFormatDropdown";
 import type { Editor } from "@tiptap/react";
 
+import { TriangleAlert, X } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
 import { useEditorTypography } from "../../hooks/use-editor-typography";
@@ -341,11 +342,12 @@ export function ExportDialog({ editor }: ExportDialogProps) {
         <div className="export-dialog-header flex-header">
           <span className="export-dialog-title">Export Document</span>
           <button
-            aria-label="Close"
+            aria-label={t("common.close")}
             className="export-dialog-close icon-btn"
             onClick={closeExportDialog}
+            title={t("common.close")}
           >
-            &times;
+            <X size={16} />
           </button>
         </div>
 
@@ -360,7 +362,8 @@ export function ExportDialog({ editor }: ExportDialogProps) {
             />
             {!pandocAvailable && (
               <p className="export-pandoc-warning">
-                ⚠ Install Pandoc for additional formats.{" "}
+                <TriangleAlert className="icon-inline" size="1em" />{" "}
+                {t("export.pandocMissing")}{" "}
                 <a
                   href="https://pandoc.org/installing.html"
                   rel="noreferrer"

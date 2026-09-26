@@ -6,6 +6,8 @@
 
 import React from "react";
 
+import { ChevronDown } from "lucide-react";
+
 import { Tooltip } from "../../../components/Tooltip";
 import { useTranslation } from "../../../i18n/useTranslation";
 import {
@@ -44,7 +46,8 @@ export function MermaidBlockHeader({
               className="mermaid-template-btn"
               onClick={() => setShowTemplates(!showTemplates)}
             >
-              {t("mermaidBlock.template")} ▾
+              {t("mermaidBlock.template")}{" "}
+              <ChevronDown className="icon-inline" size="1em" />
             </button>
           </Tooltip>
           {showTemplates && (

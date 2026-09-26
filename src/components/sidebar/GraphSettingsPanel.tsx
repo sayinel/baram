@@ -1,6 +1,7 @@
 // §30 Graph View — inline settings panel overlay
 import { useState } from "react";
 
+import { ChevronRight } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
 import { useGraphSettingsStore } from "../../stores/ui/graph-settings";
@@ -217,7 +218,7 @@ function SettingsSection({
         onClick={() => setOpen((v) => !v)}
       >
         <span className={`graph-settings-disclosure ${open ? "open" : ""}`}>
-          &#9654;
+          <ChevronRight size={10} />
         </span>
         {title}
       </button>

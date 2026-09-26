@@ -3,6 +3,8 @@ import { useEffect, useRef } from "react";
 
 import type { EditorTab } from "../../stores/editor/editor";
 
+import { CircleSmall } from "lucide-react";
+
 import { useTranslation } from "../../i18n/useTranslation";
 import { isTabUnsaved, useEditorStore } from "../../stores/editor/editor";
 
@@ -37,7 +39,13 @@ export function TabSwitcher({ mruTabs, selectedIndex }: TabSwitcherProps) {
             >
               <span className="tab-switcher-title">{tab.title}</span>
               {isTabUnsaved(tab, sourceEditedTabs) && (
-                <span className="tab-switcher-dirty">●</span>
+                <CircleSmall
+                  aria-label={t("common.unsaved")}
+                  className="tab-switcher-dirty icon-inline"
+                  fill="currentColor"
+                  role="img"
+                  size="1em"
+                />
               )}
             </div>
           ))}

@@ -1,0 +1,21 @@
+/* §4.2 lucide 아이콘을 CSS 로 칠하는 자리 — React 컴포넌트를 쓸 수 없는 곳이 쓴다(에디터
+   여백의 가상 요소, ProseMirror 위젯, DOM 을 직접 만드는 모듈). 쓰는 곳은
+   grep -rn "var(--icon-" src/styles 로 찾는다.
+
+   경로는 lucide-react 가 싣는 아이콘 노드를 그대로 옮긴 것이다 — 파일
+   node_modules/lucide-react/dist/esm/icons/{이름}.mjs 의 __iconNode. 둘의 일치는
+   __tests__/icon-masks.test.tsx 가 컴포넌트를 렌더해 비교한다.
+
+   쓰는 쪽은 background-color 를 currentcolor 로 두고 이 이미지로 mask 한다. mask 는 가상
+   요소의 클릭 상자를 줄이지 않는다 — 투명한 모서리도 호스트로 히트된다(2026-09-26 실측:
+   WKWebView macOS 26.6.2 · Chrome 153 headless, 배율 1.0 과 1.5. 대조군 clip-path 는
+   모서리를 떨어뜨렸다. 계획 0108). 제목 접기가 그 상자 전체를 클릭 대상으로 쓰므로 이것이
+   전제다. Linux WebKitGTK 는 재지 않았다 — 쓰는 쪽은 -webkit-mask 를 함께 둔다.
+
+   export 에도 실린다: export-editor-css.ts 가 이 파일을 읽는다. 토글 화살표(editor/blocks.css)가
+   내보낸 문서에서도 이 변수를 쓴다. */
+:root {
+  --icon-chevron-left: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m15 18-6-6 6-6'/%3E%3C/svg%3E");
+  --icon-chevron-right: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E");
+  --icon-ellipsis: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='1'/%3E%3Ccircle cx='19' cy='12' r='1'/%3E%3Ccircle cx='5' cy='12' r='1'/%3E%3C/svg%3E");
+}

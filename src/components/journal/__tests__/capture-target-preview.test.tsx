@@ -57,6 +57,10 @@ describe("CaptureTargetPreview", () => {
     expect(screen.getByRole("status")).toHaveTextContent("40");
     // 태그를 치는 동안 내용이 바뀌므로 스크린 리더가 그때마다 다시 읽어야 한다.
     expect(screen.getByRole("status")).toHaveAttribute("aria-live", "polite");
+    // 대상 화살표는 문구가 아니라 아이콘이다 — 문구는 → 로 시작하지 않는다(계획 0108).
+    const region = screen.getByRole("status");
+    expect(region.querySelector("svg.lucide")).not.toBeNull();
+    expect(region.textContent?.trimStart().startsWith("→")).toBe(false);
   });
 
   it("lists every note when more than one matches", () => {

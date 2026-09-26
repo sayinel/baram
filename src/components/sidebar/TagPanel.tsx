@@ -3,6 +3,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { TagEntry } from "../../ipc/invoke";
 
+import {
+  ChevronDown,
+  ChevronRight,
+  ChevronsDownUp,
+  ChevronsUpDown,
+  Cloud,
+  ListTree,
+  RefreshCw,
+} from "lucide-react";
+
+import { useTranslation } from "../../i18n/useTranslation";
 import { getVaultTags, renameTag } from "../../ipc/invoke";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
@@ -27,6 +38,7 @@ interface TagTreeNode {
 }
 
 export function TagPanel() {
+  const { t } = useTranslation();
   const rootPath = useFileStore((s) => s.rootPath);
   const [entries, setEntries] = useState<TagEntry[]>([]);
   const [filter, setFilter] = useState("");
@@ -204,42 +216,47 @@ export function TagPanel() {
           {viewMode === "tree" && (
             <>
               <button
+                aria-label={t("tagPanel.collapseAll")}
                 className="tag-panel-action-btn"
                 onClick={handleCollapseAll}
-                title="Collapse all"
+                title={t("tagPanel.collapseAll")}
               >
-                ⊟
+                <ChevronsDownUp className="icon-inline" size="1em" />
               </button>
               <button
+                aria-label={t("tagPanel.expandAll")}
                 className="tag-panel-action-btn"
                 onClick={handleExpandAll}
-                title="Expand all"
+                title={t("tagPanel.expandAll")}
               >
-                ⊞
+                <ChevronsUpDown className="icon-inline" size="1em" />
               </button>
             </>
           )}
           <button
+            aria-label={t("tagPanel.treeView")}
             className={`tag-panel-action-btn ${viewMode === "tree" ? "tag-panel-action-active" : ""}`}
             onClick={() => setViewMode("tree")}
-            title="Tree view"
+            title={t("tagPanel.treeView")}
           >
-            ☰
+            <ListTree className="icon-inline" size="1em" />
           </button>
           <button
+            aria-label={t("tagPanel.cloudView")}
             className={`tag-panel-action-btn ${viewMode === "cloud" ? "tag-panel-action-active" : ""}`}
             onClick={() => setViewMode("cloud")}
-            title="Cloud view"
+            title={t("tagPanel.cloudView")}
           >
-            ☁
+            <Cloud className="icon-inline" size="1em" />
           </button>
           <button
+            aria-label={t("tagPanel.refresh")}
             className="tag-panel-action-btn"
             disabled={loading}
             onClick={fetchTags}
-            title="Refresh tags"
+            title={t("tagPanel.refresh")}
           >
-            ↻
+            <RefreshCw className="icon-inline" size="1em" />
           </button>
         </div>
       </div>
@@ -455,6 +472,7 @@ function TagTreeItem({
   renameValue: string;
   renaming: null | string;
 }) {
+  const { t } = useTranslation();
   const hasChildren = node.children.size > 0;
   const totalCount = getTotalCount(node);
   const sortedChildren = useMemo(
@@ -491,13 +509,23 @@ function TagTreeItem({
       >
         {hasChildren ? (
           <button
+            aria-label={t(
+              node.expanded ? "blockChrome.collapse" : "blockChrome.expand",
+            )}
             className="tag-tree-toggle"
             onClick={(e) => {
               e.stopPropagation();
               onToggle(node.fullPath);
             }}
+            title={t(
+              node.expanded ? "blockChrome.collapse" : "blockChrome.expand",
+            )}
           >
-            {node.expanded ? "▾" : "▸"}
+            {node.expanded ? (
+              <ChevronDown className="icon-inline" size="1em" />
+            ) : (
+              <ChevronRight className="icon-inline" size="1em" />
+            )}
           </button>
         ) : (
           <span className="tag-tree-toggle tag-tree-toggle-leaf" />

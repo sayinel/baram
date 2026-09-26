@@ -19,6 +19,7 @@ import type { MergeSegment } from "../../ipc/types";
 import type { Transaction } from "@tiptap/pm/state";
 
 import { EditorContent, useEditor } from "@tiptap/react";
+import { CircleSmall } from "lucide-react";
 
 import { createBaramExtensions } from "../../extensions";
 import { useAutoSave } from "../../hooks/use-auto-save";
@@ -337,7 +338,17 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
     <div className="file-editor-layout">
       <div className="file-editor-pathbar">
         <span className="file-editor-pathbar__name">
-          {isDirty ? "\u25CF " : ""}
+          {isDirty && (
+            <>
+              <CircleSmall
+                aria-label={t("common.unsaved")}
+                className="icon-inline"
+                fill="currentColor"
+                role="img"
+                size="1em"
+              />{" "}
+            </>
+          )}
           {fileName}
         </span>
         <span className="file-editor-pathbar__path" title={filePath}>

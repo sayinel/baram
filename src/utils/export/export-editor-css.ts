@@ -43,6 +43,7 @@ import taskChipCSS from "../../styles/editor/task-chip.css?raw";
 import videoCSS from "../../styles/editor/video.css?raw";
 import primitivesCSS from "../../styles/generated/primitives.css?raw";
 import semanticLightCSS from "../../styles/generated/semantic-light.css?raw";
+import iconsCSS from "../../styles/icons.css?raw";
 import linksCSS from "../../styles/links.css?raw";
 
 /** The selector the export wraps its content in. */
@@ -117,7 +118,11 @@ function dropDeclarations(css: string): string {
   }
 }
 
-/** Editor stylesheets, in the cascade order src/styles/editor.css imports them.
+/** Editor stylesheets, in the cascade order the app loads them. The first entry is
+ * not an editor stylesheet but the unscoped icon-token sheet (see the ‼️ comment on
+ * it), which src/styles/index.css imports before editor.css. The entries after it
+ * follow src/styles/editor.css's imports, and links.css — which index.css imports
+ * after editor.css — comes last.
  *
  * What is deliberately NOT here:
  *   - editor/base.css — the windowing spacers (`.tiptap::before`) and the empty
@@ -130,6 +135,12 @@ function dropDeclarations(css: string): string {
  *     that are not part of a markdown document.
  */
 const EDITOR_STYLESHEETS = [
+  // ‼️ Unscoped on purpose — `:root` custom properties holding the lucide mask
+  // images (styles/icons.css). blocks.css draws the toggle arrow with
+  // `var(--icon-chevron-right)`; without this sheet that `mask` refers to an
+  // undefined variable, becomes invalid at computed-value time, and the arrow
+  // paints as a solid square of its background colour.
+  iconsCSS,
   blocksCSS,
   listsCSS,
   // ‼️ Unscoped on purpose — the control is drawn in the agenda too, so its

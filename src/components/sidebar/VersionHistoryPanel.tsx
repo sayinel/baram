@@ -3,8 +3,17 @@ import { useCallback, useEffect, useState } from "react";
 
 import type { SnapshotEntry } from "../../ipc/types";
 
+import {
+  ArrowLeft,
+  CircleSmall,
+  Plus,
+  RefreshCw,
+  Star,
+  Trash2,
+} from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
+import { useTranslation } from "../../i18n/useTranslation";
 import { useSnapshotStore } from "../../stores/editor/snapshot";
 import {
   formatSnapshotTime,
@@ -15,6 +24,7 @@ import { DiffView } from "../editor/DiffView";
 import { FileHistoryView } from "./FileHistoryView";
 
 export function VersionHistoryPanel() {
+  const { t } = useTranslation();
   const rootPath = useFileStore((s) => s.rootPath);
   const {
     snapshots,
@@ -94,18 +104,20 @@ export function VersionHistoryPanel() {
         <span className="snapshot-panel-title">Version History</span>
         <div className="snapshot-panel-actions">
           <button
+            aria-label={t("versionHistory.refresh")}
             className="snapshot-action-btn"
             onClick={refresh}
-            title="Refresh"
+            title={t("versionHistory.refresh")}
           >
-            {"\u21BB"}
+            <RefreshCw className="icon-inline" size="1em" />
           </button>
           <button
+            aria-label={t("versionHistory.create")}
             className="snapshot-action-btn"
             onClick={() => setShowLabelInput(!showLabelInput)}
-            title="Create snapshot"
+            title={t("versionHistory.create")}
           >
-            +
+            <Plus className="icon-inline" size="1em" />
           </button>
         </div>
       </div>
@@ -179,6 +191,7 @@ function SnapshotDetail({
   onBack: () => void;
   vaultPath: string;
 }) {
+  const { t } = useTranslation();
   const {
     snapshots,
     selectedSnapshotId,
@@ -224,23 +237,32 @@ function SnapshotDetail({
     <div className="snapshot-detail">
       <div className="snapshot-detail-header">
         <button className="snapshot-back-btn" onClick={onBack}>
-          {"\u2190"} Back
+          <ArrowLeft className="icon-inline" size="1em" />{" "}
+          {t("versionHistory.back")}
         </button>
         <div className="snapshot-detail-info">
           <div className="snapshot-detail-time">
             {parseTimestamp(snapshot.timestamp).toLocaleString()}
           </div>
           <div className="snapshot-detail-type">
-            {snapshot.type === "manual" ? "\u2605 Manual" : "Auto"}
+            {snapshot.type === "manual" ? (
+              <>
+                <Star className="icon-inline" fill="currentColor" size="1em" />{" "}
+                {t("versionHistory.manual")}
+              </>
+            ) : (
+              t("versionHistory.auto")
+            )}
             {snapshot.label && ` \u2014 ${snapshot.label}`}
           </div>
         </div>
         <button
+          aria-label={t("versionHistory.delete")}
           className="snapshot-action-btn danger"
           onClick={() => performDelete(vaultPath, snapshot.id)}
-          title="Delete snapshot"
+          title={t("versionHistory.delete")}
         >
-          {"\u{1F5D1}"}
+          <Trash2 className="icon-inline" size="1em" />
         </button>
       </div>
 
@@ -339,6 +361,7 @@ function SnapshotItem({
   onSelect: () => void;
   snapshot: SnapshotEntry;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       className={`snapshot-item ${isSelected ? "selected" : ""}`}
@@ -346,13 +369,23 @@ function SnapshotItem({
     >
       <div className="snapshot-item-header">
         <span className="snapshot-item-icon">
-          {snapshot.type === "manual" ? "\u2605" : "\u25CF"}
+          {snapshot.type === "manual" ? (
+            <Star className="icon-inline" fill="currentColor" size="1em" />
+          ) : (
+            <CircleSmall
+              className="icon-inline"
+              fill="currentColor"
+              size="1em"
+            />
+          )}
         </span>
         <span className="snapshot-item-time">
           {formatSnapshotTime(snapshot.timestamp)}
         </span>
         <span className="snapshot-item-type">
-          {snapshot.type === "manual" ? "manual" : "auto"}
+          {snapshot.type === "manual"
+            ? t("versionHistory.manual")
+            : t("versionHistory.auto")}
         </span>
       </div>
       {snapshot.label && (

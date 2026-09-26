@@ -120,7 +120,7 @@ export function buildDecorations(
 function createEllipsis(pos: number): HTMLElement {
   const span = document.createElement("span");
   span.className = "fold-ellipsis";
-  span.textContent = "⋯";
+  // 모양은 CSS 가 그린다(.fold-ellipsis::before — icons.css 의 lucide ellipsis).
   span.setAttribute("data-fold-pos", String(pos));
   span.contentEditable = "false";
   return span;

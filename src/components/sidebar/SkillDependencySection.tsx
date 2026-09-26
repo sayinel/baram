@@ -3,8 +3,23 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { FileEntry } from "../../stores/file/file";
 
+import {
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  CircleAlert,
+  Ellipsis,
+  Minus,
+  RefreshCw,
+  TriangleAlert,
+  X,
+  Zap,
+} from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
+import { useTranslation } from "../../i18n/useTranslation";
 import { readFile } from "../../ipc/invoke";
 import { useSkillStore } from "../../stores/ai/skill";
 import { useEditorStore } from "../../stores/editor/editor";
@@ -26,6 +41,7 @@ import { isSkillFrontmatter } from "../../utils/skill/skill-frontmatter";
 import { registerSkillSection } from "./skill-panel-registry";
 
 export function SkillDependencySection() {
+  const { t } = useTranslation();
   const fileTree = useFileStore((s) => s.fileTree);
   const { activeTabId, tabs } = useEditorStore(
     useShallow((s) => ({
@@ -126,13 +142,14 @@ export function SkillDependencySection() {
   return (
     <div className="dep-section">
       <button
+        aria-expanded={expanded}
         className="dep-section-header"
         onClick={() => setExpanded((v) => !v)}
       >
         <span className="skill-section-arrow">
-          {expanded ? "\u25be" : "\u25b8"}
+          {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </span>
-        <span>Dependencies</span>
+        <span>{t("skills.dependency.title")}</span>
         {currentWarnings.length > 0 && (
           <span className="dep-badge dep-badge--error">
             {currentWarnings.length}
@@ -171,14 +188,22 @@ export function SkillDependencySection() {
                 const found = allSkills.find((s) => s.name === req);
                 return (
                   <div
-                    className={`dep-list-item${found ? "" : "dep-list-item--missing"}`}
+                    className={`dep-list-item ${found ? "" : "dep-list-item--missing"}`}
                     key={req}
                   >
                     <span className="dep-list-icon">
-                      {found ? "\u2192" : "\u2717"}
+                      {found ? (
+                        <ArrowRight className="icon-inline" size="1em" />
+                      ) : (
+                        <X className="icon-inline" size="1em" />
+                      )}
                     </span>
                     <span>{req}</span>
-                    {!found && <span className="dep-list-hint">not found</span>}
+                    {!found && (
+                      <span className="dep-list-hint">
+                        {t("skills.dependency.notFound")}
+                      </span>
+                    )}
                   </div>
                 );
               })}
@@ -193,7 +218,9 @@ export function SkillDependencySection() {
               </div>
               {reverseDeps.map((name) => (
                 <div className="dep-list-item" key={name}>
-                  <span className="dep-list-icon">{"\u2190"}</span>
+                  <span className="dep-list-icon">
+                    <ArrowLeft className="icon-inline" size="1em" />
+                  </span>
                   <span>{name}</span>
                 </div>
               ))}
@@ -204,11 +231,20 @@ export function SkillDependencySection() {
           {impact.length > 0 && (
             <div className="dep-list">
               <button
+                aria-expanded={showImpact}
                 className="dep-impact-toggle"
                 onClick={() => setShowImpact((v) => !v)}
               >
-                Impact Analysis ({impact.length} affected)
-                <span>{showImpact ? "\u25be" : "\u25b8"}</span>
+                {t("skills.dependency.impact", {
+                  count: String(impact.length),
+                })}
+                <span>
+                  {showImpact ? (
+                    <ChevronDown size={12} />
+                  ) : (
+                    <ChevronRight size={12} />
+                  )}
+                </span>
               </button>
               {showImpact &&
                 impact.map((name) => (
@@ -216,7 +252,9 @@ export function SkillDependencySection() {
                     className="dep-list-item dep-list-item--impact"
                     key={name}
                   >
-                    <span className="dep-list-icon">{"\u26a1"}</span>
+                    <span className="dep-list-icon">
+                      <Zap className="icon-inline" size="1em" />
+                    </span>
                     <span>{name}</span>
                   </div>
                 ))}
@@ -249,13 +287,35 @@ export function SkillDependencySection() {
                       key={i}
                     >
                       <span className="dep-chain-step-icon">
-                        {step.status === "passed"
-                          ? "\u2713"
-                          : step.status === "failed"
-                            ? "\u2717"
-                            : step.status === "skipped"
-                              ? "\u2013"
-                              : "\u2026"}
+                        {step.status === "passed" ? (
+                          <Check
+                            aria-label={t("skills.chain.passed")}
+                            className="icon-inline"
+                            role="img"
+                            size="1em"
+                          />
+                        ) : step.status === "failed" ? (
+                          <X
+                            aria-label={t("skills.chain.failed")}
+                            className="icon-inline"
+                            role="img"
+                            size="1em"
+                          />
+                        ) : step.status === "skipped" ? (
+                          <Minus
+                            aria-label={t("skills.chain.skipped")}
+                            className="icon-inline"
+                            role="img"
+                            size="1em"
+                          />
+                        ) : (
+                          <Ellipsis
+                            aria-label={t("skills.chain.pending")}
+                            className="icon-inline"
+                            role="img"
+                            size="1em"
+                          />
+                        )}
                       </span>
                       <span>{step.skillName}</span>
                       {step.error && (
@@ -277,7 +337,14 @@ export function SkillDependencySection() {
             disabled={loading}
             onClick={scanSkills}
           >
-            {loading ? "Scanning..." : "\u21bb Rescan"}
+            {loading ? (
+              t("skills.dependency.scanning")
+            ) : (
+              <>
+                <RefreshCw className="icon-inline" size="1em" />{" "}
+                {t("skills.dependency.rescan")}
+              </>
+            )}
           </button>
         </div>
       )}
@@ -424,10 +491,27 @@ function DependencyGraph({
 // ─── SkillDependencySection ───────────────────────────────────────────────────
 
 function WarningItem({ warning }: { warning: DependencyWarning }) {
+  const { t } = useTranslation();
   const isError = warning.severity === "error";
   return (
     <div className={`dep-warning dep-warning--${warning.severity}`}>
-      <span className="dep-warning-icon">{isError ? "\u2717" : "!"}</span>
+      <span className="dep-warning-icon">
+        {isError ? (
+          <CircleAlert
+            aria-label={t("common.error")}
+            className="icon-inline"
+            role="img"
+            size="1em"
+          />
+        ) : (
+          <TriangleAlert
+            aria-label={t("common.warning")}
+            className="icon-inline"
+            role="img"
+            size="1em"
+          />
+        )}
+      </span>
       <span className="dep-warning-msg">{warning.message}</span>
     </div>
   );

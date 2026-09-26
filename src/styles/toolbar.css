@@ -524,7 +524,7 @@ body.block-dragging * {
   flex-shrink: 0;
 }
 
-/* Left group (icon + label) of a submenu trigger; the ▸ arrow stays right. */
+/* Left group (icon + label) of a submenu trigger; the submenu chevron stays right. */
 .block-handle-item-left {
   display: flex;
   gap: var(--space-2);

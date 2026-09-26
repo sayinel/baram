@@ -72,7 +72,7 @@ Type `> [!info]` at the start of a line, or use the slash command `/callout`. Ba
 
 ## How do I create a toggle (collapsible) block?
 
-Use the slash command `/toggle` or `/toggle heading 1` for a toggle with heading summary. Click the triangle indicator or press `Cmd+Enter` to open/close. In markdown, toggles use the HTML `<details>` / `<summary>` syntax.
+Use the slash command `/toggle` or `/toggle heading 1` for a toggle with heading summary. Click the arrow indicator or press `Cmd+Enter` to open/close. In markdown, toggles use the HTML `<details>` / `<summary>` syntax.
 
 ## How do I insert a Mermaid diagram?
 

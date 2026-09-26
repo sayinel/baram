@@ -1,6 +1,8 @@
 // §56c MiniCalendar — date picker calendar for MemoriesPanel
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { ChevronLeft, ChevronRight } from "lucide-react";
+
 import { INTL_LOCALES } from "../../i18n";
 import { monthShortNames, weekdayShortNames } from "../../i18n/date-names";
 import { useTranslation } from "../../i18n/useTranslation";
@@ -19,7 +21,7 @@ export function MiniCalendar({
   onSelect,
   onClose,
 }: MiniCalendarProps) {
-  const { locale } = useTranslation();
+  const { locale, t } = useTranslation();
   const intl = INTL_LOCALES[locale];
   const dayNames = useMemo(() => weekdayShortNames(intl), [intl]);
   const monthLabels = useMemo(() => monthShortNames(intl), [intl]);
@@ -112,12 +114,22 @@ export function MiniCalendar({
   return (
     <div className="memories-mini-calendar" ref={ref}>
       <div className="memories-mini-calendar-header">
-        <button className="memories-mini-calendar-nav" onClick={navPrev}>
-          ‹
+        <button
+          aria-label={t("journal.calendar.previous")}
+          className="memories-mini-calendar-nav"
+          onClick={navPrev}
+          title={t("journal.calendar.previous")}
+        >
+          <ChevronLeft className="icon-inline" size="1em" />
         </button>
         <span className="memories-mini-calendar-title">{headerLabel}</span>
-        <button className="memories-mini-calendar-nav" onClick={navNext}>
-          ›
+        <button
+          aria-label={t("journal.calendar.next")}
+          className="memories-mini-calendar-nav"
+          onClick={navNext}
+          title={t("journal.calendar.next")}
+        >
+          <ChevronRight className="icon-inline" size="1em" />
         </button>
       </div>
 
