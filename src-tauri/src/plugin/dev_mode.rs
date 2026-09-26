@@ -296,7 +296,19 @@ fn installed_plugin_ids(plugin_root: &Path) -> Result<Vec<String>, String> {
     for entry in entries {
         let entry = entry.map_err(|e| format!("installed plugins could not be listed: {e}"))?;
         let name = entry.file_name().to_string_lossy().into_owned();
-        if !name.starts_with('.') && entry.path().is_dir() {
+        if name.starts_with('.') {
+            continue;
+        }
+        // `Path::is_dir()` swallows a stat failure and reports `false` — that would treat
+        // an entry this can't read as "not installed" (fails open). `metadata` (follows
+        // symlinks, same as `is_dir()`) lets a failure other than the entry having vanished
+        // reach the caller as the documented error.
+        let is_dir = match std::fs::metadata(entry.path()) {
+            Ok(meta) => meta.is_dir(),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
+            Err(e) => return Err(format!("installed plugins could not be listed: {e}")),
+        };
+        if is_dir {
             ids.push(name);
         }
     }
@@ -623,6 +635,24 @@ mod tests {
         );
     }
 
+    /// The other fail-closed edge: not the plugin root itself missing, but ONE ENTRY inside
+    /// it that cannot be stat'd. `Path::is_dir()` would swallow that and report `false`
+    /// (treated as "not installed" — I4-1 fails open for it). A self-referencing symlink
+    /// makes `std::fs::metadata` (which follows symlinks) fail with ELOOP, not NotFound, so
+    /// this pins the branch NotFound-only handling would miss.
+    #[cfg(unix)]
+    #[test]
+    fn a_release_build_refuses_when_an_entry_cannot_be_stat_ed() {
+        let root = tempfile::tempdir().unwrap();
+        std::os::unix::fs::symlink(root.path().join("loop"), root.path().join("loop")).unwrap();
+        let sandboxed = manifest("dev-x", Some("sandboxed"));
+        let err = admit(Build::release(), &sandboxed, root.path()).unwrap_err();
+        assert!(
+            err.contains("installed plugins could not be listed"),
+            "{err}"
+        );
+    }
+
     #[test]
     fn recording_an_id_touches_only_a_listed_folder() {
         let mut state = DevModeState {
@@ -764,7 +794,7 @@ mod tests {
     ///   lines with a trailing comma — `Self{dev:cfg!(debug_assertions),}`;
     /// - `use_field_init_shorthand = true` turns `Self { dev: dev }` into `Self { dev }`, so the
     ///   counts use `Self{dev` and `Build{dev` WITHOUT the colon — `Self{dev:` would miss a
-    ///   `from_flag(dev: bool) -> Self { Self { dev } }` (verification pass, M1).
+    ///   `from_flag(dev: bool) -> Self { Self { dev } }`.
     ///
     /// No doc comment above the test module may spell `Self { dev` or `Build { dev`.
     #[test]
