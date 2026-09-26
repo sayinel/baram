@@ -1030,7 +1030,8 @@
       "name": "plugin_install_commit",
       "input": {
         "stageId": "string",
-        "expectedId": "string"
+        "expectedId": "string",
+        "manifestSha256": "string"
       },
       "output": "CommittedPluginInfo",
       "module": "plugin",
@@ -1038,7 +1039,7 @@
       "phase": 3,
       "milestone": "M10",
       "status": "implemented",
-      "description": "스테이징된 플러그인 설치 — 원자적 교체, 실패 시 이전 버전 복구 (#261)"
+      "description": "스테이징된 플러그인 설치 — 원자적 교체, 실패 시 이전 버전 복구 (#261). §379: 릴리스 빌드의 개발자 모드가 켜져 있고 dev 폴더가 그 id 를 기록했으면 Err(\"DEV_PLUGIN_ID_HELD\") — 판정은 커밋 코어가 다이제스트를 확인한 매니페스트의 id 로, 검사를 마친 뒤 교체 직전에 R1 을 읽어 한다. 커밋이 성공하면 모든 dev 폴더 기록에서 그 id 를 지운다"
     },
     {
       "name": "plugin_install_discard",

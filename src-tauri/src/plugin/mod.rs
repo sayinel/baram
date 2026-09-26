@@ -96,10 +96,10 @@ mod test_support;
 // Re-exported: `install.rs` staging/commit/discard/uninstall lifecycle
 // (src-tauri/src/commands/plugin_cmd.rs).
 pub use install::{
-    commit_staged_install, discard_staged_install, list_installed, read_manifest, read_staged_file,
-    read_stored_theme_css, stage_install, staging_dir_of, uninstall_installed, CommittedInstall,
-    CommittedPluginInfo, CommittedThemeInfo, StagedInstall, StagedPluginInfo, StagedThemeInfo,
-    StoredThemeCss, ThemeMode,
+    commit_staged_install, commit_staged_plugin_install, discard_staged_install, list_installed,
+    read_manifest, read_staged_file, read_stored_theme_css, stage_install, staging_dir_of,
+    uninstall_installed, CommittedInstall, CommittedPluginInfo, CommittedThemeInfo, StagedInstall,
+    StagedPluginInfo, StagedThemeInfo, StoredThemeCss, ThemeMode,
 };
 // Re-exported: manifest/registry data models (src-tauri/src/commands/plugin_cmd.rs).
 pub use registry::{InstalledPluginInfo, PluginManifest, RegistryIndex};

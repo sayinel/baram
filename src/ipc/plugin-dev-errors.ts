@@ -8,6 +8,7 @@ const MESSAGE_KEYS = new Map<string, string>([
   ["DEV_FOLDER_NOT_APPROVED", "plugin.dev.error.notApproved"],
   ["DEV_FOLDER_NOT_LISTED", "plugin.dev.error.notListed"],
   ["DEV_MODE_INACTIVE", "plugin.dev.error.inactive"],
+  ["DEV_PLUGIN_ID_HELD", "plugin.dev.error.idHeld"],
   ["DEV_PLUGIN_ID_INSTALLED", "plugin.dev.error.idInstalled"],
   ["DEV_PLUGIN_ID_RESERVED", "plugin.dev.error.idReserved"],
   ["DEV_PLUGIN_NOT_SANDBOXED", "plugin.dev.error.notSandboxed"],

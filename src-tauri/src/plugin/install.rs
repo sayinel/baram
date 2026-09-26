@@ -1,8 +1,10 @@
 // §69 Plugin Marketplace / #261 — staged install lifecycle.
 //
 // `stage_install` downloads, verifies and extracts a plugin to a staging directory without
-// touching anything installed; `commit_staged_install` is the only destructive step, an atomic
-// swap; `discard_staged_install` and `uninstall_installed` are the two ways to undo. See
+// touching anything installed; the commit is the only destructive step, an atomic swap, with
+// two entry points — `commit_staged_plugin_install` for a plugin (which may refuse on the
+// checked id first, §379) and `commit_staged_install` for a theme; `discard_staged_install`
+// and `uninstall_installed` are the two ways to undo. See
 // `swap_into_place` for why the previously installed version survives every failure, and
 // `STALE_STAGE_AFTER` / `recover_orphaned_backups` for the two kinds of interrupted install
 // this module cleans up after.
@@ -142,13 +144,13 @@ const MAX_STAGED_FILE_BYTES: u64 = 8 * 1024 * 1024;
 /// working plugin.
 #[derive(Debug, Clone, Serialize)]
 pub struct StagedPluginInfo {
-    /// Opaque handle for [`commit_staged_install`] / [`discard_staged_install`]. A directory
+    /// Opaque handle for [`commit_staged_plugin_install`] / [`discard_staged_install`]. A directory
     /// name under [`STAGING_DIR`], never a path — the caller cannot name anything else.
     pub stage_id: String,
     pub checksum: String,
     pub manifest: PluginManifest,
     /// SHA-256 of the staged `baram-plugin.json`, to be handed back to
-    /// [`commit_staged_install`]. See [`read_staged_manifest`] for why.
+    /// [`commit_staged_plugin_install`]. See [`read_staged_manifest`] for why.
     pub manifest_sha256: String,
 }
 
@@ -578,9 +580,9 @@ fn swap_into_place(staged: &Path, target: &Path, backup: &Path) -> Result<(), Pl
 /// Download a plugin ZIP, verify its checksum, and extract it to a staging directory.
 ///
 /// Installs NOTHING. The returned [`StagedPluginInfo::stage_id`] is the handle for the
-/// second half — [`commit_staged_install`] or [`discard_staged_install`] — and until one of
-/// those runs, whatever version of this plugin the user already had is still installed and
-/// still running.
+/// second half — [`commit_staged_plugin_install`] (a theme's: [`commit_staged_install`]) or
+/// [`discard_staged_install`] — and until one of those runs, whatever version of this plugin
+/// the user already had is still installed and still running.
 ///
 /// `expected_id` is the id the caller was told to expect — the registry listing's. It is
 /// checked here, before staging even returns (§260 Phase 5 re-review, R5): the install
@@ -878,11 +880,17 @@ fn read_staged_theme_manifest(dir: &Path) -> Result<(String, String, String), Pl
     Ok((head.id, text, digest))
 }
 
-/// Install a staged plugin, atomically replacing any version already installed.
+/// Install a staged theme, atomically replacing any version already installed.
 ///
-/// This is the only destructive half of an install, and the only thing it can destroy is the
-/// staged tree: see [`swap_into_place`] for why the previously installed version survives
-/// every failure here.
+/// ‼️ A plugin does not commit here. `commands::plugin_cmd::plugin_install_commit` goes
+/// through [`commit_staged_plugin_install`] (§379): the same checks and the same swap, with
+/// the developer-mode refusal between them. A plugin committed here would skip that
+/// refusal, so `plugin_cmd.rs`'s `the_plugin_install_commit_goes_through_the_dev_folder_boundary`
+/// fails if that command calls this one.
+///
+/// The two are the only destructive half of an install, and the only thing they can destroy
+/// is the staged tree: see [`swap_into_place`] for why the previously installed version
+/// survives every failure here.
 ///
 /// ‼️ The manifest is RE-READ and RE-VALIDATED from disk rather than trusted from the
 /// [`stage_install`] result. The caller chooses which stage id to commit, so treating the
@@ -931,14 +939,48 @@ pub async fn commit_staged_install(
     .map_err(|_| PluginError::Refused("the plugin install task did not finish".into()))?
 }
 
-fn commit_staged_in(
+/// §379 — [`commit_staged_install`] for a plugin, with `refuse` run on the checked id before
+/// the swap. `commands::plugin_cmd::plugin_install_commit` passes the ids a developer-mode
+/// folder holds (`plugin_dev_cmd::install_refusal`).
+pub async fn commit_staged_plugin_install(
+    stage_id: &str,
+    expected_id: &str,
+    expected_manifest_sha256: &str,
+    refuse: impl FnOnce(&str) -> Result<(), PluginError> + Send + 'static,
+) -> Result<CommittedInstall, PluginError> {
+    let stage_id = stage_id.to_owned();
+    let expected_id = expected_id.to_owned();
+    let expected_digest = expected_manifest_sha256.to_owned();
+    tokio::task::spawn_blocking(move || {
+        commit_staged_plugin_in(
+            &install_root(InstallKind::Plugin)?,
+            &stage_id,
+            &expected_id,
+            &expected_digest,
+            refuse,
+        )
+    })
+    .await
+    .map_err(|_| PluginError::Refused("the plugin install task did not finish".into()))?
+}
+
+/// Every refusal a commit makes before touching anything installed: the stage resolves, its
+/// manifest is the digest the caller judged and names the expected id, and the CSS argument
+/// matches the kind. Split from the swap so a plugin commit can refuse on the checked id in
+/// between (§379, `commit_staged_plugin_in`).
+///
+/// ‼️ For a theme this also WRITES the sanitized CSS into the stage (`write_stored_theme_css`)
+/// — nothing may be inserted between it and the swap for a theme. See `stored_css` on
+/// [`commit_staged_install`]: the sanitized files are safe because the very next step, the
+/// swap, publishes them.
+fn checked_stage_in(
     plugin_root: &Path,
     kind: InstallKind,
     stage_id: &str,
     expected_id: &str,
     expected_manifest_sha256: &str,
     stored_css: Option<&StoredThemeCss>,
-) -> Result<CommittedInstall, PluginError> {
+) -> Result<(PathBuf, StagedManifest), PluginError> {
     let staged = resolve_stage_in(plugin_root, stage_id)?;
     let (manifest, digest) = read_staged_manifest_of(kind, &staged)?;
     // ‼️ The manifest must be the one the caller judged, byte for byte. See
@@ -971,15 +1013,65 @@ fn commit_staged_in(
         }
         (StagedManifest::Plugin(_), None) => {}
     }
+    Ok((staged, manifest))
+}
+
+/// The swap half of a commit, on a stage `checked_stage_in` has passed.
+fn swap_checked_in(
+    plugin_root: &Path,
+    staged: &Path,
+    manifest: StagedManifest,
+) -> Result<CommittedInstall, PluginError> {
     // Safe to join: both manifest readers admit only `[a-z0-9-]` as an id, so it is a
     // single segment that cannot escape the install root.
     let target_dir = plugin_root.join(manifest.id());
     let backup = staging_root_in(plugin_root)?.join(backup_name(manifest.id()));
-    swap_into_place(&staged, &target_dir, &backup)?;
+    swap_into_place(staged, &target_dir, &backup)?;
     Ok(CommittedInstall {
         install_path: target_dir.to_string_lossy().to_string(),
         manifest,
     })
+}
+
+fn commit_staged_in(
+    plugin_root: &Path,
+    kind: InstallKind,
+    stage_id: &str,
+    expected_id: &str,
+    expected_manifest_sha256: &str,
+    stored_css: Option<&StoredThemeCss>,
+) -> Result<CommittedInstall, PluginError> {
+    let (staged, manifest) = checked_stage_in(
+        plugin_root,
+        kind,
+        stage_id,
+        expected_id,
+        expected_manifest_sha256,
+        stored_css,
+    )?;
+    swap_checked_in(plugin_root, &staged, manifest)
+}
+
+/// §379 — a PLUGIN commit with one more refusal, on the id the swap is about to install: the
+/// staged manifest's, after its digest and id checks and before anything moves. A refusal
+/// leaves the stage for the caller's discard, like every other refusal here.
+fn commit_staged_plugin_in(
+    plugin_root: &Path,
+    stage_id: &str,
+    expected_id: &str,
+    expected_manifest_sha256: &str,
+    refuse: impl FnOnce(&str) -> Result<(), PluginError>,
+) -> Result<CommittedInstall, PluginError> {
+    let (staged, manifest) = checked_stage_in(
+        plugin_root,
+        InstallKind::Plugin,
+        stage_id,
+        expected_id,
+        expected_manifest_sha256,
+        None,
+    )?;
+    refuse(manifest.id())?;
+    swap_checked_in(plugin_root, &staged, manifest)
 }
 
 /// §360 — write a theme's sanitized CSS into the STAGED tree, under [`STORED_CSS_DIR`].
@@ -1361,6 +1453,52 @@ mod tests {
         let (stage_id, _, digest) =
             stage_plugin_archive_in(root.path(), &plugin_zip("demo", "1.0.0", "v1"), None).unwrap();
         commit_plugin_staged_in(root.path(), &stage_id, "demo", &digest).unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(root.path().join("demo").join("main.js")).unwrap(),
+            "v1"
+        );
+    }
+
+    /// §379 — the plugin commit's last refusal sees the id the swap would install (the
+    /// digest-checked staged manifest's), and a refusal installs nothing and leaves the stage
+    /// for the caller's `plugin_install_discard`.
+    #[test]
+    fn a_refused_plugin_commit_installs_nothing() {
+        let root = tempfile::tempdir().unwrap();
+        let (stage_id, _, digest) =
+            stage_plugin_archive_in(root.path(), &plugin_zip("demo", "1.0.0", "v1"), None).unwrap();
+        let mut seen = None;
+
+        let err = commit_staged_plugin_in(root.path(), &stage_id, "demo", &digest, |id| {
+            seen = Some(id.to_string());
+            Err(PluginError::Refused("DEV_PLUGIN_ID_HELD".into()))
+        })
+        .expect_err("the refusal must stop the commit");
+
+        assert_eq!(err.to_string(), "DEV_PLUGIN_ID_HELD");
+        assert_eq!(seen.as_deref(), Some("demo"));
+        assert!(
+            !root.path().join("demo").exists(),
+            "nothing may be installed"
+        );
+        assert!(
+            resolve_stage_in(root.path(), &stage_id).is_ok(),
+            "the stage is left for the caller to discard"
+        );
+    }
+
+    /// The twin: an allowing refusal installs exactly as `commit_staged_in` does.
+    #[test]
+    fn an_allowing_plugin_commit_installs_like_the_plain_one() {
+        let root = tempfile::tempdir().unwrap();
+        let (stage_id, _, digest) =
+            stage_plugin_archive_in(root.path(), &plugin_zip("demo", "1.0.0", "v1"), None).unwrap();
+
+        commit_staged_plugin_in(root.path(), &stage_id, "demo", &digest, |_| Ok(()))
+            .unwrap()
+            .into_plugin()
+            .unwrap();
 
         assert_eq!(
             std::fs::read_to_string(root.path().join("demo").join("main.js")).unwrap(),

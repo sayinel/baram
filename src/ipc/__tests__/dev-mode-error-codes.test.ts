@@ -17,8 +17,8 @@ const EN = en as Record<string, string>;
 const KO = ko as Record<string, string>;
 
 describe("§379 developer-mode error codes (TS ↔ Rust)", () => {
-  it("the scrape read all eight declarations", () => {
-    expect(codes.size).toBe(8);
+  it("the scrape read all nine declarations", () => {
+    expect(codes.size).toBe(9);
   });
 
   it("every Rust code turns into a key both catalogues translate", () => {

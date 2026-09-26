@@ -637,6 +637,7 @@
   "plugin.dev.error.consentMissing": "{id} 플러그인을 불러오지 않았습니다 — 권한이 승인되지 않았습니다.",
   "plugin.dev.error.consentNeeded": "불러오지 않았습니다 — 다시 불러오기를 눌러 권한을 승인하세요.",
   "plugin.dev.error.folderMissing": "폴더가 더 이상 없습니다.",
+  "plugin.dev.error.idHeld": "개발자 모드의 폴더가 이 id 를 쥐고 있습니다. 설치하기 전에 설정 → 플러그인 → 개발자에서 그 폴더를 제거하세요.",
   "plugin.dev.error.idInstalled": "이미 설치된 플러그인과 id 가 같습니다.",
   "plugin.dev.error.idReserved": "\"baram-\" 로 시작하는 id 는 Baram 공식 플러그인 전용입니다.",
   "plugin.dev.error.inactive": "개발자 모드가 꺼져 있습니다.",

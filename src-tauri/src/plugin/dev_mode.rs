@@ -17,7 +17,7 @@ use super::registry::{PluginManifest, PluginTrust};
 /// R1 의 파일 이름. 앱 데이터 디렉터리에서 `approved-roots.json` 옆에 산다.
 pub const STORE_FILE: &str = "plugin-dev.json";
 
-// ‼️ 아래 여덟 `DEV_*` 코드는 `scripts/rust-constants.ts` 의 `devModeErrorCodes` 가 이 파일에서
+// ‼️ 아래 아홉 `DEV_*` 코드는 `scripts/rust-constants.ts` 의 `devModeErrorCodes` 가 이 파일에서
 // 전부 긁어 `src/ipc/plugin-dev-errors.ts` 의 번역과 대조한다(`dev-mode-error-codes.test.ts`).
 // 코드를 더하면 번역도 더해야 그 테스트가 초록이다. 이 파일을 옮기면 그 테스트의 경로도 옮길 것.
 /// 개발자 모드가 꺼져 있다.
@@ -36,6 +36,9 @@ pub const DEV_PLUGIN_ID_RESERVED: &str = "DEV_PLUGIN_ID_RESERVED";
 pub const DEV_PLUGIN_ID_INSTALLED: &str = "DEV_PLUGIN_ID_INSTALLED";
 /// 릴리스 빌드에서 `plugin-data/<id>` 가 이미 있는데 R1 의 어떤 항목도 그 id 를 기록하지 않았다 (I4-3).
 pub const DEV_PLUGIN_STORAGE_TAKEN: &str = "DEV_PLUGIN_STORAGE_TAKEN";
+/// 릴리스 빌드의 개발자 모드가 켜져 있는 동안, R1 이 기록한 id 의 플러그인 설치 (I4 의 반대 방향 —
+/// 폴더의 플러그인이 심은 저장소를 설치본이 물려받는다).
+pub const DEV_PLUGIN_ID_HELD: &str = "DEV_PLUGIN_ID_HELD";
 
 /// 퍼스트파티 id 접두사 — 스펙 0058 7.2 게이트 2 와 같은 규칙.
 const FIRST_PARTY_PREFIX: &str = "baram-";
@@ -184,6 +187,14 @@ impl DevModeState {
         entry.consent = Some(consent);
         Ok(())
     }
+
+    /// 같은 id 의 플러그인 설치가 커밋됐다 — 모든 항목의 기록에서 뺀다. 그 뒤의 `plugin-data/<id>`
+    /// 는 설치본(과 그 제거 뒤의 잔여)의 것이지 이 폴더의 것이 아니다(plan 0106 P25).
+    pub fn forget_id(&mut self, id: &str) {
+        for folder in &mut self.folders {
+            folder.ids.retain(|recorded| recorded != id);
+        }
+    }
 }
 
 /// R2 — 목록을 읽거나 넓히는 dev 커맨드가 거치는 판정 하나: dev 빌드이거나, 사용자가 켰다.
@@ -199,6 +210,23 @@ pub fn visible_folders(build: Build, state: &DevModeState) -> &[DevFolder] {
     } else {
         &[]
     }
+}
+
+/// I4 의 반대 방향 — 플러그인 설치 커밋이 거부할 id. 릴리스 빌드에서 개발자 모드가 켜져 있으면
+/// R1 이 기록한 모든 id(한 번씩), 아니면 없다: dev 빌드는 폴더가 설치본을 대신하는 경로이고(스펙
+/// R3), 꺼져 있으면 지금 저장소를 심을 폴더가 로드돼 있지 않다.
+pub fn held_ids(build: Build, state: &DevModeState) -> Vec<String> {
+    if build.is_dev() || !developer_mode_active(build, state) {
+        return Vec::new();
+    }
+    let mut ids: Vec<String> = state
+        .folders
+        .iter()
+        .flat_map(|folder| folder.ids.iter().cloned())
+        .collect();
+    ids.sort();
+    ids.dedup();
+    ids
 }
 
 /// R3 — 폴더의 매니페스트가 이 빌드에서 설 수 있는가.
@@ -838,5 +866,59 @@ mod tests {
         assert_eq!(state.find("/a").unwrap().consent, None);
         // A dev build does not restrict the tier (spec R3).
         assert_eq!(state.record_consent(Build::dev(), "/a", trusted), Ok(()));
+    }
+
+    /// I4, the reverse direction: what the install commit refuses. Only an ACTIVE RELEASE
+    /// developer mode holds ids — a dev build's folder may stand in for an install (spec R3),
+    /// and with the switch off nothing is loaded that could seed storage now.
+    #[test]
+    fn only_an_active_release_developer_mode_holds_ids() {
+        let mut state = DevModeState {
+            enabled: true,
+            folders: vec![
+                DevFolder {
+                    path: "/a".into(),
+                    ids: vec!["dev-x".into(), "dev-y".into()],
+                    consent: None,
+                },
+                DevFolder {
+                    path: "/b".into(),
+                    ids: vec!["dev-x".into()],
+                    consent: None,
+                },
+            ],
+            ..DevModeState::default()
+        };
+        assert_eq!(
+            held_ids(Build::release(), &state),
+            vec!["dev-x".to_string(), "dev-y".to_string()],
+            "every recorded id, once"
+        );
+        assert!(held_ids(Build::dev(), &state).is_empty());
+        state.enabled = false;
+        assert!(held_ids(Build::release(), &state).is_empty());
+    }
+
+    #[test]
+    fn forgetting_an_id_clears_it_from_every_folder_and_nothing_else() {
+        let mut state = DevModeState {
+            folders: vec![
+                DevFolder {
+                    path: "/a".into(),
+                    ids: vec!["dev-x".into(), "dev-y".into()],
+                    consent: None,
+                },
+                DevFolder {
+                    path: "/b".into(),
+                    ids: vec!["dev-x".into()],
+                    consent: None,
+                },
+            ],
+            ..DevModeState::default()
+        };
+        state.forget_id("dev-x");
+        assert!(!state.records_id("dev-x"));
+        assert_eq!(state.find("/a").unwrap().ids, vec!["dev-y".to_string()]);
+        assert_eq!(state.folders.len(), 2, "the folders themselves stay listed");
     }
 }

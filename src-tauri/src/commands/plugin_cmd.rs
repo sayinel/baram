@@ -36,24 +36,32 @@ pub async fn plugin_install_stage(
 }
 
 /// Install a staged plugin, atomically replacing any version already installed.
+///
+/// §379 (I4, the reverse direction) — refused with `DEV_PLUGIN_ID_HELD` while a release
+/// build's developer mode is on and a dev folder has recorded this id: storage is keyed by id,
+/// so the install would inherit what that folder's plugin wrote. The id judged is the committed
+/// manifest's, inside the commit core, and the folder records are read when the core calls the
+/// refusal — after its checks, right before the swap. A commit that lands clears the id from
+/// every dev-folder record, in any build.
 #[tauri::command]
-pub async fn plugin_install_commit(
+pub async fn plugin_install_commit<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
     stage_id: String,
     expected_id: String,
     manifest_sha256: String,
 ) -> Result<plugin::CommittedPluginInfo, String> {
-    plugin::commit_staged_install(
-        plugin::InstallKind::Plugin,
+    // §360 — a plugin commit carries no stored CSS; `commit_staged_plugin_install` passes none.
+    let committed = plugin::commit_staged_plugin_install(
         &stage_id,
         &expected_id,
         &manifest_sha256,
-        // §360 — no stored CSS: that parameter belongs to a theme commit, and passing
-        // `Some` here is refused rather than ignored.
-        None,
+        super::plugin_dev_cmd::install_refusal(&app),
     )
     .await
     .and_then(plugin::CommittedInstall::into_plugin)
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?;
+    super::plugin_dev_cmd::forget_installed_id(&app, &committed.manifest.id);
+    Ok(committed)
 }
 
 /// Throw away a staged plugin. Nothing installed is touched.
@@ -1419,5 +1427,42 @@ mod tests {
         assert_eq!(sandbox_window_guard("plugin-alpha").unwrap(), "alpha");
         assert!(sandbox_window_guard("main").is_err());
         assert!(sandbox_window_guard("file-1").is_err());
+    }
+
+    /// §379 (I4, the reverse direction) — the install boundary is `plugin_install_commit`'s
+    /// wiring, and a command is out of reach of a unit test. So its body is pinned as text: it
+    /// commits through the refusing core with the dev-folder refusal, clears the record after,
+    /// and does not call the plain entry point, which would skip the refusal and still compile.
+    /// Only the production half of this file is scanned, so this test's own text cannot match.
+    #[test]
+    fn the_plugin_install_commit_goes_through_the_dev_folder_boundary() {
+        let src = include_str!("plugin_cmd.rs");
+        let prod = src
+            .split_once("#[cfg(test)]")
+            .expect("this file has a test module")
+            .0;
+        let start = prod
+            .find("pub async fn plugin_install_commit")
+            .expect("the command is defined in this file");
+        let end = prod[start..]
+            .find("pub async fn plugin_install_discard")
+            .expect("the discard command follows the commit");
+        let body: String = prod[start..start + end]
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect();
+
+        assert!(
+            !body.contains("commit_staged_install("),
+            "plugin_install_commit calls the plain commit entry point — a plugin committed \
+             there skips the developer-mode refusal; use plugin::commit_staged_plugin_install"
+        );
+        for wired in ["install_refusal(&app", "forget_installed_id(&app"] {
+            assert!(
+                body.contains(wired),
+                "plugin_install_commit no longer calls `{wired}…)` — the dev-folder boundary \
+                 (plan 0106 P25) is unwired"
+            );
+        }
     }
 }

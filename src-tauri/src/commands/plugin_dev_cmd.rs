@@ -508,6 +508,80 @@ pub(crate) fn active_dev_folder_paths<R: Runtime>(app: &AppHandle<R>) -> Vec<Str
         .collect()
 }
 
+/// I4 의 반대 방향 — `plugin_install_commit` 이 커밋 코어에 넘기는 거부. 커밋 코어는 이것을
+/// 다이제스트·id 검사를 모두 지난 뒤, 교체 **직전에** 스테이지 매니페스트의 id 로 부른다 — 호출자가
+/// 준 인자가 아니다. 막을 id 는 그 **호출 때** R1 을 읽어 정한다(`dev_mode::held_ids`): 커맨드에
+/// 들어올 때 읽으면 그 뒤의 목록 변화를 못 본다. 그래서 파일 읽기도 커밋 코어의 `spawn_blocking`
+/// 안에서 한다. host 가 관리되지 않으면 아무것도 막지 않는다 — 그때는 dev 커맨드가 전부 닫혀 이
+/// 세션에 폴더가 로드될 수 없다(plan 0106 P25).
+pub(crate) fn install_refusal<R: Runtime>(
+    app: &AppHandle<R>,
+) -> impl FnOnce(&str) -> Result<(), plugin::PluginError> + Send + 'static {
+    refusal_at(app.clone(), Build::current())
+}
+
+/// `install_refusal` 의 본체 — 빌드를 받으므로 테스트가 릴리스 분기에 닿는다. 클로저가 쥐는 것은
+/// `AppHandle` 복제본과 빌드뿐이고, R1 은 클로저 안에서 읽는다.
+fn refusal_at<R: Runtime>(
+    app: AppHandle<R>,
+    build: Build,
+) -> impl FnOnce(&str) -> Result<(), plugin::PluginError> + Send + 'static {
+    move |id| {
+        let held = app
+            .try_state::<DevModeHost>()
+            .map(|host| held_for(&app, &host, build))
+            .unwrap_or_default();
+        refusal_for(held)(id)
+    }
+}
+
+fn held_for<R: Runtime>(app: &AppHandle<R>, host: &DevModeHost, build: Build) -> Vec<String> {
+    dev_mode::held_ids(build, &host.load(app, build))
+}
+
+fn refusal_for(
+    held: Vec<String>,
+) -> impl FnOnce(&str) -> Result<(), plugin::PluginError> + Send + 'static {
+    move |id| {
+        if held.iter().any(|h| h == id) {
+            Err(plugin::PluginError::Refused(
+                dev_mode::DEV_PLUGIN_ID_HELD.to_string(),
+            ))
+        } else {
+            Ok(())
+        }
+    }
+}
+
+/// I4 의 반대 방향 — 플러그인 설치 커밋이 성공했다. 이 id 를 모든 dev 폴더 기록에서 뺀다(plan
+/// 0106 P25) — 그 뒤의 저장소는 설치본의 것이지 폴더의 것이 아니다. host 가 관리되지 않거나 쓰기가
+/// 실패해도 설치 자체는 이미 끝난 뒤라 경고만 남긴다.
+pub(crate) fn forget_installed_id<R: Runtime>(app: &AppHandle<R>, id: &str) {
+    let Some(host) = app.try_state::<DevModeHost>() else {
+        return;
+    };
+    if let Err(e) = forget_id_in(app, &host, Build::current(), id) {
+        log::warn!("[plugin] §379 could not clear id {id} from the dev folder record: {e}");
+    }
+}
+
+/// `forget_installed_id` 의 본체 — 빌드를 받으므로 테스트가 릴리스 분기에 닿는다. 어떤 항목도
+/// 이 id 를 기록하지 않았으면 R1 을 쓰지 않는다.
+fn forget_id_in<R: Runtime>(
+    app: &AppHandle<R>,
+    host: &DevModeHost,
+    build: Build,
+    id: &str,
+) -> Result<(), String> {
+    if !host.load(app, build).records_id(id) {
+        return Ok(());
+    }
+    host.update(app, build, |state| {
+        state.forget_id(id);
+        Ok(())
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1691,5 +1765,160 @@ mod tests {
         assert_eq!(enabled, true);
         assert!(log.lock().unwrap().is_empty(), "a dev build must not ask");
         assert!(r1(&f).enabled, "unchanged from what write_r1 set");
+    }
+
+    #[test]
+    fn the_install_refusal_holds_recorded_ids_only_in_an_active_release_build() {
+        let f = fixture();
+        write_r1(
+            &f,
+            serde_json::json!({ "version": 1, "enabled": true, "folders": [
+                { "path": "/dev/a", "ids": ["dev-x"] }
+            ] }),
+        );
+        let app = tauri::test::mock_app();
+
+        let refuse = refusal_for(held_for(app.handle(), &host(&f), Build::release()));
+        assert_eq!(
+            refuse("dev-x").map_err(|e| e.to_string()),
+            Err(dev_mode::DEV_PLUGIN_ID_HELD.to_string())
+        );
+        let refuse = refusal_for(held_for(app.handle(), &host(&f), Build::release()));
+        assert!(refuse("someone-else").is_ok(), "only held ids are refused");
+        let refuse = refusal_for(held_for(app.handle(), &host(&f), Build::dev()));
+        assert!(refuse("dev-x").is_ok(), "a dev build does not hold ids");
+
+        write_r1(
+            &f,
+            serde_json::json!({ "version": 1, "enabled": false, "folders": [
+                { "path": "/dev/a", "ids": ["dev-x"] }
+            ] }),
+        );
+        let refuse = refusal_for(held_for(app.handle(), &host(&f), Build::release()));
+        assert!(
+            refuse("dev-x").is_ok(),
+            "with developer mode off nothing is held"
+        );
+    }
+
+    /// The refusal reads R1 when the commit core calls it — between the checks and the swap —
+    /// not when the command builds it (final verification, L-2). The folder's id is recorded
+    /// AFTER the refusal is made; a refusal that read R1 up front would let this install through.
+    #[test]
+    fn the_install_refusal_reads_the_record_when_it_is_called() {
+        let f = fixture();
+        let app = tauri::test::mock_app();
+        app.manage(host(&f));
+        let refuse = refusal_at(app.handle().clone(), Build::release());
+
+        write_r1(
+            &f,
+            serde_json::json!({ "version": 1, "enabled": true, "folders": [
+                { "path": "/dev/a", "ids": ["dev-x"] }
+            ] }),
+        );
+
+        assert_eq!(
+            refuse("dev-x").map_err(|e| e.to_string()),
+            Err(dev_mode::DEV_PLUGIN_ID_HELD.to_string())
+        );
+    }
+
+    /// The twin, and P25's cost: with no managed host (a machine where `DevModeHost::native`
+    /// failed) the same record holds nothing.
+    #[test]
+    fn without_a_managed_host_the_install_refusal_holds_nothing() {
+        let f = fixture();
+        write_r1(
+            &f,
+            serde_json::json!({ "version": 1, "enabled": true, "folders": [
+                { "path": "/dev/a", "ids": ["dev-x"] }
+            ] }),
+        );
+        let app = tauri::test::mock_app();
+
+        let refuse = refusal_at(app.handle().clone(), Build::release());
+
+        assert!(refuse("dev-x").is_ok());
+    }
+
+    #[test]
+    fn a_plugin_commit_clears_the_id_from_every_record() {
+        let f = fixture();
+        write_r1(
+            &f,
+            serde_json::json!({ "version": 1, "folders": [
+                { "path": "/dev/a", "ids": ["dev-x", "dev-y"] },
+                { "path": "/dev/b", "ids": ["dev-x"] }
+            ] }),
+        );
+        let app = tauri::test::mock_app();
+
+        forget_id_in(app.handle(), &host(&f), Build::release(), "dev-x").unwrap();
+
+        let folders = r1(&f).folders;
+        assert_eq!(folders[0].ids, vec!["dev-y".to_string()]);
+        assert_eq!(folders[1].ids, Vec::<String>::new());
+    }
+
+    /// Nothing recorded, nothing written — a release build with no `plugin-dev.json` keeps
+    /// having none after an install.
+    #[test]
+    fn a_commit_of_an_unrecorded_id_writes_nothing() {
+        let f = fixture();
+        let app = tauri::test::mock_app();
+
+        forget_id_in(app.handle(), &host(&f), Build::release(), "dev-x").unwrap();
+
+        assert!(!f.data.path().join(dev_mode::STORE_FILE).exists());
+    }
+
+    /// The stale-record hole (verification pass, M2a), end to end on the cores: a folder
+    /// recorded `dev-x`, its plugin used storage, the user switched developer mode off,
+    /// installed and then uninstalled `dev-x` (which leaves `plugin-data/dev-x`), and switched
+    /// it back on. The commit's `forget` is what makes I4-3 refuse the folder now — the twin
+    /// below skips it and the folder is admitted onto the leftover storage.
+    #[test]
+    fn install_then_uninstall_then_re_enable_refuses_the_leftover_storage() {
+        let refused = run_install_uninstall_re_enable(true);
+        assert_eq!(refused.as_deref(), Some(dev_mode::DEV_PLUGIN_STORAGE_TAKEN));
+    }
+
+    #[test]
+    fn without_the_commit_forget_the_folder_would_inherit_the_storage() {
+        assert_eq!(run_install_uninstall_re_enable(false), None);
+    }
+
+    /// Returns the row error after re-enabling. `forget` stands for whether the install
+    /// commit cleared the record.
+    fn run_install_uninstall_re_enable(forget: bool) -> Option<String> {
+        let f = fixture();
+        let path = plugin_folder(f.sources.path(), "dev-x", "sandboxed");
+        approve(&f, &[&path]);
+        std::fs::create_dir(f.storage.path().join("dev-x")).unwrap();
+        write_r1(
+            &f,
+            serde_json::json!({ "version": 1, "enabled": false, "folders": [
+                { "path": path, "ids": ["dev-x"] }
+            ] }),
+        );
+        let app = tauri::test::mock_app();
+        let host = host(&f);
+
+        // Developer mode is off, so nothing is held and the install goes through.
+        assert!(refusal_for(held_for(app.handle(), &host, Build::release()))("dev-x").is_ok());
+        if forget {
+            forget_id_in(app.handle(), &host, Build::release(), "dev-x").unwrap();
+        }
+        // Uninstalled: no `plugins/dev-x` (the fixture never made one), storage left behind.
+        host.update(app.handle(), Build::release(), |state| {
+            state.enabled = true;
+            Ok(())
+        })
+        .unwrap();
+
+        list_dev(app.handle(), &host, Build::release()).folders[0]
+            .error
+            .clone()
     }
 }
