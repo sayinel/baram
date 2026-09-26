@@ -336,17 +336,17 @@ describe("list geometry", () => {
     // 이 화살표↔마커 간격은 사람이 보고 고른 값이다 — 앱에서 "삼각형이 숫자에 너무
     // 붙어 있다" 는 보고를 받아 두 목록 모두 넓혔다. 그 판단을 다시 받아 오려면
     // 간격이 **유도**돼야 하는데, 간격은 네 선언에 흩어져 있어(거터·화살표 오프셋·
-    // 마커 치수·삼각형 폭) 어느 하나만 손대도 조용히 좁아진다. 그래서 여기서 네 값을
-    // 전사해 간격을 계산한다.
+    // 마커 치수·화살표가 칠하는 폭) 어느 하나만 손대도 조용히 좁아진다. 그래서 여기서
+    // 네 값을 전사해 간격을 계산한다.
     //
     // 기하(둘 다 리스트의 왼쪽 모서리 기준):
-    //   화살표 상자 = [-offset, -offset + 1em] 이고 그 안에서 폭 `w` 의 삼각형이 가운데
-    //     → 삼각형 오른끝 = -offset + 0.5em + w/2
+    //   화살표 상자 = [-offset, -offset + 1em] 이고 그 안에서 화살표가 칠하는 폭 `w` 가 가운데
+    //     → 칠해진 오른끝 = -offset + 0.5em + w/2
     //   순서 있는 마커의 왼끝 = S           (`min-width: calc(gutter - S)`, 오른끝은 거터 끝)
     //   글머리 기호의 왼끝   = gutter - 0.5em - size/2   (`margin-right: (1em - size)/2`)
     //
-    // 무엇이 이것을 실패시키는가: 오프셋을 되돌리거나, 마커 상자를 넓히거나, 삼각형을
-    // 키우면 간격이 줄어 red 가 된다. 두 목록의 간격이 갈라져도 red 다 — 갈라지면 한
+    // 무엇이 이것을 실패시키는가: 오프셋을 되돌리거나, 마커 상자를 넓히거나, 화살표
+    // 상자를 키우면 간격이 줄어 red 가 된다. 두 목록의 간격이 갈라져도 red 다 — 갈라지면 한
     // 문서 안에서 글머리 기호와 번호가 서로 다른 리듬으로 읽힌다.
     const em = (value: string): number =>
       Number(/(-?[\d.]+)em/u.exec(value)?.[1]);
@@ -387,18 +387,29 @@ describe("list geometry", () => {
     );
     expect(subtrahend).toBeGreaterThan(0);
 
-    // 삼각형은 `.fold-arrow::before` 의 왼쪽 테두리 하나로 그려진다(border trick).
+    // 화살표는 `.fold-arrow::before` 상자에 lucide chevron-right 를 mask 로 칠한 것이다
+    // (icons.css). 칠해지는 폭은 상자 폭의 8/24 다 — 경로 `m9 18 6-6-6-6` 이 x 9–15 를
+    // 지나고 획 2 가 양쪽으로 1 씩 넓혀 8–16 을 칠하며, 그 가운데(12)가 상자 가운데라
+    // 좌우 대칭이다. 이 분수는 경로에서 나오므로 경로가 그 경로인지부터 단정한다.
     const arrow = RULES.find(
       (r) => r.selector.trim() === ".fold-arrow::before",
     );
     expect(arrow).toBeDefined();
-    const border = cssDeclarations(arrow?.body ?? "").find(
-      (d) => d.prop === "border-width",
-    )?.value;
-    const triangleWidth = em((border ?? "").split(/\s+/u)[3] ?? "");
-    expect(triangleWidth).toBeGreaterThan(0);
+    const arrowDecls = cssDeclarations(arrow?.body ?? "");
+    expect(
+      arrowDecls.find((d) => d.prop === "mask")?.value.replaceAll(/\s+/gu, " "),
+    ).toBe("var(--icon-chevron-right) center / contain no-repeat");
+    const chevron = cssDeclarations(
+      RULES.find(
+        (r) => r.file.endsWith("/styles/icons.css") && r.selector === ":root",
+      )?.body ?? "",
+    ).find((d) => d.prop === "--icon-chevron-right")?.value;
+    expect(chevron).toContain("d='m9 18 6-6-6-6'");
+    const arrowWidth =
+      em(arrowDecls.find((d) => d.prop === "width")?.value ?? "") * (8 / 24);
+    expect(arrowWidth).toBeGreaterThan(0);
 
-    const triangleRight = (offset: number) => -offset + 0.5 + triangleWidth / 2;
+    const triangleRight = (offset: number) => -offset + 0.5 + arrowWidth / 2;
     const orderedGap = subtrahend - triangleRight(orderedOffset);
     const bulletGap =
       gutter - 0.5 - markerSize / 2 - triangleRight(bulletOffset);

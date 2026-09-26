@@ -33,8 +33,9 @@
  * `-apple-system`, so the same `2em` is roomy on one machine and overflowing on the next.
  * A digit count in `em` would be a guess about a font we do not ship.
  *
- *   gutter = N·ch + 0.6em   — N digits, plus the period (~0.3em) and 0.11em of clearance
- *                             for the hover fold arrow's triangle
+ *   gutter = N·ch + 0.6em   — N digits, plus the period (~0.3em) and 0.3em of room left of
+ *                             the marker, which with the ordered arrow offset below leaves
+ *                             0.425em of clearance for the hover fold arrow's chevron
  *   floor  = 1.4em          — never narrower than a bullet list
  *
  * Checked across ch = 0.48em…0.65em (the plausible range for the fallback stack): the
@@ -60,14 +61,15 @@
 }
 
 /* How far the hover fold arrow sits OUTSIDE the list's left edge, and with it the only
- * thing that sets the gap between the arrow's triangle and the marker it points at.
+ * thing that sets the gap between the arrow's chevron and the marker it points at.
  *
- * That gap is `offset − 0.5em − 0.1875em + <where the marker's own left edge sits>`: the
- * arrow's 1em box starts at `-offset`, and of it only a 0.375em triangle paints, centred.
+ * That gap is `offset − 0.5em − 0.125em + <where the marker's own left edge sits>`: the
+ * arrow's 1em box starts at `-offset`, and of it only a 0.25em chevron paints, centred.
  * Both offsets were raised in §5.1 because both gaps read as touching — an ordered list
- * had 0.11em and a bullet list 0.24em, and the ordered one is the tighter of the two
- * precisely because its marker is text that fills its gutter. They now land within 0.02em
- * of each other, so the two list kinds read as one system rather than two spacings.
+ * had 0.11em and a bullet list 0.24em (to the 0.375em border triangle the arrow was
+ * then), and the ordered one is the tighter of the two precisely because its marker is
+ * text that fills its gutter. They now land within 0.02em of each other, so the two list
+ * kinds read as one system rather than two spacings.
  *
  * Declared on the base rule too, so a bullet list nested inside an ordered one resets it
  * rather than inheriting the ordered offset. */
@@ -189,11 +191,12 @@
 /* A nested list is part of its parent item, not a block that follows it. `position` is
  * for the indent guide below.
  *
- * The gutter is deliberately NOT widened for nesting: the guide sits at the gutter's left
- * edge and the hover fold arrow's BOX straddles it, but the arrow's box is transparent —
- * only a 0.375em triangle paints, and that clears the guide by 0.11em at both gutter
- * widths. Widening the gutter to separate boxes that never both paint would only make
- * deep lists indent faster.
+ * The gutter is deliberately NOT widened for nesting. The guide hangs 1em left of the
+ * list's edge and the hover fold arrow's box starts `--list-arrow-offset` left of that
+ * same edge, so the gutter moves neither, and the box does not reach the guide. Only a
+ * 0.25em chevron of it paints, and that clears the guide by 1.075em in a bullet list and
+ * 0.625em in an ordered one (editor/base.css derives both). Widening the gutter would
+ * separate nothing and only make deep lists indent faster.
  *
  * Descendant selectors, not `>`: a nested task list sits inside the task item's content
  * `<div>`, so a child selector would miss it. */
@@ -232,7 +235,9 @@
  *
  * Anchoring to the marker is what makes a deep list readable: the eye follows a line that
  * starts at a bullet it can see, rather than one that begins in the middle of a word. It
- * also moves the rail 1.11em clear of a child's hover fold arrow, instead of 0.11em.
+ * also moves the rail clear of a child's hover fold arrow — in a bullet list the chevron
+ * paints 1.075em from the rail (editor/base.css derives it), where a rail at the parent's
+ * text would pass 0.075em from it.
  *
  * Drawn as a pseudo-element rather than `border-left`, which would add to the box and
  * push each level one step further right than the last. `::before` on the list is free —
@@ -416,7 +421,10 @@
  * ragged by construction, and what that costs is the arrow: the `1.` of that twelve-item
  * list sits 21.43px from the triangle and its `10.` 11.34px. Chrome supplies these pixel
  * numbers through its fallback digit advance; the app renders in WKWebView, where the
- * numbers — not the relationships — will differ.
+ * numbers — not the relationships — will differ. (Those distances to the arrow were
+ * measured with the 0.375em border triangle. The chevron that replaced it paints 0.125em
+ * narrower, centred, so at 16px each is 1px larger — derived, not re-measured; the marker
+ * positions are unaffected.)
  *
  * The style steps with ordered depth so nested numbering reads as a hierarchy instead of
  * three identical `1.` columns. Display only — the serializer never reads a marker, so
