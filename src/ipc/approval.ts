@@ -16,7 +16,7 @@ export interface ApprovedRoot {
  * 실수가 아니라 **의도적으로** 그 `_` 갈래를 친다.
  */
 export type PickDirPurpose =
-  "journal" | "open-folder" | "plugin-dev" | "tasks" | "zettelkasten";
+  "journal" | "open-folder" | "tasks" | "zettelkasten";
 
 /**
  * ‼️ Rust `approval_cmd::APPROVAL_DENIED`와 **한 글자도 다르면 안 된다**. 이 값이

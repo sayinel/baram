@@ -127,7 +127,7 @@ fn home_dir<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Option<std::path::P
 ///
 /// `None`과 `Some("")`은 **다른 요청**이다:
 ///  - `None` = 호출자가 위치에 관심이 없다 → OS가 기억하는 마지막 폴더를 그대로 쓴다.
-///    "폴더 추가"·플러그인 개발 폴더가 여기 해당한다.
+///    "폴더 추가"가 여기 해당한다.
 ///  - `Some(_)` = 호출자가 기본 위치를 원한다 → 그 경로가 실재하는 디렉터리면 거기서,
 ///    아니면 홈에서 연다. 아직 폴더가 설정되지 않은 저널·태스크·Zettel 행이 이 경우다.
 ///
@@ -172,7 +172,6 @@ pub async fn pick_approved_dir<R: tauri::Runtime>(
             "journal" => "저널 폴더 선택",
             "zettelkasten" => "제텔 폴더 선택",
             "tasks" => "작업 폴더 선택",
-            "plugin-dev" => "개발 중인 플러그인 폴더 선택",
             _ => "폴더 열기 — 이 폴더 전체를 읽고 씁니다",
         }
     } else {
@@ -180,7 +179,6 @@ pub async fn pick_approved_dir<R: tauri::Runtime>(
             "journal" => "Choose a journal folder",
             "zettelkasten" => "Choose a Zettelkasten folder",
             "tasks" => "Choose a tasks folder",
-            "plugin-dev" => "Choose a plugin development folder",
             _ => "Open folder — Baram will read and write everything under it",
         }
     };

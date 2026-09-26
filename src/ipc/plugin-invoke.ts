@@ -83,12 +83,6 @@ export interface DevModeSnapshot {
   folders: DevFolderRow[];
 }
 
-export async function pluginAddDevFolder(
-  path: string,
-): Promise<RustInstalledPluginInfo> {
-  return invoke<RustInstalledPluginInfo>("plugin_add_dev_folder", { path });
-}
-
 /** §260 sandbox broker — the only privileged channel a plugin-* window has. */
 export async function pluginCall(op: PluginOp): Promise<unknown> {
   return invoke<unknown>("plugin_call", { op });
@@ -207,6 +201,15 @@ export async function pluginListInstalled(): Promise<
   return invoke<RustInstalledPluginInfo[]>("plugin_list_installed");
 }
 
+/**
+ * §379 — Rust opens the native folder picker and adds only the folder the user chose. `null`
+ * when cancelled; a refusal rejects with a `DEV_*` code (`plugin-dev-errors.ts`) and writes
+ * nothing.
+ */
+export async function pluginPickDevFolder(): Promise<DevFolderRow | null> {
+  return invoke<DevFolderRow | null>("plugin_pick_dev_folder");
+}
+
 export async function pluginPrepareScopes(): Promise<void> {
   return invoke<void>("plugin_prepare_scopes");
 }
@@ -215,6 +218,21 @@ export async function pluginReadManifest(
   pluginId: string,
 ): Promise<PluginManifest> {
   return invoke<PluginManifest>("plugin_read_manifest", { pluginId });
+}
+
+/** §379 — record the consent for a folder already on Rust's list. Cannot grow the list. */
+export async function pluginRecordDevConsent(
+  path: string,
+  consent: PluginConsent,
+): Promise<void> {
+  return invoke<void>("plugin_record_dev_consent", { consent, path });
+}
+
+/** §379 — re-read a listed folder's manifest. Only paths already on Rust's list. */
+export async function pluginReloadDevFolder(
+  path: string,
+): Promise<DevFolderRow> {
+  return invoke<DevFolderRow>("plugin_reload_dev_folder", { path });
 }
 
 export async function pluginRemoveDevFolder(path: string): Promise<void> {
@@ -283,6 +301,16 @@ export async function pluginSandboxStage(
   payload: string,
 ): Promise<void> {
   return invoke<void>("plugin_sandbox_stage", { pluginId, payload });
+}
+
+/**
+ * §379 — switch developer mode. Turning it on shows a native warning first; the answer is
+ * the state AFTER the call (`false` when the user declined). Unloading is the caller's job.
+ */
+export async function pluginSetDeveloperMode(
+  enabled: boolean,
+): Promise<boolean> {
+  return invoke<boolean>("plugin_set_developer_mode", { enabled });
 }
 
 export async function pluginStorageList(pluginId: string): Promise<string[]> {

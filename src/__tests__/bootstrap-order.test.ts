@@ -120,23 +120,30 @@ describe("main.tsx bootstrap (§260 Phase 5)", () => {
 // bounds its region and checks how many matches it found, so it cannot pass by finding
 // none or by finding one somewhere else.
 describe("dev-folder loads declare isDev (§260 Phase 5)", () => {
-  const DEV_SECTION = "components/plugins/PluginDeveloperSection.tsx";
+  const DEV_ACTIONS = "components/plugins/use-dev-plugin-actions.ts";
   const DEV_PLUGINS = "plugins/dev-plugins.ts";
   const LIFECYCLE = "plugins/plugin-lifecycle.ts";
 
-  it("every load in the developer section is marked as a dev load", () => {
-    // Every load from this component is by definition a dev-folder load — there is no
-    // other kind here — so the count of calls and the count carrying `isDev` must match.
-    const calls = loaderCalls(readFileSync(join(SRC, DEV_SECTION), "utf8"));
-
+  it("every load the Developer section starts is a dev load carrying its consent", () => {
+    // §379 — the section's loads live in its actions hook; the component renders only.
     expect(
-      calls.length,
-      "the developer section must load plugins",
-    ).toBeGreaterThan(0);
+      loaderCalls(
+        readFileSync(
+          join(SRC, "components/plugins/PluginDeveloperSection.tsx"),
+          "utf8",
+        ),
+      ),
+      "the section component must not load plugins itself",
+    ).toEqual([]);
+    const calls = loaderCalls(readFileSync(join(SRC, DEV_ACTIONS), "utf8"));
+    expect(calls.length, "the actions hook must load plugins").toBeGreaterThan(
+      0,
+    );
     expect(
       calls.filter((c) => !c.includes("isDev")),
       "a dev load without `isDev` gets the installed plugin's consent applied to it",
     ).toEqual([]);
+    expect(calls.filter((c) => !c.includes("devConsent"))).toEqual([]);
   });
 
   it("every load in dev-plugins is a dev load carrying the consent Rust recorded (§379)", () => {

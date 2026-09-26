@@ -923,8 +923,9 @@ function narrowToConsent(
  *   plugin, because `handleToggleEnabled` loads the installed record and a colliding dev
  *   entry made it take the dev branch.
  * - G1: keying on `devPlugins[id].installPath` still missed the FIRST load of a picked
- *   folder, because `PluginDeveloperSection` calls `loadPlugin` BEFORE `addDevPlugin` —
- *   deliberately, so a failing load leaves no card — so the entry does not exist yet.
+ *   folder, because the Developer section (its actions hook since §379) calls `loadPlugin`
+ *   BEFORE `addDevPlugin` — deliberately, so a failing load leaves no card — so the entry
+ *   does not exist yet.
  *   With an installed plugin of the same id, a freshly picked folder either silently
  *   lost capabilities or, for a `trusted` manifest, refused to load at all with a
  *   message telling the author to reinstall a directory they had just selected.

@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   loadPlugin: vi.fn().mockResolvedValue(undefined),
   pluginListDev: vi.fn(),
   reloadPlugin: vi.fn().mockResolvedValue(undefined),
+  unloadPlugin: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("../plugin-loader", () => ({
@@ -16,6 +17,7 @@ vi.mock("../plugin-loader", () => ({
     isLoaded: mocks.isLoaded,
     loadPlugin: mocks.loadPlugin,
     reloadPlugin: mocks.reloadPlugin,
+    unloadPlugin: mocks.unloadPlugin,
   },
 }));
 // Spread, so the real `toInstalledDevPlugin` mapper runs; only the invoke is replaced.
@@ -27,7 +29,11 @@ vi.mock("../../ipc/plugin-invoke", async (importOriginal) => ({
 import en from "../../i18n/en.json";
 import { useSettingsStore } from "../../stores/settings/store";
 import { usePluginStore } from "../../stores/system/plugin";
-import { devConsentToAsk, refreshDevPlugins } from "../dev-plugins";
+import {
+  devConsentToAsk,
+  refreshDevPlugins,
+  unloadDevPlugins,
+} from "../dev-plugins";
 
 const MANIFEST: PluginManifest = {
   author: "",
@@ -220,3 +226,28 @@ describe("devConsentToAsk (§379 F2)", () => {
     ).toBeNull();
   });
 });
+
+describe("unloadDevPlugins (§379)", () => {
+  it("unloads every dev plugin this realm runs", async () => {
+    usePluginStore.setState({
+      devPlugins: {
+        a: { ...toDev("a") },
+        b: { ...toDev("b") },
+      },
+    });
+    await unloadDevPlugins();
+    expect(mocks.unloadPlugin.mock.calls).toEqual([["a"], ["b"]]);
+  });
+});
+
+function toDev(id: string) {
+  return {
+    checksum: "",
+    enabled: true,
+    installedAt: 0,
+    installPath: `/dev/${id}`,
+    isDev: true,
+    manifest: { ...MANIFEST, id },
+    updatedAt: 0,
+  };
+}

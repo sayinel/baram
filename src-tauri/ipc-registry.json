@@ -1882,7 +1882,7 @@
     {
       "name": "pick_approved_dir",
       "input": {
-        "purpose": "string (\"journal\" | \"zettelkasten\" | \"tasks\" | \"plugin-dev\" | \"open-folder\" — TS 쪽은 이 5개의 유니온이고 \"open-folder\"가 Rust의 _ 갈래를 친다)"
+        "purpose": "string (\"journal\" | \"zettelkasten\" | \"tasks\" | \"open-folder\" — TS 쪽은 이 4개의 유니온이고 \"open-folder\"가 Rust의 _ 갈래를 친다)"
       },
       "output": "string | null",
       "module": "approval",

@@ -124,6 +124,17 @@ async function loadListed(
   }
 }
 
+/**
+ * Stop every dev plugin this realm runs — developer mode was switched off (spec 0058 R2:
+ * "끄면 dev 플러그인을 언로드한다"). Rust has already emptied the list it reports.
+ */
+export async function unloadDevPlugins(): Promise<void> {
+  const { devPlugins } = usePluginStore.getState();
+  for (const id of Object.keys(devPlugins)) {
+    await pluginLoader.unloadPlugin(id);
+  }
+}
+
 /** Same shape as the loader's `tr` — the startup path may run before the locale rehydrates. */
 function tr(key: string, params?: Record<string, string>): string {
   return t(key, useSettingsStore.getState().locale as Locale, params);
