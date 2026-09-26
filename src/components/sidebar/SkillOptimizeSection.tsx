@@ -1,7 +1,19 @@
 // §72c Skill Optimize Section — LLM-powered prompt optimization suggestions
 import { useCallback, useState } from "react";
 
+import type { LucideIcon } from "lucide-react";
+
+import {
+  ChevronDown,
+  ChevronRight,
+  Plus,
+  Search,
+  Variable,
+  Zap,
+} from "lucide-react";
+
 import { useLLMStream } from "../../hooks/use-llm-stream";
+import { useTranslation } from "../../i18n/useTranslation";
 import { useSkillStore } from "../../stores/ai/skill";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
@@ -15,16 +27,32 @@ import { registerSkillSection } from "./skill-panel-registry";
 
 // ─── Category icons ──────────────────────────────────────────────────────────
 
-const CATEGORY_ICONS: Record<string, string> = {
-  clarity: "\u{1F50D}", // magnifying glass
-  efficiency: "\u26A1", // lightning
-  missing: "\u2795", // plus
-  variables: "\u{1F4DD}", // memo
+const CATEGORY_ICONS: Record<string, LucideIcon> = {
+  clarity: Search,
+  efficiency: Zap,
+  missing: Plus,
+  variables: Variable,
 };
+
+function categoryLabel(category: string, t: (key: string) => string): string {
+  switch (category) {
+    case "clarity":
+      return t("skills.optimize.category.clarity");
+    case "efficiency":
+      return t("skills.optimize.category.efficiency");
+    case "missing":
+      return t("skills.optimize.category.missing");
+    case "variables":
+      return t("skills.optimize.category.variables");
+    default:
+      return category;
+  }
+}
 
 // ─── SuggestionCard ──────────────────────────────────────────────────────────
 
 export function SkillOptimizeSection() {
+  const { t } = useTranslation();
   const isSkill = useSkillStore((s) => s.isSkill);
   const { ai: aiEnabled } = useFeatureFlags();
   const { send, cancel, isStreaming, text, error } = useLLMStream();
@@ -74,9 +102,9 @@ export function SkillOptimizeSection() {
         onClick={() => setExpanded((v) => !v)}
       >
         <span className="skill-section-arrow">
-          {expanded ? "\u25BE" : "\u25B8"}
+          {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </span>
-        <span>Optimize</span>
+        <span>{t("skills.optimize.title")}</span>
         {displaySuggestions.length > 0 && (
           <span className="skill-optimize-badge">
             {displaySuggestions.length}
@@ -136,6 +164,7 @@ export function SkillOptimizeSection() {
 // ─── SkillOptimizeSection ────────────────────────────────────────────────────
 
 function SuggestionCard({ suggestion }: { suggestion: OptimizeSuggestion }) {
+  const { t } = useTranslation();
   const handleApply = useCallback(() => {
     if (!suggestion.before || !suggestion.after) return;
     const { activeTabId, tabs, markDirty, requestContentRefresh } =
@@ -151,11 +180,14 @@ function SuggestionCard({ suggestion }: { suggestion: OptimizeSuggestion }) {
     requestContentRefresh();
   }, [suggestion]);
 
+  const CategoryIcon = CATEGORY_ICONS[suggestion.category];
+
   return (
     <div className="skill-optimize-card">
       <div className="skill-optimize-card-header">
         <span className="skill-optimize-category">
-          {CATEGORY_ICONS[suggestion.category] ?? ""} {suggestion.category}
+          {CategoryIcon && <CategoryIcon className="icon-inline" size="1em" />}{" "}
+          {categoryLabel(suggestion.category, t)}
         </span>
         <span className="skill-optimize-title">{suggestion.title}</span>
       </div>

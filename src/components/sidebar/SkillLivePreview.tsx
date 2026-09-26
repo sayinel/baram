@@ -1,8 +1,10 @@
 // §72c Skill Live Preview — auto-updating LLM prompt preview in PropertiesPanel
 import { useEffect, useMemo, useState } from "react";
 
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
+import { useTranslation } from "../../i18n/useTranslation";
 import { useSkillStore } from "../../stores/ai/skill";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
@@ -16,6 +18,7 @@ import { registerSkillSection } from "./skill-panel-registry";
 // ─── Variable highlighting ──────────────────────────────────────────────────
 
 export function SkillLivePreview() {
+  const { t } = useTranslation();
   const { activeTabId, tabs } = useEditorStore(
     useShallow((s) => ({
       activeTabId: s.activeTabId,
@@ -60,9 +63,9 @@ export function SkillLivePreview() {
     <div className="skill-live-preview">
       <button className="slp-header" onClick={() => setExpanded((v) => !v)}>
         <span className="skill-section-arrow">
-          {expanded ? "\u25be" : "\u25b8"}
+          {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </span>
-        <span>Preview</span>
+        <span>{t("skills.preview.title")}</span>
         {preview && (
           <span className="slp-token-badge">
             ~{formatTokenCount(preview.tokenCount)}

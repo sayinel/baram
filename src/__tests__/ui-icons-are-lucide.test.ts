@@ -279,15 +279,7 @@ const ALLOWED: Record<string, Exemption> = {
  * 아직 바꾸지 않은 파일과 그것을 바꾸는 계획 0108 의 태스크. 태스크마다 자기 줄을 먼저 지워
  * red 를 본 뒤 바꾼다. 마지막 태스크가 이 표와 그 분기를 지운다.
  */
-const PENDING: Record<string, string> = {
-  "src/components/sidebar/FileHistoryView.tsx": "Task 9",
-  "src/components/sidebar/PropertiesPanel.tsx": "Task 9",
-  "src/components/sidebar/SkillDependencySection.tsx": "Task 9",
-  "src/components/sidebar/SkillLintSection.tsx": "Task 9",
-  "src/components/sidebar/SkillLivePreview.tsx": "Task 9",
-  "src/components/sidebar/SkillOptimizeSection.tsx": "Task 9",
-  "src/components/sidebar/VersionHistoryPanel.tsx": "Task 9",
-};
+const PENDING: Record<string, string> = {};
 
 function allFindings(): Finding[] {
   return [

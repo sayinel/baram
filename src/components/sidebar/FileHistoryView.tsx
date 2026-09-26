@@ -1,6 +1,8 @@
 // §71 File-scoped version history view -- sidebar
+import { ArrowLeft } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
+import { useTranslation } from "../../i18n/useTranslation";
 import { useSnapshotStore } from "../../stores/editor/snapshot";
 import { formatSnapshotTime } from "../../stores/editor/snapshot-time";
 import { distinctFileVersions } from "../../stores/editor/snapshot-versions";
@@ -9,6 +11,7 @@ import { basename } from "../../utils/path-utils";
 import { DiffView } from "../editor/DiffView";
 
 export function FileHistoryView() {
+  const { t } = useTranslation();
   const rootPath = useFileStore((s) => s.rootPath);
   const {
     fileHistory,
@@ -52,9 +55,10 @@ export function FileHistoryView() {
         <button
           className="snapshot-action-btn"
           onClick={back}
-          title="All snapshots"
+          title={t("versionHistory.allSnapshots")}
         >
-          {"←"} All snapshots
+          <ArrowLeft className="icon-inline" size="1em" />{" "}
+          {t("versionHistory.allSnapshots")}
         </button>
         <span className="snapshot-panel-title text-truncate">
           {basename(fileHistoryPath)}

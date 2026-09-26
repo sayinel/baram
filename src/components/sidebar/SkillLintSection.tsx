@@ -3,12 +3,16 @@ import { useState } from "react";
 
 import type { LintResult } from "../../utils/prompt-linter";
 
+import { ChevronDown, ChevronRight } from "lucide-react";
+
+import { useTranslation } from "../../i18n/useTranslation";
 import { useSkillStore } from "../../stores/ai/skill";
 import { registerSkillSection } from "./skill-panel-registry";
 
 // ─── LintItem ────────────────────────────────────────────────────────────────
 
 export function SkillLintSection() {
+  const { t } = useTranslation();
   const lintResults = useSkillStore((s) => s.lintResults);
   const [expanded, setExpanded] = useState(false);
 
@@ -26,9 +30,9 @@ export function SkillLintSection() {
         onClick={() => setExpanded((v) => !v)}
       >
         <span className="skill-section-arrow">
-          {expanded ? "\u25be" : "\u25b8"}
+          {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </span>
-        <span>Lint</span>
+        <span>{t("skills.lint.title")}</span>
         {errorCount > 0 && (
           <span className="skill-lint-badge skill-lint-badge--error">
             {errorCount}
