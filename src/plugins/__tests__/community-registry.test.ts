@@ -131,6 +131,7 @@ describe("what community.json may not carry (§382)", () => {
         communityEntry({ id: "unsafe-id", publisherId: 2 ** 53 }),
         communityEntry({ id: "no-repo-id", repoId: undefined }),
         communityEntry({ id: "negative-repo-id", repoId: -1 }),
+        communityEntry({ id: "trailing-hyphen", publisher: "octocat-" }),
         // The two that must survive: the longest legal login, and the plain fixture.
         communityEntry({ id: "longest-login", publisher: "a".repeat(39) }),
         communityEntry(),
@@ -196,6 +197,25 @@ describe("what community.json may not carry (§382)", () => {
       version: "2.1.0",
     });
   });
+
+  it("strips publisher/publisherId/repoId from a first-party entry that carries them", async () => {
+    // §382 — the channel is the FILE, not a claim the entry makes about itself. Rust's
+    // `RegistryEntry` has no such fields today, but nothing here should depend on that
+    // staying true forever.
+    const index = await load(
+      [
+        firstParty({
+          publisher: "someone",
+          publisherId: 1,
+          repoId: 2,
+        }),
+      ],
+      [],
+    );
+    expect(index.plugins[0]).not.toHaveProperty("publisher");
+    expect(index.plugins[0]).not.toHaveProperty("publisherId");
+    expect(index.plugins[0]).not.toHaveProperty("repoId");
+  });
 });
 
 describe("one file failing costs the other nothing (§382)", () => {
@@ -207,6 +227,24 @@ describe("one file failing costs the other nothing (§382)", () => {
     const index = await fetchRegistryIndex();
     expect(ids(index)).toEqual(["baram-word-count"]);
     expect(index.communityError).toContain("HTTP 500");
+  });
+
+  it("does not cache a community failure — the next call tries again", async () => {
+    // ‼️ Caching the failure (e.g. `setCommunityCache([])` in the catch branch) would make
+    // this call hit the cache path on the SECOND fetch, never call `pluginFetchCommunityRegistry`
+    // again, and keep serving `[]` — silently losing a real listing that shows up right after.
+    fetchRegistry.mockResolvedValue({ plugins: [] });
+    fetchCommunity.mockRejectedValueOnce(new Error("offline"));
+    const first = await fetchRegistryIndex();
+    expect(ids(first)).toEqual([]);
+    expect(usePluginStore.getState().communityCache).toBeNull();
+
+    fetchCommunity.mockResolvedValueOnce({
+      communityPlugins: [communityEntry()],
+    });
+    const second = await fetchRegistryIndex();
+    expect(fetchCommunity).toHaveBeenCalledTimes(2);
+    expect(ids(second)).toEqual(["hello-counter"]);
   });
 
   it("still throws when index.json fails with nothing cached — and caches the community side anyway", async () => {

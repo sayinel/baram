@@ -300,15 +300,17 @@ export interface RegistryEntry {
     /**
      * §260 Phase 6 — why `fetchRegistryIndex` stripped this entry's tier, when it did.
      *
-     * NOT a registry field: it is set locally by `normalizeIndex` and exists so the marketplace
-     * can explain the right remedy. An `unknown-tier` entry really may predate the trust model
-     * ("ask the author"); an `unknown-capability` entry usually means the registry is NEWER than
-     * this build, where the remedy is the opposite direction ("update Baram"). Absent for a
-     * genuinely legacy entry, which carried no tier to begin with.
+     * NOT a registry field: it is set locally, never read off the wire, and exists so the
+     * marketplace can explain the right remedy. `unknown-tier` and `unknown-capability` are set
+     * by `normalizeIndex` (`registry-client.ts`): an `unknown-tier` entry really may predate the
+     * trust model ("ask the author"); an `unknown-capability` entry usually means the registry
+     * is NEWER than this build, where the remedy is the opposite direction ("update Baram").
+     * Absent for a genuinely legacy entry, which carried no tier to begin with.
      *
-     * §382 adds `community-trusted`: a community entry declaring full trust, which this build
-     * lists but will not install (community plugins are sandboxed only until spec 0058's stage
-     * 3). The remedy is neither the author's nor an app update's.
+     * §382 adds `community-trusted`, set by `applyCommunityRules` (`community-registry.ts`): a
+     * community entry declaring full trust, which this build lists but will not install
+     * (community plugins are sandboxed only until spec 0058's stage 3). The remedy is neither
+     * the author's nor an app update's.
      */
     demotedBecause?: "community-trusted" | "unknown-capability" | "unknown-tier";
     description: string;
@@ -387,10 +389,11 @@ export type RegistryEntryKind = "plugin" | "theme";
  * How many entries Rust discarded because it could not deserialize them.
  *
  * Produced by the app, never read off the wire (`RawRegistryIndex` has no such field), so a
- * registry cannot assert one. It exists because a count survives where a log line might not:
- * `src/logging` now installs an implementation behind the Rust-side `log::warn!`, but this
- * field is still the signal the frontend reports, and the log is only where the dropped ids
- * are named.
+ * registry cannot assert one. `registry-client.ts` reads it only to feed a dev-console
+ * `logger.warn` (see that call site) — no UI shows it to the user. `src-tauri/src/logging`
+ * installs an implementation behind the Rust-side `log::warn!`, so in a release build the
+ * Rust log is where a drop is recorded and the dropped ids are named; this count is what a
+ * frontend developer sees without one.
  */
 export interface RegistryIndex {
     /**

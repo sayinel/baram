@@ -139,7 +139,8 @@ function matchesQuery(entry: RegistryEntry, lower: string): boolean {
  * §361 — the theme browser's list (`ThemeBrowser.tsx`). Mirror of `searchRegistry`, filtering
  * the opposite way: only `kind: "theme"` rows, so an entry with no `kind` (read as
  * `"plugin"` — see `RegistryEntry.kind`'s doc comment) never appears here either. Reuses the
- * same `fetchRegistryIndex` cache — themes and plugins are one registry, one fetch.
+ * same `fetchRegistryIndex` result — themes and plugins share the merged list, though §382
+ * split the fetch itself into `index.json` and `community.json` behind their own caches.
  */
 export function searchThemeRegistry(
   index: RegistryIndex,
@@ -313,17 +314,24 @@ async function firstPartyIndex(forceRefresh: boolean): Promise<RegistryIndex> {
     // one shape and the guard cannot be bypassed by reading the cache instead.
     const index: RegistryIndex = {
       ...fetched,
-      plugins: normalizeIndex(fetched.plugins).map((entry): RegistryEntry => ({
-        ...entry,
-        channel: "first-party",
-      })),
+      plugins: normalizeIndex(fetched.plugins).map((entry): RegistryEntry => {
+        // §382 — the CHANNEL is the file, and `publisher`/`publisherId`/`repoId` are a
+        // COMMUNITY entry's fields (spec 0058 §9.1): stripped here rather than trusted to be
+        // absent, because Rust's `RegistryEntry` lacking them today is not a guarantee this
+        // function can rely on staying true.
+        const stamped: RegistryEntry = { ...entry, channel: "first-party" };
+        delete stamped.publisher;
+        delete stamped.publisherId;
+        delete stamped.repoId;
+        return stamped;
+      }),
     };
-    // The only place a partial drop becomes visible to the user without opening the log
-    // file. Rust discards entries it cannot deserialize so one bad entry cannot empty the
-    // marketplace, and now also names the dropped ids via `log::warn!` — `src/logging`
-    // installs an implementation behind that macro (see `RegistryIndex`'s doc comment in
-    // `registry.rs`). A TOTAL drop is a hard error upstream and never arrives here — this is
-    // strictly the survivable case.
+    // This `logger.warn` reaches a DEV CONSOLE ONLY — `src/utils/logger.ts` gates `warn` on
+    // `isDev`, nothing forwards it to a file, and no UI reads `droppedCount`. In a release
+    // build the Rust log (`src-tauri/src/logging`) is the only place a drop is recorded and
+    // the dropped ids named. Rust discards entries it cannot deserialize so one bad entry
+    // cannot empty the marketplace; a TOTAL drop is a hard error upstream and never arrives
+    // here — this is strictly the survivable case.
     if (index.droppedCount) {
       logger.warn(
         `[Registry] ${index.droppedCount} entry/entries could not be read and were skipped — ` +
