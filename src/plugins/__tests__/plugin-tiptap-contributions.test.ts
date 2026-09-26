@@ -59,7 +59,10 @@ function installedWithConsent(
 describe("plugin loader → tiptap contribution wiring", () => {
   beforeEach(() => {
     __resetEditorSurfaces();
-    // These loads are `isDev` with trusted manifests: they pin DEV-BUILD semantics (§379).
+    // Most of these loads are `isDev` with trusted manifests, pinning DEV-BUILD semantics
+    // (§379). The one INSTALLED load below (`installs nothing when the GRANTED capabilities
+    // lack extensions`) never reads this `devMode` at all — `resolveConsent`'s installed
+    // branch is keyed on `isDev`, not on the build.
     usePluginStore.setState({
       devMode: { active: true, devBuild: true, enabled: false },
       installedPlugins: {},

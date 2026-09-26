@@ -55,7 +55,10 @@ function revoke(...entries: RevocationEntry[]): void {
 
 describe("PluginLoader revocation gate (§69)", () => {
   beforeEach(() => {
-    usePluginStore.setState({ revocations: null });
+    usePluginStore.setState({
+      devMode: { active: false, devBuild: false, enabled: false },
+      revocations: null,
+    });
     // The refusal is translated, so the locale is part of this suite's fixture.
     useSettingsStore.setState({ locale: "en" });
   });

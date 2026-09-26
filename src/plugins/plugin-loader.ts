@@ -862,9 +862,13 @@ function activeFilePath(): null | string {
  * Returns the SAME object when nothing changed, so the common path allocates nothing and
  * an identity comparison in a test means what it looks like.
  *
- * Reads the consent from the store rather than taking it as an argument: `loadPlugin` has
- * four callers (startup, install, enable-toggle, dev reload) and threading it through all
- * of them is four chances for one to pass nothing and quietly restore the old behaviour.
+ * Reads the consent from the store rather than taking it as an argument — for an INSTALLED
+ * plugin: `loadPlugin` has four callers (startup, install, enable-toggle, dev reload) and
+ * threading it through all of them is four chances for one to pass nothing and quietly
+ * restore the old behaviour. A RELEASE build's dev-folder consent is necessarily an
+ * argument instead (`opts.devConsent`): Rust owns it in `plugin-dev.json`, not the store,
+ * and a caller that passes none is REFUSED rather than quietly widened (`resolveConsent`,
+ * spec 0058 §379 F2).
  *
  * ‼️ The tier is REFUSED rather than narrowed (§260 Phase 5 re-review, R1), and that
  * asymmetry is the point. A capability can be withheld and the plugin still runs with

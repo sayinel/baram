@@ -41,7 +41,12 @@ interface PluginState {
    */
   builtinDisabled: string[];
   clearUpdateAvailable: (id: string) => void;
-  // Runtime state (not persisted; Rust's plugin-dev.json is the source of truth, §379)
+  // Runtime state (not persisted). The note below covers `devMode` and `devPlugins`
+  // only — `getPluginSettings` is a plain getter over the PERSISTED `pluginSettings` map.
+  //
+  // `devMode` is set from Rust's `plugin_list_dev` snapshot: `active`/`enabled` come from
+  // R1 (`plugin-dev.json`), `devBuild` comes from the compiled Rust build, not that file
+  // (§379). `devPlugins`'s source of truth is that same R1 file.
   devMode: DevModeStatus;
   devPlugins: Record<string, InstalledPlugin>;
   getPluginSettings: (pluginId: string) => Record<string, unknown>;
@@ -543,7 +548,7 @@ export const usePluginStore = create<PluginState>()(
       // Forcing it here makes "in memory only" true of the READ path, which is the only place
       // it can be made true. No `version` bump or migrate step: a key left in storage is now
       // inert, and `partialize` drops it on the next write.
-      // ‼️ BOTH RESETS LIVE HERE, because this is the only side that can make them true.
+      // ‼️ ALL THREE RESETS LIVE HERE, because this is the only side that can make them true.
       // Omitting a key from `partialize` above stops this app from WRITING it and does nothing
       // about a value already in storage — which is the mistake this feature made twice.
       // `current` is the initial state, so naming it is how each field says "keep the default,
@@ -560,10 +565,11 @@ export const usePluginStore = create<PluginState>()(
           ...(persisted as object),
           // ‼️ VALIDATED, NOT SPREAD — see `disabledBuiltinIds`. A malformed value here
           // is a permanent, self-sustaining plugin outage with no error surface, and it
-          // is reachable by exactly the writer the two resets below exist to contain.
+          // is reachable by exactly the writer the resets below exist to contain.
           builtinDisabled: disabledBuiltinIds(stored.builtinDisabled),
           registryUrl: current.registryUrl,
-          // §379 — the loader's "is a dev load bounded?" answer; only Rust may set it, per launch.
+          // §379 — the loader's "is a dev load bounded?" answer, set from the
+          // `plugin_list_dev` snapshot Rust returns each launch; never restored from storage.
           devMode: current.devMode,
           revocationSequenceSeen: {},
         };

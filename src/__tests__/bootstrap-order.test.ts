@@ -162,7 +162,9 @@ describe("dev-folder loads declare isDev (§260 Phase 5)", () => {
     ).toBeGreaterThan(0);
     expect(
       installedCalls.filter((c) => c.includes("isDev")),
-      "an installed load marked isDev skips the consent narrowing entirely",
+      "an installed load marked isDev would be treated as a dev load instead — unbounded " +
+        "only in a dev build; a release build refuses it without a devConsent or narrows " +
+        "it to one instead of the installed record's (§379)",
     ).toEqual([]);
   });
 });

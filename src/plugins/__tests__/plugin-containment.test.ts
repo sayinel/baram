@@ -167,6 +167,40 @@ describe("plugin containment (#259 → §260 Phase 5)", () => {
     expect(registerGrant).toHaveBeenCalledWith("demo", ["editor"], "/p/demo");
   });
 
+  it("ignores a devConsent on an INSTALLED load — only the installed record's consent narrows it", async () => {
+    // `resolveConsent`'s installed branch must not fall back to `opts.devConsent`: a caller
+    // passing one by mistake (or a future refactor reaching for `??`) must not widen or
+    // otherwise change what an installed plugin is bounded by — that consent belongs to a
+    // dev-folder load only (§379 F2).
+    usePluginStore.setState({
+      installedPlugins: {
+        demo: {
+          checksum: "c",
+          consent: { capabilities: ["editor"], trust: "sandboxed" },
+          enabled: true,
+          installedAt: 0,
+          installPath: "/p/demo",
+          manifest: BASE,
+          updatedAt: 0,
+        },
+      },
+    });
+    const { loader } = loaderWithSpies();
+
+    await loader.loadPlugin(
+      "/p/demo",
+      { ...BASE, capabilities: ["editor", "network", "files"] },
+      {
+        devConsent: {
+          capabilities: ["editor", "network", "files"],
+          trust: "sandboxed",
+        },
+      },
+    );
+
+    expect(registerGrant).toHaveBeenCalledWith("demo", ["editor"], "/p/demo");
+  });
+
   it("REFUSES a tier escalation rather than narrowing it", async () => {
     // §260 Phase 5 re-review (R1). `narrowToConsent` filtered capabilities and let `trust`
     // through untouched, so `runLoad`'s routing still read the manifest's own tier — and
@@ -266,7 +300,9 @@ describe("plugin containment (#259 → §260 Phase 5)", () => {
     // message telling the author to reinstall a directory they had just selected.
     //
     // Both earlier mirror tests seeded `devPlugins` first, which is exactly why they missed
-    // this. `isDev` is declared by the caller now, so the store is not consulted at all.
+    // this. `isDev` is declared by the caller now, so `devPlugins`/`installedPlugins` are not
+    // consulted to decide dev-ness at all — though `resolveConsent` still reads the store's
+    // `devMode` to decide whether THIS dev load is bounded by a consent (§379).
     usePluginStore.setState({
       devPlugins: {},
       installedPlugins: {
@@ -416,6 +452,29 @@ describe("plugin containment (#259 → §260 Phase 5)", () => {
     expect(registerGrant).toHaveBeenCalledWith(
       "demo",
       ["editor", "network"],
+      "/dev/demo",
+    );
+  });
+
+  it("ignores a devConsent in a DEV build — a dev build never narrows a dev load", async () => {
+    // The `LoadOptions` doc: "a dev build's dev load ignores it". `devLoadsAreUnbounded()`
+    // must be checked before `opts.devConsent` is ever read, or a caller passing one — by
+    // mistake, or ahead of Task 4/5 actually wiring one up — would silently narrow an
+    // author's own working copy on a build where nothing is supposed to ask.
+    const { loader } = loaderWithSpies();
+
+    await loader.loadPlugin(
+      "/dev/demo",
+      { ...BASE, capabilities: ["statusbar", "network"] },
+      {
+        devConsent: { capabilities: ["statusbar"], trust: "sandboxed" },
+        isDev: true,
+      },
+    );
+
+    expect(registerGrant).toHaveBeenCalledWith(
+      "demo",
+      ["statusbar", "network"],
       "/dev/demo",
     );
   });
