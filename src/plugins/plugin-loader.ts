@@ -69,8 +69,13 @@ type Importer = (url: string) => Promise<PluginModule>;
  *
  * `isDev` marks a dev-folder load. It is a parameter rather than a store lookup because
  * the store is written *after* the load on the first-load path — see `resolveConsent`.
+ *
+ * `devConsent` (§379 F2) is what the user approved for that folder, as Rust recorded it in
+ * `plugin-dev.json` (`DevFolderRow.consent`). A RELEASE build's dev load is narrowed by it and
+ * refused without it; a dev build's dev load ignores it, as before §379.
  */
 interface LoadOptions {
+  devConsent?: null | PluginConsent;
   isDev?: boolean;
 }
 
@@ -464,9 +469,11 @@ export class PluginLoader {
       // load is the author's own working copy: it was never installed, is not on the Installed
       // tab (dev plugins are a separate store, rendered by `PluginDeveloperSection`), and is
       // not in the marketplace — so every clause of the remedy is false for it. And this throw
-      // is the author's ONLY feedback about a missing tier, because the dev-add path validates
-      // in Rust (`read_manifest_at` → `validate_manifest`), which does not check `trust`. The
-      // schema text is the actionable message there, so it is kept.
+      // is the author's ONLY feedback about a missing tier, because the dev-folder path
+      // validates in Rust (`read_manifest_at` → `validate_manifest`), which does not check
+      // `trust` — in a dev build; a release build's `admit_manifest` refuses a trust-less
+      // folder before it gets here (§379). The schema text is the actionable message there,
+      // so it is kept.
       // `legacyInstallMessage` returns null when it has nothing better to say than the schema
       // — a real tier, or a `trust` that is present but not a tier name at all (`null`, `""`,
       // a number), where "update Baram" would be a dead end. The whole discrimination lives
@@ -487,9 +494,11 @@ export class PluginLoader {
     // refusing to run a plugin because its author stopped answering issues would take a
     // working feature away for no user-facing reason.
     //
-    // Dev loads are exempt: a local folder is the author's own code, never installed
-    // from the registry, and the same exemption `legacyInstallMessage` gets above.
-    if (!opts.isDev) {
+    // Dev loads are exempt only in a DEV build (§379 F3), where a local folder is the author's
+    // own code. A release build's developer mode loads folders someone may have handed the user,
+    // so the list applies by id — weakly, since whoever hands over a folder can rename the id,
+    // but it stops a re-published copy under the same one.
+    if (!opts.isDev || !devLoadsAreUnbounded()) {
       const revocation = revocationFor(
         rawManifest.id,
         rawManifest.version,
@@ -853,9 +862,13 @@ function activeFilePath(): null | string {
  * Returns the SAME object when nothing changed, so the common path allocates nothing and
  * an identity comparison in a test means what it looks like.
  *
- * Reads the consent from the store rather than taking it as an argument: `loadPlugin` has
- * four callers (startup, install, enable-toggle, dev reload) and threading it through all
- * of them is four chances for one to pass nothing and quietly restore the old behaviour.
+ * Reads the consent from the store rather than taking it as an argument — for an INSTALLED
+ * plugin: `loadPlugin` has four callers (startup, install, enable-toggle, dev reload) and
+ * threading it through all of them is four chances for one to pass nothing and quietly
+ * restore the old behaviour. A RELEASE build's dev-folder consent is necessarily an
+ * argument instead (`opts.devConsent`): Rust owns it in `plugin-dev.json`, not the store,
+ * and a caller that passes none is REFUSED rather than quietly widened (`resolveConsent`,
+ * spec 0058 §379 F2).
  *
  * ‼️ The tier is REFUSED rather than narrowed (§260 Phase 5 re-review, R1), and that
  * asymmetry is the point. A capability can be withheld and the plugin still runs with
@@ -897,7 +910,8 @@ function narrowToConsent(
 }
 
 /**
- * The consent recorded for an INSTALLED plugin, or `undefined` for a dev-folder load.
+ * The consent a load is bounded by: an INSTALLED plugin's record, a release build's
+ * dev-folder consent from Rust (§379), or `undefined` for a dev build's dev-folder load.
  *
  * §260 Phase 5 re-review — dev-ness is DECLARED by the caller, never inferred from the
  * store, and that has now been the source of the same bug three times over:
@@ -909,8 +923,9 @@ function narrowToConsent(
  *   plugin, because `handleToggleEnabled` loads the installed record and a colliding dev
  *   entry made it take the dev branch.
  * - G1: keying on `devPlugins[id].installPath` still missed the FIRST load of a picked
- *   folder, because `PluginDeveloperSection` calls `loadPlugin` BEFORE `addDevPlugin` —
- *   deliberately, so a failing load leaves no card — so the entry does not exist yet.
+ *   folder, because the Developer section (its actions hook since §379) calls `loadPlugin`
+ *   BEFORE `addDevPlugin` — deliberately, so a failing load leaves no card — so the entry
+ *   does not exist yet.
  *   With an installed plugin of the same id, a freshly picked folder either silently
  *   lost capabilities or, for a `trusted` manifest, refused to load at all with a
  *   message telling the author to reinstall a directory they had just selected.
@@ -919,13 +934,37 @@ function narrowToConsent(
  * The caller always knows which registry it is loading from; nothing else reliably does.
  * This also drops the `installPath` string comparison, which depended on Rust returning a
  * byte-identical path for the same folder every time.
+ *
+ * §379 F2 — in a RELEASE build a dev-folder load is bounded like an install, by the consent
+ * Rust recorded for that folder, and REFUSED when the caller brings none. The refusal is what
+ * keeps the consent from being UX only: a startup path that forgot to pass it would otherwise
+ * load the folder unasked on every launch.
  */
 function resolveConsent(
   pluginId: string,
   opts: LoadOptions,
 ): PluginConsent | undefined {
-  if (opts.isDev) return undefined;
-  return usePluginStore.getState().installedPlugins[pluginId]?.consent;
+  if (!opts.isDev) {
+    return usePluginStore.getState().installedPlugins[pluginId]?.consent;
+  }
+  if (devLoadsAreUnbounded()) return undefined;
+  if (!opts.devConsent) {
+    throw new Error(tr("plugin.dev.error.consentMissing", { id: pluginId }));
+  }
+  return opts.devConsent;
+}
+
+/**
+ * §379 — is this a DEV build, where a dev-folder load runs unbounded and unrevoked as it did
+ * before developer mode existed?
+ *
+ * Read from what Rust last reported (`plugin_list_dev` → `devMode`), never from Vite's
+ * `import.meta.env.DEV`: a `cargo build` debug binary embeds a production `dist/`, so the two
+ * disagree. FAIL-CLOSED — the store starts at `devBuild: false` and `merge` never restores it,
+ * so a dev load before Rust has answered is treated as a release build's.
+ */
+function devLoadsAreUnbounded(): boolean {
+  return usePluginStore.getState().devMode.devBuild;
 }
 
 /**

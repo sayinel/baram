@@ -13,7 +13,7 @@ const mocks = vi.hoisted(() => ({
   isLoaded: vi.fn().mockReturnValue(false),
   liveSandboxIds: vi.fn().mockReturnValue([]),
   loadPlugin: vi.fn().mockResolvedValue(undefined),
-  pluginListDev: vi.fn().mockResolvedValue([]),
+  pluginListDev: vi.fn(),
   pluginSandboxDeregister: vi.fn().mockResolvedValue(undefined),
   pluginPrepareScopes: vi.fn().mockResolvedValue(undefined),
   reloadPlugin: vi.fn().mockResolvedValue(undefined),
@@ -30,11 +30,11 @@ vi.mock("../plugin-loader", () => ({
   },
 }));
 
-vi.mock("../../ipc/plugin-invoke", () => ({
+vi.mock("../../ipc/plugin-invoke", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../ipc/plugin-invoke")>()),
   pluginListDev: mocks.pluginListDev,
-  pluginSandboxDeregister: mocks.pluginSandboxDeregister,
   pluginPrepareScopes: mocks.pluginPrepareScopes,
-  toInstalledDevPlugin: (r: unknown) => r,
+  pluginSandboxDeregister: mocks.pluginSandboxDeregister,
 }));
 
 import { usePluginStore } from "../../stores/system/plugin";
@@ -62,12 +62,33 @@ const devPlugin = {
   updatedAt: 0,
 } as unknown as InstalledPlugin;
 
+// §379 — what `plugin_list_dev` answers now: a dev build (so nothing asks), one folder.
+const devSnapshot = {
+  active: true,
+  devBuild: true,
+  enabled: false,
+  folders: [
+    {
+      consent: null,
+      error: null,
+      ids: [],
+      path: "/dev/smoke",
+      plugin: {
+        checksum: "",
+        install_path: "/dev/smoke",
+        is_dev: true,
+        manifest: devPlugin.manifest,
+      },
+    },
+  ],
+};
+
 describe("dev plugin error lifecycle (§260 3c-3)", () => {
   beforeEach(() => {
     usePluginStore.setState({ installedPlugins: {}, pluginErrors: {} });
     mocks.loadPlugin.mockClear().mockResolvedValue(undefined);
     mocks.isLoaded.mockReturnValue(false);
-    mocks.pluginListDev.mockResolvedValue([devPlugin]);
+    mocks.pluginListDev.mockResolvedValue(devSnapshot);
   });
 
   afterEach(() => {

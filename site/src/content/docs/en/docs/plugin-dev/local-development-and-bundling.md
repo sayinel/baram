@@ -5,12 +5,42 @@ title: "Local development and bundling"
 ## Local development loop
 
 **Settings → Plugins → Developer** lets you iterate on a plugin without
-packaging or installing it:
+packaging or installing it.
 
-- **Load dev plugin folder** — opens a native folder picker
-  (`@tauri-apps/plugin-dialog`); pick any directory containing a
-  `baram-plugin.json` + built `main` bundle. The plugin is registered as a
-  dev plugin and loaded immediately.
+**Developer mode.** A release build keeps folder loading off until you turn on
+**Developer mode** in that section; Baram shows a warning first. While it is on:
+
+- only a `trust: "sandboxed"` plugin loads from a folder — a `trusted` manifest
+  is refused with "Release builds can only load sandboxed plugins from a folder";
+- a plugin's storage (`~/.baram/plugin-data/<id>`) is keyed by its id, so a
+  folder cannot take an id that belongs to someone else: not one starting with
+  `baram-` (reserved for Baram's own plugins — the examples in this repository
+  all use `baram-` ids, so copy one and change its `id` first), not the id of a
+  plugin you have installed, and not an id whose storage another plugin left
+  behind (uninstalling keeps `plugin-data/<id>`). Baram records the id of each
+  folder it loads, so your own plugin's storage does not block it next time.
+  While a folder holds an id, installing that id from the marketplace is refused;
+- each folder asks for its capabilities before its code runs — the same dialog an
+  install shows — and Baram records the answer. A later build that asks for more
+  is asked about again when you press **Reload**;
+- the revocation list applies to a folder's plugin by its id.
+
+Turning it off unloads the folders' plugins and keeps the list for next
+time. Turning it off or removing a folder does not delete what the folder's
+plugin stored in `~/.baram/plugin-data/<id>`: a plugin you later install
+with the same id starts with that data, so delete the directory first if
+you do not want that. A development build (`npm run tauri dev`) has no
+switch: developer mode is always on there, a `trusted` folder loads, a
+folder may stand in for an installed plugin of the same id (how you develop
+the next version of a published one), none of the id rules above apply, and
+nothing asks.
+
+- **Load dev plugin folder** — opens a native folder picker. Pick a directory
+  containing a `baram-plugin.json` + built `main` bundle; it joins the list and
+  loads immediately. Apart from a development build's one-time import of the
+  list it kept before, picking is the only way onto the list — Baram keeps it
+  in its own `plugin-dev.json`, a file separate from the app's settings
+  (`config.json`).
 - **Reload** — re-reads the manifest from disk and reloads the plugin's
   module (unload the old instance, re-`import()` the bundle, re-run
   `activate`). Use this after rebuilding your bundle (`npm run build`) to

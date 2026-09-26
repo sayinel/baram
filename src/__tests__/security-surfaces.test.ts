@@ -75,11 +75,11 @@ function filesUnder(dir: string, out: string[] = []): string[] {
  *
  * 다섯을 부르지 않지만 같은 종류(승인을 주거나 거두는, 혹은 동의 문장을 그리는)
  * 효과인데 일부러 뺀 것 넷, 이유와 함께(코퍼스 표기는 위와 같다):
- *  - `pickApprovedDir` — 코퍼스 안 소비자 7개 파일 / 8호출지점(FileTree.tsx,
+ *  - `pickApprovedDir` — 코퍼스 안 소비자 6개 파일 / 7호출지점(FileTree.tsx,
  *    TasksTab.tsx, JournalTab.tsx, ZettelkastenTab.tsx, VaultTab.tsx,
- *    PluginDeveloperSection.tsx, ContextAddMenu.tsx 는 :66·:90 두 번), 코퍼스 밖에
+ *    ContextAddMenu.tsx 는 :66·:90 두 번), 코퍼스 밖에
  *    2개 파일이 더 있다(src/hooks/use-file-operations.ts:447,
- *    src/services/vault-create.ts:11) — 전체 9파일 / 10호출지점. 전부
+ *    src/services/vault-create.ts:11) — 전체 8파일 / 9호출지점. 전부
  *    `invoke("pick_approved_dir")`(`ipc/approval.ts:74-79`)로 네이티브 폴더 선택
  *    대화상자를 연다. OS 가 그리는 창이라 CSS 로 위장할 수 없고, FileTree·TasksTab
  *    같은 평범한 화면을 shadow DOM 으로 밀어 넣게 된다.

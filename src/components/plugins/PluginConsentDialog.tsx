@@ -18,14 +18,33 @@ interface PluginConsentDialogProps {
    * code review, M2): `backfillConsent` deliberately leaves a legacy manifest without a
    * record, so updating one yields `reason: "first-install"` — and the dialog titled
    * itself "Install" over a button that updates. Only the caller knows.
+   *
+   * `"load"` (§379 F2) is a folder loaded in developer mode — nothing is installed, so
+   * neither of the other two titles is true of it.
    */
-  intent: "install" | "update";
+  intent: "install" | "load" | "update";
   name: string;
   onCancel: () => void;
   onConfirm: () => void;
-  /** The recorded consent, when this is an update. Drives the "NEW" markers. */
+  /**
+   * The recorded consent, when there is one to diff against. Drives the "NEW" markers — set
+   * for an `"update"`, and also for a `"load"` reload whose capabilities grew (§379 F2).
+   */
   prior?: PluginConsent;
 }
+
+/** The title and confirm-button keys per intent — static keys, so the catalogue checks see them. */
+const TITLE_KEY = {
+  install: "plugin.consent.title.install",
+  load: "plugin.consent.title.load",
+  update: "plugin.consent.title.update",
+} as const;
+
+const CONFIRM_KEY = {
+  install: "plugin.consent.confirm.install",
+  load: "plugin.consent.confirm.load",
+  update: "plugin.consent.confirm.update",
+} as const;
 
 /**
  * §260 Phase 5 — the grant step the ADR carried as a residual: until now the install UI
@@ -55,7 +74,6 @@ export function PluginConsentDialog({
   const { t } = useTranslation();
   const [acknowledged, setAcknowledged] = useState(false);
   const trusted = consent.trust === "trusted";
-  const installing = intent === "install";
 
   // Escape cancels. A dialog that vanished without an answer must never resolve as
   // consent — the caller is awaiting a decision, and "dismissed" is a refusal.
@@ -87,12 +105,7 @@ export function PluginConsentDialog({
            */}
           <div className="plugin-consent__body">
             <h3 className="plugin-consent__title">
-              {t(
-                installing
-                  ? "plugin.consent.title.install"
-                  : "plugin.consent.title.update",
-                { name },
-              )}
+              {t(TITLE_KEY[intent], { name })}
             </h3>
 
             {trusted && (
@@ -163,11 +176,7 @@ export function PluginConsentDialog({
               onClick={onConfirm}
               type="button"
             >
-              {t(
-                installing
-                  ? "plugin.consent.confirm.install"
-                  : "plugin.consent.confirm.update",
-              )}
+              {t(CONFIRM_KEY[intent])}
             </button>
           </div>
         </div>

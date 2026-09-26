@@ -184,6 +184,55 @@ export function approvalErrorCodes(rustSource: string): {
 }
 
 /**
+ * §379 The developer-mode refusal codes `src-tauri/src/plugin/dev_mode.rs` declares
+ * (`pub const DEV_…: &str = "…"`), by name.
+ *
+ * Collects EVERY `DEV_` declaration rather than a list of names written here: a code Rust adds
+ * later must reach the consumer's "is it translated?" check without anyone editing this file.
+ * Each name must be declared once — two declarations of one name leave no way to know which
+ * ships. A FUNCTION OVER SOURCE TEXT, so a test can feed crafted source and watch the refusal.
+ *
+ * ‼️ THE MAIN PATTERN REQUIRES `pub const …: &str = "…"` — it does not match a `pub(crate)
+ * const` (still a real declaration a caller in this crate could reach) or a name carrying a
+ * digit (`[A-Z_]+` has none). Either would silently NOT become a code this scrape returns,
+ * while `DEV_MODE_MUTEX` — a `static`, not a `const` — must keep NOT counting. So a second,
+ * looser scan (`\bconst\s+DEV_[A-Z0-9_]*\b`, catching any visibility and any digit) counts
+ * every `const DEV_…` declaration regardless of type, and its count is compared against
+ * `codes.size` — a mismatch means the strict pattern missed one.
+ *
+ * The consumer is `src/ipc/__tests__/dev-mode-error-codes.test.ts`.
+ */
+export function devModeErrorCodes(rustSource: string): Map<string, string> {
+  const codes = new Map<string, string>();
+  for (const m of rustSource.matchAll(
+    /pub\s+const\s+(DEV_[A-Z_]+)\s*:\s*&(?:'static\s+)?str\s*=\s*"([^"]*)"/gu,
+  )) {
+    if (codes.has(m[1])) {
+      throw new Error(
+        `found 2 declarations of ${m[1]} — refusing to guess which one ships`,
+      );
+    }
+    codes.set(m[1], m[2]);
+  }
+  if (codes.size === 0) {
+    throw new Error(
+      "found no DEV_ error codes — the pattern no longer matches dev_mode.rs",
+    );
+  }
+  const anyDevConst = [
+    ...rustSource.matchAll(/\bconst\s+DEV_[A-Z0-9_]*\b/gu),
+  ].length;
+  if (anyDevConst !== codes.size) {
+    throw new Error(
+      `found ${anyDevConst} "const DEV_…" declarations of any visibility but only ` +
+        `${codes.size} matched the strict "pub const …: &str" pattern — a pub(crate) or ` +
+        "digit-bearing DEV_ constant is going untranslated",
+    );
+  }
+  return codes;
+}
+
+/**
  * The parameter names `pick_approved_dir` declares, minus the `app` handle Tauri injects.
  *
  * ‼️ WHY SCRAPING RATHER THAN A SECOND LITERAL — Tauri matches a command's parameters to the keys

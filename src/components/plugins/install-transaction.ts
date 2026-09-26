@@ -19,6 +19,7 @@ import type {
   RegistryEntry,
 } from "../../plugins/types";
 
+import { withDevErrorText } from "../../ipc/plugin-dev-errors";
 import {
   pluginInstallCommit,
   pluginInstallDiscard,
@@ -213,7 +214,9 @@ export async function stageValidateAndCommit(
           ),
         );
     }
-    throw err;
+    // §379 I4 — the commit refuses an id a developer-mode folder holds with a code
+    // (`DEV_PLUGIN_ID_HELD`); the user reads the sentence. Anything else rethrows as it was.
+    throw withDevErrorText(err, t);
   }
 }
 

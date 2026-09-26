@@ -33,8 +33,8 @@ use std::sync::Mutex;
 
 use commands::{
     approval_cmd, config_cmd, context_cmd, embedding_cmd, export_cmd, font_cmd, fs_cmd, git_cmd,
-    index_cmd, keyring_cmd, llm_cmd, plugin_cmd, search_cmd, snapshot_cmd, tag_cmd, task_cmd,
-    theme_cmd, thumbnail_cmd,
+    index_cmd, keyring_cmd, llm_cmd, plugin_cmd, plugin_dev_cmd, search_cmd, snapshot_cmd, tag_cmd,
+    task_cmd, theme_cmd, thumbnail_cmd,
 };
 use tauri::{Emitter, Manager};
 
@@ -267,6 +267,17 @@ pub fn run() {
                 Err(e) => log::warn!("§56d thumbnail cache dir unavailable: {e}"),
             }
 
+            // §379 — where developer mode keeps its list (`plugin-dev.json`), and the two roots its
+            // id checks read (installed plugins, plugin storage). Without it every dev command
+            // answers tauri's "state not managed" error, so no dev folder loads — the closed way
+            // to be broken.
+            match plugin_dev_cmd::DevModeHost::native(app.handle()) {
+                Ok(host) => {
+                    app.manage(host);
+                }
+                Err(e) => log::warn!("§379 developer mode unavailable: {e}"),
+            }
+
             let (built_menu, menu_state) = menu::build_menu(app)?;
             app.set_menu(built_menu)?;
             app.manage(menu_state);
@@ -393,9 +404,12 @@ pub fn run() {
             plugin_cmd::plugin_fetch_revocations,
             plugin_cmd::plugin_get_dir,
             plugin_cmd::plugin_prepare_scopes,
-            plugin_cmd::plugin_add_dev_folder,
-            plugin_cmd::plugin_remove_dev_folder,
-            plugin_cmd::plugin_list_dev,
+            plugin_dev_cmd::plugin_list_dev,
+            plugin_dev_cmd::plugin_reload_dev_folder,
+            plugin_dev_cmd::plugin_remove_dev_folder,
+            plugin_dev_cmd::plugin_pick_dev_folder,
+            plugin_dev_cmd::plugin_record_dev_consent,
+            plugin_dev_cmd::plugin_set_developer_mode,
             plugin_cmd::plugin_http_fetch,
             plugin_cmd::plugin_storage_read,
             plugin_cmd::plugin_storage_write,

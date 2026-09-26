@@ -187,4 +187,19 @@ describe("PluginConsentDialog (§260 Phase 5)", () => {
     expect(onCancel).toHaveBeenCalledTimes(1);
     expect(onConfirm).not.toHaveBeenCalled();
   });
+
+  it("names a folder load as a load, not an install (§379)", () => {
+    render(
+      <PluginConsentDialog
+        consent={{ capabilities: [], trust: "sandboxed" }}
+        intent="load"
+        name="Demo"
+        onCancel={vi.fn()}
+        onConfirm={vi.fn()}
+      />,
+    );
+    expect(surface().getByText('Load "Demo" from a folder?')).toBeTruthy();
+    expect(surface().getByRole("button", { name: "Load" })).toBeTruthy();
+    expect(surface().queryByRole("button", { name: "Install" })).toBeNull();
+  });
 });

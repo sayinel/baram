@@ -41,10 +41,10 @@ vi.mock("../../../plugins/plugin-loader", () => ({
 }));
 // ‼️ `importOriginal` + spread, not a bare literal. A literal factory replaces the module
 // for EVERY importer in the graph, and `plugin-lifecycle` (reached through the
-// marketplace's built-in toggle) imports `pluginListDev`/`pluginPrepareScopes`/
-// `toInstalledDevPlugin` from here — so a literal dies at collection with "No pluginListDev
-// export is defined on the mock", in the file that carries the §260 consent assertions.
-// The overrides sit BELOW the spread, so they still win.
+// marketplace's built-in toggle) and the `dev-plugins` it calls import
+// `pluginPrepareScopes`/`pluginListDev`/`toInstalledDevPlugin` from here — so a literal dies
+// at collection with "No pluginListDev export is defined on the mock", in the file that
+// carries the §260 consent assertions. The overrides sit BELOW the spread, so they still win.
 vi.mock("../../../ipc/plugin-invoke", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../ipc/plugin-invoke")>()),
   pluginInstallCommit: (...a: unknown[]) => pluginInstallCommit(...a),
@@ -73,6 +73,7 @@ import {
   countAnywhere,
   findSurface,
 } from "../../../__tests__/helpers/security-surface";
+import en from "../../../i18n/en.json";
 import { usePluginStore } from "../../../stores/system/plugin";
 import { PluginMarketplace } from "../PluginMarketplace";
 
@@ -174,6 +175,9 @@ describe("install consent + registry cross-check (§260 Phase 5)", () => {
     pluginUninstall.mockReset().mockResolvedValue(undefined);
     downloadReturns(MANIFEST);
     usePluginStore.setState({
+      devFolderIssues: [],
+      devMode: { active: false, devBuild: false, enabled: false },
+      devPlugins: {},
       installedPlugins: {},
       pluginErrors: {},
       updateAvailable: {},
@@ -753,5 +757,92 @@ describe("install consent + registry cross-check (§260 Phase 5)", () => {
     expect(pluginInstallStage).not.toHaveBeenCalled();
     // Nothing was removed either — a refusal must not be destructive.
     expect(usePluginStore.getState().installedPlugins.demo).toBeDefined();
+  });
+
+  it("refuses an id a developer-mode folder holds, before asking (§379 I4)", async () => {
+    // An issue row still carries the ids its folder recorded — its plugin may have written
+    // `plugin-data/demo` then, and an install would inherit it.
+    usePluginStore.setState({
+      devFolderIssues: [
+        { error: "DEV_PLUGIN_NOT_SANDBOXED", ids: ["demo"], path: "/dev/demo" },
+      ],
+      devMode: { active: true, devBuild: false, enabled: true },
+    });
+    await clickInstall();
+    await waitFor(() =>
+      expect(usePluginStore.getState().pluginErrors.demo).toBe(
+        en["plugin.dev.error.idHeld"],
+      ),
+    );
+    expect(countAnywhere(".plugin-consent")).toBe(0);
+    expect(pluginInstallStage).not.toHaveBeenCalled();
+  });
+
+  it("does not refuse it in a dev build, where a folder may stand in for an install", async () => {
+    usePluginStore.setState({
+      devFolderIssues: [
+        { error: "DEV_PLUGIN_NOT_SANDBOXED", ids: ["demo"], path: "/dev/demo" },
+      ],
+      devMode: { active: true, devBuild: true, enabled: false },
+    });
+    await clickInstall();
+    expect(await findSurface(".plugin-consent")).toBeTruthy();
+    expect(usePluginStore.getState().pluginErrors.demo ?? null).toBeNull();
+  });
+
+  it("refuses an UPDATE to a held id before the consent dialog (§379 I4)", async () => {
+    // The installed consent is narrower than the listing, so without the check the update
+    // WOULD open the dialog — the twin below shows it does.
+    installedAt({ capabilities: [], trust: "sandboxed" });
+    listed = [{ ...ENTRY, version: "2.0.0" }];
+    usePluginStore.setState({
+      devFolderIssues: [
+        { error: "DEV_PLUGIN_ID_INSTALLED", ids: ["demo"], path: "/dev/demo" },
+      ],
+      devMode: { active: true, devBuild: false, enabled: true },
+    });
+    render(<PluginMarketplace />);
+    fireEvent.click(screen.getByRole("button", { name: /^Updates/ }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /^Update to v/ }),
+    );
+    await waitFor(() =>
+      expect(usePluginStore.getState().pluginErrors.demo).toBe(
+        en["plugin.dev.error.idHeld"],
+      ),
+    );
+    expect(countAnywhere(".plugin-consent")).toBe(0);
+    expect(pluginInstallStage).not.toHaveBeenCalled();
+  });
+
+  it("asks for that update when developer mode is off", async () => {
+    installedAt({ capabilities: [], trust: "sandboxed" });
+    listed = [{ ...ENTRY, version: "2.0.0" }];
+    usePluginStore.setState({
+      devFolderIssues: [
+        { error: "DEV_PLUGIN_ID_INSTALLED", ids: ["demo"], path: "/dev/demo" },
+      ],
+    });
+    render(<PluginMarketplace />);
+    fireEvent.click(screen.getByRole("button", { name: /^Updates/ }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /^Update to v/ }),
+    );
+    expect(await findSurface(".plugin-consent")).toBeTruthy();
+  });
+
+  it("shows Rust's commit refusal of a held id in the user's words", async () => {
+    // The boundary is Rust's (`plugin_install_commit`); the store says nothing is held, as it would when the
+    // list changed behind this window's back. Other commit failures still print as they came
+    // — "keeps the old version when the SWAP itself fails" pins that twin.
+    pluginInstallCommit.mockRejectedValue("DEV_PLUGIN_ID_HELD");
+    await clickInstall();
+    await confirmConsent();
+    await waitFor(() =>
+      expect(usePluginStore.getState().pluginErrors.demo).toContain(
+        en["plugin.dev.error.idHeld"],
+      ),
+    );
+    expect(pluginInstallDiscard).toHaveBeenCalledWith("stage-1");
   });
 });

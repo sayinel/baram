@@ -95,9 +95,11 @@ export function consentRequired(
  * escalation is the one that escapes the Rust broker entirely.
  *
  * An ABSENT consent grants the manifest unchanged. That is not a loophole being left
- * open: dev-folder plugins never have a record (choosing the directory is the consent),
- * and pre-Phase-5 records whose manifest declared no tier cannot load at all. Narrowing
- * those to nothing would break the dev loop while protecting no user.
+ * open: a DEV build's dev-folder load passes none (choosing the directory is the consent
+ * there); a release build's dev load never gets here without one (`resolveConsent` refuses
+ * it, §379 F2); and pre-Phase-5 records whose manifest declared no tier cannot load at all.
+ * Narrowing those to nothing would break the dev loop while protecting no user. (An
+ * installed record WITH a tier but no consent also passes none — spec 0058 0단계 (f).)
  */
 export function grantableCapabilities(
   manifest: { capabilities: readonly PluginCapability[] },

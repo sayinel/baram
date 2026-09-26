@@ -1,6 +1,6 @@
 ---
 title: "플러그인 배포하기"
-sourceHash: "b218bbeae324"
+sourceHash: "57cbc575c73e"
 ---
 
 ## 커밋된 시드
@@ -45,8 +45,8 @@ Rust 드리프트 가드 테스트(`test_committed_registry_seed_deserializes`)�
    뜻합니다 — Baram이 고정된 URL을 가져오고 직접 호스팅한 `index.json`을 가리킬 수 없으므로
    (*Baram이 레지스트리를 불러오는 방식* 참조), 자기 색인에 넣은 항목은 아무 사용자에게도 닿지
    않습니다. 커뮤니티 제출이 열리기 전까지 누군가에게 플러그인을 건넬 유일한 방법은
-   **설정 → 플러그인**의 **개발자** 구역이고, 그것은 개발 빌드 전용이므로 릴리스 빌드
-   사용자는 아예 불러올 수 없습니다. (이 리포의 1군 플러그인은 항목을 손으로 넣지 않습니다 —
+   **설정 → 플러그인**의 **개발자** 구역입니다 — 릴리스 빌드에서는 사용자가 먼저 **개발자 모드**를
+   켜야 하고, 그 길로는 `sandboxed` 플러그인만 불러옵니다. (이 리포의 1군 플러그인은 항목을 손으로 넣지 않습니다 —
    `plugin-<dir>-v<version>` 태그를 밀면 위에 적은 대로
    [`sayinel/baram-plugins`](https://github.com/sayinel/baram-plugins)의 `index.json`이 자동으로
    갱신됩니다.)
