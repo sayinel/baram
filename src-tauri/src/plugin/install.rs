@@ -1,11 +1,15 @@
 // §69 Plugin Marketplace / #261 — staged install lifecycle.
 //
 // `stage_install` downloads, verifies and extracts a plugin to a staging directory without
-// touching anything installed; the commit is the only destructive step, an atomic swap.
-// `commit_staged_install` takes `kind` and is the shared core underneath both — it does not
-// itself refuse a dev-folder-held id. A plugin commit does not call it directly:
-// `commands::plugin_cmd::plugin_install_commit` goes through `commit_staged_plugin_install`
-// (§379) instead, which adds that refusal on the checked id before the swap.
+// touching anything installed; the commit is the only destructive step, an atomic swap. The
+// shared core underneath BOTH commit paths is `checked_stage_in` (resolve the stage, verify
+// its digest and id, write theme CSS if any) plus `swap_checked_in` (the swap itself) —
+// never `commit_staged_install`. That function is the public THEME entry point: it refuses
+// `InstallKind::Plugin` outright, before touching anything, so a plugin never reaches it,
+// directly or through `commit_staged_in`. A plugin commit goes through
+// `commit_staged_plugin_install` instead (§379, `commands::plugin_cmd::plugin_install_commit`
+// is its only caller), which runs the dev-folder-held-id refusal on the checked id between
+// `checked_stage_in` and `swap_checked_in`.
 // `discard_staged_install` and `uninstall_installed` are the two ways to undo. See
 // `swap_into_place` for why the previously installed version survives every failure, and
 // `STALE_STAGE_AFTER` / `recover_orphaned_backups` for the two kinds of interrupted install
@@ -882,16 +886,20 @@ fn read_staged_theme_manifest(dir: &Path) -> Result<(String, String, String), Pl
     Ok((head.id, text, digest))
 }
 
-/// Atomically replace any version already installed with a staged one. `kind` (§360) is not
-/// narrowed by this function's signature — it still accepts `InstallKind::Plugin` — and this
-/// core does not itself check a dev-folder-held id.
+/// Atomically replace any version already installed with a staged one. `kind` (§360) still
+/// takes the enum, but [`InstallKind::Plugin`] is refused as the very first thing this
+/// function does — before `install_root`, before resolving the stage, before anything on
+/// disk is touched — so in practice this only ever commits [`InstallKind::Theme`].
 ///
-/// ‼️ A plugin should not commit here, though. `commands::plugin_cmd::plugin_install_commit`
+/// ‼️ A plugin never reaches the swap here. `commands::plugin_cmd::plugin_install_commit`
 /// goes through [`commit_staged_plugin_install`] (§379) instead: the same checks and the same
-/// swap, with the developer-mode refusal between them — a check only that entry point makes. A
-/// plugin committed here would skip that refusal, so `plugin_cmd.rs`'s
-/// `the_plugin_install_commit_goes_through_the_dev_folder_boundary` fails if that command calls
-/// this one.
+/// swap, with the developer-mode refusal between them — a check only that entry point makes.
+/// A plugin routed through this one instead would skip that refusal, which is why it is
+/// refused outright rather than merely documented as the wrong entry point — see
+/// `plugin_cmd.rs`'s `the_plugin_install_commit_goes_through_the_dev_folder_boundary` (the
+/// caller is wired right) and this module's
+/// `commit_staged_install_refuses_a_plugin_before_touching_anything` (this function refuses
+/// on its own even if a caller got that wrong).
 ///
 /// The two are the only destructive half of an install, and the only thing they can destroy
 /// is the staged tree: see [`swap_into_place`] for why the previously installed version
@@ -917,9 +925,12 @@ fn read_staged_theme_manifest(dir: &Path) -> Result<(String, String, String), Pl
 /// command would have opened that window AND handed the webview a write path; this closes
 /// both by making the write something only a commit can do.
 ///
-/// `Some` for a theme (even an empty one — a theme may declare only `tokens`), `None` for a
-/// plugin. A mismatch is refused rather than ignored: silently dropping CSS that a caller
-/// asked to store would install a theme whose stylesheet never arrives.
+/// `Some`, even an empty one (a theme may declare only `tokens`) — the only kind that still
+/// reaches this parameter through THIS function is [`InstallKind::Theme`], since
+/// [`InstallKind::Plugin`] is refused before `stored_css` is ever looked at. The
+/// `(Plugin, None)` arm `checked_stage_in` still matches on is reached only through
+/// [`commit_staged_plugin_install`], which is the sole remaining caller that passes
+/// `InstallKind::Plugin`.
 pub async fn commit_staged_install(
     kind: InstallKind,
     stage_id: &str,
@@ -927,6 +938,18 @@ pub async fn commit_staged_install(
     expected_manifest_sha256: &str,
     stored_css: Option<StoredThemeCss>,
 ) -> Result<CommittedInstall, PluginError> {
+    // §379 (F2) — refused before anything else runs, so a plugin commit never resolves an
+    // install root, reads a stage, or swaps: `commit_staged_plugin_install` is the only
+    // entry point that runs the developer-mode refusal, and this one used to accept
+    // `InstallKind::Plugin` too, skipping it silently.
+    if matches!(kind, InstallKind::Plugin) {
+        return Err(PluginError::Refused(
+            "a plugin commit must go through commit_staged_plugin_install, not \
+             commit_staged_install — it is the only entry point that runs the \
+             developer-mode refusal (§379)"
+                .into(),
+        ));
+    }
     let stage_id = stage_id.to_owned();
     let expected_id = expected_id.to_owned();
     let expected_digest = expected_manifest_sha256.to_owned();
@@ -1352,6 +1375,30 @@ mod tests {
         assert_eq!(
             hash,
             "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+        );
+    }
+
+    /// §379 (F2) — the ONE exception to the "no test here touches `$HOME`" rule below: it
+    /// calls the real public `commit_staged_install`, not a `*_in` core against a tempdir.
+    /// That is safe only because the refusal is the very first thing the function does — no
+    /// `install_root`, no stage lookup, nothing on disk — so this never resolves or creates
+    /// the real `~/.baram/plugins` or `~/.baram/themes`. A made-up stage id and digest prove
+    /// that: if the refusal came after `resolve_stage_in`, this would fail with `NotFound`
+    /// instead of the message asserted below.
+    #[tokio::test]
+    async fn commit_staged_install_refuses_a_plugin_before_touching_anything() {
+        let err = commit_staged_install(
+            InstallKind::Plugin,
+            "stage-does-not-exist",
+            "some-id",
+            "0000000000000000000000000000000000000000000000000000000000000",
+            None,
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("commit_staged_plugin_install"),
+            "{err}"
         );
     }
 
