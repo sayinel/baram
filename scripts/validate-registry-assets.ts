@@ -27,7 +27,13 @@
  * and `plugins/`.
  */
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  readdirSync,
+  readFileSync,
+  type Stats,
+} from "node:fs";
 import { dirname, join, normalize, resolve, sep } from "node:path";
 
 import type {
@@ -41,9 +47,30 @@ import {
 } from "../src/plugins/revocation";
 import { compareVersions } from "../src/plugins/version-range";
 import { label } from "./gha-label";
+import { registryByteCap, revocationByteCap } from "./rust-constants";
 
 /** Where the registry serves from. An entry pointing elsewhere is refused; see below. */
 const DEFAULT_BASE_URL = "https://sayinel.github.io/baram-plugins/";
+
+/**
+ * The two caps the app enforces on what it fetches, read from the Rust that enforces them —
+ * see `rust-constants.ts`. Read once, before any PR-controlled file is parsed.
+ */
+const [INDEX_CAP, REVOKED_CAP] = ((): [number, number] => {
+  try {
+    const src = (file: string) =>
+      readFileSync(
+        resolve(import.meta.dirname, "../src-tauri/src/plugin", file),
+        "utf8",
+      );
+    return [registryByteCap(src("fetch.rs")), revocationByteCap(src("mod.rs"))];
+  } catch (error) {
+    console.error(
+      `✗ ${error instanceof Error ? error.message : String(error)}`,
+    );
+    process.exit(1);
+  }
+})();
 
 /**
  * ‼️ A REAL FLAG LOOP, not `args.find((a) => !a.startsWith("--"))` (review LOW-2).
@@ -95,6 +122,32 @@ let unchecked = 0;
 function fail(message: string): never {
   console.error(`✗ ${indexPath}: ${message}`);
   process.exit(1);
+}
+
+{
+  // `lstat`, not `stat` (matching the archive/README/revoked.json checks below): a symlink is
+  // FOLLOWED by `stat`, so its reported size describes whatever it points at, not the link —
+  // a PR-controlled link to a FIFO or an unbounded stream would pass this guard and then hang
+  // or grow the JSON.parse that follows without bound.
+  let stat: Stats;
+  try {
+    stat = lstatSync(indexPath);
+  } catch (error) {
+    fail(
+      `cannot be read — ${label(error instanceof Error ? error.message : String(error))}`,
+    );
+  }
+  if (!stat.isFile()) {
+    fail(
+      "is not a regular file — a symlink's reported size describes the link, not whatever " +
+        "it points at, so it cannot be trusted before this script reads the target",
+    );
+  }
+  if (stat.size > INDEX_CAP) {
+    fail(
+      `${stat.size} bytes exceeds the ${INDEX_CAP} bytes the app will fetch — every client would fail to read this index`,
+    );
+  }
 }
 
 let raw: unknown;
@@ -163,9 +216,9 @@ function resolveInRegistry(
     //
     // It is also a policy statement worth making explicit: `plugin-release.yml` publishes
     // every archive into the registry's own Pages, so an off-registry URL today means a
-    // hand-edited entry. ‼️And it is enforced ONLY here — the app's `validate_http_url`
-    // checks the SCHEME and accepts any host — so this refusal is currently the only thing
-    // anywhere that says where a plugin may come from.
+    // hand-edited entry. The app enforces the same rule at install (`registry_base` /
+    // `is_within_registry` in `src-tauri/src/plugin/origin.rs`), so an off-registry entry
+    // would be listed and then refused on every machine; this refusal keeps it unpublished.
     return {
       error:
         `${field} ${label(JSON.stringify(url))} is not under ${baseUrl} — ` +
@@ -426,6 +479,13 @@ const { declaredIds, list } = ((): {
     );
   }
   if (!stat?.isFile()) return { declaredIds: [], list: null };
+  if (stat.size > REVOKED_CAP) {
+    warnings.push(
+      `revoked.json is larger than the ${REVOKED_CAP} bytes the app will fetch, so no ` +
+        "withdrawal below counts as acknowledged",
+    );
+    return { declaredIds: [], list: null };
+  }
   let raw: unknown;
   try {
     raw = JSON.parse(readFileSync(revokedPath, "utf8"));

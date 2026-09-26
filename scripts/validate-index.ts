@@ -26,7 +26,8 @@
  *
  * Run: npx tsx scripts/validate-index.ts [path]
  */
-import { readFileSync } from "node:fs";
+import { lstatSync, readFileSync, type Stats } from "node:fs";
+import { resolve } from "node:path";
 
 import { parseBaramFloor } from "../src/plugins/engines";
 import {
@@ -36,6 +37,7 @@ import {
 import { RESERVED_THEME_IDS } from "../src/types/theme";
 import { VALID_CAPABILITIES } from "../src/plugins/manifest";
 import { label } from "./gha-label";
+import { registryByteCap } from "./rust-constants";
 
 const path = process.argv[2] ?? "registry/index.json";
 
@@ -140,6 +142,43 @@ const warnings: string[] = [];
 function fail(message: string): never {
   console.error(`✗ ${path}: ${message}`);
   process.exit(1);
+}
+
+// ‼️ The cap is the CLIENT's, read from the Rust that enforces it — see `rust-constants.ts`.
+// This document is PR-controlled in the registry's `validate.yml` (`pull_request_target`), so
+// it is read only after it is confirmed to be a regular file — not a symlink, whose reported
+// size describes the LINK, not whatever it points at (a FIFO or an unbounded stream would
+// hang or grow this script's read without bound) — and after that size is known to be one a
+// client would accept.
+let cap: number;
+try {
+  cap = registryByteCap(
+    readFileSync(
+      resolve(import.meta.dirname, "../src-tauri/src/plugin/fetch.rs"),
+      "utf8",
+    ),
+  );
+} catch (error) {
+  fail(error instanceof Error ? error.message : String(error));
+}
+let stat: Stats;
+try {
+  stat = lstatSync(path);
+} catch (error) {
+  fail(
+    `cannot be read — ${error instanceof Error ? error.message : String(error)}`,
+  );
+}
+if (!stat.isFile()) {
+  fail(
+    `${path} is not a regular file — a symlink's reported size describes the link, not ` +
+      "whatever it points at, so it cannot be trusted before this script reads the target",
+  );
+}
+if (stat.size > cap) {
+  fail(
+    `${stat.size} bytes exceeds the ${cap} bytes the app will fetch — every client would fail to read this index, so nothing in it would ever be listed`,
+  );
 }
 
 let raw: unknown;

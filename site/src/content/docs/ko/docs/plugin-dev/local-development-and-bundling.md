@@ -24,10 +24,8 @@ sourceHash: "7c460a95fe0d"
 
 ## 번들링
 
-esbuild로 ESM 번들 하나를 만드십시오. **무엇을 external로 둘 수 있는지가 티어에 달려 있고**,
-틀리면 빌드가 아니라 activate 시점에 실패합니다.
-
-**전부 번들하십시오. 어느 티어에서도 external을 남기지 마십시오:**
+esbuild로 ESM 번들 하나를 만드십시오. **전부 번들하십시오. 어느 티어에서도 external을 남기지
+마십시오:**
 
 ```bash
 npx esbuild src/index.ts --bundle --format=esm --outfile=dist/index.mjs

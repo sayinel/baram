@@ -1030,4 +1030,15 @@ mod tests {
             "expected the refusal raised inside the blocking closure, got: {err}"
         );
     }
+
+    #[test]
+    fn the_registry_cap_is_the_number_the_publish_gate_scrapes() {
+        // A CROSS-LANGUAGE ANCHOR. `scripts/rust-constants.ts` `registryByteCap` reads this
+        // constant out of this file's TEXT so the registry validators refuse an index larger
+        // than any client will fetch. Its scan stops a second declaration being added; it
+        // cannot stop the real one being respelled past its pattern while a decoy keeps the
+        // count at one. This assertion and the literal in `revocation-signature-verify.test.ts`
+        // make that respelling a visible contradiction rather than a silent drift.
+        assert_eq!(MAX_REGISTRY_BYTES, 4 * 1024 * 1024);
+    }
 }

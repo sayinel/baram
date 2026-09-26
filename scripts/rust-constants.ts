@@ -18,28 +18,32 @@
  * They THROW rather than exiting, so the caller decides what a failure means: the validator turns
  * it into its own `✗` refusal, the gate script into an `::error::` and exit 2.
  *
- * ‼️ THE COUNT IS NOT THE WHOLE DEFENCE, AND THE TWO SCRAPES ARE NOT EQUALLY PROTECTED — the first
- * version of this header implied they were (security review NEW-2). Counting stops a declaration
- * being ADDED; it cannot stop the real one being respelled past the pattern while a decoy comment
- * keeps the count at 1. What closes that is a CROSS-LANGUAGE ANCHOR — an assertion on the compiled
- * value that goes red when the scraped value drifts from it:
+ * ‼️ THE COUNT IS NOT THE WHOLE DEFENCE, AND THE THREE SCRAPES THIS FILE MAKES FOR THE PUBLISH
+ * GATE — THE KEY, THE REVOCATION CAP, AND THE REGISTRY CAP — ARE NOT EQUALLY PROTECTED. The first
+ * version of this header implied a single cap and equal protection for both scrapes it named
+ * (security review NEW-2); the registry cap is a second instance of the weaker kind, not a third
+ * kind. Counting stops a declaration being ADDED; it cannot stop the real one being respelled past
+ * the pattern while a decoy comment keeps the count at 1. What closes that is a CROSS-LANGUAGE
+ * ANCHOR — an assertion on the compiled value that goes red when the scraped value drifts from it:
  *
  * - the key has one: vitest binds the scraped key to the frozen at-arming pair and
  *   `mod.rs`'s own test binds the compiled key to the same two files, so a divergence is
  *   self-contradictory in both directions.
- * - the cap has a WEAKER one: `the_fetch_cap_is_the_number_the_publish_gate_scrapes` in `mod.rs`.
- *   Without it, `const MAX_REVOCATION_BYTES: usize = ONE_MIB;` plus a decoy comment in the matched
- *   form left this returning 1 MiB while clients capped at whatever `ONE_MIB` said — and an
+ * - the caps have WEAKER ones, the same shape at both:
+ *   `the_fetch_cap_is_the_number_the_publish_gate_scrapes` in `origin.rs` (MAX_REVOCATION_BYTES) and
+ *   `the_registry_cap_is_the_number_the_publish_gate_scrapes` in `fetch.rs` (MAX_REGISTRY_BYTES).
+ *   Without the first, `const MAX_REVOCATION_BYTES: usize = ONE_MIB;` plus a decoy comment in the
+ *   matched form left this returning 1 MiB while clients capped at whatever `ONE_MIB` said — and an
  *   oversized list then publishes green and no client can read it.
  *
- * ‼️ THE TWO ANCHORS ARE NOT THE SAME STRENGTH, and calling them "the same discipline" flattened a
- * real difference (third-round security review Q4/L-1). The key's anchor is a SIGNATURE: unforgeable
- * without the private half, and red in both directions. The cap's is a NUMBER asserted against a
- * hand-written literal on each side — neither assertion compares scraped against compiled, both
- * compare against a constant a commit can edit. A reviewer measured the cost of defeating it: the
- * decoy, the indirection, and ONE literal edit in the Rust test. So it is a DRIFT GUARD, and its
- * value is that the diff is unmissable — a new `const ONE_MIB` beside a re-pointed constant and a
- * changed assertion literal is not something a reviewer reads past.
+ * ‼️ THE KEY'S ANCHOR AND THE CAPS' ANCHORS ARE NOT THE SAME STRENGTH, and calling them "the same
+ * discipline" flattened a real difference (third-round security review Q4/L-1). The key's anchor is
+ * a SIGNATURE: unforgeable without the private half, and red in both directions. Each cap's is a
+ * NUMBER asserted against a hand-written literal on each side — neither assertion compares scraped
+ * against compiled, both compare against a constant a commit can edit. A reviewer measured the cost
+ * of defeating one: the decoy, the indirection, and ONE literal edit in the Rust test. So each is a
+ * DRIFT GUARD, and its value is that the diff is unmissable — a new `const ONE_MIB` beside a
+ * re-pointed constant and a changed assertion literal is not something a reviewer reads past.
  */
 
 /**
@@ -55,6 +59,21 @@ export function revocationByteCap(rustSource: string): number {
     "MAX_REVOCATION_BYTES",
   );
   return integerProduct(literal, "MAX_REVOCATION_BYTES");
+}
+
+/**
+ * The byte cap `MAX_REGISTRY_BYTES` applies to the registry index a client fetches
+ * (`fetch_registry` in `src-tauri/src/plugin/fetch.rs`).
+ *
+ * The same form rule as `revocationByteCap`: a product of integers, anything else throws.
+ */
+export function registryByteCap(rustSource: string): number {
+  const literal = soleDeclaration(
+    rustSource,
+    /MAX_REGISTRY_BYTES\s*:\s*usize\s*=\s*([0-9_ *]+);/gu,
+    "MAX_REGISTRY_BYTES",
+  );
+  return integerProduct(literal, "MAX_REGISTRY_BYTES");
 }
 
 /**

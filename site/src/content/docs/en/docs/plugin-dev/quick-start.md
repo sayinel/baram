@@ -146,8 +146,7 @@ my-plugin/
 4. Build a single ESM bundle with esbuild:
 
    ```bash
-   npx esbuild src/index.ts --bundle --format=esm --outfile=dist/index.mjs \
-     --external:@tiptap/core --external:@tiptap/pm
+   npx esbuild src/index.ts --bundle --format=esm --outfile=dist/index.mjs
    ```
 
 5. Dev-load the plugin without packaging anything: **Settings → Plugins →

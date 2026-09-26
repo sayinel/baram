@@ -12,7 +12,14 @@
 // not tell them apart.
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -709,5 +716,73 @@ describe("validate-registry-assets", () => {
       );
       expect(status).toBe(1);
     });
+  });
+});
+
+describe("validate-registry-assets and the sizes the app will fetch", () => {
+  const INDEX_CAP = 4 * 1024 * 1024;
+  const REVOKED_CAP = 1024 * 1024;
+
+  it("REFUSES an index one byte over the registry cap", () => {
+    const dir = build([validEntry()]);
+    const doc = JSON.stringify({
+      plugins: [validEntry()],
+      updatedAt: "2026-08-02",
+    });
+    writeFileSync(
+      join(dir, "index.json"),
+      doc + " ".repeat(INDEX_CAP - doc.length + 1),
+    );
+    const { output, status } = exec([dir]);
+    expect(output).toContain("exceeds the 4194304 bytes the app will fetch");
+    expect(status).toBe(1);
+  });
+
+  it("accepts an index of exactly the registry cap", () => {
+    const dir = build([validEntry()]);
+    const doc = JSON.stringify({
+      plugins: [validEntry()],
+      updatedAt: "2026-08-02",
+    });
+    writeFileSync(
+      join(dir, "index.json"),
+      doc + " ".repeat(INDEX_CAP - doc.length),
+    );
+    const { output, status } = exec([dir]);
+    expect(output).not.toContain("exceeds");
+    expect(status).toBe(0);
+  });
+
+  it("refuses index.json as a symlink to a regular file elsewhere", () => {
+    // `statSync` FOLLOWS a symlink, so a PR that replaces index.json with a link to a FIFO or
+    // /dev/zero would report whatever size the LINK's target claims and pass this guard, then
+    // hang or grow without bound on the JSON.parse that follows. `lstatSync` sees the link
+    // itself. The passing twin is "accepts an index of exactly the registry cap" above, a real
+    // regular file.
+    const dir = build([validEntry()]);
+    const original = readFileSync(join(dir, "index.json"), "utf8");
+    const outside = join(dir, "..", `outside-index-${Date.now()}.json`);
+    writeFileSync(outside, original);
+    unlinkSync(join(dir, "index.json"));
+    symlinkSync(outside, join(dir, "index.json"));
+    const { output, status } = exec([dir]);
+    expect(output).toContain("is not a regular file");
+    expect(status).toBe(1);
+  });
+
+  it("treats a revoked.json over the revocation cap as unreadable, not as acknowledgement", () => {
+    // P2: this script reads revoked.json only to acknowledge orphans; the file's own gate is
+    // validate-revocations.ts. An oversized list must not quietly acknowledge anything.
+    const list = JSON.stringify({ revoked: [], version: 1 });
+    const dir = build(
+      [validEntry()],
+      undefined,
+      list + " ".repeat(REVOKED_CAP - list.length + 1),
+    );
+    const { output, status } = exec([dir]);
+    expect(output).toContain(
+      "revoked.json is larger than the 1048576 bytes the app will fetch",
+    );
+    expect(status).toBe(0);
   });
 });

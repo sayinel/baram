@@ -25,6 +25,7 @@ import { describe, expect, it } from "vitest";
 
 import { verifyRevocationSignature } from "../../../scripts/minisign-verify";
 import {
+  registryByteCap,
   revocationByteCap,
   shippedRevocationPublicKey,
 } from "../../../scripts/rust-constants";
@@ -725,6 +726,29 @@ describe(
       expect(() =>
         revocationByteCap("const MAX_REVOCATION_BYTES: usize = 0;"),
       ).toThrow(/cannot read/u);
+    });
+
+    it("reads MAX_REGISTRY_BYTES out of fetch.rs, and only a lone integer product", () => {
+      // Same rules as the revocation cap above: one declaration or a throw, a product of
+      // integers or a throw. The literal 4 * 1024 * 1024 is duplicated in the Rust anchor
+      // `the_registry_cap_is_the_number_the_publish_gate_scrapes` on purpose.
+      const rust = readFileSync(
+        resolve(ROOT, "src-tauri/src/plugin/fetch.rs"),
+        "utf8",
+      );
+      expect(registryByteCap(rust)).toBe(4 * 1024 * 1024);
+      expect(() => registryByteCap(`${rust}\n${rust}`)).toThrow(
+        /found 2 declarations/u,
+      );
+      expect(() => registryByteCap("nothing here")).toThrow(
+        /found 0 declarations/u,
+      );
+      expect(
+        registryByteCap("const MAX_REGISTRY_BYTES: usize = 2 * 3 * 7;"),
+      ).toBe(42);
+      expect(() =>
+        registryByteCap("const MAX_REGISTRY_BYTES: usize = ONE_MIB;"),
+      ).toThrow(/found 0 declarations/u);
     });
 
     it("tolerates the &'static str spelling of the declaration", () => {

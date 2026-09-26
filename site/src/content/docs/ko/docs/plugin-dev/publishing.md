@@ -1,6 +1,6 @@
 ---
 title: "플러그인 배포하기"
-sourceHash: "a52f676a046f"
+sourceHash: "b218bbeae324"
 ---
 
 ## 커밋된 시드
@@ -10,21 +10,23 @@ Rust 드리프트 가드 테스트(`test_committed_registry_seed_deserializes`)�
 그것을 역직렬화하고, 모양이 살아 있는 레지스트리와 달라지면 실패합니다 — `trust`가 없는 것도
 포함해서입니다. 티어가 없는 항목은 앱이 설치를 거부하는 플러그인을 기술하는 것이기 때문입니다.
 
-**지금은 시드에서 설치가 되지 않고, 그 이유는 시드가 아닙니다.** 시드는 **다음** 릴리스
-(`baram-word-count` 2.1.0)를 가리키면서 `checksum`을 **0 예순네 개**로 두고 있어서, 그 릴리스가
-나올 때까지 설치 시도는 없는 ZIP에서 실패합니다. 이미 배포된 옛 ZIP도 도움이 되지 않습니다 —
-§260의 티어 모델은 모든 매니페스트가 `trust`를 선언하도록 요구하는데, 그 전에 배포된 것들
-(`baram-word-count` 1.0.0/1.0.1, `baram-ai-summary` 1.0.0)은 그 필드가 생기기 전의 매니페스트를
-갖고 있어서, 색인이 무엇이라 말하든 `validateManifest`가 내려받기를 거부합니다. 그 릴리스가 나올
-때까지는 시드로 마켓플레이스 **UI**를 시험하고(목록, 권한·티어 배지, 레거시 상태, 새로고침),
-플러그인이 실제로 도는 것은 소스에서 개발 모드로 불러와(**설정 → 플러그인 → 개발자**) 시험하십시오.
+**시드의 항목은 라이브 레지스트리의 항목과 같고, 그 로컬 사본에서 설치하는 것은 여전히 실패합니다 —
+의도된 동작입니다.** 각 항목은 라이브 `index.json`과 같은 버전·체크섬을 싣고, `downloadUrl`은 라이브
+레지스트리를 가리킵니다. 앱은 색인을 가져온
+레지스트리 아래에서만 아카이브를 내려받으므로(`src-tauri/src/plugin/origin.rs`의 `registry_base` /
+`is_within_registry`), 로컬 서버를 가리키는 앱([로컬 시험](/ko/docs/plugin-dev/registry-loading-and-testing/#로컬-시험)
+참조)은 그 항목을 목록에 띄우되 설치는 거부합니다. 시드로는 마켓플레이스 **UI**를 시험하고(목록,
+권한·티어 배지, 레거시 상태, 새로고침), 플러그인이 실제로 도는 것은 소스에서 개발 모드로 불러와
+(**설정 → 플러그인 → 개발자**) 시험하십시오. 설치 경로 자체를 시험하려면 색인 사본 옆에서 ZIP을
+서빙하고 각 `downloadUrl`을 그 서버로 고쳐 쓰십시오.
 
 시드가 **아닌** 것 두 가지를 더 적어 둡니다.
 
 - 살아 있는 색인의 바이트 단위 사본이 아닙니다. Prettier로 서식이 잡혀 있고(살아 있는 파일은
   `update-registry-index.mjs`가 씁니다), 배포할 만한 항목만 담습니다 — `baram-ai-summary`는
-  배포되지 않았으므로 없습니다.
-- 자리표시자 체크섬은 자동으로 채워지지 **않습니다**. 릴리스 워크플로는
+  배포된 적이 없어서가 아니라(1.0.0 아카이브는 레지스트리에 여전히 남아 있습니다) 철회되어서
+  없습니다(`registry/revoked.json` 참고).
+- 체크섬은 자동으로 채워지지 **않습니다**. 릴리스 워크플로는
   `sayinel/baram-plugins`를 클론해 **그** 리포의 `index.json`만 갱신하고, 여기로 되쓰는 것은
   없습니다. 버전을 배포한 뒤 관리자가 워크플로의 `sha256sum` 출력을 이 파일에 손으로 옮깁니다.
   잊는 것은 이제 **보고되지만 막히지는 않습니다** — `validate-index.ts`가 `npm run lint`마다
@@ -57,7 +59,7 @@ Rust 드리프트 가드 테스트(`test_committed_registry_seed_deserializes`)�
   "version": "1.0.0",
   "author": "Your Name",
   "license": "MIT",
-  "downloadUrl": "https://github.com/user/my-word-count/releases/download/v1.0.0/my-word-count-1.0.0.zip",
+  "downloadUrl": "https://sayinel.github.io/baram-plugins/plugins/my-word-count-1.0.0.zip",
   "checksum": "sha256-hash-of-zip",
   "capabilities": ["editor:readonly", "events", "statusbar"],
   "trust": "sandboxed",
@@ -65,3 +67,9 @@ Rust 드리프트 가드 테스트(`test_committed_registry_seed_deserializes`)�
   "engines": { "baram": ">=0.5.0" }
 }
 ```
+
+`downloadUrl`은 레지스트리 자신의 기준 URL 아래에 있어야 합니다. 앱은 색인을 가져온 레지스트리
+아래에서만 아카이브를 내려받고 다른 호스트는 거부합니다(`src-tauri/src/plugin/origin.rs`의
+`registry_base` / `is_within_registry`). 예시가 4단계의 GitHub 릴리스가 아니라
+`sayinel.github.io/baram-plugins/plugins/`를 가리키는 이유입니다 — 릴리스 URL을 그대로 적은 항목은
+목록에는 뜨지만 설치에서 실패합니다.

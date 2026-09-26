@@ -1,6 +1,6 @@
 ---
 title: "빠르게 시작하기"
-sourceHash: "f0d5410d4061"
+sourceHash: "9a2b29bb9c0f"
 ---
 
 
@@ -137,8 +137,7 @@ my-plugin/
 4. esbuild로 ESM 번들 하나를 빌드합니다.
 
    ```bash
-   npx esbuild src/index.ts --bundle --format=esm --outfile=dist/index.mjs \
-     --external:@tiptap/core --external:@tiptap/pm
+   npx esbuild src/index.ts --bundle --format=esm --outfile=dist/index.mjs
    ```
 
 5. 아무것도 패키징하지 않고 플러그인을 개발 모드로 불러옵니다 — **설정 → 플러그인 →
