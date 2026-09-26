@@ -280,22 +280,12 @@ const ALLOWED: Record<string, Exemption> = {
  * red 를 본 뒤 바꾼다. 마지막 태스크가 이 표와 그 분기를 지운다.
  */
 const PENDING: Record<string, string> = {
-  "src/components/sidebar/Backlinks.tsx": "Task 8",
-  "src/components/sidebar/BookmarkPanel.tsx": "Task 8",
-  "src/components/sidebar/CalendarPanel.tsx": "Task 8",
   "src/components/sidebar/FileHistoryView.tsx": "Task 9",
-  "src/components/sidebar/FileTree.tsx": "Task 8",
-  "src/components/sidebar/FileTreeNode.tsx": "Task 8",
-  "src/components/sidebar/FolderAccessError.tsx": "Task 8",
-  "src/components/sidebar/GitPanel.tsx": "Task 8",
-  "src/components/sidebar/GlobalSearch.tsx": "Task 8",
-  "src/components/sidebar/GraphSettingsPanel.tsx": "Task 8",
   "src/components/sidebar/PropertiesPanel.tsx": "Task 9",
   "src/components/sidebar/SkillDependencySection.tsx": "Task 9",
   "src/components/sidebar/SkillLintSection.tsx": "Task 9",
   "src/components/sidebar/SkillLivePreview.tsx": "Task 9",
   "src/components/sidebar/SkillOptimizeSection.tsx": "Task 9",
-  "src/components/sidebar/TagPanel.tsx": "Task 8",
   "src/components/sidebar/VersionHistoryPanel.tsx": "Task 9",
 };
 

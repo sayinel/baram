@@ -5,6 +5,8 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 
 import type { FileTreeLoadError } from "../../stores/file/file";
 
+import { ChevronDown, ChevronRight, TriangleAlert } from "lucide-react";
+
 import { useTranslation } from "../../i18n/useTranslation";
 import { logger } from "../../utils/logger";
 
@@ -28,7 +30,7 @@ export function FolderAccessError({
   return (
     <div className="file-tree-access-error" role="alert">
       <div aria-hidden="true" className="file-tree-access-error-icon">
-        ⚠
+        <TriangleAlert className="icon-inline" size="1em" />
       </div>
       <p className="file-tree-access-error-title">
         {t("fileTree.accessDenied.title")}
@@ -63,7 +65,13 @@ export function FolderAccessError({
           className="file-tree-access-error-disclosure btn-unstyled"
           onClick={() => setShowDetails((v) => !v)}
         >
-          <span aria-hidden="true">{showDetails ? "▾ " : "▸ "}</span>
+          <span aria-hidden="true">
+            {showDetails ? (
+              <ChevronDown className="icon-inline" size="1em" />
+            ) : (
+              <ChevronRight className="icon-inline" size="1em" />
+            )}
+          </span>{" "}
           {t("fileTree.accessDenied.details")}
         </button>
       )}

@@ -3,9 +3,18 @@ import { useCallback, useEffect, useState } from "react";
 
 import type { GitChange } from "../../ipc/types";
 
+import {
+  ArrowDown,
+  ArrowUp,
+  GitBranch,
+  Minus,
+  Plus,
+  RotateCcw,
+} from "lucide-react";
 // file-store uses rootPath for the vault directory
 import { useShallow } from "zustand/shallow";
 
+import { useTranslation } from "../../i18n/useTranslation";
 import { useFileStore } from "../../stores/file/file";
 import {
   groupChanges,
@@ -15,6 +24,7 @@ import {
 } from "../../stores/system/git";
 
 export function GitPanel() {
+  const { t } = useTranslation();
   const {
     isRepo,
     branch,
@@ -163,30 +173,54 @@ export function GitPanel() {
     <div className="git-panel">
       {/* Branch display with ahead/behind + push/pull */}
       <div className="git-branch-bar">
-        <span className="git-branch-icon">⎇</span>
+        <span className="git-branch-icon">
+          <GitBranch className="icon-inline" size="1em" />
+        </span>
         <span className="git-branch-name">{branch}</span>
         {aheadBehind && (aheadBehind.ahead > 0 || aheadBehind.behind > 0) && (
           <span className="git-ahead-behind">
-            {aheadBehind.ahead > 0 && <span>↑{aheadBehind.ahead}</span>}
-            {aheadBehind.behind > 0 && <span>↓{aheadBehind.behind}</span>}
+            {aheadBehind.ahead > 0 && (
+              <span
+                aria-label={t("git.ahead", {
+                  count: String(aheadBehind.ahead),
+                })}
+                role="img"
+              >
+                <ArrowUp className="icon-inline" size="1em" />
+                {aheadBehind.ahead}
+              </span>
+            )}
+            {aheadBehind.behind > 0 && (
+              <span
+                aria-label={t("git.behind", {
+                  count: String(aheadBehind.behind),
+                })}
+                role="img"
+              >
+                <ArrowDown className="icon-inline" size="1em" />
+                {aheadBehind.behind}
+              </span>
+            )}
           </span>
         )}
         <div className="git-remote-bar">
           <button
+            aria-label={t("git.pull")}
             className="git-action-btn"
             disabled={pulling}
             onClick={() => vaultPath && pullRemote(vaultPath)}
-            title="Pull"
+            title={t("git.pull")}
           >
-            {pulling ? "…" : "↓"}
+            {pulling ? "…" : <ArrowDown className="icon-inline" size="1em" />}
           </button>
           <button
+            aria-label={t("git.push")}
             className="git-action-btn"
             disabled={pushing}
             onClick={() => vaultPath && pushRemote(vaultPath)}
-            title="Push"
+            title={t("git.push")}
           >
-            {pushing ? "…" : "↑"}
+            {pushing ? "…" : <ArrowUp className="icon-inline" size="1em" />}
           </button>
         </div>
       </div>
@@ -247,11 +281,12 @@ export function GitPanel() {
                 <span>Staged Changes</span>
                 <span className="git-section-count">{staged.length}</span>
                 <button
+                  aria-label={t("git.unstageAll")}
                   className="git-action-btn"
                   onClick={() => vaultPath && unstageAll(vaultPath)}
-                  title="Unstage all"
+                  title={t("git.unstageAll")}
                 >
-                  −
+                  <Minus className="icon-inline" size="1em" />
                 </button>
               </div>
               <div className="git-change-list">
@@ -276,11 +311,12 @@ export function GitPanel() {
                 <span>Changes</span>
                 <span className="git-section-count">{unstaged.length}</span>
                 <button
+                  aria-label={t("git.stageAll")}
                   className="git-action-btn"
                   onClick={() => vaultPath && stageAll(vaultPath)}
-                  title="Stage all"
+                  title={t("git.stageAll")}
                 >
-                  +
+                  <Plus className="icon-inline" size="1em" />
                 </button>
               </div>
               <div className="git-change-list">
@@ -485,6 +521,7 @@ function ChangeItem({
   onStage: () => void;
   onUnstage: () => void;
 }) {
+  const { t } = useTranslation();
   const fileName = change.path.split("/").pop() || change.path;
   const dirPath = change.path.includes("/")
     ? change.path.substring(0, change.path.lastIndexOf("/"))
@@ -502,23 +539,30 @@ function ChangeItem({
       <div className="git-change-actions">
         {change.staged ? (
           <button
+            aria-label={t("git.unstage")}
             className="git-action-btn"
             onClick={onUnstage}
-            title="Unstage"
+            title={t("git.unstage")}
           >
-            −
+            <Minus className="icon-inline" size="1em" />
           </button>
         ) : (
           <>
             <button
+              aria-label={t("git.discard")}
               className="git-action-btn"
               onClick={onDiscard}
-              title="Discard changes"
+              title={t("git.discard")}
             >
-              ↺
+              <RotateCcw className="icon-inline" size="1em" />
             </button>
-            <button className="git-action-btn" onClick={onStage} title="Stage">
-              +
+            <button
+              aria-label={t("git.stage")}
+              className="git-action-btn"
+              onClick={onStage}
+              title={t("git.stage")}
+            >
+              <Plus className="icon-inline" size="1em" />
             </button>
           </>
         )}

@@ -3,10 +3,12 @@ import { useCallback, useEffect } from "react";
 
 import type { BookmarkItem } from "../../stores/file/bookmark";
 
+import { Bookmark, FileText, Hash, X } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
 import { useEditorContext } from "../../contexts/editor-context";
 import { revealElementInActiveEditor } from "../../extensions/plugins/viewport-virtualize";
+import { useTranslation } from "../../i18n/useTranslation";
 import { readFile } from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor/editor";
 import { getGroups, useBookmarkStore } from "../../stores/file/bookmark";
@@ -15,6 +17,7 @@ import { logger } from "../../utils/logger";
 import { extractFileNameFromPath } from "./backlink-utils";
 
 export function BookmarkPanel() {
+  const { t } = useTranslation();
   const editor = useEditorContext();
   const rootPath = useFileStore((s) => s.rootPath);
   const activeTabId = useEditorStore((s) => s.activeTabId);
@@ -129,23 +132,29 @@ export function BookmarkPanel() {
     ? ["Default", ...groups.filter((g) => g !== "Default")]
     : groups;
 
+  const addLabel = isCurrentFileBookmarked
+    ? t("bookmarks.added")
+    : filePath
+      ? t("bookmarks.add")
+      : t("backlinks.noFile");
+
   return (
     <div className="bookmark-panel">
       <div className="bookmark-header flex-header">
         <span>Bookmarks ({bookmarks.length})</span>
         <button
+          aria-label={addLabel}
           className={`bookmark-add-btn btn-unstyled ${isCurrentFileBookmarked ? "bookmark-added" : ""}`}
           disabled={!filePath || isCurrentFileBookmarked}
           onClick={handleBookmarkFile}
-          title={
-            isCurrentFileBookmarked
-              ? "Already bookmarked"
-              : filePath
-                ? "Bookmark current file"
-                : "No file open"
-          }
+          title={addLabel}
         >
-          {isCurrentFileBookmarked ? "★" : "☆"}
+          <Bookmark
+            className="icon-inline"
+            fill={isCurrentFileBookmarked ? "currentColor" : "none"}
+            size="1em"
+            strokeWidth={1.5}
+          />
         </button>
       </div>
 
@@ -171,19 +180,24 @@ export function BookmarkPanel() {
                     title={bookmark.filePath}
                   >
                     <span className="bookmark-item-icon">
-                      {bookmark.type === "heading" ? "§" : "📄"}
+                      {bookmark.type === "heading" ? (
+                        <Hash className="icon-inline" size="1em" />
+                      ) : (
+                        <FileText className="icon-inline" size="1em" />
+                      )}
                     </span>
                     {bookmark.label}
                   </span>
                   <button
+                    aria-label={t("bookmarks.remove")}
                     className="bookmark-remove-btn btn-unstyled"
                     onClick={(e) => {
                       e.stopPropagation();
                       removeBookmark(bookmark.id);
                     }}
-                    title="Remove bookmark"
+                    title={t("bookmarks.remove")}
                   >
-                    ×
+                    <X className="icon-inline" size="1em" />
                   </button>
                 </div>
               ))}

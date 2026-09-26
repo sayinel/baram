@@ -5,6 +5,8 @@ import { useEffect, useRef } from "react";
 import type { FileEntry } from "../../stores/file/file";
 import type { CreatingEntryState } from "./file-tree-types";
 
+import { ChevronRight } from "lucide-react";
+
 import { toBadgeKey } from "../../stores/system/git-badges";
 import { getFileIcon } from "./file-icon";
 import { IconFile, IconFolder } from "./file-tree-icons";
@@ -88,7 +90,7 @@ export function FileTreeNode({
           <span
             className={`file-tree-icon file-tree-chevron ${isExpanded ? "file-tree-chevron-open" : ""}`}
           >
-            {"\u25B6"}
+            <ChevronRight size={12} />
           </span>
           <span className="file-tree-icon">
             <IconFolder />

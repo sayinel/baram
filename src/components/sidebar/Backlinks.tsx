@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { UnlinkedMention } from "../../ipc/types";
 
+import { TextWrap } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
 import { useTranslation } from "../../i18n/useTranslation";
@@ -254,11 +255,13 @@ export function Backlinks() {
       <div className="backlinks-header">
         {t("backlinks.title")} ({backlinks.length})
         <button
+          aria-label={t("backlinks.wrap")}
+          aria-pressed={wrapBacklinks}
           className="backlinks-wrap-toggle"
           onClick={() => setWrapBacklinks((v) => !v)}
-          title={t(wrapBacklinks ? "backlinks.singleLine" : "backlinks.wrap")}
+          title={t("backlinks.wrap")}
         >
-          {wrapBacklinks ? "⏤" : "≡"}
+          <TextWrap className="icon-inline" size="1em" />
         </button>
       </div>
       {nsGroups.every((g) => g.fileGroups.length === 0) ? (
@@ -318,11 +321,13 @@ export function Backlinks() {
       <div className="backlinks-header backlinks-header-unlinked">
         {t("backlinks.unlinked")} ({unlinkedMentions.length})
         <button
+          aria-label={t("backlinks.wrap")}
+          aria-pressed={wrapUnlinked}
           className="backlinks-wrap-toggle"
           onClick={() => setWrapUnlinked((v) => !v)}
-          title={t(wrapUnlinked ? "backlinks.singleLine" : "backlinks.wrap")}
+          title={t("backlinks.wrap")}
         >
-          {wrapUnlinked ? "⏤" : "≡"}
+          <TextWrap className="icon-inline" size="1em" />
         </button>
       </div>
       {unlinkedGroups.length === 0 ? (

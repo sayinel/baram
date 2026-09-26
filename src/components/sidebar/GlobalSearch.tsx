@@ -3,6 +3,17 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { SearchResult } from "../../ipc/types";
 
+import {
+  CaseSensitive,
+  ChevronDown,
+  ChevronRight,
+  ListFilter,
+  Regex,
+  Replace,
+  WholeWord,
+} from "lucide-react";
+
+import { useTranslation } from "../../i18n/useTranslation";
 import { readFile, searchFiles, writeFile } from "../../ipc/invoke";
 import { useContextStore } from "../../stores/context/context";
 import { useEditorStore } from "../../stores/editor/editor";
@@ -19,6 +30,7 @@ interface FileGroup {
 }
 
 export function GlobalSearch() {
+  const { t } = useTranslation();
   const rootPath = useFileStore((s) => s.rootPath);
   const contexts = useContextStore((s) => s.contexts);
 
@@ -334,39 +346,44 @@ export function GlobalSearch() {
 
       <div className="global-search-toggles">
         <button
+          aria-label={t("pdfFind.matchCase")}
           className={`global-search-toggle ${caseSensitive ? "global-search-toggle-active" : ""}`}
           onClick={() => setCaseSensitive(!caseSensitive)}
-          title="Match Case"
+          title={t("pdfFind.matchCase")}
         >
-          Aa
+          <CaseSensitive className="icon-inline" size="1em" />
         </button>
         <button
+          aria-label={t("searchToggle.wholeWord")}
           className={`global-search-toggle ${wholeWord ? "global-search-toggle-active" : ""}`}
           onClick={() => setWholeWord(!wholeWord)}
-          title="Match Whole Word"
+          title={t("searchToggle.wholeWord")}
         >
-          W
+          <WholeWord className="icon-inline" size="1em" />
         </button>
         <button
+          aria-label={t("searchToggle.regex")}
           className={`global-search-toggle ${useRegex ? "global-search-toggle-active" : ""}`}
           onClick={() => setUseRegex(!useRegex)}
-          title="Use Regular Expression"
+          title={t("searchToggle.regex")}
         >
-          .*
+          <Regex className="icon-inline" size="1em" />
         </button>
         <button
+          aria-label={t("globalSearch.toggleReplace")}
           className={`global-search-toggle ${showReplace ? "global-search-toggle-active" : ""}`}
           onClick={() => setShowReplace(!showReplace)}
-          title="Toggle Replace"
+          title={t("globalSearch.toggleReplace")}
         >
-          ↔
+          <Replace className="icon-inline" size="1em" />
         </button>
         <button
+          aria-label={t("globalSearch.toggleFilters")}
           className={`global-search-toggle ${showFilters ? "global-search-toggle-active" : ""}`}
           onClick={() => setShowFilters(!showFilters)}
-          title="Toggle File Filters"
+          title={t("globalSearch.toggleFilters")}
         >
-          ⊞
+          <ListFilter className="icon-inline" size="1em" />
         </button>
       </div>
 
@@ -435,7 +452,11 @@ export function GlobalSearch() {
                 onClick={() => toggleCollapse(group.filePath)}
               >
                 <span className="global-search-chevron">
-                  {collapsed ? "▸" : "▾"}
+                  {collapsed ? (
+                    <ChevronRight size={10} />
+                  ) : (
+                    <ChevronDown size={10} />
+                  )}
                 </span>
                 <span className="global-search-file-name text-truncate">
                   {group.fileName}
@@ -459,14 +480,15 @@ export function GlobalSearch() {
                     </span>
                     {showReplace && (
                       <button
+                        aria-label={t("globalSearch.replaceOne")}
                         className="global-search-replace-one"
                         onClick={(e) => {
                           e.stopPropagation();
                           handleReplace(match.filePath, match.line);
                         }}
-                        title="Replace this match"
+                        title={t("globalSearch.replaceOne")}
                       >
-                        ↔
+                        <Replace size={12} />
                       </button>
                     )}
                   </div>

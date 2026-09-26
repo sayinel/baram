@@ -1,8 +1,10 @@
 // §56 Calendar sidebar panel — mini calendar for journal navigation
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 
+import { ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
+import { useTranslation } from "../../i18n/useTranslation";
 import { createDir, listDir, readFile, writeFile } from "../../ipc/invoke";
 import {
   ensureJournalDirRegistered,
@@ -52,6 +54,7 @@ const MONTH_NAMES = [
 ];
 
 export function CalendarPanel() {
+  const { t } = useTranslation();
   const today = useMemo(() => new Date(), []);
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
@@ -341,8 +344,13 @@ export function CalendarPanel() {
   return (
     <div className="calendar-panel" style={themeStyle}>
       <div className="calendar-header">
-        <button className="calendar-nav-btn" onClick={navPrev} title="Previous">
-          ‹
+        <button
+          aria-label={t("journal.calendar.previous")}
+          className="calendar-nav-btn"
+          onClick={navPrev}
+          title={t("journal.calendar.previous")}
+        >
+          <ChevronLeft size={16} />
         </button>
         <span className="calendar-title-group">
           {calView === "days" && (
@@ -378,11 +386,16 @@ export function CalendarPanel() {
             </span>
           )}
         </span>
-        <button className="calendar-nav-btn" onClick={navNext} title="Next">
-          ›
+        <button
+          aria-label={t("journal.calendar.next")}
+          className="calendar-nav-btn"
+          onClick={navNext}
+          title={t("journal.calendar.next")}
+        >
+          <ChevronRight size={16} />
         </button>
         <button
-          aria-label="Toggle journal search"
+          aria-label={t("journal.calendar.search")}
           className={[
             "calendar-nav-btn calendar-search-btn",
             !searchCollapsed && "calendar-search-btn-active",
@@ -390,9 +403,9 @@ export function CalendarPanel() {
             .filter(Boolean)
             .join(" ")}
           onClick={() => toggleSection(SEARCH_SECTION, true)}
-          title="Search journal"
+          title={t("journal.calendar.search")}
         >
-          &#128269;
+          <Search size={14} />
         </button>
       </div>
       {calView === "days" && (

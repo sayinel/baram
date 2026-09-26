@@ -489,6 +489,10 @@
   opacity: 1;
 }
 
+.backlinks-wrap-toggle[aria-pressed="true"] {
+  color: var(--color-accent-default);
+}
+
 /* §34 Unlinked mentions */
 .backlinks-header-unlinked {
   padding-top: var(--space-2);
