@@ -131,6 +131,8 @@ export const useSettingsStore = create<SettingsState>()(
         linkFontMetrics: state.linkFontMetrics,
         codeFontSize: state.codeFontSize,
         codeLineHeight: state.codeLineHeight,
+        // §365 본문 폭 행의 표시 단위 — 표시 선택이라 다이얼이 아니다(계획 0107 P10).
+        editorWidthUnit: state.editorWidthUnit,
         tabSize: state.tabSize,
         lineNumbers: state.lineNumbers,
         autoPairBrackets: state.autoPairBrackets,

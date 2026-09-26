@@ -850,20 +850,17 @@ export function useSettingsRegistry(): SearchableSetting[] {
     ),
     // §366 되돌림 — editorMaxWidth는 잠시 외관 다이얼로 Appearance 탭에
     // 옮겨졌다가(Task 7) 돌아왔다. 다이얼 기계(병합·출처·되돌리기)는 그대로
-    // AppearanceDialRow가 맡고, 여기서 바뀌는 것은 분류(category/section)뿐이다.
-    ...dialSliderSetting(
-      {
-        id: "editorMaxWidth",
-        label: "settings.editor.maxWidth",
-        description: "settings.editor.maxWidth.desc",
-        category: "editor",
-        section: "settings.editor.display",
-      },
-      "editorMaxWidth",
-      themeDials,
-      settings.appearanceOverrides,
-      settings.setDial,
-    ),
+    // `editor-width-row.tsx` 가 맡고, 여기서 바뀌는 것은 분류(category/section)뿐이다.
+    // §365 본문 폭은 탭으로 보낸다(스펙 0060 D9) — 검색 결과의 슬라이더에는 단위 전환도 서체 측정도
+    // 없어, 거기서 px 만 보이면 행과 다른 표현이 생긴다. 서체 항목 · 코드 슬라이더와 같은 처리다.
+    {
+      id: "editorMaxWidth",
+      label: "settings.editor.maxWidth",
+      description: "settings.editor.maxWidth.desc",
+      category: "editor",
+      section: "settings.editor.display",
+      control: NAVIGATE_CONTROL,
+    },
     // §368 — 검색에서 이 설정을 찾을 방법이 없었다(행은 EditorTab.tsx에 이미
     // 있었지만 레지스트리에 항목이 없었다). §4.4: 검색 결과 라벨·설명은 행과
     // 같은 i18n 키를 그대로 재사용한다 — 키 이름 자체는 `settings.appearance.*`

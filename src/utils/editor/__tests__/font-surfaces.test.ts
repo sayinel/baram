@@ -24,6 +24,7 @@ import {
   BASE_EDITOR_STACK,
   BASE_MONO_STACK,
   DOCUMENT_FONT_SURFACES,
+  editorFontStack,
 } from "../font-surfaces";
 
 /** 표면마다 이 파일이 실제로 단정하는 것 — 아래 소진 테스트가 이 키를 센다. */
@@ -192,6 +193,18 @@ describe("§349 document font surfaces", () => {
     );
     expect(normalizeStack(BASE_MONO_STACK)).toBe(
       normalizeStack(tokenStack("mono")),
+    );
+  });
+
+  // §365 본문 슬롯의 스택 — `applyFontVariables` 가 `--font-family-editor` 에 쓰는 값과 같아야
+  // 서체 브라우저 미리보기 · 한 글자 폭 측정이 편집기와 같은 서체를 본다.
+  it("editorFontStack — 빈 이름은 토큰 스택, 아니면 인용한 이름을 앞에", () => {
+    expect(editorFontStack("")).toBe(BASE_EDITOR_STACK);
+    expect(editorFontStack("Inter")).toBe(`"Inter", ${BASE_EDITOR_STACK}`);
+    const el = document.createElement("div");
+    applyFontVariables(el, { bodyFont: "Inter", codeFont: "", which: "both" });
+    expect(el.style.getPropertyValue("--font-family-editor")).toBe(
+      editorFontStack("Inter"),
     );
   });
 });

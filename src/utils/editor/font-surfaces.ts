@@ -155,3 +155,13 @@ export function applyFontVariables(el: HTMLElement, opts: ApplyOptions): void {
   }
   set("--font-family-mono", opts.codeFont, BASE_MONO_STACK);
 }
+
+/**
+ * 본문 슬롯의 서체 스택 — 빈 이름이면 토큰 스택 그대로. {@link applyFontVariables} 가
+ * `--font-family-editor` 에 쓰는 값과 같다(테스트가 둘을 비교한다). 서체 브라우저 미리보기와
+ * 한 글자 폭 측정이 편집기와 같은 서체를 보게 하려고 한 곳에 둔다.
+ */
+export function editorFontStack(family: string): string {
+  const quoted = quoteFamily(family);
+  return quoted === "" ? BASE_EDITOR_STACK : `${quoted}, ${BASE_EDITOR_STACK}`;
+}

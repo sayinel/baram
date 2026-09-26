@@ -17,8 +17,8 @@ import { useEditorTypography } from "../../hooks/use-editor-typography";
 import { useTranslation } from "../../i18n/useTranslation";
 import { useSettingsStore } from "../../stores/settings/store";
 import {
-  BASE_EDITOR_STACK,
   BASE_MONO_STACK,
+  editorFontStack,
 } from "../../utils/editor/font-surfaces";
 import { quoteFamily } from "../../utils/editor/quote-font-family";
 import { resolveCodeMetrics } from "../../utils/font/code-metrics";
@@ -61,10 +61,7 @@ export function FontBrowserPreview({ slot }: Props) {
     linkFontMetrics,
   });
 
-  const bodyStack =
-    fontFamily.trim() === ""
-      ? BASE_EDITOR_STACK
-      : `${quoteFamily(fontFamily)}, ${BASE_EDITOR_STACK}`;
+  const bodyStack = editorFontStack(fontFamily);
   const codeStack =
     codeFontFamily.trim() === ""
       ? BASE_MONO_STACK

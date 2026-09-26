@@ -23,6 +23,8 @@ export interface EditorSettingsSlice {
   codeFontSize: number;
   codeLineHeight: number;
   diagrams: boolean;
+  /** §365 본문 폭 행이 보이는 단위(스펙 0060 §8.3) — 표시 선택이라 다이얼이 아니다(계획 0107 P10). */
+  editorWidthUnit: EditorWidthUnit;
   extensionSettings: Record<string, unknown>;
   highlight: boolean;
   inlineMath: boolean;
@@ -46,6 +48,7 @@ export interface EditorSettingsSlice {
   setCodeFontSize: (size: number) => void;
   setCodeLineHeight: (height: number) => void;
   setDiagrams: (enabled: boolean) => void;
+  setEditorWidthUnit: (unit: EditorWidthUnit) => void;
   setExtensionSetting: (key: string, value: unknown) => void;
   setHighlight: (enabled: boolean) => void;
   setInlineMath: (enabled: boolean) => void;
@@ -79,6 +82,9 @@ export interface EditorSettingsSlice {
 
 type CodeBlockStyle = "contrast" | "default" | "minimal" | "paper";
 
+/** §365 본문 폭 행의 표시 단위 — 저장값(px)의 두 표현 중 어느 것을 보이는가. */
+export type EditorWidthUnit = "chars" | "px";
+
 /**
  * §377 최근 사용 기호의 상한. 격자 한 줄이 8칸(`components/command/symbol-grid-nav.ts` 의
  * `SYMBOL_GRID_COLUMNS`)이라 세 줄이다.
@@ -109,6 +115,8 @@ export const createEditorSettingsSlice: StateCreator<
   spellCheck: false,
   vimMode: false,
   virtualizeLargeDocs: true,
+  // §365 표시 선택의 기본값은 오늘 동작(글자 수로 보인다)과 같다 — store version 을 올리지 않는다.
+  editorWidthUnit: "chars",
 
   // Markdown
   inlineMath: true,
@@ -191,6 +199,7 @@ export const createEditorSettingsSlice: StateCreator<
   setSpellCheck: (spellCheck) => set({ spellCheck }),
   setVimMode: (vimMode) => set({ vimMode }),
   setVirtualizeLargeDocs: (virtualizeLargeDocs) => set({ virtualizeLargeDocs }),
+  setEditorWidthUnit: (editorWidthUnit) => set({ editorWidthUnit }),
 
   // Markdown setters
   setInlineMath: (inlineMath) => set({ inlineMath }),
