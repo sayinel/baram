@@ -1943,6 +1943,17 @@
       "description": "설치된 서체 패밀리 목록. 경로 인자를 받지 않으므로 승인 게이트 대상이 아니다. 첫 호출 뒤 결과를 캐시하고, refresh=true 로 비운다"
     },
     {
+      "name": "theme_import_pick",
+      "input": {},
+      "output": "ThemeImportPick | null",
+      "module": "theme",
+      "spec": "§371",
+      "phase": 3,
+      "milestone": "M11",
+      "status": "implemented",
+      "description": "테마 가져오기 대화상자 — Rust 가 네이티브 대화상자를 직접 열고 고른 파일 하나를 읽어 내용으로 가른다(zip 서명). 색 설정은 텍스트로, 패키지는 theme_install_stage 와 같은 스테이징(stage_archive_in)으로. 경로 인자가 없다 — 웹뷰가 정하는 것은 대화상자를 여는 것뿐이다"
+    },
+    {
       "name": "theme_install_stage",
       "input": {
         "url": "string",

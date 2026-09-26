@@ -736,7 +736,10 @@ pub async fn stage_install(
 }
 
 /// Steps 3–5 of a stage: extract, read the manifest, check the id. Touches nothing installed.
-fn stage_archive_in(
+///
+/// §371 6a — `theme_import.rs` calls this with bytes it read from a file, not a download:
+/// this step of a commit is the same regardless of the entrance.
+pub(super) fn stage_archive_in(
     plugin_root: &Path,
     kind: InstallKind,
     bytes: &[u8],
