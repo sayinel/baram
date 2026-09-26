@@ -757,7 +757,7 @@ describe("the revocation publish workflow's shape", () => {
   });
 });
 
-describe("the revocation signing key is reachable only from a protected environment (spec 0058 0단계 (b))", () => {
+describe("the workflow declares the revocation-signing environment, and no other workflow names the key or the environment (spec 0058 0단계 (b))", () => {
   const WORKFLOWS = resolve(ROOT, ".github/workflows");
   const text = readFileSync(
     resolve(WORKFLOWS, "revocation-publish.yml"),

@@ -32,7 +32,7 @@ import {
   lstatSync,
   readdirSync,
   readFileSync,
-  statSync,
+  type Stats,
 } from "node:fs";
 import { dirname, join, normalize, resolve, sep } from "node:path";
 
@@ -125,17 +125,27 @@ function fail(message: string): never {
 }
 
 {
-  let size: number;
+  // `lstat`, not `stat` (matching the archive/README/revoked.json checks below): a symlink is
+  // FOLLOWED by `stat`, so its reported size describes whatever it points at, not the link —
+  // a PR-controlled link to a FIFO or an unbounded stream would pass this guard and then hang
+  // or grow the JSON.parse that follows without bound.
+  let stat: Stats;
   try {
-    size = statSync(indexPath).size;
+    stat = lstatSync(indexPath);
   } catch (error) {
     fail(
       `cannot be read — ${label(error instanceof Error ? error.message : String(error))}`,
     );
   }
-  if (size > INDEX_CAP) {
+  if (!stat.isFile()) {
     fail(
-      `${size} bytes exceeds the ${INDEX_CAP} bytes the app will fetch — every client would fail to read this index`,
+      "is not a regular file — a symlink's reported size describes the link, not whatever " +
+        "it points at, so it cannot be trusted before this script reads the target",
+    );
+  }
+  if (stat.size > INDEX_CAP) {
+    fail(
+      `${stat.size} bytes exceeds the ${INDEX_CAP} bytes the app will fetch — every client would fail to read this index`,
     );
   }
 }

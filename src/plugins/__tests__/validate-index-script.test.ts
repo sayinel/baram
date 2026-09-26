@@ -10,7 +10,7 @@
 // said. Every failure case asserts the SPECIFIC message, not merely a non-zero exit — the
 // script has eight ways to reject a document and "it rejected" would not tell them apart.
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -516,5 +516,23 @@ describe("validate-index and the size the app will fetch", () => {
     const { output, status } = runRaw(doc + " ".repeat(CAP - doc.length + 1));
     expect(output).toContain("exceeds the 4194304 bytes the app will fetch");
     expect(status).toBe(1);
+  });
+
+  it("refuses index.json as a symlink to a regular file elsewhere", () => {
+    // `statSync` FOLLOWS a symlink, so a PR that replaces index.json with a link to a FIFO
+    // or /dev/zero would report whatever size the LINK's target claims (0, for a FIFO) and
+    // pass this guard, then hang or grow without bound on the read that follows. `lstatSync`
+    // sees the link itself, and this script must refuse it rather than resolve it — the
+    // passing twin is "accepts an index of exactly the cap" above, a real regular file.
+    const dir = mkdtempSync(join(tmpdir(), "baram-index-"));
+    const outside = join(dir, "outside-index.json");
+    writeFileSync(outside, doc);
+    const path = join(dir, "index.json");
+    symlinkSync(outside, path);
+    const result = spawnSync(TSX, [SCRIPT, path], { encoding: "utf8" });
+    expect(`${result.stdout}${result.stderr}`).toContain(
+      "is not a regular file",
+    );
+    expect(result.status).toBe(1);
   });
 });
