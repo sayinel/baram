@@ -292,6 +292,7 @@ export function TabBar() {
           aria-label={t("tabBar.scrollLeft")}
           className="tab-scroll-btn tab-scroll-left"
           onClick={() => scroll(-1)}
+          title={t("tabBar.scrollLeft")}
         >
           <ChevronLeft size={14} />
         </button>
@@ -398,6 +399,7 @@ export function TabBar() {
           aria-label={t("tabBar.scrollRight")}
           className="tab-scroll-btn tab-scroll-right"
           onClick={() => scroll(1)}
+          title={t("tabBar.scrollRight")}
         >
           <ChevronRight size={14} />
         </button>

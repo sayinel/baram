@@ -263,6 +263,7 @@ function buildHeader(spec: {
     button.className = "date-picker-nav";
     button.dataset.direction = delta < 0 ? "prev" : "next";
     button.setAttribute("aria-label", t(key, spec.locale));
+    button.title = t(key, spec.locale);
     button.addEventListener("click", () => spec.onMove(delta));
     return button;
   };

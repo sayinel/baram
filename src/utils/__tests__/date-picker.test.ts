@@ -372,5 +372,11 @@ describe("머리글 배치", () => {
     ];
     expect(navs.map((b) => b.textContent)).toEqual(["", ""]);
     expect(navs.map((b) => b.dataset.direction)).toEqual(["prev", "next"]);
+    // 글자가 없으니 버튼의 이름은 aria-label 뿐이다 — 마우스로 가리키는 사람에게는 같은 이름을
+    // title 로 보인다. 빈 이름끼리 같아서 통과하지 않도록 비어 있지 않음도 단정한다.
+    expect(navs.map((b) => b.title)).toEqual(
+      navs.map((b) => b.getAttribute("aria-label")),
+    );
+    expect(navs.map((b) => b.title.length > 0)).toEqual([true, true]);
   });
 });

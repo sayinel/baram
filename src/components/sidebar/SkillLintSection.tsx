@@ -26,6 +26,7 @@ export function SkillLintSection() {
   return (
     <div className="skill-lint-section">
       <button
+        aria-expanded={expanded}
         className="skill-lint-header"
         onClick={() => setExpanded((v) => !v)}
       >

@@ -61,7 +61,11 @@ export function SkillLivePreview() {
 
   return (
     <div className="skill-live-preview">
-      <button className="slp-header" onClick={() => setExpanded((v) => !v)}>
+      <button
+        aria-expanded={expanded}
+        className="slp-header"
+        onClick={() => setExpanded((v) => !v)}
+      >
         <span className="skill-section-arrow">
           {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </span>

@@ -98,6 +98,7 @@ export function SkillOptimizeSection() {
   return (
     <div className="skill-optimize">
       <button
+        aria-expanded={expanded}
         className="skill-optimize-header-btn"
         onClick={() => setExpanded((v) => !v)}
       >

@@ -9,7 +9,7 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
-  CircleX,
+  CircleAlert,
   Ellipsis,
   Minus,
   RefreshCw,
@@ -142,6 +142,7 @@ export function SkillDependencySection() {
   return (
     <div className="dep-section">
       <button
+        aria-expanded={expanded}
         className="dep-section-header"
         onClick={() => setExpanded((v) => !v)}
       >
@@ -230,6 +231,7 @@ export function SkillDependencySection() {
           {impact.length > 0 && (
             <div className="dep-list">
               <button
+                aria-expanded={showImpact}
                 className="dep-impact-toggle"
                 onClick={() => setShowImpact((v) => !v)}
               >
@@ -495,7 +497,7 @@ function WarningItem({ warning }: { warning: DependencyWarning }) {
     <div className={`dep-warning dep-warning--${warning.severity}`}>
       <span className="dep-warning-icon">
         {isError ? (
-          <CircleX
+          <CircleAlert
             aria-label={t("common.error")}
             className="icon-inline"
             role="img"
