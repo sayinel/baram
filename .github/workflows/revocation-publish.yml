@@ -45,6 +45,17 @@ jobs:
   publish:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    # §378 (spec 0058 0단계 (b)) — the signing key lives in this environment's secrets, and
+    # the environment requires a reviewer. A main commit that touches registry/revoked.json
+    # — including one that lands a malicious dependency the signer resolves through
+    # package-lock.json — now waits for a person before any step with the key in scope runs.
+    # The whole job waits, not only the signing step: splitting signing into its own job
+    # would hand the signed file across jobs as an artifact, a new boundary to defend.
+    # ‼️ A run waiting for approval HOLDS the `registry-push` concurrency group above, so
+    # plugin-release.yml queues behind it — approve or cancel a revocation run promptly.
+    # Rotate the key with `gh secret set <NAME> --env revocation-signing`: a repo-level secret
+    # of the same name is shadowed by the environment's and would do nothing.
+    environment: revocation-signing
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-node
@@ -212,9 +223,9 @@ jobs:
       # environment. ‼️ RESIDUAL, stated rather than implied: `npx tauri` resolves through this
       # repository's `package-lock.json`, so a main commit that lands a malicious dependency
       # alongside a revocation still runs with the key in scope. Narrowing this step to `cp` and
-      # the signer removes every OTHER step from that blast radius, which is what it buys — the
-      # remaining answer is a protected `environment:` with a required reviewer, a repository
-      # settings change recorded in `dev/backlog.md`.
+      # the signer removes every OTHER step from that blast radius; the job-level
+      # `environment: revocation-signing` above makes a reviewer approve the run before the key
+      # is in scope at all.
       - name: Sign the list
         if: steps.gate.outputs.publish == 'true'
         env:

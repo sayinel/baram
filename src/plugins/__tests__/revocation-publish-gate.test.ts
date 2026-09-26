@@ -27,6 +27,7 @@ import {
   chmodSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   symlinkSync,
   writeFileSync,
@@ -567,9 +568,10 @@ describe("the revocation publish workflow's shape", () => {
     // ‼️ WHAT THIS PROTECTS, STATED HONESTLY (security re-review M-3). It is a DRIFT GUARD for this
     // workflow: it catches an accidental widening, which is what it was written for. It is NOT an
     // anti-attacker control — capability to land a commit also covers adding a whole new workflow
-    // file this test never reads. The only control for that is a protected `environment:` with a
-    // required reviewer, recorded in `dev/backlog.md`. The first version of this comment invited the
-    // attacker reading; the guard does not support it.
+    // file this test never reads. The control for that is the `revocation-signing` environment
+    // (spec 0058 stage 0 (b)): the key is its secret, so a new workflow reaches it only by
+    // declaring that environment, and then waits for a reviewer before any step runs. The first
+    // version of this comment invited the attacker reading; the guard does not support it.
     //
     // ‼️ AN ALLOWLIST OVER EVERY `secrets` REFERENCE, not a search for the one spelling I thought of.
     // Matching `secrets.BARAM_REVOCATION_SIGNING_KEY` left three evasions green — bracket indexing
@@ -750,5 +752,50 @@ describe("the revocation publish workflow's shape", () => {
         "steps.gate.outputs.publish == 'true'",
       );
     }
+  });
+});
+
+describe("the revocation signing key is reachable only from a protected environment (spec 0058 0단계 (b))", () => {
+  const WORKFLOWS = resolve(ROOT, ".github/workflows");
+  const text = readFileSync(
+    resolve(WORKFLOWS, "revocation-publish.yml"),
+    "utf8",
+  );
+
+  it("has one job, and that job declares the revocation-signing environment", () => {
+    const jobs = text.slice(text.indexOf("\njobs:\n"));
+    expect(jobs.match(/^ {2}[a-z][a-z0-9-]*:$/gmu)).toEqual(["  publish:"]);
+    const head = jobs.slice(
+      jobs.indexOf("\n  publish:\n"),
+      jobs.indexOf("\n    steps:\n"),
+    );
+    expect(head).toContain("\n    environment: revocation-signing");
+  });
+
+  it("names the signing secrets in no other workflow", () => {
+    // Positive twin: the scan must be able to see the name where it does belong.
+    expect(text).toContain("secrets.BARAM_REVOCATION_SIGNING_KEY");
+    const others = readdirSync(WORKFLOWS)
+      .filter((name) => name !== "revocation-publish.yml")
+      .filter((name) =>
+        readFileSync(resolve(WORKFLOWS, name), "utf8").includes(
+          "BARAM_REVOCATION_SIGNING_KEY",
+        ),
+      );
+    expect(others).toEqual([]);
+  });
+
+  it("names the environment in no other workflow", () => {
+    // After Step 10 the key is reached through the ENVIRONMENT, not the secret name: a workflow
+    // that declares `environment: revocation-signing` gets the key once a reviewer approves it.
+    // Declaring it elsewhere is legal but should be a decision someone states, not a drift.
+    const others = readdirSync(WORKFLOWS)
+      .filter((name) => name !== "revocation-publish.yml")
+      .filter((name) =>
+        readFileSync(resolve(WORKFLOWS, name), "utf8").includes(
+          "revocation-signing",
+        ),
+      );
+    expect(others).toEqual([]);
   });
 });
