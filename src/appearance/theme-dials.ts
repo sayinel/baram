@@ -34,10 +34,13 @@ const NO_DIALS: DialValues = {};
  * `installedThemes[themeId]` 가 TypeError 를 던진다 — 그 호출은 앱 시작마다 도는
  * 렌더 경로 안이라 트리 전체가 언마운트된다. `store.ts` 의 `state.installedThemes ?? {}`
  * 와 `merge.ts` 의 `asDialValues` 가 같은 이유로 같은 방어를 한다. 방어가 **여기**
- * 있어야, 테마 층을 보는 화면마다 각자 갖추지 않고도 전부 지켜진다 — 이 함수를
- * 감싸는 것은 `use-theme-dials.ts` 하나이고, 화면들은 그 훅을 통해서만 이 층에
- * 닿는다(프로덕션 호출부 전수: 2026-09-22 `grep -F themeDialsFor src/` 기준
- * `use-theme-dials.ts` 하나, 나머지는 테스트다).
+ * 있어야, 테마 층을 보는 화면마다 각자 갖추지 않고도 전부 지켜진다 — 화면들은
+ * `use-theme-dials.ts` 의 훅이나 `hooks/use-editor-typography.ts` 를 통해서만 이 층에
+ * 닿는다(프로덕션 호출부 전수: 2026-09-26
+ * `find src -name '*.ts' -o -name '*.tsx' | grep -v __tests__ | xargs grep -ln themeDialsFor`
+ * 기준 이 파일 자신 · `use-theme-dials.ts` · `use-editor-typography.ts` 셋, 나머지는
+ * 테스트다). 새 호출부도 유효 테마 id 를 같은 계산(`effectiveThemeIdOf`)으로 정해야
+ * 철회된 테마의 층이 어느 한 경로에만 남지 않는다.
  */
 export function themeDialsFor(
   themeId: string,

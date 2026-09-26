@@ -38,10 +38,7 @@ import { useShallow } from "zustand/shallow";
 
 import { useSettingsStore } from "../stores/settings/store";
 import { usePluginStore } from "../stores/system/plugin";
-import {
-  themeBlocksApply,
-  themeRevocationFor,
-} from "../themes/theme-revocation";
+import { effectiveThemeIdOf } from "../themes/theme-revocation";
 
 /**
  * The theme id the app may actually wear, plus whether a withdrawal is what decided it.
@@ -62,14 +59,5 @@ export function useEffectiveThemeId(): {
     })),
   );
   const revocations = usePluginStore((s) => s.revocations);
-  const activeRevocation = themeRevocationFor(
-    activeThemeId,
-    installedThemes,
-    revocations,
-  );
-  const forceDeactivated = themeBlocksApply(activeRevocation);
-  return {
-    effectiveThemeId: forceDeactivated ? "system" : activeThemeId,
-    forceDeactivated,
-  };
+  return effectiveThemeIdOf(activeThemeId, installedThemes, revocations);
 }
