@@ -171,7 +171,7 @@ export function SkillDependencySection() {
                 const found = allSkills.find((s) => s.name === req);
                 return (
                   <div
-                    className={`dep-list-item${found ? "" : "dep-list-item--missing"}`}
+                    className={`dep-list-item ${found ? "" : "dep-list-item--missing"}`}
                     key={req}
                   >
                     <span className="dep-list-icon">
