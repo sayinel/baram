@@ -7,7 +7,13 @@
 import type { DialId } from "../../../appearance/dials";
 import type { InstalledTheme } from "../../../themes/theme-install";
 
-import { act, render, renderHook, screen } from "@testing-library/react";
+import {
+  act,
+  render,
+  renderHook,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { DIALS } from "../../../appearance/dials";
@@ -56,13 +62,20 @@ function installedTheme(
   };
 }
 
-/** 설명문 괄호 안의 수치. 기대값을 손으로 적는 대신 화면에서 뽑는다 — 손으로
- *  적으면 두 표면이 함께 틀려도 초록이다. */
-function parenthesised(pattern: RegExp): string {
-  const text = screen.getByText(pattern).textContent ?? "";
-  const inside = /\(([^)]+)\)/u.exec(text);
-  expect(inside).not.toBeNull();
-  return (inside as RegExpExecArray)[1];
+/** 라벨로 행을 찾는다 — `.settings-row` 가 라벨과 컨트롤을 함께 싼다.
+ *  `editor-tab-typography-rows.test.tsx` 의 같은 이름 헬퍼와 같은 판정이다. */
+function row(label: string): HTMLElement {
+  const el = screen.getByText(label).closest(".settings-row");
+  if (!(el instanceof HTMLElement)) throw new Error(`no row for ${label}`);
+  return el;
+}
+
+/** 다이얼 행의 값 칸(`dial-value`) 글자. §365 후속 수정으로 값이 description 괄호에서
+ *  이 칸으로 옮겨졌다 — 기대값을 손으로 적는 대신 화면에서 뽑는다: 손으로 적으면 두
+ *  표면이 함께 틀려도 초록이다. 라벨로 행을 좁히는 이유는 `dial-value` testid가 이
+ *  탭의 다른 다이얼 행(줄바꿈·자간·문단 간격 등)에도 있어 전역 조회가 모호해서다. */
+function dialValue(label: string): string {
+  return within(row(label)).getByTestId("dial-value").textContent ?? "";
 }
 
 describe("EditorTab — Browse…", () => {
@@ -83,8 +96,8 @@ describe("EditorTab — Browse…", () => {
     render(<EditorTab />);
     await flush();
 
-    const size = parenthesised(/Size of text in the editor/u);
-    const height = parenthesised(/^Spacing between lines \(/u);
+    const size = dialValue(en["settings.editor.fontSize"]);
+    const height = dialValue(en["settings.editor.lineHeight"]);
     expect(size).toBe("21px");
     expect(height).toBe("1.70");
 
@@ -191,11 +204,13 @@ describe("EditorTab — code metrics", () => {
     });
     await renderTab();
 
-    expect(parenthesised(/Size of code text/u)).toBe("18px");
-    expect(parenthesised(/Spacing between lines in code blocks/u)).toBe("2.00");
+    expect(screen.getByTestId("code-font-size-value").textContent).toBe("18px");
+    expect(screen.getByTestId("code-line-height-value").textContent).toBe(
+      "2.00",
+    );
     for (const slider of screen.getAllByRole("slider")) {
-      const row = slider.closest(".settings-row");
-      const label = row?.textContent ?? "";
+      const sliderRow = slider.closest(".settings-row");
+      const label = sliderRow?.textContent ?? "";
       if (label.includes("Code")) {
         expect((slider as HTMLInputElement).disabled).toBe(true);
       }
@@ -223,7 +238,7 @@ describe("EditorTab — code metrics", () => {
     });
     await renderTab();
     // 테마 층이 이 탭에 실제로 닿았다 — 아니면 아래 18px 가 무엇을 증명하는지 알 수 없다.
-    expect(parenthesised(/Size of text in the editor/u)).toBe("20px");
+    expect(dialValue(en["settings.editor.fontSize"])).toBe("20px");
 
     const matchBody = screen
       .getByText("Match Body Text")
@@ -235,8 +250,10 @@ describe("EditorTab — code metrics", () => {
     });
 
     expect(useSettingsStore.getState().linkFontMetrics).toBe(false);
-    expect(parenthesised(/Size of code text/u)).toBe("18px");
-    expect(parenthesised(/Spacing between lines in code blocks/u)).toBe("2.00");
+    expect(screen.getByTestId("code-font-size-value").textContent).toBe("18px");
+    expect(screen.getByTestId("code-line-height-value").textContent).toBe(
+      "2.00",
+    );
     const codeSliders = screen
       .getAllByRole("slider")
       .filter((s) =>
@@ -301,8 +318,8 @@ describe("EditorTab — code metrics", () => {
         .setLinkFontMetrics(false, { fontSize: 16, lineHeight: 1.75 });
       useSettingsStore.getState().setDial("editorFontSize", 30);
     });
-    expect(parenthesised(/Size of code text/u)).toBe("14px");
-    expect(parenthesised(/Size of text in the editor/u)).toBe("30px");
+    expect(screen.getByTestId("code-font-size-value").textContent).toBe("14px");
+    expect(dialValue(en["settings.editor.fontSize"])).toBe("30px");
   });
 });
 

@@ -30,11 +30,6 @@ import {
 import { useSettingsStore } from "../../stores/settings/store";
 import { ZETTEL_STARTUP_BEHAVIORS } from "../../stores/settings/zettelkasten-settings";
 import { useUIStore } from "../../stores/ui/ui";
-import { resolveCodeMetrics } from "../../utils/font/code-metrics";
-import {
-  fontSizeNumber,
-  lineHeightNumber,
-} from "../../utils/font/font-metric-text";
 import { TASK_SCAN_SCOPES } from "../../utils/tasks/task-scan-scope";
 import { dialOptionLabelKey } from "./dial-option-label";
 
@@ -102,8 +97,6 @@ const selectRegistrySettings = (s: SettingsState) => ({
   autoSave: s.autoSave,
   autoSaveDelay: s.autoSaveDelay,
   autoUpdateLinks: s.autoUpdateLinks,
-  codeFontSize: s.codeFontSize,
-  codeLineHeight: s.codeLineHeight,
   highlight: s.highlight,
   inlineMath: s.inlineMath,
   journalEnabled: s.journalEnabled,
@@ -219,16 +212,6 @@ export function useSettingsRegistry(): SearchableSetting[] {
       toggleTabBar: s.toggleTabBar,
     })),
   );
-  // §354 — 코드 크기·줄 높이 항목의 설명에 넣을 값. EditorTab 이 두 행에 보여 주는 값과
-  // 같아야 하므로 같은 함수(code-metrics.ts)로 구한다 — 연동 중이면 본문에서 파생한 값이다.
-  const codeMetrics = resolveCodeMetrics({
-    codeFontSize: settings.codeFontSize,
-    codeLineHeight: settings.codeLineHeight,
-    fontSize: typography.fontSize,
-    lineHeight: typography.lineHeight,
-    linkFontMetrics: settings.linkFontMetrics,
-  });
-
   return [
     // ── General ──────────────────────────────────────────────────────────────
     {
@@ -746,9 +729,7 @@ export function useSettingsRegistry(): SearchableSetting[] {
       category: "editor",
       section: "settings.editor.font",
       keywords: ["code", "font", "size"],
-      control: navigateControlShowing(() =>
-        fontSizeNumber(Math.round(codeMetrics.fontSize)),
-      ),
+      control: NAVIGATE_CONTROL,
     },
     {
       id: "codeLineHeight",
@@ -757,9 +738,7 @@ export function useSettingsRegistry(): SearchableSetting[] {
       category: "editor",
       section: "settings.editor.font",
       keywords: ["code", "line height", "spacing"],
-      control: navigateControlShowing(() =>
-        lineHeightNumber(codeMetrics.lineHeight),
-      ),
+      control: NAVIGATE_CONTROL,
     },
     {
       id: "tabSize",

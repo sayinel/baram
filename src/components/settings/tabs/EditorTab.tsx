@@ -5,6 +5,10 @@ import type { FontSlot } from "../FontSlotPicker";
 
 import { useShallow } from "zustand/shallow";
 
+import {
+  EDITOR_FONT_SIZE_RANGE,
+  EDITOR_LINE_HEIGHT_RANGE,
+} from "../../../appearance/typography-dials";
 import { useEditorTypography } from "../../../hooks/use-editor-typography";
 import { useTranslation } from "../../../i18n/useTranslation";
 import { listFonts } from "../../../ipc/font";
@@ -19,6 +23,7 @@ import {
   lineHeightNumber,
 } from "../../../utils/font/font-metric-text";
 import { AppearanceDialRow } from "../appearance-dial-row";
+import { DialOriginSlot } from "../dial-origin-slot";
 import { FontBrowser } from "../FontBrowser";
 import { FontSlotPicker } from "../FontSlotPicker";
 import {
@@ -127,6 +132,9 @@ export function EditorTab() {
     <div className="settings-section">
       <SettingsSectionHeader title={t("settings.editor.font")} />
 
+      {/* §365 서체 행은 입력이 서체 선택기라 다이얼 행이 아니다 — 출처 칸만 붙인다(스펙 0060 §7.1).
+          "기본 서체" 를 고르면 사용자 층에 `""` 가 명시되어 테마 서체를 이기고, 되돌리기는 사용자
+          층 키를 지운다. */}
       <SettingsRow
         description={t("settings.editor.fontFamily.desc")}
         label={t("settings.editor.fontFamily")}
@@ -142,6 +150,7 @@ export function EditorTab() {
           slot="body"
           value={fontFamily}
         />
+        <DialOriginSlot dialId="editorFontFamily" />
       </SettingsRow>
 
       <SettingsRow
@@ -159,51 +168,17 @@ export function EditorTab() {
           slot="code"
           value={codeFontFamily}
         />
+        <DialOriginSlot dialId="editorCodeFontFamily" />
       </SettingsRow>
 
-      <SettingsRow
-        description={t("settings.editor.fontSize.desc").replace(
-          "{value}",
-          fontSizeNumber(fontSize),
-        )}
+      <AppearanceDialRow
+        dialId="editorFontSize"
         label={t("settings.editor.fontSize")}
-      >
-        <input
-          className="settings-range"
-          max={32}
-          min={8}
-          onChange={(e) =>
-            useSettingsStore
-              .getState()
-              .setDial("editorFontSize", Number(e.target.value))
-          }
-          step={1}
-          type="range"
-          value={fontSize}
-        />
-      </SettingsRow>
-
-      <SettingsRow
-        description={t("settings.editor.lineHeight.desc").replace(
-          "{value}",
-          lineHeightNumber(lineHeight),
-        )}
+      />
+      <AppearanceDialRow
+        dialId="editorLineHeight"
         label={t("settings.editor.lineHeight")}
-      >
-        <input
-          className="settings-range"
-          max={3.0}
-          min={1.0}
-          onChange={(e) =>
-            useSettingsStore
-              .getState()
-              .setDial("editorLineHeight", Number(e.target.value))
-          }
-          step={0.05}
-          type="range"
-          value={lineHeight}
-        />
-      </SettingsRow>
+      />
 
       <SettingsRow
         description={t("settings.editor.linkFontMetrics.desc")}
@@ -217,43 +192,51 @@ export function EditorTab() {
 
       {/* 연동 중에도 두 행을 숨기지 않고 끈 채로 둔다 — 코드가 지금 몇 px 인지는
           연동 여부와 무관하게 궁금한 값이고, 행이 사라지면 "어디서 바꾸지?" 가
-          된다. 값은 파생값이라 슬라이더가 실제 상태를 그대로 가리킨다. */}
+          된다. 값은 파생값이라 슬라이더가 실제 상태를 그대로 가리킨다.
+          §365 값은 설명이 아니라 값 칸(`.settings-dial-value`)에 둔다 — 같은 절의 다이얼 행과
+          같은 자리다(스펙 0060 §7.1). 다이얼이 아니므로 출처 칸은 없다. */}
       <SettingsRow
-        description={t("settings.editor.codeFontSize.desc").replace(
-          "{value}",
-          fontSizeNumber(Math.round(codeMetrics.fontSize)),
-        )}
+        description={t("settings.editor.codeFontSize.desc")}
         label={t("settings.editor.codeFontSize")}
       >
         <input
           className="settings-range"
           disabled={linkFontMetrics}
-          max={32}
-          min={8}
+          max={EDITOR_FONT_SIZE_RANGE.max}
+          min={EDITOR_FONT_SIZE_RANGE.min}
           onChange={(e) => setCodeFontSize(Number(e.target.value))}
-          step={1}
+          step={EDITOR_FONT_SIZE_RANGE.step}
           type="range"
           value={Math.round(codeMetrics.fontSize)}
         />
+        <span
+          className="settings-dial-value"
+          data-testid="code-font-size-value"
+        >
+          {`${fontSizeNumber(Math.round(codeMetrics.fontSize))}px`}
+        </span>
       </SettingsRow>
 
       <SettingsRow
-        description={t("settings.editor.codeLineHeight.desc").replace(
-          "{value}",
-          lineHeightNumber(codeMetrics.lineHeight),
-        )}
+        description={t("settings.editor.codeLineHeight.desc")}
         label={t("settings.editor.codeLineHeight")}
       >
         <input
           className="settings-range"
           disabled={linkFontMetrics}
-          max={3.0}
-          min={1.0}
+          max={EDITOR_LINE_HEIGHT_RANGE.max}
+          min={EDITOR_LINE_HEIGHT_RANGE.min}
           onChange={(e) => setCodeLineHeight(Number(e.target.value))}
-          step={0.05}
+          step={EDITOR_LINE_HEIGHT_RANGE.step}
           type="range"
           value={codeMetrics.lineHeight}
         />
+        <span
+          className="settings-dial-value"
+          data-testid="code-line-height-value"
+        >
+          {lineHeightNumber(codeMetrics.lineHeight)}
+        </span>
       </SettingsRow>
 
       <SettingsSectionHeader title={t("settings.editor.behavior")} />
