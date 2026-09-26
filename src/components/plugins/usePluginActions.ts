@@ -34,7 +34,7 @@ import { useShallow } from "zustand/shallow";
 import { useTranslation } from "../../i18n/useTranslation";
 import { pluginUninstall } from "../../ipc/plugin-invoke";
 import { devFolderHoldsId } from "../../plugins/dev-plugins";
-import { consentRequired } from "../../plugins/plugin-consent";
+import { claimedConsent, consentRequired } from "../../plugins/plugin-consent";
 import {
   activateBuiltin,
   deactivateBuiltin,
@@ -203,10 +203,7 @@ export function usePluginActions(registryIndex: null | RegistryIndex) {
           setError(entry.id, tooOld);
           return false;
         }
-        const claimed: PluginConsent = {
-          capabilities: [...entry.capabilities].sort(),
-          trust: entry.trust,
-        };
+        const claimed = claimedConsent(entry, entry.trust);
         const consent =
           preApproved ??
           (await askConsent({
@@ -367,10 +364,7 @@ export function usePluginActions(registryIndex: null | RegistryIndex) {
         return;
       }
       const prior = installedPlugins[entry.id]?.consent;
-      const claimed: PluginConsent = {
-        capabilities: [...entry.capabilities].sort(),
-        trust: entry.trust,
-      };
+      const claimed = claimedConsent(entry, entry.trust);
       const reason = consentRequired(prior, claimed);
       // When the recorded consent already covers this version, record the CLAIMED shape
       // rather than carrying the old one forward — an update that drops a capability

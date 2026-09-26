@@ -1,19 +1,62 @@
 // §260 Phase 5 — what the user agreed to, and whether a later version exceeds it.
 //
-// ONE rule serves two callers, deliberately: the pre-download prompt decision
-// (`consentRequired`) and the post-download check that the manifest inside the ZIP
-// matches what the registry advertised. Consent is collected against a registry CLAIM,
-// so if those two answers could diverge a registry could advertise "sandboxed" and ship
-// "trusted" — the exact attack the second check exists to catch. A second implementation
-// of "covered" would be a second place for them to drift apart.
-import type { PluginCapability, PluginConsent, PluginTrust } from "./types";
+// ONE rule (`consentGaps`) serves THREE callers, deliberately: the pre-download prompt
+// decision (`consentRequired`, used by `usePluginActions.ts`'s install/update path), the
+// post-download check that the manifest inside the ZIP matches what the registry
+// advertised (`stageValidateAndCommit`), and §379's dev-folder reload gate
+// (`devConsentToAsk` in `dev-plugins.ts`). Consent is collected against a registry CLAIM,
+// so if the first two answers could diverge a registry could advertise "sandboxed" and
+// ship "trusted" — the exact attack the second check exists to catch. A second
+// implementation of "covered" would be a second place for them to drift apart.
+//
+// The publisher rule this file adds (§382) is registry-claim-only by design (plan 0104
+// P18): a downloaded manifest and a dev folder's manifest both name no publisher, so
+// `next.channel` is undefined for the second and third callers and the rule never fires
+// for them — see `claimedConsent` below for the matching write side.
+import type {
+  PluginCapability,
+  PluginConsent,
+  PluginTrust,
+  RegistryChannel,
+  RegistryEntry,
+} from "./types";
 
 export type ConsentReason = "escalation" | "first-install";
 
 /** What the plugin asks for now — a registry claim, or a downloaded manifest. */
 interface CapabilityRequest {
   capabilities: readonly PluginCapability[];
+  /** §382 — set on a registry claim; a downloaded manifest names no channel. */
+  channel?: RegistryChannel;
+  /** §382 — the listing's publisher id, compared only when `channel` is `community`. */
+  publisherId?: number;
   trust: PluginTrust;
+}
+
+/**
+ * §382 — the consent a registry listing asks for: what the dialog shows and what gets
+ * recorded. `trust` is passed separately because the caller has already refused a
+ * trust-less (legacy) entry, and TS does not narrow the entry's type from that check.
+ *
+ * One builder for the install and the update path (`usePluginActions`), so both write the
+ * same provenance. The publisher is copied for a COMMUNITY listing only: recording none on a
+ * first-party record is what keeps `consentGaps`' publisher rule out of first-party updates.
+ */
+export function claimedConsent(
+  entry: RegistryEntry,
+  trust: PluginTrust,
+): PluginConsent {
+  const consent: PluginConsent = {
+    capabilities: [...entry.capabilities].sort(),
+    trust,
+  };
+  if (entry.channel !== undefined) consent.channel = entry.channel;
+  if (entry.channel === "community") {
+    if (entry.publisher !== undefined) consent.publisher = entry.publisher;
+    if (entry.publisherId !== undefined)
+      consent.publisherId = entry.publisherId;
+  }
+  return consent;
 }
 
 /**
@@ -55,6 +98,21 @@ export function consentGaps(
   if (extra.length > 0) {
     gaps.push(
       `it requests capabilities that were not approved: ${extra.join(", ")}`,
+    );
+  }
+  // §382 — a community plugin whose publisher ACCOUNT changed is a different party asking,
+  // whatever it asks for (spec 0058 §9.2). Compared by the numeric GitHub id: a login can be
+  // renamed, and a deleted one registered again by someone else. An absent recorded id —
+  // every consent written before §382 — counts as a change: the user was never shown a
+  // publisher, so there is nothing to hold the new one against. A first-party listing is
+  // exempt; its channel is the file, and nobody else can publish into it.
+  if (
+    next.channel === "community" &&
+    consented.publisherId !== next.publisherId
+  ) {
+    gaps.push(
+      `it is published by a different GitHub account (id ${String(next.publisherId)}) ` +
+        `than the one approved (${consented.publisherId === undefined ? "none recorded" : `id ${consented.publisherId}`})`,
     );
   }
   return gaps;

@@ -90,14 +90,18 @@ export interface FilesAPI {
 export interface InstalledPlugin {
   checksum: string;
   /**
-   * §260 Phase 5 — the (trust, capabilities) the user approved at install, kept so a
-   * later version can be compared against what was actually agreed to rather than
-   * against the manifest that shipped with it. Absent for records written before Phase 5.
+   * §260 Phase 5 — what the user approved at install: the capabilities and trust shown,
+   * and, since §382, the channel of the listing and (for a community one) who published
+   * it — kept so a later version can be compared against what was actually agreed to
+   * rather than against the manifest that shipped with it. Absent for records written
+   * before Phase 5; channel and publisher absent for records written before §382.
    *
    * For a dev-folder plugin (§379): the record carries Rust's consent in a release build; a
    * dev build drops it even when the shared `plugin-dev.json` file has one, since choosing
    * the directory there is its own deliberate act (`devRowConsent` in `dev-plugins.ts` is
-   * what enforces the drop — this field itself is just storage).
+   * what enforces the drop — this field itself is just storage). A dev-folder consent never
+   * carries channel or publisher — those describe a registry listing, and a dev folder is
+   * neither.
    */
   consent?: PluginConsent;
   enabled: boolean;
@@ -152,6 +156,17 @@ export type PluginCapability =
 export interface PluginConsent {
   /** Exactly what was shown, so a later diff is against the displayed list. */
   capabilities: PluginCapability[];
+  /**
+   * §382 — the channel of the listing this was approved against. Absent for a dev-folder
+   * consent and for every record written before §382 — and an absent channel is NOT read as
+   * first-party: before the URL decision of 2026-08-04 an install could come from any
+   * registry (spec 0058 §9.2).
+   */
+  channel?: RegistryChannel;
+  /** §382 — the login shown as the publisher. Display only; `publisherId` decides. */
+  publisher?: string;
+  /** §382 — the publisher's numeric GitHub id, which `consentGaps` compares. Never the login. */
+  publisherId?: number;
   trust: PluginTrust;
 }
 
