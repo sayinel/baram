@@ -36,7 +36,7 @@ Plugins are capability-gated: each declares the permissions it needs (editor, fi
 
 How strongly that approval is enforced depends on the plugin's kind:
 
-- **Sandboxed** — the default, and the only kind published in the marketplace. The plugin's code is isolated from the editor and every privileged action is checked against the capabilities you approved, so the list you saw is a real boundary.
+- **Sandboxed** (the default, and the only kind a community plugin can be) — the plugin's code is isolated from the editor and every privileged action is checked against the capabilities you approved, so the list you saw is a real boundary.
 - **Full trust** — runs inside Baram itself with no isolation. The capability list describes what such a plugin intends to do but does not limit it; it can reach any file your account can, any network host, and every credential the app holds. Baram shows a red warning and asks for a separate confirmation before installing one, so you cannot get there by accident.
 
 ### I updated Baram and my plugin stopped working
