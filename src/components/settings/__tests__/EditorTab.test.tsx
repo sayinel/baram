@@ -5,6 +5,7 @@
 // AppearanceTab's <ThemeEditor/> does, and using it restores the tab's
 // normal font rows.
 import type { DialId } from "../../../appearance/dials";
+import type { InstalledTheme } from "../../../themes/theme-install";
 
 import { act, render, renderHook, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
@@ -27,6 +28,32 @@ async function flush(): Promise<void> {
     await Promise.resolve();
     await Promise.resolve();
   });
+}
+
+/** `appearance-dial-row.test.tsx` 의 픽스처 그대로 — 활성 테마가 다이얼을 제안하게 한다. */
+function installedTheme(
+  dials: Record<string, number | string>,
+): InstalledTheme {
+  return {
+    checksum: "c".repeat(64),
+    consentedAt: "2026-09-01T00:00:00.000Z",
+    consentedVersion: "1.0.0",
+    id: "prose",
+    installedAt: "2026-09-01T00:00:00.000Z",
+    installPath: "/home/u/.baram/themes/prose",
+    manifest: {
+      author: "a",
+      description: "d",
+      dials,
+      engines: { baram: ">=0.7.0" },
+      id: "prose",
+      license: "MIT",
+      modes: { light: { tokens: "t.json" } },
+      name: "prose",
+      version: "1.0.0",
+    },
+    modes: { light: { css: false } },
+  };
 }
 
 /** 설명문 괄호 안의 수치. 기대값을 손으로 적는 대신 화면에서 뽑는다 — 손으로
@@ -177,20 +204,37 @@ describe("EditorTab — code metrics", () => {
 
   // 연동을 끄면 슬라이더가 살아나고, 그 출발점은 방금까지 보이던 값이다 —
   // 다른 값에서 출발하면 스위치를 누른 것만으로 화면이 바뀐다.
+  //
+  // §365 "보이던 값" 은 **병합된** 본문에서 파생한 값이고, 그것을 정하는 것은 스위치의
+  // 호출부(`EditorTab.tsx` 가 `setLinkFontMetrics` 에 넘기는 본문 값)다. 그래서 본문 20 / 2 를
+  // 사용자 층이 아니라 **테마 층**에 두고 실제 스위치를 누른다. 무엇이 이것을 실패시키는가:
+  // 호출부가 기본값(16 / 1.75)을 넘기거나, 사용자 층만 보고 테마 층을 빠뜨리면(여기서는 빈 층 →
+  // 역시 기본값) 코드 값이 14px / 1.75 로 적힌다.
   it("enables the code sliders at the values they were showing, once unlinked", async () => {
     useSettingsStore.setState({
       ...initialState,
-      appearanceOverrides: { editorFontSize: 20, editorLineHeight: 2 },
+      activeThemeId: "prose",
+      appearanceOverrides: {},
+      installedThemes: {
+        prose: installedTheme({ editorFontSize: 20, editorLineHeight: 2 }),
+      },
+      linkFontMetrics: true,
       locale: "en",
     });
     await renderTab();
+    // 테마 층이 이 탭에 실제로 닿았다 — 아니면 아래 18px 가 무엇을 증명하는지 알 수 없다.
+    expect(parenthesised(/Size of text in the editor/u)).toBe("20px");
 
+    const matchBody = screen
+      .getByText("Match Body Text")
+      .closest(".settings-row")
+      ?.querySelector<HTMLElement>('[role="switch"]');
+    expect(matchBody).toBeTruthy();
     act(() => {
-      useSettingsStore
-        .getState()
-        .setLinkFontMetrics(false, { fontSize: 20, lineHeight: 2 });
+      matchBody!.click();
     });
 
+    expect(useSettingsStore.getState().linkFontMetrics).toBe(false);
     expect(parenthesised(/Size of code text/u)).toBe("18px");
     expect(parenthesised(/Spacing between lines in code blocks/u)).toBe("2.00");
     const codeSliders = screen
@@ -202,6 +246,33 @@ describe("EditorTab — code metrics", () => {
     for (const slider of codeSliders) {
       expect((slider as HTMLInputElement).disabled).toBe(false);
     }
+  });
+
+  // §365 검색 결과의 연동 스위치도 같은 계약이다 — 그 호출부는 `settings-registry.ts` 의
+  // `linkFontMetrics` 항목이 넘기는 `resolveEditorTypography(themeDials, …)` 다. 무엇이 이것을
+  // 실패시키는가: 위 테스트와 같다(기본값을 넘기거나 테마 층을 빠뜨리면 14 / 1.75).
+  it("seeds the code values from the merged body through the search entry's switch", () => {
+    useSettingsStore.setState({
+      ...initialState,
+      activeThemeId: "prose",
+      appearanceOverrides: {},
+      installedThemes: {
+        prose: installedTheme({ editorFontSize: 20, editorLineHeight: 2 }),
+      },
+      linkFontMetrics: true,
+    });
+    const { result } = renderHook(() => useSettingsRegistry());
+    const entry = result.current.find((s) => s.id === "linkFontMetrics");
+    expect(entry).toBeDefined();
+
+    act(() => {
+      entry!.control.storeSetter(false);
+    });
+
+    const s = useSettingsStore.getState();
+    expect(s.linkFontMetrics).toBe(false);
+    expect(s.codeFontSize).toBe(18); // Math.round(20 × 0.875 = 17.5)
+    expect(s.codeLineHeight).toBe(2);
   });
 
   // 코드 슬롯의 예제는 코드 크기로 그린다 — 본문 크기로 그리면 실제 에디터에는

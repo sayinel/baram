@@ -195,6 +195,41 @@ describe("§349 portaled overlays take the font variables", () => {
     ).toContain('"Theme Mono"');
   });
 
+  // §365 열린 뒤의 변경도 따른다(계획 0107 P4). 이 팝오버는 React 밖이라 설정 스토어 구독이
+  // 유일한 재적용 경로다. 무엇이 이것을 실패시키는가: 구독이 재적용을 건너뛰거나 변화를 못
+  // 보면(예: 병합값이 아니라 사라진 옛 필드를 비교) 마운트 때의 D2Coding · Inter 가 남는다.
+  // 쓰기는 한 번이다 — 테마를 입히면서 사용자 층을 비워, 두 서체가 테마 층에서 온다.
+  it("math inline preview popover follows a later theme switch", () => {
+    const editor = new Editor({ extensions: createBaramExtensions() });
+    editors.push(editor);
+    const popover = overlay("math-preview-popover");
+    // 출발점 — "바뀌었다" 가 공허하지 않도록 `beforeEach` 의 값부터 본다.
+    expect(popover.style.getPropertyValue("--font-family-mono")).toContain(
+      '"D2Coding"',
+    );
+    expect(popover.style.getPropertyValue("--font-family-editor")).toContain(
+      '"Inter"',
+    );
+
+    useSettingsStore.setState({
+      activeThemeId: "prose",
+      appearanceOverrides: {},
+      installedThemes: {
+        prose: installedTheme({
+          editorCodeFontFamily: "Theme Mono",
+          editorFontFamily: "Theme Serif",
+        }),
+      },
+    });
+
+    expect(popover.style.getPropertyValue("--font-family-mono")).toContain(
+      '"Theme Mono"',
+    );
+    expect(popover.style.getPropertyValue("--font-family-editor")).toContain(
+      '"Theme Serif"',
+    );
+  });
+
   // 열려 있는 동안의 설정 변경도 따라야 한다 — 설정 창과 오버레이를 동시에
   // 열어 두는 것은 서체를 고를 때의 정상 사용 흐름이다.
   it("follows a code-font change while the overlay is open", () => {

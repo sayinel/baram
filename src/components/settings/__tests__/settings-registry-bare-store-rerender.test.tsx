@@ -86,12 +86,14 @@ describe("useSettingsRegistry re-render scope (§340 M-11)", () => {
     const state = renderRegistryCountingCommits();
     const before = state.commits;
     const size = readEditorTypography().fontSize;
+    // 사용자 층을 통째로 되돌린다 — `setDial(…, size)` 로 되돌리면 원래 없던 키가 남는다.
+    const priorOverrides = useSettingsStore.getState().appearanceOverrides;
 
     act(() => {
       useSettingsStore.getState().setDial("editorFontSize", size + 1);
     });
 
     expect(state.commits).toBeGreaterThan(before);
-    useSettingsStore.getState().setDial("editorFontSize", size);
+    useSettingsStore.setState({ appearanceOverrides: priorOverrides });
   });
 });

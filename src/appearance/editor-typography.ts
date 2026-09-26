@@ -1,7 +1,13 @@
-// §365 다이얼 6 — 병합된 본문 타이포(스펙 0060 §4). 소비자는 전부 이것을 거쳐 읽는다: 훅
-// `useEditorTypography` 와 React 밖 `readEditorTypography`(둘 다 `hooks/use-editor-typography.ts`),
-// 병합 결과를 이미 가진 `use-settings-effects.ts`(`editorTypographyOf`, 계획 0107 P3), 그리고 두
-// 층을 이미 가진 `components/settings/settings-registry.ts`(`resolveEditorTypography`).
+// §365 다이얼 6 — 병합된 본문 타이포(스펙 0060 §4). 넷을 이 묶음(`EditorTypography`)으로 읽는
+// 소비자는 전부 이것을 거친다: 훅 `useEditorTypography` 와 React 밖 `readEditorTypography`(둘 다
+// `hooks/use-editor-typography.ts`), 병합 결과를 이미 가진 `use-settings-effects.ts`
+// (`editorTypographyOf`, 계획 0107 P3), 그리고 두 층을 이미 가진
+// `components/settings/settings-registry.ts`(`resolveEditorTypography` — 코드 크기 계산과 연동 스위치).
+//
+// 경계: 다이얼 **하나**를 id 로 읽는 범용 설정 UI 는 여기를 거치지 않고 `resolveDials(...)[id]` 를
+// 직접 부른다 — `settings-registry.ts` 의 다이얼 슬라이더 · 셀렉트 도우미와 `appearance-dial-row.tsx`.
+// `resolveDials(` 호출부 전수(테스트 밖, 2026-09-26): 이 파일 · `hooks/use-appearance-dials.ts`(그
+// 결과는 `use-settings-effects.ts` 에서 `editorTypographyOf` 로만 넷에 닿는다) · 위 두 설정 UI 파일.
 //
 // 필드 이름이 옮기기 전 설정 필드와 같은 이유: 소비자의 구조 분해가 그대로 남아, 바뀌는 것이
 // "어디서 읽는가" 하나로 좁혀진다.

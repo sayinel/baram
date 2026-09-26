@@ -82,6 +82,15 @@ describe("본문 타이포 → appearanceOverrides 마이그레이션", () => {
     }
   });
 
+  // 무엇이 이것을 실패시키는가: 지우기를 "옮긴 경우" 갈래 안에만 두면 `parse` 에 실패한 값의 옛
+  // 키가 남는다 — 옮기지 않은 값이 state 에 조용히 살아남아 두 출처가 공존한다.
+  it("parse 에 실패한 값도 옛 키를 지우고 옮기지 않는다", () => {
+    const out = migrate({ fontFamily: "a\nb", fontSize: 99 });
+    expect(out.appearanceOverrides).toBeUndefined();
+    expect("fontFamily" in out).toBe(false);
+    expect("fontSize" in out).toBe(false);
+  });
+
   it("게이트를 지난 버전에서는 다시 돌지 않는다", () => {
     const current = useSettingsStore.persist.getOptions().version ?? 0;
     const fn = useSettingsStore.persist.getOptions().migrate!;

@@ -79,9 +79,12 @@ describe("§349 source mode font surface", () => {
     expect(wrapper.contains(content)).toBe(true);
   });
 
-  // ‼️ 이 컴포넌트는 다른 설정을 전부 `getState()` 로 읽는다 — 코드 서체만
-  // 반응형 셀렉터를 새로 달았으므로, 그 리렌더가 CodeMirror 를 다시 만들지
-  // 않는다는 것을 고정한다. 다시 만들면 커서·실행 취소 스택·스크롤이 날아간다.
+  // ‼️ 이 컴포넌트는 설정 변경에 리렌더된다 — `useEditorTypography()`(사용자 층
+  // `appearanceOverrides` 와 테마 층의 다이얼)와 코드 세 설정(`codeFontSize` ·
+  // `codeLineHeight` · `linkFontMetrics`)의 셀렉터가 반응형이다. CodeMirror 를 만드는
+  // 이펙트는 deps 가 `[]` 이고 그 안의 설정(탭 크기 · 줄 번호 · 괄호 짝)은 `getState()`
+  // 로 읽으므로, 그 리렌더가 CodeMirror 를 다시 만들지 않는다는 것을 고정한다. 다시
+  // 만들면 커서·실행 취소 스택·스크롤이 날아간다.
   it("keeps the same CodeMirror instance across a code-font change", () => {
     const wrapper = renderSource();
     const before = wrapper.querySelector(".cm-editor");
