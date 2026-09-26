@@ -188,6 +188,23 @@ describe("the pending consent promise settles even if nothing else does", () => 
     expect(firstResolved).toBe(false);
     expect(result.current.pendingConsent?.name).toBe("Second");
   });
+
+  // Plan 0109 security gate, Low-1. The test above covers a request that is OPEN at unmount;
+  // this one covers a request that arrives AFTER it — the file install awaits the floor check
+  // and the replace confirm before asking, and Settings can close in that gap. What fails it:
+  // dropping `askConsent`'s `mounted` check leaves this promise unsettled, so "pending" wins.
+  it("a consent request made after unmount resolves false at once", async () => {
+    const { result, unmount } = renderHook(() => useThemeActions());
+    const { askConsent } = result.current;
+    unmount();
+    const outcome = await Promise.race([
+      askConsent("Late"),
+      new Promise<"pending">((resolve) =>
+        setTimeout(() => resolve("pending"), 200),
+      ),
+    ]);
+    expect(outcome).toBe(false);
+  });
 });
 
 describe("handleInstall", () => {

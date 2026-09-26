@@ -5,9 +5,12 @@
 // ‼️ 스테이징된 것은 설치되거나 버려진다. 이 훅이 스스로 멈추는 갈래 여섯(매니페스트 · 예약 id · 하한 ·
 // 철회 · 교체 취소 · 동의 거절)은 `stop` 이 버리고, 테스트가 그 여섯 갈래마다 `themeInstallDiscard` 를 본다.
 // 그 뒤는 `installStagedThemeFromFile` 의 몫이다 — 성공하면 commit 이 stage 를 가져가고, 실패하면 그 함수가
-// 버린다. 빈틈 하나: 동의 상태의 주인(`useThemeActions` 를 부른 화면)이 `askConsent` 를 부르기 **전에**
-// 언마운트되면 그 약속은 끝나지 않는다 — 언마운트 정리는 그때 열려 있던 요청만 거절한다. 그 stage 는 다음
-// 스테이징이 부르는 `sweep_stale_stages`(`install.rs` — 하루 지난 stage)가 거둔다.
+// 버린다. 화면(동의 상태의 주인 — `useThemeActions` 를 부른 화면)만 언마운트되는 것은 빈틈이 아니다: 그때
+// 열려 있던 동의 요청은 언마운트 정리가, 그 뒤의 요청은 `askConsent` 자신이(`mounted`, 계획 0109 보안 관문
+// Low-1) 거절로 끝내므로 `stop` 이 버린다. 남는 빈틈은 이 코드가 더 돌지 못하는 경우다 — 웹뷰 자체가 사라지거나
+// (창을 닫거나 새로고침 — Rust 대화상자가 열려 있던 동안이든 동의를 기다리던 동안이든) 앱이 죽거나, 버리기
+// (`themeInstallDiscard`) 자체가 실패해 로그만 남는 경우. 그 stage 는 다음 스테이징이 부르는
+// `sweep_stale_stages`(`install.rs` — 하루 지난 stage)가 거둔다.
 //
 // 예약 id · 하한은 동의 **전**에 한 번, `finishStagedThemeInstall` 안에서 한 번 더 본다(계획 0109 P3). 철회는
 // 동의 전 여기서 한 번이다 — `finishStagedThemeInstall` 에는 철회 검사가 없다(레지스트리 입구도
@@ -111,7 +114,9 @@ export function useThemeFileInstall({
       ) {
         return stop(null);
       }
-      if (!(await askConsent(`${manifest.name} — ${fileName}`))) {
+      if (
+        !(await askConsent(`${manifest.name} — ${consentFileName(fileName)}`))
+      ) {
         return stop(null);
       }
 
@@ -160,4 +165,37 @@ function confirmReplace(
     confirmLabel: t("settings.appearance.installFromFile.replace"),
     danger: false,
   });
+}
+
+/** {@link consentFileName} 이 남기는 최대 길이 — 코드 포인트 수, 잘렸을 때의 `…` 를 포함한다. */
+const MAX_CONSENT_FILE_NAME_CHARS = 100;
+
+/** {@link consentFileName} 이 U+FFFD 로 바꾸는 문자 — 목록은 그 함수의 doc 주석에 있다. */
+const CONSENT_FILE_NAME_UNSAFE_RE =
+  // eslint-disable-next-line no-control-regex -- 제어 문자를 바꾸는 것이 목적이다
+  /[\u0000-\u001f\u007f\u061c\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]/gu;
+
+/**
+ * 동의 제목에 싣는 파일 이름을 속일 수 없게 만든다(계획 0109 보안 관문 Low-3a).
+ *
+ * 파일 이름은 OS 가 준 그대로다 — Rust 는 `to_string_lossy` 만 거치므로 C0 제어 문자 · 방향 제어 문자 ·
+ * 줄 · 문단 구분자가 지나오고, 길이는 파일 시스템의 상한(대개 255 바이트)까지다. 그 이름이 동의 제목의
+ * 이름 칸에 실리므로(계획 0109 P2), 방향 제어로 매니페스트 이름과 순서를 뒤바꿔 보이거나 줄을 바꿔
+ * 제목을 두 줄로 꾸밀 수 있다. 아래 문자들을 U+FFFD 로 바꾸고 100 자로 자른다.
+ *
+ * 파일 이름에만 건다. 매니페스트 이름은 `validateThemeManifest` 가 이미 100 자 상한과
+ * `UNSAFE_TEXT_CHARS_RE`(`theme-manifest.ts` — C0 · DEL · U+202A–U+202E · U+2066–U+2069)로 거부한다.
+ * ‼️ 그 집합은 이 함수의 것보다 좁다 — ALM · LRM · RLM · U+2028 · U+2029 는 매니페스트 이름에서
+ * 거부되지 않는다(보안 관문의 판정 범위 밖이라 여기서는 바꾸지 않았다).
+ *
+ * 바꾸는 문자: C0(U+0000–U+001F) · DEL(U+007F) · ALM(U+061C) · LRM · RLM(U+200E · U+200F) · 줄 · 문단
+ * 구분자(U+2028 · U+2029) · 방향 embedding · override(U+202A–U+202E) · isolate(U+2066–U+2069).
+ */
+function consentFileName(fileName: string): string {
+  const chars = Array.from(
+    fileName.replace(CONSENT_FILE_NAME_UNSAFE_RE, "\uFFFD"),
+  );
+  return chars.length > MAX_CONSENT_FILE_NAME_CHARS
+    ? `${chars.slice(0, MAX_CONSENT_FILE_NAME_CHARS - 1).join("")}…`
+    : chars.join("");
 }

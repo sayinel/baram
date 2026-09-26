@@ -73,12 +73,28 @@ pub async fn import_theme_file(path: PathBuf) -> Result<ThemeImportPick, PluginE
 /// file being read. Calling the provider only once the header says ZIP keeps that cost, and that
 /// failure mode, out of the colour path entirely. See
 /// `a_colour_file_never_resolves_a_theme_root` for the pin.
+///
+/// ‼️ REGULAR FILES ONLY, CHECKED BEFORE `File::open` (plan 0109 security gate, Low-2). Opening a
+/// FIFO blocks until a writer appears, and a tty or character device can block on `read` — inside
+/// `spawn_blocking` that is a worker stuck forever and an import that never answers. The dialog can
+/// hand back any path the user can name, so the kind is judged here: `std::fs::metadata` follows
+/// symlinks, so a link to a regular file passes and a link to a FIFO does not. The second check,
+/// on the opened handle, catches a path swapped to another non-regular kind between the two calls;
+/// it cannot un-block an `open` that a swap to a FIFO in that window already made wait — that needs
+/// a local process racing the user's own pick. See `a_fifo_is_refused_without_blocking`.
 fn import_theme_file_in(
     path: &Path,
     theme_root: impl FnOnce() -> Result<PathBuf, PluginError>,
 ) -> Result<ThemeImportPick, PluginError> {
+    if !std::fs::metadata(path)?.is_file() {
+        return Err(not_a_regular_file());
+    }
     let mut file = File::open(path)?;
-    let len = file.metadata()?.len();
+    let meta = file.metadata()?;
+    if !meta.is_file() {
+        return Err(not_a_regular_file());
+    }
+    let len = meta.len();
     let mut head = [0u8; 4];
     let is_zip = len >= ZIP_MAGIC.len() as u64 && {
         file.read_exact(&mut head)?;
@@ -91,6 +107,12 @@ fn import_theme_file_in(
     } else {
         read_colors(file, len)
     }
+}
+
+/// The refusal for a picked path whose kind is anything but a regular file — a directory, FIFO,
+/// socket or device. One constructor so both checks in [`import_theme_file_in`] say the same thing.
+fn not_a_regular_file() -> PluginError {
+    PluginError::Refused("not a regular file".into())
 }
 
 /// ‼️ SIZE BEFORE READ, then a bounded read — the file can grow between `metadata` and `read`,
@@ -239,6 +261,61 @@ mod tests {
             panic!("a colour file must never resolve a theme root")
         });
         assert!(matches!(result.unwrap(), ThemeImportPick::Colors { .. }));
+    }
+
+    fn is_not_a_regular_file(err: &PluginError) -> bool {
+        matches!(err, PluginError::Refused(message) if message == "not a regular file")
+    }
+
+    /// Plan 0109 security gate, Low-2. 무엇이 이것을 실패시키는가: `import_theme_file_in` 의
+    /// `is_file()` 검사 **둘 다**를 지우면 디렉터리는 `File::open` 을 통과하고(unix 에서 디렉터리는
+    /// 읽기 전용으로 열린다) 첫 `read_exact` 의 `Io` 오류로 끝나 red 가 된다. 하나만 지우면 남은
+    /// 하나가 거부하므로 green 이다 — 열기 전 검사 하나를 고정하는 것은 아래 FIFO 테스트다.
+    #[test]
+    fn a_directory_is_refused_as_not_a_regular_file() {
+        let files = tempfile::tempdir().unwrap();
+        let dir = files.path().join("look.zip");
+        std::fs::create_dir(&dir).unwrap();
+        let err = import_theme_file_in(&dir, || {
+            panic!("a refused path must never resolve a theme root")
+        })
+        .unwrap_err();
+        assert!(is_not_a_regular_file(&err), "{err:?}");
+    }
+
+    /// Plan 0109 security gate, Low-2 — the case the check exists for: `File::open` on a FIFO
+    /// waits for a writer that never comes. The call runs on its own thread with a deadline, so a
+    /// regression FAILS this test instead of hanging the suite (the stuck thread is abandoned; the
+    /// test binary exits when its main thread returns).
+    ///
+    /// 무엇이 이것을 실패시키는가: 열기 **전** `is_file()` 검사를 지우면 `File::open` 이 멈추고 5초
+    /// 뒤 `recv_timeout` 이 red 를 낸다 — 열린 핸들을 보는 두 번째 검사로는 그 멈춤을 풀 수 없다.
+    #[cfg(unix)]
+    #[test]
+    fn a_fifo_is_refused_without_blocking() {
+        let files = tempfile::tempdir().unwrap();
+        let fifo = files.path().join("look.zip");
+        match std::process::Command::new("mkfifo").arg(&fifo).status() {
+            Ok(status) if status.success() => {}
+            other => {
+                eprintln!(
+                    "SKIPPED a_fifo_is_refused_without_blocking: mkfifo unavailable ({other:?})"
+                );
+                return;
+            }
+        }
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let result = import_theme_file_in(&fifo, || {
+                panic!("a refused path must never resolve a theme root")
+            });
+            let _ = tx.send(result.map(|_| ()));
+        });
+        let result = rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .expect("importing a FIFO blocked instead of being refused");
+        let err = result.unwrap_err();
+        assert!(is_not_a_regular_file(&err), "{err:?}");
     }
 
     // ‼️ 무엇이 이 둘(과 아래 패키지 테스트)이 실제로 pin 하는가: 상한이 존재하고 올바른

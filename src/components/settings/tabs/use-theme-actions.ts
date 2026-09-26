@@ -143,6 +143,11 @@ export function useThemeActions() {
   const [pendingConsent, setPendingConsent] =
     useState<null | PendingThemeConsent>(null);
   const consentResolver = useRef<((v: boolean) => void) | null>(null);
+  /**
+   * Whether the screen that owns this hook is mounted — set in the effect below, not at
+   * creation, so a StrictMode unmount/remount leaves it true.
+   */
+  const mounted = useRef(false);
   /** Entry ids with an install in flight — guards a double-click BEFORE the first await. */
   const inFlight = useRef<Set<string>>(new Set());
   const [installing, setInstalling] = useState<Record<string, boolean>>({});
@@ -150,16 +155,20 @@ export function useThemeActions() {
     {},
   );
 
-  const askConsent = useCallback(
-    (name: string) =>
-      new Promise<boolean>((resolve) => {
-        // A second request while one is open would strand the first caller forever.
-        consentResolver.current?.(false);
-        consentResolver.current = resolve;
-        setPendingConsent({ name });
-      }),
-    [],
-  );
+  const askConsent = useCallback((name: string): Promise<boolean> => {
+    // ‼️ Asked AFTER the owner unmounted (plan 0109 security gate, Low-1): there is no dialog
+    // left to answer, and the unmount cleanup below only refuses a request already open. A
+    // promise made here would never settle — for the file install that meant a staged
+    // package nobody discarded. The caller awaited something before asking (the floor check,
+    // the replace confirm), and Settings can close in that gap.
+    if (!mounted.current) return Promise.resolve(false);
+    return new Promise<boolean>((resolve) => {
+      // A second request while one is open would strand the first caller forever.
+      consentResolver.current?.(false);
+      consentResolver.current = resolve;
+      setPendingConsent({ name });
+    });
+  }, []);
 
   const settleConsent = useCallback((value: boolean) => {
     setPendingConsent(null);
@@ -168,14 +177,16 @@ export function useThemeActions() {
   }, []);
 
   // A dialog that disappears with the component (Settings closing mid-prompt) must resolve
-  // as a REFUSAL — see usePluginActions.ts's identical guard for the reported defect.
-  useEffect(
-    () => () => {
+  // as a REFUSAL — see usePluginActions.ts's identical guard for the reported defect. A
+  // request that arrives after this cleanup is refused by `askConsent` itself (`mounted`).
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
       consentResolver.current?.(false);
       consentResolver.current = null;
-    },
-    [],
-  );
+    };
+  }, []);
 
   /**
    * §69's install-time refusal, for themes. True means "do not acquire this".

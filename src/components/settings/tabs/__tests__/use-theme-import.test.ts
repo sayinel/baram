@@ -10,6 +10,7 @@ vi.mock("../../../../ipc/theme", () => ({
 import en from "../../../../i18n/en.json";
 import { useSettingsStore } from "../../../../stores/settings/store";
 import { defaultColorsForBase } from "../../../../types/theme";
+import { logger } from "../../../../utils/logger";
 import { useThemeImport } from "../use-theme-import";
 
 const T = en as Record<string, string>;
@@ -83,5 +84,38 @@ describe("useThemeImport", () => {
     expect(result.current.importError).toBe(
       T["settings.appearance.importError.readFailed"],
     );
+  });
+
+  // 계획 0109 보안 관문 — V8 의 `JSON.parse` 문구는 입력의 앞부분을 인용한다. 무엇이 이것을 실패시키는가:
+  // 오류 객체를 그대로 로그에 넘기면 두 번째 단언이 red 다. 첫 단언은 그 전제(문구가 입력을 인용한다)를
+  // 이 런타임에서 고정한다 — 인용하지 않는 런타임이라면 이 테스트는 아무것도 막지 않는다.
+  it("JSON 이 아닌 색 파일은 오류의 종류만 로그에 남긴다", async () => {
+    const text = "SECRET-TOKEN not json";
+    expect(() => JSON.parse(text)).toThrow(/SECRET/);
+    const error = vi.spyOn(logger, "error").mockImplementation(() => {});
+    try {
+      ipc.themeImportPick.mockResolvedValue({ kind: "colors", text });
+      const result = await run();
+      expect(error).toHaveBeenCalledWith("Theme import failed:", "SyntaxError");
+      expect(result.current.importError).toBe(
+        T["settings.appearance.importError.readFailed"],
+      );
+    } finally {
+      error.mockRestore();
+    }
+  });
+
+  it("그 밖의 오류는 원문 그대로 로그에 남긴다", async () => {
+    const error = vi.spyOn(logger, "error").mockImplementation(() => {});
+    try {
+      ipc.themeImportPick.mockRejectedValue("theme id must be …");
+      await run();
+      expect(error).toHaveBeenCalledWith(
+        "Theme import failed:",
+        "theme id must be …",
+      );
+    } finally {
+      error.mockRestore();
+    }
   });
 });

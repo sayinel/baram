@@ -134,7 +134,13 @@ export function useThemeImport(
       saveCustomTheme(newTheme);
       setActiveTheme(newTheme.id);
     } catch (err) {
-      logger.error("Theme import failed:", err);
+      // `JSON.parse` 의 `SyntaxError` 는 종류만 적는다(계획 0109 보안 관문) — V8 의 문구는 입력의 앞부분을
+      // 인용하므로(`Unexpected token 'S', "SECRET-TOK"... is not valid JSON`), 실수로 고른 테마가 아닌 파일의
+      // 한 조각이 로그에 남는다. 그 밖의 오류(`ThemeImportError` · Rust 의 거부 문구)는 원문 그대로다.
+      logger.error(
+        "Theme import failed:",
+        err instanceof SyntaxError ? err.name : err,
+      );
       const code = err instanceof ThemeImportError ? err.code : "readFailed";
       const params = err instanceof ThemeImportError ? err.params : undefined;
       setImportError(t(`settings.appearance.importError.${code}`, params));

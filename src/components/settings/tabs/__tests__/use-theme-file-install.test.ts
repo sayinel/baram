@@ -30,6 +30,7 @@ vi.mock("@tauri-apps/api/app", () => ({ getVersion: appVersion }));
 import en from "../../../../i18n/en.json";
 import { useSettingsStore } from "../../../../stores/settings/store";
 import { usePluginStore } from "../../../../stores/system/plugin";
+import { useThemeActions } from "../use-theme-actions";
 import { useThemeFileInstall } from "../use-theme-file-install";
 
 const T = en as Record<string, string>;
@@ -210,4 +211,54 @@ describe("useThemeFileInstall", () => {
     );
     expect(announceInstalled).not.toHaveBeenCalled();
   });
+
+  // 계획 0109 보안 관문 Low-1 — 화면(동의 상태의 주인)이 사라진 뒤 동의에 닿는 설치. 여기만 진짜
+  // `useThemeActions` 를 쓴다. 무엇이 이것을 실패시키는가: `askConsent` 의 `mounted` 검사를 지우면 그
+  // 약속이 끝나지 않아 아래 경주에서 "pending" 이 이기고, stage 도 버려지지 않는다.
+  it("동의 상태의 주인이 언마운트된 뒤 동의에 닿으면 거절로 끝나고 stage 를 버린다", async () => {
+    const { result, unmount } = renderHook(() =>
+      useThemeFileInstall(useThemeActions()),
+    );
+    const { handleInstallFromFile } = result.current;
+    unmount();
+    expect(
+      await settledWithin(handleInstallFromFile(staged(), "look.zip")),
+    ).toEqual({ value: null });
+    expect(install.installStagedThemeFromFile).not.toHaveBeenCalled();
+    expect(ipc.themeInstallDiscard).toHaveBeenCalledWith("stage-f");
+  });
+
+  // 계획 0109 보안 관문 Low-3a. 무엇이 이것을 실패시키는가: `consentFileName` 을 거치지 않고 OS 가 준
+  // 이름을 그대로 넘기면 방향 override 와 줄바꿈이 동의 제목에 실린다.
+  it("파일 이름의 방향 제어 · 줄바꿈은 동의 제목에 실리기 전에 U+FFFD 가 된다", async () => {
+    askConsent.mockResolvedValue(false);
+    await hook().handleInstallFromFile(staged(), "evil\u202Egpj.zip\nline2");
+    expect(askConsent).toHaveBeenCalledWith(
+      "My Look — evil\uFFFDgpj.zip\uFFFDline2",
+    );
+  });
+
+  // 코드 포인트로 자른다 — UTF-16 단위로 자르면 이모지가 반쪽 surrogate 로 끝나 이 단언이 red 다.
+  it("긴 파일 이름은 코드 포인트 100 자(끝의 … 포함)로 자르고, 100 자는 그대로 둔다", async () => {
+    askConsent.mockResolvedValue(false);
+    await hook().handleInstallFromFile(staged(), "😀".repeat(300));
+    await hook().handleInstallFromFile(staged(), "a".repeat(100));
+    expect(askConsent.mock.calls.map(([title]) => title)).toEqual([
+      `My Look — ${"😀".repeat(99)}…`,
+      `My Look — ${"a".repeat(100)}`,
+    ]);
+  });
 });
+
+/** `promise` 가 `ms` 안에 끝나면 그 값을, 아니면 `"pending"` 을 — 끝나지 않는 약속이 테스트를 멈추게 두지 않는다. */
+function settledWithin<T>(
+  promise: Promise<T>,
+  ms = 200,
+): Promise<"pending" | { value: T }> {
+  return Promise.race([
+    promise.then((value) => ({ value })),
+    new Promise<"pending">((resolve) =>
+      setTimeout(() => resolve("pending"), ms),
+    ),
+  ]);
+}
