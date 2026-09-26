@@ -1,8 +1,9 @@
 // §379 개발자 모드 — dev 폴더 커맨드 (spec 0058 §6.2 R2).
 //
 // 판정은 `plugin::dev_mode` 에 있고, 이 파일은 앱에 닿는 얇은 층이다 — R1 파일이 어디 있는지
-// (`DevModeHost`), asset scope 부여, 옛 목록 읽기. 공개 커맨드는 빌드를 받지 않고 코어에
-// `Build::current()` 를 넘긴다. 테스트는 코어에 `Build::release()` 를 넘겨 릴리스 분기를 본다.
+// (`DevModeHost`), 네이티브 대화상자(폴더 피커·켜기 확인창, `DevDialogs`), asset scope 부여,
+// 옛 목록 읽기. 공개 커맨드는 빌드를 받지 않고 코어에 `Build::current()` 를 넘긴다. 테스트는
+// 코어에 `Build::release()` 를 넘겨 릴리스 분기를 본다.
 use std::path::{Path, PathBuf};
 
 use tauri::{AppHandle, Manager, Runtime, State};
@@ -27,11 +28,13 @@ fn legacy_dev_folders<R: Runtime>(app: &AppHandle<R>) -> Option<String> {
 /// 네이티브 대화상자 — 확인자 주입 지점 (spec 0058 §6.2 "테스트 가능성").
 ///
 /// 테스트는 대본대로 답하는 구현을 `DevModeHost` 에 넣어 승낙·거절을 고른다. 이전의
-/// `plugin_add_dev_folder_refuses_an_unapproved_path_through_generate_handler` 는 해석 실패
-/// 분기만 지나 대화상자를 띄운 적이 없었다 — 이 트레이트가 그 빈자리다.
+/// `plugin_add_dev_folder_refuses_an_unapproved_path_through_generate_handler`
+/// (`commands/plugin_cmd.rs`, §329.6 이 더하고 44f30762 이 지웠다)는 해석 실패 분기만 지나
+/// 대화상자를 띄운 적이 없었다 — 이 트레이트가 그 빈자리다.
 pub trait DevDialogs: Send + Sync {
-    /// 폴더 피커. 고른 폴더, 또는 취소면 `None`.
-    fn pick_folder(&self, title: String) -> oneshot::Receiver<Option<PathBuf>>;
+    /// 폴더 피커. 고른 폴더, 또는 취소면 `Ok(None)` — 피커 자체의 실패(예: 경로 해석 실패)는
+    /// `Err` 다(§332 `pick_approved_dir` 와 같은 구분, M2 리뷰: 실패를 취소로 뭉개지 않는다).
+    fn pick_folder(&self, title: String) -> oneshot::Receiver<Result<Option<PathBuf>, String>>;
     /// 확인 대화상자. 승낙이면 `true`.
     fn confirm(&self, copy: DialogCopy) -> oneshot::Receiver<bool>;
 }
@@ -50,14 +53,18 @@ struct NativeDevDialogs<R: Runtime> {
 }
 
 impl<R: Runtime> DevDialogs for NativeDevDialogs<R> {
-    fn pick_folder(&self, title: String) -> oneshot::Receiver<Option<PathBuf>> {
+    fn pick_folder(&self, title: String) -> oneshot::Receiver<Result<Option<PathBuf>, String>> {
         let (tx, rx) = oneshot::channel();
         self.app
             .dialog()
             .file()
             .set_title(title)
             .pick_folder(move |picked| {
-                let _ = tx.send(picked.and_then(|p| p.into_path().ok()));
+                let _ = tx.send(
+                    picked
+                        .map(|p| p.into_path().map_err(|e| e.to_string()))
+                        .transpose(),
+                );
             });
         rx
     }
@@ -111,13 +118,16 @@ fn enable_warning(korean: bool) -> DialogCopy {
     }
 }
 
-/// dev 커맨드가 기대는 장소 — managed state (`lib.rs` 의 `setup`).
+/// dev 커맨드가 기대는 장소 — managed state (`lib.rs` 의 `setup`). plan 0106 P8 이 말하는 단일
+/// 주입 지점이다: 세 디렉터리뿐 아니라 `dialogs`(네이티브 피커·확인창, `DevDialogs`)도 여기서
+/// 갈린다 — 테스트는 `ScriptedDialogs` 를, 앱은 `NativeDevDialogs` 를 심는다.
 ///
 /// 앱에서는 앱 데이터 디렉터리 · `~/.baram/plugins` · `~/.baram/plugin-data`, 테스트에서는
-/// tempdir 다. ‼️ 주입 지점인 이유: `tauri::test::mock_context` 의 identifier 가 빈 문자열이라
-/// mock 앱의 `app_data_dir()` 이 `~/Library/Application Support` 자체다 — 그리로 쓰는 테스트는
-/// 개발자 머신에 파일을 남긴다. 두 루트도 같은 이유로 여기 있다 — I4 의 판정이 실제 홈을 보지
-/// 않게.
+/// tempdir 다. ‼️ 세 디렉터리가 주입 지점인 이유: `tauri::test::mock_context` 의 identifier 가
+/// 빈 문자열이라 `app.path().app_data_dir()`(= `dirs::data_dir()` 에 identifier 를 이어붙인
+/// 것, `tauri-2.11.5` `path/desktop.rs`)이 identifier 없이 `data_dir()` 자체가 된다 — macOS 에서는
+/// `~/Library/Application Support` 자체다. 그리로 쓰는 테스트는 개발자 머신에 파일을 남긴다.
+/// 두 루트도 같은 이유로 여기 있다 — I4 의 판정이 실제 홈을 보지 않게.
 pub struct DevModeHost {
     data_dir: PathBuf,
     plugin_root: PathBuf,
@@ -371,9 +381,20 @@ async fn pick_dev_folder<R: Runtime>(
         return Err(dev_mode::DEV_MODE_INACTIVE.to_string());
     }
     let title = picker_title(crate::commands::approval_cmd::is_korean(app)).to_string();
-    let Some(picked) = host.dialogs.pick_folder(title).await.unwrap_or(None) else {
+    let Some(picked) = host
+        .dialogs
+        .pick_folder(title)
+        .await
+        .map_err(|e| e.to_string())??
+    else {
         return Ok(None);
     };
+    // ‼️ M1 리뷰 — 피커는 사용자를 기다리는 열린 대기다. 그 사이 개발자 모드가 꺼질 수 있으니,
+    // 위에서 읽은 `state` 로 admit_manifest 를 먹이면 안 된다 — 다시 읽고 다시 판정한다.
+    let state = host.load(app, build);
+    if !dev_mode::developer_mode_active(build, &state) {
+        return Err(dev_mode::DEV_MODE_INACTIVE.to_string());
+    }
     let canonical = std::fs::canonicalize(&picked).map_err(|e| e.to_string())?;
     let manifest = plugin::read_manifest_at(&canonical).map_err(|e| e.to_string())?;
     dev_mode::admit_manifest(
@@ -413,8 +434,17 @@ pub async fn plugin_record_dev_consent<R: Runtime>(
     path: String,
     consent: DevConsent,
 ) -> Result<(), String> {
-    let build = Build::current();
-    host.update(&app, build, |state| {
+    record_dev_consent(&app, &host, Build::current(), path, consent).await
+}
+
+async fn record_dev_consent<R: Runtime>(
+    app: &AppHandle<R>,
+    host: &DevModeHost,
+    build: Build,
+    path: String,
+    consent: DevConsent,
+) -> Result<(), String> {
+    host.update(app, build, |state| {
         if !dev_mode::developer_mode_active(build, state) {
             return Err(dev_mode::DEV_MODE_INACTIVE.to_string());
         }
@@ -500,18 +530,29 @@ mod tests {
 
     /// The test half of the confirmer injection seam (spec 0058 §6.2 "테스트 가능성"): answers
     /// every dialog from a script and records which ones were shown.
+    ///
+    /// `during_pick` runs (if set) after the picker is "shown" but before it answers — the seam
+    /// M1's regression test uses to simulate developer mode turning off during the picker's
+    /// open-ended wait (e.g. writing R1 with `enabled: false` through the host's data dir).
     #[derive(Default)]
     struct ScriptedDialogs {
         pick: Option<PathBuf>,
         confirm: bool,
         shown: std::sync::Arc<std::sync::Mutex<Vec<&'static str>>>,
+        during_pick: Option<Box<dyn Fn() + Send + Sync>>,
     }
 
     impl DevDialogs for ScriptedDialogs {
-        fn pick_folder(&self, _title: String) -> tokio::sync::oneshot::Receiver<Option<PathBuf>> {
+        fn pick_folder(
+            &self,
+            _title: String,
+        ) -> tokio::sync::oneshot::Receiver<Result<Option<PathBuf>, String>> {
             self.shown.lock().unwrap().push("pick");
+            if let Some(during_pick) = &self.during_pick {
+                during_pick();
+            }
             let (tx, rx) = tokio::sync::oneshot::channel();
-            let _ = tx.send(self.pick.clone());
+            let _ = tx.send(Ok(self.pick.clone()));
             rx
         }
 
@@ -538,6 +579,17 @@ mod tests {
 
     fn shown() -> std::sync::Arc<std::sync::Mutex<Vec<&'static str>>> {
         std::sync::Arc::new(std::sync::Mutex::new(Vec::new()))
+    }
+
+    /// A sandboxed `DevConsent` — built from JSON like every other consent in this file's tests,
+    /// because `PluginTrust` lives in `plugin::registry`, a module private to `plugin` (this
+    /// file is outside it and only `DevConsent`/`DevFolder`, not the tier enum, are re-exported).
+    fn sandboxed_consent(capabilities: &[&str]) -> DevConsent {
+        serde_json::from_value(serde_json::json!({
+            "capabilities": capabilities,
+            "trust": "sandboxed"
+        }))
+        .expect("fixture consent parses")
     }
 
     /// A plugin folder of the given tier. Canonical, like every path the picker writes into
@@ -1231,6 +1283,8 @@ mod tests {
             Err(dev_mode::DEV_PLUGIN_ID_INSTALLED.to_string())
         );
         assert!(r1(&f).folders.is_empty());
+        // P6 — "no approval, no entry, no scope": the entry-emptiness above is the second half.
+        assert!(!f.data.path().join(approval::STORE_FILE).exists());
     }
 
     /// I4-3 on the pick path — the storage an uninstalled plugin left behind is refused before
@@ -1434,5 +1488,133 @@ mod tests {
         assert!(ko.body.contains("권한"));
         assert_ne!(en.title, ko.title);
         assert_ne!(picker_title(false), picker_title(true));
+    }
+
+    /// M1 (review round 1) — the picker is an open-ended user wait. Developer mode turning off
+    /// DURING that wait must not be admitted against the state read before it.
+    #[tokio::test]
+    async fn a_release_pick_is_refused_if_developer_mode_turns_off_during_the_picker() {
+        let f = fixture();
+        let path = plugin_folder(f.sources.path(), "dev-x", "sandboxed");
+        write_r1(
+            &f,
+            serde_json::json!({ "version": 1, "enabled": true, "folders": [] }),
+        );
+        let data_dir = f.data.path().to_path_buf();
+        let host = host_with(
+            &f,
+            ScriptedDialogs {
+                pick: Some(PathBuf::from(&path)),
+                during_pick: Some(Box::new(move || {
+                    std::fs::write(
+                        data_dir.join(dev_mode::STORE_FILE),
+                        serde_json::json!({ "version": 1, "enabled": false, "folders": [] })
+                            .to_string(),
+                    )
+                    .unwrap();
+                })),
+                ..ScriptedDialogs::default()
+            },
+        );
+        let app = tauri::test::mock_app();
+
+        let refused = pick_dev_folder(app.handle(), &host, Build::release()).await;
+
+        assert_eq!(
+            refused.map(|_| ()),
+            Err(dev_mode::DEV_MODE_INACTIVE.to_string())
+        );
+        assert!(r1(&f).folders.is_empty());
+        assert!(!f.data.path().join(approval::STORE_FILE).exists());
+    }
+
+    /// M3 (review round 1) — this command has its own inactive gate, distinct from the pick and
+    /// enable/disable commands', and it was deletable with no red test (every test here runs as
+    /// a dev build, which is always active). Pin both halves through the build-taking core.
+    #[tokio::test]
+    async fn recording_consent_refuses_while_developer_mode_is_off_in_a_release_build() {
+        let f = fixture();
+        write_r1(
+            &f,
+            serde_json::json!({ "version": 1, "enabled": false, "folders": [{ "path": "/dev/x" }] }),
+        );
+        let host = host(&f);
+        let consent = sandboxed_consent(&["statusbar"]);
+        let app = tauri::test::mock_app();
+
+        let refused = record_dev_consent(
+            app.handle(),
+            &host,
+            Build::release(),
+            "/dev/x".to_string(),
+            consent,
+        )
+        .await;
+
+        assert_eq!(refused, Err(dev_mode::DEV_MODE_INACTIVE.to_string()));
+        assert_eq!(r1(&f).folders[0].consent, None);
+    }
+
+    #[tokio::test]
+    async fn recording_consent_succeeds_while_developer_mode_is_on_in_a_release_build() {
+        let f = fixture();
+        write_r1(
+            &f,
+            serde_json::json!({ "version": 1, "enabled": true, "folders": [{ "path": "/dev/x" }] }),
+        );
+        let host = host(&f);
+        let consent = sandboxed_consent(&["statusbar"]);
+        let app = tauri::test::mock_app();
+
+        let recorded = record_dev_consent(
+            app.handle(),
+            &host,
+            Build::release(),
+            "/dev/x".to_string(),
+            consent,
+        )
+        .await;
+
+        assert_eq!(recorded, Ok(()));
+        assert_eq!(
+            r1(&f).folders[0]
+                .consent
+                .as_ref()
+                .map(|c| c.capabilities.clone()),
+            Some(vec!["statusbar".to_string()])
+        );
+    }
+
+    /// M7(b) (review round 1) — the positive half of `enabling_asks_first_and_a_refusal_leaves_it_off`:
+    /// turning it on when it is already on must not prompt at all.
+    #[test]
+    fn enabling_when_already_on_shows_no_prompt() {
+        let f = fixture();
+        write_r1(
+            &f,
+            serde_json::json!({ "version": 1, "enabled": true, "folders": [] }),
+        );
+        let log = shown();
+        let (_app, webview) = ipc_app(host_with(
+            &f,
+            ScriptedDialogs {
+                shown: log.clone(),
+                ..ScriptedDialogs::default()
+            },
+        ));
+
+        let enabled = invoke(
+            &webview,
+            "plugin_set_developer_mode",
+            serde_json::json!({ "enabled": true }),
+        )
+        .unwrap();
+
+        assert_eq!(enabled, true);
+        assert!(
+            log.lock().unwrap().is_empty(),
+            "already-on must not show a prompt"
+        );
+        assert!(r1(&f).enabled);
     }
 }

@@ -1181,7 +1181,7 @@
       "module": "plugin",
       "spec": "§379",
       "status": "implemented",
-      "description": "Rust 가 네이티브 폴더 피커를 띄운다. 고른 폴더만 매니페스트·R3(릴리스: sandboxed 만, baram- 접두사·설치본 id·남은 저장소 거부) → 승인 기록 → plugin-dev.json 추가(릴리스는 매니페스트 id 도 기록) → asset scope 순으로 받는다. 취소면 null, 비활성이면 Err(\"DEV_MODE_INACTIVE\"), 거부는 DEV_* 코드이고 아무것도 쓰지 않는다"
+      "description": "Rust 가 네이티브 폴더 피커를 띄운다(피커가 열려 있는 동안 개발자 모드가 꺼지면 다시 판정해 거부). 고른 폴더만 매니페스트·R3(릴리스: sandboxed 만, baram- 접두사·설치본 id·남은 저장소 거부) → 승인 기록 → plugin-dev.json 추가(릴리스는 매니페스트 id 도 기록) → asset scope 순으로 받는다. 취소면 null, 비활성이면 Err(\"DEV_MODE_INACTIVE\"), 거부는 DEV_* 코드이고 아무것도 쓰지 않는다. 성공해도 돌아온 행의 grant 재판정(승인·R3)이 실패하면 그 행은 plugin 대신 error 를 담을 수 있다"
     },
     {
       "name": "plugin_record_dev_consent",
@@ -1190,7 +1190,7 @@
       "module": "plugin",
       "spec": "§379",
       "status": "implemented",
-      "description": "목록에 이미 있는 폴더의 동의를 plugin-dev.json 에 기록한다. 목록을 늘리지 못한다(없으면 Err(\"DEV_FOLDER_NOT_LISTED\")). 릴리스 빌드는 trust 가 sandboxed 가 아닌 동의를 거부한다"
+      "description": "목록에 이미 있는 폴더의 동의를 plugin-dev.json 에 기록한다. 목록을 늘리지 못한다(없으면 Err(\"DEV_FOLDER_NOT_LISTED\")). 비활성이면 Err(\"DEV_MODE_INACTIVE\"). 릴리스 빌드는 trust 가 sandboxed 가 아닌 동의를 Err(\"DEV_PLUGIN_NOT_SANDBOXED\")로 거부한다"
     },
     {
       "name": "plugin_set_developer_mode",

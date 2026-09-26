@@ -168,7 +168,8 @@ pub fn approve<R: tauri::Runtime>(
 
 /// `approve` 의 파일 경로판 — 저장 위치를 managed state 로 받는 호출자(§379 의
 /// `commands::plugin_dev_cmd::DevModeHost`)가 쓴다. 그 호출자의 테스트는 mock 앱의
-/// `app_data_dir`(= `~/Library/Application Support`) 대신 tempdir 를 넘긴다.
+/// `app_data_dir`(identifier 가 빈 문자열이라 `data_dir()` 자체 — macOS 에서는
+/// `~/Library/Application Support`) 대신 tempdir 를 넘긴다.
 pub fn approve_at(store: &Path, canonical: &Path, kind: ApprovalKind) -> Result<(), String> {
     let _guard = APPROVAL_MUTEX
         .lock()
