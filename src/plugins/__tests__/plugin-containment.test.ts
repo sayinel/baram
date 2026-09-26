@@ -458,9 +458,9 @@ describe("plugin containment (#259 → §260 Phase 5)", () => {
 
   it("ignores a devConsent in a DEV build — a dev build never narrows a dev load", async () => {
     // The `LoadOptions` doc: "a dev build's dev load ignores it". `devLoadsAreUnbounded()`
-    // must be checked before `opts.devConsent` is ever read, or a caller passing one — by
-    // mistake, or ahead of Task 4/5 actually wiring one up — would silently narrow an
-    // author's own working copy on a build where nothing is supposed to ask.
+    // must be checked before `opts.devConsent` is ever read, or a caller passing one by
+    // mistake would silently narrow an author's own working copy on a build where nothing
+    // is supposed to ask.
     const { loader } = loaderWithSpies();
 
     await loader.loadPlugin(

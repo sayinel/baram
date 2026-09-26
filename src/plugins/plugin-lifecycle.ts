@@ -8,16 +8,13 @@ import type {
 } from "./types";
 
 import { type Locale, t } from "../i18n";
-import {
-  pluginListDev,
-  pluginPrepareScopes,
-  toInstalledDevPlugin,
-} from "../ipc/plugin-invoke";
+import { pluginPrepareScopes } from "../ipc/plugin-invoke";
 import { contextRootOf, useContextStore } from "../stores/context/context";
 import { useSettingsStore } from "../stores/settings/store";
 import { usePluginStore } from "../stores/system/plugin";
 import { logger } from "../utils/logger";
 import { BUILTIN_PLUGINS } from "./builtin";
+import { refreshDevPlugins } from "./dev-plugins";
 import {
   createExtensionContext,
   emitPluginEvent,
@@ -145,38 +142,11 @@ export async function initializePlugins(): Promise<void> {
     }
   }
 
-  // Dev plugins (source of truth = Rust config; not persisted in the store).
+  // §379 — dev folders are Rust's list (`plugin-dev.json`), loaded the way this build
+  // allows: a dev build as before, a release build only in developer mode and only under
+  // the consent Rust recorded. See `dev-plugins.ts`.
   try {
-    const devRaw = await pluginListDev();
-    const devPlugins: InstalledPlugin[] = devRaw.map(toInstalledDevPlugin);
-    usePluginStore.getState().setDevPlugins(devPlugins);
-    await Promise.allSettled(
-      devPlugins.map(async (p) => {
-        try {
-          if (pluginLoader.isLoaded(p.manifest.id)) {
-            logger.warn(
-              `[PluginLifecycle] dev plugin ${p.manifest.id} overrides installed`,
-            );
-            await pluginLoader.reloadPlugin(p.installPath, p.manifest, {
-              isDev: true,
-            });
-          } else {
-            await pluginLoader.loadPlugin(p.installPath, p.manifest, {
-              isDev: true,
-            });
-          }
-          // Clear any failure from a previous run: the store is persisted, so
-          // without this a one-off startup error outlives the run that caused it.
-          usePluginStore.getState().setError(p.manifest.id, null);
-        } catch (err) {
-          logger.error(
-            `[PluginLifecycle] dev load failed ${p.manifest.id}:`,
-            err,
-          );
-          usePluginStore.getState().setError(p.manifest.id, String(err));
-        }
-      }),
-    );
+    await refreshDevPlugins();
   } catch (err) {
     logger.error("[PluginLifecycle] dev plugin init failed:", err);
   }

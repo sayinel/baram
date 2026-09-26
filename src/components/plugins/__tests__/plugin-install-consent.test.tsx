@@ -41,10 +41,10 @@ vi.mock("../../../plugins/plugin-loader", () => ({
 }));
 // ‼️ `importOriginal` + spread, not a bare literal. A literal factory replaces the module
 // for EVERY importer in the graph, and `plugin-lifecycle` (reached through the
-// marketplace's built-in toggle) imports `pluginListDev`/`pluginPrepareScopes`/
-// `toInstalledDevPlugin` from here — so a literal dies at collection with "No pluginListDev
-// export is defined on the mock", in the file that carries the §260 consent assertions.
-// The overrides sit BELOW the spread, so they still win.
+// marketplace's built-in toggle) and the `dev-plugins` it calls import
+// `pluginPrepareScopes`/`pluginListDev`/`toInstalledDevPlugin` from here — so a literal dies
+// at collection with "No pluginListDev export is defined on the mock", in the file that
+// carries the §260 consent assertions. The overrides sit BELOW the spread, so they still win.
 vi.mock("../../../ipc/plugin-invoke", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../ipc/plugin-invoke")>()),
   pluginInstallCommit: (...a: unknown[]) => pluginInstallCommit(...a),

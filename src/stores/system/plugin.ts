@@ -27,6 +27,15 @@ interface DevModeStatus {
   enabled: boolean;
 }
 
+/** §379 — a folder on Rust's developer list that could not become a plugin, and why. */
+interface DevFolderIssue {
+  /** A `DEV_*` code or Rust's own message — translated where it is shown. */
+  error: string;
+  /** The ids R1 recorded for this folder while a release build admitted it (I4). */
+  ids: string[];
+  path: string;
+}
+
 interface PluginState {
   // Actions
   addDevPlugin: (plugin: InstalledPlugin) => void;
@@ -47,6 +56,7 @@ interface PluginState {
   // `devMode` is set from Rust's `plugin_list_dev` snapshot: `active`/`enabled` come from
   // R1 (`plugin-dev.json`), `devBuild` comes from the compiled Rust build, not that file
   // (§379). `devPlugins`'s source of truth is that same R1 file.
+  devFolderIssues: DevFolderIssue[];
   devMode: DevModeStatus;
   devPlugins: Record<string, InstalledPlugin>;
   getPluginSettings: (pluginId: string) => Record<string, unknown>;
@@ -100,6 +110,7 @@ interface PluginState {
    */
   revocationsVerified: boolean;
   setBuiltinEnabled: (id: string, enabled: boolean) => void;
+  setDevFolderIssues: (issues: DevFolderIssue[]) => void;
   setDevMode: (status: DevModeStatus) => void;
   setDevPlugins: (list: InstalledPlugin[]) => void;
   setEnabled: (id: string, enabled: boolean) => void;
@@ -297,10 +308,13 @@ export const usePluginStore = create<PluginState>()(
       revocationSequenceSeen: {},
       updateAvailable: {},
       installing: {},
+      devFolderIssues: [],
       // §379 FAIL-CLOSED: until Rust answers, treat this as a release build with developer
       // mode off — the loader then refuses a dev load that carries no consent.
       devMode: { active: false, devBuild: false, enabled: false },
       devPlugins: {},
+
+      setDevFolderIssues: (devFolderIssues) => set({ devFolderIssues }),
 
       setDevMode: (devMode) => set({ devMode }),
 

@@ -121,6 +121,7 @@ describe("main.tsx bootstrap (§260 Phase 5)", () => {
 // none or by finding one somewhere else.
 describe("dev-folder loads declare isDev (§260 Phase 5)", () => {
   const DEV_SECTION = "components/plugins/PluginDeveloperSection.tsx";
+  const DEV_PLUGINS = "plugins/dev-plugins.ts";
   const LIFECYCLE = "plugins/plugin-lifecycle.ts";
 
   it("every load in the developer section is marked as a dev load", () => {
@@ -138,24 +139,23 @@ describe("dev-folder loads declare isDev (§260 Phase 5)", () => {
     ).toEqual([]);
   });
 
-  it("the lifecycle's dev loop marks its loads, and its installed loop does not", () => {
+  it("every load in dev-plugins is a dev load carrying the consent Rust recorded (§379)", () => {
+    // Every load in this module is a dev-folder load, so the count of calls, of `isDev` and
+    // of `devConsent` must match. A missing `devConsent` is refused in a release build.
+    const calls = loaderCalls(readFileSync(join(SRC, DEV_PLUGINS), "utf8"));
+    expect(calls.length, "dev-plugins must load plugins").toBeGreaterThan(0);
+    expect(calls.filter((c) => !c.includes("isDev"))).toEqual([]);
+    expect(calls.filter((c) => !c.includes("devConsent"))).toEqual([]);
+  });
+
+  it("the lifecycle loads only installed plugins and hands dev folders to dev-plugins", () => {
     const src = readFileSync(join(SRC, LIFECYCLE), "utf8");
-    // Window to the dev loop: it starts at the only `pluginListDev()` call.
-    const devLoopStart = src.indexOf("pluginListDev()");
-    expect(occurrences(src, "pluginListDev()"), "one dev loop").toBe(1);
-
-    const devCalls = loaderCalls(src.slice(devLoopStart));
-    expect(devCalls.length, "the dev loop must load plugins").toBeGreaterThan(
-      0,
-    );
+    expect(occurrences(src, "refreshDevPlugins()"), "one dev hand-off").toBe(1);
     expect(
-      devCalls.filter((c) => !c.includes("isDev")),
-      "a dev load without `isDev` gets the installed plugin's consent applied to it",
-    ).toEqual([]);
-
-    // …and the installed auto-load, which runs BEFORE the dev loop, must NOT claim to be
-    // a dev load — that would widen it past its recorded consent.
-    const installedCalls = loaderCalls(src.slice(0, devLoopStart));
+      occurrences(src, "pluginListDev"),
+      "the lifecycle no longer lists dev folders itself",
+    ).toBe(0);
+    const installedCalls = loaderCalls(src);
     expect(
       installedCalls.length,
       "the installed loop must load plugins",

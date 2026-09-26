@@ -5,6 +5,7 @@ import type { Channel } from "@tauri-apps/api/core";
 import type { PluginOp } from "../plugins/sandbox/plugin-op";
 import type {
   InstalledPlugin,
+  PluginConsent,
   PluginFetchInit,
   PluginFetchResponse,
   PluginManifest,
@@ -48,6 +49,36 @@ export interface RustStagedPluginInfo {
   /** SHA-256 of the staged `baram-plugin.json`; hand it back to `pluginInstallCommit`. */
   manifest_sha256: string;
   stage_id: string;
+}
+
+/**
+ * §379 — one row of Rust's developer list (`plugin-dev.json`), as `plugin_list_dev` reports
+ * it. Rust fills exactly one of `plugin` and `error`.
+ */
+export interface DevFolderRow {
+  /** What the user approved for this folder in a release build; `null` until then. */
+  consent: null | PluginConsent;
+  /** A `DEV_*` code (`plugin-dev-errors.ts`) or Rust's own message. */
+  error: null | string;
+  /**
+   * The ids this folder holds on the list — recorded by a release build each time it
+   * admitted the folder (spec 0058 I4). Rust refuses installing them while developer mode
+   * is on; the install flow reads them only to refuse earlier, with a translated message.
+   */
+  ids: string[];
+  path: string;
+  plugin: null | RustInstalledPluginInfo;
+}
+
+/**
+ * §379 — `plugin_list_dev`'s answer. `active` is Rust's `developer_mode_active`, not to be
+ * recomputed here; `devBuild` decides whether a dev load asks and is revoked (F2·F3).
+ */
+export interface DevModeSnapshot {
+  active: boolean;
+  devBuild: boolean;
+  enabled: boolean;
+  folders: DevFolderRow[];
 }
 
 export async function pluginAddDevFolder(
@@ -164,8 +195,8 @@ export async function pluginInstallStage(
   });
 }
 
-export async function pluginListDev(): Promise<RustInstalledPluginInfo[]> {
-  return invoke<RustInstalledPluginInfo[]>("plugin_list_dev");
+export async function pluginListDev(): Promise<DevModeSnapshot> {
+  return invoke<DevModeSnapshot>("plugin_list_dev");
 }
 
 export async function pluginListInstalled(): Promise<
@@ -282,11 +313,17 @@ export async function pluginUninstall(pluginId: string): Promise<void> {
   return invoke<void>("plugin_uninstall", { pluginId });
 }
 
-/** Map a Rust-reported plugin info payload into a dev `InstalledPlugin`. */
+/**
+ * Map a Rust-reported plugin info payload into a dev `InstalledPlugin`.
+ *
+ * `consent` is the folder's recorded consent from `plugin_list_dev` (§379): set in a release
+ * build's developer mode once the user approved it, absent otherwise and in a dev build.
+ */
 export function toInstalledDevPlugin(
   r: RustInstalledPluginInfo,
+  consent: null | PluginConsent = null,
 ): InstalledPlugin {
-  return {
+  const plugin: InstalledPlugin = {
     checksum: r.checksum,
     enabled: true,
     installedAt: 0,
@@ -295,4 +332,5 @@ export function toInstalledDevPlugin(
     manifest: r.manifest,
     updatedAt: 0,
   };
+  return consent ? { ...plugin, consent } : plugin;
 }

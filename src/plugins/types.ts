@@ -77,8 +77,11 @@ export interface InstalledPlugin {
   /**
    * §260 Phase 5 — the (trust, capabilities) the user approved at install, kept so a
    * later version can be compared against what was actually agreed to rather than
-   * against the manifest that shipped with it. Absent for dev-folder plugins (choosing
-   * a directory is its own deliberate act) and for records written before Phase 5.
+   * against the manifest that shipped with it. Absent for records written before Phase 5.
+   *
+   * For a dev-folder plugin (§379): the consent Rust recorded for that folder in a release
+   * build's developer mode; absent until the user approves, and always absent in a dev
+   * build, where choosing the directory is its own deliberate act.
    */
   consent?: PluginConsent;
   enabled: boolean;

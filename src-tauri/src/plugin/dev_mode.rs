@@ -17,6 +17,9 @@ use super::registry::{PluginManifest, PluginTrust};
 /// R1 의 파일 이름. 앱 데이터 디렉터리에서 `approved-roots.json` 옆에 산다.
 pub const STORE_FILE: &str = "plugin-dev.json";
 
+// ‼️ 아래 여덟 `DEV_*` 코드는 `scripts/rust-constants.ts` 의 `devModeErrorCodes` 가 이 파일에서
+// 전부 긁어 `src/ipc/plugin-dev-errors.ts` 의 번역과 대조한다(`dev-mode-error-codes.test.ts`).
+// 코드를 더하면 번역도 더해야 그 테스트가 초록이다. 이 파일을 옮기면 그 테스트의 경로도 옮길 것.
 /// 개발자 모드가 꺼져 있다.
 pub const DEV_MODE_INACTIVE: &str = "DEV_MODE_INACTIVE";
 /// R1 에 없는 경로 — Reload·동의 기록은 이미 고른 폴더만 받는다.
