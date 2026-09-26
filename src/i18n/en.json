@@ -881,6 +881,7 @@
   "settings.appearance.saveCurrentLayout": "Save Current Layout...",
   "settings.appearance.spaceAndCorners": "Spacing & corners",
   "settings.appearance.systemAuto": "System (Auto)",
+  "settings.appearance.systemAuto.desc": "Switches between light and dark with your system setting.",
   "settings.appearance.theme": "Theme",
   "settings.appearance.themeBrowser.back": "Back",
   "settings.appearance.themeBrowser.emptyRegistry": "No themes are available yet",

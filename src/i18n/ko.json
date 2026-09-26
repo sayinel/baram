@@ -881,6 +881,7 @@
   "settings.appearance.saveCurrentLayout": "현재 레이아웃 저장...",
   "settings.appearance.spaceAndCorners": "간격과 모서리",
   "settings.appearance.systemAuto": "시스템 (자동)",
+  "settings.appearance.systemAuto.desc": "시스템 설정에 따라 라이트와 다크를 오갑니다.",
   "settings.appearance.theme": "테마",
   "settings.appearance.themeBrowser.back": "뒤로",
   "settings.appearance.themeBrowser.emptyRegistry": "아직 사용할 수 있는 테마가 없습니다",
