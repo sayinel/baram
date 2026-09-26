@@ -68,10 +68,6 @@ const KEYS = new Set(Object.keys(en));
  * what the user reads and the value substituted into the prompt sent to the model, and a
  * programming language's name is that value in either locale. (`JavaScript` and `TypeScript`
  * are in the same list, dismissed by the scanner's DOM-key shape rule instead.)
- *
- * The single letters and pairs are button glyphs. Korean chrome keeps them as they are, so
- * they are named rather than dismissed by a "one or two capitals" pattern — which would also
- * swallow a genuine one-word label like `Install`.
  */
 const ALLOWED = new Set([
   ...KEYBINDING_REGISTRY.map((entry) => entry.id),
@@ -79,21 +75,9 @@ const ALLOWED = new Set([
   "[data-editor-scroll]", // attribute selector
   "[data-type='mathInline']", // attribute selector
   "[data-type]", // attribute selector
-  "B", // glyph: bold
-  "H", // glyph: highlight
-  "H1", // glyph: heading 1
-  "H2", // glyph: heading 2
-  "I", // glyph: italic
-  "Lk", // glyph: link
-  "OL", // glyph: ordered list
   "Python", // convert-lang preset — a value sent to the model
-  "Q", // glyph: blockquote
   "Rust", // convert-lang preset — a value sent to the model
-  "S", // glyph: strikethrough
   "table-select-handle table-select-handle-", // className prefix
-  "UL", // glyph: unordered list
-  "X²", // glyph: superscript
-  "X₂", // glyph: subscript
 ]);
 
 const files = readdirSync(DIR)
@@ -129,9 +113,9 @@ describe("no toolbar widget hardcodes user-facing English", () => {
 describe("toolbar copy goes to the app's pill, not a native title", () => {
   // ‼️ These bars are the case the pill exists for, more than any block's chrome is. A
   // floating toolbar is on screen only while text is selected and the table toolbar only while
-  // the caret is in a table, and both are rows of two-character glyphs — `Q`, `UL`, `X₂` — so
-  // the label IS the affordance. A native `title`'s ~1s WebKit delay arrived after the pointer
-  // had already committed to a guess about which glyph meant what.
+  // the caret is in a table, and both are rows of icon-only buttons — so the label is the only
+  // words the user gets. A native `title`'s ~1s WebKit delay arrived after the pointer had
+  // already committed to a guess about which icon meant what.
   //
   // The rule is `i18n/__tests__/native-title-scan.ts`, shared with the block-chrome guard —
   // see that file for why it counts rather than pattern-matches. The count is ZERO here, with
