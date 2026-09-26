@@ -1441,8 +1441,7 @@ function navigateControlShowing(value: () => string): SettingControlMeta {
   };
 }
 
-// §368 — number 다이얼(editorMaxWidth·editorPadding·editorLetterSpacing·
-// editorParagraphSpacing) 넷 다 슬라이더 컨트롤을 만드는 두 단정을 반복한다:
+// §368 — number 다이얼마다 슬라이더 컨트롤을 만들면 같은 두 단정이 반복된다:
 // `DIALS.find()`는 id-동등 predicate 로는 `DialDef`의 `kind` 판별 유니언을
 // 좁혀 주지 않고, `resolveDials(...)[id].value`는 어떤 id 든 `DialValue`
 // (number | string)라 슬라이더 셀렉터의 `() => number` 에 맞추려면 단정이

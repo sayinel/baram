@@ -54,6 +54,37 @@ vi.mock("../../themes/theme-store-fs", () => ({
   readStoredThemeCss: () => Promise.resolve(null),
 }));
 
+/**
+ * 요소의 `style.fontSize` 에 들어온 쓰기를 전부 기록한다 — 값은 그대로 원래 접근자로 넘긴다.
+ *
+ * 최종 값이 아니라 **이력**이 필요한 단정이 있어서다(아래 철회 테스트). 접근자는 jsdom 의
+ * `CSSStyleDeclaration` 프로토타입 사슬에 있으므로 거기서 찾고, 못 찾으면 던진다 — 조용히
+ * 기록하지 않으면 "기록에 없다" 는 단정이 공허하게 통과한다.
+ */
+function recordFontSizeWrites(el: HTMLElement): string[] {
+  const style = el.style;
+  let proto: null | object = Object.getPrototypeOf(style) as null | object;
+  let accessor: PropertyDescriptor | undefined;
+  while (proto !== null && accessor === undefined) {
+    accessor = Object.getOwnPropertyDescriptor(proto, "fontSize");
+    proto = Object.getPrototypeOf(proto) as null | object;
+  }
+  const { get, set } = accessor ?? {};
+  if (get === undefined || set === undefined) {
+    throw new Error("style.fontSize accessor not found");
+  }
+  const writes: string[] = [];
+  Object.defineProperty(style, "fontSize", {
+    configurable: true,
+    get: () => get.call(style) as string,
+    set: (value: string) => {
+      writes.push(value);
+      set.call(style, value);
+    },
+  });
+  return writes;
+}
+
 function themeWith(dials: Record<string, number | string>): InstalledTheme {
   return {
     checksum: "c".repeat(64),
@@ -134,8 +165,13 @@ describe("§365 테마가 준 본문 타이포", () => {
     expect(surface.style.fontSize).toBe("20px");
   });
 
-  // 무엇이 이것을 실패시키는가: 소비자가 `activeThemeId` 로 테마 층을 짓게 되면 철회된 테마의
-  // 크기가 남는다.
+  // 무엇이 이것을 실패시키는가: 소비자가 철회를 거치지 않고 `activeThemeId` 로 테마 층을 지으면
+  // 철회된 테마의 크기(18px)가 편집기에 한 번 칠해진다. **최종 값으로는 그것이 보이지 않는다** —
+  // 이 훅의 `forceDeactivated` 이펙트가 같은 `act` 안에서 `setActiveTheme("system")` 으로
+  // 되돌려 결국 16px 가 되기 때문이다(2026-09-26 실측: `use-theme-dials.ts` 가 `activeThemeId` 를
+  // 읽게 하면 쓰기 이력이 18px → 16px 였고, 최종 값만 보던 단정은 초록이었다). 그래서 철회된
+  // 테마의 층이 편집기에 닿은 적이 있는지는 쓰기 이력으로만 가린다. 철회되지 않은 테마의 18px 가
+  // 실제로 닿는다는 짝은 첫 테스트("크기 · 줄 높이 · 서체가 편집기에 닿는다")다.
   it("철회된 테마의 층은 빠진다", () => {
     usePluginStore.setState({
       revocations: {
@@ -146,7 +182,11 @@ describe("§365 테마가 준 본문 타이포", () => {
         version: 1,
       },
     });
+    const writes = recordFontSizeWrites(surface);
     renderHook(() => useSettingsEffects(editor));
+    // 기록기가 실제로 쓰기를 봤다 — 이것이 없으면 아래 `not.toContain` 이 공허할 수 있다.
+    expect(writes.length).toBeGreaterThan(0);
+    expect(writes).not.toContain("18px");
     expect(surface.style.fontSize).toBe("16px");
   });
 });
