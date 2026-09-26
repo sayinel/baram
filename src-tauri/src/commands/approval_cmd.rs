@@ -27,7 +27,7 @@ pub const PATH_UNRESOLVABLE: &str = "VAULT_PATH_UNRESOLVABLE";
 /// 웹뷰가 이 값을 바꿔도 **고정 표에서 언어를 고르는 것**뿐이라 문구를 주입할 수 없다.
 ///
 /// Generic over the runtime — see `ensure_approved`'s doc comment for why.
-fn is_korean<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> bool {
+pub(crate) fn is_korean<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> bool {
     matches!(
         crate::config::get_config(app, "uiLocale"),
         Ok(Some(ref v)) if v == "ko"

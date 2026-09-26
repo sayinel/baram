@@ -6,6 +6,8 @@
 use std::path::{Path, PathBuf};
 
 use tauri::{AppHandle, Manager, Runtime, State};
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+use tokio::sync::oneshot;
 
 use crate::approval::{self, Decision};
 use crate::plugin;
@@ -22,6 +24,93 @@ fn legacy_dev_folders<R: Runtime>(app: &AppHandle<R>) -> Option<String> {
         .flatten()
 }
 
+/// 네이티브 대화상자 — 확인자 주입 지점 (spec 0058 §6.2 "테스트 가능성").
+///
+/// 테스트는 대본대로 답하는 구현을 `DevModeHost` 에 넣어 승낙·거절을 고른다. 이전의
+/// `plugin_add_dev_folder_refuses_an_unapproved_path_through_generate_handler` 는 해석 실패
+/// 분기만 지나 대화상자를 띄운 적이 없었다 — 이 트레이트가 그 빈자리다.
+pub trait DevDialogs: Send + Sync {
+    /// 폴더 피커. 고른 폴더, 또는 취소면 `None`.
+    fn pick_folder(&self, title: String) -> oneshot::Receiver<Option<PathBuf>>;
+    /// 확인 대화상자. 승낙이면 `true`.
+    fn confirm(&self, copy: DialogCopy) -> oneshot::Receiver<bool>;
+}
+
+/// 확인 대화상자의 문구 — 로케일은 호출자가 고른다(`is_korean`).
+pub struct DialogCopy {
+    pub title: String,
+    pub body: String,
+    pub ok: String,
+    pub cancel: String,
+}
+
+/// 앱의 것. `blocking_*` 이 아니라 콜백 + oneshot — `approval_cmd::ensure_approved` 와 같은 이유.
+struct NativeDevDialogs<R: Runtime> {
+    app: AppHandle<R>,
+}
+
+impl<R: Runtime> DevDialogs for NativeDevDialogs<R> {
+    fn pick_folder(&self, title: String) -> oneshot::Receiver<Option<PathBuf>> {
+        let (tx, rx) = oneshot::channel();
+        self.app
+            .dialog()
+            .file()
+            .set_title(title)
+            .pick_folder(move |picked| {
+                let _ = tx.send(picked.and_then(|p| p.into_path().ok()));
+            });
+        rx
+    }
+
+    fn confirm(&self, copy: DialogCopy) -> oneshot::Receiver<bool> {
+        let (tx, rx) = oneshot::channel();
+        self.app
+            .dialog()
+            .message(copy.body)
+            .title(copy.title)
+            .kind(MessageDialogKind::Warning)
+            .buttons(MessageDialogButtons::OkCancelCustom(copy.ok, copy.cancel))
+            .show(move |granted| {
+                let _ = tx.send(granted);
+            });
+        rx
+    }
+}
+
+/// 피커 제목 — 피커에는 본문 자리가 없다(§332 `pick_approved_dir` 와 같은 한계).
+fn picker_title(korean: bool) -> &'static str {
+    if korean {
+        "개발 중인 플러그인 폴더 선택"
+    } else {
+        "Choose a plugin development folder"
+    }
+}
+
+/// 개발자 모드를 켜기 전의 경고 (R2). 끄기는 묻지 않는다 — 좁히는 방향이다.
+fn enable_warning(korean: bool) -> DialogCopy {
+    if korean {
+        DialogCopy {
+            title: "개발자 모드를 켤까요?".into(),
+            body: "개발자 모드는 고른 폴더의 플러그인을 레지스트리 검증 없이 실행합니다. \
+                   sandboxed 플러그인만 불러올 수 있고, 플러그인마다 불러오기 전에 권한을 묻습니다.\n\n\
+                   다른 사람이 보낸 폴더는 불러오지 마십시오."
+                .into(),
+            ok: "켜기".into(),
+            cancel: "취소".into(),
+        }
+    } else {
+        DialogCopy {
+            title: "Turn on developer mode?".into(),
+            body: "Developer mode runs plugins from folders you choose, without the registry's \
+                   checks. Only sandboxed plugins can load, and each one asks for its permissions \
+                   before it loads.\n\nDo not load a folder someone else sent you."
+                .into(),
+            ok: "Turn On".into(),
+            cancel: "Cancel".into(),
+        }
+    }
+}
+
 /// dev 커맨드가 기대는 장소 — managed state (`lib.rs` 의 `setup`).
 ///
 /// 앱에서는 앱 데이터 디렉터리 · `~/.baram/plugins` · `~/.baram/plugin-data`, 테스트에서는
@@ -33,6 +122,7 @@ pub struct DevModeHost {
     data_dir: PathBuf,
     plugin_root: PathBuf,
     storage_root: PathBuf,
+    dialogs: Box<dyn DevDialogs>,
 }
 
 impl DevModeHost {
@@ -41,15 +131,22 @@ impl DevModeHost {
             data_dir: app.path().app_data_dir().map_err(|e| e.to_string())?,
             plugin_root: plugin::get_plugin_dir().map_err(|e| e.to_string())?,
             storage_root: plugin::plugin_data_root()?,
+            dialogs: Box::new(NativeDevDialogs { app: app.clone() }),
         })
     }
 
     #[cfg(test)]
-    fn at(data_dir: PathBuf, plugin_root: PathBuf, storage_root: PathBuf) -> Self {
+    fn at(
+        data_dir: PathBuf,
+        plugin_root: PathBuf,
+        storage_root: PathBuf,
+        dialogs: impl DevDialogs + 'static,
+    ) -> Self {
         Self {
             data_dir,
             plugin_root,
             storage_root,
+            dialogs: Box::new(dialogs),
         }
     }
 
@@ -250,6 +347,111 @@ pub async fn plugin_remove_dev_folder<R: Runtime>(
     })
 }
 
+/// R2 — Rust 가 네이티브 피커를 띄우고, 사용자가 고른 경로만 R1 에 더한다. 선택 자체가 코드
+/// 실행 승인이자 §332 의 경로 승인이다(`approve_at` — `ensure_approved` 는 방금 고른 미승인
+/// 폴더에 두 번째 확인창을 띄운다, plan 0106 P5).
+///
+/// ‼️ 순서가 계약이다 (P6): 매니페스트 → R3 → 승인 기록 → R1 → 부여. 거부된 선택은 승인도,
+/// 목록 항목도, scope 도 남기지 않는다.
+#[tauri::command]
+pub async fn plugin_pick_dev_folder<R: Runtime>(
+    app: AppHandle<R>,
+    host: State<'_, DevModeHost>,
+) -> Result<Option<DevFolderRow>, String> {
+    pick_dev_folder(&app, &host, Build::current()).await
+}
+
+async fn pick_dev_folder<R: Runtime>(
+    app: &AppHandle<R>,
+    host: &DevModeHost,
+    build: Build,
+) -> Result<Option<DevFolderRow>, String> {
+    let state = host.load(app, build);
+    if !dev_mode::developer_mode_active(build, &state) {
+        return Err(dev_mode::DEV_MODE_INACTIVE.to_string());
+    }
+    let title = picker_title(crate::commands::approval_cmd::is_korean(app)).to_string();
+    let Some(picked) = host.dialogs.pick_folder(title).await.unwrap_or(None) else {
+        return Ok(None);
+    };
+    let canonical = std::fs::canonicalize(&picked).map_err(|e| e.to_string())?;
+    let manifest = plugin::read_manifest_at(&canonical).map_err(|e| e.to_string())?;
+    dev_mode::admit_manifest(
+        build,
+        &manifest,
+        &state,
+        &host.plugin_root,
+        &host.storage_root,
+    )?;
+    approval::approve_at(
+        &host.approvals_file(),
+        &canonical,
+        approval::ApprovalKind::Dir,
+    )?;
+    let path = canonical.to_string_lossy().into_owned();
+    // I4-3 — a release build records the manifest id WITH the folder (spec "고를 때의 매니페스트
+    // id"), before anything can run. A dev build records nothing (plan 0106 P22).
+    host.update(app, build, |stored| {
+        stored.add_folder(&path);
+        if !build.is_dev() {
+            stored.record_id(&path, &manifest.id);
+        }
+        Ok(())
+    })?;
+    let state = host.load(app, build);
+    let entry = state
+        .find(&path)
+        .ok_or_else(|| dev_mode::DEV_FOLDER_NOT_LISTED.to_string())?;
+    Ok(Some(folder_row(app, host, build, &state, entry)))
+}
+
+/// R2 — F2 의 동의를 R1 항목에 기록한다. 이 커맨드는 목록을 늘리지 못한다.
+#[tauri::command]
+pub async fn plugin_record_dev_consent<R: Runtime>(
+    app: AppHandle<R>,
+    host: State<'_, DevModeHost>,
+    path: String,
+    consent: DevConsent,
+) -> Result<(), String> {
+    let build = Build::current();
+    host.update(&app, build, |state| {
+        if !dev_mode::developer_mode_active(build, state) {
+            return Err(dev_mode::DEV_MODE_INACTIVE.to_string());
+        }
+        state.record_consent(build, &path, consent)
+    })
+}
+
+/// R2 — 켜기는 네이티브 경고 확인 뒤, 끄기는 묻지 않는다. 호출 뒤의 켜짐 상태를 돌려준다
+/// (거절하면 그대로 `false`). 끈 뒤의 언로드는 프런트가 한다.
+#[tauri::command]
+pub async fn plugin_set_developer_mode<R: Runtime>(
+    app: AppHandle<R>,
+    host: State<'_, DevModeHost>,
+    enabled: bool,
+) -> Result<bool, String> {
+    set_developer_mode(&app, &host, Build::current(), enabled).await
+}
+
+async fn set_developer_mode<R: Runtime>(
+    app: &AppHandle<R>,
+    host: &DevModeHost,
+    build: Build,
+    enabled: bool,
+) -> Result<bool, String> {
+    let current = host.load(app, build).enabled;
+    if enabled && !current {
+        let copy = enable_warning(crate::commands::approval_cmd::is_korean(app));
+        if !host.dialogs.confirm(copy).await.unwrap_or(false) {
+            return Ok(current);
+        }
+    }
+    host.update(app, build, |state| {
+        state.enabled = enabled;
+        Ok(enabled)
+    })
+}
+
 /// `plugin_cmd::is_plugin_directory` 가 받는 dev 폴더 — 비활성이면, 또는 host 가 관리되지
 /// 않으면 없다.
 pub(crate) fn active_dev_folder_paths<R: Runtime>(app: &AppHandle<R>) -> Vec<String> {
@@ -296,12 +498,46 @@ mod tests {
         }
     }
 
+    /// The test half of the confirmer injection seam (spec 0058 §6.2 "테스트 가능성"): answers
+    /// every dialog from a script and records which ones were shown.
+    #[derive(Default)]
+    struct ScriptedDialogs {
+        pick: Option<PathBuf>,
+        confirm: bool,
+        shown: std::sync::Arc<std::sync::Mutex<Vec<&'static str>>>,
+    }
+
+    impl DevDialogs for ScriptedDialogs {
+        fn pick_folder(&self, _title: String) -> tokio::sync::oneshot::Receiver<Option<PathBuf>> {
+            self.shown.lock().unwrap().push("pick");
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            let _ = tx.send(self.pick.clone());
+            rx
+        }
+
+        fn confirm(&self, _copy: DialogCopy) -> tokio::sync::oneshot::Receiver<bool> {
+            self.shown.lock().unwrap().push("confirm");
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            let _ = tx.send(self.confirm);
+            rx
+        }
+    }
+
     fn host(f: &Fixture) -> DevModeHost {
+        host_with(f, ScriptedDialogs::default())
+    }
+
+    fn host_with(f: &Fixture, dialogs: ScriptedDialogs) -> DevModeHost {
         DevModeHost::at(
             f.data.path().to_path_buf(),
             f.plugins.path().to_path_buf(),
             f.storage.path().to_path_buf(),
+            dialogs,
         )
+    }
+
+    fn shown() -> std::sync::Arc<std::sync::Mutex<Vec<&'static str>>> {
+        std::sync::Arc::new(std::sync::Mutex::new(Vec::new()))
     }
 
     /// A plugin folder of the given tier. Canonical, like every path the picker writes into
@@ -380,7 +616,10 @@ mod tests {
             .invoke_handler(tauri::generate_handler![
                 super::plugin_list_dev,
                 super::plugin_reload_dev_folder,
-                super::plugin_remove_dev_folder
+                super::plugin_remove_dev_folder,
+                super::plugin_pick_dev_folder,
+                super::plugin_record_dev_consent,
+                super::plugin_set_developer_mode
             ])
             .build(tauri::test::mock_context(tauri::test::noop_assets()))
             .expect("mock app must build");
@@ -876,5 +1115,324 @@ mod tests {
             offenders.is_empty(),
             "only plugin_dev_cmd.rs may name the legacy key: {offenders:?}"
         );
+    }
+
+    #[test]
+    fn pick_through_generate_handler_adds_the_chosen_folder_and_its_approval() {
+        let f = fixture();
+        let path = plugin_folder(f.sources.path(), "dev-x", "sandboxed");
+        write_r1(&f, serde_json::json!({ "version": 1, "folders": [] }));
+        let log = shown();
+        let (app, webview) = ipc_app(host_with(
+            &f,
+            ScriptedDialogs {
+                pick: Some(PathBuf::from(&path)),
+                shown: log.clone(),
+                ..ScriptedDialogs::default()
+            },
+        ));
+
+        let row = invoke(&webview, "plugin_pick_dev_folder", serde_json::json!({}))
+            .expect("plugin_pick_dev_folder must be registered");
+
+        assert_eq!(row["plugin"]["manifest"]["id"], "dev-x");
+        assert_eq!(*log.lock().unwrap(), vec!["pick"]);
+        assert_eq!(
+            r1(&f)
+                .folders
+                .iter()
+                .map(|d| d.path.as_str())
+                .collect::<Vec<_>>(),
+            vec![path.as_str()]
+        );
+        assert_eq!(
+            r1(&f).folders[0].ids,
+            Vec::<String>::new(),
+            "a dev build records no id (plan 0106 P22)"
+        );
+        // The pick itself is the approval (§332) — and the grant then rests on it.
+        let approvals = approval::load_from(&f.data.path().join(approval::STORE_FILE));
+        assert!(approvals.covers(Path::new(&path)));
+        assert!(granted(app.handle(), &path));
+    }
+
+    #[test]
+    fn a_cancelled_pick_writes_nothing() {
+        let f = fixture();
+        write_r1(&f, serde_json::json!({ "version": 1, "folders": [] }));
+        let log = shown();
+        let (_app, webview) = ipc_app(host_with(
+            &f,
+            ScriptedDialogs {
+                shown: log.clone(),
+                ..ScriptedDialogs::default()
+            },
+        ));
+
+        let answer = invoke(&webview, "plugin_pick_dev_folder", serde_json::json!({})).unwrap();
+
+        assert_eq!(answer, serde_json::Value::Null);
+        assert_eq!(*log.lock().unwrap(), vec!["pick"]);
+        assert!(r1(&f).folders.is_empty());
+        assert!(!f.data.path().join(approval::STORE_FILE).exists());
+    }
+
+    /// I1 + P6 — refused BEFORE anything is written: no approval, no list entry, no scope.
+    #[tokio::test]
+    async fn a_release_build_refuses_a_trusted_pick_before_writing_anything() {
+        let f = fixture();
+        let path = plugin_folder(f.sources.path(), "dev-x", "trusted");
+        write_r1(
+            &f,
+            serde_json::json!({ "version": 1, "enabled": true, "folders": [] }),
+        );
+        let host = host_with(
+            &f,
+            ScriptedDialogs {
+                pick: Some(PathBuf::from(&path)),
+                ..ScriptedDialogs::default()
+            },
+        );
+        let app = tauri::test::mock_app();
+
+        let refused = pick_dev_folder(app.handle(), &host, Build::release()).await;
+
+        assert_eq!(
+            refused.map(|_| ()),
+            Err(dev_mode::DEV_PLUGIN_NOT_SANDBOXED.to_string())
+        );
+        assert!(r1(&f).folders.is_empty());
+        assert!(!f.data.path().join(approval::STORE_FILE).exists());
+        assert!(!granted(app.handle(), &path));
+    }
+
+    #[tokio::test]
+    async fn a_release_build_refuses_a_pick_whose_id_is_installed() {
+        let f = fixture();
+        std::fs::create_dir(f.plugins.path().join("dev-x")).unwrap();
+        let path = plugin_folder(f.sources.path(), "dev-x", "sandboxed");
+        write_r1(
+            &f,
+            serde_json::json!({ "version": 1, "enabled": true, "folders": [] }),
+        );
+        let host = host_with(
+            &f,
+            ScriptedDialogs {
+                pick: Some(PathBuf::from(&path)),
+                ..ScriptedDialogs::default()
+            },
+        );
+        let app = tauri::test::mock_app();
+
+        let refused = pick_dev_folder(app.handle(), &host, Build::release()).await;
+
+        assert_eq!(
+            refused.map(|_| ()),
+            Err(dev_mode::DEV_PLUGIN_ID_INSTALLED.to_string())
+        );
+        assert!(r1(&f).folders.is_empty());
+    }
+
+    /// I4-3 on the pick path — the storage an uninstalled plugin left behind is refused before
+    /// anything is written, like every other R3 refusal (P6).
+    #[tokio::test]
+    async fn a_release_build_refuses_a_pick_that_would_inherit_storage() {
+        let f = fixture();
+        std::fs::create_dir(f.storage.path().join("dev-x")).unwrap();
+        let path = plugin_folder(f.sources.path(), "dev-x", "sandboxed");
+        write_r1(
+            &f,
+            serde_json::json!({ "version": 1, "enabled": true, "folders": [] }),
+        );
+        let host = host_with(
+            &f,
+            ScriptedDialogs {
+                pick: Some(PathBuf::from(&path)),
+                ..ScriptedDialogs::default()
+            },
+        );
+        let app = tauri::test::mock_app();
+
+        let refused = pick_dev_folder(app.handle(), &host, Build::release()).await;
+
+        assert_eq!(
+            refused.map(|_| ()),
+            Err(dev_mode::DEV_PLUGIN_STORAGE_TAKEN.to_string())
+        );
+        assert!(r1(&f).folders.is_empty());
+        assert!(!f.data.path().join(approval::STORE_FILE).exists());
+    }
+
+    /// I4-3 — the release pick records the manifest id with the folder ("고를 때의 매니페스트 id").
+    #[tokio::test]
+    async fn a_release_pick_records_the_manifest_id() {
+        let f = fixture();
+        let path = plugin_folder(f.sources.path(), "dev-x", "sandboxed");
+        write_r1(
+            &f,
+            serde_json::json!({ "version": 1, "enabled": true, "folders": [] }),
+        );
+        let host = host_with(
+            &f,
+            ScriptedDialogs {
+                pick: Some(PathBuf::from(&path)),
+                ..ScriptedDialogs::default()
+            },
+        );
+        let app = tauri::test::mock_app();
+
+        let row = pick_dev_folder(app.handle(), &host, Build::release())
+            .await
+            .expect("a sandboxed, unclaimed folder is admitted")
+            .expect("the scripted picker chose a folder");
+
+        assert_eq!(row.ids, vec!["dev-x".to_string()]);
+        assert_eq!(r1(&f).folders[0].ids, vec!["dev-x".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn no_picker_opens_while_developer_mode_is_off() {
+        let f = fixture();
+        write_r1(
+            &f,
+            serde_json::json!({ "version": 1, "enabled": false, "folders": [] }),
+        );
+        let log = shown();
+        let host = host_with(
+            &f,
+            ScriptedDialogs {
+                shown: log.clone(),
+                ..ScriptedDialogs::default()
+            },
+        );
+        let app = tauri::test::mock_app();
+
+        let refused = pick_dev_folder(app.handle(), &host, Build::release()).await;
+
+        assert_eq!(
+            refused.map(|_| ()),
+            Err(dev_mode::DEV_MODE_INACTIVE.to_string())
+        );
+        assert!(log.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn enabling_asks_first_and_a_refusal_leaves_it_off() {
+        let f = fixture();
+        write_r1(
+            &f,
+            serde_json::json!({ "version": 1, "enabled": false, "folders": [] }),
+        );
+        let log = shown();
+        let (_app, webview) = ipc_app(host_with(
+            &f,
+            ScriptedDialogs {
+                confirm: false,
+                shown: log.clone(),
+                ..ScriptedDialogs::default()
+            },
+        ));
+
+        let enabled = invoke(
+            &webview,
+            "plugin_set_developer_mode",
+            serde_json::json!({ "enabled": true }),
+        )
+        .expect("plugin_set_developer_mode must be registered");
+
+        assert_eq!(enabled, false);
+        assert_eq!(*log.lock().unwrap(), vec!["confirm"]);
+        assert!(!r1(&f).enabled);
+    }
+
+    #[test]
+    fn enabling_after_consent_persists_and_disabling_asks_nothing() {
+        let f = fixture();
+        write_r1(
+            &f,
+            serde_json::json!({ "version": 1, "enabled": false, "folders": [] }),
+        );
+        let log = shown();
+        let (_app, webview) = ipc_app(host_with(
+            &f,
+            ScriptedDialogs {
+                confirm: true,
+                shown: log.clone(),
+                ..ScriptedDialogs::default()
+            },
+        ));
+
+        let on = invoke(
+            &webview,
+            "plugin_set_developer_mode",
+            serde_json::json!({ "enabled": true }),
+        )
+        .unwrap();
+        assert_eq!(on, true);
+        assert!(r1(&f).enabled);
+
+        let off = invoke(
+            &webview,
+            "plugin_set_developer_mode",
+            serde_json::json!({ "enabled": false }),
+        )
+        .unwrap();
+        assert_eq!(off, false);
+        assert!(!r1(&f).enabled);
+        assert_eq!(
+            *log.lock().unwrap(),
+            vec!["confirm"],
+            "turning it off must not ask"
+        );
+    }
+
+    #[test]
+    fn consent_is_recorded_through_generate_handler_only_for_a_listed_folder() {
+        let f = fixture();
+        write_r1(
+            &f,
+            serde_json::json!({ "version": 1, "folders": [{ "path": "/dev/x" }] }),
+        );
+        let (_app, webview) = ipc_app(host(&f));
+        let consent = serde_json::json!({ "capabilities": ["statusbar"], "trust": "sandboxed" });
+
+        invoke(
+            &webview,
+            "plugin_record_dev_consent",
+            serde_json::json!({ "path": "/dev/x", "consent": consent }),
+        )
+        .expect("plugin_record_dev_consent must be registered");
+        let err = invoke(
+            &webview,
+            "plugin_record_dev_consent",
+            serde_json::json!({ "path": "/dev/y", "consent": consent }),
+        )
+        .expect_err("an unlisted path must be refused");
+
+        assert_eq!(err, serde_json::json!(dev_mode::DEV_FOLDER_NOT_LISTED));
+        let state = r1(&f);
+        assert_eq!(
+            state.folders.len(),
+            1,
+            "recording a consent must not grow the list"
+        );
+        assert_eq!(
+            state.folders[0]
+                .consent
+                .as_ref()
+                .map(|c| c.capabilities.clone()),
+            Some(vec!["statusbar".to_string()])
+        );
+    }
+
+    #[test]
+    fn the_enable_warning_names_the_sandboxed_limit_in_both_locales() {
+        let en = enable_warning(false);
+        let ko = enable_warning(true);
+        assert!(en.body.contains("sandboxed"));
+        assert!(ko.body.contains("sandboxed"));
+        assert!(ko.body.contains("권한"));
+        assert_ne!(en.title, ko.title);
+        assert_ne!(picker_title(false), picker_title(true));
     }
 }

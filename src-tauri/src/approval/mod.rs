@@ -163,15 +163,21 @@ pub fn approve<R: tauri::Runtime>(
     canonical: &Path,
     kind: ApprovalKind,
 ) -> Result<(), String> {
+    approve_at(&store_path(app)?, canonical, kind)
+}
+
+/// `approve` 의 파일 경로판 — 저장 위치를 managed state 로 받는 호출자(§379 의
+/// `commands::plugin_dev_cmd::DevModeHost`)가 쓴다. 그 호출자의 테스트는 mock 앱의
+/// `app_data_dir`(= `~/Library/Application Support`) 대신 tempdir 를 넘긴다.
+pub fn approve_at(store: &Path, canonical: &Path, kind: ApprovalKind) -> Result<(), String> {
     let _guard = APPROVAL_MUTEX
         .lock()
         .map_err(|_| "잠금 획득 실패".to_string())?;
-    let p = store_path(app)?;
-    let mut store = load_from(&p);
-    if !record(&mut store, canonical, kind) {
+    let mut entries = load_from(store);
+    if !record(&mut entries, canonical, kind) {
         return Ok(());
     }
-    save_to(&p, &store)
+    save_to(store, &entries)
 }
 
 /// 승인 하나를 저장소에 반영한다. 이미 덮여 있으면 **아무것도 하지 않고** false.
@@ -567,5 +573,18 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// §379 — `approve_at` is `approve` with the file named by the caller. Records once, like
+    /// `record`, so a re-pick adds no second entry.
+    #[test]
+    fn approve_at_records_a_dir_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = dir.path().join(STORE_FILE);
+        approve_at(&store, Path::new("/x/Plugin"), ApprovalKind::Dir).unwrap();
+        approve_at(&store, Path::new("/x/Plugin"), ApprovalKind::Dir).unwrap();
+        let entries = load_from(&store).entries;
+        assert_eq!(entries.len(), 1);
+        assert!(load_from(&store).covers(Path::new("/x/Plugin/index.mjs")));
     }
 }

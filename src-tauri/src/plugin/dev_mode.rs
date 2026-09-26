@@ -147,6 +147,40 @@ impl DevModeState {
             }
         }
     }
+
+    /// 목록에 더한다 — 이미 있으면 그대로(동의도 그대로) 둔다. 더해진, 또는 있던 항목을 돌려준다.
+    pub fn add_folder(&mut self, path: &str) -> &DevFolder {
+        if let Some(index) = self.folders.iter().position(|f| f.path == path) {
+            return &self.folders[index];
+        }
+        self.folders.push(DevFolder {
+            path: path.to_string(),
+            ids: Vec::new(),
+            consent: None,
+        });
+        self.folders.last().expect("just pushed")
+    }
+
+    /// F2 의 동의를 R1 항목에 기록한다. 목록을 늘리지 못한다 — 없는 경로는 거부한다.
+    /// 릴리스 빌드는 sandboxed 가 아닌 동의를 받지 않는다 — 동의 기록은 티어를 넓힐 수 있는
+    /// 유일한 쓰기다(그런 폴더는 `admit_manifest` 가 이미 거부한다).
+    pub fn record_consent(
+        &mut self,
+        build: Build,
+        path: &str,
+        consent: DevConsent,
+    ) -> Result<(), String> {
+        if !build.is_dev() && consent.trust != PluginTrust::Sandboxed {
+            return Err(DEV_PLUGIN_NOT_SANDBOXED.to_string());
+        }
+        let entry = self
+            .folders
+            .iter_mut()
+            .find(|f| f.path == path)
+            .ok_or_else(|| DEV_FOLDER_NOT_LISTED.to_string())?;
+        entry.consent = Some(consent);
+        Ok(())
+    }
 }
 
 /// R2 — 목록을 읽거나 넓히는 dev 커맨드가 거치는 판정 하나: dev 빌드이거나, 사용자가 켰다.
@@ -748,5 +782,58 @@ mod tests {
             1,
             "the test constructors must stay behind #[cfg(test)]"
         );
+    }
+
+    #[test]
+    fn adding_a_listed_folder_keeps_its_consent() {
+        let mut state = DevModeState::default();
+        let consent = DevConsent {
+            capabilities: vec!["statusbar".into()],
+            trust: PluginTrust::Sandboxed,
+        };
+        state.add_folder("/a");
+        state
+            .record_consent(Build::release(), "/a", consent.clone())
+            .unwrap();
+        assert_eq!(state.add_folder("/a").consent, Some(consent));
+        assert_eq!(
+            state.folders.len(),
+            1,
+            "a re-pick must not duplicate the entry"
+        );
+    }
+
+    /// Recording a consent can never grow the list (spec 0058 R2).
+    #[test]
+    fn consent_is_recorded_only_for_a_listed_folder() {
+        let mut state = DevModeState::default();
+        let consent = DevConsent {
+            capabilities: vec![],
+            trust: PluginTrust::Sandboxed,
+        };
+        assert_eq!(
+            state.record_consent(Build::dev(), "/a", consent.clone()),
+            Err(DEV_FOLDER_NOT_LISTED.to_string())
+        );
+        assert!(state.folders.is_empty());
+        state.add_folder("/a");
+        assert_eq!(state.record_consent(Build::dev(), "/a", consent), Ok(()));
+    }
+
+    #[test]
+    fn a_release_build_refuses_to_record_a_trusted_consent() {
+        let mut state = DevModeState::default();
+        state.add_folder("/a");
+        let trusted = DevConsent {
+            capabilities: vec![],
+            trust: PluginTrust::Trusted,
+        };
+        assert_eq!(
+            state.record_consent(Build::release(), "/a", trusted.clone()),
+            Err(DEV_PLUGIN_NOT_SANDBOXED.to_string())
+        );
+        assert_eq!(state.find("/a").unwrap().consent, None);
+        // A dev build does not restrict the tier (spec R3).
+        assert_eq!(state.record_consent(Build::dev(), "/a", trusted), Ok(()));
     }
 }
