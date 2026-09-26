@@ -1,11 +1,27 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { Editor } from "@tiptap/react";
+import type { LucideIcon } from "lucide-react";
 
 import { NodeSelection } from "@tiptap/pm/state";
 import { CellSelection } from "@tiptap/pm/tables";
 import { BubbleMenu } from "@tiptap/react/menus";
-import { Sparkles } from "lucide-react";
+import {
+  Bold,
+  Code,
+  Heading1,
+  Heading2,
+  Highlighter,
+  Italic,
+  Link,
+  List,
+  ListOrdered,
+  Quote,
+  Sparkles,
+  Strikethrough,
+  Subscript,
+  Superscript,
+} from "lucide-react";
 
 // §4.7 Floating Toolbar — BubbleMenu on text selection
 import { chainWithVimExternalEdit } from "../../extensions/plugins/vim/vim-keys";
@@ -38,8 +54,8 @@ interface FloatingToolbarProps {
 }
 
 interface ToolbarButtonProps {
-  /** The glyph on the button — `B`, `H1`, `X²`. Deliberately not translated. */
-  glyph: string;
+  /** The icon drawn on the button. */
+  icon: LucideIcon;
   isActive: boolean;
   /**
    * The hover label, already translated. Named `label` rather than `title` because it is no
@@ -51,15 +67,15 @@ interface ToolbarButtonProps {
 }
 
 /**
- * ‼️ The pill, not `title`. These buttons are two-character glyphs — `Q`, `UL`, `X₂` — so the
- * label IS the affordance, and a ~1s WebKit delay on a bar that only exists while text is
- * selected means it arrived after the pointer had already committed to a guess.
+ * ‼️ The pill, not `title`. These buttons are icon-only — the label is the only words the
+ * user gets — and a ~1s WebKit delay on a bar that only exists while text is selected means
+ * it arrived after the pointer had already committed to a guess.
  *
  * Above, because the bar itself sits above the selection: a pill below would cover the very
  * text the button is about to act on.
  */
 function ToolbarButton({
-  glyph,
+  icon: Icon,
   label,
   isActive,
   onClick,
@@ -71,7 +87,7 @@ function ToolbarButton({
         onClick={onClick}
         onMouseDown={(e) => e.preventDefault()}
       >
-        {glyph}
+        <Icon size={14} />
       </button>
     </Tooltip>
   );
@@ -238,7 +254,7 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
       shouldShow={shouldShow}
     >
       <ToolbarButton
-        glyph="B"
+        icon={Bold}
         isActive={editor.isActive("bold")}
         label={commandLabel("formatting.bold")}
         onClick={() =>
@@ -246,7 +262,7 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
         }
       />
       <ToolbarButton
-        glyph="I"
+        icon={Italic}
         isActive={editor.isActive("italic")}
         label={commandLabel("formatting.italic")}
         onClick={() =>
@@ -254,7 +270,7 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
         }
       />
       <ToolbarButton
-        glyph="S"
+        icon={Strikethrough}
         isActive={editor.isActive("strike")}
         label={commandLabel("formatting.strikethrough")}
         onClick={() =>
@@ -262,7 +278,7 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
         }
       />
       <ToolbarButton
-        glyph="H"
+        icon={Highlighter}
         isActive={editor.isActive("highlight")}
         label={commandLabel("formatting.highlight")}
         onClick={() =>
@@ -270,7 +286,7 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
         }
       />
       <ToolbarButton
-        glyph="X²"
+        icon={Superscript}
         isActive={editor.isActive("superscript")}
         label={t("menu.insert.superscript")}
         onClick={() =>
@@ -278,7 +294,7 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
         }
       />
       <ToolbarButton
-        glyph="X₂"
+        icon={Subscript}
         isActive={editor.isActive("subscript")}
         label={t("menu.insert.subscript")}
         onClick={() =>
@@ -286,7 +302,7 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
         }
       />
       <ToolbarButton
-        glyph="<>"
+        icon={Code}
         isActive={editor.isActive("code")}
         label={commandLabel("formatting.inlineCode")}
         onClick={() =>
@@ -294,7 +310,7 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
         }
       />
       <ToolbarButton
-        glyph="Lk"
+        icon={Link}
         isActive={editor.isActive("link")}
         label={t("toolbar.link")}
         onClick={async () => {
@@ -328,7 +344,7 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
       />
       <div className="floating-toolbar-separator" />
       <ToolbarButton
-        glyph="H1"
+        icon={Heading1}
         isActive={editor.isActive("heading", { level: 1 })}
         label={commandLabel("formatting.heading1")}
         onClick={() =>
@@ -339,7 +355,7 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
         }
       />
       <ToolbarButton
-        glyph="H2"
+        icon={Heading2}
         isActive={editor.isActive("heading", { level: 2 })}
         label={commandLabel("formatting.heading2")}
         onClick={() =>
@@ -351,7 +367,7 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
       />
       <div className="floating-toolbar-separator" />
       <ToolbarButton
-        glyph="Q"
+        icon={Quote}
         isActive={editor.isActive("blockquote")}
         label={commandLabel("formatting.blockquote")}
         onClick={() =>
@@ -359,7 +375,7 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
         }
       />
       <ToolbarButton
-        glyph="UL"
+        icon={List}
         isActive={editor.isActive("bulletList")}
         label={commandLabel("formatting.bulletList")}
         onClick={() =>
@@ -367,7 +383,7 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
         }
       />
       <ToolbarButton
-        glyph="OL"
+        icon={ListOrdered}
         isActive={editor.isActive("orderedList")}
         label={commandLabel("formatting.orderedList")}
         onClick={() =>

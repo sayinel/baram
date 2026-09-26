@@ -17,9 +17,8 @@
 //   i18n   — `t("키")` 리터럴이 가리키는 값의 앞이나 뒤 가장자리에 붙은 기호, 또는 앞의 "+ "
 //   lone   — `.tsx` 에서 기호 하나(`+ # ! §`)뿐인 JSX 글자(`>+<`)나 문자열(`{"+"}`, `? "!" :`)
 //   css    — `content:` 값 안의 기호나, 기호로 풀리는 CSS 이스케이프(`\25B6`)
-// 알려진 누락: 동적 키(`t(변수)`)의 라벨, 글자로 그린 아이콘(`FloatingToolbar.tsx` 의
-// `ToolbarButton` `glyph` — B·I·S·H·X²·X₂·<>·Lk·H1·H2·Q·UL·OL), `…`(U+2026 — 진행 표시로도
-// 문장 부호로도 쓰여 이 탐지로는 아이콘과 가를 수 없다).
+// 알려진 누락: 동적 키(`t(변수)`)의 라벨, 글자로 그린 아이콘(단어 모양이라 이 탐지로는
+// 잡을 수 없다), `…`(U+2026 — 진행 표시로도 문장 부호로도 쓰여 이 탐지로는 아이콘과 가를 수 없다).
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
