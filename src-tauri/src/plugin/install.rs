@@ -917,7 +917,7 @@ fn refuse_plugin_kind(kind: InstallKind) -> Result<(), PluginError> {
 /// function does, by [`refuse_plugin_kind`] — before `install_root`, before resolving the
 /// stage, before anything on disk is touched — so in practice this only ever commits
 /// [`InstallKind::Theme`]. See [`refuse_plugin_kind`]'s own doc for why a plugin is refused
-/// rather than merely undocumented here.
+/// rather than merely documented as the wrong entry point.
 ///
 /// The two are the only destructive half of an install, and the only thing they can destroy
 /// is the staged tree: see [`swap_into_place`] for why the previously installed version
