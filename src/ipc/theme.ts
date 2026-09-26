@@ -1,6 +1,6 @@
 // §360 테마 설치 IPC 래퍼 (스펙 0049 §9).
 //
-// 이 파일은 export 여덟 개다. 그중 **설치 파이프라인 넷**(themeInstallStage·
+// 이 파일은 함수 export 여덟 개다(그 밖에 인터페이스 셋·타입 하나). 그중 **설치 파이프라인 넷**(themeInstallStage·
 // themeStageRead·themeInstallCommit·themeInstallDiscard)의 순서가 보안 속성이다 — 근거는
 // Rust 쪽 `src-tauri/src/commands/theme_cmd.rs` 머리주석에 한 번만 적혀 있다. 여기서
 // 되풀이하지 않는 이유는 그 순서를 강제하는 것이 이 파일이 아니라 커맨드 집합의
