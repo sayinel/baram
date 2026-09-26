@@ -14,6 +14,7 @@
 // 실패는 전부 `discard` 로 끝난다 — 설치된 것은 아무것도 건드리지 않았으므로 "복구" 가
 // 아니라 "내려받은 것을 버린다" 이다(#261).
 import type { ContrastWarning } from "../appearance/contrast-report";
+import type { RustStagedThemeInfo } from "../ipc/theme";
 import type { RegistryEntry } from "../plugins/types";
 import type { ThemeColors, ThemeMode } from "../types/theme";
 import type { ThemeManifest } from "./theme-manifest";
@@ -82,6 +83,12 @@ export interface InstalledTheme {
   manifest: ThemeManifest;
   /** 이 설치가 실제로 저장한 것. 선언만 있고 파일이 없던 모드는 여기 없다. */
   modes: Partial<Record<ThemeMode, InstalledThemeMode>>;
+  /**
+   * §371 6a — 파일에서 설치했으면 `"file"`(스펙 0062 D9). 없으면 레지스트리 설치다 — 이 필드가 생기기 전의
+   * 기록이 전부 그렇다(마이그레이션이 필요 없다). 업데이트 확인(`registry-client.ts` 의 `themeUpdatesFor`)이
+   * 이 값으로 건너뛴다.
+   */
+  origin?: "file";
 }
 
 export interface InstalledThemeMode {
@@ -310,12 +317,52 @@ export type ThemeInstallFailure =
  *
  * `entry.kind` 가 `"theme"` 인지는 호출자가 이미 판단했다 — 이 함수는 테마 트리에만
  * 설치하므로 플러그인을 여기로 보내면 `baram-theme.json` 이 없어 스테이징에서 멈춘다.
+ *
+ * 스테이징 이후는 `finishStagedThemeInstall` — 파일 입구(`installStagedThemeFromFile`)와 공유한다.
  */
 export async function installTheme(
   entry: RegistryEntry,
   registryUrl: string,
 ): Promise<ThemeInstallResult> {
-  let stageId: null | string = null;
+  let staged: RustStagedThemeInfo;
+  try {
+    staged = await themeInstallStage(
+      entry.downloadUrl,
+      registryUrl,
+      entry.checksum,
+      // Rust 가 아카이브의 id 를 이 값과 대조한다. 적대적인 목록이 이 다운로드를
+      // 무관한 설치 디렉터리로 겨누지 못하게 하는 것이 그 검사다(§260 Phase 5 R5).
+      entry.id,
+    );
+  } catch (err) {
+    logger.error("[Theme] install failed:", err);
+    return { ok: false, reason: "downloadFailed", detail: undefined };
+  }
+  return finishStagedThemeInstall(staged, { expectedId: entry.id });
+}
+
+/**
+ * §371 6a — 파일에서 고른 패키지. `theme_import_pick` 이 이미 스테이징했다(스펙 0062 §5.2). 레지스트리
+ * 설치와 **같은** 스테이징 이후 단계를 지나고, 기록에 `origin: "file"` 을 남긴다.
+ */
+export function installStagedThemeFromFile(
+  staged: RustStagedThemeInfo,
+): Promise<ThemeInstallResult> {
+  return finishStagedThemeInstall(staged, { origin: "file" });
+}
+
+/**
+ * §371 6a — 스테이징 **이후** 전부: 매니페스트 검증 → 목록과의 id 대조(`expectedId` 가 있을 때) → 예약 id →
+ * `engines.baram` 하한 → 위생 → commit. 스테이징된 것은 성공하면 commit 이 가져가고, 실패하면 버린다.
+ *
+ * 입구가 둘이다 — `installTheme`(레지스트리)과 `installStagedThemeFromFile`(파일). 이 함수는 내보내지
+ * 않으므로 부르는 곳은 이 파일의 그 둘뿐이다. 관문을 입구마다 복제하지 않는 것이 요점이다(스펙 0062 §5.2 3):
+ * 복제하면 한 입구에서 고친 관문이 다른 입구에서는 열린 채로 남는다.
+ */
+async function finishStagedThemeInstall(
+  staged: RustStagedThemeInfo,
+  options: { expectedId?: string; origin?: "file" },
+): Promise<ThemeInstallResult> {
   // ‼️ 실패 분류는 **어느 await 이 던졌는가**로 한다. 앞선 판은 오류 문자열에
   // `"staged"` 가 들었는지로 갈랐는데, commit 이 돌려줄 수 있는 문자열 일곱 중 셋만
   // 잡혔다 — Rust 의 상한 거부·`a theme commit must carry its sanitized CSS`·
@@ -324,17 +371,8 @@ export async function installTheme(
   // 확인하라고 말한다. 문자열은 Rust 쪽 문구가 바뀌면 조용히 더 틀려지는데, 이 변수는
   // 다음에 던질 수 있는 await 을 코드가 스스로 선언하므로 그 방식으로 틀릴 수 없다.
   let phase: ThemeInstallFailure = "downloadFailed";
+  const stageId = staged.stage_id;
   try {
-    const staged = await themeInstallStage(
-      entry.downloadUrl,
-      registryUrl,
-      entry.checksum,
-      // Rust 가 아카이브의 id 를 이 값과 대조한다. 적대적인 목록이 이 다운로드를
-      // 무관한 설치 디렉터리로 겨누지 못하게 하는 것이 그 검사다(§260 Phase 5 R5).
-      entry.id,
-    );
-    stageId = staged.stage_id;
-
     const parsed = parseThemeManifestText(staged.manifest);
     if (!parsed.valid) {
       return await discard(stageId, {
@@ -344,22 +382,26 @@ export async function installTheme(
       });
     }
     const manifest = parsed.manifest;
-    // Rust 도 대조했다. 여기서 다시 보는 이유는 `stage_install` 의 검사가
+    // 레지스트리 입구에서는 Rust 도 대조했다. 여기서 다시 보는 이유는 `stage_install` 의 검사가
     // `expected_id` 를 받았을 때만 도는 반면, 이 비교는 **우리가 방금 검증한**
     // 매니페스트와 목록이 같은 것을 말하는지 보기 때문이다 — 층이 다르다.
-    if (manifest.id !== entry.id) {
+    // 파일 입구는 대조할 목록이 없어 이 검사를 건너뛴다(`expectedId` 없음).
+    if (
+      options.expectedId !== undefined &&
+      manifest.id !== options.expectedId
+    ) {
       return await discard(stageId, {
         ok: false,
         reason: "idMismatch",
-        detail: `${entry.id} → ${manifest.id}`,
+        detail: `${options.expectedId} → ${manifest.id}`,
       });
     }
 
     // M2 — an id the built-in themes already own can be installed but never worn:
     // `findThemeById` searches `BUILT_IN_THEMES` first. The set's own doc comment carries
     // the rest, including what a WITHDRAWAL for such an id would reach. Checked against the
-    // DOWNLOADED manifest's id, which is the one just compared to the listing, so the gate
-    // cannot be sidestepped by a listing that disagrees with its archive.
+    // STAGED manifest's id — on the registry entrance, the one just compared to the listing —
+    // so the gate cannot be sidestepped by a listing that disagrees with its archive.
     if (RESERVED_THEME_IDS.has(manifest.id)) {
       return await discard(stageId, {
         ok: false,
@@ -408,7 +450,8 @@ export async function installTheme(
     phase = "commitFailed";
     const committed = await themeInstallCommit(
       stageId,
-      entry.id,
+      // 레지스트리 입구에서는 위 대조로 `entry.id` 와 같다.
+      manifest.id,
       // 이 digest 가 위 검증을 그 파일에 못 박는다. stage 는 두 IPC 호출 사이에
       // 디스크에 앉아 있고, commit 은 디스크에서 다시 읽는다(#261 보안 리뷰).
       staged.manifest_sha256,
@@ -420,8 +463,9 @@ export async function installTheme(
     // `discard` 는 `NotFound` 로 끝나고, 그 실패는 로그에만 남는다.
     //
     // §361 — `consentedAt`/`consentedVersion`은 여기서 `installedAt`/`manifest.version`과
-    // 같은 순간·같은 값으로 한 번 정해진다. 이 함수는 오늘 최초 설치만 호출하므로 셋이
-    // 같은 것이 옳다 — `InstalledTheme.consentedAt`의 doc 주석이 그 계약을 적어 둔다.
+    // 같은 순간·같은 값으로 한 번 정해진다. 최초 설치에는 그것이 옳고, 업데이트에서 앞선 동의를
+    // 이어 붙이는 것은 기록을 쓰는 `addInstalledTheme`(`stores/settings/appearance-settings.ts`)
+    // 이다 — `InstalledTheme.consentedAt`의 doc 주석이 그 계약을 적어 둔다.
     const now = new Date().toISOString();
     // §367.3 — 위생과 무관한 미학 판단이라 commit 뒤, 실패로 셀 수 없는 자리에서 잰다.
     const warnings = THEME_MODES.flatMap((mode) => {
@@ -439,6 +483,7 @@ export async function installTheme(
         installPath: committed.install_path,
         manifest,
         modes,
+        ...(options.origin !== undefined && { origin: options.origin }),
       },
       ...(warnings.length > 0 && { warnings }),
     };
@@ -449,7 +494,7 @@ export async function installTheme(
       reason: phase,
       detail: err instanceof ThemeCssError ? err.code : undefined,
     };
-    return stageId === null ? failure : await discard(stageId, failure);
+    return await discard(stageId, failure);
   }
 }
 

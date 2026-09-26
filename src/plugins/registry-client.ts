@@ -174,10 +174,16 @@ export function searchThemeRegistry(
  */
 export function themeUpdatesFor(
   index: RegistryIndex,
-  installedThemes: Record<string, { manifest: { version: string } }>,
+  installedThemes: Record<
+    string,
+    { manifest: { version: string }; origin?: "file" }
+  >,
 ): Record<string, RegistryEntry> {
   const updates: Record<string, RegistryEntry> = {};
   for (const [id, installed] of Object.entries(installedThemes)) {
+    // §371 6a — 파일에서 설치한 테마는 레지스트리의 같은 id 항목과 다른 패키지다(스펙 0062 D9).
+    // `handleUpdate` 도 이 함수로 항목을 다시 푸므로, 여기서 빼면 배지와 버튼이 함께 사라진다.
+    if (installed.origin === "file") continue;
     const entry = index.plugins.find((p) => p.id === id && p.kind === "theme");
     if (entry === undefined) continue;
     if (entry.version === installed.manifest.version) continue;
