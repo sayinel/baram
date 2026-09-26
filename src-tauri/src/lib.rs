@@ -447,6 +447,7 @@ pub fn run() {
             approval_cmd::list_approved_roots,
             approval_cmd::revoke_approved_root,
             font_cmd::font_list,
+            theme_cmd::theme_import_pick,
             theme_cmd::theme_install_stage,
             theme_cmd::theme_install_commit,
             theme_cmd::theme_install_discard,

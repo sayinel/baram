@@ -165,25 +165,45 @@ describe("the pending consent promise settles even if nothing else does", () => 
     let firstResolved: boolean | undefined;
     act(() => {
       void result.current
-        .handleInstall(entry({ id: "first" }), "https://reg.test")
+        .handleInstall(
+          entry({ id: "first", name: "First" }),
+          "https://reg.test",
+        )
         .then((v) => {
           firstResolved = v;
         });
     });
     await reachConsent();
-    expect(result.current.pendingConsent?.entry.id).toBe("first");
+    expect(result.current.pendingConsent?.name).toBe("First");
 
     // A second entry asks before the first was ever answered.
     act(() => {
       void result.current.handleInstall(
-        entry({ id: "second" }),
+        entry({ id: "second", name: "Second" }),
         "https://reg.test",
       );
     });
     await reachConsent();
 
     expect(firstResolved).toBe(false);
-    expect(result.current.pendingConsent?.entry.id).toBe("second");
+    expect(result.current.pendingConsent?.name).toBe("Second");
+  });
+
+  // Plan 0110 security gate, Low-1. The test above covers a request that is OPEN at unmount;
+  // this one covers a request that arrives AFTER it — the file install awaits the floor check
+  // and the replace confirm before asking, and Settings can close in that gap. What fails it:
+  // dropping `askConsent`'s `mounted` check leaves this promise unsettled, so "pending" wins.
+  it("a consent request made after unmount resolves false at once", async () => {
+    const { result, unmount } = renderHook(() => useThemeActions());
+    const { askConsent } = result.current;
+    unmount();
+    const outcome = await Promise.race([
+      askConsent("Late"),
+      new Promise<"pending">((resolve) =>
+        setTimeout(() => resolve("pending"), 200),
+      ),
+    ]);
+    expect(outcome).toBe(false);
   });
 });
 
@@ -199,7 +219,7 @@ describe("handleInstall", () => {
         });
     });
     await reachConsent();
-    expect(result.current.pendingConsent?.entry.id).toBe("dracula");
+    expect(result.current.pendingConsent?.name).toBe("Dracula");
     expect(installTheme).not.toHaveBeenCalled();
 
     await act(async () => {

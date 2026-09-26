@@ -46,8 +46,10 @@ vi.mock("../../ipc/theme", () => ({
   },
 }));
 
+import { defaultColorsForBase } from "../../types/theme";
 import { verifyStoredThemeCss } from "../../utils/theme-css/verify";
 import {
+  installStagedThemeFromFile,
   installTheme,
   MAX_STORED_THEME_CSS_BYTES,
   MAX_THEME_MANIFEST_BYTES,
@@ -582,5 +584,90 @@ describe("installTheme commits last (§360)", () => {
     const result = await installTheme(entry(), "https://reg.test/index.json");
     expect(result.ok === false && result.reason).toBe("downloadFailed");
     expect(themeInstallDiscard).not.toHaveBeenCalled();
+  });
+});
+
+describe("installStagedThemeFromFile (§371 6a)", () => {
+  const TOKENS_ONLY = manifestText({
+    id: "my-look",
+    modes: { light: { tokens: "light/tokens.json" } },
+  });
+  const staged = (manifest = TOKENS_ONLY) => ({
+    checksum: "c".repeat(64),
+    manifest,
+    manifest_sha256: "d".repeat(64),
+    stage_id: "stage-f",
+  });
+
+  beforeEach(() => {
+    stageWith(
+      {
+        "light/tokens.json": enc(JSON.stringify(defaultColorsForBase("light"))),
+      },
+      TOKENS_ONLY,
+    );
+    themeInstallCommit.mockResolvedValue({
+      id: "my-look",
+      install_path: "/home/u/.baram/themes/my-look",
+    });
+  });
+
+  it("스테이징을 다시 하지 않고, 매니페스트의 id 로 커밋하고, 기록에 origin 을 남긴다", async () => {
+    const result = await installStagedThemeFromFile(staged());
+    expect(themeInstallStage).not.toHaveBeenCalled();
+    expect(themeInstallCommit.mock.calls[0][1]).toBe("my-look");
+    expect(result.ok && result.installed.origin).toBe("file");
+  });
+
+  // 같은 관문 — 레지스트리 입구와 같은 함수를 지난다는 증거(스펙 0062 §8 11).
+  it.each(["nord", "system"])(
+    "예약 id %s 는 거부하고 stage 를 버린다",
+    async (id) => {
+      const result = await installStagedThemeFromFile(
+        staged(
+          manifestText({
+            id,
+            modes: { light: { tokens: "light/tokens.json" } },
+          }),
+        ),
+      );
+      expect(result.ok).toBe(false);
+      expect(!result.ok && result.reason).toBe("reservedId");
+      expect(calls).toContain("discard");
+    },
+  );
+
+  it("앱이 하한보다 낮으면 거부한다", async () => {
+    const result = await installStagedThemeFromFile(
+      staged(
+        manifestText({
+          engines: { baram: ">=9.0.0" },
+          id: "my-look",
+          modes: { light: { tokens: "light/tokens.json" } },
+        }),
+      ),
+    );
+    expect(!result.ok && result.reason).toBe("appTooOld");
+    expect(calls).toContain("discard");
+  });
+
+  it("매니페스트가 틀리면 거부하고 stage 를 버린다", async () => {
+    const result = await installStagedThemeFromFile(staged("{not json"));
+    expect(!result.ok && result.reason).toBe("manifestInvalid");
+    expect(calls).toContain("discard");
+  });
+});
+
+describe("installTheme 은 스테이징 이후를 같은 함수로 끝낸다 (§371 6a)", () => {
+  it("레지스트리 설치의 기록에는 origin 이 없다", async () => {
+    stageWith(
+      {
+        "light/tokens.json": enc(JSON.stringify(defaultColorsForBase("light"))),
+      },
+      manifestText({ modes: { light: { tokens: "light/tokens.json" } } }),
+    );
+    const result = await installTheme(entry(), "https://reg.test");
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.installed).not.toHaveProperty("origin");
   });
 });

@@ -93,6 +93,7 @@ mod registry;
 mod storage;
 #[cfg(test)]
 mod test_support;
+mod theme_import;
 // Re-exported: `install.rs` staging/commit/discard/uninstall lifecycle
 // (src-tauri/src/commands/plugin_cmd.rs).
 pub use install::{
@@ -123,6 +124,11 @@ pub use origin::{http_fetch, PluginFetchInit, PluginFetchResponse};
 // `install.rs` inside this module — because this is the one write-side function a command
 // outside `plugin` needs.
 pub use archive::build_zip_bytes;
+// Re-exported: §371 6a's file import (src-tauri/src/commands/theme_cmd.rs) — the one entry that
+// reads a user-picked file into the theme staging tree. `ImportFormat` stays unexported here —
+// nothing outside `theme_import` names it; it is reachable only as `ThemeImportPick::TooLarge`'s
+// field type.
+pub use theme_import::{import_theme_file, ThemeImportPick};
 
 // ‼️ THE THREE DECLARATIONS BELOW STAY IN THIS FILE, not in `fetch.rs` / `origin.rs` where they
 // are used. `scripts/rust-constants.ts` (`revocationByteCap`, `shippedRevocationPublicKey`) and

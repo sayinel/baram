@@ -172,4 +172,40 @@ describe("themePackageEntries", () => {
     expect(Object.keys(entries)).toEqual(["baram-theme.json"]);
     expect(validateThemeManifest(decodeManifest(entries)).valid).toBe(false);
   });
+
+  // §371 6a — 선택 인자. 비어 있는 것은 매니페스트에 쓰지 않는다(스펙 0062 §3.4).
+  it("extras 가 없으면 dials · chrome 을 쓰지 않고 지금 하한을 쓴다", () => {
+    const manifest = decodeManifest(
+      themePackageEntries(pairedTheme(), META),
+    ) as Record<string, unknown>;
+    expect(manifest).not.toHaveProperty("dials");
+    expect(manifest).not.toHaveProperty("chrome");
+    expect((manifest.engines as { baram: string }).baram).toBe(">=0.7.4");
+  });
+
+  it("빈 dials · chrome 은 필드를 만들지 않는다", () => {
+    const manifest = decodeManifest(
+      themePackageEntries(pairedTheme(), META, { chrome: {}, dials: {} }),
+    ) as Record<string, unknown>;
+    expect(manifest).not.toHaveProperty("dials");
+    expect(manifest).not.toHaveProperty("chrome");
+  });
+
+  it("dials · chrome · minBaram 을 싣고, 설치 검증이 그대로 되읽는다", () => {
+    const entries = themePackageEntries(pairedTheme(), META, {
+      chrome: { statusBar: false },
+      dials: { density: "compact", editorFontSize: 18 },
+      minBaram: ">=0.7.6",
+    });
+    const result = validateThemeManifest(decodeManifest(entries));
+    if (!result.valid) throw new Error("manifest unexpectedly invalid");
+    expect(result.manifest.dials).toEqual({
+      density: "compact",
+      editorFontSize: 18,
+    });
+    expect(result.manifest.chrome).toEqual({ statusBar: false });
+    expect(result.manifest.engines.baram).toBe(">=0.7.6");
+    // 무엇이 이것을 실패시키는가: 하한의 문법이 틀리면 설치 경로가 "의견 없음" 으로 조용히 읽는다.
+    expect(parseBaramFloor(result.manifest.engines.baram)).not.toBeNull();
+  });
 });

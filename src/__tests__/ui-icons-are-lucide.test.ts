@@ -91,10 +91,6 @@ const ALLOWED: Record<string, Exemption> = {
     reason: "검색 결과의 섹션·라벨 사이 구분점",
     spellings: ["entity &middot;"],
   },
-  "src/components/settings/appearance-dial-row.tsx": {
-    reason: "양수 다이얼 값의 부호 `+`",
-    spellings: ["lone +"],
-  },
   "src/components/settings/tabs/VaultTab.tsx": {
     reason:
       "글머리 표시 문자 선택지 — `+` 는 아이콘이 아니라 고르는 대상인 문자 자체다",

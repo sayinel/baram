@@ -5,7 +5,8 @@
 // `main`도 없고 대신 `modes`를 갖는 다른 모양이다. 텍스트 필드 길이 상한과 제어·bidi 문자
 // 거부, 매니페스트 크기 상한 값은 카드 라벨 위장을 이미 막고 있는
 // `src/components/settings/tabs/use-theme-import.ts`와 같은 값을 그대로 쓴다 — 그 파일은
-// 다른 wire 포맷(`{name, base, colors}`)을 검증하므로 셰이프가 아니라 값만 재사용한다.
+// 다른 wire 포맷(`{name, base, colors}`)을 검증하므로 셰이프가 아니라 값만 재사용한다. 그중 크기 상한의
+// 짝은 계획 0110 P8 로 Rust(`theme_import.rs` 의 `MAX_THEME_COLORS_IMPORT_BYTES`)에 옮겨 갔다.
 import type { DialValue } from "../appearance/dials";
 import type { ThemeMode } from "../types/theme";
 
@@ -50,8 +51,9 @@ export const UNSAFE_TEXT_CHARS_RE =
   /[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/;
 
 /**
- * 매니페스트 직렬화 크기 상한 — `use-theme-import.ts`가 import 파일 전체에 거는 상한과
- * 같은 값. `data`는 이미 `JSON.parse`를 거친 뒤이므로(호출부 주석 참조) 이 상한이 막는
+ * 매니페스트 직렬화 크기 상한 — 색 설정 가져오기가 파일 전체에 거는 상한(Rust `theme_import.rs` 의
+ * `MAX_THEME_COLORS_IMPORT_BYTES`, 계획 0110 P8)과 같은 값. `data`는 이미 `JSON.parse`를
+ * 거친 뒤이므로(호출부 주석 참조) 이 상한이 막는
  * 것은 파싱 비용이 아니라, 그 뒤를 잇는 필드별 검사가 거대한 문자열을 반복해서 훑는
  * 비용이다. `baram-theme.json`은 메타데이터 몇 줄이면 충분하니, 이보다 크면 실수이거나
  * (예: `description` 필드에 거대한 문자열을 채워) 그 비용을 부풀리려는 시도다.

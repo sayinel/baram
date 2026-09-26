@@ -133,7 +133,7 @@
   background: var(--color-status-danger);
 }
 
-/* §361 Task 6 — the update badge IS the update button (theme-gallery.tsx explains why
+/* §361 Task 6 — the update badge IS the update button (theme-gallery-cards.tsx explains why
    they are one control). Full width under the card so a long version string wraps rather
    than widening the grid column. */
 .theme-card-update {
@@ -635,6 +635,58 @@
   padding: var(--space-2) var(--space-3);
   font-size: 0.82rem;
   color: var(--color-status-danger);
+  background: var(--color-bg-subtle);
+  border-radius: var(--radius-md);
+}
+
+/* §371 6a 외관 내보내기(appearance-export.tsx) — 머리는 테마 찾아보기 화면과 같은 모양이다. */
+.appearance-export {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.appearance-export-header {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.appearance-export-title {
+  flex: 1;
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.appearance-export-summary,
+.appearance-export-dials {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+  padding: 0;
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--color-text-primary);
+  list-style: none;
+}
+
+.appearance-export-dials {
+  padding-left: var(--space-3);
+  margin-top: var(--space-1-5);
+}
+
+.appearance-export-value,
+.appearance-export-hint {
+  color: var(--color-text-secondary);
+}
+
+.appearance-export-notice {
+  padding: var(--space-2) var(--space-3);
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
   background: var(--color-bg-subtle);
   border-radius: var(--radius-md);
 }

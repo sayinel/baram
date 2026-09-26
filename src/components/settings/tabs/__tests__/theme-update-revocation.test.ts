@@ -329,7 +329,7 @@ describe("the engines.baram floor (M1)", () => {
     });
     await reachConsent();
 
-    expect(result.current.pendingConsent?.entry.id).toBe("dracula");
+    expect(result.current.pendingConsent?.name).toBe("Dracula");
   });
 
   it("has no opinion when the app version cannot be read", async () => {
@@ -347,7 +347,7 @@ describe("the engines.baram floor (M1)", () => {
     });
     await reachConsent();
 
-    expect(result.current.pendingConsent?.entry.id).toBe("dracula");
+    expect(result.current.pendingConsent?.name).toBe("Dracula");
   });
 });
 
@@ -543,7 +543,7 @@ describe("handleInstall and a withdrawn version", () => {
     await reachConsent();
     // Reaching the dialog at all is the assertion: the range check is real rather than
     // "any entry with this id refuses everything".
-    expect(result.current.pendingConsent?.entry.id).toBe("dracula");
+    expect(result.current.pendingConsent?.name).toBe("Dracula");
     await act(async () => {
       result.current.settleConsent(true);
       await Promise.resolve();

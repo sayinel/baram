@@ -59,12 +59,21 @@ const BACKUP_PREFIX: &str = "backup-";
 
 /// How long an abandoned STAGE is left alone before a later install reclaims it.
 ///
-/// Only a hard kill between staging and committing can leave one behind — every in-process
-/// failure path removes its own. A day is far longer than any real gap between staging and
+/// Every in-process failure path in Rust removes its own stage. What can still leave one
+/// behind: a hard kill between staging and committing, and — since §371 6a — the theme FILE
+/// entrance, which stages the moment the user picks a file and relies on the webview to commit
+/// or discard. A window closed or reloaded while the Rust dialog is open or while the consent
+/// is pending leaves a stage nobody discards; so does a discard that itself fails, which the
+/// frontend only logs. An owning screen that merely unmounts is NOT one of these: the
+/// frontend then refuses the consent and discards (plan 0110 security gate, Low-1).
+///
+/// For the registry entrances a day is far longer than any real gap between staging and
 /// committing (a few synchronous checks and an `unloadPlugin`; consent is collected BEFORE
 /// the download), so the sweep cannot plausibly delete a stage someone still intends to
-/// commit. If it ever did, the commit fails closed with "no such staged install" and
-/// nothing installed is touched.
+/// commit. The file entrance asks for consent AFTER staging, so its gap lasts as long as the
+/// user leaves that dialog open — left open for a day, its stage can be swept by another
+/// install. In every case the commit fails closed — `resolve_stage_in` answers
+/// `no staged install {stage_id}` — and nothing installed is touched.
 ///
 /// ‼️ THIS DOES NOT APPLY TO BACKUPS, and applying it to them was a data-loss bug (#261
 /// security review). `std::fs::rename` PRESERVES mtime, so a backup inherits the mtime of
@@ -120,9 +129,10 @@ const MAX_STORED_THEME_CSS_BYTES: usize = 4 * 1024 * 1024;
 
 /// §360 — upper bound on `baram-theme.json` as Rust reads it out of a staged archive.
 ///
-/// The same 64 KiB `use-theme-import.ts` applies to an imported theme file, for the same
-/// reason: a theme manifest is a few lines of metadata, so anything three orders of
-/// magnitude larger is a mistake or an attempt to make the reader pay for it.
+/// The same 64 KiB `MAX_THEME_COLORS_IMPORT_BYTES` (`theme_import.rs`) applies to an imported
+/// colour settings file, for the same reason: a theme manifest is a few lines of metadata, so
+/// anything three orders of magnitude larger is a mistake or an attempt to make the reader pay
+/// for it.
 ///
 /// ‼️ THE FRONTEND CAPS AGAIN AT THE SAME VALUE, before its own `JSON.parse`
 /// (`parseThemeManifestText`). Not redundant: this layer bounds what Rust's `serde_json`
@@ -736,7 +746,10 @@ pub async fn stage_install(
 }
 
 /// Steps 3–5 of a stage: extract, read the manifest, check the id. Touches nothing installed.
-fn stage_archive_in(
+///
+/// §371 6a — `theme_import.rs` calls this with bytes it read from a file, not a download:
+/// this step after the download is the same regardless of the entrance.
+pub(super) fn stage_archive_in(
     plugin_root: &Path,
     kind: InstallKind,
     bytes: &[u8],

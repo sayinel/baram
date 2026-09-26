@@ -7,17 +7,19 @@
 //
 // ‼️ 하위 화면은 단일 union 상태다(§361) — boolean 두 개(editingTheme·browsingThemes)를
 // 나란히 두면 "둘 다 true"라는 표현 불가능한 상태가 생기고, 어느 쪽이 이기는지는 아래
-// if 순서라는 우연이 정한다. 세 번째 하위 화면이 생기면 이 union에 갈래를 추가한다.
+// if 순서라는 우연이 정한다. 세 번째 하위 화면이 생기면 이 union에 갈래를 추가한다
+// (§371 6a 의 `export` 가 셋째다).
 import { useState } from "react";
 
 import { useTranslation } from "../../../i18n/useTranslation";
 import { AppearanceDialRow } from "../appearance-dial-row";
+import { AppearanceExport } from "../appearance-export";
 import { SettingsSectionHeader } from "../settings-shared";
 import { ThemeEditor } from "../ThemeEditor";
 import { ThemeGallery } from "./theme-gallery";
 import { ThemeBrowser } from "./ThemeBrowser";
 
-type SubScreen = "browser" | "editor" | null;
+type SubScreen = "browser" | "editor" | "export" | null;
 
 export function AppearanceTab() {
   const { t } = useTranslation();
@@ -29,6 +31,9 @@ export function AppearanceTab() {
   if (subScreen === "browser") {
     return <ThemeBrowser onBack={() => setSubScreen(null)} />;
   }
+  if (subScreen === "export") {
+    return <AppearanceExport onBack={() => setSubScreen(null)} />;
+  }
 
   return (
     <div className="settings-section">
@@ -36,6 +41,7 @@ export function AppearanceTab() {
       <ThemeGallery
         onBrowseThemes={() => setSubScreen("browser")}
         onCustomize={() => setSubScreen("editor")}
+        onExportLook={() => setSubScreen("export")}
       />
       {/* §367 — 강조색 다이얼은 앱 전체의 겉모습을 바꾸므로 에디터 탭이 아니라
           여기다(§365.4: 색 스킴·강조색·밀도·모서리는 외관). 갤러리 바로 아래에

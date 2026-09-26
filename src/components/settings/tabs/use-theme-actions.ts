@@ -40,9 +40,14 @@ import {
   themeCssErrorKey,
 } from "../../../utils/theme-css/errors";
 
-/** What the consent dialog is currently asking about, if anything. */
+/**
+ * What the consent dialog is currently asking about, if anything.
+ *
+ * 레지스트리 항목이 없는 파일 설치(§371 6a)도 같은 대화상자를 쓴다 — 대화상자가 쓰는 것은
+ * 이름뿐이다.
+ */
 export interface PendingThemeConsent {
-  entry: RegistryEntry;
+  name: string;
 }
 
 /**
@@ -138,6 +143,11 @@ export function useThemeActions() {
   const [pendingConsent, setPendingConsent] =
     useState<null | PendingThemeConsent>(null);
   const consentResolver = useRef<((v: boolean) => void) | null>(null);
+  /**
+   * Whether the screen that owns this hook is mounted — set in the effect below, not at
+   * creation, so a StrictMode unmount/remount leaves it true.
+   */
+  const mounted = useRef(false);
   /** Entry ids with an install in flight — guards a double-click BEFORE the first await. */
   const inFlight = useRef<Set<string>>(new Set());
   const [installing, setInstalling] = useState<Record<string, boolean>>({});
@@ -145,16 +155,20 @@ export function useThemeActions() {
     {},
   );
 
-  const askConsent = useCallback(
-    (entry: RegistryEntry) =>
-      new Promise<boolean>((resolve) => {
-        // A second request while one is open would strand the first caller forever.
-        consentResolver.current?.(false);
-        consentResolver.current = resolve;
-        setPendingConsent({ entry });
-      }),
-    [],
-  );
+  const askConsent = useCallback((name: string): Promise<boolean> => {
+    // ‼️ Asked AFTER the owner unmounted (plan 0110 security gate, Low-1): there is no dialog
+    // left to answer, and the unmount cleanup below only refuses a request already open. A
+    // promise made here would never settle — for the file install that meant a staged
+    // package nobody discarded. The caller awaited something before asking (the floor check,
+    // the replace confirm), and Settings can close in that gap.
+    if (!mounted.current) return Promise.resolve(false);
+    return new Promise<boolean>((resolve) => {
+      // A second request while one is open would strand the first caller forever.
+      consentResolver.current?.(false);
+      consentResolver.current = resolve;
+      setPendingConsent({ name });
+    });
+  }, []);
 
   const settleConsent = useCallback((value: boolean) => {
     setPendingConsent(null);
@@ -163,14 +177,16 @@ export function useThemeActions() {
   }, []);
 
   // A dialog that disappears with the component (Settings closing mid-prompt) must resolve
-  // as a REFUSAL — see usePluginActions.ts's identical guard for the reported defect.
-  useEffect(
-    () => () => {
+  // as a REFUSAL — see usePluginActions.ts's identical guard for the reported defect. A
+  // request that arrives after this cleanup is refused by `askConsent` itself (`mounted`).
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
       consentResolver.current?.(false);
       consentResolver.current = null;
-    },
-    [],
-  );
+    };
+  }, []);
 
   /**
    * §69's install-time refusal, for themes. True means "do not acquire this".
@@ -301,13 +317,45 @@ export function useThemeActions() {
   );
 
   /**
-   * Install, apply immediately, and offer a free undo (spec §10.3 — a theme only has to
-   * remember the one previous `activeThemeId`, which plugins cannot do).
+   * 설치가 끝난 테마를 입히고 토스트 하나로 알린다(§367.3 — 토스트는 한 칸이다). 레지스트리 설치
+   * (`handleInstall`)와 파일 설치(`use-theme-file-install.ts`)가 함께 쓴다.
    *
    * `activeThemeId` is read fresh via `getState()` at the moment of success rather than
    * closed over from render, so the "Undo" toast's target is whatever was active the
    * instant BEFORE this install applied — not whatever was active when the button was
    * clicked, which could be stale if this install itself took a while.
+   */
+  const announceInstalled = useCallback(
+    (installed: InstalledTheme, warnings: ContrastWarning[]) => {
+      const previousActiveThemeId = useSettingsStore.getState().activeThemeId;
+      setActiveTheme(installed.id);
+      // §367.3 — ONE toast (`useUIStore`'s `showToast` has a single slot, see
+      // `stageAndRecord`'s doc comment). When there are contrast warnings, the toast says
+      // so as well as saying the theme installed — a user is not told only the happy half.
+      useUIStore.getState().showToast(
+        warnings.length > 0
+          ? t("settings.appearance.installedToastWithWarning", {
+              count: String(warnings.length),
+              name: installed.manifest.name,
+            })
+          : t("settings.appearance.installedToast", {
+              name: installed.manifest.name,
+            }),
+        warnings.length > 0 ? "warning" : "info",
+        undefined,
+        {
+          label: t("settings.appearance.revertAction"),
+          onClick: () => setActiveTheme(previousActiveThemeId),
+        },
+      );
+    },
+    [setActiveTheme, t],
+  );
+
+  /**
+   * Install, apply immediately, and offer a free undo (spec §10.3 — a theme only has to
+   * remember the one previous `activeThemeId`, which plugins cannot do). The apply and the
+   * undo toast are `announceInstalled` above.
    */
   const handleInstall = useCallback(
     async (entry: RegistryEntry, registryUrl: string): Promise<boolean> => {
@@ -318,7 +366,7 @@ export function useThemeActions() {
         // already decided against wastes the one decision this screen exists to collect.
         if (refuseIfRevoked(entry)) return false;
         if (await refuseIfAppTooOld(entry)) return false;
-        const consented = await askConsent(entry);
+        const consented = await askConsent(entry.name);
         if (!consented) return false;
 
         // ‼️ `freshConsent`, because this path just ASKED (0090 final review, N2). It
@@ -331,40 +379,18 @@ export function useThemeActions() {
         });
         if (staged === null) return false;
         const { installed, warnings } = staged;
-
-        const previousActiveThemeId = useSettingsStore.getState().activeThemeId;
-        setActiveTheme(installed.id);
-        // §367.3 — ONE toast (`useUIStore`'s `showToast` has a single slot, see
-        // `stageAndRecord`'s doc comment). When there are contrast warnings, the toast says
-        // so as well as saying the theme installed — a user is not told only the happy half.
-        useUIStore.getState().showToast(
-          warnings.length > 0
-            ? t("settings.appearance.installedToastWithWarning", {
-                count: String(warnings.length),
-                name: installed.manifest.name,
-              })
-            : t("settings.appearance.installedToast", {
-                name: installed.manifest.name,
-              }),
-          warnings.length > 0 ? "warning" : "info",
-          undefined,
-          {
-            label: t("settings.appearance.revertAction"),
-            onClick: () => setActiveTheme(previousActiveThemeId),
-          },
-        );
+        announceInstalled(installed, warnings);
         return true;
       } finally {
         inFlight.current.delete(entry.id);
       }
     },
     [
+      announceInstalled,
       askConsent,
       refuseIfAppTooOld,
       refuseIfRevoked,
-      setActiveTheme,
       stageAndRecord,
-      t,
     ],
   );
 
@@ -411,7 +437,7 @@ export function useThemeActions() {
         const staged = await stageAndRecord(entry, registryUrl);
         if (staged === null) return false;
         const { installed: updated, warnings } = staged;
-        // §367.3 — ONE toast, same reasoning as `handleInstall` above.
+        // §367.3 — ONE toast, same reasoning as `announceInstalled` above.
         useUIStore.getState().showToast(
           warnings.length > 0
             ? t("settings.appearance.updatedToastWithWarning", {
@@ -531,6 +557,8 @@ export function useThemeActions() {
   );
 
   return {
+    announceInstalled,
+    askConsent,
     handleInstall,
     handleUpdate,
     installErrors,

@@ -90,7 +90,7 @@ export function ThemeBrowser({ onBack }: ThemeBrowserProps) {
 
   const consentDialog = pendingConsent && (
     <ThemeConsentDialog
-      name={pendingConsent.entry.name}
+      name={pendingConsent.name}
       onCancel={onCancelConsent}
       onConfirm={onConfirmConsent}
     />

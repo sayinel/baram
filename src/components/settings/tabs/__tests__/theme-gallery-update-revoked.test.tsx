@@ -48,7 +48,13 @@ function entry(over: Partial<RegistryEntry> = {}): RegistryEntry {
 }
 
 function gallery() {
-  return <ThemeGallery onBrowseThemes={() => {}} onCustomize={() => {}} />;
+  return (
+    <ThemeGallery
+      onBrowseThemes={() => {}}
+      onCustomize={() => {}}
+      onExportLook={() => {}}
+    />
+  );
 }
 
 function installedTheme(): InstalledTheme {

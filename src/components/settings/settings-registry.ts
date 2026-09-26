@@ -955,6 +955,16 @@ export function useSettingsRegistry(): SearchableSetting[] {
       keywords: ["theme", "install", "marketplace", "browse", "download"],
       control: NAVIGATE_CONTROL,
     },
+    // §371 6a — 외관을 테마로 내보내기(스펙 0062 §4). 하위 화면이라 검색은 외관 탭으로 보낸다.
+    {
+      id: "exportLook",
+      label: "settings.appearance.exportLook",
+      description: "settings.appearance.exportLook.desc",
+      category: "appearance",
+      section: "settings.appearance.theme",
+      keywords: ["theme", "export", "package", "share", "backup"],
+      control: NAVIGATE_CONTROL,
+    },
     // §367 — 강조색 다이얼 둘. 행은 AppearanceTab.tsx 에 있고, 여기 있는 것은
     // **검색**이다. 둘이 갈리면 검색해서 찾은 설정이 아무 데도 데려가지 않는
     // 구멍이 된다 — 0093 이 `editorPadding` 에서 정확히 그 구멍을 냈고 0094 가

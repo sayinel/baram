@@ -51,10 +51,11 @@ function filesUnder(dir: string, out: string[] = []): string[] {
  * 네 파일을 냈다: PluginConsentDialog.tsx · PluginRevokedNotice.tsx ·
  * ApprovedRootsSection.tsx · usePluginActions.ts. §361 review round 2 가
  * `themeConsentSentences`(테마 도메인의 다섯 번째 효과)를 더하면서 여섯으로 늘었다 —
- * ThemeConsentDialog.tsx · use-theme-actions.ts. 그리는 넷(PluginConsentDialog.tsx ·
- * PluginRevokedNotice.tsx · ApprovedRootsSection.tsx · ThemeConsentDialog.tsx)은
- * `SECURITY_SURFACE_FILES`, 그리지 않는 둘(usePluginActions.ts ·
- * use-theme-actions.ts)은 `NON_RENDERING_EFFECT_CALLERS`(둘 다
+ * ThemeConsentDialog.tsx · use-theme-actions.ts. §371 6a 의 use-theme-file-install.ts
+ * (파일 설치의 철회 거부 문구 — `revocationReason`)가 일곱째다. 그리는 넷
+ * (PluginConsentDialog.tsx · PluginRevokedNotice.tsx · ApprovedRootsSection.tsx ·
+ * ThemeConsentDialog.tsx)은 `SECURITY_SURFACE_FILES`, 그리지 않는 셋(usePluginActions.ts ·
+ * use-theme-actions.ts · use-theme-file-install.ts)은 `NON_RENDERING_EFFECT_CALLERS`(둘 다
  * `security-surfaces.ts`)에 있다.
  *
  * `consentCovers` 가 핵심이다 — 처음에 쓴 목록은 `consentRequired`·`consentGaps`·

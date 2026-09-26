@@ -84,4 +84,16 @@ describe("themeUpdatesFor", () => {
   it("offers nothing for a theme the registry no longer lists", () => {
     expect(themeUpdatesFor(index(), { dracula: at("1.0.0") })).toEqual({});
   });
+
+  // §371 6a — 파일에서 설치한 테마는 레지스트리의 같은 id 항목과 다른 패키지다. 그 항목을 "업데이트" 로
+  // 보이면 누르는 순간 사용자가 고른 파일을 남의 패키지로 덮는다(스펙 0062 D9).
+  it("파일에서 설치한 테마는 업데이트로 세지 않는다", () => {
+    const updates = themeUpdatesFor(
+      index(entry({ id: "my-look", version: "2.0.0" })),
+      {
+        "my-look": { manifest: { version: "1.0.0" }, origin: "file" },
+      },
+    );
+    expect(updates).toEqual({});
+  });
 });

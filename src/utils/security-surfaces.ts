@@ -55,6 +55,12 @@ export const SECURITY_SURFACE_FILES: readonly string[] = [
  *    부른다. `.ts`이고 훅 하나가 JSX 없이 상태·부수효과만 다루는, `usePluginActions.ts`
  *    와 같은 모양이다 — 이 파일도 그 이유로 `.ts`다(`theme-gallery.tsx`·
  *    `ThemeConsentDialog.tsx`가 `.tsx`로 그림을 맡는다).
+ *  - use-theme-file-install.ts(§371 6a) — `revocationReason` 으로 파일 설치의 "설치 차단" 문구를
+ *    만들어 돌려준다. 설치를 막는 것은 코드이고(그 갈래는 stage 를 버린다) 문구는 결과를 알릴
+ *    뿐이다. 그 문구를 그리는 것은 `theme-gallery.tsx` 의 `.theme-import-error`(light DOM)다 —
+ *    레지스트리 입구의 같은 문구(`use-theme-actions.ts` 의 `refuseIfRevoked` →
+ *    `ThemeBrowser.tsx` 의 카드 오류)와 같은 모양이고, 위 헤더가 말하는 "다른 파일에 위임해
+ *    그리는 경로" 의 한 예다.
  *
  * `theme-gallery.tsx` 는 위 어느 효과도 자기 소스에 담지 않아 두 목록 모두에 없다 —
  * `showConsentHistory(installedThemes[theme.id])`를 부를 뿐 `themeConsentSentences`
@@ -65,4 +71,5 @@ export const SECURITY_SURFACE_FILES: readonly string[] = [
 export const NON_RENDERING_EFFECT_CALLERS: readonly string[] = [
   "src/components/plugins/usePluginActions.ts",
   "src/components/settings/tabs/use-theme-actions.ts",
+  "src/components/settings/tabs/use-theme-file-install.ts",
 ];

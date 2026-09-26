@@ -5,9 +5,12 @@
 // (`~/.baram/themes/`, §9.2), the manifest (`baram-theme.json`, §4), and one extra step —
 // the CSS hygiene pipeline, which runs on the FRONTEND between staging and committing.
 //
-// ‼️ THIS FILE HAS SEVEN `#[tauri::command]`s (verified by re-count at each edit — see
+// ‼️ THIS FILE HAS EIGHT `#[tauri::command]`s (verified by re-count at each edit — see
 // CLAUDE.md's "수정도 새 주장이다"). THE ORDER IS THE SECURITY PROPERTY for exactly FOUR of
-// them, the install pipeline below. The other three are NOT part of that order:
+// them, the install pipeline below — `theme_import_pick` is a fifth command that reaches the
+// SAME staging step (`plugin::import_theme_file` → `install::stage_archive_in`) through a
+// different entrance (a file the user picked, not a download), so it counts as another way
+// INTO that order rather than a step within it. The other three are NOT part of that order:
 // `theme_read_stored_css` is a LOAD-TIME read this task (§361) gave its first consumer, not
 // an install step; `theme_uninstall` (also §361) is unrelated lifecycle — removal rather
 // than installation; `theme_package_build` (§363) is the OTHER direction entirely — an
@@ -15,6 +18,7 @@
 // tree at all. None of the three has an ordering to preserve.
 //
 //   theme_install_stage   → download + extract, installs nothing
+//   theme_import_pick     → the same staging, from a file the user picked (§371 6a) — or colour text
 //   theme_stage_read      → the frontend reads the authored CSS, tokens and assets
 //   (frontend)            → sanitizeThemeCss → inlineThemeAssets → verifyStoredThemeCss
 //   theme_install_commit  → WRITES the sanitized CSS into the staged tree, then swaps
@@ -168,4 +172,56 @@ pub async fn theme_uninstall(theme_id: String) -> Result<(), String> {
 #[tauri::command]
 pub async fn theme_package_build(entries: Vec<(String, Vec<u8>)>) -> Result<Vec<u8>, String> {
     plugin::build_zip_bytes(&entries).map_err(|e| e.to_string())
+}
+
+/// §371 6a (spec 0062 §5) — the theme import dialog. Opens the native picker HERE, reads the one
+/// file the user chose, and says what it is: colour settings text, a staged package, or too large.
+///
+/// ‼️ TAKES NO PATH. The webview can only ask for the dialog; the user picks the file. That is what
+/// keeps a webview-chosen path out of this command (spec 0062 D8, the `pick_approved_file` shape in
+/// `approval_cmd.rs`). For a package this is `theme_install_stage`'s other entrance — same staging,
+/// installs nothing — and the rest of the order above is unchanged: `theme_stage_read` → hygiene →
+/// `theme_install_commit` or `theme_install_discard`.
+#[tauri::command]
+pub async fn theme_import_pick(
+    app: tauri::AppHandle,
+) -> Result<Option<plugin::ThemeImportPick>, String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let korean = crate::commands::approval_cmd::is_korean(&app);
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .set_title(if korean {
+            "테마 가져오기"
+        } else {
+            "Import Theme"
+        })
+        .add_filter(
+            if korean {
+                "테마 패키지"
+            } else {
+                "Theme package"
+            },
+            &["zip"],
+        )
+        .add_filter(
+            if korean {
+                "색 설정"
+            } else {
+                "Color settings"
+            },
+            &["json"],
+        )
+        .pick_file(move |p| {
+            let _ = tx.send(p);
+        });
+    let Some(picked) = rx.await.map_err(|e| e.to_string())? else {
+        return Ok(None);
+    };
+    let path = picked.into_path().map_err(|e| e.to_string())?;
+    plugin::import_theme_file(path)
+        .await
+        .map(Some)
+        .map_err(|e| e.to_string())
 }

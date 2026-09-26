@@ -22,7 +22,7 @@ vi.mock("../../../../plugins/registry-client", async (importOriginal) => ({
 
 const handleInstall = vi.fn();
 const settleConsent = vi.fn();
-let pendingConsent: null | { entry: RegistryEntry } = null;
+let pendingConsent: null | { name: string } = null;
 // `importOriginal` + spread, not a bare literal: `ThemeConsentDialog.tsx` imports the real
 // `themeConsentSentences` from this same module path, and a bare factory would leave it
 // undefined — the exact trap `plugin-install-consent.test.tsx` names for the same reason
@@ -128,7 +128,7 @@ describe("the consent dialog's Escape listener is attached once (external review
     // flushes a commit's passive cleanups and setups in one synchronous job — so nothing
     // here asserts behaviour; it asserts the churn, which is the whole finding.
     const add = vi.spyOn(window, "addEventListener");
-    pendingConsent = { entry: themeEntry() };
+    pendingConsent = { name: themeEntry().name };
     fetchResult = Promise.resolve({ plugins: [themeEntry()] });
     try {
       render(<ThemeBrowser onBack={() => {}} />);
@@ -310,7 +310,7 @@ describe("ThemeBrowser", () => {
   describe("consent dialog (§9.3)", () => {
     beforeEach(() => {
       fetchResult = Promise.resolve({ plugins: [themeEntry()] });
-      pendingConsent = { entry: themeEntry() };
+      pendingConsent = { name: themeEntry().name };
     });
 
     it("shows the three fixed sentences — RED under M-A (sentences deleted)", async () => {

@@ -1,5 +1,7 @@
 // §363 테마 패키지 내보내기 (스펙 0049 §12.1) — ThemeEditor 가 편집 중인 팔레트를, 이
 // 앱의 설치 경로가 읽을 수 있는 `baram-theme.json` + 모드별 `tokens.json` 엔트리 맵으로.
+// §371 6a(스펙 0062)부터 외관 내보내기(`appearance-export.tsx`)도 이 함수를 부른다 —
+// 다이얼 · 크롬 · 버전 하한은 선택 인자 `extras` 로 받는다.
 //
 // ‼️ 순수 함수다 — 파일도 IPC 도 건드리지 않는다(그래서 `Promise` 가 아니다). zip 바이트를
 // 만드는 것은 Rust `theme_package_build`(`plugin::build_zip_bytes`)다: 프런트엔드에는 zip
@@ -22,6 +24,7 @@
 // 실제로 하지 않는 함의를 담고 있었다. 오늘 `ThemeModeAssets.css`가 "이 계획 범위에서는
 // 항상 undefined"(`types/theme.ts`)라 둘이 실제로 갈리는 입력은 아직 없지만, 주장은
 // 코드가 하는 일을 말해야 한다.
+import type { DialValues } from "../appearance/dials";
 import type { ThemeDef, ThemeMode } from "../types/theme";
 import type { ThemeManifest } from "./theme-manifest";
 
@@ -33,6 +36,18 @@ export interface PackageMeta {
   description: string;
   license: string;
   version: string;
+}
+
+/**
+ * §371 6a — 색 밖에서 매니페스트에 더 싣는 것(스펙 0062 §3.4). 비어 있는 것은 **필드째 쓰지 않는다** —
+ * 빈 `dials: {}` 는 희소한 "제안 없음" 과 같은 뜻이지만, 쓰지 않아야 색만 담는 패키지(편집기의 것)와
+ * 모양이 같다.
+ */
+export interface PackageExtras {
+  chrome?: NonNullable<ThemeManifest["chrome"]>;
+  dials?: DialValues;
+  /** `engines.baram`. 없으면 {@link MIN_BARAM_FOR_TOKENS_PACKAGE} — 색만 담는 패키지의 하한이다. */
+  minBaram?: string;
 }
 
 /**
@@ -86,6 +101,7 @@ export function slugifyThemeId(name: string): string {
 export function themePackageEntries(
   theme: ThemeDef,
   meta: PackageMeta,
+  extras: PackageExtras = {},
 ): Record<string, Uint8Array> {
   const encoder = new TextEncoder();
   const entries: Record<string, Uint8Array> = {};
@@ -103,12 +119,14 @@ export function themePackageEntries(
   const manifest: ThemeManifest = {
     author: meta.author,
     description: meta.description,
-    engines: { baram: MIN_BARAM_FOR_TOKENS_PACKAGE },
+    engines: { baram: extras.minBaram ?? MIN_BARAM_FOR_TOKENS_PACKAGE },
     id: theme.id,
     license: meta.license,
     modes: manifestModes,
     name: theme.name,
     version: meta.version,
+    ...(hasKeys(extras.chrome) && { chrome: extras.chrome }),
+    ...(hasKeys(extras.dials) && { dials: extras.dials }),
   };
   // 루트 배치 — 파일 헤더 참조. 다른 어떤 접두사도 붙이지 않는다.
   entries["baram-theme.json"] = encoder.encode(
@@ -116,6 +134,11 @@ export function themePackageEntries(
   );
 
   return entries;
+}
+
+/** `extras` 의 선택 필드 하나가 매니페스트에 실릴 만큼 채워져 있는가 — 빈 객체는 아니다. */
+function hasKeys(value: object | undefined): value is object {
+  return value !== undefined && Object.keys(value).length > 0;
 }
 
 /**
