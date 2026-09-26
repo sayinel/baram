@@ -10,6 +10,8 @@ import {
 
 import type { MentionSuggestionItem } from "../../extensions/plugins/mention-suggest";
 
+import { Calendar, FileText } from "lucide-react";
+
 export interface MentionMenuRef {
   onKeyDown: (event: KeyboardEvent) => boolean;
 }
@@ -87,7 +89,9 @@ export const MentionMenuList = forwardRef<MentionMenuRef, MentionMenuProps>(
                   onClick={() => selectItem(idx)}
                   onMouseEnter={() => setSelectedIndex(idx)}
                 >
-                  <span className="mention-item-icon">{"\uD83D\uDCC5"}</span>
+                  <span className="mention-item-icon">
+                    <Calendar className="icon-inline" size="1em" />
+                  </span>
                   <span className="mention-item-label">{item.label}</span>
                 </div>
               );
@@ -106,7 +110,9 @@ export const MentionMenuList = forwardRef<MentionMenuRef, MentionMenuProps>(
                   onClick={() => selectItem(idx)}
                   onMouseEnter={() => setSelectedIndex(idx)}
                 >
-                  <span className="mention-item-icon">{"\uD83D\uDCC4"}</span>
+                  <span className="mention-item-icon">
+                    <FileText className="icon-inline" size="1em" />
+                  </span>
                   <span className="mention-item-label">{item.label}</span>
                 </div>
               );

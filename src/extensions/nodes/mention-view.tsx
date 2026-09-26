@@ -7,6 +7,7 @@ import type { MentionOptions } from "./mention";
 import type { NodeViewProps } from "@tiptap/react";
 
 import { NodeViewWrapper } from "@tiptap/react";
+import { Calendar, FileText } from "lucide-react";
 
 import { t } from "../../i18n";
 import { useSettingsStore } from "../../stores/settings/store";
@@ -78,7 +79,11 @@ export function MentionView({
       onClick={handleClick}
     >
       <span className="mention-icon">
-        {isDate ? "\uD83D\uDCC5" : "\uD83D\uDCC4"}
+        {isDate ? (
+          <Calendar className="icon-inline" size="1em" />
+        ) : (
+          <FileText className="icon-inline" size="1em" />
+        )}
       </span>
       <span className="mention-label text-truncate">{value}</span>
     </NodeViewWrapper>

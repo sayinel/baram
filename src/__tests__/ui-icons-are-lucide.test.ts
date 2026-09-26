@@ -12,12 +12,14 @@
 // 기호가 들어오는 여섯 가지 철자를 본다:
 //   glyph  — × · ‹ › · U+2190–U+2BFF(화살표·수학·기술·도형·기타 기호·딩뱃) · 이모지(U+1F000–U+1FAFF)
 //   entity — `&times;` `&#9650;` 같은 HTML 엔터티(문자 스캔에 걸리지 않아 #739 때 한 번 놓쳤다)
-//   escape — 기호로 풀리는 `▶` 류 이스케이프
+//   escape — 기호로 풀리는 `▶` 류 이스케이프. 서러게이트 둘로 적은 이모지(`\uD83D\uDCC5`)는
+//            짝째로 풀어 적힌 그대로 한 번 보고한다
 //   i18n   — `t("키")` 리터럴이 가리키는 값의 앞이나 뒤 가장자리에 붙은 기호, 또는 앞의 "+ "
 //   lone   — `.tsx` 에서 기호 하나(`+ # ! §`)뿐인 JSX 글자(`>+<`)나 문자열(`{"+"}`, `? "!" :`)
 //   css    — `content:` 값 안의 기호나, 기호로 풀리는 CSS 이스케이프(`\25B6`)
-// 알려진 누락: 동적 키(`t(변수)`)의 라벨, 단어 모양으로 그린 아이콘(`Aa` `W` `.*`), `…`(U+2026 —
-// 진행 표시로도 문장 부호로도 쓰여 이 탐지로는 아이콘과 가를 수 없다).
+// 알려진 누락: 동적 키(`t(변수)`)의 라벨, 글자로 그린 아이콘(`FloatingToolbar.tsx` 의
+// `ToolbarButton` `glyph` — B·I·S·H·X²·X₂·<>·Lk·H1·H2·Q·UL·OL), `…`(U+2026 — 진행 표시로도
+// 문장 부호로도 쓰여 이 탐지로는 아이콘과 가를 수 없다).
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -34,6 +36,7 @@ const KO = JSON.parse(
 const GLYPH = /[\u{D7}\u{2039}\u{203A}\u{2190}-\u{2BFF}\u{1F000}-\u{1FAFF}]/u;
 const ENTITY = /&#x?[0-9a-f]+;|&[a-z]+;/gi;
 const ESCAPE = /\\u\{?([0-9a-f]{4,5})\}?/gi;
+const SURROGATE_PAIR = /\\u(d[89ab][0-9a-f]{2})\\u(d[c-f][0-9a-f]{2})/gi;
 /** 라벨 앞뒤에 붙은 아이콘 기호. `+` 는 뒤에 공백이 올 때만 — "+{count} more" 는 개수다. */
 const EDGE_GLYPH = new RegExp(
   `^(?:${GLYPH.source}|\\+)\\s|\\s${GLYPH.source}$`,
@@ -136,11 +139,13 @@ const ALLOWED: Record<string, Exemption> = {
     spellings: ["lone #"],
   },
   "src/extensions/plugins/slash-command-items-basic.ts": {
-    reason: "slash 메뉴의 마크다운 문법 힌트(mdHint)",
+    reason:
+      "slash 메뉴 힌트 칸(mdHint)이 제목 문법 `#` 옆에 토글 화살표를 그림으로 보여 준다 — ▸ 는 문법이 아니다(토글은 `<details>` 로 저장된다). 아이콘으로 바꿀지는 backlog 에서 정한다",
     spellings: ["glyph ▸"],
   },
   "src/extensions/plugins/slash-command-items-journal.ts": {
-    reason: "slash 메뉴의 문법 힌트(mdHint)",
+    reason:
+      "slash 메뉴 힌트 칸(mdHint)이 이 항목에는 문법 대신 사진 그림을 보여 준다 — 📷 는 문법이 아니다. 아이콘으로 바꿀지는 backlog 에서 정한다",
     spellings: ["glyph 📷"],
   },
   "src/extensions/plugins/slash-command-items-tasks.ts": {
@@ -330,10 +335,17 @@ function scanSource(
       at(`glyph ${glyph}`);
     }
     for (const [entity] of text.matchAll(ENTITY)) at(`entity ${entity}`);
+    // U+FFFF 너머의 이모지는 `\uD83D\uDCC5` 처럼 서러게이트 두 개로 적힌다. 하나씩 풀면
+    // 각각 짝 없는 서러게이트라 GLYPH 에 걸리지 않으니, 짝을 먼저 한 글자로 풀어 적힌
+    // 그대로 한 번 보고한다. 아래 단일 패스는 서러게이트(D800–DFFF)를 건너뛴다.
+    for (const [pair, hi, lo] of text.matchAll(SURROGATE_PAIR)) {
+      const decoded = String.fromCharCode(parseInt(hi, 16), parseInt(lo, 16));
+      if (GLYPH.test(decoded)) at(`escape ${pair}`);
+    }
     for (const [escape, hex] of text.matchAll(ESCAPE)) {
-      if (GLYPH.test(String.fromCodePoint(parseInt(hex, 16)))) {
-        at(`escape ${escape}`);
-      }
+      const codePoint = parseInt(hex, 16);
+      if (codePoint >= 0xd800 && codePoint <= 0xdfff) continue;
+      if (GLYPH.test(String.fromCodePoint(codePoint))) at(`escape ${escape}`);
     }
   });
   if (file.endsWith(".tsx")) {
@@ -441,6 +453,7 @@ describe("UI icons are lucide, not text glyphs — the whole app", () => {
     expect(probe(`<button>‹</button>`)).toEqual(["glyph ‹"]);
     expect(probe(`<span>&#10003;</span>`)).toEqual(["entity &#10003;"]);
     expect(probe(`{"\\u21BB"}`)).toEqual(["escape \\u21BB"]);
+    expect(probe(`{"\\uD83D\\uDCC5"}`)).toEqual(["escape \\uD83D\\uDCC5"]);
     expect(probe(`<button>+</button>`)).toEqual(["lone +"]);
     expect(probe(`{isError ? "✗" : "!"}`)).toEqual(["glyph ✗", "lone !"]);
     expect(probe(`{"#"}`)).toEqual(["lone #"]);
