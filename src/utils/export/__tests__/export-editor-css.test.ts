@@ -105,6 +105,16 @@ describe("rescopeEditorCSS", () => {
     // past a space-qualified check.
     expect(editorContentCSS()).not.toContain(".tiptap");
   });
+
+  it("carries the mask icons the exported toggle arrow draws with", () => {
+    // 무엇이 이것을 실패시키는가: EDITOR_STYLESHEETS 에서 iconsCSS 를 빼면 둘째 단정이
+    // red 다. 첫 단정은 그 변수를 쓰는 규칙이 실제로 export 에 있다는 짝이다.
+    const css = editorContentCSS();
+    expect(css).toMatch(
+      /\.toggle::before\s*\{[^}]*var\(--icon-chevron-right\)/u,
+    );
+    expect(css).toContain("--icon-chevron-right: url(");
+  });
 });
 
 describe("what the exported page actually looks like", () => {

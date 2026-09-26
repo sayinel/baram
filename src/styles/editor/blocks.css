@@ -514,17 +514,26 @@
 
 /* Arrow sits at the toggle's left edge (x=0), aligned with where other lines
    begin — NOT in the negative gutter. The summary + body are indented past it
-   by the padding-left, so the headline and body share one indentation. */
+   by the padding-left, so the headline and body share one indentation.
+   The arrow is painted as a background colour through a mask, so it sets
+   print-color-adjust: exact — an exported page printed without "background
+   graphics" would otherwise drop it, where the former text glyph printed. */
 .tiptap .toggle::before {
   position: absolute;
   top: 0.7em;
   left: 0;
+  width: 1em;
+  height: 1em;
   font-size: 0.8em;
-  line-height: 1;
   color: var(--color-text-muted);
   cursor: pointer;
-  content: "▶";
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+  content: "";
+  background-color: currentcolor;
   opacity: 0.55;
+  -webkit-mask: var(--icon-chevron-right) center / contain no-repeat;
+  mask: var(--icon-chevron-right) center / contain no-repeat;
   transition: transform 0.2s ease;
 }
 

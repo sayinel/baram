@@ -325,7 +325,6 @@ const PENDING: Record<string, string> = {
   "src/extensions/nodes/query-block-view.tsx": "Task 4",
   "src/extensions/nodes/views/MermaidBlockHeader.tsx": "Task 4",
   "src/extensions/nodes/wikilink-view.tsx": "Task 4",
-  "src/styles/editor/blocks.css": "Task 3",
   "src/styles/tasks.css": "Task 7",
   "src/utils/date-picker.ts": "Task 7",
 };

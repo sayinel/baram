@@ -43,6 +43,7 @@ import taskChipCSS from "../../styles/editor/task-chip.css?raw";
 import videoCSS from "../../styles/editor/video.css?raw";
 import primitivesCSS from "../../styles/generated/primitives.css?raw";
 import semanticLightCSS from "../../styles/generated/semantic-light.css?raw";
+import iconsCSS from "../../styles/icons.css?raw";
 import linksCSS from "../../styles/links.css?raw";
 
 /** The selector the export wraps its content in. */
@@ -130,6 +131,12 @@ function dropDeclarations(css: string): string {
  *     that are not part of a markdown document.
  */
 const EDITOR_STYLESHEETS = [
+  // ‼️ Unscoped on purpose — `:root` custom properties holding the lucide mask
+  // images (styles/icons.css). blocks.css draws the toggle arrow with
+  // `var(--icon-chevron-right)`; without this sheet that `mask` refers to an
+  // undefined variable, becomes invalid at computed-value time, and the arrow
+  // paints as a solid square of its background colour.
+  iconsCSS,
   blocksCSS,
   listsCSS,
   // ‼️ Unscoped on purpose — the control is drawn in the agenda too, so its
