@@ -15,13 +15,13 @@ Add footnote references and definitions using standard markdown syntax.
 **Display:**
 
 - References display as sequential numbers (1, 2, 3…) based on the order they appear in the document, regardless of identifier name
-- Definitions display as `N. content ↩` — the number followed by the content and a back-arrow
+- Definitions display as `N. content` — the number followed by the content and a back-arrow
 
 **Navigation:**
 
 - **Hover** a reference to see a tooltip preview of the definition
 - **Click** a reference to scroll to the definition
-- **Click** the number or ↩ in the definition to scroll back to the reference
+- **Click** the number or the back arrow in the definition to scroll back to the reference
 
 **Example:**
 
