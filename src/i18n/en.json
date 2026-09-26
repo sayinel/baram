@@ -765,6 +765,7 @@
   "recent.folders": "Recent Folders",
   "recent.notFound": "Path not found — removed from recents: {name}",
   "recent.vaultBadge": "Vault",
+  "searchToggle.matchCase": "Match case",
   "searchToggle.regex": "Use regular expression",
   "searchToggle.wholeWord": "Match whole word",
   "settings.activitybar.chromeVisibility": "Show or Hide",

@@ -346,10 +346,10 @@ export function GlobalSearch() {
 
       <div className="global-search-toggles">
         <button
-          aria-label={t("pdfFind.matchCase")}
+          aria-label={t("searchToggle.matchCase")}
           className={`global-search-toggle ${caseSensitive ? "global-search-toggle-active" : ""}`}
           onClick={() => setCaseSensitive(!caseSensitive)}
-          title={t("pdfFind.matchCase")}
+          title={t("searchToggle.matchCase")}
         >
           <CaseSensitive className="icon-inline" size="1em" />
         </button>

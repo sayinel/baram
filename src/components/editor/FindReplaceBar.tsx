@@ -283,11 +283,11 @@ export function FindReplaceBar({
 
         <div className="find-replace-toggles">
           <button
-            aria-label={t("pdfFind.matchCase")}
+            aria-label={t("searchToggle.matchCase")}
             aria-pressed={caseSensitive}
             className={`find-replace-toggle ${caseSensitive ? "active" : ""}`}
             onClick={() => dispatchToggleCaseSensitive(editor.view)}
-            title={t("pdfFind.matchCase")}
+            title={t("searchToggle.matchCase")}
           >
             <CaseSensitive className="icon-inline" size="1em" />
           </button>
