@@ -886,20 +886,38 @@ fn read_staged_theme_manifest(dir: &Path) -> Result<(String, String, String), Pl
     Ok((head.id, text, digest))
 }
 
+/// Whether `kind` may commit through [`commit_staged_install`]. §379 — [`InstallKind::Plugin`]
+/// is refused: `commands::plugin_cmd::plugin_install_commit` goes through
+/// [`commit_staged_plugin_install`] instead, the only entry point that runs the
+/// developer-mode refusal on the checked id, and a plugin routed through
+/// [`commit_staged_install`] would skip that. Refused outright here rather than merely
+/// documented as the wrong entry point — see `plugin_cmd.rs`'s
+/// `the_plugin_install_commit_goes_through_the_dev_folder_boundary` (the caller is wired
+/// right) and this module's `commit_staged_install_refuses_a_plugin_before_resolving_a_root`
+/// (this function refuses on its own even if a caller got that wrong).
+///
+/// A PURE function — no `install_root`, no stage lookup, nothing on disk — on purpose: the
+/// caller ([`commit_staged_install`]) runs it before anything that would resolve or create
+/// the real `~/.baram/plugins` or `~/.baram/themes`, and keeping this free of I/O is what
+/// lets it be unit-tested without touching either.
+fn refuse_plugin_kind(kind: InstallKind) -> Result<(), PluginError> {
+    if matches!(kind, InstallKind::Plugin) {
+        return Err(PluginError::Refused(
+            "a plugin commit must go through commit_staged_plugin_install, not \
+             commit_staged_install — it is the only entry point that runs the \
+             developer-mode refusal (§379)"
+                .into(),
+        ));
+    }
+    Ok(())
+}
+
 /// Atomically replace any version already installed with a staged one. `kind` (§360) still
 /// takes the enum, but [`InstallKind::Plugin`] is refused as the very first thing this
-/// function does — before `install_root`, before resolving the stage, before anything on
-/// disk is touched — so in practice this only ever commits [`InstallKind::Theme`].
-///
-/// ‼️ A plugin never reaches the swap here. `commands::plugin_cmd::plugin_install_commit`
-/// goes through [`commit_staged_plugin_install`] (§379) instead: the same checks and the same
-/// swap, with the developer-mode refusal between them — a check only that entry point makes.
-/// A plugin routed through this one instead would skip that refusal, which is why it is
-/// refused outright rather than merely documented as the wrong entry point — see
-/// `plugin_cmd.rs`'s `the_plugin_install_commit_goes_through_the_dev_folder_boundary` (the
-/// caller is wired right) and this module's
-/// `commit_staged_install_refuses_a_plugin_before_touching_anything` (this function refuses
-/// on its own even if a caller got that wrong).
+/// function does, by [`refuse_plugin_kind`] — before `install_root`, before resolving the
+/// stage, before anything on disk is touched — so in practice this only ever commits
+/// [`InstallKind::Theme`]. See [`refuse_plugin_kind`]'s own doc for why a plugin is refused
+/// rather than merely undocumented here.
 ///
 /// The two are the only destructive half of an install, and the only thing they can destroy
 /// is the staged tree: see [`swap_into_place`] for why the previously installed version
@@ -938,18 +956,7 @@ pub async fn commit_staged_install(
     expected_manifest_sha256: &str,
     stored_css: Option<StoredThemeCss>,
 ) -> Result<CommittedInstall, PluginError> {
-    // §379 (F2) — refused before anything else runs, so a plugin commit never resolves an
-    // install root, reads a stage, or swaps: `commit_staged_plugin_install` is the only
-    // entry point that runs the developer-mode refusal, and this one used to accept
-    // `InstallKind::Plugin` too, skipping it silently.
-    if matches!(kind, InstallKind::Plugin) {
-        return Err(PluginError::Refused(
-            "a plugin commit must go through commit_staged_plugin_install, not \
-             commit_staged_install — it is the only entry point that runs the \
-             developer-mode refusal (§379)"
-                .into(),
-        ));
-    }
+    refuse_plugin_kind(kind)?;
     let stage_id = stage_id.to_owned();
     let expected_id = expected_id.to_owned();
     let expected_digest = expected_manifest_sha256.to_owned();
@@ -1378,27 +1385,68 @@ mod tests {
         );
     }
 
-    /// §379 (F2) — the ONE exception to the "no test here touches `$HOME`" rule below: it
-    /// calls the real public `commit_staged_install`, not a `*_in` core against a tempdir.
-    /// That is safe only because the refusal is the very first thing the function does — no
-    /// `install_root`, no stage lookup, nothing on disk — so this never resolves or creates
-    /// the real `~/.baram/plugins` or `~/.baram/themes`. A made-up stage id and digest prove
-    /// that: if the refusal came after `resolve_stage_in`, this would fail with `NotFound`
-    /// instead of the message asserted below.
-    #[tokio::test]
-    async fn commit_staged_install_refuses_a_plugin_before_touching_anything() {
-        let err = commit_staged_install(
-            InstallKind::Plugin,
-            "stage-does-not-exist",
-            "some-id",
-            "0000000000000000000000000000000000000000000000000000000000000",
-            None,
-        )
-        .await
-        .unwrap_err();
+    /// §379 — [`refuse_plugin_kind`] is pure, so this exercises it directly rather than
+    /// through the async `commit_staged_install` (which would need a real install root to
+    /// reach a stage lookup — see the source-scan test below for why this function never
+    /// gets that far for a plugin).
+    #[test]
+    fn refuse_plugin_kind_refuses_a_plugin_and_admits_a_theme() {
+        assert_eq!(
+            refuse_plugin_kind(InstallKind::Plugin)
+                .unwrap_err()
+                .to_string(),
+            "a plugin commit must go through commit_staged_plugin_install, not \
+             commit_staged_install — it is the only entry point that runs the \
+             developer-mode refusal (§379)"
+        );
+        assert!(refuse_plugin_kind(InstallKind::Theme).is_ok());
+    }
+
+    /// §379 — pins the ORDER inside `commit_staged_install`'s body: `refuse_plugin_kind(kind)?`
+    /// must run before `install_root(`, because `install_root` is what resolves — and on a
+    /// missing directory, CREATES — the real `~/.baram/plugins` or `~/.baram/themes`
+    /// (`get_plugin_dir` / `get_theme_dir`, `storage.rs`). A regression here cannot be caught
+    /// by a behavioural test the way the rest of this module's install-lifecycle tests catch
+    /// regressions, because calling the real async function to observe the order would be the
+    /// very thing this guards against — see `refuse_plugin_kind_refuses_a_plugin_and_admits_a_theme`
+    /// above for the async function's pure half instead. Comment lines are dropped before
+    /// squashing so a doc comment merely MENTIONING `install_root(` in prose (this function's
+    /// own doc comment does) cannot satisfy the assertion in place of the real call.
+    #[test]
+    fn commit_staged_install_refuses_a_plugin_before_resolving_a_root() {
+        let src = include_str!("install.rs");
+        let start = src
+            .find("pub async fn commit_staged_install(")
+            .expect("commit_staged_install is defined in this file");
+        let end = src[start..]
+            .find("pub async fn commit_staged_plugin_install")
+            .expect("commit_staged_plugin_install follows commit_staged_install");
+        let body: String = src[start..start + end]
+            .lines()
+            .filter(|line| !line.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n")
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect();
+
+        let refusal = body.find("refuse_plugin_kind(kind)?");
+        let root = body.find("install_root(");
         assert!(
-            err.to_string().contains("commit_staged_plugin_install"),
-            "{err}"
+            refusal.is_some(),
+            "commit_staged_install no longer calls refuse_plugin_kind(kind)? — a plugin \
+             commit routed here would no longer refuse on its own"
+        );
+        assert!(
+            root.is_some(),
+            "install_root( is missing from commit_staged_install — this scan's own \
+             assumption about the function's shape is stale"
+        );
+        assert!(
+            refusal < root,
+            "refuse_plugin_kind(kind)? must run BEFORE install_root( — otherwise a plugin \
+             commit resolves (and can create) the real ~/.baram/plugins or ~/.baram/themes \
+             before it is refused"
         );
     }
 

@@ -175,7 +175,7 @@ describe("dev-folder loads declare isDev (§260 Phase 5)", () => {
     ).toEqual([]);
   });
 
-  // §379 (F5) — `setDevMode` is R2's write into the store (`developer_mode_active`'s
+  // §379 — `setDevMode` is R2's write into the store (`developer_mode_active`'s
   // frontend mirror): every OTHER production call must go through the dev-plugins loop
   // above, or a caller could flip the store without the load/unload it implies. Same shape
   // as "calls the migration from exactly one place" above: a CALL, not a mention, so a
