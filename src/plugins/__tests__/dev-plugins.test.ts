@@ -31,6 +31,7 @@ import { useSettingsStore } from "../../stores/settings/store";
 import { usePluginStore } from "../../stores/system/plugin";
 import {
   devConsentToAsk,
+  devFolderHoldsId,
   refreshDevPlugins,
   unloadDevPlugins,
 } from "../dev-plugins";
@@ -251,3 +252,42 @@ function toDev(id: string) {
     updatedAt: 0,
   };
 }
+
+describe("devFolderHoldsId (§379 I4, the reverse direction — UX only)", () => {
+  const RELEASE_ON = { active: true, devBuild: false, enabled: true };
+
+  it("holds a loadable folder's id and every id an issue row carries while developer mode is on", () => {
+    usePluginStore.setState({
+      devFolderIssues: [
+        {
+          error: "DEV_PLUGIN_NOT_SANDBOXED",
+          ids: ["refused-x", "renamed-x"],
+          path: "/dev/r",
+        },
+      ],
+      devMode: RELEASE_ON,
+      devPlugins: { "dev-x": { ...toDev("dev-x") } },
+    });
+    expect(devFolderHoldsId("dev-x")).toBe(true);
+    expect(devFolderHoldsId("refused-x")).toBe(true);
+    expect(devFolderHoldsId("renamed-x")).toBe(true);
+    expect(devFolderHoldsId("someone-else")).toBe(false);
+  });
+
+  it("holds nothing in a dev build or with developer mode off", () => {
+    const listed = {
+      devFolderIssues: [],
+      devPlugins: { "dev-x": { ...toDev("dev-x") } },
+    };
+    usePluginStore.setState({
+      ...listed,
+      devMode: { active: true, devBuild: true, enabled: false },
+    });
+    expect(devFolderHoldsId("dev-x")).toBe(false);
+    usePluginStore.setState({
+      ...listed,
+      devMode: { active: false, devBuild: false, enabled: false },
+    });
+    expect(devFolderHoldsId("dev-x")).toBe(false);
+  });
+});

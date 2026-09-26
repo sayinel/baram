@@ -61,6 +61,25 @@ export function devConsentToAsk(
 }
 
 /**
+ * §379 I4, the reverse direction — UX ONLY. Does a dev folder hold this id while a RELEASE
+ * build's developer mode is on? Then install and update stop here, before the consent dialog
+ * and the download, with the translated reason. The boundary is Rust's: the install commit
+ * refuses a held id itself (`DEV_PLUGIN_ID_HELD`, judged on the committed manifest), so this
+ * may miss a case without opening a hole.
+ *
+ * "Holds" = this session's list: a loadable folder's manifest id (`devPlugins`), or any id an
+ * issue row carries (`devFolderIssues[].ids` — Rust's record, or a pick whose load threw).
+ */
+export function devFolderHoldsId(id: string): boolean {
+  const { devFolderIssues, devMode, devPlugins } = usePluginStore.getState();
+  if (!devMode.active || devMode.devBuild) return false;
+  return (
+    devPlugins[id] !== undefined ||
+    devFolderIssues.some((issue) => issue.ids.includes(id))
+  );
+}
+
+/**
  * Ask Rust for the developer list and load it: startup, and again after the developer-mode
  * switch moves. Throws when Rust does not answer — the caller decides what that means.
  */

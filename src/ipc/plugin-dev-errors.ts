@@ -29,3 +29,17 @@ export function describeDevError(
   const key = MESSAGE_KEYS.get(text);
   return key === undefined ? text : translate(key);
 }
+
+/**
+ * For callers that RETHROW: one of Rust's `DEV_*` codes becomes an `Error` carrying its sentence,
+ * and anything else comes back untouched — how every other failure prints does not change.
+ */
+export function withDevErrorText(
+  error: unknown,
+  translate: (key: string) => string,
+): unknown {
+  const key = MESSAGE_KEYS.get(
+    error instanceof Error ? error.message : String(error),
+  );
+  return key === undefined ? error : new Error(translate(key));
+}
