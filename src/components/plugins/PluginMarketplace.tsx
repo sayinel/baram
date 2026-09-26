@@ -15,6 +15,7 @@ import {
   buildPluginRows,
   entryFromManifest,
 } from "../../plugins/plugin-sources";
+import { consentProvenance } from "../../plugins/provenance";
 import {
   checkForUpdates,
   fetchRegistryIndex,
@@ -221,6 +222,10 @@ export function PluginMarketplace() {
       onCancel={() => settleConsent(null)}
       onConfirm={() => settleConsent(pendingConsent.consent)}
       prior={pendingConsent.prior}
+      provenance={consentProvenance(
+        pendingConsent.consent,
+        pendingConsent.prior,
+      )}
     />
   );
 

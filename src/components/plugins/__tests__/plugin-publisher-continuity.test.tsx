@@ -169,6 +169,9 @@ describe("publisher continuity (§382)", () => {
     render(<PluginMarketplace />);
     fireEvent.click(await screen.findByRole("button", { name: /^Install$/ }));
     const dialog = (await findSurface(".plugin-consent")).getByRole("dialog");
+    // The marketplace passes provenance to the dialog it mounts (`PluginDetailTab` mounts the
+    // other one and passes it the same way).
+    expect(dialog.textContent).toContain("Published by @octocat");
     fireEvent.click(within(dialog).getByRole("button", { name: /^Install$/ }));
     await waitFor(() =>
       expect(
@@ -192,6 +195,8 @@ describe("publisher continuity (§382)", () => {
     // Same capabilities, same tier: before §382 this update installed without a word.
     expect(await findSurface(".plugin-consent")).toBeTruthy();
     expect(pluginInstallStage).not.toHaveBeenCalled();
+    const dialog = (await findSurface(".plugin-consent")).getByRole("dialog");
+    expect(dialog.textContent).toContain("@octocat → @new-owner");
   });
 
   it("does not ask when only the login changed, and records the new login", async () => {

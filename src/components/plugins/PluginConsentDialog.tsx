@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import type { Provenance } from "../../plugins/provenance";
 import type { PluginConsent } from "../../plugins/types";
 
 import { TriangleAlert } from "lucide-react";
@@ -31,6 +32,12 @@ interface PluginConsentDialogProps {
    * for an `"update"`, and also for a `"load"` reload whose capabilities grew (§379 F2).
    */
   prior?: PluginConsent;
+  /**
+   * §382 — who distributes this code, stated on the one screen that grants it. Absent when
+   * the consent is not for a registry listing (a dev folder): the dialog then says nothing
+   * about provenance rather than something untrue.
+   */
+  provenance?: Provenance;
 }
 
 /** The title and confirm-button keys per intent — static keys, so the catalogue checks see them. */
@@ -70,6 +77,7 @@ export function PluginConsentDialog({
   onCancel,
   onConfirm,
   prior,
+  provenance,
 }: PluginConsentDialogProps) {
   const { t } = useTranslation();
   const [acknowledged, setAcknowledged] = useState(false);
@@ -107,6 +115,32 @@ export function PluginConsentDialog({
             <h3 className="plugin-consent__title">
               {t(TITLE_KEY[intent], { name })}
             </h3>
+
+            {/* §382 — for a community plugin the second half of this sentence is the whole
+                security argument, and it is true only of a sandboxed plugin: the ingest
+                demotes a community entry declaring full trust (`applyCommunityRules`), so
+                this branch never meets the danger block below — the corpus is the two
+                registry call sites (`PluginMarketplace`, `PluginDetailTab`), both reached
+                only past `handleInstall`/`handleUpdate`'s `!entry.trust` refusal; the dev
+                folder call site passes no `provenance` at all. */}
+            {provenance && (
+              <p className="plugin-consent__provenance">
+                {provenance.channel === "community"
+                  ? t("plugin.consent.provenance.community", {
+                      publisher: provenance.publisher,
+                    })
+                  : t("plugin.consent.provenance.firstParty")}
+              </p>
+            )}
+            {provenance?.channel === "community" &&
+              provenance.previousPublisher !== undefined && (
+                <p className="plugin-consent__provenance-change" role="alert">
+                  {t("plugin.consent.provenance.publisherChanged", {
+                    from: provenance.previousPublisher,
+                    to: provenance.publisher,
+                  })}
+                </p>
+              )}
 
             {trusted && (
               <div className="plugin-consent__danger" role="alert">

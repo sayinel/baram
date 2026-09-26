@@ -24,7 +24,7 @@ import {
   entryFromManifest,
   selectManifest,
 } from "../../plugins/plugin-sources";
-import { provenanceOf } from "../../plugins/provenance";
+import { consentProvenance, provenanceOf } from "../../plugins/provenance";
 import { fetchRegistryIndex } from "../../plugins/registry-client";
 import { revocationFor } from "../../plugins/revocation";
 import { useEditorStore } from "../../stores/editor/editor";
@@ -221,6 +221,10 @@ export function PluginDetailTab({ pluginId }: { pluginId: string }) {
           onCancel={() => settleConsent(null)}
           onConfirm={() => settleConsent(pendingConsent.consent)}
           prior={pendingConsent.prior}
+          provenance={consentProvenance(
+            pendingConsent.consent,
+            pendingConsent.prior,
+          )}
         />
       )}
       <PluginDetail

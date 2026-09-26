@@ -3,7 +3,7 @@
 //
 // Why read instead of move. The obvious shape is to cut these rules out of
 // `plugins.css`/`vault.css`/`modal.css`/`theme.css` into one file and inject that. EIGHT of
-// the 40 distinct classes forbid it (the lists below hold 42 entries; `btn-unstyled` is
+// the 42 distinct classes forbid it (the lists below hold 44 entries; `btn-unstyled` is
 // listed by three surfaces) — the test that moving one breaks something is "another screen
 // uses it AND it has a rule", and these are the classes that pass it. The counts below come
 // from scanning the `.tsx` files under `src/components`, tests excluded. No `.ts` file
@@ -20,7 +20,7 @@
 //   flex-header           base.css:103    ) base.css, used across the app
 //   text-truncate         base.css:110    )
 //   icon-inline           base.css:140    9 files besides PluginConsentDialog.tsx
-//   plugin-revoked__note  plugins.css:478 PluginMarketplace.tsx:292,310,319,324,356 — its OWN
+//   plugin-revoked__note  plugins.css:502 PluginMarketplace.tsx:294,312,321,326,358 — its OWN
 //                                         staleness notices, §10.2's theme pointer, and
 //                                         §382's community-registry-failure notice, all in
 //                                         the light DOM
@@ -41,7 +41,10 @@
 // entry count moved (32 → 40) because `theme.css` is read for the first time; the shared
 // set did not. It moved again (40 → 42 entries) when the consent dialog's `::before`
 // warning glyph became a lucide icon in its JSX: `plugin-consent__danger-icon` is
-// single-purpose, and `icon-inline` is the eighth shared class.
+// single-purpose, and `icon-inline` is the eighth shared class. It moved again (42 → 44
+// entries, 40 → 42 distinct) when the dialog gained a provenance line (§382):
+// `plugin-consent__provenance`/`plugin-consent__provenance-change` are single-purpose to
+// `PluginConsentDialog.tsx`, so the shared set stayed at eight.
 //
 // Cutting those out breaks the screens left behind; copying them is the drift
 // `export-editor-css.ts` was written to end ("a copy has no way to notice that its
@@ -74,12 +77,13 @@
 // an extraction that silently matched nothing goes red instead of rendering unstyled.
 //
 // ‼️ The second of those matches on a CLASS BOUNDARY, not a substring, and that is not
-// a detail: six of the 40 distinct classes are prefixes of a listed sibling (measured
+// a detail: seven of the 42 distinct classes are prefixes of a listed sibling (measured
 // over the lists below) — `plugin-consent` ⊂ `plugin-consent__body`,
 // `plugin-consent__cap` ⊂ `plugin-consent__caps`, `plugin-consent__danger` ⊂
-// `plugin-consent__danger-title`, `plugin-revoked` ⊂ `plugin-revoked__title`,
+// `plugin-consent__danger-title`, `plugin-consent__provenance` ⊂
+// `plugin-consent__provenance-change`, `plugin-revoked` ⊂ `plugin-revoked__title`,
 // `settings-section` ⊂ `settings-section-desc`, `theme-consent` ⊂ `theme-consent-title`.
-// A substring test could not fail for any of the six — review deleted the real
+// A substring test could not fail for any of the seven — review deleted the real
 // `.plugin-consent` rule and the guard stayed green. A third test in that file pins the
 // boundary itself.
 import * as csstree from "css-tree";
@@ -136,6 +140,8 @@ export const SECURITY_SURFACE_CLASSES: Record<
     "plugin-consent__danger-title",
     "plugin-consent__lead",
     "plugin-consent__new",
+    "plugin-consent__provenance",
+    "plugin-consent__provenance-change",
     "plugin-consent__title",
   ],
   revokedNotice: [

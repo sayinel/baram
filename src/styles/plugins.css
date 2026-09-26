@@ -159,6 +159,30 @@
   color: var(--color-text-secondary);
 }
 
+/* §382 — who distributes this code. Primary text, not the lead's secondary tone: for a
+   community plugin the second half of the sentence is the whole security argument. */
+.plugin-consent__provenance {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--color-text-primary);
+  overflow-wrap: anywhere;
+}
+
+/* A changed publisher is why this dialog is open at all on an otherwise quiet update, so it
+   reads as its own block. Neutral surface: a change of hands is not an error. */
+.plugin-consent__provenance-change {
+  padding: var(--space-2) var(--space-3);
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  overflow-wrap: anywhere;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-lg);
+}
+
 /* A bordered list rather than loose bullets: these lines are what the user is actually
    agreeing to, so they read as one block with a boundary. */
 .plugin-consent__caps {
