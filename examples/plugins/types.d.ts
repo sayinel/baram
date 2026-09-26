@@ -282,9 +282,20 @@ export interface PluginSidebarPanelOptions {
 }
 export type PluginStatus = "disabled" | "enabled" | "installing" | "not-installed";
 export type PluginTrust = "sandboxed" | "trusted";
+/**
+ * §382 — which registry file a listing came from: `index.json` is Baram's own channel,
+ * `community.json` the community one.
+ *
+ * LOCAL, like `demotedBecause` and `droppedCount`: `fetchRegistryIndex` stamps it by the file
+ * it read, and nothing on the wire can set it — an entry has no way to call itself
+ * first-party (spec 0058 §9.1).
+ */
+export type RegistryChannel = "community" | "first-party";
 export interface RegistryEntry {
     author: string;
     capabilities: PluginCapability[];
+    /** §382 — see `RegistryChannel`. Absent on an entry synthesised from a manifest. */
+    channel?: RegistryChannel;
     checksum: string;
     /**
      * §260 Phase 6 — why `fetchRegistryIndex` stripped this entry's tier, when it did.
@@ -294,8 +305,12 @@ export interface RegistryEntry {
      * ("ask the author"); an `unknown-capability` entry usually means the registry is NEWER than
      * this build, where the remedy is the opposite direction ("update Baram"). Absent for a
      * genuinely legacy entry, which carried no tier to begin with.
+     *
+     * §382 adds `community-trusted`: a community entry declaring full trust, which this build
+     * lists but will not install (community plugins are sandboxed only until spec 0058's stage
+     * 3). The remedy is neither the author's nor an app update's.
      */
-    demotedBecause?: "unknown-capability" | "unknown-tier";
+    demotedBecause?: "community-trusted" | "unknown-capability" | "unknown-tier";
     description: string;
     downloads?: number;
     downloadUrl: string;
@@ -340,6 +355,14 @@ export interface RegistryEntry {
     license: string;
     name: string;
     /**
+     * §382 — the GitHub login of whoever published a COMMUNITY entry, shown as `@publisher`.
+     * Display only; `publisherId` is the identity. `applyCommunityRules` refuses an entry whose
+     * value is not a GitHub login, so nothing else reaches the screen.
+     */
+    publisher?: string;
+    /** §382 — the publisher's numeric GitHub user id. A login can be renamed or re-registered; this cannot. */
+    publisherId?: number;
+    /**
      * Where this listing's README lives, so the marketplace can show it BEFORE an install.
      *
      * Absent is legal and permanent: a plugin whose archive has no README, and every entry
@@ -352,6 +375,8 @@ export interface RegistryEntry {
      * an entry cannot answer that about itself.
      */
     readme?: string;
+    /** §382 — the numeric id of the plugin's GitHub repository (community entries). */
+    repoId?: number;
     repository?: string;
     trust?: PluginTrust;
     version: string;
@@ -362,10 +387,18 @@ export type RegistryEntryKind = "plugin" | "theme";
  * How many entries Rust discarded because it could not deserialize them.
  *
  * Produced by the app, never read off the wire (`RawRegistryIndex` has no such field), so a
- * registry cannot assert one. It exists because nothing else can report a partial drop:
- * `src-tauri` installs no `log` implementation, so the Rust-side `log::warn!` is a no-op.
+ * registry cannot assert one. It exists because a count survives where a log line might not:
+ * `src/logging` now installs an implementation behind the Rust-side `log::warn!`, but this
+ * field is still the signal the frontend reports, and the log is only where the dropped ids
+ * are named.
  */
 export interface RegistryIndex {
+    /**
+     * §382 — why `community.json` contributed nothing this time, when it failed and no cached
+     * copy was left to serve. Produced by `fetchRegistryIndex`; Rust's `RegistryIndex` has no
+     * such field, so the wire cannot claim one.
+     */
+    communityError?: string;
     droppedCount?: number;
     plugins: RegistryEntry[];
     updatedAt?: string;

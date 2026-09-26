@@ -4,6 +4,7 @@ import { render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../../../ipc/plugin-invoke", () => ({
+  pluginFetchCommunityRegistry: () => Promise.resolve({ communityPlugins: [] }),
   pluginFetchRegistry: vi.fn(() => Promise.resolve({ plugins: [] })),
 }));
 

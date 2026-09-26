@@ -30,7 +30,14 @@ export function legacyEntryMessage(
   entry: RegistryEntry,
   translate: Translate,
 ): string {
-  return entry.demotedBecause === "unknown-capability"
-    ? translate("plugin.legacy.entry.unknownCapability")
-    : translate("plugin.legacy.entry.noTier");
+  switch (entry.demotedBecause) {
+    // §382 — a community entry declaring full trust. Not the author's remedy (a tier was
+    // declared) and not an update's (community trust opens in spec 0058's stage 3).
+    case "community-trusted":
+      return translate("plugin.legacy.entry.communityTrusted");
+    case "unknown-capability":
+      return translate("plugin.legacy.entry.unknownCapability");
+    default:
+      return translate("plugin.legacy.entry.noTier");
+  }
 }

@@ -5,10 +5,18 @@ import type {
   RegistryIndex,
 } from "./types";
 
-import { pluginFetchRegistry } from "../ipc/plugin-invoke";
+import {
+  pluginFetchCommunityRegistry,
+  pluginFetchRegistry,
+} from "../ipc/plugin-invoke";
 // §69 Plugin Registry Client — GitHub-based registry with 24h cache
 import { usePluginStore } from "../stores/system/plugin";
 import { logger } from "../utils/logger";
+import {
+  applyCommunityRules,
+  communityUrlFor,
+  mergeChannels,
+} from "./community-registry";
 import { VALID_CAPABILITIES } from "./manifest";
 
 const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
@@ -27,6 +35,12 @@ const TRUST_VALUES: readonly PluginTrust[] = ["sandboxed", "trusted"];
  */
 const MAX_README_URL_CHARS = 2048;
 
+/** What `community.json` contributed, and why nothing did when it failed. */
+interface CommunityListing {
+  error?: string;
+  plugins: RegistryEntry[];
+}
+
 /** Check for updates for all installed plugins */
 export async function checkForUpdates(): Promise<Record<string, string>> {
   const store = usePluginStore.getState();
@@ -34,13 +48,13 @@ export async function checkForUpdates(): Promise<Record<string, string>> {
   const updates: Record<string, string> = {};
 
   for (const [id, plugin] of Object.entries(store.installedPlugins)) {
-    // §361 Task 6 — the KIND is part of the match, not just the id. `dropAmbiguousIds` above
-    // already makes an id claimed twice resolve to neither entry, so a theme cannot shadow a
-    // plugin by colliding with it; what this closes is the other shape, an entry that USED to
-    // be a plugin and is now published as `kind: "theme"`. Without the filter that entry
-    // raises an update badge on an installed plugin and `handleUpdate` then downloads a theme
-    // archive over it, which can only fail after the user has clicked. Absence still reads as
-    // `"plugin"`, the default `RegistryEntry.kind` documents.
+    // §361 Task 6 — the KIND is part of the match, not just the id. `dropAmbiguousIds` (in
+    // `normalizeIndex`) already makes an id claimed twice resolve to neither entry, so a theme
+    // cannot shadow a plugin by colliding with it; what this closes is the other shape, an
+    // entry that USED to be a plugin and is now published as `kind: "theme"`. Without the
+    // filter that entry raises an update badge on an installed plugin and `handleUpdate` then
+    // downloads a theme archive over it, which can only fail after the user has clicked.
+    // Absence still reads as `"plugin"`, the default `RegistryEntry.kind` documents.
     const registryEntry = index.plugins.find(
       (p) => p.id === id && (p.kind ?? "plugin") === "plugin",
     );
@@ -57,46 +71,30 @@ export async function checkForUpdates(): Promise<Record<string, string>> {
   return updates;
 }
 
-/** Fetch registry index, using cache if fresh */
+/**
+ * Both registry files, served as one list (§382).
+ *
+ * `index.json` is Baram's own channel and `community.json` the community one. Each goes
+ * through its own 24-hour cache, and a failure on one side neither clears nor blocks the
+ * other (spec 0058 §9.1). A first-party failure with nothing cached still throws, as it
+ * always has — Browse shows its error state. A community failure never throws: the
+ * first-party list is served, and `communityError` says why the rest is missing.
+ *
+ * `forceRefresh` (↻ Refresh) forces both.
+ */
 export async function fetchRegistryIndex(
   forceRefresh = false,
 ): Promise<RegistryIndex> {
-  const store = usePluginStore.getState();
-
-  // Check cache
-  if (
-    !forceRefresh &&
-    store.registryCache &&
-    Date.now() - store.registryCacheTime < CACHE_DURATION
-  ) {
-    return store.registryCache;
-  }
-
-  // Fetch from remote via Rust IPC
-  try {
-    // Normalized BEFORE caching, so every later reader (install, update check, search) sees
-    // one shape and the guard cannot be bypassed by reading the cache instead.
-    const index = normalizeIndex(await pluginFetchRegistry(store.registryUrl));
-    // The only place a partial drop becomes visible. Rust discards entries it cannot
-    // deserialize so one bad entry cannot empty the marketplace, but `src-tauri` installs no
-    // `log` implementation, so its `log::warn!` reaches nobody. A TOTAL drop is a hard error
-    // upstream and never arrives here — this is strictly the survivable case.
-    if (index.droppedCount) {
-      logger.warn(
-        `[Registry] ${index.droppedCount} entry/entries could not be read and were skipped — ` +
-          "run `npx tsx scripts/validate-index.ts <index>` against the registry to see why",
-      );
-    }
-    store.setRegistryCache(index);
-    return index;
-  } catch (err) {
-    // If fetch fails and we have stale cache, return it
-    if (store.registryCache) {
-      logger.warn("[Registry] Fetch failed, using stale cache:", err);
-      return store.registryCache;
-    }
-    throw err;
-  }
+  const [firstParty, community] = await Promise.all([
+    firstPartyIndex(forceRefresh),
+    communityListing(forceRefresh),
+  ]);
+  const merged: RegistryIndex = {
+    ...firstParty,
+    plugins: mergeChannels(firstParty.plugins, community.plugins),
+  };
+  if (community.error !== undefined) merged.communityError = community.error;
+  return merged;
 }
 
 /**
@@ -193,6 +191,49 @@ export function themeUpdatesFor(
 }
 
 /**
+ * `community.json`, through its own cache. Never throws — see `fetchRegistryIndex`.
+ *
+ * A failure serves the stale cache when there is one, silently, which is the first-party
+ * rule; with nothing cached it serves nothing and reports why. A failure is NOT cached, so
+ * the next call tries again.
+ */
+async function communityListing(
+  forceRefresh: boolean,
+): Promise<CommunityListing> {
+  const store = usePluginStore.getState();
+  if (
+    !forceRefresh &&
+    store.communityCache &&
+    Date.now() - store.communityCacheTime < CACHE_DURATION
+  ) {
+    return { plugins: store.communityCache };
+  }
+  try {
+    const url = communityUrlFor(store.registryUrl);
+    if (url === null) {
+      throw new Error(`the registry URL is not a URL: ${store.registryUrl}`);
+    }
+    const fetched = await pluginFetchCommunityRegistry(url);
+    // Normalized and ruled BEFORE caching, like the first-party side: a cache read cannot
+    // skip the demotion that keeps G2.
+    const plugins = applyCommunityRules(
+      normalizeIndex(fetched.communityPlugins),
+    );
+    if (fetched.droppedCount) {
+      logger.warn(
+        `[Registry] ${fetched.droppedCount} community entry/entries could not be read and were skipped`,
+      );
+    }
+    store.setCommunityCache(plugins);
+    return { plugins };
+  } catch (err) {
+    logger.warn("[Registry] community list unavailable:", err);
+    if (store.communityCache) return { plugins: store.communityCache };
+    return { error: String(err), plugins: [] };
+  }
+}
+
+/**
  * §69 security review (MEDIUM-2) — an id claimed twice resolves to NEITHER entry.
  *
  * THE ATTACK: every lookup in this codebase is `plugins.find((p) => p.id === id)`, so an
@@ -256,6 +297,51 @@ function dropUnknownKinds(plugins: RegistryEntry[]): RegistryEntry[] {
   );
 }
 
+/** `index.json`, normalized and stamped first-party BEFORE caching, behind its own cache. */
+async function firstPartyIndex(forceRefresh: boolean): Promise<RegistryIndex> {
+  const store = usePluginStore.getState();
+  if (
+    !forceRefresh &&
+    store.registryCache &&
+    Date.now() - store.registryCacheTime < CACHE_DURATION
+  ) {
+    return store.registryCache;
+  }
+  try {
+    const fetched = await pluginFetchRegistry(store.registryUrl);
+    // Normalized BEFORE caching, so every later reader (install, update check, search) sees
+    // one shape and the guard cannot be bypassed by reading the cache instead.
+    const index: RegistryIndex = {
+      ...fetched,
+      plugins: normalizeIndex(fetched.plugins).map((entry): RegistryEntry => ({
+        ...entry,
+        channel: "first-party",
+      })),
+    };
+    // The only place a partial drop becomes visible to the user without opening the log
+    // file. Rust discards entries it cannot deserialize so one bad entry cannot empty the
+    // marketplace, and now also names the dropped ids via `log::warn!` — `src/logging`
+    // installs an implementation behind that macro (see `RegistryIndex`'s doc comment in
+    // `registry.rs`). A TOTAL drop is a hard error upstream and never arrives here — this is
+    // strictly the survivable case.
+    if (index.droppedCount) {
+      logger.warn(
+        `[Registry] ${index.droppedCount} entry/entries could not be read and were skipped — ` +
+          "run `npx tsx scripts/validate-index.ts <index>` against the registry to see why",
+      );
+    }
+    store.setRegistryCache(index);
+    return index;
+  } catch (err) {
+    // If fetch fails and we have stale cache, return it
+    if (store.registryCache) {
+      logger.warn("[Registry] Fetch failed, using stale cache:", err);
+      return store.registryCache;
+    }
+    throw err;
+  }
+}
+
 /**
  * §260 Phase 6 — drop a `trust` this app does not recognise.
  *
@@ -269,88 +355,83 @@ function dropUnknownKinds(plugins: RegistryEntry[]): RegistryEntry[] {
  * Failing closed means becoming LEGACY: Install is disabled and the marketplace already
  * explains why, which is the right answer for "this entry names a tier I cannot enforce".
  */
-function normalizeIndex(index: RegistryIndex): RegistryIndex {
-  return {
-    ...index,
-    plugins: dropUnknownKinds(dropAmbiguousIds(index.plugins)).map((raw) => {
-      // §260 Phase 6 code review round 3 (MEDIUM-2) — `demotedBecause` is OURS, and the type
-      // says so ("NOT a registry field"), but nothing enforced it. A remote entry with no
-      // `trust` and only valid capabilities takes the early return below unchanged, so a
-      // registry-supplied `"demotedBecause": "unknown-capability"` survived verbatim and made
-      // the detail view tell the user to "Update Baram" for a plugin that genuinely predates
-      // the trust model. Stripped on INGEST, before any branch can preserve it.
-      const entry = { ...raw };
-      delete entry.demotedBecause;
+function normalizeIndex(plugins: RegistryEntry[]): RegistryEntry[] {
+  return dropUnknownKinds(dropAmbiguousIds(plugins)).map((raw) => {
+    // §260 Phase 6 code review round 3 (MEDIUM-2) — `demotedBecause` is OURS, and the type
+    // says so ("NOT a registry field"), but nothing enforced it. A remote entry with no
+    // `trust` and only valid capabilities takes the early return below unchanged, so a
+    // registry-supplied `"demotedBecause": "unknown-capability"` survived verbatim and made
+    // the detail view tell the user to "Update Baram" for a plugin that genuinely predates
+    // the trust model. Stripped on INGEST, before any branch can preserve it.
+    const entry = { ...raw };
+    delete entry.demotedBecause;
 
-      // The same ingest rule one line up, applied to `readme`: a registry-authored value is
-      // constrained before anything downstream can act on it. Rust refuses a URL outside the
-      // registry that listed it, which is the check that matters and the only one that can
-      // know which index the entry came from — this drops the shapes that would reach that
-      // call as nonsense (a number, an empty string, a whole README inlined as the "URL").
-      // `RegistryEntry.readme` is typed `string`, and nothing checks a type at runtime.
-      if (
-        entry.readme !== undefined &&
-        (typeof entry.readme !== "string" ||
-          entry.readme.length === 0 ||
-          entry.readme.length > MAX_README_URL_CHARS)
-      ) {
-        delete entry.readme;
-      }
+    // The same ingest rule one line up, applied to `readme`: a registry-authored value is
+    // constrained before anything downstream can act on it. Rust refuses a URL outside the
+    // registry that listed it, which is the check that matters and the only one that can
+    // know which index the entry came from — this drops the shapes that would reach that
+    // call as nonsense (a number, an empty string, a whole README inlined as the "URL").
+    // `RegistryEntry.readme` is typed `string`, and nothing checks a type at runtime.
+    if (
+      entry.readme !== undefined &&
+      (typeof entry.readme !== "string" ||
+        entry.readme.length === 0 ||
+        entry.readme.length > MAX_README_URL_CHARS)
+    ) {
+      delete entry.readme;
+    }
 
-      const unknownTier =
-        entry.trust !== undefined && !TRUST_VALUES.includes(entry.trust);
-      // §260 Phase 6 code review (M3) — the OTHER half of the consent tuple, by the same
-      // argument. `capabilities` was passed through raw, and `PluginConsentDialog` renders
-      // `CAPABILITY_DESCRIPTIONS[cap] ?? cap` — so an entry claiming
-      // `capabilities: ["reads nothing, fully offline"]` put unbounded registry-authored prose
-      // into the one dialog whose whole job is to be trusted, and stored it verbatim as the
-      // approved consent. React escapes markup so there was no injection, but the install only
-      // failed AFTERWARDS, when `validateManifest` rejected the downloaded manifest — i.e.
-      // after the user had approved it.
-      const unknownCapabilities = entry.capabilities.filter(
-        (cap) => !VALID_CAPABILITIES.includes(cap),
+    const unknownTier =
+      entry.trust !== undefined && !TRUST_VALUES.includes(entry.trust);
+    // §260 Phase 6 code review (M3) — the OTHER half of the consent tuple, by the same
+    // argument. `capabilities` was passed through raw, and `PluginConsentDialog` renders
+    // `CAPABILITY_DESCRIPTIONS[cap] ?? cap` — so an entry claiming
+    // `capabilities: ["reads nothing, fully offline"]` put unbounded registry-authored prose
+    // into the one dialog whose whole job is to be trusted, and stored it verbatim as the
+    // approved consent. React escapes markup so there was no injection, but the install only
+    // failed AFTERWARDS, when `validateManifest` rejected the downloaded manifest — i.e.
+    // after the user had approved it.
+    const unknownCapabilities = entry.capabilities.filter(
+      (cap) => !VALID_CAPABILITIES.includes(cap),
+    );
+    if (!unknownTier && unknownCapabilities.length === 0) return entry;
+
+    logger.warn(
+      `[Registry] ${entry.id} is not installable by this build — ` +
+        [
+          unknownTier && `unknown trust tier ${JSON.stringify(entry.trust)}`,
+          unknownCapabilities.length > 0 &&
+            `unknown capabilities ${unknownCapabilities
+              .map((c) => JSON.stringify(c))
+              .join(", ")}`,
+        ]
+          .filter(Boolean)
+          .join("; ") +
+        " — treating the entry as legacy",
+    );
+    // Fails closed to the SAME legacy path either way: dropping the tier is what disables
+    // Install, and the marketplace already explains that state.
+    //
+    // Deleted rather than destructured away: this project's lint ignores `^_` for
+    // arguments only, so the usual `const { trust: _x, ...rest }` omission is an error.
+    const legacy = { ...entry };
+    delete legacy.trust;
+    // §260 Phase 6 code review round 2 (two LOWs, one cause). WHY the entry was demoted, so
+    // the marketplace can say something true: the existing copy reads "predates Baram's
+    // plugin trust model… ask the author to declare a trust tier", which for an
+    // unknown-CAPABILITY entry tells the author to do what they already did, and points the
+    // user away from the likely remedy (this build is older than the registry — update
+    // Baram). Until now that distinction existed only in the `logger.warn` above.
+    legacy.demotedBecause = unknownTier ? "unknown-tier" : "unknown-capability";
+    // …and the unknown capability STRINGS go, because `PluginCard`/`PluginDetail` render each
+    // capability as a badge label. M3's principle — registry-authored prose must not reach a
+    // trusted surface — was only half applied while legacy entries stayed listed. The entry
+    // cannot be installed, so a badge for a capability this build cannot name buys nothing.
+    if (unknownCapabilities.length > 0) {
+      legacy.capabilities = entry.capabilities.filter((cap) =>
+        VALID_CAPABILITIES.includes(cap),
       );
-      if (!unknownTier && unknownCapabilities.length === 0) return entry;
-
-      logger.warn(
-        `[Registry] ${entry.id} is not installable by this build — ` +
-          [
-            unknownTier && `unknown trust tier ${JSON.stringify(entry.trust)}`,
-            unknownCapabilities.length > 0 &&
-              `unknown capabilities ${unknownCapabilities
-                .map((c) => JSON.stringify(c))
-                .join(", ")}`,
-          ]
-            .filter(Boolean)
-            .join("; ") +
-          " — treating the entry as legacy",
-      );
-      // Fails closed to the SAME legacy path either way: dropping the tier is what disables
-      // Install, and the marketplace already explains that state.
-      //
-      // Deleted rather than destructured away: this project's lint ignores `^_` for
-      // arguments only, so the usual `const { trust: _x, ...rest }` omission is an error.
-      const legacy = { ...entry };
-      delete legacy.trust;
-      // §260 Phase 6 code review round 2 (two LOWs, one cause). WHY the entry was demoted, so
-      // the marketplace can say something true: the existing copy reads "predates Baram's
-      // plugin trust model… ask the author to declare a trust tier", which for an
-      // unknown-CAPABILITY entry tells the author to do what they already did, and points the
-      // user away from the likely remedy (this build is older than the registry — update
-      // Baram). Until now that distinction existed only in the `logger.warn` above.
-      legacy.demotedBecause = unknownTier
-        ? "unknown-tier"
-        : "unknown-capability";
-      // …and the unknown capability STRINGS go, because `PluginCard`/`PluginDetail` render each
-      // capability as a badge label. M3's principle — registry-authored prose must not reach a
-      // trusted surface — was only half applied while legacy entries stayed listed. The entry
-      // cannot be installed, so a badge for a capability this build cannot name buys nothing.
-      if (unknownCapabilities.length > 0) {
-        legacy.capabilities = entry.capabilities.filter((cap) =>
-          VALID_CAPABILITIES.includes(cap),
-        );
-      }
-      return legacy;
-    }),
-  };
+    }
+    return legacy;
+  });
 }

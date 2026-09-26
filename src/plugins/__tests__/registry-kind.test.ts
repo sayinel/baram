@@ -9,6 +9,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const fetchRegistry = vi.fn<(url: string) => Promise<RegistryIndex>>();
 vi.mock("../../ipc/plugin-invoke", () => ({
+  pluginFetchCommunityRegistry: () => Promise.resolve({ communityPlugins: [] }),
   pluginFetchRegistry: (url: string) => fetchRegistry(url),
 }));
 

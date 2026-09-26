@@ -57,6 +57,18 @@ describe("legacyEntryMessage (§260 Phase 6)", () => {
     expect(message).toContain("predates");
     expect(message).toContain("Ask the author");
   });
+
+  it("says community plugins are sandbox-only for a demoted community entry (§382)", () => {
+    const message = legacyEntryMessage(
+      entry({ demotedBecause: "community-trusted" }),
+      t,
+    );
+    expect(message).toContain("Community plugins");
+    // Neither remedy of the other branches applies: the author did declare a tier, and
+    // updating Baram changes nothing until community trust opens (spec 0058 stage 3).
+    expect(message).not.toContain("Ask the author");
+    expect(message).not.toContain("Update Baram");
+  });
 });
 
 describe("legacyEntryMessage speaks the user's language", () => {
