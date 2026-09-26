@@ -85,6 +85,11 @@ export interface InstalledPlugin {
      * what enforces the drop — this field itself is just storage). A dev-folder consent never
      * carries channel or publisher — those describe a registry listing, and a dev folder is
      * neither.
+     *
+     * §382 — an update that asks NOTHING still re-records the listing's current claim (narrower
+     * capabilities, the channel, the current login), rather than carrying the old record
+     * forward unchanged; it can never record a different `publisherId`, since a changed id is
+     * exactly what would have made it ask (`usePluginActions.ts`'s `handleUpdate`).
      */
     consent?: PluginConsent;
     enabled: boolean;
@@ -126,7 +131,12 @@ export interface PluginConsent {
      * registry (spec 0058 §9.2).
      */
     channel?: RegistryChannel;
-    /** §382 — the login shown as the publisher. Display only; `publisherId` decides. */
+    /**
+     * §382 — the login shown as the publisher. Display only; `publisherId` decides. An update
+     * that asks nothing still re-records this field's current value (a rename is not a change
+     * of identity), never a different `publisherId` — a changed id is exactly what would have
+     * made it ask instead.
+     */
     publisher?: string;
     /** §382 — the publisher's numeric GitHub id, which `consentGaps` compares. Never the login. */
     publisherId?: number;

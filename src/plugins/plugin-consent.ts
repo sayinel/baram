@@ -1,18 +1,21 @@
 // §260 Phase 5 — what the user agreed to, and whether a later version exceeds it.
 //
-// ONE rule (`consentGaps`) serves THREE callers, deliberately: the pre-download prompt
-// decision (`consentRequired`, used by `usePluginActions.ts`'s install/update path), the
-// post-download check that the manifest inside the ZIP matches what the registry
-// advertised (`stageValidateAndCommit`), and §379's dev-folder reload gate
-// (`devConsentToAsk` in `dev-plugins.ts`). Consent is collected against a registry CLAIM,
-// so if the first two answers could diverge a registry could advertise "sandboxed" and
-// ship "trusted" — the exact attack the second check exists to catch. A second
-// implementation of "covered" would be a second place for them to drift apart.
+// ONE rule (`consentGaps`) serves THREE callers, deliberately: the UPDATE half of
+// `usePluginActions.ts`'s install/update path (`consentRequired` — install always asks,
+// unconditionally), the post-download check that the manifest inside the ZIP matches what
+// the registry advertised (`stageValidateAndCommit` in `install-transaction.ts`), and §379's
+// dev-folder consent gate (`devConsentToAsk` in `dev-plugins.ts`, which guards startup load,
+// a folder pick, and Reload alike — every point a dev folder's code is about to run). Consent
+// is collected against a registry CLAIM, so if the first two answers could diverge a registry
+// could advertise "sandboxed" and ship "trusted" — the exact attack the second check exists
+// to catch. A second implementation of "covered" would be a second place for them to drift
+// apart.
 //
 // The publisher rule this file adds (§382) is registry-claim-only by design (plan 0104
-// P18): a downloaded manifest and a dev folder's manifest both name no publisher, so
-// `next.channel` is undefined for the second and third callers and the rule never fires
-// for them — see `claimedConsent` below for the matching write side.
+// P18): the second and third callers both build their `next` as `{capabilities, trust}`
+// explicitly (`install-transaction.ts`'s call and `devConsentToAsk`'s `request`), so
+// `next.channel` is undefined for them and the rule never fires — see `claimedConsent`
+// below for the matching write side.
 import type {
   PluginCapability,
   PluginConsent,
@@ -39,8 +42,10 @@ interface CapabilityRequest {
  * trust-less (legacy) entry, and TS does not narrow the entry's type from that check.
  *
  * One builder for the install and the update path (`usePluginActions`), so both write the
- * same provenance. The publisher is copied for a COMMUNITY listing only: recording none on a
- * first-party record is what keeps `consentGaps`' publisher rule out of first-party updates.
+ * same provenance. The publisher is copied for a COMMUNITY listing only. First-party UPDATES
+ * are exempt from `consentGaps`' publisher rule by that rule's own `next.channel` test,
+ * whatever the record holds; what an id-less first-party record buys is the other direction —
+ * a later COMMUNITY listing under the same id finds no recorded id and asks (plan 0104 P20).
  */
 export function claimedConsent(
   entry: RegistryEntry,
@@ -102,10 +107,12 @@ export function consentGaps(
   }
   // §382 — a community plugin whose publisher ACCOUNT changed is a different party asking,
   // whatever it asks for (spec 0058 §9.2). Compared by the numeric GitHub id: a login can be
-  // renamed, and a deleted one registered again by someone else. An absent recorded id —
-  // every consent written before §382 — counts as a change: the user was never shown a
-  // publisher, so there is nothing to hold the new one against. A first-party listing is
-  // exempt; its channel is the file, and nobody else can publish into it.
+  // renamed, and a deleted one registered again by someone else. An absent recorded id means
+  // either a consent written before §382, or one approved against a FIRST-PARTY listing (which
+  // carries no publisher — `registry-client.ts` strips one if the wire ever sent it) — either
+  // way there is nothing to hold a later community claim's id against, so it counts as a
+  // change. A first-party listing is itself exempt from this rule: it carries no publisher,
+  // and its channel is the file Baram's own release pipeline writes.
   if (
     next.channel === "community" &&
     consented.publisherId !== next.publisherId

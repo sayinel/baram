@@ -238,6 +238,22 @@ describe("consentGaps — the publisher rule (§382)", () => {
     ).toBe("escalation");
   });
 
+  it("asks when a first-party record meets a later community listing under the same id (plan 0104 P20)", () => {
+    // A first-party record carries no publisherId (it never had one to carry) — so it is
+    // exactly as "no id recorded" as a pre-§382 record, and a community listing under the
+    // same id asks for the same reason.
+    expect(
+      consentRequired(
+        {
+          capabilities: ["events"],
+          channel: "first-party",
+          trust: "sandboxed",
+        },
+        listing("community", 583231),
+      ),
+    ).toBe("escalation");
+  });
+
   it("never applies to a first-party listing, whatever the record says", () => {
     expect(
       consentGaps(
@@ -278,8 +294,9 @@ describe("claimedConsent (§382)", () => {
   });
 
   it("records the first-party channel and no publisher", () => {
-    // `publisher` on a first-party entry cannot come through Rust; if it ever did, it must
-    // not reach the record, or the publisher rule would start judging first-party updates.
+    // `publisher` on a first-party entry cannot come through Rust (and `registry-client.ts`
+    // strips it besides); if it ever did, it must not reach the record, or a later community
+    // listing carrying the same id would switch channel without asking.
     const entry = communityEntry({ channel: "first-party", id: "baram-demo" });
     expect(Object.keys(claimedConsent(entry, "sandboxed")).sort()).toEqual([
       "capabilities",
