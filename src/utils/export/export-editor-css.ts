@@ -118,7 +118,11 @@ function dropDeclarations(css: string): string {
   }
 }
 
-/** Editor stylesheets, in the cascade order src/styles/editor.css imports them.
+/** Editor stylesheets, in the cascade order the app loads them. The first entry is
+ * not an editor stylesheet but the unscoped icon-token sheet (see the ‼️ comment on
+ * it), which src/styles/index.css imports before editor.css. The entries after it
+ * follow src/styles/editor.css's imports, and links.css — which index.css imports
+ * after editor.css — comes last.
  *
  * What is deliberately NOT here:
  *   - editor/base.css — the windowing spacers (`.tiptap::before`) and the empty

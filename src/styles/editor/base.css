@@ -208,8 +208,10 @@
 
    Because the offset is measured from the list's LEFT EDGE, the arrow's distance from a
    nested list's indent guide does not move when the gutter widens — the guide sits at -1em
-   from that same edge (editor/lists.css), so the painted chevron stays 1.375em − offset
-   away from it: 1.075em in a bullet list and 0.625em in an ordered one, at any gutter width.
+   from that same edge (editor/lists.css), so the painted chevron (folded, pointing right)
+   stays 1.375em − offset away from it: 1.075em in a bullet list and 0.625em in an ordered
+   one, at any gutter width — lists.css gives the open item's figures with
+   `--list-arrow-offset`.
    The transparent box reaches closer (1em − offset, so 0.25em for an ordered list) and is
    allowed to, because nothing of it paints. Its distance from the MARKER is the other side
    of the same offset and is the gap a reader actually sees; both offsets were raised in
@@ -240,9 +242,10 @@
 }
 
 /* Chevron via mask (icons.css). Sized in em so it tracks the editor font like the marker
-   it points at. The painted width is 8/24 of the box — the lucide path spans x 9–15 and
-   its 2-unit stroke widens that to 8–16 — so 0.75em paints 0.25em, centred
-   (list-styling.test.ts derives the arrow–marker gap from this). */
+   it points at. Folded (pointing right), the painted width is 8/24 of the box — the lucide
+   path spans x 9–15 and its 2-unit stroke widens that to 8–16 — so 0.75em paints 0.25em,
+   centred (list-styling.test.ts derives the arrow–marker gap from this). `.fold-arrow-open`
+   below turns it 90°, and then it paints its 14/24 height, 0.4375em, as width. */
 .fold-arrow::before {
   display: block;
   width: 0.75em;

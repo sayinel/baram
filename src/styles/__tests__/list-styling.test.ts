@@ -345,9 +345,10 @@ describe("list geometry", () => {
     //   순서 있는 마커의 왼끝 = S           (`min-width: calc(gutter - S)`, 오른끝은 거터 끝)
     //   글머리 기호의 왼끝   = gutter - 0.5em - size/2   (`margin-right: (1em - size)/2`)
     //
-    // 무엇이 이것을 실패시키는가: 오프셋을 되돌리거나, 마커 상자를 넓히거나, 화살표
-    // 상자를 키우면 간격이 줄어 red 가 된다. 두 목록의 간격이 갈라져도 red 다 — 갈라지면 한
-    // 문서 안에서 글머리 기호와 번호가 서로 다른 리듬으로 읽힌다.
+    // 무엇이 이것을 실패시키는가: 오프셋을 되돌리거나, 마커 상자를 넓히거나,
+    // `.fold-arrow::before` 상자(칠하는 폭)를 키우면 간격이 줄어 red 가 된다. 두 목록의
+    // 간격이 갈라져도 red 다 — 갈라지면 한 문서 안에서 글머리 기호와 번호가 서로 다른
+    // 리듬으로 읽힌다.
     const em = (value: string): number =>
       Number(/(-?[\d.]+)em/u.exec(value)?.[1]);
     const decl = (selector: string, prop: string): string => {
@@ -388,9 +389,11 @@ describe("list geometry", () => {
     expect(subtrahend).toBeGreaterThan(0);
 
     // 화살표는 `.fold-arrow::before` 상자에 lucide chevron-right 를 mask 로 칠한 것이다
-    // (icons.css). 칠해지는 폭은 상자 폭의 8/24 다 — 경로 `m9 18 6-6-6-6` 이 x 9–15 를
-    // 지나고 획 2 가 양쪽으로 1 씩 넓혀 8–16 을 칠하며, 그 가운데(12)가 상자 가운데라
-    // 좌우 대칭이다. 이 분수는 경로에서 나오므로 경로가 그 경로인지부터 단정한다.
+    // (icons.css). 접혀 오른쪽을 가리킬 때 칠해지는 폭은 상자 폭의 8/24 다 — 경로
+    // `m9 18 6-6-6-6` 이 x 9–15 를 지나고 획 2 가 양쪽으로 1 씩 넓혀 8–16 을 칠하며, 그
+    // 가운데(12)가 상자 가운데라 좌우 대칭이다. 이 분수는 경로에서 나오므로 경로가 그
+    // 경로인지부터 단정한다. 열린 항목은 90° 돌아 높이 14/24 를 폭으로 칠하는데, 이
+    // 테스트는 접힌 방향만 잰다(열린 쪽 수치는 lists.css `--list-arrow-offset` 주석).
     const arrow = RULES.find(
       (r) => r.selector.trim() === ".fold-arrow::before",
     );
