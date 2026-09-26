@@ -132,15 +132,26 @@ export function PluginConsentDialog({
                   : t("plugin.consent.provenance.firstParty")}
               </p>
             )}
+            {/* §382 F1 — the same login recorded under a different `publisherId` is a
+                renamed-or-deleted account someone else now holds (spec 0058 §11), not the
+                same person renaming themselves: the "@a → @b" line would print the same
+                login on both sides and say nothing. */}
             {provenance?.channel === "community" &&
-              provenance.previousPublisher !== undefined && (
+              provenance.previousPublisher !== undefined &&
+              (provenance.previousPublisher === provenance.publisher ? (
+                <p className="plugin-consent__provenance-change" role="alert">
+                  {t("plugin.consent.provenance.accountChanged", {
+                    publisher: provenance.publisher,
+                  })}
+                </p>
+              ) : (
                 <p className="plugin-consent__provenance-change" role="alert">
                   {t("plugin.consent.provenance.publisherChanged", {
                     from: provenance.previousPublisher,
                     to: provenance.publisher,
                   })}
                 </p>
-              )}
+              ))}
 
             {trusted && (
               <div className="plugin-consent__danger" role="alert">

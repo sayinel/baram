@@ -269,4 +269,25 @@ describe("PluginConsentDialog provenance (§382)", () => {
     );
     expect(surface().getByText(/@octocat → @new-owner/)).toBeTruthy();
   });
+
+  it("says the account changed, not the login, when the login stayed the same (§382 F1)", () => {
+    render(
+      <PluginConsentDialog
+        {...base}
+        consent={consent}
+        intent="update"
+        onCancel={vi.fn()}
+        onConfirm={vi.fn()}
+        provenance={{
+          channel: "community",
+          previousPublisher: "octocat",
+          publisher: "octocat",
+        }}
+      />,
+    );
+    expect(
+      surface().getByText(/@octocat now belongs to a different GitHub account/),
+    ).toBeTruthy();
+    expect(surface().queryByText(/→/)).toBeNull();
+  });
 });
