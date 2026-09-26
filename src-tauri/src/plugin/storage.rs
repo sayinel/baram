@@ -195,13 +195,19 @@ pub(super) fn single_segment(s: &str) -> Option<&OsStr> {
     }
 }
 
+/// `~/.baram/plugin-data/` — 플러그인별 저장소(`plugin_data_dir`)가 사는 루트. 만들지 않는다:
+/// §379 의 `DevModeHost` 는 그 아래에 `<id>` 가 **있는지**만 묻는다(I4-3).
+pub fn plugin_data_root() -> Result<PathBuf, String> {
+    let home = dirs_next().ok_or_else(|| "could not determine home directory".to_string())?;
+    Ok(home.join(".baram").join("plugin-data"))
+}
+
 /// `~/.baram/plugin-data/<pluginId>/` (created if missing). App-global, NOT
 /// per-vault (USER DECISION, §69 Phase D) — resolved the same way as
 /// [`get_plugin_dir`] (via [`dirs_next`]), just under a sibling `plugin-data` dir.
 fn plugin_data_dir(plugin_id: &str) -> Result<PathBuf, String> {
     let seg = single_segment(plugin_id).ok_or_else(|| format!("invalid plugin id: {plugin_id}"))?;
-    let home = dirs_next().ok_or_else(|| "could not determine home directory".to_string())?;
-    let dir = home.join(".baram").join("plugin-data").join(seg);
+    let dir = plugin_data_root()?.join(seg);
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     Ok(dir)
 }

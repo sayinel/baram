@@ -1153,41 +1153,37 @@
       "description": "Grant asset protocol scope for the plugin install dir at startup"
     },
     {
-      "name": "plugin_add_dev_folder",
-      "input": {
-        "path": "string"
-      },
-      "output": "InstalledPluginInfo",
-      "module": "plugin",
-      "spec": "§69",
-      "phase": 3,
-      "milestone": "M10",
-      "status": "implemented",
-      "description": "Register a local dev plugin folder (validates manifest, grants asset scope, persists). The path must be approved (§331–§333); an unapproved but existing path raises a native confirmation dialog, and refusal returns Err(\"VAULT_APPROVAL_DENIED\")"
-    },
-    {
       "name": "plugin_remove_dev_folder",
       "input": {
         "path": "string"
       },
       "output": "void",
       "module": "plugin",
-      "spec": "§69",
+      "spec": "§379",
       "phase": 3,
       "milestone": "M10",
       "status": "implemented",
-      "description": "Remove a registered dev plugin folder"
+      "description": "Rust 소유 목록(plugin-dev.json)에서 폴더를 뺀다. 확인 없음"
+    },
+    {
+      "name": "plugin_reload_dev_folder",
+      "input": { "path": "string" },
+      "output": "DevFolderRow",
+      "module": "plugin",
+      "spec": "§379",
+      "status": "implemented",
+      "description": "Rust 소유 목록에 이미 있는 경로만 받아 매니페스트를 다시 읽는다. 확인창 없음. 목록에 없으면 Err(\"DEV_FOLDER_NOT_LISTED\"), 비활성이면 Err(\"DEV_MODE_INACTIVE\"), 거부 사유는 DEV_* 코드"
     },
     {
       "name": "plugin_list_dev",
       "input": {},
-      "output": "InstalledPluginInfo[]",
+      "output": "DevModeSnapshot",
       "module": "plugin",
-      "spec": "§69",
+      "spec": "§379",
       "phase": 3,
       "milestone": "M10",
       "status": "implemented",
-      "description": "List registered dev plugin folders and grant each one with a valid manifest a recursive asset scope; always empty in release builds (§260 Phase 5)"
+      "description": "개발자 모드 상태와 Rust 소유 목록(plugin-dev.json)의 폴더들: { active, devBuild, enabled, folders: [{ path, ids, consent, plugin | error }] }. 비활성이면 folders 는 비고, 승인 저장소가 덮는 폴더에만 asset scope 를 준다. 릴리스 빌드는 sandboxed 가 아니거나 I4 의 id 판정(baram- 접두사·설치본 id·기록 없는 저장소)에 걸리는 폴더를 행 오류로 거부하고, 받아들인 폴더의 매니페스트 id 를 기록한다 (§379 R2·R3·I4)"
     },
     {
       "name": "plugin_http_fetch",

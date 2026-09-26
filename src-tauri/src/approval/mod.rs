@@ -15,6 +15,10 @@ use tauri::Manager;
 /// 승인 파일 읽기-수정-쓰기 직렬화. `config/mod.rs`의 CONFIG_MUTEX와 같은 이유.
 static APPROVAL_MUTEX: Mutex<()> = Mutex::new(());
 
+/// 승인 기록 파일 이름 — 앱 데이터 디렉터리 아래. §379 의 `commands::plugin_dev_cmd::DevModeHost`
+/// 도 이 이름으로 같은 파일을 연다 — 이름이 둘이면 두 판정이 다른 파일을 보게 된다.
+pub const STORE_FILE: &str = "approved-roots.json";
+
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ApprovalKind {
@@ -120,7 +124,7 @@ fn store_path<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<PathBuf, S
         .path()
         .app_data_dir()
         .map_err(|_| "앱 데이터 디렉터리를 찾을 수 없습니다".to_string())?;
-    Ok(dir.join("approved-roots.json"))
+    Ok(dir.join(STORE_FILE))
 }
 
 /// 읽기는 절대 실패하지 않는다 — 실패는 **승인 0건**이다 (fail-closed).
@@ -483,12 +487,14 @@ mod tests {
             ("commands/fs_cmd.rs", "allow_directory(&path, true)"),
             // §260 설치된 플러그인 디렉터리 — 앱이 소유한 plugins 루트 하위.
             ("commands/plugin_cmd.rs", "allow_directory(&dir, true)"),
-            // §329.6 세 번째 입구 `dev_info`. 부르는 곳은 둘이다 — `plugin_add_dev_folder` 는
-            // ensure_approved 뒤에, `plugin_list_dev` 는 승인 없이 `read_dev_folders` 의 목록에
-            // 대해 부른다. 그 목록은 dev 빌드에서만 비어 있지 않으므로(`dev_folders_for_this_build`)
-            // 릴리스 빌드에서 승인 없는 부여는 도달 불가다. dev 빌드에서는 config.json 에 적힌
-            // 폴더가 승인 없이 부여를 받는다 — 목록을 Rust 소유로 옮기는 개발자 모드(§379)의 몫.
-            ("commands/plugin_cmd.rs", "allow_directory(folder, true)"),
+            // §379 dev 폴더 — `plugin_dev_cmd::admit_folder`. 부여 바로 앞에서 같은 함수가
+            // 승인 저장소(`approved-roots.json`)가 그 폴더를 덮는지 본다(다이얼로그 없음). R1 에
+            // 든 것만으로는 부여하지 않는다 — dev 빌드가 옮겨 온 `config.json` 목록은 웹뷰가 쓴
+            // 것일 수 있다.
+            (
+                "commands/plugin_dev_cmd.rs",
+                "allow_directory(folder, true)",
+            ),
         ];
 
         let src_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");

@@ -123,9 +123,10 @@ app_handle.emit("file:changed", FileChangedPayload {
 그 컨텍스트를 등록하는 커맨드가 웹뷰 경로를 받았던 것이 §329의 결함이다.
 
 - 웹뷰가 준 경로로 asset scope를 부여하는 커맨드는 부여 **전에**
-  `commands::approval_cmd::ensure_approved`를 통과해야 한다 (`add_context` · `set_vault_root` ·
-  `plugin_add_dev_folder`). 게이트는 부작용보다 **먼저** — `dev_info()`처럼 매니페스트를 읽으면서
-  scope까지 부여하는 함수 뒤에 달면 존재 오라클이 새고 동의 전에 부여된다.
+  `commands::approval_cmd::ensure_approved`를 통과해야 한다 (`add_context` · `set_vault_root`).
+  dev 폴더(§379)의 부여는 `plugin_dev_cmd::admit_folder` 하나가 하고, 부여 전에 승인 저장소가
+  그 폴더를 덮는지 본다. 게이트는 부작용보다 **먼저** — 매니페스트를 읽으면서 scope까지 부여하는
+  함수 뒤에 달면 존재 오라클이 새고 동의 전에 부여된다.
 - 승인 기록은 Rust 소유 `{app_data_dir}/approved-roots.json`. **`config.json`에 두지 말 것** —
   `set_config`가 임의 키를 받으므로 웹뷰가 스스로를 승인하게 된다.
 - 판정은 fail-closed: 파일 없음·파싱 실패·canonicalize 실패는 전부 "미승인".
