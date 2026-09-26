@@ -169,9 +169,12 @@ describe("publisher continuity (§382)", () => {
     render(<PluginMarketplace />);
     fireEvent.click(await screen.findByRole("button", { name: /^Install$/ }));
     const dialog = (await findSurface(".plugin-consent")).getByRole("dialog");
-    // The marketplace passes provenance to the dialog it mounts (`PluginDetailTab` mounts the
-    // other one and passes it the same way).
+    // `PluginDetailTab` mounts the other `PluginConsentDialog` and passes it the same
+    // way — pinned by `PluginDetailTab.test.tsx`'s "passes the same provenance to the
+    // consent dialog it mounts (§382)".
     expect(dialog.textContent).toContain("Published by @octocat");
+    // A first install has no prior publisher to name a change against.
+    expect(dialog.textContent).not.toContain("→");
     fireEvent.click(within(dialog).getByRole("button", { name: /^Install$/ }));
     await waitFor(() =>
       expect(

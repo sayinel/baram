@@ -222,6 +222,8 @@ describe("PluginConsentDialog provenance (§382)", () => {
     );
     expect(surface().getByText(/Published by @octocat/)).toBeTruthy();
     expect(surface().getByText(/Baram does not review this code/)).toBeTruthy();
+    // No prior publisher was given, so there is nothing to name a change against.
+    expect(surface().queryByText(/The publisher has changed/)).toBeNull();
   });
 
   it("says Baram distributes a first-party plugin, and nothing about review", () => {

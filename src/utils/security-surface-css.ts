@@ -13,14 +13,14 @@
 // one, and saying which is the point: a class name parked in a `.ts` constant would
 // falsify them silently.
 //
-//   settings-section      modal.css:146   `className="settings-section"` in 15 files
+//   settings-section      modal.css:150   `className="settings-section"` in 15 files
 //   settings-section-desc vault.css:195   3 files
 //   vault-tab-empty       vault.css:9     3 files
 //   btn-unstyled          base.css:96     ) the shared utilities CLAUDE.md pins to
 //   flex-header           base.css:103    ) base.css, used across the app
 //   text-truncate         base.css:110    )
 //   icon-inline           base.css:140    9 files besides PluginConsentDialog.tsx
-//   plugin-revoked__note  plugins.css:502 PluginMarketplace.tsx:294,312,321,326,358 — its OWN
+//   plugin-revoked__note  plugins.css:502 PluginMarketplace.tsx:297,315,324,329,361 — its OWN
 //                                         staleness notices, §10.2's theme pointer, and
 //                                         §382's community-registry-failure notice, all in
 //                                         the light DOM
