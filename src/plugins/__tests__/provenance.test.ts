@@ -75,7 +75,7 @@ describe("consentProvenance (§382)", () => {
     });
   });
 
-  it("names the same login on both sides when the ACCOUNT changed but the login did not (§382 F1)", () => {
+  it("names the same login on both sides when the ACCOUNT changed but the login did not (§382)", () => {
     // The login is unchanged; only `publisherId` differs — someone else now holds it
     // (spec 0058 §11). The shape still carries `previousPublisher`; the dialog is the one
     // that reads "same string on both sides" as a different sentence.

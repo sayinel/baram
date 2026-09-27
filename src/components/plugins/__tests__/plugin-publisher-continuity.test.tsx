@@ -202,7 +202,7 @@ describe("publisher continuity (§382)", () => {
     expect(dialog.textContent).toContain("@octocat → @new-owner");
   });
 
-  it("approving a publisher-change update records the NEW publisher, not the old one (§382 F5)", async () => {
+  it("approving a publisher-change update records the NEW publisher, not the old one (§382)", async () => {
     installedWith(LISTING, APPROVED_FROM_OCTOCAT, "1.3.0");
     listed = [
       {

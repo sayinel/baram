@@ -132,7 +132,7 @@ export function PluginConsentDialog({
                   : t("plugin.consent.provenance.firstParty")}
               </p>
             )}
-            {/* §382 F1 — the same login recorded under a different `publisherId` is a
+            {/* §382 — the same login recorded under a different `publisherId` is a
                 renamed-or-deleted account someone else now holds (spec 0058 §11), not the
                 same person renaming themselves: the "@a → @b" line would print the same
                 login on both sides and say nothing. */}

@@ -270,7 +270,7 @@ describe("PluginConsentDialog provenance (§382)", () => {
     expect(surface().getByText(/@octocat → @new-owner/)).toBeTruthy();
   });
 
-  it("says the account changed, not the login, when the login stayed the same (§382 F1)", () => {
+  it("says the account changed, not the login, when the login stayed the same (§382)", () => {
     render(
       <PluginConsentDialog
         {...base}
