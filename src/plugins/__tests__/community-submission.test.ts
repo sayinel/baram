@@ -122,7 +122,7 @@ describe("descriptorIdFromPath", () => {
   });
 });
 
-// Boundary corpus (plan 0105 P20, fix round 1): the app's `applyCommunityRules` and this
+// Boundary corpus (plan 0105 P20): the app's `applyCommunityRules` and this
 // gate's `parseSubmission` must agree on which ids the "baram-" prefix reserves, checked
 // against ids that survive one commonly-mutated prefix ("b" or "baram") but not the real one —
 // not only the single id that happens to be caught by all three.
@@ -150,7 +150,7 @@ describe("first-party prefix — gate and app agree across a boundary corpus", (
   });
 });
 
-describe("gate 2 boundary refusals — fix round 1", () => {
+describe("gate 2 boundary refusals", () => {
   it.each([
     [
       "a repo with a .. segment",
@@ -235,7 +235,17 @@ describe("gate 2 boundary refusals — fix round 1", () => {
   });
 
   it("refuses bytes that are not valid UTF-8, before JSON.parse ever sees them", () => {
-    const verdict = parseSubmission(new Uint8Array([0xff]), "hello-counter");
+    // 0xff inside the tag's string: decoded leniently it would become U+FFFD and parse as JSON,
+    // so only a decoder that refuses it outright gives this message.
+    const text = JSON.stringify(SUBMISSION);
+    const at = text.indexOf('"v1.2.0"') + 1;
+    const encode = (part: string) => [...new TextEncoder().encode(part)];
+    const bytes = new Uint8Array([
+      ...encode(text.slice(0, at)),
+      0xff,
+      ...encode(text.slice(at)),
+    ]);
+    const verdict = parseSubmission(bytes, "hello-counter");
     expect(verdict.ok ? null : [verdict.step, verdict.error]).toEqual([
       2,
       "the descriptor is not valid UTF-8 JSON",

@@ -1,4 +1,5 @@
-// §380 gate 5 — a release asset comes from exactly one place (plan 0105 Task 6).
+// §380 gate 5 — a release asset comes from exactly one place (plan 0105 Task 6). Reading its
+// body within the app's cap is `community-download-body.test.ts`.
 import type { AssetFetch } from "../../../scripts/community-download";
 
 import { describe, expect, it } from "vitest";
@@ -47,10 +48,8 @@ describe("downloadReleaseAsset — gate 5", () => {
   });
 
   it("refuses a first URL whose origin is not https://github.com, and never requests it", async () => {
-    // The twin is every other test that calls downloadReleaseAsset: all of them start at START,
-    // whose origin is https://github.com, and go on to request at least that URL. (The two
-    // releaseAssetUrl tests above and the host-list pin just above do not call
-    // downloadReleaseAsset at all, so they are not twins of this one.)
+    // The twin: "follows github.com's one redirect" below starts at START, whose origin is
+    // https://github.com, and requests it (its `seen` begins with START).
     const seen: string[] = [];
     const result = await downloadReleaseAsset(
       "https://evil.example/o/r/releases/download/v1.0.0/a.zip",
@@ -63,16 +62,35 @@ describe("downloadReleaseAsset — gate 5", () => {
     expect(seen).toEqual([]);
   });
 
-  it("refuses a timeoutMs that is not a positive finite integer, without calling fetchImpl", async () => {
+  it("refuses a timeoutMs that is not an integer from 1 to 2^31 − 1, without calling fetchImpl", async () => {
     const neverCalled: AssetFetch = () => {
       throw new Error("should not be called");
     };
-    for (const bad of [Number.NaN, -1, 0, 1.5, Number.POSITIVE_INFINITY]) {
+    // 2^31 and 2^32 − 1 are integers `AbortSignal.timeout` accepts, and Node's timer would fire
+    // after 1 ms; 2^32 is one it throws on.
+    for (const bad of [
+      Number.NaN,
+      -1,
+      0,
+      1.5,
+      Number.POSITIVE_INFINITY,
+      2_147_483_648,
+      4_294_967_295,
+      4_294_967_296,
+    ]) {
       const result = await downloadReleaseAsset(START, 1024, neverCalled, bad);
       expect(result.ok ? "ok" : result.error).toBe(
-        `timeoutMs must be a positive finite integer, got ${bad}`,
+        `timeoutMs must be an integer from 1 to 2147483647, got ${bad}`,
       );
     }
+    // The twin: the largest delay Node's timers hold.
+    const fine = await downloadReleaseAsset(
+      START,
+      1024,
+      assetFetch({ [START]: { bytes: BYTES, status: 200 } }),
+      2_147_483_647,
+    );
+    expect(fine).toEqual({ bytes: BYTES, ok: true });
   });
 
   it("follows github.com's one redirect to the asset host — the twin of every refusal", async () => {
@@ -186,52 +204,6 @@ describe("downloadReleaseAsset — gate 5", () => {
     expect(seen).toEqual([START]);
   });
 
-  it("cancels a redirect response's body instead of leaving it open", async () => {
-    const canceled: string[] = [];
-    const result = await download(
-      {
-        [CDN]: { bytes: BYTES, status: 200 },
-        [START]: {
-          body: new Uint8Array([1, 2, 3]),
-          location: CDN,
-          status: 302,
-        },
-      },
-      1024,
-      [],
-      canceled,
-    );
-    expect(result.ok).toBe(true);
-    expect(canceled).toEqual([START]);
-  });
-
-  it("cancels a non-200, non-redirect response's body instead of leaving it open", async () => {
-    const canceled: string[] = [];
-    const result = await download(
-      { [START]: { body: new Uint8Array([1, 2, 3]), status: 404 } },
-      1024,
-      [],
-      canceled,
-    );
-    expect(result.ok).toBe(false);
-    expect(canceled).toEqual([START]);
-  });
-
-  it("cancels a 200 response's body when the declared Content-Length already refuses it", async () => {
-    const canceled: string[] = [];
-    const result = await download(
-      {
-        [CDN]: { bytes: BYTES, contentLength: 2048, status: 200 },
-        [START]: { location: CDN, status: 302 },
-      },
-      1024,
-      [],
-      canceled,
-    );
-    expect(result.ok).toBe(false);
-    expect(canceled).toEqual([CDN]);
-  });
-
   it("stops after three redirects, naming the count", async () => {
     const hop = (n: number) => `${CDN}?hop=${n}`;
     const routes = {
@@ -273,41 +245,11 @@ describe("downloadReleaseAsset — gate 5", () => {
     );
   });
 
-  it("refuses a 200 response with no body", async () => {
-    const result = await download({
-      [CDN]: { status: 200 },
-      [START]: { location: CDN, status: 302 },
-    });
-    expect(result.ok ? "ok" : result.error).toBe("the response has no body");
-  });
-
   it("returns a refusal, not a throw, when fetchImpl rejects", async () => {
     const rejecting: AssetFetch = () => Promise.reject(new Error("boom"));
     const result = await downloadReleaseAsset(START, 1024, rejecting);
     expect(result.ok ? "ok" : result.error).toBe(
       "the request to github.com failed (Error: boom)",
-    );
-  });
-
-  it("returns a refusal, not a throw, when the body errors mid-read", async () => {
-    const erroring: AssetFetch = async (requestUrl) => {
-      if (requestUrl === START) {
-        return {
-          body: null,
-          headers: { get: (name) => (name === "location" ? CDN : null) },
-          status: 302,
-        };
-      }
-      const body = new ReadableStream<Uint8Array>({
-        pull(controller) {
-          controller.error(new TypeError("terminated"));
-        },
-      });
-      return { body, headers: { get: () => null }, status: 200 };
-    };
-    const result = await downloadReleaseAsset(START, 1024, erroring);
-    expect(result.ok ? "ok" : result.error).toBe(
-      "reading the asset from release-assets.githubusercontent.com failed (TypeError: terminated)",
     );
   });
 
@@ -357,12 +299,10 @@ describe("downloadReleaseAsset — gate 5", () => {
     );
   });
 
-  // Not timing-based, deliberately: a test that proves the total budget survives a redirect by
-  // racing a partial delay against the deadline is inherently a race, and the brief that asked
-  // for this test allows resolving on the signal instead where a timer would make the test
-  // depend on one. Asserting that the identical AbortSignal reaches every hop is a stronger,
-  // fully deterministic proof of the same property — a signal built fresh per hop would fail
-  // this assertion regardless of timing, and a shared one passes it regardless of timing.
+  // What this pins, and what it does not: ONE signal object reaches every hop, so a signal
+  // built fresh per hop fails it whatever the timing. It does not pin one shared BUDGET — code
+  // that kept this signal but restarted a timer behind it at each hop would pass. No timing
+  // test covers that: racing a partial delay against the deadline would itself be a race.
   it("passes the identical AbortSignal to every hop of a redirect chain, not a fresh one per hop", async () => {
     const signals: AbortSignal[] = [];
     const fetchImpl: AssetFetch = (requestUrl, init) => {
@@ -390,137 +330,5 @@ describe("downloadReleaseAsset — gate 5", () => {
     expect(result.ok).toBe(true);
     expect(signals).toHaveLength(2);
     expect(signals[0]).toBe(signals[1]);
-  });
-
-  it("refuses an asset that declares more than the app downloads", async () => {
-    const result = await download(
-      {
-        [CDN]: { bytes: BYTES, contentLength: 2048, status: 200 },
-        [START]: { location: CDN, status: 302 },
-      },
-      1024,
-    );
-    expect(result.ok ? "ok" : result.error).toBe(
-      "the asset is 2048 bytes, over the app's 1024-byte download limit",
-    );
-  });
-
-  it("does not trust a declared Content-Length shorter than the real body", async () => {
-    const result = await download(
-      {
-        [CDN]: { bytes: new Uint8Array(1025), contentLength: 4, status: 200 },
-        [START]: { location: CDN, status: 302 },
-      },
-      1024,
-    );
-    expect(result.ok ? "ok" : result.error).toBe(
-      "the asset exceeds the app's 1024-byte download limit",
-    );
-  });
-
-  it("accepts a declared Content-Length exactly at the cap", async () => {
-    const result = await download(
-      {
-        [CDN]: {
-          bytes: new Uint8Array(1024),
-          contentLength: 1024,
-          status: 200,
-        },
-        [START]: { location: CDN, status: 302 },
-      },
-      1024,
-    );
-    expect(result.ok).toBe(true);
-  });
-
-  it("sums bytes across chunks rather than trusting a single one", async () => {
-    // `contentLength: null` throughout: this test is about the streaming accumulation, not the
-    // declared-length shortcut a real Content-Length header would take instead.
-    const over = await download({
-      [CDN]: {
-        chunks: [new Uint8Array(400), new Uint8Array(400), new Uint8Array(400)],
-        contentLength: null,
-        status: 200,
-      },
-      [START]: { location: CDN, status: 302 },
-    });
-    expect(over.ok ? "ok" : over.error).toBe(
-      "the asset exceeds the app's 1024-byte download limit",
-    );
-
-    // The twin: the same three-chunk shape, summing to exactly the cap, is not refused.
-    const ok = await download({
-      [CDN]: {
-        chunks: [new Uint8Array(400), new Uint8Array(400), new Uint8Array(224)],
-        contentLength: null,
-        status: 200,
-      },
-      [START]: { location: CDN, status: 302 },
-    });
-    expect(ok.ok).toBe(true);
-  });
-
-  // Eight chunks, not three: the fixture's stream is Node's own `stream/web` `ReadableStream`
-  // (jsdom, which backs this test environment, implements no `ReadableStream` at all), and its
-  // default highWaterMark of 1 keeps `pull()` exactly one part ahead of what the reader has
-  // consumed. The source's `cancel()` is reached only while a pulled-but-unread part remains —
-  // once parts run out, the next `pull()` closes the stream first, and cancelling an
-  // already-closed stream is a no-op. 200-byte chunks cross the 1024-byte cap on the 6th read;
-  // measured with a `pull`/`cancel` trace that 6 chunks closes the stream before `cancel()` runs
-  // and 7 does not, so 8 leaves a two-part margin.
-  it("cancels the stream when a chunk pushes the total over the cap", async () => {
-    // `contentLength: null`: a declared length over the cap is refused before any body is read
-    // (and its own test covers that path) — this test wants the per-chunk streaming path, the
-    // one that has to open the body to find out.
-    const chunks = Array.from({ length: 8 }, () => new Uint8Array(200));
-    const canceledOver: string[] = [];
-    const over = await download(
-      {
-        [CDN]: { chunks, contentLength: null, status: 200 },
-        [START]: { location: CDN, status: 302 },
-      },
-      1024,
-      [],
-      canceledOver,
-    );
-    expect(over.ok ? "ok" : over.error).toBe(
-      "the asset exceeds the app's 1024-byte download limit",
-    );
-    expect(canceledOver).toEqual([CDN]);
-
-    // The twin: the same eight-chunk shape, summing to exactly the cap, is not refused and
-    // nothing is canceled.
-    const okChunks = [
-      ...Array.from({ length: 5 }, () => new Uint8Array(200)),
-      new Uint8Array(24),
-    ];
-    const canceledOk: string[] = [];
-    const ok = await download(
-      {
-        [CDN]: { chunks: okChunks, contentLength: null, status: 200 },
-        [START]: { location: CDN, status: 302 },
-      },
-      1024,
-      [],
-      canceledOk,
-    );
-    expect(ok.ok).toBe(true);
-    expect(canceledOk).toEqual([]);
-  });
-
-  it("stops reading at the cap when no length is declared, and not a byte before it", async () => {
-    const routes = (size: number) => ({
-      [CDN]: {
-        bytes: new Uint8Array(size),
-        contentLength: null,
-        status: 200 as const,
-      },
-      [START]: { location: CDN, status: 302 as const },
-    });
-    const over = await download(routes(1025), 1024);
-    expect(over.ok ? "ok" : over.error).toBe(
-      "the asset exceeds the app's 1024-byte download limit",
-    );
-    expect((await download(routes(1024), 1024)).ok).toBe(true);
   });
 });

@@ -460,7 +460,7 @@ function endRecord(
 
 /**
  * Narrows `AssetReply` to its 200 arm. `reply.status === 200` alone does not narrow this union:
- * the third arm's discriminant is the general `status: number`, which TypeScript cannot prove
+ * the second arm's discriminant is the general `status: number`, which TypeScript cannot prove
  * excludes the literal 200, so a plain equality check leaves that arm in the "true" branch too.
  */
 function isAssetOk(

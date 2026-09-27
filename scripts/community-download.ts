@@ -21,13 +21,16 @@ export const RELEASE_ASSET_HOSTS: readonly string[] = ["release-assets.githubuse
 
 /**
  * §380 gate 5 — the total download deadline, matching the Rust install path's total timeout
- * (`src-tauri/src/plugin/install.rs`, `.timeout(Duration::from_secs(600))`, l.671 — the same
- * function also sets a 15s connect bound at l.669 and a 30s per-read idle bound at l.670,
- * neither mirrored here). One `AbortSignal` built from this is shared across every hop of one
- * download, so a chain of redirects cannot each get a fresh budget.
+ * (`stage_install` in `src-tauri/src/plugin/install.rs`, whose `reqwest::Client::builder()` chain
+ * sets `.timeout(Duration::from_secs(600))`; the same chain's `.connect_timeout` (15 s) and
+ * `.read_timeout` (30 s per read) are not mirrored here). One `AbortSignal` built from this is
+ * shared across every hop of one download, so a chain of redirects cannot each get a fresh
+ * budget.
  */
 const DOWNLOAD_TIMEOUT_MS = 600_000;
 
+/** The longest delay Node's timers hold: 2^31 − 1 ms. */
+const MAX_TIMER_MS = 2_147_483_647;
 const MAX_REDIRECTS = 3;
 const REDIRECT_STATUSES = [301, 302, 303, 307, 308];
 
@@ -76,11 +79,14 @@ export async function downloadReleaseAsset(
       ok: false,
     };
   }
-  // `AbortSignal.timeout` throws a RangeError for anything but a positive finite number, and
-  // Task 9/10 pass this through from data (nowhere near a compile-time constant) — refused as a
-  // `{ ok: false }` verdict, matching every other refusal in this function, rather than thrown.
-  if (!Number.isFinite(timeoutMs) || !Number.isInteger(timeoutMs) || timeoutMs <= 0) {
-    return { error: `timeoutMs must be a positive finite integer, got ${timeoutMs}`, ok: false };
+  // `AbortSignal.timeout` throws a RangeError for anything but an integer from 0 to 2^32−1, and
+  // Node's timers hold at most 2^31−1 ms: a longer delay prints a TimeoutOverflowWarning and
+  // fires after 1 ms, which would read below as a timeout (Node 24.21, measured). So anything but
+  // an integer from 1 to 2^31−1 is refused as a `{ ok: false }` verdict, like every other refusal
+  // here, rather than thrown or misreported. Both callers (`runGate`, `publishOne`) leave it at
+  // the default; only tests pass another value.
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > MAX_TIMER_MS) {
+    return { error: `timeoutMs must be an integer from 1 to ${MAX_TIMER_MS}, got ${timeoutMs}`, ok: false };
   }
   const signal = AbortSignal.timeout(timeoutMs);
   let current = url;
