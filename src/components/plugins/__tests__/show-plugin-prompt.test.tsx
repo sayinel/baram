@@ -131,8 +131,11 @@ describe("showPluginPrompt", () => {
   );
 
   it("closes on the plugin's teardown sweep, frees the slot and forgets its rights (spec 0061 §5.5)", async () => {
-    // Through `unregisterPluginUI`, the entry every unload path calls — not `clearPromptGate`
-    // directly — so this fails if that function stops calling the gate's sweep.
+    // Through `unregisterPluginUI`, not `clearPromptGate` directly, so this fails if that
+    // function stops calling the gate's sweep. It is what every unload path calls: spec 0061
+    // §5.5 lists the four callers — `plugin-loader.ts`'s `unloadPlugin`, `rollbackSandboxLoad`
+    // and `unwindAfterActivate`, and `plugin-lifecycle.ts`'s `teardownBuiltin` (corpus: `src/`
+    // `.ts`/`.tsx` outside `__tests__`, a grep for `unregisterPluginUI(`).
     beginPluginInvocation("p");
     const answer = pick(3);
     expect(overlay()).not.toBeNull();
@@ -195,8 +198,11 @@ describe("showPluginPrompt", () => {
     );
     const origin = document.body.appendChild(document.createElement("button"));
     origin.focus();
-    await expect(pick(1)).rejects.toBeInstanceOf(PromptOccludedError);
+    // The refusal is synchronous, so the overlay is checked before awaiting: with the old
+    // check the prompt stays open and this fails at once rather than by a test timeout.
+    const answer = pick(1);
     expect(overlay()).toBeNull();
+    await expect(answer).rejects.toBeInstanceOf(PromptOccludedError);
     expect(document.activeElement).toBe(origin);
   });
 

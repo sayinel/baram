@@ -5,26 +5,32 @@
 // `document`; this pins that, and `<body>`/`<html>` reached as `document.body`/
 // `document.documentElement` with it.
 //
-// Corpus: production `.ts`/`.tsx` files under `src/extensions/plugins/vim` (recursive), with any
-// `__tests__/` directory excluded. The match is on source TEXT: `.addEventListener(` called
-// directly on `window`, `document`, `document.body` or `document.documentElement`, whose first
-// argument is the string literal `"keydown"` or `'keydown'`, whitespace and newlines allowed
-// between. It does not see a listener added through a variable holding one of those
-// (`view.dom.ownerDocument` included), through `globalThis`, with the event name in a variable,
-// or as an `onkeydown` property.
+// Corpus: production `.ts`/`.tsx` files under `src/` (recursive, any `__tests__/` directory
+// excluded) that are either under `src/extensions/plugins/vim` or have `vim` in their basename,
+// case-insensitive. That is the discovery rule `scripts/check-wiki.mjs` uses for vim-owned
+// files (its tiers A and B), except that `src/spike/` is not excluded here — so a new
+// `vim-*.ts` anywhere joins without an edit to this file.
+//
+// The match is on source TEXT: `.addEventListener(` called directly on `window`, `document`,
+// `document.body` or `document.documentElement`, whose first argument is the string literal
+// `"keydown"` or `'keydown'`, whitespace and newlines allowed inside the parentheses. It does
+// not see: optional chaining (`window?.addEventListener`); `document.defaultView`; a line break
+// before `.addEventListener`; a template-literal or variable event name; a listener added
+// through a variable holding one of those targets (`view.dom.ownerDocument` included) or
+// through `globalThis`; or an `onkeydown` property.
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve, sep } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const SRC = resolve(__dirname, "../..");
-const VIM = resolve(SRC, "extensions/plugins/vim");
+const VIM_DIR = "extensions/plugins/vim/";
 const GLOBAL_KEYDOWN =
   /\b(?:window|document(?:\.body|\.documentElement)?)\.addEventListener\(\s*["']keydown["']/u;
 
-/** Every production file under the vim directory, relative to `src/` and sorted. */
+/** Every production file vim owns — its directory, or `vim` in the basename — relative to `src/`, sorted. */
 function vimProductionFiles(): string[] {
   const found: string[] = [];
-  for (const entry of readdirSync(VIM, {
+  for (const entry of readdirSync(SRC, {
     recursive: true,
     withFileTypes: true,
   })) {
@@ -34,7 +40,9 @@ function vimProductionFiles(): string[] {
       .split(sep)
       .join("/");
     if (relative.includes("__tests__/")) continue;
-    found.push(relative);
+    if (relative.startsWith(VIM_DIR) || /vim/iu.test(entry.name)) {
+      found.push(relative);
+    }
   }
   return found.sort();
 }
@@ -42,7 +50,10 @@ function vimProductionFiles(): string[] {
 describe("vim's global keys", () => {
   it("registers no keydown listener on window, document, <body> or <html>", () => {
     const files = vimProductionFiles();
-    expect(files.length).toBeGreaterThan(0); // the corpus is where this file thinks it is
+    // Both halves of the corpus are non-empty: the directory is where this file thinks it is,
+    // and the basename rule reaches past it.
+    expect(files.some((f) => f.startsWith(VIM_DIR))).toBe(true);
+    expect(files.some((f) => !f.startsWith(VIM_DIR))).toBe(true);
     const offenders = files.filter((relative) =>
       GLOBAL_KEYDOWN.test(readFileSync(resolve(SRC, relative), "utf8")),
     );

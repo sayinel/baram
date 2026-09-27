@@ -109,6 +109,24 @@ describe("promptRefusal", () => {
     expect(promptRefusal("p")).toBeNull(); // positive twin: none of the above ended the rights
   });
 
+  it("counts a drop ON the open prompt's root — the backdrop — but not one on a child inside it", () => {
+    // The overlay element itself is the backdrop around the dialog, outside the prompt; only
+    // its descendants are the prompt's own. Checked while the prompt is open, so the refusal
+    // shows which condition stopped it: condition 2 (outside input) or condition 3 (a prompt
+    // is open), which is reached only when condition 2 passed.
+    const root = document.body.appendChild(document.createElement("div"));
+    const inside = root.appendChild(document.createElement("div"));
+    const prompt = { close: vi.fn(), pluginId: "other", root };
+    beginPluginInvocation("p");
+    markPromptOpen(prompt);
+    inside.dispatchEvent(new Event("drop", { bubbles: true }));
+    expect(promptRefusal("p")).toMatch(/already open/); // the child drop left rights intact
+    root.dispatchEvent(new Event("drop", { bubbles: true }));
+    expect(promptRefusal("p")).toMatch(/dropped something outside/);
+    markPromptClosed(prompt);
+    root.remove();
+  });
+
   it("counts the launching key BEFORE the invocation starts — capture phase on window", () => {
     // A bubble handler below window starts the invocation, as React's root listener does for
     // the palette's Enter. The request is checked AFTER dispatch, as an awaited one is. With the

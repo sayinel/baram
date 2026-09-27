@@ -105,8 +105,10 @@ one toast, `PROMPT pick=<id|cancel|ERR:…> input=<text|cancel|ERR:…>`.
    and `pick=ERR:…`.
 8. Type a Hangul query into the command palette and press Enter before the syllable is
    finished to run **Sandbox Smoke: prompts** — the prompt opens.
-9. Run **Sandbox Smoke: prompts after 3 s** and dictate a word into the editor within 3 s
-   (Fn Fn) — no prompt, and `pick=ERR:…`.
+9. Run **Sandbox Smoke: prompts after 3 s**, start dictation from the menu bar (Edit ▸ Start
+   Dictation…) and dictate a word into the editor within 3 s — no prompt, and `pick=ERR:…`.
+   Use the menu, not Fn Fn: the page never sees a native menu, while a Fn press may reach it
+   as a `keydown` and end the right through the key path, which would not test `beforeinput`.
 
 ## Expected noise, not failures
 

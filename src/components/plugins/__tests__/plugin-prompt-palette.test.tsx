@@ -79,7 +79,9 @@ function launch(
   // input AFTER the rights begin, and a `beforeinput` would (the watcher counts those). Our half
   // is that `usePaletteListNav` cancels this `keydown`; the browser's half — no `beforeinput`
   // follows a cancelled `keydown`, a UI Events rule the app relies on — is checked by hand, by
-  // the sandbox-smoke README's steps that launch from the palette.
+  // the sandbox-smoke README's steps that launch from the palette. That holds outside IME
+  // composition only: a composing Enter's commit is not stopped by `preventDefault`; that case
+  // is smoke step 8 (spec 0061 §5.2).
   expect(fireEvent.keyDown(paletteInput, { key: "Enter" })).toBe(false);
   return result;
 }

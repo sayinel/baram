@@ -174,11 +174,12 @@ export function showPluginPrompt(
 
 /**
  * Whether the topmost element at the input's centre IS the input, i.e. nothing is painted over
- * it (spec 0061 D9). The danger is an input nobody can see receiving keystrokes, so only the
- * input itself passes. Everything inside the overlay is host-drawn, so a different hit inside
- * it can only be the prompt's own chrome over the input — a theme or CSS regression — and is
- * refused like any other cover. An input with no box — nothing laid out — counts as covered:
- * refusal, not a crash. Blind to a `pointer-events: none` cover, which `elementFromPoint` skips.
+ * its centre (spec 0061 D9). Only that one point is tested, so a cover that leaves the centre
+ * clear passes. The danger is an input nobody can see receiving keystrokes, so only the input
+ * itself passes. Everything inside the overlay is host-drawn, so a different hit inside it can
+ * only be the prompt's own chrome over the input — a theme or CSS regression — and is refused
+ * like any other cover. An input with no box — nothing laid out — counts as covered: refusal,
+ * not a crash. Blind to a `pointer-events: none` cover, which `elementFromPoint` skips.
  */
 function isUnobstructed(input: HTMLElement): boolean {
   const box = input.getBoundingClientRect();

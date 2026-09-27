@@ -18,7 +18,11 @@ export interface OpenPrompt {
   /** Settle the prompt with `undefined` — the teardown path. */
   close: () => void;
   pluginId: string;
-  /** Input whose target is inside this element is the prompt's own and is not counted. */
+  /**
+   * Input whose target is a descendant of this element is the prompt's own and is not counted.
+   * A target that IS this element is the backdrop around the dialog — outside the prompt — and
+   * counts.
+   */
   root: Element;
 }
 
@@ -72,9 +76,21 @@ export function clearPromptGate(pluginId: string): void {
   toClose?.close();
 }
 
+/**
+ * The prompt's own input is excluded only when its target is strictly INSIDE the overlay: the
+ * overlay element itself is the backdrop, so a `drop` there must end rights like any other
+ * outside drop. Focus never sits on the overlay (a `<div>` with no `tabindex`), so the keyboard
+ * and `beforeinput` paths never target it; a `pointerdown` on it precedes the backdrop
+ * `mousedown` that cancels the prompt anyway.
+ */
 function countInput(event: Event): void {
   if (event instanceof KeyboardEvent && MODIFIER_KEYS.has(event.key)) return;
-  if (open && event.target instanceof Node && open.root.contains(event.target))
+  if (
+    open &&
+    event.target instanceof Node &&
+    event.target !== open.root &&
+    open.root.contains(event.target)
+  )
     return;
   inputSeq += 1;
 }
@@ -150,10 +166,12 @@ export function revokePromptRights(pluginId: string): void {
  * reach the page as those with no `keydown` or `pointerdown`, and a delayed prompt would
  * otherwise take focus after them (spec 0061 D1, §5.2). A keystroke that also fires
  * `beforeinput` counts twice, which is harmless — the check is equality with the baseline, not
- * a count. The palette's launching Enter adds no `beforeinput` after the start: its `keydown`
- * is cancelled (`usePaletteListNav`), and a cancelled `keydown` fires none — our half is pinned
- * in `plugin-prompt-palette.test.tsx`; the browser's half is checked by hand, by the
- * sandbox-smoke README's steps that launch from the palette.
+ * a count. Outside IME composition, the palette's launching Enter adds no `beforeinput` after
+ * the start: its `keydown` is cancelled (`usePaletteListNav`), and a cancelled `keydown` fires
+ * none — our half is pinned in `plugin-prompt-palette.test.tsx`; the browser's half is checked
+ * by hand, by the sandbox-smoke README's steps that launch from the palette. A composing
+ * Enter's commit is not stopped by `preventDefault`; that case is smoke step 8 (spec 0061
+ * §5.2).
  */
 function watchInput(): void {
   if (watching) return;
