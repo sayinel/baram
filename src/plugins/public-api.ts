@@ -12,6 +12,7 @@ export type {
   EventsAPI,
   ExtensionContext,
   FilesAPI,
+  InputBoxOptions,
   NetworkAPI,
   PluginCapability,
   PluginEventName,
@@ -29,6 +30,11 @@ export type {
   PluginSettingValue,
   PluginSidebarPanelOptions,
   PluginTrust,
+  // §385 — `ctx.prompts` for both tiers (spec 0061 §4). No capability gates it; these types
+  // are the only surface an author has to name it.
+  PromptsAPI,
+  QuickPickItem,
+  QuickPickOptions,
   // §260 Phase 6 — the SANDBOXED tier's context and surfaces. Published because that tier
   // is the default one: without `SandboxContext` an author writing `activate(ctx)` for a
   // sandboxed plugin has no type to name, which is how the reference port was blocked.

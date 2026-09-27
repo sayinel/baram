@@ -43,6 +43,7 @@ import {
 } from "./plugin-host-registry";
 import { declaredSettingsFor, resolvePluginSettings } from "./plugin-settings";
 import { usePluginUIStore } from "./plugin-ui-store";
+import { createPromptsAPI } from "./prompts-api";
 import {
   SETTINGS_CHANGED_EVENT,
   watchPluginSettings,
@@ -383,6 +384,8 @@ export function createExtensionContext(
     ai,
     pluginId: manifest.id,
     pluginPath,
+    // §385 no capability (spec 0061 D2): what bounds a prompt is WHEN it may open — the gate.
+    prompts: createPromptsAPI(manifest.id, manifest.name),
     subscriptions: disposables,
     commands,
     editor,

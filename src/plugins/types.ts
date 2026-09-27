@@ -74,6 +74,8 @@ export interface ExtensionContext {
   network: NetworkAPI;
   pluginId: string;
   pluginPath: string;
+  /** §385 Host-drawn prompts (spec 0061). No capability — see {@link PromptsAPI}. */
+  prompts: PromptsAPI;
   /** §260 Phase 4c — the user's answers to `contributions.settings`. Read-only. */
   settings: SettingsAPI;
   storage: StorageAPI;
@@ -85,6 +87,13 @@ export interface FilesAPI {
   listDir(path: string): Promise<string[]>;
   readFile(path: string): Promise<string>;
   writeFile(path: string, content: string): Promise<void>;
+}
+
+/** §385 An input box's options (spec 0061 §4). `value` is the initial text, at most 1,000 characters. */
+export interface InputBoxOptions {
+  placeholder?: string;
+  title?: string;
+  value?: string;
 }
 
 export interface InstalledPlugin {
@@ -355,6 +364,39 @@ export type PluginStatus =
   "disabled" | "enabled" | "installing" | "not-installed";
 
 export type PluginTrust = "sandboxed" | "trusted";
+
+/**
+ * §385 Host-drawn prompts (spec 0061). Both tiers, no capability: what bounds them is WHEN they
+ * may open — only while one of this plugin's commands, started by the user, is still running,
+ * and only until the user types or clicks outside the prompt.
+ *
+ * Resolves `undefined` when the user cancels (Esc, a click outside, an app palette opening).
+ * Rejects when the call is refused: outside that window, another prompt open, covered by another
+ * window, focus inside a frame, or a limit exceeded. A cancel also ends the flow — later prompts
+ * are refused until the user runs a command again; a pick or an entered value does not.
+ */
+export interface PromptsAPI {
+  /** Ask for a line of text; resolves with what was typed (`""` is an answer). */
+  showInputBox(opts?: InputBoxOptions): Promise<string | undefined>;
+  /** Show `items` to filter and pick from; resolves with the chosen item's `id`. At most 5,000 items, ids unique. */
+  showQuickPick(
+    items: QuickPickItem[],
+    opts?: QuickPickOptions,
+  ): Promise<string | undefined>;
+}
+
+/** §385 One quick-pick row. `id` comes back (≤ 100 characters, unique); `label` and `description` are shown, cut at 200. */
+export interface QuickPickItem {
+  description?: string;
+  id: string;
+  label: string;
+}
+
+/** §385 A quick pick's options (spec 0061 §4). */
+export interface QuickPickOptions {
+  placeholder?: string;
+  title?: string;
+}
 
 /**
  * §382 — which registry file a listing came from: `index.json` is Baram's own channel,
