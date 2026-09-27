@@ -16,7 +16,7 @@ import { useSettingsStore } from "../stores/settings/store";
 import { useThemeCssCacheStore } from "../stores/system/theme-css-cache";
 import {
   applyThemeChrome,
-  recordChromeChoice,
+  recordUserChromeChoice,
 } from "../stores/ui/chrome-proposal";
 import {
   RIGHT_PANEL_MODE_FEATURE,
@@ -345,14 +345,19 @@ export function useSettingsEffects(editor: Editor | null) {
   }, [effectiveThemeId]);
 
   // 스펙 0063 §3.3 — 사용자가 표면을 직접 고를 때 이 테마의 제안과 비교해 거절을 기록한다.
-  // 위 이펙트와 같은 `effectiveThemeId` 를 쓴다: 철회된 테마는 제안하지 못하듯 거절도 기록되지
-  // 않는다. StrictMode 의 마운트 → 정리 → 재마운트는 떼고 다시 거는 것이라 해가 없다.
+  // 리스너는 `recordUserChromeChoice`(`chrome-proposal.ts`) 하나이고, 그 함수가 유효 테마 id
+  // 를 **호출 시점**에 계산한다 — 위 적용 이펙트가 읽는 `effectiveThemeId` 와 같은 순수 함수
+  // (`effectiveThemeIdOf`)를 쓰므로 철회된 테마는 제안 못 하듯 거절도 기록되지 않는다.
+  //
+  // ‼️ 이 이펙트의 deps 는 **빈 배열**이다(계획 0111 fix wave F2). 예전에는 `effectiveThemeId`
+  // 를 클로저로 캡처해 걸었고, 테마 전환(스토어 write)과 이 이펙트의 재실행(React 커밋) 사이의
+  // 프레임에 사용자의 크롬 선택이 끼면 거절이 옛 테마 id 밑에 기록됐다. 리스너가 호출 시점에
+  // id 를 다시 읽으므로 그 창이 없다 — 걸어 둔 함수 자체는 절대 낡지 않는다.
+  // StrictMode 의 마운트 → 정리 → 재마운트는 떼고 다시 거는 것뿐이라 해가 없다.
   useEffect(() => {
-    setUserChromeChoiceListener((surfaces) =>
-      recordChromeChoice(effectiveThemeId, surfaces),
-    );
+    setUserChromeChoiceListener(recordUserChromeChoice);
     return () => setUserChromeChoiceListener(null);
-  }, [effectiveThemeId]);
+  }, []);
 
   useEffect(() => {
     // §perf-large-file C3.4: resolve via editor.view.dom rather than a global

@@ -10,7 +10,9 @@
 // 반대 방향을 새로 내는 것보다 이미 있는 방향에 얹는 것이 싸다.
 import type { ChromeSurface } from "./ui";
 
+import { effectiveThemeIdOf } from "../../themes/theme-revocation";
 import { useSettingsStore } from "../settings/store";
+import { usePluginStore } from "../system/plugin";
 import { CHROME_SURFACE_FIELD, useUIStore } from "./ui";
 
 /**
@@ -70,4 +72,28 @@ export function recordChromeChoice(
       ui[CHROME_SURFACE_FIELD[surface]] !== proposed,
     );
   }
+}
+
+/**
+ * `recordChromeChoice`를 부르기 전에 유효 테마 id를 **호출 시점**에 계산한다 — 위
+ * `applyThemeChrome`을 부르는 적용 이펙트가 읽는 것과 같은 순수 함수
+ * (`themes/theme-revocation.ts`의 `effectiveThemeIdOf`)를 써서, `use-editor-typography.ts`의
+ * `readEditorTypography`처럼 React 밖에서도 지금 스토어 값을 곧장 읽는다.
+ *
+ * 계획 0111 fix wave F2 — `use-settings-effects.ts`의 리스너 등록 이펙트가 예전에는
+ * `effectiveThemeId`를 클로저로 캡처해 걸었다. 테마 전환(스토어 write)과 그 이펙트의
+ * 재실행(React 커밋) 사이에는 프레임이 있고, 그 프레임 안에서 사용자가 크롬을 고르면
+ * 옛 테마 id 밑에 거절이 기록됐다. 호출 시점 계산은 클로저가 없으므로 그 창이 없다 —
+ * 이 함수를 리스너로 거는 이펙트는 그래서 `[]`로 한 번만 마운트한다.
+ */
+export function recordUserChromeChoice(
+  surfaces: readonly ChromeSurface[],
+): void {
+  const { activeThemeId, installedThemes } = useSettingsStore.getState();
+  const { effectiveThemeId } = effectiveThemeIdOf(
+    activeThemeId,
+    installedThemes,
+    usePluginStore.getState().revocations,
+  );
+  recordChromeChoice(effectiveThemeId, surfaces);
 }
