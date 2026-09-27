@@ -4,6 +4,7 @@
 // literals in the tests — a fixture that computed an expectation with the code under test
 // would make an assertion agree with itself. Hashes of fixture bytes use node:crypto
 // directly, never the module under test.
+import type { AssetFetch } from "../../../scripts/community-download";
 import type { PluginArchiveLimits } from "../../../scripts/rust-constants";
 
 import { createHash } from "node:crypto";
@@ -43,6 +44,16 @@ export const SUBMISSION = {
   },
   repo: "octocat/baram-hello-counter",
 };
+
+export type AssetReply =
+  | { body?: Uint8Array; location: string; status: 301 | 302 | 303 | 307 | 308 }
+  | { body?: Uint8Array; status: number }
+  | {
+      bytes?: Uint8Array;
+      chunks?: readonly Uint8Array[];
+      contentLength?: null | number;
+      status: 200;
+    };
 
 export interface CraftEntry {
   /** Overrides the CRC in both headers — a wrong one is what a corrupted entry looks like. */
@@ -84,6 +95,76 @@ export interface EndFields {
   thisDisk?: number;
   /** Appended after the record and its comment; the record counts none of it. */
   trailing?: Uint8Array;
+}
+
+/**
+ * A fake `fetch` for release assets: exact URLs only, 404 for anything else. `seen` records
+ * every URL actually requested, in order — an SSRF assertion reads this instead of trusting
+ * `downloadReleaseAsset`'s verdict alone, since a request that happens and is then discarded is
+ * not the same as a request that never happened. `canceled` records every URL whose body's
+ * `cancel()` was called, for the same reason on the resource-leak side.
+ */
+export function assetFetch(
+  routes: Record<string, AssetReply>,
+  seen: string[] = [],
+  canceled: string[] = [],
+): AssetFetch {
+  return (url) => {
+    seen.push(url);
+    const reply = routes[url] ?? { status: 404 };
+    const headers = new Map<string, string>();
+    if ("location" in reply) headers.set("location", reply.location);
+    const parts: Uint8Array[] =
+      "chunks" in reply && reply.chunks !== undefined && reply.chunks.length > 0
+        ? [...reply.chunks]
+        : "bytes" in reply && reply.bytes !== undefined
+          ? [reply.bytes]
+          : "body" in reply && reply.body !== undefined
+            ? [reply.body]
+            : [];
+    // A real CDN response carries Content-Length, so a 200 reply defaults to one (the total of
+    // its parts) the same way a route that never mentions `bytes.length` used to get it for
+    // free — later tasks' success fixtures (`{ bytes: served, status: 200 }`) should not have to
+    // opt in. `contentLength: null` is the one way to omit the header, for the "no length
+    // declared" path below.
+    if (isAssetOk(reply) && reply.contentLength !== null) {
+      const total = parts.reduce((sum, part) => sum + part.length, 0);
+      headers.set("content-length", String(reply.contentLength ?? total));
+    }
+    // One part delivered per `pull()`. This runs on Node's own `stream/web` `ReadableStream`,
+    // not a browser's — jsdom, which backs this test environment, implements no `ReadableStream`
+    // at all. With the default highWaterMark of 1, `pull()` keeps exactly one part ahead of what
+    // the reader has consumed: consuming a part triggers the next `pull()` before that read's
+    // promise resolves. The underlying source's `cancel()` below is reached only while a
+    // pulled-but-unread part remains — once parts run out, the NEXT `pull()` closes the stream,
+    // and cancelling an already-closed stream is a no-op that never reaches here. Verified with a
+    // `pull`/`cancel` trace: `community-download.test.ts`'s cancel-on-overflow test sizes its
+    // chunk count with this margin in mind.
+    const queue = [...parts];
+    const body =
+      parts.length > 0
+        ? new ReadableStream<Uint8Array>({
+            cancel() {
+              canceled.push(url);
+            },
+            pull(controller) {
+              const next = queue.shift();
+              if (next === undefined) {
+                controller.close();
+              } else {
+                controller.enqueue(next);
+              }
+            },
+          })
+        : null;
+    return Promise.resolve({
+      body,
+      headers: {
+        get: (name: string) => headers.get(name.toLowerCase()) ?? null,
+      },
+      status: reply.status,
+    });
+  };
 }
 
 /**
@@ -342,4 +423,15 @@ function endRecord(
   end.writeUInt32LE(offset, 16);
   end.writeUInt16LE(comment.length, 20);
   return Buffer.concat([end, comment]);
+}
+
+/**
+ * Narrows `AssetReply` to its 200 arm. `reply.status === 200` alone does not narrow this union:
+ * the third arm's discriminant is the general `status: number`, which TypeScript cannot prove
+ * excludes the literal 200, so a plain equality check leaves that arm in the "true" branch too.
+ */
+function isAssetOk(
+  reply: AssetReply,
+): reply is Extract<AssetReply, { status: 200 }> {
+  return reply.status === 200;
 }
