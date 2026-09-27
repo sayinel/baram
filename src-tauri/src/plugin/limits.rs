@@ -111,8 +111,8 @@ mod tests {
     /// ‼️ A CROSS-LANGUAGE ANCHOR (§380, plan 0105). `scripts/rust-constants.ts` reads these
     /// out of this file's TEXT so the community publish gate applies the app's own archive
     /// bounds, and `community-archive-limits.test.ts` asserts the same literals there. Two
-    /// cases this actually catches (M5, fix round 1): a bound changed here without updating
-    /// that test's literal goes red BOTH here and on the TypeScript side; and a declaration
+    /// cases this catches: a bound changed here without updating that test's literal goes red
+    /// BOTH here and on the TypeScript side; and a declaration
     /// respelled so its COMPILED VALUE moved while a decoy comment holds the OLD number in the
     /// matched form (the shape spelled out near `origin.rs`'s anchor) goes red HERE, because
     /// this assertion checks the compiled constant, not the decoy text the scraper would

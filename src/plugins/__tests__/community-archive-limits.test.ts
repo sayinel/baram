@@ -3,7 +3,8 @@
 // a changed bound in Rust without a matching edit here (the literal table), a second
 // declaration of the same identifier (the count), a declaration respelled past its scrape
 // pattern (a "found 0 declarations" refusal), or — for the compression-method list — an
-// element that isn't a bare `zip::CompressionMethod::<Variant>` (a comment, for one).
+// element that isn't a bare `zip::CompressionMethod::<Variant>` (a comment, for one), or a
+// method with no ZIP code in `ZIP_METHOD_CODES`.
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -59,10 +60,9 @@ describe("§380 — archive bounds scraped from limits.rs and fetch.rs", () => {
     expect(() => pluginArchiveByteCap(`${LIMITS}\n${LIMITS}`)).toThrow(
       "found 2 declarations of MAX_PLUGIN_ARCHIVE_BYTES",
     );
-    // ‼️ M1, fix round 1: doubling the WHOLE file exercises ALLOWED_COMPRESSION's own count
-    // assertion specifically, because `pluginArchiveLimits` scrapes it before any numeric
-    // `bound()` call — a mutation that only breaks a numeric bound's count would not make
-    // THIS assertion fail, so it is checked on its own below too.
+    // ‼️ Doubling the WHOLE file reaches ALLOWED_COMPRESSION's count first — `pluginArchiveLimits`
+    // scrapes it before any numeric `bound()` call — so this line pins that count alone. A
+    // numeric bound's own count is pinned by the per-bound cases below.
     expect(() => pluginArchiveLimits(`${LIMITS}\n${LIMITS}`)).toThrow(
       "found 2 declarations of ALLOWED_COMPRESSION",
     );
@@ -71,11 +71,9 @@ describe("§380 — archive bounds scraped from limits.rs and fetch.rs", () => {
     );
   });
 
-  // ‼️ M1, fix round 1: a reviewer mutated `soleDeclaration` to silently take the LAST match
-  // instead of throwing on a count other than 1, and every test above still passed — none of
-  // them appended a second declaration of any of the six numeric bounds `bound()` reads. Each
-  // case here appends exactly one extra declaration of its own identifier, so only that
-  // bound's `soleDeclaration` call sees a count of 2.
+  // Each case appends exactly one extra declaration of its own identifier, so only that
+  // bound's `soleDeclaration` call sees a count of 2. Doubling the whole file (above) cannot
+  // stand in for these: it throws at ALLOWED_COMPRESSION before any numeric bound is read.
   it.each(NUMERIC_BOUNDS)(
     "refuses two declarations of $name",
     ({ name, type }) => {
@@ -104,12 +102,12 @@ describe("§380 — archive bounds scraped from limits.rs and fetch.rs", () => {
     // The twin: the shipped list parses (first test).
   });
 
-  // ‼️ I1, fix round 1. Before the fix, `CompressionMethod::(\w+)` matched this text exactly
-  // as readily inside a `//` comment as inside live code, so commenting an entry out (which
-  // by itself leaves the array's declared LENGTH stale — a compile error a developer would
-  // then "fix" by editing the length down) left this function still reporting the
-  // commented-out method as allowed. The gate would then accept archives every client
-  // refuses. The twin: the shipped list, with nothing commented out, parses (first test).
+  // ‼️ A bare `CompressionMethod::(\w+)` scan matches this text exactly as readily inside a
+  // `//` comment as inside live code, so commenting an entry out (which by itself leaves the
+  // array's declared LENGTH stale — a compile error a developer would then "fix" by editing
+  // the length down) would leave the commented-out method reported as allowed, and the gate
+  // would accept archives every client refuses. The twin: the shipped list, with nothing
+  // commented out, parses (first test).
   it("refuses a compression method entry that is commented out", () => {
     const commented = LIMITS.replace(
       "zip::CompressionMethod::Stored,",
@@ -120,10 +118,9 @@ describe("§380 — archive bounds scraped from limits.rs and fetch.rs", () => {
     );
   });
 
-  // ‼️ M8, fix round 1. Before the fix, `ZIP_METHOD_CODES` was a plain object, and looking up
-  // a method literally named `constructor` walked the prototype chain to
-  // `Object.prototype.constructor` (a function) instead of missing the lookup — so
-  // `code === undefined` never caught it.
+  // ‼️ Were `ZIP_METHOD_CODES` a plain object, looking up a method literally named
+  // `constructor` would walk the prototype chain to `Object.prototype.constructor` (a
+  // function) instead of missing the lookup — and `code === undefined` would never catch it.
   it("refuses a compression method name that collides with Object.prototype", () => {
     const collision = LIMITS.replace(
       "zip::CompressionMethod::Deflated,",

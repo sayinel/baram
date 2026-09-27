@@ -17,7 +17,10 @@
  *   end record when it cannot read the last one's directory, and follows an offset that zip.js
  *   corrects to the directory beside the end record
  * - what zip.js itself flags: it reads at `strictness: "strict"`, which throws on its ambiguity
- *   checks, and a warning it still records is refused like an error (see `readPluginArchive`)
+ *   checks, and a warning it still records is refused like an error — on the reader
+ *   (`ZipReader#warnings`) or on an entry as its data is read (`EntryMetaData#warnings`), the two
+ *   places zip.js 2.18.2's types say a reader records one. Every entry is read, directories
+ *   included, so every local header is checked (see `readPluginArchive`)
  * - extra fields other than the two `zip -r` writes (0x7075 renames an entry for one reader),
  *   and an extended timestamp (0x5455) the `zip` crate cannot parse
  * - names with non-ASCII bytes (CP437 versus a UTF-8 guess), and names the app rewrites or
@@ -40,7 +43,7 @@
  * is `crate::fs::archive::extract_entry`'s rule, including its ratio floor.
  */
 import type { PluginArchiveLimits } from "./rust-constants";
-import type { Entry } from "@zip.js/zip.js";
+import type { Entry, FileEntry } from "@zip.js/zip.js";
 
 import { configure, Uint8ArrayReader, ZipReader } from "@zip.js/zip.js";
 import { posix } from "node:path";
@@ -97,7 +100,13 @@ export async function readPluginArchive(
   // version, compressed patched data, a malformed extra field, unknown Zip64 extensible data:
   // the warnings zip.js 2.18.2 documents under `ZipReader.warnings`, less the two "strict"
   // never records (a wrapped entry count, which it does not recover, and a prepended central
-  // directory, which comes with prepended data and so throws first).
+  // directory, which comes with prepended data and so throws first). An entry's LOCAL header is
+  // read only with its data, and what "strict" records about it (a malformed extra field) lands
+  // on `EntryMetaData.warnings` instead — refused after each read, below.
+  const irregular = (reason: string, filename: string | undefined): ArchiveVerdict =>
+    refuse(
+      `the gate's reader reports ${JSON.stringify(reason)}${filename === undefined ? "" : ` at entry ${JSON.stringify(filename)}`} — the gate refuses any archive its reader finds irregular, because the app's zip crate resolves irregularities by rules of its own`,
+    );
   const reader = new ZipReader(new Uint8ArrayReader(bytes), {
     checkOverlappingEntry: true,
     checkSignature: true,
@@ -117,12 +126,7 @@ export async function readPluginArchive(
     const structural = structuralProblem(entries, limits);
     if (structural !== null) return refuse(structural);
     const [warning] = reader.warnings ?? [];
-    if (warning !== undefined) {
-      const at = warning.filename === undefined ? "" : ` at entry ${JSON.stringify(warning.filename)}`;
-      return refuse(
-        `the gate's reader reports ${JSON.stringify(warning.reason)}${at} — the gate refuses any archive its reader finds irregular, because the app's zip crate resolves irregularities by rules of its own`,
-      );
-    }
+    if (warning !== undefined) return irregular(warning.reason, warning.filename);
 
     const allowance = Math.max(
       bytes.length * limits.maxCompressionRatio,
@@ -130,8 +134,11 @@ export async function readPluginArchive(
     );
     const kept = new Map<string, Uint8Array>();
     let total = 0;
-    for (const entry of entries) {
-      if (entry.directory) continue;
+    // Directories too: the app's zip crate opens every entry (`by_index` reads its local header
+    // first, directories included), so a directory whose local header is missing fails the
+    // install. Reading the entry is how zip.js checks that header — zip.js 2.18.2 attaches
+    // `getData` to every entry, though its types declare it on `FileEntry` alone.
+    for (const entry of entries as FileEntry[]) {
       const byTotal = limits.maxTotalExpandedBytes - total;
       const byRatio = allowance - total;
       // Only bounds the root README — every other entry sees Infinity here, so it never wins
@@ -170,9 +177,11 @@ export async function readPluginArchive(
           );
         }
         return refuse(
-          `entry ${JSON.stringify(entry.filename)} could not be read (${String(err)}) — the gate refuses an entry its reader cannot read cleanly: a CRC mismatch fails the app's install too, and a declared-size mismatch the gate refuses on its own`,
+          `entry ${JSON.stringify(entry.filename)} could not be read (${String(err)}) — the gate refuses an entry its reader cannot read cleanly: a missing local header or a CRC mismatch fails the app's install too, and a declared-size mismatch or a local header that disagrees with the central one the gate refuses on its own`,
         );
       }
+      const [local] = entry.warnings ?? [];
+      if (local !== undefined) return irregular(local.reason, entry.filename);
       total += written;
       if (keep) kept.set(entry.filename, concat(chunks, written));
     }
@@ -217,10 +226,12 @@ export async function readPluginArchive(
  *   places the directory's disk at offset 0 whatever number it has (`getDiskOffset`)
  * - one entry count: the crate reads the count on this disk (`CentralDirectoryInfo::try_from`),
  *   zip.js the total
- * - no Zip64 placeholder — 0xFFFF entries, a 0xFFFFFFFF size or offset. Only a placeholder
- *   sends either reader to the Zip64 locator (`may_be_zip64` in the crate, `requiresZip64` in
- *   zip.js), and both look for it exactly `ZIP64_LOCATOR_LENGTH` bytes before the end record —
- *   then follow it differently. A locator signature there is refused too, placeholder or not
+ * - no Zip64 placeholder — 0xFFFF entries, a 0xFFFFFFFF size or offset, the three the crate's
+ *   `may_be_zip64` reads; zip.js's `requiresZip64` reads those and 0xFFFF as the directory's
+ *   disk, which the disk rule above already refuses. Only a placeholder sends either reader to
+ *   the Zip64 locator, and both look for it exactly `ZIP64_LOCATOR_LENGTH` bytes before the end
+ *   record — then follow it differently. A locator signature there is refused too, placeholder
+ *   or not
  * - the directory ends where the end record starts: otherwise zip.js moves to the directory
  *   beside the end record while the crate follows the stored offset
  */

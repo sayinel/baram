@@ -43,8 +43,9 @@
  *   `the_fetch_cap_is_the_number_the_publish_gate_scrapes` in `origin.rs` (MAX_REVOCATION_BYTES),
  *   `the_registry_cap_is_the_number_the_publish_gate_scrapes` in `fetch.rs` (MAX_REGISTRY_BYTES),
  *   `the_archive_bounds_are_the_numbers_the_community_gate_scrapes` in `limits.rs` (the six
- *   numeric bounds `pluginArchiveLimits` reads via `bound()`, plus the ALLOWED_COMPRESSION method
- *   list — the same test asserts all seven, and MAX_PLUGIN_ARCHIVE_BYTES besides), and
+ *   NUMBERS `pluginArchiveLimits` reads via `bound()` — five defences' bounds and the ratio's
+ *   floor — plus the ALLOWED_COMPRESSION method list, the sixth defence; the same test asserts
+ *   all seven values, and MAX_PLUGIN_ARCHIVE_BYTES besides), and
  *   `the_readme_cap_is_the_number_the_community_gate_scrapes` in `fetch.rs` (MAX_README_BYTES).
  *   Without the first, `const MAX_REVOCATION_BYTES: usize = ONE_MIB;` plus a decoy comment in the
  *   matched form left this returning 1 MiB while clients capped at whatever `ONE_MIB` said — and an
@@ -410,11 +411,13 @@ export function pluginArchiveByteCap(limitsSource: string): number {
 }
 
 /**
- * §380 gate 6 — what a plugin archive must satisfy to pass §69's shared extraction core
- * (`extract_entry` in `src-tauri/src/fs/archive.rs`), read out of `limits.rs` where the app
- * declares them. That core's own header names SIX defences — entry count, per-entry size, total
- * size, compression ratio, path depth, and compression method — but the ratio defence alone
- * spans two constants (the ratio and its floor), which is why this interface has SEVEN fields.
+ * §380 gate 6 — what a plugin archive must satisfy to pass the shared extraction core in
+ * `src-tauri/src/fs/archive.rs` (`check_entry_count` for the entry count, `extract_entry` for the
+ * rest; §53's Notion import and §69's plugin install both extract through it), read out of
+ * `limits.rs` where the app declares the plugin install's values. That core's own header names
+ * SIX defences — entry count, per-entry size, total size, compression ratio, path depth, and
+ * compression method — but the ratio defence alone spans two constants (the ratio and its
+ * floor), which is why this interface has SEVEN fields.
  */
 export interface PluginArchiveLimits {
   /** APPNOTE 4.4.5 method codes, from `ALLOWED_COMPRESSION` (0 = stored, 8 = deflated). */
@@ -432,7 +435,7 @@ export interface PluginArchiveLimits {
  * today. ‼️ A variant missing here THROWS rather than being skipped: a skipped method would
  * make the gate refuse, silently, archives the app installs.
  *
- * ‼️ A `Map`, NOT A PLAIN OBJECT (M8, fix round 1). A compression method spelled
+ * ‼️ A `Map`, NOT A PLAIN OBJECT. A compression method spelled
  * `constructor` — or any other name `Object.prototype` carries — must miss this lookup, not
  * silently resolve to a function `code === undefined` never catches.
  */
@@ -447,21 +450,21 @@ const ZIP_METHOD_CODES: ReadonlyMap<string, number> = new Map([
  * ratio defence alone spans two constants), read out of the file where they are declared. The
  * gate enforces them on bytes actually read, the way `extract_entry` does.
  *
- * ‼️ THE COUNT ASSERTION IS LOAD-BEARING, but not for the reason an earlier draft of this
- * comment gave — that these names are ALSO used at their call site in
- * `src-tauri/src/plugin/archive.rs`. That is true but irrelevant here: this function's caller
- * passes `limits.rs`'s text ALONE, and a use site in a different file can never appear in it.
- * What a second declaration-form match WITHIN `limits.rs` itself would mean: a `#[cfg(test)]`
- * module shadowing one of these names with its own declaration, or a doc comment quoting an old
- * value in the declaration form (the decoy shape spelled out near `origin.rs`'s anchor). Each
- * pattern requires the DECLARATION form, so one match per identifier means the constant that
- * ships.
+ * ‼️ THE COUNT ASSERTION IS LOAD-BEARING, and not because these names are also used at several
+ * sites in `src-tauri/src/plugin/archive.rs`: this function's caller passes `limits.rs`'s text
+ * ALONE, and a use site in a different file can never appear in it. What a second
+ * declaration-form match WITHIN `limits.rs` itself would mean: a `#[cfg(test)]` module shadowing
+ * one of these names with its own declaration, or a doc comment quoting an old value in the
+ * declaration form (the decoy shape spelled out near `origin.rs`'s anchor). Each pattern requires
+ * the DECLARATION form, so one match per identifier rules out an ADDED declaration. A real one
+ * respelled past the pattern while a decoy keeps the count at 1 is the Rust anchor's job — see
+ * this file's header.
  *
  * ‼️ ALLOWED_COMPRESSION IS VALIDATED ELEMENT-BY-ELEMENT, not by a bare `CompressionMethod::(\w+)`
- * scan (I1, fix round 1): that scan matched text inside a line comment or a block comment
- * exactly as readily as live code, so commenting an entry out (leaving the array's declared
- * LENGTH stale, itself a compile error a developer would then "fix" by editing the length down)
- * left this function still reporting the commented-out method as allowed. Every non-empty,
+ * scan: such a scan matches text inside a line comment or a block comment exactly as readily as
+ * live code, so commenting an entry out (leaving the array's declared LENGTH stale, itself a
+ * compile error a developer would then "fix" by editing the length down) would leave this
+ * function still reporting the commented-out method as allowed. Every non-empty,
  * comma-separated element of the captured body must match `zip::CompressionMethod::<Variant>`
  * exactly, or this throws naming the offending element — which a commented-out line never does.
  */
@@ -480,9 +483,9 @@ export function pluginArchiveLimits(limitsSource: string): PluginArchiveLimits {
     );
   const methods = soleDeclaration(
     limitsSource,
-    // ‼️ The body capture runs up to the first `];` (I1, fix round 1), not the first `]` —
-    // `[^\]]*` would have truncated at a `]` written inside a comment inside the array, same
-    // failure mode as the comment-reads-as-live defect this whole function now guards against.
+    // ‼️ The body capture runs up to the first `];`, not the first `]` — `[^\]]*` would truncate
+    // at a `]` written inside a comment inside the array, the same comment-read-as-live failure
+    // the element check below guards against.
     /\bALLOWED_COMPRESSION\s*:\s*\[zip::CompressionMethod;\s*\d+\]\s*=\s*\[([\s\S]*?)\]\s*;/gu,
     "ALLOWED_COMPRESSION",
   );
