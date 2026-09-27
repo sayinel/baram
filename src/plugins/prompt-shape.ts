@@ -5,7 +5,27 @@
 // forbid), the sandbox's pre-check (so an author's mistake throws instead of vanishing in
 // Rust), and the host's frame validator (for a plugin that drives the transport directly).
 // Tier-agnostic: no store, no DOM — the sandbox realm imports it too.
-import { PROMPT_LIMITS } from "./sandbox/protocol";
+import type { SandboxHostRequest } from "./sandbox/protocol";
+
+import { MAX_SANDBOX_REPORT_BYTES, PROMPT_LIMITS } from "./sandbox/protocol";
+
+type PromptFrame = Extract<SandboxHostRequest, { kind: `prompt_${string}` }>;
+
+/** Room left for the `{type, requestId}` envelope around a request (plan 0109 P8). */
+const FRAME_ENVELOPE_BYTES = 256;
+
+/** Matches a lone surrogate only — in `u` mode a pair is one code point. NOT `g`: `test` on a
+ *  global regex keeps `lastIndex` and misses the next string's hit (spec 0061 §9). */
+const LONE_SURROGATE = /[\uD800-\uDFFF]/u;
+
+function hasLoneSurrogate(value: unknown): boolean {
+  if (typeof value === "string") return LONE_SURROGATE.test(value);
+  if (Array.isArray(value)) return value.some(hasLoneSurrogate);
+  if (typeof value === "object" && value !== null) {
+    return Object.values(value).some(hasLoneSurrogate);
+  }
+  return false;
+}
 
 /** Why an input-box request is malformed or over a limit, or `null`. */
 export function inputBoxProblem(opts: unknown): null | string {
@@ -41,6 +61,28 @@ function optsProblem(opts: unknown, isInputBox: boolean): null | string {
   if (typeof value !== "string") return "opts.value must be a string";
   return value.length > PROMPT_LIMITS.valueChars
     ? `opts.value: at most ${PROMPT_LIMITS.valueChars} characters`
+    : null;
+}
+
+/**
+ * Why the sandbox must not send `request`, or `null` — the shape rules plus the two things Rust
+ * would drop WITHOUT answering (spec 0061 §6, §9): a lone surrogate, which `serde_json` refuses,
+ * and a report over `MAX_SANDBOX_REPORT_BYTES`. Caught here, the author gets the reason at once
+ * instead of a 150 s wait.
+ */
+export function promptFrameProblem(request: PromptFrame): null | string {
+  const shape =
+    request.kind === "prompt_quick_pick"
+      ? quickPickProblem(request.items, request.opts)
+      : inputBoxProblem(request.opts);
+  if (shape !== null) return shape;
+  if (hasLoneSurrogate(request)) {
+    return "a string holds a lone surrogate (half of an emoji or another astral character — often from slicing one), which Baram's IPC cannot carry";
+  }
+  const limit = MAX_SANDBOX_REPORT_BYTES - FRAME_ENVELOPE_BYTES;
+  const bytes = new TextEncoder().encode(JSON.stringify(request)).length;
+  return bytes > limit
+    ? `the request is ${bytes} bytes as sent; the limit is ${limit}`
     : null;
 }
 

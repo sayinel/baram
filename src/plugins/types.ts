@@ -596,6 +596,12 @@ export interface SandboxContext {
   files: SandboxFilesAPI;
   network: NetworkAPI;
   /**
+   * §385 — host-drawn prompts. The `PromptsAPI` contract (see its doc comment) plus two
+   * refusals only this tier checks, before anything is sent: a string holding a lone surrogate,
+   * and a request larger than the IPC frame limit (spec 0061 §4, §9).
+   */
+  prompts: PromptsAPI;
+  /**
    * §260 Phase 4c — the values the user set for this plugin's declared fields. Read-only
    * and host-mediated: the record is the app's, and `settings:changed` (delivered without a
    * payload) is the signal to read it again.
@@ -839,8 +845,9 @@ export interface UIAPI {
 /**
  * Capabilities that admit the `ui` surface. Shared by both tiers on purpose: the
  * trusted tier hands out a `UIAPI` when a plugin holds any of these, and the sandboxed
- * tier answers `ui` requests under the same rule (§260 Phase 4a). One list, so "can this
- * plugin speak to the screen?" cannot come to two different answers.
+ * tier answers `ui` requests under the same rule (§260 Phase 4a). One list, so "may this
+ * plugin use the `ui` surface?" cannot come to two different answers. (§385 `prompts`
+ * reach the screen without any of these — their bound is the prompt gate, spec 0061 D2.)
  */
 export const UI_CAPABILITIES: readonly PluginCapability[] = [
   "settings",

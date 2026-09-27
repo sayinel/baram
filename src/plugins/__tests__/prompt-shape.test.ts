@@ -1,7 +1,11 @@
 // §385 spec 0061 §7 — one rule set for three layers (gate, sandbox pre-check, host validator).
 import { describe, expect, it } from "vitest";
 
-import { inputBoxProblem, quickPickProblem } from "../prompt-shape";
+import {
+  inputBoxProblem,
+  promptFrameProblem,
+  quickPickProblem,
+} from "../prompt-shape";
 import { PROMPT_LIMITS } from "../sandbox/protocol";
 
 const item = (id: string, extra: Record<string, unknown> = {}) => ({
@@ -99,5 +103,27 @@ describe("inputBoxProblem", () => {
     expect(inputBoxProblem({ value: 5 })).toMatch(
       /opts\.value must be a string/,
     );
+  });
+});
+
+describe("promptFrameProblem", () => {
+  it("flags a lone surrogate anywhere, even right after another hit", () => {
+    // Guards the `g`-flag trap: a global regex's `test` keeps `lastIndex` and misses the next hit.
+    const bad = {
+      items: [{ id: "a", label: "0123456789\uD800" }],
+      kind: "prompt_quick_pick" as const,
+    };
+    const worse = {
+      items: [{ id: "\uD800", label: "a" }],
+      kind: "prompt_quick_pick" as const,
+    };
+    expect(promptFrameProblem(bad)).toMatch(/lone surrogate/);
+    expect(promptFrameProblem(worse)).toMatch(/lone surrogate/);
+    expect(
+      promptFrameProblem({
+        items: [{ id: "a", label: "😀" }],
+        kind: "prompt_quick_pick",
+      }),
+    ).toBeNull();
   });
 });

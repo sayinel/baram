@@ -15,6 +15,7 @@ import type { SandboxTransport } from "./transport";
 
 import { pluginSandboxSend } from "../../ipc/plugin-invoke";
 import { logger } from "../../utils/logger";
+import { inputBoxProblem, quickPickProblem } from "../prompt-shape";
 import { MAX_UI_TEXT_CHARS } from "./protocol";
 
 type Fields = Record<string, unknown>;
@@ -163,6 +164,11 @@ const HOST_REQUEST_VALIDATORS: {
   editor_set_markdown: (r) =>
     typeof r.markdown === "string" &&
     r.markdown.length <= MAX_SET_MARKDOWN_CHARS,
+  // §385 — shape and hard bounds from the ONE rule set the gate and the sandbox pre-check use
+  // (`prompt-shape.ts`). A refusal here answers only generically (`refuseIfAwaited`), which is why
+  // the sandbox pre-check exists: the author gets the specific reason there first.
+  prompt_input_box: (r) => inputBoxProblem(r.opts) === null,
+  prompt_quick_pick: (r) => quickPickProblem(r.items, r.opts) === null,
   // §260 Phase 4c — carries nothing: WHICH fields exist is the host's answer, from the
   // manifest, so there is no key or field list here for a plugin to widen.
   settings_read: () => true,

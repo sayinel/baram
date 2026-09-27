@@ -7,7 +7,12 @@
 // stays behind while the member moves — silently reattaching the note to whatever
 // sorts into that slot. (This already happened once in `plugin-op.ts`, and again
 // here when the 3c-2c frames were added.)
-import type { AICompleteOptions } from "../types";
+import type {
+  AICompleteOptions,
+  InputBoxOptions,
+  QuickPickItem,
+  QuickPickOptions,
+} from "../types";
 
 /** Main app → sandbox realm. */
 export type HostToSandbox =
@@ -123,6 +128,18 @@ export type SandboxHostRequest =
       // is already over tauri's 8 KiB channel-data threshold, and a cap chosen to stay under
       // it would put a behaviour change exactly on that boundary.
       kind: "settings_read";
+    }
+  | {
+      // §385 — an input box (spec 0061 §9). Answered INLINE with the typed text or `null`: 1,000
+      // characters serialise to at most 6,000 bytes, under tauri's 8 KiB queue threshold (D7).
+      kind: "prompt_input_box";
+      opts?: InputBoxOptions;
+    }
+  | {
+      // §385 — a quick pick (spec 0061 §9). Answered inline with the chosen `id` or `null`.
+      items: QuickPickItem[];
+      kind: "prompt_quick_pick";
+      opts?: QuickPickOptions;
     }
   | { kind: "ai_complete"; opts?: AICompleteOptions; prompt: string }
   | { kind: "ai_list_models" }

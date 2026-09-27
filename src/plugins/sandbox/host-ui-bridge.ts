@@ -7,8 +7,8 @@
 // limiting belong: none of them can be enforced in the realm being constrained.
 //
 // WHY it enforces: a `plugin-*` window holds no store, no `document`, and only
-// `plugin_call` + the two transport commands. This handler is the sole route from a
-// sandbox to the screen.
+// `plugin_call` + the two transport commands. This handler and `host-prompt-bridge.ts`
+// (§385) are the routes from a sandbox to the screen.
 import type { PluginCapability } from "../types";
 import type { SandboxHostRequest } from "./protocol";
 
@@ -67,7 +67,8 @@ type UIRequest = Extract<SandboxHostRequest, { kind: `ui_${string}` }>;
  * Build the `ui` half of one sandboxed plugin's host-request handler.
  *
  * Gated on `UI_CAPABILITIES` — the same rule that decides whether a TRUSTED plugin gets
- * a `UIAPI` at all, rather than a second policy that could drift from it.
+ * a `UIAPI` at all, rather than a second policy that could drift from it. Prompts are not
+ * `ui` and are not gated here (§385, `host-prompt-bridge.ts`).
  */
 export function createUIRequestHandler(
   options: UIRequestHandlerOptions,

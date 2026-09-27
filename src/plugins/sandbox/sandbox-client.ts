@@ -7,6 +7,7 @@ import type {
   AIModel,
   NetworkAPI,
   PluginSettingValue,
+  PromptsAPI,
   SandboxContext,
   SandboxEditorAPI,
   SandboxFilesAPI,
@@ -23,6 +24,7 @@ import type {
 import type { SandboxTransport } from "./transport";
 
 import { logger } from "../../utils/logger";
+import { promptFrameProblem } from "../prompt-shape";
 
 /**
  * §260 3c-2c — sandbox-side bound on a host-mediated request. Longer than the
@@ -231,6 +233,25 @@ export function startSandboxClient(
       fireUI({ kind: "ui_notify", message, type }),
   };
 
+  // §385 — host-drawn prompts (spec 0061 §9). Checked HERE before sending, because a frame Rust
+  // refuses (over 8 MiB, a lone surrogate) is dropped without an answer and the plugin would wait
+  // out the 150 s timer; this way the author gets the reason at once. The host re-checks
+  // everything — this realm is the plugin's own. NOT on the staged-read chain: the answer is
+  // inline (spec 0061 D7), so an open prompt never holds the plugin's `getMarkdown`.
+  const ask = async (
+    request: Extract<SandboxHostRequest, { kind: `prompt_${string}` }>,
+  ): Promise<string | undefined> => {
+    const problem = promptFrameProblem(request);
+    if (problem !== null) throw new Error(`prompt refused: ${problem}`);
+    const answer = await hostRequest(request);
+    return answer === null ? undefined : (answer as string);
+  };
+  const prompts: PromptsAPI = {
+    showInputBox: (opts) => ask({ kind: "prompt_input_box", opts }),
+    showQuickPick: (items, opts) =>
+      ask({ items, kind: "prompt_quick_pick", opts }),
+  };
+
   // §260 Phase 4b — Rust holds ONE staged slot per plugin, so two reads in flight would
   // race: the first pull would take the second document and the second would find the slot
   // empty. Serialised here rather than given a per-request handle, because the slot's
@@ -331,6 +352,7 @@ export function startSandboxClient(
     editor,
     files,
     network,
+    prompts,
     settings,
     storage,
     ui,
