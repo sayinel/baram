@@ -327,7 +327,8 @@ export type PluginTrust = "sandboxed" | "trusted";
 /**
  * §385 Host-drawn prompts (spec 0061). Both tiers, no capability: what bounds them is WHEN they
  * may open — only while one of this plugin's commands, started by the user, is still running,
- * and only until the user types, clicks or drops something outside the prompt.
+ * and only until the user types, clicks or drops something outside the prompt (dictation
+ * counts as typing).
  *
  * Resolves `undefined` when the user cancels (Esc, a click outside, an app palette opening).
  * Rejects when the call is refused: outside that window, another prompt already open, focus

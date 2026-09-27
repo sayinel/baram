@@ -38,7 +38,7 @@ ctx.commands.register("insert-template", async () => {
 
 A prompt opens only while **one of your plugin's commands, started by the user, is still
 running** — from the command palette or your status-bar item — and only until the user
-**types or clicks outside the prompt**.
+**types, clicks or drops something outside the prompt**.
 
 - Ask before the promise your command handler returned settles. Once it settles, and no other
   command of yours is running, requests are refused.
