@@ -139,7 +139,7 @@ export function showPluginPrompt(
     );
   }
   const input = overlay.querySelector<HTMLInputElement>(".plugin-prompt-input");
-  if (!input || !isUnobstructed(input, overlay)) {
+  if (!input || !isUnobstructed(input)) {
     dismantle();
     return Promise.reject(new PromptOccludedError());
   }
@@ -172,18 +172,21 @@ export function showPluginPrompt(
 }
 
 /**
- * Whether the input's centre is the prompt's own, i.e. nothing is painted over it (spec 0061
- * D9). An input with no box — nothing laid out — counts as covered: refusal, not a crash.
- * Blind to a `pointer-events: none` cover, which `elementFromPoint` skips.
+ * Whether the topmost element at the input's centre IS the input, i.e. nothing is painted over
+ * it (spec 0061 D9). The danger is an input nobody can see receiving keystrokes, so only the
+ * input itself passes. Everything inside the overlay is host-drawn, so a different hit inside
+ * it can only be the prompt's own chrome over the input — a theme or CSS regression — and is
+ * refused like any other cover. An input with no box — nothing laid out — counts as covered:
+ * refusal, not a crash. Blind to a `pointer-events: none` cover, which `elementFromPoint` skips.
  */
-function isUnobstructed(input: HTMLElement, root: HTMLElement): boolean {
+function isUnobstructed(input: HTMLElement): boolean {
   const box = input.getBoundingClientRect();
   if (box.width === 0 || box.height === 0) return false;
   const hit = document.elementFromPoint(
     box.left + box.width / 2,
     box.top + box.height / 2,
   );
-  return hit !== null && root.contains(hit);
+  return hit === input;
 }
 
 /**

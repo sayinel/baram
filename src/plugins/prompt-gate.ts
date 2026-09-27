@@ -1,13 +1,14 @@
 // §385 Who may open a plugin prompt, and when (spec 0061 §5).
 //
 // A prompt may open only while one of the plugin's USER commands is running AND nothing has
-// been typed or clicked outside the prompt since that command started (D1). Both halves live
-// here: `beginPluginInvocation` is called by `executePluginCommand` — the one HOST entry that
-// grants prompt rights, its callers fixed by `execute-plugin-command-callers.test.ts` — and a
-// capture-phase listener counts the user's input. A trusted plugin's own panel clicks reach
-// commands through `commands.execute` instead and grant nothing (spec 0061 §5.1). The open
-// prompt is recorded here as well, so the teardown sweep (`unregisterPluginUI`) can close it
-// without importing a component, and so input inside it is told apart.
+// been typed, clicked or dropped outside the prompt since that command started (D1). Both
+// halves live here: `beginPluginInvocation` is called by `executePluginCommand` — the one
+// HOST entry that grants prompt rights, its callers fixed by
+// `execute-plugin-command-callers.test.ts` — and capture-phase listeners count the user's
+// input. A trusted plugin's own panel clicks reach commands through `commands.execute`
+// instead and grant nothing (spec 0061 §5.1). The open prompt is recorded here as well, so
+// the teardown sweep (`unregisterPluginUI`) can close it without importing a component, and
+// so input inside it is told apart.
 //
 // ‼️ Rights are PER PLUGIN, not per call: a sandbox frame names no invocation, so while a
 // command runs the same plugin's event handlers may prompt too (spec 0061 §5.3).
@@ -111,7 +112,7 @@ export function promptRefusal(pluginId: string): null | string {
     return "a prompt can open only while one of this plugin's commands is running";
   }
   if (baselines.get(pluginId) !== inputSeq) {
-    return "the user has typed or clicked outside the prompt since the command started, or a prompt was cancelled or covered";
+    return "the user has typed, clicked or dropped something outside the prompt since the command started, or a prompt was cancelled or covered";
   }
   if (open) return "another plugin prompt is already open";
   if (deepActiveElement() instanceof HTMLIFrameElement) {
@@ -125,6 +126,8 @@ export function resetPromptGate(): void {
   if (watching) {
     window.removeEventListener("keydown", countInput, true);
     window.removeEventListener("pointerdown", countInput, true);
+    window.removeEventListener("beforeinput", countInput, true);
+    window.removeEventListener("drop", countInput, true);
   }
   watching = false;
   invocations.clear();
@@ -142,10 +145,21 @@ export function revokePromptRights(pluginId: string): void {
  * Capture phase ON WINDOW: it runs before React's root listener, so the key that launches a
  * command from the palette counts BEFORE the invocation starts. In bubble phase it would count
  * after the start and revoke the rights it had just granted (spec 0061 §5.2).
+ *
+ * `beforeinput` and `drop` count too: macOS dictation, the character viewer and a drag-drop
+ * reach the page as those with no `keydown` or `pointerdown`, and a delayed prompt would
+ * otherwise take focus after them (spec 0061 D1, §5.2). A keystroke that also fires
+ * `beforeinput` counts twice, which is harmless — the check is equality with the baseline, not
+ * a count. The palette's launching Enter adds no `beforeinput` after the start: its `keydown`
+ * is cancelled (`usePaletteListNav`), and a cancelled `keydown` fires none — our half is pinned
+ * in `plugin-prompt-palette.test.tsx`; the browser's half is checked by hand, by the
+ * sandbox-smoke README's steps that launch from the palette.
  */
 function watchInput(): void {
   if (watching) return;
   watching = true;
   window.addEventListener("keydown", countInput, true);
   window.addEventListener("pointerdown", countInput, true);
+  window.addEventListener("beforeinput", countInput, true);
+  window.addEventListener("drop", countInput, true);
 }

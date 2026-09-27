@@ -165,6 +165,22 @@ describe("showPluginPrompt", () => {
     expect(document.activeElement).toBe(origin);
   });
 
+  it("refuses when the hit is the prompt's own chrome, not the input", async () => {
+    // Everything inside the overlay is host-drawn, so a hit there other than the input can only
+    // be the prompt's own chrome painted over it (a theme or CSS regression) — and the danger
+    // is an input nobody can see receiving keystrokes. This fails if the check accepts any hit
+    // inside the overlay instead of the input itself.
+    restoreLayout();
+    restoreLayout = stubPromptLayout(() =>
+      document.querySelector(".plugin-prompt-header"),
+    );
+    const origin = document.body.appendChild(document.createElement("button"));
+    origin.focus();
+    await expect(pick(1)).rejects.toBeInstanceOf(PromptOccludedError);
+    expect(overlay()).toBeNull();
+    expect(document.activeElement).toBe(origin);
+  });
+
   it("counts an input with no box as covered", async () => {
     restoreLayout();
     const hit = vi

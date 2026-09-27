@@ -71,7 +71,12 @@ function launch(
   );
   const paletteInput = screen.getByPlaceholderText("Type a command...");
   fireEvent.change(paletteInput, { target: { value: "Zqx probe" } });
-  fireEvent.keyDown(paletteInput, { key: "Enter" }); // bubbles, like the real key
+  // Bubbles, like the real key. `false` = default prevented: the launching Enter must add no
+  // input AFTER the rights begin, and a `beforeinput` would (the watcher counts those). Our half
+  // is that `usePaletteListNav` cancels this `keydown`; the browser's half — no `beforeinput`
+  // follows a cancelled `keydown`, a UI Events rule the app relies on — is checked by hand, by
+  // the sandbox-smoke README's steps that launch from the palette.
+  expect(fireEvent.keyDown(paletteInput, { key: "Enter" })).toBe(false);
   return result;
 }
 

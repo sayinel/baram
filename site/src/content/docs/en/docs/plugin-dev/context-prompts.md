@@ -44,9 +44,9 @@ running** — from the command palette or your status-bar item — and only unti
   command of yours is running, requests are refused.
 - The right belongs to your plugin, not to one call: while a command runs, your event handlers
   and timers may prompt too.
-- The first key or click outside the prompt ends the right. Keys typed between two steps of a
-  flow — after one prompt closes, before the next opens — go where focus is and end it too.
-  A modifier key alone does not count.
+- The first key, click, text input (dictation included) or drop outside the prompt ends the
+  right. Keys typed between two steps of a flow — after one prompt closes, before the next
+  opens — go where focus is and end it too. A modifier key alone does not count.
 - Cancelling ends it as well: later requests are refused until the user runs a command again.
   Picking or entering a value does not — "pick a template, then type a title" works.
 - A sandboxed command has 30 seconds from its start to its first prompt, and again from each

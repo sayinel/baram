@@ -105,6 +105,8 @@ one toast, `PROMPT pick=<id|cancel|ERR:…> input=<text|cancel|ERR:…>`.
    and `pick=ERR:…`.
 8. Type a Hangul query into the command palette and press Enter before the syllable is
    finished to run **Sandbox Smoke: prompts** — the prompt opens.
+9. Run **Sandbox Smoke: prompts after 3 s** and dictate a word into the editor within 3 s
+   (Fn Fn) — no prompt, and `pick=ERR:…`.
 
 ## Expected noise, not failures
 

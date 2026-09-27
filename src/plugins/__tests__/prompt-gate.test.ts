@@ -38,12 +38,16 @@ describe("promptRefusal", () => {
   it("is ended by a key or a pointer press outside the prompt", () => {
     beginPluginInvocation("p");
     key("a");
-    expect(promptRefusal("p")).toMatch(/typed or clicked outside/);
+    expect(promptRefusal("p")).toMatch(
+      /typed, clicked or dropped something outside/,
+    );
     beginPluginInvocation("q");
     document.body.dispatchEvent(
       new MouseEvent("pointerdown", { bubbles: true }),
     );
-    expect(promptRefusal("q")).toMatch(/typed or clicked outside/);
+    expect(promptRefusal("q")).toMatch(
+      /typed, clicked or dropped something outside/,
+    );
     // spec 0061 §5.2 — IME composition still fires keydown (keyCode 229) and counts as input.
     beginPluginInvocation("r");
     document.body.dispatchEvent(
@@ -54,7 +58,28 @@ describe("promptRefusal", () => {
         keyCode: 229,
       }),
     );
-    expect(promptRefusal("r")).toMatch(/typed or clicked outside/);
+    expect(promptRefusal("r")).toMatch(
+      /typed, clicked or dropped something outside/,
+    );
+  });
+
+  it("is ended by text input or a drop that arrives with no key or click", () => {
+    // spec 0061 D1, §5.2 — macOS dictation and the character viewer reach the page as
+    // `beforeinput`, a drag-drop as `drop`; neither brings a `keydown` or `pointerdown`.
+    beginPluginInvocation("p");
+    expect(promptRefusal("p")).toBeNull(); // the rights the event below has to end
+    document.body.dispatchEvent(
+      new InputEvent("beforeinput", {
+        bubbles: true,
+        data: "a",
+        inputType: "insertText",
+      }),
+    );
+    expect(promptRefusal("p")).toMatch(/dropped something outside/);
+    beginPluginInvocation("q");
+    expect(promptRefusal("q")).toBeNull();
+    document.body.dispatchEvent(new Event("drop", { bubbles: true }));
+    expect(promptRefusal("q")).toMatch(/dropped something outside/);
   });
 
   it("does not count a modifier alone, a keyup, or input inside the open prompt", () => {
@@ -68,9 +93,17 @@ describe("promptRefusal", () => {
     const prompt = { close: vi.fn(), pluginId: "other", root };
     markPromptOpen(prompt);
     key("Enter", inside);
+    inside.dispatchEvent(
+      new InputEvent("beforeinput", {
+        bubbles: true,
+        data: "a",
+        inputType: "insertText",
+      }),
+    );
+    inside.dispatchEvent(new Event("drop", { bubbles: true }));
     markPromptClosed(prompt);
     root.remove();
-    expect(promptRefusal("p")).toBeNull(); // positive twin: the three above left rights intact
+    expect(promptRefusal("p")).toBeNull(); // positive twin: none of the above ended the rights
   });
 
   it("counts the launching key BEFORE the invocation starts — capture phase on window", () => {
