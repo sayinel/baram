@@ -199,10 +199,11 @@ function ThemeBrowserCard({
   onInstall: () => void;
 }) {
   const { t } = useTranslation();
-  // Three states, and the middle one is the point: "installed" and "installed at another
-  // version" want different words, because only the second is an action worth taking from
-  // this screen. Updating from the gallery's own badge is the ordinary path; this button
-  // reinstalls, which is why it says so rather than saying "Update".
+  // Four states now, and "installed" (same version) is still the one this note is about:
+  // "installed" and "installed at another version" want different words, because only the
+  // second is an action worth taking from this screen. Updating from the gallery's own badge
+  // is the ordinary path; this button reinstalls, which is why it says so rather than saying
+  // "Update".
   // 넷째 — 같은 id 가 파일에서 왔다: 이 버튼은 그 사본을 레지스트리 패키지로 바꾸므로
   // 그렇게 말한다(스펙 0063 §4, 확인은 `handleInstall`).
   const isInstalled = installedVersion !== undefined;
