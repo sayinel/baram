@@ -239,7 +239,9 @@ export function emitPluginEvent(event: string, ...args: unknown[]): void {
 }
 
 /**
- * Execute a plugin command from the host — the ONE entry for a user's gesture (§385 spec 0061
+ * Execute a plugin command from the host — the one HOST entry that grants prompt rights, its
+ * callers fixed by `execute-plugin-command-callers.test.ts`; a trusted plugin's own panel
+ * clicks reach commands through `commands.execute` instead and grant nothing (§385 spec 0061
  * §5.1). It starts the owner's prompt rights for as long as the handler runs; `return await`
  * so the `finally` waits for the handler, not for the call.
  */
@@ -300,7 +302,10 @@ export function readSelection(editor: PluginEditorHandle): {
 export function registerHostCommandHandler(
   fullId: string,
   handler: (...args: unknown[]) => unknown,
-  /** §385 — the owner, for prompt rights (spec 0061 §5.1). Required: a missing owner fails closed and silently. */
+  /**
+   * §385 — the owner, for prompt rights (spec 0061 §5.1). Required, because a command with
+   * no owner would have every prompt it asks for refused — closed, but silently.
+   */
   pluginId: string,
 ): Disposable {
   commandHandlers.set(fullId, handler);

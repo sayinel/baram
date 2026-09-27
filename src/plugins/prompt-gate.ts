@@ -2,10 +2,12 @@
 //
 // A prompt may open only while one of the plugin's USER commands is running AND nothing has
 // been typed or clicked outside the prompt since that command started (D1). Both halves live
-// here: `beginPluginInvocation` is called by `executePluginCommand` — the one place a user's
-// gesture becomes a plugin command — and a capture-phase listener counts the user's input.
-// The open prompt is recorded here as well, so the teardown sweep (`unregisterPluginUI`) can
-// close it without importing a component, and so input inside it is told apart.
+// here: `beginPluginInvocation` is called by `executePluginCommand` — the one HOST entry that
+// grants prompt rights, its callers fixed by `execute-plugin-command-callers.test.ts` — and a
+// capture-phase listener counts the user's input. A trusted plugin's own panel clicks reach
+// commands through `commands.execute` instead and grant nothing (spec 0061 §5.1). The open
+// prompt is recorded here as well, so the teardown sweep (`unregisterPluginUI`) can close it
+// without importing a component, and so input inside it is told apart.
 //
 // ‼️ Rights are PER PLUGIN, not per call: a sandbox frame names no invocation, so while a
 // command runs the same plugin's event handlers may prompt too (spec 0061 §5.3).
@@ -55,11 +57,17 @@ export function beginPluginInvocation(pluginId: string): () => void {
   };
 }
 
-/** Forget everything held for `pluginId`, closing its prompt if one is open — the teardown sweep. */
+/**
+ * Forget everything held for `pluginId`, closing its prompt if one is open — the teardown sweep.
+ *
+ * Rights are dropped BEFORE `close()` runs, so a `close` that throws (a plugin's own teardown
+ * code) cannot leave this plugin's prompt rights alive.
+ */
 export function clearPromptGate(pluginId: string): void {
-  if (open?.pluginId === pluginId) open.close();
+  const toClose = open?.pluginId === pluginId ? open : null;
   invocations.delete(pluginId);
   baselines.delete(pluginId);
+  toClose?.close();
 }
 
 function countInput(event: Event): void {
@@ -67,6 +75,22 @@ function countInput(event: Event): void {
   if (open && event.target instanceof Node && open.root.contains(event.target))
     return;
   inputSeq += 1;
+}
+
+/**
+ * The innermost active element, descending through any open shadow root.
+ *
+ * A trusted plugin panel mounts inside an open shadow root (`PluginShadowMount.tsx`), so an
+ * iframe focused there reports the shadow HOST — not itself — as `document.activeElement`;
+ * without this walk condition 4 (spec 0061 §5.3) would read that host, see no iframe, and let
+ * the frame's own keys go uncounted.
+ */
+function deepActiveElement(): Element | null {
+  let el = document.activeElement;
+  while (el?.shadowRoot?.activeElement) {
+    el = el.shadowRoot.activeElement;
+  }
+  return el;
 }
 
 /** The window module's hand-off when a prompt settles. */
@@ -88,7 +112,7 @@ export function promptRefusal(pluginId: string): null | string {
     return "the user has typed or clicked outside the prompt since the command started, or cancelled a prompt";
   }
   if (open) return "another plugin prompt is already open";
-  if (document.activeElement instanceof HTMLIFrameElement) {
+  if (deepActiveElement() instanceof HTMLIFrameElement) {
     return "focus is inside a frame, where the app cannot see what the user types";
   }
   return null;

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   commandHandlers,
+  commandOwners,
   executePluginCommand,
   registerHostCommandHandler,
 } from "../plugin-host-registry";
@@ -22,6 +23,7 @@ const key = (k: string, target: EventTarget = document.body) =>
 afterEach(() => {
   resetPromptGate();
   commandHandlers.clear();
+  commandOwners.clear();
 });
 
 describe("promptRefusal", () => {
@@ -42,6 +44,17 @@ describe("promptRefusal", () => {
       new MouseEvent("pointerdown", { bubbles: true }),
     );
     expect(promptRefusal("q")).toMatch(/typed or clicked outside/);
+    // spec 0061 §5.2 — IME composition still fires keydown (keyCode 229) and counts as input.
+    beginPluginInvocation("r");
+    document.body.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        bubbles: true,
+        isComposing: true,
+        key: "Process",
+        keyCode: 229,
+      }),
+    );
+    expect(promptRefusal("r")).toMatch(/typed or clicked outside/);
   });
 
   it("does not count a modifier alone, a keyup, or input inside the open prompt", () => {
@@ -97,6 +110,21 @@ describe("promptRefusal", () => {
     frame.remove();
     expect(promptRefusal("p")).toBeNull();
   });
+
+  it("sees a frame focused inside an open shadow root, behind its host", () => {
+    // §385 ruling R10 — a trusted plugin panel mounts inside an open shadow root
+    // (`PluginShadowMount.tsx`), so focusing an iframe there reports the shadow HOST as
+    // `document.activeElement`, not the iframe itself.
+    beginPluginInvocation("p");
+    const host = document.body.appendChild(document.createElement("div"));
+    const shadow = host.attachShadow({ mode: "open" });
+    const frame = shadow.appendChild(document.createElement("iframe"));
+    frame.tabIndex = 0;
+    frame.focus();
+    expect(document.activeElement).toBe(host); // proves the premise
+    expect(promptRefusal("p")).toMatch(/inside a frame/);
+    host.remove();
+  });
 });
 
 describe("clearPromptGate", () => {
@@ -119,6 +147,32 @@ describe("clearPromptGate", () => {
     beginPluginInvocation("p");
     oldEnd(); // the old handler's finally, after a reload
     expect(promptRefusal("p")).toBeNull();
+  });
+
+  it("drops rights before a throwing close runs, not after", () => {
+    beginPluginInvocation("p");
+    const prompt = {
+      close: vi.fn(() => {
+        throw new Error("teardown boom");
+      }),
+      pluginId: "p",
+      root: document.createElement("div"),
+    };
+    markPromptOpen(prompt);
+    expect(() => clearPromptGate("p")).toThrow("teardown boom");
+    expect(promptRefusal("p")).toMatch(/commands is running/);
+  });
+
+  it("leaves another plugin's open prompt alone", () => {
+    beginPluginInvocation("p");
+    const prompt = {
+      close: vi.fn(),
+      pluginId: "p",
+      root: document.createElement("div"),
+    };
+    markPromptOpen(prompt);
+    clearPromptGate("q");
+    expect(prompt.close).not.toHaveBeenCalled();
   });
 });
 
@@ -146,6 +200,24 @@ describe("executePluginCommand", () => {
       "p",
     );
     await expect(executePluginCommand("p.bad")).rejects.toThrow("boom");
+    expect(promptRefusal("p")).toMatch(/commands is running/);
+  });
+
+  it("holds rights for as long as the handler's promise is pending — `return await`", async () => {
+    let release: (() => void) | undefined;
+    registerHostCommandHandler(
+      "p.slow",
+      () =>
+        new Promise<void>((r) => {
+          release = r;
+        }),
+      "p",
+    );
+    const run = executePluginCommand("p.slow");
+    await Promise.resolve();
+    expect(promptRefusal("p")).toBeNull();
+    release?.();
+    await run;
     expect(promptRefusal("p")).toMatch(/commands is running/);
   });
 });
