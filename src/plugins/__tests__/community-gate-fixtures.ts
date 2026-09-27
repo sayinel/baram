@@ -32,6 +32,18 @@ export const REAL_README_CAP: number = readmeByteCap(
   ),
 );
 
+/** Spec 0058 §7.1's example submission. `sha256` is a placeholder the gate tests replace. */
+export const SUBMISSION = {
+  id: "hello-counter",
+  publisher: "octocat",
+  release: {
+    asset: "hello-counter-1.2.0.zip",
+    sha256: "0".repeat(64),
+    tag: "v1.2.0",
+  },
+  repo: "octocat/baram-hello-counter",
+};
+
 export interface CraftEntry {
   /** Overrides the CRC in both headers — a wrong one is what a corrupted entry looks like. */
   crc?: number;
@@ -91,6 +103,10 @@ export function craftZip(entries: readonly CraftEntry[]): Uint8Array {
       endRecord(parts.count, parts.directory.length, parts.locals.length),
     ]),
   );
+}
+
+export function descriptorBytes(value: unknown): Uint8Array {
+  return new TextEncoder().encode(JSON.stringify(value));
 }
 
 /** One extra-field record: little-endian id, little-endian length, data. */
