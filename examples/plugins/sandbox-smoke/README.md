@@ -89,7 +89,7 @@ Also check, by eye:
 
 ## Prompts (§385)
 
-Two commands and a status-bar item (**💬 prompt**) exercise `ctx.prompts`. Each run ends in
+Three commands and a status-bar item (**💬 prompt**) exercise `ctx.prompts`. Each run ends in
 one toast, `PROMPT pick=<id|cancel|ERR:…> input=<text|cancel|ERR:…>`.
 
 1. Type Hangul into the input box and press Enter before the syllable is finished — the
@@ -103,8 +103,10 @@ one toast, `PROMPT pick=<id|cancel|ERR:…> input=<text|cancel|ERR:…>`.
 6. Focus a file-tree item, then click **💬 prompt** — the prompt opens.
 7. Run **Sandbox Smoke: prompts after 3 s** and type in the editor within 3 s — no prompt,
    and `pick=ERR:…`.
-8. Type a Hangul query into the command palette and press Enter before the syllable is
-   finished to run **Sandbox Smoke: prompts** — the prompt opens.
+8. Type a Hangul query into the command palette (for example `창 열`) and press Enter before
+   the last syllable is finished to run **샌드박스 스모크: 창 열기** — the prompt opens. Use
+   this command, not the English-titled ones: the palette does not map Hangul keystrokes to
+   Latin letters, so a Hangul query never lists them.
 9. Run **Sandbox Smoke: prompts after 3 s**, start dictation from the menu bar (Edit ▸ Start
    Dictation…, if macOS added it) or with a dictation shortcut of pressing Control twice
    (System Settings ▸ Keyboard ▸ Dictation; Control is a modifier the gate ignores), and

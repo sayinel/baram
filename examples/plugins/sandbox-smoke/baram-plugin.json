@@ -41,6 +41,11 @@
         "id": "prompt-delayed",
         "title": "Sandbox Smoke: prompts after 3 s",
         "palette": true
+      },
+      {
+        "id": "prompt-ko",
+        "title": "샌드박스 스모크: 창 열기",
+        "palette": true
       }
     ],
     "statusBar": [

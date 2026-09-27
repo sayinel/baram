@@ -324,6 +324,10 @@ export async function activate(ctx) {
     return line;
   };
   ctx.commands.register("prompt", promptFlow);
+  // A Hangul title, so a Hangul query finds it in the palette: check 8 presses Enter while that
+  // query is still composing. The palette matches titles as typed and does not map Hangul
+  // keystrokes to Latin ones, so the English titles above never appear for such a query.
+  ctx.commands.register("prompt-ko", promptFlow);
   ctx.commands.register("prompt-delayed", async () => {
     await new Promise((resolve) => setTimeout(resolve, 3000));
     return promptFlow();
