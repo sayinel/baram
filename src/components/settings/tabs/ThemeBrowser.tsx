@@ -164,6 +164,7 @@ export function ThemeBrowser({ onBack }: ThemeBrowserProps) {
             <ThemeBrowserCard
               entry={entry}
               error={installErrors[entry.id]}
+              installedFromFile={installedThemes[entry.id]?.origin === "file"}
               installedVersion={installedThemes[entry.id]?.manifest.version}
               installing={installing[entry.id] === true}
               key={entry.id}
@@ -181,12 +182,15 @@ export function ThemeBrowser({ onBack }: ThemeBrowserProps) {
 function ThemeBrowserCard({
   entry,
   error,
+  installedFromFile,
   installedVersion,
   installing,
   onInstall,
 }: {
   entry: RegistryEntry;
   error: string | undefined;
+  /** 같은 id 의 설치본이 파일에서 왔다 — 스펙 0063 §4 */
+  installedFromFile: boolean;
   /** The version of this theme already on disk, if any (0090 final review, N5). */
   installedVersion: string | undefined;
   installing: boolean;
@@ -197,6 +201,8 @@ function ThemeBrowserCard({
   // version" want different words, because only the second is an action worth taking from
   // this screen. Updating from the gallery's own badge is the ordinary path; this button
   // reinstalls, which is why it says so rather than saying "Update".
+  // 넷째 — 같은 id 가 파일에서 왔다: 이 버튼은 그 사본을 레지스트리 패키지로 바꾸므로
+  // 그렇게 말한다(스펙 0063 §4, 확인은 `handleInstall`).
   const isInstalled = installedVersion !== undefined;
   const isSameVersion = installedVersion === entry.version;
   return (
@@ -210,11 +216,13 @@ function ThemeBrowserCard({
         <span className="theme-browser-card-author">{entry.author}</span>
         {isInstalled && (
           <span className="theme-browser-card-installed">
-            {isSameVersion
-              ? t("settings.appearance.themeBrowser.installed")
-              : t("settings.appearance.themeBrowser.installedOther", {
-                  version: installedVersion,
-                })}
+            {installedFromFile
+              ? t("settings.appearance.themeBrowser.installedFromFile")
+              : isSameVersion
+                ? t("settings.appearance.themeBrowser.installed")
+                : t("settings.appearance.themeBrowser.installedOther", {
+                    version: installedVersion,
+                  })}
           </span>
         )}
         {error !== undefined && (
@@ -231,9 +239,11 @@ function ThemeBrowserCard({
       >
         {installing
           ? t("settings.appearance.themeBrowser.installing")
-          : isInstalled
-            ? t("settings.appearance.themeBrowser.reinstall")
-            : t("settings.appearance.themeBrowser.install")}
+          : installedFromFile
+            ? t("settings.appearance.themeBrowser.replace")
+            : isInstalled
+              ? t("settings.appearance.themeBrowser.reinstall")
+              : t("settings.appearance.themeBrowser.install")}
       </button>
     </div>
   );

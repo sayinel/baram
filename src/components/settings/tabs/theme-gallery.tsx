@@ -176,11 +176,15 @@ export function ThemeGallery({
               return (
                 <ThemeCard
                   // 출처가 붙인 배지. 그룹 제목은 보조기기에만 읽히므로, 눈으로
-                  // 커스텀을 알아보던 기존 표식은 그대로 둔다.
+                  // 커스텀을 알아보던 기존 표식은 그대로 둔다. 파일에서 설치한 테마도
+                  // 같은 자리에 배지를 단다(스펙 0063 §4) — 업데이트 배지가 없는
+                  // 이유를 카드가 말한다.
                   badge={
                     source === "custom"
                       ? t("settings.appearance.customBadge")
-                      : undefined
+                      : installed?.origin === "file"
+                        ? t("settings.appearance.fileBadge")
+                        : undefined
                   }
                   error={installErrors[theme.id]}
                   isActive={activeThemeId === theme.id}

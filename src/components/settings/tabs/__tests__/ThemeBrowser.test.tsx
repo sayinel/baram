@@ -375,3 +375,30 @@ describe("ThemeBrowser", () => {
     expect(onBack).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("a copy installed from a file (스펙 0063 §4)", () => {
+  it("says so and offers Replace instead of Installed / Reinstall", async () => {
+    fetchResult = Promise.resolve({ plugins: [themeEntry()] });
+    const record = installedAt("0.9.0");
+    useSettingsStore.setState({
+      installedThemes: { dracula: { ...record.dracula, origin: "file" } },
+    });
+    render(<ThemeBrowser onBack={() => {}} />);
+
+    expect(
+      await screen.findByText(
+        EN["settings.appearance.themeBrowser.installedFromFile"],
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", {
+        name: EN["settings.appearance.themeBrowser.replace"],
+      }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", {
+        name: EN["settings.appearance.themeBrowser.reinstall"],
+      }),
+    ).toBeNull();
+  });
+});

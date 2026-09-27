@@ -33,8 +33,11 @@ vi.mock("@tauri-apps/api/app", () => ({ getVersion: appVersion }));
 // signature to zero params, which the spread wrapper below (and `.mock.calls[0][0]` further
 // down) then fails to typecheck against.
 const showAlert = vi.fn();
+const showConfirm =
+  vi.fn<(message: string, options?: unknown) => Promise<boolean>>();
 vi.mock("../../../../utils/confirm-dialog", () => ({
   showAlert: (...a: unknown[]) => showAlert(...a),
+  showConfirm: (...a: [string, unknown?]) => showConfirm(...a),
 }));
 
 import type { RegistryEntry, RegistryIndex } from "../../../../plugins/types";
@@ -99,6 +102,7 @@ beforeEach(() => {
   themeUninstall.mockReset();
   themeUninstall.mockResolvedValue(undefined);
   showAlert.mockClear();
+  showConfirm.mockReset();
   appVersion.mockResolvedValue("0.7.3");
   useSettingsStore.setState({
     activeThemeId: "system",
@@ -603,5 +607,71 @@ describe("showConsentHistory", () => {
     expect(message).toContain("1.0.0");
     expect(message).not.toContain("9.9.9");
     expect(message).not.toContain("2099");
+  });
+});
+
+describe("replacing a copy installed from a file (스펙 0063 §4)", () => {
+  /** 같은 id 의 파일 설치본 — 매니페스트 버전 0.9.0, 레지스트리 항목은 1.0.0. */
+  function fileCopy(): InstalledTheme {
+    const base = installedTheme();
+    return {
+      ...base,
+      manifest: { ...base.manifest, version: "0.9.0" },
+      origin: "file",
+    };
+  }
+
+  it("asks first, and installs nothing when refused", async () => {
+    useSettingsStore.setState({ installedThemes: { dracula: fileCopy() } });
+    showConfirm.mockResolvedValueOnce(false);
+    const { result } = renderHook(() => useThemeActions());
+
+    let installed: boolean | undefined;
+    await act(async () => {
+      installed = await result.current.handleInstall(
+        entry(),
+        "https://reg.test",
+      );
+    });
+
+    expect(installed).toBe(false);
+    expect(showConfirm).toHaveBeenCalledTimes(1);
+    expect(showConfirm.mock.calls[0][0]).toBe(
+      T("settings.appearance.themeBrowser.replaceFileCopy", {
+        from: "0.9.0",
+        name: "Dracula",
+        to: "1.0.0",
+      }),
+    );
+    expect(result.current.pendingConsent).toBeNull();
+    expect(installTheme).not.toHaveBeenCalled();
+  });
+
+  it("goes on to the consent dialog when the replace is accepted", async () => {
+    useSettingsStore.setState({ installedThemes: { dracula: fileCopy() } });
+    showConfirm.mockResolvedValueOnce(true);
+    const { result } = renderHook(() => useThemeActions());
+
+    act(() => {
+      void result.current.handleInstall(entry(), "https://reg.test");
+    });
+    await reachConsent();
+
+    expect(result.current.pendingConsent).not.toBeNull();
+  });
+
+  it("does not ask when the installed copy came from the registry", async () => {
+    useSettingsStore.setState({
+      installedThemes: { dracula: installedTheme() },
+    });
+    const { result } = renderHook(() => useThemeActions());
+
+    act(() => {
+      void result.current.handleInstall(entry(), "https://reg.test");
+    });
+    await reachConsent();
+
+    expect(showConfirm).not.toHaveBeenCalled();
+    expect(result.current.pendingConsent).not.toBeNull();
   });
 });
