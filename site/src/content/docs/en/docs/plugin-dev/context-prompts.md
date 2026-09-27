@@ -53,7 +53,7 @@ running** — from the command palette or your status-bar item — and only unti
   prompt closing to the next. Time spent in a prompt does not count.
 - Clicks inside a trusted plugin's own panel, settings tab or file viewer are not commands, so
   prompts are refused there.
-- A prompt is refused while another plugin's prompt is open, while focus is inside a frame
+- A prompt is refused while another prompt — yours or another plugin's — is open, while focus is inside a frame
   (such as an HTML preview), or when another window covers where it would appear — and that
   last refusal ends the right, like a cancel.
 
