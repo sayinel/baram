@@ -8,6 +8,7 @@ import {
   EMPTY_COMMUNITY,
   firstDescriptorCommit,
   readDescriptor,
+  readDescriptorAt,
   validateRegistryDocument,
 } from "../../../scripts/community-files";
 import { cleanUpWorlds, gitIn, tempDir } from "./community-gate-world";
@@ -34,6 +35,29 @@ describe("readDescriptor — a descriptor in a plain directory", () => {
     mkdirSync(join(dir, "community"));
     writeFileSync(join(dir, "community", "hello-counter.json"), TEXT);
     const read = readDescriptor(dir, "hello-counter");
+    expect(read.ok ? Buffer.from(read.bytes).toString("utf8") : read).toBe(
+      TEXT,
+    );
+  });
+});
+
+describe("readDescriptorAt — a descriptor at one named commit", () => {
+  it("throws on a ref or an abbreviated SHA, and reads the same commit named in full", () => {
+    const dir = tempDir("baram-files-at-");
+    const git = gitIn(dir);
+    git("init", "--quiet");
+    mkdirSync(join(dir, "community"));
+    writeFileSync(join(dir, "community", "hello-counter.json"), TEXT);
+    git("add", "--all");
+    git("commit", "--quiet", "-m", "descriptor");
+    const full = git("rev-parse", "HEAD").trim();
+    for (const named of ["HEAD", "main", full.slice(0, 7)]) {
+      expect(() => readDescriptorAt(dir, named, "hello-counter")).toThrow(
+        `readDescriptorAt takes a full 40-character commit SHA, not ${JSON.stringify(named)}`,
+      );
+    }
+    // The twin: the full SHA of that very commit reads its descriptor.
+    const read = readDescriptorAt(dir, full, "hello-counter");
     expect(read.ok ? Buffer.from(read.bytes).toString("utf8") : read).toBe(
       TEXT,
     );

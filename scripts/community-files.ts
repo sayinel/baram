@@ -121,9 +121,16 @@ export function readDescriptor(dir: string, id: string): Verdict<{ bytes: Uint8A
  * blob is larger than `MAX_SUBMISSION_BYTES`, measured with `git cat-file -s` before it is read.
  *
  * A `sha` that `dir` holds no commit for THROWS: the workflow checked out something other than
- * the pull request's head, which is its own bug, not a verdict about the submission.
+ * the pull request's head, which is its own bug, not a verdict about the submission. So does a
+ * `sha` that is not 40 lowercase hex characters: a ref (`HEAD`, `main`) or an abbreviation names
+ * whatever git resolves it to when asked, not one fixed commit, so the bytes read could come from
+ * a commit other than the one the caller meant — every caller must pass a full SHA, not only the
+ * gate CLI that checks one.
  */
 export function readDescriptorAt(dir: string, sha: string, id: string): Verdict<{ bytes: Uint8Array }> {
+  if (!/^[0-9a-f]{40}$/u.test(sha)) {
+    throw new Error(`readDescriptorAt takes a full 40-character commit SHA, not ${JSON.stringify(sha)}`);
+  }
   const git = (...args: string[]) => execFileSync("git", ["-C", dir, ...args], { encoding: "utf8", stdio: "pipe" });
   const path = `community/${id}.json`;
   const has = spawnSync("git", ["-C", dir, "cat-file", "-e", `${sha}^{commit}`]);

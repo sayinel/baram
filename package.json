@@ -25,6 +25,7 @@
     "validate:index": "tsx scripts/validate-index.ts registry/index.json && tsx scripts/validate-index.ts registry/community.json",
     "validate:registry-assets": "tsx scripts/validate-registry-assets.ts",
     "community:gate": "tsx scripts/run-community-gate.ts",
+    "community:publish": "tsx scripts/run-community-publish.ts",
     "lint:doc-comments": "node scripts/check-doc-comments.mjs",
     "lint:wiki": "node scripts/check-wiki.mjs",
     "lint:ts": "eslint src/ --max-warnings=0",
