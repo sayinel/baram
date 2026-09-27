@@ -674,4 +674,45 @@ describe("replacing a copy installed from a file (스펙 0063 §4)", () => {
     expect(showConfirm).not.toHaveBeenCalled();
     expect(result.current.pendingConsent).not.toBeNull();
   });
+
+  // 스펙 0063 §4 — "수락 뒤 기록에 `origin` 없음". `theme-install.test.ts`(~671행)의
+  // "레지스트리 설치의 기록에는 origin 이 없다" 가 `installTheme` 자체(스테이징 파이프라인)에서
+  // 이 사실을 고정한다. 이 파일은 `installTheme` 을 모듈째 mock 하므로 같은 사실을 거기서 다시
+  // 볼 수 없다 — 대신 그 모킹된 반환값(실제 `installTheme` 이 낸다고 이미 고정된 모양, origin
+  // 없음)이 파일 설치본 레코드를 **덮어쓰는** 스토어 쪽(`addInstalledTheme`)을 이 테스트가 센다.
+  //
+  // 무엇이 이것을 실패시키는가: `stageAndRecord`/`addInstalledTheme` 이 새 레코드 위에 옛
+  // 레코드의 `origin` 을 도로 얹으면(예: `freshConsent` 갈래에서 `theme` 대신
+  // `{ ...prior, ...theme }` 로 병합을 뒤집으면) 이 단언이 `origin: "file"` 을 보고 실패한다.
+  it("clears origin once the replace completes end-to-end", async () => {
+    useSettingsStore.setState({ installedThemes: { dracula: fileCopy() } });
+    showConfirm.mockResolvedValueOnce(true);
+    installTheme.mockResolvedValue({
+      installed: installedTheme(),
+      ok: true,
+    });
+    const { result } = renderHook(() => useThemeActions());
+
+    act(() => {
+      void result.current.handleInstall(entry(), "https://reg.test");
+    });
+    await reachConsent();
+    expect(result.current.pendingConsent).not.toBeNull();
+
+    await act(async () => {
+      result.current.settleConsent(true);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(
+      useSettingsStore.getState().installedThemes.dracula,
+    ).not.toBeUndefined();
+    expect(useSettingsStore.getState().installedThemes.dracula?.id).toBe(
+      "dracula",
+    );
+    expect(
+      useSettingsStore.getState().installedThemes.dracula,
+    ).not.toHaveProperty("origin");
+  });
 });
