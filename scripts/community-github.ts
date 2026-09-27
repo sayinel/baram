@@ -239,9 +239,9 @@ export function ownership(
 
 /**
  * Gate 3, the window before publishing (plan 0105 P24; spec 0058 §11). `firstAddSha` is the
- * commit that first added `community/<id>.json` SINCE ITS LAST DELETION (Task 9's
- * `firstDescriptor` finds it — the first version, not the one just before, so an ownership that
- * changed hands once cannot hand itself on).
+ * commit that first added `community/<id>.json` SINCE ITS LAST DELETION (`community-files.ts`'s
+ * `firstDescriptorCommit` finds it — the first version, not the one just before, so an ownership
+ * that changed hands once cannot hand itself on).
  *
  * Until a descriptor is published nobody has a `publisherId`, so identity for it is the numeric
  * author id of the pull request that MERGED that first-add commit (`mergedPullRequest`) — but
@@ -262,7 +262,7 @@ export function ownership(
  *
  * Every DEFINITIVE refusal names the one lever there is (P27): a maintainer merges a pull request
  * that deletes the descriptor, and adds older than that deletion stop counting
- * (`firstDescriptor`). Neither GitHub simply not answering 200 — for either lookup — nor a 200
+ * (`firstDescriptorCommit`). Neither GitHub simply not answering 200 — for either lookup — nor a 200
  * whose body cannot even be read as the expected shape carries a lever: both name what went wrong
  * and ask the caller to re-run the check, since the answer may change. `mergedPullRequest`'s
  * optional `status` field marks that distinction for the pull request lookup — set whenever ITS

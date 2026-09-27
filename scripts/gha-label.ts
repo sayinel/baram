@@ -18,11 +18,14 @@
  * ‼️ Flat in `scripts/`, not `scripts/lib/`. The repo's `.gitignore` carries a bare `lib/`
  * rule, which silently swallows any such directory — the first version of this file was
  * untracked and would have reached CI as a missing import.
+ *
+ * `max` defaults to the 80 characters an id needs; a whole refusal reason passes `Infinity` —
+ * truncating the explanation of a failed gate hides the part that says why (plan 0105).
  */
-export function label(raw: string): string {
+export function label(raw: string, max = 80): string {
   const flattened = raw
     .replaceAll(/[\n\r]/gu, "⏎")
     // The command prefix itself, so no reassembly survives the newline strip.
     .replaceAll("::", "∷");
-  return flattened.length > 80 ? `${flattened.slice(0, 80)}…` : flattened;
+  return flattened.length > max ? `${flattened.slice(0, max)}…` : flattened;
 }
