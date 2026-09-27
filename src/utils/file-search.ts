@@ -101,9 +101,14 @@ export function fuzzyMatch(query: string, text: string): boolean {
  * Rewards: consecutive matches, start-of-string, start-of-word (after separator).
  */
 export function fuzzyScore(query: string, text: string): number {
-  const q = query.toLowerCase();
-  const t = text.toLowerCase();
+  return fuzzyScoreLower(query.toLowerCase(), text.toLowerCase());
+}
 
+/**
+ * `fuzzyScore` for a query and text the caller has ALREADY lowercased (§385 spec 0061 §7) —
+ * so a list of thousands can be lowercased once when it opens rather than on every keystroke.
+ */
+export function fuzzyScoreLower(q: string, t: string): number {
   let qi = 0;
   let score = 0;
   let prevMatchIdx = -2; // -2 so first match at 0 isn't counted as consecutive
