@@ -137,6 +137,7 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
+    "@zip.js/zip.js": "2.18.2",
     "emojibase-data": "17.0.0",
     "eslint": "^10.10.0",
     "eslint-config-prettier": "^10.1.8",
