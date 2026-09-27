@@ -289,4 +289,48 @@ export async function activate(ctx) {
     report("SMOKE-AI", out);
     return `SMOKE-AI ${out.join(" ")}`;
   });
+
+  // §385 — prompts (spec 0061). One toast per run: the host refuses a second within 4 s
+  // (`MIN_NOTIFY_INTERVAL_MS`), so both results ride one line. The input box is asked whatever the
+  // pick did — after an Esc it must be REFUSED (a cancel ends the flow), which is check 4.
+  const PROMPT_ITEMS = Array.from({ length: 5000 }, (_, i) => ({
+    description: `folder-${i % 97}/note-${i}.md`,
+    id: `item-${i}`,
+    label: `${["meeting", "노트", "template", "daily", "회의록"][i % 5]} ${i}`,
+  }));
+  const outcome = async (fn) => {
+    try {
+      const value = await fn();
+      return value === undefined ? "cancel" : String(value).slice(0, 60);
+    } catch (e) {
+      return `ERR:${brief(e)}`;
+    }
+  };
+  const promptFlow = async () => {
+    const pick = await outcome(() =>
+      ctx.prompts.showQuickPick(PROMPT_ITEMS, {
+        placeholder: "Filter 5,000 items",
+        title: "Smoke: quick pick",
+      }),
+    );
+    const input = await outcome(() =>
+      ctx.prompts.showInputBox({
+        placeholder: "Type anything",
+        title: "Smoke: input box",
+      }),
+    );
+    const line = `PROMPT pick=${pick} input=${input}`;
+    ctx.ui.showNotification(line, line.includes("ERR:") ? "error" : "info");
+    return line;
+  };
+  ctx.commands.register("prompt", promptFlow);
+  // A Hangul title, so a Hangul query finds it in the palette: check 8 presses Enter while that
+  // query is still composing. The palette matches titles as typed and does not map Hangul
+  // keystrokes to Latin ones, so the English titles above never appear for such a query.
+  ctx.commands.register("prompt-ko", promptFlow);
+  ctx.commands.register("prompt-delayed", async () => {
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+    return promptFlow();
+  });
+  ctx.ui.setStatusBarText("prompt", "💬 prompt");
 }

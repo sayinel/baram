@@ -29,6 +29,7 @@ import { logger } from "../utils/logger";
 import { createAIAPI } from "./plugin-ai-policy";
 import {
   commandHandlers,
+  commandOwners,
   editorRefusalMessage,
   editorSurfaceBlocked,
   emitScopedPluginEvent,
@@ -42,6 +43,7 @@ import {
 } from "./plugin-host-registry";
 import { declaredSettingsFor, resolvePluginSettings } from "./plugin-settings";
 import { usePluginUIStore } from "./plugin-ui-store";
+import { createPromptsAPI } from "./prompts-api";
 import {
   SETTINGS_CHANGED_EVENT,
   watchPluginSettings,
@@ -91,6 +93,7 @@ function createCommandsAPI(
     ): Disposable {
       const fullId = `${pluginId}.${id}`;
       commandHandlers.set(fullId, handler);
+      commandOwners.set(fullId, pluginId);
       const showInPalette = opts?.paletteVisible === true || !!opts?.title;
       if (showInPalette) {
         usePluginUIStore.getState().registerPaletteCommand({
@@ -102,6 +105,7 @@ function createCommandsAPI(
       const disposable: Disposable = {
         dispose: () => {
           commandHandlers.delete(fullId);
+          commandOwners.delete(fullId);
           if (showInPalette) {
             usePluginUIStore.getState().removePaletteCommand(fullId);
           }
@@ -380,6 +384,8 @@ export function createExtensionContext(
     ai,
     pluginId: manifest.id,
     pluginPath,
+    // §385 no capability (spec 0061 D2): what bounds a prompt is WHEN it may open — the gate.
+    prompts: createPromptsAPI(manifest.id, manifest.name),
     subscriptions: disposables,
     commands,
     editor,

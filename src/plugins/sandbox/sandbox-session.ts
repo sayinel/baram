@@ -49,6 +49,9 @@ type ServiceOf<K> = K extends `${infer S}_${string}` ? S : never;
 export const INFLIGHT_BUDGET: Record<HostService, number> = {
   ai: 4,
   editor: 4,
+  // §385 — one: a prompt occupies the user, and the app shows one at a time (spec 0061 D5). A
+  // plugin's second request is refused here, before it reaches the gate.
+  prompt: 1,
   // §260 Phase 4c — the `Record` did its job: adding `settings_read` would not compile
   // without a budget here. Same 4 as `editor` for the same reason (main-realm work, no
   // external cost), though a settings read is far cheaper: it resolves at most
@@ -92,9 +95,12 @@ export type HostRequestHandler = (
 ) => Promise<unknown>;
 
 interface Pending {
+  /** Kept so a timer rearmed after a prompt reports the same command (§385 spec 0061 §6). */
+  commandId: string;
   reject: (e: Error) => void;
   resolve: (v: unknown) => void;
-  timer: ReturnType<typeof setTimeout>;
+  /** `null` while a prompt holds this session's command timers. */
+  timer: null | ReturnType<typeof setTimeout>;
 }
 
 export class SandboxSession {
@@ -106,6 +112,8 @@ export class SandboxSession {
     resolve: (c: PluginContributions) => void;
   } = null;
   private callSeq = 0;
+  /** True while a prompt occupies this session's command timers (§385 spec 0061 §6). */
+  private callTimersHeld = false;
   private declared: null | PluginContributions = null;
   private disposed = false;
   private readonly emitHandlers = new Set<
@@ -208,7 +216,7 @@ export class SandboxSession {
     this.offMessage();
     this.activateSettle?.reject(new Error("Sandbox session disposed"));
     for (const p of this.pending.values()) {
-      clearTimeout(p.timer);
+      if (p.timer) clearTimeout(p.timer);
       p.reject(new Error("Sandbox session disposed"));
     }
     this.pending.clear();
@@ -227,11 +235,10 @@ export class SandboxSession {
       return Promise.reject(new Error("Sandbox session disposed"));
     const callId = `call-${++this.callSeq}`;
     return new Promise<unknown>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pending.delete(callId);
-        reject(new Error(`Sandbox command "${commandId}" timed out`));
-      }, CALL_TIMEOUT_MS);
-      this.pending.set(callId, { reject, resolve, timer });
+      const pending: Pending = { commandId, reject, resolve, timer: null };
+      this.pending.set(callId, pending);
+      // A call started while a prompt is open waits for the prompt like the others (spec 0061 §6).
+      if (!this.callTimersHeld) this.armCallTimer(callId, pending);
       this.transport.send({ type: "invokeCommand", callId, commandId, args });
     });
   }
@@ -261,6 +268,15 @@ export class SandboxSession {
     this.transport.send(msg);
   }
 
+  private armCallTimer(callId: string, pending: Pending): void {
+    pending.timer = setTimeout(() => {
+      this.pending.delete(callId);
+      pending.reject(
+        new Error(`Sandbox command "${pending.commandId}" timed out`),
+      );
+    }, CALL_TIMEOUT_MS);
+  }
+
   private handle(m: SandboxToHost): void {
     switch (m.type) {
       case "activateError":
@@ -269,7 +285,7 @@ export class SandboxSession {
       case "callResult": {
         const p = this.pending.get(m.callId);
         if (!p) break;
-        clearTimeout(p.timer);
+        if (p.timer) clearTimeout(p.timer);
         this.pending.delete(m.callId);
         if (m.ok) p.resolve(m.value);
         else p.reject(new Error(m.error));
@@ -295,6 +311,18 @@ export class SandboxSession {
     // Not routed through `answerHostRequest`: a refusal has no in-flight entry (that
     // is precisely why it is refused), so it answers directly.
     this.transport.send({ type: "hostResponse", requestId, ok: false, error });
+  }
+
+  /**
+   * §385 — a person choosing is not the plugin running (spec 0061 §6). ALL pending calls stop:
+   * a prompt frame names no call, so the session cannot tell which command asked.
+   */
+  private holdCallTimers(): void {
+    this.callTimersHeld = true;
+    for (const pending of this.pending.values()) {
+      if (pending.timer) clearTimeout(pending.timer);
+      pending.timer = null;
+    }
   }
 
   private onHostRequest(requestId: string, request: SandboxHostRequest): void {
@@ -345,6 +373,7 @@ export class SandboxSession {
       }, HOST_REQUEST_TIMEOUT_MS);
     const entry = { answered: false, service, timer: startTimer() };
     this.inflightHost.set(requestId, entry);
+    if (service === "prompt") this.holdCallTimers();
 
     const onToken = (token: string) => {
       // Compare the ENTRY, not just the id (3c-2c code review, MEDIUM-5): `requestId`
@@ -371,7 +400,18 @@ export class SandboxSession {
         });
       }
     };
-    this.hostRequestHandler(request, onToken)
+    // A handler that throws SYNCHRONOUSLY (rather than returning a rejected promise) would
+    // otherwise skip the `.then`/`.finally` chain below entirely, leaving the slot taken and —
+    // now that a prompt can hold this session's command timers — `callTimersHeld` stuck at
+    // `true` forever. Caught here and turned into the same rejected promise, so every exit still
+    // takes the one road `.finally` is.
+    let settled: Promise<unknown>;
+    try {
+      settled = this.hostRequestHandler(request, onToken);
+    } catch (err) {
+      settled = Promise.reject(err);
+    }
+    settled
       .then(
         (value) =>
           this.answerHostRequest(requestId, {
@@ -398,8 +438,13 @@ export class SandboxSession {
           }),
       )
       // Settling — not answering — is what frees the slot, so the bound tracks live
-      // provider work. `finally` so a handler that throws still releases.
-      .finally(() => this.releaseHostRequest(requestId));
+      // provider work. `finally` so a handler that throws still releases. A prompt's settle is
+      // also the one road every prompt exit takes, so the command timers resume here — by
+      // construction, not per exit path (§385 spec 0061 §6).
+      .finally(() => {
+        this.releaseHostRequest(requestId);
+        if (service === "prompt") this.resumeCallTimers();
+      });
   }
 
   /** Give up the slot: the handler is done, however it ended. */
@@ -408,6 +453,15 @@ export class SandboxSession {
     if (!entry) return;
     if (entry.timer) clearTimeout(entry.timer);
     this.inflightHost.delete(requestId);
+  }
+
+  /** Every pending call gets a fresh 30 s once the prompt settles. */
+  private resumeCallTimers(): void {
+    this.callTimersHeld = false;
+    if (this.disposed) return;
+    for (const [callId, pending] of this.pending) {
+      if (!pending.timer) this.armCallTimer(callId, pending);
+    }
   }
 
   private validate(

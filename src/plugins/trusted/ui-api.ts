@@ -14,7 +14,9 @@ import type {
 } from "../types";
 
 import { useUIStore } from "../../stores/ui/ui";
+import { pluginSourceLabel } from "../plugin-text";
 import { usePluginUIStore } from "../plugin-ui-store";
+import { clearPromptGate } from "../prompt-gate";
 
 let uiItemCounter = 0;
 
@@ -45,7 +47,7 @@ export function createUIAPI(
     ): void {
       useUIStore
         .getState()
-        .showToast(message, type, displayName?.trim() || pluginId);
+        .showToast(message, type, pluginSourceLabel(displayName, pluginId));
     },
     showStatusBarItem(
       text: string,
@@ -131,8 +133,9 @@ export function createUIAPI(
   };
 }
 
-/** Unregister all UI state (status-bar items + injected styles) for a plugin. */
+/** Unregister all UI state (status-bar items, injected styles, an open prompt and its gate state — §385) for a plugin. */
 export function unregisterPluginUI(pluginId: string): void {
+  clearPromptGate(pluginId);
   usePluginUIStore.getState().unregisterPlugin(pluginId);
   document.head
     .querySelectorAll(`style[data-baram-plugin="${pluginId}"]`)

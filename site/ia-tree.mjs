@@ -116,6 +116,7 @@ export const TITLES = {
   "plugin-dev/entry-point-and-types": "Entry point and public types",
   "plugin-dev/context-commands-editor-files-events": "Context: commands, editor, files, events",
   "plugin-dev/context-ui-and-shadow-dom": "Context: UI and Shadow-DOM isolation",
+  "plugin-dev/context-prompts": "Context: prompts",
   "plugin-dev/context-ai-network-storage-settings": "Context: AI, network, storage, settings",
   "plugin-dev/commands-and-tiptap-extensions": "Command palette and Tiptap extensions",
   "plugin-dev/local-development-and-bundling": "Local development and bundling",
@@ -266,6 +267,7 @@ export const PAGES = [
     "context.files (requires files or files:readonly)", "context.events (requires events)" ] },
   { slug: "plugin-dev/context-ui-and-shadow-dom", src: PD, items: [
     "context.ui", "Shadow-DOM UI isolation" ] },
+  { slug: "plugin-dev/context-prompts" },
   { slug: "plugin-dev/context-ai-network-storage-settings", src: PD, items: [
     "context.ai (requires ai)", "context.network (requires network)",
     "context.storage (requires storage)", "context.settings (requires settings)",

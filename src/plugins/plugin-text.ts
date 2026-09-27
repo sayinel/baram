@@ -7,6 +7,26 @@
 // Kept tier-agnostic — the manifest is author-controlled in both tiers — so it must not
 // pull in a store or a bridge.
 
+/** Attribution is a badge, not a sentence. */
+const MAX_SOURCE_CHARS = 32;
+
+/**
+ * The plugin's name as a badge (§260 Phase 4a HIGH-1, §385 spec 0061 §8): sanitised and capped,
+ * falling back to the id — also capped, since `validateManifest` charset-checks ids but does not
+ * bound their length. One function for every badge: the sandboxed toast, the trusted toast and
+ * the prompt window. The name is author-chosen and may read "Baram"; what tells the user a
+ * plugin is speaking is the badge element (toast) or the host's fixed prefix (prompt), not this.
+ */
+export function pluginSourceLabel(
+  name: string | undefined,
+  pluginId: string,
+): string {
+  return (
+    sanitizePluginText(name ?? "", MAX_SOURCE_CHARS) ||
+    sanitizePluginText(pluginId, MAX_SOURCE_CHARS)
+  );
+}
+
 /**
  * Make plugin-supplied text safe to render as a single line.
  *
@@ -38,4 +58,15 @@ export function sanitizePluginText(raw: string, max: number): string {
   return flattened.length > max
     ? `${flattened.slice(0, max - 1)}\u2026`
     : flattened;
+}
+
+/**
+ * `text` with every lone surrogate replaced by U+FFFD (§385 spec 0061 §9). Rust's
+ * `serde_json::Value` refuses a lone surrogate escape, so a frame carrying one through
+ * `plugin_sandbox_send` would vanish. Not `String.prototype.toWellFormed`: the `lib` in
+ * `tsconfig.json` is ES2022, which does not declare it. In `u` mode a well-formed pair is one
+ * code point, so the class matches lone halves only.
+ */
+export function wellFormedText(text: string): string {
+  return text.replace(/[\uD800-\uDFFF]/gu, "\ufffd");
 }

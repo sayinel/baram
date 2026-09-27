@@ -87,6 +87,33 @@ Also check, by eye:
   deliberately does not declare (`not-declared`);
 - opening another note updates the `📄` item.
 
+## Prompts (§385)
+
+Three commands and a status-bar item (**💬 prompt**) exercise `ctx.prompts`. Each run ends in
+one toast, `PROMPT pick=<id|cancel|ERR:…> input=<text|cancel|ERR:…>`.
+
+1. Type Hangul into the input box and press Enter before the syllable is finished — the
+   whole syllable arrives, once (`input=`).
+2. With the caret in the editor, run **Sandbox Smoke: prompts** from the palette — after the
+   prompts close, the caret is back in the editor.
+3. Leave the quick pick open for more than three minutes, then pick — `pick=<id>` (no timer
+   cut it off).
+4. Press Esc in the quick pick — `pick=cancel input=ERR:…` (a cancel ends the flow).
+5. Type into the 5,000-item filter — no lag.
+6. Focus a file-tree item, then click **💬 prompt** — the prompt opens.
+7. Run **Sandbox Smoke: prompts after 3 s** and type in the editor within 3 s — no prompt,
+   and `pick=ERR:…`.
+8. Type a Hangul query into the command palette (for example `창 열`) and press Enter before
+   the last syllable is finished to run **샌드박스 스모크: 창 열기** — the prompt opens. Use
+   this command, not the English-titled ones: the palette does not map Hangul keystrokes to
+   Latin letters, so a Hangul query never lists them.
+9. Run **Sandbox Smoke: prompts after 3 s**, start dictation from the menu bar (Edit ▸ Start
+   Dictation…, if macOS added it) or with a dictation shortcut of pressing Control twice
+   (System Settings ▸ Keyboard ▸ Dictation; Control is a modifier the gate ignores), and
+   dictate a word into the editor within 3 s — no prompt, and `pick=ERR:…`. Not Fn Fn: the
+   page never sees a native menu, while a Fn press may reach it as a `keydown` and end the
+   right through the key path, which would not test `beforeinput`.
+
 ## Expected noise, not failures
 
 - A CSP refusal for `ws://localhost:1420/` in the sandbox realm. Vite's HMR socket is

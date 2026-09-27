@@ -203,6 +203,14 @@ describe("createExtensionContext", () => {
     });
   });
 
+  test("§385 hands every plugin ctx.prompts — no capability, not a denied proxy", () => {
+    for (const caps of [["commands"], []]) {
+      const ctx = createExtensionContext(makeManifest(caps), "/p");
+      expect(typeof ctx.prompts.showQuickPick).toBe("function");
+      expect(typeof ctx.prompts.showInputBox).toBe("function");
+    }
+  });
+
   describe("denied proxy", () => {
     test("denied proxy ignores Symbol.toPrimitive", () => {
       const ctx = createExtensionContext(makeManifest([]), "/test");

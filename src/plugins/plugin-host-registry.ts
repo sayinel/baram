@@ -15,17 +15,27 @@
 // just shared bookkeeping.
 import type { Disposable } from "./types";
 import type { Schema } from "@tiptap/pm/model";
-import type { EditorState, Transaction } from "@tiptap/pm/state";
+import type { EditorState } from "@tiptap/pm/state";
+import type { EditorView } from "@tiptap/pm/view";
 
 import { useEditorStore } from "../stores/editor/editor";
 import { isTabLoading, loadedTabId } from "../utils/editor/programmatic-update";
 import { logger } from "../utils/logger";
+import { beginPluginInvocation } from "./prompt-gate";
 
 // --- Command Registry (shared across all plugins, both tiers) ---
 export const commandHandlers = new Map<
   string,
   (...args: unknown[]) => unknown
 >();
+
+/**
+ * §385 Which plugin registered each command, recorded AT REGISTRATION (spec 0061 §5.1).
+ * `executePluginCommand` reads it to start that plugin's prompt rights. Not parsed out of the
+ * `${pluginId}.${id}` key: plugin ids happen to be dot-free today (`manifest.ts`), and a rule
+ * that leans on a key's spelling breaks silently when the spelling changes.
+ */
+export const commandOwners = new Map<string, string>();
 
 // --- Event Bus (shared across all plugins, both tiers) ---
 export type EventHandler = (...args: unknown[]) => void;
@@ -123,6 +133,10 @@ export function emitScopedPluginEvent(
  * single transaction (`state.tr` → `view.dispatch`). Structural guesses were what let the
  * selection bug below survive: `{ selection: { from, to } }` typechecks fine while saying
  * nothing about what those numbers index into.
+ *
+ * §385 — `view` is the real `EditorView` so the prompt can hand focus back through
+ * `focusEditorView` (spec 0061 §8). What is stored is already a Tiptap `Editor`
+ * (`setEditorInstance`).
  */
 export interface PluginEditorHandle {
   chain: () => Record<string, unknown>;
@@ -131,7 +145,7 @@ export interface PluginEditorHandle {
   getText: () => string;
   schema: Schema;
   state: EditorState;
-  view: { dispatch: (tr: Transaction) => void };
+  view: EditorView;
 }
 
 let editorInstance: null | PluginEditorHandle = null;
@@ -229,14 +243,26 @@ export function emitPluginEvent(event: string, ...args: unknown[]): void {
   });
 }
 
-/** Execute a plugin command from the host */
+/**
+ * Execute a plugin command from the host — the one HOST entry that grants prompt rights, its
+ * callers fixed by `execute-plugin-command-callers.test.ts`; a trusted plugin's own panel
+ * clicks reach commands through `commands.execute` or a direct call, and grant nothing (§385
+ * spec 0061 §5.1). It starts the owner's prompt rights for as long as the handler runs;
+ * `return await` so the `finally` waits for the handler, not for the call.
+ */
 export async function executePluginCommand(
   id: string,
   ...args: unknown[]
 ): Promise<unknown> {
   const handler = commandHandlers.get(id);
   if (!handler) throw new Error(`Plugin command not found: ${id}`);
-  return handler(...args);
+  const owner = commandOwners.get(id);
+  const end = owner === undefined ? undefined : beginPluginInvocation(owner);
+  try {
+    return await handler(...args);
+  } finally {
+    end?.();
+  }
 }
 
 /**
@@ -281,9 +307,20 @@ export function readSelection(editor: PluginEditorHandle): {
 export function registerHostCommandHandler(
   fullId: string,
   handler: (...args: unknown[]) => unknown,
+  /**
+   * §385 — the owner, for prompt rights (spec 0061 §5.1). Required, because a command with
+   * no owner would have every prompt it asks for refused — closed, but silently.
+   */
+  pluginId: string,
 ): Disposable {
   commandHandlers.set(fullId, handler);
-  return { dispose: () => void commandHandlers.delete(fullId) };
+  commandOwners.set(fullId, pluginId);
+  return {
+    dispose: () => {
+      commandHandlers.delete(fullId);
+      commandOwners.delete(fullId);
+    },
+  };
 }
 
 export function setEditorInstance(editor: unknown): void {

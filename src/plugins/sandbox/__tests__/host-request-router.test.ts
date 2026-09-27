@@ -2,6 +2,7 @@ import type { AIAPI } from "../../types";
 
 import { describe, expect, it, vi } from "vitest";
 
+import { PROMPT_HEARTBEAT_MS } from "../host-prompt-bridge";
 import { createHostRequestHandler } from "../host-request-router";
 
 // §260 Phase 4a — 3c-2c's single handler put ONE capability check (`ai`) ahead of the
@@ -116,5 +117,26 @@ describe("createHostRequestHandler routing (§260 Phase 4a)", () => {
     });
     await expect(handler({ kind: "ui_" } as never, noop)).rejects.toThrow();
     expect(showToast).not.toHaveBeenCalled();
+  });
+
+  it("§385 routes prompts WITH the stream callback, so the heartbeat reaches the session", async () => {
+    vi.useFakeTimers();
+    try {
+      const never = () => new Promise<string | undefined>(() => {});
+      const handler = createHostRequestHandler({
+        capabilities: [],
+        declaredSettings: [],
+        declaredStatusBarIds: [],
+        pluginId: "p",
+        prompts: { showInputBox: never, showQuickPick: never },
+      });
+      const onToken = vi.fn();
+      void handler({ kind: "prompt_input_box" }, onToken);
+      await vi.advanceTimersByTimeAsync(PROMPT_HEARTBEAT_MS);
+      expect(onToken).toHaveBeenCalledWith("");
+    } finally {
+      // A failed assertion above must not leak fake timers into a later test in this file.
+      vi.useRealTimers();
+    }
   });
 });

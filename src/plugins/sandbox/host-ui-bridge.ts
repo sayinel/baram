@@ -7,8 +7,8 @@
 // limiting belong: none of them can be enforced in the realm being constrained.
 //
 // WHY it enforces: a `plugin-*` window holds no store, no `document`, and only
-// `plugin_call` + the two transport commands. This handler is the sole route from a
-// sandbox to the screen.
+// `plugin_call` + the two transport commands. This handler and `host-prompt-bridge.ts`
+// (§385) are the routes from a sandbox to the screen.
 import type { PluginCapability } from "../types";
 import type { SandboxHostRequest } from "./protocol";
 
@@ -16,7 +16,7 @@ import { useUIStore } from "../../stores/ui/ui";
 // §260 Phase 4c — the sanitiser moved to a tier-agnostic module when the settings pane
 // became the second surface rendering author-controlled text. One implementation, because
 // each stripped range carries a reason that would not survive being retyped.
-import { sanitizePluginText } from "../plugin-text";
+import { pluginSourceLabel, sanitizePluginText } from "../plugin-text";
 import { usePluginUIStore } from "../plugin-ui-store";
 import { UI_CAPABILITIES } from "../types";
 import { createCapabilityGate } from "./capability-gate";
@@ -42,8 +42,6 @@ export const MIN_NOTIFY_INTERVAL_MS = 4_000;
 /** A toast is one line in a small box; a status-bar slot is narrower still. */
 const MAX_NOTIFY_CHARS = 200;
 const MAX_STATUS_BAR_CHARS = 64;
-/** Attribution is a badge, not a sentence. */
-const MAX_SOURCE_CHARS = 32;
 
 export interface UIRequestHandlerOptions {
   /** Grants recorded at install, as the manifest declared them. */
@@ -69,7 +67,8 @@ type UIRequest = Extract<SandboxHostRequest, { kind: `ui_${string}` }>;
  * Build the `ui` half of one sandboxed plugin's host-request handler.
  *
  * Gated on `UI_CAPABILITIES` — the same rule that decides whether a TRUSTED plugin gets
- * a `UIAPI` at all, rather than a second policy that could drift from it.
+ * a `UIAPI` at all, rather than a second policy that could drift from it. Prompts are not
+ * `ui` and are not gated here (§385, `host-prompt-bridge.ts`).
  */
 export function createUIRequestHandler(
   options: UIRequestHandlerOptions,
@@ -97,9 +96,7 @@ export function createUIRequestHandler(
   // `validateManifest` charset-checks but does NOT length-limit, and `.toast-source` had
   // no width bound — so a name that sanitises to nothing plus a 300-character id produced
   // a 300-character badge.
-  const label =
-    sanitizePluginText(pluginName ?? "", MAX_SOURCE_CHARS) ||
-    sanitizePluginText(pluginId, MAX_SOURCE_CHARS);
+  const label = pluginSourceLabel(pluginName, pluginId);
   const declared = new Set(declaredStatusBarIds);
   let lastNotifyAt = -Infinity;
 

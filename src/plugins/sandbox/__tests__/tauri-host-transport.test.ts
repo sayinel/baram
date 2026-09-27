@@ -232,6 +232,39 @@ describe("createHostTransport (§260 host end)", () => {
     expect(seen).toHaveLength(6);
   });
 
+  it("§385 delivers well-formed prompt requests and drops broken ones", async () => {
+    const transport = await createHostTransport("alpha");
+    const seen: SandboxToHost[] = [];
+    transport.onMessage((m) => seen.push(m));
+    for (const request of [
+      { kind: "prompt_quick_pick" },
+      { items: [], kind: "prompt_quick_pick" },
+      { items: [{ id: 1, label: "A" }], kind: "prompt_quick_pick" },
+      { items: [{ id: "a", label: "A" }], kind: "prompt_quick_pick", opts: 3 },
+      { kind: "prompt_input_box", opts: { value: "x".repeat(1001) } },
+    ]) {
+      deliver({
+        msg: { request, requestId: "r", type: "hostRequest" },
+        pluginId: "alpha",
+      });
+    }
+    expect(seen).toEqual([]);
+    for (const request of [
+      { items: [{ id: "a", label: "A" }], kind: "prompt_quick_pick" },
+      { kind: "prompt_input_box" },
+      {
+        kind: "prompt_input_box",
+        opts: { placeholder: "p", title: "t", value: "v" },
+      },
+    ]) {
+      deliver({
+        msg: { request, requestId: "r", type: "hostRequest" },
+        pluginId: "alpha",
+      });
+    }
+    expect(seen).toHaveLength(3);
+  });
+
   it("caps the document a plugin may install, at the frame", async () => {
     // §260 Phase 4b security review (MEDIUM-2) — `editor_set_markdown` is parsed and then
     // replaces the whole document in one transaction (a full re-render with NodeView

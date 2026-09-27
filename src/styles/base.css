@@ -67,6 +67,13 @@
      the pointer rests is not a problem, the reverse is — and, like them, deliberately BELOW
      `.plugin-consent-overlay` (1100). The ceiling argument above applies unchanged here. */
   --z-tooltip: 1060;
+
+  /* §385 plugin prompts (spec 0061 §8). Above hover labels so a label resting under the
+     pointer cannot sit over the input the occlusion check measures; BELOW the security
+     surfaces' 1100 for the ceiling reason given at --z-editor-popup. The 9999 and 10000
+     layers stay above — a prompt either layer would cover is refused (spec 0061 D9), not
+     drawn underneath. */
+  --z-plugin-prompt: 1080;
 }
 
 /* color-scheme: 토큰이 못 칠하는 UA 표면(네이티브 스크롤바, form control 기본색,

@@ -29,10 +29,14 @@ describe("PluginStatusBarItems", () => {
   // the tier's only clickable surface (it has no DOM of its own).
   it("runs the item's command on click, and stays a plain span without one", async () => {
     const ran: unknown[] = [];
-    const disposable = registerHostCommandHandler("p.recount", (...args) => {
-      ran.push(args);
-      return "ok";
-    });
+    const disposable = registerHostCommandHandler(
+      "p.recount",
+      (...args) => {
+        ran.push(args);
+        return "ok";
+      },
+      "p",
+    );
     usePluginUIStore.setState({
       statusBarItems: [
         {
@@ -83,8 +87,10 @@ describe("PluginStatusBarItems", () => {
   it("does not let a failing command escape into React", async () => {
     // The handler forwards to `session.invokeCommand`, whose rejection is the plugin's
     // problem: an unhandled rejection in an onClick would surface as an app error.
-    const disposable = registerHostCommandHandler("p.boom", () =>
-      Promise.reject(new Error("sandbox is gone")),
+    const disposable = registerHostCommandHandler(
+      "p.boom",
+      () => Promise.reject(new Error("sandbox is gone")),
+      "p",
     );
     const unhandled = vi.fn();
     process.on("unhandledRejection", unhandled);

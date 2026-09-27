@@ -7,7 +7,12 @@
 // stays behind while the member moves — silently reattaching the note to whatever
 // sorts into that slot. (This already happened once in `plugin-op.ts`, and again
 // here when the 3c-2c frames were added.)
-import type { AICompleteOptions } from "../types";
+import type {
+  AICompleteOptions,
+  InputBoxOptions,
+  QuickPickItem,
+  QuickPickOptions,
+} from "../types";
 
 /** Main app → sandbox realm. */
 export type HostToSandbox =
@@ -124,9 +129,31 @@ export type SandboxHostRequest =
       // it would put a behaviour change exactly on that boundary.
       kind: "settings_read";
     }
+  | {
+      // §385 — an input box (spec 0061 §9). Answered INLINE with the typed text or `null`: 1,000
+      // characters serialise to at most 6,000 bytes, under tauri's 8 KiB queue threshold (D7).
+      kind: "prompt_input_box";
+      opts?: InputBoxOptions;
+    }
+  | {
+      // §385 — a quick pick (spec 0061 §9). Answered inline with the chosen `id` or `null`.
+      items: QuickPickItem[];
+      kind: "prompt_quick_pick";
+      opts?: QuickPickOptions;
+    }
   | { kind: "ai_complete"; opts?: AICompleteOptions; prompt: string }
   | { kind: "ai_list_models" }
   | { kind: "ai_stream"; opts?: AICompleteOptions; prompt: string };
+
+/**
+ * §385 — the `prompt_*` half of `SandboxHostRequest`. One alias so the shape checker
+ * (`prompt-shape.ts`), the host bridge (`host-prompt-bridge.ts`) and the sandbox client
+ * (`sandbox-client.ts`) share one `Extract`, not three copies that could drift apart.
+ */
+export type PromptHostRequest = Extract<
+  SandboxHostRequest,
+  { kind: `prompt_${string}` }
+>;
 
 /**
  * What the plugin actually BOUND during activate. The manifest's Phase-1
@@ -154,3 +181,45 @@ export type SandboxToHost =
   | { callId: string; ok: true; type: "callResult"; value: unknown }
   | { error: string; type: "activateError" }
   | { registered: SandboxRegisteredReport; type: "ready" };
+
+/**
+ * §260 Phase 4a security review (MEDIUM-1) — a string bounded before any work touches it.
+ *
+ * `ui_*` are the first frame types whose payload gets O(n) MAIN-REALM processing (two
+ * regex passes in `host-ui-bridge`, then a Zustand commit). Rust caps a frame at 8 MiB
+ * and allows 150/s, so without a length check here a plugin could aim ~1 GB/s of regex at
+ * the thread this tier exists to protect. The host truncates to 200 (toast) / 64 (status
+ * bar) anyway, so anything past this bound cannot be a real message — it is dropped like
+ * any other malformed frame.
+ */
+export const MAX_UI_TEXT_CHARS = 4096;
+
+/**
+ * §385 — the most bytes one sandbox→host report may carry: Rust's `MAX_SANDBOX_REPORT_BYTES`
+ * (`src-tauri/src/commands/plugin_cmd.rs`). Rust drops a larger report WITHOUT answering it,
+ * so the prompt pre-check (spec 0061 §9) measures against this before sending.
+ * `report-cap-parity.test.ts` reads the Rust declaration and pins the two together.
+ */
+export const MAX_SANDBOX_REPORT_BYTES = 8 * 1024 * 1024;
+
+/**
+ * §385 — the prompt limits (spec 0061 §7). ONE home: the gate (both tiers), the sandbox's
+ * pre-check and the host validator all read these, and the sandbox realm already imports this
+ * module. A second copy is a limit that drifts.
+ */
+export const PROMPT_LIMITS = {
+  /** An item `id` — a comparison key, so over-long is refused, never cut. */
+  idChars: 100,
+  /** Items in one quick pick. */
+  items: 5_000,
+  /** Shown characters of a `label` or `description`; longer is cut with "…". */
+  labelChars: 200,
+  /** Rows drawn at once, as the Quick Switcher does. */
+  rows: 50,
+  /** Any one string before it is cut — the bound on what sanitising costs. */
+  stringChars: MAX_UI_TEXT_CHARS,
+  /** Shown characters of a `title` or `placeholder`. */
+  titleChars: 100,
+  /** An input box's initial `value`, and what the user may type. */
+  valueChars: 1_000,
+} as const;
