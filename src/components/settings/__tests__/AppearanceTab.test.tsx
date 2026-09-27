@@ -198,7 +198,7 @@ describe("sub-screen routing (§361)", () => {
 });
 
 // §361 — the "Installed" group (`settings.appearance.groupInstalled`), filled for the
-// first time. Actions come from `themeActions("registry")` (theme-sources.ts), not a
+// first time. Actions come from `themeActions("installed")` (theme-sources.ts), not a
 // `source === …` check here.
 describe("theme gallery — installed group (§361)", () => {
   it("설치한 테마가 있으면 '설치한 테마' 그룹에 나타난다", () => {

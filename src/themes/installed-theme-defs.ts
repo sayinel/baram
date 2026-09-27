@@ -1,6 +1,6 @@
 import type { ThemeDef, ThemeMode } from "../types/theme";
-// §361 InstalledTheme → ThemeDef, so `findThemeById`·`theme-gallery.tsx` treat a registry
-// row exactly like any other (theme-sources.ts's whole point — no `source === "registry"`
+// §361 InstalledTheme → ThemeDef, so `findThemeById`·`theme-gallery.tsx` treat an installed
+// row exactly like any other (theme-sources.ts's whole point — no `source === "installed"`
 // branch at the call sites below).
 //
 // Colors come straight off the persisted record (`InstalledThemeMode.colors`, small — see
@@ -44,7 +44,7 @@ export function installedThemeToDef(
     id: installed.id,
     modes,
     name: installed.manifest.name,
-    source: "registry",
+    source: "installed",
   };
 }
 
@@ -60,7 +60,7 @@ export function installedThemeDefs(
 }
 
 /**
- * `findThemeById`'s second argument, extended with installed (registry) themes.
+ * `findThemeById`'s second argument, extended with installed themes.
  *
  * A small helper rather than inlining `[...customThemes, ...installedThemeDefs(...)]` at
  * every call site (`appearance-settings.ts`, `store.ts`'s rehydrate sync,

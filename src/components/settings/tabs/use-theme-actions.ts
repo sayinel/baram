@@ -396,7 +396,7 @@ export function useThemeActions() {
 
   /**
    * Update one installed theme to the version the registry now lists (spec §5.2's
-   * `community` row (now `registry`), §10.2's badge).
+   * `community` row (now `installed`), §10.2's badge).
    *
    * ‼️ THE LISTING IS RE-RESOLVED HERE, from the index, rather than trusted from the caller
    * — the shape of §260 Phase 5's H2 fix next door, where the Installed tab synthesised an
@@ -483,7 +483,7 @@ export function useThemeActions() {
         deleteCustomTheme(theme.id);
         return;
       }
-      if (theme.source !== "registry") return;
+      if (theme.source !== "installed") return;
       try {
         await themeUninstall(theme.id);
       } catch (err) {
@@ -514,7 +514,7 @@ export function useThemeActions() {
   );
 
   /**
-   * §10.3's `consentHistory` affordance for `themeActions("registry")`.
+   * §10.3's `consentHistory` affordance for `themeActions("installed")`.
    *
    * Not a growing list — a theme has no capabilities to escalate, so the three fixed
    * sentences never change between versions, and there is exactly one consent moment ever.

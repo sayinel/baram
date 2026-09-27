@@ -34,8 +34,9 @@ export interface AppearanceSettingsSlice {
   appearanceOverrides: DialValues;
   customThemes: ThemeDef[];
   deleteCustomTheme: (id: string) => void;
-  /** §361 — installed (community/registry) themes, keyed by id. Persisted via
-   *  `tauriStorage`, never `localStorage` (sandbox webviews share this origin). */
+  /** §361 — installed themes (either entrance, §371 — the registry or a package file),
+   *  keyed by id. Persisted via `tauriStorage`, never `localStorage` (sandbox webviews
+   *  share this origin). */
   installedThemes: Record<string, InstalledTheme>;
   locale: string;
   /** §361 — drop the record for an uninstalled community theme. Does not touch disk —
