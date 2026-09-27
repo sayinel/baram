@@ -92,6 +92,20 @@ describe("ctx.prompts in the sandbox", () => {
     await expect(answer).resolves.toBeUndefined();
   });
 
+  // §385 review fix round 1 (spec 0061 D7) — `ask` must NOT be on the `stagedReads` chain: an
+  // open prompt (never replied to here) would otherwise hold every later staged read behind it,
+  // and a document read while a prompt is up is exactly the case D7 names.
+  it("does not hold the plugin's staged reads while a prompt is open (D7)", async () => {
+    const { ctx, ready, requests } = boot();
+    await ready;
+    void ctx().prompts.showInputBox(); // left open — never replied to in this test
+    void ctx().editor.getMarkdown(); // never replied to either; only the SENT frame matters
+    await flush();
+    expect(requests).toHaveLength(2);
+    expect(requests[0].request.kind).toBe("prompt_input_box");
+    expect(requests[1].request.kind).toBe("editor_get_markdown");
+  });
+
   it("is not exempt from the 150 s timer, and a heartbeat keeps it alive", async () => {
     vi.useFakeTimers();
     const { ctx, ready, reply, requests } = boot();

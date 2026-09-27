@@ -42,38 +42,45 @@ afterEach(() => {
 describe("a sandboxed prompt, end to end through the loader", () => {
   it("opens from a user command and returns the pick to the plugin", async () => {
     const restore = stubPromptLayout();
-    const { host, sandbox } = createChannelPair();
-    startSandboxClient(
-      sandbox,
-      async () => ({
-        activate: (ctx: SandboxContext) =>
-          ctx.commands.register("pick", () =>
-            ctx.prompts.showQuickPick([
-              { id: "a", label: "Alpha" },
-              { id: "b", label: "Beta" },
-            ]),
-          ),
-      }),
-      async (op) => (op.kind === "source_read" ? "// bundle" : undefined),
-    );
-    const loader = new PluginLoader(
-      undefined,
-      new SandboxHost(() => ({ close: () => {}, transport: host })),
-    );
-    await loader.loadPlugin("/p/demo", manifest);
+    try {
+      const { host, sandbox } = createChannelPair();
+      startSandboxClient(
+        sandbox,
+        async () => ({
+          activate: (ctx: SandboxContext) =>
+            ctx.commands.register("pick", () =>
+              ctx.prompts.showQuickPick([
+                { id: "a", label: "Alpha" },
+                { id: "b", label: "Beta" },
+              ]),
+            ),
+        }),
+        async (op) => (op.kind === "source_read" ? "// bundle" : undefined),
+      );
+      const loader = new PluginLoader(
+        undefined,
+        new SandboxHost(() => ({ close: () => {}, transport: host })),
+      );
+      await loader.loadPlugin("/p/demo", manifest);
 
-    const result = executePluginCommand("demo.pick");
-    await vi.waitFor(() =>
-      expect(document.querySelector(".plugin-prompt-input")).not.toBeNull(),
-    );
-    const input = document.querySelector<HTMLInputElement>(
-      ".plugin-prompt-input",
-    )!;
-    fireEvent.keyDown(input, { key: "ArrowDown" });
-    fireEvent.keyDown(input, { key: "Enter" });
-    await expect(result).resolves.toBe("b");
-
-    await loader.unloadPlugin("demo");
-    restore();
+      try {
+        const result = executePluginCommand("demo.pick");
+        await vi.waitFor(() =>
+          expect(document.querySelector(".plugin-prompt-input")).not.toBeNull(),
+        );
+        const input = document.querySelector<HTMLInputElement>(
+          ".plugin-prompt-input",
+        )!;
+        fireEvent.keyDown(input, { key: "ArrowDown" });
+        fireEvent.keyDown(input, { key: "Enter" });
+        await expect(result).resolves.toBe("b");
+      } finally {
+        // A failed assertion above must still unload the sandboxed plugin — otherwise its
+        // teardown never runs and a later test in the same file inherits a live session.
+        await loader.unloadPlugin("demo");
+      }
+    } finally {
+      restore();
+    }
   });
 });

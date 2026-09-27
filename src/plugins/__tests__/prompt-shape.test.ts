@@ -126,4 +126,17 @@ describe("promptFrameProblem", () => {
       }),
     ).toBeNull();
   });
+
+  it("flags a lone surrogate in an extra KEY, not just a value (review fix round 1)", () => {
+    // §385 review fix round 1 — an author-added property survives to `JSON.stringify` even
+    // though `QuickPickItem` names no such field, and its NAME is what is walked here, not only
+    // its value. Spread, not a literal property, so this stays past the excess-property check.
+    const extra: Record<string, string> = { "\uD800": "x" };
+    expect(
+      promptFrameProblem({
+        items: [{ id: "a", label: "A", ...extra }],
+        kind: "prompt_quick_pick",
+      }),
+    ).toMatch(/lone surrogate/);
+  });
 });

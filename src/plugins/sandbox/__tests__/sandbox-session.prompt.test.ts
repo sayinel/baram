@@ -2,6 +2,7 @@
 // timer (no exemption: the stall timer is the only defence against a lost frame).
 import type {
   HostToSandbox,
+  PromptHostRequest,
   SandboxHostRequest,
   SandboxToHost,
 } from "../protocol";
@@ -9,15 +10,21 @@ import type { SandboxTransport } from "../transport";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { HOST_REQUEST_TIMEOUT_MS, SandboxSession } from "../sandbox-session";
+import { createPromptRequestHandler } from "../host-prompt-bridge";
+import {
+  HOST_REQUEST_TIMEOUT_MS,
+  SandboxSession,
+  splitForFrame,
+} from "../sandbox-session";
 
 const PICK: SandboxHostRequest = {
   items: [{ id: "a", label: "A" }],
   kind: "prompt_quick_pick",
 };
 
-function open() {
-  vi.useFakeTimers();
+/** The transport half only — a session is built on top of it per test, with whichever
+ *  handler that test needs. */
+function makeTransport() {
   const sent: HostToSandbox[] = [];
   let receive: (m: SandboxToHost) => void = () => {};
   const transport: SandboxTransport<SandboxToHost, HostToSandbox> = {
@@ -28,6 +35,12 @@ function open() {
     },
     send: (m) => void sent.push(m),
   };
+  return { receive: (m: SandboxToHost) => receive(m), sent, transport };
+}
+
+function open() {
+  vi.useFakeTimers();
+  const { receive, sent, transport } = makeTransport();
   let settle:
     undefined | { reject: (e: Error) => void; resolve: (v: unknown) => void };
   const session = new SandboxSession(transport, (request) =>
@@ -79,13 +92,18 @@ describe("SandboxSession and prompts", () => {
     );
   });
 
-  it("allows one prompt at a time per plugin", async () => {
+  it("allows one prompt at a time per plugin, and h1 keeps running", async () => {
     const { ask, sent } = open();
     ask("h1");
     ask("h2");
     await vi.advanceTimersByTimeAsync(0);
+    // The positive twin (review fix round 1): h2's refusal must not be h1 losing its slot too.
+    expect(sent).not.toContainEqual(
+      expect.objectContaining({ requestId: "h1", type: "hostResponse" }),
+    );
     expect(sent).toContainEqual(
       expect.objectContaining({
+        error: expect.stringMatching(/too many "prompt" requests in flight/),
         ok: false,
         requestId: "h2",
         type: "hostResponse",
@@ -104,5 +122,73 @@ describe("SandboxSession and prompts", () => {
         type: "hostResponse",
       }),
     );
+  });
+
+  // §385 review fix round 1 (spec §11) — the SANDBOX-SIDE half of the heartbeat row was never
+  // exercised: every test above supplies its own stub handler, so a router that forgot to pass
+  // `onToken` to the REAL bridge (`host-prompt-bridge.ts`) would still pass every test in this
+  // file. This wires the real `createPromptRequestHandler` straight into a `SandboxSession`.
+  it("keeps a real, silent prompt handler's request alive past 120 s via the heartbeat", async () => {
+    vi.useFakeTimers();
+    const never = () => new Promise<string | undefined>(() => {});
+    const prompt = createPromptRequestHandler({
+      pluginId: "p",
+      prompts: { showInputBox: never, showQuickPick: never },
+    });
+    const { receive, sent, transport } = makeTransport();
+    // `SandboxSession`'s handler type accepts the whole `SandboxHostRequest` union — this test
+    // only ever sends a `prompt_quick_pick`, so the narrow is asserted rather than routed.
+    const session = new SandboxSession(transport, (request, onToken) =>
+      prompt(request as PromptHostRequest, onToken),
+    );
+    void session; // constructed for its side effect of wiring `transport.onMessage`
+    receive({ request: PICK, requestId: "h1", type: "hostRequest" });
+    await vi.advanceTimersByTimeAsync(3 * HOST_REQUEST_TIMEOUT_MS);
+    expect(sent).not.toContainEqual(
+      expect.objectContaining({
+        ok: false,
+        requestId: "h1",
+        type: "hostResponse",
+      }),
+    );
+    expect(sent).toContainEqual({
+      requestId: "h1",
+      token: "",
+      type: "hostStreamToken",
+    });
+  });
+
+  // §385 review fix round 1 — a handler that throws SYNCHRONOUSLY (as opposed to returning a
+  // rejected promise) used to skip the `.then`/`.finally` chain entirely, leaving the slot taken
+  // and `callTimersHeld` stuck at `true` forever (a pending command would then NEVER time out).
+  it("answers ok:false and resumes command timers when the handler throws synchronously", async () => {
+    vi.useFakeTimers();
+    const { receive, sent, transport } = makeTransport();
+    const session = new SandboxSession(transport, (request) => {
+      if (request.kind === "prompt_quick_pick") {
+        throw new Error("boom"); // not `Promise.reject` — a genuine sync throw
+      }
+      return Promise.resolve(undefined);
+    });
+    const outcome = watch(session.invokeCommand("pick"));
+    receive({ request: PICK, requestId: "h1", type: "hostRequest" });
+    await vi.advanceTimersByTimeAsync(0); // let the caught rejection's .then/.finally settle
+    expect(sent).toContainEqual(
+      expect.objectContaining({
+        ok: false,
+        requestId: "h1",
+        type: "hostResponse",
+      }),
+    );
+    await vi.advanceTimersByTimeAsync(30_001);
+    expect(outcome).toHaveBeenCalledWith(
+      new Error('Sandbox command "pick" timed out'),
+    );
+  });
+});
+
+describe("splitForFrame", () => {
+  it("still answers with one frame for an empty string (the heartbeat's token)", () => {
+    expect(splitForFrame("")).toEqual([""]);
   });
 });

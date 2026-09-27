@@ -121,18 +121,22 @@ describe("createHostRequestHandler routing (§260 Phase 4a)", () => {
 
   it("§385 routes prompts WITH the stream callback, so the heartbeat reaches the session", async () => {
     vi.useFakeTimers();
-    const never = () => new Promise<string | undefined>(() => {});
-    const handler = createHostRequestHandler({
-      capabilities: [],
-      declaredSettings: [],
-      declaredStatusBarIds: [],
-      pluginId: "p",
-      prompts: { showInputBox: never, showQuickPick: never },
-    });
-    const onToken = vi.fn();
-    void handler({ kind: "prompt_input_box" }, onToken);
-    await vi.advanceTimersByTimeAsync(PROMPT_HEARTBEAT_MS);
-    expect(onToken).toHaveBeenCalledWith("");
-    vi.useRealTimers();
+    try {
+      const never = () => new Promise<string | undefined>(() => {});
+      const handler = createHostRequestHandler({
+        capabilities: [],
+        declaredSettings: [],
+        declaredStatusBarIds: [],
+        pluginId: "p",
+        prompts: { showInputBox: never, showQuickPick: never },
+      });
+      const onToken = vi.fn();
+      void handler({ kind: "prompt_input_box" }, onToken);
+      await vi.advanceTimersByTimeAsync(PROMPT_HEARTBEAT_MS);
+      expect(onToken).toHaveBeenCalledWith("");
+    } finally {
+      // A failed assertion above must not leak fake timers into a later test in this file.
+      vi.useRealTimers();
+    }
   });
 });

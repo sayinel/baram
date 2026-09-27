@@ -146,6 +146,16 @@ export type SandboxHostRequest =
   | { kind: "ai_stream"; opts?: AICompleteOptions; prompt: string };
 
 /**
+ * §385 — the `prompt_*` half of `SandboxHostRequest`. One alias so the shape checker
+ * (`prompt-shape.ts`), the host bridge (`host-prompt-bridge.ts`) and the sandbox client
+ * (`sandbox-client.ts`) share one `Extract`, not three copies that could drift apart.
+ */
+export type PromptHostRequest = Extract<
+  SandboxHostRequest,
+  { kind: `prompt_${string}` }
+>;
+
+/**
  * What the plugin actually BOUND during activate. The manifest's Phase-1
  * `PluginContributions` remains the authoritative static surface (titles,
  * palette, menu, statusBar) that the install UI consented to; the host

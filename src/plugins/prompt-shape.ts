@@ -5,11 +5,9 @@
 // forbid), the sandbox's pre-check (so an author's mistake throws instead of vanishing in
 // Rust), and the host's frame validator (for a plugin that drives the transport directly).
 // Tier-agnostic: no store, no DOM — the sandbox realm imports it too.
-import type { SandboxHostRequest } from "./sandbox/protocol";
+import type { PromptHostRequest } from "./sandbox/protocol";
 
 import { MAX_SANDBOX_REPORT_BYTES, PROMPT_LIMITS } from "./sandbox/protocol";
-
-type PromptFrame = Extract<SandboxHostRequest, { kind: `prompt_${string}` }>;
 
 /** Room left for the `{type, requestId}` envelope around a request (plan 0109 P8). */
 const FRAME_ENVELOPE_BYTES = 256;
@@ -18,11 +16,19 @@ const FRAME_ENVELOPE_BYTES = 256;
  *  global regex keeps `lastIndex` and misses the next string's hit (spec 0061 §9). */
 const LONE_SURROGATE = /[\uD800-\uDFFF]/u;
 
+/**
+ * `value` (or one of its KEYS) holds a lone surrogate. Keys matter as much as values here: an
+ * extra property on an item, or whatever a `toJSON` produces, is what actually crosses the wire —
+ * `value` is the already-`JSON.parse`d clone of the exact text that will be sent (or was sent), so
+ * walking it is walking the real shape rather than the author's in-memory object.
+ */
 function hasLoneSurrogate(value: unknown): boolean {
   if (typeof value === "string") return LONE_SURROGATE.test(value);
   if (Array.isArray(value)) return value.some(hasLoneSurrogate);
   if (typeof value === "object" && value !== null) {
-    return Object.values(value).some(hasLoneSurrogate);
+    return Object.entries(value).some(
+      ([key, v]) => LONE_SURROGATE.test(key) || hasLoneSurrogate(v),
+    );
   }
   return false;
 }
@@ -65,22 +71,32 @@ function optsProblem(opts: unknown, isInputBox: boolean): null | string {
 }
 
 /**
- * Why the sandbox must not send `request`, or `null` — the shape rules plus the two things Rust
- * would drop WITHOUT answering (spec 0061 §6, §9): a lone surrogate, which `serde_json` refuses,
- * and a report over `MAX_SANDBOX_REPORT_BYTES`. Caught here, the author gets the reason at once
- * instead of a 150 s wait.
+ * Why the sandbox must not send `request`, or `null` — the shape rules plus two of the three
+ * things Rust would drop WITHOUT answering (spec 0061 §6): a lone surrogate, which
+ * `serde_json::Value` refuses to deserialise, and a report over `MAX_SANDBOX_REPORT_BYTES`
+ * (`check_report_size`). Caught here, the author gets the reason at once instead of a 150 s wait.
+ *
+ * The THIRD silent drop — Rust's `RateClass::Transport` rate limit — is not knowable from a
+ * single request's shape: it depends on how many other frames this plugin has sent recently,
+ * state this module has no access to. That is exactly why the sandbox client's 150 s stall timer
+ * stays in force for a prompt request too (spec 0061 §6) rather than being "covered" by this
+ * check — a rate-limited request still has to time out somewhere.
  */
-export function promptFrameProblem(request: PromptFrame): null | string {
+export function promptFrameProblem(request: PromptHostRequest): null | string {
   const shape =
     request.kind === "prompt_quick_pick"
       ? quickPickProblem(request.items, request.opts)
       : inputBoxProblem(request.opts);
   if (shape !== null) return shape;
-  if (hasLoneSurrogate(request)) {
+  // Serialised ONCE: `text` is reused for both the lone-surrogate walk (via `JSON.parse`, so an
+  // extra key or a `toJSON` result is inspected exactly as it will be — or was — sent) and the
+  // byte count below.
+  const text = JSON.stringify(request);
+  if (hasLoneSurrogate(JSON.parse(text) as unknown)) {
     return "a string holds a lone surrogate (half of an emoji or another astral character — often from slicing one), which Baram's IPC cannot carry";
   }
   const limit = MAX_SANDBOX_REPORT_BYTES - FRAME_ENVELOPE_BYTES;
-  const bytes = new TextEncoder().encode(JSON.stringify(request)).length;
+  const bytes = new TextEncoder().encode(text).length;
   return bytes > limit
     ? `the request is ${bytes} bytes as sent; the limit is ${limit}`
     : null;

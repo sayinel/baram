@@ -1,15 +1,19 @@
 // §385 The host side of `ctx.prompts` for sandboxed plugins (spec 0061 §9).
 //
-// Everything that decides — gate, limits, sanitising, the window — is `prompts-api.ts`, shared
-// with the trusted tier. What only this tier needs is here:
+// Everything that decides about the REQUEST — gate, limits, sanitising, the window — is
+// `prompts-api.ts`, shared with the trusted tier. What only this tier needs, on the way back, is
+// here:
 //  - a heartbeat. A prompt may stay open for minutes, and the session's 120 s stall timer and the
 //    sandbox's 150 s one are KEPT — they are the only defence against a lost frame (spec 0061 §6).
 //    An empty token every 60 s restarts both: the session's `onToken` rearms its timer, and the
 //    `hostStreamToken` frame it sends makes the client `touch()` its own;
-//  - the answer as JSON: `null` for a cancel, and text with no lone surrogate, which the
-//    `serde_json::Value` on the way back through Rust would refuse — the frame would vanish.
+//  - the answer's length asserted against `PROMPT_LIMITS.valueChars` — the window never submits
+//    past it, so this is a backstop, not a second policy (spec 0061 §9);
+//  - the answer through `wellFormedText`: `null` for a cancel, and text with no lone surrogate,
+//    which the `serde_json::Value` on the way back through Rust would refuse — the frame would
+//    vanish.
 import type { PromptsAPI } from "../types";
-import type { SandboxHostRequest } from "./protocol";
+import type { PromptHostRequest } from "./protocol";
 
 import { wellFormedText } from "../plugin-text";
 import { createPromptsAPI } from "../prompts-api";
@@ -26,12 +30,10 @@ export interface PromptRequestHandlerOptions {
   prompts?: PromptsAPI;
 }
 
-type PromptRequest = Extract<SandboxHostRequest, { kind: `prompt_${string}` }>;
-
 export function createPromptRequestHandler(
   options: PromptRequestHandlerOptions,
 ): (
-  request: PromptRequest,
+  request: PromptHostRequest,
   onToken: (token: string) => void,
 ) => Promise<null | string> {
   const prompts =

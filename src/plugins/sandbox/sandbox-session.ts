@@ -400,7 +400,18 @@ export class SandboxSession {
         });
       }
     };
-    this.hostRequestHandler(request, onToken)
+    // A handler that throws SYNCHRONOUSLY (rather than returning a rejected promise) would
+    // otherwise skip the `.then`/`.finally` chain below entirely, leaving the slot taken and —
+    // now that a prompt can hold this session's command timers — `callTimersHeld` stuck at
+    // `true` forever. Caught here and turned into the same rejected promise, so every exit still
+    // takes the one road `.finally` is.
+    let settled: Promise<unknown>;
+    try {
+      settled = this.hostRequestHandler(request, onToken);
+    } catch (err) {
+      settled = Promise.reject(err);
+    }
+    settled
       .then(
         (value) =>
           this.answerHostRequest(requestId, {

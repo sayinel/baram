@@ -49,4 +49,12 @@ describe("createPromptRequestHandler", () => {
       ),
     ).rejects.toThrow(/exceeds 1000/);
   });
+
+  it("passes an answer sitting exactly on the 1,000-character limit through unchanged", async () => {
+    // The boundary twin of the test above — `>` must stay `>`. `>=` would refuse this exact one.
+    const value = "x".repeat(1000);
+    await expect(
+      bridge(async () => value)({ kind: "prompt_input_box" }, () => {}),
+    ).resolves.toBe(value);
+  });
 });

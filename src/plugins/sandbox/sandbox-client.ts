@@ -18,6 +18,7 @@ import type {
 import type { PluginOp } from "./plugin-op";
 import type {
   HostToSandbox,
+  PromptHostRequest,
   SandboxHostRequest,
   SandboxToHost,
 } from "./protocol";
@@ -239,7 +240,7 @@ export function startSandboxClient(
   // everything — this realm is the plugin's own. NOT on the staged-read chain: the answer is
   // inline (spec 0061 D7), so an open prompt never holds the plugin's `getMarkdown`.
   const ask = async (
-    request: Extract<SandboxHostRequest, { kind: `prompt_${string}` }>,
+    request: PromptHostRequest,
   ): Promise<string | undefined> => {
     const problem = promptFrameProblem(request);
     if (problem !== null) throw new Error(`prompt refused: ${problem}`);
