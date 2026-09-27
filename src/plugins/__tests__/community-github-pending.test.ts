@@ -231,8 +231,7 @@ describe("pendingDescriptorConflict — a merged, unpublished descriptor belongs
     ).toBe(singleFileRefusal);
   });
 
-  const unreadableRefusal =
-    "hello-counter is already submitted and not yet published; GitHub's answer could not be read — re-run this check";
+  const unreadableRefusal = `hello-counter is already submitted and not yet published; GitHub's answer about commit ${firstAddSha}, where its descriptor first arrived, could not be read — re-run this check`;
 
   it("refuses, without the lever, when the first-add commit's answer cannot be read at all", async () => {
     const unreadable = fakeGithub({

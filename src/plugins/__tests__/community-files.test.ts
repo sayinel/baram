@@ -65,6 +65,53 @@ describe("readDescriptorAt — a descriptor at one named commit", () => {
   });
 });
 
+describe("readDescriptorAt — what it refuses to read", () => {
+  /** A repository whose one commit holds `community/hello-counter.json` = `text`. */
+  const committed = (text: string, executable = false) => {
+    const dir = tempDir("baram-files-refuse-");
+    const git = gitIn(dir);
+    git("init", "--quiet");
+    mkdirSync(join(dir, "community"));
+    writeFileSync(join(dir, "community", "hello-counter.json"), text);
+    git("add", "--all");
+    if (executable) {
+      git("update-index", "--chmod=+x", "community/hello-counter.json");
+    }
+    git("commit", "--quiet", "-m", "descriptor");
+    return { dir, git, sha: git("rev-parse", "HEAD").trim() };
+  };
+
+  it("refuses a blob over the descriptor cap by its size, and reads one exactly at it", () => {
+    const over = committed("x".repeat(4097));
+    expect(readDescriptorAt(over.dir, over.sha, "hello-counter")).toEqual({
+      error: "the descriptor is 4097 bytes, over the 4096-byte limit",
+      ok: false,
+    });
+    const at = committed("x".repeat(4096));
+    const read = readDescriptorAt(at.dir, at.sha, "hello-counter");
+    expect(read.ok ? read.bytes.length : read).toBe(4096);
+  });
+
+  it("refuses an executable descriptor (mode 100755) — its twin is the 100644 read above", () => {
+    const { dir, git, sha } = committed(TEXT, true);
+    expect(git("ls-tree", sha, "--", "community/hello-counter.json")).toMatch(
+      /^100755 /u,
+    );
+    expect(readDescriptorAt(dir, sha, "hello-counter")).toEqual({
+      error: "community/hello-counter.json is not a regular file",
+      ok: false,
+    });
+  });
+
+  it("throws on a full SHA that names a blob, not a commit", () => {
+    const { dir, git } = committed(TEXT);
+    const blob = git("rev-parse", "HEAD:community/hello-counter.json").trim();
+    expect(() => readDescriptorAt(dir, blob, "hello-counter")).toThrow(
+      `${dir} holds no commit ${blob} — check out the pull request's head commit before running the gate`,
+    );
+  });
+});
+
 describe("firstDescriptorCommit — where the path itself first appeared", () => {
   it("names the commit that created community/<id>.json, not the file it was renamed from, even with log.follow set", () => {
     const dir = tempDir("baram-files-rename-");

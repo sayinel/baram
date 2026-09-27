@@ -283,7 +283,7 @@ export async function pendingDescriptorConflict(
   const commitBody = commitReply.body as null | { files?: unknown; parents?: unknown };
   const parents = commitBody?.parents;
   const files = commitBody?.files;
-  const unreadable = `${id} is already submitted and not yet published; GitHub's answer could not be read — re-run this check`;
+  const unreadable = `${id} is already submitted and not yet published; GitHub's answer about commit ${firstAddSha}, where its descriptor first arrived, could not be read — re-run this check`;
   if (!Array.isArray(parents) || !Array.isArray(files)) return unreadable;
   for (const raw of files) {
     const file = raw as null | { filename?: unknown; status?: unknown };

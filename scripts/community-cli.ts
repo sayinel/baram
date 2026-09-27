@@ -2,8 +2,9 @@
  * §380/§381 — the environment and argument readers the community CLIs share.
  *
  * Side-effect free on purpose: `run-community-gate.ts` runs the gate when it is imported, so a
- * second CLI cannot import helpers from it. Both readers exit 2 on a missing value — that code
- * means the workflow calling the CLI is wrong, never a verdict about what it judges. `tool`
+ * second CLI cannot import helpers from it. All three readers exit 2 on a missing value, and
+ * `needId` on a malformed one too — that code means the workflow calling the CLI is wrong, never
+ * a verdict about what it judges. `tool`
  * names the CLI in the message, so a workflow log says which step was called wrong.
  */
 export function flag(tool: string, name: string, argv: readonly string[] = process.argv): string {

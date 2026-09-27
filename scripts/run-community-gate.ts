@@ -9,7 +9,8 @@
  * that commit's objects, not from the checkout's files.
  * Writes `decision` and `head_sha` to $GITHUB_OUTPUT — the only outputs it gives the merge job,
  * and never on exit 1 or 2. Exit 1 is a refusal; exit 2 is a workflow or infrastructure error —
- * a missing or malformed argument, or anything the gate threw (a network failure, a git
+ * a missing or malformed argument, a setup that threw (the app's `limits.rs` or `fetch.rs`
+ * unreadable, or a scrape of them refused), or anything the gate threw (a network failure, a git
  * failure, a head commit the checkout does not hold).
  *
  * ‼️ Runs the gate when imported. A helper another CLI needs belongs in `community-cli.ts`.
@@ -46,14 +47,15 @@ const input: GateInput = {
   registryRepo: need(TOOL, "REGISTRY_REPO"),
   root: ROOT,
 };
-const deps: GateDeps = {
-  ...readAppBounds(ROOT),
-  api: githubGet(need(TOOL, "GITHUB_TOKEN"), (url, init) => fetch(url, init)),
-  fetch: (url, init) => fetch(url, init),
-};
+const token = need(TOOL, "GITHUB_TOKEN");
 
 let result: GateResult;
 try {
+  const deps: GateDeps = {
+    ...readAppBounds(ROOT),
+    api: githubGet(token, (url, init) => fetch(url, init)),
+    fetch: (url, init) => fetch(url, init),
+  };
   result = await runGate(input, deps);
 } catch (error) {
   const said = error instanceof Error ? error.message : String(error);

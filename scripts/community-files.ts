@@ -150,10 +150,13 @@ export function readDescriptor(dir: string, id: string): Verdict<{ bytes: Uint8A
  * tree, because the decision the gate writes names `sha`, so the bytes it judged must be that
  * commit's whatever the checkout's files say.
  *
- * Refused as "not a regular file" unless `git ls-tree` lists exactly one entry at the path and
- * it is a `100644` blob: a symlink (`120000`), an executable (`100755`), a submodule, a directory
- * or no entry at all is refused the way `readDescriptor` refuses its own. Refused too when the
- * blob is larger than `MAX_SUBMISSION_BYTES`, measured with `git cat-file -s` before it is read.
+ * Refused as "not a regular file" — `readDescriptor`'s message — unless `git ls-tree` lists
+ * exactly one entry at the path and it is a `100644` blob: a symlink (`120000`), an executable
+ * (`100755`), a submodule, a directory or no entry at all. `readDescriptor` is laxer about one of
+ * these: it goes by `lstat`, so it reads an executable file. Harmless — the mode changes nothing
+ * about the bytes judged, and an executable descriptor reaches main only if a person puts it there
+ * past this gate's refusal. Refused too when the blob is larger than `MAX_SUBMISSION_BYTES`,
+ * measured with `git cat-file -s` before it is read.
  *
  * A `sha` that `dir` holds no commit for THROWS: the workflow checked out something other than
  * the pull request's head, which is its own bug, not a verdict about the submission. So does a
