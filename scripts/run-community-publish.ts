@@ -2,42 +2,54 @@
  * §381 — `publish-community.yml`'s two commands (spec 0058 §8.2).
  *
  *   npx tsx scripts/run-community-publish.ts reconcile --registry <dir> --base-url <url> --report <file>
+ *                                                      [--delivery push|pull-request]
  *   npx tsx scripts/run-community-publish.ts live      --registry <dir> --base-url <url> --report <file>
  *
  * `--registry` is the registry checkout — main, full history (`fetch-depth: 0`), a clean working
  * tree. The workflow checks it out to `registry-live`, since the baram workspace tracks its own
  * `registry/`; nothing here assumes either name.
  *
- * `reconcile` env: GITHUB_TOKEN, REGISTRY_REPO. Once it has read those two, it writes the report
- * JSON and then, to $GITHUB_OUTPUT, `published` `stalled` `failed` counts, whatever it exits with:
- * everything before those writes is inside a catch. So the steps that request a Pages build and
- * comment on stalled pull requests still know what happened, and a release an earlier descriptor
- * already delivered stays in the record when a later one aborts the run.
+ * `--delivery` says how a release reaches main: `push` (the default) pushes the commit;
+ * `pull-request` merges it through a pull request (`community-pull-request.ts`), needs `gh` on
+ * PATH, and first closes the pull requests earlier runs left open (`sweepAbandonedPullRequests`).
+ *
+ * `reconcile` env: GITHUB_TOKEN, REGISTRY_REPO, and for `pull-request` GITHUB_RUN_ID and
+ * GITHUB_RUN_ATTEMPT (positive integers; together they name its branches). Once it has read
+ * `--delivery` and those, it writes the report JSON and then, to $GITHUB_OUTPUT, `published`
+ * `stalled` `failed` counts, whatever it exits with: everything before those writes is inside a
+ * catch. So the steps that request a Pages build and comment on stalled pull requests still know
+ * what happened, and a release an earlier descriptor already delivered stays in the record when a
+ * later one aborts the run.
  * `live` reads that report and the checkout's community.json, and waits until Pages serves both.
  *
  * Exit 1 is a verdict: at least one descriptor failed to publish, or Pages never served what main
  * holds. Exit 2 is a workflow or infrastructure error. For `reconcile` that includes a run that
  * ABORTED (the report's `aborted`): handling a descriptor threw — a GitHub API request that got
- * no answer at all, a push the remote refused for a reason other than a lost race, a git or file
- * error — and the descriptors after it were not handled. A GitHub answer that is not 200 and a
- * release download that fails are verdicts on that one descriptor (exit 1), not aborts. Otherwise
- * exit 2 is an unknown command, a missing argument or variable, or anything else either command
- * threw (for `live`, an unreadable report).
+ * no answer at all, a push or a pull request merge refused for a reason other than a lost race,
+ * a squash that landed another tree than the one validated or was never compared with it, a git,
+ * gh or file error — and the descriptors after it were not handled; or the sweep before the run
+ * threw, and no descriptor was handled. A GitHub answer that is not 200 and a release download
+ * that fails are verdicts on that one descriptor (exit 1), not aborts. Otherwise exit 2 is an
+ * unknown command or `--delivery`, a missing argument or variable, or anything else either
+ * command threw (for `live`, an unreadable report).
  *
  * ‼️ RESIDUAL (plan 0105 P12): the token reaches git as an extra header through GIT_CONFIG_*
- * environment variables of the push child only — not argv, not disk, never printed — but this
- * process runs tsx, esbuild and zip.js with the token in its own environment. Isolating it would
- * not help: the same code produces the commit being pushed.
+ * environment variables of the delivery's and the sweep's git children only, and gh as GH_TOKEN —
+ * not argv, not disk, never printed — but this process runs tsx, esbuild and zip.js with the token
+ * in its own environment. Isolating it would not help: the same code produces the commit pushed.
  */
 import type { ReconcileReport } from "./community-publish";
+import type { GhRunner } from "./community-pull-request";
 
+import { spawnSync } from "node:child_process";
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
-import { flag, need } from "./community-cli";
+import { flag, need, needId } from "./community-cli";
 import { githubGet } from "./community-github";
 import { PAGES_SITE_LIMIT_BYTES, registryBytes, waitForLive } from "./community-live";
 import { deliverByPush, publishOutputs, publishReportLines, reconcile } from "./community-publish";
+import { deliverViaPullRequest, sweepAbandonedPullRequests } from "./community-pull-request";
 import { label } from "./gha-label";
 import { pluginArchiveByteCap, pluginArchiveLimits, readmeByteCap, registryByteCap } from "./rust-constants";
 
@@ -79,8 +91,15 @@ async function runLive(): Promise<number> {
 }
 
 async function runReconcile(): Promise<number> {
+  const delivery = process.argv.includes("--delivery") ? flag(TOOL, "--delivery") : "push";
+  if (delivery !== "push" && delivery !== "pull-request") {
+    console.error(`✗ ${TOOL}: --delivery must be push or pull-request — a bug in the workflow that runs this, not a verdict`);
+    process.exit(2);
+  }
   const token = need(TOOL, "GITHUB_TOKEN");
   const registryRepo = need(TOOL, "REGISTRY_REPO");
+  const runId =
+    delivery === "pull-request" ? `${needId(TOOL, "GITHUB_RUN_ID")}-${needId(TOOL, "GITHUB_RUN_ATTEMPT")}` : "";
   let report: ReconcileReport;
   try {
     const limitsSource = readFileSync(resolve(ROOT, "src-tauri/src/plugin/limits.rs"), "utf8");
@@ -91,13 +110,26 @@ async function runReconcile(): Promise<number> {
       GIT_CONFIG_KEY_0: "http.https://github.com/.extraheader",
       GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}`,
     };
+    const gh: GhRunner = (args) => {
+      // LC_ALL=C as for the push: `community-pull-request.ts` matches gh's stderr against English.
+      const run = spawnSync("gh", args, { encoding: "utf8", env: { ...process.env, GH_TOKEN: token, LC_ALL: "C" } });
+      if (run.error !== undefined) return { status: 1, stderr: run.error.message, stdout: "" };
+      return { status: run.status ?? 1, stderr: run.stderr, stdout: run.stdout };
+    };
+    if (delivery === "pull-request") {
+      const swept = sweepAbandonedPullRequests({ gh, gitEnv: pushEnv, registryDir, registryRepo });
+      for (const line of swept) console.log(`↺ ${label(line, Infinity)}`);
+    }
     // `reconcile` itself does not throw — a throw while handling a descriptor ends the run as
-    // `aborted`. This catch is for the setup above it.
+    // `aborted`. This catch is for the setup and the sweep above it.
     report = await reconcile({
       api: githubGet(token, (url, init) => fetch(url, init)),
       archiveCap: pluginArchiveByteCap(limitsSource),
       baseUrl,
-      deliver: deliverByPush(pushEnv),
+      deliver:
+        delivery === "pull-request"
+          ? deliverViaPullRequest({ gh, gitEnv: pushEnv, registryRepo, runId })
+          : deliverByPush(pushEnv),
       fetch: (url, init) => fetch(url, init),
       limits: pluginArchiveLimits(limitsSource),
       readmeCap: readmeByteCap(fetchSource),

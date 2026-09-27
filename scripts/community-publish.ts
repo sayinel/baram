@@ -90,9 +90,12 @@ export interface ReconcileOptions {
 export interface ReconcileReport {
   /**
    * Why the run stopped early, as "<id>: <message>", or null. Set when handling one descriptor
-   * THREW — a GitHub request with no answer at all, a push the remote refused for a reason other
-   * than a lost race, a git or file error — and descriptors after it were not handled. What came
-   * before it is in the lists as usual; a delivered release stays in `published`.
+   * THREW — a GitHub request with no answer at all, a delivery refused for a reason other than a
+   * lost race (a push the remote refused; a pull request merge gh refused, or a squash whose tree
+   * was not, or could not be shown to be, the validated one), a git, gh or file error — and
+   * descriptors after it were not handled. What came before it is in the lists as usual; a
+   * delivered release stays in `published`. The CLI also sets it, as the bare message, when its
+   * setup or the pull request sweep before `reconcile` threw.
    */
   aborted: null | string;
   failed: Failure[];
@@ -348,7 +351,7 @@ async function publishOne(o: ReconcileOptions, id: string): Promise<Outcome> {
       git(o.registryDir, ["reset", "--quiet", "--hard", base]);
     }
   }
-  return failed(`the push was rejected ${MAX_PUSH_RETRIES + 1} times — another writer kept moving main`, pr.number);
+  return failed(`the delivery lost the race to main ${MAX_PUSH_RETRIES + 1} times — another writer kept moving it`, pr.number);
 }
 
 /** Where a requested (version, sha256) stands against what community.json publishes. */

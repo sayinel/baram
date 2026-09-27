@@ -194,7 +194,7 @@ describe(
       const report = await reconcile(options(r, never));
       expect(calls).toBe(4);
       expect(report.failed[0].reason).toBe(
-        "the push was rejected 4 times — another writer kept moving main",
+        "the delivery lost the race to main 4 times — another writer kept moving it",
       );
       // A commit left behind would ride along with the next descriptor's push.
       expect(gitIn(r.work)("rev-parse", "HEAD")).toBe(
