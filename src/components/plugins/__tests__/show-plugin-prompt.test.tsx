@@ -21,6 +21,7 @@ import {
   promptRefusal,
   resetPromptGate,
 } from "../../../plugins/prompt-gate";
+import { unregisterPluginUI } from "../../../plugins/trusted/ui-api";
 import { useUIStore } from "../../../stores/ui/ui";
 import { showPluginPrompt } from "../show-plugin-prompt";
 import { stubPromptLayout } from "./prompt-layout";
@@ -124,6 +125,20 @@ describe("showPluginPrompt", () => {
       expect(promptRefusal("x")).toBeNull();
     },
   );
+
+  it("closes on the plugin's teardown sweep, frees the slot and forgets its rights (spec 0061 §5.5)", async () => {
+    // Through `unregisterPluginUI`, the entry every unload path calls — not `clearPromptGate`
+    // directly — so this fails if that function stops calling the gate's sweep.
+    beginPluginInvocation("p");
+    const answer = pick(3);
+    expect(overlay()).not.toBeNull();
+    act(() => unregisterPluginUI("p"));
+    expect(overlay()).toBeNull();
+    await expect(answer).resolves.toBeUndefined();
+    expect(promptRefusal("p")).toMatch(/commands is running/);
+    beginPluginInvocation("x");
+    expect(promptRefusal("x")).toBeNull(); // the slot is free: condition 3 passes
+  });
 
   it("returns focus through an open shadow root, not to its host", async () => {
     // §385 R16 — a trusted plugin panel mounts inside an open shadow root

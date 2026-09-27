@@ -1,6 +1,9 @@
 // §385 spec 0061 §5 — rights begin at a user command and end at the first outside input.
+import type { PluginManifest } from "../types";
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { createExtensionContext } from "../extension-context";
 import {
   commandHandlers,
   commandOwners,
@@ -252,5 +255,37 @@ describe("executePluginCommand", () => {
     release?.();
     await run;
     expect(promptRefusal("p")).toMatch(/commands is running/);
+  });
+});
+
+describe("commands.execute", () => {
+  // spec 0061 §5.1 — a plugin running a command itself (from its own panel, or from another
+  // command) is no user gesture: only `executePluginCommand` starts an invocation. This fails if
+  // `commands.execute` is routed through `executePluginCommand`, or if the rights are hung on
+  // every `commandHandlers` call instead.
+  const manifest = {
+    author: "t",
+    capabilities: ["commands"],
+    description: "t",
+    engines: { baram: ">=0.2.0" },
+    id: "p",
+    license: "MIT",
+    main: "index.mjs",
+    name: "P",
+    trust: "trusted",
+    version: "1.0.0",
+  } as unknown as PluginManifest;
+
+  it("grants nothing, where the same handler run by executePluginCommand has rights", async () => {
+    const ctx = createExtensionContext(manifest, "/p");
+    const seen: (null | string)[] = [];
+    ctx.commands.register("go", () => {
+      seen.push(promptRefusal("p"));
+    });
+    await ctx.commands.execute("go");
+    await executePluginCommand("p.go");
+    expect(seen).toHaveLength(2);
+    expect(seen[0]).toMatch(/commands is running/);
+    expect(seen[1]).toBeNull(); // positive twin: the handler can see rights when they exist
   });
 });
