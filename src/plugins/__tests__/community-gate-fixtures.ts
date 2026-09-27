@@ -5,6 +5,7 @@
 // would make an assertion agree with itself. Hashes of fixture bytes use node:crypto
 // directly, never the module under test.
 import type { AssetFetch } from "../../../scripts/community-download";
+import type { GithubGet, GithubReply } from "../../../scripts/community-github";
 import type { PluginArchiveLimits } from "../../../scripts/rust-constants";
 
 import { createHash } from "node:crypto";
@@ -199,6 +200,14 @@ export function extraRecord(id: number, data: Uint8Array): Uint8Array {
   return new Uint8Array(record);
 }
 
+/** A fake GitHub REST API: exact paths only, 404 for anything else. */
+export function fakeGithub(routes: Record<string, GithubReply>): GithubGet {
+  return (path) =>
+    Promise.resolve(
+      routes[path] ?? { body: { message: "Not Found" }, status: 404 },
+    );
+}
+
 /**
  * Two archives in one file and ONE end record, whose offset names `hidden`'s directory while
  * `visible`'s directory is the one that ends where the end record starts: `hidden`'s local
@@ -229,6 +238,8 @@ export function offsetToHidden(
   );
 }
 
+export const ok = (body: unknown): GithubReply => ({ body, status: 200 });
+
 /**
  * A plugin archive with the entries `zip -r x.zip baram-plugin.json dist README.md` lists —
  * `baram-plugin.json`, `dist/`, `dist/index.mjs`, `README.md` — plus `extra` entries. It is
@@ -246,6 +257,28 @@ export function pluginZip(
     { data: "# Hello Counter\n", name: "README.md" },
     ...extra,
   ]);
+}
+
+/** `GET /repos/octocat/baram-hello-counter` — owner id 583231 (octocat), repo id 555. */
+export function repoReply(
+  over: {
+    fullName?: string;
+    id?: number;
+    ownerId?: number;
+    ownerType?: string;
+    private?: boolean;
+  } = {},
+): GithubReply {
+  return ok({
+    full_name: over.fullName ?? "octocat/baram-hello-counter",
+    id: over.id ?? 555,
+    owner: {
+      id: over.ownerId ?? 583231,
+      login: "octocat",
+      type: over.ownerType ?? "User",
+    },
+    private: over.private ?? false,
+  });
 }
 
 /** `archive`, whose end record is its last 22 bytes, with the named end-record fields overwritten. */
