@@ -1,6 +1,6 @@
 /**
- * Checks that every `index.json` entry points at an archive that actually EXISTS in the
- * registry and hashes to the checksum the entry declares (§69).
+ * Checks that every `index.json` AND `community.json` entry (§381) points at an archive that
+ * actually EXISTS in the registry and hashes to the checksum the entry declares (§69).
  *
  * ‼️ THE ONE CHECK THAT CANNOT RUN IN THIS REPO. `validate-index.ts` judges the document —
  * field types, tiers, capabilities, the version floor, the URL's scheme. It has never
@@ -121,6 +121,15 @@ let unchecked = 0;
 
 function fail(message: string): never {
   console.error(`✗ ${indexPath}: ${message}`);
+  process.exit(1);
+}
+
+// A community.json file-level failure (not a regular file, over the cap, unparseable, no
+// array) is about community.json, not index.json; printing it under `indexPath` would send
+// the operator to the wrong file's line. `communityPath` is declared below, but function
+// declarations hoist, so this can still be defined here beside `fail`.
+function failCommunity(message: string): never {
+  console.error(`✗ ${communityPath}: ${message}`);
   process.exit(1);
 }
 
@@ -273,6 +282,15 @@ function resolveInRegistry(
 const referenced = new Set<string>();
 
 /**
+ * Who claimed each archive path first, across BOTH files. `referenced`
+ * alone cannot catch a second claim: `Set.add` on an already-present value is a silent no-op, so
+ * two entries naming the same `downloadUrl` — one in each file, or two in the same one — would
+ * both read as "present and matching" while only one of them is the entry a user who installs
+ * that URL actually gets.
+ */
+const claimedBy = new Map<string, { id: string; source: "community.json" | "index.json" }>();
+
+/**
  * READMEs an entry claimed. Collected separately from `referenced` because the orphan sweep
  * below walks `plugins/` and reports anything unclaimed there — feeding readme paths into
  * the same set would say nothing about `readme/`, and pointing that sweep at both
@@ -282,10 +300,63 @@ const referenced = new Set<string>();
  */
 const referencedReadmes = new Set<string>();
 
-plugins.forEach((value, position) => {
+/**
+ * §381 — community.json, the second channel (spec 0058 §8.4). Absent before the seed
+ * (contract C2), which is quiet; present-but-unreadable is a failure, because its entries'
+ * archives would then go unchecked while the summary counted only the first-party ones.
+ */
+const communityPath = join(root, "community.json");
+const communityEntries = ((): unknown[] => {
+  const stat = lstatSync(communityPath, { throwIfNoEntry: false });
+  if (stat === undefined) return [];
+  if (!stat.isFile()) failCommunity("community.json is not a regular file — a link or directory is not what the app fetches");
+  if (stat.size > INDEX_CAP) {
+    failCommunity("community.json is larger than the app will fetch");
+  }
+  let doc: unknown;
+  try {
+    doc = JSON.parse(readFileSync(communityPath, "utf8")) as unknown;
+  } catch (err) {
+    failCommunity(`community.json is not valid JSON — ${label(String(err))}`);
+  }
+  const list = (doc as null | { communityPlugins?: unknown })?.communityPlugins;
+  if (!Array.isArray(list)) failCommunity("community.json has no `communityPlugins` array");
+  return list;
+})();
+
+/**
+ * An id claimed by both files. `mergeChannels`
+ * (`src/plugins/community-registry.ts`) reads both lists and, for an id either one claims,
+ * ALWAYS serves the first-party entry (spec 0058 §9.1 — "first-party wins"): the community
+ * entry with that id is dropped, silently, on every client, regardless of what KIND the
+ * first-party entry is (`mergeChannels` compares ids only, never `kind`). Refused here so a
+ * publisher preparing to reuse an `index.json` id — a plugin's or a theme's — learns it before
+ * the community entry ships and is never actually seen.
+ */
+const firstPartyIds = new Set(
+  plugins
+    .map((p) => (p as null | { id?: unknown })?.id)
+    .filter((id): id is string => typeof id === "string" && id !== ""),
+);
+for (const value of communityEntries) {
   const entry = (value ?? {}) as Record<string, unknown>;
   const id = typeof entry.id === "string" && entry.id !== "" ? entry.id : null;
-  const where = label(id ?? `entry #${position + 1}`);
+  if (id !== null && firstPartyIds.has(id)) {
+    errors.push(
+      `${label(id)} (community.json): also claimed by index.json — mergeChannels serves the ` +
+        "first-party entry and drops this one silently on every client (spec 0058 §9.1), so " +
+        "an id cannot appear in both files",
+    );
+  }
+}
+
+function checkEntry(value: unknown, position: number, source: "community.json" | "index.json"): void {
+  const entry = (value ?? {}) as Record<string, unknown>;
+  const id = typeof entry.id === "string" && entry.id !== "" ? entry.id : null;
+  const named = label(id ?? `entry #${position + 1}`);
+  // Both channels suffix their file — a first-party entry's error must still name index.json
+  // now that the bottom summary line no longer does (see the comment beside it, below).
+  const where = `${named} (${source})`;
 
   const url = entry.downloadUrl;
   const checksum = entry.checksum;
@@ -310,6 +381,19 @@ plugins.forEach((value, position) => {
   // sanitizer is why `gha-label.ts` was extracted. A newline plus `::error title=…::` in a
   // downloadUrl wrote a forged annotation, and `::stop-commands::` silenced the real ones.
   const shown = label(relative);
+  // A SECOND claim on an already-claimed archive, across either file. Checked before
+  // `referenced.add` below can turn the second claim into a silent no-op.
+  const priorClaim = claimedBy.get(relative);
+  const claimant = id ?? `entry #${position + 1}`;
+  if (priorClaim !== undefined) {
+    errors.push(
+      `${where}: ${shown} is also claimed by ${label(priorClaim.id)} in ${priorClaim.source} ` +
+        "— an archive can only verify one entry's checksum, so a second claim would let one " +
+        "install silently trust the wrong bytes",
+    );
+  } else {
+    claimedBy.set(relative, { id: claimant, source });
+  }
   referenced.add(relative);
 
   const file = join(root, relative);
@@ -392,7 +476,10 @@ plugins.forEach((value, position) => {
       );
     }
   }
-});
+}
+
+plugins.forEach((value, position) => checkEntry(value, position, "index.json"));
+communityEntries.forEach((value, position) => checkEntry(value, position, "community.json"));
 
 /**
  * Whether an archive filename is `<id>-<something starting with a digit>`.
@@ -443,7 +530,7 @@ const archiveBelongsTo = (name: string, id: string) =>
 const isSemver = (v: string) =>
   !/\s/u.test(v) && compareVersions(v, v) !== null;
 
-const indexedIds = plugins
+const indexedIds = [...plugins, ...communityEntries]
   .map((p) => (p as null | { id?: unknown })?.id)
   .filter((id): id is string => typeof id === "string" && id !== "");
 
@@ -607,17 +694,25 @@ if (existsSync(pluginsDir)) {
   );
 }
 
-for (const notice of notices) console.log(`· ${indexPath}: ${notice}`);
-for (const warning of warnings) console.warn(`⚠ ${indexPath}: ${warning}`);
+// `root`, not `indexPath`: every count and line below is the COMBINED result over index.json
+// and community.json (`plugins.forEach` plus `communityEntries.forEach` above), so the summary
+// line must not claim to be about index.json alone. Per-entry errors/warnings each name their
+// own file through `where`'s `(index.json)`/`(community.json)` suffix, set above. Orphan
+// notices/warnings below do NOT go through `where` at all — they are generated by the
+// `plugins/` directory sweep, not a document entry, and each already names the archive path
+// itself (`plugins/<name>.zip`) rather than either index file, because an orphan concerns a
+// file BOTH channels' `downloadUrl`s can reference, not one channel's document.
+for (const notice of notices) console.log(`· ${root}: ${notice}`);
+for (const warning of warnings) console.warn(`⚠ ${root}: ${warning}`);
 
 if (errors.length > 0) {
-  console.error(`✗ ${indexPath}: ${errors.length} problem(s)`);
+  console.error(`✗ ${root}: ${errors.length} problem(s)`);
   for (const error of errors) console.error(`    ${error}`);
   process.exit(1);
 }
 
 console.log(
-  `✓ ${indexPath}: ${referenced.size} archive(s) present and matching` +
+  `✓ ${root}: ${referenced.size} archive(s) present and matching` +
     (unchecked > 0
       ? ` (${unchecked} entry/entries not checkable here — see validate-index.ts)`
       : "") +

@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 /**
- * Upsert a plugin entry into a registry index.json.
- * Called by .github/workflows/plugin-release.yml (§69 registry hosting).
+ * Upsert a plugin entry into a registry index.json OR community.json (§381 — community mode is
+ * the four `--publisher`/`--publisher-id`/`--repo-id`/`--repository` flags below).
+ * Called by .github/workflows/plugin-release.yml (§69 registry hosting) and the community
+ * publish job (plan 0105 Task 10, spec 0058 §8.2 step 3).
  *
  * Usage:
  *   node scripts/update-registry-index.mjs \
@@ -9,7 +11,8 @@
  *     --manifest examples/plugins/word-count/baram-plugin.json \
  *     --zip-name baram-word-count-1.0.0.zip \
  *     --checksum <64-hex sha256> \
- *     --base-url https://sayinel.github.io/baram-plugins/
+ *     --base-url https://sayinel.github.io/baram-plugins/ \
+ *     [--publisher <login> --publisher-id <n> --repo-id <n> --repository <url>]
  */
 import { readFileSync, writeFileSync } from "node:fs";
 
@@ -148,6 +151,51 @@ if (
   );
 }
 
+// Copied, not imported: this is plain Node, and the canonical copies are
+// TypeScript. `GITHUB_LOGIN` mirrors `src/plugins/community-registry.ts`'s (same name there);
+// `registry-index-script.test.ts`'s "agrees with isGithubLogin" boundary corpus is what pins
+// the two together (it drives this script's `--publisher` across the same corpus and compares
+// against the TS predicate directly). `REPO_NAME_RE` mirrors the exported
+// `scripts/community-submission.ts` constant of the same name — that module is TypeScript too,
+// so it is copied rather than imported, same as `GITHUB_LOGIN`.
+const GITHUB_LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/;
+const REPO_NAME_RE = /^[A-Za-z0-9._-]{1,100}$/;
+
+// §381 — community mode (spec 0058 §8.2 step 3). The four flags come from GitHub's numbers
+// (publish-community.yml), never from the author's descriptor. All four or none: a
+// half-community entry is one the app drops.
+const COMMUNITY_ARGS = ["publisher", "publisher-id", "repo-id", "repository"];
+const communityGiven = COMMUNITY_ARGS.filter((key) => args[key] !== undefined);
+const community = communityGiven.length > 0;
+if (community && communityGiven.length !== COMMUNITY_ARGS.length) {
+  fail(`community mode needs all of ${COMMUNITY_ARGS.map((key) => `--${key}`).join(", ")}`);
+}
+if (community) {
+  if (manifest.trust !== "sandboxed") fail("a community entry must be sandboxed (spec 0058 §378)");
+  if (manifest.id.startsWith("baram-")) fail('ids starting with "baram-" are reserved for first-party plugins');
+  for (const key of ["publisher-id", "repo-id"]) {
+    if (!/^[1-9]\d{0,15}$/.test(args[key]) || !Number.isSafeInteger(Number(args[key]))) {
+      fail(`--${key} must be a positive integer`);
+    }
+  }
+  if (!GITHUB_LOGIN.test(args.publisher)) fail("--publisher must be a GitHub login");
+  // Gate 2's repo-name charset, not a bare `[^/]+`: that wildcard admitted `?`, `#` and a
+  // literal newline into the name segment, and never checked the owner against `--publisher`.
+  const repoMatch = /^https:\/\/github\.com\/([^/]+)\/([^/]+)$/.exec(args.repository);
+  if (
+    repoMatch === null ||
+    repoMatch[1] !== args.publisher ||
+    !REPO_NAME_RE.test(repoMatch[2]) ||
+    repoMatch[2] === "." ||
+    repoMatch[2] === ".."
+  ) {
+    fail("--repository must be https://github.com/<publisher>/<name>");
+  }
+  if (manifest.homepage !== undefined && !isNonEmptyString(manifest.homepage)) {
+    fail("manifest field 'homepage' must be a non-empty string when present");
+  }
+}
+
 const baseUrl = args["base-url"].endsWith("/")
   ? args["base-url"]
   : `${args["base-url"]}/`;
@@ -178,9 +226,24 @@ if (manifest.keywords !== undefined) entry.keywords = manifest.keywords;
 if (args["readme-name"] !== undefined) {
   entry.readme = `${baseUrl}readme/${args["readme-name"]}`;
 }
+// §381 — who published it (spec 0058 C1), and `homepage`, one of the five display fields a
+// person re-reviews when it changes (spec 0058 §7.3). First-party entries never carried it, and
+// still do not: plugin-release.yml's output stays byte-for-byte what it was.
+if (community) {
+  if (manifest.homepage !== undefined) entry.homepage = manifest.homepage;
+  entry.publisher = args.publisher;
+  entry.publisherId = Number(args["publisher-id"]);
+  entry.repoId = Number(args["repo-id"]);
+  entry.repository = args.repository;
+}
 
 const index = JSON.parse(readFileSync(args.index, "utf8"));
-if (!Array.isArray(index.plugins)) fail("index.json has no plugins array");
+const key = community ? "communityPlugins" : "plugins";
+const other = community ? "plugins" : "communityPlugins";
+if (!Array.isArray(index[key])) fail(`${args.index} has no ${key} array`);
+if (index[other] !== undefined) {
+  fail(`${args.index} carries ${other} — this entry belongs in the other file (spec 0058 §8.3)`);
+}
 
 // ‼️ REFUSE AN AMBIGUOUS ID RATHER THAN UPDATING THE FIRST ONE.
 //
@@ -193,17 +256,34 @@ if (!Array.isArray(index.plugins)) fail("index.json has no plugins array");
 // `validate-index.ts` runs after this and rejects duplicates, so the push was already
 // blocked — but only because of step ORDER, which is exactly the kind of guarantee that
 // evaporates in a refactor. Stating it here makes the upsert itself unambiguous.
-const matches = index.plugins.filter((p) => p.id === entry.id).length;
+const matches = index[key].filter((p) => p.id === entry.id).length;
 if (matches > 1) {
   fail(
-    `index.json already holds ${matches} entries for ${entry.id} — refusing to guess ` +
+    `${key} already holds ${matches} entries for ${entry.id} — refusing to guess ` +
       "which one this release replaces (the app serves neither, see dropAmbiguousIds)",
   );
 }
 
-const at = index.plugins.findIndex((p) => p.id === entry.id);
-if (at >= 0) index.plugins[at] = entry;
-else index.plugins.push(entry);
+const at = index[key].findIndex((p) => p.id === entry.id);
+// An automated upsert must not change an existing entry's identity. Spec 0058 §8.5:
+// ownership transfer or an account deletion is fixed by a
+// manual maintenance commit that edits `publisherId`/`repoId` directly, never by this script
+// running unattended in the publish reconcile. Community-only: a first-party entry carries
+// neither field, so `existing.publisherId`/`existing.repoId` are `undefined` for both sides
+// and this check is a no-op there.
+if (community && at >= 0) {
+  const existing = index[key][at];
+  if (existing.publisherId !== entry.publisherId || existing.repoId !== entry.repoId) {
+    fail(
+      `${entry.id} is recorded as publisherId ${existing.publisherId}/repoId ${existing.repoId} ` +
+        `but this release carries publisherId ${entry.publisherId}/repoId ${entry.repoId} — ` +
+        "ownership transfer is a manual maintenance commit (spec 0058 §8.5), not something " +
+        "an automated upsert does",
+    );
+  }
+}
+if (at >= 0) index[key][at] = entry;
+else index[key].push(entry);
 index.updatedAt = new Date().toISOString().slice(0, 10);
 
 const serialized = `${JSON.stringify(index, null, 2)}\n`;

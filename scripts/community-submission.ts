@@ -23,20 +23,67 @@ export const MAX_SUBMISSION_BYTES = 4 * 1024;
 
 /**
  * Reserved for first-party plugins (spec 0058 §7.2 gate 2, §8.3). Not imported — copied, like
- * the app's own copy. Three places hold this prefix as a literal (measured:
- * `grep -rn '"baram-"' src/ src-tauri/src/ scripts/`, excluding tests and the i18n string that
- * only displays it): `src/plugins/community-registry.ts` `FIRST_PARTY_ID_PREFIX`,
- * `src-tauri/src/plugin/dev_mode.rs` `FIRST_PARTY_PREFIX`, and this one. A test
- * (`community-submission.test.ts`, a boundary corpus comparing `parseSubmission` against
- * `applyCommunityRules`) pins only the app's TypeScript copy and this one equal. The Rust copy
- * is pinned only to refusing `baram-x`, by `dev_mode.rs`'s `a_release_build_refuses_a_first_party_id`
- * — a drift there to a shorter or longer prefix is not caught by anything in this repo.
+ * the app's own copy. Four places hold this prefix as the literal that ENFORCES the
+ * reservation (measured: `find src src-tauri/src scripts -type f \( -name '*.ts' -o -name
+ * '*.tsx' -o -name '*.rs' -o -name '*.mjs' \) | xargs grep -nF 'baram-'`, filtered to the
+ * reserved-id-prefix rule — corpus is src/, src-tauri/src/, scripts/, excluding tests and this
+ * comment, and excluding every hit that is not an id-reservation check (e.g. the
+ * `.baram-extract-` temp-dir prefix in `src-tauri/src/fs/mod.rs`; the
+ * `https://sayinel.github.io/baram-plugins/` URL-prefix hits in `registry.rs`, all inside
+ * `#[cfg(test)]`; and `mod.rs`'s `FIRST_PARTY_REVOCATION_PREFIX`, which `fetch.rs` reads to
+ * decide whether a fetched `revoked.json` is the first-party one worth verifying a signature
+ * against — it arms a signature check, not a fetch-origin bound):
+ *   `src/plugins/community-registry.ts` `FIRST_PARTY_ID_PREFIX`,
+ *   `src-tauri/src/plugin/dev_mode.rs` `FIRST_PARTY_PREFIX`,
+ *   `scripts/update-registry-index.mjs`'s `manifest.id.startsWith("baram-")` (added by §381 —
+ *   plain Node, so it cannot import this module), and this one.
+ * That grep's extension list has no `.json`, so it does NOT see the two i18n strings that also
+ * spell "baram-" (`src/i18n/en.json` and `ko.json`, key `plugin.dev.error.idReserved`) — those
+ * are prose copies of `dev_mode.rs`'s refusal for display, not a fifth enforcement site.
+ *
+ * A test (`community-submission.test.ts`, a boundary corpus comparing `parseSubmission` against
+ * `applyCommunityRules`) pins only the app's TypeScript copy (`community-registry.ts`) and this
+ * one equal. The Rust copy is pinned only to refusing `baram-x` (and admitting `my-baram-x`), by
+ * `dev_mode.rs`'s `a_release_build_refuses_a_first_party_id` and
+ * `src-tauri/src/commands/plugin_dev_cmd.rs`'s
+ * `a_release_build_refuses_a_first_party_id_and_grants_it_nothing`. Reasoned through, not just
+ * asserted: `id.starts_with(FIRST_PARTY_PREFIX)` on `"baram-x"` stays true for every PREFIX of
+ * `"baram-x"` (`"b"` … `"baram-"`, six strings — the last of which is the current value) and
+ * for `"baram-x"` itself (a seventh), and `"my-baram-x"` starts with none of those seven (it
+ * starts with `"my-"`) — so a drift of the constant to any of the seven passes both tests
+ * undetected. Nothing LONGER than `"baram-x"` can: `"baram-x"` would
+ * then no longer start with it, and the refusal test goes red. The `.mjs` copy is pinned only by
+ * `registry-index-script.test.ts`'s `"a first-party id"` row
+ * (`{ ...COMMUNITY_MANIFEST, id: "baram-hello" }`), which catches the prefix being removed or
+ * loosened but, like the Rust pin, not a drift among the prefixes of `"baram-hello"` that still
+ * refuses it.
  */
 export const FIRST_PARTY_PREFIX = "baram-";
 
-/** The id rule `plugin-release.yml` and `update-registry-index.mjs` apply to manifests. */
-const ID_RE = /^[a-z0-9][a-z0-9-]*$/u;
-const REPO_NAME_RE = /^[A-Za-z0-9._-]{1,100}$/u;
+/**
+ * The id rule spec 0058 §7.2 gate 2 sets for a submission, matching `plugin-release.yml`'s own
+ * manifest-id check. Exported for `scripts/validate-index.ts`'s community charset check: the
+ * PRIMARY reason to refuse an id outside this pattern is gate 2 itself — the submission gate
+ * refuses it, so no honestly-submitted entry has one.
+ *
+ * ‼️ NOT THE SAME CHARSET THE APP INSTALLS BY — do not cite installability for a violation this
+ * regex catches but a looser one would not. The app's own id gates anchor nothing at the first
+ * character: `src/plugins/manifest.ts`'s `validateManifest` and `src-tauri/src/plugin/mod.rs`'s
+ * manifest loader both accept `/^[a-z0-9-]+$/`, so `-foo` (leading hyphen) passes both and IS
+ * installable. The install argument holds only for a character truly outside `[a-z0-9-]`
+ * (uppercase, unicode, etc.): `src-tauri/src/plugin/install.rs`'s `commit_staged_plugin_install`
+ * refuses the install when `manifest.id() != expected_id` (byte-for-byte), and a manifest can
+ * never spell such a character at all — a registry id containing one can never match.
+ */
+export const ID_RE = /^[a-z0-9][a-z0-9-]*$/u;
+/**
+ * The repo-name charset gate 2 applies to a submission's `repo` — exported for
+ * `scripts/validate-index.ts` and copied (this module is TypeScript, `update-registry-index.mjs`
+ * is plain Node) into `scripts/update-registry-index.mjs`'s `REPO_NAME_RE`, both pointing back
+ * here. The charset alone admits `.` and `..`, so every caller pairs it with an explicit
+ * exclusion of those two — see the two checks below and in the two callers.
+ */
+export const REPO_NAME_RE = /^[A-Za-z0-9._-]{1,100}$/u;
 const TAG_RE = /^v?(\d+\.\d+\.\d+)$/u;
 const ASSET_RE = /^[A-Za-z0-9._-]+\.zip$/u;
 const SHA256_RE = /^[0-9a-f]{64}$/u;

@@ -2,7 +2,7 @@
  * Validates a plugin registry `index.json` before it is published (§69).
  *
  * The sibling of `validate-revocations.ts`, and it exists for the same reason. The app is
- * deliberately FORGIVING about this document in four directions, each of which hides an
+ * deliberately FORGIVING about this document in five directions, each of which hides an
  * authoring mistake from the person who made it:
  *
  * - an entry Rust cannot deserialize is DROPPED and the rest of the index stands
@@ -14,8 +14,10 @@
  *   failure than the demotion above, not a milder one
  * - an `engines.baram` that is absent or not `>=X.Y.Z` reads as "no floor", so the version
  *   gate simply stops protecting anyone (`unmetBaramFloor` in `src/plugins/engines.ts`)
+ * - a `community.json` entry `applyCommunityRules` finds ineligible is DROPPED outright — the
+ *   same harsher failure as an unknown `kind` (`src/plugins/community-registry.ts`)
  *
- * All four are right at runtime: one contributor's typo must not empty the marketplace for
+ * All five are right at runtime: one contributor's typo must not empty the marketplace for
  * every user, nor block installs the app is perfectly able to perform. But together they
  * mean a mis-authored entry deploys cleanly, serves a 200, and is invisible, un-installable,
  * or unprotected — with no signal reaching the operator. This is the one place that can tell
@@ -27,19 +29,64 @@
  * Run: npx tsx scripts/validate-index.ts [path]
  */
 import { lstatSync, readFileSync, type Stats } from "node:fs";
-import { resolve } from "node:path";
+import { basename, resolve } from "node:path";
 
 import { parseBaramFloor } from "../src/plugins/engines";
+import { isGithubLogin } from "../src/plugins/community-registry";
 import {
   MAX_TEXT_FIELD_CHARS,
   UNSAFE_TEXT_CHARS_RE,
 } from "../src/themes/theme-manifest";
 import { RESERVED_THEME_IDS } from "../src/types/theme";
 import { VALID_CAPABILITIES } from "../src/plugins/manifest";
+import { FIRST_PARTY_PREFIX, ID_RE, REPO_NAME_RE } from "./community-submission";
 import { label } from "./gha-label";
 import { registryByteCap } from "./rust-constants";
 
 const path = process.argv[2] ?? "registry/index.json";
+
+/**
+ * Rust's `publisherId`/`repoId` are `u64` (no `arbitrary_precision`), so `583231.0` and
+ * `5.55e2` parse to the same JS integer as `583231`/`555` but make serde refuse the WHOLE entry
+ * (measured against this crate's pinned `serde`/`serde_json` versions: a scratch probe
+ * deserializing `{"publisherId":583231.0}` into a `u64` field returns
+ * `Err("invalid type: floating point ... expected u64")`). JS collapses the trailing `.0` or the
+ * exponent before this script ever sees a *value*, so only the RAW JSON TEXT can tell them apart
+ * — captured here with a `JSON.parse` reviver's Node 24 `context.source` (confirmed present by
+ * running `node -e` against this repo's Node before relying on it).
+ *
+ * Stashed on the holder object under a Symbol, so it rides along with the entry through every
+ * later access (`entry[field]`) without becoming an enumerable property `Object.entries`,
+ * `JSON.stringify` or a test's `toEqual` would ever see.
+ *
+ * `downloads` (also `u64`, checked by `isU64` in `FIELDS` below) has the exact same hole — a
+ * float-spelled `downloads` reads as a valid non-negative integer here and still makes serde
+ * drop the entry — but closing it is NOT a one-liner: `isU64`'s callers are `FIELDS`' generic
+ * `check(value)` signature, which has no entry or field-name context to look up a raw source
+ * with. Left open, undone.
+ */
+const RAW_NUMBER_SOURCE = Symbol("raw-number-source");
+
+function reviveWithRawNumberSource(
+  this: unknown,
+  key: string,
+  value: unknown,
+  context?: { source?: string },
+): unknown {
+  if (
+    (key === "publisherId" || key === "repoId") &&
+    context?.source !== undefined &&
+    typeof this === "object" &&
+    this !== null
+  ) {
+    const holder = this as Record<PropertyKey, unknown>;
+    const store =
+      (holder[RAW_NUMBER_SOURCE] as undefined | Record<string, string>) ?? {};
+    store[key] = context.source;
+    holder[RAW_NUMBER_SOURCE] = store;
+  }
+  return value;
+}
 
 const isString = (v: unknown) => typeof v === "string";
 const isStringArray = (v: unknown) =>
@@ -139,6 +186,112 @@ const TRUST_VALUES = ["sandboxed", "trusted"];
 const errors: string[] = [];
 const warnings: string[] = [];
 
+/**
+ * §380/§381 — what community.json may carry beyond the shared rules (spec 0058 §8.3, contract
+ * C1). Each rule below is named for the specific runtime consequence of skipping it, measured
+ * rule by rule against `src/plugins/community-registry.ts`, `src/plugins/registry-client.ts`
+ * and `src-tauri/src/plugin/registry.rs` — no single function owns all of them:
+ *
+ * - id prefix, kind `"theme"`, a well-typed-but-invalid `publisher`/`publisherId`/`repoId`
+ *   (e.g. a login that fails the GitHub grammar, or `0`) — `applyCommunityRules`'s
+ *   `ineligibility` DROPS the entry outright (`logger.warn`, nothing louder), so it never
+ *   reaches any marketplace at all.
+ * - a WRONG-TYPED `publisher`/`publisherId`/`repoId` (a number where a login string is
+ *   expected, a string or float where the numeric id is expected) never reaches `ineligibility`
+ *   at all — Rust's `CommunityRegistryEntry` (`#[serde(flatten)]` over `RegistryEntry` plus
+ *   `Option<String>`/`Option<u64>` fields) fails to deserialize the WHOLE entry, and
+ *   `tolerant_entries` drops it before any JSON reaches the frontend (pinned by
+ *   `a_wrong_typed_field_drops_a_community_entry` in `registry.rs`).
+ * - a `kind` present but not `"plugin"` OR `"theme"` (a typo, not `"theme"` itself) is dropped
+ *   earlier still, by `dropUnknownKinds` inside the SHARED `normalizeIndex` both files run
+ *   through before `applyCommunityRules` ever sees the entry (`registry-client.ts`) — the same
+ *   drop the unknown-`kind` check BELOW guards for `index.json` (it runs for both files, later
+ *   in the same entry's checks).
+ * - trust — NOT `applyCommunityRules`'s job for a value it does not recognize; an unrecognized
+ *   tier is `normalizeIndex`'s job (shared with index.json, demoting to legacy), and is already
+ *   caught by the generic "unknown trust tier" check BELOW, later in this same entry's checks.
+ *   What `applyCommunityRules` itself demotes is the one legal-but-disallowed value:
+ *   `"trusted"` is downgraded to legacy with `demotedBecause: "community-trusted"`, because
+ *   community plugins are sandboxed only until the trusted stage (spec 0058 §378).
+ * - id charset — read by NEITHER app function; the PRIMARY reason to refuse it is spec 0058
+ *   §7.2 gate 2 itself (the submission gate refuses any id outside `/^[a-z0-9][a-z0-9-]*$/`, so
+ *   no honestly-submitted entry has one). ‼️ Not an install argument in general — the app's own
+ *   id gates (`src/plugins/manifest.ts`'s `validateManifest`, `src-tauri/src/plugin/mod.rs`'s
+ *   manifest loader) accept the LOOSER `/^[a-z0-9-]+$/`, unanchored at the first character, so
+ *   e.g. `-foo` is installable even though gate 2 refuses it. The install argument holds only
+ *   for a character truly outside `[a-z0-9-]` (uppercase, unicode, etc.): no manifest can ever
+ *   spell one, and `src-tauri/src/plugin/install.rs`'s `commit_staged_plugin_install` refuses
+ *   the install when `manifest.id() != expected_id` (byte-for-byte), so such a registry id can
+ *   never match.
+ * - repository shape — read by NEITHER app function. `PluginDetail.tsx` renders it only as the
+ *   `href` of a FIXED-label link (`safeLinkHref` gates the scheme; the visible text is a static
+ *   i18n string, not the URL), so a bad value is a display/provenance defect, not a drop.
+ */
+function checkCommunityEntry(entry: Record<string, unknown>, where: string): void {
+  if ((entry.id as string).startsWith(FIRST_PARTY_PREFIX)) {
+    errors.push(`${where}: community ids may not start with "${FIRST_PARTY_PREFIX}" — the prefix is the first-party channel's`);
+  } else if (!ID_RE.test(entry.id as string)) {
+    const uninstallable = !/^[a-z0-9-]+$/u.test(entry.id as string);
+    errors.push(
+      `${where}: id must match ${ID_RE} — spec 0058 §7.2 gate 2's own rule for a submitted id, ` +
+        "so no honestly-submitted entry has one outside it" +
+        (uninstallable
+          ? "; it also cannot be installed, since neither the manifest loader (manifest.ts) " +
+            "nor install.rs's byte-for-byte id comparison can ever match a character outside " +
+            "[a-z0-9-]"
+          : ""),
+    );
+  }
+  if (entry.kind !== undefined && entry.kind !== "plugin") {
+    errors.push(`${where}: kind ${JSON.stringify(entry.kind)} — community.json carries plugins only; the app drops anything else from it`);
+  }
+  if (entry.trust !== "sandboxed") {
+    errors.push(`${where}: trust must be "sandboxed" — community plugins are sandboxed only until the trusted stage (spec 0058 §378), and the app demotes a "trusted" entry to legacy`);
+  }
+  if (!isGithubLogin(entry.publisher)) {
+    errors.push(`${where}: publisher must be a GitHub login — the app drops a community entry without one`);
+  }
+  for (const field of ["publisherId", "repoId"]) {
+    const value = entry[field];
+    if (!(typeof value === "number" && Number.isSafeInteger(value) && value > 0)) {
+      errors.push(`${where}: ${field} must be a positive integer — identity is compared by this number, never by login`);
+      continue;
+    }
+    // The value reads fine to JS; only the raw JSON text can show a float or exponent
+    // spelling Rust's u64 deserializer refuses (see RAW_NUMBER_SOURCE above).
+    const rawSource = (
+      (entry as Record<PropertyKey, unknown>)[
+        RAW_NUMBER_SOURCE
+      ] as undefined | Record<string, string>
+    )?.[field];
+    if (rawSource !== undefined && !/^[1-9]\d*$/u.test(rawSource)) {
+      errors.push(
+        `${where}: ${field} is written as ${rawSource} — Rust's u64 deserializer refuses ` +
+          "any decimal point or exponent outright, dropping the entire entry, even though " +
+          `JavaScript reads it as the plain integer ${value}`,
+      );
+    }
+  }
+  // Gate 2's repo-name charset (`REPO_NAME_RE`), not a bare `[^/]+`: that admitted `?`, `#`
+  // and a literal newline into the name segment, all silently swallowed by a wildcard that
+  // excluded only `/`.
+  const repository = entry.repository;
+  const repoMatch =
+    typeof repository === "string"
+      ? /^https:\/\/github\.com\/([^/]+)\/([^/]+)$/u.exec(repository)
+      : null;
+  if (
+    repoMatch === null ||
+    typeof entry.publisher !== "string" ||
+    repoMatch[1] !== entry.publisher ||
+    !REPO_NAME_RE.test(repoMatch[2]) ||
+    repoMatch[2] === "." ||
+    repoMatch[2] === ".."
+  ) {
+    errors.push(`${where}: repository must be https://github.com/<publisher>/<name>`);
+  }
+}
+
 function fail(message: string): never {
   console.error(`✗ ${path}: ${message}`);
   process.exit(1);
@@ -183,16 +336,42 @@ if (stat.size > cap) {
 
 let raw: unknown;
 try {
-  raw = JSON.parse(readFileSync(path, "utf8"));
+  raw = JSON.parse(readFileSync(path, "utf8"), reviveWithRawNumberSource);
 } catch (err) {
   fail(`not valid JSON — ${String(err)}`);
 }
 
-const plugins = (raw as { plugins?: unknown }).plugins;
+// §381 — which channel this document is (spec 0058 §8.3, §9.1). The app decides the channel by
+// the FILE it fetched, so a file whose name and key disagree is refused rather than judged by
+// either set of rules.
+const doc = (raw ?? {}) as { communityPlugins?: unknown; plugins?: unknown };
+if (doc.plugins !== undefined && doc.communityPlugins !== undefined) {
+  fail("carries both `plugins` and `communityPlugins` — one file is one channel (spec 0058 §9.1)");
+}
+const community = doc.communityPlugins !== undefined;
+const fileName = basename(path);
+if (fileName === "community.json" && !community) {
+  fail(
+    "community.json must hold `communityPlugins`, never `plugins` — every shipped RegistryIndex " +
+      "parser reads `plugins`, and this file must stay unreadable to them (spec 0058 G7)",
+  );
+}
+if (fileName === "index.json" && community) {
+  fail("index.json must hold `plugins` — `communityPlugins` belongs in community.json (spec 0058 §8.3)");
+}
+const plugins = community ? doc.communityPlugins : doc.plugins;
 if (!Array.isArray(plugins)) {
-  // Matches the one thing Rust still treats as fatal: a document with no `plugins` array is
-  // not a partly-broken index, it is the wrong file.
-  fail("no `plugins` array — the app cannot read this as an index at all");
+  // Matches ONE of the two things Rust's `tolerant_entries` still treats as fatal: a document
+  // with no entry array is not a partly-broken index, it is the wrong file. (The other is every
+  // entry in a non-empty array failing to deserialize — `RawRegistryIndex`/
+  // `RawCommunityRegistryIndex` require the array itself, and `tolerant_entries` separately
+  // refuses a non-empty array with zero survivors; this script cannot reproduce that second
+  // case without re-implementing per-entry deserialization, so it is out of scope here.)
+  fail(
+    community
+      ? "`communityPlugins` is not an array — the app cannot read this file"
+      : "no `plugins` array — the app cannot read this as an index at all",
+  );
 }
 
 const seenIds = new Map<string, number>();
@@ -202,7 +381,13 @@ plugins.forEach((value, position) => {
   // Entries are identified by id where possible and by position otherwise, because an entry
   // whose id is the missing field is exactly the case that needs locating.
   const id = typeof entry.id === "string" && entry.id !== "" ? entry.id : null;
-  const where = label(id ?? `entry #${position + 1}`);
+  const named = label(id ?? `entry #${position + 1}`);
+  // §381 — `validate-registry-assets.ts` runs over community.json too (spec 0058 §8.2 step 4),
+  // and `plugin-release.yml` runs it before every first-party push, so a broken community entry
+  // must name its own file rather than reading as an anonymous failure in that log. Named by
+  // the FILE actually read (`fileName`), not a hardcoded "community.json" — this document is
+  // whichever file `community` was computed from above.
+  const where = community ? `${named} (${fileName})` : named;
 
   // Registered BEFORE the early return below, so a duplicate of an entry that is itself
   // broken is still reported. Otherwise fixing the first error would reveal a second.
@@ -264,6 +449,17 @@ plugins.forEach((value, position) => {
   // it fails deserialization and is dropped at fetch with only a `droppedCount` warning.
   // That is a WIRE-SHAPE requirement; a theme publishes `"capabilities": []`.
   const isTheme = entry.kind === "theme";
+
+  // §380/§381 — the per-file rules. The FILE is the channel: first-party plugin ids carry the
+  // prefix that community.json refuses, so the two lists can never name the same plugin.
+  if (community) {
+    checkCommunityEntry(entry, where);
+  } else if (!isTheme && !(entry.id as string).startsWith(FIRST_PARTY_PREFIX)) {
+    errors.push(
+      `${where}: a first-party plugin id starts with "${FIRST_PARTY_PREFIX}" — the reserved prefix is spec 0058 §7.2 gate 2, restated per-file in §8.3`,
+    );
+  }
+
   if (isTheme && entry.trust !== undefined) {
     // Not an error: an entry is readable either way. But a tier on a theme is a field
     // nothing reads, and saying so is how it stops being copied into the next one.
@@ -340,6 +536,17 @@ plugins.forEach((value, position) => {
         `${where}: name contains a control or bidi-override character — those reorder or ` +
           "hide text in the install consent dialog, which is the one screen that must read " +
           "as written",
+      );
+    }
+  }
+
+  // §380 gate 8 — the other two strings the card and the consent dialog render. Only the
+  // character class, as spec 0058 §7.2 asks: a description is legitimately longer than a name.
+  for (const field of ["author", "description"]) {
+    const value = entry[field];
+    if (typeof value === "string" && UNSAFE_TEXT_CHARS_RE.test(value)) {
+      errors.push(
+        `${where}: ${field} contains a control or bidi-override character — those reorder or hide text on the screens that render it`,
       );
     }
   }

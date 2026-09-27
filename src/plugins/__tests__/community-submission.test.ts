@@ -38,6 +38,11 @@ describe("parseSubmission", () => {
       "id must match /^[a-z0-9][a-z0-9-]*$/",
     ],
     [
+      "an id starting with a hyphen",
+      { ...SUBMISSION, id: "-foo" },
+      "id must match /^[a-z0-9][a-z0-9-]*$/",
+    ],
+    [
       "a publisher that is not a login",
       { ...SUBMISSION, publisher: "-octocat" },
       "publisher must be a GitHub login",
