@@ -38,6 +38,7 @@ const SHARED_VALUES = new Set<string>([
   "keybindings.category.ai", // AI
   "menu.app", // Baram
   "menu.help.faq", // FAQ
+  "plugin.channel.firstParty", // Baram — the distributor's name, badged on its own plugins
   "plugin.detail.readme", // README — the filename the section renders, not a word
   "settings.ai.ollamaUrl", // Ollama URL
   "settings.ai.ollamaUrl.placeholder", // http://localhost:11434

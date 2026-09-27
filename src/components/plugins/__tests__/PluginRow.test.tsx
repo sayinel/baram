@@ -1,6 +1,6 @@
 // §69 — 액션 세트가 `source`에서 파생되는지 행 단위로 고정한다.
 import type { PluginRow } from "../../../plugins/plugin-sources";
-import type { PluginManifest } from "../../../plugins/types";
+import type { PluginConsent, PluginManifest } from "../../../plugins/types";
 
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -39,7 +39,7 @@ function row(over: Partial<PluginRow>): PluginRow {
       trust: "sandboxed",
       version: "1.0.0",
     } as PluginManifest,
-    source: "community",
+    source: "registry",
     ...over,
   };
 }
@@ -93,8 +93,8 @@ describe("PluginRowView (§69)", () => {
     expect(screen.queryByRole("button", { name: /remove/i })).toBeNull();
   });
 
-  it("gives a community plugin a remove button", () => {
-    render(<PluginRowView row={row({ source: "community" })} {...handlers} />);
+  it("gives a registry plugin a remove button", () => {
+    render(<PluginRowView row={row({ source: "registry" })} {...handlers} />);
     expect(screen.getByRole("button", { name: /remove/i })).toBeTruthy();
   });
 
@@ -142,11 +142,11 @@ describe("PluginRowView (§69)", () => {
     expect(notice().queryByRole("button", { name: REMOVE_NAMED })).toBeNull();
   });
 
-  it("offers it to a community plugin, which can remove", () => {
+  it("offers it to a registry plugin, which can remove", () => {
     // 보완 단정: 위 단정만으로는 알림에서 버튼을 통째로 지운 구현도 통과한다.
     render(
       <PluginRowView
-        row={row({ revocation: REVOKED, source: "community" })}
+        row={row({ revocation: REVOKED, source: "registry" })}
         {...handlers}
       />,
     );
@@ -175,7 +175,7 @@ describe("PluginRowView (§69)", () => {
   // assertion with it and the test stays green. That is how the withdrawn row pins the
   // piercing — de-pierce the sweep and its count drops 4 → 3.
   it.each([
-    ["a default community row (Details, Remove)", row({}), handlers, 3],
+    ["a default registry row (Details, Remove)", row({}), handlers, 3],
     [
       "a row with an update offered (adds Update)",
       row({ updateVersion: "2.0.0" }),
@@ -251,5 +251,62 @@ describe("PluginRowView (§69)", () => {
         .filter((el) => !plain.includes(el))
         .map((el) => accessibleName(el)),
     ).toEqual([REMOVE_NAMED]);
+  });
+});
+
+describe("channel badge on an installed row (§382)", () => {
+  const withConsent = (consent?: PluginConsent) => {
+    const base = row({});
+    return row({
+      installed: {
+        checksum: "",
+        ...(consent === undefined ? {} : { consent }),
+        enabled: true,
+        installedAt: 0,
+        installPath: "/p/x",
+        manifest: base.manifest,
+        updatedAt: 0,
+      },
+    });
+  };
+
+  it("says Baram for a first-party install", () => {
+    render(
+      <PluginRowView
+        row={withConsent({
+          capabilities: [],
+          channel: "first-party",
+          trust: "sandboxed",
+        })}
+        {...handlers}
+      />,
+    );
+    expect(screen.getByText("Baram")).toBeTruthy();
+  });
+
+  it("says Community for a community install", () => {
+    render(
+      <PluginRowView
+        row={withConsent({
+          capabilities: [],
+          channel: "community",
+          publisher: "octocat",
+          publisherId: 583231,
+          trust: "sandboxed",
+        })}
+        {...handlers}
+      />,
+    );
+    expect(screen.getByText("Community")).toBeTruthy();
+  });
+
+  it("says nothing for an install recorded before §382 — the channel was never known", () => {
+    const { container } = render(
+      <PluginRowView
+        row={withConsent({ capabilities: [], trust: "sandboxed" })}
+        {...handlers}
+      />,
+    );
+    expect(container.querySelector(".plugin-channel-badge")).toBeNull();
   });
 });

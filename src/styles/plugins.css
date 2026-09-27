@@ -159,6 +159,30 @@
   color: var(--color-text-secondary);
 }
 
+/* §382 — who distributes this code. Primary text, not the lead's secondary tone: for a
+   community plugin the second half of the sentence is the whole security argument. */
+.plugin-consent__provenance {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--color-text-primary);
+  overflow-wrap: anywhere;
+}
+
+/* A changed publisher is why this dialog is open at all on an otherwise quiet update, so it
+   reads as its own block. Neutral surface: a change of hands is not an error. */
+.plugin-consent__provenance-change {
+  padding: var(--space-2) var(--space-3);
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  overflow-wrap: anywhere;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-lg);
+}
+
 /* A bordered list rather than loose bullets: these lines are what the user is actually
    agreeing to, so they read as one block with a boundary. */
 .plugin-consent__caps {
@@ -581,7 +605,9 @@
 
 /* 상세 화면의 "내장" 칩은 행의 것과 같은 칩이어야 한다 — 같은 사실을 두 화면이 같은
    모양으로 말한다. 규칙을 복제하는 대신 선택자를 묶는다: 복제본은 한쪽만 고쳐지는 순간
-   갈라지고, 갈라진 두 칩은 "같은 것"이라는 신호를 잃는다. */
+   갈라지고, 갈라진 두 칩은 "같은 것"이라는 신호를 잃는다. §382 의 채널 칩(Baram·커뮤니티)도
+   같은 칩이다 — 카드·행·상세 세 화면이 한 규칙을 쓴다. */
+.plugin-channel-badge,
 .plugin-detail__badge,
 .plugin-row__badge {
   padding: var(--space-px) var(--space-1-5);

@@ -86,6 +86,7 @@ fn main() {
         "pick_approved_dir",
         "pick_approved_file",
         "plugin_call",
+        "plugin_fetch_community_registry",
         "plugin_fetch_readme",
         "plugin_fetch_registry",
         "plugin_fetch_revocations",

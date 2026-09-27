@@ -34,7 +34,7 @@ import { useShallow } from "zustand/shallow";
 import { useTranslation } from "../../i18n/useTranslation";
 import { pluginUninstall } from "../../ipc/plugin-invoke";
 import { devFolderHoldsId } from "../../plugins/dev-plugins";
-import { consentRequired } from "../../plugins/plugin-consent";
+import { claimedConsent, consentRequired } from "../../plugins/plugin-consent";
 import {
   activateBuiltin,
   deactivateBuiltin,
@@ -203,10 +203,7 @@ export function usePluginActions(registryIndex: null | RegistryIndex) {
           setError(entry.id, tooOld);
           return false;
         }
-        const claimed: PluginConsent = {
-          capabilities: [...entry.capabilities].sort(),
-          trust: entry.trust,
-        };
+        const claimed = claimedConsent(entry, entry.trust);
         const consent =
           preApproved ??
           (await askConsent({
@@ -367,10 +364,7 @@ export function usePluginActions(registryIndex: null | RegistryIndex) {
         return;
       }
       const prior = installedPlugins[entry.id]?.consent;
-      const claimed: PluginConsent = {
-        capabilities: [...entry.capabilities].sort(),
-        trust: entry.trust,
-      };
+      const claimed = claimedConsent(entry, entry.trust);
       const reason = consentRequired(prior, claimed);
       // When the recorded consent already covers this version, record the CLAIMED shape
       // rather than carrying the old one forward — an update that drops a capability
@@ -462,7 +456,7 @@ export function usePluginActions(registryIndex: null | RegistryIndex) {
   );
 
   /**
-   * §69 — 내장 토글. 커뮤니티 토글과 같은 형태(스토어 먼저, 그다음 런타임)이지만
+   * §69 — 내장 토글. 설치본 토글과 같은 형태(스토어 먼저, 그다음 런타임)이지만
    * 로더를 거치지 않는다: 내장은 디스크에 없고 `activateBuiltin`/`deactivateBuiltin`이
    * 그 수명을 소유한다.
    */

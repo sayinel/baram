@@ -10,7 +10,8 @@
 export interface ThemeActionSet {
   /** 이 테마를 활성으로 만든다 */
   apply: boolean;
-  /** 동의 이력 보기 — 레지스트리에서 받은 것만 */
+  /** 동의 이력 보기 — 설치한 테마만(레지스트리·파일 두 입구 모두 동의를 남긴다,
+   *  `theme-install.ts`의 `InstalledTheme.consentedAt` 주석) */
   consentHistory: boolean;
   /** 복제해 편집 — 새 custom 테마를 만든다 */
   duplicate: boolean;
@@ -24,8 +25,17 @@ export interface ThemeActionSet {
   update: boolean;
 }
 
-/** `custom`은 플러그인에 대응물이 없다 — 앱 안에서 사용자가 만든 테마다. */
-export type ThemeSource = "builtin" | "community" | "custom" | "dev";
+/**
+ * `custom`은 플러그인에 대응물이 없다 — 앱 안에서 사용자가 만든 테마다.
+ *
+ * §382 — `installed` 는 둘 중 어느 입구로 왔든 설치된 테마다: 레지스트리, 또는 패키지
+ * 파일(§371, `InstalledTheme.origin`). `PluginSource`처럼 `registry`로 부르지 않는
+ * 이유가 그것이다 — 파일 설치도 이 출처를 쓰므로 `registry`는 절반만 맞는 이름이 된다.
+ * `community` 였던 이름을 플러그인 출처(`PluginSource`)와 함께 바꾼 것은 그대로다:
+ * 커뮤니티는 이제 채널의 이름이고, 커뮤니티 테마를 열 때 같은 채널 규칙을
+ * 적용한다(스펙 0058 §9.4).
+ */
+export type ThemeSource = "builtin" | "custom" | "dev" | "installed";
 
 const NONE: ThemeActionSet = {
   apply: false,
@@ -40,7 +50,7 @@ const NONE: ThemeActionSet = {
 const BY_SOURCE: Record<ThemeSource, ThemeActionSet> = {
   // 내장은 지울 수도 갱신할 수도 없다 — 바이너리에 동봉되어 있다.
   builtin: { ...NONE, apply: true, duplicate: true },
-  community: {
+  installed: {
     ...NONE,
     apply: true,
     consentHistory: true,

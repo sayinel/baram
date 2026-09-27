@@ -49,7 +49,7 @@ describe("themeCssCacheKey", () => {
 describe("installedThemeToDef", () => {
   it("carries source, id and name across", () => {
     const def = installedThemeToDef(installed());
-    expect(def.source).toBe("community");
+    expect(def.source).toBe("installed");
     expect(def.id).toBe("dracula");
     expect(def.name).toBe("Dracula");
   });
@@ -138,7 +138,7 @@ describe("lookupThemes", () => {
       dracula: installed(),
     });
     expect(findThemeById("mine", merged)?.source).toBe("custom");
-    expect(findThemeById("dracula", merged)?.source).toBe("community");
+    expect(findThemeById("dracula", merged)?.source).toBe("installed");
   });
 
   it("finds nothing for an id neither side has", () => {

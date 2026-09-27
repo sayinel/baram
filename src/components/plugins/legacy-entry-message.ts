@@ -16,9 +16,10 @@ import type { RegistryEntry } from "../../plugins/types";
  * make the dependency circular.
  *
  * The remedy depends on WHY the entry was demoted, and the original text points the wrong way
- * for one of the two reasons: an entry naming a capability this build cannot enforce usually
+ * for some of these reasons: an entry naming a capability this build cannot enforce usually
  * means the registry is NEWER than the app, so "ask the author to declare a tier" tells them to
- * do something they already did.
+ * do something they already did; a community entry declaring full trust (§382) is neither the
+ * author's fault nor fixed by updating Baram — community trust opens in spec 0058's stage 3.
  *
  * The sentences live in `i18n/{en,ko}.json` and the caller's `t` resolves them, which is the
  * pattern `capabilityLabel` already uses. This function was written in §260 and never went
@@ -30,7 +31,14 @@ export function legacyEntryMessage(
   entry: RegistryEntry,
   translate: Translate,
 ): string {
-  return entry.demotedBecause === "unknown-capability"
-    ? translate("plugin.legacy.entry.unknownCapability")
-    : translate("plugin.legacy.entry.noTier");
+  switch (entry.demotedBecause) {
+    // §382 — a community entry declaring full trust. Not the author's remedy (a tier was
+    // declared) and not an update's (community trust opens in spec 0058's stage 3).
+    case "community-trusted":
+      return translate("plugin.legacy.entry.communityTrusted");
+    case "unknown-capability":
+      return translate("plugin.legacy.entry.unknownCapability");
+    default:
+      return translate("plugin.legacy.entry.noTier");
+  }
 }

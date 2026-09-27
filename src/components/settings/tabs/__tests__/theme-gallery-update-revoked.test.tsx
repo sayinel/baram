@@ -15,6 +15,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const fetchRegistry = vi.fn();
 vi.mock("../../../../ipc/plugin-invoke", () => ({
+  pluginFetchCommunityRegistry: () => Promise.resolve({ communityPlugins: [] }),
   pluginFetchRegistry: (url: string) => fetchRegistry(url),
 }));
 
@@ -135,7 +136,7 @@ describe("the update control", () => {
   it("offers it on the installed card only, when an installed id collides with a built-in", async () => {
     // ‼️ THE ONLY WAY THE `themeActions(source).update` GATE IS REACHABLE, and the first
     // version of this test missed it: `updates` is keyed by INSTALLED theme ids, and every
-    // installed theme renders as `community`, so a built-in card can only ever be offered
+    // installed theme renders as `installed`, so a built-in card can only ever be offered
     // an update when its id is also an installed id. Registry ids are unique across kinds
     // (`dropAmbiguousIds`) but nothing makes them distinct from the eight built-in ids, so a
     // theme published as `nord` puts two cards on screen — the shipped one, whose files are

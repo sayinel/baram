@@ -19,6 +19,20 @@ export interface CommandsAPI {
     execute(id: string, ...args: unknown[]): Promise<unknown>;
     register(id: string, handler: (...args: unknown[]) => unknown, opts?: CommandRegisterOptions): Disposable;
 }
+/**
+ * §382 — `community.json` as Rust hands it over: the community list, beside `index.json`
+ * (spec 0058 contract C1). A 404 arrives as an empty list.
+ *
+ * ‼️ The top-level key is `communityPlugins`, never `plugins`: every tagged release with a
+ * registry parser (v0.3.0–v0.7.5, the latest tagged release as of this writing) requires
+ * `plugins`, so no build before §382 reads this file as an index (spec 0058 G7).
+ * `droppedCount` is Rust's, as on `RegistryIndex`.
+ */
+export interface CommunityRegistryIndex {
+    communityPlugins: RegistryEntry[];
+    droppedCount?: number;
+    updatedAt?: string;
+}
 export interface Disposable {
     dispose(): void;
 }
@@ -59,14 +73,25 @@ export interface FilesAPI {
 export interface InstalledPlugin {
     checksum: string;
     /**
-     * §260 Phase 5 — the (trust, capabilities) the user approved at install, kept so a
-     * later version can be compared against what was actually agreed to rather than
-     * against the manifest that shipped with it. Absent for records written before Phase 5.
+     * §260 Phase 5 — what the user approved at install: the capabilities and trust shown,
+     * and, since §382, the channel of the listing and (for a community one) who published
+     * it — kept so a later version can be compared against what was actually agreed to
+     * rather than against the manifest that shipped with it. Absent for records written
+     * before Phase 5; channel and publisher absent for records written before §382.
      *
      * For a dev-folder plugin (§379): the record carries Rust's consent in a release build; a
      * dev build drops it even when the shared `plugin-dev.json` file has one, since choosing
      * the directory there is its own deliberate act (`devRowConsent` in `dev-plugins.ts` is
-     * what enforces the drop — this field itself is just storage).
+     * what enforces the drop — this field itself is just storage). A dev-folder consent never
+     * carries channel or publisher — those describe a registry listing, and a dev folder is
+     * neither.
+     *
+     * §382 — an update that asks NOTHING still re-records the listing's current claim (narrower
+     * capabilities, the channel, the current login), rather than carrying the old record
+     * forward unchanged; for a COMMUNITY listing it can never record a different `publisherId`,
+     * since a changed id is exactly what would have made it ask (`usePluginActions.ts`'s
+     * `handleUpdate`) — a first-party listing taking over an id records none, by design
+     * (`claimedConsent` copies `publisher`/`publisherId` for a community channel only).
      */
     consent?: PluginConsent;
     enabled: boolean;
@@ -101,6 +126,24 @@ export type PluginCapability = "ai" | "commands" | "editor" | "editor:readonly" 
 export interface PluginConsent {
     /** Exactly what was shown, so a later diff is against the displayed list. */
     capabilities: PluginCapability[];
+    /**
+     * §382 — the channel of the listing this was approved against. Absent for a dev-folder
+     * consent and for every record written before §382 — and an absent channel is NOT read as
+     * first-party: before the URL decision of 2026-08-04 an install could come from any
+     * registry (spec 0058 §9.2).
+     */
+    channel?: RegistryChannel;
+    /**
+     * §382 — the login shown as the publisher. Display only; `publisherId` decides. An update
+     * that asks nothing still re-records this field's current value (a rename is not a change
+     * of identity); for a COMMUNITY listing it never records a different `publisherId` either —
+     * a changed id is exactly what would have made it ask instead. A first-party listing
+     * taking over an id records neither field, by design (`claimedConsent` copies them for a
+     * community channel only).
+     */
+    publisher?: string;
+    /** §382 — the publisher's numeric GitHub id, which `consentGaps` compares. Never the login. */
+    publisherId?: number;
     trust: PluginTrust;
 }
 /**
@@ -268,20 +311,37 @@ export interface PluginSidebarPanelOptions {
 }
 export type PluginStatus = "disabled" | "enabled" | "installing" | "not-installed";
 export type PluginTrust = "sandboxed" | "trusted";
+/**
+ * §382 — which registry file a listing came from: `index.json` is Baram's own channel,
+ * `community.json` the community one.
+ *
+ * LOCAL, like `demotedBecause` and `droppedCount`: `fetchRegistryIndex` stamps it by the file
+ * it read, and nothing on the wire can set it — an entry has no way to call itself
+ * first-party (spec 0058 §9.1).
+ */
+export type RegistryChannel = "community" | "first-party";
 export interface RegistryEntry {
     author: string;
     capabilities: PluginCapability[];
+    /** §382 — see `RegistryChannel`. Absent on an entry synthesised from a manifest. */
+    channel?: RegistryChannel;
     checksum: string;
     /**
      * §260 Phase 6 — why `fetchRegistryIndex` stripped this entry's tier, when it did.
      *
-     * NOT a registry field: it is set locally by `normalizeIndex` and exists so the marketplace
-     * can explain the right remedy. An `unknown-tier` entry really may predate the trust model
-     * ("ask the author"); an `unknown-capability` entry usually means the registry is NEWER than
-     * this build, where the remedy is the opposite direction ("update Baram"). Absent for a
-     * genuinely legacy entry, which carried no tier to begin with.
+     * NOT a registry field: it is set locally, never read off the wire, and exists so the
+     * marketplace can explain the right remedy. `unknown-tier` and `unknown-capability` are set
+     * by `normalizeIndex` (`registry-client.ts`): an `unknown-tier` entry really may predate the
+     * trust model ("ask the author"); an `unknown-capability` entry usually means the registry
+     * is NEWER than this build, where the remedy is the opposite direction ("update Baram").
+     * Absent for a genuinely legacy entry, which carried no tier to begin with.
+     *
+     * §382 adds `community-trusted`, set by `applyCommunityRules` (`community-registry.ts`): a
+     * community entry declaring full trust, which this build lists but will not install
+     * (community plugins are sandboxed only until spec 0058's stage 3). The remedy is neither
+     * the author's nor an app update's.
      */
-    demotedBecause?: "unknown-capability" | "unknown-tier";
+    demotedBecause?: "community-trusted" | "unknown-capability" | "unknown-tier";
     description: string;
     downloads?: number;
     downloadUrl: string;
@@ -326,6 +386,14 @@ export interface RegistryEntry {
     license: string;
     name: string;
     /**
+     * §382 — the GitHub login of whoever published a COMMUNITY entry, shown as `@publisher`.
+     * Display only; `publisherId` is the identity. `applyCommunityRules` refuses an entry whose
+     * value is not a GitHub login, so nothing else reaches the screen.
+     */
+    publisher?: string;
+    /** §382 — the publisher's numeric GitHub user id. A login can be renamed or re-registered; this cannot. */
+    publisherId?: number;
+    /**
      * Where this listing's README lives, so the marketplace can show it BEFORE an install.
      *
      * Absent is legal and permanent: a plugin whose archive has no README, and every entry
@@ -338,6 +406,8 @@ export interface RegistryEntry {
      * an entry cannot answer that about itself.
      */
     readme?: string;
+    /** §382 — the numeric id of the plugin's GitHub repository (community entries). */
+    repoId?: number;
     repository?: string;
     trust?: PluginTrust;
     version: string;
@@ -348,10 +418,19 @@ export type RegistryEntryKind = "plugin" | "theme";
  * How many entries Rust discarded because it could not deserialize them.
  *
  * Produced by the app, never read off the wire (`RawRegistryIndex` has no such field), so a
- * registry cannot assert one. It exists because nothing else can report a partial drop:
- * `src-tauri` installs no `log` implementation, so the Rust-side `log::warn!` is a no-op.
+ * registry cannot assert one. `registry-client.ts` reads it only to feed a dev-console
+ * `logger.warn` (see that call site) — no UI shows it to the user. `src-tauri/src/logging`
+ * installs an implementation behind the Rust-side `log::warn!`, so in a release build the
+ * Rust log is where a drop is recorded and the dropped ids are named; this count is what a
+ * frontend developer sees without one.
  */
 export interface RegistryIndex {
+    /**
+     * §382 — why `community.json` contributed nothing this time, when it failed and no cached
+     * copy was left to serve. Produced by `fetchRegistryIndex`; Rust's `RegistryIndex` has no
+     * such field, so the wire cannot claim one.
+     */
+    communityError?: string;
     droppedCount?: number;
     plugins: RegistryEntry[];
     updatedAt?: string;

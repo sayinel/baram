@@ -3,6 +3,7 @@ import type {
   InstalledPlugin,
   PluginCapability,
   PluginConsent,
+  RegistryEntry,
   RegistryIndex,
 } from "../../plugins/types";
 
@@ -50,6 +51,13 @@ interface PluginState {
    */
   builtinDisabled: string[];
   clearUpdateAvailable: (id: string) => void;
+  /**
+   * §382 — `community.json`'s entries, normalized and stamped BEFORE caching, like
+   * `registryCache`. A cache of its own so one file failing neither clears nor blocks the
+   * other (spec 0058 §9.1). In memory only — `merge` resets it.
+   */
+  communityCache: null | RegistryEntry[];
+  communityCacheTime: number;
   // Runtime state (not persisted). The note below covers `devMode`, `devPlugins` and
   // `devFolderIssues` only — `getPluginSettings` is a plain getter over the PERSISTED
   // `pluginSettings` map.
@@ -112,6 +120,7 @@ interface PluginState {
    */
   revocationsVerified: boolean;
   setBuiltinEnabled: (id: string, enabled: boolean) => void;
+  setCommunityCache: (entries: RegistryEntry[]) => void;
   setDevFolderIssues: (issues: DevFolderIssue[]) => void;
   setDevMode: (status: DevModeStatus) => void;
   setDevPlugins: (list: InstalledPlugin[]) => void;
@@ -304,6 +313,8 @@ export const usePluginStore = create<PluginState>()(
       pluginErrors: {},
       registryCache: null,
       registryCacheTime: 0,
+      communityCache: null,
+      communityCacheTime: 0,
       revocations: null,
       revocationsFetchedAt: 0,
       revocationsVerified: false,
@@ -416,6 +427,12 @@ export const usePluginStore = create<PluginState>()(
               },
             },
           };
+        }),
+
+      setCommunityCache: (entries) =>
+        set({
+          communityCache: entries,
+          communityCacheTime: Date.now(),
         }),
 
       setRegistryCache: (index) =>
@@ -564,7 +581,7 @@ export const usePluginStore = create<PluginState>()(
       // Forcing it here makes "in memory only" true of the READ path, which is the only place
       // it can be made true. No `version` bump or migrate step: a key left in storage is now
       // inert, and `partialize` drops it on the next write.
-      // ‼️ ALL THREE RESETS LIVE HERE, because this is the only side that can make them true.
+      // ‼️ THE RESETS LIVE HERE, because this is the only side that can make them true.
       // Omitting a key from `partialize` above stops this app from WRITING it and does nothing
       // about a value already in storage — which is the mistake this feature made twice.
       // `current` is the initial state, so naming it is how each field says "keep the default,
@@ -583,6 +600,15 @@ export const usePluginStore = create<PluginState>()(
           // is a permanent, self-sustaining plugin outage with no error surface, and it
           // is reachable by exactly the writer the resets below exist to contain.
           builtinDisabled: disabledBuiltinIds(stored.builtinDisabled),
+          // §382 — both registry caches are IN MEMORY ONLY and `partialize` never writes
+          // them, so a value found in storage was planted. They are also where G2 is kept:
+          // normalization and the community trust demotion run BEFORE caching, so a planted
+          // cache would skip exactly those — a "first-party" trusted entry served out of
+          // `config.json`. `registryCache` had the same gap before §382.
+          communityCache: current.communityCache,
+          communityCacheTime: current.communityCacheTime,
+          registryCache: current.registryCache,
+          registryCacheTime: current.registryCacheTime,
           registryUrl: current.registryUrl,
           // §379 — the loader's "is a dev load bounded?" answer, set from the
           // `plugin_list_dev` snapshot Rust returns each launch; never restored from storage.

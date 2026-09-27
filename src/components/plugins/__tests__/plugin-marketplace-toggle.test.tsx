@@ -71,10 +71,10 @@ const disabledPlugin = {
 async function installedToggle() {
   render(<PluginMarketplace />);
   fireEvent.click(screen.getByRole("button", { name: /^Installed / }));
-  // §69 — 커뮤니티 섹션으로 스코핑한다. 내장(Media Viewer)도 이 탭에서 토글을 갖게 되어
+  // §69 — 레지스트리 섹션으로 스코핑한다. 내장(Media Viewer)도 이 탭에서 토글을 갖게 되어
   // 전역 `findByRole("checkbox")`는 모호하다.
-  const community = await screen.findByTestId("plugin-section-community");
-  return within(community).getByRole("checkbox");
+  const registry = await screen.findByTestId("plugin-section-registry");
+  return within(registry).getByRole("checkbox");
 }
 
 describe("marketplace enable toggle (§260 3c-3)", () => {

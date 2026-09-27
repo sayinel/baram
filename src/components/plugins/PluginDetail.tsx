@@ -1,4 +1,5 @@
 import type { PluginSource } from "../../plugins/plugin-sources";
+import type { Provenance } from "../../plugins/provenance";
 import type { RevocationEntry } from "../../plugins/revocation";
 import type {
   PluginCapability,
@@ -11,10 +12,12 @@ import { ArrowLeft } from "lucide-react";
 // §69 Plugin Detail Panel — Full info view for a selected plugin
 import { useTranslation } from "../../i18n/useTranslation";
 import { actionsFor } from "../../plugins/plugin-sources";
+import { publisherProfileUrl } from "../../plugins/provenance";
 import { safeLinkHref } from "../ai/markdown-url";
 import MarkdownRenderer from "../ai/MarkdownRenderer";
 import { legacyEntryMessage } from "./legacy-entry-message";
 import { PluginCapabilityBadge } from "./PluginCapabilityBadge";
+import { PluginChannelBadge } from "./PluginChannelBadge";
 import { PluginRevokedNotice } from "./PluginRevokedNotice";
 import { PluginSettingsForm } from "./PluginSettingsForm";
 import { PluginTrustBadge } from "./PluginTrustBadge";
@@ -27,13 +30,19 @@ interface PluginDetailProps {
   onToggleEnabled: () => void;
   onUninstall: () => void;
   onUpdate: () => void;
+  /**
+   * §382 — who distributes this plugin, resolved by the host (`PluginDetailTab`): for an
+   * installed plugin that is its consent record, for a listing the listing. `null` or absent
+   * draws neither the badge nor the publisher row.
+   */
+  provenance?: null | Provenance;
   readme?: null | string;
   revocation?: null | RevocationEntry;
   /**
    * ‼️ Where the plugin came from, so this screen offers the same action set the row does.
    *
-   * Optional and defaulting to `community` because every other caller renders a REGISTRY
-   * listing, which is what community means. The Installed tab is the one route that can
+   * Optional and defaulting to `registry` because every other caller renders a listing from
+   * the registry (source `registry`). The Installed tab is the one route that can
    * reach a built-in, and a built-in is never in `installedPlugins` — it is compiled in,
    * not installed — so without this `status` read "not-installed" and this screen offered
    * an enabled Install button wired to an entry whose `downloadUrl` is `""`.
@@ -52,10 +61,11 @@ export function PluginDetail({
   onUninstall,
   onUpdate,
   onToggleEnabled,
+  provenance = null,
   readme,
   onBack,
   revocation,
-  source = "community",
+  source = "registry",
 }: PluginDetailProps) {
   const { t } = useTranslation();
   // The same single authority the rows use (§3.1). Install is not in that table — it is a
@@ -100,7 +110,7 @@ export function PluginDetail({
             <span className="plugin-detail__license">{entry.license}</span>
           </div>
           {/* ‼️ A POSITIVE SIGNAL, matching the row's chip. Without it a built-in's detail
-              screen differed from a community plugin's only by the ABSENCE of Update and
+              screen differed from a registry plugin's only by the ABSENCE of Update and
               Uninstall — and an absence explains nothing: it reads the same as a plugin
               whose update simply has not been found yet. `PluginRow` says "Built-in" here
               and this screen is reached from that row, so saying it twice is what makes
@@ -112,7 +122,27 @@ export function PluginDetail({
                 {t("plugin.builtin.badge")}
               </span>
             )}
+            {provenance && <PluginChannelBadge channel={provenance.channel} />}
           </div>
+          {/* §382 — a link, like Repository and Homepage below: the opener plugin sends a
+              `_blank` click to the system browser. Built from the login alone, which
+              `provenanceOf` has already held to GitHub's grammar, and passed through the
+              same `safeLinkHref` gate as its siblings (CLAUDE.md link-destination policy). */}
+          {provenance?.channel === "community" && (
+            <div className="plugin-detail__meta-row">
+              <span className="plugin-detail__meta">
+                {t("plugin.detail.publisher")}
+              </span>
+              <a
+                className="plugin-detail__link"
+                href={safeLinkHref(publisherProfileUrl(provenance.publisher))}
+                rel="noopener noreferrer"
+                target="_blank"
+              >
+                @{provenance.publisher}
+              </a>
+            </div>
+          )}
         </div>
       </div>
 
@@ -131,7 +161,7 @@ export function PluginDetail({
                 question — "is this thing installed enough to act on" — and reading the
                 toggle off it made this the one action here NOT decided by `actionsFor`,
                 while `canUpdate` and `canRemove` below both go through `can`. No live
-                defect: only `builtin` and `community` reach this screen and both toggle.
+                defect: only `builtin` and `registry` reach this screen and both toggle.
                 It becomes one the moment a dev row does, which is a planned follow-up,
                 and it would arrive as a control that does nothing. */}
             {can.canToggle && (

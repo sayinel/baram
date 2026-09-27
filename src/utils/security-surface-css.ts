@@ -3,7 +3,7 @@
 //
 // Why read instead of move. The obvious shape is to cut these rules out of
 // `plugins.css`/`vault.css`/`modal.css`/`theme.css` into one file and inject that. EIGHT of
-// the 40 distinct classes forbid it (the lists below hold 42 entries; `btn-unstyled` is
+// the 42 distinct classes forbid it (the lists below hold 44 entries; `btn-unstyled` is
 // listed by three surfaces) — the test that moving one breaks something is "another screen
 // uses it AND it has a rule", and these are the classes that pass it. The counts below come
 // from scanning the `.tsx` files under `src/components`, tests excluded. No `.ts` file
@@ -13,26 +13,30 @@
 // one, and saying which is the point: a class name parked in a `.ts` constant would
 // falsify them silently.
 //
-//   settings-section      modal.css:146   `className="settings-section"` in 15 files
+//   settings-section      modal.css:150   `className="settings-section"` in 15 files
 //   settings-section-desc vault.css:195   3 files
 //   vault-tab-empty       vault.css:9     3 files
 //   btn-unstyled          base.css:96     ) the shared utilities CLAUDE.md pins to
 //   flex-header           base.css:103    ) base.css, used across the app
 //   text-truncate         base.css:110    )
 //   icon-inline           base.css:140    9 files besides PluginConsentDialog.tsx
-//   plugin-revoked__note  plugins.css:478 PluginMarketplace.tsx:292,310,319,324 — its OWN
-//                                         staleness notices plus §10.2's theme pointer,
-//                                         all in the light DOM
+//   plugin-revoked__note  plugins.css:502 PluginMarketplace.tsx:297,315,324,329,361 — its OWN
+//                                         staleness notices, §10.2's theme pointer, and
+//                                         §382's community-registry-failure notice, all in
+//                                         the light DOM
 //
-// The last one is the concrete payoff: a move would have unstyled four paragraphs of
+// The last one is the concrete payoff: a move would have unstyled five paragraphs of
 // the marketplace with nothing to catch it.
 //
-// ‼️ THOSE FOUR POSITIONS WENT STALE INSIDE ONE COMMIT (0090 re-review, R3). They read
-// `:297,306,311` — three — until 0049 §10.2's "looking for themes?" pointer was added to
-// that file in the same round, which both moved the existing three and added a fourth. The
-// class list and the shared-class argument were unaffected; only the transcription was
-// wrong, which is exactly the self-invalidating-citation shape CLAUDE.md warns about. Both
-// numbers above were re-measured at this writing. `settings-section-title` is shared too (3
+// ‼️ THE POSITIONS ABOVE WENT STALE ONCE INSIDE ONE COMMIT (0090 re-review, R3) — four of
+// them then. They read `:297,306,311` — three — until 0049 §10.2's "looking for themes?"
+// pointer was added to that file in the same round, which both moved the existing three and
+// added a fourth. The class list and the shared-class argument were unaffected; only the
+// transcription was wrong, which is exactly the self-invalidating-citation shape CLAUDE.md
+// warns about. That three/four history is left as 0090 recorded it, not reverified; the
+// FIVE positions in the citation above (§382 added the fifth) were re-measured at this
+// writing (`git show HEAD:src/components/plugins/PluginMarketplace.tsx | grep -n
+// plugin-revoked__note` — 297,315,324,329,361). `settings-section-title` is shared too (3
 // other files) but has no rule anywhere, so moving it would break nothing — not counted.
 // The shared set, seven then, was unchanged by `themeConsent` (§361 review round 2): every
 // `theme-consent-*` class is single-purpose, defined only in `theme.css`, used only by
@@ -40,7 +44,10 @@
 // entry count moved (32 → 40) because `theme.css` is read for the first time; the shared
 // set did not. It moved again (40 → 42 entries) when the consent dialog's `::before`
 // warning glyph became a lucide icon in its JSX: `plugin-consent__danger-icon` is
-// single-purpose, and `icon-inline` is the eighth shared class.
+// single-purpose, and `icon-inline` is the eighth shared class. It moved again (42 → 44
+// entries, 40 → 42 distinct) when the dialog gained a provenance line (§382):
+// `plugin-consent__provenance`/`plugin-consent__provenance-change` are single-purpose to
+// `PluginConsentDialog.tsx`, so the shared set stayed at eight.
 //
 // Cutting those out breaks the screens left behind; copying them is the drift
 // `export-editor-css.ts` was written to end ("a copy has no way to notice that its
@@ -73,12 +80,13 @@
 // an extraction that silently matched nothing goes red instead of rendering unstyled.
 //
 // ‼️ The second of those matches on a CLASS BOUNDARY, not a substring, and that is not
-// a detail: six of the 40 distinct classes are prefixes of a listed sibling (measured
+// a detail: seven of the 42 distinct classes are prefixes of a listed sibling (measured
 // over the lists below) — `plugin-consent` ⊂ `plugin-consent__body`,
 // `plugin-consent__cap` ⊂ `plugin-consent__caps`, `plugin-consent__danger` ⊂
-// `plugin-consent__danger-title`, `plugin-revoked` ⊂ `plugin-revoked__title`,
+// `plugin-consent__danger-title`, `plugin-consent__provenance` ⊂
+// `plugin-consent__provenance-change`, `plugin-revoked` ⊂ `plugin-revoked__title`,
 // `settings-section` ⊂ `settings-section-desc`, `theme-consent` ⊂ `theme-consent-title`.
-// A substring test could not fail for any of the six — review deleted the real
+// A substring test could not fail for any of the seven — review deleted the real
 // `.plugin-consent` rule and the guard stayed green. A third test in that file pins the
 // boundary itself.
 import * as csstree from "css-tree";
@@ -135,6 +143,8 @@ export const SECURITY_SURFACE_CLASSES: Record<
     "plugin-consent__danger-title",
     "plugin-consent__lead",
     "plugin-consent__new",
+    "plugin-consent__provenance",
+    "plugin-consent__provenance-change",
     "plugin-consent__title",
   ],
   revokedNotice: [

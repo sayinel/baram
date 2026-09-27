@@ -1,4 +1,4 @@
-// §69 — 세 출처(내장·커뮤니티·개발 중)를 하나의 행 모델로 파생한다.
+// §69 — 세 출처(내장·레지스트리·개발 중)를 하나의 행 모델로 파생한다.
 //
 // 행이 무엇을 할 수 있는지는 `actionsFor` 한 곳에서만 결정된다. 그전에는 각 목록이 자기
 // 마크업에서 개별 판단했고, 그래서 Installed 탭이 상세 화면 경로를 오래 갖지 못했고
@@ -13,12 +13,12 @@ import { revocationFor } from "./revocation";
 export interface PluginRow {
   /**
    * builtin: `builtinDisabled`에 없으면 true
-   * community: `InstalledPlugin.enabled`
+   * registry: `InstalledPlugin.enabled`
    * dev: 항상 true — 토글로 렌더되지 않는다
    */
   enabled: boolean;
   error?: string;
-  /** community와 dev만 채워진다. 내장은 디스크에 설치된 것이 아니다. */
+  /** registry와 dev만 채워진다. 내장은 디스크에 설치된 것이 아니다. */
   installed?: InstalledPlugin;
   manifest: PluginManifest;
   revocation?: null | ReturnType<typeof revocationFor>;
@@ -26,7 +26,12 @@ export interface PluginRow {
   updateVersion?: string;
 }
 
-export type PluginSource = "builtin" | "community" | "dev";
+/**
+ * §382 — `registry` 는 "레지스트리에서 설치한 것 전부" 다: Baram 이 배포한 것과 커뮤니티가
+ * 게시한 것을 가리지 않는다. 둘의 구분은 §382 의 채널이 맡는다 — 이 값이 `community` 였을
+ * 때는 한 낱말이 두 뜻이었다(스펙 0058 §9.4).
+ */
+export type PluginSource = "builtin" | "dev" | "registry";
 
 export interface RowActions {
   canReload: boolean;
@@ -56,13 +61,6 @@ export function actionsFor(source: PluginSource): RowActions {
         canToggle: true,
         canUpdate: false,
       };
-    case "community":
-      return {
-        canReload: false,
-        canRemove: true,
-        canToggle: true,
-        canUpdate: true,
-      };
     case "dev":
       // 토글이 없는 이유: Rust가 매 실행마다 목록을 받아 무조건 로드하므로 끈 상태를
       // 영속화할 자리가 없다. 대신 폴더를 제거한다.
@@ -71,6 +69,13 @@ export function actionsFor(source: PluginSource): RowActions {
         canRemove: true,
         canToggle: false,
         canUpdate: false,
+      };
+    case "registry":
+      return {
+        canReload: false,
+        canRemove: true,
+        canToggle: true,
+        canUpdate: true,
       };
   }
 }
@@ -95,7 +100,7 @@ export function buildPluginRows(input: BuildRowsInput): PluginRow[] {
       installed: plugin,
       manifest: plugin.manifest,
       revocation: revocationFor(id, plugin.manifest.version, input.revocations),
-      source: "community",
+      source: "registry",
       updateVersion: input.updateAvailable[id],
     });
   }
@@ -117,8 +122,8 @@ export function buildPluginRows(input: BuildRowsInput): PluginRow[] {
  * §69 한 pluginId의 출처. `selectManifest`와 **같은 순서**로 판단한다 — 두 함수가 다른
  * 순서를 쓰면 한 화면이 A의 매니페스트에 B의 액션 표를 붙인다.
  *
- * 어디에도 없으면 `community`: 아직 설치하지 않은 레지스트리 리스팅이 그 경우이고,
- * 커뮤니티가 정확히 그 뜻이다(`PluginDetail`의 기본값과 동일).
+ * 어디에도 없으면 `registry`: 아직 설치하지 않은 레지스트리 리스팅이 그 경우이고,
+ * 레지스트리가 정확히 그 뜻이다(`PluginDetail`의 기본값과 동일).
  */
 export function derivePluginSource(
   sources: {
@@ -127,10 +132,10 @@ export function derivePluginSource(
   },
   pluginId: string,
 ): PluginSource {
-  if (sources.installedPlugins[pluginId]) return "community";
+  if (sources.installedPlugins[pluginId]) return "registry";
   if (sources.devPlugins[pluginId]) return "dev";
   if (BUILTIN_PLUGINS.some((b) => b.manifest.id === pluginId)) return "builtin";
-  return "community";
+  return "registry";
 }
 
 /**

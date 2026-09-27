@@ -82,6 +82,7 @@
     "allow-photo-thumbnail",
     "allow-pick-approved-dir",
     "allow-pick-approved-file",
+    "allow-plugin-fetch-community-registry",
     "allow-plugin-fetch-readme",
     "allow-plugin-fetch-registry",
     "allow-plugin-fetch-revocations",

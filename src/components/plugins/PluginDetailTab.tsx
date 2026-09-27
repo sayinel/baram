@@ -24,6 +24,7 @@ import {
   entryFromManifest,
   selectManifest,
 } from "../../plugins/plugin-sources";
+import { consentProvenance, provenanceOf } from "../../plugins/provenance";
 import { fetchRegistryIndex } from "../../plugins/registry-client";
 import { revocationFor } from "../../plugins/revocation";
 import { useEditorStore } from "../../stores/editor/editor";
@@ -142,8 +143,13 @@ export function PluginDetailTab({ pluginId }: { pluginId: string }) {
       // one-line `description` — so deciding whether to accept a full-trust prompt meant
       // installing first to read what the plugin does. The registry URL travels with the
       // request because Rust checks the README is under the index that listed it.
-      // The store's URL, not the default constant — it is the one `fetchRegistryIndex` read,
-      // so the README is checked against the index this entry actually came from.
+      // The store's URL, not the default constant — it is the one `fetchRegistryIndex` read.
+      // §382 — a community entry's README came from `community.json`, not `index.json`, but
+      // the check this URL feeds (`is_within_registry`, `origin.rs`) tests only the origin
+      // and the index's DIRECTORY, which the two files share by construction
+      // (`communityUrlFor` builds `community.json`'s URL relative to the registry URL,
+      // beside `index.json`) — so passing the index URL checks the same directory the
+      // README actually came from either way.
       const registryUrl = usePluginStore.getState().registryUrl;
       pluginFetchReadme(registryUrl, listedReadmeUrl).then(
         settle,
@@ -185,6 +191,16 @@ export function PluginDetailTab({ pluginId }: { pluginId: string }) {
   }
 
   const isBuiltin = source === "builtin";
+  // §382 — for an installed plugin the RECORD says where it came from, not the listing: the
+  // listing may have changed hands since, and an install from before §382 recorded nothing
+  // and so shows nothing. A built-in is Baram's by construction and needs no badge.
+  const provenance = isBuiltin
+    ? null
+    : provenanceOf(
+        installed
+          ? installed.consent
+          : registryIndex?.plugins.find((p) => p.id === pluginId),
+      );
   const builtinEnabled = !builtinDisabled.includes(pluginId);
   // ‼️ A built-in has no INSTALL state to report — it is compiled in — so its status is
   // whether the user has it switched on. `getPluginStatus` reads `installedPlugins`, which
@@ -205,6 +221,10 @@ export function PluginDetailTab({ pluginId }: { pluginId: string }) {
           onCancel={() => settleConsent(null)}
           onConfirm={() => settleConsent(pendingConsent.consent)}
           prior={pendingConsent.prior}
+          provenance={consentProvenance(
+            pendingConsent.consent,
+            pendingConsent.prior,
+          )}
         />
       )}
       <PluginDetail
@@ -224,6 +244,7 @@ export function PluginDetailTab({ pluginId }: { pluginId: string }) {
         }
         onUninstall={() => handleUninstall(pluginId)}
         onUpdate={() => handleUpdate(entry)}
+        provenance={provenance}
         readme={readme}
         revocation={revocationFor(
           pluginId,

@@ -1,13 +1,14 @@
 ---
 title: "레지스트리 JSON 모양"
-sourceHash: "bd737b07ff97"
+sourceHash: "2d7d47b25883"
 ---
 
 
 ## 레지스트리 JSON 모양
 
-마켓플레이스는 JSON 문서 하나 — `RegistryIndex` — 를 가져와 Rust 쪽(`fetch_registry`)에서 항목마다
-역직렬화합니다.
+마켓플레이스는 레지스트리에서 JSON 문서 둘을 가져옵니다. 아래의 `RegistryIndex`인 `index.json`과,
+그 옆의 커뮤니티 목록 `community.json`입니다([`community.json`](#communityjson) 참조). 둘 다 Rust
+쪽에서 항목마다 역직렬화합니다.
 
 ```typescript
 interface RegistryIndex {
@@ -146,3 +147,31 @@ ZIP 안의 매니페스트가 티어를 선언해야 하므로, 설치를 제안
 `files:readonly`를, `editor`가 `editor:readonly`를 덮습니다.
 
 배포하는 매니페스트와 항목을 발맞춰 두십시오. 어긋남은 경고가 아닙니다.
+
+### `community.json`
+
+커뮤니티 플러그인은 `index.json` 옆의 두 번째 파일에, 다른 최상위 키 아래 있습니다 — 그래서 이
+파일보다 오래된 Baram은 이것을 색인으로 읽지 못합니다.
+
+```typescript
+interface CommunityIndex {
+  communityPlugins: CommunityEntry[]; // `plugins` 가 아니다
+  updatedAt?: string;
+}
+
+interface CommunityEntry extends RegistryEntry {
+  publisher: string; // GitHub login — @publisher 로 보인다
+  publisherId: number; // GitHub 사용자의 숫자 id
+  repoId: number; // 플러그인 GitHub 저장소의 숫자 id
+  // repository 는 RegistryEntry 에서 물려받는다 — 선택 필드이고, 아래 커뮤니티
+  // 게이트의 대상이 아니다.
+}
+```
+
+파일이 곧 채널입니다 — 항목이 스스로 Baram의 것이라고 주장할 수 없습니다. 위의 규칙에 더해,
+Baram은 id가 `baram-`로 시작하거나, `kind`가 `plugin`이 아니거나, 올바른 `publisher`·
+`publisherId`·`repoId`가 없는 커뮤니티 항목을 버립니다. `trust: "trusted"`를 선언한 항목은
+목록에 보이지만 설치하지 않습니다. 두 파일에 모두 있는 id는 `index.json`의 것을 씁니다.
+`community.json`이 없으면(HTTP 404) 빈 목록이고, 그 밖의 실패에도 Baram의 플러그인은 그대로
+보입니다. 사용자의 승인과 함께 기억되는 것은 login이 아니라 `publisherId`입니다 — login은 바뀔
+수 있고, 다른 사람이 다시 등록할 수도 있습니다.

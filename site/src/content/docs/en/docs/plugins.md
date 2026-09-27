@@ -9,8 +9,8 @@ Baram can be extended with plugins, managed from **Settings > Plugins**.
   an editor tab, with the full description, its rendered README, the capabilities it asks for, and
   links to its repository and homepage.
 - **Installed** — Everything currently installed, grouped by where it came from: **Built-in**
-  (ships with Baram), **Community** (installed from the registry), and **In development** (a local
-  folder you loaded yourself).
+  (ships with Baram), **From the registry** (installed from the marketplace), and **In
+  development** (a local folder you loaded yourself).
 - **Updates** — Check for and apply plugin updates.
 
 ## Turning plugins on and off
@@ -26,7 +26,7 @@ Each plugin declares the **capabilities** (permissions) it needs — access to t
 
 Plugins come in two kinds, and the difference matters:
 
-- **Sandboxed** (the default, and the only kind in the marketplace) — the plugin's code runs isolated from the editor, and every privileged action is checked against the capabilities you approved. A misbehaving sandboxed plugin cannot crash the editor or reach anything it did not declare.
+- **Sandboxed** (the default, and the only kind a community plugin can be) — the plugin's code runs isolated from the editor, and every privileged action is checked against the capabilities you approved. A misbehaving sandboxed plugin cannot crash the editor or reach anything it did not declare.
 - **Full trust** — the plugin runs inside Baram itself with no isolation. Its capability list describes what it intends to do but does **not** limit it: it can read and write any file your account can reach, contact any network host, and use every credential the app holds. Baram shows a red warning and requires a separate confirmation before installing one.
 
 > **Upgrading from v0.4.x?** Plugins installed before v0.5.0 predate this model and can no longer be loaded. Use **Remove** on the Installed tab, then install again from the marketplace if a current version is published.
@@ -34,6 +34,25 @@ Plugins come in two kinds, and the difference matters:
 Installation is a staged, all-or-nothing transaction: the download is unpacked and validated
 somewhere else first and only swapped into place once every check passes, so a failed or
 interrupted install cannot leave you with a half-written plugin.
+
+## Where a plugin comes from
+
+The marketplace lists plugins from two places, and every card says which:
+
+- **Baram** — plugins Baram publishes itself. They may be sandboxed or full trust.
+- **Community** — plugins published by someone else, shown with the author's name and the
+  publisher's GitHub account (`@name`). Community plugins are always sandboxed: this version
+  of Baram does not install one that asks for full trust. Baram does not review their code —
+  the capabilities you approve are everything a community plugin can do, and the install
+  dialog says so.
+
+The publisher is remembered with your approval. If a later update of a community plugin
+comes from a **different GitHub account**, Baram asks again before installing it and shows
+the change (`@old → @new`), even when the plugin asks for nothing new. An account that was
+only renamed is the same account and does not ask.
+
+Plugins you installed before Baram showed where plugins come from carry no **Baram** or
+**Community** mark on the **Installed** tab until their next update.
 
 ## Withdrawn plugins
 

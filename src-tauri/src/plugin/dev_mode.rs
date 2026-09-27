@@ -81,7 +81,12 @@ impl Build {
     }
 }
 
-/// 사용자가 한 폴더에 대해 승인한 것 — TS `PluginConsent`(`src/plugins/types.ts`)와 같은 모양.
+/// 사용자가 한 폴더에 대해 승인한 것 — TS `PluginConsent`(`src/plugins/types.ts`)의 `capabilities`·
+/// `trust` 두 필드다. §382 가 그 타입에 더한 `channel`·`publisher`·`publisherId` 는 레지스트리
+/// 목록의 출처라 dev 폴더 동의에는 없다: 이 값을 기록하는 TS 호출부는 `use-dev-plugin-actions.ts`
+/// 의 `admit` 하나이고(`pluginRecordDevConsent` → `plugin_record_dev_consent`, `src/` 비테스트
+/// 코드 기준 2026-09-27), 그것은 `devConsentToAsk` 가 두 필드로만 만든 요청을 넘긴다. 다른 키가
+/// 와도 이 struct 에는 `deny_unknown_fields` 가 없어 serde 가 버린다.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct DevConsent {
     pub capabilities: Vec<String>,

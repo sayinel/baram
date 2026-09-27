@@ -6,12 +6,21 @@
 // they now render the host directly. The route itself is asserted in that file.
 import type { InstalledPlugin, RegistryIndex } from "../../../plugins/types";
 
-import { act, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const activateBuiltin = vi.fn();
 const deactivateBuiltin = vi.fn();
 const readPluginReadme = vi.fn<(p: string) => Promise<null | string>>();
+const pluginInstallStage = vi.fn();
+const pluginInstallCommit = vi.fn();
+const pluginInstallDiscard = vi.fn();
 
 vi.mock("../../../plugins/plugin-loader", () => ({
   pluginLoader: { loadPlugin: vi.fn(), unloadPlugin: vi.fn() },
@@ -22,6 +31,23 @@ vi.mock("../../../plugins/plugin-lifecycle", async (importOriginal) => ({
   >()),
   activateBuiltin: (...a: unknown[]) => activateBuiltin(...a),
   deactivateBuiltin: (...a: unknown[]) => deactivateBuiltin(...a),
+}));
+// `importOriginal` + spread for the reason `plugin-install-consent.test.tsx` gives:
+// `plugin-lifecycle` (reached through the built-in toggle) imports more of this module,
+// and a literal factory would replace it for every importer in the graph.
+vi.mock("../../../ipc/plugin-invoke", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../ipc/plugin-invoke")>()),
+  pluginInstallCommit: (...a: unknown[]) => pluginInstallCommit(...a),
+  pluginInstallDiscard: (...a: unknown[]) => pluginInstallDiscard(...a),
+  pluginInstallStage: (...a: unknown[]) => pluginInstallStage(...a),
+}));
+// `tauriStorage` (the plugin store's persist backend) reaches for these; without them
+// every store write logs a mock-resolution error and drowns the real output.
+vi.mock("../../../ipc/invoke", () => ({
+  getConfig: () => Promise.resolve(null),
+  readFile: () => Promise.reject(new Error("no README")),
+  removeConfig: () => Promise.resolve(),
+  setConfig: () => Promise.resolve(),
 }));
 // Empty by DEFAULT: a detail screen that only worked for a listed plugin would pass against
 // a registry lookup, and the installed-but-unlisted plugin is exactly the one whose
@@ -54,6 +80,7 @@ vi.mock("../plugin-readme", () => ({
 }));
 
 import {
+  findSurface,
   surfaceContents,
   withinSurface,
 } from "../../../__tests__/helpers/security-surface";
@@ -469,5 +496,80 @@ describe("PluginDetailTab — the tab label follows the manifest (§69)", () => 
     const tabs = useEditorStore.getState().tabs;
     expect(tabs.find((t) => t.type === "plugin")?.title).toBe("Sideloaded");
     expect(tabs.find((t) => t.id === "f1")?.title).toBe("a.md");
+  });
+});
+
+describe("PluginDetailTab — provenance (§382)", () => {
+  const COMMUNITY_LISTING = {
+    author: "Octo Cat",
+    capabilities: ["events"],
+    channel: "community",
+    checksum: "b".repeat(64),
+    description: "Counts things",
+    downloadUrl:
+      "https://sayinel.github.io/baram-plugins/plugins/hello-counter-1.2.0.zip",
+    engines: { baram: ">=0.8.0" },
+    id: "hello-counter",
+    license: "MIT",
+    name: "Hello Counter",
+    publisher: "octocat",
+    publisherId: 583231,
+    repoId: 1296269,
+    repository: "https://github.com/octocat/baram-hello-counter",
+    trust: "sandboxed",
+    version: "1.2.0",
+  };
+
+  it("reads an installed plugin's publisher from its consent record, with no listing at all", async () => {
+    usePluginStore.setState({
+      installedPlugins: {
+        sideloaded: {
+          ...unlisted,
+          consent: {
+            capabilities: ["editor:readonly"],
+            channel: "community",
+            publisher: "octocat",
+            publisherId: 583231,
+            trust: "sandboxed",
+          },
+        },
+      },
+    });
+    render(<PluginDetailTab pluginId="sideloaded" />);
+    await settleRegistryFetch();
+    expect(
+      screen.getByRole("link", { name: "@octocat" }).getAttribute("href"),
+    ).toBe("https://github.com/octocat");
+  });
+
+  it("marks nothing on an install that predates §382, even when its listing is community", async () => {
+    // The record wins over the listing: the listing may have changed hands since the install.
+    listed.plugins = [{ ...COMMUNITY_LISTING, id: "sideloaded" }];
+    render(<PluginDetailTab pluginId="sideloaded" />);
+    await settleRegistryFetch();
+    expect(screen.queryByText("Community")).toBeNull();
+    expect(screen.queryByRole("link", { name: /^@/u })).toBeNull();
+  });
+
+  it("shows a not-installed community listing's publisher", async () => {
+    usePluginStore.setState({ installedPlugins: {} });
+    listed.plugins = [COMMUNITY_LISTING];
+    render(<PluginDetailTab pluginId="hello-counter" />);
+    await settleRegistryFetch();
+    expect(await screen.findByRole("link", { name: "@octocat" })).toBeTruthy();
+    expect(screen.getByText("Community")).toBeTruthy();
+  });
+
+  it("passes the same provenance to the consent dialog it mounts (§382)", async () => {
+    // `PluginMarketplace` mounts the other `PluginConsentDialog` and is covered by
+    // `plugin-publisher-continuity.test.tsx`'s "records the channel and the publisher
+    // with a community install" — this pins the detail tab's own call site.
+    usePluginStore.setState({ installedPlugins: {} });
+    listed.plugins = [COMMUNITY_LISTING];
+    render(<PluginDetailTab pluginId="hello-counter" />);
+    await settleRegistryFetch();
+    fireEvent.click(await screen.findByRole("button", { name: /^Install$/u }));
+    const dialog = (await findSurface(".plugin-consent")).getByRole("dialog");
+    expect(dialog.textContent).toContain("Published by @octocat");
   });
 });

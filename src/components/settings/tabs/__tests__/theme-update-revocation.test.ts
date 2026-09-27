@@ -367,7 +367,7 @@ describe("removeTheme when the directory is already gone (M3)", () => {
         id: "dracula",
         modes: { light: {} },
         name: "Dracula",
-        source: "community",
+        source: "installed",
       });
     });
 
@@ -386,7 +386,7 @@ describe("removeTheme when the directory is already gone (M3)", () => {
         id: "dracula",
         modes: { light: {} },
         name: "Dracula",
-        source: "community",
+        source: "installed",
       });
     });
 
@@ -406,7 +406,7 @@ describe("removeTheme when the directory is already gone (M3)", () => {
         id: "dracula",
         modes: { light: {} },
         name: "Dracula",
-        source: "community",
+        source: "installed",
       });
 
     await act(async () => {
@@ -567,7 +567,7 @@ describe("removeTheme", () => {
         id: "dracula",
         modes: { light: {} },
         name: "Dracula",
-        source: "community",
+        source: "installed",
       });
     });
 
@@ -594,7 +594,7 @@ describe("removeTheme", () => {
         id: "dracula",
         modes: { light: {} },
         name: "Dracula",
-        source: "community",
+        source: "installed",
       });
     });
 

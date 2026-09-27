@@ -16,8 +16,10 @@
 //
 // The fetch is skipped entirely when nothing is installed, so opening Appearance on a fresh
 // profile — overwhelmingly the common case — touches the network zero times. When something
-// IS installed it goes through `fetchRegistryIndex`'s 24-hour cache, so repeatedly opening
-// the tab costs one request a day.
+// IS installed it goes through `fetchRegistryIndex`, which since §382 is two requests behind
+// two 24-hour caches (`index.json`, `community.json`), so repeatedly opening the tab costs
+// two requests a day when both succeed — and, while `community.json` is failing with nothing
+// cached, one more community request every time the tab opens (its failure is not cached).
 import { useEffect, useState } from "react";
 
 import type { RegistryEntry, RegistryIndex } from "../../../plugins/types";

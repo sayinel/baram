@@ -477,7 +477,7 @@ describe("removeTheme", () => {
       id: "dracula",
       modes: { light: {} },
       name: "Dracula",
-      source: "community",
+      source: "installed",
     };
     const { result } = renderHook(() => useThemeActions());
 
@@ -497,7 +497,7 @@ describe("removeTheme", () => {
       id: "dracula",
       modes: { light: {} },
       name: "Dracula",
-      source: "community",
+      source: "installed",
     };
     const { result } = renderHook(() => useThemeActions());
 

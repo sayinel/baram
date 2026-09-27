@@ -103,7 +103,7 @@ pub use install::{
     StagedPluginInfo, StagedThemeInfo, StoredThemeCss, ThemeMode,
 };
 // Re-exported: manifest/registry data models (src-tauri/src/commands/plugin_cmd.rs).
-pub use registry::{InstalledPluginInfo, PluginManifest, RegistryIndex};
+pub use registry::{CommunityRegistryIndex, InstalledPluginInfo, PluginManifest, RegistryIndex};
 // Re-exported: the plugin storage primitives + plugin directory accessor
 // (src-tauri/src/commands/plugin_cmd.rs). `InstallKind` is §360's generalized entry point
 // (dev/plans/0090-theme-marketplace-plan Task 3) — `get_theme_dir`/`install_root`
@@ -115,7 +115,10 @@ pub use storage::{
     storage_remove, storage_write, InstallKind,
 };
 // Re-exported: registry/revocation network fetch (src-tauri/src/commands/plugin_cmd.rs).
-pub use fetch::{fetch_registry, fetch_registry_readme, fetch_revocations, FetchedRevocations};
+pub use fetch::{
+    fetch_community_registry, fetch_registry, fetch_registry_readme, fetch_revocations,
+    FetchedRevocations,
+};
 // Re-exported: the plugin network proxy + its request/response shape
 // (src-tauri/src/commands/plugin_cmd.rs, and plugin/authorizer.rs for the request shape).
 pub use origin::{http_fetch, PluginFetchInit, PluginFetchResponse};

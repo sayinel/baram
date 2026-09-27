@@ -28,7 +28,7 @@ const ENTRY: RegistryEntry = {
 
 const noop = () => {};
 
-function detail(source: "builtin" | "community" | "dev") {
+function detail(source: "builtin" | "dev" | "registry") {
   return render(
     <PluginDetail
       entry={ENTRY}
@@ -50,7 +50,7 @@ describe("PluginDetail action set (§69)", () => {
     expect(screen.queryByRole("button", { name: "Enabled" })).toBeNull();
   });
 
-  it.each(["builtin", "community"] as const)(
+  it.each(["builtin", "registry"] as const)(
     "offers it to %s, which can",
     (source) => {
       // 보완 단정: 위 단정만으로는 토글을 통째로 지운 구현도 통과한다.
@@ -60,7 +60,7 @@ describe("PluginDetail action set (§69)", () => {
   );
 
   it.each([
-    ["community", 1],
+    ["registry", 1],
     ["builtin", 0],
   ] as const)(
     "offers Update and Uninstall to %s — %i of each",

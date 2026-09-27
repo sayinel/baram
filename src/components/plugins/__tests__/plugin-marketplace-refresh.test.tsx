@@ -266,3 +266,31 @@ describe("PluginMarketplace registry refresh button", () => {
 // behaviour: the marketplace is now always available, and what a user may install is
 // decided by the consent dialog and the registry cross-check
 // (`plugin-install-consent.test.tsx`).
+
+describe("community list failure (§382)", () => {
+  it("keeps the first-party list and says the community half is missing", async () => {
+    fetchRegistryIndex.mockResolvedValue({
+      ...populatedIndex,
+      communityError:
+        "community registry returned HTTP 500 Internal Server Error",
+    });
+    render(<PluginMarketplace />);
+    expect(await screen.findByText("Test Plugin")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Community plugins could not be loaded/),
+    ).toBeInTheDocument();
+    // Not the whole-registry error state, which hides the list.
+    expect(
+      screen.queryByText("Failed to load registry"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("says nothing when the community list loaded", async () => {
+    fetchRegistryIndex.mockResolvedValue(populatedIndex);
+    render(<PluginMarketplace />);
+    expect(await screen.findByText("Test Plugin")).toBeInTheDocument();
+    expect(
+      screen.queryByText(/Community plugins could not be loaded/),
+    ).not.toBeInTheDocument();
+  });
+});

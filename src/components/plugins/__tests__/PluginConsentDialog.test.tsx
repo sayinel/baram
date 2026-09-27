@@ -203,3 +203,91 @@ describe("PluginConsentDialog (§260 Phase 5)", () => {
     expect(surface().queryByRole("button", { name: "Install" })).toBeNull();
   });
 });
+
+describe("PluginConsentDialog provenance (§382)", () => {
+  const consent = {
+    capabilities: ["editor" as const],
+    trust: "sandboxed" as const,
+  };
+
+  it("says who published a community plugin, and that Baram does not review it", () => {
+    render(
+      <PluginConsentDialog
+        {...base}
+        consent={consent}
+        onCancel={vi.fn()}
+        onConfirm={vi.fn()}
+        provenance={{ channel: "community", publisher: "octocat" }}
+      />,
+    );
+    expect(surface().getByText(/Published by @octocat/)).toBeTruthy();
+    expect(surface().getByText(/Baram does not review this code/)).toBeTruthy();
+    // No prior publisher was given, so there is nothing to name a change against.
+    expect(surface().queryByText(/The publisher has changed/)).toBeNull();
+  });
+
+  it("says Baram distributes a first-party plugin, and nothing about review", () => {
+    render(
+      <PluginConsentDialog
+        {...base}
+        consent={consent}
+        onCancel={vi.fn()}
+        onConfirm={vi.fn()}
+        provenance={{ channel: "first-party" }}
+      />,
+    );
+    expect(surface().getByText("Distributed by Baram")).toBeTruthy();
+    expect(surface().queryByText(/does not review/)).toBeNull();
+  });
+
+  it("says nothing about provenance when none is given — a dev folder", () => {
+    render(
+      <PluginConsentDialog
+        {...base}
+        consent={consent}
+        onCancel={vi.fn()}
+        onConfirm={vi.fn()}
+      />,
+    );
+    expect(surface().queryByText(/Published by|Distributed by/)).toBeNull();
+  });
+
+  it("shows the old and the new account when the publisher changed", () => {
+    render(
+      <PluginConsentDialog
+        {...base}
+        consent={consent}
+        intent="update"
+        onCancel={vi.fn()}
+        onConfirm={vi.fn()}
+        provenance={{
+          channel: "community",
+          previousPublisher: "octocat",
+          publisher: "new-owner",
+        }}
+      />,
+    );
+    expect(surface().getByText(/@octocat → @new-owner/)).toBeTruthy();
+  });
+
+  it("says the account changed, not the login, when the login stayed the same (§382)", () => {
+    render(
+      <PluginConsentDialog
+        {...base}
+        consent={consent}
+        intent="update"
+        onCancel={vi.fn()}
+        onConfirm={vi.fn()}
+        provenance={{
+          channel: "community",
+          previousPublisher: "octocat",
+          publisher: "octocat",
+        }}
+      />,
+    );
+    expect(
+      surface().getByText(/@octocat now belongs to a different GitHub account/),
+    ).toBeTruthy();
+    expect(surface().queryByText(/→/)).toBeNull();
+  });
+});

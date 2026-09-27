@@ -15,6 +15,7 @@ import {
   buildPluginRows,
   entryFromManifest,
 } from "../../plugins/plugin-sources";
+import { consentProvenance } from "../../plugins/provenance";
 import {
   checkForUpdates,
   fetchRegistryIndex,
@@ -221,6 +222,10 @@ export function PluginMarketplace() {
       onCancel={() => settleConsent(null)}
       onConfirm={() => settleConsent(pendingConsent.consent)}
       prior={pendingConsent.prior}
+      provenance={consentProvenance(
+        pendingConsent.consent,
+        pendingConsent.prior,
+      )}
     />
   );
 
@@ -346,6 +351,18 @@ export function PluginMarketplace() {
           </div>
         )}
 
+        {/* §382 — the community list failed while Baram's own did not. Said rather than
+            hidden: an empty community half otherwise looks exactly like a registry with no
+            community plugins yet. It gates nothing; ↻ Refresh retries both files. */}
+        {activeTab === "browse" &&
+          !loading &&
+          !error &&
+          registryIndex?.communityError !== undefined && (
+            <p className="plugin-revoked__note">
+              {t("plugin.marketplace.communityFailed")}
+            </p>
+          )}
+
         {/* Loading state */}
         {loading && activeTab === "browse" && (
           <div className="plugin-marketplace__message">
@@ -369,7 +386,7 @@ export function PluginMarketplace() {
               installedPlugins={installedPlugins}
               installing={installing}
               onInstall={(entry) => void handleInstall(entry)}
-              // A Browse listing is by definition a registry entry — community.
+              // A Browse listing is by definition a registry entry — source `registry`.
               onSelect={(entry) => openDetail(entry.id, entry.name)}
               onUninstall={(id) => void handleUninstall(id)}
               onUpdate={(entry) => void handleUpdate(entry)}

@@ -1105,6 +1105,19 @@
       "description": "플러그인 레지스트리 인덱스 조회"
     },
     {
+      "name": "plugin_fetch_community_registry",
+      "input": {
+        "url": "string"
+      },
+      "output": "CommunityRegistryIndex",
+      "module": "plugin",
+      "spec": "§382",
+      "phase": 3,
+      "milestone": "M11",
+      "status": "implemented",
+      "description": "커뮤니티 플러그인 목록 community.json 조회 — plugin_fetch_registry 와 같은 가드(스킴·15초·4 MiB 스트리밍 상한). HTTP 404 는 빈 목록(시드 전·배포 지연), 그 밖의 실패는 오류. 최상위 키는 communityPlugins(구버전 앱이 인덱스로 읽지 못하게, 스펙 0058 G7). 채널은 TS 가 파일로 정한다"
+    },
+    {
       "name": "plugin_fetch_readme",
       "input": {
         "registryUrl": "string",

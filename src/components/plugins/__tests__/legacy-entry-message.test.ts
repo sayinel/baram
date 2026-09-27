@@ -57,6 +57,18 @@ describe("legacyEntryMessage (§260 Phase 6)", () => {
     expect(message).toContain("predates");
     expect(message).toContain("Ask the author");
   });
+
+  it("says community plugins are sandbox-only for a demoted community entry (§382)", () => {
+    const message = legacyEntryMessage(
+      entry({ demotedBecause: "community-trusted" }),
+      t,
+    );
+    expect(message).toContain("Community plugins");
+    // Neither remedy of the other branches applies: the author did declare a tier, and
+    // updating Baram changes nothing until community trust opens (spec 0058 stage 3).
+    expect(message).not.toContain("Ask the author");
+    expect(message).not.toContain("Update Baram");
+  });
 });
 
 describe("legacyEntryMessage speaks the user's language", () => {
@@ -74,6 +86,9 @@ describe("legacyEntryMessage speaks the user's language", () => {
     expect(
       legacyEntryMessage(entry({ demotedBecause: "unknown-capability" }), ko),
     ).toBe(lookup("plugin.legacy.entry.unknownCapability", "ko"));
+    expect(
+      legacyEntryMessage(entry({ demotedBecause: "community-trusted" }), ko),
+    ).toBe(lookup("plugin.legacy.entry.communityTrusted", "ko"));
   });
 
   it("returns Korean, so a hardcoded sentence would fail", () => {
@@ -86,11 +101,20 @@ describe("legacyEntryMessage speaks the user's language", () => {
     expect(message).not.toBe(lookup("plugin.legacy.entry.noTier", "en"));
   });
 
-  it("keeps the two branches distinguishable in Korean too", () => {
-    // The whole reason two branches exist is that the remedies differ. One key wired to both,
-    // or one Korean value pasted over the other, is the defect.
-    expect(legacyEntryMessage(entry(), ko)).not.toBe(
-      legacyEntryMessage(entry({ demotedBecause: "unknown-capability" }), ko),
+  it("keeps all three branches distinguishable in Korean too", () => {
+    // The whole reason separate branches exist is that the remedies differ. One key wired to
+    // more than one, or one Korean value pasted over another, is the defect.
+    const noTier = legacyEntryMessage(entry(), ko);
+    const unknownCapability = legacyEntryMessage(
+      entry({ demotedBecause: "unknown-capability" }),
+      ko,
     );
+    const communityTrusted = legacyEntryMessage(
+      entry({ demotedBecause: "community-trusted" }),
+      ko,
+    );
+    expect(noTier).not.toBe(unknownCapability);
+    expect(noTier).not.toBe(communityTrusted);
+    expect(unknownCapability).not.toBe(communityTrusted);
   });
 });
