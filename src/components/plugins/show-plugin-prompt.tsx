@@ -103,11 +103,16 @@ export function showPluginPrompt(
     );
     if (settled) return;
     settled = true;
-    markPromptClosed(entry);
-    stopWatchingPalettes();
-    overlay.remove();
-    returnFocus(returnFocusTo);
-    rejectAnswer(error instanceof Error ? error : new Error(String(error)));
+    try {
+      markPromptClosed(entry);
+      stopWatchingPalettes();
+      overlay.remove();
+      returnFocus(returnFocusTo);
+    } finally {
+      // Outside the `try`'s protected work, so a throwing teardown still rejects the promise
+      // rather than leaving a caller awaiting forever — mirrors `settle` above.
+      rejectAnswer(error instanceof Error ? error : new Error(String(error)));
+    }
   };
 
   markPromptOpen(entry);

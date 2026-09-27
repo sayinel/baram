@@ -71,8 +71,8 @@
   /* §385 plugin prompts (spec 0061 §8). Above hover labels so a label resting under the
      pointer cannot sit over the input the occlusion check measures; BELOW the security
      surfaces' 1100 for the ceiling reason given at --z-editor-popup. The 9999 and 10000
-     layers stay above — a prompt either would cover is refused (spec 0061 D9), not drawn
-     underneath. */
+     layers stay above — a prompt either layer would cover is refused (spec 0061 D9), not
+     drawn underneath. */
   --z-plugin-prompt: 1080;
 }
 
