@@ -16,6 +16,7 @@ import type { ThemeColorKey, ThemeColors } from "../types/theme-color-keys";
 import { DEFAULT_DARK_PALETTE } from "../types/generated/palette-dark";
 import { DEFAULT_LIGHT_PALETTE } from "../types/generated/palette-light";
 import { THEME_MODES } from "../types/theme";
+import { THEME_COLOR_VALUE_RE } from "../types/theme-color-keys";
 
 /** 미리보기 그림이 칠하는 색 — 그림의 어느 부분인지는 `theme-preview.tsx` 가 적는다. */
 export const PREVIEW_COLOR_KEYS = [
@@ -82,6 +83,55 @@ export function themePreviewPalettes(theme: ThemeDef): PreviewPalettes {
   for (const mode of THEME_MODES) {
     const colors = theme.modes[mode]?.colors;
     if (colors !== undefined) out[mode] = previewPaletteFrom(colors, mode);
+  }
+  return out;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.getPrototypeOf(value) === Object.prototype
+  );
+}
+
+/**
+ * 스펙 0063 §5.1 — 레지스트리 색인이 싣는 미리보기를 이 계약으로 거른다(계획 0111 P6).
+ *
+ * 네트워크에서 온 값이 인라인 스타일의 색이 되는 길이라 **전부 맞을 때만** 통과시킨다:
+ * 최상위는 평범한 객체, 키는 `light` · `dark` 만, 각 모드는 `PREVIEW_COLOR_KEYS` 를 **정확히**
+ * (빠짐도 남는 키도 없이), 값은 `THEME_COLOR_VALUE_RE`(불투명 3 · 6자리 hex). 하나라도 어긋나면
+ * `undefined` — 미리보기 전체를 버리고 항목은 남긴다(부르는 쪽 `registry-client.ts`).
+ * 모드가 하나도 없어도 `undefined` 다.
+ */
+export function registryPreviewPalettes(
+  raw: unknown,
+): PreviewPalettes | undefined {
+  if (!isPlainObject(raw)) return undefined;
+  const modes = Object.keys(raw);
+  if (modes.length === 0) return undefined;
+  const out: { dark?: PreviewPalette; light?: PreviewPalette } = {};
+  for (const mode of modes) {
+    if (!(THEME_MODES as readonly string[]).includes(mode)) return undefined;
+    const palette = registryPalette(raw[mode]);
+    if (palette === undefined) return undefined;
+    out[mode as ThemeMode] = palette;
+  }
+  return out;
+}
+
+function registryPalette(raw: unknown): PreviewPalette | undefined {
+  if (!isPlainObject(raw)) return undefined;
+  const keys = Object.keys(raw);
+  if (keys.length !== PREVIEW_COLOR_KEYS.length) return undefined;
+  const out = {} as Record<PreviewColorKey, string>;
+  for (const key of PREVIEW_COLOR_KEYS) {
+    const value = raw[key];
+    if (typeof value !== "string" || !THEME_COLOR_VALUE_RE.test(value)) {
+      return undefined;
+    }
+    out[key] = value;
   }
   return out;
 }
