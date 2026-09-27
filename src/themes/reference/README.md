@@ -6,12 +6,13 @@
 
 | 없는 것 | 누가 채우는가 |
 |---|---|
-| 번들 · 설치 · 출고 경로 | §371 출고 계획 (§371) |
-| 다이얼 값의 export | 같은 계획 (§371.2) |
+| 번들 · 설치 · 출고 경로 | §371 6b — 레퍼런스 테마 출고(스펙 0055 §16 6단계의 뒤 절반) |
 
-그 계획은 아직 번호가 없다. 이 표가 처음 쓰일 때 적은 `0097` 은 그 뒤 간격·모서리 토큰 채택
-계획(`dev/plans/0097-space-radius-token-adoption-plan.md`)이 가져갔다. 같은 표에 있던 "다이얼을 읽는
-릴리스 번호" 행은 v0.7.5 가 채웠으므로 뺐다 — 아래 문단 참조.
+6b 는 아직 스펙 · 계획 번호가 없다. 이 표가 처음 쓰일 때 적은 `0097` 은 그 뒤 간격·모서리 토큰 채택
+계획(`dev/plans/0097-space-radius-token-adoption-plan.md`)이 가져갔다. 같은 표에 있던 두 행은 채워져서
+뺐다 — "다이얼을 읽는 릴리스 번호" 는 v0.7.5 가 채웠고(아래 문단), "다이얼 값의 export"(§371.2)는 앞
+절반인 6a(계획 0110, PR #752 — `src/themes/appearance-package.ts`)가 채웠다. 그 export 는 지금 입은
+외관을 패키지로 쓰는 것이라, 이 디렉터리를 패키지로 만들어 주지는 않는다.
 
 **`engines.baram` 이 `">=0.7.4"` 인 이유:** 이 필드는 `theme-package-export.ts` 의
 `MIN_BARAM_FOR_TOKENS_PACKAGE` 가 정의하는 뜻 그대로 "다이얼을 읽을 수 있다" 가
@@ -38,7 +39,9 @@
 
 단 **본문 타이포 네 키**(`editorFontFamily` · `editorCodeFontFamily` · `editorFontSize` · `editorLineHeight`)는
 v0.7.5 가 모른다 — 그 릴리스는 설치할 때 모르는 다이얼 id 를 버리고, 앱을 올려도 되살리지 않는다
-(`src/themes/theme-manifest.ts` 의 `dials` doc 주석). 이 키를 읽는 첫 릴리스 번호는 태그될 때 적는다.
+(`src/themes/theme-manifest.ts` 의 `dials` doc 주석). 이 키를 읽는 첫 릴리스는 v0.7.6 이다 — 네 키를
+`DIALS` 에 들인 `4b91d20a`(§365)는 v0.7.5 에 없고 v0.7.6 범프 브랜치에 있다(v0.7.6 릴리스 준비 시점
+실측: `git merge-base --is-ancestor 4b91d20a v0.7.5` 거짓, `… HEAD` 참).
 
 **있는 것:** 매니페스트와 다이얼 값, 그리고 `light/tokens.json` · `dark/tokens.json`
 (§367, 0095). `src/themes/__tests__/reference-theme.test.ts` 가 그것을 실제 관문에

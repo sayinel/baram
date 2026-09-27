@@ -180,7 +180,8 @@ settings rows — one setting seen from two places, not two settings.
 
 To use a family Baram did not find, click the pencil beside the slot and type the name. It
 is saved as written once surrounding whitespace is dropped, and carries the **Not on this
-machine** badge if nothing can render it.
+machine** badge if nothing can render it. A name longer than 128 characters, or one that
+contains a control character, is not saved, and the slot keeps its previous font.
 
 ### Size and spacing
 
