@@ -16,14 +16,14 @@
  */
 import type { GateDeps, GateInput, GateResult } from "./community-gate";
 
-import { appendFileSync, readFileSync } from "node:fs";
+import { appendFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { flag, need, needId } from "./community-cli";
+import { readAppBounds } from "./community-files";
 import { gateOutputs, gateReport, runGate } from "./community-gate";
 import { githubGet } from "./community-github";
 import { label } from "./gha-label";
-import { pluginArchiveByteCap, pluginArchiveLimits, readmeByteCap, registryByteCap } from "./rust-constants";
 
 const TOOL = "community gate";
 const ROOT = resolve(import.meta.dirname, "..");
@@ -36,9 +36,6 @@ if (!/^[0-9a-f]{40}$/u.test(headSha) || !/^[0-9a-f]{40}$/u.test(baseSha)) {
   process.exit(2);
 }
 
-const limitsSource = readFileSync(resolve(ROOT, "src-tauri/src/plugin/limits.rs"), "utf8");
-const fetchSource = readFileSync(resolve(ROOT, "src-tauri/src/plugin/fetch.rs"), "utf8");
-
 const input: GateInput = {
   authorId,
   baseSha,
@@ -50,12 +47,9 @@ const input: GateInput = {
   root: ROOT,
 };
 const deps: GateDeps = {
+  ...readAppBounds(ROOT),
   api: githubGet(need(TOOL, "GITHUB_TOKEN"), (url, init) => fetch(url, init)),
-  archiveCap: pluginArchiveByteCap(limitsSource),
   fetch: (url, init) => fetch(url, init),
-  limits: pluginArchiveLimits(limitsSource),
-  readmeCap: readmeByteCap(fetchSource),
-  registryCap: registryByteCap(fetchSource),
 };
 
 let result: GateResult;

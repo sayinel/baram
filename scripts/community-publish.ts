@@ -21,7 +21,7 @@ import type { Submission, Verdict } from "./community-submission";
 import type { PluginArchive } from "./community-zip";
 import type { PluginArchiveLimits } from "./rust-constants";
 
-import { execFileSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -31,6 +31,7 @@ import { downloadReleaseAsset, releaseAssetUrl, sha256Hex } from "./community-do
 import {
   EMPTY_COMMUNITY,
   firstDescriptorCommit,
+  git,
   readDescriptor,
   readRegistryState,
   upsertCommunityEntry,
@@ -39,7 +40,7 @@ import {
 } from "./community-files";
 import { judgeManifest } from "./community-gate";
 import { mergedPullRequest, ownership, pendingDescriptorConflict, repoFacts } from "./community-github";
-import { descriptorIdFromPath, idConflict, parseSubmission, tagVersion } from "./community-submission";
+import { assetNames, descriptorIdFromPath, idConflict, parseSubmission, repositoryUrl, tagVersion } from "./community-submission";
 import { readPluginArchive } from "./community-zip";
 import { label } from "./gha-label";
 
@@ -212,10 +213,6 @@ function descriptorIds(dir: string): string[] {
     .sort();
 }
 
-function git(dir: string, args: string[]): string {
-  return execFileSync("git", ["-C", dir, ...args], { encoding: "utf8" });
-}
-
 async function publishOne(o: ReconcileOptions, id: string): Promise<Outcome> {
   const failed = (reason: string, pr: null | number = null, stalled = false): Outcome => ({ kind: "failed", pr, reason, stalled });
   const skipped = (reason: string): Outcome => ({ kind: "skipped", reason });
@@ -341,7 +338,7 @@ async function publishOne(o: ReconcileOptions, id: string): Promise<Outcome> {
     if (!written.ok) return failed(written.error, pr.number);
     if ((await o.deliver(o.registryDir)) === "delivered") {
       return {
-        item: { checksum, downloadUrl: `${o.baseUrl}plugins/${id}-${release.version}.zip`, id, version: release.version },
+        item: { checksum, downloadUrl: `${o.baseUrl}plugins/${assetNames(id, release.version).zip}`, id, version: release.version },
         kind: "published",
       };
     }
@@ -381,8 +378,9 @@ function syncToMain(dir: string): void {
 function writeRelease(o: ReconcileOptions, r: Release): Verdict {
   const dir = o.registryDir;
   const head = git(dir, ["rev-parse", "HEAD"]).trim();
-  const zipName = `${r.id}-${r.version}.zip`;
-  const readmeName = r.archive.readme === null ? null : `${r.id}-${r.version}.md`;
+  const names = assetNames(r.id, r.version);
+  const zipName = names.zip;
+  const readmeName = r.archive.readme === null ? null : names.readme;
   const zipPath = join(dir, "plugins", zipName);
   const existing = lstatSync(zipPath, { throwIfNoEntry: false });
   if (existing !== undefined && (!existing.isFile() || sha256Hex(new Uint8Array(readFileSync(zipPath))) !== r.checksum)) {
@@ -418,7 +416,7 @@ function writeRelease(o: ReconcileOptions, r: Release): Verdict {
           publisherId: r.owner.publisherId,
           readmeName,
           repoId: r.owner.repoId,
-          repository: `https://github.com/${r.submission.repo}`,
+          repository: repositoryUrl(r.submission),
           zipName,
         }),
       () => validateRegistryDocument(o.root, join(dir, "index.json")),

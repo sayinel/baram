@@ -31,7 +31,14 @@ import {
   validateRegistryDocument,
 } from "./community-files";
 import { classifyChange, ownership, pendingDescriptorConflict, repoFacts } from "./community-github";
-import { idConflict, parseSubmission, tagVersion, versionAdvances } from "./community-submission";
+import {
+  assetNames,
+  idConflict,
+  parseSubmission,
+  repositoryUrl,
+  tagVersion,
+  versionAdvances,
+} from "./community-submission";
 import { readPluginArchive } from "./community-zip";
 import { label } from "./gha-label";
 
@@ -264,11 +271,6 @@ export function gateReport(result: GateResult): string[] {
   ];
 }
 
-/** The `repository` a community entry carries for this submission — what gate 8 writes and `reviewReasons` compares. */
-function repositoryUrl(submission: Submission): string {
-  return `https://github.com/${submission.repo}`;
-}
-
 /**
  * Gate 8 (plan 0105 P4) — write the community.json this submission would produce with
  * `upsertCommunityEntry` (`update-registry-index.mjs`, the upsert `community-files.ts` gives the
@@ -282,6 +284,7 @@ function stageEntry(input: GateInput, s: Staging): Verdict {
     const manifestPath = join(dir, "baram-plugin.json");
     writeFileSync(communityPath, s.communityText);
     writeFileSync(manifestPath, JSON.stringify(s.manifest));
+    const names = assetNames(s.submission.id, s.version);
     const upsert = upsertCommunityEntry(input.root, {
       baseUrl: input.baseUrl,
       checksum: s.checksum,
@@ -289,10 +292,10 @@ function stageEntry(input: GateInput, s: Staging): Verdict {
       manifestPath,
       publisher: s.submission.publisher,
       publisherId: s.owner.publisherId,
-      readmeName: s.hasReadme ? `${s.submission.id}-${s.version}.md` : null,
+      readmeName: s.hasReadme ? names.readme : null,
       repoId: s.owner.repoId,
       repository: repositoryUrl(s.submission),
-      zipName: `${s.submission.id}-${s.version}.zip`,
+      zipName: names.zip,
     });
     if (!upsert.ok) return upsert;
     return validateRegistryDocument(input.root, communityPath);

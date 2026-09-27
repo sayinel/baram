@@ -107,10 +107,28 @@ export type Verdict<T extends object = object> =
   | (T & { ok: true })
   | { error: string; ok: false };
 
+/**
+ * The names a release publishes under — `plugins/<zip>`, and `readme/<readme>` when its archive
+ * has a README. One spelling for the gate, which stages the entry, and the publish job, which
+ * writes the files the entry's `downloadUrl` and `readme` name.
+ */
+export function assetNames(id: string, version: string): { readme: string; zip: string } {
+  return { readme: `${id}-${version}.md`, zip: `${id}-${version}.zip` };
+}
+
 /** `community/<id>.json` → id. A subdirectory, another extension or an uppercase id → null. */
 export function descriptorIdFromPath(path: string): null | string {
   const match = /^community\/([a-z0-9][a-z0-9-]*)\.json$/u.exec(path);
   return match === null ? null : match[1];
+}
+
+/**
+ * The `repository` a community entry carries for this submission. The gate stages it, the publish
+ * job writes it, and the gate's `reviewReasons` compares the published entry's against it — two
+ * spellings that drifted apart would send every update to a person as "repository changed".
+ */
+export function repositoryUrl(submission: Submission): string {
+  return `https://github.com/${submission.repo}`;
 }
 
 /**

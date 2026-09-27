@@ -14,12 +14,14 @@
  */
 import type { RegistryEntry } from "../src/plugins/types";
 import type { Verdict } from "./community-submission";
+import type { PluginArchiveLimits } from "./rust-constants";
 
 import { execFileSync, spawnSync } from "node:child_process";
 import { lstatSync, readFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 
 import { MAX_SUBMISSION_BYTES } from "./community-submission";
+import { pluginArchiveByteCap, pluginArchiveLimits, readmeByteCap, registryByteCap } from "./rust-constants";
 
 /**
  * What an absent community.json reads as — the same bytes as this repository's seed
@@ -28,6 +30,14 @@ import { MAX_SUBMISSION_BYTES } from "./community-submission";
  * `src-tauri/src/plugin/fetch.rs`, spec 0058 §9.1).
  */
 export const EMPTY_COMMUNITY = '{ "communityPlugins": [] }\n';
+
+/** The bounds the app compiled in that both CLIs judge with (`readAppBounds`). */
+export interface AppBounds {
+  archiveCap: number;
+  limits: PluginArchiveLimits;
+  readmeCap: number;
+  registryCap: number;
+}
 
 export interface CommunityUpsert {
   baseUrl: string;
@@ -77,15 +87,14 @@ export interface RegistryState {
  * the path itself count, so no other path's add or deletion can end or set the search.
  */
 export function firstDescriptorCommit(dir: string, id: string): null | string {
-  const git = (...args: string[]) => execFileSync("git", ["-C", dir, ...args], { encoding: "utf8" });
   const path = `community/${id}.json`;
-  if (git("rev-parse", "--is-shallow-repository").trim() !== "false") {
+  if (git(dir, ["rev-parse", "--is-shallow-repository"]).trim() !== "false") {
     throw new Error(
       `${dir} is a shallow clone, so the commit that first added ${path} cannot be told from where the clone was cut — check it out with fetch-depth: 0`,
     );
   }
   // Newest first: a commit id line, then that commit's `A\t<path>` or `D\t<path>`.
-  const log = git("log", "--no-follow", "--first-parent", "--diff-filter=AD", "--format=%H", "--name-status", "HEAD", "--", path);
+  const log = git(dir, ["log", "--no-follow", "--first-parent", "--diff-filter=AD", "--format=%H", "--name-status", "HEAD", "--", path]);
   let sha = "";
   let first: null | string = null;
   for (const line of log.split("\n")) {
@@ -94,6 +103,32 @@ export function firstDescriptorCommit(dir: string, id: string): null | string {
     else if (line === `A\t${path}`) first = sha;
   }
   return first;
+}
+
+/**
+ * What `git -C <dir> <args>` prints, as text. It THROWS on a non-zero exit (`execFileSync`), with
+ * git's stderr in the error's message — and echoes that stderr to this process's stderr too
+ * (measured on Node 24.21). The runners in `readDescriptorAt` and `community-pull-request.ts`
+ * differ, and say how.
+ */
+export function git(dir: string, args: readonly string[]): string {
+  return execFileSync("git", ["-C", dir, ...args], { encoding: "utf8" });
+}
+
+/**
+ * The app's archive and registry bounds, scraped once from the Rust that enforces them:
+ * `limits.rs` for the archive cap and extraction values, `fetch.rs` for the registry and README
+ * caps. THROWS when a file cannot be read or a scrape refuses — the CLI's own setup failed.
+ */
+export function readAppBounds(root: string): AppBounds {
+  const limitsSource = readFileSync(resolve(root, "src-tauri/src/plugin/limits.rs"), "utf8");
+  const fetchSource = readFileSync(resolve(root, "src-tauri/src/plugin/fetch.rs"), "utf8");
+  return {
+    archiveCap: pluginArchiveByteCap(limitsSource),
+    limits: pluginArchiveLimits(limitsSource),
+    readmeCap: readmeByteCap(fetchSource),
+    registryCap: registryByteCap(fetchSource),
+  };
 }
 
 /**
@@ -131,7 +166,9 @@ export function readDescriptorAt(dir: string, sha: string, id: string): Verdict<
   if (!/^[0-9a-f]{40}$/u.test(sha)) {
     throw new Error(`readDescriptorAt takes a full 40-character commit SHA, not ${JSON.stringify(sha)}`);
   }
-  const git = (...args: string[]) => execFileSync("git", ["-C", dir, ...args], { encoding: "utf8", stdio: "pipe" });
+  // Not `git`: `stdio: "pipe"` keeps git's stderr off this process's stderr, so it reaches the
+  // log only inside a thrown error's message, which the gate CLI prints through `label`.
+  const run = (...args: string[]) => execFileSync("git", ["-C", dir, ...args], { encoding: "utf8", stdio: "pipe" });
   const path = `community/${id}.json`;
   const has = spawnSync("git", ["-C", dir, "cat-file", "-e", `${sha}^{commit}`]);
   if (has.error !== undefined) throw has.error;
@@ -139,12 +176,12 @@ export function readDescriptorAt(dir: string, sha: string, id: string): Verdict<
     throw new Error(`${dir} holds no commit ${sha} — check out the pull request's head commit before running the gate`);
   }
   // `<mode> SP <type> SP <object> TAB <path>`, one line per entry.
-  const listed = git("ls-tree", "--full-tree", sha, "--", path).split("\n").filter((line) => line !== "");
+  const listed = run("ls-tree", "--full-tree", sha, "--", path).split("\n").filter((line) => line !== "");
   const entry = listed.length === 1 ? /^(\d{6}) ([a-z]+) ([0-9a-f]{40,64})\t(.+)$/u.exec(listed[0]) : null;
   if (entry?.[1] !== "100644" || entry[2] !== "blob" || entry[4] !== path) {
     return { error: `${path} is not a regular file`, ok: false };
   }
-  const size = Number(git("cat-file", "-s", entry[3]).trim());
+  const size = Number(run("cat-file", "-s", entry[3]).trim());
   if (size > MAX_SUBMISSION_BYTES) {
     return { error: `the descriptor is ${size} bytes, over the ${MAX_SUBMISSION_BYTES}-byte limit`, ok: false };
   }

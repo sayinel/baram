@@ -7,6 +7,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import {
   EMPTY_COMMUNITY,
   firstDescriptorCommit,
+  readAppBounds,
   readDescriptor,
   readDescriptorAt,
   validateRegistryDocument,
@@ -106,3 +107,28 @@ describe(
     });
   },
 );
+
+describe("readAppBounds — the app's bounds, read once for both CLIs", () => {
+  it("reads the archive and registry bounds the app ships", () => {
+    expect(readAppBounds(ROOT)).toEqual({
+      archiveCap: 32 * 1024 * 1024,
+      limits: {
+        allowedMethods: [0, 8],
+        maxCompressionRatio: 100,
+        maxEntries: 2000,
+        maxEntryBytes: 64 * 1024 * 1024,
+        maxPathDepth: 16,
+        maxTotalExpandedBytes: 256 * 1024 * 1024,
+        ratioFloorBytes: 1024 * 1024,
+      },
+      readmeCap: 256 * 1024,
+      registryCap: 4 * 1024 * 1024,
+    });
+  });
+
+  it("throws when the Rust it reads is not there", () => {
+    expect(() => readAppBounds(tempDir("baram-files-nobounds-"))).toThrow(
+      /ENOENT/u,
+    );
+  });
+});

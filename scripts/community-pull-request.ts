@@ -73,6 +73,8 @@ export function deliverViaPullRequest(o: PullRequestDelivery): Delivery {
   return async (dir) => {
     attempt += 1;
     const branch = `${BRANCH_PREFIX}${o.runId}-${attempt}`;
+    // Not `community-files.ts`'s `git`: every git child here runs with `gitEnv`, the credentials
+    // the fetch and the push need, and each answer is read trimmed.
     const git = (...args: string[]) =>
       execFileSync("git", ["-C", dir, ...args], { encoding: "utf8", env: o.gitEnv }).trim();
     // The refspec and the ref are spelled out, as `reconcile` spells them: a checkout may

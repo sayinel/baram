@@ -5,9 +5,8 @@
 import type { PublishedItem } from "./community-publish";
 import type { Verdict } from "./community-submission";
 
-import { execFileSync } from "node:child_process";
-
 import { sha256Hex } from "./community-download";
+import { git } from "./community-files";
 
 /** GitHub Pages' published-site limit, read as 10⁹ bytes — the smaller reading (plan 0105 P19). */
 export const PAGES_SITE_LIMIT_BYTES = 1_000_000_000;
@@ -26,7 +25,7 @@ export interface LiveCheck {
 /** Bytes of every blob main holds — what GitHub Pages serves from a branch build. */
 export function registryBytes(dir: string): number {
   // `<mode> SP <type> SP <object> SP+ <size> TAB <path>`; a submodule's size is "-".
-  return execFileSync("git", ["-C", dir, "ls-tree", "-r", "-l", "HEAD"], { encoding: "utf8" })
+  return git(dir, ["ls-tree", "-r", "-l", "HEAD"])
     .split("\n")
     .map((line) => line.split(/\s+/u))
     .filter((fields) => fields[1] === "blob")

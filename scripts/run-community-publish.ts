@@ -46,12 +46,12 @@ import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 import { flag, need, needId } from "./community-cli";
+import { readAppBounds } from "./community-files";
 import { githubGet } from "./community-github";
 import { PAGES_SITE_LIMIT_BYTES, registryBytes, waitForLive } from "./community-live";
 import { deliverByPush, publishOutputs, publishReportLines, reconcile } from "./community-publish";
 import { deliverViaPullRequest, sweepAbandonedPullRequests } from "./community-pull-request";
 import { label } from "./gha-label";
-import { pluginArchiveByteCap, pluginArchiveLimits, readmeByteCap, registryByteCap } from "./rust-constants";
 
 const TOOL = "community publish";
 const ROOT = resolve(import.meta.dirname, "..");
@@ -102,8 +102,7 @@ async function runReconcile(): Promise<number> {
     delivery === "pull-request" ? `${needId(TOOL, "GITHUB_RUN_ID")}-${needId(TOOL, "GITHUB_RUN_ATTEMPT")}` : "";
   let report: ReconcileReport;
   try {
-    const limitsSource = readFileSync(resolve(ROOT, "src-tauri/src/plugin/limits.rs"), "utf8");
-    const fetchSource = readFileSync(resolve(ROOT, "src-tauri/src/plugin/fetch.rs"), "utf8");
+    const bounds = readAppBounds(ROOT);
     const pushEnv = {
       ...process.env,
       GIT_CONFIG_COUNT: "1",
@@ -123,17 +122,14 @@ async function runReconcile(): Promise<number> {
     // `reconcile` itself does not throw — a throw while handling a descriptor ends the run as
     // `aborted`. This catch is for the setup and the sweep above it.
     report = await reconcile({
+      ...bounds,
       api: githubGet(token, (url, init) => fetch(url, init)),
-      archiveCap: pluginArchiveByteCap(limitsSource),
       baseUrl,
       deliver:
         delivery === "pull-request"
           ? deliverViaPullRequest({ gh, gitEnv: pushEnv, registryRepo, runId })
           : deliverByPush(pushEnv),
       fetch: (url, init) => fetch(url, init),
-      limits: pluginArchiveLimits(limitsSource),
-      readmeCap: readmeByteCap(fetchSource),
-      registryCap: registryByteCap(fetchSource),
       registryDir,
       registryRepo,
       root: ROOT,
