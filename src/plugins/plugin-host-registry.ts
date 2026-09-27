@@ -20,12 +20,21 @@ import type { EditorState, Transaction } from "@tiptap/pm/state";
 import { useEditorStore } from "../stores/editor/editor";
 import { isTabLoading, loadedTabId } from "../utils/editor/programmatic-update";
 import { logger } from "../utils/logger";
+import { beginPluginInvocation } from "./prompt-gate";
 
 // --- Command Registry (shared across all plugins, both tiers) ---
 export const commandHandlers = new Map<
   string,
   (...args: unknown[]) => unknown
 >();
+
+/**
+ * §385 Which plugin registered each command, recorded AT REGISTRATION (spec 0061 §5.1).
+ * `executePluginCommand` reads it to start that plugin's prompt rights. Not parsed out of the
+ * `${pluginId}.${id}` key: plugin ids happen to be dot-free today (`manifest.ts`), and a rule
+ * that leans on a key's spelling breaks silently when the spelling changes.
+ */
+export const commandOwners = new Map<string, string>();
 
 // --- Event Bus (shared across all plugins, both tiers) ---
 export type EventHandler = (...args: unknown[]) => void;
@@ -229,14 +238,24 @@ export function emitPluginEvent(event: string, ...args: unknown[]): void {
   });
 }
 
-/** Execute a plugin command from the host */
+/**
+ * Execute a plugin command from the host — the ONE entry for a user's gesture (§385 spec 0061
+ * §5.1). It starts the owner's prompt rights for as long as the handler runs; `return await`
+ * so the `finally` waits for the handler, not for the call.
+ */
 export async function executePluginCommand(
   id: string,
   ...args: unknown[]
 ): Promise<unknown> {
   const handler = commandHandlers.get(id);
   if (!handler) throw new Error(`Plugin command not found: ${id}`);
-  return handler(...args);
+  const owner = commandOwners.get(id);
+  const end = owner === undefined ? undefined : beginPluginInvocation(owner);
+  try {
+    return await handler(...args);
+  } finally {
+    end?.();
+  }
 }
 
 /**
@@ -281,9 +300,17 @@ export function readSelection(editor: PluginEditorHandle): {
 export function registerHostCommandHandler(
   fullId: string,
   handler: (...args: unknown[]) => unknown,
+  /** §385 — the owner, for prompt rights (spec 0061 §5.1). Required: a missing owner fails closed and silently. */
+  pluginId: string,
 ): Disposable {
   commandHandlers.set(fullId, handler);
-  return { dispose: () => void commandHandlers.delete(fullId) };
+  commandOwners.set(fullId, pluginId);
+  return {
+    dispose: () => {
+      commandHandlers.delete(fullId);
+      commandOwners.delete(fullId);
+    },
+  };
 }
 
 export function setEditorInstance(editor: unknown): void {

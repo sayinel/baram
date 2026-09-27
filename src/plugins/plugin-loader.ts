@@ -756,7 +756,11 @@ export class PluginLoader {
       // programmatically; only surface it in the palette unless the manifest
       // opted out (palette: false) — mirrors the trusted path's visibility rule.
       disposables.push(
-        registerHostCommandHandler(fullId, () => session.invokeCommand(cmd.id)),
+        registerHostCommandHandler(
+          fullId,
+          () => session.invokeCommand(cmd.id),
+          manifest.id,
+        ),
       );
       if (cmd.palette !== false) {
         usePluginUIStore.getState().registerPaletteCommand({

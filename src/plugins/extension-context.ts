@@ -29,6 +29,7 @@ import { logger } from "../utils/logger";
 import { createAIAPI } from "./plugin-ai-policy";
 import {
   commandHandlers,
+  commandOwners,
   editorRefusalMessage,
   editorSurfaceBlocked,
   emitScopedPluginEvent,
@@ -91,6 +92,7 @@ function createCommandsAPI(
     ): Disposable {
       const fullId = `${pluginId}.${id}`;
       commandHandlers.set(fullId, handler);
+      commandOwners.set(fullId, pluginId);
       const showInPalette = opts?.paletteVisible === true || !!opts?.title;
       if (showInPalette) {
         usePluginUIStore.getState().registerPaletteCommand({
@@ -102,6 +104,7 @@ function createCommandsAPI(
       const disposable: Disposable = {
         dispose: () => {
           commandHandlers.delete(fullId);
+          commandOwners.delete(fullId);
           if (showInPalette) {
             usePluginUIStore.getState().removePaletteCommand(fullId);
           }
