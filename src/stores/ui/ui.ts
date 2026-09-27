@@ -175,7 +175,8 @@ interface UIState {
    * (`setChromeVisibility`)은 기록하지 **않는다** — 프리셋은 표면 하나가 아니라
    * 화면 전체를 고르는 행위라, 그것을 "이 표면을 손댔다" 로 세면 프리셋 한 번에
    * 모든 표면이 잠긴다. 제안 적용 자신도 기록하지 않는다 — 세면 두 번째 테마가
-   * 영영 제안할 수 없다.
+   * 영영 제안할 수 없다. 같은 넷이 `setUserChromeChoiceListener` 로 건 리스너에
+   * 알린다(스펙 0063 §3.3).
    */
   chromeTouched: Readonly<Partial<Record<ChromeSurface, true>>>;
   /** §Phase5: Close the conflict modal (without resolution — used internally) */
@@ -361,6 +362,32 @@ function markTouched(
   return next;
 }
 
+/**
+ * §370.3 · 스펙 0063 §3.3 — 사용자가 크롬 표면을 **직접** 골랐다는 알림.
+ *
+ * 받는 쪽은 `chrome-proposal.ts` 의 `recordChromeChoice` 하나이고, 거는 쪽은
+ * `hooks/use-settings-effects.ts` 의 이펙트 하나다. 이 파일은 zustand 말고 아무것도
+ * import 하지 않는 기반 모듈이라(`chrome-proposal.ts` 머리주석) 설정 스토어에 직접 쓰지 않고
+ * 알리기만 한다.
+ *
+ * 알리는 입구는 `chromeTouched` 를 기록하는 입구와 같은 넷이다 — 토글 셋과 `revealAllChrome`.
+ * 프리셋(`setChromeVisibility`)과 제안(`proposeChromeVisibility`)은 알리지 않는다. 스토어
+ * 구독으로 알아내지 않는 이유: 이미 손댄 표면에 프리셋이 쓰면 구독은 토글과 프리셋을 가를 수
+ * 없다(계획 0111 P2).
+ */
+export type UserChromeChoiceListener = (
+  surfaces: readonly ChromeSurface[],
+) => void;
+
+let userChromeChoiceListener: null | UserChromeChoiceListener = null;
+
+/** 리스너를 건다(`null` 이면 뗀다). 하나만 걸린다 — 거는 쪽이 하나이기 때문이다. */
+export function setUserChromeChoiceListener(
+  listener: null | UserChromeChoiceListener,
+): void {
+  userChromeChoiceListener = listener;
+}
+
 export const useUIStore = create<UIState>((set) => ({
   sidebarOpen: true,
   sidebarPanel: "files",
@@ -450,23 +477,29 @@ export const useUIStore = create<UIState>((set) => ({
   // (프리셋 입구)와 끝까지 다른 입구로 남는다. §370.3이 이 셋에만 "사용자가 이
   // 표면을 손댔다"는 기록을 덧대므로, 여기서 `setChromeVisibility` 호출로
   // 구현하면 그 구분이 무너진다. 각자 **자기 키만** 기록한다.
-  toggleActivityBar: () =>
+  toggleActivityBar: () => {
     set((state) => ({
       activityBarVisible: !state.activityBarVisible,
       chromeTouched: markTouched(state.chromeTouched, ["activityBar"]),
-    })),
+    }));
+    userChromeChoiceListener?.(["activityBar"]);
+  },
 
-  toggleStatusBar: () =>
+  toggleStatusBar: () => {
     set((state) => ({
       chromeTouched: markTouched(state.chromeTouched, ["statusBar"]),
       statusBarVisible: !state.statusBarVisible,
-    })),
+    }));
+    userChromeChoiceListener?.(["statusBar"]);
+  },
 
-  toggleTabBar: () =>
+  toggleTabBar: () => {
     set((state) => ({
       chromeTouched: markTouched(state.chromeTouched, ["tabBar"]),
       tabBarVisible: !state.tabBarVisible,
-    })),
+    }));
+    userChromeChoiceListener?.(["tabBar"]);
+  },
 
   // §370.2 복귀 경로 — 가장자리 호버/포커스 버튼(ChromeReveal)이 부른다. 토글이 아니라
   // "전부 보이게" 이므로 뒤집지 않는다(위 토글 셋과 다른 이유는 인터페이스의 §370.2
@@ -477,7 +510,7 @@ export const useUIStore = create<UIState>((set) => ({
   // 그것이 §370.3이 금지한 강제다. 그래서 동등성 관문은 가시성만으로 판정하지 않는다:
   // 셋이 이미 보이면서 **기록까지 그대로일 때**만 아무것도 쓰지 않는다 — 셋이 보이지만
   // 기록이 없는 상태(기본 상태)에서 이것을 부르면 기록만 남긴다.
-  revealAllChrome: () =>
+  revealAllChrome: () => {
     set((state) => {
       const chromeTouched = markTouched(state.chromeTouched, CHROME_SURFACES);
       if (
@@ -494,7 +527,9 @@ export const useUIStore = create<UIState>((set) => ({
         statusBarVisible: true,
         tabBarVisible: true,
       };
-    }),
+    });
+    userChromeChoiceListener?.(CHROME_SURFACES);
+  },
 
   // §370.3 테마의 제안을 받는다. "제안이지 강제가 아니다"는 `chromeTouched` 를 보는
   // 아래 `continue` 한 줄로 구현된다 — 이 규칙(손댄 표면은 건너뛴다)을 아는 코드는

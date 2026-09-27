@@ -86,6 +86,15 @@ export function ThemeGallery({
   // §371 6a — 파일 설치의 동의는 이 화면이 그린다(대화상자 상태의 주인이 위 훅이다).
   const { handleInstallFromFile } = useThemeFileInstall(actions);
   const { handleImport, importError } = useThemeImport(handleInstallFromFile);
+  // 스펙 0063 §3.4 — 카드를 고르는 것은 "이 테마의 제안을 다시 받겠다" 다: 거절 기록을 지운다.
+  // 제안은 다음 적용부터 다시 닿는다(이번 세션에 손댄 표면은 여전히 건너뛴다, 계획 0111 P1).
+  const chooseTheme = useCallback(
+    (id: string) => {
+      useSettingsStore.getState().clearChromeProposalDeclines(id);
+      setActiveTheme(id);
+    },
+    [setActiveTheme],
+  );
   // `useCallback` 인 이유는 `ThemeBrowser.tsx` 의 같은 자리 주석 — 대화상자의 Escape 이펙트가
   // `onCancel` 에 의존한다.
   const onCancelConsent = useCallback(
@@ -181,7 +190,7 @@ export function ThemeGallery({
                   onInfo={
                     installed ? () => showConsentHistory(installed) : undefined
                   }
-                  onSelect={setActiveTheme}
+                  onSelect={chooseTheme}
                   onUpdate={
                     // themeActions(source).update belongs to the `installed` source, and
                     // an entry exists here only when the registry lists a different version

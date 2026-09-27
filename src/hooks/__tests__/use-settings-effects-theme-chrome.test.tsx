@@ -164,6 +164,7 @@ beforeEach(() => {
     activeThemeId: REF,
     appearanceOverrides: {},
     customThemes: [],
+    declinedChromeProposals: {},
     installedThemes: {
       [REF]: installed(REF_MANIFEST),
       "other-theme": installed(OTHER_MANIFEST),
@@ -331,12 +332,57 @@ describe("§370.3 제안은 테마 전이에서만 적용된다", () => {
 
     // 손댐 기록을 지우면 같은 전이가 닿는다 — 위 단언이 "전이가 아예 감지되지
     // 않는다" 로 통과한 것이 아님을 여기서 관측한다.
+    //
+    // 스펙 0063 §3.3(계획 0111 Task 1) — 위 `revealAllChrome()` 은 이제 REF 의 제안과
+    // 어긋난 세 표면을 거절로도 기록한다(`declinedChromeProposals`). 이 케이스가 묻는
+    // 것은 `chromeTouched`(세션) 하나뿐이라, 그 거절 기록도 함께 지운다 — 지우지
+    // 않으면 REF 로 돌아와도 거절이 제안을 계속 건너뛰어 이 케이스의 관심사가 아닌
+    // 이유로 실패한다.
     act(() => {
       useUIStore.setState({ chromeTouched: {} });
+      useSettingsStore.setState({ declinedChromeProposals: {} });
       useSettingsStore.getState().setActiveTheme(REF);
     });
     await waitFor(() => {
       expect(useUIStore.getState().tabBarVisible).toBe(false);
     });
+  });
+});
+
+describe("the effect wires the decline recorder (스펙 0063 §3.3)", () => {
+  it("records a toggle against the theme the app is wearing, and a remount keeps it wired", async () => {
+    useSettingsStore.setState({
+      activeThemeId: REF,
+      declinedChromeProposals: {},
+      installedThemes: { [REF]: installed(REF_MANIFEST) },
+    });
+    const view = render(
+      <StrictMode>
+        <Host />
+      </StrictMode>,
+    );
+    await waitFor(() =>
+      expect(useUIStore.getState().tabBarVisible).toBe(false),
+    );
+
+    act(() => useUIStore.getState().toggleTabBar());
+
+    expect(useSettingsStore.getState().declinedChromeProposals).toEqual({
+      [REF]: { tabBar: true },
+    });
+    view.unmount();
+  });
+
+  it("stops recording after unmount", () => {
+    useSettingsStore.setState({
+      activeThemeId: REF,
+      declinedChromeProposals: {},
+      installedThemes: { [REF]: installed(REF_MANIFEST) },
+    });
+    render(<Host />).unmount();
+
+    act(() => useUIStore.getState().toggleTabBar());
+
+    expect(useSettingsStore.getState().declinedChromeProposals).toEqual({});
   });
 });

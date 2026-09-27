@@ -328,6 +328,8 @@ export function useThemeActions() {
   const announceInstalled = useCallback(
     (installed: InstalledTheme, warnings: ContrastWarning[]) => {
       const previousActiveThemeId = useSettingsStore.getState().activeThemeId;
+      // 스펙 0063 §3.4 — 설치하고 입히는 것도 이 테마를 고르는 일이다(계획 0111 P3).
+      useSettingsStore.getState().clearChromeProposalDeclines(installed.id);
       setActiveTheme(installed.id);
       // §367.3 — ONE toast (`useUIStore`'s `showToast` has a single slot, see
       // `stageAndRecord`'s doc comment). When there are contrast warnings, the toast says

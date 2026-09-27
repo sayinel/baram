@@ -66,6 +66,7 @@ const NO_CHROME_MANIFEST: InstalledTheme["manifest"] = {
 
 beforeEach(() => {
   useSettingsStore.setState({
+    declinedChromeProposals: {},
     installedThemes: {
       [REF]: installed(REF_MANIFEST),
       "plain-theme": installed(NO_CHROME_MANIFEST),

@@ -14,12 +14,15 @@ import { useTranslation } from "../i18n/useTranslation";
 import { useFeatureFlags } from "../stores/settings/features";
 import { useSettingsStore } from "../stores/settings/store";
 import { useThemeCssCacheStore } from "../stores/system/theme-css-cache";
-import { applyThemeChrome } from "../stores/ui/chrome-proposal";
+import {
+  applyThemeChrome,
+  recordChromeChoice,
+} from "../stores/ui/chrome-proposal";
 import {
   RIGHT_PANEL_MODE_FEATURE,
   SIDEBAR_PANEL_FEATURE,
 } from "../stores/ui/panel-feature";
-import { useUIStore } from "../stores/ui/ui";
+import { setUserChromeChoiceListener, useUIStore } from "../stores/ui/ui";
 import { lookupThemes } from "../themes/installed-theme-defs";
 import {
   defaultColorsForBase,
@@ -339,6 +342,16 @@ export function useSettingsEffects(editor: Editor | null) {
   // 입히듯 크롬도 제안하지 못한다(`use-effective-theme-id.ts`).
   useEffect(() => {
     applyThemeChrome(effectiveThemeId);
+  }, [effectiveThemeId]);
+
+  // 스펙 0063 §3.3 — 사용자가 표면을 직접 고를 때 이 테마의 제안과 비교해 거절을 기록한다.
+  // 위 이펙트와 같은 `effectiveThemeId` 를 쓴다: 철회된 테마는 제안하지 못하듯 거절도 기록되지
+  // 않는다. StrictMode 의 마운트 → 정리 → 재마운트는 떼고 다시 거는 것이라 해가 없다.
+  useEffect(() => {
+    setUserChromeChoiceListener((surfaces) =>
+      recordChromeChoice(effectiveThemeId, surfaces),
+    );
+    return () => setUserChromeChoiceListener(null);
   }, [effectiveThemeId]);
 
   useEffect(() => {
