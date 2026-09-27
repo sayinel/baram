@@ -11,6 +11,7 @@
 //
 // ‼️ Rights are PER PLUGIN, not per call: a sandbox frame names no invocation, so while a
 // command runs the same plugin's event handlers may prompt too (spec 0061 §5.3).
+import { deepActiveElement } from "../utils/deep-active-element";
 
 export interface OpenPrompt {
   /** Settle the prompt with `undefined` — the teardown path. */
@@ -77,22 +78,6 @@ function countInput(event: Event): void {
   inputSeq += 1;
 }
 
-/**
- * The innermost active element, descending through any open shadow root.
- *
- * A trusted plugin panel mounts inside an open shadow root (`PluginShadowMount.tsx`), so an
- * iframe focused there reports the shadow HOST — not itself — as `document.activeElement`;
- * without this walk condition 4 (spec 0061 §5.3) would read that host, see no iframe, and let
- * the frame's own keys go uncounted.
- */
-function deepActiveElement(): Element | null {
-  let el = document.activeElement;
-  while (el?.shadowRoot?.activeElement) {
-    el = el.shadowRoot.activeElement;
-  }
-  return el;
-}
-
 /** The window module's hand-off when a prompt settles. */
 export function markPromptClosed(prompt: OpenPrompt): void {
   if (open === prompt) open = null;
@@ -101,6 +86,23 @@ export function markPromptClosed(prompt: OpenPrompt): void {
 /** The window module's hand-off BEFORE it renders, so input inside it is never counted. */
 export function markPromptOpen(prompt: OpenPrompt): void {
   open = prompt;
+}
+
+/**
+ * Another surface covers where the prompt's input would be (spec 0061 D9).
+ *
+ * Its message is untranslated developer English, like every other string in this file — not a
+ * claim that it is never SEEN. The palette's generic error toast (`CommandPalette.tsx`, which
+ * shows `String(err)` for any plugin command that rejects) can and does render it verbatim, the
+ * same as it would any other plugin error; there is no separate, translated path for this one.
+ */
+export class PromptOccludedError extends Error {
+  constructor() {
+    super(
+      "prompt refused: another window covers where the prompt would appear",
+    );
+    this.name = "PromptOccludedError";
+  }
 }
 
 /** Why `pluginId` may not open a prompt now, or `null` — spec 0061 §5.3 conditions 1–4. */

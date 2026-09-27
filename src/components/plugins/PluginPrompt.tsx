@@ -26,7 +26,11 @@ interface PluginPromptProps {
   spec: PromptSpec;
 }
 
-/** Keys the prompt acts on. They stop at its root, so listeners further up do not act on them too. */
+/**
+ * Keys the prompt acts on. `stopPropagation()` below stops these at its root, so a BUBBLE-phase
+ * listener further up the page does not act on them too — a capture-phase listener above still
+ * sees the key regardless (spec 0061 §8), the same as `prompt-gate.ts`'s own watcher does.
+ */
 const HANDLED_KEYS = new Set([
   "ArrowDown",
   "ArrowUp",
@@ -43,6 +47,7 @@ export function PluginPrompt({
 }: PluginPromptProps) {
   const { t } = useTranslation();
   const listId = useId();
+  const headerId = useId();
   const [text, setText] = useState(
     spec.kind === "inputBox" ? (spec.value ?? "") : "",
   );
@@ -97,12 +102,13 @@ export function PluginPrompt({
   const quickPick = spec.kind === "quickPick";
   return (
     <div
-      aria-label={spec.title ?? source}
+      aria-labelledby={headerId}
+      aria-modal="true"
       className="command-palette plugin-prompt"
       onKeyDown={onKeyDown}
       role="dialog"
     >
-      <div className="plugin-prompt-header">
+      <div className="plugin-prompt-header" id={headerId}>
         <span className="plugin-prompt-source">
           {t("plugin.prompt.source", { name: source })}
         </span>
@@ -118,6 +124,7 @@ export function PluginPrompt({
         }
         aria-controls={quickPick ? listId : undefined}
         aria-expanded={quickPick ? true : undefined}
+        aria-labelledby={headerId}
         className="command-palette-input plugin-prompt-input"
         maxLength={quickPick ? undefined : PROMPT_LIMITS.valueChars}
         onChange={(event) => {

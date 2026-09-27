@@ -77,6 +77,21 @@ function bodyMountedPopupClasses(): string[] {
   return [...found].sort();
 }
 
+/**
+ * `.security-surface-host.security-surface-host--overlay`'s z-index, `!important` stripped —
+ * the plugin-consent dialog's actual layering value (see the long comment at its call site
+ * below). Shared so the two places that need "is this above or below consent" read the same
+ * number instead of two copies of the same parse drifting apart.
+ */
+function consentLayer(): number {
+  return Number(
+    declaration(
+      ".security-surface-host.security-surface-host--overlay",
+      "z-index",
+    ).replace(/\s*!important$/u, ""),
+  );
+}
+
 /** The numeric value a custom property is defined as, wherever it is defined. */
 function customProperty(token: string): number {
   for (const rule of cssRules()) {
@@ -177,12 +192,7 @@ describe("§323 body-mounted 편집기 팝업의 레이어링", () => {
     // stop a theme pushing the surface behind the page with `z-index: -1`, which is
     // a hiding vector, not a statement about this ordering. What this test compares
     // is the number.
-    const consent = Number(
-      declaration(
-        ".security-surface-host.security-surface-host--overlay",
-        "z-index",
-      ).replace(/\s*!important$/u, ""),
-    );
+    const consent = consentLayer();
     expect(Number.isNaN(consent)).toBe(false);
     expect(tokenValue()).toBeLessThan(consent);
   });
@@ -198,15 +208,9 @@ describe("§385 플러그인 창의 레이어링", () => {
   });
 
   it("토큰은 툴팁 위, 보안 표면 아래다", () => {
-    const consent = Number(
-      declaration(
-        ".security-surface-host.security-surface-host--overlay",
-        "z-index",
-      ).replace(/\s*!important$/u, ""),
-    );
     expect(customProperty("--z-plugin-prompt")).toBeGreaterThan(
       customProperty("--z-tooltip"),
     );
-    expect(customProperty("--z-plugin-prompt")).toBeLessThan(consent);
+    expect(customProperty("--z-plugin-prompt")).toBeLessThan(consentLayer());
   });
 });

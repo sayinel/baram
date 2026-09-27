@@ -1308,7 +1308,9 @@
   border-color: var(--color-text-muted);
 }
 
-/* §385 plugin prompts (spec 0061 §8): the command palette's box over its own overlay. */
+/* §385 plugin prompts (spec 0061 §8): the command palette's box over its own overlay. Mirrors
+   `.command-palette-overlay` (toolbar.css) apart from the z-index token — change the two
+   together. */
 .plugin-prompt-overlay {
   position: fixed;
   inset: 0;

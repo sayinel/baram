@@ -17,11 +17,12 @@ vi.mock("../../../plugins/plugin-host-registry", async (importOriginal) => ({
 import {
   beginPluginInvocation,
   clearPromptGate,
+  PromptOccludedError,
   promptRefusal,
   resetPromptGate,
 } from "../../../plugins/prompt-gate";
 import { useUIStore } from "../../../stores/ui/ui";
-import { PromptOccludedError, showPluginPrompt } from "../show-plugin-prompt";
+import { showPluginPrompt } from "../show-plugin-prompt";
 import { stubPromptLayout } from "./prompt-layout";
 
 const input = () =>
@@ -92,18 +93,53 @@ describe("showPluginPrompt", () => {
         document.createElement("button"),
       );
       origin.focus();
-      const answer = pick(3);
-      expect(document.activeElement).toBe(input());
-      act(exit);
-      await expect(answer).resolves.toBe(expected);
-      expect(overlay()).toBeNull();
-      expect(document.activeElement).toBe(origin);
+      // Wraps the real subscribe so the returned unsubscribe can be asserted on below, without
+      // changing what it does — `mockImplementation` still calls straight through to it.
+      const realSubscribe = useUIStore.subscribe;
+      let unsubscribe: (() => void) | undefined;
+      const subscribeSpy = vi
+        .spyOn(useUIStore, "subscribe")
+        .mockImplementation((listener) => {
+          unsubscribe = vi.fn(realSubscribe(listener));
+          return unsubscribe;
+        });
+      try {
+        const answer = pick(3);
+        expect(document.activeElement).toBe(input());
+        act(exit);
+        await expect(answer).resolves.toBe(expected);
+        expect(overlay()).toBeNull();
+        expect(document.activeElement).toBe(origin);
+        expect(unsubscribe).toHaveBeenCalled();
+      } finally {
+        // Restored even if an assertion above throws — an unrestored spy would otherwise wrap
+        // ITSELF again on the next `it.each` row (`realSubscribe` there would capture this
+        // row's mock, not the store's real `subscribe`), corrupting every row after the first
+        // failure instead of just the one that failed.
+        subscribeSpy.mockRestore();
+      }
       // The slot is free again. Checked with a live invocation so the refusal cannot come from
       // condition 1 (no command running) before it ever reaches condition 3 (a prompt open).
       beginPluginInvocation("x");
       expect(promptRefusal("x")).toBeNull();
     },
   );
+
+  it("returns focus through an open shadow root, not to its host", async () => {
+    // §385 R16 — a trusted plugin panel mounts inside an open shadow root
+    // (`PluginShadowMount.tsx`); `document.activeElement` alone would report the shadow HOST,
+    // not the element actually focused inside it.
+    const host = document.body.appendChild(document.createElement("div"));
+    const shadow = host.attachShadow({ mode: "open" });
+    const shadowButton = shadow.appendChild(document.createElement("button"));
+    shadowButton.tabIndex = 0;
+    shadowButton.focus();
+    const answer = pick(1);
+    act(() => void fireEvent.keyDown(input(), { key: "Escape" }));
+    await answer;
+    expect(host.shadowRoot!.activeElement).toBe(shadowButton);
+    host.remove();
+  });
 
   it("returns focus to the editor when it came from <body>, unless the surface is blocked", async () => {
     let answer = pick(1);
@@ -172,6 +208,46 @@ describe("showPluginPrompt", () => {
     act(() => void fireEvent.keyDown(input(), { key: "Escape" }));
     await answer;
     document.removeEventListener("keydown", listen);
+  });
+
+  it("항목 클릭 = 선택 (spec 0061 §8): mousedown then click resolves that row's id", async () => {
+    const answer = pick(3);
+    const row = document.querySelectorAll<HTMLElement>('[role="option"]')[1]!;
+    act(() => {
+      fireEvent.mouseDown(row);
+      fireEvent.click(row);
+    });
+    await expect(answer).resolves.toBe("id-1");
+  });
+
+  it("marks only the selected row with the selected class", async () => {
+    const answer = pick(3);
+    const rows = [...document.querySelectorAll('[role="option"]')];
+    expect(rows[0]!.classList.contains("command-palette-item")).toBe(true);
+    expect(rows[0]!.classList.contains("command-palette-item-selected")).toBe(
+      true,
+    );
+    expect(rows[1]!.classList.contains("command-palette-item")).toBe(true);
+    expect(rows[1]!.classList.contains("command-palette-item-selected")).toBe(
+      false,
+    );
+    act(() => void fireEvent.keyDown(input(), { key: "Escape" }));
+    await answer;
+  });
+
+  it("keeps focus on the input when the mousedown lands elsewhere in the dialog", async () => {
+    const answer = pick(1);
+    const header = overlay()!.querySelector<HTMLElement>(
+      ".plugin-prompt-header",
+    )!;
+    // `fireEvent.*` returns the dispatch's own result: `false` once something called
+    // `preventDefault()`, exactly the check `SymbolPicker.test.tsx` uses for the same shape of
+    // guard — and, unlike reading `document.activeElement` back, one jsdom cannot pass by
+    // simply never having moved focus off a plain `<div>` in the first place.
+    expect(fireEvent.mouseDown(header)).toBe(false); // default prevented
+    expect(document.activeElement).toBe(input());
+    act(() => void fireEvent.keyDown(input(), { key: "Escape" }));
+    await answer;
   });
 
   it("filters and ranks as the user types", async () => {
