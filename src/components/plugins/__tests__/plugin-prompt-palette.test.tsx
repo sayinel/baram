@@ -2,14 +2,17 @@
 // after the next task. The watcher must be capture-phase: in bubble phase the launching Enter is
 // counted after the invocation starts, and both tests below go red. A synchronous request would
 // NOT show that — it runs before the window's bubble listener either way.
-import type { PluginManifest } from "../../../plugins/types";
+import type { Disposable, PluginManifest } from "../../../plugins/types";
 
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createExtensionContext } from "../../../plugins/extension-context";
 import { usePluginUIStore } from "../../../plugins/plugin-ui-store";
-import { resetPromptGate } from "../../../plugins/prompt-gate";
+import {
+  beginPluginInvocation,
+  resetPromptGate,
+} from "../../../plugins/prompt-gate";
 import { useUIStore } from "../../../stores/ui/ui";
 import { CommandPalette } from "../../command/CommandPalette";
 import { stubPromptLayout } from "./prompt-layout";
@@ -28,7 +31,17 @@ const manifest = {
   version: "1.0.0",
 } as unknown as PluginManifest;
 
+// A failed assertion must not leak the layout stub or the "go" command handler into the next
+// row: both are torn down here, not at the end of each `it`, so they come down even when the
+// test body throws first.
+let restoreLayout: (() => void) | null = null;
+let goCommand: Disposable | null = null;
+
 afterEach(() => {
+  restoreLayout?.();
+  restoreLayout = null;
+  goCommand?.dispose();
+  goCommand = null;
   resetPromptGate();
   usePluginUIStore.setState({ paletteCommands: [] });
   document.body.innerHTML = "";
@@ -39,9 +52,11 @@ function launch(
 ) {
   const ctx = createExtensionContext(manifest, "/p");
   const result = vi.fn();
-  ctx.commands.register("go", () => handler(ctx).then(result, result), {
-    title: "Zqx probe",
-  });
+  goCommand = ctx.commands.register(
+    "go",
+    () => handler(ctx).then(result, result),
+    { title: "Zqx probe" },
+  );
   useUIStore.setState({ commandPaletteOpen: true });
   render(
     <CommandPalette
@@ -65,8 +80,12 @@ const promptInput = () =>
 const nextTask = () => new Promise((r) => setTimeout(r, 0));
 
 describe("prompting from a palette-launched command", () => {
-  it("opens a prompt the handler asks for after the next task", async () => {
-    const restore = stubPromptLayout();
+  it("opens a prompt the handler asks for after the next task — watcher already installed", async () => {
+    // The app's steady state: some earlier plugin invocation already installed the capture-phase
+    // watcher (`watchInput`, idempotent past its first call) and has since ended. This row does
+    // NOT install it for the first time itself, unlike the row below.
+    beginPluginInvocation("other")();
+    restoreLayout = stubPromptLayout();
     const result = launch(async (ctx) => {
       await nextTask();
       return ctx.prompts.showQuickPick([{ id: "a", label: "A" }]);
@@ -74,11 +93,10 @@ describe("prompting from a palette-launched command", () => {
     await vi.waitFor(() => expect(promptInput()).not.toBeNull());
     act(() => void fireEvent.keyDown(promptInput()!, { key: "Enter" }));
     await vi.waitFor(() => expect(result).toHaveBeenCalledWith("a"));
-    restore();
   });
 
   it("opens the second prompt of a flow after a pick in the first", async () => {
-    const restore = stubPromptLayout();
+    restoreLayout = stubPromptLayout();
     const result = launch(async (ctx) => {
       await nextTask();
       const picked = await ctx.prompts.showQuickPick([{ id: "a", label: "A" }]);
@@ -89,6 +107,5 @@ describe("prompting from a palette-launched command", () => {
     await vi.waitFor(() => expect(promptInput()?.value).toBe("t"));
     act(() => void fireEvent.keyDown(promptInput()!, { key: "Enter" }));
     await vi.waitFor(() => expect(result).toHaveBeenCalledWith("a:t"));
-    restore();
   });
 });

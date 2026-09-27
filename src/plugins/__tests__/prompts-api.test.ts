@@ -31,7 +31,18 @@ describe("createPromptsAPI", () => {
   });
 
   it("checks the gate before the limits — a refused plugin costs no walk over its items", async () => {
-    await expect(api.showQuickPick([])).rejects.toThrow(/commands is running/);
+    let reads = 0;
+    const items: unknown[] = new Array(1);
+    Object.defineProperty(items, 0, {
+      get() {
+        reads += 1;
+        return { id: "a", label: "A" };
+      },
+    });
+    await expect(
+      api.showQuickPick(items as { id: string; label: string }[]),
+    ).rejects.toThrow(/commands is running/);
+    expect(reads).toBe(0);
     beginPluginInvocation("p");
     await expect(api.showQuickPick([])).rejects.toThrow(/must not be empty/);
     expect(show).not.toHaveBeenCalled();
@@ -56,7 +67,7 @@ describe("createPromptsAPI", () => {
     beginPluginInvocation("p");
     show.mockResolvedValueOnce(undefined);
     await expect(api.showInputBox()).resolves.toBeUndefined();
-    await expect(api.showInputBox()).rejects.toThrow(/cancelled a prompt/);
+    await expect(api.showInputBox()).rejects.toThrow(/cancelled or covered/);
     beginPluginInvocation("p");
     show.mockResolvedValueOnce("ok");
     await expect(api.showInputBox()).resolves.toBe("ok");
@@ -75,6 +86,13 @@ describe("createPromptsAPI", () => {
     await expect(api.showInputBox()).rejects.toBeInstanceOf(
       PromptOccludedError,
     );
-    expect(promptRefusal("p")).toMatch(/cancelled a prompt/);
+    expect(promptRefusal("p")).toMatch(/cancelled or covered/);
+  });
+
+  it("keeps the flow on a non-occlusion failure", async () => {
+    beginPluginInvocation("p");
+    show.mockRejectedValueOnce(new Error("render"));
+    await expect(api.showInputBox()).rejects.toThrow("render");
+    expect(promptRefusal("p")).toBeNull();
   });
 });

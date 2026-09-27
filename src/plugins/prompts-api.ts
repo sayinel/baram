@@ -2,9 +2,10 @@
 // sanitising, in front of the window. The trusted tier calls this directly; the sandboxed tier
 // reaches it through `sandbox/host-prompt-bridge.ts`, so both answer to the same rules.
 //
-// A module under src/plugins importing a component launcher has one precedent:
-// `extensions/plugins/symbol-picker-action.ts` → `components/command/show-symbol-picker.tsx`
-// (plan 0109 P3). The gate itself (`prompt-gate.ts`) does not import it.
+// One non-component module already imports a component launcher:
+// `extensions/plugins/symbol-picker-action.ts` → `components/command/show-symbol-picker.tsx`.
+// This is the first such edge out of `src/plugins` (plan 0109 P3). The gate itself
+// (`prompt-gate.ts`) does not import it.
 import type { PromptsAPI, QuickPickItem } from "./types";
 
 import { showPluginPrompt } from "../components/plugins/show-plugin-prompt";
@@ -17,6 +18,10 @@ import {
 import { inputBoxProblem, quickPickProblem } from "./prompt-shape";
 import { PROMPT_LIMITS } from "./sandbox/protocol";
 
+/**
+ * Both tiers construct their `ctx.prompts` from this: gate → limits → sanitising → window, with
+ * rights revoked on a cancel or an occlusion refusal (see `ask` below).
+ */
 export function createPromptsAPI(
   pluginId: string,
   pluginName: string | undefined,

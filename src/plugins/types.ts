@@ -89,7 +89,12 @@ export interface FilesAPI {
   writeFile(path: string, content: string): Promise<void>;
 }
 
-/** §385 An input box's options (spec 0061 §4). `value` is the initial text, at most 1,000 characters. */
+/**
+ * §385 An input box's options (spec 0061 §4). `title` and `placeholder` are shown, cut to 100
+ * characters with "…"; either one over 4,096 characters refuses the call outright (§7). `value`
+ * is the initial text, at most 1,000 characters (longer refuses the call) — a single-line
+ * `<input>` renders none of the newlines it may contain (§7).
+ */
 export interface InputBoxOptions {
   placeholder?: string;
   title?: string;
@@ -371,28 +376,39 @@ export type PluginTrust = "sandboxed" | "trusted";
  * and only until the user types or clicks outside the prompt.
  *
  * Resolves `undefined` when the user cancels (Esc, a click outside, an app palette opening).
- * Rejects when the call is refused: outside that window, another prompt open, covered by another
- * window, focus inside a frame, or a limit exceeded. A cancel also ends the flow — later prompts
- * are refused until the user runs a command again; a pick or an entered value does not.
+ * Rejects when the call is refused: outside that window, another prompt already open, focus
+ * inside a frame, covered by another window, or a malformed/over-limit request —
+ * `showQuickPick` requires 1–5,000 items with unique ids.
+ *
+ * A cancel, or a refusal because another window covers the prompt, ends the flow — later
+ * prompts are refused until the user runs a command again. A pick, an entered value, or any
+ * OTHER refusal (outside the window, already open, focus in a frame, a bad shape) does not.
  */
 export interface PromptsAPI {
   /** Ask for a line of text; resolves with what was typed (`""` is an answer). */
   showInputBox(opts?: InputBoxOptions): Promise<string | undefined>;
-  /** Show `items` to filter and pick from; resolves with the chosen item's `id`. At most 5,000 items, ids unique. */
+  /** Show `items` to filter and pick from; resolves with the chosen item's `id`. 1–5,000 items, ids unique. */
   showQuickPick(
     items: QuickPickItem[],
     opts?: QuickPickOptions,
   ): Promise<string | undefined>;
 }
 
-/** §385 One quick-pick row. `id` comes back (≤ 100 characters, unique); `label` and `description` are shown, cut at 200. */
+/**
+ * §385 One quick-pick row. `id` comes back (≤ 100 characters, unique — over-long or duplicate
+ * refuses the call, never truncates). `label` and `description` are shown, cut to 200 characters
+ * with "…"; either one over 4,096 characters refuses the call outright (spec 0061 §7).
+ */
 export interface QuickPickItem {
   description?: string;
   id: string;
   label: string;
 }
 
-/** §385 A quick pick's options (spec 0061 §4). */
+/**
+ * §385 A quick pick's options (spec 0061 §4). `title` and `placeholder` are shown, cut to 100
+ * characters with "…"; either one over 4,096 characters refuses the call outright (§7).
+ */
 export interface QuickPickOptions {
   placeholder?: string;
   title?: string;

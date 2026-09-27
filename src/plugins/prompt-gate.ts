@@ -111,7 +111,7 @@ export function promptRefusal(pluginId: string): null | string {
     return "a prompt can open only while one of this plugin's commands is running";
   }
   if (baselines.get(pluginId) !== inputSeq) {
-    return "the user has typed or clicked outside the prompt since the command started, or cancelled a prompt";
+    return "the user has typed or clicked outside the prompt since the command started, or a prompt was cancelled or covered";
   }
   if (open) return "another plugin prompt is already open";
   if (deepActiveElement() instanceof HTMLIFrameElement) {

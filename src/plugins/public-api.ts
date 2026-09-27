@@ -30,8 +30,9 @@ export type {
   PluginSettingValue,
   PluginSidebarPanelOptions,
   PluginTrust,
-  // §385 — `ctx.prompts` for both tiers (spec 0061 §4). No capability gates it; these types
-  // are the only surface an author has to name it.
+  // §385 — `ctx.prompts` for both tiers (spec 0061 §4). No capability gates it. These three,
+  // plus `InputBoxOptions` at its own alphabetical place above, are the names an author
+  // imports to type a `ctx.prompts` call.
   PromptsAPI,
   QuickPickItem,
   QuickPickOptions,

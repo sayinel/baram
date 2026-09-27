@@ -87,7 +87,7 @@ describe("promptRefusal", () => {
   it("is revoked by a cancel and restored by the next invocation", () => {
     beginPluginInvocation("p");
     revokePromptRights("p");
-    expect(promptRefusal("p")).toMatch(/cancelled a prompt/);
+    expect(promptRefusal("p")).toMatch(/cancelled or covered/);
     beginPluginInvocation("p");
     expect(promptRefusal("p")).toBeNull();
   });

@@ -34,6 +34,19 @@ function callers(): string[] {
   );
 }
 
+/**
+ * §385 — `showPluginPrompt` draws the window WITHOUT checking the gate itself (that is
+ * `prompts-api.ts`'s job, before it ever calls this). A second caller could draw a prompt with
+ * none of the refusal order, the limits or the sanitising in front of it.
+ */
+function showPluginPromptCallers(): string[] {
+  return scanProductionFiles((source) =>
+    /\bshowPluginPrompt\(/u.test(
+      source.replaceAll("function showPluginPrompt(", ""),
+    ),
+  );
+}
+
 /** Every production file under `SRC` whose source text satisfies `matches`, relative and sorted. */
 function scanProductionFiles(matches: (source: string) => boolean): string[] {
   const found: string[] = [];
@@ -73,5 +86,9 @@ describe("who may start a plugin command", () => {
 
   it("has no aliased import that would hide a caller from the scan", () => {
     expect(aliasedExecuteImports()).toEqual([]);
+  });
+
+  it("draws a plugin prompt only through prompts-api.ts", () => {
+    expect(showPluginPromptCallers()).toEqual(["plugins/prompts-api.ts"]);
   });
 });
