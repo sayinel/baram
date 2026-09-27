@@ -15,7 +15,8 @@
 // just shared bookkeeping.
 import type { Disposable } from "./types";
 import type { Schema } from "@tiptap/pm/model";
-import type { EditorState, Transaction } from "@tiptap/pm/state";
+import type { EditorState } from "@tiptap/pm/state";
+import type { EditorView } from "@tiptap/pm/view";
 
 import { useEditorStore } from "../stores/editor/editor";
 import { isTabLoading, loadedTabId } from "../utils/editor/programmatic-update";
@@ -132,6 +133,10 @@ export function emitScopedPluginEvent(
  * single transaction (`state.tr` → `view.dispatch`). Structural guesses were what let the
  * selection bug below survive: `{ selection: { from, to } }` typechecks fine while saying
  * nothing about what those numbers index into.
+ *
+ * §385 — `view` is the real `EditorView` so the prompt can hand focus back through
+ * `focusEditorView` (spec 0061 §8). What is stored is already a Tiptap `Editor`
+ * (`setEditorInstance`).
  */
 export interface PluginEditorHandle {
   chain: () => Record<string, unknown>;
@@ -140,7 +145,7 @@ export interface PluginEditorHandle {
   getText: () => string;
   schema: Schema;
   state: EditorState;
-  view: { dispatch: (tr: Transaction) => void };
+  view: EditorView;
 }
 
 let editorInstance: null | PluginEditorHandle = null;

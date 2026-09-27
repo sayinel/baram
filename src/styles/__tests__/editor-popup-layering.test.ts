@@ -77,6 +77,17 @@ function bodyMountedPopupClasses(): string[] {
   return [...found].sort();
 }
 
+/** The numeric value a custom property is defined as, wherever it is defined. */
+function customProperty(token: string): number {
+  for (const rule of cssRules()) {
+    const value = cssDeclarations(rule.body).find(
+      (d) => d.prop === token,
+    )?.value;
+    if (value !== undefined) return Number(value);
+  }
+  throw new Error(`${token} is not defined in any stylesheet`);
+}
+
 /** A single declaration's value from the first rule matching `selector`. */
 function declaration(selector: string, prop: string): string {
   const rule = cssRules().find((r) => r.selector === selector);
@@ -90,13 +101,7 @@ function declaration(selector: string, prop: string): string {
 
 /** The numeric value `--z-editor-popup` is defined as, wherever it is defined. */
 function tokenValue(): number {
-  for (const rule of cssRules()) {
-    const value = cssDeclarations(rule.body).find(
-      (d) => d.prop === TOKEN,
-    )?.value;
-    if (value !== undefined) return Number(value);
-  }
-  throw new Error(`${TOKEN} is not defined in any stylesheet`);
+  return customProperty(TOKEN);
 }
 
 describe("§323 body-mounted 편집기 팝업의 레이어링", () => {
@@ -180,5 +185,28 @@ describe("§323 body-mounted 편집기 팝업의 레이어링", () => {
     );
     expect(Number.isNaN(consent)).toBe(false);
     expect(tokenValue()).toBeLessThan(consent);
+  });
+});
+
+describe("§385 플러그인 창의 레이어링", () => {
+  // The prompt is not an editor popup (it lives outside the scan above, in components/plugins),
+  // and its occlusion check is stubbed in jsdom — so the order is pinned here or nowhere.
+  it("오버레이는 z-index 를 전용 토큰으로 받는다", () => {
+    expect(declaration(".plugin-prompt-overlay", "z-index")).toBe(
+      "var(--z-plugin-prompt)",
+    );
+  });
+
+  it("토큰은 툴팁 위, 보안 표면 아래다", () => {
+    const consent = Number(
+      declaration(
+        ".security-surface-host.security-surface-host--overlay",
+        "z-index",
+      ).replace(/\s*!important$/u, ""),
+    );
+    expect(customProperty("--z-plugin-prompt")).toBeGreaterThan(
+      customProperty("--z-tooltip"),
+    );
+    expect(customProperty("--z-plugin-prompt")).toBeLessThan(consent);
   });
 });

@@ -26,7 +26,15 @@ const DIR = "src/components/plugins";
 const KEYS = new Set(Object.keys(en));
 
 /** Literals that are neither prose nor a form worth a rule. Named, so each is a choice. */
-const ALLOWED = new Set(["Escape", "noopener noreferrer"]);
+const ALLOWED = new Set([
+  "Escape",
+  "noopener noreferrer",
+  // §385 `PromptOccludedError`'s message: a developer-facing rejection a plugin's own code
+  // sees, never rendered by this app's UI — the same footing as `prompt-gate.ts`'s
+  // un-localized refusal strings, which this scanner does not reach because that file is
+  // `.ts`, not `.tsx`.
+  "prompt refused: another window covers where the prompt would appear",
+]);
 
 const files = readdirSync(DIR)
   .filter((name) => name.endsWith(".tsx"))

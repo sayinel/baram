@@ -1307,3 +1307,47 @@
   color: var(--color-text-muted);
   border-color: var(--color-text-muted);
 }
+
+/* §385 plugin prompts (spec 0061 §8): the command palette's box over its own overlay. */
+.plugin-prompt-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-plugin-prompt);
+  display: flex;
+  justify-content: center;
+  padding-top: 15vh;
+  background: rgb(0 0 0 / 30%);
+}
+
+.plugin-prompt-header {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  padding: var(--space-2) var(--space-4) 0;
+  font-size: var(--font-size-xs);
+}
+
+.plugin-prompt-source {
+  padding: var(--space-0-5) var(--space-1-5);
+  color: var(--color-text-secondary);
+  background: var(--color-bg-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.plugin-prompt-title {
+  color: var(--color-text-primary);
+}
+
+.plugin-prompt-description {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.plugin-prompt-limit {
+  padding: var(--space-1-5) var(--space-4);
+  font-size: var(--font-size-xs);
+  color: var(--color-status-danger);
+}
