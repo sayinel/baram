@@ -95,8 +95,17 @@ describe("ctx.prompts in the sandbox", () => {
   // §385 review fix round 1 (spec 0061 D7) — `ask` must NOT be on the `stagedReads` chain: an
   // open prompt (never replied to here) would otherwise hold every later staged read behind it,
   // and a document read while a prompt is up is exactly the case D7 names.
+  //
+  // §385 review fix round 2 — FAKE timers (like the sibling test below), because neither
+  // `showInputBox()` nor `getMarkdown()` is ever replied to: each arms a real
+  // `HOST_REQUEST_CLIENT_TIMEOUT_MS` (150 s) `setTimeout` on the client's side. Vitest reuses
+  // worker threads across files, so a real timer left running would fire ~150 s later inside
+  // whatever file happens to be executing in that worker then, rejecting both promises unhandled
+  // and attributing the failure to the wrong test.
   it("does not hold the plugin's staged reads while a prompt is open (D7)", async () => {
+    vi.useFakeTimers();
     const { ctx, ready, requests } = boot();
+    await vi.advanceTimersByTimeAsync(1);
     await ready;
     void ctx().prompts.showInputBox(); // left open — never replied to in this test
     void ctx().editor.getMarkdown(); // never replied to either; only the SENT frame matters
