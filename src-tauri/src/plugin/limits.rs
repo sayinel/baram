@@ -103,3 +103,38 @@ pub(super) const MAX_PATH_DEPTH: usize = 16;
 /// clear this floor before the ratio applies, which costs it nothing it can exploit: the
 /// absolute totals above still bound it.
 pub(super) const RATIO_FLOOR_BYTES: u64 = 1024 * 1024;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// ‼️ A CROSS-LANGUAGE ANCHOR (§380, plan 0105). `scripts/rust-constants.ts` reads these
+    /// out of this file's TEXT so the community publish gate applies the app's own archive
+    /// bounds, and `community-archive-limits.test.ts` asserts the same literals there. Two
+    /// cases this actually catches (M5, fix round 1): a bound changed here without updating
+    /// that test's literal goes red BOTH here and on the TypeScript side; and a declaration
+    /// respelled so its COMPILED VALUE moved while a decoy comment holds the OLD number in the
+    /// matched form (the shape spelled out near `origin.rs`'s anchor) goes red HERE, because
+    /// this assertion checks the compiled constant, not the decoy text the scraper would
+    /// otherwise be fooled by. A value-preserving respelling (an indirection, no decoy) leaves
+    /// this GREEN — that case is caught on the TypeScript side instead, via a
+    /// "found 0 declarations" refusal. A drift guard, not a proof — see the header of
+    /// `rust-constants.ts` for why a number anchor is weaker than the key's.
+    #[test]
+    fn the_archive_bounds_are_the_numbers_the_community_gate_scrapes() {
+        assert_eq!(MAX_PLUGIN_ARCHIVE_BYTES, 32 * 1024 * 1024);
+        assert_eq!(MAX_ARCHIVE_ENTRIES, 2_000);
+        assert_eq!(MAX_ENTRY_BYTES, 64 * 1024 * 1024);
+        assert_eq!(MAX_TOTAL_EXPANDED_BYTES, 256 * 1024 * 1024);
+        assert_eq!(MAX_COMPRESSION_RATIO, 100);
+        assert_eq!(MAX_PATH_DEPTH, 16);
+        assert_eq!(RATIO_FLOOR_BYTES, 1024 * 1024);
+        assert_eq!(
+            ALLOWED_COMPRESSION,
+            [
+                zip::CompressionMethod::Stored,
+                zip::CompressionMethod::Deflated
+            ]
+        );
+    }
+}

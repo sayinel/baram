@@ -1076,6 +1076,17 @@ mod tests {
         assert_eq!(MAX_REGISTRY_BYTES, 4 * 1024 * 1024);
     }
 
+    /// ‼️ A CROSS-LANGUAGE ANCHOR (§380, plan 0105). `scripts/rust-constants.ts`
+    /// `readmeByteCap` reads this constant out of this file's TEXT so the community publish
+    /// gate refuses an archive whose README the app's own fetch would refuse to read. Its
+    /// scan stops a second declaration being added; it cannot stop the real one being
+    /// respelled past its pattern while a decoy keeps the count at one — that respelling is
+    /// what this assertion turns into a visible contradiction rather than a silent drift.
+    #[test]
+    fn the_readme_cap_is_the_number_the_community_gate_scrapes() {
+        assert_eq!(MAX_README_BYTES, 256 * 1024);
+    }
+
     #[tokio::test]
     async fn fetch_community_registry_reads_a_404_as_an_empty_list() {
         // ‼️ The one place the two registry files differ. `index.json` 404ing is a broken
