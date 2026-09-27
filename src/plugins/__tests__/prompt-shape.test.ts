@@ -127,10 +127,11 @@ describe("promptFrameProblem", () => {
     ).toBeNull();
   });
 
-  it("flags a lone surrogate in an extra KEY, not just a value (review fix round 1)", () => {
-    // §385 review fix round 1 — an author-added property survives to `JSON.stringify` even
-    // though `QuickPickItem` names no such field, and its NAME is what is walked here, not only
-    // its value. Spread, not a literal property, so this stays past the excess-property check.
+  it("flags a lone surrogate in an extra KEY, not just a value", () => {
+    // An author-added property survives to `JSON.stringify` even though `QuickPickItem` names
+    // no such field, so its NAME has to be walked too, not only its value — a lone surrogate
+    // there fails the frame's deserialisation just the same. Spread, not a literal property,
+    // so this stays past the excess-property check.
     const extra: Record<string, string> = { "\uD800": "x" };
     expect(
       promptFrameProblem({

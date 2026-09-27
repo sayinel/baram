@@ -37,9 +37,9 @@ export function showPluginPrompt(
   source: string,
   spec: PromptSpec,
 ): Promise<string | undefined> {
-  // Through any open shadow root (§4.1): a trusted plugin's own panel can hold focus there, and
-  // `document.activeElement` alone would report the shadow HOST, which is not what to give
-  // focus back to.
+  // Through any open shadow root (spec 0061 §8's focus hand-back, via `deep-active-element.ts`):
+  // a trusted plugin's own panel can hold focus there, and `document.activeElement` alone would
+  // report the shadow HOST, which is not what to give focus back to.
   const returnFocusTo = deepActiveElement();
   const overlay = document.createElement("div");
   overlay.className = "plugin-prompt-overlay";
@@ -88,13 +88,14 @@ export function showPluginPrompt(
 
   /**
    * A render error AFTER the prompt is live (spec 0061 D5 — free the slot, not just at mount).
-   * By the time `onUncaughtError` calls this, React has already torn down this root's tree
-   * itself (there is no error boundary above it to stop that), and we are running INSIDE
-   * React's own commit for that teardown — so `root.unmount()` here would be both redundant
-   * (there is nothing left to unmount) and an unsafe re-entrant call into the reconciler while
-   * it is still unwinding. Everything else below is ordinary bookkeeping, not React, so it is
-   * safe to run right here rather than deferred: a `setTimeout`/microtask would leave the slot
-   * looking open to a second prompt from the very frame that is failing.
+   * No `root.unmount()` here, on react-dom 19's `onUncaughtError` contract as we read it: the
+   * handler is called for an error no boundary caught, after React has removed this root's tree
+   * itself and while its own commit is still unwinding, so an unmount would have nothing left to
+   * remove and would re-enter the reconciler mid-commit. That contract is React's and is NOT
+   * pinned in this repo — `show-plugin-prompt.late-render-error.test.tsx` pins our teardown and
+   * the rejection, not what React does around them. Everything else below is ordinary
+   * bookkeeping, not React, so it runs right here rather than deferred: a `setTimeout`/microtask
+   * would leave the slot looking open to a second prompt from the very frame that is failing.
    */
   const failLate = (error: unknown): void => {
     logger.error(

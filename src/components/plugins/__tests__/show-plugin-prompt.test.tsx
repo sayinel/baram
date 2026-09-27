@@ -45,6 +45,10 @@ beforeEach(() => {
   useUIStore.setState({ commandPaletteOpen: false, quickSwitcherOpen: false });
 });
 afterEach(() => {
+  // Closed, not just forgotten: a prompt left open by a failed assertion would otherwise keep
+  // its React root and its `useUIStore` subscription past this test — `resetPromptGate` alone
+  // drops the gate's record of it without running its teardown. Every prompt here is plugin "p".
+  clearPromptGate("p");
   restoreLayout();
   resetPromptGate();
   focusEditorView.mockClear();
@@ -141,9 +145,9 @@ describe("showPluginPrompt", () => {
   });
 
   it("returns focus through an open shadow root, not to its host", async () => {
-    // §385 R16 — a trusted plugin panel mounts inside an open shadow root
-    // (`PluginShadowMount.tsx`); `document.activeElement` alone would report the shadow HOST,
-    // not the element actually focused inside it.
+    // A trusted plugin panel mounts inside an open shadow root (`PluginShadowMount.tsx`);
+    // `document.activeElement` alone would report the shadow HOST, not the element actually
+    // focused inside it (`deep-active-element.ts`).
     const host = document.body.appendChild(document.createElement("div"));
     const shadow = host.attachShadow({ mode: "open" });
     const shadowButton = shadow.appendChild(document.createElement("button"));

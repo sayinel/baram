@@ -148,9 +148,9 @@ describe("promptRefusal", () => {
   });
 
   it("sees a frame focused inside an open shadow root, behind its host", () => {
-    // §385 ruling R10 — a trusted plugin panel mounts inside an open shadow root
-    // (`PluginShadowMount.tsx`), so focusing an iframe there reports the shadow HOST as
-    // `document.activeElement`, not the iframe itself.
+    // A trusted plugin panel mounts inside an open shadow root (`PluginShadowMount.tsx`), so
+    // focusing an iframe there reports the shadow HOST as `document.activeElement`, not the
+    // iframe itself — condition 4 has to look through it (`deep-active-element.ts`).
     beginPluginInvocation("p");
     const host = document.body.appendChild(document.createElement("div"));
     const shadow = host.attachShadow({ mode: "open" });

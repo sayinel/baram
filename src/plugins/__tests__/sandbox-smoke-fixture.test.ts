@@ -34,7 +34,8 @@ describe("sandbox smoke fixture (§260 3c-3)", () => {
     // command at 30s while one mediated `ai` request may take up to 120s, so folding
     // the AI checks into `run` let a slow model discard every boundary result that
     // had already passed.
-    // §385 — two prompt commands: one immediate, one that waits 3 s so typing in the editor meanwhile can be seen to revoke the right (spec 0061 D1).
+    // §385 — two prompt commands: one immediate, one that waits 3 s so typing in
+    // the editor meanwhile can be seen to revoke the right (spec 0061 D1).
     expect(manifest.contributions?.commands?.map((c) => c.id)).toEqual([
       "run",
       "ai",

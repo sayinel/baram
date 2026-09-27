@@ -23,7 +23,7 @@ describe("a prompt whose render throws", () => {
     await expect(
       showPluginPrompt("p", "P", { kind: "inputBox" }),
     ).rejects.toThrow("render failed");
-    // R3 — with `onUncaughtError` installed, React reports the error THROUGH the handler and
+    // With `onUncaughtError` installed, React reports the error THROUGH the handler and
     // logs nothing of its own; a call here would mean the handler fell through and React went
     // looking for a default (`window.reportError`/`console.error`) instead.
     expect(error).not.toHaveBeenCalled();

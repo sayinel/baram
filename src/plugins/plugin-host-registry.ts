@@ -246,9 +246,9 @@ export function emitPluginEvent(event: string, ...args: unknown[]): void {
 /**
  * Execute a plugin command from the host — the one HOST entry that grants prompt rights, its
  * callers fixed by `execute-plugin-command-callers.test.ts`; a trusted plugin's own panel
- * clicks reach commands through `commands.execute` instead and grant nothing (§385 spec 0061
- * §5.1). It starts the owner's prompt rights for as long as the handler runs; `return await`
- * so the `finally` waits for the handler, not for the call.
+ * clicks reach commands through `commands.execute` or a direct call, and grant nothing (§385
+ * spec 0061 §5.1). It starts the owner's prompt rights for as long as the handler runs;
+ * `return await` so the `finally` waits for the handler, not for the call.
  */
 export async function executePluginCommand(
   id: string,

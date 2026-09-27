@@ -5,10 +5,10 @@
 // halves live here: `beginPluginInvocation` is called by `executePluginCommand` — the one
 // HOST entry that grants prompt rights, its callers fixed by
 // `execute-plugin-command-callers.test.ts` — and capture-phase listeners count the user's
-// input. A trusted plugin's own panel clicks reach commands through `commands.execute`
-// instead and grant nothing (spec 0061 §5.1). The open prompt is recorded here as well, so
-// the teardown sweep (`unregisterPluginUI`) can close it without importing a component, and
-// so input inside it is told apart.
+// input. A trusted plugin's own panel clicks reach commands through `commands.execute` or a
+// direct call, and grant nothing (spec 0061 §5.1). The open prompt is recorded here as well,
+// so the teardown sweep (`unregisterPluginUI`) can close it without importing a component,
+// and so input inside it is told apart.
 //
 // ‼️ Rights are PER PLUGIN, not per call: a sandbox frame names no invocation, so while a
 // command runs the same plugin's event handlers may prompt too (spec 0061 §5.3).
@@ -114,7 +114,7 @@ export function promptRefusal(pluginId: string): null | string {
   if (baselines.get(pluginId) !== inputSeq) {
     return "the user has typed, clicked or dropped something outside the prompt since the command started, or a prompt was cancelled or covered";
   }
-  if (open) return "another plugin prompt is already open";
+  if (open) return "a plugin prompt is already open";
   if (deepActiveElement() instanceof HTMLIFrameElement) {
     return "focus is inside a frame, where the app cannot see what the user types";
   }

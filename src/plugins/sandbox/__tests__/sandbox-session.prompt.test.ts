@@ -97,7 +97,7 @@ describe("SandboxSession and prompts", () => {
     ask("h1");
     ask("h2");
     await vi.advanceTimersByTimeAsync(0);
-    // The positive twin (review fix round 1): h2's refusal must not be h1 losing its slot too.
+    // The positive twin: h2's refusal must not be h1 losing its slot too.
     expect(sent).not.toContainEqual(
       expect.objectContaining({ requestId: "h1", type: "hostResponse" }),
     );
@@ -124,10 +124,10 @@ describe("SandboxSession and prompts", () => {
     );
   });
 
-  // §385 review fix round 1 (spec §11) — the SANDBOX-SIDE half of the heartbeat row was never
-  // exercised: every test above supplies its own stub handler, so a router that forgot to pass
-  // `onToken` to the REAL bridge (`host-prompt-bridge.ts`) would still pass every test in this
-  // file. This wires the real `createPromptRequestHandler` straight into a `SandboxSession`.
+  // spec 0061 §11 — the SANDBOX-SIDE half of the heartbeat row: every test above supplies its
+  // own stub handler, so a router that forgot to pass `onToken` to the REAL bridge
+  // (`host-prompt-bridge.ts`) would still pass every test in this file. This wires the real
+  // `createPromptRequestHandler` straight into a `SandboxSession`.
   it("keeps a real, silent prompt handler's request alive past 120 s via the heartbeat", async () => {
     vi.useFakeTimers();
     const never = () => new Promise<string | undefined>(() => {});
@@ -158,9 +158,10 @@ describe("SandboxSession and prompts", () => {
     });
   });
 
-  // §385 review fix round 1 — a handler that throws SYNCHRONOUSLY (as opposed to returning a
-  // rejected promise) used to skip the `.then`/`.finally` chain entirely, leaving the slot taken
-  // and `callTimersHeld` stuck at `true` forever (a pending command would then NEVER time out).
+  // A handler that throws SYNCHRONOUSLY (as opposed to returning a rejected promise) never
+  // reaches the session's `.then`/`.finally` chain unless the session catches the throw; left
+  // uncaught, the slot would stay taken and `callTimersHeld` stuck at `true` forever (a pending
+  // command would then NEVER time out).
   it("answers ok:false and resumes command timers when the handler throws synchronously", async () => {
     vi.useFakeTimers();
     const { receive, sent, transport } = makeTransport();

@@ -11,6 +11,7 @@ import { createExtensionContext } from "../../../plugins/extension-context";
 import { usePluginUIStore } from "../../../plugins/plugin-ui-store";
 import {
   beginPluginInvocation,
+  clearPromptGate,
   resetPromptGate,
 } from "../../../plugins/prompt-gate";
 import { useUIStore } from "../../../stores/ui/ui";
@@ -31,13 +32,16 @@ const manifest = {
   version: "1.0.0",
 } as unknown as PluginManifest;
 
-// A failed assertion must not leak the layout stub or the "go" command handler into the next
-// row: both are torn down here, not at the end of each `it`, so they come down even when the
-// test body throws first.
+// A failed assertion must not leak the layout stub, the "go" command handler or an open prompt
+// into the next row: all three are torn down here, not at the end of each `it`, so they come
+// down even when the test body throws first. The prompt is CLOSED (`clearPromptGate`), not just
+// forgotten — `resetPromptGate` alone would leave its React root and its `useUIStore`
+// subscription alive past the test.
 let restoreLayout: (() => void) | null = null;
 let goCommand: Disposable | null = null;
 
 afterEach(() => {
+  clearPromptGate(manifest.id);
   restoreLayout?.();
   restoreLayout = null;
   goCommand?.dispose();
