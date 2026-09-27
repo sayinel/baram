@@ -150,6 +150,15 @@ pub struct RegistryEntry {
     /// which index the entry came from.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub readme: Option<String>,
+    /// 스펙 0063 §5.1 — 테마 항목의 미리보기 팔레트(모드별 `PREVIEW_COLOR_KEYS` → hex).
+    ///
+    /// ‼️ 이 층은 파이프다 — 위 `readme` 의 doc 주석과 같은 이유로 이름이 없으면 프런트가 못 본다.
+    /// `serde_json::Value` 인 이유: 타입을 가진 필드는 틀린 타입이면 항목 **전체**가 떨어진다
+    /// (`a_wrong_typed_field_drops_the_entry_even_when_optional`). 미리보기가 틀렸다고 테마가
+    /// 목록에서 사라지면 안 되므로 모양은 TS 의 `registryPreviewPalettes`(`theme-preview-palette.ts`)
+    /// 가 보고, 틀리면 미리보기만 버린다.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preview: Option<serde_json::Value>,
     /// The declared minimum app version — ABSENT is a legal state here, meaning "no floor".
     ///
     /// Authors are still required to declare it (`docs/plugin-development.md`, and
@@ -1071,5 +1080,37 @@ mod tests {
             serde_json::from_value(serde_json::json!({ "communityPlugins": [] })).unwrap();
         assert!(empty.community_plugins.is_empty());
         assert_eq!(empty.dropped_count, 0);
+    }
+
+    /// 스펙 0063 §5.1 — `preview` 는 이 파이프를 지나 프런트까지 가야 한다. `trust` · `kind` ·
+    /// `readme` 가 각자 한 번씩 "이름 없는 필드는 도중에 사라진다" 로 출고됐다(위 doc 주석들).
+    /// 모양은 여기서 보지 않는다 — 틀린 모양의 미리보기가 항목 전체를 떨어뜨리면 테마가 목록에서
+    /// 사라진다(계획 0111 P5). 검증은 TS 의 `registryPreviewPalettes` 한 곳이다.
+    #[test]
+    fn registry_entry_carries_preview_back_out_without_judging_it() {
+        let mut json = entry_json("t");
+        let object = json.as_object_mut().unwrap();
+        object.insert("kind".into(), serde_json::json!("theme"));
+        object.insert(
+            "preview".into(),
+            serde_json::json!({ "light": { "--color-bg-default": "#ffffff" } }),
+        );
+        let entry: RegistryEntry = serde_json::from_value(json).unwrap();
+        let back = serde_json::to_value(&entry).unwrap();
+        assert_eq!(back["preview"]["light"]["--color-bg-default"], "#ffffff");
+
+        // 틀린 모양도 항목을 떨어뜨리지 않는다 — 판단은 프런트의 몫이다.
+        let mut odd = entry_json("t");
+        odd.as_object_mut()
+            .unwrap()
+            .insert("preview".into(), serde_json::json!(42));
+        assert!(serde_json::from_value::<RegistryEntry>(odd).is_ok());
+
+        // 없는 미리보기는 없는 채로 — `null` 로 되돌아오지 않는다.
+        let plain: RegistryEntry = serde_json::from_value(entry_json("p")).unwrap();
+        assert!(serde_json::to_value(&plain)
+            .unwrap()
+            .get("preview")
+            .is_none());
     }
 }

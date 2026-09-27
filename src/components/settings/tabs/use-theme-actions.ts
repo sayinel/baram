@@ -39,6 +39,7 @@ import {
   THEME_CSS_ERROR_CODES,
   themeCssErrorKey,
 } from "../../../utils/theme-css/errors";
+import { confirmReplaceFileCopy } from "./confirm-replace-file-copy";
 
 /**
  * What the consent dialog is currently asking about, if anything.
@@ -328,6 +329,8 @@ export function useThemeActions() {
   const announceInstalled = useCallback(
     (installed: InstalledTheme, warnings: ContrastWarning[]) => {
       const previousActiveThemeId = useSettingsStore.getState().activeThemeId;
+      // 스펙 0063 §3.4 — 설치하고 입히는 것도 이 테마를 고르는 일이다(계획 0111 P3).
+      useSettingsStore.getState().clearChromeProposalDeclines(installed.id);
       setActiveTheme(installed.id);
       // §367.3 — ONE toast (`useUIStore`'s `showToast` has a single slot, see
       // `stageAndRecord`'s doc comment). When there are contrast warnings, the toast says
@@ -366,6 +369,15 @@ export function useThemeActions() {
         // already decided against wastes the one decision this screen exists to collect.
         if (refuseIfRevoked(entry)) return false;
         if (await refuseIfAppTooOld(entry)) return false;
+        // 스펙 0063 §4 — 같은 id 의 파일 설치본이 있으면 바꾸기 전에 묻는다. 순서는 파일 입구와
+        // 같다(철회 → 교체 확인 → 동의, `use-theme-file-install.ts`).
+        const existing = useSettingsStore.getState().installedThemes[entry.id];
+        if (
+          existing?.origin === "file" &&
+          !(await confirmReplaceFileCopy(existing, entry, t))
+        ) {
+          return false;
+        }
         const consented = await askConsent(entry.name);
         if (!consented) return false;
 
@@ -391,6 +403,7 @@ export function useThemeActions() {
       refuseIfAppTooOld,
       refuseIfRevoked,
       stageAndRecord,
+      t,
     ],
   );
 

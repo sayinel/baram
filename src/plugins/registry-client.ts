@@ -11,6 +11,7 @@ import {
 } from "../ipc/plugin-invoke";
 // §69 Plugin Registry Client — GitHub-based registry with 24h cache
 import { usePluginStore } from "../stores/system/plugin";
+import { registryPreviewPalettes } from "../themes/theme-preview-palette";
 import { logger } from "../utils/logger";
 import {
   applyCommunityRules,
@@ -388,6 +389,15 @@ function normalizeIndex(plugins: RegistryEntry[]): RegistryEntry[] {
     ) {
       delete entry.readme;
     }
+
+    // 스펙 0063 §5.1 — `preview` 도 같은 수용 규칙: 레지스트리가 쓴 값은 아래로 흘러가기 전에
+    // 계약으로 거른다. 테마 항목만 뜻이 있고, 틀리면 미리보기만 버린다(항목은 남는다).
+    const preview =
+      entry.kind === "theme"
+        ? registryPreviewPalettes(entry.preview)
+        : undefined;
+    if (preview === undefined) delete entry.preview;
+    else entry.preview = preview;
 
     const unknownTier =
       entry.trust !== undefined && !TRUST_VALUES.includes(entry.trust);

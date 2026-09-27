@@ -164,6 +164,7 @@ beforeEach(() => {
     activeThemeId: REF,
     appearanceOverrides: {},
     customThemes: [],
+    declinedChromeProposals: {},
     installedThemes: {
       [REF]: installed(REF_MANIFEST),
       "other-theme": installed(OTHER_MANIFEST),
@@ -331,12 +332,95 @@ describe("§370.3 제안은 테마 전이에서만 적용된다", () => {
 
     // 손댐 기록을 지우면 같은 전이가 닿는다 — 위 단언이 "전이가 아예 감지되지
     // 않는다" 로 통과한 것이 아님을 여기서 관측한다.
+    //
+    // 스펙 0063 §3.3(계획 0111 Task 1) — 위 `revealAllChrome()` 은 이제 REF 의 제안과
+    // 어긋난 세 표면을 거절로도 기록한다(`declinedChromeProposals`). 이 케이스가 묻는
+    // 것은 `chromeTouched`(세션) 하나뿐이라, 그 거절 기록도 함께 지운다 — 지우지
+    // 않으면 REF 로 돌아와도 거절이 제안을 계속 건너뛰어 이 케이스의 관심사가 아닌
+    // 이유로 실패한다.
     act(() => {
       useUIStore.setState({ chromeTouched: {} });
+      useSettingsStore.setState({ declinedChromeProposals: {} });
       useSettingsStore.getState().setActiveTheme(REF);
     });
     await waitFor(() => {
       expect(useUIStore.getState().tabBarVisible).toBe(false);
     });
+  });
+});
+
+describe("the effect wires the decline recorder (스펙 0063 §3.3)", () => {
+  it("records a toggle against the theme the app is wearing, and a remount keeps it wired", async () => {
+    useSettingsStore.setState({
+      activeThemeId: REF,
+      declinedChromeProposals: {},
+      installedThemes: { [REF]: installed(REF_MANIFEST) },
+    });
+    const view = render(
+      <StrictMode>
+        <Host />
+      </StrictMode>,
+    );
+    await waitFor(() =>
+      expect(useUIStore.getState().tabBarVisible).toBe(false),
+    );
+
+    act(() => useUIStore.getState().toggleTabBar());
+
+    expect(useSettingsStore.getState().declinedChromeProposals).toEqual({
+      [REF]: { tabBar: true },
+    });
+    view.unmount();
+  });
+
+  it("stops recording after unmount", () => {
+    useSettingsStore.setState({
+      activeThemeId: REF,
+      declinedChromeProposals: {},
+      installedThemes: { [REF]: installed(REF_MANIFEST) },
+    });
+    render(<Host />).unmount();
+
+    act(() => useUIStore.getState().toggleTabBar());
+
+    expect(useSettingsStore.getState().declinedChromeProposals).toEqual({});
+  });
+
+  // 계획 0111 fix wave F2 — 테마 전환(스토어 write)과 위 리스너 등록 이펙트의 재실행(React
+  // 커밋) 사이에는 프레임이 있다. `setActiveTheme` 와 `toggleTabBar` 를 **하나의 동기 `act`
+  // 콜백**에 몰아넣으면 둘째 문이 실행되는 시점에 React 는 아직 첫 문의 상태 변화를 커밋하지
+  // 않았고(act 는 콜백이 끝난 뒤에야 플러시한다), 그래서 리스너가 그 순간 어떤 테마 id 를
+  // 읽는지가 갈린다.
+  //
+  // 무엇이 이것을 실패시키는가: 리스너가 `effectiveThemeId` 를 클로저로 캡처해 걸린 옛 코드
+  // (`(surfaces) => recordChromeChoice(effectiveThemeId, surfaces)`, deps `[effectiveThemeId]`).
+  // 그 클로저는 마운트 당시의 REF 를 계속 들고 있으므로, 이 테스트는 거절이
+  // `"other-theme"` 밑이 아니라 REF 밑에 기록된 채로 실패한다. 새 코드
+  // (`recordUserChromeChoice`)는 불릴 때 `useSettingsStore.getState()` 를 다시 읽으므로
+  // 이 프레임에서도 이미 `"other-theme"` 를 본다.
+  it("records against the theme that just became active, even mid-frame (F2)", async () => {
+    useSettingsStore.setState({
+      activeThemeId: REF,
+      declinedChromeProposals: {},
+      installedThemes: {
+        [REF]: installed(REF_MANIFEST),
+        "other-theme": installed(OTHER_MANIFEST),
+      },
+    });
+    const view = render(<Host />);
+    await waitFor(() =>
+      expect(useUIStore.getState().tabBarVisible).toBe(false),
+    );
+
+    act(() => {
+      useSettingsStore.setState({ activeThemeId: "other-theme" });
+      useUIStore.getState().toggleTabBar();
+    });
+
+    expect(useSettingsStore.getState().declinedChromeProposals).toEqual({
+      "other-theme": { tabBar: true },
+    });
+
+    view.unmount();
   });
 });

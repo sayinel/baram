@@ -11,6 +11,7 @@ import { THEME_COLOR_KEYS } from "../../types/theme-color-keys";
 import {
   PREVIEW_COLOR_KEYS,
   previewPaletteFrom,
+  registryPreviewPalettes,
   themePreviewPalettes,
 } from "../theme-preview-palette";
 
@@ -107,5 +108,46 @@ describe("themePreviewPalettes", () => {
     );
     expect(palettes.light).toBeDefined();
     expect(palettes.dark).toBeUndefined();
+  });
+});
+
+const LIGHT = previewPaletteFrom(DEFAULT_LIGHT_PALETTE, "light");
+const DARK = previewPaletteFrom(DEFAULT_DARK_PALETTE, "dark");
+
+describe("registryPreviewPalettes (스펙 0063 §5.1, 계획 0111 P6)", () => {
+  it("accepts both modes with exactly the contract's keys", () => {
+    expect(registryPreviewPalettes({ dark: DARK, light: LIGHT })).toEqual({
+      dark: DARK,
+      light: LIGHT,
+    });
+  });
+
+  it("accepts one mode", () => {
+    expect(registryPreviewPalettes({ dark: DARK })).toEqual({ dark: DARK });
+  });
+
+  it.each([
+    ["not an object", "#fff"],
+    ["an array", [LIGHT]],
+    ["no modes", {}],
+    ["an unknown mode", { light: LIGHT, sepia: LIGHT }],
+    ["a missing key", { light: { ...LIGHT, "--color-bg-default": undefined } }],
+    ["an extra key", { light: { ...LIGHT, "--color-extra": "#000000" } }],
+    ["a non-hex value", { light: { ...LIGHT, "--color-bg-default": "red" } }],
+    [
+      "an alpha hex",
+      { light: { ...LIGHT, "--color-bg-default": "#ffffff80" } },
+    ],
+    [
+      "a CSS injection",
+      { light: { ...LIGHT, "--color-bg-default": "#fff;x:y" } },
+    ],
+  ])("refuses the whole preview for %s", (_, raw) => {
+    expect(registryPreviewPalettes(raw)).toBeUndefined();
+  });
+
+  it("covers the whole contract — 16 keys per mode", () => {
+    expect(Object.keys(LIGHT).sort()).toEqual([...PREVIEW_COLOR_KEYS].sort());
+    expect(PREVIEW_COLOR_KEYS).toHaveLength(16);
   });
 });

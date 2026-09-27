@@ -438,6 +438,25 @@ export interface RegistryEntry {
     license: string;
     name: string;
     /**
+     * Spec 0063 §5.1 — a theme entry's preview palette. The publish step (6b-2) extracts it
+     * from the package's tokens with the same function the app uses. A value off the wire is
+     * not trusted until `normalizeIndex` filters it through `registryPreviewPalettes` — after
+     * normalization it is exactly this type. Absent on non-theme entries.
+     *
+     * Why this is shaped structurally instead of importing `PreviewPalettes`
+     * (`../themes/theme-preview-palette`): this file also compiles under
+     * `tsconfig.plugin-api.json` (`rootDir: src/plugins`, `npm run types:plugin:check`), and
+     * that config fails with `TS6059` the moment a file outside `src/plugins` enters the
+     * program from here — a type-only import as much as an inline `import(...).X` reference
+     * (measured: both were tried, and both hit the same error). The `PreviewPalettes` that
+     * `registryPreviewPalettes()` returns assigns straight into this wider shape (a
+     * literal-key union is a subtype of `Record<string, string>`).
+     */
+    preview?: {
+        readonly dark?: Readonly<Record<string, string>>;
+        readonly light?: Readonly<Record<string, string>>;
+    };
+    /**
      * §382 — the GitHub login of whoever published a COMMUNITY entry, shown as `@publisher`.
      * Display only; `publisherId` is the identity. `applyCommunityRules` refuses an entry whose
      * value is not a GitHub login, so nothing else reaches the screen.

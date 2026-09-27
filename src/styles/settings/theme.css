@@ -691,18 +691,20 @@
   border-radius: var(--radius-md);
 }
 
+/* §356 · 스펙 0063 §5.2 — 찾아보기도 갤러리(.theme-gallery)와 같은 두 열 격자의 세로 카드다:
+   위 미리보기, 아래 정보와 설치 버튼. 1열 가로 행은 2026-09-26 갤러리에서 미리보기가 작아
+   되돌린 모양이다. minmax(0, 1fr) 인 이유는 .theme-gallery 의 주석과 같다. */
 .theme-browser-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
 }
 
 .theme-browser-card {
   display: flex;
-  gap: var(--space-3);
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--space-2) var(--space-3);
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
   border: 1px solid var(--color-border-default);
   border-radius: var(--radius-lg);
 }
@@ -710,6 +712,10 @@
 .theme-browser-card-info {
   flex: 1;
   min-width: 0;
+}
+
+.theme-browser-card .theme-action-btn {
+  align-self: flex-start;
 }
 
 .theme-browser-card-name {
@@ -728,12 +734,14 @@
 }
 
 .theme-browser-card-description {
+  display: -webkit-box;
   margin: var(--space-0-5) 0;
   overflow: hidden;
-  text-overflow: ellipsis;
+  -webkit-line-clamp: 2;
   font-size: 0.8rem;
+  line-height: 1.4;
   color: var(--color-text-secondary);
-  white-space: nowrap;
+  -webkit-box-orient: vertical;
 }
 
 .theme-browser-card-author {

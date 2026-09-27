@@ -1,5 +1,5 @@
 ---
-title: "Settings and themes"
+title: "Settings and appearance"
 ---
 
 
@@ -29,65 +29,7 @@ Each feature tab (Journal, Zettel, Tasks, AI) carries its **Enable** toggle at t
 
 Turning a feature off also hides the surfaces it owns — its Activity Bar icons, its slash-menu group, and its Command Palette entries all disappear, and for AI the ✨ buttons go with them. Its keyboard shortcuts stay bound: pressing one tells you the feature is off rather than doing nothing.
 
-## Themes
-
-Baram comes with 8 built-in themes and supports custom theme creation.
-
-**Built-in themes:**
-
-| Theme              | Style                                 |
-| ------------------ | ------------------------------------- |
-| Default Light      | Clean light theme (default)           |
-| Default Dark       | Dark theme with blue tones            |
-| Tokyo Night        | Popular dark theme, cool blue palette |
-| Solarized Light    | Ethan Schoonover's warm light palette |
-| Solarized Dark     | Ethan Schoonover's dark palette       |
-| Nord               | Arctic-inspired dark theme            |
-| Baram Garden Light | Warm, garden-inspired light theme     |
-| Baram Garden Dark  | Warm, garden-inspired dark theme      |
-
-**Using themes:**
-
-1. Open **Settings > Appearance** to see the theme gallery
-2. Click any theme card to apply it immediately
-3. Select **System (Auto)** to follow your OS light/dark mode
-
-**Creating custom themes:**
-
-1. Click **Customize...** in the Appearance tab
-2. Edit the theme name and choose a base mode (Light or Dark)
-3. Adjust any of the 25 color values using the color pickers (grouped by Background, Text, Border, Accent, Editor, Status, and Graph)
-4. Colors update live as you pick — preview changes in real-time
-5. Click **Save** to keep the theme, or **Cancel** to discard
-
-**Import / Export:**
-
-- Click **Import Theme...** to load a theme package or a color settings file — see [Install a theme from a file](#install-a-theme-from-a-file)
-- Click **Export Colors** in the theme editor to save the current theme's colors as a `.json` file for sharing
-
-### Export your look as a theme
-
-**Export Look as Theme...** in the Appearance tab saves what you see now as a theme package
-(`.zip`): the colors of the theme you are wearing, every [dial](#appearance-dials) and font
-setting (Font Family, Code Font, Font Size, Line Height) that differs from Baram's default, and
-— if you tick **Also suggest hiding the bars I hid** — the bars you have hidden. The screen lists
-all of this, with the same names and values as the settings rows, before you export. Fill in
-the name and every package detail to turn on **Export Theme Package**.
-
-The theme's CSS and any font files it ships are not included, so a font setting that points at
-one of those fonts shows **Not on this machine** for whoever installs the package. A package
-that carries settings or hidden bars needs the Baram version you exported it from, or newer.
-
-### Install a theme from a file
-
-**Import Theme...** takes two kinds of file: a theme package (`.zip`) and a color settings file
-(`.json`, what **Export Colors** saves). Baram tells them apart by their content, not by the
-extension. A package asks for the same consent as a theme from **Browse Themes**; the consent
-title shows the package name followed by the file name. A theme installed from a file does not
-receive updates from the theme registry. If a theme with the same id is already installed, Baram
-asks before replacing it — showing both versions when that theme also came from a file, or
-warning that it will stop receiving registry updates when it came from the registry. A package
-over 32 MB and a color settings file over 64 KB are refused.
+Themes — choosing, browsing, installing and making them — have their own pages: [Themes](/en/docs/customization/themes/) and [Creating themes](/en/docs/customization/creating-themes/).
 
 ## Appearance dials
 

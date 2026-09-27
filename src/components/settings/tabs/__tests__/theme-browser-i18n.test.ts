@@ -14,6 +14,7 @@ import ko from "../../../../i18n/ko.json";
 const KEYS = new Set(Object.keys(en));
 
 const FILES = [
+  "src/components/settings/tabs/confirm-replace-file-copy.ts",
   "src/components/settings/tabs/ThemeBrowser.tsx",
   "src/components/settings/tabs/ThemeConsentDialog.tsx",
   "src/components/settings/tabs/use-theme-actions.ts",
@@ -22,7 +23,7 @@ const FILES = [
 const ALLOWED = new Set<string>([]);
 
 describe("no theme marketplace file hardcodes user-facing English", () => {
-  it("read all three files, so the scan below is not empty", () => {
+  it("read all four files, so the scan below is not empty", () => {
     for (const file of FILES) {
       expect(readFileSync(file, "utf8").length).toBeGreaterThan(500);
     }

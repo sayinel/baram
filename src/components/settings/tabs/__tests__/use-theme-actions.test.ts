@@ -33,8 +33,11 @@ vi.mock("@tauri-apps/api/app", () => ({ getVersion: appVersion }));
 // signature to zero params, which the spread wrapper below (and `.mock.calls[0][0]` further
 // down) then fails to typecheck against.
 const showAlert = vi.fn();
+const showConfirm =
+  vi.fn<(message: string, options?: unknown) => Promise<boolean>>();
 vi.mock("../../../../utils/confirm-dialog", () => ({
   showAlert: (...a: unknown[]) => showAlert(...a),
+  showConfirm: (...a: [string, unknown?]) => showConfirm(...a),
 }));
 
 import type { RegistryEntry, RegistryIndex } from "../../../../plugins/types";
@@ -99,6 +102,7 @@ beforeEach(() => {
   themeUninstall.mockReset();
   themeUninstall.mockResolvedValue(undefined);
   showAlert.mockClear();
+  showConfirm.mockReset();
   appVersion.mockResolvedValue("0.7.3");
   useSettingsStore.setState({
     activeThemeId: "system",
@@ -603,5 +607,112 @@ describe("showConsentHistory", () => {
     expect(message).toContain("1.0.0");
     expect(message).not.toContain("9.9.9");
     expect(message).not.toContain("2099");
+  });
+});
+
+describe("replacing a copy installed from a file (스펙 0063 §4)", () => {
+  /** 같은 id 의 파일 설치본 — 매니페스트 버전 0.9.0, 레지스트리 항목은 1.0.0. */
+  function fileCopy(): InstalledTheme {
+    const base = installedTheme();
+    return {
+      ...base,
+      manifest: { ...base.manifest, version: "0.9.0" },
+      origin: "file",
+    };
+  }
+
+  it("asks first, and installs nothing when refused", async () => {
+    useSettingsStore.setState({ installedThemes: { dracula: fileCopy() } });
+    showConfirm.mockResolvedValueOnce(false);
+    const { result } = renderHook(() => useThemeActions());
+
+    let installed: boolean | undefined;
+    await act(async () => {
+      installed = await result.current.handleInstall(
+        entry(),
+        "https://reg.test",
+      );
+    });
+
+    expect(installed).toBe(false);
+    expect(showConfirm).toHaveBeenCalledTimes(1);
+    expect(showConfirm.mock.calls[0][0]).toBe(
+      T("settings.appearance.themeBrowser.replaceFileCopy", {
+        from: "0.9.0",
+        name: "Dracula",
+        to: "1.0.0",
+      }),
+    );
+    expect(result.current.pendingConsent).toBeNull();
+    expect(installTheme).not.toHaveBeenCalled();
+  });
+
+  it("goes on to the consent dialog when the replace is accepted", async () => {
+    useSettingsStore.setState({ installedThemes: { dracula: fileCopy() } });
+    showConfirm.mockResolvedValueOnce(true);
+    const { result } = renderHook(() => useThemeActions());
+
+    act(() => {
+      void result.current.handleInstall(entry(), "https://reg.test");
+    });
+    await reachConsent();
+
+    expect(result.current.pendingConsent).not.toBeNull();
+  });
+
+  it("does not ask when the installed copy came from the registry", async () => {
+    useSettingsStore.setState({
+      installedThemes: { dracula: installedTheme() },
+    });
+    const { result } = renderHook(() => useThemeActions());
+
+    act(() => {
+      void result.current.handleInstall(entry(), "https://reg.test");
+    });
+    await reachConsent();
+
+    expect(showConfirm).not.toHaveBeenCalled();
+    expect(result.current.pendingConsent).not.toBeNull();
+  });
+
+  // 스펙 0063 §4 — "수락 뒤 기록에 `origin` 없음". `theme-install.test.ts`(~671행)의
+  // "레지스트리 설치의 기록에는 origin 이 없다" 가 `installTheme` 자체(스테이징 파이프라인)에서
+  // 이 사실을 고정한다. 이 파일은 `installTheme` 을 모듈째 mock 하므로 같은 사실을 거기서 다시
+  // 볼 수 없다 — 대신 그 모킹된 반환값(실제 `installTheme` 이 낸다고 이미 고정된 모양, origin
+  // 없음)이 파일 설치본 레코드를 **덮어쓰는** 스토어 쪽(`addInstalledTheme`)을 이 테스트가 센다.
+  //
+  // 무엇이 이것을 실패시키는가: `stageAndRecord`/`addInstalledTheme` 이 새 레코드 위에 옛
+  // 레코드의 `origin` 을 도로 얹으면(예: `freshConsent` 갈래에서 `theme` 대신
+  // `{ ...prior, ...theme }` 로 병합을 뒤집으면) 이 단언이 `origin: "file"` 을 보고 실패한다.
+  it("clears origin once the replace completes end-to-end", async () => {
+    useSettingsStore.setState({ installedThemes: { dracula: fileCopy() } });
+    showConfirm.mockResolvedValueOnce(true);
+    installTheme.mockResolvedValue({
+      installed: installedTheme(),
+      ok: true,
+    });
+    const { result } = renderHook(() => useThemeActions());
+
+    act(() => {
+      void result.current.handleInstall(entry(), "https://reg.test");
+    });
+    await reachConsent();
+    expect(result.current.pendingConsent).not.toBeNull();
+
+    await act(async () => {
+      result.current.settleConsent(true);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(
+      useSettingsStore.getState().installedThemes.dracula,
+    ).not.toBeUndefined();
+    expect(useSettingsStore.getState().installedThemes.dracula?.id).toBe(
+      "dracula",
+    );
+    expect(
+      useSettingsStore.getState().installedThemes.dracula,
+    ).not.toHaveProperty("origin");
   });
 });

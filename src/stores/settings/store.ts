@@ -145,6 +145,9 @@ export const useSettingsStore = create<SettingsState>()(
         // §364 partialize 는 whitelist 다 — 빠뜨리면 재시작마다 외관 다이얼이
         // 전부 기본값으로 돌아간다.
         appearanceOverrides: state.appearanceOverrides,
+        // 스펙 0063 §3 — partialize 는 whitelist 다. 빠뜨리면 거절한 크롬 제안이 재시작마다
+        // 되살아나고, 그것이 이 키가 고치려는 결함 그대로다.
+        declinedChromeProposals: state.declinedChromeProposals,
         // §361 — installed (community) theme records. tauriStorage only, never
         // localStorage: sandbox webviews share this origin (no-local-storage.test.ts).
         installedThemes: state.installedThemes,

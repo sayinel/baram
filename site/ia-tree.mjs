@@ -106,7 +106,9 @@ export const TITLES = {
   "versioning/git": "Git integration",
   "versioning/file-snapshots": "Version history",
   "export": "Export",
-  "customization/settings-and-themes": "Settings and themes",
+  "customization/settings-and-themes": "Settings and appearance",
+  "customization/themes": "Themes",
+  "customization/creating-themes": "Creating themes",
   "customization/palette-language-and-vim": "Command palette, language, and Vim mode",
   "customization/keyboard-shortcuts": "Keyboard shortcuts",
   "plugins": "Using plugins",
@@ -243,6 +245,9 @@ export const PAGES = [
   // ── 사용자 설정
   { slug: "customization/settings-and-themes", src: UG, items: [
     { h2: "Customization" }, "Customization > Settings", "Themes" ] },
+  // 이주 뒤에 새로 쓴 페이지(스펙 0063 §6) — 원문이 없으므로 src·items 이력 필드도 없다.
+  { slug: "customization/themes" },
+  { slug: "customization/creating-themes" },
   { slug: "customization/palette-language-and-vim", src: UG, items: [
     "Command Palette", "Language", "Vim Mode", "Keyboard Shortcuts" ] },
   { slug: "customization/keyboard-shortcuts", src: KS, wholeDoc: true },

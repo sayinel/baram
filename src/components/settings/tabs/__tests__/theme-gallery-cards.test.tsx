@@ -121,6 +121,16 @@ describe("설치 테마 카드", () => {
     expect(card).toHaveAccessibleDescription(/Rin · v1\.2\.0/);
     expect(card).toHaveAccessibleDescription(/A calm pair for long reading\./);
   });
+
+  it("파일에서 설치한 테마는 이름 옆에 배지를 단다 (스펙 0063 §4)", () => {
+    useSettingsStore.setState({
+      installedThemes: { dusk: { ...pairedInstalled(), origin: "file" } },
+    });
+    render(gallery());
+    expect(
+      screen.getByRole("button", { name: /^Dusk (From file|파일에서 설치)$/ }),
+    ).toBeTruthy();
+  });
 });
 
 describe("내장 테마 카드", () => {

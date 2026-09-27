@@ -11,6 +11,9 @@ vi.mock("../../ipc/plugin-invoke", () => ({
 }));
 
 import { usePluginStore } from "../../stores/system/plugin";
+import { previewPaletteFrom } from "../../themes/theme-preview-palette";
+import { DEFAULT_DARK_PALETTE } from "../../types/generated/palette-dark";
+import { DEFAULT_LIGHT_PALETTE } from "../../types/generated/palette-light";
 import { checkForUpdates, fetchRegistryIndex } from "../registry-client";
 
 function entry(over: Partial<RegistryEntry> = {}): RegistryEntry {
@@ -318,5 +321,43 @@ describe("an id claimed by two entries resolves to neither (§69 security MEDIUM
   it("leaves a single-copy index untouched", async () => {
     const plugins = await load(entry({ id: "a" }), entry({ id: "b" }));
     expect(plugins.map((p) => p.id)).toEqual(["a", "b"]);
+  });
+});
+
+describe("fetchRegistryIndex filters a theme's preview (스펙 0063 §5.1)", () => {
+  const LIGHT = previewPaletteFrom(DEFAULT_LIGHT_PALETTE, "light");
+  const DARK = previewPaletteFrom(DEFAULT_DARK_PALETTE, "dark");
+
+  beforeEach(() => {
+    fetchRegistry.mockReset();
+    usePluginStore.setState({ registryCache: null, registryCacheTime: 0 });
+  });
+
+  it("keeps a valid theme preview, drops a bad one but keeps the entry, and strips a plugin's", async () => {
+    fetchRegistry.mockResolvedValue({
+      plugins: [
+        entry({
+          capabilities: [],
+          id: "good",
+          kind: "theme",
+          preview: { dark: DARK, light: LIGHT },
+        }),
+        entry({
+          capabilities: [],
+          id: "bad",
+          kind: "theme",
+          preview: { light: { ...LIGHT, "--color-bg-default": "red" } },
+        }),
+        entry({ id: "plugin", preview: { light: LIGHT } }),
+      ],
+    });
+    const byId = Object.fromEntries(
+      (await fetchRegistryIndex()).plugins.map((p) => [p.id, p]),
+    );
+
+    expect(byId.good?.preview).toEqual({ dark: DARK, light: LIGHT });
+    expect(byId.bad).toBeDefined();
+    expect(byId.bad?.preview).toBeUndefined();
+    expect(byId.plugin?.preview).toBeUndefined();
   });
 });

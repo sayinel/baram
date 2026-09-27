@@ -8,8 +8,8 @@
 // of a detail view that has to close it).
 //
 // ‼️ Cannot be verified against the LIVE registry today — `sayinel/baram-plugins`'s
-// `index.json` carries one entry with no `kind`, so no theme is published yet. This screen
-// is tested against fixtures; it renders whatever the registry gives it.
+// `index.json` has no `kind: "theme"` entry yet (spec 0063 — the first theme is published by
+// 6b-2). This screen is tested against fixtures; it renders whatever the registry gives it.
 import { useCallback, useEffect, useState } from "react";
 
 import type { RegistryEntry, RegistryIndex } from "../../../plugins/types";
@@ -23,6 +23,8 @@ import {
 } from "../../../plugins/registry-client";
 import { useSettingsStore } from "../../../stores/settings/store";
 import { usePluginStore } from "../../../stores/system/plugin";
+import { registryPreviewPalettes } from "../../../themes/theme-preview-palette";
+import { ThemePreview } from "./theme-preview";
 import { ThemeConsentDialog } from "./ThemeConsentDialog";
 import { useThemeActions } from "./use-theme-actions";
 
@@ -164,6 +166,7 @@ export function ThemeBrowser({ onBack }: ThemeBrowserProps) {
             <ThemeBrowserCard
               entry={entry}
               error={installErrors[entry.id]}
+              installedFromFile={installedThemes[entry.id]?.origin === "file"}
               installedVersion={installedThemes[entry.id]?.manifest.version}
               installing={installing[entry.id] === true}
               key={entry.id}
@@ -181,26 +184,37 @@ export function ThemeBrowser({ onBack }: ThemeBrowserProps) {
 function ThemeBrowserCard({
   entry,
   error,
+  installedFromFile,
   installedVersion,
   installing,
   onInstall,
 }: {
   entry: RegistryEntry;
   error: string | undefined;
+  /** 같은 id 의 설치본이 파일에서 왔다 — 스펙 0063 §4 */
+  installedFromFile: boolean;
   /** The version of this theme already on disk, if any (0090 final review, N5). */
   installedVersion: string | undefined;
   installing: boolean;
   onInstall: () => void;
 }) {
   const { t } = useTranslation();
-  // Three states, and the middle one is the point: "installed" and "installed at another
-  // version" want different words, because only the second is an action worth taking from
-  // this screen. Updating from the gallery's own badge is the ordinary path; this button
-  // reinstalls, which is why it says so rather than saying "Update".
+  // Four states now, and "installed" (same version) is still the one this note is about:
+  // "installed" and "installed at another version" want different words, because only the
+  // second is an action worth taking from this screen. Updating from the gallery's own badge
+  // is the ordinary path; this button reinstalls, which is why it says so rather than saying
+  // "Update".
+  // 넷째 — 같은 id 가 파일에서 왔다: 이 버튼은 그 사본을 레지스트리 패키지로 바꾸므로
+  // 그렇게 말한다(스펙 0063 §4, 확인은 `handleInstall`).
   const isInstalled = installedVersion !== undefined;
   const isSameVersion = installedVersion === entry.version;
+  // `entry.preview` is typed structurally in `plugins/types.ts` (that file cannot import
+  // `PreviewPalettes` — see its doc comment), so this re-runs the one validator
+  // `normalizeIndex` already ran to get an honest `PreviewPalettes | undefined` without a cast.
+  const palettes = registryPreviewPalettes(entry.preview);
   return (
     <div className="theme-browser-card">
+      {palettes !== undefined && <ThemePreview palettes={palettes} />}
       <div className="theme-browser-card-info">
         <div className="theme-browser-card-name">
           {entry.name}
@@ -210,11 +224,13 @@ function ThemeBrowserCard({
         <span className="theme-browser-card-author">{entry.author}</span>
         {isInstalled && (
           <span className="theme-browser-card-installed">
-            {isSameVersion
-              ? t("settings.appearance.themeBrowser.installed")
-              : t("settings.appearance.themeBrowser.installedOther", {
-                  version: installedVersion,
-                })}
+            {installedFromFile
+              ? t("settings.appearance.themeBrowser.installedFromFile")
+              : isSameVersion
+                ? t("settings.appearance.themeBrowser.installed")
+                : t("settings.appearance.themeBrowser.installedOther", {
+                    version: installedVersion,
+                  })}
           </span>
         )}
         {error !== undefined && (
@@ -231,9 +247,11 @@ function ThemeBrowserCard({
       >
         {installing
           ? t("settings.appearance.themeBrowser.installing")
-          : isInstalled
-            ? t("settings.appearance.themeBrowser.reinstall")
-            : t("settings.appearance.themeBrowser.install")}
+          : installedFromFile
+            ? t("settings.appearance.themeBrowser.replace")
+            : isInstalled
+              ? t("settings.appearance.themeBrowser.reinstall")
+              : t("settings.appearance.themeBrowser.install")}
       </button>
     </div>
   );

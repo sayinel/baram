@@ -59,6 +59,8 @@ import { findSurface } from "../../../../__tests__/helpers/security-surface";
 import en from "../../../../i18n/en.json";
 import { useSettingsStore } from "../../../../stores/settings/store";
 import { usePluginStore } from "../../../../stores/system/plugin";
+import { previewPaletteFrom } from "../../../../themes/theme-preview-palette";
+import { DEFAULT_LIGHT_PALETTE } from "../../../../types/generated/palette-light";
 import { ThemeBrowser } from "../ThemeBrowser";
 
 const EN = en as Record<string, string>;
@@ -373,5 +375,54 @@ describe("ThemeBrowser", () => {
 
     fireEvent.click(screen.getByText(/back/i));
     expect(onBack).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("a copy installed from a file (스펙 0063 §4)", () => {
+  it("says so and offers Replace instead of Installed / Reinstall", async () => {
+    fetchResult = Promise.resolve({ plugins: [themeEntry()] });
+    const record = installedAt("0.9.0");
+    useSettingsStore.setState({
+      installedThemes: { dracula: { ...record.dracula, origin: "file" } },
+    });
+    render(<ThemeBrowser onBack={() => {}} />);
+
+    expect(
+      await screen.findByText(
+        EN["settings.appearance.themeBrowser.installedFromFile"],
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", {
+        name: EN["settings.appearance.themeBrowser.replace"],
+      }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", {
+        name: EN["settings.appearance.themeBrowser.reinstall"],
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("browser cards lay out like the gallery, with previews (스펙 0063 §5.2)", () => {
+  it("draws the entry's preview above its details, and nothing where there is none (스펙 0063 §5.2)", async () => {
+    const light = previewPaletteFrom(DEFAULT_LIGHT_PALETTE, "light");
+    fetchResult = Promise.resolve({
+      plugins: [
+        themeEntry({ id: "with", name: "With", preview: { light } }),
+        themeEntry({ id: "without", name: "Without" }),
+      ],
+    });
+    const { container } = render(<ThemeBrowser onBack={() => {}} />);
+    await screen.findByText("With");
+
+    const cards = container.querySelectorAll(".theme-browser-card");
+    expect(cards).toHaveLength(2);
+    // 미리보기는 카드의 첫 자식이다 — 위 그림, 아래 정보.
+    expect(
+      cards[0].firstElementChild?.classList.contains("theme-preview"),
+    ).toBe(true);
+    expect(cards[1].querySelector(".theme-preview")).toBeNull();
   });
 });
