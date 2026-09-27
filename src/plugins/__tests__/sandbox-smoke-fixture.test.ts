@@ -29,14 +29,17 @@ describe("sandbox smoke fixture (§260 3c-3)", () => {
     expect(pluginTrustOf(manifest)).toBe("sandboxed");
   });
 
-  it("declares both commands the README tells the tester to run", () => {
+  it("declares the commands the README tells the tester to run", () => {
     // Two, not one (§260 3c-3 code review, M3): `CALL_TIMEOUT_MS` bounds the whole
     // command at 30s while one mediated `ai` request may take up to 120s, so folding
     // the AI checks into `run` let a slow model discard every boundary result that
     // had already passed.
+    // §385 — two prompt commands: one immediate, one that waits 3 s so typing in the editor meanwhile can be seen to revoke the right (spec 0061 D1).
     expect(manifest.contributions?.commands?.map((c) => c.id)).toEqual([
       "run",
       "ai",
+      "prompt",
+      "prompt-delayed",
     ]);
   });
 
@@ -99,7 +102,7 @@ describe("sandbox smoke fixture (§260 3c-3)", () => {
     // The host refuses `setStatusBarText` for an id that is not declared, so a
     // fixture whose manifest and code disagree would report nothing and look broken.
     const declared = (manifest.contributions?.statusBar ?? []).map((i) => i.id);
-    expect(declared).toEqual(["smoke", "file"]);
+    expect(declared).toEqual(["smoke", "file", "prompt"]);
     const source = readFileSync(resolve(dir, manifest.main), "utf8");
     // Extracted with a regex rather than searched for as a literal call: a formatter
     // wrapping the arguments onto the next line broke the substring form, which made the
@@ -123,5 +126,12 @@ describe("sandbox smoke fixture (§260 3c-3)", () => {
     expect(source).not.toMatch(/^\s*import\s/m);
     expect(source).not.toMatch(/\brequire\s*\(/);
     expect(source).toMatch(/export async function activate\s*\(/);
+  });
+
+  it("§385 reports both prompt results in ONE toast — a second within 4 s is refused", () => {
+    const source = readFileSync(resolve(dir, manifest.main), "utf8");
+    expect(source).toMatch(/ctx\.prompts\.showQuickPick\(/);
+    expect(source).toMatch(/ctx\.prompts\.showInputBox\(/);
+    expect(source).toMatch(/`PROMPT pick=\$\{pick\} input=\$\{input\}`/);
   });
 });

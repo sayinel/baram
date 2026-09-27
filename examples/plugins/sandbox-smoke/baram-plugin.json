@@ -31,6 +31,16 @@
         "id": "ai",
         "title": "Sandbox Smoke: AI checks (slow)",
         "palette": true
+      },
+      {
+        "id": "prompt",
+        "title": "Sandbox Smoke: prompts",
+        "palette": true
+      },
+      {
+        "id": "prompt-delayed",
+        "title": "Sandbox Smoke: prompts after 3 s",
+        "palette": true
       }
     ],
     "statusBar": [
@@ -44,6 +54,12 @@
         "id": "file",
         "text": "📄 —",
         "tooltip": "File the sandbox was told about"
+      },
+      {
+        "command": "prompt",
+        "id": "prompt",
+        "text": "💬 prompt",
+        "tooltip": "Click to open the prompt checks"
       }
     ],
     "settings": [
@@ -68,9 +84,5 @@
     ]
   },
   "icon": "🧪",
-  "keywords": [
-    "internal",
-    "smoke",
-    "sandbox"
-  ]
+  "keywords": ["internal", "smoke", "sandbox"]
 }

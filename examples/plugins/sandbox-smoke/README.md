@@ -48,23 +48,23 @@ Each command reports twice: an attributed **toast** (`Sandbox Smoke: SMOKE …`)
 **🧪 status-bar item**, which keeps the line after the toast fades. The `📄` item shows
 the vault-relative path the sandbox was told about.
 
-| Field | Means |
-| --- | --- |
-| `cmd✓` | palette → host → sandbox → handler round-trip works |
-| `storage✓(n)` | `storage` read/write/list/remove through `plugin_call`, `n` keys seen |
-| `evt✓(n)` | the host delivered `n` file events, carrying a context id + relative path |
-| `list✓(n)` | `listDir("")` — the context ROOT, with no path supplied — returned `n` entries |
-| `read✓(nb)` | the file the event named read back through the context it named |
-| `abs✓` | an absolute path (`/etc/hosts`) was refused as not relative — this tier cannot express one |
-| `dotdot✓` | `../../../etc/hosts` was refused the same way |
-| `ro✓` | a write was refused — the readonly grant does not admit it (any-of authz) |
-| `state✓` | `.baram/config.json` was refused as app state, inside the vault |
-| `md✓(nb)` | `editor.getMarkdown()` — the document, delivered through the STAGED pull rather than in a frame |
-| `sel✓(a-b:nb)` | `editor.getSelection()` — ProseMirror positions plus the text they cover |
-| `ro-md✓` / `ro-ins✓` | both writes refused: the fixture holds `editor:readonly`, so the any-of gate admits the reads above and nothing else |
-| `models✓(n)` | `ai.listModels()` through the host bridge |
-| `ai1✓(len=n:…)` | `ai.complete()` — **the path 3c-2c's review found was dead** |
-| `stream✓(n tok/m ch)` | `ai.stream()` under the SAME options as `complete` |
+| Field                 | Means                                                                                                                |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `cmd✓`                | palette → host → sandbox → handler round-trip works                                                                  |
+| `storage✓(n)`         | `storage` read/write/list/remove through `plugin_call`, `n` keys seen                                                |
+| `evt✓(n)`             | the host delivered `n` file events, carrying a context id + relative path                                            |
+| `list✓(n)`            | `listDir("")` — the context ROOT, with no path supplied — returned `n` entries                                       |
+| `read✓(nb)`           | the file the event named read back through the context it named                                                      |
+| `abs✓`                | an absolute path (`/etc/hosts`) was refused as not relative — this tier cannot express one                           |
+| `dotdot✓`             | `../../../etc/hosts` was refused the same way                                                                        |
+| `ro✓`                 | a write was refused — the readonly grant does not admit it (any-of authz)                                            |
+| `state✓`              | `.baram/config.json` was refused as app state, inside the vault                                                      |
+| `md✓(nb)`             | `editor.getMarkdown()` — the document, delivered through the STAGED pull rather than in a frame                      |
+| `sel✓(a-b:nb)`        | `editor.getSelection()` — ProseMirror positions plus the text they cover                                             |
+| `ro-md✓` / `ro-ins✓`  | both writes refused: the fixture holds `editor:readonly`, so the any-of gate admits the reads above and nothing else |
+| `models✓(n)`          | `ai.listModels()` through the host bridge                                                                            |
+| `ai1✓(len=n:…)`       | `ai.complete()` — **the path 3c-2c's review found was dead**                                                         |
+| `stream✓(n tok/m ch)` | `ai.stream()` under the SAME options as `complete`                                                                   |
 
 `ai1`/`stream`/`ai2` run with identical options and are reported by size, because the
 first live runs returned an empty-but-successful `complete`. Comparing the same API at
@@ -81,11 +81,30 @@ Also check, by eye:
 
 - the toast carries a **`Sandbox Smoke` badge** next to the message — the host renders
   that as its own element from the manifest name, so a plugin cannot write a line that
-  reads as the app itself (a plugin that named itself "Baram" would get a *badge* saying
+  reads as the app itself (a plugin that named itself "Baram" would get a _badge_ saying
   Baram, never an unbadged app-looking toast);
 - the sandbox console logs one `ui_status_bar refused` for the item the fixture
   deliberately does not declare (`not-declared`);
 - opening another note updates the `📄` item.
+
+## Prompts (§385)
+
+Two commands and a status-bar item (**💬 prompt**) exercise `ctx.prompts`. Each run ends in
+one toast, `PROMPT pick=<id|cancel|ERR:…> input=<text|cancel|ERR:…>`.
+
+1. Type Hangul into the input box and press Enter before the syllable is finished — the
+   whole syllable arrives, once (`input=`).
+2. With the caret in the editor, run **Sandbox Smoke: prompts** from the palette — after the
+   prompts close, the caret is back in the editor.
+3. Leave the quick pick open for more than three minutes, then pick — `pick=<id>` (no timer
+   cut it off).
+4. Press Esc in the quick pick — `pick=cancel input=ERR:…` (a cancel ends the flow).
+5. Type into the 5,000-item filter — no lag.
+6. Focus a file-tree item, then click **💬 prompt** — the prompt opens.
+7. Run **Sandbox Smoke: prompts after 3 s** and type in the editor within 3 s — no prompt,
+   and `pick=ERR:…`.
+8. Type a Hangul query into the command palette and press Enter before the syllable is
+   finished to run **Sandbox Smoke: prompts** — the prompt opens.
 
 ## Expected noise, not failures
 
