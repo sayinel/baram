@@ -41,6 +41,9 @@ method has its own per-method gate:
 | `showNotification`   | any of `sidebar` / `statusbar` / `settings` / `viewer` |
 | `addStyle`           | any of `sidebar` / `statusbar` / `settings` / `viewer` |
 
+For a quick pick or an input box that answers back, see
+[Context: prompts](/en/docs/plugin-dev/context-prompts/) — it needs no `ui` capability.
+
 Notes:
 
 - `showStatusBarItem` returns a `StatusBarItem` object — call `.setText(...)`

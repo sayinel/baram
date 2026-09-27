@@ -1,6 +1,6 @@
 ---
 title: "컨텍스트: UI 와 Shadow DOM 격리"
-sourceHash: "ec9a05c92763"
+sourceHash: "192f8709a1a2"
 ---
 
 ## `context.ui`
@@ -40,6 +40,9 @@ registerFileViewer(opts: PluginFileViewerOptions): Disposable;
 | `registerFileViewer` | `viewer`                                               |
 | `showNotification`   | `sidebar` / `statusbar` / `settings` / `viewer` 중 하나 |
 | `addStyle`           | `sidebar` / `statusbar` / `settings` / `viewer` 중 하나 |
+
+답을 돌려받는 선택창 · 입력창은 [컨텍스트: 선택창과 입력창](/ko/docs/plugin-dev/context-prompts/)을
+보십시오 — `ui` 권한이 필요 없습니다.
 
 참고:
 
