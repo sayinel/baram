@@ -430,17 +430,19 @@ export interface RegistryEntry {
   license: string;
   name: string;
   /**
-   * 스펙 0063 §5.1 — 테마 항목의 미리보기 팔레트. 게시 단계가 패키지의 토큰에서 앱과 같은 함수로
-   * 뽑는다(6b-2). 와이어에서 온 값은 `normalizeIndex` 가 `registryPreviewPalettes` 로 거르기 전에는
-   * 믿지 않는다 — 정규화 뒤에는 이 타입 그대로다. 테마가 아닌 항목에는 없다.
+   * Spec 0063 §5.1 — a theme entry's preview palette. The publish step (6b-2) extracts it
+   * from the package's tokens with the same function the app uses. A value off the wire is
+   * not trusted until `normalizeIndex` filters it through `registryPreviewPalettes` — after
+   * normalization it is exactly this type. Absent on non-theme entries.
    *
-   * `PreviewPalettes`(`../themes/theme-preview-palette`)를 **import 하지 않고** 구조적으로만
-   * 맞춘 이유: 이 파일은 `tsconfig.plugin-api.json`(`rootDir: src/plugins`, `npm run
-   * types:plugin:check`)으로도 컴파일된다 — 그 설정은 `src/plugins` 밖의 파일이 이 파일에서
-   * (타입 전용 import 라도, `import(...).X` 인라인 참조라도) 프로그램에 들어오면 `TS6059` 로
-   * 실패한다(실측: 둘 다 시도해 같은 에러를 봤다). `registryPreviewPalettes()` 가 돌려주는
-   * `PreviewPalettes` 는 이 넓은 모양에 그대로 대입된다(리터럴 키 유니언은 `Record<string,
-   * string>` 의 부분형이다).
+   * Why this is shaped structurally instead of importing `PreviewPalettes`
+   * (`../themes/theme-preview-palette`): this file also compiles under
+   * `tsconfig.plugin-api.json` (`rootDir: src/plugins`, `npm run types:plugin:check`), and
+   * that config fails with `TS6059` the moment a file outside `src/plugins` enters the
+   * program from here — a type-only import as much as an inline `import(...).X` reference
+   * (measured: both were tried, and both hit the same error). The `PreviewPalettes` that
+   * `registryPreviewPalettes()` returns assigns straight into this wider shape (a
+   * literal-key union is a subtype of `Record<string, string>`).
    */
   preview?: {
     readonly dark?: Readonly<Record<string, string>>;
