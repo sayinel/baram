@@ -14,6 +14,7 @@ import type {
 } from "../types";
 
 import { useUIStore } from "../../stores/ui/ui";
+import { pluginSourceLabel } from "../plugin-text";
 import { usePluginUIStore } from "../plugin-ui-store";
 
 let uiItemCounter = 0;
@@ -45,7 +46,7 @@ export function createUIAPI(
     ): void {
       useUIStore
         .getState()
-        .showToast(message, type, displayName?.trim() || pluginId);
+        .showToast(message, type, pluginSourceLabel(displayName, pluginId));
     },
     showStatusBarItem(
       text: string,
