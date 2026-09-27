@@ -8,8 +8,8 @@
 // of a detail view that has to close it).
 //
 // ‼️ Cannot be verified against the LIVE registry today — `sayinel/baram-plugins`'s
-// `index.json` carries one entry with no `kind`, so no theme is published yet. This screen
-// is tested against fixtures; it renders whatever the registry gives it.
+// `index.json` has no `kind: "theme"` entry yet (spec 0063 — the first theme is published by
+// 6b-2). This screen is tested against fixtures; it renders whatever the registry gives it.
 import { useCallback, useEffect, useState } from "react";
 
 import type { RegistryEntry, RegistryIndex } from "../../../plugins/types";
@@ -23,6 +23,8 @@ import {
 } from "../../../plugins/registry-client";
 import { useSettingsStore } from "../../../stores/settings/store";
 import { usePluginStore } from "../../../stores/system/plugin";
+import { registryPreviewPalettes } from "../../../themes/theme-preview-palette";
+import { ThemePreview } from "./theme-preview";
 import { ThemeConsentDialog } from "./ThemeConsentDialog";
 import { useThemeActions } from "./use-theme-actions";
 
@@ -205,8 +207,13 @@ function ThemeBrowserCard({
   // 그렇게 말한다(스펙 0063 §4, 확인은 `handleInstall`).
   const isInstalled = installedVersion !== undefined;
   const isSameVersion = installedVersion === entry.version;
+  // `entry.preview` is typed structurally in `plugins/types.ts` (that file cannot import
+  // `PreviewPalettes` — see its doc comment), so this re-runs the one validator
+  // `normalizeIndex` already ran to get an honest `PreviewPalettes | undefined` without a cast.
+  const palettes = registryPreviewPalettes(entry.preview);
   return (
     <div className="theme-browser-card">
+      {palettes !== undefined && <ThemePreview palettes={palettes} />}
       <div className="theme-browser-card-info">
         <div className="theme-browser-card-name">
           {entry.name}
