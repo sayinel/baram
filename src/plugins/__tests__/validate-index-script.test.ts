@@ -33,6 +33,40 @@ function run(document: unknown): {
   };
 }
 
+function runAs(fileName: "community.json" | "index.json", document: unknown) {
+  const dir = mkdtempSync(join(tmpdir(), "baram-index-"));
+  const path = join(dir, fileName);
+  writeFileSync(path, JSON.stringify(document));
+  const result = spawnSync(TSX, [SCRIPT, path], { encoding: "utf8" });
+  return { output: `${result.stdout}${result.stderr}`, status: result.status };
+}
+
+/** Writes raw text verbatim under the given file name, unlike `runAs` which always emits valid JSON. */
+function runAsRaw(fileName: "community.json" | "index.json", text: string) {
+  const dir = mkdtempSync(join(tmpdir(), "baram-index-"));
+  const path = join(dir, fileName);
+  writeFileSync(path, text);
+  const result = spawnSync(TSX, [SCRIPT, path], { encoding: "utf8" });
+  return { output: `${result.stdout}${result.stderr}`, status: result.status };
+}
+
+/** A community.json entry (spec 0058 C1) the script accepts. */
+function validCommunityEntry(overrides: Record<string, unknown> = {}) {
+  return {
+    ...validEntry({
+      downloadUrl:
+        "https://sayinel.github.io/baram-plugins/plugins/hello-counter-1.2.0.zip",
+      id: "hello-counter",
+      name: "Hello Counter",
+    }),
+    publisher: "octocat",
+    publisherId: 583231,
+    repoId: 555,
+    repository: "https://github.com/octocat/baram-hello-counter",
+    ...overrides,
+  };
+}
+
 /** Writes the raw text verbatim, unlike `run` which always emits valid JSON. */
 function runRaw(text: string): { output: string; status: null | number } {
   const dir = mkdtempSync(join(tmpdir(), "baram-index-"));
@@ -126,9 +160,14 @@ describe('validate-index and a kind:"theme" entry (0090 final review, L1/M2/L5)'
   );
 
   it("leaves a plugin free to use an id a built-in theme has", () => {
-    // The namespaces are separate: `findThemeById` never looks at installed plugins.
-    const { status } = run({ plugins: [validEntry({ id: "nord" })] });
-    expect(status).toBe(0);
+    // The namespaces are separate: `findThemeById` never looks at installed plugins. Checked
+    // in community.json now that first-party plugin ids carry the "baram-" prefix (§381) —
+    // "nord" can only be a valid, unreserved id on the community side.
+    expect(
+      runAs("community.json", {
+        communityPlugins: [validCommunityEntry({ id: "nord" })],
+      }).status,
+    ).toBe(0);
   });
 });
 
@@ -408,10 +447,10 @@ describe("validate-index", () => {
     // The first entry takes the early return for its missing field. If the id were recorded
     // only after that, fixing the first error would reveal a second one — two publish
     // failures for one review.
-    const broken = validEntry({ id: "dup" });
+    const broken = validEntry({ id: "baram-dup" });
     delete (broken as { license?: unknown }).license;
     const { output, status } = run({
-      plugins: [broken, validEntry({ id: "dup" })],
+      plugins: [broken, validEntry({ id: "baram-dup" })],
     });
     expect(output).toContain("license is missing");
     expect(output).toContain("duplicate id");
@@ -423,13 +462,13 @@ describe("validate-index", () => {
     // failed publish at a time.
     const { output, status } = run({
       plugins: [
-        validEntry({ id: "a", trust: "nonsense" }),
-        validEntry({ engines: { baram: "^1.0.0" }, id: "b" }),
+        validEntry({ id: "baram-a", trust: "nonsense" }),
+        validEntry({ engines: { baram: "^1.0.0" }, id: "baram-b" }),
       ],
     });
     expect(output).toContain("2 problem(s)");
-    expect(output).toContain("a: unknown trust tier");
-    expect(output).toContain("b: engines.baram");
+    expect(output).toContain("baram-a: unknown trust tier");
+    expect(output).toContain("baram-b: engines.baram");
     expect(status).toBe(1);
   });
 
@@ -493,6 +532,236 @@ describe("validate-index", () => {
       {
         encoding: "utf8",
       },
+    );
+    expect(`${result.stdout}${result.stderr}`).toContain("✓");
+    expect(result.status).toBe(0);
+  });
+});
+
+describe("validate-index — the file is the channel (§380/§381, spec 0058 §8.3)", () => {
+  it("accepts a community entry in community.json", () => {
+    const { output, status } = runAs("community.json", {
+      communityPlugins: [validCommunityEntry()],
+    });
+    expect(status).toBe(0);
+    expect(output).toContain("✓");
+  });
+
+  it.each([
+    [
+      "an id with the first-party prefix",
+      { id: "baram-hello" },
+      'community ids may not start with "baram-"',
+    ],
+    ["a trusted tier", { trust: "trusted" }, 'trust must be "sandboxed"'],
+    ["a theme", { kind: "theme" }, "community.json carries plugins only"],
+    [
+      "no publisherId",
+      { publisherId: undefined },
+      "publisherId must be a positive integer",
+    ],
+    ["a string repoId", { repoId: "555" }, "repoId must be a positive integer"],
+    [
+      "a publisher that is not a login",
+      { publisher: "-octocat" },
+      "publisher must be a GitHub login",
+    ],
+    [
+      "a repository outside the publisher",
+      { repository: "https://github.com/someone/x" },
+      "repository must be https://github.com/<publisher>/<name>",
+    ],
+    [
+      "a zero publisherId",
+      { publisherId: 0 },
+      "publisherId must be a positive integer",
+    ],
+    ["a float repoId", { repoId: 1.5 }, "repoId must be a positive integer"],
+    [
+      "a repository with an extra path segment",
+      { repository: "https://github.com/octocat/x/y" },
+      "repository must be https://github.com/<publisher>/<name>",
+    ],
+    [
+      "a repository with a query string",
+      { repository: "https://github.com/octocat/baram-hello-counter?x=1" },
+      "repository must be https://github.com/<publisher>/<name>",
+    ],
+    [
+      "a repository with a fragment",
+      { repository: "https://github.com/octocat/baram-hello-counter#x" },
+      "repository must be https://github.com/<publisher>/<name>",
+    ],
+    [
+      "a repository name of just '..'",
+      { repository: "https://github.com/octocat/.." },
+      "repository must be https://github.com/<publisher>/<name>",
+    ],
+    [
+      "a repository name of just '.'",
+      { repository: "https://github.com/octocat/." },
+      "repository must be https://github.com/<publisher>/<name>",
+    ],
+    [
+      "an id with an uppercase letter",
+      { id: "Baram-word-count" },
+      "id must match",
+    ],
+    ["an id starting with a hyphen", { id: "-foo" }, "id must match"],
+  ])("refuses %s in community.json", (_label, overrides, message) => {
+    const { output, status } = runAs("community.json", {
+      communityPlugins: [validCommunityEntry(overrides)],
+    });
+    expect(status).toBe(1);
+    expect(output).toContain(message);
+  });
+
+  it("does not claim a leading hyphen cannot be installed — gate 2 refuses it, but the app installs it", () => {
+    const { output, status } = runAs("community.json", {
+      communityPlugins: [validCommunityEntry({ id: "-foo" })],
+    });
+    expect(status).toBe(1);
+    expect(output).not.toContain("cannot be installed");
+  });
+
+  it("claims an uppercase id cannot be installed — it is outside the app's own charset too", () => {
+    const { output, status } = runAs("community.json", {
+      communityPlugins: [validCommunityEntry({ id: "Baram-word-count" })],
+    });
+    expect(status).toBe(1);
+    expect(output).toContain("cannot be installed");
+  });
+
+  it("names community.json and the entry id together in a failure message", () => {
+    // `validate-registry-assets.ts` runs over community.json too (spec 0058 §8.2 step 4), and
+    // `plugin-release.yml` runs it before every first-party push. A broken community entry
+    // must not read as an anonymous failure in that log.
+    const { output, status } = runAs("community.json", {
+      communityPlugins: [validCommunityEntry({ trust: "trusted" })],
+    });
+    expect(status).toBe(1);
+    expect(output).toContain("hello-counter (community.json): trust must be");
+  });
+
+  it("accepts a community id made of digits and hyphens (the twin of the charset refusal)", () => {
+    const { status } = runAs("community.json", {
+      communityPlugins: [validCommunityEntry({ id: "hello-counter-2" })],
+    });
+    expect(status).toBe(0);
+  });
+
+  it("refuses a first-party plugin id without the prefix, and leaves themes alone", () => {
+    const refused = runAs("index.json", {
+      plugins: [validEntry({ id: "word-count" })],
+    });
+    expect(refused.status).toBe(1);
+    expect(refused.output).toContain(
+      'a first-party plugin id starts with "baram-"',
+    );
+    expect(runAs("index.json", { plugins: [validEntry()] }).status).toBe(0);
+    expect(runAs("index.json", { plugins: [validThemeEntry()] }).status).toBe(
+      0,
+    );
+  });
+
+  it.each([
+    [
+      "community.json",
+      { plugins: [] },
+      "community.json must hold `communityPlugins`",
+    ],
+    ["index.json", { communityPlugins: [] }, "index.json must hold `plugins`"],
+    [
+      "index.json",
+      { communityPlugins: [], plugins: [] },
+      "carries both `plugins` and `communityPlugins`",
+    ],
+  ] as const)("refuses %s shaped as %j", (file, document, message) => {
+    const { output, status } = runAs(file, document);
+    expect(status).toBe(1);
+    expect(output).toContain(message);
+  });
+
+  it.each([
+    [
+      "index.json",
+      { plugins: [validEntry({ description: "Counts\u202ewords" })] },
+      "description contains a control or bidi-override character",
+    ],
+    [
+      "community.json",
+      { communityPlugins: [validCommunityEntry({ author: "Octo\u0007Cat" })] },
+      "author contains a control or bidi-override character",
+    ],
+  ] as const)("refuses a hidden character in %s", (file, document, message) => {
+    const { output, status } = runAs(file, document);
+    expect(status).toBe(1);
+    expect(output).toContain(message);
+  });
+
+  // `publisherId`/`repoId` are Rust `u64`, and JS collapses a decimal-point or exponent
+  // spelling to the same integer value before this script ever sees it, so only the RAW JSON
+  // TEXT (not the parsed number) can catch a spelling Rust's serde refuses outright, dropping
+  // the whole entry.
+  describe("validate-index — publisherId/repoId's raw JSON text", () => {
+    function withRawPublisherId(rawNumber: string): string {
+      return JSON.stringify({
+        communityPlugins: [validCommunityEntry()],
+      }).replace('"publisherId":583231', `"publisherId":${rawNumber}`);
+    }
+
+    function withRawRepoId(rawNumber: string): string {
+      return JSON.stringify({
+        communityPlugins: [validCommunityEntry()],
+      }).replace('"repoId":555', `"repoId":${rawNumber}`);
+    }
+
+    it.each(["583231.0", "5.55e2", "1e3"])(
+      "refuses publisherId spelled %s, which Rust's u64 deserializer refuses outright",
+      (spelling) => {
+        const { output, status } = runAsRaw(
+          "community.json",
+          withRawPublisherId(spelling),
+        );
+        expect(status).toBe(1);
+        expect(output).toContain(
+          "Rust's u64 deserializer refuses any decimal point or exponent",
+        );
+      },
+    );
+
+    it("accepts publisherId spelled as a plain integer (the twin)", () => {
+      const { status } = runAsRaw(
+        "community.json",
+        withRawPublisherId("583231"),
+      );
+      expect(status).toBe(0);
+    });
+
+    // The reviver keys on both `publisherId` AND `repoId` — a probe on `publisherId` alone
+    // would not catch a mutation that dropped `repoId` from that key check.
+    it("refuses repoId spelled 555.0, which Rust's u64 deserializer refuses outright", () => {
+      const { output, status } = runAsRaw(
+        "community.json",
+        withRawRepoId("555.0"),
+      );
+      expect(status).toBe(1);
+      expect(output).toContain(
+        "Rust's u64 deserializer refuses any decimal point or exponent",
+      );
+    });
+
+    it("accepts repoId spelled as a plain integer (the twin)", () => {
+      const { status } = runAsRaw("community.json", withRawRepoId("555"));
+      expect(status).toBe(0);
+    });
+  });
+
+  it("validates the committed community seed", () => {
+    const result = spawnSync(
+      TSX,
+      [SCRIPT, resolve(ROOT, "registry/community.json")],
+      { encoding: "utf8" },
     );
     expect(`${result.stdout}${result.stderr}`).toContain("✓");
     expect(result.status).toBe(0);

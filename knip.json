@@ -14,7 +14,9 @@
     "src/**/*.test.{ts,tsx}"
   ],
   "project": [
-    "src/**/*.{ts,tsx}"
+    "src/**/*.{ts,tsx}",
+    "scripts/community-*.ts",
+    "scripts/run-community-*.ts"
   ],
   "ignore": [
     "src/ipc/**",

@@ -156,6 +156,29 @@ describe("validate-registry-assets", () => {
     expect(output).toContain("404 on every install");
   });
 
+  it("names index.json in a first-party failure line", () => {
+    // The summary line names the registry root, not either file, once both channels share it
+    // — so a first-party entry's OWN error must still say which document it is about.
+    const { output, status } = run([
+      validEntry({ downloadUrl: `${BASE}plugins/missing-9.9.9.zip` }),
+    ]);
+    expect(status).toBe(1);
+    expect(output).toContain(
+      "baram-word-count (index.json): plugins/missing-9.9.9.zip",
+    );
+  });
+
+  it("refuses two index.json entries that claim the same archive", () => {
+    // The claim check is not cross-file only — two entries in the SAME file must also be
+    // refused, since only one of them is what a user who installs that URL actually gets.
+    const { output, status } = run([
+      validEntry(),
+      validEntry({ id: "baram-word-count-2" }),
+    ]);
+    expect(status).toBe(1);
+    expect(output).toContain("also claimed by baram-word-count in index.json");
+  });
+
   it("refuses an entry whose checksum does not match the archive", () => {
     const { output, status } = run([validEntry({ checksum: "b".repeat(64) })]);
     expect(status).toBe(1);
@@ -716,6 +739,188 @@ describe("validate-registry-assets", () => {
       );
       expect(status).toBe(1);
     });
+  });
+});
+
+describe("validate-registry-assets — community.json (§381)", () => {
+  // Same value as the "sizes" describe block below's own local `INDEX_CAP` — not shared,
+  // matching this file's existing convention of a describe-scoped constant.
+  const INDEX_CAP = 4 * 1024 * 1024;
+
+  const communityEntry = (overrides: Record<string, unknown> = {}) =>
+    validEntry({
+      downloadUrl: `${BASE}plugins/hello-counter-1.2.0.zip`,
+      id: "hello-counter",
+      ...overrides,
+    });
+
+  function withCommunity(
+    community: string | unknown[],
+    archives: string[],
+  ): string {
+    const dir = build(
+      [validEntry()],
+      ["baram-word-count-1.0.0.zip", ...archives],
+    );
+    writeFileSync(
+      join(dir, "community.json"),
+      typeof community === "string"
+        ? community
+        : JSON.stringify({ communityPlugins: community }),
+    );
+    return dir;
+  }
+
+  it("checks a community archive like a first-party one", () => {
+    const { output, status } = exec([
+      withCommunity([communityEntry()], ["hello-counter-1.2.0.zip"]),
+    ]);
+    expect(status).toBe(0);
+    expect(output).toContain("2 archive(s) present and matching");
+    expect(output).not.toContain("belongs to no listed plugin");
+  });
+
+  it("refuses a community entry whose archive is missing, naming the file", () => {
+    const { output, status } = exec([withCommunity([communityEntry()], [])]);
+    expect(status).toBe(1);
+    expect(output).toContain(
+      "hello-counter (community.json): plugins/hello-counter-1.2.0.zip is not a regular file in the registry",
+    );
+  });
+
+  it("warns about a community archive nothing lists — the twin of the first case", () => {
+    const { output, status } = exec([
+      withCommunity([], ["hello-counter-1.2.0.zip"]),
+    ]);
+    expect(status).toBe(0);
+    expect(output).toContain(
+      "plugins/hello-counter-1.2.0.zip belongs to no listed plugin",
+    );
+  });
+
+  it("says nothing about a superseded COMMUNITY archive — indexedIds must carry community ids", () => {
+    // ‼️ Without `communityEntries` folded into `indexedIds`, this archive is not directly
+    // referenced (only 1.2.0 is, via downloadUrl) and `archiveBelongsTo` would not recognize
+    // "hello-counter" as a known id, so the orphan sweep would warn "belongs to no listed
+    // plugin" about a merely-superseded release — the same false positive the first-party
+    // "says nothing about a SUPERSEDED archive" test guards against, one channel over.
+    const { output, status } = exec([
+      withCommunity(
+        [communityEntry()],
+        ["hello-counter-1.2.0.zip", "hello-counter-0.9.0.zip"],
+      ),
+    ]);
+    expect(status).toBe(0);
+    expect(output).not.toContain("hello-counter-0.9.0.zip");
+    expect(output).not.toContain("belongs to no listed plugin");
+  });
+
+  it.each([
+    ["{", "community.json is not valid JSON"],
+    [
+      JSON.stringify({ plugins: [] }),
+      "community.json has no `communityPlugins` array",
+    ],
+  ])("refuses an unreadable community.json (%s)", (text, message) => {
+    const { output, status } = exec([withCommunity(text, [])]);
+    expect(status).toBe(1);
+    expect(output).toContain(message);
+  });
+
+  // Mirrors the existing index.json symlink/cap tests below.
+  it("refuses community.json as a symlink to a regular file elsewhere", () => {
+    const dir = withCommunity([communityEntry()], ["hello-counter-1.2.0.zip"]);
+    const outside = join(dir, "outside-community.json");
+    writeFileSync(outside, readFileSync(join(dir, "community.json"), "utf8"));
+    unlinkSync(join(dir, "community.json"));
+    symlinkSync(outside, join(dir, "community.json"));
+    const { output, status } = exec([dir]);
+    expect(status).toBe(1);
+    expect(output).toContain(
+      "community.json is not a regular file — a link or directory is not what the app fetches",
+    );
+  });
+
+  it("refuses community.json one byte over the registry cap", () => {
+    const dir = withCommunity([communityEntry()], ["hello-counter-1.2.0.zip"]);
+    const doc = JSON.stringify({ communityPlugins: [communityEntry()] });
+    writeFileSync(
+      join(dir, "community.json"),
+      doc + " ".repeat(INDEX_CAP - doc.length + 1),
+    );
+    const { output, status } = exec([dir]);
+    expect(status).toBe(1);
+    expect(output).toContain(
+      "community.json is larger than the app will fetch",
+    );
+  });
+
+  // An id claimed by both files (spec 0058 §9.1, `mergeChannels`).
+  it("refuses a community.json id that also appears in index.json", () => {
+    const { output, status } = exec([
+      withCommunity(
+        [communityEntry({ id: "baram-word-count" })],
+        ["hello-counter-1.2.0.zip"],
+      ),
+    ]);
+    expect(status).toBe(1);
+    expect(output).toContain(
+      "baram-word-count (community.json): also claimed by index.json",
+    );
+  });
+
+  it("accepts a community.json id that does not appear in index.json (the twin)", () => {
+    // The baseline case this whole describe block already exercises: "hello-counter" never
+    // collides with the first-party fixture's "baram-word-count".
+    const { status } = exec([
+      withCommunity([communityEntry()], ["hello-counter-1.2.0.zip"]),
+    ]);
+    expect(status).toBe(0);
+  });
+
+  it("refuses a community id equal to an index.json THEME id too", () => {
+    // `mergeChannels` compares ids only, never `kind` — a community entry must not be able to
+    // reuse a theme's id any more than a plugin's.
+    const dir = build(
+      [validEntry({ id: "dracula-theme", kind: "theme" })],
+      ["baram-word-count-1.0.0.zip"],
+    );
+    writeFileSync(
+      join(dir, "community.json"),
+      JSON.stringify({
+        communityPlugins: [communityEntry({ id: "dracula-theme" })],
+      }),
+    );
+    mkdirSync(join(dir, "plugins"), { recursive: true });
+    writeFileSync(join(dir, "plugins", "hello-counter-1.2.0.zip"), ZIP);
+    const { output, status } = exec([dir]);
+    expect(status).toBe(1);
+    expect(output).toContain(
+      "dracula-theme (community.json): also claimed by index.json",
+    );
+  });
+
+  // An archive relative path claimed by two entries, across files.
+  it("refuses an archive claimed by both a first-party and a community entry", () => {
+    const { output, status } = exec([
+      withCommunity(
+        [
+          communityEntry({
+            downloadUrl: `${BASE}plugins/baram-word-count-1.0.0.zip`,
+          }),
+        ],
+        [],
+      ),
+    ]);
+    expect(status).toBe(1);
+    expect(output).toContain("also claimed by baram-word-count in index.json");
+  });
+
+  it("accepts two entries naming different archives (the twin)", () => {
+    const { status } = exec([
+      withCommunity([communityEntry()], ["hello-counter-1.2.0.zip"]),
+    ]);
+    expect(status).toBe(0);
   });
 });
 
