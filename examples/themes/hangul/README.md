@@ -15,9 +15,11 @@ CSS 는 없다. 매니페스트의 `description` 이 성격을 한 문장으로 
 `src/themes/__tests__/reference-theme.test.ts` 로 남는다(스펙 0063 §10 이 0055 §9.3 · §10.3 에 단 정정) — 아래
 "테스트가 보는 것".
 
-**게시 파이프라인은 아직 없다**(2026-09-28). `.github/workflows/plugin-release.yml` 은 `plugin-*` 태그에만 돌고,
-`.github/` · `scripts/` 에 `examples/themes` 를 읽는 파일이 없다. 스펙 0063 §7.3~§7.6 이 설계했고, 계획 0105 가 머지된
-뒤의 계획이 만든다(스펙 0063 D2 의 정정).
+**게시 파이프라인은 `.github/workflows/plugin-release.yml` 의 `release-theme` 잡이다**(계획 0113, 스펙 0063 §7.3).
+`theme-hangul-v<version>` 태그가 이 폴더를 묶어 레지스트리에 올린다 — 태그 단계의 허용 목록이 디렉터리 `hangul` 에 id
+`baram-hangul` 을 고정한다. 무엇이 묶이고 게시 전에 무엇을 보는지는 아래 "zip 에 들어가는 것". 게시는 v0.7.7 릴리스
+뒤다(스펙 0063 D3 · §7.6) — 묶기 단계가 `package.json` 의 버전을 하한 `">=0.7.7"` 과 비교해 그보다 낮으면 거부하고,
+2026-09-28 의 `package.json` 은 0.7.6 이다. 같은 날 라이브 `index.json` 에 `baram-hangul` 항목은 없다.
 
 ## 매니페스트
 
