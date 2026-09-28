@@ -102,7 +102,7 @@ export function deliverViaPullRequest(o: PullRequestDelivery): Delivery {
       throw new Error(`gh pr create failed: ${created.stderr.trim()}`);
     }
     const giveUp = (said: string) =>
-      new Error([said, ...abandon({ dir, gh: o.gh, gitEnv: o.gitEnv, registryRepo: o.registryRepo }, number, sha, branch)].join(" — "));
+      new Error([said, ...abandon({ dir, gh: o.gh, gitEnv: o.gitEnv, registryRepo: o.registryRepo }, number, [sha], branch)].join(" — "));
     // A fixed text: nothing the pull request or the descriptor chose goes into the status.
     const status = o.gh([
       "api", "-X", "POST", `repos/${o.registryRepo}/statuses/${sha}`,
@@ -124,7 +124,7 @@ export function deliverViaPullRequest(o: PullRequestDelivery): Delivery {
       if (!/the merge commit cannot be cleanly created|the head branch is not up to date with the base branch/u.test(merged.stderr)) {
         throw giveUp(`gh pr merge failed: ${merged.stderr.trim()}`);
       }
-      const failed = abandon({ dir, gh: o.gh, gitEnv: o.gitEnv, registryRepo: o.registryRepo }, number, sha, branch);
+      const failed = abandon({ dir, gh: o.gh, gitEnv: o.gitEnv, registryRepo: o.registryRepo }, number, [sha], branch);
       if (failed.length === 0) return "stale";
       throw new Error([`main moved before pull request #${number} merged (${merged.stderr.trim()})`, ...failed].join(" — "));
     }
@@ -163,12 +163,18 @@ export function deliverViaPullRequest(o: PullRequestDelivery): Delivery {
 /**
  * Closes what publish runs left open: every open pull request from a `community-publish/` branch
  * of the registry itself (a fork's branch of that name is not ours) is abandoned as a delivery
- * abandons one. Returns a line per pull request, for the log.
+ * abandons one, its `validate` withdrawn on every commit it lists — a leftover someone pushed to
+ * keeps its validated commit, still green, below the head. gh 2.101.0 asks GitHub for the first
+ * 100 (`commits(first: 100)` in its query, read with `strings`), so a pull request with more is
+ * withdrawn in part. Returns a line per pull request, for the log.
  *
- * ‼️ ASSUMES no other publish job is mid-delivery — `publish-community.yml` runs this job in one
- * concurrency group with `cancel-in-progress: false` (plan 0105 Task 13) and calls this before
- * `reconcile`. Every such pull request is then a leftover: a run killed between posting
- * `validate` and closing, or a `gh pr create` whose number was never read.
+ * ‼️ THE `community-publish/` BRANCH PREFIX IS RESERVED FOR THE PUBLISH JOB, and this ASSUMES no
+ * other publish job is mid-delivery — `publish-community.yml` runs this job in one concurrency
+ * group with `cancel-in-progress: false` (plan 0105 Task 13) and calls this before `reconcile`.
+ * Under those two rules every such pull request is a leftover: a run killed after `gh pr create`
+ * and before its close (the status posted or not yet), a `gh pr create` whose number was never
+ * read, or a delivery whose own withdrawal or close failed. No author is checked: a pull request
+ * a person opens from a branch with that prefix is closed too.
  *
  * Listing that fails, or that returns SWEEP_LIMIT entries (the list may have been cut), throws. A
  * pull request whose withdrawal or close fails does not stop the sweep; after trying them all it
@@ -193,12 +199,21 @@ export function sweepAbandonedPullRequests(o: Sweep): string[] {
   const context = { dir: o.registryDir, gh: o.gh, gitEnv: o.gitEnv, registryRepo: o.registryRepo };
   for (const pr of open) {
     if (pr.isCrossRepository || !pr.headRefName.startsWith(BRANCH_PREFIX)) continue;
-    const failed = abandon(context, String(pr.number), pr.headRefOid, pr.headRefName);
+    const view = o.gh(["pr", "view", String(pr.number), "--repo", o.registryRepo, "--json", "commits", "--jq", ".commits[].oid"]);
+    const listed = view.stdout.split("\n").filter((line) => line !== "");
+    const readable = view.status === 0 && listed.every((sha) => /^[0-9a-f]{40}$/u.test(sha));
+    const shas = readable ? [...new Set([...listed, pr.headRefOid])] : [pr.headRefOid];
+    const failed = [
+      ...(readable
+        ? []
+        : [`reading the commits of pull request #${pr.number} failed (${view.stderr.trim() || view.stdout.trim()}), so only its head ${pr.headRefOid} was withdrawn; post state=error context=validate on its other commits by hand`]),
+      ...abandon(context, String(pr.number), shas, pr.headRefName),
+    ];
     if (failed.length > 0) {
       failures.push(`#${pr.number}: ${failed.join("; ")}`);
       continue;
     }
-    lines.push(`closed pull request #${pr.number} (${pr.headRefName}) and withdrew its validate status on ${pr.headRefOid}`);
+    lines.push(`closed pull request #${pr.number} (${pr.headRefName}) and withdrew its validate status on ${shas.join(", ")}`);
   }
   if (failures.length > 0) {
     throw new Error(`pull requests a publish run left open could not all be closed: ${failures.join("; ")}`);
@@ -207,9 +222,10 @@ export function sweepAbandonedPullRequests(o: Sweep): string[] {
 }
 
 /**
- * Withdraws the `validate` status on `sha`, closes pull request `number` and deletes `branch`, in
- * that order: if the close then fails, the status is already not green. Returns what failed, one
- * clause each. A failed branch deletion is not among them: without its pull request it is inert.
+ * Withdraws the `validate` status on each of `shas`, closes pull request `number` and deletes
+ * `branch`, in that order: if the close then fails, the status is already not green. Returns what
+ * failed, one clause each. A failed branch deletion is not among them: without its pull request
+ * it is inert.
  *
  * Why an `error` status withdraws the `success` one: GitHub's REST docs for commit statuses
  * ("Get the combined status for a specific reference", read 2026-09-28) give the combined state
@@ -218,16 +234,22 @@ export function sweepAbandonedPullRequests(o: Sweep): string[] {
  * first status in the list will be the latest one." That a ruleset's required check reads the
  * latest status of its context the same way was not measured.
  */
-function abandon(o: Abandon, number: string, sha: string, branch: string): string[] {
-  const withdrawn = o.gh([
-    "api", "-X", "POST", `repos/${o.registryRepo}/statuses/${sha}`,
-    "-f", "state=error", "-f", "context=validate",
-    "-f", "description=withdrawn by publish-community: this commit was not merged",
-  ]);
+function abandon(o: Abandon, number: string, shas: readonly string[], branch: string): string[] {
+  const unwithdrawn = shas.flatMap((sha) => {
+    const withdrawn = o.gh([
+      "api", "-X", "POST", `repos/${o.registryRepo}/statuses/${sha}`,
+      "-f", "state=error", "-f", "context=validate",
+      "-f", "description=withdrawn by publish-community: this commit was not merged",
+    ]);
+    // Once the close below succeeds, no later sweep lists this pull request again.
+    return withdrawn.status === 0
+      ? []
+      : [`withdrawing the validate status on ${sha} failed (${withdrawn.stderr.trim()}); post state=error context=validate on it by hand, since a later sweep sees only open pull requests`];
+  });
   const closed = o.gh(["pr", "close", number, "--repo", o.registryRepo]);
   deleteBranch(o.gitEnv, o.dir, branch);
   return [
-    ...(withdrawn.status === 0 ? [] : [`withdrawing the validate status on ${sha} failed (${withdrawn.stderr.trim()})`]),
+    ...unwithdrawn,
     ...(closed.status === 0
       ? []
       : [`closing pull request #${number} failed (${closed.stderr.trim()}); close it by hand before anyone merges it`]),

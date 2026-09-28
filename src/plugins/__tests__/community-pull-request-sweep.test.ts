@@ -67,6 +67,19 @@ function leftovers(): {
   };
 }
 
+/** The commits of pull request `number`, as the sweep asks for them. */
+const view = (number: number) => [
+  "pr",
+  "view",
+  String(number),
+  "--repo",
+  REPO,
+  "--json",
+  "commits",
+  "--jq",
+  ".commits[].oid",
+];
+
 const status = (sha: string) => [
   "api",
   "-X",
@@ -97,14 +110,75 @@ describe("sweepAbandonedPullRequests", { timeout: 60_000 }, () => {
     ]);
     expect(calls).toEqual([
       LIST,
+      view(7),
       status(sha),
       ["pr", "close", "7", "--repo", REPO],
+      view(8),
       status(sha),
       ["pr", "close", "8", "--repo", REPO],
     ]);
     expect(open()).toEqual([5, 6]);
     expect(branchExists(origin, "community-publish/1-1-1")).toBe(false);
     expect(branchExists(origin, "community-publish/1-2-1")).toBe(false);
+  });
+
+  it("withdraws validate on every commit of a leftover someone pushed to, not only its head", () => {
+    const { origin, sha, work } = leftovers();
+    const pushed = "c".repeat(40);
+    const { calls, gh, open } = recorder(origin, {
+      open: [
+        {
+          commits: [sha, pushed],
+          headRefName: "community-publish/1-1-1",
+          headRefOid: pushed,
+          isCrossRepository: false,
+          number: 7,
+        },
+      ],
+    });
+    expect(
+      sweepAbandonedPullRequests({
+        gh,
+        gitEnv: process.env,
+        registryDir: work,
+        registryRepo: REPO,
+      }),
+    ).toEqual([
+      `closed pull request #7 (community-publish/1-1-1) and withdrew its validate status on ${sha}, ${pushed}`,
+    ]);
+    expect(calls).toEqual([
+      LIST,
+      view(7),
+      status(sha),
+      status(pushed),
+      ["pr", "close", "7", "--repo", REPO],
+    ]);
+    expect(open()).toEqual([]);
+  });
+
+  it("still withdraws the head and closes when the commits cannot be read, then throws naming it", () => {
+    const { open: before, origin, sha, work } = leftovers();
+    const { calls, gh, open } = recorder(origin, {
+      open: before.slice(2, 3),
+      refuse: { "pr view": "HTTP 502" },
+    });
+    expect(() =>
+      sweepAbandonedPullRequests({
+        gh,
+        gitEnv: process.env,
+        registryDir: work,
+        registryRepo: REPO,
+      }),
+    ).toThrow(
+      `pull requests a publish run left open could not all be closed: #7: reading the commits of pull request #7 failed (HTTP 502), so only its head ${sha} was withdrawn; post state=error context=validate on its other commits by hand`,
+    );
+    expect(calls).toEqual([
+      LIST,
+      view(7),
+      status(sha),
+      ["pr", "close", "7", "--repo", REPO],
+    ]);
+    expect(open()).toEqual([]);
   });
 
   it("makes no call beyond the list when nothing was left open", () => {
@@ -152,6 +226,25 @@ describe("sweepAbandonedPullRequests", { timeout: 60_000 }, () => {
         registryRepo: REPO,
       }),
     ).toThrow("gh pr list failed: HTTP 401");
+  });
+
+  it("throws when gh pr list prints something other than a list of pull requests", () => {
+    const { origin, work } = leftovers();
+    const { gh } = recorder(origin, {
+      refuse: {
+        "pr list": { status: 0, stderr: "", stdout: '[{"number":7}]' },
+      },
+    });
+    expect(() =>
+      sweepAbandonedPullRequests({
+        gh,
+        gitEnv: process.env,
+        registryDir: work,
+        registryRepo: REPO,
+      }),
+    ).toThrow(
+      "gh pr list printed something other than a list of pull requests",
+    );
   });
 
   it("throws when the list may have been cut at its limit", () => {

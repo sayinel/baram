@@ -34,6 +34,8 @@ export interface Fake {
 }
 
 export interface OpenPullRequest {
+  /** Its commits, oldest first, as `gh pr view --json commits` lists them. Default: the head alone. */
+  commits?: string[];
   headRefName: string;
   headRefOid: string;
   isCrossRepository: boolean;
@@ -86,8 +88,12 @@ export function moveMain(origin: string, path: string, content: string): void {
  * latest `validate` is not success with the ruleset's measured refusal (0071 M3d). Otherwise it
  * squashes the tree `git merge-tree --write-tree main <tip>` produces onto main — the validated
  * tree when main has not moved — and answers a conflict with gh 2.101.0's "cannot be cleanly
- * created" text. That is a model of GitHub, not GitHub: nothing here was compared with a real
- * squash beyond those texts.
+ * created" text. That is gh's refusal BEFORE a merge; a conflict GitHub finds only during the
+ * merge more likely comes back as a GraphQL error (not measured), which the delivery does not
+ * retry — it stops the run, the safe direction. That is a model of GitHub, not GitHub: nothing
+ * here was compared with a real squash beyond those texts. `pr view` answers `--json commits`
+ * with the pull request's `commits` (its head alone by default), and anything else with the
+ * last squash.
  */
 export function recorder(
   origin: string,
@@ -197,7 +203,13 @@ export function recorder(
         ),
       );
     }
-    if (command === "pr view") return ok(`${squash}\n`);
+    if (command === "pr view") {
+      const pr = pulls.get(Number(args[2]));
+      if (!args.includes("commits")) return ok(`${squash}\n`);
+      return ok(
+        (pr?.commits ?? [pr?.headRefOid]).map((oid) => `${oid}\n`).join(""),
+      );
+    }
     return merge(args);
   };
   return {

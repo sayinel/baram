@@ -29,6 +29,20 @@ const CONFLICT =
 const CLOSE_FAILED =
   "closing pull request #42 failed (HTTP 502); close it by hand before anyone merges it";
 
+/** The `validate` withdrawal on `sha`, as a delivery that did not merge sends it. */
+const withdrawal = (sha: string) => [
+  "api",
+  "-X",
+  "POST",
+  `repos/${REPO}/statuses/${sha}`,
+  "-f",
+  "state=error",
+  "-f",
+  "context=validate",
+  "-f",
+  "description=withdrawn by publish-community: this commit was not merged",
+];
+
 const deliver = (gh: GhRunner, runId: string) =>
   deliverViaPullRequest({ gh, gitEnv: process.env, registryRepo: REPO, runId });
 
@@ -164,6 +178,7 @@ describe("deliverViaPullRequest", { timeout: 120_000 }, () => {
     "withdraws validate, closes the pull request, deletes its branch and reports stale when main moved %s",
     async (_label, fake) => {
       const { origin, work } = clone();
+      const sha = gitIn(work)("rev-parse", "HEAD").trim();
       const { calls, gh, open } = recorder(origin, fake(origin));
       expect(await deliver(gh, "901-1")(work)).toBe("stale");
       expect(commands(calls).slice(-3)).toEqual([
@@ -171,6 +186,8 @@ describe("deliverViaPullRequest", { timeout: 120_000 }, () => {
         "status error",
         "pr close",
       ]);
+      // On the commit it validated — the one whose green status would otherwise stay.
+      expect(calls.at(-2)).toEqual(withdrawal(sha));
       expect(open()).toEqual([]);
       expect(branchExists(origin, "community-publish/901-1-1")).toBe(false);
     },
@@ -246,7 +263,7 @@ describe("deliverViaPullRequest", { timeout: 120_000 }, () => {
       refuse: { "pr merge": POLICY, "status error": "HTTP 500" },
     });
     await expect(deliver(gh, "909-1")(work)).rejects.toThrow(
-      `gh pr merge failed: ${POLICY} — withdrawing the validate status on ${sha} failed (HTTP 500)`,
+      `gh pr merge failed: ${POLICY} — withdrawing the validate status on ${sha} failed (HTTP 500); post state=error context=validate on it by hand, since a later sweep sees only open pull requests`,
     );
     expect(open()).toEqual([]);
   });
