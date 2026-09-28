@@ -24,8 +24,9 @@ Keeping it in memory only bounds that to a single session.
 
 Practical consequences for you as a plugin author:
 
-- **Self-hosted registries are unsupported.** The registry accepts first-party
-  plugins only for now regardless, so this does not remove an option you had.
+- **Self-hosted registries are unsupported.** To reach users, publish through
+  the [community registry](/en/docs/plugin-dev/community-registry/) instead —
+  Baram reads it from the same registry as the first-party index.
 - **Editing `config.json` has no effect.** Any `registryUrl` written there is
   discarded when the app rehydrates.
 - Distributing outside the registry means the **Developer** section at the
@@ -40,10 +41,12 @@ Practical consequences for you as a plugin author:
 The registry lives at
 [`sayinel/baram-plugins`](https://github.com/sayinel/baram-plugins) — a
 public repo served via GitHub Pages that hosts `index.json` plus the plugin
-ZIPs under `plugins/`. It accepts **first-party plugins only** for now;
-community submissions are a future consideration.
+ZIPs under `plugins/`. First-party plugins are listed in `index.json`;
+community plugins — sandboxed only — in `community.json`, submitted as
+described in
+[Publishing to the community registry](/en/docs/plugin-dev/community-registry/).
 
-Publishing is driven from this repo's CI: pushing a tag
+First-party publishing is driven from this repo's CI: pushing a tag
 `plugin-<dir>-v<version>` (e.g. `plugin-word-count-v1.0.0`, where `<dir>` is
 the directory under `examples/plugins/` and the version must match that
 plugin's `baram-plugin.json`) runs `.github/workflows/plugin-release.yml`,

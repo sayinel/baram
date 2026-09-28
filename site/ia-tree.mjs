@@ -125,6 +125,7 @@ export const TITLES = {
   "plugin-dev/registry-json-shape": "The registry JSON shape",
   "plugin-dev/registry-loading-and-testing": "Registry loading and local testing",
   "plugin-dev/publishing": "Publishing a plugin",
+  "plugin-dev/community-registry": "Publishing to the community registry",
   "plugin-dev/trust-model-and-errors": "Trust model, security, and errors",
   "faq/general": "General and language",
   "faq/editing": "Editing",
@@ -287,6 +288,8 @@ export const PAGES = [
     "How Baram loads the registry", "Local testing" ] },
   { slug: "plugin-dev/publishing", src: PD, items: [
     "The committed seed", "Publishing your own plugin" ] },
+  // 이주 뒤에 새로 쓴 페이지(스펙 0058 §380 7.4) — 원문이 없으므로 src·items 이력 필드도 없다.
+  { slug: "plugin-dev/community-registry" },
   { slug: "plugin-dev/trust-model-and-errors", src: PD, items: [
     "Trust model & security", "Timeouts & error handling" ] },
 

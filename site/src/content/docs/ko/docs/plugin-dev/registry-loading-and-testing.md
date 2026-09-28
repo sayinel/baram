@@ -1,6 +1,6 @@
 ---
 title: "레지스트리 불러오기와 로컬 시험"
-sourceHash: "c84e1c7fb081"
+sourceHash: "950c2cd71f58"
 ---
 
 ## Baram이 레지스트리를 불러오는 방식
@@ -23,8 +23,9 @@ https://sayinel.github.io/baram-plugins/index.json
 
 플러그인 저자에게 실질적으로 따라오는 것들:
 
-- **직접 호스팅한 레지스트리는 지원되지 않습니다.** 어차피 레지스트리는 지금 1군 플러그인만
-  받으므로, 갖고 있던 선택지를 없애는 것은 아닙니다.
+- **직접 호스팅한 레지스트리는 지원되지 않습니다.** 사용자에게 닿으려면 대신
+  [커뮤니티 레지스트리](/ko/docs/plugin-dev/community-registry/)로 배포하십시오 — Baram은 그것을 1군
+  색인과 같은 레지스트리에서 읽습니다.
 - **`config.json`을 고쳐도 효과가 없습니다.** 거기 쓴 `registryUrl`은 앱이 재수화할 때 버려집니다.
 - 레지스트리 밖으로 배포하는 것은 **설정 → 플러그인** 아래쪽의 **개발자** 구역을 뜻합니다 —
   사용자가 **개발자 모드**를 켜고, 플러그인 폴더를 고르고, 권한을 승인합니다. 릴리스 빌드에서
@@ -35,9 +36,11 @@ https://sayinel.github.io/baram-plugins/index.json
 
 레지스트리는 [`sayinel/baram-plugins`](https://github.com/sayinel/baram-plugins)에 있습니다 —
 GitHub Pages로 서빙되는 공개 리포이고 `index.json`과 `plugins/` 아래의 플러그인 ZIP을
-호스팅합니다. 지금은 **1군 플러그인만** 받고, 커뮤니티 제출은 앞으로 고려할 사항입니다.
+호스팅합니다. 1군 플러그인은 `index.json`에, 커뮤니티 플러그인(샌드박스 전용)은 `community.json`에
+실리며, 커뮤니티 플러그인은 [커뮤니티 레지스트리에 배포하기](/ko/docs/plugin-dev/community-registry/)에
+적은 대로 제출합니다.
 
-배포는 이 리포의 CI가 몰아갑니다 — `plugin-<dir>-v<version>` 태그를 밀면
+1군 배포는 이 리포의 CI가 몰아갑니다 — `plugin-<dir>-v<version>` 태그를 밀면
 (예: `plugin-word-count-v1.0.0`. `<dir>`는 `examples/plugins/` 아래 디렉터리이고 버전은 그
 플러그인의 `baram-plugin.json`과 같아야 합니다) `.github/workflows/plugin-release.yml`이 돌아
 플러그인을 빌드하고 위 계약대로 ZIP을 만들고 SHA-256을 계산해, ZIP과 갱신된 `index.json`을
