@@ -72,7 +72,9 @@ first.* with the version it needs.
 A theme you already have reads **Installed** — or **Installed: v**… with the version you have,
 when the registry lists another — and its button reads **Reinstall**. Updates are not made on
 this screen: when the registry lists another version of a theme you installed from it, the
-theme's gallery card shows **Update to v**…, and clicking it installs that version.
+theme's gallery card shows **Update to v**…, and clicking it installs that version. A theme whose
+listed version was pulled from the registry does not appear in this list, and a withdrawn version
+is not offered as an update.
 
 If a theme with the same id was installed from a file, the card says **A theme with this id is
 installed from a file** and the button reads **Replace**. **Replace** asks first — *Replace '…'
