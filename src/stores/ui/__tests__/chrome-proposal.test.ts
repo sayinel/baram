@@ -21,20 +21,21 @@ import { useSettingsStore } from "../../settings/store";
 import { applyThemeChrome } from "../chrome-proposal";
 import { useUIStore } from "../ui";
 
-const REF = "baram-hangul";
+const REF = "focus-fixture";
 
-/** 레퍼런스 매니페스트를 **실제 관문에 통과시켜** 얻는다 — 손으로 적은 픽스처를 쓰면
+/** 크롬 픽스처를 **실제 관문에 통과시켜** 얻는다 — 손으로 적은 픽스처를 쓰면
  *  `chrome` 이 조용히 버려지는 결함이 이 파일에서 무증상이 된다(버리기가 검증의 태도라
- *  그렇다, `theme-manifest.ts` 의 `validateChrome`). */
+ *  그렇다, `theme-manifest.ts` 의 `validateChrome`). 픽스처 자신이 그 결함을 내지
+ *  않는지는 `themes/__tests__/focus-theme-fixture.test.ts` 가 따로 지킨다. */
 const REF_MANIFEST = (() => {
   const raw = JSON.parse(
     readFileSync(
-      resolve(__dirname, "../../../themes/reference/baram-theme.json"),
+      resolve(__dirname, "../../../themes/__tests__/fixtures/focus-theme.json"),
       "utf8",
     ),
   ) as unknown;
   const result = validateThemeManifest(raw);
-  if (!result.valid) throw new Error("reference manifest is invalid");
+  if (!result.valid) throw new Error("focus fixture manifest is invalid");
   return result.manifest;
 })();
 

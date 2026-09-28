@@ -1,0 +1,17 @@
+{
+  "id": "focus-fixture",
+  "name": "Focus Fixture",
+  "description": "Test-only manifest that proposes hiding all three chrome surfaces.",
+  "author": "Baram",
+  "license": "Apache-2.0",
+  "version": "1.0.0",
+  "engines": { "baram": ">=0.7.4" },
+  "modes": {
+    "light": { "tokens": "light/tokens.json" }
+  },
+  "chrome": {
+    "activityBar": false,
+    "statusBar": false,
+    "tabBar": false
+  }
+}

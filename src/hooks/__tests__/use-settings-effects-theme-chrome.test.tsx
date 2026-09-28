@@ -61,19 +61,20 @@ import { validateThemeManifest } from "../../themes/theme-manifest";
 import { defaultColorsForBase } from "../../types/theme";
 import { useSettingsEffects } from "../use-settings-effects";
 
-const REF = "baram-hangul";
+const REF = "focus-fixture";
 
-/** 레퍼런스 매니페스트를 실제 관문에 통과시켜 얻는다 — 손으로 적은 픽스처는 `chrome`
- *  이 조용히 버려지는 결함을 이 파일에서 무증상으로 만든다. */
+/** 크롬 픽스처를 실제 관문에 통과시켜 얻는다 — 손으로 적은 픽스처는 `chrome`
+ *  이 조용히 버려지는 결함을 이 파일에서 무증상으로 만든다. 픽스처 자신이 그 결함을
+ *  내지 않는지는 `themes/__tests__/focus-theme-fixture.test.ts` 가 따로 지킨다. */
 const REF_MANIFEST = (() => {
   const raw = JSON.parse(
     readFileSync(
-      resolve(__dirname, "../../themes/reference/baram-theme.json"),
+      resolve(__dirname, "../../themes/__tests__/fixtures/focus-theme.json"),
       "utf8",
     ),
   ) as unknown;
   const result = validateThemeManifest(raw);
-  if (!result.valid) throw new Error("reference manifest is invalid");
+  if (!result.valid) throw new Error("focus fixture manifest is invalid");
   return result.manifest;
 })();
 
