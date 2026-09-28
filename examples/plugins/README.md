@@ -15,7 +15,7 @@ plugin author's `tsconfig` compiles against.
 > note).
 
 For the full narrative guide (trust model, capability list, event system,
-Shadow-DOM panels, etc.), see **[`docs/plugin-development.md`](../../docs/plugin-development.md)**.
+Shadow-DOM panels, etc.), see the **[plugin developer docs](https://baram.ing/en/docs/plugin-dev/overview-and-capabilities/)**.
 This README is just the index + regen note for what lives in this folder.
 
 ## Contents
@@ -24,15 +24,18 @@ This README is just the index + regen note for what lives in this folder.
 examples/plugins/
   plugin-api.d.ts       # generated public type barrel (commit this)
   types.d.ts            # generated sibling the barrel re-exports from (commit this)
-  word-count/           # ← START HERE. The canonical sandboxed plugin, published
+  word-count/           # the canonical sandboxed plugin, published by Baram
+  community-template/   # ← START HERE to publish your own plugin (see below)
+  bullet-threading/     # full-trust editor-contribution example, published by Baram
   ai-summary/           # full-trust example — NOT published (see below)
   sandbox-smoke/        # internal test fixture — NOT a template (see below)
   malicious-fixture/    # internal test fixture — NOT a template (see below)
 ```
 
-**Looking for an editor-contribution example?** Neither `word-count/` nor
-`ai-summary/` contributes a Tiptap/ProseMirror extension — both stick to UI
-and events, not editor behavior. A plugin can contribute ProseMirror
+**Looking for an editor-contribution example?** `bullet-threading/` is the
+one that contributes a Tiptap/ProseMirror extension — `word-count/`,
+`community-template/` and `ai-summary/` stick to UI and events, not editor
+behavior. A plugin can contribute ProseMirror
 `Plugin`s (decorations, keyboard handlers, input rules — not a new node or
 mark; see below) to the live editor via `tiptapExtensions` + the
 `extensions` capability: one per `tiptapExtensions` entry, and the
@@ -40,12 +43,19 @@ manifest validator sets no limit on how many entries one plugin
 declares. For the factory shape, the two traps that catch
 editor-touching plugins, and why `type: "node"`/`"mark"` are rejected, see
 [Tiptap Extension plugins](https://baram.ing/en/docs/plugin-dev/commands-and-tiptap-extensions/#tiptap-extension-plugins)
-in the docs. There is no such example plugin in this directory yet —
-`bullet-threading`, the plugin that exercises this path, ships in a
-separate follow-up.
+in the docs. `bullet-threading/` asks for full trust, so it shows the API
+rather than a shape a community plugin can take — the community registry
+accepts sandboxed plugins only.
 
-**Copy `word-count/`.** It is the reference sandboxed plugin: `trust: "sandboxed"`, published
-to the registry as v2.0.0, and the shape a new plugin should start from.
+**Publishing your own plugin? Copy `community-template/`.** It is a sandboxed plugin with an id
+outside the `baram-` prefix that Baram reserves, plus a release workflow that builds the ZIP and
+prints its `sha256`. Its README lists what to change, and
+[Publishing to the community registry](https://baram.ing/en/docs/plugin-dev/community-registry/)
+covers the submission.
+
+`word-count/` is Baram's own reference sandboxed plugin: `trust: "sandboxed"`, published to the
+registry as v2.1.0. Read it for a complete plugin; its `baram-` id is reserved, so a copy of it
+cannot be submitted as is.
 
 `ai-summary/` is kept as the example of what the **full-trust** tier can do (a Shadow-DOM sidebar
 panel, which the sandboxed tier has no surface for yet). It is deliberately **not published** —
@@ -60,11 +70,20 @@ deny paths in CI — it asks for capabilities it must not receive, on purpose.
 
 ## The examples
 
-Both examples are real, standalone TypeScript projects: they `import type`
-exclusively from the committed `../plugin-api.d.ts` (and its `types.d.ts`
-sibling), with no access to Baram's internal source tree. Each ships a
-prebuilt, committed `dist/index.mjs` so you can dev-load it immediately
-without running `npm i && npm run build` first.
+Every example is a real, standalone TypeScript project with no access to Baram's internal
+source tree. `word-count/`, `ai-summary/` and `community-template/` `import type` from the
+committed `../plugin-api.d.ts` (and its `types.d.ts` sibling); `bullet-threading/` writes the
+shapes it uses out in its own `src/types.ts`. `word-count/`, `ai-summary/` and
+`bullet-threading/` ship a prebuilt, committed `dist/index.mjs` so you can dev-load them
+immediately without running `npm i && npm run build` first. `community-template/` does not —
+build it once before dev-loading it.
+
+Dev-loading a folder happens in Baram → Settings → Plugins → Developer → "Load dev plugin
+folder". A release build keeps that off until you turn on **Developer mode** in the same
+section, and even then refuses a `baram-` id and a full-trust (`trusted`) folder — so of the
+folders here only `community-template/` passes a release build's id and trust rules unchanged
+(once built). The others load unchanged in a development build (`npm run tauri dev`); see
+[Local development](https://baram.ing/en/docs/plugin-dev/local-development-and-bundling/).
 
 ### `word-count/` — the sandboxed reference
 
@@ -78,6 +97,30 @@ status-bar item, recomputed on `editor:ready`, `file:open`, and `file:save`.
   folder" → pick `examples/plugins/word-count`.
 
 See [`word-count/README.md`](word-count/README.md) for details.
+
+### `community-template/` — the starting point for a community plugin
+
+Shows the current document's character count in the status bar. It is the template the
+community registry docs point to: copy it into your own repository, rename it, and publish a
+GitHub Release with the workflow it carries.
+
+- **Capabilities:** `editor:readonly`, `events`, `statusbar`
+- **Build:** `cd examples/plugins/community-template && npm i && npm run build`
+- **Dev-load:** after the build, pick `examples/plugins/community-template`.
+
+See [`community-template/README.md`](community-template/README.md) for the steps.
+
+### `bullet-threading/` — full trust, editor contribution, published
+
+Draws a line from the outermost list ancestor down to the list item the caret is in, through a
+ProseMirror `Plugin` it contributes with `tiptapExtensions`.
+
+- **Capabilities:** `extensions`, `settings`
+- **Build:** `cd examples/plugins/bullet-threading && npm i && npm run build`
+- **Dev-load:** in a development build, pick `examples/plugins/bullet-threading`. A release
+  build refuses a full-trust folder.
+
+See [`bullet-threading/README.md`](bullet-threading/README.md) for details.
 
 ### `ai-summary/` — full trust, not published
 
@@ -121,17 +164,14 @@ place).
 **Whenever `src/plugins/types.ts` (the public plugin-API surface) changes,
 you MUST re-run `npm run types:plugin` and commit the resulting diff to
 `examples/plugins/plugin-api.d.ts` and `examples/plugins/types.d.ts`.**
-These files are not regenerated automatically by any build step or CI gate —
-if you forget, they silently go stale and plugin authors (and the two
-example plugins in this directory) end up typechecking against an outdated
-API surface.
+No build step regenerates them. `npm run types:plugin:check` — part of `npm run lint`, which
+the CI lint job runs — regenerates them and fails on any diff, so a stale pair turns the pull
+request red rather than reaching plugin authors.
 
-Both example plugins' `tsconfig.json` include the committed `.d.ts` files
-directly via a relative path (`../plugin-api.d.ts`, `../types.d.ts`), so
-re-running their `npm run typecheck` after a regen is the quickest way to
-confirm the new surface still typechecks against real plugin code.
-
-There is no automated CI check for this yet (see Open Questions in the
-Phase E plan) — treat `npm run types:plugin` as a manual step whenever
-`src/plugins/types.ts` changes, the same way `npm run tokens:build` is a
-manual step after editing `tokens/*.json`.
+All four example plugins' `tsconfig.json` include the committed `.d.ts` files
+directly via a relative path (`../plugin-api.d.ts`, `../types.d.ts`). In
+`word-count/`, `ai-summary/` and `community-template/`, which import from them,
+re-running `npm run typecheck` after a regen is the quickest way to confirm the
+new surface still typechecks against real plugin code. `bullet-threading/` does
+not import them, and every example sets `skipLibCheck`, so its typecheck says nothing about
+the pair's own types.
