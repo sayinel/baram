@@ -140,6 +140,32 @@ describe("firstDescriptorCommit — where the path itself first appeared", () =>
   });
 });
 
+describe("firstDescriptorCommit — whatever the machine's git config says", () => {
+  it("finds the add in the root commit even with log.showRoot=false", () => {
+    const dir = tempDir("baram-files-root-");
+    const git = gitIn(dir);
+    git("init", "--quiet");
+    mkdirSync(join(dir, "community"));
+    writeFileSync(join(dir, "community", "hello-counter.json"), TEXT);
+    git("add", "--all");
+    git("commit", "--quiet", "-m", "root");
+    const root = git("rev-parse", "HEAD").trim();
+    git("config", "log.showRoot", "false");
+    // The setting is live: a plain `git log` on the path now shows no add at all.
+    expect(
+      git(
+        "log",
+        "--diff-filter=A",
+        "--format=%H",
+        "--name-status",
+        "--",
+        "community/hello-counter.json",
+      ).trim(),
+    ).toBe("");
+    expect(firstDescriptorCommit(dir, "hello-counter")).toBe(root);
+  });
+});
+
 describe(
   "validateRegistryDocument — a tool that cannot start",
   { timeout: 60_000 },

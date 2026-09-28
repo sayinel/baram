@@ -7,7 +7,7 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import { deliverByPush, reconcile } from "../../../scripts/community-publish";
 import { communityEntry } from "./community-fixture";
-import { pluginZip, sha, SUBMISSION } from "./community-gate-fixtures";
+import { pluginZip, sha, validManifest } from "./community-gate-fixtures";
 import { BASE, cleanUpWorlds, gitIn } from "./community-gate-world";
 import {
   options,
@@ -83,6 +83,19 @@ describe("reconcile — publish, no-op, refusals", { timeout: 120_000 }, () => {
     );
   });
 
+  it("names what under community/ is not a descriptor, and publishes the descriptor beside it", async () => {
+    const r = registry({ preexisting: { "community/Hello.json": "{}" } });
+    const report = await reconcile(options(r));
+    expect(report.skipped).toEqual([
+      {
+        id: "community/Hello.json",
+        reason:
+          "not a descriptor (community/<id>.json, with a lowercase id) — nothing publishes it",
+      },
+    ]);
+    expect(report.published.map((item) => item.id)).toEqual(["hello-counter"]);
+  });
+
   it("does nothing on a second run — the version is already published with the same sha256", async () => {
     const r = registry();
     await reconcile(options(r));
@@ -132,6 +145,54 @@ describe("reconcile — publish, no-op, refusals", { timeout: 120_000 }, () => {
     const report = await reconcile(options(r));
     expect(report.failed[0].reason).toContain("author is missing");
     expect(gitIn(r.work)("status", "--porcelain")).toBe("");
+  });
+
+  it("re-validates every archive the registry lists before it commits — a first-party archive missing from plugins/", async () => {
+    // index.json passes validate-index.ts: the entry is well-formed. Only the asset validator
+    // looks for the file its downloadUrl names.
+    const archive = pluginZip(
+      validManifest({ id: "baram-word-count", version: "2.1.0" }),
+    );
+    const index = `${JSON.stringify(
+      {
+        plugins: [
+          {
+            author: "Baram",
+            capabilities: ["editor:readonly", "events", "statusbar"],
+            checksum: sha(archive),
+            description: "Shows the word count in the status bar.",
+            downloadUrl: `${BASE}plugins/baram-word-count-2.1.0.zip`,
+            engines: { baram: ">=0.6.1" },
+            id: "baram-word-count",
+            license: "Apache-2.0",
+            name: "Word Count",
+            trust: "sandboxed",
+            version: "2.1.0",
+          },
+        ],
+      },
+      null,
+      2,
+    )}\n`;
+    const r = registry({ preexisting: { "index.json": index } });
+    const head = gitIn(r.origin)("rev-parse", "main");
+    const report = await reconcile(options(r));
+    expect(report.failed).toHaveLength(1);
+    expect(report.failed[0].reason).toContain(
+      "baram-word-count (index.json): plugins/baram-word-count-2.1.0.zip is not a regular file in the registry — the app would 404 on every install of this entry, after the marketplace has already offered it",
+    );
+    expect(gitIn(r.origin)("rev-parse", "main")).toBe(head);
+    expect(gitIn(r.work)("status", "--porcelain")).toBe("");
+    // The twin: the same registry with the archive in place publishes.
+    const twin = registry({
+      preexisting: {
+        "index.json": index,
+        "plugins/baram-word-count-2.1.0.zip": archive,
+      },
+    });
+    expect(
+      (await reconcile(options(twin))).published.map((item) => item.id),
+    ).toEqual(["hello-counter"]);
   });
 
   it("stops when the release asset changed after review, and marks the pull request to tell", async () => {
@@ -248,26 +309,6 @@ describe("reconcile — publish, no-op, refusals", { timeout: 120_000 }, () => {
         id: "hello-counter",
         reason:
           "the descriptor asks for 1.2.0, not newer than the published banana",
-      },
-    ]);
-  });
-
-  it("refuses an unpublished id when git shows no commit that added its descriptor", async () => {
-    // The descriptor arrived in the root commit, and `log.showRoot=false` hides a root commit's
-    // additions from `git log` — so the first add, and with it the id's first owner, is unknown.
-    const r = registry({
-      preexisting: {
-        "community/hello-counter.json": JSON.stringify({ ...SUBMISSION }),
-      },
-    });
-    gitIn(r.work)("config", "log.showRoot", "false");
-    expect((await reconcile(options(r))).failed).toEqual([
-      {
-        id: "hello-counter",
-        pr: 7,
-        reason:
-          "community/hello-counter.json is on main, but git shows no commit that added it since its last deletion — its first owner cannot be established, so it is not published",
-        stalled: false,
       },
     ]);
   });

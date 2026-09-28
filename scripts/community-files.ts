@@ -83,8 +83,10 @@ export interface RegistryState {
  *
  * `--no-follow` because git's `log.follow` setting turns a single-path log into `--follow`,
  * which walks a rename back to the file it came from and reports THAT file's add — another
- * path's commit, chosen by whatever git config the machine running this has. Only lines naming
- * the path itself count, so no other path's add or deletion can end or set the search.
+ * path's commit, chosen by whatever git config the machine running this has. `--root` because
+ * `log.showRoot=false` hides what the root commit added, so a descriptor added there would read
+ * as never added. Only lines naming the path itself count, so no other path's add or deletion can
+ * end or set the search.
  */
 export function firstDescriptorCommit(dir: string, id: string): null | string {
   const path = `community/${id}.json`;
@@ -94,7 +96,7 @@ export function firstDescriptorCommit(dir: string, id: string): null | string {
     );
   }
   // Newest first: a commit id line, then that commit's `A\t<path>` or `D\t<path>`.
-  const log = git(dir, ["log", "--no-follow", "--first-parent", "--diff-filter=AD", "--format=%H", "--name-status", "HEAD", "--", path]);
+  const log = git(dir, ["log", "--no-follow", "--root", "--first-parent", "--diff-filter=AD", "--format=%H", "--name-status", "HEAD", "--", path]);
   let sha = "";
   let first: null | string = null;
   for (const line of log.split("\n")) {

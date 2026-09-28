@@ -12,13 +12,18 @@
  * `--delivery` says how a release reaches main: `push` (the default) pushes the commit;
  * `pull-request` merges it through a pull request (`community-pull-request.ts`), needs `gh` on
  * PATH, and first closes the pull requests earlier runs left open (`sweepAbandonedPullRequests`).
+ * ‼️ ONE RUN AT A TIME: that sweep takes every open pull request from a `community-publish/`
+ * branch of the registry for a leftover, so the branch prefix is reserved for this job, and the
+ * workflow must run it in one concurrency group with `cancel-in-progress: false` (plan 0105
+ * Task 13) — a second run mid-delivery would have its pull request closed under it.
  *
  * `reconcile` env: GITHUB_TOKEN, REGISTRY_REPO, and for `pull-request` GITHUB_RUN_ID and
  * GITHUB_RUN_ATTEMPT (positive integers; together they name its branches). Once it has read
- * `--delivery` and those, it writes the report JSON and then, to $GITHUB_OUTPUT, `published`
- * `stalled` `failed` counts, whatever it exits with: everything before those writes is inside a
- * catch. So the steps that request a Pages build and comment on stalled pull requests still know
- * what happened, and a release an earlier descriptor already delivered stays in the record when a
+ * `--delivery` and those, it appends `published` `stalled` `failed` counts to $GITHUB_OUTPUT and
+ * then writes the report JSON, whatever it exits with: everything before those writes is inside a
+ * catch, and the counts go first, so a report that cannot be written (exit 2) still leaves them.
+ * So the steps that request a Pages build and comment on stalled pull requests still know what
+ * happened, and a release an earlier descriptor already delivered stays in the record when a
  * later one aborts the run.
  * `live` reads that report and the checkout's community.json, and waits until Pages serves both.
  *
@@ -48,8 +53,8 @@ import { join, resolve } from "node:path";
 import { flag, need, needId } from "./community-cli";
 import { readAppBounds } from "./community-files";
 import { githubGet } from "./community-github";
-import { PAGES_SITE_LIMIT_BYTES, registryBytes, waitForLive } from "./community-live";
-import { deliverByPush, publishOutputs, publishReportLines, reconcile } from "./community-publish";
+import { publishOutputs, publishReportLines, registryBytes, registrySize, waitForLive } from "./community-live";
+import { deliverByPush, reconcile } from "./community-publish";
 import { deliverViaPullRequest, sweepAbandonedPullRequests } from "./community-pull-request";
 import { label } from "./gha-label";
 
@@ -137,20 +142,20 @@ async function runReconcile(): Promise<number> {
   } catch (error) {
     report = { aborted: error instanceof Error ? error.message : String(error), failed: [], published: [], skipped: [] };
   }
-  writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
-  for (const line of publishReportLines(report)) console.log(line);
+  // The counts first: the steps after this one read them, and a report that cannot be written
+  // must not cost them.
   const file = process.env.GITHUB_OUTPUT;
   if (file !== undefined && file !== "") appendFileSync(file, publishOutputs(report).map((line) => `${line}\n`).join(""));
+  for (const line of publishReportLines(report)) console.log(line);
+  writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
   const bytes = registryBytes(registryDir);
-  const percent = ((bytes / PAGES_SITE_LIMIT_BYTES) * 100).toFixed(1);
-  console.log(`registry size ${bytes} bytes (${percent}% of GitHub Pages' ${PAGES_SITE_LIMIT_BYTES})`);
-  if (bytes >= PAGES_SITE_LIMIT_BYTES * 0.7) {
-    console.warn(`⚠ the registry is at ${percent}% of GitHub Pages' site limit (spec 0058 §8.5)`);
-  }
+  const size = registrySize(bytes);
+  console.log(size.line);
+  if (size.warning !== null) console.warn(size.warning);
   summary(
     `### Community publish\n\n- published: ${report.published.length}\n- skipped: ${report.skipped.length}\n` +
       `- failed: ${report.failed.length}\n- aborted: ${report.aborted === null ? "no" : "yes — see the log"}\n` +
-      `- registry size: ${bytes} bytes (${percent}% of the Pages limit)\n`,
+      `- registry size: ${bytes} bytes (${size.percent}% of the Pages limit)\n`,
   );
   if (report.aborted !== null) return 2;
   return report.failed.length > 0 ? 1 : 0;

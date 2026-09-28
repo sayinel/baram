@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 
 import { deliverByPush, reconcile } from "../../../scripts/community-publish";
-import { BASE, cleanUpWorlds, gitIn } from "./community-gate-world";
+import { BASE, cleanUpWorlds, gitIn, tempDir } from "./community-gate-world";
 import {
   competitor,
   options,
@@ -88,6 +88,49 @@ describe(
       );
       expect(report.failed).toEqual([]);
       expect(report.published).toEqual([]);
+      // Back on main after the abort: no commit main refused is left for `live` or the size count.
+      expect(gitIn(r.work)("rev-parse", "HEAD")).toBe(
+        gitIn(r.origin)("rev-parse", "main"),
+      );
+      expect(gitIn(r.work)("status", "--porcelain")).toBe("");
+    });
+
+    it("keeps a delivered release in the report when the reset after it throws", async () => {
+      const r = registry();
+      const cut: Delivery = async (dir) => {
+        const landed = await deliverByPush(process.env)(dir);
+        // origin now names nothing, so the fetch that follows a delivery throws.
+        gitIn(dir)("remote", "set-url", "origin", join(r.base, "gone.git"));
+        return landed;
+      };
+      const report = await reconcile(options(r, cut));
+      expect(report.published).toEqual([HELLO]);
+      expect(report.aborted).toMatch(/^hello-counter: Command failed: git /u);
+    });
+
+    it("reads git's refusal in English whatever the runner's language — the push runs with LC_ALL=C", async () => {
+      // A git that answers in German unless LC_ALL=C, first on the child's PATH.
+      const bin = tempDir("baram-fake-git-");
+      writeFileSync(
+        join(bin, "git"),
+        [
+          "#!/bin/sh",
+          'if [ "$LC_ALL" = "C" ]; then',
+          "  echo ' ! [rejected]        HEAD -> main (fetch first)' >&2",
+          "else",
+          "  echo ' ! [abgelehnt]       HEAD -> main (zuerst holen)' >&2",
+          "fi",
+          "exit 1",
+          "",
+        ].join("\n"),
+        { mode: 0o755 },
+      );
+      const env = {
+        ...process.env,
+        LC_ALL: "de_DE.UTF-8",
+        PATH: `${bin}:${process.env.PATH ?? ""}`,
+      };
+      expect(await deliverByPush(env)(bin)).toBe("stale");
     });
 
     it("stops at a lookup that throws, and still reports what it published before", async () => {

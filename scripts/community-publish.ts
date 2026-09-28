@@ -42,7 +42,6 @@ import { judgeManifest } from "./community-gate";
 import { mergedPullRequest, ownership, pendingDescriptorConflict, repoFacts } from "./community-github";
 import { assetNames, descriptorIdFromPath, idConflict, parseSubmission, repositoryUrl, tagVersion } from "./community-submission";
 import { readPluginArchive } from "./community-zip";
-import { label } from "./gha-label";
 
 /** Spec 0058 §8.2 step 5: at most three retries — four deliveries in all (plan 0105 P13). */
 export const MAX_PUSH_RETRIES = 3;
@@ -90,17 +89,18 @@ export interface ReconcileOptions {
 
 export interface ReconcileReport {
   /**
-   * Why the run stopped early, as "<id>: <message>", or null. Set when handling one descriptor
-   * THREW — a GitHub request with no answer at all, a delivery refused for a reason other than a
-   * lost race (a push the remote refused; a pull request merge gh refused, or a squash whose tree
-   * was not, or could not be shown to be, the validated one), a git, gh or file error — and
-   * descriptors after it were not handled. What came before it is in the lists as usual; a
-   * delivered release stays in `published`. The CLI also sets it, as the bare message, when its
-   * setup or the pull request sweep before `reconcile` threw.
+   * Why the run stopped early, or null: "<id>: <message>" when handling one descriptor THREW — a
+   * GitHub request with no answer at all, a delivery refused for a reason other than a lost race
+   * (a push the remote refused; a pull request merge gh refused, or a squash whose tree was not,
+   * or could not be shown to be, the validated one), a git, gh or file error — and descriptors
+   * after it were not handled; the bare message when listing `community/` threw. What came before
+   * is in the lists as usual; a delivered release stays in `published`. The CLI also sets it, as
+   * the bare message, when its setup or the pull request sweep before `reconcile` threw.
    */
   aborted: null | string;
   failed: Failure[];
   published: PublishedItem[];
+  /** `id` is the path for a name under `community/` that is not a descriptor's. */
   skipped: { id: string; reason: string }[];
 }
 
@@ -136,33 +136,17 @@ export function deliverByPush(env: NodeJS.ProcessEnv): Delivery {
   };
 }
 
-/** The `$GITHUB_OUTPUT` lines the CLI writes — counts only, never text a descriptor chose. */
-export function publishOutputs(report: ReconcileReport): string[] {
-  return [
-    `failed=${report.failed.length}`,
-    `published=${report.published.length}`,
-    // Only a stalled failure that names a pull request can be told on one.
-    `stalled=${report.failed.filter((item) => item.stalled && item.pr !== null).length}`,
-  ];
-}
-
-/** The lines a workflow step prints. Every untrusted fragment goes through `label`; no reason is cut. */
-export function publishReportLines(report: ReconcileReport): string[] {
-  return [
-    ...report.published.map((item) => `✓ published ${label(item.id)} ${label(item.version)}`),
-    ...report.skipped.map((item) => `· ${label(item.id)}: ${label(item.reason, Infinity)}`),
-    ...report.failed.map((item) => `✗ ${label(item.id)}: ${label(item.reason, Infinity)}`),
-    ...(report.aborted === null
-      ? []
-      : [`✗ aborted: ${label(report.aborted, Infinity)} — no descriptor after it was handled`]),
-  ];
-}
-
 export async function reconcile(options: ReconcileOptions): Promise<ReconcileReport> {
   const report: ReconcileReport = { aborted: null, failed: [], published: [], skipped: [] };
   let handling: null | string = null;
   try {
-    for (const id of descriptorIds(options.registryDir)) {
+    const { ids, others } = descriptorIds(options.registryDir);
+    // The gate refuses such a path at step 0, so a person merged it; listed, so the run says why
+    // nothing publishes it.
+    for (const name of others) {
+      report.skipped.push({ id: `community/${name}`, reason: "not a descriptor (community/<id>.json, with a lowercase id) — nothing publishes it" });
+    }
+    for (const id of ids) {
       handling = id;
       const outcome = await publishOne(options, id);
       if (outcome.kind === "published") {
@@ -178,6 +162,14 @@ export async function reconcile(options: ReconcileOptions): Promise<ReconcileRep
   } catch (error) {
     const said = error instanceof Error ? error.message : String(error);
     report.aborted = handling === null ? said : `${handling}: ${said}`;
+    // Back to main, best-effort: a clone left ahead of it would have `live` and the size count
+    // read a release main never took. A failure here changes nothing in the report.
+    try {
+      syncToMain(options.registryDir);
+      git(options.registryDir, ["clean", "-fdq", "--", "plugins", "readme", "community.json"]);
+    } catch {
+      // The abort above is what the run reports.
+    }
   }
   return report;
 }
@@ -188,7 +180,8 @@ export async function reconcile(options: ReconcileOptions): Promise<ReconcileRep
  */
 function descriptorCommit(dir: string, id: string): Verdict<{ sha: string }> {
   const path = `community/${id}.json`;
-  const sha = git(dir, ["log", "-1", "--first-parent", "--format=%H", "HEAD", "--", path]).trim();
+  // `--no-follow` for the reason `firstDescriptorCommit` gives.
+  const sha = git(dir, ["log", "-1", "--no-follow", "--first-parent", "--format=%H", "HEAD", "--", path]).trim();
   if (!/^[0-9a-f]{40}$/u.test(sha)) return { error: `no commit on main introduced ${path}`, ok: false };
   const parents = git(dir, ["rev-list", "--parents", "-n", "1", sha]).trim().split(" ").slice(1);
   if (parents.length === 0) return { error: `${path} arrived in a root commit — it must come through a pull request`, ok: false };
@@ -204,13 +197,15 @@ function descriptorCommit(dir: string, id: string): Verdict<{ sha: string }> {
   return { ok: true, sha };
 }
 
-function descriptorIds(dir: string): string[] {
+/** The descriptor ids under `community/`, and the other names there. */
+function descriptorIds(dir: string): { ids: string[]; others: string[] } {
   const community = join(dir, "community");
-  if (!existsSync(community)) return [];
-  return readdirSync(community)
-    .map((name) => descriptorIdFromPath(`community/${name}`))
-    .filter((id): id is string => id !== null)
-    .sort();
+  const names = existsSync(community) ? readdirSync(community) : [];
+  const idOf = (name: string) => descriptorIdFromPath(`community/${name}`);
+  return {
+    ids: names.map(idOf).filter((id): id is string => id !== null).sort(),
+    others: names.filter((name) => idOf(name) === null).sort(),
+  };
 }
 
 async function publishOne(o: ReconcileOptions, id: string): Promise<Outcome> {
@@ -269,9 +264,9 @@ async function publishOne(o: ReconcileOptions, id: string): Promise<Outcome> {
   // maintainer can transfer (spec 0058 §8.5).
   if (current === undefined) {
     const firstAddSha = firstDescriptorCommit(o.registryDir, id);
-    // HEAD holds the descriptor, so some commit added it. git showing none — `log.showRoot=false`
-    // hides what a root commit added, for one — leaves the first owner unknown: refused, never
-    // read as "nothing to check".
+    // HEAD holds the descriptor, so some commit added it; git naming none anyway (no such case is
+    // known since `firstDescriptorCommit` passes `--root`) leaves the first owner unknown:
+    // refused, never read as "nothing to check".
     if (firstAddSha === null) {
       return failed(
         `community/${id}.json is on main, but git shows no commit that added it since its last deletion — its first owner cannot be established, so it is not published`,

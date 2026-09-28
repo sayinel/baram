@@ -1,15 +1,17 @@
 /**
- * §381 publish steps 6–7 — what GitHub Pages serves from the registry, after `reconcile`
- * (`community-publish.ts`) has delivered to main (spec 0058 §8.2, §8.5).
+ * §381 publish step 6 and §8.5 — after `reconcile` (`community-publish.ts`): what the run reports,
+ * how much the registry holds, and whether GitHub Pages serves what main holds (spec 0058 §8.2,
+ * §8.5).
  */
-import type { PublishedItem } from "./community-publish";
+import type { PublishedItem, ReconcileReport } from "./community-publish";
 import type { Verdict } from "./community-submission";
 
 import { sha256Hex } from "./community-download";
 import { git } from "./community-files";
+import { label } from "./gha-label";
 
 /** GitHub Pages' published-site limit, read as 10⁹ bytes — the smaller reading (plan 0105 P19). */
-export const PAGES_SITE_LIMIT_BYTES = 1_000_000_000;
+const PAGES_SITE_LIMIT_BYTES = 1_000_000_000;
 
 export interface LiveCheck {
   attempts: number;
@@ -20,6 +22,38 @@ export interface LiveCheck {
   intervalMs: number;
   published: readonly PublishedItem[];
   sleep(ms: number): Promise<void>;
+}
+
+/** The `$GITHUB_OUTPUT` lines the CLI writes — counts only, never text a descriptor chose. */
+export function publishOutputs(report: ReconcileReport): string[] {
+  return [
+    `failed=${report.failed.length}`,
+    `published=${report.published.length}`,
+    // Only a stalled failure that names a pull request can be told on one.
+    `stalled=${report.failed.filter((item) => item.stalled && item.pr !== null).length}`,
+  ];
+}
+
+/** The lines a workflow step prints. Every untrusted fragment goes through `label`; no reason is cut. */
+export function publishReportLines(report: ReconcileReport): string[] {
+  return [
+    ...report.published.map((item) => `✓ published ${label(item.id)} ${label(item.version)}`),
+    ...report.skipped.map((item) => `· ${label(item.id)}: ${label(item.reason, Infinity)}`),
+    ...report.failed.map((item) => `✗ ${label(item.id)}: ${label(item.reason, Infinity)}`),
+    ...(report.aborted === null
+      ? []
+      : [`✗ aborted: ${label(report.aborted, Infinity)} — no descriptor after it was handled`]),
+  ];
+}
+
+/** The run's registry-size line, and spec 0058 §8.5's warning once main holds 70 % of Pages' limit. */
+export function registrySize(bytes: number): { line: string; percent: string; warning: null | string } {
+  const percent = ((bytes / PAGES_SITE_LIMIT_BYTES) * 100).toFixed(1);
+  return {
+    line: `registry size ${bytes} bytes (${percent}% of GitHub Pages' ${PAGES_SITE_LIMIT_BYTES})`,
+    percent,
+    warning: bytes >= PAGES_SITE_LIMIT_BYTES * 0.7 ? `⚠ the registry is at ${percent}% of GitHub Pages' site limit (spec 0058 §8.5)` : null,
+  };
 }
 
 /** Bytes of every blob main holds — what GitHub Pages serves from a branch build. */

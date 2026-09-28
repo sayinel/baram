@@ -1,4 +1,4 @@
-// §381 publish steps 6–7 (spec 0058 §8.2, §8.5) — what the run reports and what Pages serves:
+// §381 publish step 6 and §8.5 (spec 0058 §8.2) — what the run reports and what Pages serves:
 // the size of what main holds, the live check that waits for Pages, and the lines and
 // `$GITHUB_OUTPUT` values the CLI writes from a report.
 import type { ReconcileReport } from "../../../scripts/community-publish";
@@ -7,11 +7,13 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { registryBytes, waitForLive } from "../../../scripts/community-live";
 import {
   publishOutputs,
   publishReportLines,
-} from "../../../scripts/community-publish";
+  registryBytes,
+  registrySize,
+  waitForLive,
+} from "../../../scripts/community-live";
 import { pluginZip, sha } from "./community-gate-fixtures";
 import { BASE, gitIn, tempDir } from "./community-gate-world";
 
@@ -38,6 +40,23 @@ describe("registryBytes", () => {
     git("update-index", "--add", "--cacheinfo", `160000,${"a".repeat(40)},sub`);
     git("commit", "--quiet", "-m", "x");
     expect(registryBytes(dir)).toBe(8);
+  });
+});
+
+describe("registrySize", () => {
+  it("warns once main holds 70% of GitHub Pages' limit, and not a byte before", () => {
+    expect(registrySize(700_000_000)).toEqual({
+      line: "registry size 700000000 bytes (70.0% of GitHub Pages' 1000000000)",
+      percent: "70.0",
+      warning:
+        "⚠ the registry is at 70.0% of GitHub Pages' site limit (spec 0058 §8.5)",
+    });
+    // One byte short: the percentage rounds to 70.0, the warning still waits for the limit.
+    expect(registrySize(699_999_999)).toEqual({
+      line: "registry size 699999999 bytes (70.0% of GitHub Pages' 1000000000)",
+      percent: "70.0",
+      warning: null,
+    });
   });
 });
 
