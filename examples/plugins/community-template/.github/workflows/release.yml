@@ -47,6 +47,8 @@ jobs:
           {
             echo "### community/$PLUGIN_ID.json for sayinel/baram-plugins"
             echo '```json'
+            # The script reads process.env itself, so the shell must not expand ${...} in it.
+            # shellcheck disable=SC2016
             SUM="$SUM" node -e 'console.log(JSON.stringify({
               id: process.env.PLUGIN_ID,
               publisher: process.env.GITHUB_REPOSITORY_OWNER,
