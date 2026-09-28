@@ -15,6 +15,8 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { PREVIEW_COLOR_KEYS } from "../../themes/theme-preview-palette";
+
 const ROOT = resolve(__dirname, "../../..");
 const SCRIPT = resolve(ROOT, "scripts/validate-index.ts");
 const TSX = resolve(ROOT, "node_modules/.bin/tsx");
@@ -803,5 +805,55 @@ describe("validate-index and the size the app will fetch", () => {
       "is not a regular file",
     );
     expect(result.status).toBe(1);
+  });
+});
+
+/** 스펙 0063 §5.1 — 계약의 16키를 모두 같은 색으로 채운 한 모드. */
+const PALETTE = Object.fromEntries(
+  PREVIEW_COLOR_KEYS.map((key) => [key, "#123456"]),
+);
+
+describe("validate-index and a theme entry's preview (스펙 0063 §5.3)", () => {
+  it("accepts a preview the app's own filter accepts", () => {
+    const { output, status } = run({
+      plugins: [
+        validThemeEntry({ preview: { dark: PALETTE, light: PALETTE } }),
+      ],
+    });
+    expect(status).toBe(0);
+    expect(output).not.toContain("no preview");
+  });
+
+  it.each([
+    [
+      "a missing key",
+      { light: { ...PALETTE, "--color-bg-default": undefined } },
+    ],
+    ["an extra key", { light: { ...PALETTE, "--color-extra": "#000000" } }],
+    ["a non-hex value", { light: { ...PALETTE, "--color-bg-default": "red" } }],
+    ["an unknown mode", { sepia: PALETTE }],
+  ])(
+    "refuses a preview with %s — the app drops the whole preview",
+    (_label, preview) => {
+      const { output, status } = run({
+        plugins: [validThemeEntry({ preview })],
+      });
+      expect(status).toBe(1);
+      expect(output).toContain("preview does not match the contract");
+    },
+  );
+
+  it("refuses a preview on a plugin entry", () => {
+    const { output, status } = run({
+      plugins: [validEntry({ preview: { light: PALETTE } })],
+    });
+    expect(status).toBe(1);
+    expect(output).toContain("preview on a non-theme entry");
+  });
+
+  it("warns, without failing, about a theme with no preview", () => {
+    const { output, status } = run({ plugins: [validThemeEntry()] });
+    expect(status).toBe(0);
+    expect(output).toContain("no preview");
   });
 });
