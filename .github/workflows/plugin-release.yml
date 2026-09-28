@@ -8,8 +8,9 @@ name: Plugin Release
 # §371 6b-2 — and a first-party THEME (spec 0063 §7.3): a tag `theme-<dir>-v<version>` where
 # <dir> is the directory under examples/themes/. Each tag shape runs exactly one of the two jobs
 # below (`if:` on the tag prefix); they share this file's concurrency group, the index writer
-# (`scripts/update-registry-index.mjs`), both validators and the push
-# (`.github/actions/registry-push`), so the registry still has one writer (spec 0063 D1).
+# (`scripts/update-registry-index.mjs`) and both validators, and push with the same inline body
+# (pinned by src/themes/__tests__/theme-release-workflow.test.ts), so the registry still has one
+# writer (spec 0063 D1).
 on:
   push:
     tags: ['plugin-*', 'theme-*']
@@ -356,15 +357,36 @@ jobs:
             --base-url "$BASE_URL"
 
       # Everything third-party has already run. This step writes the key, rewrites the
-      # read-only HTTPS remote to SSH, and pushes — no `node`, no `npx`, no dependency. The
-      # lines live in `.github/actions/registry-push` so the theme job below pushes the same way.
+      # read-only HTTPS remote to SSH, and pushes — no `node`, no `npx`, no dependency.
       - name: Push ZIP + updated index to registry repo
-        uses: ./.github/actions/registry-push
-        with:
-          archive: plugins/${{ steps.meta.outputs.zip_name }}
-          deploy-key: ${{ secrets.PLUGINS_DEPLOY_KEY }}
-          message: "release: ${{ steps.meta.outputs.plugin_id }} ${{ steps.meta.outputs.version }}"
-          registry-repo: ${{ env.REGISTRY_REPO }}
+        env:
+          DEPLOY_KEY: ${{ secrets.PLUGINS_DEPLOY_KEY }}
+          ZIP_NAME: ${{ steps.meta.outputs.zip_name }}
+          PLUGIN_ID: ${{ steps.meta.outputs.plugin_id }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$DEPLOY_KEY" > ~/.ssh/plugins_deploy
+          chmod 600 ~/.ssh/plugins_deploy
+          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/plugins_deploy -o IdentitiesOnly=yes"
+          cd "$RUNNER_TEMP/registry"
+          git remote set-url origin "git@github.com:${REGISTRY_REPO}.git"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # `readme/` is staged as a DIRECTORY rather than by name: the file is written only
+          # when the archive had one, and `git add` on a path that does not exist aborts the
+          # step — which would fail a perfectly good release of a plugin without a README.
+          # An unchanged or absent directory adds nothing and the `--quiet` check below still
+          # decides whether there is anything to publish.
+          git add "plugins/$ZIP_NAME" index.json
+          git add readme 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "::notice::Registry already contains this exact release — nothing to publish."
+            exit 0
+          fi
+          git commit -m "release: $PLUGIN_ID $VERSION"
+          git push origin main
 
   # §371 6b-2 — a first-party theme (spec 0063 §7.3). The plugin job's argument, step for step,
   # with the differences a theme brings:
@@ -379,6 +401,11 @@ jobs:
   #   - The archive goes to `plugins/`, beside the plugins (spec 0063 D9, corrected by plan 0113):
   #     every registry gate that protects an archive — `validate.yml`'s immutability check, the
   #     orphan sweep in `validate-registry-assets.ts` — looks there and only there.
+  #   - A CHECKSUM GATE the plugin job does not have: the tagged commit must record the sha256 of
+  #     the archive the pre-publish check installed (`Check the checksum the pre-publish check
+  #     recorded`).
+  #   - The push is the plugin job's inline body with `$PLUGIN_ID` → `$THEME_ID`;
+  #     src/themes/__tests__/theme-release-workflow.test.ts compares the two.
   release-theme:
     if: startsWith(github.ref_name, 'theme-')
     runs-on: ubuntu-24.04
@@ -466,6 +493,33 @@ jobs:
           CHECKSUM="$(sha256sum "$RUNNER_TEMP/$ZIP_NAME" | cut -d' ' -f1)"
           echo "checksum=$CHECKSUM" >> "$GITHUB_OUTPUT"
 
+      # THE ARCHIVE BUILT HERE MUST BE THE ONE THE PRE-PUBLISH CHECK INSTALLED (security review,
+      # plan 0113 Task 7). That check — the maintainer builds the zip locally with
+      # `npm run theme:package`, installs it by file and looks at it (spec 0063 §7.5) — is worth
+      # something only if this job publishes those same bytes, and a published archive is
+      # immutable: a mismatch found after the push costs a revocation and a new version. So the
+      # maintainer records the check's `sha256=` and `zip_name=` as a `sha256sum` line in the
+      # theme folder's `SHA256SUMS` on the commit that is tagged, and this step refuses the tag
+      # unless the archive built above hashes to a recorded line.
+      #
+      # It proves the recorded hash equals the built one — not that anyone installed or looked at
+      # the recorded zip. It reads the repo only through `$DIR`, the directory the tag step checked
+      # against its allowlist. Dependency-free bash, inputs through `env` only.
+      - name: Check the checksum the pre-publish check recorded
+        env:
+          DIR: ${{ steps.theme_meta.outputs.dir }}
+          ZIP_NAME: ${{ steps.theme_package.outputs.zip_name }}
+          CHECKSUM: ${{ steps.theme_sum.outputs.checksum }}
+        run: |
+          fail() { echo "::error::$1"; exit 1; }
+          [[ -n "$DIR" && -n "$ZIP_NAME" && -n "$CHECKSUM" ]] \
+            || fail "a verified value did not reach this step — this is a bug in this workflow, not a refusal"
+          SUMS="examples/themes/$DIR/SHA256SUMS"
+          [[ -f "$SUMS" && ! -L "$SUMS" ]] \
+            || fail "$SUMS is missing or is not a regular file — record the pre-publish check's sha256 there as the line \"<sha256>  $ZIP_NAME\" on the commit you tag"
+          grep -qxF "$CHECKSUM  $ZIP_NAME" "$SUMS" \
+            || fail "$SUMS has no line \"$CHECKSUM  $ZIP_NAME\" — the archive built here is not the one the pre-publish check installed. Run that check on the commit you tag and record the sha256 it prints for $ZIP_NAME there"
+
       # ‼️ NO SECRET IS IN REACH OF THIS STEP — the plugin job's MEDIUM-3 split, kept.
       - name: Update and validate the registry index for the theme
         env:
@@ -489,10 +543,49 @@ jobs:
           npx tsx scripts/validate-registry-assets.ts "$RUNNER_TEMP/registry" \
             --base-url "$BASE_URL"
 
+      # THE KEY REACHES THIS JOB ONLY IN THIS, ITS LAST STEP: every step above — the ones that run
+      # third-party code (`setup-node`'s `npm ci`, `npx tsx`, their dependencies) included — has
+      # finished before the key is written. The step runs git and ssh (plus mkdir, chmod,
+      # ssh-keyscan) — no node, no npx, no dependency.
+      #
+      # ‼️ What that does NOT guarantee: code that ran earlier in this job can leave things behind
+      # that this step's git and ssh act on or that outlive their own step — for example hooks or
+      # config in `$RUNNER_TEMP/registry` or `~/.ssh`, entries in `$GITHUB_PATH` or `$GITHUB_ENV`,
+      # a background process. So the key is not isolated from that code. Nor is it gone after this
+      # step: the file stays in `~/.ssh` while the post-job steps of `actions/checkout` and
+      # `actions/setup-node` run. Isolating the key in a job of its own is the follow-up.
+      #
+      # The body is INLINE rather than a `./` action on purpose (security review, plan 0113 Task 7):
+      # the runner reads a local action from the workspace when its step starts, so any earlier
+      # step could rewrite it and receive the key, while this file is fixed when the run is
+      # queued. It is the plugin job's body with one token changed, `$PLUGIN_ID` → `$THEME_ID` —
+      # src/themes/__tests__/theme-release-workflow.test.ts compares the two.
       - name: Push the theme archive + updated index to registry repo
-        uses: ./.github/actions/registry-push
-        with:
-          archive: plugins/${{ steps.theme_package.outputs.zip_name }}
-          deploy-key: ${{ secrets.PLUGINS_DEPLOY_KEY }}
-          message: "release: ${{ steps.theme_meta.outputs.expected_id }} ${{ steps.theme_meta.outputs.version }}"
-          registry-repo: ${{ env.REGISTRY_REPO }}
+        env:
+          DEPLOY_KEY: ${{ secrets.PLUGINS_DEPLOY_KEY }}
+          ZIP_NAME: ${{ steps.theme_package.outputs.zip_name }}
+          THEME_ID: ${{ steps.theme_meta.outputs.expected_id }}
+          VERSION: ${{ steps.theme_meta.outputs.version }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$DEPLOY_KEY" > ~/.ssh/plugins_deploy
+          chmod 600 ~/.ssh/plugins_deploy
+          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/plugins_deploy -o IdentitiesOnly=yes"
+          cd "$RUNNER_TEMP/registry"
+          git remote set-url origin "git@github.com:${REGISTRY_REPO}.git"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # `readme/` is staged as a DIRECTORY rather than by name: the file is written only
+          # when the archive had one, and `git add` on a path that does not exist aborts the
+          # step — which would fail a perfectly good release of a plugin without a README.
+          # An unchanged or absent directory adds nothing and the `--quiet` check below still
+          # decides whether there is anything to publish.
+          git add "plugins/$ZIP_NAME" index.json
+          git add readme 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "::notice::Registry already contains this exact release — nothing to publish."
+            exit 0
+          fi
+          git commit -m "release: $THEME_ID $VERSION"
+          git push origin main

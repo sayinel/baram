@@ -21,10 +21,6 @@ const WORKFLOW = readFileSync(
   resolve(__dirname, "../../../.github/workflows/plugin-release.yml"),
   "utf8",
 );
-const PUSH_ACTION = readFileSync(
-  resolve(__dirname, "../../../.github/actions/registry-push/action.yml"),
-  "utf8",
-);
 
 /** 한 잡의 본문 — `  <name>:` 줄부터 다음 잡(두 칸 들여쓴 키) 앞까지. */
 function jobText(name: string): string {
@@ -166,6 +162,95 @@ describe("release-theme — 태그 단계를 실행한다", () => {
   });
 });
 
+const CHECKSUM_STEP = "Check the checksum the pre-publish check recorded";
+const SUM = "a".repeat(64);
+const ZIP = "baram-hangul-1.0.0.zip";
+
+/**
+ * checksum 관문을 합성한 cwd 에서 돌린다 — 그 단계가 저장소에서 읽는 것은
+ * `examples/themes/$DIR/SHA256SUMS` 하나다. `sums` 가 `undefined` 면 파일이 없고, `link: true` 면
+ * 그 이름이 같은 내용의 파일을 가리키는 심볼릭 링크다.
+ */
+function runChecksumStep(opts: {
+  checksum?: string;
+  link?: boolean;
+  sums?: string;
+}): { output: string; status: null | number } {
+  const root = mkdtempSync(join(tmpdir(), "baram-theme-sums-"));
+  const dir = join(root, "examples", "themes", "hangul");
+  mkdirSync(dir, { recursive: true });
+  if (opts.sums !== undefined) {
+    const target = opts.link
+      ? join(root, "elsewhere")
+      : join(dir, "SHA256SUMS");
+    writeFileSync(target, opts.sums);
+    if (opts.link) symlinkSync(target, join(dir, "SHA256SUMS"));
+  }
+  const result = spawnSync("bash", ["-e", "-c", stepScript(CHECKSUM_STEP)], {
+    cwd: root,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      CHECKSUM: opts.checksum ?? SUM,
+      DIR: "hangul",
+      ZIP_NAME: ZIP,
+    },
+  });
+  return { output: result.stderr + result.stdout, status: result.status };
+}
+
+describe("release-theme — 기록된 checksum 관문을 실행한다", () => {
+  it("이 zip 의 줄이 있으면 통과한다 — 다른 버전의 줄과 섞여 있어도", () => {
+    const { output, status } = runChecksumStep({
+      sums: `${"b".repeat(64)}  baram-hangul-0.9.0.zip\n${SUM}  ${ZIP}\n`,
+    });
+    expect(status, output).toBe(0);
+  });
+
+  it("SHA256SUMS 가 없으면 무엇을 할지 말하며 거부한다", () => {
+    const { output, status } = runChecksumStep({});
+    expect(status).not.toBe(0);
+    expect(output).toContain("::error::");
+    expect(output).toContain("examples/themes/hangul/SHA256SUMS");
+    expect(output).toContain("record the pre-publish check's sha256");
+  });
+
+  it.each([
+    ["다른 해시", `${"c".repeat(64)}  ${ZIP}\n`],
+    ["다른 버전의 줄뿐", `${SUM}  baram-hangul-0.9.0.zip\n`],
+    ["공백 하나로 적은 줄", `${SUM} ${ZIP}\n`],
+  ])(
+    "%s 이면 거부한다 — 여기서 만든 zip 이 점검한 zip 이 아니다",
+    (_, sums) => {
+      const { output, status } = runChecksumStep({ sums });
+      expect(status).not.toBe(0);
+      expect(output).toContain("::error::");
+      expect(output).toContain(
+        "the archive built here is not the one the pre-publish check installed",
+      );
+    },
+  );
+
+  it("SHA256SUMS 가 심볼릭 링크면 맞는 줄을 가리켜도 거부한다", () => {
+    const { output, status } = runChecksumStep({
+      link: true,
+      sums: `${SUM}  ${ZIP}\n`,
+    });
+    expect(status).not.toBe(0);
+    expect(output).toContain("is not a regular file");
+  });
+
+  // 파일의 줄은 빈 해시와 짝지으면 맞는 줄이다 — 빈 값 관문이 없으면 이 케이스가 통과해 버린다.
+  it("CHECKSUM 이 비어 닿으면 워크플로의 버그라고 말한다", () => {
+    const { output, status } = runChecksumStep({
+      checksum: "",
+      sums: `  ${ZIP}\n`,
+    });
+    expect(status).not.toBe(0);
+    expect(output).toContain("this is a bug in this workflow");
+  });
+});
+
 describe("release-theme — 실행할 수 없는 배선", () => {
   it("태그 모양마다 잡 하나만 돈다", () => {
     expect(WORKFLOW).toMatch(/tags: \['plugin-\*', 'theme-\*'\]/);
@@ -177,34 +262,75 @@ describe("release-theme — 실행할 수 없는 배선", () => {
     );
   });
 
-  // 무엇이 이것을 실패시키는가: 어느 단계가 배포 키를 직접 env 로 받거나, 셋째 자리가 키를 쓰면.
-  it("배포 키는 두 잡의 push 에만, 둘 다 공용 action 의 입력으로 닿는다", () => {
-    const uses = [...WORKFLOW.matchAll(/secrets\.PLUGINS_DEPLOY_KEY/g)];
-    expect(uses).toHaveLength(2);
+  // 무엇이 이것을 실패시키는가: 셋째 자리가 키(나 다른 비밀)를 쓰거나, 키를 받는 단계 뒤에 단계가
+  // 생기거나, 키가 env 가 아닌 모양(action 입력 · `run` 안의 식)으로 닿으면.
+  it("배포 키는 두 잡의 마지막 단계에만, env 한 줄로 닿는다", () => {
+    const KEY_LINE = "DEPLOY_KEY: ${{ secrets.PLUGINS_DEPLOY_KEY }}";
+    // `secrets` 를 읽는 **모든** 줄 — 키 이름 한 철자만 찾으면 `secrets['…']` · 대소문자 변형 ·
+    // `toJSON(secrets)` 가 빠진다(`revocation-publish-gate.test.ts` 의 같은 허용 목록과 같은 정규식).
     const lines = WORKFLOW.split("\n").filter((line) =>
-      line.includes("secrets.PLUGINS_DEPLOY_KEY"),
+      /secrets\s*[.[]|toJSON\s*\(\s*secrets/iu.test(line),
     );
-    for (const line of lines) {
-      expect(line.trim()).toBe("deploy-key: ${{ secrets.PLUGINS_DEPLOY_KEY }}");
-    }
+    expect(lines.map((line) => line.trim())).toEqual([KEY_LINE, KEY_LINE]);
     for (const job of ["release", "release-theme"]) {
       const text = jobText(job);
-      const push = text.lastIndexOf("uses: ./.github/actions/registry-push");
-      expect(push, job).toBeGreaterThan(0);
-      // push 가 그 잡의 마지막 단계다 — 키가 생긴 뒤 도는 단계가 없다.
-      expect(text.slice(push).match(/\n {6}- /g), job).toBeNull();
+      const key = text.indexOf(KEY_LINE);
+      expect(key, job).toBeGreaterThan(0);
+      expect(text.indexOf(KEY_LINE, key + 1), job).toBe(-1);
+      // 키 뒤에 새 단계가 시작하지 않는다 — 키를 받는 단계가 그 잡의 마지막이다.
+      expect(text.slice(key).match(/\n {6}- /g), job).toBeNull();
     }
   });
 
-  it("push action 의 스크립트는 git 과 ssh 말고 아무것도 실행하지 않는다", () => {
-    const run = PUSH_ACTION.slice(PUSH_ACTION.indexOf("run: |"));
-    const code = run
-      .split("\n")
-      .filter((line) => !line.trim().startsWith("#"))
-      .join("\n");
-    expect(code).not.toMatch(/\b(node|npx|npm|tsx|yarn|pnpm|bun)\b/);
-    // 입력은 env 로만 들어간다 — `run` 안의 `${{ }}` 는 스크립트 주입 자리다.
-    expect(code).not.toContain("${{");
+  const PLUGIN_PUSH = "Push ZIP + updated index to registry repo";
+  const THEME_PUSH = "Push the theme archive + updated index to registry repo";
+
+  // 무엇이 이것을 실패시키는가: 두 push 본문이 한 글자라도 갈라지면 — 드물게 도는 테마 잡의
+  // 사본이 아무도 모르게 갈라지는 것이 공용 action 을 두었던 이유였고, 이제 이 대조가 그 자리다.
+  it("테마 잡의 push 본문은 플러그인 잡의 것과 `$THEME_ID` 한 낱말만 다르다", () => {
+    const theme = stepScript(THEME_PUSH);
+    // 치환이 공허하지 않다 — 테마 본문이 그 낱말을 실제로 쓴다.
+    expect(theme).toContain("$THEME_ID");
+    expect(theme).not.toContain("$PLUGIN_ID");
+    expect(theme.replaceAll("$THEME_ID", "$PLUGIN_ID")).toBe(
+      stepScript(PLUGIN_PUSH),
+    );
+  });
+
+  it.each([PLUGIN_PUSH, THEME_PUSH])(
+    "%s 의 스크립트는 node 계열 도구를 부르지 않고, `${{` 를 싣지 않는다",
+    (name) => {
+      const code = stepScript(name)
+        .split("\n")
+        .filter((line) => !line.trim().startsWith("#"))
+        .join("\n");
+      expect(code).toContain("git push origin main");
+      expect(code).not.toMatch(/\b(node|npx|npm|tsx|yarn|pnpm|bun)\b/);
+      // 입력은 env 로만 들어간다 — `run` 안의 `${{ }}` 는 스크립트 주입 자리다.
+      expect(code).not.toContain("${{");
+    },
+  );
+
+  // 무엇이 이것을 실패시키는가: 관문이 checksum 을 계산하는 단계 앞이나 색인을 쓰는 단계 뒤로
+  // 옮겨지거나, 세 값을 다른 출력에 묶으면. 위의 실행 케이스는 env 를 직접 넣으므로 이 배선을 보지
+  // 못한다.
+  it("checksum 관문은 checksum 을 계산한 뒤, 색인을 쓰기 전에 서고, 세 값을 앞 단계에서 받는다", () => {
+    const text = jobText("release-theme");
+    const at = (name: string) => text.indexOf(`- name: ${name}\n`);
+    expect(at("Compute the theme checksum")).toBeGreaterThan(0);
+    expect(at(CHECKSUM_STEP)).toBeGreaterThan(at("Compute the theme checksum"));
+    expect(at(CHECKSUM_STEP)).toBeLessThan(
+      at("Update and validate the registry index for the theme"),
+    );
+    const gate = text.slice(
+      at(CHECKSUM_STEP),
+      at("Update and validate the registry index for the theme"),
+    );
+    expect(gate).toContain("DIR: ${{ steps.theme_meta.outputs.dir }}");
+    expect(gate).toContain(
+      "ZIP_NAME: ${{ steps.theme_package.outputs.zip_name }}",
+    );
+    expect(gate).toContain("CHECKSUM: ${{ steps.theme_sum.outputs.checksum }}");
   });
 
   it("테마 잡은 examples/themes/ 에 태그 단계가 검증한 디렉터리로만 닿는다", () => {
