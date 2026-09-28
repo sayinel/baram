@@ -47,8 +47,8 @@ that the two agree, builds the plugin, zips `baram-plugin.json`, `dist/` and
 descriptor for the next step — SHA-256 included — to the run's summary.
 
 By hand: `zip -r hello-counter-1.0.0.zip baram-plugin.json dist README.md`,
-then `shasum -a 256 hello-counter-1.0.0.zip`. On Windows, use the release
-workflow: other ZIP tools can write extra fields the check refuses (step 6).
+then `shasum -a 256` the ZIP. Other ZIP tools, Finder's Compress included,
+can write what the check refuses (step 6); on Windows, use the release workflow.
 
 **Do not replace a release asset after you submit it.** Publishing downloads
 the asset again and checks its SHA-256; if the bytes changed, nothing is
