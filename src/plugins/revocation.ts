@@ -131,6 +131,31 @@ export function blocksLoad(entry: null | RevocationEntry): boolean {
 }
 
 /**
+ * Whether a registry entry listing `version` may appear in a Browse list — `searchRegistry`
+ * and `searchThemeRegistry` in `registry-client.ts`, the two callers.
+ *
+ * Spec 0041's `unlisted` blocks new installs, and a listing is where a new install starts, so
+ * a version whose governing entry is `unlisted` leaves the list. `vulnerable` and `malicious`
+ * stay listed: the spec shows them with a badge, which the plugin list renders for an entry
+ * that is not installed (`PluginMarketplace.tsx`'s `shownRevocation` judges an installed
+ * entry by the installed version). `ThemeBrowser.tsx` renders no badge, so
+ * there the Install refusal is what says why. The governing entry is {@link revocationFor}'s
+ * worst match, so a version revoked both `unlisted` and `malicious` stays listed instead of
+ * disappearing without a word.
+ *
+ * The listing only. An installed copy of an `unlisted` version is not touched by this, and the
+ * install gates (`usePluginActions.ts`, `use-theme-actions.ts`) still refuse every severity on
+ * their own.
+ */
+export function isListable(
+  id: string,
+  version: string,
+  list: null | RevocationList,
+): boolean {
+  return revocationFor(id, version, list)?.severity !== "unlisted";
+}
+
+/**
  * Whether a fetched list is at or above the counter this registry has already reached.
  *
  * Refusing a lower counter is the half signing cannot do — see `sequence` on `RevocationList`

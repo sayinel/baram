@@ -11,7 +11,10 @@ import type {
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
-import { normalizeRevocationList } from "../../plugins/revocation";
+import {
+  normalizeRevocationList,
+  revocationFor,
+} from "../../plugins/revocation";
 import { tauriStorage } from "./tauri-storage";
 
 /**
@@ -441,10 +444,34 @@ export const usePluginStore = create<PluginState>()(
           registryCacheTime: Date.now(),
         }),
 
-      setUpdateAvailable: (id, version) =>
+      // §69 — `updateAvailable` must not hold a version the install gate refuses: that gate
+      // (`usePluginActions`) refuses every severity, so an entry here is an Update badge and
+      // button for an action that cannot succeed. Kept out here and in `setRevocations`
+      // rather than in each caller, because the update check (`checkForUpdates`, first run
+      // 10 s after launch by `update-checker.ts`) and `refreshRevocations` race and either may
+      // land first.
+      //
+      // A refused version also drops an earlier offer for the same id: the check passes the
+      // version the index lists now, and the Update action installs that listing
+      // (`usePluginActions`'s `handleUpdate` re-resolves it by id), not the version stored
+      // here — so an older stored version would label a button whose install is refused.
+      // `set` runs only when something changes, since each call wakes every listener: not for a
+      // refusal with nothing to drop, and not for the version already stored.
+      setUpdateAvailable: (id, version) => {
+        const { revocations, updateAvailable } = get();
+        if (revocationFor(id, version, revocations) !== null) {
+          if (Object.hasOwn(updateAvailable, id)) {
+            set((state) => ({
+              updateAvailable: omitKey(state.updateAvailable, id),
+            }));
+          }
+          return;
+        }
+        if (updateAvailable[id] === version) return;
         set((state) => ({
           updateAvailable: { ...state.updateAvailable, [id]: version },
-        })),
+        }));
+      },
 
       clearUpdateAvailable: (id) =>
         set((state) => ({
@@ -481,27 +508,39 @@ export const usePluginStore = create<PluginState>()(
       // is normal (every refresh), and a caller must not be able to walk the mark down by
       // storing an older list.
       setRevocations: (revocations, verified) =>
-        set((state) => ({
-          revocations,
-          // ‼️ RAISED ONLY BY A VERIFIED LIST (code review CRITICAL-1). Corrected from an
-          // earlier version of this comment that said "this value is persisted": it is NOT —
-          // see `partialize` and `merge` below, and that mistaken belief is what produced the
-          // defect in the first place. Within a session the mark is still a ceiling, so an
-          // unverified counter must not raise it: a `trusted` plugin answering the refresh can
-          // otherwise refuse every genuine list until the app restarts. `verified` does not
-          // stop that plugin (it writes the flag too) — it stops the NETWORK attacker.
-          revocationSequenceSeen: verified
-            ? {
-                ...state.revocationSequenceSeen,
-                [state.registryUrl]: Math.max(
-                  state.revocationSequenceSeen[state.registryUrl] ?? 0,
-                  revocations.sequence,
-                ),
-              }
-            : state.revocationSequenceSeen,
-          revocationsFetchedAt: Date.now(),
-          revocationsVerified: verified,
-        })),
+        set((state) => {
+          // §69 — the other half of `setUpdateAvailable`'s rule: an update offered before this
+          // list arrived is dropped when the list revokes it. The same object when nothing is
+          // dropped, so a refresh that revokes nothing on offer leaves it as it was.
+          const offerable = Object.entries(state.updateAvailable).filter(
+            ([id, version]) => revocationFor(id, version, revocations) === null,
+          );
+          return {
+            revocations,
+            // ‼️ RAISED ONLY BY A VERIFIED LIST (code review CRITICAL-1). Corrected from an
+            // earlier version of this comment that said "this value is persisted": it is NOT —
+            // see `partialize` and `merge` below, and that mistaken belief is what produced the
+            // defect in the first place. Within a session the mark is still a ceiling, so an
+            // unverified counter must not raise it: a `trusted` plugin answering the refresh can
+            // otherwise refuse every genuine list until the app restarts. `verified` does not
+            // stop that plugin (it writes the flag too) — it stops the NETWORK attacker.
+            revocationSequenceSeen: verified
+              ? {
+                  ...state.revocationSequenceSeen,
+                  [state.registryUrl]: Math.max(
+                    state.revocationSequenceSeen[state.registryUrl] ?? 0,
+                    revocations.sequence,
+                  ),
+                }
+              : state.revocationSequenceSeen,
+            revocationsFetchedAt: Date.now(),
+            revocationsVerified: verified,
+            updateAvailable:
+              offerable.length === Object.keys(state.updateAvailable).length
+                ? state.updateAvailable
+                : Object.fromEntries(offerable),
+          };
+        }),
     }),
     {
       name: "baram:plugins",
@@ -610,6 +649,10 @@ export const usePluginStore = create<PluginState>()(
           registryCache: current.registryCache,
           registryCacheTime: current.registryCacheTime,
           registryUrl: current.registryUrl,
+          // §69 — `updateAvailable` is IN MEMORY ONLY as well (`partialize` never writes it),
+          // so a value found in storage was planted, and it never passed `setUpdateAvailable`'s
+          // revocation check. It is what the Update badge and the Update button's label read.
+          updateAvailable: current.updateAvailable,
           // §379 — the loader's "is a dev load bounded?" answer, set from the
           // `plugin_list_dev` snapshot Rust returns each launch; never restored from storage.
           devMode: current.devMode,

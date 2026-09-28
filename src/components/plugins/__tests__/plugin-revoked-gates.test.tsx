@@ -38,6 +38,10 @@ vi.mock("../../../ipc/invoke", () => ({
 // The LISTING, mutable so one test can escalate its capabilities. Reset in `beforeEach`.
 let listing: RegistryEntry = null as unknown as RegistryEntry;
 
+// ‼️ `searchRegistry` is mocked, so Browse shows `listing` whatever the revocation list says —
+// an `unlisted` one included, which the real function drops (§69). That is on purpose: these
+// cases are about the install gate and the badge, not the listing, and the gate has to refuse
+// whatever reaches it.
 vi.mock("../../../plugins/registry-client", () => ({
   checkForUpdates: () => Promise.resolve({ demo: "1.0.0" }),
   fetchRegistryIndex: () =>
@@ -138,7 +142,10 @@ describe("the marketplace install gate (§69)", () => {
     unmount();
 
     // `unlisted` is bookkeeping and the spec forbids surfacing it — a badge whose
-    // detail view then explains nothing is worse than no badge.
+    // detail view then explains nothing is worse than no badge. This listing reaches Browse
+    // only through the mocked `searchRegistry` above; the rule it pins (`shownRevocation`
+    // hides `unlisted`) also covers an installed copy at an `unlisted` version under a
+    // listing that is not revoked, which the real Browse list does show.
     revoke("unlisted");
     render(<PluginMarketplace />);
     await screen.findByRole("button", { name: /^Install$/ });

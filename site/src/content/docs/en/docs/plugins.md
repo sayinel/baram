@@ -60,10 +60,16 @@ A plugin version can be **withdrawn** after you have already installed it — be
 issue was found in it, or because it was pulled by its author. Baram fetches a signed withdrawal
 list and checks your installed plugins against it.
 
-A withdrawn plugin is marked **Withdrawn** in the list and **is not run**, with the reason shown.
+A plugin withdrawn as harmful is marked **Withdrawn** in the list and **is not run**, with the
+reason shown.
 Its files are left exactly where they are — nothing is deleted behind your back — and a **Remove
 it** action is offered. Where the report is a vulnerability rather than a withdrawal, the plugin
 keeps running and you are told to update when a newer version appears.
+
+A version its author pulled, or that was otherwise taken off the registry, is left alone where
+you already installed it: it keeps working and is not marked. The marketplace no longer lists
+that version, and Baram refuses to install it. Whatever the reason, a withdrawn version is not
+offered as an update.
 
 Baram tells you when it cannot rely on that list: if the list has never been received, or could
 not be signature-verified, or has not been updated in a long time, it says so rather than quietly

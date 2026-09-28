@@ -29,6 +29,7 @@ import {
   themeUpdatesFor,
 } from "../../../plugins/registry-client";
 import { useSettingsStore } from "../../../stores/settings/store";
+import { usePluginStore } from "../../../stores/system/plugin";
 import { logger } from "../../../utils/logger";
 
 export function useThemeUpdates(): {
@@ -36,6 +37,7 @@ export function useThemeUpdates(): {
   updates: Record<string, RegistryEntry>;
 } {
   const installedThemes = useSettingsStore((s) => s.installedThemes);
+  const revocations = usePluginStore((s) => s.revocations);
   const [index, setIndex] = useState<null | RegistryIndex>(null);
 
   const installedCount = Object.keys(installedThemes).length;
@@ -61,8 +63,10 @@ export function useThemeUpdates(): {
   return {
     index,
     // Recomputed on every render rather than memoised: it is a loop over the installed
-    // themes (a handful) against the index, and a `useMemo` keyed on two objects that are
-    // both replaced on any settings write would recompute about as often anyway.
-    updates: index === null ? {} : themeUpdatesFor(index, installedThemes),
+    // themes (a handful) against the index.
+    updates:
+      index === null
+        ? {}
+        : themeUpdatesFor(index, installedThemes, revocations),
   };
 }

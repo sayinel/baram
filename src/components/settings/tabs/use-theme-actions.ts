@@ -415,9 +415,10 @@ export function useThemeActions() {
    * — the shape of §260 Phase 5's H2 fix next door, where the Installed tab synthesised an
    * entry with `downloadUrl: ""` and an update from that tab destroyed the plugin every
    * time. Resolving through {@link themeUpdatesFor} rather than a hand-written `.find`
-   * reuses ONE rule for "which entry updates this theme" (id, `kind === "theme"`, and a
-   * version that differs), so the badge and the button can never disagree about what the
-   * click will install.
+   * reuses ONE rule for "which entry updates this theme" — a copy not installed from a file,
+   * an entry with the same id and `kind === "theme"`, a listed version that differs from the
+   * installed one, and one no revocation names (§69) — so the badge and the button can never
+   * disagree about what the click will install.
    *
    * ‼️ NO CONSENT IS RE-ASKED, and that is a decision rather than an omission. A theme
    * carries no capability tuple (spec §9.3), so `consentRequired`'s escalation question —
@@ -440,11 +441,20 @@ export function useThemeActions() {
     ): Promise<boolean> => {
       const installed = useSettingsStore.getState().installedThemes[themeId];
       if (installed === undefined) return false;
-      const entry = themeUpdatesFor(index, { [themeId]: installed })[themeId];
+      const entry = themeUpdatesFor(
+        index,
+        { [themeId]: installed },
+        revocations,
+      )[themeId];
       if (entry === undefined) return false;
       if (inFlight.current.has(entry.id)) return false;
       inFlight.current.add(entry.id);
       try {
+        // ‼️ NOT REACHED BY A REVOCATION TODAY, so no test pins it. `themeUpdatesFor` above
+        // already skipped a listed version that this same render's `revocations` names, and
+        // this call checks the same id, version and list — an entry that gets here is not
+        // revoked. It stays as the install gate's own refusal, so a later change to how
+        // `entry` is resolved cannot quietly bypass it.
         if (refuseIfRevoked(entry)) return false;
         if (await refuseIfAppTooOld(entry)) return false;
         const staged = await stageAndRecord(entry, registryUrl);
@@ -469,7 +479,7 @@ export function useThemeActions() {
         inFlight.current.delete(entry.id);
       }
     },
-    [refuseIfAppTooOld, refuseIfRevoked, stageAndRecord, t],
+    [refuseIfAppTooOld, refuseIfRevoked, revocations, stageAndRecord, t],
   );
 
   /**

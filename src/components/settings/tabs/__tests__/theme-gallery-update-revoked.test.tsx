@@ -23,6 +23,11 @@ vi.mock("../../../../ipc/theme", () => ({
   themeUninstall: vi.fn(() => Promise.resolve()),
 }));
 
+/** The running app version `engines-app.ts` asks the backend for — the failure path below
+ *  needs a readable one. */
+const appVersion = vi.hoisted(() => vi.fn(() => Promise.resolve("0.7.3")));
+vi.mock("@tauri-apps/api/app", () => ({ getVersion: appVersion }));
+
 import type { RevocationSeverity } from "../../../../plugins/revocation";
 import type { RegistryEntry } from "../../../../plugins/types";
 import type { InstalledTheme } from "../../../../themes/theme-install";
@@ -166,8 +171,11 @@ describe("the update control", () => {
     // Fix round 1 (F1). Both of `handleUpdate`'s failure paths write `installErrors[id]`
     // and return false, and before this the card rendered none of them: the button read
     // "Updating…" and then went back to offering the same version, telling the user
-    // nothing. The withdrawn-target case is used here because it needs no IPC to reach.
-    revoke("malicious");
+    // nothing. The app-version floor is the failure used here because it needs no install
+    // IPC; a withdrawn target cannot be, since `themeUpdatesFor` never offers one.
+    fetchRegistry.mockResolvedValue({
+      plugins: [entry({ engines: { baram: ">=9.0.0" } })],
+    });
     render(gallery());
 
     const button = await screen.findByTitle("Update Dracula to v2.0.0");
@@ -176,12 +184,24 @@ describe("the update control", () => {
       await Promise.resolve();
     });
 
-    const alerts = screen
-      .getAllByRole("alert")
-      .map((el) => el.textContent ?? "");
-    expect(alerts.some((text) => text.includes("compromised build"))).toBe(
-      true,
-    );
+    await waitFor(() => {
+      const alerts = screen
+        .getAllByRole("alert")
+        .map((el) => el.textContent ?? "");
+      expect(alerts.some((text) => text.includes("9.0.0"))).toBe(true);
+    });
+  });
+
+  it("disappears when the version it offers is withdrawn", async () => {
+    // §69 — the theme install gate refuses a withdrawn target of any severity, so the control
+    // must not offer one. The list lands AFTER the control on purpose: a revocation refresh
+    // that finishes late produces that order, and the control has to follow it.
+    render(gallery());
+    expect(await screen.findByTitle("Update Dracula to v2.0.0")).toBeTruthy();
+
+    act(() => revoke("unlisted"));
+
+    expect(screen.queryByTitle(/^Update Dracula/)).toBeNull();
   });
 
   it("asks the registry nothing when no theme is installed", async () => {

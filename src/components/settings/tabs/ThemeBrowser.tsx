@@ -35,6 +35,7 @@ interface ThemeBrowserProps {
 export function ThemeBrowser({ onBack }: ThemeBrowserProps) {
   const { t } = useTranslation();
   const registryUrl = usePluginStore((s) => s.registryUrl);
+  const revocations = usePluginStore((s) => s.revocations);
 
   const [registryIndex, setRegistryIndex] = useState<null | RegistryIndex>(
     null,
@@ -71,7 +72,7 @@ export function ThemeBrowser({ onBack }: ThemeBrowserProps) {
   }, [load]);
 
   const entries = registryIndex
-    ? searchThemeRegistry(registryIndex, query)
+    ? searchThemeRegistry(registryIndex, query, revocations)
     : [];
 
   // ‼️ STABLE, not fresh arrows (external review #11). `ThemeConsentDialog`'s Escape effect

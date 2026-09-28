@@ -1,3 +1,4 @@
+import type { RevocationList } from "./revocation";
 import type {
   PluginTrust,
   RegistryEntry,
@@ -19,6 +20,7 @@ import {
   mergeChannels,
 } from "./community-registry";
 import { VALID_CAPABILITIES } from "./manifest";
+import { isListable, revocationFor } from "./revocation";
 
 const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -42,7 +44,13 @@ interface CommunityListing {
   plugins: RegistryEntry[];
 }
 
-/** Check for updates for all installed plugins */
+/**
+ * Check for updates for all installed plugins.
+ *
+ * Returns what the store RECORDED for each plugin whose listed version differs — read back
+ * from it rather than re-derived, because `setUpdateAvailable` refuses a revoked version (§69)
+ * and a second copy of that rule here could drift from it.
+ */
 export async function checkForUpdates(): Promise<Record<string, string>> {
   const store = usePluginStore.getState();
   const index = await fetchRegistryIndex();
@@ -64,8 +72,9 @@ export async function checkForUpdates(): Promise<Record<string, string>> {
     // update badge and an enabled button for it promises an action that cannot succeed.
     if (!registryEntry?.trust) continue;
     if (registryEntry.version !== plugin.manifest.version) {
-      updates[id] = registryEntry.version;
       store.setUpdateAvailable(id, registryEntry.version);
+      const recorded = usePluginStore.getState().updateAvailable;
+      if (Object.hasOwn(recorded, id)) updates[id] = recorded[id];
     }
   }
 
@@ -106,13 +115,25 @@ export async function fetchRegistryIndex(
  * A theme entry belongs in the theme gallery, not here, so it is filtered out before the
  * query even runs — an empty query must not surface it either. Absence still reads as
  * `"plugin"`, the same default `RegistryEntry.kind`'s doc comment describes.
+ *
+ * §69 — an entry is dropped at the same point, for the same reason, when the governing
+ * (worst) revocation of its LISTED version is `unlisted`: spec 0041's `unlisted` blocks new
+ * installs, this list is where a new install starts, and showing it would offer an Install
+ * button that `usePluginActions`'s gate refuses. A version also revoked `vulnerable` or
+ * `malicious` stays, since the worse entry governs. The rule is {@link isListable}'s, shared
+ * with `searchThemeRegistry`. `revocations` is required so each caller says which list it
+ * holds; `null` means no list is held (none received yet, or one cleared by `setRegistryUrl`
+ * or found unreadable on rehydrate) and drops nothing.
  */
 export function searchRegistry(
   index: RegistryIndex,
   query: string,
+  revocations: null | RevocationList,
 ): RegistryEntry[] {
   const plugins = index.plugins.filter(
-    (p) => (p.kind ?? "plugin") === "plugin",
+    (p) =>
+      (p.kind ?? "plugin") === "plugin" &&
+      isListable(p.id, p.version, revocations),
   );
   if (!query.trim()) return plugins;
 
@@ -142,12 +163,20 @@ function matchesQuery(entry: RegistryEntry, lower: string): boolean {
  * `"plugin"` — see `RegistryEntry.kind`'s doc comment) never appears here either. Reuses the
  * same `fetchRegistryIndex` result — themes and plugins share the merged list, though §382
  * split the fetch itself into `index.json` and `community.json` behind their own caches.
+ *
+ * §69 — a listing whose governing (worst) revocation is `unlisted` leaves this list too,
+ * before the query runs, by the same {@link isListable} rule and for the reason
+ * `searchRegistry` gives (here the refusing gate is `use-theme-actions.ts`'s
+ * `refuseIfRevoked`).
  */
 export function searchThemeRegistry(
   index: RegistryIndex,
   query: string,
+  revocations: null | RevocationList,
 ): RegistryEntry[] {
-  const themes = index.plugins.filter((p) => p.kind === "theme");
+  const themes = index.plugins.filter(
+    (p) => p.kind === "theme" && isListable(p.id, p.version, revocations),
+  );
   if (!query.trim()) return themes;
 
   const lower = query.toLowerCase();
@@ -171,6 +200,11 @@ export function searchThemeRegistry(
  * "Newer" is `!==`, the same comparison `checkForUpdates` makes, and it is not a mistake:
  * a registry that rolls a bad version back publishes a LOWER number, and an editor that
  * only ever counts upwards would leave every user on the version being withdrawn.
+ *
+ * §69 — a listed version the revocation list names is skipped, whatever its severity: the
+ * theme install gate (`use-theme-actions.ts`'s `refuseIfRevoked`) refuses every severity, so
+ * offering it would raise a badge whose button can only be refused. It is the LISTED version
+ * that is checked — a revocation of the installed one does not hide the update away from it.
  */
 export function themeUpdatesFor(
   index: RegistryIndex,
@@ -178,6 +212,7 @@ export function themeUpdatesFor(
     string,
     { manifest: { version: string }; origin?: "file" }
   >,
+  revocations: null | RevocationList,
 ): Record<string, RegistryEntry> {
   const updates: Record<string, RegistryEntry> = {};
   for (const [id, installed] of Object.entries(installedThemes)) {
@@ -187,6 +222,7 @@ export function themeUpdatesFor(
     const entry = index.plugins.find((p) => p.id === id && p.kind === "theme");
     if (entry === undefined) continue;
     if (entry.version === installed.manifest.version) continue;
+    if (revocationFor(id, entry.version, revocations) !== null) continue;
     updates[id] = entry;
   }
   return updates;

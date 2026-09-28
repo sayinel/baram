@@ -150,7 +150,7 @@ export function PluginMarketplace() {
   );
 
   const filteredPlugins = registryIndex
-    ? searchRegistry(registryIndex, searchQuery)
+    ? searchRegistry(registryIndex, searchQuery, revocations)
     : [];
 
   const rows = buildPluginRows({

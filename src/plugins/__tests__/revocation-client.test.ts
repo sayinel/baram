@@ -474,6 +474,22 @@ describe("refreshRevocations", () => {
     );
   });
 
+  it("does not RESTORE an offered plugin update planted in storage (§69)", async () => {
+    // `updateAvailable` is in memory only — `partialize` never writes it — so a value found in
+    // storage was planted, and it never passed `setUpdateAvailable`'s revocation check. This one
+    // offers a version the list restored beside it revokes.
+    usePluginStore.setState({ updateAvailable: {} });
+    await rehydrateWith({
+      revocations: LIST,
+      updateAvailable: { bad: "2.0.0" },
+    });
+    const state = usePluginStore.getState();
+    // The list from the same blob DID come back, so the absence below is the reset, not a
+    // rehydrate that restored nothing.
+    expect(revocationFor("bad", "2.0.0", state.revocations)).not.toBeNull();
+    expect(state.updateAvailable).toEqual({});
+  });
+
   it.each([[false], [true]])(
     "RESTORES revocationsVerified=%s across a launch rather than assuming it",
     async (verified) => {
