@@ -9,7 +9,11 @@
  * 만든 로컬 zip 의 sha256 이 게시된 항목의 `checksum` 과 같고, 점검한 파일이 곧 게시된 파일이다.
  *
  * ‼️ 테마 내용은 **실행하지 않는다**. 이 파일이 읽는 것은 매니페스트와 매니페스트가 선언한
- * 파일뿐이고, 그 경로가 테마 폴더를 벗어나지 못하게 한다(`themePackageFiles`).
+ * 파일뿐이고, 그 경로가 테마 폴더를 벗어나지 못하게 한다 — 경로의 모양은 `themePackageFiles`,
+ * 읽기는 `readThemeFile` 이 가두고, 매니페스트도 그 관문을 지난 뒤에야 읽힌다. 폴더 자체가
+ * 심볼릭 링크면 거부한다(`packageTheme`). 보지 않는 것: 폴더의 **조상** 경로의 링크 — 마지막
+ * 마디만 `lstat` 한다(`theme-release-workflow.test.ts` 의 합성 루트가 `examples` 를 링크하고,
+ * macOS 의 임시 폴더는 `/var` 링크 밑에 있다).
  */
 import type { ThemeManifest } from "../src/themes/theme-manifest";
 import type { PreviewPalettes } from "../src/themes/theme-preview-palette";
@@ -23,7 +27,7 @@ import {
   ZipWriter,
 } from "@zip.js/zip.js";
 import { lstatSync, readFileSync, realpathSync } from "node:fs";
-import { join, resolve, sep } from "node:path";
+import { resolve, sep } from "node:path";
 
 import { parseBaramFloor } from "../src/plugins/engines";
 import { compareVersions } from "../src/plugins/version-range";
@@ -152,17 +156,45 @@ export async function packageTheme(
   expected: { appVersion: string; version: string },
 ): Promise<PackagedTheme | Refusal> {
   const root = resolve(dir);
+  // 폴더 자체가 링크면 그 너머 전체가 "폴더 안" 이 된다 — `readThemeFile` 은 실제 경로를 폴더의
+  // **실제** 경로와 비교하므로 링크된 폴더를 막지 못한다.
+  let rootStat;
+  try {
+    rootStat = lstatSync(root);
+  } catch {
+    return refuse(`no theme directory at ${dir}`);
+  }
+  if (rootStat.isSymbolicLink()) {
+    return refuse(
+      `${dir} is a symbolic link — pass the theme directory itself, not a link to it`,
+    );
+  }
   let realRoot: string;
   try {
     realRoot = realpathSync(root);
   } catch {
     return refuse(`no theme directory at ${dir}`);
   }
+  const folder = { dir, realRoot, root };
+  // 매니페스트를 관문 **다음에**, 한 번만 읽는다 — 파싱하는 바이트가 곧 묶는 바이트다.
+  const read = readThemeFile(
+    folder,
+    THEME_MANIFEST,
+    `no ${THEME_MANIFEST} in ${dir}`,
+  );
+  if (!read.ok) return read;
+  const manifestBytes = read.bytes;
   let text: string;
   try {
-    text = readFileSync(join(root, THEME_MANIFEST), "utf8");
+    // `ignoreBOM: true` 는 BOM 을 떼지 않고 파서에 넘긴다(그래서 거부된다). 앱의 스테이징은
+    // 매니페스트를 `read_to_string` 으로 읽어 `serde_json::from_str` 에 넘기고
+    // (`src-tauri/src/plugin/install.rs`), serde_json 은 BOM 을 공백으로 읽지 않는다 — 기본
+    // `TextDecoder` 처럼 BOM 을 떼면 앱이 설치하지 못하는 매니페스트가 여기를 지난다.
+    text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(
+      manifestBytes,
+    );
   } catch {
-    return refuse(`no ${THEME_MANIFEST} in ${dir}`);
+    return refuse(`${THEME_MANIFEST} is not valid UTF-8`);
   }
   const parsed = parseThemeManifestText(text);
   if (!parsed.valid) {
@@ -190,38 +222,18 @@ export async function packageTheme(
   const listed = themePackageFiles(manifest);
   if (!listed.ok) return listed;
 
-  const contents: Uint8Array[] = [];
-  for (const file of listed.files) {
-    const full = resolve(root, file);
-    if (!full.startsWith(root + sep)) {
-      return refuse(`${JSON.stringify(file)} resolves outside ${dir}`);
-    }
-    let stat;
-    try {
-      stat = lstatSync(full);
-    } catch {
-      return refuse(
-        `${JSON.stringify(file)} is declared but not present in ${dir}`,
-      );
-    }
-    if (!stat.isFile()) {
-      return refuse(
-        `${JSON.stringify(file)} is not a regular file (symlinks are not followed)`,
-      );
-    }
-    // `lstat` 은 마지막 마디만 본다 — `light/` 가 폴더 밖을 가리키는 링크면 `light/tokens.json` 은
-    // 일반 파일로 보이면서 밖을 읽는다. 실제 경로로 한 번 더 가둔다.
-    if (!realpathSync(full).startsWith(realRoot + sep)) {
-      return refuse(
-        `${JSON.stringify(file)} resolves outside ${dir} through a linked directory`,
-      );
-    }
-    const bytes = new Uint8Array(readFileSync(full));
-    if (file !== THEME_MANIFEST) {
-      const problem = tokensProblem(file, bytes);
-      if (problem !== null) return refuse(problem);
-    }
-    contents.push(bytes);
+  // 첫째는 늘 매니페스트다(`themePackageFiles`) — 위에서 읽은 그 바이트를 그대로 묶는다.
+  const contents: Uint8Array[] = [manifestBytes];
+  for (const file of listed.files.slice(1)) {
+    const declared = readThemeFile(
+      folder,
+      file,
+      `${JSON.stringify(file)} is declared but not present in ${dir}`,
+    );
+    if (!declared.ok) return declared;
+    const problem = tokensProblem(file, declared.bytes);
+    if (problem !== null) return refuse(problem);
+    contents.push(declared.bytes);
   }
 
   const writer = new ZipWriter(new Uint8ArrayWriter(), {
@@ -241,6 +253,41 @@ export async function packageTheme(
     ok: true,
     zipName: `${manifest.id}-${manifest.version}.zip`,
   };
+}
+
+/**
+ * 테마 폴더 안의 파일 하나를 읽는다 — 매니페스트도, 매니페스트가 선언한 파일도 이 관문을 지난다.
+ * 폴더 밖으로 풀리는 경로 · 일반 파일이 아닌 것(`lstat` — 심볼릭 링크를 따라가지 않는다) · 실제
+ * 경로가 폴더의 실제 경로 밖인 것을 거부한다. `missing` 은 파일이 없을 때의 거부 문구다.
+ */
+function readThemeFile(
+  folder: { dir: string; realRoot: string; root: string },
+  file: string,
+  missing: string,
+): Refusal | { bytes: Uint8Array; ok: true } {
+  const full = resolve(folder.root, file);
+  if (!full.startsWith(folder.root + sep)) {
+    return refuse(`${JSON.stringify(file)} resolves outside ${folder.dir}`);
+  }
+  let stat;
+  try {
+    stat = lstatSync(full);
+  } catch {
+    return refuse(missing);
+  }
+  if (!stat.isFile()) {
+    return refuse(
+      `${JSON.stringify(file)} is not a regular file (symlinks are not followed)`,
+    );
+  }
+  // `lstat` 은 마지막 마디만 본다 — `light/` 가 폴더 밖을 가리키는 링크면 `light/tokens.json` 은
+  // 일반 파일로 보이면서 밖을 읽는다. 실제 경로로 한 번 더 가둔다.
+  if (!realpathSync(full).startsWith(folder.realRoot + sep)) {
+    return refuse(
+      `${JSON.stringify(file)} resolves outside ${folder.dir} through a linked directory`,
+    );
+  }
+  return { bytes: new Uint8Array(readFileSync(full)), ok: true };
 }
 
 function tokensProblem(file: string, bytes: Uint8Array): null | string {
@@ -289,6 +336,9 @@ export async function verifyThemeArchive(
           `the archive holds a directory entry ${JSON.stringify(entry.filename)}`,
         );
       }
+      // 방어로 남긴다 — 위의 `strictness: "strict"` 에서 zip.js 2.18.2 의 `getEntries` 는 같은 이름이
+      // 둘인 아카이브에 `Ambiguous archive`(reason `duplicate filename`)를 던져, 이 줄에 닿기 전에 위의
+      // catch 가 거부한다. strict 를 풀거나 zip.js 가 바뀌면 이 줄이 그 자리를 맡는다.
       if (found.has(entry.filename)) {
         return refuse(
           `the archive holds ${JSON.stringify(entry.filename)} twice`,

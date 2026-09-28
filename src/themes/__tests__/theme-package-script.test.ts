@@ -2,7 +2,12 @@
 // 스펙 0063 §7.3 · §7.5. 워크플로 없이 여기서 돈다 — 워크플로의 두 단계는 이 함수를 부르는
 // CLI(`run-theme-package.ts`)일 뿐이다.
 
-import { Uint8ArrayReader, Uint8ArrayWriter, ZipWriter } from "@zip.js/zip.js";
+import {
+  Uint8ArrayReader,
+  Uint8ArrayWriter,
+  ZipReader,
+  ZipWriter,
+} from "@zip.js/zip.js";
 import { createHash } from "node:crypto";
 import {
   cpSync,
@@ -142,6 +147,68 @@ describe("packageTheme (스펙 0063 §7.3)", () => {
     expect(result.error).toContain("through a linked directory");
   });
 
+  // 무엇이 이것을 실패시키는가: 매니페스트를 관문보다 먼저 읽으면 — 링크를 따라가 밖의 파일을
+  // 파싱하고, 그 파일이 JSON 이 아니면 관문 대신 JSON 오류가 난다.
+  it("매니페스트가 심볼릭 링크면 파싱하기 전에 관문이 거부한다", async () => {
+    const dir = copyOfHangul();
+    const outside = join(
+      mkdtempSync(join(tmpdir(), "baram-theme-outside-")),
+      "baram-theme.json",
+    );
+    writeFileSync(outside, "not json");
+    unlinkSync(join(dir, "baram-theme.json"));
+    symlinkSync(outside, join(dir, "baram-theme.json"));
+    const result = await packageTheme(dir, OK);
+    expect(result).toMatchObject({ ok: false });
+    if (result.ok) return;
+    expect(result.error).toContain('"baram-theme.json" is not a regular file');
+    expect(result.error).not.toContain("is invalid");
+  });
+
+  it("테마 폴더 자체가 심볼릭 링크면 거부한다", async () => {
+    const link = join(
+      mkdtempSync(join(tmpdir(), "baram-theme-link-")),
+      "hangul",
+    );
+    symlinkSync(copyOfHangul(), link);
+    const result = await packageTheme(link, OK);
+    expect(result).toMatchObject({ ok: false });
+    if (result.ok) return;
+    expect(result.error).toContain("is a symbolic link");
+  });
+
+  // 앱의 스테이징은 매니페스트를 `read_to_string` 으로 읽어 `serde_json::from_str` 에 넘기고
+  // (`src-tauri/src/plugin/install.rs`), 그 파서는 BOM 을 받지 않는다. 기본 `TextDecoder` 는 BOM 을
+  // 조용히 떼므로, 그렇게 읽으면 앱이 설치하지 못하는 매니페스트가 게시된다.
+  it("BOM 으로 시작하는 매니페스트는 거부한다", async () => {
+    const dir = copyOfHangul();
+    const path = join(dir, "baram-theme.json");
+    writeFileSync(path, `\uFEFF${readFileSync(path, "utf8")}`);
+    const result = await packageTheme(dir, OK);
+    expect(result).toMatchObject({ ok: false });
+    if (result.ok) return;
+    expect(result.error).toContain("baram-theme.json is invalid");
+  });
+
+  // 무엇이 이것을 실패시키는가: 폴더를 통째로 묶으면. `SHA256SUMS` 는 게시 전 점검의 sha256 을
+  // 적는 기록이고(`plugin-release.yml` 의 checksum 관문), 선언된 모드 파일이 아니다.
+  it("폴더의 SHA256SUMS 는 zip 에 들어가지 않는다", async () => {
+    const dir = copyOfHangul();
+    writeFileSync(
+      join(dir, "SHA256SUMS"),
+      `${"a".repeat(64)}  baram-hangul-1.0.0.zip\n`,
+    );
+    const result = await packageTheme(dir, OK);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.files).not.toContain("SHA256SUMS");
+    const reader = new ZipReader(new Uint8ArrayReader(result.bytes));
+    const names = (await reader.getEntries()).map((entry) => entry.filename);
+    await reader.close();
+    expect(names).toEqual([...result.files]);
+    expect(names).not.toContain("SHA256SUMS");
+  });
+
   it("시드 키가 빠진 토큰은 거부한다 — 앱은 그 모드를 색 없이 설치한다", async () => {
     const dir = copyOfHangul();
     const path = join(dir, "dark/tokens.json");
@@ -253,6 +320,22 @@ describe("verifyThemeArchive (스펙 0063 §7.3 — 묶인 zip 을 다시 검증
       version: "1.0.1",
     });
     expect(otherVersion).toMatchObject({ ok: false });
+  });
+
+  it("디렉터리 항목이 끼어 있으면 거부한다", async () => {
+    const writer = new ZipWriter(new Uint8ArrayWriter());
+    for (const path of [
+      "baram-theme.json",
+      "light/tokens.json",
+      "dark/tokens.json",
+    ]) {
+      await writer.add(path, new Uint8ArrayReader(hangulFile(path)));
+    }
+    await writer.add("light/", undefined, { directory: true });
+    const result = await verifyThemeArchive(await writer.close(), expected);
+    expect(result).toMatchObject({ ok: false });
+    if (result.ok) return;
+    expect(result.error).toContain('directory entry "light/"');
   });
 
   it("zip 이 아닌 바이트를 거부한다", async () => {
