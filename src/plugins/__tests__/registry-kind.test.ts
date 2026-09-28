@@ -102,7 +102,7 @@ describe("searchRegistry lists only plugin-kind entries (§360)", () => {
         entry({ id: "explicit", kind: "plugin" }),
       ],
     };
-    expect(searchRegistry(index, "").map((p) => p.id)).toEqual([
+    expect(searchRegistry(index, "", null).map((p) => p.id)).toEqual([
       "legacy",
       "explicit",
     ]);
@@ -115,14 +115,16 @@ describe("searchRegistry lists only plugin-kind entries (§360)", () => {
         entry({ id: "a-theme", kind: "theme" }),
       ],
     };
-    expect(searchRegistry(index, "").map((p) => p.id)).toEqual(["a-plugin"]);
+    expect(searchRegistry(index, "", null).map((p) => p.id)).toEqual([
+      "a-plugin",
+    ]);
   });
 
   it("excludes a theme entry from a text search too, even when the query matches it", () => {
     const index: RegistryIndex = {
       plugins: [entry({ id: "a-theme", kind: "theme", name: "Matching Name" })],
     };
-    expect(searchRegistry(index, "matching")).toEqual([]);
+    expect(searchRegistry(index, "matching", null)).toEqual([]);
   });
 });
 
@@ -133,14 +135,14 @@ describe("searchRegistry lists only plugin-kind entries (§360)", () => {
 describe("searchThemeRegistry lists only theme-kind entries (§361)", () => {
   it("excludes a legacy entry (no `kind`) — absence reads as plugin, not theme", () => {
     const index: RegistryIndex = { plugins: [entry({ id: "legacy" })] };
-    expect(searchThemeRegistry(index, "")).toEqual([]);
+    expect(searchThemeRegistry(index, "", null)).toEqual([]);
   });
 
   it("excludes an explicit kind: 'plugin' entry", () => {
     const index: RegistryIndex = {
       plugins: [entry({ id: "a-plugin", kind: "plugin" })],
     };
-    expect(searchThemeRegistry(index, "")).toEqual([]);
+    expect(searchThemeRegistry(index, "", null)).toEqual([]);
   });
 
   it("keeps a kind: 'theme' entry, even with an empty query", () => {
@@ -150,7 +152,7 @@ describe("searchThemeRegistry lists only theme-kind entries (§361)", () => {
         entry({ id: "a-theme", kind: "theme" }),
       ],
     };
-    expect(searchThemeRegistry(index, "").map((p) => p.id)).toEqual([
+    expect(searchThemeRegistry(index, "", null).map((p) => p.id)).toEqual([
       "a-theme",
     ]);
   });
@@ -168,10 +170,10 @@ describe("searchThemeRegistry lists only theme-kind entries (§361)", () => {
         }),
       ],
     };
-    expect(searchThemeRegistry(index, "dracula")).toHaveLength(1);
-    expect(searchThemeRegistry(index, "dark palette")).toHaveLength(1);
-    expect(searchThemeRegistry(index, "vampire")).toHaveLength(1);
-    expect(searchThemeRegistry(index, "ada")).toHaveLength(1);
-    expect(searchThemeRegistry(index, "nonexistent")).toEqual([]);
+    expect(searchThemeRegistry(index, "dracula", null)).toHaveLength(1);
+    expect(searchThemeRegistry(index, "dark palette", null)).toHaveLength(1);
+    expect(searchThemeRegistry(index, "vampire", null)).toHaveLength(1);
+    expect(searchThemeRegistry(index, "ada", null)).toHaveLength(1);
+    expect(searchThemeRegistry(index, "nonexistent", null)).toEqual([]);
   });
 });

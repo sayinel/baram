@@ -88,7 +88,10 @@ beforeEach(() => {
   handleInstall.mockClear();
   settleConsent.mockClear();
   pendingConsent = null;
-  usePluginStore.setState({ registryUrl: "https://reg.test/index.json" });
+  usePluginStore.setState({
+    registryUrl: "https://reg.test/index.json",
+    revocations: null,
+  });
   useSettingsStore.setState({ installedThemes: {} });
 });
 
@@ -234,6 +237,32 @@ describe("ThemeBrowser", () => {
       expect(screen.getByText("Dracula")).toBeInTheDocument(),
     );
     expect(screen.queryByText("Some Plugin")).toBeNull();
+  });
+
+  it("leaves out a theme whose listed version is withdrawn as unlisted (§69)", async () => {
+    // Spec 0041's `unlisted` blocks new installs, so the card would offer an Install that
+    // `refuseIfRevoked` refuses. The neighbour renders, so the absence is about the list.
+    usePluginStore.setState({
+      revocations: {
+        revoked: [
+          { id: "dracula", reason: "r", severity: "unlisted", versions: "*" },
+        ],
+        sequence: 1,
+        version: 1,
+      },
+    });
+    fetchResult = Promise.resolve({
+      plugins: [
+        themeEntry(),
+        themeEntry({ id: "solarized", name: "Solarized" }),
+      ],
+    });
+    render(<ThemeBrowser onBack={() => {}} />);
+
+    await waitFor(() =>
+      expect(screen.getByText("Solarized")).toBeInTheDocument(),
+    );
+    expect(screen.queryByText("Dracula")).toBeNull();
   });
 
   it("filters by the search box (name, description, author)", async () => {

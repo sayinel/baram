@@ -7,10 +7,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const fetchRegistryIndex = vi.fn();
 const checkForUpdates = vi.fn();
 
-vi.mock("../../../plugins/registry-client", () => ({
+// `searchRegistry` is the real one, so Browse lists what the marketplace's own filter lets
+// through — the §69 case at the bottom depends on that.
+vi.mock("../../../plugins/registry-client", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../../plugins/registry-client")
+  >()),
   checkForUpdates: (...a: unknown[]) => checkForUpdates(...a),
   fetchRegistryIndex: (...a: unknown[]) => fetchRegistryIndex(...a),
-  searchRegistry: (index: null | RegistryIndex) => index?.plugins ?? [],
 }));
 
 import { usePluginStore } from "../../../stores/system/plugin";
@@ -46,6 +50,7 @@ beforeEach(() => {
     pluginErrors: {},
     registryCache: null,
     registryCacheTime: 0,
+    revocations: null,
     updateAvailable: {},
   });
 });
@@ -292,5 +297,37 @@ describe("community list failure (§382)", () => {
     expect(
       screen.queryByText(/Community plugins could not be loaded/),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("the Browse list and a revoked listing (§69)", () => {
+  it("leaves out an entry whose listed version is revoked `unlisted`", async () => {
+    // Spec 0041's `unlisted` blocks new installs, so its card would offer an Install that
+    // `usePluginActions` refuses. The neighbour renders, so the absence is about the list.
+    usePluginStore.setState({
+      revocations: {
+        revoked: [
+          {
+            id: "test-plugin",
+            reason: "r",
+            severity: "unlisted",
+            versions: "*",
+          },
+        ],
+        sequence: 1,
+        version: 1,
+      },
+    });
+    fetchRegistryIndex.mockResolvedValue({
+      plugins: [
+        samplePlugin,
+        { ...samplePlugin, id: "other-plugin", name: "Other Plugin" },
+      ],
+      updatedAt: "2026-01-01",
+    });
+    render(<PluginMarketplace />);
+
+    expect(await screen.findByText("Other Plugin")).toBeInTheDocument();
+    expect(screen.queryByText("Test Plugin")).toBeNull();
   });
 });

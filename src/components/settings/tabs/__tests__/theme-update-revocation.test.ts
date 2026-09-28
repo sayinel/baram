@@ -227,7 +227,7 @@ describe("handleUpdate", () => {
   });
 
   it.each(["malicious", "unlisted", "vulnerable"] as const)(
-    "refuses a %s withdrawal of the target version",
+    "does not update to a %s-withdrawn target",
     async (severity) => {
       useSettingsStore.setState({
         installedThemes: { dracula: installedTheme() },
@@ -246,9 +246,10 @@ describe("handleUpdate", () => {
 
       expect(ok).toBe(false);
       expect(installTheme).not.toHaveBeenCalled();
-      expect(result.current.installErrors.dracula).toContain(
-        "compromised build",
-      );
+      // §69 — `themeUpdatesFor`, the rule the badge also uses, skips a withdrawn target, so
+      // `handleUpdate` resolves no entry and returns before `refuseIfRevoked` could write an
+      // error. An error here would mean the button resolved an update the badge does not show.
+      expect(result.current.installErrors.dracula).toBeUndefined();
       // The record is untouched — a refusal is not a removal.
       expect(
         useSettingsStore.getState().installedThemes.dracula.manifest.version,

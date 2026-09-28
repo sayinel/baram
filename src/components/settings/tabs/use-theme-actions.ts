@@ -440,7 +440,11 @@ export function useThemeActions() {
     ): Promise<boolean> => {
       const installed = useSettingsStore.getState().installedThemes[themeId];
       if (installed === undefined) return false;
-      const entry = themeUpdatesFor(index, { [themeId]: installed })[themeId];
+      const entry = themeUpdatesFor(
+        index,
+        { [themeId]: installed },
+        revocations,
+      )[themeId];
       if (entry === undefined) return false;
       if (inFlight.current.has(entry.id)) return false;
       inFlight.current.add(entry.id);
@@ -469,7 +473,7 @@ export function useThemeActions() {
         inFlight.current.delete(entry.id);
       }
     },
-    [refuseIfAppTooOld, refuseIfRevoked, stageAndRecord, t],
+    [refuseIfAppTooOld, refuseIfRevoked, revocations, stageAndRecord, t],
   );
 
   /**

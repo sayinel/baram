@@ -1,5 +1,6 @@
 // §260 Phase 6 — the registry index is remote input, and `trust` decides which realm a
 // plugin's code runs in. This suite pins the one seam where that input enters the app.
+import type { RevocationEntry, RevocationList } from "../revocation";
 import type { RegistryEntry, RegistryIndex } from "../types";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -14,7 +15,12 @@ import { usePluginStore } from "../../stores/system/plugin";
 import { previewPaletteFrom } from "../../themes/theme-preview-palette";
 import { DEFAULT_DARK_PALETTE } from "../../types/generated/palette-dark";
 import { DEFAULT_LIGHT_PALETTE } from "../../types/generated/palette-light";
-import { checkForUpdates, fetchRegistryIndex } from "../registry-client";
+import {
+  checkForUpdates,
+  fetchRegistryIndex,
+  searchRegistry,
+  searchThemeRegistry,
+} from "../registry-client";
 
 function entry(over: Partial<RegistryEntry> = {}): RegistryEntry {
   return {
@@ -361,3 +367,92 @@ describe("fetchRegistryIndex filters a theme's preview (스펙 0063 §5.1)", () 
     expect(byId.plugin?.preview).toBeUndefined();
   });
 });
+
+/** A revocation list naming each `(id, severity, versions)` — `reason` is never read here. */
+function revoking(
+  ...revoked: Pick<RevocationEntry, "id" | "severity" | "versions">[]
+): RevocationList {
+  return {
+    revoked: revoked.map((r) => ({ ...r, reason: "r" })),
+    sequence: 1,
+    version: 1,
+  };
+}
+
+// §69 — spec 0041's `unlisted` blocks new installs, and a Browse list is where a new install
+// starts. Both lists run every case: `kind` is the only thing that differs between them.
+describe.each([
+  { kind: undefined, name: "searchRegistry", search: searchRegistry },
+  {
+    kind: "theme" as const,
+    name: "searchThemeRegistry",
+    search: searchThemeRegistry,
+  },
+])(
+  "$name leaves out a listing revoked `unlisted` (§69)",
+  ({ kind, search }) => {
+    const listed = (id: string, version = "1.0.0") =>
+      entry({ id, kind, version });
+    const ids = (entries: RegistryEntry[]) => entries.map((p) => p.id);
+
+    it("drops it with an empty query, and keeps the entry beside it", () => {
+      const index: RegistryIndex = {
+        plugins: [listed("gone"), listed("kept")],
+      };
+      const list = revoking({
+        id: "gone",
+        severity: "unlisted",
+        versions: "*",
+      });
+      expect(ids(search(index, "", list))).toEqual(["kept"]);
+    });
+
+    it("drops it from a query that matches it", () => {
+      const index: RegistryIndex = { plugins: [listed("gone")] };
+      const list = revoking({
+        id: "gone",
+        severity: "unlisted",
+        versions: "*",
+      });
+      // The query does match: without the list it finds the entry.
+      expect(ids(search(index, "gone", null))).toEqual(["gone"]);
+      expect(search(index, "gone", list)).toEqual([]);
+    });
+
+    it("keeps it when the unlisted range does not cover the LISTED version", () => {
+      const index: RegistryIndex = { plugins: [listed("p", "2.0.0")] };
+      const list = revoking({
+        id: "p",
+        severity: "unlisted",
+        versions: { lt: "2.0.0" },
+      });
+      expect(ids(search(index, "", list))).toEqual(["p"]);
+    });
+
+    it.each(["vulnerable", "malicious"] as const)(
+      "keeps a %s listing — its badge is how the spec shows it",
+      (severity) => {
+        const index: RegistryIndex = { plugins: [listed("p")] };
+        const list = revoking({ id: "p", severity, versions: "*" });
+        expect(ids(search(index, "", list))).toEqual(["p"]);
+      },
+    );
+
+    it("keeps a version both unlisted and malicious — the worst entry governs", () => {
+      // `revocationFor` resolves to the malicious entry, so the listing stays up WITH its badge
+      // instead of vanishing without one. `unlisted` is first on purpose: a rule that took the
+      // first match, or asked "is any match unlisted", drops it.
+      const index: RegistryIndex = { plugins: [listed("p")] };
+      const list = revoking(
+        { id: "p", severity: "unlisted", versions: "*" },
+        { id: "p", severity: "malicious", versions: "*" },
+      );
+      expect(ids(search(index, "", list))).toEqual(["p"]);
+    });
+
+    it("drops nothing when no list has been received", () => {
+      const index: RegistryIndex = { plugins: [listed("a"), listed("b")] };
+      expect(ids(search(index, "", null))).toEqual(["a", "b"]);
+    });
+  },
+);
