@@ -14,7 +14,7 @@ describe("charsForWidth", () => {
     expect(charsForWidth(800, { ...base, advanceRatio: EN })).toBe(83);
   });
 
-  it("레퍼런스 테마 720px · 5rem · −0.01em · 17px — 39자", () => {
+  it("레퍼런스 초안 720px · 5rem · −0.01em · 17px — 39자", () => {
     expect(
       charsForWidth(720, {
         advanceRatio: KO,

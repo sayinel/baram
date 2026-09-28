@@ -1,0 +1,21 @@
+{
+  "id": "baram-hangul",
+  "name": "Baram Hangul",
+  "description": "Made for writing in Korean: words stay whole at line breaks, set in Pretendard on cream paper.",
+  "author": "Baram",
+  "license": "Apache-2.0",
+  "version": "1.0.0",
+  "engines": { "baram": ">=0.7.7" },
+  "modes": {
+    "light": { "tokens": "light/tokens.json" },
+    "dark": { "tokens": "dark/tokens.json" }
+  },
+  "dials": {
+    "editorEmphasisStyle": "weight",
+    "editorFontFamily": "Pretendard Variable",
+    "editorFontSize": 17,
+    "editorLetterSpacing": -0.01,
+    "editorLineBreak": "keepAll",
+    "editorParagraphSpacing": 1
+  }
+}

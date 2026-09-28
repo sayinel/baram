@@ -9,7 +9,10 @@ plugin author's `tsconfig` compiles against.
 > directory's own `README.md`) are an unrelated demo **vault** used to show
 > off Baram's editor features (math, Mermaid, wikilinks, backlinks). They
 > have nothing to do with the plugin system and are not touched by anything
-> in this directory.
+> in this directory. `examples/themes/`, also one level up, is not part of
+> that vault either: it is the publish source of Baram's reference theme,
+> Baram Hangul (`examples/themes/hangul/` — its README is the maintainer
+> note).
 
 For the full narrative guide (trust model, capability list, event system,
 Shadow-DOM panels, etc.), see **[`docs/plugin-development.md`](../../docs/plugin-development.md)**.
