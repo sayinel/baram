@@ -1,174 +1,184 @@
-# 레퍼런스 테마 (초안)
+# Baram Hangul — 관리자 노트
 
-**성격:** 한글 본문 조판 우선 · 에디터 우선 (스펙 0055 §371.3).
+이 폴더는 레지스트리에 게시할 테마 **Baram Hangul** 의 원본이다. 이 README 는 관리자 노트이고 게시 zip 에
+들어가지 않는다(스펙 0063 §7.1 — 아래 "zip 에 들어가는 것").
 
-**이 디렉터리는 아직 설치 가능한 패키지가 아니다.**
+## 무엇인가
 
-| 없는 것 | 누가 채우는가 |
-|---|---|
-| 번들 · 설치 · 출고 경로 | §371 6b — 레퍼런스 테마 출고(스펙 0055 §16 6단계의 뒤 절반) |
+**한글로 글을 쓰는 사람을 위한 기본 테마**다(스펙 0063 D8). 라이트 · 다크 두 모드를 `tokens.json` 으로만 싣고
+CSS 는 없다. 매니페스트의 `description` 이 성격을 한 문장으로 적는다 — 줄바꿈에서 어절이 깨지지 않고, Pretendard 로,
+미색 종이 위에.
 
-6b 는 아직 스펙 · 계획 번호가 없다. 이 표가 처음 쓰일 때 적은 `0097` 은 그 뒤 간격·모서리 토큰 채택
-계획(`dev/plans/0097-space-radius-token-adoption-plan.md`)이 가져갔다. 같은 표에 있던 두 행은 채워져서
-뺐다 — "다이얼을 읽는 릴리스 번호" 는 v0.7.5 가 채웠고(아래 문단), "다이얼 값의 export"(§371.2)는 앞
-절반인 6a(계획 0110, PR #752 — `src/themes/appearance-package.ts`)가 채웠다. 그 export 는 지금 입은
-외관을 패키지로 쓰는 것이라, 이 디렉터리를 패키지로 만들어 주지는 않는다.
+초안(옮기기 전의 `src/themes/reference/` — 커밋 `a61e1317` 에 그대로 있다)은 "한글 본문 조판 우선 · 에디터
+우선" 의 레퍼런스 테마였고, 크롬 세 표면을 감추는 몰입형 전제와 다이얼의 매니페스트 경로를 행사하려고 고른 값을 함께
+실었다. 출고하면서 그 둘을 걷어 냈다(D10 · D11). 다이얼 스키마를 시험하는 역할은
+`src/themes/__tests__/reference-theme.test.ts` 로 남는다(스펙 0063 §10 이 0055 §9.3 · §10.3 에 단 정정) — 아래
+"테스트가 보는 것".
 
-**`engines.baram` 이 `">=0.7.4"` 인 이유:** 이 필드는 `theme-package-export.ts` 의
-`MIN_BARAM_FOR_TOKENS_PACKAGE` 가 정의하는 뜻 그대로 "다이얼을 읽을 수 있다" 가
-아니라 "이 패키지 포맷을 설치하고 쓸 수 있다" 를 답한다. v0.7.4 는 실제로 태그된
-릴리스이고(`git log -1 --format='%ci %h' v0.7.4` → `8792afb4`), §360 테마 설치
-경로를 들여온 커밋(`e07eeb44`)과 이 계획의 다이얼 메커니즘 커밋(`0cfa6b65`, PR
-#712) 둘 다의 후손이다(`git merge-base --is-ancestor e07eeb44 v0.7.4`,
-`git merge-base --is-ancestor 0cfa6b65 v0.7.4` 모두 참) — 즉 v0.7.4 가 이 패키지
-포맷을 설치할 수 있는 첫 태그된 릴리스라는 것이 실측이다.
+**게시 파이프라인은 아직 없다**(2026-09-28). `.github/workflows/plugin-release.yml` 은 `plugin-*` 태그에만 돌고,
+`.github/` · `scripts/` 에 `examples/themes` 를 읽는 파일이 없다. 스펙 0063 §7.3~§7.6 이 설계했고, 계획 0105 가 머지된
+뒤의 계획이 만든다(스펙 0063 D2 의 정정).
 
-**단, v0.7.4 는 `dials` 필드를 조용히 버린다.** 그 태그의 `theme-manifest.ts` 를
-확인하면(`git show v0.7.4:src/themes/theme-manifest.ts`) `validateThemeManifest`
-가 `dials` 를 검사하지 않고(`capabilities`·`main` 만 명시적으로 거부한다),
-`rebuildManifest` 도 `dials` 를 참조하지 않는 명시적 필드 목록으로 결과를 짓는다.
-그래서 이 매니페스트는 v0.7.4 에서 설치를 막는 어떤 검사에도 걸리지 않고, 다이얼
-제안값만 전달되지 않는다. `engines.baram` 은 "설치 가능" 의 정직한 하한이고, "다이얼을
-읽는다" 는 별개의 사실이다.
+## 매니페스트
 
-**다이얼을 읽는 첫 릴리스는 v0.7.5 다.** 매니페스트에 `dials` 를 들인 `ff5610ae`(§371)와
-`chrome` 을 들인 `ccd20acd`(§370.3)는 v0.7.4 에 없고 v0.7.5 범프 브랜치에 있다(v0.7.5 릴리스
-준비 시점 실측: `git merge-base --is-ancestor <커밋> v0.7.4` 가 둘 다 거짓, `… HEAD` 가 둘 다
-참). 이 사실로 이 테마의 `engines.baram` 을 올릴지는 이 테마를 실제로 출고하는 §371 계획이
-정한다 — 올리면 v0.7.4 사용자는 다이얼 없이 입는 대신 설치를 거부당한다.
+| 필드 | 값 | 근거 |
+|---|---|---|
+| `id` | `baram-hangul` | 바꾸지 않는다. 설치 기록 `installedThemes` 가 id 를 키로 쓰므로(`src/stores/settings/appearance-settings.ts`) 게시 뒤 id 를 바꾸면 이미 설치한 사용자에게는 다른 테마가 된다. 폴더 `hangul` 과 게시 태그 `theme-hangul-v…` 도 그대로다(D8) |
+| `name` | `Baram Hangul` | 레지스트리 항목은 한 언어라 내장 테마 이름과 같은 영문이다. `Baram` 은 내장 `Baram Garden Light` · `Baram Garden Dark` 의 선례, `Hangul` 은 Unicode 블록 이름 · id 에 맞춘 표기다(D8) |
+| `version` | `1.0.0` | 첫 게시(D8). 게시된 버전은 바꾸지 않으므로(스펙 0063 §7.7) 게시 뒤 zip 에 드는 파일을 고치면 버전을 올린다 |
+| `engines.baram` | `">=0.7.7"` | 아래 "`engines.baram`" 절 |
+| `dials` | 여섯 | 아래 "다이얼" 절 |
+| `chrome` | 키째 없다 | 아래 문단 |
 
-단 **본문 타이포 네 키**(`editorFontFamily` · `editorCodeFontFamily` · `editorFontSize` · `editorLineHeight`)는
-v0.7.5 가 모른다 — 그 릴리스는 설치할 때 모르는 다이얼 id 를 버리고, 앱을 올려도 되살리지 않는다
-(`src/themes/theme-manifest.ts` 의 `dials` doc 주석). 이 키를 읽는 첫 릴리스는 v0.7.6 이다 — 네 키를
-`DIALS` 에 들인 `4b91d20a`(§365)는 v0.7.5 에 없고 v0.7.6 범프 브랜치에 있다(v0.7.6 릴리스 준비 시점
-실측: `git merge-base --is-ancestor 4b91d20a v0.7.5` 거짓, `… HEAD` 참).
+**크롬을 싣지 않는다(D10).** 기본 테마를 골랐는데 탭 · 상태 · 활동 표시줄이 모두 사라지는 것은 기본 테마에서
+기대할 일이 아니다 — 스펙 0063 D10 은 몰입을 화면구성 프리셋 `Writing`(한국어 UI `글쓰기`)의 몫으로 둔다. 잃은 것은
+레퍼런스가 다이얼 9(크롬)를 실제로 쓰는 게시물이라는 역할이다. 초안은 세 표면을 모두 `false` 로 제안했고, 그 제안
+경로의 테스트는 이제 테스트 전용 픽스처 `src/themes/__tests__/fixtures/focus-theme.json` 을 읽는다 —
+`src/stores/ui/__tests__/chrome-proposal.test.ts` · `src/hooks/__tests__/use-settings-effects-theme-chrome.test.tsx`
+가 그 픽스처를 실제 관문(`validateThemeManifest`)에 통과시켜 쓰고, `src/themes/__tests__/focus-theme-fixture.test.ts`
+가 픽스처 자신이 관문을 지나며 세 표면을 모두 `false` 로 선언하고 그 선언이 관문에서 버려지지 않는지 고정한다.
 
-**있는 것:** 매니페스트와 다이얼 값, 그리고 `light/tokens.json` · `dark/tokens.json`
-(§367, 0095). `src/themes/__tests__/reference-theme.test.ts` 가 그것을 실제 관문에
-통과시키고, **레퍼런스가 행사하지 않는 다이얼을 명시적으로 열거하도록 강제한다.**
-다이얼을 새로 더하면 그 테스트가 빨개지는 것이 설계다.
+## `engines.baram` — 무엇을 답하는가, 왜 `">=0.7.7"` 인가
+
+**이 필드가 답하는 것은 "이 패키지 포맷을 설치하고 쓸 수 있는가" 다 — "이 안의 모든 필드를 읽는가" 가 아니다.**
+`src/themes/theme-package-export.ts` 의 `MIN_BARAM_FOR_TOKENS_PACKAGE`(`">=0.7.4"`)가 정의하는 뜻 그대로다. 설치
+경로는 이 값을 `finishStagedThemeInstall` 의 `unmetFloorAgainstApp` 으로 읽고, 하한에 못 미치는 앱은 설치를
+`appTooOld` 로 거부한다(`src/themes/theme-install.ts` — 앱 버전을 읽지 못하면 "의견 없음" 으로 통과시킨다).
+
+**v0.7.4 가 그 간극을 보인다.** v0.7.4(태그 커밋 `8792afb4`)는 이 포맷을 설치할 수 있는 첫 태그된 릴리스다 —
+`src/themes/theme-install.ts` 가 v0.7.3 에 없고 v0.7.4 에 있다(`git cat-file -e <태그>:src/themes/theme-install.ts`).
+그런데 그 태그의 `theme-manifest.ts` 를 보면(`git show v0.7.4:src/themes/theme-manifest.ts`) `validateThemeManifest`
+가 `dials` 를 검사하지 않고(`capabilities` · `main` 만 명시적으로 거부한다), `rebuildManifest` 도 `dials` 를 참조하지
+않는 명시적 필드 목록으로 결과를 짓는다 — 그 파일에 `dials` 라는 낱말이 없다. 그래서 다이얼을 싣는 매니페스트는
+v0.7.4 에서 설치를 막는 어떤 검사에도 걸리지 않고, 다이얼 제안값만 전달되지 않는다.
+
+**다이얼을 읽는 첫 릴리스는 v0.7.5 다.** 매니페스트에 `dials` 를 들인 `ff5610ae`(§371)는 v0.7.4 에 없고 v0.7.5 에
+있다(`git merge-base --is-ancestor ff5610ae v0.7.4` 거짓, `… v0.7.5` 참). 다만 설치할 때 앱이 모르는 다이얼 id 는
+버려지고 앱을 올려도 되살아나지 않는다(`src/themes/theme-manifest.ts` 의 `dials` doc 주석). 이 테마의 여섯 가운데
+`editorFontFamily` · `editorFontSize` 가 v0.7.5 에서 그렇게 버려진다 — 둘을 `DIALS` 에 들인 `4b91d20a`(§365)는
+v0.7.5 에 없고 v0.7.6 에 있다(`git merge-base --is-ancestor 4b91d20a v0.7.5` 거짓, `… v0.7.6` 참). 나머지 넷은
+v0.7.5 의 `src/appearance/dials.ts` 에 이미 있다.
+
+**이 테마의 하한 `">=0.7.7"` 의 근거는 다이얼이 아니라 Low-4 다(스펙 0063 D3).** 파일로 설치한 테마의 출처를
+갤러리 · 찾아보기에 보이고, 레지스트리가 같은 id 의 파일 설치본을 바꾸기 전에 묻는 변경(`99022700`)은 v0.7.6 에
+없다(`git merge-base --is-ancestor 99022700 v0.7.6` 거짓). 하한이 그보다 낮으면 이 테마가 게시되는 순간 v0.7.6
+사용자에게 파일 사본이 레지스트리 테마로 보이는 경우가 열린다. v0.7.4 · v0.7.5 · v0.7.6 의 `theme-install.ts` 가 모두
+`unmetFloorAgainstApp` 을 부르므로, 그 셋은 이 테마를 설치 단계에서 `appTooOld` 로 거부한다. 같은 하한 덕에 위 두
+문단의 간극도 이 테마에 닿지 않는다 — 여섯 다이얼은 v0.7.6 의 `DIALS` 에도, 2026-09-28 의 `src/appearance/dials.ts`
+에도 모두 있다. D3 의 처음 근거에는 크롬 거절 기록도 있었는데, D10 으로 이 테마가 크롬을 싣지 않게 되어 근거가
+Low-4 하나로 좁혀졌다(D3 의 정정).
+
+v0.7.7 은 아직 태그되지 않았다(2026-09-28, `git tag`). 스펙 0063 §7.6 이 v0.7.7 릴리스를 이 테마의 게시 앞에 둔다.
+
+## 다이얼
+
+선언한 다이얼은 사용자 설정 행에 테마 출처로 서고 앱 기본을 가리므로, 기본 테마는 적게 선언한다(D11). 그래서
+**한글 때문에 앱 기본과 달라야 하는 여섯**만 싣는다. 앱 기본은 `src/appearance/dials.ts` 의 `defaultValue` 다.
+
+| 다이얼 | 값 | 앱 기본 | 한글 근거 |
+|---|---|---|---|
+| `editorLineBreak` | `keepAll` | `normal` | 기본 줄바꿈은 한글 단어를 임의 위치에서 자른다(스펙 0055 §368). `keepAll` 은 `--editor-word-break: keep-all` 과 `--editor-overflow-wrap: break-word` 를 쓴다 — 넘치는 어절만 끊는다 |
+| `editorEmphasisStyle` | `weight` | `italic` | 한글에는 진짜 italic 이 없어 `*강조*` 가 가짜 기울임으로 찌그러진다(0055 §368). `weight` 는 기울이지 않고 굵힌다. 표시 층의 선택이라 문서와 마크다운은 그대로다(스펙 0055 의 7.2 절) |
+| `editorFontFamily` | `Pretendard Variable` | `""` — 토큰 스택 `--font-family-editor` | 지금은 기본 스택의 첫 항목과 같은 서체다(`tokens/primitive/typography.json`). 선언하는 것은 앱 기본이 바뀌어도 한글 본문이 제 서체를 지키게 하려는 것이다(스펙 0060 §9.1). 서체 파일은 싣지 않는다 — 앱이 번들한다(`src/utils/font/bundled-fonts.ts` 의 `BUNDLED_FONTS`) |
+| `editorFontSize` | `17` | `16` | 초안이 "읽기 우선 테마의 비기본값" 으로 고른 값이고(0060 §9.1) D11 이 남겼다. 0060 §9.1 · 0063 D11 은 이 1px 에 한글 고유의 측정을 적지 않는다 — 판단이다 |
+| `editorLetterSpacing` | `-0.01`(em) | `0` | 한글 본문은 약간의 음수 자간이 관례다(0055 §368) |
+| `editorParagraphSpacing` | `1`(em) | `0.5` | 0055 §368 의 한글 본문 조판 요구 넷 가운데 하나다 — 들여쓰기가 아니라 문단 사이 공백 |
+
+**싣지 않는 다이얼과 그 이유는 `reference-theme.test.ts` 의 `NOT_EXERCISED` 가 적는다** — 여기 베끼지 않는다(베끼면
+낡는다). 선언한 다이얼과 그 목록의 합집합이 `DIALS` 의 id 와 정확히 같아야 하므로(양방향), 다이얼을 더한 사람은 그
+테스트가 빨개져서 이 테마가 그 다이얼을 행사할지를 한 번 답하게 된다.
 
 ## 색 (§367)
 
-시드 24키를 모드마다 선언한다. 나머지 semantic 색 중 **29키는 앱이 시드에서 계산**하고
-(`src/appearance/color-derive.ts`), 9키는 파생하지 않는다 — 반투명 오버레이 7개와
-툴팁 쌍 2개이고, 그 근거는 계획 0095 의 "파생시키지 않는 9키" 표에 있다.
+**미색 종이 · 먹색 글자 · 쪽빛 강조 · 주황 경고**(스펙 0063 D12). 값은 `light/tokens.json` · `dark/tokens.json` 이
+갖는다 — 모드마다 시드 24키다. 의미 색 29키는 앱이 그 시드에서 계산하고(`src/appearance/color-derive.ts`), 반투명
+오버레이 7키와 툴팁 쌍 2키는 파생하지 않는다 — 그 근거는 계획 0095 의 "파생시키지 않는 9키" 다.
 
-강조색 **이동량** 다이얼(`accentHueShift` · `accentSaturationShift`)은 쓰지 않는다.
-이동량의 기준은 테마 자신의 강조 시드인데 이 테마는 그것을 직접 선언하므로, 이동량
-0 이 옳고 0 은 기본값이라 선언할 값이 없다.
+**초안의 결함 — 강조와 경고가 겹쳤다.** 초안의 강조는 황토였고, `--color-status-warning` 이 다크에서는
+`--color-accent-default` 와 같은 `#d4a960`, 라이트에서는 색상 차 1.6°(강조 `#8a6d3b` · 경고 `#b07d1a`)였다
+(`a61e1317` 의 두 `tokens.json`, 색상은 `src/appearance/color-hsl.ts` 의 `hexToHsl`). `src/appearance/color-derive.ts`
+의 규칙표가 `--color-callout-info` 를 강조에서, `--color-callout-warning` 을 경고에서 그대로 가져오므로 정보 콜아웃과
+경고 콜아웃이 다크에서는 같은 색, 라이트에서는 거의 같은 색상이었다. D12 가 강조를 쪽빛으로, 경고를 주황으로
+옮겼다 — 모드마다 시드 일곱(`accent-default` · `accent-hover` · `accent-subtle` · `editor-selection` · `editor-cursor` ·
+`graph-active` · `status-warning`)이 바뀌었고, 종이 · 먹색 · 테두리 · `accent-ai` · 위험 · 성공 · 그래프 노드 · 선은
+그대로다.
 
-배경 대비는 **라이트만** 행사한다 — `backgroundContrastLight: "flat"`(스펙 0059 D8). 이 테마는
-크롬 세 표면을 감춘 채로 시작할 것을 제안하므로(아래 "크롬"), 사이드바를 열었을 때 본문과
-이어지는 편이 "에디터 우선" 과 맞는다. 다크의 순흑(`backgroundContrastDark: "black"`)은 한글
-본문 조판과 무관한 색 중심 선택이라 쓰지 않는다(0055 §10.3).
+**앱의 대비 보고는 이것을 못 잡는다.** `src/appearance/contrast-report.ts` 의 `contrastWarningsFor` 는 `TEXT_PAIRS`
+여섯 쌍(`text-primary` · `text-secondary` · `editor-text` 와 그 배경)만 보고, 강조도 경고도 그 여섯에 없다. 그래서
+`reference-theme.test.ts` 가 둘을 직접 단언한다 — 강조와 경고의 색상 거리가 두 모드 모두 30° 이상, 강조(링크
+글자색이다 — `src/styles/editor/media.css` 의 `.tiptap a`)가 `--color-editor-bg` 위에서
+`AA_TEXT_RATIO`(`src/utils/color-contrast.ts`) 이상. 2026-09-28 값으로는 색상 거리 169.0° · 164.6°, 강조 대비
+7.73 · 7.26 이다(라이트 · 다크). 경고의 대비(4.35 · 7.15)는 단언하지 않는다 — 라이트의 4.35 는 `AA_TEXT_RATIO`(4.5)
+아래다.
+
+**남은 확인:** D12 의 값은 계산으로 고른 후보다. 게시 전 파일 설치 점검(스펙 0063 §7.5)에서 콜아웃 넷이 구별되는지
+눈으로 보고 확정한다.
+
+**24키인 이유 — `--color-editor-guide-tint` 를 싣지 않는다.** 앱의 시드는 25키(`src/types/theme-color-keys.ts` 의
+`THEME_COLOR_KEYS`)이고, 25번째인 `--color-editor-guide-tint` 는 `aliasOf: "--color-editor-text"` 를 가진 늦게 생긴
+키다. 설치가 그 키를 같은 팔레트의 `--color-editor-text` 값으로 채운다(`fillAliasedColors`).
+`src/themes/__tests__/theme-install.test.ts` 의 "installs the reference theme's palette, which predates the guide tint"
+가 이 폴더의 `light/tokens.json` 을 그 옛 24키 팔레트의 실물로 읽는다 — 이 파일에 그 키를 더하면 그 케이스가
+빨개진다.
 
 ### 테마 CSS 로는 되찾을 수 없는 키 (§367)
 
-`colors` 를 싣는 테마에서 앱은 **시드 24키와 파생 38키를 `<html>` 의 인라인 커스텀
-프로퍼티로 쓴다**(`applyThemeVars`, `src/utils/theme-vars.ts`). 인라인은 테마 CSS 가
-갇혀 있는 `@layer baram-theme` 를 이기고, 위생 검사가 `!important` 를 CSS 어디에
-있든 토큰 단위로 거부하므로(`hasImportantSpelledAnywhere`,
-`src/utils/theme-css/verify.ts`), **`tokens` 와 `css` 를 함께 싣는 테마는 이 키들을
-자기 스타일시트에서 다시 선언해도 화면에 닿지 않는다.** 시드 24키는 §358 부터 이미
-그랬고, §367 이 파생 29키를 그 계약 안으로 들여왔다.
+`colors` 를 싣는 테마에서 앱은 **시드 25키와 파생 38키를 `<html>` 의 인라인 커스텀 프로퍼티로 쓴다**(`applyThemeVars`,
+`src/utils/theme-vars.ts`). 인라인은 테마 CSS 가 갇혀 있는 `@layer baram-theme` 를 이기고, `!important` 로 뒤집을 수도
+없다 — 설치가 선언의 `!important` 를 지우고(`sanitizeThemeCss`, `src/utils/theme-css/sanitize.ts`), 그러고도
+`!important` 토큰이 CSS 어디에든 남으면 설치는 그 CSS 를 거부하고 로드는 주입하지 않는다(`verifyStoredThemeCss` 의
+`hasImportantSpelledAnywhere`, `src/utils/theme-css/verify.ts`). 그래서 **`tokens` 와 `css` 를 함께 싣는 테마는 이
+키들을 자기 스타일시트에서 다시 선언해도 화면에 닿지 않는다.** 시드는 §358 부터 이미 그랬고, §367 이 파생 29키를 그
+계약 안으로 들여왔다.
 
 | 집합 | 개수 | 어디서 오는가 |
 |---|---|---|
-| 시드 | 24 | 테마가 선언한 `tokens` 그대로 |
+| 시드 | 25 | 테마가 선언한 `tokens` 그대로 — `aliasOf` 를 가진 키가 빠졌으면 설치가 같은 팔레트의 값으로 채운다(`fillAliasedColors`) |
 | 대비 짝 | 9 | `DERIVED_KEYS` — 강조·status 의 채움과 그 전경(#330) |
 | 의미 색 | 29 | `DERIVED_COLOR_KEYS` — callout 13 · graph 7 · git 4 · status 3 · bg 2 |
 
-세 목록의 canonical 한 집은 코드다(`src/utils/theme-vars.ts` 의 `DERIVED_KEYS`,
-`src/appearance/color-derive.ts` 의 `DERIVED_COLOR_KEYS`) — 여기 키 이름을 베껴 적으면
-낡는다.
+세 목록의 canonical 한 집은 코드다(`src/types/theme-color-keys.ts` 의 `THEME_COLOR_KEYS`, `src/utils/theme-vars.ts` 의
+`DERIVED_KEYS`, `src/appearance/color-derive.ts` 의 `DERIVED_COLOR_KEYS`) — 여기 키 이름을 베껴 적으면 낡는다.
 
-**그래서 이 키들을 바꾸는 방법은 CSS 가 아니라 시드다.** 파생값은 시드에서 계산되므로
-(`color-derive.ts` 의 규칙표 — 예: `--color-callout-info` 는 `--color-accent-default`
-그대로, `--color-bg-selection` 은 강조의 명도를 `--color-bg-default` 쪽으로 82%
-옮긴 값), 원하는 파생색이
-나오도록 시드를 고르는 것이 지원되는 유일한 통로다. 테마 CSS 는 이 62키 **밖**의
-것 — 선택자·간격·모양·아직 파생되지 않는 9키 — 을 위한 자리다.
+**그래서 이 키들을 바꾸는 방법은 CSS 가 아니라 시드다.** 파생값은 시드에서 계산되므로(`color-derive.ts` 의 규칙표 —
+예: `--color-callout-info` 는 `--color-accent-default` 그대로, `--color-bg-selection` 은 강조의 명도를
+`--color-bg-default` 쪽으로 82% 옮긴 값), 원하는 파생색이 나오도록 시드를 고르는 것이 지원되는 유일한 통로다.
+테마 CSS 는 이 63키 **밖**의 것 — 선택자·간격·모양·아직 파생되지 않는 9키 — 을 위한 자리다.
 
-**배경 대비 다이얼이 기본이 아니면 최대 다섯 키 — `flat` 은 셋(`bg-panel` 과 역할
-토큰 둘), `white`·`black` 은 다섯 — 이 더 다이얼의 것이다.** 역할 토큰
-`--color-bg-bar` · `--color-bg-chrome-fill`(`src/appearance/background-contrast.ts` 의
-`BG_ROLE_KEYS`)이 인라인에 실리고, 시드 `--color-bg-default` · `--color-editor-bg` ·
-`--color-bg-panel` 은 테마의 선언 대신 다이얼의 재배선을 따른다(스펙 0059 §3.2). 이
-테마는 라이트에 `flat` 을 제안하므로 라이트에서는 그 상태로 시작한다.
+**배경 대비 다이얼이 기본이 아니면 최대 다섯 키 — `flat` 은 셋(`bg-panel` 과 역할 토큰 둘), `white`·`black` 은
+다섯 — 이 더 다이얼의 것이다.** 역할 토큰 `--color-bg-bar` · `--color-bg-chrome-fill`(`src/appearance/background-contrast.ts`
+의 `BG_ROLE_KEYS`)이 인라인에 실리고, 시드 `--color-bg-default` · `--color-editor-bg` · `--color-bg-panel` 은 테마의
+선언 대신 다이얼의 재배선을 따른다(스펙 0059 §3.2). 이 테마는 배경 대비 다이얼을 싣지 않는다 — 사용자 층에 값이
+없으면 두 모드 모두 앱 기본 `default` 다.
 
-## 크롬 (§370.3)
+## 테스트가 보는 것
 
-이 테마는 세 크롬 표면(활동 표시줄 · 상태 표시줄 · 탭 표시줄)을 **감춘 채로 시작할
-것을 제안한다** — §370.3 이 "레퍼런스 테마는 포커스 모드를 기본으로 제안한다" 고
-적는다. 매니페스트의 `chrome` 셋이 모두 `false` 인 것이 그 선언이다.
+`src/themes/__tests__/reference-theme.test.ts` 가 이 폴더의 `baram-theme.json` 과 두 `tokens.json` 을 경로로 읽는다.
 
-**제안이지 강제가 아니다.** 앱은 이번 세션에 사용자가 아직 손대지 않은 표면에만 이
-값을 쓴다 — 상태 표시줄을 켠 뒤 이 테마를 입으면 상태 표시줄은 켜진 채로 남는다.
-그 판정을 아는 것은 `chromeTouched`(`src/stores/ui/ui.ts`)이고, 적용은 테마 id 가
-바뀌는 전이에서 한 번이다(`src/stores/ui/chrome-proposal.ts`).
+| 무엇을 보는가 | 무엇이 실패시키는가 |
+|---|---|
+| 매니페스트가 실제 관문 `validateThemeManifest` 를 지난다 | 관문이 거부하는 매니페스트 |
+| 선언한 다이얼이 재구성 뒤에도 선언과 같다 | 범위 밖의 값, 또는 앱이 모르는 다이얼 id — 그 이름이 곧 스키마가 부족한 자리다 |
+| 원본에도 검증 결과에도 `chrome` 이 없다(D10) | `chrome` 을 되살리면 |
+| `engines.baram` 이 `">=0.7.7"` 이다(D3) | 하한을 바꾸면 |
+| 강조와 경고의 색상 거리가 두 모드 모두 30° 이상(D12) | 경고를 강조 가까이로 옮기면. hex 가 아니거나 무채색인 값은 던진다 |
+| 강조가 `--color-editor-bg` 위에서 두 모드 모두 `AA_TEXT_RATIO` 이상 | 강조의 대비가 그 아래로 가면 |
+| 선언한 다이얼 ∪ `NOT_EXERCISED` = `DIALS` 의 id | `DIALS` 에 다이얼이 생기거나 빠지면, 또는 한 다이얼이 양쪽에 다 있거나 어느 쪽에도 없으면 |
+| 두 모드의 시드에서 파생 29키(`DERIVED_COLOR_KEYS`)가 모두 나온다 | 파생의 입력 시드가 빠지면 |
+| 두 모드의 파생이 키마다 서로 다르다 | 두 모드가 같은 색을 내면(위 단언의 비공허성 짝) |
+| `contrastWarningsFor` 가 두 모드 모두 경고를 내지 않는다 | `TEXT_PAIRS` 여섯 쌍 가운데 하나가 `AA_TEXT_RATIO` 아래로 가면 |
 
-되돌리는 길은 앱 안에 있다. 아래 세 경로로 되살린 표면은 그 세션 동안 "사용자가
-고른 것" 이 되어 테마가 다시 감추지 못한다 — 셋 다 `chromeTouched` 를 기록하는
-입구(`toggleActivityBar`·`toggleStatusBar`·`toggleTabBar`·`revealAllChrome`,
-`src/stores/ui/ui.ts`)로 이어지기 때문이다:
+이 폴더를 경로로 읽는 곳은 `reference-theme.test.ts` 와 위 "24키인 이유" 의 `theme-install.test.ts` 둘이다
+(`git grep -n "examples/themes"`, 2026-09-28 — 둘 다 `resolve(__dirname, "../../../examples/themes/hangul/…")` 로
+읽는다). 폴더를 옮기면 컴파일은 통과해도 두 테스트가 파일을 못 찾아 빨개진다 — 옮길 때 두 경로를 함께 고친다.
 
-- **단축키** — `Mod+Alt+A`(활동 표시줄) · `Mod+Alt+S`(상태 표시줄) · `Mod+Alt+B`
-  (탭 표시줄). 하나씩 되살린다. `Mod` 는 macOS 에서 ⌘, 그 밖에서 Ctrl 이고, 셋 다
-  리매핑할 수 있다(`src/keybindings/keybinding-registry.ts` 의
-  `view.toggleActivityBar` · `view.toggleStatusBar` · `view.toggleTabBar` 전사).
-- **가장자리 복귀 버튼** — 셋이 **모두** 숨었을 때 화면 위 가장자리에 얇은 버튼이
-  뜬다(`src/components/layout/chrome-reveal.tsx`). 포인터 호버와 키보드 포커스 양쪽에서
-  드러나고, 누르면 셋이 한 번에 돌아온다. 이 테마의 제안이 만드는 상태가 정확히 그
-  "모두 숨음" 이라, 단축키를 모르는 사용자에게도 길이 남는다.
-- **설정 > 화면 배치**의 "표시 여부" 토글 셋. 단축키와 같은 입구를 쓴다
-  (`src/components/settings/tabs/layout/ChromeVisibilitySection.tsx`).
+## zip 에 들어가는 것
 
-**화면구성(Perspective)을 고르는 것은 이 목록에 들지 않는다.** `Writing` 등 다른
-프리셋을 골라 크롬을 되살리는 것은 `applyPreset`(`src/stores/file/workspace.ts`)이
-부르는 `setChromeVisibility`(`src/stores/ui/ui.ts`)를 거치는데, 이 입구는 표면
-하나가 아니라 화면 전체를 고르는 행위라 의도적으로 아무것도 기록하지 않는다
-(`src/stores/ui/ui.ts` 의 `setChromeVisibility` doc 주석).
-그래서 이 테마가 감춘 채로 시작한 뒤 프리셋으로 크롬을 되살려도 "손댄 것" 으로
-남지 않고, 다음에 고르는 테마(또는 이 테마로의 재전이)가 다시 감출 수 있다.
+스펙 0063 §7.3 의 워크플로는 zip 에 **`baram-theme.json` 과, 검증을 통과한 매니페스트의 `modes` 가 선언한 파일만**
+목록대로 넣도록 설계됐다 — 폴더를 통째로 묶지 않는다. 이 테마에서는 `baram-theme.json` · `light/tokens.json` ·
+`dark/tokens.json` 셋이다. **이 README 는 들어가지 않는다** — 플러그인 zip(`plugin-release.yml` 의 `Package ZIP`
+단계가 `README.md` 를 함께 묶는다)과 다른 점이다. 테마 경로에는 빌드 단계를 두지 않는다(§7.3).
 
-기록은 세션 범위다 — 앱을 다시 켜면 가시성도 기록도 기본으로 돌아가고, 제안이 다시
-닿는다. 그 이유는 `chromeTouched` 의 doc 주석에 있다.
-
-## 간격과 모서리 (§365)
-
-`density: "compact"` · `cornerRadius: "round"` 를 선언한다 — 밀도(4)는 강하게, 모서리(5)는
-약하게 행사하라는 스펙 0055 §10.3 의 지시를 따른다.
-
-**compact 인 이유:** 이 테마는 위 §370.3 절에서 크롬 세 표면을 모두 감추도록 제안한다
-(`chrome` 이 셋 다 `false`) — 본문 조판이 우선이고 크롬은 물러난다는 §371.3 의 성격
-그대로다. 밀도 다이얼이 옮기는 것은 UI 크롬의 간격(패널·팝오버·버튼 등, `--space-*`
-스케일)이고, 본문의 리듬은 따로 정해진다. 문단 간격·자간은 에디터 다이얼
-`editorParagraphSpacing` · `editorLetterSpacing` 이 갖고(변수 `--editor-paragraph-spacing` ·
-`--editor-letter-spacing` — 예: `src/styles/editor/blocks.css` 의
-`.tiptap p { margin: var(--editor-paragraph-spacing, 0.5em) 0; }`), 줄 높이는 본문 타이포
-다이얼 `editorLineHeight` 가 갖는다(아래 "본문 타이포").
-그래서 `compact` 는 본문 조판을 건드리지 않고 크롬만 더 좁혀, "크롬이 물러난다" 는 이
-테마의 성격을 한 번 더 강하게 만든다.
-
-**round 인 이유(그리고 "약하게" 가 이 스키마에서 표현되지 못하는 이유):** 스펙 0055
-§10.3 은 모서리를 "약하게" 행사하라고 하지만, 스펙 0057 D1 은 두 다이얼을 곱수 슬라이더가
-아니라 **3단 열거**(`sharp`/`default`/`round`)로 정했다 — 연속값이 없으니 "약하게" 에
-해당하는 중간 눈금이 없다. 레퍼런스는 `default`(선언 생략)가 아니라 비기본 단을 골라
-다이얼의 매니페스트 경로(값이 파싱되어 `<html>` 에 CSS 변수로 나오는 길)를 실제로 행사하는
-쪽을 택했다 — "약하게" 라는 지시가 이 3단 스키마에서 표현될 수 없었다는 사실을 여기
-기록한다.
-
-## 본문 타이포 (§365 다이얼 6)
-
-`editorFontFamily: "Pretendard Variable"` · `editorFontSize: 17` · `editorLineHeight: 1.8` 을 선언한다 —
-0055 §10.3 이 타이포(6)를 "강하게" 행사하라고 적는다.
-
-- **서체를 적는 이유:** 앱 기본 스택의 첫 항목과 같은 이름이다(`src/utils/font/bundled-fonts.ts`). 그래도
-  선언하는 것은 앱 기본이 바뀌어도 한글 본문 테마가 제 서체를 유지하게 하려는 것이고, 새 `text` 종류의
-  매니페스트 경로(파싱 → 병합 → 표면 적용)를 실제로 행사하려는 것이다. 서체 파일은 싣지 않는다 — 한글
-  서체는 수 MB 다.
-- **17 · 1.8:** 읽기 우선 테마의 비기본값이다(기본 16 · 1.75).
-- **본문 폭:** `editorMaxWidth: 720` 은 그대로 px 다. 설정 행은 이것을 글자 수로도 보이고, 이 테마의
-  값(여백 5rem · 자간 −0.01em · 17px)에서 Pretendard 로 약 39자다(스펙 0060 §8.2 의 식).
-- 코드 서체(`editorCodeFontFamily`)는 행사하지 않는다 — 코드는 이 테마의 초점이 아니다.
+게시 전 점검(스펙 0063 §7.5)은 그 zip 을 로컬에서 만들어 **파일에서 설치**로 넣어 보는 것이다. 하한 때문에 이 점검은
+앱이 스스로 보고하는 버전(`src/plugins/engines-app.ts` 의 `currentAppVersion` 이 읽는 `getVersion()`)이 0.7.7 이상인
+빌드에서만 설치까지 간다 — 그보다 낮은 빌드는 `appTooOld` 로 거부한다.
