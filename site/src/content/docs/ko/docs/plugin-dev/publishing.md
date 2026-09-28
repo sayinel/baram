@@ -1,6 +1,6 @@
 ---
 title: "플러그인 배포하기"
-sourceHash: "57cbc575c73e"
+sourceHash: "3e1a4e7acaad"
 ---
 
 ## 커밋된 시드
@@ -35,41 +35,11 @@ Rust 드리프트 가드 테스트(`test_committed_registry_seed_deserializes`)�
 
 ## 내 플러그인 배포하기
 
-1. 플러그인용 GitHub 저장소를 만듭니다.
-2. 플러그인을 빌드합니다 — `npm run build`.
-3. `baram-plugin.json`, 빌드된 `main` 번들(예: `dist/index.mjs`), 그리고 `assets/`(있다면)를 담은
-   ZIP을 만듭니다.
-4. 그 ZIP을 자산으로 붙인 GitHub 릴리스를 만들고 SHA-256 체크섬을 계산합니다
-   (예: `shasum -a 256 your-plugin-1.0.0.zip`).
-5. 배포하려는 `RegistryIndex`에 `RegistryEntry`를 추가합니다. ⚠️ 오늘은 그것이 1군 레지스트리만을
-   뜻합니다 — Baram이 고정된 URL을 가져오고 직접 호스팅한 `index.json`을 가리킬 수 없으므로
-   (*Baram이 레지스트리를 불러오는 방식* 참조), 자기 색인에 넣은 항목은 아무 사용자에게도 닿지
-   않습니다. 커뮤니티 제출이 열리기 전까지 누군가에게 플러그인을 건넬 유일한 방법은
-   **설정 → 플러그인**의 **개발자** 구역입니다 — 릴리스 빌드에서는 사용자가 먼저 **개발자 모드**를
-   켜야 하고, 그 길로는 `sandboxed` 플러그인만 불러옵니다. (이 리포의 1군 플러그인은 항목을 손으로 넣지 않습니다 —
-   `plugin-<dir>-v<version>` 태그를 밀면 위에 적은 대로
-   [`sayinel/baram-plugins`](https://github.com/sayinel/baram-plugins)의 `index.json`이 자동으로
-   갱신됩니다.)
+플러그인은 샌드박스 플러그인만 받는 커뮤니티 레지스트리를 거쳐 다른 사람에게 닿습니다. 자기 저장소에
+GitHub 릴리스를 만들고, [`sayinel/baram-plugins`](https://github.com/sayinel/baram-plugins)에 작은
+서술 파일 하나를 더하는 풀 리퀘스트를 엽니다. 레지스트리가 릴리스를 복사해 자기 주소에서 내보내므로,
+사용자는 저자의 저장소에서 내려받지 않습니다. 템플릿, 릴리스 워크플로, 서술 파일, 검사 항목까지
+전체 절차는 [커뮤니티 레지스트리에 배포하기](/ko/docs/plugin-dev/community-registry/)에 있습니다.
 
-```json
-{
-  "id": "my-word-count",
-  "name": "Word Count",
-  "description": "Displays word and character count",
-  "version": "1.0.0",
-  "author": "Your Name",
-  "license": "MIT",
-  "downloadUrl": "https://sayinel.github.io/baram-plugins/plugins/my-word-count-1.0.0.zip",
-  "checksum": "sha256-hash-of-zip",
-  "capabilities": ["editor:readonly", "events", "statusbar"],
-  "trust": "sandboxed",
-  "keywords": ["word", "count"],
-  "engines": { "baram": ">=0.5.0" }
-}
-```
-
-`downloadUrl`은 레지스트리 자신의 기준 URL 아래에 있어야 합니다. 앱은 색인을 가져온 레지스트리
-아래에서만 아카이브를 내려받고 다른 호스트는 거부합니다(`src-tauri/src/plugin/origin.rs`의
-`registry_base` / `is_within_registry`). 예시가 4단계의 GitHub 릴리스가 아니라
-`sayinel.github.io/baram-plugins/plugins/`를 가리키는 이유입니다 — 릴리스 URL을 그대로 적은 항목은
-목록에는 뜨지만 설치에서 실패합니다.
+이 리포의 1군 플러그인은 이 경로를 쓰지 않습니다. `plugin-<dir>-v<version>` 태그를 밀면
+레지스트리의 `index.json`에 바로 배포됩니다([레지스트리 불러오기와 로컬 시험](/ko/docs/plugin-dev/registry-loading-and-testing/) 참조).

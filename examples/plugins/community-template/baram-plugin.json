@@ -1,0 +1,22 @@
+{
+  "id": "hello-counter",
+  "name": "Hello Counter",
+  "description": "Shows the current document's character count in the status bar.",
+  "version": "1.0.0",
+  "author": "Your Name",
+  "license": "MIT",
+  "main": "dist/index.mjs",
+  "engines": { "baram": ">=0.6.1" },
+  "trust": "sandboxed",
+  "capabilities": ["editor:readonly", "events", "statusbar"],
+  "contributions": {
+    "statusBar": [
+      {
+        "id": "chars",
+        "text": "— chars",
+        "tooltip": "Characters in the current document"
+      }
+    ]
+  },
+  "icon": "🔤"
+}

@@ -1,0 +1,59 @@
+# Release workflow for a Baram community plugin. Copy this file to .github/workflows/ in your
+# plugin's own repository. Push a tag that names the version in baram-plugin.json (v1.0.0), and
+# this builds the plugin, packages the ZIP with baram-plugin.json at its root, publishes a GitHub
+# Release, and prints the community/<id>.json descriptor — sha256 included — to the run summary.
+#
+# Never replace a released asset: the registry downloads it again when it publishes and stops if
+# the bytes changed. Release a new version instead.
+name: release
+on:
+  push:
+    tags: ["v*.*.*"]
+permissions:
+  contents: write
+jobs:
+  release:
+    # The registry's check accepts only the two extra fields a plain `zip -r` writes (extended
+    # timestamp and Unix owner). Archives built by `zip -r` on this runner image carry exactly
+    # those two, so keep the image and the command below as they are.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24
+      - name: The tag must name the manifest's version
+        run: |
+          VERSION="$(node -p "require('./baram-plugin.json').version")"
+          PLUGIN_ID="$(node -p "require('./baram-plugin.json').id")"
+          if [ "${GITHUB_REF_NAME#v}" != "$VERSION" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match baram-plugin.json version $VERSION"
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "PLUGIN_ID=$PLUGIN_ID" >> "$GITHUB_ENV"
+      - run: npm ci
+      - run: npm run build
+      - name: Package (baram-plugin.json at the archive root)
+        run: zip -r "$PLUGIN_ID-$VERSION.zip" baram-plugin.json dist README.md
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SUM="$(sha256sum "$PLUGIN_ID-$VERSION.zip" | cut -d' ' -f1)"
+          gh release create "$GITHUB_REF_NAME" "$PLUGIN_ID-$VERSION.zip" --title "$PLUGIN_ID $VERSION" --notes "sha256 $SUM"
+          {
+            echo "### community/$PLUGIN_ID.json for sayinel/baram-plugins"
+            echo '```json'
+            # The script reads process.env itself, so the shell must not expand ${...} in it.
+            # shellcheck disable=SC2016
+            SUM="$SUM" node -e 'console.log(JSON.stringify({
+              id: process.env.PLUGIN_ID,
+              publisher: process.env.GITHUB_REPOSITORY_OWNER,
+              repo: process.env.GITHUB_REPOSITORY,
+              release: { tag: process.env.GITHUB_REF_NAME, asset: `${process.env.PLUGIN_ID}-${process.env.VERSION}.zip`, sha256: process.env.SUM },
+            }, null, 2))'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
