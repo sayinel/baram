@@ -5,7 +5,7 @@
 //      않는가** — 버려진다면 값이 범위 밖이거나 앱이 그 다이얼을 모른다는 뜻이고, 후자가
 //      곧 스키마 결함이다 — 그리고 크롬을 싣지 않는가(D10) · 하한이 v0.7.7 인가(D3)
 //  (b) 레퍼런스가 행사하지 **않는** 다이얼이 명시적으로 열거돼 있는가 (검증 6)
-//  (c) 색(D12): 경고가 강조와 색상으로 갈리는가, 강조가 AA 를 넘는가, 두 모드의
+//  (c) 색(D12): 경고가 강조 · 위험과 색상으로 갈리는가, 강조가 AA 를 넘는가, 두 모드의
 //      시드에서 파생 29키가 다 나오고 모드끼리 다른가, 대비 경고가 없는가
 //
 // 스펙 0063 D8 — 이 매니페스트는 더 이상 초안이 아니다. "한글로 글을 쓰는 사람을
@@ -155,6 +155,22 @@ describe("레퍼런스 테마 Baram Hangul", () => {
       expect(accent, mode).toBeDefined();
       expect(warning, mode).toBeDefined();
       expect(hueDistance(accent!, warning!), mode).toBeGreaterThanOrEqual(30);
+    }
+  });
+
+  // 스펙 0063 D12 — 경고의 다른 이웃은 위험이다. `color-derive.ts` 의 규칙표가
+  // `callout-warning` · `callout-question` 을 경고에서, `callout-danger` · `callout-bug` ·
+  // `callout-failure` 를 위험에서 색상 회전 없이(`hue: 0`) 가져온다 — `failure` 만 명도를
+  // 글자색 쪽으로 옮긴다. 무엇이 이것을 실패시키는가: 경고가 위험 쪽으로 기울면 경고 ·
+  // 질문 콜아웃이 위험 · 버그 · 실패 콜아웃처럼 읽힌다. 문턱은 위 케이스와 같은 30° 다.
+  it("경고색이 위험색과 색상으로 갈린다", () => {
+    for (const mode of ["light", "dark"] as const) {
+      const seeds = readReferenceTokens(mode);
+      const danger = seeds["--color-status-danger"];
+      const warning = seeds["--color-status-warning"];
+      expect(danger, mode).toBeDefined();
+      expect(warning, mode).toBeDefined();
+      expect(hueDistance(danger!, warning!), mode).toBeGreaterThanOrEqual(30);
     }
   });
 

@@ -92,7 +92,7 @@ v0.7.7 은 아직 태그되지 않았다(2026-09-28, `git tag`). 스펙 0063 §7
 
 ## 색 (§367)
 
-**미색 종이 · 먹색 글자 · 쪽빛 강조 · 주황 경고**(스펙 0063 D12). 값은 `light/tokens.json` · `dark/tokens.json` 이
+**미색 종이 · 먹색 글자 · 쪽빛 강조 · 호박색 경고**(스펙 0063 D12). 값은 `light/tokens.json` · `dark/tokens.json` 이
 갖는다 — 모드마다 시드 24키다. 의미 색 29키는 앱이 그 시드에서 계산하고(`src/appearance/color-derive.ts`), 반투명
 오버레이 7키와 툴팁 쌍 2키는 파생하지 않는다 — 그 근거는 계획 0095 의 "파생시키지 않는 9키" 다.
 
@@ -100,21 +100,27 @@ v0.7.7 은 아직 태그되지 않았다(2026-09-28, `git tag`). 스펙 0063 §7
 `--color-accent-default` 와 같은 `#d4a960`, 라이트에서는 색상 차 1.6°(강조 `#8a6d3b` · 경고 `#b07d1a`)였다
 (`a61e1317` 의 두 `tokens.json`, 색상은 `src/appearance/color-hsl.ts` 의 `hexToHsl`). `src/appearance/color-derive.ts`
 의 규칙표가 `--color-callout-info` 를 강조에서, `--color-callout-warning` 을 경고에서 그대로 가져오므로 정보 콜아웃과
-경고 콜아웃이 다크에서는 같은 색, 라이트에서는 거의 같은 색상이었다. D12 가 강조를 쪽빛으로, 경고를 주황으로
+경고 콜아웃이 다크에서는 같은 색, 라이트에서는 거의 같은 색상이었다. D12 가 강조를 쪽빛으로, 경고를 호박색으로
 옮겼다 — 모드마다 시드 일곱(`accent-default` · `accent-hover` · `accent-subtle` · `editor-selection` · `editor-cursor` ·
 `graph-active` · `status-warning`)이 바뀌었고, 종이 · 먹색 · 테두리 · `accent-ai` · 위험 · 성공 · 그래프 노드 · 선은
 그대로다.
 
 **앱의 대비 보고는 이것을 못 잡는다.** `src/appearance/contrast-report.ts` 의 `contrastWarningsFor` 는 `TEXT_PAIRS`
 여섯 쌍(`text-primary` · `text-secondary` · `editor-text` 와 그 배경)만 보고, 강조도 경고도 그 여섯에 없다. 그래서
-`reference-theme.test.ts` 가 둘을 직접 단언한다 — 강조와 경고의 색상 거리가 두 모드 모두 30° 이상, 강조(링크
-글자색이다 — `src/styles/editor/media.css` 의 `.tiptap a`)가 `--color-editor-bg` 위에서
-`AA_TEXT_RATIO`(`src/utils/color-contrast.ts`) 이상. 2026-09-28 값으로는 색상 거리 169.0° · 164.6°, 강조 대비
-7.73 · 7.26 이다(라이트 · 다크). 경고의 대비(4.35 · 7.15)는 단언하지 않는다 — 라이트의 4.35 는 `AA_TEXT_RATIO`(4.5)
-아래다.
+`reference-theme.test.ts` 가 직접 단언한다 — 경고와 강조, 경고와 위험(`--color-status-danger`)의 색상 거리가 두 모드
+모두 30° 이상, 강조(링크 글자색이다 — `src/styles/editor/media.css` 의 `.tiptap a`)가 `--color-editor-bg` 위에서
+`AA_TEXT_RATIO`(`src/utils/color-contrast.ts`) 이상. 경고와 위험을 가르는 이유도 같은 규칙표에 있다 —
+`--color-callout-warning` · `--color-callout-question` 은 경고에서, `--color-callout-danger` · `--color-callout-bug` ·
+`--color-callout-failure` 는 위험에서 색상 회전 없이 나오므로, 경고가 위험 쪽으로 기울면 경고 · 질문 콜아웃이 위험 ·
+버그 · 실패 콜아웃처럼 읽힌다(처음 고른 주황 `#b45f1a` · `#e5935a` 는 위험과 22.3° · 19.2° 였다). 2026-09-28 값으로는
+(라이트 · 다크) 경고와 강조의 거리 177.9° · 179.6°, 경고와 위험의 거리 35.5° · 34.2°, 강조 대비 7.73 · 7.26 이다.
+경고의 대비(4.62 · 8.46)는 두 모드 모두 `AA_TEXT_RATIO`(4.5) 이상이지만 단언하지 않는다 — 대비를 보는 두 케이스(강조의
+AA, `contrastWarningsFor` 의 여섯 쌍) 어느 쪽도 경고를 보지 않으므로, 경고가 AA 아래로 내려가도 `reference-theme.test.ts`
+는 빨개지지 않는다.
 
-**남은 확인:** D12 의 값은 계산으로 고른 후보다. 게시 전 파일 설치 점검(스펙 0063 §7.5)에서 콜아웃 넷이 구별되는지
-눈으로 보고 확정한다.
+**남은 확인:** D12 의 값은 계산으로 고른 후보다. 색상 거리는 이제 두 쌍(경고 ↔ 강조, 경고 ↔ 위험)을 테스트가 고정하지만
+거리가 눈에 보이는 구별을 보장하지는 않는다 — 게시 전 파일 설치 점검(스펙 0063 §7.5)에서 콜아웃 넷이 구별되는지 눈으로
+보고 확정한다.
 
 **24키인 이유 — `--color-editor-guide-tint` 를 싣지 않는다.** 앱의 시드는 25키(`src/types/theme-color-keys.ts` 의
 `THEME_COLOR_KEYS`)이고, 25번째인 `--color-editor-guide-tint` 는 `aliasOf: "--color-editor-text"` 를 가진 늦게 생긴
@@ -164,6 +170,7 @@ v0.7.7 은 아직 태그되지 않았다(2026-09-28, `git tag`). 스펙 0063 §7
 | 원본에도 검증 결과에도 `chrome` 이 없다(D10) | `chrome` 을 되살리면 |
 | `engines.baram` 이 `">=0.7.7"` 이다(D3) | 하한을 바꾸면 |
 | 강조와 경고의 색상 거리가 두 모드 모두 30° 이상(D12) | 경고를 강조 가까이로 옮기면. hex 가 아니거나 무채색인 값은 던진다 |
+| 위험과 경고의 색상 거리가 두 모드 모두 30° 이상(D12) | 경고를 위험 가까이로 옮기면 — 처음 고른 주황이 그랬다(22.3° · 19.2°) |
 | 강조가 `--color-editor-bg` 위에서 두 모드 모두 `AA_TEXT_RATIO` 이상 | 강조의 대비가 그 아래로 가면 |
 | 선언한 다이얼 ∪ `NOT_EXERCISED` = `DIALS` 의 id | `DIALS` 에 다이얼이 생기거나 빠지면, 또는 한 다이얼이 양쪽에 다 있거나 어느 쪽에도 없으면 |
 | 두 모드의 시드에서 파생 29키(`DERIVED_COLOR_KEYS`)가 모두 나온다 | 파생의 입력 시드가 빠지면 |
