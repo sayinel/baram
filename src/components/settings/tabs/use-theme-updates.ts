@@ -63,8 +63,7 @@ export function useThemeUpdates(): {
   return {
     index,
     // Recomputed on every render rather than memoised: it is a loop over the installed
-    // themes (a handful) against the index, and a `useMemo` keyed on two objects that are
-    // both replaced on any settings write would recompute about as often anyway.
+    // themes (a handful) against the index.
     updates:
       index === null
         ? {}

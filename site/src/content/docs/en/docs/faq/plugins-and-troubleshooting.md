@@ -19,13 +19,14 @@ uninstalling anything.
 
 ### One of my plugins says "Withdrawn"
 
-A plugin version can be withdrawn after you install it, either because a security issue was found
-or because its author pulled it. Baram checks your installed plugins against a signed withdrawal
-list, marks that plugin **Withdrawn**, shows the reason, and **does not run it**.
+A plugin version can be withdrawn after you install it because a security issue was found in it.
+Baram checks your installed plugins against a signed withdrawal list, marks that plugin
+**Withdrawn**, shows the reason, and **does not run it**.
 
 Its files are left where they are — nothing is deleted without you — and a **Remove it** action is
 offered. If the report is a vulnerability rather than a withdrawal, the plugin keeps running and
-Baram asks you to update once a newer version is published.
+Baram asks you to update once a newer version is published. A version its author pulled from the
+registry is not marked at all: your copy keeps working, and the marketplace stops listing it.
 
 Baram also tells you when it cannot trust that list — if it has never been received, could not be
 signature-verified, or has gone stale — rather than implying everything is fine.

@@ -194,7 +194,8 @@ and never downloads from your repository.
 - **Moving the plugin to another repository or account** needs a maintainer:
   open an issue in `sayinel/baram-plugins`.
 - **Withdrawing a plugin:** open an issue there. Withdrawal goes through the
-  signed revocation list: Baram then refuses to install the plugin, and for a
+  signed revocation list: Baram then refuses to install the plugin — one
+  withdrawn at your request also leaves the marketplace's list — and for a
   harmful one also refuses to load the copies already installed. Deleting a
   descriptor withdraws nothing. A pull request that only deletes descriptors
   never merges itself, and a maintainer merges one only to release an id that
