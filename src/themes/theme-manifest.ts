@@ -134,7 +134,7 @@ export interface ThemeManifest {
    * — `rebuildManifest` 의 결과가 그대로 `InstalledTheme.manifest` 로 저장되기 때문이다.
    * 되살리려면 재설치다. `engines.baram` 은 이 사실을 표현하지 못한다 — 그 필드가
    * 답하는 것은 "이 패키지 포맷을 설치하고 쓸 수 있는가" 뿐이고 "이 안의 모든 필드를
-   * 읽는가" 가 아니다(`src/themes/reference/README.md`). v0.7.4 가 정확히 그 간극을
+   * 읽는가" 가 아니다(`examples/themes/hangul/README.md`). v0.7.4 가 정확히 그 간극을
    * 보인다: 이 포맷을 설치할 수 있는 첫 태그된 릴리스이면서, 동시에 `dials` 를
    * 검사도 참조도 하지 않아 조용히 버리는 릴리스이기도 하다 — 버려짐이 곧
    * `engines.baram` 만으로는 알 수 없는 것이다.
@@ -155,7 +155,7 @@ export interface ThemeManifest {
  * ‼️ **둘을 함께 선언하면 `css` 가 못 이기는 키가 있다.** `tokens` 를 실은 테마는
  * 시드 24키와 거기서 계산되는 파생 38키가 `<html>` 인라인으로 쓰이고(§367,
  * `applyThemeVars`), 인라인은 테마 CSS 가 갇힌 `@layer baram-theme` 를 이긴다.
- * 어느 키들이고 그래서 무엇을 대신 고쳐야 하는지는 `src/themes/reference/README.md`
+ * 어느 키들이고 그래서 무엇을 대신 고쳐야 하는지는 `examples/themes/hangul/README.md`
  * 의 "테마 CSS 로는 되찾을 수 없는 키" 가 한 집으로 적는다.
  */
 export interface ThemeManifestModeAssets {

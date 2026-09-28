@@ -291,7 +291,7 @@ describe("installTheme keeps a palette written before a key existed (#722 out of
   it("installs the reference theme's palette, which predates the guide tint", async () => {
     const reference = JSON.parse(
       readFileSync(
-        resolve(__dirname, "../reference/light/tokens.json"),
+        resolve(__dirname, "../../../examples/themes/hangul/light/tokens.json"),
         "utf8",
       ),
     ) as Record<string, string>;
