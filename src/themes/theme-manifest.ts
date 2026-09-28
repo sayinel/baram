@@ -153,10 +153,11 @@ export interface ThemeManifest {
  * 한 모드가 선언하는 자산 경로. 패키지 루트 기준 상대 경로(스펙 0049 §4).
  *
  * ‼️ **둘을 함께 선언하면 `css` 가 못 이기는 키가 있다.** `tokens` 를 실은 테마는
- * 시드 24키와 거기서 계산되는 파생 38키가 `<html>` 인라인으로 쓰이고(§367,
+ * 시드와 거기서 계산되는 파생 키가 `<html>` 인라인으로 쓰이고(§367,
  * `applyThemeVars`), 인라인은 테마 CSS 가 갇힌 `@layer baram-theme` 를 이긴다.
- * 어느 키들이고 그래서 무엇을 대신 고쳐야 하는지는 `examples/themes/hangul/README.md`
- * 의 "테마 CSS 로는 되찾을 수 없는 키" 가 한 집으로 적는다.
+ * 그 키들의 개수와 목록이 어디 있는지, 그래서 무엇을 대신 고쳐야 하는지는
+ * `examples/themes/hangul/README.md` 의 "테마 CSS 로는 되찾을 수 없는 키" 가 한 집으로
+ * 적는다 — 개수를 여기 베껴 두면 키가 늘 때 낡는다.
  */
 export interface ThemeManifestModeAssets {
   css?: string;
@@ -375,8 +376,9 @@ function validateTextField(
  * 버리기인 이유도 같다(아래 `validateDials` 주석): 보안 경계가 아니라 호환성 표면이고,
  * 값이 화면에 닿는 경로는 `CHROME_SURFACES` 화이트리스트 순회 하나뿐이라
  * (`stores/ui/ui.ts` 의 `proposeChromeVisibility`) 버려진 값은 아무 데도 닿지 않는다.
- * 대신 오타가 무증상이 되므로, 레퍼런스 테마의 선언은
- * `__tests__/reference-theme.test.ts` 가 "하나도 버려지지 않는다" 로 고정한다.
+ * 대신 오타가 무증상이 되므로, 크롬 제안 테스트 둘이 읽는 테스트 전용 픽스처
+ * `__tests__/fixtures/focus-theme.json` 의 선언을 `__tests__/focus-theme-fixture.test.ts`
+ * 가 "하나도 버려지지 않는다" 로 고정한다.
  */
 function validateChrome(value: unknown): ManifestValidationError[] {
   if (value === undefined) return [];

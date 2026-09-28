@@ -31,7 +31,9 @@ CSS 는 없다. 매니페스트의 `description` 이 성격을 한 문장으로 
 | `chrome` | 키째 없다 | 아래 문단 |
 
 **크롬을 싣지 않는다(D10).** 기본 테마를 골랐는데 탭 · 상태 · 활동 표시줄이 모두 사라지는 것은 기본 테마에서
-기대할 일이 아니다 — 스펙 0063 D10 은 몰입을 화면구성 프리셋 `Writing`(한국어 UI `글쓰기`)의 몫으로 둔다. 잃은 것은
+기대할 일이 아니다 — 스펙 0063 D10 은 몰입을 화면구성 프리셋의 몫으로 둔다. 표시줄 셋을 감추는 내장 프리셋은
+`Focus`(한국어 UI `포커스`)다 — 사이드바 · 오른쪽 패널과 함께 다섯 표면을 감춘다(`src/stores/file/workspace.ts` 의
+`BUILTIN_PRESETS`). 이름이 비슷한 `Writing`(`글쓰기`)은 사이드바와 오른쪽 패널만 닫고 표시줄 셋은 그대로 둔다. 잃은 것은
 레퍼런스가 다이얼 9(크롬)를 실제로 쓰는 게시물이라는 역할이다. 초안은 세 표면을 모두 `false` 로 제안했고, 그 제안
 경로의 테스트는 이제 테스트 전용 픽스처 `src/themes/__tests__/fixtures/focus-theme.json` 을 읽는다 —
 `src/stores/ui/__tests__/chrome-proposal.test.ts` · `src/hooks/__tests__/use-settings-effects-theme-chrome.test.tsx`
@@ -134,7 +136,7 @@ v0.7.7 은 아직 태그되지 않았다(2026-09-28, `git tag`). 스펙 0063 §7
 | 집합 | 개수 | 어디서 오는가 |
 |---|---|---|
 | 시드 | 25 | 테마가 선언한 `tokens` 그대로 — `aliasOf` 를 가진 키가 빠졌으면 설치가 같은 팔레트의 값으로 채운다(`fillAliasedColors`) |
-| 대비 짝 | 9 | `DERIVED_KEYS` — 강조·status 의 채움과 그 전경(#330) |
+| 대비 짝 | 9 | `DERIVED_KEYS` — 강조·status 의 채움과 그 전경(`#330`) |
 | 의미 색 | 29 | `DERIVED_COLOR_KEYS` — callout 13 · graph 7 · git 4 · status 3 · bg 2 |
 
 세 목록의 canonical 한 집은 코드다(`src/types/theme-color-keys.ts` 의 `THEME_COLOR_KEYS`, `src/utils/theme-vars.ts` 의

@@ -24,7 +24,8 @@ beforeEach(() => {
   measure.mockClear();
   measure.mockImplementation(() => Promise.resolve(1770 / 2048));
   usePluginStore.setState({ revocations: null });
-  // 레퍼런스 테마의 값(스펙 0060 §8.2 검산) — 사용자 층으로 준다.
+  // 레퍼런스 초안의 값(스펙 0060 §8.2 검산 — 39자) — 사용자 층으로 준다. Baram Hangul 은
+  // 폭 · 여백을 싣지 않으므로, 이 값은 테마가 아니라 그 검산에서 온다.
   useSettingsStore.setState({
     activeThemeId: "system",
     appearanceOverrides: {

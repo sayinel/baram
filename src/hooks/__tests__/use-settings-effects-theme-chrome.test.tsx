@@ -61,12 +61,12 @@ import { validateThemeManifest } from "../../themes/theme-manifest";
 import { defaultColorsForBase } from "../../types/theme";
 import { useSettingsEffects } from "../use-settings-effects";
 
-const REF = "focus-fixture";
+const FOCUS = "focus-fixture";
 
 /** 크롬 픽스처를 실제 관문에 통과시켜 얻는다 — 손으로 적은 픽스처는 `chrome`
  *  이 조용히 버려지는 결함을 이 파일에서 무증상으로 만든다. 픽스처 자신이 그 결함을
  *  내지 않는지는 `themes/__tests__/focus-theme-fixture.test.ts` 가 따로 지킨다. */
-const REF_MANIFEST = (() => {
+const FOCUS_MANIFEST = (() => {
   const raw = JSON.parse(
     readFileSync(
       resolve(__dirname, "../../themes/__tests__/fixtures/focus-theme.json"),
@@ -162,12 +162,12 @@ beforeEach(() => {
   useThemeCssCacheStore.setState({ entries: {} });
   usePluginStore.setState({ revocations: null });
   useSettingsStore.setState({
-    activeThemeId: REF,
+    activeThemeId: FOCUS,
     appearanceOverrides: {},
     customThemes: [],
     declinedChromeProposals: {},
     installedThemes: {
-      [REF]: installed(REF_MANIFEST),
+      [FOCUS]: installed(FOCUS_MANIFEST),
       "other-theme": installed(OTHER_MANIFEST),
     },
     locale: "en",
@@ -275,7 +275,7 @@ describe("§370.3 제안은 테마 전이에서만 적용된다", () => {
 
     act(() => {
       useThemeCssCacheStore.setState({
-        entries: { [`${REF}:light`]: "@layer baram-theme {}\n" },
+        entries: { [`${FOCUS}:light`]: "@layer baram-theme {}\n" },
       });
     });
 
@@ -334,15 +334,15 @@ describe("§370.3 제안은 테마 전이에서만 적용된다", () => {
     // 손댐 기록을 지우면 같은 전이가 닿는다 — 위 단언이 "전이가 아예 감지되지
     // 않는다" 로 통과한 것이 아님을 여기서 관측한다.
     //
-    // 스펙 0063 §3.3(계획 0111 Task 1) — 위 `revealAllChrome()` 은 이제 REF 의 제안과
+    // 스펙 0063 §3.3(계획 0111 Task 1) — 위 `revealAllChrome()` 은 이제 FOCUS 의 제안과
     // 어긋난 세 표면을 거절로도 기록한다(`declinedChromeProposals`). 이 케이스가 묻는
     // 것은 `chromeTouched`(세션) 하나뿐이라, 그 거절 기록도 함께 지운다 — 지우지
-    // 않으면 REF 로 돌아와도 거절이 제안을 계속 건너뛰어 이 케이스의 관심사가 아닌
+    // 않으면 FOCUS 로 돌아와도 거절이 제안을 계속 건너뛰어 이 케이스의 관심사가 아닌
     // 이유로 실패한다.
     act(() => {
       useUIStore.setState({ chromeTouched: {} });
       useSettingsStore.setState({ declinedChromeProposals: {} });
-      useSettingsStore.getState().setActiveTheme(REF);
+      useSettingsStore.getState().setActiveTheme(FOCUS);
     });
     await waitFor(() => {
       expect(useUIStore.getState().tabBarVisible).toBe(false);
@@ -353,9 +353,9 @@ describe("§370.3 제안은 테마 전이에서만 적용된다", () => {
 describe("the effect wires the decline recorder (스펙 0063 §3.3)", () => {
   it("records a toggle against the theme the app is wearing, and a remount keeps it wired", async () => {
     useSettingsStore.setState({
-      activeThemeId: REF,
+      activeThemeId: FOCUS,
       declinedChromeProposals: {},
-      installedThemes: { [REF]: installed(REF_MANIFEST) },
+      installedThemes: { [FOCUS]: installed(FOCUS_MANIFEST) },
     });
     const view = render(
       <StrictMode>
@@ -369,16 +369,16 @@ describe("the effect wires the decline recorder (스펙 0063 §3.3)", () => {
     act(() => useUIStore.getState().toggleTabBar());
 
     expect(useSettingsStore.getState().declinedChromeProposals).toEqual({
-      [REF]: { tabBar: true },
+      [FOCUS]: { tabBar: true },
     });
     view.unmount();
   });
 
   it("stops recording after unmount", () => {
     useSettingsStore.setState({
-      activeThemeId: REF,
+      activeThemeId: FOCUS,
       declinedChromeProposals: {},
-      installedThemes: { [REF]: installed(REF_MANIFEST) },
+      installedThemes: { [FOCUS]: installed(FOCUS_MANIFEST) },
     });
     render(<Host />).unmount();
 
@@ -395,16 +395,16 @@ describe("the effect wires the decline recorder (스펙 0063 §3.3)", () => {
   //
   // 무엇이 이것을 실패시키는가: 리스너가 `effectiveThemeId` 를 클로저로 캡처해 걸린 옛 코드
   // (`(surfaces) => recordChromeChoice(effectiveThemeId, surfaces)`, deps `[effectiveThemeId]`).
-  // 그 클로저는 마운트 당시의 REF 를 계속 들고 있으므로, 이 테스트는 거절이
-  // `"other-theme"` 밑이 아니라 REF 밑에 기록된 채로 실패한다. 새 코드
+  // 그 클로저는 마운트 당시의 FOCUS 를 계속 들고 있으므로, 이 테스트는 거절이
+  // `"other-theme"` 밑이 아니라 FOCUS 밑에 기록된 채로 실패한다. 새 코드
   // (`recordUserChromeChoice`)는 불릴 때 `useSettingsStore.getState()` 를 다시 읽으므로
   // 이 프레임에서도 이미 `"other-theme"` 를 본다.
   it("records against the theme that just became active, even mid-frame (F2)", async () => {
     useSettingsStore.setState({
-      activeThemeId: REF,
+      activeThemeId: FOCUS,
       declinedChromeProposals: {},
       installedThemes: {
-        [REF]: installed(REF_MANIFEST),
+        [FOCUS]: installed(FOCUS_MANIFEST),
         "other-theme": installed(OTHER_MANIFEST),
       },
     });

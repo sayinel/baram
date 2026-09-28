@@ -1,5 +1,8 @@
-// §367 시드에서 파생. 테마가 고르는 시드 24키(`THEME_COLOR_KEYS`)에서 의미가 고정된
+// §367 시드에서 파생. 시드 25키(`THEME_COLOR_KEYS`)에서 의미가 고정된
 // 계열 29키를 계산한다 — callout 13 · graph 7 · git 4 · status 3 · bg 2.
+// 시드는 테마가 고른다. 단 `aliasOf` 를 가진 한 키(`--color-editor-guide-tint`)는
+// 테마가 싣지 않아도 되고, 빠지면 `fillAliasedColors` 가 같은 팔레트의
+// `--color-editor-text` 값으로 채운다.
 //
 // ‼️ 모드를 인자로 받지 않는다. 모드 의존은 **시드가 이미 갖고 있다**:
 // `modes.light.colors` 와 `modes.dark.colors` 가 서로 다른 시드를 주므로 같은 식이

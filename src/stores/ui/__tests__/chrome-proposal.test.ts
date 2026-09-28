@@ -21,13 +21,13 @@ import { useSettingsStore } from "../../settings/store";
 import { applyThemeChrome } from "../chrome-proposal";
 import { useUIStore } from "../ui";
 
-const REF = "focus-fixture";
+const FOCUS = "focus-fixture";
 
 /** 크롬 픽스처를 **실제 관문에 통과시켜** 얻는다 — 손으로 적은 픽스처를 쓰면
  *  `chrome` 이 조용히 버려지는 결함이 이 파일에서 무증상이 된다(버리기가 검증의 태도라
  *  그렇다, `theme-manifest.ts` 의 `validateChrome`). 픽스처 자신이 그 결함을 내지
  *  않는지는 `themes/__tests__/focus-theme-fixture.test.ts` 가 따로 지킨다. */
-const REF_MANIFEST = (() => {
+const FOCUS_MANIFEST = (() => {
   const raw = JSON.parse(
     readFileSync(
       resolve(__dirname, "../../../themes/__tests__/fixtures/focus-theme.json"),
@@ -69,7 +69,7 @@ beforeEach(() => {
   useSettingsStore.setState({
     declinedChromeProposals: {},
     installedThemes: {
-      [REF]: installed(REF_MANIFEST),
+      [FOCUS]: installed(FOCUS_MANIFEST),
       "plain-theme": installed(NO_CHROME_MANIFEST),
     },
   });
@@ -89,7 +89,7 @@ afterEach(() => {
 
 describe("§370.3 테마의 크롬 제안", () => {
   it("사용자가 손대지 않은 표면에는 테마의 제안이 적용된다", () => {
-    applyThemeChrome(REF);
+    applyThemeChrome(FOCUS);
     const s = useUIStore.getState();
     expect(s.statusBarVisible).toBe(false);
     expect(s.activityBarVisible).toBe(false);
@@ -102,7 +102,7 @@ describe("§370.3 테마의 크롬 제안", () => {
     useUIStore.getState().toggleStatusBar(); // 다시 켰다 — 명시적 선택이다
     expect(useUIStore.getState().chromeTouched.statusBar).toBe(true);
 
-    applyThemeChrome(REF);
+    applyThemeChrome(FOCUS);
 
     expect(useUIStore.getState().statusBarVisible).toBe(true);
     // 비공허성: 손대지 않은 나머지 둘에는 그대로 닿는다 — 그러지 않으면 이 케이스는
@@ -123,7 +123,7 @@ describe("§370.3 테마의 크롬 제안", () => {
     expect(useUIStore.getState().chromeTouched).toEqual({});
     // 그 뒤에도 제안이 닿는다는 것이 이 규칙의 목적이다. `writing` 은 셋을 전부
     // 보이게 하므로(`stores/file/workspace.ts` 의 내장 프리셋), 제안이 닿으면 감춰진다.
-    applyThemeChrome(REF);
+    applyThemeChrome(FOCUS);
     expect(useUIStore.getState().statusBarVisible).toBe(false);
   });
 
@@ -143,7 +143,7 @@ describe("§370.3 테마의 크롬 제안", () => {
       statusBar: true,
       tabBar: true,
     });
-    applyThemeChrome(REF);
+    applyThemeChrome(FOCUS);
     const s = useUIStore.getState();
     expect(s.activityBarVisible).toBe(true);
     expect(s.statusBarVisible).toBe(true);
@@ -153,7 +153,7 @@ describe("§370.3 테마의 크롬 제안", () => {
   // 무엇이 이것을 실패시키는가: 제안이 스스로를 손댐으로 세면 두 번째 테마가 영영
   // 제안할 수 없다.
   it("제안 적용 자체는 손댐으로 세지 않는다", () => {
-    applyThemeChrome(REF);
+    applyThemeChrome(FOCUS);
     expect(useUIStore.getState().chromeTouched).toEqual({});
   });
 
@@ -198,13 +198,13 @@ describe("§370.3 테마의 크롬 제안", () => {
 
   // CLAUDE.md 의 동등성 관문 — partial 은 새 root 가 되어 모든 리스너를 깨운다.
   it("바꿀 것이 없으면 스토어에 쓰지 않는다", () => {
-    applyThemeChrome(REF); // 한 번 적용해 셋을 제안값에 맞춰 둔다
+    applyThemeChrome(FOCUS); // 한 번 적용해 셋을 제안값에 맞춰 둔다
     let writes = 0;
     const unsubscribe = useUIStore.subscribe(() => {
       writes++;
     });
 
-    applyThemeChrome(REF);
+    applyThemeChrome(FOCUS);
 
     unsubscribe();
     expect(writes).toBe(0);
