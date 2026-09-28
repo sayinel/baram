@@ -4,9 +4,15 @@ name: Plugin Release
 # (GitHub Pages). Trigger: push a tag `plugin-<dir>-v<version>` where <dir>
 # is the directory under examples/plugins/ and <version> matches that
 # plugin's baram-plugin.json. Spec: dev plugin-registry-hosting design.
+#
+# §371 6b-2 — and a first-party THEME (spec 0063 §7.3): a tag `theme-<dir>-v<version>` where
+# <dir> is the directory under examples/themes/. Each tag shape runs exactly one of the two jobs
+# below (`if:` on the tag prefix); they share this file's concurrency group, the index writer
+# (`scripts/update-registry-index.mjs`), both validators and the push
+# (`.github/actions/registry-push`), so the registry still has one writer (spec 0063 D1).
 on:
   push:
-    tags: ['plugin-*']
+    tags: ['plugin-*', 'theme-*']
 
 # Serialize registry writes. Two plugin tags at once must not race on the registry-repo
 # push, and neither must a plugin release and a revocation sync — both clone shallow and
@@ -25,6 +31,7 @@ env:
 
 jobs:
   release:
+    if: startsWith(github.ref_name, 'plugin-')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -349,33 +356,143 @@ jobs:
             --base-url "$BASE_URL"
 
       # Everything third-party has already run. This step writes the key, rewrites the
-      # read-only HTTPS remote to SSH, and pushes — no `node`, no `npx`, no dependency.
+      # read-only HTTPS remote to SSH, and pushes — no `node`, no `npx`, no dependency. The
+      # lines live in `.github/actions/registry-push` so the theme job below pushes the same way.
       - name: Push ZIP + updated index to registry repo
-        env:
-          DEPLOY_KEY: ${{ secrets.PLUGINS_DEPLOY_KEY }}
-          ZIP_NAME: ${{ steps.meta.outputs.zip_name }}
-          PLUGIN_ID: ${{ steps.meta.outputs.plugin_id }}
-          VERSION: ${{ steps.meta.outputs.version }}
+        uses: ./.github/actions/registry-push
+        with:
+          archive: plugins/${{ steps.meta.outputs.zip_name }}
+          deploy-key: ${{ secrets.PLUGINS_DEPLOY_KEY }}
+          message: "release: ${{ steps.meta.outputs.plugin_id }} ${{ steps.meta.outputs.version }}"
+          registry-repo: ${{ env.REGISTRY_REPO }}
+
+  # §371 6b-2 — a first-party theme (spec 0063 §7.3). The plugin job's argument, step for step,
+  # with the differences a theme brings:
+  #
+  #   - NO BUILD. Nothing in examples/themes/ runs: the package step reads the manifest and the
+  #     files it declares, and nothing else (`scripts/theme-package.ts`).
+  #   - `setup-node` comes BEFORE the gates rather than after, because the gates ARE the app's
+  #     own TypeScript (`validateThemeManifest`, `parseThemeTokens`, `registryPreviewPalettes`,
+  #     `parseBaramFloor`) — the plugin job restates its version gate in dependency-free shell
+  #     only because it runs before any install. No secret exists in this job until the last step,
+  #     so moving the install earlier moves no third-party code closer to the key.
+  #   - The archive goes to `plugins/`, beside the plugins (spec 0063 D9, corrected by plan 0113):
+  #     every registry gate that protects an archive — `validate.yml`'s immutability check, the
+  #     orphan sweep in `validate-registry-assets.ts` — looks there and only there.
+  release-theme:
+    if: startsWith(github.ref_name, 'theme-')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      # WHAT MAY BE PUBLISHED, AND UNDER WHICH ID — deny by default, as in the plugin job. The id
+      # is pinned per directory because a theme id is permanent once published (spec 0063 D8):
+      # an allowlisted directory whose manifest changes id fails the release instead of shipping
+      # a second theme. Pinned by src/themes/__tests__/theme-release-workflow.test.ts, which
+      # EXECUTES this step.
+      - name: Parse and verify the theme tag
+        id: theme_meta
         run: |
-          mkdir -p ~/.ssh
-          echo "$DEPLOY_KEY" > ~/.ssh/plugins_deploy
-          chmod 600 ~/.ssh/plugins_deploy
-          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
-          export GIT_SSH_COMMAND="ssh -i ~/.ssh/plugins_deploy -o IdentitiesOnly=yes"
-          cd "$RUNNER_TEMP/registry"
-          git remote set-url origin "git@github.com:${REGISTRY_REPO}.git"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          # `readme/` is staged as a DIRECTORY rather than by name: the file is written only
-          # when the archive had one, and `git add` on a path that does not exist aborts the
-          # step — which would fail a perfectly good release of a plugin without a README.
-          # An unchanged or absent directory adds nothing and the `--quiet` check below still
-          # decides whether there is anything to publish.
-          git add "plugins/$ZIP_NAME" index.json
-          git add readme 2>/dev/null || true
-          if git diff --cached --quiet; then
-            echo "::notice::Registry already contains this exact release — nothing to publish."
-            exit 0
-          fi
-          git commit -m "release: $PLUGIN_ID $VERSION"
-          git push origin main
+          fail() { echo "::error::$1"; exit 1; }
+          TAG="${GITHUB_REF_NAME}"
+          [[ "$TAG" =~ ^theme-(.+)-v([0-9]+\.[0-9]+\.[0-9]+)$ ]] \
+            || fail "tag $TAG does not match theme-<dir>-v<semver>"
+          DIR="${BASH_REMATCH[1]}"; VERSION="${BASH_REMATCH[2]}"
+          case "$DIR" in
+            hangul) EXPECTED_ID=baram-hangul ;;
+            *) fail "$DIR is not in this workflow's publishable theme allowlist — add it deliberately if that is the intent" ;;
+          esac
+          [[ -f "examples/themes/$DIR/baram-theme.json" ]] \
+            || fail "no manifest at examples/themes/$DIR/baram-theme.json"
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main \
+            || fail "tag commit $GITHUB_SHA is not on main"
+          {
+            echo "dir=$DIR"
+            echo "version=$VERSION"
+            echo "expected_id=$EXPECTED_ID"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: ./.github/actions/setup-node
+
+      # The manifest (the app's validator), the tag version, a reserved id, the release-order
+      # floor against package.json, the declared paths staying inside the directory, the tokens
+      # reading as a full palette — then a byte-reproducible zip of exactly the declared files.
+      - name: Package the theme
+        id: theme_package
+        env:
+          DIR: ${{ steps.theme_meta.outputs.dir }}
+          VERSION: ${{ steps.theme_meta.outputs.version }}
+        run: |
+          npx tsx scripts/run-theme-package.ts package \
+            --dir "examples/themes/$DIR" --version "$VERSION" --out "$RUNNER_TEMP" \
+            > "$RUNNER_TEMP/theme-package.txt" \
+            || { echo "::error::the theme was refused (see the message above)"; exit 1; }
+          grep -E '^zip_name=' "$RUNNER_TEMP/theme-package.txt" >> "$GITHUB_OUTPUT"
+
+      # RE-VERIFY THE ARTIFACT, and index FROM it — the plugin job's round-5 argument: the entry
+      # and the archive are the same bytes by construction, so a wandering step cannot make the
+      # registry advertise one theme while shipping another.
+      - name: Verify the packaged theme is the theme that was verified
+        id: theme_artifact
+        env:
+          EXPECTED_ID: ${{ steps.theme_meta.outputs.expected_id }}
+          VERSION: ${{ steps.theme_meta.outputs.version }}
+          ZIP_NAME: ${{ steps.theme_package.outputs.zip_name }}
+        run: |
+          fail() { echo "::error::$1"; exit 1; }
+          # ‼️ An empty value must not make this vacuous (the plugin job's EXPECTED_TRUST note).
+          [[ -n "$EXPECTED_ID" && -n "$VERSION" && -n "$ZIP_NAME" ]] \
+            || fail "a verified value did not reach this step — this is a bug in this workflow, not a refusal"
+          [[ "$ZIP_NAME" == "$EXPECTED_ID-$VERSION.zip" ]] \
+            || fail "the archive is named $ZIP_NAME but $EXPECTED_ID-$VERSION.zip was verified"
+          npx tsx scripts/run-theme-package.ts verify \
+            --zip "$RUNNER_TEMP/$ZIP_NAME" --id "$EXPECTED_ID" --version "$VERSION" \
+            --manifest-out "$RUNNER_TEMP/packaged-theme-manifest.json" \
+            --preview-out "$RUNNER_TEMP/packaged-theme-preview.json" \
+            || fail "the archive is not the theme that was verified (see the message above)"
+          {
+            echo "manifest=$RUNNER_TEMP/packaged-theme-manifest.json"
+            echo "preview=$RUNNER_TEMP/packaged-theme-preview.json"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Compute the theme checksum
+        id: theme_sum
+        env:
+          ZIP_NAME: ${{ steps.theme_package.outputs.zip_name }}
+        run: |
+          CHECKSUM="$(sha256sum "$RUNNER_TEMP/$ZIP_NAME" | cut -d' ' -f1)"
+          echo "checksum=$CHECKSUM" >> "$GITHUB_OUTPUT"
+
+      # ‼️ NO SECRET IS IN REACH OF THIS STEP — the plugin job's MEDIUM-3 split, kept.
+      - name: Update and validate the registry index for the theme
+        env:
+          PACKAGED_MANIFEST: ${{ steps.theme_artifact.outputs.manifest }}
+          PACKAGED_PREVIEW: ${{ steps.theme_artifact.outputs.preview }}
+          ZIP_NAME: ${{ steps.theme_package.outputs.zip_name }}
+          CHECKSUM: ${{ steps.theme_sum.outputs.checksum }}
+        run: |
+          git clone --depth 1 "https://github.com/${REGISTRY_REPO}.git" "$RUNNER_TEMP/registry"
+          mkdir -p "$RUNNER_TEMP/registry/plugins"
+          cp "$RUNNER_TEMP/$ZIP_NAME" "$RUNNER_TEMP/registry/plugins/"
+          node scripts/update-registry-index.mjs \
+            --index "$RUNNER_TEMP/registry/index.json" \
+            --manifest "$PACKAGED_MANIFEST" \
+            --zip-name "$ZIP_NAME" \
+            --checksum "$CHECKSUM" \
+            --base-url "$BASE_URL" \
+            --kind theme \
+            --preview "$PACKAGED_PREVIEW"
+          npx tsx scripts/validate-index.ts "$RUNNER_TEMP/registry/index.json"
+          npx tsx scripts/validate-registry-assets.ts "$RUNNER_TEMP/registry" \
+            --base-url "$BASE_URL"
+
+      - name: Push the theme archive + updated index to registry repo
+        uses: ./.github/actions/registry-push
+        with:
+          archive: plugins/${{ steps.theme_package.outputs.zip_name }}
+          deploy-key: ${{ secrets.PLUGINS_DEPLOY_KEY }}
+          message: "release: ${{ steps.theme_meta.outputs.expected_id }} ${{ steps.theme_meta.outputs.version }}"
+          registry-repo: ${{ env.REGISTRY_REPO }}
