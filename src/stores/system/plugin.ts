@@ -449,10 +449,25 @@ export const usePluginStore = create<PluginState>()(
       // button for an action that cannot succeed. Kept out here and in `setRevocations`
       // rather than in each caller, because the update check (`checkForUpdates`, first run
       // 10 s after launch by `update-checker.ts`) and `refreshRevocations` race and either may
-      // land first. A refused write returns without `set`: it changes nothing, and `set` would
-      // still wake every listener.
+      // land first.
+      //
+      // A refused version also drops an earlier offer for the same id: the check passes the
+      // version the index lists now, and the Update action installs that listing
+      // (`usePluginActions`'s `handleUpdate` re-resolves it by id), not the version stored
+      // here — so an older stored version would label a button whose install is refused.
+      // `set` runs only when something changes, since each call wakes every listener: not for a
+      // refusal with nothing to drop, and not for the version already stored.
       setUpdateAvailable: (id, version) => {
-        if (revocationFor(id, version, get().revocations) !== null) return;
+        const { revocations, updateAvailable } = get();
+        if (revocationFor(id, version, revocations) !== null) {
+          if (Object.hasOwn(updateAvailable, id)) {
+            set((state) => ({
+              updateAvailable: omitKey(state.updateAvailable, id),
+            }));
+          }
+          return;
+        }
+        if (updateAvailable[id] === version) return;
         set((state) => ({
           updateAvailable: { ...state.updateAvailable, [id]: version },
         }));
@@ -634,6 +649,10 @@ export const usePluginStore = create<PluginState>()(
           registryCache: current.registryCache,
           registryCacheTime: current.registryCacheTime,
           registryUrl: current.registryUrl,
+          // §69 — `updateAvailable` is IN MEMORY ONLY as well (`partialize` never writes it),
+          // so a value found in storage was planted, and it never passed `setUpdateAvailable`'s
+          // revocation check. It is what the Update badge and the Update button's label read.
+          updateAvailable: current.updateAvailable,
           // §379 — the loader's "is a dev load bounded?" answer, set from the
           // `plugin_list_dev` snapshot Rust returns each launch; never restored from storage.
           devMode: current.devMode,

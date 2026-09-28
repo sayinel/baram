@@ -228,12 +228,29 @@ describe("checkForUpdates skips entries the install path refuses (§260 Phase 6)
       installedPlugins: installed("1.0.0") as never,
       registryCache: null,
       registryCacheTime: 0,
+      revocations: null,
+      updateAvailable: {},
     });
   });
 
   it("offers an update from an entry that carries a tier", async () => {
     fetchRegistry.mockResolvedValue({ plugins: [entry({ version: "2.0.0" })] });
     expect(await checkForUpdates()).toEqual({ p: "2.0.0" });
+  });
+
+  it("returns what the store recorded, so a revoked listed version is not reported (§69)", async () => {
+    // The store refuses the version (`setUpdateAvailable`); the returned map must say the same
+    // thing the Update badge does. The case above is the pair: an unrevoked version is returned.
+    usePluginStore.setState({
+      revocations: revoking({
+        id: "p",
+        severity: "vulnerable",
+        versions: { eq: "2.0.0" },
+      }),
+    });
+    fetchRegistry.mockResolvedValue({ plugins: [entry({ version: "2.0.0" })] });
+    expect(await checkForUpdates()).toEqual({});
+    expect(usePluginStore.getState().updateAvailable).toEqual({});
   });
 
   it("offers nothing for a legacy entry, which could only ever error", async () => {

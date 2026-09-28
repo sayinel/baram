@@ -138,8 +138,8 @@ describe("themeUpdatesFor and a revoked listed version (§69)", () => {
   );
 
   it("still offers a version the list does not name", () => {
-    // Revoked: the version just BELOW the listed one. A rule that ignored the version and
-    // skipped any revoked id would drop this update.
+    // Revoked: every version below the listed one, the installed one included. A rule that
+    // ignored the version and skipped any revoked id would drop this update.
     const list = revoking({
       id: "dracula",
       severity: "malicious",

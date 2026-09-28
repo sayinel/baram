@@ -44,7 +44,13 @@ interface CommunityListing {
   plugins: RegistryEntry[];
 }
 
-/** Check for updates for all installed plugins */
+/**
+ * Check for updates for all installed plugins.
+ *
+ * Returns what the store RECORDED for each plugin whose listed version differs — read back
+ * from it rather than re-derived, because `setUpdateAvailable` refuses a revoked version (§69)
+ * and a second copy of that rule here could drift from it.
+ */
 export async function checkForUpdates(): Promise<Record<string, string>> {
   const store = usePluginStore.getState();
   const index = await fetchRegistryIndex();
@@ -66,8 +72,9 @@ export async function checkForUpdates(): Promise<Record<string, string>> {
     // update badge and an enabled button for it promises an action that cannot succeed.
     if (!registryEntry?.trust) continue;
     if (registryEntry.version !== plugin.manifest.version) {
-      updates[id] = registryEntry.version;
       store.setUpdateAvailable(id, registryEntry.version);
+      const recorded = usePluginStore.getState().updateAvailable;
+      if (Object.hasOwn(recorded, id)) updates[id] = recorded[id];
     }
   }
 
@@ -109,11 +116,14 @@ export async function fetchRegistryIndex(
  * query even runs — an empty query must not surface it either. Absence still reads as
  * `"plugin"`, the same default `RegistryEntry.kind`'s doc comment describes.
  *
- * §69 — an entry whose LISTED version is revoked `unlisted` is dropped at the same point, for
- * the same reason: spec 0041's `unlisted` blocks new installs, this list is where a new install
- * starts, and showing it would offer an Install button that `usePluginActions`'s gate refuses.
- * The rule is {@link isListable}'s, shared with `searchThemeRegistry`. `revocations` is required
- * so each caller says which list it holds; `null` (none received yet) drops nothing.
+ * §69 — an entry is dropped at the same point, for the same reason, when the governing
+ * (worst) revocation of its LISTED version is `unlisted`: spec 0041's `unlisted` blocks new
+ * installs, this list is where a new install starts, and showing it would offer an Install
+ * button that `usePluginActions`'s gate refuses. A version also revoked `vulnerable` or
+ * `malicious` stays, since the worse entry governs. The rule is {@link isListable}'s, shared
+ * with `searchThemeRegistry`. `revocations` is required so each caller says which list it
+ * holds; `null` means no list is held (none received yet, or one cleared by `setRegistryUrl`
+ * or found unreadable on rehydrate) and drops nothing.
  */
 export function searchRegistry(
   index: RegistryIndex,
@@ -154,9 +164,10 @@ function matchesQuery(entry: RegistryEntry, lower: string): boolean {
  * same `fetchRegistryIndex` result — themes and plugins share the merged list, though §382
  * split the fetch itself into `index.json` and `community.json` behind their own caches.
  *
- * §69 — a listing revoked `unlisted` leaves this list too, before the query runs, by the same
- * {@link isListable} rule and for the reason `searchRegistry` gives (here the refusing gate is
- * `use-theme-actions.ts`'s `refuseIfRevoked`).
+ * §69 — a listing whose governing (worst) revocation is `unlisted` leaves this list too,
+ * before the query runs, by the same {@link isListable} rule and for the reason
+ * `searchRegistry` gives (here the refusing gate is `use-theme-actions.ts`'s
+ * `refuseIfRevoked`).
  */
 export function searchThemeRegistry(
   index: RegistryIndex,

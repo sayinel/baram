@@ -1,4 +1,4 @@
-import type { RevocationList } from "../revocation";
+import type { RevocationList, RevocationSeverity } from "../revocation";
 import type { InstalledPlugin } from "../types";
 
 // §69 Plugin Store state transition tests
@@ -225,24 +225,11 @@ describe("usePluginStore", () => {
         usePluginStore.getState().updateAvailable["test-plugin"],
       ).toBeUndefined();
     });
-  });
 
-  // §69 — the install gate (`usePluginActions`) refuses a revoked target of any severity, so
-  // an offered update to one is a badge and a button for an action that cannot succeed. The
-  // store holds that out whichever of the update check and the revocation refresh lands first.
-  describe("update availability never holds a revoked version (§69)", () => {
-    const revoking = (id: string, version: string): RevocationList => ({
-      revoked: [
-        { id, reason: "r", severity: "unlisted", versions: { eq: version } },
-      ],
-      sequence: 1,
-      version: 1,
-    });
-
-    test("setUpdateAvailable refuses a revoked version without waking a subscriber", () => {
-      usePluginStore.setState({
-        revocations: revoking("test-plugin", "2.0.0"),
-      });
+    test("re-recording the version already offered wakes no subscriber", () => {
+      // Every update check re-records each pending update; a write that changes nothing must
+      // not replace the object and wake every listener.
+      usePluginStore.setState({ updateAvailable: { "test-plugin": "2.0.0" } });
       const before = usePluginStore.getState().updateAvailable;
       let notified = 0;
       const unsubscribe = usePluginStore.subscribe(() => {
@@ -256,10 +243,55 @@ describe("usePluginStore", () => {
       expect(notified).toBe(0);
     });
 
+    test("a different version for an id already offered replaces it", () => {
+      // The pair of the case above: "same id" alone is not "nothing to write".
+      usePluginStore.setState({ updateAvailable: { "test-plugin": "2.0.0" } });
+      usePluginStore.getState().setUpdateAvailable("test-plugin", "2.1.0");
+      expect(usePluginStore.getState().updateAvailable).toEqual({
+        "test-plugin": "2.1.0",
+      });
+    });
+  });
+
+  // §69 — the install gate (`usePluginActions`) refuses a revoked target of any severity, so
+  // an offered update to one is a badge and a button for an action that cannot succeed. The
+  // store holds that out whichever of the update check and the revocation refresh lands first.
+  describe("update availability never holds a revoked version (§69)", () => {
+    const SEVERITIES = ["unlisted", "vulnerable", "malicious"] as const;
+    const revoking = (
+      id: string,
+      version: string,
+      severity: RevocationSeverity,
+    ): RevocationList => ({
+      revoked: [{ id, reason: "r", severity, versions: { eq: version } }],
+      sequence: 1,
+      version: 1,
+    });
+
+    test.each(SEVERITIES)(
+      "setUpdateAvailable refuses a version revoked %s without waking a subscriber",
+      (severity) => {
+        usePluginStore.setState({
+          revocations: revoking("test-plugin", "2.0.0", severity),
+        });
+        const before = usePluginStore.getState().updateAvailable;
+        let notified = 0;
+        const unsubscribe = usePluginStore.subscribe(() => {
+          notified += 1;
+        });
+
+        usePluginStore.getState().setUpdateAvailable("test-plugin", "2.0.0");
+        unsubscribe();
+
+        expect(usePluginStore.getState().updateAvailable).toBe(before);
+        expect(notified).toBe(0);
+      },
+    );
+
     test("setUpdateAvailable records a version the list does not revoke", () => {
       // Same list, next version: the refusal above is about the VERSION, not the id.
       usePluginStore.setState({
-        revocations: revoking("test-plugin", "2.0.0"),
+        revocations: revoking("test-plugin", "2.0.0", "malicious"),
       });
       usePluginStore.getState().setUpdateAvailable("test-plugin", "2.0.1");
       expect(usePluginStore.getState().updateAvailable).toEqual({
@@ -267,17 +299,37 @@ describe("usePluginStore", () => {
       });
     });
 
-    test("setRevocations drops an offered update the new list revokes, and only that one", () => {
-      usePluginStore.setState({
-        updateAvailable: { other: "3.0.0", "test-plugin": "2.0.0" },
-      });
-      usePluginStore
-        .getState()
-        .setRevocations(revoking("test-plugin", "2.0.0"), true);
-      expect(usePluginStore.getState().updateAvailable).toEqual({
-        other: "3.0.0",
-      });
-    });
+    test.each(SEVERITIES)(
+      "setUpdateAvailable drops an earlier offer for the id when the version now listed is revoked %s",
+      (severity) => {
+        // The check offers what the registry lists NOW, and the Update action installs that
+        // listing, not the version stored here — so a refused 2.1.0 makes the stored 2.0.0 a
+        // button for a refused install. `other` is the pair: an unrelated offer stays.
+        usePluginStore.setState({
+          revocations: revoking("test-plugin", "2.1.0", severity),
+          updateAvailable: { other: "3.0.0", "test-plugin": "2.0.0" },
+        });
+        usePluginStore.getState().setUpdateAvailable("test-plugin", "2.1.0");
+        expect(usePluginStore.getState().updateAvailable).toEqual({
+          other: "3.0.0",
+        });
+      },
+    );
+
+    test.each(SEVERITIES)(
+      "setRevocations drops an offered update the new list revokes %s, and only that one",
+      (severity) => {
+        usePluginStore.setState({
+          updateAvailable: { other: "3.0.0", "test-plugin": "2.0.0" },
+        });
+        usePluginStore
+          .getState()
+          .setRevocations(revoking("test-plugin", "2.0.0", severity), true);
+        expect(usePluginStore.getState().updateAvailable).toEqual({
+          other: "3.0.0",
+        });
+      },
+    );
 
     test("setRevocations keeps the same object when it revokes nothing offered", () => {
       // Revokes the INSTALLED version, not the offered one — the update is the way off it.
@@ -285,7 +337,7 @@ describe("usePluginStore", () => {
       const before = usePluginStore.getState().updateAvailable;
       usePluginStore
         .getState()
-        .setRevocations(revoking("test-plugin", "1.0.0"), true);
+        .setRevocations(revoking("test-plugin", "1.0.0", "malicious"), true);
       expect(usePluginStore.getState().updateAvailable).toBe(before);
     });
   });
