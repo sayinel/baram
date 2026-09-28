@@ -136,8 +136,9 @@ export function blocksLoad(entry: null | RevocationEntry): boolean {
  *
  * Spec 0041's `unlisted` blocks new installs, and a listing is where a new install starts, so
  * a version whose governing entry is `unlisted` leaves the list. `vulnerable` and `malicious`
- * stay listed: the spec shows them with a badge, which the plugin list renders
- * (`PluginMarketplace.tsx`'s `shownRevocation`). `ThemeBrowser.tsx` renders no badge, so
+ * stay listed: the spec shows them with a badge, which the plugin list renders for an entry
+ * that is not installed (`PluginMarketplace.tsx`'s `shownRevocation` judges an installed
+ * entry by the installed version). `ThemeBrowser.tsx` renders no badge, so
  * there the Install refusal is what says why. The governing entry is {@link revocationFor}'s
  * worst match, so a version revoked both `unlisted` and `malicious` stays listed instead of
  * disappearing without a word.
