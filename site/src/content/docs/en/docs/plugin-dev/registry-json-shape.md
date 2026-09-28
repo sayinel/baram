@@ -182,7 +182,7 @@ interface CommunityEntry extends RegistryEntry {
   publisherId: number; // numeric GitHub user id
   repoId: number; // numeric id of the plugin's GitHub repository
   // `repository` is inherited from `RegistryEntry` — optional, and not part
-  // of the community gate below.
+  // of the community rules below.
 }
 ```
 

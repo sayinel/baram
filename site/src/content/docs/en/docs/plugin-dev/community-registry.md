@@ -2,9 +2,10 @@
 title: "Publishing to the community registry"
 ---
 
-Anyone can publish a sandboxed plugin to Baram's marketplace. It is listed next
-to Baram's own plugins, marked **Community**, with your GitHub account shown as
-its publisher.
+Anyone with a personal GitHub account can publish a sandboxed plugin to
+Baram's marketplace. In Baram versions that read the community registry, it is
+listed next to Baram's own plugins, marked **Community**, with your GitHub
+account shown as its publisher.
 
 You keep the source and the releases in your own repository. The registry
 keeps its own copy of each release and serves it from its own address, and the
@@ -24,8 +25,8 @@ bytes of a published version never change.
   starts with a letter or a digit.
 
 Baram does not review your code: the check reads your ZIP as data and never
-runs or scans it. Users see the capabilities your plugin asks for before they
-install it, and that list is everything it can do.
+runs your code or scans it for what it does. Users see the capabilities your
+plugin asks for before they install it, and that list is everything it can do.
 
 ## 1. Start from the template
 
@@ -46,8 +47,8 @@ that the two agree, builds the plugin, zips `baram-plugin.json`, `dist/` and
 descriptor for the next step — SHA-256 included — to the run's summary.
 
 By hand: `zip -r hello-counter-1.0.0.zip baram-plugin.json dist README.md`,
-then `shasum -a 256 hello-counter-1.0.0.zip`. Make the archive with plain
-`zip -r`; step 6 below lists what the check refuses in an archive.
+then `shasum -a 256 hello-counter-1.0.0.zip`. On Windows, use the release
+workflow: other ZIP tools can write extra fields the check refuses (step 6).
 
 **Do not replace a release asset after you submit it.** Publishing downloads
 the asset again and checks its SHA-256; if the bytes changed, nothing is
@@ -126,9 +127,9 @@ reason, as in `✗ community gate step 5: …`.
    descriptor's id and a version written `X.Y.Z` that the tag names, and
    writes `engines.baram` as `>=X.Y.Z`.
 8. The `community.json` entry this version would publish passes the
-   registry's validator. Among its rules: the name is 1–100 characters, and
-   the name, description and author contain no control or
-   bidirectional-override characters.
+   registry's validator. Among its rules: the name is 1–100 characters and not
+   blank, and the name, description and author contain no control characters
+   (line breaks and tabs included) or bidirectional-override characters.
 9. The version is higher than the one already published.
 
 A pull request that passes logs `✓ community gate: <id> <version> → auto-merge`,
@@ -136,10 +137,10 @@ or `→ needs-review` followed by the reasons a maintainer has to look.
 
 ## 5. Review, merge and publishing
 
-- A maintainer reviews the **first version** of a new id once. The review looks
-  for names or ids that impersonate Baram or another project, a description
-  that matches the capabilities, and a public repository with a LICENSE and a
-  README.
+- A maintainer reviews a **new id** until its first version is published,
+  looking for names or ids that impersonate Baram or another project, a
+  description that matches the capabilities, and a public repository with a
+  LICENSE and a README.
 - A **later version merges itself** unless it asks for a capability the
   published version lacked, or changes `name`, `author`, `description`,
   `icon`, `homepage`, `publisher` or `repo`; any of those waits for a

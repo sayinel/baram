@@ -26,7 +26,7 @@ Practical consequences for you as a plugin author:
 
 - **Self-hosted registries are unsupported.** To reach users, publish through
   the [community registry](/en/docs/plugin-dev/community-registry/) instead —
-  Baram reads it from the same registry as the first-party index.
+  Baram reads its `community.json` from the same registry as `index.json`.
 - **Editing `config.json` has no effect.** Any `registryUrl` written there is
   discarded when the app rehydrates.
 - Distributing outside the registry means the **Developer** section at the

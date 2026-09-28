@@ -1,6 +1,6 @@
 ---
 title: "레지스트리 JSON 모양"
-sourceHash: "2d7d47b25883"
+sourceHash: "5913bb883391"
 ---
 
 
@@ -164,7 +164,7 @@ interface CommunityEntry extends RegistryEntry {
   publisherId: number; // GitHub 사용자의 숫자 id
   repoId: number; // 플러그인 GitHub 저장소의 숫자 id
   // repository 는 RegistryEntry 에서 물려받는다 — 선택 필드이고, 아래 커뮤니티
-  // 게이트의 대상이 아니다.
+  // 규칙의 대상이 아니다.
 }
 ```
 

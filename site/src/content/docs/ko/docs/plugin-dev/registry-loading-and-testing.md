@@ -1,6 +1,6 @@
 ---
 title: "레지스트리 불러오기와 로컬 시험"
-sourceHash: "950c2cd71f58"
+sourceHash: "41407f64b32f"
 ---
 
 ## Baram이 레지스트리를 불러오는 방식
@@ -24,8 +24,8 @@ https://sayinel.github.io/baram-plugins/index.json
 플러그인 저자에게 실질적으로 따라오는 것들:
 
 - **직접 호스팅한 레지스트리는 지원되지 않습니다.** 사용자에게 닿으려면 대신
-  [커뮤니티 레지스트리](/ko/docs/plugin-dev/community-registry/)로 배포하십시오 — Baram은 그것을 1군
-  색인과 같은 레지스트리에서 읽습니다.
+  [커뮤니티 레지스트리](/ko/docs/plugin-dev/community-registry/)로 배포하십시오 — Baram은 그
+  `community.json`을 `index.json`과 같은 레지스트리에서 읽습니다.
 - **`config.json`을 고쳐도 효과가 없습니다.** 거기 쓴 `registryUrl`은 앱이 재수화할 때 버려집니다.
 - 레지스트리 밖으로 배포하는 것은 **설정 → 플러그인** 아래쪽의 **개발자** 구역을 뜻합니다 —
   사용자가 **개발자 모드**를 켜고, 플러그인 폴더를 고르고, 권한을 승인합니다. 릴리스 빌드에서
