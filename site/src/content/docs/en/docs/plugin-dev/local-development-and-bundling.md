@@ -14,8 +14,9 @@ packaging or installing it.
   is refused with "Release builds can only load sandboxed plugins from a folder";
 - a plugin's storage (`~/.baram/plugin-data/<id>`) is keyed by its id, so a
   folder cannot take an id that belongs to someone else: not one starting with
-  `baram-` (reserved for Baram's own plugins — the examples in this repository
-  all use `baram-` ids, so copy one and change its `id` first), not the id of a
+  `baram-` (reserved for Baram's own plugins — every example in this repository
+  but `community-template` uses a `baram-` id, so change the `id` of any other one
+  you copy), not the id of a
   plugin you have installed, and not an id whose storage another plugin left
   behind (uninstalling keeps `plugin-data/<id>`). Baram records the id of each
   folder it loads, so your own plugin's storage does not block it next time.

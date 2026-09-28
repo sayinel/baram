@@ -3,23 +3,32 @@ title: "Quick start"
 ---
 
 
-The fastest way to start a new plugin is to copy one of the three reference
+The fastest way to start a new plugin is to copy one of the reference
 examples in [`examples/plugins/`](https://github.com/sayinel/baram/tree/main/examples/plugins):
 
+- [`examples/plugins/community-template/`](https://github.com/sayinel/baram/tree/main/examples/plugins/community-template) — **the
+  one to copy.** A sandboxed status-bar plugin with an id outside the `baram-` prefix
+  Baram reserves, and a release workflow that builds the ZIP the
+  [community registry](/en/docs/plugin-dev/community-registry/) takes. Its README
+  lists what to change.
 - [`examples/plugins/word-count/`](https://github.com/sayinel/baram/tree/main/examples/plugins/word-count) — **the sandboxed
-  reference, and the one to copy.** A declared status-bar item written by an
+  reference** Baram publishes. A declared status-bar item written by an
   `editor:readonly` + `events` + `statusbar` plugin. It needs nothing from the main
-  realm, which is the point.
+  realm, which is the point. Its id starts with `baram-`, so change it in a copy.
 - [`examples/plugins/bullet-threading/`](https://github.com/sayinel/baram/tree/main/examples/plugins/bullet-threading) — **the
   trusted reference.** A ProseMirror decoration plugin contributed through
   `tiptapExtensions`, plus a settings tab. Copy it when your plugin has to run *inside*
   the editor: that needs the main realm, so such a plugin is `trust: "trusted"` by
-  construction — the sandboxed tier refuses `tiptapExtensions`.
+  construction — the sandboxed tier refuses `tiptapExtensions`. A copy loads from a folder
+  only in a development build, and the community registry does not take it: it takes
+  sandboxed plugins only.
 - [`examples/plugins/ai-summary/`](https://github.com/sayinel/baram/tree/main/examples/plugins/ai-summary) — the **trusted**
   tier with arbitrary DOM: Shadow-DOM sidebar panel + settings tab, `ai` + `storage`.
   Copy it only if you genuinely need arbitrary DOM. It is **not in the release
   workflow's publish allowlist**; its 1.x line was withdrawn from the registry in
-  v0.5.0, and there is still no declarative `sidebar` contribution.
+  v0.5.0, and there is still no declarative `sidebar` contribution. Like a copy of
+  `bullet-threading/`, a copy loads from a folder only in a development build, and the
+  community registry does not take it.
 
 Two further folders are internal **test fixtures — not templates**. Both are single
 hand-written files with no build step, and `plugin-release.yml` refuses to publish either:
@@ -135,11 +144,12 @@ my-plugin/
 
 1. Copy `examples/plugins/plugin-api.d.ts` and `examples/plugins/types.d.ts`
    next to your source (or reference them directly via a relative
-   `include`/`path`, as both examples' `tsconfig.json` do).
-2. Import types from there:
+   `include`/`path`, as the examples' `tsconfig.json` files do).
+2. Import types from there — `SandboxContext` for a sandboxed plugin, as the
+   template does (a `trusted` plugin takes `ExtensionContext` instead):
 
    ```typescript
-   import type { ExtensionContext, StatusBarItem } from "./plugin-api";
+   import type { SandboxContext } from "../plugin-api";
    ```
 
 3. Write `activate(context)` (and optionally `deactivate()`).
