@@ -605,18 +605,6 @@ plugins.forEach((value, position) => {
     );
   }
 
-  // §69 — the same scheme rule for `readme`, and it fails HARDER than the download's.
-  //
-  // ‼️ NOTHING ATTESTS A README. The archive has a checksum beside it, so a non-https
-  // download is degraded rather than forged; this document has no such backstop, and it is
-  // rendered as markdown on the one screen a user reads to decide whether to grant full
-  // trust. So a non-https readme is an error here, not a warning.
-  //
-  // WHAT THIS DOES NOT CHECK: that the URL is under the registry's own base. That check
-  // needs the index URL, which this script is not given — it validates a document, not a
-  // deployment. `fetch_registry_readme` enforces it at the moment of dereference, where the
-  // index URL is known, and re-checks every redirect hop. Stated because a scheme check
-  // that looked like an origin check would be worse than none.
   // 스펙 0063 §5.1 · §5.3 — the preview is judged by the app's OWN filter, the one
   // `registry-client.ts` runs before caching the index. Both refusals below are silent at
   // runtime: the app drops the preview (never the entry) and the browse card draws no colours.
@@ -638,6 +626,18 @@ plugins.forEach((value, position) => {
     );
   }
 
+  // §69 — the same scheme rule for `readme`, and it fails HARDER than the download's.
+  //
+  // ‼️ NOTHING ATTESTS A README. The archive has a checksum beside it, so a non-https
+  // download is degraded rather than forged; this document has no such backstop, and it is
+  // rendered as markdown on the one screen a user reads to decide whether to grant full
+  // trust. So a non-https readme is an error here, not a warning.
+  //
+  // WHAT THIS DOES NOT CHECK: that the URL is under the registry's own base. That check
+  // needs the index URL, which this script is not given — it validates a document, not a
+  // deployment. `fetch_registry_readme` enforces it at the moment of dereference, where the
+  // index URL is known, and re-checks every redirect hop. Stated because a scheme check
+  // that looked like an origin check would be worse than none.
   if (entry.readme !== undefined) {
     const readme = entry.readme as string;
     if (!/^https:\/\//.test(readme)) {
