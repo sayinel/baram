@@ -183,11 +183,17 @@ baram/
   가 함께 쓰는 `keyed_under`), 되읽기 관문(`index_reads_the_rename_back`)이 모두 그것을 부른다. 파일이 읽히는 키는 `keys_for` 가
   낸다 — 조회(`filing_keys_of` 를 거치는 `get_backlinks`·`referring_lines_to`·`block_reference_lines`)와 block ID rename 의
   `block_target`. 그래서 `[[dir/note]]`·`[[./note]]`·`((dir/note#^id))` 같은 경로·상대 참조도 백링크이고 두 rename 이 고쳐 쓴다.
-  `keys_for` 밖에서 키를 덧대는 자리도 있다: zettel id `Stem` 을 붙이는 `backlink_keys`·`block_target`, 같은 stem 예외가 직접
-  짓는 `Stem`(`rename/block_id.rs`), 관문이 `expected_key` 를 `Foreign` 으로 감싸는 곳(`rewriter.rs`). 새 키 모양은 `filing.rs` 에
-  더하고 이 자리들을 같이 고칠 것. `FilingKey` 를 가르는 `match` 는 나머지 팔이 있어 변형을 더해도 **컴파일이 멎지 않는다** —
-  어긋남을 잡는 것은 테스트다: `mod.rs` 의 위 개수 게이트와 그 짝으로 `Path`·`Foreign` 바구니를 세는
-  `every_reference_the_index_files_under_a_path_is_visited_by_one_rewrite_pass`.
+  파일 쪽 키의 모양은 `keys_for` 를 부르지 않고 따로 짓는 자리도 안다 — crate 에서 테스트 밖의 `FilingKey::` 생성과
+  `file_key`·`root_relative_key`·`normalize_file_path`·`extract_id_from_stem` 호출을 훑으면 이것이 전부다: `filing.rs` 의
+  `RenameTarget::refers`·`refers_behind_alias`·`expected_key`, zettel id `Stem` 을 붙이는 `backlink_keys`(`mod.rs`)·`block_target`
+  (`rename/block_id.rs`), 같은 stem 예외(`rename/block_id.rs`·`rename/file.rs`)와 `stem_unchanged`(`rename/file.rs`), 관문이
+  `expected_key` 를 `Foreign` 으로 감싸는 곳과 `link_reads_back_as_the_file`(`rewriter.rs`). `mod.rs` 의 `file_map`·`relative_map`·
+  `id_map` 은 target 해석용이라 `incoming` 키가 아니다. 새 키 모양은 `filing.rs` 에 더하고 이 자리들을 같이 고칠 것.
+  `FilingKey` 를 가르는 `match` 는 나머지 팔이 있어 변형을 더해도 **컴파일이 멎지 않는다**. `mod.rs` 의 개수 게이트 둘은 잡는
+  범위가 다르다 — 위의 `…_under_a_stem_…` 은 `LinkKind::ALL` 로 픽스처를 짜 새 **종류는** 저절로 들어오지만 표기 하나를
+  `Stem` 바구니에서만 센다. 짝인 `every_reference_the_index_files_under_a_path_is_visited_by_one_rewrite_pass` 는 `Path`·`Foreign`
+  바구니를 세되 표기가 손으로 적은 목록(종류마다 `dir/target`·`./target`, 그리고 `[[work::target]]`)뿐이라, 그 목록에 없는 표기로
+  들어오는 새 키 모양은 **어느 쪽도 보지 못한다**. 새 표기를 더하면 이 픽스처에 먼저 넣을 것.
   판정은 referrer 를 **덮는** root 의 index 로만 한다 — `/v` 와 `/v/sub` 가 둘 다 root 일 때 `/v/r.md` 의 `[[a/old]]` 는 `/v`
   아래에서만 읽혀 `/v/a/old.md` 를 가리키므로, 자식 root 아래 경로가 같은 `/v/sub/a/old.md` 의 rename 은 그것을 **고치지 않는다**
   (`service/tests.rs` 의 `nested_roots_a_rename_leaves_the_parents_colliding_link_alone`). 되읽기 관문도 덮는 root 마다 따로 읽는다
