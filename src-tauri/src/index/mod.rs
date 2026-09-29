@@ -4,9 +4,6 @@
 //       파일 저장 시 해당 파일만 증분 업데이트
 
 mod extractor;
-// Test-only until the index files references through it; `index` is a private
-// module, so its items would otherwise be dead code in the lib build.
-#[cfg(test)]
 mod filing;
 mod normalizer;
 mod relative_links;
@@ -21,6 +18,7 @@ use thiserror::Error;
 pub use extractor::{
     collect_all_files, collect_md_files, find_unlinked_mentions, UnlinkedMentionResult,
 };
+pub use filing::{filing_key, keys_for, BlockTarget, FilingKey};
 pub use relative_links::rewrite_relative_wikilinks;
 pub use rewriter::{
     block_reference_can_spell, block_references_to, index_reads_the_rename_back,
@@ -30,22 +28,8 @@ pub use rewriter::{
 
 use extractor::{extract_file_tags, extract_links};
 use normalizer::{
-    extract_id_from_stem, file_key, is_id_target, normalize_file_path, normalize_target,
-    resolve_target,
+    extract_id_from_stem, is_id_target, normalize_file_path, normalize_target, resolve_target,
 };
-
-/// The keys under which references TO `file_path` are filed in `incoming`:
-/// its normalized stem, and the zettel id inside that stem if it has one.
-/// `get_backlinks` reads them; the block-ID rename uses the same keys to
-/// decide which references in a referrer point at this file (issue 594).
-pub(crate) fn backlink_keys(file_path: &str) -> Vec<String> {
-    let stem = normalize_file_path(file_path);
-    let mut keys = vec![stem.clone()];
-    if let Some(id) = extract_id_from_stem(&stem) {
-        keys.push(id);
-    }
-    keys
-}
 
 #[derive(Error, Debug)]
 pub enum IndexError {
@@ -182,8 +166,10 @@ pub struct IndexStats {
 pub struct LinkIndex {
     /// source_path → list of links found in that file
     outgoing: HashMap<String, Vec<LinkEntry>>,
-    /// target (normalized filename without .md) → list of backlinks
-    incoming: HashMap<String, Vec<LinkEntry>>,
+    /// The key a link is filed under (`filing_key`: its stem, its path under
+    /// `root_path`, or its vault alias with its target) → the links filed
+    /// there. A file's backlinks are read under `keys_for` its path.
+    incoming: HashMap<FilingKey, Vec<LinkEntry>>,
     /// Root path of the vault
     root_path: Option<String>,
     /// Normalized file stem (lowercase, no extension) → list of absolute file paths
@@ -255,11 +241,7 @@ impl LinkIndex {
 
             // Build incoming index
             for entry in &entries {
-                let normalized = normalize_target(&entry.target);
-                self.incoming
-                    .entry(normalized)
-                    .or_default()
-                    .push(entry.clone());
+                self.file_incoming(entry);
             }
 
             self.outgoing.insert(file_path.clone(), entries);
@@ -310,14 +292,55 @@ impl LinkIndex {
         self.file_tags.remove(file_path);
     }
 
+    /// File `entry` in `incoming` under the key `filing_key` gives it.
+    fn file_incoming(&mut self, entry: &LinkEntry) {
+        let key = filing_key(
+            &entry.source_path,
+            &entry.target,
+            entry.target_vault_alias.as_deref(),
+            self.root_path.as_deref(),
+            cfg!(windows),
+        );
+        self.incoming.entry(key).or_default().push(entry.clone());
+    }
+
+    /// The keys a link to `file_path` is filed under in this index
+    /// (`keys_for` under `root_path`): its stem, its path under the root,
+    /// and each of `local_aliases` paired with both.
+    pub fn filing_keys_of(&self, file_path: &str, local_aliases: &[String]) -> Vec<FilingKey> {
+        keys_for(
+            file_path,
+            self.root_path.as_deref(),
+            local_aliases,
+            cfg!(windows),
+        )
+    }
+
+    /// The keys `get_backlinks` and `block_reference_lines` read for
+    /// `file_path`: `filing_keys_of`, plus the zettel id inside its stem if it
+    /// has one, under which a bare `[[202607051530]]` is filed.
+    pub fn backlink_keys(&self, file_path: &str, local_aliases: &[String]) -> Vec<FilingKey> {
+        let mut keys = self.filing_keys_of(file_path, local_aliases);
+        if let Some(id) = extract_id_from_stem(&normalize_file_path(file_path)) {
+            keys.push(FilingKey::Stem(id));
+        }
+        keys
+    }
+
     /// The `(source_path, line)` pairs that refer to `file_path`'s block
-    /// `block_id`, for the block-ID rename (issue 594). Unlike
-    /// `get_backlinks`, nothing is deduplicated by `(source, line)` BEFORE the
-    /// block filter — a line holding `[[note]] ((note#^id))` has two entries,
-    /// and the wikilink must not hide the block reference.
-    pub fn block_reference_lines(&self, file_path: &str, block_id: &str) -> Vec<(String, u32)> {
+    /// `block_id`, for the block-ID rename (issue 594), read under
+    /// `backlink_keys`. Unlike `get_backlinks`, nothing is deduplicated by
+    /// `(source, line)` BEFORE the block filter — a line holding
+    /// `[[note]] ((note#^id))` has two entries, and the wikilink must not hide
+    /// the block reference.
+    pub fn block_reference_lines(
+        &self,
+        file_path: &str,
+        block_id: &str,
+        local_aliases: &[String],
+    ) -> Vec<(String, u32)> {
         let mut out = Vec::new();
-        for key in backlink_keys(file_path) {
+        for key in self.backlink_keys(file_path, local_aliases) {
             if let Some(entries) = self.incoming.get(&key) {
                 for e in entries {
                     if e.block_id.as_deref() == Some(block_id) {
@@ -331,35 +354,37 @@ impl LinkIndex {
         out
     }
 
-    /// §33 · issue 678: every `(file, line)` filed under this `stem`'s own
-    /// key (`file_key`, not `normalize_target`, which would read a stem
-    /// ending in `.md` as another note's) — wikilink, block reference and
-    /// embed alike. NOT the zettel-id key that `backlink_keys` adds and
-    /// `get_backlinks` also reads: a bare `[[202607051530]]` is filed under
-    /// the id, so a rename neither rewrites nor reports it (as on main,
-    /// whose `get_files_linking_to` read the one key too). A file rename
-    /// rewrites all three kinds, and counts the lines each referrer was
-    /// named for to tell a same-stem note's own references apart from a
+    /// §33 · issue 678: every `(file, line)` filed under the keys a link to
+    /// `file_path` is filed under (`filing_keys_of`: its stem — `file_key`,
+    /// not `normalize_target`, which would read a stem ending in `.md` as
+    /// another note's — and its path under the root) — wikilink, block
+    /// reference and embed alike. NOT the zettel-id key that `backlink_keys`
+    /// adds and `get_backlinks` also reads: a bare `[[202607051530]]` is
+    /// filed under the id, so a rename neither rewrites nor reports it (as on
+    /// main, whose `get_files_linking_to` read the stem key alone). A file
+    /// rename rewrites all three kinds, and counts the lines each referrer
+    /// was named for to tell a same-stem note's own references apart from a
     /// stale index.
-    pub fn referring_lines_to(&self, stem: &str) -> Vec<(String, u32)> {
+    pub fn referring_lines_to(
+        &self,
+        file_path: &str,
+        local_aliases: &[String],
+    ) -> Vec<(String, u32)> {
         let mut out: Vec<(String, u32)> = self
-            .incoming
-            .get(&file_key(stem))
-            .map(|entries| {
-                entries
-                    .iter()
-                    .map(|e| (e.source_path.clone(), e.line))
-                    .collect()
-            })
-            .unwrap_or_default();
+            .filing_keys_of(file_path, local_aliases)
+            .iter()
+            .filter_map(|key| self.incoming.get(key))
+            .flatten()
+            .map(|e| (e.source_path.clone(), e.line))
+            .collect();
         out.sort();
         out.dedup();
         out
     }
 
-    /// Get backlinks for a given file path
-    pub fn get_backlinks(&self, file_path: &str) -> Vec<BacklinkResult> {
-        let keys = backlink_keys(file_path);
+    /// Get backlinks for a given file path, read under `backlink_keys`
+    pub fn get_backlinks(&self, file_path: &str, local_aliases: &[String]) -> Vec<BacklinkResult> {
+        let keys = self.backlink_keys(file_path, local_aliases);
 
         let mut seen = std::collections::HashSet::new();
         let mut results = Vec::new();
@@ -560,11 +585,7 @@ impl LinkIndex {
 
         let entries = extract_links(file_path, content);
         for entry in &entries {
-            let normalized = normalize_target(&entry.target);
-            self.incoming
-                .entry(normalized)
-                .or_default()
-                .push(entry.clone());
+            self.file_incoming(entry);
         }
         self.outgoing.insert(file_path.to_string(), entries);
 
@@ -578,6 +599,7 @@ impl LinkIndex {
 
 #[cfg(test)]
 mod tests {
+    use super::normalizer::file_key;
     use super::*;
 
     #[test]
@@ -601,11 +623,11 @@ mod tests {
             .push(entry.clone());
         index
             .incoming
-            .entry("architecture".to_string())
+            .entry(FilingKey::Stem("architecture".to_string()))
             .or_default()
             .push(entry);
 
-        let backlinks = index.get_backlinks("/vault/architecture.md");
+        let backlinks = index.get_backlinks("/vault/architecture.md", &[]);
         assert_eq!(backlinks.len(), 1);
         assert_eq!(backlinks[0].source_path, "/vault/overview.md");
     }
@@ -615,21 +637,38 @@ mod tests {
         // issue 678: the rename needs the referrers AND how many lines the
         // index named each for — one entry per (file, line), for every kind
         // `LinkKind::ALL` lists, each on a line of its own here (a fourth
-        // kind is in this fixture the moment the enum has one); a
-        // path-qualified target filed elsewhere (issue 619) not among them.
+        // kind is in this fixture the moment the enum has one). A
+        // path-qualified target is filed under its path under the root
+        // (issue 619): it is among the lines of `dir/target.md`, and not of
+        // a `target.md` elsewhere.
+        // What fails this: dropping the `Path` key from `keys_for` — the
+        // `((dir/target#^b1))` line leaves the first answer.
         let mut lines: Vec<String> = LinkKind::ALL
             .iter()
             .map(|kind| format!("see {}", kind.spelled("target", "b1")))
             .collect();
         lines.push("((dir/target#^b1))".to_string());
         let mut index = LinkIndex::new();
+        index.root_path = Some("/vault".to_string());
+        index.update_file_from_content("/vault/dir/target.md", "para ^b1");
         index.update_file_from_content("/vault/r.md", &lines.join("\n"));
         index.update_file_from_content("/vault/s.md", "[[other]]");
         let one_per_kind: Vec<(String, u32)> = (1..=LinkKind::ALL.len() as u32)
             .map(|line| ("/vault/r.md".to_string(), line))
             .collect();
-        assert_eq!(index.referring_lines_to("target"), one_per_kind);
-        assert!(index.referring_lines_to("nothing").is_empty());
+        let mut with_the_path = one_per_kind.clone();
+        with_the_path.push(("/vault/r.md".to_string(), LinkKind::ALL.len() as u32 + 1));
+        assert_eq!(
+            index.referring_lines_to("/vault/dir/target.md", &[]),
+            with_the_path
+        );
+        assert_eq!(
+            index.referring_lines_to("/vault/target.md", &[]),
+            one_per_kind
+        );
+        assert!(index
+            .referring_lines_to("/vault/nothing.md", &[])
+            .is_empty());
     }
 
     #[test]
@@ -666,7 +705,7 @@ mod tests {
         index.update_file_from_content("/vault/r.md", content);
         let filed = index
             .incoming
-            .get(&file_key("target"))
+            .get(&FilingKey::Stem(file_key("target")))
             .map_or(0, |entries| {
                 entries
                     .iter()
@@ -678,6 +717,53 @@ mod tests {
             filed,
             "the index files a reference under this stem that neither rewrite pass visits"
         );
+    }
+
+    #[test]
+    fn a_path_qualified_reference_is_a_backlink_of_the_file_it_names() {
+        // issue 619: a reference spelled with the target's path under the
+        // root — from the root, or relative to the referrer's folder — is
+        // filed under that path and read back for that file alone, never
+        // for another folder's note of the same stem.
+        // What fails this: dropping the `Path` key from `keys_for`, so
+        // `dir/note.md` reads its stem alone and finds nothing.
+        let mut index = LinkIndex::new();
+        index.root_path = Some("/v".to_string());
+        index.update_file_from_content("/v/dir/note.md", "para ^b1");
+        index.update_file_from_content("/v/other/note.md", "para ^b1");
+        index.update_file_from_content("/v/dir/note2.markdown", "text");
+        index.update_file_from_content(
+            "/v/r.md",
+            "[[dir/note]]\n((dir/note#^b1))\n{{embed ((dir/note#^b1))}}\n[[dir/note2.markdown]]",
+        );
+        index.update_file_from_content("/v/dir/s.md", "((./note#^b1))\n[[../dir/note|x]]");
+
+        assert_eq!(index.get_backlinks("/v/dir/note.md", &[]).len(), 5);
+        assert!(index.get_backlinks("/v/other/note.md", &[]).is_empty());
+        assert_eq!(index.get_backlinks("/v/dir/note2.markdown", &[]).len(), 1);
+        assert_eq!(
+            index.block_reference_lines("/v/dir/note.md", "b1", &[]),
+            vec![
+                ("/v/dir/s.md".to_string(), 1),
+                ("/v/r.md".to_string(), 2),
+                ("/v/r.md".to_string(), 3),
+            ]
+        );
+        assert_eq!(index.referring_lines_to("/v/dir/note.md", &[]).len(), 5);
+    }
+
+    #[test]
+    fn a_reference_that_escapes_the_root_is_nobodys_backlink() {
+        // A relative target that climbs out of the root keeps its text as
+        // its key, which no file under the root answers to.
+        // What fails this: stopping `..` at the vault root instead of the
+        // filesystem root in `filing_key`, so `../../x` resolves to `/v/x`
+        // and `/v/x.md` claims it.
+        let mut index = LinkIndex::new();
+        index.root_path = Some("/v".to_string());
+        index.update_file_from_content("/v/x.md", "text");
+        index.update_file_from_content("/v/dir/r.md", "[[../../x]]");
+        assert!(index.get_backlinks("/v/x.md", &[]).is_empty());
     }
 
     #[test]
@@ -706,18 +792,21 @@ mod tests {
 
         let files = |target: &str| -> Vec<String> {
             let mut files: Vec<String> = index
-                .referring_lines_to(target)
+                .referring_lines_to(target, &[])
                 .into_iter()
                 .map(|(file, _)| file)
                 .collect();
             files.dedup();
             files
         };
-        assert_eq!(files("target"), vec!["/vault/a.md", "/vault/b.md"]);
+        assert_eq!(
+            files("/vault/target.md"),
+            vec!["/vault/a.md", "/vault/b.md"]
+        );
         // Case-insensitive
-        assert_eq!(files("Target").len(), 2);
+        assert_eq!(files("/vault/Target.md").len(), 2);
         // No match
-        assert!(files("nonexistent").is_empty());
+        assert!(files("/vault/nonexistent.md").is_empty());
     }
 
     #[test]
@@ -740,13 +829,13 @@ mod tests {
             .push(entry.clone());
         index
             .incoming
-            .entry("b".to_string())
+            .entry(FilingKey::Stem("b".to_string()))
             .or_default()
             .push(entry);
 
         index.remove_file("/vault/a.md");
         assert!(!index.outgoing.contains_key("/vault/a.md"));
-        assert!(index.get_backlinks("/vault/b.md").is_empty());
+        assert!(index.get_backlinks("/vault/b.md", &[]).is_empty());
     }
 
     // --- File map target resolution tests ---
@@ -1093,7 +1182,7 @@ mod tests {
             "/z/notes/202607051600 다른 노트.md",
             "본문 [[202607051530]] 참조",
         );
-        let backlinks = index.get_backlinks("/z/notes/202607051530 원자적 노트.md");
+        let backlinks = index.get_backlinks("/z/notes/202607051530 원자적 노트.md", &[]);
         assert_eq!(backlinks.len(), 1);
         assert_eq!(
             backlinks[0].source_path,

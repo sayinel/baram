@@ -29,7 +29,8 @@ pub(crate) async fn get_backlinks_inner(
     for ctx in &contexts {
         let found = state
             .with_index_for(&ctx.info.path, ctx.incarnation, |idx| {
-                idx.map(|i| i.get_backlinks(file_path)).unwrap_or_default()
+                idx.map(|i| i.get_backlinks(file_path, &[]))
+                    .unwrap_or_default()
             })
             .await;
         if !found.is_empty() {

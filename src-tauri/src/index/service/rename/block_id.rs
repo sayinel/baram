@@ -1,7 +1,11 @@
 //! §33 Block ID rename with reference updates — see rename/mod.rs for the shared helpers.
 
+use crate::context::manager::Registered;
 use crate::context::ContextManager;
-use crate::index::{backlink_keys, own_block_reference_lines, replace_block_id_refs_to};
+use crate::index::normalizer::{extract_id_from_stem, normalize_file_path};
+use crate::index::{
+    keys_for, own_block_reference_lines, replace_block_id_refs_to, BlockTarget, FilingKey,
+};
 use std::collections::HashMap;
 
 use super::super::build::{ensure_indexes, read_indexes};
@@ -38,11 +42,14 @@ pub(crate) async fn rename_block_id_inner(
     //    many lines it named each file for is kept, for the exemption below.
     let (named_lines, referring_files) = named_referrers(
         read_indexes(state, &dirs, |index| {
-            index.block_reference_lines(file_path, old_id)
+            index.block_reference_lines(file_path, old_id, &[])
         })
         .await?,
     );
-    let target_keys = backlink_keys(file_path);
+    // The keys a reference to this file is filed under in each index read
+    // above: its stem and zettel id, the same in every index, and its path
+    // under that index's root (issue 619) — what `backlink_keys` reads there.
+    let target = block_target(file_path, &dirs);
     // A referrer that shares the target's stem — another `note.md` in some
     // other folder — is named by the index for its own self-references
     // (`((#^id))` is filed under the referrer's own stem, which is the
@@ -53,7 +60,11 @@ pub(crate) async fn rename_block_id_inner(
     // the target has gone since, self-reference beside it or not, holds
     // fewer, and is stale like any other.
     let named_for_its_own_references = |path: &str, content: &str| {
-        target_keys.contains(&crate::index::normalizer::normalize_file_path(path))
+        let stem = FilingKey::Stem(normalize_file_path(path));
+        target
+            .keys_by_root
+            .iter()
+            .any(|(_, keys)| keys.contains(&stem))
             && named_lines
                 .get(path)
                 .is_some_and(|&lines| own_block_reference_lines(content, Some(old_id)) >= lines)
@@ -71,12 +82,20 @@ pub(crate) async fn rename_block_id_inner(
     let rewritten = rewrite_referrers(
         &referring_files,
         file_path,
+        ctx_mgr,
         &dirs,
         &Unchanged::Report {
             unless: &named_for_its_own_references,
         },
-        |content, ref_path| Rewrite {
-            content: replace_block_id_refs_to(content, ref_path, &target_keys, old_id, new_id),
+        |content, ref_path, covering| Rewrite {
+            content: replace_block_id_refs_to(
+                content,
+                ref_path,
+                &keys_of(covering),
+                &target,
+                old_id,
+                new_id,
+            ),
             left_behind: false,
         },
     )
@@ -92,4 +111,27 @@ pub(crate) async fn rename_block_id_inner(
         updated_files: rewritten.updated,
         skipped_files: rewritten.skipped,
     })
+}
+
+/// The file at `file_path` as a block-ID rename's target: for each directory
+/// context in `dirs`, the keys a reference to it is filed under in that
+/// context's index (`keys_for` under that root, plus the zettel id inside its
+/// stem, as `LinkIndex::backlink_keys` reads them).
+fn block_target(file_path: &str, dirs: &[Registered]) -> BlockTarget {
+    let id = extract_id_from_stem(&normalize_file_path(file_path));
+    let keys_by_root = dirs
+        .iter()
+        .map(|d| {
+            let root = d.info.path.clone();
+            let mut keys = keys_for(file_path, Some(&root), &[], cfg!(windows));
+            if let Some(id) = &id {
+                keys.push(FilingKey::Stem(id.clone()));
+            }
+            (root, keys)
+        })
+        .collect();
+    BlockTarget {
+        keys_by_root,
+        windows: cfg!(windows),
+    }
 }

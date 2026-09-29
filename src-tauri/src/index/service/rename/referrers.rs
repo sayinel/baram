@@ -5,8 +5,9 @@ use crate::context::ContextManager;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+use super::super::keys::keys_of;
 use super::super::state::{LinkIndexState, Mutation};
-use super::{confined_by, keys_covering, push_for_keys};
+use super::{confined_by, contexts_covering, keys_covering, push_for_keys};
 
 /// What an index query named — `(file, line)`, possibly from several
 /// containing indexes, so deduplicated — as how many lines each file was
@@ -98,21 +99,25 @@ pub(super) enum Unchanged<'a> {
 /// Rewrite every referring file with `rewrite`, skipping `own_path` (the file
 /// whose links are being renamed — a file rename has moved it by now and
 /// rewrites its content itself; a block ID rename leaves it to the editor's
-/// buffer). A referrer that cannot be read, resolves outside `dirs`, or cannot
-/// be written is reported in `skipped`; nothing here fails the rename, because
-/// the caller is past its point of no return.
+/// buffer). `rewrite` is given the referrer's content, its path, and the
+/// contexts among `dirs` that cover it (`contexts_covering`) — the roots its
+/// references are judged under. A referrer that cannot be read, resolves
+/// outside `dirs`, or cannot be written is reported in `skipped`; nothing
+/// here fails the rename, because the caller is past its point of no return.
 pub(super) async fn rewrite_referrers(
     referring_files: &[String],
     own_path: &str,
+    ctx_mgr: &ContextManager,
     dirs: &[Registered],
     unchanged: &Unchanged<'_>,
-    rewrite: impl Fn(&str, &str) -> Rewrite,
+    rewrite: impl Fn(&str, &str, &[Registered]) -> Rewrite,
 ) -> Rewritten {
     let mut result = Rewritten {
         updated: Vec::new(),
         skipped: Vec::new(),
         contents: Vec::new(),
     };
+    let keys = keys_of(dirs);
     for ref_path in referring_files {
         if ref_path == own_path {
             continue;
@@ -127,10 +132,11 @@ pub(super) async fn rewrite_referrers(
                 continue;
             }
         };
+        let covering = contexts_covering(ctx_mgr, &keys, ref_path).await;
         let Rewrite {
             content: new_content,
             left_behind,
-        } = rewrite(&content, ref_path);
+        } = rewrite(&content, ref_path, &covering);
         if new_content == content {
             if left_behind {
                 log::warn!(

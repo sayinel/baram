@@ -61,7 +61,7 @@ pub(crate) async fn rename_file_with_links_inner(
     //    indexes), for the same-stem exemption below — as the block ID
     //    rename keeps them (issue 668). The files are what the rewrite visits.
     let (named_lines, referring_files) =
-        named_referrers(read_indexes(state, &dirs, |i| i.referring_lines_to(&old_target)).await?);
+        named_referrers(read_indexes(state, &dirs, |i| i.referring_lines_to(old_path, &[])).await?);
     // A same-stem note elsewhere (`b/old.md` beside `a/old.md`) is named by
     // the index for its own `((#^id))` references, filed under its stem —
     // the old name's key. The rewrite rightly leaves those alone, and the
@@ -114,8 +114,15 @@ pub(crate) async fn rename_file_with_links_inner(
     };
     let passes = LinkPasses::new(&old_target, &new_target);
     let rewrite = |content: &str, ref_path: &str| passes.rewrite(content, ref_path);
-    let mut rewritten =
-        rewrite_referrers(&referring_files, old_path, &dirs, &unchanged, &rewrite).await;
+    let mut rewritten = rewrite_referrers(
+        &referring_files,
+        old_path,
+        ctx_mgr,
+        &dirs,
+        &unchanged,
+        |content, ref_path, _covering| rewrite(content, ref_path),
+    )
+    .await;
     //    Then the renamed note itself, which rewrite_referrers skips. Its
     //    destination passes the gate every referrer passes right before it is
     //    written: resolved again NOW — after the move and every referrer

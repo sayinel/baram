@@ -62,11 +62,24 @@ pub struct NamespaceRenameResult {
     pub index_rebuilt: bool,
 }
 
-/// Which of `keys` (containing indexes) cover `path`: a reference file outside
-/// a nested root belongs to the enclosing index alone, and must not be written
-/// into the nested one.
+/// The contexts among `keys` (containing indexes) that cover `path`: a
+/// reference file outside a nested root belongs to the enclosing index alone,
+/// and must not be written into, or judged under, the nested one.
+async fn contexts_covering(
+    ctx_mgr: &ContextManager,
+    keys: &[String],
+    path: &str,
+) -> Vec<Registered> {
+    owning_contexts(ctx_mgr, path)
+        .await
+        .into_iter()
+        .filter(|c| keys.contains(&c.info.path))
+        .collect()
+}
+
+/// Which of `keys` cover `path` (`contexts_covering`), in `keys`' order.
 async fn keys_covering(ctx_mgr: &ContextManager, keys: &[String], path: &str) -> Vec<String> {
-    let covering = keys_of(&owning_contexts(ctx_mgr, path).await);
+    let covering = keys_of(&contexts_covering(ctx_mgr, keys, path).await);
     keys.iter()
         .filter(|k| covering.contains(k))
         .cloned()

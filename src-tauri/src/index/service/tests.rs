@@ -447,7 +447,10 @@ async fn a_first_build_save_is_replayed_in_the_pending_symlink_roots_spelling() 
         .any(|n| n.starts_with(&format!("{root}/sub/"))));
     assert!(graph.edges.is_empty());
     let stale = state
-        .with_index(&key, |idx| idx.unwrap().referring_lines_to("target"))
+        .with_index(&key, |idx| {
+            idx.unwrap()
+                .referring_lines_to(&format!("{alias}/target.md"), &[])
+        })
         .await;
     assert!(stale.is_empty());
 }
@@ -2197,11 +2200,102 @@ async fn a_block_id_rename_reports_a_same_stem_note_whose_cross_reference_went_b
 }
 
 #[tokio::test]
+async fn a_block_id_rename_reaches_a_path_qualified_reference() {
+    // issue 619: a reference that names the note by its path under the root
+    // — spelled from the root, or relative to the referrer's folder — is
+    // filed under that path, so the block-ID rename reaches it. A reference
+    // to another folder's `note` keeps its ID.
+    // What fails this: dropping the `Path` key from `keys_for`, so the index
+    // names neither referrer and `updated_files` is empty.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-619a", true).await;
+    std::fs::create_dir_all(dir.path().join("dir")).unwrap();
+    std::fs::create_dir_all(dir.path().join("other")).unwrap();
+    std::fs::write(dir.path().join("dir/note.md"), "para ^b1\n").unwrap();
+    std::fs::write(dir.path().join("other/note.md"), "para ^b1\n").unwrap();
+    std::fs::write(
+        dir.path().join("r.md"),
+        "((dir/note#^b1))\n{{embed ((dir/note#^b1))}}\n((other/note#^b1))\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.path().join("dir/s.md"),
+        "((./note#^b1))\n((../dir/note#^b1|shown))\n",
+    )
+    .unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+
+    let result = rename_block_id_inner(&state, &ctx, &format!("{root}/dir/note.md"), "b1", "b2")
+        .await
+        .unwrap();
+    assert_eq!(
+        result.updated_files,
+        vec![format!("{root}/dir/s.md"), format!("{root}/r.md")]
+    );
+    assert!(
+        result.skipped_files.is_empty(),
+        "{:?}",
+        result.skipped_files
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
+        "((dir/note#^b2))\n{{embed ((dir/note#^b2))}}\n((other/note#^b1))\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("dir/s.md")).unwrap(),
+        "((./note#^b2))\n((../dir/note#^b2|shown))\n"
+    );
+    // The index took the rewritten files: every backlink names the new ID.
+    let backlinks = get_backlinks_inner(&state, &ctx, &format!("{root}/dir/note.md"))
+        .await
+        .unwrap();
+    let ids: Vec<Option<&str>> = backlinks.iter().map(|b| b.block_id.as_deref()).collect();
+    assert_eq!(ids, vec![Some("b2"); 4], "{backlinks:?}");
+}
+
+#[tokio::test]
+async fn nested_roots_a_block_id_rename_leaves_a_colliding_child_relative_path_alone() {
+    // issue 619: `r.md` sits under the parent root only. Its `((a/note#^x))`
+    // names `a/note.md` under the parent, which is another file than the
+    // target `sub/a/note.md` — even though the target's path under the CHILD
+    // root is `a/note`. A reference is judged under the roots that cover the
+    // referrer, never under a root it is not in.
+    // What fails this: `BlockTarget::refers` reading the keys of every root
+    // instead of only the covering ones — `((a/note#^x))` then takes `^y`.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-parent", true).await;
+    std::fs::create_dir_all(dir.path().join("sub/a")).unwrap();
+    std::fs::create_dir_all(dir.path().join("a")).unwrap();
+    std::fs::write(dir.path().join("sub/a/note.md"), "para ^x\n").unwrap();
+    std::fs::write(dir.path().join("a/note.md"), "para ^x\n").unwrap();
+    std::fs::write(dir.path().join("r.md"), "((note#^x))\n((a/note#^x))\n").unwrap();
+    let sub = format!("{root}/sub");
+    ctx.add(info("ctx-child", &sub, ContextType::Folder))
+        .await
+        .unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    refresh_index_inner(&state, &ctx, &sub).await.unwrap();
+
+    let result = rename_block_id_inner(&state, &ctx, &format!("{sub}/a/note.md"), "x", "y")
+        .await
+        .unwrap();
+    assert_eq!(result.updated_files, vec![format!("{root}/r.md")]);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
+        "((note#^y))\n((a/note#^x))\n"
+    );
+}
+
+#[tokio::test]
 async fn a_file_rename_rewrites_block_references_and_embeds_as_it_rewrites_wikilinks() {
     // issue 678: a referrer that points at the note by a block reference or an
     // embed — with or without a wikilink beside it, on the same line or not —
     // follows the new name too, and the new file's backlinks still name it.
-    // A path-qualified reference is filed elsewhere (issue 619) and stays.
+    // `((dir/old#^b1))` is filed under the path `dir/old` (issue 619), which
+    // is not this file's path under the root (`old`), so it stays; no
+    // `dir/old.md` is registered here for it to name instead.
     let ctx = ContextManager::new();
     let (dir, root) = vault_with_a_link(&ctx, "ctx-678a", true).await;
     std::fs::write(dir.path().join("old.md"), "para ^b1\n").unwrap();
@@ -2649,11 +2743,17 @@ async fn a_file_rename_rewrites_the_renamed_notes_own_references_to_its_old_name
     );
     let key = active_index_key(&ctx).await.unwrap();
     let to_old = state
-        .with_index(&key, |idx| idx.unwrap().referring_lines_to("old"))
+        .with_index(&key, |idx| {
+            idx.unwrap()
+                .referring_lines_to(&format!("{root}/old.md"), &[])
+        })
         .await;
     assert!(to_old.is_empty(), "{to_old:?}");
     let to_new: Vec<String> = state
-        .with_index(&key, |idx| idx.unwrap().referring_lines_to("new"))
+        .with_index(&key, |idx| {
+            idx.unwrap()
+                .referring_lines_to(&format!("{root}/new.md"), &[])
+        })
         .await
         .into_iter()
         .map(|(source, _)| source)

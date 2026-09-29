@@ -139,6 +139,36 @@ pub fn keys_for(
     keys
 }
 
+/// The file whose block a block-ID rename renames, as the keys a reference to
+/// it may be filed under in each index that holds it: one `(root, keys)` pair
+/// per containing root, because a path-qualified key is the file's path under
+/// THAT root.
+pub struct BlockTarget {
+    pub keys_by_root: Vec<(String, Vec<FilingKey>)>,
+    pub windows: bool,
+}
+
+impl BlockTarget {
+    /// Does `raw_target`, written in the referrer at `ref_path`, name this
+    /// file? It is keyed by `filing_key` — the rule the index files it by —
+    /// under each root in `covering_roots` (the roots whose index covers the
+    /// referrer), and matches when that root's keys hold the result. A `Stem`
+    /// key does not depend on the root, so any covering root answers a bare
+    /// reference; a referrer that no root covers matches nothing.
+    pub fn refers(&self, ref_path: &str, covering_roots: &[String], raw_target: &str) -> bool {
+        let raw = raw_target.trim();
+        if raw.is_empty() {
+            return false;
+        }
+        self.keys_by_root
+            .iter()
+            .filter(|(root, _)| covering_roots.contains(root))
+            .any(|(root, keys)| {
+                keys.contains(&filing_key(ref_path, raw, None, Some(root), self.windows))
+            })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

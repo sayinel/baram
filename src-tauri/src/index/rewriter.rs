@@ -6,7 +6,7 @@ use std::sync::LazyLock;
 
 use super::extractor::{extract_links, BLOCK_REF_RE};
 use super::normalizer::{file_key, normalize_target};
-use super::{LinkKind, RewritePass};
+use super::{BlockTarget, LinkKind, RewritePass};
 use crate::md::literal::{front_matter_end, source_lines, Literal};
 
 // §33 Wikilink replace regex: captures (alias, target, rest) for replace_wikilink_target
@@ -154,20 +154,21 @@ fn visit_wikilinks_to(
 /// numbers it remembered, and a file edited outside the app since (a closed
 /// tab, a `git pull`) had moved its reference off them: nothing changed, and
 /// the definition took the new ID alone. The target test is the index's
-/// filing rule, `normalize_target` — path-qualified `((b/note#^id))` names
-/// another file's block and is left alone, exactly as the index leaves it out
-/// (issue 619). `ref_path` is the referrer, for its self-references.
+/// filing rule (`BlockTarget::refers`): a reference is keyed the way the index
+/// files it under each root in `covering_roots` — the roots whose index covers
+/// the referrer — so a path-qualified `((dir/note#^id))` or a relative
+/// `((./note#^id))` is rewritten when it names the target's path under such a
+/// root, and left alone when it names another file (issue 619). `ref_path` is
+/// the referrer, for its self-references and its relative references.
 pub fn replace_block_id_refs_to(
     content: &str,
     ref_path: &str,
-    target_keys: &[String],
+    covering_roots: &[String],
+    target: &BlockTarget,
     old_id: &str,
     new_id: &str,
 ) -> String {
-    let refers_to_target = |raw_target: &str| {
-        let t = raw_target.trim();
-        !t.is_empty() && target_keys.contains(&normalize_target(t))
-    };
+    let refers_to_target = |raw: &str| target.refers(ref_path, covering_roots, raw);
     let lines: std::collections::HashSet<u32> = extract_links(ref_path, content)
         .into_iter()
         .filter(|entry| {
@@ -451,21 +452,41 @@ mod tests {
     }
 
     // §30a replace_block_id_refs_to tests
-    fn keys(list: &[&str]) -> Vec<String> {
-        list.iter().map(|k| k.to_string()).collect()
+    /// The target at `file_path` under the one root `/v`, as the block-ID
+    /// rename builds it.
+    fn target_at(file_path: &str) -> BlockTarget {
+        BlockTarget {
+            keys_by_root: vec![(
+                "/v".to_string(),
+                crate::index::keys_for(file_path, Some("/v"), &[], false),
+            )],
+            windows: false,
+        }
+    }
+
+    /// The roots that cover every referrer in these tests.
+    fn v() -> Vec<String> {
+        vec!["/v".to_string()]
+    }
+
+    /// `replace_block_id_refs_to` for a referrer under `/v` and the target
+    /// `/v/<stem>.md`.
+    fn rename_in(content: &str, stem: &str, old_id: &str, new_id: &str) -> String {
+        replace_block_id_refs_to(
+            content,
+            "/v/referrer.md",
+            &v(),
+            &target_at(&format!("/v/{stem}.md")),
+            old_id,
+            new_id,
+        )
     }
 
     #[test]
     fn test_replace_block_id_refs_to_basic_display_embed() {
         let content =
             "See ((notes#^abc123)) and ((notes#^abc123|my label)).\n{{embed ((notes#^abc123))}}";
-        let result = replace_block_id_refs_to(
-            content,
-            "/v/referrer.md",
-            &keys(&["notes"]),
-            "abc123",
-            "xyz789",
-        );
+        let result = rename_in(content, "notes", "abc123", "xyz789");
         assert_eq!(
             result,
             "See ((notes#^xyz789)) and ((notes#^xyz789|my label)).\n{{embed ((notes#^xyz789))}}"
@@ -476,8 +497,7 @@ mod tests {
     fn test_replace_block_id_refs_to_leaves_other_targets_with_the_same_id() {
         // issue 594: two notes carry ^id1; only the reference to `a` changes.
         let content = "((a#^id1)) and ((b#^id1)) and ((a#^id2))";
-        let result =
-            replace_block_id_refs_to(content, "/v/referrer.md", &keys(&["a"]), "id1", "newId");
+        let result = rename_in(content, "a", "id1", "newId");
         assert_eq!(result, "((a#^newId)) and ((b#^id1)) and ((a#^id2))");
     }
 
@@ -485,13 +505,7 @@ mod tests {
     fn test_replace_block_id_refs_to_never_touches_a_self_reference() {
         // `((#^id))` in a referrer names the referrer's own block.
         let content = "See ((#^abc123)) and ((notes#^abc123)).";
-        let result = replace_block_id_refs_to(
-            content,
-            "/v/referrer.md",
-            &keys(&["notes"]),
-            "abc123",
-            "xyz789",
-        );
+        let result = rename_in(content, "notes", "abc123", "xyz789");
         assert_eq!(result, "See ((#^abc123)) and ((notes#^xyz789)).");
     }
 
@@ -500,8 +514,7 @@ mod tests {
         // issue 668: the rewriter reads the content as it is, not the line
         // numbers an index remembered — every reference to the target changes.
         let content = "((notes#^abc)) first\n((notes#^abc)) second\n((notes#^abc)) third";
-        let result =
-            replace_block_id_refs_to(content, "/v/referrer.md", &keys(&["notes"]), "abc", "xyz");
+        let result = rename_in(content, "notes", "abc", "xyz");
         assert_eq!(
             result,
             "((notes#^xyz)) first\n((notes#^xyz)) second\n((notes#^xyz)) third"
@@ -511,23 +524,49 @@ mod tests {
     #[test]
     fn test_replace_block_id_refs_to_matches_the_target_the_way_the_index_does() {
         // Case and the `.md` extension normalize away, as the index's keys do.
-        // A path-qualified target does NOT: the index files `dir/notes` under
-        // that key, never under `notes` (issue 619), so the rewriter leaves it
-        // alone too — what the index counts is what a rename may touch.
+        // A path-qualified target is filed under its path under the root
+        // (issue 619): `dir/notes.md` is `/v/dir/notes.md`'s, and not the
+        // root-level `/v/notes.md`'s — what the index counts is what a rename
+        // may touch.
+        // What fails this: `BlockTarget::refers` keying the raw target as a
+        // `Stem` of its whole text, the rule before issue 619 —
+        // `((dir/notes.md#^abc))` then keeps its ID for `/v/dir/notes.md`.
         let content = "((Notes#^abc)) ((notes.md#^abc)) ((dir/notes.md#^abc)) ((other#^abc))";
-        let result =
-            replace_block_id_refs_to(content, "/v/referrer.md", &keys(&["notes"]), "abc", "xyz");
         assert_eq!(
-            result,
+            rename_in(content, "dir/notes", "abc", "xyz"),
+            "((Notes#^xyz)) ((notes.md#^xyz)) ((dir/notes.md#^xyz)) ((other#^abc))"
+        );
+        assert_eq!(
+            rename_in(content, "notes", "abc", "xyz"),
             "((Notes#^xyz)) ((notes.md#^xyz)) ((dir/notes.md#^abc)) ((other#^abc))"
+        );
+    }
+
+    #[test]
+    fn a_block_id_rename_reads_a_relative_reference_from_the_referrers_folder() {
+        // issue 619: `./` and `../` resolve against the folder of the note
+        // they are written in, as the index files them.
+        // What fails this: resolving a relative target against the root
+        // instead of the referrer's folder — `((./note#^old))` then names
+        // `/v/note.md` and keeps its ID.
+        let content = "((./note#^old))\n((../dir/note#^old))\n((other/note#^old))\n";
+        assert_eq!(
+            replace_block_id_refs_to(
+                content,
+                "/v/dir/referrer.md",
+                &v(),
+                &target_at("/v/dir/note.md"),
+                "old",
+                "new"
+            ),
+            "((./note#^new))\n((../dir/note#^new))\n((other/note#^old))\n"
         );
     }
 
     #[test]
     fn test_replace_block_id_refs_to_no_match_is_byte_identical() {
         let content = "See ((notes#^other)) and {{embed ((notes#^other))}}\r\nend";
-        let result =
-            replace_block_id_refs_to(content, "/v/referrer.md", &keys(&["notes"]), "abc", "xyz");
+        let result = rename_in(content, "notes", "abc", "xyz");
         assert_eq!(result, content);
     }
 
@@ -821,7 +860,7 @@ mod tests {
         // point at a line inside a fence.
         let content = "```\n((notes#^abc))\n```\n((notes#^abc)) `((notes#^abc))`\n";
         assert_eq!(
-            replace_block_id_refs_to(content, "/v/referrer.md", &keys(&["notes"]), "abc", "xyz"),
+            rename_in(content, "notes", "abc", "xyz"),
             "```\n((notes#^abc))\n```\n((notes#^xyz)) `((notes#^abc))`\n"
         );
     }
@@ -830,11 +869,11 @@ mod tests {
     fn a_block_id_rename_on_one_line_keeps_the_code_span_whatever_the_new_length() {
         let content = "{{embed ((notes#^abc))}} `((notes#^abc))` ((notes#^abc|show))\n";
         assert_eq!(
-            replace_block_id_refs_to(content, "/v/referrer.md", &keys(&["notes"]), "abc", "a-much-longer-id"),
+            rename_in(content, "notes", "abc", "a-much-longer-id"),
             "{{embed ((notes#^a-much-longer-id))}} `((notes#^abc))` ((notes#^a-much-longer-id|show))\n"
         );
         assert_eq!(
-            replace_block_id_refs_to(content, "/v/referrer.md", &keys(&["notes"]), "abc", "z"),
+            rename_in(content, "notes", "abc", "z"),
             "{{embed ((notes#^z))}} `((notes#^abc))` ((notes#^z|show))\n"
         );
     }
@@ -843,7 +882,7 @@ mod tests {
     fn a_block_id_rename_keeps_crlf_and_finds_its_lines_in_a_crlf_file() {
         let content = "((notes#^abc))\r\n```\r\n((notes#^abc))\r\n```\r\n((notes#^abc))\r\n";
         assert_eq!(
-            replace_block_id_refs_to(content, "/v/referrer.md", &keys(&["notes"]), "abc", "xyz"),
+            rename_in(content, "notes", "abc", "xyz"),
             "((notes#^xyz))\r\n```\r\n((notes#^abc))\r\n```\r\n((notes#^xyz))\r\n"
         );
     }
@@ -864,43 +903,39 @@ mod tests {
     /// numbers an index remembered, and by the index's own target rule.
     #[test]
     fn the_block_id_rewriter_finds_the_reference_where_it_stands_now() {
-        let keys = crate::index::backlink_keys("/v/note.md");
+        let target = target_at("/v/note.md");
+        let roots = v();
+        let rename = |content: &str, target: &BlockTarget| {
+            replace_block_id_refs_to(content, "/v/a.md", &roots, target, "b1", "b2")
+        };
         // A line inserted above the reference after the index was built: the
         // reference is found on its new line and rewritten.
         assert_eq!(
-            replace_block_id_refs_to("new line\nsee ((note#^b1))\n", "/v/a.md", &keys, "b1", "b2"),
+            rename("new line\nsee ((note#^b1))\n", &target),
             "new line\nsee ((note#^b2))\n"
         );
-        // Path-qualified target on its own line names another file's block:
-        // the index files it under `b/note`, and the rewriter leaves it alone.
+        // A path-qualified target on its own line is filed under `b/note`:
+        // `/v/b/note.md`'s block, whose rename rewrites it, and not
+        // `/v/note.md`'s, whose rename leaves it alone (issue 619).
+        // What fails this: dropping the `Path` key from `keys_for` — the
+        // first answer keeps `((b/note#^b1))`.
         assert_eq!(
-            replace_block_id_refs_to(
-                "((note#^b1))\n((b/note#^b1))\n",
-                "/v/a.md",
-                &keys,
-                "b1",
-                "b2"
-            ),
+            rename("((note#^b1))\n((b/note#^b1))\n", &target_at("/v/b/note.md")),
+            "((note#^b2))\n((b/note#^b2))\n"
+        );
+        assert_eq!(
+            rename("((note#^b1))\n((b/note#^b1))\n", &target),
             "((note#^b2))\n((b/note#^b1))\n"
         );
         // An embed with a display part is a plain reference to the grammar —
         // indexed as one, rewritten as one.
         assert_eq!(
-            replace_block_id_refs_to(
-                "{{embed ((note#^b1|caption))}}\n",
-                "/v/a.md",
-                &keys,
-                "b1",
-                "b2"
-            ),
+            rename("{{embed ((note#^b1|caption))}}\n", &target),
             "{{embed ((note#^b2|caption))}}\n"
         );
         // Nothing to the target: byte for byte.
         let untouched = "((other#^b1)) `((note#^b1))`\n";
-        assert_eq!(
-            replace_block_id_refs_to(untouched, "/v/a.md", &keys, "b1", "b2"),
-            untouched
-        );
+        assert_eq!(rename(untouched, &target), untouched);
     }
 
     /// issue 667 — a block reference in the front matter is neither indexed
@@ -920,9 +955,8 @@ mod tests {
                 (LinkKind::BlockRef, "note", 5)
             ]
         );
-        let keys = crate::index::backlink_keys("/v/note.md");
         assert_eq!(
-            replace_block_id_refs_to(md, "/v/a.md", &keys, "b1", "b2"),
+            replace_block_id_refs_to(md, "/v/a.md", &v(), &target_at("/v/note.md"), "b1", "b2"),
             "---\nrelated: ((#^b1)) ((note#^b1))\nlink: \"[[x]]\"\n---\nbody ((note#^b2))\n"
         );
         // Behind a byte order mark, and an embed in the front matter, the same.
@@ -950,9 +984,22 @@ mod tests {
                 case["name"].as_str().unwrap(),
                 case["markdown"].as_str().unwrap(),
             );
-            let keys = crate::index::backlink_keys(target);
+            let target = BlockTarget {
+                keys_by_root: vec![(
+                    "/vault".to_string(),
+                    crate::index::keys_for(target, Some("/vault"), &[], false),
+                )],
+                windows: false,
+            };
             assert_eq!(
-                replace_block_id_refs_to(markdown, referrer, &keys, old, new),
+                replace_block_id_refs_to(
+                    markdown,
+                    referrer,
+                    &["/vault".to_string()],
+                    &target,
+                    old,
+                    new
+                ),
                 case["expected"].as_str().unwrap(),
                 "{name}"
             );
