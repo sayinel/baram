@@ -7,12 +7,24 @@ use super::relative_links::{
 };
 use std::collections::{HashMap, HashSet};
 
-/// The `Path`-key text of every note each built index holds (`LinkIndex::
-/// registered_path_keys`), by that index's root — every registered directory
-/// root, not only the renamed file's. The rename judgement reads it to tell
-/// whether another root that holds the referrer reads a path link as an
-/// existing note. A root with no entry is read as holding no note.
-pub type KnownPaths = HashMap<String, HashSet<String>>;
+/// What the rename knows of the notes under each root that holds a
+/// referrer, by that root — every directory context holding one, not only
+/// the renamed file's. The rename judgement reads it to tell whether another
+/// root that holds the referrer reads a path link as an existing note. A
+/// root with no entry holds none of the referrers.
+pub type KnownPaths = HashMap<String, RootNotes>;
+
+/// The notes one root holds, as far as the rename can tell.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RootNotes {
+    /// Its index is built: the `Path`-key text of every note in it
+    /// (`LinkIndex::registered_path_keys`).
+    Known(HashSet<String>),
+    /// Its index could not be built or read. Any `Path` reading under it
+    /// may be another note, so a link it could read is left and its file
+    /// reported — never rewritten on the assumption that nothing is there.
+    Unknown,
+}
 
 /// What a rename makes of one reference: it names the renamed file (with
 /// how it matched), it names another file, or it is AMBIGUOUS — it names the
@@ -42,12 +54,14 @@ impl<M> Judgement<M> {
 /// note that exists under it and is not the renamed file (`is_the_target`,
 /// given that root and the path key)? The root the reference matched under
 /// never answers yes: there it reads as the renamed file's own key. The roots
-/// are every built directory index, not only the renamed file's contexts:
-/// renaming the parent's `/v/a/old.md` must still see that the child root
-/// `/v/sub`, which does not contain that file, reads `/v/sub/r.md`'s
-/// `[[a/old]]` as `/v/sub/a/old.md`. Only a `Path` reading counts: a bare
-/// name is filed by its stem in every root alike, which is the stem contract
-/// a rename already follows. With an empty map nothing is ambiguous.
+/// are every directory context holding the renamed file or a referrer, not
+/// only the renamed file's contexts: renaming the parent's `/v/a/old.md` must
+/// still see that the child root `/v/sub`, which does not contain that file,
+/// reads `/v/sub/r.md`'s `[[a/old]]` as `/v/sub/a/old.md`. A root whose notes
+/// are `Unknown` (its index could not be built) is read as holding every path
+/// but the renamed file's. Only a `Path` reading counts: a bare name is filed
+/// by its stem in every root alike, which is the stem contract a rename
+/// already follows. With an empty map nothing is ambiguous.
 fn read_as_another_note(
     ref_path: &str,
     raw_target: &str,
@@ -60,7 +74,13 @@ fn read_as_another_note(
     known_paths.iter().any(|(root, known)| {
         under_root(&path_components(root, windows), &referrer, windows).is_some()
             && match filing_key(ref_path, raw, None, Some(root), windows) {
-                FilingKey::Path(p) => known.contains(&p) && !is_the_target(root, &p),
+                FilingKey::Path(p) => {
+                    let exists = match known {
+                        RootNotes::Known(notes) => notes.contains(&p),
+                        RootNotes::Unknown => true,
+                    };
+                    exists && !is_the_target(root, &p)
+                }
                 _ => false,
             }
     })

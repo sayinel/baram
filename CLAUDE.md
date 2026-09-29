@@ -201,11 +201,13 @@ baram/
   ‼️ **경로 링크를 다른 root 가 실재하는 다른 노트로 읽으면 고치지 않고 보고한다** — 두 root 가 함께 덮는 `/v/sub/r.md` 의
   `[[a/old]]` 는 자식 아래에서 `/v/sub/a/old.md`, 부모 아래에서 `/v/a/old.md` 다. 둘 다 있으면 어느 쪽을 rename 하든 그 링크는
   **모호하므로 그대로 두고** 파일을 `skipped_files` 에 올린다(`filing.rs` 의 `Judgement::Ambiguous`·`read_as_another_note`).
-  부모에 `a/old.md` 가 없으면 모호하지 않으므로 전처럼 고쳐 쓴다. 존재 판정은 **built 된 모든 directory index** 의 노트
-  목록(`LinkIndex::registered_path_keys`, `service/rename/mod.rs` 의 `known_paths_of`)으로 한다 — rename 되는 파일의 context
-  만이 아니다. 부모의 `a/old.md` 를 rename 할 때 자식 root 는 그 파일을 담지 않지만 referrer 를 담는다. referrer 를 담는지는
-  root 표기에 대해 어휘적으로 본다. bare 이름(`[[old]]`)은 이 판정 밖이다 — stem 은 모든 root 에서 같게 읽히고 rename 은 그것을
-  고쳐 쓴다
+  부모에 `a/old.md` 가 없으면 모호하지 않으므로 전처럼 고쳐 쓴다. 존재 판정은 rename 되는 파일이나 referrer 를 **담는 모든
+  directory context** 의 노트 목록(`LinkIndex::registered_path_keys`)으로 한다 — rename 되는 파일의 context 만이 아니다. 부모의
+  `a/old.md` 를 rename 할 때 자식 root 는 그 파일을 담지 않지만 referrer 를 담는다. 한 번도 열리지 않아 index 가 없는 context 는
+  판정 전에 **그 자리에서 build 한다**(`service/rename/mod.rs` 의 `holding_contexts` → `ensure_indexes`). build 할 수 없으면 그
+  root 는 `RootNotes::Unknown` 이 되어 그 root 가 읽을 수 있는 경로 링크는 **그대로 두고 파일을 보고한다** — 비어 있다고 가정하지
+  않는다(`known_paths_of`). referrer 를 담는지는 `contexts_containing` 으로 찾고, 판정 안에서는 root 표기에 대해 어휘적으로 본다.
+  bare 이름(`[[old]]`)은 이 판정 밖이다 — stem 은 모든 root 에서 같게 읽히고 rename 은 그것을 고쳐 쓴다
   키는 **등록된 root 표기에 대해 어휘적으로** 계산한다 — symlink 인 root 의 다른 표기(`/tmp` 에 대한 `/private/tmp`)로 주어진 파일은
   `Path` 키를 얻지 못해 경로 링크가 **놓칠 뿐** 잘못 고쳐 쓰이지는 않는다
   ‼️ **이 판정 두 층은 파일 rename 입구에만 있다** — 디렉터리 rename 이 `relative_links.rs` 로 고쳐 쓰는 `[[./x]]`·`[[../x]]` 는

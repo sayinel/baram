@@ -21,7 +21,9 @@ use std::path::Path;
 
 use super::keys::{buildable, keys_of, owning_contexts};
 use super::state::{LinkIndexState, Mutation};
-use crate::index::{KnownPaths, LinkIndex};
+use crate::index::{KnownPaths, LinkIndex, RootNotes};
+
+use super::build::ensure_indexes;
 
 /// §33 Result of renaming a file (or a block ID) with wikilink updates.
 ///
@@ -67,30 +69,56 @@ pub struct NamespaceRenameResult {
     pub index_rebuilt: bool,
 }
 
-/// The notes each built directory index holds, by its root
-/// (`LinkIndex::registered_path_keys`) — every registered directory context,
-/// not only the renamed file's, since a root that does not contain the file
-/// may still hold a referrer and read its path link as another note
-/// (`filing::read_as_another_note`). A context whose index is not built
-/// contributes nothing: its root is read as holding no note, and a link it
-/// would read is judged as if that root were not registered.
-async fn known_paths_of(state: &LinkIndexState, ctx_mgr: &ContextManager) -> KnownPaths {
-    let mut known = KnownPaths::new();
-    for info in ctx_mgr.list().await {
-        let Some(registered) = ctx_mgr.registered(&info.id).await else {
-            continue;
-        };
-        if buildable(std::slice::from_ref(&registered)).is_empty() {
-            continue;
+/// The directory contexts that hold the renamed file (`dirs`) or any of
+/// `referrers` — the roots whose reading of a referrer's path link the rename
+/// judgement consults — with each one's index built. `dirs` are built
+/// already (the rename's gate); every other holding context is built here
+/// the same way (`ensure_indexes`), since a vault registered but never opened
+/// has no index and the judgement must not read that as "no note there". A
+/// build that fails is logged and its root is left unbuilt, which
+/// `known_paths_of` reports as `Unknown`.
+async fn holding_contexts(
+    state: &LinkIndexState,
+    ctx_mgr: &ContextManager,
+    dirs: &[Registered],
+    referrers: &[String],
+) -> Vec<Registered> {
+    let mut holding: Vec<Registered> = dirs.to_vec();
+    for referrer in referrers {
+        for c in buildable(&owning_contexts(ctx_mgr, referrer).await) {
+            if !holding.iter().any(|h| h.info.path == c.info.path) {
+                holding.push(c);
+            }
         }
-        let keys = state
-            .with_index_for(&registered.info.path, registered.incarnation, |idx| {
+    }
+    for c in &holding[dirs.len()..] {
+        if let Err(e) = ensure_indexes(state, ctx_mgr, std::slice::from_ref(c)).await {
+            log::warn!(
+                "rename: the index of {} could not be built ({e}); its path links are left as they are",
+                c.info.path
+            );
+        }
+    }
+    holding
+}
+
+/// What each of `holding` knows of its notes, by its root: `Known` with
+/// `LinkIndex::registered_path_keys` when its index is built for that
+/// registration, `Unknown` when it is not — a build that failed, or a
+/// context removed since. An `Unknown` root never lets a path link through
+/// (`filing::read_as_another_note`).
+async fn known_paths_of(state: &LinkIndexState, holding: &[Registered]) -> KnownPaths {
+    let mut known = KnownPaths::new();
+    for c in holding {
+        let notes = state
+            .with_index_for(&c.info.path, c.incarnation, |idx| {
                 idx.map(LinkIndex::registered_path_keys)
             })
             .await;
-        if let Some(keys) = keys {
-            known.insert(registered.info.path, keys);
-        }
+        known.insert(
+            c.info.path.clone(),
+            notes.map_or(RootNotes::Unknown, RootNotes::Known),
+        );
     }
     known
 }

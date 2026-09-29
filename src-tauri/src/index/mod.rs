@@ -19,7 +19,7 @@ pub use extractor::{
     collect_all_files, collect_md_files, find_unlinked_mentions, UnlinkedMentionResult,
 };
 pub use filing::{
-    filing_key, keys_for, BlockTarget, FilingKey, KnownPaths, LocalAlias, RenameTarget,
+    filing_key, keys_for, BlockTarget, FilingKey, KnownPaths, LocalAlias, RenameTarget, RootNotes,
 };
 pub use relative_links::rewrite_relative_wikilinks;
 pub(crate) use rewriter::link_reads_back_as_the_file;

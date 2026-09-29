@@ -19,7 +19,7 @@ use super::referrers::{
     apply_queued, named_referrers, queue_rewritten, rewrite_referrers, Rewrite, Rewritten,
     Unchanged,
 };
-use super::{confined_by, known_paths_of, push_for_keys, RenameResult};
+use super::{confined_by, holding_contexts, known_paths_of, push_for_keys, RenameResult};
 
 pub(crate) async fn rename_file_with_links_inner(
     state: &LinkIndexState,
@@ -81,10 +81,13 @@ pub(crate) async fn rename_file_with_links_inner(
         })
         .await?,
     );
-    // The notes each built index holds, read before the move: a path link
-    // that another root holding the referrer reads as a different existing
-    // note is left and its file reported (`RenameTarget::judge`).
-    let known_paths = known_paths_of(state, ctx_mgr).await;
+    // The notes of every vault that holds the file or a referrer, each
+    // index built first, read before the move: a path link that another root
+    // holding the referrer reads as a different existing note — or might,
+    // when its index could not be built — is left and its file reported
+    // (`RenameTarget::judge`).
+    let holding = holding_contexts(state, ctx_mgr, &dirs, &referring_files).await;
+    let known_paths = known_paths_of(state, &holding).await;
     // A same-stem note elsewhere (`b/old.md` beside `a/old.md`) is named by
     // the index for its own `((#^id))` references, filed under its stem —
     // the old name's key. The rewrite rightly leaves those alone, and the

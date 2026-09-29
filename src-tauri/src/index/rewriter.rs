@@ -836,7 +836,11 @@ mod tests {
             |_| true
         ));
         let knowing = RenameTarget {
-            known_paths: [("/v".to_string(), ["a/old".to_string()].into())].into(),
+            known_paths: [(
+                "/v".to_string(),
+                crate::index::RootNotes::Known(["a/old".to_string()].into()),
+            )]
+            .into(),
             ..rename_target("/v/sub/a/old.md", "/v/sub/a/new.md")
         };
         let after = replace_wikilink_target(before, "/v/sub/r.md", &both, &knowing);
@@ -844,6 +848,19 @@ mod tests {
         assert_eq!(
             ambiguous_wikilinks(before, "/v/sub/r.md", &both, &knowing),
             1
+        );
+        // A root whose index could not be built reads `Unknown`: any path
+        // reading under it may be another note, so the link is left the same
+        // way — the leave-and-report side of a failed build.
+        // What fails this: reading `RootNotes::Unknown` as holding no note in
+        // `read_as_another_note` — `[[a/old]]` is then respelled.
+        let unknown = RenameTarget {
+            known_paths: [("/v".to_string(), crate::index::RootNotes::Unknown)].into(),
+            ..rename_target("/v/sub/a/old.md", "/v/sub/a/new.md")
+        };
+        assert_eq!(
+            replace_wikilink_target(before, "/v/sub/r.md", &both, &unknown),
+            "[[a/old]] [[sub/a/new]]\n"
         );
         assert!(index_reads_the_rename_back(
             "/v/sub/r.md",

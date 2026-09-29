@@ -15,7 +15,7 @@ use super::super::state::{LinkIndexState, Mutation};
 use super::referrers::{
     apply_queued, named_referrers, queue_rewritten, rewrite_referrers, Rewrite, Unchanged,
 };
-use super::{known_paths_of, RenameResult};
+use super::{holding_contexts, known_paths_of, RenameResult};
 
 pub(crate) async fn rename_block_id_inner(
     state: &LinkIndexState,
@@ -52,10 +52,12 @@ pub(crate) async fn rename_block_id_inner(
     // The keys a reference to this file is filed under in each index read
     // above: its stem and zettel id, the same in every index, and its path
     // under that index's root (issue 619) — what `backlink_keys` reads there.
-    // With the notes each built index holds: a path reference another root
-    // holding the referrer reads as a different existing note is left and
-    // its file reported (`BlockTarget::judge`).
-    let target = block_target(file_path, &dirs, known_paths_of(state, ctx_mgr).await);
+    // With the notes of every vault that holds the file or a referrer, each
+    // index built first: a path reference another root holding the referrer
+    // reads as a different existing note — or might, when its index could
+    // not be built — is left and its file reported (`BlockTarget::judge`).
+    let holding = holding_contexts(state, ctx_mgr, &dirs, &referring_files).await;
+    let target = block_target(file_path, &dirs, known_paths_of(state, &holding).await);
     // A referrer that shares the target's stem — another `note.md` in some
     // other folder — is named by the index for its own self-references
     // (`((#^id))` is filed under the referrer's own stem, which is the

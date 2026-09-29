@@ -4177,3 +4177,96 @@ async fn a_path_link_is_not_ambiguous_because_of_a_root_that_does_not_hold_the_r
         "[[a/new]]\n"
     );
 }
+
+/// `/v` indexed and `/v/sub` registered (`ctx-child`) but never opened —
+/// no index built for it — holding `/v/a/old.md`, `sub/r.md` with
+/// `[[a/old]]`, and `sub/a/old.md` when `child_note` says so.
+async fn parent_indexed_child_unopened(
+    ctx: &ContextManager,
+    child_note: bool,
+) -> (tempfile::TempDir, String, String, LinkIndexState) {
+    let (dir, root) = vault_with_a_link(ctx, "ctx-parent", true).await;
+    std::fs::create_dir_all(dir.path().join("sub/a")).unwrap();
+    std::fs::create_dir_all(dir.path().join("a")).unwrap();
+    std::fs::write(dir.path().join("a/old.md"), "t\n").unwrap();
+    if child_note {
+        std::fs::write(dir.path().join("sub/a/old.md"), "t\n").unwrap();
+    }
+    std::fs::write(dir.path().join("sub/r.md"), "[[a/old]]\n").unwrap();
+    let sub = format!("{root}/sub");
+    ctx.add(info("ctx-child", &sub, ContextType::Folder))
+        .await
+        .unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, ctx, &root).await.unwrap();
+    assert!(state.with_index(&sub, |idx| idx.is_none()).await);
+    (dir, root, sub, state)
+}
+
+#[tokio::test]
+async fn nested_roots_an_unopened_child_vault_still_guards_a_doubly_read_path_link() {
+    // `/v/sub` holds `sub/r.md` but was never opened, so it has no index.
+    // Renaming the parent's `a/old.md` builds it before judging, finds
+    // `sub/a/old.md`, and leaves `[[a/old]]` — which the child reads as
+    // that note — and reports the file.
+    // What fails this: judging with the renamed file's contexts alone
+    // (`holding_contexts` returning `dirs`) — the child is never consulted,
+    // `[[a/old]]` becomes `[[a/new]]`, and nothing is reported. Skipping
+    // only the build fails the last assertion: the link is still left,
+    // since an unbuilt root reads `Unknown`, but the child has no index.
+    let ctx = ContextManager::new();
+    let (dir, root, sub, state) = parent_indexed_child_unopened(&ctx, true).await;
+    let referrer = format!("{sub}/r.md");
+
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/a/old.md"),
+        &format!("{root}/a/new.md"),
+    )
+    .await
+    .unwrap();
+    assert!(
+        result.updated_files.is_empty(),
+        "{:?}",
+        result.updated_files
+    );
+    assert_eq!(result.skipped_files, vec![referrer]);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("sub/r.md")).unwrap(),
+        "[[a/old]]\n"
+    );
+    assert!(state.with_index(&sub, |idx| idx.is_some()).await);
+}
+
+#[tokio::test]
+async fn nested_roots_an_unopened_child_vault_without_the_colliding_note_lets_the_link_follow() {
+    // The twin: the unopened child holds no `sub/a/old.md`. Its index is
+    // built, reads `a/old` as nothing, and the link follows the rename with
+    // nothing reported — an unopened child is not noise by itself.
+    // What fails this: skipping the build in `holding_contexts` — the
+    // child then has no index, reads `Unknown`, and the link is left and
+    // reported.
+    let ctx = ContextManager::new();
+    let (dir, root, sub, state) = parent_indexed_child_unopened(&ctx, false).await;
+    let referrer = format!("{sub}/r.md");
+
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/a/old.md"),
+        &format!("{root}/a/new.md"),
+    )
+    .await
+    .unwrap();
+    assert_eq!(result.updated_files, vec![referrer]);
+    assert!(
+        result.skipped_files.is_empty(),
+        "{:?}",
+        result.skipped_files
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("sub/r.md")).unwrap(),
+        "[[a/new]]\n"
+    );
+}
