@@ -3692,16 +3692,14 @@ async fn a_local_rename_leaves_a_link_into_another_vault_alone() {
 }
 
 #[tokio::test]
-async fn an_alias_another_vault_has_since_claimed_is_no_longer_local() {
-    // Two vaults carry the alias `work`; the later registration owns it
-    // (`claim_alias`, last writer wins), so in A `[[work::old]]` names B's
-    // note: no backlink of A's `old.md`, and A's rename leaves it.
-    // What fails this: dropping both conditions of `local_aliases_of` — the
-    // `resolve_alias` ownership check and the check that no other context
-    // carries the alias. Either alone excludes `work` here, since B carries
-    // it too; dropping only the ownership check leaves this test and the
-    // whole suite green (run once). Ownership alone decides only when the
-    // owner was removed or re-aliased and no context claimed the alias back.
+async fn an_alias_two_vaults_carry_is_foreign_to_both() {
+    // Two vaults carry the alias `work`. The frontend picks the first in its
+    // list and the backend alias map the last registration, so the link may
+    // name either vault: in A `[[work::old]]` is no backlink of A's
+    // `old.md`, and A's rename leaves it.
+    // What fails this: dropping the uniqueness check from `local_aliases_of`
+    // — `work` is then local to A, the link is a backlink, and the rename
+    // writes `[[work::new]]`.
     let ctx = ContextManager::new();
     let (dir_a, root_a) = aliased_vault(
         &ctx,
@@ -3728,6 +3726,51 @@ async fn an_alias_another_vault_has_since_claimed_is_no_longer_local() {
     assert_eq!(
         std::fs::read_to_string(dir_a.path().join("r.md")).unwrap(),
         "[[work::old]]\n[[new]]\n"
+    );
+}
+
+#[tokio::test]
+async fn an_alias_is_local_again_once_the_other_vault_carrying_it_is_removed() {
+    // A carries `work`; B registers with `work` too and takes the alias map
+    // entry (last writer wins); B is removed, and its removal drops that
+    // entry. The backend cross-vault resolver now answers nothing for
+    // `work`, while the frontend resolves it to A, the only vault carrying
+    // it — uniqueness, the rule `local_aliases_of` reads — so `[[work::old]]`
+    // in A is a backlink of A's `old.md` again and A's rename respells it.
+    // What fails this: an ownership check keyed on `resolve_alias` in
+    // `local_aliases_of` — the map holds no entry for `work` after B's
+    // removal, so A stays foreign and the link keeps `old`.
+    let ctx = ContextManager::new();
+    let (dir_a, root_a) = aliased_vault(
+        &ctx,
+        "ctx-a",
+        "work",
+        &[("old.md", "t\n"), ("r.md", "[[work::old]]\n[[old]]\n")],
+    )
+    .await;
+    let (_dir_b, _root_b) = aliased_vault(&ctx, "ctx-b", "work", &[("old.md", "t\n")]).await;
+    ctx.remove("ctx-b").await.unwrap();
+    assert_eq!(ctx.resolve_alias("work").await, None);
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root_a).await.unwrap();
+    let (old, referrer) = (format!("{root_a}/old.md"), format!("{root_a}/r.md"));
+    assert_eq!(
+        backlink_lines(&state, &ctx, &old, &referrer).await,
+        vec![1, 2]
+    );
+
+    let result = rename_file_with_links_inner(&state, &ctx, &old, &format!("{root_a}/new.md"))
+        .await
+        .unwrap();
+    assert_eq!(result.updated_files, vec![referrer]);
+    assert!(
+        result.skipped_files.is_empty(),
+        "{:?}",
+        result.skipped_files
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir_a.path().join("r.md")).unwrap(),
+        "[[work::new]]\n[[new]]\n"
     );
 }
 
@@ -3878,9 +3921,9 @@ async fn aliases_differing_only_in_case_make_the_link_foreign_for_both_vaults() 
     // case-insensitively by context order, so the link may mean either
     // vault. It is foreign: no backlink of A's `old.md`, and A's rename
     // leaves it — in either registration order.
-    // What fails this: dropping the "no other context carries this alias in
-    // any case" condition from `local_aliases_of` — A owns `Work`, so
-    // `work` is local to A, the link is a backlink, and the rename writes
+    // What fails this: dropping the uniqueness check from `local_aliases_of`
+    // — no condition is then left, so A's own `Work` is local to A whatever
+    // B carries, the link is a backlink, and the rename writes
     // `[[work::new]]`.
     rename_beside_a_case_colliding_alias(true).await;
     rename_beside_a_case_colliding_alias(false).await;

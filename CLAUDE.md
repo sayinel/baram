@@ -206,11 +206,13 @@ baram/
   거치지 않고(폴더를 `C# notes` 로 바꾸면 `[[./C# notes/x]]` 가 쓰여 `./C` 로 읽힌다 — 실측), block ID rename 의 새 id 는 프런트
   `BLOCK_ID_PATTERN` 이 거르며 Rust 는 재검증하지 않는다. 프런트의 블록 메뉴 "링크 복사" 도 판정 없이 쓴다. 링크를 쓰는
   입구를 더하거나 고칠 때 이 층을 같이 걸 것
-  - **vault 자신의 alias(`[[work::note]]`, §87)는 context 가 그 alias 를 아직 소유할 때만 로컬이다 (#717)** — `claim_alias` 가
-    last-writer-wins 라 소유는 `resolve_alias` 로 확인한다(`service/keys.rs` 의 `local_aliases_of`). 소유는 rename 이 **시작할 때**
-    한 번 읽으므로 rename 도중의 재점유는 보이지 않는다. 다른 vault 가 대소문자만 다른 같은 alias 를 달고 있으면(`Work` 와 `work`)
-    그 alias 는 **모호하므로 양쪽 모두에게 외부다** — backend alias 맵은 정확한 문자열로, 프런트 `findAliasContext` 는 대소문자 무시로
-    context 순서대로 고르니 둘이 다른 vault 를 가리킬 수 있다. 그런 링크는 rename 이 건드리지 않고 백링크도 주장하지 않는다. 로컬 alias 는
+  - **vault 자신의 alias(`[[work::note]]`, §87)는 등록된 vault 들 사이에서 대소문자 무시로 유일한 alias 일 때만 로컬이다 (#717)** —
+    `service/keys.rs` 의 `local_aliases_of`. 다른 vault 가 같은 alias 를 달고 있으면(`work` 와 `work`, 또는 대소문자만 다른 `Work`)
+    그 alias 는 **모호하므로 양쪽 모두에게 외부다** — 프런트 `findAliasContext` 는 대소문자 무시로 목록의 첫 context 를, backend alias
+    맵은 정확한 문자열로 마지막 등록을 고르니 둘이 다른 vault 를 가리킬 수 있다. 그런 링크는 rename 이 건드리지 않고 백링크도 주장하지
+    않는다. alias 맵의 소유(`resolve_alias`)로 판정하지 않는다 — last-writer-wins 맵은 낡는다(나중 vault 가 이름을 가져간 뒤 제거되면 맵
+    항목이 사라져, 이제 그 이름을 단 유일한 vault 도 외부로 남는다). 등록은 rename 이 **시작할 때** 한 번 읽으므로 rename 도중의 등록은
+    보이지 않는다. 로컬 alias 는
     `LocalAlias { alias, root }` 로 다니고, alias 뒤 경로의 `Foreign` 키는 읽는 index 의 root 가 아니라 **그 alias 가 가리키는 vault 의
     root 로** 계산한다 — 중첩 vault 에서 부모의 `[[p::a/old]]` 가 자식의 `a/old.md` 로 읽히지 않게. block reference·embed 문법에는
     alias 자리가 없어(`extractor.rs` 의 `BLOCK_REF_RE`·`BLOCK_EMBED_RE`) block ID rename 은 alias 를 넘기지 않는다

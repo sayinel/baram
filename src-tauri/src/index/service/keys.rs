@@ -18,21 +18,31 @@ pub(super) async fn owning_contexts(ctx_mgr: &ContextManager, path: &str) -> Vec
 
 /// The vault aliases local to `contexts` (§87): each one's alias, lowercase,
 /// with its registered path as the root the alias resolves paths against —
-/// while that context still owns it, which `ctx_mgr.resolve_alias` says, and
-/// no other registered context carries the same alias in any case.
-/// Ownership is checked because `claim_alias` is last-writer-wins: a vault
-/// whose alias a later registration took no longer answers to it, and a link
-/// behind that alias names the other vault's note. The second condition is
-/// there because the two sides resolve an alias differently: the backend
-/// alias map is keyed by the exact registered string, so vault A may own
-/// `Work` while vault B owns `work`, but the frontend's `findAliasContext`
-/// compares aliases case-insensitively and takes the first context in its
-/// list. A link either vault could be meant by is ambiguous, so it is
-/// foreign to both: the rename leaves it and the backlinks do not claim it.
-/// Ownership is read when this is called — a rename reads it once, at its
-/// start, and does not see a re-claim made while it runs. Lowercase because
-/// `filing_key` lowercases a `Foreign` key's alias; this is the one fold on
-/// this side (`LocalAlias`). Sorted, without repeats.
+/// when no OTHER registered context (`ctx_mgr.list()`) carries the same alias
+/// in any case. That one condition is the whole rule, for three reasons:
+///
+/// - Uniqueness is the condition the frontend resolves by. Its
+///   `findAliasContext` compares aliases case-insensitively and takes the
+///   first context in its list, while the backend's cross-vault resolver
+///   (`resolve_cross_vault_link`) reads the alias map, keyed by the exact
+///   string, last writer wins. With `Work` and `work` on two vaults, or
+///   `work` on both, they can name different vaults, so a link behind that
+///   alias is ambiguous and foreign to both: the rename leaves it and the
+///   backlinks do not claim it.
+/// - The alias map can go stale. When a later vault claims the name and is
+///   then removed, its removal drops the map entry, so the backend resolver
+///   answers nothing for that alias while the frontend still resolves it to
+///   the first vault, now the only one carrying it. Uniqueness among the
+///   registered vaults is the one condition no other vault can contradict,
+///   so the map is not consulted; an ownership check against it would keep
+///   the first vault foreign.
+/// - With uniqueness checked, an ownership check has no test that fails
+///   without it, and a condition nothing can fail does not stay.
+///
+/// The registrations are read when this is called — a rename reads them
+/// once, at its start, and does not see a registration made while it runs.
+/// Lowercase because `filing_key` lowercases a `Foreign` key's alias; this is
+/// the one fold on this side (`LocalAlias`). Sorted, without repeats.
 pub(super) async fn local_aliases_of(
     ctx_mgr: &ContextManager,
     contexts: &[Registered],
@@ -41,17 +51,17 @@ pub(super) async fn local_aliases_of(
     let mut aliases = Vec::new();
     for c in contexts {
         if let Some(alias) = &c.info.alias {
-            let owned = ctx_mgr.resolve_alias(alias).await.as_ref() == Some(&c.info.id);
-            let ambiguous = registered.iter().any(|other| {
+            let folded = alias.to_lowercase();
+            let unique = !registered.iter().any(|other| {
                 other.id != c.info.id
                     && other
                         .alias
                         .as_deref()
-                        .is_some_and(|a| a.to_lowercase() == alias.to_lowercase())
+                        .is_some_and(|a| a.to_lowercase() == folded)
             });
-            if owned && !ambiguous {
+            if unique {
                 aliases.push(LocalAlias {
-                    alias: alias.to_lowercase(),
+                    alias: folded,
                     root: c.info.path.clone(),
                 });
             }

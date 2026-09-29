@@ -42,7 +42,7 @@ static REF_REPLACE_RE: LazyLock<Regex> =
 /// spelled under the roots as registered (a file given in another spelling of a symlinked
 /// root, `/private/tmp` for `/tmp`, has no `Path` key, so its path links
 /// are missed, never miswritten), and `target.local_aliases` are the ones
-/// the caller read when the rename started (a re-claim made since is not
+/// the caller read when the rename started (a registration made since is not
 /// seen). The keys are a bare `[[Old.md]]`'s stem, and for a path-qualified
 /// `[[a/old]]` or a relative `[[./old]]` the file's path under a covering
 /// root. A file whose stem itself ends in `.md` (`diagram.md.txt`) never
