@@ -18,7 +18,7 @@ use thiserror::Error;
 pub use extractor::{
     collect_all_files, collect_md_files, find_unlinked_mentions, UnlinkedMentionResult,
 };
-pub use filing::{filing_key, keys_for, BlockTarget, FilingKey, RenameTarget};
+pub use filing::{filing_key, keys_for, BlockTarget, FilingKey, LocalAlias, RenameTarget};
 pub use relative_links::rewrite_relative_wikilinks;
 pub use rewriter::{
     block_reference_can_spell, block_references_to, index_reads_the_rename_back,
@@ -306,8 +306,9 @@ impl LinkIndex {
 
     /// The keys a link to `file_path` is filed under in this index
     /// (`keys_for` under `root_path`): its stem, its path under the root,
-    /// and each of `local_aliases` paired with both.
-    pub fn filing_keys_of(&self, file_path: &str, local_aliases: &[String]) -> Vec<FilingKey> {
+    /// and each of `local_aliases` paired with its stem and its path under
+    /// that alias's own root.
+    pub fn filing_keys_of(&self, file_path: &str, local_aliases: &[LocalAlias]) -> Vec<FilingKey> {
         keys_for(
             file_path,
             self.root_path.as_deref(),
@@ -319,7 +320,7 @@ impl LinkIndex {
     /// The keys `get_backlinks` and `block_reference_lines` read for
     /// `file_path`: `filing_keys_of`, plus the zettel id inside its stem if it
     /// has one, under which a bare `[[202607051530]]` is filed.
-    pub fn backlink_keys(&self, file_path: &str, local_aliases: &[String]) -> Vec<FilingKey> {
+    pub fn backlink_keys(&self, file_path: &str, local_aliases: &[LocalAlias]) -> Vec<FilingKey> {
         let mut keys = self.filing_keys_of(file_path, local_aliases);
         if let Some(id) = extract_id_from_stem(&normalize_file_path(file_path)) {
             keys.push(FilingKey::Stem(id));
@@ -337,7 +338,7 @@ impl LinkIndex {
         &self,
         file_path: &str,
         block_id: &str,
-        local_aliases: &[String],
+        local_aliases: &[LocalAlias],
     ) -> Vec<(String, u32)> {
         let mut out = Vec::new();
         for key in self.backlink_keys(file_path, local_aliases) {
@@ -368,7 +369,7 @@ impl LinkIndex {
     pub fn referring_lines_to(
         &self,
         file_path: &str,
-        local_aliases: &[String],
+        local_aliases: &[LocalAlias],
     ) -> Vec<(String, u32)> {
         let mut out: Vec<(String, u32)> = self
             .filing_keys_of(file_path, local_aliases)
@@ -383,7 +384,11 @@ impl LinkIndex {
     }
 
     /// Get backlinks for a given file path, read under `backlink_keys`
-    pub fn get_backlinks(&self, file_path: &str, local_aliases: &[String]) -> Vec<BacklinkResult> {
+    pub fn get_backlinks(
+        &self,
+        file_path: &str,
+        local_aliases: &[LocalAlias],
+    ) -> Vec<BacklinkResult> {
         let keys = self.backlink_keys(file_path, local_aliases);
 
         let mut seen = std::collections::HashSet::new();
@@ -772,7 +777,7 @@ mod tests {
             1
         );
         let roots = ["/v".to_string()];
-        let visited = |local_aliases: &[String]| {
+        let visited = |local_aliases: &[LocalAlias]| {
             let target = RenameTarget {
                 old_path: "/v/dir/target.md",
                 new_path: "/v/dir/renamed.md",
@@ -787,7 +792,11 @@ mod tests {
             filed,
             "the index files a reference under this path that neither rewrite pass visits"
         );
-        assert_eq!(visited(&["work".to_string()]), filed + 1);
+        let work = LocalAlias {
+            alias: "work".to_string(),
+            root: "/v".to_string(),
+        };
+        assert_eq!(visited(&[work]), filed + 1);
     }
 
     #[test]

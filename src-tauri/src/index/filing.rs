@@ -20,6 +20,18 @@ pub enum FilingKey {
     Foreign { alias: String, target: String },
 }
 
+/// A vault alias local to the file a reader asks about, paired with the root
+/// of the vault it names. `alias` is already lowercase — it is folded once,
+/// where it enters (`service::keys::local_aliases_of`), and every comparison
+/// here assumes so; `filing_key` folds the alias a LINK is written with.
+/// `root` is that vault's registered path: an alias resolves a path against
+/// it, never against the root of the index being read.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct LocalAlias {
+    pub alias: String,
+    pub root: String,
+}
+
 /// Does `target` start with `./` or `../` (and, on Windows, `.\` or `..\`)?
 fn is_relative(target: &str, windows: bool) -> bool {
     let starts = |p: &str| target.starts_with(p);
@@ -116,12 +128,16 @@ pub fn root_relative_key(root: &str, file_path: &str, windows: bool) -> Option<S
 }
 
 /// Every key a link to the file at `file_path` may be filed under, in order:
-/// its stem, its path under `root`, then each of `local_aliases` paired with
-/// both.
+/// its stem, its path under `root`, then for each of `local_aliases` its
+/// stem and its path under THAT alias's root — not `root`. An alias resolves
+/// a path against the vault it names, so with the nested vaults `/v` (alias
+/// `p`) and `/v/sub` (alias `s`), `[[p::a/old]]` names `/v/a/old.md` in
+/// whichever index it is read, never `/v/sub/a/old.md`. A file outside an
+/// alias's vault has no path key under it.
 pub fn keys_for(
     file_path: &str,
     root: Option<&str>,
-    local_aliases: &[String],
+    local_aliases: &[LocalAlias],
     windows: bool,
 ) -> Vec<FilingKey> {
     // The file name alone, so a Windows path is read on any host.
@@ -133,17 +149,16 @@ pub fn keys_for(
     let rel = root.and_then(|root| root_relative_key(root, file_path, windows));
 
     let mut keys = vec![FilingKey::Stem(stem.clone())];
-    keys.extend(rel.clone().map(FilingKey::Path));
-    for alias in local_aliases {
-        let alias = alias.to_lowercase();
+    keys.extend(rel.map(FilingKey::Path));
+    for la in local_aliases {
         keys.push(FilingKey::Foreign {
-            alias: alias.clone(),
+            alias: la.alias.clone(),
             target: stem.clone(),
         });
-        if let Some(rel) = &rel {
+        if let Some(rel) = root_relative_key(&la.root, file_path, windows) {
             keys.push(FilingKey::Foreign {
-                alias,
-                target: rel.clone(),
+                alias: la.alias.clone(),
+                target: rel,
             });
         }
     }
@@ -206,13 +221,13 @@ pub enum Match {
 }
 
 /// The file a file rename renames, from `old_path` to `new_path` in the same
-/// directory. `local_aliases` are this vault's own aliases: a link qualified
-/// by one of them names a file here, a link qualified by any other names a
-/// file in another vault.
+/// directory. `local_aliases` are the aliases of the vaults that hold it,
+/// each with its vault's root: a link qualified by one of them names a file
+/// in that vault, a link qualified by any other names a file elsewhere.
 pub struct RenameTarget<'a> {
     pub old_path: &'a str,
     pub new_path: &'a str,
-    pub local_aliases: &'a [String],
+    pub local_aliases: &'a [LocalAlias],
     pub windows: bool,
 }
 
@@ -271,14 +286,7 @@ impl RenameTarget<'_> {
     /// depend on the root but still needs a covering root, as
     /// `BlockTarget::refers`. A link behind an alias that is not one of
     /// `local_aliases` names a file in another vault and is never this
-    /// file's. One behind a local alias is judged as the index files it —
-    /// `filing_key(ref_path, raw, Some(alias), Some(root), windows)`, a
-    /// `Foreign` key, against the `Foreign` keys `keys_for(old_path,
-    /// Some(root), local_aliases, windows)` gives this file: so
-    /// `[[work::old]]` and `[[work::dir/old]]` match the local alias `work`,
-    /// and `[[work::./old]]` never does, because a `Foreign` target is not
-    /// resolved against the referrer's folder and the index never counts it
-    /// under this file.
+    /// file's (`refers_behind_alias`).
     pub fn refers(
         &self,
         ref_path: &str,
@@ -287,20 +295,12 @@ impl RenameTarget<'_> {
         raw_target: &str,
     ) -> Option<Match> {
         let alias = alias_prefix.strip_suffix("::").unwrap_or(alias_prefix);
-        let alias = if alias.is_empty() {
-            None
-        } else if self
-            .local_aliases
-            .iter()
-            .any(|a| a.to_lowercase() == alias.to_lowercase())
-        {
-            Some(alias)
-        } else {
-            return None;
-        };
+        if !alias.is_empty() {
+            return self.refers_behind_alias(ref_path, covering_roots, alias, raw_target);
+        }
         let stem = file_key(self.old_stem());
         let relative = is_relative(raw_target.trim(), self.windows);
-        keyed_under(ref_path, covering_roots, alias, raw_target, self.windows).find_map(
+        keyed_under(ref_path, covering_roots, None, raw_target, self.windows).find_map(
             |(root, key)| {
                 let rel = root_relative_key(root, self.old_path, self.windows);
                 let path_match = || Match::Path {
@@ -310,17 +310,60 @@ impl RenameTarget<'_> {
                 match key {
                     FilingKey::Stem(s) if s == stem => Some(Match::Stem),
                     FilingKey::Path(p) if Some(&p) == rel.as_ref() => Some(path_match()),
-                    FilingKey::Foreign { target, .. } if target == stem => Some(Match::Stem),
-                    FilingKey::Foreign { target, .. } if Some(&target) == rel.as_ref() => {
-                        Some(Match::Path {
-                            root: root.clone(),
-                            relative: false,
-                        })
-                    }
                     _ => None,
                 }
             },
         )
+    }
+
+    /// `refers` for a link behind `alias`: judged as the index files it —
+    /// `filing_key(.., Some(alias), ..)`, a `Foreign` key whatever the root —
+    /// against the two `Foreign` keys `keys_for` gives this file under each
+    /// local alias of that name: its stem (a `Stem` match), or its path under
+    /// THAT alias's root (a `Path` match under that root, which `respell`
+    /// spells from it and `expected_key` keys under it; the read-back gate
+    /// wraps the alias around that key). So `[[work::old]]` and
+    /// `[[work::dir/old]]` match the local alias `work`, and `[[work::./old]]`
+    /// never does: a `Foreign` target is not resolved against the referrer's
+    /// folder and the index never counts it under this file. A covering root
+    /// is still needed, as for any link.
+    fn refers_behind_alias(
+        &self,
+        ref_path: &str,
+        covering_roots: &[String],
+        alias: &str,
+        raw_target: &str,
+    ) -> Option<Match> {
+        let alias = alias.to_lowercase();
+        let stem = file_key(self.old_stem());
+        let (_, key) = keyed_under(
+            ref_path,
+            covering_roots,
+            Some(&alias),
+            raw_target,
+            self.windows,
+        )
+        .next()?;
+        let FilingKey::Foreign { target, .. } = key else {
+            return None;
+        };
+        self.local_aliases
+            .iter()
+            .filter(|la| la.alias == alias)
+            .find_map(|la| {
+                if target == stem {
+                    Some(Match::Stem)
+                } else if Some(&target)
+                    == root_relative_key(&la.root, self.old_path, self.windows).as_ref()
+                {
+                    Some(Match::Path {
+                        root: la.root.clone(),
+                        relative: false,
+                    })
+                } else {
+                    None
+                }
+            })
     }
 
     /// The components of the renamed file after the rename, its last one
@@ -473,10 +516,47 @@ mod tests {
         );
     }
 
+    fn local(alias: &str, root: &str) -> LocalAlias {
+        LocalAlias {
+            alias: alias.to_string(),
+            root: root.to_string(),
+        }
+    }
+
+    #[test]
+    fn keys_for_pairs_each_local_alias_with_its_own_vaults_root() {
+        // What fails this: keying an alias's path under the `root` being
+        // read instead of the alias's own — `/v/sub/a/old.md` then answers
+        // `Foreign { p, a/old }`, which names `/v/a/old.md`.
+        let aliases = vec![local("p", "/v"), local("s", "/v/sub")];
+        assert_eq!(
+            keys_for("/v/sub/a/old.md", Some("/v/sub"), &aliases, false),
+            vec![
+                stem("old"),
+                path("a/old"),
+                foreign("p", "old"),
+                foreign("p", "sub/a/old"),
+                foreign("s", "old"),
+                foreign("s", "a/old"),
+            ]
+        );
+        // A file outside an alias's vault has no path key under it.
+        assert_eq!(
+            keys_for("/v/a/old.md", Some("/v"), &aliases, false),
+            vec![
+                stem("old"),
+                path("a/old"),
+                foreign("p", "old"),
+                foreign("p", "a/old"),
+                foreign("s", "old"),
+            ]
+        );
+    }
+
     #[test]
     fn keys_for_names_the_stem_the_path_and_each_local_alias() {
         // What fails this: dropping the `Foreign` loop over `local_aliases`.
-        let aliases = vec!["work".to_string()];
+        let aliases = vec![local("work", "/v")];
         assert_eq!(
             keys_for("/v/dir/note.md", Some("/v"), &aliases, false),
             vec![
@@ -486,9 +566,14 @@ mod tests {
                 foreign("work", "dir/note"),
             ]
         );
+        // With no index root, the alias's own root still keys the path.
         assert_eq!(
             keys_for("/v/dir/note.md", None, &aliases, false),
-            vec![stem("note"), foreign("work", "note")]
+            vec![
+                stem("note"),
+                foreign("work", "note"),
+                foreign("work", "dir/note")
+            ]
         );
     }
 }

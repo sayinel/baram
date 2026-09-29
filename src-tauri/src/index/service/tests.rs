@@ -3428,12 +3428,14 @@ async fn a_vaults_own_alias_names_its_own_notes() {
     // to `referring_lines_to` or `RenameTarget` in
     // `rename_file_with_links_inner` — `r.md` is not visited, or its links
     // are not this file's, and they stay `old`; keying the read-back gate's
-    // respelled `Foreign` entry without its alias — the gate reverts `r.md`.
+    // respelled `Foreign` entry without its alias — the gate reverts `r.md`;
+    // dropping the fold in `local_aliases_of` — the vault is registered as
+    // `Work`, and the index files both links under `work`.
     let ctx = ContextManager::new();
     let (dir, root) = aliased_vault(
         &ctx,
         "ctx-work",
-        "work",
+        "Work",
         &[
             ("dir/old.md", "para ^x\n"),
             ("r.md", "[[Work::old]]\n[[work::dir/old]]\n"),
@@ -3573,6 +3575,9 @@ async fn an_alias_another_vault_has_since_claimed_is_no_longer_local() {
     );
 }
 
+// Not on Windows: `:` is illegal in an NTFS file name, and this note's
+// name is `work::note.md`.
+#[cfg(not(windows))]
 #[tokio::test]
 async fn a_block_reference_never_carries_a_vault_alias() {
     // The block-reference grammar has no alias group: in `((work::note#^id))`
@@ -3613,5 +3618,58 @@ async fn a_block_reference_never_carries_a_vault_alias() {
     assert_eq!(
         std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
         "((work::note#^id2))\n"
+    );
+}
+
+#[tokio::test]
+async fn nested_vaults_an_aliased_path_link_names_the_aliased_vaults_note() {
+    // An alias resolves a path against the root of the vault it names, not
+    // the root of the index being read: `/v` is `p` and `/v/sub` is `s`, so
+    // `[[p::a/old]]` names `/v/a/old.md` and `[[s::a/old]]` names
+    // `/v/sub/a/old.md`, wherever either is written.
+    // What fails this: pairing a local alias with the root of the index
+    // being read (`keys_for`'s `root`) instead of its own vault's root —
+    // `[[p::a/old]]` is then a backlink of `/v/sub/a/old.md` and its
+    // rename respells it `[[p::a/new]]`, breaking the link to `/v/a/old.md`.
+    let ctx = ContextManager::new();
+    let (dir, root) = aliased_vault(
+        &ctx,
+        "ctx-p",
+        "p",
+        &[
+            ("a/old.md", "parent note\n"),
+            ("sub/a/old.md", "child note\n"),
+            ("sub/r.md", "[[p::a/old]]\n[[s::a/old]]\n"),
+        ],
+    )
+    .await;
+    let sub = format!("{root}/sub");
+    ctx.add(aliased("ctx-s", &sub, "s")).await.unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    refresh_index_inner(&state, &ctx, &sub).await.unwrap();
+    let (parent_old, child_old) = (format!("{root}/a/old.md"), format!("{sub}/a/old.md"));
+    let referrer = format!("{sub}/r.md");
+    assert_eq!(
+        backlink_lines(&state, &ctx, &parent_old, &referrer).await,
+        vec![1]
+    );
+    assert_eq!(
+        backlink_lines(&state, &ctx, &child_old, &referrer).await,
+        vec![2]
+    );
+
+    let result = rename_file_with_links_inner(&state, &ctx, &child_old, &format!("{sub}/a/new.md"))
+        .await
+        .unwrap();
+    assert_eq!(result.updated_files, vec![referrer]);
+    assert!(
+        result.skipped_files.is_empty(),
+        "{:?}",
+        result.skipped_files
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("sub/r.md")).unwrap(),
+        "[[p::a/old]]\n[[s::a/new]]\n"
     );
 }

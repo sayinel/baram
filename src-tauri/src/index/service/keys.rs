@@ -1,6 +1,6 @@
 use crate::context::manager::Registered;
 use crate::context::{ContextManager, ContextType};
-use crate::index::{LinkGraph, LinkIndex};
+use crate::index::{LinkGraph, LinkIndex, LocalAlias};
 use std::collections::HashMap;
 
 use super::state::LinkIndexState;
@@ -17,23 +17,29 @@ pub(super) async fn owning_contexts(ctx_mgr: &ContextManager, path: &str) -> Vec
 }
 
 /// The vault aliases local to `contexts` (§87): each one's alias, lowercase,
-/// while that context still owns it — `ctx_mgr.resolve_alias` names it.
+/// with its registered path as the root the alias resolves paths against —
+/// while that context still owns it, which `ctx_mgr.resolve_alias` says.
 /// Ownership is checked because `claim_alias` is last-writer-wins: a vault
 /// whose alias a later registration took no longer answers to it, and a link
 /// behind that alias names the other vault's note. Lowercase because the
 /// frontend's `findAliasContext` compares aliases case-insensitively and
-/// `filing_key` lowercases a `Foreign` key's alias; `keys_for` and
-/// `RenameTarget::refers` fold again, so here the fold makes the dedup
-/// blind to case. Sorted, without repeats.
+/// `filing_key` lowercases a `Foreign` key's alias; this is the one fold on
+/// this side (`LocalAlias`). The alias map itself is keyed by the exact
+/// registered string, so two vaults aliased `Work` and `work` both own
+/// theirs and both read `work` as local — an ambiguity older than this
+/// list. Sorted, without repeats.
 pub(super) async fn local_aliases_of(
     ctx_mgr: &ContextManager,
     contexts: &[Registered],
-) -> Vec<String> {
+) -> Vec<LocalAlias> {
     let mut aliases = Vec::new();
     for c in contexts {
         if let Some(alias) = &c.info.alias {
             if ctx_mgr.resolve_alias(alias).await.as_ref() == Some(&c.info.id) {
-                aliases.push(alias.to_lowercase());
+                aliases.push(LocalAlias {
+                    alias: alias.to_lowercase(),
+                    root: c.info.path.clone(),
+                });
             }
         }
     }

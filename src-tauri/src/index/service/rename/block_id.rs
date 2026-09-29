@@ -9,7 +9,7 @@ use crate::index::{
 use std::collections::HashMap;
 
 use super::super::build::{ensure_indexes, read_indexes};
-use super::super::keys::{buildable, keys_of, local_aliases_of, owning_contexts};
+use super::super::keys::{buildable, keys_of, owning_contexts};
 use super::super::state::{LinkIndexState, Mutation};
 use super::referrers::{
     apply_queued, named_referrers, queue_rewritten, rewrite_referrers, Rewrite, Unchanged,
@@ -30,11 +30,6 @@ pub(crate) async fn rename_block_id_inner(
     ensure_indexes(state, ctx_mgr, &contexts).await?;
     let dirs = buildable(&contexts);
     let keys = keys_of(&dirs);
-    // The file's own vault aliases (§87), so the keys read here are the ones
-    // `get_backlinks` reads. They match nothing a block-ID rename rewrites
-    // today: the extractor gives a block reference or embed no alias, and a
-    // wikilink no block id (`extract_links`, its three `LinkEntry` arms).
-    let local_aliases = local_aliases_of(ctx_mgr, &dirs).await;
 
     // 1. Get referring files from every containing index (block_id == old_id,
     //    target == this file), with the LINES the index saw the reference on.
@@ -47,14 +42,16 @@ pub(crate) async fn rename_block_id_inner(
     //    many lines it named each file for is kept, for the exemption below.
     let (named_lines, referring_files) = named_referrers(
         read_indexes(state, &dirs, |_, index| {
-            index.block_reference_lines(file_path, old_id, &local_aliases)
+            // No vault alias: the block grammars have no alias group
+            // (`BLOCK_REF_RE`, `BLOCK_EMBED_RE` in extractor.rs).
+            index.block_reference_lines(file_path, old_id, &[])
         })
         .await?,
     );
     // The keys a reference to this file is filed under in each index read
     // above: its stem and zettel id, the same in every index, and its path
     // under that index's root (issue 619) — what `backlink_keys` reads there.
-    let target = block_target(file_path, &dirs, &local_aliases);
+    let target = block_target(file_path, &dirs);
     // A referrer that shares the target's stem — another `note.md` in some
     // other folder — is named by the index for its own self-references
     // (`((#^id))` is filed under the referrer's own stem, which is the
@@ -120,15 +117,17 @@ pub(crate) async fn rename_block_id_inner(
 
 /// The file at `file_path` as a block-ID rename's target: for each directory
 /// context in `dirs`, the keys a reference to it is filed under in that
-/// context's index (`keys_for` under that root with `local_aliases`, plus the
-/// zettel id inside its stem, as `LinkIndex::backlink_keys` reads them).
-fn block_target(file_path: &str, dirs: &[Registered], local_aliases: &[String]) -> BlockTarget {
+/// context's index (`keys_for` under that root, plus the zettel id inside its
+/// stem, as `LinkIndex::backlink_keys` reads them). No vault alias: a block
+/// reference or embed never carries one (`BLOCK_REF_RE`, `BLOCK_EMBED_RE`
+/// in extractor.rs have no alias group).
+fn block_target(file_path: &str, dirs: &[Registered]) -> BlockTarget {
     let id = extract_id_from_stem(&normalize_file_path(file_path));
     let keys_by_root = dirs
         .iter()
         .map(|d| {
             let root = d.info.path.clone();
-            let mut keys = keys_for(file_path, Some(&root), local_aliases, cfg!(windows));
+            let mut keys = keys_for(file_path, Some(&root), &[], cfg!(windows));
             if let Some(id) = &id {
                 keys.push(FilingKey::Stem(id.clone()));
             }

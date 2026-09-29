@@ -629,7 +629,10 @@ mod tests {
             replace_wikilink_target(content, "/v/r.md", &v(), &rename_target(&old, &new)),
             "see [[work::old]] and [[new]] and [[work::old#intro]]"
         );
-        let local = ["work".to_string()];
+        let local = [crate::index::LocalAlias {
+            alias: "work".to_string(),
+            root: "/v".to_string(),
+        }];
         let target = RenameTarget {
             old_path: &old,
             new_path: &new,
@@ -670,7 +673,10 @@ mod tests {
         // `expected_key` alone, without wrapping it in its alias — the
         // before reading is then `Stem(new)`, the after reading
         // `Foreign { work, new }`, and the gate answers false.
-        let local = ["work".to_string()];
+        let local = [crate::index::LocalAlias {
+            alias: "work".to_string(),
+            root: "/v".to_string(),
+        }];
         let target = RenameTarget {
             old_path: "/v/old.md",
             new_path: "/v/new.md",
