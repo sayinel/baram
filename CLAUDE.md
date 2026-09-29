@@ -236,9 +236,11 @@ baram/
     낸다. 경로·상대 참조는 노트를 지금 자리로 부르고, 이동은 옮겨진 노트 자신의 상대 링크까지 고쳐야 하므로 별도 패스다.
     부모는 resolve 한 것이 아니라 **적힌 대로** 비교한다 — respell 이 `new_path` 의 성분을 링크에 쓰므로, resolve 하면 같은 폴더인
     `a/../a/new.md` 도 `[[a/../a/new]]` 를 써 아무 노트도 가리키지 않는다. 그래서 두 rename 은 절대 경로가 아닌 경로를 먼저 거부한다
-    (`rename/mod.rs` 의 `absolute`) — 상대 경로는 작업 디렉터리 기준으로 resolve 되어 적힌 비교를 빠져나간다. 목적지에 **다른** 항목이
-    있으면 거부하되(symlink 는 무엇을 가리키든 다른 항목), 대소문자를 접는 파일 시스템의 `Note.md` → `note.md` 는 같은 파일이라 허용한다
-    (`another_entry_at`, 이동 직전에 판정)
+    (`rename/mod.rs` 의 `absolute`) — 상대 경로는 작업 디렉터리 기준으로 resolve 되어 적힌 비교를 빠져나간다. 목적지에 **다른** 디렉터리
+    항목이 있으면 거부한다(`another_entry_at`, 이동 직전에 판정). 같은 항목인지는 **마지막 성분을 따라가지 않고** 본다 — Unix 에서는
+    `symlink_metadata` 의 dev·inode 가 같고 이름이 ASCII 대소문자만 다를 때(대소문자를 접는 파일 시스템의 `Note.md` → `note.md`)만 같은
+    항목이다. 같은 inode 에 다른 이름은 hard link 라 거부한다. resolve 한 경로로 비교하면 `note.md -> x.md` 를 `x.md` 로 바꾸는 rename 이
+    진짜 `x.md` 를 링크로 덮는다. Windows 에는 inode 비교가 없어 canonical 부모가 같고 이름이 ASCII 대소문자만 다를 때로 근사한다
   - **`rename/file.rs` 를 베껴 "폴더로 이동" 을 만들면 상대 경로 링크가 조용히 끊긴다** — 베낀 코드는 먼저 위의 `Err` 에
     막히고, 그것을 떼어도 두 패스는 옮겨지는 노트를 **가리키는** 참조만 고친다(옮겨진 노트 자신에게 도는 `rewrite_renamed_note`
     도 같은 `passes.rewrite` 다). 이동은 stem 을 바꾸지 않아 `stem_unchanged` 가 `Unchanged::Ignore` 로 간다. `rewrite_relative_wikilinks`

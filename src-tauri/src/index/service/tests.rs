@@ -4542,12 +4542,88 @@ async fn renaming_a_note_that_is_a_symlink_indexes_the_link_where_it_moved() {
 
 #[cfg(unix)]
 #[tokio::test]
+async fn renaming_a_symlinked_note_onto_its_targets_name_is_refused_and_the_target_keeps_its_text()
+{
+    // `note.md` is a symlink to `x.md`. Both resolve to `x.md`, but the
+    // destination is `x.md`'s own entry, not the link's: renaming onto it
+    // would replace the real note with the link, which would then point at
+    // itself. Refused, and `x.md` stays a regular file with its text.
+    // What fails this: judging the destination by what it resolves to
+    // (`resolve_canonical(new_path) != resolve_canonical(old_path)` in
+    // `another_entry_at`) — the rename answers `Ok` and `x.md` becomes a
+    // link to itself.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-onto-target", true).await;
+    std::fs::write(dir.path().join("x.md"), "the real note\n").unwrap();
+    std::os::unix::fs::symlink("x.md", dir.path().join("note.md")).unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/note.md"),
+        &format!("{root}/x.md"),
+    )
+    .await;
+    let x = std::fs::symlink_metadata(dir.path().join("x.md")).unwrap();
+    assert!(x.file_type().is_file(), "{x:?}");
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("x.md")).unwrap(),
+        "the real note\n"
+    );
+    assert!(std::fs::symlink_metadata(dir.path().join("note.md"))
+        .unwrap()
+        .file_type()
+        .is_symlink());
+    let err = result.unwrap_err();
+    assert!(err.contains("already exists"), "{err}");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_rename_onto_a_hard_link_of_the_note_is_refused() {
+    // `y.md` is a hard link of `x.md`: the same inode under another name.
+    // `rename(2)` between two links of one file does nothing and succeeds,
+    // so going ahead would report a rename that never happened. Refused, and
+    // both names still hold the note.
+    // What fails this: dropping the name comparison from `another_entry_at`
+    // (the same inode alone counting as the source's entry) — the rename
+    // answers `Ok`.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-hardlink", true).await;
+    std::fs::write(dir.path().join("x.md"), "t\n").unwrap();
+    std::fs::hard_link(dir.path().join("x.md"), dir.path().join("y.md")).unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/x.md"),
+        &format!("{root}/y.md"),
+    )
+    .await;
+    for name in ["x.md", "y.md"] {
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join(name)).unwrap(),
+            "t\n",
+            "{name}"
+        );
+    }
+    let err = result.unwrap_err();
+    assert!(err.contains("already exists"), "{err}");
+}
+
+#[cfg(unix)]
+#[tokio::test]
 async fn a_rename_onto_a_symlink_to_the_note_itself_is_refused() {
     // `link.md` is a symlink to `old.md`: it resolves to the note, but it is
     // another entry, and renaming onto it would replace the link.
-    // What fails this: judging the destination by its resolved identity
-    // alone in `another_entry_at` — `link.md` is then the note itself, the
-    // rename replaces the link, and `[[old]]` is respelled `[[link]]`.
+    // What fails this: judging the destination by what it resolves to in
+    // `another_entry_at` (its canonical path against the source's) —
+    // `link.md` is then the note itself, the rename replaces the link, and
+    // `[[old]]` is respelled `[[link]]`.
     let ctx = ContextManager::new();
     let (dir, root) = vault_with_a_link(&ctx, "ctx-link", true).await;
     std::fs::write(dir.path().join("old.md"), "t\n").unwrap();
@@ -4587,7 +4663,12 @@ async fn both_renames_refuse_a_relative_path_before_anything_changes() {
     // rename, the third goes ahead with its path reference missed and
     // answers `Ok`.
     let cwd = std::env::current_dir().unwrap();
-    let dir = tempfile::tempdir_in(cwd.join("target")).unwrap();
+    // Under the crate's own `target`, created if a custom `CARGO_TARGET_DIR`
+    // left it absent: a directory under the working directory, outside the
+    // sources, whatever the build layout.
+    let base = cwd.join("target");
+    std::fs::create_dir_all(&base).unwrap();
+    let dir = tempfile::tempdir_in(&base).unwrap();
     let root = dir.path().to_str().unwrap().to_string();
     let rel = dir
         .path()

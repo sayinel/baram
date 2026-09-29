@@ -143,8 +143,9 @@ pub(crate) async fn rename_file_with_links_inner(
     // `fs::rename` replaces an existing destination on Unix; a rename is not a
     // way to overwrite another note. Checked here, after every index build and
     // referrer read above, right before the move. The one entry the
-    // destination may already name is the file itself (`another_entry_at`).
-    if another_entry_at(new_path, &old_identity) {
+    // destination may already name is the source's own directory entry
+    // (`another_entry_at`), judged without following either last component.
+    if another_entry_at(old_path, new_path) {
         return Err(format!("{new_path} already exists"));
     }
 
@@ -233,20 +234,64 @@ pub(crate) async fn rename_file_with_links_inner(
     })
 }
 
-/// Whether `new_path` names an entry other than the file whose canonical
-/// identity is `old_identity`. A symlink is always another entry, whatever it
-/// points at: renaming onto it would replace the link. Any other entry is the
-/// file itself only when it resolves to `old_identity`, which is the
-/// case-only rename `Note.md` → `note.md` on a file system that folds case,
-/// where both names open the one file. A hard link resolves to its own path,
-/// so it is another entry too. Nothing there, or nothing `symlink_metadata`
-/// can read (as `Path::exists` reads it), is no entry.
-fn another_entry_at(new_path: &str, old_identity: &Path) -> bool {
-    match std::fs::symlink_metadata(new_path) {
-        Err(_) => false,
-        Ok(meta) if meta.file_type().is_symlink() => true,
-        Ok(_) => resolve_canonical(new_path).map_or(true, |identity| identity != old_identity),
-    }
+/// Whether `new_path` names a directory entry other than the one at
+/// `old_path`. Judged by the entries, never by what they resolve to: neither
+/// last component is followed. Following it would call a symlinked
+/// `note.md -> x.md`, renamed to `x.md`, the "same" file, and `rename(2)`
+/// would replace the real `x.md` with the link. Nothing at `new_path`, or
+/// nothing `symlink_metadata` can read (as `Path::exists` reads it), is no
+/// entry.
+///
+/// On Unix the destination is the source's own entry only when both are the
+/// same inode on the same device (`symlink_metadata`, which reads a link
+/// itself) AND the two names differ at most by ASCII case. That is a
+/// case-only rename (`Note.md` → `note.md`) on a file system that folds
+/// case, where both spellings reach the one entry. The same inode under a
+/// different name is a hard link of the source, and a rename between hard
+/// links is a silent no-op, so it is another entry. Any other inode is
+/// another entry.
+///
+/// Elsewhere (Windows) there is no inode here to compare. The destination
+/// counts as the source's entry when its canonical parent is the source's
+/// and the names differ at most by ASCII case, since Windows folds case by
+/// default. This is an approximation, and a hard link there is not told
+/// apart from a case alias.
+///
+/// So a symlinked source renamed onto its target's name is refused, and a
+/// symlinked source renamed to another spelling of its own name goes ahead.
+fn another_entry_at(old_path: &str, new_path: &str) -> bool {
+    let Ok(new_meta) = std::fs::symlink_metadata(new_path) else {
+        return false;
+    };
+    let names_differ_only_by_case = match (
+        Path::new(old_path).file_name(),
+        Path::new(new_path).file_name(),
+    ) {
+        (Some(a), Some(b)) => a.eq_ignore_ascii_case(b),
+        _ => false,
+    };
+    !(names_differ_only_by_case && same_entry(old_path, new_path, &new_meta))
+}
+
+/// Whether the existing entry at `new_path` (`new_meta`, not followed) is the
+/// entry at `old_path` — see `another_entry_at`.
+#[cfg(unix)]
+fn same_entry(old_path: &str, _new_path: &str, new_meta: &std::fs::Metadata) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    std::fs::symlink_metadata(old_path)
+        .is_ok_and(|old| old.dev() == new_meta.dev() && old.ino() == new_meta.ino())
+}
+
+/// Whether the existing entry at `new_path` is the entry at `old_path`,
+/// approximated by canonical parents — see `another_entry_at`.
+#[cfg(not(unix))]
+fn same_entry(old_path: &str, new_path: &str, _new_meta: &std::fs::Metadata) -> bool {
+    let parent = |p: &str| {
+        Path::new(p)
+            .parent()
+            .and_then(|parent| std::fs::canonicalize(parent).ok())
+    };
+    parent(old_path).is_some_and(|old| parent(new_path) == Some(old))
 }
 
 /// Whether `new_path` names an entry in the directory `old_path` is in:
