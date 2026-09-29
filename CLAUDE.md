@@ -201,7 +201,9 @@ baram/
   ‼️ **경로 링크를 다른 root 가 실재하는 다른 노트로 읽으면 고치지 않고 보고한다** — 두 root 가 함께 덮는 `/v/sub/r.md` 의
   `[[a/old]]` 는 자식 아래에서 `/v/sub/a/old.md`, 부모 아래에서 `/v/a/old.md` 다. 둘 다 있으면 어느 쪽을 rename 하든 그 링크는
   **모호하므로 그대로 두고** 파일을 `skipped_files` 에 올린다(`filing.rs` 의 `Judgement::Ambiguous`·`read_as_another_note`).
-  부모에 `a/old.md` 가 없으면 모호하지 않으므로 전처럼 고쳐 쓴다. 존재 판정은 rename 되는 파일이나 referrer 를 **담는 모든
+  부모에 `a/old.md` 가 없으면 모호하지 않으므로 전처럼 고쳐 쓴다. 한 root 안에서도 같다 — 대소문자를 지키는 파일 시스템에서
+  `A/note.md` 와 `a/note.md` 는 둘 다 `Path("a/note")` 로 접히므로 `[[A/note]]`·`[[a/note]]` 는 어느 한쪽의 링크가 아니다.
+  `registered_path_keys` 가 키마다 그리로 접히는 노트 수를 내고, 둘 이상이면 그 키로 읽히는 경로 링크는 모호하다. 존재 판정은 rename 되는 파일이나 referrer 를 **담는 모든
   directory context** 의 노트 목록(`LinkIndex::registered_path_keys`)으로 한다 — rename 되는 파일의 context 만이 아니다. 부모의
   `a/old.md` 를 rename 할 때 자식 root 는 그 파일을 담지 않지만 referrer 를 담는다. 한 번도 열리지 않아 index 가 없는 context 는
   판정 전에 **그 자리에서 build 한다**(`service/rename/mod.rs` 의 `holding_contexts` → `ensure_indexes`). build 할 수 없으면 그
@@ -225,7 +227,12 @@ baram/
     root 로** 계산한다 — 중첩 vault 에서 부모의 `[[p::a/old]]` 가 자식의 `a/old.md` 로 읽히지 않게. block reference·embed 문법에는
     alias 자리가 없어(`extractor.rs` 의 `BLOCK_REF_RE`·`BLOCK_EMBED_RE`) block ID rename 은 alias 를 넘기지 않는다
   - **파일 rename 은 디렉터리를 바꾸지 않는다** — `rename/file.rs` 의 `stays_in_its_directory` 가 부모가 다르면 쓰기 전에 `Err` 를
-    낸다. 경로·상대 참조는 노트를 지금 자리로 부르고, 이동은 옮겨진 노트 자신의 상대 링크까지 고쳐야 하므로 별도 패스다
+    낸다. 경로·상대 참조는 노트를 지금 자리로 부르고, 이동은 옮겨진 노트 자신의 상대 링크까지 고쳐야 하므로 별도 패스다.
+    부모는 resolve 한 것이 아니라 **적힌 대로** 비교한다 — respell 이 `new_path` 의 성분을 링크에 쓰므로, resolve 하면 같은 폴더인
+    `a/../a/new.md` 도 `[[a/../a/new]]` 를 써 아무 노트도 가리키지 않는다. 그래서 두 rename 은 절대 경로가 아닌 경로를 먼저 거부한다
+    (`rename/mod.rs` 의 `absolute`) — 상대 경로는 작업 디렉터리 기준으로 resolve 되어 적힌 비교를 빠져나간다. 목적지에 **다른** 항목이
+    있으면 거부하되(symlink 는 무엇을 가리키든 다른 항목), 대소문자를 접는 파일 시스템의 `Note.md` → `note.md` 는 같은 파일이라 허용한다
+    (`another_entry_at`, 이동 직전에 판정)
   - **`rename/file.rs` 를 베껴 "폴더로 이동" 을 만들면 상대 경로 링크가 조용히 끊긴다** — 베낀 코드는 먼저 위의 `Err` 에
     막히고, 그것을 떼어도 두 패스는 옮겨지는 노트를 **가리키는** 참조만 고친다(옮겨진 노트 자신에게 도는 `rewrite_renamed_note`
     도 같은 `passes.rewrite` 다). 이동은 stem 을 바꾸지 않아 `stem_unchanged` 가 `Unchanged::Ignore` 로 간다. `rewrite_relative_wikilinks`

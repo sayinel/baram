@@ -15,7 +15,7 @@ use super::super::state::{LinkIndexState, Mutation};
 use super::referrers::{
     apply_queued, named_referrers, queue_rewritten, rewrite_referrers, Rewrite, Unchanged,
 };
-use super::{holding_contexts, known_paths_of, RenameResult};
+use super::{absolute, holding_contexts, known_paths_of, RenameResult};
 
 pub(crate) async fn rename_block_id_inner(
     state: &LinkIndexState,
@@ -24,6 +24,7 @@ pub(crate) async fn rename_block_id_inner(
     old_id: &str,
     new_id: &str,
 ) -> Result<RenameResult, String> {
+    absolute(file_path)?;
     let contexts = owning_contexts(ctx_mgr, file_path).await;
     if contexts.is_empty() {
         return Err(format!("{file_path} is not inside any registered context"));

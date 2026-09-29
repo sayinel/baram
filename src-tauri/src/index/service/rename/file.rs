@@ -19,7 +19,7 @@ use super::referrers::{
     apply_queued, named_referrers, queue_rewritten, rewrite_referrers, Rewrite, Rewritten,
     Unchanged,
 };
-use super::{confined_by, holding_contexts, known_paths_of, push_for_keys, RenameResult};
+use super::{absolute, confined_by, holding_contexts, known_paths_of, push_for_keys, RenameResult};
 
 pub(crate) async fn rename_file_with_links_inner(
     state: &LinkIndexState,
@@ -27,6 +27,8 @@ pub(crate) async fn rename_file_with_links_inner(
     old_path: &str,
     new_path: &str,
 ) -> Result<RenameResult, String> {
+    absolute(old_path)?;
+    absolute(new_path)?;
     // The contexts and their indexes first: nothing is renamed without them.
     // No context at all is a refusal (nothing is known about references); a
     // standalone File context (§89) has no directory index and no other file
@@ -51,16 +53,16 @@ pub(crate) async fn rename_file_with_links_inner(
     if !destination_confined(&renamed_identity, &dirs, old_parent.as_deref()) {
         return Err(format!("{new_path} is outside the contexts of {old_path}"));
     }
-    // `fs::rename` replaces an existing destination on Unix; a rename is not a
-    // way to overwrite another note.
-    if Path::new(new_path).exists() {
-        return Err(format!("{new_path} already exists"));
-    }
     // issue 619: a rename keeps the note in its directory. A path-qualified
     // or relative reference names the note by where it is, and a move would
     // need every one of them respelled for a new folder — and the note's own
     // relative links for the new place it reads them from — which is not
-    // what this command rewrites. Refused before anything is written.
+    // what this command rewrites. Refused before anything is written. The
+    // parents are compared as spelled, not as resolved: the respelling
+    // writes `new_path`'s components into links, so `a/../a/new.md`, whose
+    // parent resolves to `a`, would write `[[a/../a/new]]`, a link to no
+    // note. Both paths are absolute (`absolute` above), so a relative
+    // spelling cannot pass as the same parent either.
     if !stays_in_its_directory(old_path, new_path, cfg!(windows)) {
         return Err(format!(
             "{new_path} would move the note out of its directory; a rename keeps the note where it is"
@@ -118,8 +120,17 @@ pub(crate) async fn rename_file_with_links_inner(
 
     // The canonical identity of the file being renamed, resolved before it
     // moves (the new path does not exist yet: resolve_canonical builds it on
-    // its existing parent).
-    let remove_old = Mutation::Remove { path: old_identity };
+    // its existing parent). The index takes the new name as `new_path` spells
+    // it, on that canonical parent: after a case-only rename on a file system
+    // that folds case, `renamed_identity` is the file as it was before the
+    // move — `Note.md` — while the move leaves it `note.md`.
+    let new_identity = match Path::new(new_path).file_name() {
+        Some(name) => old_identity.with_file_name(name),
+        None => renamed_identity.clone(),
+    };
+    let remove_old = Mutation::Remove {
+        path: old_identity.clone(),
+    };
 
     // The file's own content, read BEFORE it moves: it is what the index will
     // hold under the new path. Unreadable here means nothing has changed yet,
@@ -127,6 +138,14 @@ pub(crate) async fn rename_file_with_links_inner(
     let renamed_content = tokio::fs::read_to_string(old_path)
         .await
         .map_err(|e| format!("{old_path} could not be read: {e}"))?;
+
+    // `fs::rename` replaces an existing destination on Unix; a rename is not a
+    // way to overwrite another note. Checked here, after every index build and
+    // referrer read above, right before the move. The one entry the
+    // destination may already name is the file itself (`another_entry_at`).
+    if another_entry_at(new_path, &old_identity) {
+        return Err(format!("{new_path} already exists"));
+    }
 
     // 2. Rename the actual file — the one step that can still fail. It comes
     //    BEFORE the reference rewrites so that an `Err` from this command
@@ -201,7 +220,7 @@ pub(crate) async fn rename_file_with_links_inner(
         &mut per_key,
         &keys,
         &Mutation::Update {
-            path: renamed_identity,
+            path: new_identity,
             content: renamed_content,
         },
     );
@@ -211,6 +230,22 @@ pub(crate) async fn rename_file_with_links_inner(
         updated_files: rewritten.updated,
         skipped_files: rewritten.skipped,
     })
+}
+
+/// Whether `new_path` names an entry other than the file whose canonical
+/// identity is `old_identity`. A symlink is always another entry, whatever it
+/// points at: renaming onto it would replace the link. Any other entry is the
+/// file itself only when it resolves to `old_identity`, which is the
+/// case-only rename `Note.md` → `note.md` on a file system that folds case,
+/// where both names open the one file. A hard link resolves to its own path,
+/// so it is another entry too. Nothing there, or nothing `symlink_metadata`
+/// can read (as `Path::exists` reads it), is no entry.
+fn another_entry_at(new_path: &str, old_identity: &Path) -> bool {
+    match std::fs::symlink_metadata(new_path) {
+        Err(_) => false,
+        Ok(meta) if meta.file_type().is_symlink() => true,
+        Ok(_) => resolve_canonical(new_path).map_or(true, |identity| identity != old_identity),
+    }
 }
 
 /// Whether `new_path` names an entry in the directory `old_path` is in:

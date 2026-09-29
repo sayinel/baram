@@ -147,6 +147,20 @@ async fn keys_covering(ctx_mgr: &ContextManager, keys: &[String], path: &str) ->
         .collect()
 }
 
+/// `Err` unless `path` is absolute as the host reads it (`Path::is_absolute`).
+/// The renames take the paths the webview's file tree holds, which are
+/// absolute; a relative one would resolve against the process's working
+/// directory, a place no registered context names, and the checks that
+/// follow read it lexically as well as canonically. Refused before anything
+/// is read or written.
+fn absolute(path: &str) -> Result<(), String> {
+    if Path::new(path).is_absolute() {
+        Ok(())
+    } else {
+        Err(format!("{path} is not an absolute path"))
+    }
+}
+
 /// Whether a canonical path lies under one of these directory contexts. The
 /// renames confine every path they write to the file's own contexts: a
 /// destination outside them, or a "referring file" an index names that now

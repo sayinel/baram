@@ -838,7 +838,7 @@ mod tests {
         let knowing = RenameTarget {
             known_paths: [(
                 "/v".to_string(),
-                crate::index::RootNotes::Known(["a/old".to_string()].into()),
+                crate::index::RootNotes::Known([("a/old".to_string(), 1)].into()),
             )]
             .into(),
             ..rename_target("/v/sub/a/old.md", "/v/sub/a/new.md")

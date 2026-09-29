@@ -322,21 +322,30 @@ impl LinkIndex {
         )
     }
 
-    /// The `Path`-key text of every note this index holds under its root:
-    /// `root_relative_key` — the function `keys_for` spells a file's path key
-    /// with, so the shapes agree — of each path in `file_map`. Not
-    /// `relative_map`, whose keys keep the host's separators. Empty with no
-    /// root. The rename reads it to tell whether a path link another covering
-    /// root reads names an existing note (`filing::KnownPaths`).
-    pub fn registered_path_keys(&self) -> std::collections::HashSet<String> {
+    /// The `Path`-key text of every note this index holds under its root,
+    /// with how many of its notes fold to it: `root_relative_key` — the
+    /// function `keys_for` spells a file's path key with, so the shapes
+    /// agree — of each path in `file_map`, which holds each path once. Not
+    /// `relative_map`, whose keys keep the host's separators and hold one
+    /// path per key. Empty with no root. The rename reads it to tell whether
+    /// a path link names an existing note under a root that holds the
+    /// referrer, and whether more than one note there answers to it — on a
+    /// file system that keeps case, `A/note.md` and `a/note.md` both fold
+    /// to `a/note` (`filing::KnownPaths`).
+    pub fn registered_path_keys(&self) -> HashMap<String, usize> {
+        let mut keys = HashMap::new();
         let Some(root) = self.root_path.as_deref() else {
-            return std::collections::HashSet::new();
+            return keys;
         };
-        self.file_map
+        for key in self
+            .file_map
             .values()
             .flatten()
             .filter_map(|path| filing::root_relative_key(root, path, cfg!(windows)))
-            .collect()
+        {
+            *keys.entry(key).or_insert(0) += 1;
+        }
+        keys
     }
 
     /// The keys `get_backlinks` and `block_reference_lines` read for

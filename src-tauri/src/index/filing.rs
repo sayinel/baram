@@ -5,7 +5,7 @@ use super::normalizer::{file_key, normalize_file_path, normalize_target};
 use super::relative_links::{
     path_components, relative_components, resolve_components, root_components, same_component,
 };
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 /// What the rename knows of the notes under each root that holds a
 /// referrer, by that root — every directory context holding one, not only
@@ -17,9 +17,12 @@ pub type KnownPaths = HashMap<String, RootNotes>;
 /// The notes one root holds, as far as the rename can tell.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RootNotes {
-    /// Its index is built: the `Path`-key text of every note in it
-    /// (`LinkIndex::registered_path_keys`).
-    Known(HashSet<String>),
+    /// Its index is built: the `Path`-key text of every note in it, with
+    /// how many of its notes fold to that key
+    /// (`LinkIndex::registered_path_keys`). More than one is a collision —
+    /// `A/note.md` and `a/note.md` on a file system that keeps case — and a
+    /// link filed under that key names neither note alone.
+    Known(HashMap<String, usize>),
     /// Its index could not be built or read. Any `Path` reading under it
     /// may be another note, so a link it could read is left and its file
     /// reported — never rewritten on the assumption that nothing is there.
@@ -28,10 +31,12 @@ pub enum RootNotes {
 
 /// What a rename makes of one reference: it names the renamed file (with
 /// how it matched), it names another file, or it is AMBIGUOUS — it names the
-/// renamed file by its path under one covering root while another root that
-/// holds the referrer reads the same text as a different note that exists
-/// (`read_as_another_note`). An ambiguous reference is left as written and
-/// its file is reported: rewriting it would break the other root's reading.
+/// renamed file by its path under one covering root while a root that holds
+/// the referrer reads the same text as a different note that exists: another
+/// root's note under that path, or a second note of one root that folds to
+/// the same path key (`read_as_another_note`). An ambiguous reference is
+/// left as written and its file is reported: rewriting it would break the
+/// other reading.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Judgement<M> {
     Ours(M),
@@ -52,8 +57,13 @@ impl<M> Judgement<M> {
 /// Does a root of `known_paths` whose folder holds the referrer at
 /// `ref_path` — compared lexically, as every key is — read `raw_target` as a
 /// note that exists under it and is not the renamed file (`is_the_target`,
-/// given that root and the path key)? The root the reference matched under
-/// never answers yes: there it reads as the renamed file's own key. The roots
+/// given that root and the path key)? It does when that root holds a note
+/// under the key that is not the renamed file, and when more than one of its
+/// notes folds to the key, whichever they are: on a file system that keeps
+/// case, `/v/A/note.md` and `/v/a/note.md` both answer `[[a/note]]`, so
+/// renaming either would rewrite the other's link. That second reading is
+/// the only way the root the reference matched under answers yes; otherwise
+/// it reads the text as the renamed file's own key. The roots
 /// are every directory context holding the renamed file or a referrer, not
 /// only the renamed file's contexts: renaming the parent's `/v/a/old.md` must
 /// still see that the child root `/v/sub`, which does not contain that file,
@@ -74,13 +84,12 @@ fn read_as_another_note(
     known_paths.iter().any(|(root, known)| {
         under_root(&path_components(root, windows), &referrer, windows).is_some()
             && match filing_key(ref_path, raw, None, Some(root), windows) {
-                FilingKey::Path(p) => {
-                    let exists = match known {
-                        RootNotes::Known(notes) => notes.contains(&p),
-                        RootNotes::Unknown => true,
-                    };
-                    exists && !is_the_target(root, &p)
-                }
+                FilingKey::Path(p) => match known {
+                    RootNotes::Known(notes) => notes
+                        .get(&p)
+                        .is_some_and(|&n| n > 1 || !is_the_target(root, &p)),
+                    RootNotes::Unknown => !is_the_target(root, &p),
+                },
                 _ => false,
             }
     })
@@ -271,8 +280,9 @@ impl BlockTarget {
     /// match wins: it names this file when that root's keys hold the result.
     /// A `Stem` key does not depend on the root, so any covering root answers
     /// a bare reference; a referrer that no root covers matches nothing. A
-    /// `Path` match is `Ambiguous` when another root holding the referrer
-    /// reads the same text as a different note that exists
+    /// `Path` match is `Ambiguous` when a root holding the referrer reads
+    /// the same text as a different note that exists, another root's or a
+    /// second note of one root folding to the same key
     /// (`read_as_another_note`).
     pub fn judge(
         &self,
@@ -420,7 +430,9 @@ impl RenameTarget<'_> {
     /// when another root holding the referrer reads the same text as a
     /// different note that exists (`read_as_another_note`) — the referrer of
     /// nested roots `/v` and `/v/sub` whose `[[a/old]]` is `/v/sub/a/old.md`
-    /// under one and `/v/a/old.md` under the other. A link behind an alias
+    /// under one and `/v/a/old.md` under the other — and when two notes of
+    /// one root fold to the matched key, as `/v/A/old.md` beside
+    /// `/v/a/old.md` on a file system that keeps case. A link behind an alias
     /// that is not one of `local_aliases` names a file in another vault and
     /// is never this file's (`refers_behind_alias`); one behind a local alias
     /// resolves against that alias's own root, so no other root reads it.
@@ -715,6 +727,75 @@ mod tests {
                 foreign("p", "a/old"),
                 foreign("s", "old"),
             ]
+        );
+    }
+
+    /// `known_paths` for the one root `/v`, where `count` notes fold to
+    /// `a/note`.
+    fn notes_folding_to_a_note(count: usize) -> KnownPaths {
+        [(
+            "/v".to_string(),
+            RootNotes::Known([("a/note".to_string(), count)].into()),
+        )]
+        .into()
+    }
+
+    #[test]
+    fn a_path_key_two_notes_of_one_root_fold_to_is_ambiguous() {
+        // On a file system that keeps case, `/v/A/note.md` and
+        // `/v/a/note.md` both file `[[A/note]]` and `[[a/note]]` under
+        // `a/note`: the link names neither alone, so renaming either leaves
+        // it. One note under the key is the renamed file itself, and its
+        // links are its own.
+        // What fails this: dropping the `n > 1` reading from
+        // `read_as_another_note` — the one root the link matched under then
+        // reads it as the renamed file, and both judgements say `Ours`.
+        let roots = vec!["/v".to_string()];
+        let rename = |known_paths| RenameTarget {
+            old_path: "/v/a/note.md",
+            new_path: "/v/a/new.md",
+            local_aliases: &[],
+            known_paths,
+            windows: false,
+        };
+        let block = |known_paths| BlockTarget {
+            keys_by_root: vec![(
+                "/v".to_string(),
+                keys_for("/v/a/note.md", Some("/v"), &[], false),
+            )],
+            known_paths,
+            windows: false,
+        };
+        for spelled in ["A/note", "a/note", "./a/note"] {
+            assert_eq!(
+                rename(notes_folding_to_a_note(2)).judge("/v/r.md", &roots, "", spelled),
+                Judgement::Ambiguous,
+                "{spelled}"
+            );
+            assert_eq!(
+                block(notes_folding_to_a_note(2)).judge("/v/r.md", &roots, spelled),
+                Judgement::Ambiguous,
+                "{spelled}"
+            );
+            assert_eq!(
+                rename(notes_folding_to_a_note(1)).judge("/v/r.md", &roots, "", spelled),
+                Judgement::Ours(Match::Path {
+                    root: "/v".to_string(),
+                    relative: spelled.starts_with("./"),
+                }),
+                "{spelled}"
+            );
+            assert_eq!(
+                block(notes_folding_to_a_note(1)).judge("/v/r.md", &roots, spelled),
+                Judgement::Ours(()),
+                "{spelled}"
+            );
+        }
+        // A bare name is filed by its stem, which the collision does not
+        // touch: the stem contract a rename already follows.
+        assert_eq!(
+            rename(notes_folding_to_a_note(2)).judge("/v/r.md", &roots, "", "note"),
+            Judgement::Ours(Match::Stem)
         );
     }
 

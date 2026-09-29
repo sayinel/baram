@@ -3407,6 +3407,39 @@ async fn a_rename_that_would_move_the_note_is_refused_before_anything_changes() 
 }
 
 #[tokio::test]
+async fn a_rename_whose_new_path_climbs_back_into_the_folder_is_refused_as_spelled() {
+    // `a/../a/new.md` resolves to a file in `a`, the note's own folder, but
+    // the respelling writes the new path's components into links: `r.md`'s
+    // `[[a/old]]` would become `[[a/../a/new]]`, which names no note. The
+    // parents are compared as spelled, so this is refused like a move.
+    // What fails this: comparing the canonical parents instead
+    // (`old_identity.parent() != renamed_identity.parent()`) — the rename
+    // goes ahead and writes `[[a/../a/new]]`.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-climb", true).await;
+    std::fs::create_dir_all(dir.path().join("a")).unwrap();
+    std::fs::write(dir.path().join("a/old.md"), "t\n").unwrap();
+    std::fs::write(dir.path().join("r.md"), "[[a/old]]\n").unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/a/old.md"),
+        &format!("{root}/a/../a/new.md"),
+    )
+    .await;
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
+        "[[a/old]]\n"
+    );
+    assert!(dir.path().join("a/old.md").exists());
+    let err = result.unwrap_err();
+    assert!(err.contains("would move the note"), "{err}");
+}
+
+#[tokio::test]
 async fn nested_roots_a_rename_leaves_the_parents_colliding_link_alone() {
     // issue 619: `r.md` is under the parent root alone, where `a/old` is
     // `a/old.md` — another file than the renamed `sub/a/old.md`, whose path
@@ -4298,5 +4331,261 @@ async fn nested_roots_an_unopened_child_vault_without_the_colliding_note_lets_th
     assert_eq!(
         std::fs::read_to_string(dir.path().join("sub/r.md")).unwrap(),
         "[[a/new]]\n"
+    );
+}
+
+/// Whether the file system under `dir` folds case: a `CaseProbe.md` written
+/// there is found again as `caseprobe.md`. The probe file is removed.
+fn folds_case(dir: &std::path::Path) -> bool {
+    let probe = dir.join("CaseProbe.md");
+    std::fs::write(&probe, "").unwrap();
+    let folds = dir.join("caseprobe.md").exists();
+    std::fs::remove_file(&probe).unwrap();
+    folds
+}
+
+/// The entry names in `dir`, sorted — as the directory spells them, which
+/// `Path::exists` cannot tell apart on a file system that folds case.
+fn names_in(dir: &std::path::Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
+        .collect();
+    names.sort();
+    names
+}
+
+#[tokio::test]
+async fn a_case_only_rename_is_a_rename_of_the_file_itself_where_the_file_system_folds_case() {
+    // `Note.md` → `note.md`. Where the file system folds case the two names
+    // open one file: the destination is the note itself, so the rename goes
+    // ahead, the directory spells the new case, the referrer's `[[Note]]`
+    // is respelled, and the index holds the note under the new spelling.
+    // Where it keeps case, `note.md` is a name of its own: an existing
+    // `note.md` is another note, and the rename is refused as onto any
+    // existing file.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-case", true).await;
+    let folds = folds_case(dir.path());
+    std::fs::write(dir.path().join("Note.md"), "see [[b]]\n").unwrap();
+    std::fs::write(dir.path().join("r.md"), "[[Note]]\n").unwrap();
+    if !folds {
+        std::fs::write(dir.path().join("note.md"), "another\n").unwrap();
+    }
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/Note.md"),
+        &format!("{root}/note.md"),
+    )
+    .await;
+    if folds {
+        // What fails this: refusing any destination that exists
+        // (`Path::exists`, as before) — the rename answers "already exists".
+        // And registering the note under the identity resolved before the
+        // move (`renamed_identity`) — the graph then names `Note.md`.
+        let result = result.unwrap();
+        assert_eq!(result.updated_files, vec![format!("{root}/r.md")]);
+        assert!(
+            result.skipped_files.is_empty(),
+            "{:?}",
+            result.skipped_files
+        );
+        let names = names_in(dir.path());
+        assert!(names.contains(&"note.md".to_string()), "{names:?}");
+        assert!(!names.contains(&"Note.md".to_string()), "{names:?}");
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
+            "[[note]]\n"
+        );
+        let graph = state
+            .with_index(&root, |idx| idx.unwrap().get_link_graph())
+            .await;
+        assert!(
+            graph.nodes.contains(&format!("{root}/note.md")),
+            "{graph:?}"
+        );
+        assert!(
+            !graph.nodes.contains(&format!("{root}/Note.md")),
+            "{graph:?}"
+        );
+    } else {
+        // What fails this: taking any entry at the destination for the file
+        // itself — the rename replaces `note.md`, whose text is lost.
+        let err = result.unwrap_err();
+        assert!(err.contains("already exists"), "{err}");
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("note.md")).unwrap(),
+            "another\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("Note.md")).unwrap(),
+            "see [[b]]\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
+            "[[Note]]\n"
+        );
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_rename_onto_a_symlink_to_the_note_itself_is_refused() {
+    // `link.md` is a symlink to `old.md`: it resolves to the note, but it is
+    // another entry, and renaming onto it would replace the link.
+    // What fails this: judging the destination by its resolved identity
+    // alone in `another_entry_at` — `link.md` is then the note itself, the
+    // rename replaces the link, and `[[old]]` is respelled `[[link]]`.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-link", true).await;
+    std::fs::write(dir.path().join("old.md"), "t\n").unwrap();
+    std::fs::write(dir.path().join("r.md"), "[[old]]\n").unwrap();
+    std::os::unix::fs::symlink("old.md", dir.path().join("link.md")).unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/old.md"),
+        &format!("{root}/link.md"),
+    )
+    .await;
+    assert!(std::fs::symlink_metadata(dir.path().join("link.md"))
+        .unwrap()
+        .file_type()
+        .is_symlink());
+    assert!(dir.path().join("old.md").exists());
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
+        "[[old]]\n"
+    );
+    let err = result.unwrap_err();
+    assert!(err.contains("already exists"), "{err}");
+}
+
+#[tokio::test]
+async fn both_renames_refuse_a_relative_path_before_anything_changes() {
+    // A relative path resolves against the process's working directory. The
+    // vault lies under it here, so the relative spelling names the vault's
+    // own files and every check after the refusal would read them.
+    // What fails this: dropping any one of the three `absolute` refusals —
+    // for the file rename's new path, the first call answers the move
+    // refusal instead; for its old path, the second does; for the block-ID
+    // rename, the third goes ahead with its path reference missed and
+    // answers `Ok`.
+    let cwd = std::env::current_dir().unwrap();
+    let dir = tempfile::tempdir_in(cwd.join("target")).unwrap();
+    let root = dir.path().to_str().unwrap().to_string();
+    let rel = dir
+        .path()
+        .strip_prefix(&cwd)
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+    std::fs::create_dir_all(dir.path().join("a")).unwrap();
+    std::fs::write(dir.path().join("a/old.md"), "para ^x\n").unwrap();
+    std::fs::write(dir.path().join("r.md"), "[[a/old]]\n((a/old#^x))\n").unwrap();
+    let ctx = ContextManager::new();
+    ctx.add(info("ctx-rel", &root, ContextType::Folder))
+        .await
+        .unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+
+    let calls = [
+        rename_file_with_links_inner(
+            &state,
+            &ctx,
+            &format!("{root}/a/old.md"),
+            &format!("{rel}/a/new.md"),
+        )
+        .await,
+        rename_file_with_links_inner(
+            &state,
+            &ctx,
+            &format!("{rel}/a/old.md"),
+            &format!("{root}/a/new.md"),
+        )
+        .await,
+        rename_block_id_inner(&state, &ctx, &format!("{rel}/a/old.md"), "x", "y").await,
+    ];
+    for result in calls {
+        let err = result.unwrap_err();
+        assert!(err.contains("is not an absolute path"), "{err}");
+    }
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("a/old.md")).unwrap(),
+        "para ^x\n"
+    );
+    assert!(!dir.path().join("a/new.md").exists());
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
+        "[[a/old]]\n((a/old#^x))\n"
+    );
+}
+
+#[tokio::test]
+async fn two_notes_of_one_root_folding_to_one_path_keep_the_path_links_both_answer() {
+    // On a file system that keeps case, `A/note.md` and `a/note.md` are two
+    // notes whose path key is the same `a/note`: `[[A/note]]`, `[[a/note]]`
+    // and `((a/note#^x))` name neither alone. Renaming `a/note.md`, or its
+    // block, leaves them and reports the file; the bare `[[note]]` is
+    // respelled as a stem link always is. Where the file system folds case
+    // the two directories are one, and this half has nothing to run: the
+    // judgement itself is pinned without a file system by
+    // `filing::tests::a_path_key_two_notes_of_one_root_fold_to_is_ambiguous`.
+    // What fails this: ignoring how many notes fold to a key in
+    // `read_as_another_note` — `[[A/note]]` and `[[a/note]]` become
+    // `[[a/new]]` and `((a/note#^x))` becomes `((a/note#^y))`, and nothing is
+    // reported.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-fold", true).await;
+    if folds_case(dir.path()) {
+        eprintln!("the file system under {root} folds case; the two-directory half is not run");
+        return;
+    }
+    std::fs::create_dir_all(dir.path().join("A")).unwrap();
+    std::fs::create_dir_all(dir.path().join("a")).unwrap();
+    std::fs::write(dir.path().join("A/note.md"), "para ^x\n").unwrap();
+    std::fs::write(dir.path().join("a/note.md"), "para ^x\n").unwrap();
+    let text = "[[A/note]]\n[[a/note]]\n((a/note#^x))\n[[note]]\n";
+    std::fs::write(dir.path().join("r.md"), text).unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    let referrer = format!("{root}/r.md");
+
+    let result = rename_block_id_inner(&state, &ctx, &format!("{root}/a/note.md"), "x", "y")
+        .await
+        .unwrap();
+    assert!(
+        result.updated_files.is_empty(),
+        "{:?}",
+        result.updated_files
+    );
+    assert_eq!(result.skipped_files, vec![referrer.clone()]);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
+        text
+    );
+
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/a/note.md"),
+        &format!("{root}/a/new.md"),
+    )
+    .await
+    .unwrap();
+    assert_eq!(result.updated_files, vec![referrer.clone()]);
+    assert_eq!(result.skipped_files, vec![referrer]);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
+        "[[A/note]]\n[[a/note]]\n((a/note#^x))\n[[new]]\n"
     );
 }
