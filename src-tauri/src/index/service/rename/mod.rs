@@ -19,8 +19,9 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::path::Path;
 
-use super::keys::{keys_of, owning_contexts};
-use super::state::Mutation;
+use super::keys::{buildable, keys_of, owning_contexts};
+use super::state::{LinkIndexState, Mutation};
+use crate::index::{KnownPaths, LinkIndex};
 
 /// §33 Result of renaming a file (or a block ID) with wikilink updates.
 ///
@@ -40,7 +41,10 @@ pub struct RenameResult {
     /// And, for a file rename only (issue 678): a file holding links that
     /// cannot spell the new stem — it may be in `updated_files` too, for the
     /// links that were rewritten — and the renamed note itself, under its
-    /// new path, on the same terms. A block ID rename lists referrers only.
+    /// new path, on the same terms. For both renames: a file holding a path
+    /// reference another root reads as a different existing note, which is
+    /// left as written (`filing::Judgement::Ambiguous`), updated or not. A
+    /// block ID rename lists referrers only.
     pub skipped_files: Vec<String>,
 }
 
@@ -61,6 +65,34 @@ pub struct NamespaceRenameResult {
     /// the rebuild failed and the stale index was dropped, or the context was
     /// removed while it ran. Backlinks read empty until the next build.
     pub index_rebuilt: bool,
+}
+
+/// The notes each built directory index holds, by its root
+/// (`LinkIndex::registered_path_keys`) — every registered directory context,
+/// not only the renamed file's, since a root that does not contain the file
+/// may still hold a referrer and read its path link as another note
+/// (`filing::read_as_another_note`). A context whose index is not built
+/// contributes nothing: its root is read as holding no note, and a link it
+/// would read is judged as if that root were not registered.
+async fn known_paths_of(state: &LinkIndexState, ctx_mgr: &ContextManager) -> KnownPaths {
+    let mut known = KnownPaths::new();
+    for info in ctx_mgr.list().await {
+        let Some(registered) = ctx_mgr.registered(&info.id).await else {
+            continue;
+        };
+        if buildable(std::slice::from_ref(&registered)).is_empty() {
+            continue;
+        }
+        let keys = state
+            .with_index_for(&registered.info.path, registered.incarnation, |idx| {
+                idx.map(LinkIndex::registered_path_keys)
+            })
+            .await;
+        if let Some(keys) = keys {
+            known.insert(registered.info.path, keys);
+        }
+    }
+    known
 }
 
 /// The contexts among `keys` (containing indexes) that cover `path`: a

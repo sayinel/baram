@@ -4,9 +4,10 @@ use crate::context::manager::{resolve_canonical, Registered};
 use crate::context::ContextManager;
 use crate::index::relative_links::{path_components, same_component};
 use crate::index::{
-    block_reference_can_spell, block_references_to, index_reads_the_rename_back,
-    link_reads_back_as_the_file, own_block_reference_lines, replace_block_reference_target,
-    replace_wikilink_target, wikilink_can_spell, wikilinks_to, RenameTarget, RewritePass,
+    ambiguous_block_references, ambiguous_wikilinks, block_reference_can_spell,
+    block_references_to, index_reads_the_rename_back, link_reads_back_as_the_file,
+    own_block_reference_lines, replace_block_reference_target, replace_wikilink_target,
+    wikilink_can_spell, wikilinks_to, RenameTarget, RewritePass,
 };
 use std::collections::HashMap;
 use std::path::Path;
@@ -18,7 +19,7 @@ use super::referrers::{
     apply_queued, named_referrers, queue_rewritten, rewrite_referrers, Rewrite, Rewritten,
     Unchanged,
 };
-use super::{confined_by, push_for_keys, RenameResult};
+use super::{confined_by, known_paths_of, push_for_keys, RenameResult};
 
 pub(crate) async fn rename_file_with_links_inner(
     state: &LinkIndexState,
@@ -80,6 +81,10 @@ pub(crate) async fn rename_file_with_links_inner(
         })
         .await?,
     );
+    // The notes each built index holds, read before the move: a path link
+    // that another root holding the referrer reads as a different existing
+    // note is left and its file reported (`RenameTarget::judge`).
+    let known_paths = known_paths_of(state, ctx_mgr).await;
     // A same-stem note elsewhere (`b/old.md` beside `a/old.md`) is named by
     // the index for its own `((#^id))` references, filed under its stem —
     // the old name's key. The rewrite rightly leaves those alone, and the
@@ -145,6 +150,7 @@ pub(crate) async fn rename_file_with_links_inner(
         old_path,
         new_path,
         local_aliases: &local_aliases,
+        known_paths,
         windows: cfg!(windows),
     });
     let mut rewritten = rewrite_referrers(
@@ -293,6 +299,12 @@ impl<'a> LinkPasses<'a> {
             left_behind |= block_references_to(&content, ref_path, covering_roots, target) > 0;
             content
         };
+        // A reference another root holding the referrer reads as a different
+        // existing note is kept as written (`RenameTarget::judge`) and the file is
+        // reported. Kept, it reads the same before and after, so the gate
+        // below does not see it.
+        left_behind |= ambiguous_wikilinks(before, ref_path, covering_roots, target) > 0
+            || ambiguous_block_references(before, ref_path, covering_roots, target) > 0;
         // READ-BACK GATE (issue 678, review): what was written must be read
         // as a link to the new name where it stands, or it is not written.
         if content != before

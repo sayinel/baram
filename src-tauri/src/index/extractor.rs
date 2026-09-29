@@ -711,6 +711,7 @@ mod tests {
                     old_path: "/v/old.md",
                     new_path: "/v/new-longer.md",
                     local_aliases: &[],
+                    known_paths: Default::default(),
                     windows: false,
                 }
             ),

@@ -18,10 +18,13 @@ use thiserror::Error;
 pub use extractor::{
     collect_all_files, collect_md_files, find_unlinked_mentions, UnlinkedMentionResult,
 };
-pub use filing::{filing_key, keys_for, BlockTarget, FilingKey, LocalAlias, RenameTarget};
+pub use filing::{
+    filing_key, keys_for, BlockTarget, FilingKey, KnownPaths, LocalAlias, RenameTarget,
+};
 pub use relative_links::rewrite_relative_wikilinks;
 pub(crate) use rewriter::link_reads_back_as_the_file;
 pub use rewriter::{
+    ambiguous_block_id_refs, ambiguous_block_references, ambiguous_wikilinks,
     block_reference_can_spell, block_references_to, index_reads_the_rename_back,
     own_block_reference_lines, replace_block_id_refs_to, replace_block_reference_target,
     replace_wikilink_target, wikilink_can_spell, wikilinks_to,
@@ -317,6 +320,23 @@ impl LinkIndex {
             local_aliases,
             cfg!(windows),
         )
+    }
+
+    /// The `Path`-key text of every note this index holds under its root:
+    /// `root_relative_key` — the function `keys_for` spells a file's path key
+    /// with, so the shapes agree — of each path in `file_map`. Not
+    /// `relative_map`, whose keys keep the host's separators. Empty with no
+    /// root. The rename reads it to tell whether a path link another covering
+    /// root reads names an existing note (`filing::KnownPaths`).
+    pub fn registered_path_keys(&self) -> std::collections::HashSet<String> {
+        let Some(root) = self.root_path.as_deref() else {
+            return std::collections::HashSet::new();
+        };
+        self.file_map
+            .values()
+            .flatten()
+            .filter_map(|path| filing::root_relative_key(root, path, cfg!(windows)))
+            .collect()
     }
 
     /// The keys `get_backlinks` and `block_reference_lines` read for
@@ -725,6 +745,7 @@ mod tests {
             old_path: "/vault/target.md",
             new_path: "/vault/renamed.md",
             local_aliases: &[],
+            known_paths: Default::default(),
             windows: false,
         };
         let roots = ["/vault".to_string()];
@@ -784,6 +805,7 @@ mod tests {
                 old_path: "/v/dir/target.md",
                 new_path: "/v/dir/renamed.md",
                 local_aliases,
+                known_paths: Default::default(),
                 windows: false,
             };
             wikilinks_to(&content, "/v/dir/r.md", &roots, &target)

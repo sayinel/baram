@@ -4,8 +4,8 @@ use crate::context::manager::Registered;
 use crate::context::ContextManager;
 use crate::index::normalizer::{extract_id_from_stem, normalize_file_path};
 use crate::index::{
-    keys_for, link_reads_back_as_the_file, own_block_reference_lines, replace_block_id_refs_to,
-    BlockTarget, FilingKey,
+    ambiguous_block_id_refs, keys_for, link_reads_back_as_the_file, own_block_reference_lines,
+    replace_block_id_refs_to, BlockTarget, FilingKey, KnownPaths,
 };
 use std::collections::HashMap;
 
@@ -15,7 +15,7 @@ use super::super::state::{LinkIndexState, Mutation};
 use super::referrers::{
     apply_queued, named_referrers, queue_rewritten, rewrite_referrers, Rewrite, Unchanged,
 };
-use super::RenameResult;
+use super::{known_paths_of, RenameResult};
 
 pub(crate) async fn rename_block_id_inner(
     state: &LinkIndexState,
@@ -52,7 +52,10 @@ pub(crate) async fn rename_block_id_inner(
     // The keys a reference to this file is filed under in each index read
     // above: its stem and zettel id, the same in every index, and its path
     // under that index's root (issue 619) — what `backlink_keys` reads there.
-    let target = block_target(file_path, &dirs);
+    // With the notes each built index holds: a path reference another root
+    // holding the referrer reads as a different existing note is left and
+    // its file reported (`BlockTarget::judge`).
+    let target = block_target(file_path, &dirs, known_paths_of(state, ctx_mgr).await);
     // A referrer that shares the target's stem — another `note.md` in some
     // other folder — is named by the index for its own self-references
     // (`((#^id))` is filed under the referrer's own stem, which is the
@@ -99,16 +102,15 @@ pub(crate) async fn rename_block_id_inner(
         &Unchanged::Report {
             unless: &named_for_its_own_references,
         },
-        |content, ref_path, covering| Rewrite {
-            content: replace_block_id_refs_to(
-                content,
-                ref_path,
-                &keys_of(covering),
-                &target,
-                old_id,
-                new_id,
-            ),
-            left_behind: false,
+        |content, ref_path, covering| {
+            let roots = keys_of(covering);
+            Rewrite {
+                content: replace_block_id_refs_to(
+                    content, ref_path, &roots, &target, old_id, new_id,
+                ),
+                left_behind: ambiguous_block_id_refs(content, ref_path, &roots, &target, old_id)
+                    > 0,
+            }
         },
     )
     .await;
@@ -131,7 +133,7 @@ pub(crate) async fn rename_block_id_inner(
 /// stem, as `LinkIndex::backlink_keys` reads them). No vault alias: a block
 /// reference or embed never carries one (`BLOCK_REF_RE`, `BLOCK_EMBED_RE`
 /// in extractor.rs have no alias group).
-fn block_target(file_path: &str, dirs: &[Registered]) -> BlockTarget {
+fn block_target(file_path: &str, dirs: &[Registered], known_paths: KnownPaths) -> BlockTarget {
     let id = extract_id_from_stem(&normalize_file_path(file_path));
     let keys_by_root = dirs
         .iter()
@@ -146,6 +148,7 @@ fn block_target(file_path: &str, dirs: &[Registered]) -> BlockTarget {
         .collect();
     BlockTarget {
         keys_by_root,
+        known_paths,
         windows: cfg!(windows),
     }
 }

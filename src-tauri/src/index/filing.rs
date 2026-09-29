@@ -5,6 +5,66 @@ use super::normalizer::{file_key, normalize_file_path, normalize_target};
 use super::relative_links::{
     path_components, relative_components, resolve_components, root_components, same_component,
 };
+use std::collections::{HashMap, HashSet};
+
+/// The `Path`-key text of every note each built index holds (`LinkIndex::
+/// registered_path_keys`), by that index's root — every registered directory
+/// root, not only the renamed file's. The rename judgement reads it to tell
+/// whether another root that holds the referrer reads a path link as an
+/// existing note. A root with no entry is read as holding no note.
+pub type KnownPaths = HashMap<String, HashSet<String>>;
+
+/// What a rename makes of one reference: it names the renamed file (with
+/// how it matched), it names another file, or it is AMBIGUOUS — it names the
+/// renamed file by its path under one covering root while another root that
+/// holds the referrer reads the same text as a different note that exists
+/// (`read_as_another_note`). An ambiguous reference is left as written and
+/// its file is reported: rewriting it would break the other root's reading.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Judgement<M> {
+    Ours(M),
+    Ambiguous,
+    NotOurs,
+}
+
+impl<M> Judgement<M> {
+    /// The match, when the reference names the renamed file unambiguously.
+    pub fn ours(self) -> Option<M> {
+        match self {
+            Judgement::Ours(m) => Some(m),
+            _ => None,
+        }
+    }
+}
+
+/// Does a root of `known_paths` whose folder holds the referrer at
+/// `ref_path` — compared lexically, as every key is — read `raw_target` as a
+/// note that exists under it and is not the renamed file (`is_the_target`,
+/// given that root and the path key)? The root the reference matched under
+/// never answers yes: there it reads as the renamed file's own key. The roots
+/// are every built directory index, not only the renamed file's contexts:
+/// renaming the parent's `/v/a/old.md` must still see that the child root
+/// `/v/sub`, which does not contain that file, reads `/v/sub/r.md`'s
+/// `[[a/old]]` as `/v/sub/a/old.md`. Only a `Path` reading counts: a bare
+/// name is filed by its stem in every root alike, which is the stem contract
+/// a rename already follows. With an empty map nothing is ambiguous.
+fn read_as_another_note(
+    ref_path: &str,
+    raw_target: &str,
+    known_paths: &KnownPaths,
+    is_the_target: impl Fn(&str, &str) -> bool,
+    windows: bool,
+) -> bool {
+    let raw = raw_target.trim();
+    let referrer = path_components(ref_path, windows);
+    known_paths.iter().any(|(root, known)| {
+        under_root(&path_components(root, windows), &referrer, windows).is_some()
+            && match filing_key(ref_path, raw, None, Some(root), windows) {
+                FilingKey::Path(p) => known.contains(&p) && !is_the_target(root, &p),
+                _ => false,
+            }
+    })
+}
 
 /// The key a reference or a file is filed under in the link index.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -173,25 +233,59 @@ pub fn keys_for(
 /// THAT root.
 pub struct BlockTarget {
     pub keys_by_root: Vec<(String, Vec<FilingKey>)>,
+    /// The notes each index holds, for the ambiguity judgement (`judge`).
+    pub known_paths: KnownPaths,
     pub windows: bool,
 }
 
 impl BlockTarget {
     /// Does `raw_target`, written in the referrer at `ref_path`, name this
-    /// file? It is keyed by `filing_key` — the rule the index files it by —
-    /// under each root in `covering_roots` (the roots whose index covers the
-    /// referrer), and matches when that root's keys hold the result. A `Stem`
-    /// key does not depend on the root, so any covering root answers a bare
-    /// reference; a referrer that no root covers matches nothing.
+    /// file unambiguously? `judge` says `Ours`.
     pub fn refers(&self, ref_path: &str, covering_roots: &[String], raw_target: &str) -> bool {
-        let keys_of = |root: &String| {
+        self.judge(ref_path, covering_roots, raw_target) == Judgement::Ours(())
+    }
+
+    /// `raw_target`, written in the referrer at `ref_path`, keyed by
+    /// `filing_key` — the rule the index files it by — under each root in
+    /// `covering_roots` (the roots whose index covers the referrer), first
+    /// match wins: it names this file when that root's keys hold the result.
+    /// A `Stem` key does not depend on the root, so any covering root answers
+    /// a bare reference; a referrer that no root covers matches nothing. A
+    /// `Path` match is `Ambiguous` when another root holding the referrer
+    /// reads the same text as a different note that exists
+    /// (`read_as_another_note`).
+    pub fn judge(
+        &self,
+        ref_path: &str,
+        covering_roots: &[String],
+        raw_target: &str,
+    ) -> Judgement<()> {
+        let keys_of = |root: &str| {
             self.keys_by_root
                 .iter()
                 .find(|(r, _)| r == root)
                 .map(|(_, keys)| keys)
         };
-        keyed_under(ref_path, covering_roots, None, raw_target, self.windows)
-            .any(|(root, key)| keys_of(root).is_some_and(|keys| keys.contains(&key)))
+        let matched = keyed_under(ref_path, covering_roots, None, raw_target, self.windows)
+            .find(|(root, key)| keys_of(root).is_some_and(|keys| keys.contains(key)));
+        match matched {
+            None => Judgement::NotOurs,
+            Some((_, FilingKey::Path(_)))
+                if read_as_another_note(
+                    ref_path,
+                    raw_target,
+                    &self.known_paths,
+                    |r, p| {
+                        keys_of(r)
+                            .is_some_and(|keys| keys.contains(&FilingKey::Path(p.to_string())))
+                    },
+                    self.windows,
+                ) =>
+            {
+                Judgement::Ambiguous
+            }
+            Some(_) => Judgement::Ours(()),
+        }
     }
 }
 
@@ -230,6 +324,8 @@ pub struct RenameTarget<'a> {
     pub old_path: &'a str,
     pub new_path: &'a str,
     pub local_aliases: &'a [LocalAlias],
+    /// The notes each index holds, for the ambiguity judgement (`judge`).
+    pub known_paths: KnownPaths,
     pub windows: bool,
 }
 
@@ -281,14 +377,8 @@ impl RenameTarget<'_> {
     }
 
     /// Does `raw_target`, written in the referrer at `ref_path` behind
-    /// `alias_prefix` (the captured `word::`, or the bare alias, or ""), name
-    /// the renamed file? It is keyed by `filing_key` — the rule the index
-    /// files it by — under each root in `covering_roots` (the roots whose
-    /// index covers the referrer), first match wins. A `Stem` key does not
-    /// depend on the root but still needs a covering root, as
-    /// `BlockTarget::refers`. A link behind an alias that is not one of
-    /// `local_aliases` names a file in another vault and is never this
-    /// file's (`refers_behind_alias`).
+    /// `alias_prefix`, name the renamed file unambiguously? `judge` says
+    /// `Ours`, with how it matched.
     pub fn refers(
         &self,
         ref_path: &str,
@@ -296,14 +386,42 @@ impl RenameTarget<'_> {
         alias_prefix: &str,
         raw_target: &str,
     ) -> Option<Match> {
+        self.judge(ref_path, covering_roots, alias_prefix, raw_target)
+            .ours()
+    }
+
+    /// What `raw_target`, written in the referrer at `ref_path` behind
+    /// `alias_prefix` (the captured `word::`, or the bare alias, or ""), is
+    /// to this rename. It is keyed by `filing_key` — the rule the index
+    /// files it by — under each root in `covering_roots` (the roots whose
+    /// index covers the referrer), first match wins. A `Stem` key does not
+    /// depend on the root but still needs a covering root, as
+    /// `BlockTarget::judge`. A `Path` match under one root is `Ambiguous`
+    /// when another root holding the referrer reads the same text as a
+    /// different note that exists (`read_as_another_note`) — the referrer of
+    /// nested roots `/v` and `/v/sub` whose `[[a/old]]` is `/v/sub/a/old.md`
+    /// under one and `/v/a/old.md` under the other. A link behind an alias
+    /// that is not one of `local_aliases` names a file in another vault and
+    /// is never this file's (`refers_behind_alias`); one behind a local alias
+    /// resolves against that alias's own root, so no other root reads it.
+    pub fn judge(
+        &self,
+        ref_path: &str,
+        covering_roots: &[String],
+        alias_prefix: &str,
+        raw_target: &str,
+    ) -> Judgement<Match> {
         let alias = alias_prefix.strip_suffix("::").unwrap_or(alias_prefix);
         if !alias.is_empty() {
-            return self.refers_behind_alias(ref_path, covering_roots, alias, raw_target);
+            return match self.refers_behind_alias(ref_path, covering_roots, alias, raw_target) {
+                Some(m) => Judgement::Ours(m),
+                None => Judgement::NotOurs,
+            };
         }
         let stem = file_key(self.old_stem());
         let relative = is_relative(raw_target.trim(), self.windows);
-        keyed_under(ref_path, covering_roots, None, raw_target, self.windows).find_map(
-            |(root, key)| {
+        let matched = keyed_under(ref_path, covering_roots, None, raw_target, self.windows)
+            .find_map(|(root, key)| {
                 let rel = root_relative_key(root, self.old_path, self.windows);
                 let path_match = || Match::Path {
                     root: root.clone(),
@@ -314,8 +432,22 @@ impl RenameTarget<'_> {
                     FilingKey::Path(p) if Some(&p) == rel.as_ref() => Some(path_match()),
                     _ => None,
                 }
-            },
-        )
+            });
+        match matched {
+            None => Judgement::NotOurs,
+            Some(Match::Path { .. })
+                if read_as_another_note(
+                    ref_path,
+                    raw_target,
+                    &self.known_paths,
+                    |r, p| root_relative_key(r, self.old_path, self.windows).as_deref() == Some(p),
+                    self.windows,
+                ) =>
+            {
+                Judgement::Ambiguous
+            }
+            Some(m) => Judgement::Ours(m),
+        }
     }
 
     /// `refers` for a link behind `alias`: judged as the index files it —

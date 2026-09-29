@@ -179,13 +179,14 @@ baram/
   보인다. ③ 의 `skipped.push` 는 한 곳이 아니다 — `rename/referrers.rs` 에 referrer 의 원인마다 하나씩(덮는 context 가 없는
   referrer 도 그중 하나다)과 `rename/file.rs`(rename 되는 노트); `LinkPasses` 는 `left_behind` 플래그만 세운다
   ‼️ **index 의 키는 `filing.rs` 가 정한다 (#619)** — `incoming` 의 키는 문자열이 아니라 `FilingKey`(`Stem`·`Path`·`Foreign`)다.
-  참조를 키로 바꾸는 함수는 `filing_key` 하나다 — filing(`file_incoming`), rewriter 판정(`RenameTarget::refers`·`BlockTarget::refers`
-  가 함께 쓰는 `keyed_under`), 되읽기 관문(`index_reads_the_rename_back`)이 모두 그것을 부른다. 파일이 읽히는 키는 `keys_for` 가
+  참조를 키로 바꾸는 함수는 `filing_key` 하나다 — filing(`file_incoming`), rewriter 판정(`RenameTarget::judge`·`BlockTarget::judge`
+  가 함께 쓰는 `keyed_under`, 모호성 판정 `read_as_another_note`), 되읽기 관문(`index_reads_the_rename_back`)이 모두 그것을 부른다. 파일이 읽히는 키는 `keys_for` 가
   낸다 — 조회(`filing_keys_of` 를 거치는 `get_backlinks`·`referring_lines_to`·`block_reference_lines`)와 block ID rename 의
   `block_target`. 그래서 `[[dir/note]]`·`[[./note]]`·`((dir/note#^id))` 같은 경로·상대 참조도 백링크이고 두 rename 이 고쳐 쓴다.
   파일 쪽 키의 모양은 `keys_for` 를 부르지 않고 따로 짓는 자리도 안다 — crate 에서 테스트 밖의 `FilingKey::` 생성과
   `file_key`·`root_relative_key`·`normalize_file_path`·`extract_id_from_stem` 호출을 훑으면 이것이 전부다: `filing.rs` 의
-  `RenameTarget::refers`·`refers_behind_alias`·`expected_key`, zettel id `Stem` 을 붙이는 `backlink_keys`(`mod.rs`)·`block_target`
+  `RenameTarget::judge`·`refers_behind_alias`·`expected_key`·`BlockTarget::judge`(대상 판별), 노트 목록을 짓는
+  `registered_path_keys`(`mod.rs`), zettel id `Stem` 을 붙이는 `backlink_keys`(`mod.rs`)·`block_target`
   (`rename/block_id.rs`), 같은 stem 예외(`rename/block_id.rs`·`rename/file.rs`)와 `stem_unchanged`(`rename/file.rs`), 관문이
   `expected_key` 를 `Foreign` 으로 감싸는 곳과 `link_reads_back_as_the_file`(`rewriter.rs`). `mod.rs` 의 `file_map`·`relative_map`·
   `id_map` 은 target 해석용이라 `incoming` 키가 아니다. 새 키 모양은 `filing.rs` 에 더하고 이 자리들을 같이 고칠 것.
@@ -194,12 +195,17 @@ baram/
   `Stem` 바구니에서만 센다. 짝인 `every_reference_the_index_files_under_a_path_is_visited_by_one_rewrite_pass` 는 `Path`·`Foreign`
   바구니를 세되 표기가 손으로 적은 목록(종류마다 `dir/target`·`./target`, 그리고 `[[work::target]]`)뿐이라, 그 목록에 없는 표기로
   들어오는 새 키 모양은 **어느 쪽도 보지 못한다**. 새 표기를 더하면 이 픽스처에 먼저 넣을 것.
-  판정은 referrer 를 **덮는** root 의 index 로만 한다 — `/v` 와 `/v/sub` 가 둘 다 root 일 때 `/v/r.md` 의 `[[a/old]]` 는 `/v`
+  링크가 이 파일을 가리키는지(match)는 referrer 를 **덮는** root 의 index 로만 판정한다 — `/v` 와 `/v/sub` 가 둘 다 root 일 때 `/v/r.md` 의 `[[a/old]]` 는 `/v`
   아래에서만 읽혀 `/v/a/old.md` 를 가리키므로, 자식 root 아래 경로가 같은 `/v/sub/a/old.md` 의 rename 은 그것을 **고치지 않는다**
   (`service/tests.rs` 의 `nested_roots_a_rename_leaves_the_parents_colliding_link_alone`). 되읽기 관문도 덮는 root 마다 따로 읽는다.
-  ‼️ 이 말이 정확한 것은 부모 root **만** 덮는 referrer 에 대해서다 — 두 root 가 함께 덮는 `/v/sub/r.md` 는 덮는 root 중 먼저 맞는
-  쪽 아래에서 고쳐 쓰이고, 다른 root 가 같은 링크를 **실재하는 다른 파일로** 읽으면(`/v/a/old.md` 와 `/v/sub/a/old.md` 가 둘 다
-  있을 때) 그 읽힘은 보고 없이 끊긴다. 알려진 비용이고 같은 테스트가 그것을 고정한다 — 파일 존재를 보는 판정은 후속 과제다.
+  ‼️ **경로 링크를 다른 root 가 실재하는 다른 노트로 읽으면 고치지 않고 보고한다** — 두 root 가 함께 덮는 `/v/sub/r.md` 의
+  `[[a/old]]` 는 자식 아래에서 `/v/sub/a/old.md`, 부모 아래에서 `/v/a/old.md` 다. 둘 다 있으면 어느 쪽을 rename 하든 그 링크는
+  **모호하므로 그대로 두고** 파일을 `skipped_files` 에 올린다(`filing.rs` 의 `Judgement::Ambiguous`·`read_as_another_note`).
+  부모에 `a/old.md` 가 없으면 모호하지 않으므로 전처럼 고쳐 쓴다. 존재 판정은 **built 된 모든 directory index** 의 노트
+  목록(`LinkIndex::registered_path_keys`, `service/rename/mod.rs` 의 `known_paths_of`)으로 한다 — rename 되는 파일의 context
+  만이 아니다. 부모의 `a/old.md` 를 rename 할 때 자식 root 는 그 파일을 담지 않지만 referrer 를 담는다. referrer 를 담는지는
+  root 표기에 대해 어휘적으로 본다. bare 이름(`[[old]]`)은 이 판정 밖이다 — stem 은 모든 root 에서 같게 읽히고 rename 은 그것을
+  고쳐 쓴다
   키는 **등록된 root 표기에 대해 어휘적으로** 계산한다 — symlink 인 root 의 다른 표기(`/tmp` 에 대한 `/private/tmp`)로 주어진 파일은
   `Path` 키를 얻지 못해 경로 링크가 **놓칠 뿐** 잘못 고쳐 쓰이지는 않는다
   ‼️ **이 판정 두 층은 파일 rename 입구에만 있다** — 디렉터리 rename 이 `relative_links.rs` 로 고쳐 쓰는 `[[./x]]`·`[[../x]]` 는
