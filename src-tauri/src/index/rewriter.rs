@@ -938,6 +938,9 @@ mod tests {
         // the root (`old`), and a self-reference names no target — both
         // stay (issue 619). Another note's block with the same ID is
         // another note's.
+        // What fails this: dropping the suffix preservation in
+        // `RenameTarget::respell` (`note_suffix` answering "") —
+        // `((old.md#^a))` then becomes `((new#^a))`.
         let content = "((Old#^a)) ((old.md#^a)) ((dir/old#^a)) ((#^a)) ((other#^a))";
         assert_eq!(
             block_refs(content, "/v/referrer.md", "old", "new"),

@@ -378,7 +378,7 @@ mod tests {
         // as staying.
         assert!(!stays_in_its_directory(
             r"C:\v\note.md",
-            r"C:\v\sub\note.md",
+            r"C:\v\sub\other.md",
             true
         ));
         assert!(!stays_in_its_directory(

@@ -3227,10 +3227,12 @@ async fn a_file_rename_updates_the_path_qualified_references_the_index_filed_und
 async fn a_rename_that_would_move_the_note_is_refused_before_anything_changes() {
     // issue 619: a rename respells a note's path references for the folder
     // it is in; a move to another folder is not a rename, and is refused
-    // before the note or any referrer is touched.
+    // before the note or any referrer is touched. The destination changes
+    // the stem too, so a rename that went ahead would respell `[[note]]`.
     // What fails this: removing the parent comparison from
-    // `rename_file_with_links_inner` — the note moves and `[[note]]` in
-    // `a.md` is rewritten.
+    // `rename_file_with_links_inner` — the note moves to `sub/other.md` and
+    // `a.md`'s `[[note]]` is rewritten to `[[other]]`, which the first
+    // assertion catches (before the result is looked at).
     let ctx = ContextManager::new();
     let (dir, root) = vault_with_a_link(&ctx, "ctx-619m", true).await;
     std::fs::create_dir_all(dir.path().join("sub")).unwrap();
@@ -3239,21 +3241,21 @@ async fn a_rename_that_would_move_the_note_is_refused_before_anything_changes() 
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
 
-    let err = rename_file_with_links_inner(
+    let result = rename_file_with_links_inner(
         &state,
         &ctx,
         &format!("{root}/note.md"),
-        &format!("{root}/sub/note.md"),
+        &format!("{root}/sub/other.md"),
     )
-    .await
-    .unwrap_err();
-    assert!(err.contains("would move the note"), "{err}");
-    assert!(dir.path().join("note.md").exists());
-    assert!(!dir.path().join("sub/note.md").exists());
+    .await;
     assert_eq!(
         std::fs::read_to_string(dir.path().join("a.md")).unwrap(),
         "see [[note]]\n"
     );
+    assert!(dir.path().join("note.md").exists());
+    assert!(!dir.path().join("sub/other.md").exists());
+    let err = result.unwrap_err();
+    assert!(err.contains("would move the note"), "{err}");
 }
 
 #[tokio::test]
