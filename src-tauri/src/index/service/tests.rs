@@ -19,6 +19,15 @@ fn info(id: &str, path: &str, kind: ContextType) -> ContextInfo {
     }
 }
 
+/// `info` for a folder carrying the vault alias `alias` — registered through
+/// `ContextManager::add`, which claims it (last writer wins).
+fn aliased(id: &str, path: &str, alias: &str) -> ContextInfo {
+    ContextInfo {
+        alias: Some(alias.to_string()),
+        ..info(id, path, ContextType::Folder)
+    }
+}
+
 /// A vault whose `a.md` links to `b.md`, registered under an id that is
 /// nothing like its path — the shape of the bug. Active unless told otherwise.
 async fn vault_with_a_link(
@@ -3369,4 +3378,240 @@ async fn a_rename_to_markdown_extension_keeps_every_link() {
         .await
         .unwrap();
     assert_eq!(backlinks.len(), 2, "{backlinks:?}");
+}
+
+/// A folder context registered under `id` with the vault alias `alias`,
+/// holding `files` (path under the root, content); its root path.
+async fn aliased_vault(
+    ctx: &ContextManager,
+    id: &str,
+    alias: &str,
+    files: &[(&str, &str)],
+) -> (tempfile::TempDir, String) {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().to_str().unwrap().to_string();
+    for (path, content) in files {
+        let path = dir.path().join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, content).unwrap();
+    }
+    ctx.add(aliased(id, &root, alias)).await.unwrap();
+    (dir, root)
+}
+
+/// The lines of `source` among the backlinks of `file`, sorted.
+async fn backlink_lines(
+    state: &LinkIndexState,
+    ctx: &ContextManager,
+    file: &str,
+    source: &str,
+) -> Vec<u32> {
+    let mut lines: Vec<u32> = get_backlinks_inner(state, ctx, file)
+        .await
+        .unwrap()
+        .iter()
+        .filter(|b| b.source_path == source)
+        .map(|b| b.line)
+        .collect();
+    lines.sort_unstable();
+    lines
+}
+
+#[tokio::test]
+async fn a_vaults_own_alias_names_its_own_notes() {
+    // issue 717: a vault's own alias qualifies a link to one of its own
+    // notes — by stem or by path, in any case — so the link is a backlink
+    // and a rename respells it behind the alias as it was spelled. `r.md`
+    // holds aliased links alone, so only the local alias gets it visited.
+    // What fails this: passing `&[]` for the local aliases to
+    // `get_backlinks` in `get_backlinks_inner` — no backlink on lines 1–2;
+    // to `referring_lines_to` or `RenameTarget` in
+    // `rename_file_with_links_inner` — `r.md` is not visited, or its links
+    // are not this file's, and they stay `old`; keying the read-back gate's
+    // respelled `Foreign` entry without its alias — the gate reverts `r.md`.
+    let ctx = ContextManager::new();
+    let (dir, root) = aliased_vault(
+        &ctx,
+        "ctx-work",
+        "work",
+        &[
+            ("dir/old.md", "para ^x\n"),
+            ("r.md", "[[Work::old]]\n[[work::dir/old]]\n"),
+            ("b.md", "((old#^x))\n"),
+        ],
+    )
+    .await;
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    let old = format!("{root}/dir/old.md");
+    let (referrer, block_referrer) = (format!("{root}/r.md"), format!("{root}/b.md"));
+    assert_eq!(
+        backlink_lines(&state, &ctx, &old, &referrer).await,
+        vec![1, 2]
+    );
+
+    // A block-ID rename through the bare reference still works here.
+    let result = rename_block_id_inner(&state, &ctx, &old, "x", "y")
+        .await
+        .unwrap();
+    assert_eq!(result.updated_files, vec![block_referrer.clone()]);
+    assert!(
+        result.skipped_files.is_empty(),
+        "{:?}",
+        result.skipped_files
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("b.md")).unwrap(),
+        "((old#^y))\n"
+    );
+
+    let new = format!("{root}/dir/new.md");
+    let result = rename_file_with_links_inner(&state, &ctx, &old, &new)
+        .await
+        .unwrap();
+    let mut updated = result.updated_files.clone();
+    updated.sort();
+    assert_eq!(updated, vec![block_referrer, referrer.clone()]);
+    assert!(
+        result.skipped_files.is_empty(),
+        "{:?}",
+        result.skipped_files
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
+        "[[Work::new]]\n[[work::dir/new]]\n"
+    );
+    assert_eq!(
+        backlink_lines(&state, &ctx, &new, &referrer).await,
+        vec![1, 2]
+    );
+}
+
+#[tokio::test]
+async fn a_local_rename_leaves_a_link_into_another_vault_alone() {
+    // issue 717: `work` is vault B's alias, so `[[work::old]]` in vault A
+    // names B's `old.md`: it is no backlink of A's `old.md`, and A's rename
+    // leaves it and reports nothing.
+    // What fails this: taking the local aliases from every registered
+    // context instead of the file's own — `work` is then local to A, the
+    // link is a backlink of A's `old.md`, and the rename writes
+    // `[[work::new]]`.
+    let ctx = ContextManager::new();
+    let (dir_a, root_a) = aliased_vault(
+        &ctx,
+        "ctx-home",
+        "home",
+        &[
+            ("old.md", "t\n"),
+            ("r.md", "see [[work::old]] and [[old]]\n"),
+            ("foreign.md", "[[work::old]]\n"),
+        ],
+    )
+    .await;
+    let (_dir_b, root_b) = aliased_vault(&ctx, "ctx-work", "work", &[("old.md", "t\n")]).await;
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root_a).await.unwrap();
+    refresh_index_inner(&state, &ctx, &root_b).await.unwrap();
+    let old = format!("{root_a}/old.md");
+    let foreign = format!("{root_a}/foreign.md");
+    assert!(backlink_lines(&state, &ctx, &old, &foreign)
+        .await
+        .is_empty());
+
+    let result = rename_file_with_links_inner(&state, &ctx, &old, &format!("{root_a}/new.md"))
+        .await
+        .unwrap();
+    assert_eq!(result.updated_files, vec![format!("{root_a}/r.md")]);
+    assert!(
+        result.skipped_files.is_empty(),
+        "{:?}",
+        result.skipped_files
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir_a.path().join("r.md")).unwrap(),
+        "see [[work::old]] and [[new]]\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir_a.path().join("foreign.md")).unwrap(),
+        "[[work::old]]\n"
+    );
+}
+
+#[tokio::test]
+async fn an_alias_another_vault_has_since_claimed_is_no_longer_local() {
+    // Two vaults carry the alias `work`; the later registration owns it
+    // (`claim_alias`, last writer wins), so in A `[[work::old]]` names B's
+    // note: no backlink of A's `old.md`, and A's rename leaves it.
+    // What fails this: dropping the `resolve_alias` ownership check from
+    // `local_aliases_of` — `work` is then local to A too.
+    let ctx = ContextManager::new();
+    let (dir_a, root_a) = aliased_vault(
+        &ctx,
+        "ctx-a",
+        "work",
+        &[("old.md", "t\n"), ("r.md", "[[work::old]]\n[[old]]\n")],
+    )
+    .await;
+    let (_dir_b, root_b) = aliased_vault(&ctx, "ctx-b", "work", &[("old.md", "t\n")]).await;
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root_a).await.unwrap();
+    refresh_index_inner(&state, &ctx, &root_b).await.unwrap();
+    let (old, referrer) = (format!("{root_a}/old.md"), format!("{root_a}/r.md"));
+    assert_eq!(backlink_lines(&state, &ctx, &old, &referrer).await, vec![2]);
+
+    let result = rename_file_with_links_inner(&state, &ctx, &old, &format!("{root_a}/new.md"))
+        .await
+        .unwrap();
+    assert!(
+        result.skipped_files.is_empty(),
+        "{:?}",
+        result.skipped_files
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir_a.path().join("r.md")).unwrap(),
+        "[[work::old]]\n[[new]]\n"
+    );
+}
+
+#[tokio::test]
+async fn a_block_reference_never_carries_a_vault_alias() {
+    // The block-reference grammar has no alias group: in `((work::note#^id))`
+    // the `::` is part of a local stem, even in a vault whose own alias is
+    // `work`. The reference is a backlink of `work::note.md`, and a block-ID
+    // rename rewrites it.
+    // What fails this: splitting a leading `word::` off a block reference's
+    // target as its vault alias in the extractor — the reference is then
+    // filed as `Foreign { work, note }`, which is no key of this file.
+    let ctx = ContextManager::new();
+    let (dir, root) = aliased_vault(
+        &ctx,
+        "ctx-work",
+        "work",
+        &[
+            ("work::note.md", "para ^id\n"),
+            ("r.md", "((work::note#^id))\n"),
+        ],
+    )
+    .await;
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    let (note, referrer) = (format!("{root}/work::note.md"), format!("{root}/r.md"));
+    assert_eq!(
+        backlink_lines(&state, &ctx, &note, &referrer).await,
+        vec![1]
+    );
+
+    let result = rename_block_id_inner(&state, &ctx, &note, "id", "id2")
+        .await
+        .unwrap();
+    assert_eq!(result.updated_files, vec![referrer]);
+    assert!(
+        result.skipped_files.is_empty(),
+        "{:?}",
+        result.skipped_files
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
+        "((work::note#^id2))\n"
+    );
 }

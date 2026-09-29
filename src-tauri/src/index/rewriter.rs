@@ -662,6 +662,49 @@ mod tests {
     }
 
     #[test]
+    fn the_read_back_gate_reads_a_link_behind_a_local_alias_under_its_alias() {
+        // issue 717: behind the vault's own alias `work`, `[[work::old]]`
+        // is this file's link beside `[[old]]`; both are respelled, and the
+        // gate expects the aliased one filed as `Foreign { work, new }`.
+        // What fails this: keying the gate's respelled entry by
+        // `expected_key` alone, without wrapping it in its alias — the
+        // before reading is then `Stem(new)`, the after reading
+        // `Foreign { work, new }`, and the gate answers false.
+        let local = ["work".to_string()];
+        let target = RenameTarget {
+            old_path: "/v/old.md",
+            new_path: "/v/new.md",
+            local_aliases: &local,
+            windows: false,
+        };
+        let before = "see [[work::old]] and [[old]]\n";
+        let after = replace_wikilink_target(before, "/v/r.md", &v(), &target);
+        assert_eq!(after, "see [[work::new]] and [[new]]\n");
+        assert!(index_reads_the_rename_back(
+            "/v/r.md",
+            before,
+            &after,
+            &v(),
+            &target,
+            |_| true
+        ));
+    }
+
+    #[test]
+    fn the_read_back_gate_never_trusts_a_changed_referrer_no_root_covers() {
+        // A referrer no root covers was judged under no index, so nothing
+        // vouches for a change to it: changed, the gate answers false;
+        // unchanged, there is nothing to vouch for.
+        // What fails this: returning `true` when `covering_roots` is empty.
+        let target = rename_target("/v/old.md", "/v/new.md");
+        let read_back = |after: &str| {
+            index_reads_the_rename_back("/v/r.md", "[[old]]\n", after, &[], &target, |_| true)
+        };
+        assert!(!read_back("[[new]]\n"));
+        assert!(read_back("[[old]]\n"));
+    }
+
+    #[test]
     fn nested_roots_a_referrer_is_judged_by_the_index_that_covers_it() {
         // issue 619: `/v/r.md` is under the parent root alone, where
         // `a/old` names `/v/a/old.md`, another file than the target

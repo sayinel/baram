@@ -16,6 +16,32 @@ pub(super) async fn owning_contexts(ctx_mgr: &ContextManager, path: &str) -> Vec
     ctx_mgr.contexts_containing(path).await
 }
 
+/// The vault aliases local to `contexts` (§87): each one's alias, lowercase,
+/// while that context still owns it — `ctx_mgr.resolve_alias` names it.
+/// Ownership is checked because `claim_alias` is last-writer-wins: a vault
+/// whose alias a later registration took no longer answers to it, and a link
+/// behind that alias names the other vault's note. Lowercase because the
+/// frontend's `findAliasContext` compares aliases case-insensitively and
+/// `filing_key` lowercases a `Foreign` key's alias; `keys_for` and
+/// `RenameTarget::refers` fold again, so here the fold makes the dedup
+/// blind to case. Sorted, without repeats.
+pub(super) async fn local_aliases_of(
+    ctx_mgr: &ContextManager,
+    contexts: &[Registered],
+) -> Vec<String> {
+    let mut aliases = Vec::new();
+    for c in contexts {
+        if let Some(alias) = &c.info.alias {
+            if ctx_mgr.resolve_alias(alias).await.as_ref() == Some(&c.info.id) {
+                aliases.push(alias.to_lowercase());
+            }
+        }
+    }
+    aliases.sort();
+    aliases.dedup();
+    aliases
+}
+
 /// The index keys of `contexts`: their registered paths.
 pub(super) fn keys_of(contexts: &[Registered]) -> Vec<String> {
     contexts.iter().map(|c| c.info.path.clone()).collect()

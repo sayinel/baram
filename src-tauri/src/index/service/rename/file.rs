@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use super::super::build::{ensure_indexes, read_indexes};
-use super::super::keys::{buildable, keys_of, owning_contexts};
+use super::super::keys::{buildable, keys_of, local_aliases_of, owning_contexts};
 use super::super::state::{LinkIndexState, Mutation};
 use super::referrers::{
     apply_queued, named_referrers, queue_rewritten, rewrite_referrers, Rewrite, Rewritten,
@@ -37,6 +37,9 @@ pub(crate) async fn rename_file_with_links_inner(
     ensure_indexes(state, ctx_mgr, &contexts).await?;
     let dirs = buildable(&contexts);
     let keys = keys_of(&dirs);
+    // issue 717: a link behind one of the file's own vault aliases names it
+    // (§87); one behind any other alias names another vault's note and stays.
+    let local_aliases = local_aliases_of(ctx_mgr, &dirs).await;
     // The destination stays inside the file's contexts (`destination_confined`).
     // A rename that would carry the file out of every context is refused
     // before anything is written (fs_cmd's rename validates both ends the
@@ -72,7 +75,10 @@ pub(crate) async fn rename_file_with_links_inner(
     //    indexes), for the same-stem exemption below — as the block ID
     //    rename keeps them (issue 668). The files are what the rewrite visits.
     let (named_lines, referring_files) = named_referrers(
-        read_indexes(state, &dirs, |_ctx, i| i.referring_lines_to(old_path, &[])).await?,
+        read_indexes(state, &dirs, |_ctx, i| {
+            i.referring_lines_to(old_path, &local_aliases)
+        })
+        .await?,
     );
     // A same-stem note elsewhere (`b/old.md` beside `a/old.md`) is named by
     // the index for its own `((#^id))` references, filed under its stem —
@@ -126,12 +132,10 @@ pub(crate) async fn rename_file_with_links_inner(
             unless: &named_for_its_own_references,
         }
     };
-    // issue 619: the local aliases stay empty until the vault's own alias is
-    // known here, so a link behind any alias is another vault's and stays.
     let passes = LinkPasses::new(RenameTarget {
         old_path,
         new_path,
-        local_aliases: &[],
+        local_aliases: &local_aliases,
         windows: cfg!(windows),
     });
     let mut rewritten = rewrite_referrers(

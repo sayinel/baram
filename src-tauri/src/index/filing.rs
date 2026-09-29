@@ -15,7 +15,8 @@ pub enum FilingKey {
     /// its note extension: `[[Dir/Note.md]]` → `dir/note`.
     Path(String),
     /// A target qualified by a vault alias: `[[work:Old]]` files under the
-    /// alias and the target text, never resolved against this vault's root.
+    /// alias and the target text — its separators folded as a path's on
+    /// Windows — never resolved against this vault's root.
     Foreign { alias: String, target: String },
 }
 
@@ -63,13 +64,21 @@ pub fn filing_key(
     windows: bool,
 ) -> FilingKey {
     let normalized = normalize_target(target);
+    let text = target.trim();
     if let Some(alias) = alias {
+        // A path behind an alias folds its separators as an unqualified
+        // path does, so it meets the `Foreign` keys `keys_for` spells with
+        // `/`. A relative one keeps its text: it is never resolved.
+        let target = if windows && !is_relative(text, windows) {
+            strip_extension_and_fold(&text.replace('\\', "/"))
+        } else {
+            normalized
+        };
         return FilingKey::Foreign {
             alias: alias.to_lowercase(),
-            target: normalized,
+            target,
         };
     }
-    let text = target.trim();
     if is_relative(text, windows) {
         if let Some(root) = root {
             let mut source_dir = path_components(source_path, windows);
@@ -426,6 +435,16 @@ mod tests {
         let key = |a, t| filing_key("/v/r.md", t, Some(a), Some("/v"), false);
         assert_eq!(key("Work", "Old.md"), foreign("work", "old"));
         assert_eq!(key("work", "dir/Old"), foreign("work", "dir/old"));
+    }
+
+    #[test]
+    fn an_alias_target_folds_windows_separators_like_a_path() {
+        // What fails this: keying the alias target by `normalize_target`
+        // alone — `dir\Old.md` on Windows then keeps its backslash and never
+        // meets the `dir/old` that `keys_for` spells.
+        let key = |w| filing_key("/v/r.md", r"dir\Old.md", Some("Work"), Some("/v"), w);
+        assert_eq!(key(true), foreign("work", "dir/old"));
+        assert_eq!(key(false), foreign("work", r"dir\old"));
     }
 
     #[test]

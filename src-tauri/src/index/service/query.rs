@@ -3,7 +3,9 @@ use crate::index::{BacklinkResult, LinkGraph, LinkIndex};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use super::keys::{active_registration, buildable, keys_of, owning_contexts, owning_registration};
+use super::keys::{
+    active_registration, buildable, keys_of, local_aliases_of, owning_contexts, owning_registration,
+};
 use super::state::{LinkIndexState, Mutation};
 
 /// Whether `file_path` is spelled under `root`: component-wise, so `/x/Vault`
@@ -25,11 +27,13 @@ pub(crate) async fn get_backlinks_inner(
     // each context counts (`with_index_for`): one left by an earlier
     // registration of the same path could describe another directory.
     let contexts = owning_contexts(ctx_mgr, file_path).await;
+    // A link behind one of the file's own vault aliases names it too (§87).
+    let local_aliases = local_aliases_of(ctx_mgr, &contexts).await;
     let mut answered: Vec<(String, Vec<BacklinkResult>)> = Vec::new();
     for ctx in &contexts {
         let found = state
             .with_index_for(&ctx.info.path, ctx.incarnation, |idx| {
-                idx.map(|i| i.get_backlinks(file_path, &[]))
+                idx.map(|i| i.get_backlinks(file_path, &local_aliases))
                     .unwrap_or_default()
             })
             .await;
