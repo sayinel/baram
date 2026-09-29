@@ -20,6 +20,7 @@ pub use extractor::{
 };
 pub use filing::{filing_key, keys_for, BlockTarget, FilingKey, LocalAlias, RenameTarget};
 pub use relative_links::rewrite_relative_wikilinks;
+pub(crate) use rewriter::link_reads_back_as_the_file;
 pub use rewriter::{
     block_reference_can_spell, block_references_to, index_reads_the_rename_back,
     own_block_reference_lines, replace_block_id_refs_to, replace_block_reference_target,

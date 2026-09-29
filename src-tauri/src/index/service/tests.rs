@@ -2438,6 +2438,136 @@ async fn a_file_rename_does_not_report_a_same_stem_note_named_for_its_own_refere
 }
 
 #[tokio::test]
+async fn nested_roots_a_same_stem_note_is_named_once_for_a_line_two_indexes_hold() {
+    // issue 716: `sub/b/old.md` sits under both roots, so BOTH indexes name it
+    // for its one `((#^x))` line — two `(source, line)` pairs for one line.
+    // `named_referrers` folds them to one; the note holds one self-reference
+    // line, which accounts for it, so the rename does not report it. Left
+    // unfolded it would be named for two lines against one held and reported.
+    // Also pins issue 619 here: `[[a/old]]` is matched under the child root,
+    // where the file's path is `a/old`, and follows the rename.
+    // What fails this: removing the `dedup()` in `named_referrers` — the note
+    // is then named twice, `1 >= 2` fails, and it lands in `skipped_files`.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-716a", true).await;
+    std::fs::create_dir_all(dir.path().join("sub/a")).unwrap();
+    std::fs::create_dir_all(dir.path().join("sub/b")).unwrap();
+    std::fs::write(dir.path().join("sub/a/old.md"), "para\n").unwrap();
+    std::fs::write(dir.path().join("sub/b/old.md"), "((#^x))\n").unwrap();
+    std::fs::write(dir.path().join("sub/r.md"), "[[old]] [[a/old]]\n").unwrap();
+    let sub = format!("{root}/sub");
+    ctx.add(info("ctx-child", &sub, ContextType::Folder))
+        .await
+        .unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    refresh_index_inner(&state, &ctx, &sub).await.unwrap();
+
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{sub}/a/old.md"),
+        &format!("{sub}/a/new.md"),
+    )
+    .await
+    .unwrap();
+    assert!(
+        result.skipped_files.is_empty(),
+        "{:?}",
+        result.skipped_files
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("sub/r.md")).unwrap(),
+        "[[new]] [[a/new]]\n"
+    );
+    // Both links sit on one line of `r.md`, which is one backlink line.
+    let backlinks = get_backlinks_inner(&state, &ctx, &format!("{sub}/a/new.md"))
+        .await
+        .unwrap();
+    assert_eq!(sources(&backlinks), vec![format!("{sub}/r.md")]);
+}
+
+#[tokio::test]
+async fn a_same_stem_note_whose_stem_ends_in_md_is_reported_for_a_stale_cross_reference() {
+    // issue 716: `b/foo.md.md` has the stem `foo.md`. Its `((#^x))` is filed
+    // under the stem the extractor substitutes, read back as the note `foo`
+    // — not under this file's own key `foo.md` — so the index never counted
+    // that line for it, and crediting it as a self-reference hides a real
+    // stale referrer. Here the cross-reference `((foo.md.md#^b1))` went into
+    // a code span after the index was built; the note is named for that line
+    // and must be reported.
+    // What fails this: dropping the `link_reads_back_as_the_file` condition
+    // from the exemption in `rename/file.rs` — the one self-reference line
+    // then covers the one line named, and the file is not reported. (The
+    // same condition in `rename/block_id.rs` does not touch this test.)
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-716b", true).await;
+    std::fs::create_dir_all(dir.path().join("a")).unwrap();
+    std::fs::create_dir_all(dir.path().join("b")).unwrap();
+    std::fs::write(dir.path().join("a/foo.md.md"), "para ^b1\n").unwrap();
+    std::fs::write(
+        dir.path().join("b/foo.md.md"),
+        "((#^x))\n((foo.md.md#^b1))\n",
+    )
+    .unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    let stale = "((#^x))\n`((foo.md.md#^b1))`\n";
+    std::fs::write(dir.path().join("b/foo.md.md"), stale).unwrap();
+
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/a/foo.md.md"),
+        &format!("{root}/a/bar.md.md"),
+    )
+    .await
+    .unwrap();
+    assert_eq!(result.skipped_files, vec![format!("{root}/b/foo.md.md")]);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("b/foo.md.md")).unwrap(),
+        stale
+    );
+}
+
+#[tokio::test]
+async fn a_same_stem_note_whose_stem_ends_in_md_is_reported_for_a_stale_cross_reference_on_a_block_id_rename(
+) {
+    // issue 716, the block ID rename's side of the same exemption: the
+    // self-reference must use the id being renamed (`((#^b1))`) for the
+    // exemption to count it. The cross-reference went into a code span after
+    // the index was built, so the note is named for a line it no longer holds.
+    // What fails this: dropping the `link_reads_back_as_the_file` condition
+    // from the exemption in `rename/block_id.rs` — this test only. The file
+    // rename's copy of the condition is a different AND, killed by the
+    // sibling test above, and leaves this one red-free.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-716c", true).await;
+    std::fs::create_dir_all(dir.path().join("a")).unwrap();
+    std::fs::create_dir_all(dir.path().join("b")).unwrap();
+    std::fs::write(dir.path().join("a/foo.md.md"), "para ^b1\n").unwrap();
+    std::fs::write(
+        dir.path().join("b/foo.md.md"),
+        "((#^b1))\n((foo.md.md#^b1))\n",
+    )
+    .unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    let stale = "((#^b1))\n`((foo.md.md#^b1))`\n";
+    std::fs::write(dir.path().join("b/foo.md.md"), stale).unwrap();
+
+    let result = rename_block_id_inner(&state, &ctx, &format!("{root}/a/foo.md.md"), "b1", "b2")
+        .await
+        .unwrap();
+    assert_eq!(result.skipped_files, vec![format!("{root}/b/foo.md.md")]);
+    // Its own `^b1` self-reference is its own block, not the renamed one.
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("b/foo.md.md")).unwrap(),
+        stale
+    );
+}
+
+#[tokio::test]
 async fn a_reference_left_on_purpose_is_reported_before_the_same_stem_exemption_is_asked() {
     // issue 678: `b/old.md` holds `((#^x))` and `((old#^b1))` on ONE line, so
     // the index names it for one line and its own self-reference accounts for

@@ -4,7 +4,8 @@ use crate::context::manager::Registered;
 use crate::context::ContextManager;
 use crate::index::normalizer::{extract_id_from_stem, normalize_file_path};
 use crate::index::{
-    keys_for, own_block_reference_lines, replace_block_id_refs_to, BlockTarget, FilingKey,
+    keys_for, link_reads_back_as_the_file, own_block_reference_lines, replace_block_id_refs_to,
+    BlockTarget, FilingKey,
 };
 use std::collections::HashMap;
 
@@ -60,13 +61,22 @@ pub(crate) async fn rename_block_id_inner(
     // many self-reference lines as the index named it for. The stem alone is
     // not why the index named it: a same-stem note whose `((note#^id))` to
     // the target has gone since, self-reference beside it or not, holds
-    // fewer, and is stale like any other.
+    // fewer, and is stale like any other. A note whose stem ends in `.md`
+    // (`foo.md.md`) is never exempt: its `((#^id))` is filed under another
+    // note's key (`foo`), so its self-reference lines were not counted under
+    // this file's key and cannot be credited against what the index named it
+    // for (issue 716).
     let named_for_its_own_references = |path: &str, content: &str| {
         let stem = FilingKey::Stem(normalize_file_path(path));
-        target
-            .keys_by_root
-            .iter()
-            .any(|(_, keys)| keys.contains(&stem))
+        let file_stem = std::path::Path::new(path)
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default();
+        link_reads_back_as_the_file(&file_stem)
+            && target
+                .keys_by_root
+                .iter()
+                .any(|(_, keys)| keys.contains(&stem))
             && named_lines
                 .get(path)
                 .is_some_and(|&lines| own_block_reference_lines(content, Some(old_id)) >= lines)

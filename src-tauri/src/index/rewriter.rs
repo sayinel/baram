@@ -79,7 +79,7 @@ pub fn replace_wikilink_target(
 /// or one padded with spaces. That is the `diagram.md.txt` confusion seen
 /// from the writing side: there a file claimed a note's links, here a file
 /// would hand its links to a note.
-fn link_reads_back_as_the_file(stem: &str) -> bool {
+pub(crate) fn link_reads_back_as_the_file(stem: &str) -> bool {
     normalize_target(stem) == file_key(stem)
 }
 

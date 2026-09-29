@@ -5,8 +5,8 @@ use crate::context::ContextManager;
 use crate::index::relative_links::{path_components, same_component};
 use crate::index::{
     block_reference_can_spell, block_references_to, index_reads_the_rename_back,
-    own_block_reference_lines, replace_block_reference_target, replace_wikilink_target,
-    wikilink_can_spell, wikilinks_to, RenameTarget, RewritePass,
+    link_reads_back_as_the_file, own_block_reference_lines, replace_block_reference_target,
+    replace_wikilink_target, wikilink_can_spell, wikilinks_to, RenameTarget, RewritePass,
 };
 use std::collections::HashMap;
 use std::path::Path;
@@ -84,10 +84,19 @@ pub(crate) async fn rename_file_with_links_inner(
     // the index for its own `((#^id))` references, filed under its stem —
     // the old name's key. The rewrite rightly leaves those alone, and the
     // note is not stale news while its prose self-references, of any block,
-    // account for every line the index named it for.
+    // account for every line the index named it for. A note whose stem ends
+    // in `.md` (`foo.md.md`) is never exempt: its `((#^id))` is filed under
+    // another note's key (`foo`), so its self-reference lines were not
+    // counted under this file's key and cannot be credited against what the
+    // index named it for (issue 716).
     let old_key = crate::index::normalizer::normalize_file_path(old_path);
     let named_for_its_own_references = |path: &str, content: &str| {
-        crate::index::normalizer::normalize_file_path(path) == old_key
+        let file_stem = Path::new(path)
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default();
+        link_reads_back_as_the_file(&file_stem)
+            && crate::index::normalizer::normalize_file_path(path) == old_key
             && named_lines
                 .get(path)
                 .is_some_and(|&lines| own_block_reference_lines(content, None) >= lines)
