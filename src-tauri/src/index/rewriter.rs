@@ -36,12 +36,18 @@ static REF_REPLACE_RE: LazyLock<Regex> =
 /// issue 678 · issue 619: the target test is the index's filing rule
 /// (`RenameTarget::refers`) — the link's target keyed by `filing_key` under
 /// each root in `covering_roots`, the roots whose index covers `ref_path` —
-/// so every link the index filed under the renamed file's keys is rewritten
-/// and none is left to be reported as stale: a bare `[[Old.md]]` by its
-/// stem, a path-qualified `[[a/old]]` or a relative `[[./old]]` by the
-/// file's path under a covering root. A file whose stem itself ends in `.md`
-/// (`diagram.md.txt`) never claims the note `diagram.md`'s links, and a link
-/// behind another vault's alias (`[[work::old]]`) is that vault's and stays.
+/// so a link is rewritten exactly when the index files it under one of the
+/// renamed file's keys, on three conditions: a wikilink can spell the new
+/// stem (otherwise nothing is written — the paragraph below), the paths are
+/// spelled under the roots as registered (a file given in another spelling of a symlinked
+/// root, `/private/tmp` for `/tmp`, has no `Path` key, so its path links
+/// are missed, never miswritten), and `target.local_aliases` are the ones
+/// the caller read when the rename started (a re-claim made since is not
+/// seen). The keys are a bare `[[Old.md]]`'s stem, and for a path-qualified
+/// `[[a/old]]` or a relative `[[./old]]` the file's path under a covering
+/// root. A file whose stem itself ends in `.md` (`diagram.md.txt`) never
+/// claims the note `diagram.md`'s links, and a link behind an alias that is
+/// not local (`[[work::old]]` naming another vault) is that vault's and stays.
 /// The new text is `RenameTarget::respell`: the new stem, or the new path,
 /// with the `.md` or `.markdown` the link was spelled with when the new file
 /// name ends in one too, and without it otherwise.

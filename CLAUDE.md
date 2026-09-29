@@ -176,8 +176,8 @@ baram/
   ② 의 판정은 두 층이다 — stem 만 보는 `…_can_spell`(본체는 문자 열거가 아니라 `link_reads_back_as_the_file`)과,
   두 패스가 낸 내용을 `extract_links` 로 **되읽는** `index_reads_the_rename_back`(`LinkPasses::rewrite`). 술어를 통과한
   stem 도 referrer 줄의 백틱과 짝을 지어 링크를 literal 로 만들 수 있고, 그건 stem 이 아니라 **줄**의 성질이라 되읽어야
-  보인다. ③ 의 `skipped.push` 는 한 곳이 아니다 — `rename/referrers.rs` 여섯(referrer 의 원인별)과 `rename/file.rs`
-  하나(rename 되는 노트); `LinkPasses` 는 `left_behind` 플래그만 세운다
+  보인다. ③ 의 `skipped.push` 는 한 곳이 아니다 — `rename/referrers.rs` 에 referrer 의 원인마다 하나씩(덮는 context 가 없는
+  referrer 도 그중 하나다)과 `rename/file.rs`(rename 되는 노트); `LinkPasses` 는 `left_behind` 플래그만 세운다
   ‼️ **index 의 키는 `filing.rs` 가 정한다 (#619)** — `incoming` 의 키는 문자열이 아니라 `FilingKey`(`Stem`·`Path`·`Foreign`)다.
   참조를 키로 바꾸는 함수는 `filing_key` 하나다 — filing(`file_incoming`), rewriter 판정(`RenameTarget::refers`·`BlockTarget::refers`
   가 함께 쓰는 `keyed_under`), 되읽기 관문(`index_reads_the_rename_back`)이 모두 그것을 부른다. 파일이 읽히는 키는 `keys_for` 가
@@ -196,13 +196,21 @@ baram/
   들어오는 새 키 모양은 **어느 쪽도 보지 못한다**. 새 표기를 더하면 이 픽스처에 먼저 넣을 것.
   판정은 referrer 를 **덮는** root 의 index 로만 한다 — `/v` 와 `/v/sub` 가 둘 다 root 일 때 `/v/r.md` 의 `[[a/old]]` 는 `/v`
   아래에서만 읽혀 `/v/a/old.md` 를 가리키므로, 자식 root 아래 경로가 같은 `/v/sub/a/old.md` 의 rename 은 그것을 **고치지 않는다**
-  (`service/tests.rs` 의 `nested_roots_a_rename_leaves_the_parents_colliding_link_alone`). 되읽기 관문도 덮는 root 마다 따로 읽는다
+  (`service/tests.rs` 의 `nested_roots_a_rename_leaves_the_parents_colliding_link_alone`). 되읽기 관문도 덮는 root 마다 따로 읽는다.
+  ‼️ 이 말이 정확한 것은 부모 root **만** 덮는 referrer 에 대해서다 — 두 root 가 함께 덮는 `/v/sub/r.md` 는 덮는 root 중 먼저 맞는
+  쪽 아래에서 고쳐 쓰이고, 다른 root 가 같은 링크를 **실재하는 다른 파일로** 읽으면(`/v/a/old.md` 와 `/v/sub/a/old.md` 가 둘 다
+  있을 때) 그 읽힘은 보고 없이 끊긴다. 알려진 비용이고 같은 테스트가 그것을 고정한다 — 파일 존재를 보는 판정은 후속 과제다.
+  키는 **등록된 root 표기에 대해 어휘적으로** 계산한다 — symlink 인 root 의 다른 표기(`/tmp` 에 대한 `/private/tmp`)로 주어진 파일은
+  `Path` 키를 얻지 못해 경로 링크가 **놓칠 뿐** 잘못 고쳐 쓰이지는 않는다
   ‼️ **이 판정 두 층은 파일 rename 입구에만 있다** — 디렉터리 rename 이 `relative_links.rs` 로 고쳐 쓰는 `[[./x]]`·`[[../x]]` 는
   거치지 않고(폴더를 `C# notes` 로 바꾸면 `[[./C# notes/x]]` 가 쓰여 `./C` 로 읽힌다 — 실측), block ID rename 의 새 id 는 프런트
   `BLOCK_ID_PATTERN` 이 거르며 Rust 는 재검증하지 않는다. 프런트의 블록 메뉴 "링크 복사" 도 판정 없이 쓴다. 링크를 쓰는
   입구를 더하거나 고칠 때 이 층을 같이 걸 것
   - **vault 자신의 alias(`[[work::note]]`, §87)는 context 가 그 alias 를 아직 소유할 때만 로컬이다 (#717)** — `claim_alias` 가
-    last-writer-wins 라 소유는 `resolve_alias` 로 확인한다(`service/keys.rs` 의 `local_aliases_of`). 로컬 alias 는
+    last-writer-wins 라 소유는 `resolve_alias` 로 확인한다(`service/keys.rs` 의 `local_aliases_of`). 소유는 rename 이 **시작할 때**
+    한 번 읽으므로 rename 도중의 재점유는 보이지 않는다. 다른 vault 가 대소문자만 다른 같은 alias 를 달고 있으면(`Work` 와 `work`)
+    그 alias 는 **모호하므로 양쪽 모두에게 외부다** — backend alias 맵은 정확한 문자열로, 프런트 `findAliasContext` 는 대소문자 무시로
+    context 순서대로 고르니 둘이 다른 vault 를 가리킬 수 있다. 그런 링크는 rename 이 건드리지 않고 백링크도 주장하지 않는다. 로컬 alias 는
     `LocalAlias { alias, root }` 로 다니고, alias 뒤 경로의 `Foreign` 키는 읽는 index 의 root 가 아니라 **그 alias 가 가리키는 vault 의
     root 로** 계산한다 — 중첩 vault 에서 부모의 `[[p::a/old]]` 가 자식의 `a/old.md` 로 읽히지 않게. block reference·embed 문법에는
     alias 자리가 없어(`extractor.rs` 의 `BLOCK_REF_RE`·`BLOCK_EMBED_RE`) block ID rename 은 alias 를 넘기지 않는다

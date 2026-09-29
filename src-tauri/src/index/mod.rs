@@ -169,7 +169,8 @@ pub struct LinkIndex {
     outgoing: HashMap<String, Vec<LinkEntry>>,
     /// The key a link is filed under (`filing_key`: its stem, its path under
     /// `root_path`, or its vault alias with its target) → the links filed
-    /// there. A file's backlinks are read under `keys_for` its path.
+    /// there. A file's backlinks are read under `backlink_keys`: `keys_for`
+    /// its path, plus the zettel id in its stem when it has one.
     incoming: HashMap<FilingKey, Vec<LinkEntry>>,
     /// Root path of the vault
     root_path: Option<String>,

@@ -2730,7 +2730,7 @@ async fn a_rename_that_keeps_the_stem_still_respells_a_path_link_for_the_new_ext
     // `a/old.txt`, since only a note extension comes off. The bare link
     // stays; the path link is respelled, and both remain backlinks.
     // What fails this: spelling a path link's last component with the new
-    // stem (`Path::file_stem`, every extension off) instead of the name
+    // stem (`Path::file_stem`, its last extension off) instead of the name
     // without its note extension — `[[a/old]]` then stays and names nothing.
     // A link spelled with `.md` loses it, because the new name is no note:
     // `[[a/old.md]]` becomes `[[a/old.txt]]` and the bare `[[old.md]]`
@@ -3473,6 +3473,12 @@ async fn nested_roots_a_rename_leaves_the_parents_colliding_link_alone() {
     };
     assert_eq!(backlinks_in(&root, &new_path).await, Some(2));
     assert_eq!(backlinks_in(&sub, &new_path).await, Some(1));
+    // A known cost, pinned on purpose: before the rename `/v/a/old.md` was
+    // also a backlink target of `sub/r.md`, whose `[[a/old]]` the parent
+    // reads as `/v/a/old.md`. `sub/r.md` is covered by both roots, and its
+    // link was respelled under the child root, where it named the renamed
+    // file — so the parent's reading broke without a report, and only
+    // `r.md` is left. An existence-aware check is a followup.
     let colliding = get_backlinks_inner(&state, &ctx, &format!("{root}/a/old.md"))
         .await
         .unwrap();

@@ -11,10 +11,12 @@ use super::relative_links::{
 pub enum FilingKey {
     /// A bare name with no separator: `[[Note]]` → `note`.
     Stem(String),
-    /// A target with a separator, as a lowercase root-relative path without
-    /// its note extension: `[[Dir/Note.md]]` → `dir/note`.
+    /// A path-qualified target: resolved root-relative when it is relative
+    /// (`./`, `../`) and lands under the root, else the written text folded —
+    /// lowercase, one note extension off, and on Windows a non-relative
+    /// target's `\` made `/` (`filing_key`): `[[Dir/Note.md]]` → `dir/note`.
     Path(String),
-    /// A target qualified by a vault alias: `[[work:Old]]` files under the
+    /// A target qualified by a vault alias: `[[work::Old]]` files under the
     /// alias and the target text — its separators folded as a path's on
     /// Windows — never resolved against this vault's root.
     Foreign { alias: String, target: String },
@@ -233,7 +235,7 @@ pub struct RenameTarget<'a> {
 
 /// The stem of the file at `path`, read from its last component so that a
 /// Windows path is read on any host: `std::path::Path::file_stem` of that
-/// name — every extension a file may have, as `keys_for` reads it.
+/// name — the name without its last extension, as `keys_for` reads it.
 fn stem_of(path: &str, windows: bool) -> &str {
     let name = path_components(path, windows).last().copied().unwrap_or("");
     std::path::Path::new(name)
@@ -485,7 +487,7 @@ mod tests {
 
     #[test]
     fn an_alias_target_files_as_foreign_with_the_alias_folded() {
-        // What fails this: dropping the alias arm, so `[[Work:Old]]` files as a stem.
+        // What fails this: dropping the alias arm, so `[[Work::Old]]` files as a stem.
         let key = |a, t| filing_key("/v/r.md", t, Some(a), Some("/v"), false);
         assert_eq!(key("Work", "Old.md"), foreign("work", "old"));
         assert_eq!(key("work", "dir/Old"), foreign("work", "dir/old"));
