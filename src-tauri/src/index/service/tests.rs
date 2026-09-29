@@ -4500,6 +4500,48 @@ async fn a_case_only_rename_is_a_rename_of_the_file_itself_where_the_file_system
 
 #[cfg(unix)]
 #[tokio::test]
+async fn renaming_a_note_that_is_a_symlink_indexes_the_link_where_it_moved() {
+    // `note.md` is a symlink to `real/x.md`. The rename moves the link to
+    // `new.md` and leaves `real/x.md` where it is, so the index names the
+    // renamed note at `new.md` — not at the target's folder, which holds no
+    // `new.md`.
+    // What fails this: taking the new name onto `old_identity` in
+    // `rename_file_with_links_inner` (`old_identity.with_file_name`) —
+    // `old_identity` resolved through the link to `real/x.md`, and the
+    // graph names the phantom `real/new.md`.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-symnote", true).await;
+    std::fs::create_dir_all(dir.path().join("real")).unwrap();
+    std::fs::write(dir.path().join("real/x.md"), "see [[b]]\n").unwrap();
+    std::os::unix::fs::symlink("real/x.md", dir.path().join("note.md")).unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+
+    rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/note.md"),
+        &format!("{root}/new.md"),
+    )
+    .await
+    .unwrap();
+    assert!(std::fs::symlink_metadata(dir.path().join("new.md"))
+        .unwrap()
+        .file_type()
+        .is_symlink());
+    assert!(!dir.path().join("real/new.md").exists());
+    let graph = state
+        .with_index(&root, |idx| idx.unwrap().get_link_graph())
+        .await;
+    assert!(graph.nodes.contains(&format!("{root}/new.md")), "{graph:?}");
+    assert!(
+        !graph.nodes.contains(&format!("{root}/real/new.md")),
+        "{graph:?}"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
 async fn a_rename_onto_a_symlink_to_the_note_itself_is_refused() {
     // `link.md` is a symlink to `old.md`: it resolves to the note, but it is
     // another entry, and renaming onto it would replace the link.

@@ -120,11 +120,13 @@ pub(crate) async fn rename_file_with_links_inner(
     // The canonical identity of the file being renamed, resolved before it
     // moves (the new path does not exist yet: resolve_canonical builds it on
     // its existing parent). The index takes the new name as `new_path` spells
-    // it, on that canonical parent: after a case-only rename on a file system
-    // that folds case, `renamed_identity` is the file as it was before the
-    // move — `Note.md` — while the move leaves it `note.md`.
+    // it, on the parent `renamed_identity` resolved: after a case-only rename
+    // on a file system that folds case, `renamed_identity` is the file as it
+    // was before the move — `Note.md` — while the move leaves it `note.md`.
+    // Not `old_identity`'s parent: a note that is itself a symlink resolves
+    // to its target, and `fs::rename` moves the link, not the target.
     let new_identity = match Path::new(new_path).file_name() {
-        Some(name) => old_identity.with_file_name(name),
+        Some(name) => renamed_identity.with_file_name(name),
         None => renamed_identity.clone(),
     };
     let remove_old = Mutation::Remove {
