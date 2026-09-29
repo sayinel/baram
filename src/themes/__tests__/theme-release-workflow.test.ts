@@ -225,10 +225,14 @@ describe("release-theme — 기록된 checksum 관문을 실행한다", () => {
     expect(output).toContain("record the pre-publish check's sha256");
   });
 
+  // 무엇이 이것을 실패시키는가(뒤의 두 행): 관문이 줄 전체가 아니라 부분 문자열로 대조하면 — `grep
+  // -qxF` 에서 `-x` 가 빠지면 맞는 줄을 **품은** 줄도 통과한다(zip 이름이 더 긴 줄, 주석으로 막은 줄).
   it.each([
     ["다른 해시", `${"c".repeat(64)}  ${ZIP}\n`],
     ["다른 버전의 줄뿐", `${SUM}  baram-hangul-0.9.0.zip\n`],
     ["공백 하나로 적은 줄", `${SUM} ${ZIP}\n`],
+    ["이 zip 의 줄에 이름이 덧붙은 줄뿐", `${SUM}  ${ZIP}.old\n`],
+    ["이 zip 의 줄을 주석으로 막은 줄뿐", `# ${SUM}  ${ZIP}\n`],
   ])(
     "%s 이면 거부한다 — 여기서 만든 zip 이 점검한 zip 이 아니다",
     (_, sums) => {

@@ -353,6 +353,35 @@ describe("verifyThemeArchive (스펙 0063 §7.3 — 묶인 zip 을 다시 검증
     expect(result).toMatchObject({ ok: false });
   });
 
+  // 무엇이 이것을 실패시키는가: 다시 검증이 매니페스트를 기본 `TextDecoder` 로 읽으면 — BOM 을 조용히
+  // 떼고 통과시킨다. 앱의 스테이징은 매니페스트를 `serde_json::from_str` 로 읽고
+  // (`src-tauri/src/plugin/install.rs`) 그 파서는 BOM 을 받지 않으므로, 묶기(`packageTheme`)와 같이
+  // 거부해야 한다.
+  it("BOM 으로 시작하는 매니페스트는 거부한다", async () => {
+    const bytes = await zipOf({
+      "baram-theme.json": `\uFEFF${hangulFile("baram-theme.json").toString("utf8")}`,
+      "light/tokens.json": hangulFile("light/tokens.json"),
+      "dark/tokens.json": hangulFile("dark/tokens.json"),
+    });
+    const result = await verifyThemeArchive(bytes, expected);
+    expect(result).toMatchObject({ ok: false });
+    if (result.ok) return;
+    expect(result.error).toContain("the packaged baram-theme.json is invalid");
+  });
+
+  // 위 케이스의 짝: BOM 거부는 매니페스트에만 건다. 앱은 토큰 파일을 `ignoreBOM` 없이 디코드해 BOM 을
+  // 떼고 읽으므로(`theme-store-fs.ts` 의 `readStagedThemeText`) 토큰의 BOM 까지 거부하면 앱이 설치하는
+  // 테마를 게시가 막는다 — 그러면 이것이 실패한다.
+  it("토큰 파일의 BOM 은 받는다 — 앱이 떼고 읽는다", async () => {
+    const bytes = await zipOf({
+      "baram-theme.json": hangulFile("baram-theme.json"),
+      "light/tokens.json": `\uFEFF${hangulFile("light/tokens.json").toString("utf8")}`,
+      "dark/tokens.json": hangulFile("dark/tokens.json"),
+    });
+    const result = await verifyThemeArchive(bytes, expected);
+    expect(result.ok, result.ok ? "" : result.error).toBe(true);
+  });
+
   // 묶기와 같은 관문(`tokensProblem`)을 다시 검증도 지난다 — 상한이 한쪽에만 있으면 이것이 실패한다.
   it("앱이 읽는 상한을 넘는 토큰 파일은 거부한다", async () => {
     const bytes = await zipOf({

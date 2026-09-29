@@ -380,9 +380,14 @@ export async function verifyThemeArchive(
     }
     let manifestText: string;
     try {
-      manifestText = new TextDecoder("utf-8", { fatal: true }).decode(
-        manifestBytes,
-      );
+      // `packageTheme` 과 같은 디코드다 — `ignoreBOM: true` 가 BOM 을 파서에 넘겨 거부되게 한다. 앱의
+      // 스테이징이 매니페스트를 BOM 을 받지 않는 `serde_json::from_str` 로 읽는다(`packageTheme` 의
+      // 같은 주석). 토큰 파일은 이렇게 읽지 않는다: 앱은 토큰을 `ignoreBOM` 없이 디코드해 BOM 을
+      // 떼므로(`theme-store-fs.ts` 의 `readStagedThemeText`), 여기서 거부하면 앱이 설치하는 테마를 막는다.
+      manifestText = new TextDecoder("utf-8", {
+        fatal: true,
+        ignoreBOM: true,
+      }).decode(manifestBytes);
     } catch {
       return refuse(`the packaged ${THEME_MANIFEST} is not valid UTF-8`);
     }
@@ -424,7 +429,7 @@ export async function verifyThemeArchive(
       const problem = tokensProblem(path, bytesOf);
       if (problem !== null) return refuse(problem);
       const result = parseThemeTokens(
-        JSON.parse(new TextDecoder().decode(bytesOf)),
+        JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytesOf)),
       );
       if (result.ok)
         preview[mode as ThemeMode] = previewPaletteFrom(result.colors, mode);
