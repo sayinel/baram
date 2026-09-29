@@ -18,24 +18,38 @@ pub(super) async fn owning_contexts(ctx_mgr: &ContextManager, path: &str) -> Vec
 
 /// The vault aliases local to `contexts` (§87): each one's alias, lowercase,
 /// with its registered path as the root the alias resolves paths against —
-/// while that context still owns it, which `ctx_mgr.resolve_alias` says.
+/// while that context still owns it, which `ctx_mgr.resolve_alias` says, and
+/// no other registered context carries the same alias in any case.
 /// Ownership is checked because `claim_alias` is last-writer-wins: a vault
 /// whose alias a later registration took no longer answers to it, and a link
-/// behind that alias names the other vault's note. Lowercase because the
-/// frontend's `findAliasContext` compares aliases case-insensitively and
+/// behind that alias names the other vault's note. The second condition is
+/// there because the two sides resolve an alias differently: the backend
+/// alias map is keyed by the exact registered string, so vault A may own
+/// `Work` while vault B owns `work`, but the frontend's `findAliasContext`
+/// compares aliases case-insensitively and takes the first context in its
+/// list. A link either vault could be meant by is ambiguous, so it is
+/// foreign to both: the rename leaves it and the backlinks do not claim it.
+/// Ownership is read when this is called — a rename reads it once, at its
+/// start, and does not see a re-claim made while it runs. Lowercase because
 /// `filing_key` lowercases a `Foreign` key's alias; this is the one fold on
-/// this side (`LocalAlias`). The alias map itself is keyed by the exact
-/// registered string, so two vaults aliased `Work` and `work` both own
-/// theirs and both read `work` as local — an ambiguity older than this
-/// list. Sorted, without repeats.
+/// this side (`LocalAlias`). Sorted, without repeats.
 pub(super) async fn local_aliases_of(
     ctx_mgr: &ContextManager,
     contexts: &[Registered],
 ) -> Vec<LocalAlias> {
+    let registered = ctx_mgr.list().await;
     let mut aliases = Vec::new();
     for c in contexts {
         if let Some(alias) = &c.info.alias {
-            if ctx_mgr.resolve_alias(alias).await.as_ref() == Some(&c.info.id) {
+            let owned = ctx_mgr.resolve_alias(alias).await.as_ref() == Some(&c.info.id);
+            let ambiguous = registered.iter().any(|other| {
+                other.id != c.info.id
+                    && other
+                        .alias
+                        .as_deref()
+                        .is_some_and(|a| a.to_lowercase() == alias.to_lowercase())
+            });
+            if owned && !ambiguous {
                 aliases.push(LocalAlias {
                     alias: alias.to_lowercase(),
                     root: c.info.path.clone(),

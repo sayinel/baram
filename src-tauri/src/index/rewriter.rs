@@ -43,7 +43,8 @@ static REF_REPLACE_RE: LazyLock<Regex> =
 /// (`diagram.md.txt`) never claims the note `diagram.md`'s links, and a link
 /// behind another vault's alias (`[[work::old]]`) is that vault's and stays.
 /// The new text is `RenameTarget::respell`: the new stem, or the new path,
-/// with the `.md` or `.markdown` the link was spelled with.
+/// with the `.md` or `.markdown` the link was spelled with when the new file
+/// name ends in one too, and without it otherwise.
 ///
 /// A stem no wikilink can spell (`wikilink_can_spell`) is never written —
 /// a path link's last component is that stem too: the content comes back as

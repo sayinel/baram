@@ -103,9 +103,11 @@ pub(super) enum Unchanged<'a> {
 /// rewrites its content itself; a block ID rename leaves it to the editor's
 /// buffer). `rewrite` is given the referrer's content, its path, and the
 /// contexts among `dirs` that cover it (`contexts_covering`) — the roots its
-/// references are judged under. A referrer that cannot be read, resolves
-/// outside `dirs`, or cannot be written is reported in `skipped`; nothing
-/// here fails the rename, because the caller is past its point of no return.
+/// references are judged under. A referrer that cannot be read, that no
+/// context among `dirs` covers (whatever `unchanged` says), that resolves
+/// outside `dirs`, or that cannot be written is reported in `skipped`;
+/// nothing here fails the rename, because the caller is past its point of
+/// no return.
 pub(super) async fn rewrite_referrers(
     referring_files: &[String],
     own_path: &str,
@@ -135,6 +137,19 @@ pub(super) async fn rewrite_referrers(
             }
         };
         let covering = contexts_covering(ctx_mgr, &keys, ref_path).await;
+        // The index named this file, so it may hold a link to the old name,
+        // but no registration among `dirs` covers it now — a context removed
+        // mid-rename, or a path that resolves outside every registered root
+        // (a symlink planted after the scan). The judgement reads links under
+        // the covering roots and would see none here, so the file is reported
+        // whatever `unchanged` says, never passed to `rewrite`.
+        if covering.is_empty() {
+            log::warn!(
+                "rename: {ref_path} was named by the index but no registered context covers it now, its links are left as they are"
+            );
+            result.skipped.push(ref_path.clone());
+            continue;
+        }
         let Rewrite {
             content: new_content,
             left_behind,

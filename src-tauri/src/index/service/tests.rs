@@ -2732,11 +2732,20 @@ async fn a_rename_that_keeps_the_stem_still_respells_a_path_link_for_the_new_ext
     // What fails this: spelling a path link's last component with the new
     // stem (`Path::file_stem`, every extension off) instead of the name
     // without its note extension — `[[a/old]]` then stays and names nothing.
+    // A link spelled with `.md` loses it, because the new name is no note:
+    // `[[a/old.md]]` becomes `[[a/old.txt]]` and the bare `[[old.md]]`
+    // becomes `[[old]]`.
+    // What fails this too: keeping the captured suffix whatever the new name
+    // ends in (`respell`) — `[[a/old.txt.md]]` and `[[old.md]]` are written.
     let ctx = ContextManager::new();
     let (dir, root) = vault_with_a_link(&ctx, "ctx-619t", true).await;
     std::fs::create_dir_all(dir.path().join("a")).unwrap();
     std::fs::write(dir.path().join("a/old.md"), "t\n").unwrap();
-    std::fs::write(dir.path().join("r.md"), "[[old]]\n[[a/old]]\n").unwrap();
+    std::fs::write(
+        dir.path().join("r.md"),
+        "[[old]]\n[[a/old]]\n[[a/old.md]]\n[[old.md]]\n",
+    )
+    .unwrap();
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
 
@@ -2756,12 +2765,12 @@ async fn a_rename_that_keeps_the_stem_still_respells_a_path_link_for_the_new_ext
     );
     assert_eq!(
         std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
-        "[[old]]\n[[a/old.txt]]\n"
+        "[[old]]\n[[a/old.txt]]\n[[a/old.txt]]\n[[old]]\n"
     );
     let backlinks = get_backlinks_inner(&state, &ctx, &format!("{root}/a/old.txt"))
         .await
         .unwrap();
-    assert_eq!(backlinks.len(), 2, "{backlinks:?}");
+    assert_eq!(backlinks.len(), 4, "{backlinks:?}");
 }
 
 #[tokio::test]
@@ -3478,11 +3487,18 @@ async fn a_rename_to_markdown_extension_keeps_every_link() {
     // What fails this: respelling a path link's last component with the new
     // file name instead of the name without its note extension — `[[a/old]]`
     // becomes `[[a/old.markdown]]` and `r.md` joins `updated_files`.
+    // `[[a/old.md]]` keeps its `.md`: the new name ends in a note extension,
+    // so `respell` keeps the captured suffix and writes the same text, which
+    // the index keys as `a/old` — the new file's path key.
     let ctx = ContextManager::new();
     let (dir, root) = vault_with_a_link(&ctx, "ctx-619x", true).await;
     std::fs::create_dir_all(dir.path().join("a")).unwrap();
     std::fs::write(dir.path().join("a/old.md"), "t\n").unwrap();
-    std::fs::write(dir.path().join("r.md"), "[[old.md]]\n[[a/old]]\n").unwrap();
+    std::fs::write(
+        dir.path().join("r.md"),
+        "[[old.md]]\n[[a/old]]\n[[a/old.md]]\n",
+    )
+    .unwrap();
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
 
@@ -3502,12 +3518,12 @@ async fn a_rename_to_markdown_extension_keeps_every_link() {
     );
     assert_eq!(
         std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
-        "[[old.md]]\n[[a/old]]\n"
+        "[[old.md]]\n[[a/old]]\n[[a/old.md]]\n"
     );
     let backlinks = get_backlinks_inner(&state, &ctx, &format!("{root}/a/old.markdown"))
         .await
         .unwrap();
-    assert_eq!(backlinks.len(), 2, "{backlinks:?}");
+    assert_eq!(backlinks.len(), 3, "{backlinks:?}");
 }
 
 /// A folder context registered under `id` with the vault alias `alias`,
@@ -3674,8 +3690,12 @@ async fn an_alias_another_vault_has_since_claimed_is_no_longer_local() {
     // Two vaults carry the alias `work`; the later registration owns it
     // (`claim_alias`, last writer wins), so in A `[[work::old]]` names B's
     // note: no backlink of A's `old.md`, and A's rename leaves it.
-    // What fails this: dropping the `resolve_alias` ownership check from
-    // `local_aliases_of` — `work` is then local to A too.
+    // What fails this: dropping both conditions of `local_aliases_of` — the
+    // `resolve_alias` ownership check and the check that no other context
+    // carries the alias. Either alone excludes `work` here, since B carries
+    // it too; dropping only the ownership check leaves this test and the
+    // whole suite green (run once). Ownership alone decides only when the
+    // owner was removed or re-aliased and no context claimed the alias back.
     let ctx = ContextManager::new();
     let (dir_a, root_a) = aliased_vault(
         &ctx,
@@ -3802,4 +3822,100 @@ async fn nested_vaults_an_aliased_path_link_names_the_aliased_vaults_note() {
         std::fs::read_to_string(dir.path().join("sub/r.md")).unwrap(),
         "[[p::a/old]]\n[[s::a/new]]\n"
     );
+}
+
+/// Vault A (alias `Work`) and vault B (alias `work`), registered in the order
+/// `a_first` says; A's `r.md` holds `[[work::old]]` and `[[old]]`. A's
+/// `old.md` is renamed to `new.md`.
+async fn rename_beside_a_case_colliding_alias(a_first: bool) {
+    let ctx = ContextManager::new();
+    let a_files: &[(&str, &str)] = &[("old.md", "t\n"), ("r.md", "[[work::old]]\n[[old]]\n")];
+    let b_files: &[(&str, &str)] = &[("old.md", "t\n")];
+    let ((dir_a, root_a), _b) = if a_first {
+        let a = aliased_vault(&ctx, "ctx-a", "Work", a_files).await;
+        let b = aliased_vault(&ctx, "ctx-b", "work", b_files).await;
+        (a, b)
+    } else {
+        let b = aliased_vault(&ctx, "ctx-b", "work", b_files).await;
+        let a = aliased_vault(&ctx, "ctx-a", "Work", a_files).await;
+        (a, b)
+    };
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root_a).await.unwrap();
+    let (old, referrer) = (format!("{root_a}/old.md"), format!("{root_a}/r.md"));
+    assert_eq!(
+        backlink_lines(&state, &ctx, &old, &referrer).await,
+        vec![2],
+        "a_first = {a_first}"
+    );
+
+    let result = rename_file_with_links_inner(&state, &ctx, &old, &format!("{root_a}/new.md"))
+        .await
+        .unwrap();
+    assert_eq!(result.updated_files, vec![referrer], "a_first = {a_first}");
+    assert!(
+        result.skipped_files.is_empty(),
+        "a_first = {a_first}: {:?}",
+        result.skipped_files
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir_a.path().join("r.md")).unwrap(),
+        "[[work::old]]\n[[new]]\n",
+        "a_first = {a_first}"
+    );
+}
+
+#[tokio::test]
+async fn aliases_differing_only_in_case_make_the_link_foreign_for_both_vaults() {
+    // The backend alias map is keyed by the exact string, so A owns `Work`
+    // and B owns `work` at once; the frontend resolves `[[work::old]]`
+    // case-insensitively by context order, so the link may mean either
+    // vault. It is foreign: no backlink of A's `old.md`, and A's rename
+    // leaves it — in either registration order.
+    // What fails this: dropping the "no other context carries this alias in
+    // any case" condition from `local_aliases_of` — A owns `Work`, so
+    // `work` is local to A, the link is a backlink, and the rename writes
+    // `[[work::new]]`.
+    rename_beside_a_case_colliding_alias(true).await;
+    rename_beside_a_case_colliding_alias(false).await;
+}
+
+// Unix only: the referrer is replaced by a symlink.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_referrer_no_registered_context_covers_is_reported() {
+    // The index named `r.md`, which then became a symlink to a file outside
+    // every registered root: no covering root, so the judgement would see
+    // no link in it. `a/old.md` → `a/old.txt` keeps the stem, so an
+    // unchanged referrer is otherwise no news (`Unchanged::Ignore`); this
+    // one is reported, and the file it points to is untouched.
+    // What fails this: removing the empty-covering branch in
+    // `rewrite_referrers` — the rewrite sees no covering root, changes
+    // nothing, and `Ignore` drops the file silently.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-uncovered", true).await;
+    std::fs::create_dir_all(dir.path().join("a")).unwrap();
+    std::fs::write(dir.path().join("a/old.md"), "t\n").unwrap();
+    std::fs::write(dir.path().join("r.md"), "[[a/old]]\n").unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+
+    let other = tempfile::tempdir().unwrap();
+    let outside = other.path().join("r.md");
+    std::fs::write(&outside, "[[a/old]]\n").unwrap();
+    std::fs::remove_file(dir.path().join("r.md")).unwrap();
+    std::os::unix::fs::symlink(&outside, dir.path().join("r.md")).unwrap();
+
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/a/old.md"),
+        &format!("{root}/a/old.txt"),
+    )
+    .await
+    .unwrap();
+    assert!(dir.path().join("a/old.txt").exists());
+    assert_eq!(result.updated_files, Vec::<String>::new());
+    assert_eq!(result.skipped_files, vec![format!("{root}/r.md")]);
+    assert_eq!(std::fs::read_to_string(&outside).unwrap(), "[[a/old]]\n");
 }

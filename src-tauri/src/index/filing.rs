@@ -382,9 +382,20 @@ impl RenameTarget<'_> {
     /// `relative`, the way from the referrer's folder (`relative_components`)
     /// — spelled as `new_path` spells them, whatever the link's case or
     /// separator was. A captured target ending in `.md` or `.markdown` keeps
-    /// that suffix as it was spelled.
+    /// that suffix as it was spelled only when the new file name itself ends
+    /// in `.md` or `.markdown`: after `a/old.md` → `a/old.txt`, `[[a/old.md]]`
+    /// becomes `[[a/old.txt]]` and `[[old.md]]` becomes `[[old]]` — a kept
+    /// `.md` would spell `a/old.txt.md`, which names no file.
     pub fn respell(&self, ref_path: &str, m: &Match, captured_target: &str) -> String {
-        let suffix = note_suffix(captured_target);
+        let new_name = path_components(self.new_path, self.windows)
+            .last()
+            .copied()
+            .unwrap_or("");
+        let suffix = if note_suffix(new_name).is_empty() {
+            ""
+        } else {
+            note_suffix(captured_target)
+        };
         let target = match m {
             Match::Stem => self.new_stem().to_string(),
             Match::Path { relative: true, .. } => {

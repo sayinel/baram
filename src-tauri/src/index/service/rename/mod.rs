@@ -33,9 +33,10 @@ use super::state::Mutation;
 pub struct RenameResult {
     pub updated_files: Vec<String>,
     /// Files the rename cannot vouch for: each MAY still spell the old name.
-    /// A referrer the index named that is unreadable, unwritable, or resolves
-    /// outside the file's contexts; one named but holding nothing to rename
-    /// now (a stale index, issue 668 — the reference may live elsewhere).
+    /// A referrer the index named that is unreadable, unwritable, covered by
+    /// none of the file's contexts, or resolves outside them; one named but
+    /// holding nothing to rename now (a stale index, issue 668 — the
+    /// reference may live elsewhere).
     /// And, for a file rename only (issue 678): a file holding links that
     /// cannot spell the new stem — it may be in `updated_files` too, for the
     /// links that were rewritten — and the renamed note itself, under its
