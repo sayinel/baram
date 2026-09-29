@@ -4,8 +4,8 @@ use crate::context::manager::Registered;
 use crate::context::ContextManager;
 use crate::index::normalizer::{extract_id_from_stem, normalize_file_path};
 use crate::index::{
-    ambiguous_block_id_refs, keys_for, link_reads_back_as_the_file, own_block_reference_lines,
-    replace_block_id_refs_to, BlockTarget, FilingKey, KnownPaths,
+    keys_for, link_reads_back_as_the_file, own_block_reference_lines, replace_block_id_refs_to,
+    BlockTarget, FilingKey, KnownPaths,
 };
 use std::collections::HashMap;
 
@@ -106,13 +106,17 @@ pub(crate) async fn rename_block_id_inner(
             unless: &named_for_its_own_references,
         },
         |content, ref_path, covering| {
-            let roots = keys_of(covering);
+            let pass = replace_block_id_refs_to(
+                content,
+                ref_path,
+                &keys_of(covering),
+                &target,
+                old_id,
+                new_id,
+            );
             Rewrite {
-                content: replace_block_id_refs_to(
-                    content, ref_path, &roots, &target, old_id, new_id,
-                ),
-                left_behind: ambiguous_block_id_refs(content, ref_path, &roots, &target, old_id)
-                    > 0,
+                content: pass.content,
+                left_behind: pass.ambiguous > 0,
             }
         },
     )

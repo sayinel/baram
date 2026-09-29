@@ -24,16 +24,29 @@ pub use filing::{
 pub use relative_links::rewrite_relative_wikilinks;
 pub(crate) use rewriter::link_reads_back_as_the_file;
 pub use rewriter::{
-    ambiguous_block_id_refs, ambiguous_block_references, ambiguous_wikilinks,
-    block_reference_can_spell, block_references_to, index_reads_the_rename_back,
-    own_block_reference_lines, replace_block_id_refs_to, replace_block_reference_target,
-    replace_wikilink_target, wikilink_can_spell, wikilinks_to,
+    block_reference_can_spell, index_reads_the_rename_back, own_block_reference_lines,
+    replace_block_id_refs_to, replace_block_reference_target, replace_wikilink_target,
+    wikilink_can_spell,
 };
 
 use extractor::{extract_file_tags, extract_links};
 use normalizer::{
     extract_id_from_stem, is_id_target, normalize_file_path, normalize_target, resolve_target,
 };
+
+#[cfg(test)]
+thread_local! {
+    /// How many note paths `LinkIndex::path_keys_of` has spelled as a
+    /// `Path` key on this thread — what a rename's note sets cost, counted
+    /// rather than timed. Per thread, so tests running side by side do not mix.
+    static PATH_KEYS_SPELLED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// `PATH_KEYS_SPELLED` so far on this thread; a test reads it before and after.
+#[cfg(test)]
+pub(crate) fn path_keys_spelled() -> usize {
+    PATH_KEYS_SPELLED.with(std::cell::Cell::get)
+}
 
 #[derive(Error, Debug)]
 pub enum IndexError {
@@ -333,17 +346,48 @@ impl LinkIndex {
     /// file system that keeps case, `A/note.md` and `a/note.md` both fold
     /// to `a/note` (`filing::KnownPaths`).
     pub fn registered_path_keys(&self) -> HashMap<String, usize> {
+        self.path_keys_of(self.file_map.values().flatten())
+    }
+
+    /// The `Path` keys two or more of this index's notes fold to, with how
+    /// many — `registered_path_keys` without the keys one note alone has,
+    /// for a rename whose only holding root this is (`filing::RootNotes::Sole`).
+    /// Two notes share a key only when they share its last component
+    /// (`filing::path_key_name`), so the notes are grouped by that first and
+    /// a full key is spelled only for a group of two or more — none, in a
+    /// vault whose note names are all different.
+    pub fn colliding_path_keys(&self) -> HashMap<String, usize> {
+        let mut by_name: HashMap<String, Vec<&String>> = HashMap::new();
+        for path in self.file_map.values().flatten() {
+            by_name
+                .entry(filing::path_key_name(path, cfg!(windows)))
+                .or_default()
+                .push(path);
+        }
+        let mut keys = self.path_keys_of(
+            by_name
+                .into_values()
+                .filter(|group| group.len() > 1)
+                .flatten(),
+        );
+        keys.retain(|_, notes| *notes > 1);
+        keys
+    }
+
+    /// The `Path` key of each of `paths` under this index's root
+    /// (`root_relative_key`), with how many of them fold to it. Empty with
+    /// no root.
+    fn path_keys_of<'a>(&self, paths: impl Iterator<Item = &'a String>) -> HashMap<String, usize> {
         let mut keys = HashMap::new();
         let Some(root) = self.root_path.as_deref() else {
             return keys;
         };
-        for key in self
-            .file_map
-            .values()
-            .flatten()
-            .filter_map(|path| filing::root_relative_key(root, path, cfg!(windows)))
-        {
-            *keys.entry(key).or_insert(0) += 1;
+        for path in paths {
+            #[cfg(test)]
+            PATH_KEYS_SPELLED.with(|n| n.set(n.get() + 1));
+            if let Some(key) = filing::root_relative_key(root, path, cfg!(windows)) {
+                *keys.entry(key).or_insert(0) += 1;
+            }
         }
         keys
     }
@@ -759,11 +803,41 @@ mod tests {
         };
         let roots = ["/vault".to_string()];
         assert_eq!(
-            wikilinks_to(content, "/vault/r.md", &roots, &target)
-                + block_references_to(content, "/vault/r.md", &roots, &target),
+            replace_wikilink_target(content, "/vault/r.md", &roots, &target).matched
+                + replace_block_reference_target(content, "/vault/r.md", &roots, &target).matched,
             filed,
             "the index files a reference under this stem that neither rewrite pass visits"
         );
+    }
+
+    #[test]
+    fn the_colliding_path_keys_are_every_key_two_notes_share_and_no_other() {
+        // `A/note.md` and `a/note.md` fold to `a/note`. `a/x.txt` — a rename
+        // to `.txt` keeps the file in the index — and `a/x.txt.md` both
+        // fold to `a/x.txt` although their stems, `x` and `x.txt`, differ:
+        // the notes are grouped by the key's own last component, not by
+        // stem. `b/note.md` shares a name with the first pair but not a key.
+        // What fails this: grouping by `file_map`'s stem buckets instead of
+        // `path_key_name` — `a/x.txt` is missed; and keeping the keys only
+        // one note has — `b/note` appears.
+        let mut index = LinkIndex::new();
+        index.root_path = Some("/v".to_string());
+        for path in [
+            "/v/A/note.md",
+            "/v/a/note.md",
+            "/v/b/note.md",
+            "/v/a/x.txt",
+            "/v/a/x.txt.md",
+            "/v/c/other.md",
+        ] {
+            index.update_file_from_content(path, "");
+        }
+        let expected: HashMap<String, usize> =
+            [("a/note".to_string(), 2), ("a/x.txt".to_string(), 2)].into();
+        assert_eq!(index.colliding_path_keys(), expected);
+        let all = index.registered_path_keys();
+        assert_eq!(all.len(), 4, "{all:?}");
+        assert_eq!(all.get("b/note"), Some(&1));
     }
 
     #[test]
@@ -817,8 +891,8 @@ mod tests {
                 known_paths: Default::default(),
                 windows: false,
             };
-            wikilinks_to(&content, "/v/dir/r.md", &roots, &target)
-                + block_references_to(&content, "/v/dir/r.md", &roots, &target)
+            replace_wikilink_target(&content, "/v/dir/r.md", &roots, &target).matched
+                + replace_block_reference_target(&content, "/v/dir/r.md", &roots, &target).matched
         };
         assert_eq!(
             visited(&[]),

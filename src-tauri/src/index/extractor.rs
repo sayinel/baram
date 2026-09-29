@@ -714,7 +714,8 @@ mod tests {
                     known_paths: Default::default(),
                     windows: false,
                 }
-            ),
+            )
+            .content,
             "\u{FEFF}---\nrefs:\n\n    - \"[[new-longer]]\"\n---\n"
         );
     }

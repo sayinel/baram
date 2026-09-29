@@ -23,6 +23,15 @@ pub enum RootNotes {
     /// `A/note.md` and `a/note.md` on a file system that keeps case — and a
     /// link filed under that key names neither note alone.
     Known(HashMap<String, usize>),
+    /// Its index is built and it is the only root holding the renamed file
+    /// or a referrer: the `Path` keys two or more of its notes fold to, with
+    /// how many (`LinkIndex::colliding_path_keys`), and not the rest. With
+    /// one holding root, a path link matched under it is read by no other
+    /// root, and under it the link reads as the renamed file's own key, so a
+    /// collision is the one thing that can make it ambiguous. Any other
+    /// reading counts as a note that exists, as `Unknown` does, so a key
+    /// this map leaves out never lets a link through that `Known` would stop.
+    Sole(HashMap<String, usize>),
     /// Its index could not be built or read. Any `Path` reading under it
     /// may be another note, so a link it could read is left and its file
     /// reported — never rewritten on the assumption that nothing is there.
@@ -88,9 +97,12 @@ fn read_as_another_note(
                     RootNotes::Known(notes) => notes
                         .get(&p)
                         .is_some_and(|&n| n > 1 || !is_the_target(root, &p)),
+                    RootNotes::Sole(colliding) => {
+                        colliding.contains_key(&p) || !is_the_target(root, &p)
+                    }
                     RootNotes::Unknown => !is_the_target(root, &p),
                 },
-                _ => false,
+                FilingKey::Stem(_) | FilingKey::Foreign { .. } => false,
             }
     })
 }
@@ -140,6 +152,19 @@ fn strip_extension_and_fold(name: &str) -> String {
         .or_else(|| name.strip_suffix(".markdown"))
         .unwrap_or(name);
     name.to_lowercase()
+}
+
+/// The last component of the key `root_relative_key` gives `file_path` — its
+/// file name, one `.md` or `.markdown` off, lowercase — without spelling the
+/// rest. Two files whose path keys are equal have equal names here, so
+/// grouping by this finds every collision (`LinkIndex::colliding_path_keys`).
+/// The name is the last of `path_components`, found without collecting them.
+pub fn path_key_name(file_path: &str, windows: bool) -> String {
+    let name = file_path
+        .rsplit(|c| c == '/' || (windows && c == '\\'))
+        .find(|part| !part.is_empty() && *part != ".")
+        .unwrap_or("");
+    strip_extension_and_fold(name)
 }
 
 /// The components of `path` under the directory `root`, or None when `path`
@@ -314,7 +339,9 @@ impl BlockTarget {
             {
                 Judgement::Ambiguous
             }
-            Some(_) => Judgement::Ours(()),
+            Some((_, FilingKey::Stem(_) | FilingKey::Path(_) | FilingKey::Foreign { .. })) => {
+                Judgement::Ours(())
+            }
         }
     }
 }
@@ -462,7 +489,7 @@ impl RenameTarget<'_> {
                 match key {
                     FilingKey::Stem(s) if s == stem => Some(Match::Stem),
                     FilingKey::Path(p) if Some(&p) == rel.as_ref() => Some(path_match()),
-                    _ => None,
+                    FilingKey::Stem(_) | FilingKey::Path(_) | FilingKey::Foreign { .. } => None,
                 }
             });
         match matched {
@@ -510,8 +537,10 @@ impl RenameTarget<'_> {
             self.windows,
         )
         .next()?;
-        let FilingKey::Foreign { target, .. } = key else {
-            return None;
+        let target = match key {
+            FilingKey::Foreign { target, .. } => target,
+            // `filing_key` given an alias answers `Foreign` and nothing else.
+            FilingKey::Stem(_) | FilingKey::Path(_) => return None,
         };
         self.local_aliases
             .iter()
@@ -738,6 +767,34 @@ mod tests {
             RootNotes::Known([("a/note".to_string(), count)].into()),
         )]
         .into()
+    }
+
+    #[test]
+    fn a_sole_root_reads_a_path_link_as_ambiguous_only_on_a_collision() {
+        // With one holding root the rename collects only the keys its notes
+        // collide on (`RootNotes::Sole`): a key there is ambiguous, and a key
+        // left out is the renamed file's own, since no other root reads it.
+        // What fails this: reading `Sole` the way `Unknown` is read, its map
+        // ignored — `[[a/note]]` is then `Ours` beside its twin.
+        let roots = vec!["/v".to_string()];
+        let rename = |colliding: HashMap<String, usize>| RenameTarget {
+            old_path: "/v/a/note.md",
+            new_path: "/v/a/new.md",
+            local_aliases: &[],
+            known_paths: [("/v".to_string(), RootNotes::Sole(colliding))].into(),
+            windows: false,
+        };
+        assert_eq!(
+            rename([("a/note".to_string(), 2)].into()).judge("/v/r.md", &roots, "", "a/note"),
+            Judgement::Ambiguous
+        );
+        assert_eq!(
+            rename(HashMap::new()).judge("/v/r.md", &roots, "", "a/note"),
+            Judgement::Ours(Match::Path {
+                root: "/v".to_string(),
+                relative: false,
+            })
+        );
     }
 
     #[test]

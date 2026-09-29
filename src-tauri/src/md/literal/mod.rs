@@ -130,6 +130,20 @@ pub struct Analysis {
     pub gave_up: bool,
 }
 
+#[cfg(test)]
+thread_local! {
+    /// How many times `Literal::analyse` ran on this thread — the literal
+    /// analyses a rename pays per referrer, which the tests count rather
+    /// than time. Per thread, so tests running side by side do not mix.
+    static ANALYSES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// `ANALYSES` so far on this thread; a test reads it before and after.
+#[cfg(test)]
+pub(crate) fn analyses() -> usize {
+    ANALYSES.with(std::cell::Cell::get)
+}
+
 impl Literal {
     /// Read `content`. The ranges index into `content` itself.
     pub fn of(content: &str) -> Literal {
@@ -147,6 +161,8 @@ impl Literal {
     /// is left literal from the anchor on — the parser's view of it past
     /// that point is known to be wrong, and touching nothing there is safe.
     pub fn analyse(content: &str) -> Analysis {
+        #[cfg(test)]
+        ANALYSES.with(|n| n.set(n.get() + 1));
         const READS: usize = 8;
         // issue 663: the parser is handed a copy in which a bare `\r` is a
         // `\n` — same length, every offset kept. pulldown reads a bare `\r`

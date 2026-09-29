@@ -21,7 +21,7 @@ use std::path::Path;
 
 use super::keys::{buildable, keys_of, owning_contexts};
 use super::state::{LinkIndexState, Mutation};
-use crate::index::{KnownPaths, LinkIndex, RootNotes};
+use crate::index::{KnownPaths, RootNotes};
 
 use super::build::ensure_indexes;
 
@@ -106,19 +106,28 @@ async fn holding_contexts(
 /// `LinkIndex::registered_path_keys` when its index is built for that
 /// registration, `Unknown` when it is not — a build that failed, or a
 /// context removed since. An `Unknown` root never lets a path link through
-/// (`filing::read_as_another_note`).
+/// (`filing::read_as_another_note`) that another root's note would stop.
+/// With one holding root there is no other root to read a link, so only the
+/// keys its notes collide on are collected (`RootNotes::Sole`,
+/// `LinkIndex::colliding_path_keys`) — under the index lock, which every
+/// index read and save waits on, that is a key per same-named note instead
+/// of a key per note.
 async fn known_paths_of(state: &LinkIndexState, holding: &[Registered]) -> KnownPaths {
+    let sole = holding.len() == 1;
     let mut known = KnownPaths::new();
     for c in holding {
         let notes = state
             .with_index_for(&c.info.path, c.incarnation, |idx| {
-                idx.map(LinkIndex::registered_path_keys)
+                idx.map(|idx| {
+                    if sole {
+                        RootNotes::Sole(idx.colliding_path_keys())
+                    } else {
+                        RootNotes::Known(idx.registered_path_keys())
+                    }
+                })
             })
             .await;
-        known.insert(
-            c.info.path.clone(),
-            notes.map_or(RootNotes::Unknown, RootNotes::Known),
-        );
+        known.insert(c.info.path.clone(), notes.unwrap_or(RootNotes::Unknown));
     }
     known
 }

@@ -4,10 +4,9 @@ use crate::context::manager::{resolve_canonical, Registered};
 use crate::context::ContextManager;
 use crate::index::relative_links::{path_components, same_component};
 use crate::index::{
-    ambiguous_block_references, ambiguous_wikilinks, block_reference_can_spell,
-    block_references_to, index_reads_the_rename_back, link_reads_back_as_the_file,
+    block_reference_can_spell, index_reads_the_rename_back, link_reads_back_as_the_file,
     own_block_reference_lines, replace_block_reference_target, replace_wikilink_target,
-    wikilink_can_spell, wikilinks_to, RenameTarget, RewritePass,
+    wikilink_can_spell, RenameTarget, RewritePass,
 };
 use std::collections::HashMap;
 use std::path::Path;
@@ -320,29 +319,25 @@ impl<'a> LinkPasses<'a> {
 
     /// Wikilinks, then block references and embeds — each pass reads the
     /// content the other produced, so offsets and literal regions are its own.
-    /// `covering_roots` are the roots whose index covers `ref_path`.
+    /// `covering_roots` are the roots whose index covers `ref_path`. Each
+    /// pass reads the referrer once and counts, in that same visit, the
+    /// references it matched and the ones it found ambiguous.
     fn rewrite(&self, content: &str, ref_path: &str, covering_roots: &[String]) -> Rewrite {
         let before = content;
         let target = &self.target;
-        let mut left_behind = false;
-        let content = if self.wikilinks_spellable {
-            replace_wikilink_target(content, ref_path, covering_roots, target)
-        } else {
-            left_behind |= wikilinks_to(content, ref_path, covering_roots, target) > 0;
-            content.to_owned()
-        };
-        let content = if self.block_references_spellable {
-            replace_block_reference_target(&content, ref_path, covering_roots, target)
-        } else {
-            left_behind |= block_references_to(&content, ref_path, covering_roots, target) > 0;
-            content
-        };
-        // A reference another root holding the referrer reads as a different
-        // existing note is kept as written (`RenameTarget::judge`) and the file is
-        // reported. Kept, it reads the same before and after, so the gate
-        // below does not see it.
-        left_behind |= ambiguous_wikilinks(before, ref_path, covering_roots, target) > 0
-            || ambiguous_block_references(before, ref_path, covering_roots, target) > 0;
+        let wikilinks = replace_wikilink_target(content, ref_path, covering_roots, target);
+        let blocks =
+            replace_block_reference_target(&wikilinks.content, ref_path, covering_roots, target);
+        // A pass whose new stem the grammar cannot spell rewrites nothing and
+        // counts what it left. A reference a root holding the referrer reads
+        // as a different existing note is kept as written
+        // (`RenameTarget::judge`) and the file is reported; kept, it reads
+        // the same before and after, so the gate below does not see it.
+        let left_behind = (!self.wikilinks_spellable && wikilinks.matched > 0)
+            || (!self.block_references_spellable && blocks.matched > 0)
+            || wikilinks.ambiguous > 0
+            || blocks.ambiguous > 0;
+        let content = blocks.content;
         // READ-BACK GATE (issue 678, review): what was written must be read
         // as a link to the new name where it stands, or it is not written.
         if content != before
@@ -432,7 +427,32 @@ async fn rewrite_renamed_note(
 
 #[cfg(test)]
 mod tests {
-    use super::stays_in_its_directory;
+    use super::{stays_in_its_directory, LinkPasses};
+    use crate::index::RenameTarget;
+    use crate::md::literal::analyses;
+
+    #[test]
+    fn a_changed_referrer_under_one_root_is_analysed_once_per_reading() {
+        // Each pass counts what it matched and what it found ambiguous in
+        // the visit that rewrites, so one referrer under one root costs five
+        // literal analyses: the wikilink pass's, the block pass's two (its
+        // `extract_links` and the regions it rewrites in), and the read-back
+        // gate's two (before and after).
+        // What fails this: counting ambiguity in a pass of its own again —
+        // a second wikilink visit adds one, a second block visit adds two.
+        let passes = LinkPasses::new(RenameTarget {
+            old_path: "/v/old.md",
+            new_path: "/v/new.md",
+            local_aliases: &[],
+            known_paths: Default::default(),
+            windows: false,
+        });
+        let before = analyses();
+        let rewrite = passes.rewrite("[[old]] ((old#^b1))\n", "/v/r.md", &["/v".to_string()]);
+        assert_eq!(analyses() - before, 5);
+        assert_eq!(rewrite.content, "[[new]] ((new#^b1))\n");
+        assert!(!rewrite.left_behind);
+    }
 
     #[test]
     fn a_rename_that_would_move_the_note_is_refused_in_windows_spelling_too() {

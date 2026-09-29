@@ -2057,6 +2057,72 @@ async fn a_block_id_rename_leaves_another_notes_block_with_the_same_id_alone() {
 }
 
 #[tokio::test]
+async fn a_rename_in_a_single_vault_spells_path_keys_only_for_notes_that_share_a_name() {
+    // One vault, no nested root: the rename's only holding root. It needs
+    // the keys its notes collide on and nothing more, so it spells the path
+    // key of the two `note.md`s, which share a name, and of no other note.
+    // What fails this: collecting every note's key whatever the number of
+    // holding roots (`RootNotes::Known` in `known_paths_of`) — one per note
+    // in the vault, seven.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-sole", true).await;
+    for (path, text) in [
+        ("x/note.md", "t\n"),
+        ("y/note.md", "t\n"),
+        ("old.md", "t\n"),
+        ("r.md", "[[old]]\n"),
+        ("s.md", "plain\n"),
+    ] {
+        let file = dir.path().join(path);
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(file, text).unwrap();
+    }
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+
+    let before = crate::index::path_keys_spelled();
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/old.md"),
+        &format!("{root}/new.md"),
+    )
+    .await
+    .unwrap();
+    assert_eq!(crate::index::path_keys_spelled() - before, 2);
+    assert_eq!(result.updated_files, vec![format!("{root}/r.md")]);
+}
+
+#[tokio::test]
+async fn a_block_id_rename_counts_ambiguity_in_the_visit_that_rewrites() {
+    // One referrer under one root. The rewrite reads it with the index's
+    // grammar once and counts ambiguous references in that same read, so
+    // the rename costs three literal analyses: the rewrite's `extract_links`,
+    // the regions it rewrites in, and the index's re-reading of the file it
+    // wrote.
+    // What fails this: counting ambiguous references in a pass of their own
+    // — a second `replace_block_id_refs_to` over the referrer for its
+    // `ambiguous` makes it five.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-count", true).await;
+    std::fs::write(dir.path().join("note.md"), "para ^b1\n").unwrap();
+    std::fs::write(dir.path().join("r.md"), "see ((note#^b1))\n").unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+
+    let before = crate::md::literal::analyses();
+    let result = rename_block_id_inner(&state, &ctx, &format!("{root}/note.md"), "b1", "b2")
+        .await
+        .unwrap();
+    assert_eq!(crate::md::literal::analyses() - before, 3);
+    assert_eq!(result.updated_files, vec![format!("{root}/r.md")]);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
+        "see ((note#^b2))\n"
+    );
+}
+
+#[tokio::test]
 async fn a_block_id_rename_finds_a_reference_the_index_remembers_on_another_line() {
     // issue 668: `a.md` was indexed with its reference on line 1, then edited
     // outside the app — a line inserted above — with the tab closed, so the
@@ -4042,7 +4108,7 @@ async fn nested_roots_a_doubly_covered_referrer_keeps_a_path_link_another_root_r
     // What fails this: treating every other-root `Path` reading as a note
     // that does not exist (`read_as_another_note`) — `[[a/old]]` becomes
     // `[[a/new]]`, nothing is reported, and `a/old.md` loses the backlink.
-    // For `sub/b.md` alone: dropping `ambiguous_block_references` from
+    // For `sub/b.md` alone: dropping the block pass's `ambiguous` count from
     // `LinkPasses::rewrite`'s `left_behind` — updated, not reported.
     let ctx = ContextManager::new();
     let (dir, root, sub, state) = nested_roots_with_two_a_old_notes(
@@ -4139,8 +4205,8 @@ async fn nested_roots_a_block_id_rename_keeps_a_path_reference_another_root_read
     // What fails this: treating every other-root `Path` reading as a note
     // that does not exist — `((a/old#^x))` becomes `((a/old#^y))` in both
     // files and neither is reported; and, for `sub/m.md` alone, dropping
-    // the `ambiguous_block_id_refs` count from the block-ID rename's
-    // `left_behind` — it is updated but not reported.
+    // the pass's `ambiguous` count from the block-ID rename's `left_behind`
+    // — it is updated but not reported.
     let ctx = ContextManager::new();
     let (dir, _root, sub, state) = nested_roots_with_two_a_old_notes(
         &ctx,

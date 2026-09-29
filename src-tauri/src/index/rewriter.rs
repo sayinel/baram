@@ -48,37 +48,49 @@ static REF_REPLACE_RE: LazyLock<Regex> =
 /// root. A file whose stem itself ends in `.md` (`diagram.md.txt`) never
 /// claims the note `diagram.md`'s links, and a link behind an alias that is
 /// not local (`[[work::old]]` naming another vault) is that vault's and stays.
-/// A path link that another root holding the referrer reads as a different
-/// note that exists is ambiguous (`RenameTarget::judge`) and stays too; the
-/// file rename counts those (`ambiguous_wikilinks`) and reports the file.
-/// The new text is `RenameTarget::respell`: the new stem, or the new path,
-/// with the `.md` or `.markdown` the link was spelled with when the new file
-/// name ends in one too, and without it otherwise.
+/// A path link that a root holding the referrer reads as a different note
+/// that exists is ambiguous (`RenameTarget::judge`) and stays too; the pass
+/// counts those (`PassReport::ambiguous`) and the file rename reports the
+/// file. The new text is `RenameTarget::respell`: the new stem, or the new
+/// path, with the `.md` or `.markdown` the link was spelled with when the new
+/// file name ends in one too, and without it otherwise.
 ///
 /// A stem no wikilink can spell (`wikilink_can_spell`) is never written —
 /// a path link's last component is that stem too: the content comes back as
-/// it is, and the file rename, which decides that before calling, reports
-/// the files whose links it left (`wikilinks_to`).
+/// it is, with the links it would have rewritten counted in
+/// `PassReport::matched`, and the file rename reports the files whose links
+/// it left.
 pub fn replace_wikilink_target(
     content: &str,
     ref_path: &str,
     covering_roots: &[String],
     target: &RenameTarget,
-) -> String {
-    if !wikilink_can_spell(target.new_stem()) {
-        return content.to_owned();
-    }
+) -> PassReport {
+    let spellable = wikilink_can_spell(target.new_stem());
     visit_wikilinks_to(
         content,
         ref_path,
         covering_roots,
         target,
         |alias_prefix, captured_target, rest, m| {
-            let new = target.respell(ref_path, m, captured_target);
-            Some(format!("[[{alias_prefix}{new}{rest}]]"))
+            spellable.then(|| {
+                let new = target.respell(ref_path, m, captured_target);
+                format!("[[{alias_prefix}{new}{rest}]]")
+            })
         },
     )
-    .0
+}
+
+/// What one rename pass made of a referrer, from the one visit that reads
+/// it: the content it leaves, how many references it found naming the
+/// renamed file (or block) unambiguously — `matched`, rewritten when the new
+/// name can be spelled and left otherwise — and how many it found
+/// `Judgement::Ambiguous` and left as written.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PassReport {
+    pub content: String,
+    pub matched: usize,
+    pub ambiguous: usize,
 }
 
 /// Whether a link naming this stem would read back as the file whose stem it
@@ -110,46 +122,18 @@ pub fn wikilink_can_spell(stem: &str) -> bool {
         && link_reads_back_as_the_file(stem)
 }
 
-/// How many wikilinks to the renamed file `content` holds in prose — the
-/// ones `replace_wikilink_target` would rewrite if the new stem were one a
-/// wikilink can spell, which is the only case this is asked in. A file
-/// rename to a stem no wikilink can spell asks this to report the files
-/// whose links it leaves.
-pub fn wikilinks_to(
-    content: &str,
-    ref_path: &str,
-    covering_roots: &[String],
-    target: &RenameTarget,
-) -> usize {
-    visit_wikilinks_to(content, ref_path, covering_roots, target, |_, _, _, _| None).1
-}
-
-/// How many wikilinks in prose `target.judge` finds `Ambiguous` — each
-/// names the renamed file by its path under one covering root while another
-/// root holding the referrer reads it as a different note that exists. The rename keeps
-/// them as written and reports the file.
-pub fn ambiguous_wikilinks(
-    content: &str,
-    ref_path: &str,
-    covering_roots: &[String],
-    target: &RenameTarget,
-) -> usize {
-    visit_wikilinks_to(content, ref_path, covering_roots, target, |_, _, _, _| None).2
-}
-
-/// The pass under all three: every wikilink outside a literal region that
-/// `target.judge` says names the renamed file under `covering_roots` is
-/// offered to `respell` (alias prefix, target as spelled, rest, how it
-/// matched) — `Some` replaces it, `None` keeps it — and counted; an
-/// `Ambiguous` one is kept and counted apart. Returns the content and the
-/// two counts.
+/// The pass under `replace_wikilink_target`: every wikilink outside a
+/// literal region that `target.judge` says names the renamed file under
+/// `covering_roots` is offered to `respell` (alias prefix, target as
+/// spelled, rest, how it matched) — `Some` replaces it, `None` keeps it —
+/// and counted; an `Ambiguous` one is kept and counted apart.
 fn visit_wikilinks_to(
     content: &str,
     ref_path: &str,
     covering_roots: &[String],
     target: &RenameTarget,
     respell: impl Fn(&str, &str, &str, &Match) -> Option<String>,
-) -> (String, usize, usize) {
+) -> PassReport {
     // Match all wikilink forms: [[target]], [[target|display]], [[target#heading]], etc.
     // Capture groups: (1) alias, (2) target, (3) rest — #heading, ^blockId, |display in any combo
     // issue 620: a match inside a literal region is left as it is — the index
@@ -184,7 +168,11 @@ fn visit_wikilinks_to(
             }
         })
         .to_string();
-    (out, visited, ambiguous)
+    PassReport {
+        content: out,
+        matched: visited,
+        ambiguous,
+    }
 }
 
 /// §30a Rename `^old_id` → `^new_id` in the references a file makes TO ONE
@@ -205,7 +193,11 @@ fn visit_wikilinks_to(
 /// the referrer — so a path-qualified `((dir/note#^id))` or a relative
 /// `((./note#^id))` is rewritten when it names the target's path under such a
 /// root, and left alone when it names another file (issue 619). `ref_path` is
-/// the referrer, for its self-references and its relative references.
+/// the referrer, for its self-references and its relative references. A
+/// reference to `old_id` that `target.judge` finds `Ambiguous` — another
+/// reading of its path is a different note that exists — is left and
+/// counted (`PassReport::ambiguous`), read with the same grammar in the same
+/// visit, and the block-ID rename reports the file.
 pub fn replace_block_id_refs_to(
     content: &str,
     ref_path: &str,
@@ -213,19 +205,31 @@ pub fn replace_block_id_refs_to(
     target: &BlockTarget,
     old_id: &str,
     new_id: &str,
-) -> String {
+) -> PassReport {
     let refers_to_target = |raw: &str| target.refers(ref_path, covering_roots, raw);
-    let lines: std::collections::HashSet<u32> = extract_links(ref_path, content)
-        .into_iter()
-        .filter(|entry| {
-            entry.link_type.pass() == RewritePass::BlockReferences
-                && entry.block_id.as_deref() == Some(old_id)
-                && refers_to_target(&entry.target)
-        })
-        .map(|entry| entry.line)
-        .collect();
+    let mut lines = std::collections::HashSet::new();
+    let mut ambiguous = 0;
+    for entry in extract_links(ref_path, content) {
+        if entry.link_type.pass() != RewritePass::BlockReferences
+            || entry.block_id.as_deref() != Some(old_id)
+        {
+            continue;
+        }
+        match target.judge(ref_path, covering_roots, &entry.target) {
+            Judgement::Ours(()) => {
+                lines.insert(entry.line);
+            }
+            Judgement::Ambiguous => ambiguous += 1,
+            Judgement::NotOurs => {}
+        }
+    }
+    let mut matched = 0;
     if lines.is_empty() {
-        return content.to_owned();
+        return PassReport {
+            content: content.to_owned(),
+            matched,
+            ambiguous,
+        };
     }
     // issue 620: the literal regions of THIS content — the lines above were
     // read with them, and the interval check here keeps a `((…))` inside a
@@ -248,6 +252,7 @@ pub fn replace_block_id_refs_to(
                         .overlaps(line.offset + whole.start()..line.offset + whole.end())
                 };
                 if id == old_id && refers_to_target(target) && in_prose() {
+                    matched += 1;
                     format!("(({target}#^{new_id}{display}))")
                 } else {
                     whole.as_str().to_string()
@@ -259,29 +264,11 @@ pub fn replace_block_id_refs_to(
         }
         out.push_str(line.terminator);
     }
-    out
-}
-
-/// How many block references to `old_id` in prose `target.judge` finds
-/// `Ambiguous` — `replace_block_id_refs_to` leaves them, since another root
-/// holding the referrer reads their path as a different note that exists, and the
-/// block-ID rename reports the file. Read with the index's own grammar
-/// (`extract_links`), which leaves literal regions out.
-pub fn ambiguous_block_id_refs(
-    content: &str,
-    ref_path: &str,
-    covering_roots: &[String],
-    target: &BlockTarget,
-    old_id: &str,
-) -> usize {
-    extract_links(ref_path, content)
-        .into_iter()
-        .filter(|entry| {
-            entry.link_type.pass() == RewritePass::BlockReferences
-                && entry.block_id.as_deref() == Some(old_id)
-                && target.judge(ref_path, covering_roots, &entry.target) == Judgement::Ambiguous
-        })
-        .count()
+    PassReport {
+        content: out,
+        matched,
+        ambiguous,
+    }
 }
 
 /// issue 678: a file rename's block references — `((old#^id))`, with a
@@ -298,30 +285,30 @@ pub fn ambiguous_block_id_refs(
 ///
 /// A stem no reference can spell (`block_reference_can_spell`) is never
 /// written: the reference would parse as nothing, silently. The content comes
-/// back as it is. The file rename decides that before calling and asks
-/// `block_references_to` what it leaves, so the user hears of the file
+/// back as it is, with the references it leaves counted in
+/// `PassReport::matched`, so the file rename tells the user of the file
 /// whether or not a wikilink in it was rewritten; this refusal is the
-/// writer's own, for any caller.
+/// writer's own, for any caller. An `Ambiguous` reference is left and
+/// counted in `PassReport::ambiguous`, as the wikilink pass counts its own.
 pub fn replace_block_reference_target(
     content: &str,
     ref_path: &str,
     covering_roots: &[String],
     target: &RenameTarget,
-) -> String {
-    if !block_reference_can_spell(target.new_stem()) {
-        return content.to_owned();
-    }
+) -> PassReport {
+    let spellable = block_reference_can_spell(target.new_stem());
     visit_block_references_to(
         content,
         ref_path,
         covering_roots,
         target,
         |captured, id, display, m| {
-            let new = target.respell(ref_path, m, captured);
-            Some(format!("(({new}#^{id}{display}))"))
+            spellable.then(|| {
+                let new = target.respell(ref_path, m, captured);
+                format!("(({new}#^{id}{display}))")
+            })
         },
     )
-    .0
 }
 
 /// Whether the index reads `after` — a referrer as the two rename passes
@@ -392,7 +379,8 @@ pub fn index_reads_the_rename_back(
                                     target: k,
                                 }
                             }
-                            (key, _) => key,
+                            (key @ (FilingKey::Stem(_) | FilingKey::Path(_)), None) => key,
+                            (key @ FilingKey::Foreign { .. }, _) => key,
                         }
                     } else if let Some(m) = matched(covering_roots) {
                         plain(&target.respell(ref_path, &m, &e.target))
@@ -425,47 +413,21 @@ pub fn block_reference_can_spell(stem: &str) -> bool {
     !stem.contains([')', '#', '|', '\n', '\r']) && link_reads_back_as_the_file(stem)
 }
 
-/// How many block references (embeds included) to the renamed file
-/// `content` holds in prose — the ones `replace_block_reference_target`
-/// would rewrite if the new stem were one a reference can spell, which is
-/// the only case this is asked in: not a self-reference, which names no
-/// target, not one that names another file's path, not one in a literal
-/// region. A file rename to a stem no reference can spell asks this to
-/// report the files whose references it leaves.
-pub fn block_references_to(
-    content: &str,
-    ref_path: &str,
-    covering_roots: &[String],
-    target: &RenameTarget,
-) -> usize {
-    visit_block_references_to(content, ref_path, covering_roots, target, |_, _, _, _| None).1
-}
-
-/// How many block references (embeds included) in prose `target.judge`
-/// finds `Ambiguous` — the file rename keeps them as written and reports the
-/// file, as `ambiguous_wikilinks` does for wikilinks.
-pub fn ambiguous_block_references(
-    content: &str,
-    ref_path: &str,
-    covering_roots: &[String],
-    target: &RenameTarget,
-) -> usize {
-    visit_block_references_to(content, ref_path, covering_roots, target, |_, _, _, _| None).2
-}
-
-/// The pass under all three: on the lines the index's own grammar reads as
-/// a reference to the renamed file, every block reference `target.judge`
-/// says names it under `covering_roots` in prose is offered to `respell`
-/// (target as spelled, block id, display, how it matched) — `Some` replaces
-/// it, `None` keeps it — and counted; an `Ambiguous` one is kept and
-/// counted apart. Returns the content and the two counts.
+/// The pass under `replace_block_reference_target`: on the lines the
+/// index's own grammar reads as a reference to the renamed file, every block
+/// reference (embeds included) `target.judge` says names it under
+/// `covering_roots` in prose is offered to `respell` (target as spelled,
+/// block id, display, how it matched) — `Some` replaces it, `None` keeps it
+/// — and counted: not a self-reference, which names no target, not one that
+/// names another file's path, not one in a literal region. An `Ambiguous`
+/// one is kept and counted apart.
 fn visit_block_references_to(
     content: &str,
     ref_path: &str,
     covering_roots: &[String],
     target: &RenameTarget,
     respell: impl Fn(&str, &str, &str, &Match) -> Option<String>,
-) -> (String, usize, usize) {
+) -> PassReport {
     let judge = |raw_target: &str| target.judge(ref_path, covering_roots, "", raw_target);
     let lines: std::collections::HashSet<u32> = extract_links(ref_path, content)
         .into_iter()
@@ -476,7 +438,11 @@ fn visit_block_references_to(
         .map(|entry| entry.line)
         .collect();
     if lines.is_empty() {
-        return (content.to_owned(), 0, 0);
+        return PassReport {
+            content: content.to_owned(),
+            matched: 0,
+            ambiguous: 0,
+        };
     }
     let mut literal: Option<Literal> = None;
     let mut visited = 0;
@@ -513,7 +479,11 @@ fn visit_block_references_to(
         }
         out.push_str(line.terminator);
     }
-    (out, visited, ambiguous)
+    PassReport {
+        content: out,
+        matched: visited,
+        ambiguous,
+    }
 }
 
 /// issue 668: how many lines of `content` refer, in prose, to ITS OWN block
@@ -556,6 +526,65 @@ pub fn own_block_reference_lines(content: &str, id: Option<&str>) -> usize {
 mod tests {
     use super::*;
     use crate::index::LinkKind;
+
+    // The three passes as most tests here read them — the content each
+    // leaves — and the two counts the file rename reads from a report. They
+    // shadow the `super::*` names on purpose, so each test states only what
+    // it asserts about the pass.
+
+    /// `super::replace_wikilink_target`'s content.
+    fn replace_wikilink_target(
+        content: &str,
+        ref_path: &str,
+        covering_roots: &[String],
+        target: &RenameTarget,
+    ) -> String {
+        super::replace_wikilink_target(content, ref_path, covering_roots, target).content
+    }
+
+    /// `super::replace_block_reference_target`'s content.
+    fn replace_block_reference_target(
+        content: &str,
+        ref_path: &str,
+        covering_roots: &[String],
+        target: &RenameTarget,
+    ) -> String {
+        super::replace_block_reference_target(content, ref_path, covering_roots, target).content
+    }
+
+    /// `super::replace_block_id_refs_to`'s content.
+    fn replace_block_id_refs_to(
+        content: &str,
+        ref_path: &str,
+        covering_roots: &[String],
+        target: &BlockTarget,
+        old_id: &str,
+        new_id: &str,
+    ) -> String {
+        super::replace_block_id_refs_to(content, ref_path, covering_roots, target, old_id, new_id)
+            .content
+    }
+
+    /// The wikilinks the wikilink pass matched — rewritten, or left when the
+    /// new stem cannot be spelled.
+    fn wikilinks_to(
+        content: &str,
+        ref_path: &str,
+        covering_roots: &[String],
+        target: &RenameTarget,
+    ) -> usize {
+        super::replace_wikilink_target(content, ref_path, covering_roots, target).matched
+    }
+
+    /// The block references the block pass matched, as `wikilinks_to`.
+    fn block_references_to(
+        content: &str,
+        ref_path: &str,
+        covering_roots: &[String],
+        target: &RenameTarget,
+    ) -> usize {
+        super::replace_block_reference_target(content, ref_path, covering_roots, target).matched
+    }
 
     /// issue 678 (review) — what the read-back gate compares, on the case
     /// that made it necessary. What fails this: dropping the `respelled`
@@ -846,7 +875,7 @@ mod tests {
         let after = replace_wikilink_target(before, "/v/sub/r.md", &both, &knowing);
         assert_eq!(after, "[[a/old]] [[sub/a/new]]\n");
         assert_eq!(
-            ambiguous_wikilinks(before, "/v/sub/r.md", &both, &knowing),
+            super::replace_wikilink_target(before, "/v/sub/r.md", &both, &knowing).ambiguous,
             1
         );
         // A root whose index could not be built reads `Unknown`: any path

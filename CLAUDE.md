@@ -186,11 +186,15 @@ baram/
   파일 쪽 키의 모양은 `keys_for` 를 부르지 않고 따로 짓는 자리도 안다 — crate 에서 테스트 밖의 `FilingKey::` 생성과
   `file_key`·`root_relative_key`·`normalize_file_path`·`extract_id_from_stem` 호출을 훑으면 이것이 전부다: `filing.rs` 의
   `RenameTarget::judge`·`refers_behind_alias`·`expected_key`·`BlockTarget::judge`(대상 판별), 노트 목록을 짓는
-  `registered_path_keys`(`mod.rs`), zettel id `Stem` 을 붙이는 `backlink_keys`(`mod.rs`)·`block_target`
+  `registered_path_keys`·`colliding_path_keys`(`mod.rs`, 둘 다 `path_keys_of` 로 `root_relative_key` 를 부르고 뒤의 것은
+  `filing.rs` 의 `path_key_name` 으로 먼저 묶는다), zettel id `Stem` 을 붙이는 `backlink_keys`(`mod.rs`)·`block_target`
   (`rename/block_id.rs`), 같은 stem 예외(`rename/block_id.rs`·`rename/file.rs`)와 `stem_unchanged`(`rename/file.rs`), 관문이
   `expected_key` 를 `Foreign` 으로 감싸는 곳과 `link_reads_back_as_the_file`(`rewriter.rs`). `mod.rs` 의 `file_map`·`relative_map`·
   `id_map` 은 target 해석용이라 `incoming` 키가 아니다. 새 키 모양은 `filing.rs` 에 더하고 이 자리들을 같이 고칠 것.
-  `FilingKey` 를 가르는 `match` 는 나머지 팔이 있어 변형을 더해도 **컴파일이 멎지 않는다**. `mod.rs` 의 개수 게이트 둘은 잡는
+  `FilingKey` 를 가르는 `match` 는 `_` 팔 없이 변형을 모두 적는다 — 넷째 변형을 더하면 `filing.rs` 의 `read_as_another_note`·
+  `BlockTarget::judge`·`RenameTarget::judge`·`refers_behind_alias` 와 `rewriter.rs` 의 `index_reads_the_rename_back`, 다섯 자리에서
+  **컴파일이 멎는다**(더미 변형을 더해 실측; `LinkKind::pass()` 와 같은 방식). 키를 **짓는** `filing_key`·`keys_for` 는 멎지 않으니 새
+  변형은 거기서 직접 낼 것. `mod.rs` 의 개수 게이트 둘은 잡는
   범위가 다르다 — 위의 `…_under_a_stem_…` 은 `LinkKind::ALL` 로 픽스처를 짜 새 **종류는** 저절로 들어오지만 표기 하나를
   `Stem` 바구니에서만 센다. 짝인 `every_reference_the_index_files_under_a_path_is_visited_by_one_rewrite_pass` 는 `Path`·`Foreign`
   바구니를 세되 표기가 손으로 적은 목록(종류마다 `dir/target`·`./target`, 그리고 `[[work::target]]`)뿐이라, 그 목록에 없는 표기로
@@ -203,7 +207,9 @@ baram/
   **모호하므로 그대로 두고** 파일을 `skipped_files` 에 올린다(`filing.rs` 의 `Judgement::Ambiguous`·`read_as_another_note`).
   부모에 `a/old.md` 가 없으면 모호하지 않으므로 전처럼 고쳐 쓴다. 한 root 안에서도 같다 — 대소문자를 지키는 파일 시스템에서
   `A/note.md` 와 `a/note.md` 는 둘 다 `Path("a/note")` 로 접히므로 `[[A/note]]`·`[[a/note]]` 는 어느 한쪽의 링크가 아니다.
-  `registered_path_keys` 가 키마다 그리로 접히는 노트 수를 내고, 둘 이상이면 그 키로 읽히는 경로 링크는 모호하다. 존재 판정은 rename 되는 파일이나 referrer 를 **담는 모든
+  `registered_path_keys` 가 키마다 그리로 접히는 노트 수를 내고, 둘 이상이면 그 키로 읽히는 경로 링크는 모호하다. referrer 와
+  파일을 담는 root 가 하나뿐이면 다른 root 의 읽기가 없으므로 겹치는 키만 모은다(`colliding_path_keys` → `RootNotes::Sole`) —
+  index 잠금 아래에서 노트마다가 아니라 이름이 같은 노트마다 키를 짓는다. 존재 판정은 rename 되는 파일이나 referrer 를 **담는 모든
   directory context** 의 노트 목록(`LinkIndex::registered_path_keys`)으로 한다 — rename 되는 파일의 context 만이 아니다. 부모의
   `a/old.md` 를 rename 할 때 자식 root 는 그 파일을 담지 않지만 referrer 를 담는다. 한 번도 열리지 않아 index 가 없는 context 는
   판정 전에 **그 자리에서 build 한다**(`service/rename/mod.rs` 의 `holding_contexts` → `ensure_indexes`). build 할 수 없으면 그
