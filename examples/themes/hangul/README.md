@@ -218,8 +218,11 @@ zip(`plugin-release.yml` 의 `Package ZIP` 단계가 `README.md` 를 함께 묶�
 
 - **zip 은 레지스트리의 `plugins/` 에 간다** — `baram-plugins` 저장소의 `plugins/baram-hangul-1.0.0.zip`, 플러그인 zip 과
   나란히(계획 0113 P1 — 스펙 0063 D9 의 정정). 색인의 `downloadUrl` 도 그 경로다(`scripts/update-registry-index.mjs`).
-- **바이트가 재현된다**(P5) — 무압축(`level: 0`)에 고정 시각(`ZIP_DATE`)이라 같은 원본(zip 에 드는 세 파일)은 같은
-  바이트가 된다. 시간대 · zlib 판본 · 파일 시각이 끼지 않고, `theme-package.ts` 의 머리 주석이 드는 남은 변수는
+- **바이트가 재현된다**(P5) — 무압축(`level: 0`)에 고정 시각(`ZIP_DATE`)이고 확장 타임스탬프를 꺼서
+  (`extendedTimestamp: false` — 켜면 그 extra field 가 시각을 UTC 로 따로 적어, 2026-09-29 에 시간대 `UTC` ·
+  `America/Los_Angeles` · `Asia/Seoul` 에서 묶은 zip 의 sha256 셋이 서로 달랐다) 같은 원본(zip 에 드는 세 파일)은
+  같은 바이트가 된다. 세 조건은 `theme-package-script.test.ts` 의 "같은 원본은 같은 바이트가 된다" 가 zip 을 다시 읽어
+  항목마다 본다. 시간대 · zlib 판본 · 파일 시각이 끼지 않고, `theme-package.ts` 의 머리 주석이 드는 남은 변수는
   `package.json` 이 캐럿 없이 고정한 `@zip.js/zip.js` 판본 하나다. 2026-09-28 에 `package.json` 을 0.7.7 로 둔 합성 루트에서 시간대 `UTC` · `America/Los_Angeles` 로
   한 번씩 묶은 두 zip(2,732바이트)의 sha256 이 같았다. 그래서 게시 전 점검에서 만든 zip 의 `sha256=` 값이 워크플로가 태그
   커밋에서 만든 zip 의 sha256 과 같아야 한다 — 다르면 점검한 파일이 게시될 파일이 아니고, 워크플로가 그 태그를 push 전에

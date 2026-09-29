@@ -3,10 +3,13 @@
  * (`verifyThemeArchive`). 스펙 0063 §7.3 · §7.5.
  *
  * 부르는 곳은 둘이다 — `plugin-release.yml` 의 `release-theme` 잡과, 게시 전 파일 설치 점검
- * (§7.5). 둘 다 `run-theme-package.ts` 를 지난다. **같은 원본은 같은 바이트가 된다**: 무압축에
- * 고정 시각이라 zlib 판본 · 시간대 · 파일 시각이 끼어들 자리가 없다. 남는 변수는 zip 을 쓰는
- * `@zip.js/zip.js` 의 판본 하나이고, `package.json` 이 그것을 캐럿 없이 고정한다. 그래서 같은 커밋에서
- * 만든 로컬 zip 의 sha256 이 게시된 항목의 `checksum` 과 같고, 점검한 파일이 곧 게시된 파일이다.
+ * (§7.5). 둘 다 `run-theme-package.ts` 를 지난다. **같은 원본은 같은 바이트가 된다**: 무압축
+ * (`level: 0`)에 고정 시각(`ZIP_DATE`)이고 확장 타임스탬프를 끄므로(`extendedTimestamp: false` — 켜면
+ * 그 시각을 UTC 로 따로 적는다, `ZIP_DATE` 주석) zlib 판본 · 시간대 · 파일 시각이 끼어들 자리가 없다.
+ * `theme-package-script.test.ts` 의 "같은 원본은 같은 바이트가 된다" 가 그 셋을 항목마다 본다. 남는
+ * 변수는 zip 을 쓰는 `@zip.js/zip.js` 의 판본 하나이고, `package.json` 이 그것을 캐럿 없이
+ * 고정한다. 그래서 같은 커밋에서 만든 로컬 zip 의 sha256 이 게시된 항목의 `checksum` 과 같고,
+ * 점검한 파일이 곧 게시된 파일이다.
  *
  * ‼️ 테마 내용은 **실행하지 않는다**. 이 파일이 읽는 것은 매니페스트와 매니페스트가 선언한
  * 파일뿐이고, 그 경로가 테마 폴더를 벗어나지 못하게 한다 — 경로의 모양은 `themePackageFiles`,
@@ -47,6 +50,11 @@ export const THEME_MANIFEST = "baram-theme.json";
  * zip 에 적는 시각. **로컬 시각으로 만든다** — zip 의 DOS 시각은 만드는 쪽의 로컬 벽시계로
  * 적히므로 `Date.UTC(…)` 로 만든 고정 시각은 시간대마다 다른 바이트가 된다(실측: UTC ·
  * Asia/Seoul 에서 sha256 이 갈렸다). 로컬 생성자는 어느 시간대에서든 같은 연월일시를 준다.
+ *
+ * 그래서 `packageTheme` 은 확장 타임스탬프를 끈다(`extendedTimestamp: false`). 그 extra field
+ * (`0x5455`)는 이 시각을 UTC 기준 초로 따로 적으므로, 로컬 생성자로 만든 이 값이 시간대마다 다른
+ * 바이트가 된다 — 2026-09-29 실측: 켜고 `TZ` 를 UTC · America/Los_Angeles · Asia/Seoul 로 두어
+ * `examples/themes/hangul` 을 묶은 zip 의 sha256 셋이 서로 달랐고, 끄면 셋이 같았다.
  */
 const ZIP_DATE = new Date(2020, 0, 1, 12, 0, 0);
 

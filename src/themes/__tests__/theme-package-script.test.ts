@@ -65,9 +65,19 @@ describe("packageTheme (스펙 0063 §7.3)", () => {
     expect(result.zipName).toBe("baram-hangul-1.0.0.zip");
   });
 
-  // 무엇이 이것을 실패시키는가: zip 에 파일 시각이나 압축 수준이 스며들면. 그러면 로컬에서
-  // 점검한 zip 과 게시된 zip 이 다른 바이트가 되고, §7.5 의 "레지스트리로 나갈 바로 그 파일" 이
-  // 거짓이 된다.
+  // 무엇이 이것을 실패시키는가: `packageTheme` 의 `ZipWriter` 옵션 가운데 바이트를 고정하는 셋 —
+  // `level: 0`(무압축), `lastModDate: ZIP_DATE`(고정 시각), `extendedTimestamp: false` — 중 하나가
+  // 빠지거나 뒤집히면. 그러면 로컬에서 점검한 zip 과 게시된 zip 이 다른 바이트가 되고, §7.5 의
+  // "레지스트리로 나갈 바로 그 파일" 이 거짓이 된다.
+  // ‼️ 두 번 묶어 sha256 을 비교하는 첫 단언은 이 셋을 잡지 못한다 — 2026-09-29 에 셋을 하나씩
+  // 바꿔 이 케이스를 돌렸을 때(`level: 9` · `lastModDate` 삭제 · `extendedTimestamp: true`) 그 단언만
+  // 있던 케이스는 셋 다 초록이었다. 한 프로세스 안의 두 번은 같은 zlib 으로 압축하고, 같은 시간대에서
+  // 적고, 시각을 빼면 대신 적히는 묶은 시각은 DOS 시각이 2초 단위라 연달아 묶은 두 번에서 대개
+  // 같다. 그래서 다시 읽은 항목마다 세 옵션의 결과를 직접 본다: 압축 방식 0(stored) · 수정 시각
+  // 2020-01-01 12:00 로컬 · 확장 타임스탬프 extra field(`0x5455`) 없음. 셋째는 시각을 UTC 로 따로
+  // 적어서, 켜면 로컬 생성자로 만든 같은 `ZIP_DATE` 가 시간대마다 다른 바이트가 된다(2026-09-29
+  // 실측: `TZ` 를 UTC · America/Los_Angeles · Asia/Seoul 로 두고 묶은 zip 의 sha256 셋이 서로
+  // 달랐다 — 끄면 셋이 같았다).
   it("같은 원본은 같은 바이트가 된다", async () => {
     const a = await packageTheme(HANGUL, OK);
     const dir = copyOfHangul(); // 복사는 파일 시각을 새로 찍는다
@@ -75,6 +85,20 @@ describe("packageTheme (스펙 0063 §7.3)", () => {
     expect(a.ok && b.ok).toBe(true);
     if (!a.ok || !b.ok) return;
     expect(sha(b.bytes)).toBe(sha(a.bytes));
+
+    const reader = new ZipReader(new Uint8ArrayReader(a.bytes));
+    const entries = await reader.getEntries();
+    await reader.close();
+    // 아래 반복이 공허하지 않다 — 묶은 세 파일이 모두 읽힌다.
+    expect(entries.map((entry) => entry.filename)).toEqual([...a.files]);
+    const fixed = new Date(2020, 0, 1, 12, 0, 0).getTime();
+    for (const entry of entries) {
+      expect(entry.compressionMethod, entry.filename).toBe(0);
+      expect(entry.lastModDate.getTime(), entry.filename).toBe(fixed);
+      expect(entry.extraField?.has(0x5455) ?? false, entry.filename).toBe(
+        false,
+      );
+    }
   });
 
   it("태그 버전이 매니페스트 버전과 다르면 거부한다", async () => {
