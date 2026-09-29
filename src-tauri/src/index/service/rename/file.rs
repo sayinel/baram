@@ -246,10 +246,17 @@ pub(crate) async fn rename_file_with_links_inner(
 /// same inode on the same device (`symlink_metadata`, which reads a link
 /// itself) AND the two names differ at most by ASCII case. That is a
 /// case-only rename (`Note.md` → `note.md`) on a file system that folds
-/// case, where both spellings reach the one entry. The same inode under a
-/// different name is a hard link of the source, and a rename between hard
-/// links is a silent no-op, so it is another entry. Any other inode is
-/// another entry.
+/// case, where both spellings reach the one entry. Only ASCII case counts:
+/// `Élan.md` → `élan.md` on such a file system finds the destination, fails
+/// the name comparison, and is refused. The same inode under a name that
+/// differs by more than ASCII case is a hard link of the source, and a
+/// rename between hard links is a silent no-op, so it is refused as another
+/// entry. A hard link whose name differs from the source's only by ASCII
+/// case, which a file system that keeps case allows, looks the same as a
+/// case alias from these two reads, so it passes: the move is then a no-op,
+/// the rename answers `Ok`, and links are respelled, with no content lost.
+/// Telling the two apart would mean asking the file system whether it folds
+/// case. Any other inode is another entry.
 ///
 /// Elsewhere (Windows) there is no inode here to compare. The destination
 /// counts as the source's entry when its canonical parent is the source's
