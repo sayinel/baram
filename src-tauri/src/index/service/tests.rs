@@ -4605,7 +4605,7 @@ async fn two_notes_of_one_root_folding_to_one_path_keep_the_path_links_both_answ
     // respelled as a stem link always is. Where the file system folds case
     // the two directories are one, and this half has nothing to run: the
     // judgement itself is pinned without a file system by
-    // `filing::tests::a_path_key_two_notes_of_one_root_fold_to_is_ambiguous`.
+    // `judgement::tests::a_path_key_two_notes_of_one_root_fold_to_is_ambiguous`.
     // What fails this: ignoring how many notes fold to a key in
     // `read_as_another_note` — `[[A/note]]` and `[[a/note]]` become
     // `[[a/new]]` and `((a/note#^x))` becomes `((a/note#^y))`, and nothing is

@@ -5,7 +5,9 @@
 
 mod extractor;
 mod filing;
+mod judgement;
 mod normalizer;
+mod read_back;
 mod relative_links;
 mod rewriter;
 pub mod service;
@@ -18,15 +20,14 @@ use thiserror::Error;
 pub use extractor::{
     collect_all_files, collect_md_files, find_unlinked_mentions, UnlinkedMentionResult,
 };
-pub use filing::{
-    filing_key, keys_for, BlockTarget, FilingKey, KnownPaths, LocalAlias, RenameTarget, RootNotes,
-};
+pub use filing::{filing_key, keys_for, FilingKey, LocalAlias};
+pub use judgement::{BlockTarget, KnownPaths, RenameTarget, RootNotes};
+pub use read_back::index_reads_the_rename_back;
 pub use relative_links::rewrite_relative_wikilinks;
 pub(crate) use rewriter::link_reads_back_as_the_file;
 pub use rewriter::{
-    block_reference_can_spell, index_reads_the_rename_back, own_block_reference_lines,
-    replace_block_id_refs_to, replace_block_reference_target, replace_wikilink_target,
-    wikilink_can_spell,
+    block_reference_can_spell, own_block_reference_lines, replace_block_id_refs_to,
+    replace_block_reference_target, replace_wikilink_target, wikilink_can_spell,
 };
 
 use extractor::{extract_file_tags, extract_links};
@@ -344,14 +345,14 @@ impl LinkIndex {
     /// a path link names an existing note under a root that holds the
     /// referrer, and whether more than one note there answers to it — on a
     /// file system that keeps case, `A/note.md` and `a/note.md` both fold
-    /// to `a/note` (`filing::KnownPaths`).
+    /// to `a/note` (`judgement::KnownPaths`).
     pub fn registered_path_keys(&self) -> HashMap<String, usize> {
         self.path_keys_of(self.file_map.values().flatten())
     }
 
     /// The `Path` keys two or more of this index's notes fold to, with how
     /// many — `registered_path_keys` without the keys one note alone has,
-    /// for a rename whose only holding root this is (`filing::RootNotes::Sole`).
+    /// for a rename whose only holding root this is (`judgement::RootNotes::Sole`).
     /// Two notes share a key only when they share its last component
     /// (`filing::path_key_name`), so the notes are grouped by that first and
     /// a full key is spelled only for a group of two or more — none, in a

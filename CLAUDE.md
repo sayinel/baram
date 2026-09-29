@@ -184,15 +184,15 @@ baram/
   낸다 — 조회(`filing_keys_of` 를 거치는 `get_backlinks`·`referring_lines_to`·`block_reference_lines`)와 block ID rename 의
   `block_target`. 그래서 `[[dir/note]]`·`[[./note]]`·`((dir/note#^id))` 같은 경로·상대 참조도 백링크이고 두 rename 이 고쳐 쓴다.
   파일 쪽 키의 모양은 `keys_for` 를 부르지 않고 따로 짓는 자리도 안다 — crate 에서 테스트 밖의 `FilingKey::` 생성과
-  `file_key`·`root_relative_key`·`normalize_file_path`·`extract_id_from_stem` 호출을 훑으면 이것이 전부다: `filing.rs` 의
+  `file_key`·`root_relative_key`·`normalize_file_path`·`extract_id_from_stem` 호출을 훑으면 이것이 전부다: `judgement.rs` 의
   `RenameTarget::judge`·`refers_behind_alias`·`expected_key`·`BlockTarget::judge`(대상 판별), 노트 목록을 짓는
   `registered_path_keys`·`colliding_path_keys`(`mod.rs`, 둘 다 `path_keys_of` 로 `root_relative_key` 를 부르고 뒤의 것은
   `filing.rs` 의 `path_key_name` 으로 먼저 묶는다), zettel id `Stem` 을 붙이는 `backlink_keys`(`mod.rs`)·`block_target`
   (`rename/block_id.rs`), 같은 stem 예외(`rename/block_id.rs`·`rename/file.rs`)와 `stem_unchanged`(`rename/file.rs`), 관문이
-  `expected_key` 를 `Foreign` 으로 감싸는 곳과 `link_reads_back_as_the_file`(`rewriter.rs`). `mod.rs` 의 `file_map`·`relative_map`·
+  `expected_key` 를 `Foreign` 으로 감싸는 곳(`read_back.rs`)과 `link_reads_back_as_the_file`(`rewriter.rs`). `mod.rs` 의 `file_map`·`relative_map`·
   `id_map` 은 target 해석용이라 `incoming` 키가 아니다. 새 키 모양은 `filing.rs` 에 더하고 이 자리들을 같이 고칠 것.
-  `FilingKey` 를 가르는 `match` 는 `_` 팔 없이 변형을 모두 적는다 — 넷째 변형을 더하면 `filing.rs` 의 `read_as_another_note`·
-  `BlockTarget::judge`·`RenameTarget::judge`·`refers_behind_alias` 와 `rewriter.rs` 의 `index_reads_the_rename_back`, 다섯 자리에서
+  `FilingKey` 를 가르는 `match` 는 `_` 팔 없이 변형을 모두 적는다 — 넷째 변형을 더하면 `judgement.rs` 의 `read_as_another_note`·
+  `BlockTarget::judge`·`RenameTarget::judge`·`refers_behind_alias` 와 `read_back.rs` 의 `index_reads_the_rename_back`, 다섯 자리에서
   **컴파일이 멎는다**(더미 변형을 더해 실측; `LinkKind::pass()` 와 같은 방식). 키를 **짓는** `filing_key`·`keys_for` 는 멎지 않으니 새
   변형은 거기서 직접 낼 것. `mod.rs` 의 개수 게이트 둘은 잡는
   범위가 다르다 — 위의 `…_under_a_stem_…` 은 `LinkKind::ALL` 로 픽스처를 짜 새 **종류는** 저절로 들어오지만 표기 하나를
@@ -204,7 +204,7 @@ baram/
   (`service/tests.rs` 의 `nested_roots_a_rename_leaves_the_parents_colliding_link_alone`). 되읽기 관문도 덮는 root 마다 따로 읽는다.
   ‼️ **경로 링크를 다른 root 가 실재하는 다른 노트로 읽으면 고치지 않고 보고한다** — 두 root 가 함께 덮는 `/v/sub/r.md` 의
   `[[a/old]]` 는 자식 아래에서 `/v/sub/a/old.md`, 부모 아래에서 `/v/a/old.md` 다. 둘 다 있으면 어느 쪽을 rename 하든 그 링크는
-  **모호하므로 그대로 두고** 파일을 `skipped_files` 에 올린다(`filing.rs` 의 `Judgement::Ambiguous`·`read_as_another_note`).
+  **모호하므로 그대로 두고** 파일을 `skipped_files` 에 올린다(`judgement.rs` 의 `Judgement::Ambiguous`·`read_as_another_note`).
   부모에 `a/old.md` 가 없으면 모호하지 않으므로 전처럼 고쳐 쓴다. 한 root 안에서도 같다 — 대소문자를 지키는 파일 시스템에서
   `A/note.md` 와 `a/note.md` 는 둘 다 `Path("a/note")` 로 접히므로 `[[A/note]]`·`[[a/note]]` 는 어느 한쪽의 링크가 아니다.
   `registered_path_keys` 가 키마다 그리로 접히는 노트 수를 내고, 둘 이상이면 그 키로 읽히는 경로 링크는 모호하다. referrer 와

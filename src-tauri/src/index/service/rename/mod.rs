@@ -45,7 +45,7 @@ pub struct RenameResult {
     /// links that were rewritten — and the renamed note itself, under its
     /// new path, on the same terms. For both renames: a file holding a path
     /// reference another root reads as a different existing note, which is
-    /// left as written (`filing::Judgement::Ambiguous`), updated or not. A
+    /// left as written (`judgement::Judgement::Ambiguous`), updated or not. A
     /// block ID rename lists referrers only.
     pub skipped_files: Vec<String>,
 }
@@ -106,7 +106,7 @@ async fn holding_contexts(
 /// `LinkIndex::registered_path_keys` when its index is built for that
 /// registration, `Unknown` when it is not — a build that failed, or a
 /// context removed since. An `Unknown` root never lets a path link through
-/// (`filing::read_as_another_note`) that another root's note would stop.
+/// (`judgement::read_as_another_note`) that another root's note would stop.
 /// With one holding root there is no other root to read a link, so only the
 /// keys its notes collide on are collected (`RootNotes::Sole`,
 /// `LinkIndex::colliding_path_keys`) — under the index lock, which every
