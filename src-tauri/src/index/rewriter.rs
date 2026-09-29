@@ -540,6 +540,19 @@ mod tests {
             rename_in(content, "notes", "abc", "xyz"),
             "((Notes#^xyz)) ((notes.md#^xyz)) ((dir/notes.md#^abc)) ((other#^abc))"
         );
+        // A referrer that no root covers is judged under none: nothing changes.
+        // What fails this: refers ignoring covering_roots.
+        assert_eq!(
+            replace_block_id_refs_to(
+                content,
+                "/v/referrer.md",
+                &[],
+                &target_at("/v/dir/notes.md"),
+                "abc",
+                "xyz"
+            ),
+            content
+        );
     }
 
     #[test]
@@ -926,6 +939,20 @@ mod tests {
         assert_eq!(
             rename("((note#^b1))\n((b/note#^b1))\n", &target),
             "((note#^b2))\n((b/note#^b1))\n"
+        );
+        // A referrer that no root covers is judged under none: nothing changes.
+        // What fails this: refers ignoring covering_roots.
+        let uncovered = "((note#^b1))\n((b/note#^b1))\n";
+        assert_eq!(
+            replace_block_id_refs_to(
+                uncovered,
+                "/v/a.md",
+                &[],
+                &target_at("/v/b/note.md"),
+                "b1",
+                "b2"
+            ),
+            uncovered
         );
         // An embed with a display part is a plain reference to the grammar —
         // indexed as one, rewritten as one.
