@@ -8,7 +8,8 @@
 //
 // Run as a child process, the way the workflow runs it, asserting the exit code and what it
 // said. Every failure case asserts the SPECIFIC message, not merely a non-zero exit — the
-// script has eight ways to reject a document and "it rejected" would not tell them apart.
+// script rejects a document from many sites (each `errors.push` and `fail` call in
+// `scripts/validate-index.ts`) and "it rejected" would not tell them apart.
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

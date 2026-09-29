@@ -8,9 +8,11 @@ import {
   ZipReader,
   ZipWriter,
 } from "@zip.js/zip.js";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   cpSync,
+  existsSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -28,6 +30,7 @@ import {
   verifyThemeArchive,
 } from "../../../scripts/theme-package";
 import { PREVIEW_COLOR_KEYS } from "../theme-preview-palette";
+import { MAX_THEME_TOKENS_BYTES } from "../theme-store-fs";
 
 const HANGUL = resolve(__dirname, "../../../examples/themes/hangul");
 const OK = { appVersion: "0.7.7", version: "1.0.0" };
@@ -248,6 +251,25 @@ describe("packageTheme (스펙 0063 §7.3)", () => {
     expect(result.error).toContain("--color-accent-default");
   });
 
+  // 무엇이 이것을 실패시키는가: 크기 상한이 빠지면. 앱은 모드마다 `tokens.json` 을
+  // `MAX_THEME_TOKENS_BYTES` 까지만 읽고(`theme-install.ts` 의 `readModeColors`), 넘으면 그 모드를 색
+  // 없이 설치한다. 뒤에 공백만 붙여 크기를 넘긴 이 파일은 JSON 으로도 팔레트로도 멀쩡하다.
+  it("앱이 읽는 상한을 넘는 토큰 파일은 거부한다", async () => {
+    const dir = copyOfHangul();
+    const path = join(dir, "dark/tokens.json");
+    writeFileSync(
+      path,
+      `${readFileSync(path, "utf8")}${" ".repeat(MAX_THEME_TOKENS_BYTES)}`,
+    );
+    const result = await packageTheme(dir, OK);
+    expect(result).toMatchObject({ ok: false });
+    if (result.ok) return;
+    expect(result.error).toContain('"dark/tokens.json"');
+    expect(result.error).toContain(
+      `over the app's ${String(MAX_THEME_TOKENS_BYTES)}-byte cap`,
+    );
+  });
+
   it("내장 테마의 id 는 거부한다", async () => {
     const dir = copyOfHangul();
     editManifest(dir, (m) => {
@@ -331,6 +353,21 @@ describe("verifyThemeArchive (스펙 0063 §7.3 — 묶인 zip 을 다시 검증
     expect(result).toMatchObject({ ok: false });
   });
 
+  // 묶기와 같은 관문(`tokensProblem`)을 다시 검증도 지난다 — 상한이 한쪽에만 있으면 이것이 실패한다.
+  it("앱이 읽는 상한을 넘는 토큰 파일은 거부한다", async () => {
+    const bytes = await zipOf({
+      "baram-theme.json": hangulFile("baram-theme.json"),
+      "light/tokens.json": hangulFile("light/tokens.json"),
+      "dark/tokens.json": `${hangulFile("dark/tokens.json").toString("utf8")}${" ".repeat(MAX_THEME_TOKENS_BYTES)}`,
+    });
+    const result = await verifyThemeArchive(bytes, expected);
+    expect(result).toMatchObject({ ok: false });
+    if (result.ok) return;
+    expect(result.error).toContain(
+      `over the app's ${String(MAX_THEME_TOKENS_BYTES)}-byte cap`,
+    );
+  });
+
   it("검증한 것과 다른 id · 버전이면 거부한다", async () => {
     const packaged = await packageTheme(HANGUL, OK);
     if (!packaged.ok) throw new Error(packaged.error);
@@ -369,4 +406,41 @@ describe("verifyThemeArchive (스펙 0063 §7.3 — 묶인 zip 을 다시 검증
     );
     expect(result).toMatchObject({ ok: false });
   });
+});
+
+describe("run-theme-package.ts package — CLI", () => {
+  // 무엇이 이것을 실패시키는가: CLI 가 `--out` 폴더를 만들지 않고 쓰면 — `writeFileSync` 가
+  // ENOENT 로 던져 zip 도 출력 세 줄도 나오지 않는다.
+  it("없는 --out 폴더를 만들고 그 안에 zip 을 쓴다", () => {
+    const repo = resolve(__dirname, "../../..");
+    // CLI 는 앱 버전을 cwd 의 `package.json` 에서 읽는다 — 하한(`>=0.7.7`)을 넘는 버전을 둔 합성
+    // 루트에서 돌린다(`theme-release-workflow.test.ts` 의 `runPackageAndVerify` 와 같은 모양).
+    const root = mkdtempSync(join(tmpdir(), "baram-theme-cli-"));
+    for (const name of ["scripts", "src", "examples", "node_modules"]) {
+      symlinkSync(join(repo, name), join(root, name));
+    }
+    writeFileSync(
+      join(root, "package.json"),
+      JSON.stringify({ version: "0.7.7" }),
+    );
+    const out = join(root, "not", "yet");
+    const result = spawnSync(
+      join(repo, "node_modules/.bin/tsx"),
+      [
+        "scripts/run-theme-package.ts",
+        "package",
+        "--dir",
+        "examples/themes/hangul",
+        "--version",
+        "1.0.0",
+        "--out",
+        out,
+      ],
+      { cwd: root, encoding: "utf8" },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain("zip_name=baram-hangul-1.0.0.zip");
+    expect(existsSync(join(out, "baram-hangul-1.0.0.zip"))).toBe(true);
+    // tsx 를 한 번 띄운다 — vitest 기본 5 s 는 CI 러너에 맞춘 값이 아니다.
+  }, 30_000);
 });

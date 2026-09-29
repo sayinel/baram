@@ -1,9 +1,19 @@
 // §371 6b-2 — `plugin-release.yml` 의 `release-theme` 잡(스펙 0063 §7.3).
 //
-// 태그 단계는 **실행해서** 본다 — 이 워크플로의 플러그인 쪽이 텍스트 스캔을 다섯 번 우회당한 뒤
-// 굳힌 규칙이다(`malicious-fixture.test.ts`). 스크립트가 하는 일(묶기 · 다시 검증 · 색인)은
-// `theme-package-script.test.ts` · `theme-registry-chain.test.ts` 가 실행으로 본다. 여기 남는 텍스트
-// 단언은 실행할 수 없는 배선 — 잡 조건, 비밀이 닿는 자리, 단계 사이의 출력 — 뿐이다.
+// 단계는 **실행해서** 본다 — 이 워크플로의 플러그인 쪽이 텍스트 스캔을 다섯 번 우회당한 뒤 굳힌
+// 규칙이다(`malicious-fixture.test.ts`). 이 파일이 `run: |` 본문을 bash 로 실행하는 단계는 넷이다:
+// 태그 단계 `Parse and verify the theme tag`(`runTagStep`), checksum 관문 `Check the checksum the
+// pre-publish check recorded`(`runChecksumStep`), 묶기 `Package the theme` 와 다시 검증 `Verify the
+// packaged theme is the theme that was verified`(둘 다 `runPackageAndVerify`). 그 단계가 부르는
+// 스크립트의 경우들(묶기 · 다시 검증 · 색인)은 `theme-package-script.test.ts` 와
+// `theme-registry-chain.test.ts` 가 본다 — 묶기 · 다시 검증은 함수를 직접 부르고, 색인과 그 검증은
+// 스크립트를 띄운다.
+//
+// 나머지는 텍스트 단언이고 "실행할 수 없는 배선" describe 에 모여 있다. 그 종류는 여섯이다 — 잡
+// 조건(태그 트리거와 두 잡의 `if:`), 비밀이 닿는 자리(배포 키 줄과, 그 단계가 잡의 마지막인가),
+// 두 push 본문의 대조, push 스크립트가 node 계열 도구와 `${{` 를 싣지 않음, 테마 잡이
+// `examples/themes` 에 `$DIR` 로만 닿음, 단계 사이의 출력 배선(checksum 관문의 자리와 세 env, 색인
+// 단계의 두 env).
 
 import { spawnSync } from "node:child_process";
 import {

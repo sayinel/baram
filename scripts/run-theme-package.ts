@@ -4,14 +4,15 @@
  *
  * Usage (저장소 루트에서 — 앱 버전을 `./package.json` 에서 읽는다):
  *   npx tsx scripts/run-theme-package.ts package --dir examples/themes/hangul --version 1.0.0 --out <dir>
- *     → <dir>/<id>-<version>.zip 을 쓰고 stdout 에 `theme_id=` · `zip_name=` · `sha256=` 세 줄
+ *     → <dir>/<id>-<version>.zip 을 쓰고(없는 <dir> 은 만든다) stdout 에 `theme_id=` · `zip_name=` ·
+ *       `sha256=` 세 줄
  *   npx tsx scripts/run-theme-package.ts verify --zip <file> --id <id> --version <v> \
  *       --manifest-out <file> --preview-out <file>
  *
  * 종료 코드: 0 통과, 1 거부(이유는 stderr), 2 인자 오류.
  */
 import { createHash } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { packageTheme, verifyThemeArchive } from "./theme-package";
@@ -54,6 +55,7 @@ if (command === "package") {
     version: args.version,
   });
   if (!result.ok) refuse(result.error);
+  mkdirSync(args.out, { recursive: true });
   writeFileSync(join(args.out, result.zipName), result.bytes);
   const sha256 = createHash("sha256").update(result.bytes).digest("hex");
   console.log(`theme_id=${result.manifest.id}`);

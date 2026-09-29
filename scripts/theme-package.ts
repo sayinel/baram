@@ -2,14 +2,22 @@
  * §371 6b-2 — 테마 패키지를 만들고(`packageTheme`), 만든 아카이브를 다시 읽어 검증한다
  * (`verifyThemeArchive`). 스펙 0063 §7.3 · §7.5.
  *
- * 부르는 곳은 둘이다 — `plugin-release.yml` 의 `release-theme` 잡과, 게시 전 파일 설치 점검
- * (§7.5). 둘 다 `run-theme-package.ts` 를 지난다. **같은 원본은 같은 바이트가 된다**: 무압축
- * (`level: 0`)에 고정 시각(`ZIP_DATE`)이고 확장 타임스탬프를 끄므로(`extendedTimestamp: false` — 켜면
- * 그 시각을 UTC 로 따로 적는다, `ZIP_DATE` 주석) zlib 판본 · 시간대 · 파일 시각이 끼어들 자리가 없다.
- * `theme-package-script.test.ts` 의 "같은 원본은 같은 바이트가 된다" 가 그 셋을 항목마다 본다. 남는
- * 변수는 zip 을 쓰는 `@zip.js/zip.js` 의 판본 하나이고, `package.json` 이 그것을 캐럿 없이
- * 고정한다. 그래서 같은 커밋에서 만든 로컬 zip 의 sha256 이 게시된 항목의 `checksum` 과 같고,
- * 점검한 파일이 곧 게시된 파일이다.
+ * 테스트 밖에서 부르는 곳은 둘이고 둘 다 CLI `run-theme-package.ts` 를 지난다 — `plugin-release.yml`
+ * 의 `release-theme` 잡(묶기 · 다시 검증 두 단계)과, 게시 전 파일 설치 점검(§7.5 — `package.json` 의
+ * `theme:package`). 이 파일을 import 하는 것은 그 CLI 와 테스트 셋(`theme-package-script` ·
+ * `theme-package-install-parity` · `theme-registry-chain` 의 `.test.ts`)이 전부다 — 2026-09-29 에
+ * 추적되는 파일 전부에서 `theme-package"` 로 끝나는 import 를 찾았다. 그 테스트 셋은 함수를 직접
+ * 부른다. CLI 를 띄우는 테스트는 둘이다 — 같은 날 CLI 파일 이름이나 워크플로의 두 단계 이름을 싣는
+ * 테스트를 찾았다: `theme-release-workflow.test.ts` 는 그 두 단계의 본문을 그대로 돌리고,
+ * `theme-package-script.test.ts` 의 CLI 케이스 하나가 `package` 를 부른다.
+ *
+ * **같은 원본은 같은 바이트가 된다**: 무압축(`level: 0`)에 고정 시각(`ZIP_DATE`)이고 확장
+ * 타임스탬프를 끄므로(`extendedTimestamp: false` — 켜면 그 시각을 UTC 로 따로 적는다, `ZIP_DATE`
+ * 주석) zlib 판본 · 시간대 · 파일 시각이 끼어들 자리가 없다. `theme-package-script.test.ts` 의
+ * "같은 원본은 같은 바이트가 된다" 가 그 셋을 항목마다 본다. 남는 변수는 zip 을 쓰는
+ * `@zip.js/zip.js` 의 판본 하나이고, `package.json` 이 그것을 캐럿 없이 고정한다. 그래서 같은
+ * 커밋에서 만든 로컬 zip 의 sha256 이 게시된 항목의 `checksum` 과 같고, 점검한 파일이 곧 게시된
+ * 파일이다.
  *
  * ‼️ 테마 내용은 **실행하지 않는다**. 이 파일이 읽는 것은 매니페스트와 매니페스트가 선언한
  * 파일뿐이고, 그 경로가 테마 폴더를 벗어나지 못하게 한다 — 경로의 모양은 `themePackageFiles`,
@@ -39,6 +47,7 @@ import {
   previewPaletteFrom,
   registryPreviewPalettes,
 } from "../src/themes/theme-preview-palette";
+import { MAX_THEME_TOKENS_BYTES } from "../src/themes/theme-store-fs";
 import { parseThemeTokens } from "../src/themes/theme-tokens";
 import { RESERVED_THEME_IDS, THEME_MODES } from "../src/types/theme";
 
@@ -298,7 +307,18 @@ function readThemeFile(
   return { bytes: new Uint8Array(readFileSync(full)), ok: true };
 }
 
+/**
+ * 선언된 토큰 파일 하나가 앱이 설치할 수 있는 팔레트인가 — 아니면 그 이유. `packageTheme` 과
+ * `verifyThemeArchive` 가 함께 부른다.
+ *
+ * 크기 상한은 앱의 것이다(`MAX_THEME_TOKENS_BYTES`, `theme-store-fs.ts`): 앱은 모드마다 토큰 파일을
+ * 그 상한까지만 읽고(`theme-install.ts` 의 `readModeColors`) 넘으면 그 모드를 색 없이 설치한다. 같은
+ * 비교(`>`)로 거부한다 — 상한과 같은 크기는 앱이 읽는다.
+ */
 function tokensProblem(file: string, bytes: Uint8Array): null | string {
+  if (bytes.byteLength > MAX_THEME_TOKENS_BYTES) {
+    return `${JSON.stringify(file)} is ${bytes.byteLength} bytes, over the app's ${MAX_THEME_TOKENS_BYTES}-byte cap for a tokens file (MAX_THEME_TOKENS_BYTES) — the app would install this mode without its colours`;
+  }
   let parsed: unknown;
   try {
     parsed = JSON.parse(

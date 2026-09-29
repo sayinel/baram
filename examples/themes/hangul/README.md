@@ -234,8 +234,11 @@ zip(`plugin-release.yml` 의 `Package ZIP` 단계가 `README.md` 를 함께 묶�
 게시 전 점검(스펙 0063 §7.5)은 레지스트리로 나갈 바로 그 zip 을 로컬에서 만들어 **파일에서 설치**로 넣어 보는 것이다.
 순서는 이렇다.
 
-1. `package.json` 의 `version` 이 0.7.7 이상인 커밋의 저장소 루트에서
-   `npm run theme:package -- --dir examples/themes/hangul --version 1.0.0 --out <폴더>` 를 돌리고 출력의 `zip_name=` ·
+1. `package.json` 의 `version` 이 0.7.7 이상인 커밋의 저장소 루트에서 먼저 `npm ci` 로 `node_modules` 를
+   `package-lock.json` 에 맞춘다 — 위 "바이트가 재현된다" 의 남은 변수가 `@zip.js/zip.js` 판본이라, 낡은 `node_modules`
+   로 만든 zip 은 같은 바이트라는 보장이 없다. 그렇게 sha256 이 어긋나면 5 의 관문이 태그를 거부하면서 CI 가 만든 zip 이
+   점검한 zip 이 아니라고 말할 뿐, 원인이 로컬의 `node_modules` 라고는 말하지 않는다. 그다음
+   `npm run theme:package -- --dir examples/themes/hangul --version 1.0.0 --out <폴더>` 를 돌리고(없는 폴더는 만든다) 출력의 `zip_name=` ·
    `sha256=` 두 줄을 적어 둔다. CLI 가 앱 버전을 `./package.json` 에서 읽어 하한과 비교하므로(`releaseFloorProblem`, 계획 0113 P12) 그보다
    낮은 커밋에서는 zip 을 쓰지 않고 종료 코드 1 로 거부한다 — 2026-09-28 에는 `package.json` 이 0.7.6 이라
    `app version 0.7.6 does not satisfy this theme's engines.baram (>=0.7.7) — release the app first` 가 나온다. 그래서
