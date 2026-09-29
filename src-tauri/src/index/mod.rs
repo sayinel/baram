@@ -4,6 +4,10 @@
 //       파일 저장 시 해당 파일만 증분 업데이트
 
 mod extractor;
+// Test-only until the index files references through it; `index` is a private
+// module, so its items would otherwise be dead code in the lib build.
+#[cfg(test)]
+mod filing;
 mod normalizer;
 mod relative_links;
 mod rewriter;
