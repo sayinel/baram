@@ -4178,6 +4178,36 @@ async fn a_path_link_is_not_ambiguous_because_of_a_root_that_does_not_hold_the_r
     );
 }
 
+#[tokio::test]
+async fn nested_roots_the_parents_block_id_rename_keeps_a_path_reference_the_child_reads_as_another_file(
+) {
+    // The reverse of the block-ID case above: renaming the block of the
+    // parent's `a/old.md`. `sub/r.md`'s `((a/old#^x))` is that note under
+    // the parent and the existing `sub/a/old.md`, which holds `^x` too,
+    // under the child: the reference stays and `sub/r.md` is reported.
+    // What fails this: treating every other-root `Path` reading as a note
+    // that does not exist (`read_as_another_note`) — the reference becomes
+    // `((a/old#^y))` and nothing is reported.
+    let ctx = ContextManager::new();
+    let (dir, root, sub, state) =
+        nested_roots_with_two_a_old_notes(&ctx, "para ^x\n", &[("sub/r.md", "((a/old#^x))\n")])
+            .await;
+
+    let result = rename_block_id_inner(&state, &ctx, &format!("{root}/a/old.md"), "x", "y")
+        .await
+        .unwrap();
+    assert!(
+        result.updated_files.is_empty(),
+        "{:?}",
+        result.updated_files
+    );
+    assert_eq!(result.skipped_files, vec![format!("{sub}/r.md")]);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("sub/r.md")).unwrap(),
+        "((a/old#^x))\n"
+    );
+}
+
 /// `/v` indexed and `/v/sub` registered (`ctx-child`) but never opened —
 /// no index built for it — holding `/v/a/old.md`, `sub/r.md` with
 /// `[[a/old]]`, and `sub/a/old.md` when `child_note` says so.
