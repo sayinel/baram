@@ -91,8 +91,10 @@ pub(super) enum Unchanged<'a> {
     Report {
         unless: &'a (dyn Fn(&str, &str) -> bool + Sync),
     },
-    /// Not news: the rewrite could not have changed anything (a file rename
-    /// that keeps the stem, issue 678).
+    /// Not news: a file rename that keeps the stem (issue 678). A referrer's
+    /// bare links still name the file, so one the rewrite left unchanged is
+    /// not stale; a path link the new extension changes (`a/old.md` →
+    /// `a/old.txt`) is respelled and reaches `updated`, not this branch.
     Ignore,
 }
 

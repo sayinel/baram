@@ -18,7 +18,7 @@ use thiserror::Error;
 pub use extractor::{
     collect_all_files, collect_md_files, find_unlinked_mentions, UnlinkedMentionResult,
 };
-pub use filing::{filing_key, keys_for, BlockTarget, FilingKey};
+pub use filing::{filing_key, keys_for, BlockTarget, FilingKey, RenameTarget};
 pub use relative_links::rewrite_relative_wikilinks;
 pub use rewriter::{
     block_reference_can_spell, block_references_to, index_reads_the_rename_back,
@@ -693,7 +693,9 @@ mod tests {
         //
         // The fixture must hold no self-reference: `((#^id))` is filed under
         // the REFERRER's own stem, so it is not in this bucket and no pass
-        // visits it. A path-qualified reference is filed elsewhere too.
+        // visits it. `((dir/target#^b1))` names another file's path (issue
+        // 619): it is not in this bucket and no pass visits it for
+        // `/vault/target.md` — the sibling test below counts the path bucket.
         let mut content = LinkKind::ALL
             .iter()
             .map(|kind| kind.spelled("target", "b1"))
@@ -712,11 +714,80 @@ mod tests {
                     .filter(|e| e.source_path == "/vault/r.md")
                     .count()
             });
+        let target = RenameTarget {
+            old_path: "/vault/target.md",
+            new_path: "/vault/renamed.md",
+            local_aliases: &[],
+            windows: false,
+        };
+        let roots = ["/vault".to_string()];
         assert_eq!(
-            wikilinks_to(content, "target") + block_references_to(content, "/vault/r.md", "target"),
+            wikilinks_to(content, "/vault/r.md", &roots, &target)
+                + block_references_to(content, "/vault/r.md", &roots, &target),
             filed,
             "the index files a reference under this stem that neither rewrite pass visits"
         );
+    }
+
+    #[test]
+    fn every_reference_the_index_files_under_a_path_is_visited_by_one_rewrite_pass() {
+        // issue 619: the same count for the path bucket — every kind in
+        // `LinkKind::ALL`, spelled with the target's path from the root and
+        // relative to the referrer's folder, is filed under `Path("dir/target")`
+        // and must be visited by one pass. A link behind a vault alias is
+        // filed as `Foreign`: another vault's while the alias is not this
+        // vault's (visited 0 times), this file's once it is (visited once).
+        // What fails this: dropping the `Path` arm from `RenameTarget::refers`
+        // (the path spellings are filed and not visited), or dropping its
+        // alias check (the `Foreign` line is visited with no local alias).
+        let mut spellings: Vec<String> = Vec::new();
+        for spelled_as in ["dir/target", "./target"] {
+            spellings.extend(
+                LinkKind::ALL
+                    .iter()
+                    .map(|kind| kind.spelled(spelled_as, "b1")),
+            );
+        }
+        spellings.push("[[work::target]]".to_string());
+        let content = spellings.join("\n");
+        let mut index = LinkIndex::new();
+        index.root_path = Some("/v".to_string());
+        index.update_file_from_content("/v/dir/target.md", "para ^b1");
+        index.update_file_from_content("/v/dir/r.md", &content);
+        let filed_under = |key: &FilingKey| {
+            index.incoming.get(key).map_or(0, |entries| {
+                entries
+                    .iter()
+                    .filter(|e| e.source_path == "/v/dir/r.md")
+                    .count()
+            })
+        };
+        let filed = filed_under(&FilingKey::Path("dir/target".to_string()));
+        assert_eq!(filed, 2 * LinkKind::ALL.len());
+        assert_eq!(
+            filed_under(&FilingKey::Foreign {
+                alias: "work".to_string(),
+                target: "target".to_string(),
+            }),
+            1
+        );
+        let roots = ["/v".to_string()];
+        let visited = |local_aliases: &[String]| {
+            let target = RenameTarget {
+                old_path: "/v/dir/target.md",
+                new_path: "/v/dir/renamed.md",
+                local_aliases,
+                windows: false,
+            };
+            wikilinks_to(&content, "/v/dir/r.md", &roots, &target)
+                + block_references_to(&content, "/v/dir/r.md", &roots, &target)
+        };
+        assert_eq!(
+            visited(&[]),
+            filed,
+            "the index files a reference under this path that neither rewrite pass visits"
+        );
+        assert_eq!(visited(&["work".to_string()]), filed + 1);
     }
 
     #[test]

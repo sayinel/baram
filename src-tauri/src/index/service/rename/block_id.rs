@@ -41,7 +41,7 @@ pub(crate) async fn rename_block_id_inner(
     //    are not trusted — the rewriter reads each file as it is now. How
     //    many lines it named each file for is kept, for the exemption below.
     let (named_lines, referring_files) = named_referrers(
-        read_indexes(state, &dirs, |index| {
+        read_indexes(state, &dirs, |_, index| {
             index.block_reference_lines(file_path, old_id, &[])
         })
         .await?,

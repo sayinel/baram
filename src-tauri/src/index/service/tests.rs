@@ -2294,8 +2294,9 @@ async fn a_file_rename_rewrites_block_references_and_embeds_as_it_rewrites_wikil
     // embed — with or without a wikilink beside it, on the same line or not —
     // follows the new name too, and the new file's backlinks still name it.
     // `((dir/old#^b1))` is filed under the path `dir/old` (issue 619), which
-    // is not this file's path under the root (`old`), so it stays; no
-    // `dir/old.md` is registered here for it to name instead.
+    // is not this file's path under the root (`old`), so the rename of
+    // `old.md` leaves it. No `dir/old.md` exists in this vault, so the
+    // reference names nothing and stays as written.
     let ctx = ContextManager::new();
     let (dir, root) = vault_with_a_link(&ctx, "ctx-678a", true).await;
     std::fs::write(dir.path().join("old.md"), "para ^b1\n").unwrap();
@@ -2581,6 +2582,47 @@ async fn a_rename_that_keeps_the_stem_rewrites_nothing_and_reports_nothing() {
         "{:?}",
         result.skipped_files
     );
+}
+
+#[tokio::test]
+async fn a_rename_that_keeps_the_stem_still_respells_a_path_link_for_the_new_extension() {
+    // issue 619: `a/old.md` → `a/old.txt` keeps the stem key but not the
+    // path key — the index files a link to `a/old.txt` by its path as
+    // `a/old.txt`, since only a note extension comes off. The bare link
+    // stays; the path link is respelled, and both remain backlinks.
+    // What fails this: spelling a path link's last component with the new
+    // stem (`Path::file_stem`, every extension off) instead of the name
+    // without its note extension — `[[a/old]]` then stays and names nothing.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-619t", true).await;
+    std::fs::create_dir_all(dir.path().join("a")).unwrap();
+    std::fs::write(dir.path().join("a/old.md"), "t\n").unwrap();
+    std::fs::write(dir.path().join("r.md"), "[[old]]\n[[a/old]]\n").unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/a/old.md"),
+        &format!("{root}/a/old.txt"),
+    )
+    .await
+    .unwrap();
+    assert_eq!(result.updated_files, vec![format!("{root}/r.md")]);
+    assert!(
+        result.skipped_files.is_empty(),
+        "{:?}",
+        result.skipped_files
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
+        "[[old]]\n[[a/old.txt]]\n"
+    );
+    let backlinks = get_backlinks_inner(&state, &ctx, &format!("{root}/a/old.txt"))
+        .await
+        .unwrap();
+    assert_eq!(backlinks.len(), 2, "{backlinks:?}");
 }
 
 #[tokio::test]
@@ -3117,4 +3159,212 @@ async fn a_file_rename_to_a_stem_that_closes_a_code_span_around_itself_leaves_ev
         std::fs::read_to_string(dir.path().join("a`b`c.md")).unwrap(),
         "para ^b1 [[old]]\n"
     );
+}
+
+#[tokio::test]
+async fn a_file_rename_updates_the_path_qualified_references_the_index_filed_under_it() {
+    // issue 619: the index files a reference spelled with the note's path —
+    // from the root, relative to the referrer's folder — under that path,
+    // and the rename respells each of them with the new path, as it does a
+    // bare name. The renamed note's own path references follow it too: it
+    // stays in its folder, so `((./old#^x))` still names it until respelled.
+    // What fails this: dropping the `Path` arm from `RenameTarget::refers`
+    // — `r.md` and `a/s.md` are then reported as skipped, not updated.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-619r", true).await;
+    std::fs::create_dir_all(dir.path().join("a")).unwrap();
+    std::fs::create_dir_all(dir.path().join("b")).unwrap();
+    std::fs::write(
+        dir.path().join("a/old.md"),
+        "para ^x\nsee ((./old#^x)) and [[a/old]]\n",
+    )
+    .unwrap();
+    std::fs::write(dir.path().join("r.md"), "[[a/old|x]] ((a/old#^x))\n").unwrap();
+    std::fs::write(dir.path().join("a/s.md"), "[[./old]]\n").unwrap();
+    std::fs::write(dir.path().join("b/t.md"), "[[old]]\n").unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/a/old.md"),
+        &format!("{root}/a/new.md"),
+    )
+    .await
+    .unwrap();
+    let mut updated = result.updated_files.clone();
+    updated.sort();
+    assert_eq!(
+        updated,
+        vec![
+            format!("{root}/a/new.md"),
+            format!("{root}/a/s.md"),
+            format!("{root}/b/t.md"),
+            format!("{root}/r.md"),
+        ]
+    );
+    assert!(
+        result.skipped_files.is_empty(),
+        "{:?}",
+        result.skipped_files
+    );
+    let read = |p: &str| std::fs::read_to_string(dir.path().join(p)).unwrap();
+    assert_eq!(
+        read("a/new.md"),
+        "para ^x\nsee ((./new#^x)) and [[a/new]]\n"
+    );
+    assert_eq!(read("r.md"), "[[a/new|x]] ((a/new#^x))\n");
+    assert_eq!(read("a/s.md"), "[[./new]]\n");
+    assert_eq!(read("b/t.md"), "[[new]]\n");
+    let backlinks = get_backlinks_inner(&state, &ctx, &format!("{root}/a/new.md"))
+        .await
+        .unwrap();
+    assert_eq!(backlinks.len(), 4, "{backlinks:?}");
+}
+
+#[tokio::test]
+async fn a_rename_that_would_move_the_note_is_refused_before_anything_changes() {
+    // issue 619: a rename respells a note's path references for the folder
+    // it is in; a move to another folder is not a rename, and is refused
+    // before the note or any referrer is touched.
+    // What fails this: removing the parent comparison from
+    // `rename_file_with_links_inner` — the note moves and `[[note]]` in
+    // `a.md` is rewritten.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-619m", true).await;
+    std::fs::create_dir_all(dir.path().join("sub")).unwrap();
+    std::fs::write(dir.path().join("note.md"), "text\n").unwrap();
+    std::fs::write(dir.path().join("a.md"), "see [[note]]\n").unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+
+    let err = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/note.md"),
+        &format!("{root}/sub/note.md"),
+    )
+    .await
+    .unwrap_err();
+    assert!(err.contains("would move the note"), "{err}");
+    assert!(dir.path().join("note.md").exists());
+    assert!(!dir.path().join("sub/note.md").exists());
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("a.md")).unwrap(),
+        "see [[note]]\n"
+    );
+}
+
+#[tokio::test]
+async fn nested_roots_a_rename_leaves_the_parents_colliding_link_alone() {
+    // issue 619: `r.md` is under the parent root alone, where `a/old` is
+    // `a/old.md` — another file than the renamed `sub/a/old.md`, whose path
+    // under the CHILD root is also `a/old`. `sub/r.md` is under both: its
+    // `a/old` names the target under the child root, its `sub/a/old` under
+    // the parent. Each referrer is judged under the roots that cover it.
+    // What fails this: passing every owning root to `LinkPasses::rewrite`
+    // for a referrer instead of `keys_of(covering)` — `r.md`'s `[[a/old]]`
+    // is then rewritten.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-parent", true).await;
+    std::fs::create_dir_all(dir.path().join("sub/a")).unwrap();
+    std::fs::create_dir_all(dir.path().join("a")).unwrap();
+    std::fs::write(dir.path().join("sub/a/old.md"), "t\n").unwrap();
+    std::fs::write(dir.path().join("a/old.md"), "t\n").unwrap();
+    std::fs::write(dir.path().join("r.md"), "[[old]]\n[[a/old]]\n").unwrap();
+    std::fs::write(dir.path().join("sub/r.md"), "[[a/old]]\n[[sub/a/old]]\n").unwrap();
+    let sub = format!("{root}/sub");
+    ctx.add(info("ctx-child", &sub, ContextType::Folder))
+        .await
+        .unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    refresh_index_inner(&state, &ctx, &sub).await.unwrap();
+
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{sub}/a/old.md"),
+        &format!("{sub}/a/new.md"),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        result.updated_files,
+        vec![format!("{root}/r.md"), format!("{sub}/r.md")]
+    );
+    assert!(
+        result.skipped_files.is_empty(),
+        "{:?}",
+        result.skipped_files
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
+        "[[new]]\n[[a/old]]\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("sub/r.md")).unwrap(),
+        "[[a/new]]\n[[sub/a/new]]\n"
+    );
+    // Each index reads the rewritten files by its own root: the parent sees
+    // `r.md`'s `[[new]]` and `sub/r.md`'s `[[sub/a/new]]` (its `[[a/new]]`
+    // is `a/new` under the parent, another path), the child only
+    // `sub/r.md`'s `[[a/new]]`. `a/old.md` keeps `r.md`'s link.
+    let new_path = format!("{sub}/a/new.md");
+    let backlinks_in = |key: &str, path: &str| {
+        let (key, path) = (key.to_string(), path.to_string());
+        let state = &state;
+        async move {
+            state
+                .with_index(&key, |idx| idx.map(|i| i.get_backlinks(&path, &[]).len()))
+                .await
+        }
+    };
+    assert_eq!(backlinks_in(&root, &new_path).await, Some(2));
+    assert_eq!(backlinks_in(&sub, &new_path).await, Some(1));
+    let colliding = get_backlinks_inner(&state, &ctx, &format!("{root}/a/old.md"))
+        .await
+        .unwrap();
+    assert_eq!(sources(&colliding), vec![format!("{root}/r.md")]);
+}
+
+#[tokio::test]
+async fn a_rename_to_markdown_extension_keeps_every_link() {
+    // `old.md` → `old.markdown` keeps both the stem and the path key: every
+    // link already names the new file, nothing is rewritten, and nothing is
+    // reported (`Unchanged::Ignore`).
+    // What fails this: respelling a path link's last component with the new
+    // file name instead of the name without its note extension — `[[a/old]]`
+    // becomes `[[a/old.markdown]]` and `r.md` joins `updated_files`.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-619x", true).await;
+    std::fs::create_dir_all(dir.path().join("a")).unwrap();
+    std::fs::write(dir.path().join("a/old.md"), "t\n").unwrap();
+    std::fs::write(dir.path().join("r.md"), "[[old.md]]\n[[a/old]]\n").unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/a/old.md"),
+        &format!("{root}/a/old.markdown"),
+    )
+    .await
+    .unwrap();
+    assert_eq!(result.updated_files, Vec::<String>::new());
+    assert!(
+        result.skipped_files.is_empty(),
+        "{:?}",
+        result.skipped_files
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
+        "[[old.md]]\n[[a/old]]\n"
+    );
+    let backlinks = get_backlinks_inner(&state, &ctx, &format!("{root}/a/old.markdown"))
+        .await
+        .unwrap();
+    assert_eq!(backlinks.len(), 2, "{backlinks:?}");
 }

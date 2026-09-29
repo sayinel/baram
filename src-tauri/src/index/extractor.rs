@@ -703,7 +703,17 @@ mod tests {
         let fm = "\u{FEFF}---\nrefs:\n\n    - \"[[old]]\"\n---\n";
         assert_eq!(indexed(fm), [("old".to_string(), 4)]);
         assert_eq!(
-            replace_wikilink_target(fm, "old", "new-longer"),
+            replace_wikilink_target(
+                fm,
+                "/v/r.md",
+                &["/v".to_string()],
+                &crate::index::RenameTarget {
+                    old_path: "/v/old.md",
+                    new_path: "/v/new-longer.md",
+                    local_aliases: &[],
+                    windows: false,
+                }
+            ),
             "\u{FEFF}---\nrefs:\n\n    - \"[[new-longer]]\"\n---\n"
         );
     }

@@ -85,18 +85,20 @@ pub(super) async fn ensure_indexes(
     Ok(())
 }
 
-/// Read `f` from the index of every directory context in `contexts`,
-/// concatenated. An index that is gone — or not the one published for that
+/// Read `f` — given the context and its index — from the index of every
+/// directory context in `contexts`, concatenated. An index that is gone — or not the one published for that
 /// registration — is a refusal, never a silent "no references".
 pub(super) async fn read_indexes<T>(
     state: &LinkIndexState,
     contexts: &[Registered],
-    f: impl Fn(&LinkIndex) -> Vec<T>,
+    f: impl Fn(&Registered, &LinkIndex) -> Vec<T>,
 ) -> Result<Vec<T>, String> {
     let mut out = Vec::new();
     for ctx in contexts {
         let found = state
-            .with_index_for(&ctx.info.path, ctx.incarnation, |idx| idx.map(&f))
+            .with_index_for(&ctx.info.path, ctx.incarnation, |idx| {
+                idx.map(|i| f(ctx, i))
+            })
             .await;
         out.extend(found.ok_or(INDEX_NOT_READY)?);
     }
