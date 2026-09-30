@@ -1654,6 +1654,7 @@ fn the_slot_map_is_locked_only_inside_state_rs() {
         ("rename/namespace.rs", include_str!("rename/namespace.rs")),
         ("rename/passes.rs", include_str!("rename/passes.rs")),
         ("rename/referrers.rs", include_str!("rename/referrers.rs")),
+        ("rename/scope.rs", include_str!("rename/scope.rs")),
         ("mod.rs", include_str!("mod.rs")),
         ("tests.rs", include_str!("tests.rs")),
     ] {

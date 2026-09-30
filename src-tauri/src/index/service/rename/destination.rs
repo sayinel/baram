@@ -3,9 +3,62 @@
 
 use crate::context::manager::{resolve_canonical, Registered};
 use crate::index::relative_links::{path_components, same_component};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use super::confined_by;
+
+/// The old path as an entry the rename may move: what it resolves to
+/// (`identity`), and that file's parent — the directory a file opened on its
+/// own (§89) must stay in (`parent`).
+pub(super) struct Source {
+    /// The index knows a note by what its path resolves to: the build never
+    /// indexes a symlink entry (`collect_md_files` does not follow one) and a
+    /// save files under the resolved path (`Mutation::update`). The rename
+    /// does the same — it drops what the old path resolved to before the move
+    /// and files the note under what the new path resolves to after it. For a
+    /// plain note that is the new path; after a case-only rename on a file
+    /// system that folds case, the new spelling on disk; for a symlinked note,
+    /// its target, which the index already held.
+    pub(super) identity: PathBuf,
+    pub(super) parent: Option<PathBuf>,
+}
+
+/// Both ends stay inside the file's contexts (`dirs`). The old path is judged
+/// by its directory entry (`entry_confined`): what it resolves to is inside
+/// already, since `owning_contexts` found the contexts by that very path.
+/// The new path is judged in both views (`confined_both_ways`), what it
+/// resolves to and the entry itself. A rename that would carry the file out
+/// of every context, or that acts on an entry outside them — a symlink
+/// outside the vault pointing into it — is refused before anything is
+/// written (fs_cmd's rename validates both ends the same way). Then the
+/// move refusal below. Judged in that order: old entry, new path both ways,
+/// move.
+pub(super) fn judge(old_path: &str, new_path: &str, dirs: &[Registered]) -> Result<Source, String> {
+    let identity = resolve_canonical(old_path)?;
+    let parent = identity.parent().map(Path::to_path_buf);
+    if !entry_confined(old_path, dirs, parent.as_deref()) {
+        return Err(format!("{old_path} is outside the contexts that hold it"));
+    }
+    if !confined_both_ways(new_path, dirs, parent.as_deref()) {
+        return Err(format!("{new_path} is outside the contexts of {old_path}"));
+    }
+    // issue 619: a rename keeps the note in its directory. A path-qualified
+    // or relative reference names the note by where it is, and a move would
+    // need every one of them respelled for a new folder — and the note's own
+    // relative links for the new place it reads them from — which is not
+    // what this command rewrites. Refused before anything is written. The
+    // parents are compared as spelled, not as resolved: the respelling
+    // writes `new_path`'s components into links, so `a/../a/new.md`, whose
+    // parent resolves to `a`, would write `[[a/../a/new]]`, a link to no
+    // note. Both paths are absolute (`absolute`, checked by the caller), so
+    // a relative spelling cannot pass as the same parent either.
+    if !stays_in_its_directory(old_path, new_path, cfg!(windows)) {
+        return Err(format!(
+            "{new_path} would move the note out of its directory; a rename keeps the note where it is"
+        ));
+    }
+    Ok(Source { identity, parent })
+}
 
 /// The directory entry `path` names: its parent resolved canonically, joined
 /// with its own file name as spelled, the last component not followed. Used
@@ -94,7 +147,7 @@ fn same_entry(old_path: &str, new_path: &str, _new_meta: &std::fs::Metadata) -> 
 /// the same parent components, compared as `same_component` compares them
 /// (ASCII case folded on Windows). Pure, so the Windows spelling is tested
 /// with `windows = true` on any host.
-pub(super) fn stays_in_its_directory(old_path: &str, new_path: &str, windows: bool) -> bool {
+fn stays_in_its_directory(old_path: &str, new_path: &str, windows: bool) -> bool {
     let parent = |path| {
         let mut components = path_components(path, windows);
         components.pop();
@@ -122,7 +175,7 @@ pub(super) fn stem_of(path: &str) -> Option<String> {
 /// symlink outside every context pointing at `/v/x.md`, pass: a case-only
 /// rename then moved the outside entry and the note's rewrite replaced the
 /// link with a regular file outside the vault.
-pub(super) fn entry_confined(path: &str, dirs: &[Registered], old_parent: Option<&Path>) -> bool {
+fn entry_confined(path: &str, dirs: &[Registered], old_parent: Option<&Path>) -> bool {
     entry_path(path).is_ok_and(|entry| destination_confined(&entry, dirs, old_parent))
 }
 

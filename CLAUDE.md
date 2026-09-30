@@ -212,7 +212,7 @@ baram/
   index 잠금 아래에서 노트마다가 아니라 이름이 같은 노트마다 키를 짓는다. 존재 판정은 rename 되는 파일이나 referrer 를 **담는 모든
   directory context** 의 노트 목록(`LinkIndex::registered_path_keys`)으로 한다 — rename 되는 파일의 context 만이 아니다. 부모의
   `a/old.md` 를 rename 할 때 자식 root 는 그 파일을 담지 않지만 referrer 를 담는다. 한 번도 열리지 않아 index 가 없는 context 는
-  판정 전에 **그 자리에서 build 한다**(`service/rename/mod.rs` 의 `holding_contexts` → `ensure_indexes`). build 할 수 없으면 그
+  판정 전에 **그 자리에서 build 한다**(`service/rename/scope.rs` 의 `holding_contexts` → `ensure_indexes`). build 할 수 없으면 그
   root 는 `RootNotes::Unknown` 이 되어 그 root 가 읽을 수 있는 경로 링크는 **그대로 두고 파일을 보고한다** — 비어 있다고 가정하지
   않는다(`known_paths_of`). referrer 를 담는지는 `contexts_containing` 으로 찾고, 판정 안에서는 root 표기에 대해 어휘적으로 본다.
   bare 이름(`[[old]]`)은 이 판정 밖이다 — stem 은 모든 root 에서 같게 읽히고 rename 은 그것을 고쳐 쓴다
