@@ -1,8 +1,10 @@
 //! §33/§61 Rename with link updates — the result types and the helpers its parts share.
 
 mod block_id;
+mod destination;
 mod file;
 mod namespace;
+mod passes;
 mod referrers;
 
 pub(crate) use block_id::rename_block_id_inner;

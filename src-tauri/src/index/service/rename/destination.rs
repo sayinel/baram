@@ -1,0 +1,190 @@
+//! §33 The checks a file rename's destination passes: inside the file's
+//! contexts in both views, in the same directory, and not another entry.
+
+use crate::context::manager::{resolve_canonical, Registered};
+use crate::index::relative_links::{path_components, same_component};
+use std::path::Path;
+
+use super::confined_by;
+
+/// The directory entry `path` names: its parent resolved canonically, joined
+/// with its own file name as spelled, the last component not followed. Used
+/// for the boundary only (`confined_both_ways`) — the rename moves this
+/// entry, so the entry must lie inside the contexts too. The index files a
+/// note by what its path resolves to, not by this.
+fn entry_path(path: &str) -> Result<std::path::PathBuf, String> {
+    let path = Path::new(path);
+    let (Some(parent), Some(name)) = (path.parent(), path.file_name()) else {
+        return Err(format!("{} names no file", path.display()));
+    };
+    Ok(resolve_canonical(&parent.to_string_lossy())?.join(name))
+}
+
+/// Whether `new_path` names a directory entry other than the one at
+/// `old_path`. Judged by the entries, never by what they resolve to: neither
+/// last component is followed. Following it would call a symlinked
+/// `note.md -> x.md`, renamed to `x.md`, the "same" file, and `rename(2)`
+/// would replace the real `x.md` with the link. Nothing at `new_path`, or
+/// nothing `symlink_metadata` can read (as `Path::exists` reads it), is no
+/// entry.
+///
+/// On Unix the destination is the source's own entry only when both are the
+/// same inode on the same device (`symlink_metadata`, which reads a link
+/// itself) AND the two names differ at most by ASCII case. That is a
+/// case-only rename (`Note.md` → `note.md`) on a file system that folds
+/// case, where both spellings reach the one entry. Only ASCII case counts:
+/// `Élan.md` → `élan.md` on such a file system finds the destination, fails
+/// the name comparison, and is refused. The same inode under a name that
+/// differs by more than ASCII case is a hard link of the source, and a
+/// rename between hard links is a silent no-op, so it is refused as another
+/// entry. A hard link whose name differs from the source's only by ASCII
+/// case, which a file system that keeps case allows, looks the same as a
+/// case alias from these two reads, so it passes: the move is then a no-op,
+/// the rename answers `Ok`, and links are respelled, with no content lost.
+/// Telling the two apart would mean asking the file system whether it folds
+/// case. Any other inode is another entry.
+///
+/// Elsewhere (Windows) there is no inode here to compare. The destination
+/// counts as the source's entry when its canonical parent is the source's
+/// and the names differ at most by ASCII case, since Windows folds case by
+/// default. This is an approximation, and a hard link there is not told
+/// apart from a case alias.
+///
+/// So a symlinked source renamed onto its target's name is refused, and a
+/// symlinked source renamed to another spelling of its own name goes ahead.
+/// A dangling symlink at the destination is an entry too and is refused,
+/// where `Path::exists`, which follows the link, used to let the rename
+/// replace it.
+pub(super) fn another_entry_at(old_path: &str, new_path: &str) -> bool {
+    let Ok(new_meta) = std::fs::symlink_metadata(new_path) else {
+        return false;
+    };
+    let names_differ_only_by_case = match (
+        Path::new(old_path).file_name(),
+        Path::new(new_path).file_name(),
+    ) {
+        (Some(a), Some(b)) => a.eq_ignore_ascii_case(b),
+        _ => false,
+    };
+    !(names_differ_only_by_case && same_entry(old_path, new_path, &new_meta))
+}
+
+/// Whether the existing entry at `new_path` (`new_meta`, not followed) is the
+/// entry at `old_path` — see `another_entry_at`.
+#[cfg(unix)]
+fn same_entry(old_path: &str, _new_path: &str, new_meta: &std::fs::Metadata) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    std::fs::symlink_metadata(old_path)
+        .is_ok_and(|old| old.dev() == new_meta.dev() && old.ino() == new_meta.ino())
+}
+
+/// Whether the existing entry at `new_path` is the entry at `old_path`,
+/// approximated by canonical parents — see `another_entry_at`.
+#[cfg(not(unix))]
+fn same_entry(old_path: &str, new_path: &str, _new_meta: &std::fs::Metadata) -> bool {
+    let parent = |p: &str| {
+        Path::new(p)
+            .parent()
+            .and_then(|parent| std::fs::canonicalize(parent).ok())
+    };
+    parent(old_path).is_some_and(|old| parent(new_path) == Some(old))
+}
+
+/// Whether `new_path` names an entry in the directory `old_path` is in:
+/// the same parent components, compared as `same_component` compares them
+/// (ASCII case folded on Windows). Pure, so the Windows spelling is tested
+/// with `windows = true` on any host.
+pub(super) fn stays_in_its_directory(old_path: &str, new_path: &str, windows: bool) -> bool {
+    let parent = |path| {
+        let mut components = path_components(path, windows);
+        components.pop();
+        components
+    };
+    let (old, new) = (parent(old_path), parent(new_path));
+    old.len() == new.len()
+        && old
+            .iter()
+            .zip(&new)
+            .all(|(a, b)| same_component(a, b, windows))
+}
+
+pub(super) fn stem_of(path: &str) -> Option<String> {
+    Path::new(path)
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+}
+
+/// Whether the directory entry `path` names (`entry_path`) lies inside the
+/// file's contexts, judged by `destination_confined` — so for a standalone
+/// File context (§89) it must sit in the directory the file was in. The
+/// rename acts on the entry: it moves it, and `rewrite_renamed_note` writes
+/// through it. Judging only the resolved file let `/outside/Link.md`, a
+/// symlink outside every context pointing at `/v/x.md`, pass: a case-only
+/// rename then moved the outside entry and the note's rewrite replaced the
+/// link with a regular file outside the vault.
+pub(super) fn entry_confined(path: &str, dirs: &[Registered], old_parent: Option<&Path>) -> bool {
+    entry_path(path).is_ok_and(|entry| destination_confined(&entry, dirs, old_parent))
+}
+
+/// Whether `path` lies inside the file's contexts in both views: what it
+/// resolves to (`resolve_canonical`, following a link) AND its entry
+/// (`entry_confined`). This is the new path's check, before the move and
+/// again before the renamed note is written, where it matches what
+/// `write_file` touches: the entry it replaces and the file it resolves to.
+/// For every rename that passes `another_entry_at`, the resolved view before
+/// the move refuses nothing that the entry view and `owning_contexts` pass —
+/// the new path then does not exist, so both views are one path, or it is
+/// the source's own entry. After the move it refuses an entry whose target
+/// was changed since.
+pub(super) fn confined_both_ways(
+    path: &str,
+    dirs: &[Registered],
+    old_parent: Option<&Path>,
+) -> bool {
+    resolve_canonical(path).is_ok_and(|identity| destination_confined(&identity, dirs, old_parent))
+        && entry_confined(path, dirs, old_parent)
+}
+
+/// Whether a renamed file's destination stays inside the file's contexts:
+/// under one of its directory contexts, or — for a file opened on its own
+/// (§89, no directory context) — in the directory the file was in.
+fn destination_confined(identity: &Path, dirs: &[Registered], old_parent: Option<&Path>) -> bool {
+    if dirs.is_empty() {
+        identity.parent() == old_parent
+    } else {
+        confined_by(identity, dirs)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::stays_in_its_directory;
+
+    #[test]
+    fn a_rename_that_would_move_the_note_is_refused_in_windows_spelling_too() {
+        // What fails this: splitting on `/` alone — `C:\v\sub\note.md` is
+        // then one component, the parents are both empty, and the move reads
+        // as staying.
+        assert!(!stays_in_its_directory(
+            r"C:\v\note.md",
+            r"C:\v\sub\other.md",
+            true
+        ));
+        assert!(!stays_in_its_directory(
+            r"C:\v\a\note.md",
+            r"C:\v\b\note.md",
+            true
+        ));
+        assert!(stays_in_its_directory(
+            r"C:\V\a\note.md",
+            r"c:\v\A\new.md",
+            true
+        ));
+        assert!(stays_in_its_directory("/v/a/note.md", "/v/a/new.md", false));
+        assert!(!stays_in_its_directory(
+            "/v/a/note.md",
+            "/v/A/new.md",
+            false
+        ));
+    }
+}

@@ -177,7 +177,7 @@ baram/
   두 패스가 낸 내용을 `extract_links` 로 **되읽는** `index_reads_the_rename_back`(`LinkPasses::rewrite`). 술어를 통과한
   stem 도 referrer 줄의 백틱과 짝을 지어 링크를 literal 로 만들 수 있고, 그건 stem 이 아니라 **줄**의 성질이라 되읽어야
   보인다. ③ 의 `skipped.push` 는 한 곳이 아니다 — `rename/referrers.rs` 에 referrer 의 원인마다 하나씩(덮는 context 가 없는
-  referrer 도 그중 하나다)과 `rename/file.rs`(rename 되는 노트); `LinkPasses` 는 `left_behind` 플래그만 세운다
+  referrer 도 그중 하나다)과 `rename/passes.rs`(rename 되는 노트); `LinkPasses` 는 `left_behind` 플래그만 세운다
   ‼️ **index 의 키는 `filing.rs` 가 정한다 (#619)** — `incoming` 의 키는 문자열이 아니라 `FilingKey`(`Stem`·`Path`·`Foreign`)다.
   참조를 키로 바꾸는 함수는 `filing_key` 하나다 — filing(`file_incoming`), rewriter 판정(`RenameTarget::judge`·`BlockTarget::judge`
   가 함께 쓰는 `keyed_under`, 모호성 판정 `read_as_another_note`), 되읽기 관문(`index_reads_the_rename_back`)이 모두 그것을 부른다. 파일이 읽히는 키는 `keys_for` 가
@@ -232,7 +232,7 @@ baram/
     `LocalAlias { alias, root }` 로 다니고, alias 뒤 경로의 `Foreign` 키는 읽는 index 의 root 가 아니라 **그 alias 가 가리키는 vault 의
     root 로** 계산한다 — 중첩 vault 에서 부모의 `[[p::a/old]]` 가 자식의 `a/old.md` 로 읽히지 않게. block reference·embed 문법에는
     alias 자리가 없어(`extractor.rs` 의 `BLOCK_REF_RE`·`BLOCK_EMBED_RE`) block ID rename 은 alias 를 넘기지 않는다
-  - **파일 rename 은 디렉터리를 바꾸지 않는다** — `rename/file.rs` 의 `stays_in_its_directory` 가 부모가 다르면 쓰기 전에 `Err` 를
+  - **파일 rename 은 디렉터리를 바꾸지 않는다** — `rename/destination.rs` 의 `stays_in_its_directory` 가 부모가 다르면 쓰기 전에 `Err` 를
     낸다. 경로·상대 참조는 노트를 지금 자리로 부르고, 이동은 옮겨진 노트 자신의 상대 링크까지 고쳐야 하므로 별도 패스다.
     부모는 resolve 한 것이 아니라 **적힌 대로** 비교한다 — respell 이 `new_path` 의 성분을 링크에 쓰므로, resolve 하면 같은 폴더인
     `a/../a/new.md` 도 `[[a/../a/new]]` 를 써 아무 노트도 가리키지 않는다. 그래서 두 rename 은 절대 경로가 아닌 경로를 먼저 거부한다
@@ -248,7 +248,7 @@ baram/
     index 는 노트를 **경로가 resolve 되는 곳으로** 안다 — build 는 symlink 항목을 색인하지 않고(`collect_md_files` 가 `metadata()`
     로 링크를 따라가지 않는다) save 는 resolve 한 경로로 넣는다(`service/state.rs` 의 `Mutation::update`). 파일 rename 도 같아서 옛 경로가
     이동 전에 resolve 되던 곳을 빼고, 새 경로가 **이동 뒤에** resolve 되는 곳으로 넣는다 — symlink 인 노트는 대상 아래 그대로다.
-    경계는 반대로 **항목 자체**(canonical 부모 + 적힌 이름, `entry_path`)도 안이어야 한다 — 옛 경로는 항목으로(`rename/file.rs` 의
+    경계는 반대로 **항목 자체**(canonical 부모 + 적힌 이름, `entry_path`)도 안이어야 한다 — 옛 경로는 항목으로(`rename/destination.rs` 의
     `entry_confined`; resolve 한 파일은 `owning_contexts` 가 이미 그 경로로 context 를 찾았으니 안이다), 새 경로는 resolve 한 파일과 항목
     **두 관점 모두**로(`confined_both_ways`, 이동 전과 노트를 쓰기 직전). rename 은 항목을 옮기고 그 항목을 통해 쓰므로, vault 밖의 `/outside/Link.md` 가 vault 안을 가리켜도
     거부한다(대소문자를 접는 파일 시스템의 case-only rename 이 그 링크를 vault 밖의 일반 파일로 바꿔 쓰던 구멍)

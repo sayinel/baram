@@ -112,7 +112,7 @@ impl LinkKind {
     }
 }
 
-/// The two passes a file rename runs over a referrer (`rename/file.rs`,
+/// The two passes a file rename runs over a referrer (`rename/passes.rs`,
 /// `LinkPasses`) — one per grammar a new stem may or may not be spelled in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RewritePass {
