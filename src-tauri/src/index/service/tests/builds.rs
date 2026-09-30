@@ -549,14 +549,16 @@ fn the_slot_map_is_locked_only_inside_state_rs() {
     // every critical section there is synchronous. This pins the first half —
     // no other file in the service takes the lock (a new file could otherwise
     // hold it across an await unnoticed). The walk reads every `.rs` file under
-    // the service directory, so a new file is scanned the moment it exists.
-    // What fails this: writing the needle into `rename/scope.rs` — "rename/scope.rs
-    // takes the slot lock directly"; walking `service/rename` instead of
-    // `service` — "the walk saw 8 files", which the count assertion rejects.
+    // the service directory, so a new file is scanned the moment it exists. The
+    // walk must reach one file at the root and one in each subdirectory there is
+    // today, so a walk that stops recursing or starts elsewhere cannot pass.
+    // What fails this: skipping every directory named `tests` in the walk —
+    // `the walk never reached ["tests/mod.rs"]`; walking `service/rename` instead
+    // of `service` — the same message naming all three files.
     let needle = ["slots", ".lock("].concat();
     let root = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src/index/service"));
     let mut pending = vec![root.to_path_buf()];
-    let mut seen = 0;
+    let mut visited = std::collections::BTreeSet::new();
     let mut state_takes_it = false;
     while let Some(dir) = pending.pop() {
         for entry in std::fs::read_dir(&dir).unwrap() {
@@ -568,13 +570,13 @@ fn the_slot_map_is_locked_only_inside_state_rs() {
             if path.extension() != Some(std::ffi::OsStr::new("rs")) {
                 continue;
             }
-            seen += 1;
             let src = std::fs::read_to_string(&path).unwrap();
             let name = path
                 .strip_prefix(root)
                 .unwrap()
                 .to_string_lossy()
                 .replace('\\', "/");
+            visited.insert(name.clone());
             if name == "state.rs" {
                 state_takes_it = src.contains(&needle);
             } else {
@@ -585,9 +587,13 @@ fn the_slot_map_is_locked_only_inside_state_rs() {
             }
         }
     }
+    let missing: Vec<&str> = ["state.rs", "rename/file.rs", "tests/mod.rs"]
+        .into_iter()
+        .filter(|name| !visited.contains(*name))
+        .collect();
     assert!(
-        seen >= 10,
-        "the walk saw {seen} files under {}",
+        missing.is_empty(),
+        "the walk never reached {missing:?} under {}",
         root.display()
     );
     assert!(state_takes_it, "state.rs no longer takes the slot lock");

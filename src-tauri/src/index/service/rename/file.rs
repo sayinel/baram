@@ -1,4 +1,6 @@
-//! §33 File rename with link updates — see rename/mod.rs for the shared helpers.
+//! §33 File rename with link updates — preparation in rename/scope.rs, destination checks in
+//! rename/destination.rs, link passes in rename/passes.rs, the referrer rewrite in
+//! rename/referrers.rs, result types and path helpers in rename/mod.rs.
 
 use crate::context::ContextManager;
 use crate::index::{link_reads_back_as_the_file, own_block_reference_lines, RenameTarget};

@@ -1,4 +1,5 @@
-//! §33 Block ID rename with reference updates — see rename/mod.rs for the shared helpers.
+//! §33 Block ID rename with reference updates — preparation in rename/scope.rs, the referrer
+//! rewrite in rename/referrers.rs, result types and path helpers in rename/mod.rs.
 
 use crate::context::manager::Registered;
 use crate::context::ContextManager;
