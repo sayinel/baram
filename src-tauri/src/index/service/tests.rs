@@ -4505,11 +4505,9 @@ async fn renaming_a_note_that_is_a_symlink_indexes_the_link_where_it_moved() {
     // `new.md` and leaves `real/x.md` where it is, so the index names the
     // renamed note at `new.md`, keeps `real/x.md`, and holds no
     // `real/new.md`, which exists nowhere.
-    // What fails this: filing the `Update` under the path resolved through
-    // the link (`resolve_canonical(new_path)` or `old_identity` with the new
-    // name) — the graph names the phantom `real/new.md`; and filing the
-    // `Remove` under `old_identity` — `real/x.md`, still on disk, drops out
-    // of the index.
+    // What fails this: filing the `Remove` under `old_identity`, which
+    // resolves through the link to `real/x.md` — that note, still on disk,
+    // drops out of the index.
     let ctx = ContextManager::new();
     let (dir, root) = vault_with_a_link(&ctx, "ctx-symnote", true).await;
     std::fs::create_dir_all(dir.path().join("real")).unwrap();
