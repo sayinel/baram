@@ -4558,9 +4558,12 @@ async fn a_rename_of_a_symlink_outside_every_context_is_refused_though_it_points
     // the link and `x.md` untouched. On a file system that keeps case the
     // destination `link.md` resolves outside too, so the refusal holds on
     // both; the case-only rename on one that folds case is the hole.
-    // What fails this: dropping the entry view from `confined_both_ways`
-    // (only `resolve_canonical` judged) — where the file system folds case
-    // the rename answers `Ok` and `/outside/link.md` becomes a regular file
+    // The old path's entry is judged first, so the refusal names it.
+    // What fails this: dropping the old path's entry check
+    // (`entry_confined(old_path, ..)`) — the new path's entry, in the same
+    // folder, refuses instead and the error names `link.md`; and dropping the
+    // entry view from both ends — where the file system folds case the
+    // rename answers `Ok` and `/outside/link.md` becomes a regular file
     // holding the note's text.
     let ctx = ContextManager::new();
     let (dir, root) = vault_with_a_link(&ctx, "ctx-outside", true).await;
@@ -4588,7 +4591,10 @@ async fn a_rename_of_a_symlink_outside_every_context_is_refused_though_it_points
         "[[Link]] see [[b]]\n"
     );
     let err = result.unwrap_err();
-    assert!(err.contains("is outside the contexts"), "{err}");
+    assert_eq!(
+        err,
+        format!("{out}/Link.md is outside the contexts that hold it")
+    );
 }
 
 #[cfg(unix)]
@@ -4713,6 +4719,49 @@ async fn a_rename_onto_a_hard_link_of_the_note_is_refused() {
     }
     let err = result.unwrap_err();
     assert!(err.contains("already exists"), "{err}");
+}
+
+#[tokio::test]
+async fn a_rename_that_spells_the_old_path_in_another_case_removes_the_note_as_indexed() {
+    // Where the file system folds case, `NOTE.md` opens the note on disk as
+    // `Note.md`. The rename is asked with that spelling, to `note.md`: the
+    // index held the note as `Note.md`, so that is what the removal must
+    // drop — what the old path resolves to — and the graph then names
+    // `note.md` alone. Where the file system keeps case, `NOTE.md` names no
+    // note and this half has nothing to run.
+    // What fails this: filing the `Remove` under `entry_path(old_path)` —
+    // `NOTE.md` as spelled matches nothing in the index, and the graph keeps
+    // `Note.md` beside `note.md`.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-oldcase", true).await;
+    if !folds_case(dir.path()) {
+        eprintln!("the file system under {root} keeps case; the case-folded half is not run");
+        return;
+    }
+    std::fs::write(dir.path().join("Note.md"), "see [[b]]\n").unwrap();
+    std::fs::write(dir.path().join("r.md"), "[[Note]]\n").unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+
+    rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/NOTE.md"),
+        &format!("{root}/note.md"),
+    )
+    .await
+    .unwrap();
+    let graph = state
+        .with_index(&root, |idx| idx.unwrap().get_link_graph())
+        .await;
+    assert!(
+        graph.nodes.contains(&format!("{root}/note.md")),
+        "{graph:?}"
+    );
+    assert!(
+        !graph.nodes.contains(&format!("{root}/Note.md")),
+        "{graph:?}"
+    );
 }
 
 #[cfg(unix)]
