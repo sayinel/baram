@@ -117,21 +117,21 @@ pub(crate) async fn rename_file_with_links_inner(
     // left unchanged.
     let stem_unchanged = crate::index::normalizer::normalize_file_path(new_path) == old_key;
 
-    // The canonical identity of the file being renamed, resolved before it
-    // moves (the new path does not exist yet: resolve_canonical builds it on
-    // its existing parent). The index takes the new name as `new_path` spells
-    // it, on the parent `renamed_identity` resolved: after a case-only rename
-    // on a file system that folds case, `renamed_identity` is the file as it
-    // was before the move — `Note.md` — while the move leaves it `note.md`.
-    // Not `old_identity`'s parent: a note that is itself a symlink resolves
-    // to its target, and `fs::rename` moves the link, not the target.
-    let new_identity = match Path::new(new_path).file_name() {
-        Some(name) => renamed_identity.with_file_name(name),
-        None => renamed_identity.clone(),
-    };
+    // The index is told about the two directory ENTRIES the move touches —
+    // the old one it drops and the new one it adds — each spelled as the
+    // caller spells its name, on its canonical parent (`entry_path`).
+    // `old_identity` and `renamed_identity` resolve through the last
+    // component and are kept for the boundary checks alone, where following
+    // a link is right. Here it is wrong: `fs::rename` moves a symlinked
+    // note's link and leaves its target where it is. A note `Note.md`
+    // pointing at `real/x.md`, renamed to `note.md`, must leave the index
+    // with `note.md`, and with `real/x.md` still indexed, not with a
+    // `real/note.md` that exists nowhere. On a file system that folds case
+    // the spelled name is also what the move leaves on disk.
     let remove_old = Mutation::Remove {
-        path: old_identity.clone(),
+        path: entry_path(old_path)?,
     };
+    let new_identity = entry_path(new_path)?;
 
     // The file's own content, read BEFORE it moves: it is what the index will
     // hold under the new path. Unreadable here means nothing has changed yet,
@@ -234,6 +234,19 @@ pub(crate) async fn rename_file_with_links_inner(
     })
 }
 
+/// The directory entry `path` names, for the index: its parent resolved
+/// canonically, joined with its own file name as spelled. The last
+/// component is never followed, so a symlinked note is filed where its link
+/// is. `resolve_canonical` of the whole path is the file the entry opens,
+/// which is what a boundary check wants and an index mutation does not.
+fn entry_path(path: &str) -> Result<std::path::PathBuf, String> {
+    let path = Path::new(path);
+    let (Some(parent), Some(name)) = (path.parent(), path.file_name()) else {
+        return Err(format!("{} names no file", path.display()));
+    };
+    Ok(resolve_canonical(&parent.to_string_lossy())?.join(name))
+}
+
 /// Whether `new_path` names a directory entry other than the one at
 /// `old_path`. Judged by the entries, never by what they resolve to: neither
 /// last component is followed. Following it would call a symlinked
@@ -266,6 +279,9 @@ pub(crate) async fn rename_file_with_links_inner(
 ///
 /// So a symlinked source renamed onto its target's name is refused, and a
 /// symlinked source renamed to another spelling of its own name goes ahead.
+/// A dangling symlink at the destination is an entry too and is refused,
+/// where `Path::exists`, which follows the link, used to let the rename
+/// replace it.
 fn another_entry_at(old_path: &str, new_path: &str) -> bool {
     let Ok(new_meta) = std::fs::symlink_metadata(new_path) else {
         return false;

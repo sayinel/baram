@@ -436,7 +436,7 @@ pub fn own_block_reference_lines(content: &str, id: Option<&str>) -> usize {
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
+pub(super) mod tests {
     use super::*;
     use crate::index::{index_reads_the_rename_back, LinkKind};
 

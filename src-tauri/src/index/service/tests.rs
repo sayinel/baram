@@ -4503,12 +4503,13 @@ async fn a_case_only_rename_is_a_rename_of_the_file_itself_where_the_file_system
 async fn renaming_a_note_that_is_a_symlink_indexes_the_link_where_it_moved() {
     // `note.md` is a symlink to `real/x.md`. The rename moves the link to
     // `new.md` and leaves `real/x.md` where it is, so the index names the
-    // renamed note at `new.md` — not at the target's folder, which holds no
-    // `new.md`.
-    // What fails this: taking the new name onto `old_identity` in
-    // `rename_file_with_links_inner` (`old_identity.with_file_name`) —
-    // `old_identity` resolved through the link to `real/x.md`, and the
-    // graph names the phantom `real/new.md`.
+    // renamed note at `new.md`, keeps `real/x.md`, and holds no
+    // `real/new.md`, which exists nowhere.
+    // What fails this: filing the `Update` under the path resolved through
+    // the link (`resolve_canonical(new_path)` or `old_identity` with the new
+    // name) — the graph names the phantom `real/new.md`; and filing the
+    // `Remove` under `old_identity` — `real/x.md`, still on disk, drops out
+    // of the index.
     let ctx = ContextManager::new();
     let (dir, root) = vault_with_a_link(&ctx, "ctx-symnote", true).await;
     std::fs::create_dir_all(dir.path().join("real")).unwrap();
@@ -4535,9 +4536,67 @@ async fn renaming_a_note_that_is_a_symlink_indexes_the_link_where_it_moved() {
         .await;
     assert!(graph.nodes.contains(&format!("{root}/new.md")), "{graph:?}");
     assert!(
+        graph.nodes.contains(&format!("{root}/real/x.md")),
+        "{graph:?}"
+    );
+    assert!(
         !graph.nodes.contains(&format!("{root}/real/new.md")),
         "{graph:?}"
     );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_case_only_rename_of_a_symlinked_note_indexes_the_link_in_its_new_case() {
+    // Where the file system folds case, `Note.md`, a symlink to `real/x.md`,
+    // renamed to `note.md` is its own entry in another case: the rename goes
+    // ahead and the move respells the link. The index then names `note.md`
+    // and keeps `real/x.md`, and names neither `Note.md` nor a `real/note.md`
+    // that exists nowhere. Where the file system keeps case this half has
+    // nothing to run: `note.md` is an ordinary new name there, which the
+    // other symlink test covers.
+    // What fails this: filing the `Update` under the destination resolved
+    // through the link (`renamed_identity.with_file_name`) — the graph
+    // names `real/note.md`.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-symcase", true).await;
+    if !folds_case(dir.path()) {
+        eprintln!("the file system under {root} keeps case; the case-only half is not run");
+        return;
+    }
+    std::fs::create_dir_all(dir.path().join("real")).unwrap();
+    std::fs::write(dir.path().join("real/x.md"), "see [[b]]\n").unwrap();
+    std::os::unix::fs::symlink("real/x.md", dir.path().join("Note.md")).unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+
+    rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/Note.md"),
+        &format!("{root}/note.md"),
+    )
+    .await
+    .unwrap();
+    let names = names_in(dir.path());
+    assert!(names.contains(&"note.md".to_string()), "{names:?}");
+    let graph = state
+        .with_index(&root, |idx| idx.unwrap().get_link_graph())
+        .await;
+    assert!(
+        graph.nodes.contains(&format!("{root}/note.md")),
+        "{graph:?}"
+    );
+    assert!(
+        graph.nodes.contains(&format!("{root}/real/x.md")),
+        "{graph:?}"
+    );
+    for phantom in ["Note.md", "real/note.md"] {
+        assert!(
+            !graph.nodes.contains(&format!("{root}/{phantom}")),
+            "{phantom}: {graph:?}"
+        );
+    }
 }
 
 #[cfg(unix)]
@@ -4729,10 +4788,11 @@ async fn two_notes_of_one_root_folding_to_one_path_keep_the_path_links_both_answ
     // the two directories are one, and this half has nothing to run: the
     // judgement itself is pinned without a file system by
     // `judgement::tests::a_path_key_two_notes_of_one_root_fold_to_is_ambiguous`.
-    // What fails this: ignoring how many notes fold to a key in
-    // `read_as_another_note` — `[[A/note]]` and `[[a/note]]` become
-    // `[[a/new]]` and `((a/note#^x))` becomes `((a/note#^y))`, and nothing is
-    // reported.
+    // What fails this: the vault is the rename's only holding root, so it is
+    // judged through `RootNotes::Sole` — ignoring that branch's collision map
+    // in `read_as_another_note` makes `[[A/note]]` and `[[a/note]]` become
+    // `[[a/new]]` and `((a/note#^x))` become `((a/note#^y))`, and nothing is
+    // reported. (The `n > 1` reading of `Known` does not reach this fixture.)
     let ctx = ContextManager::new();
     let (dir, root) = vault_with_a_link(&ctx, "ctx-fold", true).await;
     if folds_case(dir.path()) {
