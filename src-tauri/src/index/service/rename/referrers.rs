@@ -62,7 +62,8 @@ pub(super) struct Rewritten {
     /// ‼️ Not parallel to `updated`: a caller may add a file to `updated`
     /// and queue that file's `Mutation` itself instead of putting it here.
     /// The file rename does, for the renamed note — its `Mutation` carries
-    /// the identity resolved before the move, which only the caller holds.
+    /// what the new path resolves to after the move, which only the caller
+    /// resolves.
     /// Adding it here "for symmetry" queues a second `Update` for that path.
     /// Both carry the same content, so applying them leaves the index as one
     /// would — which is why the mistake would not announce itself.

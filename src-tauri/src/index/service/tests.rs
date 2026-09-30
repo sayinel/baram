@@ -3478,9 +3478,9 @@ async fn a_rename_whose_new_path_climbs_back_into_the_folder_is_refused_as_spell
     // the respelling writes the new path's components into links: `r.md`'s
     // `[[a/old]]` would become `[[a/../a/new]]`, which names no note. The
     // parents are compared as spelled, so this is refused like a move.
-    // What fails this: comparing the canonical parents instead
-    // (`old_identity.parent() != renamed_identity.parent()`) — the rename
-    // goes ahead and writes `[[a/../a/new]]`.
+    // What fails this: comparing the canonical parents instead (the parents
+    // of `resolve_canonical(old_path)` and `resolve_canonical(new_path)`) —
+    // the rename goes ahead and writes `[[a/../a/new]]`.
     let ctx = ContextManager::new();
     let (dir, root) = vault_with_a_link(&ctx, "ctx-climb", true).await;
     std::fs::create_dir_all(dir.path().join("a")).unwrap();
@@ -4451,8 +4451,9 @@ async fn a_case_only_rename_is_a_rename_of_the_file_itself_where_the_file_system
     if folds {
         // What fails this: refusing any destination that exists
         // (`Path::exists`, as before) — the rename answers "already exists".
-        // And registering the note under the identity resolved before the
-        // move (`renamed_identity`) — the graph then names `Note.md`.
+        // And registering the note under what the new path resolved to
+        // before the move (`resolve_canonical(new_path)` taken ahead of
+        // `fs::rename`) — the graph then names `Note.md`.
         let result = result.unwrap();
         assert_eq!(result.updated_files, vec![format!("{root}/r.md")]);
         assert!(
@@ -4500,14 +4501,16 @@ async fn a_case_only_rename_is_a_rename_of_the_file_itself_where_the_file_system
 
 #[cfg(unix)]
 #[tokio::test]
-async fn renaming_a_note_that_is_a_symlink_indexes_the_link_where_it_moved() {
-    // `note.md` is a symlink to `real/x.md`. The rename moves the link to
-    // `new.md` and leaves `real/x.md` where it is, so the index names the
-    // renamed note at `new.md`, keeps `real/x.md`, and holds no
-    // `real/new.md`, which exists nowhere.
-    // What fails this: filing the `Remove` under `old_identity`, which
-    // resolves through the link to `real/x.md` — that note, still on disk,
-    // drops out of the index.
+async fn renaming_a_symlinked_note_keeps_the_index_on_the_notes_target() {
+    // `note.md` is a symlink to `real/x.md`. The index knows a note by what
+    // its path resolves to — the build never indexes the link, a save files
+    // under the target — so the rename files the note under what `new.md`
+    // resolves to after the move: `real/x.md`, which stays indexed. Neither
+    // the link entry `new.md` nor a `real/new.md` that exists nowhere is.
+    // What fails this: filing the `Update` under the new entry
+    // (`entry_path(new_path)`) — the graph names `new.md`; and under the old
+    // resolved path with the new name (`old_identity.with_file_name`) — the
+    // graph names the phantom `real/new.md`.
     let ctx = ContextManager::new();
     let (dir, root) = vault_with_a_link(&ctx, "ctx-symnote", true).await;
     std::fs::create_dir_all(dir.path().join("real")).unwrap();
@@ -4532,30 +4535,74 @@ async fn renaming_a_note_that_is_a_symlink_indexes_the_link_where_it_moved() {
     let graph = state
         .with_index(&root, |idx| idx.unwrap().get_link_graph())
         .await;
-    assert!(graph.nodes.contains(&format!("{root}/new.md")), "{graph:?}");
     assert!(
         graph.nodes.contains(&format!("{root}/real/x.md")),
         "{graph:?}"
     );
-    assert!(
-        !graph.nodes.contains(&format!("{root}/real/new.md")),
-        "{graph:?}"
-    );
+    for phantom in ["new.md", "real/new.md"] {
+        assert!(
+            !graph.nodes.contains(&format!("{root}/{phantom}")),
+            "{phantom}: {graph:?}"
+        );
+    }
 }
 
 #[cfg(unix)]
 #[tokio::test]
-async fn a_case_only_rename_of_a_symlinked_note_indexes_the_link_in_its_new_case() {
+async fn a_rename_of_a_symlink_outside_every_context_is_refused_though_it_points_inside() {
+    // `/outside/Link.md` lies outside every context and points at the
+    // vault's `x.md`, so what it resolves to is inside. The rename would act
+    // on the outside entry: move it, and — `x.md` links to `[[Link]]` — the
+    // note's own rewrite would replace the link with a regular file outside
+    // the vault. Both views must be inside, and the entry is not: refused,
+    // the link and `x.md` untouched. On a file system that keeps case the
+    // destination `link.md` resolves outside too, so the refusal holds on
+    // both; the case-only rename on one that folds case is the hole.
+    // What fails this: dropping the entry view from `confined_both_ways`
+    // (only `resolve_canonical` judged) — where the file system folds case
+    // the rename answers `Ok` and `/outside/link.md` becomes a regular file
+    // holding the note's text.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-outside", true).await;
+    std::fs::write(dir.path().join("x.md"), "[[Link]] see [[b]]\n").unwrap();
+    let outside = tempfile::tempdir().unwrap();
+    std::os::unix::fs::symlink(dir.path().join("x.md"), outside.path().join("Link.md")).unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    let out = outside.path().to_str().unwrap();
+
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{out}/Link.md"),
+        &format!("{out}/link.md"),
+    )
+    .await;
+    assert_eq!(names_in(outside.path()), vec!["Link.md".to_string()]);
+    assert!(std::fs::symlink_metadata(outside.path().join("Link.md"))
+        .unwrap()
+        .file_type()
+        .is_symlink());
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("x.md")).unwrap(),
+        "[[Link]] see [[b]]\n"
+    );
+    let err = result.unwrap_err();
+    assert!(err.contains("is outside the contexts"), "{err}");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_case_only_rename_of_a_symlinked_note_keeps_the_index_on_the_notes_target() {
     // Where the file system folds case, `Note.md`, a symlink to `real/x.md`,
     // renamed to `note.md` is its own entry in another case: the rename goes
-    // ahead and the move respells the link. The index then names `note.md`
-    // and keeps `real/x.md`, and names neither `Note.md` nor a `real/note.md`
-    // that exists nowhere. Where the file system keeps case this half has
-    // nothing to run: `note.md` is an ordinary new name there, which the
-    // other symlink test covers.
-    // What fails this: filing the `Update` under the destination resolved
-    // through the link (`renamed_identity.with_file_name`) — the graph
-    // names `real/note.md`.
+    // ahead and the move respells the link. The index keeps the note under
+    // its target `real/x.md` and names none of `note.md`, `Note.md` and a
+    // `real/note.md` that exists nowhere. Where the file system keeps case
+    // this half has nothing to run: `note.md` is an ordinary new name there,
+    // which the other symlink test covers.
+    // What fails this: filing the `Update` under the new entry
+    // (`entry_path(new_path)`) — the graph names `note.md`.
     let ctx = ContextManager::new();
     let (dir, root) = vault_with_a_link(&ctx, "ctx-symcase", true).await;
     if !folds_case(dir.path()) {
@@ -4582,14 +4629,10 @@ async fn a_case_only_rename_of_a_symlinked_note_indexes_the_link_in_its_new_case
         .with_index(&root, |idx| idx.unwrap().get_link_graph())
         .await;
     assert!(
-        graph.nodes.contains(&format!("{root}/note.md")),
-        "{graph:?}"
-    );
-    assert!(
         graph.nodes.contains(&format!("{root}/real/x.md")),
         "{graph:?}"
     );
-    for phantom in ["Note.md", "real/note.md"] {
+    for phantom in ["note.md", "Note.md", "real/note.md"] {
         assert!(
             !graph.nodes.contains(&format!("{root}/{phantom}")),
             "{phantom}: {graph:?}"

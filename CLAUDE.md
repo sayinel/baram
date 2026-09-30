@@ -244,9 +244,13 @@ baram/
     읽기로는 case alias 와 구별되지 않아 **통과한다** — 이동은 no-op 이고 `Ok` 를 내며 링크는 respell 된다(내용 손실은 없다). 가르려면 파일
     시스템이 대소문자를 접는지 물어야 한다(followup). resolve 한 경로로 비교하면 `note.md -> x.md` 를 `x.md` 로 바꾸는 rename 이
     진짜 `x.md` 를 링크로 덮는다. Windows 에는 inode 비교가 없어 canonical 부모가 같고 이름이 ASCII 대소문자만 다를 때로 근사한다.
-    목적지의 **dangling symlink** 도 항목이라 거부한다 — 따라가는 `Path::exists` 로 보던 main 은 그것을 덮어썼다. index 에 넣고 빼는 경로도 같은
-    원칙이다 — `entry_path`(canonical 부모 + 적힌 이름)로 짓고, 마지막 성분까지 resolve 한 `old_identity`·`renamed_identity` 는 경계 검사에만
-    쓴다. symlink 인 노트를 rename 하면 `fs::rename` 은 링크를 옮기고 대상은 그대로 두기 때문이다
+    목적지의 **dangling symlink** 도 항목이라 거부한다 — 따라가는 `Path::exists` 로 보던 main 은 그것을 덮어썼다.
+    index 는 노트를 **경로가 resolve 되는 곳으로** 안다 — build 는 symlink 항목을 색인하지 않고(`collect_md_files` 가 `metadata()`
+    로 링크를 따라가지 않는다) save 는 resolve 한 경로로 넣는다(`service/state.rs` 의 `Mutation::update`). 파일 rename 도 같아서 옛 경로가
+    이동 전에 resolve 되던 곳을 빼고, 새 경로가 **이동 뒤에** resolve 되는 곳으로 넣는다 — symlink 인 노트는 대상 아래 그대로다.
+    경계는 반대로 **두 관점 모두** 안이어야 한다(`rename/file.rs` 의 `confined_both_ways`) — resolve 한 파일과, 항목 자체(canonical
+    부모 + 적힌 이름, `entry_path`). rename 은 항목을 옮기고 그 항목을 통해 쓰므로, vault 밖의 `/outside/Link.md` 가 vault 안을 가리켜도
+    거부한다(대소문자를 접는 파일 시스템의 case-only rename 이 그 링크를 vault 밖의 일반 파일로 바꿔 쓰던 구멍)
   - **`rename/file.rs` 를 베껴 "폴더로 이동" 을 만들면 상대 경로 링크가 조용히 끊긴다** — 베낀 코드는 먼저 위의 `Err` 에
     막히고, 그것을 떼어도 두 패스는 옮겨지는 노트를 **가리키는** 참조만 고친다(옮겨진 노트 자신에게 도는 `rewrite_renamed_note`
     도 같은 `passes.rewrite` 다). 이동은 stem 을 바꾸지 않아 `stem_unchanged` 가 `Unchanged::Ignore` 로 간다. `rewrite_relative_wikilinks`

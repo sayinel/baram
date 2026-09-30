@@ -42,15 +42,18 @@ pub(crate) async fn rename_file_with_links_inner(
     // issue 717: a link behind one of the file's own vault aliases names it
     // (§87); one behind any other alias names another vault's note and stays.
     let local_aliases = local_aliases_of(ctx_mgr, &dirs).await;
-    // The destination stays inside the file's contexts (`destination_confined`).
-    // A rename that would carry the file out of every context is refused
-    // before anything is written (fs_cmd's rename validates both ends the
-    // same way).
+    // Both ends stay inside the file's contexts, in both views
+    // (`confined_both_ways`): what the path resolves to, and the directory
+    // entry itself. A rename that would carry the file out of every context,
+    // or that acts on an entry outside them — a symlink outside the vault
+    // pointing into it — is refused before anything is written (fs_cmd's
+    // rename validates both ends the same way).
     let old_identity = resolve_canonical(old_path)?;
-    let renamed_identity = resolve_canonical(new_path)?;
     let old_parent = old_identity.parent().map(Path::to_path_buf);
-    if !destination_confined(&renamed_identity, &dirs, old_parent.as_deref()) {
-        return Err(format!("{new_path} is outside the contexts of {old_path}"));
+    for path in [old_path, new_path] {
+        if !confined_both_ways(path, &dirs, old_parent.as_deref()) {
+            return Err(format!("{path} is outside the contexts of {old_path}"));
+        }
     }
     // issue 619: a rename keeps the note in its directory. A path-qualified
     // or relative reference names the note by where it is, and a move would
@@ -117,21 +120,17 @@ pub(crate) async fn rename_file_with_links_inner(
     // left unchanged.
     let stem_unchanged = crate::index::normalizer::normalize_file_path(new_path) == old_key;
 
-    // The index is told about the two directory ENTRIES the move touches —
-    // the old one it drops and the new one it adds — each spelled as the
-    // caller spells its name, on its canonical parent (`entry_path`).
-    // `old_identity` and `renamed_identity` resolve through the last
-    // component and are kept for the boundary checks alone, where following
-    // a link is right. Here it is wrong: `fs::rename` moves a symlinked
-    // note's link and leaves its target where it is. A note `Note.md`
-    // pointing at `real/x.md`, renamed to `note.md`, must leave the index
-    // with `note.md`, and with `real/x.md` still indexed, not with a
-    // `real/note.md` that exists nowhere. On a file system that folds case
-    // the spelled name is also what the move leaves on disk.
+    // The index knows a note by what its path resolves to: the build never
+    // indexes a symlink entry (`collect_md_files` does not follow one) and a
+    // save files under the resolved path (`Mutation::update`). The rename
+    // does the same — it drops what the old path resolved to before the move
+    // and files the note under what the new path resolves to AFTER it
+    // (below). For a plain note that is the new path; after a case-only
+    // rename on a file system that folds case, the new spelling on disk; for
+    // a symlinked note, its target, which the index already held.
     let remove_old = Mutation::Remove {
-        path: entry_path(old_path)?,
+        path: old_identity.clone(),
     };
-    let new_identity = entry_path(new_path)?;
 
     // The file's own content, read BEFORE it moves: it is what the index will
     // hold under the new path. Unreadable here means nothing has changed yet,
@@ -198,10 +197,7 @@ pub(crate) async fn rename_file_with_links_inner(
         new_path,
         renamed_content,
         |content, ref_path| passes.rewrite(content, ref_path, &keys),
-        || {
-            resolve_canonical(new_path)
-                .is_ok_and(|identity| destination_confined(&identity, &dirs, old_parent.as_deref()))
-        },
+        || confined_both_ways(new_path, &dirs, old_parent.as_deref()),
         |content| {
             matches!(unchanged, Unchanged::Report { .. })
                 && named_lines.contains_key(old_path)
@@ -215,17 +211,24 @@ pub(crate) async fn rename_file_with_links_inner(
     //    referring files from the content we already have — each into the
     //    indexes that cover it — then the renamed file. Each index spells the
     //    paths its own way (Mutation::apply_to).
+    //    The renamed note is filed under what its new path resolves to now,
+    //    after the move and its own rewrite — the identity a save would file
+    //    it under (see `remove_old`). A note that no longer resolves (a link
+    //    whose target went since) is not filed.
+    let new_identity = std::fs::canonicalize(new_path).ok();
     let mut per_key: HashMap<String, Vec<Mutation>> = HashMap::new();
     push_for_keys(&mut per_key, &keys, &remove_old);
     queue_rewritten(&mut per_key, ctx_mgr, &keys, rewritten.contents).await;
-    push_for_keys(
-        &mut per_key,
-        &keys,
-        &Mutation::Update {
-            path: new_identity,
-            content: renamed_content,
-        },
-    );
+    if let Some(path) = new_identity {
+        push_for_keys(
+            &mut per_key,
+            &keys,
+            &Mutation::Update {
+                path,
+                content: renamed_content,
+            },
+        );
+    }
     apply_queued(state, per_key).await;
 
     Ok(RenameResult {
@@ -234,11 +237,11 @@ pub(crate) async fn rename_file_with_links_inner(
     })
 }
 
-/// The directory entry `path` names, for the index: its parent resolved
-/// canonically, joined with its own file name as spelled. The last
-/// component is never followed, so a symlinked note is filed where its link
-/// is. `resolve_canonical` of the whole path is the file the entry opens,
-/// which is what a boundary check wants and an index mutation does not.
+/// The directory entry `path` names: its parent resolved canonically, joined
+/// with its own file name as spelled, the last component not followed. Used
+/// for the boundary only (`confined_both_ways`) — the rename moves this
+/// entry, so the entry must lie inside the contexts too. The index files a
+/// note by what its path resolves to, not by this.
 fn entry_path(path: &str) -> Result<std::path::PathBuf, String> {
     let path = Path::new(path);
     let (Some(parent), Some(name)) = (path.parent(), path.file_name()) else {
@@ -339,6 +342,27 @@ fn stem_of(path: &str) -> Option<String> {
     Path::new(path)
         .file_stem()
         .map(|s| s.to_string_lossy().to_string())
+}
+
+/// Whether `path` lies inside the file's contexts in both views: what it
+/// resolves to (`resolve_canonical`, following a link) AND the directory
+/// entry itself (`entry_path`). The rename acts on the entry — it moves it,
+/// and `rewrite_renamed_note` writes through it — and reads what it
+/// resolves to. Judging only the resolved file let `/outside/Link.md`, a
+/// symlink outside every context pointing at `/v/x.md`, pass: a case-only
+/// rename then moved the outside entry and the note's rewrite replaced the
+/// link with a regular file outside the vault. Each view is judged by
+/// `destination_confined`, so for a standalone File context (§89) both must
+/// sit in the directory the file was in. No test fails without the resolved
+/// view today: `owning_contexts` already requires the old path's resolved
+/// file to be inside a context, and before the move the new path either does
+/// not exist (both views are then the same path) or is the source's own
+/// entry. It stays so that each end is judged by one rule, and so that the
+/// check after the move refuses an entry whose target was changed since.
+fn confined_both_ways(path: &str, dirs: &[Registered], old_parent: Option<&Path>) -> bool {
+    let inside = |identity: &Path| destination_confined(identity, dirs, old_parent);
+    resolve_canonical(path).is_ok_and(|identity| inside(&identity))
+        && entry_path(path).is_ok_and(|entry| inside(&entry))
 }
 
 /// Whether a renamed file's destination stays inside the file's contexts:
@@ -463,10 +487,11 @@ async fn rewrite_renamed_note(
         let named_for_more = named_for_more(&content);
         (content, left_behind || named_for_more)
     } else if !still_confined() {
-        // The note is still indexed under the identity resolved before the
-        // move, and rightly: `fs::rename` moved it to the literal `new_path`,
-        // so that is where it is. What this branch refuses is WRITING to a
-        // destination that no longer resolves inside the contexts — unlike a
+        // The note is still filed in the index, under what `new_path`
+        // resolves to after the move, and rightly: `fs::rename` moved it to
+        // the literal `new_path`, so that is where it is. What this branch
+        // refuses is WRITING through an entry, or to a file, that no longer
+        // lies inside the contexts (`confined_both_ways`) — unlike a
         // referrer, which was never moved and whose stale resolution would
         // make the index describe a file the rename never touched.
         log::warn!("rename: {new_path} no longer resolves inside the file's contexts, its references are left as they are");
