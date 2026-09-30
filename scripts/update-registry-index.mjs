@@ -13,6 +13,10 @@
  *     --checksum <64-hex sha256> \
  *     --base-url https://sayinel.github.io/baram-plugins/ \
  *     [--publisher <login> --publisher-id <n> --repo-id <n> --repository <url>]
+ *
+ * §371 6b-2 — theme mode (spec 0063 §7.4): `--kind theme --preview <file>`, with the theme's
+ * packaged `baram-theme.json` as `--manifest` and the palettes `run-theme-package.ts verify`
+ * extracted from the same archive as `--preview`.
  */
 import { readFileSync, writeFileSync } from "node:fs";
 
@@ -64,6 +68,23 @@ const MANIFEST_REQUIRED = [
 /** The two tiers of §260. Kept as a literal list so an unknown value cannot ship. */
 const TRUST_VALUES = ["sandboxed", "trusted"];
 
+/**
+ * §371 6b-2 — what a THEME entry is written from (spec 0063 §7.4). A theme manifest
+ * (`baram-theme.json`) has no `capabilities` and no `trust`: the entry carries
+ * `"capabilities": []` for the wire shape Rust's `RegistryEntry` needs and no tier at all,
+ * which is what `validate-index.ts` expects of `kind: "theme"`.
+ */
+const THEME_MANIFEST_REQUIRED = [
+  "id",
+  "name",
+  "description",
+  "version",
+  "author",
+  "license",
+  "engines",
+];
+const KIND_VALUES = ["plugin", "theme"];
+
 function isNonEmptyString(value) {
   return typeof value === "string" && value.length > 0;
 }
@@ -89,10 +110,32 @@ if (
   fail("--readme-name must match /^[a-z0-9][a-z0-9.-]*\\.md$/");
 }
 
+const kind = args.kind ?? "plugin";
+if (!KIND_VALUES.includes(kind)) {
+  fail(`--kind must be one of ${KIND_VALUES.join(", ")} (got ${JSON.stringify(kind)})`);
+}
+const theme = kind === "theme";
+if (theme && args.preview === undefined) {
+  fail("theme mode needs --preview — the palettes run-theme-package.ts verify extracted");
+}
+if (!theme && args.preview !== undefined) {
+  fail("--preview is a theme field (spec 0063 §5.1); the app drops it from a plugin entry");
+}
+if (theme && args["readme-name"] !== undefined) {
+  fail("--readme-name is not published for a theme — the theme archive carries no README");
+}
+
 const manifest = JSON.parse(readFileSync(args.manifest, "utf8"));
-for (const field of MANIFEST_REQUIRED) {
+for (const field of theme ? THEME_MANIFEST_REQUIRED : MANIFEST_REQUIRED) {
   if (manifest[field] === undefined)
     fail(`manifest missing required field: ${field}`);
+}
+if (theme) {
+  for (const field of ["capabilities", "trust"]) {
+    if (manifest[field] !== undefined) {
+      fail(`a theme manifest carries no '${field}' — that is a plugin field`);
+    }
+  }
 }
 
 if (
@@ -117,12 +160,13 @@ if (
   );
 }
 if (
-  !Array.isArray(manifest.capabilities) ||
-  !manifest.capabilities.every(isNonEmptyString)
+  !theme &&
+  (!Array.isArray(manifest.capabilities) ||
+    !manifest.capabilities.every(isNonEmptyString))
 ) {
   fail("manifest field 'capabilities' must be an array of non-empty strings");
 }
-if (!TRUST_VALUES.includes(manifest.trust)) {
+if (!theme && !TRUST_VALUES.includes(manifest.trust)) {
   fail(
     `manifest field 'trust' must be one of ${TRUST_VALUES.map((t) => `"${t}"`).join(", ")}` +
       ` (got ${JSON.stringify(manifest.trust)})`,
@@ -151,6 +195,34 @@ if (
   );
 }
 
+// §371 6b-2 — the preview's SHAPE is checked here only as far as plain Node can without a copy
+// of the key list: an object of `light`/`dark`, each an object of strings. The contract itself —
+// exactly `PREVIEW_COLOR_KEYS`, opaque hex values — is `registryPreviewPalettes`, TypeScript, and
+// it runs twice before a push: in `verifyThemeArchive`, which produced this file, and in
+// `validate-index.ts`, which the workflow runs over the whole index right after this script.
+let preview;
+if (theme) {
+  try {
+    preview = JSON.parse(readFileSync(args.preview, "utf8"));
+  } catch {
+    fail(`--preview ${args.preview} is not readable JSON`);
+  }
+  const isPlainObject = (value) =>
+    typeof value === "object" && value !== null && !Array.isArray(value);
+  const modes = isPlainObject(preview) ? Object.keys(preview) : [];
+  if (
+    modes.length === 0 ||
+    !modes.every(
+      (mode) =>
+        (mode === "light" || mode === "dark") &&
+        isPlainObject(preview[mode]) &&
+        Object.values(preview[mode]).every(isNonEmptyString),
+    )
+  ) {
+    fail("--preview must be an object of light/dark palettes, each an object of colour strings");
+  }
+}
+
 // Copied, not imported: this is plain Node, and the canonical copies are
 // TypeScript. `GITHUB_LOGIN` mirrors `src/plugins/community-registry.ts`'s (same name there);
 // `registry-index-script.test.ts`'s "agrees with isGithubLogin" boundary corpus is what pins
@@ -167,6 +239,9 @@ const REPO_NAME_RE = /^[A-Za-z0-9._-]{1,100}$/;
 const COMMUNITY_ARGS = ["publisher", "publisher-id", "repo-id", "repository"];
 const communityGiven = COMMUNITY_ARGS.filter((key) => args[key] !== undefined);
 const community = communityGiven.length > 0;
+if (community && theme) {
+  fail("community.json carries plugins only (spec 0063 §11) — a theme is not published there");
+}
 if (community && communityGiven.length !== COMMUNITY_ARGS.length) {
   fail(`community mode needs all of ${COMMUNITY_ARGS.map((key) => `--${key}`).join(", ")}`);
 }
@@ -209,13 +284,18 @@ const entry = {
   license: manifest.license,
   downloadUrl: `${baseUrl}plugins/${args["zip-name"]}`,
   checksum: args.checksum,
-  capabilities: manifest.capabilities,
+  capabilities: theme ? [] : manifest.capabilities,
   // §260 Phase 5 collects consent as (trust, capabilities) against the REGISTRY entry and
   // then refuses to persist a download that exceeds it, so both halves must be here: an
   // entry carrying capabilities but no trust is exactly the legacy shape Install refuses.
-  trust: manifest.trust,
+  // A theme carries no tier (spec 0063 §7.4) — the theme install path never reads one.
+  ...(theme ? {} : { trust: manifest.trust }),
   engines: manifest.engines,
 };
+if (theme) {
+  entry.kind = "theme";
+  entry.preview = preview;
+}
 if (manifest.icon !== undefined) entry.icon = manifest.icon;
 if (manifest.keywords !== undefined) entry.keywords = manifest.keywords;
 // §69 — where the README published beside this archive can be read before an install.
@@ -265,6 +345,15 @@ if (matches > 1) {
 }
 
 const at = index[key].findIndex((p) => p.id === entry.id);
+// §371 6b-2 — plugins and themes share this array and this id space, so an upsert matched by id
+// alone would let a theme release overwrite a plugin of the same id (or the reverse), and every
+// installed copy would then be offered an "update" of the other kind.
+if (at >= 0 && (index[key][at].kind ?? "plugin") !== kind) {
+  fail(
+    `${entry.id} is listed as kind ${JSON.stringify(index[key][at].kind ?? "plugin")}; ` +
+      `a ${kind} release does not replace it`,
+  );
+}
 // An automated upsert must not change an existing entry's identity. Spec 0058 §8.5:
 // ownership transfer or an account deletion is fixed by a
 // manual maintenance commit that edits `publisherId`/`repoId` directly, never by this script

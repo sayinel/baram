@@ -15,9 +15,11 @@ CSS 는 없다. 매니페스트의 `description` 이 성격을 한 문장으로 
 `src/themes/__tests__/reference-theme.test.ts` 로 남는다(스펙 0063 §10 이 0055 §9.3 · §10.3 에 단 정정) — 아래
 "테스트가 보는 것".
 
-**게시 파이프라인은 아직 없다**(2026-09-28). `.github/workflows/plugin-release.yml` 은 `plugin-*` 태그에만 돌고,
-`.github/` · `scripts/` 에 `examples/themes` 를 읽는 파일이 없다. 스펙 0063 §7.3~§7.6 이 설계했고, 계획 0105 가 머지된
-뒤의 계획이 만든다(스펙 0063 D2 의 정정).
+**게시 파이프라인은 `.github/workflows/plugin-release.yml` 의 `release-theme` 잡이다**(계획 0113, 스펙 0063 §7.3).
+`theme-hangul-v<version>` 태그가 이 폴더를 묶어 레지스트리에 올린다 — 태그 단계의 허용 목록이 디렉터리 `hangul` 에 id
+`baram-hangul` 을 고정한다. 무엇이 묶이고 게시 전에 무엇을 보는지는 아래 "zip 에 들어가는 것". 게시는 v0.7.7 릴리스
+뒤다(스펙 0063 D3 · §7.6) — 묶기 단계가 `package.json` 의 버전을 하한 `">=0.7.7"` 과 비교해 그보다 낮으면 거부하고,
+2026-09-28 의 `package.json` 은 0.7.6 이다. 같은 날 라이브 `index.json` 에 `baram-hangul` 항목은 없다.
 
 ## 매니페스트
 
@@ -177,17 +179,87 @@ AA, `contrastWarningsFor` 의 여섯 쌍) 어느 쪽도 경고를 보지 않으�
 | 두 모드의 파생이 키마다 서로 다르다 | 두 모드가 같은 색을 내면(위 단언의 비공허성 짝) |
 | `contrastWarningsFor` 가 두 모드 모두 경고를 내지 않는다 | `TEXT_PAIRS` 여섯 쌍 가운데 하나가 `AA_TEXT_RATIO` 아래로 가면 |
 
-이 폴더를 경로로 읽는 곳은 `reference-theme.test.ts` 와 위 "24키인 이유" 의 `theme-install.test.ts` 둘이다
-(`git grep -n "examples/themes"`, 2026-09-28 — 둘 다 `resolve(__dirname, "../../../examples/themes/hangul/…")` 로
-읽는다). 폴더를 옮기면 컴파일은 통과해도 두 테스트가 파일을 못 찾아 빨개진다 — 옮길 때 두 경로를 함께 고친다.
+이 폴더를 경로로 읽는 곳은 테스트 여덟과 워크플로 잡 하나다(`git grep -n "examples/themes" -- src scripts .github`,
+2026-09-29). 그 명령이 찾는 파일은 열하나이고, 나머지 둘은 읽지 않는다 — `scripts/run-theme-package.ts` 는 사용법 주석에
+이 경로를 예로 적을 뿐 폴더를 `--dir` 로 받고, `src/themes/theme-manifest.ts` 의 두 doc 주석은 이 README 를 가리킨다.
+
+| 파일 | 읽는 방법 |
+|---|---|
+| `src/themes/__tests__/reference-theme.test.ts` | `resolve(__dirname, "../../../examples/themes/hangul/…")` — `baram-theme.json` 과 두 `tokens.json` |
+| `src/themes/__tests__/theme-install.test.ts` | 같은 `resolve` — `light/tokens.json`(위 "24키인 이유") |
+| `src/themes/__tests__/theme-tokens.test.ts` | 같은 `resolve` — `light/tokens.json` |
+| `src/plugins/__tests__/registry-index-theme-mode.test.ts` | 같은 `resolve` — `baram-theme.json` |
+| `src/themes/__tests__/theme-package-script.test.ts` | 같은 `resolve` 로 폴더째(`HANGUL`) — 임시 폴더로 복사해 한 가지씩 망가뜨리기도 한다 |
+| `src/themes/__tests__/theme-package-install-parity.test.ts` | 같은 `resolve` 로 폴더째 `packageTheme` 에 넘긴다 |
+| `src/themes/__tests__/theme-registry-chain.test.ts` | `join(ROOT, "examples/themes/hangul")` — `ROOT` 는 `resolve(__dirname, "../../..")` |
+| `.github/workflows/plugin-release.yml` | `release-theme` 잡의 `examples/themes/$DIR` — 태그 단계가 그 아래 `baram-theme.json` 이 있는지 보고, 묶기 단계가 `--dir` 로 넘기고, checksum 관문이 그 아래 `SHA256SUMS` 를 읽는다(아래 "zip 에 들어가는 것") |
+| `src/themes/__tests__/theme-release-workflow.test.ts` | 그 잡의 묶기 단계를 실행한다(`runPackageAndVerify`) — 저장소의 `examples` 를 링크한 합성 루트에서 `DIR=hangul` 로 |
+
+마지막 파일은 위 명령에 단언 문자열 · 테스트 이름 · doc 주석 덕에 걸렸다 — 그 파일에서 경로를 짓는 줄은 `"examples"` 를
+따로 쓰고(`runPackageAndVerify` 가 링크하는 이름 목록, `runTagStep` 과 `runChecksumStep` 이 임시 폴더에 가짜 폴더를 짓는
+`join(root, "examples", "themes", …)`), 그런 철자는 `"examples/themes"` 로 찾으면 걸리지 않는다. 가짜 폴더를 짓는 두
+함수는 이 폴더를 읽지 않는다. `git grep -n '"examples"' -- src scripts .github` 로 한 번 더 훑으면(2026-09-29) 네 줄이
+나오고, 그 파일의 그 세 줄 말고 하나는 `examples/plugins` 를 짓는 `malicious-fixture.test.ts` 다.
+폴더를 옮기면 컴파일은 통과해도 위 테스트 여덟이 모두 빨개진다(2026-09-29 — 폴더를 치우고 여덟 파일을 돌려 8 파일 · 27
+테스트 실패) — 옮길 때 위 표의 경로를 함께 고친다.
 
 ## zip 에 들어가는 것
 
-스펙 0063 §7.3 의 워크플로는 zip 에 **`baram-theme.json` 과, 검증을 통과한 매니페스트의 `modes` 가 선언한 파일만**
-목록대로 넣도록 설계됐다 — 폴더를 통째로 묶지 않는다. 이 테마에서는 `baram-theme.json` · `light/tokens.json` ·
-`dark/tokens.json` 셋이다. **이 README 는 들어가지 않는다** — 플러그인 zip(`plugin-release.yml` 의 `Package ZIP`
-단계가 `README.md` 를 함께 묶는다)과 다른 점이다. 테마 경로에는 빌드 단계를 두지 않는다(§7.3).
+묶는 곳은 `scripts/theme-package.ts` 의 `packageTheme` 이다. `plugin-release.yml` 의 `release-theme` 잡(`theme-*`
+태그)과 아래 게시 전 점검이 같은 CLI `scripts/run-theme-package.ts` 를 지난다 — 잡은
+`npx tsx scripts/run-theme-package.ts package` 로, 점검은 같은 명령을 부르는 `npm run theme:package`(`package.json`)로.
 
-게시 전 점검(스펙 0063 §7.5)은 그 zip 을 로컬에서 만들어 **파일에서 설치**로 넣어 보는 것이다. 하한 때문에 이 점검은
-앱이 스스로 보고하는 버전(`src/plugins/engines-app.ts` 의 `currentAppVersion` 이 읽는 `getVersion()`)이 0.7.7 이상인
-빌드에서만 설치까지 간다 — 그보다 낮은 빌드는 `appTooOld` 로 거부한다.
+zip 에는 **`baram-theme.json` 과, 검증을 통과한 매니페스트의 `modes` 가 선언한 파일만** 목록대로 들어간다
+(`themePackageFiles`) — 폴더를 통째로 묶지 않는다. 이 테마에서는 `baram-theme.json` · `light/tokens.json` ·
+`dark/tokens.json` 셋이다(`packageTheme` 이 돌려주는 `files`, 2026-09-28). **이 README 는 들어가지 않는다** — 플러그인
+zip(`plugin-release.yml` 의 `Package ZIP` 단계가 `README.md` 를 함께 묶는다)과 다른 점이다. 아래 게시 전 점검의 sha256 을
+적는 `SHA256SUMS` 도 선언된 모드 파일이 아니라 들어가지 않는다(`theme-package-script.test.ts` 가 고정한다). 테마 경로에는
+빌드 단계가 없다(§7.3).
+
+- **zip 은 레지스트리의 `plugins/` 에 간다** — `baram-plugins` 저장소의 `plugins/baram-hangul-1.0.0.zip`, 플러그인 zip 과
+  나란히(계획 0113 P1 — 스펙 0063 D9 의 정정). 색인의 `downloadUrl` 도 그 경로다(`scripts/update-registry-index.mjs`).
+- **바이트가 재현된다**(P5) — 무압축(`level: 0`)에 고정 시각(`ZIP_DATE`)이고 확장 타임스탬프를 꺼서
+  (`extendedTimestamp: false` — 켜면 그 extra field 가 시각을 UTC 로 따로 적어, 2026-09-29 에 시간대 `UTC` ·
+  `America/Los_Angeles` · `Asia/Seoul` 에서 묶은 zip 의 sha256 셋이 서로 달랐다) 같은 원본(zip 에 드는 세 파일)은
+  같은 바이트가 된다. 세 조건은 `theme-package-script.test.ts` 의 "같은 원본은 같은 바이트가 된다" 가 zip 을 다시 읽어
+  항목마다 본다. 시간대 · zlib 판본 · 파일 시각이 끼지 않고, `theme-package.ts` 의 머리 주석이 드는 남은 변수는
+  `package.json` 이 캐럿 없이 고정한 `@zip.js/zip.js` 판본 하나다. 2026-09-28 에 `package.json` 을 0.7.7 로 둔 합성 루트에서 시간대 `UTC` · `America/Los_Angeles` 로
+  한 번씩 묶은 두 zip(2,732바이트)의 sha256 이 같았다. 그래서 게시 전 점검에서 만든 zip 의 `sha256=` 값이 워크플로가 태그
+  커밋에서 만든 zip 의 sha256 과 같아야 한다 — 다르면 점검한 파일이 게시될 파일이 아니고, 워크플로가 그 태그를 push 전에
+  거부한다(아래 4 · 5).
+- **CSS 를 선언한 테마는 거부한다**(P6) — `themePackageFiles` 는 `modes.<mode>.css` 가 비어 있지 않으면 거부한다. 테마
+  CSS 는 `url()` 로 패키지 안의 다른 파일을 끌어 오는데(`src/utils/theme-css/inline-assets.ts`), 그 파일을 목록에 올리는
+  규칙이 이 파이프라인에 없다. 이 테마는 CSS 를 싣지 않는다.
+
+게시 전 점검(스펙 0063 §7.5)은 레지스트리로 나갈 바로 그 zip 을 로컬에서 만들어 **파일에서 설치**로 넣어 보는 것이다.
+순서는 이렇다.
+
+1. `package.json` 의 `version` 이 0.7.7 이상인 커밋의 저장소 루트에서 먼저 `npm ci` 로 `node_modules` 를
+   `package-lock.json` 에 맞춘다 — 위 "바이트가 재현된다" 의 남은 변수가 `@zip.js/zip.js` 판본이라, 낡은 `node_modules`
+   로 만든 zip 은 같은 바이트라는 보장이 없다. 그렇게 sha256 이 어긋나면 5 의 관문이 태그를 거부하면서 CI 가 만든 zip 이
+   점검한 zip 이 아니라고 말할 뿐, 원인이 로컬의 `node_modules` 라고는 말하지 않는다. 그다음
+   `npm run theme:package -- --dir examples/themes/hangul --version 1.0.0 --out <폴더>` 를 돌리고(없는 폴더는 만든다) 출력의 `zip_name=` ·
+   `sha256=` 두 줄을 적어 둔다. CLI 가 앱 버전을 `./package.json` 에서 읽어 하한과 비교하므로(`releaseFloorProblem`, 계획 0113 P12) 그보다
+   낮은 커밋에서는 zip 을 쓰지 않고 종료 코드 1 로 거부한다 — 2026-09-28 에는 `package.json` 이 0.7.6 이라
+   `app version 0.7.6 does not satisfy this theme's engines.baram (>=0.7.7) — release the app first` 가 나온다. 그래서
+   이 점검은 v0.7.7 릴리스를 준비할 때 한다.
+2. 그 zip 을 `테마 가져오기...` 로 설치한다. 하한 때문에 이 점검은 앱이 스스로 보고하는 버전(`src/plugins/engines-app.ts`
+   의 `currentAppVersion` 이 읽는 `getVersion()`)이 0.7.7 이상인 빌드에서만 설치까지 간다 — 그보다 낮은 빌드는
+   `appTooOld` 로 거부한다.
+3. 두 모드에서 정보 · 경고 · 위험 · 성공 콜아웃이 서로 구별되는지 눈으로 본다 — 위 "남은 확인", 스펙 0063 D12 가 이
+   점검에 남긴 확인이다. D12 는 "콜아웃 넷" 의 이름을 적지 않는다 — 이 넷은 계획 0113 이 적은 것이고,
+   `color-derive.ts` 의 규칙표에서 `--color-callout-info` · `--color-callout-warning` · `--color-callout-danger` ·
+   `--color-callout-success` 가 각각 다른 시드(강조 · 경고 · 위험 · 성공)에서 나온다.
+4. 1 의 두 값을 `sha256sum` 형식의 한 줄 `<sha256>  <zip_name>`(64자 소문자 16진수, 공백 두 칸, zip 이름 — 이 릴리스는
+   `…  baram-hangul-1.0.0.zip`)으로 이 폴더의 `SHA256SUMS` 끝에 더하고, 태그할 릴리스 커밋에 함께 커밋한다. 릴리스마다
+   한 줄을 더한다. 이 파일은 zip 에 들지 않으므로 이 커밋은 zip 의 바이트를 바꾸지 않는다 — 1 을 돌린 커밋과 태그할
+   커밋이 이 파일만 다르면 같은 zip 이 나온다. 2026-09-29 에 이 파일은 아직 없다 — 게시된 릴리스가 없다.
+5. main 에 있는 그 커밋에 태그 `theme-hangul-v1.0.0` 을 push 한다. `release-theme` 잡의
+   `Check the checksum the pre-publish check recorded` 단계가 그 커밋에서 만든 zip 의 `<sha256>  <zip_name>` 줄이
+   `SHA256SUMS` 에 글자 그대로 있는지 보고(`grep -qxF`), 파일이 없거나 일반 파일이 아니거나(심볼릭 링크 포함) 그 줄이
+   없으면 색인을 쓰기 전에 잡을 멈춘다. 줄이 없다는 것은 CI 가 만든 zip 이 2 에서 설치한 zip 이 아니라는 뜻이다(또는 4 의 줄이
+   없거나 잘못 적혔다). 게시된 zip 은 바꾸지 않으므로(스펙 0063 §7.7) push 뒤에 알게 되면 폐기와 새 버전이 든다 — 그래서 push
+   앞에서 대조한다.
+6. (선택) 잡이 끝난 뒤 라이브 `index.json`(`src/stores/system/plugin.ts` 의 `DEFAULT_REGISTRY_URL`)에서 `baram-hangul`
+   항목의 `checksum` 이 1 의 `sha256=` 값과 같은지 본다. 5 의 관문이 대조한 값과 색인에 쓰이는 값은 같은 단계
+   (`Compute the theme checksum`)의 출력이므로 이것은 push 가 닿았는지의 확인이지 유일한 대조가 아니다.

@@ -16,7 +16,9 @@
   "project": [
     "src/**/*.{ts,tsx}",
     "scripts/community-*.ts",
-    "scripts/run-community-*.ts"
+    "scripts/run-community-*.ts",
+    "scripts/theme-package.ts",
+    "scripts/run-theme-package.ts"
   ],
   "ignore": [
     "src/ipc/**",
