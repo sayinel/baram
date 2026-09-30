@@ -628,7 +628,7 @@ pub(super) mod tests {
         // (Also: `refers` judging under the first covering root alone, which
         // leaves `[[sub/a/old]]`. Judging `/v/r.md` under a root that does
         // not cover it is the service's mistake; its sibling in
-        // `service/tests.rs` pins that.)
+        // `service/tests/nested_roots.rs` pins that.)
         // Existence is judged only where `known_paths` says a note exists:
         // this target carries an empty map, so nothing is ambiguous and the
         // doubly covered `[[a/old]]` is respelled. With `a/old` known under

@@ -201,7 +201,7 @@ baram/
   들어오는 새 키 모양은 **어느 쪽도 보지 못한다**. 새 표기를 더하면 이 픽스처에 먼저 넣을 것.
   링크가 이 파일을 가리키는지(match)는 referrer 를 **덮는** root 의 index 로만 판정한다 — `/v` 와 `/v/sub` 가 둘 다 root 일 때 `/v/r.md` 의 `[[a/old]]` 는 `/v`
   아래에서만 읽혀 `/v/a/old.md` 를 가리키므로, 자식 root 아래 경로가 같은 `/v/sub/a/old.md` 의 rename 은 그것을 **고치지 않는다**
-  (`service/tests.rs` 의 `nested_roots_a_rename_leaves_the_parents_colliding_link_alone`). 되읽기 관문도 덮는 root 마다 따로 읽는다.
+  (`service/tests/nested_roots.rs` 의 `nested_roots_a_rename_leaves_the_parents_colliding_link_alone`). 되읽기 관문도 덮는 root 마다 따로 읽는다.
   ‼️ **경로 링크를 다른 root 가 실재하는 다른 노트로 읽으면 고치지 않고 보고한다** — 두 root 가 함께 덮는 `/v/sub/r.md` 의
   `[[a/old]]` 는 자식 아래에서 `/v/sub/a/old.md`, 부모 아래에서 `/v/a/old.md` 다. 둘 다 있으면 어느 쪽을 rename 하든 그 링크는
   **모호하므로 그대로 두고** 파일을 `skipped_files` 에 올린다(`judgement.rs` 의 `Judgement::Ambiguous`·`read_as_another_note`).
