@@ -289,6 +289,18 @@ mod tests {
         );
     }
 
+    #[test]
+    fn the_root_itself_has_no_path_key() {
+        // What fails this: dropping the `!rest.is_empty()` filter in
+        // `under_root`, which gives the root the empty key `""`.
+        assert_eq!(root_relative_key("/v", "/v", false), None);
+        assert_eq!(root_relative_key(r"C:\v", r"C:\v", true), None);
+        assert_eq!(
+            root_relative_key("/v", "/v/note.md", false),
+            Some("note".to_string())
+        );
+    }
+
     fn local(alias: &str, root: &str) -> LocalAlias {
         LocalAlias {
             alias: alias.to_string(),

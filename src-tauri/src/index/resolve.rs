@@ -303,6 +303,7 @@ mod tests {
         index.root_path = Some("/vault".to_string());
         index.register_file_path("/vault/a/readme.md", "/vault");
         index.register_file_path("/vault/b/readme.md", "/vault");
+        index.register_file_path("/vault/c/readme.markdown", "/vault");
 
         // Stem-only: returns first registered
         let resolved = index.resolve_target_from_map("readme");
@@ -314,6 +315,13 @@ mod tests {
 
         let resolved_b = index.resolve_target_from_map("b/readme");
         assert_eq!(resolved_b, Some("/vault/b/readme.md".to_string()));
+
+        // A `.markdown` note is keyed by its path without the extension too.
+        // What fails this: making `strip_note_extension` strip only `.md` —
+        // `relative_map` then holds `c/readme.markdown`, and the stem lookup
+        // answers `a/readme.md`, registered first.
+        let resolved_c = index.resolve_target_from_map("c/readme");
+        assert_eq!(resolved_c, Some("/vault/c/readme.markdown".to_string()));
     }
 
     #[test]

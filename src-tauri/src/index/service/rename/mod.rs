@@ -84,7 +84,8 @@ async fn contexts_covering(
         .collect()
 }
 
-/// Which of `keys` cover `path` (`contexts_covering`).
+/// Which of `keys` cover `path` (`contexts_covering`). Defence in depth:
+/// `Mutation::apply_to` already skips a path its index's root cannot spell.
 async fn keys_covering(ctx_mgr: &ContextManager, keys: &[String], path: &str) -> Vec<String> {
     keys_of(&contexts_covering(ctx_mgr, keys, path).await)
 }
