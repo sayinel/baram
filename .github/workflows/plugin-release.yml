@@ -4,9 +4,16 @@ name: Plugin Release
 # (GitHub Pages). Trigger: push a tag `plugin-<dir>-v<version>` where <dir>
 # is the directory under examples/plugins/ and <version> matches that
 # plugin's baram-plugin.json. Spec: dev plugin-registry-hosting design.
+#
+# §371 6b-2 — and a first-party THEME (spec 0063 §7.3): a tag `theme-<dir>-v<version>` where
+# <dir> is the directory under examples/themes/. Each tag shape runs exactly one of the two jobs
+# below (`if:` on the tag prefix); they share this file's concurrency group, the index writer
+# (`scripts/update-registry-index.mjs`) and both validators, and push with the same inline body
+# (pinned by src/themes/__tests__/theme-release-workflow.test.ts), so the registry still has one
+# writer (spec 0063 D1).
 on:
   push:
-    tags: ['plugin-*']
+    tags: ['plugin-*', 'theme-*']
 
 # Serialize registry writes. Two plugin tags at once must not race on the registry-repo
 # push, and neither must a plugin release and a revocation sync — both clone shallow and
@@ -25,6 +32,16 @@ env:
 
 jobs:
   release:
+    if: startsWith(github.ref_name, 'plugin-')
+    # THE DEPLOY KEY IS AN ENVIRONMENT SECRET (security review of plan 0113, item 8). The
+    # `registry-publish` environment — repository settings, not this file — admits only
+    # `plugin-*` and `theme-*` tag refs and waits for a required reviewer before the job starts,
+    # and the `release-tags` ruleset limits who may create those tags. A repository-level secret
+    # of the same name would be readable by a workflow on any branch, with neither check, so the
+    # key must not be stored at repository level. Rotate it with
+    # `gh secret set PLUGINS_DEPLOY_KEY --env registry-publish`, and in the environment
+    # revocation-publish.yml declares, which reads the same key.
+    environment: registry-publish
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -378,4 +395,208 @@ jobs:
             exit 0
           fi
           git commit -m "release: $PLUGIN_ID $VERSION"
+          git push origin main
+
+  # §371 6b-2 — a first-party theme (spec 0063 §7.3). The plugin job's argument, step for step,
+  # with the differences a theme brings:
+  #
+  #   - NO BUILD. Nothing in examples/themes/ runs: the package step reads the manifest and the
+  #     files it declares, and nothing else (`scripts/theme-package.ts`).
+  #   - `setup-node` comes BEFORE the gates rather than after, because the gates ARE the app's
+  #     own TypeScript (`validateThemeManifest`, `parseThemeTokens`, `registryPreviewPalettes`,
+  #     `parseBaramFloor`) — the plugin job restates its version gate in dependency-free shell
+  #     only because it runs before any install. No secret exists in this job until the last step,
+  #     so moving the install earlier moves no third-party code closer to the key.
+  #   - The archive goes to `plugins/`, beside the plugins (spec 0063 D9, corrected by plan 0113):
+  #     every registry gate that protects an archive — `validate.yml`'s immutability check, the
+  #     orphan sweep in `validate-registry-assets.ts` — looks there and only there.
+  #   - A CHECKSUM GATE the plugin job does not have: the tagged commit must record the sha256 of
+  #     the archive the pre-publish check installed (`Check the checksum the pre-publish check
+  #     recorded`).
+  #   - The push is the plugin job's inline body with `$PLUGIN_ID` → `$THEME_ID`;
+  #     src/themes/__tests__/theme-release-workflow.test.ts compares the two.
+  release-theme:
+    if: startsWith(github.ref_name, 'theme-')
+    # The same environment as the plugin job above, for the same reason.
+    environment: registry-publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      # WHAT MAY BE PUBLISHED, AND UNDER WHICH ID — deny by default, as in the plugin job. The id
+      # is pinned per directory because a theme id is permanent once published (spec 0063 D8):
+      # an allowlisted directory whose manifest changes id fails the release instead of shipping
+      # a second theme. Pinned by src/themes/__tests__/theme-release-workflow.test.ts, which
+      # EXECUTES this step.
+      - name: Parse and verify the theme tag
+        id: theme_meta
+        run: |
+          fail() { echo "::error::$1"; exit 1; }
+          TAG="${GITHUB_REF_NAME}"
+          [[ "$TAG" =~ ^theme-(.+)-v([0-9]+\.[0-9]+\.[0-9]+)$ ]] \
+            || fail "tag $TAG does not match theme-<dir>-v<semver>"
+          DIR="${BASH_REMATCH[1]}"; VERSION="${BASH_REMATCH[2]}"
+          case "$DIR" in
+            hangul) EXPECTED_ID=baram-hangul ;;
+            *) fail "$DIR is not in this workflow's publishable theme allowlist — add it deliberately if that is the intent" ;;
+          esac
+          [[ -f "examples/themes/$DIR/baram-theme.json" ]] \
+            || fail "no manifest at examples/themes/$DIR/baram-theme.json"
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main \
+            || fail "tag commit $GITHUB_SHA is not on main"
+          {
+            echo "dir=$DIR"
+            echo "version=$VERSION"
+            echo "expected_id=$EXPECTED_ID"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: ./.github/actions/setup-node
+
+      # The manifest (the app's validator), the tag version, a reserved id, the release-order
+      # floor against package.json, the declared paths staying inside the directory, the tokens
+      # reading as a full palette — then a byte-reproducible zip of exactly the declared files.
+      - name: Package the theme
+        id: theme_package
+        env:
+          DIR: ${{ steps.theme_meta.outputs.dir }}
+          VERSION: ${{ steps.theme_meta.outputs.version }}
+        run: |
+          npx tsx scripts/run-theme-package.ts package \
+            --dir "examples/themes/$DIR" --version "$VERSION" --out "$RUNNER_TEMP" \
+            > "$RUNNER_TEMP/theme-package.txt" \
+            || { echo "::error::the theme was refused (see the message above)"; exit 1; }
+          grep -E '^zip_name=' "$RUNNER_TEMP/theme-package.txt" >> "$GITHUB_OUTPUT"
+
+      # RE-VERIFY THE ARTIFACT, and index FROM it — the plugin job's round-5 argument: the entry
+      # and the archive are the same bytes by construction, so a wandering step cannot make the
+      # registry advertise one theme while shipping another.
+      - name: Verify the packaged theme is the theme that was verified
+        id: theme_artifact
+        env:
+          EXPECTED_ID: ${{ steps.theme_meta.outputs.expected_id }}
+          VERSION: ${{ steps.theme_meta.outputs.version }}
+          ZIP_NAME: ${{ steps.theme_package.outputs.zip_name }}
+        run: |
+          fail() { echo "::error::$1"; exit 1; }
+          # ‼️ An empty value must not make this vacuous (the plugin job's EXPECTED_TRUST note).
+          [[ -n "$EXPECTED_ID" && -n "$VERSION" && -n "$ZIP_NAME" ]] \
+            || fail "a verified value did not reach this step — this is a bug in this workflow, not a refusal"
+          [[ "$ZIP_NAME" == "$EXPECTED_ID-$VERSION.zip" ]] \
+            || fail "the archive is named $ZIP_NAME but $EXPECTED_ID-$VERSION.zip was verified"
+          npx tsx scripts/run-theme-package.ts verify \
+            --zip "$RUNNER_TEMP/$ZIP_NAME" --id "$EXPECTED_ID" --version "$VERSION" \
+            --manifest-out "$RUNNER_TEMP/packaged-theme-manifest.json" \
+            --preview-out "$RUNNER_TEMP/packaged-theme-preview.json" \
+            || fail "the archive is not the theme that was verified (see the message above)"
+          {
+            echo "manifest=$RUNNER_TEMP/packaged-theme-manifest.json"
+            echo "preview=$RUNNER_TEMP/packaged-theme-preview.json"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Compute the theme checksum
+        id: theme_sum
+        env:
+          ZIP_NAME: ${{ steps.theme_package.outputs.zip_name }}
+        run: |
+          CHECKSUM="$(sha256sum "$RUNNER_TEMP/$ZIP_NAME" | cut -d' ' -f1)"
+          echo "checksum=$CHECKSUM" >> "$GITHUB_OUTPUT"
+
+      # THE ARCHIVE BUILT HERE MUST BE THE ONE THE PRE-PUBLISH CHECK INSTALLED (security review,
+      # plan 0113 Task 7). That check — the maintainer builds the zip locally with
+      # `npm run theme:package`, installs it by file and looks at it (spec 0063 §7.5) — is worth
+      # something only if this job publishes those same bytes, and a published archive is
+      # immutable: a mismatch found after the push costs a revocation and a new version. So the
+      # maintainer records the check's `sha256=` and `zip_name=` as a `sha256sum` line in the
+      # theme folder's `SHA256SUMS` on the commit that is tagged, and this step refuses the tag
+      # unless the archive built above hashes to a recorded line.
+      #
+      # It proves the recorded hash equals the built one — not that anyone installed or looked at
+      # the recorded zip. It reads the repo only through `$DIR`, the directory the tag step checked
+      # against its allowlist. Dependency-free bash, inputs through `env` only.
+      - name: Check the checksum the pre-publish check recorded
+        env:
+          DIR: ${{ steps.theme_meta.outputs.dir }}
+          ZIP_NAME: ${{ steps.theme_package.outputs.zip_name }}
+          CHECKSUM: ${{ steps.theme_sum.outputs.checksum }}
+        run: |
+          fail() { echo "::error::$1"; exit 1; }
+          [[ -n "$DIR" && -n "$ZIP_NAME" && -n "$CHECKSUM" ]] \
+            || fail "a verified value did not reach this step — this is a bug in this workflow, not a refusal"
+          SUMS="examples/themes/$DIR/SHA256SUMS"
+          [[ -f "$SUMS" && ! -L "$SUMS" ]] \
+            || fail "$SUMS is missing or is not a regular file — record the pre-publish check's sha256 there as the line \"<sha256>  $ZIP_NAME\" on the commit you tag"
+          grep -qxF "$CHECKSUM  $ZIP_NAME" "$SUMS" \
+            || fail "$SUMS has no line \"$CHECKSUM  $ZIP_NAME\" — the archive built here is not the one the pre-publish check installed. Run that check on the commit you tag and record the sha256 it prints for $ZIP_NAME there"
+
+      # ‼️ NO SECRET IS IN REACH OF THIS STEP — the plugin job's MEDIUM-3 split, kept.
+      - name: Update and validate the registry index for the theme
+        env:
+          PACKAGED_MANIFEST: ${{ steps.theme_artifact.outputs.manifest }}
+          PACKAGED_PREVIEW: ${{ steps.theme_artifact.outputs.preview }}
+          ZIP_NAME: ${{ steps.theme_package.outputs.zip_name }}
+          CHECKSUM: ${{ steps.theme_sum.outputs.checksum }}
+        run: |
+          git clone --depth 1 "https://github.com/${REGISTRY_REPO}.git" "$RUNNER_TEMP/registry"
+          mkdir -p "$RUNNER_TEMP/registry/plugins"
+          cp "$RUNNER_TEMP/$ZIP_NAME" "$RUNNER_TEMP/registry/plugins/"
+          node scripts/update-registry-index.mjs \
+            --index "$RUNNER_TEMP/registry/index.json" \
+            --manifest "$PACKAGED_MANIFEST" \
+            --zip-name "$ZIP_NAME" \
+            --checksum "$CHECKSUM" \
+            --base-url "$BASE_URL" \
+            --kind theme \
+            --preview "$PACKAGED_PREVIEW"
+          npx tsx scripts/validate-index.ts "$RUNNER_TEMP/registry/index.json"
+          npx tsx scripts/validate-registry-assets.ts "$RUNNER_TEMP/registry" \
+            --base-url "$BASE_URL"
+
+      # THE KEY REACHES THIS JOB ONLY IN THIS, ITS LAST STEP: every step above — the ones that run
+      # third-party code (`setup-node`'s `npm ci`, `npx tsx`, their dependencies) included — has
+      # finished before the key is written. The step runs git and ssh (plus mkdir, chmod,
+      # ssh-keyscan) — no node, no npx, no dependency.
+      #
+      # ‼️ What that does NOT guarantee: code that ran earlier in this job can leave things behind
+      # that this step's git and ssh act on or that outlive their own step — for example hooks or
+      # config in `$RUNNER_TEMP/registry` or `~/.ssh`, entries in `$GITHUB_PATH` or `$GITHUB_ENV`,
+      # a background process. So the key is not isolated from that code. Nor is it gone after this
+      # step: the file stays in `~/.ssh` while the post-job steps of `actions/checkout` and
+      # `actions/setup-node` run. Isolating the key in a job of its own is the follow-up.
+      #
+      # The body is INLINE rather than a `./` action on purpose (security review, plan 0113 Task 7):
+      # the runner reads a local action from the workspace when its step starts, so any earlier
+      # step could rewrite it and receive the key, while this file is fixed when the run is
+      # queued. It is the plugin job's body with one token changed, `$PLUGIN_ID` → `$THEME_ID` —
+      # src/themes/__tests__/theme-release-workflow.test.ts compares the two.
+      - name: Push the theme archive + updated index to registry repo
+        env:
+          DEPLOY_KEY: ${{ secrets.PLUGINS_DEPLOY_KEY }}
+          ZIP_NAME: ${{ steps.theme_package.outputs.zip_name }}
+          THEME_ID: ${{ steps.theme_meta.outputs.expected_id }}
+          VERSION: ${{ steps.theme_meta.outputs.version }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$DEPLOY_KEY" > ~/.ssh/plugins_deploy
+          chmod 600 ~/.ssh/plugins_deploy
+          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/plugins_deploy -o IdentitiesOnly=yes"
+          cd "$RUNNER_TEMP/registry"
+          git remote set-url origin "git@github.com:${REGISTRY_REPO}.git"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # `readme/` is staged as a DIRECTORY rather than by name: the file is written only
+          # when the archive had one, and `git add` on a path that does not exist aborts the
+          # step — which would fail a perfectly good release of a plugin without a README.
+          # An unchanged or absent directory adds nothing and the `--quiet` check below still
+          # decides whether there is anything to publish.
+          git add "plugins/$ZIP_NAME" index.json
+          git add readme 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "::notice::Registry already contains this exact release — nothing to publish."
+            exit 0
+          fi
+          git commit -m "release: $THEME_ID $VERSION"
           git push origin main

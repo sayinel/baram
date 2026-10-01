@@ -37,6 +37,7 @@ import {
   MAX_TEXT_FIELD_CHARS,
   UNSAFE_TEXT_CHARS_RE,
 } from "../src/themes/theme-manifest";
+import { registryPreviewPalettes } from "../src/themes/theme-preview-palette";
 import { RESERVED_THEME_IDS } from "../src/types/theme";
 import { VALID_CAPABILITIES } from "../src/plugins/manifest";
 import { FIRST_PARTY_PREFIX, ID_RE, REPO_NAME_RE } from "./community-submission";
@@ -601,6 +602,27 @@ plugins.forEach((value, position) => {
     warnings.push(
       `${where}: downloadUrl is not https (${JSON.stringify(url)}) — the checksum still ` +
         "guards integrity, but the download itself is interceptable",
+    );
+  }
+
+  // 스펙 0063 §5.1 · §5.3 — the preview is judged by the app's OWN filter, the one
+  // `registry-client.ts` runs before caching the index. Both refusals below are silent at
+  // runtime: the app drops the preview (never the entry) and the browse card draws no colours.
+  if (entry.preview !== undefined) {
+    if (!isTheme) {
+      errors.push(
+        `${where}: preview on a non-theme entry — the app drops it (only kind:"theme" entries carry one)`,
+      );
+    } else if (registryPreviewPalettes(entry.preview) === undefined) {
+      errors.push(
+        `${where}: preview does not match the contract (light/dark only, each exactly the 16 ` +
+          "PREVIEW_COLOR_KEYS as opaque hex) — the app drops the whole preview and the browse " +
+          "card draws no colours",
+      );
+    }
+  } else if (isTheme) {
+    warnings.push(
+      `${where}: no preview — the theme browser draws this card without colours`,
     );
   }
 
