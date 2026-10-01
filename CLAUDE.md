@@ -224,7 +224,9 @@ baram/
   `BLOCK_ID_PATTERN` 이 거르며 Rust 는 재검증하지 않는다. 프런트의 블록 메뉴 "링크 복사" 도 판정 없이 쓴다. 링크를 쓰는
   입구를 더하거나 고칠 때 이 층을 같이 걸 것
   - **vault 자신의 alias(`[[work::note]]`, §87)는 등록된 vault 들 사이에서 대소문자 무시로 유일한 alias 일 때만 로컬이다 (#717)** —
-    `service/keys.rs` 의 `local_aliases_of`. 다른 vault 가 같은 alias 를 달고 있으면(`work` 와 `work`, 또는 대소문자만 다른 `Work`)
+    `service/keys.rs` 의 `local_aliases_of`. journal·zettelkasten space 는 vault type 으로 `Journal::`·`Zettel::` 에도 답한다 —
+    같은 유일성 규칙 아래이고(두 journal space 면 둘 다 외부), 어느 vault 든 그 이름을 explicit alias 로 달면 그 alias 가 이긴다
+    (`findAliasContext` 의 두 패스, 이름 짝은 `keys.rs` 의 `space_names_match_the_frontends` 가 고정). 다른 vault 가 같은 alias 를 달고 있으면(`work` 와 `work`, 또는 대소문자만 다른 `Work`)
     그 alias 는 **모호하므로 양쪽 모두에게 외부다** — 프런트 `findAliasContext` 는 대소문자 무시로 목록의 첫 context 를, backend alias
     맵은 정확한 문자열로 마지막 등록을 고르니 둘이 다른 vault 를 가리킬 수 있다. 그런 링크는 rename 이 건드리지 않고 백링크도 주장하지
     않는다. alias 맵의 소유(`resolve_alias`)로 판정하지 않는다 — last-writer-wins 맵은 낡는다(나중 vault 가 이름을 가져간 뒤 제거되면 맵

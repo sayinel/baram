@@ -359,3 +359,152 @@ async fn aliases_differing_only_in_case_make_the_link_foreign_for_both_vaults() 
     rename_beside_a_case_colliding_alias(true).await;
     rename_beside_a_case_colliding_alias(false).await;
 }
+
+/// A temp directory holding `files` (path under it, content); its path.
+fn tree(files: &[(&str, &str)]) -> (tempfile::TempDir, String) {
+    let dir = tempfile::tempdir().unwrap();
+    for (path, content) in files {
+        let path = dir.path().join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, content).unwrap();
+    }
+    let root = dir.path().to_str().unwrap().to_string();
+    (dir, root)
+}
+
+#[tokio::test]
+async fn a_journal_space_answers_to_its_canonical_name() {
+    // `[[Journal::…]]` is the documented route into a journal space
+    // (`site/src/content/docs/en/docs/journal/daily-notes.md`), whatever its
+    // folder is called. A vault holds a journal space under `daily/`, with no
+    // explicit alias; the vault's `r.md` links to a day by the space name.
+    // The link is a backlink of the day note, and renaming the day respells
+    // it behind the alias as it was spelled.
+    // What fails this: dropping the space-name pass from `local_aliases_of`
+    // — the link is foreign and the day note has no backlink.
+    let (dir, root) = tree(&[
+        ("r.md", "see [[Journal::2026-09-01]]\n"),
+        ("daily/2026-09-01.md", "day\n"),
+    ]);
+    let space = format!("{root}/daily");
+    let ctx = ContextManager::new();
+    ctx.add(info("v", &root, ContextType::Vault)).await.unwrap();
+    ctx.add(spaced("j", &space, VaultType::Journal))
+        .await
+        .unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    refresh_index_inner(&state, &ctx, &space).await.unwrap();
+    let (day, referrer) = (format!("{space}/2026-09-01.md"), format!("{root}/r.md"));
+    assert_eq!(backlink_lines(&state, &ctx, &day, &referrer).await, vec![1]);
+
+    let result =
+        rename_file_with_links_inner(&state, &ctx, &day, &format!("{space}/2026-09-02.md"))
+            .await
+            .unwrap();
+    assert_eq!(result.updated_files, vec![referrer]);
+    assert!(
+        result.skipped_files.is_empty(),
+        "{:?}",
+        result.skipped_files
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
+        "see [[Journal::2026-09-02]]\n"
+    );
+}
+
+#[tokio::test]
+async fn an_explicit_alias_outranks_a_space_name() {
+    // A general vault nested in a journal space carries the explicit alias
+    // `journal`. The frontend's `findAliasContext` returns an explicit match
+    // before it tries space names, so `[[Journal::x]]` in `r.md` — which both
+    // roots cover — names the vault's `x.md`, not the space's: a backlink of
+    // the one and not the other, and renaming the space's `x.md` leaves the
+    // link and reports nothing.
+    // What fails this: dropping the explicit-alias check (`outranked`) from
+    // the space-name pass — the space then claims `journal` too, files the
+    // link under its own `x` and finds a backlink on line 1.
+    let (dir, space) = tree(&[
+        ("x.md", "space\n"),
+        ("work/x.md", "vault\n"),
+        ("work/r.md", "[[Journal::x]]\n"),
+    ]);
+    let vault = format!("{space}/work");
+    let ctx = ContextManager::new();
+    ctx.add(spaced("j", &space, VaultType::Journal))
+        .await
+        .unwrap();
+    ctx.add(aliased("w", &vault, "journal")).await.unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &space).await.unwrap();
+    refresh_index_inner(&state, &ctx, &vault).await.unwrap();
+    let referrer = format!("{vault}/r.md");
+    let (spaces_x, vaults_x) = (format!("{space}/x.md"), format!("{vault}/x.md"));
+    assert_eq!(
+        backlink_lines(&state, &ctx, &vaults_x, &referrer).await,
+        vec![1]
+    );
+    assert!(backlink_lines(&state, &ctx, &spaces_x, &referrer)
+        .await
+        .is_empty());
+
+    let result = rename_file_with_links_inner(&state, &ctx, &spaces_x, &format!("{space}/y.md"))
+        .await
+        .unwrap();
+    assert!(
+        result.updated_files.is_empty(),
+        "{:?}",
+        result.updated_files
+    );
+    assert!(
+        result.skipped_files.is_empty(),
+        "{:?}",
+        result.skipped_files
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("work/r.md")).unwrap(),
+        "[[Journal::x]]\n"
+    );
+}
+
+#[tokio::test]
+async fn two_journal_spaces_make_the_canonical_name_foreign_to_both() {
+    // With two journal spaces the frontend resolves `[[Journal::x]]` to
+    // whichever comes first in its list, so the link may name either: it is
+    // a backlink of neither `x.md`, and renaming the referrer's own space's
+    // `x.md` leaves it.
+    // What fails this: dropping the shared-name check (`shared`) from the
+    // space-name pass — each space claims `journal`, and the link is a
+    // backlink of the referrer's own space's `x.md`.
+    let (dir_a, root_a) = tree(&[("x.md", "a\n"), ("r.md", "[[Journal::x]]\n")]);
+    let (_dir_b, root_b) = tree(&[("x.md", "b\n")]);
+    let ctx = ContextManager::new();
+    ctx.add(spaced("a", &root_a, VaultType::Journal))
+        .await
+        .unwrap();
+    ctx.add(spaced("b", &root_b, VaultType::Journal))
+        .await
+        .unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root_a).await.unwrap();
+    refresh_index_inner(&state, &ctx, &root_b).await.unwrap();
+    let referrer = format!("{root_a}/r.md");
+    for x in [format!("{root_a}/x.md"), format!("{root_b}/x.md")] {
+        assert!(backlink_lines(&state, &ctx, &x, &referrer).await.is_empty());
+    }
+
+    let old = format!("{root_a}/x.md");
+    let result = rename_file_with_links_inner(&state, &ctx, &old, &format!("{root_a}/y.md"))
+        .await
+        .unwrap();
+    assert!(
+        result.updated_files.is_empty(),
+        "{:?}",
+        result.updated_files
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir_a.path().join("r.md")).unwrap(),
+        "[[Journal::x]]\n"
+    );
+}

@@ -3,7 +3,7 @@ use super::keys::*;
 use super::query::*;
 use super::rename::*;
 use super::state::*;
-use crate::context::{ContextInfo, ContextManager, ContextType};
+use crate::context::{ContextInfo, ContextManager, ContextType, VaultType};
 use crate::index::{BacklinkResult, IndexStats, LinkGraph, LinkIndex};
 
 mod alias;
@@ -36,6 +36,15 @@ fn aliased(id: &str, path: &str, alias: &str) -> ContextInfo {
     ContextInfo {
         alias: Some(alias.to_string()),
         ..info(id, path, ContextType::Folder)
+    }
+}
+
+/// `info` for a vault of `vault_type` with no explicit alias — a space that
+/// answers to its canonical name (`Journal`, `Zettel`) when it is unique.
+fn spaced(id: &str, path: &str, vault_type: VaultType) -> ContextInfo {
+    ContextInfo {
+        vault_type: Some(vault_type),
+        ..info(id, path, ContextType::Vault)
     }
 }
 

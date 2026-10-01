@@ -1,5 +1,5 @@
 use crate::context::manager::Registered;
-use crate::context::{ContextManager, ContextType};
+use crate::context::{ContextInfo, ContextManager, ContextType, VaultType};
 use crate::index::{LinkGraph, LinkIndex, LocalAlias};
 use std::collections::HashMap;
 
@@ -16,25 +16,47 @@ pub(super) async fn owning_contexts(ctx_mgr: &ContextManager, path: &str) -> Vec
     ctx_mgr.contexts_containing(path).await
 }
 
-/// The vault aliases local to `contexts` (§87): each one's alias, lowercase,
-/// with its registered path as the root the alias resolves paths against —
-/// when no OTHER registered context (`ctx_mgr.list()`) carries the same alias
-/// in any case. That one condition is the whole rule, for three reasons:
+/// The canonical space name a vault type answers to (§317), lowercase as
+/// every `LocalAlias` is: the frontend's `SPACE_ALIASES`
+/// (`src/utils/editor/wikilink-nav.ts`) — `Journal` for a journal space,
+/// `Zettel` for a zettelkasten one, none for a general vault. No `_` arm, so
+/// a new vault type does not compile until it is given a name or `None`;
+/// `space_names_match_the_frontends` reads the TypeScript table.
+fn space_name(vault_type: &VaultType) -> Option<&'static str> {
+    match vault_type {
+        VaultType::General => None,
+        VaultType::Journal => Some("journal"),
+        VaultType::Zettelkasten => Some("zettel"),
+    }
+}
+
+fn space_name_of(info: &ContextInfo) -> Option<&'static str> {
+    info.vault_type.as_ref().and_then(space_name)
+}
+
+/// The vault aliases local to `contexts` (§87), lowercase, each with its
+/// registered path as the root the alias resolves paths against. A context
+/// answers to two kinds of name, in the order the frontend's
+/// `findAliasContext` (`src/utils/editor/wikilink-nav.ts`) tries them:
 ///
-/// - Uniqueness is the condition the frontend's alias match resolves by. Its
-///   `findAliasContext` (`src/utils/editor/wikilink-nav.ts`) compares
-///   aliases case-insensitively and takes the first context in its list,
-///   while the backend's cross-vault resolver (`resolve_cross_vault_link`)
-///   reads the alias map, keyed by the exact string, last writer wins. With
-///   `Work` and `work` on two vaults, or `work` on both, they can name
-///   different vaults, so a link behind that alias is ambiguous and foreign
-///   to both: the rename leaves it and the backlinks do not claim it. When
-///   no alias matches, `findAliasContext` falls back to the space names
-///   (`SPACE_ALIASES`: `Journal` for a journal vault, `Zettel` for a
-///   zettelkasten one, by vault type). That fallback is not modelled here:
-///   this function reads `info.alias` alone, so `[[Journal::x]]` into a
-///   journal kept under another folder name is foreign — a rename leaves it
-///   and the backlinks miss it.
+/// 1. Its explicit `info.alias` — local when no OTHER registered context
+///    (`ctx_mgr.list()`) carries the same alias in any case.
+/// 2. Its space name by vault type (`space_name`: `journal`, `zettel`) —
+///    local when NO registered context carries that string as an explicit
+///    alias (`findAliasContext` returns an explicit match first, whichever
+///    context it is, so an explicit alias outranks the space name) and no
+///    OTHER registered context has the same space name.
+///
+/// These conditions are the whole rule, for three reasons:
+///
+/// - Uniqueness is the condition the frontend's alias match resolves by.
+///   `findAliasContext` compares case-insensitively and takes the first
+///   context in its list in each pass, while the backend's cross-vault
+///   resolver (`resolve_cross_vault_link`) reads the alias map, keyed by the
+///   exact string, last writer wins. With `Work` and `work` on two vaults,
+///   `work` on both, or two journal spaces, they can name different vaults,
+///   so a link behind that name is ambiguous and foreign to all of them: the
+///   rename leaves it and the backlinks do not claim it.
 /// - The alias map can go stale. When a later vault claims the name and is
 ///   then removed, its removal drops the map entry, so the backend resolver
 ///   answers nothing for that alias while the frontend still resolves it to
@@ -54,20 +76,30 @@ pub(super) async fn local_aliases_of(
     contexts: &[Registered],
 ) -> Vec<LocalAlias> {
     let registered = ctx_mgr.list().await;
+    let explicit = |info: &ContextInfo| info.alias.as_deref().map(str::to_lowercase);
     let mut aliases = Vec::new();
     for c in contexts {
-        if let Some(alias) = &c.info.alias {
-            let folded = alias.to_lowercase();
-            let unique = !registered.iter().any(|other| {
-                other.id != c.info.id
-                    && other
-                        .alias
-                        .as_deref()
-                        .is_some_and(|a| a.to_lowercase() == folded)
-            });
+        if let Some(folded) = explicit(&c.info) {
+            let unique = !registered
+                .iter()
+                .any(|other| other.id != c.info.id && explicit(other).as_ref() == Some(&folded));
             if unique {
                 aliases.push(LocalAlias {
                     alias: folded,
+                    root: c.info.path.clone(),
+                });
+            }
+        }
+        if let Some(name) = space_name_of(&c.info) {
+            let outranked = registered
+                .iter()
+                .any(|other| explicit(other).as_deref() == Some(name));
+            let shared = registered
+                .iter()
+                .any(|other| other.id != c.info.id && space_name_of(other) == Some(name));
+            if !outranked && !shared {
+                aliases.push(LocalAlias {
+                    alias: name.to_string(),
                     root: c.info.path.clone(),
                 });
             }
@@ -220,4 +252,35 @@ pub(super) fn outgoing_map(graph: &LinkGraph) -> HashMap<String, Vec<String>> {
             .push(edge.to.clone());
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn space_names_match_the_frontends() {
+        // `space_name` and the frontend's `SPACE_ALIASES` must name the same
+        // spaces: a link the frontend resolves into a journal is one the
+        // index files as local. The TypeScript file is read from the repo
+        // root, the parent of the crate directory.
+        // What fails this: `space_name` answering `Some("journals")` for
+        // `VaultType::Journal` — the loop's assertion.
+        let ts = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../src/utils/editor/wikilink-nav.ts"
+        ))
+        .unwrap();
+        for (vault_type, key) in [
+            (VaultType::Journal, "journal"),
+            (VaultType::Zettelkasten, "zettelkasten"),
+        ] {
+            let name = space_name(&vault_type).unwrap();
+            let spelled = format!("{}{}", name[..1].to_uppercase(), &name[1..]);
+            let entry = format!("{key}: \"{spelled}\"");
+            assert!(ts.contains(&entry), "wikilink-nav.ts lacks {entry}");
+        }
+        assert_eq!(space_name(&VaultType::General), None);
+        assert!(!ts.contains("general: \""), "a general vault gained a name");
+    }
 }
