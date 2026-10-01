@@ -10,7 +10,7 @@ use super::confined_by;
 /// The old path as an entry the rename may move: what it resolves to
 /// (`identity`), and that file's parent — the directory a file opened on its
 /// own (§89) must stay in (`parent`).
-pub(super) struct Source {
+pub(super) struct RenameSource {
     /// The index knows a note by what its path resolves to: the build never
     /// indexes a symlink entry (`collect_md_files` does not follow one) and a
     /// save files under the resolved path (`Mutation::update`). The rename
@@ -53,7 +53,11 @@ pub(super) struct Source {
 /// `confined_both_ways`), the file's own contexts rather than any registered
 /// one, the same directory (`stays_in_its_directory`), and no other entry at
 /// the destination (`another_entry_at`, called by `rename/file.rs`).
-pub(super) fn judge(old_path: &str, new_path: &str, dirs: &[Registered]) -> Result<Source, String> {
+pub(super) fn check_destination(
+    old_path: &str,
+    new_path: &str,
+    dirs: &[Registered],
+) -> Result<RenameSource, String> {
     let identity = resolve_canonical(old_path)?;
     let parent = identity.parent().map(Path::to_path_buf);
     if !entry_confined(old_path, dirs, parent.as_deref()) {
@@ -77,7 +81,7 @@ pub(super) fn judge(old_path: &str, new_path: &str, dirs: &[Registered]) -> Resu
             "{new_path} would move the note out of its directory; a rename keeps the note where it is"
         ));
     }
-    Ok(Source { identity, parent })
+    Ok(RenameSource { identity, parent })
 }
 
 /// The directory entry `path` names: its parent resolved canonically, joined

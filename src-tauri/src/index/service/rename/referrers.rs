@@ -2,6 +2,7 @@
 
 use crate::context::manager::{resolve_canonical, Registered};
 use crate::context::ContextManager;
+use crate::index::{file_stem_from_path, link_reads_back_as_the_file, own_block_reference_lines};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -25,6 +26,39 @@ pub(super) fn named_referrers(
     let mut referring_files: Vec<String> = named_lines.keys().cloned().collect();
     referring_files.sort();
     (named_lines, referring_files)
+}
+
+/// Whether `path`, a referrer the index named for `named_lines[path]` lines,
+/// is named only for its own `((#^id))` references — the same-stem
+/// exemption both renames weigh a referrer the rewrite left unchanged by. A
+/// same-stem note elsewhere (`b/old.md` beside `a/old.md`) is named by the
+/// index for its own `((#^id))` references, filed under its stem — the
+/// renamed file's key. The rewrite rightly leaves those alone, and the note
+/// is not stale news while it holds at least as many own-reference lines as
+/// the index named it for (`own_id` narrows them to one block for the block
+/// ID rename; `None` counts every block). The stem alone is not why the
+/// index named it: a same-stem note whose reference to the target has gone
+/// since, self-reference beside it or not, holds fewer, and is stale like
+/// any other. `stem_is_target` says whether the referrer's stem is one the
+/// rename queried; it differs between the two renames on purpose — the file
+/// rename compares with the old key, the block ID rename with the target's
+/// keys, zettel id included. A note whose stem ends in `.md` (`foo.md.md`)
+/// is never exempt: its `((#^id))` is filed under another note's key
+/// (`foo`), so its self-reference lines were not counted under this file's
+/// key and cannot be credited against what the index named it for (issue
+/// 716).
+pub(super) fn named_only_for_own_references(
+    path: &str,
+    content: &str,
+    named_lines: &HashMap<String, usize>,
+    own_id: Option<&str>,
+    stem_is_target: impl Fn(&str) -> bool,
+) -> bool {
+    link_reads_back_as_the_file(&file_stem_from_path(path))
+        && stem_is_target(path)
+        && named_lines
+            .get(path)
+            .is_some_and(|&lines| own_block_reference_lines(content, own_id) >= lines)
 }
 
 /// Queue each rewritten referrer, with the content it holds now, into the
@@ -56,7 +90,7 @@ pub(super) async fn apply_queued(state: &LinkIndexState, per_key: HashMap<String
 
 /// What rewriting a set of referring files produced: the files rewritten (and
 /// their new content, for the index), and the files that could not be.
-pub(super) struct Rewritten {
+pub(super) struct RewriteBatch {
     pub(super) updated: Vec<String>,
     pub(super) skipped: Vec<String>,
     /// ‼️ Not parallel to `updated`: a caller may add a file to `updated`
@@ -78,7 +112,7 @@ pub(super) struct Rewritten {
 /// another root reads as a different existing note (`Judgement::Ambiguous`);
 /// a block-ID rename does for that last case. Such a file is reported
 /// whether or not anything else in it changed.
-pub(super) struct Rewrite {
+pub(super) struct ReferrerRewrite {
     pub(super) content: String,
     pub(super) left_behind: bool,
 }
@@ -117,9 +151,9 @@ pub(super) async fn rewrite_referrers(
     ctx_mgr: &ContextManager,
     dirs: &[Registered],
     unchanged: &Unchanged<'_>,
-    rewrite: impl Fn(&str, &str, &[Registered]) -> Rewrite,
-) -> Rewritten {
-    let mut result = Rewritten {
+    rewrite: impl Fn(&str, &str, &[Registered]) -> ReferrerRewrite,
+) -> RewriteBatch {
+    let mut result = RewriteBatch {
         updated: Vec::new(),
         skipped: Vec::new(),
         contents: Vec::new(),
@@ -153,7 +187,7 @@ pub(super) async fn rewrite_referrers(
             result.skipped.push(ref_path.clone());
             continue;
         }
-        let Rewrite {
+        let ReferrerRewrite {
             content: new_content,
             left_behind,
         } = rewrite(&content, ref_path, &covering);

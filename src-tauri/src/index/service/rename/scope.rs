@@ -69,7 +69,7 @@ impl RenameScope {
         &self,
         state: &LinkIndexState,
         ctx_mgr: &ContextManager,
-        read: impl Fn(&Registered, &LinkIndex) -> Vec<(String, u32)>,
+        read: impl Fn(&LinkIndex) -> Vec<(String, u32)>,
     ) -> Result<Referrers, String> {
         let (named_lines, files) = named_referrers(read_indexes(state, &self.dirs, read).await?);
         let holding = holding_contexts(state, ctx_mgr, &self.dirs, &files).await;

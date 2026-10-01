@@ -5,15 +5,15 @@ use crate::context::manager::Registered;
 use crate::context::ContextManager;
 use crate::index::filing::backlink_keys_for;
 use crate::index::normalizer::normalize_file_path;
-use crate::index::{
-    file_stem_from_path, link_reads_back_as_the_file, own_block_reference_lines,
-    replace_block_id_refs_to, BlockTarget, FilingKey, KnownPaths,
-};
+use crate::index::{replace_block_id_refs_to, BlockTarget, FilingKey, KnownPaths};
 use std::collections::HashMap;
 
 use super::super::keys::keys_of;
 use super::super::state::{LinkIndexState, Mutation};
-use super::referrers::{apply_queued, queue_rewritten, rewrite_referrers, Rewrite, Unchanged};
+use super::referrers::{
+    apply_queued, named_only_for_own_references, queue_rewritten, rewrite_referrers,
+    ReferrerRewrite, Unchanged,
+};
 use super::scope::{Referrers, RenameScope};
 use super::{absolute, RenameResult};
 
@@ -42,7 +42,7 @@ pub(crate) async fn rename_block_id_inner(
         files: referring_files,
         known_paths,
     } = scope
-        .referrers(state, ctx_mgr, |_, index| {
+        .referrers(state, ctx_mgr, |index| {
             index.block_reference_lines(file_path, old_id)
         })
         .await?;
@@ -54,29 +54,17 @@ pub(crate) async fn rename_block_id_inner(
     // reads as a different existing note — or might, when its index could
     // not be built — is left and its file reported (`BlockTarget::judge`).
     let target = block_target(file_path, &scope.dirs, known_paths);
-    // A referrer that shares the target's stem — another `note.md` in some
-    // other folder — is named by the index for its own self-references
-    // (`((#^id))` is filed under the referrer's own stem, which is the
-    // target's). The rewrite leaves those alone, rightly, and the file must
-    // not then be reported as a stale referrer — while it holds at least as
-    // many self-reference lines as the index named it for. The stem alone is
-    // not why the index named it: a same-stem note whose `((note#^id))` to
-    // the target has gone since, self-reference beside it or not, holds
-    // fewer, and is stale like any other. A note whose stem ends in `.md`
-    // (`foo.md.md`) is never exempt: its `((#^id))` is filed under another
-    // note's key (`foo`), so its self-reference lines were not counted under
-    // this file's key and cannot be credited against what the index named it
-    // for (issue 716).
+    // The same-stem exemption (`named_only_for_own_references`), counting
+    // only this block's self-references, with the stem checked against the
+    // target's keys in every index read — a zettel id included.
     let named_for_its_own_references = |path: &str, content: &str| {
-        let stem = FilingKey::Stem(normalize_file_path(path));
-        link_reads_back_as_the_file(&file_stem_from_path(path))
-            && target
+        named_only_for_own_references(path, content, &named_lines, Some(old_id), |p| {
+            let stem = FilingKey::Stem(normalize_file_path(p));
+            target
                 .keys_by_root
                 .iter()
                 .any(|(_, keys)| keys.contains(&stem))
-            && named_lines
-                .get(path)
-                .is_some_and(|&lines| own_block_reference_lines(content, Some(old_id)) >= lines)
+        })
     };
 
     // 2. Read + replace + write (outside lock). The first referrer written is
@@ -105,7 +93,7 @@ pub(crate) async fn rename_block_id_inner(
                 old_id,
                 new_id,
             );
-            Rewrite {
+            ReferrerRewrite {
                 content: pass.content,
                 left_behind: pass.ambiguous > 0,
             }

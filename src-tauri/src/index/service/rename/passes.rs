@@ -6,7 +6,7 @@ use crate::index::{
     replace_wikilink_target, wikilink_can_spell, RenameTarget, RewritePass,
 };
 
-use super::referrers::{Rewrite, Rewritten};
+use super::referrers::{ReferrerRewrite, RewriteBatch};
 
 /// The two link passes of a file rename (issue 678), judged apart, over the
 /// references `RenameTarget::refers` matches in a referrer under the roots
@@ -16,7 +16,7 @@ use super::referrers::{Rewrite, Rewritten};
 /// `block_reference_can_spell`: `[[a^b]]` names the note `a`, `((a^b#^id))`
 /// is fine; `((a)b#^id))` parses as nothing, `[[a)b]]` is fine). The links
 /// the stem can be spelled in are rewritten; the others stay, and every file
-/// they stay in is reported, rewritten or not (`Rewrite::left_behind`). What
+/// they stay in is reported, rewritten or not (`ReferrerRewrite::left_behind`). What
 /// the passes wrote is then read back with the index's reader before it is
 /// handed over (`index_reads_the_rename_back`): a stem the predicates pass
 /// can still turn a link literal where it lands — a backtick pairing with
@@ -53,7 +53,7 @@ impl<'a> LinkPasses<'a> {
         content: &str,
         ref_path: &str,
         covering_roots: &[String],
-    ) -> Rewrite {
+    ) -> ReferrerRewrite {
         let before = content;
         let target = &self.target;
         let wikilinks = replace_wikilink_target(content, ref_path, covering_roots, target);
@@ -84,12 +84,12 @@ impl<'a> LinkPasses<'a> {
             log::warn!(
                 "rename: {ref_path} would not read back as linking to the new name where its links stand; they are left as they are"
             );
-            return Rewrite {
+            return ReferrerRewrite {
                 content: before.to_owned(),
                 left_behind: true,
             };
         }
-        Rewrite {
+        ReferrerRewrite {
             content,
             left_behind,
         }
@@ -111,12 +111,12 @@ impl<'a> LinkPasses<'a> {
 pub(super) async fn rewrite_renamed_note(
     new_path: &str,
     content: String,
-    rewrite: impl Fn(&str, &str) -> Rewrite,
+    rewrite: impl Fn(&str, &str) -> ReferrerRewrite,
     still_confined: impl Fn() -> bool,
     named_for_more: impl Fn(&str) -> bool,
-    rewritten: &mut Rewritten,
+    rewritten: &mut RewriteBatch,
 ) -> String {
-    let Rewrite {
+    let ReferrerRewrite {
         content: own_rewritten,
         left_behind,
     } = rewrite(&content, new_path);

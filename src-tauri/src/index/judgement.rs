@@ -175,8 +175,8 @@ impl BlockTarget {
 }
 
 /// `raw_target`, written in the referrer at `ref_path`, keyed by `filing_key`
-/// under each of `roots` in turn — the judgement `BlockTarget::refers` and
-/// `RenameTarget::refers` share. Nothing when the target is blank: a
+/// under each of `roots` in turn — the judgement `BlockTarget::judge` and
+/// `RenameTarget::judge` share. Nothing when the target is blank: a
 /// self-reference names no file.
 fn keyed_under<'r>(
     ref_path: &'r str,

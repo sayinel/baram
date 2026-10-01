@@ -3,16 +3,16 @@
 //! rename/referrers.rs, result types and path helpers in rename/mod.rs.
 
 use crate::context::ContextManager;
-use crate::index::{
-    file_stem_from_path, link_reads_back_as_the_file, own_block_reference_lines, RenameTarget,
-};
+use crate::index::{normalize_file_path, RenameTarget};
 use std::collections::HashMap;
 
 use super::super::keys::{keys_of, local_aliases_of};
 use super::super::state::{LinkIndexState, Mutation};
-use super::destination::{another_entry_at, confined_both_ways, judge};
+use super::destination::{another_entry_at, check_destination, confined_both_ways};
 use super::passes::{rewrite_renamed_note, LinkPasses};
-use super::referrers::{apply_queued, queue_rewritten, rewrite_referrers, Unchanged};
+use super::referrers::{
+    apply_queued, named_only_for_own_references, queue_rewritten, rewrite_referrers, Unchanged,
+};
 use super::scope::{Referrers, RenameScope};
 use super::{absolute, push_for_keys, RenameResult};
 
@@ -29,8 +29,8 @@ pub(crate) async fn rename_file_with_links_inner(
     // issue 717: a link behind one of the file's own vault aliases names it
     // (§87); one behind any other alias names another vault's note and stays.
     let local_aliases = local_aliases_of(ctx_mgr, &scope.dirs).await;
-    // Both ends inside the file's contexts, and no move (`judge`).
-    let source = judge(old_path, new_path, &scope.dirs)?;
+    // Both ends inside the file's contexts, and no move (`check_destination`).
+    let source = check_destination(old_path, new_path, &scope.dirs)?;
 
     // 1. Get referencing files from every containing index, and what every
     //    root holding the file or a referrer knows of its notes, read before
@@ -43,37 +43,29 @@ pub(crate) async fn rename_file_with_links_inner(
         files: referring_files,
         known_paths,
     } = scope
-        .referrers(state, ctx_mgr, |_ctx, i| {
+        .referrers(state, ctx_mgr, |i| {
             i.referring_lines_to(old_path, &local_aliases)
         })
         .await?;
-    // A same-stem note elsewhere (`b/old.md` beside `a/old.md`) is named by
-    // the index for its own `((#^id))` references, filed under its stem —
-    // the old name's key. The rewrite rightly leaves those alone, and the
-    // note is not stale news while its prose self-references, of any block,
-    // account for every line the index named it for. A note whose stem ends
-    // in `.md` (`foo.md.md`) is never exempt: its `((#^id))` is filed under
-    // another note's key (`foo`), so its self-reference lines were not
-    // counted under this file's key and cannot be credited against what the
-    // index named it for (issue 716).
-    let old_key = crate::index::normalizer::normalize_file_path(old_path);
+    // The same-stem exemption (`named_only_for_own_references`), with the
+    // stem compared to the old key: a referrer is exempt only under the name
+    // being renamed away.
+    let old_key = normalize_file_path(old_path);
     let named_for_its_own_references = |path: &str, content: &str| {
-        link_reads_back_as_the_file(&file_stem_from_path(path))
-            && crate::index::normalizer::normalize_file_path(path) == old_key
-            && named_lines
-                .get(path)
-                .is_some_and(|&lines| own_block_reference_lines(content, None) >= lines)
+        named_only_for_own_references(path, content, &named_lines, None, |p| {
+            normalize_file_path(p) == old_key
+        })
     };
     // A rename that keeps the stem — `old.md` → `old.txt`, or `Note.md` →
     // `note.md`, whose case the passes respell in every referrer — leaves no
     // referrer stale: none the index named is news. A path link it does
     // change (`[[a/old]]` → `[[a/old.txt]]`, issue 619) is rewritten, not
     // left unchanged.
-    let stem_unchanged = crate::index::normalizer::normalize_file_path(new_path) == old_key;
+    let stem_unchanged = normalize_file_path(new_path) == old_key;
 
     // The note is dropped under what the old path resolved to before the
-    // move (`Source::identity`) and filed under what the new path resolves
-    // to AFTER it (below).
+    // move (`RenameSource::identity`) and filed under what the new path
+    // resolves to AFTER it (below).
     let remove_old = Mutation::Remove {
         path: source.identity.clone(),
     };
