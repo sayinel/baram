@@ -401,7 +401,9 @@ impl LinkIndex {
         out
     }
 
-    /// Get backlinks for a given file path, read under `backlink_keys`
+    /// Get backlinks for a given file path, read under `backlink_keys`, one
+    /// per `(source, line)`. Sorted by source path, then line, so the order
+    /// does not depend on which key a link was filed under.
     pub fn get_backlinks(
         &self,
         file_path: &str,
@@ -427,6 +429,9 @@ impl LinkIndex {
                 }
             }
         }
+        results.sort_by(|a, b| {
+            (a.source_path.as_str(), a.line).cmp(&(b.source_path.as_str(), b.line))
+        });
         results
     }
 
@@ -925,5 +930,37 @@ mod tests {
         // The new file should be in the file map
         let resolved = index.resolve_target_from_map("new-note");
         assert_eq!(resolved, Some("/vault/notes/new-note.md".to_string()));
+    }
+
+    #[test]
+    fn backlinks_come_in_source_path_order_whatever_key_filed_them() {
+        // Three referrers, each filed under a different key of
+        // `/v/dir/note.md` — its stem, its path, and its path behind the
+        // vault's own alias — registered out of alphabetical order.
+        // What fails this: dropping the sort in `get_backlinks` — the keys
+        // are read Stem first, so `/v/z.md` comes first.
+        let mut index = LinkIndex::new();
+        index.root_path = Some("/v".to_string());
+        index.update_file_from_content("/v/dir/note.md", "t");
+        index.update_file_from_content("/v/z.md", "x\n[[note]]");
+        index.update_file_from_content("/v/m.md", "[[work::dir/note]]");
+        index.update_file_from_content("/v/a.md", "x\nx\n[[dir/note]]");
+        let aliases = [LocalAlias {
+            alias: "work".to_string(),
+            root: "/v".to_string(),
+        }];
+        let order: Vec<(String, u32)> = index
+            .get_backlinks("/v/dir/note.md", &aliases)
+            .into_iter()
+            .map(|b| (b.source_path, b.line))
+            .collect();
+        assert_eq!(
+            order,
+            vec![
+                ("/v/a.md".to_string(), 3),
+                ("/v/m.md".to_string(), 1),
+                ("/v/z.md".to_string(), 2),
+            ]
+        );
     }
 }

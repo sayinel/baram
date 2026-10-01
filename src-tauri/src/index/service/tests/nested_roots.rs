@@ -587,3 +587,38 @@ async fn nested_roots_an_unopened_child_vault_without_the_colliding_note_lets_th
         "[[a/new]]\n"
     );
 }
+
+#[tokio::test]
+async fn nested_roots_backlinks_come_in_source_path_order_across_both_indexes() {
+    // `/v` and `/v/sub` are both roots. `a.md` lies outside the child, so
+    // only the parent's index names it; `sub/z.md` is named by both. The
+    // child answers first (contexts come deepest first), so concatenating
+    // the two answers puts `sub/z.md` ahead of `a.md`.
+    // What fails this: dropping the final sort of `merged` in
+    // `get_backlinks_inner` — `/v/sub/z.md` comes back first.
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir(dir.path().join("sub")).unwrap();
+    std::fs::write(dir.path().join("sub/note.md"), "t").unwrap();
+    std::fs::write(dir.path().join("a.md"), "[[note]]").unwrap();
+    std::fs::write(dir.path().join("sub/z.md"), "[[note]]").unwrap();
+    let root = dir.path().to_str().unwrap().to_string();
+    let sub = format!("{root}/sub");
+    let ctx = ContextManager::new();
+    ctx.add(info("ctx-parent", &root, ContextType::Folder))
+        .await
+        .unwrap();
+    ctx.add(info("ctx-child", &sub, ContextType::Folder))
+        .await
+        .unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    refresh_index_inner(&state, &ctx, &sub).await.unwrap();
+
+    let sources: Vec<String> = get_backlinks_inner(&state, &ctx, &format!("{sub}/note.md"))
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|b| b.source_path)
+        .collect();
+    assert_eq!(sources, vec![format!("{root}/a.md"), format!("{sub}/z.md")]);
+}

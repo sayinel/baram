@@ -51,7 +51,8 @@ pub(crate) async fn get_backlinks_inner(
     // entries as the nested one plus those from outside it — merge, once per
     // (source, line, block), comparing sources canonically because two slots
     // may spell the same file differently; the slot spelled like the query
-    // comes first so its spelling is the one returned. Component-wise
+    // comes first so its spelling is the one returned — then sorted by
+    // source path and line, as a single index's answer is. Component-wise
     // `Path::starts_with`, never a string prefix with a hard-coded separator.
     let mut spelled: Vec<(bool, Vec<BacklinkResult>)> = Vec::new();
     for (key, found) in answered {
@@ -79,6 +80,7 @@ pub(crate) async fn get_backlinks_inner(
             }
         }
     }
+    merged.sort_by(|a, b| (a.source_path.as_str(), a.line).cmp(&(b.source_path.as_str(), b.line)));
     Ok(merged)
 }
 
