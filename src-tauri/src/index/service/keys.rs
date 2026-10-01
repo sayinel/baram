@@ -21,14 +21,20 @@ pub(super) async fn owning_contexts(ctx_mgr: &ContextManager, path: &str) -> Vec
 /// when no OTHER registered context (`ctx_mgr.list()`) carries the same alias
 /// in any case. That one condition is the whole rule, for three reasons:
 ///
-/// - Uniqueness is the condition the frontend resolves by. Its
-///   `findAliasContext` compares aliases case-insensitively and takes the
-///   first context in its list, while the backend's cross-vault resolver
-///   (`resolve_cross_vault_link`) reads the alias map, keyed by the exact
-///   string, last writer wins. With `Work` and `work` on two vaults, or
-///   `work` on both, they can name different vaults, so a link behind that
-///   alias is ambiguous and foreign to both: the rename leaves it and the
-///   backlinks do not claim it.
+/// - Uniqueness is the condition the frontend's alias match resolves by. Its
+///   `findAliasContext` (`src/utils/editor/wikilink-nav.ts`) compares
+///   aliases case-insensitively and takes the first context in its list,
+///   while the backend's cross-vault resolver (`resolve_cross_vault_link`)
+///   reads the alias map, keyed by the exact string, last writer wins. With
+///   `Work` and `work` on two vaults, or `work` on both, they can name
+///   different vaults, so a link behind that alias is ambiguous and foreign
+///   to both: the rename leaves it and the backlinks do not claim it. When
+///   no alias matches, `findAliasContext` falls back to the space names
+///   (`SPACE_ALIASES`: `Journal` for a journal vault, `Zettel` for a
+///   zettelkasten one, by vault type). That fallback is not modelled here:
+///   this function reads `info.alias` alone, so `[[Journal::x]]` into a
+///   journal kept under another folder name is foreign — a rename leaves it
+///   and the backlinks miss it.
 /// - The alias map can go stale. When a later vault claims the name and is
 ///   then removed, its removal drops the map entry, so the backend resolver
 ///   answers nothing for that alias while the frontend still resolves it to

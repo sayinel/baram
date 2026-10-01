@@ -30,9 +30,17 @@ pub(super) struct Source {
 /// resolves to and the entry itself. A rename that would carry the file out
 /// of every context, or that acts on an entry outside them — a symlink
 /// outside the vault pointing into it — is refused before anything is
-/// written (fs_cmd's rename validates both ends the same way). Then the
-/// move refusal below. Judged in that order: old entry, new path both ways,
-/// move.
+/// written. Then the move refusal below. Judged in that order: old entry,
+/// new path both ways, move. The plain file rename, `fs_cmd::rename_file`,
+/// checks less: each end through `check` (`fs::validate_path`: no null byte,
+/// absolute, no `..` segment) and `check_vault`, which resolves the path and
+/// accepts it under ANY registered context
+/// (`ContextManager::validate_path_any`). This rename is stricter in four
+/// ways: it judges the directory entry as well as the resolved path, against
+/// the file's own contexts rather than any registered one; it refuses a move
+/// to another directory (`stays_in_its_directory`); and it refuses a
+/// destination another entry holds (`another_entry_at`, called by
+/// `rename/file.rs`).
 pub(super) fn judge(old_path: &str, new_path: &str, dirs: &[Registered]) -> Result<Source, String> {
     let identity = resolve_canonical(old_path)?;
     let parent = identity.parent().map(Path::to_path_buf);
