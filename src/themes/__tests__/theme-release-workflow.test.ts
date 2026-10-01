@@ -276,6 +276,16 @@ describe("release-theme — 실행할 수 없는 배선", () => {
     );
   });
 
+  // 무엇이 이것을 실패시키는가: 어느 잡이 환경 선언을 잃으면. 배포 키는 환경 `registry-publish` 의
+  // 비밀이라(저장소 설정 — 이 파일에 없다) 선언이 빠진 잡은 키를 받지 못하고 push 에서 실패한다.
+  it("두 잡 모두 registry-publish 환경에서 돈다", () => {
+    for (const job of ["release", "release-theme"]) {
+      expect(jobText(job), job).toContain(
+        "\n    environment: registry-publish\n",
+      );
+    }
+  });
+
   // 무엇이 이것을 실패시키는가: 셋째 자리가 키(나 다른 비밀)를 쓰거나, 키를 받는 단계 뒤에 단계가
   // 생기거나, 키가 env 가 아닌 모양(action 입력 · `run` 안의 식)으로 닿으면.
   it("배포 키는 두 잡의 마지막 단계에만, env 한 줄로 닿는다", () => {
