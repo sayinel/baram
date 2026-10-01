@@ -87,10 +87,12 @@ fn entry_path(path: &str) -> Result<std::path::PathBuf, String> {
 }
 
 /// Whether `new_path` names a directory entry other than the one at
-/// `old_path`. Judged by the entries, never by what they resolve to: neither
-/// last component is followed. Following it would call a symlinked
-/// `note.md -> x.md`, renamed to `x.md`, the "same" file, and `rename(2)`
-/// would replace the real `x.md` with the link. Nothing at `new_path`, or
+/// `old_path`. Judged by the entries: on Unix neither last component is
+/// followed, and off Unix, where the paths are canonicalized and so followed,
+/// the two entries must also agree on being a link (below). Following alone
+/// would call a symlinked `note.md -> x.md`, renamed to `x.md`, the "same"
+/// file, and `rename(2)` would replace the real `x.md` with the link. Nothing
+/// at `new_path`, or
 /// nothing `symlink_metadata` can read (as `Path::exists` reads it), is no
 /// entry.
 ///
@@ -111,10 +113,23 @@ fn entry_path(path: &str) -> Result<std::path::PathBuf, String> {
 /// case. Any other inode is another entry.
 ///
 /// Elsewhere (Windows) there is no inode here to compare. The destination
-/// counts as the source's entry when its canonical parent is the source's
-/// and the names differ at most by ASCII case, since Windows folds case by
-/// default. This is an approximation, and a hard link there is not told
-/// apart from a case alias.
+/// counts as the source's entry when the names differ at most by ASCII case
+/// and both paths canonicalize to the same path (`same_entry_by_canonical`).
+/// Windows `canonicalize` answers the spelling on disk: in a directory that
+/// folds case, both spellings reach the one entry and canonicalize alike, so
+/// the case-only rename goes ahead; in a per-directory case-sensitive folder
+/// (`fsutil file setCaseSensitiveInfo`) holding both `Note.md` and
+/// `note.md`, they canonicalize to two paths and the rename is refused,
+/// where comparing parents alone let the move replace the other note.
+/// `canonicalize` follows a link, so in such a folder a link `Note.md ->
+/// note.md` and the note itself canonicalize alike; the two entries must
+/// also both be links or both not (`symlink_metadata`, not followed), or the
+/// move would replace the note with a link to itself. Two links there to one
+/// file still pass, and the move replaces one link with the other; the file
+/// they reach is untouched. A hard link is not told apart from another
+/// entry: two names canonicalize to two paths, so it is refused, which loses
+/// nothing. A path that does not canonicalize, a dangling link among them,
+/// is another entry.
 ///
 /// So a symlinked source renamed onto its target's name is refused, and a
 /// symlinked source renamed to another spelling of its own name goes ahead.
@@ -144,16 +159,30 @@ fn same_entry(old_path: &str, _new_path: &str, new_meta: &std::fs::Metadata) -> 
         .is_ok_and(|old| old.dev() == new_meta.dev() && old.ino() == new_meta.ino())
 }
 
-/// Whether the existing entry at `new_path` is the entry at `old_path`,
-/// approximated by canonical parents — see `another_entry_at`.
+/// Whether the existing entry at `new_path` (`new_meta`, not followed) is the
+/// entry at `old_path`, judged by the two canonical paths and whether each
+/// entry is a link — see `another_entry_at`.
 #[cfg(not(unix))]
-fn same_entry(old_path: &str, new_path: &str, _new_meta: &std::fs::Metadata) -> bool {
-    let parent = |p: &str| {
-        Path::new(p)
-            .parent()
-            .and_then(|parent| std::fs::canonicalize(parent).ok())
-    };
-    parent(old_path).is_some_and(|old| parent(new_path) == Some(old))
+fn same_entry(old_path: &str, new_path: &str, new_meta: &std::fs::Metadata) -> bool {
+    let old = std::fs::symlink_metadata(old_path).ok().and_then(|meta| {
+        Some((
+            std::fs::canonicalize(old_path).ok()?,
+            meta.file_type().is_symlink(),
+        ))
+    });
+    let new = std::fs::canonicalize(new_path)
+        .ok()
+        .map(|canonical| (canonical, new_meta.file_type().is_symlink()));
+    same_entry_by_canonical(old, new)
+}
+
+/// The non-Unix `same_entry` rule without the file system: each entry as its
+/// canonical path and whether it is a link. The same entry when both were
+/// read, canonicalize to the same path and are both links or both not.
+/// Platform-free so it is tested on any host.
+#[cfg(any(not(unix), test))]
+fn same_entry_by_canonical(old: Option<(PathBuf, bool)>, new: Option<(PathBuf, bool)>) -> bool {
+    matches!((old, new), (Some(old), Some(new)) if old == new)
 }
 
 /// Whether `new_path` names an entry in the directory `old_path` is in:
@@ -224,7 +253,48 @@ fn destination_confined(identity: &Path, dirs: &[Registered], old_parent: Option
 
 #[cfg(test)]
 mod tests {
-    use super::stays_in_its_directory;
+    use super::{same_entry_by_canonical, stays_in_its_directory};
+    use std::path::PathBuf;
+
+    #[test]
+    fn off_unix_the_same_entry_is_the_same_canonical_path() {
+        // A per-directory case-sensitive Windows folder holding `Note.md`
+        // and `note.md`: the two canonicalize to two leaves under one parent,
+        // and the rename must refuse rather than replace the other note.
+        // What fails this: comparing the canonical parents only, the rule
+        // this replaced — the second assertion, two leaves under `C:/v`.
+        let file = |p: &str| Some((PathBuf::from(p), false));
+        assert!(same_entry_by_canonical(
+            file("C:/v/Note.md"),
+            file("C:/v/Note.md")
+        ));
+        assert!(!same_entry_by_canonical(
+            file("C:/v/Note.md"),
+            file("C:/v/note.md")
+        ));
+        assert!(!same_entry_by_canonical(None, file("C:/v/Note.md")));
+        assert!(!same_entry_by_canonical(file("C:/v/Note.md"), None));
+        assert!(!same_entry_by_canonical(None, None));
+    }
+
+    #[test]
+    fn off_unix_a_link_and_the_note_it_reaches_are_two_entries() {
+        // In a case-sensitive folder, a link `Note.md -> note.md` and the
+        // note canonicalize to the same path. Renaming the link onto the
+        // note's name must refuse, or the move replaces the note with a link
+        // to itself. Two links canonicalizing alike are one entry as before.
+        // What fails this: comparing the canonical paths only, without the
+        // link flags — the first assertion.
+        let note = PathBuf::from("C:/v/note.md");
+        assert!(!same_entry_by_canonical(
+            Some((note.clone(), true)),
+            Some((note.clone(), false))
+        ));
+        assert!(same_entry_by_canonical(
+            Some((note.clone(), true)),
+            Some((note, true))
+        ));
+    }
 
     #[test]
     fn a_rename_that_would_move_the_note_is_refused_in_windows_spelling_too() {
