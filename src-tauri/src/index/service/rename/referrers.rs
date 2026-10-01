@@ -33,7 +33,7 @@ pub(super) fn named_referrers(
 /// exemption both renames weigh a referrer the rewrite left unchanged by. A
 /// same-stem note elsewhere (`b/old.md` beside `a/old.md`) is named by the
 /// index for its own `((#^id))` references, filed under its stem — the
-/// renamed file's key. The rewrite rightly leaves those alone, and the note
+/// target's key. The rewrite rightly leaves those alone, and the note
 /// is not stale news while it holds at least as many own-reference lines as
 /// the index named it for (`own_id` narrows them to one block for the block
 /// ID rename; `None` counts every block). The stem alone is not why the

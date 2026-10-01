@@ -11,7 +11,7 @@ use super::LinkKind;
 /// left it — as it read `before` with every reference the passes respelled
 /// filed under its new key, and nothing else changed: the same lines, kinds
 /// and block ids, under EACH root in `covering_roots`, because each covering
-/// index files the referrer by its own root (issue 678, review; issue 619).
+/// index files the referrer by its own root (issues 678 and 619).
 /// A stem the predicates pass can still make prose literal where it lands:
 /// `[[a`b`c]]` closes a code span around itself, and `[[a`b]]` pairs with a
 /// backtick already on the line, so the link the rename wrote is read by

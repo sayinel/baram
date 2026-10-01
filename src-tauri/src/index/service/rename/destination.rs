@@ -40,19 +40,12 @@ pub(super) struct RenameSource {
 /// directory is refused as outside its contexts: its entry's directory is
 /// not its target's. Conservative, and intended.
 ///
-/// The plain file rename, `fs_cmd::rename_file`, checks each end through
-/// `check` (`fs::validate_path`) and `check_vault`. The two renames share
-/// two checks: an absolute path (`validate_path`; here `absolute`, in
-/// `rename/mod.rs`), and the resolved path inside a registered context
-/// (`check_vault` through `ContextManager::validate_path_any`, ANY context;
-/// here only the file's own, `dirs`). `fs_cmd::rename_file` alone refuses a
-/// null byte and a `..` segment (`validate_path`), and with no context
-/// registered it falls back to the legacy vault root and refuses when that
-/// is unset too (`vault_fallback_decision`). This rename alone runs four:
-/// the directory entry judged as well as the resolved path (`entry_confined`,
-/// `confined_both_ways`), the file's own contexts rather than any registered
-/// one, the same directory (`stays_in_its_directory`), and no other entry at
-/// the destination (`another_entry_at`, called by `rename/file.rs`).
+/// The checks, then: the directory entry as well as the resolved path
+/// (`entry_confined`, `confined_both_ways`), the file's own contexts rather
+/// than any registered one, and the same directory
+/// (`stays_in_its_directory`). The caller adds absolute paths (`absolute`, in
+/// `rename/mod.rs`) and no other entry at the destination
+/// (`another_entry_at`, called by `rename/file.rs`).
 pub(super) fn check_destination(
     old_path: &str,
     new_path: &str,
@@ -88,8 +81,8 @@ pub(super) fn check_destination(
 /// with its own file name as spelled, the last component not followed. Used
 /// for the boundary only (`entry_confined`, for the old path and for the new
 /// path inside `confined_both_ways`) — the rename moves this entry, so the
-/// entry must lie inside the contexts too. The index files a
-/// note by what its path resolves to, not by this.
+/// entry must lie inside the contexts too. The index files a note by what
+/// its path resolves to, not by this.
 fn entry_path(path: &str) -> Result<std::path::PathBuf, String> {
     let path = Path::new(path);
     let (Some(parent), Some(name)) = (path.parent(), path.file_name()) else {
@@ -99,19 +92,22 @@ fn entry_path(path: &str) -> Result<std::path::PathBuf, String> {
 }
 
 /// Whether `new_path` names a directory entry other than the one at
-/// `old_path`. Judged by the entries: on Unix neither last component is
-/// followed, and off Unix, where the paths are canonicalized and so followed,
-/// the two entries must also agree on being a link (below). Following alone
-/// would call a symlinked `note.md -> x.md`, renamed to `x.md`, the "same"
-/// file, and `rename(2)` would replace the real `x.md` with the link. Nothing
-/// at `new_path`, or
-/// nothing `symlink_metadata` can read (as `Path::exists` reads it), is no
-/// entry.
+/// `old_path`. Nothing at `new_path`, or nothing `symlink_metadata` can read
+/// (as `Path::exists` reads it), is no entry. The entries are compared, not
+/// the files they reach: following alone would call a symlinked
+/// `note.md -> x.md`, renamed to `x.md`, the "same" file, and `rename(2)`
+/// would replace the real `x.md` with the link. The destination is the
+/// source's own entry only when the two names differ at most by ASCII case
+/// and:
 ///
-/// On Unix the destination is the source's own entry only when both are the
-/// same inode on the same device (`symlink_metadata`, which reads a link
-/// itself) AND the two names differ at most by ASCII case. That is a
-/// case-only rename (`Note.md` → `note.md`) on a file system that folds
+/// | Host or case | The source's own entry when |
+/// | --- | --- |
+/// | Unix | the same dev and inode (`symlink_metadata`, a link read itself) |
+/// | Windows | both `canonicalize` to one path and are both links or both not (`same_entry_by_canonical`); unverified on a Windows host |
+/// | A dangling link at `new_path` | never: it is another entry, where `Path::exists`, which follows the link, would let the rename replace it |
+///
+/// On Unix the same inode under a name that differs at most by ASCII case is
+/// a case-only rename (`Note.md` → `note.md`) on a file system that folds
 /// case, where both spellings reach the one entry. Only ASCII case counts:
 /// `Élan.md` → `élan.md` on such a file system finds the destination, fails
 /// the name comparison, and is refused. The same inode under a name that
@@ -124,35 +120,22 @@ fn entry_path(path: &str) -> Result<std::path::PathBuf, String> {
 /// Telling the two apart would mean asking the file system whether it folds
 /// case. Any other inode is another entry.
 ///
-/// Elsewhere (Windows) there is no inode here to compare. The destination
-/// counts as the source's entry when the names differ at most by ASCII case
-/// and both paths canonicalize to the same path (`same_entry_by_canonical`).
-/// Windows `canonicalize` answers the spelling on disk: in a directory that
-/// folds case, both spellings reach the one entry and canonicalize alike, so
-/// the case-only rename goes ahead; in a per-directory case-sensitive folder
-/// (`fsutil file setCaseSensitiveInfo`) holding both `Note.md` and
-/// `note.md`, they canonicalize to two paths and the rename is refused,
-/// where comparing parents alone let the move replace the other note.
-/// `canonicalize` follows a link, so in such a folder a link `Note.md ->
-/// note.md` and the note itself canonicalize alike; the two entries must
-/// also both be links or both not (`symlink_metadata`, not followed), or the
-/// move would replace the note with a link to itself. Two links there to one
-/// file still pass, and the move replaces one link with the other; the file
-/// they reach is untouched. A hard link is expected to be refused as another
-/// entry: std's Windows `canonicalize` asks `GetFinalPathNameByHandleW` for
-/// the name the handle was opened through, so two names should give two
-/// canonical paths. That is read from std's source and unverified on a
-/// Windows host. If the API answered one name for both, the two pairs would
-/// match and the rename would go ahead: `fs::rename_file` replaces the
-/// destination (`MoveFileExW` with replace), so one of the two names is
-/// dropped and the file both named keeps its content. A path that does not
-/// canonicalize, a dangling link among them, is another entry.
+/// On Windows `canonicalize` answers the spelling on disk: in a directory
+/// that folds case, both spellings reach the one entry and canonicalize
+/// alike, so the case-only rename goes ahead; in a per-directory
+/// case-sensitive folder (`fsutil file setCaseSensitiveInfo`) holding both
+/// `Note.md` and `note.md`, they canonicalize to two paths and the rename is
+/// refused. `canonicalize` follows a link, so in such a folder a link
+/// `Note.md -> note.md` and the note itself canonicalize alike; the two
+/// entries must also both be links or both not (`symlink_metadata`, not
+/// followed), or the move would replace the note with a link to itself. Two links there to one file still pass,
+/// and the move replaces one link with the other; the file they reach is
+/// untouched. A hard link is expected to be refused as another entry, which
+/// is unverified on a Windows host. A path that does not canonicalize is
+/// another entry.
 ///
 /// So a symlinked source renamed onto its target's name is refused, and a
 /// symlinked source renamed to another spelling of its own name goes ahead.
-/// A dangling symlink at the destination is an entry too and is refused,
-/// where `Path::exists`, which follows the link, used to let the rename
-/// replace it.
 pub(super) fn another_entry_at(old_path: &str, new_path: &str) -> bool {
     let Ok(new_meta) = std::fs::symlink_metadata(new_path) else {
         return false;
@@ -224,10 +207,10 @@ fn stays_in_its_directory(old_path: &str, new_path: &str, windows: bool) -> bool
 /// file's contexts, judged by `destination_confined` — so for a standalone
 /// File context (§89) it must sit in the directory the file was in. The
 /// rename acts on the entry: it moves it, and `rewrite_renamed_note` writes
-/// through it. Judging only the resolved file let `/outside/Link.md`, a
-/// symlink outside every context pointing at `/v/x.md`, pass: a case-only
-/// rename then moved the outside entry and the note's rewrite replaced the
-/// link with a regular file outside the vault.
+/// through it. Judging only the resolved file would let `/outside/Link.md`,
+/// a symlink outside every context pointing at `/v/x.md`, pass: a case-only
+/// rename would then move the outside entry and the note's rewrite would
+/// replace the link with a regular file outside the vault.
 fn entry_confined(path: &str, dirs: &[Registered], old_parent: Option<&Path>) -> bool {
     entry_path(path).is_ok_and(|entry| destination_confined(&entry, dirs, old_parent))
 }

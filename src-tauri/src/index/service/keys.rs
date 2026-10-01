@@ -64,8 +64,6 @@ fn space_name_of(info: &ContextInfo) -> Option<&'static str> {
 ///   registered vaults is the one condition no other vault can contradict,
 ///   so the map is not consulted; an ownership check against it would keep
 ///   the first vault foreign.
-/// - With uniqueness checked, an ownership check has no test that fails
-///   without it, and a condition nothing can fail does not stay.
 ///
 /// The registrations are read when this is called — a rename reads them
 /// once, at its start, and does not see a registration made while it runs.

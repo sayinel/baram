@@ -11,16 +11,16 @@ use super::referrers::{ReferrerRewrite, RewriteBatch};
 /// The two link passes of a file rename (issue 678), judged apart, over the
 /// references `RenameTarget::refers` matches in a referrer under the roots
 /// that cover it — by stem, by path under such a root, or relative to the
-/// referrer's folder (issue 619). A new stem
-/// a link cannot spell is not written into one (`wikilink_can_spell`,
-/// `block_reference_can_spell`: `[[a^b]]` names the note `a`, `((a^b#^id))`
-/// is fine; `((a)b#^id))` parses as nothing, `[[a)b]]` is fine). The links
-/// the stem can be spelled in are rewritten; the others stay, and every file
-/// they stay in is reported, rewritten or not (`ReferrerRewrite::left_behind`). What
-/// the passes wrote is then read back with the index's reader before it is
-/// handed over (`index_reads_the_rename_back`): a stem the predicates pass
-/// can still turn a link literal where it lands — a backtick pairing with
-/// one on the line — and such a file is left as it was, and reported.
+/// referrer's folder (issue 619). A new stem a link cannot spell is not
+/// written into one (`wikilink_can_spell`, `block_reference_can_spell`:
+/// `[[a^b]]` names the note `a`, `((a^b#^id))` is fine; `((a)b#^id))` parses
+/// as nothing, `[[a)b]]` is fine). The links the stem can be spelled in are
+/// rewritten; the others stay, and every file they stay in is reported,
+/// rewritten or not (`ReferrerRewrite::left_behind`). What the passes wrote
+/// is then read back with the index's reader before it is handed over
+/// (`index_reads_the_rename_back`): a stem the predicates pass can still turn
+/// a link literal where it lands — a backtick pairing with one on the line —
+/// and such a file is left as it was, and reported.
 pub(super) struct LinkPasses<'a> {
     target: RenameTarget<'a>,
     wikilinks_spellable: bool,
@@ -69,7 +69,7 @@ impl<'a> LinkPasses<'a> {
             || wikilinks.ambiguous > 0
             || blocks.ambiguous > 0;
         let content = blocks.content;
-        // READ-BACK GATE (issue 678, review): what was written must be read
+        // READ-BACK GATE (issue 678): what was written must be read
         // as a link to the new name where it stands, or it is not written.
         if content != before
             && !index_reads_the_rename_back(
@@ -126,11 +126,10 @@ pub(super) async fn rewrite_renamed_note(
     } else if !still_confined() {
         // The note is still filed in the index, and rightly: under what
         // `new_path` resolves to after the move, where a save would file it.
-        // What this branch
-        // refuses is WRITING through an entry, or to a file, that no longer
-        // lies inside the contexts (`confined_both_ways`) — unlike a
-        // referrer, which was never moved and whose stale resolution would
-        // make the index describe a file the rename never touched.
+        // What this branch refuses is WRITING through an entry, or to a file,
+        // that no longer lies inside the contexts (`confined_both_ways`) —
+        // unlike a referrer, which was never moved and whose stale resolution
+        // would make the index describe a file the rename never touched.
         log::warn!("rename: {new_path} no longer resolves inside the file's contexts, its references are left as they are");
         (content, true)
     } else {

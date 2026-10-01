@@ -3,10 +3,10 @@
 //
 // issue 263 — one key, derived one way. The per-context link indexes live in a
 // map keyed by the context's REGISTERED PATH (`ContextInfo.path`). Not the
-// context id: `legacy-xxx` and `ctx-xxx` ids can name the same vault, and
-// `search_knowledge` used to look this map up by id — a guaranteed miss that
-// `unwrap_or_default()` turned into an empty graph, so hybrid ranking's graph
-// term was 0 for every query with no error and no log. And not the raw string
+// context id: `legacy-xxx` and `ctx-xxx` ids can name the same vault, so a
+// lookup by id is a guaranteed miss that `unwrap_or_default()` turns into an
+// empty graph — the graph term of `search_knowledge`'s hybrid ranking 0 for
+// every query, with no error and no log. And not the raw string
 // the frontend happens to hold either: its `rootPath` can carry a trailing
 // slash, or a spelling Rust deduplicated away at registration. So a path —
 // a vault root in any spelling, or a file inside one — is mapped to the
@@ -60,19 +60,19 @@
 // builds a missing index from the context's registered path before a file is
 // touched: that spelling was supplied by the frontend at registration, so it
 // is not the guess this file refuses to make — a root derived from a FILE
-// path, which with a symlink inside a vault would scan and rewrite outside
-// it. The gate reaches the contexts nothing else builds (a journal or zettel
-// space registered without being opened, a nested folder restored from the
-// last session); the first rename there waits for one scan. Renaming before
-// an index existed used to rename the file and rewrite none of its
-// references, silently. The renames confine what they write: the destination
-// stays inside the file's contexts (a file opened on its own may only be
-// renamed within its directory), a namespace move stays inside the root that
-// authorised it, and a referring file the index names is rewritten only if it
-// still resolves inside those contexts. A namespace move refuses a directory
-// that is, or holds, a registered context (its registration would dangle), and
-// drops the indexes of the other contexts whose scan covered the moved files —
-// the gate rebuilds each when next needed (issue 591).
+// path, which with a symlink inside a vault would scan and rewrite outside it.
+// The gate reaches the contexts nothing else builds (a journal or zettel space
+// registered without being opened, a nested folder restored from the last
+// session); the first rename there waits for one scan. Without the gate,
+// renaming before an index existed would rename the file and rewrite none of
+// its references, silently. The renames confine what they write: the
+// destination stays inside the file's contexts (a file opened on its own may
+// only be renamed within its directory), a namespace move stays inside the
+// root that authorised it, and a referring file the index names is rewritten
+// only if it still resolves inside those contexts. A namespace move refuses a
+// directory that is, or holds, a registered context (its registration would
+// dangle), and drops the indexes of the other contexts whose scan covered the
+// moved files — the gate rebuilds each when next needed (issue 591).
 //
 // An index holds paths in the spelling of the root it was built from. A nested
 // root can be registered — and built — under another spelling of the same

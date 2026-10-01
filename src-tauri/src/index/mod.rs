@@ -380,8 +380,7 @@ impl LinkIndex {
     /// another note's — and its path under the root) — wikilink, block
     /// reference and embed alike. NOT the zettel-id key that `backlink_keys`
     /// adds and `get_backlinks` also reads: a bare `[[202607051530]]` is
-    /// filed under the id, so a rename neither rewrites nor reports it (nor
-    /// did it before issue 619, when this read the stem key alone). A file
+    /// filed under the id, so a rename neither rewrites nor reports it. A file
     /// rename rewrites all three kinds, and counts the lines each referrer
     /// was named for to tell a same-stem note's own references apart from a
     /// stale index.

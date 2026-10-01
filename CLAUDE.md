@@ -80,7 +80,7 @@ baram/
 
 ### 주석·문서의 주장 (0089 에서 15건 실측)
 
-주석과 문서는 **검증되지 않은 주장을 싣는 자리**다. 아래는 규칙이 없어서가 아니라 규칙이 *wiki 편집* 절에 있어서 코드 주석에 적용된다고 읽힌 적이 없어 생긴 결함들의 대책이다. 근거는 `dev/impl-notes/0051-checks-that-cannot-fail.md`.
+주석과 문서는 **검증되지 않은 주장을 싣는 자리**다. 아래는 규칙이 없어서가 아니라 규칙이 _wiki 편집_ 절에 있어서 코드 주석에 적용된다고 읽힌 적이 없어 생긴 결함들의 대책이다. 근거는 `dev/impl-notes/0051-checks-that-cannot-fail.md`.
 
 - **전칭 한정사(`전부`·`만`·`항상`·`뿐`·`유일한`·`못 한다`)는 주장이다.** 열거하거나 구조적 논거로 확인하고 **코퍼스와 그 경계를 함께 적는다.** 얼버무리지 말 것 — 근거 있는 전칭이 모호한 문장보다 낫다
 - 입력을 **신뢰**하거나 게이트를 **제거**하는 것을 허가하는 전칭은 **열거**해야 한다. **거부**만 정당화하는 전칭은 명명된 코퍼스로 족하다 — 단 실패가 **조용하면** 그것도 열거한다
@@ -160,109 +160,79 @@ baram/
   불변), 줄 단위 스캔은 `content.lines()` 가 아니라 `source_lines`(CRLF 에서 오프셋이 샌다). frontmatter 는 잘라내되 텍스트(속성
   링크는 링크). 프런트 `block-id-rename-markdown.ts` 와의 계약은 `src-tauri/src/md/fixtures/literal-regions.json` 이 양쪽에서 읽힌다.
   tag·task 스캐너의 느슨한 fence 규칙은 별개 계약이라 여기 얹지 말 것
-- **파일 rename 은 index 가 세는 것을 전부 고치거나, 못 고친 것을 보고한다 (#678)**: 불변식 셋이다 —
-  ① index 가 세는 것 = rename 이 고치는 것, ② 문법이 쓸 수 없는 이름은 쓰지 말고 남긴다, ③ 남긴 것은 보고한다.
-  ‼️ **링크 종류를 더하면 ①이 먼저 깨진다** — `mod.rs` 의 `incoming` 은 `extract_links` 가 내는 **모든** 항목을
-  `filing_key` 가 준 키 아래 담으므로 새 종류는 추출되는 순간 바구니에 들어오는데, `rewriter.rs` 의 치환은 문법별 패스의
-  합집합이다. 그래서 종류는 문자열이 아니라 `mod.rs` 의 `LinkKind` 다 — `link_kinds!` 한 목록이 enum 과 테스트용
-  `ALL` 을 함께 만들고, `LinkKind::pass()` 가 `_` 없는 `match` 로 종류마다 패스를 지정하며, `rewriter.rs` 의 후보 필터
-  둘은 그 `pass()` 를 읽는다. 변형을 더하면 `pass()`·테스트의 `spelled()` 에서 **컴파일이 멎는다**. 컴파일러가 못
-  보는 나머지 반 — 지정한 패스의 regex 가 정말 그 문법을 읽는가 — 는 `mod.rs` 의
-  `every_reference_the_index_files_under_a_stem_is_visited_by_one_rewrite_pass` 가 `ALL` 로 픽스처를 짜서 개수로
-  비교한다(실측: `@@target@@` 종류를 BlockReferences 에 배선하면 3 != 4. `<<target>>` 은 literal 분석이 HTML 로
-  읽어 색인되지 않으니 프로브로 쓰지 말 것). 손댈 곳 순서: `LinkKind` 변형 → 컴파일러가 가리키는 `pass()`·`spelled()`
-  → `extractor.rs`(regex + arm) → 그 패스의 regex 가 새 문법을 읽게(못 읽으면 위 테스트) → `…_can_spell` →
-  `own_block_reference_lines`(같은 stem 예외가 새 종류의 자기 참조를 놓치면 과소 계수).
-  ② 의 판정은 두 층이다 — stem 만 보는 `…_can_spell`(본체는 문자 열거가 아니라 `link_reads_back_as_the_file`)과,
-  두 패스가 낸 내용을 `extract_links` 로 **되읽는** `index_reads_the_rename_back`(`LinkPasses::rewrite`). 술어를 통과한
-  stem 도 referrer 줄의 백틱과 짝을 지어 링크를 literal 로 만들 수 있고, 그건 stem 이 아니라 **줄**의 성질이라 되읽어야
-  보인다. ③ 의 `skipped.push` 는 한 곳이 아니다 — `rename/referrers.rs` 에 referrer 의 원인마다 하나씩(덮는 context 가 없는
-  referrer 도 그중 하나다)과 `rename/passes.rs`(rename 되는 노트); `LinkPasses` 는 `left_behind` 플래그만 세운다
-  ‼️ **index 의 키는 `filing.rs` 가 정한다 (#619)** — `incoming` 의 키는 문자열이 아니라 `FilingKey`(`Stem`·`Path`·`Foreign`)다.
-  참조를 키로 바꾸는 함수는 `filing_key` 하나다 — filing(`file_incoming`), rewriter 판정(`RenameTarget::judge`·`BlockTarget::judge`
-  가 함께 쓰는 `keyed_under`, 모호성 판정 `read_as_another_note`), 되읽기 관문(`index_reads_the_rename_back`)이 모두 그것을 부른다. 파일이 읽히는 키는 `keys_for` 가
-  낸다 — 조회(`filing_keys_of` 를 거치는 `referring_lines_to`, `backlink_keys` 를 거치는 `get_backlinks`·`block_reference_lines`)와
-  block ID rename 의 `block_target`. 그래서 `[[dir/note]]`·`[[./note]]`·`((dir/note#^id))` 같은 경로·상대 참조도 백링크이고 두 rename 이 고쳐 쓴다.
-  파일 쪽 키의 모양은 `keys_for` 를 부르지 않고 따로 짓는 자리도 안다 — crate 에서 테스트 밖의 `FilingKey::` 생성과
-  `file_key`·`root_relative_key`·`normalize_file_path`·`extract_id_from_stem` 호출을 훑으면 이것이 전부다: `judgement.rs` 의
-  `RenameTarget::judge`·`refers_behind_alias`·`expected_key`·`BlockTarget::judge`(대상 판별), 노트 목록을 짓는
-  `registered_path_keys`·`colliding_path_keys`(`mod.rs`, 둘 다 `path_keys_of` 로 `root_relative_key` 를 부르고 뒤의 것은
-  `filing.rs` 의 `path_key_name` 으로 먼저 묶는다), zettel id `Stem` 을 붙이는 `backlink_keys_for`(`filing.rs` —
-  `backlink_keys`(`mod.rs`)·`block_target`(`rename/block_id.rs`)가 함께 부른다), 같은 stem 예외(`rename/block_id.rs`·
-  `rename/file.rs`)와 `stem_unchanged`(`rename/file.rs`), 관문이
-  `expected_key` 를 `Foreign` 으로 감싸는 곳(`read_back.rs`)과 `link_reads_back_as_the_file`(`rewriter.rs`). `mod.rs` 의 `file_map`·`relative_map`·
-  `id_map`(채우는 곳은 `resolve.rs` 의 `register_file_path`, 비우는 곳은 `mod.rs` 의 `remove_file`) 은 target 해석용이라 `incoming` 키가 아니다. 새 키 모양은 `filing.rs` 에 더하고 이 자리들을 같이 고칠 것.
-  `FilingKey` 를 가르는 `match` 는 `_` 팔 없이 변형을 모두 적는다 — 넷째 변형을 더하면 `judgement.rs` 의 `read_as_another_note`·
-  `BlockTarget::judge`·`RenameTarget::judge`·`refers_behind_alias` 와 `read_back.rs` 의 `index_reads_the_rename_back`, 다섯 자리에서
-  **컴파일이 멎는다**(더미 변형을 더해 실측; `LinkKind::pass()` 와 같은 방식). 키를 **짓는** `filing_key`·`keys_for` 는 멎지 않으니 새
-  변형은 거기서 직접 낼 것. `mod.rs` 의 개수 게이트 둘은 잡는
-  범위가 다르다 — 위의 `…_under_a_stem_…` 은 `LinkKind::ALL` 로 픽스처를 짜 새 **종류는** 저절로 들어오지만 표기 하나를
-  `Stem` 바구니에서만 센다. 짝인 `every_reference_the_index_files_under_a_path_is_visited_by_one_rewrite_pass` 는 `Path`·`Foreign`
-  바구니를 세되 표기가 손으로 적은 목록(종류마다 `dir/target`·`./target`, 그리고 `[[work::target]]`)뿐이라, 그 목록에 없는 표기로
-  들어오는 새 키 모양은 **어느 쪽도 보지 못한다**. 새 표기를 더하면 이 픽스처에 먼저 넣을 것.
-  링크가 이 파일을 가리키는지(match)는 referrer 를 **덮는** root 의 index 로만 판정한다 — `/v` 와 `/v/sub` 가 둘 다 root 일 때 `/v/r.md` 의 `[[a/old]]` 는 `/v`
-  아래에서만 읽혀 `/v/a/old.md` 를 가리키므로, 자식 root 아래 경로가 같은 `/v/sub/a/old.md` 의 rename 은 그것을 **고치지 않는다**
-  (`service/tests/nested_roots.rs` 의 `nested_roots_a_rename_leaves_the_parents_colliding_link_alone`). 되읽기 관문도 덮는 root 마다 따로 읽는다.
-  ‼️ **경로 링크를 다른 root 가 실재하는 다른 노트로 읽으면 고치지 않고 보고한다** — 두 root 가 함께 덮는 `/v/sub/r.md` 의
-  `[[a/old]]` 는 자식 아래에서 `/v/sub/a/old.md`, 부모 아래에서 `/v/a/old.md` 다. 둘 다 있으면 어느 쪽을 rename 하든 그 링크는
-  **모호하므로 그대로 두고** 파일을 `skipped_files` 에 올린다(`judgement.rs` 의 `Judgement::Ambiguous`·`read_as_another_note`).
-  부모에 `a/old.md` 가 없으면 모호하지 않으므로 전처럼 고쳐 쓴다. 한 root 안에서도 같다 — 대소문자를 지키는 파일 시스템에서
-  `A/note.md` 와 `a/note.md` 는 둘 다 `Path("a/note")` 로 접히므로 `[[A/note]]`·`[[a/note]]` 는 어느 한쪽의 링크가 아니다.
-  `registered_path_keys` 가 키마다 그리로 접히는 노트 수를 내고, 둘 이상이면 그 키로 읽히는 경로 링크는 모호하다. referrer 와
-  파일을 담는 root 가 하나뿐이면 다른 root 의 읽기가 없으므로 겹치는 키만 모은다(`colliding_path_keys` → `RootNotes::Sole`) —
-  index 잠금 아래에서 노트마다가 아니라 이름이 같은 노트마다 키를 짓는다. 존재 판정은 rename 되는 파일이나 referrer 를 **담는 모든
-  directory context** 의 노트 목록(`LinkIndex::registered_path_keys`)으로 한다 — rename 되는 파일의 context 만이 아니다. 부모의
-  `a/old.md` 를 rename 할 때 자식 root 는 그 파일을 담지 않지만 referrer 를 담는다. 한 번도 열리지 않아 index 가 없는 context 는
-  판정 전에 **그 자리에서 build 한다**(`service/rename/scope.rs` 의 `holding_contexts` → `ensure_indexes`). build 할 수 없으면 그
-  root 는 `RootNotes::Unknown` 이 되어 그 root 가 읽을 수 있는 경로 링크는 **그대로 두고 파일을 보고한다** — 비어 있다고 가정하지
-  않는다(`known_paths_of`). referrer 를 담는지는 `contexts_containing` 으로 찾고, 판정 안에서는 root 표기에 대해 어휘적으로 본다.
-  bare 이름(`[[old]]`)은 이 판정 밖이다 — stem 은 모든 root 에서 같게 읽히고 rename 은 그것을 고쳐 쓴다
-  키는 **등록된 root 표기에 대해 어휘적으로** 계산한다 — symlink 인 root 의 다른 표기(`/tmp` 에 대한 `/private/tmp`)로 주어진 파일은
-  `Path` 키를 얻지 못해 경로 링크가 **놓칠 뿐** 잘못 고쳐 쓰이지는 않는다
-  ‼️ **② 의 두 층(`…_can_spell`·`index_reads_the_rename_back`)은 파일 rename 입구에만 있다** — 디렉터리 rename 이 `relative_links.rs` 로 고쳐 쓰는 `[[./x]]`·`[[../x]]` 는
-  거치지 않고(폴더를 `C# notes` 로 바꾸면 `[[./C# notes/x]]` 가 쓰여 `./C` 로 읽힌다 — 실측), block ID rename 의 새 id 는 프런트
-  `BLOCK_ID_PATTERN` 이 거르며 Rust 는 재검증하지 않는다. 프런트의 블록 메뉴 "링크 복사" 도 판정 없이 쓴다. 링크를 쓰는
-  입구를 더하거나 고칠 때 이 층을 같이 걸 것
-  - **vault 자신의 alias(`[[work::note]]`, §87)는 등록된 vault 들 사이에서 대소문자 무시로 유일한 alias 일 때만 로컬이다 (#717)** —
-    `service/keys.rs` 의 `local_aliases_of`. journal·zettelkasten space 는 vault type 으로 `Journal::`·`Zettel::` 에도 답한다 —
-    같은 유일성 규칙 아래이고(두 journal space 면 둘 다 외부), 어느 vault 든 그 이름을 explicit alias 로 달면 그 alias 가 이긴다
-    (`findAliasContext` 의 두 패스, 이름 짝은 `keys.rs` 의 `space_names_match_the_frontends` 가 고정). 다른 vault 가 같은 alias 를 달고 있으면(`work` 와 `work`, 또는 대소문자만 다른 `Work`)
-    그 alias 는 **모호하므로 양쪽 모두에게 외부다** — 프런트 `findAliasContext` 는 대소문자 무시로 목록의 첫 context 를, backend alias
-    맵은 정확한 문자열로 마지막 등록을 고르니 둘이 다른 vault 를 가리킬 수 있다. 그런 링크는 rename 이 건드리지 않고 백링크도 주장하지
-    않는다. alias 맵의 소유(`resolve_alias`)로 판정하지 않는다 — last-writer-wins 맵은 낡는다(나중 vault 가 이름을 가져간 뒤 제거되면 맵
-    항목이 사라져, 이제 그 이름을 단 유일한 vault 도 외부로 남는다). 등록은 rename 이 **시작할 때** 한 번 읽으므로 rename 도중의 등록은
-    보이지 않는다. 로컬 alias 는
-    `LocalAlias { alias, root }` 로 다니고, alias 뒤 경로의 `Foreign` 키는 읽는 index 의 root 가 아니라 **그 alias 가 가리키는 vault 의
-    root 로** 계산한다 — 중첩 vault 에서 부모의 `[[p::a/old]]` 가 자식의 `a/old.md` 로 읽히지 않게. block reference·embed 문법에는
-    alias 자리가 없어(`extractor.rs` 의 `BLOCK_REF_RE`·`BLOCK_EMBED_RE`) block ID rename 은 alias 를 넘기지 않는다
-  - **파일 rename 은 디렉터리를 바꾸지 않는다** — `rename/destination.rs` 의 `stays_in_its_directory` 가 부모가 다르면 쓰기 전에 `Err` 를
-    낸다. 경로·상대 참조는 노트를 지금 자리로 부르고, 이동은 옮겨진 노트 자신의 상대 링크까지 고쳐야 하므로 별도 패스다.
-    부모는 resolve 한 것이 아니라 **적힌 대로** 비교한다 — respell 이 `new_path` 의 성분을 링크에 쓰므로, resolve 하면 같은 폴더인
-    `a/../a/new.md` 도 `[[a/../a/new]]` 를 써 아무 노트도 가리키지 않는다. 그래서 두 rename 은 절대 경로가 아닌 경로를 먼저 거부한다
-    (`rename/mod.rs` 의 `absolute`) — 상대 경로는 작업 디렉터리 기준으로 resolve 되어 적힌 비교를 빠져나간다. 목적지에 **다른** 디렉터리
-    항목이 있으면 거부한다(`another_entry_at`, 이동 직전에 판정). 같은 항목인지는 **마지막 성분을 따라가지 않고** 본다 — Unix 에서는
-    `symlink_metadata` 의 dev·inode 가 같고 이름이 ASCII 대소문자만 다를 때(대소문자를 접는 파일 시스템의 `Note.md` → `note.md`)만 같은
-    항목이다. **ASCII** 대소문자만 본다 — `Élan.md` → `élan.md` 는 그 파일 시스템에서 목적지가 있고 이름 비교에 걸려 거부된다. 같은 inode 에
-    ASCII 대소문자 이상 다른 이름은 hard link 라 거부한다. 대소문자를 지키는 파일 시스템에서 이름이 ASCII 대소문자만 다른 hard link 는 두
-    읽기로는 case alias 와 구별되지 않아 **통과한다** — 이동은 no-op 이고 `Ok` 를 내며 링크는 respell 된다(내용 손실은 없다). 가르려면 파일
-    시스템이 대소문자를 접는지 물어야 하고, 아직 하지 않았다. resolve 한 경로로 비교하면 `note.md -> x.md` 를 `x.md` 로 바꾸는 rename 이
-    진짜 `x.md` 를 링크로 덮는다. Windows 에는 inode 비교가 없어 이름이 ASCII 대소문자만 다르고 두 경로를 `canonicalize` 한 결과가 같고, `canonicalize` 가 링크를 따라가므로 두
-    항목이 둘 다 링크이거나 둘 다 아닐 때만 같은 항목이다(`same_entry_by_canonical`) — 대소문자를 구분하는 폴더에 `Note.md` 와 `note.md` 가 함께 있으면 두 경로로 갈려 거부된다. hard
-    link 도 두 이름이 두 canonical 경로로 갈려 거부될 것으로 본다(std 의 `GetFinalPathNameByHandleW` 사용에서 읽은 것, Windows 호스트 미검증). 그 API 가 두 링크에 이름 하나를
-    준다면 rename 이 통과해 목적지를 덮고, 이름 하나가 사라질 뿐 내용 손실은 없다.
-    목적지의 **dangling symlink** 도 항목이라 거부한다 — 따라가는 `Path::exists` 로 보던 이전 구현은 그것을 덮어썼다.
-    index 는 노트를 **경로가 resolve 되는 곳으로** 안다 — build 는 symlink 항목을 색인하지 않고(`collect_md_files` 가 `metadata()`
-    로 링크를 따라가지 않는다) save 는 resolve 한 경로로 넣는다(`service/state.rs` 의 `Mutation::update`). 파일 rename 도 같아서 옛 경로가
-    이동 전에 resolve 되던 곳을 빼고, 새 경로가 **이동 뒤에** resolve 되는 곳으로 넣는다 — symlink 인 노트는 대상 아래 그대로다.
-    경계는 반대로 **항목 자체**(canonical 부모 + 적힌 이름, `entry_path`)도 안이어야 한다 — 옛 경로는 항목으로(`rename/destination.rs` 의
-    `entry_confined`; resolve 한 파일은 `owning_contexts` 가 이미 그 경로로 context 를 찾았으니 안이다), 새 경로는 resolve 한 파일과 항목
-    **두 관점 모두**로(`confined_both_ways`, 이동 전과 노트를 쓰기 직전). rename 은 항목을 옮기고 그 항목을 통해 쓰므로, vault 밖의 `/outside/Link.md` 가 vault 안을 가리켜도
-    거부한다(대소문자를 접는 파일 시스템의 case-only rename 이 그 링크를 vault 밖의 일반 파일로 바꿔 쓰던 구멍)
-  - **`rename/file.rs` 를 베껴 "폴더로 이동" 을 만들면 상대 경로 링크가 조용히 끊긴다** — 베낀 코드는 먼저 위의 `Err` 에
-    막히고, 그것을 떼어도 두 패스는 옮겨지는 노트를 **가리키는** 참조만 고친다(옮겨진 노트 자신에게 도는 `rewrite_renamed_note`
-    도 같은 `passes.rewrite` 다). 이동은 stem 을 바꾸지 않아 `stem_unchanged` 가 `Unchanged::Ignore` 로 간다. `rewrite_relative_wikilinks`
-    (호출자는 `rename/namespace.rs` 하나)도 답이 아니다 — 그건 *옮겨진 디렉터리로 들어가는* 링크를 고치지,
-    옮겨진 노트 자신의 `[[./sibling]]` 을 고치지 않는다
+- **파일 rename 은 index 가 세는 것을 전부 고치거나, 못 고친 것을 보고한다 (#678)**: 불변식 셋이다 — ① index 가 세는 것 = rename 이 고치는 것, ② 문법이 쓸 수 없는 이름은 쓰지 말고
+  남긴다, ③ 남긴 것은 보고한다.
+  - ‼️ **링크 종류를 더하면 ①이 먼저 깨진다** — `mod.rs` 의 `incoming` 은 `extract_links` 가 내는 **모든** 항목을 `filing_key` 가 준 키 아래 담으므로 새 종류는 추출되는
+    순간 바구니에 들어오는데, `rewriter.rs` 의 치환은 문법별 패스의 합집합이다. 그래서 종류는 문자열이 아니라 `mod.rs` 의 `LinkKind` 다 — `link_kinds!` 한 목록이 enum 과 테스트용
+    `ALL` 을 함께 만들고, `LinkKind::pass()` 가 `_` 없는 `match` 로 종류마다 패스를 지정하며, `rewriter.rs` 의 후보 필터 둘은 그 `pass()` 를 읽는다. 변형을 더하면
+    `pass()`·테스트의 `spelled()` 에서 **컴파일이 멎는다**. 컴파일러가 못 보는 나머지 반 — 지정한 패스의 regex 가 정말 그 문법을 읽는가 — 는 `mod.rs` 의
+    `every_reference_the_index_files_under_a_stem_is_visited_by_one_rewrite_pass` 가 `ALL` 로 픽스처를 짜서 개수로 비교한다(실측: `@@target@@`
+    종류를 BlockReferences 에 배선하면 3 != 4. `<<target>>` 은 literal 분석이 HTML 로 읽어 색인되지 않으니 프로브로 쓰지 말 것). 손댈 곳 순서: `LinkKind` 변형 →
+    컴파일러가 가리키는 `pass()`·`spelled()` → `extractor.rs`(regex + arm) → 그 패스의 regex 가 새 문법을 읽게(못 읽으면 위 테스트) → `…_can_spell` →
+    `own_block_reference_lines`(같은 stem 예외가 새 종류의 자기 참조를 놓치면 과소 계수). ② 의 판정은 두 층이다 — stem 만 보는 `…_can_spell`(본체는 문자 열거가 아니라
+    `link_reads_back_as_the_file`)과, 두 패스가 낸 내용을 `extract_links` 로 **되읽는** `index_reads_the_rename_back`(`LinkPasses::rewrite`).
+    술어를 통과한 stem 도 referrer 줄의 백틱과 짝을 지어 링크를 literal 로 만들 수 있고, 그건 stem 이 아니라 **줄**의 성질이라 되읽어야 보인다. ③ 의 `skipped.push` 는 한 곳이
+    아니다 — `rename/referrers.rs` 에 referrer 의 원인마다 하나씩(덮는 context 가 없는 referrer 도 그중 하나다)과 `rename/passes.rs`(rename 되는 노트);
+    `LinkPasses` 는 `left_behind` 플래그만 세운다
+    ‼️ **② 의 두 층(`…_can_spell`·`index_reads_the_rename_back`)은 파일 rename 입구에만 있다** — 디렉터리 rename 이 `relative_links.rs` 로 고쳐 쓰는
+    `[[./x]]`·`[[../x]]` 는 거치지 않고(폴더를 `C# notes` 로 바꾸면 `[[./C# notes/x]]` 가 쓰여 `./C` 로 읽힌다 — 실측), block ID rename 의 새 id 는 프런트
+    `BLOCK_ID_PATTERN` 이 거르며 Rust 는 재검증하지 않는다. 프런트의 블록 메뉴 "링크 복사" 도 판정 없이 쓴다. 링크를 쓰는 입구를 더하거나 고칠 때 이 층을 같이 걸 것
+  - ‼️ **index 의 키는 `filing.rs` 가 정한다 (#619)** — `incoming` 의 키는 문자열이 아니라 `FilingKey`(`Stem`·`Path`·`Foreign`)다. 참조를 키로 바꾸는 함수는
+    `filing_key` 하나다 — filing(`file_incoming`), rewriter 판정(`RenameTarget::judge`·`BlockTarget::judge` 가 함께 쓰는 `keyed_under`,
+    모호성 판정 `read_as_another_note`), 되읽기 관문(`index_reads_the_rename_back`)이 모두 그것을 부른다. 파일이 읽히는 키는 `keys_for` 가 낸다 —
+    조회(`filing_keys_of` 를 거치는 `referring_lines_to`, `backlink_keys` 를 거치는 `get_backlinks`·`block_reference_lines`)와 block ID
+    rename 의 `block_target`. 그래서 `[[dir/note]]`·`[[./note]]`·`((dir/note#^id))` 같은 경로·상대 참조도 백링크이고 두 rename 이 고쳐 쓴다.
+    키 모양을 `keys_for` 밖에서 따로 짓는 자리 목록, `FilingKey` 를 가르는 `match` 가 컴파일을 멈추는 자리, `mod.rs` 의 개수 게이트 둘이 잡는 범위는 `filing.rs` 모듈 doc 에
+    있다 — 새 키 모양이나 표기를 더하기 전에 읽을 것.
+    키는 **등록된 root 표기에 대해 어휘적으로** 계산한다 — symlink 인 root 의 다른 표기(`/tmp` 에 대한 `/private/tmp`)로 주어진 파일은 `Path` 키를 얻지 못해 경로 링크가 **놓칠
+    뿐** 잘못 고쳐 쓰이지는 않는다
+  - 링크가 이 파일을 가리키는지(match)는 referrer 를 **덮는** root 의 index 로만 판정한다 — `/v` 와 `/v/sub` 가 둘 다 root 일 때 `/v/r.md` 의 `[[a/old]]` 는
+    `/v` 아래에서만 읽혀 `/v/a/old.md` 를 가리키므로, 자식 root 아래 경로가 같은 `/v/sub/a/old.md` 의 rename 은 그것을 **고치지 않는다**
+    (`service/tests/nested_roots.rs` 의 `nested_roots_a_rename_leaves_the_parents_colliding_link_alone`). 되읽기 관문도 덮는 root 마다 따로
+    읽는다. ‼️ **경로 링크를 다른 root 가 실재하는 다른 노트로 읽으면 고치지 않고 보고한다** — 두 root 가 함께 덮는 `/v/sub/r.md` 의 `[[a/old]]` 는 자식 아래에서
+    `/v/sub/a/old.md`, 부모 아래에서 `/v/a/old.md` 다. 둘 다 있으면 어느 쪽을 rename 하든 그 링크는 **모호하므로 그대로 두고** 파일을 `skipped_files` 에
+    올린다(`judgement.rs` 의 `Judgement::Ambiguous`·`read_as_another_note`). 부모에 `a/old.md` 가 없으면 모호하지 않으므로 고쳐 쓴다. 한 root 안에서도 같다 —
+    대소문자를 지키는 파일 시스템에서 `A/note.md` 와 `a/note.md` 는 둘 다 `Path("a/note")` 로 접히므로 `[[A/note]]`·`[[a/note]]` 는 어느 한쪽의 링크가 아니다.
+    `registered_path_keys` 가 키마다 그리로 접히는 노트 수를 내고, 둘 이상이면 그 키로 읽히는 경로 링크는 모호하다. referrer 와 파일을 담는 root 가 하나뿐이면 다른 root 의 읽기가
+    없으므로 겹치는 키만 모은다(`colliding_path_keys` → `RootNotes::Sole`) — index 잠금 아래에서 노트마다가 아니라 이름이 같은 노트마다 키를 짓는다. 존재 판정은 rename 되는
+    파일이나 referrer 를 **담는 모든 directory context** 의 노트 목록(`LinkIndex::registered_path_keys`)으로 한다 — rename 되는 파일의 context 만이 아니다.
+    부모의 `a/old.md` 를 rename 할 때 자식 root 는 그 파일을 담지 않지만 referrer 를 담는다. 한 번도 열리지 않아 index 가 없는 context 는 판정 전에 **그 자리에서 build
+    한다**(`service/rename/scope.rs` 의 `holding_contexts` → `ensure_indexes`). build 할 수 없으면 그 root 는 `RootNotes::Unknown` 이 되어 그
+    root 가 읽을 수 있는 경로 링크는 **그대로 두고 파일을 보고한다** — 비어 있다고 가정하지 않는다(`known_paths_of`). referrer 를 담는지는 `contexts_containing` 으로 찾고,
+    판정 안에서는 root 표기에 대해 어휘적으로 본다. bare 이름(`[[old]]`)은 이 판정 밖이다 — stem 은 모든 root 에서 같게 읽히고 rename 은 그것을 고쳐 쓴다
+  - **vault 자신의 alias(`[[work::note]]`, §87)는 등록된 vault 들 사이에서 대소문자 무시로 유일한 alias 일 때만 로컬이다 (#717)** — `service/keys.rs` 의
+    `local_aliases_of`. journal·zettelkasten space 는 vault type 으로 `Journal::`·`Zettel::` 에도 답한다 — 같은 유일성 규칙 아래이고(두 journal
+    space 면 둘 다 외부), 어느 vault 든 그 이름을 explicit alias 로 달면 그 alias 가 이긴다 (`findAliasContext` 의 두 패스, 이름 짝은 `keys.rs` 의
+    `space_names_match_the_frontends` 가 고정). 다른 vault 가 같은 alias 를 달고 있으면(`work` 와 `work`, 또는 대소문자만 다른 `Work`) 그 alias 는 **모호하므로
+    양쪽 모두에게 외부다** — 프런트 `findAliasContext` 는 대소문자 무시로 목록의 첫 context 를, backend alias 맵은 정확한 문자열로 마지막 등록을 고르니 둘이 다른 vault 를 가리킬 수
+    있다. 그런 링크는 rename 이 건드리지 않고 백링크도 주장하지 않는다. alias 맵의 소유(`resolve_alias`)로 판정하지 않는다 — last-writer-wins 맵은 낡는다(나중 vault 가 이름을
+    가져간 뒤 제거되면 맵 항목이 사라져, 이제 그 이름을 단 유일한 vault 도 외부로 남는다). 등록은 rename 이 **시작할 때** 한 번 읽으므로 rename 도중의 등록은 보이지 않는다. 로컬 alias 는
+    `LocalAlias { alias, root }` 로 다니고, alias 뒤 경로의 `Foreign` 키는 읽는 index 의 root 가 아니라 **그 alias 가 가리키는 vault 의 root 로** 계산한다 —
+    중첩 vault 에서 부모의 `[[p::a/old]]` 가 자식의 `a/old.md` 로 읽히지 않게. block reference·embed 문법에는 alias 자리가 없어(`extractor.rs` 의
+    `BLOCK_REF_RE`·`BLOCK_EMBED_RE`) block ID rename 은 alias 를 넘기지 않는다
+  - **파일 rename 은 디렉터리를 바꾸지 않는다** — `rename/destination.rs` 의 `stays_in_its_directory` 가 부모가 다르면 쓰기 전에 `Err` 를 낸다. 경로·상대 참조는 노트를
+    지금 자리로 부르고, 이동은 옮겨진 노트 자신의 상대 링크까지 고쳐야 하므로 별도 패스다. 부모는 resolve 한 것이 아니라 **적힌 대로** 비교한다 — respell 이 `new_path` 의 성분을 링크에 쓰므로,
+    resolve 하면 같은 폴더인 `a/../a/new.md` 도 `[[a/../a/new]]` 를 써 아무 노트도 가리키지 않는다. 그래서 두 rename 은 절대 경로가 아닌 경로를 먼저 거부한다
+    (`rename/mod.rs` 의 `absolute`) — 상대 경로는 작업 디렉터리 기준으로 resolve 되어 적힌 비교를 빠져나간다. 목적지에 **다른** 디렉터리 항목이 있으면
+    거부한다(`another_entry_at`, 이동 직전에 판정). 같은 항목인지는 **마지막 성분을 따라가지 않고** 본다 — Unix 에서는 `symlink_metadata` 의 dev·inode 가 같고 이름이
+    ASCII 대소문자만 다를 때(대소문자를 접는 파일 시스템의 `Note.md` → `note.md`)만 같은 항목이다. **ASCII** 대소문자만 본다 — `Élan.md` → `élan.md` 는 그 파일 시스템에서
+    목적지가 있고 이름 비교에 걸려 거부된다. 같은 inode 에 ASCII 대소문자 이상 다른 이름은 hard link 라 거부한다. 대소문자를 지키는 파일 시스템에서 이름이 ASCII 대소문자만 다른 hard link 는
+    두 읽기로는 case alias 와 구별되지 않아 **통과한다** — 이동은 no-op 이고 `Ok` 를 내며 링크는 respell 된다(내용 손실은 없다). 가르려면 파일 시스템이 대소문자를 접는지 물어야 하고, 아직
+    하지 않았다. resolve 한 경로로 비교하면 `note.md -> x.md` 를 `x.md` 로 바꾸는 rename 이 진짜 `x.md` 를 링크로 덮는다. Windows 에는 inode 비교가 없어 이름이 ASCII
+    대소문자만 다르고 두 경로를 `canonicalize` 한 결과가 같고, `canonicalize` 가 링크를 따라가므로 두 항목이 둘 다 링크이거나 둘 다 아닐 때만 같은
+    항목이다(`same_entry_by_canonical`) — 대소문자를 구분하는 폴더에 `Note.md` 와 `note.md` 가 함께 있으면 두 경로로 갈려 거부된다. hard link 도 두 이름이 두 canonical
+    경로로 갈려 거부될 것으로 본다(std 의 `GetFinalPathNameByHandleW` 사용에서 읽은 것, Windows 호스트 미검증). 그 API 가 두 링크에 이름 하나를 준다면 rename 이 통과해 목적지를
+    덮고, 이름 하나가 사라질 뿐 내용 손실은 없다. 목적지의 **dangling symlink** 도 항목이라 거부한다 — 따라가는 `Path::exists` 로 보면 그것을 덮어쓴다.
+  - index 는 노트를 **경로가 resolve 되는 곳으로** 안다 — build 는 symlink 항목을 색인하지 않고(`collect_md_files` 가 `metadata()` 로 링크를 따라가지 않는다) save 는
+    resolve 한 경로로 넣는다(`service/state.rs` 의 `Mutation::update`). 파일 rename 도 같아서 옛 경로가 이동 전에 resolve 되던 곳을 빼고, 새 경로가 **이동 뒤에**
+    resolve 되는 곳으로 넣는다 — symlink 인 노트는 대상 아래 그대로다. 경계는 반대로 **항목 자체**(canonical 부모 + 적힌 이름, `entry_path`)도 안이어야 한다 — 옛 경로는
+    항목으로(`rename/destination.rs` 의 `entry_confined`; resolve 한 파일은 `owning_contexts` 가 이미 그 경로로 context 를 찾았으니 안이다), 새 경로는
+    resolve 한 파일과 항목 **두 관점 모두**로(`confined_both_ways`, 이동 전과 노트를 쓰기 직전). rename 은 항목을 옮기고 그 항목을 통해 쓰므로, vault 밖의
+    `/outside/Link.md` 가 vault 안을 가리켜도 거부한다(대소문자를 접는 파일 시스템의 case-only rename 이 그 링크를 vault 밖의 일반 파일로 바꿔 쓰는 구멍을 막는다)
+  - **`rename/file.rs` 를 베껴 "폴더로 이동" 을 만들면 상대 경로 링크가 조용히 끊긴다** — 베낀 코드는 먼저 위의 `Err` 에 막히고, 그것을 떼어도 두 패스는 옮겨지는 노트를 **가리키는** 참조만
+    고친다(옮겨진 노트 자신에게 도는 `rewrite_renamed_note` 도 같은 `passes.rewrite` 다). 이동은 stem 을 바꾸지 않아 `stem_unchanged` 가 `Unchanged::Ignore`
+    로 간다. `rewrite_relative_wikilinks` (호출자는 `rename/namespace.rs` 하나)도 답이 아니다 — 그건 _옮겨진 디렉터리로 들어가는_ 링크를 고치지, 옮겨진 노트 자신의
+    `[[./sibling]]` 을 고치지 않는다
 - **vault 경계는 자기를 인가할 수 없다 (§329–§336)**: 웹뷰가 준 경로로 asset scope를 부여하는
   커맨드는 부여 **전에** `approval_cmd::ensure_approved`를 통과해야 한다. 승인 기록은 Rust 소유
   `{app_data_dir}/approved-roots.json` — `config.json`은 웹뷰가 임의 키로 쓸 수 있어 거기 두면 무효다

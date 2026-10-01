@@ -107,15 +107,15 @@ pub(crate) fn link_reads_back_as_the_file(stem: &str) -> bool {
 
 /// Whether a wikilink can name a file with this stem. `]`, `|`, `#` and `^`
 /// end the target of `REPLACE_RE` (and of the index's `WIKILINK_RE`, the same
-/// class) — and `|`, `#` and `^` do worse than end it: what follows reads as
-/// a display, a heading or a block, so `[[a^b]]` silently names the note `a`.
-/// A leading `word::` reads as a vault alias (§87) the same way. A line break
+/// class) — and `|`, `#` and `^` do worse than end it: what follows reads as a
+/// display, a heading or a block, so `[[a^b]]` silently names the note `a`. A
+/// leading `word::` reads as a vault alias (§87) the same way. A line break
 /// ends the line every scanner reads, and a stem the reader would fold to
 /// another key is refused too (`link_reads_back_as_the_file`). A stem a
-/// wikilink cannot spell is never
-/// written into one: the rename leaves those links and reports their files,
-/// as it does for block references (`block_reference_can_spell` — a different
-/// set, judged apart: `)` is a wikilink's to spell, `^` a block reference's).
+/// wikilink cannot spell is never written into one: the rename leaves those
+/// links and reports their files, as it does for block references
+/// (`block_reference_can_spell` — a different set, judged apart: `)` is a
+/// wikilink's to spell, `^` a block reference's).
 pub fn wikilink_can_spell(stem: &str) -> bool {
     !stem.contains([']', '|', '#', '^', '\n', '\r'])
         && !ALIAS_PREFIX_RE.is_match(stem)
@@ -184,18 +184,18 @@ fn visit_wikilinks_to(
 ///
 /// issue 668: the lines to rewrite come from reading THIS content with the
 /// index's own grammar (`extract_links`) — a reference to the target with the
-/// old ID, on whichever line it stands NOW. The index once handed the line
-/// numbers it remembered, and a file edited outside the app since (a closed
-/// tab, a `git pull`) had moved its reference off them: nothing changed, and
-/// the definition took the new ID alone. The target test is the index's
-/// filing rule (`BlockTarget::refers`): a reference is keyed the way the index
-/// files it under each root in `covering_roots` — the roots whose index covers
-/// the referrer — so a path-qualified `((dir/note#^id))` or a relative
-/// `((./note#^id))` is rewritten when it names the target's path under such a
-/// root, and left alone when it names another file (issue 619). `ref_path` is
-/// the referrer, for its self-references and its relative references. A
-/// reference to `old_id` that `target.judge` finds `Ambiguous` — another
-/// reading of its path is a different note that exists — is left and
+/// old ID, on whichever line it stands NOW, not on the line numbers the index
+/// remembers: a file edited outside the app since (a closed tab, a `git pull`)
+/// may have moved its reference off them, and rewriting those lines would
+/// change nothing while the definition took the new ID alone. The target test
+/// is the index's filing rule (`BlockTarget::refers`): a reference is keyed
+/// the way the index files it under each root in `covering_roots` — the roots
+/// whose index covers the referrer — so a path-qualified `((dir/note#^id))` or
+/// a relative `((./note#^id))` is rewritten when it names the target's path
+/// under such a root, and left alone when it names another file (issue 619).
+/// `ref_path` is the referrer, for its self-references and its relative
+/// references. A reference to `old_id` that `target.judge` finds `Ambiguous` —
+/// another reading of its path is a different note that exists — is left and
 /// counted (`PassReport::ambiguous`), read with the same grammar in the same
 /// visit, and the block-ID rename reports the file.
 pub fn replace_block_id_refs_to(

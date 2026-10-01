@@ -1,6 +1,44 @@
-// §29 Filing keys — the one place that decides which key a reference is filed
-// under in the link index, and which keys a file answers to. What a rename
-// makes of a reference under those keys is `judgement.rs`.
+//! §29 Filing keys — the one place that decides which key a reference is filed
+//! under in the link index, and which keys a file answers to. What a rename
+//! makes of a reference under those keys is `judgement.rs`.
+//!
+//! File-side key shapes are also built where `keys_for` is not called.
+//! Scanning the crate outside tests for `FilingKey::` constructions and for
+//! calls of `file_key`, `root_relative_key`, `normalize_file_path` and
+//! `extract_id_from_stem` finds these and no others: `RenameTarget::judge`,
+//! `refers_behind_alias`, `expected_key` and `BlockTarget::judge` in
+//! `judgement.rs` (telling the target); `registered_path_keys` and
+//! `colliding_path_keys`, which build the note lists (`mod.rs` — both call
+//! `root_relative_key` through `path_keys_of`, and the latter first groups by
+//! this module's `path_key_name`); `backlink_keys_for` here, which adds the
+//! zettel-id `Stem` (`backlink_keys` in `mod.rs` and `block_target` in
+//! `rename/block_id.rs` both call it); the stem predicates the same-stem
+//! exemption is given in `rename/block_id.rs` and `rename/file.rs`, and
+//! `stem_unchanged` in `rename/file.rs`; where the read-back gate wraps
+//! `expected_key` in `Foreign` (`read_back.rs`); and
+//! `link_reads_back_as_the_file` (`rewriter.rs`). `file_map`, `relative_map`
+//! and `id_map` in `mod.rs` (filled by `register_file_path` in `resolve.rs`,
+//! emptied by `remove_file` in `mod.rs`) resolve targets; they are not
+//! `incoming` keys. Add a new key shape here and fix these sites with it.
+//!
+//! Every `match` on `FilingKey` names each variant, with no `_` arm. A fourth
+//! variant stops compilation at five sites: `read_as_another_note`,
+//! `BlockTarget::judge`, `RenameTarget::judge` and `refers_behind_alias` in
+//! `judgement.rs`, and `index_reads_the_rename_back` in `read_back.rs`
+//! (measured by adding a dummy variant; the device `LinkKind::pass()` uses).
+//! `filing_key` and `keys_for`, which **build** keys, do not stop, so emit a
+//! new variant there directly.
+//!
+//! The two count gates in `mod.rs` catch different things.
+//! `every_reference_the_index_files_under_a_stem_is_visited_by_one_rewrite_pass`
+//! builds its fixture from `LinkKind::ALL`, so a new **kind** enters on its
+//! own, but it counts one spelling, in the `Stem` bucket only. Its pair,
+//! `every_reference_the_index_files_under_a_path_is_visited_by_one_rewrite_pass`,
+//! counts the `Path` and `Foreign` buckets, but its spellings are a
+//! hand-written list (`dir/target` and `./target` for each kind, and
+//! `[[work::target]]`), so a new key shape that arrives through a spelling
+//! not on that list is seen by **neither**. Add a new spelling to that
+//! fixture first.
 
 use super::normalizer::{
     extract_id_from_stem, normalize_file_path, normalize_target, strip_extension_and_fold,
