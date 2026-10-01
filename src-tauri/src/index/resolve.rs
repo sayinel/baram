@@ -114,7 +114,10 @@ impl LinkIndex {
         // every target that resolves today is decided above, so this step can only add
         // resolutions, never change one. In particular a bare `[[Paper]]` keeps going to
         // the markdown note (which, for a PDF, is its highlight companion — they share a
-        // stem because companionPathFor builds one from the other).
+        // stem because companionPathFor builds one from the other). The one exception is
+        // a link that spells a note extension: `get_link_graph` first looks for the note
+        // of that full name (`spelled_note_name`), and only when there is none does the
+        // link reach this chain.
         if let Some(paths) = self.name_map.get(target_normalized) {
             if !paths.is_empty() {
                 return Some(paths[0].clone());
@@ -122,6 +125,55 @@ impl LinkIndex {
         }
 
         None
+    }
+
+    /// The file a link that spells a note extension names by its full name —
+    /// `[[x.markdown]]` beside `x.md` is `x.markdown`, and `[[x.md]]` is `x.md`,
+    /// where the chain would answer whichever of the two its maps hold for `x`
+    /// (`relative_map` keeps the last registered, `file_map` lists the first).
+    /// The frontend's `resolveWikilinkTarget` (`src/utils/editor/wikilink-nav.ts`)
+    /// never strips the extension: its stem pass compares the target as written
+    /// and its last pass, `resolveByExactFileName`, matches the full name, so the
+    /// spelled name wins there too.
+    ///
+    /// The candidates are the notes under the target's stem in `file_map`,
+    /// matched by file name, or by root-relative path when the link spells a
+    /// path — the two keys `register_link_target` gives a file, and the two
+    /// `resolveByExactFileName` compares. Not `name_map` itself: a save
+    /// (`update_file_from_content`) drops the note from it through
+    /// `remove_file` and re-registers it with `register_file_path` alone, so a
+    /// saved note would miss there while `file_map` holds it again.
+    ///
+    /// `None` unless `normalize_target` stripped a note extension from `full`
+    /// (`full != normalized`), so a target with none — `[[Paper]]`,
+    /// `[[Paper.pdf]]` — takes exactly the chain in `resolve_target_from_map`,
+    /// and the §278 order stays. The guard is needed: `file_map` is not only
+    /// notes, since a save registers whatever path it is given
+    /// (`update_file_from_content` → `register_file_path`), and an
+    /// extension-less file's name equals its key, so `[[architecture]]` would
+    /// match `architecture` by name. With no candidate, `[[foo.markdown]]`
+    /// beside only `foo.md` falls through to the stem `foo`: the note, not the
+    /// ghost `foo.markdown.md`.
+    fn spelled_note_name(&self, full: &str, normalized: &str) -> Option<String> {
+        if full == normalized {
+            return None;
+        }
+        let stem = normalized.rsplit('/').next().unwrap_or(normalized);
+        let spelled_as = |path: &&String| {
+            let name = std::path::Path::new(path.as_str())
+                .file_name()
+                .map(|n| n.to_string_lossy().to_lowercase());
+            let relative = self.root_path.as_deref().and_then(|root| {
+                let rel = path.strip_prefix(root)?;
+                let rel = rel
+                    .strip_prefix('/')
+                    .or_else(|| rel.strip_prefix('\\'))
+                    .unwrap_or(rel);
+                Some(rel.to_lowercase())
+            });
+            name.as_deref() == Some(full) || relative.as_deref() == Some(full)
+        };
+        self.file_map.get(stem)?.iter().find(spelled_as).cloned()
     }
 
     /// Get the full link graph
@@ -135,8 +187,10 @@ impl LinkIndex {
                 let target_normalized = normalize_target(&entry.target);
                 if let Some(root) = &self.root_path {
                     // Use file maps for accurate resolution, fall back to simple path construction
+                    let full = entry.target.trim().to_lowercase();
                     let target_path = self
-                        .resolve_target_from_map(&target_normalized)
+                        .spelled_note_name(&full, &target_normalized)
+                        .or_else(|| self.resolve_target_from_map(&target_normalized))
                         .unwrap_or_else(|| resolve_target(root, &target_normalized));
                     nodes_set.insert(target_path.clone());
                     edges.push(LinkEdge {
@@ -202,6 +256,106 @@ mod tests {
         assert_eq!(
             index.resolve_target_from_map("architecture"),
             Some("/vault/notes/architecture.md".to_string())
+        );
+    }
+
+    /// An index over `/vault` whose `r.md` holds `content`, built the way
+    /// `build` registers files: the markdown pass over the names ending in
+    /// `.md` or `.markdown` (`collect_md_files`' filter), then every file as a
+    /// target. Then each of `saved` is saved (`update_file_from_content`), as
+    /// a save after the build does. The edge targets from `r.md`, in the order
+    /// its links are written (`get_link_graph` walks each source's entries in
+    /// order).
+    fn graph_targets_of(files: &[&str], saved: &[&str], content: &str) -> Vec<String> {
+        let mut index = LinkIndex::new();
+        index.root_path = Some("/vault".to_string());
+        for file in files {
+            if file.ends_with(".md") || file.ends_with(".markdown") {
+                index.register_file_path(file, "/vault");
+            }
+        }
+        for file in files {
+            index.register_link_target(file, "/vault");
+        }
+        for file in saved {
+            index.update_file_from_content(file, "");
+        }
+        index.update_file_from_content("/vault/r.md", content);
+        index
+            .get_link_graph()
+            .edges
+            .into_iter()
+            .filter(|e| e.from == "/vault/r.md")
+            .map(|e| e.to)
+            .collect()
+    }
+
+    #[test]
+    fn test_a_spelled_note_extension_resolves_by_the_full_name() {
+        // `x.md` and `x.markdown` share the stem `x`. A link that spells the
+        // extension names that file, as the frontend resolver reads it. A bare
+        // `[[x]]` keeps the old chain: at the root `relative_map` answers
+        // first, and its key `x` holds whichever of the two registered last.
+        // `[[foo.markdown]]` with only `foo.md` reaches the note through its
+        // stem — before the `.markdown` strip it was the ghost `foo.markdown.md`.
+        // What fails this: removing the `spelled_note_name` step from
+        // `get_link_graph` — `[[x.markdown]]` and `[[x.md]]` both answer the
+        // last registered, so one of the two orders below goes red.
+        let files = [
+            "/vault/x.md",
+            "/vault/x.markdown",
+            "/vault/foo.md",
+            "/vault/r.md",
+        ];
+        assert_eq!(
+            graph_targets_of(
+                &files,
+                &[],
+                "[[x.markdown]]\n[[x.md]]\n[[x]]\n[[foo.markdown]]\n"
+            ),
+            vec![
+                "/vault/x.markdown",
+                "/vault/x.md",
+                "/vault/x.markdown",
+                "/vault/foo.md"
+            ]
+        );
+        let files = ["/vault/x.markdown", "/vault/x.md", "/vault/r.md"];
+        assert_eq!(
+            graph_targets_of(&files, &[], "[[x.markdown]]\n[[x.md]]\n[[x]]\n"),
+            vec!["/vault/x.markdown", "/vault/x.md", "/vault/x.md"]
+        );
+    }
+
+    #[test]
+    fn test_a_saved_note_is_still_found_by_its_spelled_name() {
+        // A save drops the note from `name_map` (`remove_file`) and
+        // re-registers it in the stem maps alone, so the spelled name is
+        // looked for among the stem's notes. Under `d/`, `relative_map` does
+        // not answer a bare target, and after the save `file_map` lists
+        // `x.markdown` first.
+        // What fails this: looking the full name up in `name_map` instead —
+        // `[[x.md]]` misses there and the stem answers `/vault/d/x.markdown`.
+        let files = ["/vault/d/x.md", "/vault/d/x.markdown", "/vault/r.md"];
+        assert_eq!(
+            graph_targets_of(&files, &["/vault/d/x.md"], "[[x.md]]\n[[d/x.md]]\n"),
+            vec!["/vault/d/x.md", "/vault/d/x.md"]
+        );
+    }
+
+    #[test]
+    fn test_a_target_without_a_note_extension_takes_the_old_chain_in_the_graph() {
+        // §278 in the graph: a save registers whatever path it is given, so
+        // an extension-less `architecture` saved beside the note lands under
+        // the same stem. A link spelling no note extension must not be
+        // matched by full name, or `[[architecture]]` would leave the note,
+        // first under the stem, for that file.
+        // What fails this: dropping the `full == normalized` guard from
+        // `spelled_note_name` — the edge goes to `/vault/notes/architecture`.
+        let files = ["/vault/notes/architecture.md", "/vault/r.md"];
+        assert_eq!(
+            graph_targets_of(&files, &["/vault/notes/architecture"], "[[architecture]]\n"),
+            vec!["/vault/notes/architecture.md"]
         );
     }
 
