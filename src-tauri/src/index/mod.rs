@@ -23,9 +23,9 @@ pub(crate) use extractor::file_stem_from_path;
 pub use extractor::{
     collect_all_files, collect_md_files, find_unlinked_mentions, UnlinkedMentionResult,
 };
-pub use filing::{filing_key, keys_for, FilingKey, LocalAlias};
-pub use judgement::{BlockTarget, KnownPaths, RenameTarget, RootNotes};
-pub use read_back::index_reads_the_rename_back;
+pub(crate) use filing::{filing_key, keys_for, FilingKey, LocalAlias};
+pub(crate) use judgement::{BlockTarget, KnownPaths, RenameTarget, RootNotes};
+pub(crate) use read_back::index_reads_the_rename_back;
 pub use relative_links::rewrite_relative_wikilinks;
 pub(crate) use rewriter::link_reads_back_as_the_file;
 pub use rewriter::{
