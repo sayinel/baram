@@ -187,8 +187,9 @@ baram/
   `file_key`·`root_relative_key`·`normalize_file_path`·`extract_id_from_stem` 호출을 훑으면 이것이 전부다: `judgement.rs` 의
   `RenameTarget::judge`·`refers_behind_alias`·`expected_key`·`BlockTarget::judge`(대상 판별), 노트 목록을 짓는
   `registered_path_keys`·`colliding_path_keys`(`mod.rs`, 둘 다 `path_keys_of` 로 `root_relative_key` 를 부르고 뒤의 것은
-  `filing.rs` 의 `path_key_name` 으로 먼저 묶는다), zettel id `Stem` 을 붙이는 `backlink_keys`(`mod.rs`)·`block_target`
-  (`rename/block_id.rs`), 같은 stem 예외(`rename/block_id.rs`·`rename/file.rs`)와 `stem_unchanged`(`rename/file.rs`), 관문이
+  `filing.rs` 의 `path_key_name` 으로 먼저 묶는다), zettel id `Stem` 을 붙이는 `backlink_keys_for`(`filing.rs` —
+  `backlink_keys`(`mod.rs`)·`block_target`(`rename/block_id.rs`)가 함께 부른다), 같은 stem 예외(`rename/block_id.rs`·
+  `rename/file.rs`)와 `stem_unchanged`(`rename/file.rs`), 관문이
   `expected_key` 를 `Foreign` 으로 감싸는 곳(`read_back.rs`)과 `link_reads_back_as_the_file`(`rewriter.rs`). `mod.rs` 의 `file_map`·`relative_map`·
   `id_map`(채우는 곳은 `resolve.rs` 의 `register_file_path`, 비우는 곳은 `mod.rs` 의 `remove_file`) 은 target 해석용이라 `incoming` 키가 아니다. 새 키 모양은 `filing.rs` 에 더하고 이 자리들을 같이 고칠 것.
   `FilingKey` 를 가르는 `match` 는 `_` 팔 없이 변형을 모두 적는다 — 넷째 변형을 더하면 `judgement.rs` 의 `read_as_another_note`·

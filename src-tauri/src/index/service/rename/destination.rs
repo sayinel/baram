@@ -31,16 +31,21 @@ pub(super) struct Source {
 /// of every context, or that acts on an entry outside them — a symlink
 /// outside the vault pointing into it — is refused before anything is
 /// written. Then the move refusal below. Judged in that order: old entry,
-/// new path both ways, move. The plain file rename, `fs_cmd::rename_file`,
-/// checks less: each end through `check` (`fs::validate_path`: no null byte,
-/// absolute, no `..` segment) and `check_vault`, which resolves the path and
-/// accepts it under ANY registered context
-/// (`ContextManager::validate_path_any`). This rename is stricter in four
-/// ways: it judges the directory entry as well as the resolved path, against
-/// the file's own contexts rather than any registered one; it refuses a move
-/// to another directory (`stays_in_its_directory`); and it refuses a
-/// destination another entry holds (`another_entry_at`, called by
-/// `rename/file.rs`).
+/// new path both ways, move.
+///
+/// The plain file rename, `fs_cmd::rename_file`, checks each end through
+/// `check` (`fs::validate_path`) and `check_vault`. The two renames share
+/// two checks: an absolute path (`validate_path`; here `absolute`, in
+/// `rename/mod.rs`), and the resolved path inside a registered context
+/// (`check_vault` through `ContextManager::validate_path_any`, ANY context;
+/// here only the file's own, `dirs`). `fs_cmd::rename_file` alone refuses a
+/// null byte and a `..` segment (`validate_path`), and with no context
+/// registered it falls back to the legacy vault root and refuses when that
+/// is unset too (`vault_fallback_decision`). This rename alone runs four:
+/// the directory entry judged as well as the resolved path (`entry_confined`,
+/// `confined_both_ways`), the file's own contexts rather than any registered
+/// one, the same directory (`stays_in_its_directory`), and no other entry at
+/// the destination (`another_entry_at`, called by `rename/file.rs`).
 pub(super) fn judge(old_path: &str, new_path: &str, dirs: &[Registered]) -> Result<Source, String> {
     let identity = resolve_canonical(old_path)?;
     let parent = identity.parent().map(Path::to_path_buf);
