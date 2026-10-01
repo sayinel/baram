@@ -169,7 +169,7 @@ baram/
     `every_reference_the_index_files_under_a_stem_is_visited_by_one_rewrite_pass` 가 `ALL` 로 픽스처를 짜서 개수로 비교한다(실측: `@@target@@`
     종류를 BlockReferences 에 배선하면 3 != 4. `<<target>>` 은 literal 분석이 HTML 로 읽어 색인되지 않으니 프로브로 쓰지 말 것). 손댈 곳 순서: `LinkKind` 변형 →
     컴파일러가 가리키는 `pass()`·`spelled()` → `extractor.rs`(regex + arm) → 그 패스의 regex 가 새 문법을 읽게(못 읽으면 위 테스트) → `…_can_spell` →
-    `own_block_reference_lines`(같은 stem 예외가 새 종류의 자기 참조를 놓치면 과소 계수). ② 의 판정은 두 층이다 — stem 만 보는 `…_can_spell`(본체는 문자 열거가 아니라
+    `own_block_reference_lines`(같은 stem 예외가 새 종류의 자기 참조를 놓치면 과소 계수) → 블록 참조 문법이면 프런트의 사본 `src/pipeline/block-id.ts` 의 `BLOCK_REF_RE`(블록을 정의한 노트 자신의 참조는 `block-id-rename-markdown.ts` 가 이것으로 고쳐 쓴다) → `src/ipc/types.ts` 의 `BacklinkEntry.linkType` 주석(wire 값 목록). ② 의 판정은 두 층이다 — stem 만 보는 `…_can_spell`(본체는 문자 열거가 아니라
     `link_reads_back_as_the_file`)과, 두 패스가 낸 내용을 `extract_links` 로 **되읽는** `index_reads_the_rename_back`(`LinkPasses::rewrite`).
     술어를 통과한 stem 도 referrer 줄의 백틱과 짝을 지어 링크를 literal 로 만들 수 있고, 그건 stem 이 아니라 **줄**의 성질이라 되읽어야 보인다. ③ 의 `skipped.push` 는 한 곳이
     아니다 — `rename/referrers.rs` 에 referrer 의 원인마다 하나씩(덮는 context 가 없는 referrer 도 그중 하나다)과 `rename/passes.rs`(rename 되는 노트);

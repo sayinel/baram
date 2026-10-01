@@ -552,9 +552,14 @@ fn the_slot_map_is_locked_only_inside_state_rs() {
     // the service directory, so a new file is scanned the moment it exists. The
     // walk must reach one file at the root and one in each subdirectory there is
     // today, so a walk that stops recursing or starts elsewhere cannot pass.
+    // Directories whose name starts with `.` are skipped: tooling leaves ignored
+    // folders such as `.omc/` here, and a stray file in one is no module of the
+    // crate. A file that cannot be read fails with its path.
     // What fails this: skipping every directory named `tests` in the walk —
     // `the walk never reached ["tests/mod.rs"]`; walking `service/rename` instead
-    // of `service` — the same message naming all three files.
+    // of `service` — the same message naming all three files; dropping the
+    // dot-directory skip with a `.omc/stray.rs` holding the needle present —
+    // `.omc/stray.rs takes the slot lock directly`.
     let needle = ["slots", ".lock("].concat();
     let root = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src/index/service"));
     let mut pending = vec![root.to_path_buf()];
@@ -564,13 +569,19 @@ fn the_slot_map_is_locked_only_inside_state_rs() {
         for entry in std::fs::read_dir(&dir).unwrap() {
             let path = entry.unwrap().path();
             if path.is_dir() {
-                pending.push(path);
+                let hidden = path
+                    .file_name()
+                    .is_some_and(|name| name.to_string_lossy().starts_with('.'));
+                if !hidden {
+                    pending.push(path);
+                }
                 continue;
             }
             if path.extension() != Some(std::ffi::OsStr::new("rs")) {
                 continue;
             }
-            let src = std::fs::read_to_string(&path).unwrap();
+            let src = std::fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
             let name = path
                 .strip_prefix(root)
                 .unwrap()
