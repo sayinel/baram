@@ -84,13 +84,9 @@ async fn contexts_covering(
         .collect()
 }
 
-/// Which of `keys` cover `path` (`contexts_covering`), in `keys`' order.
+/// Which of `keys` cover `path` (`contexts_covering`).
 async fn keys_covering(ctx_mgr: &ContextManager, keys: &[String], path: &str) -> Vec<String> {
-    let covering = keys_of(&contexts_covering(ctx_mgr, keys, path).await);
-    keys.iter()
-        .filter(|k| covering.contains(k))
-        .cloned()
-        .collect()
+    keys_of(&contexts_covering(ctx_mgr, keys, path).await)
 }
 
 /// `Err` unless `path` is absolute as the host reads it (`Path::is_absolute`).

@@ -3,7 +3,9 @@
 //! rename/referrers.rs, result types and path helpers in rename/mod.rs.
 
 use crate::context::ContextManager;
-use crate::index::{link_reads_back_as_the_file, own_block_reference_lines, RenameTarget};
+use crate::index::{
+    file_stem_from_path, link_reads_back_as_the_file, own_block_reference_lines, RenameTarget,
+};
 use std::collections::HashMap;
 
 use super::super::keys::{keys_of, local_aliases_of};
@@ -58,8 +60,7 @@ pub(crate) async fn rename_file_with_links_inner(
     // index named it for (issue 716).
     let old_key = crate::index::normalizer::normalize_file_path(old_path);
     let named_for_its_own_references = |path: &str, content: &str| {
-        let file_stem = stem_of(path).unwrap_or_default();
-        link_reads_back_as_the_file(&file_stem)
+        link_reads_back_as_the_file(&file_stem_from_path(path))
             && crate::index::normalizer::normalize_file_path(path) == old_key
             && named_lines
                 .get(path)

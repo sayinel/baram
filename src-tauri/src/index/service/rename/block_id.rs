@@ -6,8 +6,8 @@ use crate::context::ContextManager;
 use crate::index::filing::backlink_keys_for;
 use crate::index::normalizer::normalize_file_path;
 use crate::index::{
-    link_reads_back_as_the_file, own_block_reference_lines, replace_block_id_refs_to, BlockTarget,
-    FilingKey, KnownPaths,
+    file_stem_from_path, link_reads_back_as_the_file, own_block_reference_lines,
+    replace_block_id_refs_to, BlockTarget, FilingKey, KnownPaths,
 };
 use std::collections::HashMap;
 
@@ -71,11 +71,7 @@ pub(crate) async fn rename_block_id_inner(
     // for (issue 716).
     let named_for_its_own_references = |path: &str, content: &str| {
         let stem = FilingKey::Stem(normalize_file_path(path));
-        let file_stem = std::path::Path::new(path)
-            .file_stem()
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_default();
-        link_reads_back_as_the_file(&file_stem)
+        link_reads_back_as_the_file(&file_stem_from_path(path))
             && target
                 .keys_by_root
                 .iter()

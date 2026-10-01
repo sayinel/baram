@@ -19,6 +19,7 @@ use std::collections::HashMap;
 use thiserror::Error;
 
 // Re-export public API consumed by `service/` and the IPC layer
+pub(crate) use extractor::file_stem_from_path;
 pub use extractor::{
     collect_all_files, collect_md_files, find_unlinked_mentions, UnlinkedMentionResult,
 };
