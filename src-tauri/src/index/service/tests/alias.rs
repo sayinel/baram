@@ -1,5 +1,14 @@
 use super::*;
 
+/// `info` for a vault of `vault_type` with no explicit alias — a space that
+/// answers to its canonical name (`Journal`, `Zettel`) when it is unique.
+fn spaced(id: &str, path: &str, vault_type: VaultType) -> ContextInfo {
+    ContextInfo {
+        vault_type: Some(vault_type),
+        ..info(id, path, ContextType::Vault)
+    }
+}
+
 #[tokio::test]
 async fn a_vaults_own_alias_names_its_own_notes() {
     // issue 717: a vault's own alias qualifies a link to one of its own

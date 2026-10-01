@@ -181,8 +181,8 @@ baram/
   ‼️ **index 의 키는 `filing.rs` 가 정한다 (#619)** — `incoming` 의 키는 문자열이 아니라 `FilingKey`(`Stem`·`Path`·`Foreign`)다.
   참조를 키로 바꾸는 함수는 `filing_key` 하나다 — filing(`file_incoming`), rewriter 판정(`RenameTarget::judge`·`BlockTarget::judge`
   가 함께 쓰는 `keyed_under`, 모호성 판정 `read_as_another_note`), 되읽기 관문(`index_reads_the_rename_back`)이 모두 그것을 부른다. 파일이 읽히는 키는 `keys_for` 가
-  낸다 — 조회(`filing_keys_of` 를 거치는 `get_backlinks`·`referring_lines_to`·`block_reference_lines`)와 block ID rename 의
-  `block_target`. 그래서 `[[dir/note]]`·`[[./note]]`·`((dir/note#^id))` 같은 경로·상대 참조도 백링크이고 두 rename 이 고쳐 쓴다.
+  낸다 — 조회(`filing_keys_of` 를 거치는 `referring_lines_to`, `backlink_keys` 를 거치는 `get_backlinks`·`block_reference_lines`)와
+  block ID rename 의 `block_target`. 그래서 `[[dir/note]]`·`[[./note]]`·`((dir/note#^id))` 같은 경로·상대 참조도 백링크이고 두 rename 이 고쳐 쓴다.
   파일 쪽 키의 모양은 `keys_for` 를 부르지 않고 따로 짓는 자리도 안다 — crate 에서 테스트 밖의 `FilingKey::` 생성과
   `file_key`·`root_relative_key`·`normalize_file_path`·`extract_id_from_stem` 호출을 훑으면 이것이 전부다: `judgement.rs` 의
   `RenameTarget::judge`·`refers_behind_alias`·`expected_key`·`BlockTarget::judge`(대상 판별), 노트 목록을 짓는

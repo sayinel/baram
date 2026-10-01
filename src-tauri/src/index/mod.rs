@@ -355,15 +355,12 @@ impl LinkIndex {
     /// `backlink_keys`. Unlike `get_backlinks`, nothing is deduplicated by
     /// `(source, line)` BEFORE the block filter — a line holding
     /// `[[note]] ((note#^id))` has two entries, and the wikilink must not hide
-    /// the block reference.
-    pub fn block_reference_lines(
-        &self,
-        file_path: &str,
-        block_id: &str,
-        local_aliases: &[LocalAlias],
-    ) -> Vec<(String, u32)> {
+    /// the block reference. No vault alias: the block reference and embed
+    /// grammars have no alias group (`BLOCK_REF_RE`, `BLOCK_EMBED_RE` in
+    /// extractor.rs).
+    pub fn block_reference_lines(&self, file_path: &str, block_id: &str) -> Vec<(String, u32)> {
         let mut out = Vec::new();
-        for key in self.backlink_keys(file_path, local_aliases) {
+        for key in self.backlink_keys(file_path, &[]) {
             if let Some(entries) = self.incoming.get(&key) {
                 for e in entries {
                     if e.block_id.as_deref() == Some(block_id) {
@@ -383,8 +380,8 @@ impl LinkIndex {
     /// another note's — and its path under the root) — wikilink, block
     /// reference and embed alike. NOT the zettel-id key that `backlink_keys`
     /// adds and `get_backlinks` also reads: a bare `[[202607051530]]` is
-    /// filed under the id, so a rename neither rewrites nor reports it (as on
-    /// main, whose `get_files_linking_to` read the stem key alone). A file
+    /// filed under the id, so a rename neither rewrites nor reports it (nor
+    /// did it before issue 619, when this read the stem key alone). A file
     /// rename rewrites all three kinds, and counts the lines each referrer
     /// was named for to tell a same-stem note's own references apart from a
     /// stale index.
@@ -709,7 +706,7 @@ mod tests {
         assert!(index.get_backlinks("/v/other/note.md", &[]).is_empty());
         assert_eq!(index.get_backlinks("/v/dir/note2.markdown", &[]).len(), 1);
         assert_eq!(
-            index.block_reference_lines("/v/dir/note.md", "b1", &[]),
+            index.block_reference_lines("/v/dir/note.md", "b1"),
             vec![
                 ("/v/dir/s.md".to_string(), 1),
                 ("/v/r.md".to_string(), 2),

@@ -43,9 +43,7 @@ pub(crate) async fn rename_block_id_inner(
         known_paths,
     } = scope
         .referrers(state, ctx_mgr, |_, index| {
-            // No vault alias: the block grammars have no alias group
-            // (`BLOCK_REF_RE`, `BLOCK_EMBED_RE` in extractor.rs).
-            index.block_reference_lines(file_path, old_id, &[])
+            index.block_reference_lines(file_path, old_id)
         })
         .await?;
     // The keys a reference to this file is filed under in each index read

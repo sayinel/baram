@@ -82,8 +82,9 @@ pub(super) fn judge(old_path: &str, new_path: &str, dirs: &[Registered]) -> Resu
 
 /// The directory entry `path` names: its parent resolved canonically, joined
 /// with its own file name as spelled, the last component not followed. Used
-/// for the boundary only (`confined_both_ways`) — the rename moves this
-/// entry, so the entry must lie inside the contexts too. The index files a
+/// for the boundary only (`entry_confined`, for the old path and for the new
+/// path inside `confined_both_ways`) — the rename moves this entry, so the
+/// entry must lie inside the contexts too. The index files a
 /// note by what its path resolves to, not by this.
 fn entry_path(path: &str) -> Result<std::path::PathBuf, String> {
     let path = Path::new(path);
@@ -213,12 +214,6 @@ fn stays_in_its_directory(old_path: &str, new_path: &str, windows: bool) -> bool
             .iter()
             .zip(&new)
             .all(|(a, b)| same_component(a, b, windows))
-}
-
-pub(super) fn stem_of(path: &str) -> Option<String> {
-    Path::new(path)
-        .file_stem()
-        .map(|s| s.to_string_lossy().to_string())
 }
 
 /// Whether the directory entry `path` names (`entry_path`) lies inside the

@@ -39,15 +39,6 @@ fn aliased(id: &str, path: &str, alias: &str) -> ContextInfo {
     }
 }
 
-/// `info` for a vault of `vault_type` with no explicit alias — a space that
-/// answers to its canonical name (`Journal`, `Zettel`) when it is unique.
-fn spaced(id: &str, path: &str, vault_type: VaultType) -> ContextInfo {
-    ContextInfo {
-        vault_type: Some(vault_type),
-        ..info(id, path, ContextType::Vault)
-    }
-}
-
 /// A vault whose `a.md` links to `b.md`, registered under an id that is
 /// nothing like its path — the shape of the bug. Active unless told otherwise.
 async fn vault_with_a_link(

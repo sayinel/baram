@@ -10,7 +10,7 @@ use std::collections::HashMap;
 
 use super::super::keys::{keys_of, local_aliases_of};
 use super::super::state::{LinkIndexState, Mutation};
-use super::destination::{another_entry_at, confined_both_ways, judge, stem_of};
+use super::destination::{another_entry_at, confined_both_ways, judge};
 use super::passes::{rewrite_renamed_note, LinkPasses};
 use super::referrers::{apply_queued, queue_rewritten, rewrite_referrers, Unchanged};
 use super::scope::{Referrers, RenameScope};
@@ -31,8 +31,6 @@ pub(crate) async fn rename_file_with_links_inner(
     let local_aliases = local_aliases_of(ctx_mgr, &scope.dirs).await;
     // Both ends inside the file's contexts, and no move (`judge`).
     let source = judge(old_path, new_path, &scope.dirs)?;
-    stem_of(old_path).ok_or("Invalid old path")?;
-    stem_of(new_path).ok_or("Invalid new path")?;
 
     // 1. Get referencing files from every containing index, and what every
     //    root holding the file or a referrer knows of its notes, read before
