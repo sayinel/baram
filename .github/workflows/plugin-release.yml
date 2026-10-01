@@ -33,6 +33,15 @@ env:
 jobs:
   release:
     if: startsWith(github.ref_name, 'plugin-')
+    # THE DEPLOY KEY IS AN ENVIRONMENT SECRET (security review of plan 0113, item 8). The
+    # `registry-publish` environment — repository settings, not this file — admits only
+    # `plugin-*` and `theme-*` tag refs and waits for a required reviewer before the job starts,
+    # and the `release-tags` ruleset limits who may create those tags. A repository-level secret
+    # of the same name would be readable by a workflow on any branch, with neither check, so the
+    # key must not be stored at repository level. Rotate it with
+    # `gh secret set PLUGINS_DEPLOY_KEY --env registry-publish`, and in the environment
+    # revocation-publish.yml declares, which reads the same key.
+    environment: registry-publish
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -408,6 +417,8 @@ jobs:
   #     src/themes/__tests__/theme-release-workflow.test.ts compares the two.
   release-theme:
     if: startsWith(github.ref_name, 'theme-')
+    # The same environment as the plugin job above, for the same reason.
+    environment: registry-publish
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
