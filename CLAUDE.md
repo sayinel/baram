@@ -205,7 +205,7 @@ baram/
     space 면 둘 다 외부), 어느 vault 든 그 이름을 explicit alias 로 달면 그 alias 가 이긴다 (`findAliasContext` 의 두 패스, 이름 짝은 `keys.rs` 의
     `space_names_match_the_frontends` 가 고정). 다른 vault 가 같은 alias 를 달고 있으면(`work` 와 `work`, 또는 대소문자만 다른 `Work`) 그 alias 는 **모호하므로
     양쪽 모두에게 외부다** — 프런트 `findAliasContext` 는 대소문자 무시로 목록의 첫 context 를, backend alias 맵은 정확한 문자열로 마지막 등록을 고르니 둘이 다른 vault 를 가리킬 수
-    있다. 그런 링크는 rename 이 건드리지 않고 백링크도 주장하지 않는다. alias 맵의 소유(`resolve_alias`)로 판정하지 않는다 — last-writer-wins 맵은 낡는다(나중 vault 가 이름을
+    있다. 그런 링크는 rename 이 건드리지 않고 백링크도 주장하지 않는다 — 단 그 이름이 자기 vault 의 것이면 그 referrer 를 `skipped_files` 로 보고한다(모호한 경로 링크와 같은 규칙, 고쳐 쓴 파일이어도). alias 맵의 소유(`resolve_alias`)로 판정하지 않는다 — last-writer-wins 맵은 낡는다(나중 vault 가 이름을
     가져간 뒤 제거되면 맵 항목이 사라져, 이제 그 이름을 단 유일한 vault 도 외부로 남는다). 등록은 rename 이 **시작할 때** 한 번 읽으므로 rename 도중의 등록은 보이지 않는다. 로컬 alias 는
     `LocalAlias { alias, root }` 로 다니고, alias 뒤 경로의 `Foreign` 키는 읽는 index 의 root 가 아니라 **그 alias 가 가리키는 vault 의 root 로** 계산한다 —
     중첩 vault 에서 부모의 `[[p::a/old]]` 가 자식의 `a/old.md` 로 읽히지 않게. block reference·embed 문법에는 alias 자리가 없어(`extractor.rs` 의

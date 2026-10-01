@@ -94,6 +94,30 @@ pub fn index_reads_the_rename_back(
         .all(|root| reading(before, root, true) == reading(after, root, false))
 }
 
+/// Whether the index reads a link in `content`, the note at `ref_path`, under
+/// one of `keys` — with filing's own reader (`extract_links`) and key
+/// (`filing_key`). Read with no root, so a relative link's `Path` key is its
+/// text, unresolved: meant for `Foreign` keys — what the file rename passes —
+/// whose shape `filing_key` decides from the alias before it reads a root.
+pub(crate) fn reads_a_link_under(
+    ref_path: &str,
+    content: &str,
+    keys: &[FilingKey],
+    windows: bool,
+) -> bool {
+    !keys.is_empty()
+        && extract_links(ref_path, content).iter().any(|e| {
+            let key = filing_key(
+                ref_path,
+                &e.target,
+                e.target_vault_alias.as_deref(),
+                None,
+                windows,
+            );
+            keys.contains(&key)
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -212,5 +236,33 @@ mod tests {
         };
         assert!(!read_back("[[new]]\n"));
         assert!(read_back("[[old]]\n"));
+    }
+
+    #[test]
+    fn a_link_under_one_of_the_keys_is_read_and_no_keys_read_nothing() {
+        // The file rename asks this for every referrer it visits, and with
+        // no shared own name — the common case — it has no keys to look for.
+        // What fails this: dropping `!keys.is_empty()` — the content is then
+        // analysed once for nothing (`analyses` counts one more).
+        let notes_old = FilingKey::Foreign {
+            alias: "notes".to_string(),
+            target: "old".to_string(),
+        };
+        let content = "[[Notes::old]] [[old]]\n";
+        assert!(reads_a_link_under(
+            "/v/r.md",
+            content,
+            std::slice::from_ref(&notes_old),
+            false
+        ));
+        assert!(!reads_a_link_under(
+            "/v/r.md",
+            "[[old]] [[work::old]]\n",
+            std::slice::from_ref(&notes_old),
+            false
+        ));
+        let before = crate::md::literal::analyses();
+        assert!(!reads_a_link_under("/v/r.md", content, &[], false));
+        assert_eq!(crate::md::literal::analyses() - before, 0);
     }
 }

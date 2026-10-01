@@ -136,10 +136,13 @@ async fn an_alias_two_vaults_carry_is_foreign_to_both() {
     // Two vaults carry the alias `work`. The frontend picks the first in its
     // list and the backend alias map the last registration, so the link may
     // name either vault: in A `[[work::old]]` is no backlink of A's
-    // `old.md`, and A's rename leaves it.
+    // `old.md`, and A's rename leaves it. `work` is one of A's own names, so
+    // the link may mean the renamed note: `r.md` is reported although its
+    // bare `[[old]]` was rewritten (issue 678's ③).
     // What fails this: dropping the uniqueness check from `local_aliases_of`
     // — `work` is then local to A, the link is a backlink, and the rename
-    // writes `[[work::new]]`.
+    // writes `[[work::new]]`; dropping the `left_behind` marking from the
+    // file rename's `rewrite` — `r.md` is updated and not reported.
     let ctx = ContextManager::new();
     let (dir_a, root_a) = aliased_vault(
         &ctx,
@@ -158,6 +161,83 @@ async fn an_alias_two_vaults_carry_is_foreign_to_both() {
     let result = rename_file_with_links_inner(&state, &ctx, &old, &format!("{root_a}/new.md"))
         .await
         .unwrap();
+    assert_eq!(result.updated_files, vec![referrer.clone()]);
+    assert_eq!(result.skipped_files, vec![referrer]);
+    assert_eq!(
+        std::fs::read_to_string(dir_a.path().join("r.md")).unwrap(),
+        "[[work::old]]\n[[new]]\n"
+    );
+}
+
+#[tokio::test]
+async fn a_referrer_behind_an_alias_two_vaults_carry_is_reported_not_rewritten() {
+    // Vaults A and B both carry the alias `notes` — the frontend's default
+    // alias is the folder name, and both folders are called `notes`. A's
+    // `r.md` reaches A's `old.md` only through `[[notes::old]]`, which may
+    // mean either vault's note: renaming A's `old.md` leaves the link and
+    // reports `r.md`, which nothing else names (issue 678's ③).
+    // What fails this: naming the referrers with the local aliases alone
+    // (`referring_lines_to(old_path, &local_aliases)` in
+    // `rename_file_with_links_inner`) — `r.md` is never visited, and
+    // `skipped_files` is empty; leaving a shared explicit alias out of
+    // `ambiguous` in `local_aliases_of` — the same.
+    let ctx = ContextManager::new();
+    let (dir_a, root_a) = aliased_vault(
+        &ctx,
+        "ctx-a",
+        "notes",
+        &[("old.md", "t\n"), ("r.md", "[[notes::old]]\n")],
+    )
+    .await;
+    let (_dir_b, root_b) = aliased_vault(&ctx, "ctx-b", "notes", &[("old.md", "t\n")]).await;
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root_a).await.unwrap();
+    refresh_index_inner(&state, &ctx, &root_b).await.unwrap();
+    let (old, referrer) = (format!("{root_a}/old.md"), format!("{root_a}/r.md"));
+    assert!(backlink_lines(&state, &ctx, &old, &referrer)
+        .await
+        .is_empty());
+
+    let result = rename_file_with_links_inner(&state, &ctx, &old, &format!("{root_a}/new.md"))
+        .await
+        .unwrap();
+    assert!(
+        result.updated_files.is_empty(),
+        "{:?}",
+        result.updated_files
+    );
+    assert_eq!(result.skipped_files, vec![referrer]);
+    assert_eq!(
+        std::fs::read_to_string(dir_a.path().join("r.md")).unwrap(),
+        "[[notes::old]]\n"
+    );
+}
+
+#[tokio::test]
+async fn a_rename_that_keeps_the_stem_leaves_a_link_behind_a_shared_alias_unreported() {
+    // `old.md` → `old.txt` keeps the stem, so `[[notes::old]]` behind the
+    // alias A and B both carry reads as the renamed note as much as it did
+    // before: nothing is left behind, and `r.md` is not reported.
+    // What fails this: dropping `!still_named.contains(k)` from the
+    // `behind_ambiguous_name` filter in `rename_file_with_links_inner` —
+    // `Foreign { notes, old }` stays in the set and `r.md` is reported.
+    let ctx = ContextManager::new();
+    let (dir_a, root_a) = aliased_vault(
+        &ctx,
+        "ctx-a",
+        "notes",
+        &[("old.md", "t\n"), ("r.md", "[[notes::old]]\n")],
+    )
+    .await;
+    let (_dir_b, root_b) = aliased_vault(&ctx, "ctx-b", "notes", &[("old.md", "t\n")]).await;
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root_a).await.unwrap();
+    refresh_index_inner(&state, &ctx, &root_b).await.unwrap();
+    let old = format!("{root_a}/old.md");
+
+    let result = rename_file_with_links_inner(&state, &ctx, &old, &format!("{root_a}/old.txt"))
+        .await
+        .unwrap();
     assert!(
         result.skipped_files.is_empty(),
         "{:?}",
@@ -165,7 +245,7 @@ async fn an_alias_two_vaults_carry_is_foreign_to_both() {
     );
     assert_eq!(
         std::fs::read_to_string(dir_a.path().join("r.md")).unwrap(),
-        "[[work::old]]\n[[new]]\n"
+        "[[notes::old]]\n"
     );
 }
 
@@ -341,12 +421,12 @@ async fn rename_beside_a_case_colliding_alias(a_first: bool) {
     let result = rename_file_with_links_inner(&state, &ctx, &old, &format!("{root_a}/new.md"))
         .await
         .unwrap();
-    assert_eq!(result.updated_files, vec![referrer], "a_first = {a_first}");
-    assert!(
-        result.skipped_files.is_empty(),
-        "a_first = {a_first}: {:?}",
-        result.skipped_files
+    assert_eq!(
+        result.updated_files,
+        vec![referrer.clone()],
+        "a_first = {a_first}"
     );
+    assert_eq!(result.skipped_files, vec![referrer], "a_first = {a_first}");
     assert_eq!(
         std::fs::read_to_string(dir_a.path().join("r.md")).unwrap(),
         "[[work::old]]\n[[new]]\n",
@@ -360,7 +440,8 @@ async fn aliases_differing_only_in_case_make_the_link_foreign_for_both_vaults() 
     // and B owns `work` at once; the frontend resolves `[[work::old]]`
     // case-insensitively by context order, so the link may mean either
     // vault. It is foreign: no backlink of A's `old.md`, and A's rename
-    // leaves it — in either registration order.
+    // leaves it and reports `r.md`, since `work` is A's own name folded — in
+    // either registration order.
     // What fails this: dropping the uniqueness check from `local_aliases_of`
     // — no condition is then left, so A's own `Work` is local to A whatever
     // B carries, the link is a backlink, and the rename writes
@@ -433,7 +514,8 @@ async fn an_explicit_alias_outranks_a_space_name() {
     // link and reports nothing.
     // What fails this: dropping the explicit-alias check (`outranked`) from
     // the space-name pass — the space then claims `journal` too, files the
-    // link under its own `x` and finds a backlink on line 1.
+    // link under its own `x` and finds a backlink on line 1; putting an
+    // outranked space name in `ambiguous` — the rename reports `r.md`.
     let (dir, space) = tree(&[
         ("x.md", "space\n"),
         ("work/x.md", "vault\n"),
@@ -482,10 +564,12 @@ async fn two_journal_spaces_make_the_canonical_name_foreign_to_both() {
     // With two journal spaces the frontend resolves `[[Journal::x]]` to
     // whichever comes first in its list, so the link may name either: it is
     // a backlink of neither `x.md`, and renaming the referrer's own space's
-    // `x.md` leaves it.
+    // `x.md` leaves it and reports `r.md` — `journal` is that space's name.
     // What fails this: dropping the shared-name check (`shared`) from the
     // space-name pass — each space claims `journal`, and the link is a
-    // backlink of the referrer's own space's `x.md`.
+    // backlink of the referrer's own space's `x.md`; leaving a shared space
+    // name out of `ambiguous` in `local_aliases_of` — `r.md` is not
+    // reported.
     let (dir_a, root_a) = tree(&[("x.md", "a\n"), ("r.md", "[[Journal::x]]\n")]);
     let (_dir_b, root_b) = tree(&[("x.md", "b\n")]);
     let ctx = ContextManager::new();
@@ -512,6 +596,7 @@ async fn two_journal_spaces_make_the_canonical_name_foreign_to_both() {
         "{:?}",
         result.updated_files
     );
+    assert_eq!(result.skipped_files, vec![referrer]);
     assert_eq!(
         std::fs::read_to_string(dir_a.path().join("r.md")).unwrap(),
         "[[Journal::x]]\n"

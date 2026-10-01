@@ -28,7 +28,7 @@ pub(crate) async fn get_backlinks_inner(
     // registration of the same path could describe another directory.
     let contexts = owning_contexts(ctx_mgr, file_path).await;
     // A link behind one of the file's own vault aliases names it too (§87).
-    let local_aliases = local_aliases_of(ctx_mgr, &contexts).await;
+    let local_aliases = local_aliases_of(ctx_mgr, &contexts).await.local;
     let mut answered: Vec<(String, Vec<BacklinkResult>)> = Vec::new();
     for ctx in &contexts {
         let found = state

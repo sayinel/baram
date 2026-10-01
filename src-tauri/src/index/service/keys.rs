@@ -56,7 +56,9 @@ fn space_name_of(info: &ContextInfo) -> Option<&'static str> {
 ///   exact string, last writer wins. With `Work` and `work` on two vaults,
 ///   `work` on both, or two journal spaces, they can name different vaults,
 ///   so a link behind that name is ambiguous and foreign to all of them: the
-///   rename leaves it and the backlinks do not claim it.
+///   rename leaves it — reporting the file when the name is one of the
+///   renamed file's own (`ambiguous`, below) — and the backlinks do not
+///   claim it.
 /// - The alias map can go stale. When a later vault claims the name and is
 ///   then removed, its removal drops the map entry, so the backend resolver
 ///   answers nothing for that alias while the frontend still resolves it to
@@ -65,27 +67,45 @@ fn space_name_of(info: &ContextInfo) -> Option<&'static str> {
 ///   so the map is not consulted; an ownership check against it would keep
 ///   the first vault foreign.
 ///
+/// The names of `contexts` that are NOT local because another registered
+/// context carries the same name at the same tier — an explicit alias another
+/// context's explicit alias matches, a space name another space of the same
+/// type has — come back as `ambiguous`, with the same roots. A link behind
+/// one may mean this vault's note, so a file rename that leaves it reports
+/// the file (issue 678's ③, as for an ambiguous path link); the backlinks
+/// read `local` alone, and the block-ID rename reads no alias (its grammars
+/// have none). A space name an explicit alias outranks is in neither list:
+/// the link names that alias's vault.
+///
 /// The registrations are read when this is called — a rename reads them
 /// once, at its start, and does not see a registration made while it runs.
+/// One read for both lists, so they describe the same registrations.
 /// Lowercase because `filing_key` lowercases a `Foreign` key's alias; this is
-/// the one fold on this side (`LocalAlias`). Sorted, without repeats.
+/// the one fold on this side (`LocalAlias`). Each list sorted, without
+/// repeats.
 pub(super) async fn local_aliases_of(
     ctx_mgr: &ContextManager,
     contexts: &[Registered],
-) -> Vec<LocalAlias> {
+) -> OwnAliases {
     let registered = ctx_mgr.list().await;
     let explicit = |info: &ContextInfo| info.alias.as_deref().map(str::to_lowercase);
-    let mut aliases = Vec::new();
+    let mut own = OwnAliases {
+        local: Vec::new(),
+        ambiguous: Vec::new(),
+    };
     for c in contexts {
+        let name_of_this = |alias: String| LocalAlias {
+            alias,
+            root: c.info.path.clone(),
+        };
         if let Some(folded) = explicit(&c.info) {
             let unique = !registered
                 .iter()
                 .any(|other| other.id != c.info.id && explicit(other).as_ref() == Some(&folded));
             if unique {
-                aliases.push(LocalAlias {
-                    alias: folded,
-                    root: c.info.path.clone(),
-                });
+                own.local.push(name_of_this(folded));
+            } else {
+                own.ambiguous.push(name_of_this(folded));
             }
         }
         if let Some(name) = space_name_of(&c.info) {
@@ -96,16 +116,25 @@ pub(super) async fn local_aliases_of(
                 .iter()
                 .any(|other| other.id != c.info.id && space_name_of(other) == Some(name));
             if !outranked && !shared {
-                aliases.push(LocalAlias {
-                    alias: name.to_string(),
-                    root: c.info.path.clone(),
-                });
+                own.local.push(name_of_this(name.to_string()));
+            } else if !outranked {
+                own.ambiguous.push(name_of_this(name.to_string()));
             }
         }
     }
-    aliases.sort();
-    aliases.dedup();
-    aliases
+    for list in [&mut own.local, &mut own.ambiguous] {
+        list.sort();
+        list.dedup();
+    }
+    own
+}
+
+/// What `local_aliases_of` found for a file's contexts: the names a link
+/// behind which names the file (`local`), and the names it carries that
+/// another registered context carries too (`ambiguous`).
+pub(super) struct OwnAliases {
+    pub(super) local: Vec<LocalAlias>,
+    pub(super) ambiguous: Vec<LocalAlias>,
 }
 
 /// The index keys of `contexts`: their registered paths.

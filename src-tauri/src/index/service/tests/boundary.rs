@@ -130,7 +130,11 @@ async fn a_rename_that_would_move_the_note_is_refused_before_anything_changes() 
     assert!(dir.path().join("note.md").exists());
     assert!(!dir.path().join("sub/other.md").exists());
     let err = result.unwrap_err();
-    assert!(err.contains("would move the note"), "{err}");
+    // The reason first: the frontend shows it briefly, ahead of the path.
+    assert!(
+        err.starts_with("a rename keeps the note in its directory;"),
+        "{err}"
+    );
 }
 
 #[tokio::test]
@@ -163,7 +167,11 @@ async fn a_rename_whose_new_path_climbs_back_into_the_folder_is_refused_as_spell
     );
     assert!(dir.path().join("a/old.md").exists());
     let err = result.unwrap_err();
-    assert!(err.contains("would move the note"), "{err}");
+    // The reason first: the frontend shows it briefly, ahead of the path.
+    assert!(
+        err.starts_with("a rename keeps the note in its directory;"),
+        "{err}"
+    );
 }
 
 // Unix only: the referrer is replaced by a symlink.

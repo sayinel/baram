@@ -71,7 +71,7 @@ pub(super) fn check_destination(
     // a relative spelling cannot pass as the same parent either.
     if !stays_in_its_directory(old_path, new_path, cfg!(windows)) {
         return Err(format!(
-            "{new_path} would move the note out of its directory; a rename keeps the note where it is"
+            "a rename keeps the note in its directory; {new_path} is in another one"
         ));
     }
     Ok(RenameSource { identity, parent })

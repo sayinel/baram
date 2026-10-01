@@ -3,10 +3,10 @@
 //! rename/referrers.rs, result types and path helpers in rename/mod.rs.
 
 use crate::context::ContextManager;
-use crate::index::{normalize_file_path, RenameTarget};
+use crate::index::{keys_for, normalize_file_path, reads_a_link_under, RenameTarget};
 use std::collections::HashMap;
 
-use super::super::keys::{keys_of, local_aliases_of};
+use super::super::keys::{keys_of, local_aliases_of, OwnAliases};
 use super::super::state::{LinkIndexState, Mutation};
 use super::destination::{another_entry_at, check_destination, confined_both_ways};
 use super::passes::{rewrite_renamed_note, LinkPasses};
@@ -28,7 +28,13 @@ pub(crate) async fn rename_file_with_links_inner(
     let scope = RenameScope::holding(state, ctx_mgr, old_path).await?;
     // issue 717: a link behind one of the file's own vault aliases names it
     // (§87); one behind any other alias names another vault's note and stays.
-    let local_aliases = local_aliases_of(ctx_mgr, &scope.dirs).await;
+    // A name of the file's vault that another vault carries too (`ambiguous`)
+    // may mean either: its links are left, and their files reported (below).
+    let OwnAliases {
+        local: local_aliases,
+        ambiguous,
+    } = local_aliases_of(ctx_mgr, &scope.dirs).await;
+    let named_by: Vec<_> = local_aliases.iter().chain(&ambiguous).cloned().collect();
     // Both ends inside the file's contexts, and no move (`check_destination`).
     let source = check_destination(old_path, new_path, &scope.dirs)?;
 
@@ -44,9 +50,26 @@ pub(crate) async fn rename_file_with_links_inner(
         known_paths,
     } = scope
         .referrers(state, ctx_mgr, |i| {
-            i.referring_lines_to(old_path, &local_aliases)
+            i.referring_lines_to(old_path, &named_by)
         })
         .await?;
+    // The keys a link behind an ambiguous own name is filed under that name
+    // the old note and not the new one — `[[notes::old]]` for `old.md` →
+    // `new.md`, not for `old.md` → `old.txt`, whose stem the link still
+    // reads as. Set differences, so no key is told apart by its variant. A
+    // file whose links the passes leave holding one is reported, rewritten
+    // or not (`left_behind`), as for an ambiguous path link. `plain` takes
+    // out the stem key, under which a same-stem note's own `((#^id))` is
+    // filed — what fails this: dropping `!plain.contains(k)`, and the two
+    // same-stem exemption tests in `tests/same_stem.rs` report that note.
+    let windows = cfg!(windows);
+    let behind_ambiguous_name = {
+        let plain = keys_for(old_path, None, &local_aliases, windows);
+        let still_named = keys_for(new_path, None, &ambiguous, windows);
+        let mut keys = keys_for(old_path, None, &ambiguous, windows);
+        keys.retain(|k| !plain.contains(k) && !still_named.contains(k));
+        keys
+    };
     // The same-stem exemption (`named_only_for_own_references`), with the
     // stem compared to the old key: a referrer is exempt only under the name
     // being renamed away.
@@ -112,15 +135,21 @@ pub(crate) async fn rename_file_with_links_inner(
         new_path,
         local_aliases: &local_aliases,
         known_paths,
-        windows: cfg!(windows),
+        windows,
     });
+    let rewrite = |content: &str, ref_path: &str, roots: &[String]| {
+        let mut rewrite = passes.rewrite(content, ref_path, roots);
+        rewrite.left_behind |=
+            reads_a_link_under(ref_path, &rewrite.content, &behind_ambiguous_name, windows);
+        rewrite
+    };
     let mut rewritten = rewrite_referrers(
         &referring_files,
         old_path,
         ctx_mgr,
         &scope.dirs,
         &unchanged,
-        |content, ref_path, covering| passes.rewrite(content, ref_path, &keys_of(covering)),
+        |content, ref_path, covering| rewrite(content, ref_path, &keys_of(covering)),
     )
     .await;
     //    Then the renamed note itself, which rewrite_referrers skips. Its
@@ -134,7 +163,7 @@ pub(crate) async fn rename_file_with_links_inner(
     let renamed_content = rewrite_renamed_note(
         new_path,
         renamed_content,
-        |content, ref_path| passes.rewrite(content, ref_path, &scope.keys),
+        |content, ref_path| rewrite(content, ref_path, &scope.keys),
         || confined_both_ways(new_path, &scope.dirs, source.parent.as_deref()),
         |content| {
             matches!(unchanged, Unchanged::Report { .. })
