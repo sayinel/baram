@@ -5,7 +5,7 @@
 use super::filing::{
     filing_key, is_relative, root_relative_key, under_root, FilingKey, LocalAlias,
 };
-use super::normalizer::file_key;
+use super::normalizer::{file_key, strip_note_extension};
 use super::relative_links::{path_components, relative_components};
 use std::collections::HashMap;
 
@@ -222,15 +222,6 @@ fn stem_of(path: &str, windows: bool) -> &str {
     std::path::Path::new(name)
         .file_stem()
         .and_then(|s| s.to_str())
-        .unwrap_or(name)
-}
-
-/// `name` without one trailing `.md` or `.markdown`, its case kept — the
-/// spelling of a path link's last component (`strip_extension_and_fold`
-/// without the fold), so the link reads back as the file's path key.
-fn strip_note_extension(name: &str) -> &str {
-    name.strip_suffix(".md")
-        .or_else(|| name.strip_suffix(".markdown"))
         .unwrap_or(name)
 }
 

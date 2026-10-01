@@ -34,7 +34,7 @@ pub use rewriter::{
 pub use types::{BacklinkResult, IndexStats, LinkEdge, LinkEntry, LinkGraph};
 
 use extractor::{extract_file_tags, extract_links};
-use normalizer::{extract_id_from_stem, normalize_file_path};
+use normalizer::normalize_file_path;
 
 #[cfg(test)]
 thread_local! {
@@ -337,14 +337,16 @@ impl LinkIndex {
     }
 
     /// The keys `get_backlinks` and `block_reference_lines` read for
-    /// `file_path`: `filing_keys_of`, plus the zettel id inside its stem if it
-    /// has one, under which a bare `[[202607051530]]` is filed.
+    /// `file_path` (`backlink_keys_for` under `root_path`): `filing_keys_of`,
+    /// plus the zettel id inside its stem if it has one, under which a bare
+    /// `[[202607051530]]` is filed.
     pub fn backlink_keys(&self, file_path: &str, local_aliases: &[LocalAlias]) -> Vec<FilingKey> {
-        let mut keys = self.filing_keys_of(file_path, local_aliases);
-        if let Some(id) = extract_id_from_stem(&normalize_file_path(file_path)) {
-            keys.push(FilingKey::Stem(id));
-        }
-        keys
+        filing::backlink_keys_for(
+            file_path,
+            self.root_path.as_deref(),
+            local_aliases,
+            cfg!(windows),
+        )
     }
 
     /// The `(source_path, line)` pairs that refer to `file_path`'s block

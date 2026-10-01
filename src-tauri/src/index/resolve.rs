@@ -2,6 +2,7 @@
 
 use super::normalizer::{
     extract_id_from_stem, is_id_target, normalize_file_path, normalize_target, resolve_target,
+    strip_extension_and_fold,
 };
 use super::{LinkEdge, LinkGraph, LinkIndex};
 
@@ -20,11 +21,7 @@ impl LinkIndex {
                 .strip_prefix('/')
                 .or_else(|| rel.strip_prefix('\\'))
                 .unwrap_or(rel);
-            let rel_normalized = rel
-                .strip_suffix(".md")
-                .or_else(|| rel.strip_suffix(".markdown"))
-                .unwrap_or(rel)
-                .to_lowercase();
+            let rel_normalized = strip_extension_and_fold(rel);
             self.relative_map
                 .insert(rel_normalized, file_path.to_string());
         }

@@ -3,10 +3,11 @@
 
 use crate::context::manager::Registered;
 use crate::context::ContextManager;
-use crate::index::normalizer::{extract_id_from_stem, normalize_file_path};
+use crate::index::filing::backlink_keys_for;
+use crate::index::normalizer::normalize_file_path;
 use crate::index::{
-    keys_for, link_reads_back_as_the_file, own_block_reference_lines, replace_block_id_refs_to,
-    BlockTarget, FilingKey, KnownPaths,
+    link_reads_back_as_the_file, own_block_reference_lines, replace_block_id_refs_to, BlockTarget,
+    FilingKey, KnownPaths,
 };
 use std::collections::HashMap;
 
@@ -132,20 +133,16 @@ pub(crate) async fn rename_block_id_inner(
 
 /// The file at `file_path` as a block-ID rename's target: for each directory
 /// context in `dirs`, the keys a reference to it is filed under in that
-/// context's index (`keys_for` under that root, plus the zettel id inside its
-/// stem, as `LinkIndex::backlink_keys` reads them). No vault alias: a block
+/// context's index (`backlink_keys_for` under that root, the function
+/// `LinkIndex::backlink_keys` reads them with). No vault alias: a block
 /// reference or embed never carries one (`BLOCK_REF_RE`, `BLOCK_EMBED_RE`
 /// in extractor.rs have no alias group).
 fn block_target(file_path: &str, dirs: &[Registered], known_paths: KnownPaths) -> BlockTarget {
-    let id = extract_id_from_stem(&normalize_file_path(file_path));
     let keys_by_root = dirs
         .iter()
         .map(|d| {
             let root = d.info.path.clone();
-            let mut keys = keys_for(file_path, Some(&root), &[], cfg!(windows));
-            if let Some(id) = &id {
-                keys.push(FilingKey::Stem(id.clone()));
-            }
+            let keys = backlink_keys_for(file_path, Some(&root), &[], cfg!(windows));
             (root, keys)
         })
         .collect();

@@ -172,7 +172,11 @@ fn is_drive(part: &str) -> bool {
 /// What of `path` lies under the directory `dir`: the components after
 /// `dir`'s — empty when `path` IS the directory — or None when it is not
 /// under it. Component-wise, so `ns` does not claim `ns-old`.
-fn strip_dir_prefix<'a>(dir: &[&str], path: &'a [&'a str], windows: bool) -> Option<&'a [&'a str]> {
+pub(super) fn strip_dir_prefix<'p, 'a>(
+    dir: &[&str],
+    path: &'p [&'a str],
+    windows: bool,
+) -> Option<&'p [&'a str]> {
     if path.len() < dir.len() {
         return None;
     }

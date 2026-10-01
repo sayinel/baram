@@ -6,12 +6,21 @@ use std::path::Path;
 /// without one trailing note extension — `.md`, else `.markdown`, never both
 /// (`x.markdown.md` → `x.markdown`).
 pub(crate) fn normalize_target(target: &str) -> String {
-    let t = target.trim();
-    let t = t
-        .strip_suffix(".md")
-        .or_else(|| t.strip_suffix(".markdown"))
-        .unwrap_or(t);
-    t.to_lowercase()
+    strip_extension_and_fold(target.trim())
+}
+
+/// `name` without one trailing `.md` or `.markdown`, lowercase.
+pub(crate) fn strip_extension_and_fold(name: &str) -> String {
+    strip_note_extension(name).to_lowercase()
+}
+
+/// `name` without one trailing `.md` or `.markdown`, its case kept — the
+/// spelling of a path link's last component (`strip_extension_and_fold`
+/// without the fold), so the link reads back as the file's path key.
+pub(crate) fn strip_note_extension(name: &str) -> &str {
+    name.strip_suffix(".md")
+        .or_else(|| name.strip_suffix(".markdown"))
+        .unwrap_or(name)
 }
 
 /// The key a FILE at this path is filed under — its stem through `file_key`,

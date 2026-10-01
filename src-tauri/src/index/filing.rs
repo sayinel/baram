@@ -2,8 +2,12 @@
 // under in the link index, and which keys a file answers to. What a rename
 // makes of a reference under those keys is `judgement.rs`.
 
-use super::normalizer::{normalize_file_path, normalize_target};
-use super::relative_links::{path_components, resolve_components, root_components, same_component};
+use super::normalizer::{
+    extract_id_from_stem, normalize_file_path, normalize_target, strip_extension_and_fold,
+};
+use super::relative_links::{
+    path_components, resolve_components, root_components, strip_dir_prefix,
+};
 
 /// The key a reference or a file is filed under in the link index.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -43,15 +47,6 @@ fn has_separator(target: &str, windows: bool) -> bool {
     target.contains('/') || (windows && target.contains('\\'))
 }
 
-/// `name` without one trailing `.md` or `.markdown`, lowercase.
-fn strip_extension_and_fold(name: &str) -> String {
-    let name = name
-        .strip_suffix(".md")
-        .or_else(|| name.strip_suffix(".markdown"))
-        .unwrap_or(name);
-    name.to_lowercase()
-}
-
 /// The last component of the key `root_relative_key` gives `file_path` — its
 /// file name, one `.md` or `.markdown` off, lowercase — without spelling the
 /// rest. Two files whose path keys are equal have equal names here, so
@@ -66,20 +61,16 @@ pub fn path_key_name(file_path: &str, windows: bool) -> String {
 }
 
 /// The components of `path` under the directory `root`, or None when `path`
-/// is not under it or is the directory itself.
+/// is not under it or is the directory itself — `strip_dir_prefix` without
+/// the directory itself.
 pub(super) fn under_root<'a>(
     root: &[&str],
     path: &[&'a str],
     windows: bool,
 ) -> Option<Vec<&'a str>> {
-    if path.len() <= root.len() {
-        return None;
-    }
-    let under = root
-        .iter()
-        .zip(path)
-        .all(|(r, p)| same_component(r, p, windows));
-    under.then(|| path[root.len()..].to_vec())
+    strip_dir_prefix(root, path, windows)
+        .filter(|rest| !rest.is_empty())
+        .map(|rest| rest.to_vec())
 }
 
 /// The key `target`, written in the note at `source_path`, is filed under.
@@ -179,6 +170,23 @@ pub fn keys_for(
                 target: rel,
             });
         }
+    }
+    keys
+}
+
+/// `keys_for` plus the zettel id in the file's stem (`extract_id_from_stem`),
+/// filed as a `Stem` key — the keys a file's backlinks are read under
+/// (`LinkIndex::backlink_keys`) and a block-ID rename's target is judged by
+/// (`block_target`). One function, so the two cannot drift.
+pub(crate) fn backlink_keys_for(
+    file_path: &str,
+    root: Option<&str>,
+    local_aliases: &[LocalAlias],
+    windows: bool,
+) -> Vec<FilingKey> {
+    let mut keys = keys_for(file_path, root, local_aliases, windows);
+    if let Some(id) = extract_id_from_stem(&normalize_file_path(file_path)) {
+        keys.push(FilingKey::Stem(id));
     }
     keys
 }
