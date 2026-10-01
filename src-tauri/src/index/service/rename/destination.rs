@@ -126,10 +126,15 @@ fn entry_path(path: &str) -> Result<std::path::PathBuf, String> {
 /// also both be links or both not (`symlink_metadata`, not followed), or the
 /// move would replace the note with a link to itself. Two links there to one
 /// file still pass, and the move replaces one link with the other; the file
-/// they reach is untouched. A hard link is not told apart from another
-/// entry: two names canonicalize to two paths, so it is refused, which loses
-/// nothing. A path that does not canonicalize, a dangling link among them,
-/// is another entry.
+/// they reach is untouched. A hard link is expected to be refused as another
+/// entry: std's Windows `canonicalize` asks `GetFinalPathNameByHandleW` for
+/// the name the handle was opened through, so two names should give two
+/// canonical paths. That is read from std's source and unverified on a
+/// Windows host. If the API answered one name for both, the two pairs would
+/// match and the rename would go ahead: `fs::rename_file` replaces the
+/// destination (`MoveFileExW` with replace), so one of the two names is
+/// dropped and the file both named keeps its content. A path that does not
+/// canonicalize, a dangling link among them, is another entry.
 ///
 /// So a symlinked source renamed onto its target's name is refused, and a
 /// symlinked source renamed to another spelling of its own name goes ahead.

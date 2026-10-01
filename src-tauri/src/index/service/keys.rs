@@ -258,29 +258,62 @@ pub(super) fn outgoing_map(graph: &LinkGraph) -> HashMap<String, Vec<String>> {
 mod tests {
     use super::*;
 
+    /// Every `VaultType` variant. The `match` has no `_` arm, so a new
+    /// variant does not compile until it is listed here too.
+    fn every_vault_type() -> [VaultType; 3] {
+        let all = [
+            VaultType::General,
+            VaultType::Journal,
+            VaultType::Zettelkasten,
+        ];
+        for vault_type in &all {
+            match vault_type {
+                VaultType::General | VaultType::Journal | VaultType::Zettelkasten => {}
+            }
+        }
+        all
+    }
+
     #[test]
     fn space_names_match_the_frontends() {
         // `space_name` and the frontend's `SPACE_ALIASES` must name the same
-        // spaces: a link the frontend resolves into a journal is one the
-        // index files as local. The TypeScript file is read from the repo
-        // root, the parent of the crate directory.
-        // What fails this: `space_name` answering `Some("journals")` for
-        // `VaultType::Journal` — the loop's assertion.
-        let ts = std::fs::read_to_string(concat!(
+        // spaces, both ways: a link the frontend resolves into a space is one
+        // the index files as local, and no more. The `key: "Name"` pairs of
+        // the TypeScript object literal are compared with the Rust mapping
+        // over every variant, keyed by the variant's serialized name (the
+        // `VaultType` the frontend receives), names lowercased on both sides.
+        // The TypeScript file is read from the repo root, the parent of the
+        // crate directory.
+        // What fails this: adding `general: "Vault",` to the TypeScript
+        // object, or mapping `VaultType::Zettelkasten` to `None` in
+        // `space_name` — the sets differ either way.
+        let path = concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../src/utils/editor/wikilink-nav.ts"
-        ))
-        .unwrap();
-        for (vault_type, key) in [
-            (VaultType::Journal, "journal"),
-            (VaultType::Zettelkasten, "zettelkasten"),
-        ] {
-            let name = space_name(&vault_type).unwrap();
-            let spelled = format!("{}{}", name[..1].to_uppercase(), &name[1..]);
-            let entry = format!("{key}: \"{spelled}\"");
-            assert!(ts.contains(&entry), "wikilink-nav.ts lacks {entry}");
-        }
-        assert_eq!(space_name(&VaultType::General), None);
-        assert!(!ts.contains("general: \""), "a general vault gained a name");
+        );
+        let ts = std::fs::read_to_string(path).expect(path);
+        let start = ts
+            .find("const SPACE_ALIASES")
+            .expect("SPACE_ALIASES in wikilink-nav.ts");
+        let block = &ts[start..];
+        let block = &block[..block.find("\n};").expect("the end of SPACE_ALIASES")];
+        let frontend: std::collections::BTreeSet<(String, String)> = block
+            .lines()
+            .skip(1)
+            .map(|line| {
+                let (key, name) = line.trim().split_once(':').expect(line);
+                let name = name.trim().trim_end_matches(',').trim_matches('"');
+                (key.trim().to_string(), name.to_lowercase())
+            })
+            .collect();
+        let backend: std::collections::BTreeSet<(String, String)> = every_vault_type()
+            .iter()
+            .filter_map(|vault_type| {
+                let key = serde_json::to_value(vault_type).ok()?.as_str()?.to_string();
+                Some((key, space_name(vault_type)?.to_string()))
+            })
+            .collect();
+        assert!(!backend.is_empty());
+        assert_eq!(frontend, backend);
     }
 }

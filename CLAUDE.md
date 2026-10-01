@@ -246,7 +246,7 @@ baram/
     ASCII 대소문자 이상 다른 이름은 hard link 라 거부한다. 대소문자를 지키는 파일 시스템에서 이름이 ASCII 대소문자만 다른 hard link 는 두
     읽기로는 case alias 와 구별되지 않아 **통과한다** — 이동은 no-op 이고 `Ok` 를 내며 링크는 respell 된다(내용 손실은 없다). 가르려면 파일
     시스템이 대소문자를 접는지 물어야 한다(followup). resolve 한 경로로 비교하면 `note.md -> x.md` 를 `x.md` 로 바꾸는 rename 이
-    진짜 `x.md` 를 링크로 덮는다. Windows 에는 inode 비교가 없어 이름이 ASCII 대소문자만 다르고 두 경로를 `canonicalize` 한 결과가 같고, `canonicalize` 가 링크를 따라가므로 두 항목이 둘 다 링크이거나 둘 다 아닐 때만 같은 항목이다(`same_entry_by_canonical`) — 대소문자를 구분하는 폴더에 `Note.md` 와 `note.md` 가 함께 있으면 두 경로로 갈려 거부된다. hard link 도 두 경로라 거부한다(손실 없음).
+    진짜 `x.md` 를 링크로 덮는다. Windows 에는 inode 비교가 없어 이름이 ASCII 대소문자만 다르고 두 경로를 `canonicalize` 한 결과가 같고, `canonicalize` 가 링크를 따라가므로 두 항목이 둘 다 링크이거나 둘 다 아닐 때만 같은 항목이다(`same_entry_by_canonical`) — 대소문자를 구분하는 폴더에 `Note.md` 와 `note.md` 가 함께 있으면 두 경로로 갈려 거부된다. hard link 도 두 이름이 두 canonical 경로로 갈려 거부될 것으로 본다(std 의 `GetFinalPathNameByHandleW` 사용에서 읽은 것, Windows 호스트 미검증). 그 API 가 두 링크에 이름 하나를 준다면 rename 이 통과해 목적지를 덮고, 이름 하나가 사라질 뿐 내용 손실은 없다.
     목적지의 **dangling symlink** 도 항목이라 거부한다 — 따라가는 `Path::exists` 로 보던 main 은 그것을 덮어썼다.
     index 는 노트를 **경로가 resolve 되는 곳으로** 안다 — build 는 symlink 항목을 색인하지 않고(`collect_md_files` 가 `metadata()`
     로 링크를 따라가지 않는다) save 는 resolve 한 경로로 넣는다(`service/state.rs` 의 `Mutation::update`). 파일 rename 도 같아서 옛 경로가
