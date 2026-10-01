@@ -33,6 +33,13 @@ pub(super) struct Source {
 /// written. Then the move refusal below. Judged in that order: old entry,
 /// new path both ways, move.
 ///
+/// With no directory context (`dirs` empty, a standalone File context, §89)
+/// both views must lie in the directory the note resolves into
+/// (`destination_confined` compares parents with `parent`, the resolved
+/// file's). So a standalone note that is a symlink to a file in another
+/// directory is refused as outside its contexts: its entry's directory is
+/// not its target's. Conservative, and intended.
+///
 /// The plain file rename, `fs_cmd::rename_file`, checks each end through
 /// `check` (`fs::validate_path`) and `check_vault`. The two renames share
 /// two checks: an absolute path (`validate_path`; here `absolute`, in

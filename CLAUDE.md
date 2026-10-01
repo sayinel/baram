@@ -219,7 +219,7 @@ baram/
   bare 이름(`[[old]]`)은 이 판정 밖이다 — stem 은 모든 root 에서 같게 읽히고 rename 은 그것을 고쳐 쓴다
   키는 **등록된 root 표기에 대해 어휘적으로** 계산한다 — symlink 인 root 의 다른 표기(`/tmp` 에 대한 `/private/tmp`)로 주어진 파일은
   `Path` 키를 얻지 못해 경로 링크가 **놓칠 뿐** 잘못 고쳐 쓰이지는 않는다
-  ‼️ **이 판정 두 층은 파일 rename 입구에만 있다** — 디렉터리 rename 이 `relative_links.rs` 로 고쳐 쓰는 `[[./x]]`·`[[../x]]` 는
+  ‼️ **② 의 두 층(`…_can_spell`·`index_reads_the_rename_back`)은 파일 rename 입구에만 있다** — 디렉터리 rename 이 `relative_links.rs` 로 고쳐 쓰는 `[[./x]]`·`[[../x]]` 는
   거치지 않고(폴더를 `C# notes` 로 바꾸면 `[[./C# notes/x]]` 가 쓰여 `./C` 로 읽힌다 — 실측), block ID rename 의 새 id 는 프런트
   `BLOCK_ID_PATTERN` 이 거르며 Rust 는 재검증하지 않는다. 프런트의 블록 메뉴 "링크 복사" 도 판정 없이 쓴다. 링크를 쓰는
   입구를 더하거나 고칠 때 이 층을 같이 걸 것
@@ -245,9 +245,12 @@ baram/
     항목이다. **ASCII** 대소문자만 본다 — `Élan.md` → `élan.md` 는 그 파일 시스템에서 목적지가 있고 이름 비교에 걸려 거부된다. 같은 inode 에
     ASCII 대소문자 이상 다른 이름은 hard link 라 거부한다. 대소문자를 지키는 파일 시스템에서 이름이 ASCII 대소문자만 다른 hard link 는 두
     읽기로는 case alias 와 구별되지 않아 **통과한다** — 이동은 no-op 이고 `Ok` 를 내며 링크는 respell 된다(내용 손실은 없다). 가르려면 파일
-    시스템이 대소문자를 접는지 물어야 한다(followup). resolve 한 경로로 비교하면 `note.md -> x.md` 를 `x.md` 로 바꾸는 rename 이
-    진짜 `x.md` 를 링크로 덮는다. Windows 에는 inode 비교가 없어 이름이 ASCII 대소문자만 다르고 두 경로를 `canonicalize` 한 결과가 같고, `canonicalize` 가 링크를 따라가므로 두 항목이 둘 다 링크이거나 둘 다 아닐 때만 같은 항목이다(`same_entry_by_canonical`) — 대소문자를 구분하는 폴더에 `Note.md` 와 `note.md` 가 함께 있으면 두 경로로 갈려 거부된다. hard link 도 두 이름이 두 canonical 경로로 갈려 거부될 것으로 본다(std 의 `GetFinalPathNameByHandleW` 사용에서 읽은 것, Windows 호스트 미검증). 그 API 가 두 링크에 이름 하나를 준다면 rename 이 통과해 목적지를 덮고, 이름 하나가 사라질 뿐 내용 손실은 없다.
-    목적지의 **dangling symlink** 도 항목이라 거부한다 — 따라가는 `Path::exists` 로 보던 main 은 그것을 덮어썼다.
+    시스템이 대소문자를 접는지 물어야 하고, 아직 하지 않았다. resolve 한 경로로 비교하면 `note.md -> x.md` 를 `x.md` 로 바꾸는 rename 이
+    진짜 `x.md` 를 링크로 덮는다. Windows 에는 inode 비교가 없어 이름이 ASCII 대소문자만 다르고 두 경로를 `canonicalize` 한 결과가 같고, `canonicalize` 가 링크를 따라가므로 두
+    항목이 둘 다 링크이거나 둘 다 아닐 때만 같은 항목이다(`same_entry_by_canonical`) — 대소문자를 구분하는 폴더에 `Note.md` 와 `note.md` 가 함께 있으면 두 경로로 갈려 거부된다. hard
+    link 도 두 이름이 두 canonical 경로로 갈려 거부될 것으로 본다(std 의 `GetFinalPathNameByHandleW` 사용에서 읽은 것, Windows 호스트 미검증). 그 API 가 두 링크에 이름 하나를
+    준다면 rename 이 통과해 목적지를 덮고, 이름 하나가 사라질 뿐 내용 손실은 없다.
+    목적지의 **dangling symlink** 도 항목이라 거부한다 — 따라가는 `Path::exists` 로 보던 이전 구현은 그것을 덮어썼다.
     index 는 노트를 **경로가 resolve 되는 곳으로** 안다 — build 는 symlink 항목을 색인하지 않고(`collect_md_files` 가 `metadata()`
     로 링크를 따라가지 않는다) save 는 resolve 한 경로로 넣는다(`service/state.rs` 의 `Mutation::update`). 파일 rename 도 같아서 옛 경로가
     이동 전에 resolve 되던 곳을 빼고, 새 경로가 **이동 뒤에** resolve 되는 곳으로 넣는다 — symlink 인 노트는 대상 아래 그대로다.
