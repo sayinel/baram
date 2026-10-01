@@ -56,9 +56,9 @@ fn space_name_of(info: &ContextInfo) -> Option<&'static str> {
 ///   exact string, last writer wins. With `Work` and `work` on two vaults,
 ///   `work` on both, or two journal spaces, they can name different vaults,
 ///   so a link behind that name is ambiguous and foreign to all of them: the
-///   rename leaves it — reporting the file when the name is one of the
-///   renamed file's own (`ambiguous`, below) — and the backlinks do not
-///   claim it.
+///   rename leaves it — reporting a file inside the renamed file's
+///   contexts when the name is one of that file's own (`ambiguous`, below)
+///   — and the backlinks do not claim it.
 /// - The alias map can go stale. When a later vault claims the name and is
 ///   then removed, its removal drops the map entry, so the backend resolver
 ///   answers nothing for that alias while the frontend still resolves it to
@@ -72,7 +72,9 @@ fn space_name_of(info: &ContextInfo) -> Option<&'static str> {
 /// context's explicit alias matches, a space name another space of the same
 /// type has — come back as `ambiguous`, with the same roots. A link behind
 /// one may mean this vault's note, so a file rename that leaves it reports
-/// the file (issue 678's ③, as for an ambiguous path link); the backlinks
+/// the file (issue 678's ③, as for an ambiguous path link) — when the
+/// rename visits it: it reads only the indexes holding the renamed file, so a
+/// referrer in the other vault is neither visited nor reported. The backlinks
 /// read `local` alone, and the block-ID rename reads no alias (its grammars
 /// have none). A space name an explicit alias outranks is in neither list:
 /// the link names that alias's vault.

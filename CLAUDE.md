@@ -179,9 +179,9 @@ baram/
     `BLOCK_ID_PATTERN` 이 거르며 Rust 는 재검증하지 않는다. 프런트의 블록 메뉴 "링크 복사" 도 판정 없이 쓴다. 링크를 쓰는 입구를 더하거나 고칠 때 이 층을 같이 걸 것
   - ‼️ **index 의 키는 `filing.rs` 가 정한다 (#619)** — `incoming` 의 키는 문자열이 아니라 `FilingKey`(`Stem`·`Path`·`Foreign`)다. 참조를 키로 바꾸는 함수는
     `filing_key` 하나다 — filing(`file_incoming`), rewriter 판정(`RenameTarget::judge`·`BlockTarget::judge` 가 함께 쓰는 `keyed_under`,
-    모호성 판정 `read_as_another_note`), 되읽기 관문(`index_reads_the_rename_back`)이 모두 그것을 부른다. 파일이 읽히는 키는 `keys_for` 가 낸다 —
+    모호성 판정 `read_as_another_note`), 되읽기 관문(`index_reads_the_rename_back`), 모호한 자기 alias 뒤에 남은 링크를 찾는 `reads_a_link_under`(`read_back.rs`)가 모두 그것을 부른다. 파일이 읽히는 키는 `keys_for` 가 낸다 —
     조회(`filing_keys_of` 를 거치는 `referring_lines_to`, `backlink_keys` 를 거치는 `get_backlinks`·`block_reference_lines`)와 block ID
-    rename 의 `block_target`. 그래서 `[[dir/note]]`·`[[./note]]`·`((dir/note#^id))` 같은 경로·상대 참조도 백링크이고 두 rename 이 고쳐 쓴다.
+    rename 의 `block_target`, 그리고 파일 rename 이 모호한 자기 alias 의 키를 짓는 `behind_ambiguous_name`(`rename/file.rs`). 그래서 `[[dir/note]]`·`[[./note]]`·`((dir/note#^id))` 같은 경로·상대 참조도 백링크이고 두 rename 이 고쳐 쓴다.
     키 모양을 `keys_for` 밖에서 따로 짓는 자리 목록, `FilingKey` 를 가르는 `match` 가 컴파일을 멈추는 자리, `mod.rs` 의 개수 게이트 둘이 잡는 범위는 `filing.rs` 모듈 doc 에
     있다 — 새 키 모양이나 표기를 더하기 전에 읽을 것.
     키는 **등록된 root 표기에 대해 어휘적으로** 계산한다 — symlink 인 root 의 다른 표기(`/tmp` 에 대한 `/private/tmp`)로 주어진 파일은 `Path` 키를 얻지 못해 경로 링크가 **놓칠
@@ -205,7 +205,7 @@ baram/
     space 면 둘 다 외부), 어느 vault 든 그 이름을 explicit alias 로 달면 그 alias 가 이긴다 (`findAliasContext` 의 두 패스, 이름 짝은 `keys.rs` 의
     `space_names_match_the_frontends` 가 고정). 다른 vault 가 같은 alias 를 달고 있으면(`work` 와 `work`, 또는 대소문자만 다른 `Work`) 그 alias 는 **모호하므로
     양쪽 모두에게 외부다** — 프런트 `findAliasContext` 는 대소문자 무시로 목록의 첫 context 를, backend alias 맵은 정확한 문자열로 마지막 등록을 고르니 둘이 다른 vault 를 가리킬 수
-    있다. 그런 링크는 rename 이 건드리지 않고 백링크도 주장하지 않는다 — 단 그 이름이 자기 vault 의 것이면 그 referrer 를 `skipped_files` 로 보고한다(모호한 경로 링크와 같은 규칙, 고쳐 쓴 파일이어도). alias 맵의 소유(`resolve_alias`)로 판정하지 않는다 — last-writer-wins 맵은 낡는다(나중 vault 가 이름을
+    있다. 그런 링크는 rename 이 건드리지 않고 백링크도 주장하지 않는다 — 단 그 이름이 자기 vault 의 것이면 자기 vault 안의 referrer 를 `skipped_files` 로 보고한다(모호한 경로 링크와 같은 규칙, 고쳐 쓴 파일이어도. 다른 vault 안의 referrer 는 rename 이 읽지 않아 보고되지 않는다). alias 맵의 소유(`resolve_alias`)로 판정하지 않는다 — last-writer-wins 맵은 낡는다(나중 vault 가 이름을
     가져간 뒤 제거되면 맵 항목이 사라져, 이제 그 이름을 단 유일한 vault 도 외부로 남는다). 등록은 rename 이 **시작할 때** 한 번 읽으므로 rename 도중의 등록은 보이지 않는다. 로컬 alias 는
     `LocalAlias { alias, root }` 로 다니고, alias 뒤 경로의 `Foreign` 키는 읽는 index 의 root 가 아니라 **그 alias 가 가리키는 vault 의 root 로** 계산한다 —
     중첩 vault 에서 부모의 `[[p::a/old]]` 가 자식의 `a/old.md` 로 읽히지 않게. block reference·embed 문법에는 alias 자리가 없어(`extractor.rs` 의

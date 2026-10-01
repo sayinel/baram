@@ -132,7 +132,7 @@ async fn a_rename_that_would_move_the_note_is_refused_before_anything_changes() 
     let err = result.unwrap_err();
     // The reason first: the frontend shows it briefly, ahead of the path.
     assert!(
-        err.starts_with("a rename keeps the note in its directory;"),
+        err.starts_with("a rename keeps the note in its directory as spelled;"),
         "{err}"
     );
 }
@@ -169,7 +169,7 @@ async fn a_rename_whose_new_path_climbs_back_into_the_folder_is_refused_as_spell
     let err = result.unwrap_err();
     // The reason first: the frontend shows it briefly, ahead of the path.
     assert!(
-        err.starts_with("a rename keeps the note in its directory;"),
+        err.starts_with("a rename keeps the note in its directory as spelled;"),
         "{err}"
     );
 }

@@ -43,9 +43,10 @@ pub struct RenameResult {
     /// And, for a file rename only (issue 678): a file holding links that
     /// cannot spell the new stem — it may be in `updated_files` too, for the
     /// links that were rewritten — and the renamed note itself, under its
-    /// new path, on the same terms; and a file holding a link to the note
-    /// behind an alias two vaults carry — the link is left, since it may mean
-    /// the other vault's note — updated or not. For both renames: a file
+    /// new path, on the same terms; and a file inside the note's own
+    /// contexts holding a link to it behind an alias two vaults carry — the
+    /// link is left, since it may mean the other vault's note — updated or
+    /// not. A referrer in the other vault is never visited, so not listed. For both renames: a file
     /// holding a path reference another root reads as a different existing
     /// note, which is left as written (`judgement::Judgement::Ambiguous`),
     /// updated or not. A block ID rename lists referrers only.

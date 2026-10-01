@@ -214,6 +214,40 @@ async fn a_referrer_behind_an_alias_two_vaults_carry_is_reported_not_rewritten()
 }
 
 #[tokio::test]
+async fn the_renamed_note_behind_an_alias_two_vaults_carry_is_reported() {
+    // The renamed note itself links to its own name, once bare and once
+    // behind `notes`, which A and B both carry. The bare `[[old]]` is
+    // rewritten and `[[notes::old]]` is left — it may mean B's note — so the
+    // note, under its new path, is both updated and reported.
+    // What fails this: passing `passes.rewrite` instead of the marking
+    // `rewrite` to `rewrite_renamed_note` in `rename_file_with_links_inner`
+    // — the note is updated and not reported.
+    let ctx = ContextManager::new();
+    let (dir_a, root_a) = aliased_vault(
+        &ctx,
+        "ctx-a",
+        "notes",
+        &[("old.md", "[[notes::old]]\n[[old]]\n")],
+    )
+    .await;
+    let (_dir_b, root_b) = aliased_vault(&ctx, "ctx-b", "notes", &[("old.md", "t\n")]).await;
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root_a).await.unwrap();
+    refresh_index_inner(&state, &ctx, &root_b).await.unwrap();
+    let (old, new) = (format!("{root_a}/old.md"), format!("{root_a}/new.md"));
+
+    let result = rename_file_with_links_inner(&state, &ctx, &old, &new)
+        .await
+        .unwrap();
+    assert_eq!(result.updated_files, vec![new.clone()]);
+    assert_eq!(result.skipped_files, vec![new]);
+    assert_eq!(
+        std::fs::read_to_string(dir_a.path().join("new.md")).unwrap(),
+        "[[notes::old]]\n[[new]]\n"
+    );
+}
+
+#[tokio::test]
 async fn a_rename_that_keeps_the_stem_leaves_a_link_behind_a_shared_alias_unreported() {
     // `old.md` → `old.txt` keeps the stem, so `[[notes::old]]` behind the
     // alias A and B both carry reads as the renamed note as much as it did
