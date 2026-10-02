@@ -10,7 +10,7 @@
 //  - today's journal was opened from a React effect outside the startup order and
 //    took the active tab whenever it happened to land.
 //
-// The stores, the loader (`openFolder`/`switchContext`), the spaces and
+// The stores, the loader (`openFolder`/`switchContext`), the spaces, the recorder and
 // `openFileByPath` are the real ones; only the IPC answers are faked, by a small
 // in-memory backend below. Asserting on the tree (`fileTree`), not on `rootPath`, is
 // deliberate: the subscription in `stores/file/file.ts` copies a seat that moves to a
@@ -324,6 +324,17 @@ async function start(scenario: Scenario) {
     }
   }
 
+  /**
+   * What the recorder made of the launch: the restored file at the head of the
+   * recent list, or — with no restored file — nothing recorded at all. The list
+   * starts empty, so a space note activated even for a moment shows up here.
+   */
+  function expectRecorded(restored: null | string): void {
+    const { lastOpenedFile, recentFiles } = useSettingsStore.getState();
+    expect(lastOpenedFile).toBe(restored ?? scenario.lastOpenedFile ?? null);
+    expect(recentFiles.map((f) => f.path)).toEqual(restored ? [restored] : []);
+  }
+
   /** Tabs other than the space notes — what the restore itself opened. */
   const restoreTabs = () =>
     tabs().filter((t) => t.filePath !== HOME && t.filePath !== today());
@@ -331,6 +342,7 @@ async function start(scenario: Scenario) {
   return {
     activeTab,
     expectOneContext,
+    expectRecorded,
     expectSpaceNotesInBackground,
     openFileByPath,
     openRecentFile,
@@ -392,6 +404,7 @@ describe("§81 launch restore — one context, whatever the spaces do", () => {
       // be opened whatever `onLaunch` said (defect 3).
       expect(h.restoreTabs()).toEqual([]);
       expect(h.activeTab()).toBeUndefined();
+      h.expectRecorded(null);
     });
 
     it("restoreLastFile activates the last file in its context", async () => {
@@ -404,6 +417,7 @@ describe("§81 launch restore — one context, whatever the spaces do", () => {
       h.expectOneContext("f");
       h.expectSpaceNotesInBackground();
       expect(h.activeTab()).toMatchObject({ contextId: "f", filePath: NOTE });
+      h.expectRecorded(NOTE);
     });
 
     it("newFile opens the last active context with an untitled file on screen", async () => {
@@ -417,6 +431,7 @@ describe("§81 launch restore — one context, whatever the spaces do", () => {
       h.expectSpaceNotesInBackground();
       expect(h.activeTab()).toMatchObject({ contextId: "f", filePath: "" });
       expect(h.restoreTabs()).toHaveLength(1);
+      h.expectRecorded(null);
     });
   });
 });
@@ -447,6 +462,7 @@ describe("§81 the reported sequence", () => {
       contextId: "j",
       filePath: OLD_ENTRY,
     });
+    h.expectRecorded(OLD_ENTRY);
   });
 });
 
@@ -748,6 +764,23 @@ describe("§81 opening a file whose context switch is refused", () => {
 
     expect(h.tabFor(inner)).toBeUndefined();
     h.expectOneContext("f");
+  });
+});
+
+describe("§81 the recorder runs with the launch", () => {
+  it("records a file opened after the launch, through openTab as the file tree opens one", async () => {
+    const h = await start({ onLaunch: "restoreLastFolder" });
+
+    h.useEditorStore.getState().openTab({
+      contextId: "f",
+      filePath: SECOND,
+      id: "t-second",
+      isDirty: false,
+      isPinned: false,
+      title: "second.md",
+    });
+
+    expect(h.useSettingsStore.getState().lastOpenedFile).toBe(SECOND);
   });
 });
 

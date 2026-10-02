@@ -10,7 +10,6 @@ import {
   useEditorStore,
 } from "../stores/editor/editor";
 import { useFileStore } from "../stores/file/file";
-import { useSettingsStore } from "../stores/settings/store";
 import { dropPendingScroll } from "./editor/pending-scroll";
 import { isBinaryViewerFile } from "./file-type";
 import { basename } from "./path-utils";
@@ -90,8 +89,8 @@ export async function openFileByPath(
     isDirty: false,
     isPinned: false,
   });
-  useSettingsStore.getState().addRecentFile(filePath);
-  useSettingsStore.getState().setLastOpenedFile(filePath);
+  // §81 Recording it as the last/recent file is not this opener's job: the recorder
+  // (`stores/editor/last-opened-file.ts`) follows the active tab, whoever opened it.
   return "opened";
 }
 

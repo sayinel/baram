@@ -23,6 +23,7 @@ import {
 import { openFolder } from "../services/vault-context-loader";
 import { getSpace } from "../spaces";
 import { useContextStore } from "../stores/context/context";
+import { startLastOpenedFileRecorder } from "../stores/editor/last-opened-file";
 import { useSettingsStore } from "../stores/settings/store";
 import { waitForHydration } from "../stores/system/hydration";
 import { useUIStore } from "../stores/ui/ui";
@@ -74,6 +75,11 @@ export function useAppStartup({
   // §3.2 The localStorage → Tauri-config migration used to run here. It moved to
   // `main.tsx` (§260 Phase 5 code review, H1): as a child effect it raced the very
   // stores it migrates, and by effect time a module-eval rehydration had already read.
+
+  // §81 "Restore last file" reads back the file the user last had on screen; the
+  // recorder writes it. Started here, with the restore it serves: an effect, so
+  // StrictMode's remount unsubscribes the first subscription before the second.
+  useEffect(() => startLastOpenedFileRecorder(), []);
 
   // onLaunch — restore folder/file on startup
   const onLaunchDone = useRef(false);

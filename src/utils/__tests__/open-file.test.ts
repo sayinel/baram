@@ -4,6 +4,7 @@ import { readFile } from "../../ipc/fs";
 import { notifyFileOpen } from "../../plugins/plugin-lifecycle";
 import { useContextStore } from "../../stores/context/context";
 import { useEditorStore } from "../../stores/editor/editor";
+import { startLastOpenedFileRecorder } from "../../stores/editor/last-opened-file";
 import { useLinkStore } from "../../stores/editor/link";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
@@ -37,18 +38,36 @@ afterEach(() => vi.clearAllMocks());
 
 describe("openFileByPath", () => {
   it("opens a tab and records the file in recents", async () => {
+    // §81 The recording is the recorder's: it follows the tab an opener activates
+    // (`useAppStartup` starts it once).
+    const stop = startLastOpenedFileRecorder();
+    try {
+      mockReadFile.mockResolvedValue("# hello");
+      await openFileByPath("/vault/note.md");
+
+      const { tabs } = useEditorStore.getState();
+      expect(tabs).toHaveLength(1);
+      expect(tabs[0]).toMatchObject({
+        filePath: "/vault/note.md",
+        title: "note.md",
+      });
+      expect(useSettingsStore.getState().recentFiles[0].path).toBe(
+        "/vault/note.md",
+      );
+      expect(useSettingsStore.getState().lastOpenedFile).toBe("/vault/note.md");
+    } finally {
+      stop();
+    }
+  });
+
+  it("§81 writes no settings itself — the recorder records the file", async () => {
     mockReadFile.mockResolvedValue("# hello");
+    const before = useSettingsStore.getState();
+
     await openFileByPath("/vault/note.md");
 
-    const { tabs } = useEditorStore.getState();
-    expect(tabs).toHaveLength(1);
-    expect(tabs[0]).toMatchObject({
-      filePath: "/vault/note.md",
-      title: "note.md",
-    });
-    expect(useSettingsStore.getState().recentFiles[0].path).toBe(
-      "/vault/note.md",
-    );
+    expect(useEditorStore.getState().tabs).toHaveLength(1);
+    expect(useSettingsStore.getState()).toBe(before);
   });
 
   it("does NOT notify plugins of file:open — the tab-switch effect emits it once content loads", async () => {
