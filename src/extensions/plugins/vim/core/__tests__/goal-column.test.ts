@@ -83,6 +83,7 @@ describe("other moves and every change forget it", () => {
   });
 
   it("edits, history, insert entry, yank", () => {
+    // Fails if: goalAfter keeps the goal for any of these variants.
     for (const keys of [
       ["x"],
       ["d", "d"],

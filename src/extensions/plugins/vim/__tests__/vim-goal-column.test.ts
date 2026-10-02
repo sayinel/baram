@@ -181,6 +181,8 @@ describe("a find forgets the goal only when it matched", () => {
 
 describe("a search forgets it, matched or not, on both submit paths", () => {
   it("keyed Enter", () => {
+    // Fails if: goalAfter keeps the goal for a search (vim normal_search
+    // forgets it before searching, so a miss forgets it too).
     const editor = makeVimEditor(`<p>xyz</p>`);
     seed(editor, posOfText(editor, "x"), 9);
     keys(editor, "/", "Q", "Enter");
@@ -264,15 +266,73 @@ describe("transactions outside vim", () => {
     expect(goal(island)).toBeNull();
   });
 
-  it("a mousedown forgets it before the click lands", () => {
-    // Fails if: the plugin's mousedown handler is removed — a click that
-    // syntax reveal turns into an expansion is tagged ephemeral and would
-    // otherwise keep the old goal.
+  it("a press that moves nothing keeps it — a right-click, a Cmd-click on a link", () => {
+    // Fails if: the press itself clears the goal (the old mousedown handler)
+    // instead of arming a watch that waits for the cursor to move.
     const editor = seeded();
     editor.view.dom.dispatchEvent(
       new MouseEvent("mousedown", { bubbles: true, cancelable: true }),
     );
+    editor.view.dispatch(editor.state.tr.setMeta("noop", true)); // a view update
+    expect(goal(editor)).toBe(6);
+  });
+
+  it("a press whose cursor move is tagged ephemeral (a click syntax reveal expands) forgets it", () => {
+    // Fails if: the plugin view's settle step is removed — the tagged move is
+    // exempt in the reducer, so nothing else forgets the goal.
+    const editor = seeded();
+    editor.view.dom.dispatchEvent(
+      new MouseEvent("mousedown", { bubbles: true, cancelable: true }),
+    );
+    const tr = editor.state.tr.setSelection(
+      TextSelection.create(editor.state.doc, posOfText(editor, "e")),
+    );
+    tagSyntaxRevealEphemeral(tr);
+    editor.view.dispatch(tr);
     expect(goal(editor)).toBeNull();
+  });
+
+  it("an ordinary click forgets it once, with no extra transaction", () => {
+    // Fails if: settle drops its "already forgotten" guard — it would
+    // dispatch a second, redundant meta after every ordinary click.
+    const editor = seeded();
+    let transactions = 0;
+    editor.on("transaction", () => transactions++);
+    editor.view.dom.dispatchEvent(
+      new MouseEvent("mousedown", { bubbles: true, cancelable: true }),
+    );
+    editor.view.dispatch(
+      editor.state.tr.setSelection(
+        TextSelection.create(editor.state.doc, posOfText(editor, "e")),
+      ),
+    );
+    expect(goal(editor)).toBeNull();
+    expect(transactions).toBe(1);
+  });
+
+  it("pointerdown arms the watch too (touch and pen)", () => {
+    // Fails if: only mousedown arms it.
+    const editor = seeded();
+    editor.view.dom.dispatchEvent(
+      new Event("pointerdown", { bubbles: true, cancelable: true }),
+    );
+    const tr = editor.state.tr.setSelection(
+      TextSelection.create(editor.state.doc, posOfText(editor, "e")),
+    );
+    tagSyntaxRevealEphemeral(tr);
+    editor.view.dispatch(tr);
+    expect(goal(editor)).toBeNull();
+  });
+
+  it("the next key disarms it, so a j after a still click keeps the goal", () => {
+    // Fails if: keydown does not disarm — the j's own cursor move would be
+    // read as the press moving the cursor, and the goal forgotten.
+    const editor = seeded();
+    editor.view.dom.dispatchEvent(
+      new MouseEvent("mousedown", { bubbles: true, cancelable: true }),
+    );
+    keys(editor, "j");
+    expect(goal(editor)).toBe(6);
   });
 });
 

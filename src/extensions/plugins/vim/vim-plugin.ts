@@ -42,6 +42,7 @@ import {
   initialVimPluginState,
 } from "./vim-plugin-reducer";
 import { dispatchMeta, isModal, read } from "./vim-plugin-state";
+import { createPointerGoalWatch } from "./vim-pointer-goal";
 import {
   clampNormalCaret,
   escapeInsertCursor,
@@ -53,6 +54,7 @@ import { publishVimRefusal } from "./vim-status";
 export function createVimPlugin(
   tiptapEditor: TiptapEditor,
 ): Plugin<VimPluginState> {
+  const pointerGoal = createPointerGoalWatch();
   return new Plugin<VimPluginState>({
     /** issue 776 — keep the normal-mode caret ON a unit. */
     appendTransaction: (_trs, _old, state) => clampNormalCaret(state),
@@ -183,6 +185,7 @@ export function createVimPlugin(
 
         /** P3 entry point: the ONLY key path while non-editable. */
         keydown: (view, event) => {
+          pointerGoal.disarm();
           const vim = read(view.state);
           if (!vim.enabled || vim.suspended || !isModal(vim)) return false;
           if (isSuspendTarget(event)) return false; // §4 pre-focus safety
@@ -230,18 +233,15 @@ export function createVimPlugin(
           return true;
         },
 
-        /** issue 776 — a click moves the cursor, so the goal column must not
-         *  survive it. Most clicks clear it as a foreign selection anyway, but
-         *  one that syntax reveal turns into an expansion arrives carrying the
-         *  ephemeral tag the reducer exempts — so it is cleared first, here. */
+        /** issue 776 — arm the pointer watch (vim-pointer-goal.ts): the goal
+         *  column is forgotten only if this press moves the cursor. Both
+         *  events, since touch and pen raise pointerdown first. */
         mousedown: (view) => {
-          const vim = read(view.state);
-          if (vim.enabled && vim.core.goalColumn !== null) {
-            dispatchMeta(view, {
-              core: { ...vim.core, goalColumn: null },
-              type: "core",
-            });
-          }
+          pointerGoal.arm(view);
+          return false;
+        },
+        pointerdown: (view) => {
+          pointerGoal.arm(view);
           return false;
         },
 
@@ -325,7 +325,16 @@ export function createVimPlugin(
      *  broadcast whenever this PluginView sees the prop change. Lifecycle
      *  itself lives in vim-island-sync.ts (vim-plugin split, issue 372) —
      *  `tiptapEditor` is the same instance this closure already captures. */
-    view: (editorView) => createIslandSync(editorView, tiptapEditor),
+    view: (editorView) => {
+      const sync = createIslandSync(editorView, tiptapEditor);
+      return {
+        destroy: () => sync.destroy(),
+        update: (view) => {
+          sync.update(view);
+          pointerGoal.settle(view); // issue 776
+        },
+      };
+    },
 
     state: {
       apply: applyVimTransaction,

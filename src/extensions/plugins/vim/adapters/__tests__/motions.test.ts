@@ -678,7 +678,10 @@ describe("issue 776 — the goal column survives every kind of line on the way",
     expect(editor.state.doc.textBetween(target, target + 1)).toBe("e"); // first lin[e]
   });
 
-  it("a counted j through a code block keeps the column (control: true before 776 too)", () => {
+  it("a counted j through a code block keeps the column", () => {
+    // Fails if: a code block landing re-derives the column from where it
+    // landed ("b", column 1) instead of keeping the goal. This also held
+    // before issue 776 (the old walk did not update its carry there).
     const editor = makeEditor(
       `<p>${LONG}</p><pre><code>ab</code></pre><p>ABCDEFGHIJ</p>`,
     );
