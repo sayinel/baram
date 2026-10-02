@@ -11,6 +11,8 @@ import { basename } from "./path-utils";
 
 export async function openRecentFile(path: string): Promise<void> {
   try {
+    // §81 A refused switch to the file's context resolves "refused" instead of
+    // throwing: the entry stays, and `switchContext` has already said why.
     await openFileByPath(path);
   } catch {
     useSettingsStore.getState().removeRecentFile(path);

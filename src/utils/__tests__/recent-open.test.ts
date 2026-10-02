@@ -44,6 +44,14 @@ describe("openRecentFolder", () => {
 });
 
 describe("openRecentFile", () => {
+  it("§81 keeps the entry and says nothing when the switch to its context is refused", async () => {
+    // The user declined the approval dialog: the file is not missing.
+    mockOpenFile.mockResolvedValue("refused");
+    await openRecentFile("/other/far.md");
+    expect(removeRecentFile).not.toHaveBeenCalled();
+    expect(showToast).not.toHaveBeenCalled();
+  });
+
   it("removes the entry and toasts when opening fails", async () => {
     mockOpenFile.mockRejectedValue(new Error("gone"));
     await openRecentFile("/gone.md");
