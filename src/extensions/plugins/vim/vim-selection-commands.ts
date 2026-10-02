@@ -27,7 +27,7 @@ import { columnAt } from "./adapters/cursor-line-columns";
 import { cursorSelection } from "./adapters/cursor-selection";
 import { findCharTarget } from "./adapters/find-char";
 import { cursorLineStart } from "./adapters/line-sequence";
-import { resolveMotion } from "./adapters/motions";
+import { lineJumpTarget, resolveMotion } from "./adapters/motions";
 import { insertEscTarget, terminalClampTarget } from "./adapters/normal-cursor";
 import { visualBounds } from "./adapters/operations";
 import { scrollCursorIntoView, scrollCursorToCenter } from "./adapters/scroll";
@@ -194,11 +194,13 @@ export function runSelectionCommand(
     // false — 실행부(:w/:q)가 이어받는다.
     const name = command.name.trim();
     if (!isExLineJump(name)) return false;
-    const target = cursorLineStart(
+    const start = cursorLineStart(
       view.state,
       name === "$" ? "$" : Number.parseInt(name, 10),
     );
-    if (target === null) return true; // 빈 문서 — 명령줄만 닫는다
+    if (start === null) return true; // 빈 문서 — 명령줄만 닫는다
+    // gg/G 와 같은 착지 — 그 줄의 첫 non-blank (issue 776).
+    const target = lineJumpTarget(view.state, start);
     const tr = view.state.tr;
     tr.setSelection(cursorSelection(view.state.doc, target));
     tr.setMeta(vimPluginKey, { core: result.state, type: "core" });

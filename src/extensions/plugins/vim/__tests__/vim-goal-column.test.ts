@@ -292,3 +292,19 @@ describe("syntax reveal on the way (full extension set)", () => {
     expect(head(editor)).toBe(posOfText(editor, "G"));
   });
 });
+
+describe("`:N` lands on the line's first non-blank, like gg/G (issue 776)", () => {
+  it(":2 Enter", () => {
+    // Fails if: the ex jump keeps cursorLineStart's line start.
+    const editor = makeVimEditor("<p>x</p>");
+    editor.commands.setContent({
+      content: ["top", "  second"].map((text) => ({
+        content: [{ text, type: "text" }],
+        type: "paragraph",
+      })),
+      type: "doc",
+    });
+    keys(editor, ":", "2", "Enter");
+    expect(head(editor)).toBe(posOfText(editor, "second"));
+  });
+});

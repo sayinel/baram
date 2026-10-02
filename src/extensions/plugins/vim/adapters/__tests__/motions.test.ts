@@ -690,3 +690,43 @@ describe("issue 776 — the goal column survives every kind of line on the way",
     ).toBe(posOfText(editor, "G"));
   });
 });
+
+describe("issue 776 — gg/G land on the line's first non-blank (vim startofline)", () => {
+  function indented(): Editor {
+    const editor = makeEditor("<p>x</p>");
+    editor.commands.setContent({
+      content: ["  top", "middle", "    end"].map((text) => ({
+        content: [{ text, type: "text" }],
+        type: "paragraph",
+      })),
+      type: "doc",
+    });
+    return editor;
+  }
+
+  it("gg and G", () => {
+    // Fails if: lineJumpTarget returns the line start (the leading blanks).
+    const editor = indented();
+    const mid = posOfText(editor, "middle");
+    expect(resolveMotion(editor.state, mid, "docStart", 1)).toBe(
+      posOfText(editor, "top"),
+    );
+    expect(resolveMotion(editor.state, mid, "docEnd", 1)).toBe(
+      posOfText(editor, "end"),
+    );
+  });
+
+  it("a code block keeps its content start", () => {
+    // Fails if: lineJumpTarget drops the code block exclusion — the first
+    // non-blank search runs over the whole source and skips the blank first
+    // line into "foo".
+    const editor = makeEditor("<pre><code>\n  foo</code></pre><p>after</p>");
+    const target = resolveMotion(
+      editor.state,
+      posOfText(editor, "after"),
+      "docStart",
+      1,
+    );
+    expect(editor.state.doc.resolve(target).parentOffset).toBe(0);
+  });
+});

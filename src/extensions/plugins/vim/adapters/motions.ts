@@ -17,6 +17,7 @@
 import type { GoalColumn, Motion } from "../core/types";
 import type { EditorState } from "@tiptap/pm/state";
 
+import { isCodeBlockLanding } from "./code-block-landing";
 import {
   lineSpanAt,
   lineUnitStarts,
@@ -46,6 +47,19 @@ export interface MotionOptions {
    *  the origin's own column — what operators and other one-shot callers
    *  want, since they pick LINES and never carry the goal on. */
   goalColumn?: GoalColumn;
+}
+
+/**
+ * Where a jump to a whole line lands — gg, G, `:N`: its first non-blank, as
+ * vim does with its default `startofline` (issue 776). A code block keeps its
+ * content start: CodeMirror owns that caret, and the block's whole source is
+ * one span here, so a first non-blank search would skip a blank first source
+ * line into the next one.
+ */
+export function lineJumpTarget(state: EditorState, lineStart: number): number {
+  return isCodeBlockLanding(state, lineStart)
+    ? lineStart
+    : resolveMotion(state, lineStart, "lineFirstNonBlank", 1);
 }
 
 /**
@@ -96,11 +110,13 @@ export function resolveMotion(
     }
     case "docEnd": {
       const lines = collectLines(state);
-      return lines.length > 0 ? lines[lines.length - 1].start : pos;
+      return lines.length > 0
+        ? lineJumpTarget(state, lines[lines.length - 1].start)
+        : pos;
     }
     case "docStart": {
       const lines = collectLines(state);
-      return lines.length > 0 ? lines[0].start : pos;
+      return lines.length > 0 ? lineJumpTarget(state, lines[0].start) : pos;
     }
     case "lineDown":
       return verticalTarget(state, pos, count, options);
