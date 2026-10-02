@@ -356,10 +356,13 @@ export function clampNormalCaret(state: EditorState): null | Transaction {
 }
 
 /**
- * issue 776 — insert Esc, vim's `ins_esc`: the mode flip and the one-unit
- * step back land in ONE transaction. A caret that does not move (line start,
- * empty line, a range) keeps the plain meta dispatch — dispatchCursor would
- * also hand a caret inside a code block to its island, which Esc never did.
+ * issue 776 — insert Esc, vim's `ins_esc`: the mode flip and the cursor
+ * fix-up (one unit back, or a range collapsed — normal-cursor.ts) land in
+ * ONE transaction, through dispatchCursor, which also clears the DOM range a
+ * collapsed selection would leave painted. A caret that does not move (line
+ * start, empty line, a block atom's NodeSelection) keeps the plain meta
+ * dispatch — dispatchCursor would also hand a caret inside a code block to
+ * its island, which Esc never did.
  */
 export function escapeInsertCursor(view: EditorView, core: VimCoreState): void {
   const target = insertEscTarget(view.state);

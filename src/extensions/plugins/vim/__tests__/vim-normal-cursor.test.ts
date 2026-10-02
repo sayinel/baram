@@ -5,7 +5,7 @@
 // pin names the mutation that turns it red.
 
 import { Editor } from "@tiptap/core";
-import { TextSelection } from "@tiptap/pm/state";
+import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createBaramExtensions } from "../../../index";
@@ -140,5 +140,63 @@ describe("a normal-mode caret on the terminal boundary is clamped", () => {
     expect(head(editor)).toBe(4);
     expect(terminalClampTarget(editor.state)).toBeNull();
     expect(insertEscTarget(editor.state)).toBeNull();
+  });
+});
+
+describe("insert Esc collapses a range made while inserting", () => {
+  function selectThenEscape(editor: Editor, anchor: number, to: number): void {
+    place(editor, 1);
+    key(editor, "i");
+    editor.view.dispatch(
+      editor.state.tr.setSelection(
+        TextSelection.create(editor.state.doc, anchor, to),
+      ),
+    );
+    key(editor, "Escape");
+    expect(mode(editor)).toBe("normal");
+  }
+
+  it("a forward range lands on its last unit, and the next i inserts", () => {
+    // Fails if: insertEscTarget treats a range like "no move" (null) — the
+    // range survives into normal mode and `i` + typing replaces "bc".
+    const editor = makeVimEditor("<p>abcd</p>");
+    selectThenEscape(editor, 2, 4); // "bc", head after c
+    expect(editor.state.selection.empty).toBe(true);
+    expect(head(editor)).toBe(3); // on "c"
+    key(editor, "i");
+    editor.view.dispatch(editor.state.tr.insertText("X"));
+    expect(editor.state.doc.textContent).toBe("abXcd");
+  });
+
+  it("a backward range lands on the unit at its head", () => {
+    // Fails if: a backward range is treated like a forward one (one unit
+    // before the head — position 1, "a").
+    const editor = makeVimEditor("<p>abcd</p>");
+    selectThenEscape(editor, 4, 2); // "bc", head before b
+    expect(editor.state.selection.empty).toBe(true);
+    expect(head(editor)).toBe(2); // on "b"
+  });
+
+  it("a block atom's NodeSelection is kept", () => {
+    // Fails if: the NodeSelection exclusion is dropped — the node range is
+    // collapsed off the atom line onto text.
+    const editor = makeVimEditor("<p>x</p>");
+    editor.commands.setContent({
+      content: [
+        { content: [{ text: "up", type: "text" }], type: "paragraph" },
+        { attrs: { latex: "x" }, type: "mathBlock" },
+      ],
+      type: "doc",
+    });
+    const atom = editor.state.doc.child(0).nodeSize;
+    expect(
+      insertEscTarget(
+        editor.state.apply(
+          editor.state.tr.setSelection(
+            NodeSelection.create(editor.state.doc, atom),
+          ),
+        ),
+      ),
+    ).toBeNull();
   });
 });

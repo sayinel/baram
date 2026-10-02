@@ -12,6 +12,8 @@
 
 import type { EditorState } from "@tiptap/pm/state";
 
+import { NodeSelection } from "@tiptap/pm/state";
+
 import { isCodeBlockLanding } from "./code-block-landing";
 import { segmentSpanAt } from "./cursor-line-columns";
 import { prevUnitBoundary } from "./graphemes";
@@ -20,8 +22,20 @@ import { prevUnitBoundary } from "./graphemes";
  * Where insert Esc leaves the cursor: one unit left of the insert caret,
  * like vim's `ins_esc`, but never across the line start — an Esc at the
  * start of a line or on an empty one stays. null = leave the selection alone.
+ *
+ * A RANGE made while inserting (Shift+arrows, a drag, select all) collapses:
+ * normal mode has one cursor, and a range left behind would be replaced
+ * wholesale by the next `i` + typing. A forward range lands on its last unit
+ * (the one before the head), a backward one on the unit at the head. A
+ * NodeSelection stays — it is how normal mode stands on a block atom line.
  */
 export function insertEscTarget(state: EditorState): null | number {
+  const sel = state.selection;
+  if (!sel.empty && !(sel instanceof NodeSelection)) {
+    if (sel.head < sel.anchor) return sel.head;
+    const line = segmentSpanAt(state, sel.head);
+    return (line && unitBefore(state, sel.head, line.from)) ?? sel.head;
+  }
   const span = caretSpan(state);
   return span ? unitBefore(state, span.head, span.from) : null;
 }
