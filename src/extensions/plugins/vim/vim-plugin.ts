@@ -14,8 +14,8 @@
 // extension drops its own while non-editable, and a manual setAttribute
 // would be clobbered by PM's outer-deco patch (design §3b).
 
-import type { CoreCommand, StepResult, VimCoreState } from "./core/types";
-import type { VimMeta, VimPluginState } from "./vim-plugin-state";
+import type { CoreCommand, StepResult } from "./core/types";
+import type { VimPluginState } from "./vim-plugin-state";
 import type { Editor as TiptapEditor } from "@tiptap/core";
 import type { EditorView } from "@tiptap/pm/view";
 
@@ -25,7 +25,7 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { planAtomInsert } from "./adapters/atom-insert";
 import { hasAnyEditorTransient } from "./adapters/esc-arbitration";
 import { executeCoreCommand } from "./adapters/execute-command";
-import { nextUnitBoundary, releaseGraphemeIndex } from "./adapters/graphemes";
+import { nextUnitBoundary } from "./adapters/graphemes";
 import { insertArrowEntry } from "./adapters/insert-entry";
 import { scrollCursorIntoView } from "./adapters/scroll";
 import {
@@ -35,9 +35,12 @@ import {
 } from "./adapters/suspension";
 import { isMacPlatform, toKeyToken } from "./core/keys";
 import { step } from "./core/state-machine";
-import { initialCoreState } from "./core/types";
 import { createIslandSync } from "./vim-island-sync";
-import { isVimExternalEdit, vimPluginKey } from "./vim-keys";
+import { vimPluginKey } from "./vim-keys";
+import {
+  applyVimTransaction,
+  initialVimPluginState,
+} from "./vim-plugin-reducer";
 import { dispatchMeta, isModal, read } from "./vim-plugin-state";
 import {
   clampNormalCaret,
@@ -310,63 +313,8 @@ export function createVimPlugin(
     view: (editorView) => createIslandSync(editorView, tiptapEditor),
 
     state: {
-      apply(tr, prev): VimPluginState {
-        // §5b priority 1 — vim's own meta.
-        const meta = tr.getMeta(vimPluginKey) as undefined | VimMeta;
-        if (meta) return reduce(prev, meta);
-
-        if (!prev.enabled) return prev;
-
-        // §5b priority 2 — explicit external command: clear count/pending,
-        // apply the mode matrix (visual collapses to normal). Applies to
-        // selection/meta-only transactions too (v7 pin 4).
-        if (isVimExternalEdit(tr)) {
-          return withCore(prev, {
-            ...prev.core,
-            count: null,
-            mode: prev.core.mode === "visual" ? "normal" : prev.core.mode,
-            pending: null,
-            pendingCount: null,
-            visual: null,
-          });
-        }
-
-        // §5b priority 3 — untagged doc change: reconcile positions.
-        if (tr.docChanged) {
-          const visual = prev.core.visual
-            ? {
-                ...prev.core.visual,
-                anchorCursor: tr.mapping.map(prev.core.visual.anchorCursor),
-                headCursor: tr.mapping.map(prev.core.visual.headCursor),
-              }
-            : null;
-          return withCore(prev, { ...prev.core, visual });
-        }
-
-        // §5b priority 4 — external selection: a foreign selectionSet drops
-        // visual back to normal (the anchor no longer means anything).
-        if (tr.selectionSet && prev.core.mode === "visual") {
-          return withCore(prev, {
-            ...prev.core,
-            mode: "normal",
-            visual: null,
-          });
-        }
-
-        return prev;
-      },
-
-      init(): VimPluginState {
-        return {
-          core: initialCoreState("insert"),
-          enabled: false,
-          exLine: null,
-          island: null,
-          mode: "insert",
-          searchLine: null,
-          suspended: false,
-        };
-      },
+      apply: applyVimTransaction,
+      init: initialVimPluginState,
     },
   });
 }
@@ -392,55 +340,6 @@ function isChangeCommand(command: CoreCommand): boolean {
     (command.type === "operatorMotion" && command.op === "c") ||
     (command.type === "operatorFind" && command.op === "c")
   );
-}
-
-function reduce(prev: VimPluginState, meta: VimMeta): VimPluginState {
-  switch (meta.type) {
-    case "core":
-      return withCore(prev, meta.core);
-    case "setEnabled":
-      if (!meta.enabled) releaseGraphemeIndex();
-      // §7: enabling lands in normal with a clean slate; disabling returns
-      // the surface to plain editing — and drops the boundary index, which
-      // only vim builds (performance review P3).
-      return {
-        core: initialCoreState(meta.enabled ? "normal" : "insert"),
-        enabled: meta.enabled,
-        exLine: null,
-        island: null,
-        mode: meta.enabled ? "normal" : "insert",
-        searchLine: null,
-        suspended: false,
-      };
-    case "setMode":
-      // issue 478 — a BOUNDARY handoff (mode following the cursor out of a
-      // code block island) needs a clean core: an outer `:`/`/` buffer left
-      // open before entering the island must not resurrect on exit. The
-      // ordinary setMode (change-refusal recovery) keeps them.
-      return withCore(prev, {
-        ...prev.core,
-        count: null,
-        exLine: meta.boundary ? null : prev.core.exLine,
-        mode: meta.mode,
-        pending: null,
-        pendingCount: null,
-        searchLine: meta.boundary ? null : prev.core.searchLine,
-        visual: meta.mode === "visual" ? prev.core.visual : null,
-      });
-    case "setSuspended":
-      // §5b focusLocal: entering an island clears count/pending — an
-      // operator must not survive a trip through an input island.
-      return {
-        ...withCore(prev, {
-          ...prev.core,
-          count: null,
-          pending: null,
-          pendingCount: null,
-        }),
-        island: meta.suspended ? (meta.island ?? null) : null,
-        suspended: meta.suspended,
-      };
-  }
 }
 
 /**
@@ -480,20 +379,6 @@ function runAtomInsert(view: EditorView, result: StepResult): boolean {
     case "refuse":
       return true;
   }
-}
-
-function withCore(prev: VimPluginState, core: VimCoreState): VimPluginState {
-  return {
-    ...prev,
-    core,
-    exLine: core.exLine,
-    mode: core.mode,
-    searchLine:
-      core.searchLine === null
-        ? null
-        : (core.searchLine.direction === "forward" ? "/" : "?") +
-          core.searchLine.text,
-  };
 }
 
 declare module "@tiptap/pm/view" {

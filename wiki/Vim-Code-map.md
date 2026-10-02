@@ -50,20 +50,21 @@ vim 구현의 **파일 경로가 사는 유일한 페이지**다. 다른 페이�
 
 ## 루트와 렌더 — 플러그인 본체 · 배선 · 커서 CSS
 
-| 파일                                                                                                                         | 무엇                                                                             |
-| ---------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| [index.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/index.ts)                                   | 항상 설치되는 Extension — priority 10000 (설계 §2/§7)                            |
-| [vim-plugin.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/vim-plugin.ts)                         | PM Plugin 본체 (설계 §2/§3/§4/§5)                                                |
-| [vim-plugin-state.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/vim-plugin-state.ts)             | 플러그인 상태 — 무의존 leaf (PR #491 분리)                                       |
-| [vim-island-sync.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/vim-island-sync.ts)               | PluginView 생애주기 (PR #491 분리)                                               |
-| [vim-selection-commands.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/vim-selection-commands.ts) | selection 커맨드 — `dispatchCursor` 의 집 (PR #491 분리)                         |
-| [vim-keys.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/vim-keys.ts)                             | PluginKey · 모달 상태 질의 · 외부편집 태깅 `chainWithVimExternalEdit`            |
-| [vim-status.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/vim-status.ts)                         | 상태 피드 arbitration (설계 §8)                                                  |
-| [vim-lifecycle.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/vim-lifecycle.ts)                   | 설정 토글 배선 (설계 §7)                                                         |
-| [vim-activation.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/vim-activation.ts)                 | 문서 활성화 경계 — 탭 전환 리셋                                                  |
-| [vim-search-line.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/vim-search-line.ts)               | StatusBar input ↔ core 배선 (IME 정공법)                                         |
-| [replace-editor-state.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/replace-editor-state.ts)     | EditorState 전체 교체의 관문 — 전 호출부가 여기를 지난다(관례이고 게이트는 없다) |
-| [vim.css](https://github.com/sayinel/baram/blob/main/src/styles/vim.css)                                                     | WYSIWYG 블록 커서 렌더 (설계 §10) — normal 모드 데코레이션 · 비활성 창 hollow    |
+| 파일                                                                                                                         | 무엇                                                                                                    |
+| ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| [index.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/index.ts)                                   | 항상 설치되는 Extension — priority 10000 (설계 §2/§7)                                                   |
+| [vim-plugin.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/vim-plugin.ts)                         | PM Plugin 본체 (설계 §2/§3/§4/§5)                                                                       |
+| [vim-plugin-state.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/vim-plugin-state.ts)             | 플러그인 상태 — 무의존 leaf (PR #491 분리)                                                              |
+| [vim-plugin-reducer.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/vim-plugin-reducer.ts)         | plugin StateField 의 apply/init — §5b 우선순위 사다리(vim meta → 외부 명령 → untagged 편집 → 외부 선택) |
+| [vim-island-sync.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/vim-island-sync.ts)               | PluginView 생애주기 (PR #491 분리)                                                                      |
+| [vim-selection-commands.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/vim-selection-commands.ts) | selection 커맨드 — `dispatchCursor` 의 집 (PR #491 분리)                                                |
+| [vim-keys.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/vim-keys.ts)                             | PluginKey · 모달 상태 질의 · 외부편집 태깅 `chainWithVimExternalEdit`                                   |
+| [vim-status.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/vim-status.ts)                         | 상태 피드 arbitration (설계 §8)                                                                         |
+| [vim-lifecycle.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/vim-lifecycle.ts)                   | 설정 토글 배선 (설계 §7)                                                                                |
+| [vim-activation.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/vim-activation.ts)                 | 문서 활성화 경계 — 탭 전환 리셋                                                                         |
+| [vim-search-line.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/vim-search-line.ts)               | StatusBar input ↔ core 배선 (IME 정공법)                                                                |
+| [replace-editor-state.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/replace-editor-state.ts)     | EditorState 전체 교체의 관문 — 전 호출부가 여기를 지난다(관례이고 게이트는 없다)                        |
+| [vim.css](https://github.com/sayinel/baram/blob/main/src/styles/vim.css)                                                     | WYSIWYG 블록 커서 렌더 (설계 §10) — normal 모드 데코레이션 · 비활성 창 hollow                           |
 
 ## CM 표면 — source mode · 코드블록 island
 
