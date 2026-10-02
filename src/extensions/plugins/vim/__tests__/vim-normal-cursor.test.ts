@@ -177,6 +177,26 @@ describe("insert Esc collapses a range made while inserting", () => {
     expect(head(editor)).toBe(2); // on "b"
   });
 
+  it("a forward range ending at a line start lands on the previous line's last unit", () => {
+    // Fails if: lastUnitBefore stops at the head's own line — the head itself
+    // ("c", outside the half-open range) would be the landing.
+    const editor = makeVimEditor("<p>ab</p><p>cd</p>");
+    selectThenEscape(editor, 1, 5); // "ab" + the break, head before "c"
+    expect(head(editor)).toBe(2); // on "b"
+    key(editor, "i");
+    editor.view.dispatch(editor.state.tr.insertText("X"));
+    expect(editor.state.doc.child(0).textContent).toBe("aXb");
+  });
+
+  it("…and an empty previous line is landed on as such", () => {
+    // Fails if: lastUnitBefore drops its empty-line fallback (no unit start
+    // there) — it would return null and land on the head again.
+    const editor = makeVimEditor("<p>ab</p><p></p><p>cd</p>");
+    selectThenEscape(editor, 1, 7); // head before "c"
+    expect(head(editor)).toBe(5); // inside the empty paragraph
+    expect(editor.state.selection.empty).toBe(true);
+  });
+
   it("a block atom's NodeSelection is kept", () => {
     // Fails if: the NodeSelection exclusion is dropped — the node range is
     // collapsed off the atom line onto text.

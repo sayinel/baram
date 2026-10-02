@@ -15,8 +15,13 @@ import type { EditorState } from "@tiptap/pm/state";
 import { NodeSelection } from "@tiptap/pm/state";
 
 import { isCodeBlockLanding } from "./code-block-landing";
-import { segmentSpanAt } from "./cursor-line-columns";
+import {
+  type CursorLine,
+  lineUnitStarts,
+  segmentSpanAt,
+} from "./cursor-line-columns";
 import { prevUnitBoundary } from "./graphemes";
+import { collectLines } from "./line-sequence";
 
 /**
  * Where insert Esc leaves the cursor: one unit left of the insert caret,
@@ -26,15 +31,16 @@ import { prevUnitBoundary } from "./graphemes";
  * A RANGE made while inserting (Shift+arrows, a drag, select all) collapses:
  * normal mode has one cursor, and a range left behind would be replaced
  * wholesale by the next `i` + typing. A forward range lands on its last unit
- * (the one before the head), a backward one on the unit at the head. A
- * NodeSelection stays — it is how normal mode stands on a block atom line.
+ * — the one before the head, on the previous line when the head sits at a
+ * line start (Shift+Down ends a range there) — a backward one on the unit at
+ * the head. A NodeSelection stays — it is how normal mode stands on a block
+ * atom line.
  */
 export function insertEscTarget(state: EditorState): null | number {
   const sel = state.selection;
   if (!sel.empty && !(sel instanceof NodeSelection)) {
     if (sel.head < sel.anchor) return sel.head;
-    const line = segmentSpanAt(state, sel.head);
-    return (line && unitBefore(state, sel.head, line.from)) ?? sel.head;
+    return lastUnitBefore(state, sel.head) ?? sel.head;
   }
   const span = caretSpan(state);
   return span ? unitBefore(state, span.head, span.from) : null;
@@ -63,6 +69,24 @@ function caretSpan(
   if (isCodeBlockLanding(state, sel.head)) return null;
   const span = segmentSpanAt(state, sel.head);
   return span ? { from: span.from, head: sel.head, to: span.to } : null;
+}
+
+/** The start of the last cursor unit before `head`: on its own line, or —
+ *  at a line start — the previous cursor line's last unit (its start when it
+ *  has none: an empty line, a block atom). null when nothing precedes. */
+function lastUnitBefore(state: EditorState, head: number): null | number {
+  const span = segmentSpanAt(state, head);
+  const onLine = span ? unitBefore(state, head, span.from) : null;
+  if (onLine !== null) return onLine;
+  const lines = collectLines(state);
+  let previous: CursorLine | undefined;
+  for (const line of lines) {
+    if (line.start >= head) break;
+    previous = line;
+  }
+  if (!previous) return null;
+  const starts = lineUnitStarts(state, previous);
+  return starts.length > 0 ? starts[starts.length - 1] : previous.start;
 }
 
 /** One unit left of `head`, or null when there is none ON this line: at a
