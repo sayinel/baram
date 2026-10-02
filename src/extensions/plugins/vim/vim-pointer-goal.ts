@@ -9,47 +9,63 @@
 // every mousedown instead also forgot it for clicks that move nothing — a
 // right-click, a Cmd-click that opens a link, a scrollbar drag.
 //
-// So the press only ARMS a watch with the cursor it found; the plugin view's
-// update forgets the goal once the cursor differs from it, and the next key
-// disarms it (from then on the keys own the cursor).
+// So the press only ARMS a watch with the cursor and the document it found;
+// the plugin's appendTransaction forgets the goal once a transaction of that
+// same document leaves the cursor elsewhere, and the next key disarms it.
+// appendTransaction, not the PluginView's update: a cached tab state installed
+// with view.updateState runs no transactions, so a press left armed in one
+// document can never be read against another document's cursor and goal.
 
+import type { Node as PMNode } from "@tiptap/pm/model";
+import type { EditorState, Transaction } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 
-import { dispatchMeta, read } from "./vim-plugin-state";
+import { vimPluginKey } from "./vim-keys";
+import { read } from "./vim-plugin-state";
 import { vimCursor } from "./vim-selection-commands";
 
 export interface PointerGoalWatch {
-  /** pointerdown / mousedown: remember where the cursor was. */
+  /** pointerdown / mousedown: remember where the cursor was, and in what. */
   arm(view: EditorView): void;
   /** A key arrived — vim's own commands decide the goal from here. */
   disarm(): void;
-  /** PluginView update: forget the goal if the press moved the cursor. */
-  settle(view: EditorView): void;
+  /** appendTransaction: a transaction forgetting the goal if the armed press
+   *  moved the cursor, else null. */
+  settle(
+    transactions: readonly Transaction[],
+    state: EditorState,
+  ): null | Transaction;
 }
 
 export function createPointerGoalWatch(): PointerGoalWatch {
-  let from: null | number = null;
+  let armed: null | { doc: PMNode; from: number } = null;
   return {
     arm(view) {
       const vim = read(view.state);
-      from =
+      armed =
         vim.enabled && vim.core.goalColumn !== null
-          ? vimCursor(view.state)
+          ? { doc: view.state.doc, from: vimCursor(view.state) }
           : null;
     },
     disarm() {
-      from = null;
+      armed = null;
     },
-    settle(view) {
-      if (from === null) return;
-      const vim = read(view.state);
-      if (!vim.enabled || vim.core.goalColumn === null) {
-        from = null; // already forgotten — an ordinary click did it
-        return;
+    settle(transactions, state) {
+      if (armed === null) return null;
+      // A transaction that did not start from the document the press saw
+      // belongs to something else (another tab's state, an edit since).
+      if (transactions[0]?.before !== armed.doc) {
+        armed = null;
+        return null;
       }
-      if (vimCursor(view.state) === from) return;
-      from = null;
-      dispatchMeta(view, {
+      const vim = read(state);
+      if (!vim.enabled || vim.core.goalColumn === null) {
+        armed = null; // already forgotten — an ordinary click did it
+        return null;
+      }
+      if (vimCursor(state) === armed.from) return null;
+      armed = null;
+      return state.tr.setMeta(vimPluginKey, {
         core: { ...vim.core, goalColumn: null },
         type: "core",
       });

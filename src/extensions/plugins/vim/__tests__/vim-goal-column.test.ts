@@ -293,21 +293,51 @@ describe("transactions outside vim", () => {
   });
 
   it("an ordinary click forgets it once, with no extra transaction", () => {
-    // Fails if: settle drops its "already forgotten" guard — it would
-    // dispatch a second, redundant meta after every ordinary click.
+    // Fails if: settle drops its "already forgotten" guard — it would append
+    // a second, redundant meta to every ordinary click. Counted through
+    // applyTransaction: appended transactions are not separate dispatches.
     const editor = seeded();
-    let transactions = 0;
-    editor.on("transaction", () => transactions++);
     editor.view.dom.dispatchEvent(
       new MouseEvent("mousedown", { bubbles: true, cancelable: true }),
     );
-    editor.view.dispatch(
+    const { state, transactions } = editor.state.applyTransaction(
       editor.state.tr.setSelection(
         TextSelection.create(editor.state.doc, posOfText(editor, "e")),
       ),
     );
-    expect(goal(editor)).toBeNull();
-    expect(transactions).toBe(1);
+    expect(
+      (vimPluginKey.getState(state) as unknown as VimPluginState).core
+        .goalColumn,
+    ).toBeNull();
+    expect(transactions).toHaveLength(1);
+  });
+
+  it("a press left armed is not read against another document's state (a cached tab)", () => {
+    // Fails if: settle drops the document check — the other state's own
+    // cursor move would be taken for the press's and its goal forgotten.
+    const editor = seeded();
+    // Another tab's cached state, built BEFORE the press like a real cache:
+    // a different document with its own goal. (Building it after the press
+    // would run appendTransaction and consume the watch on the way.)
+    const base = editor.state.apply(editor.state.tr.insertText("Z", 1));
+    const cached = base.apply(
+      base.tr.setMeta(vimPluginKey, {
+        core: { ...core(editor), goalColumn: 9 },
+        type: "core",
+      }),
+    );
+    editor.view.dom.dispatchEvent(
+      new MouseEvent("mousedown", { bubbles: true, cancelable: true }),
+    );
+    editor.view.updateState(cached);
+    editor.view.dispatch(
+      editor.state.tr
+        .setSelection(
+          TextSelection.create(editor.state.doc, posOfText(editor, "h")),
+        )
+        .setMeta(vimPluginKey, { core: core(editor), type: "core" }),
+    );
+    expect(goal(editor)).toBe(9);
   });
 
   it("pointerdown arms the watch too (touch and pen)", () => {

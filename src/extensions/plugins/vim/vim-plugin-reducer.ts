@@ -159,8 +159,9 @@ function withCore(prev: VimPluginState, core: VimCoreState): VimPluginState {
  * reveal's expand/collapse (SYNTAX_REVEAL_EPHEMERAL_META), which swaps a
  * mark's rendering under a cursor vim itself just put there: without the
  * exception, every j across a bold or linked line lost the column. A click
- * that expands through syntax reveal is still forgotten — the vim plugin's
- * mousedown clears the goal before the click lands.
+ * that expands through syntax reveal is still forgotten: the press arms a
+ * watch (vim-pointer-goal.ts) whose appendTransaction step forgets the goal
+ * once the cursor has moved.
  */
 function forgetsGoal(tr: Transaction): boolean {
   return (

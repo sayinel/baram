@@ -56,8 +56,11 @@ export function createVimPlugin(
 ): Plugin<VimPluginState> {
   const pointerGoal = createPointerGoalWatch();
   return new Plugin<VimPluginState>({
-    /** issue 776 — keep the normal-mode caret ON a unit. */
-    appendTransaction: (_trs, _old, state) => clampNormalCaret(state),
+    /** issue 776 — forget the goal column when a pointer press moved the
+     *  cursor (vim-pointer-goal.ts), and keep the normal-mode caret ON a
+     *  unit. One at a time: PM calls back with the appended transaction. */
+    appendTransaction: (trs, _old, state) =>
+      pointerGoal.settle(trs, state) ?? clampNormalCaret(state),
 
     key: vimPluginKey as never,
 
@@ -325,16 +328,7 @@ export function createVimPlugin(
      *  broadcast whenever this PluginView sees the prop change. Lifecycle
      *  itself lives in vim-island-sync.ts (vim-plugin split, issue 372) —
      *  `tiptapEditor` is the same instance this closure already captures. */
-    view: (editorView) => {
-      const sync = createIslandSync(editorView, tiptapEditor);
-      return {
-        destroy: () => sync.destroy(),
-        update: (view) => {
-          sync.update(view);
-          pointerGoal.settle(view); // issue 776
-        },
-      };
-    },
+    view: (editorView) => createIslandSync(editorView, tiptapEditor),
 
     state: {
       apply: applyVimTransaction,
