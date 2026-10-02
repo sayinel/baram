@@ -19,11 +19,9 @@ import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 
 import { enterCodeBlockSelection } from "../../nodes/views/code-block-cm-registry";
 import { cursorSelection } from "./adapters/cursor-selection";
-import {
-  cursorLineStart,
-  resolveFindChar,
-  resolveMotion,
-} from "./adapters/motions";
+import { resolveFindChar } from "./adapters/find-char";
+import { cursorLineStart } from "./adapters/line-sequence";
+import { resolveMotion } from "./adapters/motions";
 import { visualBounds } from "./adapters/operations";
 import { scrollCursorIntoView, scrollCursorToCenter } from "./adapters/scroll";
 import { resolveSearch } from "./adapters/search";

@@ -9,13 +9,18 @@ vim 구현의 **파일 경로가 사는 유일한 페이지**다. 다른 페이�
 
 ## core — 순수 상태기계 (ProseMirror 무의존)
 
-| 파일                                                                                                            | 무엇                                          |
-| --------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
-| [state-machine.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/state-machine.ts) | 모달 상태기계 (설계 §14)                      |
-| [types.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/types.ts)                 | core 어휘 — `KeyToken` · `CoreCommand` intent |
-| [keys.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/keys.ts)                   | 키스트로크 정규화 (물리키 / raw 분리)         |
-| [visual-state.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/visual-state.ts)   | VisualState 기록 (설계 §6)                    |
-| [hangul.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/hangul.ts)               | 한글 find 타겟 매칭 — 초성 검색 (설계 §5)     |
+| 파일                                                                                                            | 무엇                                                              |
+| --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| [state-machine.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/state-machine.ts) | 모달 상태기계 (설계 §14)                                          |
+| [step-kit.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/step-kit.ts)           | 상태기계 공용 프리미티브 — 모션 표 · count 산술 · StepResult 생성 |
+| [normal-keys.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/normal-keys.ts)     | normal 모드 단일 키와 Escape                                      |
+| [visual-keys.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/visual-keys.ts)     | visual 모드 단일 키                                               |
+| [pending-keys.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/pending-keys.ts)   | 대기 중인 시퀀스의 두 번째 키 — 오퍼레이터 · g/z · find 대상      |
+| [command-lines.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/command-lines.ts) | ex `:` 줄과 `/`·`?` 검색 줄 입력                                  |
+| [types.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/types.ts)                 | core 어휘 — `KeyToken` · `CoreCommand` intent                     |
+| [keys.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/keys.ts)                   | 키스트로크 정규화 (물리키 / raw 분리)                             |
+| [visual-state.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/visual-state.ts)   | VisualState 기록 (설계 §6)                                        |
+| [hangul.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/hangul.ts)               | 한글 find 타겟 매칭 — 초성 검색 (설계 §5)                         |
 
 ## adapters — core 의 intent 를 PM 위에서 실행
 
@@ -23,6 +28,10 @@ vim 구현의 **파일 경로가 사는 유일한 페이지**다. 다른 페이�
 | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
 | [execute-command.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/execute-command.ts)         | `CoreCommand` 실행 진입점 (설계 §2)                                                         |
 | [motions.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/motions.ts)                         | 모션 해석 — EditorState + 위치 + motion → 목표 위치 (dispatch 는 plugin, 설계 §2)           |
+| [line-sequence.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/line-sequence.ts)             | 커서 줄 목록 — j/k · w/b · gg/G · `:N` 이 걷는 줄 모델 (문서별 캐시)                        |
+| [vertical-walk.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/vertical-walk.ts)             | 세로 모션 j/k — 캐리 칼럼 줄 이동과 표 행 이동                                              |
+| [word-motions.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/word-motions.ts)               | 단어 모션 w/b 와 cw 의 단어 끝                                                              |
+| [find-char.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/find-char.ts)                     | f/F/t/T 문자 찾기 해석                                                                      |
 | [operations.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/operations.ts)                   | 줄·문자 오퍼레이션 d/c/y (설계 §9)                                                          |
 | [line-units.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/line-units.ts)                   | "줄이란 무엇인가" (설계 §9)                                                                 |
 | [cursor-line-columns.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/cursor-line-columns.ts) | 커서 줄의 컬럼 프리미티브                                                                   |

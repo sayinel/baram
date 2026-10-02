@@ -23,8 +23,8 @@ import { getAction } from "../../../../keybindings/keybinding-actions";
 import { asTaskState, nextTaskState } from "../../../../utils/tasks/task-state";
 import { segmentSpanAt } from "./cursor-line-columns";
 import { cursorSelection } from "./cursor-selection";
+import { resolveFindChar } from "./find-char";
 import { nextUnitBoundary } from "./graphemes";
-import { resolveFindChar, wordEndAt } from "./motions";
 import { resolveMotion } from "./motions";
 import {
   changeLines,
@@ -39,6 +39,7 @@ import {
 import { pasteRegister } from "./paste";
 import { readVimRegister, writeVimRegister } from "./register";
 import { scrollCursorIntoView } from "./scroll";
+import { wordEndAt } from "./word-motions";
 
 export interface ExecutionResult {
   /** True when a transaction landed. A PARTIALLY applied change returns a

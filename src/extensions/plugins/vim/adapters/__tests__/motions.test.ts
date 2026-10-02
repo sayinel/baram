@@ -7,7 +7,8 @@ import { Editor, Node } from "@tiptap/core";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createBaramExtensions } from "../../../../index";
-import { resolveFindChar, resolveMotion } from "../motions";
+import { resolveFindChar } from "../find-char";
+import { resolveMotion } from "../motions";
 
 const editors: Editor[] = [];
 
