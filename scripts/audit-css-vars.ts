@@ -210,6 +210,10 @@ const ALLOWLIST = new Set([
   // fallback 이 지켜야 하는 것은 옛 화면이 아니라 다이얼의 `defaultValue` 이고,
   // 둘의 일치는 `styles/__tests__/list-styling.test.ts` 가 두 파일을 함께 읽어 고정한다.
   "--editor-ordered-marker-align",
+  // 같은 다이얼이 같은 선택을 0/1 계수로 한 번 더 쓴다 — `text-align` 키워드는 calc 에
+  // 들어가지 못하는데, 중첩 리스트의 안내선 축(`lists.css` 의 `--list-marker-axis`)은
+  // 번호가 어느 쪽에 붙는지를 길이로 알아야 한다. fallback(0)은 기본값 `number` 다.
+  "--editor-ordered-marker-period-aligned",
   "--editor-zoom",
   "--journal-font-family",
   "--journal-header-bg",

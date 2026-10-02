@@ -601,14 +601,39 @@ describe("list geometry", () => {
     expect(bulletSide).toEqual([]);
   });
 
-  it("hangs the indent guide in the parent's marker gutter", () => {
-    // The structural half of "the rail descends from the parent's bullet": whatever the
-    // tuned offset is, it has to be NEGATIVE — a guide at `left: 0` sits at the parent's
-    // text column, which is where this started and what the reference design rejected.
-    // The exact -1em is left free to tune; the side of the list it falls on is not.
-    // The guide is a `::before` on the nested LIST. Matching `li::before` instead picks up
-    // the marker rules, which are anchored with `right: 100%` and have no `left` at all —
-    // a first version of this test reported them as guides on the wrong side.
+  it("hangs the indent guide from the centre of the parent's own marker", () => {
+    // 안내선은 부모 항목의 마커 중앙에서 내려와야 한다. 예전 선언은 상수 `left: -1em`
+    // 이었고, 그것은 1em 열 가운데에 그려지는 글머리 기호의 중앙이었다. 순서 있는
+    // 마커는 그 열에 있지 않다 — `number` 정렬(기본값)에서 번호는 마커 상자의 **왼쪽
+    // 바닥**(`gutter − 0.3em`)에서 시작하고, 그 바닥은 거터를 따라 깊이마다 넓어진다.
+    // 그래서 상수 안내선은 `2.` 에서 0.29em, `i.` 에서 0.76em 오른쪽에 섰다(앱에서 보고,
+    // headless Chrome 실측).
+    //
+    // 무엇이 이것을 실패시키는가, 다섯이다.
+    // ① 안내선의 `left` 가 다시 상수가 되면 — 위의 결함 그 자체다.
+    // ② 중첩 리스트가 부모 항목의 축을 읽지 않으면 — 축은 **항목**에 선언된다. 항목만이
+    //    부모 리스트의 `--list-gutter` 를 물려받고, 중첩 리스트는 그 변수를 자기 값으로
+    //    덮기 때문이다.
+    // ③ 글머리 기호 항목의 축이 그 기호의 중앙이 아니게 되면.
+    // ④ 순서 있는 항목의 축이 마커 상자의 바닥과 **다른** 식에서 나오면 — 상자를 옮겨도
+    //    안내선이 따라가지 않는다. 그래서 두 선언의 뺄셈 항을 여기서 대조한다.
+    // ⑤ `period` 계수의 fallback 이 다이얼 기본값(`number` → 0)과 갈리면, 사용자가 select 를
+    //    처음 건드리는 순간 안내선이 튄다(apply.ts 는 기본값을 쓰지 않는다).
+    const squash = (value: string) => value.replaceAll(/\s+/gu, "");
+    // Every rule with this exact selector, not the first: `.tiptap li` is declared in both
+    // editor/base.css (`position`) and lists.css (`padding-left`).
+    const declared = (selector: string, prop: string) => {
+      const found = LIST_RULES.filter(
+        (r) => r.selector.replaceAll(/\s+/gu, " ") === selector,
+      )
+        .flatMap((r) => cssDeclarations(r.body))
+        .filter((d) => d.prop === prop);
+      expect(found, `${selector} declares ${prop} once`).toHaveLength(1);
+      return squash(found[0]?.value ?? "");
+    };
+
+    // ① — the guide is a `::before` on the nested LIST. Matching `li::before` instead picks
+    // up the marker rules, which are anchored with `right: 100%` and have no `left` at all.
     const guides = LIST_RULES.filter((rule) =>
       selectorParts(rule.selector).some(
         (part) =>
@@ -616,15 +641,61 @@ describe("list geometry", () => {
           /^(?:ul|ol)::before$/u.test(selectorTarget(part)),
       ),
     );
-    const offsets = guides.map((rule) => ({
-      left: cssDeclarations(rule.body).find((d) => d.prop === "left")?.value,
-      rule,
-    }));
-    expect(offsets.length).toBeGreaterThan(0);
-    const wrongSide = offsets
-      .filter(({ left }) => left === undefined || !left.startsWith("-"))
-      .map(({ rule }) => where(rule));
-    expect(wrongSide).toEqual([]);
+    expect(guides.length).toBeGreaterThan(0);
+    const constant = guides
+      .filter(
+        (rule) =>
+          squash(
+            cssDeclarations(rule.body).find((d) => d.prop === "left")?.value ??
+              "",
+          ) !== "var(--list-guide-left)",
+      )
+      .map(where);
+    expect(constant).toEqual([]);
+
+    // ② — the nested list hangs it the item's text gap plus the parent's axis to its left.
+    // The gap is `li`'s own padding, transcribed rather than assumed.
+    const gap = declared(".tiptap li", "padding-left");
+    expect(gap).toBe("0.5em");
+    expect(declared(".tiptap li ul, .tiptap li ol", "--list-guide-left")).toBe(
+      `calc(-${gap}-var(--list-marker-axis))`,
+    );
+
+    // ③ — a bullet (and a task checkbox, which shares the column) is centred in a 1em
+    // column ending at the item's edge: `right: 100%` plus `margin-right: (1em − size)/2`.
+    expect(declared(".tiptap ul > li::before", "margin-right")).toBe(
+      "calc((1em-var(--marker-size))/2)",
+    );
+    expect(
+      declared(
+        '.tiptap ul[data-type="taskList"] li[data-type="taskItem"] > .task-checkbox',
+        "margin-right",
+      ),
+    ).toBe("calc((1em-var(--checkbox-size))/2)");
+    expect(declared(".tiptap ul > li", "--list-marker-axis")).toBe("0.5em");
+
+    // ④ — `number` puts every marker's first character at the box's floor, so the axis is
+    // that floor less half a character cell; `period` keeps the axis a right-aligned
+    // marker has always straddled.
+    const floor = /^calc\(var\(--list-gutter\)-([\d.]+)em\)$/u.exec(
+      declared(".tiptap ol > li::before", "min-width"),
+    );
+    expect(floor).not.toBeNull();
+    const axis =
+      /^calc\(\(var\(--list-gutter\)-([\d.]+)em-0\.5ch\)\*\(1-var\(--editor-ordered-marker-period-aligned,(\d+)\)\)\+0\.5em\*var\(--editor-ordered-marker-period-aligned,(\d+)\)\)$/u.exec(
+        declared(".tiptap ol > li", "--list-marker-axis"),
+      );
+    expect(axis).not.toBeNull();
+    expect(axis?.[1]).toBe(floor?.[1]);
+
+    // ⑤ — both fallbacks are the default's factor, and `period` is the one that writes 1.
+    const dial = DIALS.find((d) => d.id === "editorOrderedMarkerAlign");
+    expect(dial?.defaultValue).toBe("number");
+    expect(axis?.[2]).toBe("0");
+    expect(axis?.[3]).toBe("0");
+    expect(
+      dial?.toVars("period")["--editor-ordered-marker-period-aligned"],
+    ).toBe("1");
   });
 
   it("mixes the indent guide from a theme key and the user's strength dial", () => {
