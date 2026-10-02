@@ -158,4 +158,29 @@ describe("ExportDialog wires the resolved theme through to export.ts (§362)", (
     };
     expect(options.activeThemeMode).toBe("dark");
   });
+
+  // §386 F1 — 무엇이 이것을 실패시키는가: `resolvedMode` 가 `resolvedTheme` 의 존재와
+  // 무관하게 `appliedThemeMode` 를 부르면, Baram Default(해석되는 테마가 없음) + 모드
+  // 고정에서도 "dark" 가 나간다. 그러면 `export.ts` 의 `ThemeExportOptions` 계약("해석된
+  // 테마가 없으면 둘 다 undefined") 이 깨지고, 내보낸 PDF 는 흰 배경인데 힌트는 다크를
+  // 경고한다(F1 아래 힌트 테스트가 그 갈래를 고정한다).
+  it("Baram Default(테마 없음)는 모드 고정이어도 activeThemeMode 를 undefined 로 보낸다", async () => {
+    useSettingsStore.setState({
+      activeThemeId: "system",
+      colorModeSetting: "dark",
+      themeInExport: "tokens",
+    });
+    useUIStore.setState({ exportDialogOpen: true, exportFormat: "html" });
+    render(<ExportDialog editor={fakeEditor} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Export" }));
+
+    await waitFor(() => expect(exportAsHTMLMock).toHaveBeenCalledOnce());
+    const options = exportAsHTMLMock.mock.calls[0]?.[2] as {
+      activeTheme?: unknown;
+      activeThemeMode?: string;
+    };
+    expect(options.activeTheme).toBeUndefined();
+    expect(options.activeThemeMode).toBeUndefined();
+  });
 });
