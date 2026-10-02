@@ -11,6 +11,7 @@ vi.mock("../../themes/theme-store-fs", () => ({
     readStoredThemeCss(id, mode),
 }));
 
+import type { ColorModeSetting } from "../../appearance/color-mode";
 import type { InstalledTheme } from "../../themes/theme-install";
 
 import { useThemeCssCacheStore } from "../../stores/system/theme-css-cache";
@@ -18,12 +19,14 @@ import { useThemeCssHydration } from "../use-theme-css-hydration";
 
 function Host({
   activeThemeId,
+  colorModeSetting = "system",
   installedThemes,
 }: {
   activeThemeId: string;
+  colorModeSetting?: ColorModeSetting;
   installedThemes: Record<string, InstalledTheme>;
 }) {
-  useThemeCssHydration(activeThemeId, installedThemes);
+  useThemeCssHydration(activeThemeId, installedThemes, colorModeSetting);
   return null;
 }
 
@@ -260,5 +263,26 @@ describe("useThemeCssHydration", () => {
     expect(
       useThemeCssCacheStore.getState().entries["dracula:light"],
     ).toBeUndefined();
+  });
+
+  // §386 — 읽어 올 모드는 적용 이펙트가 쓸 모드와 같아야 한다(`appliedThemeMode`). 무엇이 이것을
+  // 실패시키는가: 이 훅이 OS 값만 읽으면 다크로 고정한 화면에 라이트 CSS 를 데운다.
+  it("다크로 고정하면 OS 가 라이트여도 다크 모드의 CSS 를 읽는다", async () => {
+    readStoredThemeCss.mockResolvedValue("body{color:red}");
+    render(
+      <Host
+        activeThemeId="dracula"
+        colorModeSetting="dark"
+        installedThemes={{
+          dracula: installed({
+            modes: { dark: { css: true }, light: { css: true } },
+          }),
+        }}
+      />,
+    );
+    await flush();
+
+    expect(readStoredThemeCss).toHaveBeenCalledWith("dracula", "dark");
+    expect(readStoredThemeCss).not.toHaveBeenCalledWith("dracula", "light");
   });
 });

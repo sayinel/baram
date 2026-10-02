@@ -171,12 +171,12 @@ describe("theme gallery — groups by source (§356)", () => {
 describe("sub-screen routing (§361)", () => {
   it("테마 찾아보기를 누르면 화면 본문이 브라우저로 바뀌고, 갤러리는 사라진다", () => {
     render(<AppearanceTab />);
-    expect(screen.getByText("System (Auto)")).toBeInTheDocument();
+    expect(screen.getByText("Baram Default")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /browse themes/i }));
 
     expect(screen.getByPlaceholderText(/search themes/i)).toBeInTheDocument();
-    expect(screen.queryByText("System (Auto)")).toBeNull();
+    expect(screen.queryByText("Baram Default")).toBeNull();
   });
 
   it("뒤로 가면 갤러리가 돌아온다", () => {
@@ -184,7 +184,7 @@ describe("sub-screen routing (§361)", () => {
     fireEvent.click(screen.getByRole("button", { name: /browse themes/i }));
     fireEvent.click(screen.getByText(/back/i));
 
-    expect(screen.getByText("System (Auto)")).toBeInTheDocument();
+    expect(screen.getByText("Baram Default")).toBeInTheDocument();
   });
 
   it("커스터마이즈로 들어간 뒤에는 브라우저가 아니라 편집기가 보인다", () => {
@@ -193,7 +193,7 @@ describe("sub-screen routing (§361)", () => {
 
     // ThemeEditor's own chrome, not ThemeBrowser's search box.
     expect(screen.queryByPlaceholderText(/search themes/i)).toBeNull();
-    expect(screen.queryByText("System (Auto)")).toBeNull();
+    expect(screen.queryByText("Baram Default")).toBeNull();
   });
 });
 
@@ -265,5 +265,23 @@ describe("theme gallery — installed group (§361)", () => {
     expect(
       within(builtinGroup).queryByRole("button", { name: /정보|info/i }),
     ).toBeNull();
+  });
+});
+
+// §386 — 스펙 0064 D3. 무엇이 이것을 실패시키는가: 행을 갤러리 위에 두면 한 모드 테마로
+// 바꿀 때 카드가 한 줄 위로 움직인다(누르던 자리가 바뀐다).
+describe("mode row placement (§386)", () => {
+  it("갤러리 아래, 강조색 다이얼 위에 선다", () => {
+    render(<AppearanceTab />);
+    const card = screen.getByText("Baram Default");
+    const mode = screen.getByRole("combobox", { name: "Mode" });
+    const accent = screen.getByText("Accent hue");
+
+    expect(
+      card.compareDocumentPosition(mode) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      mode.compareDocumentPosition(accent) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 });

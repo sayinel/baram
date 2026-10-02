@@ -12,6 +12,7 @@ import type {
 
 import { useShallow } from "zustand/shallow";
 
+import { appliedThemeMode } from "../../appearance/color-mode";
 import { useTranslation } from "../../i18n/useTranslation";
 import { exportBinaryFile } from "../../ipc/fs";
 import { writeFile } from "../../ipc/invoke";
@@ -25,7 +26,6 @@ import {
   defaultColorsForBase,
   fillAliasedColors,
   findThemeById,
-  resolveThemeMode,
   THEME_COLOR_KEYS,
   themeModes,
 } from "../../types/theme";
@@ -484,22 +484,20 @@ function endPreview(restore: boolean, ended: { current: boolean }): void {
  */
 function restorePreview(): void {
   const root = document.documentElement;
-  const { activeThemeId, customThemes, installedThemes } =
+  const { activeThemeId, colorModeSetting, customThemes, installedThemes } =
     useSettingsStore.getState();
   const resolved = findThemeById(
     activeThemeId,
     lookupThemes(customThemes, installedThemes),
   );
-  // 적용될 모드는 OS 설정이 정한다 — use-settings-effects와 같은 규칙이어야
-  // 복원이 그 효과가 남겨둘 상태와 일치한다. 편집 중인 모드는 여기 쓰지 않는다:
+  // 적용될 모드는 use-settings-effects 와 **같은 함수**가 정한다(§386 `appliedThemeMode`) —
+  // 그래야 복원이 그 효과가 남겨둘 상태와 일치한다. 편집 중인 모드는 여기 쓰지 않는다:
   // 그것은 미리보기의 것이고, 복원은 미리보기를 지우는 일이다.
-  const mode =
-    resolved === undefined
-      ? undefined
-      : resolveThemeMode(
-          resolved,
-          window.matchMedia("(prefers-color-scheme: dark)").matches,
-        );
+  const mode = appliedThemeMode(
+    resolved,
+    colorModeSetting,
+    window.matchMedia("(prefers-color-scheme: dark)").matches,
+  );
   const colors = mode === undefined ? undefined : resolved?.modes[mode]?.colors;
   const hasInlineVars =
     resolved !== undefined && appliesInlineVars(activeThemeId);
@@ -513,8 +511,9 @@ function restorePreview(): void {
     clearThemeVars(root);
   }
   // preview effect가 data-theme도 편집 중인 모드로 밀어뒀으므로 attribute까지
-  // 되돌린다 — use-settings-effects와 같은 규칙: 해석되는 테마는 그 모드,
-  // system·미해석은 attribute 제거(= prefers-color-scheme 경로).
+  // 되돌린다 — use-settings-effects와 같은 함수(`appliedThemeMode`)의 답: 해석되는
+  // 테마는 그 모드, system·미해석은 모드 설정이 고정이면 그 모드이고 아니면
+  // attribute 제거(= prefers-color-scheme 경로).
   if (mode !== undefined) {
     root.dataset.theme = mode;
   } else {

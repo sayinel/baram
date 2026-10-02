@@ -13,19 +13,21 @@
 // which is the common case).
 import { useEffect, useState } from "react";
 
+import type { ColorModeSetting } from "../appearance/color-mode";
 import type { InstalledTheme } from "../themes/theme-install";
 
+import { appliedThemeMode } from "../appearance/color-mode";
 import { useThemeCssCacheStore } from "../stores/system/theme-css-cache";
 import {
   installedThemeToDef,
   themeCssCacheKey,
 } from "../themes/installed-theme-defs";
 import { readStoredThemeCss } from "../themes/theme-store-fs";
-import { resolveThemeMode } from "../types/theme";
 
 export function useThemeCssHydration(
   activeThemeId: string,
   installedThemes: Record<string, InstalledTheme>,
+  colorModeSetting: ColorModeSetting,
 ): void {
   const entries = useThemeCssCacheStore((s) => s.entries);
   const rejected = useThemeCssCacheStore((s) => s.rejected);
@@ -36,6 +38,9 @@ export function useThemeCssHydration(
   // `use-settings-effects.ts`: this hook needs to know the OS preference to decide WHICH
   // mode's CSS to fetch, but has no other reason to touch that effect's internals, and a
   // hook that reads its own inputs is easier to test in isolation (see this file's test).
+  //
+  // §386 — the mode setting arrives as an argument like the other two inputs (the caller reads
+  // the store); this listener's answer is used only while that setting is "system".
   const [prefersDark, setPrefersDark] = useState(
     () => window.matchMedia("(prefers-color-scheme: dark)").matches,
   );
@@ -51,7 +56,13 @@ export function useThemeCssHydration(
     if (installed === undefined) return;
     // `installedThemeToDef` with no `cssByKey` only ever tells us which modes EXIST — never
     // whether one is cached, so this can't loop with the cache write below.
-    const mode = resolveThemeMode(installedThemeToDef(installed), prefersDark);
+    //
+    // §386 — the mode the apply effect will use, from the same function (spec 0064 D6).
+    const mode = appliedThemeMode(
+      installedThemeToDef(installed),
+      colorModeSetting,
+      prefersDark,
+    );
     if (mode === undefined) return;
     if (installed.modes[mode]?.css !== true) return;
     const key = themeCssCacheKey(installed.id, mode);
@@ -73,6 +84,7 @@ export function useThemeCssHydration(
     activeThemeId,
     installedThemes,
     prefersDark,
+    colorModeSetting,
     entries,
     rejected,
     setCss,
