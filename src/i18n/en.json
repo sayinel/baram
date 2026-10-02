@@ -974,7 +974,7 @@
   "settings.appearance.installedToastWithWarning": "'{name}' installed and applied — {count} text pair(s) below the AA contrast minimum. This is a note, not a rejection.",
   "settings.appearance.removeFailed": "Could not remove the theme — see the log.",
   "settings.appearance.revertAction": "Undo",
-  "settings.appearance.revokedDeactivatedToast": "'{name}' has been withdrawn and is no longer applied. The appearance is back to System.",
+  "settings.appearance.revokedDeactivatedToast": "'{name}' has been withdrawn and is no longer applied. The appearance is back to Baram Default.",
   "settings.appearance.saveCurrentLayout": "Save Current Layout...",
   "settings.appearance.spaceAndCorners": "Spacing & corners",
   "settings.appearance.theme": "Theme",
