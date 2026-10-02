@@ -16,6 +16,7 @@ import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { createBaramExtensions } from "../../extensions/index";
 import { usePluginStore } from "../../stores/system/plugin";
+import { cssDeclarations, cssRules } from "../../styles/__tests__/css-rules";
 import {
   __resetEditorSurfaces,
   addPluginContributions,
@@ -214,6 +215,32 @@ describe("the Bullet Threading example", () => {
     );
     // …and the scan is not vacuous: esbuild does write that banner for what it DOES inline.
     expect(bundle).toContain("// src/thread.ts");
+  });
+
+  it("reads only list geometry the host's stylesheets declare", () => {
+    // The thread traces the editor's indent guide through the host's own custom properties
+    // (`--list-gutter`, `--list-guide-left`), each with a fallback for hosts that predate
+    // it. That fallback is also what makes a RENAME silent: rename one in lists.css and
+    // every test on either side stays green while the thread quietly returns to the
+    // fallback and runs beside the guide. So the names the shipped bundle reads are checked
+    // against what the host declares.
+    const bundle = readFileSync(join(DIR, "dist/index.mjs"), "utf8");
+    const read = new Set(
+      [...bundle.matchAll(/var\(\s*--(list-[\w-]+)/gu)].map((m) => m[1]),
+    );
+    // Not vacuous: the two the thread's position is built from.
+    expect([...read].sort()).toEqual(
+      expect.arrayContaining(["list-gutter", "list-guide-left"]),
+    );
+    const declared = new Set(
+      cssRules().flatMap((rule) =>
+        cssDeclarations(rule.body)
+          .map((d) => d.prop)
+          .filter((prop) => prop.startsWith("--list-"))
+          .map((prop) => prop.slice(2)),
+      ),
+    );
+    expect([...read].filter((name) => !declared.has(name))).toEqual([]);
   });
 
   it("threads the ancestor chain of the item holding the caret", () => {

@@ -77,6 +77,24 @@ describe("buildCss", () => {
     );
   });
 
+  it("traces the rail the host hangs, falling back to where older hosts hang it", () => {
+    // The host's guide used to sit at a constant 1em left of a nested list, which is the
+    // centre of a bullet's column but not of a number's — so the host now derives it from
+    // the parent's marker and publishes the result as `--list-guide-left`. A thread that
+    // restates the old constant runs beside the guide under a numbered parent whenever
+    // numbers line up on their first digit, which is the host's default alignment.
+    //
+    // The -1em fallback is what a host without the variable draws, so the thread still
+    // traces the guide there. The elbow's far end stays on the child's marker column
+    // (0.5em in from the item), so its width has to grow by whatever the rail moved.
+    const railX = "calc(var(--list-guide-left, -1em) - var(--list-gutter, 1.4em))";
+    expect(css.split("\n").filter((rule) => rule.includes(`left:${railX}`))).toHaveLength(2);
+    expect(css).not.toContain("+ 1em))");
+    expect(css).toContain(
+      "width:calc(var(--list-gutter, 1.4em) - 0.5em - var(--list-guide-left, -1em))",
+    );
+  });
+
   it("drops the curve but keeps the drop when showElbow is off", () => {
     const straight = buildCss({ ...DEFAULT_SETTINGS, showElbow: false });
     expect(straight).not.toContain("border-bottom-left-radius");
