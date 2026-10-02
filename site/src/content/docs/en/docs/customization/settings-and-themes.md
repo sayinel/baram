@@ -52,7 +52,7 @@ nothing, so the theme and stylesheet decide.
 The accent dials shift the theme's own accent rather than replacing it, so the same shift
 carries over when you change themes. **Flat** gives the bars the document's color; **All
 white** and **True black** paint the document and the bars alike. Each background dial acts
-only in its own mode, so with **System (Auto)** the matching one takes over when your OS
+only in its own mode, so while **Mode** is **System** the matching one takes over when your OS
 switches.
 
 **Settings > Editor**, under **Display**, changes the document:

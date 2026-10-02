@@ -22,7 +22,9 @@ give to others, see [Creating themes](/en/docs/customization/creating-themes/).
 
 1. Open **Settings > Appearance** to see the theme gallery
 2. Click any theme card to apply it immediately
-3. Select **System (Auto)** to follow your OS light/dark mode
+3. **Baram Default** is the default palette in light and dark. While a theme that has both modes
+   is applied, **Mode** under the gallery chooses **System** (follows your OS), **Light**, or
+   **Dark**
 
 **Creating custom themes:**
 
