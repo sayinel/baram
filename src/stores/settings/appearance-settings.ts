@@ -1,3 +1,4 @@
+import type { ColorModeSetting } from "../../appearance/color-mode";
 import type { DialId, DialValue, DialValues } from "../../appearance/dials";
 import type { InstalledTheme } from "../../themes/theme-install";
 import type { ThemeDef } from "../../types/theme";
@@ -35,6 +36,13 @@ export interface AppearanceSettingsSlice {
   appearanceOverrides: DialValues;
   /** 스펙 0063 §3.4 — 사용자가 이 테마를 직접 골랐다: 그 테마의 거절 기록을 지운다. */
   clearChromeProposalDeclines: (themeId: string) => void;
+  /**
+   * §386 모드 설정(스펙 0064 D1) — 모드 설정을 따르는 테마(`followsColorModeSetting`)를 라이트와
+   * 다크 중 무엇으로 그릴지. `"system"` 은 OS 를 따른다. 다이얼이 **아니다**: 3층 병합에 들지 않고,
+   * 테마가 제안하지 못하고, 외관 내보내기에 실리지 않는다. 기본값 `"system"` 이 오늘 동작과 같아
+   * `store.ts` 의 `version` 을 올리지 않는다.
+   */
+  colorModeSetting: ColorModeSetting;
   customThemes: ThemeDef[];
   /**
    * §370.3 · 스펙 0063 §3 — 사용자가 거절한 테마의 크롬 제안(테마 id → 표면).
@@ -66,6 +74,8 @@ export interface AppearanceSettingsSlice {
     surface: ChromeSurface,
     declined: boolean,
   ) => void;
+  /** §386 — 같은 값이면 상태를 바꾸지 않는다(CLAUDE.md 의 동등성 관문). */
+  setColorModeSetting: (setting: ColorModeSetting) => void;
   setDial: (id: DialId, value: DialValue) => void;
   setLocale: (locale: string) => void;
   setTagColor: (tag: string, color: string) => void;
@@ -105,6 +115,7 @@ export const createAppearanceSettingsSlice: StateCreator<
   themeInExport: "default",
   appearanceOverrides: {},
   declinedChromeProposals: {},
+  colorModeSetting: "system",
 
   // Activity Bar config
   activityBarConfig: [], // default set in main store via DEFAULT_ACTIVITY_BAR_CONFIG
@@ -139,6 +150,12 @@ export const createAppearanceSettingsSlice: StateCreator<
       return { activeThemeId: id, theme: themeFieldFor(theme) };
     }),
   setThemeInExport: (themeInExport) => set({ themeInExport }),
+  setColorModeSetting: (colorModeSetting) =>
+    set((state) =>
+      state.colorModeSetting === colorModeSetting
+        ? state
+        : { colorModeSetting },
+    ),
   saveCustomTheme: (theme) =>
     set((state) => {
       const idx = state.customThemes.findIndex((t) => t.id === theme.id);
