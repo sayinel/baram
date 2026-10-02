@@ -70,6 +70,33 @@ describe("openFileInTab", () => {
     useFileStore.setState({ fileMtimes: new Map(), openFiles: new Map() });
   });
 
+  it("§81 gives an already-open tab the context it is asked to open in", async () => {
+    // The Zettel preset brings a home note that is already open (from the
+    // launch, tagged with the folder holding it) to the front in its own space.
+    useEditorStore.setState({
+      activeTabId: null,
+      tabs: [
+        {
+          contextId: "ctx-work",
+          filePath: "/work/home.md",
+          id: "t-home",
+          isDirty: false,
+          isPinned: false,
+          title: "home.md",
+        },
+      ],
+    });
+
+    await openFileInTab("/work/home.md", "# Home", {
+      activate: false,
+      contextId: "ctx-zettel",
+    });
+
+    expect(useEditorStore.getState().tabs[0]).toMatchObject({
+      contextId: "ctx-zettel",
+    });
+  });
+
   it("seeds the self-write baseline (lastSaveMtime) for a newly opened file", async () => {
     const filePath = "/vault/notes/202601010000 X.md";
     await openFileInTab(filePath, "# X");

@@ -4,6 +4,8 @@
 // once-only startup effect read `useContextStore.getState()` at mount, saw the
 // empty default, took the "no vault to restore" path and locked itself; the
 // real contexts arrived a moment later to an effect that never runs again.
+import { StrictMode } from "react";
+
 import { renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -99,11 +101,21 @@ const persistedContexts = JSON.stringify({
  */
 async function freshHarness() {
   vi.resetModules();
-  const [{ useContextStore }, { useAppStartup }] = await Promise.all([
-    import("../../stores/context/context"),
-    import("../use-app-startup"),
-  ]);
-  return { useAppStartup, useContextStore };
+  const [{ useContextStore }, { launchRestoreSettled, useAppStartup }] =
+    await Promise.all([
+      import("../../stores/context/context"),
+      import("../use-app-startup"),
+    ]);
+  return { launchRestoreSettled, useAppStartup, useContextStore };
+}
+
+/** A flag that turns true once `promise` settles. */
+function settledFlag(promise: Promise<void>): { done: boolean } {
+  const flag = { done: false };
+  void promise.then(() => {
+    flag.done = true;
+  });
+  return flag;
 }
 
 /** Let every storage read that is waiting land with the given payloads. */
@@ -213,5 +225,58 @@ describe("hot file-open events during startup (issue 597)", () => {
 
     await waitFor(() => expect(handleOpenFilePath).toHaveBeenCalledWith(HOT));
     expect(handleOpenFilePath).toHaveBeenCalledTimes(2);
+  });
+});
+
+// §81 `launchRestoreSettled()` is what `useJournal` and hot opens wait on. It is a
+// promise from module evaluation on, settled by the restore when it finishes.
+describe("launchRestoreSettled (§81)", () => {
+  it("stays pending through StrictMode's second effect run while the restore waits", async () => {
+    const { launchRestoreSettled, useAppStartup } = await freshHarness();
+    const settled = settledFlag(launchRestoreSettled());
+
+    renderHook(
+      () =>
+        useAppStartup({
+          handleNewFile: vi.fn(),
+          handleOpenFilePath: vi.fn(async () => {}),
+        }),
+      { wrapper: StrictMode },
+    );
+    await new Promise((r) => setTimeout(r, 0));
+    // The second run finds the restore already started; it must not settle a
+    // restore that has not happened.
+    expect(settled.done).toBe(false);
+
+    land({ "baram:context": persistedContexts });
+
+    await waitFor(() => expect(settled.done).toBe(true));
+  });
+
+  it("settles after a Fast Refresh of the module, where the kept ref skips the restore", async () => {
+    // Fast Refresh re-evaluates the module — a new, pending promise — and
+    // re-runs the hook's effects in the same component, whose `onLaunchDone`
+    // ref says the restore already ran. Emulated: swap the hook for a fresh
+    // module's in place, and give the effect a new dependency so it re-runs.
+    const first = await freshHarness();
+    let useHook = first.useAppStartup;
+    let handleOpenFilePath = vi.fn(async (_p: string) => {});
+    const { rerender } = renderHook(() =>
+      useHook({ handleNewFile: vi.fn(), handleOpenFilePath }),
+    );
+    land({ "baram:context": persistedContexts });
+    await waitFor(() => expect(openFolder).toHaveBeenCalledWith(VAULT));
+    await first.launchRestoreSettled();
+    openFolder.mockClear();
+
+    const refreshed = await freshHarness();
+    const settled = settledFlag(refreshed.launchRestoreSettled());
+    useHook = refreshed.useAppStartup;
+    handleOpenFilePath = vi.fn(async (_p: string) => {});
+    rerender();
+
+    await waitFor(() => expect(settled.done).toBe(true));
+    // Settled without restoring a second time.
+    expect(openFolder).not.toHaveBeenCalled();
   });
 });

@@ -15,6 +15,11 @@ import {
   addContext as reRegisterInRust,
 } from "../ipc/context";
 import { getOpenedUrls } from "../ipc/invoke";
+import {
+  openRestoredContext,
+  openRestoredFile,
+  restoreSeat,
+} from "../services/launch-restore";
 import { openFolder } from "../services/vault-context-loader";
 import { getSpace } from "../spaces";
 import { useContextStore } from "../stores/context/context";
@@ -37,13 +42,30 @@ let openedUrlsProcessed = false;
  * is starting) would run before any context is registered. Hot opens wait for
  * the restore to settle, and a path the cold-start queue already delivered is
  * not opened a second time — Rust both emits the event and queues the path.
+ *
+ * §81 Settled when the launch restore has finished — successfully or not. A
+ * promise from module evaluation on, not one the restore's effect creates, so a
+ * caller that asks before that effect has run (`useJournal`) waits too.
  */
-let startupSettled: Promise<void> = Promise.resolve();
+let settleStartup: () => void = () => {};
+const startupSettled = new Promise<void>((resolve) => {
+  settleStartup = resolve;
+});
 let startupPending = false;
 /** Paths the cold-start drain opened — consulted only by hot events that arrived
  *  while the restore was still pending, so a later, legitimate reopen of the same
  *  file is never suppressed. */
 const openedDuringStartup = new Set<string>();
+
+/**
+ * §81 Resolves once the launch restore has finished. Until the restore has
+ * re-registered the persisted contexts, Rust holds none of them and refuses a
+ * filesystem call on their directories — `useJournal` waits here before creating
+ * today's entry.
+ */
+export function launchRestoreSettled(): Promise<void> {
+  return startupSettled;
+}
 
 export function useAppStartup({
   handleOpenFilePath,
@@ -61,11 +83,19 @@ export function useAppStartup({
   const handleNewFileRef = useRef(handleNewFile);
   handleNewFileRef.current = handleNewFile;
   useEffect(() => {
-    if (onLaunchDone.current) return;
+    if (onLaunchDone.current) {
+      // §81 This mount already started the restore. StrictMode's second run
+      // finds it still pending in this module and leaves the promise to it. A
+      // Fast Refresh re-evaluates the module — a new, pending promise and no
+      // restore of its own — while the kept ref says the restore ran: settle it
+      // here, or `useJournal` and hot opens wait until a full reload.
+      if (!startupPending) settleStartup();
+      return;
+    }
     onLaunchDone.current = true;
 
     startupPending = true;
-    startupSettled = (async () => {
+    void (async () => {
       // issue 597: both stores rehydrate asynchronously from Tauri storage. Read
       // before that lands and this effect decides on the DEFAULTS — an empty
       // context list means "no vault to restore, take the legacy path" — and,
@@ -98,6 +128,8 @@ export function useAppStartup({
       const contextStore = useContextStore.getState();
       /** §330 결정 2 — 활성 컨텍스트를 사용자가 거부했을 때 그 경로. */
       let deniedActivePath: null | string = null;
+      /** §81 Contexts Rust holds this session — the ones a restore may switch to. */
+      const registered = new Set<string>();
       if (contextStore.contexts.length > 0) {
         // §89 Clean up persisted FileContexts — they should not survive restart
         const fileCtxIds = contextStore.contexts
@@ -135,6 +167,7 @@ export function useAppStartup({
 
           try {
             await reRegisterInRust(ctx);
+            registered.add(ctx.id);
           } catch (err) {
             // §330 결정 2 — 거부는 **세션 한정**이다. 다음 실행에 다시 묻는다.
             // stale로 분류해 지우면 오클릭 한 번에 라벨·색·별칭까지 영속 목록에서
@@ -196,40 +229,44 @@ export function useAppStartup({
 
       // §81 Migration: if contextStore has persisted contexts from previous session,
       // restore them in the backend. If not, fall through to lastOpenedFolder.
-      // §81 Restore contexts only if there are vault/folder contexts remaining
-      // (FileContexts were already cleaned up above)
-      const remainingContexts = useContextStore.getState().contexts;
-      if (
-        remainingContexts.length > 0 &&
-        useContextStore.getState().activeContextId
-      ) {
-        const activeCtx = useContextStore.getState().activeContext();
-        if (activeCtx) {
-          try {
-            await openFolder(activeCtx.path);
-            // Restore last opened file if it's inside the vault (not external)
-            if (lastOpenedFile) {
-              const parentCtx = useContextStore
-                .getState()
-                .getContextForPath(lastOpenedFile);
-              if (parentCtx && parentCtx.contextType !== "file") {
-                await handleOpenFilePath(lastOpenedFile);
-              }
-            }
-            // §85/§92 M2b: Journal startup behavior (registry-driven, self-guarded)
-            await getSpace("journal")?.startup?.();
-            // §98 Zettelkasten startup behavior (registry-driven, self-guarded)
-            await getSpace("zettelkasten")?.startup?.();
-
-            // §89 Process queued file-open requests AFTER vault restoration
-            await processOpenedUrls(handleOpenFilePath);
-            return; // Done — context restored
-          } catch {
-            // Path may be invalid; fall through to legacy restore
-            logger.warn(
-              "§81 Context restore failed, falling back to lastOpenedFolder",
-            );
+      // §81 The restore opens on a context Rust holds this session (FileContexts
+      // were already cleaned up above); with none, the legacy path below.
+      const seat = restoreSeat(registered);
+      if (seat) {
+        try {
+          // §81 The restore decides the seat (the vault tab), the file tree and the
+          // active tab (`services/launch-restore.ts`). What moves the seat after
+          // this step: the restored file (its FileContext, or the fallback back to
+          // `seat`), the queued OS opens (`openFileByPath` switches to the file's
+          // context, `utils/open-file.ts`) and a space whose directory setting
+          // moved while it held the seat (issue 598, the full switch). The space
+          // startups themselves register with `activate: false`.
+          const file = await openRestoredContext(
+            seat,
+            onLaunch === "restoreLastFile" ? lastOpenedFile : null,
+            registered,
+          );
+          // §85/§92 M2b · §98 The space startups (registry-driven, self-guarded)
+          // register their context without activating it and open their note
+          // behind the restored tab.
+          await getSpace("journal")?.startup?.({ background: true });
+          await getSpace("zettelkasten")?.startup?.({ background: true });
+          if (file) {
+            await openRestoredFile(file, seat, handleOpenFilePath);
+          } else if (onLaunch === "newFile") {
+            handleNewFileRef.current();
           }
+
+          // §89 Process queued file-open requests AFTER vault restoration
+          await processOpenedUrls(handleOpenFilePath);
+          return; // Done — context restored
+        } catch {
+          // Path may be invalid; fall through to legacy restore
+          // ‼️ error, not warn — `logger.warn` writes only in dev builds, and
+          // the launch fallbacks must leave a trace in a release build.
+          logger.error(
+            "§81 Context restore failed, falling back to lastOpenedFolder",
+          );
         }
       }
 
@@ -286,6 +323,7 @@ export function useAppStartup({
       })
       .finally(() => {
         startupPending = false;
+        settleStartup();
       });
   }, [handleOpenFilePath]);
 

@@ -175,7 +175,15 @@ interface EditorState {
   openGraphTab: () => void;
   /** §69 Open a plugin's detail view as a singleton tab PER PLUGIN */
   openPluginTab: (pluginId: string, title: string) => void;
-  openTab: (tab: EditorTab) => void;
+  /**
+   * Open `tab`, or select the tab already showing its file.
+   *
+   * §81 `activate: false` opens it for later: added behind the active tab and at the
+   * back of the MRU order, and a file that is already open is left as it is. The
+   * launch restore needs it — the spaces open their notes while the restore decides
+   * what is on screen.
+   */
+  openTab: (tab: EditorTab, opts?: { activate?: boolean }) => void;
   /** §38 Pin a tab — moves to end of pinned group */
   pinTab: (tabId: string) => void;
   /** §324-e Publish (or clear with `null`) the open capture dialog's editor access */
@@ -374,13 +382,15 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }
   },
 
-  openTab: (tab) =>
+  openTab: (tab, opts) =>
     set((state) => {
+      const activate = opts?.activate !== false;
       // Only dedup on non-empty filePath to avoid untitled/graph collisions
       const existing = tab.filePath
         ? state.tabs.find((t) => t.filePath === tab.filePath)
         : undefined;
       if (existing) {
+        if (!activate) return state;
         // §39 Touch MRU for existing tab
         const mruOrder = [
           existing.id,
@@ -393,6 +403,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         tab.contextId || useContextStore.getState().activeContextId || "";
       // §38 New tab always unpinned
       const newTab = { ...tab, contextId, isPinned: false };
+      if (!activate) {
+        // Nobody has used it yet: the back of the MRU order, not the front.
+        return {
+          tabs: [...state.tabs, newTab],
+          mruOrder: [...state.mruOrder, newTab.id],
+        };
+      }
       // §39 New tab goes to front of MRU
       const mruOrder = [newTab.id, ...state.mruOrder];
       return {
