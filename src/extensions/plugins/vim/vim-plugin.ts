@@ -39,13 +39,21 @@ import { initialCoreState } from "./core/types";
 import { createIslandSync } from "./vim-island-sync";
 import { isVimExternalEdit, vimPluginKey } from "./vim-keys";
 import { dispatchMeta, isModal, read } from "./vim-plugin-state";
-import { runSelectionCommand, vimCursor } from "./vim-selection-commands";
+import {
+  clampNormalCaret,
+  escapeInsertCursor,
+  runSelectionCommand,
+  vimCursor,
+} from "./vim-selection-commands";
 import { publishVimRefusal } from "./vim-status";
 
 export function createVimPlugin(
   tiptapEditor: TiptapEditor,
 ): Plugin<VimPluginState> {
   return new Plugin<VimPluginState>({
+    /** issue 776 — keep the normal-mode caret ON a unit. */
+    appendTransaction: (_trs, _old, state) => clampNormalCaret(state),
+
     key: vimPluginKey as never,
 
     props: {
@@ -278,7 +286,11 @@ export function createVimPlugin(
         if (!result.handled) return false;
         event.preventDefault();
         event.stopPropagation();
-        dispatchMeta(view, { core: result.state, type: "core" });
+        if (result.state.mode === "normal") {
+          escapeInsertCursor(view, result.state);
+        } else {
+          dispatchMeta(view, { core: result.state, type: "core" });
+        }
         if (result.command) {
           executeCoreCommand(view, result.command, vim.core.visual);
         }

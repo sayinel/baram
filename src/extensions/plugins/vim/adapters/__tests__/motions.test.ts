@@ -401,10 +401,10 @@ describe("impl review S3-R5 pin — non-zero column vertical cost", () => {
 });
 
 describe("impl review S3-R6 pins — column semantics of the unit index", () => {
-  it("j from the EOL boundary keeps the FULL column (insert-Esc path)", () => {
+  it("j from the EOL boundary keeps the FULL column (an insert caret)", () => {
     const editor = makeEditor("<p>ab</p><p>cde</p>");
     const $first = editor.state.doc.resolve(1);
-    const eol = $first.start() + 2; // boundary past "b" — head after insert-Esc
+    const eol = $first.start() + 2; // boundary past "b" — an insert caret at the line end
     const target = resolveMotion(editor.state, eol, "lineDown", 1);
     expect(editor.state.doc.resolve(target).parentOffset).toBe(2); // ON "e"
   });

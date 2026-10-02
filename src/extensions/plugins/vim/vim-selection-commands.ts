@@ -3,15 +3,20 @@
 // Motions and visual transitions change the SELECTION together with the vim
 // state, in one transaction — meta first, so `state.apply()`'s priority 1
 // handles it and the foreign-selectionSet rule (priority 4) never misfires
-// on vim's own cursor moves. `runSelectionCommand` is the sole entry point;
-// `dispatchCursor`, `vimCursor`, and `visualSelection` are its private
-// machinery, kept in this module because none of them are needed by the
-// PluginView lifecycle (vim-island-sync.ts) or by createVimPlugin's props
-// handlers directly — except `vimCursor`, which those callers also need for
-// the block-cursor decoration and the scroll-follow head, so it stays
-// exported here rather than duplicated.
+// on vim's own cursor moves. `runSelectionCommand` is the entry point for
+// commands; `dispatchCursor` and `visualSelection` are its private machinery.
+// Three exports serve createVimPlugin's props directly: `vimCursor` (the
+// block-cursor decoration and the scroll-follow head), and the two
+// normal-cursor writes of issue 776 — `escapeInsertCursor` (insert Esc) and
+// `clampNormalCaret` (appendTransaction) — which move the caret and so need
+// dispatchCursor's DOM handling or the vim meta that keeps priority 4 quiet.
 
-import type { CoreCommand, StepResult, VisualState } from "./core/types";
+import type {
+  CoreCommand,
+  StepResult,
+  VimCoreState,
+  VisualState,
+} from "./core/types";
 import type { EditorState, Selection, Transaction } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 
@@ -22,12 +27,13 @@ import { cursorSelection } from "./adapters/cursor-selection";
 import { resolveFindChar } from "./adapters/find-char";
 import { cursorLineStart } from "./adapters/line-sequence";
 import { resolveMotion } from "./adapters/motions";
+import { insertEscTarget, terminalClampTarget } from "./adapters/normal-cursor";
 import { visualBounds } from "./adapters/operations";
 import { scrollCursorIntoView, scrollCursorToCenter } from "./adapters/scroll";
 import { resolveSearch } from "./adapters/search";
 import { collapseTarget, moveVisualHead } from "./core/visual-state";
 import { vimPluginKey } from "./vim-keys";
-import { read } from "./vim-plugin-state";
+import { dispatchMeta, read } from "./vim-plugin-state";
 
 /**
  * Dispatch a transaction that MOVES THE CURSOR, and keep the DOM observer from
@@ -310,4 +316,39 @@ function visualSelection(state: EditorState, visual: VisualState): Selection {
     return NodeSelection.create(state.doc, from);
   }
   return TextSelection.between(state.doc.resolve(from), state.doc.resolve(to));
+}
+
+/**
+ * issue 776 — a normal-mode caret left on the terminal boundary of a non-empty
+ * line (a delete that removed the line's last unit, a click past the text)
+ * steps back onto the last unit, appended to the transaction that put it
+ * there. The vim meta re-installs the SAME core, so the priority 4 rule does
+ * not read vim's own correction as a foreign selection.
+ */
+export function clampNormalCaret(state: EditorState): null | Transaction {
+  const vim = read(state);
+  if (!vim.enabled || vim.suspended || vim.mode !== "normal") return null;
+  const target = terminalClampTarget(state);
+  if (target === null) return null;
+  return state.tr
+    .setSelection(cursorSelection(state.doc, target))
+    .setMeta(vimPluginKey, { core: vim.core, type: "core" });
+}
+
+/**
+ * issue 776 — insert Esc, vim's `ins_esc`: the mode flip and the one-unit
+ * step back land in ONE transaction. A caret that does not move (line start,
+ * empty line, a range) keeps the plain meta dispatch — dispatchCursor would
+ * also hand a caret inside a code block to its island, which Esc never did.
+ */
+export function escapeInsertCursor(view: EditorView, core: VimCoreState): void {
+  const target = insertEscTarget(view.state);
+  if (target === null) {
+    dispatchMeta(view, { core, type: "core" });
+    return;
+  }
+  const tr = view.state.tr
+    .setSelection(cursorSelection(view.state.doc, target))
+    .setMeta(vimPluginKey, { core, type: "core" });
+  dispatchCursor(view, tr);
 }

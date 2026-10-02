@@ -36,6 +36,7 @@ vim 구현의 **파일 경로가 사는 유일한 페이지**다. 다른 페이�
 | [line-units.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/line-units.ts)                   | "줄이란 무엇인가" (설계 §9)                                                                 |
 | [cursor-line-columns.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/cursor-line-columns.ts) | 커서 줄의 컬럼 프리미티브                                                                   |
 | [cursor-selection.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/cursor-selection.ts)       | normal 모드 커서 위치를 PM selection 으로 바꾸는 **유일한 곳** (visual·편집 후 착지는 따로) |
+| [normal-cursor.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/normal-cursor.ts)             | normal 모드 커서를 글자 **위에** 둔다 — insert Esc 의 한 칸 뒤로, 줄 끝 caret 의 clamp      |
 | [graphemes.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/graphemes.ts)                     | 커서 단위 — grapheme 경계 (설계 §6)                                                         |
 | [search.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/search.ts)                           | `/` 검색 어댑터 (#372)                                                                      |
 | [register.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/register.ts)                       | vim register (설계 §6)                                                                      |

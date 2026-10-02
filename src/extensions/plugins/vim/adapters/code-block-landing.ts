@@ -27,7 +27,7 @@ function isCmBackedCodeBlock(state: EditorState, pos: number): boolean {
  *  renders through NodeViewContent, so ProseMirror keeps managing the caret
  *  inside it and the column walk is right there. Using the flag made `k` into
  *  frontmatter jump to its first YAML character from any column. */
-function isCodeBlockLanding(state: EditorState, pos: number): boolean {
+export function isCodeBlockLanding(state: EditorState, pos: number): boolean {
   return state.doc.resolve(pos).parent.type.name === "codeBlock";
 }
 

@@ -74,8 +74,9 @@ export function lineUnitStarts(state: EditorState, line: CursorLine): number[] {
 }
 
 /** Units strictly BELOW pos — matching the old walking count: a cursor ON
- *  a unit start is at that unit's index, and the terminal boundary (insert
- *  Esc keeps the head there) counts the FULL line, not the last index
+ *  a unit start is at that unit's index, and the terminal boundary (an insert
+ *  caret at the line end; normal mode clamps off it — normal-cursor.ts)
+ *  counts the FULL line, not the last index
  *  (review S3-R6). */
 export function columnOf(starts: number[], pos: number): number {
   let column = 0;
