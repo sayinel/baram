@@ -1,6 +1,6 @@
 // §298 — vertical motion j/k (issue 776 split).
 //
-// The carried-column line walk and its table branch (TableMap rect walk).
+// The goal-column line walk and its table branch (TableMap rect walk).
 
 import type { MotionOptions } from "./motions";
 import type { EditorState } from "@tiptap/pm/state";
@@ -8,7 +8,7 @@ import type { EditorState } from "@tiptap/pm/state";
 import { TableMap } from "@tiptap/pm/tables";
 
 import { codeBlockLandingAt } from "./code-block-landing";
-import { columnOf, lineSpanAt, lineUnitStarts } from "./cursor-line-columns";
+import { columnAt, lineSpanAt, lineUnitStarts } from "./cursor-line-columns";
 import {
   collectLines,
   firstTextblockIn,
@@ -24,16 +24,15 @@ interface TableWalk {
 }
 
 /**
- * Vertical motion. Each of the |delta| steps lands on the target line's
- * unit at the CARRIED column, and the clamped landing column feeds the next
- * step — semantically identical to re-deriving the column from the landed
- * position (the landing IS that unit's start), so `3j` stays exactly
- * `j;j;j`, but without re-walking units through doc.resolve: unit starts
- * come from ONE line-local segmentation pass per visited line (review
- * S3-R5: per-step unitColumn walks made 3999j from column 99 take ~10s).
- * A persistent goal column (vim's curswant) remains a Phase 2 refinement.
- * Walk state is carried too: line index outside tables, map/rect inside
- * (review S3-R4).
+ * Vertical motion. Each of the |delta| steps lands on the target line's unit
+ * at the GOAL column (vim's curswant, issue 776), clamped to that line's last
+ * unit — the goal itself never shrinks, so a short or empty line on the way
+ * does not lose it and `3j` lands where `j;j;j` with the same remembered goal
+ * does. The caller passes the goal it remembers; without one, the origin's
+ * column is the goal (measured here, once). Unit starts come from ONE
+ * line-local segmentation pass per visited line (review S3-R5: per-step
+ * unitColumn walks made 3999j from column 99 take ~10s). Walk state is
+ * carried: line index outside tables, map/rect inside (review S3-R4).
  */
 export function verticalTarget(
   state: EditorState,
@@ -46,8 +45,9 @@ export function verticalTarget(
   const directionalEntry = options?.codeBlockEntry === "directional";
   const direction: -1 | 1 = delta > 0 ? 1 : -1;
 
-  const originStarts = lineUnitStarts(state, lineSpanAt(state, pos));
-  let column = columnOf(originStarts, pos);
+  const goal = options?.goalColumn ?? columnAt(state, pos);
+  // "lineEnd" ($) lands every line on its last unit: the clamp below does it.
+  const column = goal === "lineEnd" ? Number.POSITIVE_INFINITY : goal;
 
   let p = pos;
   let lineIndex: null | number = null;
@@ -84,8 +84,8 @@ export function verticalTarget(
     }
 
     // Code block landing — 정책은 code-block-landing.ts. 반환이 non-null
-    // 이면 착지 확정: 캐리 칼럼을 갱신하지 않고 다음 스텝으로 (counted
-    // j/k가 짧은 블록을 관통할 때 칼럼이 살아남는 계약).
+    // 이면 착지 확정, 다음 스텝으로. goal 은 어느 착지에서도 줄지 않으므로
+    // counted j/k 가 짧은 블록을 관통해도 칼럼이 살아남는다.
     const landing = codeBlockLandingAt(
       state,
       landed,
@@ -98,15 +98,13 @@ export function verticalTarget(
       continue;
     }
 
+    // An empty line or a block atom has no unit to stand on — land on it
+    // and keep the goal for the next line.
     const starts = lineUnitStarts(state, lineSpanAt(state, landed));
-    if (starts.length === 0) {
-      p = landed;
-      column = 0;
-    } else {
-      const clamped = Math.min(column, starts.length - 1);
-      p = starts[clamped];
-      column = clamped;
-    }
+    p =
+      starts.length === 0
+        ? landed
+        : starts[Math.min(column, starts.length - 1)];
   }
   return p;
 }

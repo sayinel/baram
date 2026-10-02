@@ -11,6 +11,7 @@
 import type { KeyToken, StepResult, VimCoreState } from "./types";
 
 import { exLineStep, searchLineStep } from "./command-lines";
+import { goalAfter } from "./goal-column";
 import { handleEscape, normalKey } from "./normal-keys";
 import { resolvePending } from "./pending-keys";
 import {
@@ -47,9 +48,12 @@ export function step(
 ): StepResult {
   if (state.mode === "insert") {
     if (token.key === "Escape" && !token.mod && !token.ctrl && !token.alt) {
+      // Leaving insert re-measures the goal column: whatever was typed
+      // moved the cursor (issue 776).
       return swallow({
         ...state,
         count: null,
+        goalColumn: null,
         mode: "normal",
         pending: null,
         pendingCount: null,
@@ -57,7 +61,7 @@ export function step(
     }
     return pass(state);
   }
-  return normalOrVisualStep(state, token, ctx);
+  return withGoalColumn(state, normalOrVisualStep(state, token, ctx));
 }
 
 function normalOrVisualStep(
@@ -110,4 +114,15 @@ function normalOrVisualStep(
 
   if (state.mode === "visual") return visualKey(state, token);
   return normalKey(state, token, ctx);
+}
+
+/** Apply the goal column rule (goal-column.ts) to whatever command the key
+ *  produced. A key that produced no command — a count digit, an operator
+ *  waiting for its motion, an ex line keystroke — leaves the goal alone, so
+ *  `j` then `2j` still remembers it. */
+function withGoalColumn(prev: VimCoreState, result: StepResult): StepResult {
+  if (result.command === null) return result;
+  const goalColumn = goalAfter(prev.goalColumn, result.command);
+  if (goalColumn === result.state.goalColumn) return result;
+  return { ...result, state: { ...result.state, goalColumn } };
 }

@@ -73,6 +73,12 @@ export function lineUnitStarts(state: EditorState, line: CursorLine): number[] {
   return starts;
 }
 
+/** The unit column of `pos` on its own cursor line — the goal column j/k
+ *  start from when none is remembered (issue 776). */
+export function columnAt(state: EditorState, pos: number): number {
+  return columnOf(lineUnitStarts(state, lineSpanAt(state, pos)), pos);
+}
+
 /** Units strictly BELOW pos — matching the old walking count: a cursor ON
  *  a unit start is at that unit's index, and the terminal boundary (an insert
  *  caret at the line end; normal mode clamps off it — normal-cursor.ts)

@@ -23,14 +23,16 @@ import type { EditorView } from "@tiptap/pm/view";
 import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 
 import { enterCodeBlockSelection } from "../../nodes/views/code-block-cm-registry";
+import { columnAt } from "./adapters/cursor-line-columns";
 import { cursorSelection } from "./adapters/cursor-selection";
-import { resolveFindChar } from "./adapters/find-char";
+import { findCharTarget } from "./adapters/find-char";
 import { cursorLineStart } from "./adapters/line-sequence";
 import { resolveMotion } from "./adapters/motions";
 import { insertEscTarget, terminalClampTarget } from "./adapters/normal-cursor";
 import { visualBounds } from "./adapters/operations";
 import { scrollCursorIntoView, scrollCursorToCenter } from "./adapters/scroll";
 import { resolveSearch } from "./adapters/search";
+import { goalAfterFind, isExLineJump } from "./core/goal-column";
 import { collapseTarget, moveVisualHead } from "./core/visual-state";
 import { vimPluginKey } from "./vim-keys";
 import { dispatchMeta, read } from "./vim-plugin-state";
@@ -135,6 +137,15 @@ export function runSelectionCommand(
         ? preVisual.headCursor
         : vimCursor(view.state);
     const inVisual = result.state.mode === "visual" && preVisual !== null;
+    // issue 776 — j/k walk to the remembered goal column; when there is none
+    // yet, the column the cursor is in now becomes it, and the meta below
+    // carries it to the next j/k (core/goal-column.ts decides when it is
+    // forgotten). Measured here, once per run of j/k — never per keystroke.
+    const vertical =
+      command.motion === "lineDown" || command.motion === "lineUp";
+    const goalColumn = vertical
+      ? (result.state.goalColumn ?? columnAt(view.state, base))
+      : result.state.goalColumn;
     const target = resolveMotion(
       view.state,
       base,
@@ -144,13 +155,16 @@ export function runSelectionCommand(
       // visual head parked mid-block breaks the next walk's column math
       // and changes d/y ranges (adversarial review HIGH). Visual keeps the
       // first-line default.
-      inVisual ? undefined : { codeBlockEntry: "directional" },
+      {
+        codeBlockEntry: inVisual ? "first-line" : "directional",
+        goalColumn: goalColumn ?? undefined,
+      },
     );
-    let core = result.state;
+    let core: VimCoreState = { ...result.state, goalColumn };
     const tr = view.state.tr;
     if (inVisual && preVisual) {
       const visual = moveVisualHead(preVisual, target);
-      core = { ...result.state, visual };
+      core = { ...core, visual };
       tr.setSelection(visualSelection(view.state, visual));
     } else {
       tr.setSelection(cursorSelection(view.state.doc, target));
@@ -178,11 +192,11 @@ export function runSelectionCommand(
     // 단일 트랜잭션(meta + 선택)으로 처리해 코드블록 착지의 진입
     // 핸드오프·스크롤 위임까지 기존 채널을 그대로 탄다. 숫자가 아니면
     // false — 실행부(:w/:q)가 이어받는다.
-    const m = /^(\d+|\$)$/.exec(command.name.trim());
-    if (!m) return false;
+    const name = command.name.trim();
+    if (!isExLineJump(name)) return false;
     const target = cursorLineStart(
       view.state,
-      m[1] === "$" ? "$" : Number.parseInt(m[1], 10),
+      name === "$" ? "$" : Number.parseInt(name, 10),
     );
     if (target === null) return true; // 빈 문서 — 명령줄만 닫는다
     const tr = view.state.tr;
@@ -219,7 +233,7 @@ export function runSelectionCommand(
       result.state.mode === "visual" && preVisual
         ? preVisual.headCursor
         : vimCursor(view.state);
-    const target = resolveFindChar(
+    const match = findCharTarget(
       view.state,
       base,
       command.char,
@@ -227,11 +241,17 @@ export function runSelectionCommand(
       command.count,
       command.repeat ?? false,
     );
-    let core = result.state;
+    const target = match ?? base;
+    // issue 776 — only a find that MATCHED forgets the goal column; the core
+    // cannot know, so the outcome is applied here (core/goal-column.ts).
+    let core: VimCoreState = {
+      ...result.state,
+      goalColumn: goalAfterFind(result.state.goalColumn, match !== null),
+    };
     const tr = view.state.tr;
     if (result.state.mode === "visual" && result.state.visual) {
       const visual = moveVisualHead(result.state.visual, target);
-      core = { ...result.state, visual };
+      core = { ...core, visual };
       tr.setSelection(visualSelection(view.state, visual));
     } else if (target !== base) {
       tr.setSelection(cursorSelection(view.state.doc, target));

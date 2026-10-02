@@ -59,8 +59,9 @@ function codeLineSpan(
  *  legally land at line END, where normal mode clamps to the last
  *  character. Column policy is the shared one (file
  *  header): logical lines — hard breaks split, soft wraps demoted — in
- *  grapheme units, the v1 approximation whose full curswant treatment is
- *  issue 372 tier 1. Returns null for a block with no CodeMirror caret to
+ *  grapheme units. It measures the column where the caret is and does
+ *  not use the remembered goal column (issue 776 keeps that to normal and
+ *  visual j/k — the insert caret model differs). Returns null for a block with no CodeMirror caret to
  *  receive the offset (journal-* widget NodeViews). */
 export function insertEntryTarget(
   state: EditorState,
@@ -71,7 +72,7 @@ export function insertEntryTarget(
   if (!isCmBackedCodeBlock(state, inside)) return null;
   const column = columnOf(lineUnitStarts(state, lineSpanAt(state, from)), from);
   const line = codeLineSpan(state, inside, edge);
-  // The carried column is a GRAPHEME index — resolve it through the target
+  // The column is a GRAPHEME index — resolve it through the target
   // line's own grapheme starts instead of adding it as a UTF-16 offset,
   // which would land inside a surrogate pair or combining sequence
   // (adversarial review). Past the last grapheme = line END, the insert
@@ -86,10 +87,11 @@ export function insertEntryTarget(
 /**
  * 수직 워크의 코드블록 착지 (issue 472). null = 코드블록이 아님(일반
  * 분기로). 숫자 = 착지 위치이며, 호출자는 반드시 `continue`로 다음
- * 스텝으로 넘어가고 **캐리 칼럼을 갱신하지 않는다** — journal/기본
- * 착지(landed 그대로)도 여기 포함되어 일반 분기의 칼럼 산술을 절대
- * 타지 않는다 (적대 리뷰: null을 journal로 쓰면 counted j/k의 칼럼이
- * 변한다).
+ * 스텝으로 넘어간다 — journal/기본 착지(landed 그대로)도 여기 포함되어
+ * 일반 분기의 칼럼 착지를 절대 타지 않는다: 블록 소스 전체가 한 줄로
+ * 보이므로 일반 분기는 goal 칼럼을 소스 오프셋으로 흘려 콘텐츠 시작이
+ * 아닌 소스 한가운데에 내려놓는다. `column` 은 goal 칼럼이고 `$` 뒤에는
+ * 무한대(줄 끝)다 (issue 776).
  */
 export function codeBlockLandingAt(
   state: EditorState,
@@ -102,11 +104,11 @@ export function codeBlockLandingAt(
   if (directional && isCmBackedCodeBlock(state, landed)) {
     // Column-preserving entry (vim's curswant semantics at the block
     // boundary): land on the directionally adjacent source line — the
-    // FIRST from above, the LAST from below — at the carried column,
+    // FIRST from above, the LAST from below — at the goal column,
     // clamped to the line's last character like vim across short lines.
-    // The carried column is a GRAPHEME index resolved through the target
+    // The goal column is a GRAPHEME index resolved through the target
     // line's own grapheme starts (a UTF-16 add landed inside surrogate
-    // pairs). Persistent curswant is issue 372 tier 1.
+    // pairs).
     const line = codeLineSpan(state, landed, direction < 0 ? "last" : "first");
     const starts = lineUnitStarts(state, {
       end: line.start + line.length,

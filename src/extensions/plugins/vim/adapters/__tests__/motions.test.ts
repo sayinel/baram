@@ -7,6 +7,7 @@ import { Editor, Node } from "@tiptap/core";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createBaramExtensions } from "../../../../index";
+import { columnAt } from "../cursor-line-columns";
 import { resolveFindChar } from "../find-char";
 import { resolveMotion } from "../motions";
 
@@ -297,26 +298,33 @@ describe("impl review S3-R3 pin — counted j/k across a mid rowspan", () => {
 });
 
 describe("impl review S3-R4 pins", () => {
+  /** n single steps carrying the origin's goal column — what the plugin
+   *  does across repeated j/k (issue 776: the goal is remembered, so the
+   *  steps match the counted walk instead of re-measuring a clamped column). */
   function repeated(
     editor: Editor,
     pos: number,
     motion: "lineDown" | "lineUp",
     n: number,
   ): number {
+    const goalColumn = columnAt(editor.state, pos);
     let p = pos;
-    for (let i = 0; i < n; i++) p = resolveMotion(editor.state, p, motion, 1);
+    for (let i = 0; i < n; i++) {
+      p = resolveMotion(editor.state, p, motion, 1, { goalColumn });
+    }
     return p;
   }
 
-  it("counted j equals repeated j through an intermediate CLAMP", () => {
+  it("counted j equals goal-carrying repeated j through an intermediate CLAMP", () => {
     const editor = makeEditor("<p>abcdef</p><p>x</p><p>uvwxyz</p>");
     const deep = posOfText(editor, "f"); // column 5
-    expect(resolveMotion(editor.state, deep, "lineDown", 2)).toBe(
-      repeated(editor, deep, "lineDown", 2),
-    );
+    const counted = resolveMotion(editor.state, deep, "lineDown", 2);
+    expect(counted).toBe(repeated(editor, deep, "lineDown", 2));
+    // vim's curswant: the short line does not lose column 5 (issue 776).
+    expect(counted).toBe(posOfText(editor, "z"));
   });
 
-  it("counted j/k equal repeated steps through the rowspan grid", () => {
+  it("counted j/k equal goal-carrying repeated steps through the rowspan grid", () => {
     const editor = makeEditor(
       "<p>abcdef</p>" +
         "<table>" +
@@ -588,5 +596,97 @@ describe("f/t — find char in the line", () => {
     });
     const start = editor.state.doc.resolve(1).start();
     expect(resolveFindChar(editor.state, start, "가", "f", 1)).toBe(start + 1);
+  });
+});
+
+describe("issue 776 — the goal column survives every kind of line on the way", () => {
+  const LONG = "abcdefghij";
+
+  it("an empty paragraph", () => {
+    // Fails if: the walk lands an empty line at column 0 and carries 0 on.
+    const editor = makeEditor(`<p>${LONG}</p><p></p><p>${LONG}</p>`);
+    const g = posOfText(editor, "g"); // column 6
+    const target = resolveMotion(editor.state, g, "lineDown", 2);
+    expect(editor.state.doc.resolve(target).parentOffset).toBe(6);
+  });
+
+  it("a block atom line", () => {
+    // Fails if: the walk carries column 0 off an atom line.
+    const editor = makeEditor("<p>x</p>");
+    editor.commands.setContent({
+      content: [
+        { content: [{ text: LONG, type: "text" }], type: "paragraph" },
+        { attrs: { latex: "x" }, type: "mathBlock" },
+        { content: [{ text: "ABCDEFGHIJ", type: "text" }], type: "paragraph" },
+      ],
+      type: "doc",
+    });
+    const g = posOfText(editor, "g");
+    expect(resolveMotion(editor.state, g, "lineDown", 2)).toBe(
+      posOfText(editor, "G"),
+    );
+  });
+
+  it("a short table row", () => {
+    // Fails if: the table landing carries its clamped column on.
+    const editor = makeEditor(
+      `<p>${LONG}</p><table><tr><td><p>ab</p></td></tr></table><p>ABCDEFGHIJ</p>`,
+    );
+    const g = posOfText(editor, "g");
+    expect(resolveMotion(editor.state, g, "lineDown", 2)).toBe(
+      posOfText(editor, "G"),
+    );
+  });
+
+  it("a short line, with the goal handed in (what the plugin does for j j)", () => {
+    // Fails if: a supplied goalColumn is ignored and the origin re-measured.
+    const editor = makeEditor(`<p>${LONG}</p><p>xy</p><p>ABCDEFGHIJ</p>`);
+    const onY = posOfText(editor, "y"); // column 1 — where the first j landed
+    expect(
+      resolveMotion(editor.state, onY, "lineDown", 1, { goalColumn: 6 }),
+    ).toBe(posOfText(editor, "G"));
+  });
+
+  it('"lineEnd" ($) lands on each line\'s last unit, longer lines included, both ways', () => {
+    // Fails if: "lineEnd" is turned into the origin's numeric end column —
+    // the LONGER line past the short ones tells the two apart.
+    const editor = makeEditor(`<p>pqr</p><p>x</p><p></p><p>${LONG}</p>`);
+    const r = posOfText(editor, "r");
+    expect(
+      resolveMotion(editor.state, r, "lineDown", 3, { goalColumn: "lineEnd" }),
+    ).toBe(posOfText(editor, "j"));
+    const up = makeEditor(`<p>${LONG}</p><p></p><p>x</p><p>pqr</p>`);
+    expect(
+      resolveMotion(up.state, posOfText(up, "r"), "lineUp", 3, {
+        goalColumn: "lineEnd",
+      }),
+    ).toBe(posOfText(up, "j"));
+  });
+
+  it('"lineEnd" enters a code block on its line\'s last character', () => {
+    // Fails if: the code-block landing gets a sentinel it cannot clamp.
+    const editor = makeEditor(
+      "<p>abc</p><pre><code>first line\nsecond</code></pre>",
+    );
+    const target = resolveMotion(
+      editor.state,
+      posOfText(editor, "a"),
+      "lineDown",
+      1,
+      { codeBlockEntry: "directional", goalColumn: "lineEnd" },
+    );
+    expect(editor.state.doc.textBetween(target, target + 1)).toBe("e"); // first lin[e]
+  });
+
+  it("a counted j through a code block keeps the column (control: true before 776 too)", () => {
+    const editor = makeEditor(
+      `<p>${LONG}</p><pre><code>ab</code></pre><p>ABCDEFGHIJ</p>`,
+    );
+    const g = posOfText(editor, "g");
+    expect(
+      resolveMotion(editor.state, g, "lineDown", 2, {
+        codeBlockEntry: "directional",
+      }),
+    ).toBe(posOfText(editor, "G"));
   });
 });

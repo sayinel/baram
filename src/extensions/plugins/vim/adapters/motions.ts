@@ -14,7 +14,7 @@
 // table move by row, column-preserving via TableMap). Soft-wrap visual
 // lines stay demoted per §13 ("50j 강등").
 
-import type { Motion } from "../core/types";
+import type { GoalColumn, Motion } from "../core/types";
 import type { EditorState } from "@tiptap/pm/state";
 
 import {
@@ -42,6 +42,10 @@ export interface MotionOptions {
    *  widens/narrows visual d/y ranges, neither of which issue 472
    *  approved (adversarial review). */
   codeBlockEntry?: "directional" | "first-line";
+  /** The remembered goal column for j/k (vim's curswant, issue 776). Absent:
+   *  the origin's own column — what operators and other one-shot callers
+   *  want, since they pick LINES and never carry the goal on. */
+  goalColumn?: GoalColumn;
 }
 
 /**

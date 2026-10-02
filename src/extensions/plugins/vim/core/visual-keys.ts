@@ -19,7 +19,7 @@ export function visualKey(state: VimCoreState, token: KeyToken): StepResult {
     case "V":
       // vim: V in charwise switches the kind; V in linewise exits.
       if (state.visual?.kind === "line") {
-        return emit(cleared, { type: "leaveVisual" });
+        return emit(cleared, { reason: "toggle", type: "leaveVisual" });
       }
       return emit(
         {
@@ -40,7 +40,7 @@ export function visualKey(state: VimCoreState, token: KeyToken): StepResult {
           { type: "enterVisual" },
         );
       }
-      return emit(cleared, { type: "leaveVisual" });
+      return emit(cleared, { reason: "toggle", type: "leaveVisual" });
     case "y":
       return emit(cleared, { type: "yankVisual" });
     case "z":

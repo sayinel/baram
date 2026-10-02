@@ -69,6 +69,9 @@ export function submitSearchLine(editor: Editor): void {
   tr.setMeta(vimPluginKey, {
     core: {
       ...previous,
+      // An executed search forgets the goal column, matched or not (vim
+      // normal_search) — the same rule step() applies to the keyed Enter.
+      goalColumn: null,
       lastSearch: { direction: line.direction, pattern },
       searchLine: null,
     },

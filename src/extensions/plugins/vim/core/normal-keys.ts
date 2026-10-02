@@ -19,7 +19,7 @@ export function handleEscape(state: VimCoreState): StepResult {
   if (state.mode === "visual") {
     return emit(
       { ...state, mode: "normal", visual: null },
-      { type: "leaveVisual" },
+      { reason: "escape", type: "leaveVisual" },
     );
   }
   // Already in normal with nothing pending: vim beeps, we just consume it.

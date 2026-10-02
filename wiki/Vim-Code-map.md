@@ -9,18 +9,19 @@ vim 구현의 **파일 경로가 사는 유일한 페이지**다. 다른 페이�
 
 ## core — 순수 상태기계 (ProseMirror 무의존)
 
-| 파일                                                                                                            | 무엇                                                              |
-| --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| [state-machine.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/state-machine.ts) | 모달 상태기계 (설계 §14)                                          |
-| [step-kit.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/step-kit.ts)           | 상태기계 공용 프리미티브 — 모션 표 · count 산술 · StepResult 생성 |
-| [normal-keys.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/normal-keys.ts)     | normal 모드 단일 키와 Escape                                      |
-| [visual-keys.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/visual-keys.ts)     | visual 모드 단일 키                                               |
-| [pending-keys.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/pending-keys.ts)   | 대기 중인 시퀀스의 두 번째 키 — 오퍼레이터 · g/z · find 대상      |
-| [command-lines.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/command-lines.ts) | ex `:` 줄과 `/`·`?` 검색 줄 입력                                  |
-| [types.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/types.ts)                 | core 어휘 — `KeyToken` · `CoreCommand` intent                     |
-| [keys.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/keys.ts)                   | 키스트로크 정규화 (물리키 / raw 분리)                             |
-| [visual-state.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/visual-state.ts)   | VisualState 기록 (설계 §6)                                        |
-| [hangul.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/hangul.ts)               | 한글 find 타겟 매칭 — 초성 검색 (설계 §5)                         |
+| 파일                                                                                                            | 무엇                                                                                      |
+| --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| [state-machine.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/state-machine.ts) | 모달 상태기계 (설계 §14)                                                                  |
+| [goal-column.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/goal-column.ts)     | goal column(vim curswant) 규칙 — 명령마다 유지 / 잊음 / 줄 끝, find 는 성공했을 때만 잊음 |
+| [step-kit.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/step-kit.ts)           | 상태기계 공용 프리미티브 — 모션 표 · count 산술 · StepResult 생성                         |
+| [normal-keys.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/normal-keys.ts)     | normal 모드 단일 키와 Escape                                                              |
+| [visual-keys.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/visual-keys.ts)     | visual 모드 단일 키                                                                       |
+| [pending-keys.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/pending-keys.ts)   | 대기 중인 시퀀스의 두 번째 키 — 오퍼레이터 · g/z · find 대상                              |
+| [command-lines.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/command-lines.ts) | ex `:` 줄과 `/`·`?` 검색 줄 입력                                                          |
+| [types.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/types.ts)                 | core 어휘 — `KeyToken` · `CoreCommand` intent                                             |
+| [keys.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/keys.ts)                   | 키스트로크 정규화 (물리키 / raw 분리)                                                     |
+| [visual-state.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/visual-state.ts)   | VisualState 기록 (설계 §6)                                                                |
+| [hangul.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/hangul.ts)               | 한글 find 타겟 매칭 — 초성 검색 (설계 §5)                                                 |
 
 ## adapters — core 의 intent 를 PM 위에서 실행
 

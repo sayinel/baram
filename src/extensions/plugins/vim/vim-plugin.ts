@@ -230,6 +230,21 @@ export function createVimPlugin(
           return true;
         },
 
+        /** issue 776 — a click moves the cursor, so the goal column must not
+         *  survive it. Most clicks clear it as a foreign selection anyway, but
+         *  one that syntax reveal turns into an expansion arrives carrying the
+         *  ephemeral tag the reducer exempts — so it is cleared first, here. */
+        mousedown: (view) => {
+          const vim = read(view.state);
+          if (vim.enabled && vim.core.goalColumn !== null) {
+            dispatchMeta(view, {
+              core: { ...vim.core, goalColumn: null },
+              type: "core",
+            });
+          }
+          return false;
+        },
+
         /** §5: browser-default paste is actively consumed while modal. */
         paste: (view, event) => consumeClipboard(view, event),
       },

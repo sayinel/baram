@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { useUIStore } from "../../../../stores/ui/ui";
 import { createBaramExtensions } from "../../../index";
+import { columnAt } from "../adapters/cursor-line-columns";
 import { graphemeIndexSize } from "../adapters/graphemes";
 import { resolveMotion } from "../adapters/motions";
 import { scrollCursorIntoView } from "../adapters/scroll";
@@ -18,6 +19,13 @@ import { setWysiwygVimStatusOwner } from "../vim-status";
 vi.mock("../adapters/scroll", async (importOriginal) => {
   const actual = await importOriginal<object>();
   return { ...actual, scrollCursorIntoView: vi.fn() };
+});
+
+// issue 776 — count goal-column measurements; delegates to the real function.
+vi.mock("../adapters/cursor-line-columns", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../adapters/cursor-line-columns")>();
+  return { ...actual, columnAt: vi.fn(actual.columnAt) };
 });
 
 const editors: Editor[] = [];
@@ -179,5 +187,67 @@ describe("the grapheme index is released when vim stops owning the surface", () 
       }),
     );
     expect(graphemeIndexSize()).toBe(0);
+  });
+});
+
+// issue 776 — the goal column must cost nothing per keystroke. Counted as
+// grapheme segmentation passes (Intl.Segmenter#segment): the column walk's
+// unit lists are built from them, so an extra column measurement shows up as
+// an extra call.
+describe("goal column cost (issue 776)", () => {
+  const LINE = "abcdefghij";
+
+  function segmentCalls(run: () => void): number {
+    const spy = vi.spyOn(Intl.Segmenter.prototype, "segment");
+    try {
+      run();
+      return spy.mock.calls.length;
+    } finally {
+      spy.mockRestore();
+    }
+  }
+
+  it("a supplied goal skips the origin measurement in the walk", () => {
+    // Fails if: verticalTarget measures the origin column whether or not a
+    // goal was handed in (2 passes instead of 1).
+    const editor = makeEditor(`<p>${LINE}</p><p>${LINE}</p>`);
+    const from = 7; // "g"
+    expect(
+      segmentCalls(() =>
+        resolveMotion(editor.state, from, "lineDown", 1, { goalColumn: 6 }),
+      ),
+    ).toBe(1); // the destination line only
+    expect(
+      segmentCalls(() => resolveMotion(editor.state, from, "lineDown", 1)),
+    ).toBe(2); // origin + destination
+  });
+
+  it("a run of j measures the origin column once, not per j", () => {
+    // Fails if: the selection path measures columnAt on every j instead of
+    // only when the core's goal is null, or verticalTarget re-measures the
+    // origin although the goal was handed in.
+    const editor = makeEditor(`<p>${LINE}</p>`.repeat(6));
+    enable(editor);
+    editor.commands.setTextSelection(7);
+    vi.mocked(columnAt).mockClear();
+    key(editor, "j");
+    key(editor, "j");
+    key(editor, "j");
+    expect(vi.mocked(columnAt)).toHaveBeenCalledTimes(1);
+  });
+
+  it("typing in insert mode measures no column", () => {
+    // Fails if: the keydown path measures the cursor's column per key (the
+    // eager StepContext.column design the plan rejected).
+    const editor = makeEditor(`<p>${LINE}</p>`);
+    enable(editor);
+    editor.commands.setTextSelection(3);
+    key(editor, "i");
+    expect(
+      (vimPluginKey.getState(editor.state) as unknown as { mode: string }).mode,
+    ).toBe("insert");
+    expect(
+      segmentCalls(() => ["x", "y", "z"].forEach((k) => key(editor, k))),
+    ).toBe(0);
   });
 });

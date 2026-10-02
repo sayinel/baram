@@ -14,20 +14,23 @@ import {
 
 /**
  * f/F/t/T — the count-th occurrence of `char` in the CURRENT segment,
- * forward for f/t, backward for F/T; t/T stop one unit short. A miss keeps
- * the cursor where it is (vim: the motion simply fails). Matching is per
- * cursor UNIT, so a hangul target matches its whole grapheme.
+ * forward for f/t, backward for F/T; t/T stop one unit short. null on a miss
+ * (vim: the motion simply fails). A MATCH can still land on `pos` itself — a
+ * `t` whose target is the very next unit — which is why the outcome is not
+ * "did the cursor move" (the goal column rule needs the difference, issue
+ * 776). Matching is per cursor UNIT, so a hangul target matches its whole
+ * grapheme.
  */
-export function resolveFindChar(
+export function findCharTarget(
   state: EditorState,
   pos: number,
   char: string,
   kind: FindKind,
   count: number,
   repeat = false,
-): number {
+): null | number {
   const span = segmentSpanAt(state, pos);
-  if (!span) return pos;
+  if (!span) return null;
   const line: CursorLine = { end: span.to, start: span.from };
   const starts = lineUnitStarts(state, line);
   const unitText = (index: number): string =>
@@ -55,7 +58,7 @@ export function resolveFindChar(
         break;
       }
     }
-    if (matchIndex < 0) return pos;
+    if (matchIndex < 0) return null;
     const target = till ? starts[matchIndex - 1] : starts[matchIndex];
     return target !== undefined && target > pos ? target : pos;
   }
@@ -69,7 +72,19 @@ export function resolveFindChar(
       break;
     }
   }
-  if (matchIndex < 0) return pos;
+  if (matchIndex < 0) return null;
   const target = till ? starts[matchIndex + 1] : starts[matchIndex];
   return target !== undefined && target < pos ? target : pos;
+}
+
+/** findCharTarget with a miss resolved to `pos` — the cursor stays put. */
+export function resolveFindChar(
+  state: EditorState,
+  pos: number,
+  char: string,
+  kind: FindKind,
+  count: number,
+  repeat = false,
+): number {
+  return findCharTarget(state, pos, char, kind, count, repeat) ?? pos;
 }

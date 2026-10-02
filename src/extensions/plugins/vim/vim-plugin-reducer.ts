@@ -8,6 +8,7 @@ import type { VimCoreState } from "./core/types";
 import type { VimMeta, VimPluginState } from "./vim-plugin-state";
 import type { Transaction } from "@tiptap/pm/state";
 
+import { SYNTAX_REVEAL_EPHEMERAL_META } from "../syntax-reveal-state";
 import { releaseGraphemeIndex } from "./adapters/graphemes";
 import { initialCoreState } from "./core/types";
 import { isVimExternalEdit, vimPluginKey } from "./vim-keys";
@@ -29,6 +30,7 @@ export function applyVimTransaction(
     return withCore(prev, {
       ...prev.core,
       count: null,
+      goalColumn: null,
       mode: prev.core.mode === "visual" ? "normal" : prev.core.mode,
       pending: null,
       pendingCount: null,
@@ -45,7 +47,11 @@ export function applyVimTransaction(
           headCursor: tr.mapping.map(prev.core.visual.headCursor),
         }
       : null;
-    return withCore(prev, { ...prev.core, visual });
+    return withCore(prev, {
+      ...prev.core,
+      goalColumn: forgetsGoal(tr) ? null : prev.core.goalColumn,
+      visual,
+    });
   }
 
   // §5b priority 4 — external selection: a foreign selectionSet drops
@@ -53,9 +59,15 @@ export function applyVimTransaction(
   if (tr.selectionSet && prev.core.mode === "visual") {
     return withCore(prev, {
       ...prev.core,
+      goalColumn: forgetsGoal(tr) ? null : prev.core.goalColumn,
       mode: "normal",
       visual: null,
     });
+  }
+  // ...and in any mode it moved the cursor out from under the goal column
+  // (a click). Equality-gated: most foreign selections find it already null.
+  if (tr.selectionSet && prev.core.goalColumn !== null && forgetsGoal(tr)) {
+    return withCore(prev, { ...prev.core, goalColumn: null });
   }
 
   return prev;
@@ -96,10 +108,14 @@ function reduce(prev: VimPluginState, meta: VimMeta): VimPluginState {
       // code block island) needs a clean core: an outer `:`/`/` buffer left
       // open before entering the island must not resurrect on exit. The
       // ordinary setMode (change-refusal recovery) keeps them.
+      // The goal column is forgotten either way: an island exit lands where
+      // CodeMirror's own goal put it, and a refused change moved nothing
+      // vim can vouch for (issue 776).
       return withCore(prev, {
         ...prev.core,
         count: null,
         exLine: meta.boundary ? null : prev.core.exLine,
+        goalColumn: null,
         mode: meta.mode,
         pending: null,
         pendingCount: null,
@@ -113,6 +129,7 @@ function reduce(prev: VimPluginState, meta: VimMeta): VimPluginState {
         ...withCore(prev, {
           ...prev.core,
           count: null,
+          goalColumn: null, // the island may move the caret (issue 776)
           pending: null,
           pendingCount: null,
         }),
@@ -134,4 +151,20 @@ function withCore(prev: VimPluginState, core: VimCoreState): VimPluginState {
         : (core.searchLine.direction === "forward" ? "/" : "?") +
           core.searchLine.text,
   };
+}
+
+/**
+ * Does a transaction vim did not make forget the goal column (issue 776)?
+ * Yes when it changed the text or moved the selection — except syntax
+ * reveal's expand/collapse (SYNTAX_REVEAL_EPHEMERAL_META), which swaps a
+ * mark's rendering under a cursor vim itself just put there: without the
+ * exception, every j across a bold or linked line lost the column. A click
+ * that expands through syntax reveal is still forgotten — the vim plugin's
+ * mousedown clears the goal before the click lands.
+ */
+function forgetsGoal(tr: Transaction): boolean {
+  return (
+    (tr.docChanged || tr.selectionSet) &&
+    tr.getMeta(SYNTAX_REVEAL_EPHEMERAL_META) !== true
+  );
 }
