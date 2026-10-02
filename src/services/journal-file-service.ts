@@ -30,10 +30,12 @@ export interface JournalFileOptions {
    * ‼️ A callback, not a flag, so this service never imports a dialog — the
    * confirm UI stays in the caller's layer.
    *
-   * Omitted (the default) means create without asking, which is what the three
-   * existing callers want: the journal space's startup, the calendar's day
-   * click, and the command palette all express "make today's entry" as an
-   * explicit intent. Only a *link click* is a reference that should not create.
+   * Omitted (the default) means create without asking. Five of the six callers
+   * omit it — the journal space's startup and new-entry flow, the calendar's day
+   * click, the open-today command (`use-keybinding-actions.ts`) and `useJournal`'s
+   * automatic creation — each a request to make the entry. Only date-wikilink
+   * navigation (`use-navigation.ts`) passes it: a *link click* is a reference that
+   * should not create.
    */
   confirmCreate?: () => Promise<boolean>;
   journalDirectory: string;
@@ -49,11 +51,13 @@ export interface JournalFileOptions {
  * `resolveJournalDir` accepts absolute paths only, so the journal directory can sit
  * outside the open vault, and there `check_vault` permits nothing until the journal
  * context exists (the Rust ContextManager is in-memory; startup re-registers only the
- * contexts the store already persisted). Five `ensureJournalFile` call sites write under
- * this directory and four of them used to skip registration — the shortcut, the calendar,
- * date-wikilink navigation (`use-navigation.ts`) and the startup hook — each failing
+ * contexts the store already persisted). `ensureJournalFile` reads and writes under this
+ * directory for each of its six callers (the journal space's startup and new-entry flow,
+ * `CalendarPanel`, `use-journal.ts`, `use-keybinding-actions.ts`, `use-navigation.ts`).
+ * Before it registered here, four of the five callers of the time skipped registration —
+ * the shortcut, the calendar, date-wikilink navigation and the startup hook — each failing
  * identically: readFile denied, read as "no such file", createDir denied, swallowed by the
- * caller's catch. Only the journal space registered. (A sixth, the §56b Alt+←/→ day
+ * caller's catch. Only the journal space registered. (Another, the §56b Alt+←/→ day
  * navigation, skipped it too; it sat behind §37's Alt+←/→ branch in the same keydown
  * handler and has been removed. CalendarPanel's periodic notes write here without
  * `ensureJournalFile` and call `ensureJournalDirRegistered` themselves.)
@@ -178,11 +182,18 @@ export async function ensureJournalFile(
 /**
  * Opens a file in the editor tab bar.
  * If the file is already open, activates its existing tab.
+ *
+ * §81 `activate: false` opens it behind the active tab and leaves an open one where
+ * it is (see `openTab`). `contextId` names the context the tab belongs to — an
+ * already-open tab is moved to it too; omitted, a new tab gets whichever context
+ * holds the seat (`openTab`) and an open one keeps its own.
  */
 export async function openFileInTab(
   filePath: string,
   content: string,
+  opts?: { activate?: boolean; contextId?: string },
 ): Promise<void> {
+  const activate = opts?.activate !== false;
   const edStore = useEditorStore.getState();
   const existing = edStore.tabs.find((t) => t.filePath === filePath);
   if (existing) {
@@ -191,17 +202,24 @@ export async function openFileInTab(
     if (!existing.isDirty) {
       useFileStore.getState().setFileContent(filePath, content);
     }
-    edStore.setActiveTab(existing.id);
+    // Before activating: `setActiveTab` switches by the tab's context.
+    if (opts?.contextId && existing.contextId !== opts.contextId) {
+      edStore.setTabContexts(new Map([[existing.id, opts.contextId]]));
+    }
+    if (activate) edStore.setActiveTab(existing.id);
   } else {
     useFileStore.getState().setFileContent(filePath, content);
-    edStore.openTab({
-      contextId: "",
-      id: crypto.randomUUID(),
-      filePath,
-      title: basename(filePath) || "Journal",
-      isDirty: false,
-      isPinned: false,
-    });
+    edStore.openTab(
+      {
+        contextId: opts?.contextId ?? "",
+        id: crypto.randomUUID(),
+        filePath,
+        title: basename(filePath) || "Journal",
+        isDirty: false,
+        isPinned: false,
+      },
+      { activate },
+    );
   }
 
   // Seed the self-write baseline so the creation/open echo from the watcher
