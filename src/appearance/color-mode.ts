@@ -62,10 +62,12 @@ export function prefersDarkFor(
 /**
  * 지금 화면이 라이트인가 다크인가 — **언제나 답한다**.
  *
- * 한 모드짜리 테마가 OS 를 무시하는 규칙은 {@link resolveThemeMode} 이 이미 갖고
- * 있으므로 여기서 다시 적지 않는다. 이 함수가 더하는 것은 그 함수가 말하지 않는
- * 갈래 하나뿐이다: 적용할 모드 자산이 없을 때(`system`, 그리고 모드를 선언하지
- * 않은 테마) 화면의 밝기는 OS 가 정한다.
+ * 한 모드짜리 테마가 `prefersDark` 를 무시하는 규칙은 {@link resolveThemeMode} 이
+ * 이미 갖고 있으므로 여기서 다시 적지 않는다. 이 함수가 더하는 것은 그 함수가
+ * 말하지 않는 갈래 하나뿐이다: 적용할 모드 자산이 없을 때(`system`, 그리고 모드를
+ * 선언하지 않은 테마) 화면의 밝기는 `prefersDark` 가 정한다 — 색 다이얼 파생의
+ * 호출자는 `prefersDarkFor(colorModeSetting, osPrefersDark)` 의 답을 넘기므로,
+ * 모드 설정이 고정이면 OS 와 무관하게 그 답이 이긴다.
  */
 export function resolveColorMode(
   theme: ThemeDef | undefined,

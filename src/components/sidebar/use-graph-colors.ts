@@ -12,8 +12,10 @@ import { resolveGraphColors, sameGraphColors } from "./graph-colors";
  * they have three independent sources: `data-theme` on the root element (§54 base switch),
  * inline custom properties on the same element (a custom theme's overrides, which the
  * theme editor also writes while the user drags a colour), and `prefers-color-scheme` —
- * the one that decides for the `system` theme, which deliberately sets no `data-theme`.
- * Observing the root element covers all three with no dependency on WHO changed it.
+ * the one that decides for the `system` theme while the mode setting is `"system"`,
+ * which then deliberately sets no `data-theme` (a fixed mode setting sets `data-theme`
+ * instead, spec 0064 D7, `appliedThemeMode`). Observing the root element covers all
+ * three with no dependency on WHO changed it.
  *
  * The resolve immediately after `observe()` closes the attach gap: §54's own effect writes
  * `data-theme` from a sibling effect, and within one commit it may run either side of this

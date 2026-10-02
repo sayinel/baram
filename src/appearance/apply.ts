@@ -19,8 +19,9 @@ const ACCENT_AXES: ReadonlySet<string> = new Set(
  * 출처가 `default` 가 **아닌** 다이얼의 변수만 쓴다.
  *
  * ‼️ 기본값을 쓰지 않는 것이 성능 최적화가 아니라 정확성 조건이다. `system` 테마는
- * 인라인 변수를 하나도 쓰지 않고 `prefers-color-scheme` 에 맡기는데(`theme-vars.ts`
- * 의 `CASCADE_ONLY_THEME_IDS`), 기본값을 인라인으로 고정하면 그 미디어 쿼리를
+ * 인라인 변수를 하나도 쓰지 않는다(`theme-vars.ts` 의 `CASCADE_ONLY_THEME_IDS`) —
+ * 모드 설정이 `"system"` 이면 `prefers-color-scheme` 에, 고정이면 `data-theme`
+ * 속성 선택자에 맡기고(스펙 0064 D7), 기본값을 인라인으로 고정하면 둘 중 무엇이든
  * 눌러 이긴다. 같은 파일 주석이 테마 편집기에서 그 사고가 실제로 일어났다고 적는다.
  */
 export function applyDialVars(

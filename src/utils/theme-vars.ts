@@ -73,10 +73,12 @@ export const DERIVED_KEYS = [
 /**
  * Themes whose values come from `src/styles/generated/` instead of inline variables.
  *
- * `system` is here because it deliberately sets no `data-theme` and lets the
- * `prefers-color-scheme` cascade decide; the two defaults are here because the
- * generated stylesheets already carry their palette, including the derived accent
- * pairing {@link derivedVars} computes for everyone else.
+ * `system` is here because, while the mode setting is `"system"`, it deliberately
+ * sets no `data-theme` and lets the `prefers-color-scheme` cascade decide — a
+ * fixed mode setting sets `data-theme` instead (spec 0064 D7, `appliedThemeMode`);
+ * the two defaults are here because the generated stylesheets already carry their
+ * palette, including the derived accent pairing {@link derivedVars} computes for
+ * everyone else.
  */
 const CASCADE_ONLY_THEME_IDS: ReadonlySet<string> = new Set([
   "default-dark",
