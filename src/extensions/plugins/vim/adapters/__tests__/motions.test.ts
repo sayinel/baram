@@ -733,3 +733,33 @@ describe("issue 776 — gg/G land on the line's first non-blank (vim startofline
     expect(editor.state.doc.resolve(target).parentOffset).toBe(0);
   });
 });
+
+describe("issue 776 — a leading inline atom is the first non-blank", () => {
+  it("^ and gg land on a wikilink that starts the line, not past it", () => {
+    // Fails if: lineFirstNonBlank's leaf placeholder is a space again — the
+    // atom reads as a blank and the landing skips to "tail".
+    const editor = makeEditor("<p>x</p>");
+    editor.commands.setContent({
+      content: [
+        {
+          content: [
+            { attrs: { target: "n" }, type: "wikilink" },
+            { text: " tail", type: "text" },
+          ],
+          type: "paragraph",
+        },
+        { content: [{ text: "below", type: "text" }], type: "paragraph" },
+      ],
+      type: "doc",
+    });
+    const atom = 1; // the paragraph's first inline position
+    expect(editor.state.doc.nodeAt(atom)?.type.name).toBe("wikilink");
+    const tail = posOfText(editor, "tail");
+    expect(resolveMotion(editor.state, tail, "lineFirstNonBlank", 1)).toBe(
+      atom,
+    );
+    expect(
+      resolveMotion(editor.state, posOfText(editor, "below"), "docStart", 1),
+    ).toBe(atom);
+  });
+});

@@ -130,9 +130,16 @@ export function resolveMotion(
     case "lineFirstNonBlank": {
       // First non-blank unit of the segment; an all-blank line falls back
       // to the line start (vim lands near the end there — Phase 2 nicety).
+      // An inline atom (wikilink, tag) is a unit, not a blank: its leaf
+      // placeholder must not match \s (issue 776 — gg/G/:N land here too).
       const span = segmentSpanAt(state, pos);
       if (!span) return pos;
-      const text = state.doc.textBetween(span.from, span.to, undefined, " ");
+      const text = state.doc.textBetween(
+        span.from,
+        span.to,
+        undefined,
+        "\uFFFC",
+      );
       const index = text.search(/\S/);
       return index >= 0 ? span.from + index : span.from;
     }
