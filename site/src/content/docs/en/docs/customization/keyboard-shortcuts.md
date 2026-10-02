@@ -311,7 +311,7 @@ Enable **Settings > Editor > Vim Keybindings** (off by default). One switch turn
 | Group | Keys |
 | ----- | ---- |
 | Modes | `i` `a` `I` `A` · `o` `O` · `v` (charwise) `V` (linewise) · `Esc` |
-| Motions | `h` `j` `k` `l` and the arrow keys · `0` `$` `^` (Home/End) · `w` `b` · `gg` `G` (first / last line, on its first non-blank — use `:N` for a specific line) |
+| Motions | `h` `j` `k` `l` and the arrow keys · `0` `$` `^` (Home/End) · `w` `b` · `gg` `G` (first / last line, on its first non-blank; a code block is entered at its start — use `:N` for a specific line) |
 | Find in line | `f` `F` `t` `T` + a character · `;` `,` to repeat |
 | Search | `/` forward · `?` backward · `n` `N` repeat — see [Search](#search-wysiwyg) |
 | Operators | `d` `c` `y` with a motion (`dw`, `cw`, `dj`, `d$`, `dfx`, `dgg`) · doubled for whole lines (`dd` `yy` `cc`) |
@@ -323,7 +323,7 @@ Enable **Settings > Editor > Vim Keybindings** (off by default). One switch turn
 
 Structure-aware behavior: tables, math blocks, images and hard-break segments each count as one line for `j`/`k`; a code block counts as one line from the outside. Inside a table, `h`/`l` cross cell boundaries so every cell in a row is reachable, while `j`/`k` move down a row keeping the column; `dd` on a table row deletes the row (the header row and the only remaining data row are protected); `dd` inside a list keeps nested children. The cursor is kept on screen after every command.
 
-The cursor column works as in vim: `j`/`k` remember the column they started from, so a short or empty line on the way does not lose it, and after `$` they follow each line's end. Leaving insert mode with `Esc` steps the cursor back onto the last character typed, and `:N` lands on the line's first non-blank like `gg`/`G`.
+The cursor column works as in vim: `j`/`k` remember the column they started from, so a short or empty line on the way does not lose it, and after `$` they follow each line's end. Leaving insert mode with `Esc` moves the cursor one character left of where the insert cursor was (never past the start of the line), as in vim, and `:N` lands on the line's first non-blank like `gg`/`G`.
 
 Not in WYSIWYG yet — these work in Source Mode and code blocks today: text objects (`ciw`, `di"`), `.` repeat, `r`, `e`/`E`/`W`/`B`, `J`, `~`, `>>`/`<<`, `%`, `{`/`}`, `zt`/`zb`, the `Ctrl+D`/`Ctrl+U`/`Ctrl+F`/`Ctrl+B` scroll motions, marks, macros and named registers. Visual block (`Ctrl+V`) is intentionally not planned for the rich-text surface.
 
