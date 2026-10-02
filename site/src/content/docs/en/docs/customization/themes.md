@@ -9,7 +9,7 @@ give to others, see [Creating themes](/en/docs/customization/creating-themes/).
 
 | Theme              | Style                                 |
 | ------------------ | ------------------------------------- |
-| Default Light      | Clean light theme (default)           |
+| Default Light      | Clean light theme                     |
 | Default Dark       | Dark theme with blue tones            |
 | Tokyo Night        | Popular dark theme, cool blue palette |
 | Solarized Light    | Ethan Schoonover's warm light palette |

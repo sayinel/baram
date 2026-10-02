@@ -1,6 +1,6 @@
 ---
 title: "테마"
-sourceHash: "52ead08b7b1a"
+sourceHash: "356e155bccef"
 ---
 
 Baram은 내장 테마 8개와 함께 오고, 사용자 테마도 만들 수 있습니다. 다른 사람에게 건넬 수 있는
@@ -10,7 +10,7 @@ Baram은 내장 테마 8개와 함께 오고, 사용자 테마도 만들 수 있
 
 | 테마               | 스타일                                 |
 | ------------------ | -------------------------------------- |
-| Default Light      | 깔끔한 라이트 테마(기본값)             |
+| Default Light      | 깔끔한 라이트 테마                     |
 | Default Dark       | 파란 톤의 다크 테마                    |
 | Tokyo Night        | 널리 쓰이는 다크 테마, 차가운 파란 팔레트 |
 | Solarized Light    | Ethan Schoonover의 따뜻한 라이트 팔레트 |
