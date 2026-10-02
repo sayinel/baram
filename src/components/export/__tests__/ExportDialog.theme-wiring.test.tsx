@@ -59,11 +59,13 @@ vi.mock("../../../utils/export/export", async (importOriginal) => ({
   exportAsPDF: exportAsPDFMock,
 }));
 
+import type { ThemeDef } from "../../../types/theme";
 import type { Editor } from "@tiptap/react";
 
 import { useEditorStore } from "../../../stores/editor/editor";
 import { useSettingsStore } from "../../../stores/settings/store";
 import { useUIStore } from "../../../stores/ui/ui";
+import { defaultColorsForBase } from "../../../types/theme";
 import { ExportDialog } from "../ExportDialog";
 
 // A truthy stand-in only: handleExport's `if (!editor || exporting) return;`
@@ -77,6 +79,8 @@ afterEach(() => {
   useEditorStore.setState({ activeTabId: null, tabs: [] });
   useSettingsStore.setState({
     activeThemeId: "system",
+    colorModeSetting: "system",
+    customThemes: [],
     themeInExport: "default",
   });
   exportAsHTMLMock.mockClear();
@@ -122,6 +126,36 @@ describe("ExportDialog wires the resolved theme through to export.ts (§362)", (
       activeThemeMode?: string;
     };
     expect(options.activeTheme?.id).toBe("tokyo-night");
+    expect(options.activeThemeMode).toBe("dark");
+  });
+
+  // §386 — 무엇이 이것을 실패시키는가: `resolvedMode` 가 OS 값만 읽으면 이 jsdom 폴리필
+  // (`matches: false`)에서 "light" 가 나간다 — 다크로 고정한 사람의 HTML 이 라이트 색으로 나간다.
+  it("두 모드 테마는 모드 설정을 따른다 — 다크 고정이면 OS 와 무관하게 dark", async () => {
+    const paired: ThemeDef = {
+      id: "custom-paired",
+      modes: {
+        dark: { colors: defaultColorsForBase("dark") },
+        light: { colors: defaultColorsForBase("light") },
+      },
+      name: "Paired",
+      source: "custom",
+    };
+    useSettingsStore.setState({
+      activeThemeId: paired.id,
+      colorModeSetting: "dark",
+      customThemes: [paired],
+      themeInExport: "tokens",
+    });
+    useUIStore.setState({ exportDialogOpen: true, exportFormat: "html" });
+    render(<ExportDialog editor={fakeEditor} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Export" }));
+
+    await waitFor(() => expect(exportAsHTMLMock).toHaveBeenCalledOnce());
+    const options = exportAsHTMLMock.mock.calls[0]?.[2] as {
+      activeThemeMode?: string;
+    };
     expect(options.activeThemeMode).toBe("dark");
   });
 });

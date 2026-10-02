@@ -12,6 +12,7 @@ import type { Editor } from "@tiptap/react";
 import { TriangleAlert, X } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
+import { appliedThemeMode } from "../../appearance/color-mode";
 import { useEditorTypography } from "../../hooks/use-editor-typography";
 import { useTranslation } from "../../i18n/useTranslation";
 import { detectPandoc } from "../../ipc/invoke";
@@ -20,7 +21,7 @@ import { useEditorStore } from "../../stores/editor/editor";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
 import { lookupThemes } from "../../themes/installed-theme-defs";
-import { findThemeById, resolveThemeMode } from "../../types/theme";
+import { findThemeById } from "../../types/theme";
 import {
   exportAsHTML,
   exportAsPDF,
@@ -151,6 +152,7 @@ export function ExportDialog({ editor }: ExportDialogProps) {
   })();
   const {
     activeThemeId,
+    colorModeSetting,
     customThemes,
     installedThemes,
     pandocPath,
@@ -161,6 +163,7 @@ export function ExportDialog({ editor }: ExportDialogProps) {
   } = useSettingsStore(
     useShallow((s) => ({
       activeThemeId: s.activeThemeId,
+      colorModeSetting: s.colorModeSetting,
       customThemes: s.customThemes,
       installedThemes: s.installedThemes,
       pandocPath: s.pandocPath,
@@ -178,7 +181,7 @@ export function ExportDialog({ editor }: ExportDialogProps) {
   // `captureEditorHTML`; `locale` is read by `exportWithPandoc`, a sibling
   // entry point this dialog also calls, not by the HTML/PDF path. `export.ts`'s
   // `FontExportOptions` doc holds the enumeration.). Mirrors ThemeEditor.tsx's `resolvedTheme`/`restorePreview` —
-  // same lookup, same `resolveThemeMode` call, so a theme that resolves for
+  // same lookup, same `appliedThemeMode` call (§386), so a theme that resolves for
   // editing resolves the same way for export.
   const resolvedTheme = useMemo(
     () =>
@@ -192,13 +195,12 @@ export function ExportDialog({ editor }: ExportDialogProps) {
   );
   const resolvedMode = useMemo(
     () =>
-      resolvedTheme === undefined
-        ? undefined
-        : resolveThemeMode(
-            resolvedTheme,
-            window.matchMedia("(prefers-color-scheme: dark)").matches,
-          ),
-    [resolvedTheme],
+      appliedThemeMode(
+        resolvedTheme,
+        colorModeSetting,
+        window.matchMedia("(prefers-color-scheme: dark)").matches,
+      ),
+    [resolvedTheme, colorModeSetting],
   );
   const [title, setTitle] = useState("Untitled");
   const [exporting, setExporting] = useState(false);
