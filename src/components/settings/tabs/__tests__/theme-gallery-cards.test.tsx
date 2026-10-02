@@ -82,7 +82,9 @@ describe("시스템 카드", () => {
   // 기본값의 출처인 생성 팔레트로 그려야 입었을 때와 같다.
   it("기본 라이트 · 다크 팔레트로 두 칸을 그린다", () => {
     render(gallery());
-    const card = screen.getByRole("button", { name: /System \(Auto\)|시스템/ });
+    const card = screen.getByRole("button", {
+      name: /Baram Default|Baram 기본/,
+    });
     expect(paneBackground(card, "light")).toBe(
       cssColor(DEFAULT_LIGHT_PALETTE["--color-editor-bg"]),
     );
