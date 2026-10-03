@@ -172,6 +172,48 @@ describe("insert entry on an INLINE atom", () => {
     expect(editor.state.selection.from).toBe(mentionPos + size);
   });
 
+  it("`A` puts the caret at the line END, past the text after the atom (issue 776)", () => {
+    // Fails if: runAtomInsert moves the caret in a transaction of its own
+    // before the core flips to insert — the normal-mode terminal clamp
+    // (appendNormalCursorFixes) pulls that caret back one unit, onto "e".
+    const { editor, mentionPos } = makeMentionDoc();
+    editor.commands.setNodeSelection(mentionPos);
+
+    key(editor, "A");
+
+    expect(vim(editor)?.mode).toBe("insert");
+    const $head = editor.state.selection.$head;
+    expect($head.parentOffset).toBe($head.parent.content.size);
+  });
+
+  it("`a` on an atom that ends the line puts the caret after it (issue 776)", () => {
+    // Fails if: the same two-transaction entry — the caret after a
+    // line-final atom is the terminal boundary the clamp pulls back.
+    const editor = makeEditor({
+      content: [
+        {
+          content: [
+            { text: "hi ", type: "text" },
+            { attrs: { id: "someone", label: "someone" }, type: "mention" },
+          ],
+          type: "paragraph",
+        },
+      ],
+      type: "doc",
+    });
+    let mentionPos = -1;
+    editor.state.doc.descendants((node, pos) => {
+      if (mentionPos < 0 && node.type.name === "mention") mentionPos = pos;
+    });
+    const size = editor.state.doc.nodeAt(mentionPos)?.nodeSize ?? 0;
+    editor.commands.setNodeSelection(mentionPos);
+
+    key(editor, "a");
+
+    expect(vim(editor)?.mode).toBe("insert");
+    expect(editor.state.selection.from).toBe(mentionPos + size);
+  });
+
   it("the atom SURVIVES a following keystroke — no NodeSelection replacement", () => {
     const { editor, mentionPos } = makeMentionDoc();
     editor.commands.setNodeSelection(mentionPos);

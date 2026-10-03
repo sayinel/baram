@@ -340,6 +340,24 @@ describe("transactions outside vim", () => {
     expect(goal(editor)).toBe(9);
   });
 
+  it("a press whose tagged move ends past a line forgets the goal AND clamps the caret", () => {
+    // Fails if: the goal reset and the caret clamp are separate appended
+    // transactions — ProseMirror does not call the plugin back for its own
+    // appended transaction, so the second fix would be dropped.
+    const editor = seeded();
+    editor.view.dom.dispatchEvent(
+      new MouseEvent("mousedown", { bubbles: true, cancelable: true }),
+    );
+    const lineEnd = posOfText(editor, "j") + 1; // past the last character
+    const tr = editor.state.tr.setSelection(
+      TextSelection.create(editor.state.doc, lineEnd),
+    );
+    tagSyntaxRevealEphemeral(tr);
+    editor.view.dispatch(tr);
+    expect(goal(editor)).toBeNull();
+    expect(head(editor)).toBe(posOfText(editor, "j"));
+  });
+
   it("pointerdown arms the watch too (touch and pen)", () => {
     // Fails if: only mousedown arms it.
     const editor = seeded();

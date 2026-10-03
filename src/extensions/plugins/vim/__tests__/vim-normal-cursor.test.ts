@@ -95,7 +95,7 @@ describe("insert Esc steps one unit back (vim ins_esc)", () => {
 
 describe("a normal-mode caret on the terminal boundary is clamped", () => {
   it("x on the last character leaves the cursor on the new last one", () => {
-    // Fails if: the plugin's appendTransaction (clampNormalCaret) is removed —
+    // Fails if: the plugin's appendTransaction (appendNormalCursorFixes) is removed —
     // the caret stays at 3, past "b".
     const editor = makeVimEditor("<p>abc</p>");
     place(editor, 3); // on "c"
@@ -105,14 +105,14 @@ describe("a normal-mode caret on the terminal boundary is clamped", () => {
   });
 
   it("a selection set past the text (a click) is clamped too", () => {
-    // Fails if: clampNormalCaret is removed (head stays 4).
+    // Fails if: appendNormalCursorFixes is removed (head stays 4).
     const editor = makeVimEditor("<p>abc</p>");
     place(editor, 4);
     expect(head(editor)).toBe(3);
   });
 
   it("does not touch the insert caret at the line end", () => {
-    // Fails if: clampNormalCaret drops its `mode !== "normal"` guard — typing
+    // Fails if: appendNormalCursorFixes drops its `mode === "normal"` condition — typing
     // at the end of a line would jump back one character.
     const editor = makeVimEditor("<p>abc</p>");
     place(editor, 1);
@@ -128,6 +128,23 @@ describe("a normal-mode caret on the terminal boundary is clamped", () => {
     const editor = makeVimEditor("<pre><code>ab</code></pre><p>x</p>");
     place(editor, 3); // code block content end
     expect(head(editor)).toBe(3);
+  });
+
+  it("the empty segment after a hard break keeps its caret too", () => {
+    // Fails if: terminalClampTarget drops its "right after a hard break"
+    // guard — the unit before is the break itself, and the caret would be
+    // pulled onto the previous segment.
+    const editor = makeVimEditor("<p>ab<br></p><p>z</p>");
+    const afterBreak = editor.state.doc.child(0).nodeSize - 1; // content end
+    place(editor, afterBreak);
+    expect(head(editor)).toBe(afterBreak);
+  });
+
+  it("a caret right before a hard break is a line end and is clamped", () => {
+    // Fails if: the O(depth) gate only recognizes the textblock's end.
+    const editor = makeVimEditor("<p>ab<br>cd</p>");
+    place(editor, 3); // after "b", before the break
+    expect(head(editor)).toBe(2); // on "b"
   });
 
   it("an empty line keeps its caret and appends nothing", () => {
@@ -195,6 +212,69 @@ describe("insert Esc collapses a range made while inserting", () => {
     selectThenEscape(editor, 1, 7); // head before "c"
     expect(head(editor)).toBe(5); // inside the empty paragraph
     expect(editor.state.selection.empty).toBe(true);
+  });
+
+  /** Position of the first occurrence of `text`. */
+  function at(editor: Editor, text: string): number {
+    let found = -1;
+    editor.state.doc.descendants((node, pos) => {
+      if (found < 0 && node.isText && node.text?.includes(text)) {
+        found = pos + (node.text?.indexOf(text) ?? 0);
+      }
+      return found < 0;
+    });
+    expect(found).toBeGreaterThan(0);
+    return found;
+  }
+
+  it("…after a table: the LAST cell's last unit, not the first cell's", () => {
+    // Fails if: the predecessor comes from the row-entry line model
+    // (collectLines keeps one line per row — the first cell — so the landing
+    // was "1", outside the selection's end).
+    // The range starts BEFORE the table: one that starts inside a cell is
+    // normalized by prosemirror-tables back into that cell.
+    const editor = makeVimEditor(
+      "<p>top</p><table><tr><td><p>a1</p></td><td><p>b2</p></td></tr></table><p>after</p>",
+    );
+    selectThenEscape(editor, at(editor, "top"), at(editor, "after"));
+    expect(head(editor)).toBe(at(editor, "2"));
+  });
+
+  it("…after a code block: the head, never into CodeMirror's caret", () => {
+    // Fails if: lastUnitBefore drops its code block exclusion — the landing
+    // would be the block's last source character, handing focus to the
+    // island.
+    const editor = makeVimEditor(
+      "<p>para</p><pre><code>xyz</code></pre><p>after</p>",
+    );
+    selectThenEscape(editor, at(editor, "para"), at(editor, "after"));
+    expect(head(editor)).toBe(at(editor, "after"));
+    expect(editor.state.selection.$head.parent.type.name).toBe("paragraph");
+  });
+
+  it("…after a hard break: the previous segment's last unit", () => {
+    // Fails if: the hard-break branch is dropped — the block-boundary search
+    // would jump past the whole paragraph instead.
+    const editor = makeVimEditor("<p>ab<br>cd</p>");
+    selectThenEscape(editor, at(editor, "ab"), at(editor, "cd"));
+    expect(head(editor)).toBe(at(editor, "b"));
+  });
+
+  it("…after a block atom: the atom itself", () => {
+    // Fails if: the NodeSelection result of the search is not landed on as
+    // such (its head points past the node).
+    const editor = makeVimEditor("<p>x</p>");
+    editor.commands.setContent({
+      content: [
+        { content: [{ text: "up", type: "text" }], type: "paragraph" },
+        { attrs: { latex: "x" }, type: "mathBlock" },
+        { content: [{ text: "after", type: "text" }], type: "paragraph" },
+      ],
+      type: "doc",
+    });
+    const atomPos = editor.state.doc.child(0).nodeSize;
+    selectThenEscape(editor, at(editor, "up"), at(editor, "after"));
+    expect(editor.state.selection.from).toBe(atomPos);
   });
 
   it("a block atom's NodeSelection is kept", () => {

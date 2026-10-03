@@ -20,7 +20,6 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 import type { EditorState, Transaction } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 
-import { vimPluginKey } from "./vim-keys";
 import { read } from "./vim-plugin-state";
 import { vimCursor } from "./vim-selection-commands";
 
@@ -29,12 +28,10 @@ export interface PointerGoalWatch {
   arm(view: EditorView): void;
   /** A key arrived — vim's own commands decide the goal from here. */
   disarm(): void;
-  /** appendTransaction: a transaction forgetting the goal if the armed press
-   *  moved the cursor, else null. */
-  settle(
-    transactions: readonly Transaction[],
-    state: EditorState,
-  ): null | Transaction;
+  /** appendTransaction: true when the armed press moved the cursor and the
+   *  goal must be forgotten. The caller builds the one transaction that also
+   *  carries any caret fix-up (appendNormalCursorFixes). */
+  settle(transactions: readonly Transaction[], state: EditorState): boolean;
 }
 
 export function createPointerGoalWatch(): PointerGoalWatch {
@@ -51,24 +48,21 @@ export function createPointerGoalWatch(): PointerGoalWatch {
       armed = null;
     },
     settle(transactions, state) {
-      if (armed === null) return null;
+      if (armed === null) return false;
       // A transaction that did not start from the document the press saw
       // belongs to something else (another tab's state, an edit since).
       if (transactions[0]?.before !== armed.doc) {
         armed = null;
-        return null;
+        return false;
       }
       const vim = read(state);
       if (!vim.enabled || vim.core.goalColumn === null) {
         armed = null; // already forgotten — an ordinary click did it
-        return null;
+        return false;
       }
-      if (vimCursor(state) === armed.from) return null;
+      if (vimCursor(state) === armed.from) return false;
       armed = null;
-      return state.tr.setMeta(vimPluginKey, {
-        core: { ...vim.core, goalColumn: null },
-        type: "core",
-      });
+      return true;
     },
   };
 }

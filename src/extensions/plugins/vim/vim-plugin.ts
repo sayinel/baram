@@ -44,7 +44,7 @@ import {
 import { dispatchMeta, isModal, read } from "./vim-plugin-state";
 import { createPointerGoalWatch } from "./vim-pointer-goal";
 import {
-  clampNormalCaret,
+  appendNormalCursorFixes,
   escapeInsertCursor,
   runSelectionCommand,
   vimCursor,
@@ -58,9 +58,9 @@ export function createVimPlugin(
   return new Plugin<VimPluginState>({
     /** issue 776 — forget the goal column when a pointer press moved the
      *  cursor (vim-pointer-goal.ts), and keep the normal-mode caret ON a
-     *  unit. One at a time: PM calls back with the appended transaction. */
+     *  unit — in one appended transaction (appendNormalCursorFixes). */
     appendTransaction: (trs, _old, state) =>
-      pointerGoal.settle(trs, state) ?? clampNormalCaret(state),
+      appendNormalCursorFixes(state, pointerGoal.settle(trs, state)),
 
     key: vimPluginKey as never,
 
@@ -384,9 +384,15 @@ function runAtomInsert(view: EditorView, result: StepResult): boolean {
   const plan = planAtomInsert(view, command.at);
   switch (plan.kind) {
     case "caret": {
-      const tr = view.state.tr.setSelection(plan.selection);
+      // ONE transaction for the caret and the insert mode (issue 776): a
+      // caret placed while still in normal mode at a line end is a terminal
+      // boundary, and the normal-mode clamp (appendNormalCursorFixes) would pull it
+      // back one unit before insert began — `A` then typed before the last
+      // character.
+      const tr = view.state.tr
+        .setSelection(plan.selection)
+        .setMeta(vimPluginKey, { core: result.state, type: "core" });
       view.dispatch(tr.scrollIntoView());
-      dispatchMeta(view, { core: result.state, type: "core" });
       return true;
     }
     case "island":

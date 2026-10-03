@@ -8,7 +8,7 @@
 // Three exports serve createVimPlugin's props directly: `vimCursor` (the
 // block-cursor decoration and the scroll-follow head), and the two
 // normal-cursor writes of issue 776 — `escapeInsertCursor` (insert Esc) and
-// `clampNormalCaret` (appendTransaction) — which move the caret and so need
+// `appendNormalCursorFixes` (appendTransaction) — which move the caret and so need
 // dispatchCursor's DOM handling or the vim meta that keeps priority 4 quiet.
 
 import type {
@@ -341,20 +341,34 @@ function visualSelection(state: EditorState, visual: VisualState): Selection {
 }
 
 /**
- * issue 776 — a normal-mode caret left on the terminal boundary of a non-empty
- * line (a delete that removed the line's last unit, a click past the text)
- * steps back onto the last unit, appended to the transaction that put it
- * there. The vim meta re-installs the SAME core, so the priority 4 rule does
- * not read vim's own correction as a foreign selection.
+ * issue 776 — the plugin's appendTransaction, both fixes in ONE transaction
+ * (ProseMirror does not call a plugin back for the transaction it appended
+ * itself, so two separate returns would drop the second):
+ *
+ * - a normal-mode caret left on the terminal boundary of a non-empty line (a
+ *   delete that removed the line's last unit, a click past the text) steps
+ *   back onto the last unit;
+ * - `forgetGoal` (vim-pointer-goal.ts: a press moved the cursor) clears the
+ *   goal column.
+ *
+ * The vim meta re-installs the core, so the priority 4 rule does not read
+ * vim's own correction as a foreign selection.
  */
-export function clampNormalCaret(state: EditorState): null | Transaction {
+export function appendNormalCursorFixes(
+  state: EditorState,
+  forgetGoal: boolean,
+): null | Transaction {
   const vim = read(state);
-  if (!vim.enabled || vim.suspended || vim.mode !== "normal") return null;
-  const target = terminalClampTarget(state);
-  if (target === null) return null;
-  return state.tr
-    .setSelection(cursorSelection(state.doc, target))
-    .setMeta(vimPluginKey, { core: vim.core, type: "core" });
+  if (!vim.enabled) return null;
+  const target =
+    !vim.suspended && vim.mode === "normal" ? terminalClampTarget(state) : null;
+  if (target === null && !forgetGoal) return null;
+  const tr = state.tr;
+  if (target !== null) tr.setSelection(cursorSelection(state.doc, target));
+  return tr.setMeta(vimPluginKey, {
+    core: forgetGoal ? { ...vim.core, goalColumn: null } : vim.core,
+    type: "core",
+  });
 }
 
 /**

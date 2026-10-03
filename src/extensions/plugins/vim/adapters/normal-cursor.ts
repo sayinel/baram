@@ -12,16 +12,11 @@
 
 import type { EditorState } from "@tiptap/pm/state";
 
-import { NodeSelection } from "@tiptap/pm/state";
+import { NodeSelection, Selection } from "@tiptap/pm/state";
 
 import { isCodeBlockLanding } from "./code-block-landing";
-import {
-  type CursorLine,
-  lineUnitStarts,
-  segmentSpanAt,
-} from "./cursor-line-columns";
+import { segmentSpanAt } from "./cursor-line-columns";
 import { prevUnitBoundary } from "./graphemes";
-import { collectLines } from "./line-sequence";
 
 /**
  * Where insert Esc leaves the cursor: one unit left of the insert caret,
@@ -50,11 +45,24 @@ export function insertEscTarget(state: EditorState): null | number {
  * The last unit's start when a normal-mode caret sits on the terminal
  * boundary of a non-empty line, else null. An empty line keeps its caret —
  * there is no unit to stand on, and the EOL widget draws it.
+ *
+ * This runs from appendTransaction on EVERY normal-mode transaction, so it
+ * rejects with an O(depth) look at the resolved position before any unit
+ * work: a line ends only at the textblock's end or right before a hard break
+ * (splitSegments' only separator). No segment list is built.
  */
 export function terminalClampTarget(state: EditorState): null | number {
-  const span = caretSpan(state);
-  if (!span || span.head !== span.to) return null;
-  return unitBefore(state, span.head, span.from);
+  const sel = state.selection;
+  if (!sel.empty || isCodeBlockLanding(state, sel.head)) return null;
+  const $head = state.doc.resolve(sel.head);
+  if (!$head.parent.isTextblock) return null;
+  const atLineEnd =
+    $head.parentOffset === $head.parent.content.size ||
+    $head.nodeAfter?.type.name === "hardBreak";
+  // Right after a hard break the line is empty — the unit before is the break.
+  if (!atLineEnd || $head.nodeBefore?.type.name === "hardBreak") return null;
+  const prev = prevUnitBoundary(state, sel.head);
+  return prev < sel.head ? prev : null;
 }
 
 /** The collapsed caret and its cursor line. null for a range or a
@@ -72,21 +80,36 @@ function caretSpan(
 }
 
 /** The start of the last cursor unit before `head`: on its own line, or —
- *  at a line start — the previous cursor line's last unit (its start when it
- *  has none: an empty line, a block atom). null when nothing precedes. */
+ *  at a line start — the end of the line before it, found locally (no
+ *  document-wide line list: Esc on a huge document must stay cheap). Across a
+ *  hard break that is the previous segment; across a block boundary it is the
+ *  nearest selectable position before the block — the last cell's text of a
+ *  table, a block atom's own position, an empty paragraph's caret. null when
+ *  nothing precedes, or when that position is inside a code block: CodeMirror
+ *  owns that caret, and landing there would hand focus to the island, which
+ *  Esc never does. */
 function lastUnitBefore(state: EditorState, head: number): null | number {
   const span = segmentSpanAt(state, head);
   const onLine = span ? unitBefore(state, head, span.from) : null;
   if (onLine !== null) return onLine;
-  const lines = collectLines(state);
-  let previous: CursorLine | undefined;
-  for (const line of lines) {
-    if (line.start >= head) break;
-    previous = line;
+  const $head = state.doc.resolve(head);
+  if (span && $head.parent.isTextblock && span.from > $head.start()) {
+    // After a hard break: the break node sits right before this segment.
+    return lastUnitOfLineEndingAt(state, span.from - 1);
   }
-  if (!previous) return null;
-  const starts = lineUnitStarts(state, previous);
-  return starts.length > 0 ? starts[starts.length - 1] : previous.start;
+  const before = $head.parent.isTextblock ? $head.before() : head;
+  const found = Selection.findFrom(state.doc.resolve(before), -1);
+  if (!found) return null;
+  if (found instanceof NodeSelection) return found.from;
+  if (isCodeBlockLanding(state, found.head)) return null;
+  return lastUnitOfLineEndingAt(state, found.head);
+}
+
+/** The last unit of the line that ends at `end`, or `end` itself when that
+ *  line is empty. */
+function lastUnitOfLineEndingAt(state: EditorState, end: number): number {
+  const span = segmentSpanAt(state, end);
+  return (span && unitBefore(state, end, span.from)) ?? end;
 }
 
 /** One unit left of `head`, or null when there is none ON this line: at a
