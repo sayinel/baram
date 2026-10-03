@@ -873,16 +873,22 @@ describe("the malicious fixture stays a fixture (§260 Phase 6)", () => {
     // longer decides that since spec 0065 split the gate into its own job (`plugin-meta`):
     // `needs: plugin-meta` on `release` does. Asserted directly below, not just as the absence of
     // a string in the script: the first draft of this checked that the script does not contain
-    // "npm ci", which failed the moment a comment in the script mentioned it. The file-order
-    // assertion still pins the step order WITHIN plugin-meta, which the split did not change.
+    // "npm ci", which failed the moment a comment in the script mentioned it. Plan 0115 N2 — the
+    // line this comment used to pin next compared `Parse and verify tag` (in `plugin-meta`)
+    // against `Build plugin` (in `release`, a DIFFERENT job): that is the same file-order-across-
+    // jobs claim the paragraph above says no longer decides anything, not a check of order WITHIN
+    // plugin-meta. Pinned here instead, truly within that one job: the tag step before the step
+    // that records the files it verified.
     const workflow = readFileSync(
       resolve(__dirname, "../../../.github/workflows/plugin-release.yml"),
       "utf8",
     );
-    const meta = workflow.indexOf("- name: Parse and verify tag");
-    const build = workflow.indexOf("- name: Build plugin");
-    expect(meta).toBeGreaterThan(0);
-    expect(build).toBeGreaterThan(meta);
+    const tagStep = workflow.indexOf("- name: Parse and verify tag");
+    const recordStep = workflow.indexOf(
+      "- name: Record the plugin's tagged files",
+    );
+    expect(tagStep).toBeGreaterThan(0);
+    expect(recordStep).toBeGreaterThan(tagStep);
     expect(jobText("release")).toContain("\n    needs: plugin-meta\n");
     // An explicit budget for the same reason the synthetic test above carries one: this now
     // spawns bash twice per allowlist arm, and vitest's 5 s default is not sized for that on a

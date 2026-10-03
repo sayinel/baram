@@ -398,10 +398,16 @@ describe("release-theme — 실행할 수 없는 배선", () => {
       ],
     ],
   ] as const)("%s 의 단계는 이 셋뿐이다 — 이름과 순서까지", (job, expected) => {
-    const steps = [
-      ...jobText(job).matchAll(/\n {6}- (?:uses|name): (.+)/g),
-    ].map((m) => m[1]);
+    const text = jobText(job);
+    const steps = [...text.matchAll(/\n {6}- (?:uses|name): (.+)/g)].map(
+      (m) => m[1],
+    );
     expect(steps).toEqual(expected);
+    // 계획 0115 N4 — `uses`/`name` 만 센 위의 배열은, 그 둘이 첫 키가 아닌 단계(이름 없는
+    // `- run:`, 또는 `- id:`/`- env:` 가 먼저 오는 단계)를 보지 못한다. 단계 경계 자체
+    // (`\n      - `)를 세어, 더해진 단계가 있으면 이 카운트가 셋을 넘는 것으로 잡는다.
+    const stepCount = [...text.matchAll(/\n {6}- /g)].length;
+    expect(stepCount).toBe(expected.length);
   });
 
   // 무엇이 이것을 실패시키는가: 기록을 태그 단계 앞에서 읽거나, 대조를 checksum 계산 앞이나 색인

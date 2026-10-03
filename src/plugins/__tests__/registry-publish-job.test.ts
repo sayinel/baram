@@ -133,9 +133,25 @@ const LIVE = {
 };
 
 async function zipOf(files: Record<string, string>): Promise<Buffer> {
+  return zipOfEntries(Object.entries(files));
+}
+
+/**
+ * N1 (ruling R18) — entries added IN ORDER, as an array rather than a `Record` so a test can add
+ * a second entry under a name already present (zip.js itself refuses a literal repeat — see the
+ * fix report) and so a directory entry (`null` content) can be added explicitly, the way `zip -r`
+ * adds `dist/` for a real `dist` directory.
+ */
+async function zipOfEntries(
+  entries: readonly (readonly [string, null | string])[],
+): Promise<Buffer> {
   const writer = new ZipWriter(new Uint8ArrayWriter());
-  for (const [name, text] of Object.entries(files)) {
-    await writer.add(name, new TextReader(text));
+  for (const [name, text] of entries) {
+    if (text === null) {
+      await writer.add(name, undefined, { directory: true });
+    } else {
+      await writer.add(name, new TextReader(text));
+    }
   }
   return Buffer.from(await writer.close());
 }
@@ -160,6 +176,10 @@ interface Fixture {
 async function fixture(
   kind: "plugin" | "theme",
   opts: {
+    /** N1 (ruling R18) — extra entries appended to the plugin archive VERBATIM, after the
+     * honest manifest/README/dist entries: a `null` content makes a directory entry. For the
+     * entry-list refusal tests only; plugin archives only (themes carry no such check). */
+    extraZipEntries?: readonly (readonly [string, null | string])[];
     manifest?: Record<string, unknown>;
     manifestPath?: string;
     manifestText?: string;
@@ -195,12 +215,26 @@ async function fixture(
   const manifestZipName =
     kind === "plugin" ? "baram-plugin.json" : "baram-theme.json";
   const manifestZipPath = opts.manifestPath ?? manifestZipName;
-  const files: Record<string, string> = {
-    [manifestZipPath]:
+  // N1 (ruling R18) — a real `Package ZIP` ships `dist/` (the directory entry `zip -r` adds for a
+  // real `dist` directory) and `dist/index.mjs` alongside the two named members; the honest
+  // fixture now does too, so the accept-path cases below also prove the archive's entry-list
+  // check admits a real plugin archive, not just a two-file stub.
+  const entries: Array<readonly [string, null | string]> = [
+    [
+      manifestZipPath,
       opts.manifestText ?? `${JSON.stringify(zipManifest, null, 2)}\n`,
-  };
-  if (opts.readme) files["README.md"] = opts.readmeText ?? HONEST_README;
-  const zip = await zipOf(files);
+    ],
+  ];
+  if (opts.readme)
+    entries.push(["README.md", opts.readmeText ?? HONEST_README]);
+  if (kind === "plugin") {
+    entries.push(
+      ["dist/", null],
+      ["dist/index.mjs", "export async function activate() {}\n"],
+    );
+  }
+  if (opts.extraZipEntries) entries.push(...opts.extraZipEntries);
+  const zip = await zipOfEntries(entries);
   writeFileSync(join(release, "plugins", zipName), zip);
   const checksum = sha256(zip);
 
@@ -280,6 +314,12 @@ async function fixture(
 async function craftedFixture(
   kind: "plugin" | "theme",
   zipManifest: Record<string, unknown>,
+  opts: {
+    /** N6 — write the staged index.json as COMPACT JSON (no indent) instead of jq's canonical
+     * 2-space pretty form, so the size cap is exercised on bytes the canonical-form check would
+     * also refuse — proving the size cap, not the canonical check, is what catches it. */
+    compact?: boolean;
+  } = {},
 ): Promise<Fixture> {
   const runnerTemp = mkdtempSync(join(tmpdir(), "baram-publish-crafted-"));
   const registry = join(runnerTemp, "registry");
@@ -338,7 +378,9 @@ async function craftedFixture(
   };
   writeFileSync(
     join(release, "index.json"),
-    `${JSON.stringify(index, null, 2)}\n`,
+    opts.compact
+      ? JSON.stringify(index)
+      : `${JSON.stringify(index, null, 2)}\n`,
   );
 
   return {
@@ -573,6 +615,86 @@ describe("publish — artifact 를 meta 가 검증한 것에 묶는다", () => {
     );
   });
 
+  // 계획 0115 N1(ruling R18) — publish 는 `unzip -p` 가 이름으로 읽는 두 멤버만 해시와 대조했고,
+  // 아카이브의 "항목 목록 자체"는 한 번도 보지 않았다. 앱의 압축 해제기(`enclosed_name`,
+  // src-tauri/src/fs/archive.rs `extract_zip_bounded`)는 `./baram-plugin.json` ·
+  // `dist/../baram-plugin.json` · `Baram-Plugin.json` 같은 별칭을 솔직한 이름과 같은 설치 경로로
+  // 정규화하고 archive 안에서 더 나중 항목이 이긴다(대소문자 구분 없는 APFS 에서는 대소문자가
+  // 다른 쪽이 이긴다) — 그래서 솔직한 멤버 옆에 별칭 하나만 실어도 위의 해시 대조는 솔직한 이름을
+  // 그대로 읽어 통과하면서, 설치되는 바이트는 다른 파일이 된다.
+  describe("N1 — 아카이브의 항목 목록 자체를 검사한다", () => {
+    it.each([
+      ["매니페스트의 ./별칭", ["./baram-plugin.json", "{}"] as const],
+      [
+        "매니페스트의 dist/../ 별칭",
+        ["dist/../baram-plugin.json", "{}"] as const,
+      ],
+      [
+        "매니페스트의 백슬래시 별칭",
+        ["dist\\..\\baram-plugin.json", "{}"] as const,
+      ],
+      ["매니페스트의 대소문자 별칭", ["Baram-Plugin.json", "{}"] as const],
+    ])("%s 이 솔직한 매니페스트 옆에 더 있으면 거부한다", async (_, extra) => {
+      const f = await fixture("plugin", { extraZipEntries: [extra] });
+      const { output, status } = runStep(ARTIFACT_STEP, f);
+      expect(status).not.toBe(0);
+      expect(output).toContain(extra[0]);
+    });
+
+    it("README 의 ./ 별칭이 솔직한 README 옆에 있으면 거부한다", async () => {
+      const f = await fixture("plugin", {
+        extraZipEntries: [["./README.md", "x"]],
+        readme: true,
+      });
+      const { output, status } = runStep(ARTIFACT_STEP, f);
+      expect(status).not.toBe(0);
+      expect(output).toContain("./README.md");
+    });
+
+    it("readme.md(대소문자 별칭)가 솔직한 README 옆에 있으면 거부한다", async () => {
+      const f = await fixture("plugin", {
+        extraZipEntries: [["readme.md", "x"]],
+        readme: true,
+      });
+      const { output, status } = runStep(ARTIFACT_STEP, f);
+      expect(status).not.toBe(0);
+      expect(output).toContain("readme.md");
+    });
+
+    it("plugin-meta 가 README 를 기록하지 않았는데 ./README.md 만 있어도 거부한다", async () => {
+      const f = await fixture("plugin", {
+        extraZipEntries: [["./README.md", "x"]],
+      });
+      const { output, status } = runStep(ARTIFACT_STEP, f);
+      expect(status).not.toBe(0);
+      expect(output).toContain("./README.md");
+    });
+
+    it("최상위에 이름이 다른 파일이 있으면 거부한다", async () => {
+      const f = await fixture("plugin", {
+        extraZipEntries: [["notes.txt", "x"]],
+      });
+      const { output, status } = runStep(ARTIFACT_STEP, f);
+      expect(status).not.toBe(0);
+      expect(output).toContain("notes.txt");
+    });
+
+    // zip.js 는 같은 이름의 두 번째 항목을 거부한다(`ZipWriter.add` 가 내부 `filenames` Set 으로
+    // 지키며, 우회 옵션이 없다 — 실측). 그래서 "baram-plugin.json 이 정말 두 번" 인 아카이브는 이
+    // 시험 도구로 지을 수 없다: 생략한다(ruling 이 "zip.js 가 그 이름을 지을 수 없으면 생략해도
+    // 된다" 고 허용한 경우와 같은 결의 제약 — 중복은 단순 정규화가 아니라 하드 리젝트다).
+    //
+    // 실측(2026-10-03, /tmp 스크립트): `writer.add("baram-plugin.json", …)` 를 두 번 부르면
+    // `Error: File already exists` 를 던진다 — 이 하드 리젝트가 실은 또 하나의 방어선이다: 시스템
+    // `python3 zipfile` 로 억지로 두 번 넣은 아카이브에서는 `unzip -p` 가 두 항목의 바이트를
+    // 이어 붙여 내놓고, 그 결과가 jq 의 `length == 1` 스트림 검사(M2, 이 단계 ② 의 기존 관문)에
+    // 걸려 거부된다 — N1 의 카운트 검사가 아니라 그보다 앞선 기존 관문이 이미 잡는다는 뜻이다.
+
+    // N1 (ruling R18) — 솔직한 아카이브가 `dist/` 디렉터리 항목과 `dist/index.mjs` 를 실어도
+    // 통과한다: 이미 있는 "플러그인, README 있음/없음" 통과 케이스가 `fixture()` 에 더한 그 두
+    // 항목으로 다시 돈다 — 새 시험을 더하지 않는다.
+  });
+
   // 무엇이 이것을 실패시키는가: 빈 값 관문이 없으면 — 빈 등급은 등급 없는 매니페스트와, 빈 기록은
   // 아무 대조도 하지 않는 것과 같아진다.
   //
@@ -612,6 +734,19 @@ describe("publish — artifact 를 meta 가 검증한 것에 묶는다", () => {
     [
       "theme",
       { MANIFEST_SHA256: "a".repeat(64) },
+      "a plugin-only value reached this theme job",
+    ],
+    // N8 — the same two wiring-bug branches, untested on the README side: a malformed (not
+    // empty, not 64 lowercase hex) README_SHA256 on a plugin, and a non-empty README_SHA256
+    // reaching a theme job (MANIFEST_SHA256 stays empty here, so this is the README half alone).
+    [
+      "plugin",
+      { README_SHA256: "not-a-hash" },
+      "the README hash did not reach this job",
+    ],
+    [
+      "theme",
+      { README_SHA256: "a".repeat(64) },
       "a plugin-only value reached this theme job",
     ],
   ] as const)(
@@ -1021,6 +1156,21 @@ describe("publish — 새 색인을 라이브 색인에 묶는다", () => {
     expect(status).not.toBe(0);
     expect(output).toContain("the new index.json is over 1 MiB");
   });
+
+  // 계획 0115 N6 — F3 가 크기 관문을 두 jq 파싱보다 앞에 옮겼지만, 그 순서를 직접 짚는 시험이
+  // 없었다. index 를 COMPACT(들여쓰기 없음) 로 지어 jq 의 canonical 2-space 형태와도 다르게
+  // 만든다 — 크기 관문이 canonical 검사보다 뒤에서 돌면 이 케이스는 "is not in the form the
+  // index script writes" 로 거부되어 이 시험이 그 순서 결함을 못 잡는다.
+  it("새 index.json 이 1 MiB 를 넘고 canonical 형태도 아니면 — 크기 메시지로 거부한다", async () => {
+    const f = await craftedFixture(
+      "plugin",
+      { ...PLUGIN_MANIFEST, description: "x".repeat(1_100_000) },
+      { compact: true },
+    );
+    const { output, status } = runStep(COMPARE_STEP, f);
+    expect(status).not.toBe(0);
+    expect(output).toContain("the new index.json is over 1 MiB");
+  });
 });
 
 describe("빌드 잡이 publish 에 넘기는 것", () => {
@@ -1279,9 +1429,8 @@ describe("publish — 키가 닿는 자리", () => {
   // 이름과 순서까지 통째로 고정한다 — `publish` 에 단계를 더하거나 빼는 것은 이 시험을 고쳐서
   // 받아들이는 결정이고, 이 시험을 피해서 돌아가는 결정이 아니다.
   it("publish 잡의 단계는 이 다섯뿐이다 — 이름과 순서까지", () => {
-    const names = [...jobText("publish").matchAll(/\n {6}- name: (.+)/g)].map(
-      (m) => m[1],
-    );
+    const publish = jobText("publish");
+    const names = [...publish.matchAll(/\n {6}- name: (.+)/g)].map((m) => m[1]);
     expect(names).toEqual([
       "Download the release",
       ARTIFACT_STEP,
@@ -1289,6 +1438,12 @@ describe("publish — 키가 닿는 자리", () => {
       COMPARE_STEP,
       PUSH_STEP,
     ]);
+    // 계획 0115 N4 — `- name:` 만 센 위의 배열은, 이름이 첫 키가 아닌 단계(이름 없는 `- run:`,
+    // 또는 `- id:`/`- env:` 가 먼저 오는 단계)를 보지 못한다 — 그런 단계는 "name:" 이라는 부분
+    // 문자열을 그 위치에 전혀 남기지 않으므로 names 배열은 여전히 다섯 그대로다. 단계 경계
+    // 자체(`\n      - `)를 세어, 더해진 단계가 있으면 이 카운트가 다섯을 넘는 것으로 잡는다.
+    const stepCount = [...publish.matchAll(/\n {6}- /g)].length;
+    expect(stepCount).toBe(names.length);
   });
 
   it("publish 는 두 meta · 두 빌드를 기다리고, 빌드 하나가 성공했을 때만 돈다", () => {

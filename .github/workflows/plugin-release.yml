@@ -200,8 +200,11 @@ jobs:
       # checkout before any dependency installs. `Package ZIP` (in the `release` job, below)
       # stores `baram-plugin.json` and `README.md` from the checkout UNCHANGED — only `dist` is
       # built — so these hashes anchor exactly the bytes that end up in the published archive, the
-      # same way `dir`/`version`/`plugin_id` above anchor the declared fields. `publish` holds the
-      # archive's own copies of these two files to the hashes recorded here.
+      # same way `dir`/`version`/`plugin_id` above anchor the declared fields. True only together
+      # with `publish`'s entry-list check (plan 0115 N1): that check admits no alias of either
+      # name, so the member these hashes are read against and the member the app installs are
+      # provably the same archive entry. `publish` holds the archive's own copies of these two
+      # files to the hashes recorded here.
       - name: Record the plugin's tagged files
         id: plugin_files
         env:
@@ -343,10 +346,12 @@ jobs:
 
       # For `validate-index.ts` in the next step, which imports the app's own
       # `parseBaramFloor` and `VALID_CAPABILITIES` rather than restating their rules. Placed
-      # here rather than at the top of the job on purpose: every verification gate in THIS job is
-      # deliberately dependency-free (see the semver note in plugin-meta's tag step — a separate
-      # job since spec 0065, which runs before this one and needs no install either), and moving
-      # this earlier would invite those checks to start requiring packages.
+      # here rather than at the top of the job on purpose: every verification gate ABOVE this step
+      # in THIS job is deliberately dependency-free (see the semver note in plugin-meta's tag step
+      # — a separate job since spec 0065, which runs before this one and needs no install either),
+      # and moving this earlier would invite those checks to start requiring packages. The step
+      # below this one is not dependency-free — it is the `npx tsx` validator run this split exists
+      # to feed, not a gate this comment is claiming anything about.
       - uses: ./.github/actions/setup-node
 
       # ‼️ NO SECRET IS IN REACH OF THIS STEP, and that is the point of splitting it out.
@@ -442,8 +447,9 @@ jobs:
           name: registry-release
           path: ${{ runner.temp }}/release
           if-no-files-found: error
-          # Plan 0115 F2 — the approval `registry-publish` can wait for runs up to 30 days, but the
-          # default 1-day retention let the download fail well before that. 7 days covers a normal
+          # Plan 0115 F2 — the approval `registry-publish` can wait for runs up to 30 days, but this
+          # step's own 1-day retention (not GitHub's default, which is the repository's setting —
+          # 90 days unless changed) let the download fail well before that. 7 days covers a normal
           # approval wait; approve within that window, or re-run the whole workflow so a fresh
           # build re-uploads the artifact.
           retention-days: 7
@@ -700,8 +706,11 @@ jobs:
   # to plugin-meta's `manifest_sha256`/`readme_sha256`, hashed from the tagged checkout before any
   # install), a theme's recorded checksum, and the index are all held to what a meta job verified
   # (where no third-party code ran) and to the live registry. A compromised build can then change
-  # only this release's own entry, and — for a plugin — only its built `dist`: every other file in
-  # the archive is anchored to bytes a meta job read before the build ran (spec 0065 §2).
+  # only this release's own entry, and — for a plugin — only the bytes inside its built `dist`:
+  # every other entry's NAME is restricted to exactly `baram-plugin.json`, `README.md` or a path
+  # under `dist/` (plan 0115 N1's entry-list check, which also refuses a second or aliased spelling
+  # of either named member), and the two named members' BYTES are anchored to what a meta job read
+  # before the build ran (spec 0065 §2).
   #
   # `success()` cannot gate this job: one tag shape's meta and build are always skipped, and a
   # skipped dependency fails `success()`. So the condition is spelled out.
@@ -811,18 +820,87 @@ jobs:
               || fail "the archive declares trust '$ZIP_TRUST' but '$EXPECTED_TRUST' was verified"
           fi
 
-          # Plan 0115 F1 (R13) — a plugin's NON-BUILT files, anchored to the exact bytes
-          # plugin-meta read from the tagged checkout. The id/version/trust checks above hold the
-          # DECLARED values; a build could satisfy every one of them while still shipping a
-          # manifest whose capabilities were widened or whose engines.baram floor was lowered
-          # after plugin-meta verified the tagged file — a lowered floor bypasses the
-          # release-order gate plugin-meta ran, and widened capabilities become the consent
-          # ceiling the app shows the user. This anchors the FILE ITSELF, not just the fields read
-          # out of it above. A theme carries no such anchor here — RECORDED_SHA256 below already
-          # covers its whole archive, so these two values must simply be empty.
+          # Plan 0115 F1 (R13) wiring sanity — hoisted ahead of N1's entry-list check below, which
+          # reads README_SHA256's emptiness to decide what the archive's entry list may contain. A
+          # malformed (non-empty, non-hex) value must be reported as the wiring bug it is, not as
+          # N1 requiring a README.md entry that plugin-meta never actually recorded.
           if [[ "$KIND" == "plugin" ]]; then
             [[ $MANIFEST_SHA256 =~ $SHA_RE ]] \
               || fail "the manifest hash did not reach this job (got '$MANIFEST_SHA256') — this is a bug in this workflow, not a refusal"
+            [[ -z "$README_SHA256" || $README_SHA256 =~ $SHA_RE ]] \
+              || fail "the README hash did not reach this job (got '$README_SHA256') — this is a bug in this workflow, not a refusal"
+          else
+            [[ -z "$MANIFEST_SHA256" && -z "$README_SHA256" ]] \
+              || fail "a plugin-only value reached this theme job (manifest_sha256='$MANIFEST_SHA256' readme_sha256='$README_SHA256') — this is a bug in this workflow, not a refusal"
+          fi
+
+          # Plan 0115 N1 (ruling R18) — the ARCHIVE'S ENTRY LIST, not just what `unzip -p` reads for
+          # a name above and below. `unzip -p` matches a name LITERALLY, but the app's extractor
+          # (`enclosed_name` in the zip crate, src-tauri/src/fs/archive.rs `extract_zip_bounded`)
+          # NORMALIZES a name like `./baram-plugin.json`, `dist/../baram-plugin.json` or
+          # `Baram-Plugin.json` to the SAME installed path as the honest member, and the LATER entry
+          # in the archive then wins (the case variant wins on case-insensitive APFS) — so a build
+          # that smuggles one of these aliases alongside the honest member passed every check here
+          # unchanged while installing a DIFFERENT file than the one hashed. A theme needs no such
+          # check: `RECORDED_SHA256` below already anchors the theme archive's whole byte content,
+          # named-member aliasing included.
+          if [[ "$KIND" == "plugin" ]]; then
+            # `unzip -Z1` runs as its own command under this step's `-e`, not inside `$(…)` or
+            # `< <(…)` — the same `find`-hiding-its-exit pitfall M1 above already guards against —
+            # so a corrupt archive aborts here instead of handing the loop below an empty list that
+            # then vacuously admits everything.
+            ENTRIES="$RUNNER_TEMP/zip-entries"
+            unzip -Z1 "$A/plugins/$ZIP_NAME" > "$ENTRIES"
+            DOTSEG_RE='(^|/)\.\.?(/|$)'
+            while IFS= read -r entry || [[ -n "$entry" ]]; do
+              [[ -n "$entry" ]] || continue
+              case "$entry" in
+                *\\*) fail "the archive entry '$entry' contains a backslash" ;;
+                /*) fail "the archive entry '$entry' starts with /" ;;
+                ./*) fail "the archive entry '$entry' starts with ./" ;;
+                *//*) fail "the archive entry '$entry' has an empty path segment" ;;
+              esac
+              [[ "$entry" =~ $DOTSEG_RE ]] \
+                && fail "the archive entry '$entry' has a . or .. path segment"
+              # Only these three may be at the archive root — the built `dist` tree, and the two
+              # named members the hashes below anchor. Case-sensitive on purpose: a case variant of
+              # either name is exactly the alias this check exists to refuse.
+              case "$entry" in
+                baram-plugin.json | README.md | dist/*) ;;
+                *) fail "the archive carries '$entry', which this release does not admit — only baram-plugin.json, README.md and dist/ may be at the archive root" ;;
+              esac
+            done < "$ENTRIES"
+            # `grep -c` exits 1 (not 0) on zero matches — under this step's `-e` that would abort
+            # the assignment itself, silently, before the count is even compared. `|| true` keeps
+            # the count (grep still prints it) without losing the comparison below to it.
+            MANIFEST_COUNT="$(grep -Fxc 'baram-plugin.json' "$ENTRIES" || true)"
+            [[ "$MANIFEST_COUNT" == "1" ]] \
+              || fail "the archive has baram-plugin.json $MANIFEST_COUNT times, not exactly once"
+            README_COUNT="$(grep -Fxc 'README.md' "$ENTRIES" || true)"
+            if [[ -n "$README_SHA256" ]]; then
+              [[ "$README_COUNT" == "1" ]] \
+                || fail "the archive has README.md $README_COUNT times, not exactly once"
+            else
+              [[ "$README_COUNT" == "0" ]] \
+                || fail "the archive carries a README.md but plugin-meta recorded none"
+            fi
+            # A name under `dist/` need not equal another byte for byte — only its CASE-FOLDED
+            # spelling must be unique, because that is what two filesystems disagree on.
+            LOWER_DUPES="$(tr '[:upper:]' '[:lower:]' < "$ENTRIES" | sort | uniq -d)"
+            [[ -z "$LOWER_DUPES" ]] \
+              || fail "the archive has entries that collide when lowercased: $(echo "$LOWER_DUPES" | tr '\n' ' ')"
+          fi
+
+          # Plan 0115 F1 (R13) — a plugin's NON-BUILT files, anchored to the exact bytes
+          # plugin-meta read from the tagged checkout (the wiring-sanity checks on the two hashes
+          # already ran above, ahead of N1). The id/version/trust checks above hold the DECLARED
+          # values; a build could satisfy every one of them while still shipping a manifest whose
+          # capabilities were widened or whose engines.baram floor was lowered after plugin-meta
+          # verified the tagged file — a lowered floor bypasses the release-order gate plugin-meta
+          # ran, and widened capabilities become the consent ceiling the app shows the user. This
+          # anchors the FILE ITSELF, not just the fields read out of it above. A theme carries no
+          # such anchor here — RECORDED_SHA256 below already covers its whole archive.
+          if [[ "$KIND" == "plugin" ]]; then
             ZIP_MANIFEST_SHA256="$(sha256sum "$M" | cut -d' ' -f1)"
             [[ "$ZIP_MANIFEST_SHA256" == "$MANIFEST_SHA256" ]] \
               || fail "the archive's $MANIFEST_NAME is not the manifest plugin-meta read at the tag"
@@ -833,8 +911,6 @@ jobs:
               HAS_ZIP_README=1
             fi
             if [[ -n "$README_SHA256" ]]; then
-              [[ $README_SHA256 =~ $SHA_RE ]] \
-                || fail "the README hash did not reach this job (got '$README_SHA256') — this is a bug in this workflow, not a refusal"
               [[ "$HAS_ZIP_README" == "1" ]] \
                 || fail "plugin-meta recorded a README but the archive has none"
               ZIP_README_SHA256="$(sha256sum "$ZIP_README" | cut -d' ' -f1)"
@@ -851,9 +927,6 @@ jobs:
               [[ ! -f "$A/$README_PATH" ]] \
                 || fail "the artifact carries $README_PATH but plugin-meta recorded no README"
             fi
-          else
-            [[ -z "$MANIFEST_SHA256" && -z "$README_SHA256" ]] \
-              || fail "a plugin-only value reached this theme job (manifest_sha256='$MANIFEST_SHA256' readme_sha256='$README_SHA256') — this is a bug in this workflow, not a refusal"
           fi
 
           # ③ A theme's bytes are the bytes the pre-publish check recorded.
