@@ -14,6 +14,9 @@ export interface CursorLine {
   start: number;
 }
 
+/** A unit's text is non-blank when it holds any non-whitespace character. */
+const NON_BLANK = /\S/;
+
 const graphemeSegmenter = new Intl.Segmenter(undefined, {
   granularity: "grapheme",
 });
@@ -53,7 +56,7 @@ export function firstNonBlankUnit(
 ): null | number {
   let found: null | number = null;
   forEachLineUnit(state, line, (start, text) => {
-    if (text !== null && !/\S/.test(text)) return true;
+    if (text !== null && !NON_BLANK.test(text)) return true;
     found = start;
     return false;
   });

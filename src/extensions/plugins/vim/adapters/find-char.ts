@@ -12,6 +12,10 @@ import {
   segmentSpanAt,
 } from "./cursor-line-columns";
 
+/** The text a non-text inline node reads as — textBetween's leaf
+ *  placeholder: one inline node, one character. */
+const INLINE_NODE_TEXT = "\uFFFC";
+
 /**
  * f/F/t/T — the count-th occurrence of `char` in the CURRENT segment,
  * forward for f/t, backward for F/T; t/T stop one unit short. null on a miss
@@ -39,7 +43,7 @@ export function findCharTarget(
   const texts: string[] = [];
   forEachLineUnit(state, line, (start, text) => {
     starts.push(start);
-    texts.push(text ?? "\uFFFC");
+    texts.push(text ?? INLINE_NODE_TEXT);
     return true;
   });
 

@@ -260,6 +260,7 @@ function runHistory(
   }
 }
 
+/** o / O: an empty paragraph next to the current block, caret in it. */
 function runOpenLine(
   view: EditorView,
   command: Extract<CoreCommand, { type: "openLine" }>,
@@ -279,6 +280,7 @@ function runOpenLine(
   return { applied: dispatchLanded(view, tr) };
 }
 
+/** dfx / ctx / ytx: an operator over a find-char range in the segment. */
 function runOperatorFind(
   view: EditorView,
   command: Extract<CoreCommand, { type: "operatorFind" }>,
@@ -385,6 +387,7 @@ function runOperatorMotion(
   return {};
 }
 
+/** Space: step the nearest task item's state, as the checkbox does. */
 function runToggleTask(view: EditorView, head: number): ExecutionResult {
   const state = view.state;
   // §298 checklist toggle — nearest ancestor taskItem of the vim head

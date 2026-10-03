@@ -150,6 +150,7 @@ export function runSelectionCommand(
   }
 }
 
+/** v / V: render the visual range the core just opened. */
 function runEnterVisual(view: EditorView, result: StepResult): boolean {
   if (!result.state.visual) return false;
   const tr = view.state.tr.setSelection(
@@ -160,6 +161,8 @@ function runEnterVisual(view: EditorView, result: StepResult): boolean {
   return true;
 }
 
+/** `:N` / `:$` — a selection command; any other ex name returns false
+ *  for the executor. */
 function runExLineJump(
   view: EditorView,
   result: StepResult,
@@ -186,6 +189,7 @@ function runExLineJump(
   return true;
 }
 
+/** f/F/t/T and `;` `,`: land on the match; a miss keeps the goal. */
 function runFindChar(
   view: EditorView,
   result: StepResult,
@@ -225,6 +229,7 @@ function runFindChar(
   return true;
 }
 
+/** Leaving visual collapses to the vim head (§6). */
 function runLeaveVisual(
   view: EditorView,
   result: StepResult,
@@ -240,6 +245,8 @@ function runLeaveVisual(
   return true;
 }
 
+/** j/k/h/l and every other motion: one transaction for the selection and
+ *  the core (normal) or the visual head (visual). */
 function runMove(
   view: EditorView,
   result: StepResult,
@@ -302,6 +309,7 @@ function runMove(
   return true;
 }
 
+/** zz / z.: re-center the view on the vim head (z. first homes it). */
 function runScrollCursor(
   view: EditorView,
   result: StepResult,
@@ -331,6 +339,7 @@ function runScrollCursor(
   return true;
 }
 
+/** `/` `?` `n` `N`: land on the match, or only close the line on a miss. */
 function runSearch(
   view: EditorView,
   result: StepResult,
