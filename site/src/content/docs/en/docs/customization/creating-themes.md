@@ -129,7 +129,10 @@ or `false`, is dropped.
   **Export Theme Package** to save the palette you are editing as a package with colors only.
   **Export Colors** saves the same colors as a color settings file instead — **Import Theme...**
   takes it, but it is not a package: it has no id, version, or license.
-- **Write it by hand**, following this page.
+- **Write it by hand**, following this page. Baram Hangul's source in
+  [`examples/themes/hangul/`](https://github.com/sayinel/baram/tree/main/examples/themes/hangul)
+  is a complete example: `baram-theme.json` and the two `tokens.json` files are what its package
+  holds, and the `README.md` and `SHA256SUMS` beside them are notes for Baram's maintainers.
 
 ## Test your theme
 
