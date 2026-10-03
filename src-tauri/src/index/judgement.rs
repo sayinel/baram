@@ -452,7 +452,7 @@ impl RenameTarget<'_> {
     /// — spelled as `new_path` spells them, whatever the link's case or
     /// separator was. A captured target ending in `.md` or `.markdown` keeps
     /// that suffix as it was spelled only when the new file name itself ends
-    /// in `.md` or `.markdown`: after `a/old.md` → `a/old.txt`, `[[a/old.md]]`
+    /// in `.md` or `.markdown`, in lower case as the index reads a note: after `a/old.md` → `a/old.txt`, `[[a/old.md]]`
     /// becomes `[[a/old.txt]]` and `[[old.md]]` becomes `[[old]]` — a kept
     /// `.md` would spell `a/old.txt.md`, which names no file.
     pub fn respell(&self, ref_path: &str, m: &Match, captured_target: &str) -> String {
@@ -460,7 +460,9 @@ impl RenameTarget<'_> {
             .last()
             .copied()
             .unwrap_or("");
-        let suffix = if note_suffix(new_name).is_empty() {
+        // The new name is a note only by a lower-case extension, as the
+        // index reads it (`strip_note_extension`); `a/new.MD` is no note.
+        let suffix = if strip_note_extension(new_name) == new_name {
             ""
         } else {
             note_suffix(captured_target)

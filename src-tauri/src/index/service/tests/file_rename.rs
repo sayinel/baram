@@ -283,6 +283,41 @@ async fn a_rename_that_keeps_the_stem_still_respells_a_path_link_for_the_new_ext
 }
 
 #[tokio::test]
+async fn a_rename_to_an_upper_case_extension_respells_as_for_any_non_note_name() {
+    // The index reads `.md` and `.markdown` as note extensions only in lower
+    // case (`collect_md_files`, `strip_note_extension`), so `a/new.MD` is no
+    // note, as `a/old.txt` is not: a captured `.md` is dropped, and both
+    // path links spell the new name whole.
+    // What fails this: judging the new name's suffix without case
+    // (`note_suffix(new_name)` in `respell`) — `[[a/new.MD.md]]` is written.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-619u", true).await;
+    std::fs::create_dir_all(dir.path().join("a")).unwrap();
+    std::fs::write(dir.path().join("a/old.md"), "t\n").unwrap();
+    std::fs::write(dir.path().join("r.md"), "[[a/old]]\n[[a/old.md]]\n").unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/a/old.md"),
+        &format!("{root}/a/new.MD"),
+    )
+    .await
+    .unwrap();
+    assert!(
+        result.skipped_files.is_empty(),
+        "{:?}",
+        result.skipped_files
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
+        "[[a/new.MD]]\n[[a/new.MD]]\n"
+    );
+}
+
+#[tokio::test]
 async fn a_file_rename_rewrites_the_renamed_notes_own_references_to_its_old_name() {
     // issue 678: the renamed note may spell its own name — `((old#^b1))`
     // pasted from another note, `[[old]]` — and under the new name those
