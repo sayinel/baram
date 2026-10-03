@@ -1,19 +1,21 @@
 // §371 6b-2 — `plugin-release.yml` 의 `release-theme` 잡(스펙 0063 §7.3).
 //
 // 단계는 **실행해서** 본다 — 이 워크플로의 플러그인 쪽이 텍스트 스캔을 다섯 번 우회당한 뒤 굳힌
-// 규칙이다(`malicious-fixture.test.ts`). 이 파일이 `run: |` 본문을 bash 로 실행하는 단계는 넷이다:
-// 태그 단계 `Parse and verify the theme tag`(`runTagStep`), checksum 관문 `Check the checksum the
-// pre-publish check recorded`(`runChecksumStep`), 묶기 `Package the theme` 와 다시 검증 `Verify the
-// packaged theme is the theme that was verified`(둘 다 `runPackageAndVerify`). 그 단계가 부르는
-// 스크립트의 경우들(묶기 · 다시 검증 · 색인)은 `theme-package-script.test.ts` 와
-// `theme-registry-chain.test.ts` 가 본다 — 묶기 · 다시 검증은 함수를 직접 부르고, 색인과 그 검증은
-// 스크립트를 띄운다.
+// 규칙이다(`malicious-fixture.test.ts`). 이 파일이 `run: |` 본문을 bash 로 실행하는 단계는 다섯이다:
+// 태그 단계 `Parse and verify the theme tag`(`runTagStep`), 기록 단계 `Read the checksum the
+// pre-publish check recorded`(`runRecordStep`), 대조 단계 `Check the archive against the recorded
+// checksum`(`runCompareStep`), 묶기 `Package the theme` 와 다시 검증 `Verify the packaged theme is
+// the theme that was verified`(둘 다 `runPackageAndVerify`). 그 단계가 부르는 스크립트의 경우들(묶기 ·
+// 다시 검증 · 색인)은 `theme-package-script.test.ts` 와 `theme-registry-chain.test.ts` 가 본다 — 묶기 ·
+// 다시 검증은 함수를 직접 부르고, 색인과 그 검증은 스크립트를 띄운다.
 //
-// 나머지는 텍스트 단언이고 "실행할 수 없는 배선" describe 에 모여 있다. 그 종류는 여섯이다 — 잡
-// 조건(태그 트리거와 두 잡의 `if:`), 비밀이 닿는 자리(배포 키 줄과, 그 단계가 잡의 마지막인가),
-// 두 push 본문의 대조, push 스크립트가 node 계열 도구와 `${{` 를 싣지 않음, 테마 잡이
-// `examples/themes` 에 `$DIR` 로만 닿음, 단계 사이의 출력 배선(checksum 관문의 자리와 세 env, 색인
-// 단계의 두 env).
+// 비밀이 닿는 자리 · 두 push 본문의 대조 · push 스크립트의 단언은 키가 `publish` 잡 하나로 옮긴 뒤
+// `src/plugins/__tests__/registry-publish-job.test.ts` 로 갔다(§69, 계획 0115) — 이 파일에는 더 없다.
+//
+// 나머지는 텍스트 단언이고 "실행할 수 없는 배선" describe 에 모여 있다. 그 종류는 다섯이다 — 잡
+// 조건(태그 트리거와 두 잡의 `if:`, 그리고 `needs`), meta 잡 둘이 체크아웃과 판정만 도는가, 단계
+// 사이의 출력 배선(기록 단계의 자리와 세 env · theme-meta 의 두 출력, 대조 단계의 자리와 네 env),
+// 테마 잡이 `examples/themes` 에 `$DIR` 로만 닿음, 색인 단계의 두 env.
 
 import { spawnSync } from "node:child_process";
 import {
@@ -371,65 +373,6 @@ describe("release-theme — 실행할 수 없는 배선", () => {
       "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
     ]);
   });
-
-  // 무엇이 이것을 실패시키는가: 어느 잡이 환경 선언을 잃으면. 배포 키는 환경 `registry-publish` 의
-  // 비밀이라(저장소 설정 — 이 파일에 없다) 선언이 빠진 잡은 키를 받지 못하고 push 에서 실패한다.
-  it("두 잡 모두 registry-publish 환경에서 돈다", () => {
-    for (const job of ["release", "release-theme"]) {
-      expect(jobText(job), job).toContain(
-        "\n    environment: registry-publish\n",
-      );
-    }
-  });
-
-  // 무엇이 이것을 실패시키는가: 셋째 자리가 키(나 다른 비밀)를 쓰거나, 키를 받는 단계 뒤에 단계가
-  // 생기거나, 키가 env 가 아닌 모양(action 입력 · `run` 안의 식)으로 닿으면.
-  it("배포 키는 두 잡의 마지막 단계에만, env 한 줄로 닿는다", () => {
-    const KEY_LINE = "DEPLOY_KEY: ${{ secrets.PLUGINS_DEPLOY_KEY }}";
-    // `secrets` 를 읽는 **모든** 줄 — 키 이름 한 철자만 찾으면 `secrets['…']` · 대소문자 변형 ·
-    // `toJSON(secrets)` 가 빠진다(`revocation-publish-gate.test.ts` 의 같은 허용 목록과 같은 정규식).
-    const lines = WORKFLOW.split("\n").filter((line) =>
-      /secrets\s*[.[]|toJSON\s*\(\s*secrets/iu.test(line),
-    );
-    expect(lines.map((line) => line.trim())).toEqual([KEY_LINE, KEY_LINE]);
-    for (const job of ["release", "release-theme"]) {
-      const text = jobText(job);
-      const key = text.indexOf(KEY_LINE);
-      expect(key, job).toBeGreaterThan(0);
-      expect(text.indexOf(KEY_LINE, key + 1), job).toBe(-1);
-      // 키 뒤에 새 단계가 시작하지 않는다 — 키를 받는 단계가 그 잡의 마지막이다.
-      expect(text.slice(key).match(/\n {6}- /g), job).toBeNull();
-    }
-  });
-
-  const PLUGIN_PUSH = "Push ZIP + updated index to registry repo";
-  const THEME_PUSH = "Push the theme archive + updated index to registry repo";
-
-  // 무엇이 이것을 실패시키는가: 두 push 본문이 한 글자라도 갈라지면 — 드물게 도는 테마 잡의
-  // 사본이 아무도 모르게 갈라지는 것이 공용 action 을 두었던 이유였고, 이제 이 대조가 그 자리다.
-  it("테마 잡의 push 본문은 플러그인 잡의 것과 `$THEME_ID` 한 낱말만 다르다", () => {
-    const theme = stepScript(THEME_PUSH);
-    // 치환이 공허하지 않다 — 테마 본문이 그 낱말을 실제로 쓴다.
-    expect(theme).toContain("$THEME_ID");
-    expect(theme).not.toContain("$PLUGIN_ID");
-    expect(theme.replaceAll("$THEME_ID", "$PLUGIN_ID")).toBe(
-      stepScript(PLUGIN_PUSH),
-    );
-  });
-
-  it.each([PLUGIN_PUSH, THEME_PUSH])(
-    "%s 의 스크립트는 node 계열 도구를 부르지 않고, `${{` 를 싣지 않는다",
-    (name) => {
-      const code = stepScript(name)
-        .split("\n")
-        .filter((line) => !line.trim().startsWith("#"))
-        .join("\n");
-      expect(code).toContain("git push origin main");
-      expect(code).not.toMatch(/\b(node|npx|npm|tsx|yarn|pnpm|bun)\b/);
-      // 입력은 env 로만 들어간다 — `run` 안의 `${{ }}` 는 스크립트 주입 자리다.
-      expect(code).not.toContain("${{");
-    },
-  );
 
   // 무엇이 이것을 실패시키는가: 기록을 태그 단계 앞에서 읽거나, 대조를 checksum 계산 앞이나 색인
   // 쓰기 뒤로 옮기거나, 값을 다른 출력에 묶으면. 위의 실행 케이스는 env 를 직접 넣으므로 이 배선을

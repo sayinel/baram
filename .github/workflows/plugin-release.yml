@@ -6,11 +6,15 @@ name: Plugin Release
 # plugin's baram-plugin.json. Spec: dev plugin-registry-hosting design.
 #
 # §371 6b-2 — and a first-party THEME (spec 0063 §7.3): a tag `theme-<dir>-v<version>` where
-# <dir> is the directory under examples/themes/. Each tag shape runs exactly one of the two jobs
-# below (`if:` on the tag prefix); they share this file's concurrency group, the index writer
-# (`scripts/update-registry-index.mjs`) and both validators, and push with the same inline body
-# (pinned by src/themes/__tests__/theme-release-workflow.test.ts), so the registry still has one
-# writer (spec 0063 D1).
+# <dir> is the directory under examples/themes/.
+#
+# Spec 0065 (§69) — THREE STAGES, so the registry deploy key never reaches a runner that ran
+# third-party code. Each tag shape runs a meta job (`plugin-meta` / `theme-meta`: the checkout and
+# the tag gate, nothing installed) and a build job (`release` / `release-theme`: the dependencies,
+# the package, the index, the validators — no secret), and both shapes end in ONE `publish` job,
+# the only job that declares the `registry-publish` environment and reads the key. `publish` checks
+# out nothing and installs nothing: it holds the build's artifact to the meta job's outputs and to
+# the live registry, then pushes. The registry still has one writer (spec 0063 D1).
 on:
   push:
     tags: ['plugin-*', 'theme-*']
@@ -192,15 +196,6 @@ jobs:
   release:
     if: startsWith(github.ref_name, 'plugin-')
     needs: plugin-meta
-    # THE DEPLOY KEY IS AN ENVIRONMENT SECRET (security review of plan 0113, item 8). The
-    # `registry-publish` environment — repository settings, not this file — admits only
-    # `plugin-*` and `theme-*` tag refs and waits for a required reviewer before the job starts,
-    # and the `release-tags` ruleset limits who may create those tags. A repository-level secret
-    # of the same name would be readable by a workflow on any branch, with neither check, so the
-    # key must not be stored at repository level. Rotate it with
-    # `gh secret set PLUGINS_DEPLOY_KEY --env registry-publish`, and in the environment
-    # revocation-publish.yml declares, which reads the same key.
-    environment: registry-publish
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -327,8 +322,8 @@ jobs:
       # access to the registry every user's marketplace reads, readable on disk.
       #
       # The registry is a public GitHub Pages repo, so READING it needs no credential at
-      # all. Cloning over HTTPS here means every line of third-party code in this job runs
-      # before the key exists; the step below writes it, pushes, and runs no dependency.
+      # all. Cloning over HTTPS here needs no credential, and since spec 0065 the key is
+      # never on this runner at all — the publish job pushes.
       - name: Update and validate the registry index
         env:
           # §260 Phase 6 code review round 5 (HIGH-1) — the manifest comes from the VERIFIED
@@ -415,38 +410,6 @@ jobs:
           # (the recovery this job's own refusals point to) must be able to upload the same name
           # again rather than fail on a name collision from the earlier, abandoned run.
           overwrite: true
-
-      # Everything third-party has already run. This step writes the key, rewrites the
-      # read-only HTTPS remote to SSH, and pushes — no `node`, no `npx`, no dependency.
-      - name: Push ZIP + updated index to registry repo
-        env:
-          DEPLOY_KEY: ${{ secrets.PLUGINS_DEPLOY_KEY }}
-          ZIP_NAME: ${{ needs.plugin-meta.outputs.zip_name }}
-          PLUGIN_ID: ${{ needs.plugin-meta.outputs.id }}
-          VERSION: ${{ needs.plugin-meta.outputs.version }}
-        run: |
-          mkdir -p ~/.ssh
-          echo "$DEPLOY_KEY" > ~/.ssh/plugins_deploy
-          chmod 600 ~/.ssh/plugins_deploy
-          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
-          export GIT_SSH_COMMAND="ssh -i ~/.ssh/plugins_deploy -o IdentitiesOnly=yes"
-          cd "$RUNNER_TEMP/registry"
-          git remote set-url origin "git@github.com:${REGISTRY_REPO}.git"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          # `readme/` is staged as a DIRECTORY rather than by name: the file is written only
-          # when the archive had one, and `git add` on a path that does not exist aborts the
-          # step — which would fail a perfectly good release of a plugin without a README.
-          # An unchanged or absent directory adds nothing and the `--quiet` check below still
-          # decides whether there is anything to publish.
-          git add "plugins/$ZIP_NAME" index.json
-          git add readme 2>/dev/null || true
-          if git diff --cached --quiet; then
-            echo "::notice::Registry already contains this exact release — nothing to publish."
-            exit 0
-          fi
-          git commit -m "release: $PLUGIN_ID $VERSION"
-          git push origin main
 
   # Spec 0065 D1 · D2 — the theme's facts, decided where no third-party code runs: the tag gate and
   # the checksum the pre-publish check recorded, read from the tagged checkout before any
@@ -550,21 +513,19 @@ jobs:
   #   - `setup-node` comes BEFORE the gates rather than after, because the gates ARE the app's
   #     own TypeScript (`validateThemeManifest`, `parseThemeTokens`, `registryPreviewPalettes`,
   #     `parseBaramFloor`) — the plugin job restates its version gate in dependency-free shell
-  #     only because it runs before any install. No secret exists in this job until the last step,
-  #     so moving the install earlier moves no third-party code closer to the key.
+  #     only because it runs before any install. No secret exists in this job at all (spec 0065),
+  #     so the install's position moves no third-party code closer to the key.
   #   - The archive goes to `plugins/`, beside the plugins (spec 0063 D9, corrected by plan 0113):
   #     every registry gate that protects an archive — `validate.yml`'s immutability check, the
   #     orphan sweep in `validate-registry-assets.ts` — looks there and only there.
   #   - A CHECKSUM GATE the plugin job does not have: the tagged commit must record the sha256 of
   #     the archive the pre-publish check installed (`theme-meta` reads the record; `Check the
   #     archive against the recorded checksum` compares).
-  #   - The push is the plugin job's inline body with `$PLUGIN_ID` → `$THEME_ID`;
-  #     src/themes/__tests__/theme-release-workflow.test.ts compares the two.
+  #   - There is no push here: the publish job, shared with the plugin job, takes the artifact
+  #     (spec 0065).
   release-theme:
     if: startsWith(github.ref_name, 'theme-')
     needs: theme-meta
-    # The same environment as the plugin job above, for the same reason.
-    environment: registry-publish
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -690,53 +651,6 @@ jobs:
           # R7 — the plugin job's note above, same reason.
           overwrite: true
 
-      # THE KEY REACHES THIS JOB ONLY IN THIS, ITS LAST STEP: every step above — the ones that run
-      # third-party code (`setup-node`'s `npm ci`, `npx tsx`, their dependencies) included — has
-      # finished before the key is written. The step runs git and ssh (plus mkdir, chmod,
-      # ssh-keyscan) — no node, no npx, no dependency.
-      #
-      # ‼️ What that does NOT guarantee: code that ran earlier in this job can leave things behind
-      # that this step's git and ssh act on or that outlive their own step — for example hooks or
-      # config in `$RUNNER_TEMP/registry` or `~/.ssh`, entries in `$GITHUB_PATH` or `$GITHUB_ENV`,
-      # a background process. So the key is not isolated from that code. Nor is it gone after this
-      # step: the file stays in `~/.ssh` while the post-job steps of `actions/checkout` and
-      # `actions/setup-node` run. Isolating the key in a job of its own is the follow-up.
-      #
-      # The body is INLINE rather than a `./` action on purpose (security review, plan 0113 Task 7):
-      # the runner reads a local action from the workspace when its step starts, so any earlier
-      # step could rewrite it and receive the key, while this file is fixed when the run is
-      # queued. It is the plugin job's body with one token changed, `$PLUGIN_ID` → `$THEME_ID` —
-      # src/themes/__tests__/theme-release-workflow.test.ts compares the two.
-      - name: Push the theme archive + updated index to registry repo
-        env:
-          DEPLOY_KEY: ${{ secrets.PLUGINS_DEPLOY_KEY }}
-          ZIP_NAME: ${{ steps.theme_package.outputs.zip_name }}
-          THEME_ID: ${{ needs.theme-meta.outputs.id }}
-          VERSION: ${{ needs.theme-meta.outputs.version }}
-        run: |
-          mkdir -p ~/.ssh
-          echo "$DEPLOY_KEY" > ~/.ssh/plugins_deploy
-          chmod 600 ~/.ssh/plugins_deploy
-          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
-          export GIT_SSH_COMMAND="ssh -i ~/.ssh/plugins_deploy -o IdentitiesOnly=yes"
-          cd "$RUNNER_TEMP/registry"
-          git remote set-url origin "git@github.com:${REGISTRY_REPO}.git"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          # `readme/` is staged as a DIRECTORY rather than by name: the file is written only
-          # when the archive had one, and `git add` on a path that does not exist aborts the
-          # step — which would fail a perfectly good release of a plugin without a README.
-          # An unchanged or absent directory adds nothing and the `--quiet` check below still
-          # decides whether there is anything to publish.
-          git add "plugins/$ZIP_NAME" index.json
-          git add readme 2>/dev/null || true
-          if git diff --cached --quiet; then
-            echo "::notice::Registry already contains this exact release — nothing to publish."
-            exit 0
-          fi
-          git commit -m "release: $THEME_ID $VERSION"
-          git push origin main
-
   # Spec 0065 D5 · D6 — THE JOB THAT WRITES THE REGISTRY, for both tag shapes. It checks out nothing and
   # installs nothing — `download-artifact`, then bash with the runner's `jq`, `unzip`, `sha256sum`
   # and `git` — so no code from the build's dependency tree runs on this runner. It does not trust
@@ -747,9 +661,19 @@ jobs:
   #
   # `success()` cannot gate this job: one tag shape's meta and build are always skipped, and a
   # skipped dependency fails `success()`. So the condition is spelled out.
+  #
+  # THE DEPLOY KEY IS AN ENVIRONMENT SECRET (security review of plan 0113, item 8), and this is the only
+  # job that declares that environment. `registry-publish` — repository settings, not this file —
+  # admits only `plugin-*` and `theme-*` tag refs and waits for a required reviewer before this job
+  # starts, so the approval is asked for only after a build has passed; the `release-tags` ruleset
+  # limits who may create those tags. A repository-level secret of the same name would be readable
+  # by a workflow on any branch, with neither check, so the key must not be stored at repository
+  # level. Rotate it with `gh secret set PLUGINS_DEPLOY_KEY --env registry-publish`, and in the
+  # environment revocation-publish.yml declares, which reads the same key.
   publish:
     needs: [plugin-meta, release, theme-meta, release-theme]
     if: ${{ !cancelled() && !failure() && (needs.release.result == 'success' || needs.release-theme.result == 'success') }}
+    environment: registry-publish
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
@@ -880,9 +804,11 @@ jobs:
           # parsed — same key order, same number formatting, same escaping — so a duplicate key, a
           # leading BOM or a similar byte trick that jq's parser silently resolves is refused here,
           # because the raw file then differs from jq's reprint of it. It does NOT guarantee the
-          # client's parser accepts the document: `serde_json::from_slice` enforces a byte-size
-          # ceiling (`MAX_REGISTRY_BYTES`), a recursion limit and a narrower number range that jq
-          # does not — the size and type checks right below this one hold those instead (I1, R8).
+          # client's parser accepts the document: the app's streamed fetch loop enforces a byte-size
+          # ceiling (`MAX_REGISTRY_BYTES`, src-tauri/src/plugin/fetch.rs), and `serde_json::from_slice`
+          # enforces a recursion limit and a narrower number range that jq does not — the size and
+          # type checks right below this one hold those instead, except for a theme's `preview`,
+          # which the preview check at the end of this step holds (I1, R8).
           jq . "$NEW" > "$RUNNER_TEMP/new-canonical.json"
           cmp -s "$RUNNER_TEMP/new-canonical.json" "$NEW" \
             || fail "the new index.json is not in the form the index script writes (duplicate keys, a BOM or other bytes jq would not write) — publishing it could break every client's parse"
@@ -893,14 +819,23 @@ jobs:
           [[ "$NEW_SIZE" -le 1048576 ]] \
             || fail "the new index.json is over 1 MiB — the app refuses an index over 4 MiB, and no release needs a quarter of that"
 
+          # The COUNT check, moved ahead of the type check below (R9): if this id's entry is simply
+          # absent, the type check's `jq -e` — `(.plugins[] | select(.id == $id)) as $e | …` over an
+          # empty generator — fails with "a field the index script would not write", which is the
+          # wrong diagnosis for a missing entry. Checked here first, so that case is "other than
+          # exactly once" (count 0) instead.
+          COUNT="$(jq --arg id "$ID" '[.plugins[] | select(.id == $id)] | length' "$NEW")"
+          [[ "$COUNT" == "1" ]] || fail "the new index lists $ID other than exactly once"
+
           # This release's entry must have the TYPES `scripts/update-registry-index.mjs` writes, and
           # no keys beyond the ones it writes (R8). ⑤ below rebuilds the entry and diffs it byte for
           # byte, which already refuses a field the manifest ALSO carries but the script does not
           # copy; it does not stop a value the script DOES copy verbatim from carrying the wrong
           # type (`name` a number, `keywords` holding a number or a nested array, a `capabilities`
-          # element that is not a string) — jq's canonical form admits all of that, and
-          # `serde_json::from_slice` refuses the whole document for it (a number out of range, or a
-          # recursion limit) rather than just this one release's listing.
+          # element that is not a string) — jq's canonical form admits all of that, and the app only
+          # drops THIS ONE entry for it (`tolerant_entries`, src-tauri/src/plugin/registry.rs), not
+          # the whole document; only a number out of `serde_json::from_slice`'s range or nesting past
+          # its recursion limit refuses the whole document.
           jq -e --arg id "$ID" --arg kind "$KIND" '
             (.plugins[] | select(.id == $id)) as $e
             | ($e.id | type == "string" and length > 0)
@@ -946,8 +881,6 @@ jobs:
           # trailing newline too, so `"2026-10-03\n"` would otherwise read as a date.
           jq -e '.updatedAt | type == "string" and length == 10 and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}$")' "$NEW" > /dev/null 2>&1 \
             || fail "the new index's updatedAt is not a date"
-          COUNT="$(jq --arg id "$ID" '[.plugins[] | select(.id == $id)] | length' "$NEW")"
-          [[ "$COUNT" == "1" ]] || fail "the new index lists $ID other than exactly once"
 
           # ⑤ The entry, rebuilt from the archive's manifest.
           M="$RUNNER_TEMP/release-manifest.json"
@@ -987,3 +920,53 @@ jobs:
             ' "$NEW" > /dev/null 2>&1 \
               || fail "the $ID entry's preview is not a light/dark palette"
           fi
+
+      # Spec 0065 D5 · D8 — THE ONLY STEP IN THIS WORKFLOW THAT HOLDS THE REGISTRY DEPLOY KEY. Nothing that
+      # ran on this runner before it came from a dependency tree: `download-artifact` (pinned), then
+      # bash with the runner's tools. It copies, BY NAME, only the files the checks above passed —
+      # never the artifact as a directory — then writes the key into a file it creates fresh
+      # (`install` does not follow whatever is at the path), pins GitHub's published host keys instead
+      # of trusting `ssh-keyscan`, pushes, and removes the key file however the step ends. OpenSSH
+      # refuses a key file whose last line has no newline, and the stored secret does not end with
+      # one (revocation-publish.yml, 2026-09-26) — hence `printf '%s\n'`.
+      - name: Push the release to the registry repo
+        env:
+          DEPLOY_KEY: ${{ secrets.PLUGINS_DEPLOY_KEY }}
+        run: |
+          A="$RUNNER_TEMP/release"
+          REG="$RUNNER_TEMP/registry"
+          KEY="$RUNNER_TEMP/registry_deploy_key"
+          KNOWN_HOSTS="$RUNNER_TEMP/github_known_hosts"
+          trap 'rm -f "$KEY"' EXIT
+          mkdir -p "$REG/plugins"
+          cp "$A/plugins/$ZIP_NAME" "$REG/plugins/$ZIP_NAME"
+          cp "$A/index.json" "$REG/index.json"
+          if [[ "$KIND" == "plugin" && -f "$A/readme/$ID-$VERSION.md" ]]; then
+            mkdir -p "$REG/readme"
+            cp "$A/readme/$ID-$VERSION.md" "$REG/readme/$ID-$VERSION.md"
+          fi
+          rm -f "$KEY"
+          install -m 600 /dev/null "$KEY"
+          printf '%s\n' "$DEPLOY_KEY" > "$KEY"
+          # `gh api meta --jq '.ssh_keys[]'` (2026-10-03); registry-publish-job.test.ts checks each against
+          # the fingerprint GitHub publishes beside it.
+          printf '%s\n' \
+            "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl" \
+            "github.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmKSENjQEezOmxkZMy7opKgwFB9nkt5YRrYMjNuG5N87uRgg6CLrbo5wAdT/y6v0mKV0U2w0WZ2YB/++Tpockg=" \
+            "github.com ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCj7ndNxQowgcQnjshcLrqPEiiphnt+VTTvDP6mHBL9j1aNUkY4Ue1gvwnGLVlOhGeYrnZaMgRK6+PKCUXaDbC7qtbW8gIkhL7aGCsOr/C56SJMy/BCZfxd1nWzAOxSDPgVsmerOBYfNqltV9/hWCqBywINIR+5dIg6JTJ72pcEpEjcYgXkE2YEFXV1JHnsKgbLWNlhScqb2UmyRkQyytRLtL+38TGxkxCflmO+5Z8CSSNY7GidjMIZ7Q4zMjA2n1nGrlTDkzwDCsw+wqFPGQA179cnfGWOWRVruj16z6XyvxvjJwbz0wQZ75XK5tKSb7FNyeIEs4TT4jk+S4dhPeAUC5y+bDYirYgM4GC7uEnztnZyaVWQ7B381AK4Qdrwt51ZqExKbQpTUNn+EjqoTwvqNj4kqx5QUCI0ThS/YkOxJCXmPUWZbhjpCg56i+2aB6CmK2JGhn57K5mj0MNdBXA4/WnwH6XoPWJzK5Nyu2zB3nAZp+S5hpQs+p1vN1/wsjk=" \
+            > "$KNOWN_HOSTS"
+          export GIT_SSH_COMMAND="ssh -i '$KEY' -o IdentitiesOnly=yes -o UserKnownHostsFile='$KNOWN_HOSTS' -o StrictHostKeyChecking=yes"
+          cd "$REG"
+          git remote set-url origin "git@github.com:${REGISTRY_REPO}.git"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "plugins/$ZIP_NAME" index.json
+          if [[ -f "readme/$ID-$VERSION.md" ]]; then
+            git add "readme/$ID-$VERSION.md"
+          fi
+          if git diff --cached --quiet; then
+            echo "::notice::Registry already contains this exact release — nothing to publish."
+            exit 0
+          fi
+          git commit -m "release: $ID $VERSION"
+          git push origin main

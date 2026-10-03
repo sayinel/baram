@@ -15,6 +15,7 @@ import { createHash } from "node:crypto";
 import {
   chmodSync,
   cpSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -296,6 +297,14 @@ async function craftedFixture(
     ...(kind === "theme" ? { kind: "theme" } : {}),
     ...copy("icon"),
     ...copy("keywords"),
+    ...(kind === "theme"
+      ? {
+          preview: {
+            dark: { "--color-bg-default": "#1c1a17" },
+            light: { "--color-bg-default": "#fbf9f4" },
+          },
+        }
+      : {}),
   };
 
   const index = {
@@ -785,6 +794,21 @@ describe("publish — 새 색인을 라이브 색인에 묶는다", () => {
     expect(output).toContain("lists baram-word-count other than exactly once");
   });
 
+  // R9.3 — COUNT 검사가 타입 검사보다 앞에 있어야 하는 이유: 이 id 의 항목이 통째로 없으면, 타입
+  // 검사의 `jq -e '(.plugins[] | select(.id == $id)) as $e | …'` 는 빈 generator 위에서 실행되어
+  // "필드가 있다" 는 오진으로 거부한다. COUNT 검사가 앞서면 count 0 을 "exactly once 가 아님" 으로
+  // 정확히 짚는다. ④는 이 id 의 항목을 라이브·새 색인 양쪽에서 지우고 비교하므로, 새 색인에서만
+  // 이 항목을 지우면 ④는 그 차이를 보지 못하고 COUNT 검사가 먼저 닿는다.
+  it("이 id 의 항목이 새 색인에 없으면 COUNT 검사가 거부한다", async () => {
+    const f = await fixture("plugin");
+    editIndex(f, (index) => {
+      index.plugins = index.plugins.filter((p) => p.id !== "baram-word-count");
+    });
+    const { output, status } = runStep(COMPARE_STEP, f);
+    expect(status).not.toBe(0);
+    expect(output).toContain("lists baram-word-count other than exactly once");
+  });
+
   it("updatedAt 이 날짜가 아니면 거부한다", async () => {
     const f = await fixture("plugin");
     editIndex(f, (index) => {
@@ -842,8 +866,8 @@ describe("publish — 새 색인을 라이브 색인에 묶는다", () => {
 
   // I1(R8) — 클라이언트는 index 를 `MAX_REGISTRY_BYTES`(4 MiB)로 자르는데, publish 잡에는 크기
   // 관문이 없었다. zip 매니페스트와 항목 둘 다에 1.1 MB `description` 을 실어, 모든 릴리스를 위해
-  // 매번 가져오는 그 문서 하나를 너무 크게 만든다 — 아직 타입은 문자열이라 ⑤의 타입 검사는 통과하고,
-  // 이 크기 관문만 짚는다.
+  // 매번 가져오는 그 문서 하나를 너무 크게 만든다 — 아직 타입은 문자열이라 엔트리 타입 검사(R8)는
+  // 통과하고, 이 크기 관문만 짚는다.
   it("새 index.json 이 1 MiB 를 넘으면 거부한다", async () => {
     const f = await craftedFixture("plugin", {
       ...PLUGIN_MANIFEST,
@@ -936,5 +960,211 @@ describe("빌드 잡이 publish 에 넘기는 것", () => {
     expect(jobText("publish")).toContain(DOWNLOAD);
     expect(WORKFLOW.match(/actions\/upload-artifact@/g)).toHaveLength(2);
     expect(WORKFLOW.match(/actions\/download-artifact@/g)).toHaveLength(1);
+  });
+});
+
+const PUSH_STEP = "Push the release to the registry repo";
+const KEY_LINE = "DEPLOY_KEY: ${{ secrets.PLUGINS_DEPLOY_KEY }}";
+
+/**
+ * GitHub 이 공개한 SSH 호스트 키(`gh api meta --jq '.ssh_keys[]'`, 2026-10-03)와 그 지문
+ * (`.ssh_key_fingerprints`). 워크플로가 이 셋을 `UserKnownHostsFile` 로 고정한다(스펙 D8).
+ */
+const GITHUB_SSH_KEYS: readonly (readonly [string, string])[] = [
+  [
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl",
+    "+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU",
+  ],
+  [
+    "ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmKSENjQEezOmxkZMy7opKgwFB9nkt5YRrYMjNuG5N87uRgg6CLrbo5wAdT/y6v0mKV0U2w0WZ2YB/++Tpockg=",
+    "p2QAMXNIC1TJYWeIOttrVc98/R1BUFWu3/LiyKgUfQM",
+  ],
+  [
+    "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCj7ndNxQowgcQnjshcLrqPEiiphnt+VTTvDP6mHBL9j1aNUkY4Ue1gvwnGLVlOhGeYrnZaMgRK6+PKCUXaDbC7qtbW8gIkhL7aGCsOr/C56SJMy/BCZfxd1nWzAOxSDPgVsmerOBYfNqltV9/hWCqBywINIR+5dIg6JTJ72pcEpEjcYgXkE2YEFXV1JHnsKgbLWNlhScqb2UmyRkQyytRLtL+38TGxkxCflmO+5Z8CSSNY7GidjMIZ7Q4zMjA2n1nGrlTDkzwDCsw+wqFPGQA179cnfGWOWRVruj16z6XyvxvjJwbz0wQZ75XK5tKSb7FNyeIEs4TT4jk+S4dhPeAUC5y+bDYirYgM4GC7uEnztnZyaVWQ7B381AK4Qdrwt51ZqExKbQpTUNn+EjqoTwvqNj4kqx5QUCI0ThS/YkOxJCXmPUWZbhjpCg56i+2aB6CmK2JGhn57K5mj0MNdBXA4/WnwH6XoPWJzK5Nyu2zB3nAZp+S5hpQs+p1vN1/wsjk=",
+    "uNiVztksCsDhcc0u9e8BujQXVUpKZIDTMczCvj3tD2s",
+  ],
+];
+
+const FAKE_KEY =
+  "-----BEGIN OPENSSH PRIVATE KEY-----\nfake\n-----END OPENSSH PRIVATE KEY-----";
+
+/**
+ * push 단계를 가짜 `git` 으로 실행한다 — PATH 앞에 둔 셸 스크립트가 인자를 적고, push 때 키 파일의
+ * 권한 · 내용과 `GIT_SSH_COMMAND` 를 남긴다. `diff --cached --quiet` 는 `nothing` 이면 0(바뀐 것 없음).
+ */
+function runPush(f: Fixture, opts: { nothing?: boolean } = {}) {
+  const bin = join(f.runnerTemp, "bin");
+  mkdirSync(bin, { recursive: true });
+  const log = join(f.runnerTemp, "git.log");
+  writeFileSync(
+    join(bin, "git"),
+    [
+      "#!/bin/bash",
+      `echo "git $*" >> "${log}"`,
+      'if [[ "$1" == "push" ]]; then',
+      `  ls -ln "$RUNNER_TEMP/registry_deploy_key" | cut -c1-10 >> "${log}"`,
+      '  cp "$RUNNER_TEMP/registry_deploy_key" "$RUNNER_TEMP/key-at-push"',
+      `  echo "ssh: $GIT_SSH_COMMAND" >> "${log}"`,
+      "fi",
+      `if [[ "$1" == "diff" ]]; then exit ${opts.nothing ? 0 : 1}; fi`,
+      "exit 0",
+    ].join("\n"),
+    { mode: 0o755 },
+  );
+  const result = spawnSync("bash", ["-e", "-c", stepScript(PUSH_STEP)], {
+    cwd: f.runnerTemp,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      ...f.env,
+      DEPLOY_KEY: FAKE_KEY,
+      PATH: `${bin}:${process.env.PATH ?? ""}`,
+      REGISTRY_REPO: "sayinel/baram-plugins",
+      RUNNER_TEMP: f.runnerTemp,
+    },
+  });
+  return {
+    log: existsSync(log) ? readFileSync(log, "utf8") : "",
+    output: result.stderr + result.stdout,
+    status: result.status,
+  };
+}
+
+describe("publish — 키를 쥐는 단계를 실행한다", () => {
+  it("이 릴리스의 파일만 클론에 옮기고, 고정한 호스트 키로 push 한 뒤 키 파일을 지운다", async () => {
+    const f = await fixture("plugin", { readme: true });
+    // 검사를 지난 뒤에 무엇이 끼어들어도 push 는 이름을 대고 옮긴다 — 방어의 두 번째 겹.
+    writeFileSync(join(f.release, "plugins", "stray.zip"), "x");
+    const { log, output, status } = runPush(f);
+    expect(status, output).toBe(0);
+    expect(log).toContain(
+      "git remote set-url origin git@github.com:sayinel/baram-plugins.git",
+    );
+    expect(log).toContain(
+      "git add plugins/baram-word-count-2.1.0.zip index.json",
+    );
+    expect(log).toContain("git add readme/baram-word-count-2.1.0.md");
+    expect(log).toContain("git commit -m release: baram-word-count 2.1.0");
+    expect(log).toContain("git push origin main");
+    expect(log).toContain("-rw-------");
+    expect(log).toContain("StrictHostKeyChecking=yes");
+    expect(log).toContain("IdentitiesOnly=yes");
+    // OpenSSH 는 끝 줄바꿈 없는 키 파일을 거부한다(revocation-publish.yml, 2026-09-26 실측).
+    expect(readFileSync(join(f.runnerTemp, "key-at-push"), "utf8")).toBe(
+      `${FAKE_KEY}\n`,
+    );
+    expect(existsSync(join(f.runnerTemp, "registry_deploy_key"))).toBe(false);
+    const known = readFileSync(
+      join(f.runnerTemp, "github_known_hosts"),
+      "utf8",
+    );
+    expect(known).toBe(
+      `${GITHUB_SSH_KEYS.map(([key]) => `github.com ${key}`).join("\n")}\n`,
+    );
+    const registry = join(f.runnerTemp, "registry");
+    expect(readFileSync(join(registry, "index.json"), "utf8")).toBe(
+      readFileSync(join(f.release, "index.json"), "utf8"),
+    );
+    expect(existsSync(join(registry, "plugins", "stray.zip"))).toBe(false);
+    expect(
+      existsSync(join(registry, "readme", "baram-word-count-2.1.0.md")),
+    ).toBe(true);
+  });
+
+  it("레지스트리에 이미 같은 릴리스가 있으면 커밋 없이 끝나고, 키 파일은 그래도 지운다", async () => {
+    const f = await fixture("theme");
+    const { log, output, status } = runPush(f, { nothing: true });
+    expect(status, output).toBe(0);
+    expect(output).toContain("nothing to publish");
+    expect(log).not.toContain("git commit");
+    expect(log).not.toContain("git push");
+    expect(existsSync(join(f.runnerTemp, "registry_deploy_key"))).toBe(false);
+    expect(existsSync(join(f.runnerTemp, "registry", "readme"))).toBe(false);
+  });
+});
+
+describe("publish — 키가 닿는 자리", () => {
+  // 무엇이 이것을 실패시키는가: 키를 다른 잡이나 다른 단계가 읽으면, 또는 키 뒤에 단계가 생기면.
+  // `secrets` 를 읽는 모든 줄을 센다 — 키 이름 한 철자만 찾으면 `secrets['…']` · 대소문자 변형 ·
+  // `toJSON(secrets)` 가 빠진다(`revocation-publish-gate.test.ts` 와 같은 정규식).
+  it("배포 키를 읽는 줄은 publish 잡의 마지막 단계 하나뿐이다", () => {
+    const lines = WORKFLOW.split("\n").filter((line) =>
+      /secrets\s*[.[]|toJSON\s*\(\s*secrets/iu.test(line),
+    );
+    expect(lines.map((line) => line.trim())).toEqual([KEY_LINE]);
+    const publish = jobText("publish");
+    const key = publish.indexOf(KEY_LINE);
+    expect(key).toBeGreaterThan(0);
+    expect(publish.slice(key).match(/\n {6}- /g)).toBeNull();
+  });
+
+  // 키는 환경 `registry-publish` 의 비밀이다(저장소 설정). 무엇이 이것을 실패시키는가: 빌드 잡이
+  // 환경을 다시 선언하면 — 그 잡이 키를 받을 수 있게 된다.
+  it("registry-publish 환경을 선언하는 잡은 publish 하나다", () => {
+    expect(WORKFLOW.split("environment: registry-publish").length - 1).toBe(1);
+    expect(jobText("publish")).toContain(
+      "\n    environment: registry-publish\n",
+    );
+  });
+
+  it("publish 잡은 체크아웃도 설치도 node 계열 도구도 쓰지 않는다", () => {
+    const code = jobText("publish")
+      .split("\n")
+      .filter((line) => !line.trim().startsWith("#"))
+      .join("\n");
+    expect(code).toContain("git push origin main");
+    expect(code).not.toMatch(/actions\/checkout|setup-node/);
+    expect(code).not.toMatch(/\b(node|npx|npm|tsx|yarn|pnpm|bun)\b/);
+    const uses = [...code.matchAll(/uses: (\S+)/g)].map((m) => m[1]);
+    expect(uses).toEqual([
+      "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
+    ]);
+  });
+
+  it("publish 는 두 meta · 두 빌드를 기다리고, 빌드 하나가 성공했을 때만 돈다", () => {
+    const text = jobText("publish");
+    expect(text).toContain(
+      "\n    needs: [plugin-meta, release, theme-meta, release-theme]\n",
+    );
+    expect(text).toContain(
+      "if: ${{ !cancelled() && !failure() && (needs.release.result == 'success' || needs.release-theme.result == 'success') }}",
+    );
+  });
+
+  it("push 단계는 호스트 키를 고정하고, 키 파일을 새로 만들어 끝에 지우며, `${{` 를 싣지 않는다", () => {
+    const push = stepScript(PUSH_STEP);
+    expect(push).not.toContain("ssh-keyscan");
+    expect(push).not.toContain("${{");
+    expect(push).toContain("StrictHostKeyChecking=yes");
+    expect(push).toContain('install -m 600 /dev/null "$KEY"');
+    expect(push).toContain(`trap 'rm -f "$KEY"' EXIT`);
+    for (const [key] of GITHUB_SSH_KEYS) {
+      expect(push).toContain(`"github.com ${key}"`);
+    }
+  });
+
+  // 무엇이 이것을 실패시키는가: 고정한 키에 한 글자 오타가 나면 — push 는 호스트 검증에서 멈출 뿐
+  // 이 파일의 다른 시험은 모른다. GitHub 이 공개한 지문과 맞춰 본다.
+  it.each(GITHUB_SSH_KEYS)(
+    "고정한 %s 는 GitHub 이 공개한 지문과 맞다",
+    (key, fingerprint) => {
+      const blob = Buffer.from(key.split(" ")[1], "base64");
+      const actual = createHash("sha256")
+        .update(blob)
+        .digest("base64")
+        .replace(/=+$/, "");
+      expect(actual).toBe(fingerprint);
+    },
+  );
+
+  it("빌드 잡은 환경 없이 돈다", () => {
+    for (const job of [
+      "plugin-meta",
+      "release",
+      "theme-meta",
+      "release-theme",
+    ]) {
+      expect(jobText(job), job).not.toContain("environment:");
+    }
   });
 });
