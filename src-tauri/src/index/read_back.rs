@@ -33,7 +33,12 @@ use super::LinkKind;
 /// single per-root mapping would call the rewrite a change and leave the
 /// file. Every other reference keeps its `filing_key` on both sides, so a
 /// link to the new name that was already there (`[[old]] [[new]]`) reads
-/// the same.
+/// the same. That includes a self-reference, `((#^x))`: `extract_links`
+/// files it under the referrer's own stem, which a note elsewhere shares
+/// with the renamed file (`b/old.md` beside `a/old.md`), but its text names
+/// no file — `RenameTarget::judge` answers `NotOurs` for a blank target
+/// (`keyed_under`), so the passes leave that target blank — and it is never
+/// matched here either (`LinkEntry::self_reference`).
 ///
 /// `respelled` says which kinds the rename rewrote — the passes that could
 /// spell the new stem; a kind it left keeps the old key on both sides.
@@ -65,7 +70,7 @@ pub fn index_reads_the_rename_back(
                     // whatever roots it is given — ambiguity reads every
                     // known root holding the referrer — so it keeps its
                     // `filing_key` on both sides.
-                    let key = if !renamed || !respelled(e.link_type) {
+                    let key = if !renamed || e.self_reference || !respelled(e.link_type) {
                         plain(&e.target)
                     } else if let Some(m) = matched(under_this_root) {
                         match (target.expected_key(&m), alias) {
@@ -188,6 +193,46 @@ mod tests {
             "[[old]] [[new]]\n",
             "[[new]] [[new]]\n",
             |_| true
+        ));
+    }
+
+    #[test]
+    fn a_self_reference_in_a_note_sharing_the_renamed_stem_is_read_as_naming_no_file() {
+        // `b/old.md` shares the renamed `a/old.md`'s stem; its `((#^x))` is
+        // filed under `old`, but names no file, and the passes leave it. Each
+        // kind the extractor reads a blank target in, beside a rewrite of
+        // either pass, reads back the same.
+        // What fails this: dropping `e.self_reference` from the key mapping —
+        // the before side then expects `new` for each self-reference, and
+        // the after side still reads `old`. Marking only one of the two
+        // kinds in `extract_links` fails the case of the other.
+        let gate = |before: &str, after: &str| {
+            index_reads_the_rename_back(
+                "/v/b/old.md",
+                before,
+                after,
+                &v(),
+                &rename_target("/v/a/old.md", "/v/a/new.md"),
+                |_| true,
+            )
+        };
+        assert!(gate(
+            "mine ^x ((#^x))\nsee [[a/old]] [[old]]\n",
+            "mine ^x ((#^x))\nsee [[a/new]] [[new]]\n"
+        ));
+        assert!(gate(
+            "mine ^x ((#^x)) ((a/old#^b1))\n",
+            "mine ^x ((#^x)) ((a/new#^b1))\n"
+        ));
+        assert!(gate(
+            "{{embed ((#^x))}}\nsee [[a/old]]\n",
+            "{{embed ((#^x))}}\nsee [[a/new]]\n"
+        ));
+        // Still read: a self-reference the output made literal is a change.
+        // What fails this: leaving self-references out of the reading.
+        assert!(!gate(
+            "mine ^x ((#^x))\nsee [[a/old]]\n",
+            "mine ^x `((#^x))`\nsee [[a/new]]\n"
         ));
     }
 

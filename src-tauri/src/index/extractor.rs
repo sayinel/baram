@@ -211,6 +211,7 @@ pub(crate) fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
                 link_type: LinkKind::Wikilink,
                 block_id: None,
                 target_vault_alias: vault_alias,
+                self_reference: false,
             });
         }
 
@@ -247,6 +248,7 @@ pub(crate) fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
                 link_type: LinkKind::BlockEmbed,
                 block_id: Some(block_id.to_string()),
                 target_vault_alias: None,
+                self_reference: raw_target.is_empty(),
             });
         }
 
@@ -292,6 +294,7 @@ pub(crate) fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
                 link_type: LinkKind::BlockRef,
                 block_id: Some(block_id.to_string()),
                 target_vault_alias: None,
+                self_reference: raw_target.is_empty(),
             });
         }
     }
@@ -500,6 +503,7 @@ mod tests {
         assert_eq!(block_refs.len(), 1);
         assert_eq!(block_refs[0].target, "notes");
         assert_eq!(block_refs[0].block_id, Some("myid".to_string()));
+        assert!(block_refs[0].self_reference);
     }
 
     #[test]

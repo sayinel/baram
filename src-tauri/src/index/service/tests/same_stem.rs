@@ -507,3 +507,47 @@ async fn a_file_rename_reports_a_same_stem_note_named_for_more_than_its_own_refe
         edited
     );
 }
+
+#[tokio::test]
+async fn a_same_stem_note_with_a_self_reference_has_its_link_to_the_renamed_file_rewritten() {
+    // `b/old.md` shares the renamed `a/old.md`'s stem and holds its own
+    // `((#^x))`, which names no file. The index reads that blank target as
+    // the referrer's stem `old` — the renamed file's old stem — but the
+    // passes judge the target as written, blank, and leave it blank, so
+    // the read-back gate must not match it either, or it expects `new` where
+    // the reference still says nothing, calls the correct rewrite of
+    // `[[a/old]]` a change, and leaves the link dangling in a reported file.
+    // What fails this: dropping `e.self_reference` from the gate's key
+    // mapping, which then matches the stem `extract_links` filled in.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-619s", true).await;
+    std::fs::create_dir_all(dir.path().join("a")).unwrap();
+    std::fs::create_dir_all(dir.path().join("b")).unwrap();
+    std::fs::write(dir.path().join("a/old.md"), "target\n").unwrap();
+    std::fs::write(
+        dir.path().join("b/old.md"),
+        "mine ^x ((#^x))\nsee [[a/old]]\n",
+    )
+    .unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/a/old.md"),
+        &format!("{root}/a/new.md"),
+    )
+    .await
+    .unwrap();
+    assert_eq!(result.updated_files, vec![format!("{root}/b/old.md")]);
+    assert!(
+        result.skipped_files.is_empty(),
+        "{:?}",
+        result.skipped_files
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("b/old.md")).unwrap(),
+        "mine ^x ((#^x))\nsee [[a/new]]\n"
+    );
+}

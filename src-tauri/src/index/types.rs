@@ -22,6 +22,14 @@ pub struct LinkEntry {
     pub block_id: Option<String>,
     /// §87 Vault alias for cross-vault links (e.g., "journal" from [[journal::note]])
     pub target_vault_alias: Option<String>,
+    /// A block reference or embed written with no target, `((#^id))`: the
+    /// extractor files it under the note's own stem (`target`), but the text
+    /// names no file, and neither file rename pass gives its blank target a
+    /// name. The read-back gate (`index_reads_the_rename_back`) reads it by
+    /// this, not by `target` — a note sharing the renamed file's stem would
+    /// otherwise look like it refers to the renamed file. Not on the wire.
+    #[serde(skip)]
+    pub(crate) self_reference: bool,
 }
 
 /// Backlink entry returned to the frontend

@@ -494,6 +494,7 @@ mod tests {
             link_type: LinkKind::Wikilink,
             block_id: None,
             target_vault_alias: None,
+            self_reference: false,
         };
         index
             .outgoing
@@ -807,6 +808,7 @@ mod tests {
             link_type: LinkKind::Wikilink,
             block_id: None,
             target_vault_alias: None,
+            self_reference: false,
         };
         index
             .outgoing
