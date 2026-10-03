@@ -1,9 +1,10 @@
 // §298 issue 776 — the goal column after a pointer press.
 //
 // Most clicks need nothing from here: they land as a foreign selection and
-// the plugin state's priority 4 forgets the goal — even a left click on the
-// spot the cursor already holds, as vim's mouse click re-sets curswant. The
-// exception is a click that syntax reveal turns into an expansion (a
+// the plugin state's priority 4 forgets the goal. A click on the spot the
+// cursor already holds dispatches nothing (ProseMirror skips an equal
+// selection), so it KEEPS the goal — vim's mouse click would re-set curswant
+// there; a test pins the difference. The exception is a click that syntax reveal turns into an expansion (a
 // wikilink, an image): its one transaction moves the cursor AND carries the
 // ephemeral tag the reducer exempts, so the goal would survive a cursor move
 // the user made. Clearing on every mousedown instead also forgot it for

@@ -4,8 +4,8 @@
 // not lose it. Which commands keep that memory and which forget it is decided
 // HERE, for every CoreCommand: the switch has no default, so a new variant
 // does not compile until it says what it does to the goal. Forgetting is
-// lazy (null) like vim's w_set_curswant — the adapters measure the cursor's
-// column only when the next j/k needs it, never on an ordinary keystroke.
+// lazy (null) like vim's w_set_curswant — the adapters measure the goal
+// column only when the next j/k needs it, not on the key that forgot it.
 //
 // Two answers depend on the document and are not made here: a find (f/t/;/,)
 // forgets the goal only when it MATCHED (vim nv_csearch returns before
