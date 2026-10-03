@@ -13,6 +13,7 @@ import {
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  chmodSync,
   cpSync,
   mkdirSync,
   mkdtempSync,
@@ -154,7 +155,12 @@ interface Fixture {
  */
 async function fixture(
   kind: "plugin" | "theme",
-  opts: { manifest?: Record<string, unknown>; readme?: boolean } = {},
+  opts: {
+    manifest?: Record<string, unknown>;
+    manifestPath?: string;
+    manifestText?: string;
+    readme?: boolean;
+  } = {},
 ): Promise<Fixture> {
   const runnerTemp = mkdtempSync(join(tmpdir(), "baram-publish-"));
   const registry = join(runnerTemp, "registry");
@@ -171,11 +177,16 @@ async function fixture(
   const zipName = `${manifest.id}-${manifest.version}.zip`;
   const readmeName = `${manifest.id}-${manifest.version}.md`;
   // The archive may say something other than what was indexed (the refusal cases); the index is
-  // always written from the honest manifest.
+  // always written from the honest manifest. `manifestPath` moves it off the archive root and
+  // `manifestText` writes raw bytes in its place — both for crafted-artifact refusal tests that
+  // `JSON.stringify` cannot produce (M6).
   const zipManifest = opts.manifest ?? manifest;
+  const manifestZipName =
+    kind === "plugin" ? "baram-plugin.json" : "baram-theme.json";
+  const manifestZipPath = opts.manifestPath ?? manifestZipName;
   const files: Record<string, string> = {
-    [kind === "plugin" ? "baram-plugin.json" : "baram-theme.json"]:
-      `${JSON.stringify(zipManifest, null, 2)}\n`,
+    [manifestZipPath]:
+      opts.manifestText ?? `${JSON.stringify(zipManifest, null, 2)}\n`,
   };
   if (opts.readme) files["README.md"] = "# Word Count\n";
   const zip = await zipOf(files);
@@ -282,6 +293,14 @@ function entryOf(
   return entry;
 }
 
+/**
+ * artifact 의 `index.json` 을 날 텍스트로 통째로 바꾼다 — 중복 키·BOM 처럼 `JSON.stringify` 로는
+ * 만들 수 없는 바이트 모양을 짓기 위해(I1).
+ */
+function writeRawIndex(f: Fixture, raw: string): void {
+  writeFileSync(join(f.release, "index.json"), raw);
+}
+
 describe("publish — artifact 를 meta 가 검증한 것에 묶는다", () => {
   it.each([
     ["플러그인, README 있음", "plugin", true],
@@ -378,9 +397,18 @@ describe("publish — artifact 를 meta 가 검증한 것에 묶는다", () => {
 
   // 무엇이 이것을 실패시키는가: 빈 값 관문이 없으면 — 빈 등급은 등급 없는 매니페스트와, 빈 기록은
   // 아무 대조도 하지 않는 것과 같아진다.
+  //
+  // `ID: ""` 케이스는 `ZIP_NAME`도 `-2.1.0.zip`으로 함께 비워 둔다(M6) — 그러지 않으면 `-n` 관문을
+  // 지워도 다음 줄의 `$ZIP_NAME == $ID-$VERSION.zip` 비교가 대신 "meta named the archive"로
+  // 실패해, 공유된 "this is a bug in this workflow" 부분문자열이 두 메시지 모두에 있어 시험이
+  // `-n` 관문 자체를 지운 것을 못 잡는다. 정확한 문구로 단언해 그 관문만 짚는다.
   it.each([
     ["plugin", { KIND: "" }, "unknown release kind"],
-    ["plugin", { ID: "" }, "this is a bug in this workflow"],
+    [
+      "plugin",
+      { ID: "", ZIP_NAME: "-2.1.0.zip" },
+      "a verified value did not reach this job",
+    ],
     [
       "plugin",
       { EXPECTED_TRUST: "" },
@@ -396,6 +424,84 @@ describe("publish — artifact 를 meta 가 검증한 것에 묶는다", () => {
     async (kind, env, message) => {
       const f = await fixture(kind);
       const { output, status } = runStep(ARTIFACT_STEP, f, env);
+      expect(status).not.toBe(0);
+      expect(output).toContain(message);
+    },
+  );
+
+  // M1 — `find`가 process substitution 안에 있으면 그 exit status가 `-e`에 보이지 않는다. 읽을 수
+  // 없는 디렉터리(mode 000)가 있으면 `find`가 "Permission denied"로 실패하지만, 고치기 전에는
+  // 그 실패가 숨겨져 이 단계가 조용히 통과했다.
+  it("읽을 수 없는 디렉터리가 있으면 거부한다", async () => {
+    const f = await fixture("plugin", { readme: true });
+    const dir = join(f.release, "readme");
+    chmodSync(dir, 0o000);
+    try {
+      const { status } = runStep(ARTIFACT_STEP, f);
+      expect(status).not.toBe(0);
+    } finally {
+      chmodSync(dir, 0o755);
+    }
+  });
+
+  // M2 — `jq -e 'type == "object"'`는 마지막 값만 본다; `$(...)`가 줄바꿈을 지워 멤버가 JSON 값의
+  // 스트림(두 값)이어도 "객체 하나"처럼 보였다.
+  it("매니페스트가 JSON 값의 스트림이면 거부한다", async () => {
+    const f = await fixture("plugin", {
+      manifestText: `${JSON.stringify(PLUGIN_MANIFEST, null, 2)}\n{}\n`,
+    });
+    const { output, status } = runStep(ARTIFACT_STEP, f);
+    expect(status).not.toBe(0);
+    expect(output).toContain("is not a single JSON object");
+  });
+
+  // M6 — 매니페스트가 archive 루트에 없으면(서브디렉터리 안) 거부한다.
+  it("매니페스트가 archive 루트에 없으면 거부한다", async () => {
+    const f = await fixture("plugin", {
+      manifestPath: "sub/baram-plugin.json",
+    });
+    const { output, status } = runStep(ARTIFACT_STEP, f);
+    expect(status).not.toBe(0);
+    expect(output).toContain(
+      "the archive has no baram-plugin.json at its root",
+    );
+  });
+
+  // M6 — 매니페스트가 객체가 아니면(배열) 거부한다.
+  it("매니페스트가 객체가 아니면 거부한다", async () => {
+    const f = await fixture("plugin", { manifestText: "[]\n" });
+    const { output, status } = runStep(ARTIFACT_STEP, f);
+    expect(status).not.toBe(0);
+    expect(output).toContain("is not a single JSON object");
+  });
+
+  // M6 — ZIP_NAME이 meta가 낸 ID·VERSION과 안 맞으면 워크플로의 버그라고 말한다.
+  it("ZIP_NAME 이 ID·VERSION 과 안 맞으면 워크플로의 버그라고 말한다", async () => {
+    const f = await fixture("plugin");
+    const { output, status } = runStep(ARTIFACT_STEP, f, {
+      ZIP_NAME: "baram-word-count-9.9.9.zip",
+    });
+    expect(status).not.toBe(0);
+    expect(output).toContain("meta named the archive");
+  });
+
+  // M6 — ②의 id·버전 불일치를 테마에서도 짚는다.
+  it.each([
+    [
+      "다른 id",
+      { ...THEME_MANIFEST, id: "baram-evil" },
+      "contains theme 'baram-evil'",
+    ],
+    [
+      "다른 버전",
+      { ...THEME_MANIFEST, version: "9.9.9" },
+      "contains version '9.9.9'",
+    ],
+  ])(
+    "테마 zip 의 매니페스트가 %s 를 말하면 거부한다",
+    async (_, manifest, message) => {
+      const f = await fixture("theme", { manifest });
+      const { output, status } = runStep(ARTIFACT_STEP, f);
       expect(status).not.toBe(0);
       expect(output).toContain(message);
     },
@@ -434,7 +540,10 @@ describe("publish — 새 색인을 라이브 색인에 묶는다", () => {
     expect(output).toContain("changes more than the baram-word-count entry");
   });
 
-  // 빌드가 클론한 뒤 라이브 레지스트리가 움직였으면 — 안전한 쪽으로 멈추고, 다시 돌리면 된다.
+  // 빌드가 클론한 뒤 라이브 레지스트리가 움직였으면 — 안전한 쪽으로 멈춘다. `publish` 만 다시
+  // 돌려서는 복구되지 않는다: artifact 의 `index.json` 은 빌드 잡의 clone 에서 나온 것이라 이
+  // 단계가 다시 돌아도 바뀌지 않는다 — 워크플로 전체를 다시 돌려야 빌드가 라이브 레지스트리를
+  // 새로 clone 한다(R7).
   it("라이브 색인이 그사이 바뀌었으면 거부한다", async () => {
     const f = await fixture("plugin");
     const live = join(f.runnerTemp, "registry", "index.json");
@@ -444,6 +553,67 @@ describe("publish — 새 색인을 라이브 색인에 묶는다", () => {
     const { output, status } = runStep(COMPARE_STEP, f);
     expect(status).not.toBe(0);
     expect(output).toContain("changes more than the baram-word-count entry");
+  });
+
+  // M3 — ④는 "이 id 말고는 안 바뀐다"만 보고, 라이브에 이미 있는 그 id의 kind 가 바뀌는 것은
+  // 보지 않았다. `update-registry-index.mjs`는 플러그인이 테마 자리를(또는 반대로) 덮어쓰는 것을
+  // 거부하므로, 이 검사도 같은 규칙을 진다.
+  it("라이브 레지스트리가 이 id 를 다른 kind 로 실어 놓았으면 거부한다", async () => {
+    const f = await fixture("plugin");
+    const live = join(f.runnerTemp, "registry", "index.json");
+    const index = JSON.parse(readFileSync(live, "utf8"));
+    entryOf(index, "baram-word-count").kind = "theme";
+    writeFileSync(live, JSON.stringify(index));
+    const { output, status } = runStep(COMPARE_STEP, f);
+    expect(status).not.toBe(0);
+    expect(output).toContain(
+      "the live registry lists baram-word-count as a theme; a plugin release does not replace it",
+    );
+  });
+
+  // I1 — ④·⑤는 jq가 파싱한 "뜻"만 보고, 그 bytes 가 index 스크립트가 쓰는 모양인지는 보지 않았다.
+  // jq 는 중복 키에서 마지막 값을 쓰고 BOM 을 벗기지만, 앱은 `serde_json::from_slice` 로 그 bytes
+  // 를 그대로 구조체에 꽂는다 — 중복 `plugins`·`updatedAt` 필드나 BOM 은 거기서 깨진다. 세 crafted
+  // index 는 `JSON.stringify` 로 만들 수 없는 모양이라 날 텍스트로 직접 쓴다.
+  it("맨 위 plugins 키가 두 번(둘째가 honest) 있으면 거부한다", async () => {
+    const f = await fixture("plugin");
+    const index = JSON.parse(
+      readFileSync(join(f.release, "index.json"), "utf8"),
+    );
+    const honestPlugins = JSON.stringify(index.plugins);
+    const raw = `{"plugins":[],"plugins":${honestPlugins},"updatedAt":${JSON.stringify(index.updatedAt)}}\n`;
+    writeRawIndex(f, raw);
+    const { output, status } = runStep(COMPARE_STEP, f);
+    expect(status).not.toBe(0);
+    expect(output).toContain("is not in the form the index script writes");
+  });
+
+  it("맨 앞에 UTF-8 BOM 이 있으면 거부한다", async () => {
+    const f = await fixture("plugin");
+    const path = join(f.release, "index.json");
+    const honest = readFileSync(path, "utf8");
+    writeRawIndex(f, `\uFEFF${honest}`);
+    const { output, status } = runStep(COMPARE_STEP, f);
+    expect(status).not.toBe(0);
+    expect(output).toContain("is not in the form the index script writes");
+  });
+
+  it("이 릴리스 항목 안에 trust 키가 두 번(둘째가 honest) 있으면 거부한다", async () => {
+    const f = await fixture("plugin");
+    const index = JSON.parse(
+      readFileSync(join(f.release, "index.json"), "utf8"),
+    );
+    const entryTexts = (index.plugins as Record<string, unknown>[]).map((p) => {
+      if (p.id !== "baram-word-count") return JSON.stringify(p);
+      const { trust, ...rest } = p;
+      const withoutTrust = JSON.stringify(rest);
+      return `${withoutTrust.slice(0, -1)},"trust":"trusted","trust":${JSON.stringify(trust)}}`;
+    });
+    const raw = `{"plugins":[${entryTexts.join(",")}],"updatedAt":${JSON.stringify(index.updatedAt)}}\n`;
+    writeRawIndex(f, raw);
+    const { output, status } = runStep(COMPARE_STEP, f);
+    expect(status).not.toBe(0);
+    expect(output).toContain("is not in the form the index script writes");
   });
 
   it.each([
@@ -523,6 +693,29 @@ describe("publish — 새 색인을 라이브 색인에 묶는다", () => {
     const { output, status } = runStep(COMPARE_STEP, f);
     expect(status).not.toBe(0);
     expect(output).toContain("updatedAt is not a date");
+  });
+
+  // M5 — jq 의 `$` 는 문자열 끝 개행 앞에서도 맞는다. `length == 10` 이 없으면
+  // `"2026-10-03\n"` 도 날짜로 통과한다.
+  it("updatedAt 뒤에 개행이 있으면 거부한다", async () => {
+    const f = await fixture("plugin");
+    editIndex(f, (index) => {
+      index.updatedAt = `${index.updatedAt as string}\n`;
+    });
+    const { output, status } = runStep(COMPARE_STEP, f);
+    expect(status).not.toBe(0);
+    expect(output).toContain("updatedAt is not a date");
+  });
+
+  // M6 — ⑤의 재구성 불일치를 테마 항목에서도 짚는다.
+  it("테마 항목의 이름이 바뀌면 거부한다", async () => {
+    const f = await fixture("theme");
+    editIndex(f, (index) => {
+      entryOf(index, "baram-hangul").name = "Something Else";
+    });
+    const { output, status } = runStep(COMPARE_STEP, f);
+    expect(status).not.toBe(0);
+    expect(output).toContain("is not the one its archive's manifest makes");
   });
 });
 

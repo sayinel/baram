@@ -411,6 +411,10 @@ jobs:
           path: ${{ runner.temp }}/release
           if-no-files-found: error
           retention-days: 1
+          # R7 — artifacts are immutable since upload-artifact v4, so re-running the whole workflow
+          # (the recovery this job's own refusals point to) must be able to upload the same name
+          # again rather than fail on a name collision from the earlier, abandoned run.
+          overwrite: true
 
       # Everything third-party has already run. This step writes the key, rewrites the
       # read-only HTTPS remote to SSH, and pushes — no `node`, no `npx`, no dependency.
@@ -683,6 +687,8 @@ jobs:
           path: ${{ runner.temp }}/release
           if-no-files-found: error
           retention-days: 1
+          # R7 — the plugin job's note above, same reason.
+          overwrite: true
 
       # THE KEY REACHES THIS JOB ONLY IN THIS, ITS LAST STEP: every step above — the ones that run
       # third-party code (`setup-node`'s `npm ci`, `npx tsx`, their dependencies) included — has
@@ -788,7 +794,15 @@ jobs:
 
           # ① Exactly the files this release publishes — nothing else rides along.
           [[ -d "$A" ]] || fail "the artifact did not arrive"
-          [[ -z "$(find "$A" -type l)" ]] || fail "the artifact carries a symbolic link"
+          # `find` runs as its own command under this step's `-e`, not inside a process
+          # substitution: a process substitution's exit status is NOT the pipeline's, so a `find`
+          # that stopped early on a permission error (an unreadable `readme/` or `plugins/`) used to
+          # pass this check silently along with whatever partial list it printed before failing (M1).
+          LINKS="$RUNNER_TEMP/artifact-links"
+          find "$A" -type l > "$LINKS"
+          [[ ! -s "$LINKS" ]] || fail "the artifact carries a symbolic link"
+          FILES="$RUNNER_TEMP/artifact-files"
+          (cd "$A" && find . -mindepth 1 -print0) > "$FILES"
           while IFS= read -r -d '' path; do
             case "$path" in
               ./index.json|./plugins|"./plugins/$ZIP_NAME") ;;
@@ -797,7 +811,7 @@ jobs:
                   || fail "the artifact carries ${path#./}, which a theme release does not publish" ;;
               *) fail "the artifact carries ${path#./}, which this release does not publish" ;;
             esac
-          done < <(cd "$A" && find . -mindepth 1 -print0)
+          done < "$FILES"
           [[ -f "$A/index.json" ]] || fail "the artifact has no index.json"
           [[ -f "$A/plugins/$ZIP_NAME" ]] || fail "the artifact has no plugins/$ZIP_NAME"
 
@@ -805,8 +819,12 @@ jobs:
           M="$RUNNER_TEMP/release-manifest.json"
           unzip -p "$A/plugins/$ZIP_NAME" "$MANIFEST_NAME" > "$M" 2>/dev/null \
             || fail "the archive has no $MANIFEST_NAME at its root"
-          jq -e 'type == "object"' "$M" > /dev/null 2>&1 \
-            || fail "the archive's $MANIFEST_NAME is not a JSON object"
+          # `-s` (slurp) makes this its own standalone check: `jq -e 'type == "object"'` alone judges
+          # only the LAST value of whatever `$M` contains, so a member that is a stream of two JSON
+          # values (two objects with the same name, or one object followed by another) passed as if
+          # it were a single honest one (M2).
+          jq -e -s 'length == 1 and (.[0] | type == "object")' "$M" > /dev/null 2>&1 \
+            || fail "the archive's $MANIFEST_NAME is not a single JSON object"
           ZIP_ID="$(jq -r '.id // ""' "$M")"
           ZIP_VERSION="$(jq -r '.version // ""' "$M")"
           [[ "$ZIP_ID" == "$ID" ]] \
@@ -858,13 +876,34 @@ jobs:
           jq -e '(.plugins | type) == "array"' "$LIVE" > /dev/null 2>&1 \
             || fail "the live index.json has no plugins array"
 
+          # ④ and ⑤ below approve jq's PARSED VIEW of the new index, not its raw bytes. jq keeps the
+          # last of a duplicate key and strips a leading BOM; the app parses with
+          # `serde_json::from_slice` into a struct that rejects a duplicate `plugins`/`updatedAt`
+          # field and a BOM outright. So the raw bytes must already be the form the index script
+          # would write, checked here before anything trusts jq's reading of them (I1).
+          jq . "$NEW" > "$RUNNER_TEMP/new-canonical.json"
+          cmp -s "$RUNNER_TEMP/new-canonical.json" "$NEW" \
+            || fail "the new index.json is not in the form the index script writes (duplicate keys, a BOM or other bytes jq would not write) — publishing it could break every client's parse"
+
+          # An id already listed in the live registry keeps its kind: the index script refuses a
+          # plugin release that would replace a theme entry of the same id, or the reverse, and this
+          # job must hold the same rule (M3).
+          LIVE_MATCHES="$(jq --arg id "$ID" '[.plugins[] | select(.id == $id)] | length' "$LIVE")"
+          if [[ "$LIVE_MATCHES" != "0" ]]; then
+            LIVE_KIND="$(jq -r --arg id "$ID" '[.plugins[] | select(.id == $id)][0].kind // "plugin"' "$LIVE")"
+            [[ "$LIVE_KIND" == "$KIND" ]] \
+              || fail "the live registry lists $ID as a $LIVE_KIND; a $KIND release does not replace it"
+          fi
+
           # ④ Everything but this id's entry and updatedAt, compared as sorted JSON.
           REST='del(.updatedAt) | .plugins |= map(select(.id != $id))'
           jq -S --arg id "$ID" "$REST" "$LIVE" > "$RUNNER_TEMP/live-rest.json"
           jq -S --arg id "$ID" "$REST" "$NEW" > "$RUNNER_TEMP/new-rest.json"
           cmp -s "$RUNNER_TEMP/live-rest.json" "$RUNNER_TEMP/new-rest.json" \
             || fail "the new index changes more than the $ID entry — publishing it would rewrite other listings"
-          jq -e '.updatedAt | type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}$")' "$NEW" > /dev/null 2>&1 \
+          # `length == 10` alongside the pattern (M5): jq's `$` anchor matches before a string's
+          # trailing newline too, so `"2026-10-03\n"` would otherwise read as a date.
+          jq -e '.updatedAt | type == "string" and length == 10 and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}$")' "$NEW" > /dev/null 2>&1 \
             || fail "the new index's updatedAt is not a date"
           COUNT="$(jq --arg id "$ID" '[.plugins[] | select(.id == $id)] | length' "$NEW")"
           [[ "$COUNT" == "1" ]] || fail "the new index lists $ID other than exactly once"
