@@ -384,6 +384,34 @@ jobs:
           npx tsx scripts/validate-registry-assets.ts "$RUNNER_TEMP/registry" \
             --base-url "$BASE_URL"
 
+      # Spec 0065 D4 — what this job hands the publish job: the archive, the index the step above
+      # wrote and validated and, when the archive carried one, the README — copied by name out of that
+      # registry clone, and nothing else. The publish job holds every file here to what plugin-meta
+      # verified. The theme job's stage step has this same body (plan 0115 P8).
+      - name: Stage the plugin release for the publish job
+        env:
+          ID: ${{ needs.plugin-meta.outputs.id }}
+          VERSION: ${{ needs.plugin-meta.outputs.version }}
+          ZIP_NAME: ${{ needs.plugin-meta.outputs.zip_name }}
+        run: |
+          STAGE="$RUNNER_TEMP/release"
+          mkdir -p "$STAGE/plugins"
+          cp "$RUNNER_TEMP/registry/plugins/$ZIP_NAME" "$STAGE/plugins/$ZIP_NAME"
+          cp "$RUNNER_TEMP/registry/index.json" "$STAGE/index.json"
+          README="$RUNNER_TEMP/registry/readme/$ID-$VERSION.md"
+          if [[ -f "$README" ]]; then
+            mkdir -p "$STAGE/readme"
+            cp "$README" "$STAGE/readme/$ID-$VERSION.md"
+          fi
+
+      - name: Upload the plugin release for the publish job
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: registry-release
+          path: ${{ runner.temp }}/release
+          if-no-files-found: error
+          retention-days: 1
+
       # Everything third-party has already run. This step writes the key, rewrites the
       # read-only HTTPS remote to SSH, and pushes — no `node`, no `npx`, no dependency.
       - name: Push ZIP + updated index to registry repo
@@ -630,6 +658,32 @@ jobs:
           npx tsx scripts/validate-registry-assets.ts "$RUNNER_TEMP/registry" \
             --base-url "$BASE_URL"
 
+      # Spec 0065 D4 — the plugin job's stage step, same body (plan 0115 P8). A theme archive carries no
+      # README, so the README branch finds nothing here.
+      - name: Stage the theme release for the publish job
+        env:
+          ID: ${{ needs.theme-meta.outputs.id }}
+          VERSION: ${{ needs.theme-meta.outputs.version }}
+          ZIP_NAME: ${{ needs.theme-meta.outputs.zip_name }}
+        run: |
+          STAGE="$RUNNER_TEMP/release"
+          mkdir -p "$STAGE/plugins"
+          cp "$RUNNER_TEMP/registry/plugins/$ZIP_NAME" "$STAGE/plugins/$ZIP_NAME"
+          cp "$RUNNER_TEMP/registry/index.json" "$STAGE/index.json"
+          README="$RUNNER_TEMP/registry/readme/$ID-$VERSION.md"
+          if [[ -f "$README" ]]; then
+            mkdir -p "$STAGE/readme"
+            cp "$README" "$STAGE/readme/$ID-$VERSION.md"
+          fi
+
+      - name: Upload the theme release for the publish job
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: registry-release
+          path: ${{ runner.temp }}/release
+          if-no-files-found: error
+          retention-days: 1
+
       # THE KEY REACHES THIS JOB ONLY IN THIS, ITS LAST STEP: every step above — the ones that run
       # third-party code (`setup-node`'s `npm ci`, `npx tsx`, their dependencies) included — has
       # finished before the key is written. The step runs git and ssh (plus mkdir, chmod,
@@ -676,3 +730,180 @@ jobs:
           fi
           git commit -m "release: $THEME_ID $VERSION"
           git push origin main
+
+  # Spec 0065 D5 · D6 — THE JOB THAT WRITES THE REGISTRY, for both tag shapes. It checks out nothing and
+  # installs nothing — `download-artifact`, then bash with the runner's `jq`, `unzip`, `sha256sum`
+  # and `git` — so no code from the build's dependency tree runs on this runner. It does not trust
+  # the build's artifact: the file list, the archive's manifest, a theme's recorded checksum and the
+  # index are held to what a meta job verified (where no third-party code ran) and to the live
+  # registry. A compromised build can then change only this release's own entry, in the shape the
+  # meta job allowed (spec 0065 §2).
+  #
+  # `success()` cannot gate this job: one tag shape's meta and build are always skipped, and a
+  # skipped dependency fails `success()`. So the condition is spelled out.
+  publish:
+    needs: [plugin-meta, release, theme-meta, release-theme]
+    if: ${{ !cancelled() && !failure() && (needs.release.result == 'success' || needs.release-theme.result == 'success') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      KIND: ${{ startsWith(github.ref_name, 'theme-') && 'theme' || 'plugin' }}
+      ID: ${{ needs.plugin-meta.outputs.id || needs.theme-meta.outputs.id }}
+      VERSION: ${{ needs.plugin-meta.outputs.version || needs.theme-meta.outputs.version }}
+      ZIP_NAME: ${{ needs.plugin-meta.outputs.zip_name || needs.theme-meta.outputs.zip_name }}
+      EXPECTED_TRUST: ${{ needs.plugin-meta.outputs.expected_trust }}
+      RECORDED_SHA256: ${{ needs.theme-meta.outputs.recorded_sha256 }}
+    steps:
+      - name: Download the release
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: registry-release
+          path: ${{ runner.temp }}/release
+
+      # Spec 0065 D6 ① ② ③ — the artifact's files, the archive's manifest and, for a theme, the
+      # recorded checksum. Every name comes from a meta job; nothing here reads the repo.
+      - name: Check the release artifact against what meta verified
+        id: artifact_check
+        run: |
+          fail() { echo "::error::$1"; exit 1; }
+          A="$RUNNER_TEMP/release"
+          # An empty or unknown value is a wiring bug, and it must not make a check below vacuous.
+          [[ "$KIND" == "plugin" || "$KIND" == "theme" ]] \
+            || fail "unknown release kind '$KIND' — this is a bug in this workflow, not a refusal"
+          [[ -n "$ID" && -n "$VERSION" && -n "$ZIP_NAME" ]] \
+            || fail "a verified value did not reach this job — this is a bug in this workflow, not a refusal"
+          [[ "$ZIP_NAME" == "$ID-$VERSION.zip" ]] \
+            || fail "meta named the archive $ZIP_NAME, not $ID-$VERSION.zip — this is a bug in this workflow, not a refusal"
+          SHA_RE='^[0-9a-f]{64}$'
+          if [[ "$KIND" == "plugin" ]]; then
+            [[ "$EXPECTED_TRUST" == "sandboxed" || "$EXPECTED_TRUST" == "trusted" ]] \
+              || fail "the verified tier did not reach this job (got '$EXPECTED_TRUST') — this is a bug in this workflow, not a refusal"
+            MANIFEST_NAME=baram-plugin.json
+          else
+            [[ $RECORDED_SHA256 =~ $SHA_RE ]] \
+              || fail "the recorded checksum did not reach this job (got '$RECORDED_SHA256') — this is a bug in this workflow, not a refusal"
+            MANIFEST_NAME=baram-theme.json
+          fi
+          README_NAME="$ID-$VERSION.md"
+
+          # ① Exactly the files this release publishes — nothing else rides along.
+          [[ -d "$A" ]] || fail "the artifact did not arrive"
+          [[ -z "$(find "$A" -type l)" ]] || fail "the artifact carries a symbolic link"
+          while IFS= read -r -d '' path; do
+            case "$path" in
+              ./index.json|./plugins|"./plugins/$ZIP_NAME") ;;
+              ./readme|"./readme/$README_NAME")
+                [[ "$KIND" == "plugin" ]] \
+                  || fail "the artifact carries ${path#./}, which a theme release does not publish" ;;
+              *) fail "the artifact carries ${path#./}, which this release does not publish" ;;
+            esac
+          done < <(cd "$A" && find . -mindepth 1 -print0)
+          [[ -f "$A/index.json" ]] || fail "the artifact has no index.json"
+          [[ -f "$A/plugins/$ZIP_NAME" ]] || fail "the artifact has no plugins/$ZIP_NAME"
+
+          # ② The archive is the release meta verified.
+          M="$RUNNER_TEMP/release-manifest.json"
+          unzip -p "$A/plugins/$ZIP_NAME" "$MANIFEST_NAME" > "$M" 2>/dev/null \
+            || fail "the archive has no $MANIFEST_NAME at its root"
+          jq -e 'type == "object"' "$M" > /dev/null 2>&1 \
+            || fail "the archive's $MANIFEST_NAME is not a JSON object"
+          ZIP_ID="$(jq -r '.id // ""' "$M")"
+          ZIP_VERSION="$(jq -r '.version // ""' "$M")"
+          [[ "$ZIP_ID" == "$ID" ]] \
+            || fail "the archive contains $KIND '$ZIP_ID' but '$ID' was verified"
+          [[ "$ZIP_VERSION" == "$VERSION" ]] \
+            || fail "the archive contains version '$ZIP_VERSION' but '$VERSION' was verified"
+          if [[ "$KIND" == "plugin" ]]; then
+            ZIP_TRUST="$(jq -r '.trust // ""' "$M")"
+            [[ "$ZIP_TRUST" == "$EXPECTED_TRUST" ]] \
+              || fail "the archive declares trust '$ZIP_TRUST' but '$EXPECTED_TRUST' was verified"
+          fi
+
+          # ③ A theme's bytes are the bytes the pre-publish check recorded.
+          CHECKSUM="$(sha256sum "$A/plugins/$ZIP_NAME" | cut -d' ' -f1)"
+          if [[ "$KIND" == "theme" ]]; then
+            [[ "$CHECKSUM" == "$RECORDED_SHA256" ]] \
+              || fail "$ZIP_NAME hashes to $CHECKSUM but SHA256SUMS records $RECORDED_SHA256 — the artifact is not the archive the pre-publish check installed"
+          fi
+          echo "checksum=$CHECKSUM" >> "$GITHUB_OUTPUT"
+
+      # The registry is a public GitHub Pages repo, so reading it needs no credential. A fresh clone
+      # on this runner, made after the checks above and before the key exists.
+      - name: Clone the live registry
+        run: |
+          git clone --depth 1 "https://github.com/${REGISTRY_REPO}.git" "$RUNNER_TEMP/registry"
+
+      # Spec 0065 D6 ④ ⑤ · D7 — the new index may differ from the live one ONLY in this release's entry
+      # and `updatedAt`, and that entry must be the one its archive's manifest makes. The rebuild below
+      # mirrors `scripts/update-registry-index.mjs`'s entry (copy a manifest key when the manifest
+      # has it — that script writes `name: manifest.name` and the like, and `JSON.stringify` drops a
+      # key whose value is undefined); registry-publish-job.test.ts runs both on the same input. A field
+      # that script starts to write makes this refuse, not pass. A theme's `preview` is the one value
+      # taken from the artifact — reading tokens needs node — and only its shape is checked.
+      - name: Check the new index against the live registry
+        env:
+          CHECKSUM: ${{ steps.artifact_check.outputs.checksum }}
+        run: |
+          fail() { echo "::error::$1"; exit 1; }
+          A="$RUNNER_TEMP/release"
+          LIVE="$RUNNER_TEMP/registry/index.json"
+          NEW="$A/index.json"
+          [[ -n "$CHECKSUM" && -n "$ID" && -n "$KIND" && -n "$ZIP_NAME" ]] \
+            || fail "a verified value did not reach this step — this is a bug in this workflow, not a refusal"
+          BASE="$BASE_URL"
+          [[ "$BASE" == */ ]] || BASE="$BASE/"
+          [[ -f "$LIVE" ]] || fail "the live registry has no index.json"
+          jq -e '(.plugins | type) == "array"' "$NEW" > /dev/null 2>&1 \
+            || fail "the new index.json has no plugins array"
+          jq -e '(.plugins | type) == "array"' "$LIVE" > /dev/null 2>&1 \
+            || fail "the live index.json has no plugins array"
+
+          # ④ Everything but this id's entry and updatedAt, compared as sorted JSON.
+          REST='del(.updatedAt) | .plugins |= map(select(.id != $id))'
+          jq -S --arg id "$ID" "$REST" "$LIVE" > "$RUNNER_TEMP/live-rest.json"
+          jq -S --arg id "$ID" "$REST" "$NEW" > "$RUNNER_TEMP/new-rest.json"
+          cmp -s "$RUNNER_TEMP/live-rest.json" "$RUNNER_TEMP/new-rest.json" \
+            || fail "the new index changes more than the $ID entry — publishing it would rewrite other listings"
+          jq -e '.updatedAt | type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}$")' "$NEW" > /dev/null 2>&1 \
+            || fail "the new index's updatedAt is not a date"
+          COUNT="$(jq --arg id "$ID" '[.plugins[] | select(.id == $id)] | length' "$NEW")"
+          [[ "$COUNT" == "1" ]] || fail "the new index lists $ID other than exactly once"
+
+          # ⑤ The entry, rebuilt from the archive's manifest.
+          M="$RUNNER_TEMP/release-manifest.json"
+          MANIFEST_NAME=baram-plugin.json
+          [[ "$KIND" == "theme" ]] && MANIFEST_NAME=baram-theme.json
+          unzip -p "$A/plugins/$ZIP_NAME" "$MANIFEST_NAME" > "$M" 2>/dev/null \
+            || fail "the archive has no $MANIFEST_NAME at its root"
+          README=""
+          if [[ "$KIND" == "plugin" && -f "$A/readme/$ID-$VERSION.md" ]]; then
+            README="$ID-$VERSION.md"
+          fi
+          jq -S --arg base "$BASE" --arg zip "$ZIP_NAME" --arg checksum "$CHECKSUM" \
+            --arg kind "$KIND" --arg readme "$README" '
+            def copy($k): if has($k) then {($k): .[$k]} else {} end;
+            copy("id") + copy("name") + copy("description") + copy("version")
+            + copy("author") + copy("license")
+            + {downloadUrl: ($base + "plugins/" + $zip), checksum: $checksum}
+            + (if $kind == "theme" then {capabilities: []} else copy("capabilities") + copy("trust") end)
+            + copy("engines")
+            + (if $kind == "theme" then {kind: "theme"} else {} end)
+            + copy("icon") + copy("keywords")
+            + (if $readme != "" then {readme: ($base + "readme/" + $readme)} else {} end)
+          ' "$M" > "$RUNNER_TEMP/expected-entry.json"
+          jq -S --arg id "$ID" --arg kind "$KIND" \
+            '.plugins[] | select(.id == $id) | if $kind == "theme" then del(.preview) else . end' \
+            "$NEW" > "$RUNNER_TEMP/actual-entry.json"
+          if ! cmp -s "$RUNNER_TEMP/expected-entry.json" "$RUNNER_TEMP/actual-entry.json"; then
+            diff "$RUNNER_TEMP/expected-entry.json" "$RUNNER_TEMP/actual-entry.json" || true
+            fail "the $ID entry is not the one its archive's manifest makes (expected < > artifact, above)"
+          fi
+          if [[ "$KIND" == "theme" ]]; then
+            jq -e --arg id "$ID" '
+              .plugins[] | select(.id == $id) | .preview
+              | type == "object" and length > 0
+                and ((keys - ["dark", "light"]) | length == 0)
+                and all(.[]; type == "object" and all(.[]; type == "string"))
+            ' "$NEW" > /dev/null 2>&1 \
+              || fail "the $ID entry's preview is not a light/dark palette"
+          fi
