@@ -323,7 +323,7 @@ Enable **Settings > Editor > Vim Keybindings** (off by default). One switch turn
 
 Structure-aware behavior: tables, math blocks, images and hard-break segments each count as one line for `j`/`k`; a code block counts as one line from the outside. Inside a table, `h`/`l` cross cell boundaries so every cell in a row is reachable, while `j`/`k` move down a row keeping the column; `dd` on a table row deletes the row (the header row and the only remaining data row are protected); `dd` inside a list keeps nested children. The cursor is kept on screen after every command.
 
-The cursor column works as in vim: `j`/`k` remember the column they started from, so a short or empty line on the way does not lose it, and after `$` they follow each line's end. Leaving insert mode with `Esc` moves the cursor one character left of where the insert cursor was (never past the start of the line), as in vim, and `:N` lands on the line's first non-blank like `gg`/`G`.
+The cursor column works as in vim: `j`/`k` remember the column they started from, so a short or empty line on the way does not lose it, and after `$` they follow each line's end. Leaving insert mode with `Esc` moves the cursor one character left of where the insert cursor was (never past the start of the line), as in vim, and `:N` lands on the line's first non-blank like `gg`/`G`. A selection made in insert mode (Shift+arrows, a drag, `Cmd+A`) does not survive `Esc`: it collapses to one cursor on the character where the selection ended. In normal mode the cursor never sits past the end of a line that has text — after `x` or `d$` removes a line's last character, or a click past the end of a line, it lands on the last character. `^`, `I`, `z.`, `gg`/`G` and `:N` treat a link or tag at the start of a line as its first non-blank and stop on it.
 
 Not in WYSIWYG yet — these work in Source Mode and code blocks today: text objects (`ciw`, `di"`), `.` repeat, `r`, `e`/`E`/`W`/`B`, `J`, `~`, `>>`/`<<`, `%`, `{`/`}`, `zt`/`zb`, the `Ctrl+D`/`Ctrl+U`/`Ctrl+F`/`Ctrl+B` scroll motions, marks, macros and named registers. Visual block (`Ctrl+V`) is intentionally not planned for the rich-text surface.
 
@@ -339,7 +339,7 @@ Not in WYSIWYG yet — these work in Source Mode and code blocks today: text obj
 
 | Keys | Action |
 | ---- | ------ |
-| `j` / `k` (or arrows) into a block | Enter the block on its first / last line, keeping the column |
+| `j` / `k` (or arrows) into a block | Enter the block on its first / last line, keeping the column (in visual mode the block is entered at its start) |
 | Arrow keys in insert mode | Enter the block and keep typing — insert mode carries over |
 | `Esc` (in normal mode) | Leave the block and return to document-level vim |
 | `j` / `k` (or arrows) on the last / first line | Leave the block downward / upward |
