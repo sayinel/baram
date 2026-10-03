@@ -1,6 +1,6 @@
 ---
 title: "테마 만들기"
-sourceHash: "2170372f3e0f"
+sourceHash: "2bdff0e85a23"
 ---
 
 다른 사람에게 건넬 수 있는 테마는 패키지입니다 — 누구나 **테마 가져오기...**로 설치하는 `.zip`
@@ -126,6 +126,9 @@ sourceHash: "2170372f3e0f"
   색 설정 파일로 저장합니다 — **테마 가져오기...**가 받기는 하지만 패키지가 아니어서 id·버전·라이선스가
   없습니다.
 - **직접 씁니다.** 이 페이지의 규칙을 따릅니다.
+  [`examples/themes/hangul/`](https://github.com/sayinel/baram/tree/main/examples/themes/hangul)에 있는
+  Baram Hangul의 원본이 완성된 예입니다 — 패키지에 들어가는 것은 `baram-theme.json`과 두 `tokens.json`이고,
+  옆의 `README.md`와 `SHA256SUMS`는 Baram 관리자를 위한 메모입니다.
 
 ## 테마 시험하기
 

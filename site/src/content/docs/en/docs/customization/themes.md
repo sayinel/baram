@@ -57,9 +57,12 @@ that carries settings or hidden bars needs the Baram version you exported it fro
 
 **Browse Themes**, next to **Import Theme...** in **Settings > Appearance**, opens the theme
 registry in place of the tab; **Back** returns to the gallery. Unlike plugins, themes have no
-community channel: the list holds only themes Baram publishes itself. **Search themes...**
-narrows it by name, description, author, id, or keyword, and **Refresh** loads it again. While
-the registry lists no themes, the screen says **No themes are available yet**.
+community channel: the list holds only themes Baram publishes itself. The first is **Baram
+Hangul**, made for writing in Korean: it suggests body text in Pretendard at 17px with words kept
+whole at line breaks, and has a light and a dark palette. It needs Baram 0.7.7 or newer.
+**Search themes...** narrows the list by name, description, author, id, or keyword, and
+**Refresh** loads it again. While the registry lists no themes, the screen says **No themes are
+available yet**.
 
 Each card shows the theme's name, version, description, and author, and — when the listing
 provides one — a light and a dark preview drawn the same way as the gallery cards.
