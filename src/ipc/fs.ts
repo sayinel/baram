@@ -3,6 +3,9 @@ import { invoke } from "@tauri-apps/api/core";
 
 import type { FileEntry } from "./types";
 
+/** §4.3 Sentinel emitted by the Rust `create_file` command when the path is taken. */
+const ALREADY_EXISTS_PREFIX = "ALREADY_EXISTS:";
+
 /** §4.3 Sentinel emitted by the Rust `list_dir` command when read_dir is denied. */
 const PERMISSION_DENIED_PREFIX = "PERMISSION_DENIED:";
 
@@ -27,6 +30,21 @@ export interface CopyDirReport {
   skippedSymlinks: number;
 }
 
+/**
+ * §4.3 Thrown by `createFile` when something is already at the path. The OS decides,
+ * so on a volume that ignores case — the macOS and Windows default — a name differing
+ * only in case counts as taken. `path` is the path that was asked for, not the existing
+ * file's own spelling.
+ */
+export class FileExistsError extends Error {
+  readonly path: string;
+  constructor(path: string) {
+    super(`File already exists: ${path}`);
+    this.name = "FileExistsError";
+    this.path = path;
+  }
+}
+
 /** §4.3 Thrown by `listDir` when the OS denied folder access (macOS TCC / EACCES). */
 export class FolderAccessDeniedError extends Error {
   readonly path: string;
@@ -43,6 +61,24 @@ export async function copyFile(from: string, to: string): Promise<void> {
 
 export async function createDir(path: string): Promise<void> {
   return invoke<void>("create_dir", { path });
+}
+
+/**
+ * §4.3 Create a NEW file holding `content`, or throw {@link FileExistsError} if anything
+ * is already at `path`. Unlike {@link writeFile}, which replaces the target, this never
+ * touches an existing file — use it wherever the caller means "make a new one" and has
+ * only its own state (the file tree, the link index) as evidence the path is free.
+ */
+export async function createFile(path: string, content: string): Promise<void> {
+  try {
+    await invoke<void>("create_file", { content, path });
+  } catch (e) {
+    // Tauri rejects with the command's error String.
+    if (typeof e === "string" && e.startsWith(ALREADY_EXISTS_PREFIX)) {
+      throw new FileExistsError(e.slice(ALREADY_EXISTS_PREFIX.length));
+    }
+    throw e;
+  }
 }
 
 export async function deleteDir(path: string): Promise<void> {
@@ -98,6 +134,10 @@ export async function importDir(
  *  Only the destination path is vault-confined; source may be external. */
 export async function importFile(from: string, to: string): Promise<void> {
   return invoke<void>("import_file", { from, to });
+}
+
+export function isFileExistsError(e: unknown): e is FileExistsError {
+  return e instanceof FileExistsError;
 }
 
 /**

@@ -179,6 +179,23 @@ pub async fn write_file(
         .map_err(|e| e.to_string())
 }
 
+/// §4.3 Create a NEW file holding `content` — refused with the `ALREADY_EXISTS:` sentinel,
+/// and nothing touched, if anything is already at `path` (`fs::create_file`). For callers
+/// that mean "make a new one"; `write_file` replaces the target. Same boundary checks.
+#[tauri::command]
+pub async fn create_file(
+    path: String,
+    content: String,
+    state: tauri::State<'_, crate::VaultRootState>,
+    ctx_mgr: tauri::State<'_, crate::context::ContextManager>,
+) -> Result<(), String> {
+    check(&path)?;
+    check_vault(&path, &state, &ctx_mgr).await?;
+    crate::fs::create_file(&path, &content)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub async fn list_dir(
     path: String,

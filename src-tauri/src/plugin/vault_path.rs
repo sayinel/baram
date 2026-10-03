@@ -113,6 +113,11 @@ pub(crate) fn redact_fs_error(error: &crate::fs::FsError, caller_path: &str) -> 
         // Keep the sentinel — the frontend's `listDir` wrapper parses it (§4.3) — and
         // swap only the path after the colon.
         FsError::PermissionDenied(_) => format!("PERMISSION_DENIED:{caller_path}"),
+        // No plugin op calls `create_file` today, so this arm is unreachable from the
+        // sandbox; it exists because this match is exhaustive. Same swap as the denial,
+        // so a future op that does reach it hands back the sentinel the host's
+        // `createFile` (§4.3) parses, with the caller's own path.
+        FsError::AlreadyExists(_) => format!("ALREADY_EXISTS:{caller_path}"),
         FsError::NotFound(_) => format!("file \"{caller_path}\" was not found"),
         // These carry an `io::Error` or a watcher message, neither of which embeds a
         // path on any platform we build for.
@@ -245,6 +250,10 @@ mod tests {
         let missing = redact_fs_error(&FsError::NotFound(secret.into()), "notes/a.md");
         assert!(!missing.contains(secret), "leaked: {missing}");
         assert!(missing.contains("notes/a.md"), "unexpected: {missing}");
+
+        // Same shape as the denial: `createFile` (§4.3) parses the sentinel.
+        let taken = redact_fs_error(&FsError::AlreadyExists(secret.into()), "notes/a.md");
+        assert_eq!(taken, "ALREADY_EXISTS:notes/a.md");
 
         // A variant that carries no path is passed through unchanged, so a real cause is
         // not flattened into a generic message.
