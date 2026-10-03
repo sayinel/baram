@@ -138,19 +138,32 @@ fn read_as_another_note(
     known_paths.roots.iter().any(|(root, known)| {
         root_places(root, ref_path, windows)
             && match filing_key(ref_path, raw, None, Some(root), windows) {
-                FilingKey::Path(p) => match known {
-                    RootNotes::Known(notes) => notes
-                        .get(&p)
-                        .is_some_and(|&n| n > 1 || !is_the_target(root, &p)),
-                    RootNotes::Sole(counted) => match counted.get(&p) {
-                        Some(&n) => n > usize::from(is_the_target(root, &p)),
-                        None => !is_the_target(root, &p),
-                    },
-                    RootNotes::Unknown => !is_the_target(root, &p),
-                },
+                FilingKey::Path(p) => another_note_under(known, root, &p, &is_the_target),
                 FilingKey::Stem(_) | FilingKey::Foreign { .. } => false,
             }
     })
+}
+
+/// Does the root `root`, knowing its notes as `known`, hold a note under the
+/// path key `p` other than the renamed file (`is_the_target`)? The count
+/// read of `read_as_another_note`, for one root and one key: a link behind a
+/// local alias is read under that alias's root alone (`RenameTarget::judge`).
+fn another_note_under(
+    known: &RootNotes,
+    root: &str,
+    p: &str,
+    is_the_target: impl Fn(&str, &str) -> bool,
+) -> bool {
+    match known {
+        RootNotes::Known(notes) => notes
+            .get(p)
+            .is_some_and(|&n| n > 1 || !is_the_target(root, p)),
+        RootNotes::Sole(counted) => match counted.get(p) {
+            Some(&n) => n > usize::from(is_the_target(root, p)),
+            None => !is_the_target(root, p),
+        },
+        RootNotes::Unknown => !is_the_target(root, p),
+    }
 }
 
 /// The file whose block a block-ID rename renames, as the keys a reference to
@@ -340,6 +353,9 @@ impl RenameTarget<'_> {
         let alias = alias_prefix.strip_suffix("::").unwrap_or(alias_prefix);
         if !alias.is_empty() {
             return match self.refers_behind_alias(ref_path, covering_roots, alias, raw_target) {
+                Some(Match::Path { ref root, .. }) if self.alias_root_reads_another_note(root) => {
+                    Judgement::Ambiguous
+                }
                 Some(m) => Judgement::Ours(m),
                 None => Judgement::NotOurs,
             };
@@ -433,6 +449,26 @@ impl RenameTarget<'_> {
                     None
                 }
             })
+    }
+
+    /// Whether a path link behind a local alias, matched under that alias's
+    /// root `root`, names another note there before or after the rename: two
+    /// notes folding to the renamed file's old path key (`A/old.md` beside
+    /// `a/old.md` where case is kept), or a note already under its new one
+    /// (`a/New.md` beside the new `a/new.md`). The alias resolves the link
+    /// against that root alone, so no other root is read; a root the rename
+    /// does not know of reads nothing.
+    fn alias_root_reads_another_note(&self, root: &str) -> bool {
+        let Some(known) = self.known_paths.roots.get(root) else {
+            return false;
+        };
+        let is_the_target = |r: &str, p: &str| {
+            root_relative_key(r, self.old_path, self.windows).as_deref() == Some(p)
+        };
+        [self.old_path, self.new_path]
+            .into_iter()
+            .filter_map(|path| root_relative_key(root, path, self.windows))
+            .any(|p| another_note_under(known, root, &p, is_the_target))
     }
 
     /// The components of the renamed file after the rename, its last one

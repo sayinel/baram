@@ -901,3 +901,92 @@ async fn both_renames_refuse_a_path_with_a_parent_component() {
         "[[a/old]]\n((a/old#^x))\n"
     );
 }
+
+/// Where case is kept: a vault aliased `p` holding `files`, indexed, and the
+/// text `r.md` holds after `old` is renamed to `new` under it, with the
+/// files the rename reported (relative to the vault). None where the file
+/// system folds case.
+async fn rename_beside_a_case_variant_behind_an_alias(
+    files: &[(&str, &str)],
+    old: &str,
+    new: &str,
+) -> Option<(String, Vec<String>)> {
+    let dir = tempfile::tempdir().unwrap();
+    if folds_case(dir.path()) {
+        return None;
+    }
+    let ctx = ContextManager::new();
+    let (dir, root) = aliased_vault(&ctx, "ctx-aliascase", "p", files).await;
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/{old}"),
+        &format!("{root}/{new}"),
+    )
+    .await
+    .unwrap();
+    let skipped = result
+        .skipped_files
+        .iter()
+        .map(|f| f.strip_prefix(&format!("{root}/")).unwrap_or(f).to_string())
+        .collect();
+    Some((
+        std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
+        skipped,
+    ))
+}
+
+#[tokio::test]
+async fn a_path_link_behind_an_alias_is_judged_for_case_variants_as_one_without() {
+    // Where case is kept, `[[p::A/old]]` behind the vault's own alias folds
+    // to `a/old` as `[[A/old]]` does. With `A/old.md` and `a/old.md` both
+    // there it names neither alone, and with `a/New.md` beside the new
+    // `a/new.md` the respelled `[[p::a/new]]` would name neither: in both
+    // cases the alias link is left and `r.md` reported, as the bare path
+    // link beside it is. Where case folds this is not run.
+    // What fails this: judging a link behind a local alias without the
+    // alias root's note counts (`RenameTarget::judge`'s alias branch) — the
+    // alias link is respelled while the one beside it stays; or reading the
+    // old key alone (`alias_root_reads_another_note`) — the second case.
+    let Some(old_key) = rename_beside_a_case_variant_behind_an_alias(
+        &[
+            ("A/old.md", "t\n"),
+            ("a/old.md", "u\n"),
+            ("r.md", "[[p::A/old]]\n[[A/old]]\n"),
+        ],
+        "A/old.md",
+        "A/new.md",
+    )
+    .await
+    else {
+        eprintln!("the file system folds case; the case-keeping half is not run");
+        return;
+    };
+    assert_eq!(
+        old_key,
+        (
+            "[[p::A/old]]\n[[A/old]]\n".to_string(),
+            vec!["r.md".to_string()]
+        )
+    );
+    let new_key = rename_beside_a_case_variant_behind_an_alias(
+        &[
+            ("a/old.md", "t\n"),
+            ("a/New.md", "u\n"),
+            ("r.md", "[[p::a/old]]\n[[a/old]]\n"),
+        ],
+        "a/old.md",
+        "a/new.md",
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        new_key,
+        (
+            "[[p::a/old]]\n[[a/old]]\n".to_string(),
+            vec!["r.md".to_string()]
+        )
+    );
+}
