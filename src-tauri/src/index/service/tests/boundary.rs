@@ -990,3 +990,40 @@ async fn a_path_link_behind_an_alias_is_judged_for_case_variants_as_one_without(
         )
     );
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_rename_onto_a_dangling_symlink_is_refused() {
+    // `new.md` is a symlink to a file that does not exist. `Path::exists`
+    // follows it and answers false, but it is a directory entry, and the
+    // move would replace it: refused as onto any other entry, with the link
+    // and the note left as they were. Runs wherever symlinks do, whatever
+    // the file system's case.
+    // What fails this: judging the destination by following it
+    // (`Path::exists` in `another_entry_at`) — the rename replaces the link.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-dangling", true).await;
+    std::fs::write(dir.path().join("old.md"), "t\n").unwrap();
+    std::fs::write(dir.path().join("r.md"), "[[old]]\n").unwrap();
+    std::os::unix::fs::symlink("nowhere.md", dir.path().join("new.md")).unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+
+    let err = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/old.md"),
+        &format!("{root}/new.md"),
+    )
+    .await
+    .unwrap_err();
+    assert!(err.contains("already exists"), "{err}");
+    assert!(std::fs::symlink_metadata(dir.path().join("new.md"))
+        .unwrap()
+        .is_symlink());
+    assert!(dir.path().join("old.md").exists());
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
+        "[[old]]\n"
+    );
+}
