@@ -420,7 +420,19 @@ export const useWorkspaceStore = create<WorkspaceState>()(
                 const ctx = await useContextStore
                   .getState()
                   .ensureJournalContext(resolvedDir);
-                await getSpace("journal")?.newFileFlow?.();
+                // Today's entry is a convenience on top of the switch, not part of it:
+                // `ensureJournalContext` has already moved `rootPath` to the journal, so
+                // skipping `switchContext` below would leave the Files panel on the
+                // previous vault. `ensureJournalFile` raises for an entry it cannot read
+                // rather than overwrite it, and that must not cost the switch.
+                try {
+                  await getSpace("journal")?.newFileFlow?.();
+                } catch (err) {
+                  logger.error(
+                    "[Workspace] Failed to open today's journal entry:",
+                    err,
+                  );
+                }
                 // Load the journal's tree, exactly as the zettel branch does above.
                 // `ensureJournalContext` activates the context but the subscription in
                 // file.ts syncs `rootPath` ALONE (its own comment says so) — the note

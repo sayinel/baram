@@ -180,7 +180,10 @@ function route(command: string, args: Record<string, unknown> = {}): unknown {
     case "read_file": {
       if (!readable(path)) throw `Access denied: ${path}`;
       const content = backend.files.get(path);
-      if (content === undefined) throw `File not found: ${path}`;
+      // `FsError::NotFound`'s Display, word for word: the journal service creates an
+      // entry only on THIS rejection and raises any other read failure rather than
+      // write a template over a file it could not read (`isFileNotFoundError`).
+      if (content === undefined) throw `파일을 찾을 수 없습니다: ${path}`;
       return content;
     }
     case "set_vault_root": {
