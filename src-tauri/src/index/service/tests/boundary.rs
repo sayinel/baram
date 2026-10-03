@@ -742,3 +742,85 @@ async fn two_notes_of_one_root_folding_to_one_path_keep_the_path_links_both_answ
         "[[A/note]]\n[[a/note]]\n((a/note#^x))\n[[new]]\n"
     );
 }
+
+#[tokio::test]
+async fn a_rename_does_not_respell_a_path_link_onto_a_case_variant_of_the_new_name() {
+    // Where the file system keeps case, `a/New.md` beside `a/old.md` is
+    // another entry, so renaming `a/old.md` to `a/new.md` goes ahead. Both
+    // would then fold to `a/new`, and `[[a/old]]` respelled `[[a/new]]`
+    // would name neither alone: left, and `r.md` reported. The vault is the
+    // rename's only holding root (`RootNotes::Sole`). Where the file system
+    // folds case `a/new.md` is `a/New.md` and the rename is refused before
+    // any link is judged; that half is not run.
+    // What fails this: counting no note under the new name's key
+    // (`LinkIndex::path_key_notes` answering 0), or judging only the old
+    // text in `RenameTarget::judge` — either way `r.md` becomes `[[a/new]]`
+    // and nothing is reported.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-newcase", true).await;
+    if folds_case(dir.path()) {
+        eprintln!("the file system under {root} folds case; the case-keeping half is not run");
+        return;
+    }
+    std::fs::create_dir_all(dir.path().join("a")).unwrap();
+    std::fs::write(dir.path().join("a/old.md"), "t\n").unwrap();
+    std::fs::write(dir.path().join("a/New.md"), "other\n").unwrap();
+    std::fs::write(dir.path().join("r.md"), "[[a/old]]\n").unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/a/old.md"),
+        &format!("{root}/a/new.md"),
+    )
+    .await
+    .unwrap();
+    assert_eq!(result.skipped_files, vec![format!("{root}/r.md")]);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
+        "[[a/old]]\n"
+    );
+}
+
+#[tokio::test]
+async fn a_case_only_rename_respells_a_path_link_to_the_note() {
+    // Where the file system folds case, `a/Note.md` renamed to `a/note.md`
+    // keeps its path key `a/note`, which the one note — the renamed file —
+    // folds to. The respelled `[[a/note]]` reads as the renamed file, not as
+    // another note: respelled, nothing reported. Where case is kept the
+    // rename is an ordinary new name and this half is not run.
+    // What fails this: reading a `Sole` key's count without discounting the
+    // renamed file (`n > 0` in `read_as_another_note`) — the link is left
+    // and `r.md` reported.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-casepath", true).await;
+    if !folds_case(dir.path()) {
+        eprintln!("the file system under {root} keeps case; the case-only half is not run");
+        return;
+    }
+    std::fs::create_dir_all(dir.path().join("a")).unwrap();
+    std::fs::write(dir.path().join("a/Note.md"), "t\n").unwrap();
+    std::fs::write(dir.path().join("r.md"), "[[a/Note]]\n").unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/a/Note.md"),
+        &format!("{root}/a/note.md"),
+    )
+    .await
+    .unwrap();
+    assert!(
+        result.skipped_files.is_empty(),
+        "{:?}",
+        result.skipped_files
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
+        "[[a/note]]\n"
+    );
+}

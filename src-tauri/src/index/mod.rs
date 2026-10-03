@@ -23,7 +23,7 @@ pub(crate) use extractor::file_stem_from_path;
 pub use extractor::{
     collect_all_files, collect_md_files, find_unlinked_mentions, UnlinkedMentionResult,
 };
-pub(crate) use filing::{filing_key, keys_for, FilingKey, LocalAlias};
+pub(crate) use filing::{filing_key, keys_for, root_relative_key, FilingKey, LocalAlias};
 pub(crate) use judgement::{root_places, BlockTarget, KnownPaths, RenameTarget, RootNotes};
 pub(crate) use read_back::{index_reads_the_rename_back, reads_a_link_under};
 pub use relative_links::rewrite_relative_wikilinks;
@@ -318,6 +318,21 @@ impl LinkIndex {
         );
         keys.retain(|_, notes| *notes > 1);
         keys
+    }
+
+    /// How many of this index's notes fold to the `Path` key `key` — the
+    /// one entry of `registered_path_keys` a file rename needs for its new
+    /// name when this is its only holding root (`judgement::RootNotes::Sole`).
+    /// Spelled only for the notes whose name is the key's last component, as
+    /// `colliding_path_keys` groups them.
+    pub fn path_key_notes(&self, key: &str) -> usize {
+        let name = key.rsplit('/').next().unwrap_or(key);
+        let same_name = self
+            .file_map
+            .values()
+            .flatten()
+            .filter(|path| filing::path_key_name(path, cfg!(windows)) == name);
+        self.path_keys_of(same_name).get(key).copied().unwrap_or(0)
     }
 
     /// The `Path` key of each of `paths` under this index's root

@@ -48,12 +48,17 @@ pub enum RootNotes {
     Known(HashMap<String, usize>),
     /// Its index is built and it is the only root holding the renamed file
     /// or a referrer: the `Path` keys two or more of its notes fold to, with
-    /// how many (`LinkIndex::colliding_path_keys`), and not the rest. With
-    /// one holding root, a path link matched under it is read by no other
-    /// root, and under it the link reads as the renamed file's own key, so a
-    /// collision is the one thing that can make it ambiguous. Any other
-    /// reading counts as a note that exists, as `Unknown` does, so a key
-    /// this map leaves out never lets a link through that `Known` would stop.
+    /// how many (`LinkIndex::colliding_path_keys`), and for a file rename
+    /// the new name's key with how many notes fold to it now, one or none
+    /// included (`LinkIndex::path_key_notes`) — and not the rest. With one
+    /// holding root, a path link matched under it is read by no other root,
+    /// and under it the old text reads as the renamed file's own key and the
+    /// respelled text as the new one, so a note already under either key is
+    /// the one thing that can make it ambiguous. Any other reading counts as
+    /// a note that exists, as `Unknown` does, so a key this map leaves out
+    /// never lets a link through that `Known` would stop. Read as counts,
+    /// like `Known`: a key is another note's when it counts more notes than
+    /// the renamed file.
     Sole(HashMap<String, usize>),
     /// Its index could not be built or read. Any `Path` reading under it
     /// may be another note, so a link it could read is left and its file
@@ -137,9 +142,10 @@ fn read_as_another_note(
                     RootNotes::Known(notes) => notes
                         .get(&p)
                         .is_some_and(|&n| n > 1 || !is_the_target(root, &p)),
-                    RootNotes::Sole(colliding) => {
-                        colliding.contains_key(&p) || !is_the_target(root, &p)
-                    }
+                    RootNotes::Sole(counted) => match counted.get(&p) {
+                        Some(&n) => n > usize::from(is_the_target(root, &p)),
+                        None => !is_the_target(root, &p),
+                    },
                     RootNotes::Unknown => !is_the_target(root, &p),
                 },
                 FilingKey::Stem(_) | FilingKey::Foreign { .. } => false,
@@ -316,7 +322,11 @@ impl RenameTarget<'_> {
     /// nested roots `/v` and `/v/sub` whose `[[a/old]]` is `/v/sub/a/old.md`
     /// under one and `/v/a/old.md` under the other — and when two notes of
     /// one root fold to the matched key, as `/v/A/old.md` beside
-    /// `/v/a/old.md` on a file system that keeps case. A link behind an alias
+    /// `/v/a/old.md` on a file system that keeps case. The respelled text
+    /// (`respell`) is read the same way: a rename must not write a link that
+    /// a root holding the referrer reads as another existing note — `/v/sub`
+    /// holding `a/new.md` while `/v/a/old.md` becomes `/v/a/new.md`, or
+    /// `/v/a/New.md` already beside it where case is kept. A link behind an alias
     /// that is not one of `local_aliases` names a file in another vault and
     /// is never this file's (`refers_behind_alias`); one behind a local alias
     /// resolves against that alias's own root, so no other root reads it.
@@ -349,16 +359,23 @@ impl RenameTarget<'_> {
                     FilingKey::Stem(_) | FilingKey::Path(_) | FilingKey::Foreign { .. } => None,
                 }
             });
+        // The renamed file is read by its OLD key in every count: the notes
+        // are those before the move, so a note under the new key is another
+        // note unless the key is the old one too (a case-only rename).
+        let other_note = |text: &str| {
+            read_as_another_note(
+                ref_path,
+                text,
+                &self.known_paths,
+                |r, p| root_relative_key(r, self.old_path, self.windows).as_deref() == Some(p),
+                self.windows,
+            )
+        };
         match matched {
             None => Judgement::NotOurs,
-            Some(Match::Path { .. })
-                if read_as_another_note(
-                    ref_path,
-                    raw_target,
-                    &self.known_paths,
-                    |r, p| root_relative_key(r, self.old_path, self.windows).as_deref() == Some(p),
-                    self.windows,
-                ) =>
+            Some(m @ Match::Path { .. })
+                if other_note(raw_target)
+                    || other_note(&self.respell(ref_path, &m, raw_target)) =>
             {
                 Judgement::Ambiguous
             }
@@ -499,24 +516,33 @@ mod tests {
     #[test]
     fn a_sole_root_reads_a_path_link_as_ambiguous_only_on_a_collision() {
         // With one holding root the rename collects only the keys its notes
-        // collide on (`RootNotes::Sole`): a key there is ambiguous, and a key
-        // left out is the renamed file's own, since no other root reads it.
+        // collide on, and the new name's key however many notes it counts
+        // (`RootNotes::Sole`): an old key there is ambiguous, an old key left
+        // out is the renamed file's own, since no other root reads it, and
+        // the new key is ambiguous when a note already folds to it.
         // What fails this: reading `Sole` the way `Unknown` is read, its map
-        // ignored — `[[a/note]]` is then `Ours` beside its twin.
+        // ignored — `[[a/note]]` is then `Ours` beside its twin; or ignoring
+        // the new key's count — `[[a/note]]` is `Ours` with `a/New.md` there.
         let roots = vec!["/v".to_string()];
-        let rename = |colliding: HashMap<String, usize>| RenameTarget {
+        let rename = |counted: HashMap<String, usize>| RenameTarget {
             old_path: "/v/a/note.md",
             new_path: "/v/a/new.md",
             local_aliases: &[],
-            known_paths: [("/v".to_string(), RootNotes::Sole(colliding))].into(),
+            known_paths: [("/v".to_string(), RootNotes::Sole(counted))].into(),
             windows: false,
         };
+        let new_key = |n: usize| ("a/new".to_string(), n);
         assert_eq!(
-            rename([("a/note".to_string(), 2)].into()).judge("/v/r.md", &roots, "", "a/note"),
+            rename([("a/note".to_string(), 2), new_key(0)].into())
+                .judge("/v/r.md", &roots, "", "a/note"),
             Judgement::Ambiguous
         );
         assert_eq!(
-            rename(HashMap::new()).judge("/v/r.md", &roots, "", "a/note"),
+            rename([new_key(1)].into()).judge("/v/r.md", &roots, "", "a/note"),
+            Judgement::Ambiguous
+        );
+        assert_eq!(
+            rename([new_key(0)].into()).judge("/v/r.md", &roots, "", "a/note"),
             Judgement::Ours(Match::Path {
                 root: "/v".to_string(),
                 relative: false,

@@ -191,10 +191,12 @@ baram/
     (`service/tests/nested_roots.rs` 의 `nested_roots_a_rename_leaves_the_parents_colliding_link_alone`). 되읽기 관문도 덮는 root 마다 따로
     읽는다. ‼️ **경로 링크를 다른 root 가 실재하는 다른 노트로 읽으면 고치지 않고 보고한다** — 두 root 가 함께 덮는 `/v/sub/r.md` 의 `[[a/old]]` 는 자식 아래에서
     `/v/sub/a/old.md`, 부모 아래에서 `/v/a/old.md` 다. 둘 다 있으면 어느 쪽을 rename 하든 그 링크는 **모호하므로 그대로 두고** 파일을 `skipped_files` 에
-    올린다(`judgement.rs` 의 `Judgement::Ambiguous`·`read_as_another_note`). 부모에 `a/old.md` 가 없으면 모호하지 않으므로 고쳐 쓴다. 한 root 안에서도 같다 —
+    올린다(`judgement.rs` 의 `Judgement::Ambiguous`·`read_as_another_note`). 부모에 `a/old.md` 가 없으면 모호하지 않으므로 고쳐 쓴다. 고쳐 쓸 텍스트도 같은 판정을 받는다 —
+    `[[a/new]]` 를 referrer 를 담는 다른 root 가 실재하는 다른 노트로 읽으면(`/v/sub/a/new.md`) rename 이 모호함을 새로 만들므로 쓰지 않고 보고한다. 한 root 안에서도 같다 —
     대소문자를 지키는 파일 시스템에서 `A/note.md` 와 `a/note.md` 는 둘 다 `Path("a/note")` 로 접히므로 `[[A/note]]`·`[[a/note]]` 는 어느 한쪽의 링크가 아니다.
     `registered_path_keys` 가 키마다 그리로 접히는 노트 수를 내고, 둘 이상이면 그 키로 읽히는 경로 링크는 모호하다. referrer 와 파일을 담는 root 가 하나뿐이면 다른 root 의 읽기가
-    없으므로 겹치는 키만 모은다(`colliding_path_keys` → `RootNotes::Sole`) — index 잠금 아래에서 노트마다가 아니라 이름이 같은 노트마다 키를 짓는다. 존재 판정은 rename 되는
+    없으므로 겹치는 키와 새 이름의 키만 모은다(`colliding_path_keys`·`path_key_notes` → `RootNotes::Sole` — 대소문자를 지키는 볼륨에서
+    `a/New.md` 옆의 `a/old.md` 를 `a/new.md` 로 바꾸면 `[[a/new]]` 가 둘로 접히므로 남긴다) — index 잠금 아래에서 노트마다가 아니라 이름이 같은 노트마다 키를 짓는다. 존재 판정은 rename 되는
     파일이나 referrer 를 **담는 모든 directory context** 의 노트 목록(`LinkIndex::registered_path_keys`)으로 한다 — rename 되는 파일의 context 만이 아니다.
     부모의 `a/old.md` 를 rename 할 때 자식 root 는 그 파일을 담지 않지만 referrer 를 담는다. 한 번도 열리지 않아 index 가 없는 context 는 판정 전에 **그 자리에서 build
     한다**(`service/rename/scope.rs` 의 `holding_contexts` → `ensure_indexes`). build 할 수 없으면 그 root 는 `RootNotes::Unknown` 이 되어 그

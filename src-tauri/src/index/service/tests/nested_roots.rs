@@ -622,6 +622,51 @@ async fn nested_roots_a_referrer_only_the_parent_holds_follows_the_rename() {
     );
 }
 
+#[tokio::test]
+async fn nested_roots_a_rename_does_not_respell_a_path_link_into_a_note_another_root_reads() {
+    // `/v/a/old.md` is renamed to `/v/a/new.md`. `sub/r.md`'s `[[a/old]]`
+    // is that note under the parent and nothing under the child (no
+    // `sub/a/old.md`), so the old text is the renamed file's alone. But the
+    // child holds `sub/a/new.md`: the respelled `[[a/new]]` would read as it
+    // under the child, an ambiguity the rename would create. Left, and the
+    // file reported.
+    // What fails this: judging only the old text (`RenameTarget::judge`
+    // without the respelled-text reading) — `sub/r.md` becomes `[[a/new]]`
+    // and nothing is reported.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-parent", true).await;
+    for (path, text) in [
+        ("a/old.md", "t\n"),
+        ("sub/a/new.md", "unrelated\n"),
+        ("sub/r.md", "[[a/old]]\n"),
+    ] {
+        let file = dir.path().join(path);
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(file, text).unwrap();
+    }
+    let sub = format!("{root}/sub");
+    ctx.add(info("ctx-child", &sub, ContextType::Folder))
+        .await
+        .unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    refresh_index_inner(&state, &ctx, &sub).await.unwrap();
+
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/a/old.md"),
+        &format!("{root}/a/new.md"),
+    )
+    .await
+    .unwrap();
+    assert_eq!(result.skipped_files, vec![format!("{sub}/r.md")]);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("sub/r.md")).unwrap(),
+        "[[a/old]]\n"
+    );
+}
+
 /// `/v` indexed and `/v/sub` registered (`ctx-child`) but never opened —
 /// no index built for it — holding `/v/a/old.md`, `sub/r.md` with
 /// `[[a/old]]`, and `sub/a/old.md` when `child_note` says so.

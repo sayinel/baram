@@ -4,7 +4,7 @@
 
 use crate::context::manager::Registered;
 use crate::context::ContextManager;
-use crate::index::{root_places, KnownPaths, LinkIndex, RootNotes};
+use crate::index::{root_places, root_relative_key, KnownPaths, LinkIndex, RootNotes};
 use std::collections::{HashMap, HashSet};
 
 use super::super::build::{ensure_indexes, read_indexes};
@@ -65,15 +65,20 @@ impl RenameScope {
     /// root holding the referrer reads as a different existing note — or
     /// might, when its index could not be built — is left and its file
     /// reported (`RenameTarget::judge`, `BlockTarget::judge`).
+    ///
+    /// `new_path` is a file rename's destination: a `Sole` root also counts
+    /// the notes under the new name's key, which the judgement reads the
+    /// respelled text by. A block ID rename keeps the path and passes None.
     pub(super) async fn referrers(
         &self,
         state: &LinkIndexState,
         ctx_mgr: &ContextManager,
+        new_path: Option<&str>,
         read: impl Fn(&LinkIndex) -> Vec<(String, u32)>,
     ) -> Result<Referrers, String> {
         let (named_lines, files) = named_referrers(read_indexes(state, &self.dirs, read).await?);
         let (holding, unplaced) = holding_contexts(state, ctx_mgr, &self.dirs, &files).await;
-        let mut known_paths = known_paths_of(state, &holding).await;
+        let mut known_paths = known_paths_of(state, &holding, new_path).await;
         known_paths.unplaced = unplaced;
         Ok(Referrers {
             named_lines,
@@ -134,8 +139,14 @@ async fn holding_contexts(
 /// keys its notes collide on are collected (`RootNotes::Sole`,
 /// `LinkIndex::colliding_path_keys`) — under the index lock, which every
 /// index read and save waits on, that is a key per same-named note instead
-/// of a key per note.
-async fn known_paths_of(state: &LinkIndexState, holding: &[Registered]) -> KnownPaths {
+/// of a key per note. With `new_path`, the `Sole` map also holds the new
+/// name's key with how many notes fold to it now (`path_key_notes`), even
+/// one or none: the respelled text is read under that key.
+async fn known_paths_of(
+    state: &LinkIndexState,
+    holding: &[Registered],
+    new_path: Option<&str>,
+) -> KnownPaths {
     let sole = holding.len() == 1;
     let mut known = KnownPaths::default();
     for c in holding {
@@ -143,7 +154,14 @@ async fn known_paths_of(state: &LinkIndexState, holding: &[Registered]) -> Known
             .with_index_for(&c.info.path, c.incarnation, |idx| {
                 idx.map(|idx| {
                     if sole {
-                        RootNotes::Sole(idx.colliding_path_keys())
+                        let mut keys = idx.colliding_path_keys();
+                        let new_key = new_path
+                            .and_then(|new| root_relative_key(&c.info.path, new, cfg!(windows)));
+                        if let Some(key) = new_key {
+                            let notes = idx.path_key_notes(&key);
+                            keys.insert(key, notes);
+                        }
+                        RootNotes::Sole(keys)
                     } else {
                         RootNotes::Known(idx.registered_path_keys())
                     }

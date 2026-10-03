@@ -678,16 +678,19 @@ pub(super) mod tests {
         );
         // A root whose index could not be built reads `Unknown`: any path
         // reading under it may be another note, so the link is left the same
-        // way — the leave-and-report side of a failed build.
+        // way — the leave-and-report side of a failed build. That holds for
+        // the respelled text too: `[[sub/a/old]]` is the renamed file's own
+        // key under `/v`, but whether a note already folds to `sub/a/new`
+        // there is not known, so it is left as well.
         // What fails this: reading `RootNotes::Unknown` as holding no note in
-        // `read_as_another_note` — `[[a/old]]` is then respelled.
+        // `read_as_another_note` — both links are then respelled.
         let unknown = RenameTarget {
             known_paths: [("/v".to_string(), crate::index::RootNotes::Unknown)].into(),
             ..rename_target("/v/sub/a/old.md", "/v/sub/a/new.md")
         };
         assert_eq!(
             replace_wikilink_target(before, "/v/sub/r.md", &both, &unknown),
-            "[[a/old]] [[sub/a/new]]\n"
+            "[[a/old]] [[sub/a/old]]\n"
         );
         assert!(index_reads_the_rename_back(
             "/v/sub/r.md",
