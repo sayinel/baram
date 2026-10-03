@@ -8,7 +8,7 @@ import type { EditorState } from "@tiptap/pm/state";
 import { findTargetMatches } from "../core/hangul";
 import {
   type CursorLine,
-  lineUnitStarts,
+  forEachLineUnit,
   segmentSpanAt,
 } from "./cursor-line-columns";
 
@@ -32,14 +32,17 @@ export function findCharTarget(
   const span = segmentSpanAt(state, pos);
   if (!span) return null;
   const line: CursorLine = { end: span.to, start: span.from };
-  const starts = lineUnitStarts(state, line);
-  const unitText = (index: number): string =>
-    state.doc.textBetween(
-      starts[index],
-      starts[index + 1] ?? line.end,
-      undefined,
-      "\uFFFC",
-    );
+  // Unit starts and their text from ONE traversal (forEachLineUnit) — a
+  // textBetween per unit restarted the range walk each time. A non-text
+  // inline node reads as U+FFFC, as textBetween's leaf placeholder did.
+  const starts: number[] = [];
+  const texts: string[] = [];
+  forEachLineUnit(state, line, (start, text) => {
+    starts.push(start);
+    texts.push(text ?? "\uFFFC");
+    return true;
+  });
+  const unitText = (index: number): string => texts[index];
 
   const forward = kind === "f" || kind === "t";
   const till = kind === "t" || kind === "T";

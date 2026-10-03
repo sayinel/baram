@@ -43,26 +43,51 @@ export function lineSpanAt(state: EditorState, pos: number): CursorLine {
 
 /** The first cursor unit of `line` that is not blank — a grapheme with a
  *  non-whitespace character, or any non-text inline node (a wikilink or tag
- *  is a unit, never a blank). null when the line is blank or empty. ONE
- *  traversal, the same unit model as lineUnitStarts: a per-unit textBetween
- *  restarts the range walk at the first child each time, quadratic over a
- *  line split into many marked text nodes. */
+ *  is a unit, never a blank). null when the line is blank or empty. One
+ *  traversal (forEachLineUnit): a per-unit textBetween restarts the range
+ *  walk at the first child each time, quadratic over a line split into many
+ *  marked text nodes. */
 export function firstNonBlankUnit(
   state: EditorState,
   line: CursorLine,
 ): null | number {
-  if (line.end <= line.start) return null;
   let found: null | number = null;
+  forEachLineUnit(state, line, (start, text) => {
+    if (text !== null && !/\S/.test(text)) return true;
+    found = start;
+    return false;
+  });
+  return found;
+}
+
+/**
+ * Visit every cursor unit of `line` in order, in ONE traversal: `text` is the
+ * unit's grapheme for a text unit, null for a non-text inline node. Return
+ * false from `visit` to stop. This is THE definition of a cursor unit — each
+ * TEXT NODE is segmented independently, and every non-text inline child is
+ * exactly one unit, never descended into. Whole-line segmentation JOINed
+ * clusters across mark boundaries and after atom placeholders, diverging
+ * from the node-local §6 units (review S3-R6); descending into an inline
+ * atom's content made j landings that h/l could not leave (review S3-R7) —
+ * nextUnitBoundary skips such a node whole, leaf or not.
+ */
+export function forEachLineUnit(
+  state: EditorState,
+  line: CursorLine,
+  visit: (start: number, text: null | string) => boolean,
+): void {
+  if (line.end <= line.start) return;
+  let stopped = false;
   state.doc.nodesBetween(line.start, line.end, (node, pos) => {
-    if (found !== null) return false;
+    if (stopped) return false;
     if (node.isText) {
       const from = Math.max(line.start, pos);
       const to = Math.min(line.end, pos + node.nodeSize);
       const text = (node.text ?? "").slice(from - pos, to - pos);
       let offset = 0;
       for (const seg of graphemeSegmenter.segment(text)) {
-        if (/\S/.test(seg.segment)) {
-          found = from + offset;
+        if (!visit(from + offset, seg.segment)) {
+          stopped = true;
           break;
         }
         offset += seg.segment.length;
@@ -70,42 +95,22 @@ export function firstNonBlankUnit(
       return false;
     }
     if (node.isInline) {
-      if (pos >= line.start && pos < line.end) found = pos;
+      if (pos >= line.start && pos < line.end && !visit(pos, null)) {
+        stopped = true;
+      }
       return false;
     }
     return true; // the textblock container — descend
   });
-  return found;
 }
 
 /** Absolute start positions of every cursor unit in a line, one line-local
- *  pass. Each TEXT NODE is segmented independently and every non-text
- *  inline leaf contributes exactly one start — whole-line segmentation
- *  JOINed clusters across mark boundaries and after atom placeholders,
- *  diverging from the node-local §6 units (review S3-R6). */
+ *  pass (the unit model is forEachLineUnit's). */
 export function lineUnitStarts(state: EditorState, line: CursorLine): number[] {
-  if (line.end <= line.start) return [];
   const starts: number[] = [];
-  state.doc.nodesBetween(line.start, line.end, (node, pos) => {
-    if (node.isText) {
-      const from = Math.max(line.start, pos);
-      const to = Math.min(line.end, pos + node.nodeSize);
-      const text = (node.text ?? "").slice(from - pos, to - pos);
-      let offset = 0;
-      for (const seg of graphemeSegmenter.segment(text)) {
-        starts.push(from + offset);
-        offset += seg.segment.length;
-      }
-      return false;
-    }
-    if (node.isInline) {
-      // ANY non-text inline child is one unit — nextUnitBoundary skips it
-      // whole, leaf or not; descending into an inline atom's content made
-      // j landings that h/l could not leave (review S3-R7).
-      if (pos >= line.start && pos < line.end) starts.push(pos);
-      return false;
-    }
-    return true; // the textblock container — descend
+  forEachLineUnit(state, line, (start) => {
+    starts.push(start);
+    return true;
   });
   return starts;
 }
