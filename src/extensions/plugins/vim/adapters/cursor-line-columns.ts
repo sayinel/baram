@@ -37,6 +37,39 @@ export function segmentSpanAt(
   );
 }
 
+/**
+ * segmentSpanAt, narrowed to the YAML source line inside frontmatter. The
+ * vim line model counts a frontmatter block as ONE line (j/k, 0/$, linewise
+ * operators); this narrower span is for the two rules that must not cross a
+ * YAML newline: the first non-blank search and insert Esc's step-back.
+ * Frontmatter is `text*` without marks, so it holds at most one text node and
+ * its offsets are text offsets. A position right before a `\n` belongs to the
+ * line before it, right after one to the line after; a trailing `\n` leaves an
+ * empty last line. A `\r\n` pair is one delimiter. Matched by name, like isCodeBlockLanding: frontmatter is
+ * the only spec.code node that keeps a PM-managed caret.
+ */
+export function sourceLineSpan(
+  state: EditorState,
+  pos: number,
+): null | { from: number; to: number } {
+  const $pos = state.doc.resolve(pos);
+  if ($pos.parent.type.name !== "frontmatter") return segmentSpanAt(state, pos);
+  const text = $pos.parent.textContent;
+  const offset = $pos.parentOffset;
+  const start = offset === 0 ? 0 : text.lastIndexOf("\n", offset - 1) + 1;
+  const newline = text.indexOf("\n", offset);
+  // A CRLF ending is ONE grapheme: the line ends before its "\r", never
+  // inside the cluster.
+  const end =
+    newline < 0
+      ? text.length
+      : text[newline - 1] === "\r"
+        ? newline - 1
+        : newline;
+  const base = $pos.start();
+  return { from: base + start, to: base + end };
+}
+
 /** The current line's span for column math: a hard-break segment (works
  *  inside table cells too) or an atom boundary. */
 export function lineSpanAt(state: EditorState, pos: number): CursorLine {

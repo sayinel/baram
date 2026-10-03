@@ -24,6 +24,7 @@ import {
   lineSpanAt,
   lineUnitStarts,
   segmentSpanAt,
+  sourceLineSpan,
 } from "./cursor-line-columns";
 import { nextUnitBoundary, prevUnitBoundary } from "./graphemes";
 import {
@@ -118,8 +119,10 @@ export function resolveMotion(
       // Judged per unit (firstNonBlankUnit), not by a regex offset into the
       // line's text: an offset can land inside a grapheme (" " + U+0301 is
       // one unit) and drifts past inline nodes with content (issue 776:
-      // gg, G and :N land through here too).
-      const span = segmentSpanAt(state, pos);
+      // gg, G and :N land through here too). Bounded by the YAML source
+      // line inside frontmatter (sourceLineSpan) — a blank first YAML line
+      // must not send gg to the next line's key.
+      const span = sourceLineSpan(state, pos);
       if (!span) return pos;
       return (
         firstNonBlankUnit(state, { end: span.to, start: span.from }) ??

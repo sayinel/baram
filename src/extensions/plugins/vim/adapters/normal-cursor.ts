@@ -10,18 +10,20 @@
 // insertEscTarget is the first, terminalClampTarget (run from the plugin's
 // appendTransaction) the second.
 
+import type { ResolvedPos } from "@tiptap/pm/model";
 import type { EditorState } from "@tiptap/pm/state";
 
 import { NodeSelection, Selection } from "@tiptap/pm/state";
 
 import { isCodeBlockLanding } from "./code-block-landing";
-import { segmentSpanAt } from "./cursor-line-columns";
+import { sourceLineSpan } from "./cursor-line-columns";
 import { prevUnitBoundary } from "./graphemes";
 
 /**
  * Where insert Esc leaves the cursor: one unit left of the insert caret,
  * like vim's `ins_esc`, but never across the line start — an Esc at the
- * start of a line or on an empty one stays. null = leave the selection alone.
+ * start of a line or on an empty one stays. Inside frontmatter the line is
+ * the YAML source line (sourceLineSpan). null = leave the selection alone.
  *
  * A RANGE made while inserting (Shift+arrows, a drag, select all) collapses:
  * normal mode has one cursor, and a range left behind would be replaced
@@ -40,7 +42,7 @@ export function insertEscTarget(state: EditorState): null | number {
   // A caret in a code block is CodeMirror's: stepping it here would also hand
   // focus to the island (dispatchCursor). Off a textblock there is no line.
   if (!sel.empty || isCodeBlockLanding(state, sel.head)) return null;
-  const span = segmentSpanAt(state, sel.head);
+  const span = sourceLineSpan(state, sel.head);
   return span ? unitBeforeOnLine(state, sel.head, span.from) : null;
 }
 
@@ -66,6 +68,10 @@ export function terminalClampTarget(state: EditorState): null | number {
     $head.nodeAfter?.type.name === "hardBreak";
   // Right after a hard break the line is empty — the unit before is the break.
   if (!atLineEnd || $head.nodeBefore?.type.name === "hardBreak") return null;
+  // Same after a trailing YAML newline: the empty last source line
+  // (sourceLineSpan). Only the block's end gets here — frontmatter has no
+  // hard breaks — so the whole-block model stays intact everywhere else.
+  if (endsAfterYamlNewline($head)) return null;
   const prev = prevUnitBoundary(state, sel.head);
   return prev < sel.head ? prev : null;
 }
@@ -84,12 +90,13 @@ function forwardRangeEscTarget(
   state: EditorState,
   head: number,
 ): null | number {
-  const span = segmentSpanAt(state, head);
+  const span = sourceLineSpan(state, head);
   const onLine = span ? unitBeforeOnLine(state, head, span.from) : null;
   if (onLine !== null) return onLine;
   const $head = state.doc.resolve(head);
   if (span && $head.parent.isTextblock && span.from > $head.start()) {
-    // After a hard break: the break node sits right before this segment.
+    // After a hard break (or a YAML newline in frontmatter): the separator
+    // sits right before this line.
     return lastUnitOfLineEndingAt(state, span.from - 1);
   }
   const before = $head.parent.isTextblock ? $head.before() : head;
@@ -106,18 +113,21 @@ function forwardRangeEscTarget(
   return lastUnitOfLineEndingAt(state, found.head);
 }
 
-/** The last unit of the line that ends at `end`, or `end` itself when that
- *  line is empty. */
+/** The last unit of the line that ends at `end`, or that line's end
+ *  (span.to) when it is empty — `end` itself except before a CRLF. */
 function lastUnitOfLineEndingAt(state: EditorState, end: number): number {
-  const span = segmentSpanAt(state, end);
-  return (span && unitBeforeOnLine(state, end, span.from)) ?? end;
+  const span = sourceLineSpan(state, end);
+  if (!span) return end;
+  // span.to, not `end`: before a CRLF the two differ by the "\r" — and `end`
+  // sits inside that one-grapheme cluster.
+  return unitBeforeOnLine(state, span.to, span.from) ?? span.to;
 }
 
 /** One unit left of `head`, or null when there is none ON this line: at a
- *  line start prevUnitBoundary returns the head itself (null, so insert Esc
- *  keeps the plain mode dispatch instead of a no-op cursor move), and after
- *  a hard break the unit before is the break, a step onto the previous
- *  segment. */
+ *  textblock start prevUnitBoundary returns the head itself (null, so insert
+ *  Esc keeps the plain mode dispatch instead of a no-op cursor move); after a
+ *  hard break or a YAML newline the unit before is that separator, a step
+ *  onto the previous line that the `lineStart` bound rejects. */
 function unitBeforeOnLine(
   state: EditorState,
   head: number,
@@ -125,4 +135,11 @@ function unitBeforeOnLine(
 ): null | number {
   const prev = prevUnitBoundary(state, head);
   return prev < head && prev >= lineStart ? prev : null;
+}
+
+/** The caret sits at the end of frontmatter whose text ends with a newline. */
+function endsAfterYamlNewline($head: ResolvedPos): boolean {
+  if ($head.parent.type.name !== "frontmatter") return false;
+  const before = $head.nodeBefore;
+  return before?.isText === true && before.text?.endsWith("\n") === true;
 }
