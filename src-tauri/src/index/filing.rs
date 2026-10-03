@@ -11,7 +11,8 @@
 //! `colliding_path_keys`, which build the note lists (`mod.rs` — both call
 //! `root_relative_key` through `path_keys_of`, and the latter first groups by
 //! this module's `path_key_name`); `backlink_keys_for` here, which adds the
-//! zettel-id `Stem` (`backlink_keys` in `mod.rs` and `block_target` in
+//! zettel id as a `Stem` and behind each local alias as a `Foreign`
+//! (`backlink_keys` in `mod.rs` and `block_target` in
 //! `rename/block_id.rs` both call it); the stem predicates the same-stem
 //! exemption is given in `rename/block_id.rs` and `rename/file.rs`, and
 //! `stem_unchanged` in `rename/file.rs`; where the read-back gate wraps
@@ -213,9 +214,12 @@ pub fn keys_for(
 }
 
 /// `keys_for` plus the zettel id in the file's stem (`extract_id_from_stem`),
-/// filed as a `Stem` key — the keys a file's backlinks are read under
-/// (`LinkIndex::backlink_keys`) and a block-ID rename's target is judged by
-/// (`block_target`). One function, so the two cannot drift.
+/// filed as a `Stem` key and behind each of `local_aliases` as a `Foreign`
+/// key — `[[Zettel::202607051530]]` names the note as the bare id does (the
+/// editor's id navigation and the graph's `id_map` read past the alias). The
+/// keys a file's backlinks are read under (`LinkIndex::backlink_keys`) and a
+/// block-ID rename's target is judged by (`block_target`). One function, so
+/// the two cannot drift.
 pub(crate) fn backlink_keys_for(
     file_path: &str,
     root: Option<&str>,
@@ -224,6 +228,12 @@ pub(crate) fn backlink_keys_for(
 ) -> Vec<FilingKey> {
     let mut keys = keys_for(file_path, root, local_aliases, windows);
     if let Some(id) = extract_id_from_stem(&normalize_file_path(file_path)) {
+        for la in local_aliases {
+            keys.push(FilingKey::Foreign {
+                alias: la.alias.clone(),
+                target: id.clone(),
+            });
+        }
         keys.push(FilingKey::Stem(id));
     }
     keys

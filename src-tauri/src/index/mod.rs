@@ -131,7 +131,8 @@ pub struct LinkIndex {
     /// The key a link is filed under (`filing_key`: its stem, its path under
     /// `root_path`, or its vault alias with its target) → the links filed
     /// there. A file's backlinks are read under `backlink_keys`: `keys_for`
-    /// its path, plus the zettel id in its stem when it has one.
+    /// its path, plus the zettel id in its stem when it has one, bare and
+    /// behind each local alias.
     incoming: HashMap<FilingKey, Vec<LinkEntry>>,
     /// Root path of the vault
     root_path: Option<String>,
@@ -340,7 +341,8 @@ impl LinkIndex {
     /// The keys `get_backlinks` and `block_reference_lines` read for
     /// `file_path` (`backlink_keys_for` under `root_path`): `filing_keys_of`,
     /// plus the zettel id inside its stem if it has one, under which a bare
-    /// `[[202607051530]]` is filed.
+    /// `[[202607051530]]` is filed, and that id behind each of
+    /// `local_aliases` (`[[Zettel::202607051530]]`).
     pub fn backlink_keys(&self, file_path: &str, local_aliases: &[LocalAlias]) -> Vec<FilingKey> {
         filing::backlink_keys_for(
             file_path,
@@ -378,9 +380,10 @@ impl LinkIndex {
     /// `file_path` is filed under (`filing_keys_of`: its stem — `file_key`,
     /// not `normalize_target`, which would read a stem ending in `.md` as
     /// another note's — and its path under the root) — wikilink, block
-    /// reference and embed alike. NOT the zettel-id key that `backlink_keys`
+    /// reference and embed alike. NOT the zettel-id keys that `backlink_keys`
     /// adds and `get_backlinks` also reads: a bare `[[202607051530]]` is
-    /// filed under the id, so a rename neither rewrites nor reports it. A file
+    /// filed under the id, and `[[Zettel::202607051530]]` under the id behind
+    /// the alias, so a rename neither rewrites nor reports either. A file
     /// rename rewrites all three kinds, and counts the lines each referrer
     /// was named for to tell a same-stem note's own references apart from a
     /// stale index.

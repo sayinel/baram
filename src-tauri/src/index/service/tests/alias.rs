@@ -636,3 +636,41 @@ async fn two_journal_spaces_make_the_canonical_name_foreign_to_both() {
         "[[Journal::x]]\n"
     );
 }
+
+/// The backlink lines `r.md` gives a zettel note `notes/202607051530 Title.md`
+/// in a vault registered as `vault`, linking to it by its id behind `alias`
+/// (line 1) and bare (line 2).
+async fn zettel_id_backlink_lines(vault: ContextInfo, alias: &str) -> Vec<u32> {
+    let (_dir, root) = tree(&[
+        ("notes/202607051530 Title.md", "body\n"),
+        (
+            "r.md",
+            &format!("[[{alias}::202607051530]]\n[[202607051530]]\n"),
+        ),
+    ]);
+    let ctx = ContextManager::new();
+    ctx.add(ContextInfo {
+        path: root.clone(),
+        ..vault
+    })
+    .await
+    .unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    let note = format!("{root}/notes/202607051530 Title.md");
+    backlink_lines(&state, &ctx, &note, &format!("{root}/r.md")).await
+}
+
+#[tokio::test]
+async fn a_zettel_id_behind_a_local_alias_is_a_backlink() {
+    // The editor opens `[[Zettel::202607051530]]` by the id and the graph
+    // draws its edge, neither looking at the alias; the backlink panel must
+    // list it too, behind the space name and behind the vault's own alias,
+    // as it lists the bare `[[202607051530]]`.
+    // What fails this: dropping the `Foreign { alias, id }` keys from
+    // `backlink_keys_for` — both cases list line 2 alone.
+    let zettel = spaced("z", "", VaultType::Zettelkasten);
+    assert_eq!(zettel_id_backlink_lines(zettel, "Zettel").await, vec![1, 2]);
+    let own = aliased("h", "", "home");
+    assert_eq!(zettel_id_backlink_lines(own, "home").await, vec![1, 2]);
+}
