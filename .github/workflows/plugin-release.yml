@@ -199,12 +199,19 @@ jobs:
       # Spec 0065 §69 (plan 0115 R13) — the plugin's NON-BUILT files, hashed from the tagged
       # checkout before any dependency installs. `Package ZIP` (in the `release` job, below)
       # stores `baram-plugin.json` and `README.md` from the checkout UNCHANGED — only `dist` is
-      # built — so these hashes anchor exactly the bytes that end up in the published archive, the
-      # same way `dir`/`version`/`plugin_id` above anchor the declared fields. True only together
-      # with `publish`'s entry-list check (plan 0115 N1): that check admits no alias of either
-      # name, so the member these hashes are read against and the member the app installs are
-      # provably the same archive entry. `publish` holds the archive's own copies of these two
-      # files to the hashes recorded here.
+      # built — and `publish` holds the archive's copies of these two files, as `unzip` reads
+      # them, to the hashes recorded here, the same way `dir`/`version`/`plugin_id` above anchor
+      # the declared fields. That the app installs those same two members is a claim about two
+      # zip parsers. `publish`'s entry list (plan 0115 N1) and extra-field allowlist (R19) make
+      # the names `unzip` lists the names the app's `zip` crate installs for the divergences
+      # known so far — path aliases, case, the Unicode Path and Zip64 extra fields — not for
+      # every disagreement two zip parsers can have: which end-of-central-directory record each
+      # picks is one left open. Where they still disagree, the app's install re-checks the
+      # manifest's capabilities and trust against the consent built from the registry entry
+      # (`install-transaction.ts`), so what a divergence could still change is the README and
+      # the manifest fields the install holds to nothing a meta job anchored — the display text,
+      # and the engines floor, which it checks only against the running app, among them. The
+      # `publish` job's header has the details.
       - name: Record the plugin's tagged files
         id: plugin_files
         env:
@@ -706,11 +713,26 @@ jobs:
   # to plugin-meta's `manifest_sha256`/`readme_sha256`, hashed from the tagged checkout before any
   # install), a theme's recorded checksum, and the index are all held to what a meta job verified
   # (where no third-party code ran) and to the live registry. A compromised build can then change
-  # only this release's own entry, and — for a plugin — only the bytes inside its built `dist`:
-  # every other entry's NAME is restricted to exactly `baram-plugin.json`, `README.md` or a path
-  # under `dist/` (plan 0115 N1's entry-list check, which also refuses a second or aliased spelling
-  # of either named member), and the two named members' BYTES are anchored to what a meta job read
-  # before the build ran (spec 0065 §2).
+  # only this release's own entry. For a plugin, the archive holds `baram-plugin.json` exactly
+  # once, `README.md` once if plugin-meta recorded one and never otherwise, and every other name
+  # is a path under `dist/` (plan 0115 N1's entry-list check); the bytes `unzip` reads for those
+  # two names are the bytes a meta job read before the build ran (spec 0065 §2).
+  #
+  # Those are `unzip`'s names. The app installs with Rust's `zip` crate, and the two parsers can
+  # disagree. The entry list (N1) and the extra-field allowlist (R19) make the names `unzip`
+  # lists the names the crate installs for the divergences known so far: path aliases (`./`, a
+  # `.` or `..` segment, a backslash), case, and the Unicode Path and Zip64 extra fields. They
+  # do not exclude every disagreement two zip parsers can have. The known one left open is which
+  # end-of-central-directory record each picks, which the community gate refuses (`tailProblem`
+  # in scripts/community-zip.ts). Nor are Windows path aliases under `dist/` refused here (a
+  # segment that ends in `.` or a space, an 8.3 short name; that gate refuses them in
+  # `unsafeName`); whether one can reach a root name on Windows has not been measured. Where the
+  # two still disagree, the app's install (`install-transaction.ts`) re-checks the staged
+  # manifest's id against the registry entry, its capabilities and trust against the consent
+  # built from that entry, and its engines floor only against the running app. So what such a
+  # divergence could still change is the README and every manifest field the install holds to
+  # nothing a meta job anchored — the display text (`name`, `description`, …) and the engines
+  # floor among them — beside the built `dist`, which nothing anchors.
   #
   # `success()` cannot gate this job: one tag shape's meta and build are always skipped, and a
   # skipped dependency fails `success()`. So the condition is spelled out.
@@ -872,7 +894,8 @@ jobs:
             done < "$ENTRIES"
             # `grep -c` exits 1 (not 0) on zero matches — under this step's `-e` that would abort
             # the assignment itself, silently, before the count is even compared. `|| true` keeps
-            # the count (grep still prints it) without losing the comparison below to it.
+            # the count (grep still prints it) without losing the comparison below to it. No archive
+            # reaches the manifest count with zero copies: ② above stops it at `unzip -p`.
             MANIFEST_COUNT="$(grep -Fxc 'baram-plugin.json' "$ENTRIES" || true)"
             [[ "$MANIFEST_COUNT" == "1" ]] \
               || fail "the archive has baram-plugin.json $MANIFEST_COUNT times, not exactly once"
@@ -889,6 +912,91 @@ jobs:
             LOWER_DUPES="$(tr '[:upper:]' '[:lower:]' < "$ENTRIES" | sort | uniq -d)"
             [[ -z "$LOWER_DUPES" ]] \
               || fail "the archive has entries that collide when lowercased: $(echo "$LOWER_DUPES" | tr '\n' ' ')"
+
+            # Plan 0115 R19 — the EXTRA FIELDS of the central directory. The names checked above are
+            # the names `unzip` lists, but the app's `zip` crate 8.6.0 renames an entry whose
+            # central extra field holds an Info-ZIP Unicode Path record (0x7075) with the raw
+            # name's CRC, whatever that record's version byte says. `unzip` never applies the
+            # record when built without UNICODE_SUPPORT (macOS) and ignores it above version 1 when
+            # built with it (Debian's package, which ubuntu-24.04's unzip comes from) — so
+            # `dist/x` above could install as `baram-plugin.json` over the hashed manifest. The
+            # crate names entries from the CENTRAL header only (scripts/community-zip.ts,
+            # `extraFieldProblem`: `find_data_start` reads only the local header's lengths; plan
+            # 0115 R19 measured it too — a 0x7075 record in the local header alone renames
+            # nothing), and `unzip -Zv` lists the central header's records.
+            #
+            # An ALLOWLIST, the same one community gate 6 holds (`ALLOWED_EXTRA_FIELDS` in
+            # scripts/community-zip.ts): 0x5455 and 0x7875, the two records a plain `zip -r`
+            # writes. Every other id is refused, 0x7075, 0x6375 (Unicode Comment) and 0x0001 (Zip64)
+            # among them. The listed records must also account for each entry's whole extra field —
+            # that gate's truncation rule. Bytes left over after the last record end zipinfo's
+            # listing silently, so the sum comes up short. A record that runs past the field is
+            # listed cut to the bytes that remain, with zipinfo's complaint on stderr and exit 0
+            # (measured), so stderr must also be empty.
+            #
+            # Its own command, not inside `$(…)`; the `|| fail` is there because stderr goes to a
+            # file, and a bare `-e` abort would then print nothing.
+            ZINFO="$RUNNER_TEMP/zip-extra-fields"
+            ZINFO_ERR="$RUNNER_TEMP/zip-extra-fields.stderr"
+            unzip -Zv "$A/plugins/$ZIP_NAME" > "$ZINFO" 2> "$ZINFO_ERR" \
+              || fail "unzip -Zv could not read the archive: $(tr '\n' ' ' < "$ZINFO_ERR")"
+            # The loop below names entry #N by line N of $ENTRIES, so the two listings must
+            # describe the same entries; both walk the central directory in its order. zipinfo
+            # prints an entry's comment and the archive's comment verbatim (measured), so a comment
+            # can ADD lines shaped like the ones read below but not remove zipinfo's own: an added
+            # header fails this count; a second length line, or a length or record line before the
+            # first entry, is refused; an added record line fails the allowlist or overshoots the
+            # sum — it adds at least 4 bytes, and a listing that stops early is 1 to 3 bytes short
+            # (zipinfo lists records while 4 or more bytes remain).
+            ZV_COUNT="$(grep -c '^Central directory entry #' "$ZINFO" || true)"
+            Z1_COUNT="$(grep -c '' "$ENTRIES" || true)"
+            [[ -n "$ZV_COUNT" && "$ZV_COUNT" == "$Z1_COUNT" ]] \
+              || fail "unzip -Zv lists '$ZV_COUNT' central directory entries but unzip -Z1 listed '$Z1_COUNT'"
+            ENTRY_RE='^Central directory entry #[0-9]+:$'
+            XLEN_RE='^  length of extra field: +([0-9]+) bytes$'
+            FIELD_RE='^  - A subfield with ID 0x([0-9a-f]{4}) \(.*\) and ([0-9]+) data bytes'
+            entry_no=0
+            # Judges entry #$entry_no once its listing has ended. Both unzips named above print the
+            # length line for every entry, "0 bytes" when there is no extra field (zipinfo.c
+            # prints it unconditionally; measured on both), so a listing without it is refused
+            # rather than read as 0, which would let a change in that line's format pass unseen.
+            end_entry() {
+              [[ "$entry_no" -gt 0 ]] || return 0
+              local name
+              name="$(sed -n "${entry_no}p" "$ENTRIES")"
+              [[ -n "$xlen" ]] \
+                || fail "unzip -Zv listed no extra-field length for the archive entry '$name'"
+              [[ "$listed" == "$xlen" ]] \
+                || fail "the archive entry '$name' has an extra field of $xlen bytes but its listed records cover $listed — a truncated or malformed extra field"
+            }
+            while IFS= read -r line || [[ -n "$line" ]]; do
+              if [[ $line =~ $ENTRY_RE ]]; then
+                end_entry
+                entry_no=$((entry_no + 1))
+                xlen=""
+                listed=0
+              elif [[ $line =~ $XLEN_RE ]]; then
+                length="${BASH_REMATCH[1]}"
+                [[ "$entry_no" -gt 0 && -z "$xlen" ]] \
+                  || fail "unzip -Zv listed an extra-field length outside one entry's listing: '$line'"
+                xlen="$length"
+              elif [[ $line =~ $FIELD_RE ]]; then
+                field_id="${BASH_REMATCH[1]}"
+                field_len="${BASH_REMATCH[2]}"
+                [[ "$entry_no" -gt 0 ]] \
+                  || fail "unzip -Zv listed an extra-field record before any entry: '$line'"
+                case "$field_id" in
+                  5455 | 7875) ;;
+                  *) fail "the archive entry '$(sed -n "${entry_no}p" "$ENTRIES")' carries extra field 0x$field_id, which a plain zip -r does not write — the app's zip crate and unzip can read such a field differently" ;;
+                esac
+                listed=$((listed + 4 + field_len))
+              fi
+            done < "$ZINFO"
+            end_entry
+            [[ "$entry_no" == "$Z1_COUNT" ]] \
+              || fail "unzip -Zv listed $entry_no entries in the form this check reads, not $Z1_COUNT"
+            [[ ! -s "$ZINFO_ERR" ]] \
+              || fail "unzip -Zv reported a problem with the archive: $(tr '\n' ' ' < "$ZINFO_ERR")"
           fi
 
           # Plan 0115 F1 (R13) — a plugin's NON-BUILT files, anchored to the exact bytes
@@ -910,6 +1018,8 @@ jobs:
             if unzip -p "$A/plugins/$ZIP_NAME" README.md > "$ZIP_README" 2>/dev/null; then
               HAS_ZIP_README=1
             fi
+            # N1's README count above runs first and has already settled whether README.md is
+            # listed; the two presence checks below stay as these hash checks' own guard.
             if [[ -n "$README_SHA256" ]]; then
               [[ "$HAS_ZIP_README" == "1" ]] \
                 || fail "plugin-meta recorded a README but the archive has none"

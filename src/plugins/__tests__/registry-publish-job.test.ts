@@ -4,6 +4,8 @@
 //
 // ‼️ 로컬 macOS 의 `bash` 는 3.2 다 — 이 파일이 실행하는 워크플로 스크립트도 그 문법 안에 머문다.
 // 매니페스트는 이 파일 안에 적는다 — `examples/` 를 읽지 않는다(계획 0115 P10).
+import type { ZipWriterAddDataOptions } from "@zip.js/zip.js";
+
 import {
   configure,
   TextReader,
@@ -26,6 +28,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { crc32 } from "node:zlib";
 import { describe, expect, it } from "vitest";
 
 configure({ useWebWorkers: false });
@@ -138,22 +141,122 @@ async function zipOf(files: Record<string, string>): Promise<Buffer> {
 
 /**
  * N1 (ruling R18) — entries added IN ORDER, as an array rather than a `Record` so a test can add
- * a second entry under a name already present (zip.js itself refuses a literal repeat — see the
- * fix report) and so a directory entry (`null` content) can be added explicitly, the way `zip -r`
- * adds `dist/` for a real `dist` directory.
+ * an entry whose name aliases one already present, and so a directory entry (`null` content) can
+ * be added explicitly, the way `zip -r` adds `dist/` for a real `dist` directory. zip.js refuses a
+ * literal repeat of a name (`File already exists`); a real duplicate is built by adding a
+ * same-length placeholder and renaming it afterwards with `renameEntry` (plan 0115 R19-3). The
+ * optional third element is passed to zip.js's `add` — R19's extra-field fixtures use it — and
+ * `comment` becomes the archive's comment.
  */
 async function zipOfEntries(
-  entries: readonly (readonly [string, null | string])[],
+  entries: readonly ZipEntry[],
+  comment?: string,
 ): Promise<Buffer> {
   const writer = new ZipWriter(new Uint8ArrayWriter());
-  for (const [name, text] of entries) {
+  for (const [name, text, options] of entries) {
     if (text === null) {
-      await writer.add(name, undefined, { directory: true });
+      await writer.add(name, undefined, { ...options, directory: true });
     } else {
-      await writer.add(name, new TextReader(text));
+      await writer.add(name, new TextReader(text), options);
     }
   }
-  return Buffer.from(await writer.close());
+  return Buffer.from(
+    await writer.close(
+      comment === undefined ? undefined : new Uint8Array(Buffer.from(comment)),
+    ),
+  );
+}
+
+/** One archive entry for `zipOfEntries`: name, text (`null` → a directory), zip.js `add` options. */
+type ZipEntry = readonly [
+  name: string,
+  text: null | string,
+  options?: ZipWriterAddDataOptions,
+];
+
+/**
+ * R19 — the offset of `name`'s CENTRAL directory record, found by walking the records from the
+ * offset the end record states (not by searching for a signature, which entry data could contain).
+ */
+function centralRecordOf(zip: Buffer, name: string): number {
+  const end = zip.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+  if (end < 0) throw new Error("no end-of-central-directory record");
+  let at = zip.readUInt32LE(end + 16);
+  for (let i = zip.readUInt16LE(end + 10); i > 0; i--) {
+    if (zip.readUInt32LE(at) !== 0x02014b50) {
+      throw new Error(`no central directory record at ${at}`);
+    }
+    const nameLength = zip.readUInt16LE(at + 28);
+    if (zip.toString("latin1", at + 46, at + 46 + nameLength) === name) {
+      return at;
+    }
+    at +=
+      46 + nameLength + zip.readUInt16LE(at + 30) + zip.readUInt16LE(at + 32);
+  }
+  throw new Error(`no central directory record named ${name}`);
+}
+
+/**
+ * R19-3 — gives `from` the same-length name `to` in BOTH its local header and its central
+ * directory record. zip.js will not write one name twice, so a duplicate is a placeholder renamed
+ * here; the CRC covers only the data, so the renamed archive still reads.
+ */
+function renameEntry(zip: Buffer, from: string, to: string): Buffer {
+  if (from.length !== to.length) throw new Error("the names differ in length");
+  const out = Buffer.from(zip);
+  const central = centralRecordOf(out, from);
+  const local = out.readUInt32LE(central + 42);
+  if (out.toString("latin1", local + 30, local + 30 + from.length) !== from) {
+    throw new Error(`the local header at ${local} is not ${from}`);
+  }
+  out.write(to, central + 46, "latin1");
+  out.write(to, local + 30, "latin1");
+  return out;
+}
+
+/**
+ * R19 — rewrites the declared length of the extra-field record `id` in `name`'s CENTRAL directory
+ * record, leaving the field's total length alone: a larger value makes the record run past the
+ * field, a smaller one leaves bytes after it.
+ */
+function resizeCentralExtra(
+  zip: Buffer,
+  name: string,
+  id: number,
+  resize: (length: number) => number,
+): Buffer {
+  const out = Buffer.from(zip);
+  const central = centralRecordOf(out, name);
+  const start = central + 46 + out.readUInt16LE(central + 28);
+  const end = start + out.readUInt16LE(central + 30);
+  for (let at = start; at + 4 <= end; at += 4 + out.readUInt16LE(at + 2)) {
+    if (out.readUInt16LE(at) === id) {
+      out.writeUInt16LE(resize(out.readUInt16LE(at + 2)), at + 2);
+      return out;
+    }
+  }
+  throw new Error(`${name} has no extra field 0x${id.toString(16)}`);
+}
+
+/**
+ * R19 — the data of an Info-ZIP Unicode Path extra field (0x7075): a version byte, the CRC-32 of
+ * the entry's raw name, and the name the field substitutes for it. The app's `zip` crate 8.6.0
+ * applies it whatever the version byte says (`UnicodeExtraField::try_from_reader` reads the byte
+ * and discards it). Debian's unzip 6.0 (built with UNICODE_SUPPORT) warns on a version above 1
+ * and keeps the raw name; macOS's `/usr/bin/unzip` (built without it) never applies the field.
+ */
+function unicodePath(
+  rawName: string,
+  name: string,
+  version: number,
+): Uint8Array {
+  const head = Buffer.alloc(5);
+  head.writeUInt8(version, 0);
+  head.writeUInt32LE(crc32(rawName), 1);
+  // A plain `Uint8Array`, not the `Buffer` itself: zip.js checks `instanceof Uint8Array`, and in
+  // this suite's jsdom environment a Node `Buffer` fails that check ("Invalid extra field data" —
+  // measured).
+  return new Uint8Array(Buffer.concat([head, Buffer.from(name)]));
 }
 
 const sha256 = (bytes: Buffer) =>
@@ -179,18 +282,26 @@ async function fixture(
     /** N1 (ruling R18) — extra entries appended to the plugin archive VERBATIM, after the
      * honest manifest/README/dist entries: a `null` content makes a directory entry. For the
      * entry-list refusal tests only; plugin archives only (themes carry no such check). */
-    extraZipEntries?: readonly (readonly [string, null | string])[];
+    extraZipEntries?: readonly ZipEntry[];
     manifest?: Record<string, unknown>;
     manifestPath?: string;
     manifestText?: string;
     /** meta 가 기록했다고 치는 값(R13) — 생략 시 `readme` 를 따른다. `readme: true, metaReadme:
      * false` 로 "meta 는 기록하지 않았는데 아카이브에 있다" 를 짓는다. */
     metaReadme?: boolean;
+    /** R19 — 다 지은 아카이브의 바이트를 고친다(쓰고 해시하기 전에): 같은 이름의 두 번째 항목,
+     * 길이가 어긋난 확장 필드처럼 zip.js 가 쓰지 않는 모양을 짓는다. */
+    patchZip?: (zip: Buffer) => Buffer;
     readme?: boolean;
     /** 아카이브(zip) 안의 README.md 내용 — 생략 시 솔직한 내용. */
     readmeText?: string;
     /** 스테이지된 `readme/<id>-<version>.md` 의 내용 — 생략 시 솔직한 내용. */
     stagedReadmeText?: string;
+    /** R19 — 모든 항목에 Info-ZIP UID/GID 필드(0x7875)도 싣는다: zip.js 가 기본 옵션으로 쓰는
+     * 확장 타임스탬프(0x5455)와 함께 `zip -r` 이 항목마다 쓰는 두 필드가 된다. */
+    uidGid?: boolean;
+    /** R19 — 아카이브 전체의 주석. */
+    zipComment?: string;
   } = {},
 ): Promise<Fixture> {
   const runnerTemp = mkdtempSync(join(tmpdir(), "baram-publish-"));
@@ -219,22 +330,27 @@ async function fixture(
   // real `dist` directory) and `dist/index.mjs` alongside the two named members; the honest
   // fixture now does too, so the accept-path cases below also prove the archive's entry-list
   // check admits a real plugin archive, not just a two-file stub.
-  const entries: Array<readonly [string, null | string]> = [
+  const honest: ZipWriterAddDataOptions = opts.uidGid
+    ? { gid: 20, uid: 501 }
+    : {};
+  const entries: ZipEntry[] = [
     [
       manifestZipPath,
       opts.manifestText ?? `${JSON.stringify(zipManifest, null, 2)}\n`,
+      honest,
     ],
   ];
   if (opts.readme)
-    entries.push(["README.md", opts.readmeText ?? HONEST_README]);
+    entries.push(["README.md", opts.readmeText ?? HONEST_README, honest]);
   if (kind === "plugin") {
     entries.push(
-      ["dist/", null],
-      ["dist/index.mjs", "export async function activate() {}\n"],
+      ["dist/", null, honest],
+      ["dist/index.mjs", "export async function activate() {}\n", honest],
     );
   }
   if (opts.extraZipEntries) entries.push(...opts.extraZipEntries);
-  const zip = await zipOfEntries(entries);
+  const built = await zipOfEntries(entries, opts.zipComment);
+  const zip = opts.patchZip ? opts.patchZip(built) : built;
   writeFileSync(join(release, "plugins", zipName), zip);
   const checksum = sha256(zip);
 
@@ -679,20 +795,200 @@ describe("publish — artifact 를 meta 가 검증한 것에 묶는다", () => {
       expect(output).toContain("notes.txt");
     });
 
-    // zip.js 는 같은 이름의 두 번째 항목을 거부한다(`ZipWriter.add` 가 내부 `filenames` Set 으로
-    // 지키며, 우회 옵션이 없다 — 실측). 그래서 "baram-plugin.json 이 정말 두 번" 인 아카이브는 이
-    // 시험 도구로 지을 수 없다: 생략한다(ruling 이 "zip.js 가 그 이름을 지을 수 없으면 생략해도
-    // 된다" 고 허용한 경우와 같은 결의 제약 — 중복은 단순 정규화가 아니라 하드 리젝트다).
-    //
-    // 실측(2026-10-03, /tmp 스크립트): `writer.add("baram-plugin.json", …)` 를 두 번 부르면
-    // `Error: File already exists` 를 던진다 — 이 하드 리젝트가 실은 또 하나의 방어선이다: 시스템
-    // `python3 zipfile` 로 억지로 두 번 넣은 아카이브에서는 `unzip -p` 가 두 항목의 바이트를
-    // 이어 붙여 내놓고, 그 결과가 jq 의 `length == 1` 스트림 검사(M2, 이 단계 ② 의 기존 관문)에
-    // 걸려 거부된다 — N1 의 카운트 검사가 아니라 그보다 앞선 기존 관문이 이미 잡는다는 뜻이다.
+    // 계획 0115 R19-3 · R19-4 — 같은 이름이 정말 두 번인 아카이브. zip.js 는 같은 이름을 두 번
+    // 받지 않으므로(`File already exists`) 같은 길이의 자리표시 이름으로 지은 뒤 로컬 헤더와 중앙
+    // 디렉터리 둘 다에서 이름을 바꾼다(`renameEntry`). `unzip -p` 는 같은 이름의 항목을 모두 이어
+    // 붙여 내놓는다 — 그래서 둘째가 빈 파일이면 이어 붙인 바이트가 솔직한 것과 같아 ② 의 스트림
+    // 검사(M2)도 해시 대조도 통과하고, 거부하는 것은 항목 목록의 카운트 하나다. 무엇이 이것을
+    // 실패시키는가: 카운트 검사를 지우면 — 대소문자 충돌 검사가 대신 거부해 메시지가 달라진다.
+    it("baram-plugin.json 이 두 번이고 둘째가 빈 파일이면 — 매니페스트 카운트가 거부한다", async () => {
+      const f = await fixture("plugin", {
+        extraZipEntries: [["baram-plugin.jsoX", ""]],
+        patchZip: (zip) =>
+          renameEntry(zip, "baram-plugin.jsoX", "baram-plugin.json"),
+      });
+      const { output, status } = runStep(ARTIFACT_STEP, f);
+      expect(status).not.toBe(0);
+      expect(output).toContain(
+        "the archive has baram-plugin.json 2 times, not exactly once",
+      );
+    });
+
+    // 둘째가 넓힌 매니페스트면 이어 붙인 바이트가 JSON 값 둘이라 카운트보다 앞선 ② 가 먼저 멈춘다.
+    // 매니페스트가 아예 없는 아카이브도 ② 의 `unzip -p` 가 먼저 멈춘다(위 "매니페스트가 archive
+    // 루트에 없으면 거부한다") — 그래서 카운트의 0 갈래에 닿는 아카이브는 없다.
+    it("baram-plugin.json 이 두 번이고 둘째가 넓힌 매니페스트면 — ② 의 스트림 검사가 거부한다", async () => {
+      const widened = {
+        ...PLUGIN_MANIFEST,
+        capabilities: [...PLUGIN_MANIFEST.capabilities, "network"],
+      };
+      const f = await fixture("plugin", {
+        extraZipEntries: [
+          ["baram-plugin.jsoX", `${JSON.stringify(widened, null, 2)}\n`],
+        ],
+        patchZip: (zip) =>
+          renameEntry(zip, "baram-plugin.jsoX", "baram-plugin.json"),
+      });
+      const { output, status } = runStep(ARTIFACT_STEP, f);
+      expect(status).not.toBe(0);
+      expect(output).toContain(
+        "the archive's baram-plugin.json is not a single JSON object",
+      );
+    });
+
+    // 무엇이 이것을 실패시키는가: README 카운트의 "기록했으면 꼭 한 번" 갈래를 지우면 — 뒤의
+    // 해시 대조 앞 존재 검사가 다른 메시지로 거부한다.
+    it("plugin-meta 가 README 를 기록했는데 아카이브에 없으면 — README 카운트가 거부한다", async () => {
+      const f = await fixture("plugin", { metaReadme: true });
+      const { output, status } = runStep(ARTIFACT_STEP, f);
+      expect(status).not.toBe(0);
+      expect(output).toContain(
+        "the archive has README.md 0 times, not exactly once",
+      );
+    });
+
+    it("README.md 가 두 번이고 둘째가 빈 파일이면 — README 카운트가 거부한다", async () => {
+      const f = await fixture("plugin", {
+        extraZipEntries: [["README.mX", ""]],
+        patchZip: (zip) => renameEntry(zip, "README.mX", "README.md"),
+        readme: true,
+      });
+      const { output, status } = runStep(ARTIFACT_STEP, f);
+      expect(status).not.toBe(0);
+      expect(output).toContain(
+        "the archive has README.md 2 times, not exactly once",
+      );
+    });
+
+    // 루트의 두 이름은 대소문자를 구분하는 허용 목록이 먼저 거른다 — 이 검사가 혼자 지키는 것은
+    // `dist/` 아래의 대소문자 충돌이다. 무엇이 이것을 실패시키는가: 충돌 검사를 지우면 통과한다.
+    it("dist/a.js 와 dist/A.js 는 소문자로 겹쳐 거부한다", async () => {
+      const f = await fixture("plugin", {
+        extraZipEntries: [
+          ["dist/a.js", "a\n"],
+          ["dist/A.js", "b\n"],
+        ],
+      });
+      const { output, status } = runStep(ARTIFACT_STEP, f);
+      expect(status).not.toBe(0);
+      expect(output).toContain(
+        "the archive has entries that collide when lowercased: dist/a.js",
+      );
+    });
 
     // N1 (ruling R18) — 솔직한 아카이브가 `dist/` 디렉터리 항목과 `dist/index.mjs` 를 실어도
     // 통과한다: 이미 있는 "플러그인, README 있음/없음" 통과 케이스가 `fixture()` 에 더한 그 두
     // 항목으로 다시 돈다 — 새 시험을 더하지 않는다.
+  });
+
+  // 계획 0115 R19 — 항목 목록(R18)이 보는 이름은 `unzip` 이 목록에 올리는 이름이지만, 앱의 `zip` crate 8.6.0
+  // 은 중앙 디렉터리 확장 필드의 Info-ZIP Unicode Path(0x7075)가 있으면 그 이름을 쓴다(버전 바이트는
+  // 보지 않는다). `unzip` 은 그 필드를 무시하거나(macOS, UNICODE_SUPPORT 없음) 버전이 1 을 넘으면
+  // 무시한다(Debian) — 그래서 `dist/x` 로 목록에 오른 항목이 앱에서는 `baram-plugin.json` 으로 풀려
+  // 솔직한 매니페스트를 덮었다. 이 파일이 기본 옵션으로 짓는 항목(파일 · 디렉터리)에 zip.js 2.18.2 가
+  // 쓰는 중앙 디렉터리 확장 필드는 0x5455 하나다(`unzip -Zv` 로 실측) — 허용 목록 안이라 솔직한
+  // 픽스처를 위해 zip.js 를 따로 설정하지 않는다.
+  describe("R19 — 중앙 디렉터리의 확장 필드", () => {
+    // 무엇이 이것을 실패시키는가: 허용 목록에서 0x7875 를 빼면 — `zip -r` 이 항목마다 쓰는 필드다.
+    it("zip -r 처럼 모든 항목에 0x5455 · 0x7875 를 실은 솔직한 아카이브는 통과한다", async () => {
+      const f = await fixture("plugin", { readme: true, uidGid: true });
+      const { output, outputs, status } = runStep(ARTIFACT_STEP, f);
+      expect(status, output).toBe(0);
+      expect(outputs).toContain(`checksum=${f.env.CHECKSUM}\n`);
+    });
+
+    const widened = `${JSON.stringify(
+      { ...PLUGIN_MANIFEST, capabilities: ["everything"] },
+      null,
+      2,
+    )}\n`;
+    it.each([
+      [
+        "dist/x 의 0x7075(버전 2)가 baram-plugin.json 이라고 말하면",
+        [
+          "dist/x",
+          widened,
+          {
+            extraField: new Map([
+              [0x7075, unicodePath("dist/x", "baram-plugin.json", 2)],
+            ]),
+          },
+        ] as const,
+        "0x7075",
+      ],
+      [
+        "README 를 기록하지 않았는데 dist/r 의 0x7075(버전 2)가 README.md 라고 말하면",
+        [
+          "dist/r",
+          "# not the anchored README\n",
+          {
+            extraField: new Map([
+              [0x7075, unicodePath("dist/r", "README.md", 2)],
+            ]),
+          },
+        ] as const,
+        "0x7075",
+      ],
+      [
+        "0x6375(Unicode Comment)가 있으면",
+        [
+          "dist/c.js",
+          "c\n",
+          { extraField: new Map([[0x6375, unicodePath("", "c", 1)]]) },
+        ] as const,
+        "0x6375",
+      ],
+      [
+        "0x0001(zip64)이 있으면",
+        ["dist/big.js", "b\n", { zip64: true }] as const,
+        "0x0001",
+      ],
+    ])("%s 거부한다", async (_, extra, id) => {
+      const f = await fixture("plugin", { extraZipEntries: [extra] });
+      const { output, status } = runStep(ARTIFACT_STEP, f);
+      expect(status).not.toBe(0);
+      expect(output).toContain(
+        `the archive entry '${extra[0]}' carries extra field ${id}`,
+      );
+    });
+
+    // 레코드가 필드 끝을 넘으면 zipinfo 는 그 레코드를 남은 길이로 잘라 적고 경고를 stderr 에만 쓴다
+    // (실측 — 종료 코드 0) — 그래서 바이트 합계는 맞고, stderr 검사가 거부한다. 마지막 레코드 뒤에
+    // 4 바이트가 안 되는 나머지가 남으면 zipinfo 는 조용히 목록을 멈춘다 — 바이트 합계가 거부한다.
+    it.each([
+      ["필드 끝을 3 바이트 넘으면", 3, "unzip -Zv reported a problem"],
+      [
+        "필드 끝에 2 바이트를 남기면",
+        -2,
+        "the archive entry 'dist/t.js' has an extra field of",
+      ],
+    ])(
+      "dist/t.js 의 0x7875 레코드가 %s 거부한다",
+      async (_, delta, message) => {
+        const f = await fixture("plugin", {
+          extraZipEntries: [["dist/t.js", "t\n", { gid: 20, uid: 501 }]],
+          patchZip: (zip) =>
+            resizeCentralExtra(zip, "dist/t.js", 0x7875, (n) => n + delta),
+        });
+        const { output, status } = runStep(ARTIFACT_STEP, f);
+        expect(status).not.toBe(0);
+        expect(output).toContain(message);
+      },
+    );
+
+    // zipinfo 는 아카이브 주석을 날것 그대로 찍는다(실측) — 주석 속 "Central directory entry #1:" 줄은
+    // 목록에 항목 머리를 하나 더한다. 무엇이 이것을 실패시키는가: 두 목록의 항목 수 대조를 지우면 —
+    // 아래 루프가 그 가짜 항목을 길이 줄 없음으로 대신 거부해 메시지가 달라진다.
+    it("unzip -Zv 의 항목 수가 unzip -Z1 의 줄 수와 다르면 거부한다", async () => {
+      const f = await fixture("plugin", {
+        zipComment: "note\nCentral directory entry #1:\n",
+      });
+      const { output, status } = runStep(ARTIFACT_STEP, f);
+      expect(status).not.toBe(0);
+      expect(output).toContain(
+        "unzip -Zv lists '4' central directory entries but unzip -Z1 listed '3'",
+      );
+    });
   });
 
   // 무엇이 이것을 실패시키는가: 빈 값 관문이 없으면 — 빈 등급은 등급 없는 매니페스트와, 빈 기록은
