@@ -128,7 +128,7 @@ function runTagStep(opts: {
   };
 }
 
-describe("release-theme — 태그 단계를 실행한다", () => {
+describe("theme-meta — 태그 단계를 실행한다", () => {
   it("허용된 디렉터리를 통과시키고, 그 디렉터리의 id 를 함께 내보낸다", () => {
     const { outputs, status } = runTagStep({ tag: "theme-hangul-v1.0.0" });
     expect(status).toBe(0);
@@ -374,6 +374,34 @@ describe("release-theme — 실행할 수 없는 배선", () => {
     expect(uses).toEqual([
       "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
     ]);
+  });
+
+  // 계획 0115 F6 — 위는 거부 목록(설치 도구가 없다)이라 세 번째 단계가 더해져도 통과한다. 여기는
+  // 각 meta 잡의 단계 목록을 이름과 순서까지 통째로 고정한다 — `publish` 잡에 쓴 것과 같은 장치
+  // (`registry-publish-job.test.ts` 의 "publish 잡의 단계는 이 다섯뿐이다"). 단계를 더하거나 빼는
+  // 것은 이 시험을 고쳐서 받아들이는 결정이다.
+  it.each([
+    [
+      "plugin-meta",
+      [
+        "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1",
+        "Parse and verify tag",
+        "Record the plugin's tagged files",
+      ],
+    ],
+    [
+      "theme-meta",
+      [
+        "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1",
+        "Parse and verify the theme tag",
+        RECORD_STEP,
+      ],
+    ],
+  ] as const)("%s 의 단계는 이 셋뿐이다 — 이름과 순서까지", (job, expected) => {
+    const steps = [
+      ...jobText(job).matchAll(/\n {6}- (?:uses|name): (.+)/g),
+    ].map((m) => m[1]);
+    expect(steps).toEqual(expected);
   });
 
   // 무엇이 이것을 실패시키는가: 기록을 태그 단계 앞에서 읽거나, 대조를 checksum 계산 앞이나 색인

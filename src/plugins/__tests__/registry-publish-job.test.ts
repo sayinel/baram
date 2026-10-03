@@ -143,6 +143,9 @@ async function zipOf(files: Record<string, string>): Promise<Buffer> {
 const sha256 = (bytes: Buffer) =>
   createHash("sha256").update(bytes).digest("hex");
 
+/** 플러그인 README 의 솔직한(honest) 내용 — `readme: true` 일 때 plugin-meta 가 태그에서 읽는 것. */
+const HONEST_README = "# Word Count\n";
+
 interface Fixture {
   env: Record<string, string>;
   release: string;
@@ -160,7 +163,14 @@ async function fixture(
     manifest?: Record<string, unknown>;
     manifestPath?: string;
     manifestText?: string;
+    /** meta 가 기록했다고 치는 값(R13) — 생략 시 `readme` 를 따른다. `readme: true, metaReadme:
+     * false` 로 "meta 는 기록하지 않았는데 아카이브에 있다" 를 짓는다. */
+    metaReadme?: boolean;
     readme?: boolean;
+    /** 아카이브(zip) 안의 README.md 내용 — 생략 시 솔직한 내용. */
+    readmeText?: string;
+    /** 스테이지된 `readme/<id>-<version>.md` 의 내용 — 생략 시 솔직한 내용. */
+    stagedReadmeText?: string;
   } = {},
 ): Promise<Fixture> {
   const runnerTemp = mkdtempSync(join(tmpdir(), "baram-publish-"));
@@ -189,7 +199,7 @@ async function fixture(
     [manifestZipPath]:
       opts.manifestText ?? `${JSON.stringify(zipManifest, null, 2)}\n`,
   };
-  if (opts.readme) files["README.md"] = "# Word Count\n";
+  if (opts.readme) files["README.md"] = opts.readmeText ?? HONEST_README;
   const zip = await zipOf(files);
   writeFileSync(join(release, "plugins", zipName), zip);
   const checksum = sha256(zip);
@@ -213,7 +223,10 @@ async function fixture(
   ];
   if (opts.readme) {
     mkdirSync(join(release, "readme"));
-    writeFileSync(join(release, "readme", readmeName), "# Word Count\n");
+    writeFileSync(
+      join(release, "readme", readmeName),
+      opts.stagedReadmeText ?? HONEST_README,
+    );
     args.push("--readme-name", readmeName);
   }
   if (kind === "theme") {
@@ -230,6 +243,16 @@ async function fixture(
   const indexed = spawnSync("node", args, { cwd: ROOT, encoding: "utf8" });
   if (indexed.status !== 0) throw new Error(indexed.stderr);
 
+  // Plan 0115 F1 (R13) — the HONEST hashes plugin-meta would have read from the tagged checkout:
+  // of `manifestText` (the real manifest object, independent of whatever `opts.manifest` /
+  // `opts.manifestText` puts INSIDE the zip for a refusal case) and of the honest README. Empty
+  // for a theme, which plugin-meta never records.
+  const metaHasReadme =
+    kind === "plugin" && (opts.metaReadme ?? opts.readme ?? false);
+  const manifestSha256 =
+    kind === "plugin" ? sha256(Buffer.from(manifestText)) : "";
+  const readmeSha256 = metaHasReadme ? sha256(Buffer.from(HONEST_README)) : "";
+
   return {
     env: {
       BASE_URL,
@@ -237,6 +260,8 @@ async function fixture(
       EXPECTED_TRUST: kind === "plugin" ? PLUGIN_MANIFEST.trust : "",
       ID: manifest.id,
       KIND: kind,
+      MANIFEST_SHA256: manifestSha256,
+      README_SHA256: readmeSha256,
       RECORDED_SHA256: kind === "theme" ? checksum : "",
       VERSION: manifest.version,
       ZIP_NAME: zipName,
@@ -483,6 +508,71 @@ describe("publish — artifact 를 meta 가 검증한 것에 묶는다", () => {
     expect(output).toContain("SHA256SUMS records");
   });
 
+  // 계획 0115 F1(R13) — 플러그인의 NON-BUILT 파일(매니페스트 · README)은 plugin-meta 가 태그에서
+  // 읽은 바이트에 묶인다. 무엇이 이것을 실패시키는가: id·버전·등급은 그대로 두고 용량만 넓히거나
+  // 하한만 낮추면(위 ②는 통과) — 그 변화를 ②는 보지 못한다.
+  it("아카이브의 매니페스트가 plugin-meta 가 읽은 것과 다르면 거부한다 — 용량이 넓어지고 하한이 낮아져도", async () => {
+    const f = await fixture("plugin", {
+      manifest: {
+        ...PLUGIN_MANIFEST,
+        capabilities: [...PLUGIN_MANIFEST.capabilities, "network", "settings"],
+        engines: { baram: ">=0.1.0" },
+      },
+    });
+    const { output, status } = runStep(ARTIFACT_STEP, f);
+    expect(status).not.toBe(0);
+    expect(output).toContain(
+      "the archive's baram-plugin.json is not the manifest plugin-meta read at the tag",
+    );
+  });
+
+  it("아카이브의 README 가 plugin-meta 가 읽은 것과 다르면 거부한다", async () => {
+    const f = await fixture("plugin", {
+      readme: true,
+      readmeText: "# Something else\n",
+    });
+    const { output, status } = runStep(ARTIFACT_STEP, f);
+    expect(status).not.toBe(0);
+    expect(output).toContain(
+      "the archive's README.md is not the README plugin-meta read at the tag",
+    );
+  });
+
+  it("스테이지된 readme/ 파일이 아카이브의 README 와 다르면 거부한다", async () => {
+    const f = await fixture("plugin", {
+      readme: true,
+      stagedReadmeText: "# Something else\n",
+    });
+    const { output, status } = runStep(ARTIFACT_STEP, f);
+    expect(status).not.toBe(0);
+    expect(output).toContain(
+      "the staged readme/baram-word-count-2.1.0.md is not the README plugin-meta read at the tag",
+    );
+  });
+
+  it("plugin-meta 가 README 를 기록하지 않았는데 아카이브에 있으면 거부한다", async () => {
+    const f = await fixture("plugin", { readme: true, metaReadme: false });
+    const { output, status } = runStep(ARTIFACT_STEP, f);
+    expect(status).not.toBe(0);
+    expect(output).toContain(
+      "the archive carries a README.md but plugin-meta recorded none",
+    );
+  });
+
+  it("plugin-meta 가 README 를 기록하지 않았는데 artifact 에 readme/ 파일이 있으면 거부한다", async () => {
+    const f = await fixture("plugin", { readme: false });
+    mkdirSync(join(f.release, "readme"), { recursive: true });
+    writeFileSync(
+      join(f.release, "readme", "baram-word-count-2.1.0.md"),
+      "# stray\n",
+    );
+    const { output, status } = runStep(ARTIFACT_STEP, f);
+    expect(status).not.toBe(0);
+    expect(output).toContain(
+      "the artifact carries readme/baram-word-count-2.1.0.md but plugin-meta recorded no README",
+    );
+  });
+
   // 무엇이 이것을 실패시키는가: 빈 값 관문이 없으면 — 빈 등급은 등급 없는 매니페스트와, 빈 기록은
   // 아무 대조도 하지 않는 것과 같아진다.
   //
@@ -506,6 +596,23 @@ describe("publish — artifact 를 meta 가 검증한 것에 묶는다", () => {
       "theme",
       { RECORDED_SHA256: "" },
       "the recorded checksum did not reach this job",
+    ],
+    // Plan 0115 F1 (R13) — the same empty-value bug guard for the manifest hash, and its
+    // mirror image: a theme job must never receive a plugin-only value at all.
+    [
+      "plugin",
+      { MANIFEST_SHA256: "" },
+      "the manifest hash did not reach this job",
+    ],
+    [
+      "plugin",
+      { MANIFEST_SHA256: "not-a-hash" },
+      "the manifest hash did not reach this job",
+    ],
+    [
+      "theme",
+      { MANIFEST_SHA256: "a".repeat(64) },
+      "a plugin-only value reached this theme job",
     ],
   ] as const)(
     "%s 에 %j 가 닿으면 워크플로의 버그라고 말한다",
@@ -606,6 +713,43 @@ describe("publish — 새 색인을 라이브 색인에 묶는다", () => {
     const f = await fixture(kind, { readme });
     const { output, status } = runStep(COMPARE_STEP, f);
     expect(status, output).toBe(0);
+  });
+
+  // 계획 0115 F4(채택한 권고) — 게시된 아카이브는 바꾸지 않는다, 그런데 그걸 거부하는 관문이 없었다.
+  // 레지스트리의 `validate.yml` 은 pull request 에서 돌고 이 push 에서는 안 돈다 — 그래서 성공한
+  // 릴리스를 그대로 다시 돌리면(재현되지 않는 zip 을 다시 빌드하거나 테마를 다시 패키징해) 이미
+  // 게시된 아카이브를 조용히 덮어썼다.
+  it("이 릴리스의 zip 이 레지스트리에 이미 다른 바이트로 있으면 거부한다", async () => {
+    const f = await fixture("plugin");
+    writeFileSync(
+      join(f.runnerTemp, "registry", "plugins", f.env.ZIP_NAME),
+      "different bytes",
+    );
+    const { output, status } = runStep(COMPARE_STEP, f);
+    expect(status).not.toBe(0);
+    expect(output).toContain("is already published with different bytes");
+  });
+
+  it("이 릴리스의 zip 이 레지스트리에 이미 같은 바이트로 있으면 통과한다", async () => {
+    const f = await fixture("plugin");
+    cpSync(
+      join(f.release, "plugins", f.env.ZIP_NAME),
+      join(f.runnerTemp, "registry", "plugins", f.env.ZIP_NAME),
+    );
+    const { output, status } = runStep(COMPARE_STEP, f);
+    expect(status, output).toBe(0);
+  });
+
+  it("이 릴리스의 README 가 레지스트리에 이미 다른 바이트로 있으면 거부한다", async () => {
+    const f = await fixture("plugin", { readme: true });
+    mkdirSync(join(f.runnerTemp, "registry", "readme"), { recursive: true });
+    writeFileSync(
+      join(f.runnerTemp, "registry", "readme", "baram-word-count-2.1.0.md"),
+      "different\n",
+    );
+    const { output, status } = runStep(COMPARE_STEP, f);
+    expect(status).not.toBe(0);
+    expect(output).toContain("is already published with different bytes");
   });
 
   it("다른 항목을 바꾸면 거부한다", async () => {

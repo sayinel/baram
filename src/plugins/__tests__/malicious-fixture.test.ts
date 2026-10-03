@@ -19,7 +19,14 @@ import type { PluginOp } from "../sandbox/plugin-op";
 import type { PluginManifest, SandboxContext } from "../types";
 
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -318,6 +325,22 @@ function stepScript(stepName: string): string {
     body.push(line.slice(10));
   }
   return body.join("\n");
+}
+
+/**
+ * 한 잡의 본문 — `  <name>:` 줄부터 다음 잡(두 칸 들여쓴 키) 앞까지. `registry-publish-job.test.ts` ·
+ * `theme-release-workflow.test.ts` 와 같은 추출.
+ */
+function jobText(name: string): string {
+  const workflow = readFileSync(
+    resolve(__dirname, "../../../.github/workflows/plugin-release.yml"),
+    "utf8",
+  );
+  const start = workflow.indexOf(`\n  ${name}:\n`);
+  if (start < 0) throw new Error(`no job named ${name}`);
+  const rest = workflow.slice(start + 1);
+  const next = rest.slice(1).search(/\n {2}[\w-]+:\n/);
+  return next < 0 ? rest : rest.slice(0, next + 1);
 }
 
 /**
@@ -846,9 +869,12 @@ describe("the malicious fixture stays a fixture (§260 Phase 6)", () => {
       ).toHaveLength(1);
     }
 
-    // …and this step runs before anything is built. Asserted as STEP ORDER in the workflow, not
-    // as the absence of a string in the script: the first draft of this checked that the script
-    // does not contain "npm ci", which failed the moment a comment in the script mentioned it.
+    // …and this step runs before anything is built. Plan 0115 F5 — FILE ORDER ACROSS JOBS no
+    // longer decides that since spec 0065 split the gate into its own job (`plugin-meta`):
+    // `needs: plugin-meta` on `release` does. Asserted directly below, not just as the absence of
+    // a string in the script: the first draft of this checked that the script does not contain
+    // "npm ci", which failed the moment a comment in the script mentioned it. The file-order
+    // assertion still pins the step order WITHIN plugin-meta, which the split did not change.
     const workflow = readFileSync(
       resolve(__dirname, "../../../.github/workflows/plugin-release.yml"),
       "utf8",
@@ -857,6 +883,7 @@ describe("the malicious fixture stays a fixture (§260 Phase 6)", () => {
     const build = workflow.indexOf("- name: Build plugin");
     expect(meta).toBeGreaterThan(0);
     expect(build).toBeGreaterThan(meta);
+    expect(jobText("release")).toContain("\n    needs: plugin-meta\n");
     // An explicit budget for the same reason the synthetic test above carries one: this now
     // spawns bash twice per allowlist arm, and vitest's 5 s default is not sized for that on a
     // CI runner. It also grows with the allowlist, which is precisely when it must not start
@@ -872,5 +899,109 @@ describe("the malicious fixture stays a fixture (§260 Phase 6)", () => {
     // import that both patterns above miss, and it fails the same way from a blob: URL.
     expect(source).not.toMatch(/^\s*export\b[^;]*\bfrom\s/m);
     expect(source).toMatch(/export async function activate\s*\(/);
+  });
+});
+
+describe("plugin-meta — 태그된 파일을 기록한다 (계획 0115 F1 · R13)", () => {
+  /**
+   * `Record the plugin's tagged files` 단계를 합성 트리에서 돌린다 — 그 단계가 읽는 것은
+   * `examples/plugins/$DIR/baram-plugin.json` 과 같은 폴더의 `README.md` 뿐이다.
+   */
+  function runPluginFilesStep(opts: {
+    dir?: string;
+    manifestContent?: string;
+    readmeContent?: string;
+    symlinkManifest?: boolean;
+    symlinkReadme?: boolean;
+  }): { output: string; outputs: string; status: null | number } {
+    const root = mkdtempSync(join(tmpdir(), "baram-plugin-files-"));
+    const dir = opts.dir ?? "word-count";
+    const pluginDir = join(root, "examples", "plugins", dir);
+    mkdirSync(pluginDir, { recursive: true });
+    const manifestPath = join(pluginDir, "baram-plugin.json");
+    if (opts.manifestContent !== undefined) {
+      if (opts.symlinkManifest) {
+        const real = join(root, "real-manifest.json");
+        writeFileSync(real, opts.manifestContent);
+        symlinkSync(real, manifestPath);
+      } else {
+        writeFileSync(manifestPath, opts.manifestContent);
+      }
+    }
+    if (opts.readmeContent !== undefined) {
+      const readmePath = join(pluginDir, "README.md");
+      if (opts.symlinkReadme) {
+        const real = join(root, "real-readme.md");
+        writeFileSync(real, opts.readmeContent);
+        symlinkSync(real, readmePath);
+      } else {
+        writeFileSync(readmePath, opts.readmeContent);
+      }
+    }
+    const outputPath = join(root, "output");
+    writeFileSync(outputPath, "");
+    const result = spawnSync(
+      "bash",
+      ["-e", "-c", stepScript("Record the plugin's tagged files")],
+      {
+        cwd: root,
+        encoding: "utf8",
+        env: { ...process.env, DIR: dir, GITHUB_OUTPUT: outputPath },
+      },
+    );
+    return {
+      output: result.stderr + result.stdout,
+      outputs: readFileSync(outputPath, "utf8"),
+      status: result.status,
+    };
+  }
+
+  const sha256 = (text: string) =>
+    createHash("sha256").update(text).digest("hex");
+
+  it("둘 다 정규 파일이면 두 해시를 낸다", () => {
+    const manifestContent = '{"id":"baram-word-count"}';
+    const readmeContent = "# hi\n";
+    const { output, outputs, status } = runPluginFilesStep({
+      manifestContent,
+      readmeContent,
+    });
+    expect(status, output).toBe(0);
+    expect(outputs).toContain(`manifest_sha256=${sha256(manifestContent)}\n`);
+    expect(outputs).toContain(`readme_sha256=${sha256(readmeContent)}\n`);
+  });
+
+  it("매니페스트가 없으면 거부한다", () => {
+    const { output, status } = runPluginFilesStep({});
+    expect(status).not.toBe(0);
+    expect(output).toContain("::error::");
+    expect(output).toContain("is missing or is not a regular file");
+  });
+
+  it("매니페스트가 심볼릭 링크면 가리키는 내용이 맞아도 거부한다", () => {
+    const { output, status } = runPluginFilesStep({
+      manifestContent: "{}",
+      symlinkManifest: true,
+    });
+    expect(status).not.toBe(0);
+    expect(output).toContain("is missing or is not a regular file");
+  });
+
+  it("README 가 없으면 readme_sha256 이 빈다", () => {
+    const { output, outputs, status } = runPluginFilesStep({
+      manifestContent: "{}",
+    });
+    expect(status, output).toBe(0);
+    expect(outputs).toContain("readme_sha256=\n");
+  });
+
+  it("README 가 심볼릭 링크면 가리키는 내용이 맞아도 거부한다", () => {
+    const { output, status } = runPluginFilesStep({
+      manifestContent: "{}",
+      readmeContent: "# hi\n",
+      symlinkReadme: true,
+    });
+    expect(status).not.toBe(0);
+    expect(output).toContain("exists but is not a regular file");
   });
 });

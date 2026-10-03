@@ -50,6 +50,8 @@ jobs:
       id: ${{ steps.meta.outputs.plugin_id }}
       expected_trust: ${{ steps.meta.outputs.expected_trust }}
       zip_name: ${{ steps.meta.outputs.zip_name }}
+      manifest_sha256: ${{ steps.plugin_files.outputs.manifest_sha256 }}
+      readme_sha256: ${{ steps.plugin_files.outputs.readme_sha256 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -141,13 +143,14 @@ jobs:
           # package (round-3 LOW plus a defect in the first attempt at this fix):
           #   • `sort -V` is a version-ish string sort, not a semver comparator; it ordered a
           #     prerelease `0.5.0-beta.1` as satisfying a `0.5.0` floor.
-          #   • `require("semver")` would NOT RESOLVE here. No root `npm ci` has run at this
-          #     point in the job — the plugin build installs into the plugin directory, and the
-          #     root install happens later, just before the index is validated — and semver is a
-          #     transitive package rather than a declared dependency in any case. Reading a JSON
-          #     file by relative path needs no node_modules; requiring a package does. ‼️ Do not
-          #     "simplify" this to `require("semver")` on the strength of that later install:
-          #     this step runs first, and the failure would be a raw MODULE_NOT_FOUND.
+          #   • `require("semver")` would NOT RESOLVE here. `plugin-meta` never runs `npm ci` —
+          #     it is the dependency-free job spec 0065 splits out precisely so no install ever
+          #     happens in it, and semver is a transitive package rather than a declared
+          #     dependency in any case. Reading a JSON file by relative path needs no
+          #     node_modules; requiring a package does. ‼️ Do not "simplify" this to
+          #     `require("semver")` on the strength of the `release` job's later install: that
+          #     install runs in a DIFFERENT job, and the failure here would be a raw
+          #     MODULE_NOT_FOUND.
           # A prerelease app version fails closed: `0.5.0-beta.1` is not the release that ships
           # the floor, so it must not authorize publishing against it.
           APP_VERSION="$(node -p "require('./package.json').version")"
@@ -193,6 +196,38 @@ jobs:
             echo "zip_name=$PLUGIN_ID-$VERSION.zip"
           } >> "$GITHUB_OUTPUT"
 
+      # Spec 0065 §69 (plan 0115 R13) — the plugin's NON-BUILT files, hashed from the tagged
+      # checkout before any dependency installs. `Package ZIP` (in the `release` job, below)
+      # stores `baram-plugin.json` and `README.md` from the checkout UNCHANGED — only `dist` is
+      # built — so these hashes anchor exactly the bytes that end up in the published archive, the
+      # same way `dir`/`version`/`plugin_id` above anchor the declared fields. `publish` holds the
+      # archive's own copies of these two files to the hashes recorded here.
+      - name: Record the plugin's tagged files
+        id: plugin_files
+        env:
+          DIR: ${{ steps.meta.outputs.dir }}
+        run: |
+          fail() { echo "::error::$1"; exit 1; }
+          MANIFEST="examples/plugins/$DIR/baram-plugin.json"
+          [[ -f "$MANIFEST" && ! -L "$MANIFEST" ]] \
+            || fail "$MANIFEST is missing or is not a regular file"
+          MANIFEST_SHA256="$(sha256sum "$MANIFEST" | cut -d' ' -f1)"
+          # ABSENT IS LEGAL — a plugin may ship with no README (the `release` job's artifact-verify
+          # step already treats that as a thin listing, not a failure). A README that EXISTS but is
+          # not a regular file is not: it must be hashed from the same tagged checkout as everything
+          # else here, and a symlink could point outside it.
+          README="examples/plugins/$DIR/README.md"
+          README_SHA256=""
+          if [[ -e "$README" || -L "$README" ]]; then
+            [[ -f "$README" && ! -L "$README" ]] \
+              || fail "$README exists but is not a regular file"
+            README_SHA256="$(sha256sum "$README" | cut -d' ' -f1)"
+          fi
+          {
+            echo "manifest_sha256=$MANIFEST_SHA256"
+            echo "readme_sha256=$README_SHA256"
+          } >> "$GITHUB_OUTPUT"
+
   release:
     if: startsWith(github.ref_name, 'plugin-')
     needs: plugin-meta
@@ -219,9 +254,10 @@ jobs:
 
       # §260 Phase 6 code review round 5 — RE-VERIFY THE ARTIFACT, and index FROM it.
       #
-      # Every gate above judges a path in the repo tree, and five review rounds showed that no
-      # in-repo test can prove the later steps stayed inside the directory those gates verified:
-      # each round's guard was a text scan of this file, and each round found the next way past it
+      # Every gate plugin-meta ran judges a path in the repo tree (spec 0065 moved them into their
+      # own job, which runs before this one), and five review rounds showed that no in-repo test
+      # can prove this job's later steps stayed inside the directory those gates verified: each
+      # round's guard was a text scan of this file, and each round found the next way past it
       # (a hardcoded `working-directory`, then a rebound `DIR:`, and `cd`/`defaults.run` were never
       # covered at all). So stop trying to catch the ways a later step can wander, and re-check the
       # thing that actually ships.
@@ -307,9 +343,10 @@ jobs:
 
       # For `validate-index.ts` in the next step, which imports the app's own
       # `parseBaramFloor` and `VALID_CAPABILITIES` rather than restating their rules. Placed
-      # here rather than at the top of the job on purpose: every gate above is deliberately
-      # dependency-free (see the semver note in the meta step), and moving this earlier would
-      # invite those checks to start requiring packages.
+      # here rather than at the top of the job on purpose: every verification gate in THIS job is
+      # deliberately dependency-free (see the semver note in plugin-meta's tag step — a separate
+      # job since spec 0065, which runs before this one and needs no install either), and moving
+      # this earlier would invite those checks to start requiring packages.
       - uses: ./.github/actions/setup-node
 
       # ‼️ NO SECRET IS IN REACH OF THIS STEP, and that is the point of splitting it out.
@@ -405,7 +442,11 @@ jobs:
           name: registry-release
           path: ${{ runner.temp }}/release
           if-no-files-found: error
-          retention-days: 1
+          # Plan 0115 F2 — the approval `registry-publish` can wait for runs up to 30 days, but the
+          # default 1-day retention let the download fail well before that. 7 days covers a normal
+          # approval wait; approve within that window, or re-run the whole workflow so a fresh
+          # build re-uploads the artifact.
+          retention-days: 7
           # R7 — artifacts are immutable since upload-artifact v4, so re-running the whole workflow
           # (the recovery this job's own refusals point to) must be able to upload the same name
           # again rather than fail on a name collision from the earlier, abandoned run.
@@ -430,8 +471,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      # WHAT MAY BE PUBLISHED, AND UNDER WHICH ID — deny by default, as in the plugin job. The id
-      # is pinned per directory because a theme id is permanent once published (spec 0063 D8):
+      # WHAT MAY BE PUBLISHED, AND UNDER WHICH ID — deny by default, as in plugin-meta's tag step.
+      # The id is pinned per directory because a theme id is permanent once published (spec 0063 D8):
       # an allowlisted directory whose manifest changes id fails the release instead of shipping
       # a second theme. Pinned by src/themes/__tests__/theme-release-workflow.test.ts, which
       # EXECUTES this step.
@@ -647,17 +688,20 @@ jobs:
           name: registry-release
           path: ${{ runner.temp }}/release
           if-no-files-found: error
-          retention-days: 1
+          # Plan 0115 F2 — the plugin job's note above, same reason.
+          retention-days: 7
           # R7 — the plugin job's note above, same reason.
           overwrite: true
 
   # Spec 0065 D5 · D6 — THE JOB THAT WRITES THE REGISTRY, for both tag shapes. It checks out nothing and
   # installs nothing — `download-artifact`, then bash with the runner's `jq`, `unzip`, `sha256sum`
   # and `git` — so no code from the build's dependency tree runs on this runner. It does not trust
-  # the build's artifact: the file list, the archive's manifest, a theme's recorded checksum and the
-  # index are held to what a meta job verified (where no third-party code ran) and to the live
-  # registry. A compromised build can then change only this release's own entry, in the shape the
-  # meta job allowed (spec 0065 §2).
+  # the build's artifact: the file list, the archive's manifest and README (plan 0115 F1 — anchored
+  # to plugin-meta's `manifest_sha256`/`readme_sha256`, hashed from the tagged checkout before any
+  # install), a theme's recorded checksum, and the index are all held to what a meta job verified
+  # (where no third-party code ran) and to the live registry. A compromised build can then change
+  # only this release's own entry, and — for a plugin — only its built `dist`: every other file in
+  # the archive is anchored to bytes a meta job read before the build ran (spec 0065 §2).
   #
   # `success()` cannot gate this job: one tag shape's meta and build are always skipped, and a
   # skipped dependency fails `success()`. So the condition is spelled out.
@@ -668,8 +712,10 @@ jobs:
   # starts, so the approval is asked for only after a build has passed; the `release-tags` ruleset
   # limits who may create those tags. A repository-level secret of the same name would be readable
   # by a workflow on any branch, with neither check, so the key must not be stored at repository
-  # level. Rotate it with `gh secret set PLUGINS_DEPLOY_KEY --env registry-publish`, and in the
-  # environment revocation-publish.yml declares, which reads the same key.
+  # level. Approve within 7 days of the build (plan 0115 F2 — the uploaded artifact's retention),
+  # or re-run the whole workflow so a fresh build re-uploads it. Rotate the key with
+  # `gh secret set PLUGINS_DEPLOY_KEY --env registry-publish`, and in the environment
+  # revocation-publish.yml declares, which reads the same key.
   publish:
     needs: [plugin-meta, release, theme-meta, release-theme]
     if: ${{ !cancelled() && !failure() && (needs.release.result == 'success' || needs.release-theme.result == 'success') }}
@@ -683,6 +729,10 @@ jobs:
       ZIP_NAME: ${{ needs.plugin-meta.outputs.zip_name || needs.theme-meta.outputs.zip_name }}
       EXPECTED_TRUST: ${{ needs.plugin-meta.outputs.expected_trust }}
       RECORDED_SHA256: ${{ needs.theme-meta.outputs.recorded_sha256 }}
+      # Plan 0115 F1 (R13) — a plugin's manifest and README, hashed by plugin-meta from the tagged
+      # checkout. Empty for a theme release (theme-meta sets neither output).
+      MANIFEST_SHA256: ${{ needs.plugin-meta.outputs.manifest_sha256 }}
+      README_SHA256: ${{ needs.plugin-meta.outputs.readme_sha256 }}
     steps:
       - name: Download the release
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -761,6 +811,51 @@ jobs:
               || fail "the archive declares trust '$ZIP_TRUST' but '$EXPECTED_TRUST' was verified"
           fi
 
+          # Plan 0115 F1 (R13) — a plugin's NON-BUILT files, anchored to the exact bytes
+          # plugin-meta read from the tagged checkout. The id/version/trust checks above hold the
+          # DECLARED values; a build could satisfy every one of them while still shipping a
+          # manifest whose capabilities were widened or whose engines.baram floor was lowered
+          # after plugin-meta verified the tagged file — a lowered floor bypasses the
+          # release-order gate plugin-meta ran, and widened capabilities become the consent
+          # ceiling the app shows the user. This anchors the FILE ITSELF, not just the fields read
+          # out of it above. A theme carries no such anchor here — RECORDED_SHA256 below already
+          # covers its whole archive, so these two values must simply be empty.
+          if [[ "$KIND" == "plugin" ]]; then
+            [[ $MANIFEST_SHA256 =~ $SHA_RE ]] \
+              || fail "the manifest hash did not reach this job (got '$MANIFEST_SHA256') — this is a bug in this workflow, not a refusal"
+            ZIP_MANIFEST_SHA256="$(sha256sum "$M" | cut -d' ' -f1)"
+            [[ "$ZIP_MANIFEST_SHA256" == "$MANIFEST_SHA256" ]] \
+              || fail "the archive's $MANIFEST_NAME is not the manifest plugin-meta read at the tag"
+            README_PATH="readme/$README_NAME"
+            ZIP_README="$RUNNER_TEMP/release-readme.md"
+            HAS_ZIP_README=0
+            if unzip -p "$A/plugins/$ZIP_NAME" README.md > "$ZIP_README" 2>/dev/null; then
+              HAS_ZIP_README=1
+            fi
+            if [[ -n "$README_SHA256" ]]; then
+              [[ $README_SHA256 =~ $SHA_RE ]] \
+                || fail "the README hash did not reach this job (got '$README_SHA256') — this is a bug in this workflow, not a refusal"
+              [[ "$HAS_ZIP_README" == "1" ]] \
+                || fail "plugin-meta recorded a README but the archive has none"
+              ZIP_README_SHA256="$(sha256sum "$ZIP_README" | cut -d' ' -f1)"
+              [[ "$ZIP_README_SHA256" == "$README_SHA256" ]] \
+                || fail "the archive's README.md is not the README plugin-meta read at the tag"
+              if [[ -f "$A/$README_PATH" ]]; then
+                STAGED_README_SHA256="$(sha256sum "$A/$README_PATH" | cut -d' ' -f1)"
+                [[ "$STAGED_README_SHA256" == "$README_SHA256" ]] \
+                  || fail "the staged $README_PATH is not the README plugin-meta read at the tag"
+              fi
+            else
+              [[ "$HAS_ZIP_README" == "0" ]] \
+                || fail "the archive carries a README.md but plugin-meta recorded none"
+              [[ ! -f "$A/$README_PATH" ]] \
+                || fail "the artifact carries $README_PATH but plugin-meta recorded no README"
+            fi
+          else
+            [[ -z "$MANIFEST_SHA256" && -z "$README_SHA256" ]] \
+              || fail "a plugin-only value reached this theme job (manifest_sha256='$MANIFEST_SHA256' readme_sha256='$README_SHA256') — this is a bug in this workflow, not a refusal"
+          fi
+
           # ③ A theme's bytes are the bytes the pre-publish check recorded.
           CHECKSUM="$(sha256sum "$A/plugins/$ZIP_NAME" | cut -d' ' -f1)"
           if [[ "$KIND" == "theme" ]]; then
@@ -795,6 +890,34 @@ jobs:
           BASE="$BASE_URL"
           [[ "$BASE" == */ ]] || BASE="$BASE/"
           [[ -f "$LIVE" ]] || fail "the live registry has no index.json"
+
+          # Plan 0115 F4 (recommendation adopted) — a published archive is immutable, but nothing
+          # refused an OVERWRITE: `validate.yml` in the registry repo runs on pull requests, not on
+          # this push, so a full re-run after a successful release would rebuild a non-reproducible
+          # zip (or re-package a theme) and silently replace what is already live. If the live
+          # registry already has a file at this release's path, it must be byte-identical to the
+          # one about to be published — identical bytes is a no-op (the push step's "nothing to
+          # publish" path then ends it harmlessly); different bytes is refused.
+          REG_ZIP="$RUNNER_TEMP/registry/plugins/$ZIP_NAME"
+          if [[ -f "$REG_ZIP" ]]; then
+            cmp -s "$REG_ZIP" "$A/plugins/$ZIP_NAME" \
+              || fail "plugins/$ZIP_NAME is already published with different bytes — published archives are immutable; release a new version"
+          fi
+          REG_README="$RUNNER_TEMP/registry/readme/$ID-$VERSION.md"
+          ART_README="$A/readme/$ID-$VERSION.md"
+          if [[ -f "$REG_README" && -f "$ART_README" ]]; then
+            cmp -s "$REG_README" "$ART_README" \
+              || fail "readme/$ID-$VERSION.md is already published with different bytes — published archives are immutable; release a new version"
+          fi
+
+          # A byte cap (R8), moved ahead of every jq parse on this runner (plan 0115 F3): the app
+          # refuses an index over `MAX_REGISTRY_BYTES` (4 MiB); no release needs a quarter of that,
+          # and the live index is a few KB. Checking the raw byte count first means an oversized
+          # build never reaches a jq parse of its own bytes at all.
+          NEW_SIZE="$(wc -c < "$NEW" | tr -d ' ')"
+          [[ "$NEW_SIZE" -le 1048576 ]] \
+            || fail "the new index.json is over 1 MiB — the app refuses an index over 4 MiB, and no release needs a quarter of that"
+
           jq -e '(.plugins | type) == "array"' "$NEW" > /dev/null 2>&1 \
             || fail "the new index.json has no plugins array"
           jq -e '(.plugins | type) == "array"' "$LIVE" > /dev/null 2>&1 \
@@ -805,19 +928,13 @@ jobs:
           # leading BOM or a similar byte trick that jq's parser silently resolves is refused here,
           # because the raw file then differs from jq's reprint of it. It does NOT guarantee the
           # client's parser accepts the document: the app's streamed fetch loop enforces a byte-size
-          # ceiling (`MAX_REGISTRY_BYTES`, src-tauri/src/plugin/fetch.rs), and `serde_json::from_slice`
-          # enforces a recursion limit and a narrower number range that jq does not — the size and
-          # type checks right below this one hold those instead, except for a theme's `preview`,
-          # which the preview check at the end of this step holds (I1, R8).
+          # ceiling (`MAX_REGISTRY_BYTES`, src-tauri/src/plugin/fetch.rs, held above), and
+          # `serde_json::from_slice` enforces a recursion limit and a narrower number range that jq
+          # does not — the type checks right below this one hold those instead, except for a
+          # theme's `preview`, which the preview check at the end of this step holds (I1, R8).
           jq . "$NEW" > "$RUNNER_TEMP/new-canonical.json"
           cmp -s "$RUNNER_TEMP/new-canonical.json" "$NEW" \
             || fail "the new index.json is not in the form the index script writes (duplicate keys, a BOM or other bytes jq would not write) — publishing it could break every client's parse"
-
-          # A byte cap (R8): the app refuses an index over `MAX_REGISTRY_BYTES` (4 MiB); no release
-          # needs a quarter of that, and the live index is a few KB.
-          NEW_SIZE="$(wc -c < "$NEW" | tr -d ' ')"
-          [[ "$NEW_SIZE" -le 1048576 ]] \
-            || fail "the new index.json is over 1 MiB — the app refuses an index over 4 MiB, and no release needs a quarter of that"
 
           # The COUNT check, moved ahead of the type check below (R9): if this id's entry is simply
           # absent, the type check's `jq -e` — `(.plugins[] | select(.id == $id)) as $e | …` over an
