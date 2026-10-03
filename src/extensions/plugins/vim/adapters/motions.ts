@@ -128,20 +128,26 @@ export function resolveMotion(
         : prevUnitBoundary(state, span.to);
     }
     case "lineFirstNonBlank": {
-      // First non-blank unit of the segment; an all-blank line falls back
+      // The first cursor UNIT that is not blank; an all-blank line falls back
       // to the line start (vim lands near the end there — Phase 2 nicety).
-      // An inline atom (wikilink, tag) is a unit, not a blank: its leaf
-      // placeholder must not match \s (issue 776 — gg/G/:N land here too).
+      // Judged per unit, not by a regex offset into the line's text: an
+      // offset can land inside a grapheme (" " + U+0301 is one unit) and
+      // drifts past inline nodes with content. An inline atom (wikilink,
+      // tag) is a unit and never blank — its placeholder is not \s (issue
+      // 776: gg, G and :N land through here too).
       const span = segmentSpanAt(state, pos);
       if (!span) return pos;
-      const text = state.doc.textBetween(
-        span.from,
-        span.to,
-        undefined,
-        "\uFFFC",
-      );
-      const index = text.search(/\S/);
-      return index >= 0 ? span.from + index : span.from;
+      const starts = lineUnitStarts(state, { end: span.to, start: span.from });
+      for (let i = 0; i < starts.length; i++) {
+        const unit = state.doc.textBetween(
+          starts[i],
+          starts[i + 1] ?? span.to,
+          undefined,
+          "\uFFFC",
+        );
+        if (/\S/.test(unit)) return starts[i];
+      }
+      return span.from;
     }
     case "lineStart": {
       const span = segmentSpanAt(state, pos);

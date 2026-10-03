@@ -763,3 +763,21 @@ describe("issue 776 — a leading inline atom is the first non-blank", () => {
     ).toBe(atom);
   });
 });
+
+describe("issue 776 — the first non-blank is a whole cursor unit", () => {
+  it("a leading space + combining mark is one unit: gg lands on its start, not inside it", () => {
+    // Fails if: lineFirstNonBlank indexes a regex match into the line text —
+    // `\S` matches U+0301 at offset 1, inside the " ́" grapheme.
+    const editor = makeEditor("<p>x</p>");
+    editor.commands.setContent({
+      content: [
+        { content: [{ text: " ́x", type: "text" }], type: "paragraph" },
+        { content: [{ text: "tail", type: "text" }], type: "paragraph" },
+      ],
+      type: "doc",
+    });
+    expect(
+      resolveMotion(editor.state, posOfText(editor, "tail"), "docStart", 1),
+    ).toBe(1); // the cluster's start
+  });
+});
