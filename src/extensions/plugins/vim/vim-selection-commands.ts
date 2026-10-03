@@ -128,187 +128,230 @@ export function runSelectionCommand(
 ): boolean {
   const command: CoreCommand | null = result.command;
   if (!command) return false;
-
-  if (command.type === "move") {
-    // In visual mode the motion moves the VIM head, not PM's selection head
-    // (they diverge after an inversion — §6).
-    const base =
-      result.state.mode === "visual" && preVisual
-        ? preVisual.headCursor
-        : vimCursor(view.state);
-    const inVisual = result.state.mode === "visual" && preVisual !== null;
-    // issue 776 — j/k walk to the remembered goal column; when there is none
-    // yet, the column the cursor is in now becomes it, and the meta below
-    // carries it to the next j/k (core/goal-column.ts decides when it is
-    // forgotten). Measured here, once per run of j/k — never per keystroke.
-    const vertical =
-      command.motion === "lineDown" || command.motion === "lineUp";
-    const goalColumn = vertical
-      ? (result.state.goalColumn ?? columnAt(view.state, base))
-      : result.state.goalColumn;
-    const target = resolveMotion(
-      view.state,
-      base,
-      command.motion,
-      command.count,
-      // Issue 472: directional code-block landing is NORMAL-mode-only — a
-      // visual head parked mid-block breaks the next walk's column math
-      // and changes d/y ranges (adversarial review HIGH). Visual keeps the
-      // first-line default.
-      {
-        codeBlockEntry: inVisual ? "first-line" : "directional",
-        goalColumn: goalColumn ?? undefined,
-      },
-    );
-    let core: VimCoreState = { ...result.state, goalColumn };
-    const tr = view.state.tr;
-    if (inVisual && preVisual) {
-      const visual = moveVisualHead(preVisual, target);
-      core = { ...core, visual };
-      tr.setSelection(visualSelection(view.state, visual));
-    } else {
-      tr.setSelection(cursorSelection(view.state.doc, target));
-    }
-    tr.setMeta(vimPluginKey, { core, type: "core" });
-    const islandTookFocus = dispatchCursor(view, tr);
-    // ONE follow, ours. PM's scrollToSelection bails when the DOM selection
-    // sits outside a non-editable view (vim modal), but it does NOT bail
-    // when the surface still owns the selection — flagging the transaction
-    // too ran the whole geometry pass twice per keystroke (performance
-    // review P4).
-    //
-    // Issue 472: when the CM island took the handoff, the follow is ITS
-    // job — the NodeView has no contentDOM, so PM's coordsAtPos maps every
-    // interior offset to the wrapper's TOP edge (adversarial review HIGH:
-    // a k-entry at the last line of a tall block would scroll the viewport
-    // toward the block top, away from the caret). setSelection dispatches
-    // with scrollIntoView, which follows the real CM caret line.
-    if (!islandTookFocus) scrollCursorIntoView(view, target);
-    return true;
+  switch (command.type) {
+    case "enterVisual":
+      return runEnterVisual(view, result);
+    case "exCommand":
+      return runExLineJump(view, result, command);
+    case "findChar":
+      return runFindChar(view, result, command, preVisual);
+    case "leaveVisual":
+      return runLeaveVisual(view, result, preVisual);
+    case "move":
+      return runMove(view, result, command, preVisual);
+    case "scrollCursor":
+      return runScrollCursor(view, result, command);
+    case "search":
+      return runSearch(view, result, command);
+    default:
+      return false;
   }
+}
 
-  if (command.type === "exCommand") {
-    // issue 487 — `:N`/`:$` 줄 이동은 SELECTION 명령이다: move와 같은
-    // 단일 트랜잭션(meta + 선택)으로 처리해 코드블록 착지의 진입
-    // 핸드오프·스크롤 위임까지 기존 채널을 그대로 탄다. 숫자가 아니면
-    // false — 실행부(:w/:q)가 이어받는다.
-    const name = command.name.trim();
-    if (!isExLineJump(name)) return false;
-    const start = cursorLineStart(
-      view.state,
-      name === "$" ? "$" : Number.parseInt(name, 10),
-    );
-    if (start === null) return true; // 빈 문서 — 명령줄만 닫는다
-    // gg/G 와 같은 착지 — 그 줄의 첫 non-blank (issue 776).
-    const target = lineJumpTarget(view.state, start);
-    const tr = view.state.tr;
+function runEnterVisual(view: EditorView, result: StepResult): boolean {
+  if (!result.state.visual) return false;
+  const tr = view.state.tr.setSelection(
+    visualSelection(view.state, result.state.visual),
+  );
+  tr.setMeta(vimPluginKey, { core: result.state, type: "core" });
+  dispatchCursor(view, tr);
+  return true;
+}
+
+function runExLineJump(
+  view: EditorView,
+  result: StepResult,
+  command: Extract<CoreCommand, { type: "exCommand" }>,
+): boolean {
+  // issue 487 — `:N`/`:$` 줄 이동은 SELECTION 명령이다: move와 같은
+  // 단일 트랜잭션(meta + 선택)으로 처리해 코드블록 착지의 진입
+  // 핸드오프·스크롤 위임까지 기존 채널을 그대로 탄다. 숫자가 아니면
+  // false — 실행부(:w/:q)가 이어받는다.
+  const name = command.name.trim();
+  if (!isExLineJump(name)) return false;
+  const start = cursorLineStart(
+    view.state,
+    name === "$" ? "$" : Number.parseInt(name, 10),
+  );
+  if (start === null) return true; // 빈 문서 — 명령줄만 닫는다
+  // gg/G 와 같은 착지 — 그 줄의 첫 non-blank (issue 776).
+  const target = lineJumpTarget(view.state, start);
+  const tr = view.state.tr;
+  tr.setSelection(cursorSelection(view.state.doc, target));
+  tr.setMeta(vimPluginKey, { core: result.state, type: "core" });
+  const islandTookFocus = dispatchCursor(view, tr);
+  if (!islandTookFocus) scrollCursorIntoView(view, target);
+  return true;
+}
+
+function runFindChar(
+  view: EditorView,
+  result: StepResult,
+  command: Extract<CoreCommand, { type: "findChar" }>,
+  preVisual: null | VisualState,
+): boolean {
+  const base =
+    result.state.mode === "visual" && preVisual
+      ? preVisual.headCursor
+      : vimCursor(view.state);
+  const match = findCharTarget(
+    view.state,
+    base,
+    command.char,
+    command.kind,
+    command.count,
+    command.repeat ?? false,
+  );
+  const target = match ?? base;
+  // issue 776 — only a find that MATCHED forgets the goal column; the core
+  // cannot know, so the outcome is applied here (core/goal-column.ts).
+  let core: VimCoreState = {
+    ...result.state,
+    goalColumn: goalAfterFind(result.state.goalColumn, match !== null),
+  };
+  const tr = view.state.tr;
+  if (result.state.mode === "visual" && result.state.visual) {
+    const visual = moveVisualHead(result.state.visual, target);
+    core = { ...core, visual };
+    tr.setSelection(visualSelection(view.state, visual));
+  } else if (target !== base) {
     tr.setSelection(cursorSelection(view.state.doc, target));
-    tr.setMeta(vimPluginKey, { core: result.state, type: "core" });
-    const islandTookFocus = dispatchCursor(view, tr);
-    if (!islandTookFocus) scrollCursorIntoView(view, target);
-    return true;
   }
+  tr.setMeta(vimPluginKey, { core, type: "core" });
+  dispatchCursor(view, tr);
+  scrollCursorIntoView(view, target); // ops-R8 — see the move path
+  return true;
+}
 
-  if (command.type === "search") {
-    // Buffer-local `/`·`?`·`n`·`N`. A miss (no match, invalid pattern) is the
-    // same silence as an `f` miss — but the META must still land: Enter just
-    // closed the search line and recorded lastSearch.
-    const target = resolveSearch(
-      view.state,
-      vimCursor(view.state),
-      command.pattern,
-      command.direction,
-      command.count,
-    );
-    const tr = view.state.tr;
-    if (target !== null) {
+function runLeaveVisual(
+  view: EditorView,
+  result: StepResult,
+  preVisual: null | VisualState,
+): boolean {
+  if (!preVisual) return false;
+  // Esc collapses to the vim head — not PM's selection head (§6).
+  const tr = view.state.tr.setSelection(
+    cursorSelection(view.state.doc, collapseTarget(preVisual)),
+  );
+  tr.setMeta(vimPluginKey, { core: result.state, type: "core" });
+  dispatchCursor(view, tr);
+  return true;
+}
+
+function runMove(
+  view: EditorView,
+  result: StepResult,
+  command: Extract<CoreCommand, { type: "move" }>,
+  preVisual: null | VisualState,
+): boolean {
+  // In visual mode the motion moves the VIM head, not PM's selection head
+  // (they diverge after an inversion — §6).
+  const base =
+    result.state.mode === "visual" && preVisual
+      ? preVisual.headCursor
+      : vimCursor(view.state);
+  const inVisual = result.state.mode === "visual" && preVisual !== null;
+  // issue 776 — j/k walk to the remembered goal column; when there is none
+  // yet, the column the cursor is in now becomes it, and the meta below
+  // carries it to the next j/k (core/goal-column.ts decides when it is
+  // forgotten). Measured here, once per run of j/k — never per keystroke.
+  const vertical = command.motion === "lineDown" || command.motion === "lineUp";
+  const goalColumn = vertical
+    ? (result.state.goalColumn ?? columnAt(view.state, base))
+    : result.state.goalColumn;
+  const target = resolveMotion(
+    view.state,
+    base,
+    command.motion,
+    command.count,
+    // Issue 472: directional code-block landing is NORMAL-mode-only — a
+    // visual head parked mid-block breaks the next walk's column math
+    // and changes d/y ranges (adversarial review HIGH). Visual keeps the
+    // first-line default.
+    {
+      codeBlockEntry: inVisual ? "first-line" : "directional",
+      goalColumn: goalColumn ?? undefined,
+    },
+  );
+  let core: VimCoreState = { ...result.state, goalColumn };
+  const tr = view.state.tr;
+  if (inVisual && preVisual) {
+    const visual = moveVisualHead(preVisual, target);
+    core = { ...core, visual };
+    tr.setSelection(visualSelection(view.state, visual));
+  } else {
+    tr.setSelection(cursorSelection(view.state.doc, target));
+  }
+  tr.setMeta(vimPluginKey, { core, type: "core" });
+  const islandTookFocus = dispatchCursor(view, tr);
+  // ONE follow, ours. PM's scrollToSelection bails when the DOM selection
+  // sits outside a non-editable view (vim modal), but it does NOT bail
+  // when the surface still owns the selection — flagging the transaction
+  // too ran the whole geometry pass twice per keystroke (performance
+  // review P4).
+  //
+  // Issue 472: when the CM island took the handoff, the follow is ITS
+  // job — the NodeView has no contentDOM, so PM's coordsAtPos maps every
+  // interior offset to the wrapper's TOP edge (adversarial review HIGH:
+  // a k-entry at the last line of a tall block would scroll the viewport
+  // toward the block top, away from the caret). setSelection dispatches
+  // with scrollIntoView, which follows the real CM caret line.
+  if (!islandTookFocus) scrollCursorIntoView(view, target);
+  return true;
+}
+
+function runScrollCursor(
+  view: EditorView,
+  result: StepResult,
+  command: Extract<CoreCommand, { type: "scrollCursor" }>,
+): boolean {
+  // z. homes to the first non-blank before centering; zz keeps the column.
+  // In visual mode the selection survives and the VIM head is the center
+  // target — PM's selection head diverges after an inversion (§6).
+  const visual = result.state.mode === "visual" ? result.state.visual : null;
+  let core = result.state;
+  const tr = view.state.tr;
+  let center = visual ? visual.headCursor : vimCursor(view.state);
+  if (command.firstNonBlank) {
+    const target = resolveMotion(view.state, center, "lineFirstNonBlank", 1);
+    if (visual) {
+      const moved = moveVisualHead(visual, target);
+      core = { ...result.state, visual: moved };
+      tr.setSelection(visualSelection(view.state, moved));
+    } else if (target !== center) {
       tr.setSelection(cursorSelection(view.state.doc, target));
     }
-    tr.setMeta(vimPluginKey, { core: result.state, type: "core" });
-    dispatchCursor(view, tr);
-    if (target !== null) scrollCursorIntoView(view, target);
-    return true;
+    center = target;
   }
+  tr.setMeta(vimPluginKey, { core, type: "core" });
+  dispatchCursor(view, tr);
+  scrollCursorToCenter(view, center);
+  return true;
+}
 
-  if (command.type === "findChar") {
-    const base =
-      result.state.mode === "visual" && preVisual
-        ? preVisual.headCursor
-        : vimCursor(view.state);
-    const match = findCharTarget(
-      view.state,
-      base,
-      command.char,
-      command.kind,
-      command.count,
-      command.repeat ?? false,
-    );
-    const target = match ?? base;
-    // issue 776 — only a find that MATCHED forgets the goal column; the core
-    // cannot know, so the outcome is applied here (core/goal-column.ts).
-    let core: VimCoreState = {
-      ...result.state,
-      goalColumn: goalAfterFind(result.state.goalColumn, match !== null),
-    };
-    const tr = view.state.tr;
-    if (result.state.mode === "visual" && result.state.visual) {
-      const visual = moveVisualHead(result.state.visual, target);
-      core = { ...core, visual };
-      tr.setSelection(visualSelection(view.state, visual));
-    } else if (target !== base) {
-      tr.setSelection(cursorSelection(view.state.doc, target));
-    }
-    tr.setMeta(vimPluginKey, { core, type: "core" });
-    dispatchCursor(view, tr);
-    scrollCursorIntoView(view, target); // ops-R8 — see the move path
-    return true;
+function runSearch(
+  view: EditorView,
+  result: StepResult,
+  command: Extract<CoreCommand, { type: "search" }>,
+): boolean {
+  // Buffer-local `/`·`?`·`n`·`N`. A miss (no match, invalid pattern) is the
+  // same silence as an `f` miss — but the META must still land: Enter just
+  // closed the search line and recorded lastSearch.
+  const target = resolveSearch(
+    view.state,
+    vimCursor(view.state),
+    command.pattern,
+    command.direction,
+    command.count,
+  );
+  const tr = view.state.tr;
+  if (target !== null) {
+    tr.setSelection(cursorSelection(view.state.doc, target));
   }
-
-  if (command.type === "scrollCursor") {
-    // z. homes to the first non-blank before centering; zz keeps the column.
-    // In visual mode the selection survives and the VIM head is the center
-    // target — PM's selection head diverges after an inversion (§6).
-    const visual = result.state.mode === "visual" ? result.state.visual : null;
-    let core = result.state;
-    const tr = view.state.tr;
-    let center = visual ? visual.headCursor : vimCursor(view.state);
-    if (command.firstNonBlank) {
-      const target = resolveMotion(view.state, center, "lineFirstNonBlank", 1);
-      if (visual) {
-        const moved = moveVisualHead(visual, target);
-        core = { ...result.state, visual: moved };
-        tr.setSelection(visualSelection(view.state, moved));
-      } else if (target !== center) {
-        tr.setSelection(cursorSelection(view.state.doc, target));
-      }
-      center = target;
-    }
-    tr.setMeta(vimPluginKey, { core, type: "core" });
-    dispatchCursor(view, tr);
-    scrollCursorToCenter(view, center);
-    return true;
-  }
-
-  if (command.type === "enterVisual" && result.state.visual) {
-    const tr = view.state.tr.setSelection(
-      visualSelection(view.state, result.state.visual),
-    );
-    tr.setMeta(vimPluginKey, { core: result.state, type: "core" });
-    dispatchCursor(view, tr);
-    return true;
-  }
-
-  if (command.type === "leaveVisual" && preVisual) {
-    // Esc collapses to the vim head — not PM's selection head (§6).
-    const tr = view.state.tr.setSelection(
-      cursorSelection(view.state.doc, collapseTarget(preVisual)),
-    );
-    tr.setMeta(vimPluginKey, { core: result.state, type: "core" });
-    dispatchCursor(view, tr);
-    return true;
-  }
-
-  return false;
+  tr.setMeta(vimPluginKey, { core: result.state, type: "core" });
+  dispatchCursor(view, tr);
+  if (target !== null) scrollCursorIntoView(view, target);
+  return true;
 }
 
 /** The vim cursor: a NodeSelection's own position (a block atom line), or

@@ -98,54 +98,10 @@ export function executeCoreCommand(
       return {};
     case "exCommand":
       return runExCommand(command.name);
-    case "openLine": {
-      // §9 minimal o/O: a sibling empty paragraph next to the current block;
-      // the segment/container refinements arrive with S3 cursor work.
-      const $head = state.doc.resolve(head);
-      const depth = $head.depth === 0 ? 0 : $head.depth;
-      const blockPos = depth === 0 ? head : $head.before(depth);
-      const node = state.doc.nodeAt(blockPos);
-      const at = command.below ? blockPos + (node?.nodeSize ?? 1) : blockPos;
-      const paragraph = state.schema.nodes.paragraph.create();
-      const tr = state.tr.insert(at, paragraph);
-      tr.setSelection(TextSelection.create(tr.doc, at + 1));
-      return { applied: dispatchLanded(view, tr) };
-    }
-    case "operatorFind": {
-      const match = resolveFindChar(
-        state,
-        head,
-        command.char,
-        command.kind === "f" || command.kind === "t" ? "f" : "F",
-        command.count,
-      );
-      if (match === head) return { reason: "char not found", silent: true };
-      const forward = command.kind === "f" || command.kind === "t";
-      const lo = forward
-        ? head
-        : command.kind === "T"
-          ? nextUnitBoundary(state, match)
-          : match;
-      const hi = forward
-        ? command.kind === "f"
-          ? nextUnitBoundary(state, match)
-          : match
-        : head;
-      // FOUND but an empty range (T with the match right next door): vim
-      // enters insert for c and quietly does nothing for d/y — the register
-      // survives either way (vim-verified, review ops-R3).
-      if (hi <= lo) return {};
-      writeVimRegister({
-        kind: "char",
-        slice: state.doc.slice(lo, hi).toJSON(),
-      });
-      if (command.op !== "y") {
-        const tr = state.tr.delete(lo, hi);
-        tr.setSelection(TextSelection.create(tr.doc, lo));
-        return { applied: dispatchLanded(view, tr) };
-      }
-      return {};
-    }
+    case "openLine":
+      return runOpenLine(view, command, head);
+    case "operatorFind":
+      return runOperatorFind(view, command, head);
     case "operatorMotion":
       return runOperatorMotion(view, command, head);
     case "paste":
@@ -166,32 +122,8 @@ export function executeCoreCommand(
       // Owned by the plugin's selection path (z. moves the cursor, both
       // variants scroll the view) — never reaches the executor.
       return {};
-    case "toggleTask": {
-      // §298 checklist toggle — nearest ancestor taskItem of the vim head
-      // (same ancestor walk as the checkbox click in task-item.ts, so nested
-      // lists flip the INNERMOST item). Off a task line the key is consumed
-      // like vim, silently.
-      //
-      // ‼️ §18.18 M4: this walks the same ring as the checkbox
-      // (`nextTaskState`), so it is a 3-state cycle now, not a flip — the key
-      // and the control must not disagree about what one press means. The
-      // command keeps its `toggleTask` id because that id is what the keymap
-      // and its tests bind; only the step it takes has widened.
-      const $head = state.doc.resolve(head);
-      for (let d = $head.depth; d > 0; d--) {
-        const node = $head.node(d);
-        if (node.type.name === "taskItem") {
-          view.dispatch(
-            state.tr.setNodeMarkup($head.before(d), undefined, {
-              ...node.attrs,
-              state: nextTaskState(asTaskState(node.attrs.state)),
-            }),
-          );
-          return { applied: true };
-        }
-      }
-      return { silent: true };
-    }
+    case "toggleTask":
+      return runToggleTask(view, head);
     case "undo":
       runHistory(view, undo, command.count);
       return {};
@@ -328,6 +260,66 @@ function runHistory(
   }
 }
 
+function runOpenLine(
+  view: EditorView,
+  command: Extract<CoreCommand, { type: "openLine" }>,
+  head: number,
+): ExecutionResult {
+  const state = view.state;
+  // §9 minimal o/O: a sibling empty paragraph next to the current block;
+  // the segment/container refinements arrive with S3 cursor work.
+  const $head = state.doc.resolve(head);
+  const depth = $head.depth === 0 ? 0 : $head.depth;
+  const blockPos = depth === 0 ? head : $head.before(depth);
+  const node = state.doc.nodeAt(blockPos);
+  const at = command.below ? blockPos + (node?.nodeSize ?? 1) : blockPos;
+  const paragraph = state.schema.nodes.paragraph.create();
+  const tr = state.tr.insert(at, paragraph);
+  tr.setSelection(TextSelection.create(tr.doc, at + 1));
+  return { applied: dispatchLanded(view, tr) };
+}
+
+function runOperatorFind(
+  view: EditorView,
+  command: Extract<CoreCommand, { type: "operatorFind" }>,
+  head: number,
+): ExecutionResult {
+  const state = view.state;
+  const match = resolveFindChar(
+    state,
+    head,
+    command.char,
+    command.kind === "f" || command.kind === "t" ? "f" : "F",
+    command.count,
+  );
+  if (match === head) return { reason: "char not found", silent: true };
+  const forward = command.kind === "f" || command.kind === "t";
+  const lo = forward
+    ? head
+    : command.kind === "T"
+      ? nextUnitBoundary(state, match)
+      : match;
+  const hi = forward
+    ? command.kind === "f"
+      ? nextUnitBoundary(state, match)
+      : match
+    : head;
+  // FOUND but an empty range (T with the match right next door): vim
+  // enters insert for c and quietly does nothing for d/y — the register
+  // survives either way (vim-verified, review ops-R3).
+  if (hi <= lo) return {};
+  writeVimRegister({
+    kind: "char",
+    slice: state.doc.slice(lo, hi).toJSON(),
+  });
+  if (command.op !== "y") {
+    const tr = state.tr.delete(lo, hi);
+    tr.setSelection(TextSelection.create(tr.doc, lo));
+    return { applied: dispatchLanded(view, tr) };
+  }
+  return {};
+}
+
 function runOperatorMotion(
   view: EditorView,
   command: Extract<CoreCommand, { type: "operatorMotion" }>,
@@ -391,6 +383,34 @@ function runOperatorMotion(
     return { applied: dispatchLanded(view, tr) };
   }
   return {};
+}
+
+function runToggleTask(view: EditorView, head: number): ExecutionResult {
+  const state = view.state;
+  // §298 checklist toggle — nearest ancestor taskItem of the vim head
+  // (same ancestor walk as the checkbox click in task-item.ts, so nested
+  // lists flip the INNERMOST item). Off a task line the key is consumed
+  // like vim, silently.
+  //
+  // ‼️ §18.18 M4: this walks the same ring as the checkbox
+  // (`nextTaskState`), so it is a 3-state cycle now, not a flip — the key
+  // and the control must not disagree about what one press means. The
+  // command keeps its `toggleTask` id because that id is what the keymap
+  // and its tests bind; only the step it takes has widened.
+  const $head = state.doc.resolve(head);
+  for (let d = $head.depth; d > 0; d--) {
+    const node = $head.node(d);
+    if (node.type.name === "taskItem") {
+      view.dispatch(
+        state.tr.setNodeMarkup($head.before(d), undefined, {
+          ...node.attrs,
+          state: nextTaskState(asTaskState(node.attrs.state)),
+        }),
+      );
+      return { applied: true };
+    }
+  }
+  return { silent: true };
 }
 
 /** The vim head of a landing selection — a NodeSelection reads as its own
