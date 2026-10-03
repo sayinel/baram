@@ -92,7 +92,7 @@ export function insertEntryTarget(
  * 일반 분기의 칼럼 착지를 절대 타지 않는다: 블록 소스 전체가 한 줄로
  * 보이므로 일반 분기는 goal 칼럼을 소스 오프셋으로 흘려 콘텐츠 시작이
  * 아닌 소스 한가운데에 내려놓는다. `column` 은 goal 칼럼이고 `$` 뒤에는
- * 무한대(줄 끝)다 (issue 776).
+ * vertical-walk.ts 의 LINE_END_COLUMN(줄 끝)이다 (issue 776).
  */
 export function codeBlockLandingAt(
   state: EditorState,

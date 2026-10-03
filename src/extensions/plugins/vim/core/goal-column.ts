@@ -15,9 +15,7 @@
 
 import type { CoreCommand, GoalColumn } from "./types";
 
-/** `:N` / `:$` — the ex names that move the cursor (issue 487). Shared with
- *  the selection path that executes them, so the two cannot disagree. */
-const EX_LINE_JUMP = /^(\d+|\$)$/;
+import { isExLineJump } from "./command-lines";
 
 /** The goal column after `command` ran from a state whose goal was `prev`. */
 export function goalAfter(
@@ -68,8 +66,4 @@ export function goalAfterFind(
   matched: boolean,
 ): GoalColumn | null {
   return matched ? null : prev;
-}
-
-export function isExLineJump(name: string): boolean {
-  return EX_LINE_JUMP.test(name.trim());
 }

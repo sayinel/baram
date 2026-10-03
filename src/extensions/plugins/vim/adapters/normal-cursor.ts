@@ -35,13 +35,13 @@ export function insertEscTarget(state: EditorState): null | number {
   const sel = state.selection;
   if (!sel.empty && !(sel instanceof NodeSelection)) {
     if (sel.head < sel.anchor) return sel.head;
-    return lastUnitBefore(state, sel.head) ?? sel.head;
+    return forwardRangeEscTarget(state, sel.head) ?? sel.head;
   }
   // A caret in a code block is CodeMirror's: stepping it here would also hand
   // focus to the island (dispatchCursor). Off a textblock there is no line.
   if (!sel.empty || isCodeBlockLanding(state, sel.head)) return null;
   const span = segmentSpanAt(state, sel.head);
-  return span ? unitBefore(state, sel.head, span.from) : null;
+  return span ? unitBeforeOnLine(state, sel.head, span.from) : null;
 }
 
 /**
@@ -70,7 +70,8 @@ export function terminalClampTarget(state: EditorState): null | number {
   return prev < sel.head ? prev : null;
 }
 
-/** The start of the last cursor unit before `head`: on its own line, or —
+/** Where Esc lands a FORWARD insert range whose head is `head`: the start
+ *  of the last cursor unit before it — on its own line, or —
  *  at a line start — the end of the line before it, found locally (no
  *  document-wide line list: Esc on a huge document must stay cheap). Across a
  *  hard break that is the previous segment; across a block boundary it is the
@@ -79,9 +80,12 @@ export function terminalClampTarget(state: EditorState): null | number {
  *  block is skipped (the search goes on before it): CodeMirror owns that
  *  caret, and landing there would hand focus to the island, which Esc never
  *  does. null when nothing precedes. */
-function lastUnitBefore(state: EditorState, head: number): null | number {
+function forwardRangeEscTarget(
+  state: EditorState,
+  head: number,
+): null | number {
   const span = segmentSpanAt(state, head);
-  const onLine = span ? unitBefore(state, head, span.from) : null;
+  const onLine = span ? unitBeforeOnLine(state, head, span.from) : null;
   if (onLine !== null) return onLine;
   const $head = state.doc.resolve(head);
   if (span && $head.parent.isTextblock && span.from > $head.start()) {
@@ -106,7 +110,7 @@ function lastUnitBefore(state: EditorState, head: number): null | number {
  *  line is empty. */
 function lastUnitOfLineEndingAt(state: EditorState, end: number): number {
   const span = segmentSpanAt(state, end);
-  return (span && unitBefore(state, end, span.from)) ?? end;
+  return (span && unitBeforeOnLine(state, end, span.from)) ?? end;
 }
 
 /** One unit left of `head`, or null when there is none ON this line: at a
@@ -114,7 +118,7 @@ function lastUnitOfLineEndingAt(state: EditorState, end: number): number {
  *  keeps the plain mode dispatch instead of a no-op cursor move), and after
  *  a hard break the unit before is the break, a step onto the previous
  *  segment. */
-function unitBefore(
+function unitBeforeOnLine(
   state: EditorState,
   head: number,
   lineStart: number,

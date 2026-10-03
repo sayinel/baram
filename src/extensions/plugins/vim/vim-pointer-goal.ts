@@ -31,8 +31,11 @@ interface PointerGoalWatch {
   disarm(): void;
   /** appendTransaction: true when the armed press moved the cursor and the
    *  goal must be forgotten. The caller builds the one transaction that also
-   *  carries any caret fix-up (appendNormalCursorFixes). */
-  settle(transactions: readonly Transaction[], state: EditorState): boolean;
+   *  carries any caret fix-up (appendClampAndGoalReset). */
+  takeMovedPress(
+    transactions: readonly Transaction[],
+    state: EditorState,
+  ): boolean;
 }
 
 export function createPointerGoalWatch(): PointerGoalWatch {
@@ -48,7 +51,7 @@ export function createPointerGoalWatch(): PointerGoalWatch {
     disarm() {
       armed = null;
     },
-    settle(transactions, state) {
+    takeMovedPress(transactions, state) {
       if (armed === null) return false;
       // A transaction that did not start from the document the press saw
       // belongs to something else (another tab's state, an edit since).

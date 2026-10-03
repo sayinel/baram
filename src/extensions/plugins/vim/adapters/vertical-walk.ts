@@ -15,6 +15,11 @@ import {
   lineIndexAround,
 } from "./line-sequence";
 
+/** The numeric column a "lineEnd" goal ($) walks with: larger than any line,
+ *  so every landing clamps to that line's last unit (codeBlockLandingAt
+ *  receives it too). */
+const LINE_END_COLUMN = Number.POSITIVE_INFINITY;
+
 /** Optional per-call motion policy (issue 472). */
 export interface MotionOptions {
   /** Vertical landing INTO a CodeMirror-backed code block: "directional"
@@ -29,7 +34,7 @@ export interface MotionOptions {
   /** The remembered goal column for j/k (vim's curswant, issue 776). Absent:
    *  the origin's own column — what operators and other one-shot callers
    *  want, since they pick LINES and never carry the goal on. */
-  goalColumn?: GoalColumn;
+  goalColumn?: GoalColumn | null;
 }
 
 /** Carried table-walk state: one findCell at entry, local rect expansion
@@ -68,7 +73,7 @@ export function verticalTarget(
 
   const goal = options?.goalColumn ?? columnAt(state, pos);
   // "lineEnd" ($) lands every line on its last unit: the clamp below does it.
-  const column = goal === "lineEnd" ? Number.POSITIVE_INFINITY : goal;
+  const column = goal === "lineEnd" ? LINE_END_COLUMN : goal;
 
   let p = pos;
   let lineIndex: null | number = null;

@@ -42,7 +42,6 @@ export function findCharTarget(
     texts.push(text ?? "\uFFFC");
     return true;
   });
-  const unitText = (index: number): string => texts[index];
 
   const forward = kind === "f" || kind === "t";
   const till = kind === "t" || kind === "T";
@@ -52,7 +51,7 @@ export function findCharTarget(
   if (forward) {
     for (let i = 0; i < starts.length; i++) {
       if (starts[i] <= pos) continue;
-      if (!findTargetMatches(unitText(i), char)) continue;
+      if (!findTargetMatches(texts[i], char)) continue;
       // A repeated t must not re-match the target it already sits before —
       // its landing would be the current position (review ops-R2).
       if (till && repeat && (starts[i - 1] ?? -1) <= pos) continue;
@@ -68,7 +67,7 @@ export function findCharTarget(
 
   for (let i = starts.length - 1; i >= 0; i--) {
     if (starts[i] >= pos) continue;
-    if (!findTargetMatches(unitText(i), char)) continue;
+    if (!findTargetMatches(texts[i], char)) continue;
     if (till && repeat && (starts[i + 1] ?? line.end + 1) >= pos) continue;
     if (--remaining === 0) {
       matchIndex = i;

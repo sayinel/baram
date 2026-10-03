@@ -86,7 +86,7 @@ describe("insert Esc steps one unit back (vim ins_esc)", () => {
   });
 
   it("stays put at the start of a hard-break segment", () => {
-    // Fails if: unitBefore drops `prev >= lineStart` — the step crosses the
+    // Fails if: unitBeforeOnLine drops `prev >= lineStart` — the step crosses the
     // break onto the previous segment (position 2).
     const editor = makeVimEditor("<p>a<br>b</p>");
     insertThenEscape(editor, 3, "");
@@ -113,7 +113,7 @@ describe("insert Esc leaves a code block's caret alone", () => {
 
 describe("a normal-mode caret on the terminal boundary is clamped", () => {
   it("x on the last character leaves the cursor on the new last one", () => {
-    // Fails if: the plugin's appendTransaction (appendNormalCursorFixes) is
+    // Fails if: the plugin's appendTransaction (appendClampAndGoalReset) is
     // removed — the caret stays at 3, past "b".
     const editor = makeVimEditor("<p>abc</p>");
     place(editor, 3); // on "c"
@@ -123,14 +123,14 @@ describe("a normal-mode caret on the terminal boundary is clamped", () => {
   });
 
   it("a selection set past the text (a click) is clamped too", () => {
-    // Fails if: appendNormalCursorFixes is removed (head stays 4).
+    // Fails if: appendClampAndGoalReset is removed (head stays 4).
     const editor = makeVimEditor("<p>abc</p>");
     place(editor, 4);
     expect(head(editor)).toBe(3);
   });
 
   it("does not touch the insert caret at the line end", () => {
-    // Fails if: appendNormalCursorFixes drops its `mode === "normal"`
+    // Fails if: appendClampAndGoalReset drops its `mode === "normal"`
     // condition — typing at the end of a line would jump back one character.
     const editor = makeVimEditor("<p>abc</p>");
     place(editor, 1);
@@ -167,7 +167,7 @@ describe("a normal-mode caret on the terminal boundary is clamped", () => {
   });
 
   it("an empty line keeps its caret and appends nothing", () => {
-    // Fails if: unitBefore drops `prev < head` — at a line start
+    // Fails if: unitBeforeOnLine drops `prev < head` — at a line start
     // prevUnitBoundary returns the head itself, so insertEscTarget would
     // return a no-op target and insert Esc at a line start would take the
     // cursor-move path. (The clamp checks `prev < head` itself.)
@@ -214,7 +214,7 @@ describe("insert Esc collapses a range made while inserting", () => {
   });
 
   it("a forward range ending at a line start lands on the previous line's last unit", () => {
-    // Fails if: lastUnitBefore stops at the head's own line — the head itself
+    // Fails if: forwardRangeEscTarget stops at the head's own line — the head itself
     // ("c", outside the half-open range) would be the landing.
     const editor = makeVimEditor("<p>ab</p><p>cd</p>");
     selectThenEscape(editor, 1, 5); // "ab" + the break, head before "c"
@@ -225,7 +225,7 @@ describe("insert Esc collapses a range made while inserting", () => {
   });
 
   it("…and an empty previous line is landed on as such", () => {
-    // Fails if: lastUnitBefore drops its empty-line fallback (no unit start
+    // Fails if: forwardRangeEscTarget drops its empty-line fallback (no unit start
     // there) — it would return null and land on the head again.
     const editor = makeVimEditor("<p>ab</p><p></p><p>cd</p>");
     selectThenEscape(editor, 1, 7); // head before "c"
@@ -260,7 +260,7 @@ describe("insert Esc collapses a range made while inserting", () => {
   });
 
   it("…after a code block: skips the block to the text before it", () => {
-    // Fails if: lastUnitBefore stops at the code block instead of searching
+    // Fails if: forwardRangeEscTarget stops at the code block instead of searching
     // on before it — the landing falls back to the range head, or into the
     // block's source, handing focus to the island.
     const editor = makeVimEditor(

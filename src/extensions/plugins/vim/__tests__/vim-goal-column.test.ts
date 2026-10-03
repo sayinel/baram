@@ -278,7 +278,7 @@ describe("transactions outside vim", () => {
   });
 
   it("a press whose cursor move is tagged ephemeral (a click syntax reveal expands) forgets it", () => {
-    // Fails if: the appendTransaction settle step is removed — the tagged
+    // Fails if: the appendTransaction takeMovedPress step is removed — the tagged
     // move is exempt in the reducer, so nothing else forgets the goal.
     const editor = seeded();
     editor.view.dom.dispatchEvent(
@@ -293,7 +293,7 @@ describe("transactions outside vim", () => {
   });
 
   it("an ordinary click forgets it once, with no extra transaction", () => {
-    // Fails if: settle drops its "already forgotten" guard — it would append
+    // Fails if: takeMovedPress drops its "already forgotten" guard — it would append
     // a second, redundant meta to every ordinary click. Counted through
     // applyTransaction: appended transactions are not separate dispatches.
     const editor = seeded();
@@ -313,7 +313,7 @@ describe("transactions outside vim", () => {
   });
 
   it("a press left armed is not read against another document's state (a cached tab)", () => {
-    // Fails if: settle drops the document check — the other state's own
+    // Fails if: takeMovedPress drops the document check — the other state's own
     // cursor move would be taken for the press's and its goal forgotten.
     const editor = seeded();
     // Another tab's cached state, built BEFORE the press like a real cache:

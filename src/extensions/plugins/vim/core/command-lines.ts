@@ -6,6 +6,11 @@ import type { KeyToken, StepResult, VimCoreState } from "./types";
 
 import { emit, swallow } from "./step-kit";
 
+/** `:N` / `:$` — the ex names that move the cursor (issue 487). Shared by
+ *  the goal column rule and the selection path that executes them, so the
+ *  two cannot disagree. `name` is already trimmed: exLineStep emits it so. */
+const EX_LINE_JUMP = /^(\d+|\$)$/;
+
 /** Keys while an ex line is open. Enter submits, Escape abandons, Backspace
  *  deletes (and closes on the colon itself, as vim does); printable single
  *  characters accumulate. Everything is swallowed either way — an ex line
@@ -31,6 +36,10 @@ export function exLineStep(state: VimCoreState, token: KeyToken): StepResult {
     return swallow(state);
   }
   return swallow({ ...state, exLine: line + char });
+}
+
+export function isExLineJump(name: string): boolean {
+  return EX_LINE_JUMP.test(name);
 }
 
 /** `/`·`?` line — the exLine's twin: accumulate, Escape closes, Enter emits

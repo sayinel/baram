@@ -8,7 +8,7 @@
 // Three exports serve createVimPlugin's props directly: `vimCursor` (the
 // block-cursor decoration and the scroll-follow head), and the two
 // normal-cursor writes of issue 776 — `escapeInsertCursor` (insert Esc) and
-// `appendNormalCursorFixes` (appendTransaction) — which move the caret and so
+// `appendClampAndGoalReset` (appendTransaction) — which move the caret and so
 // need dispatchCursor's DOM handling or the vim meta that keeps priority 4
 // quiet.
 
@@ -33,7 +33,8 @@ import { insertEscTarget, terminalClampTarget } from "./adapters/normal-cursor";
 import { visualBounds } from "./adapters/operations";
 import { scrollCursorIntoView, scrollCursorToCenter } from "./adapters/scroll";
 import { resolveSearch } from "./adapters/search";
-import { goalAfterFind, isExLineJump } from "./core/goal-column";
+import { isExLineJump } from "./core/command-lines";
+import { goalAfterFind } from "./core/goal-column";
 import { collapseTarget, moveVisualHead } from "./core/visual-state";
 import { vimPluginKey } from "./vim-keys";
 import { dispatchMeta, read } from "./vim-plugin-state";
@@ -168,7 +169,7 @@ function runExLineJump(
   // 단일 트랜잭션(meta + 선택)으로 처리해 코드블록 착지의 진입
   // 핸드오프·스크롤 위임까지 기존 채널을 그대로 탄다. 숫자가 아니면
   // false — 실행부(:w/:q)가 이어받는다.
-  const name = command.name.trim();
+  const name = command.name; // trimmed by exLineStep
   if (!isExLineJump(name)) return false;
   const start = cursorLineStart(
     view.state,
@@ -271,7 +272,7 @@ function runMove(
     // first-line default.
     {
       codeBlockEntry: inVisual ? "first-line" : "directional",
-      goalColumn: goalColumn ?? undefined,
+      goalColumn,
     },
   );
   let core: VimCoreState = { ...result.state, goalColumn };
@@ -398,9 +399,9 @@ function visualSelection(state: EditorState, visual: VisualState): Selection {
  * The vim meta re-installs the core, so the priority 4 rule does not read
  * vim's own correction as a foreign selection.
  */
-export function appendNormalCursorFixes(
+export function appendClampAndGoalReset(
   state: EditorState,
-  forgetGoal: boolean,
+  { forgetGoal }: { forgetGoal: boolean },
 ): null | Transaction {
   const vim = read(state);
   if (!vim.enabled) return null;

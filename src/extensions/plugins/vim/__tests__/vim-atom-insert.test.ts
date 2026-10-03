@@ -175,7 +175,7 @@ describe("insert entry on an INLINE atom", () => {
   it("`A` puts the caret at the line END, past the text after the atom (issue 776)", () => {
     // Fails if: runAtomInsert moves the caret in a transaction of its own
     // before the core flips to insert — the normal-mode terminal clamp
-    // (appendNormalCursorFixes) pulls that caret back one unit, onto "e".
+    // (appendClampAndGoalReset) pulls that caret back one unit, onto "e".
     const { editor, mentionPos } = makeMentionDoc();
     editor.commands.setNodeSelection(mentionPos);
 

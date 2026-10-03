@@ -255,6 +255,9 @@ describe("first non-blank cost (issue 776)", () => {
   it("a line of many marked blank text nodes is not walked once per unit", () => {
     // Fails if: lineFirstNonBlank calls textBetween per cursor unit — each
     // call restarts the range walk at the first child, quadratic here.
+    // Relies on ProseMirror internals (Node.prototype.textBetween): a PM
+    // upgrade that renames or reroutes it can turn this red with no
+    // regression here.
     const blanks = Array.from({ length: 400 }, (_, i) => ({
       marks: [{ type: i % 2 === 0 ? "bold" : "italic" }],
       text: " ",
@@ -290,6 +293,9 @@ describe("terminal clamp cost (issue 776)", () => {
     // Fails if: terminalClampTarget reads $head.nodeAfter before checking
     // textOffset — for a position inside a text node ProseMirror cuts a copy
     // of the node's remaining text, on every normal-mode transaction.
+    // Relies on ProseMirror internals (ResolvedPos.nodeAfter cutting through
+    // TextNode.cut): a PM upgrade that changes that can turn this red with
+    // no regression here.
     const editor = makeEditor(`<p>${"x".repeat(1000)}</p>`);
     const textNode = editor.state.doc.child(0).child(0);
     const spy = vi.spyOn(Object.getPrototypeOf(textNode), "cut");

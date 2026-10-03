@@ -44,7 +44,7 @@ import {
 import { dispatchMeta, isModal, read } from "./vim-plugin-state";
 import { createPointerGoalWatch } from "./vim-pointer-goal";
 import {
-  appendNormalCursorFixes,
+  appendClampAndGoalReset,
   escapeInsertCursor,
   runSelectionCommand,
   vimCursor,
@@ -58,9 +58,11 @@ export function createVimPlugin(
   return new Plugin<VimPluginState>({
     /** issue 776 — forget the goal column when a pointer press moved the
      *  cursor (vim-pointer-goal.ts), and keep the normal-mode caret ON a
-     *  unit — in one appended transaction (appendNormalCursorFixes). */
+     *  unit — in one appended transaction (appendClampAndGoalReset). */
     appendTransaction: (trs, _old, state) =>
-      appendNormalCursorFixes(state, pointerGoal.settle(trs, state)),
+      appendClampAndGoalReset(state, {
+        forgetGoal: pointerGoal.takeMovedPress(trs, state),
+      }),
 
     key: vimPluginKey as never,
 
@@ -307,7 +309,10 @@ export function createVimPlugin(
         if (!result.handled) return false;
         event.preventDefault();
         event.stopPropagation();
-        if (result.state.mode === "normal") {
+        // Esc is the only key step() handles in insert mode — a normal
+        // result means insert was just left.
+        const leftInsert = result.state.mode === "normal";
+        if (leftInsert) {
           escapeInsertCursor(view, result.state);
         } else {
           dispatchMeta(view, { core: result.state, type: "core" });
@@ -386,7 +391,7 @@ function runAtomInsert(view: EditorView, result: StepResult): boolean {
     case "caret": {
       // ONE transaction for the caret and the insert mode (issue 776): a
       // caret placed while still in normal mode at a line end is a terminal
-      // boundary, and the normal-mode clamp (appendNormalCursorFixes) would
+      // boundary, and the normal-mode clamp (appendClampAndGoalReset) would
       // pull it back one unit before insert began — `A` then typed before
       // the last character.
       const tr = view.state.tr
