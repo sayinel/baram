@@ -86,6 +86,11 @@ describe("DIALS", () => {
     //
     // ③ `number` 에서 빈 맵을 돌려주지 않으면 기본값이 인라인으로 굳어,
     //    테마가 이 다이얼로 말할 여지를 사용자 층 없이도 눌러 이긴다.
+    //
+    // ④ `period` 가 정렬 키워드만 내고 계수를 빠뜨리면, 번호는 마침표 쪽으로
+    //    옮겨 가는데 안내선은 숫자 기준의 첫 글자 칸에 남는다. `text-align` 은
+    //    키워드라 calc 에 넣을 수 없어서 `lists.css` 의 안내선 축은 이 계수를
+    //    따로 읽는다. 둘 중 하나만 쓰면 둘이 갈린다.
     const align = DIALS.find((d) => d.id === "editorOrderedMarkerAlign");
     // 이름이 바뀌면 아래 `?.` 단언들이 공허하게 통과할 수 있다 — 먼저 존재를 고정한다.
     expect(align).toBeDefined();
@@ -93,7 +98,14 @@ describe("DIALS", () => {
     expect(align?.toVars("number")).toEqual({});
     expect(align?.toVars("period")).toEqual({
       "--editor-ordered-marker-align": "right",
+      "--editor-ordered-marker-period-aligned": "1",
     });
+    // `apply.ts` 는 `vars` 에 있는 이름만 쓰고 지운다 — 목록에 없으면 계수는
+    // 끝내 쓰이지 않는다.
+    expect([...(align?.vars ?? [])].sort()).toEqual([
+      "--editor-ordered-marker-align",
+      "--editor-ordered-marker-period-aligned",
+    ]);
     // CSS 값은 다이얼 값이 아니다 — 저장분에 `left` 가 있어도 그 층은 없었던 것이다.
     expect(align?.parse("left")).toBeUndefined();
     expect(align?.parse("period")).toBe("period");

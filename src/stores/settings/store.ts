@@ -141,6 +141,8 @@ export const useSettingsStore = create<SettingsState>()(
         zoomLevel: state.zoomLevel,
         theme: state.theme,
         activeThemeId: state.activeThemeId,
+        // §386 모드 설정 — partialize 는 whitelist 다. 빠뜨리면 재시작마다 시스템으로 돌아간다.
+        colorModeSetting: state.colorModeSetting,
         customThemes: state.customThemes,
         // §364 partialize 는 whitelist 다 — 빠뜨리면 재시작마다 외관 다이얼이
         // 전부 기본값으로 돌아간다.

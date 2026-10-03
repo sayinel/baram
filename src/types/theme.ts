@@ -70,8 +70,11 @@ export function themeModes(theme: ThemeDef): ThemeMode[] {
 /**
  * 지금 적용해야 할 모드.
  *
- * 쌍을 가진 테마만 OS를 따라간다. 한 모드짜리 테마가 OS를 따라가면 다크 모드에서
- * 라이트 테마를 고른 사용자에게 아무것도 적용되지 않는다 — 고른 것이 무시되는 셈이다.
+ * 쌍을 가진 테마만 `prefersDark`를 따라간다. 한 모드짜리 테마가 그것을 따라가면
+ * 다크 모드에서 라이트 테마를 고른 사용자에게 아무것도 적용되지 않는다 — 고른
+ * 것이 무시되는 셈이다. 호출자는 OS 값을 그대로 넘기지 않는다 — §386 모드 설정이
+ * 있는 호출자는 `appearance/color-mode.ts`의 `prefersDarkFor(설정, OS)`를 넘겨서,
+ * 설정이 고정이면 OS와 무관하게 그 답을 낸다.
  */
 export function resolveThemeMode(
   theme: ThemeDef,
@@ -86,9 +89,10 @@ export function resolveThemeMode(
 /**
  * 스토어의 `theme` 필드 값 — light/dark 두 값만 아는 소비자(CSS·CodeMirror)를 위한 신호다.
  *
- * 쌍을 가진 테마는 OS를 따라가므로 "system"이다. `activeThemeId`가 진짜 선택이고
- * 이 필드는 그것의 파생이다. 함수로 두는 이유: `setActiveTheme`과 rehydrate 동기화가
- * **같은 규칙**을 써야 하고, 두 곳에 같은 삼항식을 적으면 한쪽만 고쳐지는 날이 온다.
+ * 쌍을 가진 테마는 `prefersDark`(§386 모드 설정이 있는 호출자는 `prefersDarkFor`의
+ * 답)를 따라가므로 "system"이다. `activeThemeId`가 진짜 선택이고 이 필드는 그것의
+ * 파생이다. 함수로 두는 이유: `setActiveTheme`과 rehydrate 동기화가 **같은 규칙**을
+ * 써야 하고, 두 곳에 같은 삼항식을 적으면 한쪽만 고쳐지는 날이 온다.
  */
 export function themeFieldFor(
   theme: ThemeDef | undefined,

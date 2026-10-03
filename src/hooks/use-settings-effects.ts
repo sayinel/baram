@@ -8,7 +8,11 @@ import { useShallow } from "zustand/shallow";
 
 import { colorDialVars } from "../appearance/apply";
 import { deriveIdentityColorVars } from "../appearance/color-derive";
-import { resolveColorMode } from "../appearance/color-mode";
+import {
+  appliedThemeMode,
+  prefersDarkFor,
+  resolveColorMode,
+} from "../appearance/color-mode";
 import { editorTypographyOf } from "../appearance/editor-typography";
 import { useTranslation } from "../i18n/useTranslation";
 import { useFeatureFlags } from "../stores/settings/features";
@@ -24,11 +28,7 @@ import {
 } from "../stores/ui/panel-feature";
 import { setUserChromeChoiceListener, useUIStore } from "../stores/ui/ui";
 import { lookupThemes } from "../themes/installed-theme-defs";
-import {
-  defaultColorsForBase,
-  findThemeById,
-  resolveThemeMode,
-} from "../types/theme";
+import { defaultColorsForBase, findThemeById } from "../types/theme";
 import { applyFontVariables } from "../utils/editor/font-surfaces";
 import { resolveCodeMetrics } from "../utils/font/code-metrics";
 import { logger } from "../utils/logger";
@@ -66,6 +66,7 @@ export function useSettingsEffects(editor: Editor | null) {
     activeThemeId,
     codeFontSize,
     codeLineHeight,
+    colorModeSetting,
     customThemes,
     installedThemes,
     linkFontMetrics,
@@ -75,6 +76,7 @@ export function useSettingsEffects(editor: Editor | null) {
       activeThemeId: s.activeThemeId,
       codeFontSize: s.codeFontSize,
       codeLineHeight: s.codeLineHeight,
+      colorModeSetting: s.colorModeSetting,
       customThemes: s.customThemes,
       installedThemes: s.installedThemes,
       linkFontMetrics: s.linkFontMetrics,
@@ -125,7 +127,7 @@ export function useSettingsEffects(editor: Editor | null) {
   // flag is; see `InstalledTheme`'s doc comment), so it has to be re-read off disk. This
   // hook does that re-read and drops the result in `useThemeCssCacheStore`, which the apply
   // effect below reads via `cssCacheEntries`.
-  useThemeCssHydration(effectiveThemeId, installedThemes);
+  useThemeCssHydration(effectiveThemeId, installedThemes, colorModeSetting);
   const cssCacheEntries = useThemeCssCacheStore((s) => s.entries);
 
   useEffect(() => {
@@ -152,10 +154,10 @@ export function useSettingsEffects(editor: Editor | null) {
               effectiveThemeId,
               lookupThemes(customThemes, installedThemes, cssCacheEntries),
             );
-      const mode =
-        themeDef === undefined
-          ? undefined
-          : resolveThemeMode(themeDef, mql.matches);
+      // §386 — `mql.matches` 는 OS 의 답일 뿐이다. 모드 설정이 고정이면 그 값이 OS 를 대신하고,
+      // `system`·미해석 id 에서도 `data-theme` 을 넣는다(스펙 0064 D6 · D7). `ThemeEditor.tsx` 의
+      // `restorePreview` 가 같은 함수를 부른다 — 둘이 갈리면 편집기를 닫은 화면이 적용과 어긋난다.
+      const mode = appliedThemeMode(themeDef, colorModeSetting, mql.matches);
 
       // Set the mode (light/dark) for CSS + CodeMirror.
       // ‼️ NOT Mermaid any more — it renders in one fixed palette regardless
@@ -181,9 +183,13 @@ export function useSettingsEffects(editor: Editor | null) {
       // 머리주석): `mode` 는 "어느 모드 자산을 적용하는가" 라 없을 수 있고, 이쪽은
       // "지금 화면이 밝은가" 라 언제나 답이 있다. 다이얼은 자산이 없는 `system`
       // 에서도 시드를 물려받아야 하므로 후자가 필요하다. deps 에 넣지 않는 것은
-      // `mode` 와 같은 이유다 — `mql.matches` 에서 계산되는 지역값이고, OS 전환은
-      // 이 이펙트가 이미 갖고 있는 `change` 리스너가 `apply()` 를 다시 돌려 잡는다.
-      const colorMode = resolveColorMode(themeDef, mql.matches);
+      // `mode` 와 같은 이유다 — `mql.matches` 와 모드 설정에서 계산되는 지역값이고, OS
+      // 전환은 이 이펙트가 이미 갖고 있는 `change` 리스너가, 설정 변경은 deps 의
+      // `colorModeSetting` 이 `apply()` 를 다시 돌려 잡는다(§386).
+      const colorMode = resolveColorMode(
+        themeDef,
+        prefersDarkFor(colorModeSetting, mql.matches),
+      );
       const base = colors ?? defaultColorsForBase(colorMode);
       const colorDials = colorDialVars(resolvedDials, {
         mode: colorMode,
@@ -317,18 +323,23 @@ export function useSettingsEffects(editor: Editor | null) {
     // §367 — `resolvedDials` added: a colour dial changes what this effect writes, so
     // dragging the accent slider has to re-run it. Its reference is stable across renders
     // (`use-appearance-dials.ts` memoises it), so it moves only when a layer's value does.
+    //
+    // §386 — `colorModeSetting` added: the mode setting decides `mode` and `colorMode` above, so
+    // changing it has to re-run the apply. The OS listener stays attached even while the setting
+    // is fixed (spec 0064 D8) — its re-apply then lands on the same answer.
   }, [
     effectiveThemeId,
     customThemes,
     installedThemes,
     cssCacheEntries,
     resolvedDials,
+    colorModeSetting,
   ]);
 
   // §370.3 테마가 **제안하는** 초기 크롬 가시성. 위 적용 이펙트와 **합치지 않는다** —
-  // 그쪽 deps 는 바로 위에 다섯 개가 적혀 있고, 그래서 그 이펙트는 OS 모드 전환 · CSS
-  // 캐시 하이드레이션 · 다이얼 변경으로도 다시 돈다. 제안을 거기 얹으면 사용자가
-  // 상태바를 켠 뒤 강조색 슬라이더를 움직이는 것만으로 다시 꺼진다.
+  // 그쪽 deps 는 바로 위 배열에 적혀 있고, 그래서 그 이펙트는 OS 모드 전환 · CSS
+  // 캐시 하이드레이션 · 다이얼 변경 · 모드 설정 변경으로도 다시 돈다. 제안을 거기 얹으면
+  // 사용자가 상태바를 켠 뒤 강조색 슬라이더를 움직이는 것만으로 다시 꺼진다.
   //
   // ‼️ 전이 감지를 `useRef` 가드로 만들지 않는다 — deps 가 하나면 React 의 비교가 그
   // 일을 이미 한다. ref 였다면 StrictMode 의 마운트 → 정리 → 재마운트를 ref 가

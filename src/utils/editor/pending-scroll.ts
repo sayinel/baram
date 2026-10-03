@@ -51,6 +51,22 @@ export function requestScroll(path: string, target: ScrollTarget): void {
 }
 
 /**
+ * §81 요청을 걸어 둔 열기가 일어나지 않았다 — 파일 컨텍스트로의 전환이 거부됐다
+ * (`openFileByPath`가 "refused"로 끝난다). `path` 앞으로 온 요청과 주소 없는 요청을
+ * 버린다. 주소 없는 요청은 위키링크의 헤딩·블록 참조가 열기 직전에 거는 것이라, 남겨
+ * 두면 **다음에** 올라오는 문서가 그 이름의 헤딩·블록으로 스크롤한다. 다른 파일 앞으로
+ * 온 요청은 그 열기의 몫이라 건드리지 않는다.
+ */
+export function dropPendingScroll(path: string): void {
+  const state = useLinkStore.getState();
+  const addressedTo = state.pendingScrollPath;
+  if (addressedTo !== null && addressedTo !== path) return;
+  // 지울 것이 없으면 스토어를 쓰지 않는다(동등성 관문).
+  if (addressedTo === null && readTarget() === null) return;
+  state.clearPendingScroll();
+}
+
+/**
  * 목적지를 좌표로 바꾸고 그리로 커서를 옮긴다.
  *
  * `content`는 그 파일의 마크다운 — 줄 번호 목적지에만 필요하므로 없으면 `null`을 준다.

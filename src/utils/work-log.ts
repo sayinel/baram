@@ -1,9 +1,16 @@
 import { getVaultConfig } from "../ipc/context";
 // §85 Work Log — per-vault daily work log utility
-import { createDir, listDir, readFile, writeFile } from "../ipc/fs";
+import {
+  createDir,
+  isFileNotFoundError,
+  listDir,
+  readFile,
+  writeFile,
+} from "../ipc/fs";
 import { useContextStore } from "../stores/context/context";
 import { useEditorStore } from "../stores/editor/editor";
 import { buildFileTree, useFileStore } from "../stores/file/file";
+import { logger } from "./logger";
 
 /**
  * Create today's Work Log file in the active vault.
@@ -30,8 +37,18 @@ export async function createWorkLogForToday(): Promise<null | string> {
     // File exists — open it
     openWorkLogTab(filePath, content, ctx.id);
     return filePath;
-  } catch {
-    // File doesn't exist — create it
+  } catch (err) {
+    // Only "no such file" means create. A log that exists but could not be read
+    // (invalid UTF-8, a permission the OS refused) used to fall through to the
+    // template write below and be replaced by it. Raise it and leave the disk alone;
+    // the rejection may name an OS error but not the file, so the log names the path.
+    if (!isFileNotFoundError(err)) {
+      logger.error(
+        `[work-log] reading today's log failed other than "not found"; nothing was written: ${filePath}`,
+        err,
+      );
+      throw err;
+    }
   }
 
   // Ensure directory exists

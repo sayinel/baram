@@ -4,7 +4,12 @@ import type { ThemeDef } from "../../types/theme";
 
 import { describe, expect, it } from "vitest";
 
-import { resolveColorMode } from "../color-mode";
+import {
+  appliedThemeMode,
+  followsColorModeSetting,
+  prefersDarkFor,
+  resolveColorMode,
+} from "../color-mode";
 
 const LIGHT_ONLY: ThemeDef = {
   id: "l",
@@ -55,5 +60,66 @@ describe("resolveColorMode", () => {
     } as ThemeDef;
     expect(resolveColorMode(EMPTY, true)).toBe("dark");
     expect(resolveColorMode(EMPTY, false)).toBe("light");
+  });
+});
+
+// §386 모드 설정(스펙 0064). 아래 셋은 "앱이 OS 대신 무엇을 읽는가" 의 한 집이다.
+const NO_MODES: ThemeDef = { id: "n", modes: {}, name: "N", source: "custom" };
+
+describe("prefersDarkFor (§386)", () => {
+  it("시스템이면 OS 를 그대로 따른다", () => {
+    expect(prefersDarkFor("system", true)).toBe(true);
+    expect(prefersDarkFor("system", false)).toBe(false);
+  });
+
+  // 무엇이 이것을 실패시키는가: 고정값을 무시하고 OS 를 돌려주는 구현.
+  it("고정이면 OS 를 무시한다", () => {
+    expect(prefersDarkFor("dark", false)).toBe(true);
+    expect(prefersDarkFor("light", true)).toBe(false);
+  });
+});
+
+describe("appliedThemeMode (§386)", () => {
+  // 무엇이 이것을 실패시키는가:
+  // - 테마가 없을 때 설정을 무시하는 구현(오늘의 `use-settings-effects.ts` 규칙) → 고정 행 둘
+  // - 한 모드 테마에 설정을 밀어 넣는 구현 → LIGHT_ONLY · DARK_ONLY 행(스펙 D4)
+  // - 시스템인데도 모드를 넣는 구현 → 첫 두 행(스펙 D7 — 첫 페인트를 미디어 쿼리가 그린다)
+  it.each([
+    ["system/미해석 · 시스템 · OS 다크", undefined, "system", true, undefined],
+    [
+      "system/미해석 · 시스템 · OS 라이트",
+      undefined,
+      "system",
+      false,
+      undefined,
+    ],
+    ["system/미해석 · 다크 고정 · OS 라이트", undefined, "dark", false, "dark"],
+    [
+      "system/미해석 · 라이트 고정 · OS 다크",
+      undefined,
+      "light",
+      true,
+      "light",
+    ],
+    ["두 모드 · 시스템 · OS 다크", PAIRED, "system", true, "dark"],
+    ["두 모드 · 시스템 · OS 라이트", PAIRED, "system", false, "light"],
+    ["두 모드 · 다크 고정 · OS 라이트", PAIRED, "dark", false, "dark"],
+    ["두 모드 · 라이트 고정 · OS 다크", PAIRED, "light", true, "light"],
+    ["라이트 전용 · 다크 고정", LIGHT_ONLY, "dark", true, "light"],
+    ["다크 전용 · 라이트 고정", DARK_ONLY, "light", false, "dark"],
+    ["모드 없음 · 시스템", NO_MODES, "system", true, undefined],
+    ["모드 없음 · 다크 고정", NO_MODES, "dark", false, "dark"],
+  ] as const)("%s", (_name, theme, setting, os, expected) => {
+    expect(appliedThemeMode(theme, setting, os)).toBe(expected);
+  });
+});
+
+describe("followsColorModeSetting (§386)", () => {
+  it("한 모드짜리 테마만 따르지 않는다", () => {
+    expect(followsColorModeSetting(undefined)).toBe(true);
+    expect(followsColorModeSetting(PAIRED)).toBe(true);
+    expect(followsColorModeSetting(NO_MODES)).toBe(true);
+    expect(followsColorModeSetting(LIGHT_ONLY)).toBe(false);
+    expect(followsColorModeSetting(DARK_ONLY)).toBe(false);
   });
 });

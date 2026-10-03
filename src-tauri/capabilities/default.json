@@ -13,6 +13,7 @@
     "allow-confirm-quit",
     "allow-copy-file",
     "allow-create-dir",
+    "allow-create-file",
     "allow-create-snapshot",
     "allow-delete-dir",
     "allow-delete-file",

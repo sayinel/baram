@@ -26,7 +26,7 @@ export const zettelkastenSpace: SpaceDefinition = {
     rightPanelOpen: false,
     rightPanelMode: "none",
   },
-  startup: async () => {
+  startup: async (opts) => {
     const existing = useContextStore.getState().spaceContext("zettelkasten");
     if (!existing) return;
     const {
@@ -41,16 +41,17 @@ export const zettelkastenSpace: SpaceDefinition = {
       zettelkastenDirectory,
     );
     if (!resolvedDir) return;
+    let space = existing;
     try {
-      // §98 "nothing" registers the space without taking the seat; only
-      // "openHomeNote" activates. Activating here regardless used to pass
-      // unnoticed (a local seat change) — since issue 598 a moved directory
-      // switches for real, and a user who asked for nothing must not boot
-      // into the Zettel space.
-      await useContextStore
+      // §81 Registers the space without taking the seat, whatever the startup
+      // behaviour. "openHomeNote" used to activate it — locally, so the vault
+      // tab said Zettel while the file tree stayed on the folder the launch
+      // restore had opened. The restore decides the seat; the preset that
+      // enters the space switches to it before calling this.
+      space = await useContextStore
         .getState()
         .ensureSpaceContext("zettelkasten", resolvedDir, {
-          activate: zettelkastenStartupBehavior === "openHomeNote",
+          activate: false,
           label: "Zettel",
         });
     } catch (err) {
@@ -74,9 +75,27 @@ export const zettelkastenSpace: SpaceDefinition = {
 
     if (!zettelkastenHomeNote) return;
     const homePath = resolveHomeNotePath(resolvedDir, zettelkastenHomeNote);
+    // §81 Which context the tab belongs to — never whichever one holds the seat
+    // (what `openTab` falls back to):
+    // - In the background (the launch restore), the context that holds the file
+    //   — the lookup `openFileByPath` makes — else the space. A home note set by
+    //   absolute path in another context, tagged with the space, would switch the
+    //   app to Zettel when selected; when it is also the last file, the launch
+    //   restore would end there.
+    // - In front (the Zettel preset, entering the space), the space: tagged with
+    //   the folder holding the file, the note would switch the app straight back
+    //   out of the space the preset just entered.
+    const holder = opts?.background
+      ? useContextStore.getState().getContextForPath(homePath)
+      : null;
+    const contextId =
+      holder && holder.contextType !== "file" ? holder.id : space.id;
     try {
       const content = await readFile(homePath);
-      await openFileInTab(homePath, content);
+      await openFileInTab(homePath, content, {
+        activate: !opts?.background,
+        contextId,
+      });
     } catch {
       // Home note missing/unreadable — leave the inbox as the active file
       // tree (do NOT auto-open an arbitrary inbox file).

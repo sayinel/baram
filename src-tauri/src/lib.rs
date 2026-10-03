@@ -308,6 +308,7 @@ pub fn run() {
             fs_cmd::set_vault_root,
             fs_cmd::read_file,
             fs_cmd::write_file,
+            fs_cmd::create_file,
             fs_cmd::list_dir,
             fs_cmd::rename_file,
             fs_cmd::delete_file,

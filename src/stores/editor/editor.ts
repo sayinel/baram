@@ -175,7 +175,15 @@ interface EditorState {
   openGraphTab: () => void;
   /** §69 Open a plugin's detail view as a singleton tab PER PLUGIN */
   openPluginTab: (pluginId: string, title: string) => void;
-  openTab: (tab: EditorTab) => void;
+  /**
+   * Open `tab`, or select the tab already showing its file.
+   *
+   * §81 `activate: false` opens it for later: added behind the active tab and at the
+   * back of the MRU order, and a file that is already open is left as it is. The
+   * launch restore needs it — the spaces open their notes while the restore decides
+   * what is on screen.
+   */
+  openTab: (tab: EditorTab, opts?: { activate?: boolean }) => void;
   /** §38 Pin a tab — moves to end of pinned group */
   pinTab: (tabId: string) => void;
   /** §324-e Publish (or clear with `null`) the open capture dialog's editor access */
@@ -253,6 +261,31 @@ interface EditorState {
   /** §38 Unpin a tab — moves to start of unpinned group */
   unpinTab: (tabId: string) => void;
 }
+/**
+ * §81 Must showing a file of context `contextId` switch the app — seat, Rust's root and
+ * file tree — to that context? The one rule for selecting a file tab (`setActiveTab`) and
+ * for opening a file (`openFileByPath`), which apply it the same way and differ only in
+ * whether they wait for the switch.
+ *
+ * Yes when it is another context than the seat, except:
+ * - a §89 FileContext — external file tabs are global; showing one keeps the vault on
+ *   screen (`openFileByPath` switches to a FileContext it has just created by its own
+ *   rule, for the single-file focus view);
+ * - a context at the seat's own path under another id — ids can differ by dedup
+ *   (legacy-xxx vs ctx-xxx) while the path is the same.
+ *
+ * An id no context holds answers yes; `switchContext` then does nothing.
+ */
+export function contextSwitchNeeded(contextId: string): boolean {
+  if (!contextId) return false;
+  const ctxStore = useContextStore.getState();
+  if (ctxStore.activeContextId === contextId) return false;
+  const tabCtx = ctxStore.contexts.find((c) => c.id === contextId);
+  if (tabCtx?.contextType === "file") return false;
+  const activeCtx = ctxStore.activeContext();
+  return !(tabCtx && activeCtx && tabCtx.path === activeCtx.path);
+}
+
 /**
  * A type predicate, not just a boolean: callers that pass the result as a gate — "return
  * unless this is a file tab" — then get `filePath` narrowed for free, which is what makes
@@ -335,41 +368,29 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     // content at all. The backfill itself stays: it is also what makes `ContextTabBar` close
     // these tabs with their vault, and dropping it would leave an invisible orphan tab (the
     // tab bar only renders when a `rootPath` is set).
-    if (isFileTab(tab) && tab.contextId) {
-      const ctxStore = useContextStore.getState();
-      if (ctxStore.activeContextId !== tab.contextId) {
-        // §89 FileContext tabs are global — don't switch context when selected
-        const tabCtx = ctxStore.contexts.find((c) => c.id === tab.contextId);
-        if (tabCtx?.contextType === "file") {
-          return; // External file tab — keep current vault context active
-        }
-        // Check if the tab's context has a different PATH (not just different ID)
-        // IDs can differ due to dedup (legacy-xxx vs ctx-xxx) while path is same
-        const activeCtx = ctxStore.activeContext();
-        if (tabCtx && activeCtx && tabCtx.path === activeCtx.path) {
-          return; // Same vault, different ID — no need to switch
-        }
-        // Dynamic import, deliberately: a static import of the service here would close
-        // file.ts → editor.ts → vault-context-loader.ts → file.ts into a real, fully-static
-        // 3-node cycle (the service needs useFileStore; closeFolder needs useEditorStore). This
-        // edge is the one place we break that cycle — the fire-and-forget timing is unchanged
-        // either way, since switchContext was never awaited here.
-        import("../../services/vault-context-loader").then(
-          ({ switchContext }) => {
-            switchContext(tab.contextId);
-          },
-        );
-      }
+    if (isFileTab(tab) && contextSwitchNeeded(tab.contextId)) {
+      // Dynamic import, deliberately: a static import of the service here would close
+      // file.ts → editor.ts → vault-context-loader.ts → file.ts into a real, fully-static
+      // 3-node cycle (the service needs useFileStore; closeFolder needs useEditorStore). This
+      // edge is the one place we break that cycle — the fire-and-forget timing is unchanged
+      // either way, since switchContext was never awaited here.
+      import("../../services/vault-context-loader").then(
+        ({ switchContext }) => {
+          switchContext(tab.contextId);
+        },
+      );
     }
   },
 
-  openTab: (tab) =>
+  openTab: (tab, opts) =>
     set((state) => {
+      const activate = opts?.activate !== false;
       // Only dedup on non-empty filePath to avoid untitled/graph collisions
       const existing = tab.filePath
         ? state.tabs.find((t) => t.filePath === tab.filePath)
         : undefined;
       if (existing) {
+        if (!activate) return state;
         // §39 Touch MRU for existing tab
         const mruOrder = [
           existing.id,
@@ -382,6 +403,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         tab.contextId || useContextStore.getState().activeContextId || "";
       // §38 New tab always unpinned
       const newTab = { ...tab, contextId, isPinned: false };
+      if (!activate) {
+        // Nobody has used it yet: the back of the MRU order, not the front.
+        return {
+          tabs: [...state.tabs, newTab],
+          mruOrder: [...state.mruOrder, newTab.id],
+        };
+      }
       // §39 New tab goes to front of MRU
       const mruOrder = [newTab.id, ...state.mruOrder];
       return {

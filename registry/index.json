@@ -21,11 +21,11 @@
       "id": "baram-bullet-threading",
       "name": "Bullet Threading",
       "description": "Draws the outline path from the outermost ancestor down to the list item holding the caret.",
-      "version": "2.1.0",
+      "version": "2.1.1",
       "author": "Baram",
       "license": "Apache-2.0",
-      "downloadUrl": "https://sayinel.github.io/baram-plugins/plugins/baram-bullet-threading-2.1.0.zip",
-      "checksum": "faf45ef1ace7e0f2804f6b814b3248a5ac5a0379e2d4382d27d7c8a70a1f49f2",
+      "downloadUrl": "https://sayinel.github.io/baram-plugins/plugins/baram-bullet-threading-2.1.1.zip",
+      "checksum": "1d606e1b1b2f9b63e1995c4be55dd9a0002b3db7894defe40f0deeb7761acd6d",
       "capabilities": ["extensions", "settings"],
       "trust": "trusted",
       "engines": {
@@ -33,8 +33,8 @@
       },
       "icon": "🧵",
       "keywords": ["outline", "list", "focus"],
-      "readme": "https://sayinel.github.io/baram-plugins/readme/baram-bullet-threading-2.1.0.md"
+      "readme": "https://sayinel.github.io/baram-plugins/readme/baram-bullet-threading-2.1.1.md"
     }
   ],
-  "updatedAt": "2026-09-22"
+  "updatedAt": "2026-10-03"
 }
