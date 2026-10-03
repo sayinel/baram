@@ -8,7 +8,7 @@
 // means "this key is not ours". Swallowing everything in normal mode would
 // eat Cmd+S and the platform menu accelerators (design §5).
 
-import type { KeyToken, StepResult, VimCoreState } from "./types";
+import type { KeyToken, StepContext, StepResult, VimCoreState } from "./types";
 
 import { exLineStep, searchLineStep } from "./command-lines";
 import { goalAfter } from "./goal-column";
@@ -26,12 +26,6 @@ import {
   takeCount,
 } from "./step-kit";
 import { visualKey } from "./visual-keys";
-
-/** Context the caller supplies alongside the key. */
-export interface StepContext {
-  /** Where the cursor is right now — needed to anchor visual mode. */
-  cursor: number;
-}
 
 /**
  * Feed one keystroke to the core.

@@ -84,6 +84,16 @@ export const syntaxRevealKey = new PluginKey<SyntaxRevealState>("syntaxReveal");
  * De-historifying expansion would make undo-after-Backspace restore the
  * literal delimiter text instead of the mark it replaced; history stays
  * exactly as it behaves today (§384 design descope 2).
+ *
+ * A second consumer: the vim plugin's reducer (vim/vim-plugin-reducer.ts
+ * `forgetsGoal`) keeps its j/k goal column across a tagged transaction. It
+ * relies on this: a tagged transaction leaves the caret where the cursor
+ * already was, or inside the text the swap just revealed around it — it is
+ * never a navigation of its own. The click path (`handleClick` →
+ * expandWikilink / expandMediaAtom) is the exception, since there the click
+ * chose the place, and vim covers it separately with a pointer watch
+ * (vim/vim-pointer-goal.ts). Tagging any other caret move — a keyboard or
+ * programmatic jump — would leave vim on a stale column.
  */
 export const SYNTAX_REVEAL_EPHEMERAL_META = "syntaxRevealEphemeral";
 

@@ -115,6 +115,12 @@ export type PendingKey =
 /** `/` = forward, `?` = backward — vim's buffer-local search (§298 tier 3). */
 export type SearchDirection = "backward" | "forward";
 
+/** Context the caller supplies alongside the key. */
+export interface StepContext {
+  /** Where the cursor is right now — needed to anchor visual mode. */
+  cursor: number;
+}
+
 /**
  * The result of feeding one key to the core.
  *

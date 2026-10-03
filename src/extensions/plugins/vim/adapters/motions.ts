@@ -14,7 +14,8 @@
 // table move by row, column-preserving via TableMap). Soft-wrap visual
 // lines stay demoted per §13 ("50j 강등").
 
-import type { GoalColumn, Motion } from "../core/types";
+import type { Motion } from "../core/types";
+import type { MotionOptions } from "./vertical-walk";
 import type { EditorState } from "@tiptap/pm/state";
 
 import { isCodeBlockLanding } from "./code-block-landing";
@@ -31,23 +32,6 @@ import {
 } from "./line-sequence";
 import { verticalTarget } from "./vertical-walk";
 import { wordWalk } from "./word-motions";
-
-/** Optional per-call motion policy (issue 472). */
-export interface MotionOptions {
-  /** Vertical landing INTO a CodeMirror-backed code block: "directional"
-   *  lands `k`-entry on the block's LAST source line (stock-vim spatial
-   *  continuity). The default "first-line" keeps every other caller —
-   *  visual head movement, operator ranges — exactly as before: a head
-   *  parked mid-block breaks the next walk's column math (the block's
-   *  source is one span, so the offset becomes a huge carried column) and
-   *  widens/narrows visual d/y ranges, neither of which issue 472
-   *  approved (adversarial review). */
-  codeBlockEntry?: "directional" | "first-line";
-  /** The remembered goal column for j/k (vim's curswant, issue 776). Absent:
-   *  the origin's own column — what operators and other one-shot callers
-   *  want, since they pick LINES and never carry the goal on. */
-  goalColumn?: GoalColumn;
-}
 
 /**
  * Where a jump to a whole line lands — gg, G, `:N`: its first non-blank, as

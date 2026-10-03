@@ -2,7 +2,7 @@
 //
 // The goal-column line walk and its table branch (TableMap rect walk).
 
-import type { MotionOptions } from "./motions";
+import type { GoalColumn } from "../core/types";
 import type { EditorState } from "@tiptap/pm/state";
 
 import { TableMap } from "@tiptap/pm/tables";
@@ -14,6 +14,23 @@ import {
   firstTextblockIn,
   lineIndexAround,
 } from "./line-sequence";
+
+/** Optional per-call motion policy (issue 472). */
+export interface MotionOptions {
+  /** Vertical landing INTO a CodeMirror-backed code block: "directional"
+   *  lands `k`-entry on the block's LAST source line (stock-vim spatial
+   *  continuity). The default "first-line" keeps every other caller —
+   *  visual head movement, operator ranges — exactly as before: a head
+   *  parked mid-block breaks the next walk's column math (the block's
+   *  source is one span, so the offset becomes a huge carried column) and
+   *  widens/narrows visual d/y ranges, neither of which issue 472
+   *  approved (adversarial review). */
+  codeBlockEntry?: "directional" | "first-line";
+  /** The remembered goal column for j/k (vim's curswant, issue 776). Absent:
+   *  the origin's own column — what operators and other one-shot callers
+   *  want, since they pick LINES and never carry the goal on. */
+  goalColumn?: GoalColumn;
+}
 
 /** Carried table-walk state: one findCell at entry, local rect expansion
  *  per step afterwards. */

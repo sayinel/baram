@@ -1,7 +1,6 @@
 // §298 Vim core — normal-mode bare keys and Escape (issue 776 split).
 
-import type { StepContext } from "./state-machine";
-import type { KeyToken, StepResult, VimCoreState } from "./types";
+import type { KeyToken, StepContext, StepResult, VimCoreState } from "./types";
 
 import { emit, swallow, takeCount } from "./step-kit";
 import { startVisual } from "./visual-state";

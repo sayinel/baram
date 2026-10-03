@@ -191,35 +191,23 @@ describe("the grapheme index is released when vim stops owning the surface", () 
 });
 
 // issue 776 — the goal column must cost nothing per keystroke. Counted as
-// grapheme segmentation passes (Intl.Segmenter#segment): the column walk's
-// unit lists are built from them, so an extra column measurement shows up as
-// an extra call.
+// calls to columnAt, the one origin-column measurement (wrapped by the mock
+// above, which delegates to the real function) — not as Intl.Segmenter calls,
+// which a grapheme cache or another plugin's segmentation would change without
+// changing what the goal column costs.
 describe("goal column cost (issue 776)", () => {
   const LINE = "abcdefghij";
 
-  function segmentCalls(run: () => void): number {
-    const spy = vi.spyOn(Intl.Segmenter.prototype, "segment");
-    try {
-      run();
-      return spy.mock.calls.length;
-    } finally {
-      spy.mockRestore();
-    }
-  }
-
   it("a supplied goal skips the origin measurement in the walk", () => {
     // Fails if: verticalTarget measures the origin column whether or not a
-    // goal was handed in (2 passes instead of 1).
+    // goal was handed in.
     const editor = makeEditor(`<p>${LINE}</p><p>${LINE}</p>`);
     const from = 7; // "g"
-    expect(
-      segmentCalls(() =>
-        resolveMotion(editor.state, from, "lineDown", 1, { goalColumn: 6 }),
-      ),
-    ).toBe(1); // the destination line only
-    expect(
-      segmentCalls(() => resolveMotion(editor.state, from, "lineDown", 1)),
-    ).toBe(2); // origin + destination
+    vi.mocked(columnAt).mockClear();
+    resolveMotion(editor.state, from, "lineDown", 1, { goalColumn: 6 });
+    expect(vi.mocked(columnAt)).not.toHaveBeenCalled();
+    resolveMotion(editor.state, from, "lineDown", 1);
+    expect(vi.mocked(columnAt)).toHaveBeenCalledTimes(1);
   });
 
   it("a run of j measures the origin column once, not per j", () => {
@@ -246,8 +234,8 @@ describe("goal column cost (issue 776)", () => {
     expect(
       (vimPluginKey.getState(editor.state) as unknown as { mode: string }).mode,
     ).toBe("insert");
-    expect(
-      segmentCalls(() => ["x", "y", "z"].forEach((k) => key(editor, k))),
-    ).toBe(0);
+    vi.mocked(columnAt).mockClear();
+    for (const k of ["x", "y", "z"]) key(editor, k);
+    expect(vi.mocked(columnAt)).not.toHaveBeenCalled();
   });
 });

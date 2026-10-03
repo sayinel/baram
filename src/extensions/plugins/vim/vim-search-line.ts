@@ -21,6 +21,7 @@ import { focusEditorView } from "../../../utils/editor/focus-editor-view";
 import { enterCodeBlockSelection } from "../../nodes/views/code-block-cm-registry";
 import { scrollCursorIntoView } from "./adapters/scroll";
 import { resolveSearch } from "./adapters/search";
+import { goalAfter } from "./core/goal-column";
 import { vimPluginKey } from "./vim-keys";
 
 /** Escape / blur: close the line. Only Escape hands focus back — a blur
@@ -69,9 +70,14 @@ export function submitSearchLine(editor: Editor): void {
   tr.setMeta(vimPluginKey, {
     core: {
       ...previous,
-      // An executed search forgets the goal column, matched or not (vim
-      // normal_search) — the same rule step() applies to the keyed Enter.
-      goalColumn: null,
+      // The goal column rule step() applies to the keyed Enter, called here
+      // rather than restated (an executed search forgets it, matched or not).
+      goalColumn: goalAfter(previous.goalColumn, {
+        count: 1,
+        direction: line.direction,
+        pattern,
+        type: "search",
+      }),
       lastSearch: { direction: line.direction, pattern },
       searchLine: null,
     },
