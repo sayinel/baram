@@ -6,11 +6,15 @@ name: Plugin Release
 # plugin's baram-plugin.json. Spec: dev plugin-registry-hosting design.
 #
 # §371 6b-2 — and a first-party THEME (spec 0063 §7.3): a tag `theme-<dir>-v<version>` where
-# <dir> is the directory under examples/themes/. Each tag shape runs exactly one of the two jobs
-# below (`if:` on the tag prefix); they share this file's concurrency group, the index writer
-# (`scripts/update-registry-index.mjs`) and both validators, and push with the same inline body
-# (pinned by src/themes/__tests__/theme-release-workflow.test.ts), so the registry still has one
-# writer (spec 0063 D1).
+# <dir> is the directory under examples/themes/.
+#
+# Spec 0065 (§69) — THREE STAGES, so the registry deploy key never reaches a runner that ran
+# third-party code. Each tag shape runs a meta job (`plugin-meta` / `theme-meta`: the checkout and
+# the tag gate, nothing installed) and a build job (`release` / `release-theme`: the dependencies,
+# the package, the index, the validators — no secret), and both shapes end in ONE `publish` job,
+# the only job that declares the `registry-publish` environment and reads the key. `publish` checks
+# out nothing and installs nothing: it holds the build's artifact to the meta job's outputs and to
+# the live registry, then pushes. The registry still has one writer (spec 0063 D1).
 on:
   push:
     tags: ['plugin-*', 'theme-*']
@@ -31,19 +35,23 @@ env:
   BASE_URL: https://sayinel.github.io/baram-plugins/
 
 jobs:
-  release:
+  # Spec 0065 D1 · D2 — the release's facts, decided where no third-party code runs. This job checks
+  # out the tagged commit and runs the tag gate below and nothing else: no `setup-node`, no `npm`,
+  # no `npx`. Its outputs are what the build job builds and what the publish job holds the build's
+  # artifact to, so a compromised dependency in the build cannot change them. `id` is the
+  # manifest's plugin id under the name the theme job's meta also uses.
+  plugin-meta:
     if: startsWith(github.ref_name, 'plugin-')
-    # THE DEPLOY KEY IS AN ENVIRONMENT SECRET (security review of plan 0113, item 8). The
-    # `registry-publish` environment — repository settings, not this file — admits only
-    # `plugin-*` and `theme-*` tag refs and waits for a required reviewer before the job starts,
-    # and the `release-tags` ruleset limits who may create those tags. A repository-level secret
-    # of the same name would be readable by a workflow on any branch, with neither check, so the
-    # key must not be stored at repository level. Rotate it with
-    # `gh secret set PLUGINS_DEPLOY_KEY --env registry-publish`, and in the environment
-    # revocation-publish.yml declares, which reads the same key.
-    environment: registry-publish
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 5
+    outputs:
+      dir: ${{ steps.meta.outputs.dir }}
+      version: ${{ steps.meta.outputs.version }}
+      id: ${{ steps.meta.outputs.plugin_id }}
+      expected_trust: ${{ steps.meta.outputs.expected_trust }}
+      zip_name: ${{ steps.meta.outputs.zip_name }}
+      manifest_sha256: ${{ steps.plugin_files.outputs.manifest_sha256 }}
+      readme_sha256: ${{ steps.plugin_files.outputs.readme_sha256 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -135,13 +143,14 @@ jobs:
           # package (round-3 LOW plus a defect in the first attempt at this fix):
           #   • `sort -V` is a version-ish string sort, not a semver comparator; it ordered a
           #     prerelease `0.5.0-beta.1` as satisfying a `0.5.0` floor.
-          #   • `require("semver")` would NOT RESOLVE here. No root `npm ci` has run at this
-          #     point in the job — the plugin build installs into the plugin directory, and the
-          #     root install happens later, just before the index is validated — and semver is a
-          #     transitive package rather than a declared dependency in any case. Reading a JSON
-          #     file by relative path needs no node_modules; requiring a package does. ‼️ Do not
-          #     "simplify" this to `require("semver")` on the strength of that later install:
-          #     this step runs first, and the failure would be a raw MODULE_NOT_FOUND.
+          #   • `require("semver")` would NOT RESOLVE here. `plugin-meta` never runs `npm ci` —
+          #     it is the dependency-free job spec 0065 splits out precisely so no install ever
+          #     happens in it, and semver is a transitive package rather than a declared
+          #     dependency in any case. Reading a JSON file by relative path needs no
+          #     node_modules; requiring a package does. ‼️ Do not "simplify" this to
+          #     `require("semver")` on the strength of the `release` job's later install: that
+          #     install runs in a DIFFERENT job, and the failure here would be a raw
+          #     MODULE_NOT_FOUND.
           # A prerelease app version fails closed: `0.5.0-beta.1` is not the release that ships
           # the floor, so it must not authorize publishing against it.
           APP_VERSION="$(node -p "require('./package.json').version")"
@@ -187,8 +196,59 @@ jobs:
             echo "zip_name=$PLUGIN_ID-$VERSION.zip"
           } >> "$GITHUB_OUTPUT"
 
+      # Spec 0065 §69 (plan 0115 R13) — the plugin's NON-BUILT files, hashed from the tagged
+      # checkout before any dependency installs. `Package ZIP` (in the `release` job, below)
+      # stores `baram-plugin.json` and `README.md` from the checkout UNCHANGED — only `dist` is
+      # built — and `publish` holds the archive's copies of these two files, as `unzip` reads
+      # them, to the hashes recorded here, the same way `dir`/`version`/`plugin_id` above anchor
+      # the declared fields. That the app installs those same two members is a claim about two
+      # zip parsers. `publish`'s entry list (plan 0115 N1) and extra-field allowlist (R19) make
+      # the names `unzip` lists the names the app's `zip` crate installs for the divergences
+      # known so far — path aliases (`./`, a `.` or `..` segment, a backslash; not Windows
+      # aliases under `dist/`), case, the Unicode Path and Zip64 extra fields — not for every
+      # disagreement two zip parsers can have: which end-of-central-directory record each
+      # picks is one left open. Where they still disagree, the app's install re-checks the
+      # manifest's capabilities and trust against the consent built from the registry entry
+      # (`install-transaction.ts`), so what a divergence could still change is the README and
+      # the manifest fields the install holds to nothing a meta job anchored — the display text,
+      # and the engines floor, which it checks only against the running app, among them. The
+      # `publish` job's header has the details.
+      - name: Record the plugin's tagged files
+        id: plugin_files
+        env:
+          DIR: ${{ steps.meta.outputs.dir }}
+        run: |
+          fail() { echo "::error::$1"; exit 1; }
+          MANIFEST="examples/plugins/$DIR/baram-plugin.json"
+          [[ -f "$MANIFEST" && ! -L "$MANIFEST" ]] \
+            || fail "$MANIFEST is missing or is not a regular file"
+          MANIFEST_SHA256="$(sha256sum "$MANIFEST" | cut -d' ' -f1)"
+          # ABSENT IS LEGAL — a plugin may ship with no README (the `release` job's artifact-verify
+          # step already treats that as a thin listing, not a failure). A README that EXISTS but is
+          # not a regular file is not: it must be hashed from the same tagged checkout as everything
+          # else here, and a symlink could point outside it.
+          README="examples/plugins/$DIR/README.md"
+          README_SHA256=""
+          if [[ -e "$README" || -L "$README" ]]; then
+            [[ -f "$README" && ! -L "$README" ]] \
+              || fail "$README exists but is not a regular file"
+            README_SHA256="$(sha256sum "$README" | cut -d' ' -f1)"
+          fi
+          {
+            echo "manifest_sha256=$MANIFEST_SHA256"
+            echo "readme_sha256=$README_SHA256"
+          } >> "$GITHUB_OUTPUT"
+
+  release:
+    if: startsWith(github.ref_name, 'plugin-')
+    needs: plugin-meta
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
       - name: Build plugin
-        working-directory: examples/plugins/${{ steps.meta.outputs.dir }}
+        working-directory: examples/plugins/${{ needs.plugin-meta.outputs.dir }}
         run: |
           npm ci
           npm run build
@@ -196,18 +256,19 @@ jobs:
       # Packaging contract: baram-plugin.json at the archive ROOT — zip the
       # directory CONTENTS, never a wrapping folder. Runtime files only.
       - name: Package ZIP
-        working-directory: examples/plugins/${{ steps.meta.outputs.dir }}
+        working-directory: examples/plugins/${{ needs.plugin-meta.outputs.dir }}
         env:
-          ZIP_NAME: ${{ steps.meta.outputs.zip_name }}
+          ZIP_NAME: ${{ needs.plugin-meta.outputs.zip_name }}
         run: |
           zip -r "$RUNNER_TEMP/$ZIP_NAME" \
             baram-plugin.json dist README.md
 
       # §260 Phase 6 code review round 5 — RE-VERIFY THE ARTIFACT, and index FROM it.
       #
-      # Every gate above judges a path in the repo tree, and five review rounds showed that no
-      # in-repo test can prove the later steps stayed inside the directory those gates verified:
-      # each round's guard was a text scan of this file, and each round found the next way past it
+      # Every gate plugin-meta ran judges a path in the repo tree (spec 0065 moved them into their
+      # own job, which runs before this one), and five review rounds showed that no in-repo test
+      # can prove this job's later steps stayed inside the directory those gates verified: each
+      # round's guard was a text scan of this file, and each round found the next way past it
       # (a hardcoded `working-directory`, then a rebound `DIR:`, and `cd`/`defaults.run` were never
       # covered at all). So stop trying to catch the ways a later step can wander, and re-check the
       # thing that actually ships.
@@ -222,10 +283,10 @@ jobs:
           # The tier the meta step's allowlist named, carried here the same way `plugin_id` and
           # `version` are: it is the value that step VERIFIED, and this step's whole job is to
           # hold the bytes to what that step verified.
-          EXPECTED_TRUST: ${{ steps.meta.outputs.expected_trust }}
-          PLUGIN_ID: ${{ steps.meta.outputs.plugin_id }}
-          VERSION: ${{ steps.meta.outputs.version }}
-          ZIP_NAME: ${{ steps.meta.outputs.zip_name }}
+          EXPECTED_TRUST: ${{ needs.plugin-meta.outputs.expected_trust }}
+          PLUGIN_ID: ${{ needs.plugin-meta.outputs.id }}
+          VERSION: ${{ needs.plugin-meta.outputs.version }}
+          ZIP_NAME: ${{ needs.plugin-meta.outputs.zip_name }}
         run: |
           fail() { echo "::error::$1"; exit 1; }
           MANIFEST="$RUNNER_TEMP/packaged-manifest.json"
@@ -256,10 +317,10 @@ jobs:
           # one judges the bytes about to be published, so it holds however they got here.
           #
           # ‼️ An EMPTY `$EXPECTED_TRUST` must not make this vacuous. The meta step always sets it
-          # (every `case` arm either assigns or aborts), but this step reads it through the step
-          # outputs, and a typo in that plumbing would silently compare against "" — which a
-          # manifest with no `trust` would then MATCH, publishing a tier-less entry the app
-          # disables on sight. Checked rather than assumed, because the failure is silent.
+          # (every `case` arm either assigns or aborts), but this step reads it through the
+          # plugin-meta job's outputs, and a typo in that plumbing would silently compare against
+          # "" — which a manifest with no `trust` would then MATCH, publishing a tier-less entry
+          # the app disables on sight. Checked rather than assumed, because the failure is silent.
           [[ "$EXPECTED_TRUST" == "sandboxed" || "$EXPECTED_TRUST" == "trusted" ]] \
             || fail "the verified tier did not reach this step (got '$EXPECTED_TRUST') — this is a bug in this workflow, not a refusal"
           [[ "$ZIP_TRUST" == "$EXPECTED_TRUST" ]] \
@@ -286,16 +347,19 @@ jobs:
       - name: Compute checksum
         id: sum
         env:
-          ZIP_NAME: ${{ steps.meta.outputs.zip_name }}
+          ZIP_NAME: ${{ needs.plugin-meta.outputs.zip_name }}
         run: |
           CHECKSUM="$(sha256sum "$RUNNER_TEMP/$ZIP_NAME" | cut -d' ' -f1)"
           echo "checksum=$CHECKSUM" >> "$GITHUB_OUTPUT"
 
       # For `validate-index.ts` in the next step, which imports the app's own
       # `parseBaramFloor` and `VALID_CAPABILITIES` rather than restating their rules. Placed
-      # here rather than at the top of the job on purpose: every gate above is deliberately
-      # dependency-free (see the semver note in the meta step), and moving this earlier would
-      # invite those checks to start requiring packages.
+      # here rather than at the top of the job on purpose: every verification gate ABOVE this step
+      # in THIS job is deliberately dependency-free (see the semver note in plugin-meta's tag step
+      # — a separate job since spec 0065, which runs before this one and needs no install either),
+      # and moving this earlier would invite those checks to start requiring packages. The step
+      # below this one is not dependency-free — it is the `npx tsx` validator run this split exists
+      # to feed, not a gate this comment is claiming anything about.
       - uses: ./.github/actions/setup-node
 
       # ‼️ NO SECRET IS IN REACH OF THIS STEP, and that is the point of splitting it out.
@@ -308,8 +372,8 @@ jobs:
       # access to the registry every user's marketplace reads, readable on disk.
       #
       # The registry is a public GitHub Pages repo, so READING it needs no credential at
-      # all. Cloning over HTTPS here means every line of third-party code in this job runs
-      # before the key exists; the step below writes it, pushes, and runs no dependency.
+      # all. Cloning over HTTPS here needs no credential, and since spec 0065 the key is
+      # never on this runner at all — the publish job pushes.
       - name: Update and validate the registry index
         env:
           # §260 Phase 6 code review round 5 (HIGH-1) — the manifest comes from the VERIFIED
@@ -323,9 +387,9 @@ jobs:
           # Empty when the archive carried no README — the index then gets no `readme` for
           # this entry, which is a legal listing rather than a failure.
           PACKAGED_README: ${{ steps.artifact.outputs.readme }}
-          PLUGIN_ID: ${{ steps.meta.outputs.plugin_id }}
-          VERSION: ${{ steps.meta.outputs.version }}
-          ZIP_NAME: ${{ steps.meta.outputs.zip_name }}
+          PLUGIN_ID: ${{ needs.plugin-meta.outputs.id }}
+          VERSION: ${{ needs.plugin-meta.outputs.version }}
+          ZIP_NAME: ${{ needs.plugin-meta.outputs.zip_name }}
           CHECKSUM: ${{ steps.sum.outputs.checksum }}
         run: |
           git clone --depth 1 "https://github.com/${REGISTRY_REPO}.git" "$RUNNER_TEMP/registry"
@@ -365,69 +429,64 @@ jobs:
           npx tsx scripts/validate-registry-assets.ts "$RUNNER_TEMP/registry" \
             --base-url "$BASE_URL"
 
-      # Everything third-party has already run. This step writes the key, rewrites the
-      # read-only HTTPS remote to SSH, and pushes — no `node`, no `npx`, no dependency.
-      - name: Push ZIP + updated index to registry repo
+      # Spec 0065 D4 — what this job hands the publish job: the archive, the index the step above
+      # wrote and validated and, when the archive carried one, the README — copied by name out of that
+      # registry clone, and nothing else. The publish job holds every file here to what plugin-meta
+      # verified. The theme job's stage step has this same body (plan 0115 P8).
+      - name: Stage the plugin release for the publish job
         env:
-          DEPLOY_KEY: ${{ secrets.PLUGINS_DEPLOY_KEY }}
-          ZIP_NAME: ${{ steps.meta.outputs.zip_name }}
-          PLUGIN_ID: ${{ steps.meta.outputs.plugin_id }}
-          VERSION: ${{ steps.meta.outputs.version }}
+          ID: ${{ needs.plugin-meta.outputs.id }}
+          VERSION: ${{ needs.plugin-meta.outputs.version }}
+          ZIP_NAME: ${{ needs.plugin-meta.outputs.zip_name }}
         run: |
-          mkdir -p ~/.ssh
-          echo "$DEPLOY_KEY" > ~/.ssh/plugins_deploy
-          chmod 600 ~/.ssh/plugins_deploy
-          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
-          export GIT_SSH_COMMAND="ssh -i ~/.ssh/plugins_deploy -o IdentitiesOnly=yes"
-          cd "$RUNNER_TEMP/registry"
-          git remote set-url origin "git@github.com:${REGISTRY_REPO}.git"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          # `readme/` is staged as a DIRECTORY rather than by name: the file is written only
-          # when the archive had one, and `git add` on a path that does not exist aborts the
-          # step — which would fail a perfectly good release of a plugin without a README.
-          # An unchanged or absent directory adds nothing and the `--quiet` check below still
-          # decides whether there is anything to publish.
-          git add "plugins/$ZIP_NAME" index.json
-          git add readme 2>/dev/null || true
-          if git diff --cached --quiet; then
-            echo "::notice::Registry already contains this exact release — nothing to publish."
-            exit 0
+          STAGE="$RUNNER_TEMP/release"
+          mkdir -p "$STAGE/plugins"
+          cp "$RUNNER_TEMP/registry/plugins/$ZIP_NAME" "$STAGE/plugins/$ZIP_NAME"
+          cp "$RUNNER_TEMP/registry/index.json" "$STAGE/index.json"
+          README="$RUNNER_TEMP/registry/readme/$ID-$VERSION.md"
+          if [[ -f "$README" ]]; then
+            mkdir -p "$STAGE/readme"
+            cp "$README" "$STAGE/readme/$ID-$VERSION.md"
           fi
-          git commit -m "release: $PLUGIN_ID $VERSION"
-          git push origin main
 
-  # §371 6b-2 — a first-party theme (spec 0063 §7.3). The plugin job's argument, step for step,
-  # with the differences a theme brings:
-  #
-  #   - NO BUILD. Nothing in examples/themes/ runs: the package step reads the manifest and the
-  #     files it declares, and nothing else (`scripts/theme-package.ts`).
-  #   - `setup-node` comes BEFORE the gates rather than after, because the gates ARE the app's
-  #     own TypeScript (`validateThemeManifest`, `parseThemeTokens`, `registryPreviewPalettes`,
-  #     `parseBaramFloor`) — the plugin job restates its version gate in dependency-free shell
-  #     only because it runs before any install. No secret exists in this job until the last step,
-  #     so moving the install earlier moves no third-party code closer to the key.
-  #   - The archive goes to `plugins/`, beside the plugins (spec 0063 D9, corrected by plan 0113):
-  #     every registry gate that protects an archive — `validate.yml`'s immutability check, the
-  #     orphan sweep in `validate-registry-assets.ts` — looks there and only there.
-  #   - A CHECKSUM GATE the plugin job does not have: the tagged commit must record the sha256 of
-  #     the archive the pre-publish check installed (`Check the checksum the pre-publish check
-  #     recorded`).
-  #   - The push is the plugin job's inline body with `$PLUGIN_ID` → `$THEME_ID`;
-  #     src/themes/__tests__/theme-release-workflow.test.ts compares the two.
-  release-theme:
+      - name: Upload the plugin release for the publish job
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: registry-release
+          path: ${{ runner.temp }}/release
+          if-no-files-found: error
+          # Plan 0115 F2 — the approval `registry-publish` can wait for runs up to 30 days, but this
+          # step's own 1-day retention (not GitHub's default, which is the repository's setting —
+          # 90 days unless changed) let the download fail well before that. 7 days covers a normal
+          # approval wait; approve within that window, or re-run the whole workflow so a fresh
+          # build re-uploads the artifact.
+          retention-days: 7
+          # R7 — artifacts are immutable since upload-artifact v4, so re-running the whole workflow
+          # (the recovery this job's own refusals point to) must be able to upload the same name
+          # again rather than fail on a name collision from the earlier, abandoned run.
+          overwrite: true
+
+  # Spec 0065 D1 · D2 — the theme's facts, decided where no third-party code runs: the tag gate and
+  # the checksum the pre-publish check recorded, read from the tagged checkout before any
+  # dependency is installed. `id` is the allowlisted theme id under the name the plugin job's meta
+  # also uses.
+  theme-meta:
     if: startsWith(github.ref_name, 'theme-')
-    # The same environment as the plugin job above, for the same reason.
-    environment: registry-publish
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 5
+    outputs:
+      dir: ${{ steps.theme_meta.outputs.dir }}
+      version: ${{ steps.theme_meta.outputs.version }}
+      id: ${{ steps.theme_meta.outputs.expected_id }}
+      zip_name: ${{ steps.theme_sums.outputs.zip_name }}
+      recorded_sha256: ${{ steps.theme_sums.outputs.recorded_sha256 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
-      # WHAT MAY BE PUBLISHED, AND UNDER WHICH ID — deny by default, as in the plugin job. The id
-      # is pinned per directory because a theme id is permanent once published (spec 0063 D8):
+      # WHAT MAY BE PUBLISHED, AND UNDER WHICH ID — deny by default, as in plugin-meta's tag step.
+      # The id is pinned per directory because a theme id is permanent once published (spec 0063 D8):
       # an allowlisted directory whose manifest changes id fails the release instead of shipping
       # a second theme. Pinned by src/themes/__tests__/theme-release-workflow.test.ts, which
       # EXECUTES this step.
@@ -453,6 +512,80 @@ jobs:
             echo "expected_id=$EXPECTED_ID"
           } >> "$GITHUB_OUTPUT"
 
+      # THE ARCHIVE PUBLISHED MUST BE THE ONE THE PRE-PUBLISH CHECK INSTALLED (security review, plan
+      # 0113 Task 7). That check — the maintainer builds the zip locally with `npm run theme:package`,
+      # installs it by file and looks at it (spec 0063 §7.5) — is worth something only if the release
+      # publishes those same bytes, and a published archive is immutable: a mismatch found after the
+      # push costs a revocation and a new version. So the maintainer records the check's `sha256=` and
+      # `zip_name=` as a `sha256sum` line in the theme folder's `SHA256SUMS` on the commit that is
+      # tagged.
+      #
+      # This step READS that line (spec 0065 D3): here, before anything is installed, so no code from
+      # the build's dependency tree can rewrite the file first. The build job compares its archive with
+      # the line to stop early, and the publish job compares the bytes it is about to push — that
+      # comparison is the one that decides. It proves the recorded hash equals the published one, not
+      # that anyone installed or looked at the recorded zip. It reads the repo only through `$DIR`, the
+      # directory the tag step checked against its allowlist. Dependency-free bash, inputs through
+      # `env` only.
+      - name: Read the checksum the pre-publish check recorded
+        id: theme_sums
+        env:
+          DIR: ${{ steps.theme_meta.outputs.dir }}
+          EXPECTED_ID: ${{ steps.theme_meta.outputs.expected_id }}
+          VERSION: ${{ steps.theme_meta.outputs.version }}
+        run: |
+          fail() { echo "::error::$1"; exit 1; }
+          [[ -n "$DIR" && -n "$EXPECTED_ID" && -n "$VERSION" ]] \
+            || fail "a verified value did not reach this step — this is a bug in this workflow, not a refusal"
+          ZIP_NAME="$EXPECTED_ID-$VERSION.zip"
+          SUMS="examples/themes/$DIR/SHA256SUMS"
+          [[ -f "$SUMS" && ! -L "$SUMS" ]] \
+            || fail "$SUMS is missing or is not a regular file — record the pre-publish check's sha256 there as the line \"<sha256>  $ZIP_NAME\" on the commit you tag"
+          # A record is `<64 lowercase hex><two spaces><name>`; the name is compared as a STRING, not
+          # put into a pattern, so a version's dots are not wildcards (plan 0115 P4). A line in any
+          # other shape — a comment, one space, a suffix on the name — records nothing.
+          RECORD_RE='^([0-9a-f]{64})  (.+)$'
+          FOUND=()
+          while IFS= read -r line || [[ -n "$line" ]]; do
+            if [[ $line =~ $RECORD_RE && "${BASH_REMATCH[2]}" == "$ZIP_NAME" ]]; then
+              FOUND+=("${BASH_REMATCH[1]}")
+            fi
+          done < "$SUMS"
+          [[ ${#FOUND[@]} -ne 0 ]] \
+            || fail "$SUMS has no line \"<sha256>  $ZIP_NAME\" — run the pre-publish check on the commit you tag and record the sha256 it prints for $ZIP_NAME there"
+          [[ ${#FOUND[@]} -eq 1 ]] \
+            || fail "$SUMS has ${#FOUND[@]} lines for $ZIP_NAME — keep the one the pre-publish check printed and delete the others"
+          {
+            echo "zip_name=$ZIP_NAME"
+            echo "recorded_sha256=${FOUND[0]}"
+          } >> "$GITHUB_OUTPUT"
+
+  # §371 6b-2 — a first-party theme (spec 0063 §7.3). The plugin job's argument, step for step,
+  # with the differences a theme brings:
+  #
+  #   - NO BUILD. Nothing in examples/themes/ runs: the package step reads the manifest and the
+  #     files it declares, and nothing else (`scripts/theme-package.ts`).
+  #   - `setup-node` comes BEFORE the gates rather than after, because the gates ARE the app's
+  #     own TypeScript (`validateThemeManifest`, `parseThemeTokens`, `registryPreviewPalettes`,
+  #     `parseBaramFloor`) — the plugin job restates its version gate in dependency-free shell
+  #     only because it runs before any install. No secret exists in this job at all (spec 0065),
+  #     so the install's position moves no third-party code closer to the key.
+  #   - The archive goes to `plugins/`, beside the plugins (spec 0063 D9, corrected by plan 0113):
+  #     every registry gate that protects an archive — `validate.yml`'s immutability check, the
+  #     orphan sweep in `validate-registry-assets.ts` — looks there and only there.
+  #   - A CHECKSUM GATE the plugin job does not have: the tagged commit must record the sha256 of
+  #     the archive the pre-publish check installed (`theme-meta` reads the record; `Check the
+  #     archive against the recorded checksum` compares).
+  #   - There is no push here: the publish job, shared with the plugin job, takes the artifact
+  #     (spec 0065).
+  release-theme:
+    if: startsWith(github.ref_name, 'theme-')
+    needs: theme-meta
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
       - uses: ./.github/actions/setup-node
 
       # The manifest (the app's validator), the tag version, a reserved id, the release-order
@@ -461,8 +594,8 @@ jobs:
       - name: Package the theme
         id: theme_package
         env:
-          DIR: ${{ steps.theme_meta.outputs.dir }}
-          VERSION: ${{ steps.theme_meta.outputs.version }}
+          DIR: ${{ needs.theme-meta.outputs.dir }}
+          VERSION: ${{ needs.theme-meta.outputs.version }}
         run: |
           npx tsx scripts/run-theme-package.ts package \
             --dir "examples/themes/$DIR" --version "$VERSION" --out "$RUNNER_TEMP" \
@@ -476,8 +609,8 @@ jobs:
       - name: Verify the packaged theme is the theme that was verified
         id: theme_artifact
         env:
-          EXPECTED_ID: ${{ steps.theme_meta.outputs.expected_id }}
-          VERSION: ${{ steps.theme_meta.outputs.version }}
+          EXPECTED_ID: ${{ needs.theme-meta.outputs.id }}
+          VERSION: ${{ needs.theme-meta.outputs.version }}
           ZIP_NAME: ${{ steps.theme_package.outputs.zip_name }}
         run: |
           fail() { echo "::error::$1"; exit 1; }
@@ -504,32 +637,23 @@ jobs:
           CHECKSUM="$(sha256sum "$RUNNER_TEMP/$ZIP_NAME" | cut -d' ' -f1)"
           echo "checksum=$CHECKSUM" >> "$GITHUB_OUTPUT"
 
-      # THE ARCHIVE BUILT HERE MUST BE THE ONE THE PRE-PUBLISH CHECK INSTALLED (security review,
-      # plan 0113 Task 7). That check — the maintainer builds the zip locally with
-      # `npm run theme:package`, installs it by file and looks at it (spec 0063 §7.5) — is worth
-      # something only if this job publishes those same bytes, and a published archive is
-      # immutable: a mismatch found after the push costs a revocation and a new version. So the
-      # maintainer records the check's `sha256=` and `zip_name=` as a `sha256sum` line in the
-      # theme folder's `SHA256SUMS` on the commit that is tagged, and this step refuses the tag
-      # unless the archive built above hashes to a recorded line.
-      #
-      # It proves the recorded hash equals the built one — not that anyone installed or looked at
-      # the recorded zip. It reads the repo only through `$DIR`, the directory the tag step checked
-      # against its allowlist. Dependency-free bash, inputs through `env` only.
-      - name: Check the checksum the pre-publish check recorded
+      # Spec 0065 D4 — the EARLY half of the recorded-checksum gate: the archive built here against the
+      # line the theme-meta job read, so a mismatch stops before an approval is requested. The publish
+      # job compares again on the bytes it pushes, and that comparison is the one that decides.
+      - name: Check the archive against the recorded checksum
         env:
-          DIR: ${{ steps.theme_meta.outputs.dir }}
           ZIP_NAME: ${{ steps.theme_package.outputs.zip_name }}
           CHECKSUM: ${{ steps.theme_sum.outputs.checksum }}
+          RECORDED_ZIP_NAME: ${{ needs.theme-meta.outputs.zip_name }}
+          RECORDED_SHA256: ${{ needs.theme-meta.outputs.recorded_sha256 }}
         run: |
           fail() { echo "::error::$1"; exit 1; }
-          [[ -n "$DIR" && -n "$ZIP_NAME" && -n "$CHECKSUM" ]] \
+          [[ -n "$ZIP_NAME" && -n "$CHECKSUM" && -n "$RECORDED_ZIP_NAME" && -n "$RECORDED_SHA256" ]] \
             || fail "a verified value did not reach this step — this is a bug in this workflow, not a refusal"
-          SUMS="examples/themes/$DIR/SHA256SUMS"
-          [[ -f "$SUMS" && ! -L "$SUMS" ]] \
-            || fail "$SUMS is missing or is not a regular file — record the pre-publish check's sha256 there as the line \"<sha256>  $ZIP_NAME\" on the commit you tag"
-          grep -qxF "$CHECKSUM  $ZIP_NAME" "$SUMS" \
-            || fail "$SUMS has no line \"$CHECKSUM  $ZIP_NAME\" — the archive built here is not the one the pre-publish check installed. Run that check on the commit you tag and record the sha256 it prints for $ZIP_NAME there"
+          [[ "$ZIP_NAME" == "$RECORDED_ZIP_NAME" ]] \
+            || fail "the archive is named $ZIP_NAME but the recorded line is for $RECORDED_ZIP_NAME"
+          [[ "$CHECKSUM" == "$RECORDED_SHA256" ]] \
+            || fail "$ZIP_NAME hashes to $CHECKSUM but SHA256SUMS records $RECORDED_SHA256 — the archive built here is not the one the pre-publish check installed. Run that check on the commit you tag and record the sha256 it prints for $ZIP_NAME there"
 
       # ‼️ NO SECRET IS IN REACH OF THIS STEP — the plugin job's MEDIUM-3 split, kept.
       - name: Update and validate the registry index for the theme
@@ -554,49 +678,616 @@ jobs:
           npx tsx scripts/validate-registry-assets.ts "$RUNNER_TEMP/registry" \
             --base-url "$BASE_URL"
 
-      # THE KEY REACHES THIS JOB ONLY IN THIS, ITS LAST STEP: every step above — the ones that run
-      # third-party code (`setup-node`'s `npm ci`, `npx tsx`, their dependencies) included — has
-      # finished before the key is written. The step runs git and ssh (plus mkdir, chmod,
-      # ssh-keyscan) — no node, no npx, no dependency.
-      #
-      # ‼️ What that does NOT guarantee: code that ran earlier in this job can leave things behind
-      # that this step's git and ssh act on or that outlive their own step — for example hooks or
-      # config in `$RUNNER_TEMP/registry` or `~/.ssh`, entries in `$GITHUB_PATH` or `$GITHUB_ENV`,
-      # a background process. So the key is not isolated from that code. Nor is it gone after this
-      # step: the file stays in `~/.ssh` while the post-job steps of `actions/checkout` and
-      # `actions/setup-node` run. Isolating the key in a job of its own is the follow-up.
-      #
-      # The body is INLINE rather than a `./` action on purpose (security review, plan 0113 Task 7):
-      # the runner reads a local action from the workspace when its step starts, so any earlier
-      # step could rewrite it and receive the key, while this file is fixed when the run is
-      # queued. It is the plugin job's body with one token changed, `$PLUGIN_ID` → `$THEME_ID` —
-      # src/themes/__tests__/theme-release-workflow.test.ts compares the two.
-      - name: Push the theme archive + updated index to registry repo
+      # Spec 0065 D4 — the plugin job's stage step, same body (plan 0115 P8). A theme archive carries no
+      # README, so the README branch finds nothing here.
+      - name: Stage the theme release for the publish job
+        env:
+          ID: ${{ needs.theme-meta.outputs.id }}
+          VERSION: ${{ needs.theme-meta.outputs.version }}
+          ZIP_NAME: ${{ needs.theme-meta.outputs.zip_name }}
+        run: |
+          STAGE="$RUNNER_TEMP/release"
+          mkdir -p "$STAGE/plugins"
+          cp "$RUNNER_TEMP/registry/plugins/$ZIP_NAME" "$STAGE/plugins/$ZIP_NAME"
+          cp "$RUNNER_TEMP/registry/index.json" "$STAGE/index.json"
+          README="$RUNNER_TEMP/registry/readme/$ID-$VERSION.md"
+          if [[ -f "$README" ]]; then
+            mkdir -p "$STAGE/readme"
+            cp "$README" "$STAGE/readme/$ID-$VERSION.md"
+          fi
+
+      - name: Upload the theme release for the publish job
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: registry-release
+          path: ${{ runner.temp }}/release
+          if-no-files-found: error
+          # Plan 0115 F2 — the plugin job's note above, same reason.
+          retention-days: 7
+          # R7 — the plugin job's note above, same reason.
+          overwrite: true
+
+  # Spec 0065 D5 · D6 — THE JOB THAT WRITES THE REGISTRY, for both tag shapes. It checks out nothing and
+  # installs nothing — `download-artifact`, then bash with the runner's `jq`, `unzip`, `sha256sum`
+  # and `git` — so no code from the build's dependency tree runs on this runner. It does not trust
+  # the build's artifact: the file list, the archive's manifest and README (plan 0115 F1 — anchored
+  # to plugin-meta's `manifest_sha256`/`readme_sha256`, hashed from the tagged checkout before any
+  # install), a theme's recorded checksum, and the index are all held to what a meta job verified
+  # (where no third-party code ran) and to the live registry. A compromised build can then change
+  # only this release's own entry. For a plugin, the archive holds `baram-plugin.json` exactly
+  # once, `README.md` once if plugin-meta recorded one and never otherwise, and every other name
+  # is a path under `dist/` (plan 0115 N1's entry-list check); the bytes `unzip` reads for those
+  # two names are the bytes a meta job read before the build ran (spec 0065 §2).
+  #
+  # Those are `unzip`'s names. The app installs with Rust's `zip` crate, and the two parsers can
+  # disagree. The entry list (N1) and the extra-field allowlist (R19) make the names `unzip`
+  # lists the names the crate installs for the divergences known so far: path aliases (`./`, a
+  # `.` or `..` segment, a backslash), case, and the Unicode Path and Zip64 extra fields. They
+  # do not exclude every disagreement two zip parsers can have. The known one left open is which
+  # end-of-central-directory record each picks, which the community gate refuses (`tailProblem`
+  # in scripts/community-zip.ts). Nor are Windows path aliases under `dist/` refused here (a
+  # segment that ends in `.` or a space, an 8.3 short name; that gate refuses them in
+  # `unsafeName`); whether one can reach a root name on Windows has not been measured. Where the
+  # two still disagree, the app's install (`install-transaction.ts`) re-checks the staged
+  # manifest's id against the registry entry, its capabilities and trust against the consent
+  # built from that entry, and its engines floor only against the running app. So what such a
+  # divergence could still change is the README and every manifest field the install holds to
+  # nothing a meta job anchored — the display text (`name`, `description`, …) and the engines
+  # floor among them — beside the built `dist`, which nothing anchors.
+  #
+  # `success()` cannot gate this job: one tag shape's meta and build are always skipped, and a
+  # skipped dependency fails `success()`. So the condition is spelled out.
+  #
+  # THE DEPLOY KEY IS AN ENVIRONMENT SECRET (security review of plan 0113, item 8), and this is the only
+  # job that declares that environment. `registry-publish` — repository settings, not this file —
+  # admits only `plugin-*` and `theme-*` tag refs and waits for a required reviewer before this job
+  # starts, so the approval is asked for only after a build has passed; the `release-tags` ruleset
+  # limits who may create those tags. A repository-level secret of the same name would be readable
+  # by a workflow on any branch, with neither check, so the key must not be stored at repository
+  # level. Approve within 7 days of the build (plan 0115 F2 — the uploaded artifact's retention),
+  # or re-run the whole workflow so a fresh build re-uploads it. Rotate the key with
+  # `gh secret set PLUGINS_DEPLOY_KEY --env registry-publish`, and in the environment
+  # revocation-publish.yml declares, which reads the same key.
+  publish:
+    needs: [plugin-meta, release, theme-meta, release-theme]
+    if: ${{ !cancelled() && !failure() && (needs.release.result == 'success' || needs.release-theme.result == 'success') }}
+    environment: registry-publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      KIND: ${{ startsWith(github.ref_name, 'theme-') && 'theme' || 'plugin' }}
+      ID: ${{ needs.plugin-meta.outputs.id || needs.theme-meta.outputs.id }}
+      VERSION: ${{ needs.plugin-meta.outputs.version || needs.theme-meta.outputs.version }}
+      ZIP_NAME: ${{ needs.plugin-meta.outputs.zip_name || needs.theme-meta.outputs.zip_name }}
+      EXPECTED_TRUST: ${{ needs.plugin-meta.outputs.expected_trust }}
+      RECORDED_SHA256: ${{ needs.theme-meta.outputs.recorded_sha256 }}
+      # Plan 0115 F1 (R13) — a plugin's manifest and README, hashed by plugin-meta from the tagged
+      # checkout. Empty for a theme release (theme-meta sets neither output).
+      MANIFEST_SHA256: ${{ needs.plugin-meta.outputs.manifest_sha256 }}
+      README_SHA256: ${{ needs.plugin-meta.outputs.readme_sha256 }}
+    steps:
+      - name: Download the release
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: registry-release
+          path: ${{ runner.temp }}/release
+
+      # Spec 0065 D6 ① ② ③ — the artifact's files, the archive's manifest and, for a theme, the
+      # recorded checksum. Every name comes from a meta job; nothing here reads the repo.
+      - name: Check the release artifact against what meta verified
+        id: artifact_check
+        run: |
+          fail() { echo "::error::$1"; exit 1; }
+          A="$RUNNER_TEMP/release"
+          # An empty or unknown value is a wiring bug, and it must not make a check below vacuous.
+          [[ "$KIND" == "plugin" || "$KIND" == "theme" ]] \
+            || fail "unknown release kind '$KIND' — this is a bug in this workflow, not a refusal"
+          [[ -n "$ID" && -n "$VERSION" && -n "$ZIP_NAME" ]] \
+            || fail "a verified value did not reach this job — this is a bug in this workflow, not a refusal"
+          [[ "$ZIP_NAME" == "$ID-$VERSION.zip" ]] \
+            || fail "meta named the archive $ZIP_NAME, not $ID-$VERSION.zip — this is a bug in this workflow, not a refusal"
+          SHA_RE='^[0-9a-f]{64}$'
+          if [[ "$KIND" == "plugin" ]]; then
+            [[ "$EXPECTED_TRUST" == "sandboxed" || "$EXPECTED_TRUST" == "trusted" ]] \
+              || fail "the verified tier did not reach this job (got '$EXPECTED_TRUST') — this is a bug in this workflow, not a refusal"
+            MANIFEST_NAME=baram-plugin.json
+          else
+            [[ $RECORDED_SHA256 =~ $SHA_RE ]] \
+              || fail "the recorded checksum did not reach this job (got '$RECORDED_SHA256') — this is a bug in this workflow, not a refusal"
+            MANIFEST_NAME=baram-theme.json
+          fi
+          README_NAME="$ID-$VERSION.md"
+
+          # ① Exactly the files this release publishes — nothing else rides along.
+          [[ -d "$A" ]] || fail "the artifact did not arrive"
+          # `find` runs as its own command under this step's `-e`, not inside a process
+          # substitution: a process substitution's exit status is NOT the pipeline's, so a `find`
+          # that stopped early on a permission error (an unreadable `readme/` or `plugins/`) used to
+          # pass this check silently along with whatever partial list it printed before failing (M1).
+          LINKS="$RUNNER_TEMP/artifact-links"
+          find "$A" -type l > "$LINKS"
+          [[ ! -s "$LINKS" ]] || fail "the artifact carries a symbolic link"
+          FILES="$RUNNER_TEMP/artifact-files"
+          (cd "$A" && find . -mindepth 1 -print0) > "$FILES"
+          while IFS= read -r -d '' path; do
+            case "$path" in
+              ./index.json|./plugins|"./plugins/$ZIP_NAME") ;;
+              ./readme|"./readme/$README_NAME")
+                [[ "$KIND" == "plugin" ]] \
+                  || fail "the artifact carries ${path#./}, which a theme release does not publish" ;;
+              *) fail "the artifact carries ${path#./}, which this release does not publish" ;;
+            esac
+          done < "$FILES"
+          [[ -f "$A/index.json" ]] || fail "the artifact has no index.json"
+          [[ -f "$A/plugins/$ZIP_NAME" ]] || fail "the artifact has no plugins/$ZIP_NAME"
+
+          # ② The archive is the release meta verified.
+          M="$RUNNER_TEMP/release-manifest.json"
+          unzip -p "$A/plugins/$ZIP_NAME" "$MANIFEST_NAME" > "$M" 2>/dev/null \
+            || fail "the archive has no $MANIFEST_NAME at its root"
+          # `-s` (slurp) makes this its own standalone check: `jq -e 'type == "object"'` alone judges
+          # only the LAST value of whatever `$M` contains, so a member that is a stream of two JSON
+          # values (two objects with the same name, or one object followed by another) passed as if
+          # it were a single honest one (M2).
+          jq -e -s 'length == 1 and (.[0] | type == "object")' "$M" > /dev/null 2>&1 \
+            || fail "the archive's $MANIFEST_NAME is not a single JSON object"
+          ZIP_ID="$(jq -r '.id // ""' "$M")"
+          ZIP_VERSION="$(jq -r '.version // ""' "$M")"
+          [[ "$ZIP_ID" == "$ID" ]] \
+            || fail "the archive contains $KIND '$ZIP_ID' but '$ID' was verified"
+          [[ "$ZIP_VERSION" == "$VERSION" ]] \
+            || fail "the archive contains version '$ZIP_VERSION' but '$VERSION' was verified"
+          if [[ "$KIND" == "plugin" ]]; then
+            ZIP_TRUST="$(jq -r '.trust // ""' "$M")"
+            [[ "$ZIP_TRUST" == "$EXPECTED_TRUST" ]] \
+              || fail "the archive declares trust '$ZIP_TRUST' but '$EXPECTED_TRUST' was verified"
+          fi
+
+          # Plan 0115 F1 (R13) wiring sanity — hoisted ahead of N1's entry-list check below, which
+          # reads README_SHA256's emptiness to decide what the archive's entry list may contain. A
+          # malformed (non-empty, non-hex) value must be reported as the wiring bug it is, not as
+          # N1 requiring a README.md entry that plugin-meta never actually recorded.
+          if [[ "$KIND" == "plugin" ]]; then
+            [[ $MANIFEST_SHA256 =~ $SHA_RE ]] \
+              || fail "the manifest hash did not reach this job (got '$MANIFEST_SHA256') — this is a bug in this workflow, not a refusal"
+            [[ -z "$README_SHA256" || $README_SHA256 =~ $SHA_RE ]] \
+              || fail "the README hash did not reach this job (got '$README_SHA256') — this is a bug in this workflow, not a refusal"
+          else
+            [[ -z "$MANIFEST_SHA256" && -z "$README_SHA256" ]] \
+              || fail "a plugin-only value reached this theme job (manifest_sha256='$MANIFEST_SHA256' readme_sha256='$README_SHA256') — this is a bug in this workflow, not a refusal"
+          fi
+
+          # Plan 0115 N1 (ruling R18) — the ARCHIVE'S ENTRY LIST, not just what `unzip -p` reads for
+          # a name above and below. `unzip -p` matches a name LITERALLY, but the app's extractor
+          # (`enclosed_name` in the zip crate, src-tauri/src/fs/archive.rs `extract_zip_bounded`)
+          # NORMALIZES a name like `./baram-plugin.json`, `dist/../baram-plugin.json` or
+          # `Baram-Plugin.json` to the SAME installed path as the honest member, and the LATER entry
+          # in the archive then wins (the case variant wins on case-insensitive APFS) — so a build
+          # that smuggles one of these aliases alongside the honest member passed every check here
+          # unchanged while installing a DIFFERENT file than the one hashed. A theme needs no such
+          # check: `RECORDED_SHA256` below already anchors the theme archive's whole byte content,
+          # named-member aliasing included.
+          if [[ "$KIND" == "plugin" ]]; then
+            # `unzip -Z1` runs as its own command under this step's `-e`, not inside `$(…)` or
+            # `< <(…)` — the same `find`-hiding-its-exit pitfall M1 above already guards against —
+            # so a corrupt archive aborts here instead of handing the loop below an empty list that
+            # then vacuously admits everything.
+            ENTRIES="$RUNNER_TEMP/zip-entries"
+            unzip -Z1 "$A/plugins/$ZIP_NAME" > "$ENTRIES"
+            DOTSEG_RE='(^|/)\.\.?(/|$)'
+            while IFS= read -r entry || [[ -n "$entry" ]]; do
+              [[ -n "$entry" ]] || continue
+              case "$entry" in
+                *\\*) fail "the archive entry '$entry' contains a backslash" ;;
+                /*) fail "the archive entry '$entry' starts with /" ;;
+                ./*) fail "the archive entry '$entry' starts with ./" ;;
+                *//*) fail "the archive entry '$entry' has an empty path segment" ;;
+              esac
+              [[ "$entry" =~ $DOTSEG_RE ]] \
+                && fail "the archive entry '$entry' has a . or .. path segment"
+              # Only these three may be at the archive root — the built `dist` tree, and the two
+              # named members the hashes below anchor. Case-sensitive on purpose: a case variant of
+              # either name is exactly the alias this check exists to refuse.
+              case "$entry" in
+                baram-plugin.json | README.md | dist/*) ;;
+                *) fail "the archive carries '$entry', which this release does not admit — only baram-plugin.json, README.md and dist/ may be at the archive root" ;;
+              esac
+            done < "$ENTRIES"
+            # `grep -c` exits 1 (not 0) on zero matches — under this step's `-e` that would abort
+            # the assignment itself, silently, before the count is even compared. `|| true` keeps
+            # the count (grep still prints it) without losing the comparison below to it. No archive
+            # reaches the manifest count with zero copies: ② above stops it at `unzip -p`.
+            MANIFEST_COUNT="$(grep -Fxc 'baram-plugin.json' "$ENTRIES" || true)"
+            [[ "$MANIFEST_COUNT" == "1" ]] \
+              || fail "the archive has baram-plugin.json $MANIFEST_COUNT times, not exactly once"
+            README_COUNT="$(grep -Fxc 'README.md' "$ENTRIES" || true)"
+            if [[ -n "$README_SHA256" ]]; then
+              [[ "$README_COUNT" == "1" ]] \
+                || fail "the archive has README.md $README_COUNT times, not exactly once"
+            else
+              [[ "$README_COUNT" == "0" ]] \
+                || fail "the archive carries a README.md but plugin-meta recorded none"
+            fi
+            # A name under `dist/` need not equal another byte for byte — only its CASE-FOLDED
+            # spelling must be unique, because that is what two filesystems disagree on.
+            LOWER_DUPES="$(tr '[:upper:]' '[:lower:]' < "$ENTRIES" | sort | uniq -d)"
+            [[ -z "$LOWER_DUPES" ]] \
+              || fail "the archive has entries that collide when lowercased: $(echo "$LOWER_DUPES" | tr '\n' ' ')"
+
+            # Plan 0115 R19 — the EXTRA FIELDS of the central directory. The names checked above are
+            # the names `unzip` lists, but the app's `zip` crate 8.6.0 renames an entry whose
+            # central extra field holds an Info-ZIP Unicode Path record (0x7075) with the raw
+            # name's CRC, whatever that record's version byte says. `unzip` never applies the
+            # record when built without UNICODE_SUPPORT (macOS) and ignores it above version 1 when
+            # built with it (Debian's package, which ubuntu-24.04's unzip comes from) — so
+            # `dist/x` above could install as `baram-plugin.json` over the hashed manifest. The
+            # crate's `ZipArchive`, which the app reads through (src-tauri/src/plugin/archive.rs
+            # `ZipArchive::new` + `by_index`), names entries from the CENTRAL header only
+            # (scripts/community-zip.ts, `extraFieldProblem`: `find_data_start` reads only the
+            # local header's lengths; plan 0115 R19 measured it too — a 0x7075 record in the
+            # local header alone renames nothing). The crate's OWN streaming reader names entries
+            # from the local header instead (`read/stream.rs`), but the app never uses it — only
+            # `ZipArchive` above. `unzip -Zv` lists the central header's records.
+            #
+            # An ALLOWLIST, the same one community gate 6 holds (`ALLOWED_EXTRA_FIELDS` in
+            # scripts/community-zip.ts): 0x5455 and 0x7875, the two records a plain `zip -r`
+            # writes for an ASCII name — measured on the eight live first-party archives behind
+            # that allowlist, all of them ASCII-named. For a non-ASCII file name, Info-ZIP Zip 3.0
+            # (ubuntu-24.04's `zip`, built with UNICODE_SUPPORT; not measured here) may add its
+            # own Unicode Path record (0x7075) to carry the UTF-8 name, and this check refuses
+            # that record the same as a smuggled one — an honest archive built from a non-ASCII
+            # `dist/` name is refused here too, and the fix is an ASCII name. Every other id is
+            # refused, 0x7075, 0x6375 (Unicode Comment) and 0x0001 (Zip64) among them. The listed
+            # records must also account for each entry's whole extra field —
+            # that gate's truncation rule. Bytes left over after the last record end zipinfo's
+            # listing silently, so the sum comes up short. A record that runs past the field is
+            # listed cut to the bytes that remain, with zipinfo's complaint on stderr and exit 0
+            # (measured), so stderr must also be empty.
+            #
+            # Its own command, not inside `$(…)`; the `|| fail` is there because stderr goes to a
+            # file, and a bare `-e` abort would then print nothing.
+            ZINFO="$RUNNER_TEMP/zip-extra-fields"
+            ZINFO_ERR="$RUNNER_TEMP/zip-extra-fields.stderr"
+            unzip -Zv "$A/plugins/$ZIP_NAME" > "$ZINFO" 2> "$ZINFO_ERR" \
+              || fail "unzip -Zv could not read the archive: $(tr '\n' ' ' < "$ZINFO_ERR")"
+            # The loop below names entry #N by line N of $ENTRIES, so the two listings must
+            # describe the same entries; both walk the central directory in its order. zipinfo
+            # prints an entry's comment and the archive's comment verbatim (measured), so a comment
+            # can ADD lines shaped like the ones read below but not remove zipinfo's own: an added
+            # header fails this count; a second length line, or a length or record line before the
+            # first entry, is refused; an added record line fails the allowlist or overshoots the
+            # sum — it adds at least 4 bytes, and a listing that stops early is 1 to 3 bytes short
+            # (zipinfo lists records while 4 or more bytes remain). XLEN_RE and FIELD_RE read their
+            # counts as AT MOST FIVE DIGITS — the zip format's extra-field lengths are 16-bit, so
+            # zipinfo itself never prints more than five digits in either line — so an injected
+            # comment line cannot carry a count that wraps the sum back down to the field length
+            # (bash's `$((...))` is 64-bit and wraps silently); a line with more digits is left
+            # unmatched, like any other comment text, and so adds nothing.
+            ZV_COUNT="$(grep -c '^Central directory entry #' "$ZINFO" || true)"
+            Z1_COUNT="$(grep -c '' "$ENTRIES" || true)"
+            [[ -n "$ZV_COUNT" && "$ZV_COUNT" == "$Z1_COUNT" ]] \
+              || fail "unzip -Zv lists '$ZV_COUNT' central directory entries but unzip -Z1 listed '$Z1_COUNT'"
+            ENTRY_RE='^Central directory entry #[0-9]+:$'
+            XLEN_RE='^  length of extra field: +([0-9]{1,5}) bytes$'
+            FIELD_RE='^  - A subfield with ID 0x([0-9a-f]{4}) \(.*\) and ([0-9]{1,5}) data bytes'
+            entry_no=0
+            # Judges entry #$entry_no once its listing has ended. Both unzips named above print the
+            # length line for every entry, "0 bytes" when there is no extra field (zipinfo.c
+            # prints it unconditionally; measured on both), so a listing without it is refused
+            # rather than read as 0, which would let a change in that line's format pass unseen.
+            end_entry() {
+              [[ "$entry_no" -gt 0 ]] || return 0
+              local name
+              name="$(sed -n "${entry_no}p" "$ENTRIES")"
+              [[ -n "$xlen" ]] \
+                || fail "unzip -Zv listed no extra-field length for the archive entry '$name'"
+              [[ "$listed" == "$xlen" ]] \
+                || fail "the archive entry '$name' has an extra field of $xlen bytes but its listed records cover $listed — a truncated or malformed extra field"
+            }
+            while IFS= read -r line || [[ -n "$line" ]]; do
+              if [[ $line =~ $ENTRY_RE ]]; then
+                end_entry
+                entry_no=$((entry_no + 1))
+                xlen=""
+                listed=0
+              elif [[ $line =~ $XLEN_RE ]]; then
+                length="${BASH_REMATCH[1]}"
+                [[ "$entry_no" -gt 0 && -z "$xlen" ]] \
+                  || fail "unzip -Zv listed an extra-field length outside one entry's listing: '$line'"
+                xlen="$length"
+              elif [[ $line =~ $FIELD_RE ]]; then
+                field_id="${BASH_REMATCH[1]}"
+                field_len="${BASH_REMATCH[2]}"
+                [[ "$entry_no" -gt 0 ]] \
+                  || fail "unzip -Zv listed an extra-field record before any entry: '$line'"
+                case "$field_id" in
+                  5455 | 7875) ;;
+                  *) fail "the archive entry '$(sed -n "${entry_no}p" "$ENTRIES")' carries extra field 0x$field_id, which a plain zip -r does not write for an ASCII name — the app's zip crate and unzip can read such a field differently" ;;
+                esac
+                listed=$((listed + 4 + field_len))
+              fi
+            done < "$ZINFO"
+            end_entry
+            [[ "$entry_no" == "$Z1_COUNT" ]] \
+              || fail "unzip -Zv listed $entry_no entries in the form this check reads, not $Z1_COUNT"
+            [[ ! -s "$ZINFO_ERR" ]] \
+              || fail "unzip -Zv reported a problem with the archive: $(tr '\n' ' ' < "$ZINFO_ERR")"
+          fi
+
+          # Plan 0115 F1 (R13) — a plugin's NON-BUILT files, anchored to the exact bytes
+          # plugin-meta read from the tagged checkout (the wiring-sanity checks on the two hashes
+          # already ran above, ahead of N1). The id/version/trust checks above hold the DECLARED
+          # values; a build could satisfy every one of them while still shipping a manifest whose
+          # capabilities were widened or whose engines.baram floor was lowered after plugin-meta
+          # verified the tagged file — a lowered floor bypasses the release-order gate plugin-meta
+          # ran, and widened capabilities become the consent ceiling the app shows the user. This
+          # anchors the FILE ITSELF, not just the fields read out of it above. A theme carries no
+          # such anchor here — RECORDED_SHA256 below already covers its whole archive.
+          if [[ "$KIND" == "plugin" ]]; then
+            ZIP_MANIFEST_SHA256="$(sha256sum "$M" | cut -d' ' -f1)"
+            [[ "$ZIP_MANIFEST_SHA256" == "$MANIFEST_SHA256" ]] \
+              || fail "the archive's $MANIFEST_NAME is not the manifest plugin-meta read at the tag"
+            README_PATH="readme/$README_NAME"
+            ZIP_README="$RUNNER_TEMP/release-readme.md"
+            HAS_ZIP_README=0
+            if unzip -p "$A/plugins/$ZIP_NAME" README.md > "$ZIP_README" 2>/dev/null; then
+              HAS_ZIP_README=1
+            fi
+            # N1's README count above runs first and has already settled whether README.md is
+            # listed; the two presence checks below stay as these hash checks' own guard.
+            if [[ -n "$README_SHA256" ]]; then
+              [[ "$HAS_ZIP_README" == "1" ]] \
+                || fail "plugin-meta recorded a README but the archive has none"
+              ZIP_README_SHA256="$(sha256sum "$ZIP_README" | cut -d' ' -f1)"
+              [[ "$ZIP_README_SHA256" == "$README_SHA256" ]] \
+                || fail "the archive's README.md is not the README plugin-meta read at the tag"
+              if [[ -f "$A/$README_PATH" ]]; then
+                STAGED_README_SHA256="$(sha256sum "$A/$README_PATH" | cut -d' ' -f1)"
+                [[ "$STAGED_README_SHA256" == "$README_SHA256" ]] \
+                  || fail "the staged $README_PATH is not the README plugin-meta read at the tag"
+              fi
+            else
+              [[ "$HAS_ZIP_README" == "0" ]] \
+                || fail "the archive carries a README.md but plugin-meta recorded none"
+              [[ ! -f "$A/$README_PATH" ]] \
+                || fail "the artifact carries $README_PATH but plugin-meta recorded no README"
+            fi
+          fi
+
+          # ③ A theme's bytes are the bytes the pre-publish check recorded.
+          CHECKSUM="$(sha256sum "$A/plugins/$ZIP_NAME" | cut -d' ' -f1)"
+          if [[ "$KIND" == "theme" ]]; then
+            [[ "$CHECKSUM" == "$RECORDED_SHA256" ]] \
+              || fail "$ZIP_NAME hashes to $CHECKSUM but SHA256SUMS records $RECORDED_SHA256 — the artifact is not the archive the pre-publish check installed"
+          fi
+          echo "checksum=$CHECKSUM" >> "$GITHUB_OUTPUT"
+
+      # The registry is a public GitHub Pages repo, so reading it needs no credential. A fresh clone
+      # on this runner, made after the checks above and before the key exists.
+      - name: Clone the live registry
+        run: |
+          git clone --depth 1 "https://github.com/${REGISTRY_REPO}.git" "$RUNNER_TEMP/registry"
+
+      # Spec 0065 D6 ④ ⑤ · D7 — the new index may differ from the live one ONLY in this release's entry
+      # and `updatedAt`, and that entry must be the one its archive's manifest makes. The rebuild below
+      # mirrors `scripts/update-registry-index.mjs`'s entry (copy a manifest key when the manifest
+      # has it — that script writes `name: manifest.name` and the like, and `JSON.stringify` drops a
+      # key whose value is undefined); registry-publish-job.test.ts runs both on the same input. A field
+      # that script starts to write makes this refuse, not pass. A theme's `preview` is the one value
+      # taken from the artifact — reading tokens needs node — and only its shape is checked.
+      - name: Check the new index against the live registry
+        env:
+          CHECKSUM: ${{ steps.artifact_check.outputs.checksum }}
+        run: |
+          fail() { echo "::error::$1"; exit 1; }
+          A="$RUNNER_TEMP/release"
+          LIVE="$RUNNER_TEMP/registry/index.json"
+          NEW="$A/index.json"
+          [[ -n "$CHECKSUM" && -n "$ID" && -n "$KIND" && -n "$ZIP_NAME" ]] \
+            || fail "a verified value did not reach this step — this is a bug in this workflow, not a refusal"
+          BASE="$BASE_URL"
+          [[ "$BASE" == */ ]] || BASE="$BASE/"
+          [[ -f "$LIVE" ]] || fail "the live registry has no index.json"
+
+          # Plan 0115 F4 (recommendation adopted) — a published archive is immutable, but nothing
+          # refused an OVERWRITE: `validate.yml` in the registry repo runs on pull requests, not on
+          # this push, so a full re-run after a successful release would rebuild a non-reproducible
+          # zip (or re-package a theme) and silently replace what is already live. If the live
+          # registry already has a file at this release's path, it must be byte-identical to the
+          # one about to be published — identical bytes is a no-op (the push step's "nothing to
+          # publish" path then ends it harmlessly); different bytes is refused.
+          REG_ZIP="$RUNNER_TEMP/registry/plugins/$ZIP_NAME"
+          if [[ -f "$REG_ZIP" ]]; then
+            cmp -s "$REG_ZIP" "$A/plugins/$ZIP_NAME" \
+              || fail "plugins/$ZIP_NAME is already published with different bytes — published archives are immutable; release a new version"
+          fi
+          REG_README="$RUNNER_TEMP/registry/readme/$ID-$VERSION.md"
+          ART_README="$A/readme/$ID-$VERSION.md"
+          if [[ -f "$REG_README" && -f "$ART_README" ]]; then
+            cmp -s "$REG_README" "$ART_README" \
+              || fail "readme/$ID-$VERSION.md is already published with different bytes — published archives are immutable; release a new version"
+          fi
+
+          # A byte cap (R8), moved ahead of every jq parse on this runner (plan 0115 F3): the app
+          # refuses an index over `MAX_REGISTRY_BYTES` (4 MiB); no release needs a quarter of that,
+          # and the live index is a few KB. Checking the raw byte count first means an oversized
+          # build never reaches a jq parse of its own bytes at all.
+          NEW_SIZE="$(wc -c < "$NEW" | tr -d ' ')"
+          [[ "$NEW_SIZE" -le 1048576 ]] \
+            || fail "the new index.json is over 1 MiB — the app refuses an index over 4 MiB, and no release needs a quarter of that"
+
+          jq -e '(.plugins | type) == "array"' "$NEW" > /dev/null 2>&1 \
+            || fail "the new index.json has no plugins array"
+          jq -e '(.plugins | type) == "array"' "$LIVE" > /dev/null 2>&1 \
+            || fail "the live index.json has no plugins array"
+
+          # The check below guarantees only that these bytes are jq's OWN serialization of what jq
+          # parsed — same key order, same number formatting, same escaping — so a duplicate key, a
+          # leading BOM or a similar byte trick that jq's parser silently resolves is refused here,
+          # because the raw file then differs from jq's reprint of it. It does NOT guarantee the
+          # client's parser accepts the document: the app's streamed fetch loop enforces a byte-size
+          # ceiling (`MAX_REGISTRY_BYTES`, src-tauri/src/plugin/fetch.rs, held above), and
+          # `serde_json::from_slice` enforces a recursion limit and a narrower number range that jq
+          # does not — the type checks right below this one hold those instead, except for a
+          # theme's `preview`, which the preview check at the end of this step holds (I1, R8).
+          jq . "$NEW" > "$RUNNER_TEMP/new-canonical.json"
+          cmp -s "$RUNNER_TEMP/new-canonical.json" "$NEW" \
+            || fail "the new index.json is not in the form the index script writes (duplicate keys, a BOM or other bytes jq would not write) — publishing it could break every client's parse"
+
+          # The COUNT check, moved ahead of the type check below (R9): if this id's entry is simply
+          # absent, the type check's `jq -e` — `(.plugins[] | select(.id == $id)) as $e | …` over an
+          # empty generator — fails with "a field the index script would not write", which is the
+          # wrong diagnosis for a missing entry. Checked here first, so that case is "other than
+          # exactly once" (count 0) instead.
+          COUNT="$(jq --arg id "$ID" '[.plugins[] | select(.id == $id)] | length' "$NEW")"
+          [[ "$COUNT" == "1" ]] || fail "the new index lists $ID other than exactly once"
+
+          # This release's entry must have the TYPES `scripts/update-registry-index.mjs` writes, and
+          # no keys beyond the ones it writes (R8). ⑤ below rebuilds the entry and diffs it byte for
+          # byte, which already refuses a field the manifest ALSO carries but the script does not
+          # copy; it does not stop a value the script DOES copy verbatim from carrying the wrong
+          # type (`name` a number, `keywords` holding a number or a nested array, a `capabilities`
+          # element that is not a string) — jq's canonical form admits all of that, and the app only
+          # drops THIS ONE entry for it (`tolerant_entries`, src-tauri/src/plugin/registry.rs), not
+          # the whole document — UNLESS this release's entry is the only entry the new index lists:
+          # dropping it then leaves zero survivors, and `tolerant_entries` refuses a non-empty array
+          # from which nothing survives outright. Otherwise, only a number out of
+          # `serde_json::from_slice`'s range or nesting past its recursion limit refuses the whole
+          # document.
+          jq -e --arg id "$ID" --arg kind "$KIND" '
+            (.plugins[] | select(.id == $id)) as $e
+            | ($e.id | type == "string" and length > 0)
+            and ($e.name | type == "string" and length > 0)
+            and ($e.description | type == "string" and length > 0)
+            and ($e.version | type == "string" and length > 0)
+            and ($e.author | type == "string" and length > 0)
+            and ($e.license | type == "string" and length > 0)
+            and ($e.downloadUrl | type == "string" and length > 0)
+            and ($e.checksum | type == "string" and length > 0)
+            and ($e.capabilities | type == "array" and all(.[]; type == "string" and length > 0))
+            and ($e.engines | type == "object" and all(.[]; type == "string" and length > 0))
+            and (($e | has("icon") | not) or ($e.icon | type == "string" and length > 0))
+            and (($e | has("keywords") | not) or ($e.keywords | type == "array" and all(.[]; type == "string" and length > 0)))
+            and (($e | has("readme") | not) or ($e.readme | type == "string"))
+            and (if $kind == "plugin" then ($e.trust == "sandboxed" or $e.trust == "trusted") else ($e.kind == "theme") end)
+            and (
+              (($e | keys) - (
+                ["id","name","description","version","author","license","downloadUrl","checksum","capabilities","engines","icon","keywords","readme"]
+                + (if $kind == "plugin" then ["trust"] else ["kind","preview"] end)
+              )) | length == 0
+            )
+          ' "$NEW" > /dev/null 2>&1 \
+            || fail "the $ID entry has a field the index script would not write (wrong type, or an unexpected key)"
+
+          # An id already listed in the live registry keeps its kind: the index script refuses a
+          # plugin release that would replace a theme entry of the same id, or the reverse, and this
+          # job must hold the same rule (M3).
+          LIVE_MATCHES="$(jq --arg id "$ID" '[.plugins[] | select(.id == $id)] | length' "$LIVE")"
+          if [[ "$LIVE_MATCHES" != "0" ]]; then
+            LIVE_KIND="$(jq -r --arg id "$ID" '[.plugins[] | select(.id == $id)][0].kind // "plugin"' "$LIVE")"
+            [[ "$LIVE_KIND" == "$KIND" ]] \
+              || fail "the live registry lists $ID as a $LIVE_KIND; a $KIND release does not replace it"
+          fi
+
+          # ④ Everything but this id's entry and updatedAt, compared as sorted JSON.
+          REST='del(.updatedAt) | .plugins |= map(select(.id != $id))'
+          jq -S --arg id "$ID" "$REST" "$LIVE" > "$RUNNER_TEMP/live-rest.json"
+          jq -S --arg id "$ID" "$REST" "$NEW" > "$RUNNER_TEMP/new-rest.json"
+          cmp -s "$RUNNER_TEMP/live-rest.json" "$RUNNER_TEMP/new-rest.json" \
+            || fail "the new index changes more than the $ID entry — publishing it would rewrite other listings"
+          # `length == 10` alongside the pattern (M5): jq's `$` anchor matches before a string's
+          # trailing newline too, so `"2026-10-03\n"` would otherwise read as a date.
+          jq -e '.updatedAt | type == "string" and length == 10 and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}$")' "$NEW" > /dev/null 2>&1 \
+            || fail "the new index's updatedAt is not a date"
+
+          # ⑤ The entry, rebuilt from the archive's manifest.
+          M="$RUNNER_TEMP/release-manifest.json"
+          MANIFEST_NAME=baram-plugin.json
+          [[ "$KIND" == "theme" ]] && MANIFEST_NAME=baram-theme.json
+          unzip -p "$A/plugins/$ZIP_NAME" "$MANIFEST_NAME" > "$M" 2>/dev/null \
+            || fail "the archive has no $MANIFEST_NAME at its root"
+          README=""
+          if [[ "$KIND" == "plugin" && -f "$A/readme/$ID-$VERSION.md" ]]; then
+            README="$ID-$VERSION.md"
+          fi
+          jq -S --arg base "$BASE" --arg zip "$ZIP_NAME" --arg checksum "$CHECKSUM" \
+            --arg kind "$KIND" --arg readme "$README" '
+            def copy($k): if has($k) then {($k): .[$k]} else {} end;
+            copy("id") + copy("name") + copy("description") + copy("version")
+            + copy("author") + copy("license")
+            + {downloadUrl: ($base + "plugins/" + $zip), checksum: $checksum}
+            + (if $kind == "theme" then {capabilities: []} else copy("capabilities") + copy("trust") end)
+            + copy("engines")
+            + (if $kind == "theme" then {kind: "theme"} else {} end)
+            + copy("icon") + copy("keywords")
+            + (if $readme != "" then {readme: ($base + "readme/" + $readme)} else {} end)
+          ' "$M" > "$RUNNER_TEMP/expected-entry.json"
+          jq -S --arg id "$ID" --arg kind "$KIND" \
+            '.plugins[] | select(.id == $id) | if $kind == "theme" then del(.preview) else . end' \
+            "$NEW" > "$RUNNER_TEMP/actual-entry.json"
+          if ! cmp -s "$RUNNER_TEMP/expected-entry.json" "$RUNNER_TEMP/actual-entry.json"; then
+            diff "$RUNNER_TEMP/expected-entry.json" "$RUNNER_TEMP/actual-entry.json" || true
+            fail "the $ID entry is not the one its archive's manifest makes (expected < > artifact, above)"
+          fi
+          if [[ "$KIND" == "theme" ]]; then
+            jq -e --arg id "$ID" '
+              .plugins[] | select(.id == $id) | .preview
+              | type == "object" and length > 0
+                and ((keys - ["dark", "light"]) | length == 0)
+                and all(.[]; type == "object" and all(.[]; type == "string"))
+            ' "$NEW" > /dev/null 2>&1 \
+              || fail "the $ID entry's preview is not a light/dark palette"
+          fi
+
+      # Spec 0065 D5 · D8 — THE `publish` JOB IS THE ONLY JOB THAT RECEIVES THE REGISTRY DEPLOY KEY: a
+      # secret referenced anywhere in a job reaches the runner for that job's whole lifetime, so the
+      # job — not this one step — is the boundary. The key FILE this step writes exists only within
+      # this step: created fresh (`install` does not follow whatever is at the path) and removed
+      # however the step ends. Nothing from the build's dependency tree runs on this runner —
+      # `download-artifact` (pinned), then bash with the runner's own tools. It copies, BY NAME, only
+      # the files the checks above passed — never the artifact as a directory — then pins GitHub's
+      # published host keys as the only ones ssh will trust (the global known-hosts file, which a
+      # runner image pre-seeds via `ssh-keyscan`, is pointed at /dev/null here), and pushes. OpenSSH
+      # refuses a key file whose last line has no newline, and the stored secret does not end with
+      # one (revocation-publish.yml, 2026-09-26) — hence `printf '%s\n'`.
+      - name: Push the release to the registry repo
         env:
           DEPLOY_KEY: ${{ secrets.PLUGINS_DEPLOY_KEY }}
-          ZIP_NAME: ${{ steps.theme_package.outputs.zip_name }}
-          THEME_ID: ${{ steps.theme_meta.outputs.expected_id }}
-          VERSION: ${{ steps.theme_meta.outputs.version }}
         run: |
-          mkdir -p ~/.ssh
-          echo "$DEPLOY_KEY" > ~/.ssh/plugins_deploy
-          chmod 600 ~/.ssh/plugins_deploy
-          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
-          export GIT_SSH_COMMAND="ssh -i ~/.ssh/plugins_deploy -o IdentitiesOnly=yes"
-          cd "$RUNNER_TEMP/registry"
+          A="$RUNNER_TEMP/release"
+          REG="$RUNNER_TEMP/registry"
+          KEY="$RUNNER_TEMP/registry_deploy_key"
+          KNOWN_HOSTS="$RUNNER_TEMP/github_known_hosts"
+          trap 'rm -f "$KEY"' EXIT
+          mkdir -p "$REG/plugins"
+          cp "$A/plugins/$ZIP_NAME" "$REG/plugins/$ZIP_NAME"
+          cp "$A/index.json" "$REG/index.json"
+          if [[ "$KIND" == "plugin" && -f "$A/readme/$ID-$VERSION.md" ]]; then
+            mkdir -p "$REG/readme"
+            cp "$A/readme/$ID-$VERSION.md" "$REG/readme/$ID-$VERSION.md"
+          fi
+          rm -f "$KEY"
+          install -m 600 /dev/null "$KEY"
+          printf '%s\n' "$DEPLOY_KEY" > "$KEY"
+          # `gh api meta --jq '.ssh_keys[]'` (2026-10-03); registry-publish-job.test.ts checks each against
+          # the fingerprint GitHub publishes beside it.
+          printf '%s\n' \
+            "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl" \
+            "github.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmKSENjQEezOmxkZMy7opKgwFB9nkt5YRrYMjNuG5N87uRgg6CLrbo5wAdT/y6v0mKV0U2w0WZ2YB/++Tpockg=" \
+            "github.com ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCj7ndNxQowgcQnjshcLrqPEiiphnt+VTTvDP6mHBL9j1aNUkY4Ue1gvwnGLVlOhGeYrnZaMgRK6+PKCUXaDbC7qtbW8gIkhL7aGCsOr/C56SJMy/BCZfxd1nWzAOxSDPgVsmerOBYfNqltV9/hWCqBywINIR+5dIg6JTJ72pcEpEjcYgXkE2YEFXV1JHnsKgbLWNlhScqb2UmyRkQyytRLtL+38TGxkxCflmO+5Z8CSSNY7GidjMIZ7Q4zMjA2n1nGrlTDkzwDCsw+wqFPGQA179cnfGWOWRVruj16z6XyvxvjJwbz0wQZ75XK5tKSb7FNyeIEs4TT4jk+S4dhPeAUC5y+bDYirYgM4GC7uEnztnZyaVWQ7B381AK4Qdrwt51ZqExKbQpTUNn+EjqoTwvqNj4kqx5QUCI0ThS/YkOxJCXmPUWZbhjpCg56i+2aB6CmK2JGhn57K5mj0MNdBXA4/WnwH6XoPWJzK5Nyu2zB3nAZp+S5hpQs+p1vN1/wsjk=" \
+            > "$KNOWN_HOSTS"
+          export GIT_SSH_COMMAND="ssh -i '$KEY' -o IdentitiesOnly=yes -o UserKnownHostsFile='$KNOWN_HOSTS' -o GlobalKnownHostsFile=/dev/null -o StrictHostKeyChecking=yes"
+          cd "$REG"
           git remote set-url origin "git@github.com:${REGISTRY_REPO}.git"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          # `readme/` is staged as a DIRECTORY rather than by name: the file is written only
-          # when the archive had one, and `git add` on a path that does not exist aborts the
-          # step — which would fail a perfectly good release of a plugin without a README.
-          # An unchanged or absent directory adds nothing and the `--quiet` check below still
-          # decides whether there is anything to publish.
           git add "plugins/$ZIP_NAME" index.json
-          git add readme 2>/dev/null || true
+          if [[ -f "readme/$ID-$VERSION.md" ]]; then
+            git add "readme/$ID-$VERSION.md"
+          fi
           if git diff --cached --quiet; then
             echo "::notice::Registry already contains this exact release — nothing to publish."
             exit 0
           fi
-          git commit -m "release: $THEME_ID $VERSION"
+          git commit -m "release: $ID $VERSION"
           git push origin main
