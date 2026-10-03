@@ -606,10 +606,11 @@ describe("the malicious fixture stays a fixture (§260 Phase 6)", () => {
     expect(trustedGotSandboxed.status).not.toBe(0);
     expect(trustedGotSandboxed.output).toContain("declares trust");
 
-    // ‼️ AN EMPTY VERIFIED TIER IS A BUG, NOT A PASS. If the `steps.meta.outputs.expected_trust`
-    // plumbing ever breaks, this step reads "" — and a manifest with no `trust` at all would then
-    // COMPARE EQUAL and publish a tier-less entry, which the app disables on sight. The failure
-    // is silent in every other gate, so the step checks the value it was handed.
+    // ‼️ AN EMPTY VERIFIED TIER IS A BUG, NOT A PASS. If the
+    // `needs.plugin-meta.outputs.expected_trust` plumbing ever breaks, this step reads "" — and a
+    // manifest with no `trust` at all would then COMPARE EQUAL and publish a tier-less entry,
+    // which the app disables on sight. The failure is silent in every other gate, so the step
+    // checks the value it was handed.
     const tierlessArchive = { ...good };
     delete (tierlessArchive as { trust?: unknown }).trust;
     const noVerifiedTier = runFor(tierlessArchive, "");
@@ -634,7 +635,8 @@ describe("the malicious fixture stays a fixture (§260 Phase 6)", () => {
 
   it("ties every publish step to the directory the meta step verified", () => {
     // §260 Phase 6 code review round 4 (MEDIUM-2). The gates all live in the meta step, and the
-    // later steps consume `steps.meta.outputs.dir`. Nothing asserted that: hardcoding
+    // build job consumes `needs.plugin-meta.outputs.dir` (spec 0065 moved the gate into its own
+    // job). Nothing asserted that: hardcoding
     // `working-directory: examples/plugins/ai-summary` in `Package ZIP`, or `DIR: ai-summary` in
     // the push step, published the trusted manifest and its ZIP with the whole suite green — the
     // verified directory and the built directory simply parted company.
@@ -654,11 +656,11 @@ describe("the malicious fixture stays a fixture (§260 Phase 6)", () => {
     for (const ref of references) {
       expect(
         ref,
-        `a publish step names examples/plugins/${ref} directly; it must use the meta step's verified dir`,
+        `a build step names examples/plugins/${ref} directly; it must use the plugin-meta job's verified dir`,
       ).toMatch(
         // Anchored at BOTH ends (round-5 LOW-3): `^\$DIR` alone also admitted `$DIRECTORY`,
         // bound to anything.
-        /^\$\{\{\s*steps\.meta\.outputs\.dir\s*\}\}$|^\$DIR$|^\$\{DIR\}$/,
+        /^\$\{\{\s*needs\.plugin-meta\.outputs\.dir\s*\}\}$|^\$DIR$|^\$\{DIR\}$/,
       );
     }
   });

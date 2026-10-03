@@ -31,19 +31,21 @@ env:
   BASE_URL: https://sayinel.github.io/baram-plugins/
 
 jobs:
-  release:
+  # Spec 0065 D1 · D2 — the release's facts, decided where no third-party code runs. This job checks
+  # out the tagged commit and runs the tag gate below and nothing else: no `setup-node`, no `npm`,
+  # no `npx`. Its outputs are what the build job builds and what the publish job holds the build's
+  # artifact to, so a compromised dependency in the build cannot change them. `id` is the
+  # manifest's plugin id under the name the theme job's meta also uses.
+  plugin-meta:
     if: startsWith(github.ref_name, 'plugin-')
-    # THE DEPLOY KEY IS AN ENVIRONMENT SECRET (security review of plan 0113, item 8). The
-    # `registry-publish` environment — repository settings, not this file — admits only
-    # `plugin-*` and `theme-*` tag refs and waits for a required reviewer before the job starts,
-    # and the `release-tags` ruleset limits who may create those tags. A repository-level secret
-    # of the same name would be readable by a workflow on any branch, with neither check, so the
-    # key must not be stored at repository level. Rotate it with
-    # `gh secret set PLUGINS_DEPLOY_KEY --env registry-publish`, and in the environment
-    # revocation-publish.yml declares, which reads the same key.
-    environment: registry-publish
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 5
+    outputs:
+      dir: ${{ steps.meta.outputs.dir }}
+      version: ${{ steps.meta.outputs.version }}
+      id: ${{ steps.meta.outputs.plugin_id }}
+      expected_trust: ${{ steps.meta.outputs.expected_trust }}
+      zip_name: ${{ steps.meta.outputs.zip_name }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -187,8 +189,25 @@ jobs:
             echo "zip_name=$PLUGIN_ID-$VERSION.zip"
           } >> "$GITHUB_OUTPUT"
 
+  release:
+    if: startsWith(github.ref_name, 'plugin-')
+    needs: plugin-meta
+    # THE DEPLOY KEY IS AN ENVIRONMENT SECRET (security review of plan 0113, item 8). The
+    # `registry-publish` environment — repository settings, not this file — admits only
+    # `plugin-*` and `theme-*` tag refs and waits for a required reviewer before the job starts,
+    # and the `release-tags` ruleset limits who may create those tags. A repository-level secret
+    # of the same name would be readable by a workflow on any branch, with neither check, so the
+    # key must not be stored at repository level. Rotate it with
+    # `gh secret set PLUGINS_DEPLOY_KEY --env registry-publish`, and in the environment
+    # revocation-publish.yml declares, which reads the same key.
+    environment: registry-publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
       - name: Build plugin
-        working-directory: examples/plugins/${{ steps.meta.outputs.dir }}
+        working-directory: examples/plugins/${{ needs.plugin-meta.outputs.dir }}
         run: |
           npm ci
           npm run build
@@ -196,9 +215,9 @@ jobs:
       # Packaging contract: baram-plugin.json at the archive ROOT — zip the
       # directory CONTENTS, never a wrapping folder. Runtime files only.
       - name: Package ZIP
-        working-directory: examples/plugins/${{ steps.meta.outputs.dir }}
+        working-directory: examples/plugins/${{ needs.plugin-meta.outputs.dir }}
         env:
-          ZIP_NAME: ${{ steps.meta.outputs.zip_name }}
+          ZIP_NAME: ${{ needs.plugin-meta.outputs.zip_name }}
         run: |
           zip -r "$RUNNER_TEMP/$ZIP_NAME" \
             baram-plugin.json dist README.md
@@ -222,10 +241,10 @@ jobs:
           # The tier the meta step's allowlist named, carried here the same way `plugin_id` and
           # `version` are: it is the value that step VERIFIED, and this step's whole job is to
           # hold the bytes to what that step verified.
-          EXPECTED_TRUST: ${{ steps.meta.outputs.expected_trust }}
-          PLUGIN_ID: ${{ steps.meta.outputs.plugin_id }}
-          VERSION: ${{ steps.meta.outputs.version }}
-          ZIP_NAME: ${{ steps.meta.outputs.zip_name }}
+          EXPECTED_TRUST: ${{ needs.plugin-meta.outputs.expected_trust }}
+          PLUGIN_ID: ${{ needs.plugin-meta.outputs.id }}
+          VERSION: ${{ needs.plugin-meta.outputs.version }}
+          ZIP_NAME: ${{ needs.plugin-meta.outputs.zip_name }}
         run: |
           fail() { echo "::error::$1"; exit 1; }
           MANIFEST="$RUNNER_TEMP/packaged-manifest.json"
@@ -256,10 +275,10 @@ jobs:
           # one judges the bytes about to be published, so it holds however they got here.
           #
           # ‼️ An EMPTY `$EXPECTED_TRUST` must not make this vacuous. The meta step always sets it
-          # (every `case` arm either assigns or aborts), but this step reads it through the step
-          # outputs, and a typo in that plumbing would silently compare against "" — which a
-          # manifest with no `trust` would then MATCH, publishing a tier-less entry the app
-          # disables on sight. Checked rather than assumed, because the failure is silent.
+          # (every `case` arm either assigns or aborts), but this step reads it through the
+          # plugin-meta job's outputs, and a typo in that plumbing would silently compare against
+          # "" — which a manifest with no `trust` would then MATCH, publishing a tier-less entry
+          # the app disables on sight. Checked rather than assumed, because the failure is silent.
           [[ "$EXPECTED_TRUST" == "sandboxed" || "$EXPECTED_TRUST" == "trusted" ]] \
             || fail "the verified tier did not reach this step (got '$EXPECTED_TRUST') — this is a bug in this workflow, not a refusal"
           [[ "$ZIP_TRUST" == "$EXPECTED_TRUST" ]] \
@@ -286,7 +305,7 @@ jobs:
       - name: Compute checksum
         id: sum
         env:
-          ZIP_NAME: ${{ steps.meta.outputs.zip_name }}
+          ZIP_NAME: ${{ needs.plugin-meta.outputs.zip_name }}
         run: |
           CHECKSUM="$(sha256sum "$RUNNER_TEMP/$ZIP_NAME" | cut -d' ' -f1)"
           echo "checksum=$CHECKSUM" >> "$GITHUB_OUTPUT"
@@ -323,9 +342,9 @@ jobs:
           # Empty when the archive carried no README — the index then gets no `readme` for
           # this entry, which is a legal listing rather than a failure.
           PACKAGED_README: ${{ steps.artifact.outputs.readme }}
-          PLUGIN_ID: ${{ steps.meta.outputs.plugin_id }}
-          VERSION: ${{ steps.meta.outputs.version }}
-          ZIP_NAME: ${{ steps.meta.outputs.zip_name }}
+          PLUGIN_ID: ${{ needs.plugin-meta.outputs.id }}
+          VERSION: ${{ needs.plugin-meta.outputs.version }}
+          ZIP_NAME: ${{ needs.plugin-meta.outputs.zip_name }}
           CHECKSUM: ${{ steps.sum.outputs.checksum }}
         run: |
           git clone --depth 1 "https://github.com/${REGISTRY_REPO}.git" "$RUNNER_TEMP/registry"
@@ -370,9 +389,9 @@ jobs:
       - name: Push ZIP + updated index to registry repo
         env:
           DEPLOY_KEY: ${{ secrets.PLUGINS_DEPLOY_KEY }}
-          ZIP_NAME: ${{ steps.meta.outputs.zip_name }}
-          PLUGIN_ID: ${{ steps.meta.outputs.plugin_id }}
-          VERSION: ${{ steps.meta.outputs.version }}
+          ZIP_NAME: ${{ needs.plugin-meta.outputs.zip_name }}
+          PLUGIN_ID: ${{ needs.plugin-meta.outputs.id }}
+          VERSION: ${{ needs.plugin-meta.outputs.version }}
         run: |
           mkdir -p ~/.ssh
           echo "$DEPLOY_KEY" > ~/.ssh/plugins_deploy
@@ -397,30 +416,20 @@ jobs:
           git commit -m "release: $PLUGIN_ID $VERSION"
           git push origin main
 
-  # §371 6b-2 — a first-party theme (spec 0063 §7.3). The plugin job's argument, step for step,
-  # with the differences a theme brings:
-  #
-  #   - NO BUILD. Nothing in examples/themes/ runs: the package step reads the manifest and the
-  #     files it declares, and nothing else (`scripts/theme-package.ts`).
-  #   - `setup-node` comes BEFORE the gates rather than after, because the gates ARE the app's
-  #     own TypeScript (`validateThemeManifest`, `parseThemeTokens`, `registryPreviewPalettes`,
-  #     `parseBaramFloor`) — the plugin job restates its version gate in dependency-free shell
-  #     only because it runs before any install. No secret exists in this job until the last step,
-  #     so moving the install earlier moves no third-party code closer to the key.
-  #   - The archive goes to `plugins/`, beside the plugins (spec 0063 D9, corrected by plan 0113):
-  #     every registry gate that protects an archive — `validate.yml`'s immutability check, the
-  #     orphan sweep in `validate-registry-assets.ts` — looks there and only there.
-  #   - A CHECKSUM GATE the plugin job does not have: the tagged commit must record the sha256 of
-  #     the archive the pre-publish check installed (`Check the checksum the pre-publish check
-  #     recorded`).
-  #   - The push is the plugin job's inline body with `$PLUGIN_ID` → `$THEME_ID`;
-  #     src/themes/__tests__/theme-release-workflow.test.ts compares the two.
-  release-theme:
+  # Spec 0065 D1 · D2 — the theme's facts, decided where no third-party code runs: the tag gate and
+  # the checksum the pre-publish check recorded, read from the tagged checkout before any
+  # dependency is installed. `id` is the allowlisted theme id under the name the plugin job's meta
+  # also uses.
+  theme-meta:
     if: startsWith(github.ref_name, 'theme-')
-    # The same environment as the plugin job above, for the same reason.
-    environment: registry-publish
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 5
+    outputs:
+      dir: ${{ steps.theme_meta.outputs.dir }}
+      version: ${{ steps.theme_meta.outputs.version }}
+      id: ${{ steps.theme_meta.outputs.expected_id }}
+      zip_name: ${{ steps.theme_sums.outputs.zip_name }}
+      recorded_sha256: ${{ steps.theme_sums.outputs.recorded_sha256 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -453,6 +462,82 @@ jobs:
             echo "expected_id=$EXPECTED_ID"
           } >> "$GITHUB_OUTPUT"
 
+      # THE ARCHIVE PUBLISHED MUST BE THE ONE THE PRE-PUBLISH CHECK INSTALLED (security review, plan
+      # 0113 Task 7). That check — the maintainer builds the zip locally with `npm run theme:package`,
+      # installs it by file and looks at it (spec 0063 §7.5) — is worth something only if the release
+      # publishes those same bytes, and a published archive is immutable: a mismatch found after the
+      # push costs a revocation and a new version. So the maintainer records the check's `sha256=` and
+      # `zip_name=` as a `sha256sum` line in the theme folder's `SHA256SUMS` on the commit that is
+      # tagged.
+      #
+      # This step READS that line (spec 0065 D3): here, before anything is installed, so no code from
+      # the build's dependency tree can rewrite the file first. The build job compares its archive with
+      # the line to stop early, and the publish job compares the bytes it is about to push — that
+      # comparison is the one that decides. It proves the recorded hash equals the published one, not
+      # that anyone installed or looked at the recorded zip. It reads the repo only through `$DIR`, the
+      # directory the tag step checked against its allowlist. Dependency-free bash, inputs through
+      # `env` only.
+      - name: Read the checksum the pre-publish check recorded
+        id: theme_sums
+        env:
+          DIR: ${{ steps.theme_meta.outputs.dir }}
+          EXPECTED_ID: ${{ steps.theme_meta.outputs.expected_id }}
+          VERSION: ${{ steps.theme_meta.outputs.version }}
+        run: |
+          fail() { echo "::error::$1"; exit 1; }
+          [[ -n "$DIR" && -n "$EXPECTED_ID" && -n "$VERSION" ]] \
+            || fail "a verified value did not reach this step — this is a bug in this workflow, not a refusal"
+          ZIP_NAME="$EXPECTED_ID-$VERSION.zip"
+          SUMS="examples/themes/$DIR/SHA256SUMS"
+          [[ -f "$SUMS" && ! -L "$SUMS" ]] \
+            || fail "$SUMS is missing or is not a regular file — record the pre-publish check's sha256 there as the line \"<sha256>  $ZIP_NAME\" on the commit you tag"
+          # A record is `<64 lowercase hex><two spaces><name>`; the name is compared as a STRING, not
+          # put into a pattern, so a version's dots are not wildcards (plan 0115 P4). A line in any
+          # other shape — a comment, one space, a suffix on the name — records nothing.
+          RECORD_RE='^([0-9a-f]{64})  (.+)$'
+          FOUND=()
+          while IFS= read -r line || [[ -n "$line" ]]; do
+            if [[ $line =~ $RECORD_RE && "${BASH_REMATCH[2]}" == "$ZIP_NAME" ]]; then
+              FOUND+=("${BASH_REMATCH[1]}")
+            fi
+          done < "$SUMS"
+          [[ ${#FOUND[@]} -ne 0 ]] \
+            || fail "$SUMS has no line \"<sha256>  $ZIP_NAME\" — run the pre-publish check on the commit you tag and record the sha256 it prints for $ZIP_NAME there"
+          [[ ${#FOUND[@]} -eq 1 ]] \
+            || fail "$SUMS has ${#FOUND[@]} lines for $ZIP_NAME — keep the one the pre-publish check printed and delete the others"
+          {
+            echo "zip_name=$ZIP_NAME"
+            echo "recorded_sha256=${FOUND[0]}"
+          } >> "$GITHUB_OUTPUT"
+
+  # §371 6b-2 — a first-party theme (spec 0063 §7.3). The plugin job's argument, step for step,
+  # with the differences a theme brings:
+  #
+  #   - NO BUILD. Nothing in examples/themes/ runs: the package step reads the manifest and the
+  #     files it declares, and nothing else (`scripts/theme-package.ts`).
+  #   - `setup-node` comes BEFORE the gates rather than after, because the gates ARE the app's
+  #     own TypeScript (`validateThemeManifest`, `parseThemeTokens`, `registryPreviewPalettes`,
+  #     `parseBaramFloor`) — the plugin job restates its version gate in dependency-free shell
+  #     only because it runs before any install. No secret exists in this job until the last step,
+  #     so moving the install earlier moves no third-party code closer to the key.
+  #   - The archive goes to `plugins/`, beside the plugins (spec 0063 D9, corrected by plan 0113):
+  #     every registry gate that protects an archive — `validate.yml`'s immutability check, the
+  #     orphan sweep in `validate-registry-assets.ts` — looks there and only there.
+  #   - A CHECKSUM GATE the plugin job does not have: the tagged commit must record the sha256 of
+  #     the archive the pre-publish check installed (`theme-meta` reads the record; `Check the
+  #     archive against the recorded checksum` compares).
+  #   - The push is the plugin job's inline body with `$PLUGIN_ID` → `$THEME_ID`;
+  #     src/themes/__tests__/theme-release-workflow.test.ts compares the two.
+  release-theme:
+    if: startsWith(github.ref_name, 'theme-')
+    needs: theme-meta
+    # The same environment as the plugin job above, for the same reason.
+    environment: registry-publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
       - uses: ./.github/actions/setup-node
 
       # The manifest (the app's validator), the tag version, a reserved id, the release-order
@@ -461,8 +546,8 @@ jobs:
       - name: Package the theme
         id: theme_package
         env:
-          DIR: ${{ steps.theme_meta.outputs.dir }}
-          VERSION: ${{ steps.theme_meta.outputs.version }}
+          DIR: ${{ needs.theme-meta.outputs.dir }}
+          VERSION: ${{ needs.theme-meta.outputs.version }}
         run: |
           npx tsx scripts/run-theme-package.ts package \
             --dir "examples/themes/$DIR" --version "$VERSION" --out "$RUNNER_TEMP" \
@@ -476,8 +561,8 @@ jobs:
       - name: Verify the packaged theme is the theme that was verified
         id: theme_artifact
         env:
-          EXPECTED_ID: ${{ steps.theme_meta.outputs.expected_id }}
-          VERSION: ${{ steps.theme_meta.outputs.version }}
+          EXPECTED_ID: ${{ needs.theme-meta.outputs.id }}
+          VERSION: ${{ needs.theme-meta.outputs.version }}
           ZIP_NAME: ${{ steps.theme_package.outputs.zip_name }}
         run: |
           fail() { echo "::error::$1"; exit 1; }
@@ -504,32 +589,23 @@ jobs:
           CHECKSUM="$(sha256sum "$RUNNER_TEMP/$ZIP_NAME" | cut -d' ' -f1)"
           echo "checksum=$CHECKSUM" >> "$GITHUB_OUTPUT"
 
-      # THE ARCHIVE BUILT HERE MUST BE THE ONE THE PRE-PUBLISH CHECK INSTALLED (security review,
-      # plan 0113 Task 7). That check — the maintainer builds the zip locally with
-      # `npm run theme:package`, installs it by file and looks at it (spec 0063 §7.5) — is worth
-      # something only if this job publishes those same bytes, and a published archive is
-      # immutable: a mismatch found after the push costs a revocation and a new version. So the
-      # maintainer records the check's `sha256=` and `zip_name=` as a `sha256sum` line in the
-      # theme folder's `SHA256SUMS` on the commit that is tagged, and this step refuses the tag
-      # unless the archive built above hashes to a recorded line.
-      #
-      # It proves the recorded hash equals the built one — not that anyone installed or looked at
-      # the recorded zip. It reads the repo only through `$DIR`, the directory the tag step checked
-      # against its allowlist. Dependency-free bash, inputs through `env` only.
-      - name: Check the checksum the pre-publish check recorded
+      # Spec 0065 D4 — the EARLY half of the recorded-checksum gate: the archive built here against the
+      # line the theme-meta job read, so a mismatch stops before an approval is requested. The publish
+      # job compares again on the bytes it pushes, and that comparison is the one that decides.
+      - name: Check the archive against the recorded checksum
         env:
-          DIR: ${{ steps.theme_meta.outputs.dir }}
           ZIP_NAME: ${{ steps.theme_package.outputs.zip_name }}
           CHECKSUM: ${{ steps.theme_sum.outputs.checksum }}
+          RECORDED_ZIP_NAME: ${{ needs.theme-meta.outputs.zip_name }}
+          RECORDED_SHA256: ${{ needs.theme-meta.outputs.recorded_sha256 }}
         run: |
           fail() { echo "::error::$1"; exit 1; }
-          [[ -n "$DIR" && -n "$ZIP_NAME" && -n "$CHECKSUM" ]] \
+          [[ -n "$ZIP_NAME" && -n "$CHECKSUM" && -n "$RECORDED_ZIP_NAME" && -n "$RECORDED_SHA256" ]] \
             || fail "a verified value did not reach this step — this is a bug in this workflow, not a refusal"
-          SUMS="examples/themes/$DIR/SHA256SUMS"
-          [[ -f "$SUMS" && ! -L "$SUMS" ]] \
-            || fail "$SUMS is missing or is not a regular file — record the pre-publish check's sha256 there as the line \"<sha256>  $ZIP_NAME\" on the commit you tag"
-          grep -qxF "$CHECKSUM  $ZIP_NAME" "$SUMS" \
-            || fail "$SUMS has no line \"$CHECKSUM  $ZIP_NAME\" — the archive built here is not the one the pre-publish check installed. Run that check on the commit you tag and record the sha256 it prints for $ZIP_NAME there"
+          [[ "$ZIP_NAME" == "$RECORDED_ZIP_NAME" ]] \
+            || fail "the archive is named $ZIP_NAME but the recorded line is for $RECORDED_ZIP_NAME"
+          [[ "$CHECKSUM" == "$RECORDED_SHA256" ]] \
+            || fail "$ZIP_NAME hashes to $CHECKSUM but SHA256SUMS records $RECORDED_SHA256 — the archive built here is not the one the pre-publish check installed. Run that check on the commit you tag and record the sha256 it prints for $ZIP_NAME there"
 
       # ‼️ NO SECRET IS IN REACH OF THIS STEP — the plugin job's MEDIUM-3 split, kept.
       - name: Update and validate the registry index for the theme
@@ -575,8 +651,8 @@ jobs:
         env:
           DEPLOY_KEY: ${{ secrets.PLUGINS_DEPLOY_KEY }}
           ZIP_NAME: ${{ steps.theme_package.outputs.zip_name }}
-          THEME_ID: ${{ steps.theme_meta.outputs.expected_id }}
-          VERSION: ${{ steps.theme_meta.outputs.version }}
+          THEME_ID: ${{ needs.theme-meta.outputs.id }}
+          VERSION: ${{ needs.theme-meta.outputs.version }}
         run: |
           mkdir -p ~/.ssh
           echo "$DEPLOY_KEY" > ~/.ssh/plugins_deploy

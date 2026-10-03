@@ -172,20 +172,17 @@ describe("release-theme — 태그 단계를 실행한다", () => {
   });
 });
 
-const CHECKSUM_STEP = "Check the checksum the pre-publish check recorded";
+const RECORD_STEP = "Read the checksum the pre-publish check recorded";
+const COMPARE_STEP = "Check the archive against the recorded checksum";
 const SUM = "a".repeat(64);
 const ZIP = "baram-hangul-1.0.0.zip";
 
-/**
- * checksum 관문을 합성한 cwd 에서 돌린다 — 그 단계가 저장소에서 읽는 것은
- * `examples/themes/$DIR/SHA256SUMS` 하나다. `sums` 가 `undefined` 면 파일이 없고, `link: true` 면
- * 그 이름이 같은 내용의 파일을 가리키는 심볼릭 링크다.
- */
-function runChecksumStep(opts: {
-  checksum?: string;
+/** theme-meta 의 기록 단계를 합성 폴더에서 돌린다 — 그 단계가 읽는 것은 `SHA256SUMS` 하나뿐이다. */
+function runRecordStep(opts: {
+  env?: Record<string, string>;
   link?: boolean;
   sums?: string;
-}): { output: string; status: null | number } {
+}): { output: string; outputs: string; status: null | number } {
   const root = mkdtempSync(join(tmpdir(), "baram-theme-sums-"));
   const dir = join(root, "examples", "themes", "hangul");
   mkdirSync(dir, { recursive: true });
@@ -196,57 +193,80 @@ function runChecksumStep(opts: {
     writeFileSync(target, opts.sums);
     if (opts.link) symlinkSync(target, join(dir, "SHA256SUMS"));
   }
-  const result = spawnSync("bash", ["-e", "-c", stepScript(CHECKSUM_STEP)], {
+  const outputPath = join(root, "output");
+  writeFileSync(outputPath, "");
+  const result = spawnSync("bash", ["-e", "-c", stepScript(RECORD_STEP)], {
     cwd: root,
     encoding: "utf8",
     env: {
       ...process.env,
-      CHECKSUM: opts.checksum ?? SUM,
       DIR: "hangul",
-      ZIP_NAME: ZIP,
+      EXPECTED_ID: "baram-hangul",
+      VERSION: "1.0.0",
+      ...opts.env,
+      GITHUB_OUTPUT: outputPath,
     },
   });
-  return { output: result.stderr + result.stdout, status: result.status };
+  return {
+    output: result.stderr + result.stdout,
+    outputs: readFileSync(outputPath, "utf8"),
+    status: result.status,
+  };
 }
 
-describe("release-theme — 기록된 checksum 관문을 실행한다", () => {
-  it("이 zip 의 줄이 있으면 통과한다 — 다른 버전의 줄과 섞여 있어도", () => {
-    const { output, status } = runChecksumStep({
+describe("theme-meta — 게시 전 점검이 기록한 checksum 을 읽는다", () => {
+  it("이 zip 의 줄 하나를 읽어 낸다 — 다른 버전의 줄과 섞여 있어도", () => {
+    const { output, outputs, status } = runRecordStep({
       sums: `${"b".repeat(64)}  baram-hangul-0.9.0.zip\n${SUM}  ${ZIP}\n`,
     });
     expect(status, output).toBe(0);
+    expect(outputs).toContain(`zip_name=${ZIP}\n`);
+    expect(outputs).toContain(`recorded_sha256=${SUM}\n`);
+  });
+
+  it("끝 줄바꿈이 없는 마지막 줄도 읽는다", () => {
+    const { output, outputs, status } = runRecordStep({
+      sums: `${SUM}  ${ZIP}`,
+    });
+    expect(status, output).toBe(0);
+    expect(outputs).toContain(`recorded_sha256=${SUM}\n`);
   });
 
   it("SHA256SUMS 가 없으면 무엇을 할지 말하며 거부한다", () => {
-    const { output, status } = runChecksumStep({});
+    const { output, status } = runRecordStep({});
     expect(status).not.toBe(0);
     expect(output).toContain("::error::");
     expect(output).toContain("examples/themes/hangul/SHA256SUMS");
     expect(output).toContain("record the pre-publish check's sha256");
   });
 
-  // 무엇이 이것을 실패시키는가(뒤의 두 행): 관문이 줄 전체가 아니라 부분 문자열로 대조하면 — `grep
-  // -qxF` 에서 `-x` 가 빠지면 맞는 줄을 **품은** 줄도 통과한다(zip 이름이 더 긴 줄, 주석으로 막은 줄).
+  // 무엇이 이것을 실패시키는가: 줄을 부분 문자열이나 정규식으로 대조하면 — 맞는 줄을 품은 줄(이름이
+  // 더 긴 줄, 주석으로 막은 줄)이나, 버전의 점이 다른 글자인 이름이 통과한다(계획 0115 P4).
   it.each([
-    ["다른 해시", `${"c".repeat(64)}  ${ZIP}\n`],
     ["다른 버전의 줄뿐", `${SUM}  baram-hangul-0.9.0.zip\n`],
     ["공백 하나로 적은 줄", `${SUM} ${ZIP}\n`],
-    ["이 zip 의 줄에 이름이 덧붙은 줄뿐", `${SUM}  ${ZIP}.old\n`],
-    ["이 zip 의 줄을 주석으로 막은 줄뿐", `# ${SUM}  ${ZIP}\n`],
-  ])(
-    "%s 이면 거부한다 — 여기서 만든 zip 이 점검한 zip 이 아니다",
-    (_, sums) => {
-      const { output, status } = runChecksumStep({ sums });
-      expect(status).not.toBe(0);
-      expect(output).toContain("::error::");
-      expect(output).toContain(
-        "the archive built here is not the one the pre-publish check installed",
-      );
-    },
-  );
+    ["이 zip 의 이름에 덧붙은 줄뿐", `${SUM}  ${ZIP}.old\n`],
+    ["주석으로 막은 줄뿐", `# ${SUM}  ${ZIP}\n`],
+    ["대문자 해시", `${"A".repeat(64)}  ${ZIP}\n`],
+    ["63자 해시", `${"a".repeat(63)}  ${ZIP}\n`],
+    ["점이 다른 글자인 이름", `${SUM}  baram-hangul-1x0x0.zip\n`],
+  ])("%s 이면 거부한다", (_, sums) => {
+    const { output, status } = runRecordStep({ sums });
+    expect(status).not.toBe(0);
+    expect(output).toContain("::error::");
+    expect(output).toContain(`has no line "<sha256>  ${ZIP}"`);
+  });
+
+  it("이 zip 의 줄이 둘이면 거부한다 — 해시가 같아도, 어느 것이 점검한 기록인지 모른다", () => {
+    const { output, status } = runRecordStep({
+      sums: `${SUM}  ${ZIP}\n${SUM}  ${ZIP}\n`,
+    });
+    expect(status).not.toBe(0);
+    expect(output).toContain(`has 2 lines for ${ZIP}`);
+  });
 
   it("SHA256SUMS 가 심볼릭 링크면 맞는 줄을 가리켜도 거부한다", () => {
-    const { output, status } = runChecksumStep({
+    const { output, status } = runRecordStep({
       link: true,
       sums: `${SUM}  ${ZIP}\n`,
     });
@@ -254,11 +274,62 @@ describe("release-theme — 기록된 checksum 관문을 실행한다", () => {
     expect(output).toContain("is not a regular file");
   });
 
-  // 파일의 줄은 빈 해시와 짝지으면 맞는 줄이다 — 빈 값 관문이 없으면 이 케이스가 통과해 버린다.
-  it("CHECKSUM 이 비어 닿으면 워크플로의 버그라고 말한다", () => {
-    const { output, status } = runChecksumStep({
-      checksum: "",
-      sums: `  ${ZIP}\n`,
+  it("앞 단계의 값이 비어 닿으면 워크플로의 버그라고 말한다", () => {
+    const { output, status } = runRecordStep({
+      env: { EXPECTED_ID: "" },
+      sums: `${SUM}  -1.0.0.zip\n`,
+    });
+    expect(status).not.toBe(0);
+    expect(output).toContain("this is a bug in this workflow");
+  });
+});
+
+/** release-theme 의 대조 단계 — 만든 zip 의 이름 · 해시를 theme-meta 가 읽은 기록과 비교한다. */
+function runCompareStep(env: Record<string, string>): {
+  output: string;
+  status: null | number;
+} {
+  const result = spawnSync("bash", ["-e", "-c", stepScript(COMPARE_STEP)], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      CHECKSUM: SUM,
+      RECORDED_SHA256: SUM,
+      RECORDED_ZIP_NAME: ZIP,
+      ZIP_NAME: ZIP,
+      ...env,
+    },
+  });
+  return { output: result.stderr + result.stdout, status: result.status };
+}
+
+describe("release-theme — 만든 zip 을 기록과 대조한다", () => {
+  it("이름과 해시가 기록과 같으면 통과한다", () => {
+    const { output, status } = runCompareStep({});
+    expect(status, output).toBe(0);
+  });
+
+  it("해시가 다르면 점검한 zip 이 아니라며 거부한다", () => {
+    const { output, status } = runCompareStep({ CHECKSUM: "c".repeat(64) });
+    expect(status).not.toBe(0);
+    expect(output).toContain(
+      "the archive built here is not the one the pre-publish check installed",
+    );
+  });
+
+  it("이름이 다르면 거부한다", () => {
+    const { output, status } = runCompareStep({
+      RECORDED_ZIP_NAME: "baram-hangul-0.9.0.zip",
+    });
+    expect(status).not.toBe(0);
+    expect(output).toContain("the recorded line is for");
+  });
+
+  // 무엇이 이것을 실패시키는가: 빈 값 관문이 없으면 — 빈 해시 둘은 같다고 판정된다.
+  it("값이 비어 닿으면 워크플로의 버그라고 말한다", () => {
+    const { output, status } = runCompareStep({
+      CHECKSUM: "",
+      RECORDED_SHA256: "",
     });
     expect(status).not.toBe(0);
     expect(output).toContain("this is a bug in this workflow");
@@ -266,14 +337,39 @@ describe("release-theme — 기록된 checksum 관문을 실행한다", () => {
 });
 
 describe("release-theme — 실행할 수 없는 배선", () => {
-  it("태그 모양마다 잡 하나만 돈다", () => {
+  it("태그 모양마다 meta 잡과 빌드 잡 한 쌍만 돌고, 빌드는 meta 를 기다린다", () => {
     expect(WORKFLOW).toMatch(/tags: \['plugin-\*', 'theme-\*'\]/);
-    expect(jobText("release")).toContain(
-      "if: startsWith(github.ref_name, 'plugin-')",
-    );
-    expect(jobText("release-theme")).toContain(
-      "if: startsWith(github.ref_name, 'theme-')",
-    );
+    for (const job of ["plugin-meta", "release"]) {
+      expect(jobText(job), job).toContain(
+        "if: startsWith(github.ref_name, 'plugin-')",
+      );
+    }
+    for (const job of ["theme-meta", "release-theme"]) {
+      expect(jobText(job), job).toContain(
+        "if: startsWith(github.ref_name, 'theme-')",
+      );
+    }
+    expect(jobText("release")).toContain("\n    needs: plugin-meta\n");
+    expect(jobText("release-theme")).toContain("\n    needs: theme-meta\n");
+  });
+
+  // 스펙 0065 D2 — 무엇이 이것을 실패시키는가: meta 잡에 설치나 node 계열 도구가 들어오면. 그 잡의
+  // 출력은 publish 잡이 artifact 를 묶는 기준이라, 서드파티 코드가 돌면 기준이 오염된다.
+  it.each([
+    ["plugin-meta", "Parse and verify tag"],
+    ["theme-meta", "Parse and verify the theme tag"],
+  ])("%s 는 체크아웃과 판정만 돈다", (job, step) => {
+    const text = jobText(job);
+    expect(text).toContain(`- name: ${step}\n`);
+    const code = text
+      .split("\n")
+      .filter((line) => !line.trim().startsWith("#"))
+      .join("\n");
+    expect(code).not.toMatch(/setup-node|\b(npm|npx|tsx|yarn|pnpm|bun)\b/);
+    const uses = [...code.matchAll(/uses: (\S+)/g)].map((m) => m[1]);
+    expect(uses).toEqual([
+      "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+    ]);
   });
 
   // 무엇이 이것을 실패시키는가: 어느 잡이 환경 선언을 잃으면. 배포 키는 환경 `registry-publish` 의
@@ -335,29 +431,55 @@ describe("release-theme — 실행할 수 없는 배선", () => {
     },
   );
 
-  // 무엇이 이것을 실패시키는가: 관문이 checksum 을 계산하는 단계 앞이나 색인을 쓰는 단계 뒤로
-  // 옮겨지거나, 세 값을 다른 출력에 묶으면. 위의 실행 케이스는 env 를 직접 넣으므로 이 배선을 보지
-  // 못한다.
-  it("checksum 관문은 checksum 을 계산한 뒤, 색인을 쓰기 전에 서고, 세 값을 앞 단계에서 받는다", () => {
+  // 무엇이 이것을 실패시키는가: 기록을 태그 단계 앞에서 읽거나, 대조를 checksum 계산 앞이나 색인
+  // 쓰기 뒤로 옮기거나, 값을 다른 출력에 묶으면. 위의 실행 케이스는 env 를 직접 넣으므로 이 배선을
+  // 보지 못한다.
+  it("기록은 theme-meta 의 태그 단계 뒤에서 읽고, 대조는 checksum 계산 뒤 · 색인 쓰기 전에 선다", () => {
+    const meta = jobText("theme-meta");
+    const metaAt = (name: string) => meta.indexOf(`- name: ${name}\n`);
+    expect(metaAt("Parse and verify the theme tag")).toBeGreaterThan(0);
+    expect(metaAt(RECORD_STEP)).toBeGreaterThan(
+      metaAt("Parse and verify the theme tag"),
+    );
+    const record = meta.slice(metaAt(RECORD_STEP));
+    expect(record).toContain("DIR: ${{ steps.theme_meta.outputs.dir }}");
+    expect(record).toContain(
+      "EXPECTED_ID: ${{ steps.theme_meta.outputs.expected_id }}",
+    );
+    expect(record).toContain(
+      "VERSION: ${{ steps.theme_meta.outputs.version }}",
+    );
+    expect(meta).toContain(
+      "recorded_sha256: ${{ steps.theme_sums.outputs.recorded_sha256 }}",
+    );
+    expect(meta).toContain(
+      "zip_name: ${{ steps.theme_sums.outputs.zip_name }}",
+    );
+
     const text = jobText("release-theme");
     const at = (name: string) => text.indexOf(`- name: ${name}\n`);
     expect(at("Compute the theme checksum")).toBeGreaterThan(0);
-    expect(at(CHECKSUM_STEP)).toBeGreaterThan(at("Compute the theme checksum"));
-    expect(at(CHECKSUM_STEP)).toBeLessThan(
+    expect(at(COMPARE_STEP)).toBeGreaterThan(at("Compute the theme checksum"));
+    expect(at(COMPARE_STEP)).toBeLessThan(
       at("Update and validate the registry index for the theme"),
     );
     const gate = text.slice(
-      at(CHECKSUM_STEP),
+      at(COMPARE_STEP),
       at("Update and validate the registry index for the theme"),
     );
-    expect(gate).toContain("DIR: ${{ steps.theme_meta.outputs.dir }}");
     expect(gate).toContain(
       "ZIP_NAME: ${{ steps.theme_package.outputs.zip_name }}",
     );
     expect(gate).toContain("CHECKSUM: ${{ steps.theme_sum.outputs.checksum }}");
+    expect(gate).toContain(
+      "RECORDED_ZIP_NAME: ${{ needs.theme-meta.outputs.zip_name }}",
+    );
+    expect(gate).toContain(
+      "RECORDED_SHA256: ${{ needs.theme-meta.outputs.recorded_sha256 }}",
+    );
   });
 
-  it("테마 잡은 examples/themes/ 에 태그 단계가 검증한 디렉터리로만 닿는다", () => {
+  it("테마 잡은 examples/themes/ 에 theme-meta 가 검증한 디렉터리로만 닿는다", () => {
     const text = jobText("release-theme");
     const afterTag = text.slice(
       text.indexOf("- uses: ./.github/actions/setup-node"),
@@ -367,7 +489,7 @@ describe("release-theme — 실행할 수 없는 배선", () => {
     );
     expect(refs.length).toBeGreaterThan(0);
     for (const ref of refs) expect(ref).toBe("$DIR");
-    expect(afterTag).toContain("DIR: ${{ steps.theme_meta.outputs.dir }}");
+    expect(afterTag).toContain("DIR: ${{ needs.theme-meta.outputs.dir }}");
   });
 
   it("색인은 다시 검증한 아카이브에서 꺼낸 매니페스트와 미리보기로 쓴다", () => {
