@@ -17,6 +17,7 @@
 import type { CoreCommand, StepResult } from "./core/types";
 import type { VimPluginState } from "./vim-plugin-state";
 import type { Editor as TiptapEditor } from "@tiptap/core";
+import type { ResolvedPos } from "@tiptap/pm/model";
 import type { EditorView } from "@tiptap/pm/view";
 
 import { NodeSelection, Plugin } from "@tiptap/pm/state";
@@ -88,12 +89,15 @@ export function createVimPlugin(
         const $head = state.doc.resolve(head);
         if (!$head.parent.isTextblock) return null; // atom line — NodeSelection
         const end = nextUnitBoundary(state, head);
-        if (end > head) {
+        // A newline unit (a YAML line end in frontmatter, where gg lands on a
+        // blank first line) has no width, so painting it shows nothing — it
+        // gets the empty-line caret too.
+        if (end > head && !isLineBreakUnit($head, end - head)) {
           return DecorationSet.create(state.doc, [
             Decoration.inline(head, end, { class: "vim-cursor" }),
           ]);
         }
-        // Empty line or terminal boundary — a zero-width widget caret.
+        // Empty line, terminal boundary or newline — a zero-width widget caret.
         return DecorationSet.create(state.doc, [
           Decoration.widget(head, eolCursorWidget, { side: 1 }),
         ]);
@@ -351,6 +355,9 @@ function consumeClipboard(view: EditorView, event: Event): boolean {
   return true;
 }
 
+/** A cursor unit that is a line break: "\n" or the one-grapheme "\r\n". */
+const LINE_BREAK_UNIT = /^\r?\n$/;
+
 function eolCursorWidget(): HTMLElement {
   const el = document.createElement("span");
   el.className = "vim-cursor-eol";
@@ -363,6 +370,18 @@ function isChangeCommand(command: CoreCommand): boolean {
     (command.type === "operatorMotion" && command.op === "c") ||
     (command.type === "operatorFind" && command.op === "c")
   );
+}
+
+/** Whether the `size`-long unit at `$head` is a line break, read from the
+ *  text node holding it. Not doc.textBetween: that walks from the document's
+ *  first child on every normal-mode state. Not nodeAfter: inside a text node
+ *  it cuts a copy of the rest. A non-text unit is never a line break. */
+function isLineBreakUnit($head: ResolvedPos, size: number): boolean {
+  // Only a text node has `text`.
+  const text = $head.parent.maybeChild($head.index())?.text;
+  if (text === undefined) return false;
+  const from = $head.textOffset;
+  return LINE_BREAK_UNIT.test(text.slice(from, from + size));
 }
 
 /**

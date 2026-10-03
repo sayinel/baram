@@ -9,9 +9,11 @@
 // sourceLineSpan). A position right before a `\n` belongs to the line before
 // it, a position right after to the line after.
 
+import type { DecorationSet } from "@tiptap/pm/view";
+
 import { Editor } from "@tiptap/core";
 import { TextSelection } from "@tiptap/pm/state";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createBaramExtensions } from "../../../index";
 import { resolveMotion } from "../adapters/motions";
@@ -278,6 +280,52 @@ describe("a CRLF line ending is one unit", () => {
     keys(editor, "Escape");
     expect(editor.state.selection.empty).toBe(true);
     expect(offset(editor)).toBe(0);
+  });
+});
+
+describe("the normal cursor on a YAML newline", () => {
+  /** The vim cursor decorations: [from, to] each — from === to is the
+   *  empty-line bar caret (a widget), from < to the painted block cursor. */
+  function cursorDecorations(editor: Editor): [number, number][] {
+    const plugin = vimPluginKey.get(editor.state);
+    const set = plugin?.props.decorations?.call(plugin, editor.state) as
+      DecorationSet | null | undefined;
+    return (set?.find() ?? []).map((d) => [d.from - 1, d.to - 1]);
+  }
+
+  it("gg onto a blank first YAML line draws the empty-line caret", () => {
+    // A painted "\n" has no width — the cursor vanished there. Fails if: the
+    // decoration paints a newline unit like any other (no LINE_BREAK_UNIT
+    // check) — the block cursor wraps the "\n" ([0, 1]) instead.
+    const editor = makeEditor("\n  title: x", "body");
+    keys(editor, "G", "g", "g");
+    expect(offset(editor)).toBe(0);
+    expect(cursorDecorations(editor)).toEqual([[0, 0]]);
+  });
+
+  it("a CRLF line ending is a newline unit too", () => {
+    // Fails if: LINE_BREAK_UNIT matches a bare "\n" only — the one-grapheme
+    // "\r\n" is painted ([4, 6]).
+    const editor = makeEditor("a: 1\r\nb", "body");
+    place(editor, 4);
+    expect(cursorDecorations(editor)).toEqual([[4, 4]]);
+  });
+
+  it("deciding the cursor never scans the document (doc.textBetween)", () => {
+    // decorations runs on every normal-mode state, and textBetween walks from
+    // the document's first child. Fails if: isLineBreakUnit reads the unit
+    // through state.doc.textBetween.
+    const editor = makeEditor("a: 1\nb", ...Array(50).fill("para"));
+    place(editor, 4);
+    const spy = vi.spyOn(editor.state.doc, "textBetween");
+    expect(cursorDecorations(editor)).toEqual([[4, 4]]);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("a character keeps the block cursor (control)", () => {
+    const editor = makeEditor("\n  title: x", "body");
+    place(editor, 3);
+    expect(cursorDecorations(editor)).toEqual([[3, 4]]);
   });
 });
 
