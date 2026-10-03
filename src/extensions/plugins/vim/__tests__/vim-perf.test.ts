@@ -5,13 +5,15 @@
 // actually feels, and counters do not flake under parallel-suite load.
 
 import { Editor } from "@tiptap/core";
+import { TextSelection } from "@tiptap/pm/state";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { useUIStore } from "../../../../stores/ui/ui";
 import { createBaramExtensions } from "../../../index";
-import { columnAt } from "../adapters/cursor-line-columns";
+import { columnAt, lineUnitStarts } from "../adapters/cursor-line-columns";
 import { graphemeIndexSize } from "../adapters/graphemes";
 import { resolveMotion } from "../adapters/motions";
+import { terminalClampTarget } from "../adapters/normal-cursor";
 import { scrollCursorIntoView } from "../adapters/scroll";
 import { vimPluginKey } from "../vim-keys";
 import { setWysiwygVimStatusOwner } from "../vim-status";
@@ -25,7 +27,11 @@ vi.mock("../adapters/scroll", async (importOriginal) => {
 vi.mock("../adapters/cursor-line-columns", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../adapters/cursor-line-columns")>();
-  return { ...actual, columnAt: vi.fn(actual.columnAt) };
+  return {
+    ...actual,
+    columnAt: vi.fn(actual.columnAt),
+    lineUnitStarts: vi.fn(actual.lineUnitStarts),
+  };
 });
 
 const editors: Editor[] = [];
@@ -235,8 +241,12 @@ describe("goal column cost (issue 776)", () => {
       (vimPluginKey.getState(editor.state) as unknown as { mode: string }).mode,
     ).toBe("insert");
     vi.mocked(columnAt).mockClear();
+    vi.mocked(lineUnitStarts).mockClear();
     for (const k of ["x", "y", "z"]) key(editor, k);
     expect(vi.mocked(columnAt)).not.toHaveBeenCalled();
+    // …nor builds a line's unit list some other way (columnOf over
+    // lineUnitStarts is the inline form of the same measurement).
+    expect(vi.mocked(lineUnitStarts)).not.toHaveBeenCalled();
   });
 });
 
@@ -266,8 +276,32 @@ describe("first non-blank cost (issue 776)", () => {
     );
     try {
       const target = resolveMotion(editor.state, 1, "lineFirstNonBlank", 1);
-      expect(editor.state.doc.textBetween(target, target + 3)).toBe("end");
-      expect(spy).toHaveBeenCalledTimes(1); // the assertion's own call above
+      expect(spy).not.toHaveBeenCalled();
+      expect(editor.state.doc.resolve(target).parentOffset).toBe(400); // "end"
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
+// issue 776 — the normal-mode clamp's early rejection reads no text.
+describe("terminal clamp cost (issue 776)", () => {
+  it("a caret inside a text node is rejected without cutting the node", () => {
+    // Fails if: terminalClampTarget reads $head.nodeAfter before checking
+    // textOffset — for a position inside a text node ProseMirror cuts a copy
+    // of the node's remaining text, on every normal-mode transaction.
+    const editor = makeEditor(`<p>${"x".repeat(1000)}</p>`);
+    const textNode = editor.state.doc.child(0).child(0);
+    const spy = vi.spyOn(Object.getPrototypeOf(textNode), "cut");
+    try {
+      const state = editor.state.apply(
+        editor.state.tr.setSelection(
+          TextSelection.create(editor.state.doc, 500),
+        ),
+      );
+      spy.mockClear();
+      expect(terminalClampTarget(state)).toBeNull();
+      expect(spy).not.toHaveBeenCalled();
     } finally {
       spy.mockRestore();
     }

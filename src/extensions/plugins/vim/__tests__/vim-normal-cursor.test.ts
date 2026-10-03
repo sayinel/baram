@@ -5,7 +5,8 @@
 // pin names the mutation that turns it red.
 
 import { Editor } from "@tiptap/core";
-import { NodeSelection, TextSelection } from "@tiptap/pm/state";
+import { AllSelection, NodeSelection, TextSelection } from "@tiptap/pm/state";
+import { CellSelection } from "@tiptap/pm/tables";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createBaramExtensions } from "../../../index";
@@ -240,16 +241,53 @@ describe("insert Esc collapses a range made while inserting", () => {
     expect(head(editor)).toBe(at(editor, "2"));
   });
 
-  it("…after a code block: the head, never into CodeMirror's caret", () => {
-    // Fails if: lastUnitBefore drops its code block exclusion — the landing
-    // would be the block's last source character, handing focus to the
-    // island.
+  it("…after a code block: skips the block to the text before it", () => {
+    // Fails if: lastUnitBefore stops at the code block instead of searching
+    // on before it — the landing falls back to the range head, or into the
+    // block's source, handing focus to the island.
     const editor = makeVimEditor(
       "<p>para</p><pre><code>xyz</code></pre><p>after</p>",
     );
     selectThenEscape(editor, at(editor, "para"), at(editor, "after"));
-    expect(head(editor)).toBe(at(editor, "after"));
+    expect(head(editor)).toBe(at(editor, "para") + 3); // para's last "a"
     expect(editor.state.selection.$head.parent.type.name).toBe("paragraph");
+  });
+
+  it("…Select All in a document ending with a code block stays out of the block", () => {
+    // Fails if: the same code block skip is dropped — an AllSelection's head
+    // is the document end, and the fallback near it is the block's source.
+    const editor = makeVimEditor("<p>top</p><pre><code>xyz</code></pre>");
+    place(editor, 1);
+    key(editor, "i");
+    editor.view.dispatch(
+      editor.state.tr.setSelection(new AllSelection(editor.state.doc)),
+    );
+    key(editor, "Escape");
+    expect(editor.state.selection.$head.parent.type.name).toBe("paragraph");
+    expect(head(editor)).toBe(at(editor, "top") + 2); // "top"'s last unit
+  });
+
+  it("…a forward cell selection lands in its head cell", () => {
+    // A CellSelection's `head` is the end of its range INSIDE the head cell
+    // (prosemirror-tables), so the ordinary block search already lands there.
+    // Fails if: a forward range collapses toward its anchor instead of its
+    // head (the landing would be the first cell).
+    const editor = makeVimEditor(
+      "<table><tr><td><p>a1</p></td><td><p>b2</p></td></tr></table><p>z</p>",
+    );
+    place(editor, at(editor, "a1"));
+    key(editor, "i");
+    const cells: number[] = [];
+    editor.state.doc.descendants((node, pos) => {
+      if (node.type.spec.tableRole === "cell") cells.push(pos);
+    });
+    editor.view.dispatch(
+      editor.state.tr.setSelection(
+        CellSelection.create(editor.state.doc, cells[0], cells[1]),
+      ),
+    );
+    key(editor, "Escape");
+    expect(head(editor)).toBe(at(editor, "2"));
   });
 
   it("…after a hard break: the previous segment's last unit", () => {

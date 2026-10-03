@@ -55,7 +55,9 @@ export function terminalClampTarget(state: EditorState): null | number {
   const sel = state.selection;
   if (!sel.empty || isCodeBlockLanding(state, sel.head)) return null;
   const $head = state.doc.resolve(sel.head);
-  if (!$head.parent.isTextblock) return null;
+  // Inside a text node is never a line end — and reading nodeAfter there
+  // would cut a copy of the node's remaining text on every transaction.
+  if (!$head.parent.isTextblock || $head.textOffset !== 0) return null;
   const atLineEnd =
     $head.parentOffset === $head.parent.content.size ||
     $head.nodeAfter?.type.name === "hardBreak";
@@ -84,10 +86,10 @@ function caretSpan(
  *  document-wide line list: Esc on a huge document must stay cheap). Across a
  *  hard break that is the previous segment; across a block boundary it is the
  *  nearest selectable position before the block — the last cell's text of a
- *  table, a block atom's own position, an empty paragraph's caret. null when
- *  nothing precedes, or when that position is inside a code block: CodeMirror
- *  owns that caret, and landing there would hand focus to the island, which
- *  Esc never does. */
+ *  table, a block atom's own position, an empty paragraph's caret. A code
+ *  block is skipped (the search goes on before it): CodeMirror owns that
+ *  caret, and landing there would hand focus to the island, which Esc never
+ *  does. null when nothing precedes. */
 function lastUnitBefore(state: EditorState, head: number): null | number {
   const span = segmentSpanAt(state, head);
   const onLine = span ? unitBefore(state, head, span.from) : null;
@@ -98,10 +100,16 @@ function lastUnitBefore(state: EditorState, head: number): null | number {
     return lastUnitOfLineEndingAt(state, span.from - 1);
   }
   const before = $head.parent.isTextblock ? $head.before() : head;
-  const found = Selection.findFrom(state.doc.resolve(before), -1);
+  let found = Selection.findFrom(state.doc.resolve(before), -1);
+  while (
+    found &&
+    !(found instanceof NodeSelection) &&
+    isCodeBlockLanding(state, found.head)
+  ) {
+    found = Selection.findFrom(state.doc.resolve(found.$head.before()), -1);
+  }
   if (!found) return null;
   if (found instanceof NodeSelection) return found.from;
-  if (isCodeBlockLanding(state, found.head)) return null;
   return lastUnitOfLineEndingAt(state, found.head);
 }
 
