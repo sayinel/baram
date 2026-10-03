@@ -4,8 +4,8 @@
 
 use crate::context::manager::Registered;
 use crate::context::ContextManager;
-use crate::index::{KnownPaths, LinkIndex, RootNotes};
-use std::collections::HashMap;
+use crate::index::{root_places, KnownPaths, LinkIndex, RootNotes};
+use std::collections::{HashMap, HashSet};
 
 use super::super::build::{ensure_indexes, read_indexes};
 use super::super::keys::{buildable, keys_of, owning_contexts};
@@ -72,8 +72,9 @@ impl RenameScope {
         read: impl Fn(&LinkIndex) -> Vec<(String, u32)>,
     ) -> Result<Referrers, String> {
         let (named_lines, files) = named_referrers(read_indexes(state, &self.dirs, read).await?);
-        let holding = holding_contexts(state, ctx_mgr, &self.dirs, &files).await;
-        let known_paths = known_paths_of(state, &holding).await;
+        let (holding, unplaced) = holding_contexts(state, ctx_mgr, &self.dirs, &files).await;
+        let mut known_paths = known_paths_of(state, &holding).await;
+        known_paths.unplaced = unplaced;
         Ok(Referrers {
             named_lines,
             files,
@@ -90,15 +91,24 @@ impl RenameScope {
 /// has no index and the judgement must not read that as "no note there". A
 /// build that fails is logged and its root is left unbuilt, which
 /// `known_paths_of` reports as `Unknown`.
+///
+/// Also the referrers one of their holding contexts cannot place as spelled
+/// (`root_places`): it holds them as resolved, through a symlink, and the
+/// judgement, which reads every root lexically, would skip it
+/// (`KnownPaths::unplaced`).
 async fn holding_contexts(
     state: &LinkIndexState,
     ctx_mgr: &ContextManager,
     dirs: &[Registered],
     referrers: &[String],
-) -> Vec<Registered> {
+) -> (Vec<Registered>, HashSet<String>) {
     let mut holding: Vec<Registered> = dirs.to_vec();
+    let mut unplaced = HashSet::new();
     for referrer in referrers {
         for c in buildable(&owning_contexts(ctx_mgr, referrer).await) {
+            if !root_places(&c.info.path, referrer, cfg!(windows)) {
+                unplaced.insert(referrer.clone());
+            }
             if !holding.iter().any(|h| h.info.path == c.info.path) {
                 holding.push(c);
             }
@@ -112,7 +122,7 @@ async fn holding_contexts(
             );
         }
     }
-    holding
+    (holding, unplaced)
 }
 
 /// What each of `holding` knows of its notes, by its root: `Known` with
@@ -127,7 +137,7 @@ async fn holding_contexts(
 /// of a key per note.
 async fn known_paths_of(state: &LinkIndexState, holding: &[Registered]) -> KnownPaths {
     let sole = holding.len() == 1;
-    let mut known = KnownPaths::new();
+    let mut known = KnownPaths::default();
     for c in holding {
         let notes = state
             .with_index_for(&c.info.path, c.incarnation, |idx| {
@@ -140,7 +150,9 @@ async fn known_paths_of(state: &LinkIndexState, holding: &[Registered]) -> Known
                 })
             })
             .await;
-        known.insert(c.info.path.clone(), notes.unwrap_or(RootNotes::Unknown));
+        known
+            .roots
+            .insert(c.info.path.clone(), notes.unwrap_or(RootNotes::Unknown));
     }
     known
 }

@@ -429,9 +429,11 @@ async fn a_path_link_is_not_ambiguous_because_of_a_root_that_does_not_hold_the_r
     // Two unrelated vaults each hold `a/old.md`. In A, `[[a/old]]` names
     // A's note, and B's root, which does not hold A's referrer, never reads
     // it: A's rename respells it and reports nothing.
-    // What fails this: dropping the root-holds-the-referrer check from
-    // `read_as_another_note` — B's `a/old` then makes A's link ambiguous,
-    // and it is left and reported.
+    // No single change to the judgement fails this: B holds neither the
+    // renamed file nor a referrer, so `holding_contexts` never puts it in
+    // `known_paths`, and dropping the root-holds-the-referrer check from
+    // `read_as_another_note` leaves this green (measured). That check is
+    // pinned by `nested_roots_a_referrer_only_the_parent_holds_follows_the_rename`.
     let ctx = ContextManager::new();
     let (dir_a, root_a) = aliased_vault(
         &ctx,
@@ -492,6 +494,131 @@ async fn nested_roots_the_parents_block_id_rename_keeps_a_path_reference_the_chi
     assert_eq!(
         std::fs::read_to_string(dir.path().join("sub/r.md")).unwrap(),
         "((a/old#^x))\n"
+    );
+}
+
+/// `nested_roots_with_two_a_old_notes` with the child registered through a
+/// symlink, `/elsewhere/alias` → `/v/sub`: the parent's index spells the
+/// referrer `/v/sub/r.md`, which the child holds only as its target.
+#[cfg(unix)]
+async fn nested_roots_with_two_a_old_notes_child_through_a_symlink(
+    ctx: &ContextManager,
+    note: &str,
+    files: &[(&str, &str)],
+) -> (tempfile::TempDir, tempfile::TempDir, String, LinkIndexState) {
+    let (dir, root) = vault_with_a_link(ctx, "ctx-parent", true).await;
+    std::fs::create_dir_all(dir.path().join("sub/a")).unwrap();
+    std::fs::create_dir_all(dir.path().join("a")).unwrap();
+    std::fs::write(dir.path().join("a/old.md"), note).unwrap();
+    std::fs::write(dir.path().join("sub/a/old.md"), note).unwrap();
+    for (path, content) in files {
+        std::fs::write(dir.path().join(path), content).unwrap();
+    }
+    let elsewhere = tempfile::tempdir().unwrap();
+    let alias = elsewhere.path().join("alias");
+    std::os::unix::fs::symlink(dir.path().join("sub"), &alias).unwrap();
+    let alias = alias.to_str().unwrap().to_string();
+    ctx.add(info("ctx-child", &alias, ContextType::Folder))
+        .await
+        .unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, ctx, &root).await.unwrap();
+    refresh_index_inner(&state, ctx, &alias).await.unwrap();
+    (dir, elsewhere, root, state)
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn nested_roots_a_child_registered_through_a_symlink_still_keeps_a_path_link() {
+    // `nested_roots_the_parents_rename_keeps_a_path_link_the_child_reads_as_another_file`
+    // with the child registered as `/elsewhere/alias`. The child still reads
+    // `sub/r.md`'s `[[a/old]]` as `sub/a/old.md`, but cannot be placed over
+    // the referrer as the parent's index spells it, so the link is left and
+    // the file reported — missed, not miswritten. The bare `[[old]]` follows.
+    // What fails this: dropping the `unplaced` check from
+    // `read_as_another_note` — the child is skipped as not holding
+    // `/v/sub/r.md`, and `[[a/old]]` becomes `[[a/new]]` with nothing reported.
+    let ctx = ContextManager::new();
+    let (dir, _elsewhere, root, state) = nested_roots_with_two_a_old_notes_child_through_a_symlink(
+        &ctx,
+        "t\n",
+        &[("sub/r.md", "[[a/old]]\n[[old]]\n")],
+    )
+    .await;
+    let referrer = format!("{root}/sub/r.md");
+
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/a/old.md"),
+        &format!("{root}/a/new.md"),
+    )
+    .await
+    .unwrap();
+    assert_eq!(result.skipped_files, vec![referrer.clone()]);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("sub/r.md")).unwrap(),
+        "[[a/old]]\n[[new]]\n"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn nested_roots_a_child_registered_through_a_symlink_still_keeps_a_path_reference() {
+    // The block-ID rename of the test above: `((a/old#^x))` in `sub/r.md`
+    // stays and the file is reported.
+    // What fails this: dropping the `unplaced` check from
+    // `read_as_another_note` — the reference becomes `((a/old#^y))`.
+    let ctx = ContextManager::new();
+    let (dir, _elsewhere, root, state) = nested_roots_with_two_a_old_notes_child_through_a_symlink(
+        &ctx,
+        "para ^x\n",
+        &[("sub/r.md", "((a/old#^x))\n")],
+    )
+    .await;
+
+    let result = rename_block_id_inner(&state, &ctx, &format!("{root}/a/old.md"), "x", "y")
+        .await
+        .unwrap();
+    assert_eq!(result.skipped_files, vec![format!("{root}/sub/r.md")]);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("sub/r.md")).unwrap(),
+        "((a/old#^x))\n"
+    );
+}
+
+#[tokio::test]
+async fn nested_roots_a_referrer_only_the_parent_holds_follows_the_rename() {
+    // Beside `sub/r.md`, whose `[[a/old]]` the child reads as `sub/a/old.md`,
+    // the parent's own `r.md` holds the same text. The child does not hold
+    // that referrer, so only the parent reads it: respelled, not reported.
+    // What fails this: dropping the root-holds-the-referrer check
+    // (`under_root`) from `read_as_another_note` — the child's `sub/a/old.md`
+    // makes `/v/r.md`'s link ambiguous too, and it is left and reported.
+    let ctx = ContextManager::new();
+    let (dir, root, sub, state) = nested_roots_with_two_a_old_notes(
+        &ctx,
+        "t\n",
+        &[("r.md", "[[a/old]]\n"), ("sub/r.md", "[[a/old]]\n")],
+    )
+    .await;
+
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/a/old.md"),
+        &format!("{root}/a/new.md"),
+    )
+    .await
+    .unwrap();
+    assert_eq!(result.skipped_files, vec![format!("{sub}/r.md")]);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
+        "[[a/new]]\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("sub/r.md")).unwrap(),
+        "[[a/old]]\n"
     );
 }
 

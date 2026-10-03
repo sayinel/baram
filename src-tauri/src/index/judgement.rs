@@ -7,14 +7,35 @@ use super::filing::{
 };
 use super::normalizer::{file_key, strip_note_extension};
 use super::relative_links::{path_components, relative_components};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// What the rename knows of the notes under each root that holds a
 /// referrer, by that root — every directory context holding one, not only
 /// the renamed file's. The rename judgement reads it to tell whether another
 /// root that holds the referrer reads a path link as an existing note. A
 /// root with no entry holds none of the referrers.
-pub type KnownPaths = HashMap<String, RootNotes>;
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct KnownPaths {
+    pub roots: HashMap<String, RootNotes>,
+    /// The referrers, as the renamed file's indexes spell them, that a root
+    /// holding them cannot place by spelling: it contains the referrer only
+    /// as resolved (`ContextManager::contexts_containing` compares canonical
+    /// paths), as a child root registered through a symlink holds
+    /// `/v/sub/r.md` — `/elsewhere/alias` is not a prefix of it. Such a root
+    /// reads the referrer's path links, but the judgement cannot tell how,
+    /// so every `Path` reading in that referrer is ambiguous
+    /// (`read_as_another_note`): left and reported, never rewritten.
+    pub unplaced: HashSet<String>,
+}
+
+impl<const N: usize> From<[(String, RootNotes); N]> for KnownPaths {
+    fn from(roots: [(String, RootNotes); N]) -> Self {
+        KnownPaths {
+            roots: roots.into(),
+            unplaced: HashSet::new(),
+        }
+    }
+}
 
 /// The notes one root holds, as far as the rename can tell.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -82,7 +103,22 @@ impl<M> Judgement<M> {
 /// are `Unknown` (its index could not be built) is read as holding every path
 /// but the renamed file's. Only a `Path` reading counts: a bare name is filed
 /// by its stem in every root alike, which is the stem contract a rename
-/// already follows. With an empty map nothing is ambiguous.
+/// already follows. The callers ask only of a `Path` match, so a referrer
+/// some holding root cannot place lexically (`KnownPaths::unplaced`) answers
+/// yes before any root is read. With an empty map nothing is ambiguous.
+/// Does `root`, as spelled, hold the file at `ref_path` as spelled — the
+/// lexical containment every key is read under? The judgement asks it of
+/// each root (`read_as_another_note`); the rename's scope asks it of each
+/// root that holds a referrer as resolved, and a no is `KnownPaths::unplaced`.
+pub(crate) fn root_places(root: &str, ref_path: &str, windows: bool) -> bool {
+    under_root(
+        &path_components(root, windows),
+        &path_components(ref_path, windows),
+        windows,
+    )
+    .is_some()
+}
+
 fn read_as_another_note(
     ref_path: &str,
     raw_target: &str,
@@ -90,10 +126,12 @@ fn read_as_another_note(
     is_the_target: impl Fn(&str, &str) -> bool,
     windows: bool,
 ) -> bool {
+    if known_paths.unplaced.contains(ref_path) {
+        return true;
+    }
     let raw = raw_target.trim();
-    let referrer = path_components(ref_path, windows);
-    known_paths.iter().any(|(root, known)| {
-        under_root(&path_components(root, windows), &referrer, windows).is_some()
+    known_paths.roots.iter().any(|(root, known)| {
+        root_places(root, ref_path, windows)
             && match filing_key(ref_path, raw, None, Some(root), windows) {
                 FilingKey::Path(p) => match known {
                     RootNotes::Known(notes) => notes
