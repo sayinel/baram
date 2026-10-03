@@ -20,6 +20,7 @@ import type { EditorState } from "@tiptap/pm/state";
 
 import { isCodeBlockLanding } from "./code-block-landing";
 import {
+  firstNonBlankUnit,
   lineSpanAt,
   lineUnitStarts,
   segmentSpanAt,
@@ -114,24 +115,16 @@ export function resolveMotion(
     case "lineFirstNonBlank": {
       // The first cursor UNIT that is not blank; an all-blank line falls back
       // to the line start (vim lands near the end there — Phase 2 nicety).
-      // Judged per unit, not by a regex offset into the line's text: an
-      // offset can land inside a grapheme (" " + U+0301 is one unit) and
-      // drifts past inline nodes with content. An inline atom (wikilink,
-      // tag) is a unit and never blank — its placeholder is not \s (issue
-      // 776: gg, G and :N land through here too).
+      // Judged per unit (firstNonBlankUnit), not by a regex offset into the
+      // line's text: an offset can land inside a grapheme (" " + U+0301 is
+      // one unit) and drifts past inline nodes with content (issue 776:
+      // gg, G and :N land through here too).
       const span = segmentSpanAt(state, pos);
       if (!span) return pos;
-      const starts = lineUnitStarts(state, { end: span.to, start: span.from });
-      for (let i = 0; i < starts.length; i++) {
-        const unit = state.doc.textBetween(
-          starts[i],
-          starts[i + 1] ?? span.to,
-          undefined,
-          "\uFFFC",
-        );
-        if (/\S/.test(unit)) return starts[i];
-      }
-      return span.from;
+      return (
+        firstNonBlankUnit(state, { end: span.to, start: span.from }) ??
+        span.from
+      );
     }
     case "lineStart": {
       const span = segmentSpanAt(state, pos);

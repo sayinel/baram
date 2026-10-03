@@ -41,6 +41,43 @@ export function lineSpanAt(state: EditorState, pos: number): CursorLine {
   return span ? { end: span.to, start: span.from } : { end: pos, start: pos };
 }
 
+/** The first cursor unit of `line` that is not blank — a grapheme with a
+ *  non-whitespace character, or any non-text inline node (a wikilink or tag
+ *  is a unit, never a blank). null when the line is blank or empty. ONE
+ *  traversal, the same unit model as lineUnitStarts: a per-unit textBetween
+ *  restarts the range walk at the first child each time, quadratic over a
+ *  line split into many marked text nodes. */
+export function firstNonBlankUnit(
+  state: EditorState,
+  line: CursorLine,
+): null | number {
+  if (line.end <= line.start) return null;
+  let found: null | number = null;
+  state.doc.nodesBetween(line.start, line.end, (node, pos) => {
+    if (found !== null) return false;
+    if (node.isText) {
+      const from = Math.max(line.start, pos);
+      const to = Math.min(line.end, pos + node.nodeSize);
+      const text = (node.text ?? "").slice(from - pos, to - pos);
+      let offset = 0;
+      for (const seg of graphemeSegmenter.segment(text)) {
+        if (/\S/.test(seg.segment)) {
+          found = from + offset;
+          break;
+        }
+        offset += seg.segment.length;
+      }
+      return false;
+    }
+    if (node.isInline) {
+      if (pos >= line.start && pos < line.end) found = pos;
+      return false;
+    }
+    return true; // the textblock container — descend
+  });
+  return found;
+}
+
 /** Absolute start positions of every cursor unit in a line, one line-local
  *  pass. Each TEXT NODE is segmented independently and every non-text
  *  inline leaf contributes exactly one start — whole-line segmentation

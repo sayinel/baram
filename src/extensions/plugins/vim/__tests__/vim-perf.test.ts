@@ -239,3 +239,37 @@ describe("goal column cost (issue 776)", () => {
     expect(vi.mocked(columnAt)).not.toHaveBeenCalled();
   });
 });
+
+// issue 776 — the first non-blank (gg, G, :N, ^) is found in ONE traversal.
+describe("first non-blank cost (issue 776)", () => {
+  it("a line of many marked blank text nodes is not walked once per unit", () => {
+    // Fails if: lineFirstNonBlank calls textBetween per cursor unit — each
+    // call restarts the range walk at the first child, quadratic here.
+    const blanks = Array.from({ length: 400 }, (_, i) => ({
+      marks: [{ type: i % 2 === 0 ? "bold" : "italic" }],
+      text: " ",
+      type: "text",
+    }));
+    const editor = makeEditor("<p>x</p>");
+    editor.commands.setContent({
+      content: [
+        {
+          content: [...blanks, { text: "end", type: "text" }],
+          type: "paragraph",
+        },
+      ],
+      type: "doc",
+    });
+    const spy = vi.spyOn(
+      Object.getPrototypeOf(editor.state.doc),
+      "textBetween",
+    );
+    try {
+      const target = resolveMotion(editor.state, 1, "lineFirstNonBlank", 1);
+      expect(editor.state.doc.textBetween(target, target + 3)).toBe("end");
+      expect(spy).toHaveBeenCalledTimes(1); // the assertion's own call above
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
