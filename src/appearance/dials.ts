@@ -142,8 +142,9 @@ interface DialBase {
   readonly channel: "color" | "editor" | "layout";
   readonly id: string;
   /**
-   * 이 다이얼이 **어떤 값에서든** 쓸 수 있는 변수 전부. `clearDialVars` 가 이 목록을
-   * 지우므로, `toVars` 가 여기 없는 키를 내보내면 되돌리기가 그 값을 남긴다.
+   * 이 다이얼이 **어떤 값에서든** 쓸 수 있는 변수 전부. `applyDialVars` 는 이 목록의 이름만
+   * 쓰고 지우며 `clearDialVars` 도 이 목록을 지우므로, `toVars` 가 여기 없는 키를 내보내면
+   * 그 값은 `<html>` 에 끝내 쓰이지 않는다.
    */
   readonly vars: readonly string[];
 }
@@ -433,6 +434,11 @@ export const DIALS = [
     // 둘의 일치는 `styles/__tests__/list-styling.test.ts` 가 두 파일을 함께 읽어
     // 고정한다 — 기본 출처의 다이얼은 변수를 쓰지 않으므로(`apply.ts`), 갈리면
     // 사용자가 select 를 처음 건드리는 순간 화면이 튄다.
+    //
+    // 변수가 둘인 이유: `text-align` 은 키워드라 calc 에 넣을 수 없는데, 중첩
+    // 리스트의 안내선은 번호가 어느 쪽에 붙는지를 **길이**로 알아야 한다
+    // (`lists.css` 의 `--list-marker-axis`). 그래서 같은 선택을 0/1 계수로 한 번 더
+    // 낸다. fallback 0 이 `number` 이고, 이 일치도 같은 테스트가 고정한다.
     channel: "layout",
     defaultValue: "number",
     id: "editorOrderedMarkerAlign",
@@ -440,8 +446,16 @@ export const DIALS = [
     options: ORDERED_MARKER_ALIGN_OPTIONS,
     parse: oneOf(ORDERED_MARKER_ALIGN_OPTIONS),
     toVars: (value: DialValue): Record<string, string> =>
-      value === "period" ? { "--editor-ordered-marker-align": "right" } : {},
-    vars: ["--editor-ordered-marker-align"],
+      value === "period"
+        ? {
+            "--editor-ordered-marker-align": "right",
+            "--editor-ordered-marker-period-aligned": "1",
+          }
+        : {},
+    vars: [
+      "--editor-ordered-marker-align",
+      "--editor-ordered-marker-period-aligned",
+    ],
   },
   {
     channel: "layout",

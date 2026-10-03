@@ -76,8 +76,11 @@
  * open item's arrow paints its 14/24 height as width — 0.4375em of the 0.75em box — and
  * the `0.125em` in the gap becomes `0.21875em`. Open, an ordered marker's gap is 0.331em
  * and a bullet's 0.311em, still 0.02em apart, and a nested list's chevron sits 0.981em
- * (bullet) and 0.531em (ordered) from its indent guide instead of the folded 1.075em and
- * 0.625em.
+ * (bullet) and 0.531em (ordered) from an indent guide at -1em instead of the folded
+ * 1.075em and 0.625em. The guide sits at -1em under a bullet parent, and under a number
+ * parent when numbers line up on their periods; under the default `number` alignment it
+ * hangs further left (the indent guide section derives where), so every gap to it is
+ * larger.
  *
  * Declared on the base rule too, so a bullet list nested inside an ordered one resets it
  * rather than inheriting the ordered offset. */
@@ -196,21 +199,27 @@
   --list-gutter: max(1.4em, calc(5.1ch + 0.3em));
 }
 
-/* A nested list is part of its parent item, not a block that follows it. `position` is
- * for the indent guide below.
+/* A nested list is part of its parent item, not a block that follows it. `position` and
+ * `--list-guide-left` are for the indent guide below, which derives the latter.
  *
- * The gutter is deliberately NOT widened for nesting. The guide hangs 1em left of the
- * list's edge and the hover fold arrow's box starts `--list-arrow-offset` left of that
- * same edge, so the gutter moves neither, and the box does not reach the guide. Only a
- * 0.25em chevron of it paints (folded, pointing right), and that clears the guide by
- * 1.075em in a bullet list and 0.625em in an ordered one (editor/base.css derives both;
- * the open item's figures are with `--list-arrow-offset` above). Widening the gutter would
+ * The gutter is deliberately NOT widened for nesting. Neither of the two things it could
+ * separate depends on it. The hover fold arrow's box starts `--list-arrow-offset` left of
+ * this list's edge. The guide hangs at least 1em left of the same edge: exactly 1em under a
+ * bullet, and under a number either 1em or, with the default `number` alignment,
+ * `G − 0.8em − 0.5ch` further, where G is the PARENT list's gutter — at least 1.4em, so the
+ * excess is positive for any font whose "0" is narrower than 1.2em (the guide section
+ * derives it). The box does not reach the guide. Only a 0.25em chevron of it paints (folded,
+ * pointing right), and that clears a guide at -1em by 1.075em in a bullet list and 0.625em
+ * in an ordered one (editor/base.css derives both; the open item's figures are with
+ * `--list-arrow-offset` above), and a guide further left by more. Widening the gutter would
  * separate nothing and only make deep lists indent faster.
  *
  * Descendant selectors, not `>`: a nested task list sits inside the task item's content
  * `<div>`, so a child selector would miss it. */
 .tiptap li ul,
 .tiptap li ol {
+  --list-guide-left: calc(-0.5em - var(--list-marker-axis));
+
   position: relative;
   margin: 0;
 }
@@ -236,18 +245,30 @@
 
 /* ── Indent guides ──────────────────────────────────────────────────────────
  *
- * The rail hangs from the PARENT'S MARKER, not from the parent's text. `left: -1em` is
- * that column's centre and is derived, not measured: the parent's marker column is the
- * 1em box ending at the parent item's padding-box edge (`right: 100%`), and `li`'s
- * `padding-left: 0.5em` puts the nested list 0.5em to the right of it — so the centre
- * lands exactly 1em left of this list's own edge, at any font size.
+ * The rail hangs from the CENTRE OF THE PARENT'S MARKER, not from the parent's text. Two
+ * custom properties carry that centre down to the nested list.
+ *
+ *   `--list-marker-axis`  on every item, below: how far left of the item's padding-box
+ *                         edge its marker's centre sits. Every marker column ends at that
+ *                         edge (`right: 100%`). It is declared on the ITEM because only the
+ *                         item inherits its parent list's `--list-gutter` — the nested list
+ *                         declares its own and would read that instead.
+ *   `--list-guide-left`   on the nested list (the rule above `li`'s padding): that axis plus
+ *                         `li`'s `padding-left: 0.5em`, which is how far right of the
+ *                         parent's edge the nested list starts. The guide reads it, and so
+ *                         does the bundled `bullet-threading` example. The guide alone could
+ *                         read the axis directly; this second name exists for the example,
+ *                         whose thread is drawn from a CHILD item, where the parent's axis
+ *                         is shadowed by the child's own.
  *
  * Anchoring to the marker is what makes a deep list readable: the eye follows a line that
  * starts at a bullet it can see, rather than one that begins in the middle of a word. It
- * also moves the rail clear of a child's hover fold arrow — in a bullet list the chevron
- * (folded, pointing right) paints 1.075em from the rail (editor/base.css derives it),
- * where a rail at the parent's text would pass 0.075em from it, and would cross it once
- * the item is open.
+ * also moves the rail clear of a child's hover fold arrow — with the rail at -1em, where a
+ * bullet parent puts it, a nested bullet list's chevron (folded, pointing right) paints
+ * 1.075em from it (editor/base.css derives it), where a rail at the parent's text would
+ * pass 0.075em from it, and would cross it once the item is open. A number parent puts the
+ * rail at -1em too under `period` alignment, and further left — so further from every
+ * chevron — under `number`.
  *
  * Drawn as a pseudo-element rather than `border-left`, which would add to the box and
  * push each level one step further right than the last. `::before` on the list is free —
@@ -295,7 +316,7 @@
   position: absolute;
   top: 0;
   bottom: 0.1em;
-  left: -1em;
+  left: var(--list-guide-left);
   width: var(--guide-width);
   margin-left: calc(var(--guide-width) / -2);
   content: "";
@@ -303,6 +324,66 @@
     in srgb,
     var(--color-editor-guide-tint) var(--editor-guide-strength, 22%),
     var(--color-editor-bg)
+  );
+}
+
+/* A bullet, and a task checkbox, is centred in a 1em column ending at the item's edge
+ * (`right: 100%` plus a `margin-right` of half what the shape leaves of 1em — the marker
+ * rules below), so its centre is 0.5em in at any marker size, and the rail lands at -1em.
+ * Declared on `ul` items rather than left to a fallback: a bullet list nested in a
+ * numbered item would otherwise inherit that item's axis. */
+.tiptap ul > li {
+  --list-marker-axis: 0.5em;
+}
+
+/* An ordered marker's centre depends on which edge its digits grow from — the
+ * `editorOrderedMarkerAlign` dial, applied as `text-align` on the marker below. A keyword
+ * cannot enter a calc(), so the dial writes the same choice a second time as a 0/1 factor,
+ * `--editor-ordered-marker-period-aligned`, whose fallback 0 is the dial's default,
+ * `number` (`list-styling.test.ts` reads both files to keep the two equal).
+ *
+ *   number (0) — every marker that fits its box's floor, the marker's `min-width` of
+ *                `gutter − 0.3em`, starts its first character that far left of the edge
+ *                (for one that does not, see "a marker wider than its floor" below). The
+ *                axis is that floor less half a character cell, a cell being `1ch`. This
+ *                is the case the constant -1em this replaced got wrong: -1em is the centre
+ *                of a BULLET's column, while the floor follows the gutter, which the rules
+ *                at the top of this file widen by depth and by count — the rail stood
+ *                0.29em right of a `2.` and 0.76em right of a depth-four `i.`.
+ *   period (1) — the marker ends at the edge, and the axis stays at the 0.5em of the bullet
+ *                column, which a right-aligned marker straddles.
+ *
+ * Measured — headless Chrome, 16px Pretendard Variable (the bundled font), the rail's
+ * centre against the centre of the marker's text without its period:
+ *
+ *                  `2.`     `a.`     `ii.`    `i.`
+ *   number       −0.01em  +0.03em  +0.08em  +0.19em
+ *   period       +0.06em  +0.02em  −0.03em  −0.14em
+ *
+ * `1ch` is the advance of the font's "0". `tabular-nums` gives every digit one width, which
+ * in Pretendard is 0.018em wider than that "0" — hence `2.`'s −0.01em. A letter or a roman
+ * numeral is not a digit wide (`i` is about a third of one, hence the +0.19em), and CSS
+ * cannot measure a glyph, so the cell is an estimate: the one that is exact, to within half
+ * of that 0.018em, for the markers that are digits.
+ *
+ * Under `number`, a marker of two digits or more keeps the rail on its FIRST digit rather
+ * than on the middle of the number. That is the column every sibling's number starts in
+ * under this alignment, so the rails of sibling items stay in one line whatever their digit
+ * counts. A marker wider than its floor grows its box leftwards (the marker rule says when)
+ * and leaves the rail where the floor put it.
+ *
+ * Under `period` the same derivation would be `0.3em + 0.5ch`, and it was measured too: it
+ * lands 0.1em further left, at −0.04 / −0.08 / −0.13 / −0.24em on the four markers above,
+ * because both of its terms over-estimate — the period is narrower than the 0.3em reserved
+ * for it (0.25em in Pretendard) and letters are narrower than a cell — and the two errors
+ * add. 0.5em is where the rail hung before this axis existed, and in that measurement it is
+ * the closer of the two on every letter and roman numeral; only `2.` lands closer under the
+ * derivation, by 0.02em. */
+.tiptap ol > li {
+  --list-marker-axis: calc(
+    (var(--list-gutter) - 0.3em - 0.5ch) *
+      (1 - var(--editor-ordered-marker-period-aligned, 0)) + 0.5em *
+      var(--editor-ordered-marker-period-aligned, 0)
   );
 }
 
