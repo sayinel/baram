@@ -40,6 +40,9 @@ export function applyVimTransaction(
 
   // §5b priority 3 — untagged doc change: reconcile positions.
   if (tr.docChanged) {
+    // Equality gate — every insert-mode keystroke lands here, and with no
+    // visual range to map and no goal to forget nothing changes.
+    if (prev.core.visual === null && prev.core.goalColumn === null) return prev;
     const visual = prev.core.visual
       ? {
           ...prev.core.visual,

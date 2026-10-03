@@ -203,6 +203,22 @@ describe("a search forgets it, matched or not, on both submit paths", () => {
 });
 
 describe("transactions outside vim", () => {
+  it("an untagged text change maps a visual range even with no goal", () => {
+    // The reducer's priority 3 returns early when there is nothing to do.
+    // Fails if: that equality gate ignores the visual range — an insertion
+    // before it would leave the anchor on a different character.
+    const editor = makeVimEditor("<p>abcdef</p>");
+    editor.view.dispatch(
+      editor.state.tr.setSelection(TextSelection.create(editor.state.doc, 3)),
+    );
+    keys(editor, "v", "l");
+    expect(goal(editor)).toBeNull();
+    const visual = core(editor).visual;
+    expect(visual?.anchorCursor).toBe(3); // "c"
+    editor.view.dispatch(editor.state.tr.insertText("Z", 1));
+    expect(core(editor).visual?.anchorCursor).toBe(4); // still "c"
+  });
+
   function seeded(): Editor {
     const editor = makeVimEditor(`<p>${LONG}</p><p>${FAR}</p>`);
     seed(editor, posOfText(editor, "c"), 6);

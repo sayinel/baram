@@ -250,6 +250,23 @@ describe("goal column cost (issue 776)", () => {
   });
 });
 
+// issue 776 — the plugin state reducer on the typing path.
+describe("an insert-mode keystroke leaves the plugin state object alone", () => {
+  it("a doc change with nothing to map or forget returns the same state", () => {
+    // Fails if: priority 3 drops its equality gate — every keystroke builds a
+    // new plugin state (and wakes everything comparing it by identity).
+    const editor = makeEditor("<p>abc</p>");
+    enable(editor);
+    editor.commands.setTextSelection(2);
+    key(editor, "i");
+    const before = vimPluginKey.getState(editor.state);
+    expect((before as unknown as { mode: string }).mode).toBe("insert");
+    editor.view.dispatch(editor.state.tr.insertText("x"));
+    expect(editor.state.doc.textContent).toBe("axbc");
+    expect(vimPluginKey.getState(editor.state)).toBe(before);
+  });
+});
+
 // issue 776 — the first non-blank (gg, G, :N, ^) is found in ONE traversal.
 describe("first non-blank cost (issue 776)", () => {
   it("a line of many marked blank text nodes is not walked once per unit", () => {
