@@ -5,10 +5,11 @@ import { ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
 import { useTranslation } from "../../i18n/useTranslation";
-import { createDir, listDir, readFile, writeFile } from "../../ipc/invoke";
+import { listDir } from "../../ipc/invoke";
 import {
   ensureJournalDirRegistered,
   ensureJournalFile,
+  ensurePeriodicNote,
   openFileInTab,
 } from "../../services/journal-file-service";
 import { useEditorStore } from "../../stores/editor/editor";
@@ -26,10 +27,7 @@ import {
   resolveJournalDir,
 } from "../../utils/journal/journal";
 import { subscribeJournalChanged } from "../../utils/journal/journal-events";
-import {
-  applyPeriodicTemplate,
-  generateDefaultWeekly,
-} from "../../utils/journal/journal-periodic";
+import { generateDefaultWeekly } from "../../utils/journal/journal-periodic";
 import { getJournalTheme } from "../../utils/journal/journal-themes";
 import { logger } from "../../utils/logger";
 import { JournalSearchPanel } from "../journal/JournalSearchPanel";
@@ -236,34 +234,23 @@ export function CalendarPanel() {
     ) => {
       if (!journalEnabled || !resolvedDir) return;
       // §88 Same precondition as ensureJournalFile: the journal directory has to be a
-      // registered context before any write, or check_vault denies all three calls
-      // below — createDir into a swallowed catch, readFile misread as "new file", and
-      // writeFile throwing out of here. This path does its own filesystem work instead
-      // of going through ensureJournalFile, so it needs the step explicitly; sitting in
-      // the same file as a call site that IS covered is what made it look protected.
+      // registered context before any filesystem call, or check_vault denies the read
+      // `ensurePeriodicNote` starts with and it raises. That service does not register
+      // — `ensureJournalFile` does it as its own first step, this path does not go
+      // through it, so the step is explicit here; sitting in the same file as a call
+      // site that IS covered is what made it look protected.
       // …and a directory held by another context is refused, not written into.
       if (!(await ensureJournalDirRegistered(resolvedDir))) return;
       const notePath = getPath(resolvedDir, date);
-      const parentDir = notePath.substring(0, notePath.lastIndexOf("/"));
-      await createDir(parentDir).catch(() => {});
-
-      let content: string;
-      try {
-        content = await readFile(notePath);
-      } catch {
-        // New file — apply template or fallback to default generator
-        if (templatePath) {
-          try {
-            const tpl = await readFile(templatePath);
-            content = applyPeriodicTemplate(tpl, date);
-          } catch {
-            content = generate(date);
-          }
-        } else {
-          content = generate(date);
-        }
-        await writeFile(notePath, content);
-      }
+      // Read-or-create lives in the service, beside `ensureJournalFile`: the inline copy
+      // here caught every read failure as "new file" and wrote the generated outline over
+      // a note that existed but could not be read.
+      const content = await ensurePeriodicNote(
+        notePath,
+        date,
+        generate,
+        templatePath,
+      );
 
       const { tabs } = useEditorStore.getState();
       const existing = tabs.find((t) => t.filePath === notePath);

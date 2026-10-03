@@ -1,4 +1,5 @@
 // §56 Journal file service — shared open/create logic across journal entry points
+import { isFileNotFoundError } from "../ipc/fs";
 import { createDir, readFile, writeFile } from "../ipc/invoke";
 import { useContextStore } from "../stores/context/context";
 import { useEditorStore } from "../stores/editor/editor";
@@ -16,6 +17,7 @@ import {
   notifyJournalChanged,
   requestJournalBodyCursor,
 } from "../utils/journal/journal-events";
+import { applyPeriodicTemplate } from "../utils/journal/journal-periodic";
 import { logger } from "../utils/logger";
 import { basename } from "../utils/path-utils";
 import { resolveZettelDir } from "../utils/zettelkasten/zettelkasten";
@@ -146,11 +148,26 @@ export async function ensureJournalFile(
   let content: string;
   try {
     content = await readFile(journalPath);
-  } catch {
+  } catch (err) {
+    // Only "no such file" means create. An entry that exists but could not be read
+    // (invalid UTF-8, a permission the OS refused) used to land here too, and the
+    // template was written over it — the §277 defect the PDF companion note closed with
+    // this same check. Raise it instead and leave the disk as it was: each of the six
+    // callers catches it — the journal space's `newFileFlow` through its own caller in
+    // `stores/file/workspace.ts`. The rejection may name an OS error but not the file
+    // (a `check_vault` refusal reaches here too, with no entry behind it), so the log
+    // names the path and says only that nothing was written.
+    if (!isFileNotFoundError(err)) {
+      logger.error(
+        `[journal] reading the journal entry failed other than "not found"; nothing was written: ${journalPath}`,
+        err,
+      );
+      throw err;
+    }
     // File doesn't exist — create it.
     // §317 …unless the caller wants to ask first. The gate sits HERE, after the
-    // read failed, so an entry that already exists is opened without a prompt:
-    // following a reference must never interrogate the user.
+    // read found no file, so an entry that already exists is opened without a
+    // prompt: following a reference must never interrogate the user.
     if (confirmCreate && !(await confirmCreate())) return null;
 
     const parentDir = journalPath.substring(0, journalPath.lastIndexOf("/"));
@@ -177,6 +194,51 @@ export async function ensureJournalFile(
   }
 
   return { path: journalPath, content };
+}
+
+/**
+ * §56f The periodic note at `notePath` (the calendar's weekly note): its content, created
+ * from `templatePath` — or from `generate` when there is no template or it cannot be read —
+ * when the note does not exist yet.
+ *
+ * The same read classification as {@link ensureJournalFile}, for the same reason: only
+ * "no such file" creates. Any other read failure — a note that exists but cannot be read,
+ * or a refused path — is raised, and nothing is written. The caller registers the journal directory first
+ * ({@link ensureJournalDirRegistered}); this does the filesystem work only.
+ */
+export async function ensurePeriodicNote(
+  notePath: string,
+  date: Date,
+  generate: (date: Date) => string,
+  templatePath?: string,
+): Promise<string> {
+  try {
+    return await readFile(notePath);
+  } catch (err) {
+    if (!isFileNotFoundError(err)) {
+      logger.error(
+        `[journal] reading the periodic note failed other than "not found"; nothing was written: ${notePath}`,
+        err,
+      );
+      throw err;
+    }
+  }
+
+  await createDir(notePath.substring(0, notePath.lastIndexOf("/"))).catch(
+    () => {},
+  );
+  let content: string;
+  if (templatePath) {
+    try {
+      content = applyPeriodicTemplate(await readFile(templatePath), date);
+    } catch {
+      content = generate(date);
+    }
+  } else {
+    content = generate(date);
+  }
+  await writeFile(notePath, content);
+  return content;
 }
 
 /**
