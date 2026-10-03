@@ -172,7 +172,8 @@ baram/
     `own_block_reference_lines`(같은 stem 예외가 새 종류의 자기 참조를 놓치면 과소 계수) → 블록 참조 문법이면 프런트의 사본 `src/pipeline/block-id.ts` 의 `BLOCK_REF_RE`(블록을 정의한 노트 자신의 참조는 `block-id-rename-markdown.ts` 가 이것으로 고쳐 쓴다) → `src/ipc/types.ts` 의 `BacklinkEntry.linkType` 주석(wire 값 목록). ② 의 판정은 두 층이다 — stem 만 보는 `…_can_spell`(본체는 문자 열거가 아니라
     `link_reads_back_as_the_file`)과, 두 패스가 낸 내용을 `extract_links` 로 **되읽는** `index_reads_the_rename_back`(`LinkPasses::rewrite`).
     술어를 통과한 stem 도 referrer 줄의 백틱과 짝을 지어 링크를 literal 로 만들 수 있고, 그건 stem 이 아니라 **줄**의 성질이라 되읽어야 보인다. ③ 의 `skipped.push` 는 한 곳이
-    아니다 — `rename/referrers.rs` 에 referrer 의 원인마다 하나씩(덮는 context 가 없는 referrer 도 그중 하나다)과 `rename/passes.rs`(rename 되는 노트);
+    아니다 — `rename/referrers.rs` 에 referrer 의 원인 여섯(읽기 실패 · 덮는 context 없음 · `left_behind` · 낡은 index · vault 밖 resolve · 쓰기 실패)에 일곱 자리
+    (`left_behind` 는 고쳐 쓴 파일과 못 고친 파일에서 한 번씩)와 `rename/passes.rs`(rename 되는 노트);
     `LinkPasses` 는 `left_behind` 플래그만 세운다
     ‼️ **② 의 두 층(`…_can_spell`·`index_reads_the_rename_back`)은 파일 rename 입구에만 있다** — 디렉터리 rename 이 `relative_links.rs` 로 고쳐 쓰는
     `[[./x]]`·`[[../x]]` 는 거치지 않고(폴더를 `C# notes` 로 바꾸면 `[[./C# notes/x]]` 가 쓰여 `./C` 로 읽힌다 — 실측), block ID rename 의 새 id 는 프런트
@@ -197,7 +198,7 @@ baram/
     `registered_path_keys` 가 키마다 그리로 접히는 노트 수를 내고, 둘 이상이면 그 키로 읽히는 경로 링크는 모호하다. referrer 와 파일을 담는 root 가 하나뿐이면 다른 root 의 읽기가
     없으므로 겹치는 키와 새 이름의 키만 모은다(`colliding_path_keys`·`path_key_notes` → `RootNotes::Sole` — 대소문자를 지키는 볼륨에서
     `a/New.md` 옆의 `a/old.md` 를 `a/new.md` 로 바꾸면 `[[a/new]]` 가 둘로 접히므로 남긴다) — index 잠금 아래에서 노트마다가 아니라 이름이 같은 노트마다 키를 짓는다. 존재 판정은 rename 되는
-    파일이나 referrer 를 **담는 모든 directory context** 의 노트 목록(`LinkIndex::registered_path_keys`)으로 한다 — rename 되는 파일의 context 만이 아니다.
+    파일이나 referrer 를 **담는 모든 directory context** 의 노트 목록으로 한다 — 그런 root 가 둘 이상이면 `registered_path_keys`, 하나면 위의 `Sole` 맵. rename 되는 파일의 context 만이 아니다.
     부모의 `a/old.md` 를 rename 할 때 자식 root 는 그 파일을 담지 않지만 referrer 를 담는다. 한 번도 열리지 않아 index 가 없는 context 는 판정 전에 **그 자리에서 build
     한다**(`service/rename/scope.rs` 의 `holding_contexts` → `ensure_indexes`). build 할 수 없으면 그 root 는 `RootNotes::Unknown` 이 되어 그
     root 가 읽을 수 있는 경로 링크는 **그대로 두고 파일을 보고한다** — 비어 있다고 가정하지 않는다(`known_paths_of`). referrer 를 담는지는 `contexts_containing` 으로 찾고,

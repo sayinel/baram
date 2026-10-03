@@ -104,8 +104,8 @@ async fn a_rename_that_would_move_the_note_is_refused_before_anything_changes() 
     // it is in; a move to another folder is not a rename, and is refused
     // before the note or any referrer is touched. The destination changes
     // the stem too, so a rename that went ahead would respell `[[note]]`.
-    // What fails this: removing the parent comparison from
-    // `rename_file_with_links_inner` — the note moves to `sub/other.md` and
+    // What fails this: removing the parent comparison
+    // (`stays_in_its_directory` in `rename/destination.rs`) — the note moves to `sub/other.md` and
     // `a.md`'s `[[note]]` is rewritten to `[[other]]`, which the first
     // assertion catches (before the result is looked at).
     let ctx = ContextManager::new();
