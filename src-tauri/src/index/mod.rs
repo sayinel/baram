@@ -1110,3 +1110,82 @@ mod tests {
         assert_eq!(resolved, Some("/vault/notes/new-note.md".to_string()));
     }
 }
+
+/// 스펙 0066 §5 — `baram backlinks` · `baram links` 는 호출마다 인덱스를 새로 만든다.
+/// 그 비용을 잰다. 평소에는 건너뛴다.
+///
+/// ‼️ 반드시 릴리스로 잴 것(디버그는 정규식 · 문자열 처리가 한 자릿수 배 느리다):
+/// cargo test --release --manifest-path src-tauri/Cargo.toml --lib \
+///   -- --ignored --nocapture build_10k_files_timing
+///
+/// 픽스처에 링크가 있어야 한다. `extract_links` 는 `[[` · `((` 후보가 있는 파일에서만
+/// literal 분석(pulldown-cmark)을 돌리므로, 링크 없는 본문으로 재면 그 비용이 통째로 빠진다
+/// — 태스크 쪽 `scan_10k_files_timing` 의 본문이 그렇다. 방금 쓴 파일을 재므로 웜 캐시다.
+#[cfg(test)]
+mod build_bench {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[tokio::test]
+    #[ignore]
+    async fn build_10k_files_timing() {
+        const FILES: usize = 10_000;
+        let d = TempDir::new().unwrap();
+        for i in 0..FILES {
+            let next = (i + 1) % FILES;
+            let far = (i * 7 + 13) % FILES;
+            let body = format!(
+                "---\ntags: [t{}]\n---\n# 문서 {i}\n\n[[f{next}]] 과 [[d{}/f{far}|먼 문서]] 를 본다. #tag{}\n\n((f{next}#^blk{next}))\n\n본문 한 줄. ^blk{i}\n\n```md\n[[코드 안의 링크 f{far}]]\n```\n",
+                i % 50,
+                far % 100,
+                i % 20
+            );
+            let p = d.path().join(format!("d{}/f{}.md", i % 100, i));
+            tokio::fs::create_dir_all(p.parent().unwrap())
+                .await
+                .unwrap();
+            tokio::fs::write(&p, body).await.unwrap();
+        }
+        let root = d.path().to_string_lossy().to_string();
+
+        for round in 0..3 {
+            let mut index = LinkIndex::new();
+            let started = std::time::Instant::now();
+            let stats = index.build(&root).await.unwrap();
+            println!(
+                "round {round}: built index over {} files, {} links, in {:?}",
+                stats.files_indexed,
+                stats.links_found,
+                started.elapsed()
+            );
+            assert_eq!(stats.files_indexed as usize, FILES);
+            // 파일마다 위키링크 둘과 블록 참조 하나. 코드 펜스 안의 `[[…]]` 는 세지 않는다 —
+            // 이 숫자가 4만이면 literal 분석이 돌지 않은 것이다.
+            assert_eq!(stats.links_found as usize, FILES * 3);
+
+            let probe = d.path().join("d1/f1.md").to_string_lossy().to_string();
+            let started = std::time::Instant::now();
+            let backlinks = index.get_backlinks(&probe);
+            println!(
+                "round {round}: get_backlinks -> {} in {:?}",
+                backlinks.len(),
+                started.elapsed()
+            );
+        }
+
+        let started = std::time::Instant::now();
+        let md = collect_md_files(&root).await.unwrap();
+        println!(
+            "collect_md_files -> {} in {:?}",
+            md.len(),
+            started.elapsed()
+        );
+        let started = std::time::Instant::now();
+        let all = collect_all_files(&root).await.unwrap();
+        println!(
+            "collect_all_files -> {} in {:?}",
+            all.len(),
+            started.elapsed()
+        );
+    }
+}
