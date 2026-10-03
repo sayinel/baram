@@ -278,8 +278,8 @@ describe("transactions outside vim", () => {
   });
 
   it("a press whose cursor move is tagged ephemeral (a click syntax reveal expands) forgets it", () => {
-    // Fails if: the plugin view's settle step is removed — the tagged move is
-    // exempt in the reducer, so nothing else forgets the goal.
+    // Fails if: the appendTransaction settle step is removed — the tagged
+    // move is exempt in the reducer, so nothing else forgets the goal.
     const editor = seeded();
     editor.view.dom.dispatchEvent(
       new MouseEvent("mousedown", { bubbles: true, cancelable: true }),

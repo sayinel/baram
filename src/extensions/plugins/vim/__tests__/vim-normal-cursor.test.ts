@@ -113,8 +113,8 @@ describe("insert Esc leaves a code block's caret alone", () => {
 
 describe("a normal-mode caret on the terminal boundary is clamped", () => {
   it("x on the last character leaves the cursor on the new last one", () => {
-    // Fails if: the plugin's appendTransaction (appendNormalCursorFixes) is removed —
-    // the caret stays at 3, past "b".
+    // Fails if: the plugin's appendTransaction (appendNormalCursorFixes) is
+    // removed — the caret stays at 3, past "b".
     const editor = makeVimEditor("<p>abc</p>");
     place(editor, 3); // on "c"
     key(editor, "x");
@@ -130,8 +130,8 @@ describe("a normal-mode caret on the terminal boundary is clamped", () => {
   });
 
   it("does not touch the insert caret at the line end", () => {
-    // Fails if: appendNormalCursorFixes drops its `mode === "normal"` condition — typing
-    // at the end of a line would jump back one character.
+    // Fails if: appendNormalCursorFixes drops its `mode === "normal"`
+    // condition — typing at the end of a line would jump back one character.
     const editor = makeVimEditor("<p>abc</p>");
     place(editor, 1);
     key(editor, "A");
@@ -168,9 +168,9 @@ describe("a normal-mode caret on the terminal boundary is clamped", () => {
 
   it("an empty line keeps its caret and appends nothing", () => {
     // Fails if: unitBefore drops `prev < head` — at a line start
-    // prevUnitBoundary returns the head itself, so the clamp would append a
-    // no-op selection transaction on every transaction that lands on an empty
-    // line, and insert Esc at a line start would take the cursor-move path.
+    // prevUnitBoundary returns the head itself, so insertEscTarget would
+    // return a no-op target and insert Esc at a line start would take the
+    // cursor-move path. (The clamp checks `prev < head` itself.)
     const editor = makeVimEditor("<p>a</p><p></p>");
     place(editor, 4);
     expect(head(editor)).toBe(4);

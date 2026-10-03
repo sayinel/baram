@@ -46,10 +46,14 @@ interface TableWalk {
  * unit — the goal itself never shrinks, so a short or empty line on the way
  * does not lose it and `3j` lands where `j;j;j` with the same remembered goal
  * does. The caller passes the goal it remembers; without one, the origin's
- * column is the goal (measured here, once). Unit starts come from ONE
- * line-local segmentation pass per visited line (review S3-R5: per-step
- * unitColumn walks made 3999j from column 99 take ~10s). Walk state is
- * carried: line index outside tables, map/rect inside (review S3-R4).
+ * column is the goal (measured here, once). A code block landing is the
+ * exception that codeBlockLandingAt decides: normal mode enters at the goal
+ * column of the entry source line, visual mode and operators at the
+ * content start ("first-line"); the goal itself survives either way. Unit
+ * starts come from ONE line-local segmentation pass per visited line
+ * (review S3-R5: per-step unitColumn walks made 3999j from column 99 take
+ * ~10s). Walk state is carried: line index outside tables, map/rect inside
+ * (review S3-R4).
  */
 export function verticalTarget(
   state: EditorState,

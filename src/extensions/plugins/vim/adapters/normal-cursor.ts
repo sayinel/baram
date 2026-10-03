@@ -110,9 +110,10 @@ function lastUnitOfLineEndingAt(state: EditorState, end: number): number {
 }
 
 /** One unit left of `head`, or null when there is none ON this line: at a
- *  line start prevUnitBoundary returns the head itself (null, not a no-op
- *  move — the clamp runs as an appendTransaction), and after a hard break the
- *  unit before is the break, a step onto the previous segment. */
+ *  line start prevUnitBoundary returns the head itself (null, so insert Esc
+ *  keeps the plain mode dispatch instead of a no-op cursor move), and after
+ *  a hard break the unit before is the break, a step onto the previous
+ *  segment. */
 function unitBefore(
   state: EditorState,
   head: number,

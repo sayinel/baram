@@ -8,8 +8,9 @@
 // Three exports serve createVimPlugin's props directly: `vimCursor` (the
 // block-cursor decoration and the scroll-follow head), and the two
 // normal-cursor writes of issue 776 — `escapeInsertCursor` (insert Esc) and
-// `appendNormalCursorFixes` (appendTransaction) — which move the caret and so need
-// dispatchCursor's DOM handling or the vim meta that keeps priority 4 quiet.
+// `appendNormalCursorFixes` (appendTransaction) — which move the caret and so
+// need dispatchCursor's DOM handling or the vim meta that keeps priority 4
+// quiet.
 
 import type {
   CoreCommand,

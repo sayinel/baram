@@ -102,7 +102,7 @@ export function createVimPlugin(
 
       handleDOMEvents: {
         /** §12-⑩ pointer entry (issue 408) — a click that lands a
-         *  NodeSelection is the ONE selection write that does not go through
+         *  NodeSelection is written by PM's pointer handling, not through
          *  dispatchCursor, so it got no churn suppression: PM's pointer
          *  dispatch wrote the node range, WebKit re-normalised it, and the
          *  late selectionchange deselected the block — closing the edit
@@ -386,9 +386,9 @@ function runAtomInsert(view: EditorView, result: StepResult): boolean {
     case "caret": {
       // ONE transaction for the caret and the insert mode (issue 776): a
       // caret placed while still in normal mode at a line end is a terminal
-      // boundary, and the normal-mode clamp (appendNormalCursorFixes) would pull it
-      // back one unit before insert began — `A` then typed before the last
-      // character.
+      // boundary, and the normal-mode clamp (appendNormalCursorFixes) would
+      // pull it back one unit before insert began — `A` then typed before
+      // the last character.
       const tr = view.state.tr
         .setSelection(plan.selection)
         .setMeta(vimPluginKey, { core: result.state, type: "core" });

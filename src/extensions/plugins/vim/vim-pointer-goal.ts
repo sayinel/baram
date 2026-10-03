@@ -1,13 +1,14 @@
-// §298 issue 776 — a pointer interaction forgets the goal column only when it
-// actually moved the vim cursor.
+// §298 issue 776 — the goal column after a pointer press.
 //
 // Most clicks need nothing from here: they land as a foreign selection and
-// the plugin state's priority 4 forgets the goal. The exception is a click
-// that syntax reveal turns into an expansion (a wikilink, an image): its one
-// transaction moves the cursor AND carries the ephemeral tag the reducer
-// exempts, so the goal would survive a cursor move the user made. Clearing on
-// every mousedown instead also forgot it for clicks that move nothing — a
-// right-click, a Cmd-click that opens a link, a scrollbar drag.
+// the plugin state's priority 4 forgets the goal — even a left click on the
+// spot the cursor already holds, as vim's mouse click re-sets curswant. The
+// exception is a click that syntax reveal turns into an expansion (a
+// wikilink, an image): its one transaction moves the cursor AND carries the
+// ephemeral tag the reducer exempts, so the goal would survive a cursor move
+// the user made. Clearing on every mousedown instead also forgot it for
+// presses that write no selection at all — a right-click, a Cmd-click that
+// opens a link, a scrollbar drag.
 //
 // So the press only ARMS a watch with the cursor and the document it found;
 // the plugin's appendTransaction forgets the goal once a transaction of that

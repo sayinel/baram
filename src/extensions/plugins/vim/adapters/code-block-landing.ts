@@ -61,8 +61,9 @@ function codeLineSpan(
  *  header): logical lines — hard breaks split, soft wraps demoted — in
  *  grapheme units. It measures the column where the caret is and does
  *  not use the remembered goal column (issue 776 keeps that to normal and
- *  visual j/k — the insert caret model differs). Returns null for a block with no CodeMirror caret to
- *  receive the offset (journal-* widget NodeViews). */
+ *  visual j/k — the insert caret model differs). Returns null for a block
+ *  with no CodeMirror caret to receive the offset (journal-* widget
+ *  NodeViews). */
 export function insertEntryTarget(
   state: EditorState,
   from: number,
