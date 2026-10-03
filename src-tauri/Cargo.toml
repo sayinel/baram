@@ -31,6 +31,15 @@ chromiumoxide_cdp = "0.9"
 tempfile = "3"
 notify = "8"
 regex = "1"
+# §387 `baram <command>` — the CLI mode of this binary (src/cli). default-features = false
+# drops colour, suggestions and the terminal-width probe; what is left is the derive
+# parser and plain help/usage text. Unlike the crates promoted below, clap is NEW to the
+# lock file — nothing in the tree pulled it before.
+clap = { version = "4", default-features = false, features = ["std", "derive", "help", "usage", "error-context"] }
+# §387 Where the app keeps config.json, without starting tauri: tauri's own `app_data_dir`
+# is `dirs::data_dir().join(identifier)` (tauri/src/path/desktop.rs). Already in the tree
+# through tauri; this promotes it to a direct dependency.
+dirs = "6"
 # §29 (issue 620) — reads which bytes of a note are prose so the link index and its
 # rewriters can leave code, HTML, math and images alone. Structure only: link syntax
 # stays regex on the source. default-features drops the HTML renderer and the CLI.
