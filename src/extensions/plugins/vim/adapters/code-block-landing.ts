@@ -6,7 +6,7 @@
 
 import type { EditorState } from "@tiptap/pm/state";
 
-import { columnOf, lineSpanAt, lineUnitStarts } from "./cursor-line-columns";
+import { columnAt, lineUnitStarts } from "./cursor-line-columns";
 
 /** `journal-*` languages render a widget NodeView with no CodeMirror
  *  island (code-block.ts addNodeView) — a hidden-source landing has no
@@ -70,7 +70,7 @@ export function insertEntryTarget(
   edge: "first" | "last",
 ): null | number {
   if (!isCmBackedCodeBlock(state, inside)) return null;
-  const column = columnOf(lineUnitStarts(state, lineSpanAt(state, from)), from);
+  const column = columnAt(state, from);
   const line = codeLineSpan(state, inside, edge);
   // The column is a GRAPHEME index — resolve it through the target
   // line's own grapheme starts instead of adding it as a UTF-16 offset,
