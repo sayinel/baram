@@ -10,7 +10,7 @@ use super::state::{BuildToken, LinkIndexState};
 /// What a rename says when an index it needs went away between the gate and
 /// the read (its context was removed under the rename), or when the build the
 /// gate started was invalidated the same way. The next attempt sees the new
-/// registrations. Renaming without the index used to rename the file and
+/// registrations. Renaming without the index would rename the file and
 /// rewrite none of its references, silently.
 const INDEX_NOT_READY: &str = "The link index for this vault is not ready. Try again in a moment.";
 

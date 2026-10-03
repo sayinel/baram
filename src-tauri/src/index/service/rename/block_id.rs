@@ -1,16 +1,21 @@
-//! §33 Block ID rename with reference updates — see rename/mod.rs for the shared helpers.
+//! §33 Block ID rename with reference updates — preparation in rename/scope.rs, the referrer
+//! rewrite in rename/referrers.rs, result types and path helpers in rename/mod.rs.
 
+use crate::context::manager::Registered;
 use crate::context::ContextManager;
-use crate::index::{backlink_keys, own_block_reference_lines, replace_block_id_refs_to};
+use crate::index::filing::backlink_keys_for;
+use crate::index::normalizer::normalize_file_path;
+use crate::index::{replace_block_id_refs_to, BlockTarget, FilingKey, KnownPaths};
 use std::collections::HashMap;
 
-use super::super::build::{ensure_indexes, read_indexes};
-use super::super::keys::{buildable, keys_of, owning_contexts};
+use super::super::keys::keys_of;
 use super::super::state::{LinkIndexState, Mutation};
 use super::referrers::{
-    apply_queued, named_referrers, queue_rewritten, rewrite_referrers, Rewrite, Unchanged,
+    apply_queued, named_only_for_own_references, queue_rewritten, rewrite_referrers,
+    ReferrerRewrite, Unchanged,
 };
-use super::RenameResult;
+use super::scope::{Referrers, RenameScope};
+use super::{absolute, RenameResult};
 
 pub(crate) async fn rename_block_id_inner(
     state: &LinkIndexState,
@@ -19,13 +24,8 @@ pub(crate) async fn rename_block_id_inner(
     old_id: &str,
     new_id: &str,
 ) -> Result<RenameResult, String> {
-    let contexts = owning_contexts(ctx_mgr, file_path).await;
-    if contexts.is_empty() {
-        return Err(format!("{file_path} is not inside any registered context"));
-    }
-    ensure_indexes(state, ctx_mgr, &contexts).await?;
-    let dirs = buildable(&contexts);
-    let keys = keys_of(&dirs);
+    absolute(file_path)?;
+    let scope = RenameScope::holding(state, ctx_mgr, file_path).await?;
 
     // 1. Get referring files from every containing index (block_id == old_id,
     //    target == this file), with the LINES the index saw the reference on.
@@ -36,27 +36,35 @@ pub(crate) async fn rename_block_id_inner(
     //    issue 668: the index says WHICH FILES refer; the lines it remembers
     //    are not trusted — the rewriter reads each file as it is now. How
     //    many lines it named each file for is kept, for the exemption below.
-    let (named_lines, referring_files) = named_referrers(
-        read_indexes(state, &dirs, |index| {
+    //    Read with what the roots know of their notes (`RenameScope::referrers`).
+    let Referrers {
+        named_lines,
+        files: referring_files,
+        known_paths,
+    } = scope
+        .referrers(state, ctx_mgr, |index| {
             index.block_reference_lines(file_path, old_id)
         })
-        .await?,
-    );
-    let target_keys = backlink_keys(file_path);
-    // A referrer that shares the target's stem — another `note.md` in some
-    // other folder — is named by the index for its own self-references
-    // (`((#^id))` is filed under the referrer's own stem, which is the
-    // target's). The rewrite leaves those alone, rightly, and the file must
-    // not then be reported as a stale referrer — while it holds at least as
-    // many self-reference lines as the index named it for. The stem alone is
-    // not why the index named it: a same-stem note whose `((note#^id))` to
-    // the target has gone since, self-reference beside it or not, holds
-    // fewer, and is stale like any other.
+        .await?;
+    // The keys a reference to this file is filed under in each index read
+    // above: its stem and zettel id, the same in every index, and its path
+    // under that index's root (issue 619) — what `backlink_keys` reads there.
+    // With the notes of every vault that holds the file or a referrer, each
+    // index built first: a path reference another root holding the referrer
+    // reads as a different existing note — or might, when its index could
+    // not be built — is left and its file reported (`BlockTarget::judge`).
+    let target = block_target(file_path, &scope.dirs, known_paths);
+    // The same-stem exemption (`named_only_for_own_references`), counting
+    // only this block's self-references, with the stem checked against the
+    // target's keys in every index read — a zettel id included.
     let named_for_its_own_references = |path: &str, content: &str| {
-        target_keys.contains(&crate::index::normalizer::normalize_file_path(path))
-            && named_lines
-                .get(path)
-                .is_some_and(|&lines| own_block_reference_lines(content, Some(old_id)) >= lines)
+        named_only_for_own_references(path, content, &named_lines, Some(old_id), |p| {
+            let stem = FilingKey::Stem(normalize_file_path(p));
+            target
+                .keys_by_root
+                .iter()
+                .any(|(_, keys)| keys.contains(&stem))
+        })
     };
 
     // 2. Read + replace + write (outside lock). The first referrer written is
@@ -71,13 +79,24 @@ pub(crate) async fn rename_block_id_inner(
     let rewritten = rewrite_referrers(
         &referring_files,
         file_path,
-        &dirs,
+        ctx_mgr,
+        &scope.dirs,
         &Unchanged::Report {
             unless: &named_for_its_own_references,
         },
-        |content, ref_path| Rewrite {
-            content: replace_block_id_refs_to(content, ref_path, &target_keys, old_id, new_id),
-            left_behind: false,
+        |content, ref_path, covering| {
+            let pass = replace_block_id_refs_to(
+                content,
+                ref_path,
+                &keys_of(covering),
+                &target,
+                old_id,
+                new_id,
+            );
+            ReferrerRewrite {
+                content: pass.content,
+                left_behind: pass.ambiguous > 0,
+            }
         },
     )
     .await;
@@ -85,11 +104,33 @@ pub(crate) async fn rename_block_id_inner(
     // 3. Update the containing indexes — each rewritten file goes into the
     //    indexes that cover it, spelled each index's way.
     let mut per_key: HashMap<String, Vec<Mutation>> = HashMap::new();
-    queue_rewritten(&mut per_key, ctx_mgr, &keys, rewritten.contents).await;
+    queue_rewritten(&mut per_key, ctx_mgr, &scope.keys, rewritten.contents).await;
     apply_queued(state, per_key).await;
 
     Ok(RenameResult {
         updated_files: rewritten.updated,
         skipped_files: rewritten.skipped,
     })
+}
+
+/// The file at `file_path` as a block-ID rename's target: for each directory
+/// context in `dirs`, the keys a reference to it is filed under in that
+/// context's index (`backlink_keys_for` under that root, the function
+/// `LinkIndex::backlink_keys` reads them with). No vault alias: a block
+/// reference or embed never carries one (`BLOCK_REF_RE`, `BLOCK_EMBED_RE`
+/// in extractor.rs have no alias group).
+fn block_target(file_path: &str, dirs: &[Registered], known_paths: KnownPaths) -> BlockTarget {
+    let keys_by_root = dirs
+        .iter()
+        .map(|d| {
+            let root = d.info.path.clone();
+            let keys = backlink_keys_for(file_path, Some(&root), &[], cfg!(windows));
+            (root, keys)
+        })
+        .collect();
+    BlockTarget {
+        keys_by_root,
+        known_paths,
+        windows: cfg!(windows),
+    }
 }

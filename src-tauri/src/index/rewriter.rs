@@ -5,8 +5,9 @@ use regex::Regex;
 use std::sync::LazyLock;
 
 use super::extractor::{extract_links, BLOCK_REF_RE};
+use super::judgement::{Judgement, Match, RenameTarget};
 use super::normalizer::{file_key, normalize_target};
-use super::{LinkKind, RewritePass};
+use super::{BlockTarget, RewritePass};
 use crate::md::literal::{front_matter_end, source_lines, Literal};
 
 // §33 Wikilink replace regex: captures (alias, target, rest) for replace_wikilink_target
@@ -32,34 +33,64 @@ static REF_REPLACE_RE: LazyLock<Regex> =
 /// Handles [[old]], [[old|display]], [[old#heading]], [[old#heading|display]], [[old^blockId]], etc.
 /// Only replaces the target portion, preserving display, heading, and blockId.
 ///
-/// issue 678: the target test is the index's filing rule — the link's target
-/// through `normalize_target` (`.md` stripped, case folded) against the
-/// file's key, `file_key` of its stem — so every link the index filed under
-/// that key is rewritten, none is left to be reported as stale, and a
-/// file whose stem itself ends in `.md` (`diagram.md.txt`) never claims the
-/// note `diagram.md`'s links. A link spelled with `.md` keeps that spelling
-/// on the new name.
+/// issue 678 · issue 619: the target test is the index's filing rule
+/// (`RenameTarget::refers`) — the link's target keyed by `filing_key` under
+/// each root in `covering_roots`, the roots whose index covers `ref_path` —
+/// so a link is rewritten exactly when the index files it under one of the
+/// renamed file's keys, on three conditions: a wikilink can spell the new
+/// stem (otherwise nothing is written — the paragraph below), the paths are
+/// spelled under the roots as registered (a file given in another spelling of a symlinked
+/// root, `/private/tmp` for `/tmp`, has no `Path` key, so its path links
+/// are missed, never miswritten), and `target.local_aliases` are the ones
+/// the caller read when the rename started (a registration made since is not
+/// seen). The keys are a bare `[[Old.md]]`'s stem, and for a path-qualified
+/// `[[a/old]]` or a relative `[[./old]]` the file's path under a covering
+/// root. A file whose stem itself ends in `.md` (`diagram.md.txt`) never
+/// claims the note `diagram.md`'s links, and a link behind an alias that is
+/// not local (`[[work::old]]` naming another vault) is that vault's and stays.
+/// A path link that a root holding the referrer reads as a different note
+/// that exists is ambiguous (`RenameTarget::judge`) and stays too; the pass
+/// counts those (`PassReport::ambiguous`) and the file rename reports the
+/// file. The new text is `RenameTarget::respell`: the new stem, or the new
+/// path, with the `.md` or `.markdown` the link was spelled with when the new
+/// file name ends in one too, and without it otherwise.
 ///
-/// A stem no wikilink can spell (`wikilink_can_spell`) is never written: the
-/// content comes back as it is, and the file rename, which decides that
-/// before calling, reports the files whose links it left (`wikilinks_to`).
-pub fn replace_wikilink_target(content: &str, old_target: &str, new_target: &str) -> String {
-    if !wikilink_can_spell(new_target) {
-        return content.to_owned();
-    }
+/// A stem no wikilink can spell (`wikilink_can_spell`) is never written —
+/// a path link's last component is that stem too: the content comes back as
+/// it is, with the links it would have rewritten counted in
+/// `PassReport::matched`, and the file rename reports the files whose links
+/// it left.
+pub fn replace_wikilink_target(
+    content: &str,
+    ref_path: &str,
+    covering_roots: &[String],
+    target: &RenameTarget,
+) -> PassReport {
+    let spellable = wikilink_can_spell(target.new_stem());
     visit_wikilinks_to(
         content,
-        old_target,
-        |alias_prefix, captured_target, rest| {
-            let suffix = if captured_target.trim().ends_with(".md") {
-                ".md"
-            } else {
-                ""
-            };
-            Some(format!("[[{alias_prefix}{new_target}{suffix}{rest}]]"))
+        ref_path,
+        covering_roots,
+        target,
+        |alias_prefix, captured_target, rest, m| {
+            spellable.then(|| {
+                let new = target.respell(ref_path, m, captured_target);
+                format!("[[{alias_prefix}{new}{rest}]]")
+            })
         },
     )
-    .0
+}
+
+/// What one rename pass made of a referrer, from the one visit that reads
+/// it: the content it leaves, how many references it found naming the
+/// renamed file (or block) unambiguously — `matched`, rewritten when the new
+/// name can be spelled and left otherwise — and how many it found
+/// `Judgement::Ambiguous` and left as written.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PassReport {
+    pub content: String,
+    pub matched: usize,
+    pub ambiguous: usize,
 }
 
 /// Whether a link naming this stem would read back as the file whose stem it
@@ -70,75 +101,78 @@ pub fn replace_wikilink_target(content: &str, old_target: &str, new_target: &str
 /// or one padded with spaces. That is the `diagram.md.txt` confusion seen
 /// from the writing side: there a file claimed a note's links, here a file
 /// would hand its links to a note.
-fn link_reads_back_as_the_file(stem: &str) -> bool {
+pub(crate) fn link_reads_back_as_the_file(stem: &str) -> bool {
     normalize_target(stem) == file_key(stem)
 }
 
 /// Whether a wikilink can name a file with this stem. `]`, `|`, `#` and `^`
 /// end the target of `REPLACE_RE` (and of the index's `WIKILINK_RE`, the same
-/// class) — and `|`, `#` and `^` do worse than end it: what follows reads as
-/// a display, a heading or a block, so `[[a^b]]` silently names the note `a`.
-/// A leading `word::` reads as a vault alias (§87) the same way. A line break
+/// class) — and `|`, `#` and `^` do worse than end it: what follows reads as a
+/// display, a heading or a block, so `[[a^b]]` silently names the note `a`. A
+/// leading `word::` reads as a vault alias (§87) the same way. A line break
 /// ends the line every scanner reads, and a stem the reader would fold to
 /// another key is refused too (`link_reads_back_as_the_file`). A stem a
-/// wikilink cannot spell is never
-/// written into one: the rename leaves those links and reports their files,
-/// as it does for block references (`block_reference_can_spell` — a different
-/// set, judged apart: `)` is a wikilink's to spell, `^` a block reference's).
+/// wikilink cannot spell is never written into one: the rename leaves those
+/// links and reports their files, as it does for block references
+/// (`block_reference_can_spell` — a different set, judged apart: `)` is a
+/// wikilink's to spell, `^` a block reference's).
 pub fn wikilink_can_spell(stem: &str) -> bool {
     !stem.contains([']', '|', '#', '^', '\n', '\r'])
         && !ALIAS_PREFIX_RE.is_match(stem)
         && link_reads_back_as_the_file(stem)
 }
 
-/// How many wikilinks to `old_target` `content` holds in prose — the ones
-/// `replace_wikilink_target` would rewrite if the new stem were one a
-/// wikilink can spell, which is the only case this is asked in. A file rename to a stem no
-/// wikilink can spell asks this to report the files whose links it leaves.
-pub fn wikilinks_to(content: &str, old_target: &str) -> usize {
-    visit_wikilinks_to(content, old_target, |_, _, _| None).1
-}
-
-/// The pass under both: every wikilink to `old_target` outside a literal
-/// region is offered to `respell` (alias prefix, target as spelled, rest) —
-/// `Some` replaces it, `None` keeps it — and counted. Returns the content and
-/// that count.
+/// The pass under `replace_wikilink_target`: every wikilink outside a
+/// literal region that `target.judge` says names the renamed file under
+/// `covering_roots` is offered to `respell` (alias prefix, target as
+/// spelled, rest, how it matched) — `Some` replaces it, `None` keeps it —
+/// and counted; an `Ambiguous` one is kept and counted apart.
 fn visit_wikilinks_to(
     content: &str,
-    old_target: &str,
-    respell: impl Fn(&str, &str, &str) -> Option<String>,
-) -> (String, usize) {
+    ref_path: &str,
+    covering_roots: &[String],
+    target: &RenameTarget,
+    respell: impl Fn(&str, &str, &str, &Match) -> Option<String>,
+) -> PassReport {
     // Match all wikilink forms: [[target]], [[target|display]], [[target#heading]], etc.
     // Capture groups: (1) alias, (2) target, (3) rest — #heading, ^blockId, |display in any combo
     // issue 620: a match inside a literal region is left as it is — the index
     // never counted it, the editor never read it. The literal set is read
-    // only once a match names the old target: a vault-wide rename visits
+    // only once a match names the renamed file: a vault-wide rename visits
     // every note, and most hold no such link.
-    let old_key = file_key(old_target);
     let mut literal: Option<Literal> = None;
     let mut visited = 0;
+    let mut ambiguous = 0;
     let out = REPLACE_RE
         .replace_all(content, |caps: &regex::Captures| {
             let whole = caps.get(0).unwrap();
             let alias_prefix = caps.get(1).map(|m| m.as_str()).unwrap_or("");
             let captured_target = caps.get(2).map(|m| m.as_str()).unwrap_or("");
             let rest = caps.get(3).map(|m| m.as_str()).unwrap_or("");
-
-            if normalize_target(captured_target) == old_key
-                && !literal
+            let mut in_prose = || {
+                !literal
                     .get_or_insert_with(|| Literal::of(content))
                     .overlaps(whole.range())
-            {
-                visited += 1;
-                respell(alias_prefix, captured_target, rest)
-                    .unwrap_or_else(|| whole.as_str().to_string())
-            } else {
-                // No match — return original
-                whole.as_str().to_string()
+            };
+            match target.judge(ref_path, covering_roots, alias_prefix, captured_target) {
+                Judgement::Ours(m) if in_prose() => {
+                    visited += 1;
+                    respell(alias_prefix, captured_target, rest, &m)
+                        .unwrap_or_else(|| whole.as_str().to_string())
+                }
+                Judgement::Ambiguous if in_prose() => {
+                    ambiguous += 1;
+                    whole.as_str().to_string()
+                }
+                _ => whole.as_str().to_string(),
             }
         })
         .to_string();
-    (out, visited)
+    PassReport {
+        content: out,
+        matched: visited,
+        ambiguous,
+    }
 }
 
 /// §30a Rename `^old_id` → `^new_id` in the references a file makes TO ONE
@@ -150,35 +184,52 @@ fn visit_wikilinks_to(
 ///
 /// issue 668: the lines to rewrite come from reading THIS content with the
 /// index's own grammar (`extract_links`) — a reference to the target with the
-/// old ID, on whichever line it stands NOW. The index once handed the line
-/// numbers it remembered, and a file edited outside the app since (a closed
-/// tab, a `git pull`) had moved its reference off them: nothing changed, and
-/// the definition took the new ID alone. The target test is the index's
-/// filing rule, `normalize_target` — path-qualified `((b/note#^id))` names
-/// another file's block and is left alone, exactly as the index leaves it out
-/// (issue 619). `ref_path` is the referrer, for its self-references.
+/// old ID, on whichever line it stands NOW, not on the line numbers the index
+/// remembers: a file edited outside the app since (a closed tab, a `git pull`)
+/// may have moved its reference off them, and rewriting those lines would
+/// change nothing while the definition took the new ID alone. The target test
+/// is the index's filing rule (`BlockTarget::refers`): a reference is keyed
+/// the way the index files it under each root in `covering_roots` — the roots
+/// whose index covers the referrer — so a path-qualified `((dir/note#^id))` or
+/// a relative `((./note#^id))` is rewritten when it names the target's path
+/// under such a root, and left alone when it names another file (issue 619).
+/// `ref_path` is the referrer, for its self-references and its relative
+/// references. A reference to `old_id` that `target.judge` finds `Ambiguous` —
+/// another reading of its path is a different note that exists — is left and
+/// counted (`PassReport::ambiguous`), read with the same grammar in the same
+/// visit, and the block-ID rename reports the file.
 pub fn replace_block_id_refs_to(
     content: &str,
     ref_path: &str,
-    target_keys: &[String],
+    covering_roots: &[String],
+    target: &BlockTarget,
     old_id: &str,
     new_id: &str,
-) -> String {
-    let refers_to_target = |raw_target: &str| {
-        let t = raw_target.trim();
-        !t.is_empty() && target_keys.contains(&normalize_target(t))
-    };
-    let lines: std::collections::HashSet<u32> = extract_links(ref_path, content)
-        .into_iter()
-        .filter(|entry| {
-            entry.link_type.pass() == RewritePass::BlockReferences
-                && entry.block_id.as_deref() == Some(old_id)
-                && refers_to_target(&entry.target)
-        })
-        .map(|entry| entry.line)
-        .collect();
+) -> PassReport {
+    let refers_to_target = |raw: &str| target.refers(ref_path, covering_roots, raw);
+    let mut lines = std::collections::HashSet::new();
+    let mut ambiguous = 0;
+    for entry in extract_links(ref_path, content) {
+        if entry.link_type.pass() != RewritePass::BlockReferences
+            || entry.block_id.as_deref() != Some(old_id)
+        {
+            continue;
+        }
+        match target.judge(ref_path, covering_roots, &entry.target) {
+            Judgement::Ours(()) => {
+                lines.insert(entry.line);
+            }
+            Judgement::Ambiguous => ambiguous += 1,
+            Judgement::NotOurs => {}
+        }
+    }
+    let mut matched = 0;
     if lines.is_empty() {
-        return content.to_owned();
+        return PassReport {
+            content: content.to_owned(),
+            matched,
+            ambiguous,
+        };
     }
     // issue 620: the literal regions of THIS content — the lines above were
     // read with them, and the interval check here keeps a `((…))` inside a
@@ -201,6 +252,7 @@ pub fn replace_block_id_refs_to(
                         .overlaps(line.offset + whole.start()..line.offset + whole.end())
                 };
                 if id == old_id && refers_to_target(target) && in_prose() {
+                    matched += 1;
                     format!("(({target}#^{new_id}{display}))")
                 } else {
                     whole.as_str().to_string()
@@ -212,80 +264,51 @@ pub fn replace_block_id_refs_to(
         }
         out.push_str(line.terminator);
     }
-    out
+    PassReport {
+        content: out,
+        matched,
+        ambiguous,
+    }
 }
 
 /// issue 678: a file rename's block references — `((old#^id))`, with a
-/// display, and the `((…))` inside `{{embed ((old#^id))}}` — spelled with the
-/// new stem, in every referrer line the index's own grammar reads as a
-/// reference to the old one (`extract_links`, as `replace_block_id_refs_to`
-/// does since issue 668). The target test is the index's — the reference's
-/// target through `normalize_target`, against `file_key` of the old stem: a
-/// path-qualified `((dir/old#^id))` is filed elsewhere and stays (issue 619),
-/// a self-reference names no target and stays, a literal region is never
-/// touched (issue 620), and a file whose stem ends in `.md` never claims
-/// the note's references.
+/// display, and the `((…))` inside `{{embed ((old#^id))}}` — respelled for
+/// the renamed file, in every referrer line the index's own grammar reads as
+/// a reference to it (`extract_links`, as `replace_block_id_refs_to` does
+/// since issue 668). The target test is the index's filing rule
+/// (`RenameTarget::refers`) under each root in `covering_roots`: a
+/// path-qualified `((a/old#^id))` or a relative `((./old#^id))` that names
+/// the file's path under such a root is respelled with the new path (issue
+/// 619), one that names another file's path stays, a self-reference names
+/// no target and stays, a literal region is never touched (issue 620), and a
+/// file whose stem ends in `.md` never claims the note's references.
 ///
 /// A stem no reference can spell (`block_reference_can_spell`) is never
 /// written: the reference would parse as nothing, silently. The content comes
-/// back as it is. The file rename decides that before calling and asks
-/// `block_references_to` what it leaves, so the user hears of the file
+/// back as it is, with the references it leaves counted in
+/// `PassReport::matched`, so the file rename tells the user of the file
 /// whether or not a wikilink in it was rewritten; this refusal is the
-/// writer's own, for any caller.
+/// writer's own, for any caller. An `Ambiguous` reference is left and
+/// counted in `PassReport::ambiguous`, as the wikilink pass counts its own.
 pub fn replace_block_reference_target(
     content: &str,
     ref_path: &str,
-    old_target: &str,
-    new_target: &str,
-) -> String {
-    if !block_reference_can_spell(new_target) {
-        return content.to_owned();
-    }
-    visit_block_references_to(content, ref_path, old_target, |id, display| {
-        Some(format!("(({new_target}#^{id}{display}))"))
-    })
-    .0
-}
-
-/// Whether the index reads `after` — a referrer as the two rename passes
-/// left it — as it read `before` with every reference the passes respelled
-/// filed under the new key, and nothing else changed: the same lines, kinds
-/// and block ids (issue 678, review). A stem the predicates pass can still
-/// make prose literal where it lands: `[[a`b`c]]` closes a code span around
-/// itself, and `[[a`b]]` pairs with a backtick already on the line, so the
-/// link the rename wrote is read by nobody — a backlink gone, in a file
-/// reported as updated. The predicates look at the stem alone and cannot see
-/// the line; this reads the output back with the index's own reader, and
-/// the file rename leaves a file whose reading changed.
-///
-/// `respelled` says which kinds the rename rewrote — the passes that could
-/// spell the new stem; a kind it left keeps the old key on both sides.
-pub fn index_reads_the_rename_back(
-    ref_path: &str,
-    before: &str,
-    after: &str,
-    old_target: &str,
-    new_target: &str,
-    respelled: impl Fn(LinkKind) -> bool,
-) -> bool {
-    let old_key = file_key(old_target);
-    let new_key = file_key(new_target);
-    let reading = |content: &str, renamed: bool| {
-        let mut seen: Vec<(u32, LinkKind, String, Option<String>)> =
-            extract_links(ref_path, content)
-                .into_iter()
-                .map(|e| {
-                    let mut key = normalize_target(&e.target);
-                    if renamed && key == old_key && respelled(e.link_type) {
-                        key.clone_from(&new_key);
-                    }
-                    (e.line, e.link_type, key, e.block_id)
-                })
-                .collect();
-        seen.sort();
-        seen
-    };
-    reading(before, true) == reading(after, false)
+    covering_roots: &[String],
+    target: &RenameTarget,
+) -> PassReport {
+    let spellable = block_reference_can_spell(target.new_stem());
+    visit_block_references_to(
+        content,
+        ref_path,
+        covering_roots,
+        target,
+        |captured, id, display, m| {
+            spellable.then(|| {
+                let new = target.respell(ref_path, m, captured);
+                format!("(({new}#^{id}{display}))")
+            })
+        },
+    )
 }
 
 /// Whether a block reference can name a file with this stem. `)`, `#` and `|`
@@ -303,49 +326,46 @@ pub fn block_reference_can_spell(stem: &str) -> bool {
     !stem.contains([')', '#', '|', '\n', '\r']) && link_reads_back_as_the_file(stem)
 }
 
-/// How many block references (embeds included) to `old_target` `content`
-/// holds in prose — the ones `replace_block_reference_target` would rewrite
-/// if the new stem were one a reference can spell, which is the only case
-/// this is asked in: not a self-reference, which names no target, not a path-qualified
-/// one, not one in a literal region. A file rename to a stem no reference can
-/// spell asks this to report the files whose references it leaves.
-pub fn block_references_to(content: &str, ref_path: &str, old_target: &str) -> usize {
-    visit_block_references_to(content, ref_path, old_target, |_, _| None).1
-}
-
-/// The pass under both: on the lines the index's own grammar reads as a
-/// reference to `old_target`, every block reference to it in prose is offered
-/// to `respell` (block id, display) — `Some` replaces it, `None` keeps it —
-/// and counted. Returns the content and that count.
+/// The pass under `replace_block_reference_target`: on the lines the
+/// index's own grammar reads as a reference to the renamed file, every block
+/// reference (embeds included) `target.judge` says names it under
+/// `covering_roots` in prose is offered to `respell` (target as spelled,
+/// block id, display, how it matched) — `Some` replaces it, `None` keeps it
+/// — and counted: not a self-reference, which names no target, not one that
+/// names another file's path, not one in a literal region. An `Ambiguous`
+/// one is kept and counted apart.
 fn visit_block_references_to(
     content: &str,
     ref_path: &str,
-    old_target: &str,
-    respell: impl Fn(&str, &str) -> Option<String>,
-) -> (String, usize) {
-    let old_key = file_key(old_target);
-    let refers_to_old = |raw_target: &str| {
-        let t = raw_target.trim();
-        !t.is_empty() && normalize_target(t) == old_key
-    };
+    covering_roots: &[String],
+    target: &RenameTarget,
+    respell: impl Fn(&str, &str, &str, &Match) -> Option<String>,
+) -> PassReport {
+    let judge = |raw_target: &str| target.judge(ref_path, covering_roots, "", raw_target);
     let lines: std::collections::HashSet<u32> = extract_links(ref_path, content)
         .into_iter()
         .filter(|entry| {
-            entry.link_type.pass() == RewritePass::BlockReferences && refers_to_old(&entry.target)
+            entry.link_type.pass() == RewritePass::BlockReferences
+                && judge(&entry.target) != Judgement::NotOurs
         })
         .map(|entry| entry.line)
         .collect();
     if lines.is_empty() {
-        return (content.to_owned(), 0);
+        return PassReport {
+            content: content.to_owned(),
+            matched: 0,
+            ambiguous: 0,
+        };
     }
     let mut literal: Option<Literal> = None;
     let mut visited = 0;
+    let mut ambiguous = 0;
     let mut out = String::with_capacity(content.len());
     for line in source_lines(content) {
         if lines.contains(&line.number) {
             let rewritten = REF_REPLACE_RE.replace_all(line.text, |caps: &regex::Captures| {
                 let whole = caps.get(0).unwrap();
-                let target = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+                let captured = caps.get(1).map(|m| m.as_str()).unwrap_or("");
                 let id = caps.get(2).map(|m| m.as_str()).unwrap_or("");
                 let display = caps.get(3).map(|m| m.as_str()).unwrap_or("");
                 let mut in_prose = || {
@@ -353,11 +373,17 @@ fn visit_block_references_to(
                         .get_or_insert_with(|| Literal::of(content))
                         .overlaps(line.offset + whole.start()..line.offset + whole.end())
                 };
-                if refers_to_old(target) && in_prose() {
-                    visited += 1;
-                    respell(id, display).unwrap_or_else(|| whole.as_str().to_string())
-                } else {
-                    whole.as_str().to_string()
+                match judge(captured) {
+                    Judgement::Ours(m) if in_prose() => {
+                        visited += 1;
+                        respell(captured, id, display, &m)
+                            .unwrap_or_else(|| whole.as_str().to_string())
+                    }
+                    Judgement::Ambiguous if in_prose() => {
+                        ambiguous += 1;
+                        whole.as_str().to_string()
+                    }
+                    _ => whole.as_str().to_string(),
                 }
             });
             out.push_str(&rewritten);
@@ -366,7 +392,11 @@ fn visit_block_references_to(
         }
         out.push_str(line.terminator);
     }
-    (out, visited)
+    PassReport {
+        content: out,
+        matched: visited,
+        ambiguous,
+    }
 }
 
 /// issue 668: how many lines of `content` refer, in prose, to ITS OWN block
@@ -406,66 +436,349 @@ pub fn own_block_reference_lines(content: &str, id: Option<&str>) -> usize {
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
-    use crate::index::LinkKind;
+    use crate::index::{index_reads_the_rename_back, LinkKind};
 
-    /// issue 678 (review) — what the read-back gate compares, on the case
-    /// that made it necessary. What fails this: dropping the `respelled`
-    /// condition from the key mapping (the second case then reads as a
-    /// change), or reading the written line as a link (the third).
+    // The three passes as most tests here read them — the content each
+    // leaves — and the two counts the file rename reads from a report. They
+    // shadow the `super::*` names on purpose, so each test states only what
+    // it asserts about the pass.
+
+    /// `super::replace_wikilink_target`'s content.
+    pub(crate) fn replace_wikilink_target(
+        content: &str,
+        ref_path: &str,
+        covering_roots: &[String],
+        target: &RenameTarget,
+    ) -> String {
+        super::replace_wikilink_target(content, ref_path, covering_roots, target).content
+    }
+
+    /// `super::replace_block_reference_target`'s content.
+    fn replace_block_reference_target(
+        content: &str,
+        ref_path: &str,
+        covering_roots: &[String],
+        target: &RenameTarget,
+    ) -> String {
+        super::replace_block_reference_target(content, ref_path, covering_roots, target).content
+    }
+
+    /// `super::replace_block_id_refs_to`'s content.
+    fn replace_block_id_refs_to(
+        content: &str,
+        ref_path: &str,
+        covering_roots: &[String],
+        target: &BlockTarget,
+        old_id: &str,
+        new_id: &str,
+    ) -> String {
+        super::replace_block_id_refs_to(content, ref_path, covering_roots, target, old_id, new_id)
+            .content
+    }
+
+    /// The wikilinks the wikilink pass matched — rewritten, or left when the
+    /// new stem cannot be spelled.
+    fn wikilinks_to(
+        content: &str,
+        ref_path: &str,
+        covering_roots: &[String],
+        target: &RenameTarget,
+    ) -> usize {
+        super::replace_wikilink_target(content, ref_path, covering_roots, target).matched
+    }
+
+    /// The block references the block pass matched, as `wikilinks_to`.
+    fn block_references_to(
+        content: &str,
+        ref_path: &str,
+        covering_roots: &[String],
+        target: &RenameTarget,
+    ) -> usize {
+        super::replace_block_reference_target(content, ref_path, covering_roots, target).matched
+    }
+
+    /// The rename of `/v/a/old.md` to `/v/a/new.md`, both passes, for the
+    /// referrer `ref_path` under the root `/v`.
+    fn both_passes(content: &str, ref_path: &str) -> String {
+        let target = rename_target("/v/a/old.md", "/v/a/new.md");
+        let content = replace_wikilink_target(content, ref_path, &v(), &target);
+        replace_block_reference_target(&content, ref_path, &v(), &target)
+    }
+
     #[test]
-    fn the_index_reads_a_rename_back_unless_the_new_stem_made_a_link_literal() {
-        let before = "`x [[old]] and ((old#^b1))\n";
-        // A correct rewrite: the same reading, under the new key.
+    fn a_file_rename_respells_the_tail_of_a_path_qualified_link() {
+        // issue 619: the index files `[[a/old]]` and `[[./old]]` under
+        // `a/old.md`'s path, so its rename rewrites them — the new text is
+        // the new file's path, spelled as the new path spells it, with the
+        // note extension the link was written with.
+        // What fails this: dropping the `Path` arm from `RenameTarget::refers`
+        // — every path-qualified link then stays.
+        assert_eq!(
+            both_passes(
+                "[[a/old|x]] [[A/Old.md]] [[a/old.markdown#h]] ((a/old#^b1|d)) [[Old]]\n",
+                "/v/r.md"
+            ),
+            "[[a/new|x]] [[a/new.md]] [[a/new.markdown#h]] ((a/new#^b1|d)) [[new]]\n"
+        );
+        assert_eq!(
+            both_passes("[[./old.md]] {{embed ((./old#^b1))}}\n", "/v/a/r.md"),
+            "[[./new.md]] {{embed ((./new#^b1))}}\n"
+        );
+        assert_eq!(
+            both_passes("[[../a/old#h|d]]\n", "/v/b/r.md"),
+            "[[../a/new#h|d]]\n"
+        );
+        // Another folder's `old`, a doubled separator, a relative path that
+        // leaves the root, and the literal regions: all stay.
+        let untouched = "[[b/old]] [[a//old]] ((../../old#^x)) `[[a/old]]` `((./old#^b1))`\n";
+        assert_eq!(both_passes(untouched, "/v/a/r.md"), untouched);
+    }
+
+    #[test]
+    fn a_file_rename_respells_a_windows_spelled_path_with_slashes() {
+        // On Windows a backslash separates as `/` does, and the link the
+        // rename writes is markdown, joined with `/`.
+        // What fails this: passing `false` for `windows` to `filing_key` in
+        // `keyed_under` — `a\old` is then one bare name and stays.
+        let target = RenameTarget {
+            old_path: r"C:\v\a\old.md",
+            new_path: r"C:\v\a\new.md",
+            local_aliases: &[],
+            known_paths: Default::default(),
+            windows: true,
+        };
+        let roots = vec![r"C:\v".to_string()];
+        assert_eq!(
+            replace_wikilink_target(r"[[a\old]]", r"C:\v\r.md", &roots, &target),
+            "[[a/new]]"
+        );
+        assert_eq!(
+            replace_wikilink_target(r"[[.\old]]", r"C:\v\a\r.md", &roots, &target),
+            "[[./new]]"
+        );
+    }
+
+    #[test]
+    fn a_file_rename_leaves_a_link_into_another_vault_alone() {
+        // A link behind a vault alias names a file in THAT vault (§87): the
+        // index files it as `Foreign`, never under this file's keys, and
+        // the rename leaves it. Behind one of this vault's own aliases it is
+        // this file's link, and the alias stays in front of the new name.
+        // What fails this: dropping the alias check from `RenameTarget::refers`
+        // — `[[work::old]]` is then read as `[[old]]` and rewritten; dropping
+        // the `Foreign` path arm — `[[work::a/old]]` then stays under the
+        // local alias; keying an aliased link without its alias — the
+        // relative `[[work::./old]]`, which the index never counts under the
+        // file, is then rewritten.
+        let content = "see [[work::old]] and [[old]] and [[work::old#intro]]";
+        let (old, new) = stems("old", "new");
+        assert_eq!(
+            replace_wikilink_target(content, "/v/r.md", &v(), &rename_target(&old, &new)),
+            "see [[work::old]] and [[new]] and [[work::old#intro]]"
+        );
+        let local = [crate::index::LocalAlias {
+            alias: "work".to_string(),
+            root: "/v".to_string(),
+        }];
+        let target = RenameTarget {
+            old_path: &old,
+            new_path: &new,
+            local_aliases: &local,
+            known_paths: Default::default(),
+            windows: false,
+        };
+        assert_eq!(
+            replace_wikilink_target(content, "/v/r.md", &v(), &target),
+            "see [[work::new]] and [[new]] and [[work::new#intro]]"
+        );
+        // The path-qualified spelling behind the alias, from the note's own
+        // folder: another vault's with no local alias, this file's with one;
+        // the relative spelling behind an alias is never this file's.
+        let paths = "[[work::a/old]] [[work::./old]]";
+        let remote = rename_target("/v/a/old.md", "/v/a/new.md");
+        assert_eq!(
+            replace_wikilink_target(paths, "/v/a/r.md", &v(), &remote),
+            paths
+        );
+        let local_path = RenameTarget {
+            old_path: "/v/a/old.md",
+            new_path: "/v/a/new.md",
+            local_aliases: &local,
+            known_paths: Default::default(),
+            windows: false,
+        };
+        assert_eq!(
+            replace_wikilink_target(paths, "/v/a/r.md", &v(), &local_path),
+            "[[work::a/new]] [[work::./old]]"
+        );
+    }
+
+    #[test]
+    fn nested_roots_a_referrer_is_judged_by_the_index_that_covers_it() {
+        // issue 619: `/v/r.md` is under the parent root alone, where
+        // `a/old` names `/v/a/old.md`, another file than the target
+        // `/v/sub/a/old.md`. `/v/sub/r.md` is under both: its `a/old` is the
+        // target's path under the child root, its `sub/a/old` the target's
+        // path under the parent. The read-back gate holds under each root.
+        // What fails this: the gate keying a respelled entry with the old
+        // text under the non-matching root — `[[sub/a/old]]` under `/v/sub`,
+        // `[[a/old]]` under `/v` — so the `/v/sub/r.md` gate answers false.
+        // (Also: `refers` judging under the first covering root alone, which
+        // leaves `[[sub/a/old]]`. Judging `/v/r.md` under a root that does
+        // not cover it is the service's mistake; its sibling in
+        // `service/tests/nested_roots.rs` pins that.)
+        // Existence is judged only where `known_paths` says a note exists:
+        // this target carries an empty map, so nothing is ambiguous and the
+        // doubly covered `[[a/old]]` is respelled. With `a/old` known under
+        // `/v` — `/v/a/old.md` exists — the parent reads that link as
+        // another note, so it is left while `[[sub/a/old]]` is respelled, and
+        // the gate reads the kept link the same on both sides.
+        // What fails this last part: treating every other-root `Path`
+        // reading as a note that does not exist — `[[a/old]]` is respelled.
+        let target = rename_target("/v/sub/a/old.md", "/v/sub/a/new.md");
+        let parent = v();
+        let both = vec!["/v/sub".to_string(), "/v".to_string()];
+        let before = "[[old]] [[a/old]]\n";
+        let after = replace_wikilink_target(before, "/v/r.md", &parent, &target);
+        assert_eq!(after, "[[new]] [[a/old]]\n");
         assert!(index_reads_the_rename_back(
             "/v/r.md",
             before,
-            "`x [[new]] and ((new#^b1))\n",
-            "old",
-            "new",
+            &after,
+            &parent,
+            &target,
             |_| true
         ));
-        // A pass the rename could not spell keeps the old key on both sides.
+        let before = "[[a/old]] [[sub/a/old]]\n";
+        let after = replace_wikilink_target(before, "/v/sub/r.md", &both, &target);
+        assert_eq!(after, "[[a/new]] [[sub/a/new]]\n");
         assert!(index_reads_the_rename_back(
-            "/v/r.md",
+            "/v/sub/r.md",
             before,
-            "`x [[new]] and ((old#^b1))\n",
-            "old",
-            "new",
-            |kind| kind == LinkKind::Wikilink
+            &after,
+            &both,
+            &target,
+            |_| true
         ));
-        // The stem `a`b` pairs with the backtick already on the line: the
-        // index reads the written line as nothing, so the rename must not
-        // write it.
-        let written = "`x [[a`b]]\n";
-        assert!(extract_links("/v/r.md", written).is_empty());
-        assert!(!index_reads_the_rename_back(
-            "/v/r.md",
-            "`x [[old]]\n",
-            written,
-            "old",
-            "a`b",
+        let knowing = RenameTarget {
+            known_paths: [(
+                "/v".to_string(),
+                crate::index::RootNotes::Known([("a/old".to_string(), 1)].into()),
+            )]
+            .into(),
+            ..rename_target("/v/sub/a/old.md", "/v/sub/a/new.md")
+        };
+        let after = replace_wikilink_target(before, "/v/sub/r.md", &both, &knowing);
+        assert_eq!(after, "[[a/old]] [[sub/a/new]]\n");
+        assert_eq!(
+            super::replace_wikilink_target(before, "/v/sub/r.md", &both, &knowing).ambiguous,
+            1
+        );
+        // A root whose index could not be built reads `Unknown`: any path
+        // reading under it may be another note, so the link is left the same
+        // way — the leave-and-report side of a failed build.
+        // What fails this: reading `RootNotes::Unknown` as holding no note in
+        // `read_as_another_note` — `[[a/old]]` is then respelled.
+        let unknown = RenameTarget {
+            known_paths: [("/v".to_string(), crate::index::RootNotes::Unknown)].into(),
+            ..rename_target("/v/sub/a/old.md", "/v/sub/a/new.md")
+        };
+        assert_eq!(
+            replace_wikilink_target(before, "/v/sub/r.md", &both, &unknown),
+            "[[a/old]] [[sub/a/new]]\n"
+        );
+        assert!(index_reads_the_rename_back(
+            "/v/sub/r.md",
+            before,
+            &after,
+            &both,
+            &knowing,
             |_| true
         ));
     }
 
     // §30a replace_block_id_refs_to tests
-    fn keys(list: &[&str]) -> Vec<String> {
-        list.iter().map(|k| k.to_string()).collect()
+    /// The target at `file_path` under the one root `/v`, as the block-ID
+    /// rename builds it.
+    fn target_at(file_path: &str) -> BlockTarget {
+        BlockTarget {
+            keys_by_root: vec![(
+                "/v".to_string(),
+                crate::index::keys_for(file_path, Some("/v"), &[], false),
+            )],
+            known_paths: Default::default(),
+            windows: false,
+        }
+    }
+
+    /// The roots that cover every referrer in these tests.
+    pub(crate) fn v() -> Vec<String> {
+        vec!["/v".to_string()]
+    }
+
+    /// The rename of `/v/<old>.md` to `/v/<new>.md` — stems, as the tests
+    /// below name them.
+    pub(crate) fn stems(old: &str, new: &str) -> (String, String) {
+        (format!("/v/{old}.md"), format!("/v/{new}.md"))
+    }
+
+    /// A file rename from `old_path` to `new_path` with no local alias, on
+    /// a Unix host.
+    pub(crate) fn rename_target<'a>(old_path: &'a str, new_path: &'a str) -> RenameTarget<'a> {
+        RenameTarget {
+            old_path,
+            new_path,
+            local_aliases: &[],
+            known_paths: Default::default(),
+            windows: false,
+        }
+    }
+
+    /// `replace_wikilink_target` for the referrer `/v/referrer.md` and the
+    /// rename of `/v/<old>.md` to `/v/<new>.md`, under the root `/v`.
+    fn wikilinks(content: &str, old: &str, new: &str) -> String {
+        let (o, n) = stems(old, new);
+        replace_wikilink_target(content, "/v/referrer.md", &v(), &rename_target(&o, &n))
+    }
+
+    /// `wikilinks_to` for the same shape.
+    fn wikilinks_to_stem(content: &str, old: &str) -> usize {
+        let (o, n) = stems(old, "renamed");
+        wikilinks_to(content, "/v/referrer.md", &v(), &rename_target(&o, &n))
+    }
+
+    /// `replace_block_reference_target` for the referrer `ref_path`.
+    fn block_refs(content: &str, ref_path: &str, old: &str, new: &str) -> String {
+        let (o, n) = stems(old, new);
+        replace_block_reference_target(content, ref_path, &v(), &rename_target(&o, &n))
+    }
+
+    /// `block_references_to` for the referrer `ref_path`.
+    fn block_refs_to(content: &str, ref_path: &str, old: &str) -> usize {
+        let (o, n) = stems(old, "renamed");
+        block_references_to(content, ref_path, &v(), &rename_target(&o, &n))
+    }
+
+    /// `replace_block_id_refs_to` for a referrer under `/v` and the target
+    /// `/v/<stem>.md`.
+    fn rename_in(content: &str, stem: &str, old_id: &str, new_id: &str) -> String {
+        replace_block_id_refs_to(
+            content,
+            "/v/referrer.md",
+            &v(),
+            &target_at(&format!("/v/{stem}.md")),
+            old_id,
+            new_id,
+        )
     }
 
     #[test]
     fn test_replace_block_id_refs_to_basic_display_embed() {
         let content =
             "See ((notes#^abc123)) and ((notes#^abc123|my label)).\n{{embed ((notes#^abc123))}}";
-        let result = replace_block_id_refs_to(
-            content,
-            "/v/referrer.md",
-            &keys(&["notes"]),
-            "abc123",
-            "xyz789",
-        );
+        let result = rename_in(content, "notes", "abc123", "xyz789");
         assert_eq!(
             result,
             "See ((notes#^xyz789)) and ((notes#^xyz789|my label)).\n{{embed ((notes#^xyz789))}}"
@@ -476,8 +789,7 @@ mod tests {
     fn test_replace_block_id_refs_to_leaves_other_targets_with_the_same_id() {
         // issue 594: two notes carry ^id1; only the reference to `a` changes.
         let content = "((a#^id1)) and ((b#^id1)) and ((a#^id2))";
-        let result =
-            replace_block_id_refs_to(content, "/v/referrer.md", &keys(&["a"]), "id1", "newId");
+        let result = rename_in(content, "a", "id1", "newId");
         assert_eq!(result, "((a#^newId)) and ((b#^id1)) and ((a#^id2))");
     }
 
@@ -485,13 +797,7 @@ mod tests {
     fn test_replace_block_id_refs_to_never_touches_a_self_reference() {
         // `((#^id))` in a referrer names the referrer's own block.
         let content = "See ((#^abc123)) and ((notes#^abc123)).";
-        let result = replace_block_id_refs_to(
-            content,
-            "/v/referrer.md",
-            &keys(&["notes"]),
-            "abc123",
-            "xyz789",
-        );
+        let result = rename_in(content, "notes", "abc123", "xyz789");
         assert_eq!(result, "See ((#^abc123)) and ((notes#^xyz789)).");
     }
 
@@ -500,8 +806,7 @@ mod tests {
         // issue 668: the rewriter reads the content as it is, not the line
         // numbers an index remembered — every reference to the target changes.
         let content = "((notes#^abc)) first\n((notes#^abc)) second\n((notes#^abc)) third";
-        let result =
-            replace_block_id_refs_to(content, "/v/referrer.md", &keys(&["notes"]), "abc", "xyz");
+        let result = rename_in(content, "notes", "abc", "xyz");
         assert_eq!(
             result,
             "((notes#^xyz)) first\n((notes#^xyz)) second\n((notes#^xyz)) third"
@@ -511,23 +816,62 @@ mod tests {
     #[test]
     fn test_replace_block_id_refs_to_matches_the_target_the_way_the_index_does() {
         // Case and the `.md` extension normalize away, as the index's keys do.
-        // A path-qualified target does NOT: the index files `dir/notes` under
-        // that key, never under `notes` (issue 619), so the rewriter leaves it
-        // alone too — what the index counts is what a rename may touch.
+        // A path-qualified target is filed under its path under the root
+        // (issue 619): `dir/notes.md` is `/v/dir/notes.md`'s, and not the
+        // root-level `/v/notes.md`'s — what the index counts is what a rename
+        // may touch.
+        // What fails this: `BlockTarget::refers` keying the raw target as a
+        // `Stem` of its whole text, the rule before issue 619 —
+        // `((dir/notes.md#^abc))` then keeps its ID for `/v/dir/notes.md`.
         let content = "((Notes#^abc)) ((notes.md#^abc)) ((dir/notes.md#^abc)) ((other#^abc))";
-        let result =
-            replace_block_id_refs_to(content, "/v/referrer.md", &keys(&["notes"]), "abc", "xyz");
         assert_eq!(
-            result,
+            rename_in(content, "dir/notes", "abc", "xyz"),
+            "((Notes#^xyz)) ((notes.md#^xyz)) ((dir/notes.md#^xyz)) ((other#^abc))"
+        );
+        assert_eq!(
+            rename_in(content, "notes", "abc", "xyz"),
             "((Notes#^xyz)) ((notes.md#^xyz)) ((dir/notes.md#^abc)) ((other#^abc))"
+        );
+        // A referrer that no root covers is judged under none: nothing changes.
+        // What fails this: refers ignoring covering_roots.
+        assert_eq!(
+            replace_block_id_refs_to(
+                content,
+                "/v/referrer.md",
+                &[],
+                &target_at("/v/dir/notes.md"),
+                "abc",
+                "xyz"
+            ),
+            content
+        );
+    }
+
+    #[test]
+    fn a_block_id_rename_reads_a_relative_reference_from_the_referrers_folder() {
+        // issue 619: `./` and `../` resolve against the folder of the note
+        // they are written in, as the index files them.
+        // What fails this: resolving a relative target against the root
+        // instead of the referrer's folder — `((./note#^old))` then names
+        // `/v/note.md` and keeps its ID.
+        let content = "((./note#^old))\n((../dir/note#^old))\n((other/note#^old))\n";
+        assert_eq!(
+            replace_block_id_refs_to(
+                content,
+                "/v/dir/referrer.md",
+                &v(),
+                &target_at("/v/dir/note.md"),
+                "old",
+                "new"
+            ),
+            "((./note#^new))\n((../dir/note#^new))\n((other/note#^old))\n"
         );
     }
 
     #[test]
     fn test_replace_block_id_refs_to_no_match_is_byte_identical() {
         let content = "See ((notes#^other)) and {{embed ((notes#^other))}}\r\nend";
-        let result =
-            replace_block_id_refs_to(content, "/v/referrer.md", &keys(&["notes"]), "abc", "xyz");
+        let result = rename_in(content, "notes", "abc", "xyz");
         assert_eq!(result, content);
     }
 
@@ -580,21 +924,26 @@ mod tests {
         let content =
             "See ((old#^abc)) and ((old#^abc|label)).\n{{embed ((old#^abc))}} and [[old]]";
         assert_eq!(
-            replace_block_reference_target(content, "/v/referrer.md", "old", "new"),
+            block_refs(content, "/v/referrer.md", "old", "new"),
             "See ((new#^abc)) and ((new#^abc|label)).\n{{embed ((new#^abc))}} and [[old]]"
         );
     }
 
     #[test]
     fn a_file_rename_matches_the_target_the_way_the_index_does_and_keeps_the_rest() {
-        // Case and `.md` normalize away as the index's key does; a
-        // path-qualified target is filed elsewhere (issue 619) and a
-        // self-reference names no target — both stay. Another note's block
-        // with the same ID is another note's.
+        // Case and `.md` normalize away as the index's key does, and the
+        // `.md` the reference was spelled with stays on the new name. The
+        // path `dir/old` names `/v/dir/old.md`, not this file's path under
+        // the root (`old`), and a self-reference names no target — both
+        // stay (issue 619). Another note's block with the same ID is
+        // another note's.
+        // What fails this: dropping the suffix preservation in
+        // `RenameTarget::respell` (`note_suffix` answering "") —
+        // `((old.md#^a))` then becomes `((new#^a))`.
         let content = "((Old#^a)) ((old.md#^a)) ((dir/old#^a)) ((#^a)) ((other#^a))";
         assert_eq!(
-            replace_block_reference_target(content, "/v/referrer.md", "old", "new"),
-            "((new#^a)) ((new#^a)) ((dir/old#^a)) ((#^a)) ((other#^a))"
+            block_refs(content, "/v/referrer.md", "old", "new"),
+            "((new#^a)) ((new.md#^a)) ((dir/old#^a)) ((#^a)) ((other#^a))"
         );
     }
 
@@ -605,12 +954,12 @@ mod tests {
         // after keeps its CRLF.
         let content = "`((old#^a))` then ((old#^a)) end\r\nnext ((old#^b))\r\n";
         assert_eq!(
-            replace_block_reference_target(content, "/v/referrer.md", "old", "longer-name"),
+            block_refs(content, "/v/referrer.md", "old", "longer-name"),
             "`((old#^a))` then ((longer-name#^a)) end\r\nnext ((longer-name#^b))\r\n"
         );
         let untouched = "no reference here\n((other#^a))";
         assert_eq!(
-            replace_block_reference_target(untouched, "/v/referrer.md", "old", "new"),
+            block_refs(untouched, "/v/referrer.md", "old", "new"),
             untouched
         );
     }
@@ -634,7 +983,7 @@ mod tests {
         ] {
             let content = "see ((old#^a)) and {{embed ((old#^a))}}";
             assert_eq!(
-                replace_block_reference_target(content, "/v/referrer.md", "old", stem),
+                block_refs(content, "/v/referrer.md", "old", stem),
                 content,
                 "{stem}"
             );
@@ -645,18 +994,16 @@ mod tests {
     fn a_file_rename_counts_the_block_references_it_would_rewrite() {
         // issue 678: what a stem no reference can spell leaves behind is what
         // the rewrite would have touched — the references in prose that name
-        // the old stem; not a self-reference (whichever file holds it), not a
-        // path-qualified one, not one inside code, and never a wikilink.
+        // the old stem; not a self-reference (whichever file holds it), not
+        // one naming another file's path (`dir/old` is `/v/dir/old.md`'s),
+        // not one inside code, and never a wikilink.
         let content =
             "((old#^a)) {{embed ((old#^b|shown))}} ((#^c)) ((dir/old#^d)) `((old#^e))`\n[[old]]\n";
-        assert_eq!(block_references_to(content, "/v/referrer.md", "old"), 2);
-        assert_eq!(block_references_to(content, "/v/old.md", "old"), 2);
+        assert_eq!(block_refs_to(content, "/v/referrer.md", "old"), 2);
+        assert_eq!(block_refs_to(content, "/v/old.md", "old"), 2);
+        assert_eq!(block_refs_to("see [[old]] only\n", "/v/r.md", "old"), 0);
         assert_eq!(
-            block_references_to("see [[old]] only\n", "/v/r.md", "old"),
-            0
-        );
-        assert_eq!(
-            replace_block_reference_target(content, "/v/referrer.md", "old", "new"),
+            block_refs(content, "/v/referrer.md", "old", "new"),
             "((new#^a)) {{embed ((new#^b|shown))}} ((#^c)) ((dir/old#^d)) `((old#^e))`\n[[old]]\n"
         );
     }
@@ -684,24 +1031,21 @@ mod tests {
             "foo.md",
             " padded ",
         ] {
-            assert_eq!(
-                replace_wikilink_target(content, "old", stem),
-                content,
-                "{stem:?}"
-            );
+            assert_eq!(wikilinks(content, "old", stem), content, "{stem:?}");
             assert!(!wikilink_can_spell(stem), "{stem:?}");
         }
         assert_eq!(
-            replace_wikilink_target(content, "old", "note (draft)"),
+            wikilinks(content, "old", "note (draft)"),
             "see [[note (draft)]] and [[note (draft)#h|shown]] and [[note (draft).md]]"
         );
         // `::` reads as an alias only behind a leading word; `1::2` does not.
         assert!(wikilink_can_spell("1::2"));
         assert!(wikilink_can_spell("note (draft)"));
         // What the rename reports it left: the links in prose that name the
-        // old file — not a path-qualified one, one in code, or a block reference.
+        // old file — not one naming another file's path (`dir/old`), one in
+        // code, or a block reference.
         assert_eq!(
-            wikilinks_to(
+            wikilinks_to_stem(
                 "[[old]] [[OLD.md|x]] [[dir/old]] `[[old]]` ((old#^a))\n",
                 "old"
             ),
@@ -718,20 +1062,21 @@ mod tests {
         // `diagram.md`'s links, filed under `diagram`. Renaming the file must
         // not touch them — and renaming the note must (the pair below).
         let content = "see [[diagram]] [[diagram.md]] [[diagram.md.txt]] ((diagram#^a))\n";
+        let txt = rename_target("/v/diagram.md.txt", "/v/chart.txt");
         assert_eq!(
-            replace_wikilink_target(content, "diagram.md", "chart"),
+            replace_wikilink_target(content, "/v/r.md", &v(), &txt),
             content
         );
         assert_eq!(
-            replace_block_reference_target(content, "/v/r.md", "diagram.md", "chart"),
+            replace_block_reference_target(content, "/v/r.md", &v(), &txt),
             content
         );
-        assert_eq!(block_references_to(content, "/v/r.md", "diagram.md"), 0);
+        assert_eq!(block_references_to(content, "/v/r.md", &v(), &txt), 0);
         assert_eq!(
-            replace_wikilink_target(content, "diagram", "chart"),
+            wikilinks(content, "diagram", "chart"),
             "see [[chart]] [[chart.md]] [[diagram.md.txt]] ((diagram#^a))\n"
         );
-        assert_eq!(block_references_to(content, "/v/r.md", "diagram"), 1);
+        assert_eq!(block_refs_to(content, "/v/r.md", "diagram"), 1);
     }
 
     #[test]
@@ -741,7 +1086,7 @@ mod tests {
         // file as stale. The `.md` spelling is kept on the new name; the
         // rest of the link — heading, block, display — is untouched.
         assert_eq!(
-            replace_wikilink_target(
+            wikilinks(
                 "[[old.md]] [[OLD|shown]] [[old#h]] [[Old.md^b1]]",
                 "old",
                 "new"
@@ -749,31 +1094,28 @@ mod tests {
             "[[new.md]] [[new|shown]] [[new#h]] [[new.md^b1]]"
         );
         // Unicode case folds as the index folds it.
-        assert_eq!(
-            replace_wikilink_target("[[ÉCOLE]]", "école", "school"),
-            "[[school]]"
-        );
+        assert_eq!(wikilinks("[[ÉCOLE]]", "école", "school"), "[[school]]");
     }
 
     // §33 replace_wikilink_target tests
     #[test]
     fn test_replace_wikilink_target_basic() {
         let content = "See [[old-note]] for details.";
-        let result = replace_wikilink_target(content, "old-note", "new-note");
+        let result = wikilinks(content, "old-note", "new-note");
         assert_eq!(result, "See [[new-note]] for details.");
     }
 
     #[test]
     fn test_replace_wikilink_target_with_display() {
         let content = "Read [[old-note|my alias]] here.";
-        let result = replace_wikilink_target(content, "old-note", "new-note");
+        let result = wikilinks(content, "old-note", "new-note");
         assert_eq!(result, "Read [[new-note|my alias]] here.");
     }
 
     #[test]
     fn test_replace_wikilink_target_with_heading() {
         let content = "See [[old-note#intro]] and [[old-note#summary|要約]].";
-        let result = replace_wikilink_target(content, "old-note", "new-note");
+        let result = wikilinks(content, "old-note", "new-note");
         assert_eq!(
             result,
             "See [[new-note#intro]] and [[new-note#summary|要約]]."
@@ -783,36 +1125,38 @@ mod tests {
     #[test]
     fn test_replace_wikilink_target_case_insensitive() {
         let content = "Links: [[Old-Note]] and [[old-note]].";
-        let result = replace_wikilink_target(content, "old-note", "new-note");
+        let result = wikilinks(content, "old-note", "new-note");
         assert_eq!(result, "Links: [[new-note]] and [[new-note]].");
     }
 
     #[test]
     fn test_replace_wikilink_target_multiple_per_line() {
         let content = "Both [[old]] and [[other]] and [[old|display]].";
-        let result = replace_wikilink_target(content, "old", "new");
+        let result = wikilinks(content, "old", "new");
         assert_eq!(result, "Both [[new]] and [[other]] and [[new|display]].");
     }
 
     #[test]
     fn test_replace_wikilink_target_no_match() {
         let content = "See [[unrelated]] for details.";
-        let result = replace_wikilink_target(content, "old", "new");
+        let result = wikilinks(content, "old", "new");
         assert_eq!(result, "See [[unrelated]] for details.");
     }
 
     #[test]
-    fn test_replace_wikilink_target_preserves_alias() {
+    fn test_replace_wikilink_target_leaves_another_vaults_alias_link_alone() {
+        // What fails this: dropping the alias check from `RenameTarget::refers`.
         let content = "See [[work::old-note]] for details.";
-        let result = replace_wikilink_target(content, "old-note", "new-note");
-        assert_eq!(result, "See [[work::new-note]] for details.");
+        let result = wikilinks(content, "old-note", "new-note");
+        assert_eq!(result, content);
     }
 
     #[test]
-    fn test_replace_wikilink_target_cross_vault_with_heading() {
+    fn test_replace_wikilink_target_leaves_a_cross_vault_link_with_heading_alone() {
+        // What fails this: dropping the alias check from `RenameTarget::refers`.
         let content = "See [[work::old-note#intro]] here.";
-        let result = replace_wikilink_target(content, "old-note", "new-note");
-        assert_eq!(result, "See [[work::new-note#intro]] here.");
+        let result = wikilinks(content, "old-note", "new-note");
+        assert_eq!(result, content);
     }
 
     #[test]
@@ -821,7 +1165,7 @@ mod tests {
         // point at a line inside a fence.
         let content = "```\n((notes#^abc))\n```\n((notes#^abc)) `((notes#^abc))`\n";
         assert_eq!(
-            replace_block_id_refs_to(content, "/v/referrer.md", &keys(&["notes"]), "abc", "xyz"),
+            rename_in(content, "notes", "abc", "xyz"),
             "```\n((notes#^abc))\n```\n((notes#^xyz)) `((notes#^abc))`\n"
         );
     }
@@ -830,11 +1174,11 @@ mod tests {
     fn a_block_id_rename_on_one_line_keeps_the_code_span_whatever_the_new_length() {
         let content = "{{embed ((notes#^abc))}} `((notes#^abc))` ((notes#^abc|show))\n";
         assert_eq!(
-            replace_block_id_refs_to(content, "/v/referrer.md", &keys(&["notes"]), "abc", "a-much-longer-id"),
+            rename_in(content, "notes", "abc", "a-much-longer-id"),
             "{{embed ((notes#^a-much-longer-id))}} `((notes#^abc))` ((notes#^a-much-longer-id|show))\n"
         );
         assert_eq!(
-            replace_block_id_refs_to(content, "/v/referrer.md", &keys(&["notes"]), "abc", "z"),
+            rename_in(content, "notes", "abc", "z"),
             "{{embed ((notes#^z))}} `((notes#^abc))` ((notes#^z|show))\n"
         );
     }
@@ -843,7 +1187,7 @@ mod tests {
     fn a_block_id_rename_keeps_crlf_and_finds_its_lines_in_a_crlf_file() {
         let content = "((notes#^abc))\r\n```\r\n((notes#^abc))\r\n```\r\n((notes#^abc))\r\n";
         assert_eq!(
-            replace_block_id_refs_to(content, "/v/referrer.md", &keys(&["notes"]), "abc", "xyz"),
+            rename_in(content, "notes", "abc", "xyz"),
             "((notes#^xyz))\r\n```\r\n((notes#^abc))\r\n```\r\n((notes#^xyz))\r\n"
         );
     }
@@ -852,55 +1196,65 @@ mod tests {
     fn a_wikilink_target_rename_skips_code_and_a_link_broken_across_lines() {
         let content = "[[old]] `[[old]]`\n```\n[[old]]\n```\n    [[old]]\n[[old|shown]]\n";
         assert_eq!(
-            replace_wikilink_target(content, "old", "new"),
+            wikilinks(content, "old", "new"),
             "[[new]] `[[old]]`\n```\n[[old]]\n```\n    [[old]]\n[[new|shown]]\n"
         );
         // The index reads a line at a time and never sees `[[a\nb]]`; the
         // rewriter must not either.
-        assert_eq!(replace_wikilink_target("[[a\nb]]", "a\nb", "c"), "[[a\nb]]");
+        assert_eq!(wikilinks("[[a\nb]]", "a\nb", "c"), "[[a\nb]]");
     }
 
     /// issue 668 — the rewriter judges the CURRENT content, not the line
     /// numbers an index remembered, and by the index's own target rule.
     #[test]
     fn the_block_id_rewriter_finds_the_reference_where_it_stands_now() {
-        let keys = crate::index::backlink_keys("/v/note.md");
+        let target = target_at("/v/note.md");
+        let roots = v();
+        let rename = |content: &str, target: &BlockTarget| {
+            replace_block_id_refs_to(content, "/v/a.md", &roots, target, "b1", "b2")
+        };
         // A line inserted above the reference after the index was built: the
         // reference is found on its new line and rewritten.
         assert_eq!(
-            replace_block_id_refs_to("new line\nsee ((note#^b1))\n", "/v/a.md", &keys, "b1", "b2"),
+            rename("new line\nsee ((note#^b1))\n", &target),
             "new line\nsee ((note#^b2))\n"
         );
-        // Path-qualified target on its own line names another file's block:
-        // the index files it under `b/note`, and the rewriter leaves it alone.
+        // A path-qualified target on its own line is filed under `b/note`:
+        // `/v/b/note.md`'s block, whose rename rewrites it, and not
+        // `/v/note.md`'s, whose rename leaves it alone (issue 619).
+        // What fails this: dropping the `Path` key from `keys_for` — the
+        // first answer keeps `((b/note#^b1))`.
+        assert_eq!(
+            rename("((note#^b1))\n((b/note#^b1))\n", &target_at("/v/b/note.md")),
+            "((note#^b2))\n((b/note#^b2))\n"
+        );
+        assert_eq!(
+            rename("((note#^b1))\n((b/note#^b1))\n", &target),
+            "((note#^b2))\n((b/note#^b1))\n"
+        );
+        // A referrer that no root covers is judged under none: nothing changes.
+        // What fails this: refers ignoring covering_roots.
+        let uncovered = "((note#^b1))\n((b/note#^b1))\n";
         assert_eq!(
             replace_block_id_refs_to(
-                "((note#^b1))\n((b/note#^b1))\n",
+                uncovered,
                 "/v/a.md",
-                &keys,
+                &[],
+                &target_at("/v/b/note.md"),
                 "b1",
                 "b2"
             ),
-            "((note#^b2))\n((b/note#^b1))\n"
+            uncovered
         );
         // An embed with a display part is a plain reference to the grammar —
         // indexed as one, rewritten as one.
         assert_eq!(
-            replace_block_id_refs_to(
-                "{{embed ((note#^b1|caption))}}\n",
-                "/v/a.md",
-                &keys,
-                "b1",
-                "b2"
-            ),
+            rename("{{embed ((note#^b1|caption))}}\n", &target),
             "{{embed ((note#^b2|caption))}}\n"
         );
         // Nothing to the target: byte for byte.
         let untouched = "((other#^b1)) `((note#^b1))`\n";
-        assert_eq!(
-            replace_block_id_refs_to(untouched, "/v/a.md", &keys, "b1", "b2"),
-            untouched
-        );
+        assert_eq!(rename(untouched, &target), untouched);
     }
 
     /// issue 667 — a block reference in the front matter is neither indexed
@@ -920,9 +1274,8 @@ mod tests {
                 (LinkKind::BlockRef, "note", 5)
             ]
         );
-        let keys = crate::index::backlink_keys("/v/note.md");
         assert_eq!(
-            replace_block_id_refs_to(md, "/v/a.md", &keys, "b1", "b2"),
+            replace_block_id_refs_to(md, "/v/a.md", &v(), &target_at("/v/note.md"), "b1", "b2"),
             "---\nrelated: ((#^b1)) ((note#^b1))\nlink: \"[[x]]\"\n---\nbody ((note#^b2))\n"
         );
         // Behind a byte order mark, and an embed in the front matter, the same.
@@ -950,9 +1303,23 @@ mod tests {
                 case["name"].as_str().unwrap(),
                 case["markdown"].as_str().unwrap(),
             );
-            let keys = crate::index::backlink_keys(target);
+            let target = BlockTarget {
+                keys_by_root: vec![(
+                    "/vault".to_string(),
+                    crate::index::keys_for(target, Some("/vault"), &[], false),
+                )],
+                known_paths: Default::default(),
+                windows: false,
+            };
             assert_eq!(
-                replace_block_id_refs_to(markdown, referrer, &keys, old, new),
+                replace_block_id_refs_to(
+                    markdown,
+                    referrer,
+                    &["/vault".to_string()],
+                    &target,
+                    old,
+                    new
+                ),
                 case["expected"].as_str().unwrap(),
                 "{name}"
             );
