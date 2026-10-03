@@ -1049,6 +1049,15 @@ describe("publish — 키를 쥐는 단계를 실행한다", () => {
     expect(log).toContain("-rw-------");
     expect(log).toContain("StrictHostKeyChecking=yes");
     expect(log).toContain("IdentitiesOnly=yes");
+    // I1(R11) — `UserKnownHostsFile` alone replaces only the user file; ssh still reads
+    // `GlobalKnownHostsFile` (typically pre-seeded with `ssh-keyscan` on the runner image), and
+    // with StrictHostKeyChecking=yes accepts a key found in EITHER file. Pointing the global file
+    // at /dev/null makes the pinned set in `$KNOWN_HOSTS` the only one ssh can match against.
+    expect(log).toContain(`-i '${join(f.runnerTemp, "registry_deploy_key")}'`);
+    expect(log).toContain(
+      `UserKnownHostsFile='${join(f.runnerTemp, "github_known_hosts")}'`,
+    );
+    expect(log).toContain("GlobalKnownHostsFile=/dev/null");
     // OpenSSH 는 끝 줄바꿈 없는 키 파일을 거부한다(revocation-publish.yml, 2026-09-26 실측).
     expect(readFileSync(join(f.runnerTemp, "key-at-push"), "utf8")).toBe(
       `${FAKE_KEY}\n`,
@@ -1118,6 +1127,23 @@ describe("publish — 키가 닿는 자리", () => {
     const uses = [...code.matchAll(/uses: (\S+)/g)].map((m) => m[1]);
     expect(uses).toEqual([
       "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
+    ]);
+  });
+
+  // M3 — "체크아웃도 설치도 node 계열 도구도 쓰지 않는다" 는 거부 목록이라, `publish` 에 새 단계가
+  // (`pip install …`, `curl … | sh` 처럼 그 목록 밖의 도구로) 더해져도 통과한다. 단계 목록 자체를
+  // 이름과 순서까지 통째로 고정한다 — `publish` 에 단계를 더하거나 빼는 것은 이 시험을 고쳐서
+  // 받아들이는 결정이고, 이 시험을 피해서 돌아가는 결정이 아니다.
+  it("publish 잡의 단계는 이 다섯뿐이다 — 이름과 순서까지", () => {
+    const names = [...jobText("publish").matchAll(/\n {6}- name: (.+)/g)].map(
+      (m) => m[1],
+    );
+    expect(names).toEqual([
+      "Download the release",
+      ARTIFACT_STEP,
+      "Clone the live registry",
+      COMPARE_STEP,
+      PUSH_STEP,
     ]);
   });
 

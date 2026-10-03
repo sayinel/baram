@@ -834,8 +834,11 @@ jobs:
           # type (`name` a number, `keywords` holding a number or a nested array, a `capabilities`
           # element that is not a string) — jq's canonical form admits all of that, and the app only
           # drops THIS ONE entry for it (`tolerant_entries`, src-tauri/src/plugin/registry.rs), not
-          # the whole document; only a number out of `serde_json::from_slice`'s range or nesting past
-          # its recursion limit refuses the whole document.
+          # the whole document — UNLESS this release's entry is the only entry the new index lists:
+          # dropping it then leaves zero survivors, and `tolerant_entries` refuses a non-empty array
+          # from which nothing survives outright. Otherwise, only a number out of
+          # `serde_json::from_slice`'s range or nesting past its recursion limit refuses the whole
+          # document.
           jq -e --arg id "$ID" --arg kind "$KIND" '
             (.plugins[] | select(.id == $id)) as $e
             | ($e.id | type == "string" and length > 0)
@@ -921,12 +924,15 @@ jobs:
               || fail "the $ID entry's preview is not a light/dark palette"
           fi
 
-      # Spec 0065 D5 · D8 — THE ONLY STEP IN THIS WORKFLOW THAT HOLDS THE REGISTRY DEPLOY KEY. Nothing that
-      # ran on this runner before it came from a dependency tree: `download-artifact` (pinned), then
-      # bash with the runner's tools. It copies, BY NAME, only the files the checks above passed —
-      # never the artifact as a directory — then writes the key into a file it creates fresh
-      # (`install` does not follow whatever is at the path), pins GitHub's published host keys instead
-      # of trusting `ssh-keyscan`, pushes, and removes the key file however the step ends. OpenSSH
+      # Spec 0065 D5 · D8 — THE `publish` JOB IS THE ONLY JOB THAT RECEIVES THE REGISTRY DEPLOY KEY: a
+      # secret referenced anywhere in a job reaches the runner for that job's whole lifetime, so the
+      # job — not this one step — is the boundary. The key FILE this step writes exists only within
+      # this step: created fresh (`install` does not follow whatever is at the path) and removed
+      # however the step ends. Nothing from the build's dependency tree runs on this runner —
+      # `download-artifact` (pinned), then bash with the runner's own tools. It copies, BY NAME, only
+      # the files the checks above passed — never the artifact as a directory — then pins GitHub's
+      # published host keys as the only ones ssh will trust (the global known-hosts file, which a
+      # runner image pre-seeds via `ssh-keyscan`, is pointed at /dev/null here), and pushes. OpenSSH
       # refuses a key file whose last line has no newline, and the stored secret does not end with
       # one (revocation-publish.yml, 2026-09-26) — hence `printf '%s\n'`.
       - name: Push the release to the registry repo
@@ -955,7 +961,7 @@ jobs:
             "github.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmKSENjQEezOmxkZMy7opKgwFB9nkt5YRrYMjNuG5N87uRgg6CLrbo5wAdT/y6v0mKV0U2w0WZ2YB/++Tpockg=" \
             "github.com ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCj7ndNxQowgcQnjshcLrqPEiiphnt+VTTvDP6mHBL9j1aNUkY4Ue1gvwnGLVlOhGeYrnZaMgRK6+PKCUXaDbC7qtbW8gIkhL7aGCsOr/C56SJMy/BCZfxd1nWzAOxSDPgVsmerOBYfNqltV9/hWCqBywINIR+5dIg6JTJ72pcEpEjcYgXkE2YEFXV1JHnsKgbLWNlhScqb2UmyRkQyytRLtL+38TGxkxCflmO+5Z8CSSNY7GidjMIZ7Q4zMjA2n1nGrlTDkzwDCsw+wqFPGQA179cnfGWOWRVruj16z6XyvxvjJwbz0wQZ75XK5tKSb7FNyeIEs4TT4jk+S4dhPeAUC5y+bDYirYgM4GC7uEnztnZyaVWQ7B381AK4Qdrwt51ZqExKbQpTUNn+EjqoTwvqNj4kqx5QUCI0ThS/YkOxJCXmPUWZbhjpCg56i+2aB6CmK2JGhn57K5mj0MNdBXA4/WnwH6XoPWJzK5Nyu2zB3nAZp+S5hpQs+p1vN1/wsjk=" \
             > "$KNOWN_HOSTS"
-          export GIT_SSH_COMMAND="ssh -i '$KEY' -o IdentitiesOnly=yes -o UserKnownHostsFile='$KNOWN_HOSTS' -o StrictHostKeyChecking=yes"
+          export GIT_SSH_COMMAND="ssh -i '$KEY' -o IdentitiesOnly=yes -o UserKnownHostsFile='$KNOWN_HOSTS' -o GlobalKnownHostsFile=/dev/null -o StrictHostKeyChecking=yes"
           cd "$REG"
           git remote set-url origin "git@github.com:${REGISTRY_REPO}.git"
           git config user.name "github-actions[bot]"

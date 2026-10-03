@@ -9,11 +9,13 @@
 // 다시 검증 · 색인)은 `theme-package-script.test.ts` 와 `theme-registry-chain.test.ts` 가 본다 — 묶기 ·
 // 다시 검증은 함수를 직접 부르고, 색인과 그 검증은 스크립트를 띄운다.
 //
-// 비밀이 닿는 자리 · 두 push 본문의 대조 · push 스크립트의 단언은 키가 `publish` 잡 하나로 옮긴 뒤
-// `src/plugins/__tests__/registry-publish-job.test.ts` 로 갔다(§69, 계획 0115) — 이 파일에는 더 없다.
+// 비밀이 닿는 자리 · push 스크립트의 단언은 키가 `publish` 잡 하나로 옮긴 뒤
+// `src/plugins/__tests__/registry-publish-job.test.ts` 로 갔다(§69, 계획 0115). 두 push 본문을
+// 대조하던 단언은 거기로 간 게 아니라 지웠다 — push 가 `publish` 하나로 합쳐져 비교할 둘째 본문이
+// 없고, registry-publish-job.test.ts 에도 그런 대조는 없다. 이 파일에는 더 없다.
 //
 // 나머지는 텍스트 단언이고 "실행할 수 없는 배선" describe 에 모여 있다. 그 종류는 다섯이다 — 잡
-// 조건(태그 트리거와 두 잡의 `if:`, 그리고 `needs`), meta 잡 둘이 체크아웃과 판정만 도는가, 단계
+// 조건(태그 트리거와 네 잡의 `if:`, 그리고 `needs`), meta 잡 둘이 체크아웃과 판정만 도는가, 단계
 // 사이의 출력 배선(기록 단계의 자리와 세 env · theme-meta 의 두 출력, 대조 단계의 자리와 네 env),
 // 테마 잡이 `examples/themes` 에 `$DIR` 로만 닿음, 색인 단계의 두 env.
 
