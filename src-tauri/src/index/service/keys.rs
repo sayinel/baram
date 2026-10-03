@@ -311,16 +311,14 @@ mod tests {
         // the TypeScript object literal are compared with the Rust mapping
         // over every variant, keyed by the variant's serialized name (the
         // `VaultType` the frontend receives), names lowercased on both sides.
-        // The TypeScript file is read from the repo root, the parent of the
-        // crate directory.
+        // The TypeScript file is compiled in (`include_str!`), so the CI rust
+        // job's path filter must list it — `rust-job-path-filter.test.ts`
+        // fails until it does; a runtime read escaped that check, and a
+        // frontend-only PR could change the table with the rust job skipped.
         // What fails this: adding `general: "Vault",` to the TypeScript
         // object, or mapping `VaultType::Zettelkasten` to `None` in
         // `space_name` — the sets differ either way.
-        let path = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../src/utils/editor/wikilink-nav.ts"
-        );
-        let ts = std::fs::read_to_string(path).expect(path);
+        let ts = include_str!("../../../../src/utils/editor/wikilink-nav.ts");
         let start = ts
             .find("const SPACE_ALIASES")
             .expect("SPACE_ALIASES in wikilink-nav.ts");
