@@ -37,8 +37,11 @@ export function insertEscTarget(state: EditorState): null | number {
     if (sel.head < sel.anchor) return sel.head;
     return lastUnitBefore(state, sel.head) ?? sel.head;
   }
-  const span = caretSpan(state);
-  return span ? unitBefore(state, span.head, span.from) : null;
+  // A caret in a code block is CodeMirror's: stepping it here would also hand
+  // focus to the island (dispatchCursor). Off a textblock there is no line.
+  if (!sel.empty || isCodeBlockLanding(state, sel.head)) return null;
+  const span = segmentSpanAt(state, sel.head);
+  return span ? unitBefore(state, sel.head, span.from) : null;
 }
 
 /**
@@ -65,20 +68,6 @@ export function terminalClampTarget(state: EditorState): null | number {
   if (!atLineEnd || $head.nodeBefore?.type.name === "hardBreak") return null;
   const prev = prevUnitBoundary(state, sel.head);
   return prev < sel.head ? prev : null;
-}
-
-/** The collapsed caret and its cursor line. null for a range or a
- *  NodeSelection (block atom line), off a textblock (segmentSpanAt), and in a
- *  code block — CodeMirror owns that caret, and a code block's line END is a
- *  legal landing there (code-block-landing.ts). */
-function caretSpan(
-  state: EditorState,
-): null | { from: number; head: number; to: number } {
-  const sel = state.selection;
-  if (!sel.empty) return null;
-  if (isCodeBlockLanding(state, sel.head)) return null;
-  const span = segmentSpanAt(state, sel.head);
-  return span ? { from: span.from, head: sel.head, to: span.to } : null;
 }
 
 /** The start of the last cursor unit before `head`: on its own line, or —

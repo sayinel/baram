@@ -23,7 +23,7 @@ import type { EditorView } from "@tiptap/pm/view";
 import { read } from "./vim-plugin-state";
 import { vimCursor } from "./vim-selection-commands";
 
-export interface PointerGoalWatch {
+interface PointerGoalWatch {
   /** pointerdown / mousedown: remember where the cursor was, and in what. */
   arm(view: EditorView): void;
   /** A key arrived — vim's own commands decide the goal from here. */

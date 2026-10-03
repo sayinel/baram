@@ -126,7 +126,7 @@ export function columnAt(state: EditorState, pos: number): number {
  *  caret at the line end; normal mode clamps off it — normal-cursor.ts)
  *  counts the FULL line, not the last index
  *  (review S3-R6). */
-export function columnOf(starts: number[], pos: number): number {
+function columnOf(starts: number[], pos: number): number {
   let column = 0;
   for (const start of starts) {
     if (start < pos) column++;

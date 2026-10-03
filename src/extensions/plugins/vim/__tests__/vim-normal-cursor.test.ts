@@ -94,6 +94,23 @@ describe("insert Esc steps one unit back (vim ins_esc)", () => {
   });
 });
 
+describe("insert Esc leaves a code block's caret alone", () => {
+  it("a caret inside a code block does not step back", () => {
+    // Fails if: insertEscTarget drops its isCodeBlockLanding check — the
+    // caret steps back to 2 and dispatchCursor hands focus to the island.
+    const editor = makeVimEditor("<pre><code>abc</code></pre><p>x</p>");
+    editor.view.dispatch(
+      editor.state.tr
+        .setSelection(TextSelection.create(editor.state.doc, 3))
+        .setMeta(vimPluginKey, { mode: "insert", type: "setMode" }),
+    );
+    expect(mode(editor)).toBe("insert");
+    key(editor, "Escape");
+    expect(mode(editor)).toBe("normal");
+    expect(head(editor)).toBe(3);
+  });
+});
+
 describe("a normal-mode caret on the terminal boundary is clamped", () => {
   it("x on the last character leaves the cursor on the new last one", () => {
     // Fails if: the plugin's appendTransaction (appendNormalCursorFixes) is removed —
@@ -125,7 +142,8 @@ describe("a normal-mode caret on the terminal boundary is clamped", () => {
   });
 
   it("leaves a code block's caret to CodeMirror", () => {
-    // Fails if: caretSpan drops the isCodeBlockLanding exclusion (head → 2).
+    // Fails if: terminalClampTarget drops its isCodeBlockLanding check
+    // (head → 2).
     const editor = makeVimEditor("<pre><code>ab</code></pre><p>x</p>");
     place(editor, 3); // code block content end
     expect(head(editor)).toBe(3);
