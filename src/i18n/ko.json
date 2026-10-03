@@ -183,6 +183,7 @@
   "fileTree.accessDenied.title": "폴더 접근이 거부되었습니다",
   "fileTree.accessDenied.toast": "시스템이 폴더 접근을 거부했습니다.",
   "fileTree.accessDenied.toastGeneric": "폴더를 읽을 수 없습니다.",
+  "fileTree.create.exists.toast": "'{name}' 이름이 이미 쓰이고 있어 아무것도 바꾸지 않았습니다.",
   "fileTree.drop.failed": "'{name}' 복사에 실패했습니다.",
   "fileTree.drop.folderCopied": "폴더 '{name}'을(를) 복사했습니다 (파일 {count}개).",
   "fileTree.drop.folderCopiedWithSkips": "폴더 '{name}'을(를) 복사했습니다 (파일 {count}개, 심볼릭 링크 {skipped}개는 건너뜀).",

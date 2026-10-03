@@ -183,6 +183,7 @@
   "fileTree.accessDenied.title": "Folder access denied",
   "fileTree.accessDenied.toast": "Folder access was denied by the system.",
   "fileTree.accessDenied.toastGeneric": "Couldn't read the folder.",
+  "fileTree.create.exists.toast": "“{name}” already exists. Nothing was changed.",
   "fileTree.drop.failed": "Could not copy “{name}”.",
   "fileTree.drop.folderCopied": "Copied “{name}” ({count} files).",
   "fileTree.drop.folderCopiedWithSkips": "Copied “{name}” ({count} files, skipped {skipped} symlinks).",

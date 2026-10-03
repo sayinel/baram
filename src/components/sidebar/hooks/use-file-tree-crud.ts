@@ -4,15 +4,19 @@ import { useCallback, useState } from "react";
 import type { FileEntry } from "../../../stores/file/file";
 import type { CreatingEntryState } from "../file-tree-types";
 
+import { type Locale, t } from "../../../i18n";
 import {
   createDir,
+  createFile,
   deleteDir,
   deleteFile,
-  writeFile,
+  isFileExistsError,
 } from "../../../ipc/invoke";
 import { useEditorStore } from "../../../stores/editor/editor";
 import { useLinkStore } from "../../../stores/editor/link";
 import { useFileStore } from "../../../stores/file/file";
+import { useSettingsStore } from "../../../stores/settings/store";
+import { useUIStore } from "../../../stores/ui/ui";
 import { showAlert, showConfirm } from "../../../utils/confirm-dialog";
 import { logger } from "../../../utils/logger";
 import { pruneNestedPaths } from "../file-tree-multi-ops";
@@ -141,7 +145,27 @@ export function useFileTreeCrud(): UseFileTreeCrudReturn {
             children: [],
           });
         } else {
-          await writeFile(fullPath, "");
+          // `createFile`, never `writeFile`: the latter replaces whatever is at the path,
+          // and a name typed here is no evidence the path is free. Typing an existing file's
+          // exact name emptied it on disk, set its open buffer to "" and brought its tab to
+          // the front; on a volume that ignores case (the macOS and Windows default) a name
+          // differing only in case emptied the same file and opened a second tab on it,
+          // leaving the first tab's buffer stale. A check against the tree could not have
+          // caught the second — it compares names exactly — nor a dot-file it hides. The OS
+          // refuses a taken path instead, and nothing below runs.
+          try {
+            await createFile(fullPath, "");
+          } catch (err) {
+            if (!isFileExistsError(err)) throw err;
+            const { locale } = useSettingsStore.getState();
+            useUIStore.getState().showToast(
+              t("fileTree.create.exists.toast", locale as Locale, {
+                name: name.trim(),
+              }),
+              "error",
+            );
+            return;
+          }
           addFileEntry(parentPath, {
             name: name.trim(),
             path: fullPath,

@@ -28,7 +28,7 @@ const SKIP_DIRS = new Set([
 interface ChangedPayload {
   mtime: number;
   /**
-   * §313 이 변경을 만든 쪽. `"app"`은 이 앱의 `write_file`이 만든 것이고, Rust가 쓰기
+   * §313 이 변경을 만든 쪽. `"app"`은 이 앱의 `write_file`·`create_file`이 만든 것이고, Rust가 쓰기
    * 직후의 mtime과 대조해 판정한다 — 프론트엔드가 추측하지 않는다. 오래된 백엔드나
    * 판정 실패는 `undefined`로 도착하며, 그때는 외부 변경으로 다룬다(안전한 쪽).
    */
