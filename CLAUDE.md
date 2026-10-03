@@ -215,8 +215,9 @@ baram/
     `BLOCK_REF_RE`·`BLOCK_EMBED_RE`) block ID rename 은 alias 를 넘기지 않는다
   - **파일 rename 은 디렉터리를 바꾸지 않는다** — `rename/destination.rs` 의 `stays_in_its_directory` 가 부모가 다르면 쓰기 전에 `Err` 를 낸다. 경로·상대 참조는 노트를
     지금 자리로 부르고, 이동은 옮겨진 노트 자신의 상대 링크까지 고쳐야 하므로 별도 패스다. 부모는 resolve 한 것이 아니라 **적힌 대로** 비교한다 — respell 이 `new_path` 의 성분을 링크에 쓰므로,
-    resolve 하면 같은 폴더인 `a/../a/new.md` 도 `[[a/../a/new]]` 를 써 아무 노트도 가리키지 않는다. 그래서 두 rename 은 절대 경로가 아닌 경로를 먼저 거부한다
-    (`rename/mod.rs` 의 `absolute`) — 상대 경로는 작업 디렉터리 기준으로 resolve 되어 적힌 비교를 빠져나간다. 목적지에 **다른** 디렉터리 항목이 있으면
+    resolve 하면 같은 폴더인 `a/../a/new.md` 도 `[[a/../a/new]]` 를 써 아무 노트도 가리키지 않는다. 그래서 두 rename 은 절대 경로가 아닌 경로와 `..` 성분이 든 경로를 먼저 거부한다
+    (`rename/mod.rs` 의 `plain_absolute`) — 상대 경로는 작업 디렉터리 기준으로 resolve 되어 적힌 비교를 빠져나가고, `/v/sub/../old.md` 는 같은 부모 검사를 통과하지만
+    경로 키가 `sub/../old` 가 되어 경로 링크를 놓친다. 목적지에 **다른** 디렉터리 항목이 있으면
     거부한다(`another_entry_at`, 이동 직전에 판정). 같은 항목인지는 **마지막 성분을 따라가지 않고** 본다 — Unix 에서는 `symlink_metadata` 의 dev·inode 가 같고 이름이
     ASCII 대소문자만 다를 때(대소문자를 접는 파일 시스템의 `Note.md` → `note.md`)만 같은 항목이다. **ASCII** 대소문자만 본다 — `Élan.md` → `élan.md` 는 그 파일 시스템에서
     목적지가 있고 이름 비교에 걸려 거부된다. 같은 inode 에 ASCII 대소문자 이상 다른 이름은 hard link 라 거부한다. 대소문자를 지키는 파일 시스템에서 이름이 ASCII 대소문자만 다른 hard link 는

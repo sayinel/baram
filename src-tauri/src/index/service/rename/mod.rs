@@ -93,17 +93,24 @@ async fn keys_covering(ctx_mgr: &ContextManager, keys: &[String], path: &str) ->
     keys_of(&contexts_covering(ctx_mgr, keys, path).await)
 }
 
-/// `Err` unless `path` is absolute as the host reads it (`Path::is_absolute`).
-/// The renames take the paths the webview's file tree holds, which are
-/// absolute; a relative one would resolve against the process's working
-/// directory, a place no registered context names, and the checks that
-/// follow read it lexically as well as canonically. Refused before anything
-/// is read or written.
-fn absolute(path: &str) -> Result<(), String> {
-    if Path::new(path).is_absolute() {
-        Ok(())
-    } else {
+/// `Err` unless `path` is absolute as the host reads it (`Path::is_absolute`)
+/// and has no `..` component. The renames take the paths the webview's file
+/// tree holds, which are both; a relative one would resolve against the
+/// process's working directory, a place no registered context names, and the
+/// checks that follow read the path lexically as well as canonically — the
+/// path keys (`root_relative_key`) and the same-directory check keep a `..`
+/// as a name, so `/v/sub/../old.md` would key as `sub/../old` and miss every
+/// path link to `/v/old.md`. Refused before anything is read or written.
+fn plain_absolute(path: &str) -> Result<(), String> {
+    let p = Path::new(path);
+    if !p.is_absolute() {
         Err(format!("{path} is not an absolute path"))
+    } else if p.components().any(|c| c == std::path::Component::ParentDir) {
+        Err(format!(
+            "a rename path may not climb with `..`; {path} does"
+        ))
+    } else {
+        Ok(())
     }
 }
 

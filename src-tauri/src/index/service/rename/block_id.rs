@@ -15,7 +15,7 @@ use super::referrers::{
     ReferrerRewrite, Unchanged,
 };
 use super::scope::{Referrers, RenameScope};
-use super::{absolute, RenameResult};
+use super::{plain_absolute, RenameResult};
 
 pub(crate) async fn rename_block_id_inner(
     state: &LinkIndexState,
@@ -24,7 +24,7 @@ pub(crate) async fn rename_block_id_inner(
     old_id: &str,
     new_id: &str,
 ) -> Result<RenameResult, String> {
-    absolute(file_path)?;
+    plain_absolute(file_path)?;
     let scope = RenameScope::holding(state, ctx_mgr, file_path).await?;
 
     // 1. Get referring files from every containing index (block_id == old_id,

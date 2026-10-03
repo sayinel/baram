@@ -34,7 +34,7 @@ impl RenameScope {
     /// references) or an index cannot be built. A standalone File context
     /// (§89) has no directory index and no other file to update, so `dirs`
     /// and `keys` are empty; a file rename then simply renames the file, and
-    /// a block ID rename finds no referrer to rewrite. `absolute` is the
+    /// a block ID rename finds no referrer to rewrite. `plain_absolute` is the
     /// caller's check, made before this — the file rename checks both of its
     /// paths.
     pub(super) async fn holding(

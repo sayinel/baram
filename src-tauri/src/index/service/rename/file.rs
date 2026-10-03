@@ -14,7 +14,7 @@ use super::referrers::{
     apply_queued, named_only_for_own_references, queue_rewritten, rewrite_referrers, Unchanged,
 };
 use super::scope::{Referrers, RenameScope};
-use super::{absolute, push_for_keys, RenameResult};
+use super::{plain_absolute, push_for_keys, RenameResult};
 
 pub(crate) async fn rename_file_with_links_inner(
     state: &LinkIndexState,
@@ -22,8 +22,8 @@ pub(crate) async fn rename_file_with_links_inner(
     old_path: &str,
     new_path: &str,
 ) -> Result<RenameResult, String> {
-    absolute(old_path)?;
-    absolute(new_path)?;
+    plain_absolute(old_path)?;
+    plain_absolute(new_path)?;
     // The contexts and their indexes first (`RenameScope::holding`).
     let scope = RenameScope::holding(state, ctx_mgr, old_path).await?;
     // issue 717: a link behind one of the file's own vault aliases names it
@@ -105,8 +105,10 @@ pub(crate) async fn rename_file_with_links_inner(
     // referrer read above, right before the move. The one entry the
     // destination may already name is the source's own directory entry
     // (`another_entry_at`), judged without following either last component.
-    if another_entry_at(old_path, new_path) {
-        return Err(format!("{new_path} already exists"));
+    match another_entry_at(old_path, new_path) {
+        Ok(false) => {}
+        Ok(true) => return Err(format!("{new_path} already exists")),
+        Err(e) => return Err(format!("{new_path} could not be checked: {e}")),
     }
 
     // 2. Rename the actual file — the one step that can still fail. It comes

@@ -43,8 +43,8 @@ pub(super) struct RenameSource {
 /// The checks, then: the directory entry as well as the resolved path
 /// (`entry_confined`, `confined_both_ways`), the file's own contexts rather
 /// than any registered one, and the same directory
-/// (`stays_in_its_directory`). The caller adds absolute paths (`absolute`, in
-/// `rename/mod.rs`) and no other entry at the destination
+/// (`stays_in_its_directory`). The caller adds absolute paths without `..`
+/// (`plain_absolute`, in `rename/mod.rs`) and no other entry at the destination
 /// (`another_entry_at`, called by `rename/file.rs`).
 pub(super) fn check_destination(
     old_path: &str,
@@ -67,7 +67,7 @@ pub(super) fn check_destination(
     // parents are compared as spelled, not as resolved: the respelling
     // writes `new_path`'s components into links, so `a/../a/new.md`, whose
     // parent resolves to `a`, would write `[[a/../a/new]]`, a link to no
-    // note. Both paths are absolute (`absolute`, checked by the caller), so
+    // note. Both paths are absolute (`plain_absolute`, checked by the caller), so
     // a relative spelling cannot pass as the same parent either.
     if !stays_in_its_directory(old_path, new_path, cfg!(windows)) {
         return Err(format!(
@@ -136,9 +136,16 @@ fn entry_path(path: &str) -> Result<std::path::PathBuf, String> {
 ///
 /// So a symlinked source renamed onto its target's name is refused, and a
 /// symlinked source renamed to another spelling of its own name goes ahead.
-pub(super) fn another_entry_at(old_path: &str, new_path: &str) -> bool {
-    let Ok(new_meta) = std::fs::symlink_metadata(new_path) else {
-        return false;
+///
+/// Only `NotFound` reads as "no entry". Any other error reading `new_path`
+/// (permission, a name too long, a network volume's transient failure) is
+/// returned: the caller cannot tell whether an entry is there, and a move
+/// that reads it as absent would replace one.
+pub(super) fn another_entry_at(old_path: &str, new_path: &str) -> std::io::Result<bool> {
+    let new_meta = match std::fs::symlink_metadata(new_path) {
+        Ok(meta) => meta,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(e) => return Err(e),
     };
     let names_differ_only_by_case = match (
         Path::new(old_path).file_name(),
@@ -147,7 +154,7 @@ pub(super) fn another_entry_at(old_path: &str, new_path: &str) -> bool {
         (Some(a), Some(b)) => a.eq_ignore_ascii_case(b),
         _ => false,
     };
-    !(names_differ_only_by_case && same_entry(old_path, new_path, &new_meta))
+    Ok(!(names_differ_only_by_case && same_entry(old_path, new_path, &new_meta)))
 }
 
 /// Whether the existing entry at `new_path` (`new_meta`, not followed) is the
@@ -247,8 +254,26 @@ fn destination_confined(identity: &Path, dirs: &[Registered], old_parent: Option
 
 #[cfg(test)]
 mod tests {
-    use super::{same_entry_by_canonical, stays_in_its_directory};
+    use super::{another_entry_at, same_entry_by_canonical, stays_in_its_directory};
     use std::path::PathBuf;
+
+    #[test]
+    fn a_destination_that_cannot_be_read_is_not_taken_for_absent() {
+        // A name longer than a file name may be makes `symlink_metadata`
+        // fail with something other than `NotFound`: whether an entry is
+        // there is not known, so the check answers an error, not "absent".
+        // An absent name still answers `Ok(false)`.
+        // What fails this: reading every error as "no entry" (`Ok(false)`),
+        // the rule this replaced — the first assertion.
+        let dir = tempfile::tempdir().unwrap();
+        let old = dir.path().join("old.md");
+        std::fs::write(&old, "t").unwrap();
+        let old = old.to_str().unwrap();
+        let too_long = dir.path().join(format!("{}.md", "n".repeat(300)));
+        assert!(another_entry_at(old, too_long.to_str().unwrap()).is_err());
+        let absent = dir.path().join("new.md");
+        assert!(!another_entry_at(old, absent.to_str().unwrap()).unwrap());
+    }
 
     #[test]
     fn off_unix_the_same_entry_is_the_same_canonical_path() {

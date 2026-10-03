@@ -141,11 +141,13 @@ async fn a_rename_that_would_move_the_note_is_refused_before_anything_changes() 
 async fn a_rename_whose_new_path_climbs_back_into_the_folder_is_refused_as_spelled() {
     // `a/../a/new.md` resolves to a file in `a`, the note's own folder, but
     // the respelling writes the new path's components into links: `r.md`'s
-    // `[[a/old]]` would become `[[a/../a/new]]`, which names no note. The
-    // parents are compared as spelled, so this is refused like a move.
-    // What fails this: comparing the canonical parents instead (the parents
-    // of `resolve_canonical(old_path)` and `resolve_canonical(new_path)`) —
-    // the rename goes ahead and writes `[[a/../a/new]]`.
+    // `[[a/old]]` would become `[[a/../a/new]]`, which names no note. A path
+    // with a `..` is refused before anything is read (`plain_absolute`); the
+    // same-directory check, which compares the parents as spelled, is pinned
+    // by the symlinked-folder test below, which no `..` reaches.
+    // What fails this: dropping the `..` refusal and comparing the canonical
+    // parents in `stays_in_its_directory` — the rename goes ahead and writes
+    // `[[a/../a/new]]`.
     let ctx = ContextManager::new();
     let (dir, root) = vault_with_a_link(&ctx, "ctx-climb", true).await;
     std::fs::create_dir_all(dir.path().join("a")).unwrap();
@@ -168,6 +170,44 @@ async fn a_rename_whose_new_path_climbs_back_into_the_folder_is_refused_as_spell
     assert!(dir.path().join("a/old.md").exists());
     let err = result.unwrap_err();
     // The reason first: the frontend shows it briefly, ahead of the path.
+    assert!(
+        err.starts_with("a rename path may not climb with `..`;"),
+        "{err}"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_rename_through_a_symlinked_folder_is_refused_as_spelled() {
+    // `link` is a symlink to `a`, so `link/new.md` resolves into the note's
+    // own folder, but the respelling would write `[[link/new]]` — a path key
+    // the index never files a note under, since the build does not follow a
+    // symlinked folder's entry as a second spelling. The parents are
+    // compared as spelled, so this is refused like a move.
+    // What fails this: comparing the canonical parents in
+    // `stays_in_its_directory` — the rename goes ahead.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-linkdir", true).await;
+    std::fs::create_dir_all(dir.path().join("a")).unwrap();
+    std::fs::write(dir.path().join("a/old.md"), "t\n").unwrap();
+    std::fs::write(dir.path().join("r.md"), "[[a/old]]\n").unwrap();
+    std::os::unix::fs::symlink(dir.path().join("a"), dir.path().join("link")).unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/a/old.md"),
+        &format!("{root}/link/new.md"),
+    )
+    .await;
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
+        "[[a/old]]\n"
+    );
+    assert!(dir.path().join("a/old.md").exists());
+    let err = result.unwrap_err();
     assert!(
         err.starts_with("a rename keeps the note in its directory as spelled;"),
         "{err}"
@@ -620,7 +660,7 @@ async fn both_renames_refuse_a_relative_path_before_anything_changes() {
     // A relative path resolves against the process's working directory. The
     // vault lies under it here, so the relative spelling names the vault's
     // own files and every check after the refusal would read them.
-    // What fails this: dropping any one of the three `absolute` refusals —
+    // What fails this: dropping any one of the three `plain_absolute` refusals —
     // for the file rename's new path, the first call answers the move
     // refusal instead; for its old path, the second does; for the block-ID
     // rename, the third goes ahead with its path reference missed and
@@ -822,5 +862,42 @@ async fn a_case_only_rename_respells_a_path_link_to_the_note() {
     assert_eq!(
         std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
         "[[a/note]]\n"
+    );
+}
+
+#[tokio::test]
+async fn both_renames_refuse_a_path_with_a_parent_component() {
+    // `/v/sub/../a/old.md` → `/v/sub/../a/new.md` passes the same-directory
+    // check, which compares the parents as spelled, but every path key is
+    // lexical too: the file would key as `sub/../a/old` and `r.md`'s
+    // `[[a/old]]` would be missed. Both renames refuse such a path before
+    // anything changes.
+    // What fails this: dropping the `..` refusal from `plain_absolute` — the
+    // file rename moves the note and answers `Ok` with `r.md` untouched, and
+    // the block-ID rename answers `Ok` with the reference missed.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-dotdot", true).await;
+    std::fs::create_dir_all(dir.path().join("a")).unwrap();
+    std::fs::create_dir_all(dir.path().join("sub")).unwrap();
+    std::fs::write(dir.path().join("a/old.md"), "para ^x\n").unwrap();
+    std::fs::write(dir.path().join("r.md"), "[[a/old]]\n((a/old#^x))\n").unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+
+    let block =
+        rename_block_id_inner(&state, &ctx, &format!("{root}/sub/../a/old.md"), "x", "y").await;
+    assert!(block.as_ref().is_err_and(|e| e.contains("..")), "{block:?}");
+    let file = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/sub/../a/old.md"),
+        &format!("{root}/sub/../a/new.md"),
+    )
+    .await;
+    assert!(file.as_ref().is_err_and(|e| e.contains("..")), "{file:?}");
+    assert!(dir.path().join("a/old.md").exists());
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
+        "[[a/old]]\n((a/old#^x))\n"
     );
 }
