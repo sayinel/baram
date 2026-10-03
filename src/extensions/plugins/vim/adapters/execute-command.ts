@@ -17,12 +17,12 @@ import type { Transaction } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 
 import { redo, undo } from "@tiptap/pm/history";
-import { NodeSelection, TextSelection } from "@tiptap/pm/state";
+import { TextSelection } from "@tiptap/pm/state";
 
 import { getAction } from "../../../../keybindings/keybinding-actions";
 import { asTaskState, nextTaskState } from "../../../../utils/tasks/task-state";
 import { segmentSpanAt } from "./cursor-line-columns";
-import { cursorSelection } from "./cursor-selection";
+import { cursorSelection, vimCursor } from "./cursor-selection";
 import { resolveFindChar } from "./find-char";
 import { nextUnitBoundary } from "./graphemes";
 import { resolveMotion } from "./motions";
@@ -58,12 +58,7 @@ export function executeCoreCommand(
   visual: null | VisualState,
 ): ExecutionResult {
   const state = view.state;
-  // A NodeSelection (block atom line) reads as its own position — PM's head
-  // points past the node and would resolve the NEXT line (review S3-R1).
-  const head =
-    state.selection instanceof NodeSelection
-      ? state.selection.from
-      : state.selection.head;
+  const head = vimCursor(state);
 
   switch (command.type) {
     case "changeLine":
@@ -193,7 +188,7 @@ function dispatchLanded(view: EditorView, tr: Transaction): boolean {
   // DIRECT call matters: PM's own scroll pipeline bails when the DOM
   // selection sits outside a non-editable view, i.e. vim modal (ops-R8).
   if (view.state !== before) {
-    scrollCursorIntoView(view, vimHeadOf(view.state));
+    scrollCursorIntoView(view, vimCursor(view.state));
     return true;
   }
   return false;
@@ -256,7 +251,7 @@ function runHistory(
   // Only on PROGRESS: u at history's start must not snap a wheel-scrolled
   // viewport back to an unchanged cursor (review ops-R9).
   if (view.state !== start) {
-    scrollCursorIntoView(view, vimHeadOf(view.state));
+    scrollCursorIntoView(view, vimCursor(view.state));
   }
 }
 
@@ -414,11 +409,4 @@ function runToggleTask(view: EditorView, head: number): ExecutionResult {
     }
   }
   return { silent: true };
-}
-
-/** The vim head of a landing selection — a NodeSelection reads as its own
- *  position, like vimCursor in the plugin (review S3-R1). */
-function vimHeadOf(state: EditorView["state"]): number {
-  const sel = state.selection;
-  return sel instanceof NodeSelection ? sel.from : sel.head;
 }

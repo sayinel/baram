@@ -15,6 +15,7 @@
 // have re-resolved against the pre-transaction doc.
 
 import type { Node as PMNode } from "@tiptap/pm/model";
+import type { EditorState } from "@tiptap/pm/state";
 
 import { NodeSelection, Selection } from "@tiptap/pm/state";
 
@@ -40,4 +41,13 @@ export function cursorSelection(doc: PMNode, target: number): Selection {
     }
   }
   return Selection.near($target, 1);
+}
+
+/** The reverse — the vim cursor in `state`: a NodeSelection's own position
+ *  (a block atom line), or the collapsed head. PM's `head` on a NodeSelection
+ *  points PAST the node — resolving lines from there lands on the wrong one
+ *  (review S3-R1). */
+export function vimCursor(state: EditorState): number {
+  const sel = state.selection;
+  return sel instanceof NodeSelection ? sel.from : sel.head;
 }

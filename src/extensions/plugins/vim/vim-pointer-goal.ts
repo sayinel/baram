@@ -21,8 +21,8 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 import type { EditorState, Transaction } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 
+import { vimCursor } from "./adapters/cursor-selection";
 import { read } from "./vim-plugin-state";
-import { vimCursor } from "./vim-selection-commands";
 
 interface PointerGoalWatch {
   /** pointerdown / mousedown: remember where the cursor was, and in what. */

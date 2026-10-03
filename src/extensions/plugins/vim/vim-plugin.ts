@@ -24,6 +24,7 @@ import { NodeSelection, Plugin } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 
 import { planAtomInsert } from "./adapters/atom-insert";
+import { vimCursor } from "./adapters/cursor-selection";
 import { hasAnyEditorTransient } from "./adapters/esc-arbitration";
 import { executeCoreCommand } from "./adapters/execute-command";
 import { nextUnitBoundary } from "./adapters/graphemes";
@@ -48,7 +49,6 @@ import {
   appendClampAndGoalReset,
   escapeInsertCursor,
   runSelectionCommand,
-  vimCursor,
 } from "./vim-selection-commands";
 import { publishVimRefusal } from "./vim-status";
 

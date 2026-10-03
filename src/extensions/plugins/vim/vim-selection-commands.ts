@@ -5,12 +5,11 @@
 // handles it and the foreign-selectionSet rule (priority 4) never misfires
 // on vim's own cursor moves. `runSelectionCommand` is the entry point for
 // commands; `dispatchCursor` and `visualSelection` are its private machinery.
-// Three exports serve createVimPlugin's props directly: `vimCursor` (the
-// block-cursor decoration and the scroll-follow head), and the two
-// normal-cursor writes of issue 776 — `escapeInsertCursor` (insert Esc) and
-// `appendClampAndGoalReset` (appendTransaction) — which move the caret and so
-// need dispatchCursor's DOM handling or the vim meta that keeps priority 4
-// quiet.
+// Two more exports are the normal-cursor writes of issue 776 —
+// `escapeInsertCursor` (insert Esc, from the keydown prop) and
+// `appendClampAndGoalReset` (from the plugin's appendTransaction) — which move
+// the caret and so need dispatchCursor's DOM handling or the vim meta that
+// keeps priority 4 quiet.
 
 import type {
   CoreCommand,
@@ -25,7 +24,7 @@ import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 
 import { enterCodeBlockSelection } from "../../nodes/views/code-block-cm-registry";
 import { columnAt } from "./adapters/cursor-line-columns";
-import { cursorSelection } from "./adapters/cursor-selection";
+import { cursorSelection, vimCursor } from "./adapters/cursor-selection";
 import { findCharTarget } from "./adapters/find-char";
 import { cursorLineStart } from "./adapters/line-sequence";
 import { lineJumpTarget, resolveMotion } from "./adapters/motions";
@@ -363,14 +362,6 @@ function runSearch(
   dispatchCursor(view, tr);
   if (target !== null) scrollCursorIntoView(view, target);
   return true;
-}
-
-/** The vim cursor: a NodeSelection's own position (a block atom line), or
- *  the collapsed head. PM's `head` on a NodeSelection points PAST the node —
- *  resolving lines from there lands on the wrong one (review S3-R1). */
-export function vimCursor(state: EditorState): number {
-  const sel = state.selection;
-  return sel instanceof NodeSelection ? sel.from : sel.head;
 }
 
 /** Visual rendering. A range that is exactly one selectable block atom
