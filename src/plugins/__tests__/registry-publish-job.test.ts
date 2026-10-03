@@ -245,6 +245,85 @@ async function fixture(
   };
 }
 
+/**
+ * I1(R8) 시험 전용 — 실제 `scripts/update-registry-index.mjs` 는 이런 매니페스트(문자열이 아닌
+ * `keywords` 원소 등)를 검증에서 거부하므로, 그 스크립트를 부르지 않고 스크립트가 쓰는 그대로 항목을
+ * JS 로 직접 짓는다. 값은 JSON 으로 표현 가능해야 한다 — 그래야 canonical-bytes 검사가 아니라 R8 의
+ * 새 검사(크기·타입)에 닿는다.
+ */
+async function craftedFixture(
+  kind: "plugin" | "theme",
+  zipManifest: Record<string, unknown>,
+): Promise<Fixture> {
+  const runnerTemp = mkdtempSync(join(tmpdir(), "baram-publish-crafted-"));
+  const registry = join(runnerTemp, "registry");
+  const release = join(runnerTemp, "release");
+  mkdirSync(join(registry, "plugins"), { recursive: true });
+  mkdirSync(join(release, "plugins"), { recursive: true });
+  writeFileSync(
+    join(registry, "index.json"),
+    `${JSON.stringify(LIVE, null, 2)}\n`,
+  );
+
+  const manifest = kind === "plugin" ? PLUGIN_MANIFEST : THEME_MANIFEST;
+  const zipName = `${manifest.id}-${manifest.version}.zip`;
+  const manifestZipName =
+    kind === "plugin" ? "baram-plugin.json" : "baram-theme.json";
+  const zip = await zipOf({
+    [manifestZipName]: `${JSON.stringify(zipManifest, null, 2)}\n`,
+  });
+  writeFileSync(join(release, "plugins", zipName), zip);
+  const checksum = sha256(zip);
+
+  // 이 릴리스의 항목 — `update-registry-index.mjs` 가 짓는 순서·규칙 그대로, 손으로.
+  const copy = (k: string): Record<string, unknown> =>
+    Object.prototype.hasOwnProperty.call(zipManifest, k)
+      ? { [k]: zipManifest[k] }
+      : {};
+  const entry: Record<string, unknown> = {
+    ...copy("id"),
+    ...copy("name"),
+    ...copy("description"),
+    ...copy("version"),
+    ...copy("author"),
+    ...copy("license"),
+    downloadUrl: `${BASE_URL}plugins/${zipName}`,
+    checksum,
+    ...(kind === "theme"
+      ? { capabilities: [] }
+      : { ...copy("capabilities"), ...copy("trust") }),
+    ...copy("engines"),
+    ...(kind === "theme" ? { kind: "theme" } : {}),
+    ...copy("icon"),
+    ...copy("keywords"),
+  };
+
+  const index = {
+    plugins: [...LIVE.plugins.filter((p) => p.id !== manifest.id), entry],
+    updatedAt: "2026-10-03",
+  };
+  writeFileSync(
+    join(release, "index.json"),
+    `${JSON.stringify(index, null, 2)}\n`,
+  );
+
+  return {
+    env: {
+      BASE_URL,
+      CHECKSUM: checksum,
+      EXPECTED_TRUST:
+        kind === "plugin" ? ((zipManifest.trust as string) ?? "") : "",
+      ID: manifest.id,
+      KIND: kind,
+      RECORDED_SHA256: kind === "theme" ? checksum : "",
+      VERSION: manifest.version,
+      ZIP_NAME: zipName,
+    },
+    release,
+    runnerTemp,
+  };
+}
+
 function runStep(
   name: string,
   f: Fixture,
@@ -575,13 +654,18 @@ describe("publish — 새 색인을 라이브 색인에 묶는다", () => {
   // jq 는 중복 키에서 마지막 값을 쓰고 BOM 을 벗기지만, 앱은 `serde_json::from_slice` 로 그 bytes
   // 를 그대로 구조체에 꽂는다 — 중복 `plugins`·`updatedAt` 필드나 BOM 은 거기서 깨진다. 세 crafted
   // index 는 `JSON.stringify` 로 만들 수 없는 모양이라 날 텍스트로 직접 쓴다.
+  // 라운드 2 수정 — compact 로 직접 지으면 jq 의 2-space pretty 형태와 다르다는 사실 자체가 이미
+  // 거부를 만들어, 시험이 중복 키를 전혀 짚지 않아도 통과했다(findings-r2 "Duplicate-key tests are
+  // confounded"). honest 파일(이미 jq 의 canonical 형태)을 그대로 쓰고, 그 앞에 bogus 한 줄만 더해
+  // 차이가 중복 키 자체뿐이게 한다.
   it("맨 위 plugins 키가 두 번(둘째가 honest) 있으면 거부한다", async () => {
     const f = await fixture("plugin");
-    const index = JSON.parse(
-      readFileSync(join(f.release, "index.json"), "utf8"),
+    const honest = readFileSync(join(f.release, "index.json"), "utf8");
+    expect(honest.startsWith('{\n  "plugins": [\n')).toBe(true);
+    const raw = honest.replace(
+      '{\n  "plugins": [\n',
+      '{\n  "plugins": [],\n  "plugins": [\n',
     );
-    const honestPlugins = JSON.stringify(index.plugins);
-    const raw = `{"plugins":[],"plugins":${honestPlugins},"updatedAt":${JSON.stringify(index.updatedAt)}}\n`;
     writeRawIndex(f, raw);
     const { output, status } = runStep(COMPARE_STEP, f);
     expect(status).not.toBe(0);
@@ -598,18 +682,20 @@ describe("publish — 새 색인을 라이브 색인에 묶는다", () => {
     expect(output).toContain("is not in the form the index script writes");
   });
 
+  // 라운드 2 수정 — 위와 같은 이유. honest 텍스트에서 이 릴리스 항목의 `"trust"` 줄 바로 앞에 bogus
+  // 줄 하나만 같은 들여쓰기로 끼워, 차이가 중복 키 자체뿐이게 한다.
   it("이 릴리스 항목 안에 trust 키가 두 번(둘째가 honest) 있으면 거부한다", async () => {
     const f = await fixture("plugin");
-    const index = JSON.parse(
-      readFileSync(join(f.release, "index.json"), "utf8"),
-    );
-    const entryTexts = (index.plugins as Record<string, unknown>[]).map((p) => {
-      if (p.id !== "baram-word-count") return JSON.stringify(p);
-      const { trust, ...rest } = p;
-      const withoutTrust = JSON.stringify(rest);
-      return `${withoutTrust.slice(0, -1)},"trust":"trusted","trust":${JSON.stringify(trust)}}`;
-    });
-    const raw = `{"plugins":[${entryTexts.join(",")}],"updatedAt":${JSON.stringify(index.updatedAt)}}\n`;
+    const honest = readFileSync(join(f.release, "index.json"), "utf8");
+    const idAt = honest.indexOf('"id": "baram-word-count"');
+    expect(idAt).toBeGreaterThan(-1);
+    const trustAt = honest.indexOf('"trust": "sandboxed"', idAt);
+    expect(trustAt).toBeGreaterThan(-1);
+    const indent = honest.slice(honest.lastIndexOf("\n", trustAt) + 1, trustAt);
+    const raw =
+      honest.slice(0, trustAt) +
+      `"trust": "trusted",\n${indent}` +
+      honest.slice(trustAt);
     writeRawIndex(f, raw);
     const { output, status } = runStep(COMPARE_STEP, f);
     expect(status).not.toBe(0);
@@ -624,12 +710,6 @@ describe("publish — 새 색인을 라이브 색인에 묶는다", () => {
       },
     ],
     [
-      "색인 스크립트가 쓰지 않는 필드",
-      (e: Record<string, unknown>) => {
-        e.homepage = "https://example.com";
-      },
-    ],
-    [
       "등급이 바뀜",
       (e: Record<string, unknown>) => {
         e.trust = "trusted";
@@ -639,6 +719,26 @@ describe("publish — 새 색인을 라이브 색인에 묶는다", () => {
       "downloadUrl 이 다른 곳",
       (e: Record<string, unknown>) => {
         e.downloadUrl = "https://example.com/x.zip";
+      },
+    ],
+  ])("이 릴리스의 항목에 %s 이면 거부한다", async (_, edit) => {
+    const f = await fixture("plugin");
+    editIndex(f, (index) => edit(entryOf(index, "baram-word-count")));
+    const { output, status } = runStep(COMPARE_STEP, f);
+    expect(status).not.toBe(0);
+    expect(output).toContain(
+      "the baram-word-count entry is not the one its archive's manifest makes",
+    );
+  });
+
+  // R8 — 이 둘은 전에는 ⑤(재구성 불일치)가 잡았지만, 이제는 그보다 앞선 타입·키 검사가 "이 스크립트가
+  // 안 쓰는 키" 로 먼저 잡는다(둘 다 허용 키 목록 밖이다 — `homepage` 는 플러그인·테마 어느 쪽에도
+  // 없고, `preview` 는 테마에만 있다). 같은 거부를 다른 단계가 짚게 됐으니 메시지를 그에 맞춰 둔다.
+  it.each([
+    [
+      "색인 스크립트가 쓰지 않는 필드",
+      (e: Record<string, unknown>) => {
+        e.homepage = "https://example.com";
       },
     ],
     [
@@ -653,7 +753,7 @@ describe("publish — 새 색인을 라이브 색인에 묶는다", () => {
     const { output, status } = runStep(COMPARE_STEP, f);
     expect(status).not.toBe(0);
     expect(output).toContain(
-      "the baram-word-count entry is not the one its archive's manifest makes",
+      "the baram-word-count entry has a field the index script would not write",
     );
   });
 
@@ -716,6 +816,42 @@ describe("publish — 새 색인을 라이브 색인에 묶는다", () => {
     const { output, status } = runStep(COMPARE_STEP, f);
     expect(status).not.toBe(0);
     expect(output).toContain("is not the one its archive's manifest makes");
+  });
+
+  // I1(R8) — ④·⑤는 jq 가 파싱한 "뜻"만 보고 bytes 모양만 짚었다; 숫자 범위나 중첩 깊이처럼 jq 는
+  // 받고 앱의 `serde_json::from_slice` 는 거부하는 값은 canonical-bytes 검사를 그대로 통과했다.
+  // `keywords: [1E+1000]` 은 전체 문서를 "number out of range" 로, 130 단 중첩은
+  // "recursion limit exceeded" 로 깨뜨린다 — 값을 JSON 으로 표현 가능하게 유지해(지수 없이) 시험이
+  // canonical-bytes 검사가 아니라 이 새 타입 검사에 닿게 한다.
+  it.each([
+    ["keywords 원소가 문자열이 아님", { keywords: [1] }],
+    ["keywords 가 중첩됨", { keywords: [["word"]] }],
+    ["name 이 문자열이 아님", { name: 5 }],
+    ["capabilities 원소 하나가 문자열이 아님", { capabilities: ["events", 3] }],
+  ] as const)("이 릴리스의 항목에 %s 이면 거부한다", async (_, override) => {
+    const f = await craftedFixture("plugin", {
+      ...PLUGIN_MANIFEST,
+      ...override,
+    });
+    const { output, status } = runStep(COMPARE_STEP, f);
+    expect(status).not.toBe(0);
+    expect(output).toContain(
+      "the baram-word-count entry has a field the index script would not write",
+    );
+  });
+
+  // I1(R8) — 클라이언트는 index 를 `MAX_REGISTRY_BYTES`(4 MiB)로 자르는데, publish 잡에는 크기
+  // 관문이 없었다. zip 매니페스트와 항목 둘 다에 1.1 MB `description` 을 실어, 모든 릴리스를 위해
+  // 매번 가져오는 그 문서 하나를 너무 크게 만든다 — 아직 타입은 문자열이라 ⑤의 타입 검사는 통과하고,
+  // 이 크기 관문만 짚는다.
+  it("새 index.json 이 1 MiB 를 넘으면 거부한다", async () => {
+    const f = await craftedFixture("plugin", {
+      ...PLUGIN_MANIFEST,
+      description: "x".repeat(1_100_000),
+    });
+    const { output, status } = runStep(COMPARE_STEP, f);
+    expect(status).not.toBe(0);
+    expect(output).toContain("the new index.json is over 1 MiB");
   });
 });
 

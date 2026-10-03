@@ -876,14 +876,55 @@ jobs:
           jq -e '(.plugins | type) == "array"' "$LIVE" > /dev/null 2>&1 \
             || fail "the live index.json has no plugins array"
 
-          # ④ and ⑤ below approve jq's PARSED VIEW of the new index, not its raw bytes. jq keeps the
-          # last of a duplicate key and strips a leading BOM; the app parses with
-          # `serde_json::from_slice` into a struct that rejects a duplicate `plugins`/`updatedAt`
-          # field and a BOM outright. So the raw bytes must already be the form the index script
-          # would write, checked here before anything trusts jq's reading of them (I1).
+          # The check below guarantees only that these bytes are jq's OWN serialization of what jq
+          # parsed — same key order, same number formatting, same escaping — so a duplicate key, a
+          # leading BOM or a similar byte trick that jq's parser silently resolves is refused here,
+          # because the raw file then differs from jq's reprint of it. It does NOT guarantee the
+          # client's parser accepts the document: `serde_json::from_slice` enforces a byte-size
+          # ceiling (`MAX_REGISTRY_BYTES`), a recursion limit and a narrower number range that jq
+          # does not — the size and type checks right below this one hold those instead (I1, R8).
           jq . "$NEW" > "$RUNNER_TEMP/new-canonical.json"
           cmp -s "$RUNNER_TEMP/new-canonical.json" "$NEW" \
             || fail "the new index.json is not in the form the index script writes (duplicate keys, a BOM or other bytes jq would not write) — publishing it could break every client's parse"
+
+          # A byte cap (R8): the app refuses an index over `MAX_REGISTRY_BYTES` (4 MiB); no release
+          # needs a quarter of that, and the live index is a few KB.
+          NEW_SIZE="$(wc -c < "$NEW" | tr -d ' ')"
+          [[ "$NEW_SIZE" -le 1048576 ]] \
+            || fail "the new index.json is over 1 MiB — the app refuses an index over 4 MiB, and no release needs a quarter of that"
+
+          # This release's entry must have the TYPES `scripts/update-registry-index.mjs` writes, and
+          # no keys beyond the ones it writes (R8). ⑤ below rebuilds the entry and diffs it byte for
+          # byte, which already refuses a field the manifest ALSO carries but the script does not
+          # copy; it does not stop a value the script DOES copy verbatim from carrying the wrong
+          # type (`name` a number, `keywords` holding a number or a nested array, a `capabilities`
+          # element that is not a string) — jq's canonical form admits all of that, and
+          # `serde_json::from_slice` refuses the whole document for it (a number out of range, or a
+          # recursion limit) rather than just this one release's listing.
+          jq -e --arg id "$ID" --arg kind "$KIND" '
+            (.plugins[] | select(.id == $id)) as $e
+            | ($e.id | type == "string" and length > 0)
+            and ($e.name | type == "string" and length > 0)
+            and ($e.description | type == "string" and length > 0)
+            and ($e.version | type == "string" and length > 0)
+            and ($e.author | type == "string" and length > 0)
+            and ($e.license | type == "string" and length > 0)
+            and ($e.downloadUrl | type == "string" and length > 0)
+            and ($e.checksum | type == "string" and length > 0)
+            and ($e.capabilities | type == "array" and all(.[]; type == "string" and length > 0))
+            and ($e.engines | type == "object" and all(.[]; type == "string" and length > 0))
+            and (($e | has("icon") | not) or ($e.icon | type == "string" and length > 0))
+            and (($e | has("keywords") | not) or ($e.keywords | type == "array" and all(.[]; type == "string" and length > 0)))
+            and (($e | has("readme") | not) or ($e.readme | type == "string"))
+            and (if $kind == "plugin" then ($e.trust == "sandboxed" or $e.trust == "trusted") else ($e.kind == "theme") end)
+            and (
+              (($e | keys) - (
+                ["id","name","description","version","author","license","downloadUrl","checksum","capabilities","engines","icon","keywords","readme"]
+                + (if $kind == "plugin" then ["trust"] else ["kind","preview"] end)
+              )) | length == 0
+            )
+          ' "$NEW" > /dev/null 2>&1 \
+            || fail "the $ID entry has a field the index script would not write (wrong type, or an unexpected key)"
 
           # An id already listed in the live registry keeps its kind: the index script refuses a
           # plugin release that would replace a theme entry of the same id, or the reverse, and this
