@@ -89,9 +89,10 @@ export function createVimPlugin(
         const $head = state.doc.resolve(head);
         if (!$head.parent.isTextblock) return null; // atom line — NodeSelection
         const end = nextUnitBoundary(state, head);
-        // A newline unit (a YAML line end in frontmatter, where gg lands on a
-        // blank first line) has no width, so painting it shows nothing — it
-        // gets the empty-line caret too.
+        // A line-break unit — a YAML newline in frontmatter (where gg lands
+        // on a blank first line) or the hard break after an empty segment —
+        // has no width, so painting it shows nothing: it gets the empty-line
+        // caret too.
         if (end > head && !isLineBreakUnit($head, end - head)) {
           return DecorationSet.create(state.doc, [
             Decoration.inline(head, end, { class: "vim-cursor" }),
@@ -372,13 +373,17 @@ function isChangeCommand(command: CoreCommand): boolean {
   );
 }
 
-/** Whether the `size`-long unit at `$head` is a line break, read from the
- *  text node holding it. Not doc.textBetween: that walks from the document's
- *  first child on every normal-mode state. Not nodeAfter: inside a text node
- *  it cuts a copy of the rest. A non-text unit is never a line break. */
+/** Whether the `size`-long unit at `$head` is a line break: a hard break
+ *  (the cursor sits before one only on an empty segment — the clamp moves it
+ *  off a segment's end), or a newline character read from the text node
+ *  holding it. Not doc.textBetween: that walks from the document's first
+ *  child on every normal-mode state. Not nodeAfter: inside a text node it
+ *  cuts a copy of the rest. Any other non-text unit is not a line break. */
 function isLineBreakUnit($head: ResolvedPos, size: number): boolean {
+  const node = $head.parent.maybeChild($head.index());
+  if (node?.type.name === "hardBreak") return true;
   // Only a text node has `text`.
-  const text = $head.parent.maybeChild($head.index())?.text;
+  const text = node?.text;
   if (text === undefined) return false;
   const from = $head.textOffset;
   return LINE_BREAK_UNIT.test(text.slice(from, from + size));

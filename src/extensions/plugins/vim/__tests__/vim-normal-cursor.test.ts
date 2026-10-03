@@ -4,6 +4,8 @@
 // terminal boundary of a non-empty line is clamped onto the last unit. Each
 // pin names the mutation that turns it red.
 
+import type { DecorationSet } from "@tiptap/pm/view";
+
 import { Editor } from "@tiptap/core";
 import { AllSelection, NodeSelection, TextSelection } from "@tiptap/pm/state";
 import { CellSelection } from "@tiptap/pm/tables";
@@ -176,6 +178,34 @@ describe("a normal-mode caret on the terminal boundary is clamped", () => {
     expect(head(editor)).toBe(4);
     expect(terminalClampTarget(editor.state)).toBeNull();
     expect(insertEscTarget(editor.state)).toBeNull();
+  });
+});
+
+describe("the normal cursor on an empty hard-break segment", () => {
+  /** The vim cursor decorations as [from, to] — from === to is the empty-line
+   *  bar caret, from < to the painted block cursor. */
+  function cursorDecorations(editor: Editor): [number, number][] {
+    const plugin = vimPluginKey.get(editor.state);
+    const set = plugin?.props.decorations?.call(plugin, editor.state) as
+      DecorationSet | null | undefined;
+    return (set?.find() ?? []).map((d) => [d.from, d.to]);
+  }
+
+  it("draws the empty-line caret, not a painted hard break", () => {
+    // "ab", break, (empty), break, "cd": the empty middle segment's only
+    // position sits before the second break. Fails if: isLineBreakUnit does
+    // not count a hardBreak — the block cursor paints the <br> ([4, 5]),
+    // which shows nothing.
+    const editor = makeVimEditor("<p>ab<br><br>cd</p>");
+    place(editor, 4);
+    expect(head(editor)).toBe(4);
+    expect(cursorDecorations(editor)).toEqual([[4, 4]]);
+  });
+
+  it("a character keeps the block cursor (control)", () => {
+    const editor = makeVimEditor("<p>ab<br><br>cd</p>");
+    place(editor, 6);
+    expect(cursorDecorations(editor)).toEqual([[6, 7]]);
   });
 });
 
