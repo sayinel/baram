@@ -99,9 +99,11 @@ export function firstNonBlankUnit(
 /**
  * Visit every cursor unit of `line` in order, in ONE traversal: `text` is the
  * unit's grapheme for a text unit, null for a non-text inline node. Return
- * false from `visit` to stop. This is THE definition of a cursor unit — each
- * TEXT NODE is segmented independently, and every non-text inline child is
- * exactly one unit, never descended into. Whole-line segmentation JOINed
+ * false from `visit` to stop. The line-walking definition of a cursor unit;
+ * graphemes.ts (nextUnitBoundary, prevUnitBoundary) is its stepping twin, and
+ * a graphemes test pins that the two agree. Each TEXT NODE is segmented
+ * independently, and every non-text inline child is exactly one unit, never
+ * descended into. Whole-line segmentation JOINed
  * clusters across mark boundaries and after atom placeholders, diverging
  * from the node-local §6 units (review S3-R6); descending into an inline
  * atom's content made j landings that h/l could not leave (review S3-R7) —

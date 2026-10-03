@@ -93,8 +93,13 @@ describe("other moves and every change forget it", () => {
       ["u"],
       [key("r", { ctrl: true })],
       ["o"],
+      ["c", "c"], // changeLine
+      ["d", "f", "x"], // operatorFind
+      ["v", "d"], // deleteVisual
+      ["v", "y"], // yankVisual
+      [" "], // toggleTask
     ]) {
-      expect(goalAfterKeys(keys)).toBeNull();
+      expect(goalAfterKeys(keys), keys.join("")).toBeNull();
     }
     // Asserted right after entry — an Esc afterwards would mask a mutation
     // that kept the goal on enterInsert.

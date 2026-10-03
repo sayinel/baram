@@ -142,15 +142,18 @@ describe("vim user journeys (issue 776)", () => {
     keys(editor, "j", "j", "v", "j");
     setVim(editor, false);
     expect(editor.view.editable).toBe(true);
-    const lineEnd = 17; // after "abcdefghij"
-    const { transactions } = editor.state.applyTransaction(
-      editor.state.tr.setSelection(
-        TextSelection.create(editor.state.doc, lineEnd),
-      ),
-    );
-    expect(transactions).toHaveLength(1); // nothing appended
+    const lineEnd = 18; // after "abcdefghij" (the h1 "Title" spans 0–7)
+    const caretAtLineEnd = () =>
+      editor.state.applyTransaction(
+        editor.state.tr.setSelection(
+          TextSelection.create(editor.state.doc, lineEnd),
+        ),
+      ).transactions;
+    expect(caretAtLineEnd()).toHaveLength(1); // nothing appended
     setVim(editor, true);
     expect(mode(editor)).toBe("normal");
+    // Control: with vim on, the same caret IS a line end the clamp corrects.
+    expect(caretAtLineEnd()).toHaveLength(2);
   });
 
   it("with vim off, a press and Escape leave the editor alone", () => {

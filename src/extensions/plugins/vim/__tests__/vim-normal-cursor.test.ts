@@ -72,7 +72,7 @@ function insertThenEscape(editor: Editor, pos: number, text: string): void {
 
 describe("insert Esc steps one unit back (vim ins_esc)", () => {
   it("lands ON the last typed character", () => {
-    // Fails if: Esc only flips the mode (the caret stays after "Y", at 6).
+    // Fails if: Esc only flips the mode (the caret stays after "Y", at 5).
     const editor = makeVimEditor("<p>abcd</p>");
     insertThenEscape(editor, 3, "XY");
     expect(editor.state.doc.textContent).toBe("abXYcd");
@@ -148,6 +148,7 @@ describe("a normal-mode caret on the terminal boundary is clamped", () => {
     // (head → 2).
     const editor = makeVimEditor("<pre><code>ab</code></pre><p>x</p>");
     place(editor, 3); // code block content end
+    expect(mode(editor)).toBe("normal"); // the clamp's precondition holds
     expect(head(editor)).toBe(3);
   });
 
@@ -178,6 +179,57 @@ describe("a normal-mode caret on the terminal boundary is clamped", () => {
     expect(head(editor)).toBe(4);
     expect(terminalClampTarget(editor.state)).toBeNull();
     expect(insertEscTarget(editor.state)).toBeNull();
+  });
+});
+
+describe("z. homes to the first non-blank", () => {
+  it("lands on the line's first non-blank; zz leaves the cursor", () => {
+    // Fails if: runScrollCursor ignores firstNonBlank (or inverts it), or
+    // drops its selection write — the cursor stays on "e".
+    const editor = makeVimEditor("<p>x</p>");
+    // JSON, not HTML: the HTML parser collapses the leading blanks.
+    editor.commands.setContent({
+      content: [
+        { content: [{ text: "   abc def", type: "text" }], type: "paragraph" },
+      ],
+      type: "doc",
+    });
+    expect(editor.state.doc.textContent).toBe("   abc def");
+    place(editor, 9); // "e"
+    key(editor, "z");
+    key(editor, "z");
+    expect(head(editor)).toBe(9);
+    key(editor, "z");
+    key(editor, ".");
+    expect(head(editor)).toBe(4); // "a"
+  });
+});
+
+describe("the clamp waits while vim is suspended", () => {
+  it("an island's caret at a line end is left alone, then clamped once vim is back", () => {
+    // Suspended = a NodeView island owns the keys. Fails if:
+    // appendClampAndGoalReset drops its `!vim.suspended` check — the caret
+    // at the line end is clamped under the island.
+    const editor = makeVimEditor("<p>abc</p>");
+    const atEnd = () =>
+      editor.state.applyTransaction(
+        editor.state.tr.setSelection(TextSelection.create(editor.state.doc, 4)),
+      ).transactions;
+    editor.view.dispatch(
+      editor.state.tr.setMeta(vimPluginKey, {
+        suspended: true,
+        type: "setSuspended",
+      }),
+    );
+    expect(mode(editor)).toBe("normal");
+    expect(atEnd()).toHaveLength(1);
+    editor.view.dispatch(
+      editor.state.tr.setMeta(vimPluginKey, {
+        suspended: false,
+        type: "setSuspended",
+      }),
+    );
+    expect(atEnd()).toHaveLength(2); // control: the same caret IS clamped
   });
 });
 

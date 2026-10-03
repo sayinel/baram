@@ -122,6 +122,8 @@ describe("first non-blank stays on its YAML line", () => {
     const editor = makeEditor("\n  b");
     keys(editor, "G");
     expect(offset(editor)).toBe(0);
+    keys(editor, "l"); // off the target, so :$ has to move
+    expect(offset(editor)).toBe(1);
     keys(editor, ":", "$", "Enter");
     expect(offset(editor)).toBe(0);
   });

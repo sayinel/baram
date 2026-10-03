@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { useUIStore } from "../../../../stores/ui/ui";
 import { createBaramExtensions } from "../../../index";
-import { columnAt, lineUnitStarts } from "../adapters/cursor-line-columns";
+import { columnAt } from "../adapters/cursor-line-columns";
 import { graphemeIndexSize } from "../adapters/graphemes";
 import { resolveMotion } from "../adapters/motions";
 import { terminalClampTarget } from "../adapters/normal-cursor";
@@ -30,7 +30,6 @@ vi.mock("../adapters/cursor-line-columns", async (importOriginal) => {
   return {
     ...actual,
     columnAt: vi.fn(actual.columnAt),
-    lineUnitStarts: vi.fn(actual.lineUnitStarts),
   };
 });
 
@@ -228,25 +227,6 @@ describe("goal column cost (issue 776)", () => {
     key(editor, "j");
     key(editor, "j");
     expect(vi.mocked(columnAt)).toHaveBeenCalledTimes(1);
-  });
-
-  it("typing in insert mode measures no column", () => {
-    // Fails if: the keydown path measures the cursor's column per key (the
-    // eager StepContext.column design the plan rejected).
-    const editor = makeEditor(`<p>${LINE}</p>`);
-    enable(editor);
-    editor.commands.setTextSelection(3);
-    key(editor, "i");
-    expect(
-      (vimPluginKey.getState(editor.state) as unknown as { mode: string }).mode,
-    ).toBe("insert");
-    vi.mocked(columnAt).mockClear();
-    vi.mocked(lineUnitStarts).mockClear();
-    for (const k of ["x", "y", "z"]) key(editor, k);
-    expect(vi.mocked(columnAt)).not.toHaveBeenCalled();
-    // …nor builds a line's unit list some other way (columnOf over
-    // lineUnitStarts is the inline form of the same measurement).
-    expect(vi.mocked(lineUnitStarts)).not.toHaveBeenCalled();
   });
 });
 

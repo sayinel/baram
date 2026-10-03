@@ -308,6 +308,24 @@ describe("transactions outside vim", () => {
     expect(goal(editor)).toBeNull();
   });
 
+  it("the watch stays armed through a transaction that moves nothing", () => {
+    // A press, an unrelated view update, THEN the tagged reveal move. Fails
+    // if: takeMovedPress disarms on the first transaction whose cursor did
+    // not move — the later tagged move would keep the goal.
+    const editor = seeded();
+    editor.view.dom.dispatchEvent(
+      new MouseEvent("mousedown", { bubbles: true, cancelable: true }),
+    );
+    editor.view.dispatch(editor.state.tr.setMeta("noop", true));
+    expect(goal(editor)).toBe(6);
+    const tr = editor.state.tr.setSelection(
+      TextSelection.create(editor.state.doc, posOfText(editor, "e")),
+    );
+    tagSyntaxRevealEphemeral(tr);
+    editor.view.dispatch(tr);
+    expect(goal(editor)).toBeNull();
+  });
+
   it("an ordinary click forgets it once, with no extra transaction", () => {
     // Fails if: takeMovedPress drops its "already forgotten" guard — it would append
     // a second, redundant meta to every ordinary click. Counted through
