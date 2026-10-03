@@ -204,8 +204,9 @@ jobs:
       # the declared fields. That the app installs those same two members is a claim about two
       # zip parsers. `publish`'s entry list (plan 0115 N1) and extra-field allowlist (R19) make
       # the names `unzip` lists the names the app's `zip` crate installs for the divergences
-      # known so far — path aliases, case, the Unicode Path and Zip64 extra fields — not for
-      # every disagreement two zip parsers can have: which end-of-central-directory record each
+      # known so far — path aliases (`./`, a `.` or `..` segment, a backslash; not Windows
+      # aliases under `dist/`), case, the Unicode Path and Zip64 extra fields — not for every
+      # disagreement two zip parsers can have: which end-of-central-directory record each
       # picks is one left open. Where they still disagree, the app's install re-checks the
       # manifest's capabilities and trust against the consent built from the registry entry
       # (`install-transaction.ts`), so what a divergence could still change is the README and
@@ -920,15 +921,24 @@ jobs:
             # record when built without UNICODE_SUPPORT (macOS) and ignores it above version 1 when
             # built with it (Debian's package, which ubuntu-24.04's unzip comes from) — so
             # `dist/x` above could install as `baram-plugin.json` over the hashed manifest. The
-            # crate names entries from the CENTRAL header only (scripts/community-zip.ts,
-            # `extraFieldProblem`: `find_data_start` reads only the local header's lengths; plan
-            # 0115 R19 measured it too — a 0x7075 record in the local header alone renames
-            # nothing), and `unzip -Zv` lists the central header's records.
+            # crate's `ZipArchive`, which the app reads through (src-tauri/src/plugin/archive.rs
+            # `ZipArchive::new` + `by_index`), names entries from the CENTRAL header only
+            # (scripts/community-zip.ts, `extraFieldProblem`: `find_data_start` reads only the
+            # local header's lengths; plan 0115 R19 measured it too — a 0x7075 record in the
+            # local header alone renames nothing). The crate's OWN streaming reader names entries
+            # from the local header instead (`read/stream.rs`), but the app never uses it — only
+            # `ZipArchive` above. `unzip -Zv` lists the central header's records.
             #
             # An ALLOWLIST, the same one community gate 6 holds (`ALLOWED_EXTRA_FIELDS` in
             # scripts/community-zip.ts): 0x5455 and 0x7875, the two records a plain `zip -r`
-            # writes. Every other id is refused, 0x7075, 0x6375 (Unicode Comment) and 0x0001 (Zip64)
-            # among them. The listed records must also account for each entry's whole extra field —
+            # writes for an ASCII name — measured on the eight live first-party archives behind
+            # that allowlist, all of them ASCII-named. For a non-ASCII file name, Info-ZIP Zip 3.0
+            # (ubuntu-24.04's `zip`, built with UNICODE_SUPPORT; not measured here) may add its
+            # own Unicode Path record (0x7075) to carry the UTF-8 name, and this check refuses
+            # that record the same as a smuggled one — an honest archive built from a non-ASCII
+            # `dist/` name is refused here too, and the fix is an ASCII name. Every other id is
+            # refused, 0x7075, 0x6375 (Unicode Comment) and 0x0001 (Zip64) among them. The listed
+            # records must also account for each entry's whole extra field —
             # that gate's truncation rule. Bytes left over after the last record end zipinfo's
             # listing silently, so the sum comes up short. A record that runs past the field is
             # listed cut to the bytes that remain, with zipinfo's complaint on stderr and exit 0
@@ -947,14 +957,19 @@ jobs:
             # header fails this count; a second length line, or a length or record line before the
             # first entry, is refused; an added record line fails the allowlist or overshoots the
             # sum — it adds at least 4 bytes, and a listing that stops early is 1 to 3 bytes short
-            # (zipinfo lists records while 4 or more bytes remain).
+            # (zipinfo lists records while 4 or more bytes remain). XLEN_RE and FIELD_RE read their
+            # counts as AT MOST FIVE DIGITS — the zip format's extra-field lengths are 16-bit, so
+            # zipinfo itself never prints more than five digits in either line — so an injected
+            # comment line cannot carry a count that wraps the sum back down to the field length
+            # (bash's `$((...))` is 64-bit and wraps silently); a line with more digits is left
+            # unmatched, like any other comment text, and so adds nothing.
             ZV_COUNT="$(grep -c '^Central directory entry #' "$ZINFO" || true)"
             Z1_COUNT="$(grep -c '' "$ENTRIES" || true)"
             [[ -n "$ZV_COUNT" && "$ZV_COUNT" == "$Z1_COUNT" ]] \
               || fail "unzip -Zv lists '$ZV_COUNT' central directory entries but unzip -Z1 listed '$Z1_COUNT'"
             ENTRY_RE='^Central directory entry #[0-9]+:$'
-            XLEN_RE='^  length of extra field: +([0-9]+) bytes$'
-            FIELD_RE='^  - A subfield with ID 0x([0-9a-f]{4}) \(.*\) and ([0-9]+) data bytes'
+            XLEN_RE='^  length of extra field: +([0-9]{1,5}) bytes$'
+            FIELD_RE='^  - A subfield with ID 0x([0-9a-f]{4}) \(.*\) and ([0-9]{1,5}) data bytes'
             entry_no=0
             # Judges entry #$entry_no once its listing has ended. Both unzips named above print the
             # length line for every entry, "0 bytes" when there is no extra field (zipinfo.c
@@ -987,7 +1002,7 @@ jobs:
                   || fail "unzip -Zv listed an extra-field record before any entry: '$line'"
                 case "$field_id" in
                   5455 | 7875) ;;
-                  *) fail "the archive entry '$(sed -n "${entry_no}p" "$ENTRIES")' carries extra field 0x$field_id, which a plain zip -r does not write — the app's zip crate and unzip can read such a field differently" ;;
+                  *) fail "the archive entry '$(sed -n "${entry_no}p" "$ENTRIES")' carries extra field 0x$field_id, which a plain zip -r does not write for an ASCII name — the app's zip crate and unzip can read such a field differently" ;;
                 esac
                 listed=$((listed + 4 + field_len))
               fi

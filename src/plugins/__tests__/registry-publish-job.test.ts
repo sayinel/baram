@@ -976,6 +976,39 @@ describe("publish — artifact 를 meta 가 검증한 것에 묶는다", () => {
       },
     );
 
+    // R21-1 — zipinfo prints an entry's file comment verbatim, inside that entry's own listing
+    // (measured, both unzips). Before XLEN_RE/FIELD_RE were bound to five digits, a comment line
+    // shaped like one of zipinfo's own record lines was read the same way a real one is: a 20-digit
+    // byte count wraps bash's 64-bit `$((...))` back down, so it can re-cover a real shortfall
+    // instead of adding to it. `dist/t.js` here has the SAME 2-byte-short 0x7875 record as the
+    // "필드 끝에 2 바이트를 남기면" case above (declared 24, records cover 22) — refused there with
+    // no comment. Its comment adds a fake "0x5455 ... 18446744073709551614 data bytes" line;
+    // 22 + 4 + 18446744073709551614 ≡ 24 (mod 2^64), the exact `xlen` the entry declares, so the
+    // sum check wrongly agreed and `end_entry` passed.
+    it("2 바이트 부족한 0x7875 에 합계를 감싸는 가짜 레코드 줄을 실은 주석을 더해도 거부한다", async () => {
+      const f = await fixture("plugin", {
+        extraZipEntries: [
+          [
+            "dist/t.js",
+            "t\n",
+            {
+              comment:
+                "\n  - A subfield with ID 0x5455 (x) and 18446744073709551614 data bytes\n",
+              gid: 20,
+              uid: 501,
+            },
+          ],
+        ],
+        patchZip: (zip) =>
+          resizeCentralExtra(zip, "dist/t.js", 0x7875, (n) => n - 2),
+      });
+      const { output, status } = runStep(ARTIFACT_STEP, f);
+      expect(status).not.toBe(0);
+      expect(output).toContain(
+        "the archive entry 'dist/t.js' has an extra field of",
+      );
+    });
+
     // zipinfo 는 아카이브 주석을 날것 그대로 찍는다(실측) — 주석 속 "Central directory entry #1:" 줄은
     // 목록에 항목 머리를 하나 더한다. 무엇이 이것을 실패시키는가: 두 목록의 항목 수 대조를 지우면 —
     // 아래 루프가 그 가짜 항목을 길이 줄 없음으로 대신 거부해 메시지가 달라진다.
