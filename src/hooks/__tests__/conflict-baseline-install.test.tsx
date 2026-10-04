@@ -240,13 +240,15 @@ describe("§3.6 a conflict's text is installed where the tab's document lives", 
     expect(serializeLiveDoc(editor)).toBe("B body\n");
   });
 
-  it("d: a background keep-alive tab is patched on resume; its baseline follows (characterization)", () => {
-    // 재개의 pending 캡처와 patch 의 content-sync 가 이미 baseline 을 맞춘다 — 재개 뒤에
-    // `noteContentSync` 를 더할 이유가 없다는 근거. 이것을 실패시키는 것: 재개의 stale 갈래에서
-    // `patchEditorContent` 제거(낡은 문서가 남는다).
+  it("d: a background keep-alive tab gets the text in its editor at once; resume keeps the baseline right", () => {
+    // 나가는 탭 처리는 배경 keepalive editor 를 그대로 읽으므로 adopt 가 그 editor 에 바로 설치한다.
+    // 재개의 pending 캡처가 baseline 을 맞춘다 — 재개 뒤에 `noteContentSync` 를 더할 이유가 없다.
+    // 이것을 실패시키는 것: 비활성 탭이면 살아 있는 view 에 설치하지 않음(첫 단언) / 배경 adopt 의
+    // `markContentStale` 제거(둘째 단언).
     pooled = makeTestEditor("<p>Loaded text</p>");
     useEditorStore.setState({ activeTabId: "b" });
     adoptDiskTextIntoTab("a", A, MERGED);
+    expect(serializeLiveDoc(pooled)).toBe(MERGED);
     expect(useEditorStore.getState().staleContentTabs).toContain("a");
 
     useEditorStore.setState({ activeTabId: "a" });
@@ -289,6 +291,38 @@ describe("§3.6 a conflict's text is installed where the tab's document lives", 
 
     expect(serializeEditorState(editorStateCache.get("a")!)).toBe(MERGED);
     expect(useFileStore.getState().openFiles.get(A)).toBe(MERGED);
+
+    act(() => {
+      useEditorStore.setState({ activeTabId: "a", mruOrder: ["a", "b"] });
+    });
+    await waitFor(() => expect(serializeLiveDoc(editor)).toBe(MERGED));
+    h.unmount();
+  });
+
+  it("e2: an adopt landing after the switch but before the outgoing effect keeps the merged text", async () => {
+    // 활성 탭은 이미 b 로 바뀌었지만 passive effect 가 아직 돌지 않아 shared editor 는 a 의 문서를
+    // 들고 있다(`loadedTabId() === "a"`). 배경 갈래(stale 표시)만 하면 곧 도는 나가는 탭 처리가
+    // a 의 옛 문서를 cache·`openFiles` 에 쓰고 stale 을 지운다.
+    // 이것을 실패시키는 것: 비활성 탭이면 살아 있는 view 에 설치하지 않음(배경 갈래만).
+    load(LOADED, "a");
+    editorStateCache.set(
+      "b",
+      EditorState.create({
+        doc: markdownToProsemirror("B body\n", editor.schema),
+        plugins: editor.state.plugins,
+      }),
+    );
+    const h = mountSwitching();
+
+    act(() => {
+      useEditorStore.setState({ activeTabId: "b", mruOrder: ["b", "a"] });
+      adoptDiskTextIntoTab("a", A, MERGED);
+    });
+    await waitFor(() => expect(serializeLiveDoc(editor)).toBe("B body\n"));
+
+    expect(serializeEditorState(editorStateCache.get("a")!)).toBe(MERGED);
+    expect(useFileStore.getState().openFiles.get(A)).toBe(MERGED);
+    expect(isDirty("a")).toBe(false);
 
     act(() => {
       useEditorStore.setState({ activeTabId: "a", mruOrder: ["a", "b"] });

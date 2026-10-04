@@ -1,8 +1,8 @@
 // §3.6 Put the file's text into ONE tab — the conflicted one — after a conflict
 // action wrote it (Apply) or read it (Reload).
 //
-// The active tab's document is installed into its live view right here, not by
-// a content-refresh request. That request is served by a passive effect; a tab
+// The text is installed into the live view that holds the tab right here, not
+// by a content-refresh request. That request is served by a passive effect; a tab
 // switch landing in between would make the outgoing-tab handling write the old
 // document into the cache and `openFiles` and clear the stale mark, leaving a
 // clean tab whose screen and cache disagree with the disk.
@@ -63,17 +63,21 @@ export function adoptDiskTextIntoTab(
   editorStore.markDirty(tabId, false);
   editorStore.markSourceEdited(tabId, false);
 
-  if (editorStore.activeTabId !== tabId) {
-    editorStore.markContentStale(tabId);
-    return true;
-  }
-  // A markdown tab in source mode keeps its ProseMirror view alive underneath;
-  // it gets the text too, so it does not keep the document from before.
+  // Whoever still holds the tab's document gets the text — active or not. A
+  // view can hold a tab that is no longer active: right after a switch, before
+  // the switching effect runs, the shared editor still holds it, and the
+  // outgoing-tab handling is about to cache that view and write it into
+  // `openFiles`, clearing the stale mark. A background keep-alive editor is
+  // also what that handling reads. A markdown tab in source mode keeps its
+  // ProseMirror view underneath; it gets the text too.
   const view = isMarkdownFile(path) ? liveViewOf(tabId) : null;
   if (view) {
     installFreshDocument(view, text);
     markBaselinePending(tabId);
   }
+  // A background tab with no live view restores from its cache, which the
+  // stale mark discards in favour of `openFiles`.
+  if (editorStore.activeTabId !== tabId) editorStore.markContentStale(tabId);
   return true;
 }
 
