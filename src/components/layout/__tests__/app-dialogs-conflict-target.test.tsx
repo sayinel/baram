@@ -380,6 +380,45 @@ describe("§3.6 the merge view while Apply runs and after it fails", () => {
   });
 });
 
+describe("§3.6 an action that throws does not leave the buttons disabled", () => {
+  it("a Merge that throws gives the modal its buttons back, the conflict queued", async () => {
+    // `mergeTexts` 가 segments 없이 돌아오면 변환이 try 밖에서 던진다.
+    // 이것을 실패시키는 것: `pending` 해제를 성공 콜백 안에만 둠(`finally` 제거 — 던지면 남는다).
+    io.mergeTexts.mockResolvedValueOnce({});
+    await mount();
+    externalChange(A, 2000);
+    await pressMerge();
+
+    const dialog = await expectConflictFor("a.md");
+    const button = within(dialog).getByRole("button", { name: "Merge" });
+    expect((button as HTMLButtonElement).disabled).toBe(false);
+    expect(queueIds()).toEqual(["a"]);
+  });
+
+  it("an Apply that throws leaves the merge view usable", async () => {
+    // 이것을 실패시키는 것: `mergeBusy` 해제를 성공 콜백 안에만 둠(`finally` 제거 — Apply·Cancel 이
+    // 영원히 비활성인 전체 화면이 된다).
+    await mount();
+    externalChange(A, 2000);
+    await pressMerge();
+    await waitFor(() => expect(merge.props).not.toBeNull());
+    const access = useEditorStore.getState().documentSurfaceAccess!;
+    useEditorStore.setState({
+      documentSurfaceAccess: {
+        ...access,
+        keepaliveEditor: () => {
+          throw new Error("surface gone");
+        },
+      },
+    });
+
+    await applyMerge("MERGED\n");
+
+    expect(merge.props!.busy).toBe(false);
+    expect(queueIds()).toEqual(["a"]);
+  });
+});
+
 describe("§3.6 the conflict outlives everything but a success", () => {
   it("e: Cancel keeps the conflict", async () => {
     // 이것을 실패시키는 것: 취소에서 resolve(또는 wrapper 가 동작 전에 resolve).

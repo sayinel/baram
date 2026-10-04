@@ -24,6 +24,7 @@ import { isTabUnsaved, useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
+import { logger } from "../../utils/logger";
 import { basename } from "../../utils/path-utils";
 
 export interface ConflictActions {
@@ -117,6 +118,15 @@ export function useConflictTargetSync(): void {
 }
 
 /**
+ * An action that threw instead of returning a result code (a bug, not a stop):
+ * log it. The caller's `finally` releases the buttons; the conflict stays queued
+ * because nothing resolved it.
+ */
+function logUnexpected(err: unknown): void {
+  logger.error("[conflict] action failed unexpectedly", err);
+}
+
+/**
  * The conflict modal's actions and the merge view's state. Every action runs
  * against the entry's tab (`conflict-resolution.ts`) and leaves the conflict
  * queued unless it succeeded — Cancel included.
@@ -129,27 +139,29 @@ export function useConflictActions(): ConflictActions {
 
   const onMerge = useCallback((entry: ConflictEntry) => {
     setPending(true);
-    void prepareConflictMerge(entry).then((result) => {
-      setPending(false);
-      if (result.code === "prepared") setMerge(result.prepared);
-      else toastConflictFailure(result, entry.tabId);
-    });
+    void prepareConflictMerge(entry)
+      .then((result) => {
+        if (result.code === "prepared") setMerge(result.prepared);
+        else toastConflictFailure(result, entry.tabId);
+      }, logUnexpected)
+      .finally(() => setPending(false));
   }, []);
 
   const onApply = useCallback(
     (merged: string) => {
       if (!merge) return;
       setMergeBusy(true);
-      void applyConflictMerge(merge, merged).then((result) => {
-        setMergeBusy(false);
-        if (result.code === "busy") return;
-        // A failed write keeps the merge open to try again; any other stop
-        // closes it, and the modal asks again with what is true now.
-        if (result.code !== "write-failed") setMerge(null);
-        if (result.code !== "applied") {
-          toastConflictFailure(result, merge.tabId);
-        }
-      });
+      void applyConflictMerge(merge, merged)
+        .then((result) => {
+          if (result.code === "busy") return;
+          // A failed write keeps the merge open to try again; any other stop
+          // closes it, and the modal asks again with what is true now.
+          if (result.code !== "write-failed") setMerge(null);
+          if (result.code !== "applied") {
+            toastConflictFailure(result, merge.tabId);
+          }
+        }, logUnexpected)
+        .finally(() => setMergeBusy(false));
     },
     [merge],
   );
@@ -158,30 +170,32 @@ export function useConflictActions(): ConflictActions {
 
   const onKeepLocal = useCallback((entry: ConflictEntry) => {
     setPending(true);
-    void keepLocalForConflict(entry).then((result) => {
-      setPending(false);
-      if (result.code !== "saved") toastConflictFailure(result, entry.tabId);
-    });
+    void keepLocalForConflict(entry)
+      .then((result) => {
+        if (result.code !== "saved") toastConflictFailure(result, entry.tabId);
+      }, logUnexpected)
+      .finally(() => setPending(false));
   }, []);
 
   const onReload = useCallback((entry: ConflictEntry) => {
     setPending(true);
-    void reloadForConflict(entry).then((result) => {
-      setPending(false);
-      if (result.code !== "reloaded") {
-        toastConflictFailure(result, entry.tabId);
-        return;
-      }
-      const tab = useEditorStore
-        .getState()
-        .tabs.find((x) => x.id === entry.tabId);
-      // Same message as the auto-reload's (`triggerAutoReload`).
-      useUIStore
-        .getState()
-        .showToast(
-          `Reloaded external changes: ${basename(tab?.filePath ?? "")}`,
-        );
-    });
+    void reloadForConflict(entry)
+      .then((result) => {
+        if (result.code !== "reloaded") {
+          toastConflictFailure(result, entry.tabId);
+          return;
+        }
+        const tab = useEditorStore
+          .getState()
+          .tabs.find((x) => x.id === entry.tabId);
+        // Same message as the auto-reload's (`triggerAutoReload`).
+        useUIStore
+          .getState()
+          .showToast(
+            `Reloaded external changes: ${basename(tab?.filePath ?? "")}`,
+          );
+      }, logUnexpected)
+      .finally(() => setPending(false));
   }, []);
 
   return {
