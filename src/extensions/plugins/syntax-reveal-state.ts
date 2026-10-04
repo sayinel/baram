@@ -68,6 +68,40 @@ export interface SuppressedRange {
 }
 
 export const INACTIVE: SyntaxRevealState = { expanded: null, suppressed: null };
+
+/**
+ * §384 / spec 0067 D10 — the meta a SUCCESSFUL collapse sends.
+ *
+ * `collapsed` is the range the collapsed mark, link or atom occupies in the new document,
+ * and the state `apply` decides suppression from it instead of inferring the range from
+ * the step maps: a position-preserving collapse deletes the two delimiters, so
+ * `changedRanges` reports two zero-width points and a caret between them would be
+ * re-expanded in the same dispatch (spec §2.3).
+ *
+ * A key of its own, not `suppressed`: `INACTIVE` itself travels as meta and carries
+ * `suppressed: null`, so "does the meta have `suppressed`" would catch every one of its
+ * senders and skip `nextSuppressed` for them too.
+ */
+export interface CollapseMeta {
+  collapsed: SuppressedRange;
+  expanded: null;
+}
+
+export function collapseMeta(collapsed: SuppressedRange): CollapseMeta {
+  return { collapsed, expanded: null };
+}
+
+/**
+ * The suppressed range after a collapse, or `null`. Inclusive of both ends, like
+ * `SuppressedRange` itself and like `nextSuppressed`: Escape leaves the caret on the
+ * collapsed start and ArrowRight on a wikilink's end — both edges.
+ */
+export function suppressionAfterCollapse(
+  collapsed: SuppressedRange,
+  caret: number,
+): null | SuppressedRange {
+  return caret >= collapsed.from && caret <= collapsed.to ? collapsed : null;
+}
 export const syntaxRevealKey = new PluginKey<SyntaxRevealState>("syntaxReveal");
 
 // ── Ephemeral provenance (§384 C) ─────────────────────────────────────

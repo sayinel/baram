@@ -1,6 +1,6 @@
 // §5.1 + §3.3 Syntax Reveal — collapse logic (expanded range → marks/nodes)
 
-import type { ExpandedRange } from "./syntax-reveal-state";
+import type { Mark } from "@tiptap/pm/model";
 import type { EditorState, Transaction } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 
@@ -9,7 +9,10 @@ import { TextSelection } from "@tiptap/pm/state";
 import { classifyMediaSrc } from "../../utils/media-src";
 import { parseRevealResource } from "./syntax-reveal-resource-codec";
 import {
+  collapseMeta,
+  type ExpandedRange,
   INACTIVE,
+  type SuppressedRange,
   syntaxRevealKey,
   tagSyntaxRevealEphemeral,
   WIKILINK_REGEX,
@@ -33,6 +36,7 @@ export function buildCollapseTr(
   cursorTarget?: number,
 ): null | Transaction {
   const { tr } = state;
+  let collapsed: null | SuppressedRange = null;
   const {
     from,
     to,
@@ -64,17 +68,16 @@ export function buildCollapseTr(
       return null;
     }
 
-    const contentFrom = from + openCheck.length;
-    const contentTo = to - closeCheck.length;
-    const contentLen = contentTo - contentFrom;
-
-    if (contentLen <= 0) {
-      tr.delete(from, to);
-    } else {
-      const content = state.doc.slice(contentFrom, contentTo).content;
-      tr.replaceWith(from, to, content);
-      tr.addMark(from, from + contentLen, markType.create());
-    }
+    collapsed = collapseDelimited(
+      tr,
+      {
+        contentFrom: from + openCheck.length,
+        contentTo: to - closeCheck.length,
+        from,
+        to,
+      },
+      markType.create(),
+    );
   } else if (kind === "link") {
     const fullText = state.doc.textBetween(from, to);
     // §384 fix (F1 round 2): pass the stashed, mapped boundary (relative to
@@ -99,10 +102,6 @@ export function buildCollapseTr(
 
     const { destination: href, title, labelEnd } = parsed;
 
-    const contentFrom = from + 1;
-    const contentTo = from + labelEnd;
-    const contentLen = labelEnd - 1;
-
     // §384 fix (B): merge stashed non-href/title attrs (e.g. `target`) back
     // in — see ExpandedRange.linkAttrs.
     const linkMark = state.schema.marks.link.create({
@@ -111,13 +110,11 @@ export function buildCollapseTr(
       title: title || null,
     });
 
-    if (contentLen <= 0) {
-      tr.delete(from, to);
-    } else {
-      const content = state.doc.slice(contentFrom, contentTo).content;
-      tr.replaceWith(from, to, content);
-      tr.addMark(from, from + contentLen, linkMark);
-    }
+    collapsed = collapseDelimited(
+      tr,
+      { contentFrom: from + 1, contentTo: from + labelEnd, from, to },
+      linkMark,
+    );
   } else if (kind === "image") {
     const fullText = state.doc.textBetween(from, to);
     // §384 fix (F1 round 2) / §384 (design review M2): see the link branch
@@ -155,6 +152,7 @@ export function buildCollapseTr(
     const imgFrom = from - 1;
     const imgTo = to + 1;
     tr.replaceWith(imgFrom, imgTo, mediaNode);
+    collapsed = { from: imgFrom, to: imgFrom + mediaNode.nodeSize };
   } else if (kind === "wikilink") {
     const fullText = state.doc.textBetween(from, to);
     const wlMatch = fullText.match(WIKILINK_REGEX);
@@ -169,6 +167,7 @@ export function buildCollapseTr(
       display: wlDisplay || null,
     });
     tr.replaceWith(from, to, wikilinkNode);
+    collapsed = { from, to: from + wikilinkNode.nodeSize };
   }
 
   // Set explicit cursor position if requested
@@ -188,9 +187,38 @@ export function buildCollapseTr(
   // §384 (C): this point is only reached by a successful collapse — every
   // early exit above returns `null` instead. Tag it ephemeral so
   // isEphemeralOnlyUpdate can tell this apart from a real edit.
+  // `collapsed` names the range for the suppression the state `apply` decides (spec 0067 D10).
   tagSyntaxRevealEphemeral(tr);
-  tr.setMeta(syntaxRevealKey, INACTIVE);
+  tr.setMeta(syntaxRevealKey, collapsed ? collapseMeta(collapsed) : INACTIVE);
   return tr;
+}
+
+/**
+ * §384 / spec 0067 §4 — collapse a mark or link expansion by deleting its delimiters,
+ * keeping the content where it is, and marking it.
+ *
+ * Not `replaceWith(from, to, content)`: that maps every position inside the range to one
+ * of its ends, which drifted the caret (`forceCollapseSyntaxReveal` used to correct it by
+ * hand for marks only) and made anything tracking a position inside the expansion lose it
+ * (spec §2.1). The closing delimiter goes first so the opening one's coordinates do not
+ * move. Returns the collapsed range in the transaction's new coordinates — empty at `from`
+ * when no content is left.
+ */
+export function collapseDelimited(
+  tr: Transaction,
+  range: { contentFrom: number; contentTo: number; from: number; to: number },
+  mark: Mark,
+): SuppressedRange {
+  const { contentFrom, contentTo, from, to } = range;
+  const contentLen = contentTo - contentFrom;
+  if (contentLen <= 0) {
+    tr.delete(from, to);
+    return { from, to: from };
+  }
+  tr.delete(contentTo, to);
+  tr.delete(from, contentFrom);
+  tr.addMark(from, from + contentLen, mark);
+  return { from, to: from + contentLen };
 }
 
 /**
