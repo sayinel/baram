@@ -245,6 +245,10 @@ interface UIState {
   /** §313 이번 열기가 태스크를 잡으려는 것인가 — 여는 쪽이 정하고, 닫히면 사라진다 */
   quickCaptureTaskIntent: boolean;
   quickSwitcherOpen: boolean;
+  /** §3.6 Remove a tab's conflict only when it is still `generation`. */
+  resolveConflict: (tabId: string, generation: number) => void;
+  /** §3.6 Follow a tab's conflict to the tab's new path. */
+  retargetConflict: (tabId: string, filePath: string) => void;
   /**
    * §370.2 숨은 크롬을 한 번에 되살린다 — 포인터·키보드 복귀 경로가 부르는 입구다.
    *
@@ -257,10 +261,6 @@ interface UIState {
    * 있고, 그것은 §370.3 의 "제안이지 강제가 아니다" 를 어긴다. 프리셋 입구
    * (`setChromeVisibility`)와는 반대다 — 그쪽은 기록하지 않는다.
    */
-  /** §3.6 Remove a tab's conflict only when it is still `generation`. */
-  resolveConflict: (tabId: string, generation: number) => void;
-  /** §3.6 Follow a tab's conflict to the tab's new path. */
-  retargetConflict: (tabId: string, filePath: string) => void;
   revealAllChrome: () => void;
   rightPanelMode: RightPanelMode;
   rightPanelOpen: boolean;
