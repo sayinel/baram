@@ -587,12 +587,16 @@ mod tests {
 
     #[test]
     fn climbing_out_is_refused_however_it_is_spelled() {
-        let (_t, base) = tree(&["vault/notes", "other"]);
+        let (_t, base) = tree(&["vault/notes", "vault2", "other"]);
         std::fs::write(base.join("other/secret.md"), "x").unwrap();
+        std::fs::write(base.join("vault2/secret.md"), "x").unwrap();
         let vault = vault_at(&base.join("vault"));
         let absolute = base.join("other/secret.md").to_string_lossy().into_owned();
         for input in [
             "../other/secret.md",
+            // A sibling whose name starts with the vault's: contained by string prefix,
+            // not by path component.
+            "../vault2/secret.md",
             "notes/../../other/secret.md",
             "nope/../../other/secret.md",
             absolute.as_str(),

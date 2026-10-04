@@ -186,6 +186,25 @@ fn vault_arg(sb: &Sandbox) -> String {
     sb.vault.to_string_lossy().into_owned()
 }
 
+/// Whether `text` holds a Hangul syllable or jamo. The app's own error enums say their
+/// piece in Korean, so this is how a test sees one of them leak into CLI output.
+fn has_hangul(text: &str) -> bool {
+    text.chars().any(|c| {
+        matches!(c, '\u{1100}'..='\u{11FF}' | '\u{3130}'..='\u{318F}' | '\u{AC00}'..='\u{D7A3}')
+    })
+}
+
+/// Sets a directory's mode back to `0o755` when dropped. Declared after the `Sandbox`, it
+/// runs first, so the tempdir can be removed even when an assertion unwinds.
+struct Unlock(PathBuf);
+
+impl Drop for Unlock {
+    fn drop(&mut self) {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&self.0, std::fs::Permissions::from_mode(0o755));
+    }
+}
+
 // ── the two modes ─────────────────────────────────────────────────────────────────
 
 #[test]
@@ -432,7 +451,9 @@ fn outside_any_vault_the_command_fails_instead_of_guessing() {
     let sb = sandbox();
     // A vault IS registered and was active in the app — and still is not used, because
     // the current directory is not inside it.
-    write_config(&sb, &[("baram:context", registered(&sb))]);
+    let mut persisted = registered(&sb);
+    persisted["state"]["activeContextId"] = serde_json::json!("ctx-1");
+    write_config(&sb, &[("baram:context", persisted)]);
     write(&sb.vault, "a.md", "x");
     let ran = baram(&sb, &sb.home, &["--json", "read", "a.md"]);
     assert_eq!(ran.code, 1);
@@ -443,4 +464,89 @@ fn outside_any_vault_the_command_fails_instead_of_guessing() {
         error["error"]["candidates"].as_array().map(Vec::len),
         Some(2)
     );
+}
+
+#[test]
+fn the_hangul_check_sees_what_it_looks_for() {
+    // \u{D30C}\u{C77C} is a Hangul syllable pair, \u{1100} a jamo, \u{3131} a compatibility jamo.
+    for text in ["\u{D30C}\u{C77C}", "a\u{1100}b", "\u{3131}"] {
+        assert!(has_hangul(text), "{text:?}");
+    }
+    assert!(!has_hangul(
+        "cannot read notes/b.bin: stream did not contain valid UTF-8"
+    ));
+}
+
+#[test]
+fn a_directory_is_not_a_file() {
+    let sb = sandbox();
+    write(&sb.vault, "notes/a.md", "x");
+    let vault = vault_arg(&sb);
+    let ran = baram(&sb, &sb.home, &["--vault", &vault, "read", "notes"]);
+    assert_eq!(ran.code, 1);
+    assert!(ran.stdout.is_empty(), "stdout: {}", ran.stdout);
+    assert!(
+        ran.stderr.starts_with("error[FILE_NOT_FOUND]: "),
+        "stderr: {}",
+        ran.stderr
+    );
+}
+
+#[test]
+fn a_file_that_is_not_text_is_io_in_english() {
+    let sb = sandbox();
+    write(&sb.vault, "notes/a.md", "x");
+    std::fs::write(sb.vault.join("notes/b.bin"), [0xff, 0xfe]).expect("write");
+    let vault = vault_arg(&sb);
+    let ran = baram(&sb, &sb.home, &["--vault", &vault, "read", "notes/b.bin"]);
+    assert_eq!(ran.code, 1);
+    assert!(ran.stdout.is_empty(), "stdout: {}", ran.stdout);
+    assert!(
+        ran.stderr.starts_with("error[IO]: cannot read notes/b.bin"),
+        "stderr: {}",
+        ran.stderr
+    );
+    assert!(!has_hangul(&ran.stderr), "stderr: {}", ran.stderr);
+}
+
+#[test]
+fn a_path_below_a_file_is_file_not_found() {
+    let sb = sandbox();
+    write(&sb.vault, "notes/a.md", "x");
+    let vault = vault_arg(&sb);
+    let ran = baram(
+        &sb,
+        &sb.home,
+        &["--vault", &vault, "read", "notes/a.md/b.md"],
+    );
+    assert_eq!(ran.code, 1);
+    assert!(ran.stdout.is_empty(), "stdout: {}", ran.stdout);
+    assert!(
+        ran.stderr.starts_with("error[FILE_NOT_FOUND]: "),
+        "stderr: {}",
+        ran.stderr
+    );
+}
+
+/// `v/locked/a.md` exists; `v/locked` cannot be entered. That is not "no such file": the
+/// reason is the OS's, and the exit code says the run failed.
+#[test]
+fn a_file_in_a_directory_that_cannot_be_entered_is_io_not_file_not_found() {
+    use std::os::unix::fs::PermissionsExt;
+    let sb = sandbox();
+    write(&sb.vault, "locked/a.md", "x");
+    let locked = sb.vault.join("locked");
+    let _unlock = Unlock(locked.clone());
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).expect("chmod");
+    let vault = vault_arg(&sb);
+    let ran = baram(&sb, &sb.home, &["--vault", &vault, "read", "locked/a.md"]);
+    assert_eq!(ran.code, 1, "stderr: {}", ran.stderr);
+    assert!(ran.stdout.is_empty(), "stdout: {}", ran.stdout);
+    assert!(
+        ran.stderr
+            .starts_with("error[IO]: cannot read locked/a.md: "),
+        "stderr: {}",
+        ran.stderr
+    );
+    assert!(!has_hangul(&ran.stderr), "stderr: {}", ran.stderr);
 }

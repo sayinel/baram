@@ -93,20 +93,36 @@ pub(crate) struct FileContent {
 /// `baram read <path>` — one file, as it is on disk.
 pub(crate) async fn read(vault: &Vault, path: &str) -> Result<Envelope<FileContent>, CliError> {
     let missing = || CliError::new(ErrorCode::FileNotFound, format!("no file at {path}"));
+    // The io::Error's own text is the OS's or std's, in English, and carries no path
+    // ("Permission denied (os error 13)", "stream did not contain valid UTF-8"). The
+    // FsError enum's Display is not used: its wording is Korean.
+    let unreadable = |source: &std::io::Error| {
+        CliError::new(ErrorCode::Io, format!("cannot read {path}: {source}"))
+    };
     let file = vault::locate(vault, path)?;
-    if !file.is_file() {
-        return Err(missing());
+    // `Path::is_file` is false whenever the metadata cannot be read — std's own examples
+    // are a permission error and a broken symlink — so a file behind a directory that
+    // cannot be entered would be reported as absent. FILE_NOT_FOUND is for what is not
+    // there: nothing at the path, a file where a directory should be, or a directory
+    // (not a file). Any other failure is IO, with the OS's reason.
+    match std::fs::metadata(&file) {
+        Ok(meta) if meta.is_file() => {}
+        Ok(_) => return Err(missing()),
+        Err(source)
+            if matches!(
+                source.kind(),
+                std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+            ) =>
+        {
+            return Err(missing());
+        }
+        Err(source) => return Err(unreadable(&source)),
     }
     let content = crate::fs::read_file(&file.to_string_lossy())
         .await
         .map_err(|error| match error {
             FsError::NotFound(_) => missing(),
-            // The io::Error's own text is the OS's or std's, in English, and carries no
-            // path ("Permission denied (os error 13)", "stream did not contain valid
-            // UTF-8"). The enum's Display is not used: its wording is Korean.
-            FsError::ReadError(source) => {
-                CliError::new(ErrorCode::Io, format!("cannot read {path}: {source}"))
-            }
+            FsError::ReadError(source) => unreadable(&source),
             _ => CliError::new(ErrorCode::Io, format!("cannot read {path}")),
         })?;
     Ok(Envelope {
