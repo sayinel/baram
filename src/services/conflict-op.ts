@@ -7,7 +7,9 @@
 // reload in `conflict-reload.ts`) ask `liveness` before they use what an await
 // returned, and the two that write ask it with no await between that check and
 // the write.
+import { readFile } from "../ipc/invoke";
 import { useEditorStore } from "../stores/editor/editor";
+import { conflictArrival } from "../stores/ui/conflict-queue";
 import { useUIStore } from "../stores/ui/ui";
 
 export interface ConflictOp {
@@ -21,6 +23,15 @@ export type ConflictOpKind = "apply" | "keep-local" | "prepare" | "reload";
 
 /** Why an action stopped after an await: the tab closed, or it moved. */
 export type Liveness = "path-changed" | "tab-gone" | null;
+
+/** A read of the op's file that no watcher event can be shown to postdate. */
+export interface SettledRead {
+  /** `Date.now()` right before the read that was accepted. */
+  startedAt: number;
+  text: string;
+}
+
+const SETTLE_ATTEMPTS = 3;
 
 let current: ConflictOp | null = null;
 let lastId = 0;
@@ -61,4 +72,37 @@ export function liveness(op: ConflictOp): Liveness {
     return "tab-gone";
   }
   return tab.filePath === op.path ? null : "path-changed";
+}
+
+/**
+ * Read the op's file until the read can be trusted to be current: no watcher
+ * arrival for the tab during it (`conflictArrival` — every event counts, also
+ * the ones the queue folds away), or the same text as the read before it. The
+ * second rule lets the several events of ONE write (macOS sends created and
+ * changed) settle instead of reading as instability. Gives up after three reads.
+ */
+export async function readSettled(
+  op: ConflictOp,
+): Promise<
+  | SettledRead
+  | { code: "path-changed" | "read-failed" | "tab-gone" | "unstable" }
+> {
+  let previous: null | string = null;
+  for (let attempt = 0; attempt < SETTLE_ATTEMPTS; attempt++) {
+    const startedAt = Date.now();
+    const arrival = conflictArrival(op.tabId);
+    let text: string;
+    try {
+      text = await readFile(op.path);
+    } catch {
+      return { code: "read-failed" };
+    }
+    const gone = liveness(op);
+    if (gone) return { code: gone };
+    if (conflictArrival(op.tabId) === arrival || text === previous) {
+      return { startedAt, text };
+    }
+    previous = text;
+  }
+  return { code: "unstable" };
 }

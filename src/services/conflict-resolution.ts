@@ -17,12 +17,13 @@ import { readFile, writeFile } from "../ipc/invoke";
 import { mergeTexts } from "../ipc/snapshot";
 import { useEditorStore } from "../stores/editor/editor";
 import { useFileStore } from "../stores/file/file";
+import { conflictArrival } from "../stores/ui/conflict-queue";
 import { useUIStore } from "../stores/ui/ui";
 import { awaitBlockIdRenames } from "../utils/editor/block-id-rename-landing";
 import { readTabLocalText } from "../utils/editor/tab-local-text";
 import { isMarkdownFile } from "../utils/file-type";
 import { adoptable, adoptDiskTextIntoTab } from "./conflict-adopt";
-import { beginOp, endOp, liveness } from "./conflict-op";
+import { beginOp, endOp, liveness, readSettled } from "./conflict-op";
 import { announceTabWrite, noteTabWritten } from "./tab-write";
 
 export type ConflictFailure =
@@ -81,8 +82,6 @@ export const CONFLICT_UNAVAILABLE_KEYS: Record<UnavailableReason, string> = {
   "source-unreachable": "conflict.unavailable",
 };
 
-const VERIFY_ATTEMPTS = 3;
-
 /**
  * Write the merged text — only if the disk and the tab still hold what the
  * merge was built from — then verify and adopt it into the tab.
@@ -96,6 +95,10 @@ export async function applyConflictMerge(
   try {
     if (op.path !== prepared.path) return { code: "path-changed" };
 
+    // An event that arrives while this read runs may be a write the read did
+    // not see (it can carry an equal or lower mtime, so the queue may not
+    // change): refuse rather than write over it.
+    const arrival = conflictArrival(op.tabId);
     let disk: string;
     try {
       disk = await readFile(op.path);
@@ -104,7 +107,9 @@ export async function applyConflictMerge(
     }
     const gone = liveness(op);
     if (gone) return { code: gone };
-    if (disk !== prepared.external) return { code: "disk-changed" };
+    if (conflictArrival(op.tabId) !== arrival || disk !== prepared.external) {
+      return { code: "disk-changed" };
+    }
     const local = readTabLocalText(op.tabId);
     if (local.kind === "unavailable") {
       useEditorStore.getState().setActiveTab(op.tabId);
@@ -272,15 +277,16 @@ function requeue(op: ConflictOp, base: string): void {
 }
 
 /**
- * After a write: re-read the file until a read is known to postdate every event
- * that arrived for the tab, and acknowledge only when it holds `expected`.
+ * After a write: read the file until the read is settled (`readSettled` — no
+ * event arrived during it, or it matches the read before), and acknowledge only
+ * when it holds `expected`.
  *
  * `prepareAdopt` runs in the synchronous section before anything is
  * acknowledged; it returns a failure to stop there, or the adopt step. Then, in
  * one synchronous run: note the write (echo cutoff = `savedAt`, the time
  * observed right after the write — never a future time), acknowledge the
  * pending event (`canReloadMtime = 0`), adopt, announce, and resolve the
- * conflict generation the read was taken against.
+ * conflict generation current at that moment.
  *
  * @returns null when acknowledged, otherwise the failure.
  */
@@ -290,31 +296,22 @@ async function verifyAndAcknowledge(
   savedAt: number,
   prepareAdopt: () => (() => void) | ConflictFailure,
 ): Promise<ConflictFailure | null> {
-  const ui = useUIStore.getState;
-  for (let attempt = 0; attempt < VERIFY_ATTEMPTS; attempt++) {
-    const g0 = ui().conflictGeneration(op.tabId);
-    let actual: string;
-    try {
-      actual = await readFile(op.path);
-    } catch {
-      return { code: "read-failed" };
-    }
-    const gone = liveness(op);
-    if (gone) return { code: gone };
-    // An event that arrived during the read may postdate it; read again.
-    if (ui().conflictGeneration(op.tabId) !== g0) continue;
-    if (actual !== expected) return { code: "superseded" };
+  const read = await readSettled(op);
+  if ("code" in read) return read;
+  if (read.text !== expected) return { code: "superseded" };
 
-    const adopt = prepareAdopt();
-    if (typeof adopt !== "function") return adopt;
-    noteTabWritten(op.path, savedAt);
-    useFileStore.getState().updateCanReloadMtime(op.path, 0);
-    adopt();
-    announceTabWrite(op.path, { indexLinks: isMarkdownFile(op.path) });
-    if (g0 !== null) ui().resolveConflict(op.tabId, g0);
-    return null;
+  const adopt = prepareAdopt();
+  if (typeof adopt !== "function") return adopt;
+  // The generation now: every event up to the settled read is covered by it.
+  const generation = useUIStore.getState().conflictGeneration(op.tabId);
+  noteTabWritten(op.path, savedAt);
+  useFileStore.getState().updateCanReloadMtime(op.path, 0);
+  adopt();
+  announceTabWrite(op.path, { indexLinks: isMarkdownFile(op.path) });
+  if (generation !== null) {
+    useUIStore.getState().resolveConflict(op.tabId, generation);
   }
-  return { code: "unstable" };
+  return null;
 }
 
 /**

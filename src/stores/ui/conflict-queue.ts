@@ -27,6 +27,23 @@ export type ConflictEvent = Omit<ConflictEntry, "generation">;
 
 let lastGeneration = 0;
 
+/**
+ * Watcher arrivals per tab, counted apart from the queue. The queue folds an
+ * event into an existing entry and keeps its generation when nothing it shows
+ * changed (same or older mtime, same path and base) — right for what the modal
+ * shows, since one write emits several events. But an action that read the file
+ * must know whether ANY event arrived meanwhile: a later write can carry an
+ * equal or lower mtime (same millisecond, skewed clock). Not React state —
+ * read synchronously by the actions only.
+ */
+const arrivals = new Map<string, number>();
+let lastArrival = 0;
+
+/** The tab's arrival count: changes on every external-change event for it. */
+export function conflictArrival(tabId: string): number {
+  return arrivals.get(tabId) ?? 0;
+}
+
 /** Remove the tab's entry regardless of generation — for a tab that is gone. */
 export function dropConflictEntry(
   queue: readonly ConflictEntry[],
@@ -68,6 +85,11 @@ export function enqueueConflictEntry(
     tabId: event.tabId,
   };
   return next;
+}
+
+/** Count one watcher event for the tab — every one, deduplicated or not. */
+export function noteConflictArrival(tabId: string): void {
+  arrivals.set(tabId, ++lastArrival);
 }
 
 /** Remove the tab's entry only when it is still the generation the caller saw. */

@@ -19,6 +19,7 @@ import { useLinkStore } from "../stores/editor/link";
 import { useSnapshotStore } from "../stores/editor/snapshot";
 import { useFileStore } from "../stores/file/file";
 import { useSettingsStore } from "../stores/settings/store";
+import { noteConflictArrival } from "../stores/ui/conflict-queue";
 import { useUIStore } from "../stores/ui/ui";
 import {
   awaitBlockIdRenames,
@@ -65,6 +66,7 @@ export function showConflictModal(
   externalMtime: number,
   base: string,
 ): void {
+  noteConflictArrival(tabId);
   useUIStore
     .getState()
     .enqueueConflict({ base, externalMtime, filePath, tabId });
