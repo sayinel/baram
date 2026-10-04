@@ -128,8 +128,9 @@ function logUnexpected(err: unknown): void {
 
 /**
  * The conflict modal's actions and the merge view's state. Every action runs
- * against the entry's tab (`conflict-resolution.ts`) and leaves the conflict
- * queued unless it succeeded — Cancel included.
+ * against the entry's tab (`conflict-resolution.ts`, `conflict-reload.ts`) and
+ * leaves the conflict queued unless it succeeded or the tab is gone — Cancel
+ * included.
  */
 export function useConflictActions(): ConflictActions {
   useConflictTargetSync();
@@ -154,8 +155,9 @@ export function useConflictActions(): ConflictActions {
       void applyConflictMerge(merge, merged)
         .then((result) => {
           if (result.code === "busy") return;
-          // A failed write keeps the merge open to try again; any other stop
-          // closes it, and the modal asks again with what is true now.
+          // A failed write keeps the merge open to try again; the other stops
+          // (all but `busy`, returned above) close it, and the modal asks again
+          // with what is true now.
           if (result.code !== "write-failed") setMerge(null);
           if (result.code !== "applied") {
             toastConflictFailure(result, merge.tabId);

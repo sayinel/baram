@@ -1,8 +1,9 @@
-// §3.6 The bookkeeping that follows a tab's write to disk, split in two so every
-// writer keeps one order: note the write (snapshot gate, echo cutoff), update the
-// cache and the tab's flags (the caller's part), then announce it (plugins,
-// journal sidebars, link index). Plugins hear `file:save` only after the cache and
-// the flags say the file is saved.
+// §3.6 The bookkeeping that follows a tab's write to disk, split in two so the
+// writers that use it (`handleSave`, the conflict actions) keep one order: note
+// the write (snapshot gate, echo cutoff), update the cache and the tab's flags
+// (the caller's part), then announce it (plugins, journal sidebars, link index).
+// For those writers, plugins hear `file:save` after the cache and the flags say
+// the file is saved.
 import { updateFileIndex } from "../ipc/invoke";
 import { notifyFileSave } from "../plugins/plugin-lifecycle";
 import { useLinkStore } from "../stores/editor/link";

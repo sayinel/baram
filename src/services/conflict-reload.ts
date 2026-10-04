@@ -2,7 +2,7 @@
 // text into the conflicted tab, discarding that tab's unsaved work — and only
 // that tab's.
 //
-// ‼️ This is the one place where "the user agreed to drop local edits" exists.
+// ‼️ The consent given here — drop this tab's local edits — is for one tab.
 // The auto-reload cannot tell an unsaved edit from an edit the user just chose
 // to discard — the buffers look the same — and inferring consent from `isDirty`
 // would kill its guard (the modal only shows for tabs with unsaved work). So the

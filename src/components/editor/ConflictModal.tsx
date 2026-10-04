@@ -79,8 +79,8 @@ export function ConflictModal({
  * §3.6 Connected wrapper — shows the head of the conflict queue: the first
  * queued conflict whose tab is still open. Mounted once in AppDialogs.
  *
- * The actions resolve the conflict themselves, and only when they succeed —
- * the wrapper does not. `pending` disables the buttons while an action runs;
+ * The actions resolve the conflict themselves — when they succeed, or by
+ * dropping it when its tab is gone; the wrapper does not. `pending` disables the buttons while an action runs;
  * `suspended` hides the modal while the merge view is open, so a conflict
  * queued meanwhile waits instead of covering the merge.
  */

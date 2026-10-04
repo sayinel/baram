@@ -68,7 +68,7 @@ export function adoptDiskTextIntoTab(
     return true;
   }
   // A markdown tab in source mode keeps its ProseMirror view alive underneath;
-  // it gets the text too, so it never shows the document from before.
+  // it gets the text too, so it does not keep the document from before.
   const view = isMarkdownFile(path) ? liveViewOf(tabId) : null;
   if (view) {
     installFreshDocument(view, text);

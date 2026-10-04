@@ -3,7 +3,10 @@
 // One action runs at a time. It is bound to a tab id AND the path that tab had
 // when the action began: every await may let the tab close or be renamed, and
 // writing after either would land on a file the user did not agree to change.
-// `isLive` is asked after every await and right before every write.
+// The four actions (prepare, apply and keep-local in `conflict-resolution.ts`,
+// reload in `conflict-reload.ts`) ask `liveness` before they use what an await
+// returned, and the two that write ask it with no await between that check and
+// the write.
 import { useEditorStore } from "../stores/editor/editor";
 import { useUIStore } from "../stores/ui/ui";
 
@@ -41,7 +44,7 @@ export function beginOp(
   return current;
 }
 
-/** Release the token — only the holder can. Every action calls it in `finally`. */
+/** Release the token — only the holder can. The four actions call it in `finally`. */
 export function endOp(op: ConflictOp): void {
   if (current === op) current = null;
 }
