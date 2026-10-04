@@ -25,15 +25,19 @@ import { adoptDiskTextIntoTab } from "../../services/conflict-adopt";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
+import { useUIStore } from "../../stores/ui/ui";
 import {
   clearOriginalDoc,
+  documentOwner,
   markContentLoaded,
+  setDocumentOwner,
   shouldSkipDirty,
 } from "../../utils/editor/programmatic-update";
 import {
   serializeEditorState,
   serializeLiveDoc,
 } from "../../utils/editor/serialize-live-doc";
+import { readTabLocalText } from "../../utils/editor/tab-local-text";
 import { resumeKeepaliveTab } from "../tab-switching/resume-keepalive-tab";
 import { installContent } from "../tab-switching/types";
 import { useAutoSave } from "../use-auto-save";
@@ -71,6 +75,7 @@ function load(md: string, tabId: string) {
     }),
   );
   markContentLoaded(tabId);
+  setDocumentOwner(editor, tabId);
   shouldSkipDirty(tabId, editor.state.doc);
 }
 
@@ -136,6 +141,30 @@ describe("§3.6 a clean auto-reload takes a fresh baseline", () => {
 
     expect(serializeLiveDoc(editor)).toBe(LOADED);
     expect(isDirty("a")).toBe(true);
+    h.unmount();
+  });
+
+  it("the reinstalls of the active tab record the editor as holding it", () => {
+    // 전환 창에서 shared editor 가 다른 탭(b)의 기록을 들고 있을 때도, 활성 탭의 글을 다시 설치하면
+    // 그 editor 는 이제 활성 탭의 것이다.
+    // 이것을 실패시키는 것: `use-editor-effects.ts` 의 두 설치 뒤 `setDocumentOwner` 제거.
+    load(LOADED, "a");
+    setDocumentOwner(editor, "b");
+    useFileStore.getState().setFileContent(A, ON_DISK);
+    const h = mount();
+
+    act(() => {
+      useEditorStore.getState().requestContentRefresh("fresh", A);
+    });
+    expect(documentOwner(editor)).toBe("a");
+
+    setDocumentOwner(editor, "b");
+    act(() => {
+      useUIStore.setState({
+        contentReloadVersion: useUIStore.getState().contentReloadVersion + 1,
+      });
+    });
+    expect(documentOwner(editor)).toBe("a");
     h.unmount();
   });
 
@@ -323,6 +352,10 @@ describe("§3.6 a conflict's text is installed where the tab's document lives", 
     expect(serializeEditorState(editorStateCache.get("a")!)).toBe(MERGED);
     expect(useFileStore.getState().openFiles.get(A)).toBe(MERGED);
     expect(isDirty("a")).toBe(false);
+    // 복원이 shared editor 의 소유를 b 로 기록했다 — a 의 글은 cache 에서 읽힌다.
+    // 이것을 실패시키는 것: `restore-cached-state.ts` 의 `setDocumentOwner` 제거(shared 의 b 문서를
+    // a 의 글로 읽는다).
+    expect(readTabLocalText("a")).toMatchObject({ text: MERGED });
 
     act(() => {
       useEditorStore.setState({ activeTabId: "a", mruOrder: ["a", "b"] });
@@ -363,6 +396,11 @@ describe("§3.6 a conflict's text is installed where the tab's document lives", 
     });
 
     await waitFor(() => expect(serializeLiveDoc(editor)).toBe(MERGED));
+    // cold load 가 shared editor 의 소유를 a 로 기록했다.
+    // 이것을 실패시키는 것: `load-tab-content.ts` 의 `setDocumentOwner` 제거(a 가 "loading" 으로 읽힌다).
+    await waitFor(() =>
+      expect(readTabLocalText("a")).toMatchObject({ text: MERGED }),
+    );
     h.unmount();
   });
 

@@ -16,6 +16,7 @@ import { useFileStore } from "../../../stores/file/file";
 import {
   clearOriginalDoc,
   markContentLoaded,
+  setDocumentOwner,
   setTabLoading,
 } from "../programmatic-update";
 import { readTabLocalText } from "../tab-local-text";
@@ -77,6 +78,7 @@ beforeEach(() => {
     tabs: [fileTab("a", A), fileTab("b", "/v/b.md")],
   });
   markContentLoaded("a");
+  setDocumentOwner(shared, "a");
   setTabLoading("a", true);
 });
 
@@ -108,6 +110,7 @@ describe("§3.6 readTabLocalText — authority order", () => {
     expect(read()).toBe("E");
 
     markContentLoaded("b");
+    setDocumentOwner(shared, "b");
     expect(read()).toBe("C");
 
     cache.delete("a");
@@ -135,6 +138,20 @@ describe("§3.6 readTabLocalText — authority order", () => {
     setTabLoading("a", false);
     pooled.destroy();
     expect(read()).toBe("E");
+  });
+});
+
+describe("§3.6 readTabLocalText — the shared editor by its own record", () => {
+  it("a tab last loaded into an evicted pool editor is loading, not the shared editor's document", () => {
+    // 큰 탭 a 가 pool editor 에 로드됐다가 버려졌다 — loadedTabId 는 a, shared editor 는 b 를 든다.
+    // 이것을 실패시키는 것: shared 판정을 `loadedTabId() === tabId` 로("E" 를 a 의 글로 읽는다) /
+    // "loading" 갈래 제거(cache "C" 로 떨어진다).
+    useEditorStore.setState({ sourceModeTabs: [], staleContentTabs: [] });
+    setTabLoading("a", false);
+    poolEntry = null;
+    setDocumentOwner(shared, "b");
+
+    expect(read()).toBe("loading");
   });
 });
 

@@ -12,7 +12,10 @@ import { parseMdastAsync } from "../../pipeline/parse-async";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFoldStore } from "../../stores/editor/fold";
 import { logCacheEvent, timePhase } from "../../utils/editor/perf-trace";
-import { setTabLoading } from "../../utils/editor/programmatic-update";
+import {
+  setDocumentOwner,
+  setTabLoading,
+} from "../../utils/editor/programmatic-update";
 import {
   appendChunksProgressively,
   chunkBlocks,
@@ -165,6 +168,8 @@ export function loadTabContent(
             "fresh-document",
           ),
         );
+        // §3.6 From here the target editor holds this tab's (partial) document.
+        setDocumentOwner(targetEditor, activeTabId);
         ctx.setIsParsing(false);
 
         // Reset scroll to top for freshly opened documents.

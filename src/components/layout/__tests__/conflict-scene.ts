@@ -16,6 +16,7 @@ import { useUIStore } from "../../../stores/ui/ui";
 import {
   clearOriginalDoc,
   markContentLoaded,
+  setDocumentOwner,
   setTabLoading,
 } from "../../../utils/editor/programmatic-update";
 import { serializeLiveDoc } from "../../../utils/editor/serialize-live-doc";
@@ -88,6 +89,7 @@ export function setupScene(): Scene {
   disk.set(C, "C disk\n");
   shared = makeTestEditor("<p>B body</p>");
   markContentLoaded("b");
+  setDocumentOwner(shared, "b");
   cacheTab("a", "<p>A local</p>");
   cacheTab("c", "<p>C local</p>");
 

@@ -5,6 +5,7 @@ import type { EditorState } from "@tiptap/pm/state";
 
 import { replaceEditorStateWithVim } from "../../extensions/plugins/vim/replace-editor-state";
 import { logCacheEvent, timePhase } from "../../utils/editor/perf-trace";
+import { setDocumentOwner } from "../../utils/editor/programmatic-update";
 import { afterDocLoad } from "./after-doc-load";
 
 /**
@@ -34,6 +35,7 @@ export function restoreCachedState(
     timePhase("tabSwitch:restore", () =>
       replaceEditorStateWithVim(ctx.editor.view, state, "cached-restore"),
     );
+    setDocumentOwner(ctx.editor, activeTabId);
     ctx.installContent(activeTabId, incomingTab.filePath);
     // §313 ‼️ 복원 **뒤에** 부른다. 이 분기는 캐시된 상태를 이 setTimeout에 미뤄
     // 두므로, 바깥에서 부르면 스크롤 요청이 아직 **나가는** 문서를 보고 좌표를

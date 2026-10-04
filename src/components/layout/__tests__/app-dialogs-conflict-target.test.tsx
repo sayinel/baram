@@ -89,8 +89,10 @@ vi.mock("../../journal/QuickCaptureDialog", () => ({
 }));
 vi.mock("../../journal/ZettelTitleDialog", () => ({ ZettelTitleDialog: stub }));
 
+import { makeTestEditor } from "../../../__tests__/helpers/make-test-editor";
 import { shouldDeferSave } from "../../../hooks/use-auto-save";
 import { useFileWatcher } from "../../../hooks/use-file-watcher";
+import { createKeepalivePool } from "../../../hooks/use-large-doc-keepalive";
 import { t } from "../../../i18n";
 import { useEditorStore } from "../../../stores/editor/editor";
 import { useFileStore } from "../../../stores/file/file";
@@ -98,6 +100,7 @@ import { useSettingsStore } from "../../../stores/settings/store";
 import { useUIStore } from "../../../stores/ui/ui";
 import {
   markContentLoaded,
+  setDocumentOwner,
   setTabLoading,
 } from "../../../utils/editor/programmatic-update";
 import { AppDialogs } from "../AppDialogs";
@@ -107,6 +110,7 @@ import {
   B,
   buffers,
   C,
+  cache,
   cacheTab,
   deferred,
   disk,
@@ -260,6 +264,7 @@ describe("§3.6 Merge reads the conflicted tab, not the active one", () => {
     // 이것을 실패시키는 것: 소스 버퍼 단계를 shared editor 뒤로("A old").
     shared.commands.setContent("<p>A old</p>");
     markContentLoaded("a");
+    setDocumentOwner(shared, "a");
     buffers.set("a", "A src\n");
     useEditorStore.setState({ activeTabId: "a", sourceModeTabs: ["a"] });
     await mount();
@@ -828,6 +833,56 @@ describe("§3.6 Reload discards only the conflicted tab's work, after the read",
     expect(useUIStore.getState().toast?.message).toBe(
       toastFor("conflict.readFailed", "a.md"),
     );
+  });
+});
+
+describe("§3.6 the shared editor is read and written only for the tab it holds", () => {
+  // 큰 탭 a 가 keepalive editor 에 로드됐다가(loadedTabId 가 a 가 된다) 다음 큰 탭에 그 자리를
+  // 내주고 버려졌다. 로드 표시는 다음 로드가 끝날 때까지 a 로 남지만, shared editor 는 그동안
+  // 한 번도 a 를 들지 않았다 — 여전히 b 의 문서다.
+  // 실제 pool(`createKeepalivePool`, 상한 1)로 그 순서를 밟는다: shared 는 b, a 를 pool editor 에
+  // 로드(로드 표시 a), 다음 큰 탭 c 가 그 자리를 잡으며 a 의 editor 를 버린다.
+  beforeEach(() => {
+    const pool = createKeepalivePool();
+    const pooledA = makeTestEditor("<p>A pooled</p>");
+    pool.acquire("a", pooledA);
+    pool.markComplete("a");
+    setDocumentOwner(pooledA, "a");
+    markContentLoaded("a");
+    useEditorStore.setState({
+      documentSurfaceAccess: {
+        editor: shared,
+        editorStateCache: cache,
+        isKeepaliveComplete: (id) => pool.isComplete(id),
+        keepaliveEditor: (id) => pool.get(id),
+      },
+    });
+    pool.acquire("c", makeTestEditor("<p>C loading</p>"));
+    expect(pooledA.isDestroyed).toBe(true);
+  });
+
+  it("Keep Local does not write the shared editor's document into a", async () => {
+    // 이것을 실패시키는 것: shared editor 판정을 `loadedTabId() === tabId` 로(b 의 본문을 a 에 쓴다).
+    await mount();
+    externalChange(A, 2000);
+    click(await expectConflictFor("a.md"), "Keep Local Edits");
+    await settle();
+
+    expect(io.writeFile).not.toHaveBeenCalled();
+    expect(disk.get(A)).toBe("EXT1\n");
+    expect(queueIds()).toEqual(["a"]);
+  });
+
+  it("Reload does not install a's text into the shared editor that holds b", async () => {
+    // 이것을 실패시키는 것: `liveViewOf` 의 shared editor 판정을 `loadedTabId() === tabId` 로.
+    await mount();
+    externalChange(A, 2000);
+    click(await expectConflictFor("a.md"), "Reload External Changes");
+    await settle();
+
+    expect(sharedText()).toBe("B body\n");
+    expect(useFileStore.getState().openFiles.get(A)).toBe("EXT1\n");
+    expect(useEditorStore.getState().staleContentTabs).toContain("a");
   });
 });
 

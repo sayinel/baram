@@ -12,8 +12,8 @@ import { useEditorStore } from "../stores/editor/editor";
 import { useFileStore } from "../stores/file/file";
 import { installFreshDocument } from "../utils/editor/install-fresh-document";
 import {
+  documentOwner,
   isTabLoading,
-  loadedTabId,
   markBaselinePending,
 } from "../utils/editor/programmatic-update";
 import { isMarkdownFile } from "../utils/file-type";
@@ -89,7 +89,7 @@ function liveViewOf(tabId: string): Editor | null {
   if (pooled && !pooled.isDestroyed && access.isKeepaliveComplete(tabId)) {
     return pooled;
   }
-  if (loadedTabId() === tabId && !access.editor.isDestroyed) {
+  if (documentOwner(access.editor) === tabId && !access.editor.isDestroyed) {
     return access.editor;
   }
   return null;

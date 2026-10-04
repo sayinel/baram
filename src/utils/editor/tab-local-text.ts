@@ -9,7 +9,11 @@
 import { isFileTab, useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { isBinaryViewerFile, isMarkdownFile } from "../file-type";
-import { isTabLoading, loadedTabId } from "./programmatic-update";
+import {
+  documentOwner,
+  isTabLoading,
+  loadedTabId,
+} from "./programmatic-update";
 import { serializeEditorState, serializeLiveDoc } from "./serialize-live-doc";
 
 export type TabLocalText =
@@ -35,9 +39,12 @@ export type UnavailableReason =
  * buffer does not exist; 5. a load still appending → `loading`; 6. a stale tab
  * or an incomplete keep-alive entry → the cached file text; 7. no registered
  * document surfaces → `no-surface`; 8. a complete keep-alive editor; 9. the
- * shared editor while it holds this tab (`loadedTabId`) — after 8, because a
+ * shared editor while it holds this tab (`documentOwner`) — after 8, because a
  * keep-alive resume also marks its tab loaded while the shared editor holds
  * something else; 10. the cached EditorState; 11. the cached file text.
+ * The shared editor counts only when it holds the tab by its own record
+ * (`documentOwner`); a tab last installed into an editor that is gone is
+ * `loading` until it loads again.
  */
 export function readTabLocalText(tabId: string): TabLocalText {
   const editorStore = useEditorStore.getState();
@@ -89,9 +96,14 @@ export function readTabLocalText(tabId: string): TabLocalText {
 
   if (pooled && !pooled.isDestroyed) return found(serializeLiveDoc(pooled));
 
-  if (loadedTabId() === tabId && !access.editor.isDestroyed) {
+  if (documentOwner(access.editor) === tabId && !access.editor.isDestroyed) {
     return found(serializeLiveDoc(access.editor));
   }
+  // The tab was installed last somewhere, yet neither a pooled editor nor the
+  // shared one holds it (a pooled editor evicted before the next load finished
+  // is how this happens). Which document is current is not known here — wait
+  // for a load.
+  if (loadedTabId() === tabId) return unavailable("loading");
 
   const cached = access.editorStateCache.get(tabId);
   if (cached) return found(serializeEditorState(cached));

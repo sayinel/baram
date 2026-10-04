@@ -47,6 +47,18 @@ const contentLoadedListeners = new Set<(tabId: string) => void>();
  */
 let lastLoadedTabId: null | string = null;
 
+/**
+ * §3.6 Which tab's document each editor instance holds, recorded where a tab's
+ * whole document is installed into it (`setDocumentOwner`).
+ *
+ * ‼️ Not `lastLoadedTabId`. That one says which tab was installed last into ANY
+ * editor — a keep-alive editor included — so after a large tab loads into its
+ * own pooled editor it names that tab while the shared editor still holds the
+ * previous one's document, and it keeps naming it after the pool evicts that
+ * editor. Reading the shared editor on its word reads another file's text.
+ */
+const documentOwners = new WeakMap<object, string>();
+
 /** Subscribe to content-loaded notifications. Returns an unsubscribe function. */
 export function subscribeContentLoaded(
   fn: (tabId: string) => void,
@@ -87,6 +99,11 @@ export const JOURNAL_CURSOR_INIT_META = "journalCursorInit";
  * Folded into the dirty baseline the same way the colwidth/journal-caret inits are.
  */
 export const CONTENT_SYNC_META = "contentSync";
+
+/** §3.6 The tab whose document `editor` holds, or null when none is recorded. */
+export function documentOwner(editor: object): null | string {
+  return documentOwners.get(editor) ?? null;
+}
 
 /** Clean up when tab is closed */
 export function clearOriginalDoc(tabId: string): void {
@@ -168,6 +185,20 @@ export function noteContentSync(tabId: string, doc: Node): void {
   if (loadingTabs.has(tabId)) return;
   pendingTabs.delete(tabId);
   originalDocs.set(tabId, doc);
+}
+
+/**
+ * §3.6 Record that `editor` now holds `tabId`'s document (null: no tab's).
+ * Called where a whole document is put into an editor for a known tab: the
+ * cached restore (`restore-cached-state.ts`), the cold load's first chunk
+ * (`load-tab-content.ts`), and the two active-tab reinstalls in
+ * `use-editor-effects.ts` (content refresh, search-replace reload). The
+ * source-mode return and the conflict adoption install a tab's text into the
+ * editor already recorded for that tab, so they leave the record as it is.
+ */
+export function setDocumentOwner(editor: object, tabId: null | string): void {
+  if (tabId === null) documentOwners.delete(editor);
+  else documentOwners.set(editor, tabId);
 }
 
 /** Mark a tab as currently loading (progressive render in flight). While set,

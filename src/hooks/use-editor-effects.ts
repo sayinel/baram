@@ -20,7 +20,10 @@ import {
   scrollToTarget,
   takeSameTabScroll,
 } from "../utils/editor/pending-scroll";
-import { markBaselinePending } from "../utils/editor/programmatic-update";
+import {
+  markBaselinePending,
+  setDocumentOwner,
+} from "../utils/editor/programmatic-update";
 
 interface UseEditorEffectsParams {
   editor: Editor | null;
@@ -178,6 +181,8 @@ export function useEditorEffects({
       plugins: editor.state.plugins,
     });
     replaceEditorStateWithVim(editor.view, newState, "fresh-document");
+    // §3.6 `editor` now holds the active tab's document, whatever it held before.
+    setDocumentOwner(editor, incomingTab.id);
     // Focus and scroll to new cursor position after dialog closes.
     // Use DOM scrollIntoView (not ProseMirror tr.scrollIntoView) because
     // updateState bypasses the normal transaction pipeline.
@@ -227,6 +232,7 @@ export function useEditorEffects({
       return;
     }
     installFreshDocument(editor, content);
+    setDocumentOwner(editor, tab.id);
     // §3.6 A clean tab now shows the disk's new text, so the dirty baseline must
     // be that text: re-arm the pending capture, as a load does. Left alone, the
     // baseline stays at the load-time document, and editing back to it would
