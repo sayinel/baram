@@ -19,8 +19,9 @@ import { createEditorRequestHandler } from "../host-editor-bridge";
 // bridge.
 //
 // ‼️ The state has NO plugins, so the selection-anchor plugin is absent and a ref does not
-// follow a transaction (§388). Rows here can only drive flows with no transaction between
-// the read and the write; the tracking flows run on a real Editor in
+// follow a transaction (§388). Rows here can only drive flows with no DOCUMENT-changing
+// transaction between the read and the write — a selection-only one keeps the document node
+// the anchor table is keyed on. The tracking flows run on a real Editor in
 // `src/plugins/__tests__/editor-ops*.test.ts`.
 export const schema = new Schema({
   marks: {

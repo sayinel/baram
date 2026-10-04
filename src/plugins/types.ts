@@ -81,6 +81,12 @@ export interface EditorAPI {
   /**
    * §4.8 The document's PROSE — code blocks and frontmatter excluded, a wikilink's label
    * included; the number the status bar counts. Requires `editor` or `editor:readonly`.
+   *
+   * Use this, not `getMarkdown()`, for anything that measures or reads the text: counting
+   * words, summarising, sending a document to a model. `getMarkdown()` is for round-tripping
+   * — it hands back `#`, `|` and `**`, which a word count turns into words. The app's own
+   * status bar counts what this returns, so a plugin that uses it agrees with the app instead
+   * of contradicting it on screen.
    */
   getText(): Promise<string>;
   /**

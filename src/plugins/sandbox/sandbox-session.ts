@@ -426,9 +426,11 @@ export class SandboxSession {
             type: "hostResponse",
             requestId,
             ok: false,
-            // §388 spec 0067 §10 — an editor refusal's code crosses as a field so the plugin
-            // can branch on it; any other failure crosses as text only.
-            ...codeOf(err),
+            // §388 spec 0067 §10 — a listed refusal code crosses as a field so the plugin can
+            // branch on it, and only from the `editor` service: the codes are the editor API's
+            // contract, so a failure from any other service crosses as text only, whatever its
+            // thrown value carries.
+            ...(service === "editor" ? codeOf(err) : {}),
             // ‼️ TRUNCATED (§260 Phase 4c security review, MEDIUM-2). This was the last
             // uncapped object-shaped frame: an `ai` rejection carries the PROVIDER's error
             // text, and `llm/claude.rs` builds it as `HTTP {status}: {body}` from the whole

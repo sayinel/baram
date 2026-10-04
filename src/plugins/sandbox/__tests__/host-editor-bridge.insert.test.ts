@@ -1,7 +1,8 @@
 // §388 spec 0067 §8 · §10 · §11-12 — the sandboxed tier's markdown insert, refs and coded
 // refusals, on the bridge's fake editor. That fake has no anchor plugin, so a ref does not
-// follow a transaction: these rows drive only flows with no transaction between the read and
-// the write (see `editor-bridge-harness.ts`).
+// follow a transaction: these rows drive only flows with no DOCUMENT-changing transaction
+// between the read and the write. A selection-only one (`editor.select`) keeps the document
+// node, which is what the anchor table is keyed on (see `editor-bridge-harness.ts`).
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -47,17 +48,24 @@ describe("insertMarkdown (§388 spec 0067 §8)", () => {
     expect(editor.dispatched).toEqual([]);
   });
 
-  // §11-12 — burst = 2 + floor, refill 0. A payload of 1 costs 1; a transaction costs the
-  // floor (16 — every document here is smaller). So: accepted (1 + 16) leaves 1, and the next
-  // insert's transaction is refused; refused after the parse (1) leaves 17, and the next
-  // insert fits exactly.
+  // §11-12 — refill 0, burst = 2 × floor + 1. A payload costs its length; a transaction costs
+  // the floor (16 — every document here is smaller). Each row is sized so that BOTH terms
+  // decide an assertion: drop either charge, or charge the transaction before the parse, and
+  // one of them flips.
   const floor = 16;
-  const tight = {
-    budget: { burst: 2 + floor, refillPerSecond: 0, writeFloor: floor },
+  const budget = {
+    burst: 2 * floor + 1,
+    refillPerSecond: 0,
+    writeFloor: floor,
   };
 
   it("an accepted insert pays the payload and the transaction", async () => {
-    const { editor, handler } = harness("alpha omega\n", ["editor"], tight);
+    // 33 − (1 + 16) leaves 16; the next insert's payload leaves 15, short of its transaction.
+    // Without the payload charge 17 would be left, and without the transaction charge 32 —
+    // either way the second insert would fit.
+    const { editor, handler } = harness("alpha omega\n", ["editor"], {
+      budget,
+    });
     editor.select(7, 7);
     await handler({ kind: "editor_insert_markdown", markdown: "x" });
     editor.select(7, 7);
@@ -69,20 +77,33 @@ describe("insertMarkdown (§388 spec 0067 §8)", () => {
   });
 
   it("a refusal after the parse pays the payload only", async () => {
-    const { editor, handler } = harness("alpha omega\n", ["editor"], tight);
+    // The refused write's payload is `floor` long, so 33 − 16 leaves 17 and the next insert
+    // (1 + 16) fits exactly — it would not if the refused write's transaction had been
+    // charged too (1 left). That leaves nothing, so a third insert is refused at its payload —
+    // it would fit if the refused write's payload had not been charged (17 left after the
+    // second).
+    const { editor, handler } = harness("alpha omega\n", ["editor"], {
+      budget,
+    });
     editor.select(7, 7);
-    const pending = handler({ kind: "editor_insert_markdown", markdown: "x" });
+    const pending = handler({
+      kind: "editor_insert_markdown",
+      markdown: "x".repeat(floor),
+    });
     // No transaction: this fake has no anchor plugin, so the new document is not in the table.
     editor.installDocument(markdownToProsemirror("other\n", schema));
     await expect(pending).rejects.toMatchObject({ code: "ref-other-document" });
     editor.select(3, 3);
     await handler({ kind: "editor_insert_markdown", markdown: "x" });
     expect(editor.markdown()).toBe("otxher\n");
+    await expect(
+      handler({ kind: "editor_insert_markdown", markdown: "x" }),
+    ).rejects.toMatchObject({ code: "budget" });
   });
 
-  // Spec §8 — the surface gate comes first, before any charge. Sized like the rows above:
-  // the burst is exactly payload + floor, so a blocked attempt that paid its payload would
-  // leave the unblocked retry short of the transaction.
+  // Spec §8 — the surface gate comes first, before any charge. The burst is exactly
+  // payload + floor, so a blocked attempt that paid its payload would leave the unblocked
+  // retry short of the transaction.
   it.each([
     { payload: 1, request: { kind: "editor_insert_markdown", markdown: "x" } },
     { payload: 4, request: { kind: "editor_set_markdown", markdown: "# b\n" } },
@@ -161,8 +182,10 @@ describe("replace — a ref from getSelection (§388 spec 0067 §8)", () => {
   );
 });
 
-// Spec §10 — every refusal the bridge itself raises carries a code. The budget and ref rows
-// above cover `budget` and the ref codes; these cover the gates in front of every request.
+// Spec §10 — every refusal the bridge itself raises carries a code. Above, this file pins
+// `budget`, `ref-unknown` and `ref-other-document`; below, the gates in front of every request
+// and `document-changed`. `ref-range-changed` and `cannot-insert-here` are pinned on a real
+// editor in `src/plugins/__tests__/editor-ops*.test.ts`.
 describe("coded refusals (§388 spec 0067 §10)", () => {
   it("not-permitted without an editor grant, on every request", async () => {
     const { handler } = harness("alpha\n", ["files"]);

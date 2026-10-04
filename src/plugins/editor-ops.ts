@@ -127,7 +127,9 @@ export function readSelectionForPlugin(
 
 /**
  * Replace the whole document (`setMarkdown`); refused if the document changed while parsing.
- * `beforeParse` runs after the surface gate, so a refused call is charged nothing (spec §8).
+ * `beforeParse` runs after the surface gate, so a call the surface gate refuses is charged
+ * nothing (spec §8). A `document-changed` refusal comes after the parse, when `beforeParse` has
+ * already run.
  *
  * The §260 Phase 4b notes, moved here with the code from `sandbox/host-editor-bridge.ts`:
  *

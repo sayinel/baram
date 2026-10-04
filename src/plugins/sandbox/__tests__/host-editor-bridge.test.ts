@@ -176,6 +176,9 @@ describe("createEditorRequestHandler (§260 Phase 4b)", () => {
     await handler({ kind: "editor_insert_text", text: " world" });
 
     expect(editor.dispatched.filter((tr) => tr.docChanged)).toHaveLength(1);
+    // No dispatch beyond those two: the insert, then the step-less `closeHistory` (spec §5).
+    expect(editor.dispatched).toHaveLength(2);
+    expect(editor.dispatched[1].steps).toHaveLength(0);
     expect(editor.markdown()).toBe("Hello world\n");
   });
 
@@ -472,6 +475,10 @@ describe("createEditorRequestHandler (§260 Phase 4b)", () => {
     }
     expect(small.editor.dispatched.filter((tr) => tr.docChanged)).toHaveLength(
       20,
+    );
+    // Each insert is one step, then one step-less `closeHistory` (spec §5) — nothing more.
+    expect(small.editor.dispatched.map((tr) => tr.steps.length)).toEqual(
+      Array.from({ length: 20 }, () => [1, 0]).flat(),
     );
   });
 

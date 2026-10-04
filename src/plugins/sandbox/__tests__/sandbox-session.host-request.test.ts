@@ -402,4 +402,29 @@ describe("SandboxSession host requests (§260 3c-2c)", () => {
       error: expect.stringContaining("not available") as unknown as string,
     });
   });
+
+  // §388 spec 0067 §10 (plan 0117 Ruling 17) — a refusal code is the editor API's contract, so
+  // the session forwards one only for the `editor` service. Same thrown value both times.
+  it("forwards a listed refusal code for an editor request, and for no other service", async () => {
+    const coded = () =>
+      Promise.reject(Object.assign(new Error("spent"), { code: "budget" }));
+    const failureFor = async (kind: string) => {
+      const { ask, seen } = harness(coded);
+      ask("r1", kind);
+      await flush();
+      return seen.find(
+        (m) =>
+          (m as { ok?: boolean; type?: string }).type === "hostResponse" &&
+          (m as { ok?: boolean }).ok === false,
+      );
+    };
+
+    expect(await failureFor("editor_get_markdown")).toMatchObject({
+      code: "budget",
+      error: "spent",
+    });
+    const other = await failureFor("ai_complete");
+    expect(other).toMatchObject({ error: "spent", ok: false });
+    expect(other).not.toHaveProperty("code");
+  });
 });

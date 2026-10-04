@@ -5,7 +5,6 @@
 import type {
   AIAPI,
   AIModel,
-  EditorAPI,
   NetworkAPI,
   PluginSettingValue,
   PromptsAPI,
@@ -27,6 +26,7 @@ import type { SandboxTransport } from "./transport";
 import { logger } from "../../utils/logger";
 import { promptFrameProblem } from "../prompt-shape";
 import { isEditorRefusalCode } from "./protocol";
+import { createSandboxEditorAPI } from "./sandbox-editor-client";
 
 /**
  * §260 3c-2c — sandbox-side bound on a host-mediated request. Longer than the
@@ -298,52 +298,7 @@ export function startSandboxClient(
     },
   };
 
-  const editor: EditorAPI = {
-    getMarkdown: async () =>
-      (await readStaged({ kind: "editor_get_markdown" })).payload,
-    // Staged like `getMarkdown`, because Cmd+A makes this a whole-document read too and an
-    // inline answer over 8 KiB enters tauri's shared channel-data queue (code review I1).
-    // Positions come back in the response; only the text takes the staged path.
-    getSelection: async () => {
-      const { payload, value } = await readStaged(
-        { kind: "editor_get_selection" },
-        // The host tells us whether it staged anything; a bare caret answers inline with
-        // no text at all, so pulling would find an empty slot (code review N1). An
-        // explicit flag rather than re-deriving `from === to` here, so the rule lives in
-        // ONE place — the side that decided.
-        (v) => (v as undefined | { staged?: boolean })?.staged === true,
-      );
-      // §388 — the ref rides inline with the positions, staged or not.
-      const { from, ref, to } = value as {
-        from: number;
-        ref: string;
-        to: number;
-      };
-      return { from, ref, text: payload, to };
-    },
-    // §4.8 Staged like `getMarkdown` — see the protocol member for why prose is no smaller
-    // a secret than its source.
-    getText: async () =>
-      (await readStaged({ kind: "editor_get_text" })).payload,
-    // §388 — `replace` only when the plugin passed one, so a frame never carries the key empty.
-    insertMarkdown: async (markdown, opts) => {
-      await hostRequest({
-        kind: "editor_insert_markdown",
-        markdown,
-        ...(opts?.replace === undefined ? {} : { replace: opts.replace }),
-      });
-    },
-    insertText: async (text, opts) => {
-      await hostRequest({
-        kind: "editor_insert_text",
-        text,
-        ...(opts?.replace === undefined ? {} : { replace: opts.replace }),
-      });
-    },
-    setMarkdown: async (markdown) => {
-      await hostRequest({ kind: "editor_set_markdown", markdown });
-    },
-  };
+  const editor = createSandboxEditorAPI(hostRequest, readStaged);
 
   const ctx: SandboxContext = {
     ai,
