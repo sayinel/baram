@@ -38,6 +38,7 @@ baram/
 │       │                   #   export,fs,git,index,keyring,llm,plugin,search,snapshot,tag,
 │       │                   #   task,theme,thumbnail}_cmd.rs
 │       ├── approval/       # vault 경계 승인 저장소 (§331) context/ # ContextManager (§88)
+│       ├── cli/            # 명령줄 도구 (§387) — 같은 실행 파일의 CLI 모드. vault 를 읽기만 한다
 │       ├── search/         # regex 전문 검색 (§5.11)      index/     # 링크 인덱서 (§29)
 │       ├── plugin/         # 플러그인 설치/레지스트리 (§69) snapshot/  # 버전 히스토리 (§71)
 │       ├── tag/            # Vault 태그 인덱스 (§56m)     task/      # 태스크 인덱스 (§302~)
