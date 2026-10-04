@@ -108,7 +108,7 @@ Without `--json`, the same error is `error[FILE_NOT_FOUND]: no file at notes/a.m
 | Code | When | Exit code |
 | --- | --- | --- |
 | `VAULT_NOT_FOUND` | Nothing answers to `--vault`, or the current directory is in no registered vault or folder. | `1` |
-| `VAULT_AMBIGUOUS` | More than one registered vault or folder answers to the name. | `1` |
+| `VAULT_AMBIGUOUS` | More than one registered vault or folder answers to the name — counting only those whose folder exists, and entries for the same folder once. | `1` |
 | `PATH_OUTSIDE_VAULT` | The path leads out of the vault. | `1` |
 | `FILE_NOT_FOUND` | Nothing is at the path, or a folder is where a file is wanted. | `1` |
 | `INVALID_ARGUMENT` | The command does not take the value — for example an empty query or tag name, a bad regular expression, or a folder or note it refuses (see above). A regular expression that is only too large, such as `k{50000}`, can get past this check and end as `IO` `cannot search …` with exit code `1`. | `2` |
