@@ -59,7 +59,10 @@ export interface Disposable {
  * as it was. Every method is async: in the sandboxed tier each call is a mediated round trip,
  * and the trusted tier keeps the same contract so a plugin can move between them.
  *
- * Refusals reject with an `EditorRefusal` whose `code` says why (spec §10).
+ * Refusals of a call to a method reject with an `EditorRefusal` whose `code` says why (spec
+ * §10). Two kinds of error carry no `code`: a plugin without an editor capability gets a
+ * plain `Error` thrown synchronously when it reads any member of `ctx.editor` (the trusted
+ * tier), and an exception from the markdown parser passes through as it is.
  */
 export interface EditorAPI {
   /** The whole document as markdown. Requires `editor` or `editor:readonly`. */

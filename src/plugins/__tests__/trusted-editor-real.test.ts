@@ -13,6 +13,7 @@ import type { PluginManifest } from "../types";
 import {
   anchorCount,
   anchorMappingPasses,
+  dropAnchors,
 } from "../../extensions/plugins/selection-anchors";
 import { useEditorStore } from "../../stores/editor/editor";
 import { markContentLoaded } from "../../utils/editor/programmatic-update";
@@ -44,7 +45,10 @@ beforeEach(() => {
   markContentLoaded("t1");
   setEditorSurfaceBlocked(null);
 });
-afterEach(() => setEditorInstance(null));
+afterEach(() => {
+  setEditorInstance(null);
+  dropAnchors("real-probe");
+});
 
 describe("trusted EditorAPI (spec 0067 D1)", () => {
   it("insertText puts the characters in literally — no HTML parsing", async () => {
@@ -83,12 +87,12 @@ describe("trusted EditorAPI (spec 0067 D1)", () => {
     );
     await ctx.editor.setMarkdown("# New\n");
     expect(await ctx.editor.getMarkdown()).toBe("# New\n");
-    expect(
-      (ctx.editor as unknown as Record<string, unknown>).setContent,
-    ).toBeUndefined();
-    expect(
-      (ctx.editor as unknown as Record<string, unknown>).getContent,
-    ).toBeUndefined();
+    // The type half (spec §11-10): re-adding either member to `EditorAPI` makes these
+    // directives unused, which `npm run typecheck` reports.
+    // @ts-expect-error — removed from the public type
+    expect(ctx.editor.setContent).toBeUndefined();
+    // @ts-expect-error — removed from the public type
+    expect(ctx.editor.getContent).toBeUndefined();
     editor.destroy();
   });
 
@@ -138,7 +142,13 @@ describe("unloading a plugin drops its refs (spec 0067 §7.4, P3)", () => {
     setEditorInstance(editor);
     const ctx = createExtensionContext(manifest(["editor"]), "/p");
     await ctx.editor.getSelection();
-    expect(anchorCount("real-probe")).toBe(1);
+    await ctx.editor.getSelection();
+    expect(anchorCount("real-probe")).toBe(2);
+
+    // Positive sibling: while anchors are held, a document change is mapped through them.
+    const held = anchorMappingPasses();
+    editor.view.dispatch(editor.state.tr.insertText("z", 1));
+    expect(anchorMappingPasses()).toBeGreaterThan(held);
 
     unregisterPluginUI("real-probe");
     expect(anchorCount("real-probe")).toBe(0);

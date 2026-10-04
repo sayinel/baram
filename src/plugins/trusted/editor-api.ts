@@ -12,7 +12,7 @@ import {
   readSelectionForPlugin,
   replaceDocument,
 } from "../editor-ops";
-import { EditorRefusalError } from "../editor-refusal";
+import { refuse } from "../editor-refusal";
 import {
   editorSurfaceBlocked,
   getEditorInstance,
@@ -48,10 +48,7 @@ export function createEditorAPI(
   // capability and not about a surface state it can do nothing about.
   const writable = (method: string): void => {
     if (readonly) {
-      throw new EditorRefusalError(
-        "not-permitted",
-        `editor:readonly — ${method} is not allowed`,
-      );
+      refuse("not-permitted", method, "editor:readonly — not allowed");
     }
   };
   return {

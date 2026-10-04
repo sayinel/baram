@@ -96,7 +96,9 @@ describe("createExtensionContext", () => {
       async (capability) => {
         const ctx = createExtensionContext(makeManifest([capability]), "/test");
         await expect(ctx.editor.getText()).rejects.toMatchObject({
-          // No tab is open in this fixture, so the surface answers before the instance does.
+          // The fixture never reports a surface, so `editorSurfaceBlockedReason` is still its
+          // fail-closed initial state ("the editor surface has not been reported yet") and
+          // the surface gate answers before the instance is consulted.
           code: "surface-blocked",
           message: expect.stringMatching(/^editor\.getText: /),
         });
@@ -116,7 +118,7 @@ describe("createExtensionContext", () => {
         );
         await expect(call(ctx.editor)).rejects.toMatchObject({
           code: "not-permitted",
-          message: expect.stringMatching(/readonly/),
+          message: expect.stringMatching(/^editor\.\w+: .*editor:readonly/),
         });
       },
     );

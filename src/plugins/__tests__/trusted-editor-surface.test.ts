@@ -52,9 +52,9 @@ const manifest = (capabilities: string[]): PluginManifest =>
   }) as unknown as PluginManifest;
 
 /**
- * A handle that would answer happily if it were ever reached — except that every member
- * records its use and throws, because a blocked surface must refuse before touching it. Only
- * members the API reads are here.
+ * A handle whose every member records its use and throws, because a blocked surface must
+ * refuse before touching it. The members are the ones the trusted API and the core it calls
+ * read from an editor handle: `state`, `schema` and `view` (`editor-api.ts`, `editor-ops.ts`).
  */
 function fakeEditor() {
   const calls: string[] = [];
@@ -65,8 +65,6 @@ function fakeEditor() {
   return {
     calls,
     handle: {
-      commands: {},
-      getText: touched("getText"),
       get schema(): never {
         return touched("schema")();
       },
@@ -113,14 +111,16 @@ describe("a clear surface answers — the complement", () => {
 });
 
 /** Every method of the API, as a call a plugin would make. */
-const ALL_CALLS: [string, (e: EditorAPI) => Promise<unknown>][] = [
-  ["getMarkdown", (e) => e.getMarkdown()],
-  ["getSelection", (e) => e.getSelection()],
-  ["getText", (e) => e.getText()],
-  ["insertMarkdown", (e) => e.insertMarkdown("x")],
-  ["insertText", (e) => e.insertText("y")],
-  ["setMarkdown", (e) => e.setMarkdown("z")],
-];
+// Typed against `keyof EditorAPI`: adding or removing a method is a compile error here.
+const CALLS_BY_METHOD = {
+  getMarkdown: (e) => e.getMarkdown(),
+  getSelection: (e) => e.getSelection(),
+  getText: (e) => e.getText(),
+  insertMarkdown: (e) => e.insertMarkdown("x"),
+  insertText: (e) => e.insertText("y"),
+  setMarkdown: (e) => e.setMarkdown("z"),
+} satisfies Record<keyof EditorAPI, (e: EditorAPI) => Promise<unknown>>;
+const ALL_CALLS = Object.entries(CALLS_BY_METHOD);
 
 /** The two states the App reports, with the reasons it actually reports. */
 describe.each([
