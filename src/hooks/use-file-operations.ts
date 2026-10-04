@@ -8,6 +8,7 @@ import type { Editor } from "@tiptap/core";
 import { pickApprovedDir, pickApprovedFile } from "../ipc/approval";
 import { readFile, updateFileIndex, writeFile } from "../ipc/invoke";
 import { notifyFileSave } from "../plugins/plugin-lifecycle";
+import { announceTabWrite, noteTabWritten } from "../services/tab-write";
 import { openFolder } from "../services/vault-context-loader";
 import {
   isFileTab,
@@ -26,8 +27,6 @@ import {
 import { loadedTabId } from "../utils/editor/programmatic-update";
 import { serializeLiveDoc } from "../utils/editor/serialize-live-doc";
 import { isBinaryViewerFile, isMarkdownFile } from "../utils/file-type";
-import { isJournalPath } from "../utils/journal/journal";
-import { notifyJournalChanged } from "../utils/journal/journal-events";
 import { logger } from "../utils/logger";
 import { openFileByPath } from "../utils/open-file";
 import { basename } from "../utils/path-utils";
@@ -277,10 +276,7 @@ export function useFileOperations({
       // Existing file — save directly
       try {
         await writeFile(saveTab.filePath, md);
-        useSnapshotStore.getState().markPendingAutoSnapshot();
-        useFileStore
-          .getState()
-          .updateLastSaveMtime(saveTab.filePath, Date.now());
+        noteTabWritten(saveTab.filePath, Date.now());
         setFileContent(saveTab.filePath, md);
         markDirty(saveTab.id, false);
         // ‼️ §82 "저장 안 됨"의 답은 두 곳에 산다. `isDirty`만 내리면 소스 모드로 고친
@@ -288,23 +284,9 @@ export function useFileOperations({
         // 디스크에 쓴 바로 그 내용을 두고. `md` 자체가 그 버퍼에서 나왔다(위 `isCode ||
         // sourceModeTabs.has(...)` 갈래).
         useEditorStore.getState().markSourceEdited(saveTab.id, false);
-        notifyFileSave(saveTab.filePath);
-        // §56 Refresh journal sidebars in real time on a manual save.
-        if (
-          isJournalPath(
-            saveTab.filePath,
-            useFileStore.getState().rootPath,
-            useSettingsStore.getState().journalDirectory,
-          )
-        ) {
-          notifyJournalChanged();
-        }
-        // Only index markdown files (link indexing not relevant for code files)
-        if (!isCode) {
-          updateFileIndex(saveTab.filePath)
-            .then(() => useLinkStore.getState().invalidate())
-            .catch(() => {});
-        }
+        // Only index markdown files (link indexing not relevant for code files).
+        // Announced last: plugins hear `file:save` once the cache and flags agree.
+        announceTabWrite(saveTab.filePath, { indexLinks: !isCode });
       } catch (err) {
         logger.error("[App] Failed to save:", err);
       }
