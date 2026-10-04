@@ -69,11 +69,19 @@ pub(crate) fn write_envelope<T: Serialize + Row>(
     }
 }
 
+/// In text mode the message is escaped like a field, so one error is one line: some
+/// messages carry a third party's text that spans several (the regex crate's does). The
+/// JSON form carries the message unchanged.
 pub(crate) fn write_error(out: &mut dyn Write, error: &CliError, json: bool) -> io::Result<()> {
     if json {
         return write_json(out, &serde_json::json!({ "error": error }));
     }
-    writeln!(out, "error[{}]: {}", error.code.as_str(), error.message)?;
+    writeln!(
+        out,
+        "error[{}]: {}",
+        error.code.as_str(),
+        escape(&error.message)
+    )?;
     for candidate in &error.candidates {
         writeln!(
             out,
@@ -191,6 +199,20 @@ mod tests {
         assert_eq!(
             text(|out| write_error(out, &error, false)),
             "error[VAULT_AMBIGUOUS]: two vaults are named `notes`\n  Notes\t/a/notes\n"
+        );
+    }
+
+    #[test]
+    fn an_error_message_that_spans_lines_is_one_line_in_text_mode_only() {
+        let error = CliError::new(ErrorCode::InvalidArgument, "bad:\n  (\nerror: unclosed");
+        assert_eq!(
+            text(|out| write_error(out, &error, false)),
+            "error[INVALID_ARGUMENT]: bad:\\n  (\\nerror: unclosed\n"
+        );
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&text(|out| write_error(out, &error, true)))
+                .unwrap()["error"]["message"],
+            "bad:\n  (\nerror: unclosed"
         );
     }
 

@@ -740,6 +740,42 @@ fn no_match_is_success_and_a_bad_pattern_is_a_usage_error() {
     assert_eq!(plain.code, 0, "stderr: {}", plain.stderr);
 }
 
+/// The regex crate's message for `(` spans several lines, and its last one reads
+/// `error: unclosed group` — like a line of its own. In text mode the message is escaped
+/// so the error stays one line; the JSON form carries it as the crate wrote it.
+#[test]
+fn a_bad_pattern_is_one_error_line_in_text_mode() {
+    let sb = sandbox();
+    search_vault(&sb);
+    let vault = vault_arg(&sb);
+    let text = baram(
+        &sb,
+        &sb.home,
+        &["--vault", &vault, "search", "(", "--regex"],
+    );
+    assert_eq!(text.code, 2, "stderr: {}", text.stderr);
+    assert!(text.stdout.is_empty(), "stdout: {}", text.stdout);
+    assert_eq!(text.stderr.lines().count(), 1, "stderr: {}", text.stderr);
+    assert!(
+        text.stderr
+            .starts_with("error[INVALID_ARGUMENT]: invalid regular expression:"),
+        "stderr: {}",
+        text.stderr
+    );
+
+    let structured = baram(
+        &sb,
+        &sb.home,
+        &["--json", "--vault", &vault, "search", "(", "--regex"],
+    );
+    assert_eq!(structured.code, 2, "stderr: {}", structured.stderr);
+    let message = json(&structured.stderr)["error"]["message"]
+        .as_str()
+        .map(str::to_string)
+        .unwrap_or_default();
+    assert!(message.contains('\n'), "message: {message:?}");
+}
+
 /// `v/locked/sub/a.md` exists; `v/locked` cannot be entered, so `--folder locked/sub`
 /// names a folder that is there and cannot be told so. Same reasoning as for `read`: the
 /// reason is the OS's, and the exit code says the run failed.
