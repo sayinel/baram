@@ -70,6 +70,12 @@ export type EditorTabType = "file" | "graph" | "plugin";
  */
 export interface SourceBufferAccess {
   getSourceBuffer: (tabId: string) => string;
+  /**
+   * §3.6 Whether the tab has a buffer at all — `getSourceBuffer` answers "" for a
+   * missing one. Optional so test fixtures that build an accessor by hand keep
+   * compiling; a reader that needs it treats its absence as "cannot tell".
+   */
+  hasSourceBuffer?: (tabId: string) => boolean;
   setSourceBuffer: (tabId: string, content: string) => void;
 }
 

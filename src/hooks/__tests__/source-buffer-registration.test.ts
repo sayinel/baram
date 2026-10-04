@@ -41,6 +41,24 @@ describe("source buffer access registration", () => {
     );
   });
 
+  it("§3.6 hasSourceBuffer answers for the hook's buffers without re-registering per keystroke", () => {
+    // 이것을 실패시키는 것: 등록 객체에서 `hasSourceBuffer` 를 뺌(첫 단언), 또는 버퍼가 바뀔 때
+    // 참조가 바뀌는 훅의 `hasSourceBuffer` 를 등록하고 effect deps 에 넣음(마지막 단언 — 타이핑마다 재등록).
+    const { result } = renderHook(() => useSourceMode({ editor: null }));
+    const access = useEditorStore.getState().sourceBufferAccess;
+    expect(access?.hasSourceBuffer?.("a")).toBe(false);
+
+    act(() => {
+      result.current.setSourceBuffer("a", "");
+    });
+    // 빈 버퍼도 "있다" — `getSourceBuffer` 의 "" 와 구별되는 이유다.
+    expect(access?.hasSourceBuffer?.("a")).toBe(true);
+    act(() => {
+      result.current.setSourceBuffer("a", "typed");
+    });
+    expect(useEditorStore.getState().sourceBufferAccess).toBe(access);
+  });
+
   it("언마운트하면 접근자를 지운다 — 죽은 탭의 버퍼를 가리킨 채 남지 않는다", () => {
     const { unmount } = renderHook(() => useSourceMode({ editor: null }));
     expect(useEditorStore.getState().sourceBufferAccess).not.toBeNull();

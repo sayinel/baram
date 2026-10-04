@@ -158,7 +158,13 @@ export function useSourceMode({
   // App 재마운트에서는 새 인스턴스의 등록이 옛 인스턴스의 정리보다 **먼저** 일어날 수
   // 있고, 무조건 null을 쓰면 방금 살아난 접근자를 도로 지운다.
   useEffect(() => {
-    const access = { getSourceBuffer, setSourceBuffer };
+    const access = {
+      getSourceBuffer,
+      // §3.6 A stable wrapper, not `hasSourceBuffer` above: that one changes
+      // identity with every `bufferVersion`, which would re-register on each keystroke.
+      hasSourceBuffer: (tabId: string) => buffersRef.current.has(tabId),
+      setSourceBuffer,
+    };
     registerSourceBufferAccess(access);
     return () => {
       if (useEditorStore.getState().sourceBufferAccess === access) {
