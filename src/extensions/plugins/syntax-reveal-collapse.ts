@@ -184,8 +184,10 @@ export function buildCollapseTr(
     }
   }
 
-  // §384 (C): this point is only reached by a successful collapse — every
-  // early exit above returns `null` instead. Tag it ephemeral so
+  // §384 (C): every validation failure above returns `null`, so this point is reached by a
+  // successful collapse — and by one more case: `kind === "mark"` with no `markName`
+  // (optional on `ExpandedRange`) matches no branch, adds no step, and falls through with
+  // `collapsed` null, so it is tagged ephemeral and sent as `INACTIVE`. Tag it ephemeral so
   // isEphemeralOnlyUpdate can tell this apart from a real edit.
   // `collapsed` names the range for the suppression the state `apply` decides (spec 0067 D10).
   tagSyntaxRevealEphemeral(tr);

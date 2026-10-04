@@ -1,7 +1,7 @@
 // §384 / spec 0067 §4 · §11-1 — the position-preserving collapse.
 //
 // Each `it` names what makes it fail. The siblings that run the LEGACY collapse
-// (`legacyCollapseTr`, today's `replaceWith`) are the proof that the assertion can fail.
+// (`legacyCollapseTr`, the pre-§4 `replaceWith`) are the proof that the assertion can fail.
 import type { DecorationSet } from "@tiptap/pm/view";
 
 import { Editor } from "@tiptap/core";
@@ -108,18 +108,27 @@ describe("position-preserving collapse (§384, spec 0067 §4)", () => {
     editor.destroy();
   });
 
-  it("Escape/Enter collapse leaves the caret in place and stays collapsed (D10 · D11)", () => {
-    const editor = editorWith(MARK_SOURCES.bold);
-    editor.commands.setTextSelection(5); // expands; the caret is now 7 ("**wo|rd**")
-    collapseExpanded(editor.view, getSyntaxRevealExpanded(editor.state)!);
-    expect(getSyntaxRevealExpanded(editor.state)).toBeNull();
-    expect(editor.state.selection.from).toBe(5);
-    expect(syntaxRevealKey.getState(editor.state)?.suppressed).toEqual({
-      from: 3,
-      to: 7,
-    });
-    editor.destroy();
-  });
+  it.each(["Escape", "Enter"])(
+    "%s collapse leaves the caret in place and stays collapsed (D10 · D11)",
+    (keyName) => {
+      const editor = editorWith(MARK_SOURCES.bold);
+      editor.commands.setTextSelection(5); // expands; the caret is now 7 ("**wo|rd**")
+      const event = new KeyboardEvent("keydown", {
+        bubbles: true,
+        cancelable: true,
+        key: keyName,
+      });
+      editor.view.dom.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(true);
+      expect(getSyntaxRevealExpanded(editor.state)).toBeNull();
+      expect(editor.state.selection.from).toBe(5);
+      expect(syntaxRevealKey.getState(editor.state)?.suppressed).toEqual({
+        from: 3,
+        to: 7,
+      });
+      editor.destroy();
+    },
+  );
 
   it("sibling: without the `collapsed` meta the same collapse re-expands at once (spec §2.3)", () => {
     const editor = editorWith(MARK_SOURCES.bold);
@@ -219,6 +228,20 @@ describe("position-preserving collapse (§384, spec 0067 §4)", () => {
     );
     editor.destroy();
   });
+
+  // A fact pin, not a spec claim: D11 speaks of carets only. Before this change
+  // force-collapse passed a `cursorTarget` and so reduced a selection to a caret.
+  it("force-collapse keeps a non-empty selection, mapped through the steps", () => {
+    const editor = editorWith(MARK_SOURCES.bold);
+    editor.commands.setTextSelection(5); // expands "a **word** b": `**` 3-5, word 5-9
+    editor.commands.setTextSelection({ from: 6, to: 8 }); // "w[or]d" inside the content
+    expect(getSyntaxRevealExpanded(editor.state)).not.toBeNull();
+    forceCollapseSyntaxReveal(editor.view);
+    expect(getSyntaxRevealExpanded(editor.state)).toBeNull();
+    expect(editor.state.selection.from).toBe(4);
+    expect(editor.state.selection.to).toBe(6);
+    editor.destroy();
+  });
 });
 
 describe("the four changedRanges consumers end where the old collapse left them (spec §4)", () => {
@@ -229,7 +252,7 @@ describe("the four changedRanges consumers end where the old collapse left them 
   //   prompt-highlight — Skills frontmatter (`name` + `description`, `isSkillsFile`)
   //   fold             — the first heading folded (`foldPluginKey` meta `toggle`)
   //   block-id-entries — a `^abc123` block id
-  //   list-atom-fix    — a list item holding an atom
+  //   list-atom-fix    — a list item whose first child is an atom
   const SOURCE =
     "---\nname: probe\ndescription: d\n---\n\n# Folded\n\nhidden\n\n# Open\n\nbody {{var}} **bold** ^abc123\n\n- [[Note]] item\n- two\n";
 
@@ -253,15 +276,20 @@ describe("the four changedRanges consumers end where the old collapse left them 
     };
   }
 
-  function settle(collapse: typeof buildCollapseTr) {
-    const editor = editorWith(SOURCE);
+  function settle(collapse: typeof buildCollapseTr, source = SOURCE) {
+    const editor = editorWith(source);
     let heading = -1;
     editor.state.doc.forEach((node, pos) => {
       if (heading === -1 && node.type.name === "heading") heading = pos;
     });
-    editor.view.dispatch(
-      editor.state.tr.setMeta(foldPluginKey, { pos: heading, type: "toggle" }),
-    );
+    if (heading !== -1) {
+      editor.view.dispatch(
+        editor.state.tr.setMeta(foldPluginKey, {
+          pos: heading,
+          type: "toggle",
+        }),
+      );
+    }
     let at = -1;
     editor.state.doc.descendants((node, pos) => {
       if (at === -1 && node.isText && node.text === "bold") at = pos + 2;
@@ -285,5 +313,21 @@ describe("the four changedRanges consumers end where the old collapse left them 
 
   it("the same document and the same output from each consumer", () => {
     expect(settle(buildCollapseTr)).toEqual(settle(legacyCollapseTr));
+  });
+
+  // list-atom-fix widens a changed range to its list item; a mark collapsed INSIDE the
+  // item whose first child is an atom is the case that reaches that path.
+  const LIST_SOURCE = "- [[Note]] **bold**\n- two\n";
+
+  it("a collapse inside the list item holding the atom: the consumer is active", () => {
+    expect(settle(legacyCollapseTr, LIST_SOURCE).list.length).toBeGreaterThan(
+      0,
+    );
+  });
+
+  it("a collapse inside the list item holding the atom: the same decorations", () => {
+    expect(settle(buildCollapseTr, LIST_SOURCE)).toEqual(
+      settle(legacyCollapseTr, LIST_SOURCE),
+    );
   });
 });

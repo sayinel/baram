@@ -93,8 +93,10 @@ export function collapseMeta(collapsed: SuppressedRange): CollapseMeta {
 
 /**
  * The suppressed range after a collapse, or `null`. Inclusive of both ends, like
- * `SuppressedRange` itself and like `nextSuppressed`: Escape leaves the caret on the
- * collapsed start and ArrowRight on a wikilink's end — both edges.
+ * `SuppressedRange` itself and like `nextSuppressed`. Escape and Enter leave the caret at
+ * its offset (spec 0067 D11), which is the collapsed start only when the caret sat on the
+ * expansion's start; ArrowRight leaves it on a wikilink's end — both are edge cases the
+ * inclusive bounds keep suppressed.
  */
 export function suppressionAfterCollapse(
   collapsed: SuppressedRange,
@@ -102,6 +104,7 @@ export function suppressionAfterCollapse(
 ): null | SuppressedRange {
   return caret >= collapsed.from && caret <= collapsed.to ? collapsed : null;
 }
+
 export const syntaxRevealKey = new PluginKey<SyntaxRevealState>("syntaxReveal");
 
 // ── Ephemeral provenance (§384 C) ─────────────────────────────────────

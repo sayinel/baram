@@ -49,9 +49,11 @@ export { syntaxRevealKey };
 export function forceCollapseSyntaxReveal(view: EditorView): void {
   const es = syntaxRevealKey.getState(view.state);
   if (!es?.expanded) return;
-  // The collapse keeps inner positions (spec 0067 §4), so the caret stays at its offset
-  // without a hand-computed target — the drift this function used to correct for marks
-  // came from `replaceWith`, and links never had the correction at all (spec §2.1).
+  // The collapse keeps content positions (spec 0067 §4), so a caret inside the mark or the
+  // link label stays at its offset without a hand-computed target — the drift this function
+  // used to correct for marks came from `replaceWith`, and links never had the correction at
+  // all (spec §2.1). A caret inside a deleted delimiter, or inside a link's `(url)` part,
+  // has no content position and maps to the nearest edge.
   collapseExpanded(view, es.expanded);
 }
 
@@ -333,8 +335,10 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
         // fallback: let ProseMirror's default mapping handle it
       }
 
-      // §384 (C): reached only by the 4 successful collapse branches above —
-      // every stale/invalid sub-path returns early with a meta-only INACTIVE
+      // §384 (C): reached by the 4 successful collapse branches above, and by one
+      // more case — `kind === "mark"` with no `markName` or no `closeCheck` matches no
+      // branch, adds no step, and falls through with `collapsed` null (sent as
+      // `INACTIVE`). Every stale/invalid sub-path returns early with a meta-only INACTIVE
       // transaction instead. Tag it ephemeral so isEphemeralOnlyUpdate can
       // tell a cursor-out collapse apart from a real edit.
       tagSyntaxRevealEphemeral(tr);

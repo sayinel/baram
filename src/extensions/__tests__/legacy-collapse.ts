@@ -1,4 +1,4 @@
-// §384 / spec 0067 §4 — TODAY's mark and link collapse, kept as the reference the
+// §384 / spec 0067 §4 — the pre-§4 (`replaceWith`) mark and link collapse, kept as the reference the
 // position-preserving collapse is compared against. It replaces the whole expanded range
 // with its inner content (`replaceWith`), which is what loses inner positions (spec §2.1).
 // Atom kinds are unchanged by spec 0067, so they defer to the production builder.
