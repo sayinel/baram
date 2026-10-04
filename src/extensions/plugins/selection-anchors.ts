@@ -34,10 +34,11 @@ export type AnchorFailure = "other-document" | "range-changed" | "unknown";
 
 /**
  * The selection a ref was issued for. `"gap"` is every selection that is none of All, Cell,
- * Node or Text. Corpus, measured by grepping `extends Selection` under `src` (no hits) and
- * the ProseMirror packages the editor loads (`prosemirror-state` · `prosemirror-tables` ·
- * `prosemirror-gapcursor`): the only other subclass is `GapCursor`, installed by the
- * `Gapcursor` extension in `src/extensions/index.ts`.
+ * Node or Text. Corpus, measured with `grep -rnE 'class [A-Za-z0-9_]+ extends Selection\b'`
+ * over `src` (no hits; the pattern needs a class name, so this sentence does not match it)
+ * and over the ProseMirror packages the editor loads (`prosemirror-state` ·
+ * `prosemirror-tables` · `prosemirror-gapcursor`): the only other subclass is `GapCursor`,
+ * installed by the `Gapcursor` extension in `src/extensions/index.ts`.
  */
 export type AnchorKind = "all" | "cell" | "gap" | "node" | "text";
 

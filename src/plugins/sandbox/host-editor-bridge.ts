@@ -260,6 +260,13 @@ export function createEditorRequestHandler(
         // write refused after the parse — a tab switch, a changed range — burns no
         // document-sized charge. The core calls `beforeParse` after its surface gate and ref
         // check, and `beforeDispatch` right before it sends.
+        //
+        // So a write refused AT the transaction charge has already run the shadow check (`send`
+        // calls `beforeDispatch` after it), and for an "all" ref that check walks the whole
+        // document (`verifyAnchor` → `textBetween`) uncharged — spec §7.3-6 orders the
+        // transaction charge last. The payload charge does not bound that walk: it is the
+        // payload's length, zero for `""`, and a refused ref stays usable for the next try. The
+        // frame rate limiter (Rust `RateClass::Transport`, 150 frames/s refill) does.
         await insertMarkdownAt(ops, {
           beforeDispatch: () =>
             budget.spend(

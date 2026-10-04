@@ -77,13 +77,15 @@ describe("insertMarkdown (§388 spec 0067 §8)", () => {
   });
 
   it("a refusal after the parse pays the payload only", async () => {
-    // The refused write's payload is `floor` long, so 33 − 16 leaves 17 and the next insert
-    // (1 + 16) fits exactly — it would not if the refused write's transaction had been
-    // charged too (1 left). That leaves nothing, so a third insert is refused at its payload —
-    // it would fit if the refused write's payload had not been charged (17 left after the
-    // second).
+    // Burst 34 here, one above the shared 33, so that the refused write's payload decides the
+    // third insert. That payload is `floor` long: 34 − 16 leaves 18, the next insert (1 + 16)
+    // leaves 1, and a third is refused at its transaction. Charge the refused write's
+    // transaction too and 2 is left, so the second insert is refused. Leave the refused write's
+    // payload uncharged and the second leaves 17, so the third fits; charge no payload at all
+    // and it leaves 18, so the third fits too. (At 33 an uncharged refused payload left 16
+    // after the second, and the third was refused anyway, at its transaction.)
     const { editor, handler } = harness("alpha omega\n", ["editor"], {
-      budget,
+      budget: { ...budget, burst: 2 * (1 + floor) },
     });
     editor.select(7, 7);
     const pending = handler({
