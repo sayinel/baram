@@ -53,11 +53,37 @@ export interface Disposable {
   dispose(): void;
 }
 
+/**
+ * §388 spec 0067 — the editor surface, the same in both tiers. Markdown both ways, through
+ * the app's own round-trip pipeline: `setMarkdown(await getMarkdown())` leaves the document
+ * as it was. Every method is async: in the sandboxed tier each call is a mediated round trip,
+ * and the trusted tier keeps the same contract so a plugin can move between them.
+ *
+ * Refusals reject with an `EditorRefusal` whose `code` says why (spec §10).
+ */
 export interface EditorAPI {
-  getContent(): string;
-  getSelection(): { from: number; text: string; to: number };
-  insertText(text: string): void;
-  setContent(content: string): void;
+  /** The whole document as markdown. Requires `editor` or `editor:readonly`. */
+  getMarkdown(): Promise<string>;
+  /**
+   * The selection: ProseMirror positions, its text as markdown reads it (an expanded
+   * reveal's delimiters left out), and a `ref` to replace exactly this range later.
+   * Requires `editor` or `editor:readonly`.
+   */
+  getSelection(): Promise<EditorSelection>;
+  /**
+   * §4.8 The document's PROSE — code blocks and frontmatter excluded, a wikilink's label
+   * included; the number the status bar counts. Requires `editor` or `editor:readonly`.
+   */
+  getText(): Promise<string>;
+  /**
+   * Replace the selection (or `opts.replace`'s range) with parsed markdown, as its own undo
+   * step. Requires `editor`.
+   */
+  insertMarkdown(markdown: string, opts?: EditorInsertOptions): Promise<void>;
+  /** Replace the selection (or `opts.replace`'s range) with plain text. Requires `editor`. */
+  insertText(text: string, opts?: EditorInsertOptions): Promise<void>;
+  /** Replace the whole document. Requires `editor`. */
+  setMarkdown(markdown: string): Promise<void>;
 }
 
 export interface EditorInsertOptions {

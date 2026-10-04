@@ -16,9 +16,14 @@
 // loading" and asserted against them, which tests nothing but my own fixture — and two of the five
 // states are not reported by the App at all, they are computed per call from the editor store.
 // `host-editor-bridge.test.ts` makes the same choice for the same reason.
-import type { PluginManifest } from "../types";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { beforeEach, describe, expect, it } from "vitest";
+// `real-editor.ts` pulls in `createBaramExtensions`, which reaches the opener plugin.
+vi.mock("@tauri-apps/plugin-opener", () => ({
+  openUrl: vi.fn().mockResolvedValue(undefined),
+}));
+
+import type { EditorAPI, PluginManifest } from "../types";
 
 import { useEditorStore } from "../../stores/editor/editor";
 import {
@@ -30,6 +35,7 @@ import {
   setEditorInstance,
   setEditorSurfaceBlocked,
 } from "../extension-context";
+import { realEditor } from "./real-editor";
 
 const manifest = (capabilities: string[]): PluginManifest =>
   ({
@@ -45,24 +51,30 @@ const manifest = (capabilities: string[]): PluginManifest =>
     version: "1.0.0",
   }) as unknown as PluginManifest;
 
-/** A handle that would answer happily if it were ever reached. */
+/**
+ * A handle that would answer happily if it were ever reached — except that every member
+ * records its use and throws, because a blocked surface must refuse before touching it. Only
+ * members the API reads are here.
+ */
 function fakeEditor() {
   const calls: string[] = [];
+  const touched = (name: string) => () => {
+    calls.push(name);
+    throw new Error(`${name} was reached through a blocked surface`);
+  };
   return {
     calls,
     handle: {
-      commands: {
-        insertContent: (t: string) => calls.push(`insertContent:${t}`),
-        setContent: (c: { content: string }) =>
-          calls.push(`setContent:${c.content}`),
+      commands: {},
+      getText: touched("getText"),
+      get schema(): never {
+        return touched("schema")();
       },
-      getText: () => {
-        calls.push("getText");
-        return "THE DOCUMENT";
+      get state(): never {
+        return touched("state")();
       },
-      state: {
-        doc: { textBetween: () => "" },
-        selection: { from: 1, to: 1 },
+      get view(): never {
+        return touched("view")();
       },
     },
   };
@@ -88,16 +100,27 @@ beforeEach(() => {
 });
 
 describe("a clear surface answers — the complement", () => {
-  it("reads the document", () => {
-    // Without this, "refuse everything" would satisfy every case below.
-    expect(ctx().editor.getContent()).toBe("THE DOCUMENT");
-  });
-
-  it("accepts a write", () => {
-    ctx().editor.setContent("replacement");
-    expect(editor.calls).toEqual(["setContent:replacement"]);
+  // Without this, "refuse everything" would satisfy every case below.
+  it("reads the document and accepts a write", async () => {
+    const real = realEditor("alpha @@ omega\n");
+    setEditorInstance(real.editor);
+    clearSurface();
+    expect(await ctx().editor.getMarkdown()).toBe("alpha  omega\n");
+    await ctx().editor.insertText("x");
+    expect(real.editor.state.doc.textContent).toBe("alpha x omega");
+    real.editor.destroy();
   });
 });
+
+/** Every method of the API, as a call a plugin would make. */
+const ALL_CALLS: [string, (e: EditorAPI) => Promise<unknown>][] = [
+  ["getMarkdown", (e) => e.getMarkdown()],
+  ["getSelection", (e) => e.getSelection()],
+  ["getText", (e) => e.getText()],
+  ["insertMarkdown", (e) => e.insertMarkdown("x")],
+  ["insertText", (e) => e.insertText("y")],
+  ["setMarkdown", (e) => e.setMarkdown("z")],
+];
 
 /** The two states the App reports, with the reasons it actually reports. */
 describe.each([
@@ -106,77 +129,86 @@ describe.each([
 ])("refuses in %s (App-reported)", (_label, reason) => {
   beforeEach(() => setEditorSurfaceBlocked(reason));
 
-  it("refuses a read without touching the editor", () => {
-    // A read that reaches `getText()` has already produced the stale string.
-    expect(() => ctx().editor.getContent()).toThrow(reason);
-    expect(editor.calls).toEqual([]);
-  });
-
-  it("refuses both writes without dispatching", () => {
-    // A write that lands is the half that ate the user's edits: the transaction applies to a
-    // document the next save or `updateState` is about to replace.
-    expect(() => ctx().editor.setContent("x")).toThrow(reason);
-    expect(() => ctx().editor.insertText("y")).toThrow(reason);
-    expect(editor.calls).toEqual([]);
-  });
-
-  it("refuses getSelection", () => {
-    expect(() => ctx().editor.getSelection()).toThrow(reason);
-  });
+  it.each(ALL_CALLS)(
+    "refuses %s without touching the editor",
+    async (_name, call) => {
+      // A read that reaches the editor has already produced the stale document; a write that
+      // lands is the half that ate the user's edits — the transaction applies to a document
+      // the next save or `updateState` is about to replace.
+      await expect(call(ctx().editor)).rejects.toMatchObject({
+        code: "surface-blocked",
+        message: expect.stringContaining(reason),
+      });
+      expect(editor.calls).toEqual([]);
+    },
+  );
 });
 
 describe("refuses in the three states computed live from the editor store", () => {
-  it("no tabs open — closing the last tab leaves the handle alive", () => {
+  it("no tabs open — closing the last tab leaves the handle alive", async () => {
     // `setEditor` is never called with null: the `?? editor` fallback in
     // `use-keepalive-editors.ts`'s `handleActiveEditorChange` falls back to the shared editor
     // explicitly, and the remaining `App.tsx` call site only calls `setEditor` when `editor` is
     // truthy — so without this the plugin gets the document the user just closed.
     useEditorStore.setState({ activeTabId: null });
-    expect(() => ctx().editor.getContent()).toThrow(/no document is open/);
+    await expect(ctx().editor.getMarkdown()).rejects.toMatchObject({
+      code: "surface-blocked",
+      message: expect.stringMatching(/no document is open/),
+    });
     expect(editor.calls).toEqual([]);
   });
 
-  it("progressive load — the editor holds only the first chunk", () => {
+  it("progressive load — the editor holds only the first chunk", async () => {
     setTabLoading("tab-A", true);
-    expect(() => ctx().editor.getContent()).toThrow(/still loading/);
+    await expect(ctx().editor.getMarkdown()).rejects.toMatchObject({
+      code: "surface-blocked",
+      message: expect.stringMatching(/still loading/),
+    });
     expect(editor.calls).toEqual([]);
   });
 
-  it("a tab switch in flight — activeTabId has flipped, the editor has not", () => {
+  it("a tab switch in flight — activeTabId has flipped, the editor has not", async () => {
     useEditorStore.setState({ activeTabId: "tab-B" });
     markContentLoaded("tab-A"); // the editor still shows A
-    expect(() => ctx().editor.getContent()).toThrow(
-      /has not finished switching/,
-    );
+    await expect(ctx().editor.getMarkdown()).rejects.toMatchObject({
+      code: "surface-blocked",
+      message: expect.stringMatching(/has not finished switching/),
+    });
     expect(editor.calls).toEqual([]);
 
     // A window, not a ban: once the switch completes the same call works.
+    const real = realEditor("alpha\n");
+    setEditorInstance(real.editor);
     markContentLoaded("tab-B");
-    expect(ctx().editor.getContent()).toBe("THE DOCUMENT");
+    expect(await ctx().editor.getMarkdown()).toBe("alpha\n");
+    real.editor.destroy();
   });
 });
 
 describe("the refusals stay distinguishable", () => {
-  it("no editor at all reads differently from a blocked surface", () => {
+  it("no editor at all reads differently from a blocked surface", async () => {
     // "no editor is open" and "source mode is open" are different situations for the author.
     setEditorInstance(null);
-    expect(() => ctx().editor.getContent()).toThrow("no editor is open");
+    await expect(ctx().editor.getMarkdown()).rejects.toMatchObject({
+      code: "no-editor",
+      message: expect.stringContaining("no editor is open"),
+    });
   });
 
-  it("capability comes before surface for a readonly plugin", () => {
+  it("capability comes before surface for a readonly plugin", async () => {
     // A readonly plugin should be told about the capability, not about a surface state it can
     // do nothing about.
     setEditorSurfaceBlocked("source mode is open");
-    expect(() => ctx("editor:readonly").editor.setContent("x")).toThrow(
-      /editor:readonly/,
-    );
+    await expect(
+      ctx("editor:readonly").editor.setMarkdown("x"),
+    ).rejects.toMatchObject({ code: "not-permitted" });
   });
 
-  it("names the failing method, as the sandboxed tier does", () => {
+  it("names the failing method, as the sandboxed tier does", async () => {
     setEditorSurfaceBlocked("source mode is open");
     const api = ctx().editor;
-    expect(() => api.getContent()).toThrow(/^editor\.getContent: /);
-    expect(() => api.getSelection()).toThrow(/^editor\.getSelection: /);
-    expect(() => api.insertText("x")).toThrow(/^editor\.insertText: /);
+    await expect(api.getMarkdown()).rejects.toThrow(/^editor\.getMarkdown: /);
+    await expect(api.getSelection()).rejects.toThrow(/^editor\.getSelection: /);
+    await expect(api.insertText("x")).rejects.toThrow(/^editor\.insertText: /);
   });
 });

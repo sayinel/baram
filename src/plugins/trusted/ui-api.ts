@@ -13,6 +13,7 @@ import type {
   UIAPI,
 } from "../types";
 
+import { dropAnchors } from "../../extensions/plugins/selection-anchors";
 import { useUIStore } from "../../stores/ui/ui";
 import { pluginSourceLabel } from "../plugin-text";
 import { usePluginUIStore } from "../plugin-ui-store";
@@ -133,9 +134,14 @@ export function createUIAPI(
   };
 }
 
-/** Unregister all UI state (status-bar items, injected styles, an open prompt and its gate state — §385) for a plugin. */
+/**
+ * Unregister the per-plugin host state a plugin leaves behind: status-bar items, injected
+ * styles, an open prompt and its gate state (§385), and the refs it read (§388 — spec 0067
+ * §7.4). Called on every unload path (`plugin-loader.ts`, `plugin-lifecycle.ts`).
+ */
 export function unregisterPluginUI(pluginId: string): void {
   clearPromptGate(pluginId);
+  dropAnchors(pluginId);
   usePluginUIStore.getState().unregisterPlugin(pluginId);
   document.head
     .querySelectorAll(`style[data-baram-plugin="${pluginId}"]`)
