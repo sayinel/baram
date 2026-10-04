@@ -1168,6 +1168,19 @@ fn links_say_where_each_one_leads() {
         text.stdout,
         "3\twikilink\talpha\tresolved\tnotes/alpha.md\n4\tblockRef\talpha\tresolved\tnotes/alpha.md\n"
     );
+    // The last field is the file for a resolved link, the alias for another vault's, and
+    // empty (a trailing tab) for one that resolves to nothing.
+    let text = baram(
+        &sb,
+        &sb.home,
+        &["--vault", &vault, "links", "notes/alpha.md"],
+    );
+    assert_eq!(
+        text.stdout,
+        "3\twikilink\tbeta\tresolved\tnotes/beta.md\n\
+         3\twikilink\tmissing-note\tunresolved\t\n\
+         3\twikilink\tremote\totherVault\tjournal\n"
+    );
 }
 
 #[test]
@@ -1188,5 +1201,60 @@ fn links_of_something_the_index_does_not_read() {
         let ran = baram(&sb, &sb.home, &["--json", "--vault", &vault, "links", path]);
         assert_eq!(ran.code, exit, "{path}");
         assert_eq!(json(&ran.stderr)["error"]["code"], code, "{path}");
+    }
+}
+
+/// `notes` and `.` (the vault itself) are named like notes some link points at, so a
+/// command that took them for one would answer with those links.
+#[test]
+fn backlinks_of_a_directory_is_file_not_found() {
+    let sb = sandbox();
+    linked_vault(&sb);
+    write(&sb.vault, "ref.md", "[[notes]] and [[vault]]\n");
+    let vault = vault_arg(&sb);
+    for path in ["notes", ".", ""] {
+        let ran = baram(&sb, &sb.home, &["--vault", &vault, "backlinks", path]);
+        assert_eq!(
+            (ran.code, ran.stdout.as_str(), ran.stderr.as_str()),
+            (
+                1,
+                "",
+                format!("error[FILE_NOT_FOUND]: no file at {path}\n").as_str()
+            ),
+            "{path:?}"
+        );
+    }
+}
+
+/// `home/secret.md` holds a link and a note inside the vault links to `[[secret]]`, so a
+/// command that reached the file would print something.
+#[test]
+fn links_and_backlinks_of_a_file_outside_the_vault_are_refused() {
+    let sb = sandbox();
+    linked_vault(&sb);
+    write(&sb.home, "secret.md", "[[alpha]]\n");
+    write(&sb.vault, "notes/mentions.md", "[[secret]]\n");
+    let vault = vault_arg(&sb);
+    let outside = sb.home.join("secret.md").to_string_lossy().into_owned();
+    for command in ["links", "backlinks"] {
+        for file in ["../home/secret.md", outside.as_str()] {
+            let ran = baram(&sb, &sb.home, &["--json", "--vault", &vault, command, file]);
+            assert_eq!(ran.code, 1, "{command} {file}: stderr: {}", ran.stderr);
+            assert!(ran.stdout.is_empty(), "{command} {file}: {}", ran.stdout);
+            assert_eq!(
+                json(&ran.stderr)["error"]["code"],
+                "PATH_OUTSIDE_VAULT",
+                "{command} {file}"
+            );
+        }
+        // The mechanism works at all: an absolute path inside the vault is accepted.
+        let inside = sb
+            .vault
+            .join("notes/alpha.md")
+            .to_string_lossy()
+            .into_owned();
+        let ran = baram(&sb, &sb.home, &["--vault", &vault, command, &inside]);
+        assert_eq!(ran.code, 0, "{command}: stderr: {}", ran.stderr);
+        assert!(!ran.stdout.is_empty(), "{command}");
     }
 }
