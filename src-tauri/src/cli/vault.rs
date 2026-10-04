@@ -337,6 +337,65 @@ pub(crate) fn folder_arg(vault: &Vault, input: &str) -> Result<PathBuf, CliError
     }
 }
 
+/// A path argument that names a file inside the vault.
+///
+/// `Path::is_file` is false whenever the metadata cannot be read — std's own examples
+/// are a permission error and a broken symlink — so a file behind a directory that
+/// cannot be entered would be reported as absent. FILE_NOT_FOUND is for what is not
+/// there: nothing at the path, a file where a directory should be, or a directory (not
+/// a file). Any other failure is IO, with the OS's reason.
+pub(crate) fn file_arg(vault: &Vault, input: &str) -> Result<PathBuf, CliError> {
+    let file = locate(vault, input)?;
+    match std::fs::metadata(&file) {
+        Ok(meta) if meta.is_file() => Ok(file),
+        Ok(_) => Err(CliError::new(
+            ErrorCode::FileNotFound,
+            format!("no file at {input}"),
+        )),
+        Err(source)
+            if matches!(
+                source.kind(),
+                std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+            ) =>
+        {
+            Err(CliError::new(
+                ErrorCode::FileNotFound,
+                format!("no file at {input}"),
+            ))
+        }
+        Err(source) => Err(CliError::new(
+            ErrorCode::Io,
+            format!("cannot read {input}: {source}"),
+        )),
+    }
+}
+
+/// A `--file` value for a command that reads a NOTE: a file the vault walk would list.
+/// The walk lists `.md` and `.markdown` files by name, case-sensitively, and never
+/// enters a hidden or `SKIP_DIRS` folder, so a file outside that is refused the way
+/// `folder_arg` refuses a skipped folder — an answer for it would show what the app never
+/// shows (spec 0066 §3.4).
+pub(crate) fn note_arg(vault: &Vault, input: &str) -> Result<PathBuf, CliError> {
+    let file = file_arg(vault, input)?;
+    let name = file
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    if !(name.ends_with(".md") || name.ends_with(".markdown")) {
+        return Err(CliError::new(
+            ErrorCode::InvalidArgument,
+            format!("{input} is not a markdown note"),
+        ));
+    }
+    if walk_skips(vault, &file) {
+        return Err(CliError::new(
+            ErrorCode::InvalidArgument,
+            format!("{input} is where the vault walk does not go"),
+        ));
+    }
+    Ok(file)
+}
+
 /// Whether the vault walk never reaches `path`: a component BELOW the vault root is
 /// hidden, or is one of `SKIP_DIRS`. The walkers skip a hidden ENTRY of either kind and
 /// test `SKIP_DIRS` on directories only; a file named exactly like one of those is never
@@ -736,5 +795,80 @@ mod tests {
             folder_arg(&vault, "docs/a.md").unwrap_err().code,
             ErrorCode::InvalidArgument
         );
+    }
+
+    // ── --file ────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn a_note_the_walk_lists_is_accepted() {
+        // The vault sits under a dot folder: only the components below its root count.
+        let (_t, base) = tree(&[".hidden/vault/notes"]);
+        let root = base.join(".hidden/vault");
+        std::fs::write(root.join("notes/a.md"), "x").unwrap();
+        std::fs::write(root.join("notes/b.markdown"), "x").unwrap();
+        let vault = vault_at(&root);
+        for name in ["a.md", "b.markdown"] {
+            let input = format!("notes/{name}");
+            assert_eq!(
+                note_arg(&vault, &input).unwrap(),
+                root.join("notes").join(name),
+                "{input}"
+            );
+        }
+    }
+
+    /// Each file exists, so the refusal is the note check's and not a missing file's. The
+    /// walk lists `.md` and `.markdown` by name, case-sensitively (`A.MD` is not listed),
+    /// and never enters a hidden folder or one of `SKIP_DIRS`, nor lists a hidden file.
+    #[test]
+    fn a_file_the_walk_never_shows_is_refused_with_the_reason() {
+        let (_t, base) = tree(&["vault/.hidden", "vault/node_modules", "vault/notes"]);
+        let root = base.join("vault");
+        for rel in [
+            "notes/a.txt",
+            "notes/A.MD",
+            "notes/.draft.md",
+            ".hidden/x.md",
+            "node_modules/m.md",
+        ] {
+            std::fs::write(root.join(rel), "x").unwrap();
+        }
+        let vault = vault_at(&root);
+        for (input, message) in [
+            ("notes/a.txt", "notes/a.txt is not a markdown note"),
+            ("notes/A.MD", "notes/A.MD is not a markdown note"),
+            (
+                "notes/.draft.md",
+                "notes/.draft.md is where the vault walk does not go",
+            ),
+            (
+                ".hidden/x.md",
+                ".hidden/x.md is where the vault walk does not go",
+            ),
+            (
+                "node_modules/m.md",
+                "node_modules/m.md is where the vault walk does not go",
+            ),
+        ] {
+            let error = note_arg(&vault, input).unwrap_err();
+            assert_eq!(error.code, ErrorCode::InvalidArgument, "{input}");
+            assert_eq!(error.message, message, "{input}");
+        }
+    }
+
+    /// The file questions come first: a name that would fail the note check is still
+    /// reported as missing, or outside, when it is.
+    #[test]
+    fn the_note_check_comes_after_the_file_questions() {
+        let (_t, base) = tree(&["vault/notes", "other"]);
+        std::fs::write(base.join("other/secret.txt"), "x").unwrap();
+        let vault = vault_at(&base.join("vault"));
+        for (input, code) in [
+            ("nope.txt", ErrorCode::FileNotFound),
+            ("notes", ErrorCode::FileNotFound),
+            ("../other/secret.txt", ErrorCode::PathOutsideVault),
+        ] {
+            assert_eq!(note_arg(&vault, input).unwrap_err().code, code, "{input}");
+        }
     }
 }

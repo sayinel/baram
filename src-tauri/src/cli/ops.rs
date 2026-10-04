@@ -100,25 +100,7 @@ pub(crate) async fn read(vault: &Vault, path: &str) -> Result<Envelope<FileConte
     let unreadable = |source: &std::io::Error| {
         CliError::new(ErrorCode::Io, format!("cannot read {path}: {source}"))
     };
-    let file = vault::locate(vault, path)?;
-    // `Path::is_file` is false whenever the metadata cannot be read — std's own examples
-    // are a permission error and a broken symlink — so a file behind a directory that
-    // cannot be entered would be reported as absent. FILE_NOT_FOUND is for what is not
-    // there: nothing at the path, a file where a directory should be, or a directory
-    // (not a file). Any other failure is IO, with the OS's reason.
-    match std::fs::metadata(&file) {
-        Ok(meta) if meta.is_file() => {}
-        Ok(_) => return Err(missing()),
-        Err(source)
-            if matches!(
-                source.kind(),
-                std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
-            ) =>
-        {
-            return Err(missing());
-        }
-        Err(source) => return Err(unreadable(&source)),
-    }
+    let file = vault::file_arg(vault, path)?;
     let content = crate::fs::read_file(&file.to_string_lossy())
         .await
         .map_err(|error| match error {

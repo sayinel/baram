@@ -958,3 +958,76 @@ fn a_task_file_that_is_not_text_is_io_in_english() {
     );
     assert!(!has_hangul(&ran.stderr), "stderr: {}", ran.stderr);
 }
+
+/// Each file holds a task, so a missing check would print it. The walk lists `.md` and
+/// `.markdown` files outside hidden and `SKIP_DIRS` folders; `tasks --file` refuses what it
+/// would not list, the way `--folder` refuses a skipped folder.
+#[test]
+fn tasks_of_a_file_the_vault_walk_never_shows_is_refused() {
+    let sb = sandbox();
+    write(&sb.vault, ".hidden/x.md", "- [ ] in a hidden folder\n");
+    write(
+        &sb.vault,
+        "node_modules/m.md",
+        "- [ ] in a skipped folder\n",
+    );
+    write(&sb.vault, "a.txt", "- [ ] in a text file\n");
+    let vault = vault_arg(&sb);
+    for (file, message) in [
+        (
+            ".hidden/x.md",
+            ".hidden/x.md is where the vault walk does not go",
+        ),
+        (
+            "node_modules/m.md",
+            "node_modules/m.md is where the vault walk does not go",
+        ),
+        ("a.txt", "a.txt is not a markdown note"),
+    ] {
+        let ran = baram(&sb, &sb.home, &["--vault", &vault, "tasks", "--file", file]);
+        assert_eq!(ran.code, 2, "{file}: stderr: {}", ran.stderr);
+        assert!(ran.stdout.is_empty(), "{file}: stdout: {}", ran.stdout);
+        assert_eq!(
+            ran.stderr,
+            format!("error[INVALID_ARGUMENT]: {message}\n"),
+            "{file}"
+        );
+    }
+}
+
+/// `home/secret.md` holds a task, so a `--file` that reached it would print it.
+#[test]
+fn tasks_of_a_file_outside_the_vault_is_refused() {
+    let sb = sandbox();
+    write(&sb.home, "secret.md", "- [ ] secret\n");
+    write(&sb.vault, "notes/a.md", "- [ ] inside\n");
+    let vault = vault_arg(&sb);
+    let outside = sb.home.join("secret.md").to_string_lossy().into_owned();
+    for file in ["../home/secret.md", outside.as_str()] {
+        let ran = baram(
+            &sb,
+            &sb.home,
+            &["--json", "--vault", &vault, "tasks", "--file", file],
+        );
+        assert_eq!(ran.code, 1, "{file}: stderr: {}", ran.stderr);
+        assert!(ran.stdout.is_empty(), "{file}: stdout: {}", ran.stdout);
+        assert_eq!(
+            json(&ran.stderr)["error"]["code"],
+            "PATH_OUTSIDE_VAULT",
+            "{file}"
+        );
+    }
+    // The mechanism works at all: an absolute path inside the vault is accepted.
+    let inside = sb.vault.join("notes/a.md").to_string_lossy().into_owned();
+    let ran = baram(
+        &sb,
+        &sb.home,
+        &["--vault", &vault, "tasks", "--file", &inside],
+    );
+    assert_eq!(
+        (ran.code, ran.stdout.as_str()),
+        (0, "notes/a.md\t1\ttodo\tinside\n"),
+        "stderr: {}",
+        ran.stderr
+    );
+}

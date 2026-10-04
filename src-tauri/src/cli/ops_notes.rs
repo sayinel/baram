@@ -140,8 +140,7 @@ pub(crate) async fn tasks(
     let root = vault.root.to_string_lossy();
     let entries = match file {
         Some(file) => {
-            let path = vault::locate(vault, file)?;
-            require_file(&path, file)?;
+            let path = vault::note_arg(vault, file)?;
             crate::task::get_file_tasks(&path.to_string_lossy(), Some(&root), exclude)
                 .await
                 .map_err(|error| match error {
@@ -192,27 +191,6 @@ fn task_rows(vault: &Vault, entries: Vec<TaskEntry>, status: TaskStatus) -> Vec<
 /// The OS's reason, in English; `TaskError`'s own Display is not used.
 fn unreadable(file: &str, source: &std::io::Error) -> CliError {
     CliError::new(ErrorCode::Io, format!("cannot read {file}: {source}"))
-}
-
-/// `--file` must name a file. `Path::is_file` is false whenever the metadata cannot be
-/// read, so a file behind a directory that cannot be entered would be reported as absent;
-/// FILE_NOT_FOUND is for what is not there — nothing at the path, a file where a directory
-/// should be, or a directory — and any other failure is IO, with the OS's reason.
-fn require_file(path: &Path, file: &str) -> Result<(), CliError> {
-    let missing = || CliError::new(ErrorCode::FileNotFound, format!("no file at {file}"));
-    match std::fs::metadata(path) {
-        Ok(meta) if meta.is_file() => Ok(()),
-        Ok(_) => Err(missing()),
-        Err(source)
-            if matches!(
-                source.kind(),
-                std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
-            ) =>
-        {
-            Err(missing())
-        }
-        Err(source) => Err(unreadable(file, &source)),
-    }
 }
 
 #[cfg(test)]
@@ -372,5 +350,52 @@ mod tests {
             let got: Vec<u32> = rows.iter().map(|row| row.line).collect();
             assert_eq!(got, lines, "{status:?}");
         }
+    }
+
+    /// Every field of the entry holds a value no other field holds, so a row that took one
+    /// from the wrong field does not equal this. `indent`, `raw` and `timer` are set too:
+    /// the row has no place for them, and the object below has exactly the row's fields.
+    #[test]
+    fn a_task_row_carries_each_field_of_the_entry_under_its_own_name() {
+        let entries = vec![TaskEntry {
+            path: "/vault/notes/n.md".to_string(),
+            line: 4,
+            indent: 2,
+            state: TaskState::Doing,
+            text: "the text".to_string(),
+            raw: "  - [/] the raw line".to_string(),
+            created: Some("2026-01-01".to_string()),
+            start: Some("2026-01-02".to_string()),
+            scheduled: Some("2026-01-03".to_string()),
+            due: Some("2026-01-04".to_string()),
+            done: Some("2026-01-05".to_string()),
+            cancelled: Some("2026-01-06".to_string()),
+            priority: 3,
+            recurrence: Some("every week".to_string()),
+            timer: Some("25m".to_string()),
+            links: vec!["link-one".to_string(), "link-two".to_string()],
+            tags: vec!["tag-one".to_string()],
+        }];
+        let rows = task_rows(&plain_vault(), entries, TaskStatus::All);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(
+            serde_json::to_value(&rows[0]).unwrap(),
+            serde_json::json!({
+                "path": "notes/n.md",
+                "line": 5,
+                "state": "doing",
+                "text": "the text",
+                "priority": 3,
+                "created": "2026-01-01",
+                "start": "2026-01-02",
+                "scheduled": "2026-01-03",
+                "due": "2026-01-04",
+                "done": "2026-01-05",
+                "cancelled": "2026-01-06",
+                "recurrence": "every week",
+                "tags": ["tag-one"],
+                "links": ["link-one", "link-two"]
+            })
+        );
     }
 }
