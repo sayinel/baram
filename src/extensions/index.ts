@@ -80,6 +80,7 @@ import { MathInlineEdit } from "./plugins/math-inline-edit";
 import { MentionSuggest } from "./plugins/mention-suggest";
 import { PromptHighlight } from "./plugins/prompt-highlight";
 import { PromptLint } from "./plugins/prompt-lint";
+import { SelectionAnchors } from "./plugins/selection-anchors";
 import { SkillVariableSuggest } from "./plugins/skill-variable-suggest";
 import { SlashCommands } from "./plugins/slash-command";
 import { SmartPunctuation } from "./plugins/smart-punctuation";
@@ -280,6 +281,8 @@ export function createBaramExtensions(
 
     // Plugins — §5.1 Syntax Reveal (Typora-style)
     SyntaxReveal,
+    // Plugins — §388 refs a plugin read follow the document (spec 0067 §7)
+    SelectionAnchors,
 
     // Plugins — §3.3 Drop Handler (drag-and-drop images)
     // §324-e 캡처 프로필만 저장 시점으로 미룬다. 그 표면은 아직 파일이 아니라
