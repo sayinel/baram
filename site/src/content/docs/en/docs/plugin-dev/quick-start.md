@@ -52,11 +52,11 @@ narrower, data-only context. Two differences matter when writing one:
     const text = await ctx.files.readFile(path, { context });
   });
   ```
-- **`editor` is markdown, and async.** `getMarkdown()` / `setMarkdown()` go through the
-  app's own round-trip pipeline, so what you read is exactly what you can write back;
-  `getSelection()` gives ProseMirror positions plus the text they cover, and
-  `insertText()` types at the cursor. Every write is one undo step. Reads need `editor` or
-  `editor:readonly`; writes need `editor`.
+- **`editor` is markdown, and async — in both tiers.** `getMarkdown()` / `setMarkdown()` go
+  through the app's own round-trip pipeline, so what you read is exactly what you can write
+  back. `getSelection()` gives positions, the text, and a `ref`; `insertMarkdown(md, { replace:
+  ref })` replaces exactly what you read, and `insertText()` types plain text. Each insert is
+  its own undo step. Reads need `editor` or `editor:readonly`; writes need `editor`.
 
   ```js
   const before = await ctx.editor.getMarkdown();
@@ -66,21 +66,25 @@ narrower, data-only context. Two differences matter when writing one:
   A document read does not travel in the response — the host parks it and the sandbox
   collects it — but that is invisible to you; `getMarkdown()` is just a promise.
 
-  Two things worth designing around:
+  Three things worth designing around:
   - **`setMarkdown()` can refuse, and you should retry.** It parses off the main thread,
     and if the document changes while that runs — a tab switch, or the user typing a
-    single character — it rejects with "the document changed" rather than overwriting the
-    change. On a large document with an active typist this can fail repeatedly; that is
+    single character — it rejects with `code: "document-changed"` rather than overwriting
+    the change. On a large document with an active typist this can fail repeatedly; that is
     deliberate, since the alternative is silently discarding what the user just wrote.
-  - **Batch your inserts.** `insertText()` is one transaction, and ProseMirror groups undo
-    by transaction, so inserting an AI stream token by token gives the user a thousand
-    Cmd+Z presses — and each transaction costs the whole document to re-render, so the
-    host throttles them on large files. Buffer and insert in chunks.
+  - **Batch your inserts.** Each `insertText()` or `insertMarkdown()` is its own undo step,
+    so inserting an AI stream token by token gives the user a thousand Cmd+Z presses — and
+    in this tier an insert's charge is based on the size of the whole document, not only of
+    what you insert, so on a large file a token-by-token stream runs out of budget. Buffer
+    and insert in chunks.
+  - **Read, then replace with the `ref`.** An AI rewrite that takes seconds should keep the
+    `ref` from `getSelection()` and pass it back: a write without it lands on whatever is
+    selected *then*, which may be somewhere else entirely.
 
-  Editor calls are metered by the work they cost, not by how often you call them: reading
-  a scratch note is nearly free, reading a 10,000-line file repeatedly is not. If you see
-  "document budget is exhausted", you are polling something you should be getting from
-  `ctx.events` instead.
+  In this tier, editor calls are metered by the work they cost, not by how often you call
+  them: reading a scratch note is nearly free, reading a 10,000-line file repeatedly is not.
+  If a call is refused with `code: "budget"`, look for a read you are polling that
+  `ctx.events` could hand you instead, or for inserts you could batch.
 
 - **`settings` are the user's answers, and read-only.** Declare fields in
   `contributions.settings` and they render in your plugin's page under **Settings →
