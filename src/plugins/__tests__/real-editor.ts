@@ -1,6 +1,8 @@
 // A real Tiptap Editor for the editor-API tests, with the caret or range placed by `@@`
-// markers in the source: one marker is a caret, two are a range. The markers are deleted
-// in a history-free transaction before the selection is set.
+// markers in the source: one marker is a caret, two are a range. The content goes in and
+// the markers are deleted in history-free transactions, so the undo stack starts empty —
+// a fixture `setContent` in history would merge with the first edits a test makes (§388
+// Task 4 measured `undoDepth` 1 before this) and an undo would take the document with it.
 import { Editor } from "@tiptap/core";
 import { TextSelection } from "@tiptap/pm/state";
 
@@ -26,9 +28,11 @@ export function realEditor(source: string): {
     extensions: createBaramExtensions(),
     content: "",
   });
-  editor.commands.setContent(
-    markdownToProsemirror(source, editor.schema).toJSON(),
-  );
+  editor
+    .chain()
+    .setMeta("addToHistory", false)
+    .setContent(markdownToProsemirror(source, editor.schema).toJSON())
+    .run();
   const found: number[] = [];
   editor.state.doc.descendants((node, pos) => {
     if (!node.isText) return;
@@ -47,4 +51,13 @@ export function realEditor(source: string): {
   tr.setSelection(TextSelection.create(tr.doc, from, to));
   editor.view.dispatch(tr);
   return { editor, from, to };
+}
+
+/** Set a text selection through a dispatched transaction, the way a click or drag does. */
+export function select(editor: Editor, from: number, to = from): void {
+  editor.view.dispatch(
+    editor.state.tr.setSelection(
+      TextSelection.create(editor.state.doc, from, to),
+    ),
+  );
 }

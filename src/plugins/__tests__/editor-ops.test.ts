@@ -1,0 +1,185 @@
+// §388 spec 0067 §5 · §7.3 · §11-2 · §11-5 · §11-7 · §11-8 · §11-13 — the core both tiers
+// share: refs, where an insert lands, its undo step. Reveal interactions: editor-ops-reveal.test.ts.
+import type { Editor } from "@tiptap/core";
+
+import { undo } from "@tiptap/pm/history";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+const { openUrl } = vi.hoisted(() => ({
+  openUrl: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl }));
+
+import type { PluginEditorHandle } from "../plugin-host-registry";
+
+import { dropAnchors } from "../../extensions/plugins/selection-anchors";
+import { serializeLiveDoc } from "../../utils/editor/serialize-live-doc";
+import {
+  insertMarkdownAt,
+  insertTextAt,
+  readSelectionForPlugin,
+} from "../editor-ops";
+import { codeOf, realEditor, select } from "./real-editor";
+
+const OWNER = "acme.notes";
+const ctxOf = (editor: Editor) => ({
+  live: () => editor as unknown as PluginEditorHandle,
+  owner: OWNER,
+});
+
+afterEach(() => dropAnchors(OWNER));
+
+describe("editor-ops (spec 0067)", () => {
+  it("a ref replaces exactly what was read after an edit before it", async () => {
+    const { editor } = realEditor("alpha @@beta@@ gamma\n");
+    const sel = readSelectionForPlugin(ctxOf(editor), "getSelection", {
+      record: true,
+    });
+    expect(sel.text).toBe("beta");
+    editor.view.dispatch(editor.state.tr.insertText("XX", 1));
+    await insertMarkdownAt(ctxOf(editor), { markdown: "**B**", ref: sel.ref });
+    expect(serializeLiveDoc(editor)).toBe("XXalpha **B** gamma\n");
+    editor.destroy();
+  });
+
+  it("a ref is single-use", async () => {
+    const { editor } = realEditor("alpha @@beta@@ gamma\n");
+    const { ref } = readSelectionForPlugin(ctxOf(editor), "getSelection", {
+      record: true,
+    });
+    await insertMarkdownAt(ctxOf(editor), { markdown: "B", ref });
+    await expect(
+      insertMarkdownAt(ctxOf(editor), { markdown: "C", ref }),
+    ).rejects.toMatchObject({
+      code: "ref-unknown",
+    });
+    editor.destroy();
+  });
+
+  it("typing elsewhere during the parse is followed, not refused (D5)", async () => {
+    const { editor } = realEditor("alpha @@ omega\n");
+    const pending = insertMarkdownAt(ctxOf(editor), { markdown: "**x**" });
+    editor.view.dispatch(editor.state.tr.insertText("Z", 1)); // before the target
+    await pending;
+    expect(serializeLiveDoc(editor)).toBe("Zalpha **x** omega\n");
+    editor.destroy();
+  });
+
+  it("a tab switch during the parse refuses with ref-other-document", async () => {
+    const { editor } = realEditor("alpha @@ omega\n");
+    const pending = insertMarkdownAt(ctxOf(editor), { markdown: "x" });
+    const { editor: other } = realEditor("different\n");
+    editor.view.updateState(other.state); // another document, installed without a transaction
+    await expect(pending).rejects.toMatchObject({ code: "ref-other-document" });
+    other.destroy();
+    editor.destroy();
+  });
+
+  it("does not move a caret the user placed elsewhere (rule 6, 1st review M3)", async () => {
+    const { editor } = realEditor("alpha @@beta@@ gamma\n");
+    const { ref } = readSelectionForPlugin(ctxOf(editor), "getSelection", {
+      record: true,
+    });
+    select(editor, 2); // the user moved on
+    await insertMarkdownAt(ctxOf(editor), { markdown: "B", ref });
+    expect(editor.state.selection.from).toBe(2);
+    editor.destroy();
+  });
+
+  it("moves the caret to the end of what went in when the user is on the target (rule 6)", async () => {
+    const { editor } = realEditor("alpha @@ omega\n");
+    await insertMarkdownAt(ctxOf(editor), { markdown: "xyz" });
+    expect(editor.state.selection.from).toBe(10); // "alpha " 1-7, "xyz" 7-10
+    editor.destroy();
+  });
+
+  it("an insert is its own undo step on both sides (P1) — sibling: without closeHistory it is not", async () => {
+    const { editor } = realEditor("alpha @@ omega\n");
+    editor.view.dispatch(editor.state.tr.insertText("c", 7));
+    await insertMarkdownAt(ctxOf(editor), { markdown: "X" });
+    undo(editor.state, editor.view.dispatch);
+    expect(editor.state.doc.textContent).toBe("alpha c omega");
+    editor.destroy();
+    // Sibling: the same two writes without closeHistory undo together.
+    const { editor: e2 } = realEditor("alpha @@ omega\n");
+    e2.view.dispatch(e2.state.tr.insertText("c", 7));
+    e2.view.dispatch(e2.state.tr.insertText("X", 8));
+    undo(e2.state, e2.view.dispatch);
+    expect(e2.state.doc.textContent).toBe("alpha  omega");
+    e2.destroy();
+  });
+
+  it("text typed right after an insert is its own undo step (P1, spec §11-8)", async () => {
+    const { editor } = realEditor("alpha @@ omega\n");
+    await insertMarkdownAt(ctxOf(editor), { markdown: "X" });
+    editor.view.dispatch(
+      editor.state.tr.insertText("c", editor.state.selection.from),
+    );
+    undo(editor.state, editor.view.dispatch);
+    expect(editor.state.doc.textContent).toBe("alpha X omega");
+    editor.destroy();
+  });
+
+  it("insertMarkdown('') deletes the selection", async () => {
+    const { editor } = realEditor("alpha @@beta@@ gamma\n");
+    await insertMarkdownAt(ctxOf(editor), { markdown: "" });
+    expect(editor.state.doc.textContent).toBe("alpha  gamma");
+    editor.destroy();
+  });
+
+  it("insertText honours a ref the same way (spec §11-13)", () => {
+    const { editor } = realEditor("alpha @@beta@@ gamma\n");
+    const { ref } = readSelectionForPlugin(ctxOf(editor), "getSelection", {
+      record: true,
+    });
+    editor.view.dispatch(editor.state.tr.insertText("XX", 1));
+    insertTextAt(ctxOf(editor), { ref, text: "B" });
+    expect(editor.state.doc.textContent).toBe("XXalpha B gamma");
+    expect(codeOf(() => insertTextAt(ctxOf(editor), { ref, text: "C" }))).toBe(
+      "ref-unknown", // single-use here too
+    );
+    // A non-empty range whose text changes is refused — an empty one would follow the edit.
+    select(editor, 1, 3); // "XX"
+    const second = readSelectionForPlugin(ctxOf(editor), "getSelection", {
+      record: true,
+    });
+    editor.view.dispatch(editor.state.tr.insertText("Q", 2)); // inside the range
+    expect(
+      codeOf(() => insertTextAt(ctxOf(editor), { ref: second.ref, text: "C" })),
+    ).toBe("ref-range-changed");
+    // A tab switch: another document installed without a transaction.
+    const third = readSelectionForPlugin(ctxOf(editor), "getSelection", {
+      record: true,
+    });
+    expect(third.text).toBe("XQX"); // the user's range followed the Q
+    const { editor: other } = realEditor("different\n");
+    const own = editor.state;
+    editor.view.updateState(other.state);
+    expect(
+      codeOf(() => insertTextAt(ctxOf(editor), { ref: third.ref, text: "C" })),
+    ).toBe("ref-other-document");
+    // Switching back finds the ref again (spec §7.3 step 2).
+    editor.view.updateState(own);
+    insertTextAt(ctxOf(editor), { ref: third.ref, text: "C" });
+    expect(editor.state.doc.textContent).toBe("Calpha B gamma");
+    other.destroy();
+    editor.destroy();
+  });
+
+  // Spec §11-2 — round trip: into an empty paragraph and back, byte for byte.
+  it.each([
+    "[T](https://e.x)",
+    "**b**",
+    "[[Note]]",
+    "((n#^abc123))",
+    "- a\n- b",
+    "## H",
+    "$$\nx^2\n$$",
+    "> [!note]\n> body",
+  ])("round trip %j", async (md) => {
+    const { editor } = realEditor("@@\n");
+    await insertMarkdownAt(ctxOf(editor), { markdown: md });
+    expect(serializeLiveDoc(editor)).toBe(`${md}\n`);
+    editor.destroy();
+  });
+});
