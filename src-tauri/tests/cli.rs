@@ -1504,8 +1504,9 @@ fn every_command_prints_the_envelope_it_promises() {
     }
 }
 
-/// `clap` knows exactly the nine commands this file exercises — a tenth added to the
-/// grammar without a contract here fails this test.
+/// `--help` lists exactly the nine commands this file exercises — a tenth visible command
+/// added to the grammar without a contract here fails this test. A hidden one
+/// (`#[command(hide = true)]`) is not listed, so it does not.
 #[test]
 fn the_nine_commands_are_the_ones_the_binary_knows() {
     let sb = sandbox();

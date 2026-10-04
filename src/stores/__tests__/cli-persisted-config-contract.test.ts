@@ -1,9 +1,10 @@
 // §387 — `baram` CLI 가 config.json 에서 읽는 필드가 실제 persist 출력에 있는가.
 //
 // CLI(`src-tauri/src/cli/app_config.rs`)는 이 스토어들이 쓴 JSON 을 Rust 에서 직접 읽는다.
-// 모르는 필드는 무시하지만, 읽는 필드의 이름이나 타입이 바뀌면 조용히 빈 목록이 된다 —
-// 그래서 같은 픽스처를 양쪽이 읽는다: Rust 시험은 픽스처에서 값을 뽑고, 이 시험은 진짜
-// 스토어가 그 픽스처와 같은 모양으로 쓰는지 본다.
+// 모르는 필드는 무시한다. 읽는 필드의 이름이 바뀌면 `contexts` · `path` · `contextType` ·
+// `activeContextId` · `tasksExcludePaths` 는 경고로 드러나지만, `id` · `label` · `alias` 는
+// 경고 없이 기본값(`""` · 경로 · 없음)으로 읽힌다 — 그래서 같은 픽스처를 양쪽이 읽는다:
+// Rust 시험은 픽스처에서 값을 뽑고, 이 시험은 진짜 스토어가 그 픽스처와 같은 모양으로 쓰는지 본다.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeAll, describe, expect, it, vi } from "vitest";
@@ -26,7 +27,8 @@ vi.mock("../system/tauri-storage", () => ({
   },
 }));
 
-// `add_context` 는 받은 것을 돌려준다 — persist 목록에 들어가는 것은 그 반환값이다.
+// `add_context` 는 처음 보는 경로면 받은 것을 그대로 돌려준다(이미 등록된 경로면 기존 항목을
+// 돌려준다) — persist 목록에 들어가는 것은 그 반환값이다.
 vi.mock("../../ipc/context", () => ({
   addContext: vi.fn((info: unknown) => Promise.resolve(info)),
   getContexts: vi.fn(() => Promise.resolve([])),

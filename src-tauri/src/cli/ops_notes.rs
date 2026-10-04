@@ -327,8 +327,8 @@ impl Row for LinkRow {
 
 /// `baram links <path>` — the links a note holds, each resolved by the graph's resolver
 /// except a cross-vault link, which is reported by its alias. The graph's own edges
-/// (`get_link_graph`) run a cross-vault link to the local note of that name, and an
-/// unresolved one to a placeholder path.
+/// (`get_link_graph`) run a cross-vault link to the local note of that name, or to a
+/// placeholder path when there is none, and an unresolved one to a placeholder path.
 pub(crate) async fn links(vault: &Vault, path: &str) -> Result<Envelope<LinkRow>, CliError> {
     let file = paths::note_arg(vault, path)?;
     let index = build_index(vault).await?;

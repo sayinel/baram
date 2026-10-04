@@ -41,7 +41,7 @@ A command reads one vault. `--vault` names it in one of two forms; without the f
 2. `--vault <name>` — any other value is a name: the name or alias the app shows for a registered vault or folder. Upper and lower case do not matter.
 3. No `--vault` — the registered vault that contains the current directory or, when no vault does, the registered folder that does.
 
-Only the form you used is tried: a name that matches nothing is not looked for as a folder, and a `--vault` that fails does not fall back to the current directory. When the form finds nothing, the command stops with `VAULT_NOT_FOUND`; when a name fits more than one registered vault or folder, with `VAULT_AMBIGUOUS`. For a name or for the current directory, the error lists the vaults and folders it could have meant; for a `--vault` path that is not a folder, it lists none. Nothing falls back to the vault that was last open in the app: run from somewhere else, that would quietly read the wrong notes.
+Only the form you used is tried: a name that matches nothing is not looked for as a folder, and a `--vault` that fails does not fall back to the current directory. When the form finds nothing, the command stops with `VAULT_NOT_FOUND`. When a name fits more than one registered vault or folder, it stops with `VAULT_AMBIGUOUS` — but only entries whose folder exists are counted, and entries that point at the same folder count as one. For a name or for the current directory, the error lists the vaults and folders it could have meant; for a `--vault` path that is not a folder, it lists none. Nothing falls back to the vault that was last open in the app: run from somewhere else, that would quietly read the wrong notes.
 
 `baram vaults` shows what is registered, and it does not stop on these errors: when no vault resolves, it still lists every registered vault and folder, with none of them marked.
 
@@ -51,10 +51,10 @@ When the current directory is inside more than one registered vault or folder, a
 
 | Command | What it prints |
 | --- | --- |
-| `vaults` | The vaults and folders registered in the app. `*` marks the one this run would read (`current` in JSON). |
+| `vaults` | The vaults and folders registered in the app. `*` marks the row of the vault this run would read (`current` in JSON); when a vault and a folder are registered for that same folder, both rows are marked. |
 | `files [--folder <path>]` | The markdown files in the vault — `.md` and `.markdown`. |
 | `read <path>` | One file, exactly as it is on disk. A file that is not UTF-8 text is an `IO` error. |
-| `search <query> [--regex] [--case-sensitive] [--word] [--folder <path>] [--limit N]` | One item per match in `.md` files — a line with two matches appears twice. Stops after 100 matches unless `--limit` says otherwise. |
+| `search <query> [--regex] [--case-sensitive] [--word] [--folder <path>] [--limit N]` | One item per match in `.md` files — a line with two matches appears twice. Upper and lower case match each other unless you pass `--case-sensitive`. Stops after 100 matches unless `--limit` says otherwise. |
 | `tags` | Each tag and how many times it occurs. |
 | `tag <name>` | The files that carry a tag. A leading `#` is optional. |
 | `tasks [--status open\|done\|cancelled\|all] [--file <path>]` | Tasks. `open`, the default, is `todo` and `doing`. |
@@ -65,7 +65,7 @@ When the current directory is inside more than one registered vault or folder, a
 
 ## Paths and line numbers
 
-A note or folder path you pass — to `read`, `backlinks`, `links`, `--folder` or `--file` — is relative to the **vault root**, not to the current directory, and uses `/`. The paths in results are written the same way, so one command's output can be the next one's argument. An absolute path is accepted when it is inside the vault; one that leads outside — through `../`, as an absolute path elsewhere or by a symbolic link that points out — is refused with `PATH_OUTSIDE_VAULT`. A vault's own path is absolute: `vault.path` in JSON and the paths `vaults` lists.
+A note or folder path you pass — to `read`, `backlinks`, `links`, `--folder` or `--file` — is relative to the **vault root**, not to the current directory, and uses `/`. The paths in results are written the same way, so one command's output can be the next one's argument. An absolute path is accepted when it is inside the vault; one that leads outside — through `../`, as an absolute path elsewhere or by a symbolic link that points out — is refused with `PATH_OUTSIDE_VAULT`. A `..` is applied to the path as written, before any symbolic link in it is followed: `read out-link/../tabs.md` reads the vault's own `tabs.md`, where a shell would follow `out-link` first. A vault's own path is absolute: `vault.path` in JSON and the paths `vaults` lists.
 
 `--folder` does not accept a file, a hidden folder or `node_modules`, `.git`, `.obsidian` or `.baram`. The app skips those folders when it walks a vault, and the commands report what the app sees. For the same reason, `tasks --file` and `links` take only a note the walk reaches — a `.md` or `.markdown` file, not hidden itself and not inside those folders. Another file is refused with `INVALID_ARGUMENT`.
 
@@ -103,7 +103,7 @@ Results go to standard output; errors and warnings go to standard error. With `-
 {"error":{"candidates":[],"code":"FILE_NOT_FOUND","message":"no file at notes/a.md"}}
 ```
 
-Without `--json`, the same error is `error[FILE_NOT_FOUND]: no file at notes/a.md`, followed by one indented line per candidate: its name, a tab and its path. Branch on `code`, not on the wording of `message`:
+Without `--json`, the same error is `error[FILE_NOT_FOUND]: no file at notes/a.md` — always one line, because the message is escaped the way a field is — followed by one indented line per candidate: its name, a tab and its path. Branch on `code`, not on the wording of `message`:
 
 | Code | When | Exit code |
 | --- | --- | --- |
@@ -111,10 +111,10 @@ Without `--json`, the same error is `error[FILE_NOT_FOUND]: no file at notes/a.m
 | `VAULT_AMBIGUOUS` | More than one registered vault or folder answers to the name. | `1` |
 | `PATH_OUTSIDE_VAULT` | The path leads out of the vault. | `1` |
 | `FILE_NOT_FOUND` | Nothing is at the path, or a folder is where a file is wanted. | `1` |
-| `INVALID_ARGUMENT` | The command does not take the value — for example an empty query or tag name, a bad regular expression, or a folder or note it refuses (see above). | `2` |
+| `INVALID_ARGUMENT` | The command does not take the value — for example an empty query or tag name, a bad regular expression, or a folder or note it refuses (see above). A regular expression that is only too large, such as `k{50000}`, can get past this check and end as `IO` `cannot search …` with exit code `1`. | `2` |
 | `IO` | Something that is there could not be read — for example a file or folder you have no permission for, a file that is not UTF-8, or the current directory. | `1` |
 
-A command that walks the vault stops with `IO` at a folder it cannot read, and the message names that folder. `search` skips such a folder instead. Messages are in English, except what they quote: the paths and names they repeat, and the operating system's own description of a failure in an `IO` message — on Windows, that description follows the system's language.
+A command that walks the vault stops with `IO` at a folder it cannot read, and the message names that folder. `search` skips such a folder instead. Messages are in English, except what they quote: the paths and names they repeat, and the operating system's own description of a failure in an `IO` message — on Windows, that description is expected to follow the system's language (not yet checked on Windows).
 
 Not everything on standard error is that error. A command line the argument parser cannot read — an unknown command or flag, a missing argument, a value out of range — is rejected before `--json` is read, so that message is plain text starting with `error:` (exit code `2`). And a warning — for example, app settings that could not be read — comes before anything else and does not change the exit code. It is a line of its own: `warning: …`, or `{"warning":{"message":"…"}}` with `--json`. With `BARAM_LOG` set in the environment, diagnostic lines such as `[DEBUG] cli: 5 registered roots` go there too.
 
@@ -125,7 +125,7 @@ Not everything on standard error is that error. A command line the argument pars
 - **`links` resolves the way the graph view does**, not the way a click does. A path in a link is followed only from the vault root: `[[./plan]]`, or a path that leads nowhere, is looked up by its last name, wherever a note of that name is. A journal date gets no special treatment. A link into another vault is reported as `otherVault` with the alias, where the graph view draws it to a local note of the same name, or to a placeholder node when there is none. `links` reads the index of the vault this run chose; when a registered folder sits inside a vault, the app's graph for that folder uses the folder's own index, so a note name that exists twice can resolve differently.
 - **`tasks` reads one vault.** The task panel can show several, depending on its scope setting. The folders you excluded from tasks in the app's settings are excluded here too: `tasks --file` on a note inside one prints no tasks, not an error.
 - **`search` reads `.md` files only.** The other commands also read `.markdown`. And `search` reads a hidden file inside an ordinary folder, such as `notes/.draft.md`, which `files` does not list.
-- **`backlinks` and `links` index the vault's links on every call** — a little under half a second for 10,000 notes, measured on an Apple M5 Pro.
+- **`backlinks` and `links` index the vault's links on every call** — a little under half a second for 10,000 notes, measured on an Apple M5 Pro with a release build and a warm cache.
 
 ## For AI agents
 

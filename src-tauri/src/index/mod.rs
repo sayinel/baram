@@ -154,7 +154,8 @@ pub(crate) enum LinkResolution {
     /// A file under this index's root, the one `resolve_target_from_map` answers.
     Resolved(String),
     /// `[[alias::note]]` — the link names another vault (§87). Not looked up here;
-    /// `get_link_graph` does look it up, and draws it to a local note of that name.
+    /// `get_link_graph` does look it up, and draws it to a local note of that name, or to
+    /// a placeholder path when there is none.
     OtherVault(String),
     /// `resolve_target_from_map` finds no file. `get_link_graph` draws such a link to the
     /// placeholder path `resolve_target` builds.

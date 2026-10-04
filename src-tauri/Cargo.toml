@@ -32,9 +32,9 @@ tempfile = "3"
 notify = "8"
 regex = "1"
 # §387 `baram <command>` — the CLI mode of this binary (src/cli). default-features = false
-# drops colour, suggestions and the terminal-width probe; what is left is the derive
-# parser and plain help/usage text. Unlike the crates promoted below, clap is NEW to the
-# lock file — nothing in the tree pulled it before.
+# drops colour and suggestions; what is left is the derive parser, plain help/usage text
+# and error context. Unlike the crates promoted below, clap is NEW to the lock file —
+# nothing in the tree pulled it before.
 clap = { version = "4", default-features = false, features = ["std", "derive", "help", "usage", "error-context"] }
 # §387 Where the app keeps config.json, without starting tauri: tauri's own `app_data_dir`
 # is `dirs::data_dir().join(identifier)` (tauri/src/path/desktop.rs). Already in the tree

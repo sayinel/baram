@@ -84,7 +84,7 @@ pub(crate) fn folder_arg(vault: &Vault, input: &str) -> Result<PathBuf, CliError
     // `Path::exists` and `is_dir` are false whenever the metadata cannot be read, so a
     // folder behind a directory that cannot be entered would be reported as absent.
     // FILE_NOT_FOUND is for what is not there; any other failure is IO, with the OS's
-    // reason (the split `ops::read` makes for a file).
+    // reason (the split `file_arg` makes for a file).
     match std::fs::metadata(&folder) {
         Ok(meta) if meta.is_dir() => Ok(folder),
         Ok(_) => Err(CliError::new(
@@ -169,10 +169,12 @@ pub(crate) fn note_arg(vault: &Vault, input: &str) -> Result<PathBuf, CliError> 
 }
 
 /// Whether the vault walk never reaches `path`: a component BELOW the vault root is
-/// hidden, or is one of `SKIP_DIRS`. The walkers skip a hidden ENTRY of either kind and
-/// test `SKIP_DIRS` on directories only; a file named exactly like one of those is never
-/// a note, so for what the callers ask — a folder, or a markdown file — the answer is the
-/// same.
+/// hidden, or is one of `SKIP_DIRS`. The two `fs` walkers, `collect_md_files` and
+/// `collect_all_files`, skip a hidden ENTRY of either kind and test `SKIP_DIRS` on
+/// directories only; a file named exactly like one of `SKIP_DIRS` is never a note, so for
+/// what the callers ask — a folder, or a markdown file — the answer is the one those two
+/// walkers give. `search`'s own walker skips hidden directories but not hidden files;
+/// `search` reaches this only through `--folder`, and for a folder the two rules agree.
 pub(crate) fn walk_skips(vault: &Vault, path: &Path) -> bool {
     path.strip_prefix(&vault.root)
         .unwrap_or(path)

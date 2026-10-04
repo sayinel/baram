@@ -84,9 +84,11 @@ pub(crate) fn resolve(
     }
 }
 
-/// A `--vault` value is a path when it could not be a name the app shows: it has a
-/// separator, or starts with `.` or `~`. Deciding by FORM keeps a vault named `notes`
-/// apart from a `notes` folder in the current directory.
+/// A `--vault` value is a path when its FORM says so — it has a separator, or starts with
+/// `.` or `~` — whether or not it is also a registered name: a vault at `~/.notes` is
+/// labelled `.notes` by default, and `--vault .notes` is still read as a path. Deciding
+/// by form keeps a vault named `notes` apart from a `notes` folder in the current
+/// directory.
 fn is_path_form(arg: &str) -> bool {
     arg.contains('/')
         || arg.contains(std::path::MAIN_SEPARATOR)

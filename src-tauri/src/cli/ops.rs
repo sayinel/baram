@@ -133,8 +133,8 @@ fn cannot_read_vault(vault: &Vault) -> CliError {
 /// directory is recovered by running the SAME walker again — on the failure path only.
 /// Because it is the same function (`collect_md_files`: tags, tasks and `files` all walk
 /// with it), its skip rules cannot disagree with the walk that failed. If the second
-/// walk succeeds, the failure was not a directory after all and the message stays
-/// general.
+/// walk succeeds, the failure no longer reproduces — it was not the walk's, or the
+/// directory became readable or went away in between — and the message stays general.
 pub(crate) async fn walk_failure(vault: &Vault, start: &Path) -> CliError {
     let mut sink = Vec::new();
     let failed = crate::fs::collect_md_files(start, &mut sink).await.err();

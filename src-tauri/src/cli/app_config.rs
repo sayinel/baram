@@ -16,8 +16,10 @@ const CONTEXT_KEY: &str = "baram:context";
 const SETTINGS_KEY: &str = "baram:settings";
 
 /// What the CLI needs from the app's persisted state. Fields this reader does not name
-/// are ignored, so the app can add to its stores freely; a field it expects and does not
-/// find becomes a warning rather than a silent empty value.
+/// are ignored, so the app can add to its stores freely. Of the ones it names, a
+/// `contexts`, `path`, `contextType`, `activeContextId` or `tasksExcludePaths` it does not
+/// find becomes a warning rather than a silent empty value. Three fall back without one:
+/// a missing `id` reads as `""`, a missing `label` as the path, a missing `alias` as none.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub(crate) struct AppConfig {
     pub registered: Vec<Registered>,
