@@ -7,9 +7,9 @@ use super::output::{Envelope, Row, VaultInfo};
 use super::vault::{self, RootKind, Vault};
 use crate::context::manager::resolve_canonical;
 use crate::fs::FsError;
-use crate::search::SearchOptions;
+use crate::search::{SearchOptions, SearchResult};
 use serde::Serialize;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub(crate) fn vault_info(vault: &Vault) -> VaultInfo {
     VaultInfo {
@@ -178,6 +178,16 @@ pub(crate) async fn files(
     crate::fs::collect_md_files(&start, &mut found)
         .await
         .map_err(|_| cannot_read_vault(vault))?;
+    Ok(Envelope {
+        vault: Some(vault_info(vault)),
+        truncated: false,
+        items: path_rows(vault, found),
+    })
+}
+
+/// The rows `files` prints: each path relative to the vault, in path order whatever order
+/// the walk gave them.
+fn path_rows(vault: &Vault, found: Vec<PathBuf>) -> Vec<PathRow> {
     let mut items: Vec<PathRow> = found
         .iter()
         .map(|path| PathRow {
@@ -185,11 +195,7 @@ pub(crate) async fn files(
         })
         .collect();
     sort_by_path_and_line(&mut items, |row| (row.path.as_str(), 0));
-    Ok(Envelope {
-        vault: Some(vault_info(vault)),
-        truncated: false,
-        items,
-    })
+    items
 }
 
 pub(crate) struct SearchQuery<'a> {
@@ -264,10 +270,21 @@ pub(crate) async fn search(
     let hits = crate::search::search_files(&start.to_string_lossy(), query.query, &options)
         .await
         .map_err(|_| CliError::new(ErrorCode::Io, format!("cannot search {}", start.display())))?;
-    let truncated = hits.len() > query.limit;
+    let (truncated, items) = search_rows(vault, hits, query.limit);
+    Ok(Envelope {
+        vault: Some(vault_info(vault)),
+        truncated,
+        items,
+    })
+}
+
+/// The rows `search` prints, and whether `hits` held more than `limit`: the first `limit`
+/// hits the search gave, each path relative to the vault, in (path, line) order.
+fn search_rows(vault: &Vault, hits: Vec<SearchResult>, limit: usize) -> (bool, Vec<SearchRow>) {
+    let truncated = hits.len() > limit;
     let mut items: Vec<SearchRow> = hits
         .into_iter()
-        .take(query.limit)
+        .take(limit)
         .map(|hit| SearchRow {
             path: vault::relative(vault, Path::new(&hit.file_path)),
             line: hit.line,
@@ -275,11 +292,7 @@ pub(crate) async fn search(
         })
         .collect();
     sort_by_path_and_line(&mut items, |row| (row.path.as_str(), row.line as u64));
-    Ok(Envelope {
-        vault: Some(vault_info(vault)),
-        truncated,
-        items,
-    })
+    (truncated, items)
 }
 
 #[cfg(test)]
@@ -347,5 +360,73 @@ mod tests {
             .map(|(path, line)| (path.to_string(), line))
             .collect::<Vec<_>>()
         );
+    }
+
+    fn vault_in(root: &str) -> Vault {
+        Vault {
+            name: "v".into(),
+            root: PathBuf::from(root),
+        }
+    }
+
+    /// Fed in an order other than the sorted one, so deleting the sort changes the result.
+    /// The expected order is the byte order of the printed strings: `a/y.md` before
+    /// `a0/x.md` (`/` is 0x2F, `0` is 0x30), `b.md` before the two `docs` folders (`b` is
+    /// 0x62, `d` is 0x64), and `docs-old/` before `docs/` (`-` is 0x2D, `/` is 0x2F).
+    #[test]
+    fn files_come_out_by_path_whatever_order_the_walk_gave() {
+        let vault = vault_in("/vault");
+        let found: Vec<PathBuf> = ["b.md", "a0/x.md", "docs/g.md", "docs-old/a.md", "a/y.md"]
+            .iter()
+            .map(|rel| vault.root.join(rel))
+            .collect();
+        let paths: Vec<String> = path_rows(&vault, found)
+            .into_iter()
+            .map(|row| row.path)
+            .collect();
+        assert_eq!(
+            paths,
+            ["a/y.md", "a0/x.md", "b.md", "docs-old/a.md", "docs/g.md"]
+        );
+    }
+
+    fn hit(rel: &str, line: usize) -> SearchResult {
+        SearchResult {
+            file_path: format!("/vault/{rel}"),
+            line,
+            column: 1,
+            snippet: format!("{rel}:{line}"),
+        }
+    }
+
+    fn pairs(rows: &[SearchRow]) -> Vec<(&str, usize)> {
+        rows.iter()
+            .map(|row| (row.path.as_str(), row.line))
+            .collect()
+    }
+
+    /// The hits come in an order other than the sorted one (`a0/` before `a/`, line 10
+    /// before line 2). The cut is made on that order and the sort comes after it, so with
+    /// a limit of 2 the rows are the first two hits, sorted.
+    #[test]
+    fn search_hits_come_out_by_path_then_line_and_the_cut_is_reported() {
+        let vault = vault_in("/vault");
+        let hits = || vec![hit("a0/x.md", 1), hit("a/y.md", 10), hit("a/y.md", 2)];
+
+        let (truncated, rows) = search_rows(&vault, hits(), 3);
+        assert!(!truncated, "as many hits as the limit is not a cut");
+        assert_eq!(
+            pairs(&rows),
+            [("a/y.md", 2), ("a/y.md", 10), ("a0/x.md", 1)]
+        );
+        assert_eq!(rows[0].snippet, "a/y.md:2");
+
+        let (truncated, rows) = search_rows(&vault, hits(), 2);
+        assert!(truncated);
+        assert_eq!(pairs(&rows), [("a/y.md", 10), ("a0/x.md", 1)]);
+
+        let (truncated, rows) = search_rows(&vault, hits(), 1);
+        assert!(truncated);
+        assert_eq!(pairs(&rows), [("a0/x.md", 1)]);
     }
 }

@@ -705,3 +705,36 @@ fn no_match_is_success_and_a_bad_pattern_is_a_usage_error() {
     let plain = baram(&sb, &sb.home, &["--vault", &vault, "search", "("]);
     assert_eq!(plain.code, 0, "stderr: {}", plain.stderr);
 }
+
+/// `v/locked/sub/a.md` exists; `v/locked` cannot be entered, so `--folder locked/sub`
+/// names a folder that is there and cannot be told so. Same reasoning as for `read`: the
+/// reason is the OS's, and the exit code says the run failed.
+#[test]
+fn a_folder_in_a_directory_that_cannot_be_entered_is_io_not_file_not_found() {
+    use std::os::unix::fs::PermissionsExt;
+    let sb = sandbox();
+    write(&sb.vault, "locked/sub/a.md", "needle\n");
+    let locked = sb.vault.join("locked");
+    let _unlock = Unlock(locked.clone());
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).expect("chmod");
+    let vault = vault_arg(&sb);
+    for command in [&["files"][..], &["search", "needle"][..]] {
+        let mut args = vec!["--vault", vault.as_str()];
+        args.extend_from_slice(command);
+        args.extend_from_slice(&["--folder", "locked/sub"]);
+        let ran = baram(&sb, &sb.home, &args);
+        assert_eq!(ran.code, 1, "{command:?}: stderr: {}", ran.stderr);
+        assert!(ran.stdout.is_empty(), "{command:?}: stdout: {}", ran.stdout);
+        assert!(
+            ran.stderr
+                .starts_with("error[IO]: cannot read locked/sub: "),
+            "{command:?}: stderr: {}",
+            ran.stderr
+        );
+        assert!(
+            !has_hangul(&ran.stderr),
+            "{command:?}: stderr: {}",
+            ran.stderr
+        );
+    }
+}

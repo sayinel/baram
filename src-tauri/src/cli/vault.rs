@@ -309,19 +309,32 @@ pub(crate) fn folder_arg(vault: &Vault, input: &str) -> Result<PathBuf, CliError
             ),
         ));
     }
-    if !folder.exists() {
-        return Err(CliError::new(
-            ErrorCode::FileNotFound,
-            format!("no folder at {input}"),
-        ));
-    }
-    if !folder.is_dir() {
-        return Err(CliError::new(
+    // `Path::exists` and `is_dir` are false whenever the metadata cannot be read, so a
+    // folder behind a directory that cannot be entered would be reported as absent.
+    // FILE_NOT_FOUND is for what is not there; any other failure is IO, with the OS's
+    // reason (the split `ops::read` makes for a file).
+    match std::fs::metadata(&folder) {
+        Ok(meta) if meta.is_dir() => Ok(folder),
+        Ok(_) => Err(CliError::new(
             ErrorCode::InvalidArgument,
             format!("{input} is a file, not a folder"),
-        ));
+        )),
+        Err(source)
+            if matches!(
+                source.kind(),
+                std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+            ) =>
+        {
+            Err(CliError::new(
+                ErrorCode::FileNotFound,
+                format!("no folder at {input}"),
+            ))
+        }
+        Err(source) => Err(CliError::new(
+            ErrorCode::Io,
+            format!("cannot read {input}: {source}"),
+        )),
     }
-    Ok(folder)
 }
 
 /// Whether the vault walk never reaches `path`: a component BELOW the vault root is
