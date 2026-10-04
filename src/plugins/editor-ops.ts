@@ -110,7 +110,7 @@ export function liveEditor(
   return instance;
 }
 
-/** Spec §5 — the selected text as markdown would read it, plus a ref to it. */
+/** Spec §5 — the selected text as plain text (`canonicalRangeText`, no markdown syntax), plus a ref to it. */
 export function readSelectionForPlugin(
   ctx: EditorOpsContext,
   method: string,
