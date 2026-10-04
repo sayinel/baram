@@ -64,16 +64,21 @@ fn candidates<'a>(entries: impl Iterator<Item = &'a Registered>) -> Vec<Candidat
 /// or — with no flag — the registered root that contains the current directory. Nothing
 /// falls back to the app's active vault: called from a code repository, that would read
 /// some other vault and say nothing.
+///
+/// `cwd` is the current directory, or the error reading it gave — a shell can sit in a
+/// directory that was deleted. Only the two forms that read it fail with that error: no
+/// `--vault`, and a path-form `--vault` that is still relative once `~` is expanded. A
+/// name or an absolute path resolves without it.
 pub(crate) fn resolve(
     arg: Option<&str>,
-    cwd: &Path,
+    cwd: Result<&Path, &CliError>,
     home: Option<&Path>,
     registered: &[Registered],
 ) -> Result<Vault, CliError> {
     match arg {
         Some(arg) if is_path_form(arg) => from_path(arg, cwd, home, registered),
         Some(arg) => from_name(arg, registered),
-        None => from_cwd(cwd, registered),
+        None => from_cwd(cwd.map_err(CliError::clone)?, registered),
     }
 }
 
@@ -89,7 +94,7 @@ fn is_path_form(arg: &str) -> bool {
 
 fn from_path(
     arg: &str,
-    cwd: &Path,
+    cwd: Result<&Path, &CliError>,
     home: Option<&Path>,
     registered: &[Registered],
 ) -> Result<Vault, CliError> {
@@ -109,7 +114,7 @@ fn from_path(
     let path = if expanded.is_absolute() {
         expanded
     } else {
-        cwd.join(expanded)
+        cwd.map_err(CliError::clone)?.join(expanded)
     };
     if !path.is_dir() {
         return Err(CliError::new(
@@ -259,7 +264,7 @@ mod tests {
     #[test]
     fn a_path_is_used_whether_or_not_it_is_registered() {
         let (_t, base) = tree(&["plain"]);
-        let vault = resolve(Some("./plain"), &base, None, &[]).unwrap();
+        let vault = resolve(Some("./plain"), Ok(&base), None, &[]).unwrap();
         assert_eq!(vault.root, base.join("plain"));
         assert_eq!(vault.name, "plain");
     }
@@ -275,7 +280,7 @@ mod tests {
         )];
         let path = base.join("plain").to_string_lossy().into_owned();
         assert_eq!(
-            resolve(Some(&path), &base, None, &list).unwrap().name,
+            resolve(Some(&path), Ok(&base), None, &list).unwrap().name,
             "My Notes"
         );
     }
@@ -285,16 +290,18 @@ mod tests {
         let (_t, base) = tree(&["home/notes"]);
         let home = base.join("home");
         assert_eq!(
-            resolve(Some("~"), &base, Some(&home), &[]).unwrap().root,
+            resolve(Some("~"), Ok(&base), Some(&home), &[])
+                .unwrap()
+                .root,
             home
         );
         assert_eq!(
-            resolve(Some("~/notes"), &base, Some(&home), &[])
+            resolve(Some("~/notes"), Ok(&base), Some(&home), &[])
                 .unwrap()
                 .root,
             home.join("notes")
         );
-        let error = resolve(Some("~/notes"), &base, None, &[]).unwrap_err();
+        let error = resolve(Some("~/notes"), Ok(&base), None, &[]).unwrap_err();
         assert_eq!(error.code, ErrorCode::InvalidArgument);
     }
 
@@ -303,8 +310,24 @@ mod tests {
         let (_t, base) = tree(&[]);
         std::fs::write(base.join("file.md"), "x").unwrap();
         for arg in ["./nope", "./file.md"] {
-            let error = resolve(Some(arg), &base, None, &[]).unwrap_err();
+            let error = resolve(Some(arg), Ok(&base), None, &[]).unwrap_err();
             assert_eq!(error.code, ErrorCode::VaultNotFound, "{arg}");
+        }
+    }
+
+    #[test]
+    fn an_unreadable_current_directory_fails_only_the_forms_that_read_it() {
+        let (_t, base) = tree(&["a"]);
+        let list = [registered("notes", None, &base.join("a"), RootKind::Vault)];
+        let unreadable = CliError::new(ErrorCode::Io, "cannot read the current directory: gone");
+        let absolute = base.join("a").to_string_lossy().into_owned();
+        for arg in [absolute.as_str(), "~/a", "notes"] {
+            let vault = resolve(Some(arg), Err(&unreadable), Some(&base), &list).unwrap();
+            assert_eq!(vault.root, base.join("a"), "{arg}");
+        }
+        for arg in [None, Some("./a"), Some("a/")] {
+            let error = resolve(arg, Err(&unreadable), Some(&base), &list).unwrap_err();
+            assert_eq!(error, unreadable, "{arg:?}");
         }
     }
 
@@ -318,15 +341,15 @@ mod tests {
             registered("일지", None, &base.join("b"), RootKind::Vault),
         ];
         assert_eq!(
-            resolve(Some("notes"), &base, None, &list).unwrap().root,
+            resolve(Some("notes"), Ok(&base), None, &list).unwrap().root,
             base.join("a")
         );
         assert_eq!(
-            resolve(Some("NT"), &base, None, &list).unwrap().root,
+            resolve(Some("NT"), Ok(&base), None, &list).unwrap().root,
             base.join("a")
         );
         assert_eq!(
-            resolve(Some("일지"), &base, None, &list).unwrap().root,
+            resolve(Some("일지"), Ok(&base), None, &list).unwrap().root,
             base.join("b")
         );
     }
@@ -341,7 +364,7 @@ mod tests {
             RootKind::Vault,
         )];
         assert_eq!(
-            resolve(Some("notes"), &base, None, &list).unwrap().root,
+            resolve(Some("notes"), Ok(&base), None, &list).unwrap().root,
             base.join("a")
         );
     }
@@ -354,7 +377,7 @@ mod tests {
             registered("notes", None, &base.join("a"), RootKind::Vault),
         ];
         assert_eq!(
-            resolve(Some("notes"), &base, None, &list).unwrap().root,
+            resolve(Some("notes"), Ok(&base), None, &list).unwrap().root,
             base.join("a")
         );
     }
@@ -366,7 +389,7 @@ mod tests {
             registered("notes", None, &base.join("a"), RootKind::Vault),
             registered("Notes", None, &base.join("b"), RootKind::Folder),
         ];
-        let error = resolve(Some("notes"), &base, None, &list).unwrap_err();
+        let error = resolve(Some("notes"), Ok(&base), None, &list).unwrap_err();
         assert_eq!(error.code, ErrorCode::VaultAmbiguous);
         assert_eq!(error.candidates.len(), 2);
     }
@@ -376,7 +399,7 @@ mod tests {
         let (_t, base) = tree(&["a"]);
         let gone = base.join("gone");
         let only_gone = [registered("notes", None, &gone, RootKind::Vault)];
-        let error = resolve(Some("notes"), &base, None, &only_gone).unwrap_err();
+        let error = resolve(Some("notes"), Ok(&base), None, &only_gone).unwrap_err();
         assert_eq!(error.code, ErrorCode::VaultNotFound);
         assert_eq!(error.candidates[0].path, gone.to_string_lossy());
 
@@ -385,7 +408,7 @@ mod tests {
             registered("notes", None, &base.join("a"), RootKind::Vault),
         ];
         assert_eq!(
-            resolve(Some("notes"), &base, None, &with_live)
+            resolve(Some("notes"), Ok(&base), None, &with_live)
                 .unwrap()
                 .root,
             base.join("a")
@@ -396,7 +419,7 @@ mod tests {
     fn an_unknown_name_lists_every_registered_vault() {
         let (_t, base) = tree(&["a"]);
         let list = [registered("notes", None, &base.join("a"), RootKind::Vault)];
-        let error = resolve(Some("nope"), &base, None, &list).unwrap_err();
+        let error = resolve(Some("nope"), Ok(&base), None, &list).unwrap_err();
         assert_eq!(error.code, ErrorCode::VaultNotFound);
         assert_eq!(error.candidates.len(), 1);
     }
@@ -407,7 +430,7 @@ mod tests {
     fn the_current_directory_picks_the_registered_root_above_it() {
         let (_t, base) = tree(&["vault/sub/deep"]);
         let list = [registered("V", None, &base.join("vault"), RootKind::Vault)];
-        let vault = resolve(None, &base.join("vault/sub/deep"), None, &list).unwrap();
+        let vault = resolve(None, Ok(&base.join("vault/sub/deep")), None, &list).unwrap();
         assert_eq!((vault.name.as_str(), vault.root), ("V", base.join("vault")));
     }
 
@@ -418,7 +441,7 @@ mod tests {
             registered("inner", None, &base.join("outer/inner"), RootKind::Vault),
             registered("outer", None, &base.join("outer"), RootKind::Vault),
         ];
-        let vault = resolve(None, &base.join("outer/inner/x"), None, &list).unwrap();
+        let vault = resolve(None, Ok(&base.join("outer/inner/x")), None, &list).unwrap();
         assert_eq!(vault.name, "outer");
     }
 
@@ -430,14 +453,14 @@ mod tests {
             registered("notes", None, &base.join("work/notes"), RootKind::Vault),
         ];
         assert_eq!(
-            resolve(None, &base.join("work/notes/x"), None, &list)
+            resolve(None, Ok(&base.join("work/notes/x")), None, &list)
                 .unwrap()
                 .name,
             "notes"
         );
         // Outside the vault but inside the folder context, the folder is all there is.
         assert_eq!(
-            resolve(None, &base.join("work/code"), None, &list)
+            resolve(None, Ok(&base.join("work/code")), None, &list)
                 .unwrap()
                 .name,
             "work"
@@ -453,7 +476,7 @@ mod tests {
             &base.join("Vault"),
             RootKind::Vault,
         )];
-        let error = resolve(None, &base.join("Vault-secret"), None, &list).unwrap_err();
+        let error = resolve(None, Ok(&base.join("Vault-secret")), None, &list).unwrap_err();
         assert_eq!(error.code, ErrorCode::VaultNotFound);
         assert_eq!(error.candidates.len(), 1);
     }

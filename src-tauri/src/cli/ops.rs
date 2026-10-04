@@ -81,3 +81,40 @@ pub(crate) fn vaults(config: &AppConfig, current: Option<&Vault>) -> Envelope<Va
         items,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::vault::Registered;
+    use super::*;
+
+    fn entry(name: &str, path: &str) -> Registered {
+        Registered {
+            id: format!("ctx-{name}{path}"),
+            label: name.to_string(),
+            alias: None,
+            path: path.to_string(),
+            kind: RootKind::Vault,
+        }
+    }
+
+    /// The input is the expected order turned around twice: `b` before `a`, and the two
+    /// `a`s with their paths reversed, so the name order and the path tie-break each have
+    /// something to undo.
+    #[test]
+    fn vaults_come_out_by_name_then_path_whatever_order_config_json_gave() {
+        let config = AppConfig {
+            registered: vec![entry("b", "/2"), entry("a", "/9"), entry("a", "/1")],
+            ..AppConfig::default()
+        };
+        let order: Vec<(String, String)> = vaults(&config, None)
+            .items
+            .into_iter()
+            .map(|row| (row.name, row.path))
+            .collect();
+        assert_eq!(
+            order,
+            [("a", "/1"), ("a", "/9"), ("b", "/2")]
+                .map(|(name, path)| (name.to_string(), path.to_string()))
+        );
+    }
+}

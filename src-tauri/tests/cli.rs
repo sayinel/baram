@@ -101,10 +101,37 @@ fn baram(sb: &Sandbox, cwd: &Path, args: &[&str]) -> Ran {
 }
 
 fn baram_env(sb: &Sandbox, cwd: &Path, args: &[&str], env: &[(&str, &str)]) -> Ran {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_baram"));
+    let mut command = isolated(sb, env!("CARGO_BIN_EXE_baram"));
+    command.args(args).current_dir(cwd);
+    for (key, value) in env {
+        command.env(key, value);
+    }
+    finish(command, &args.join(" "))
+}
+
+/// Runs `baram` from a directory that is deleted under it, so the child starts with a
+/// current directory it cannot read. A child cannot be spawned INTO a missing directory:
+/// `sh` makes one under `parent`, enters it, removes it and `exec`s the binary in place.
+fn baram_from_a_deleted_directory(sb: &Sandbox, parent: &Path, args: &[&str]) -> Ran {
+    let mut command = isolated(sb, "sh");
     command
-        .args(args)
-        .current_dir(cwd)
+        .arg("-c")
+        .arg(r#"d=$(mktemp -d "$1/cwd.XXXXXX") && cd "$d" && rmdir "$d" && shift && exec "$@""#)
+        .arg("sh")
+        .arg(parent)
+        .arg(env!("CARGO_BIN_EXE_baram"))
+        .args(args);
+    finish(
+        command,
+        &format!("{} (from a deleted directory)", args.join(" ")),
+    )
+}
+
+/// `program` with what every run here gets: the sandbox's HOME and data directory, no
+/// `BARAM_LOG`, no stdin, both outputs captured.
+fn isolated(sb: &Sandbox, program: &str) -> Command {
+    let mut command = Command::new(program);
+    command
         // `dirs` reads these. Without them the child reads the developer's real
         // config.json — `logging_install_unwritable.rs` isolates the same way.
         .env("HOME", &sb.home)
@@ -113,9 +140,12 @@ fn baram_env(sb: &Sandbox, cwd: &Path, args: &[&str], env: &[(&str, &str)]) -> R
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    for (key, value) in env {
-        command.env(key, value);
-    }
+    command
+}
+
+/// Waits for `command` to exit and collects what it printed. `label` names the run if
+/// it has to be killed.
+fn finish(mut command: Command, label: &str) -> Ran {
     let mut child = command.spawn().expect("spawn baram");
     let mut stdout = child.stdout.take().expect("stdout");
     let mut stderr = child.stderr.take().expect("stderr");
@@ -137,10 +167,7 @@ fn baram_env(sb: &Sandbox, cwd: &Path, args: &[&str], env: &[(&str, &str)]) -> R
         if started.elapsed() > TIMEOUT {
             let _ = child.kill();
             let _ = child.wait();
-            panic!(
-                "`baram {}` did not exit within {TIMEOUT:?} — was it routed to the GUI?",
-                args.join(" ")
-            );
+            panic!("`baram {label}` did not exit within {TIMEOUT:?} — was it routed to the GUI?");
         }
         std::thread::sleep(Duration::from_millis(20));
     };
@@ -227,6 +254,44 @@ fn vaults_does_not_fail_where_no_vault_resolves() {
     assert_eq!(
         json(&ran.stdout),
         serde_json::json!({ "vault": null, "truncated": false, "items": [] })
+    );
+}
+
+/// The deleted directory is made INSIDE the registered vault: a child that could read it
+/// would resolve "Fixture", so `"vault": null` shows the directory really was unreadable.
+#[test]
+fn vaults_runs_from_a_current_directory_that_was_deleted() {
+    let sb = sandbox();
+    write_config(&sb, &[("baram:context", registered(&sb))]);
+    let listed = baram_from_a_deleted_directory(&sb, &sb.vault, &["--json", "vaults"]);
+    assert_eq!(listed.code, 0, "stderr: {}", listed.stderr);
+    assert!(listed.stderr.is_empty(), "stderr: {}", listed.stderr);
+    assert_eq!(
+        json(&listed.stdout),
+        serde_json::json!({
+            "vault": null,
+            "truncated": false,
+            "items": [
+                { "name": "Fixture", "path": sb.vault, "alias": "fx", "type": "vault",
+                  "current": false, "active": false, "exists": true },
+                { "name": "Gone", "path": sb.base.join("gone"), "alias": null, "type": "folder",
+                  "current": false, "active": true, "exists": false }
+            ]
+        })
+    );
+
+    // An absolute --vault does not read the current directory, so it still resolves.
+    let vault = sb.vault.to_string_lossy().into_owned();
+    let named = baram_from_a_deleted_directory(
+        &sb,
+        &sb.vault,
+        &["--vault", vault.as_str(), "--json", "vaults"],
+    );
+    assert_eq!(named.code, 0, "stderr: {}", named.stderr);
+    assert!(named.stderr.is_empty(), "stderr: {}", named.stderr);
+    assert_eq!(
+        json(&named.stdout)["vault"],
+        serde_json::json!({ "name": "Fixture", "path": sb.vault })
     );
 }
 

@@ -139,12 +139,14 @@ fn report(error: &CliError, json: bool) -> i32 {
 }
 
 async fn execute(cli: Cli, out: &mut dyn Write) -> Result<(), Failure> {
+    // Not `?`: `vault::resolve` fails on this only where it reads the current directory
+    // (no `--vault`, or a relative path), so `vaults` and an absolute `--vault` still run.
     let cwd = std::env::current_dir().map_err(|e| {
         CliError::new(
             ErrorCode::Io,
             format!("cannot read the current directory: {e}"),
         )
-    })?;
+    });
     let home = dirs::home_dir();
     let config = match app_config::default_path() {
         Some(path) => app_config::load(&path),
@@ -163,7 +165,7 @@ async fn execute(cli: Cli, out: &mut dyn Write) -> Result<(), Failure> {
     // does not fail when none resolves (spec 0066 §3.3-4).
     let resolved = vault::resolve(
         cli.vault.as_deref(),
-        &cwd,
+        cwd.as_deref(),
         home.as_deref(),
         &config.registered,
     );
