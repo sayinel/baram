@@ -101,13 +101,24 @@ fn contains_colon(name: &std::ffi::OsStr) -> bool {
     name.as_encoded_bytes().contains(&b':')
 }
 
-/// An `FsError` with any absolute path replaced by the caller's own relative one.
+/// An `FsError` as text for a sandboxed plugin, with the absolute path swapped for the
+/// caller's own relative one in each variant that names one.
 ///
-/// §260 Phase 4a — the sandboxed tier must never receive an absolute path, and the
-/// `FsError` variants `NotFound`, `PermissionDenied`, `AlreadyExists` and `ReadDir` carry
-/// one in their `Display`. Matched EXHAUSTIVELY on purpose: a wildcard arm would silently
-/// pass through the next variant that happens to embed a path, which is the fail-open
-/// shape this phase's review kept finding.
+/// §260 Phase 4a — the sandboxed tier must never receive an absolute path. The variants
+/// whose own `Display` carries one are `NotFound`, `PermissionDenied`, `AlreadyExists`
+/// and `ReadDir`, and each has an arm below. `TrashError` and `WatchError` wrap another
+/// crate's error text, which can embed a path: `trash` (5.2.9 in `Cargo.lock`) formats its
+/// error with `{:?}`, which prints the variant's fields, and some variants have a `path`,
+/// `target` or `original` field; `notify` (8.2.0) appends ` about [paths]` whenever the
+/// error has paths attached, as its macOS FSEvents backend attaches one when a watch
+/// target is missing. Those two pass through unchanged because the only call of this
+/// function outside this file's tests, the `FilesList` op in `commands/plugin_cmd.rs`,
+/// runs `fs::list_dir`, which makes only `PermissionDenied` and `ReadError`. An op that can
+/// produce `TrashError` or `WatchError` has to redact them first.
+///
+/// Matched EXHAUSTIVELY on purpose: a wildcard arm would silently pass through the next
+/// variant that happens to embed a path, which is the fail-open shape this phase's review
+/// kept finding.
 pub(crate) fn redact_fs_error(error: &crate::fs::FsError, caller_path: &str) -> String {
     use crate::fs::FsError;
     match error {
@@ -122,12 +133,15 @@ pub(crate) fn redact_fs_error(error: &crate::fs::FsError, caller_path: &str) -> 
         FsError::NotFound(_) => format!("file \"{caller_path}\" was not found"),
         // §387 The walk's own variant names the directory it failed on — an absolute
         // path. Swapped for the caller's, like the two sentinels above; the io::Error
-        // after it embeds no path. NOT merged into the pass-through arm below.
+        // after it is the OS's own error from listing that directory, whose text is a
+        // message and a code with no path. NOT merged into the pass-through arm below.
         FsError::ReadDir { source, .. } => {
             format!("directory \"{caller_path}\" could not be read: {source}")
         }
-        // These carry an `io::Error` or a watcher message, neither of which embeds a
-        // path on any platform we build for.
+        // The `ReadError` that `list_dir` makes wraps an OS `io::Error`, whose text is a
+        // message and a code with no path. `TrashError` and `WatchError` carry no such
+        // guarantee (see the doc above); they pass through because `fs::list_dir`, the
+        // only operation that reaches this function, makes neither.
         FsError::ReadError(_) | FsError::TrashError(_) | FsError::WatchError(_) => {
             error.to_string()
         }

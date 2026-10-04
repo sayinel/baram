@@ -24,8 +24,12 @@ pub enum FsError {
     /// walk over a vault fails as a whole on the first folder it cannot read, and with
     /// only an `io::Error` in hand the caller cannot tell the user where.
     ///
-    /// ‼️ The Display embeds an absolute path. `plugin::vault_path::redact_fs_error`
-    /// swaps it for the caller's own before an error reaches a sandboxed plugin.
+    /// ‼️ The Display embeds an absolute path. The direct callers of the two walkers in
+    /// `src-tauri/src` other than `cli` — `tag`, `task` and `index::extractor` — flatten
+    /// the error with `to_string()` in place, so the path survives there as plain text and
+    /// `plugin::vault_path::redact_fs_error` never sees this variant from them. A sandbox
+    /// op built over any of those has to redact at its own boundary; `redact_fs_error` has
+    /// an arm for this variant for a caller that hands it the `FsError` itself.
     #[error("디렉터리 읽기 실패: {}: {source}", .path.display())]
     ReadDir {
         path: PathBuf,
