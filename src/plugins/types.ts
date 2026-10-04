@@ -60,6 +60,38 @@ export interface EditorAPI {
   setContent(content: string): void;
 }
 
+export interface EditorInsertOptions {
+  /** A `ref` from `getSelection()`. Without it, the current selection. */
+  replace?: string;
+}
+
+export interface EditorRefusal extends Error {
+  code: EditorRefusalCode;
+}
+
+/**
+ * §388 spec 0067 §10 — why an editor handler refused. Branch on this, not on the message:
+ * a frame-validation refusal, a transport failure or a parser exception carries no code.
+ */
+export type EditorRefusalCode =
+  | "budget"
+  | "cannot-insert-here"
+  | "document-changed"
+  | "no-editor"
+  | "not-permitted"
+  | "ref-other-document"
+  | "ref-range-changed"
+  | "ref-unknown"
+  | "surface-blocked";
+
+export interface EditorSelection {
+  from: number;
+  /** Opaque. Pass as `replace` to replace exactly this range (spec 0067 §7). */
+  ref: string;
+  text: string;
+  to: number;
+}
+
 export interface EventsAPI {
   emit(event: string, ...args: unknown[]): void;
   on(event: string, handler: (...args: unknown[]) => void): Disposable;
@@ -887,6 +919,19 @@ export const UI_CAPABILITIES: readonly PluginCapability[] = [
 export const EDITOR_READ_CAPABILITIES: readonly PluginCapability[] = [
   "editor",
   "editor:readonly",
+];
+
+/** Every `EditorRefusalCode`, for the sandbox frame check and the docs. */
+export const EDITOR_REFUSAL_CODES: readonly EditorRefusalCode[] = [
+  "budget",
+  "cannot-insert-here",
+  "document-changed",
+  "no-editor",
+  "not-permitted",
+  "ref-other-document",
+  "ref-range-changed",
+  "ref-unknown",
+  "surface-blocked",
 ];
 
 export const EDITOR_WRITE_CAPABILITIES: readonly PluginCapability[] = [
