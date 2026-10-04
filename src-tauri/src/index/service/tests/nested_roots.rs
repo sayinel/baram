@@ -762,10 +762,13 @@ async fn a_child_registered_in_the_canonical_spelling_reads_the_referrer_as_its_
     // The parent registered as the tempdir is spelled (`/var/...` on macOS)
     // and the child over its `sub` as resolved (`/private/var/...`): the same
     // as the symlinked child above, with no symlink anywhere. Where the
-    // tempdir is spelled canonically already the two spellings agree and
-    // this is the plain nested case.
-    // What fails this: the same — `[[a/old]]` is left and `sub/r.md`
-    // reported where the two spellings differ.
+    // tempdir is spelled canonically already (Linux) the two spellings agree
+    // and this is the plain nested case, which no change to the mapping
+    // fails; the spelling itself is pinned on every host by
+    // `a_resolved_path_is_spelled_under_the_root_as_registered` in
+    // `rename/scope.rs`.
+    // What fails this, where the spellings differ (macOS): the same —
+    // `[[a/old]]` is left and `sub/r.md` reported.
     let canonical = |dir: &std::path::Path, _: &std::path::Path| {
         let sub = dir.join("sub").canonicalize().unwrap();
         sub.to_str().unwrap().to_string()
@@ -781,9 +784,11 @@ async fn a_child_registered_in_another_case_reads_the_referrer_as_its_own() {
     // Where the file system folds case, the child over `/v/sub` registered
     // as `/v/SUB` holds `/v/sub/r.md` as resolved but not as spelled; read
     // under its own spelling it holds no `a/old`. Where case is kept, `SUB`
-    // is no directory and this half is not run.
-    // What fails this: the same — `[[a/old]]` is left and `sub/r.md`
-    // reported.
+    // is no directory and this half is not run. On Windows the spelling
+    // check folds ASCII case already, so `/v/SUB` places the referrer and the
+    // mapping is not reached.
+    // What fails this, on a Unix host that folds case (macOS): the same —
+    // `[[a/old]]` is left and `sub/r.md` reported.
     let probe = tempfile::tempdir().unwrap();
     std::fs::create_dir(probe.path().join("d")).unwrap();
     if !probe.path().join("D").exists() {

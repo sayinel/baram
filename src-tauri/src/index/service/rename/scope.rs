@@ -179,10 +179,21 @@ async fn spell_under_each_root(
 /// does not follow one), so a referrer the build names is not one.
 fn spelled_under(c: &Registered, path: &str) -> Option<String> {
     let path = std::path::Path::new(path);
-    let name = path.file_name()?;
     let folder = resolve_canonical(path.parent()?.to_str()?).ok()?;
-    let rest = folder.strip_prefix(&c.canonical_path).ok()?;
-    let here = std::path::Path::new(&c.info.path).join(rest).join(name);
+    spelled_from(&c.info.path, &c.canonical_path, &folder, path.file_name()?)
+}
+
+/// `spelled_under` once the folder is resolved: `name` in `folder`, both as
+/// resolved, spelled under the root registered as `registered` and resolving
+/// to `canonical_root`. None when `folder` is not under `canonical_root`.
+fn spelled_from(
+    registered: &str,
+    canonical_root: &std::path::Path,
+    folder: &std::path::Path,
+    name: &std::ffi::OsStr,
+) -> Option<String> {
+    let rest = folder.strip_prefix(canonical_root).ok()?;
+    let here = std::path::Path::new(registered).join(rest).join(name);
     here.to_str().map(str::to_string)
 }
 
@@ -229,4 +240,41 @@ async fn known_paths_of(
             .insert(c.info.path.clone(), notes.unwrap_or(RootNotes::Unknown));
     }
     known
+}
+
+#[cfg(test)]
+mod tests {
+    use super::spelled_from;
+    use std::ffi::OsStr;
+    use std::path::Path;
+
+    #[test]
+    fn a_resolved_path_is_spelled_under_the_root_as_registered() {
+        // The child root registered as `/var/v/sub` resolves to
+        // `/private/var/v/sub` (macOS): a referrer whose folder resolves to
+        // `/private/var/v/sub/a` is `/var/v/sub/a/r.md` under it, and the
+        // root's own folder gives the root's spelling. A folder outside the
+        // root has no spelling. On every host, unlike the service tests, whose
+        // spellings depend on the temp directory and the file system.
+        // What fails this: joining the resolved folder instead of its place
+        // under the root — `/private/var/...` comes back.
+        let spelled = |folder: &str| {
+            spelled_from(
+                "/var/v/sub",
+                Path::new("/private/var/v/sub"),
+                Path::new(folder),
+                OsStr::new("r.md"),
+            )
+        };
+        let expected = |p: &str| Some(p.to_string());
+        assert_eq!(
+            spelled("/private/var/v/sub/a").map(|s| s.replace('\\', "/")),
+            expected("/var/v/sub/a/r.md")
+        );
+        assert_eq!(
+            spelled("/private/var/v/sub").map(|s| s.replace('\\', "/")),
+            expected("/var/v/sub/r.md")
+        );
+        assert_eq!(spelled("/private/var/other"), None);
+    }
 }
