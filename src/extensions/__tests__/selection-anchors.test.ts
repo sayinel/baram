@@ -1,6 +1,12 @@
 // §388 spec 0067 §7 · §11-5 · §11-9 — refs that follow the document by position mapping.
 import { Editor } from "@tiptap/core";
-import { EditorState, NodeSelection, TextSelection } from "@tiptap/pm/state";
+import { GapCursor } from "@tiptap/pm/gapcursor";
+import {
+  AllSelection,
+  EditorState,
+  NodeSelection,
+  TextSelection,
+} from "@tiptap/pm/state";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const { openUrl } = vi.hoisted(() => ({
@@ -12,6 +18,7 @@ import { createBaramExtensions } from "../../extensions";
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
 import {
   anchorCount,
+  anchorKindOf,
   anchorMappingPasses,
   canonicalRangeText,
   dropAnchors,
@@ -42,7 +49,10 @@ function select(editor: Editor, from: number, to = from): void {
   );
 }
 
-afterEach(() => dropAnchors(OWNER));
+afterEach(() => {
+  dropAnchors(OWNER);
+  dropAnchors("other.plugin");
+});
 
 describe("selection anchors (spec 0067 §7)", () => {
   it("follows an edit before the range", () => {
@@ -238,8 +248,13 @@ describe("selection anchors (spec 0067 §7)", () => {
       reason: "unknown",
     });
     const before = anchorCount(OWNER);
+    const second = issueAnchor(OWNER, editor.state);
     issueAnchor(OWNER, editor.state, { implicit: true });
     expect(anchorCount(OWNER)).toBe(before);
+    // The implicit anchor pushed nothing out: the oldest survivor still verifies.
+    expect(verifyAnchor(OWNER, second, editor.state.doc)).toMatchObject({
+      ok: true,
+    });
     editor.destroy();
   });
 
@@ -252,8 +267,7 @@ describe("selection anchors (spec 0067 §7)", () => {
     expect(verifyAnchor(OWNER, theirs, editor.state.doc)).toMatchObject({
       reason: "unknown",
     });
-    dropAnchors("other.plugin");
-    expect(anchorCount("other.plugin")).toBe(0);
+    expect(anchorCount("other.plugin")).toBe(1);
     editor.destroy();
   });
 
@@ -267,6 +281,124 @@ describe("selection anchors (spec 0067 §7)", () => {
     issueAnchor(OWNER, editor.state);
     editor.view.dispatch(editor.state.tr.insertText("x", 2));
     expect(anchorMappingPasses()).toBe(before + 1);
+    editor.destroy();
+  });
+
+  it("an empty range moves by the typed count when an edit comes before it", () => {
+    const editor = editorWith("abcd\n");
+    select(editor, 3);
+    const ref = issueAnchor(OWNER, editor.state);
+    editor.view.dispatch(editor.state.tr.insertText("XYZ", 1));
+    expect(verifyAnchor(OWNER, ref, editor.state.doc)).toMatchObject({
+      from: 6,
+      ok: true,
+      to: 6,
+    });
+    editor.destroy();
+  });
+
+  // The non-empty half of the §7.2 exemption: the start sits strictly inside the opening
+  // delimiter, so only `keepDeleted` keeps it from being "lost" when the delimiter goes.
+  it.each([
+    [
+      "collapseExpanded",
+      (editor: Editor) =>
+        collapseExpanded(editor.view, getSyntaxRevealExpanded(editor.state)!),
+    ],
+    [
+      "the caret leaving",
+      (editor: Editor) => editor.commands.setTextSelection(1),
+    ],
+  ])(
+    "a range starting inside the opening delimiter survives a collapse via %s",
+    (_name, collapse) => {
+      const editor = editorWith("a **bold** b\n");
+      editor.commands.setTextSelection(5); // expands: `**` 3-5
+      select(editor, 4, 7); // "*|*bo" — canonical text "bo"
+      const ref = issueAnchor(OWNER, editor.state);
+      collapse(editor);
+      expect(getSyntaxRevealExpanded(editor.state)).toBeNull();
+      expect(verifyAnchor(OWNER, ref, editor.state.doc)).toMatchObject({
+        from: 3,
+        ok: true,
+        to: 5,
+      });
+      expect(editor.state.doc.textBetween(3, 5, "\n")).toBe("bo");
+      editor.destroy();
+    },
+  );
+
+  it("an all-selection ref covers the whole document or is refused", () => {
+    const editor = editorWith("alpha\n\nbeta\n");
+    editor.view.dispatch(
+      editor.state.tr.setSelection(new AllSelection(editor.state.doc)),
+    );
+    const ref = issueAnchor(OWNER, editor.state);
+    expect(verifyAnchor(OWNER, ref, editor.state.doc)).toEqual({
+      from: 0,
+      kind: "all",
+      ok: true,
+      to: editor.state.doc.content.size,
+    });
+    const end = editor.state.doc.content.size;
+    editor.view.dispatch(
+      editor.state.tr.insert(end, editor.schema.nodes.paragraph!.create()),
+    );
+    expect(verifyAnchor(OWNER, ref, editor.state.doc)).toEqual({
+      ok: false,
+      reason: "range-changed",
+    });
+    editor.destroy();
+  });
+
+  it("an all-selection ref is refused after a paragraph is inserted at the start", () => {
+    const editor = editorWith("alpha\n\nbeta\n");
+    editor.view.dispatch(
+      editor.state.tr.setSelection(new AllSelection(editor.state.doc)),
+    );
+    const ref = issueAnchor(OWNER, editor.state);
+    editor.view.dispatch(
+      editor.state.tr.insert(0, editor.schema.nodes.paragraph!.create()),
+    );
+    expect(verifyAnchor(OWNER, ref, editor.state.doc)).toEqual({
+      ok: false,
+      reason: "range-changed",
+    });
+    editor.destroy();
+  });
+
+  it('classifies a gap cursor as "gap" and a text selection as "text"', () => {
+    const editor = editorWith("![a](x.png)\n\nafter\n"); // the document starts with an image
+    editor.view.dispatch(
+      editor.state.tr.setSelection(new GapCursor(editor.state.doc.resolve(0))),
+    );
+    expect(editor.state.selection).toBeInstanceOf(GapCursor);
+    const gap = issueAnchor(OWNER, editor.state);
+    expect(anchorKindOf(OWNER, gap)).toBe("gap");
+    select(editor, 8);
+    const text = issueAnchor(OWNER, editor.state);
+    expect(anchorKindOf(OWNER, text)).toBe("text");
+    editor.destroy();
+  });
+
+  // `hardBreak` · `wikilink` · `mathInline` · `tagNode` · `footnoteRef` · `blockReference`
+  // all contribute "" to `textBetween` (measured), so deleting one leaves a text-kind range
+  // whose hash still matches; only the `nonEmpty` check refuses it.
+  it("a range over an inline atom is refused once the atom is deleted", () => {
+    // A hard break, not a wikilink: a range touching a wikilink atom makes the reveal
+    // expand it, which would change the document under the test.
+    const editor = editorWith("x a\\\nb y\n"); // the hardBreak atom at 4
+    expect(editor.state.doc.nodeAt(4)?.type.name).toBe("hardBreak");
+    select(editor, 4, 5);
+    const ref = issueAnchor(OWNER, editor.state);
+    expect(verifyAnchor(OWNER, ref, editor.state.doc)).toMatchObject({
+      ok: true,
+    });
+    editor.view.dispatch(editor.state.tr.delete(4, 5));
+    expect(verifyAnchor(OWNER, ref, editor.state.doc)).toEqual({
+      ok: false,
+      reason: "range-changed",
+    });
     editor.destroy();
   });
 

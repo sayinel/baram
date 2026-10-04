@@ -124,7 +124,11 @@ export const syntaxRevealKey = new PluginKey<SyntaxRevealState>("syntaxReveal");
  */
 export const SYNTAX_REVEAL_EPHEMERAL_META = "syntaxRevealEphemeral";
 
-/** Tag a transaction as an ephemeral expand/collapse (see the meta key above). */
+/**
+ * Tag a transaction as an ephemeral expand/collapse (see the meta key above). `selection-anchors.ts`
+ * exempts a tagged mark/link collapse from its "lost" rule, so a new caller that deletes
+ * content must be checked there.
+ */
 export function tagSyntaxRevealEphemeral(tr: Transaction): void {
   tr.setMeta(SYNTAX_REVEAL_EPHEMERAL_META, true);
 }

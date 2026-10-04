@@ -19,6 +19,7 @@ import {
   NodeSelection,
   Plugin,
   PluginKey,
+  TextSelection,
   type Transaction,
 } from "@tiptap/pm/state";
 import { CellSelection } from "@tiptap/pm/tables";
@@ -31,7 +32,14 @@ import {
 
 export type AnchorFailure = "other-document" | "range-changed" | "unknown";
 
-export type AnchorKind = "all" | "cell" | "node" | "text";
+/**
+ * The selection a ref was issued for. `"gap"` is every selection that is none of All, Cell,
+ * Node or Text. Corpus, measured by grepping `extends Selection` under `src` (no hits) and
+ * the ProseMirror packages the editor loads (`prosemirror-state` · `prosemirror-tables` ·
+ * `prosemirror-gapcursor`): the only other subclass is `GapCursor`, installed by the
+ * `Gapcursor` extension in `src/extensions/index.ts`.
+ */
+export type AnchorKind = "all" | "cell" | "gap" | "node" | "text";
 
 export type AnchorLocation =
   { from: number; ok: true; to: number } | { ok: false; reason: AnchorFailure };
@@ -127,7 +135,9 @@ export function issueAnchor(
         ? "cell"
         : sel instanceof NodeSelection
           ? "node"
-          : "text";
+          : sel instanceof TextSelection
+            ? "text"
+            : "gap";
   const canonical = canonicalRangeText(state, sel.from, sel.to);
   const positions = new WeakMap<PmNode, "lost" | AnchorRange>();
   positions.set(state.doc, { from: sel.from, to: sel.to });
@@ -181,6 +191,11 @@ export function verifyAnchor(
   const { from, to } = at;
   const changed = { ok: false, reason: "range-changed" } as const;
   if (record.nonEmpty && to <= from) return changed;
+  // An "all" read is the whole document, so what a later write replaces must still be all
+  // of it: text added at either end maps the endpoints off [0, size] (spec §7.3 step 4).
+  if (record.kind === "all" && (from !== 0 || to !== doc.content.size)) {
+    return changed;
+  }
   if (
     record.kind === "text" &&
     (!doc.resolve(from).parent.isTextblock ||
@@ -245,7 +260,11 @@ function track(
   mappingPasses++;
   // Spec §7.2 — a mark or link collapse deletes only delimiters and keeps content in
   // place (spec §4), so a position it deletes is not one the user removed. An atom
-  // collapse turns text into a node: there the position really is gone.
+  // collapse turns text into a node: there the position really is gone. The corpus that
+  // can set the ephemeral meta is the non-test `tagSyntaxRevealEphemeral(` callers:
+  // syntax-reveal.ts (1), syntax-reveal-collapse.ts (1), syntax-reveal-expand.ts (4); the
+  // `kind` gate below narrows it to mark and link collapses. A new caller that deletes
+  // content must be checked against this exemption.
   const kind = syntaxRevealKey.getState(oldState)?.expanded?.kind;
   const keepDeleted =
     tr.getMeta(SYNTAX_REVEAL_EPHEMERAL_META) === true &&
