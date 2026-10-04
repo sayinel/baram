@@ -550,3 +550,158 @@ fn a_file_in_a_directory_that_cannot_be_entered_is_io_not_file_not_found() {
     );
     assert!(!has_hangul(&ran.stderr), "stderr: {}", ran.stderr);
 }
+
+// ── files · search ────────────────────────────────────────────────────────────────
+
+/// What `files` and `search` are run over: two folders whose names share a prefix, a
+/// hidden folder and a non-markdown file the walk must not report.
+fn search_vault(sb: &Sandbox) {
+    write(&sb.vault, "docs/guide.md", "needle in the guide\n");
+    write(&sb.vault, "docs-old/a.md", "needle one\nneedle two\n");
+    write(&sb.vault, "notes/b.md", "nothing here\n");
+    write(&sb.vault, ".obsidian/app.md", "hidden needle\n");
+    write(&sb.vault, "plain.txt", "needle in a text file\n");
+}
+
+#[test]
+fn files_lists_markdown_sorted_and_skips_what_the_app_skips() {
+    let sb = sandbox();
+    search_vault(&sb);
+    let vault = vault_arg(&sb);
+    let all = baram(&sb, &sb.home, &["--vault", &vault, "files"]);
+    assert_eq!(all.code, 0, "stderr: {}", all.stderr);
+    assert_eq!(all.stdout, "docs-old/a.md\ndocs/guide.md\nnotes/b.md\n");
+    let one = baram(
+        &sb,
+        &sb.home,
+        &["--vault", &vault, "files", "--folder", "docs"],
+    );
+    assert_eq!(one.stdout, "docs/guide.md\n");
+}
+
+#[test]
+fn a_folder_argument_is_checked_before_anything_is_walked() {
+    let sb = sandbox();
+    search_vault(&sb);
+    let vault = vault_arg(&sb);
+    for (folder, code, exit) in [
+        (".obsidian", "INVALID_ARGUMENT", 2),
+        ("docs/guide.md", "INVALID_ARGUMENT", 2),
+        ("nope", "FILE_NOT_FOUND", 1),
+        ("../home", "PATH_OUTSIDE_VAULT", 1),
+    ] {
+        for command in [&["files"][..], &["search", "needle"][..]] {
+            let mut args = vec!["--json", "--vault", vault.as_str()];
+            args.extend_from_slice(command);
+            args.extend_from_slice(&["--folder", folder]);
+            let ran = baram(&sb, &sb.home, &args);
+            assert_eq!(ran.code, exit, "{command:?} --folder {folder}");
+            assert_eq!(
+                json(&ran.stderr)["error"]["code"],
+                code,
+                "{command:?} --folder {folder}"
+            );
+        }
+    }
+}
+
+#[test]
+fn search_finds_md_only_and_reports_line_numbers_from_one() {
+    let sb = sandbox();
+    search_vault(&sb);
+    let vault = vault_arg(&sb);
+    let ran = baram(
+        &sb,
+        &sb.home,
+        &["--json", "--vault", &vault, "search", "needle"],
+    );
+    assert_eq!(ran.code, 0, "stderr: {}", ran.stderr);
+    assert_eq!(
+        json(&ran.stdout),
+        serde_json::json!({
+            "vault": { "name": "vault", "path": vault },
+            "truncated": false,
+            "items": [
+                { "path": "docs-old/a.md", "line": 1, "snippet": "needle one" },
+                { "path": "docs-old/a.md", "line": 2, "snippet": "needle two" },
+                { "path": "docs/guide.md", "line": 1, "snippet": "needle in the guide" }
+            ]
+        })
+    );
+}
+
+#[test]
+fn search_says_when_it_stopped_early() {
+    let sb = sandbox();
+    search_vault(&sb);
+    let vault = vault_arg(&sb);
+    let cut = json(
+        &baram(
+            &sb,
+            &sb.home,
+            &[
+                "--json", "--vault", &vault, "search", "needle", "--limit", "2",
+            ],
+        )
+        .stdout,
+    );
+    assert_eq!(cut["truncated"], true);
+    assert_eq!(cut["items"].as_array().map(Vec::len), Some(2));
+    // Exactly as many matches as the limit is NOT truncated.
+    let exact = json(
+        &baram(
+            &sb,
+            &sb.home,
+            &[
+                "--json", "--vault", &vault, "search", "needle", "--limit", "3",
+            ],
+        )
+        .stdout,
+    );
+    assert_eq!(exact["truncated"], false);
+    assert_eq!(exact["items"].as_array().map(Vec::len), Some(3));
+}
+
+/// `docs-old/` sorts before `docs/` (`-` is 0x2D, `/` is 0x2F) and holds limit + 1
+/// matches. An implementation that searched the whole vault and filtered afterwards
+/// would fill its (limit + 1) hits from `docs-old/` and print nothing.
+#[test]
+fn a_folder_with_a_limit_is_not_starved_by_a_neighbour_that_sorts_first() {
+    let sb = sandbox();
+    search_vault(&sb);
+    let vault = vault_arg(&sb);
+    let ran = baram(
+        &sb,
+        &sb.home,
+        &[
+            "--vault", &vault, "search", "needle", "--folder", "docs", "--limit", "1",
+        ],
+    );
+    assert_eq!(ran.code, 0, "stderr: {}", ran.stderr);
+    assert_eq!(ran.stdout, "docs/guide.md\t1\tneedle in the guide\n");
+}
+
+#[test]
+fn no_match_is_success_and_a_bad_pattern_is_a_usage_error() {
+    let sb = sandbox();
+    search_vault(&sb);
+    let vault = vault_arg(&sb);
+    let none = baram(
+        &sb,
+        &sb.home,
+        &["--vault", &vault, "search", "zzz-not-there"],
+    );
+    assert_eq!((none.code, none.stdout.as_str()), (0, ""));
+    assert!(none.stderr.is_empty(), "stderr: {}", none.stderr);
+
+    let bad = baram(
+        &sb,
+        &sb.home,
+        &["--json", "--vault", &vault, "search", "--regex", "("],
+    );
+    assert_eq!(bad.code, 2);
+    assert_eq!(json(&bad.stderr)["error"]["code"], "INVALID_ARGUMENT");
+    // The same text without --regex is an ordinary query.
+    let plain = baram(&sb, &sb.home, &["--vault", &vault, "search", "("]);
+    assert_eq!(plain.code, 0, "stderr: {}", plain.stderr);
+}

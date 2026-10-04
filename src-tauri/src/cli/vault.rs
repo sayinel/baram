@@ -290,6 +290,55 @@ pub(crate) fn locate(vault: &Vault, input: &str) -> Result<PathBuf, CliError> {
     Ok(resolved)
 }
 
+/// A `--folder` value: a directory inside the vault that a whole-vault walk would also
+/// enter. The walkers apply their skip rules to the CHILDREN of the directory they are
+/// given, never to that directory itself, so a skipped folder passed as the start would
+/// list files the app never shows (spec 0066 §3.4).
+///
+/// The components checked are the ones BELOW the vault root. Checking the input as
+/// typed would refuse `./docs` for its `.`, and an absolute path whenever the vault
+/// itself sits under a dot folder.
+pub(crate) fn folder_arg(vault: &Vault, input: &str) -> Result<PathBuf, CliError> {
+    let folder = locate(vault, input)?;
+    if walk_skips(vault, &folder) {
+        return Err(CliError::new(
+            ErrorCode::InvalidArgument,
+            format!(
+                "{input} is a folder the vault walk skips (hidden, or one of: {})",
+                crate::fs::SKIP_DIRS.join(", ")
+            ),
+        ));
+    }
+    if !folder.exists() {
+        return Err(CliError::new(
+            ErrorCode::FileNotFound,
+            format!("no folder at {input}"),
+        ));
+    }
+    if !folder.is_dir() {
+        return Err(CliError::new(
+            ErrorCode::InvalidArgument,
+            format!("{input} is a file, not a folder"),
+        ));
+    }
+    Ok(folder)
+}
+
+/// Whether the vault walk never reaches `path`: a component BELOW the vault root is
+/// hidden, or is one of `SKIP_DIRS`. The walkers skip a hidden ENTRY of either kind and
+/// test `SKIP_DIRS` on directories only; a file named exactly like one of those is never
+/// a note, so for what the callers ask — a folder, or a markdown file — the answer is the
+/// same.
+pub(crate) fn walk_skips(vault: &Vault, path: &Path) -> bool {
+    path.strip_prefix(&vault.root)
+        .unwrap_or(path)
+        .components()
+        .any(|component| {
+            let name = component.as_os_str().to_string_lossy();
+            name.starts_with('.') || crate::fs::SKIP_DIRS.contains(&name.as_ref())
+        })
+}
+
 /// `/` between components on every platform.
 pub(crate) fn slashed(path: &Path) -> String {
     path.components()
@@ -631,5 +680,48 @@ mod tests {
             "notes/a.md"
         );
         assert_eq!(slashed(Path::new("a").join("b").as_path()), "a/b");
+    }
+
+    // ── --folder ──────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn a_folder_the_walk_skips_is_refused_even_when_it_does_not_exist() {
+        let (_t, base) = tree(&["vault/docs", "vault/.obsidian", "vault/node_modules"]);
+        let vault = vault_at(&base.join("vault"));
+        for input in [
+            ".obsidian",
+            "node_modules",
+            "docs/.cache",
+            "docs/node_modules/x",
+        ] {
+            let error = folder_arg(&vault, input).unwrap_err();
+            assert_eq!(error.code, ErrorCode::InvalidArgument, "{input}");
+        }
+    }
+
+    #[test]
+    fn only_the_components_below_the_vault_root_are_checked() {
+        // The vault itself sits under a dot folder: its own path must not disqualify it.
+        let (_t, base) = tree(&[".hidden/vault/docs"]);
+        let vault = vault_at(&base.join(".hidden/vault"));
+        let docs = base.join(".hidden/vault/docs");
+        assert_eq!(folder_arg(&vault, "docs").unwrap(), docs);
+        assert_eq!(folder_arg(&vault, "./docs").unwrap(), docs);
+        assert_eq!(folder_arg(&vault, &docs.to_string_lossy()).unwrap(), docs);
+    }
+
+    #[test]
+    fn a_missing_folder_and_a_file_are_told_apart() {
+        let (_t, base) = tree(&["vault/docs"]);
+        std::fs::write(base.join("vault/docs/a.md"), "x").unwrap();
+        let vault = vault_at(&base.join("vault"));
+        assert_eq!(
+            folder_arg(&vault, "nope").unwrap_err().code,
+            ErrorCode::FileNotFound
+        );
+        assert_eq!(
+            folder_arg(&vault, "docs/a.md").unwrap_err().code,
+            ErrorCode::InvalidArgument
+        );
     }
 }

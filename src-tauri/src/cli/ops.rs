@@ -7,6 +7,7 @@ use super::output::{Envelope, Row, VaultInfo};
 use super::vault::{self, RootKind, Vault};
 use crate::context::manager::resolve_canonical;
 use crate::fs::FsError;
+use crate::search::SearchOptions;
 use serde::Serialize;
 use std::path::Path;
 
@@ -135,6 +136,152 @@ pub(crate) async fn read(vault: &Vault, path: &str) -> Result<Envelope<FileConte
     })
 }
 
+/// A walk that failed, before the failing directory can be named (Task 6 names it).
+pub(crate) fn cannot_read_vault(vault: &Vault) -> CliError {
+    CliError::new(
+        ErrorCode::Io,
+        format!("cannot read the vault at {}", vault.root.display()),
+    )
+}
+
+/// Sorts a list the CLI prints by (path, line) (spec 0066 §3.6). The walkers hand files
+/// back in `read_dir` order, which differs between filesystems; the line is compared as
+/// a number, not as text.
+pub(crate) fn sort_by_path_and_line<T>(
+    items: &mut [T],
+    key: impl for<'a> Fn(&'a T) -> (&'a str, u64),
+) {
+    items.sort_by(|a, b| key(a).cmp(&key(b)));
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct PathRow {
+    pub path: String,
+}
+
+impl Row for PathRow {
+    fn fields(&self) -> Vec<String> {
+        vec![self.path.clone()]
+    }
+}
+
+/// `baram files [--folder <path>]` — the markdown files the app's walk sees.
+pub(crate) async fn files(
+    vault: &Vault,
+    folder: Option<&str>,
+) -> Result<Envelope<PathRow>, CliError> {
+    let start = match folder {
+        Some(folder) => vault::folder_arg(vault, folder)?,
+        None => vault.root.clone(),
+    };
+    let mut found = Vec::new();
+    crate::fs::collect_md_files(&start, &mut found)
+        .await
+        .map_err(|_| cannot_read_vault(vault))?;
+    let mut items: Vec<PathRow> = found
+        .iter()
+        .map(|path| PathRow {
+            path: vault::relative(vault, path),
+        })
+        .collect();
+    sort_by_path_and_line(&mut items, |row| (row.path.as_str(), 0));
+    Ok(Envelope {
+        vault: Some(vault_info(vault)),
+        truncated: false,
+        items,
+    })
+}
+
+pub(crate) struct SearchQuery<'a> {
+    pub query: &'a str,
+    pub regex: bool,
+    pub case_sensitive: bool,
+    pub word: bool,
+    pub folder: Option<&'a str>,
+    pub limit: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct SearchRow {
+    pub path: String,
+    pub line: usize,
+    pub snippet: String,
+}
+
+impl Row for SearchRow {
+    fn fields(&self) -> Vec<String> {
+        vec![
+            self.path.clone(),
+            self.line.to_string(),
+            self.snippet.clone(),
+        ]
+    }
+}
+
+/// `baram search <query>` — the app's full-text search over `.md` files.
+///
+/// `--folder` MOVES THE SEARCH ROOT instead of passing `include_glob`. That option's
+/// folder form is a string prefix (`docs` also takes `docs-old/`), and the limit is
+/// applied while walking — `docs-old/` sorts first and would fill it, so filtering the
+/// hits afterwards comes too late. With the root moved, neither can happen.
+///
+/// The match's `column` is left out: it is a byte offset, which is not a character
+/// position in Korean text.
+pub(crate) async fn search(
+    vault: &Vault,
+    query: SearchQuery<'_>,
+) -> Result<Envelope<SearchRow>, CliError> {
+    if query.query.is_empty() {
+        return Err(CliError::new(
+            ErrorCode::InvalidArgument,
+            "the query is empty",
+        ));
+    }
+    // Checked here rather than by reading `search_files`' error text: it returns a
+    // String, and "bad pattern" and "bad root" could only be told apart by wording.
+    // `--word` wraps the pattern in `\b…\b`, which cannot make a valid one invalid.
+    if query.regex {
+        if let Err(error) = regex::Regex::new(query.query) {
+            return Err(CliError::new(
+                ErrorCode::InvalidArgument,
+                format!("invalid regular expression: {error}"),
+            ));
+        }
+    }
+    let start = match query.folder {
+        Some(folder) => vault::folder_arg(vault, folder)?,
+        None => vault.root.clone(),
+    };
+    let options = SearchOptions {
+        case_sensitive: query.case_sensitive,
+        whole_word: query.word,
+        regex: query.regex,
+        // One more than asked for: `search_files` does not say whether it stopped early.
+        max_results: query.limit + 1,
+        include_glob: None,
+        exclude_glob: None,
+    };
+    let hits = crate::search::search_files(&start.to_string_lossy(), query.query, &options)
+        .await
+        .map_err(|_| CliError::new(ErrorCode::Io, format!("cannot search {}", start.display())))?;
+    let truncated = hits.len() > query.limit;
+    let mut items: Vec<SearchRow> = hits
+        .into_iter()
+        .take(query.limit)
+        .map(|hit| SearchRow {
+            path: vault::relative(vault, Path::new(&hit.file_path)),
+            line: hit.line,
+            snippet: hit.snippet,
+        })
+        .collect();
+    sort_by_path_and_line(&mut items, |row| (row.path.as_str(), row.line as u64));
+    Ok(Envelope {
+        vault: Some(vault_info(vault)),
+        truncated,
+        items,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::vault::Registered;
@@ -168,6 +315,37 @@ mod tests {
             order,
             [("a", "/1"), ("a", "/9"), ("b", "/2")]
                 .map(|(name, path)| (name.to_string(), path.to_string()))
+        );
+    }
+
+    /// The sort is tested on input turned upside down, not by creating fixture files in
+    /// another order: `read_dir` order does not follow creation order, so that test
+    /// would pass with the sort removed.
+    #[test]
+    fn lists_come_out_by_path_then_line_whatever_order_the_walk_gave() {
+        let mut items: Vec<(String, u64)> = [
+            ("b.md", 10),
+            ("b.md", 2),
+            ("a/z.md", 1),
+            ("b.md", 1),
+            ("a-b/x.md", 5),
+        ]
+        .into_iter()
+        .map(|(path, line)| (path.to_string(), line))
+        .collect();
+        sort_by_path_and_line(&mut items, |item| (item.0.as_str(), item.1));
+        assert_eq!(
+            items,
+            [
+                ("a-b/x.md", 5), // `-` (0x2D) sorts before `/` (0x2F)
+                ("a/z.md", 1),
+                ("b.md", 1),
+                ("b.md", 2),
+                ("b.md", 10), // a number, not text: 10 comes after 2
+            ]
+            .into_iter()
+            .map(|(path, line)| (path.to_string(), line))
+            .collect::<Vec<_>>()
         );
     }
 }

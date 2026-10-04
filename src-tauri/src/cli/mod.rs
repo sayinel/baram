@@ -187,6 +187,34 @@ async fn execute(cli: Cli, out: &mut dyn Write) -> Result<(), Failure> {
                 }
             }
         }
+        Command::Files { folder } => {
+            let vault = required(resolved)?;
+            let envelope = ops::files(&vault, folder.as_deref()).await?;
+            output::write_envelope(out, &envelope, cli.json)?;
+        }
+        Command::Search {
+            query,
+            regex,
+            case_sensitive,
+            word,
+            folder,
+            limit,
+        } => {
+            let vault = required(resolved)?;
+            let envelope = ops::search(
+                &vault,
+                ops::SearchQuery {
+                    query: &query,
+                    regex,
+                    case_sensitive,
+                    word,
+                    folder: folder.as_deref(),
+                    limit: limit as usize,
+                },
+            )
+            .await?;
+            output::write_envelope(out, &envelope, cli.json)?;
+        }
     }
     Ok(())
 }

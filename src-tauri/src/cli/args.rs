@@ -28,4 +28,29 @@ pub(crate) enum Command {
     Vaults,
     /// Print a file. PATH is relative to the vault root.
     Read { path: String },
+    /// List the markdown files in the vault.
+    Files {
+        /// Only this folder (relative to the vault root).
+        #[arg(long)]
+        folder: Option<String>,
+    },
+    /// Search the text of the vault's `.md` files.
+    Search {
+        query: String,
+        /// Treat QUERY as a regular expression.
+        #[arg(long)]
+        regex: bool,
+        /// Match case exactly.
+        #[arg(long)]
+        case_sensitive: bool,
+        /// Match whole words only.
+        #[arg(long)]
+        word: bool,
+        /// Only this folder (relative to the vault root).
+        #[arg(long)]
+        folder: Option<String>,
+        /// Stop after this many matches.
+        #[arg(long, default_value_t = 100, value_parser = clap::value_parser!(u32).range(1..))]
+        limit: u32,
+    },
 }
