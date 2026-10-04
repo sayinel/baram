@@ -49,7 +49,7 @@ pub(crate) async fn rename_file_with_links_inner(
         files: referring_files,
         known_paths,
     } = scope
-        .referrers(state, ctx_mgr, Some(new_path), |i| {
+        .referrers(state, ctx_mgr, old_path, Some(new_path), |i| {
             i.referring_lines_to(old_path, &named_by)
         })
         .await?;

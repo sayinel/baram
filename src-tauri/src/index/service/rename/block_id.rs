@@ -42,7 +42,7 @@ pub(crate) async fn rename_block_id_inner(
         files: referring_files,
         known_paths,
     } = scope
-        .referrers(state, ctx_mgr, None, |index| {
+        .referrers(state, ctx_mgr, file_path, None, |index| {
             index.block_reference_lines(file_path, old_id)
         })
         .await?;

@@ -202,8 +202,11 @@ baram/
     부모의 `a/old.md` 를 rename 할 때 자식 root 는 그 파일을 담지 않지만 referrer 를 담는다. 한 번도 열리지 않아 index 가 없는 context 는 판정 전에 **그 자리에서 build
     한다**(`service/rename/scope.rs` 의 `holding_contexts` → `ensure_indexes`). build 할 수 없으면 그 root 는 `RootNotes::Unknown` 이 되어 그
     root 가 읽을 수 있는 경로 링크는 **그대로 두고 파일을 보고한다** — 비어 있다고 가정하지 않는다(`known_paths_of`). referrer 를 담는지는 `contexts_containing` 으로 찾고,
-    판정 안에서는 root 표기에 대해 어휘적으로 본다. 둘이 어긋나면 — symlink 로 등록된 자식 root(`/elsewhere/alias` → `/v/sub`)는 `/v/sub/r.md` 를
-    resolve 해서만 담는다 — 그 referrer 의 경로 링크는 전부 모호로 두고 보고한다(`KnownPaths::unplaced`, `root_places`). bare 이름(`[[old]]`)은 이 판정 밖이다 — stem 은 모든 root 에서 같게 읽히고 rename 은 그것을 고쳐 쓴다
+    판정 안에서는 root 표기에 대해 어휘적으로 본다. 둘이 어긋나면 — symlink 로 등록된 자식 root(`/elsewhere/alias` → `/v/sub`), 같은 폴더의 다른 표기
+    (`/var/…` 옆의 `/private/var/…`), 대소문자를 접는 볼륨에서 다른 대소문자로 등록한 root 는 `/v/sub/r.md` 를 resolve 해서만 담는다 — 그 root 의 노트는
+    referrer 를 그 root 표기로 바꾼 경로(`/elsewhere/alias/r.md`)로 읽고, rename 대상도 그 root 의 키로 센다(`KnownPaths::spelled`·`renamed`, `scope.rs` 의
+    `spell_under_each_root`). 매치(`keyed_under`)·covering root·read-back 검사는 그대로 어휘적이라, 이 읽기는 모호를 우리 것으로 되돌릴 수만 있고 새 매치를 만들지 않는다.
+    표기를 찾지 못한 referrer 만 경로 링크를 전부 모호로 둔다(`KnownPaths::unplaced`). bare 이름(`[[old]]`)은 이 판정 밖이다 — stem 은 모든 root 에서 같게 읽히고 rename 은 그것을 고쳐 쓴다
   - **vault 자신의 alias(`[[work::note]]`, §87)는 등록된 vault 들 사이에서 대소문자 무시로 유일한 alias 일 때만 로컬이다 (#717)** — `service/keys.rs` 의
     `local_aliases_of`. journal·zettelkasten space 는 vault type 으로 `Journal::`·`Zettel::` 에도 답한다 — 같은 유일성 규칙 아래이고(두 journal
     space 면 둘 다 외부), 어느 vault 든 그 이름을 explicit alias 로 달면 그 alias 가 이긴다 (`findAliasContext` 의 두 패스, 이름 짝은 `keys.rs` 의

@@ -532,12 +532,14 @@ async fn nested_roots_with_two_a_old_notes_child_through_a_symlink(
 async fn nested_roots_a_child_registered_through_a_symlink_still_keeps_a_path_link() {
     // `nested_roots_the_parents_rename_keeps_a_path_link_the_child_reads_as_another_file`
     // with the child registered as `/elsewhere/alias`. The child still reads
-    // `sub/r.md`'s `[[a/old]]` as `sub/a/old.md`, but cannot be placed over
-    // the referrer as the parent's index spells it, so the link is left and
-    // the file reported — missed, not miswritten. The bare `[[old]]` follows.
-    // What fails this: dropping the `unplaced` check from
-    // `read_as_another_note` — the child is skipped as not holding
-    // `/v/sub/r.md`, and `[[a/old]]` becomes `[[a/new]]` with nothing reported.
+    // `sub/r.md`'s `[[a/old]]` as `sub/a/old.md` — read through the
+    // referrer's spelling under it (`KnownPaths::spelled`), since its own
+    // spelling is no prefix of `/v/sub/r.md` — so the link is left and the
+    // file reported. The bare `[[old]]` follows.
+    // What fails this: skipping a root that cannot place the referrer as
+    // spelled instead of reading it through `spelled` in
+    // `read_as_another_note` — `[[a/old]]` becomes `[[a/new]]` with nothing
+    // reported.
     let ctx = ContextManager::new();
     let (dir, _elsewhere, root, state) = nested_roots_with_two_a_old_notes_child_through_a_symlink(
         &ctx,
@@ -567,8 +569,7 @@ async fn nested_roots_a_child_registered_through_a_symlink_still_keeps_a_path_li
 async fn nested_roots_a_child_registered_through_a_symlink_still_keeps_a_path_reference() {
     // The block-ID rename of the test above: `((a/old#^x))` in `sub/r.md`
     // stays and the file is reported.
-    // What fails this: dropping the `unplaced` check from
-    // `read_as_another_note` — the reference becomes `((a/old#^y))`.
+    // What fails this: the same skip — the reference becomes `((a/old#^y))`.
     let ctx = ContextManager::new();
     let (dir, _elsewhere, root, state) = nested_roots_with_two_a_old_notes_child_through_a_symlink(
         &ctx,
@@ -664,6 +665,198 @@ async fn nested_roots_a_rename_does_not_respell_a_path_link_into_a_note_another_
     assert_eq!(
         std::fs::read_to_string(dir.path().join("sub/r.md")).unwrap(),
         "[[a/old]]\n"
+    );
+}
+
+/// `/v` (the tempdir as spelled) holding `files`, and a child Folder over
+/// `/v/sub` registered under the spelling `child` returns — given the
+/// tempdir and a second, empty one to put a symlink in — both indexed.
+/// Returns the tempdir guards, `/v`, the child's spelling and the state.
+async fn parent_and_child_spelled(
+    ctx: &ContextManager,
+    files: &[(&str, &str)],
+    child: impl FnOnce(&std::path::Path, &std::path::Path) -> String,
+) -> (
+    tempfile::TempDir,
+    tempfile::TempDir,
+    String,
+    String,
+    LinkIndexState,
+) {
+    let (dir, root) = vault_with_a_link(ctx, "ctx-parent", true).await;
+    std::fs::create_dir_all(dir.path().join("sub")).unwrap();
+    for (path, content) in files {
+        let file = dir.path().join(path);
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(file, content).unwrap();
+    }
+    let elsewhere = tempfile::tempdir().unwrap();
+    let spelled = child(dir.path(), elsewhere.path());
+    ctx.add(info("ctx-child", &spelled, ContextType::Folder))
+        .await
+        .unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, ctx, &root).await.unwrap();
+    refresh_index_inner(&state, ctx, &spelled).await.unwrap();
+    (dir, elsewhere, root, spelled, state)
+}
+
+/// The child over `/v/sub` registered through a symlink `elsewhere/alias`.
+#[cfg(unix)]
+fn through_a_symlink(dir: &std::path::Path, elsewhere: &std::path::Path) -> String {
+    let alias = elsewhere.join("alias");
+    std::os::unix::fs::symlink(dir.join("sub"), &alias).unwrap();
+    alias.to_str().unwrap().to_string()
+}
+
+/// Renames `/v/a/old.md` to `/v/a/new.md` beside a child over `/v/sub`
+/// spelled by `child`, with `sub/r.md` holding `[[a/old]]` and `[[old]]` and
+/// `extra` files; the referrer's text after, and the files reported.
+async fn rename_the_parents_note_beside_a_child(
+    extra: &[(&str, &str)],
+    child: impl FnOnce(&std::path::Path, &std::path::Path) -> String,
+) -> (String, Vec<String>) {
+    let ctx = ContextManager::new();
+    let mut files = vec![("a/old.md", "t\n"), ("sub/r.md", "[[a/old]]\n[[old]]\n")];
+    files.extend_from_slice(extra);
+    let (dir, _elsewhere, root, _child, state) =
+        parent_and_child_spelled(&ctx, &files, child).await;
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/a/old.md"),
+        &format!("{root}/a/new.md"),
+    )
+    .await
+    .unwrap();
+    let skipped = result
+        .skipped_files
+        .iter()
+        .map(|f| f.strip_prefix(&format!("{root}/")).unwrap_or(f).to_string())
+        .collect();
+    (
+        std::fs::read_to_string(dir.path().join("sub/r.md")).unwrap(),
+        skipped,
+    )
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_child_registered_through_a_symlink_reads_the_referrer_as_its_own() {
+    // The child `/elsewhere/alias` holds `/v/sub/r.md` only as resolved, but
+    // its notes are read with the referrer spelled under it (`sub/r.md` →
+    // `/elsewhere/alias/r.md`): with no `a/old` of its own, it reads
+    // `[[a/old]]` as no note, so the parent's rename respells it and
+    // reports nothing, as with the child spelled `/v/sub`.
+    // What fails this: reading a root that cannot place the referrer as
+    // spelled as `unplaced` whatever its notes (no `spelled` mapping in
+    // `holding_contexts`) — `[[a/old]]` is left and `sub/r.md` reported.
+    assert_eq!(
+        rename_the_parents_note_beside_a_child(&[], through_a_symlink).await,
+        ("[[a/new]]\n[[new]]\n".to_string(), vec![])
+    );
+}
+
+#[tokio::test]
+async fn a_child_registered_in_the_canonical_spelling_reads_the_referrer_as_its_own() {
+    // The parent registered as the tempdir is spelled (`/var/...` on macOS)
+    // and the child over its `sub` as resolved (`/private/var/...`): the same
+    // as the symlinked child above, with no symlink anywhere. Where the
+    // tempdir is spelled canonically already the two spellings agree and
+    // this is the plain nested case.
+    // What fails this: the same — `[[a/old]]` is left and `sub/r.md`
+    // reported where the two spellings differ.
+    let canonical = |dir: &std::path::Path, _: &std::path::Path| {
+        let sub = dir.join("sub").canonicalize().unwrap();
+        sub.to_str().unwrap().to_string()
+    };
+    assert_eq!(
+        rename_the_parents_note_beside_a_child(&[], canonical).await,
+        ("[[a/new]]\n[[new]]\n".to_string(), vec![])
+    );
+}
+
+#[tokio::test]
+async fn a_child_registered_in_another_case_reads_the_referrer_as_its_own() {
+    // Where the file system folds case, the child over `/v/sub` registered
+    // as `/v/SUB` holds `/v/sub/r.md` as resolved but not as spelled; read
+    // under its own spelling it holds no `a/old`. Where case is kept, `SUB`
+    // is no directory and this half is not run.
+    // What fails this: the same — `[[a/old]]` is left and `sub/r.md`
+    // reported.
+    let probe = tempfile::tempdir().unwrap();
+    std::fs::create_dir(probe.path().join("d")).unwrap();
+    if !probe.path().join("D").exists() {
+        eprintln!("the file system keeps case; the other-case half is not run");
+        return;
+    }
+    let other_case =
+        |dir: &std::path::Path, _: &std::path::Path| dir.join("SUB").to_str().unwrap().to_string();
+    assert_eq!(
+        rename_the_parents_note_beside_a_child(&[], other_case).await,
+        ("[[a/new]]\n[[new]]\n".to_string(), vec![])
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_symlinked_child_still_reads_a_conflict_through_its_own_spelling() {
+    // The symlinked child holds `sub/a/new.md`: read under its spelling, the
+    // respelled `[[a/new]]` would be that note, so the parent's rename
+    // leaves the link and reports `sub/r.md` — the respelled-text check runs
+    // under a mapped root too.
+    // What fails this: skipping a root that cannot place the referrer as
+    // spelled instead of reading it through the mapping — `[[a/new]]` is
+    // written.
+    assert_eq!(
+        rename_the_parents_note_beside_a_child(&[("sub/a/new.md", "u\n")], through_a_symlink).await,
+        (
+            "[[a/old]]\n[[new]]\n".to_string(),
+            vec!["sub/r.md".to_string()]
+        )
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_symlinked_child_holding_the_renamed_note_reads_it_as_the_renamed_note() {
+    // The renamed note `/v/sub/a/old.md` is in the symlinked child too, which
+    // knows it as `a/old` under `/elsewhere/alias` — a key the old path, as
+    // the parent spells it, does not give under that root. Read by its
+    // resolved place, it is the renamed file, not another note: the
+    // parent's match of `[[./a/old]]` and `((./a/old#^x))` is respelled, and
+    // the block-ID rename renames the reference, as with the child spelled
+    // `/v/sub`.
+    // What fails this: judging the target under a mapped root by its
+    // spelled key alone (no `renamed` key in `holding_contexts`) — both
+    // renames leave the references and report `sub/r.md`.
+    let files = [
+        ("sub/a/old.md", "para ^x\n"),
+        ("sub/r.md", "[[./a/old]]\n((./a/old#^x))\n"),
+    ];
+    let ctx = ContextManager::new();
+    let (dir, _elsewhere, root, _child, state) =
+        parent_and_child_spelled(&ctx, &files, through_a_symlink).await;
+    let block = rename_block_id_inner(&state, &ctx, &format!("{root}/sub/a/old.md"), "x", "y")
+        .await
+        .unwrap();
+    assert!(block.skipped_files.is_empty(), "{:?}", block.skipped_files);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("sub/r.md")).unwrap(),
+        "[[./a/old]]\n((./a/old#^y))\n"
+    );
+    let file = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/sub/a/old.md"),
+        &format!("{root}/sub/a/new.md"),
+    )
+    .await
+    .unwrap();
+    assert!(file.skipped_files.is_empty(), "{:?}", file.skipped_files);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("sub/r.md")).unwrap(),
+        "[[./a/new]]\n((./a/new#^y))\n"
     );
 }
 

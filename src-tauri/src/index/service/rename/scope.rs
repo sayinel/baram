@@ -2,10 +2,11 @@
 //! hold the file with their indexes built, and — once the referrers are named —
 //! what every root holding the file or a referrer knows of its notes.
 
+use crate::context::manager::resolve_canonical;
 use crate::context::manager::Registered;
 use crate::context::ContextManager;
 use crate::index::{root_places, root_relative_key, KnownPaths, LinkIndex, RootNotes};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use super::super::build::{ensure_indexes, read_indexes};
 use super::super::keys::{buildable, keys_of, owning_contexts};
@@ -66,20 +67,22 @@ impl RenameScope {
     /// might, when its index could not be built — is left and its file
     /// reported (`RenameTarget::judge`, `BlockTarget::judge`).
     ///
-    /// `new_path` is a file rename's destination: a `Sole` root also counts
-    /// the notes under the new name's key, which the judgement reads the
-    /// respelled text by. A block ID rename keeps the path and passes None.
+    /// `target` is the renamed file as the rename was given it. `new_path` is
+    /// a file rename's destination: a `Sole` root also counts the notes under
+    /// the new name's key, which the judgement reads the respelled text by. A
+    /// block ID rename keeps the path and passes None.
     pub(super) async fn referrers(
         &self,
         state: &LinkIndexState,
         ctx_mgr: &ContextManager,
+        target: &str,
         new_path: Option<&str>,
         read: impl Fn(&LinkIndex) -> Vec<(String, u32)>,
     ) -> Result<Referrers, String> {
         let (named_lines, files) = named_referrers(read_indexes(state, &self.dirs, read).await?);
-        let (holding, unplaced) = holding_contexts(state, ctx_mgr, &self.dirs, &files).await;
+        let holding = holding_contexts(state, ctx_mgr, &self.dirs, &files).await;
         let mut known_paths = known_paths_of(state, &holding, new_path).await;
-        known_paths.unplaced = unplaced;
+        spell_under_each_root(&mut known_paths, ctx_mgr, &holding, &files, target).await;
         Ok(Referrers {
             named_lines,
             files,
@@ -96,24 +99,15 @@ impl RenameScope {
 /// has no index and the judgement must not read that as "no note there". A
 /// build that fails is logged and its root is left unbuilt, which
 /// `known_paths_of` reports as `Unknown`.
-///
-/// Also the referrers one of their holding contexts cannot place as spelled
-/// (`root_places`): it holds them as resolved, through a symlink, and the
-/// judgement, which reads every root lexically, would skip it
-/// (`KnownPaths::unplaced`).
 async fn holding_contexts(
     state: &LinkIndexState,
     ctx_mgr: &ContextManager,
     dirs: &[Registered],
     referrers: &[String],
-) -> (Vec<Registered>, HashSet<String>) {
+) -> Vec<Registered> {
     let mut holding: Vec<Registered> = dirs.to_vec();
-    let mut unplaced = HashSet::new();
     for referrer in referrers {
         for c in buildable(&owning_contexts(ctx_mgr, referrer).await) {
-            if !root_places(&c.info.path, referrer, cfg!(windows)) {
-                unplaced.insert(referrer.clone());
-            }
             if !holding.iter().any(|h| h.info.path == c.info.path) {
                 holding.push(c);
             }
@@ -127,7 +121,69 @@ async fn holding_contexts(
             );
         }
     }
-    (holding, unplaced)
+    holding
+}
+
+/// The spellings the judgement reads a root's notes by where that root
+/// holds a path only as resolved (`ContextManager::contexts_containing`
+/// compares canonical paths) and not as spelled (`root_places`): each
+/// referrer under each such holding root (`KnownPaths::spelled`, or
+/// `unplaced` when no spelling is found), and the renamed file's key under
+/// each holding root that contains it so (`KnownPaths::renamed`).
+async fn spell_under_each_root(
+    known: &mut KnownPaths,
+    ctx_mgr: &ContextManager,
+    holding: &[Registered],
+    referrers: &[String],
+    target: &str,
+) {
+    for referrer in referrers {
+        for c in buildable(&owning_contexts(ctx_mgr, referrer).await) {
+            if root_places(&c.info.path, referrer, cfg!(windows)) {
+                continue;
+            }
+            match spelled_under(&c, referrer) {
+                Some(here) => {
+                    known
+                        .spelled
+                        .entry(referrer.clone())
+                        .or_default()
+                        .insert(c.info.path.clone(), here);
+                }
+                None => {
+                    known.unplaced.insert(referrer.clone());
+                }
+            }
+        }
+    }
+    for c in holding {
+        if root_places(&c.info.path, target, cfg!(windows)) {
+            continue;
+        }
+        let key = spelled_under(c, target)
+            .and_then(|here| root_relative_key(&c.info.path, &here, cfg!(windows)));
+        if let Some(key) = key {
+            known.renamed.insert(c.info.path.clone(), key);
+        }
+    }
+}
+
+/// `path` spelled under the registered root of `c`: its folder resolved,
+/// that folder's place under `c`'s canonical root joined onto `c`'s
+/// registered path, then its own name. The name is not resolved, so a
+/// referrer that is itself a symlink keeps its entry's name, as the index
+/// spells it. None when the folder does not resolve under `c` — a referrer
+/// that resolves under `c` only through a symlink of its own, or one whose
+/// folder is gone. No test reaches that case: the build does not index a
+/// symlink entry (`fs::collect_md_files` reads `DirEntry::metadata`, which
+/// does not follow one), so a referrer the build names is not one.
+fn spelled_under(c: &Registered, path: &str) -> Option<String> {
+    let path = std::path::Path::new(path);
+    let name = path.file_name()?;
+    let folder = resolve_canonical(path.parent()?.to_str()?).ok()?;
+    let rest = folder.strip_prefix(&c.canonical_path).ok()?;
+    let here = std::path::Path::new(&c.info.path).join(rest).join(name);
+    here.to_str().map(str::to_string)
 }
 
 /// What each of `holding` knows of its notes, by its root: `Known` with
