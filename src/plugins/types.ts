@@ -73,9 +73,12 @@ export interface EditorAPI {
   /** The whole document as markdown. Requires `editor` or `editor:readonly`. */
   getMarkdown(): Promise<string>;
   /**
-   * The selection: ProseMirror positions, its text as markdown reads it (an expanded
-   * reveal's delimiters left out), and a `ref` to replace exactly this range later.
-   * Requires `editor` or `editor:readonly`.
+   * The selection: ProseMirror positions, its text, and a `ref` to replace exactly this
+   * range later. The text is plain, with no markdown syntax — marks, link targets and code
+   * backticks are left out, and so is the syntax the editor reveals around the caret —
+   * while the positions and the `ref` cover the whole range. No method returns the
+   * selection's markdown; a plugin that needs markdown reads the whole document with
+   * `getMarkdown()`. Requires `editor` or `editor:readonly`.
    */
   getSelection(): Promise<EditorSelection>;
   /**

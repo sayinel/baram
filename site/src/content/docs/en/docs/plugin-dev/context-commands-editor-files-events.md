@@ -59,13 +59,17 @@ nothing in it is parsed.
 
 ### Selections and `ref`
 
-`getSelection()` returns ProseMirror positions, the selected text as markdown reads it
-(formatting marks the editor is showing around the caret are left out), and a `ref`. Pass the
-`ref` back as `replace` to replace exactly that range later:
+`getSelection()` returns ProseMirror positions, the selected text, and a `ref`. The text is
+plain, with no markdown syntax: marks, link targets and code backticks are left out, and so is
+the syntax the editor reveals around the caret. The positions and the `ref` still cover the
+whole range. No method returns the selection's markdown; `getMarkdown()` returns the whole
+document's. Pass the `ref` back as `replace` to replace exactly that range later.
+`insertMarkdown(markdown, { replace: ref })` puts exactly the markdown you pass in its place,
+so formatting in the range survives a rewrite only if your markdown carries it.
 
 - Edits outside the range move it along. If the text inside it changed or was deleted, the
-  node you selected changed, or another document is in the editor, the write is refused and
-  you read the selection again.
+  node you selected changed, or another document is in the editor (switching to source mode
+  and back counts), the write is refused and you read the selection again.
 - A `ref` works only for the plugin that read it. A successful write spends it; a refused one
   leaves it, so you can retry. Each plugin keeps its 16 most recent unspent refs — reading a
   17th drops the oldest.
@@ -84,15 +88,16 @@ nothing in it is parsed.
   heading, a list, a table) goes in as blocks, and only into paragraphs: the range is cut out,
   the blocks go between the text before and after it, and a paragraph at either end of the
   result joins that text. When the range is all of one paragraph's content (an empty
-  paragraph's caret, say), the blocks replace that paragraph.
+  paragraph's caret, say), the blocks replace that paragraph. `insertMarkdown("")` parses to
+  one empty paragraph, so it deletes the range.
 - **A selected node.** One inside a line of text, such as a wikilink, counts as text. A
   selected block, such as an image or a table, is replaced by the result as whole blocks.
 - **Select all.** The result replaces the document.
 
 These are refused with `cannot-insert-here`, by `insertText()` and `insertMarkdown()` alike:
 
-- a selection of whole table cells, or a gap cursor between two blocks — or a `ref` read
-  from either;
+- a selection of whole table cells, or a gap cursor (the cursor beside a block that cannot
+  hold text) — or a `ref` read from either;
 - a range with an end inside the source the editor is showing for a wikilink (not at its
   edges), or for a block image or video (edges included).
 
@@ -100,8 +105,10 @@ And by `insertMarkdown()` alone:
 
 - a range with only one end in a code block or frontmatter, or with its ends in two of them;
 - a one-paragraph result over a range across two blocks of text that are not both paragraphs;
-- a result that goes in as blocks, where an end of the range is not in a paragraph (an empty
-  heading included) or is in a table cell, or in place of a selected node in a table cell;
+- a result that goes in as blocks where an end of the range is not in a paragraph (an empty
+  heading included) or is in a table cell;
+- anything but a single paragraph in place of a selected node in a table cell (one paragraph
+  is accepted there);
 - frontmatter anywhere but as the first block of a result that starts at the document's start;
 - anything that would split a node above the place it goes into.
 
@@ -124,7 +131,7 @@ says why. Branch on `code`, not on the message.
 | `budget` | Sandboxed only: the plugin's document budget is spent | Wait, then retry |
 | `document-changed` | `setMarkdown()`: the document changed while your markdown was parsed | Retry |
 | `ref-unknown` | The `ref` was not read by this plugin, was spent, or was dropped — or, trusted only, is malformed | Read the selection again |
-| `ref-other-document` | Another document is in the editor: another tab, or the file was loaded again | Read the selection again |
+| `ref-other-document` | Another document is in the editor: another tab, or the file was loaded again, as switching to source mode and back does. A tab change while `insertMarkdown()` was parsing can refuse even if the user is back on the `ref`'s tab | Read the selection again |
 | `ref-range-changed` | The text in the range changed, the range was deleted, or the selected node changed | Read again; rebuild your result if it depended on the text |
 | `cannot-insert-here` | That content cannot go there (the lists above) | Change the content or the place |
 
@@ -138,7 +145,7 @@ editor request while four are in flight, a request that times out, and a transpo
 ### Moving from the old trusted API
 
 The trusted tier used to have its own synchronous editor API. A trusted plugin written for it
-breaks in four places:
+breaks here:
 
 | Old (trusted, sync) | Now (both tiers, async) |
 |---|---|
@@ -146,10 +153,7 @@ breaks in four places:
 | `setContent(content)` | Removed — the old call emptied the document. Use `await setMarkdown(markdown)` |
 | `insertText(text)` parsed `text` as HTML (Tiptap's `insertContent`) | Inserts the characters as they are. Use `insertMarkdown()` for formatted content |
 | `getSelection()` returned the object | Returns a Promise: without `await`, `getSelection().text` is `undefined` |
-
-The refusals that were thrown synchronously — a write under `editor:readonly`, and the
-surface checks that are now `surface-blocked` and `no-editor` — reject with a `code` instead,
-so `await` every call.
+| A write under `editor:readonly`, a blocked surface or a missing editor threw a plain `Error` synchronously | The call rejects with a `code` (`not-permitted`, `surface-blocked`, `no-editor`), so `await` every call |
 
 ## `context.files` (requires `files` or `files:readonly`)
 
