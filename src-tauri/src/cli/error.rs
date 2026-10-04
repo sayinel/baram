@@ -7,6 +7,8 @@ use serde::Serialize;
 pub(crate) enum ErrorCode {
     VaultNotFound,
     VaultAmbiguous,
+    PathOutsideVault,
+    FileNotFound,
     InvalidArgument,
     Io,
 }
@@ -19,6 +21,8 @@ impl ErrorCode {
         match self {
             ErrorCode::VaultNotFound => "VAULT_NOT_FOUND",
             ErrorCode::VaultAmbiguous => "VAULT_AMBIGUOUS",
+            ErrorCode::PathOutsideVault => "PATH_OUTSIDE_VAULT",
+            ErrorCode::FileNotFound => "FILE_NOT_FOUND",
             ErrorCode::InvalidArgument => "INVALID_ARGUMENT",
             ErrorCode::Io => "IO",
         }
@@ -29,7 +33,11 @@ impl ErrorCode {
     pub(crate) fn exit_code(self) -> i32 {
         match self {
             ErrorCode::InvalidArgument => 2,
-            ErrorCode::VaultNotFound | ErrorCode::VaultAmbiguous | ErrorCode::Io => 1,
+            ErrorCode::VaultNotFound
+            | ErrorCode::VaultAmbiguous
+            | ErrorCode::PathOutsideVault
+            | ErrorCode::FileNotFound
+            | ErrorCode::Io => 1,
         }
     }
 }
@@ -72,6 +80,8 @@ mod tests {
     const ALL: &[ErrorCode] = &[
         ErrorCode::VaultNotFound,
         ErrorCode::VaultAmbiguous,
+        ErrorCode::PathOutsideVault,
+        ErrorCode::FileNotFound,
         ErrorCode::InvalidArgument,
         ErrorCode::Io,
     ];

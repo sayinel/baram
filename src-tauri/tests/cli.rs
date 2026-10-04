@@ -182,6 +182,10 @@ fn json(text: &str) -> serde_json::Value {
     serde_json::from_str(text).unwrap_or_else(|e| panic!("not JSON ({e}): {text:?}"))
 }
 
+fn vault_arg(sb: &Sandbox) -> String {
+    sb.vault.to_string_lossy().into_owned()
+}
+
 // ── the two modes ─────────────────────────────────────────────────────────────────
 
 #[test]
@@ -326,5 +330,117 @@ fn baram_log_sends_diagnostics_to_stderr_and_only_when_asked() {
         loud.stderr.contains("cli: 0 registered roots"),
         "stderr: {}",
         loud.stderr
+    );
+}
+
+// ── read ──────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn read_prints_the_file_as_it_is() {
+    let sb = sandbox();
+    let body = "line one\n\ttabbed \\ back\nno trailing newline";
+    write(&sb.vault, "notes/a.md", body);
+    let vault = vault_arg(&sb);
+    let ran = baram(&sb, &sb.home, &["--vault", &vault, "read", "notes/a.md"]);
+    assert_eq!(ran.code, 0, "stderr: {}", ran.stderr);
+    assert_eq!(ran.stdout, body);
+    assert!(ran.stderr.is_empty(), "stderr: {}", ran.stderr);
+}
+
+#[test]
+fn read_json_is_one_envelope() {
+    let sb = sandbox();
+    write(&sb.vault, "notes/a.md", "hello\n");
+    let vault = vault_arg(&sb);
+    let ran = baram(
+        &sb,
+        &sb.home,
+        &["--json", "--vault", &vault, "read", "notes/a.md"],
+    );
+    assert_eq!(ran.code, 0, "stderr: {}", ran.stderr);
+    // An unregistered path is named after its folder.
+    assert_eq!(
+        json(&ran.stdout),
+        serde_json::json!({
+            "vault": { "name": "vault", "path": vault },
+            "truncated": false,
+            "items": [{ "path": "notes/a.md", "content": "hello\n" }]
+        })
+    );
+}
+
+#[test]
+fn the_vault_comes_from_a_registered_name_or_from_where_we_stand() {
+    let sb = sandbox();
+    write_config(&sb, &[("baram:context", registered(&sb))]);
+    write(&sb.vault, "notes/a.md", "hello\n");
+    let by_name = baram(&sb, &sb.home, &["--vault", "fixture", "read", "notes/a.md"]);
+    assert_eq!((by_name.code, by_name.stdout.as_str()), (0, "hello\n"));
+    // From a subfolder, the path is still relative to the vault ROOT.
+    let by_cwd = baram(&sb, &sb.vault.join("notes"), &["read", "notes/a.md"]);
+    assert_eq!((by_cwd.code, by_cwd.stdout.as_str()), (0, "hello\n"));
+}
+
+#[test]
+fn an_absolute_path_inside_the_vault_is_accepted() {
+    let sb = sandbox();
+    write(&sb.vault, "notes/a.md", "hello\n");
+    let absolute = sb.vault.join("notes/a.md").to_string_lossy().into_owned();
+    let vault = vault_arg(&sb);
+    let ran = baram(&sb, &sb.home, &["--vault", &vault, "read", &absolute]);
+    assert_eq!((ran.code, ran.stdout.as_str()), (0, "hello\n"));
+}
+
+#[test]
+fn a_path_outside_the_vault_is_refused() {
+    let sb = sandbox();
+    write(&sb.home, "secret.md", "secret\n");
+    let absolute = sb.home.join("secret.md").to_string_lossy().into_owned();
+    let vault = vault_arg(&sb);
+    for outside in ["../home/secret.md", absolute.as_str()] {
+        let ran = baram(
+            &sb,
+            &sb.home,
+            &["--json", "--vault", &vault, "read", outside],
+        );
+        assert_eq!(ran.code, 1, "{outside}");
+        assert!(ran.stdout.is_empty(), "{outside}: {}", ran.stdout);
+        assert_eq!(
+            json(&ran.stderr)["error"]["code"],
+            "PATH_OUTSIDE_VAULT",
+            "{outside}"
+        );
+    }
+}
+
+#[test]
+fn a_missing_file_is_file_not_found_on_stderr() {
+    let sb = sandbox();
+    let vault = vault_arg(&sb);
+    let ran = baram(&sb, &sb.home, &["--vault", &vault, "read", "nope.md"]);
+    assert_eq!(ran.code, 1);
+    assert!(ran.stdout.is_empty());
+    assert!(
+        ran.stderr.starts_with("error[FILE_NOT_FOUND]: "),
+        "stderr: {}",
+        ran.stderr
+    );
+}
+
+#[test]
+fn outside_any_vault_the_command_fails_instead_of_guessing() {
+    let sb = sandbox();
+    // A vault IS registered and was active in the app — and still is not used, because
+    // the current directory is not inside it.
+    write_config(&sb, &[("baram:context", registered(&sb))]);
+    write(&sb.vault, "a.md", "x");
+    let ran = baram(&sb, &sb.home, &["--json", "read", "a.md"]);
+    assert_eq!(ran.code, 1);
+    assert!(ran.stdout.is_empty());
+    let error = json(&ran.stderr);
+    assert_eq!(error["error"]["code"], "VAULT_NOT_FOUND");
+    assert_eq!(
+        error["error"]["candidates"].as_array().map(Vec::len),
+        Some(2)
     );
 }

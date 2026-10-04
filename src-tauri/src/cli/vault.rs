@@ -1,8 +1,8 @@
-// §387 Which vault a command reads.
+// §387 Which vault a command reads, and how a path argument maps into it.
 
 use super::error::{Candidate, CliError, ErrorCode};
 use crate::context::manager::resolve_canonical;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RootKind {
@@ -234,6 +234,79 @@ fn from_cwd(cwd: &Path, registered: &[Registered]) -> Result<Vault, CliError> {
         })
 }
 
+/// Folds `.` and `..` without touching the filesystem. `None` when `..` would climb
+/// past the start of the path.
+fn fold(path: &Path) -> Option<PathBuf> {
+    let mut out = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if !out.pop() {
+                    return None;
+                }
+            }
+            other => out.push(other.as_os_str()),
+        }
+    }
+    Some(out)
+}
+
+/// A path argument as an absolute path inside the vault. Relative input is relative to
+/// the VAULT ROOT, not the current directory — the paths a command prints can be passed
+/// straight back in. An absolute input is accepted when it lies inside the vault. The
+/// result may not exist; a caller that needs a file checks for one.
+///
+/// This is a scope rule, not a security boundary: the caller's shell can already read
+/// anything this process can. It keeps an agent inside the vault it was pointed at.
+pub(crate) fn locate(vault: &Vault, input: &str) -> Result<PathBuf, CliError> {
+    let outside = || {
+        CliError::new(
+            ErrorCode::PathOutsideVault,
+            format!("{input} is outside the vault at {}", vault.root.display()),
+        )
+    };
+    let candidate = if Path::new(input).is_absolute() {
+        PathBuf::from(input)
+    } else {
+        // Pushed component by component: a verbatim Windows root (`\\?\C:\…`, what
+        // canonicalize returns there) does not read `/` as a separator.
+        let separators: &[char] = if cfg!(windows) { &['/', '\\'] } else { &['/'] };
+        let mut joined = vault.root.clone();
+        for part in input.split(separators).filter(|part| !part.is_empty()) {
+            joined.push(part);
+        }
+        joined
+    };
+    // `..` is folded BEFORE the filesystem is asked: `resolve_canonical` climbs to an
+    // existing ancestor by file name, and a path that ends in `..` has none.
+    let folded = fold(&candidate).ok_or_else(outside)?;
+    let resolved = resolve_canonical(&folded.to_string_lossy())
+        .map_err(|e| CliError::new(ErrorCode::Io, format!("cannot resolve {input}: {e}")))?;
+    // After canonicalization, so a symlink inside the vault that points out is caught.
+    if !resolved.starts_with(&vault.root) {
+        return Err(outside());
+    }
+    Ok(resolved)
+}
+
+/// `/` between components on every platform.
+pub(crate) fn slashed(path: &Path) -> String {
+    path.components()
+        .map(|c| c.as_os_str().to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+/// A path under the vault as the CLI prints it: relative to the root, `/`-separated.
+/// A path that is not under the root is printed as it is.
+pub(crate) fn relative(vault: &Vault, path: &Path) -> String {
+    match path.strip_prefix(&vault.root) {
+        Ok(rest) => slashed(rest),
+        Err(_) => path.to_string_lossy().into_owned(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -257,6 +330,13 @@ mod tests {
             std::fs::create_dir_all(base.join(dir)).unwrap();
         }
         (temp, base)
+    }
+
+    fn vault_at(root: &Path) -> Vault {
+        Vault {
+            name: "v".into(),
+            root: root.to_path_buf(),
+        }
     }
 
     // ── --vault <path> ────────────────────────────────────────────────────────────
@@ -479,5 +559,73 @@ mod tests {
         let error = resolve(None, Ok(&base.join("Vault-secret")), None, &list).unwrap_err();
         assert_eq!(error.code, ErrorCode::VaultNotFound);
         assert_eq!(error.candidates.len(), 1);
+    }
+
+    // ── path arguments ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn a_relative_path_is_relative_to_the_vault_root() {
+        let (_t, base) = tree(&["vault/notes"]);
+        let vault = vault_at(&base.join("vault"));
+        assert_eq!(
+            locate(&vault, "notes/a.md").unwrap(),
+            base.join("vault/notes/a.md")
+        );
+        assert_eq!(
+            locate(&vault, "./notes//a.md").unwrap(),
+            base.join("vault/notes/a.md")
+        );
+    }
+
+    #[test]
+    fn an_absolute_path_inside_the_vault_is_accepted() {
+        let (_t, base) = tree(&["vault/notes"]);
+        let vault = vault_at(&base.join("vault"));
+        let inside = base.join("vault/notes/a.md");
+        assert_eq!(locate(&vault, &inside.to_string_lossy()).unwrap(), inside);
+    }
+
+    #[test]
+    fn climbing_out_is_refused_however_it_is_spelled() {
+        let (_t, base) = tree(&["vault/notes", "other"]);
+        std::fs::write(base.join("other/secret.md"), "x").unwrap();
+        let vault = vault_at(&base.join("vault"));
+        let absolute = base.join("other/secret.md").to_string_lossy().into_owned();
+        for input in [
+            "../other/secret.md",
+            "notes/../../other/secret.md",
+            "nope/../../other/secret.md",
+            absolute.as_str(),
+        ] {
+            let error = locate(&vault, input).unwrap_err();
+            assert_eq!(error.code, ErrorCode::PathOutsideVault, "{input}");
+        }
+        // The mechanism works at all: a `..` that stays inside is fine.
+        assert_eq!(
+            locate(&vault, "notes/../notes/a.md").unwrap(),
+            base.join("vault/notes/a.md")
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlink_that_leaves_the_vault_is_refused() {
+        let (_t, base) = tree(&["vault", "other"]);
+        std::fs::write(base.join("other/secret.md"), "x").unwrap();
+        std::os::unix::fs::symlink(base.join("other"), base.join("vault/link")).unwrap();
+        let vault = vault_at(&base.join("vault"));
+        let error = locate(&vault, "link/secret.md").unwrap_err();
+        assert_eq!(error.code, ErrorCode::PathOutsideVault);
+    }
+
+    #[test]
+    fn printed_paths_are_relative_and_slash_separated() {
+        let (_t, base) = tree(&["vault/notes"]);
+        let vault = vault_at(&base.join("vault"));
+        assert_eq!(
+            relative(&vault, &base.join("vault/notes/a.md")),
+            "notes/a.md"
+        );
+        assert_eq!(slashed(Path::new("a").join("b").as_path()), "a/b");
     }
 }

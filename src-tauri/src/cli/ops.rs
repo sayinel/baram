@@ -2,9 +2,11 @@
 // nothing itself, so the same functions can back another front end (MCP — spec 0066 D9).
 
 use super::app_config::AppConfig;
+use super::error::{CliError, ErrorCode};
 use super::output::{Envelope, Row, VaultInfo};
-use super::vault::{RootKind, Vault};
+use super::vault::{self, RootKind, Vault};
 use crate::context::manager::resolve_canonical;
+use crate::fs::FsError;
 use serde::Serialize;
 use std::path::Path;
 
@@ -80,6 +82,41 @@ pub(crate) fn vaults(config: &AppConfig, current: Option<&Vault>) -> Envelope<Va
         truncated: false,
         items,
     }
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct FileContent {
+    pub path: String,
+    pub content: String,
+}
+
+/// `baram read <path>` — one file, as it is on disk.
+pub(crate) async fn read(vault: &Vault, path: &str) -> Result<Envelope<FileContent>, CliError> {
+    let missing = || CliError::new(ErrorCode::FileNotFound, format!("no file at {path}"));
+    let file = vault::locate(vault, path)?;
+    if !file.is_file() {
+        return Err(missing());
+    }
+    let content = crate::fs::read_file(&file.to_string_lossy())
+        .await
+        .map_err(|error| match error {
+            FsError::NotFound(_) => missing(),
+            // The io::Error's own text is the OS's or std's, in English, and carries no
+            // path ("Permission denied (os error 13)", "stream did not contain valid
+            // UTF-8"). The enum's Display is not used: its wording is Korean.
+            FsError::ReadError(source) => {
+                CliError::new(ErrorCode::Io, format!("cannot read {path}: {source}"))
+            }
+            _ => CliError::new(ErrorCode::Io, format!("cannot read {path}")),
+        })?;
+    Ok(Envelope {
+        vault: Some(vault_info(vault)),
+        truncated: false,
+        items: vec![FileContent {
+            path: vault::relative(vault, &file),
+            content,
+        }],
+    })
 }
 
 #[cfg(test)]

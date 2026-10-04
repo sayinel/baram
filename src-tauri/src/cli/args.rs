@@ -26,4 +26,6 @@ pub(crate) struct Cli {
 pub(crate) enum Command {
     /// List the vaults and folders registered in the app.
     Vaults,
+    /// Print a file. PATH is relative to the vault root.
+    Read { path: String },
 }

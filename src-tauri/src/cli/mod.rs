@@ -15,6 +15,7 @@ use error::{CliError, ErrorCode};
 use std::ffi::OsString;
 use std::io::Write;
 use std::path::Path;
+use vault::Vault;
 
 /// Which of its two modes the binary runs in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -161,8 +162,8 @@ async fn execute(cli: Cli, out: &mut dyn Write) -> Result<(), Failure> {
     }
     log::debug!("cli: {} registered roots", config.registered.len());
     // Kept as a Result: a command that needs the vault starts its arm with
-    // `let vault = resolved?;`. `vaults` is what a caller runs to FIND a vault, so it
-    // does not fail when none resolves (spec 0066 §3.3-4).
+    // `let vault = required(resolved)?;`. `vaults` is what a caller runs to FIND a vault,
+    // so it does not fail when none resolves (spec 0066 §3.3-4).
     let resolved = vault::resolve(
         cli.vault.as_deref(),
         cwd.as_deref(),
@@ -174,8 +175,27 @@ async fn execute(cli: Cli, out: &mut dyn Write) -> Result<(), Failure> {
             let envelope = ops::vaults(&config, resolved.as_ref().ok());
             output::write_envelope(out, &envelope, cli.json)?;
         }
+        Command::Read { path } => {
+            let vault = required(resolved)?;
+            let envelope = ops::read(&vault, &path).await?;
+            if cli.json {
+                output::write_json(out, &envelope)?;
+            } else {
+                // Text mode prints the file itself: no escaping, no added newline.
+                for item in &envelope.items {
+                    out.write_all(item.content.as_bytes())?;
+                }
+            }
+        }
     }
     Ok(())
+}
+
+/// The vault, for a command that cannot run without one.
+fn required(resolved: Result<Vault, CliError>) -> Result<Vault, CliError> {
+    let vault = resolved?;
+    log::debug!("cli: vault {} ({})", vault.name, vault.root.display());
+    Ok(vault)
 }
 
 /// `BARAM_LOG=1` sends the crate's `log` records to stderr. Never the app's log file:
