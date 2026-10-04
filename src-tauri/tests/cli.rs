@@ -176,12 +176,40 @@ fn wait_for_exit(child: &mut Child, label: &str) -> ExitStatus {
             return status;
         }
         if started.elapsed() > TIMEOUT {
-            let _ = child.kill();
-            let _ = child.wait();
-            panic!("`baram {label}` did not exit within {TIMEOUT:?} — was it routed to the GUI?");
+            kill_and_panic(
+                child,
+                &format!("`baram {label}` did not exit within {TIMEOUT:?}"),
+            );
         }
         std::thread::sleep(Duration::from_millis(20));
     }
+}
+
+/// Reads one byte of `child`'s stdout and closes the pipe. The read waits on the child, so
+/// it runs on a thread: a child that never writes is killed once `TIMEOUT` is up instead of
+/// being waited on for good. `label` names the run in that failure.
+fn read_one_byte_and_close(child: &mut Child, label: &str) -> u8 {
+    let mut stdout = child.stdout.take().expect("stdout");
+    let (sent, received) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut byte = [0u8; 1];
+        let read = stdout.read_exact(&mut byte).map(|()| byte[0]);
+        drop(stdout);
+        let _ = sent.send(read);
+    });
+    match received.recv_timeout(TIMEOUT) {
+        Ok(read) => read.expect("one byte"),
+        Err(_) => kill_and_panic(
+            child,
+            &format!("`baram {label}` wrote no byte within {TIMEOUT:?}"),
+        ),
+    }
+}
+
+fn kill_and_panic(child: &mut Child, message: &str) -> ! {
+    let _ = child.kill();
+    let _ = child.wait();
+    panic!("{message}");
 }
 
 fn json(text: &str) -> serde_json::Value {
@@ -1429,7 +1457,10 @@ fn the_nine_commands_are_the_ones_the_binary_knows() {
 }
 
 /// Every path under `root` — hidden ones included — with its size and modification
-/// time. What "the CLI wrote nothing" is measured against.
+/// time. What "the CLI wrote nothing" is measured against. A directory's entry carries
+/// its own modification time, which a child created or removed moves, so a file written
+/// and deleted again leaves a trace there. `root`'s own entry is not recorded: the root
+/// belongs one level above whatever must stay untouched.
 fn snapshot(root: &Path) -> Vec<(PathBuf, u64, std::time::SystemTime)> {
     let mut seen = Vec::new();
     let mut stack = vec![root.to_path_buf()];
@@ -1447,12 +1478,34 @@ fn snapshot(root: &Path) -> Vec<(PathBuf, u64, std::time::SystemTime)> {
     seen
 }
 
+/// The CLI reads: it writes nothing into the vault (`.baram/` included), nothing to the
+/// app's `config.json` and nothing to the app's log files (spec 0066 §3.7). The snapshot
+/// root is the sandbox, which holds the vault and the HOME and XDG_DATA_HOME the config
+/// is read from; tauri's `app_log_dir` is under HOME on macOS (`Library/Logs/<id>`) and
+/// under XDG_DATA_HOME on Linux (`<id>/logs`).
 #[test]
-fn no_command_writes_anything_into_the_vault() {
+fn no_command_writes_into_the_vault_the_config_or_the_logs() {
     let sb = sandbox();
     contract_vault(&sb);
-    let before = snapshot(&sb.vault);
-    assert!(before.len() >= 12, "the fixture is there: {before:?}");
+    let before = snapshot(&sb.base);
+    let in_vault = before
+        .iter()
+        .filter(|(path, ..)| path.starts_with(&sb.vault) && *path != sb.vault)
+        .count();
+    assert!(in_vault >= 12, "the fixture is there: {before:?}");
+    let configs = [
+        sb.home
+            .join("Library/Application Support/com.inel.baram/config.json"),
+        sb.xdg.join("com.inel.baram/config.json"),
+    ];
+    for config in &configs {
+        assert!(
+            before.iter().any(|(path, ..)| path == config),
+            "{config:?} is in the snapshot: {before:?}"
+        );
+    }
+    // Whole-second modification times cannot show a rewrite made in the fixture's second.
+    std::thread::sleep(Duration::from_millis(1100));
 
     for command in NINE {
         for json in [false, true] {
@@ -1462,25 +1515,46 @@ fn no_command_writes_anything_into_the_vault() {
             assert_eq!(ran.code, 0, "{command:?}: {}", ran.stderr);
         }
     }
-    assert_eq!(snapshot(&sb.vault), before, "a command changed the vault");
-
-    // The snapshot is able to see a write: one new file, and one rewritten in place.
-    write(&sb.vault, ".baram/config.json", "{}");
-    let grown = snapshot(&sb.vault);
-    assert_ne!(grown, before, "a new file must show");
-    std::thread::sleep(Duration::from_millis(1100));
-    write(&sb.vault, "docs/guide.md", "needle in the guide\n");
-    assert_ne!(
-        snapshot(&sb.vault),
-        grown,
-        "a rewrite with identical bytes must show"
+    assert_eq!(
+        snapshot(&sb.base),
+        before,
+        "a command wrote into the vault, the app's config or its logs"
     );
+
+    // The snapshot is able to see each kind of write. Each is compared with the snapshot
+    // before it; the targets that already exist (the vault root, `docs/guide.md`, the
+    // `config.json` files) were last written before the sleep above.
+    let mut seen = before;
+    let mut shows = |what: &str, change: &dyn Fn()| {
+        change();
+        let now = snapshot(&sb.base);
+        assert_ne!(now, seen, "{what} must show");
+        seen = now;
+    };
+    shows("a file created and removed at the vault root", &|| {
+        let temp = sb.vault.join(".lock");
+        std::fs::write(&temp, "x").expect("write");
+        std::fs::remove_file(&temp).expect("remove");
+    });
+    shows("a new file", &|| {
+        write(&sb.vault, ".baram/config.json", "{}")
+    });
+    shows("a rewrite of a note with identical bytes", &|| {
+        write(&sb.vault, "docs/guide.md", "needle in the guide\n");
+    });
+    shows("a rewrite of config.json with identical bytes", &|| {
+        for config in &configs {
+            let text = std::fs::read(config).expect("read");
+            std::fs::write(config, text).expect("write");
+        }
+    });
 }
 
 /// The reader takes one byte and closes. More than a pipe holds is left unwritten (64 KiB:
 /// pipe(7) for Linux, and a non-blocking fill took 65536 bytes on macOS), so the child is
 /// blocked in `write` when the pipe closes and MUST meet the broken pipe — a smaller file
-/// would be fully written before the close and prove nothing.
+/// would be fully written before the close and prove nothing. Text mode writes the file's
+/// own bytes and `--json` writes the envelope through another writer, so both are run.
 #[test]
 fn a_reader_that_stops_early_is_not_an_error() {
     let sb = sandbox();
@@ -1490,26 +1564,31 @@ fn a_reader_that_stops_early_is_not_an_error() {
     write(&sb.vault, "big.md", &body);
     let vault = vault_arg(&sb);
 
-    let mut child = isolated(&sb, env!("CARGO_BIN_EXE_baram"))
-        .args(["--vault", vault.as_str(), "read", "big.md"])
-        .current_dir(&sb.home)
-        .spawn()
-        .expect("spawn baram");
-    let mut stdout = child.stdout.take().expect("stdout");
-    let mut first = [0u8; 1];
-    stdout.read_exact(&mut first).expect("one byte");
-    assert_eq!(first[0], b'0');
-    drop(stdout);
+    for (flags, first) in [(Vec::new(), b'0'), (vec!["--json"], b'{')] {
+        let mut args = flags;
+        args.extend(["--vault", vault.as_str(), "read", "big.md"]);
+        let label = format!("{} (reader closed early)", args.join(" "));
+        let mut child = isolated(&sb, env!("CARGO_BIN_EXE_baram"))
+            .args(&args)
+            .current_dir(&sb.home)
+            .spawn()
+            .expect("spawn baram");
+        assert_eq!(
+            read_one_byte_and_close(&mut child, &label),
+            first,
+            "{label}"
+        );
 
-    let status = wait_for_exit(&mut child, "read big.md (reader closed early)");
-    let mut stderr = String::new();
-    child
-        .stderr
-        .take()
-        .expect("stderr")
-        .read_to_string(&mut stderr)
-        .expect("read stderr");
-    // Exit 0, and not by a signal: `code()` is None when a signal ended the process.
-    assert_eq!(status.code(), Some(0), "stderr: {stderr}");
-    assert!(stderr.is_empty(), "stderr: {stderr}");
+        let status = wait_for_exit(&mut child, &label);
+        let mut stderr = String::new();
+        child
+            .stderr
+            .take()
+            .expect("stderr")
+            .read_to_string(&mut stderr)
+            .expect("read stderr");
+        // Exit 0, and not by a signal: `code()` is None when a signal ended the process.
+        assert_eq!(status.code(), Some(0), "{label}: stderr: {stderr}");
+        assert!(stderr.is_empty(), "{label}: stderr: {stderr}");
+    }
 }
