@@ -31,7 +31,12 @@ export interface SettledRead {
   text: string;
 }
 
-const SETTLE_ATTEMPTS = 3;
+/**
+ * Reads before giving up. One write can surface as several events (macOS sends
+ * `file:created` for the tmp+rename and `file:changed` for the content), each
+ * crossing at most one read; five reads let a burst of four settle.
+ */
+const SETTLE_ATTEMPTS = 5;
 
 let current: ConflictOp | null = null;
 let lastId = 0;
@@ -75,11 +80,11 @@ export function liveness(op: ConflictOp): Liveness {
 }
 
 /**
- * Read the op's file until the read can be trusted to be current: no watcher
- * arrival for the tab during it (`conflictArrival` — every event counts, also
- * the ones the queue folds away), or the same text as the read before it. The
- * second rule lets the several events of ONE write (macOS sends created and
- * changed) settle instead of reading as instability. Gives up after three reads.
+ * Read the op's file until a read had no watcher arrival for the tab while it
+ * ran (`conflictArrival` — every event counts, also the ones the queue folds
+ * away). Matching text is no evidence: a read crossed by a different write can
+ * return the same bytes as the read before it. The events of ONE write settle
+ * because a later read sees no new arrival. Gives up after `SETTLE_ATTEMPTS`.
  */
 export async function readSettled(
   op: ConflictOp,
@@ -87,7 +92,6 @@ export async function readSettled(
   | SettledRead
   | { code: "path-changed" | "read-failed" | "tab-gone" | "unstable" }
 > {
-  let previous: null | string = null;
   for (let attempt = 0; attempt < SETTLE_ATTEMPTS; attempt++) {
     const startedAt = Date.now();
     const arrival = conflictArrival(op.tabId);
@@ -99,10 +103,7 @@ export async function readSettled(
     }
     const gone = liveness(op);
     if (gone) return { code: gone };
-    if (conflictArrival(op.tabId) === arrival || text === previous) {
-      return { startedAt, text };
-    }
-    previous = text;
+    if (conflictArrival(op.tabId) === arrival) return { startedAt, text };
   }
   return { code: "unstable" };
 }

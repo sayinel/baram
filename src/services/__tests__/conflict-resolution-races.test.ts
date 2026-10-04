@@ -417,7 +417,7 @@ describe("§3.6 a write is acknowledged only once the file is seen to hold it", 
   });
 
   it("a file that keeps changing during the check gives up as unstable", async () => {
-    // 이것을 실패시키는 것: `readSettled` 의 다시 읽기 상한 변경(끝나지 않거나 횟수가 달라진다) — 상한은 3 회.
+    // 이것을 실패시키는 것: `readSettled` 의 다시 읽기 상한 변경(끝나지 않거나 횟수가 달라진다) — 상한은 5 회.
     await mountWithConflictOnA();
     const p = await prepared();
     let reads = 0;
@@ -430,7 +430,7 @@ describe("§3.6 a write is acknowledged only once the file is seen to hold it", 
     });
 
     expect((await applyConflictMerge(p, MERGED)).code).toBe("unstable");
-    expect(reads).toBe(1 + 3);
+    expect(reads).toBe(1 + 5);
     expect(guard(A)).toBe(true);
   });
 
@@ -452,7 +452,7 @@ describe("§3.6 a write is acknowledged only once the file is seen to hold it", 
   });
 
   it("Reload gives up as unstable when every read races an event", async () => {
-    // 이것을 실패시키는 것: `readSettled` 의 다시 읽기 상한 변경(끝나지 않거나 횟수가 달라진다) — 상한은 3 회.
+    // 이것을 실패시키는 것: `readSettled` 의 다시 읽기 상한 변경(끝나지 않거나 횟수가 달라진다) — 상한은 5 회.
     await mountWithConflictOnA();
     let reads = 0;
     io.readFile.mockImplementation(async () => {
@@ -463,7 +463,7 @@ describe("§3.6 a write is acknowledged only once the file is seen to hold it", 
     });
 
     expect((await reloadForConflict(entryOf("a"))).code).toBe("unstable");
-    expect(reads).toBe(3);
+    expect(reads).toBe(5);
     expect(isDirty("a")).toBe(true);
   });
 });
@@ -532,20 +532,45 @@ describe("§3.6 every watcher arrival counts, not only the ones that change the 
     expect(useFileStore.getState().openFiles.get(A)).toBe("EXT2\n");
   });
 
-  it("duplicate events of our own write during every check still let it succeed", async () => {
-    // 같은 쓰기 하나가 이벤트를 여러 번 낸다(macOS 의 created·changed). 내용이 같은 두 연속
-    // 읽기는 받아들인다. 이것을 실패시키는 것: 연속 두 읽기 일치로 받아들이는 갈래 제거(매 읽기에
-    // 이벤트가 끼어 `unstable` 이 된다).
+  it("a burst of duplicate events of our own write settles once a read sees none", async () => {
+    // 같은 쓰기 하나가 이벤트를 여러 번 낸다(macOS 의 created·changed). 처음 두 사후 읽기에
+    // 이벤트가 끼고 셋째에는 없다 — 셋째 읽기가 받아들여진다.
+    // 이것을 실패시키는 것: 다시 읽기 상한을 2 로(버스트가 가라앉기 전에 `unstable`).
     await mountWithConflictOnA();
     const p = await prepared();
     let reads = 0;
     io.readFile.mockImplementation(async (path: string) => {
       reads += 1;
-      if (reads > 1) event(A, 2000);
+      if (reads === 2 || reads === 3) event(A, 2000);
       return disk.get(path)!;
     });
 
     expect((await applyConflictMerge(p, MERGED)).code).toBe("applied");
     expect(queueIds()).toEqual([]);
+  });
+
+  it("Reload does not take a read that a different write crossed, even when it matches the read before", async () => {
+    // 읽기 1 은 E1 을 찍고 늦게 온 중복 이벤트가 다시 읽게 한다. 읽기 2 도 E1 을 찍는데, 그 직후
+    // 다른 쓰기가 E2 를 깔고 이벤트가 읽기 2 가 돌아오기 전에 도착한다.
+    // 이것을 실패시키는 것: "앞 읽기와 같으면 받아들인다" 갈래(E1 을 반영하고 가드를 풀고 E2 의
+    // 충돌을 지운다).
+    await mountWithConflictOnA();
+    let reads = 0;
+    io.readFile.mockImplementation(async () => {
+      reads += 1;
+      if (reads === 1) {
+        event(A, 2000); // 중복
+        return "EXT1\n";
+      }
+      if (reads === 2) {
+        disk.set(A, "EXT2\n");
+        event(A, 2000); // 진짜 다른 쓰기, 같은 mtime
+        return "EXT1\n";
+      }
+      return disk.get(A)!;
+    });
+
+    expect((await reloadForConflict(entryOf("a"))).code).toBe("reloaded");
+    expect(useFileStore.getState().openFiles.get(A)).toBe("EXT2\n");
   });
 });

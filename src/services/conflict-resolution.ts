@@ -278,8 +278,7 @@ function requeue(op: ConflictOp, base: string): void {
 
 /**
  * After a write: read the file until the read is settled (`readSettled` — no
- * event arrived during it, or it matches the read before), and acknowledge only
- * when it holds `expected`.
+ * event arrived during it), and acknowledge only when it holds `expected`.
  *
  * `prepareAdopt` runs in the synchronous section before anything is
  * acknowledged; it returns a failure to stop there, or the adopt step. Then, in
