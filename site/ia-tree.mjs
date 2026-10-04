@@ -106,6 +106,7 @@ export const TITLES = {
   "versioning/git": "Git integration",
   "versioning/file-snapshots": "Version history",
   "export": "Export",
+  "command-line": "Command line",
   "customization/settings-and-themes": "Settings and appearance",
   "customization/themes": "Themes",
   "customization/creating-themes": "Creating themes",
@@ -242,6 +243,8 @@ export const PAGES = [
 
   { slug: "export", src: UG, items: [
     { h2: "Export" }, "HTML", "PDF", "Notion", "Pandoc Formats (Word, LaTeX, EPUB, RST)" ] },
+  // 이주 뒤에 새로 쓴 페이지(스펙 0066 §6) — 원문이 없으므로 src·items 이력 필드도 없다.
+  { slug: "command-line" },
 
   // ── 사용자 설정
   { slug: "customization/settings-and-themes", src: UG, items: [
