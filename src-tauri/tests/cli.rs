@@ -776,6 +776,42 @@ fn a_bad_pattern_is_one_error_line_in_text_mode() {
     assert!(message.contains('\n'), "message: {message:?}");
 }
 
+/// One note whose occurrences each fall to a different flag: `needle` (kept by both),
+/// `Needle` and `NEEDLE` (dropped by --case-sensitive), and `needles` three times (dropped
+/// by --word). The four counts differ pairwise, so exchanging the two flags, or losing
+/// either on the way to the search, changes at least one of them.
+#[test]
+fn case_sensitive_and_word_each_narrow_the_search_their_own_way() {
+    let sb = sandbox();
+    write(
+        &sb.vault,
+        "case.md",
+        "needle on its own\nNeedle, then NEEDLE\nneedles, needles and more needles\n",
+    );
+    let vault = vault_arg(&sb);
+    for (flags, query, lines) in [
+        (&[][..], "needle", &[1_u64, 2, 2, 3, 3, 3][..]),
+        (&["--case-sensitive"][..], "needle", &[1_u64, 3, 3, 3][..]),
+        (&["--word"][..], "needle", &[1_u64, 2, 2][..]),
+        (&["--case-sensitive"][..], "Needle", &[2_u64][..]),
+    ] {
+        let mut args = vec!["--json", "--vault", vault.as_str(), "search", query];
+        args.extend_from_slice(flags);
+        let ran = baram(&sb, &sb.home, &args);
+        assert_eq!(ran.code, 0, "{flags:?} {query}: stderr: {}", ran.stderr);
+        let found: Vec<u64> = json(&ran.stdout)["items"]
+            .as_array()
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(|item| item["line"].as_u64())
+                    .collect()
+            })
+            .unwrap_or_default();
+        assert_eq!(found, lines, "{flags:?} {query}");
+    }
+}
+
 /// `v/locked/sub/a.md` exists; `v/locked` cannot be entered, so `--folder locked/sub`
 /// names a folder that is there and cannot be told so. Same reasoning as for `read`: the
 /// reason is the OS's, and the exit code says the run failed.
