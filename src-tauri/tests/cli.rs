@@ -8,7 +8,7 @@
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 
 /// Longer than any command here takes, far shorter than a window opened by mistake
@@ -159,10 +159,21 @@ fn finish(mut command: Command, label: &str) -> Ran {
         let _ = stderr.read_to_string(&mut text);
         text
     });
+    let status = wait_for_exit(&mut child, label);
+    Ran {
+        code: status.code().expect("exit code"),
+        stdout: out.join().expect("stdout thread"),
+        stderr: err.join().expect("stderr thread"),
+    }
+}
+
+/// Polls `child` until it exits and kills it when it outlives `TIMEOUT`. `label` names
+/// the run in that failure.
+fn wait_for_exit(child: &mut Child, label: &str) -> ExitStatus {
     let started = Instant::now();
-    let status = loop {
+    loop {
         if let Some(status) = child.try_wait().expect("try_wait") {
-            break status;
+            return status;
         }
         if started.elapsed() > TIMEOUT {
             let _ = child.kill();
@@ -170,11 +181,6 @@ fn finish(mut command: Command, label: &str) -> Ran {
             panic!("`baram {label}` did not exit within {TIMEOUT:?} — was it routed to the GUI?");
         }
         std::thread::sleep(Duration::from_millis(20));
-    };
-    Ran {
-        code: status.code().expect("exit code"),
-        stdout: out.join().expect("stdout thread"),
-        stderr: err.join().expect("stderr thread"),
     }
 }
 
@@ -1257,4 +1263,253 @@ fn links_and_backlinks_of_a_file_outside_the_vault_are_refused() {
         assert_eq!(ran.code, 0, "{command}: stderr: {}", ran.stderr);
         assert!(!ran.stdout.is_empty(), "{command}");
     }
+}
+
+// ── the contract, end to end ──────────────────────────────────────────────────────
+
+/// One vault every command is run over: tags, tasks in each state, links that resolve,
+/// dangle and leave the vault, a folder the app excludes from tasks, and files the walk
+/// must never report (a hidden folder, a non-markdown file).
+fn contract_vault(sb: &Sandbox) {
+    write(
+        &sb.vault,
+        "notes/alpha.md",
+        "---\ntags: [project]\n---\n# Alpha\n\nSee [[beta]] and [[missing-note]] and [[journal::remote]].\n- [ ] write the report #work\n- [x] file the receipt\n- [/] review the draft #work\n",
+    );
+    write(
+        &sb.vault,
+        "notes/beta.md",
+        "# Beta\n\nBack to [[alpha]].\nSee ((alpha#^blk1)) too.\n- [-] dropped idea\n",
+    );
+    write(&sb.vault, "docs/guide.md", "needle in the guide\n");
+    write(&sb.vault, "docs-old/a.md", "needle one\nneedle two\n");
+    write(&sb.vault, "archive/old.md", "- [ ] archived task\n");
+    write(
+        &sb.vault,
+        ".obsidian/app.md",
+        "hidden needle #secret\n- [ ] hidden task\n",
+    );
+    write(&sb.vault, "plain.txt", "needle in a text file\n");
+    write_config(
+        sb,
+        &[
+            ("baram:context", registered(sb)),
+            ("baram:settings", settings()),
+        ],
+    );
+}
+
+/// The nine commands, as they are run in the contract tests.
+const NINE: &[&[&str]] = &[
+    &["vaults"],
+    &["files"],
+    &["read", "notes/beta.md"],
+    &["search", "needle"],
+    &["tags"],
+    &["tag", "work"],
+    &["tasks"],
+    &["backlinks", "notes/alpha.md"],
+    &["links", "notes/alpha.md"],
+];
+
+fn run_json(sb: &Sandbox, command: &[&str]) -> serde_json::Value {
+    let mut args = vec!["--json"];
+    args.extend_from_slice(command);
+    let ran = baram(sb, &sb.vault, &args);
+    assert_eq!(ran.code, 0, "{command:?}: {}", ran.stderr);
+    assert!(ran.stderr.is_empty(), "{command:?}: {}", ran.stderr);
+    json(&ran.stdout)
+}
+
+/// `Value` equality compares objects key by key, so a key the output leaves out (or adds)
+/// makes the two differ — a field that is `null` here and absent there is caught.
+#[test]
+fn every_command_prints_the_envelope_it_promises() {
+    let sb = sandbox();
+    contract_vault(&sb);
+    let vault = serde_json::json!({ "name": "Fixture", "path": sb.vault });
+
+    let expected: Vec<serde_json::Value> = vec![
+        // vaults
+        serde_json::json!([
+            { "name": "Fixture", "path": sb.vault, "alias": "fx", "type": "vault",
+              "current": true, "active": false, "exists": true },
+            { "name": "Gone", "path": sb.base.join("gone"), "alias": null, "type": "folder",
+              "current": false, "active": true, "exists": false }
+        ]),
+        // files
+        serde_json::json!([
+            { "path": "archive/old.md" },
+            { "path": "docs-old/a.md" },
+            { "path": "docs/guide.md" },
+            { "path": "notes/alpha.md" },
+            { "path": "notes/beta.md" }
+        ]),
+        // read notes/beta.md
+        serde_json::json!([{
+            "path": "notes/beta.md",
+            "content": "# Beta\n\nBack to [[alpha]].\nSee ((alpha#^blk1)) too.\n- [-] dropped idea\n"
+        }]),
+        // search needle
+        serde_json::json!([
+            { "path": "docs-old/a.md", "line": 1, "snippet": "needle one" },
+            { "path": "docs-old/a.md", "line": 2, "snippet": "needle two" },
+            { "path": "docs/guide.md", "line": 1, "snippet": "needle in the guide" }
+        ]),
+        // tags
+        serde_json::json!([
+            { "tag": "work", "count": 2 },
+            { "tag": "project", "count": 1 }
+        ]),
+        // tag work
+        serde_json::json!([{ "path": "notes/alpha.md" }]),
+        // tasks (open, `archive/` excluded by the app's settings)
+        serde_json::json!([
+            { "path": "notes/alpha.md", "line": 7, "state": "todo",
+              "text": "write the report #work", "priority": 0,
+              "created": null, "start": null, "scheduled": null, "due": null,
+              "done": null, "cancelled": null, "recurrence": null,
+              "tags": ["work"], "links": [] },
+            { "path": "notes/alpha.md", "line": 9, "state": "doing",
+              "text": "review the draft #work", "priority": 0,
+              "created": null, "start": null, "scheduled": null, "due": null,
+              "done": null, "cancelled": null, "recurrence": null,
+              "tags": ["work"], "links": [] }
+        ]),
+        // backlinks notes/alpha.md
+        serde_json::json!([
+            { "path": "notes/beta.md", "line": 3, "type": "wikilink",
+              "context": "Back to [[alpha]].", "blockId": null },
+            { "path": "notes/beta.md", "line": 4, "type": "blockRef",
+              "context": "See ((alpha#^blk1)) too.", "blockId": "blk1" }
+        ]),
+        // links notes/alpha.md
+        serde_json::json!([
+            { "line": 6, "type": "wikilink", "target": "beta", "blockId": null,
+              "resolution": "resolved", "path": "notes/beta.md", "vault": null },
+            { "line": 6, "type": "wikilink", "target": "missing-note", "blockId": null,
+              "resolution": "unresolved", "path": null, "vault": null },
+            { "line": 6, "type": "wikilink", "target": "remote", "blockId": null,
+              "resolution": "otherVault", "path": null, "vault": "journal" }
+        ]),
+    ];
+    assert_eq!(NINE.len(), expected.len());
+
+    for (command, items) in NINE.iter().zip(expected) {
+        assert_eq!(
+            run_json(&sb, command),
+            serde_json::json!({ "vault": vault, "truncated": false, "items": items }),
+            "{command:?}"
+        );
+    }
+}
+
+/// `clap` knows exactly the nine commands this file exercises — a tenth added to the
+/// grammar without a contract here fails this test.
+#[test]
+fn the_nine_commands_are_the_ones_the_binary_knows() {
+    let sb = sandbox();
+    let help = baram(&sb, &sb.home, &["--help"]);
+    assert_eq!(help.code, 0);
+    // Under `Commands:` each command is a line that opens with two spaces; the block ends
+    // at the next blank line.
+    let mut listed: Vec<&str> = help
+        .stdout
+        .lines()
+        .skip_while(|line| !line.starts_with("Commands:"))
+        .skip(1)
+        .take_while(|line| line.starts_with("  "))
+        .filter_map(|line| line.split_whitespace().next())
+        .filter(|name| *name != "help")
+        .collect();
+    let mut tested: Vec<&str> = NINE.iter().map(|command| command[0]).collect();
+    listed.sort_unstable();
+    tested.sort_unstable();
+    assert_eq!(listed, tested, "help printed: {}", help.stdout);
+}
+
+/// Every path under `root` — hidden ones included — with its size and modification
+/// time. What "the CLI wrote nothing" is measured against.
+fn snapshot(root: &Path) -> Vec<(PathBuf, u64, std::time::SystemTime)> {
+    let mut seen = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(&dir).expect("read_dir") {
+            let entry = entry.expect("entry");
+            let meta = entry.metadata().expect("metadata");
+            seen.push((entry.path(), meta.len(), meta.modified().expect("mtime")));
+            if meta.is_dir() {
+                stack.push(entry.path());
+            }
+        }
+    }
+    seen.sort();
+    seen
+}
+
+#[test]
+fn no_command_writes_anything_into_the_vault() {
+    let sb = sandbox();
+    contract_vault(&sb);
+    let before = snapshot(&sb.vault);
+    assert!(before.len() >= 12, "the fixture is there: {before:?}");
+
+    for command in NINE {
+        for json in [false, true] {
+            let mut args: Vec<&str> = if json { vec!["--json"] } else { Vec::new() };
+            args.extend_from_slice(command);
+            let ran = baram(&sb, &sb.vault, &args);
+            assert_eq!(ran.code, 0, "{command:?}: {}", ran.stderr);
+        }
+    }
+    assert_eq!(snapshot(&sb.vault), before, "a command changed the vault");
+
+    // The snapshot is able to see a write: one new file, and one rewritten in place.
+    write(&sb.vault, ".baram/config.json", "{}");
+    let grown = snapshot(&sb.vault);
+    assert_ne!(grown, before, "a new file must show");
+    std::thread::sleep(Duration::from_millis(1100));
+    write(&sb.vault, "docs/guide.md", "needle in the guide\n");
+    assert_ne!(
+        snapshot(&sb.vault),
+        grown,
+        "a rewrite with identical bytes must show"
+    );
+}
+
+/// The reader takes one byte and closes. More than a pipe holds is left unwritten (64 KiB:
+/// pipe(7) for Linux, and a non-blocking fill took 65536 bytes on macOS), so the child is
+/// blocked in `write` when the pipe closes and MUST meet the broken pipe — a smaller file
+/// would be fully written before the close and prove nothing.
+#[test]
+fn a_reader_that_stops_early_is_not_an_error() {
+    let sb = sandbox();
+    let line = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde\n";
+    let body = line.repeat(4096); // 256 KiB
+    assert!(body.len() >= 4 * 64 * 1024);
+    write(&sb.vault, "big.md", &body);
+    let vault = vault_arg(&sb);
+
+    let mut child = isolated(&sb, env!("CARGO_BIN_EXE_baram"))
+        .args(["--vault", vault.as_str(), "read", "big.md"])
+        .current_dir(&sb.home)
+        .spawn()
+        .expect("spawn baram");
+    let mut stdout = child.stdout.take().expect("stdout");
+    let mut first = [0u8; 1];
+    stdout.read_exact(&mut first).expect("one byte");
+    assert_eq!(first[0], b'0');
+    drop(stdout);
+
+    let status = wait_for_exit(&mut child, "read big.md (reader closed early)");
+    let mut stderr = String::new();
+    child
+        .stderr
+        .take()
+        .expect("stderr")
+        .read_to_string(&mut stderr)
+        .expect("read stderr");
+    // Exit 0, and not by a signal: `code()` is None when a signal ended the process.
+    assert_eq!(status.code(), Some(0), "stderr: {stderr}");
+    assert!(stderr.is_empty(), "stderr: {stderr}");
 }
