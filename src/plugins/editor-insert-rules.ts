@@ -92,7 +92,7 @@ export function buildInsertion(
     return insertLiteral(tr, input.source, target);
   }
   const fragment = input.fragment;
-  if (isSingleParagraph(fragment)) {
+  if (isInlineParagraph(fragment)) {
     if (!$from.sameParent($to) && !(isParagraph($from) && isParagraph($to))) {
       refuse(
         "cannot-insert-here",
@@ -120,7 +120,17 @@ export function buildInsertion(
   }
   let from = target.from;
   let to = target.to;
-  if ($from.sameParent($to) && from === $from.start() && to === $from.end()) {
+  // Not for one paragraph, which here holds a block node (rule 3 took the all-inline ones).
+  // Widened, the replace has to place that open paragraph between blocks, and for
+  // `x ![a](y.png) z` over an empty paragraph or a paragraph's whole content it threw a
+  // TypeError (final review F1). Unwidened, it is rule 3's replace: the same slice on the
+  // same range.
+  if (
+    !isSingleParagraph(fragment) &&
+    $from.sameParent($to) &&
+    from === $from.start() &&
+    to === $from.end()
+  ) {
     from = $from.before();
     to = $from.after();
   }
@@ -212,10 +222,34 @@ function insertLiteral(
   return tr.insertText(text, target.from, target.to);
 }
 
+/**
+ * Rule 3's result: one paragraph whose children are all inline, so it opens into the target
+ * textblock. One paragraph is not enough. The loader keeps an image that shares a line with
+ * text inside the paragraph — `x ![a](y.png) z` parses to `paragraph[text, image, text]`, the
+ * issue-509 shape `expandMediaAtom` will not reveal — and the image is `group: "block"`.
+ * Opened into a textblock, the replace closed it at the image: in a heading the tail became a
+ * body paragraph, and in a table cell `tr.replace` threw a TypeError with no code (final
+ * review F1). Such a result takes rule 4, which checks the target first. An empty paragraph
+ * (`insertMarkdown("")`) has no children and passes; a hard break is inline.
+ */
+function isInlineParagraph(fragment: Fragment): boolean {
+  if (!isSingleParagraph(fragment)) return false;
+  let inline = true;
+  fragment.firstChild!.forEach((child) => {
+    if (!child.isInline) inline = false;
+  });
+  return inline;
+}
+
 function isParagraph($pos: ResolvedPos): boolean {
   return $pos.parent.type.name === "paragraph";
 }
 
+/**
+ * One paragraph, whatever it holds. Rule 5a on the node path asks only this: a closed
+ * paragraph goes into a cell whole, an image inside it too, and the cell still writes one
+ * line (`| x ![a](y.png) z | d |` loads to that shape and writes back the same).
+ */
 function isSingleParagraph(fragment: Fragment): boolean {
   return (
     fragment.childCount === 1 && fragment.firstChild!.type.name === "paragraph"
