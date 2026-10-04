@@ -9,10 +9,13 @@
 // here when the 3c-2c frames were added.)
 import type {
   AICompleteOptions,
+  EditorRefusalCode,
   InputBoxOptions,
   QuickPickItem,
   QuickPickOptions,
 } from "../types";
+
+import { EDITOR_REFUSAL_CODES } from "../types";
 
 /** Main app → sandbox realm. */
 export type HostToSandbox =
@@ -34,7 +37,10 @@ export type HostToSandbox =
       type: "hostStreamToken";
     }
   | {
-      // §260 3c-2c — the failed answer to a `hostRequest`.
+      // §260 3c-2c — the failed answer to a `hostRequest`. §388 spec 0067 §10 — `code` is an
+      // editor refusal's code; the client keeps it only if `isEditorRefusalCode` accepts it.
+      // Absent for every other failure.
+      code?: string;
       error: string;
       ok: false;
       requestId: string;
@@ -96,8 +102,10 @@ export type SandboxHostRequest =
       type?: "error" | "info" | "warning";
     }
   | {
-      // §260 Phase 4b — plain text at the cursor, one undoable step.
+      // §260 Phase 4b — plain text at the cursor, one undoable step. §388 — or over
+      // `replace`'s range.
       kind: "editor_insert_text";
+      replace?: string;
       text: string;
     }
   | {
@@ -119,7 +127,8 @@ export type SandboxHostRequest =
       // §260 Phase 4b — the selection's POSITIONS answer inline; its text is staged, like
       // the document's. It was assumed "small by nature" until Cmd+A, and this comment
       // still said so after the code stopped agreeing (fixed in 4c) — a stale comment is
-      // how the next reader re-derives the bug.
+      // how the next reader re-derives the bug. §388 — the answer's `ref` rides inline too:
+      // 32 hex digits, also for a bare caret's unstaged answer.
       kind: "editor_get_selection";
     }
   | {
@@ -140,6 +149,13 @@ export type SandboxHostRequest =
       items: QuickPickItem[];
       kind: "prompt_quick_pick";
       opts?: QuickPickOptions;
+    }
+  | {
+      // §388 spec 0067 — parsed markdown over the selection or `replace`'s range. `replace` is
+      // a ref from `editor_get_selection`'s answer.
+      kind: "editor_insert_markdown";
+      markdown: string;
+      replace?: string;
     }
   | { kind: "ai_complete"; opts?: AICompleteOptions; prompt: string }
   | { kind: "ai_list_models" }
@@ -223,3 +239,20 @@ export const PROMPT_LIMITS = {
   /** An input box's initial `value`, and what the user may type. */
   valueChars: 1_000,
 } as const;
+
+/**
+ * §388 spec 0067 §10 — whether a value is one of the published refusal codes. Here, beside the
+ * frame field it judges, because both ends of that field read it: the session before it puts a
+ * thrown `code` on a failure frame, and the sandbox client before it puts a frame's `code` on
+ * the plugin's error. Not in `editor-refusal.ts`: that module imports `plugin-host-registry`,
+ * which imports the editor's Zustand store, and the client's realm (`src/sandbox/sandbox-entry.ts`
+ * and its imports) reaches no store today (plan review m2).
+ */
+export function isEditorRefusalCode(
+  value: unknown,
+): value is EditorRefusalCode {
+  return (
+    typeof value === "string" &&
+    (EDITOR_REFUSAL_CODES as readonly string[]).includes(value)
+  );
+}

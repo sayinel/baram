@@ -5,11 +5,11 @@
 import type {
   AIAPI,
   AIModel,
+  EditorAPI,
   NetworkAPI,
   PluginSettingValue,
   PromptsAPI,
   SandboxContext,
-  SandboxEditorAPI,
   SandboxFilesAPI,
   SandboxSettingsAPI,
   SandboxUIAPI,
@@ -26,6 +26,7 @@ import type { SandboxTransport } from "./transport";
 
 import { logger } from "../../utils/logger";
 import { promptFrameProblem } from "../prompt-shape";
+import { isEditorRefusalCode } from "./protocol";
 
 /**
  * §260 3c-2c — sandbox-side bound on a host-mediated request. Longer than the
@@ -297,7 +298,7 @@ export function startSandboxClient(
     },
   };
 
-  const editor: SandboxEditorAPI = {
+  const editor: EditorAPI = {
     getMarkdown: async () =>
       (await readStaged({ kind: "editor_get_markdown" })).payload,
     // Staged like `getMarkdown`, because Cmd+A makes this a whole-document read too and an
@@ -312,15 +313,32 @@ export function startSandboxClient(
         // ONE place — the side that decided.
         (v) => (v as undefined | { staged?: boolean })?.staged === true,
       );
-      const { from, to } = value as { from: number; to: number };
-      return { from, text: payload, to };
+      // §388 — the ref rides inline with the positions, staged or not.
+      const { from, ref, to } = value as {
+        from: number;
+        ref: string;
+        to: number;
+      };
+      return { from, ref, text: payload, to };
     },
     // §4.8 Staged like `getMarkdown` — see the protocol member for why prose is no smaller
     // a secret than its source.
     getText: async () =>
       (await readStaged({ kind: "editor_get_text" })).payload,
-    insertText: async (text) => {
-      await hostRequest({ kind: "editor_insert_text", text });
+    // §388 — `replace` only when the plugin passed one, so a frame never carries the key empty.
+    insertMarkdown: async (markdown, opts) => {
+      await hostRequest({
+        kind: "editor_insert_markdown",
+        markdown,
+        ...(opts?.replace === undefined ? {} : { replace: opts.replace }),
+      });
+    },
+    insertText: async (text, opts) => {
+      await hostRequest({
+        kind: "editor_insert_text",
+        text,
+        ...(opts?.replace === undefined ? {} : { replace: opts.replace }),
+      });
     },
     setMarkdown: async (markdown) => {
       await hostRequest({ kind: "editor_set_markdown", markdown });
@@ -467,7 +485,7 @@ export function startSandboxClient(
         clearTimeout(p.timer);
         hostPending.delete(m.requestId);
         if (m.ok) p.resolve(m.value);
-        else p.reject(new Error(m.error));
+        else p.reject(refusalFrom(m));
         break;
       }
       case "hostStreamToken": {
@@ -492,4 +510,17 @@ function assertSerializable(value: unknown): void {
       throw new Error("value is not serializable");
     return v;
   });
+}
+
+/**
+ * §388 spec 0067 §10 — the error a failed `hostResponse` rejects with. A code from the
+ * published list is kept as the plugin's `EditorRefusal`; any other code is dropped, because
+ * the list is the contract plugins branch on.
+ */
+function refusalFrom(m: { code?: string; error: string }): Error {
+  const err = new Error(m.error);
+  if (isEditorRefusalCode(m.code)) {
+    Object.assign(err, { code: m.code, name: "EditorRefusal" });
+  }
+  return err;
 }

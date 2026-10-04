@@ -2,7 +2,6 @@
 import type { EditorRefusal, EditorRefusalCode } from "./types";
 
 import { editorRefusalMessage } from "./plugin-host-registry";
-import { EDITOR_REFUSAL_CODES } from "./types";
 
 export class EditorRefusalError extends Error implements EditorRefusal {
   readonly code: EditorRefusalCode;
@@ -11,15 +10,6 @@ export class EditorRefusalError extends Error implements EditorRefusal {
     this.code = code;
     this.name = "EditorRefusal";
   }
-}
-
-export function isEditorRefusalCode(
-  value: unknown,
-): value is EditorRefusalCode {
-  return (
-    typeof value === "string" &&
-    (EDITOR_REFUSAL_CODES as readonly string[]).includes(value)
-  );
 }
 
 /** Throw a coded refusal worded by `editorRefusalMessage` (#322). */

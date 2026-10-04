@@ -60,9 +60,14 @@ export interface Disposable {
  * and the trusted tier keeps the same contract so a plugin can move between them.
  *
  * Refusals of a call to a method reject with an `EditorRefusal` whose `code` says why (spec
- * §10). Two kinds of error carry no `code`: a plugin without an editor capability gets a
- * plain `Error` thrown synchronously when it reads any member of `ctx.editor` (the trusted
- * tier), and an exception from the markdown parser passes through as it is.
+ * §10). A write from an `editor:readonly` plugin is `not-permitted` in both tiers. A plugin
+ * with no editor capability at all is refused differently per tier: the sandboxed tier
+ * rejects each call with `not-permitted`, while the trusted tier throws a plain `Error`,
+ * synchronously, when the plugin reads any member of `ctx.editor`. Other failures are plain
+ * errors with no `code` — among them that trusted-tier `Error`, an exception from the markdown
+ * parser (passed through as it is), and in the sandboxed tier a request the frame check
+ * refuses (over its size cap, a malformed `replace`), one refused for too many requests in
+ * flight, and one that times out.
  */
 export interface EditorAPI {
   /** The whole document as markdown. Requires `editor` or `editor:readonly`. */
@@ -660,7 +665,7 @@ export interface SandboxContext {
    * read arrives as a STAGED payload pulled through the broker rather than in the response
    * frame; `getMarkdown` hides that round trip.
    */
-  editor: SandboxEditorAPI;
+  editor: EditorAPI;
   events: {
     emit(event: string, ...args: unknown[]): void;
     /**
@@ -698,43 +703,8 @@ export interface SandboxContext {
   ui: SandboxUIAPI;
 }
 
-/**
- * §260 Phase 4b — the sandboxed tier's editor surface.
- *
- * Markdown, not "content": this is a markdown editor, and the trusted tier's
- * `EditorAPI` reads flat text (`getText()`) while its `setContent` hands the string to
- * Tiptap, which parses HTML — so what you read there is not what you can write back.
- * These names say what crosses, and both directions go through the app's own round-trip
- * pipeline, so `setMarkdown(await getMarkdown())` is a no-op on the document.
- *
- * Every method is async even where the trusted tier's is sync: the editor lives in the
- * main realm, so each of these is a mediated round trip.
- */
-export interface SandboxEditorAPI {
-  /** The whole document as markdown. Requires `editor` or `editor:readonly`. */
-  getMarkdown(): Promise<string>;
-  /**
-   * The selection, as ProseMirror document positions plus the text they cover.
-   * Requires `editor` or `editor:readonly`.
-   */
-  getSelection(): Promise<{ from: number; text: string; to: number }>;
-  /**
-   * §4.8 The document's PROSE — what a reader sees, not what the file holds. Block text
-   * joined by newlines, with code blocks and frontmatter excluded and a wikilink's label
-   * included. Requires `editor` or `editor:readonly`.
-   *
-   * Use this, not `getMarkdown()`, for anything that measures or reads the text: counting
-   * words, summarising, sending a document to a model. `getMarkdown()` is for round-tripping
-   * — it hands back `#`, `|` and `**`, which a word count turns into words. The app's own
-   * status bar counts what this returns, so a plugin that uses it agrees with the app
-   * instead of contradicting it on screen.
-   */
-  getText(): Promise<string>;
-  /** Insert plain text at the cursor, as one undoable step. Requires `editor`. */
-  insertText(text: string): Promise<void>;
-  /** Replace the whole document, as one undoable step. Requires `editor`. */
-  setMarkdown(markdown: string): Promise<void>;
-}
+/** @deprecated The same as `EditorAPI` since §388 — kept so existing type references compile. */
+export type SandboxEditorAPI = EditorAPI;
 
 export interface SandboxFileOptions {
   /** Registered context id to resolve `path` against. Default: the active context. */

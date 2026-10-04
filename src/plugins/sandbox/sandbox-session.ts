@@ -12,6 +12,7 @@ import type {
 import type { SandboxTransport } from "./transport";
 
 import { logger } from "../../utils/logger";
+import { isEditorRefusalCode } from "./protocol";
 
 /**
  * §260 3c-3 — the live smoke hit "Sandbox activate timed out" on the FIRST load of a
@@ -425,6 +426,9 @@ export class SandboxSession {
             type: "hostResponse",
             requestId,
             ok: false,
+            // §388 spec 0067 §10 — an editor refusal's code crosses as a field so the plugin
+            // can branch on it; any other failure crosses as text only.
+            ...codeOf(err),
             // ‼️ TRUNCATED (§260 Phase 4c security review, MEDIUM-2). This was the last
             // uncapped object-shaped frame: an `ai` rejection carries the PROVIDER's error
             // text, and `llm/claude.rs` builds it as `HTTP {status}: {body}` from the whole
@@ -489,6 +493,12 @@ export class SandboxSession {
  * message or one streamed chunk, and neither needs more.
  */
 export const MAX_FRAME_TEXT_CHARS = 4096;
+
+/** A thrown value's refusal code as a frame field, or nothing when it is not a listed code. */
+function codeOf(err: unknown): { code?: string } {
+  const code = (err as null | undefined | { code?: unknown })?.code;
+  return isEditorRefusalCode(code) ? { code } : {};
+}
 
 /** One chunk per frame, each safely under the threshold. Never empty — `""` still answers. */
 export function splitForFrame(text: string): string[] {

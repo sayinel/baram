@@ -126,24 +126,46 @@ export function readSelectionForPlugin(
 }
 
 /**
- * Replace the whole document (`setMarkdown`). Parsed off the main thread with the LIVE
- * schema; refused if the document changed while parsing. A tab switch installs another
- * document into the same editor with the same schema, so only node identity tells the
- * parsed-against document from the one now showing (§260 Phase 4b — the notes on
- * `editor_set_markdown` in `sandbox/host-editor-bridge.ts`). `parsedFrom` is read before the
- * await because a Tiptap editor's `state` getter returns the view's current state: read
- * afterwards, it would compare the new document with itself.
+ * Replace the whole document (`setMarkdown`); refused if the document changed while parsing.
+ * `beforeParse` runs after the surface gate, so a refused call is charged nothing (spec §8).
+ *
+ * The §260 Phase 4b notes, moved here with the code from `sandbox/host-editor-bridge.ts`:
+ *
+ * - ASYNC, in the app's own Web Worker (security review MEDIUM-2): the synchronous parse put an
+ *   attacker-sized remark run on the main thread the sandboxed tier exists to protect. Node
+ *   construction and the replace still run on the main thread in one transaction — not the
+ *   progressive path the app opens large files with (`mdastBlocksToPmNodes` +
+ *   `appendChunksProgressively`), whose mid-fill tab switch can bless a truncated document as
+ *   the save baseline: the app's hazard to own for a user action, not one to inherit for a
+ *   plugin write (code review P4). The sandboxed tier bounds the cost with the frame check's
+ *   2 MiB cap and its document budget.
+ * - The LIVE schema: a node built against another Schema instance fails ProseMirror's
+ *   identity-based validation on insert (the keep-alive lesson from the large-file work).
+ * - ‼️ The DOCUMENT must still be the one parsed against, by IDENTITY (security review, NEW
+ *   HIGH). Comparing schemas caught only a keep-alive handover: a tab switch installs another
+ *   document into the SAME editor with the SAME schema (`replaceEditorStateWithVim` →
+ *   `view.updateState`), so the write replaced ANOTHER FILE's document and marked it dirty for
+ *   autosave. Identity, not a change signal, because a signal can be missed: of the non-test
+ *   callers of `replaceEditorStateWithVim` (seven under `src`, 2026-10-05), the two in
+ *   `use-editor-effects.ts` do not call `markContentLoaded`. The cost — a user keystroke during
+ *   the parse also refuses — is the right trade for a whole-document replace: the plugin gets an
+ *   error it can retry, where the alternative discards an edit the user just made.
+ * - `parsedFrom` is read BEFORE the await: a Tiptap editor's `state` getter returns the view's
+ *   current state, so read afterwards it compares the new document with itself. The first
+ *   version of the guard did exactly that; the tab-switch test caught it.
  */
 export async function replaceDocument(
   ctx: EditorOpsContext,
   options: {
     beforeDispatch?: (target: PluginEditorHandle) => void;
+    beforeParse?: () => void;
     markdown: string;
   },
 ): Promise<void> {
   const method = "setMarkdown";
   const instance = ctx.live(method);
   const parsedFrom = instance.state.doc;
+  options.beforeParse?.();
   const next = await markdownToProsemirrorAsync(
     options.markdown,
     instance.schema,

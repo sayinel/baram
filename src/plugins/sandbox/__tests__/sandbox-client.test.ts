@@ -1,6 +1,7 @@
 import type { PluginContributions } from "../../types";
 import type { SandboxContext } from "../../types";
 import type { PluginOp } from "../plugin-op";
+import type { SandboxHostRequest, SandboxToHost } from "../protocol";
 
 import { describe, expect, it } from "vitest";
 
@@ -158,5 +159,127 @@ describe("startSandboxClient (§260 sandbox shim)", () => {
 
     await s.activate("p", { commands: [] });
     expect(s.registered).toEqual({ commands: ["fresh"], events: [] });
+  });
+});
+
+// §388 spec 0067 §8 · §10 — the editor frames as the client builds them, and the failure
+// frame's `code` carried onto the plugin's error. The host is played by hand here, so the
+// frames are exactly what a test sends; `editor-end-to-end.test.ts` drives the real session.
+describe("startSandboxClient editor (§388)", () => {
+  const REF = "0123456789abcdef0123456789abcdef";
+
+  /** A booted client, the host end of its channel, and every request it sent. */
+  async function boot() {
+    const { host, sandbox } = createChannelPair();
+    const requests: Array<{ request: SandboxHostRequest; requestId: string }> =
+      [];
+    let ready = () => {};
+    const isReady = new Promise<void>((resolve) => {
+      ready = resolve;
+    });
+    host.onMessage((m: SandboxToHost) => {
+      if (m.type === "hostRequest") requests.push(m);
+      if (m.type === "ready") ready();
+    });
+    let ctx: SandboxContext | undefined;
+    startSandboxClient(
+      sandbox,
+      async () => ({
+        activate: (c: SandboxContext) => {
+          ctx = c;
+        },
+      }),
+      sourceBroker,
+    );
+    host.send({ type: "activate", pluginId: "p" });
+    await isReady;
+    if (!ctx) throw new Error("activate did not run");
+    return { ctx, host, requests };
+  }
+
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+
+  it("keeps a listed refusal code on the plugin's error, and drops one that is not listed", async () => {
+    const { ctx, host, requests } = await boot();
+
+    const listed = ctx.editor.insertMarkdown("x");
+    await flush();
+    host.send({
+      code: "ref-unknown",
+      error: "e",
+      ok: false,
+      requestId: requests[0].requestId,
+      type: "hostResponse",
+    });
+    await expect(listed).rejects.toMatchObject({
+      code: "ref-unknown",
+      message: "e",
+      name: "EditorRefusal",
+    });
+
+    // The list is the contract plugins branch on: a code outside it is not passed on.
+    const unlisted = ctx.editor.insertMarkdown("x");
+    await flush();
+    host.send({
+      code: "evil",
+      error: "e",
+      ok: false,
+      requestId: requests[1].requestId,
+      type: "hostResponse",
+    });
+    const err = await unlisted.then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toBe("e");
+    expect(err).not.toHaveProperty("code");
+  });
+
+  it("sends replace only when the plugin passed one", async () => {
+    const { ctx, host, requests } = await boot();
+    const writes = [
+      ctx.editor.insertMarkdown("a"),
+      ctx.editor.insertMarkdown("b", { replace: REF }),
+      ctx.editor.insertText("c"),
+      ctx.editor.insertText("d", { replace: REF }),
+    ];
+    await flush();
+    expect(requests.map((r) => r.request)).toEqual([
+      { kind: "editor_insert_markdown", markdown: "a" },
+      { kind: "editor_insert_markdown", markdown: "b", replace: REF },
+      { kind: "editor_insert_text", text: "c" },
+      { kind: "editor_insert_text", replace: REF, text: "d" },
+    ]);
+    // `toEqual` passes a key holding `undefined` as absent, so absence is checked by key.
+    expect(Object.keys(requests[0].request)).not.toContain("replace");
+    expect(Object.keys(requests[2].request)).not.toContain("replace");
+    for (const { requestId } of requests) {
+      host.send({
+        ok: true,
+        requestId,
+        type: "hostResponse",
+        value: undefined,
+      });
+    }
+    await Promise.all(writes);
+  });
+
+  it("getSelection hands back the ref the host answered inline", async () => {
+    const { ctx, host, requests } = await boot();
+    const reading = ctx.editor.getSelection();
+    await flush();
+    host.send({
+      ok: true,
+      requestId: requests[0].requestId,
+      type: "hostResponse",
+      value: { from: 3, ref: REF, staged: false, to: 3 },
+    });
+    await expect(reading).resolves.toEqual({
+      from: 3,
+      ref: REF,
+      text: "",
+      to: 3,
+    });
   });
 });

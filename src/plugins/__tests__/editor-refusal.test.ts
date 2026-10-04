@@ -3,7 +3,7 @@ import type { EditorRefusalCode } from "../types";
 // §388 spec 0067 §10 — the refusal codes: the union and the runtime list must not drift.
 import { describe, expect, it } from "vitest";
 
-import { isEditorRefusalCode } from "../editor-refusal";
+import { isEditorRefusalCode } from "../sandbox/protocol";
 import { EDITOR_REFUSAL_CODES } from "../types";
 
 // A missing or extra key here is a type error, so the union cannot grow without this file.
