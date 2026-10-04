@@ -118,12 +118,36 @@ pub(crate) async fn read(vault: &Vault, path: &str) -> Result<Envelope<FileConte
     })
 }
 
-/// A walk that failed, before the failing directory can be named (Task 6 names it).
-pub(crate) fn cannot_read_vault(vault: &Vault) -> CliError {
+/// The message for a walk that failed when the failing directory cannot be named.
+fn cannot_read_vault(vault: &Vault) -> CliError {
     CliError::new(
         ErrorCode::Io,
         format!("cannot read the vault at {}", vault.root.display()),
     )
+}
+
+/// The error for a command whose walk failed, naming the directory (spec 0066 §3.7).
+///
+/// The layers between the walk and a command flatten the error to a string, so the
+/// directory is recovered by running the SAME walker again — on the failure path only.
+/// Because it is the same function (`collect_md_files`: tags, tasks and `files` all walk
+/// with it), its skip rules cannot disagree with the walk that failed. If the second
+/// walk succeeds, the failure was not a directory after all and the message stays
+/// general.
+pub(crate) async fn walk_failure(vault: &Vault, start: &Path) -> CliError {
+    let mut sink = Vec::new();
+    let failed = crate::fs::collect_md_files(start, &mut sink).await.err();
+    unreadable_directory(vault, failed)
+}
+
+fn unreadable_directory(vault: &Vault, failed: Option<FsError>) -> CliError {
+    match failed {
+        Some(FsError::ReadDir { path, source }) => CliError::new(
+            ErrorCode::Io,
+            format!("cannot read directory {}: {source}", path.display()),
+        ),
+        _ => cannot_read_vault(vault),
+    }
 }
 
 /// Sorts a list the CLI prints by (path, line) (spec 0066 §3.6). The walkers hand files
@@ -157,9 +181,12 @@ pub(crate) async fn files(
         None => vault.root.clone(),
     };
     let mut found = Vec::new();
-    crate::fs::collect_md_files(&start, &mut found)
+    if crate::fs::collect_md_files(&start, &mut found)
         .await
-        .map_err(|_| cannot_read_vault(vault))?;
+        .is_err()
+    {
+        return Err(walk_failure(vault, &start).await);
+    }
     Ok(Envelope {
         vault: Some(vault_info(vault)),
         truncated: false,

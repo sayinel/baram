@@ -1031,3 +1031,53 @@ fn tasks_of_a_file_outside_the_vault_is_refused() {
         ran.stderr
     );
 }
+
+// ── a folder that cannot be read ──────────────────────────────────────────────────
+
+#[test]
+fn a_walk_that_fails_says_which_folder() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let sb = sandbox();
+    write(&sb.vault, "notes/a.md", "#tag and needle\n- [ ] task\n");
+    let locked = sb.vault.join("notes/locked");
+    std::fs::create_dir_all(&locked).expect("mkdir");
+    let _unlock = Unlock(locked.clone());
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).expect("chmod");
+    // Running as a user the permission bits do not bind (root): nothing to test.
+    if std::fs::read_dir(&locked).is_ok() {
+        eprintln!("skipped: this user can read a 000 directory");
+        return;
+    }
+
+    let vault = vault_arg(&sb);
+    let ran: Vec<(&str, Ran)> = [
+        &["files"][..],
+        &["tags"][..],
+        &["tag", "tag"][..],
+        &["tasks"][..],
+    ]
+    .into_iter()
+    .map(|command| {
+        let mut args = vec!["--json", "--vault", vault.as_str()];
+        args.extend_from_slice(command);
+        (command[0], baram(&sb, &sb.home, &args))
+    })
+    .collect();
+    // `search` walks on its own and steps over what it cannot read.
+    let search = baram(&sb, &sb.home, &["--vault", &vault, "search", "needle"]);
+
+    for (command, ran) in &ran {
+        assert_eq!(ran.code, 1, "{command}: {}", ran.stderr);
+        let error = json(&ran.stderr);
+        assert_eq!(error["error"]["code"], "IO", "{command}");
+        let message = error["error"]["message"].as_str().unwrap_or_default();
+        assert!(
+            message.contains(&locked.to_string_lossy().into_owned()),
+            "{command}: the message must name the folder: {message}"
+        );
+        assert!(!has_hangul(message), "{command}: {message}");
+    }
+    assert_eq!(search.code, 0, "stderr: {}", search.stderr);
+    assert_eq!(search.stdout, "notes/a.md\t1\t#tag and needle\n");
+}

@@ -103,10 +103,11 @@ fn contains_colon(name: &std::ffi::OsStr) -> bool {
 
 /// An `FsError` with any absolute path replaced by the caller's own relative one.
 ///
-/// §260 Phase 4a — the sandboxed tier must never receive an absolute path, and two
-/// `FsError` variants carry one in their `Display`. Matched EXHAUSTIVELY on purpose: a
-/// wildcard arm would silently pass through the next variant that happens to embed a
-/// path, which is the fail-open shape this phase's review kept finding.
+/// §260 Phase 4a — the sandboxed tier must never receive an absolute path, and the
+/// `FsError` variants `NotFound`, `PermissionDenied`, `AlreadyExists` and `ReadDir` carry
+/// one in their `Display`. Matched EXHAUSTIVELY on purpose: a wildcard arm would silently
+/// pass through the next variant that happens to embed a path, which is the fail-open
+/// shape this phase's review kept finding.
 pub(crate) fn redact_fs_error(error: &crate::fs::FsError, caller_path: &str) -> String {
     use crate::fs::FsError;
     match error {
@@ -119,6 +120,12 @@ pub(crate) fn redact_fs_error(error: &crate::fs::FsError, caller_path: &str) -> 
         // `createFile` (§4.3) parses, with the caller's own path.
         FsError::AlreadyExists(_) => format!("ALREADY_EXISTS:{caller_path}"),
         FsError::NotFound(_) => format!("file \"{caller_path}\" was not found"),
+        // §387 The walk's own variant names the directory it failed on — an absolute
+        // path. Swapped for the caller's, like the two sentinels above; the io::Error
+        // after it embeds no path. NOT merged into the pass-through arm below.
+        FsError::ReadDir { source, .. } => {
+            format!("directory \"{caller_path}\" could not be read: {source}")
+        }
         // These carry an `io::Error` or a watcher message, neither of which embeds a
         // path on any platform we build for.
         FsError::ReadError(_) | FsError::TrashError(_) | FsError::WatchError(_) => {
@@ -262,6 +269,20 @@ mod tests {
             "notes",
         );
         assert!(io.contains("disk on fire"), "unexpected: {io}");
+
+        // §387 The variant that names a directory must not hand that name over either.
+        let walk = redact_fs_error(
+            &FsError::ReadDir {
+                path: secret.into(),
+                source: std::io::Error::other("denied"),
+            },
+            "notes",
+        );
+        assert!(!walk.contains(secret), "leaked: {walk}");
+        assert!(
+            walk.contains("notes") && walk.contains("denied"),
+            "unexpected: {walk}"
+        );
     }
 
     /// §260 3c-2c — `.baram/` is the app's own per-vault state, so a plugin that could

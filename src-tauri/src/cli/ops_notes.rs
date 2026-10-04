@@ -3,7 +3,7 @@
 
 use super::args::TaskStatus;
 use super::error::{CliError, ErrorCode};
-use super::ops::{cannot_read_vault, sort_by_path_and_line, vault_info, PathRow};
+use super::ops::{sort_by_path_and_line, vault_info, walk_failure, PathRow};
 use super::output::{Envelope, Row};
 use super::vault::{self, Vault};
 use crate::task::{TaskEntry, TaskError, TaskState};
@@ -25,9 +25,10 @@ impl Row for TagRow {
 
 /// `baram tags` — in the order `get_vault_tags` already sorts: count descending, then name.
 pub(crate) async fn tags(vault: &Vault) -> Result<Envelope<TagRow>, CliError> {
-    let entries = crate::tag::get_vault_tags(&vault.root.to_string_lossy())
-        .await
-        .map_err(|_| cannot_read_vault(vault))?;
+    let entries = match crate::tag::get_vault_tags(&vault.root.to_string_lossy()).await {
+        Ok(entries) => entries,
+        Err(_) => return Err(walk_failure(vault, &vault.root).await),
+    };
     Ok(Envelope {
         vault: Some(vault_info(vault)),
         truncated: false,
@@ -51,9 +52,10 @@ pub(crate) async fn tag(vault: &Vault, name: &str) -> Result<Envelope<PathRow>, 
             "the tag name is empty",
         ));
     }
-    let found = crate::tag::get_files_by_tag(&vault.root.to_string_lossy(), name)
-        .await
-        .map_err(|_| cannot_read_vault(vault))?;
+    let found = match crate::tag::get_files_by_tag(&vault.root.to_string_lossy(), name).await {
+        Ok(found) => found,
+        Err(_) => return Err(walk_failure(vault, &vault.root).await),
+    };
     Ok(Envelope {
         vault: Some(vault_info(vault)),
         truncated: false,
@@ -150,9 +152,10 @@ pub(crate) async fn tasks(
                     }
                 })?
         }
-        None => crate::task::get_vault_tasks(&root, exclude)
-            .await
-            .map_err(|_| cannot_read_vault(vault))?,
+        None => match crate::task::get_vault_tasks(&root, exclude).await {
+            Ok(entries) => entries,
+            Err(_) => return Err(walk_failure(vault, &vault.root).await),
+        },
     };
     Ok(Envelope {
         vault: Some(vault_info(vault)),

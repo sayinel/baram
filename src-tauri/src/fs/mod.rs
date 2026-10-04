@@ -20,6 +20,18 @@ pub enum FsError {
     NotFound(String),
     #[error("파일 읽기 실패: {0}")]
     ReadError(#[from] std::io::Error),
+    /// §387 A directory could not be listed. Unlike `ReadError`, this says WHICH one: a
+    /// walk over a vault fails as a whole on the first folder it cannot read, and with
+    /// only an `io::Error` in hand the caller cannot tell the user where.
+    ///
+    /// ‼️ The Display embeds an absolute path. `plugin::vault_path::redact_fs_error`
+    /// swaps it for the caller's own before an error reaches a sandboxed plugin.
+    #[error("디렉터리 읽기 실패: {}: {source}", .path.display())]
+    ReadDir {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
     #[error("파일 감시 실패: {0}")]
     WatchError(String),
     #[error("휴지통 이동 실패: {0}")]
@@ -51,8 +63,12 @@ pub const SKIP_DIRS: &[&str] = &["node_modules", ".git", ".obsidian", ".baram"];
 /// nobody links to costs a string; it can only ever be reached by someone writing that
 /// exact name.
 pub async fn collect_all_files(root: &Path, files: &mut Vec<PathBuf>) -> Result<(), FsError> {
-    let mut read_dir = tokio::fs::read_dir(root).await?;
-    while let Some(entry) = read_dir.next_entry().await? {
+    let unreadable = |source: std::io::Error| FsError::ReadDir {
+        path: root.to_path_buf(),
+        source,
+    };
+    let mut read_dir = tokio::fs::read_dir(root).await.map_err(unreadable)?;
+    while let Some(entry) = read_dir.next_entry().await.map_err(unreadable)? {
         let name = entry.file_name().to_string_lossy().to_string();
         if name.starts_with('.') {
             continue;
@@ -74,8 +90,12 @@ pub async fn collect_all_files(root: &Path, files: &mut Vec<PathBuf>) -> Result<
 
 /// Recursively collect all .md file paths under root, skipping hidden dirs and SKIP_DIRS.
 pub async fn collect_md_files(root: &Path, files: &mut Vec<PathBuf>) -> Result<(), FsError> {
-    let mut read_dir = tokio::fs::read_dir(root).await?;
-    while let Some(entry) = read_dir.next_entry().await? {
+    let unreadable = |source: std::io::Error| FsError::ReadDir {
+        path: root.to_path_buf(),
+        source,
+    };
+    let mut read_dir = tokio::fs::read_dir(root).await.map_err(unreadable)?;
+    while let Some(entry) = read_dir.next_entry().await.map_err(unreadable)? {
         let name = entry.file_name().to_string_lossy().to_string();
 
         // Skip hidden files/dirs
@@ -1083,6 +1103,40 @@ mod tests {
             std::fs::read_dir(&out).unwrap().next().is_none(),
             "nothing should have been extracted"
         );
+    }
+
+    /// §387 A walk fails as a whole on the first directory it cannot list; the error
+    /// has to say which one. Unix only: the fixture is a permission bit.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_walk_that_fails_names_the_directory_it_could_not_read() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::TempDir::new().unwrap();
+        let locked = dir.path().join("notes").join("locked");
+        std::fs::create_dir_all(&locked).unwrap();
+        std::fs::write(dir.path().join("notes").join("a.md"), "x").unwrap();
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+        // Running as a user the permission bits do not bind (root): nothing to test.
+        if std::fs::read_dir(&locked).is_ok() {
+            std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+            eprintln!("skipped: this user can read a 000 directory");
+            return;
+        }
+
+        let mut files = Vec::new();
+        let md = collect_md_files(dir.path(), &mut files).await;
+        let mut files = Vec::new();
+        let all = collect_all_files(dir.path(), &mut files).await;
+        // Restored before any assertion, so a failure still lets the temp dir be removed.
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        for (walker, result) in [("collect_md_files", md), ("collect_all_files", all)] {
+            match result {
+                Err(FsError::ReadDir { path, .. }) => assert_eq!(path, locked, "{walker}"),
+                other => panic!("{walker}: expected ReadDir for {locked:?}, got {other:?}"),
+            }
+        }
     }
 }
 
