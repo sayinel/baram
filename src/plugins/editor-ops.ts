@@ -181,7 +181,8 @@ export async function replaceDocument(
     );
   }
   options.beforeDispatch?.(target);
-  target.view.dispatch(
+  dispatchAsUndoStep(
+    target,
     target.state.tr.replaceWith(0, target.state.doc.content.size, next.content),
   );
 }
@@ -218,6 +219,23 @@ const UNPLACEABLE = {
   cell: "a multi-cell table selection cannot be replaced",
   gap: "a gap cursor between blocks is not an insertion point",
 } as const;
+
+/**
+ * Spec §5 — send a write as its own undo step: every insert, and `setMarkdown` (plan 0117
+ * Ruling 22). `prosemirror-history` adds a transaction to the previous undo group when it
+ * comes within `newGroupDelay` (500 ms) of the previous transaction and touches the range that
+ * one changed — and a whole-document replace touches every range. `closeHistory` on the write
+ * parts it from the user's typing before it; a step-less transaction carrying `closeHistory`
+ * parts it from the typing after, since `applyTransaction` reads that mark before it looks
+ * for steps. Tiptap emits `update`, the event autosave listens to, only when a transaction
+ * changed the document, so the step-less one emits none (spec §14 — measured for inserts and
+ * `setMarkdown`; a `setMarkdown` row counts one `update` per call).
+ */
+function dispatchAsUndoStep(target: PluginEditorHandle, tr: Transaction): void {
+  closeHistory(tr);
+  target.view.dispatch(tr);
+  target.view.dispatch(closeHistory(target.state.tr));
+}
 
 /** Build the insert on `state`, or refuse (spec §7.3 steps 4–5 and rule 6). */
 function buildOn(
@@ -291,8 +309,7 @@ function reasonText(reason: AnchorFailure): string {
 /**
  * D9 — check everything on a shadow state first; only then send the collapse (outside
  * history, so one undo returns to the canonical document — spec §2.2) and rebuild the
- * insert on the live state. `closeHistory` on the insert and on an empty transaction after
- * it keeps the user's typing on either side out of its undo step (P1).
+ * insert on the live state, sent as its own undo step (`dispatchAsUndoStep`, P1).
  */
 function send(
   target: PluginEditorHandle,
@@ -315,8 +332,5 @@ function send(
     collapse.setMeta("addToHistory", false);
     target.view.dispatch(collapse);
   }
-  const tr = buildOn(target.state, owner, ref, method, input);
-  closeHistory(tr);
-  target.view.dispatch(tr);
-  target.view.dispatch(closeHistory(target.state.tr));
+  dispatchAsUndoStep(target, buildOn(target.state, owner, ref, method, input));
 }

@@ -182,14 +182,18 @@ describe("createEditorRequestHandler (§260 Phase 4b)", () => {
     expect(editor.markdown()).toBe("Hello world\n");
   });
 
-  it("replaces the document as ONE transaction and round-trips", async () => {
+  it("replaces the document in ONE document-changing transaction and round-trips", async () => {
     // `setMarkdown(await getMarkdown())` must be a no-op on the document — the project's
     // first quality criterion, and the reason both directions use the app's own pipeline.
     const source = "# Title\n\nBody with **bold**.\n";
     const { editor, handler, staged } = harness("# old\n", ["editor"]);
 
     await handler({ kind: "editor_set_markdown", markdown: source });
-    expect(editor.dispatched).toHaveLength(1);
+    expect(editor.dispatched.filter((tr) => tr.docChanged)).toHaveLength(1);
+    // No dispatch beyond those two: the replace, then the step-less `closeHistory` that keeps
+    // the user's next keystroke out of its undo step (spec §5 · §12, plan 0117 Ruling 22).
+    expect(editor.dispatched).toHaveLength(2);
+    expect(editor.dispatched[1].steps).toHaveLength(0);
 
     await handler({ kind: "editor_get_markdown" });
     expect(staged[0][1]).toBe(source);

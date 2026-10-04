@@ -1,5 +1,6 @@
 // §388 spec 0067 §5 · §7.3 · §11-2 · §11-5 · §11-7 · §11-8 · §11-13 — the core both tiers
-// share: refs, where an insert lands, its undo step. Reveal interactions: editor-ops-reveal.test.ts.
+// share: refs, where an insert lands, a write's undo step. Reveal interactions:
+// editor-ops-reveal.test.ts.
 import type { Editor } from "@tiptap/core";
 
 import { undo } from "@tiptap/pm/history";
@@ -22,6 +23,7 @@ import {
   insertMarkdownAt,
   insertTextAt,
   readSelectionForPlugin,
+  replaceDocument,
 } from "../editor-ops";
 import { codeOf, realEditor, select } from "./real-editor";
 
@@ -183,6 +185,58 @@ describe("editor-ops (spec 0067)", () => {
     );
     undo(editor.state, editor.view.dispatch);
     expect(editor.state.doc.textContent).toBe("alpha X omega");
+    editor.destroy();
+  });
+
+  // Spec §5 · §12 (plan 0117 Ruling 22) — setMarkdown too. prosemirror-history groups by
+  // `tr.time`, which a Transaction takes from `Date.now()`; the frozen clock keeps every write
+  // in these rows inside the 500 ms `newGroupDelay`, so only `closeHistory` parts them, and a
+  // whole-document replace is adjacent to any range the user types in.
+  it("setMarkdown right after the user's typing is its own undo step", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const { editor } = realEditor("alpha@@\n");
+      editor.view.dispatch(editor.state.tr.insertText("c", 6));
+      await replaceDocument(ctxOf(editor), { markdown: "# New\n" });
+      expect(serializeLiveDoc(editor)).toBe("# New\n");
+      undo(editor.state, editor.view.dispatch);
+      expect(serializeLiveDoc(editor)).toBe("alphac\n"); // the typing stays
+      undo(editor.state, editor.view.dispatch);
+      expect(serializeLiveDoc(editor)).toBe("alpha\n");
+      editor.destroy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("text typed right after setMarkdown is its own undo step", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const { editor } = realEditor("alpha\n");
+      await replaceDocument(ctxOf(editor), { markdown: "new\n" });
+      editor.view.dispatch(editor.state.tr.insertText("c", 4)); // "new" is 1-4
+      expect(serializeLiveDoc(editor)).toBe("newc\n");
+      undo(editor.state, editor.view.dispatch);
+      expect(serializeLiveDoc(editor)).toBe("new\n"); // setMarkdown stays
+      editor.destroy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("setMarkdown sends the write and one step-less transaction; only the write emits update", async () => {
+    // Spec §14 — the step-less transaction must not look like an edit to autosave, which
+    // listens to Tiptap's `update` (`use-auto-save.ts`).
+    const { editor } = realEditor("alpha\n");
+    const dispatch = vi.spyOn(editor.view, "dispatch");
+    let updates = 0;
+    editor.on("update", () => void (updates += 1));
+    await replaceDocument(ctxOf(editor), { markdown: "new\n" });
+    expect(dispatch).toHaveBeenCalledTimes(2);
+    const [write, close] = dispatch.mock.calls.map(([tr]) => tr);
+    expect(write.docChanged).toBe(true);
+    expect(close.steps).toHaveLength(0);
+    expect(updates).toBe(1); // the write's own update: the listener is live
     editor.destroy();
   });
 
