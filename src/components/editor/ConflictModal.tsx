@@ -11,6 +11,7 @@ import { useUIStore } from "../../stores/ui/ui";
 import { basename } from "../../utils/path-utils";
 
 interface ConflictModalProps {
+  disabled?: boolean;
   filePath: string;
   onKeepLocal: () => void;
   onMerge: () => void;
@@ -18,6 +19,7 @@ interface ConflictModalProps {
 }
 
 export function ConflictModal({
+  disabled = false,
   filePath,
   onReload,
   onKeepLocal,
@@ -48,18 +50,21 @@ export function ConflictModal({
           <button
             autoFocus
             className="conflict-modal-btn conflict-modal-btn-reload"
+            disabled={disabled}
             onClick={onReload}
           >
             Reload External Changes
           </button>
           <button
             className="conflict-modal-btn conflict-modal-btn-keep"
+            disabled={disabled}
             onClick={onKeepLocal}
           >
             Keep Local Edits
           </button>
           <button
             className="conflict-modal-btn conflict-modal-btn-merge"
+            disabled={disabled}
             onClick={onMerge}
           >
             Merge
@@ -74,44 +79,37 @@ export function ConflictModal({
  * §3.6 Connected wrapper — shows the head of the conflict queue: the first
  * queued conflict whose tab is still open. Mounted once in AppDialogs.
  *
- * `suspended` hides it while a conflict is being worked on (the merge view is
- * open), so a conflict queued meanwhile waits instead of covering the merge.
+ * The actions resolve the conflict themselves, and only when they succeed —
+ * the wrapper does not. `pending` disables the buttons while an action runs;
+ * `suspended` hides the modal while the merge view is open, so a conflict
+ * queued meanwhile waits instead of covering the merge.
  */
 export function ConflictModalWrapper({
   onKeepLocal,
   onMerge,
   onReload,
+  pending = false,
   suspended = false,
 }: {
   onKeepLocal: (entry: ConflictEntry) => void;
   onMerge: (entry: ConflictEntry) => void;
   onReload: (entry: ConflictEntry) => void;
+  pending?: boolean;
   suspended?: boolean;
 }) {
-  const { conflictQueue, resolveConflict } = useUIStore(
-    useShallow((s) => ({
-      conflictQueue: s.conflictQueue,
-      resolveConflict: s.resolveConflict,
-    })),
-  );
+  const conflictQueue = useUIStore((s) => s.conflictQueue);
   const tabIds = useEditorStore(useShallow((s) => s.tabs.map((t) => t.id)));
 
   const head = conflictQueue.find((e) => tabIds.includes(e.tabId));
   if (!head || suspended) return null;
 
-  // Each action resolves the entry it was shown for — the same generation, so
-  // a newer event for the tab that arrives meanwhile stays queued.
-  const act = (action: (entry: ConflictEntry) => void) => () => {
-    resolveConflict(head.tabId, head.generation);
-    action(head);
-  };
-
   return (
     <ConflictModal
+      disabled={pending}
       filePath={head.filePath}
-      onKeepLocal={act(onKeepLocal)}
-      onMerge={act(onMerge)}
-      onReload={act(onReload)}
+      onKeepLocal={() => onKeepLocal(head)}
+      onMerge={() => onMerge(head)}
+      onReload={() => onReload(head)}
     />
   );
 }

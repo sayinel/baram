@@ -1,25 +1,16 @@
 // §4.2 App's dialog/overlay host — every lazy dialog and modal that floats
 // above the 3-column layout, plus the conflict-merge flow that owns its own
 // local state.
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense } from "react";
 
-import type { MergeSegment } from "../../ipc/types";
 import type { Editor } from "@tiptap/react";
 
 import { useShallow } from "zustand/shallow";
 
-import { reloadAfterConflictConsent } from "../../hooks/use-file-operations";
-import { readFile, writeFile } from "../../ipc/invoke";
-import { mergeTexts } from "../../ipc/snapshot";
-import { useEditorStore } from "../../stores/editor/editor";
-import { useSnapshotStore } from "../../stores/editor/snapshot";
-import { useFileStore } from "../../stores/file/file";
 import { useUIStore } from "../../stores/ui/ui";
-import { serializeLiveDoc } from "../../utils/editor/serialize-live-doc";
-import { logger } from "../../utils/logger";
 import { SmartTemplateDialogWrapper } from "../ai/SmartTemplateDialogWrapper";
 import { UnsavedChangesModal } from "../editor/UnsavedChangesModal";
-import { useConflictTargetSync } from "./use-conflict-actions";
+import { useConflictActions } from "./use-conflict-actions";
 
 const CommandPalette = lazy(() =>
   import("../command/CommandPalette").then((m) => ({
@@ -111,7 +102,6 @@ interface AppDialogsProps {
   handleSave: () => Promise<void>;
   handleSkillPreviewToggle: () => void;
   handleToggleSourceMode: () => void;
-  markDirty: (tabId: string, dirty: boolean) => void;
 }
 
 function SkillGeneratorDialogWrapper() {
@@ -156,14 +146,8 @@ export function AppDialogs({
   handleSave,
   handleSkillPreviewToggle,
   handleToggleSourceMode,
-  markDirty,
 }: AppDialogsProps) {
-  useConflictTargetSync();
-  // §39 Tab switcher state
-  const [mergeState, setMergeState] = useState<null | {
-    filePath: string;
-    segments: MergeSegment[];
-  }>(null);
+  const conflict = useConflictActions();
 
   return (
     <Suspense fallback={null}>
@@ -192,56 +176,20 @@ export function AppDialogs({
       <TaskEditDialog />
       <ZettelTitleDialog />
       <ConflictModalWrapper
-        onKeepLocal={({ filePath }) => {
-          // Keep local edits: clear the mtime guard so the next save (and the
-          // immediate save below) overwrites the external change on disk.
-          const entry = useFileStore.getState().getFileMtime(filePath);
-          useFileStore
-            .getState()
-            .updateLastSaveMtime(filePath, entry?.canReloadMtime ?? 0);
-          // If the conflicted file is the active tab, persist local edits now so
-          // they aren't lost if the user doesn't edit again before quitting.
-          const { activeTabId, tabs } = useEditorStore.getState();
-          const activeTab = tabs.find((t) => t.id === activeTabId);
-          if (activeTab?.filePath === filePath) void handleSave();
-        }}
-        onMerge={async ({ base, filePath }) => {
-          if (!activeEditor || activeEditor.isDestroyed) return;
-          const local = serializeLiveDoc(activeEditor);
-          const external = await readFile(filePath);
-          const result = await mergeTexts(base, local, external);
-          setMergeState({ filePath, segments: result.segments });
-        }}
-        // §312 왜 force가 필요한지는 reloadAfterConflictConsent의 주석 참조.
-        onReload={({ externalMtime, filePath }) =>
-          reloadAfterConflictConsent(filePath, externalMtime)
-        }
-        suspended={mergeState !== null}
+        onKeepLocal={conflict.onKeepLocal}
+        onMerge={conflict.onMerge}
+        onReload={conflict.onReload}
+        pending={conflict.pending}
+        suspended={conflict.merge !== null}
       />
       <ToastHost />
-      {mergeState && (
+      {conflict.merge && (
         <MergeView
-          filePath={mergeState.filePath}
-          onApply={(merged) => {
-            const fp = mergeState.filePath;
-            void (async () => {
-              try {
-                await writeFile(fp, merged);
-                useFileStore.getState().setFileContent(fp, merged);
-                useFileStore.getState().updateLastSaveMtime(fp, Date.now());
-                useEditorStore.getState().requestContentRefresh();
-                const { activeTabId: tid } = useEditorStore.getState();
-                if (tid) markDirty(tid, false);
-                // §71 A conflict-merge write is a real content change.
-                useSnapshotStore.getState().markPendingAutoSnapshot();
-              } catch (err) {
-                logger.error("[App] merge apply failed", err);
-              }
-            })();
-            setMergeState(null);
-          }}
-          onCancel={() => setMergeState(null)}
-          segments={mergeState.segments}
+          busy={conflict.mergeBusy}
+          filePath={conflict.merge.path}
+          onApply={conflict.onApply}
+          onCancel={conflict.onCancelMerge}
+          segments={conflict.merge.segments}
         />
       )}
     </Suspense>

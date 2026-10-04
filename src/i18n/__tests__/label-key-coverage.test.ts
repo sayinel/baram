@@ -19,6 +19,10 @@ import {
   KEYBINDING_CATEGORIES,
   KEYBINDING_REGISTRY,
 } from "../../keybindings/keybinding-registry";
+import {
+  CONFLICT_RESULT_KEYS,
+  CONFLICT_UNAVAILABLE_KEYS,
+} from "../../services/conflict-resolution";
 import { DEFAULT_ACTIVITY_BAR_CONFIG } from "../../stores/settings/activity-bar-config";
 import { THEME_INSTALL_FAILURE_REASONS } from "../../themes/theme-install";
 import { AI_ACTION_LABEL_KEYS } from "../../utils/contextual-ai-actions";
@@ -372,6 +376,36 @@ describe("theme install failure reasons", () => {
         (k) =>
           k.startsWith("settings.appearance.installError.") &&
           !referenced.has(k),
+      );
+      expect(orphaned).toEqual([]);
+    },
+  );
+});
+
+// §3.6 The conflict modal's result toasts: every code and every unreadable-tab
+// reason maps to a key that exists, and no `conflict.*` key is left unreferenced.
+describe("conflict result toasts", () => {
+  const referenced = new Set<string>([
+    ...Object.values(CONFLICT_RESULT_KEYS),
+    ...Object.values(CONFLICT_UNAVAILABLE_KEYS),
+  ]);
+
+  it("has entries, so the checks below are not vacuous", () => {
+    expect(referenced.size).toBeGreaterThan(5);
+  });
+
+  it.each(LOCALES)(
+    "defines every conflict toast key in %s",
+    (_name, locale) => {
+      expect([...referenced].filter((k) => !(k in locale))).toEqual([]);
+    },
+  );
+
+  it.each(LOCALES)(
+    "has no orphaned conflict toast key in %s",
+    (_name, locale) => {
+      const orphaned = Object.keys(locale).filter(
+        (k) => k.startsWith("conflict.") && !referenced.has(k),
       );
       expect(orphaned).toEqual([]);
     },

@@ -105,7 +105,7 @@ describe("§3.6 a source-edited tab is unsaved when its file changes on disk", (
     expect(buffers.get("a")).toBe(EDIT);
   });
 
-  it("resuming a keepalive tab raises a conflict for a source-edited tab", () => {
+  it("resuming a keepalive tab raises a conflict for a source-edited tab", async () => {
     // 이것을 실패시키는 것: `resume-keepalive-tab.ts` 의 판정을 `incomingTab.isDirty` 로 되돌림.
     useFileStore.getState().updateCanReloadMtime(A, 2000);
     useEditorStore.setState({ activeTabId: "a" });
@@ -122,6 +122,8 @@ describe("§3.6 a source-edited tab is unsaved when its file changes on disk", (
       { filePath: A, tabId: "a" },
     ]);
     expect(readFile).not.toHaveBeenCalled();
+    // 재개가 예약한 `requestAnimationFrame` 스크롤 복원이 돈 뒤에 부순다.
+    await new Promise((resolve) => setTimeout(resolve, 30));
     editor.destroy();
   });
 

@@ -3,15 +3,12 @@
  *
  * 실제 `AppDialogs` 와 실제 `ConflictModalWrapper` 를 렌더하고, 충돌은 `useFileWatcher` 가
  * 등록한 진짜 `file:changed` 핸들러로 만든다. 무관한 lazy 대화상자는 stub 이다. MergeView 는
- * props 를 잡는 stub 이다.
- *
- * 장면 S: 활성 b(shared editor 에 "B body", dirty). 배경 a(dirty, `openFiles[a] = "A local"`).
+ * props 를 잡는 stub 이다. 장면은 `conflict-scene.ts` 의 S 다.
  */
 import type { ReactNode } from "react";
 
+import type { Locale } from "../../../i18n";
 import type { MergeSegment } from "../../../ipc/types";
-import type { EditorTab } from "../../../stores/editor/editor";
-import type { Editor } from "@tiptap/core";
 
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -51,6 +48,7 @@ vi.mock("../../../ipc/snapshot", async (importOriginal) => ({
 /** MergeView stub — 마지막으로 받은 props 를 잡아 둔다. */
 const merge = vi.hoisted(() => ({
   props: null as null | {
+    busy?: boolean;
     filePath: string;
     onApply: (merged: string) => void;
     onCancel: () => void;
@@ -91,29 +89,55 @@ vi.mock("../../journal/QuickCaptureDialog", () => ({
 }));
 vi.mock("../../journal/ZettelTitleDialog", () => ({ ZettelTitleDialog: stub }));
 
-import { makeTestEditor } from "../../../__tests__/helpers/make-test-editor";
 import { shouldDeferSave } from "../../../hooks/use-auto-save";
 import { useFileWatcher } from "../../../hooks/use-file-watcher";
+import { t } from "../../../i18n";
 import { useEditorStore } from "../../../stores/editor/editor";
 import { useFileStore } from "../../../stores/file/file";
+import { useSettingsStore } from "../../../stores/settings/store";
 import { useUIStore } from "../../../stores/ui/ui";
+import {
+  markContentLoaded,
+  setTabLoading,
+} from "../../../utils/editor/programmatic-update";
 import { AppDialogs } from "../AppDialogs";
-
-const A = "/v/a.md";
-const A2 = "/v/a2.md";
-const B = "/v/b.md";
-const C = "/v/c.md";
-
-let shared: Editor;
-
-const fileTab = (id: string, filePath: string, isDirty = true): EditorTab => ({
-  contextId: "c",
-  filePath,
-  id,
+import {
+  A,
+  A2,
+  B,
+  buffers,
+  C,
+  cacheTab,
+  deferred,
+  disk,
+  fileTab,
   isDirty,
-  isPinned: false,
-  title: filePath.split("/").pop()!,
-});
+  NOW,
+  queueIds,
+  setupScene,
+  sharedText,
+  teardownScene,
+} from "./conflict-scene";
+
+let shared: ReturnType<typeof setupScene>["shared"];
+
+async function applyMerge(merged: string) {
+  await waitFor(() => expect(merge.props).not.toBeNull());
+  await act(async () => {
+    merge.props!.onApply(merged);
+  });
+  await settle();
+}
+
+function cancelMerge() {
+  act(() => merge.props!.onCancel());
+}
+
+function click(dialog: HTMLElement, label: string) {
+  act(() => {
+    within(dialog).getByRole("button", { name: label }).click();
+  });
+}
 
 function Harness({ children }: { children?: ReactNode }) {
   useFileWatcher();
@@ -128,37 +152,15 @@ function Harness({ children }: { children?: ReactNode }) {
         handleSave={vi.fn(async () => undefined)}
         handleSkillPreviewToggle={vi.fn()}
         handleToggleSourceMode={vi.fn()}
-        markDirty={(id, dirty) =>
-          useEditorStore.getState().markDirty(id, dirty)
-        }
       />
       {children}
     </>
   );
 }
 
-async function mount() {
-  const view = render(<Harness />);
-  await waitFor(() => expect(onFileChanged).not.toBeNull());
-  return view;
-}
-
-/** 워처가 올려 보내는 외부 변경 한 건. */
-function externalChange(path: string, mtime: number) {
-  act(() => {
-    onFileChanged!({ payload: { mtime, origin: "external", path } });
-  });
-}
-
 /** 지금 그려진 충돌 모달, 없으면 null. */
 const conflictDialog = () =>
   screen.queryByRole("dialog", { name: "File Modified Externally" });
-
-function click(dialog: HTMLElement, label: string) {
-  act(() => {
-    within(dialog).getByRole("button", { name: label }).click();
-  });
-}
 
 async function expectConflictFor(name: string) {
   const dialog = await screen.findByRole("dialog", {
@@ -168,53 +170,235 @@ async function expectConflictFor(name: string) {
   return dialog;
 }
 
+/** 워처가 올려 보내는 외부 변경 한 건. */
+function externalChange(path: string, mtime: number) {
+  act(() => {
+    onFileChanged!({ payload: { mtime, origin: "external", path } });
+  });
+}
+
+async function mount() {
+  const view = render(<Harness />);
+  await waitFor(() => expect(onFileChanged).not.toBeNull());
+  return view;
+}
+
+async function pressMerge() {
+  click(await expectConflictFor("a.md"), "Merge");
+  await settle();
+}
+
+async function settle() {
+  await act(async () => {
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+  });
+}
+
+const toastFor = (key: string, name: string) =>
+  t(key, useSettingsStore.getState().locale as Locale, { name });
+
 beforeEach(() => {
   onFileChanged = null;
   merge.props = null;
+  ({ shared } = setupScene());
   io.readFile.mockReset();
-  io.readFile.mockResolvedValue("EXT1\n");
+  io.readFile.mockImplementation(async (path: string) => {
+    if (!disk.has(path)) throw new Error(`ENOENT ${path}`);
+    return disk.get(path)!;
+  });
   io.writeFile.mockReset();
-  io.writeFile.mockResolvedValue(undefined);
+  io.writeFile.mockImplementation(async (path: string, content: string) => {
+    disk.set(path, content);
+  });
   io.mergeTexts.mockReset();
-  io.mergeTexts.mockResolvedValue({ segments: [] });
-  shared = makeTestEditor("<p>B body</p>");
-
-  useUIStore.setState({ conflictQueue: [], toast: null });
-  useFileStore.setState({
-    fileMtimes: new Map([
-      [A, { canReloadMtime: 0, lastSaveMtime: 1000 }],
-      [C, { canReloadMtime: 0, lastSaveMtime: 1000 }],
-    ]),
-    fileTree: [],
-    openFiles: new Map([
-      [A, "A local\n"],
-      [B, "B old\n"],
-      [C, "C local\n"],
-    ]),
-  });
-  useEditorStore.setState({
-    activeTabId: "b",
-    mruOrder: [],
-    sourceEditedTabs: [],
-    sourceModeTabs: [],
-    staleContentTabs: [],
-    tabs: [fileTab("a", A), fileTab("b", B), fileTab("c", C)],
-  });
+  io.mergeTexts.mockImplementation(
+    async (base: string, local: string, external: string) => ({
+      segments: [
+        {
+          base: [base],
+          external: [external],
+          kind: "conflict",
+          local: [local],
+        },
+      ],
+    }),
+  );
+  vi.spyOn(Date, "now").mockReturnValue(NOW);
 });
 
 afterEach(() => {
-  shared.destroy();
+  vi.restoreAllMocks();
+  teardownScene();
 });
 
-describe("§3.6 conflicts are queued per tab", () => {
+describe("§3.6 Merge reads the conflicted tab, not the active one", () => {
+  it("a: a background conflict merges the background tab's text", async () => {
+    // 이것을 실패시키는 것: local 을 `serializeLiveDoc(activeEditor)` 로 읽음("B body").
+    await mount();
+    externalChange(A, 2000);
+    await pressMerge();
+
+    expect(io.mergeTexts).toHaveBeenCalledWith(
+      "A local\n",
+      "A local\n",
+      "EXT1\n",
+    );
+  });
+
+  it("a2: the active tab whose document is not installed yet reads its cache", async () => {
+    // 활성 a 인데 shared editor 에는 아직 b 가 설치돼 있다(`loadedTabId() === "b"`).
+    // 이것을 실패시키는 것: shared editor 판정을 `activeTabId === id` 로(그러면 "B body").
+    useEditorStore.setState({ activeTabId: "a" });
+    await mount();
+    externalChange(A, 2000);
+    await pressMerge();
+
+    expect(io.mergeTexts.mock.calls[0][1]).toBe("A local\n");
+  });
+
+  it("c: an active source-mode tab merges its buffer", async () => {
+    // 이것을 실패시키는 것: 소스 버퍼 단계를 shared editor 뒤로("A old").
+    shared.commands.setContent("<p>A old</p>");
+    markContentLoaded("a");
+    buffers.set("a", "A src\n");
+    useEditorStore.setState({ activeTabId: "a", sourceModeTabs: ["a"] });
+    await mount();
+    externalChange(A, 2000);
+    await pressMerge();
+
+    expect(io.mergeTexts.mock.calls[0][1]).toBe("A src\n");
+  });
+
+  it("k: a tab still loading is not merged; it is opened instead", async () => {
+    // 이것을 실패시키는 것: 로딩 단계를 텍스트 반환으로(`openFiles` 로 merge 한다).
+    setTabLoading("a", true);
+    await mount();
+    externalChange(A, 2000);
+    await pressMerge();
+
+    expect(io.mergeTexts).not.toHaveBeenCalled();
+    expect(useEditorStore.getState().activeTabId).toBe("a");
+    expect(queueIds()).toEqual(["a"]);
+  });
+});
+
+describe("§3.6 Apply writes the conflicted tab and adopts the result there", () => {
+  it("b: the active tab is left alone; the background tab is clean and stale", async () => {
+    // 이것을 실패시키는 것: 활성 탭에 `markDirty(false)` / 배경 adopt 에서 `markContentStale` 제거.
+    await mount();
+    externalChange(A, 2000);
+    await pressMerge();
+    await applyMerge("MERGED\n");
+
+    expect(disk.get(A)).toBe("MERGED\n");
+    expect(isDirty("b")).toBe(true);
+    expect(sharedText()).toBe("B body\n");
+    expect(isDirty("a")).toBe(false);
+    expect(useFileStore.getState().openFiles.get(A)).toBe("MERGED\n");
+    expect(useEditorStore.getState().staleContentTabs).toContain("a");
+    expect(queueIds()).toEqual([]);
+    expect(screen.queryByTestId("merge-view")).toBeNull();
+  });
+
+  it("d: a disk that changed since Merge is not overwritten", async () => {
+    // 이것을 실패시키는 것: Apply 의 사전 디스크 확인 제거.
+    await mount();
+    externalChange(A, 2000);
+    await pressMerge();
+    disk.set(A, "EXT2\n");
+    await applyMerge("MERGED\n");
+
+    expect(io.writeFile).not.toHaveBeenCalled();
+    expect(queueIds()).toEqual(["a"]);
+    await expectConflictFor("a.md");
+    expect(useUIStore.getState().toast?.message).toBe(
+      toastFor("conflict.diskChanged", "a.md"),
+    );
+  });
+
+  it("d2: a tab text that changed since Merge is not overwritten", async () => {
+    // 이것을 실패시키는 것: Apply 의 사전 local 확인 제거.
+    await mount();
+    externalChange(A, 2000);
+    await pressMerge();
+    cacheTab("a", "<p>A local 2</p>");
+    await applyMerge("MERGED\n");
+
+    expect(io.writeFile).not.toHaveBeenCalled();
+    expect(queueIds()).toEqual(["a"]);
+  });
+
+  it("z: an active markdown tab with no live view to install into is not written", async () => {
+    // 이것을 실패시키는 것: Apply 사전 확인의 `adoptable` 제거(디스크만 바뀌고 화면은 옛 문서).
+    useEditorStore.setState({ activeTabId: "a" });
+    await mount();
+    externalChange(A, 2000);
+    await pressMerge();
+    await applyMerge("MERGED\n");
+
+    expect(io.writeFile).not.toHaveBeenCalled();
+    expect(queueIds()).toEqual(["a"]);
+    expect(useUIStore.getState().toast?.message).toBe(
+      toastFor("conflict.unavailable", "a.md"),
+    );
+  });
+});
+
+describe("§3.6 the merge view while Apply runs and after it fails", () => {
+  it("is busy while the write runs", async () => {
+    // 이것을 실패시키는 것: AppDialogs 가 MergeView 에 `busy` 를 넘기지 않음.
+    const write = deferred<void>();
+    io.writeFile.mockReturnValueOnce(write.promise);
+    await mount();
+    externalChange(A, 2000);
+    await pressMerge();
+    await waitFor(() => expect(merge.props).not.toBeNull());
+
+    act(() => merge.props!.onApply("MERGED\n"));
+    await settle();
+    const busy = merge.props!.busy;
+    write.resolve();
+    await settle();
+
+    expect(busy).toBe(true);
+  });
+
+  it("stays open after a failed write so Apply can be tried again", async () => {
+    // 이것을 실패시키는 것: 실패하면 언제나 merge view 를 닫음.
+    io.writeFile.mockRejectedValueOnce(new Error("EACCES"));
+    await mount();
+    externalChange(A, 2000);
+    await pressMerge();
+    await applyMerge("MERGED\n");
+
+    expect(screen.queryByTestId("merge-view")).not.toBeNull();
+    expect(merge.props!.busy).toBe(false);
+    expect(queueIds()).toEqual(["a"]);
+    expect(useUIStore.getState().toast?.message).toBe(
+      toastFor("conflict.writeFailed", "a.md"),
+    );
+  });
+});
+
+describe("§3.6 the conflict outlives everything but a success", () => {
+  it("e: Cancel keeps the conflict", async () => {
+    // 이것을 실패시키는 것: 취소에서 resolve(또는 wrapper 가 동작 전에 resolve).
+    await mount();
+    externalChange(A, 2000);
+    await pressMerge();
+    cancelMerge();
+
+    expect(io.writeFile).not.toHaveBeenCalled();
+    await expectConflictFor("a.md");
+  });
+
   it("f: a second conflict waits behind the first instead of replacing it", async () => {
     // 이것을 실패시키는 것: 큐를 한 칸으로(둘째 이벤트가 첫째를 덮는다).
     await mount();
     externalChange(A, 2000);
     externalChange(C, 2001);
-
-    const first = await expectConflictFor("a.md");
-    click(first, "Keep Local Edits");
+    await pressMerge();
+    await applyMerge("MERGED\n");
 
     await expectConflictFor("c.md");
   });
@@ -223,17 +407,195 @@ describe("§3.6 conflicts are queued per tab", () => {
     // 이것을 실패시키는 것: wrapper 가 `suspended` 를 무시(새 모달이 merge view 위에 뜬다).
     await mount();
     externalChange(A, 2000);
-    click(await expectConflictFor("a.md"), "Merge");
+    await pressMerge();
     await screen.findByTestId("merge-view");
 
     externalChange(C, 2001);
 
     expect(conflictDialog()).toBeNull();
-    expect(useUIStore.getState().conflictQueue.map((e) => e.tabId)).toContain(
-      "c",
+    expect(queueIds()).toEqual(["a", "c"]);
+  });
+
+  it("f3: cancelling that merge brings the first conflict back, not the second", async () => {
+    // 이것을 실패시키는 것: 취소에서 resolve(머리가 c 가 된다).
+    await mount();
+    externalChange(A, 2000);
+    await pressMerge();
+    externalChange(C, 2001);
+    cancelMerge();
+
+    await expectConflictFor("a.md");
+  });
+
+  it("g: the modal's buttons are disabled while an action runs", async () => {
+    // 이것을 실패시키는 것: wrapper 가 `pending` 을 무시.
+    const read = deferred<string>();
+    io.readFile.mockReturnValueOnce(read.promise);
+    await mount();
+    externalChange(A, 2000);
+    const dialog = await expectConflictFor("a.md");
+    click(dialog, "Merge");
+
+    const disabled = [
+      "Reload External Changes",
+      "Keep Local Edits",
+      "Merge",
+    ].map(
+      (name) =>
+        (within(dialog).getByRole("button", { name }) as HTMLButtonElement)
+          .disabled,
+    );
+    // 단언 전에 풀어 둔다 — 실패해도 토큰이 다음 테스트로 새지 않게.
+    read.resolve("EXT1\n");
+    await settle();
+
+    expect(disabled).toEqual([true, true, true]);
+  });
+
+  it("h: a tab closed while Merge reads drops its conflict and opens nothing", async () => {
+    // 이것을 실패시키는 것: `liveness` 의 탭 존재 확인 제거.
+    const read = deferred<string>();
+    io.readFile.mockReturnValueOnce(read.promise);
+    await mount();
+    externalChange(A, 2000);
+    click(await expectConflictFor("a.md"), "Merge");
+    // 탭의 텍스트는 이미 읽었고 디스크 읽기가 도는 중이다.
+    await waitFor(() => expect(io.readFile).toHaveBeenCalledWith(A));
+
+    act(() => useEditorStore.getState().closeTab("a"));
+    read.resolve("EXT1\n");
+    await settle();
+
+    expect(screen.queryByTestId("merge-view")).toBeNull();
+    expect(queueIds()).toEqual([]);
+  });
+
+  it("i: a failed merge leaves the buttons usable and the conflict queued", async () => {
+    // 이것을 실패시키는 것: `finally` 의 `endOp` 제거(다음 동작이 영원히 busy).
+    io.mergeTexts.mockRejectedValueOnce(new Error("merge failed"));
+    await mount();
+    externalChange(A, 2000);
+    await pressMerge();
+
+    const dialog = await expectConflictFor("a.md");
+    const button = within(dialog).getByRole("button", { name: "Merge" });
+    expect((button as HTMLButtonElement).disabled).toBe(false);
+    click(dialog, "Merge");
+    await settle();
+    expect(io.mergeTexts).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("§3.6 Keep Local saves the conflicted tab and reports what happened", () => {
+  it("m: the background tab is written and marked saved; the active tab is not", async () => {
+    // 이것을 실패시키는 것: 활성 탭일 때만 저장(오늘의 `handleSave` 경로).
+    await mount();
+    externalChange(A, 2000);
+    click(await expectConflictFor("a.md"), "Keep Local Edits");
+    await settle();
+
+    expect(io.writeFile).toHaveBeenCalledWith(A, "A local\n");
+    expect(isDirty("a")).toBe(false);
+    expect(isDirty("b")).toBe(true);
+    expect(queueIds()).toEqual([]);
+    expect(useFileStore.getState().getFileMtime(A)).toEqual({
+      canReloadMtime: 0,
+      lastSaveMtime: NOW,
+    });
+  });
+
+  it("n: a failed write keeps the conflict, the dirty flag and the guard", async () => {
+    // 이것을 실패시키는 것: 쓰기 전에 가드를 푼다(오늘의 keep-local 순서).
+    io.writeFile.mockRejectedValueOnce(new Error("EACCES"));
+    await mount();
+    externalChange(A, 2000);
+    click(await expectConflictFor("a.md"), "Keep Local Edits");
+    await settle();
+
+    expect(queueIds()).toEqual(["a"]);
+    expect(isDirty("a")).toBe(true);
+    expect(shouldDeferSave(useFileStore.getState().getFileMtime(A))).toBe(true);
+    expect(useUIStore.getState().toast?.message).toBe(
+      toastFor("conflict.writeFailed", "a.md"),
     );
   });
 
+  it("o: a failed write keeps a source edit marked unsaved", async () => {
+    // isDirty 는 false, sourceEdited 만 선 탭. 이것을 실패시키는 것: 성공을 `!isDirty` 로 판정.
+    buffers.set("a", "A src\n");
+    useEditorStore.setState({
+      activeTabId: "a",
+      sourceEditedTabs: ["a"],
+      sourceModeTabs: ["a"],
+      tabs: [fileTab("a", A, false), fileTab("b", B), fileTab("c", C)],
+    });
+    io.writeFile.mockRejectedValueOnce(new Error("EACCES"));
+    await mount();
+    externalChange(A, 2000);
+    click(await expectConflictFor("a.md"), "Keep Local Edits");
+    await settle();
+
+    expect(useEditorStore.getState().sourceEditedTabs).toEqual(["a"]);
+    expect(queueIds()).toEqual(["a"]);
+  });
+
+  it("p: a source-mode tab with no buffer is not written as empty", async () => {
+    // 이것을 실패시키는 것: 버퍼 없음을 `getSourceBuffer` 의 "" 로 읽음.
+    useEditorStore.setState({ sourceModeTabs: ["a"] });
+    await mount();
+    externalChange(A, 2000);
+    click(await expectConflictFor("a.md"), "Keep Local Edits");
+    await settle();
+
+    expect(io.writeFile).not.toHaveBeenCalled();
+    expect(queueIds()).toEqual(["a"]);
+    expect(useEditorStore.getState().activeTabId).toBe("a");
+  });
+
+  it("q: text typed while the write runs keeps the tab unsaved", async () => {
+    // 이것을 실패시키는 것: adopt 를 무조건 clean 으로.
+    const write = deferred<void>();
+    io.writeFile.mockImplementationOnce(
+      async (path: string, content: string) => {
+        await write.promise;
+        disk.set(path, content);
+      },
+    );
+    await mount();
+    externalChange(A, 2000);
+    click(await expectConflictFor("a.md"), "Keep Local Edits");
+    await settle();
+    cacheTab("a", "<p>A local 2</p>");
+    write.resolve();
+    await settle();
+
+    expect(isDirty("a")).toBe(true);
+    expect(useFileStore.getState().openFiles.get(A)).toBe("A local\n");
+    expect(queueIds()).toEqual([]);
+  });
+
+  it("t: a renamed tab's conflict is shown and saved under the new name", async () => {
+    // 이것을 실패시키는 것: 경로로 식별(옛 이름의 모달, 옛 경로에 쓰기) / `fileMtimes` 재키잉 제거.
+    await mount();
+    externalChange(A, 2000);
+    await expectConflictFor("a.md");
+
+    act(() => {
+      useFileStore.getState().renameFileEntry(A, A2, "a2.md");
+      useEditorStore.getState().renameTab(A, A2, "a2.md");
+    });
+    expect(shouldDeferSave(useFileStore.getState().getFileMtime(A2))).toBe(
+      true,
+    );
+    click(await expectConflictFor("a2.md"), "Keep Local Edits");
+    await settle();
+
+    expect(io.writeFile).toHaveBeenCalledWith(A2, "A local\n");
+    expect(io.writeFile).not.toHaveBeenCalledWith(A, expect.anything());
+  });
+});
+
+describe("§3.6 conflicts follow their tabs", () => {
   it("u: closing the tab drops its conflict; the reopened tab starts clean", async () => {
     // 이것을 실패시키는 것: 경로로 식별(같은 경로를 다시 연 탭에 옛 충돌이 남는다) / sweep 의
     // 인정(`canReloadMtime = 0`) 제거(다시 연 파일의 자동 저장이 영원히 미뤄진다).
@@ -305,9 +667,7 @@ describe("§3.6 conflicts are queued per tab", () => {
 
     act(() => useEditorStore.getState().closeTab("a"));
 
-    expect(useUIStore.getState().conflictQueue.map((e) => e.tabId)).toEqual([
-      "a-dup",
-    ]);
+    expect(queueIds()).toEqual(["a-dup"]);
     expect(shouldDeferSave(useFileStore.getState().getFileMtime(A))).toBe(true);
   });
 });

@@ -1,12 +1,67 @@
-// §3.6 The conflict modal's side of the app: keeps queued conflicts pointed at
-// their tabs as tabs are renamed and closed.
-import { useEffect } from "react";
+// §3.6 The conflict modal's side of the app: runs the actions against the
+// conflicted tab, owns the merge view's state, turns result codes into toasts,
+// and keeps queued conflicts pointed at their tabs as tabs are renamed and closed.
+import { useCallback, useEffect, useState } from "react";
 
+import type { Locale } from "../../i18n";
+import type {
+  ConflictFailure,
+  PreparedMerge,
+} from "../../services/conflict-resolution";
 import type { EditorTab } from "../../stores/editor/editor";
+import type { ConflictEntry } from "../../stores/ui/conflict-queue";
 
+import { reloadAfterConflictConsent } from "../../hooks/use-file-operations";
+import { t } from "../../i18n";
+import {
+  applyConflictMerge,
+  CONFLICT_RESULT_KEYS,
+  CONFLICT_UNAVAILABLE_KEYS,
+  keepLocalForConflict,
+  prepareConflictMerge,
+} from "../../services/conflict-resolution";
 import { isTabUnsaved, useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
+import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
+import { basename } from "../../utils/path-utils";
+
+export interface ConflictActions {
+  /** The merge view's data, or null when it is closed. */
+  merge: null | PreparedMerge;
+  /** Apply is running: the merge view's buttons are disabled. */
+  mergeBusy: boolean;
+  onApply: (merged: string) => void;
+  onCancelMerge: () => void;
+  onKeepLocal: (entry: ConflictEntry) => void;
+  onMerge: (entry: ConflictEntry) => void;
+  onReload: (entry: ConflictEntry) => void;
+  /** An action started from the modal is running: its buttons are disabled. */
+  pending: boolean;
+}
+
+/**
+ * Tell the user why an action stopped. Silent for `busy` (a second press) and
+ * `tab-gone` (nothing left to talk about). Names the tab's current file.
+ */
+export function toastConflictFailure(
+  failure: ConflictFailure,
+  tabId: string,
+): void {
+  if (failure.code === "busy" || failure.code === "tab-gone") return;
+  const key =
+    failure.code === "unavailable"
+      ? CONFLICT_UNAVAILABLE_KEYS[failure.reason]
+      : CONFLICT_RESULT_KEYS[failure.code];
+  const tab = useEditorStore.getState().tabs.find((x) => x.id === tabId);
+  const { locale } = useSettingsStore.getState();
+  useUIStore
+    .getState()
+    .showToast(
+      t(key, locale as Locale, { name: basename(tab?.filePath ?? "") }),
+      "warning",
+    );
+}
 
 /**
  * Bring the conflict queue in line with the tab list.
@@ -59,4 +114,71 @@ export function useConflictTargetSync(): void {
       }),
     [],
   );
+}
+
+/**
+ * The conflict modal's actions and the merge view's state. Every action runs
+ * against the entry's tab (`conflict-resolution.ts`) and leaves the conflict
+ * queued unless it succeeded — Cancel included.
+ */
+export function useConflictActions(): ConflictActions {
+  useConflictTargetSync();
+  const [merge, setMerge] = useState<null | PreparedMerge>(null);
+  const [mergeBusy, setMergeBusy] = useState(false);
+  const [pending, setPending] = useState(false);
+
+  const onMerge = useCallback((entry: ConflictEntry) => {
+    setPending(true);
+    void prepareConflictMerge(entry).then((result) => {
+      setPending(false);
+      if (result.code === "prepared") setMerge(result.prepared);
+      else toastConflictFailure(result, entry.tabId);
+    });
+  }, []);
+
+  const onApply = useCallback(
+    (merged: string) => {
+      if (!merge) return;
+      setMergeBusy(true);
+      void applyConflictMerge(merge, merged).then((result) => {
+        setMergeBusy(false);
+        if (result.code === "busy") return;
+        // A failed write keeps the merge open to try again; any other stop
+        // closes it, and the modal asks again with what is true now.
+        if (result.code !== "write-failed") setMerge(null);
+        if (result.code !== "applied") {
+          toastConflictFailure(result, merge.tabId);
+        }
+      });
+    },
+    [merge],
+  );
+
+  const onCancelMerge = useCallback(() => setMerge(null), []);
+
+  const onKeepLocal = useCallback((entry: ConflictEntry) => {
+    setPending(true);
+    void keepLocalForConflict(entry).then((result) => {
+      setPending(false);
+      if (result.code !== "saved") toastConflictFailure(result, entry.tabId);
+    });
+  }, []);
+
+  // §312 왜 force가 필요한지는 reloadAfterConflictConsent의 주석 참조. The entry is
+  // resolved first, as the modal did before: Reload still acts on the path.
+  const onReload = useCallback((entry: ConflictEntry) => {
+    useUIStore.getState().resolveConflict(entry.tabId, entry.generation);
+    reloadAfterConflictConsent(entry.filePath, entry.externalMtime);
+  }, []);
+
+  return {
+    merge,
+    mergeBusy,
+    onApply,
+    onCancelMerge,
+    onKeepLocal,
+    onMerge,
+    onReload,
+    pending,
+  };
 }

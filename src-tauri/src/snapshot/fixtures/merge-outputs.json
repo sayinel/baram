@@ -1,0 +1,96 @@
+[
+  {
+    "name": "base-equals-local",
+    "note": "A background tab with unsaved work wrote that text into openFiles on the way out, and the watcher took it as the base, so base equals local. The external side started from the disk before that work.",
+    "base": "alpha (my edit)\nbeta\ngamma\n",
+    "local": "alpha (my edit)\nbeta\ngamma\n",
+    "external": "alpha\nbeta\ngamma ext\n",
+    "segments": [
+      {
+        "base": [
+          "alpha (my edit)"
+        ],
+        "external": [
+          "alpha"
+        ],
+        "kind": "external"
+      },
+      {
+        "kind": "unchanged",
+        "lines": [
+          "beta"
+        ]
+      },
+      {
+        "base": [
+          "gamma"
+        ],
+        "external": [
+          "gamma ext"
+        ],
+        "kind": "external"
+      }
+    ]
+  },
+  {
+    "name": "partially-advanced-base",
+    "note": "The first visit's unsaved edit became the base on the way out; the second visit's edit is only in local; the external side started from the disk before both.",
+    "base": "one\ntwo (first)\nthree\nfour\n",
+    "local": "one\ntwo (first)\nthree\nfour (second)\n",
+    "external": "one\ntwo\nthree ext\nfour\n",
+    "segments": [
+      {
+        "kind": "unchanged",
+        "lines": [
+          "one"
+        ]
+      },
+      {
+        "base": [
+          "two (first)",
+          "three"
+        ],
+        "external": [
+          "two",
+          "three ext"
+        ],
+        "kind": "external"
+      },
+      {
+        "base": [
+          "four"
+        ],
+        "kind": "local",
+        "local": [
+          "four (second)"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "task-spliced-base",
+    "note": "A task write toggled a line on disk and spliced it into the cached text of a background tab with unsaved work; that spliced text is the base. The external side started from the disk after the toggle.",
+    "base": "- [x] task A\n- [ ] task B\nnotes (mine)\n",
+    "local": "- [x] task A\n- [ ] task B\nnotes (mine)\n",
+    "external": "- [x] task A\n- [x] task B\nnotes\n",
+    "segments": [
+      {
+        "kind": "unchanged",
+        "lines": [
+          "- [x] task A"
+        ]
+      },
+      {
+        "base": [
+          "- [ ] task B",
+          "notes (mine)"
+        ],
+        "external": [
+          "- [x] task B",
+          "notes"
+        ],
+        "kind": "external"
+      }
+    ]
+  }
+]

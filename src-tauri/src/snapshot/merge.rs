@@ -340,4 +340,21 @@ mod tests {
             .count();
         assert_eq!(conflicts, 2, "expected 2 conflicts, got {:?}", r.segments);
     }
+
+    /// §3.6 The merge outputs the conflict modal's interim hunk rule (D3,
+    /// `requireChoiceForExternalHunks` in `src/services/conflict-resolution.ts`)
+    /// guards against. The fixture is shared with the TypeScript tests; its
+    /// `segments` are this function's real output, transcribed from a run.
+    #[test]
+    fn merge_outputs_fixture_matches_merge_texts() {
+        let fixtures: Vec<serde_json::Value> =
+            serde_json::from_str(include_str!("fixtures/merge-outputs.json")).unwrap();
+        assert!(!fixtures.is_empty());
+        for f in &fixtures {
+            let text = |k: &str| f[k].as_str().unwrap().to_string();
+            let r = merge_texts(&text("base"), &text("local"), &text("external"));
+            let actual = serde_json::to_value(&r.segments).unwrap();
+            assert_eq!(actual, f["segments"], "{}: {}", f["name"], actual);
+        }
+    }
 }

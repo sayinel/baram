@@ -440,7 +440,6 @@ function App() {
         handleSave={handleSave}
         handleSkillPreviewToggle={handleSkillPreviewToggle}
         handleToggleSourceMode={handleToggleSourceMode}
-        markDirty={markDirty}
       />
       {tabSwitcherOpen && (
         <TabSwitcher

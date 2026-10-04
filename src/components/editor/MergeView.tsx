@@ -8,6 +8,8 @@ import type { MergeSegment } from "../../ipc/types";
 type Choice = "both" | "external" | "local";
 
 interface MergeViewProps {
+  /** §3.6 Apply is running — Apply and Cancel wait for it. */
+  busy?: boolean;
   filePath: string;
   onApply: (merged: string) => void;
   onCancel: () => void;
@@ -15,6 +17,7 @@ interface MergeViewProps {
 }
 
 export function MergeView({
+  busy = false,
   filePath,
   onApply,
   onCancel,
@@ -60,12 +63,12 @@ export function MergeView({
           <div className="merge-header-actions">
             <button
               className="merge-btn merge-btn-apply"
-              disabled={!allResolved}
+              disabled={busy || !allResolved}
               onClick={() => onApply(buildMerged())}
             >
               Apply Merge
             </button>
-            <button className="merge-btn" onClick={onCancel}>
+            <button className="merge-btn" disabled={busy} onClick={onCancel}>
               Cancel
             </button>
           </div>
