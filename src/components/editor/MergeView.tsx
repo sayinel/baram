@@ -89,6 +89,8 @@ export function MergeView({
                             "merge-choice",
                             choice === c && "merge-choice-active",
                           )}
+                          // §3.6 Apply already captured the choices it writes.
+                          disabled={busy}
                           key={c}
                           onClick={() =>
                             setChoices((prev) => ({ ...prev, [i]: c }))

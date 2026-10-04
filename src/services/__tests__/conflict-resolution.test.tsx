@@ -126,6 +126,31 @@ describe("§3.6 MergeView while Apply runs", () => {
       (screen.getByRole("button", { name }) as HTMLButtonElement).disabled;
     expect([disabled("Apply Merge"), disabled("Cancel")]).toEqual([true, true]);
   });
+
+  it("keeps the hunk choices fixed while busy, and usable again when not", () => {
+    // Apply 가 이미 고른 내용을 쓰는 동안 선택을 바꾸면 화면은 다른 것을 보이고 그 변경은 버려진다.
+    // 이것을 실패시키는 것: 선택 버튼의 `disabled={busy}` 제거.
+    const segments: MergeSegment[] = [
+      { base: ["b"], external: ["e"], kind: "conflict", local: ["l"] },
+    ];
+    const props = {
+      filePath: "a.md",
+      onApply: vi.fn(),
+      onCancel: vi.fn(),
+      segments,
+    };
+    const { rerender } = render(<MergeView {...props} busy />);
+    const choices = () =>
+      ["내 것", "외부", "둘 다"].map(
+        (name) =>
+          (screen.getByRole("button", { name }) as HTMLButtonElement).disabled,
+      );
+    expect(choices()).toEqual([true, true, true]);
+
+    // 양성 대조: busy 가 풀리면 다시 고를 수 있다.
+    rerender(<MergeView {...props} busy={false} />);
+    expect(choices()).toEqual([false, false, false]);
+  });
 });
 
 describe("§3.6 toasts for stops that can come after the write", () => {
