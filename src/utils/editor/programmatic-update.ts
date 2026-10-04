@@ -110,6 +110,18 @@ export function loadedTabId(): null | string {
 }
 
 /**
+ * §3.6 Re-arm the baseline capture for a tab whose document was just replaced
+ * outside a load (a reload or a conflict resolution installed the file's text).
+ * The next update captures the baseline the way it does after a load: the
+ * installed document when that update only normalizes, the document before it
+ * when it is a real edit. Unlike `markContentLoaded` it does not claim the
+ * shared editor for the tab, nor notify content-loaded listeners.
+ */
+export function markBaselinePending(tabId: string): void {
+  pendingTabs.add(tabId);
+}
+
+/**
  * Mark a tab as having just loaded content — the next update will capture the baseline.
  *
  * ‼️ LOAD-BEARING beyond dirty tracking (§260 Phase 4b). The plugin editor surface refuses

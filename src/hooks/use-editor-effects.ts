@@ -14,11 +14,13 @@ import { isTabUnsaved, useEditorStore } from "../stores/editor/editor";
 import { useLinkStore } from "../stores/editor/link";
 import { useFileStore } from "../stores/file/file";
 import { useUIStore } from "../stores/ui/ui";
+import { installFreshDocument } from "../utils/editor/install-fresh-document";
 import { patchEditorContent } from "../utils/editor/patch-editor-content";
 import {
   scrollToTarget,
   takeSameTabScroll,
 } from "../utils/editor/pending-scroll";
+import { markBaselinePending } from "../utils/editor/programmatic-update";
 
 interface UseEditorEffectsParams {
   editor: Editor | null;
@@ -224,15 +226,14 @@ export function useEditorEffects({
       patchEditorContent(editor.view, content);
       return;
     }
-    const newDoc = markdownToProsemirror(content, editor.schema);
-    const prevPos = editor.state.selection.anchor;
-    const selPos = Math.min(prevPos, newDoc.content.size);
-    const newState = EditorState.create({
-      doc: newDoc,
-      selection: TextSelection.near(newDoc.resolve(selPos), -1),
-      plugins: editor.state.plugins,
-    });
-    replaceEditorStateWithVim(editor.view, newState, "fresh-document");
+    installFreshDocument(editor, content);
+    // §3.6 A clean tab now shows the disk's new text, so the dirty baseline must
+    // be that text: re-arm the pending capture, as a load does. Left alone, the
+    // baseline stays at the load-time document, and editing back to it would
+    // read as clean while the file on disk says something else. A tab with
+    // unsaved work (a properties refresh of its own text) keeps its baseline.
+    const { sourceEditedTabs } = useEditorStore.getState();
+    if (!isTabUnsaved(tab, sourceEditedTabs)) markBaselinePending(tab.id);
     // Intentionally only re-run on contentRefreshKey bump; editor and other
     // values are read from store state to avoid re-running on every edit.
   }, [contentRefreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
