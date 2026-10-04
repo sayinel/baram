@@ -141,10 +141,12 @@ export async function triggerAutoReload(
   //
   // ‼️ dirty 탭은 건너뛴다 — 그 캐시는 아직 저장되지 않은 편집을 들고 있고, 표시를 달면
   // 탭 전환이 그것을 버린다. `force`는 사용자가 "로컬 편집을 버려도 좋다"고 말한 경우다.
-  const { activeTabId, markContentStale, tabs } = useEditorStore.getState();
+  const { activeTabId, markContentStale, sourceEditedTabs, tabs } =
+    useEditorStore.getState();
   for (const t of tabs) {
     if (t.filePath !== filePath || t.id === activeTabId) continue;
-    if (t.isDirty && !options.force) continue;
+    // §3.6 `isTabUnsaved`, not `isDirty` — a source-mode edit leaves `isDirty` false.
+    if (isTabUnsaved(t, sourceEditedTabs) && !options.force) continue;
     markContentStale(t.id);
   }
 
@@ -536,7 +538,7 @@ function syncSourceBuffers(
   cachedContent: string | undefined,
   force: boolean,
 ): number {
-  const { sourceBufferAccess, sourceModeTabs, tabs } =
+  const { sourceBufferAccess, sourceEditedTabs, sourceModeTabs, tabs } =
     useEditorStore.getState();
   if (!sourceBufferAccess) return 0;
 
@@ -546,9 +548,12 @@ function syncSourceBuffers(
   for (const tab of tabs) {
     if (tab.filePath !== filePath) continue;
     if (!alwaysSource && !sourceModeTabs.includes(tab.id)) continue;
+    // §3.6 A source-edited tab is unsaved even when its buffer equals the cache
+    // (a tab switch writes the buffer into `openFiles`), so that counts as kept too.
     if (
       !force &&
-      sourceBufferAccess.getSourceBuffer(tab.id) !== cachedContent
+      (sourceBufferAccess.getSourceBuffer(tab.id) !== cachedContent ||
+        sourceEditedTabs.includes(tab.id))
     ) {
       kept += 1;
       continue;

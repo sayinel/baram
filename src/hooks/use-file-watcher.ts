@@ -9,7 +9,7 @@ import type { FileEntry } from "../stores/file/file";
 import { useShallow } from "zustand/shallow";
 
 import { watchDir } from "../ipc/invoke";
-import { useEditorStore } from "../stores/editor/editor";
+import { isTabUnsaved, useEditorStore } from "../stores/editor/editor";
 import { useFileStore } from "../stores/file/file";
 import { logger } from "../utils/logger";
 import { showConflictModal, triggerAutoReload } from "./use-file-operations";
@@ -157,12 +157,16 @@ export function useFileWatcher() {
               .getState()
               .updateCanReloadMtime(filePath, externalMtime);
 
-            // Check dirty state
-            const tabs = useEditorStore.getState().tabs;
-            const tab = tabs.find((t) => t.filePath === filePath);
-            const isDirty = tab?.isDirty ?? false;
+            // §3.6 "Unsaved" is `isTabUnsaved`, not `isDirty`: markdown typed in
+            // source mode raises `sourceEditedTabs` and leaves `isDirty` false, so
+            // reading `isDirty` alone auto-reloads over that text with no prompt.
+            const { sourceEditedTabs, tabs } = useEditorStore.getState();
+            const unsaved = tabs.some(
+              (t) =>
+                t.filePath === filePath && isTabUnsaved(t, sourceEditedTabs),
+            );
 
-            if (!isDirty) {
+            if (!unsaved) {
               // §313 앱 자신의 쓰기는 외부 변경이 아니다 — 토스트도, 실행 취소를
               // 버리는 재구축도 하지 않는다. dirty 탭은 아래 그대로다: 앱이 디스크에
               // 쓴 것과 사용자가 버퍼에 친 것이 갈라져 있으므로 동의 없이 어느 한쪽을

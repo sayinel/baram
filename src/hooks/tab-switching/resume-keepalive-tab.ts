@@ -5,7 +5,7 @@ import type { Editor } from "@tiptap/core";
 
 import { dispatchSetSearchTerm } from "../../extensions/plugins/find-replace";
 import { activateEditorForDocument } from "../../extensions/plugins/vim/vim-activation";
-import { useEditorStore } from "../../stores/editor/editor";
+import { isTabUnsaved, useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { useUIStore } from "../../stores/ui/ui";
 import { patchEditorContent } from "../../utils/editor/patch-editor-content";
@@ -77,9 +77,13 @@ export function resumeKeepaliveTab(
       mtimeEntry.canReloadMtime > mtimeEntry.lastSaveMtime
     ) {
       // activeTabId === incomingTab.id here (see caller), so the incoming
-      // tab's dirty state can be read directly.
-      const isDirty = incomingTab.isDirty ?? false;
-      if (!isDirty) {
+      // tab's unsaved state can be read directly. §3.6 `isTabUnsaved`, not
+      // `isDirty` — a source-mode edit leaves `isDirty` false.
+      const unsaved = isTabUnsaved(
+        incomingTab,
+        useEditorStore.getState().sourceEditedTabs,
+      );
+      if (!unsaved) {
         triggerAutoReload(
           incomingTab.filePath,
           mtimeEntry.canReloadMtime,
