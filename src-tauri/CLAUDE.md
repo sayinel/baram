@@ -52,9 +52,10 @@ PR이 Rust 경로를 건드리지 않으면 rust 잡 skip이 정상이고, 그 �
 `cli/` 는 IPC 커맨드가 아니다 — `main()` 이 `cli::mode_for(argv)` 로 갈라 `cli::run` 을 부르고, tauri 는 시작하지 않는다.
 설계는 `dev/design/specs/0066-cli-read-only-design.md`.
 
-- **읽기 전용이다.** 명령을 더할 때 vault 에 쓰는 것을 넣지 않는다 — `tests/cli.rs` 의
-  `no_command_writes_anything_into_the_vault` 가 아홉 명령 전후의 vault 를 비교한다. 쓰는 명령은 열린 탭과 충돌하므로 앱을 거쳐야 하고,
-  그것은 다른 설계다(스펙 §8-3).
+- **읽기 전용이다.** 명령을 더할 때 vault · 앱의 `config.json` · 앱 로그에 쓰는 것을 넣지 않는다 — `tests/cli.rs` 의
+  `no_command_writes_into_the_vault_the_config_or_the_logs` 가 아홉 명령(텍스트 · `--json`) 전후로 vault 와 `HOME` · `XDG_DATA_HOME`
+  을 담은 샌드박스 전체를 비교한다 — 그래서 vault 와 `config.json`, 앱 로그 디렉터리에 쓰는 것이 함께 잡힌다. 쓰는 명령은 열린 탭과
+  충돌하므로 앱을 거쳐야 하고, 그것은 다른 설계다(스펙 §8-3).
 - **명령을 더하면** `args.rs` 의 `Command` 와 `mod.rs` 의 `execute` 뿐 아니라 `tests/cli.rs` 의 `NINE` 과 기대 JSON 에도 더한다 —
   `the_nine_commands_are_the_ones_the_binary_knows` 가 `--help` 의 목록과 `NINE` 을 맞춘다.
 - **출력 구조체는 CLI 의 것이다.** IPC 구조체(`TaskEntry` 등)를 그대로 직렬화하지 않는다 — CLI 의 JSON 은 사용자 스크립트가 읽는
