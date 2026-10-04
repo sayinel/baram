@@ -147,6 +147,17 @@ pub struct BacklinkResult {
     pub block_id: Option<String>,
 }
 
+/// §387 Where the graph resolver sends one outgoing link (`baram links`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum LinkResolution {
+    /// A file under this index's root.
+    Resolved(String),
+    /// `[[alias::note]]` — the link names another vault (§87). Not looked up here.
+    OtherVault(String),
+    /// No file this index knows answers to the target.
+    Unresolved,
+}
+
 /// Link graph for the frontend
 #[derive(Debug, Clone, Serialize, Default)]
 pub struct LinkGraph {
@@ -376,6 +387,43 @@ impl LinkIndex {
             }
         }
         results
+    }
+
+    /// §387 The links `file_path` holds, each with where the graph resolver sends it.
+    /// `None` when the file is not in this index: it is not markdown, the walk skips it,
+    /// or it could not be read. A note with no links is `Some(vec![])` — `build` files
+    /// every markdown file it reads under `outgoing`, linked or not.
+    ///
+    /// ONE method rather than three exposed pieces, because the ORDER is the contract.
+    /// A cross-vault link is decided first: its `target` is the bare note name, so
+    /// asking the maps would resolve `[[journal::x]]` to a local `x.md`. Then the target
+    /// is normalized, and only then are the maps asked.
+    ///
+    /// This is the GRAPH's resolution (`resolve_target_from_map`), not the editor's
+    /// click-through: no `[[./x]]` relative to the source, no journal dates, and a
+    /// path-qualified target that misses falls back to its stem.
+    pub(crate) fn outgoing_resolved(
+        &self,
+        file_path: &str,
+    ) -> Option<Vec<(LinkEntry, LinkResolution)>> {
+        let entries = self.outgoing.get(file_path)?;
+        Some(
+            entries
+                .iter()
+                .map(|entry| {
+                    let resolution = match &entry.target_vault_alias {
+                        Some(alias) => LinkResolution::OtherVault(alias.clone()),
+                        None => {
+                            match self.resolve_target_from_map(&normalize_target(&entry.target)) {
+                                Some(path) => LinkResolution::Resolved(path),
+                                None => LinkResolution::Unresolved,
+                            }
+                        }
+                    };
+                    (entry.clone(), resolution)
+                })
+                .collect(),
+        )
     }
 
     /// Register a file path in file_map and relative_map for target resolution
@@ -1187,5 +1235,84 @@ mod build_bench {
             all.len(),
             started.elapsed()
         );
+    }
+}
+
+#[cfg(test)]
+mod outgoing_tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    async fn index_over(files: &[(&str, &str)]) -> (TempDir, String, LinkIndex) {
+        let dir = TempDir::new().unwrap();
+        for (name, body) in files {
+            let path = dir.path().join(name);
+            tokio::fs::create_dir_all(path.parent().unwrap())
+                .await
+                .unwrap();
+            tokio::fs::write(&path, body).await.unwrap();
+        }
+        let root = dir.path().to_string_lossy().to_string();
+        let mut index = LinkIndex::new();
+        index.build(&root).await.unwrap();
+        (dir, root, index)
+    }
+
+    fn path_in(root: &str, name: &str) -> String {
+        std::path::Path::new(root)
+            .join(name)
+            .to_string_lossy()
+            .to_string()
+    }
+
+    #[tokio::test]
+    async fn each_outgoing_link_says_where_the_graph_resolver_sends_it() {
+        let (_dir, root, index) = index_over(&[
+            (
+                "notes/a.md",
+                "[[b]] and [[missing]]\n((b#^x1))\n[[journal::b]]\n[[B]]\n",
+            ),
+            ("notes/b.md", "# B\n"),
+        ])
+        .await;
+        let b = path_in(&root, "notes/b.md");
+
+        let links = index
+            .outgoing_resolved(&path_in(&root, "notes/a.md"))
+            .expect("a.md is indexed");
+        let seen: Vec<(&str, u32, &LinkResolution)> = links
+            .iter()
+            .map(|(entry, resolution)| (entry.target.as_str(), entry.line, resolution))
+            .collect();
+        assert_eq!(
+            seen,
+            vec![
+                ("b", 1, &LinkResolution::Resolved(b.clone())),
+                ("missing", 1, &LinkResolution::Unresolved),
+                ("b", 2, &LinkResolution::Resolved(b.clone())),
+                // The target is the bare name `b`, and a local b.md exists — it must
+                // still not be resolved here: the link names another vault.
+                ("b", 3, &LinkResolution::OtherVault("journal".to_string())),
+                // Written with another case: the target is normalized before the maps
+                // are asked.
+                ("B", 4, &LinkResolution::Resolved(b)),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_note_without_links_is_indexed_and_a_file_outside_the_index_is_not() {
+        let (_dir, root, index) =
+            index_over(&[("a.md", "no links\n"), ("data.txt", "[[a]]\n")]).await;
+        // `LinkEntry` has no `PartialEq`, so the three answers are told apart by shape.
+        assert!(index
+            .outgoing_resolved(&path_in(&root, "a.md"))
+            .is_some_and(|links| links.is_empty()));
+        assert!(index
+            .outgoing_resolved(&path_in(&root, "data.txt"))
+            .is_none());
+        assert!(index
+            .outgoing_resolved(&path_in(&root, "nope.md"))
+            .is_none());
     }
 }

@@ -233,6 +233,16 @@ async fn execute(cli: Cli, out: &mut dyn Write) -> Result<(), Failure> {
                     .await?;
             output::write_envelope(out, &envelope, cli.json)?;
         }
+        Command::Backlinks { path } => {
+            let vault = required(resolved)?;
+            let envelope = ops_notes::backlinks(&vault, &path).await?;
+            output::write_envelope(out, &envelope, cli.json)?;
+        }
+        Command::Links { path } => {
+            let vault = required(resolved)?;
+            let envelope = ops_notes::links(&vault, &path).await?;
+            output::write_envelope(out, &envelope, cli.json)?;
+        }
     }
     Ok(())
 }

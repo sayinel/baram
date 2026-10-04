@@ -1056,6 +1056,8 @@ fn a_walk_that_fails_says_which_folder() {
         &["tags"][..],
         &["tag", "tag"][..],
         &["tasks"][..],
+        &["backlinks", "notes/a.md"][..],
+        &["links", "notes/a.md"][..],
     ]
     .into_iter()
     .map(|command| {
@@ -1080,4 +1082,111 @@ fn a_walk_that_fails_says_which_folder() {
     }
     assert_eq!(search.code, 0, "stderr: {}", search.stderr);
     assert_eq!(search.stdout, "notes/a.md\t1\t#tag and needle\n");
+}
+
+// ── backlinks · links ─────────────────────────────────────────────────────────────
+
+fn linked_vault(sb: &Sandbox) {
+    write(
+        &sb.vault,
+        "notes/alpha.md",
+        "# Alpha\n\nSee [[beta]] and [[missing-note]] and [[journal::remote]].\n",
+    );
+    write(
+        &sb.vault,
+        "notes/beta.md",
+        "# Beta\n\nBack to [[alpha]].\nSee ((alpha#^blk1)) too.\n",
+    );
+    write(&sb.vault, "plain.txt", "[[alpha]]\n");
+}
+
+#[test]
+fn backlinks_are_what_points_at_the_note() {
+    let sb = sandbox();
+    linked_vault(&sb);
+    let vault = vault_arg(&sb);
+    let ran = baram(
+        &sb,
+        &sb.home,
+        &["--json", "--vault", &vault, "backlinks", "notes/alpha.md"],
+    );
+    assert_eq!(ran.code, 0, "stderr: {}", ran.stderr);
+    assert_eq!(
+        json(&ran.stdout),
+        serde_json::json!({
+            "vault": { "name": "vault", "path": vault },
+            "truncated": false,
+            "items": [
+                { "path": "notes/beta.md", "line": 3, "type": "wikilink",
+                  "context": "Back to [[alpha]].", "blockId": null },
+                { "path": "notes/beta.md", "line": 4, "type": "blockRef",
+                  "context": "See ((alpha#^blk1)) too.", "blockId": "blk1" }
+            ]
+        })
+    );
+    // A note that is not written yet can still be asked about.
+    let future = baram(
+        &sb,
+        &sb.home,
+        &["--vault", &vault, "backlinks", "notes/missing-note.md"],
+    );
+    assert_eq!(future.code, 0, "stderr: {}", future.stderr);
+    assert_eq!(
+        future.stdout,
+        "notes/alpha.md\t3\twikilink\tSee [[beta]] and [[missing-note]] and [[journal::remote]].\n"
+    );
+}
+
+#[test]
+fn links_say_where_each_one_leads() {
+    let sb = sandbox();
+    linked_vault(&sb);
+    let vault = vault_arg(&sb);
+    let ran = baram(
+        &sb,
+        &sb.home,
+        &["--json", "--vault", &vault, "links", "notes/alpha.md"],
+    );
+    assert_eq!(ran.code, 0, "stderr: {}", ran.stderr);
+    assert_eq!(
+        json(&ran.stdout)["items"],
+        serde_json::json!([
+            { "line": 3, "type": "wikilink", "target": "beta", "blockId": null,
+              "resolution": "resolved", "path": "notes/beta.md", "vault": null },
+            { "line": 3, "type": "wikilink", "target": "missing-note", "blockId": null,
+              "resolution": "unresolved", "path": null, "vault": null },
+            { "line": 3, "type": "wikilink", "target": "remote", "blockId": null,
+              "resolution": "otherVault", "path": null, "vault": "journal" }
+        ])
+    );
+    let text = baram(
+        &sb,
+        &sb.home,
+        &["--vault", &vault, "links", "notes/beta.md"],
+    );
+    assert_eq!(
+        text.stdout,
+        "3\twikilink\talpha\tresolved\tnotes/alpha.md\n4\tblockRef\talpha\tresolved\tnotes/alpha.md\n"
+    );
+}
+
+#[test]
+fn links_of_something_the_index_does_not_read() {
+    let sb = sandbox();
+    linked_vault(&sb);
+    let vault = vault_arg(&sb);
+    // Not a note, or a note where the walk never goes: the caller's mistake. A note the
+    // index could not read (here: not UTF-8) is not.
+    write(&sb.vault, ".obsidian/hidden.md", "[[alpha]]\n");
+    std::fs::write(sb.vault.join("notes/binary.md"), [0xffu8, 0xfe, 0xfd]).expect("write");
+    for (path, code, exit) in [
+        ("plain.txt", "INVALID_ARGUMENT", 2),
+        (".obsidian/hidden.md", "INVALID_ARGUMENT", 2),
+        ("notes/binary.md", "IO", 1),
+        ("notes/nope.md", "FILE_NOT_FOUND", 1),
+    ] {
+        let ran = baram(&sb, &sb.home, &["--json", "--vault", &vault, "links", path]);
+        assert_eq!(ran.code, exit, "{path}");
+        assert_eq!(json(&ran.stderr)["error"]["code"], code, "{path}");
+    }
 }

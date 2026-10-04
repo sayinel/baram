@@ -66,6 +66,10 @@ pub(crate) enum Command {
         #[arg(long)]
         file: Option<String>,
     },
+    /// List the links that point at a note.
+    Backlinks { path: String },
+    /// List the links a note holds and where each one leads.
+    Links { path: String },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]

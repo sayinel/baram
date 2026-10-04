@@ -150,6 +150,23 @@ fn unreadable_directory(vault: &Vault, failed: Option<FsError>) -> CliError {
     }
 }
 
+/// The same for the link index, which walks TWICE: `LinkIndex::build` collects the
+/// markdown files and then every file (non-markdown link targets, §278). The two
+/// walkers skip the same things, and they are re-run in the order the build ran them.
+pub(crate) async fn index_failure(vault: &Vault) -> CliError {
+    let mut sink = Vec::new();
+    let mut failed = crate::fs::collect_md_files(&vault.root, &mut sink)
+        .await
+        .err();
+    if failed.is_none() {
+        sink.clear();
+        failed = crate::fs::collect_all_files(&vault.root, &mut sink)
+            .await
+            .err();
+    }
+    unreadable_directory(vault, failed)
+}
+
 /// Sorts a list the CLI prints by (path, line) (spec 0066 §3.6). The walkers hand files
 /// back in `read_dir` order, which differs between filesystems; the line is compared as
 /// a number, not as text.
