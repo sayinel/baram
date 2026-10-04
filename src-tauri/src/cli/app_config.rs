@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 pub(crate) const APP_IDENTIFIER: &str = "com.inel.baram";
 
 const CONTEXT_KEY: &str = "baram:context";
+const SETTINGS_KEY: &str = "baram:settings";
 
 /// What the CLI needs from the app's persisted state. Fields this reader does not name
 /// are ignored, so the app can add to its stores freely; a field it expects and does not
@@ -21,6 +22,9 @@ const CONTEXT_KEY: &str = "baram:context";
 pub(crate) struct AppConfig {
     pub registered: Vec<Registered>,
     pub active_id: Option<String>,
+    /// The app's "exclude from tasks" folders, vault-relative. `tasks` applies them so
+    /// its answer matches the app's task panel.
+    pub tasks_exclude_paths: Vec<String>,
     pub warnings: Vec<String>,
 }
 
@@ -45,6 +49,10 @@ pub(crate) fn load(path: &Path) -> AppConfig {
     };
     if let Some(state) = persisted_state(map.get(CONTEXT_KEY), CONTEXT_KEY, &mut config.warnings) {
         read_contexts(&state, &mut config);
+    }
+    if let Some(state) = persisted_state(map.get(SETTINGS_KEY), SETTINGS_KEY, &mut config.warnings)
+    {
+        read_settings(&state, &mut config);
     }
     config
 }
@@ -129,6 +137,22 @@ fn read_contexts(state: &Value, config: &mut AppConfig) {
     }
 }
 
+/// The settings store's `partialize` always carries `tasksExcludePaths`, so a settings
+/// key WITHOUT it means the format moved — a warning, not a silent "exclude nothing".
+fn read_settings(state: &Value, config: &mut AppConfig) {
+    let Some(list) = state.get("tasksExcludePaths").and_then(Value::as_array) else {
+        config.warnings.push(format!(
+            "{SETTINGS_KEY}: no `state.tasksExcludePaths` array"
+        ));
+        return;
+    };
+    config.tasks_exclude_paths = list
+        .iter()
+        .filter_map(Value::as_str)
+        .map(str::to_string)
+        .collect();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -174,6 +198,7 @@ mod tests {
             "the file context is not a root; the other two are"
         );
         assert_eq!(config.active_id.as_deref(), Some("ctx-1"));
+        assert_eq!(config.tasks_exclude_paths, ["archive", "templates/"]);
     }
 
     #[test]
@@ -278,6 +303,30 @@ mod tests {
                 kind: RootKind::Vault,
             }]
         );
+    }
+
+    #[test]
+    fn settings_without_the_exclude_list_are_a_warning() {
+        let config = load_text(&config_with(
+            SETTINGS_KEY,
+            &serde_json::json!({ "state": { "tasksEnabled": true }, "version": 28 }),
+        ));
+        assert!(config.tasks_exclude_paths.is_empty());
+        assert_eq!(config.warnings.len(), 1, "{:?}", config.warnings);
+        assert!(
+            config.warnings[0].starts_with(SETTINGS_KEY),
+            "{:?}",
+            config.warnings
+        );
+    }
+
+    #[test]
+    fn a_fresh_install_without_a_settings_key_is_silent() {
+        let config = load_text(&config_with(
+            CONTEXT_KEY,
+            &serde_json::json!({ "state": { "contexts": [], "activeContextId": null } }),
+        ));
+        assert_eq!(config, AppConfig::default());
     }
 
     #[test]

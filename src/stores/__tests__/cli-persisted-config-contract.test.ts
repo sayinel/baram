@@ -43,6 +43,7 @@ vi.mock("../../services/vault-context-loader", () => ({
 }));
 
 import { useContextStore } from "../context/context";
+import { useSettingsStore } from "../settings/store";
 
 const FIXTURE_PATH = "src-tauri/src/cli/fixtures/persisted-config.json";
 
@@ -55,6 +56,9 @@ const CONTEXT_PATHS = [
   "state.contexts.0.alias",
   "state.activeContextId",
 ];
+
+/** `app_config.rs` 의 `read_settings` 가 읽는 경로. */
+const SETTINGS_PATHS = ["state.tasksExcludePaths"];
 
 function at(value: unknown, path: string): unknown {
   return path
@@ -92,6 +96,7 @@ describe("§387 the CLI's view of config.json", () => {
     await flushPersist();
     // 빈 목록의 "모양" 을 보면 필드를 하나도 검사하지 못한다 — vault 를 하나 넣는다.
     await useContextStore.getState().addContext("vault", "/vaults/notes");
+    useSettingsStore.getState().setTasksExcludePaths(["archive"]);
     await flushPersist();
   });
 
@@ -107,6 +112,20 @@ describe("§387 the CLI's view of config.json", () => {
       ).toEqual({ path, shape: shape(at(expected, path)) });
       expect(shape(at(actual, path)), path).not.toBe("undefined");
     }
+  });
+
+  it("writes the task exclusion list the CLI applies", () => {
+    const written = persisted.get("baram:settings");
+    expect(written).toBeDefined();
+    const actual: unknown = JSON.parse(written ?? "null");
+    const expected = fixture("baram:settings");
+    for (const path of SETTINGS_PATHS) {
+      expect(
+        { path, shape: shape(at(actual, path)) },
+        `baram:settings ${path}`,
+      ).toEqual({ path, shape: shape(at(expected, path)) });
+    }
+    expect(at(actual, "state.tasksExcludePaths")).toEqual(["archive"]);
   });
 
   it("spells the context kinds the CLI matches on", () => {

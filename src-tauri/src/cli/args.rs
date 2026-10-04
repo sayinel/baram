@@ -1,6 +1,6 @@
 // §387 `baram <command>` — the argument grammar.
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -53,4 +53,25 @@ pub(crate) enum Command {
         #[arg(long, default_value_t = 100, value_parser = clap::value_parser!(u32).range(1..))]
         limit: u32,
     },
+    /// List the vault's tags with how often each occurs.
+    Tags,
+    /// List the files that carry a tag.
+    Tag { name: String },
+    /// List tasks.
+    Tasks {
+        /// Which tasks: open (todo and doing), done, cancelled, or all.
+        #[arg(long, value_enum, default_value_t = TaskStatus::Open)]
+        status: TaskStatus,
+        /// Only this file (relative to the vault root).
+        #[arg(long)]
+        file: Option<String>,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub(crate) enum TaskStatus {
+    Open,
+    Done,
+    Cancelled,
+    All,
 }

@@ -738,3 +738,223 @@ fn a_folder_in_a_directory_that_cannot_be_entered_is_io_not_file_not_found() {
         );
     }
 }
+
+// ── tags · tag · tasks ────────────────────────────────────────────────────────────
+
+/// `baram:settings` as the app persists it, excluding `archive/` from tasks.
+fn settings() -> serde_json::Value {
+    serde_json::json!({
+        "state": { "tasksEnabled": true, "tasksExcludePaths": ["archive"] },
+        "version": 28
+    })
+}
+
+fn notes_vault(sb: &Sandbox) {
+    write(
+        &sb.vault,
+        "notes/alpha.md",
+        "---\ntags: [project]\n---\n# Alpha\n\n- [ ] write the report #work\n- [x] file the receipt\n- [/] review the draft #work\n",
+    );
+    write(&sb.vault, "notes/beta.md", "# Beta\n\n- [-] dropped idea\n");
+    write(&sb.vault, "archive/old.md", "- [ ] archived task\n");
+}
+
+#[test]
+fn tags_counts_occurrences_and_tag_lists_the_files() {
+    let sb = sandbox();
+    notes_vault(&sb);
+    let vault = vault_arg(&sb);
+    let tags = baram(&sb, &sb.home, &["--vault", &vault, "tags"]);
+    assert_eq!(tags.code, 0, "stderr: {}", tags.stderr);
+    // `work` occurs twice in ONE file: the count is occurrences, not files.
+    assert_eq!(tags.stdout, "work\t2\nproject\t1\n");
+
+    for name in ["work", "#work", "WORK"] {
+        let files = baram(&sb, &sb.home, &["--vault", &vault, "tag", name]);
+        assert_eq!(
+            (files.code, files.stdout.as_str()),
+            (0, "notes/alpha.md\n"),
+            "{name}"
+        );
+    }
+    let none = baram(&sb, &sb.home, &["--vault", &vault, "tag", "nope"]);
+    assert_eq!((none.code, none.stdout.as_str()), (0, ""));
+    let empty = baram(&sb, &sb.home, &["--json", "--vault", &vault, "tag", "#"]);
+    assert_eq!(empty.code, 2);
+    assert_eq!(json(&empty.stderr)["error"]["code"], "INVALID_ARGUMENT");
+}
+
+#[test]
+fn tasks_default_to_the_open_ones_minus_what_the_app_excludes() {
+    let sb = sandbox();
+    notes_vault(&sb);
+    write_config(
+        &sb,
+        &[
+            ("baram:context", registered(&sb)),
+            ("baram:settings", settings()),
+        ],
+    );
+    let open = baram(&sb, &sb.vault, &["tasks"]);
+    assert_eq!(open.code, 0, "stderr: {}", open.stderr);
+    assert_eq!(
+        open.stdout,
+        "notes/alpha.md\t6\ttodo\twrite the report #work\nnotes/alpha.md\t8\tdoing\treview the draft #work\n"
+    );
+
+    let all = baram(&sb, &sb.vault, &["tasks", "--status", "all"]);
+    assert_eq!(
+        all.stdout,
+        "notes/alpha.md\t6\ttodo\twrite the report #work\n\
+         notes/alpha.md\t7\tdone\tfile the receipt\n\
+         notes/alpha.md\t8\tdoing\treview the draft #work\n\
+         notes/beta.md\t3\tcancelled\tdropped idea\n"
+    );
+
+    // Without the settings, nothing is excluded — the exclusion comes from the app.
+    write_config(&sb, &[("baram:context", registered(&sb))]);
+    let unfiltered = baram(&sb, &sb.vault, &["tasks"]);
+    assert!(
+        unfiltered
+            .stdout
+            .starts_with("archive/old.md\t1\ttodo\tarchived task\n"),
+        "stdout: {}",
+        unfiltered.stdout
+    );
+}
+
+#[test]
+fn tasks_of_one_file_and_the_json_shape() {
+    let sb = sandbox();
+    notes_vault(&sb);
+    let vault = vault_arg(&sb);
+    let ran = baram(
+        &sb,
+        &sb.home,
+        &[
+            "--json",
+            "--vault",
+            &vault,
+            "tasks",
+            "--file",
+            "notes/beta.md",
+            "--status",
+            "cancelled",
+        ],
+    );
+    assert_eq!(ran.code, 0, "stderr: {}", ran.stderr);
+    assert_eq!(
+        json(&ran.stdout),
+        serde_json::json!({
+            "vault": { "name": "vault", "path": vault },
+            "truncated": false,
+            "items": [{
+                "path": "notes/beta.md", "line": 3, "state": "cancelled", "text": "dropped idea",
+                "priority": 0, "created": null, "start": null, "scheduled": null, "due": null,
+                "done": null, "cancelled": null, "recurrence": null, "tags": [], "links": []
+            }]
+        })
+    );
+    let missing = baram(
+        &sb,
+        &sb.home,
+        &["--json", "--vault", &vault, "tasks", "--file", "nope.md"],
+    );
+    assert_eq!(missing.code, 1);
+    assert_eq!(json(&missing.stderr)["error"]["code"], "FILE_NOT_FOUND");
+}
+
+/// `--file` goes through the same exclusion as the whole-vault scan, the way the app's
+/// incremental refresh of one file does.
+#[test]
+fn tasks_of_an_excluded_file_are_none_like_in_the_panel() {
+    let sb = sandbox();
+    notes_vault(&sb);
+    let vault = vault_arg(&sb);
+    let listed = baram(
+        &sb,
+        &sb.home,
+        &["--vault", &vault, "tasks", "--file", "archive/old.md"],
+    );
+    assert_eq!(
+        (listed.code, listed.stdout.as_str()),
+        (0, "archive/old.md\t1\ttodo\tarchived task\n"),
+        "without the settings the file is not excluded"
+    );
+
+    write_config(
+        &sb,
+        &[
+            ("baram:context", registered(&sb)),
+            ("baram:settings", settings()),
+        ],
+    );
+    let excluded = baram(&sb, &sb.vault, &["tasks", "--file", "archive/old.md"]);
+    assert_eq!((excluded.code, excluded.stdout.as_str()), (0, ""));
+}
+
+/// A directory is not a file, and `--file` says so the way `read` does.
+#[test]
+fn tasks_of_a_directory_is_file_not_found() {
+    let sb = sandbox();
+    notes_vault(&sb);
+    let vault = vault_arg(&sb);
+    let ran = baram(
+        &sb,
+        &sb.home,
+        &["--json", "--vault", &vault, "tasks", "--file", "notes"],
+    );
+    assert_eq!(ran.code, 1, "stderr: {}", ran.stderr);
+    assert!(ran.stdout.is_empty(), "stdout: {}", ran.stdout);
+    assert_eq!(json(&ran.stderr)["error"]["code"], "FILE_NOT_FOUND");
+}
+
+/// `v/locked/a.md` exists; `v/locked` cannot be entered. Same reasoning as for `read`:
+/// that is not "no such file" — the reason is the OS's and the exit code says the run
+/// failed.
+#[test]
+fn a_task_file_in_a_directory_that_cannot_be_entered_is_io_not_file_not_found() {
+    use std::os::unix::fs::PermissionsExt;
+    let sb = sandbox();
+    write(&sb.vault, "locked/a.md", "- [ ] hidden\n");
+    let locked = sb.vault.join("locked");
+    let _unlock = Unlock(locked.clone());
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).expect("chmod");
+    let vault = vault_arg(&sb);
+    let ran = baram(
+        &sb,
+        &sb.home,
+        &["--vault", &vault, "tasks", "--file", "locked/a.md"],
+    );
+    assert_eq!(ran.code, 1, "stderr: {}", ran.stderr);
+    assert!(ran.stdout.is_empty(), "stdout: {}", ran.stdout);
+    assert!(
+        ran.stderr
+            .starts_with("error[IO]: cannot read locked/a.md: "),
+        "stderr: {}",
+        ran.stderr
+    );
+    assert!(!has_hangul(&ran.stderr), "stderr: {}", ran.stderr);
+}
+
+#[test]
+fn a_task_file_that_is_not_text_is_io_in_english() {
+    let sb = sandbox();
+    write(&sb.vault, "notes/a.md", "- [ ] x\n");
+    std::fs::write(sb.vault.join("notes/b.md"), [0xff, 0xfe]).expect("write");
+    let vault = vault_arg(&sb);
+    let ran = baram(
+        &sb,
+        &sb.home,
+        &["--vault", &vault, "tasks", "--file", "notes/b.md"],
+    );
+    assert_eq!(ran.code, 1, "stderr: {}", ran.stderr);
+    assert!(ran.stdout.is_empty(), "stdout: {}", ran.stdout);
+    assert!(
+        ran.stderr
+            .starts_with("error[IO]: cannot read notes/b.md: "),
+        "stderr: {}",
+        ran.stderr
+    );
+    assert!(!has_hangul(&ran.stderr), "stderr: {}", ran.stderr);
+}

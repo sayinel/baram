@@ -5,6 +5,7 @@ mod app_config;
 mod args;
 mod error;
 mod ops;
+mod ops_notes;
 mod output;
 mod vault;
 
@@ -213,6 +214,23 @@ async fn execute(cli: Cli, out: &mut dyn Write) -> Result<(), Failure> {
                 },
             )
             .await?;
+            output::write_envelope(out, &envelope, cli.json)?;
+        }
+        Command::Tags => {
+            let vault = required(resolved)?;
+            let envelope = ops_notes::tags(&vault).await?;
+            output::write_envelope(out, &envelope, cli.json)?;
+        }
+        Command::Tag { name } => {
+            let vault = required(resolved)?;
+            let envelope = ops_notes::tag(&vault, &name).await?;
+            output::write_envelope(out, &envelope, cli.json)?;
+        }
+        Command::Tasks { status, file } => {
+            let vault = required(resolved)?;
+            let envelope =
+                ops_notes::tasks(&vault, &config.tasks_exclude_paths, status, file.as_deref())
+                    .await?;
             output::write_envelope(out, &envelope, cli.json)?;
         }
     }

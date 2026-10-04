@@ -1,4 +1,5 @@
 {
   "baram:context": "{\"state\":{\"contexts\":[{\"id\":\"ctx-1\",\"contextType\":\"vault\",\"path\":\"/vaults/notes\",\"label\":\"Notes\",\"color\":\"#4f8cff\",\"alias\":\"notes\",\"vaultType\":\"general\",\"addedAt\":1},{\"id\":\"ctx-2\",\"contextType\":\"folder\",\"path\":\"/work\",\"label\":\"work\",\"color\":\"#ff8c4f\",\"addedAt\":2},{\"id\":\"ctx-3\",\"contextType\":\"file\",\"path\":\"/tmp/one.md\",\"label\":\"one.md\",\"color\":\"#8c4fff\",\"addedAt\":3}],\"activeContextId\":\"ctx-1\"},\"version\":1}",
+  "baram:settings": "{\"state\":{\"tasksEnabled\":true,\"tasksExcludePaths\":[\"archive\",\"templates/\"]},\"version\":28}",
   "uiLocale": "ko"
 }
