@@ -58,7 +58,16 @@ export async function insertMarkdownAt(
       options.markdown,
       first.schema,
     );
-    send(ctx.live(method), ctx.owner, ref, method, options.beforeDispatch, {
+    const target = ctx.live(method);
+    // Spec §7.3 step 2 / plan 0117 Ruling 12 — a keep-alive swap is another `Editor` with
+    // another schema; the fragment was built with `first`'s. The editor is compared, not only
+    // the document: a ref read on the editor that is live again has its document in the anchor
+    // table, so the ref check passes, and the replace dropped the other schema's nodes with no
+    // error (measured: "mid" selected in `beta mid end` → `beta  end`, resolved, ref spent).
+    if (target !== first) {
+      refuse("ref-other-document", method, reasonText("other-document"));
+    }
+    send(target, ctx.owner, ref, method, options.beforeDispatch, {
       fragment: parsed.content,
       kind: "markdown",
       source: options.markdown,
@@ -224,7 +233,18 @@ function collapseFor(
   const expanded = getSyntaxRevealExpanded(state);
   if (!expanded || at.to < expanded.from || at.from > expanded.to) return null;
   if (expanded.kind === "image" || expanded.kind === "wikilink") {
-    const inside = (p: number) => p > expanded.from && p < expanded.to;
+    // An atom's source has no position to insert at (spec §7.3 step 3). A wikilink collapses
+    // in place, `[from, to]`, so an endpoint at its edge survives. Block media sits in a
+    // temporary paragraph its collapse replaces whole, `[from - 1, to + 1]`, so its edges are
+    // lost too (plan 0117 Ruling 13). Corpus: `ExpandedRange.kind` is image · link · mark ·
+    // wikilink; only `expandMediaAtom` (image and video nodes, never inside a textblock)
+    // builds that paragraph, as "image", and both collapse paths — `buildCollapseTr` and the
+    // `appendTransaction` collapse in syntax-reveal.ts — replace `[from - 1, to + 1]`.
+    const edges = expanded.kind === "image";
+    const inside = (p: number) =>
+      edges
+        ? p >= expanded.from && p <= expanded.to
+        : p > expanded.from && p < expanded.to;
     if (inside(at.from) || inside(at.to)) {
       refuse(
         "cannot-insert-here",

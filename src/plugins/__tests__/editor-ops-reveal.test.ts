@@ -43,6 +43,8 @@ describe("editor-ops and syntax reveal (spec 0067 §11-6)", () => {
     insertTextAt(ctxOf(editor), { text: "X" });
     expect(serializeLiveDoc(editor)).toBe("a **boXld** b\n");
     expect(getSyntaxRevealExpanded(editor.state)).toBeNull();
+    expect(editor.state.selection.empty).toBe(true);
+    expect(editor.state.selection.from).toBe(6); // after X: "a " 1-3, "bo" 3-5, "X" 5-6 (§11-6)
     editor.destroy();
   });
 
@@ -51,6 +53,9 @@ describe("editor-ops and syntax reveal (spec 0067 §11-6)", () => {
     editor.commands.setTextSelection(5);
     await insertMarkdownAt(ctxOf(editor), { markdown: "X" });
     expect(editor.state.doc.textContent).toBe("a boXld b");
+    expect(serializeLiveDoc(editor)).toBe("a **bo**X**ld** b\n"); // X is not bold
+    expect(editor.state.selection.empty).toBe(true);
+    expect(editor.state.selection.from).toBe(6); // after X (§11-6)
     editor.destroy();
   });
 
@@ -65,18 +70,29 @@ describe("editor-ops and syntax reveal (spec 0067 §11-6)", () => {
   });
 
   it("one undo takes the insert back to the canonical document (D9) — sibling: one transaction breaks bold", async () => {
-    const { editor } = realEditor("a **bold** b\n");
-    editor.commands.setTextSelection(5);
-    const depth = undoDepth(editor.state);
-    await insertMarkdownAt(ctxOf(editor), { markdown: "X" });
-    expect(undoDepth(editor.state)).toBe(depth + 1); // the insert; the collapse is not a step
-    undo(editor.state, editor.view.dispatch);
-    expect(serializeLiveDoc(editor)).toBe("a **bold** b\n");
-    // The first undo cannot tell: the insert's closeHistory keeps a collapse step apart from it.
-    // The second one would undo such a step and save the delimiters as text (spec §2.2).
-    undo(editor.state, editor.view.dispatch);
-    expect(serializeLiveDoc(editor)).toBe("a **bold** b\n");
-    editor.destroy();
+    // prosemirror-history groups by `tr.time`, which a Transaction takes from `Date.now()`.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const { editor } = realEditor("a **bold** b\n");
+      editor.commands.setTextSelection(5);
+      const depth = undoDepth(editor.state);
+      // The user clicked into the bold a while before the plugin writes — past history's
+      // 500 ms `newGroupDelay` — so a collapse kept in history would be an undo group of its
+      // own whatever its steps' positions, not merged into the expansion's group.
+      vi.setSystemTime(Date.now() + 1000);
+      await insertMarkdownAt(ctxOf(editor), { markdown: "X" });
+      expect(undoDepth(editor.state)).toBe(depth + 1); // the insert; the collapse is not a step
+      undo(editor.state, editor.view.dispatch);
+      expect(serializeLiveDoc(editor)).toBe("a **bold** b\n");
+      // The first undo cannot tell: the insert's closeHistory keeps a collapse step apart from
+      // it. The second would undo such a step — its own group, given the delay above — and
+      // save the delimiters as text (spec §2.2).
+      undo(editor.state, editor.view.dispatch);
+      expect(serializeLiveDoc(editor)).toBe("a **bold** b\n");
+      editor.destroy();
+    } finally {
+      vi.useRealTimers();
+    }
     // Sibling (spec §2.2): collapse and insert in ONE transaction → undo saves `\*\*`.
     const { editor: e2 } = realEditor("a **bold** b\n");
     e2.commands.setTextSelection(5);
@@ -126,6 +142,7 @@ describe("editor-ops and syntax reveal (spec 0067 §11-6)", () => {
       code: "cannot-insert-here",
     });
     select(inner.editor, exp.to); // touching the end is not inside
+    expect(getSyntaxRevealExpanded(inner.editor.state)).not.toBeNull();
     await insertMarkdownAt(ctxOf(inner.editor), { markdown: "x" });
     expect(serializeLiveDoc(inner.editor)).toBe("see [[note]]x here\n");
     inner.editor.destroy();
@@ -136,9 +153,43 @@ describe("editor-ops and syntax reveal (spec 0067 §11-6)", () => {
       { record: true },
     );
     whole.editor.commands.setTextSelection(6); // the user clicks into the wikilink → expands
+    expect(getSyntaxRevealExpanded(whole.editor.state)).not.toBeNull();
     await insertMarkdownAt(ctxOf(whole.editor), { markdown: "done", ref });
     expect(serializeLiveDoc(whole.editor)).toBe("done\n");
     whole.editor.destroy();
+  });
+
+  it("an endpoint at a block image expansion's edge is inside; a range holding all of it collapses and proceeds (Ruling 13)", async () => {
+    const { editor } = realEditor("before\n\n![a](x.png)\n\nafter\n");
+    let img = -1;
+    editor.state.doc.forEach((n, pos) => {
+      if (n.type.name === "image") img = pos;
+    });
+    select(editor, 1, editor.state.doc.content.size - 1); // "before" … "after", image between
+    const whole = readSelectionForPlugin(ctxOf(editor), "getSelection", {
+      record: true,
+    });
+    expect(
+      expandMediaAtom(editor.view, editor.state.doc.nodeAt(img)!, img),
+    ).toBe(true);
+    const exp = getSyntaxRevealExpanded(editor.state)!;
+    const doc = editor.state.doc;
+    const dispatch = vi.spyOn(editor.view, "dispatch");
+    for (const edge of [exp.from, exp.to]) {
+      select(editor, edge);
+      const sent = dispatch.mock.calls.length;
+      await expect(
+        insertMarkdownAt(ctxOf(editor), { markdown: "x" }),
+      ).rejects.toMatchObject({ code: "cannot-insert-here" });
+      expect(dispatch.mock.calls.length).toBe(sent);
+      expect(getSyntaxRevealExpanded(editor.state)).toEqual(exp);
+    }
+    expect(editor.state.doc).toBe(doc);
+    // A range holding the whole expansion has its endpoints outside the temporary paragraph.
+    await insertMarkdownAt(ctxOf(editor), { markdown: "done", ref: whole.ref });
+    expect(getSyntaxRevealExpanded(editor.state)).toBeNull();
+    expect(serializeLiveDoc(editor)).toBe("done\n");
+    editor.destroy();
   });
 
   it("a ref read inside a wikilink source and collapsed by the user is refused (4th review MAJOR-3)", async () => {

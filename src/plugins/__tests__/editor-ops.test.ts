@@ -3,6 +3,7 @@
 import type { Editor } from "@tiptap/core";
 
 import { undo } from "@tiptap/pm/history";
+import { NodeSelection } from "@tiptap/pm/state";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const { openUrl } = vi.hoisted(() => ({
@@ -12,7 +13,10 @@ vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl }));
 
 import type { PluginEditorHandle } from "../plugin-host-registry";
 
-import { dropAnchors } from "../../extensions/plugins/selection-anchors";
+import {
+  dropAnchors,
+  verifyAnchor,
+} from "../../extensions/plugins/selection-anchors";
 import { serializeLiveDoc } from "../../utils/editor/serialize-live-doc";
 import {
   insertMarkdownAt,
@@ -75,6 +79,43 @@ describe("editor-ops (spec 0067)", () => {
     editor.destroy();
   });
 
+  it("a keep-alive swap across the parse refuses with ref-other-document and keeps the ref (Ruling 12)", async () => {
+    // Spec §7.3 step 2: a keep-alive editor is another `Editor`, built with another schema.
+    const a = realEditor("alpha @@ omega\n").editor;
+    const b = realEditor("beta @@mid@@ end\n").editor;
+    let live = b;
+    const ctx = {
+      live: () => live as unknown as PluginEditorHandle,
+      owner: OWNER,
+    };
+    const { ref } = readSelectionForPlugin(ctx, "getSelection", {
+      record: true,
+    });
+    const [docA, docB] = [a.state.doc, b.state.doc];
+    const dispatchA = vi.spyOn(a.view, "dispatch");
+    const dispatchB = vi.spyOn(b.view, "dispatch");
+    live = a; // the write is asked for while another tab's editor is live …
+    const pending = insertMarkdownAt(ctx, { markdown: "**X** y", ref });
+    live = b; // … and the ref's editor is back before the parse ends
+    await expect(pending).rejects.toMatchObject({ code: "ref-other-document" });
+    live = a; // A → B with no ref: the implicit anchor's editor is gone
+    const implicit = insertMarkdownAt(ctx, { markdown: "x" });
+    live = b;
+    await expect(implicit).rejects.toMatchObject({
+      code: "ref-other-document",
+    });
+    expect(a.state.doc).toBe(docA);
+    expect(b.state.doc).toBe(docB);
+    expect(dispatchA).not.toHaveBeenCalled();
+    expect(dispatchB).not.toHaveBeenCalled();
+    expect(verifyAnchor(OWNER, ref, b.state.doc)).toMatchObject({ ok: true }); // not consumed
+    // Sibling: the same editor throughout — the ref replaces "mid".
+    await insertMarkdownAt(ctx, { markdown: "**X** y", ref });
+    expect(serializeLiveDoc(b)).toBe("beta **X** y end\n");
+    a.destroy();
+    b.destroy();
+  });
+
   it("does not move a caret the user placed elsewhere (rule 6, 1st review M3)", async () => {
     const { editor } = realEditor("alpha @@beta@@ gamma\n");
     const { ref } = readSelectionForPlugin(ctxOf(editor), "getSelection", {
@@ -90,6 +131,31 @@ describe("editor-ops (spec 0067)", () => {
     const { editor } = realEditor("alpha @@ omega\n");
     await insertMarkdownAt(ctxOf(editor), { markdown: "xyz" });
     expect(editor.state.selection.from).toBe(10); // "alpha " 1-7, "xyz" 7-10
+    editor.destroy();
+    // An empty caret ends up there by plain position mapping too; a range the user holds does
+    // not, so this is the half that needs rule 6.
+    const range = realEditor("alpha @@beta@@ gamma\n").editor;
+    await insertMarkdownAt(ctxOf(range), { markdown: "xyz" });
+    expect(range.state.selection.empty).toBe(true);
+    expect(range.state.selection.from).toBe(10);
+    range.destroy();
+  });
+
+  it("moves the caret to the end of what went in when a node selection is the target (rule 6, spec §11-7)", async () => {
+    const { editor } = realEditor("a\n\n---\n\nb\n");
+    let rule = -1;
+    editor.state.doc.forEach((n, pos) => {
+      if (n.type.name === "horizontalRule") rule = pos;
+    });
+    editor.view.dispatch(
+      editor.state.tr.setSelection(
+        NodeSelection.create(editor.state.doc, rule),
+      ),
+    );
+    await insertMarkdownAt(ctxOf(editor), { markdown: "xyz" });
+    expect(serializeLiveDoc(editor)).toBe("a\n\nxyz\n\nb\n");
+    expect(editor.state.selection.empty).toBe(true);
+    expect(editor.state.selection.from).toBe(rule + 4); // "xyz" at rule+1 .. rule+4
     editor.destroy();
   });
 

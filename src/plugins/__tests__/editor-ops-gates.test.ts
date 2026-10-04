@@ -126,6 +126,8 @@ describe("editor-ops gates (spec 0067)", () => {
       code: "cannot-insert-here",
     });
     expect(dispatch).not.toHaveBeenCalled();
+    // No recorded ref was added. This cannot see a leaked IMPLICIT anchor (it counts recorded
+    // refs only); the mapping-pass probe on the next line is the guard for that.
     expect(anchorCount(OWNER)).toBe(count);
     expect(mappingPassesOn(editor, 2)).toBe(0); // the implicit anchor was released
     const { ref } = readSelectionForPlugin(ctxOf(editor), "getSelection", {
@@ -253,6 +255,42 @@ describe("editor-ops gates (spec 0067)", () => {
     await expect(pending).rejects.toMatchObject({ code: "document-changed" });
     expect(editor.state.doc).toBe(doc);
     expect(targets).toHaveLength(1);
+    // A keep-alive swap across the parse: the editor now live holds another document node, so
+    // the same identity check refuses it — no editor comparison is needed here (Ruling 12).
+    const other = realEditor("other\n").editor;
+    let live = other;
+    const swap = {
+      live: () => live as unknown as PluginEditorHandle,
+      owner: OWNER,
+    };
+    const dispatch = vi.spyOn(editor.view, "dispatch");
+    const swapped = replaceDocument(swap, { beforeDispatch, markdown: "gone" });
+    live = editor;
+    await expect(swapped).rejects.toMatchObject({ code: "document-changed" });
+    expect(editor.state.doc).toBe(doc);
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(targets).toHaveLength(1);
+    other.destroy();
+    editor.destroy();
+  });
+
+  it("an unknown ref is refused before the parse — beforeParse is not called (spec §7.3)", async () => {
+    const { editor } = realEditor("a@@b\n");
+    const beforeParse = vi.fn();
+    await expect(
+      insertMarkdownAt(ctxOf(editor), {
+        beforeParse,
+        markdown: "x",
+        ref: "0".repeat(32),
+      }),
+    ).rejects.toMatchObject({ code: "ref-unknown" });
+    expect(beforeParse).not.toHaveBeenCalled();
+    const { ref } = readSelectionForPlugin(ctxOf(editor), "getSelection", {
+      record: true,
+    });
+    await insertMarkdownAt(ctxOf(editor), { beforeParse, markdown: "x", ref });
+    expect(beforeParse).toHaveBeenCalledTimes(1);
+    expect(serializeLiveDoc(editor)).toBe("axb\n");
     editor.destroy();
   });
 });
