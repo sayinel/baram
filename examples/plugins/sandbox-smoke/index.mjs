@@ -207,8 +207,15 @@ export async function activate(ctx) {
         return `(${from}-${to}:${text.length}b)`;
       }),
     );
+    out.push(
+      await expectOk("sel-ref", async () => {
+        const { ref } = await ctx.editor.getSelection();
+        if (!/^[0-9a-f]{32}$/u.test(ref)) throw new Error(`bad ref ${ref}`);
+        return "(ref)";
+      }),
+    );
     // 10. …and a WRITE must be refused: this fixture holds `editor:readonly`, so the
-    //     any-of gate must admit the two reads above and refuse both writes.
+    //     any-of gate must admit the reads above and refuse each of the three writes below.
     out.push(
       await expectDenied("ro-md", "requires one of", () =>
         ctx.editor.setMarkdown("# overwritten by the smoke fixture\n"),
@@ -217,6 +224,11 @@ export async function activate(ctx) {
     out.push(
       await expectDenied("ro-ins", "requires one of", () =>
         ctx.editor.insertText("SHOULD NOT APPEAR"),
+      ),
+    );
+    out.push(
+      await expectDenied("ro-insmd", "requires one of", () =>
+        ctx.editor.insertMarkdown("**SHOULD NOT APPEAR**"),
       ),
     );
 

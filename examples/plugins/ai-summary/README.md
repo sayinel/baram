@@ -7,7 +7,7 @@
 > `setStatusBarText` is capped at 64 characters), so it cannot be ported until that
 > contribution exists.
 >
-> It was therefore **withdrawn from the registry index**: shipping it as a *published trusted*
+> It was therefore **withdrawn from the registry index**: shipping it as a _published trusted_
 > plugin would teach users to click through the full-trust warning for something as ordinary
 > as summarising a document, which is the opposite of what that warning is for. It stays here
 > as the trusted tier's reference and dev-loads normally. The published v1.0.0 ZIP remains
@@ -52,7 +52,7 @@ tokens without needing to duplicate their values.
 | Capability        | Why it's needed                                                              |
 | ----------------- | ---------------------------------------------------------------------------- |
 | `ai`              | `ctx.ai.complete(...)` to summarize the document                             |
-| `editor:readonly` | `ctx.editor.getContent()` to read the document text to summarize             |
+| `editor:readonly` | `ctx.editor.getText()` to read the document's prose to summarize             |
 | `settings`        | `ctx.ui.addSettingsTab(...)` for the prompt-prefix configuration surface     |
 | `sidebar`         | `ctx.ui.addSidebarPanel(...)` for the "Summarize" panel                      |
 | `storage`         | `ctx.storage.read/write(...)` to cache the last summary and the saved prefix |

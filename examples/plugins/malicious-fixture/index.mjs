@@ -62,6 +62,7 @@ export async function activate(ctx) {
     ["editor_get_selection", () => ctx.editor.getSelection()],
     ["editor_set_markdown", () => ctx.editor.setMarkdown("# owned\n")],
     ["editor_insert_text", () => ctx.editor.insertText("OWNED")],
+    ["editor_insert_markdown", () => ctx.editor.insertMarkdown("# owned\n")],
 
     // ── Host-mediated: no `settings` grant ────────────────────────────────────────────
     ["settings_get_all", () => ctx.settings.getAll()],
