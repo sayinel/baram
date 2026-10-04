@@ -41,7 +41,7 @@ export function buildInsertion(
 ): Transaction {
   const { tr } = state;
   if (input.kind === "text") {
-    return tr.insertText(input.text, target.from, target.to);
+    return insertLiteral(tr, input.text, target);
   }
   if (target.kind === "all") {
     checkFrontMatter(input.fragment, 0, method);
@@ -55,6 +55,17 @@ export function buildInsertion(
   const $to = state.doc.resolve(target.to);
   if (!$from.parent.isTextblock) {
     // A block node selection: replace that node with closed blocks (spec §6.2 table).
+    // Rule 5a is judged by the selected node's parent, which is `$from.parent` here.
+    if (
+      BLOCK_REFUSING_PARENTS.has($from.parent.type.name) &&
+      !isSingleParagraph(input.fragment)
+    ) {
+      refuse(
+        "cannot-insert-here",
+        method,
+        "a table cell holds inline content only",
+      );
+    }
     checkFrontMatter(input.fragment, target.from, method);
     return checkedReplace(
       state,
@@ -73,17 +84,15 @@ export function buildInsertion(
         method,
         "the range crosses a code block's edge",
       );
-    return tr.insertText(input.source, target.from, target.to);
+    return insertLiteral(tr, input.source, target);
   }
-  // Rule 2 for inline code too (2026-10-04 decision): code is literal. `insertText` takes the
-  // marks at `from`, so the inserted source stays inside the code span.
+  // Rule 2 for inline code too (2026-10-04 decision): code is literal. `insertLiteral` takes
+  // the marks from the document at the target, so the inserted source stays inside the code span.
   if (inInlineCode(state, $from, $to)) {
-    return tr.insertText(input.source, target.from, target.to);
+    return insertLiteral(tr, input.source, target);
   }
   const fragment = input.fragment;
-  const single =
-    fragment.childCount === 1 && fragment.firstChild!.type.name === "paragraph";
-  if (single) {
+  if (isSingleParagraph(fragment)) {
     if (!$from.sameParent($to) && !(isParagraph($from) && isParagraph($to))) {
       refuse(
         "cannot-insert-here",
@@ -187,8 +196,30 @@ function inInlineCode(
   return all;
 }
 
+/**
+ * `Transaction.insertText` prefers `tr.storedMarks` — which starts as the state's stored marks,
+ * e.g. bold toggled at the user's caret elsewhere — and reads the marks from the document at
+ * the target only when that is null (prosemirror-state, `Transaction.insertText`). Clearing
+ * it first makes a literal insert take the target's own marks, so code stays code and a stray
+ * stored mark does not leak in.
+ */
+function insertLiteral(
+  tr: Transaction,
+  text: string,
+  target: InsertTarget,
+): Transaction {
+  tr.setStoredMarks(null);
+  return tr.insertText(text, target.from, target.to);
+}
+
 function isParagraph($pos: ResolvedPos): boolean {
   return $pos.parent.type.name === "paragraph";
+}
+
+function isSingleParagraph(fragment: Fragment): boolean {
+  return (
+    fragment.childCount === 1 && fragment.firstChild!.type.name === "paragraph"
+  );
 }
 
 function refusesBlocks($pos: ResolvedPos): boolean {

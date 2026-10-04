@@ -1,4 +1,4 @@
-// §388 spec 0067 §10 — the one error type editor handlers throw, in both tiers.
+// §388 spec 0067 §10 — the error type for a coded editor refusal.
 import type { EditorRefusal, EditorRefusalCode } from "./types";
 
 import { editorRefusalMessage } from "./plugin-host-registry";
@@ -22,7 +22,7 @@ export function isEditorRefusalCode(
   );
 }
 
-/** Throw a refusal worded the way every `editor.*` refusal is (#322). */
+/** Throw a coded refusal worded by `editorRefusalMessage` (#322). */
 export function refuse(
   code: EditorRefusalCode,
   method: string,

@@ -1,9 +1,10 @@
-// §388 spec 0067 §6 · §11-2 ~ §11-4 — the insertion rules, without anchors or dispatch policy.
+// §388 spec 0067 §6 · §11-2 ~ §11-4 — the text-level insertion rules: where inline and block
+// results may go in a textblock, code literals, and the table-cell and split refusals.
 import type { Editor } from "@tiptap/core";
 
 import { getSchema } from "@tiptap/core";
-import { Fragment } from "@tiptap/pm/model";
-import { NodeSelection } from "@tiptap/pm/state";
+import { Slice } from "@tiptap/pm/model";
+import { TextSelection } from "@tiptap/pm/state";
 import { describe, expect, it, vi } from "vitest";
 
 const { openUrl } = vi.hoisted(() => ({
@@ -11,53 +12,57 @@ const { openUrl } = vi.hoisted(() => ({
 }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl }));
 
-import type { InsertTarget } from "../editor-insert-rules";
-
 import { createBaramExtensions } from "../../extensions";
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
 import { serializeLiveDoc } from "../../utils/editor/serialize-live-doc";
 import { BLOCK_REFUSING_PARENTS, buildInsertion } from "../editor-insert-rules";
 import { EditorRefusalError } from "../editor-refusal";
+import { at, insert, refused, topTypes } from "./insert-fixtures";
 import { codeOf, realEditor } from "./real-editor";
 
-function at(source: string, markdown: string): string {
-  const { editor, from, to } = realEditor(source);
-  insert(editor, { from, kind: "text", to }, markdown);
-  const out = serializeLiveDoc(editor);
-  editor.destroy();
-  return out;
+const CELL = "| a | b |\n| --- | --- |\n| c @@ | d |\n";
+
+/** Position of the first text node whose text is `text` and that carries mark `mark`. */
+function textWithMark(editor: Editor, mark: string, text: string): number {
+  let found = -1;
+  editor.state.doc.descendants((node, pos) => {
+    if (
+      found === -1 &&
+      node.isText &&
+      node.text === text &&
+      node.marks.some((m) => m.type.name === mark)
+    ) {
+      found = pos;
+    }
+  });
+  if (found === -1) throw new Error(`no ${mark} text ${text}`);
+  return found;
 }
 
-function insert(editor: Editor, target: InsertTarget, markdown: string): void {
-  const fragment = markdownToProsemirror(markdown, editor.schema).content;
-  editor.view.dispatch(
-    buildInsertion(
-      editor.state,
-      target,
-      { fragment, kind: "markdown", source: markdown },
-      "insertMarkdown",
-    ),
+/** Mark names on the text node whose text is exactly `text`. */
+function marksOfText(editor: Editor, text: string): string[] {
+  let marks: null | string[] = null;
+  editor.state.doc.descendants((node) => {
+    if (marks === null && node.isText && node.text === text) {
+      marks = node.marks.map((m) => m.type.name);
+    }
+  });
+  if (marks === null) throw new Error(`no text node ${text}`);
+  return marks;
+}
+
+/** Caret at the document's first position, with bold stored (user toggled bold there). */
+function storeBoldAtStart(editor: Editor): void {
+  const tr = editor.state.tr.setSelection(
+    TextSelection.create(editor.state.doc, 1),
   );
-}
-
-function refused(source: string, markdown: string): void {
-  const { editor, from, to } = realEditor(source);
-  const before = editor.state.doc;
-  expect(
-    codeOf(() => insert(editor, { from, kind: "text", to }, markdown)),
-  ).toBe("cannot-insert-here");
-  expect(editor.state.doc).toBe(before); // nothing dispatched
-  editor.destroy();
-}
-
-function topTypes(editor: Editor): string[] {
-  const types: string[] = [];
-  editor.state.doc.forEach((n) => void types.push(n.type.name));
-  return types;
+  tr.addStoredMark(editor.schema.marks.bold.create());
+  editor.view.dispatch(tr);
 }
 
 describe("insertion rules (spec 0067 §6)", () => {
   // §6.1 rows, measured at 163b9e62.
+
   it("inline into a paragraph keeps the link", () => {
     expect(at("alpha @@ omega\n", "[Title](https://example.com)")).toBe(
       "alpha [Title](https://example.com) omega\n",
@@ -100,6 +105,7 @@ describe("insertion rules (spec 0067 §6)", () => {
   });
 
   // §6.2 rules.
+
   it("a heading takes inline content but not blocks (rule 3 · 4)", () => {
     expect(at("# Hea@@ding\n", "**b**")).toBe("# Hea**b**ding\n");
     refused("# Hea@@ding\n", "p1\n\np2");
@@ -178,40 +184,6 @@ describe("insertion rules (spec 0067 §6)", () => {
     editor.destroy();
   });
 
-  it("the whole document: blocks and leading front matter replace it (AllSelection row)", () => {
-    const { editor } = realEditor("old\n");
-    insert(
-      editor,
-      { from: 0, kind: "all", to: editor.state.doc.content.size },
-      "---\nt: 1\n---\n\n# New",
-    );
-    expect(topTypes(editor)).toEqual(["frontmatter", "heading"]);
-    editor.destroy();
-  });
-
-  it("refuses front matter as a second block even for the whole document (rule 5b)", () => {
-    // The parser only makes front matter at the document start (`# A\n\n---\nt: 1\n---`
-    // parses as heading · rule · heading — plan review M2), so this fragment is built by hand
-    // to pin the `index === 0` check; through markdown the case is defensive.
-    const { editor } = realEditor("old\n");
-    const { schema } = editor;
-    const fragment = Fragment.from([
-      schema.nodes.heading.create({ level: 1 }, schema.text("A")),
-      schema.nodes.frontmatter.create(null, schema.text("t: 1")),
-    ]);
-    expect(
-      codeOf(() =>
-        buildInsertion(
-          editor.state,
-          { from: 0, kind: "all", to: editor.state.doc.content.size },
-          { fragment, kind: "markdown", source: "(hand-built)" },
-          "insertMarkdown",
-        ),
-      ),
-    ).toBe("cannot-insert-here");
-    editor.destroy();
-  });
-
   it("inside inline code the markdown goes in literally and stays code (2026-10-04 decision)", () => {
     // No marker: a caret inside the span would make the reveal expand it. "a " 1-3, code 3-7.
     const { editor } = realEditor("a `code` b\n");
@@ -220,62 +192,85 @@ describe("insertion rules (spec 0067 §6)", () => {
     editor.destroy();
   });
 
-  it("a block node selection replaces that node only (parent is not a textblock)", () => {
-    const { editor } = realEditor("alpha\n\n```\ncode\n```\n\nomega\n");
-    let codeAt = -1;
-    editor.state.doc.forEach((n, pos) => {
-      if (n.type.name === "codeBlock") codeAt = pos;
-    });
-    const node = editor.state.doc.nodeAt(codeAt)!;
-    editor.view.dispatch(
-      editor.state.tr.setSelection(
-        NodeSelection.create(editor.state.doc, codeAt),
-      ),
-    );
-    insert(
-      editor,
-      { from: codeAt, kind: "node", to: codeAt + node.nodeSize },
-      "## H",
-    );
-    expect(topTypes(editor)).toEqual(["paragraph", "heading", "paragraph"]);
+  // I3 · §11-3 rows.
+  it("a block result into an empty heading is refused (rule 3)", () => {
+    refused("# @@\n", "p1\n\np2");
+    refused("# @@\n", "## H");
+  });
+
+  it("a range across two different code blocks is refused; inside one it inserts literally", () => {
+    const two = "```\nco@@de\n```\n\n```\nbl@@ock\n```\n";
+    refused(two, "x");
+    expect(at("```\nco@@d@@e\n```\n", "**x**")).toBe("```\nco**x**e\n```\n");
+  });
+
+  it("inside front matter the markdown goes in literally (rule 2)", () => {
+    const { editor, from, to } = realEditor("---\nt: @@1\n---\n\nbody\n");
+    insert(editor, { from, kind: "text", to }, "**x**");
+    expect(editor.state.doc.firstChild!.type.name).toBe("frontmatter");
+    expect(editor.state.doc.firstChild!.textContent).toBe("t: **x**1");
     editor.destroy();
   });
 
-  it("an image the loader left inside a paragraph follows the text rules (spec §6.2, P7)", () => {
-    const inline = realEditor("이미지: ![로고](x.png) 끝\n");
-    let img = -1;
-    inline.editor.state.doc.descendants((n, pos) => {
-      if (n.type.name === "image") img = pos;
-    });
-    expect(inline.editor.state.doc.resolve(img).parent.type.name).toBe(
-      "paragraph",
-    );
-    insert(inline.editor, { from: img, kind: "node", to: img + 1 }, "**b**");
-    expect(inline.editor.state.doc.textContent).toBe("이미지: b 끝");
-    inline.editor.destroy();
-    // A block result splits the paragraph — by the parent axis, as intended (2026-10-04).
-    const block = realEditor("이미지: ![로고](x.png) 끝\n");
-    let img2 = -1;
-    block.editor.state.doc.descendants((n, pos) => {
-      if (n.type.name === "image") img2 = pos;
-    });
-    insert(block.editor, { from: img2, kind: "node", to: img2 + 1 }, "## H");
-    expect(topTypes(block.editor)).toEqual([
-      "paragraph",
-      "heading",
-      "paragraph",
-    ]);
-    block.editor.destroy();
+  // I4 · the literal paths ignore stored marks.
+  it("literal markdown in inline code stays code even when bold is stored elsewhere", () => {
+    const { editor } = realEditor("alpha\n\na `code` b\n");
+    const code = textWithMark(editor, "code", "code");
+    storeBoldAtStart(editor);
+    expect(editor.state.storedMarks?.some((m) => m.type.name === "bold")).toBe(
+      true,
+    ); // the mechanism is armed
+    insert(editor, { from: code + 2, kind: "text", to: code + 2 }, "**x**");
+    const marks = marksOfText(editor, "co**x**de");
+    expect(marks).toEqual(["code"]);
+    editor.destroy();
   });
 
-  it("rule 5c refuses a split above the textblock — and catches the table split without 5a", () => {
-    // Sibling for rule (c): with 5a out of the way (the target is not a cell paragraph
-    // here, so 5a cannot fire), a heading into a cell would split the table; (c) is what
-    // stops that. Measured shape: §6.1 row "## H → 표 셀".
-    const { editor, from, to } = realEditor(
-      "| a | b |\n| --- | --- |\n| c @@ | d |\n",
+  it("kind text takes the marks at the target, not the stored ones", () => {
+    const { editor } = realEditor("alpha\n\nomega\n");
+    storeBoldAtStart(editor);
+    expect(editor.state.storedMarks?.some((m) => m.type.name === "bold")).toBe(
+      true,
     );
+    const at2 = editor.state.doc.content.size - 1;
+    editor.view.dispatch(
+      buildInsertion(
+        editor.state,
+        { from: at2, kind: "text", to: at2 },
+        { kind: "text", text: "X" },
+        "insertText",
+      ),
+    );
+    expect(marksOfText(editor, "omegaX")).toEqual([]);
+    editor.destroy();
+  });
+
+  // M5 · the kind text input.
+  it("kind text lands as plain text and is not parsed", () => {
+    const { editor, from, to } = realEditor("alpha @@ omega\n");
+    editor.view.dispatch(
+      buildInsertion(
+        editor.state,
+        { from, kind: "text", to },
+        { kind: "text", text: "**x** # y" },
+        "insertText",
+      ),
+    );
+    expect(topTypes(editor)).toEqual(["paragraph"]);
+    expect(editor.state.doc.textContent).toBe("alpha **x** # y omega");
+    expect(marksOfText(editor, "alpha **x** # y omega")).toEqual([]);
+    editor.destroy();
+  });
+
+  it("rule 5c refuses a split above the textblock (the skipCellRule option silences 5a)", () => {
+    // `{ skipCellRule: true }` is what silences rule 5a here: the target `| c @@ |` IS a cell
+    // paragraph, so without the option 5a would refuse first and this row would pass without
+    // 5(c) ever running. With it, a heading into the cell reaches `checkedReplace`, and 5(c) is
+    // what stops the table split (measured shape: §6.1 row "## H → 표 셀"). The next row
+    // shows that the same replacement, done directly, really does split the table.
+    const { editor, from, to } = realEditor(CELL);
     const fragment = markdownToProsemirror("## H", editor.schema).content;
+    const before = editor.state.doc;
     expect(
       codeOf(() =>
         buildInsertion(
@@ -287,6 +282,26 @@ describe("insertion rules (spec 0067 §6)", () => {
         ),
       ),
     ).toBe("cannot-insert-here");
+    expect(editor.state.doc).toBe(before);
+    editor.destroy();
+  });
+
+  it("without rule 5c the closed-slice replace splits the table (guards the 5c row)", () => {
+    const { editor, from, to } = realEditor(CELL);
+    const fragment = markdownToProsemirror("## H", editor.schema).content;
+    const depth = editor.state.doc.resolve(from).sharedDepth(to);
+    const tr = editor.state.tr.replace(from, to, new Slice(fragment, 0, 0));
+    const start = tr.mapping.map(from, -1);
+    const end = tr.mapping.map(to, 1);
+    // The ends no longer share the cell paragraph's ancestors: the table was cut open.
+    expect(tr.doc.resolve(start).sharedDepth(end)).toBeLessThan(depth - 1);
+    // Positive pair: a plain inline insert at the same place keeps the ends together.
+    const inline = editor.state.tr.insertText("z", from, to);
+    expect(
+      inline.doc
+        .resolve(inline.mapping.map(from, -1))
+        .sharedDepth(inline.mapping.map(to, 1)),
+    ).toBeGreaterThanOrEqual(depth - 1);
     editor.destroy();
   });
 

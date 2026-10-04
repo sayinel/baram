@@ -921,6 +921,10 @@ export const EDITOR_READ_CAPABILITIES: readonly PluginCapability[] = [
   "editor:readonly",
 ];
 
+export const EDITOR_WRITE_CAPABILITIES: readonly PluginCapability[] = [
+  "editor",
+];
+
 /** Every `EditorRefusalCode`, for the sandbox frame check and the docs. */
 export const EDITOR_REFUSAL_CODES: readonly EditorRefusalCode[] = [
   "budget",
@@ -932,10 +936,6 @@ export const EDITOR_REFUSAL_CODES: readonly EditorRefusalCode[] = [
   "ref-range-changed",
   "ref-unknown",
   "surface-blocked",
-];
-
-export const EDITOR_WRITE_CAPABILITIES: readonly PluginCapability[] = [
-  "editor",
 ];
 
 /**
