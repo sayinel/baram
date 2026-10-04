@@ -7,6 +7,7 @@ mod error;
 mod ops;
 mod ops_notes;
 mod output;
+mod paths;
 mod vault;
 
 use app_config::AppConfig;

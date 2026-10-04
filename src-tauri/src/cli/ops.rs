@@ -4,7 +4,8 @@
 use super::app_config::AppConfig;
 use super::error::{CliError, ErrorCode};
 use super::output::{Envelope, Row, VaultInfo};
-use super::vault::{self, RootKind, Vault};
+use super::paths;
+use super::vault::{RootKind, Vault};
 use crate::context::manager::resolve_canonical;
 use crate::fs::FsError;
 use crate::search::{SearchOptions, SearchResult};
@@ -100,7 +101,7 @@ pub(crate) async fn read(vault: &Vault, path: &str) -> Result<Envelope<FileConte
     let unreadable = |source: &std::io::Error| {
         CliError::new(ErrorCode::Io, format!("cannot read {path}: {source}"))
     };
-    let file = vault::file_arg(vault, path)?;
+    let file = paths::file_arg(vault, path)?;
     let content = crate::fs::read_file(&file.to_string_lossy())
         .await
         .map_err(|error| match error {
@@ -112,7 +113,7 @@ pub(crate) async fn read(vault: &Vault, path: &str) -> Result<Envelope<FileConte
         vault: Some(vault_info(vault)),
         truncated: false,
         items: vec![FileContent {
-            path: vault::relative(vault, &file),
+            path: paths::relative(vault, &file),
             content,
         }],
     })
@@ -194,7 +195,7 @@ pub(crate) async fn files(
     folder: Option<&str>,
 ) -> Result<Envelope<PathRow>, CliError> {
     let start = match folder {
-        Some(folder) => vault::folder_arg(vault, folder)?,
+        Some(folder) => paths::folder_arg(vault, folder)?,
         None => vault.root.clone(),
     };
     let mut found = Vec::new();
@@ -217,7 +218,7 @@ fn path_rows(vault: &Vault, found: Vec<PathBuf>) -> Vec<PathRow> {
     let mut items: Vec<PathRow> = found
         .iter()
         .map(|path| PathRow {
-            path: vault::relative(vault, path),
+            path: paths::relative(vault, path),
         })
         .collect();
     sort_by_path_and_line(&mut items, |row| (row.path.as_str(), 0));
@@ -281,7 +282,7 @@ pub(crate) async fn search(
         }
     }
     let start = match query.folder {
-        Some(folder) => vault::folder_arg(vault, folder)?,
+        Some(folder) => paths::folder_arg(vault, folder)?,
         None => vault.root.clone(),
     };
     let options = SearchOptions {
@@ -312,7 +313,7 @@ fn search_rows(vault: &Vault, hits: Vec<SearchResult>, limit: usize) -> (bool, V
         .into_iter()
         .take(limit)
         .map(|hit| SearchRow {
-            path: vault::relative(vault, Path::new(&hit.file_path)),
+            path: paths::relative(vault, Path::new(&hit.file_path)),
             line: hit.line,
             snippet: hit.snippet,
         })

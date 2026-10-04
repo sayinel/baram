@@ -6,7 +6,8 @@ use super::args::TaskStatus;
 use super::error::{CliError, ErrorCode};
 use super::ops::{index_failure, sort_by_path_and_line, vault_info, walk_failure, PathRow};
 use super::output::{Envelope, Row};
-use super::vault::{self, Vault};
+use super::paths;
+use super::vault::Vault;
 use crate::index::{BacklinkResult, LinkEntry, LinkIndex, LinkKind, LinkResolution};
 use crate::task::{TaskEntry, TaskError, TaskState};
 use serde::Serialize;
@@ -72,7 +73,7 @@ fn tag_rows(found: &[String]) -> Vec<PathRow> {
     let mut items: Vec<PathRow> = found
         .iter()
         .map(|relative| PathRow {
-            path: vault::slashed(Path::new(relative)),
+            path: paths::slashed(Path::new(relative)),
         })
         .collect();
     sort_by_path_and_line(&mut items, |row| (row.path.as_str(), 0));
@@ -144,7 +145,7 @@ pub(crate) async fn tasks(
     let root = vault.root.to_string_lossy();
     let entries = match file {
         Some(file) => {
-            let path = vault::note_arg(vault, file)?;
+            let path = paths::note_arg(vault, file)?;
             crate::task::get_file_tasks(&path.to_string_lossy(), Some(&root), exclude)
                 .await
                 .map_err(|error| match error {
@@ -173,7 +174,7 @@ fn task_rows(vault: &Vault, entries: Vec<TaskEntry>, status: TaskStatus) -> Vec<
         .into_iter()
         .filter(|entry| wanted(status, entry.state))
         .map(|entry| TaskRow {
-            path: vault::relative(vault, Path::new(&entry.path)),
+            path: paths::relative(vault, Path::new(&entry.path)),
             line: entry.line + 1,
             state: state_name(entry.state),
             text: entry.text,
@@ -256,7 +257,7 @@ pub(crate) async fn backlinks(
     vault: &Vault,
     path: &str,
 ) -> Result<Envelope<BacklinkRow>, CliError> {
-    let target = vault::locate(vault, path)?;
+    let target = paths::locate(vault, path)?;
     // Only a directory is refused. Any other metadata error passes, as a missing file
     // does: nothing here reads the file.
     if std::fs::metadata(&target).is_ok_and(|meta| meta.is_dir()) {
@@ -279,7 +280,7 @@ fn backlink_rows(vault: &Vault, found: Vec<BacklinkResult>) -> Vec<BacklinkRow> 
     let mut items: Vec<BacklinkRow> = found
         .into_iter()
         .map(|backlink| BacklinkRow {
-            path: vault::relative(vault, Path::new(&backlink.source_path)),
+            path: paths::relative(vault, Path::new(&backlink.source_path)),
             line: backlink.line,
             kind: kind_name(backlink.link_type),
             context: backlink.context,
@@ -329,7 +330,7 @@ impl Row for LinkRow {
 /// (`get_link_graph`) run a cross-vault link to the local note of that name, and an
 /// unresolved one to a placeholder path.
 pub(crate) async fn links(vault: &Vault, path: &str) -> Result<Envelope<LinkRow>, CliError> {
-    let file = vault::note_arg(vault, path)?;
+    let file = paths::note_arg(vault, path)?;
     let index = build_index(vault).await?;
     let Some(outgoing) = index.outgoing_resolved(&file.to_string_lossy()) else {
         // `note_arg` has refused what the index never holds — a file that is no note, and
@@ -358,7 +359,7 @@ fn link_rows(vault: &Vault, outgoing: Vec<(LinkEntry, LinkResolution)>) -> Vec<L
             let (resolution, resolved, other_vault) = match resolution {
                 LinkResolution::Resolved(target) => (
                     "resolved",
-                    Some(vault::relative(vault, Path::new(&target))),
+                    Some(paths::relative(vault, Path::new(&target))),
                     None,
                 ),
                 LinkResolution::OtherVault(alias) => ("otherVault", None, Some(alias)),
