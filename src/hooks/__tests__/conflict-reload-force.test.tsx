@@ -8,7 +8,8 @@
 // 뜨지 않는다.
 //
 // 동의는 **호출자만 아는 사실**이다. 관문 안에서 dirty 같은 것으로 유추하려 들면 그것이
-// 애초에 이 결함을 만든 추론이다. 그래서 `force`를 명시적으로 실어 보낸다.
+// 애초에 이 결함을 만든 추론이다. 그래서 동의는 경로 단위 플래그가 아니라 충돌한 탭 하나에
+// 쓰인다(`services/conflict-reload.ts` 의 `reloadForConflict`).
 //
 // 단정이 버퍼 **와 마운트된 뷰** 둘 다인 이유: 저장 경로는 버퍼를 읽고 화면은 뷰를 보여
 // 준다. 하나만 확인하면 "맵은 맞는데 화면은 옛 텍스트"인 절반짜리 리로드가 초록으로 통과한다.
@@ -28,8 +29,10 @@ vi.mock("../../ipc/invoke", async (importOriginal) => ({
 import { EditorView } from "@codemirror/view";
 
 import { SourceCodeEditor } from "../../components/editor/SourceCodeEditor";
+import { reloadForConflict } from "../../services/conflict-reload";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
+import { useUIStore } from "../../stores/ui/ui";
 import { triggerAutoReload } from "../use-file-operations";
 
 const PATH = "/v/a.md";
@@ -108,7 +111,11 @@ function Harness(): ReactElement {
   }, []);
 
   useEffect(() => {
-    const access = { getSourceBuffer, setSourceBuffer };
+    const access = {
+      getSourceBuffer,
+      hasSourceBuffer: (id: string) => buffers.has(id),
+      setSourceBuffer,
+    };
     useEditorStore.getState().registerSourceBufferAccess(access);
     return () => {
       if (useEditorStore.getState().sourceBufferAccess === access) {
@@ -140,9 +147,16 @@ describe("conflict modal — Reload discards local edits on the source surface",
     // 화면이 정말 로컬 편집을 들고 있는 상태에서 출발한다.
     expect(viewOf(view.container).state.doc.toString()).toBe(LOCAL_EDIT);
 
-    // 사용자가 "Reload External Changes"를 눌렀다 — 동의가 있으므로 force.
+    // 사용자가 "Reload External Changes"를 눌렀다 — 그 탭에 대한 동의다.
+    useUIStore.setState({ conflictQueue: [] });
+    useUIStore.getState().enqueueConflict({
+      base: ON_DISK_BEFORE,
+      externalMtime: 999,
+      filePath: PATH,
+      tabId: TAB,
+    });
     await act(async () => {
-      await triggerAutoReload(PATH, 999, { force: true });
+      await reloadForConflict(useUIStore.getState().conflictQueue[0]);
     });
 
     expect(buffers.get(TAB)).toBe(EXTERNAL);
@@ -150,8 +164,9 @@ describe("conflict modal — Reload discards local edits on the source surface",
   });
 
   it("still protects an unsaved edit when nobody consented", async () => {
-    // 같은 픽스처, force만 없다. 워처의 자동 리로드는 동의를 받은 적이 없으므로
-    // 갈라진 버퍼를 덮으면 안 된다 — force가 전역 우회가 되지 않았음을 이 쌍이 증명한다.
+    // 같은 픽스처, 동의 없이 경로 단위 자동 리로드만. 워처의 자동 리로드는 동의를 받은 적이
+    // 없으므로 갈라진 버퍼를 덮으면 안 된다 — 동의가 경로 단위 우회가 되지 않았음을 이 쌍이
+    // 증명한다.
     const view = render(<Harness />);
     await flushInit();
 

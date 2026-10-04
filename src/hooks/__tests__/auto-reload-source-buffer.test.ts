@@ -180,21 +180,6 @@ describe("triggerAutoReload — source buffer", () => {
     expect(buffers.get("b")).toBe("keep b");
   });
 
-  it("overwrites a diverged buffer when the user consented (force)", async () => {
-    // 충돌 모달의 "Reload External Changes". 모달은 dirty 탭에서만 뜨고 그 버퍼는 거의
-    // 정의상 갈라져 있으므로, force가 없으면 이 버튼은 소스 표면에서 아무 일도 하지 않는다.
-    cacheOnDisk("/v/a.md", "- [ ] alpha\n");
-    buffers.set("a", "- [ ] alpha\n\n버리기로 한 로컬 편집\n");
-    useEditorStore.setState({
-      sourceModeTabs: ["a"],
-      tabs: [tab("a", "/v/a.md")],
-    });
-
-    await triggerAutoReload("/v/a.md", 123, { force: true });
-
-    expect(buffers.get("a")).toBe(FRESH);
-  });
-
   it("is a no-op when no source surface is mounted", async () => {
     // 접근자가 없으면 버퍼를 쥔 훅 자체가 없다 — 나중에 디스크를 덮을 버퍼도 없다.
     useEditorStore.setState({
@@ -237,21 +222,6 @@ describe("triggerAutoReload — the toast tells the truth", () => {
     });
 
     await triggerAutoReload("/v/a.md", 123);
-
-    expect(useUIStore.getState().toast?.message).toBe(
-      "Reloaded external changes: a.md",
-    );
-  });
-
-  it("says it reloaded after a consented reload — the discard really happened", async () => {
-    cacheOnDisk("/v/a.md", "- [ ] alpha\n");
-    buffers.set("a", "- [ ] alpha\n\n버리기로 한 로컬 편집\n");
-    useEditorStore.setState({
-      sourceModeTabs: ["a"],
-      tabs: [tab("a", "/v/a.md")],
-    });
-
-    await triggerAutoReload("/v/a.md", 123, { force: true });
 
     expect(useUIStore.getState().toast?.message).toBe(
       "Reloaded external changes: a.md",

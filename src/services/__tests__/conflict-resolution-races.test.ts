@@ -60,6 +60,7 @@ import { useFileWatcher } from "../../hooks/use-file-watcher";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { useUIStore } from "../../stores/ui/ui";
+import { reloadForConflict } from "../conflict-reload";
 import {
   applyConflictMerge,
   keepLocalForConflict,
@@ -430,5 +431,37 @@ describe("§3.6 a write is acknowledged only once the file is seen to hold it", 
     expect((await applyConflictMerge(p, MERGED)).code).toBe("unstable");
     expect(reads).toBe(1 + 3);
     expect(guard(A)).toBe(true);
+  });
+
+  it("Reload reads again when an event arrives during the read, and adopts the later text", async () => {
+    // 이것을 실패시키는 것: Reload 의 generation 비교 제거(먼저 읽은 낡은 텍스트를 반영한다).
+    await mountWithConflictOnA();
+    const first = deferred<string>();
+    io.readFile.mockReturnValueOnce(first.promise);
+
+    const pending = reloadForConflict(entryOf("a"));
+    await waitFor(() => expect(io.readFile).toHaveBeenCalledTimes(1));
+    disk.set(A, "EXT2\n");
+    event(A, 5000);
+    first.resolve("EXT1\n");
+
+    expect((await pending).code).toBe("reloaded");
+    expect(useFileStore.getState().openFiles.get(A)).toBe("EXT2\n");
+    expect(queueIds()).toEqual([]);
+  });
+
+  it("Reload gives up as unstable when every read races an event", async () => {
+    // 이것을 실패시키는 것: Reload 의 다시 읽기 상한 제거(끝나지 않는다) — 상한은 3 회.
+    await mountWithConflictOnA();
+    let reads = 0;
+    io.readFile.mockImplementation(async (path: string) => {
+      reads += 1;
+      event(A, 5000 + reads);
+      return disk.get(path)!;
+    });
+
+    expect((await reloadForConflict(entryOf("a"))).code).toBe("unstable");
+    expect(reads).toBe(3);
+    expect(isDirty("a")).toBe(true);
   });
 });

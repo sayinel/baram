@@ -45,18 +45,6 @@ export interface AutoReloadOptions {
    * 본 mtime을 비교해 이미 끝났다(§313). 그래서 새 쓰기 경로가 스스로를 신고할 필요가 없다.
    */
   appOrigin?: boolean;
-  /**
-   * §312 갈라진 소스 버퍼까지 디스크 내용으로 **덮는다**.
-   *
-   * ‼️ 이것은 "사용자가 로컬 편집을 버리기로 동의했다"는 사실을 실어 나르는 값이다. 관문은
-   * 그 사실을 알 수 없다 — 저장되지 않은 편집과 방금 버리기로 한 편집은 버퍼만 봐서는
-   * 똑같이 생겼다. dirty 같은 것으로 안에서 유추하려 들면 정확히 그 추론이 이 결함을
-   * 만든다(충돌 모달은 **dirty 탭에서만** 뜨므로 dirty를 동의로 읽으면 관문 자체가 죽는다).
-   *
-   * 유일한 호출자는 충돌 모달의 "Reload External Changes"(App.tsx)다. 워처와 탭 전환의
-   * 자동 리로드는 동의를 받은 적이 없으므로 절대 넘기지 않는다.
-   */
-  force?: boolean;
 }
 
 interface UseFileOperationsParams {
@@ -64,25 +52,6 @@ interface UseFileOperationsParams {
   getSourceBuffer: (tabId: string) => string;
   /** §287 소스 모드인 탭들 — 저장 대상 탭 자신의 모드를 물어본다. */
   sourceModeTabs: ReadonlySet<string>;
-}
-
-/**
- * §312 충돌 모달의 "Reload External Changes"가 부르는, 앱 안에서 **유일한** `force` 호출자.
- *
- * ‼️ `force`가 없으면 이 버튼은 소스 표면에서 아무 일도 하지 않는다. 모달은 **dirty
- * 탭에서만** 뜨고 dirty 탭의 버퍼는 거의 정의상 갈라져 있어, 자동 리로드의 갈라짐 관문이
- * 사용자가 방금 덮어써 달라고 말한 그 탭을 건너뛴다. 여기가 앱 안에서 "로컬 편집을
- * 버려도 좋다"는 동의가 실제로 존재하는 유일한 지점이다 — 그래서 force를 넘기는 곳도
- * 여기 하나뿐이다. 워처와 탭 전환의 자동 리로드는 동의를 받은 적이 없으므로 이 함수를
- * 거치지 않는다.
- */
-export function reloadAfterConflictConsent(
-  filePath: string,
-  externalMtime: number,
-): void {
-  void triggerAutoReload(filePath, externalMtime, { force: true }).catch(
-    () => {},
-  );
 }
 
 /**
@@ -127,12 +96,7 @@ export async function triggerAutoReload(
   // 아니라 자리 표시라 버퍼에 넣으면 남의 텍스트를 지운다.
   const kept = isBinary
     ? 0
-    : syncSourceBuffers(
-        filePath,
-        freshContent,
-        cachedBefore,
-        options.force ?? false,
-      );
+    : syncSourceBuffers(filePath, freshContent, cachedBefore);
 
   // Sync mtime so the next auto-save doesn't see a false conflict
   useFileStore.getState().updateLastSaveMtime(filePath, externalMtime);
@@ -143,13 +107,14 @@ export async function triggerAutoReload(
   // 저장이 이 변경을 파일에서 지운다.
   //
   // ‼️ dirty 탭은 건너뛴다 — 그 캐시는 아직 저장되지 않은 편집을 들고 있고, 표시를 달면
-  // 탭 전환이 그것을 버린다. `force`는 사용자가 "로컬 편집을 버려도 좋다"고 말한 경우다.
+  // 탭 전환이 그것을 버린다. 사용자가 "로컬 편집을 버려도 좋다"고 말한 경우는 여기로 오지
+  // 않는다 — 충돌 모달의 Reload 는 그 탭 하나에만 반영한다(`services/conflict-reload.ts`).
   const { activeTabId, markContentStale, sourceEditedTabs, tabs } =
     useEditorStore.getState();
   for (const t of tabs) {
     if (t.filePath !== filePath || t.id === activeTabId) continue;
     // §3.6 `isTabUnsaved`, not `isDirty` — a source-mode edit leaves `isDirty` false.
-    if (isTabUnsaved(t, sourceEditedTabs) && !options.force) continue;
+    if (isTabUnsaved(t, sourceEditedTabs)) continue;
     markContentStale(t.id);
   }
 
@@ -508,10 +473,8 @@ export function useFileOperations({
  * 버퍼와 화면에서 함께 사라진다 — 충돌 모달조차 뜨지 않는다. 갈라진 버퍼는 그대로 두는
  * 것이 맞고, 그 상황을 사용자에게 알리는 일은 `showConflictModal` 경로의 몫이다.
  *
- * ‼️ `force`는 그 규칙의 **유일한** 예외다. 충돌 모달에서 "Reload"를 누른 사용자는 로컬
- * 편집을 버리기로 이미 말했으므로, 여기서 지켜 주는 것이 오히려 그 지시를 무시하는 것이
- * 된다(그리고 `updateLastSaveMtime`이 mtime 가드까지 지우므로, 남겨 둔 버퍼가 다음 저장에
- * 디스크의 외부 변경을 덮는다). 동의는 호출자만 아는 사실이라 값으로 받는다.
+ * 충돌 모달에서 "Reload"를 누른 사용자의 동의는 여기를 지나지 않는다. 그 동의는 경로가
+ * 아니라 탭 하나에 대한 것이라 `services/conflict-reload.ts`가 그 탭의 버퍼에만 쓴다.
  *
  * 버퍼가 아직 없는 탭(로딩 중인 코드 탭)도 같은 규칙에 걸려 건너뛴다 — 갱신하지 않아도
  * 그 표면은 마운트할 때 새 캐시에서 내용을 받는다.
@@ -522,7 +485,6 @@ function syncSourceBuffers(
   filePath: string,
   freshContent: string,
   cachedContent: string | undefined,
-  force: boolean,
 ): number {
   const { sourceBufferAccess, sourceEditedTabs, sourceModeTabs, tabs } =
     useEditorStore.getState();
@@ -537,9 +499,8 @@ function syncSourceBuffers(
     // §3.6 A source-edited tab is unsaved even when its buffer equals the cache
     // (a tab switch writes the buffer into `openFiles`), so that counts as kept too.
     if (
-      !force &&
-      (sourceBufferAccess.getSourceBuffer(tab.id) !== cachedContent ||
-        sourceEditedTabs.includes(tab.id))
+      sourceBufferAccess.getSourceBuffer(tab.id) !== cachedContent ||
+      sourceEditedTabs.includes(tab.id)
     ) {
       kept += 1;
       continue;

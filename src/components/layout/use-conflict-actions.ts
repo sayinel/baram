@@ -11,8 +11,8 @@ import type {
 import type { EditorTab } from "../../stores/editor/editor";
 import type { ConflictEntry } from "../../stores/ui/conflict-queue";
 
-import { reloadAfterConflictConsent } from "../../hooks/use-file-operations";
 import { t } from "../../i18n";
+import { reloadForConflict } from "../../services/conflict-reload";
 import {
   applyConflictMerge,
   CONFLICT_RESULT_KEYS,
@@ -164,11 +164,24 @@ export function useConflictActions(): ConflictActions {
     });
   }, []);
 
-  // §312 왜 force가 필요한지는 reloadAfterConflictConsent의 주석 참조. The entry is
-  // resolved first, as the modal did before: Reload still acts on the path.
   const onReload = useCallback((entry: ConflictEntry) => {
-    useUIStore.getState().resolveConflict(entry.tabId, entry.generation);
-    reloadAfterConflictConsent(entry.filePath, entry.externalMtime);
+    setPending(true);
+    void reloadForConflict(entry).then((result) => {
+      setPending(false);
+      if (result.code !== "reloaded") {
+        toastConflictFailure(result, entry.tabId);
+        return;
+      }
+      const tab = useEditorStore
+        .getState()
+        .tabs.find((x) => x.id === entry.tabId);
+      // Same message as the auto-reload's (`triggerAutoReload`).
+      useUIStore
+        .getState()
+        .showToast(
+          `Reloaded external changes: ${basename(tab?.filePath ?? "")}`,
+        );
+    });
   }, []);
 
   return {

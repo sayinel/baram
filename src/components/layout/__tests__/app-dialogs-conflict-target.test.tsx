@@ -595,6 +595,203 @@ describe("§3.6 Keep Local saves the conflicted tab and reports what happened", 
   });
 });
 
+describe("§3.6 Reload discards only the conflicted tab's work, after the read", () => {
+  it("r: the conflict and the flags stay until the read lands; then the tab takes the disk", async () => {
+    // 이것을 실패시키는 것: flag 해제·resolve 를 읽기 await 앞으로.
+    const read = deferred<string>();
+    await mount();
+    externalChange(A, 2000);
+    io.readFile.mockReturnValueOnce(read.promise);
+    click(await expectConflictFor("a.md"), "Reload External Changes");
+    await settle();
+
+    expect(queueIds()).toEqual(["a"]);
+    expect(isDirty("a")).toBe(true);
+
+    read.resolve("EXT1\n");
+    await settle();
+
+    expect(queueIds()).toEqual([]);
+    expect(isDirty("a")).toBe(false);
+    expect(useFileStore.getState().openFiles.get(A)).toBe("EXT1\n");
+    expect(useFileStore.getState().getFileMtime(A)).toEqual({
+      canReloadMtime: 0,
+      lastSaveMtime: NOW,
+    });
+    expect(useUIStore.getState().toast?.message).toBe(
+      "Reloaded external changes: a.md",
+    );
+  });
+
+  it("r2: a tab reopened on the path while the read runs keeps its work", async () => {
+    // 이것을 실패시키는 것: 반영 전 확인을 경로만으로(탭 id 생략) — 경로 단위 반영이 새 탭을 덮는다.
+    const read = deferred<string>();
+    await mount();
+    externalChange(A, 2000);
+    io.readFile.mockReturnValueOnce(read.promise);
+    click(await expectConflictFor("a.md"), "Reload External Changes");
+    await settle();
+
+    act(() => {
+      useEditorStore.getState().closeTab("a");
+      useEditorStore.getState().openTab(fileTab("a-new", A, true));
+    });
+    read.resolve("EXT1\n");
+    await settle();
+
+    expect(isDirty("a-new")).toBe(true);
+    expect(useFileStore.getState().openFiles.get(A)).toBe("A local\n");
+    expect(useEditorStore.getState().staleContentTabs).not.toContain("a-new");
+    expect(useUIStore.getState().toast).toBeNull();
+  });
+
+  it("r3: two tabs on one path are refused until the other one is closed", async () => {
+    // 이것을 실패시키는 것: 같은 경로 탭 거부 제거(경로 단위 반영이 다른 탭의 버퍼를 지운다).
+    buffers.set("a", "A src\n");
+    buffers.set("a-dup", "A dup src\n");
+    useEditorStore.setState({
+      sourceModeTabs: ["a", "a-dup"],
+      tabs: [fileTab("a", A), fileTab("a-dup", A), fileTab("b", B)],
+    });
+    await mount();
+    externalChange(A, 2000);
+    click(await expectConflictFor("a.md"), "Reload External Changes");
+    await settle();
+
+    expect(io.readFile).not.toHaveBeenCalled();
+    expect([isDirty("a"), isDirty("a-dup")]).toEqual([true, true]);
+    expect([buffers.get("a"), buffers.get("a-dup")]).toEqual([
+      "A src\n",
+      "A dup src\n",
+    ]);
+    expect(useUIStore.getState().toast?.message).toBe(
+      toastFor("conflict.ambiguous", "a.md"),
+    );
+
+    act(() => useEditorStore.getState().closeTab("a-dup"));
+    click(await expectConflictFor("a.md"), "Reload External Changes");
+    await settle();
+    expect(queueIds()).toEqual([]);
+    expect(buffers.get("a")).toBe("EXT1\n");
+  });
+
+  it("r4: a tab that starts loading while the read runs is left as it is", async () => {
+    // 이것을 실패시키는 것: 반영 전 `adoptable` 확인 제거.
+    const read = deferred<string>();
+    await mount();
+    externalChange(A, 2000);
+    io.readFile.mockReturnValueOnce(read.promise);
+    click(await expectConflictFor("a.md"), "Reload External Changes");
+    await settle();
+
+    setTabLoading("a", true);
+    read.resolve("EXT1\n");
+    await settle();
+
+    expect(isDirty("a")).toBe(true);
+    expect(useFileStore.getState().openFiles.get(A)).toBe("A local\n");
+    expect(queueIds()).toEqual(["a"]);
+    expect(useUIStore.getState().toast?.message).toBe(
+      toastFor("conflict.unavailable", "a.md"),
+    );
+  });
+
+  it("r5: a binary viewer is not read; its sentinel stays and the conflict is resolved", async () => {
+    // 이것을 실패시키는 것: binary 갈래 제거(텍스트로 읽어 캐시·버퍼에 넣는다).
+    const PDF = "/v/doc.pdf";
+    useFileStore.getState().setFileContent(PDF, "");
+    useEditorStore.setState({
+      tabs: [fileTab("p", PDF), fileTab("b", B)],
+    });
+    useUIStore.getState().enqueueConflict({
+      base: "",
+      externalMtime: 2000,
+      filePath: PDF,
+      tabId: "p",
+    });
+    disk.set(PDF, "%PDF binary");
+    const setSourceBuffer = vi.spyOn(
+      useEditorStore.getState().sourceBufferAccess!,
+      "setSourceBuffer",
+    );
+    await mount();
+    click(await expectConflictFor("doc.pdf"), "Reload External Changes");
+    await settle();
+
+    expect(io.readFile).not.toHaveBeenCalled();
+    expect(useFileStore.getState().openFiles.get(PDF)).toBe("");
+    expect(setSourceBuffer).not.toHaveBeenCalled();
+    expect(queueIds()).toEqual([]);
+    expect(useFileStore.getState().getFileMtime(PDF)?.lastSaveMtime).toBe(NOW);
+  });
+
+  it("r6: a second tab opened on the path while the read runs makes it refuse", async () => {
+    // 탭의 텍스트를 읽을 수 없는 상태(문서 표면 미등록)라 local 비교가 건너뛰어지는 경우다 —
+    // 그때도 같은 경로 탭 확인이 막아야 한다.
+    // 이것을 실패시키는 것: 읽은 뒤의 같은 경로 탭 확인 제거(경로 단위 `openFiles` 가 새 탭의
+    // 내용을 바꾼다).
+    useEditorStore.setState({ documentSurfaceAccess: null });
+    const read = deferred<string>();
+    await mount();
+    externalChange(A, 2000);
+    io.readFile.mockReturnValueOnce(read.promise);
+    click(await expectConflictFor("a.md"), "Reload External Changes");
+    await settle();
+
+    // `openTab` 은 같은 경로를 이미 연 탭으로 돌려보낸다 — 그 관문을 지난 상태(경로 변경 뒤)를
+    // 직접 만든다.
+    act(() =>
+      useEditorStore.setState((st) => ({
+        tabs: [...st.tabs, fileTab("a-dup", A, true)],
+      })),
+    );
+    read.resolve("EXT1\n");
+    await settle();
+
+    expect(useFileStore.getState().openFiles.get(A)).toBe("A local\n");
+    expect(queueIds()).toEqual(["a"]);
+    expect(useUIStore.getState().toast?.message).toBe(
+      toastFor("conflict.ambiguous", "a.md"),
+    );
+  });
+
+  it("r7: text typed after the click is not covered by the consent", async () => {
+    // 이것을 실패시키는 것: 반영 전 local 비교 제거(동의 뒤에 친 글자까지 버린다).
+    const read = deferred<string>();
+    await mount();
+    externalChange(A, 2000);
+    io.readFile.mockReturnValueOnce(read.promise);
+    click(await expectConflictFor("a.md"), "Reload External Changes");
+    await settle();
+
+    cacheTab("a", "<p>A local, typed after Reload</p>");
+    read.resolve("EXT1\n");
+    await settle();
+
+    expect(isDirty("a")).toBe(true);
+    expect(useFileStore.getState().openFiles.get(A)).toBe("A local\n");
+    expect(queueIds()).toEqual(["a"]);
+    expect(useUIStore.getState().toast?.message).toBe(
+      toastFor("conflict.localChanged", "a.md"),
+    );
+  });
+
+  it("s: a failed read keeps the conflict and the flags", async () => {
+    // 이것을 실패시키는 것: resolve 를 읽기 await 앞으로.
+    await mount();
+    externalChange(A, 2000);
+    io.readFile.mockRejectedValueOnce(new Error("EIO"));
+    click(await expectConflictFor("a.md"), "Reload External Changes");
+    await settle();
+
+    expect(queueIds()).toEqual(["a"]);
+    expect(isDirty("a")).toBe(true);
+    expect(useUIStore.getState().toast?.message).toBe(
+      toastFor("conflict.readFailed", "a.md"),
+    );
+  });
+});
+
 describe("§3.6 conflicts follow their tabs", () => {
   it("u: closing the tab drops its conflict; the reopened tab starts clean", async () => {
     // 이것을 실패시키는 것: 경로로 식별(같은 경로를 다시 연 탭에 옛 충돌이 남는다) / sweep 의
