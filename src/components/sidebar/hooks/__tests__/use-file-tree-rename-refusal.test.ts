@@ -221,7 +221,7 @@ describe("post-commit outcomes reach the user as warnings (issue 594)", () => {
       updatedFiles: ["/vault/c.md"],
     });
     // `renameFileEntry` is a mock here, so the cache is keyed under the new
-    // path by hand — in the app `rekeyOpenFilesPrefix` does that.
+    // path by hand — in the app `rekeyPathPrefix` does that.
     useFileStore.setState({
       openFiles: new Map([["/vault/c.md", "see [[b]] and ((b#^b1))"]]),
     } as never);

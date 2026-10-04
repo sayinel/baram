@@ -217,16 +217,19 @@ export function moveInTree(
 }
 
 /**
- * Rewrite `openFiles` keys under `oldPrefix` to `newPrefix` — shared by
- * rename (parent unchanged, name/path changed) and move (parent changed).
+ * Rewrite path keys under `oldPrefix` to `newPrefix` — shared by rename
+ * (parent unchanged, name/path changed) and move (parent changed). §3.6
+ * `renameFileEntry`·`moveFileEntry` apply it to `openFiles` and to the
+ * external-change guard `fileMtimes`, so a rename does not leave a pending
+ * guard behind under the old path.
  */
-export function rekeyOpenFilesPrefix(
-  openFiles: Map<string, string>,
+export function rekeyPathPrefix<V>(
+  byPath: Map<string, V>,
   oldPrefix: string,
   newPrefix: string,
-): Map<string, string> {
-  const next = new Map(openFiles);
-  for (const [key, value] of openFiles) {
+): Map<string, V> {
+  const next = new Map(byPath);
+  for (const [key, value] of byPath) {
     // issue 595: the boundary after the prefix is the separator the prefix
     // is spelled with — on Windows the keys are joined with `\`, and
     // `oldPrefix + "/"` matched no descendant, leaving the cache keyed under

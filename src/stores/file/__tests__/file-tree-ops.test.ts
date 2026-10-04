@@ -8,7 +8,7 @@ import {
   buildFileTree,
   insertSorted,
   moveInTree,
-  rekeyOpenFilesPrefix,
+  rekeyPathPrefix,
   removeFromTree,
   renameInTree,
 } from "../file-tree-ops";
@@ -211,10 +211,10 @@ describe("moveInTree", () => {
   });
 });
 
-describe("rekeyOpenFilesPrefix", () => {
+describe("rekeyPathPrefix", () => {
   it("rewrites a single file key", () => {
     const openFiles = new Map([["/r/a.md", "content"]]);
-    const result = rekeyOpenFilesPrefix(openFiles, "/r/a.md", "/r/b.md");
+    const result = rekeyPathPrefix(openFiles, "/r/a.md", "/r/b.md");
     expect(result.get("/r/b.md")).toBe("content");
     expect(result.has("/r/a.md")).toBe(false);
   });
@@ -225,7 +225,7 @@ describe("rekeyOpenFilesPrefix", () => {
       ["/r/docs/sub/b.md", "content-b"],
       ["/r/unrelated.md", "keep"],
     ]);
-    const result = rekeyOpenFilesPrefix(openFiles, "/r/docs", "/r/dest/docs");
+    const result = rekeyPathPrefix(openFiles, "/r/docs", "/r/dest/docs");
     expect(result.get("/r/dest/docs/a.md")).toBe("content-a");
     expect(result.get("/r/dest/docs/sub/b.md")).toBe("content-b");
     expect(result.get("/r/unrelated.md")).toBe("keep");
@@ -238,7 +238,7 @@ describe("rekeyOpenFilesPrefix", () => {
       ["C:\\vault\\ns\\in.md", "in"],
       ["C:\\vault\\ns\\sub\\deep.md", "deep"],
     ]);
-    const result = rekeyOpenFilesPrefix(
+    const result = rekeyPathPrefix(
       openFiles,
       "C:\\vault\\ns",
       "C:\\vault\\ns2",
@@ -254,7 +254,7 @@ describe("rekeyOpenFilesPrefix", () => {
       ["/v/foo/in.md", "in"],
       ["/v/foo\\bar.md", "sibling with a backslash in its name"],
     ]);
-    const result = rekeyOpenFilesPrefix(openFiles, "/v/foo", "/v/baz");
+    const result = rekeyPathPrefix(openFiles, "/v/foo", "/v/baz");
     expect(result.get("/v/baz/in.md")).toBe("in");
     expect(result.get("/v/foo\\bar.md")).toBe(
       "sibling with a backslash in its name",

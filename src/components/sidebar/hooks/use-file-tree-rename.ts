@@ -113,7 +113,7 @@ export function useFileTreeRename(
           renameTab(oldPath, newPath, newName);
         }
         // The renamed file's cached content is already under newPath:
-        // `renameFileEntry` re-keys openFiles (`rekeyOpenFilesPrefix`,
+        // `renameFileEntry` re-keys openFiles (`rekeyPathPrefix`,
         // stores/file/file-tree-ops.ts). Read the map after it.
         const { openFiles } = useFileStore.getState();
         // The files the backend rewrote — referrers, and since issue 678 the

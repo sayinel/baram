@@ -8,7 +8,7 @@ import {
   addToTree,
   buildFileTree,
   moveInTree,
-  rekeyOpenFilesPrefix,
+  rekeyPathPrefix,
   removeFromTree,
   renameInTree,
 } from "./file-tree-ops";
@@ -210,7 +210,8 @@ export const useFileStore = create<FileState>((set, get) => ({
 
   renameFileEntry: (oldPath, newPath, newName) =>
     set((state) => ({
-      openFiles: rekeyOpenFilesPrefix(state.openFiles, oldPath, newPath),
+      openFiles: rekeyPathPrefix(state.openFiles, oldPath, newPath),
+      fileMtimes: rekeyPathPrefix(state.fileMtimes, oldPath, newPath),
       fileTree: renameInTree(state.fileTree, oldPath, newPath, newName),
     })),
 
@@ -262,11 +263,8 @@ export const useFileStore = create<FileState>((set, get) => ({
       if (!moved) return state;
 
       return {
-        openFiles: rekeyOpenFilesPrefix(
-          state.openFiles,
-          oldPath,
-          moved.newPath,
-        ),
+        openFiles: rekeyPathPrefix(state.openFiles, oldPath, moved.newPath),
+        fileMtimes: rekeyPathPrefix(state.fileMtimes, oldPath, moved.newPath),
         fileTree: moved.entries,
       };
     }),
