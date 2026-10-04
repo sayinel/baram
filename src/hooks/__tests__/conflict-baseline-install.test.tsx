@@ -364,6 +364,50 @@ describe("§3.6 a conflict's text is installed where the tab's document lives", 
     h.unmount();
   });
 
+  it("after the switch to a pooled tab, the cache — not the shared editor — is a's text", async () => {
+    // a 는 shared editor 를 쓰고, 큰 탭 b 는 자기 pool editor 로 재개된다 — shared editor 는 a 의
+    // 옛 문서를 그대로 든다. 그 뒤 a 에 대한 변경(block ID rename 착지 등)은 cache 와 `openFiles`
+    // 에 닿는다. 충돌 해결이 shared 의 옛 문서를 a 의 글로 읽으면 그 변경을 디스크에서 지운다.
+    // 이것을 실패시키는 것: `saveOutgoingTab` 의 shared editor 소유 해제 제거(옛 문서를 읽는다).
+    load(LOADED, "a");
+    expect(readTabLocalText("a")).toMatchObject({ text: LOADED }); // 양성 대조: 활성 a 는 shared.
+    const keepalive = createKeepalivePool();
+    pooled = makeTestEditor("<p>B big</p>");
+    keepalive.acquire("b", pooled);
+    keepalive.markComplete("b");
+    useEditorStore.setState({
+      documentSurfaceAccess: {
+        editor,
+        editorStateCache,
+        isKeepaliveComplete: (id) => keepalive.isComplete(id),
+        keepaliveEditor: (id) => keepalive.get(id),
+      },
+    });
+    const h = mountSwitching(keepalive);
+
+    act(() => {
+      useEditorStore.setState({ activeTabId: "b", mruOrder: ["b", "a"] });
+    });
+    await waitFor(() => expect(editorStateCache.has("a")).toBe(true));
+    // 나가는 탭 처리가 a 를 cache 로 넘겼다 — shared editor 는 더 이상 a 의 것이 아니다.
+    expect(documentOwner(editor)).toBeNull();
+    expect(serializeLiveDoc(editor)).toBe(LOADED);
+
+    // a 의 변경이 cache 와 `openFiles` 에 착지한다.
+    const renamed = "Renamed while in the background\n";
+    editorStateCache.set(
+      "a",
+      EditorState.create({
+        doc: markdownToProsemirror(renamed, editor.schema),
+        plugins: editor.state.plugins,
+      }),
+    );
+    useFileStore.getState().setFileContent(A, renamed);
+
+    expect(readTabLocalText("a")).toMatchObject({ text: renamed });
+    h.unmount();
+  });
+
   it("f: the active fresh install starts a new history", () => {
     // 이것을 실패시키는 것: 활성 탭 설치를 patch(`patchEditorContent`)로 — 히스토리가 남는다.
     load(LOADED, "a");
@@ -404,7 +448,7 @@ describe("§3.6 a conflict's text is installed where the tab's document lives", 
     h.unmount();
   });
 
-  function mountSwitching() {
+  function mountSwitching(keepalive = createKeepalivePool()) {
     return renderHook(() => {
       useTabSwitching({
         appendHandleRef: { current: null },
@@ -413,7 +457,7 @@ describe("§3.6 a conflict's text is installed where the tab's document lives", 
         editorStateCache: { current: editorStateCache },
         getSourceBuffer: () => "",
         isNavBackForwardRef: { current: false },
-        keepalive: createKeepalivePool(),
+        keepalive,
         onActiveEditorChange: vi.fn(),
         scrollOffsets: { current: new Map<string, number>() },
         setFindReplaceMode: vi.fn(),

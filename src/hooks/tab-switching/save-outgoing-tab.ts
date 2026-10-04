@@ -1,3 +1,4 @@
+import type { EditorTab } from "../../stores/editor/editor";
 import type { TabSwitchContext } from "./types";
 
 // §298 split-review §2 — original use-tab-switching.ts:158-234.
@@ -9,7 +10,10 @@ import { isFileTab, useEditorStore } from "../../stores/editor/editor";
 import { useFoldStore } from "../../stores/editor/fold";
 import { useFileStore } from "../../stores/file/file";
 import { logCacheEvent, timePhase } from "../../utils/editor/perf-trace";
-import { isTabLoading } from "../../utils/editor/programmatic-update";
+import {
+  isTabLoading,
+  setDocumentOwner,
+} from "../../utils/editor/programmatic-update";
 import { serializeLiveDoc } from "../../utils/editor/serialize-live-doc";
 import { isBinaryViewerFile, isMarkdownFile } from "../../utils/file-type";
 import { logger } from "../../utils/logger";
@@ -31,8 +35,8 @@ export function saveOutgoingTab(
   const prevTab = tabs.find((t) => t.id === prevTabId);
 
   // §perf-large-file C3.5: determine which editor was active for the outgoing tab
+  // (the keep-alive one when it has one, else the shared one — see below).
   const prevKeepaliveEditor = ctx.keepalive.get(prevTabId);
-  const prevEditor = prevKeepaliveEditor ?? ctx.editor;
 
   // §perf-large-file C3.5: keep-alive tabs — hide their DOM, skip cache write
   // and skip outgoing serialize. The live editor IS the state; auto-save hooks
@@ -45,6 +49,28 @@ export function saveOutgoingTab(
     return;
   }
 
+  try {
+    saveSharedEditorTab(ctx, prevTabId, prevTab);
+  } finally {
+    // §3.6 The outgoing tab's document now lives in the cache and `openFiles`;
+    // the shared editor keeps showing it until the incoming tab is installed
+    // (never, when that tab resumes in its own keep-alive editor). Writers that
+    // reach a background tab — the block ID rename landing's cache step, a
+    // conflict adoption — change the cache and text, so the shared editor must
+    // stop answering for it. Before this point (the switch window) it still does,
+    // and an adoption there installs into it for the caching above to pick up.
+    // A keep-alive editor needs no such step: it stays the tab's live
+    // document, and those writers update it in place.
+    setDocumentOwner(ctx.editor, null);
+  }
+}
+
+function saveSharedEditorTab(
+  ctx: TabSwitchContext,
+  prevTabId: string,
+  prevTab: EditorTab | undefined,
+): void {
+  const prevEditor = ctx.editor;
   if (!isFileTab(prevTab) || !prevEditor) return;
 
   const prevIsCode = !isMarkdownFile(prevTab?.filePath);
