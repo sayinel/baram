@@ -16,7 +16,12 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import { MergeView } from "../../components/editor/MergeView";
-import { requireChoiceForExternalHunks } from "../conflict-resolution";
+import en from "../../i18n/en.json";
+import ko from "../../i18n/ko.json";
+import {
+  CONFLICT_RESULT_KEYS,
+  requireChoiceForExternalHunks,
+} from "../conflict-resolution";
 
 interface MergeFixture {
   base: string;
@@ -120,5 +125,21 @@ describe("§3.6 MergeView while Apply runs", () => {
     const disabled = (name: string) =>
       (screen.getByRole("button", { name }) as HTMLButtonElement).disabled;
     expect([disabled("Apply Merge"), disabled("Cancel")]).toEqual([true, true]);
+  });
+});
+
+describe("§3.6 toasts for stops that can come after the write", () => {
+  it.each([
+    "local-changed",
+    "path-changed",
+    "read-failed",
+    "superseded",
+    "unstable",
+  ] as const)("%s does not claim that nothing was written", (code) => {
+    // 사후 확인(쓰기 뒤의 읽기)에서도 나오는 코드다 — 그때 파일은 이미 바뀌었다.
+    // 이것을 실패시키는 것: 그 키의 en·ko 문장에 "아무것도 쓰지/바꾸지 않았다" 를 되돌려 넣음.
+    const key = CONFLICT_RESULT_KEYS[code];
+    expect((en as Record<string, string>)[key]).not.toMatch(/nothing was/i);
+    expect((ko as Record<string, string>)[key]).not.toMatch(/아무것도/);
   });
 });
