@@ -1,6 +1,6 @@
 ---
 title: "빠르게 시작하기"
-sourceHash: "30217874eb22"
+sourceHash: "aa567352cfed"
 ---
 
 
@@ -39,7 +39,7 @@ sourceHash: "30217874eb22"
 `ctx.editor`는 두 티어에서 같습니다 — 마크다운이고 비동기입니다. `getMarkdown()` /
 `setMarkdown()`이 앱 자신의 왕복 파이프라인을 거치므로, 읽은 것을 그대로 되쓸 수 있습니다.
 `getSelection()`은 위치와 선택의 평문, 그리고 `ref`를 주고, `insertMarkdown(md, { replace: ref })`는
-정확히 그 범위를 바꾸며, `insertText()`는 평문을 입력합니다. 삽입 하나가 실행 취소 한
+정확히 그 범위를 바꾸며, `insertText()`는 평문을 입력합니다. 모든 쓰기가 실행 취소 한
 단계입니다. 읽기에는 `editor` 또는 `editor:readonly`가, 쓰기에는 `editor`가 필요합니다. 모든
 메서드와 거부 코드는
 [컨텍스트: 명령·에디터·파일·이벤트](/ko/docs/plugin-dev/context-commands-editor-files-events/#contexteditor-editor-또는-editorreadonly-필요)에

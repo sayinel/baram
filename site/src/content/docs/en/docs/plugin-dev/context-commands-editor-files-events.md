@@ -114,9 +114,9 @@ And by `insertMarkdown()` alone:
 
 If the user's selection is inside the target when the write lands (ends included) — as it is
 when you pass no `replace` and the user has not moved — the caret goes to the end of what went
-in and the editor scrolls to it. Otherwise the user's selection stays where it was. Each
-`insertText()` or `insertMarkdown()` is its own undo step, apart from the user's typing on
-either side of it.
+in and the editor scrolls to it. Otherwise the user's selection stays where it was. Every
+write — `insertText()`, `insertMarkdown()` or `setMarkdown()` — is its own undo step, apart
+from the user's typing on either side of it.
 
 ### Refusals
 

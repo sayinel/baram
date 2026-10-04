@@ -45,7 +45,7 @@ hand-written files with no build step, and `plugin-release.yml` refuses to publi
 go through the app's own round-trip pipeline, so what you read is exactly what you can write
 back. `getSelection()` gives positions, the selection's plain text, and a `ref`;
 `insertMarkdown(md, { replace: ref })` replaces exactly that range, and `insertText()` types
-plain text. Each insert is its own undo step. Reads need `editor` or `editor:readonly`; writes
+plain text. Every write is one undo step. Reads need `editor` or `editor:readonly`; writes
 need `editor`. Every method and refusal code is in
 [Context: commands, editor, files, events](/en/docs/plugin-dev/context-commands-editor-files-events/#contexteditor-requires-editor-or-editorreadonly).
 
