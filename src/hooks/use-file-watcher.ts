@@ -160,13 +160,14 @@ export function useFileWatcher() {
             // §3.6 "Unsaved" is `isTabUnsaved`, not `isDirty`: markdown typed in
             // source mode raises `sourceEditedTabs` and leaves `isDirty` false, so
             // reading `isDirty` alone auto-reloads over that text with no prompt.
+            // The conflict belongs to each tab holding unsaved work, by id.
             const { sourceEditedTabs, tabs } = useEditorStore.getState();
-            const unsaved = tabs.some(
+            const unsavedTabs = tabs.filter(
               (t) =>
                 t.filePath === filePath && isTabUnsaved(t, sourceEditedTabs),
             );
 
-            if (!unsaved) {
+            if (unsavedTabs.length === 0) {
               // §313 앱 자신의 쓰기는 외부 변경이 아니다 — 토스트도, 실행 취소를
               // 버리는 재구축도 하지 않는다. dirty 탭은 아래 그대로다: 앱이 디스크에
               // 쓴 것과 사용자가 버퍼에 친 것이 갈라져 있으므로 동의 없이 어느 한쪽을
@@ -180,7 +181,9 @@ export function useFileWatcher() {
               // Capture the pre-external content (last synced) as the 3-way base.
               const base =
                 useFileStore.getState().openFiles.get(filePath) ?? "";
-              showConflictModal(filePath, externalMtime, base);
+              for (const t of unsavedTabs) {
+                showConflictModal(t.id, filePath, externalMtime, base);
+              }
             }
           }),
         ]);

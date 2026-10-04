@@ -1,9 +1,12 @@
 // §Phase5: External file change conflict modal
 // Shown when a cached/open tab's file was modified externally while dirty.
 // Diff/compare is folded into Merge (the merge view doubles as a diff view).
+import type { ConflictEntry } from "../../stores/ui/conflict-queue";
+
 import { TriangleAlert } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
+import { useEditorStore } from "../../stores/editor/editor";
 import { useUIStore } from "../../stores/ui/ui";
 import { basename } from "../../utils/path-utils";
 
@@ -68,44 +71,47 @@ export function ConflictModal({
 }
 
 /**
- * §Phase5: Connected wrapper — reads from UIStore and supplies callbacks.
- * Mounted once in App.tsx; shows/hides based on conflictModal store state.
+ * §3.6 Connected wrapper — shows the head of the conflict queue: the first
+ * queued conflict whose tab is still open. Mounted once in AppDialogs.
+ *
+ * `suspended` hides it while a conflict is being worked on (the merge view is
+ * open), so a conflict queued meanwhile waits instead of covering the merge.
  */
 export function ConflictModalWrapper({
-  onReload,
   onKeepLocal,
   onMerge,
+  onReload,
+  suspended = false,
 }: {
-  onKeepLocal: (filePath: string) => void;
-  onMerge: (filePath: string, base: string) => void;
-  onReload: (filePath: string, externalMtime: number) => void;
+  onKeepLocal: (entry: ConflictEntry) => void;
+  onMerge: (entry: ConflictEntry) => void;
+  onReload: (entry: ConflictEntry) => void;
+  suspended?: boolean;
 }) {
-  const { conflictModal, closeConflictModal } = useUIStore(
+  const { conflictQueue, resolveConflict } = useUIStore(
     useShallow((s) => ({
-      conflictModal: s.conflictModal,
-      closeConflictModal: s.closeConflictModal,
+      conflictQueue: s.conflictQueue,
+      resolveConflict: s.resolveConflict,
     })),
   );
+  const tabIds = useEditorStore(useShallow((s) => s.tabs.map((t) => t.id)));
 
-  if (!conflictModal) return null;
+  const head = conflictQueue.find((e) => tabIds.includes(e.tabId));
+  if (!head || suspended) return null;
 
-  const { base, externalMtime, filePath } = conflictModal;
+  // Each action resolves the entry it was shown for — the same generation, so
+  // a newer event for the tab that arrives meanwhile stays queued.
+  const act = (action: (entry: ConflictEntry) => void) => () => {
+    resolveConflict(head.tabId, head.generation);
+    action(head);
+  };
 
   return (
     <ConflictModal
-      filePath={filePath}
-      onKeepLocal={() => {
-        closeConflictModal();
-        onKeepLocal(filePath);
-      }}
-      onMerge={() => {
-        closeConflictModal();
-        onMerge(filePath, base);
-      }}
-      onReload={() => {
-        closeConflictModal();
-        onReload(filePath, externalMtime);
-      }}
+      filePath={head.filePath}
+      onKeepLocal={act(onKeepLocal)}
+      onMerge={act(onMerge)}
+      onReload={act(onReload)}
     />
   );
 }

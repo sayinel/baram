@@ -1,5 +1,14 @@
 // §3.5 UI 레이아웃 스토어
+import type { ConflictEntry, ConflictEvent } from "./conflict-queue";
+
 import { create } from "zustand";
+
+import {
+  dropConflictEntry,
+  enqueueConflictEntry,
+  resolveConflictEntry,
+  retargetConflictEntry,
+} from "./conflict-queue";
 
 /**
  * §370.3 크롬 표면의 짧은 이름 → 그 표면을 담는 상태 필드.
@@ -30,14 +39,6 @@ export type ChromeSurface = keyof typeof CHROME_SURFACE_FIELD;
 export const CHROME_SURFACES = Object.keys(
   CHROME_SURFACE_FIELD,
 ) as ChromeSurface[];
-
-export interface ConflictModalState {
-  /** Snapshot of the common-ancestor content captured when the conflict was
-   *  detected (before reading the external change) — used as the 3-way base. */
-  base: string;
-  externalMtime: number;
-  filePath: string;
-}
 
 export type ExportFormat =
   "docx" | "epub" | "html" | "latex" | "notion" | "pdf" | "rst";
@@ -179,8 +180,6 @@ interface UIState {
    * 알린다(스펙 0063 §3.3).
    */
   chromeTouched: Readonly<Partial<Record<ChromeSurface, true>>>;
-  /** §Phase5: Close the conflict modal (without resolution — used internally) */
-  closeConflictModal: () => void;
   closeExportDialog: () => void;
   closeTaskEdit: () => void;
   /** §close-guard: Close the shared unsaved-changes modal */
@@ -188,22 +187,22 @@ interface UIState {
   closeWeeklyReview: () => void;
   closeZettelTitleDialog: () => void;
   commandPaletteOpen: boolean;
-  /** §Phase5: External file change conflict modal state (null = closed) */
-  conflictModal: ConflictModalState | null;
+  /** §3.6 The tab's current conflict generation, or null when it has none. */
+  conflictGeneration: (tabId: string) => null | number;
+  /** §3.6 External-change conflicts, one per tab, in arrival order (`conflict-queue.ts`). */
+  conflictQueue: readonly ConflictEntry[];
   /** When true, cursor moves to end of document after reload (e.g. Quick Capture append) */
   contentReloadCursorEnd: boolean;
   /** Monotonic counter — incremented after Global Search Replace / Quick Capture to signal editor reload */
   contentReloadVersion: number;
   /** Dismiss the transient toast */
   dismissToast: () => void;
+  /** §3.6 Remove a tab's conflict whatever its generation — the tab is gone. */
+  dropConflict: (tabId: string) => void;
+  /** §3.6 Queue a conflict for a tab, or merge a newer one into its entry. */
+  enqueueConflict: (event: ConflictEvent) => void;
   exportDialogOpen: boolean;
   exportFormat: ExportFormat;
-  /** §Phase5: Open the conflict modal for a file that changed externally while dirty */
-  openConflictModal: (
-    filePath: string,
-    externalMtime: number,
-    base: string,
-  ) => void;
   openExportDialog: (format?: ExportFormat) => void;
   openQuickCapture: () => void;
   /** §313 전역 단축키로 여는 길 — 캡처창을 **태스크 모드로** 연다 */
@@ -258,6 +257,10 @@ interface UIState {
    * 있고, 그것은 §370.3 의 "제안이지 강제가 아니다" 를 어긴다. 프리셋 입구
    * (`setChromeVisibility`)와는 반대다 — 그쪽은 기록하지 않는다.
    */
+  /** §3.6 Remove a tab's conflict only when it is still `generation`. */
+  resolveConflict: (tabId: string, generation: number) => void;
+  /** §3.6 Follow a tab's conflict to the tab's new path. */
+  retargetConflict: (tabId: string, filePath: string) => void;
   revealAllChrome: () => void;
   rightPanelMode: RightPanelMode;
   rightPanelOpen: boolean;
@@ -388,7 +391,7 @@ export function setUserChromeChoiceListener(
   userChromeChoiceListener = listener;
 }
 
-export const useUIStore = create<UIState>((set) => ({
+export const useUIStore = create<UIState>((set, get) => ({
   sidebarOpen: true,
   sidebarPanel: "files",
   sidebarWidth: 260,
@@ -405,7 +408,7 @@ export const useUIStore = create<UIState>((set) => ({
   quickSwitcherOpen: false,
   settingsOpen: false,
   aboutOpen: false,
-  conflictModal: null,
+  conflictQueue: [],
   exportDialogOpen: false,
   exportFormat: "pdf" as ExportFormat,
   skillGeneratorDialogOpen: false,
@@ -432,10 +435,30 @@ export const useUIStore = create<UIState>((set) => ({
     confirmLabel: "Create",
   },
 
-  openConflictModal: (filePath, externalMtime, base) =>
-    set({ conflictModal: { base, externalMtime, filePath } }),
-
-  closeConflictModal: () => set({ conflictModal: null }),
+  // §3.6 Each action passes the queue through a pure function that returns the
+  // same array when nothing changed; `set` runs only for a real change.
+  enqueueConflict: (event) => {
+    const queue = get().conflictQueue;
+    const next = enqueueConflictEntry(queue, event);
+    if (next !== queue) set({ conflictQueue: next });
+  },
+  resolveConflict: (tabId, generation) => {
+    const queue = get().conflictQueue;
+    const next = resolveConflictEntry(queue, tabId, generation);
+    if (next !== queue) set({ conflictQueue: next });
+  },
+  retargetConflict: (tabId, filePath) => {
+    const queue = get().conflictQueue;
+    const next = retargetConflictEntry(queue, tabId, filePath);
+    if (next !== queue) set({ conflictQueue: next });
+  },
+  dropConflict: (tabId) => {
+    const queue = get().conflictQueue;
+    const next = dropConflictEntry(queue, tabId);
+    if (next !== queue) set({ conflictQueue: next });
+  },
+  conflictGeneration: (tabId) =>
+    get().conflictQueue.find((e) => e.tabId === tabId)?.generation ?? null,
 
   toast: null,
 

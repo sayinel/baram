@@ -68,7 +68,7 @@ beforeEach(() => {
   useFileStore.getState().setFileContent(B, "B\n");
   useFileStore.getState().updateLastSaveMtime(A, 1000);
   useUIStore.getState().dismissToast();
-  useUIStore.setState({ conflictModal: null });
+  useUIStore.setState({ conflictQueue: [] });
   useEditorStore.setState({
     activeTabId: "b",
     mruOrder: [],
@@ -98,7 +98,9 @@ describe("§3.6 a source-edited tab is unsaved when its file changes on disk", (
     onFileChanged!({ payload: { mtime: 2000, origin: "external", path: A } });
     await Promise.resolve();
 
-    expect(useUIStore.getState().conflictModal?.filePath).toBe(A);
+    expect(useUIStore.getState().conflictQueue).toMatchObject([
+      { filePath: A, tabId: "a" },
+    ]);
     expect(readFile).not.toHaveBeenCalled();
     expect(buffers.get("a")).toBe(EDIT);
   });
@@ -116,7 +118,9 @@ describe("§3.6 a source-edited tab is unsaved when its file changes on disk", (
 
     resumeKeepaliveTab(ctx, "a", editor, tab("a", A));
 
-    expect(useUIStore.getState().conflictModal?.filePath).toBe(A);
+    expect(useUIStore.getState().conflictQueue).toMatchObject([
+      { filePath: A, tabId: "a" },
+    ]);
     expect(readFile).not.toHaveBeenCalled();
     editor.destroy();
   });

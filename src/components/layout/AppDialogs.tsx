@@ -19,6 +19,7 @@ import { serializeLiveDoc } from "../../utils/editor/serialize-live-doc";
 import { logger } from "../../utils/logger";
 import { SmartTemplateDialogWrapper } from "../ai/SmartTemplateDialogWrapper";
 import { UnsavedChangesModal } from "../editor/UnsavedChangesModal";
+import { useConflictTargetSync } from "./use-conflict-actions";
 
 const CommandPalette = lazy(() =>
   import("../command/CommandPalette").then((m) => ({
@@ -157,6 +158,7 @@ export function AppDialogs({
   handleToggleSourceMode,
   markDirty,
 }: AppDialogsProps) {
+  useConflictTargetSync();
   // §39 Tab switcher state
   const [mergeState, setMergeState] = useState<null | {
     filePath: string;
@@ -190,7 +192,7 @@ export function AppDialogs({
       <TaskEditDialog />
       <ZettelTitleDialog />
       <ConflictModalWrapper
-        onKeepLocal={(filePath) => {
+        onKeepLocal={({ filePath }) => {
           // Keep local edits: clear the mtime guard so the next save (and the
           // immediate save below) overwrites the external change on disk.
           const entry = useFileStore.getState().getFileMtime(filePath);
@@ -203,7 +205,7 @@ export function AppDialogs({
           const activeTab = tabs.find((t) => t.id === activeTabId);
           if (activeTab?.filePath === filePath) void handleSave();
         }}
-        onMerge={async (filePath, base) => {
+        onMerge={async ({ base, filePath }) => {
           if (!activeEditor || activeEditor.isDestroyed) return;
           const local = serializeLiveDoc(activeEditor);
           const external = await readFile(filePath);
@@ -211,7 +213,10 @@ export function AppDialogs({
           setMergeState({ filePath, segments: result.segments });
         }}
         // §312 왜 force가 필요한지는 reloadAfterConflictConsent의 주석 참조.
-        onReload={reloadAfterConflictConsent}
+        onReload={({ externalMtime, filePath }) =>
+          reloadAfterConflictConsent(filePath, externalMtime)
+        }
+        suspended={mergeState !== null}
       />
       <ToastHost />
       {mergeState && (

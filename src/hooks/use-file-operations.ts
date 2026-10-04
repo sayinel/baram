@@ -86,15 +86,19 @@ export function reloadAfterConflictConsent(
 }
 
 /**
- * §Phase5: Show the conflict modal for a file that changed externally while dirty.
- * The modal is driven by UIStore — ConflictModalWrapper in App.tsx renders it.
+ * §3.6 Queue a conflict for a tab whose file changed on disk while it held
+ * unsaved work. The modal is driven by UIStore — `ConflictModalWrapper` shows
+ * the head of the queue.
  */
 export function showConflictModal(
+  tabId: string,
   filePath: string,
   externalMtime: number,
   base: string,
 ): void {
-  useUIStore.getState().openConflictModal(filePath, externalMtime, base);
+  useUIStore
+    .getState()
+    .enqueueConflict({ base, externalMtime, filePath, tabId });
 }
 
 /**

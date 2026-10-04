@@ -90,6 +90,7 @@ export function resumeKeepaliveTab(
         ).catch(() => {});
       } else {
         showConflictModal(
+          incomingTab.id,
           incomingTab.filePath,
           mtimeEntry.canReloadMtime,
           useFileStore.getState().openFiles.get(incomingTab.filePath) ?? "",
