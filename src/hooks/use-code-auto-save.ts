@@ -16,6 +16,8 @@ import { useSnapshotStore } from "../stores/editor/snapshot";
 import { useFileStore } from "../stores/file/file";
 import { useSettingsStore } from "../stores/settings/store";
 import { isMarkdownFile } from "../utils/file-type";
+import { logger } from "../utils/logger";
+import { shouldDeferSave } from "./use-auto-save";
 
 export interface UseCodeAutoSaveOptions {
   /** §perf-large-file: bumps whenever the active tab's source buffer is
@@ -72,11 +74,28 @@ export function useCodeAutoSave({
 
     if (codeAutoSaveTimer.current) clearTimeout(codeAutoSaveTimer.current);
     codeAutoSaveTimer.current = setTimeout(async () => {
+      // §3.6 Re-read the tab when the timer fires: a rename during the debounce
+      // moved it (and its guard, `rekeyPathPrefix`), and the write plus every
+      // bookkeeping key below must use that one current path.
+      const current = useEditorStore
+        .getState()
+        .tabs.find((t) => t.id === tab.id);
+      if (!current?.filePath) return;
+      const path = current.filePath;
+      // §3.6 An unresolved external change holds this write exactly as it holds the
+      // WYSIWYG auto-save. The next edit re-arms the timer (`bufferVersion`).
+      if (shouldDeferSave(useFileStore.getState().getFileMtime(path))) {
+        logger.warn(
+          "[code-auto-save] deferred: external change pending for",
+          path,
+        );
+        return;
+      }
       try {
         const content = getSourceBuffer(tab.id);
-        await writeFile(tab.filePath!, content);
-        useFileStore.getState().updateLastSaveMtime(tab.filePath!, Date.now());
-        setFileContent(tab.filePath!, content);
+        await writeFile(path, content);
+        useFileStore.getState().updateLastSaveMtime(path, Date.now());
+        setFileContent(path, content);
         markDirty(tab.id, false);
         useEditorStore.getState().markSourceEdited(tab.id, false);
         // §71 Mark the auto-snapshot dirty gate for non-md/code file saves.
@@ -84,7 +103,7 @@ export function useCodeAutoSave({
         // Markdown carries links; leaving the index stale after an auto-save is
         // what `handleSave` already avoids on the manual path.
         if (markdownInSourceMode) {
-          updateFileIndex(tab.filePath!)
+          updateFileIndex(path)
             .then(() => useLinkStore.getState().invalidate())
             .catch(() => {});
         }

@@ -77,22 +77,28 @@ export function useAutoSave(editor: Editor | null) {
 
     // Guard: if the active tab changed since the save was scheduled, editor.state.doc
     // now belongs to the new tab — writing it to pending.filePath would corrupt data.
-    const { activeTabId, markDirty } = useEditorStore.getState();
+    const { activeTabId, markDirty, tabs } = useEditorStore.getState();
     if (activeTabId !== pending.id) return;
 
+    // §3.6 The path is read once, from the tab as it is NOW: a rename during the
+    // debounce moved the tab (and its guard), and the guard, the write and every
+    // bookkeeping key below must agree on that one path.
+    const path = tabs.find((t) => t.id === pending.id)?.filePath;
+    if (!path) return;
+
     // Non-MD files don't use ProseMirror — skip (handled by App.tsx code auto-save)
-    if (!isMarkdownFile(pending.filePath)) return;
+    if (!isMarkdownFile(path)) return;
 
     // Phase 4: mtime race-condition guard — if an external file:changed event has
     // arrived but not yet been resolved, skip this save so we don't overwrite the
     // external change without user consent.  The conflict handler (use-file-watcher)
     // will either auto-reload (clean) or show the conflict modal (dirty) and will
     // trigger a re-save once the user resolves the conflict.
-    const mtimeEntry = useFileStore.getState().getFileMtime(pending.filePath);
+    const mtimeEntry = useFileStore.getState().getFileMtime(path);
     if (shouldDeferSave(mtimeEntry)) {
       logger.warn(
         "[auto-save] deferred: external change pending for",
-        pending.filePath,
+        path,
         `(canReloadMtime=${mtimeEntry!.canReloadMtime}, lastSaveMtime=${mtimeEntry!.lastSaveMtime})`,
       );
       return;
@@ -100,31 +106,31 @@ export function useAutoSave(editor: Editor | null) {
 
     try {
       const markdown = serializeLiveDoc(editor);
-      await writeFile(pending.filePath, markdown);
+      await writeFile(path, markdown);
       // §312 ‼️ 방금 쓴 내용이 곧 그 파일의 새 기준선이다. 이것을 빠뜨리면 자동 저장
       // 한 번마다 `openFiles`가 낡고(자동 저장은 기본값이 켜짐이다), 그 캐시를 기준선으로
       // 쓰는 자동 리로드의 갈라짐 판정(use-file-operations.ts의 `syncSourceBuffers`)이
       // 멀쩡한 버퍼를 "갈라졌다"고 오판해 외부 변경을 화면에 반영하지 않는다 — 그러면서
       // `lastSaveMtime`은 올라가므로 다음 저장이 그 외부 변경을 디스크에서 지운다.
       // 그 캐시를 읽는 읽기 전용 패널들(PropertiesPanel·Skill 미리보기)도 함께 낫는다.
-      useFileStore.getState().setFileContent(pending.filePath, markdown);
+      useFileStore.getState().setFileContent(path, markdown);
       markDirty(pending.id, false);
       // After save, current doc becomes the new baseline for dirty detection
       updateOriginalDoc(pending.id, editor.state.doc);
       // Phase 4: record save time so future mtime comparisons have a baseline
-      useFileStore.getState().updateLastSaveMtime(pending.filePath, Date.now());
+      useFileStore.getState().updateLastSaveMtime(path, Date.now());
       // §56 If a journal entry's content changed, refresh the journal sidebars
       // (Memories One Line/Full) in real time instead of only on remount.
       if (
         isJournalPath(
-          pending.filePath,
+          path,
           useFileStore.getState().rootPath,
           useSettingsStore.getState().journalDirectory,
         )
       ) {
         notifyJournalChanged();
       }
-      updateFileIndex(pending.filePath)
+      updateFileIndex(path)
         .then(() => useLinkStore.getState().invalidate())
         .catch(() => {});
       // §71 Mark the auto-snapshot dirty gate — periodic snapshot hook only
