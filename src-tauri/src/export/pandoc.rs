@@ -110,6 +110,17 @@ pub(super) fn is_safe_asset_name(name: &str) -> bool {
 /// the assets — so no asset may take its name.
 const INPUT_FILE_NAME: &str = "baram-pandoc-input.md";
 
+/// §55 How pandoc reads that markdown: its own `markdown`, minus the three
+/// extensions that read a `[` Baram writes raw (§7.1, `serializer.ts`) as
+/// something Baram never shows — a citation (`[@key]`, and a bare `@key`), an
+/// inline note (`^[…]`) and a link to a heading by its text (`[Heading]`).
+/// Measured on pandoc 3.12: with the default reader `--to native` holds `Cite`,
+/// `Note` and `Link` for those, and none with this one. `bracketed_spans` stays
+/// on, because the export writes underline as `[x]{.underline}`
+/// (`convertUnderlineForPandoc`); the serializer keeps a `[` escaped before `]{`
+/// instead.
+const PANDOC_READER: &str = "markdown-citations-inline_notes-implicit_header_references";
+
 /// Which writers open image files to embed them — the same split the
 /// frontend's `PANDOC_EMBEDS_IMAGES` makes: docx and epub do, latex and rst
 /// write the reference and read nothing.
@@ -609,7 +620,7 @@ fn run_pandoc_in(
         .arg("-o")
         .arg(output_path)
         .arg("--from")
-        .arg("markdown")
+        .arg(PANDOC_READER)
         .arg("--to")
         .arg(&options.format)
         .arg("--lua-filter")
@@ -718,9 +729,25 @@ mod tests {
     }
 
     #[test]
+    fn the_reader_turns_off_what_reads_a_raw_bracket_as_more_than_text() {
+        let mut parts = PANDOC_READER.split('-');
+        assert_eq!(parts.next(), Some("markdown"));
+        let off: Vec<&str> = parts.collect();
+        for extension in ["citations", "inline_notes", "implicit_header_references"] {
+            assert!(off.contains(&extension), "{extension} must be off");
+        }
+        assert!(
+            !off.contains(&"bracketed_spans"),
+            "the underline export is written as a bracketed span"
+        );
+        assert!(!PANDOC_READER.contains('+'), "the reader adds nothing");
+    }
+
+    #[test]
     fn extra_args_cannot_override_the_reader_profile() {
-        // Issue 527: the frontend's link policy assumes `--from markdown`
-        // (no autolink_bare_uris, no raw_html additions). Every spelling of a
+        // Issue 527: the frontend's link policy assumes pandoc's markdown with
+        // nothing added (no autolink_bare_uris, no raw_html additions) —
+        // `PANDOC_READER` only turns extensions off. Every spelling of a
         // reader override is refused, `-f` included (it was never listed).
         for arg in [
             "--from",
@@ -947,6 +974,39 @@ mod tests {
         assert!(matches!(err, ExportError::PandocNotFound(_)), "{err}");
         // And no extra argument may start a PDF run either.
         assert!(validate_extra_args(&["--pdf-engine=xelatex".to_string()]).is_err());
+    }
+
+    /// §55 — `PANDOC_READER` with a REAL pandoc: the brackets and `@` Baram
+    /// writes raw read as text, and the underline span still reads as
+    /// underline. Ignored like the smoke test below, for the same reason —
+    /// `cargo test pandoc_smoke -- --ignored` — and it fails when pandoc is
+    /// missing.
+    #[test]
+    #[ignore]
+    fn pandoc_smoke_reader_reads_raw_brackets_as_text() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("in.md");
+        std::fs::write(
+            &input,
+            "# My Heading\n\nsee [@smith2020, p. 3] and @bare, a note^[inline], \
+             [My Heading] and [under line]{.underline}\n",
+        )
+        .unwrap();
+        let output = std::process::Command::new("pandoc")
+            .arg(&input)
+            .args(["--from", PANDOC_READER, "--to", "native"])
+            .output()
+            .expect("this smoke test needs pandoc on PATH (brew install pandoc)");
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let native = String::from_utf8(output.stdout).unwrap();
+        for construct in ["Cite", "Note", "Link"] {
+            assert!(!native.contains(construct), "{construct} in {native}");
+        }
+        assert!(native.contains("Underline"), "{native}");
     }
 
     /// issue 545 — the whole path with a REAL pandoc: a vault-relative image
