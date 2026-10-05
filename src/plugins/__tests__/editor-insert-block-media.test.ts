@@ -1,5 +1,6 @@
-// §388 spec 0067 §6.2 rules 3 · 4 — a one-paragraph result that holds an image (final review
-// F1): rule 3 opens only an all-inline paragraph into the target; this one takes rule 4.
+// §388 spec 0067 §6.2 rules 3 · 4 — a result whose paragraph holds an image, the loader's
+// issue-509 shape. One such paragraph takes rule 4, not rule 3 (final review F1); a paragraph
+// the slice opens is refused where `tr.replace` cannot place it (plan 0117 Ruling 25).
 import type { PluginEditorHandle } from "../plugin-host-registry";
 import type { Editor } from "@tiptap/core";
 
@@ -98,5 +99,47 @@ describe("a one-paragraph result holding an image (spec 0067 §6.2, final review
       "| a | b |\n| - | - |\n| x ![a](y.png) z | d |\n",
     );
     editor.destroy();
+  });
+});
+
+describe("a paragraph the slice opens, holding an image (spec 0067 §6.2 rule 4, plan 0117 Ruling 25)", () => {
+  it("the last block may not: a paragraph target refuses it with a code and sends nothing", async () => {
+    // Without the check, `tr.replace` threw "Called contentMatchAt on a node with invalid content".
+    const { editor } = realEditor("para @@ here\n");
+    const before = editor.state.doc;
+    const dispatch = vi.spyOn(editor.view, "dispatch");
+    await expect(
+      insertMarkdownAt(ctxOf(editor), { markdown: "## H\n\n![a](y.png) z" }),
+    ).rejects.toMatchObject({ code: "cannot-insert-here" });
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(editor.state.doc).toBe(before);
+    await insertMarkdownAt(ctxOf(editor), { markdown: "## H\n\nz" }); // the same blocks, no image
+    expect(serializeLiveDoc(editor)).toBe("para\n\n## H\n\nz here\n");
+    editor.destroy();
+  });
+
+  it("the first block may not over a widened range — but may at a caret in a paragraph", () => {
+    // Widened, `tr.replace` threw a TypeError ("reading 'append'"); without the image it goes in.
+    refused("alpha\n\n@@\n\nomega\n", "x ![a](y.png) z\n\np2");
+    expect(at("alpha\n\n@@\n\nomega\n", "x z\n\np2")).toBe(
+      "alpha\n\nx z\n\np2\n\nomega\n",
+    );
+    // At a caret its inline run joins the text and the image goes between the blocks.
+    expect(at("para @@ here\n", "x ![a](y.png) z\n\np2")).toBe(
+      "para x\n\n![a](y.png)\n\n&#x20;z\n\np2 here\n",
+    );
+  });
+
+  it("a first block that starts with its image goes in over a widened range too", () => {
+    expect(at("alpha\n\n@@\n\nomega\n", "![a](y.png) z\n\n## H")).toBe(
+      "alpha\n\n![a](y.png)\n\n&#x20;z\n\n## H\n\nomega\n",
+    );
+  });
+
+  it("one paragraph with two images apart is refused; side by side they go in", () => {
+    refused("para @@ here\n", "x ![a](y.png) z ![b](w.png) q");
+    expect(at("para @@ here\n", "x ![a](y.png)![b](w.png) z")).toBe(
+      "para x\n\n![a](y.png)\n\n![b](w.png)\n\n&#x20;z here\n",
+    );
   });
 });

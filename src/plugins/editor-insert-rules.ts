@@ -118,32 +118,30 @@ export function buildInsertion(
       "a table cell holds inline content only",
     );
   }
-  let from = target.from;
-  let to = target.to;
   // Not for one paragraph, which here holds a block node (rule 3 took the all-inline ones).
   // Widened, the replace has to place that open paragraph between blocks, and for
   // `x ![a](y.png) z` over an empty paragraph or a paragraph's whole content it threw a
   // TypeError (final review F1). Unwidened, it is rule 3's replace: the same slice on the
   // same range.
-  if (
+  const widened =
     !isSingleParagraph(fragment) &&
     $from.sameParent($to) &&
-    from === $from.start() &&
-    to === $from.end()
-  ) {
-    from = $from.before();
-    to = $from.after();
-  }
+    target.from === $from.start() &&
+    target.to === $from.end();
+  const from = widened ? $from.before() : target.from;
+  const to = widened ? $from.after() : target.to;
   checkFrontMatter(fragment, from, method);
   const openStart = fragment.firstChild!.type.name === "paragraph" ? 1 : 0;
   const openEnd = fragment.lastChild!.type.name === "paragraph" ? 1 : 0;
-  return checkedReplace(
-    state,
-    from,
-    to,
-    new Slice(fragment, openStart, openEnd),
-    method,
-  );
+  const slice = new Slice(fragment, openStart, openEnd);
+  if (!placesOpenEnds(slice, widened)) {
+    refuse(
+      "cannot-insert-here",
+      method,
+      "a paragraph holding an image cannot be joined to the text here",
+    );
+  }
+  return checkedReplace(state, from, to, slice, method);
 }
 
 function checkedReplace(
@@ -185,6 +183,14 @@ function checkFrontMatter(
       );
     }
   });
+}
+
+/** Whether every child of `node` from index `from` on is inline. */
+function holdsOnlyInline(node: PmNode, from = 0): boolean {
+  for (let i = from; i < node.childCount; i++) {
+    if (!node.child(i).isInline) return false;
+  }
+  return true;
 }
 
 /**
@@ -233,12 +239,7 @@ function insertLiteral(
  * (`insertMarkdown("")`) has no children and passes; a hard break is inline.
  */
 function isInlineParagraph(fragment: Fragment): boolean {
-  if (!isSingleParagraph(fragment)) return false;
-  let inline = true;
-  fragment.firstChild!.forEach((child) => {
-    if (!child.isInline) inline = false;
-  });
-  return inline;
+  return isSingleParagraph(fragment) && holdsOnlyInline(fragment.firstChild!);
 }
 
 function isParagraph($pos: ResolvedPos): boolean {
@@ -253,6 +254,49 @@ function isParagraph($pos: ResolvedPos): boolean {
 function isSingleParagraph(fragment: Fragment): boolean {
   return (
     fragment.childCount === 1 && fragment.firstChild!.type.name === "paragraph"
+  );
+}
+
+/**
+ * Rule 4 — whether `tr.replace` can place the paragraphs `slice` opens when one holds a block
+ * node: the loader's issue-509 shape, `x ![a](y.png) z` as `paragraph[text, image, text]` (see
+ * `isInlineParagraph`). Where it cannot, `tr.replace` threw with no code and nothing was sent
+ * (plan 0117 Ruling 25). ProseMirror's Fitter (`prosemirror-transform`) takes the two ends
+ * differently; both were measured, over the matrix in the plan 0117 ledger (residual R-A):
+ *
+ * - An opened START paragraph — or a one-paragraph result, opened at both ends — is taken from
+ *   its front. Its leading inline run joins the target's textblock (over a range widened to
+ *   whole blocks there is none, and nothing joins); the run of block nodes after that goes
+ *   into the textblock's parent; what is left is placed as one paragraph and closed with
+ *   `fillBefore`, which answers null while that rest holds a block node — `TypeError: Cannot
+ *   read properties of null (reading 'append')`. So `x ![a](y.png) z` as the first block still
+ *   goes in at a caret in a paragraph (`para x` / image / ` z` …), and `![a](y.png) z` even
+ *   over an empty paragraph; `x ![a](y.png) z` over a widened range, and two images apart, are
+ *   refused.
+ * - The opened END paragraph of a result of two or more blocks is placed whole — the blocks
+ *   before it have closed the slice's start — and kept open through `contentMatchAt`, which
+ *   throws on a block node inside a paragraph ("Called contentMatchAt on a node with invalid
+ *   content"). So it may hold inline content only, wherever its image sits.
+ *
+ * "Into the parent" holds for every parent rule 4 reaches, measured with `image`: of the
+ * schema's nine nodes that can hold a paragraph, `doc` · `blockquote` · `callout` ·
+ * `footnoteDefinition` (`block+`) take an image anywhere, and `listItem` · `taskItem` ·
+ * `toggle` take one after their first paragraph, which the Fitter fills in when there is none
+ * (`- @@` gives `-` / image). `tableCell` · `tableHeader` take none; rule 5(a) refuses first.
+ */
+function placesOpenEnds(slice: Slice, widened: boolean): boolean {
+  const { content, openEnd, openStart } = slice;
+  if (openStart > 0) {
+    const first = content.firstChild!;
+    let i = 0;
+    if (!widened) while (i < first.childCount && first.child(i).isInline) i++;
+    while (i < first.childCount && !first.child(i).isInline) i++;
+    if (!holdsOnlyInline(first, i)) return false;
+  }
+  return (
+    openEnd === 0 ||
+    content.childCount === 1 ||
+    holdsOnlyInline(content.lastChild!)
   );
 }
 
