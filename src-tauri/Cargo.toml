@@ -79,7 +79,7 @@ sha2 = "0.10"
 # the `deny` job has been vetting them all along — this promotes them to direct deps rather
 # than adding supply-chain surface. Same scheme and same file format as the updater, so the
 # verification path here is the one tauri already exercises in production.
-minisign-verify = "0.2"
+minisign-verify = "0.3"
 base64 = "0.23"
 shlex = "2.0"
 # §5.1 `baramhtml:` scheme (protocol/html_preview.rs). Both arrive via tauri itself —
