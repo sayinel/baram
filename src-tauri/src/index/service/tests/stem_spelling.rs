@@ -236,3 +236,41 @@ async fn a_file_rename_to_a_stem_that_closes_a_code_span_around_itself_leaves_ev
         "para ^b1 [[old]]\n"
     );
 }
+
+#[tokio::test]
+async fn an_upper_case_suffix_that_belongs_to_the_stem_is_not_kept() {
+    // `a/old.md.md` has the stem `old.md`. The index strips a lower-case
+    // note extension only, so `[[old.MD]]` and `[[a/old.MD]]` name that note
+    // by its whole stem: `.MD` is no extension to keep.
+    // What fails this: restoring case-insensitive `note_suffix` — the content
+    // stays `see [[old.MD]] and [[a/old.MD]]` instead of naming `new`.
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().to_str().unwrap().to_string();
+    std::fs::create_dir(dir.path().join("a")).unwrap();
+    std::fs::write(dir.path().join("a/old.md.md"), "t\n").unwrap();
+    std::fs::write(dir.path().join("r.md"), "see [[old.MD]] and [[a/old.MD]]\n").unwrap();
+    let ctx = ContextManager::new();
+    ctx.add(info("ctx-v", &root, ContextType::Folder))
+        .await
+        .unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/a/old.md.md"),
+        &format!("{root}/a/new.md"),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
+        "see [[new]] and [[a/new]]\n"
+    );
+    assert_eq!(result.updated_files, vec![format!("{root}/r.md")]);
+    assert!(
+        result.skipped_files.is_empty(),
+        "{:?}",
+        result.skipped_files
+    );
+}

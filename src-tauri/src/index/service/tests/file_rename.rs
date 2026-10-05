@@ -288,8 +288,10 @@ async fn a_rename_to_an_upper_case_extension_respells_as_for_any_non_note_name()
     // case (`collect_md_files`, `strip_note_extension`), so `a/new.MD` is no
     // note, as `a/old.txt` is not: a captured `.md` is dropped, and both
     // path links spell the new name whole.
-    // What fails this: judging the new name's suffix without case
-    // (`note_suffix(new_name)` in `respell`) — `[[a/new.MD.md]]` is written.
+    // What fails this: `note_suffix(&new_name.to_lowercase()).is_empty()`
+    // as `respell`'s new-name guard — the second link is `[[a/new.MD.md]]`.
+    // `note_suffix(new_name).is_empty()` alone now passes: its rule also
+    // requires a lower-case note extension.
     let ctx = ContextManager::new();
     let (dir, root) = vault_with_a_link(&ctx, "ctx-619u", true).await;
     std::fs::create_dir_all(dir.path().join("a")).unwrap();

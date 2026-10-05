@@ -308,19 +308,11 @@ fn stem_of(path: &str, windows: bool) -> &str {
         .unwrap_or(name)
 }
 
-/// The `.md` or `.markdown` a captured target ends in, as it is spelled
-/// there (any case), or "".
+/// The note extension `strip_note_extension` removes from a captured
+/// target, as spelled there, or "". Uses the index's lower-case suffix rule.
 fn note_suffix(captured: &str) -> &str {
     let t = captured.trim();
-    for ext in [".markdown", ".md"] {
-        if t.len() >= ext.len() && t.is_char_boundary(t.len() - ext.len()) {
-            let tail = &t[t.len() - ext.len()..];
-            if tail.eq_ignore_ascii_case(ext) {
-                return tail;
-            }
-        }
-    }
-    ""
+    &t[strip_note_extension(t).len()..]
 }
 
 impl RenameTarget<'_> {
@@ -512,11 +504,12 @@ impl RenameTarget<'_> {
     /// file's components under `root` joined with `/` for `Path`, or, when
     /// `relative`, the way from the referrer's folder (`relative_components`)
     /// — spelled as `new_path` spells them, whatever the link's case or
-    /// separator was. A captured target ending in `.md` or `.markdown` keeps
-    /// that suffix as it was spelled only when the new file name itself ends
-    /// in `.md` or `.markdown`, in lower case as the index reads a note: after `a/old.md` → `a/old.txt`, `[[a/old.md]]`
-    /// becomes `[[a/old.txt]]` and `[[old.md]]` becomes `[[old]]` — a kept
-    /// `.md` would spell `a/old.txt.md`, which names no file.
+    /// separator was. `note_suffix` keeps the lower-case `.md` or `.markdown`
+    /// that `strip_note_extension` removes from the captured target when the
+    /// new file name also has one of those lower-case suffixes. After
+    /// `a/old.md` → `a/old.txt`, `[[a/old.md]]` becomes `[[a/old.txt]]` and
+    /// `[[old.md]]` becomes `[[old]]` — a kept `.md` would spell `a/old.txt.md`,
+    /// which names no file.
     pub fn respell(&self, ref_path: &str, m: &Match, captured_target: &str) -> String {
         let new_name = path_components(self.new_path, self.windows)
             .last()
