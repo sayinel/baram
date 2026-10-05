@@ -36,18 +36,25 @@ vi.mock("../../services/journal-file-service", () => ({ ensureJournalFile }));
 const { showConfirm } = vi.hoisted(() => ({ showConfirm: vi.fn() }));
 vi.mock("../../utils/confirm-dialog", () => ({ showConfirm }));
 
-const { createDir, listDir, refreshIndex, writeFile } = vi.hoisted(() => ({
+// The note is made with `createFile` (use-navigation.create.test.ts says why), so
+// "writes" and "does not write" below are asserted on it.
+const { createDir, createFile, listDir, refreshIndex } = vi.hoisted(() => ({
   createDir: vi.fn(async () => {}),
+  createFile: vi.fn(async () => {}),
   listDir: vi.fn(async () => []),
   refreshIndex: vi.fn(async () => {}),
-  writeFile: vi.fn(async () => {}),
 }));
-vi.mock("../../ipc/invoke", () => ({
-  createDir,
-  listDir,
-  refreshIndex,
-  writeFile,
-}));
+vi.mock("../../ipc/invoke", async () => {
+  const fs =
+    await vi.importActual<typeof import("../../ipc/fs")>("../../ipc/fs");
+  return {
+    createDir,
+    createFile,
+    isFileExistsError: fs.isFileExistsError,
+    listDir,
+    refreshIndex,
+  };
+});
 
 const { logger } = vi.hoisted(() => ({
   logger: { error: vi.fn(), warn: vi.fn() },
@@ -231,7 +238,7 @@ describe("§317 a date outside the journal asks before creating a note", () => {
     result.current.handleWikilinkNavigate(DATE);
 
     await waitFor(() => expect(showConfirm).toHaveBeenCalled());
-    expect(writeFile).not.toHaveBeenCalled();
+    expect(createFile).not.toHaveBeenCalled();
   });
 
   it("names the crossing syntax in the question", async () => {
@@ -252,7 +259,7 @@ describe("§317 a date outside the journal asks before creating a note", () => {
 
     result.current.handleWikilinkNavigate(DATE);
 
-    await waitFor(() => expect(writeFile).toHaveBeenCalled());
+    await waitFor(() => expect(createFile).toHaveBeenCalled());
   });
 
   it("does not ask when there is no journal space to point at", async () => {
@@ -262,7 +269,7 @@ describe("§317 a date outside the journal asks before creating a note", () => {
 
     result.current.handleWikilinkNavigate(DATE);
 
-    await waitFor(() => expect(writeFile).toHaveBeenCalled());
+    await waitFor(() => expect(createFile).toHaveBeenCalled());
     expect(showConfirm).not.toHaveBeenCalled();
   });
 
@@ -273,7 +280,7 @@ describe("§317 a date outside the journal asks before creating a note", () => {
 
     result.current.handleWikilinkNavigate("architecture");
 
-    await waitFor(() => expect(writeFile).toHaveBeenCalled());
+    await waitFor(() => expect(createFile).toHaveBeenCalled());
     expect(showConfirm).not.toHaveBeenCalled();
   });
 });
@@ -313,7 +320,7 @@ describe("§316 a mention never takes the journal route", () => {
     // Inside the journal the ordinary create path runs (no "outside" prompt),
     // which is exactly the point: it is treated as a plain wikilink target,
     // not as the day's entry.
-    await waitFor(() => expect(writeFile).toHaveBeenCalled());
+    await waitFor(() => expect(createFile).toHaveBeenCalled());
     expect(ensureJournalFile).not.toHaveBeenCalled();
   });
 
@@ -329,6 +336,6 @@ describe("§316 a mention never takes the journal route", () => {
     result.current.mentionNavigateRef.current("page", DATE);
 
     await waitFor(() => expect(showConfirm).toHaveBeenCalled());
-    expect(writeFile).not.toHaveBeenCalled();
+    expect(createFile).not.toHaveBeenCalled();
   });
 });
