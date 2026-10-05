@@ -35,6 +35,7 @@ import {
   isSuspendTarget,
   shouldSuspendFor,
 } from "./adapters/suspension";
+import { goalAfterOperator } from "./core/goal-column";
 import { isMacPlatform, toKeyToken } from "./core/keys";
 import { step } from "./core/state-machine";
 import { createIslandSync } from "./vim-island-sync";
@@ -225,16 +226,30 @@ export function createVimPlugin(
               result.command,
               vim.core.visual,
             );
-            // A refused CHANGE must not leave the editor in insert — the
-            // core flips the mode before the adapter can veto (ops-R2).
-            // A PARTIALLY applied change is not a refusal: the document
-            // already changed and the empty line awaits input (ops-R3).
-            if (
-              exec.reason &&
-              !exec.applied &&
-              isChangeCommand(result.command)
-            ) {
+            // A CHANGE that did not run must not leave the editor in insert
+            // — the core flips the mode before the adapter can veto (ops-R2).
+            // Refused or cancelled alike. A PARTIALLY applied change is
+            // neither: the document already changed and the empty line
+            // awaits input (ops-R3).
+            const notRun =
+              exec.cancelled === true || (!!exec.reason && !exec.applied);
+            if (notRun && isChangeCommand(result.command)) {
               dispatchMeta(view, { mode: "normal", type: "setMode" });
+            }
+            // Whether an operator ran decides its goal column, and the core
+            // says how (goalAfterOperator). Read after the recovery above,
+            // which forgets the goal on its way back to normal.
+            const core = read(view.state).core;
+            const goalColumn = goalAfterOperator(
+              vim.core.goalColumn,
+              core.goalColumn,
+              exec.cancelled === true,
+            );
+            if (goalColumn !== core.goalColumn) {
+              dispatchMeta(view, {
+                core: { ...core, goalColumn },
+                type: "core",
+              });
             }
             // Routine no-ops stay quiet: the app has ONE toast slot and
             // it also carries save and plugin errors (final review).

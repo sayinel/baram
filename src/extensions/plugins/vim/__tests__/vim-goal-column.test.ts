@@ -12,7 +12,11 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { createBaramExtensions } from "../../../index";
 import { tagSyntaxRevealEphemeral } from "../../syntax-reveal-state";
-import { resetVimRegister } from "../adapters/register";
+import {
+  readVimRegister,
+  resetVimRegister,
+  writeVimRegister,
+} from "../adapters/register";
 import { vimPluginKey, withVimExternalEdit } from "../vim-keys";
 import { type VimPluginState } from "../vim-plugin-state";
 import { submitSearchLine } from "../vim-search-line";
@@ -448,5 +452,118 @@ describe("`:N` lands on the line's first non-blank, like gg/G (issue 776)", () =
     });
     keys(editor, ":", "2", "Enter");
     expect(head(editor)).toBe(posOfText(editor, "second"));
+  });
+});
+
+describe("an operator its motion cancelled keeps the goal column (issue 776)", () => {
+  it("dfQ with no Q on the line changes nothing and keeps the goal", () => {
+    // Fails if: the handler passes cancelled as false to goalAfterOperator: the goal is null.
+    const editor = makeVimEditor("<p>xyz</p>");
+    seed(editor, posOfText(editor, "x"), 9);
+    keys(editor, "d", "f", "Q");
+    expect(editor.state.doc.textContent).toBe("xyz");
+    expect(goal(editor)).toBe(9);
+  });
+
+  it("cfQ with no Q returns to normal and keeps the goal", () => {
+    // Fails if: the goal is decided before the recovery to normal mode: the goal is null.
+    const editor = makeVimEditor("<p>xyz</p>");
+    seed(editor, posOfText(editor, "x"), 9);
+    keys(editor, "c", "f", "Q");
+    expect(editor.state.doc.textContent).toBe("xyz");
+    expect(core(editor).mode).toBe("normal");
+    expect(goal(editor)).toBe(9);
+  });
+
+  it("dj on the last line deletes nothing and keeps the goal", () => {
+    // Fails if: the handler passes cancelled as false to goalAfterOperator: the goal is null.
+    const editor = makeVimEditor("<p>abcdefghij</p><p>xy</p><p>z</p>");
+    seed(editor, posOfText(editor, "z"), 6);
+    keys(editor, "d", "j");
+    expect(editor.state.doc.textContent).toBe("abcdefghijxyz");
+    expect(goal(editor)).toBe(6);
+  });
+
+  it("dk on the first line deletes nothing and keeps the goal", () => {
+    // Fails if: the handler passes cancelled as false to goalAfterOperator: the goal is null.
+    const editor = makeVimEditor("<p>abcdefghij</p><p>xy</p><p>z</p>");
+    seed(editor, posOfText(editor, "a"), 6);
+    keys(editor, "d", "k");
+    expect(editor.state.doc.textContent).toBe("abcdefghijxyz");
+    expect(goal(editor)).toBe(6);
+  });
+
+  it("dj and dk between a list item and its nested child still run", () => {
+    // The item and its child are ONE line unit, so the span counts 1 while
+    // j and k move between them.
+    // Fails if: the cancellation asks span.count === 1 instead of whether
+    // the motion moved — the item survives and the goal stays 6.
+    const nested =
+      "<ul><li><p>it1</p></li><li><p>it2</p><ul><li><p>ne</p></li></ul></li></ul><p>tl</p>";
+    for (const [from, motion] of [
+      ["it2", "j"],
+      ["ne", "k"],
+    ] as const) {
+      const editor = makeVimEditor(nested);
+      seed(editor, posOfText(editor, from), 6);
+      keys(editor, "d", motion);
+      expect(editor.state.doc.textContent, motion).not.toContain("it2");
+      expect(goal(editor), motion).toBeNull();
+    }
+  });
+
+  it("yj on the last line keeps the register and goal", () => {
+    // Fails if: the handler passes cancelled as false to goalAfterOperator: the goal is null.
+    const editor = makeVimEditor("<p>abcdefghij</p><p>xy</p><p>z</p>");
+    writeVimRegister({
+      kind: "char",
+      slice: editor.state.doc.slice(1, 3).toJSON(),
+    });
+    const register = readVimRegister();
+    seed(editor, posOfText(editor, "z"), 6);
+    keys(editor, "y", "j");
+    expect(editor.state.doc.textContent).toBe("abcdefghijxyz");
+    expect(readVimRegister()).toBe(register);
+    expect(goal(editor)).toBe(6);
+  });
+
+  it("cj on the last line returns to normal and keeps the goal", () => {
+    // Fails if: the goal is decided before the recovery to normal mode: the goal is null.
+    const editor = makeVimEditor("<p>abcdefghij</p><p>xy</p><p>z</p>");
+    seed(editor, posOfText(editor, "z"), 6);
+    keys(editor, "c", "j");
+    expect(editor.state.doc.textContent).toBe("abcdefghijxyz");
+    expect(core(editor).mode).toBe("normal");
+    expect(goal(editor)).toBe(6);
+  });
+
+  it("d3j with one line below deletes both lines and forgets the goal", () => {
+    // Fails if: a partial vertical walk is cancelled: the two trailing lines survive.
+    const editor = makeVimEditor("<p>abcdefghij</p><p>xy</p><p>z</p>");
+    seed(editor, posOfText(editor, "x"), 6);
+    keys(editor, "d", "3", "j");
+    expect(editor.state.doc.textContent).toBe("abcdefghij");
+    expect(editor.state.doc.childCount).toBe(1);
+    expect(goal(editor)).toBeNull();
+  });
+
+  it("dgg on the first line deletes it and forgets the goal", () => {
+    // Fails if: the cancellation guard includes docStart/docEnd: the line survives.
+    const editor = makeVimEditor("<p>abcdefghij</p><p>xy</p><p>z</p>");
+    seed(editor, posOfText(editor, "a"), 6);
+    keys(editor, "d", "g", "g");
+    expect(editor.state.doc.textContent).toBe("xyz");
+    expect(editor.state.doc.childCount).toBe(2);
+    expect(goal(editor)).toBeNull();
+  });
+
+  it("dG on the last line deletes it and forgets the goal", () => {
+    // Fails if: the cancellation guard includes docStart/docEnd: the line survives.
+    const editor = makeVimEditor("<p>abcdefghij</p><p>xy</p><p>z</p>");
+    seed(editor, posOfText(editor, "z"), 6);
+    keys(editor, "d", "G");
+    expect(editor.state.doc.textContent).toBe("abcdefghijxy");
+    expect(editor.state.doc.childCount).toBe(2);
+    expect(goal(editor)).toBeNull();
   });
 });

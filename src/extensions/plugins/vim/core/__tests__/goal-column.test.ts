@@ -8,6 +8,7 @@ import type { GoalColumn, KeyToken, VimCoreState } from "../types";
 
 import { describe, expect, it } from "vitest";
 
+import { goalAfterOperator } from "../goal-column";
 import { step } from "../state-machine";
 import { initialCoreState } from "../types";
 
@@ -145,5 +146,18 @@ describe("cursor-preserving commands keep it", () => {
     expect(
       goalAfterKeys([";"], seeded(7, { lastFind: { char: "x", kind: "f" } })),
     ).toBe(7);
+  });
+});
+
+describe("an operator's goal waits for its outcome", () => {
+  it("a cancelled operator gets the goal from before the key back; one that ran keeps what the key left", () => {
+    // Fails if: goalAfterOperator returns `after` either way (7 becomes
+    // null), `before` either way (a run operator keeps 7), or null for a
+    // command that ran (the handler asks for every command, and :w leaves 3).
+    expect(goalAfterOperator(7, null, true)).toBe(7);
+    expect(goalAfterOperator("lineEnd", null, true)).toBe("lineEnd");
+    expect(goalAfterOperator(7, null, false)).toBeNull();
+    expect(goalAfterOperator(7, 3, false)).toBe(3);
+    expect(goalAfterOperator(7, "lineEnd", false)).toBe("lineEnd");
   });
 });

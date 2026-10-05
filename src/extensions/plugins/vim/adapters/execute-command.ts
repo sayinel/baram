@@ -46,6 +46,11 @@ export interface ExecutionResult {
    *  reason AND applied — rolling such a change back to normal would lie
    *  about a document that already changed (review ops-R3). */
   applied?: boolean;
+  /** The operator's find or vertical motion failed, so nothing ran (vim's
+   *  clearopbeep): no transaction, no register write, nothing to report —
+   *  a cancelled result carries no `reason`. The plugin returns a change to
+   *  normal mode and keeps the goal column (core goalAfterOperator). */
+  cancelled?: boolean;
   /** Refusal message for the status line, when the operation said no. */
   reason?: string;
   /** Routine no-op — consumed like vim, but never worth a toast. */
@@ -160,8 +165,9 @@ function enterInsert(
   return { applied: dispatchLanded(view, tr.scrollIntoView()) };
 }
 
-/** Motions that make an operator act LINEWISE, like vim (dj deletes two
- *  whole lines, dG to the end of the document). */
+/** Motions that make an operator act LINEWISE: dj deletes the current and
+ *  next line when there is one (it cancels at the last line); dG runs through
+ *  the document end, including when already on its last line. */
 const LINEWISE_MOTIONS = new Set<Motion>([
   "docEnd",
   "docStart",
@@ -289,7 +295,7 @@ function runOperatorFind(
     command.kind === "f" || command.kind === "t" ? "f" : "F",
     command.count,
   );
-  if (match === head) return { reason: "char not found", silent: true };
+  if (match === head) return { cancelled: true };
   const forward = command.kind === "f" || command.kind === "t";
   const lo = forward
     ? head
@@ -327,6 +333,14 @@ function runOperatorMotion(
 
   if (LINEWISE_MOTIONS.has(motion)) {
     const target = resolveMotion(state, head, motion, count);
+    // A j or k with no line to reach leaves the cursor where it was, and vim
+    // cancels the operator (clearopbeep). Asked of the MOTION, not of the
+    // span: a list item and its nested child are one line unit (count 1)
+    // although j moves between them. gg and G always have a line to act on,
+    // their own included.
+    if ((motion === "lineDown" || motion === "lineUp") && target === head) {
+      return { cancelled: true };
+    }
     const span = linewiseSpan(state, {
       anchorCursor: head,
       headCursor: target,
