@@ -15,10 +15,11 @@ import type { SearchDirection } from "./core/types";
 import type { VimPluginState } from "./vim-plugin-state";
 import type { Editor } from "@tiptap/core";
 
-import { NodeSelection, TextSelection } from "@tiptap/pm/state";
+import { TextSelection } from "@tiptap/pm/state";
 
 import { focusEditorView } from "../../../utils/editor/focus-editor-view";
 import { enterCodeBlockSelection } from "../../nodes/views/code-block-cm-registry";
+import { vimCursor } from "./adapters/cursor-selection";
 import { scrollCursorIntoView } from "./adapters/scroll";
 import { resolveSearch } from "./adapters/search";
 import { goalAfter } from "./core/goal-column";
@@ -56,10 +57,7 @@ export function submitSearchLine(editor: Editor): void {
   }
 
   const view = editor.view;
-  const from =
-    view.state.selection instanceof NodeSelection
-      ? view.state.selection.from
-      : view.state.selection.head;
+  const from = vimCursor(view.state);
   const target = resolveSearch(view.state, from, pattern, line.direction, 1);
 
   const tr = view.state.tr;
