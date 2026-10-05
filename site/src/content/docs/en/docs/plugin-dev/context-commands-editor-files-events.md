@@ -72,8 +72,10 @@ so formatting in the range survives a rewrite only if your markdown carries it.
   and back counts), the write is refused and you read the selection again.
 - A `ref` works only for the plugin that read it. A successful write spends it; a refused one
   leaves it, so you can retry. In the sandboxed tier, though, a write refused after its range
-  was checked — a `ref` whose text changed, say — pays that range's length from the budget. Each
-  plugin keeps its 16 most recent unspent refs — reading a 17th drops the oldest.
+  was checked — a `ref` whose text changed, say — pays that range's length from the budget, or
+  the write's full cost if the editor was revealing syntax there (the user's caret in a bold
+  word, say). Each plugin keeps its 16 most recent unspent refs — reading a 17th drops the
+  oldest.
 - With only `editor:readonly` you still get a `ref`, but nothing is kept for it: a write is
   refused with `not-permitted` before the `ref` is looked at.
 - Without `replace`, an insert goes to the selection as it is when you call. `insertMarkdown()`
