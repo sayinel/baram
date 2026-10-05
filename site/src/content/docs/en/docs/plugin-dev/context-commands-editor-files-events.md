@@ -84,12 +84,14 @@ so formatting in the range survives a rewrite only if your markdown carries it.
 - **Text or a caret.** Inside a code block or frontmatter (both ends in the same one), or
   inside inline code, the markdown goes in as literal text. Elsewhere, a one-paragraph result
   goes in inline and keeps its marks and links — anywhere in one block of text (a paragraph,
-  a heading, a table cell), or across paragraphs. Anything else (several paragraphs, a
-  heading, a list, a table) goes in as blocks, and only into paragraphs: the range is cut out,
-  the blocks go between the text before and after it, and a paragraph at either end of the
-  result joins that text. When the range is all of one paragraph's content (an empty
-  paragraph's caret, say), the blocks replace that paragraph. `insertMarkdown("")` parses to
-  one empty paragraph, so it deletes the range.
+  a heading, a table cell), or across paragraphs — unless its line also holds an image
+  (`x ![a](y.png) z`): that one goes in as blocks, split around the image, so a heading or a
+  table cell refuses it. Anything else (several paragraphs, a heading, a list, a table) goes
+  in as blocks, and only into paragraphs: the range is cut out, the blocks go between the
+  text before and after it, and a paragraph at either end of the result joins that text.
+  When the range is all of one paragraph's content (an empty paragraph's caret, say), the
+  blocks replace that paragraph. `insertMarkdown("")` parses to one empty paragraph, so it
+  deletes the range.
 - **A selected node.** One inside a line of text, such as a wikilink, counts as text. A
   selected block, such as an image or a table, is replaced by the result as whole blocks.
 - **Select all.** The result replaces the document.
@@ -110,6 +112,10 @@ And by `insertMarkdown()` alone:
 - anything but a single paragraph in place of a selected node in a table cell (one paragraph
   is accepted there);
 - frontmatter anywhere but as the first block of a result that starts at the document's start;
+- a line holding an image and text as a paragraph of the result that would join the text at the
+  range, where it cannot be joined: as the last of several blocks; as the first block, or the
+  only one, if text separates two images in it; as the first block, if the line does not start
+  with the image and the blocks replace a whole paragraph;
 - anything that would split a node above the place it goes into.
 
 If the user's selection is inside the target when the write lands (ends included) — as it is
