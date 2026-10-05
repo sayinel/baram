@@ -304,8 +304,9 @@ describe("transactions outside vim", () => {
     editor.view.dom.dispatchEvent(
       new MouseEvent("mousedown", { bubbles: true, cancelable: true }),
     );
-    const tr = editor.state.tr.setSelection(
-      TextSelection.create(editor.state.doc, posOfText(editor, "e")),
+    const tr = editor.state.tr.insertText("!", 1);
+    tr.setSelection(
+      TextSelection.create(tr.doc, tr.mapping.map(posOfText(editor, "e"))),
     );
     tagSyntaxRevealEphemeral(tr);
     editor.view.dispatch(tr);
@@ -313,17 +314,18 @@ describe("transactions outside vim", () => {
   });
 
   it("the watch stays armed through a transaction that moves nothing", () => {
-    // A press, an unrelated view update, THEN the tagged reveal move. Fails
-    // if: takeMovedPress disarms on the first transaction whose cursor did
-    // not move — the later tagged move would keep the goal.
+    // A press, an unrelated view update, THEN the tagged reveal move.
+    // Fails if: takeMovedPress disarms on the first transaction whose cursor
+    // did not move — the later tagged move would keep the goal.
     const editor = seeded();
     editor.view.dom.dispatchEvent(
       new MouseEvent("mousedown", { bubbles: true, cancelable: true }),
     );
     editor.view.dispatch(editor.state.tr.setMeta("noop", true));
     expect(goal(editor)).toBe(6);
-    const tr = editor.state.tr.setSelection(
-      TextSelection.create(editor.state.doc, posOfText(editor, "e")),
+    const tr = editor.state.tr.insertText("!", 1);
+    tr.setSelection(
+      TextSelection.create(tr.doc, tr.mapping.map(posOfText(editor, "e"))),
     );
     tagSyntaxRevealEphemeral(tr);
     editor.view.dispatch(tr);
@@ -379,17 +381,15 @@ describe("transactions outside vim", () => {
   });
 
   it("a press whose tagged move ends past a line forgets the goal AND clamps the caret", () => {
-    // Fails if: the goal reset and the caret clamp are separate appended
-    // transactions — ProseMirror does not call the plugin back for its own
-    // appended transaction, so the second fix would be dropped.
+    // Fails if: appendClampAndGoalReset returns a goal-only transaction first:
+    // the caret stays at 12 instead of being clamped to 11.
     const editor = seeded();
     editor.view.dom.dispatchEvent(
       new MouseEvent("mousedown", { bubbles: true, cancelable: true }),
     );
     const lineEnd = posOfText(editor, "j") + 1; // past the last character
-    const tr = editor.state.tr.setSelection(
-      TextSelection.create(editor.state.doc, lineEnd),
-    );
+    const tr = editor.state.tr.insertText("!", 1);
+    tr.setSelection(TextSelection.create(tr.doc, tr.mapping.map(lineEnd)));
     tagSyntaxRevealEphemeral(tr);
     editor.view.dispatch(tr);
     expect(goal(editor)).toBeNull();
@@ -402,8 +402,9 @@ describe("transactions outside vim", () => {
     editor.view.dom.dispatchEvent(
       new Event("pointerdown", { bubbles: true, cancelable: true }),
     );
-    const tr = editor.state.tr.setSelection(
-      TextSelection.create(editor.state.doc, posOfText(editor, "e")),
+    const tr = editor.state.tr.insertText("!", 1);
+    tr.setSelection(
+      TextSelection.create(tr.doc, tr.mapping.map(posOfText(editor, "e"))),
     );
     tagSyntaxRevealEphemeral(tr);
     editor.view.dispatch(tr);

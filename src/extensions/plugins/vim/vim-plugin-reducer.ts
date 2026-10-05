@@ -2,7 +2,7 @@
 // (vim-plugin split, issue 776: vim-plugin.ts was past 500 lines).
 //
 // The §5b priority ladder lives here: vim's own meta first (`reduce`), then an
-// explicit external command, an untagged doc change, and a foreign selection.
+// explicit external command, a doc change, and a foreign selection.
 
 import type { VimCoreState } from "./core/types";
 import type { VimMeta, VimPluginState } from "./vim-plugin-state";
@@ -38,9 +38,9 @@ export function applyVimTransaction(
     });
   }
 
-  // §5b priority 3 — untagged doc change: reconcile positions.
+  // §5b priority 3 — doc change: reconcile positions; syntax reveal keeps the goal.
   if (tr.docChanged) {
-    // Equality gate — every insert-mode keystroke lands here, and with no
+    // Equality gate — document-changing insert-mode keystrokes land here; with no
     // visual range to map and no goal to forget nothing changes.
     if (prev.core.visual === null && prev.core.goalColumn === null) return prev;
     const visual = prev.core.visual
@@ -57,19 +57,19 @@ export function applyVimTransaction(
     });
   }
 
-  // §5b priority 4 — external selection: a foreign selectionSet drops
-  // visual back to normal (the anchor no longer means anything).
+  // §5b priority 4 — foreign selection: forget the goal and drop visual
+  // back to normal (the anchor no longer means anything).
   if (tr.selectionSet && prev.core.mode === "visual") {
     return withCore(prev, {
       ...prev.core,
-      goalColumn: forgetsGoal(tr) ? null : prev.core.goalColumn,
+      goalColumn: null,
       mode: "normal",
       visual: null,
     });
   }
   // ...and in any mode it moved the cursor out from under the goal column
   // (a click). Equality-gated: most foreign selections find it already null.
-  if (tr.selectionSet && prev.core.goalColumn !== null && forgetsGoal(tr)) {
+  if (tr.selectionSet && prev.core.goalColumn !== null) {
     return withCore(prev, { ...prev.core, goalColumn: null });
   }
 
@@ -157,18 +157,24 @@ function withCore(prev: VimPluginState, core: VimCoreState): VimPluginState {
 }
 
 /**
- * Does a transaction vim did not make forget the goal column (issue 776)?
- * Yes when it changed the text or moved the selection — except syntax
- * reveal's expand/collapse (SYNTAX_REVEAL_EPHEMERAL_META), which swaps a
- * mark's rendering under a cursor vim itself just put there: without the
- * exception, every j across a bold or linked line lost the column. A click
- * that expands through syntax reveal is still forgotten: the press arms a
- * watch (vim-pointer-goal.ts) whose appendTransaction step forgets the goal
- * once the cursor has moved.
+ * Does a document change at priority 3 forget the goal column (issue 776)?
+ * Syntax reveal's expand/collapse (SYNTAX_REVEAL_EPHEMERAL_META) is exempt:
+ * it swaps the representation under a cursor vim itself just put there, so
+ * j across a bold or linked line keeps the column. A click that expands
+ * through syntax reveal is still forgotten: the press arms a watch
+ * (vim-pointer-goal.ts) whose appendTransaction step forgets the goal once
+ * the cursor has moved.
+ *
+ * The tag is read on this rung alone. A tagged transaction that only moved
+ * the selection would reach priority 4 and forget the goal like any foreign
+ * selection — and production code dispatches none. The callers of
+ * tagSyntaxRevealEphemeral are syntax-reveal.ts (1), syntax-reveal-collapse.ts
+ * (1) and syntax-reveal-expand.ts (4). Each tags after a document step, save
+ * one fall-through in the two collapse callers: a mark expansion with no
+ * mark name (in syntax-reveal.ts, also one with no closing delimiter) adds
+ * no step. expandMark, the only code that creates a mark expansion, sets
+ * both.
  */
 function forgetsGoal(tr: Transaction): boolean {
-  return (
-    (tr.docChanged || tr.selectionSet) &&
-    tr.getMeta(SYNTAX_REVEAL_EPHEMERAL_META) !== true
-  );
+  return tr.getMeta(SYNTAX_REVEAL_EPHEMERAL_META) !== true;
 }

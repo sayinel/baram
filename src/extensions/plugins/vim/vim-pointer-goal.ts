@@ -4,11 +4,12 @@
 // the plugin state's priority 4 forgets the goal. A click on the spot the
 // cursor already holds dispatches nothing (ProseMirror skips an equal
 // selection), so it KEEPS the goal — vim's mouse click would re-set curswant
-// there; a test pins the difference. The exception is a click that syntax reveal turns into an expansion (a
-// wikilink, an image): its one transaction moves the cursor AND carries the
-// ephemeral tag the reducer exempts, so the goal would survive a cursor move
-// the user made. Clearing on every mousedown instead also forgot it for
-// presses that write no selection at all — a right-click, a Cmd-click that
+// there; a test pins the difference. The exception is a click that syntax
+// reveal turns into an expansion (a wikilink, an image): its transaction
+// changes the document and moves the cursor, carrying the ephemeral tag
+// that keeps the goal at the reducer's priority 3. The goal would survive a
+// cursor move the user made. Clearing on every mousedown instead also forgot
+// it for presses that write no selection at all — a right-click, a Cmd-click that
 // opens a link, a scrollbar drag.
 //
 // So the press only ARMS a watch with the cursor and the document it found;

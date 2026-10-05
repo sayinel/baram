@@ -122,15 +122,17 @@ export const syntaxRevealKey = new PluginKey<SyntaxRevealState>("syntaxReveal");
  * literal delimiter text instead of the mark it replaced; history stays
  * exactly as it behaves today (§384 design descope 2).
  *
- * A second consumer: the vim plugin's reducer (vim/vim-plugin-reducer.ts
- * `forgetsGoal`) keeps its j/k goal column across a tagged transaction. It
- * relies on this: a tagged transaction leaves the caret where the cursor
- * already was, or inside the text the swap just revealed around it — it is
- * never a navigation of its own. The click path (`handleClick` →
- * expandWikilink / expandMediaAtom) is the exception, since there the click
- * chose the place, and vim covers it separately with a pointer watch
- * (vim/vim-pointer-goal.ts). Tagging any other caret move — a keyboard or
- * programmatic jump — would leave vim on a stale column.
+ * Also read by nextSuppressed below to bound suppression to the rewritten
+ * range, by selection-anchors.ts (a tagged mark or link collapse does not
+ * lose an anchor), and by the vim plugin's reducer (vim/vim-plugin-reducer.ts
+ * `forgetsGoal`), which reads the tag on the document-change rung to keep its
+ * j/k goal column. The reducer relies on this: a tagged document change leaves
+ * the caret where the cursor already was, or inside the text the swap just
+ * revealed around it — it is never a navigation of its own. The click path
+ * (`handleClick` → expandWikilink / expandMediaAtom) is the exception, since
+ * there the click chose the place, and vim covers it separately with a pointer watch
+ * (vim/vim-pointer-goal.ts). Tagging a document change that also makes an
+ * unrelated keyboard or programmatic jump would leave vim on a stale column.
  */
 export const SYNTAX_REVEAL_EPHEMERAL_META = "syntaxRevealEphemeral";
 
