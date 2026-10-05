@@ -1665,6 +1665,7 @@
   "video.noDocumentPath": "'{name}'을(를) 추가하려면 먼저 문서를 저장하세요.",
   "video.saveFailed": "동영상 '{name}' 저장에 실패했습니다.",
   "viewer.noPlugin": "이 파일 형식을 표시할 뷰어 플러그인이 활성화되어 있지 않습니다. 설정 › 플러그인에서 켤 수 있습니다.",
+  "wikilink.create.exists": "'{name}' 이름이 이미 쓰이고 있지만 이 링크로는 찾지 못합니다. 새 노트를 만들지 않았습니다.",
   "wikilink.vault": "{alias} 볼트",
   "wikilink.vaultNotOpen": "'{alias}' 볼트가 열려 있지 않습니다",
   "zettel.hub.capture": "캡처",
