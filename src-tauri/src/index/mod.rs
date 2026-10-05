@@ -32,10 +32,11 @@ pub use rewriter::{
     block_reference_can_spell, own_block_reference_lines, replace_block_id_refs_to,
     replace_block_reference_target, replace_wikilink_target, wikilink_can_spell,
 };
+pub(crate) use types::LinkResolution;
 pub use types::{BacklinkResult, IndexStats, LinkEdge, LinkEntry, LinkGraph};
 
 use extractor::{extract_file_tags, extract_links};
-use normalizer::{normalize_file_path, normalize_target};
+use normalizer::normalize_file_path;
 
 #[cfg(test)]
 thread_local! {
@@ -121,21 +122,6 @@ pub enum RewritePass {
     Wikilinks,
     /// `replace_block_reference_target`: `((stem#^id))`, and the embed around one.
     BlockReferences,
-}
-
-/// §387 How `baram links` reports one outgoing link: resolved by the graph's resolver
-/// (`resolve_target_from_map`), except a cross-vault link, which is reported by alias.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum LinkResolution {
-    /// A file under this index's root, the one `resolve_target_from_map` answers.
-    Resolved(String),
-    /// `[[alias::note]]` — the link names another vault (§87). Not looked up here;
-    /// `get_link_graph` does look it up, and draws it to a local note of that name, or to
-    /// a placeholder path when there is none.
-    OtherVault(String),
-    /// `resolve_target_from_map` finds no file. `get_link_graph` draws such a link to the
-    /// placeholder path `resolve_target` builds.
-    Unresolved,
 }
 
 /// The in-memory link index
@@ -466,50 +452,6 @@ impl LinkIndex {
             (a.source_path.as_str(), a.line).cmp(&(b.source_path.as_str(), b.line))
         });
         results
-    }
-
-    /// §387 The links `file_path` holds, each with how `baram links` reports it: the file
-    /// the graph's resolver (`resolve_target_from_map`) finds for the target, or, for a
-    /// cross-vault link, its alias.
-    ///
-    /// `None` when `outgoing` holds nothing under that exact string: the file is not
-    /// markdown, the walk skips it, it could not be read, it is a symlink (the walkers do
-    /// not follow one), or the path is spelled under another root string than the one
-    /// `build` received. A note with no links is `Some(vec![])` — `build` files every
-    /// markdown file it reads under `outgoing`, linked or not.
-    ///
-    /// ONE method rather than three exposed pieces, because the ORDER is the contract.
-    /// A cross-vault link is decided first: its `target` is the bare note name, so
-    /// asking the maps would resolve `[[journal::x]]` to a local `x.md`. Then the target
-    /// is normalized, and only then are the maps asked. So for a cross-vault link this
-    /// is NOT what `get_link_graph` does: the graph asks the maps for every entry, alias
-    /// or not, and only marks the edge `cross_vault`.
-    ///
-    /// Otherwise it is the GRAPH's resolution, not the editor's click-through: no
-    /// `[[./x]]` relative to the source, no journal dates, and a path-qualified target
-    /// that misses falls back to its stem.
-    pub(crate) fn outgoing_resolved(
-        &self,
-        file_path: &str,
-    ) -> Option<Vec<(LinkEntry, LinkResolution)>> {
-        let entries = self.outgoing.get(file_path)?;
-        Some(
-            entries
-                .iter()
-                .map(|entry| {
-                    let resolution = match &entry.target_vault_alias {
-                        Some(alias) => LinkResolution::OtherVault(alias.clone()),
-                        None => {
-                            match self.resolve_target_from_map(&normalize_target(&entry.target)) {
-                                Some(path) => LinkResolution::Resolved(path),
-                                None => LinkResolution::Unresolved,
-                            }
-                        }
-                    };
-                    (entry.clone(), resolution)
-                })
-                .collect(),
-        )
     }
 
     /// Update index for a single file using already-read content (sync, no I/O)
@@ -1120,200 +1062,5 @@ mod build_bench {
             all.len(),
             started.elapsed()
         );
-    }
-}
-
-#[cfg(test)]
-mod outgoing_tests {
-    use super::*;
-    use tempfile::TempDir;
-
-    async fn index_over(files: &[(&str, &str)]) -> (TempDir, String, LinkIndex) {
-        let dir = TempDir::new().unwrap();
-        for (name, body) in files {
-            let path = dir.path().join(name);
-            tokio::fs::create_dir_all(path.parent().unwrap())
-                .await
-                .unwrap();
-            tokio::fs::write(&path, body).await.unwrap();
-        }
-        let root = dir.path().to_string_lossy().to_string();
-        let mut index = LinkIndex::new();
-        index.build(&root).await.unwrap();
-        (dir, root, index)
-    }
-
-    fn path_in(root: &str, name: &str) -> String {
-        std::path::Path::new(root)
-            .join(name)
-            .to_string_lossy()
-            .to_string()
-    }
-
-    #[tokio::test]
-    async fn outgoing_links_resolve_as_the_graph_resolves_them_except_cross_vault_ones() {
-        let (_dir, root, index) = index_over(&[
-            (
-                "notes/a.md",
-                "[[b]] and [[missing]]\n((b#^x1))\n[[journal::b]]\n[[B]]\n",
-            ),
-            ("notes/b.md", "# B\n"),
-        ])
-        .await;
-        let b = path_in(&root, "notes/b.md");
-
-        let links = index
-            .outgoing_resolved(&path_in(&root, "notes/a.md"))
-            .expect("a.md is indexed");
-        let seen: Vec<(&str, u32, &LinkResolution)> = links
-            .iter()
-            .map(|(entry, resolution)| (entry.target.as_str(), entry.line, resolution))
-            .collect();
-        assert_eq!(
-            seen,
-            vec![
-                ("b", 1, &LinkResolution::Resolved(b.clone())),
-                ("missing", 1, &LinkResolution::Unresolved),
-                ("b", 2, &LinkResolution::Resolved(b.clone())),
-                // The target is the bare name `b`, and a local b.md exists — it must
-                // still not be resolved here: the link names another vault.
-                ("b", 3, &LinkResolution::OtherVault("journal".to_string())),
-                // Written with another case: the target is normalized before the maps
-                // are asked.
-                ("B", 4, &LinkResolution::Resolved(b)),
-            ]
-        );
-    }
-
-    #[tokio::test]
-    async fn a_note_without_links_is_indexed_and_a_file_outside_the_index_is_not() {
-        let (_dir, root, index) =
-            index_over(&[("a.md", "no links\n"), ("data.txt", "[[a]]\n")]).await;
-        // `LinkEntry` has no `PartialEq`, so the three answers are told apart by shape.
-        assert!(index
-            .outgoing_resolved(&path_in(&root, "a.md"))
-            .is_some_and(|links| links.is_empty()));
-        assert!(index
-            .outgoing_resolved(&path_in(&root, "data.txt"))
-            .is_none());
-        assert!(index
-            .outgoing_resolved(&path_in(&root, "nope.md"))
-            .is_none());
-    }
-
-    /// One link per branch of the resolver, each on a line of its own. Two notes share
-    /// the stem `b`, so a lookup by stem alone answers the same file for `[[notes/b]]` and
-    /// `[[x/b]]` whichever the walk met first, and one of the two is wrong; `c` is the
-    /// only note of that stem, so `[[wrong/c]]` can only get there by falling back to it.
-    /// The second half asks `get_link_graph` about the same links: every resolved link
-    /// is the graph's edge, and the two kinds of link this method does not resolve are
-    /// the ones the graph still draws somewhere.
-    #[tokio::test]
-    async fn every_branch_of_the_resolver_is_reached_and_agrees_with_the_graph() {
-        let (_dir, root, index) = index_over(&[
-            (
-                "a.md",
-                "[[notes/b]]\n[[x/b]]\n[[Notes/B]]\n[[wrong/c]]\n[[Paper.pdf]]\n\
-                 [[papers/Paper.pdf]]\n[[202607051530]]\n[[nothing]]\n((#^self1))\n\
-                 [[journal::c]]\n",
-            ),
-            ("notes/b.md", "# B\n"),
-            ("x/b.md", "# other B\n"),
-            ("deep/er/c.md", "# C\n"),
-            ("papers/Paper.pdf", "not markdown\n"),
-            ("z/202607051530 idea.md", "# idea\n"),
-        ])
-        .await;
-        let at = |name: &str| path_in(&root, name);
-        let a = at("a.md");
-
-        let links = index.outgoing_resolved(&a).expect("a.md is indexed");
-        let seen: Vec<(&str, u32, LinkResolution)> = links
-            .iter()
-            .map(|(entry, resolution)| (entry.target.as_str(), entry.line, resolution.clone()))
-            .collect();
-        assert_eq!(
-            seen,
-            vec![
-                // The relative path, then the same with another case.
-                ("notes/b", 1, LinkResolution::Resolved(at("notes/b.md"))),
-                ("x/b", 2, LinkResolution::Resolved(at("x/b.md"))),
-                ("Notes/B", 3, LinkResolution::Resolved(at("notes/b.md"))),
-                // No `wrong/c.md`: the stem is tried next.
-                ("wrong/c", 4, LinkResolution::Resolved(at("deep/er/c.md"))),
-                // A file that is not a note: by its name, and by its relative path.
-                (
-                    "Paper.pdf",
-                    5,
-                    LinkResolution::Resolved(at("papers/Paper.pdf"))
-                ),
-                (
-                    "papers/Paper.pdf",
-                    6,
-                    LinkResolution::Resolved(at("papers/Paper.pdf")),
-                ),
-                // A Zettel id, in a folder of its own.
-                (
-                    "202607051530",
-                    7,
-                    LinkResolution::Resolved(at("z/202607051530 idea.md")),
-                ),
-                ("nothing", 8, LinkResolution::Unresolved),
-                // `((#^id))` names no note: the target the index files is the note's own
-                // file stem.
-                ("a", 9, LinkResolution::Resolved(a.clone())),
-                ("c", 10, LinkResolution::OtherVault("journal".to_string())),
-            ]
-        );
-
-        let graph = index.get_link_graph();
-        let edges: Vec<&LinkEdge> = graph
-            .edges
-            .iter()
-            .filter(|edge| edge.from == a && !edge.to.starts_with("tag:"))
-            .collect();
-        assert_eq!(edges.len(), links.len());
-        for ((entry, resolution), edge) in links.iter().zip(&edges) {
-            match resolution {
-                LinkResolution::Resolved(path) => {
-                    assert_eq!(
-                        (&edge.to, edge.cross_vault),
-                        (path, false),
-                        "{}",
-                        entry.target
-                    )
-                }
-                // The graph asks the maps for it too, and draws it to the local note.
-                LinkResolution::OtherVault(_) => {
-                    assert_eq!(
-                        (edge.to.as_str(), edge.cross_vault),
-                        (at("deep/er/c.md").as_str(), true)
-                    )
-                }
-                LinkResolution::Unresolved => {
-                    assert_eq!(edge.to, format!("{root}/nothing.md"), "{}", entry.target)
-                }
-            }
-        }
-    }
-
-    /// `outgoing` is keyed by the strings the walk produced: the same note under another
-    /// spelling of the root is not found, and neither is a symlink to a note — the
-    /// walkers do not follow one. The first assertion is the control: the note itself.
-    #[cfg(unix)]
-    #[tokio::test]
-    async fn only_the_walked_spelling_of_a_note_is_in_the_index() {
-        let dir = TempDir::new().unwrap();
-        std::fs::write(dir.path().join("a.md"), "[[a]]\n").unwrap();
-        std::os::unix::fs::symlink(dir.path().join("a.md"), dir.path().join("link.md")).unwrap();
-        let root = dir.path().to_string_lossy().to_string();
-        let mut index = LinkIndex::new();
-        index.build(&root).await.unwrap();
-
-        assert!(index.outgoing_resolved(&path_in(&root, "a.md")).is_some());
-        assert!(index.outgoing_resolved(&path_in(&root, "./a.md")).is_none());
-        assert!(index
-            .outgoing_resolved(&path_in(&root, "link.md"))
-            .is_none());
     }
 }
