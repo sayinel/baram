@@ -115,7 +115,7 @@ impl LinkIndex {
         // resolutions, never change one. In particular a bare `[[Paper]]` keeps going to
         // the markdown note (which, for a PDF, is its highlight companion — they share a
         // stem because companionPathFor builds one from the other). The one exception is
-        // a link that spells a note extension: `get_link_graph` first looks for the note
+        // a link that spells a note extension: `resolve_link` first looks for the note
         // of that full name (`spelled_note_name`), and only when there is none does the
         // link reach this chain.
         if let Some(paths) = self.name_map.get(target_normalized) {
@@ -176,6 +176,18 @@ impl LinkIndex {
         self.file_map.get(stem)?.iter().find(spelled_as).cloned()
     }
 
+    /// Resolve a link's target to an indexed file, preferring its spelled
+    /// note extension before the normalized map lookup. `get_link_graph`
+    /// asks here for each entry when the index has a root, including entries
+    /// behind a vault alias, whose edges it marks `cross_vault`.
+    /// `outgoing_resolved` asks here only for entries without a vault alias.
+    fn resolve_link(&self, raw_target: &str) -> Option<String> {
+        let normalized = normalize_target(raw_target);
+        let full = raw_target.trim().to_lowercase();
+        self.spelled_note_name(&full, &normalized)
+            .or_else(|| self.resolve_target_from_map(&normalized))
+    }
+
     /// Get the full link graph
     pub fn get_link_graph(&self) -> LinkGraph {
         let mut nodes_set = std::collections::HashSet::new();
@@ -187,10 +199,8 @@ impl LinkIndex {
                 let target_normalized = normalize_target(&entry.target);
                 if let Some(root) = &self.root_path {
                     // Use file maps for accurate resolution, fall back to simple path construction
-                    let full = entry.target.trim().to_lowercase();
                     let target_path = self
-                        .spelled_note_name(&full, &target_normalized)
-                        .or_else(|| self.resolve_target_from_map(&target_normalized))
+                        .resolve_link(&entry.target)
                         .unwrap_or_else(|| resolve_target(root, &target_normalized));
                     nodes_set.insert(target_path.clone());
                     edges.push(LinkEdge {
@@ -223,8 +233,9 @@ impl LinkIndex {
             edges,
         }
     }
+
     /// §387 The links `file_path` holds, each with how `baram links` reports it: the file
-    /// the graph's resolver (`resolve_target_from_map`) finds for the target, or, for a
+    /// the graph's resolver (`resolve_link`) finds for the target, or, for a
     /// cross-vault link, its alias.
     ///
     /// `None` when `outgoing` holds nothing under that exact string: the file is not
@@ -236,9 +247,10 @@ impl LinkIndex {
     /// ONE method rather than three exposed pieces, because the ORDER is the contract.
     /// A cross-vault link is decided first: its `target` is the bare note name, so
     /// asking the maps would resolve `[[journal::x]]` to a local `x.md`. Then the target
-    /// is normalized, and only then are the maps asked. So for a cross-vault link this
-    /// is NOT what `get_link_graph` does: the graph asks the maps for every entry, alias
-    /// or not, and only marks the edge `cross_vault`.
+    /// is passed to `resolve_link`, which checks its spelled note extension and
+    /// normalized maps. So for a cross-vault link this is NOT what `get_link_graph`
+    /// does: the graph asks the maps for every entry, alias or not, and only marks
+    /// the edge `cross_vault`.
     ///
     /// Otherwise it is the GRAPH's resolution, not the editor's click-through: no
     /// `[[./x]]` relative to the source, no journal dates, and a path-qualified target
@@ -254,12 +266,10 @@ impl LinkIndex {
                 .map(|entry| {
                     let resolution = match &entry.target_vault_alias {
                         Some(alias) => LinkResolution::OtherVault(alias.clone()),
-                        None => {
-                            match self.resolve_target_from_map(&normalize_target(&entry.target)) {
-                                Some(path) => LinkResolution::Resolved(path),
-                                None => LinkResolution::Unresolved,
-                            }
-                        }
+                        None => match self.resolve_link(&entry.target) {
+                            Some(path) => LinkResolution::Resolved(path),
+                            None => LinkResolution::Unresolved,
+                        },
                     };
                     (entry.clone(), resolution)
                 })
@@ -333,6 +343,48 @@ mod tests {
             .collect()
     }
 
+    /// `outgoing_resolved` for `/vault/r.md` holding `content`, over an index
+    /// registered as `graph_targets_of` registers one: each link's resolution,
+    /// in the order written.
+    fn outgoing_of(files: &[&str], content: &str) -> Vec<LinkResolution> {
+        let mut index = LinkIndex::new();
+        index.root_path = Some("/vault".to_string());
+        for file in files {
+            if file.ends_with(".md") || file.ends_with(".markdown") {
+                index.register_file_path(file, "/vault");
+            }
+        }
+        for file in files {
+            index.register_link_target(file, "/vault");
+        }
+        index.update_file_from_content("/vault/r.md", content);
+        index
+            .outgoing_resolved("/vault/r.md")
+            .expect("r.md is indexed")
+            .into_iter()
+            .map(|(_, resolution)| resolution)
+            .collect()
+    }
+
+    #[test]
+    fn test_outgoing_resolved_answers_a_spelled_note_extension_by_its_full_name() {
+        // The expected files are spelled out: comparing resolver answers
+        // from the graph and outgoing links would exercise `resolve_link` twice.
+        // What fails this: bypassing `spelled_note_name` in `resolve_link` —
+        // the first order resolves both targets to `/vault/x.md`.
+        let resolved = |path: &str| LinkResolution::Resolved(path.to_string());
+        for files in [
+            ["/vault/x.markdown", "/vault/x.md", "/vault/r.md"],
+            ["/vault/x.md", "/vault/x.markdown", "/vault/r.md"],
+        ] {
+            assert_eq!(
+                outgoing_of(&files, "[[x.md]]\n[[x.markdown]]\n"),
+                vec![resolved("/vault/x.md"), resolved("/vault/x.markdown")],
+                "{files:?}"
+            );
+        }
+    }
+
     #[test]
     fn test_a_spelled_note_extension_resolves_by_the_full_name() {
         // `x.md` and `x.markdown` share the stem `x`. A link that spells the
@@ -342,7 +394,7 @@ mod tests {
         // `[[foo.markdown]]` with only `foo.md` reaches the note through its
         // stem — before the `.markdown` strip it was the ghost `foo.markdown.md`.
         // What fails this: removing the `spelled_note_name` step from
-        // `get_link_graph` — `[[x.markdown]]` and `[[x.md]]` both answer the
+        // `resolve_link` — `[[x.markdown]]` and `[[x.md]]` both answer the
         // last registered, so one of the two orders below goes red.
         let files = [
             "/vault/x.md",
@@ -703,9 +755,11 @@ mod outgoing_tests {
     /// the stem `b`, so a lookup by stem alone answers the same file for `[[notes/b]]` and
     /// `[[x/b]]` whichever the walk met first, and one of the two is wrong; `c` is the
     /// only note of that stem, so `[[wrong/c]]` can only get there by falling back to it.
-    /// The second half asks `get_link_graph` about the same links: every resolved link
-    /// is the graph's edge, and the two kinds of link this method does not resolve are
-    /// the ones the graph still draws somewhere.
+    /// The expected path list pins the map branches. The second half pins the
+    /// edge count and the graph's destinations for `OtherVault` and `Unresolved`.
+    /// Its `Resolved` comparison repeats the shared `resolve_link` answer;
+    /// spelled-extension resolution is pinned to explicit paths by
+    /// `test_outgoing_resolved_answers_a_spelled_note_extension_by_its_full_name`.
     #[tokio::test]
     async fn every_branch_of_the_resolver_is_reached_and_agrees_with_the_graph() {
         let (_dir, root, index) = index_over(&[
