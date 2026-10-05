@@ -39,7 +39,7 @@ clap = { version = "4", default-features = false, features = ["std", "derive", "
 # §387 Where the app keeps config.json, without starting tauri: tauri's own `app_data_dir`
 # is `dirs::data_dir().join(identifier)` (tauri/src/path/desktop.rs). Already in the tree
 # through tauri; this promotes it to a direct dependency.
-dirs = "6"
+dirs = "7"
 # §29 (issue 620) — reads which bytes of a note are prose so the link index and its
 # rewriters can leave code, HTML, math and images alone. Structure only: link syntax
 # stays regex on the source. default-features drops the HTML renderer and the CLI.
