@@ -272,7 +272,8 @@ export function createEditorRequestHandler(
         //   (`task-field-chips.ts`) and, after an image collapse, `findFoldableListItems`
         //   (`fold-ranges.ts`).
         // The core calls `beforeWalk` before each with the range's `to - from`, the measure
-        // `getSelection` charges for reading it. Besides its payload a write pays one charge: the
+        // `getSelection` charges for reading it. Besides its payload — paid once `beforeParse`
+        // has run, so a write refused earlier pays none — a write pays one charge: the
         // transaction if it lands; the larger of the transaction and that length if it is refused
         // once the shadow `apply` has begun, as spec §8 prices the collapse inside the
         // transaction; that length if it is refused after the range's walk alone; nothing if it
@@ -405,7 +406,8 @@ export function createMeter(
    * by both methods, so `afford` answers with `spend`'s own arithmetic. Refilling early is not
    * spending: while the refill rate is not negative, a refill never lowers `tokens` — it adds
    * `elapsed * perSecond` with `elapsed` clamped at 0, and the clamp to `burst` cannot cut below
-   * a `tokens` that is never above it.
+   * a `tokens` that is never above it. `fit` WRITES `tokens` (the refill), so a caller that
+   * subtracts the charge must read `tokens` after `fit` returns, not before it is called.
    */
   const fit = (cost: number, method: string): number => {
     const at = now();
@@ -439,8 +441,15 @@ export function createMeter(
     afford(cost: number, method: string): void {
       fit(cost, method);
     },
+    /**
+     * `fit` first, then the subtraction from the refilled `tokens`. A compound `tokens -= fit(…)`
+     * reads `tokens` before `fit` runs and subtracts from the stale value, which discards the
+     * refill since the previous call on every success (plan 0117 Ruling 24 introduced that,
+     * and its fix is this split).
+     */
     spend(cost: number, method: string): void {
-      tokens -= fit(cost, method);
+      const charge = fit(cost, method);
+      tokens -= charge;
     },
   };
 }

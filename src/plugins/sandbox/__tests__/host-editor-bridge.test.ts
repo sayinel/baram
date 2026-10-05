@@ -605,3 +605,72 @@ describe("the production budget (§260 Phase 4b)", () => {
     expect(() => m.spend(8 * 1024 * 1024, "getMarkdown")).not.toThrow();
   });
 });
+
+// Plan 0117 Ruling 24 split `fit` from the subtraction, and a compound `tokens -= fit(…)`
+// read `tokens` BEFORE `fit` refilled it — every successful `spend` then subtracted from the
+// stale value and threw the refill away. The refill tests that existed only drove refused
+// calls and `afford`, both of which keep the refill, so none saw it.
+describe("the meter keeps the refill across a successful spend (plan 0117)", () => {
+  // Burst 20, refill 8/s: every number below is a whole token.
+  const meter = (clock: { at: number }) =>
+    createMeter(() => clock.at, 20, 8, "b");
+  const admitted = (m: ReturnType<typeof meter>, cost: number) => {
+    let n = 0;
+    for (;;) {
+      try {
+        m.spend(cost, "x");
+        n++;
+      } catch {
+        return n;
+      }
+    }
+  };
+
+  it("admits 18 one-token charges after a spend of 10 and one second", () => {
+    const clock = { at: 0 };
+    const m = meter(clock);
+    m.spend(10, "x"); // 10 left
+    clock.at = 1000; // refill 8 → 18
+    // The stale subtraction took 1 from 10 and not from 18, so it admitted 10 — the count
+    // that fails this row.
+    expect(admitted(m, 1)).toBe(18);
+  });
+
+  it("leaves exactly the refilled tokens less the charge, never a negative", () => {
+    const clock = { at: 0 };
+    const m = meter(clock);
+    m.spend(15, "x"); // 5 left
+    clock.at = 1000; // 13
+    m.spend(13, "x"); // the refill covers it: 0 left, not 5 − 13 = −8
+    expect(() => m.afford(1, "x")).toThrow(/exhausted/);
+    clock.at = 2000; // exactly one second of refill on 0
+    expect(() => m.afford(8, "x")).not.toThrow();
+    // `tokens` was not negative: a −8 would have left 0 here and refused the 8 above.
+    expect(() => m.afford(9, "x")).toThrow(/exhausted/);
+  });
+
+  it("leaves the largest affordable read equal to the arithmetic", () => {
+    const clock = { at: 0 };
+    const m = meter(clock);
+    m.spend(15, "x"); // 5 left
+    clock.at = 1000; // 13
+    m.spend(3, "x"); // 10 left
+    expect(() => m.afford(10, "x")).not.toThrow();
+    expect(() => m.afford(11, "x")).toThrow(/exhausted/);
+  });
+
+  it("keeps the refill on `afford` and on a refused spend, as before", () => {
+    // The positive pair: these two never lost the refill, so they pass with or without the
+    // fix — they pin that the fix did not trade one path's refill for another's.
+    const clock = { at: 0 };
+    const m = meter(clock);
+    m.spend(15, "x"); // 5 left
+    clock.at = 1000; // 13
+    expect(() => m.afford(13, "x")).not.toThrow();
+    expect(() => m.afford(14, "x")).toThrow(/exhausted/);
+    expect(() => m.spend(14, "x")).toThrow(/exhausted/);
+    // `afford` and the refused spend spent nothing, and the refill is still there.
+    expect(() => m.spend(13, "x")).not.toThrow();
+    expect(() => m.afford(1, "x")).toThrow(/exhausted/);
+  });
+});
