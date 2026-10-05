@@ -320,6 +320,94 @@ describe("createHostTransport (§260 host end)", () => {
     expect(seen).toHaveLength(2);
   });
 
+  // §388 spec 0067 §8 · §11-11 — the frame half of the new write: the same 64 KiB cap as
+  // insertText (a larger write replaces the document, which is setMarkdown's job), and a
+  // `replace` that is absent or exactly what `issueAnchor` mints.
+  const REF = "0123456789abcdef0123456789abcdef";
+  const sendEditorRequest = (request: Record<string, unknown>) =>
+    deliver({
+      pluginId: "alpha",
+      msg: { type: "hostRequest", requestId: "r", request },
+    });
+
+  it("§388 gives insertMarkdown insertText's bound, at the frame", async () => {
+    const transport = await createHostTransport("alpha");
+    const seen: SandboxToHost[] = [];
+    transport.onMessage((m) => seen.push(m));
+
+    sendEditorRequest({
+      kind: "editor_insert_markdown",
+      markdown: "x".repeat(64 * 1024),
+    });
+    expect(seen).toHaveLength(1);
+
+    for (const markdown of ["x".repeat(64 * 1024 + 1), 42, undefined, null]) {
+      sendEditorRequest({ kind: "editor_insert_markdown", markdown });
+    }
+    expect(seen).toHaveLength(1);
+  });
+
+  it.each([
+    ["editor_insert_markdown", { markdown: "x" }],
+    ["editor_insert_text", { text: "x" }],
+  ] as const)(
+    "§388 admits %s's replace only as 32 lowercase hex digits",
+    async (kind, body) => {
+      const transport = await createHostTransport("alpha");
+      const seen: SandboxToHost[] = [];
+      transport.onMessage((m) => seen.push(m));
+
+      for (const replace of [
+        "abc",
+        REF.toUpperCase(),
+        42,
+        null,
+        "g".repeat(32), // not hex
+        REF.slice(1), // 31 digits
+        `${REF}0`, // 33 digits
+        `${REF}\n`, // `$` without the m flag ends the string, not the line
+        { toString: () => REF },
+      ]) {
+        sendEditorRequest({ kind, ...body, replace });
+      }
+      expect(seen).toEqual([]);
+
+      sendEditorRequest({ kind, ...body });
+      sendEditorRequest({ kind, ...body, replace: REF });
+      expect(seen).toHaveLength(2);
+    },
+  );
+
+  it("§388 answers a malformed ref with a refusal that carries no code", async () => {
+    // Spec 0067 §5 · §10: a frame-check refusal is not an editor refusal, so a plugin
+    // branching on `code` does not mistake it for one. The coded half — a handler refusal
+    // arriving with its code — is `editor-end-to-end.test.ts`.
+    await createHostTransport("alpha");
+    invoke.mockClear();
+
+    deliver({
+      pluginId: "alpha",
+      msg: {
+        type: "hostRequest",
+        requestId: "req-9",
+        request: {
+          kind: "editor_insert_markdown",
+          markdown: "x",
+          replace: "abc",
+        },
+      },
+    });
+
+    const [, args] = invoke.mock.calls[0] as [string, { msg: unknown }];
+    expect(args.msg).toEqual({
+      error: expect.stringContaining("rejected"),
+      ok: false,
+      requestId: "req-9",
+      type: "hostResponse",
+    });
+    expect(args.msg).not.toHaveProperty("code");
+  });
+
   it("REFUSES a rejected hostRequest instead of leaving the plugin waiting", async () => {
     // §260 Phase 4b code review (I2) — a dropped frame is right for protocol noise, but a
     // `hostRequest` is awaited: with no answer the plugin's promise stays pending until

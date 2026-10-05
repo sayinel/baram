@@ -65,6 +65,7 @@ const EXPECTED_ATTACKS = [
   "editor_get_selection",
   "editor_set_markdown",
   "editor_insert_text",
+  "editor_insert_markdown",
   "settings_get_all",
 ] as const;
 
@@ -203,7 +204,11 @@ describe("the malicious fixture is refused everywhere (§260 Phase 6)", () => {
       expect(report[id], id).toContain('requires one of "editor"');
       expect(report[id], id).toContain('"editor:readonly"');
     }
-    for (const id of ["editor_set_markdown", "editor_insert_text"]) {
+    for (const id of [
+      "editor_set_markdown",
+      "editor_insert_text",
+      "editor_insert_markdown",
+    ]) {
       // The write half names only the rw grant: `editor:readonly` must not admit it.
       expect(report[id], id).toContain('requires one of "editor"');
       expect(report[id], id).not.toContain('"editor:readonly"');

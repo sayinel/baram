@@ -39,10 +39,56 @@ hand-written files with no build step, and `plugin-release.yml` refuses to publi
   asks for everything else, and CI asserts every call is refused. Useful to read as a
   catalogue of what the tier does **not** allow.
 
+## The editor API (both tiers)
+
+`ctx.editor` is the same in both tiers: markdown, and async. `getMarkdown()` / `setMarkdown()`
+go through the app's own round-trip pipeline, so what you read is exactly what you can write
+back. `getSelection()` gives positions, the selection's plain text, and a `ref`;
+`insertMarkdown(md, { replace: ref })` replaces exactly that range, and `insertText()` types
+plain text. Every write is one undo step. Reads need `editor` or `editor:readonly`; writes
+need `editor`. Every method and refusal code is in
+[Context: commands, editor, files, events](/en/docs/plugin-dev/context-commands-editor-files-events/#contexteditor-requires-editor-or-editorreadonly).
+
+```js
+const before = await ctx.editor.getMarkdown();
+await ctx.editor.setMarkdown(`${before}\n\n---\n`);
+```
+
+In the sandboxed tier a document read does not travel in the response — the host parks it and
+the sandbox collects it — but that is invisible to you; `getMarkdown()` is just a promise.
+
+Three things worth designing around:
+
+- **`setMarkdown()` can refuse, and you should retry.** It parses off the main thread, and if
+  the document changes while that runs — the user typing a single character, or a switch to
+  another markdown tab — it rejects with `code: "document-changed"` rather than overwriting
+  the change. A tab switch still in progress, or one to a tab that is not a markdown
+  document, rejects with `code: "surface-blocked"` instead. On a large document with an
+  active typist this can fail repeatedly; that is deliberate, since the alternative is
+  silently discarding what the user just wrote.
+- **Batch your inserts.** Each `insertText()` or `insertMarkdown()` is its own undo step, so
+  inserting an AI stream token by token gives the user a thousand Cmd+Z presses — and in the
+  sandboxed tier an insert's charge is based on the size of the whole document, not only of
+  what you insert, so on a large file a token-by-token stream runs out of budget. Buffer and
+  insert in chunks.
+- **Read, then replace with the `ref`.** An AI rewrite that takes seconds should keep the
+  `ref` from `getSelection()` and pass it back: a write without it lands on whatever is
+  selected *then*, which may be somewhere else entirely. The selection's `text` is plain, so a
+  rewrite that should keep bold or links has to put them back in the markdown it passes.
+
+In the sandboxed tier, editor calls are metered by the work they cost, not by how often you
+call them: reading a scratch note is nearly free, reading a 10,000-line file repeatedly is
+not. A write refused after its range was checked — a `ref` whose text changed, say — still
+pays that range's length, or the write's full cost if the editor was revealing markdown syntax
+around the user's caret there, so retrying a stale `ref` in a loop runs the budget down; read
+the selection again instead. If a call is refused with `code: "budget"`, look for a read you are
+polling that `ctx.events` could hand you instead, or for inserts you could batch. The trusted
+tier has no such budget.
+
 ## The sandboxed tier's API differs
 
 A plugin with `"trust": "sandboxed"` runs in its own isolated webview and gets a
-narrower, data-only context. Two differences matter when writing one:
+narrower, data-only context. Three differences matter when writing one:
 
 - **`files` paths are relative to a vault root you are never told.** `readFile("a.md")`,
   `listDir("")` for the vault root; an absolute path or a `..` is refused. Pass
@@ -52,40 +98,11 @@ narrower, data-only context. Two differences matter when writing one:
     const text = await ctx.files.readFile(path, { context });
   });
   ```
-- **`editor` is markdown, and async.** `getMarkdown()` / `setMarkdown()` go through the
-  app's own round-trip pipeline, so what you read is exactly what you can write back;
-  `getSelection()` gives ProseMirror positions plus the text they cover, and
-  `insertText()` types at the cursor. Every write is one undo step. Reads need `editor` or
-  `editor:readonly`; writes need `editor`.
-
-  ```js
-  const before = await ctx.editor.getMarkdown();
-  await ctx.editor.setMarkdown(`${before}\n\n---\n`);
-  ```
-
-  A document read does not travel in the response — the host parks it and the sandbox
-  collects it — but that is invisible to you; `getMarkdown()` is just a promise.
-
-  Two things worth designing around:
-  - **`setMarkdown()` can refuse, and you should retry.** It parses off the main thread,
-    and if the document changes while that runs — a tab switch, or the user typing a
-    single character — it rejects with "the document changed" rather than overwriting the
-    change. On a large document with an active typist this can fail repeatedly; that is
-    deliberate, since the alternative is silently discarding what the user just wrote.
-  - **Batch your inserts.** `insertText()` is one transaction, and ProseMirror groups undo
-    by transaction, so inserting an AI stream token by token gives the user a thousand
-    Cmd+Z presses — and each transaction costs the whole document to re-render, so the
-    host throttles them on large files. Buffer and insert in chunks.
-
-  Editor calls are metered by the work they cost, not by how often you call them: reading
-  a scratch note is nearly free, reading a 10,000-line file repeatedly is not. If you see
-  "document budget is exhausted", you are polling something you should be getting from
-  `ctx.events` instead.
-
 - **`settings` are the user's answers, and read-only.** Declare fields in
   `contributions.settings` and they render in your plugin's page under **Settings →
   Plugins**; read them with `await ctx.settings.getAll()`, which always returns one value
-  per declared field, of the declared type.
+  per declared field, of the declared type. Here it is async; the trusted tier's `getAll()`
+  returns the values directly.
 
   ```js
   const { prefix } = await ctx.settings.getAll();

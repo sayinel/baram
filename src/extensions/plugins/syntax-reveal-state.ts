@@ -68,6 +68,43 @@ export interface SuppressedRange {
 }
 
 export const INACTIVE: SyntaxRevealState = { expanded: null, suppressed: null };
+
+/**
+ * §384 / spec 0067 D10 — the meta a SUCCESSFUL collapse sends.
+ *
+ * `collapsed` is the range the collapsed mark, link or atom occupies in the new document,
+ * and the state `apply` decides suppression from it instead of inferring the range from
+ * the step maps: a position-preserving collapse deletes the two delimiters, so
+ * `changedRanges` reports two zero-width points and a caret between them would be
+ * re-expanded in the same dispatch (spec §2.3).
+ *
+ * A key of its own, not `suppressed`: `INACTIVE` itself travels as meta and carries
+ * `suppressed: null`, so "does the meta have `suppressed`" would catch every one of its
+ * senders and skip `nextSuppressed` for them too.
+ */
+export interface CollapseMeta {
+  collapsed: SuppressedRange;
+  expanded: null;
+}
+
+export function collapseMeta(collapsed: SuppressedRange): CollapseMeta {
+  return { collapsed, expanded: null };
+}
+
+/**
+ * The suppressed range after a collapse, or `null`. Inclusive of both ends, like
+ * `SuppressedRange` itself and like `nextSuppressed`. Escape and Enter leave the caret at
+ * its offset (spec 0067 D11), which is the collapsed start only when the caret sat on the
+ * expansion's start; ArrowRight leaves it on a wikilink's end — both are edge cases the
+ * inclusive bounds keep suppressed.
+ */
+export function suppressionAfterCollapse(
+  collapsed: SuppressedRange,
+  caret: number,
+): null | SuppressedRange {
+  return caret >= collapsed.from && caret <= collapsed.to ? collapsed : null;
+}
+
 export const syntaxRevealKey = new PluginKey<SyntaxRevealState>("syntaxReveal");
 
 // ── Ephemeral provenance (§384 C) ─────────────────────────────────────
@@ -87,7 +124,11 @@ export const syntaxRevealKey = new PluginKey<SyntaxRevealState>("syntaxReveal");
  */
 export const SYNTAX_REVEAL_EPHEMERAL_META = "syntaxRevealEphemeral";
 
-/** Tag a transaction as an ephemeral expand/collapse (see the meta key above). */
+/**
+ * Tag a transaction as an ephemeral expand/collapse (see the meta key above). `selection-anchors.ts`
+ * exempts a tagged mark/link collapse from its "lost" rule, so a new caller that deletes
+ * content must be checked there.
+ */
 export function tagSyntaxRevealEphemeral(tr: Transaction): void {
   tr.setMeta(SYNTAX_REVEAL_EPHEMERAL_META, true);
 }

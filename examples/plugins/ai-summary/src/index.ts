@@ -127,7 +127,7 @@ export function activate(ctx: ExtensionContext): void {
         status.textContent = "Summarizing…";
         try {
           const prefix = await readPrefix(ctx);
-          const doc = ctx.editor.getContent();
+          const doc = await ctx.editor.getText();
           const summary = await ctx.ai.complete(`${prefix}\n\n${doc}`, {
             maxTokens: 512,
           });

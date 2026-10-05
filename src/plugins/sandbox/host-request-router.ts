@@ -50,6 +50,7 @@ export function createHostRequestHandler(
       case "editor_get_markdown":
       case "editor_get_selection":
       case "editor_get_text":
+      case "editor_insert_markdown":
       case "editor_insert_text":
       case "editor_set_markdown":
         return editor(request);

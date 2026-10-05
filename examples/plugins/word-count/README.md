@@ -33,6 +33,9 @@ declared, so the manifest and the code have to agree.
 | `ctx.ui.addStyle(STYLE)`                                     | **gone** — no DOM and no CSS in this tier                         |
 | `export function deactivate()`                               | **gone** — never called; teardown destroys the realm              |
 
+Since §388 the trusted tier has no `getContent()` either: both tiers share one `EditorAPI`
+(markdown both ways, `getText()` for prose), so a port no longer changes the editor calls.
+
 A major version because the tier changed: an existing v1 install is a pre-`trust` record the
 app will not auto-run, so updating is a re-consent rather than a patch. The sandboxed runtime
 has never shipped in a release before 0.5.0, so no earlier build can run this plugin at all;
