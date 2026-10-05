@@ -3,24 +3,38 @@
 //! makes of a reference under those keys is `judgement.rs`.
 //!
 //! File-side key shapes are also built where `keys_for` is not called.
-//! Scanning the crate outside tests for `FilingKey::` constructions and for
-//! calls of `file_key`, `root_relative_key`, `normalize_file_path` and
-//! `extract_id_from_stem` finds these and no others: `RenameTarget::judge`,
-//! `refers_behind_alias`, `expected_key` and `BlockTarget::judge` in
-//! `judgement.rs` (telling the target); `registered_path_keys` and
-//! `colliding_path_keys`, which build the note lists (`mod.rs` — both call
-//! `root_relative_key` through `path_keys_of`, and the latter first groups by
-//! this module's `path_key_name`); `backlink_keys_for` here, which adds the
-//! zettel id as a `Stem` and behind each local alias as a `Foreign`
-//! (`backlink_keys` in `mod.rs` and `block_target` in
-//! `rename/block_id.rs` both call it); the stem predicates the same-stem
-//! exemption is given in `rename/block_id.rs` and `rename/file.rs`, and
-//! `stem_unchanged` in `rename/file.rs`; where the read-back gate wraps
-//! `expected_key` in `Foreign` (`read_back.rs`); and
-//! `link_reads_back_as_the_file` (`rewriter.rs`). `file_map`, `relative_map`
-//! and `id_map` in `mod.rs` (filled by `register_file_path` in `resolve.rs`,
-//! emptied by `remove_file` in `mod.rs`) resolve targets; they are not
-//! `incoming` keys. Add a new key shape here and fix these sites with it.
+//! A scan of `.rs` files under `src-tauri/src`, excluding tests, comments,
+//! definitions and match patterns, gives these construction/call sites
+//! (repeated calls grouped by function):
+//!
+//! - `FilingKey::` constructions: `filing_key`, `keys_for`, `backlink_keys_for`
+//!   here; `BlockTarget::judge` and `RenameTarget::expected_key` in `judgement.rs`;
+//!   `index_reads_the_rename_back` in `read_back.rs`; and the same-stem
+//!   predicate inside `rename_block_id_inner` in `rename/block_id.rs`.
+//! - `file_key` calls: `normalize_file_path` in `normalizer.rs`;
+//!   `RenameTarget::judge`, `refers_behind_alias`, `expected_key` in `judgement.rs`;
+//!   and `link_reads_back_as_the_file` in `rewriter.rs`.
+//! - `root_relative_key` calls: `keys_for` here; `RenameTarget::judge`,
+//!   `refers_behind_alias`, `alias_root_reads_another_note`, `expected_key` in
+//!   `judgement.rs`; `path_keys_of` in `mod.rs`; and `spell_under_each_root`
+//!   and `known_paths_of` in `rename/scope.rs`.
+//! - `normalize_file_path` calls: `keys_for`, `backlink_keys_for` here;
+//!   `register_file_path` in `resolve.rs`; `remove_file` in `mod.rs`;
+//!   `rename_file_with_links_inner` in `rename/file.rs` (the old key, the
+//!   same-stem predicate, and `stem_unchanged`); and the same-stem predicate
+//!   inside `rename_block_id_inner` in `rename/block_id.rs`.
+//! - `extract_id_from_stem` calls: `backlink_keys_for` here and
+//!   `register_file_path` in `resolve.rs`.
+//!
+//! `registered_path_keys`, `colliding_path_keys` and `path_key_notes` build
+//! note lists or counts through `path_keys_of`; `colliding_path_keys` first
+//! groups by this module's `path_key_name`. `backlink_keys` in `mod.rs` and
+//! `block_target` in `rename/block_id.rs` call `backlink_keys_for`, which adds
+//! the zettel id as a `Stem` and behind each local alias as a `Foreign`.
+//! `filing_key` builds link-side keys, while `keys_for` builds file-side keys.
+//! `file_map`, `relative_map` and `id_map` in `mod.rs` (filled by
+//! `register_file_path`, emptied by `remove_file`) resolve targets; they are
+//! not `incoming` keys. Add a new key shape here and fix these sites with it.
 //!
 //! Every `match` on `FilingKey` names each variant, with no `_` arm. A fourth
 //! variant stops compilation at five sites: `read_as_another_note`,
