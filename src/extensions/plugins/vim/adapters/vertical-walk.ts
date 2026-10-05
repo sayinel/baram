@@ -49,7 +49,7 @@ interface TableWalk {
  * Vertical motion. Each of the |delta| steps lands on the target line's unit
  * at the GOAL column (vim's curswant, issue 776), clamped to that line's last
  * unit — the goal itself never shrinks, so a short or empty line on the way
- * does not lose it and `3j` lands where `j;j;j` with the same remembered goal
+ * does not lose it and `3j` lands where `j` `j` `j` with the same remembered goal
  * does. The caller passes the goal it remembers; without one, the origin's
  * column is the goal (measured here, once). A code block landing is the
  * exception that codeBlockLandingAt decides: normal mode enters at the goal

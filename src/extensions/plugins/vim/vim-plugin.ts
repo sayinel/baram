@@ -262,7 +262,9 @@ export function createVimPlugin(
 
         /** issue 776 — arm the pointer watch (vim-pointer-goal.ts): the goal
          *  column is forgotten only if this press moves the cursor. Both
-         *  events, since touch and pen raise pointerdown first. */
+         *  events, since touch and pen raise pointerdown first. The pointerdown
+         *  listener also reaches NodeViews whose stopEvent rejects mousedown;
+         *  a stationary cursor keeps its goal, and the next key disarms the watch. */
         mousedown: (view) => {
           pointerGoal.arm(view);
           return false;

@@ -14,7 +14,9 @@ export interface CursorLine {
   start: number;
 }
 
-/** A unit's text is non-blank when it holds any non-whitespace character. */
+/** A unit is non-blank when it contains a character outside JavaScript's
+ *  \s whitespace set (including NBSP and U+3000). This deliberately treats
+ *  more characters as blanks than Vim's space/tab rule. */
 const NON_BLANK = /\S/;
 
 const graphemeSegmenter = new Intl.Segmenter(undefined, {

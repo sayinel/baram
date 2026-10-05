@@ -12,7 +12,7 @@ import { splitSegments } from "./line-units";
 /**
  * Every cursor line of a document, in order: hard-break segments, atom
  * blocks, and one ENTRY line per table row (first cell's first textblock —
- * the cell-preserving walk lives in tableVertical).
+ * the cell-preserving walk lives in verticalTarget).
  *
  * Cached PER DOCUMENT. Building it walks the whole doc and allocates a line
  * object each time, and verticalTarget/wordWalk want it for every j/k/w/b:

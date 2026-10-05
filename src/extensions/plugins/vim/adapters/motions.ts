@@ -123,7 +123,8 @@ export function resolveMotion(
     }
     case "lineFirstNonBlank": {
       // The first cursor UNIT that is not blank; an all-blank line falls back
-      // to the line start (vim lands near the end there — Phase 2 nicety).
+      // to the line start, for ^ and for gg/G/:N through lineJumpTarget.
+      // Vim lands near the end of a blank line — a Phase 2 nicety here.
       // Judged per unit (firstNonBlankUnit), not by a regex offset into the
       // line's text: an offset can land inside a grapheme (" " + U+0301 is
       // one unit) and drifts past inline nodes with content (issue 776:
