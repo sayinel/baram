@@ -65,11 +65,14 @@ function remarkWikiLink(this: any) {
  * remark escapes every `[` in phrasing (`unsafe.js` in mdast-util-to-markdown,
  * and once more in mdast-util-gfm-footnote) because `[x]` would be a shortcut
  * reference if `[x]: url` were defined anywhere in the document, which a
- * serializer cannot know. Baram's output can: the schema has no node for a
+ * serializer cannot know. Baram's mostly can: the schema has no node for a
  * definition (the loader turns references into inline links and drops the
- * definitions, `reference-links.ts`), so a definition exists only if text spells
- * one — and {@link writtenPositions} keeps that `[` escaped. remark separately
- * escapes a `(` right after `]` in text, which keeps an inline link from forming.
+ * definitions, `reference-links.ts`), and text that spells one keeps its `[`
+ * escaped ({@link writtenPositions}). What it cannot see is content written
+ * verbatim — an HTML block, front matter. A definition line there loads as a
+ * definition, and a raw `[x]` in text then reads as its reference; such a block
+ * already does not survive the reload whole. remark separately escapes a `(`
+ * right after `]` in text, which keeps an inline link from forming.
  *
  * The text is cut at each of those characters and every piece goes through
  * `safe` with that character as its neighbour, so remark decides every other
@@ -139,8 +142,9 @@ const TASK_CHECK = new Set(["\t", "\n", "\r", " ", "X", "x"]);
  *  gave it. */
 const LABEL_FOLLOWERS = new Set(["(", ":", "<", "[", "{"]);
 
-/** §56l — remark escapes a `#` only where it could open a heading, at a line
- *  start; a `#` opens one only before a space, a tab or the line end. */
+/** §56l — a `#` before one of these neither opens an ATX heading (its `#`s are
+ *  followed by a space, a tab or the line end) nor closes one (the closing `#`s
+ *  end the line), the two spots remark escapes a `#` for. */
 const TAG_CHARACTER = /[\w가-힣]/;
 
 /**
@@ -246,8 +250,10 @@ function writtenPositions(
 }
 
 /** remark's `atBreak`: only spaces or tabs between `index` and a line ending,
- *  looking back through `before` (the text written just ahead of `value`). An
- *  empty `before` counts as a line start, the cautious reading for a `[`. */
+ *  looking back through `before` (the text written just ahead of `value`). With
+ *  no line ending in sight it is not a line start — the reading remark's own
+ *  `atBreak` patterns make. A block's first text sees one: `containerFlow` hands
+ *  every flow child `before: "\n"`. */
 function atLineStart(value: string, index: number, before: string): boolean {
   for (const [text, end] of [
     [value, index],
@@ -259,7 +265,7 @@ function atLineStart(value: string, index: number, before: string): boolean {
       if (character !== " " && character !== "\t") return false;
     }
   }
-  return true;
+  return false;
 }
 
 /** remark serializer — mdast → markdown string */

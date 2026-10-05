@@ -2,11 +2,15 @@
 //
 // remark-stringify escapes every `[` in body text because a `[x]` could be a
 // shortcut reference to a `[x]: url` defined anywhere in the document. Baram's
-// output never holds such a definition — the schema has no node for one and the
-// loader turns references into inline links (`reference-links.ts`) — so the
-// serializer's `text` handler (`serializer.ts`) writes a `[` raw unless it could
-// still start something. Each `describe` below is one reason a `[` stays escaped;
-// dropping that reason from the handler fails the rows under it.
+// text never spells one that loads — the schema has no node for a definition,
+// the loader turns references into inline links (`reference-links.ts`), and the
+// handler keeps a `[` before `]:` escaped — so the serializer's `text` handler
+// (`serializer.ts`) writes a `[` raw unless it could still start something.
+// Content written verbatim (an HTML block, front matter) can still hold a
+// definition line; that is a limitation, not something these rows cover.
+// Each `describe` below is one reason a `[` stays escaped; dropping that reason
+// from the handler fails rows under it — on the document read back where the
+// reason is the parser's, on the bytes where it is today's spelling.
 import type { Node as PmNode } from "@tiptap/pm/model";
 
 import { getSchema } from "@tiptap/core";
@@ -77,6 +81,11 @@ describe("a bracket that starts nothing is written as it was typed", () => {
     ["an exclamation mark before it", "Wow![1] here\n"],
     ["beside a wikilink", "[[a]] 와 [중요]\n"],
     ["beside a block reference", "((note#^abc)) 와 [중요]\n"],
+    // A task check is a line-start shape only — and only `[`, one character, `]`.
+    ["a check-like pair mid-line", "할 일 [x] 표시와 [ ] 칸\n"],
+    ["a check-like pair after bold", "**굵게**[x] 뒤\n"],
+    ["a longer pair at a line start", "[x-ray] 사진\n"],
+    ["a pair after an extended task state", "- [/] [x] 끝\n"],
   ])("%s", (_label, md) => {
     expect(roundtrip(md)).toBe(md);
   });
@@ -111,6 +120,30 @@ describe("a GFM task check at the start of an item stays escaped", () => {
     expectSameDocumentAfterSave(md);
     expect(roundtrip(md)).toBe(md);
   });
+
+  // micromark's check takes a tab and a line ending as an unchecked box too.
+  it.each([
+    ["a tab", "[\t] x"],
+    ["a line ending", "[\n] x"],
+  ])("holding %s", (_label, text) => {
+    const doc = schema.nodeFromJSON({
+      content: [
+        {
+          content: [
+            {
+              content: [
+                { content: [{ text, type: "text" }], type: "paragraph" },
+              ],
+              type: "listItem",
+            },
+          ],
+          type: "bulletList",
+        },
+      ],
+      type: "doc",
+    });
+    expectSameAfterSave(doc);
+  });
 });
 
 describe("a bracket shaped like a link, reference or span keeps today's bytes", () => {
@@ -123,6 +156,7 @@ describe("a bracket shaped like a link, reference or span keeps today's bytes", 
     ["a full and a collapsed reference", "\\[a]\\[b] and \\[c]\\[]\n"],
     ["a Pandoc span", "\\[span]{.cls}\n"],
     ["an inner link inside a pair", "\\[a \\[b]\\(c)\n"],
+    ["a second label after a wikilink", "[[a]]\\[b] 끝\n"],
   ])("%s", (_label, md) => {
     expectSameDocumentAfterSave(md);
     expect(roundtrip(md)).toBe(md);
