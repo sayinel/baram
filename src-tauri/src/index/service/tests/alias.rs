@@ -21,7 +21,7 @@ async fn a_vaults_own_alias_names_its_own_notes() {
     // `rename_file_with_links_inner` — `r.md` is not visited, or its links
     // are not this file's, and they stay `old`; keying the read-back gate's
     // respelled `Foreign` entry without its alias — the gate reverts `r.md`;
-    // dropping the fold in `local_aliases_of` — the vault is registered as
+    // dropping the fold in `own_aliases` — the vault is registered as
     // `Work`, and the index files both links under `work`.
     let ctx = ContextManager::new();
     let (dir, root) = aliased_vault(
@@ -139,7 +139,7 @@ async fn an_alias_two_vaults_carry_is_foreign_to_both() {
     // `old.md`, and A's rename leaves it. `work` is one of A's own names, so
     // the link may mean the renamed note: `r.md` is reported although its
     // bare `[[old]]` was rewritten (issue 678's ③).
-    // What fails this: dropping the uniqueness check from `local_aliases_of`
+    // What fails this: dropping the uniqueness check from `own_aliases`
     // — `work` is then local to A, the link is a backlink, and the rename
     // writes `[[work::new]]`; dropping the `left_behind` marking from the
     // file rename's `rewrite` — `r.md` is updated and not reported.
@@ -180,7 +180,7 @@ async fn a_referrer_behind_an_alias_two_vaults_carry_is_reported_not_rewritten()
     // (`referring_lines_to(old_path, &local_aliases)` in
     // `rename_file_with_links_inner`) — `r.md` is never visited, and
     // `skipped_files` is empty; leaving a shared explicit alias out of
-    // `ambiguous` in `local_aliases_of` — the same.
+    // `ambiguous` in `own_aliases` — the same.
     let ctx = ContextManager::new();
     let (dir_a, root_a) = aliased_vault(
         &ctx,
@@ -289,7 +289,7 @@ async fn an_alias_is_local_again_once_the_other_vault_carrying_it_is_removed() {
     // entry (last writer wins); B is removed, and its removal drops that
     // entry. The backend cross-vault resolver now answers nothing for
     // `work`, while the frontend resolves it to A, the only vault carrying
-    // it — uniqueness, the rule `local_aliases_of` reads — so `[[work::old]]`
+    // it — uniqueness, the rule `own_aliases` reads — so `[[work::old]]`
     // in A is a backlink of A's `old.md` again and A's rename respells it.
     // What fails this: an ownership check keyed on `resolve_alias` in
     // `local_aliases_of` — the map holds no entry for `work` after B's
@@ -476,7 +476,7 @@ async fn aliases_differing_only_in_case_make_the_link_foreign_for_both_vaults() 
     // vault. It is foreign: no backlink of A's `old.md`, and A's rename
     // leaves it and reports `r.md`, since `work` is A's own name folded — in
     // either registration order.
-    // What fails this: dropping the uniqueness check from `local_aliases_of`
+    // What fails this: dropping the uniqueness check from `own_aliases`
     // — no condition is then left, so A's own `Work` is local to A whatever
     // B carries, the link is a backlink, and the rename writes
     // `[[work::new]]`.
@@ -504,7 +504,7 @@ async fn a_journal_space_answers_to_its_canonical_name() {
     // explicit alias; the vault's `r.md` links to a day by the space name.
     // The link is a backlink of the day note, and renaming the day respells
     // it behind the alias as it was spelled.
-    // What fails this: dropping the space-name pass from `local_aliases_of`
+    // What fails this: dropping the space-name pass from `own_aliases`
     // — the link is foreign and the day note has no backlink.
     let (dir, root) = tree(&[
         ("r.md", "see [[Journal::2026-09-01]]\n"),
@@ -602,7 +602,7 @@ async fn two_journal_spaces_make_the_canonical_name_foreign_to_both() {
     // What fails this: dropping the shared-name check (`shared`) from the
     // space-name pass — each space claims `journal`, and the link is a
     // backlink of the referrer's own space's `x.md`; leaving a shared space
-    // name out of `ambiguous` in `local_aliases_of` — `r.md` is not
+    // name out of `ambiguous` in `own_aliases` — `r.md` is not
     // reported.
     let (dir_a, root_a) = tree(&[("x.md", "a\n"), ("r.md", "[[Journal::x]]\n")]);
     let (_dir_b, root_b) = tree(&[("x.md", "b\n")]);
