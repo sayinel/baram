@@ -256,60 +256,65 @@ export function createEditorRequestHandler(
       case "editor_insert_markdown": {
         requireCapability(EDITOR_WRITE_CAPABILITIES, "insertMarkdown");
         // SPLIT like `setMarkdown` (spec 0067 §8): the payload before the parse, because the
-        // worker parse really happens; the transaction only once every check has passed, so a
-        // write refused after the parse — a tab switch, a changed range — burns no
-        // document-sized charge. The core calls `beforeParse` after its surface gate and ref
-        // check, and `beforeDispatch` right before it sends.
+        // worker parse really happens; the transaction once every check has passed. The core
+        // calls `beforeParse` after its surface gate and ref check, and `beforeDispatch` right
+        // before it sends.
         //
-        // A write also reads its range's text before that charge. The shadow check walks the
-        // ref's range (`verifyAnchor` → `textBetween`; the whole document for an "all" ref), and
-        // a write with no `replace` first walks the user's selection, when `issueAnchor` records
-        // it. The payload charge does not pay for a walk — it is zero for `""` — and a refused
-        // ref stays usable, so the walk is priced on its own (plan 0117 Rulings 24 · 26). The
-        // core calls `beforeWalk` before each walk with the range's `to - from`, the measure
-        // `getSelection` charges for reading it. A write pays one of two charges, never both:
-        // the transaction if it lands, that length (`refusedAfterWalk`) if it is refused after
-        // the walk. So `beforeWalk` refuses `budget` unless the meter covers the larger of the
-        // two — not their sum — and any payload still due, and spends nothing. A plugin that
-        // cannot afford a walk is refused before it, and one retrying a stale ref pays the range
-        // on every try.
+        // A write also does work before that charge, and a refusal would leave it unpaid: the
+        // payload charge does not cover it — it is zero for `""` — and a refused ref stays usable
+        // for the next try (plan 0117 Rulings 24 · 26 · 28).
+        // - The shadow check walks the ref's range (`verifyAnchor` → `textBetween`; the whole
+        //   document for an "all" ref), and a write with no `replace` first walks the user's
+        //   selection, when `issueAnchor` records it.
+        // - When an expansion touches the range, the collapse's shadow `apply` runs the plugins'
+        //   state `apply` and `appendTransaction` hooks, and some of them walk the whole document
+        //   — measured 2026-10-05 on `createBaramExtensions`: `buildTaskFieldDecorations`
+        //   (`task-field-chips.ts`) and, after an image collapse, `findFoldableListItems`
+        //   (`fold-ranges.ts`).
+        // The core calls `beforeWalk` before each with the range's `to - from`, the measure
+        // `getSelection` charges for reading it. Besides its payload a write pays one charge: the
+        // transaction if it lands; the larger of the transaction and that length if it is refused
+        // once the shadow `apply` has begun, as spec §8 prices the collapse inside the
+        // transaction; that length if it is refused after the range's walk alone; nothing if it
+        // is refused before either. So in `send`, `beforeWalk` refuses `budget` unless the meter
+        // covers the larger of transaction and length — not their sum — and spends nothing. A
+        // plugin that cannot afford the work is refused before it, and one retrying a stale ref
+        // pays on every try.
         //
         // The `setMarkdown` note below turns down a peek for its TOCTOU: that peek would sit
         // before the async parse, while other requests can spend. `beforeWalk` decides no charge
-        // — each charge spends for itself — and for a ref the core runs it, the walk and the
-        // charge that follows in one synchronous pass, so a check that passed leaves room for
-        // either charge. A write with no `replace` walks before its parse, and its payload is
-        // charged after that `beforeWalk`, so the check there asks for the payload still due as
-        // well. That keeps the payload from leaving the walk unaffordable while payload and
-        // charge fit in the burst; past it — a document about the burst's size or larger — the
-        // check can ask for no more than a full bucket, and such a write lands only if the
-        // refill during the parse covers its payload, as before this check. There, and when
-        // other requests spend during the parse, the walk's charge can be refused: the write is
-        // then refused `budget` with that walk unpaid, and its next try meets `beforeWalk` again.
-        //
-        // Not priced on a refusal: the collapse, when an expansion touches the range. Its shadow
-        // `apply` runs the plugins' state `apply` and `appendTransaction` hooks, and some of them
-        // walk the whole document — measured 2026-10-05 on `createBaramExtensions`:
-        // `buildTaskFieldDecorations` (`task-field-chips.ts`) and, after an image collapse,
-        // `findFoldableListItems` (`fold-ranges.ts`). Spec §8 prices the collapse inside the
-        // transaction, which a refused write does not pay.
-        let payload = request.markdown.length; // due until `beforeParse` charges it
+        // — each charge spends for itself — and in `send` the core runs it, the shadow work and
+        // the charge that follows in one synchronous pass, so a check that passed there leaves
+        // room for whichever charge follows. A write with no `replace` walks before its parse
+        // and pays its payload right after that walk, so the check there asks for the payload
+        // still due and the length, and not the transaction: `send` asks for that after the
+        // parse, when the refill during it counts (plan 0117 Ruling 27). Two things can still
+        // leave that walk's charge refused: payload and length together above the burst, where
+        // the check can ask for no more than a full bucket, and other requests spending during
+        // the parse. The write is then refused `budget` with that walk unpaid, and its next try
+        // meets `beforeWalk` again.
+        const payload = request.markdown.length;
+        let paid = false; // the payload, which `beforeParse` charges
         const transaction = () =>
           transactionCost(live("insertMarkdown"), limits);
         await insertMarkdownAt(ops, {
           beforeDispatch: () => budget.spend(transaction(), "insertMarkdown"),
           beforeParse: () => {
             budget.spend(payload, "insertMarkdown");
-            payload = 0;
+            paid = true;
           },
           beforeWalk: (walk) =>
             budget.afford(
-              payload + Math.max(transaction(), walk),
+              paid ? Math.max(transaction(), walk) : payload + walk,
               "insertMarkdown",
             ),
           markdown: request.markdown,
           ref: request.replace,
-          refusedAfterWalk: (walk) => budget.spend(walk, "insertMarkdown"),
+          refusedAfterWalk: (walk, collapsed) =>
+            budget.spend(
+              collapsed ? Math.max(transaction(), walk) : walk,
+              "insertMarkdown",
+            ),
         });
         return undefined;
       }
@@ -317,8 +322,11 @@ export function createEditorRequestHandler(
         requireCapability(EDITOR_WRITE_CAPABILITIES, "insertText");
         // Charged right before the send, after the core's checks: there is no parse, so the
         // charge on success is `insertCost` — the payload or the document it re-renders. Its
-        // walks are priced as on `editor_insert_markdown`, and with no parse the whole write is
-        // one synchronous pass, so a `beforeWalk` that passed leaves room for either charge.
+        // walks are priced as on `editor_insert_markdown`, with `insertCost` in the
+        // transaction's place. With no parse the whole write is one synchronous pass, so a
+        // `beforeWalk` that passed leaves room for whichever charge follows, and the implicit
+        // anchor's check asks for what `send`'s will: with nothing between them that spends or
+        // waits, asking less there would only let a write walk the selection and then be refused.
         const cost = () =>
           insertCost(request.text.length, live("insertText"), limits);
         insertTextAt(ops, {
@@ -326,7 +334,11 @@ export function createEditorRequestHandler(
           beforeWalk: (walk) =>
             budget.afford(Math.max(cost(), walk), "insertText"),
           ref: request.replace,
-          refusedAfterWalk: (walk) => budget.spend(walk, "insertText"),
+          refusedAfterWalk: (walk, collapsed) =>
+            budget.spend(
+              collapsed ? Math.max(cost(), walk) : walk,
+              "insertText",
+            ),
           text: request.text,
         });
         return undefined;

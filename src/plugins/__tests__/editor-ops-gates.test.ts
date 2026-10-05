@@ -258,6 +258,43 @@ describe("editor-ops gates (spec 0067)", () => {
     editor.destroy();
   });
 
+  it("a refusal owes the collapse from the start of its shadow apply — a throw inside it too (plan 0117 Ruling 28)", async () => {
+    const { editor } = realEditor("# He**ad**ing\n");
+    editor.commands.setTextSelection(5); // the end of the bold "ad" → expands
+    const { ref } = readSelectionForPlugin(ctxOf(editor), "getSelection", {
+      record: true,
+    }); // a caret: its walk is 0
+    const owed: Array<[number, boolean]> = [];
+    const write = (beforeWalk?: () => void) =>
+      insertMarkdownAt(ctxOf(editor), {
+        beforeWalk,
+        markdown: "p1\n\np2", // blocks in a heading: refused after the shadow apply
+        ref,
+        refusedAfterWalk: (walk, collapsed) =>
+          void owed.push([walk, collapsed]),
+      });
+    // Refused before the apply, by the check that guards it: nothing is owed.
+    await expect(
+      write(() => {
+        throw new Error("budget");
+      }),
+    ).rejects.toThrow("budget");
+    expect(owed).toEqual([]);
+    // Refused by the rules after the apply: owed once, with the collapse.
+    await expect(write()).rejects.toMatchObject({ code: "cannot-insert-here" });
+    expect(owed).toEqual([[0, true]]);
+    // A plugin whose state `apply` throws on the collapse — the shadow apply is on this state.
+    vi.spyOn(editor.state, "apply").mockImplementationOnce(() => {
+      throw new Error("a plugin's apply threw");
+    });
+    await expect(write()).rejects.toThrow("a plugin's apply threw");
+    expect(owed).toEqual([
+      [0, true],
+      [0, true],
+    ]);
+    editor.destroy();
+  });
+
   it("an implicit anchor is released whether the write lands or is refused (spec §7.3)", async () => {
     const { editor } = realEditor("# He@@ading\n");
     const doc = editor.state.doc;

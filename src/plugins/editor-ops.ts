@@ -39,28 +39,34 @@ interface WriteHooks {
   /** Runs after the shadow check passed, right before the first transaction is sent. */
   beforeDispatch?: () => void;
   /**
-   * Runs before each walk of the write's range (its text read): before an implicit anchor is
-   * issued, and before the collapse's shadow `apply` and the shadow check. A call it refuses
-   * stops before the walk it guards (plan 0117 Rulings 24 · 26). `walk` is what a refusal after
-   * a walk pays (`refusedAfterWalk`); a write that lands pays `beforeDispatch`'s charge
-   * instead. It must not charge.
+   * Runs before each walk (`Walk`): before an implicit anchor is issued, and before the
+   * collapse's shadow `apply` and the shadow check. A call it refuses stops before the walk it
+   * guards (plan 0117 Rulings 24 · 26). `walk` is the range's length, which a refusal after a
+   * walk owes (`refusedAfterWalk`); a write that lands pays `beforeDispatch`'s charge instead.
+   * It must not charge.
    */
   beforeWalk?: (walk: number) => void;
   /**
-   * Runs once when a write is refused after its range was walked and before `beforeDispatch`
-   * passed, with the `walk` that `beforeWalk` was given. It charges; a refusal it throws
-   * replaces the write's.
+   * Runs once when a write is refused before `beforeDispatch` passed, if by then its range was
+   * walked or the collapse's shadow `apply` had begun — with the `walk` that `beforeWalk` was
+   * given, and `collapsed` true in the second case. It charges; a refusal it throws replaces the
+   * write's.
    */
-  refusedAfterWalk?: (walk: number) => void;
+  refusedAfterWalk?: (walk: number, collapsed: boolean) => void;
 }
 
 /**
- * A write's walk (plan 0117 Ruling 26). `length` is its range's `to - from` in the live
- * document — the measure `getSelection` charges for reading a range — fixed before the range is
- * first walked. `walked` is true from that walk until `beforeDispatch` passes: the transaction
- * charged there pays for the walk too, so only a refusal before it owes the walk.
+ * A write's walks, owed only by a refusal before `beforeDispatch` passes: the transaction charged
+ * there pays for them. `length` is the range's `to - from` in the live document — the measure
+ * `getSelection` charges for reading a range — fixed before the range is first walked; `walked`
+ * is true from that walk (plan 0117 Ruling 26). `collapsed` is true from the start of the
+ * collapse's shadow `apply`, which runs every plugin's state `apply` — some walk the whole
+ * document (measured; the bridge's budget note names them) — so a refusal after it owes the
+ * collapse too, which spec §8 prices inside the transaction (plan 0117 Ruling 28). It is set
+ * before the `apply`, so a plugin that throws there leaves its work owed as well.
  */
 interface Walk {
+  collapsed: boolean;
   length: number;
   walked: boolean;
 }
@@ -91,7 +97,7 @@ export async function insertMarkdownAt(
   const method = "insertMarkdown";
   const first = ctx.live(method);
   checkTarget(ctx, first.state, options.ref, method);
-  const walk: Walk = { length: 0, walked: false };
+  const walk: Walk = { collapsed: false, length: 0, walked: false };
   const ref = options.ref ?? issueImplicit(ctx, first.state, options, walk);
   try {
     options.beforeParse?.();
@@ -115,7 +121,8 @@ export async function insertMarkdownAt(
     });
     releaseAnchor(ref);
   } catch (err) {
-    if (walk.walked) options.refusedAfterWalk?.(walk.length);
+    if (walk.walked || walk.collapsed)
+      options.refusedAfterWalk?.(walk.length, walk.collapsed);
     throw err;
   } finally {
     if (options.ref === undefined) releaseAnchor(ref);
@@ -130,7 +137,7 @@ export function insertTextAt(
   const method = "insertText";
   const instance = ctx.live(method);
   checkTarget(ctx, instance.state, options.ref, method);
-  const walk: Walk = { length: 0, walked: false };
+  const walk: Walk = { collapsed: false, length: 0, walked: false };
   const ref = options.ref ?? issueImplicit(ctx, instance.state, options, walk);
   try {
     send(instance, ctx.owner, ref, method, options, walk, {
@@ -139,7 +146,8 @@ export function insertTextAt(
     });
     releaseAnchor(ref);
   } catch (err) {
-    if (walk.walked) options.refusedAfterWalk?.(walk.length);
+    if (walk.walked || walk.collapsed)
+      options.refusedAfterWalk?.(walk.length, walk.collapsed);
     throw err;
   } finally {
     if (options.ref === undefined) releaseAnchor(ref);
@@ -381,10 +389,11 @@ function reasonText(reason: AnchorFailure): string {
  * The ref is located first, which reads no text. Then `beforeWalk` runs, ahead of the
  * collapse's shadow `apply` (spec §8 prices the collapse inside the transaction charge) and of
  * the shadow check's walk. A ref's walk is its located range, and a refusal before the shadow
- * check reads that range owes nothing; a write with no ref walked when its anchor was issued, so
- * it keeps that length and owes it on any refusal. `beforeDispatch` runs once the shadow check
- * has passed, before anything is sent, and from then on a refusal owes no walk (plan 0117
- * Ruling 26).
+ * check reads that range owes nothing for it; a write with no ref walked when its anchor was
+ * issued, so it keeps that length and owes it on any refusal. A refusal once the shadow `apply`
+ * has begun owes the collapse as well (`Walk`). `beforeDispatch` runs once the shadow check has
+ * passed, before anything is sent, and from then on a refusal owes neither (plan 0117 Rulings
+ * 26 · 28).
  */
 function send(
   target: PluginEditorHandle,
@@ -401,16 +410,14 @@ function send(
   if (!walk.walked) walk.length = at.to - at.from;
   hooks.beforeWalk?.(walk.length);
   const collapse = collapseFor(target.state, at, method);
-  buildOn(
-    collapse ? target.state.apply(collapse) : target.state,
-    owner,
-    ref,
-    method,
-    input,
-    () => (walk.walked = true),
-  );
+  let shadow = target.state;
+  if (collapse) {
+    walk.collapsed = true;
+    shadow = shadow.apply(collapse);
+  }
+  buildOn(shadow, owner, ref, method, input, () => (walk.walked = true));
   hooks.beforeDispatch?.();
-  walk.walked = false;
+  walk.walked = walk.collapsed = false;
   if (collapse) {
     collapse.setMeta("addToHistory", false);
     target.view.dispatch(collapse);

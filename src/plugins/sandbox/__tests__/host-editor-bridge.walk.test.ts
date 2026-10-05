@@ -1,8 +1,10 @@
-// §388 plan 0117 Ruling 26 (spec 0067 §8) — a write refused after its range was walked pays the
-// walked length; one that lands pays its payload and transaction only. The early check asks the
-// meter for the larger of the transaction and the walk, before any walk, on both the ref path
-// and the path with no ref. Walks are counted as real `textBetween` calls on the live document
-// node, as the Ruling 24 rows in `host-editor-bridge.insert.test.ts` count them.
+// §388 plan 0117 Rulings 26 · 27 (spec 0067 §8) — a write refused after its range was walked pays
+// the walked length; one that lands pays its payload and transaction only. Before any walk the
+// meter is asked for what the write could still owe: in `send`, the larger of the transaction and
+// the walk; before the implicit anchor of an `insertMarkdown` with no ref, its payload and the
+// walk. Walks are counted as real `textBetween` calls on the live document node, as the Ruling 24
+// rows in `host-editor-bridge.insert.test.ts` count them. A refusal after a collapse is in
+// `host-editor-bridge.collapse.test.ts`.
 import { AllSelection } from "@tiptap/pm/state";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -250,36 +252,64 @@ describe("the walk charge (plan 0117 Ruling 26)", () => {
     editor.destroy();
   });
 
-  it("with the budget short, a write with no ref is refused before it walks the user's selection", async () => {
-    // Select all on "alpha omega" (13 positions); `getMarkdown` (13) spends first. The check asks
-    // for the transaction (16) and the payload still due (1): 16 left is short of 17.
-    const exhausted = harness("alpha omega\n", ["editor"], {
-      budget: { burst: 13 + 16, refillPerSecond: 0, writeFloor: floor },
-    });
-    await exhausted.handler({ kind: "editor_get_markdown" });
-    exhausted.editor.selectAll();
-    const none = vi.spyOn(exhausted.editor.handle.state.doc, "textBetween");
-    expect(
-      await codeOf(
-        exhausted.handler({ kind: "editor_insert_markdown", markdown: "x" }),
-      ),
-    ).toBe("budget");
-    expect(none).not.toHaveBeenCalled();
-    expect(exhausted.editor.dispatched).toEqual([]);
-
-    const covered = harness("alpha omega\n", ["editor"], {
-      budget: { burst: 13 + 17, refillPerSecond: 0, writeFloor: floor },
-    });
-    await covered.handler({ kind: "editor_get_markdown" });
-    covered.editor.selectAll();
-    const walks = vi.spyOn(covered.editor.handle.state.doc, "textBetween");
-    expect(
-      await codeOf(
-        covered.handler({ kind: "editor_insert_markdown", markdown: "x" }),
-      ),
-    ).toBe("written");
-    expect(walks).toHaveBeenCalled(); // the walk the short row lacks
+  it("with no ref, a selection write is refused before it walks unless the budget covers its payload and the selection (Ruling 27)", async () => {
+    // Select all on "alpha omega" (13 positions, floor 16); `getMarkdown` (13) spends first. When
+    // called, the check asks for the payload (1) and the walk (13), not the transaction.
+    const run = async (left: number) => {
+      const r = harness("alpha omega\n", ["editor"], {
+        budget: { burst: 13 + left, refillPerSecond: 0, writeFloor: floor },
+      });
+      await r.handler({ kind: "editor_get_markdown" });
+      r.editor.selectAll();
+      const walks = vi.spyOn(r.editor.handle.state.doc, "textBetween");
+      const code = await codeOf(
+        r.handler({ kind: "editor_insert_markdown", markdown: "x" }),
+      );
+      return { ...r, code, walks: walks.mock.calls.length };
+    };
+    const short = await run(13);
+    expect([short.code, short.walks]).toEqual(["budget", 0]);
+    expect(short.editor.dispatched).toEqual([]);
+    // 14 is enough to walk — asked for the transaction too (17), it would not be. `send` then
+    // asks for the transaction (16) with 13 left, and the refusal pays the walk: nothing left.
+    const exact = await run(14);
+    expect([exact.code, exact.walks]).toEqual(["budget", 1]);
+    expect(exact.editor.dispatched).toEqual([]);
+    exact.editor.select(1, 2);
+    await expect(
+      exact.handler({ kind: "editor_get_selection" }),
+    ).rejects.toMatchObject({ code: "budget" });
+    const covered = await run(17); // the payload and the transaction
+    expect(covered.code).toBe("written");
     expect(covered.editor.markdown()).toBe("x\n");
+  });
+
+  it("with no ref, a caret write is asked only for its payload when called, so the refill during the parse can cover its transaction (Ruling 27)", async () => {
+    // Floor 8 under "alpha omega" (13): the transaction is 13. `getMarkdown` leaves 13, short of
+    // payload and transaction (14) by the second of refill (1) the parse takes.
+    const write = async (wait: number) => {
+      let t = 0;
+      const r = harness("alpha omega\n", ["editor"], {
+        budget: { burst: 13 + 13, refillPerSecond: 1, writeFloor: 8 },
+        now: () => t,
+      });
+      await r.handler({ kind: "editor_get_markdown" });
+      r.editor.select(6, 6); // "alpha|"
+      const pending = codeOf(
+        r.handler({ kind: "editor_insert_markdown", markdown: "x" }),
+      );
+      t += wait;
+      return { code: await pending, markdown: r.editor.markdown() };
+    };
+    expect(await write(1000)).toEqual({
+      code: "written",
+      markdown: "alphax omega\n",
+    });
+    // Without the refill `send` finds 12, short of the transaction: the refill is what lands it.
+    expect(await write(0)).toEqual({
+      code: "budget",
+      markdown: "alpha omega\n",
+    });
   });
 
   it("with no ref, the check counts the payload still due, so the payload cannot leave the walk unpaid", async () => {
@@ -313,7 +343,7 @@ describe("the walk charge (plan 0117 Ruling 26)", () => {
   });
 
   it("with no ref, a document as large as the burst still takes a write when the refill during the parse covers its payload", async () => {
-    // Burst 13 = the document (floor 8): payload and charge cannot both fit, so the check asks
+    // Burst 13 = the document (floor 8): payload and walk cannot both fit, so the check asks
     // for a full bucket. The payload (1) is charged before the parse; a second of refill during
     // it restores the bucket, and the write lands, as it did before the walk was priced.
     let t = 0;
