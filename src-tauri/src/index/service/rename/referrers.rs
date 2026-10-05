@@ -62,7 +62,9 @@ pub(super) fn named_only_for_own_references(
 }
 
 /// Queue each rewritten referrer, with the content it holds now, into the
-/// indexes that cover it — each spelled that index's way (Mutation::apply_to).
+/// indexes among `keys` that cover it (`keys_covering`), each spelled that
+/// index's way (Mutation::apply_to). Both renames pass `Referrers::holding_keys`,
+/// including contexts whose indexes were built for the judgement.
 pub(super) async fn queue_rewritten(
     per_key: &mut HashMap<String, Vec<Mutation>>,
     ctx_mgr: &ContextManager,

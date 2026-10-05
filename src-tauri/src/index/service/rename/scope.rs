@@ -22,11 +22,16 @@ pub(super) struct RenameScope {
 
 /// The referrers the indexes name, with how many lines each was named for
 /// (`named_referrers`), and what every root holding the file or a referrer
-/// knows of its notes (`known_paths_of` over `holding_contexts`).
+/// knows of its notes (`known_paths_of` over `holding_contexts`), with the
+/// index keys used to queue rewritten referrers.
 pub(super) struct Referrers {
     pub(super) named_lines: HashMap<String, usize>,
     pub(super) files: Vec<String>,
     pub(super) known_paths: KnownPaths,
+    /// The keys from `holding_contexts`: directory contexts holding the
+    /// target or a referrer, whose indexes the judgement reads or tries to
+    /// build. Rewritten referrers are queued into the keys that cover them.
+    pub(super) holding_keys: Vec<String>,
 }
 
 impl RenameScope {
@@ -87,6 +92,7 @@ impl RenameScope {
             named_lines,
             files,
             known_paths,
+            holding_keys: keys_of(&holding),
         })
     }
 }
@@ -98,7 +104,9 @@ impl RenameScope {
 /// the same way (`ensure_indexes`), since a vault registered but never opened
 /// has no index and the judgement must not read that as "no note there". A
 /// build that fails is logged and its root is left unbuilt, which
-/// `known_paths_of` reports as `Unknown`.
+/// `known_paths_of` reports as `Unknown`. `Referrers::holding_keys` carries
+/// these contexts' keys to both renames, so `queue_rewritten` refreshes a
+/// built index with the rewritten referrers it covers after the judgement.
 async fn holding_contexts(
     state: &LinkIndexState,
     ctx_mgr: &ContextManager,

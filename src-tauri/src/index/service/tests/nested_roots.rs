@@ -959,6 +959,117 @@ async fn nested_roots_an_unopened_child_vault_without_the_colliding_note_lets_th
 }
 
 #[tokio::test]
+async fn a_rename_leaves_no_stale_index_for_a_nested_root_it_opened() {
+    // What fails this: passing `scope.keys` to `queue_rewritten` in
+    // `rename/file.rs` — the new child's `old.md` has `sub/r.md` as a backlink.
+    let dir = tempfile::tempdir().unwrap();
+    let v = dir.path().to_str().unwrap().to_string();
+    let sub = format!("{v}/sub");
+    std::fs::create_dir(&sub).unwrap();
+    std::fs::write(format!("{v}/old.md"), "target").unwrap();
+    std::fs::write(format!("{sub}/r.md"), "see [[old]]").unwrap();
+    let ctx = ContextManager::new();
+    ctx.add(info("ctx-v", &v, ContextType::Folder))
+        .await
+        .unwrap();
+    ctx.add(info("ctx-sub", &sub, ContextType::Folder))
+        .await
+        .unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &v).await.unwrap();
+    // `/v/sub` has never been opened.
+    assert!(state.with_index(&sub, |idx| idx.is_none()).await);
+    rename_file_with_links_inner(&state, &ctx, &format!("{v}/old.md"), &format!("{v}/new.md"))
+        .await
+        .unwrap();
+    assert_eq!(
+        std::fs::read_to_string(format!("{sub}/r.md")).unwrap(),
+        "see [[new]]"
+    );
+    // A note named `old` made later under `/v/sub`: nothing links it.
+    let sub_old = format!("{sub}/old.md");
+    std::fs::write(&sub_old, "later").unwrap();
+    let backlinks = get_backlinks_inner(&state, &ctx, &sub_old).await.unwrap();
+    assert_eq!(sources(&backlinks), Vec::<&str>::new());
+}
+
+#[tokio::test]
+async fn a_rename_updates_a_nested_index_that_was_already_open() {
+    // The child index existed before the rename. It reads `sub/r.md` under
+    // the new name afterwards, and no longer under the old one.
+    // What fails this: passing `scope.keys` to `queue_rewritten` in
+    // `rename/file.rs` — `named("old")` still contains `(sub/r.md, 1)`.
+    let dir = tempfile::tempdir().unwrap();
+    let v = dir.path().to_str().unwrap().to_string();
+    let sub = format!("{v}/sub");
+    std::fs::create_dir(&sub).unwrap();
+    std::fs::write(format!("{v}/old.md"), "target").unwrap();
+    std::fs::write(format!("{sub}/r.md"), "see [[old]]").unwrap();
+    let ctx = ContextManager::new();
+    ctx.add(info("ctx-v", &v, ContextType::Folder))
+        .await
+        .unwrap();
+    ctx.add(info("ctx-sub", &sub, ContextType::Folder))
+        .await
+        .unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &v).await.unwrap();
+    refresh_index_inner(&state, &ctx, &sub).await.unwrap();
+    rename_file_with_links_inner(&state, &ctx, &format!("{v}/old.md"), &format!("{v}/new.md"))
+        .await
+        .unwrap();
+    let referrer = format!("{sub}/r.md");
+    let named = |name: &str| {
+        let path = format!("{sub}/{name}.md");
+        state.with_index(&sub, move |idx| {
+            idx.expect("the child index is built")
+                .referring_lines_to(&path, &[])
+        })
+    };
+    assert_eq!(named("old").await, Vec::<(String, u32)>::new());
+    assert_eq!(named("new").await, vec![(referrer, 1)]);
+}
+
+#[tokio::test]
+async fn a_block_id_rename_updates_the_index_of_a_nested_root_it_opened() {
+    // What fails this: passing `scope.keys` to `queue_rewritten` in
+    // `rename/block_id.rs` — `lines("b1")` still contains `(sub/r.md, 1)`.
+    let dir = tempfile::tempdir().unwrap();
+    let v = dir.path().to_str().unwrap().to_string();
+    let sub = format!("{v}/sub");
+    std::fs::create_dir(&sub).unwrap();
+    std::fs::write(format!("{v}/target.md"), "block ^b1\n").unwrap();
+    std::fs::write(format!("{sub}/r.md"), "((target#^b1))\n").unwrap();
+    let ctx = ContextManager::new();
+    ctx.add(info("ctx-v", &v, ContextType::Folder))
+        .await
+        .unwrap();
+    ctx.add(info("ctx-sub", &sub, ContextType::Folder))
+        .await
+        .unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &v).await.unwrap();
+    assert!(state.with_index(&sub, |idx| idx.is_none()).await);
+    rename_block_id_inner(&state, &ctx, &format!("{v}/target.md"), "b1", "b2")
+        .await
+        .unwrap();
+    assert_eq!(
+        std::fs::read_to_string(format!("{sub}/r.md")).unwrap(),
+        "((target#^b2))\n"
+    );
+    let referrer = format!("{sub}/r.md");
+    let lines = |id: &'static str| {
+        let path = format!("{sub}/target.md");
+        state.with_index(&sub, move |idx| {
+            idx.expect("the rename built the child index")
+                .block_reference_lines(&path, id)
+        })
+    };
+    assert_eq!(lines("b1").await, Vec::<(String, u32)>::new());
+    assert_eq!(lines("b2").await, vec![(referrer, 1)]);
+}
+
+#[tokio::test]
 async fn nested_roots_backlinks_come_in_source_path_order_across_both_indexes() {
     // `/v` and `/v/sub` are both roots. `a.md` lies outside the child, so
     // only the parent's index names it; `sub/z.md` is named by both. The

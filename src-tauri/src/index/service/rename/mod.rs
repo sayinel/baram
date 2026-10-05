@@ -72,9 +72,12 @@ pub struct NamespaceRenameResult {
     pub index_rebuilt: bool,
 }
 
-/// The contexts among `keys` (containing indexes) that cover `path`: a
-/// reference file outside a nested root belongs to the enclosing index alone,
-/// and must not be written into, or judged under, the nested one.
+/// The contexts among `keys` that cover `path`. `rewrite_referrers` passes
+/// the keys of the renamed file's contexts; `queue_rewritten`, through
+/// `keys_covering`, passes `Referrers::holding_keys`, which also include
+/// contexts holding referrers without holding the renamed file. A reference
+/// file outside a nested root belongs to the enclosing index alone, and
+/// must not be written into, or judged under, the nested one.
 async fn contexts_covering(
     ctx_mgr: &ContextManager,
     keys: &[String],
@@ -87,8 +90,9 @@ async fn contexts_covering(
         .collect()
 }
 
-/// Which of `keys` cover `path` (`contexts_covering`). Defence in depth:
-/// `Mutation::apply_to` already skips a path its index's root cannot spell.
+/// Which of the holding keys passed by `queue_rewritten` cover `path`
+/// (`contexts_covering`). Defence in depth: `Mutation::apply_to` already
+/// skips a path its index's root cannot spell.
 async fn keys_covering(ctx_mgr: &ContextManager, keys: &[String], path: &str) -> Vec<String> {
     keys_of(&contexts_covering(ctx_mgr, keys, path).await)
 }

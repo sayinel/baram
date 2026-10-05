@@ -41,6 +41,7 @@ pub(crate) async fn rename_block_id_inner(
         named_lines,
         files: referring_files,
         known_paths,
+        holding_keys,
     } = scope
         .referrers(state, ctx_mgr, file_path, None, |index| {
             index.block_reference_lines(file_path, old_id)
@@ -101,10 +102,11 @@ pub(crate) async fn rename_block_id_inner(
     )
     .await;
 
-    // 3. Update the containing indexes — each rewritten file goes into the
-    //    indexes that cover it, spelled each index's way.
+    // 3. Update the holding indexes, including those built for the
+    //    judgement: each rewritten file goes into the indexes that cover it,
+    //    spelled each index's way.
     let mut per_key: HashMap<String, Vec<Mutation>> = HashMap::new();
-    queue_rewritten(&mut per_key, ctx_mgr, &scope.keys, rewritten.contents).await;
+    queue_rewritten(&mut per_key, ctx_mgr, &holding_keys, rewritten.contents).await;
     apply_queued(state, per_key).await;
 
     Ok(RenameResult {

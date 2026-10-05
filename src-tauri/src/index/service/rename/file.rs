@@ -48,6 +48,7 @@ pub(crate) async fn rename_file_with_links_inner(
         named_lines,
         files: referring_files,
         known_paths,
+        holding_keys,
     } = scope
         .referrers(state, ctx_mgr, old_path, Some(new_path), |i| {
             i.referring_lines_to(old_path, &named_by)
@@ -183,10 +184,10 @@ pub(crate) async fn rename_file_with_links_inner(
     )
     .await;
 
-    // 4. Update every containing index: drop the old entry, re-index the
-    //    referring files from the content we already have — each into the
-    //    indexes that cover it — then the renamed file. Each index spells the
-    //    paths its own way (Mutation::apply_to).
+    // 4. Drop the old entry and add the renamed note in its owning indexes.
+    //    Re-index rewritten referrers from the content we already have in
+    //    the holding indexes that cover each one, including indexes built
+    //    for the judgement. Each index spells paths its own way (Mutation::apply_to).
     //    The renamed note is filed under what its new path resolves to now,
     //    after the move and its own rewrite — the identity a save would file
     //    it under (see `remove_old`). A note that no longer resolves (a link
@@ -197,7 +198,7 @@ pub(crate) async fn rename_file_with_links_inner(
     let new_identity = std::fs::canonicalize(new_path).ok();
     let mut per_key: HashMap<String, Vec<Mutation>> = HashMap::new();
     push_for_keys(&mut per_key, &scope.keys, &remove_old);
-    queue_rewritten(&mut per_key, ctx_mgr, &scope.keys, rewritten.contents).await;
+    queue_rewritten(&mut per_key, ctx_mgr, &holding_keys, rewritten.contents).await;
     if let Some(path) = new_identity {
         push_for_keys(
             &mut per_key,
