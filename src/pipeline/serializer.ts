@@ -131,10 +131,13 @@ const LITERAL_CONSTRUCTS: ReadonlySet<ConstructName> = new Set([
 const TASK_CHECK = new Set(["\t", "\n", "\r", " ", "X", "x"]);
 
 /** After `]`: an inline link `(`, a full or collapsed reference `[`, a
- *  definition `:`, and Pandoc's bracketed span `{` (the Pandoc export keeps that
- *  extension on for underline, `convertUnderlineForPandoc`). Only `:` could
- *  change what Baram reads — the rest keep files saved before byte-identical. */
-const LABEL_FOLLOWERS = new Set(["(", ":", "[", "{"]);
+ *  definition `:`, Pandoc's bracketed span `{` (the Pandoc export keeps that
+ *  extension on for underline), and `<` — the Pandoc export turns an underline
+ *  tag there into a span's `[` (`convertUnderlineForPandoc`), which would make
+ *  the reference shape `][`. Only `:` could change what Baram reads; the rest
+ *  keep such text in the bytes it was saved with and the meaning the export
+ *  gave it. */
+const LABEL_FOLLOWERS = new Set(["(", ":", "<", "[", "{"]);
 
 /** §56l — remark escapes a `#` only where it could open a heading, at a line
  *  start; a `#` opens one only before a space, a tab or the line end. */
@@ -171,7 +174,11 @@ const TAG_CHARACTER = /[\w가-힣]/;
  * - it sits inside one of {@link LITERAL_CONSTRUCTS};
  * - `^` follows it — a footnote call, or a definition at a line start;
  * - `]` comes right before it — the second label of a reference shape;
- * - at a line start, it is a task check: `[`, one of {@link TASK_CHECK}, `]`;
+ * - at a line start, it is a task check (`[`, one of {@link TASK_CHECK}, `]`),
+ *   or it starts `[!` or `[toc]` in any case — the Pandoc and Notion exports'
+ *   callout and table-of-contents regexes (`convertCalloutsForPandoc`,
+ *   `stripTocForPandoc` and their Notion twins) read such a line from the saved
+ *   string;
  * - the `]` it pairs with inside this text is followed by one of
  *   {@link LABEL_FOLLOWERS}, or it pairs with none. A `]` outside this text could
  *   close it on anything, so only a pair closed here is known. Escaping one `[`
@@ -216,8 +223,9 @@ function writtenPositions(
       }
       if (
         atLineStart(value, index, info.before) &&
-        TASK_CHECK.has(value[index + 1]) &&
-        value[index + 2] === "]"
+        ((TASK_CHECK.has(value[index + 1]) && value[index + 2] === "]") ||
+          value[index + 1] === "!" ||
+          value.slice(index, index + 5).toLowerCase() === "[toc]")
       ) {
         continue;
       }

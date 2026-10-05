@@ -13,6 +13,11 @@ import { getSchema } from "@tiptap/core";
 import { describe, expect, it } from "vitest";
 
 import { createBaramExtensions } from "../../extensions";
+import {
+  convertCalloutsForPandoc,
+  convertForPandoc,
+  stripTocForPandoc,
+} from "../../utils/export/pandoc-export";
 import { markdownToProsemirror } from "../md-to-pm";
 import { prosemirrorToMarkdown } from "../pm-to-md";
 
@@ -189,6 +194,40 @@ describe("every `$` in text is escaped", () => {
     );
     expectSameAfterSave(doc);
     expect(linkHrefs(load(prosemirrorToMarkdown(doc)))).toEqual([]);
+  });
+});
+
+describe("the escapes the exports' string passes rely on", () => {
+  // The Pandoc and Notion exports rewrite the saved string with regexes, and
+  // the backslash was what kept these shapes out of them. In the editor none of
+  // them means anything else either way.
+  it("keeps a bracket pair before underline escaped", () => {
+    // `convertUnderlineForPandoc` turns `<u>` into a span's `[`, so a raw
+    // `[공지]` would become the reference shape `[공지][내일 휴무]`.
+    const saved = prosemirrorToMarkdown(
+      paragraphOf(
+        { text: "[공지]", type: "text" },
+        { marks: [{ type: "underline" }], text: "내일 휴무", type: "text" },
+      ),
+    );
+    expect(saved).toBe("\\[공지]<u>내일 휴무</u>\n");
+    expect(convertForPandoc(saved)).toContain(
+      "\\[공지][내일 휴무]{.underline}",
+    );
+  });
+
+  it("keeps a callout-shaped line inside a quote escaped", () => {
+    const md = "> a\n> \\[!note] b\n";
+    expect(roundtrip(md)).toBe(md);
+    expect(convertCalloutsForPandoc(roundtrip(md))).toBe(md);
+  });
+
+  it.each([
+    ["after a soft line break", "x\n\\[TOC]\n"],
+    ["in another case", "\\[Toc]\n"],
+  ])("keeps a `[TOC]` line %s escaped", (_label, md) => {
+    expect(roundtrip(md)).toBe(md);
+    expect(stripTocForPandoc(roundtrip(md))).toBe(md);
   });
 });
 
