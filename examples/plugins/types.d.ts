@@ -80,9 +80,12 @@ export interface EditorAPI {
      * step. Requires `editor`.
      */
     insertMarkdown(markdown: string, opts?: EditorInsertOptions): Promise<void>;
-    /** Replace the selection (or `opts.replace`'s range) with plain text. Requires `editor`. */
+    /**
+     * Replace the selection (or `opts.replace`'s range) with plain text, as its own undo step.
+     * Requires `editor`.
+     */
     insertText(text: string, opts?: EditorInsertOptions): Promise<void>;
-    /** Replace the whole document. Requires `editor`. */
+    /** Replace the whole document, as its own undo step. Requires `editor`. */
     setMarkdown(markdown: string): Promise<void>;
 }
 export interface EditorInsertOptions {
