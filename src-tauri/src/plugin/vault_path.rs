@@ -101,21 +101,47 @@ fn contains_colon(name: &std::ffi::OsStr) -> bool {
     name.as_encoded_bytes().contains(&b':')
 }
 
-/// An `FsError` with any absolute path replaced by the caller's own relative one.
+/// An `FsError` as text for a sandboxed plugin, with the absolute path swapped for the
+/// caller's own relative one in each variant that names one.
 ///
-/// §260 Phase 4a — the sandboxed tier must never receive an absolute path, and two
-/// `FsError` variants carry one in their `Display`. Matched EXHAUSTIVELY on purpose: a
-/// wildcard arm would silently pass through the next variant that happens to embed a
-/// path, which is the fail-open shape this phase's review kept finding.
+/// §260 Phase 4a — the sandboxed tier must never receive an absolute path. The variants
+/// whose own `Display` carries one are `NotFound`, `PermissionDenied`, `AlreadyExists`
+/// and `ReadDir`, and each has an arm below. `TrashError` and `WatchError` wrap another
+/// crate's error text, which can embed a path: `trash` (5.2.9 in `Cargo.lock`) formats its
+/// error with `{:?}`, which prints the variant's fields, and some variants have a `path`,
+/// `target` or `original` field; `notify` (8.2.0) appends ` about [paths]` whenever the
+/// error has paths attached, as its macOS FSEvents backend attaches one when a watch
+/// target is missing. Those two pass through unchanged because the only call of this
+/// function outside this file's tests, the `FilesList` op in `commands/plugin_cmd.rs`,
+/// runs `fs::list_dir`, which makes only `PermissionDenied` and `ReadError`. An op that can
+/// produce `TrashError` or `WatchError` has to redact them first.
+///
+/// Matched EXHAUSTIVELY on purpose: a wildcard arm would silently pass through the next
+/// variant that happens to embed a path, which is the fail-open shape this phase's review
+/// kept finding.
 pub(crate) fn redact_fs_error(error: &crate::fs::FsError, caller_path: &str) -> String {
     use crate::fs::FsError;
     match error {
         // Keep the sentinel — the frontend's `listDir` wrapper parses it (§4.3) — and
         // swap only the path after the colon.
         FsError::PermissionDenied(_) => format!("PERMISSION_DENIED:{caller_path}"),
+        // No plugin op calls `create_file` today, so this arm is unreachable from the
+        // sandbox; it exists because this match is exhaustive. Same swap as the denial,
+        // so a future op that does reach it hands back the sentinel the host's
+        // `createFile` (§4.3) parses, with the caller's own path.
+        FsError::AlreadyExists(_) => format!("ALREADY_EXISTS:{caller_path}"),
         FsError::NotFound(_) => format!("file \"{caller_path}\" was not found"),
-        // These carry an `io::Error` or a watcher message, neither of which embeds a
-        // path on any platform we build for.
+        // §387 The walk's own variant names the directory it failed on — an absolute
+        // path. Swapped for the caller's, like the two sentinels above; the io::Error
+        // after it is the OS's own error from listing that directory, whose text is a
+        // message and a code with no path. NOT merged into the pass-through arm below.
+        FsError::ReadDir { source, .. } => {
+            format!("directory \"{caller_path}\" could not be read: {source}")
+        }
+        // The `ReadError` that `list_dir` makes wraps an OS `io::Error`, whose text is a
+        // message and a code with no path. `TrashError` and `WatchError` carry no such
+        // guarantee (see the doc above); they pass through because `fs::list_dir`, the
+        // only operation that reaches this function, makes neither.
         FsError::ReadError(_) | FsError::TrashError(_) | FsError::WatchError(_) => {
             error.to_string()
         }
@@ -246,6 +272,10 @@ mod tests {
         assert!(!missing.contains(secret), "leaked: {missing}");
         assert!(missing.contains("notes/a.md"), "unexpected: {missing}");
 
+        // Same shape as the denial: `createFile` (§4.3) parses the sentinel.
+        let taken = redact_fs_error(&FsError::AlreadyExists(secret.into()), "notes/a.md");
+        assert_eq!(taken, "ALREADY_EXISTS:notes/a.md");
+
         // A variant that carries no path is passed through unchanged, so a real cause is
         // not flattened into a generic message.
         let io = redact_fs_error(
@@ -253,6 +283,20 @@ mod tests {
             "notes",
         );
         assert!(io.contains("disk on fire"), "unexpected: {io}");
+
+        // §387 The variant that names a directory must not hand that name over either.
+        let walk = redact_fs_error(
+            &FsError::ReadDir {
+                path: secret.into(),
+                source: std::io::Error::other("denied"),
+            },
+            "notes",
+        );
+        assert!(!walk.contains(secret), "leaked: {walk}");
+        assert!(
+            walk.contains("notes") && walk.contains("denied"),
+            "unexpected: {walk}"
+        );
     }
 
     /// §260 3c-2c — `.baram/` is the app's own per-vault state, so a plugin that could

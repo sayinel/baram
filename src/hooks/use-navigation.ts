@@ -10,7 +10,7 @@ import {
 } from "../components/editor/pdf/pdf-highlight-sidecar";
 import { readSidecar } from "../components/editor/pdf/pdf-highlight-store";
 import { type Locale, t } from "../i18n";
-import { writeFile } from "../ipc/invoke";
+import { createFile, isFileExistsError } from "../ipc/invoke";
 import { ensureJournalFile } from "../services/journal-file-service";
 import { useContextStore } from "../stores/context/context";
 import { useEditorStore } from "../stores/editor/editor";
@@ -249,7 +249,26 @@ export function useNavigation({
             const { createDir } = await import("../ipc/invoke");
             await createDir(parentDir).catch(() => {});
 
-            await writeFile(newPath, `# ${target}\n`);
+            // `createFile`, never `writeFile`: the latter replaces whatever is at the
+            // path, and the link failing to resolve is no evidence the path is free.
+            // The name in the link and the name on disk can differ in a way the
+            // resolver does not fold — Unicode normalization: a note saved by macOS
+            // with a decomposed (NFD) Korean name, linked by text typed in the
+            // composed form (NFC). On APFS both spellings open the same file, so the
+            // write emptied that note to the one heading line. The OS refuses a
+            // taken path instead, and nothing below runs.
+            try {
+              await createFile(newPath, `# ${target}\n`);
+            } catch (err) {
+              if (!isFileExistsError(err)) throw err;
+              useUIStore.getState().showToast(
+                tr("wikilink.create.exists", {
+                  name: newPath.slice(rootPath.length + 1),
+                }),
+                "error",
+              );
+              return;
+            }
             const { refreshIndex, listDir } = await import("../ipc/invoke");
             const { buildFileTree } = await import("../stores/file/file");
             await refreshIndex(rootPath);

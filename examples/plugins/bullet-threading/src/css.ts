@@ -39,7 +39,7 @@ const SAFE_COLOR = /^[\w#(),.%\s-]{1,64}$/;
  * say which build it is showing — without it, "the rule did not apply" and "the reload
  * kept the old module" are indistinguishable from a screenshot.
  */
-const STYLE_REVISION = "5";
+const STYLE_REVISION = "6";
 
 const MIN_WIDTH = 0.5;
 const MAX_WIDTH = 8;
@@ -74,11 +74,14 @@ export function resolveSettings(raw: Record<string, unknown>): ThreadSettings {
  * establishes — nothing here measures anything. Each term was re-read from that file
  * when this was written:
  *
- * - The PARENT's rail sits at `-(--list-gutter + 1em)`. An item starts one gutter in
- *   from its list's padding box (`--list-gutter: 1.4em`, widened by `ol` for two- and
- *   three-digit numbers), and the static grey rail is drawn 1em left of that box
- *   (`li :is(ul, ol)::before { left: -1em }`) — so the two land on the same subpixel and
- *   the thread traces the rail instead of sitting beside it.
+ * - The PARENT's rail sits at `--list-guide-left − --list-gutter`. An item starts one
+ *   gutter in from its list's padding box (`--list-gutter: 1.4em`, widened by `ol` for
+ *   wider markers), and the static grey rail is drawn `--list-guide-left` from that box
+ *   (`li :is(ul, ol)::before { left: var(--list-guide-left) }`) — so the two land on the
+ *   same subpixel and the thread traces the rail instead of sitting beside it. The host
+ *   derives that offset from the parent's marker: -1em under a bullet, further left under
+ *   a number whose digits line up on their first character. A host that predates the
+ *   variable draws every rail at -1em, which is the fallback here.
  * - The first line's centre is `--editor-line-height * 0.5em`, the expression the
  *   markers already use to centre themselves. Settings writes that property onto
  *   `.tiptap`.
@@ -97,7 +100,7 @@ export function buildCss(settings: ThreadSettings): string {
   const root = settings.onlyWhenFocused
     ? `.tiptap.ProseMirror-focused`
     : `.tiptap`;
-  const railX = `calc(-1 * (var(--list-gutter, 1.4em) + 1em))`;
+  const railX = `calc(var(--list-guide-left, -1em) - var(--list-gutter, 1.4em))`;
   // `railX` is the axis the editor's own indent guide sits on, but the two draw around
   // it differently: lists.css gives the guide `width: --guide-width` and pulls it back
   // by half (`margin-left: calc(var(--guide-width) / -2)`), so it is CENTRED on the
@@ -137,12 +140,14 @@ export function buildCss(settings: ThreadSettings): string {
     // The elbow: one box carrying a left and a bottom border, curved where they meet.
     // Only on an item that is itself inside a list item — a top-level item has no parent
     // rail to descend from, and the stroke would hang in the left margin.
+    // It spans from the rail to 0.5em short of the item's edge — the centre of a bullet's
+    // column, under the ring that masks it — so it is as wide as the rail is far from there.
     `${root} li li.${THREAD_CLASS}::after{` +
       `position:absolute;` +
       `left:${railX};` +
       `margin-left:${centreOnRail};` +
       `top:calc(-1 * var(--bt-gap));` +
-      `width:calc(var(--list-gutter, 1.4em) + 0.5em);` +
+      `width:calc(var(--list-gutter, 1.4em) - 0.5em - var(--list-guide-left, -1em));` +
       `height:calc(var(--bt-gap) + var(--editor-line-height, 1.75) * 0.5em + ` +
       `var(--bt-width) / 2);` +
       `border-left:${stroke};` +

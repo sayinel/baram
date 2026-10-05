@@ -64,6 +64,9 @@ jobs:
               # list maintained by hand is how this happened the first time.
               - 'registry/index.json'
               - 'src/plugins/revocation-client.ts'
+              # §317: `space_names_match_the_frontends` compares its `SPACE_ALIASES` table
+              # with the index's space names.
+              - 'src/utils/editor/wikilink-nav.ts'
               # issue 669: the literal-parity check below runs these, so a PR that
               # edits one must run the job that would notice it broke.
               - 'scripts/literal-parity.sh'
@@ -131,7 +134,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: taiki-e/install-action@9983c65e42da123ff25d1f78505eb6de315aa172 # v2.87.20
+      - uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2.87.22
         with:
           tool: cargo-deny
       - name: cargo-deny (licenses, bans, sources)
@@ -182,7 +185,7 @@ jobs:
 
       # Pin must be a master-history SHA (release-branch SHAs can be GC'd);
       # the toolchain is selected via the input, not the ref name.
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
         with:
           toolchain: stable
           components: clippy, rustfmt
@@ -281,7 +284,7 @@ jobs:
 
       # Pin must be a master-history SHA (release-branch SHAs can be GC'd);
       # the toolchain is selected via the input, not the ref name.
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
         with:
           toolchain: stable
           components: clippy

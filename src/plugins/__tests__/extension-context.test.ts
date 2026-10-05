@@ -1,4 +1,4 @@
-import type { PluginManifest } from "../types";
+import type { EditorAPI, PluginManifest } from "../types";
 
 // §69 Plugin ExtensionContext capability gating tests
 import { beforeEach, describe, expect, test } from "vitest";
@@ -85,38 +85,47 @@ describe("createExtensionContext", () => {
       "editor API is reachable with the '%s' capability",
       (capability) => {
         const ctx = createExtensionContext(makeManifest([capability]), "/test");
-        expect(typeof ctx.editor.getContent).toBe("function");
+        expect(typeof ctx.editor.getMarkdown).toBe("function");
+        expect(typeof ctx.editor.getText).toBe("function");
         expect(typeof ctx.editor.getSelection).toBe("function");
       },
     );
 
     test.each([["editor"], ["editor:readonly"]] as const)(
       "'%s' refuses a read rather than answering with an empty document",
-      (capability) => {
+      async (capability) => {
         const ctx = createExtensionContext(makeManifest([capability]), "/test");
-        expect(() => ctx.editor.getContent()).toThrow(/^editor\.getContent: /);
+        await expect(ctx.editor.getText()).rejects.toMatchObject({
+          // The fixture never reports a surface, so `editorSurfaceBlockedReason` is still its
+          // fail-closed initial state ("the editor surface has not been reported yet") and
+          // the surface gate answers before the instance is consulted.
+          code: "surface-blocked",
+          message: expect.stringMatching(/^editor\.getText: /),
+        });
       },
     );
 
-    test("editor:readonly prevents setContent", () => {
-      const ctx = createExtensionContext(
-        makeManifest(["editor:readonly"]),
-        "/test",
-      );
-      expect(() => ctx.editor.setContent("test")).toThrow(/readonly/);
-    });
-
-    test("editor:readonly prevents insertText", () => {
-      const ctx = createExtensionContext(
-        makeManifest(["editor:readonly"]),
-        "/test",
-      );
-      expect(() => ctx.editor.insertText("test")).toThrow(/readonly/);
-    });
+    test.each([
+      ["setMarkdown", (e: EditorAPI) => e.setMarkdown("x")],
+      ["insertText", (e: EditorAPI) => e.insertText("x")],
+      ["insertMarkdown", (e: EditorAPI) => e.insertMarkdown("x")],
+    ] as const)(
+      "editor:readonly prevents %s with not-permitted, before the surface is consulted",
+      async (_name, call) => {
+        const ctx = createExtensionContext(
+          makeManifest(["editor:readonly"]),
+          "/test",
+        );
+        await expect(call(ctx.editor)).rejects.toMatchObject({
+          code: "not-permitted",
+          message: expect.stringMatching(/^editor\.\w+: .*editor:readonly/),
+        });
+      },
+    );
 
     test("editor API throws when no editor capability", () => {
       const ctx = createExtensionContext(makeManifest([]), "/test");
-      expect(() => ctx.editor.getContent()).toThrow(/editor/);
+      expect(() => ctx.editor.getMarkdown()).toThrow(/editor/);
     });
   });
 

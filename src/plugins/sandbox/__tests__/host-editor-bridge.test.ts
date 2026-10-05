@@ -1,14 +1,8 @@
 import type { PluginEditorHandle } from "../../extension-context";
-import type { SandboxHostRequest } from "../protocol";
 
-import { Schema } from "@tiptap/pm/model";
-import { EditorState, TextSelection } from "@tiptap/pm/state";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import { markdownToProsemirror } from "../../../pipeline/md-to-pm";
-import { prosemirrorToMarkdown } from "../../../pipeline/pm-to-md";
 import { useEditorStore } from "../../../stores/editor/editor";
 import { markContentLoaded } from "../../../utils/editor/programmatic-update";
 import { setEditorSurfaceBlocked } from "../../extension-context";
@@ -20,145 +14,18 @@ import {
   insertCost,
   WRITE_TRANSACTION_FLOOR,
 } from "../host-editor-bridge";
+import {
+  everyEditorRequest,
+  fakeEditor,
+  harness,
+  schema,
+} from "./editor-bridge-harness";
 
 // §260 Phase 4b — the sandboxed tier's document access. The editor lives in the main
 // realm, so this is where the capability check has to be enforcing, and where the design's
 // central property lives: a document is STAGED, never returned in the response frame.
 //
-// A real `EditorState` over a small real `Schema`, with only the view faked — the same
-// idiom the pipeline tests use. Faking the document instead would mean faking ProseMirror
-// nodes for `prosemirrorToMarkdown` to walk, which tests the fake rather than the bridge.
-const schema = new Schema({
-  marks: {
-    // Tiptap's names — the pipeline looks marks up by these, not by the HTML tag.
-    bold: { parseDOM: [{ tag: "strong" }], toDOM: () => ["strong", 0] },
-    italic: { parseDOM: [{ tag: "em" }], toDOM: () => ["em", 0] },
-  },
-  nodes: {
-    doc: { content: "block+" },
-    heading: {
-      attrs: { blockId: { default: null }, level: { default: 1 } },
-      content: "inline*",
-      group: "block",
-    },
-    paragraph: {
-      attrs: { blockId: { default: null } },
-      content: "inline*",
-      group: "block",
-      marks: "_",
-    },
-    text: { group: "inline" },
-  },
-});
-
-/**
- * Derived from the protocol, exactly as `host-editor-bridge` derives it internally — stated
- * here rather than exported from production, so the type is not a test-only API.
- */
-type EditorRequest = Extract<SandboxHostRequest, { kind: `editor_${string}` }>;
-
-/**
- * Every `editor_*` request the protocol declares, as a callable request object.
- *
- * The union in `protocol.ts` is the source of truth for WHICH ops exist, so it is read
- * rather than restated — a guard that enumerates cannot fail when a member is added.
- *
- * ‼️ A source scan finds *a* match, not *the* match: the count is asserted, and any kind
- * without an argument recipe throws rather than being skipped, so a new op fails this file
- * instead of quietly escaping every loop that uses it.
- */
-function everyEditorRequest(): EditorRequest[] {
-  const protocol = readFileSync(resolve(__dirname, "../protocol.ts"), "utf8");
-  const kinds = [
-    ...new Set(
-      [...protocol.matchAll(/kind: "(editor_\w+)"/gu)].map((m) => m[1]),
-    ),
-  ];
-  // Four today: get_markdown, get_selection, get_text, insert_text, set_markdown — five.
-  // Asserted as "at least the ones this file knows about" so adding an op raises the floor
-  // rather than tripping an unrelated equality.
-  if (kinds.length < 5) {
-    throw new Error(
-      `only found ${kinds.length} editor_* kinds in protocol.ts — the scan is broken`,
-    );
-  }
-  const args: Record<string, Record<string, unknown>> = {
-    editor_insert_text: { text: "x" },
-    editor_set_markdown: { markdown: "# b\n" },
-  };
-  return kinds.map((kind) => {
-    if (kind.startsWith("editor_get_")) return { kind } as EditorRequest;
-    const extra = args[kind];
-    if (!extra) {
-      throw new Error(
-        `${kind} has no argument recipe here — add one so it is actually exercised`,
-      );
-    }
-    return { kind, ...extra } as EditorRequest;
-  });
-}
-
-/** A live-editor stand-in whose dispatched transactions really apply. */
-function fakeEditor(markdown: string) {
-  let state = EditorState.create({
-    doc: markdownToProsemirror(markdown, schema),
-    schema,
-  });
-  const dispatched: unknown[] = [];
-  const handle: PluginEditorHandle = {
-    chain: () => ({}),
-    commands: {},
-    getHTML: () => "",
-    // Tiptap's own default block separator is "\n\n" — matched here so the "not a
-    // flat-string slice" test below contrasts against what production really did, rather
-    // than against a friendlier fake (§260 Phase 4b code review, N3).
-    getText: () => state.doc.textBetween(0, state.doc.content.size, "\n\n"),
-    schema,
-    get state() {
-      return state;
-    },
-    view: {
-      dispatch: (tr) => {
-        dispatched.push(tr);
-        state = state.apply(tr);
-      },
-    },
-  } as PluginEditorHandle;
-  return {
-    dispatched,
-    handle,
-    markdown: () => prosemirrorToMarkdown(state.doc),
-    /** What `editor.view.updateState()` does: a DIFFERENT document, same instance. */
-    installDocument: (doc: ReturnType<typeof markdownToProsemirror>) => {
-      state = EditorState.create({ doc, schema });
-    },
-    select: (from: number, to: number) => {
-      state = state.apply(
-        state.tr.setSelection(TextSelection.create(state.doc, from, to)),
-      );
-    },
-  };
-}
-
-function harness(
-  markdown: string,
-  capabilities: string[],
-  overrides: Partial<Parameters<typeof createEditorRequestHandler>[0]> = {},
-) {
-  const editor = fakeEditor(markdown);
-  const staged: Array<[string, string]> = [];
-  const handler = createEditorRequestHandler({
-    capabilities: capabilities as never,
-    editor: () => editor.handle,
-    pluginId: "acme.notes",
-    stage: async (pluginId, payload) => void staged.push([pluginId, payload]),
-    // Stated, not inherited: the real default is BLOCKED until the app reports the surface
-    // (code review M4), so a harness that wants the normal case has to say so.
-    surfaceBlocked: () => null,
-    ...overrides,
-  });
-  return { editor, handler, staged };
-}
+// The fake editor and the handler harness are in `editor-bridge-harness.ts`.
 
 describe("createEditorRequestHandler (§260 Phase 4b)", () => {
   it("stages the document instead of answering with it", async () => {
@@ -249,7 +116,9 @@ describe("createEditorRequestHandler (§260 Phase 4b)", () => {
       unknown
     >;
 
-    expect(Object.keys(answer).sort()).toEqual(["from", "staged", "to"]);
+    // §388 — the ref rides inline too: 32 hex digits, nowhere near the 8 KiB threshold.
+    expect(Object.keys(answer).sort()).toEqual(["from", "ref", "staged", "to"]);
+    expect(answer.ref).toMatch(/^[0-9a-f]{32}$/u);
     expect(answer.staged).toBe(true);
     expect(JSON.stringify(answer)).not.toContain("para");
     expect(staged).toHaveLength(1);
@@ -264,11 +133,14 @@ describe("createEditorRequestHandler (§260 Phase 4b)", () => {
 
     const answer = (await handler({ kind: "editor_get_selection" })) as {
       from: number;
+      ref: string;
       staged: boolean;
       to: number;
     };
 
-    expect(answer).toEqual({ from: 3, staged: false, to: 3 });
+    expect(answer).toMatchObject({ from: 3, staged: false, to: 3 });
+    expect(Object.keys(answer).sort()).toEqual(["from", "ref", "staged", "to"]);
+    expect(answer.ref).toMatch(/^[0-9a-f]{32}$/u);
     expect(staged).toEqual([]);
   });
 
@@ -294,24 +166,34 @@ describe("createEditorRequestHandler (§260 Phase 4b)", () => {
     expect(text).not.toBe(editor.handle.getText().slice(from, to));
   });
 
-  it("inserts text as ONE transaction, so it is one undo step", async () => {
+  it("inserts text as ONE document change, so it is one undo step", async () => {
+    // §388 spec 0067 §5 — the shared core also sends a step-less `closeHistory` transaction
+    // after the insert, so the user's next keystroke starts an undo step of its own. That one
+    // changes nothing: the insert is still the only transaction with steps.
     const { editor, handler } = harness("Hello\n", ["editor"]);
     editor.select(6, 6); // end of "Hello"
 
     await handler({ kind: "editor_insert_text", text: " world" });
 
-    expect(editor.dispatched).toHaveLength(1);
+    expect(editor.dispatched.filter((tr) => tr.docChanged)).toHaveLength(1);
+    // No dispatch beyond those two: the insert, then the step-less `closeHistory` (spec §5).
+    expect(editor.dispatched).toHaveLength(2);
+    expect(editor.dispatched[1].steps).toHaveLength(0);
     expect(editor.markdown()).toBe("Hello world\n");
   });
 
-  it("replaces the document as ONE transaction and round-trips", async () => {
+  it("replaces the document in ONE document-changing transaction and round-trips", async () => {
     // `setMarkdown(await getMarkdown())` must be a no-op on the document — the project's
     // first quality criterion, and the reason both directions use the app's own pipeline.
     const source = "# Title\n\nBody with **bold**.\n";
     const { editor, handler, staged } = harness("# old\n", ["editor"]);
 
     await handler({ kind: "editor_set_markdown", markdown: source });
-    expect(editor.dispatched).toHaveLength(1);
+    expect(editor.dispatched.filter((tr) => tr.docChanged)).toHaveLength(1);
+    // No dispatch beyond those two: the replace, then the step-less `closeHistory` that keeps
+    // the user's next keystroke out of its undo step (spec §5 · §12, plan 0117 Ruling 22).
+    expect(editor.dispatched).toHaveLength(2);
+    expect(editor.dispatched[1].steps).toHaveLength(0);
 
     await handler({ kind: "editor_get_markdown" });
     expect(staged[0][1]).toBe(source);
@@ -595,7 +477,13 @@ describe("createEditorRequestHandler (§260 Phase 4b)", () => {
     for (let i = 0; i < 20; i++) {
       await small.handler({ kind: "editor_insert_text", text: "x" });
     }
-    expect(small.editor.dispatched).toHaveLength(20);
+    expect(small.editor.dispatched.filter((tr) => tr.docChanged)).toHaveLength(
+      20,
+    );
+    // Each insert is one step, then one step-less `closeHistory` (spec §5) — nothing more.
+    expect(small.editor.dispatched.map((tr) => tr.steps.length)).toEqual(
+      Array.from({ length: 20 }, () => [1, 0]).flat(),
+    );
   });
 
   it("never makes a large document permanently unreadable", async () => {
@@ -715,5 +603,74 @@ describe("the production budget (§260 Phase 4b)", () => {
     expect(() => m.spend(8 * 1024 * 1024, "getMarkdown")).toThrow(/exhausted/);
     clock += (DOCUMENT_BUDGET_BURST / DOCUMENT_BUDGET_REFILL_PER_SECOND) * 1000;
     expect(() => m.spend(8 * 1024 * 1024, "getMarkdown")).not.toThrow();
+  });
+});
+
+// Plan 0117 Ruling 24 split `fit` from the subtraction, and a compound `tokens -= fit(…)`
+// read `tokens` BEFORE `fit` refilled it — every successful `spend` then subtracted from the
+// stale value and threw the refill away. The refill tests that existed only drove refused
+// calls and `afford`, both of which keep the refill, so none saw it.
+describe("the meter keeps the refill across a successful spend (plan 0117)", () => {
+  // Burst 20, refill 8/s: every number below is a whole token.
+  const meter = (clock: { at: number }) =>
+    createMeter(() => clock.at, 20, 8, "b");
+  const admitted = (m: ReturnType<typeof meter>, cost: number) => {
+    let n = 0;
+    for (;;) {
+      try {
+        m.spend(cost, "x");
+        n++;
+      } catch {
+        return n;
+      }
+    }
+  };
+
+  it("admits 18 one-token charges after a spend of 10 and one second", () => {
+    const clock = { at: 0 };
+    const m = meter(clock);
+    m.spend(10, "x"); // 10 left
+    clock.at = 1000; // refill 8 → 18
+    // The stale subtraction took 1 from 10 and not from 18, so it admitted 10 — the count
+    // that fails this row.
+    expect(admitted(m, 1)).toBe(18);
+  });
+
+  it("leaves exactly the refilled tokens less the charge, never a negative", () => {
+    const clock = { at: 0 };
+    const m = meter(clock);
+    m.spend(15, "x"); // 5 left
+    clock.at = 1000; // 13
+    m.spend(13, "x"); // the refill covers it: 0 left, not 5 − 13 = −8
+    expect(() => m.afford(1, "x")).toThrow(/exhausted/);
+    clock.at = 2000; // exactly one second of refill on 0
+    expect(() => m.afford(8, "x")).not.toThrow();
+    // `tokens` was not negative: a −8 would have left 0 here and refused the 8 above.
+    expect(() => m.afford(9, "x")).toThrow(/exhausted/);
+  });
+
+  it("leaves the largest affordable read equal to the arithmetic", () => {
+    const clock = { at: 0 };
+    const m = meter(clock);
+    m.spend(15, "x"); // 5 left
+    clock.at = 1000; // 13
+    m.spend(3, "x"); // 10 left
+    expect(() => m.afford(10, "x")).not.toThrow();
+    expect(() => m.afford(11, "x")).toThrow(/exhausted/);
+  });
+
+  it("keeps the refill on `afford` and on a refused spend, as before", () => {
+    // The positive pair: these two never lost the refill, so they pass with or without the
+    // fix — they pin that the fix did not trade one path's refill for another's.
+    const clock = { at: 0 };
+    const m = meter(clock);
+    m.spend(15, "x"); // 5 left
+    clock.at = 1000; // 13
+    expect(() => m.afford(13, "x")).not.toThrow();
+    expect(() => m.afford(14, "x")).toThrow(/exhausted/);
+    expect(() => m.spend(14, "x")).toThrow(/exhausted/);
+    // `afford` and the refused spend spent nothing, and the refill is still there.
+    expect(() => m.spend(13, "x")).not.toThrow();
+    expect(() => m.afford(1, "x")).toThrow(/exhausted/);
   });
 });

@@ -614,6 +614,16 @@
       "shortcuts": {}
     },
     {
+      "name": "selectionAnchors",
+      "file": "plugins/selection-anchors.ts",
+      "spec": "§388",
+      "phase": 3,
+      "milestone": "M11",
+      "status": "implemented",
+      "shortcuts": {},
+      "_note": "Maps the ranges plugins read through editor.getSelection() through every transaction, keyed by document node, so editor.insertMarkdown/insertText with { replace: ref } can replace exactly what was read or refuse. No UI and no settings; does nothing while no ref is recorded."
+    },
+    {
       "name": "dropHandler",
       "file": "plugins/drop-handler.ts",
       "spec": "§3.3",

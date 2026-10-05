@@ -9,7 +9,6 @@ import type {
   PluginSettingValue,
   PromptsAPI,
   SandboxContext,
-  SandboxEditorAPI,
   SandboxFilesAPI,
   SandboxSettingsAPI,
   SandboxUIAPI,
@@ -26,6 +25,8 @@ import type { SandboxTransport } from "./transport";
 
 import { logger } from "../../utils/logger";
 import { promptFrameProblem } from "../prompt-shape";
+import { isEditorRefusalCode } from "./protocol";
+import { createSandboxEditorAPI } from "./sandbox-editor-client";
 
 /**
  * §260 3c-2c — sandbox-side bound on a host-mediated request. Longer than the
@@ -297,35 +298,7 @@ export function startSandboxClient(
     },
   };
 
-  const editor: SandboxEditorAPI = {
-    getMarkdown: async () =>
-      (await readStaged({ kind: "editor_get_markdown" })).payload,
-    // Staged like `getMarkdown`, because Cmd+A makes this a whole-document read too and an
-    // inline answer over 8 KiB enters tauri's shared channel-data queue (code review I1).
-    // Positions come back in the response; only the text takes the staged path.
-    getSelection: async () => {
-      const { payload, value } = await readStaged(
-        { kind: "editor_get_selection" },
-        // The host tells us whether it staged anything; a bare caret answers inline with
-        // no text at all, so pulling would find an empty slot (code review N1). An
-        // explicit flag rather than re-deriving `from === to` here, so the rule lives in
-        // ONE place — the side that decided.
-        (v) => (v as undefined | { staged?: boolean })?.staged === true,
-      );
-      const { from, to } = value as { from: number; to: number };
-      return { from, text: payload, to };
-    },
-    // §4.8 Staged like `getMarkdown` — see the protocol member for why prose is no smaller
-    // a secret than its source.
-    getText: async () =>
-      (await readStaged({ kind: "editor_get_text" })).payload,
-    insertText: async (text) => {
-      await hostRequest({ kind: "editor_insert_text", text });
-    },
-    setMarkdown: async (markdown) => {
-      await hostRequest({ kind: "editor_set_markdown", markdown });
-    },
-  };
+  const editor = createSandboxEditorAPI(hostRequest, readStaged);
 
   const ctx: SandboxContext = {
     ai,
@@ -467,7 +440,7 @@ export function startSandboxClient(
         clearTimeout(p.timer);
         hostPending.delete(m.requestId);
         if (m.ok) p.resolve(m.value);
-        else p.reject(new Error(m.error));
+        else p.reject(refusalFrom(m));
         break;
       }
       case "hostStreamToken": {
@@ -492,4 +465,17 @@ function assertSerializable(value: unknown): void {
       throw new Error("value is not serializable");
     return v;
   });
+}
+
+/**
+ * §388 spec 0067 §10 — the error a failed `hostResponse` rejects with. A code from the
+ * published list is kept as the plugin's `EditorRefusal`; any other code is dropped, because
+ * the list is the contract plugins branch on.
+ */
+function refusalFrom(m: { code?: string; error: string }): Error {
+  const err = new Error(m.error);
+  if (isEditorRefusalCode(m.code)) {
+    Object.assign(err, { code: m.code, name: "EditorRefusal" });
+  }
+  return err;
 }

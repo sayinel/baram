@@ -6,11 +6,21 @@ import { Extension } from "@tiptap/core";
 import { Suggestion } from "@tiptap/suggestion";
 
 import { WikilinkMenuList } from "../../components/command/WikilinkMenu";
-import { listDir, refreshIndex, writeFile } from "../../ipc/invoke";
+import { type Locale, t } from "../../i18n";
+import {
+  createFile,
+  isFileExistsError,
+  listDir,
+  refreshIndex,
+} from "../../ipc/invoke";
 import { useContextStore } from "../../stores/context/context";
 import { useEditorStore } from "../../stores/editor/editor";
 import { buildFileTree, useFileStore } from "../../stores/file/file";
+import { useSettingsStore } from "../../stores/settings/store";
+import { useUIStore } from "../../stores/ui/ui";
+import { resolveWikilinkTarget } from "../../utils/editor/wikilink-nav";
 import { flattenFileTree, fuzzyScore } from "../../utils/file-search";
+import { logger } from "../../utils/logger";
 import { wikilinkSuggestPluginKey } from "./suggestion-keys";
 import {
   createSuggestionRenderer,
@@ -35,6 +45,110 @@ import {
 } from "./wikilink-suggest-utils";
 
 /**
+ * §31 What accepting a menu row does: replace the typed `[[…` (or the whole expanded
+ * wikilink while SyntaxReveal shows one) with a wikilink node, and for the "create" row
+ * also make the note (`createLinkedNote`). The Suggestion plugin's `command`.
+ */
+export function applyWikilinkSuggestion({
+  editor: ed,
+  range,
+  props,
+}: {
+  editor: Editor;
+  props: WikilinkSuggestionItem;
+  range: { from: number; to: number };
+}): void {
+  try {
+    // When SyntaxReveal has a wikilink expanded, replace the entire expanded range
+    // instead of just the Suggestion range (which misses the trailing ]])
+    const expanded = getSyntaxRevealExpanded(ed.view.state);
+    const effectiveRange =
+      expanded?.kind === "wikilink"
+        ? { from: expanded.from, to: expanded.to }
+        : range;
+
+    // Clear SyntaxReveal state if it was expanded
+    if (expanded?.kind === "wikilink") {
+      const { tr } = ed.view.state;
+      tr.setMeta(syntaxRevealKey, { expanded: null });
+      ed.view.dispatch(tr);
+    }
+
+    if (props.kind === "create") {
+      // Create new file and insert wikilink
+      const { rootPath } = useFileStore.getState();
+      if (rootPath) {
+        createLinkedNote(rootPath, props.target).catch((err: unknown) =>
+          logger.error("[Wikilink] Failed to create or index the note:", err),
+        );
+      }
+      ed.chain()
+        .focus()
+        .deleteRange(effectiveRange)
+        .insertWikilink({ target: props.target })
+        .run();
+      return;
+    }
+
+    // Delete the range and insert a wikilink node
+    const attrs: {
+      heading?: null | string;
+      target: string;
+      vaultAlias?: null | string;
+    } = {
+      target: props.target,
+    };
+    if (props.heading) {
+      attrs.heading = props.heading;
+    }
+    if (props.vaultAlias) {
+      attrs.vaultAlias = props.vaultAlias;
+    }
+    ed.chain().focus().deleteRange(effectiveRange).insertWikilink(attrs).run();
+  } catch {
+    // Command failed — ignore (suggestion will close)
+  }
+}
+
+/**
+ * §31 The "create" row's note, `# target` at the vault root, then the index and the tree
+ * refreshed so the link resolves. `createFile`, never `writeFile`: the menu offers "create"
+ * because no listed name matched, and that is no evidence the path is free — a note saved
+ * with a decomposed (NFD) Korean name is not matched by the composed (NFC) text typed
+ * here, yet on APFS both spellings open the same file, which the write emptied to the one
+ * heading line. The OS refuses a taken path instead: a toast says so and nothing else
+ * runs. The caller inserts the link either way.
+ */
+export async function createLinkedNote(
+  rootPath: string,
+  target: string,
+): Promise<void> {
+  // §278.2 Pre-existing defect, surfaced while fixing the PDF case: the suffix was
+  // appended unconditionally, so `[[architecture.md]]` created `architecture.md.md`.
+  // The link inserted is `[[architecture.md]]` either way, and that resolves to
+  // `architecture.md` — so the file the menu created was one the link never pointed at.
+  const newPath = `${rootPath}/${withMarkdownExtension(target)}`;
+  try {
+    await createFile(newPath, `# ${target}\n`);
+  } catch (err) {
+    if (!isFileExistsError(err)) throw err;
+    const { locale } = useSettingsStore.getState();
+    useUIStore.getState().showToast(
+      t("wikilink.create.exists", locale as Locale, {
+        name: withMarkdownExtension(target),
+      }),
+      "error",
+    );
+    return;
+  }
+  await refreshIndex(rootPath);
+  // Refresh file tree so the new file appears in sidebar & navigation
+  const entries = await listDir(rootPath, true);
+  const tree = buildFileTree(entries, rootPath);
+  useFileStore.getState().setFileTree(tree);
+}
+
+/**
  * §95 Zettelkasten: true when the query exactly matches a file's `searchKey` —
  * used to suppress the redundant `Create "<query>"` fallback item. Zettel-note
  * items store the note id in `target` (so the stored wikilink is `[[id]]`), so
@@ -47,6 +161,26 @@ export function hasExactMatch(
 ): boolean {
   const queryLower = query.toLowerCase();
   return files.some((f) => searchKey(f).toLowerCase() === queryLower);
+}
+
+/**
+ * §31 Whether the menu offers "create" for `query`: only when it names no listed file
+ * (`hasExactMatch`), a file can be named (`isCreatableTarget`), and the resolver a click
+ * calls first (`resolveWikilinkTarget`) leaves it unresolved. Without the last, `[[foo.md`
+ * offered to create `foo.md` beside the `foo.md` the link resolves to: the file's row is
+ * keyed by its stem, `foo`, so no exact match was seen. A click also opens a zettel id
+ * and, in the journal, a date before it would create a note; this does not look at those.
+ */
+export function offersCreate(
+  files: WikilinkSuggestionItem[],
+  query: string,
+): boolean {
+  return (
+    query !== "" &&
+    !hasExactMatch(files, query) &&
+    isCreatableTarget(query) &&
+    resolveWikilinkTarget(query) === null
+  );
 }
 
 /** Build suggestion items from the file store */
@@ -92,82 +226,7 @@ export const WikilinkSuggest = Extension.create({
 
           return true;
         },
-        command: ({
-          editor: ed,
-          range,
-          props,
-        }: {
-          editor: Editor;
-          props: WikilinkSuggestionItem;
-          range: { from: number; to: number };
-        }) => {
-          try {
-            // When SyntaxReveal has a wikilink expanded, replace the entire expanded range
-            // instead of just the Suggestion range (which misses the trailing ]])
-            const expanded = getSyntaxRevealExpanded(ed.view.state);
-            const effectiveRange =
-              expanded?.kind === "wikilink"
-                ? { from: expanded.from, to: expanded.to }
-                : range;
-
-            // Clear SyntaxReveal state if it was expanded
-            if (expanded?.kind === "wikilink") {
-              const { tr } = ed.view.state;
-              tr.setMeta(syntaxRevealKey, { expanded: null });
-              ed.view.dispatch(tr);
-            }
-
-            if (props.kind === "create") {
-              // Create new file and insert wikilink
-              const { rootPath } = useFileStore.getState();
-              if (rootPath) {
-                // §278.2 Pre-existing defect, surfaced while fixing the PDF case:
-                // the suffix was appended unconditionally, so `[[architecture.md]]`
-                // created `architecture.md.md`. The link inserted is `[[architecture.md]]`
-                // either way, and that resolves to `architecture.md` — so the file the
-                // menu created was one the link never pointed at.
-                const newPath = `${rootPath}/${withMarkdownExtension(props.target)}`;
-                writeFile(newPath, `# ${props.target}\n`)
-                  .then(async () => {
-                    await refreshIndex(rootPath);
-                    // Refresh file tree so the new file appears in sidebar & navigation
-                    const entries = await listDir(rootPath, true);
-                    const tree = buildFileTree(entries, rootPath);
-                    useFileStore.getState().setFileTree(tree);
-                  })
-                  .catch(() => {});
-              }
-              ed.chain()
-                .focus()
-                .deleteRange(effectiveRange)
-                .insertWikilink({ target: props.target })
-                .run();
-              return;
-            }
-
-            // Delete the range and insert a wikilink node
-            const attrs: {
-              heading?: null | string;
-              target: string;
-              vaultAlias?: null | string;
-            } = {
-              target: props.target,
-            };
-            if (props.heading) {
-              attrs.heading = props.heading;
-            }
-            if (props.vaultAlias) {
-              attrs.vaultAlias = props.vaultAlias;
-            }
-            ed.chain()
-              .focus()
-              .deleteRange(effectiveRange)
-              .insertWikilink(attrs)
-              .run();
-          } catch {
-            // Command failed — ignore (suggestion will close)
-          }
-        },
+        command: applyWikilinkSuggestion,
         items: async ({ query }: { query: string }) => {
           // §87 Cross-vault: detect alias:: prefix
           const colonIdx = query.indexOf("::");
@@ -349,12 +408,8 @@ export const WikilinkSuggest = Extension.create({
           // File mode
           const filtered = filterFiles(files, query, 20);
 
-          // Add "Create" option if query is non-empty and no exact match
-          if (
-            query &&
-            !hasExactMatch(files, query) &&
-            isCreatableTarget(query)
-          ) {
+          // Add "Create" option only for a link a click would create
+          if (offersCreate(files, query)) {
             filtered.push({
               id: "__create__",
               target: query,

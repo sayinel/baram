@@ -9,7 +9,7 @@ give to others, see [Creating themes](/en/docs/customization/creating-themes/).
 
 | Theme              | Style                                 |
 | ------------------ | ------------------------------------- |
-| Default Light      | Clean light theme (default)           |
+| Default Light      | Clean light theme                     |
 | Default Dark       | Dark theme with blue tones            |
 | Tokyo Night        | Popular dark theme, cool blue palette |
 | Solarized Light    | Ethan Schoonover's warm light palette |
@@ -22,7 +22,9 @@ give to others, see [Creating themes](/en/docs/customization/creating-themes/).
 
 1. Open **Settings > Appearance** to see the theme gallery
 2. Click any theme card to apply it immediately
-3. Select **System (Auto)** to follow your OS light/dark mode
+3. **Baram Default** is the default palette in light and dark. While a theme that has both modes
+   is applied, **Mode** under the gallery chooses **System** (follows your OS), **Light**, or
+   **Dark**
 
 **Creating custom themes:**
 
@@ -55,9 +57,12 @@ that carries settings or hidden bars needs the Baram version you exported it fro
 
 **Browse Themes**, next to **Import Theme...** in **Settings > Appearance**, opens the theme
 registry in place of the tab; **Back** returns to the gallery. Unlike plugins, themes have no
-community channel: the list holds only themes Baram publishes itself. **Search themes...**
-narrows it by name, description, author, id, or keyword, and **Refresh** loads it again. While
-the registry lists no themes, the screen says **No themes are available yet**.
+community channel: the list holds only themes Baram publishes itself. The first is **Baram
+Hangul**, made for writing in Korean: it suggests body text in Pretendard at 17px with words kept
+whole at line breaks, and has a light and a dark palette. It needs Baram 0.7.7 or newer.
+**Search themes...** narrows the list by name, description, author, id, or keyword, and
+**Refresh** loads it again. While the registry lists no themes, the screen says **No themes are
+available yet**.
 
 Each card shows the theme's name, version, description, and author, and — when the listing
 provides one — a light and a dark preview drawn the same way as the gallery cards.

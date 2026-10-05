@@ -100,10 +100,10 @@ describe("M4 spike — extended task states roundtrip", () => {
 // reference, a placeholder. Widening the parser to "any bracketed character"
 // would silently turn those into tasks and rewrite the file on next save.
 //
-// These assert SHAPE, not bytes, because remark escapes a leading `[` in a list
-// item (`- [1] x` saves as `- \[1] x`) to stop it being read as a link
-// reference. That predates this work and is not ours to change here — see the
-// note at the end of this file.
+// The bytes come back too. They used to be asserted as shape only, because
+// remark escaped every `[` (`- [1] x` saved as `- \[1] x`); the serializer now
+// writes a `[` that starts nothing as typed (`serializer.ts`, the cases in
+// `roundtrip-brackets.test.ts`).
 describe("M4 spike — ordinary list items stay ordinary", () => {
   it.each([
     ["a numbered reference", "- [1] 참조\n"],
@@ -113,6 +113,7 @@ describe("M4 spike — ordinary list items stay ordinary", () => {
   ])("does not turn %s into a task", (_label, md) => {
     expect(shape(md)).toContain("bulletList");
     expect(shape(md)).not.toContain("taskItem");
+    expect(roundtrip(md)).toBe(md);
   });
 
   it("keeps a link-looking prefix a link, not a task", () => {
@@ -123,19 +124,6 @@ describe("M4 spike — ordinary list items stay ordinary", () => {
     // The marker is `[/] ` including the space. Without it there is no way to
     // tell a state from the start of a word.
     expect(shape("- [/]붙여쓰기\n")).not.toContain("taskItem");
-  });
-});
-
-// FINDING (M4 spike, 2026-08-31) — pre-existing, NOT introduced here:
-// remark escapes a leading `[` in a list item, so `- [1] 참조` round-trips to
-// `- \[1] 참조`. That is a byte-level roundtrip violation against this
-// project's top quality bar, and it affects ordinary markdown, not just tasks.
-// It is left alone deliberately: the escape is remark's defence against the
-// text being re-read as a link reference, and undoing it is a separate
-// question from adding task states. Recorded so the next person does not
-// discover it as a regression of this change.
-describe("M4 spike — the escaping that was already there", () => {
-  it("still escapes a leading bracket on an ordinary item", () => {
-    expect(roundtrip("- [1] 참조\n")).toBe("- \\[1] 참조\n");
+    expect(roundtrip("- [/]붙여쓰기\n")).toBe("- [/]붙여쓰기\n");
   });
 });

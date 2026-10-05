@@ -3,10 +3,13 @@ import type { PluginOp } from "../plugin-op";
 import type { HostToSandbox } from "../protocol";
 
 import { Schema } from "@tiptap/pm/model";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
+import { dropAnchors } from "../../../extensions/plugins/selection-anchors";
 import { markdownToProsemirror } from "../../../pipeline/md-to-pm";
 import { prosemirrorToMarkdown } from "../../../pipeline/pm-to-md";
+import { serializeEditorState } from "../../../utils/editor/serialize-live-doc";
+import { realEditor, select } from "../../__tests__/real-editor";
 import { createHostRequestHandler } from "../host-request-router";
 import { startSandboxClient } from "../sandbox-client";
 import { SandboxSession } from "../sandbox-session";
@@ -42,6 +45,8 @@ describe("editor end-to-end: real client ↔ real session (§260 Phase 4b)", () 
   async function pair(
     capabilities: string[],
     selection: { from: number; to: number } = { from: 1, to: 5 },
+    /** §388 — a writable editor; the default handle has no view. */
+    editor: () => unknown = () => fakeEditorHandle(selection),
   ) {
     // Stands in for `StagedPayloads` + `plugin_call staged_read`: one slot, consumed on
     // read, keyed per plugin — the same contract `plugin/staging.rs` implements.
@@ -87,7 +92,7 @@ describe("editor end-to-end: real client ↔ real session (§260 Phase 4b)", () 
         capabilities: capabilities as never,
         declaredSettings: [],
         declaredStatusBarIds: [],
-        editor: () => fakeEditorHandle(selection),
+        editor: editor as never,
         pluginId: "p",
         stage: async (_pluginId, payload) => {
           slot = payload;
@@ -183,7 +188,14 @@ describe("editor end-to-end: real client ↔ real session (§260 Phase 4b)", () 
 
     const selection = await ctx.editor.getSelection();
 
-    expect(selection).toEqual({ from: 3, text: "", to: 3 });
+    expect(selection).toMatchObject({ from: 3, text: "", to: 3 });
+    expect(Object.keys(selection).sort()).toEqual([
+      "from",
+      "ref",
+      "text",
+      "to",
+    ]);
+    expect(selection.ref).toMatch(/^[0-9a-f]{32}$/u); // §388 — inline, like the positions
     expect(pulls).toEqual([]); // no pull at all
   });
 
@@ -201,5 +213,87 @@ describe("editor end-to-end: real client ↔ real session (§260 Phase 4b)", () 
     const { ctx } = await pair(["files"]);
     await expect(ctx.editor.getMarkdown()).rejects.toThrow();
     await expect(ctx.editor.getMarkdown()).rejects.toThrow(/requires one of/);
+  });
+
+  // §388 spec 0067 §8 · §11-11 — a ref read through the wire, a markdown write that names
+  // it, and a refusal's code, through the real client and session on a real Tiptap editor.
+  describe("insertMarkdown, refs and refusal codes (§388)", () => {
+    afterEach(() => dropAnchors("p"));
+
+    it("replaces the range a ref was read from, across both directions of the wire", async () => {
+      const { editor } = realEditor("alpha @@beta@@ omega\n");
+      const { ctx } = await pair(["editor"], undefined, () => editor);
+
+      const selection = await ctx.editor.getSelection();
+      expect(selection.text).toBe("beta");
+      select(editor, 1); // the caret moves away; the ref still names "beta"
+      await ctx.editor.insertMarkdown("**B**", { replace: selection.ref });
+
+      expect(serializeEditorState(editor.state)).toBe("alpha **B** omega\n");
+      editor.destroy();
+    });
+
+    it("carries a handler refusal's code in the frame and onto the plugin's error", async () => {
+      const { editor } = realEditor("alpha @@omega\n");
+      const { ctx, framesToSandbox } = await pair(
+        ["editor:readonly"],
+        undefined,
+        () => editor,
+      );
+
+      await expect(ctx.editor.insertMarkdown("x")).rejects.toMatchObject({
+        code: "not-permitted",
+        name: "EditorRefusal",
+      });
+      expect(framesToSandbox).toContainEqual(
+        expect.objectContaining({ code: "not-permitted", ok: false }),
+      );
+      expect(serializeEditorState(editor.state)).toBe("alpha omega\n");
+      editor.destroy();
+    });
+
+    it("sends no code for a failure that is not an editor refusal", async () => {
+      // The session's own allowlist: a thrown value with an unlisted `code` crosses as text.
+      // (The client drops an unlisted code too — `sandbox-client.test.ts` — so only the frame
+      // shows which side did it.)
+      const { ctx, framesToSandbox } = await pair(["editor"], undefined, () => {
+        throw Object.assign(new Error("boom"), { code: "evil" });
+      });
+
+      const err = await ctx.editor.insertMarkdown("x").then(
+        () => null,
+        (e: unknown) => e,
+      );
+      expect((err as Error).message).toBe("boom");
+      expect(err).not.toHaveProperty("code");
+      const failure = framesToSandbox.find(
+        (m) => m.type === "hostResponse" && !m.ok,
+      );
+      expect(failure).toBeDefined();
+      expect(failure).not.toHaveProperty("code");
+    });
+
+    it("answers a denied capability as not-permitted on every method", async () => {
+      // The measurement behind the `EditorAPI` doc: in this tier the gate is the host
+      // bridge's, so a plugin without an editor grant gets a coded rejection per call.
+      const { ctx } = await pair(["files"]);
+      const calls = {
+        getMarkdown: () => ctx.editor.getMarkdown(),
+        getSelection: () => ctx.editor.getSelection(),
+        getText: () => ctx.editor.getText(),
+        insertMarkdown: () => ctx.editor.insertMarkdown("x"),
+        insertText: () => ctx.editor.insertText("x"),
+        setMarkdown: () => ctx.editor.setMarkdown("x"),
+      } satisfies Record<
+        keyof SandboxContext["editor"],
+        () => Promise<unknown>
+      >;
+      for (const [method, call] of Object.entries(calls)) {
+        await expect(call(), method).rejects.toMatchObject({
+          code: "not-permitted",
+          message: expect.stringContaining(`editor.${method}`),
+        });
+      }
+    });
   });
 });

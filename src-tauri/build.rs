@@ -16,6 +16,7 @@ fn main() {
         "confirm_quit",
         "copy_file",
         "create_dir",
+        "create_file",
         "create_snapshot",
         "delete_dir",
         "delete_file",

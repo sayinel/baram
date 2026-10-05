@@ -18,6 +18,7 @@ import type { Schema } from "@tiptap/pm/model";
 import type { EditorState } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 
+import { canonicalRangeText } from "../extensions/plugins/selection-anchors";
 import { useEditorStore } from "../stores/editor/editor";
 import { isTabLoading, loadedTabId } from "../utils/editor/programmatic-update";
 import { logger } from "../utils/logger";
@@ -287,6 +288,7 @@ export function getEditorInstance(): null | PluginEditorHandle {
  * observable output too (§260 Phase 4b code review, N4).
  *
  * Shared by both tiers (§260 Phase 4b) so the fix cannot land in one and not the other.
+ * Since §388 the text is canonical — the same text the ref's hash is taken from.
  */
 export function readSelection(editor: PluginEditorHandle): {
   from: number;
@@ -294,7 +296,8 @@ export function readSelection(editor: PluginEditorHandle): {
   to: number;
 } {
   const { from, to } = editor.state.selection;
-  return { from, text: editor.state.doc.textBetween(from, to, "\n"), to };
+  // §388 spec 0067 §5 — canonical: an expanded reveal's delimiters are not document text.
+  return { from, text: canonicalRangeText(editor.state, from, to).text, to };
 }
 
 /**

@@ -106,3 +106,37 @@ describe("MRU Tab Order", () => {
     expect(useEditorStore.getState().mruOrder).toEqual(["b", "a"]);
   });
 });
+
+// §81 A tab opened for later — a space's note at launch, while the restore decides
+// what is on screen.
+describe("openTab with activate: false", () => {
+  const tab = (id: string, filePath: string) => ({
+    contextId: "ctx",
+    filePath,
+    id,
+    isDirty: false,
+    isPinned: false,
+    title: id,
+  });
+
+  it("adds the tab behind the active one, at the back of the MRU order", () => {
+    useEditorStore.getState().openTab(tab("a", "a.md"));
+
+    useEditorStore.getState().openTab(tab("b", "b.md"), { activate: false });
+
+    const { activeTabId, mruOrder, tabs } = useEditorStore.getState();
+    expect(tabs.map((t) => t.id)).toEqual(["a", "b"]);
+    expect(activeTabId).toBe("a");
+    expect(mruOrder).toEqual(["a", "b"]);
+  });
+
+  it("leaves an already-open file exactly as it is", () => {
+    useEditorStore.getState().openTab(tab("a", "a.md"));
+    useEditorStore.getState().openTab(tab("b", "b.md"));
+    const before = useEditorStore.getState();
+
+    useEditorStore.getState().openTab(tab("c", "a.md"), { activate: false });
+
+    expect(useEditorStore.getState()).toBe(before);
+  });
+});

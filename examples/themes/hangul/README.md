@@ -15,11 +15,14 @@ CSS 는 없다. 매니페스트의 `description` 이 성격을 한 문장으로 
 `src/themes/__tests__/reference-theme.test.ts` 로 남는다(스펙 0063 §10 이 0055 §9.3 · §10.3 에 단 정정) — 아래
 "테스트가 보는 것".
 
-**게시 파이프라인은 `.github/workflows/plugin-release.yml` 의 `release-theme` 잡이다**(계획 0113, 스펙 0063 §7.3).
-`theme-hangul-v<version>` 태그가 이 폴더를 묶어 레지스트리에 올린다 — 태그 단계의 허용 목록이 디렉터리 `hangul` 에 id
+**게시 파이프라인은 `.github/workflows/plugin-release.yml` 의 `theme-meta` · `release-theme` · `publish` 세 잡이다**(계획 0113 · 0115, 스펙 0063 §7.3 · 스펙 0065).
+`theme-hangul-v<version>` 태그가 이 폴더를 묶어 레지스트리에 올린다 — `theme-meta` 잡의 태그 단계의 허용 목록이 디렉터리 `hangul` 에 id
 `baram-hangul` 을 고정한다. 무엇이 묶이고 게시 전에 무엇을 보는지는 아래 "zip 에 들어가는 것". 게시는 v0.7.7 릴리스
 뒤다(스펙 0063 D3 · §7.6) — 묶기 단계가 `package.json` 의 버전을 하한 `">=0.7.7"` 과 비교해 그보다 낮으면 거부하고,
 2026-09-28 의 `package.json` 은 0.7.6 이다. 같은 날 라이브 `index.json` 에 `baram-hangul` 항목은 없다.
+**결과(2026-10-03 갱신): 1.0.0 은 2026-10-01 에 게시됐다**(레지스트리 커밋 `08a4b239`). 태그
+`theme-hangul-v1.0.0` 이 가리키는 릴리스 커밋은 `8f541216`(#774 의 머지) — 아래 4 의 `SHA256SUMS`
+첫 줄은 그보다 앞선 `dcd4dbe4` 가 더했다.
 
 ## 매니페스트
 
@@ -179,9 +182,10 @@ AA, `contrastWarningsFor` 의 여섯 쌍) 어느 쪽도 경고를 보지 않으�
 | 두 모드의 파생이 키마다 서로 다르다 | 두 모드가 같은 색을 내면(위 단언의 비공허성 짝) |
 | `contrastWarningsFor` 가 두 모드 모두 경고를 내지 않는다 | `TEXT_PAIRS` 여섯 쌍 가운데 하나가 `AA_TEXT_RATIO` 아래로 가면 |
 
-이 폴더를 경로로 읽는 곳은 테스트 여덟과 워크플로 잡 하나다(`git grep -n "examples/themes" -- src scripts .github`,
-2026-09-29). 그 명령이 찾는 파일은 열하나이고, 나머지 둘은 읽지 않는다 — `scripts/run-theme-package.ts` 는 사용법 주석에
-이 경로를 예로 적을 뿐 폴더를 `--dir` 로 받고, `src/themes/theme-manifest.ts` 의 두 doc 주석은 이 README 를 가리킨다.
+이 폴더를 경로로 읽는 곳은 테스트 여덟과 워크플로 잡 둘이다(`git grep -n "examples/themes" -- src scripts .github`,
+2026-10-03). 그 명령이 찾는 파일은 열둘이고, 나머지 셋은 읽지 않는다 — `scripts/run-theme-package.ts` 는 사용법 주석에
+이 경로를 예로 적을 뿐 폴더를 `--dir` 로 받고, `scripts/theme-package.ts` 의 doc 주석은 이 폴더를 묶은 zip 으로 잰 실측을
+적을 뿐이며, `src/themes/theme-manifest.ts` 의 두 doc 주석은 이 README 를 가리킨다.
 
 | 파일 | 읽는 방법 |
 |---|---|
@@ -192,14 +196,15 @@ AA, `contrastWarningsFor` 의 여섯 쌍) 어느 쪽도 경고를 보지 않으�
 | `src/themes/__tests__/theme-package-script.test.ts` | 같은 `resolve` 로 폴더째(`HANGUL`) — 임시 폴더로 복사해 한 가지씩 망가뜨리기도 한다 |
 | `src/themes/__tests__/theme-package-install-parity.test.ts` | 같은 `resolve` 로 폴더째 `packageTheme` 에 넘긴다 |
 | `src/themes/__tests__/theme-registry-chain.test.ts` | `join(ROOT, "examples/themes/hangul")` — `ROOT` 는 `resolve(__dirname, "../../..")` |
-| `.github/workflows/plugin-release.yml` | `release-theme` 잡의 `examples/themes/$DIR` — 태그 단계가 그 아래 `baram-theme.json` 이 있는지 보고, 묶기 단계가 `--dir` 로 넘기고, checksum 관문이 그 아래 `SHA256SUMS` 를 읽는다(아래 "zip 에 들어가는 것") |
+| `.github/workflows/plugin-release.yml` | `theme-meta` · `release-theme` 잡의 `examples/themes/$DIR` — `theme-meta` 의 태그 단계가 그 아래 `baram-theme.json` 이 있는지 보고 기록 단계가 그 아래 `SHA256SUMS` 를 읽고, `release-theme` 의 묶기 단계가 `--dir` 로 넘긴다(아래 "zip 에 들어가는 것") |
 | `src/themes/__tests__/theme-release-workflow.test.ts` | 그 잡의 묶기 단계를 실행한다(`runPackageAndVerify`) — 저장소의 `examples` 를 링크한 합성 루트에서 `DIR=hangul` 로 |
 
 마지막 파일은 위 명령에 단언 문자열 · 테스트 이름 · doc 주석 덕에 걸렸다 — 그 파일에서 경로를 짓는 줄은 `"examples"` 를
-따로 쓰고(`runPackageAndVerify` 가 링크하는 이름 목록, `runTagStep` 과 `runChecksumStep` 이 임시 폴더에 가짜 폴더를 짓는
+따로 쓰고(`runPackageAndVerify` 가 링크하는 이름 목록, `runTagStep` 과 `runRecordStep` 이 임시 폴더에 가짜 폴더를 짓는
 `join(root, "examples", "themes", …)`), 그런 철자는 `"examples/themes"` 로 찾으면 걸리지 않는다. 가짜 폴더를 짓는 두
-함수는 이 폴더를 읽지 않는다. `git grep -n '"examples"' -- src scripts .github` 로 한 번 더 훑으면(2026-09-29) 네 줄이
-나오고, 그 파일의 그 세 줄 말고 하나는 `examples/plugins` 를 짓는 `malicious-fixture.test.ts` 다.
+함수는 이 폴더를 읽지 않는다. `git grep -n '"examples"' -- src scripts .github` 로 한 번 더 훑으면(2026-10-03) 다섯 줄이
+나오고, 그 파일의 그 세 줄 말고 하나는 `examples/plugins` 를 짓는 `malicious-fixture.test.ts`, 하나는 위 표의
+`theme-package-script.test.ts` 가 합성 루트에 링크하는 이름 목록이다.
 폴더를 옮기면 컴파일은 통과해도 위 테스트 여덟이 모두 빨개진다(2026-09-29 — 폴더를 치우고 여덟 파일을 돌려 8 파일 · 27
 테스트 실패) — 옮길 때 위 표의 경로를 함께 고친다.
 
@@ -254,12 +259,15 @@ zip(`plugin-release.yml` 의 `Package ZIP` 단계가 `README.md` 를 함께 묶�
    `…  baram-hangul-1.0.0.zip`)으로 이 폴더의 `SHA256SUMS` 끝에 더하고, 태그할 릴리스 커밋에 함께 커밋한다. 릴리스마다
    한 줄을 더한다. 이 파일은 zip 에 들지 않으므로 이 커밋은 zip 의 바이트를 바꾸지 않는다 — 1 을 돌린 커밋과 태그할
    커밋이 이 파일만 다르면 같은 zip 이 나온다. 2026-09-29 에 이 파일은 아직 없다 — 게시된 릴리스가 없다.
-5. main 에 있는 그 커밋에 태그 `theme-hangul-v1.0.0` 을 push 한다. `release-theme` 잡의
-   `Check the checksum the pre-publish check recorded` 단계가 그 커밋에서 만든 zip 의 `<sha256>  <zip_name>` 줄이
-   `SHA256SUMS` 에 글자 그대로 있는지 보고(`grep -qxF`), 파일이 없거나 일반 파일이 아니거나(심볼릭 링크 포함) 그 줄이
-   없으면 색인을 쓰기 전에 잡을 멈춘다. 줄이 없다는 것은 CI 가 만든 zip 이 2 에서 설치한 zip 이 아니라는 뜻이다(또는 4 의 줄이
-   없거나 잘못 적혔다). 게시된 zip 은 바꾸지 않으므로(스펙 0063 §7.7) push 뒤에 알게 되면 폐기와 새 버전이 든다 — 그래서 push
-   앞에서 대조한다.
+**결과(2026-10-03 갱신): 1.0.0 은 2026-10-01 에 게시됐다**(레지스트리 커밋 `08a4b239`) — `dcd4dbe4`
+가 이 파일의 첫 줄을 더했다. 태그 `theme-hangul-v1.0.0` 이 가리키는 릴리스 커밋은 그보다 뒤의
+`8f541216`(#774 의 머지)이다.
+5. main 에 있는 그 커밋에 태그 `theme-hangul-v1.0.0` 을 push 한다. `theme-meta` 잡의
+   `Read the checksum the pre-publish check recorded` 단계가 그 커밋의 `SHA256SUMS` 에서 이 zip 의 줄(`<sha256>  <zip_name>`)을
+   정확히 하나 찾는다 — 파일이 없거나 일반 파일이 아니거나(심볼릭 링크 포함) 그 줄이 없거나 둘 이상이면 빌드 전에 멈춘다.
+   `release-theme` 잡의 `Check the archive against the recorded checksum` 이 만든 zip 을 그 줄과 대어 일찍 멈추고, 정하는
+   대조는 `publish` 잡이 push 할 바이트에 다시 한다(스펙 0065). 줄이 맞지 않는다는 것은 CI 가 만든 zip 이 2 에서 설치한 zip 이
+   아니라는 뜻이다(또는 4 의 줄이 없거나 잘못 적혔다). 게시된 zip 은 바꾸지 않으므로(스펙 0063 §7.7) push 뒤에 알게 되면 폐기와
+   새 버전이 든다 — 그래서 push 앞에서 대조한다. `publish` 잡은 빌드가 통과한 뒤 `registry-publish` 환경의 승인을 기다린다.
 6. (선택) 잡이 끝난 뒤 라이브 `index.json`(`src/stores/system/plugin.ts` 의 `DEFAULT_REGISTRY_URL`)에서 `baram-hangul`
-   항목의 `checksum` 이 1 의 `sha256=` 값과 같은지 본다. 5 의 관문이 대조한 값과 색인에 쓰이는 값은 같은 단계
-   (`Compute the theme checksum`)의 출력이므로 이것은 push 가 닿았는지의 확인이지 유일한 대조가 아니다.
+   항목의 `checksum` 이 1 의 `sha256=` 값과 같은지 본다. 이것은 push 가 닿았는지의 확인이다 — 대조는 5 의 세 자리가 이미 했다.

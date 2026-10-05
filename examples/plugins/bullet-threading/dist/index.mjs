@@ -48,7 +48,7 @@ var DEFAULT_SETTINGS = {
 };
 var CARET_MARKERS = ["filled", "halo", "none"];
 var SAFE_COLOR = /^[\w#(),.%\s-]{1,64}$/;
-var STYLE_REVISION = "5";
+var STYLE_REVISION = "6";
 var MIN_WIDTH = 0.5;
 var MAX_WIDTH = 8;
 function resolveSettings(raw) {
@@ -69,7 +69,7 @@ function resolveSettings(raw) {
 }
 function buildCss(settings) {
   const root = settings.onlyWhenFocused ? `.tiptap.ProseMirror-focused` : `.tiptap`;
-  const railX = `calc(-1 * (var(--list-gutter, 1.4em) + 1em))`;
+  const railX = `calc(var(--list-guide-left, -1em) - var(--list-gutter, 1.4em))`;
   const centreOnRail = `calc(var(--bt-width) / -2)`;
   const stroke = `var(--bt-width) solid var(--bt-color)`;
   const reachUp = `calc(-1 * (var(--bt-gap) + var(--editor-line-height, 1.75) * 0.5em))`;
@@ -93,7 +93,9 @@ function buildCss(settings) {
     // The elbow: one box carrying a left and a bottom border, curved where they meet.
     // Only on an item that is itself inside a list item — a top-level item has no parent
     // rail to descend from, and the stroke would hang in the left margin.
-    `${root} li li.${THREAD_CLASS}::after{position:absolute;left:${railX};margin-left:${centreOnRail};top:calc(-1 * var(--bt-gap));width:calc(var(--list-gutter, 1.4em) + 0.5em);height:calc(var(--bt-gap) + var(--editor-line-height, 1.75) * 0.5em + var(--bt-width) / 2);border-left:${stroke};` + (settings.showElbow ? `border-bottom:${stroke};border-bottom-left-radius:var(--bt-radius);` : ``) + `pointer-events:none;content:""}`,
+    // It spans from the rail to 0.5em short of the item's edge — the centre of a bullet's
+    // column, under the ring that masks it — so it is as wide as the rail is far from there.
+    `${root} li li.${THREAD_CLASS}::after{position:absolute;left:${railX};margin-left:${centreOnRail};top:calc(-1 * var(--bt-gap));width:calc(var(--list-gutter, 1.4em) - 0.5em - var(--list-guide-left, -1em));height:calc(var(--bt-gap) + var(--editor-line-height, 1.75) * 0.5em + var(--bt-width) / 2);border-left:${stroke};` + (settings.showElbow ? `border-bottom:${stroke};border-bottom-left-radius:var(--bt-radius);` : ``) + `pointer-events:none;content:""}`,
     // The siblings above the threaded item, so the thread reaches it unbroken. Each
     // segment starts one collapsed margin high to close the gap to the item above.
     `${childItem(`:not(.${THREAD_CLASS})`)}{position:absolute;left:${railX};margin-left:${centreOnRail};top:calc(-1 * var(--bt-gap));bottom:0;border-left:${stroke};pointer-events:none;content:""}`,
@@ -151,6 +153,14 @@ function buildCss(settings) {
     // moving the number. Whatever runs underneath is hidden for exactly that distance
     // past the glyph's left edge — one constant gap for every marker width, and the
     // same mechanism the ring already uses.
+    //
+    // ‼️ "Without moving the number" is a claim about the HOST, and the host is what makes
+    // it true: `editor/lists.css` gives the ordered marker `box-sizing: content-box` and
+    // says why, naming this rule. Under the app-wide `border-box` the same padding comes
+    // out of the glyph column that the marker's `min-width` floor reserved, and every
+    // number on the threaded branch shifts right by this length (measured at 4.83px with
+    // an 18px editor font). If a future host drops that declaration, mask with a
+    // `::after` overlay instead of padding rather than restoring it here.
     `${root} ol > li.${THREAD_CLASS}::before{z-index:1;background:var(--color-editor-bg);padding-left:0.3em}`
   ].join("\n");
 }

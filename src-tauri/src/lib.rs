@@ -1,6 +1,7 @@
 // Baram — Rust 백엔드 엔트리포인트
 
 mod approval;
+pub mod cli;
 mod commands;
 mod config;
 mod context;
@@ -308,6 +309,7 @@ pub fn run() {
             fs_cmd::set_vault_root,
             fs_cmd::read_file,
             fs_cmd::write_file,
+            fs_cmd::create_file,
             fs_cmd::list_dir,
             fs_cmd::rename_file,
             fs_cmd::delete_file,

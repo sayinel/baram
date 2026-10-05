@@ -36,7 +36,7 @@ fn config_path<R: tauri::Runtime>(
 }
 
 /// Read entire config file as HashMap. Returns empty map if file doesn't exist.
-fn read_config_map(path: &PathBuf) -> Result<HashMap<String, Value>, ConfigError> {
+pub(crate) fn read_config_map(path: &PathBuf) -> Result<HashMap<String, Value>, ConfigError> {
     match std::fs::read_to_string(path) {
         Ok(content) => {
             let map: HashMap<String, Value> = serde_json::from_str(&content)?;

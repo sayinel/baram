@@ -154,11 +154,19 @@ const HOST_REQUEST_VALIDATORS: {
   editor_get_markdown: () => true,
   editor_get_text: () => true,
   editor_get_selection: () => true,
+  // §388 spec 0067 §8 — the same cap as insertText: a larger write is a document replace,
+  // which is setMarkdown's job (see `MAX_INSERT_TEXT_CHARS`).
+  editor_insert_markdown: (r) =>
+    typeof r.markdown === "string" &&
+    r.markdown.length <= MAX_INSERT_TEXT_CHARS &&
+    isRefOrAbsent(r.replace),
   // Its own bound, NOT `isRenderableText` (§260 Phase 4b code review, I2): 4096 is the
   // limit written for one-line toast and status-bar strings, and inserting text silently
   // inherited it. A template, a generated paragraph or a table is ordinarily larger.
   editor_insert_text: (r) =>
-    typeof r.text === "string" && r.text.length <= MAX_INSERT_TEXT_CHARS,
+    typeof r.text === "string" &&
+    r.text.length <= MAX_INSERT_TEXT_CHARS &&
+    isRefOrAbsent(r.replace),
   // Not `isRenderableText`: a whole document legitimately exceeds the 4 KiB bound that
   // exists for one-line UI strings. Its own cap instead — see `MAX_SET_MARKDOWN_CHARS`.
   editor_set_markdown: (r) =>
@@ -209,6 +217,12 @@ const MAX_SET_MARKDOWN_CHARS = 2 * 1024 * 1024;
  */
 const MAX_INSERT_TEXT_CHARS = 64 * 1024;
 
+/**
+ * §388 spec 0067 §8 — a ref is 32 lowercase hex digits (`issueAnchor` mints
+ * `crypto.randomUUID()` without its dashes); anything else is malformed and refused here.
+ */
+const REF_PATTERN = /^[0-9a-f]{32}$/u;
+
 /** `AICompleteOptions`, or nothing. Type-checked only — a plugin may legitimately
  *  ask for a large `maxTokens`; that is within its `ai` grant, and the in-flight
  *  bound plus the host's model policy are what constrain cost. */
@@ -228,6 +242,11 @@ function isHostRequest(v: unknown): boolean {
   const validate =
     typeof r.kind === "string" ? HOST_REQUEST_LOOKUP.get(r.kind) : undefined;
   return validate ? validate(r) : false;
+}
+
+/** An optional `replace`: absent, or a string `REF_PATTERN` accepts. */
+function isRefOrAbsent(v: unknown): boolean {
+  return v === undefined || (typeof v === "string" && REF_PATTERN.test(v));
 }
 
 function isRenderableText(v: unknown): boolean {

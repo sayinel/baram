@@ -310,10 +310,12 @@ export function SystemCard({
         },
         {
           className: "theme-card-description",
-          text: t("settings.appearance.systemAuto.desc"),
+          // §386 — 이름은 `Baram 기본`(스펙 0064 D5). id `system` 은 저장값이라 그대로다 —
+          // "시스템" 은 이제 모드 설정의 말이다.
+          text: t("settings.appearance.baramDefault.desc"),
         },
       ]}
-      name={t("settings.appearance.systemAuto")}
+      name={t("settings.appearance.baramDefault")}
       onClick={onSelect}
       palettes={SYSTEM_PALETTES}
     />

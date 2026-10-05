@@ -172,7 +172,7 @@ const ALLOWED: Record<string, Exemption> = {
     spellings: "*",
   },
   "src/pipeline/serializer.ts": {
-    reason: "마크다운 직렬화의 이스케이프",
+    reason: "remark 가 인코딩한 줄 끝 공백을 찾는 직렬화 코드",
     spellings: ["entity &#x20;"],
   },
   "src/pipeline/transformers/media-html-tag.ts": {

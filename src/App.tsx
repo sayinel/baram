@@ -338,7 +338,7 @@ function App() {
     ) : null;
 
   // §56 Journal — auto-create today's journal on startup
-  useJournal(handleOpenFilePath);
+  useJournal();
 
   // App startup side effects — migration, onLaunch restore, file open events
   useAppStartup({ handleOpenFilePath, handleNewFile });

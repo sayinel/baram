@@ -15,7 +15,7 @@ import {
 import { DecorationSet, type EditorView } from "@tiptap/pm/view";
 
 import { classifyMediaSrc, isMediaAtom } from "../../utils/media-src";
-import { collapseExpanded } from "./syntax-reveal-collapse";
+import { collapseDelimited, collapseExpanded } from "./syntax-reveal-collapse";
 import { buildExpandedDecorations } from "./syntax-reveal-decorations";
 import {
   expandLink,
@@ -25,12 +25,15 @@ import {
 } from "./syntax-reveal-expand";
 import { parseRevealResource } from "./syntax-reveal-resource-codec";
 import {
+  collapseMeta,
   computeContentLen,
   type ExpandedRange,
   findMarkRange,
   INACTIVE,
   MARK_DELIMITERS,
   nextSuppressed,
+  type SuppressedRange,
+  suppressionAfterCollapse,
   syntaxRevealKey,
   type SyntaxRevealState,
   tagSyntaxRevealEphemeral,
@@ -46,31 +49,12 @@ export { syntaxRevealKey };
 export function forceCollapseSyntaxReveal(view: EditorView): void {
   const es = syntaxRevealKey.getState(view.state);
   if (!es?.expanded) return;
-  const exp = es.expanded;
-
-  // Preserve the caret's logical position through the collapse. Without an
-  // explicit target, ProseMirror's default mapping for `replaceWith(from, to,
-  // content)` pushes a caret that sits inside the expanded range to the END of
-  // the collapsed mark — which surfaced as the cursor drifting to after a bold
-  // word on source-mode toggle. Map the caret from the expanded delimiter text
-  // back onto the collapsed content for marks (other kinds collapse to atoms
-  // where the default mapping is already correct).
-  let cursorTarget: number | undefined;
-  if (exp.kind === "mark" && exp.closeCheck) {
-    const contentFrom = exp.from + exp.openCheck.length;
-    const contentTo = exp.to - exp.closeCheck.length;
-    const contentLen = Math.max(0, contentTo - contentFrom);
-    const caret = view.state.selection.from;
-    if (caret <= contentFrom) {
-      cursorTarget = exp.from; // at/before opening delimiter → mark start
-    } else if (caret >= contentTo) {
-      cursorTarget = exp.from + contentLen; // at/after closing delimiter → mark end
-    } else {
-      cursorTarget = exp.from + (caret - contentFrom); // inside → preserve offset
-    }
-  }
-
-  collapseExpanded(view, exp, cursorTarget);
+  // The collapse keeps content positions (spec 0067 §4), so a caret inside the mark or the
+  // link label stays at its offset without a hand-computed target — the drift this function
+  // used to correct for marks came from `replaceWith`, and links never had the correction at
+  // all (spec §2.1). A caret inside a deleted delimiter, or inside a link's `(url)` part,
+  // has no content position and maps to the nearest edge.
+  collapseExpanded(view, es.expanded);
 }
 
 /** Get the active expanded range info (used by wikilink-suggest to replace entire expanded text). */
@@ -101,16 +85,27 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
         _old: EditorState,
         newState: EditorState,
       ): SyntaxRevealState {
-        // Recomputed on EVERY transaction — including the meta-carrying ones
+        const meta = tr.getMeta(syntaxRevealKey) as
+          | undefined
+          | { collapsed?: SuppressedRange; expanded: ExpandedRange | null };
+        // §384 / spec 0067 D10 — a successful collapse names its range; deciding from it
+        // here keeps the "always contains the caret" invariant in one place.
+        if (meta?.collapsed) {
+          return {
+            expanded: null,
+            suppressed: suppressionAfterCollapse(
+              meta.collapsed,
+              newState.selection.from,
+            ),
+          };
+        }
+        // Recomputed on EVERY other transaction — including the meta-carrying ones
         // below, whose meta only ever describes `expanded`.
         const suppressed = nextSuppressed(
           tr,
           value.suppressed,
           newState.selection.from,
         );
-
-        const meta = tr.getMeta(syntaxRevealKey) as
-          undefined | { expanded: ExpandedRange | null };
         if (meta !== undefined) {
           return { expanded: meta.expanded, suppressed };
         }
@@ -194,6 +189,7 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
         labelEnd: expandedLabelEnd,
       } = es.expanded;
       const tr = newState.tr;
+      let collapsed: null | SuppressedRange = null;
 
       // Validate open delimiter
       try {
@@ -231,17 +227,16 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
           return tr;
         }
 
-        const contentFrom = from + openCheck.length;
-        const contentTo = to - closeCheck.length;
-        const contentLen = contentTo - contentFrom;
-
-        if (contentLen <= 0) {
-          tr.delete(from, to);
-        } else {
-          const content = newState.doc.slice(contentFrom, contentTo).content;
-          tr.replaceWith(from, to, content);
-          tr.addMark(from, from + contentLen, markType.create());
-        }
+        collapsed = collapseDelimited(
+          tr,
+          {
+            contentFrom: from + openCheck.length,
+            contentTo: to - closeCheck.length,
+            from,
+            to,
+          },
+          markType.create(),
+        );
       } else if (kind === "link") {
         const fullText = newState.doc.textBetween(from, to);
         // §384 fix (F1 round 2): pass the stashed, mapped boundary (relative
@@ -263,7 +258,6 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
 
         const { destination: href, title, labelEnd } = parsed;
 
-        const contentLen = labelEnd - 1;
         // §384 fix (B): merge stashed non-href/title attrs (e.g. `target`)
         // back in — see ExpandedRange.linkAttrs.
         const linkMark = newState.schema.marks.link.create({
@@ -272,13 +266,11 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
           title: title || null,
         });
 
-        if (contentLen <= 0) {
-          tr.delete(from, to);
-        } else {
-          const content = newState.doc.slice(from + 1, from + labelEnd).content;
-          tr.replaceWith(from, to, content);
-          tr.addMark(from, from + contentLen, linkMark);
-        }
+        collapsed = collapseDelimited(
+          tr,
+          { contentFrom: from + 1, contentTo: from + labelEnd, from, to },
+          linkMark,
+        );
       } else if (kind === "image") {
         const fullText = newState.doc.textBetween(from, to);
         // §384 fix (F1 round 2) / §384 (design review M2): see the link
@@ -311,6 +303,7 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
           ? newState.schema.nodes.video.create(attrs)
           : newState.schema.nodes.image.create(attrs);
         tr.replaceWith(from - 1, to + 1, mediaNode);
+        collapsed = { from: from - 1, to: from - 1 + mediaNode.nodeSize };
       } else if (kind === "wikilink") {
         const fullText = newState.doc.textBetween(from, to);
         // §87 Regex includes optional alias:: prefix for cross-vault wikilinks
@@ -329,6 +322,7 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
           vaultAlias: wlAlias || null,
         });
         tr.replaceWith(from, to, wikilinkNode);
+        collapsed = { from, to: from + wikilinkNode.nodeSize };
       }
 
       // Map cursor through the collapse operations (handles all kinds correctly,
@@ -341,12 +335,17 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
         // fallback: let ProseMirror's default mapping handle it
       }
 
-      // §384 (C): reached only by the 4 successful collapse branches above —
-      // every stale/invalid sub-path returns early with a meta-only INACTIVE
+      // §384 (C): reached by the 4 successful collapse branches above, and by one
+      // more case — `kind === "mark"` with no `markName` or no `closeCheck` matches no
+      // branch, adds no step, and falls through with `collapsed` null (sent as
+      // `INACTIVE`). Every stale/invalid sub-path returns early with a meta-only INACTIVE
       // transaction instead. Tag it ephemeral so isEphemeralOnlyUpdate can
       // tell a cursor-out collapse apart from a real edit.
       tagSyntaxRevealEphemeral(tr);
-      tr.setMeta(syntaxRevealKey, INACTIVE);
+      tr.setMeta(
+        syntaxRevealKey,
+        collapsed ? collapseMeta(collapsed) : INACTIVE,
+      );
       return tr;
     },
 

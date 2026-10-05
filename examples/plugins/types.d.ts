@@ -36,15 +36,76 @@ export interface CommunityRegistryIndex {
 export interface Disposable {
     dispose(): void;
 }
+/**
+ * §388 spec 0067 — the editor surface, the same in both tiers. Markdown both ways, through
+ * the app's own round-trip pipeline: `setMarkdown(await getMarkdown())` leaves the document
+ * as it was. Every method is async: in the sandboxed tier each call is a mediated round trip,
+ * and the trusted tier keeps the same contract so a plugin can move between them.
+ *
+ * Refusals of a call to a method reject with an `EditorRefusal` whose `code` says why (spec
+ * §10). A write from an `editor:readonly` plugin is `not-permitted` in both tiers. A plugin
+ * with no editor capability at all is refused differently per tier: the sandboxed tier
+ * rejects each call with `not-permitted`, while the trusted tier throws a plain `Error`,
+ * synchronously, when the plugin reads any member of `ctx.editor`. Other failures are plain
+ * errors with no `code` — among them that trusted-tier `Error`, an exception from the markdown
+ * parser (passed through as it is), and in the sandboxed tier a request the frame check
+ * refuses (over its size cap, a malformed `replace`), one refused for too many requests in
+ * flight, and one that times out.
+ */
 export interface EditorAPI {
-    getContent(): string;
-    getSelection(): {
-        from: number;
-        text: string;
-        to: number;
-    };
-    insertText(text: string): void;
-    setContent(content: string): void;
+    /** The whole document as markdown. Requires `editor` or `editor:readonly`. */
+    getMarkdown(): Promise<string>;
+    /**
+     * The selection: ProseMirror positions, its text, and a `ref` to replace exactly this
+     * range later. The text is plain, with no markdown syntax — marks, link targets and code
+     * backticks are left out, and so is the syntax the editor reveals around the caret —
+     * while the positions and the `ref` cover the whole range. No method returns the
+     * selection's markdown; a plugin that needs markdown reads the whole document with
+     * `getMarkdown()`. Requires `editor` or `editor:readonly`.
+     */
+    getSelection(): Promise<EditorSelection>;
+    /**
+     * §4.8 The document's PROSE — code blocks and frontmatter excluded, a wikilink's label
+     * included; the number the status bar counts. Requires `editor` or `editor:readonly`.
+     *
+     * Use this, not `getMarkdown()`, for anything that measures or reads the text: counting
+     * words, summarising, sending a document to a model. `getMarkdown()` is for round-tripping
+     * — it hands back `#`, `|` and `**`, which a word count turns into words. The app's own
+     * status bar counts what this returns, so a plugin that uses it agrees with the app instead
+     * of contradicting it on screen.
+     */
+    getText(): Promise<string>;
+    /**
+     * Replace the selection (or `opts.replace`'s range) with parsed markdown, as its own undo
+     * step. Requires `editor`.
+     */
+    insertMarkdown(markdown: string, opts?: EditorInsertOptions): Promise<void>;
+    /**
+     * Replace the selection (or `opts.replace`'s range) with plain text, as its own undo step.
+     * Requires `editor`.
+     */
+    insertText(text: string, opts?: EditorInsertOptions): Promise<void>;
+    /** Replace the whole document, as its own undo step. Requires `editor`. */
+    setMarkdown(markdown: string): Promise<void>;
+}
+export interface EditorInsertOptions {
+    /** A `ref` from `getSelection()`. Without it, the current selection. */
+    replace?: string;
+}
+export interface EditorRefusal extends Error {
+    code: EditorRefusalCode;
+}
+/**
+ * §388 spec 0067 §10 — why an editor handler refused. Branch on this, not on the message:
+ * a frame-validation refusal, a transport failure or a parser exception carries no code.
+ */
+export type EditorRefusalCode = "budget" | "cannot-insert-here" | "document-changed" | "no-editor" | "not-permitted" | "ref-other-document" | "ref-range-changed" | "ref-unknown" | "surface-blocked";
+export interface EditorSelection {
+    from: number;
+    /** Opaque. Pass as `replace` to replace exactly this range (spec 0067 §7). */
+    ref: string;
+    text: string;
+    to: number;
 }
 export interface EventsAPI {
     emit(event: string, ...args: unknown[]): void;
@@ -545,7 +606,7 @@ export interface SandboxContext {
      * read arrives as a STAGED payload pulled through the broker rather than in the response
      * frame; `getMarkdown` hides that round trip.
      */
-    editor: SandboxEditorAPI;
+    editor: EditorAPI;
     events: {
         emit(event: string, ...args: unknown[]): void;
         /**
@@ -579,47 +640,8 @@ export interface SandboxContext {
      */
     ui: SandboxUIAPI;
 }
-/**
- * §260 Phase 4b — the sandboxed tier's editor surface.
- *
- * Markdown, not "content": this is a markdown editor, and the trusted tier's
- * `EditorAPI` reads flat text (`getText()`) while its `setContent` hands the string to
- * Tiptap, which parses HTML — so what you read there is not what you can write back.
- * These names say what crosses, and both directions go through the app's own round-trip
- * pipeline, so `setMarkdown(await getMarkdown())` is a no-op on the document.
- *
- * Every method is async even where the trusted tier's is sync: the editor lives in the
- * main realm, so each of these is a mediated round trip.
- */
-export interface SandboxEditorAPI {
-    /** The whole document as markdown. Requires `editor` or `editor:readonly`. */
-    getMarkdown(): Promise<string>;
-    /**
-     * The selection, as ProseMirror document positions plus the text they cover.
-     * Requires `editor` or `editor:readonly`.
-     */
-    getSelection(): Promise<{
-        from: number;
-        text: string;
-        to: number;
-    }>;
-    /**
-     * §4.8 The document's PROSE — what a reader sees, not what the file holds. Block text
-     * joined by newlines, with code blocks and frontmatter excluded and a wikilink's label
-     * included. Requires `editor` or `editor:readonly`.
-     *
-     * Use this, not `getMarkdown()`, for anything that measures or reads the text: counting
-     * words, summarising, sending a document to a model. `getMarkdown()` is for round-tripping
-     * — it hands back `#`, `|` and `**`, which a word count turns into words. The app's own
-     * status bar counts what this returns, so a plugin that uses it agrees with the app
-     * instead of contradicting it on screen.
-     */
-    getText(): Promise<string>;
-    /** Insert plain text at the cursor, as one undoable step. Requires `editor`. */
-    insertText(text: string): Promise<void>;
-    /** Replace the whole document, as one undoable step. Requires `editor`. */
-    setMarkdown(markdown: string): Promise<void>;
-}
+/** @deprecated The same as `EditorAPI` since §388 — kept so existing type references compile. */
+export type SandboxEditorAPI = EditorAPI;
 export interface SandboxFileOptions {
     /** Registered context id to resolve `path` against. Default: the active context. */
     context?: string;
@@ -806,6 +828,8 @@ export declare const UI_CAPABILITIES: readonly PluginCapability[];
  */
 export declare const EDITOR_READ_CAPABILITIES: readonly PluginCapability[];
 export declare const EDITOR_WRITE_CAPABILITIES: readonly PluginCapability[];
+/** Every `EditorRefusalCode`, for the sandbox frame check and the docs. */
+export declare const EDITOR_REFUSAL_CODES: readonly EditorRefusalCode[];
 /**
  * The types a settings field may declare (§260 Phase 4c).
  *

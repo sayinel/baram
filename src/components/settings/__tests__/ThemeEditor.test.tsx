@@ -143,6 +143,21 @@ describe("ThemeEditor — leaving the editor", () => {
     },
   );
 
+  // §386 — 편집기를 닫는 복원도 적용 이펙트와 같은 규칙이어야 한다(`appliedThemeMode`).
+  // 무엇이 이것을 실패시키는가: 오늘 코드는 `system` 이면 속성을 지운다 — 다크로 고정한 화면이
+  // 편집기를 닫는 순간 OS(이 폴리필에서는 라이트)로 돌아간다. 이 케이스는 적용 이펙트 없이
+  // 편집기만 그려 복원 함수 하나를 본다.
+  it("restores the fixed mode on a cascade-only theme when the mode setting is fixed", () => {
+    useSettingsStore.setState({ colorModeSetting: "dark" });
+    try {
+      render(<ThemeEditor onClose={() => {}} />);
+      fireEvent.click(screen.getByText("Cancel"));
+      expect(document.documentElement.dataset.theme).toBe("dark");
+    } finally {
+      useSettingsStore.setState({ colorModeSetting: "system" });
+    }
+  });
+
   it("clears the preview when the editor unmounts on a cascade-only theme", () => {
     // Navigating away instead of pressing Cancel reaches a second restore site.
     const { unmount } = render(<ThemeEditor onClose={() => {}} />);

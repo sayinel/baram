@@ -30,16 +30,10 @@ import { createAIAPI } from "./plugin-ai-policy";
 import {
   commandHandlers,
   commandOwners,
-  editorRefusalMessage,
-  editorSurfaceBlocked,
   emitScopedPluginEvent,
   type EventHandler,
   eventListeners,
-  getEditorInstance,
-  NO_EDITOR_OPEN,
   onScopedPluginEvent,
-  type PluginEditorHandle,
-  readSelection,
 } from "./plugin-host-registry";
 import { declaredSettingsFor, resolvePluginSettings } from "./plugin-settings";
 import { usePluginUIStore } from "./plugin-ui-store";
@@ -48,6 +42,7 @@ import {
   SETTINGS_CHANGED_EVENT,
   watchPluginSettings,
 } from "./settings-change-notifier";
+import { createEditorAPI } from "./trusted/editor-api";
 import { createUIAPI } from "./trusted/ui-api";
 import {
   EDITOR_READ_CAPABILITIES,
@@ -319,9 +314,9 @@ export function createExtensionContext(
   // sandboxed tier gates the same operations on the same grants, and 4a's own review
   // already fixed this shape once for `ui`.
   const editor: EditorAPI = EDITOR_WRITE_CAPABILITIES.some(hasCapability)
-    ? createEditorAPI(false)
+    ? createEditorAPI(false, manifest.id)
     : EDITOR_READ_CAPABILITIES.some(hasCapability)
-      ? createEditorAPI(true)
+      ? createEditorAPI(true, manifest.id)
       : (createDeniedProxy("editor", "editor") as EditorAPI);
 
   const files: FilesAPI = hasCapability("files")
@@ -395,62 +390,6 @@ export function createExtensionContext(
     settings,
     storage,
     ui,
-  };
-}
-
-function createEditorAPI(readonly: boolean): EditorAPI {
-  /**
-   * The live editor, or a refusal — the trusted tier's twin of `host-editor-bridge`'s `live()`
-   * (#322). Every method used to consult only `editorInstance`, so all five stale-surface states
-   * reached it: source mode, a non-markdown tab, a progressive load, the deferred window at the
-   * start of a tab switch, and no tabs at all. In each one a read was silently STALE and a write
-   * silently DISCARDED — by the next save, the next source-mode toggle, or the pending
-   * `updateState`. A plugin doing read-modify-write lost the user's edits and the API reported
-   * success.
-   *
-   * ‼️ Throwing where it used to return `""` / `{from:0,to:0,text:""}` / nothing is a deliberate
-   * behaviour change, and the benign-looking defaults were the dangerous part: a plugin that
-   * cannot tell "no editor" from "empty file" reads `""`, transforms it, writes it back, and has
-   * emptied the document. The sandboxed tier made the same call in Phase 4b. The blast radius is
-   * every trusted plugin granted an editor capability, registry installs included — the registry
-   * now carries a trusted tier (`bullet-threading`, which requests no editor capability and so
-   * is not itself affected).
-   */
-  const live = (method: string): PluginEditorHandle => {
-    // Surface FIRST, exactly as the sandboxed tier orders it: an editor instance stays mounted in
-    // source mode and on a non-markdown tab but does not hold the tab's content there, so
-    // answering from it returns a stale document and accepts a write the next save discards.
-    const blocked = editorSurfaceBlocked();
-    if (blocked) throw new Error(editorRefusalMessage(method, blocked));
-    const instance = getEditorInstance();
-    if (!instance)
-      throw new Error(editorRefusalMessage(method, NO_EDITOR_OPEN));
-    return instance;
-  };
-
-  return {
-    getContent(): string {
-      return live("getContent").getText();
-    },
-    setContent(content: string): void {
-      if (readonly)
-        throw new Error("editor:readonly — setContent is not allowed");
-      const instance = live("setContent");
-      (
-        instance.commands as Record<string, (c: { content: string }) => void>
-      ).setContent({ content });
-    },
-    getSelection(): { from: number; text: string; to: number } {
-      return readSelection(live("getSelection"));
-    },
-    insertText(text: string): void {
-      if (readonly)
-        throw new Error("editor:readonly — insertText is not allowed");
-      const instance = live("insertText");
-      (instance.commands as Record<string, (t: string) => void>).insertContent(
-        text,
-      );
-    },
   };
 }
 

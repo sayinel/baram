@@ -20,6 +20,22 @@ pub enum FsError {
     NotFound(String),
     #[error("파일 읽기 실패: {0}")]
     ReadError(#[from] std::io::Error),
+    /// §387 A directory could not be listed. Unlike `ReadError`, this says WHICH one: a
+    /// walk over a vault fails as a whole on the first folder it cannot read, and with
+    /// only an `io::Error` in hand the caller cannot tell the user where.
+    ///
+    /// ‼️ The Display embeds an absolute path. The direct callers of the two walkers in
+    /// `src-tauri/src` other than `cli` — `tag`, `task` and `index::extractor` — flatten
+    /// the error with `to_string()` in place, so the path survives there as plain text and
+    /// `plugin::vault_path::redact_fs_error` never sees this variant from them. A sandbox
+    /// op built over any of those has to redact at its own boundary; `redact_fs_error` has
+    /// an arm for this variant for a caller that hands it the `FsError` itself.
+    #[error("디렉터리 읽기 실패: {}: {source}", .path.display())]
+    ReadDir {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
     #[error("파일 감시 실패: {0}")]
     WatchError(String),
     #[error("휴지통 이동 실패: {0}")]
@@ -28,6 +44,11 @@ pub enum FsError {
     /// stable, locale-independent sentinel parsed by the frontend `listDir` wrapper.
     #[error("PERMISSION_DENIED:{0}")]
     PermissionDenied(String),
+    /// §4.3 `create_file` found something already at the path. Like `PermissionDenied`, the
+    /// Display string is a stable, locale-independent sentinel — the frontend `createFile`
+    /// wrapper parses it.
+    #[error("ALREADY_EXISTS:{0}")]
+    AlreadyExists(String),
 }
 
 /// Directories excluded from markdown file collection.
@@ -46,8 +67,12 @@ pub const SKIP_DIRS: &[&str] = &["node_modules", ".git", ".obsidian", ".baram"];
 /// nobody links to costs a string; it can only ever be reached by someone writing that
 /// exact name.
 pub async fn collect_all_files(root: &Path, files: &mut Vec<PathBuf>) -> Result<(), FsError> {
-    let mut read_dir = tokio::fs::read_dir(root).await?;
-    while let Some(entry) = read_dir.next_entry().await? {
+    let unreadable = |source: std::io::Error| FsError::ReadDir {
+        path: root.to_path_buf(),
+        source,
+    };
+    let mut read_dir = tokio::fs::read_dir(root).await.map_err(unreadable)?;
+    while let Some(entry) = read_dir.next_entry().await.map_err(unreadable)? {
         let name = entry.file_name().to_string_lossy().to_string();
         if name.starts_with('.') {
             continue;
@@ -69,8 +94,12 @@ pub async fn collect_all_files(root: &Path, files: &mut Vec<PathBuf>) -> Result<
 
 /// Recursively collect all .md file paths under root, skipping hidden dirs and SKIP_DIRS.
 pub async fn collect_md_files(root: &Path, files: &mut Vec<PathBuf>) -> Result<(), FsError> {
-    let mut read_dir = tokio::fs::read_dir(root).await?;
-    while let Some(entry) = read_dir.next_entry().await? {
+    let unreadable = |source: std::io::Error| FsError::ReadDir {
+        path: root.to_path_buf(),
+        source,
+    };
+    let mut read_dir = tokio::fs::read_dir(root).await.map_err(unreadable)?;
+    while let Some(entry) = read_dir.next_entry().await.map_err(unreadable)? {
         let name = entry.file_name().to_string_lossy().to_string();
 
         // Skip hidden files/dirs
@@ -143,8 +172,55 @@ pub async fn write_file(path: &str, content: &str) -> Result<(), FsError> {
         let _ = std::fs::remove_file(&tmp_path);
         FsError::ReadError(e)
     })?;
-    // §313 방금 만든 mtime을 남긴다 — 이 자리가 "앱의 쓰기"와 "남의 쓰기"를 가르는
-    // 유일한 지점이다. 아래 `is_app_write` 주석 참조.
+    // §313 방금 만든 mtime을 남긴다 — 이 자리와 `create_file` 의 같은 호출이 "앱의 쓰기"와
+    // "남의 쓰기"를 가르는 기록을 남긴다. 아래 `is_app_write` 주석 참조.
+    note_app_write(Path::new(path));
+    Ok(())
+}
+
+/// §4.3 **새** 파일을 만든다 — 경로에 무엇이든(파일 · 디렉터리 · 링크) 이미 있으면 거부하고
+/// 손대지 않는다. 그 거부는 `AlreadyExists` 다 — 디렉터리일 때 Windows 가 무엇을 보고하는지는
+/// 확인하지 않았다(아래 테스트 주석).
+///
+/// `write_file` 은 임시 파일을 대상 위로 rename 하므로 있던 파일을 바꿔치운다. "새로 만든다"
+/// 는 호출자는 프런트의 상태(파일 트리 · 링크 색인)만으로 경로가 비었음을 보일 수 없다 —
+/// 트리는 이름을 그대로 비교하는데 macOS · Windows 의 기본 설정 볼륨은 대소문자를 가리지 않고,
+/// 트리는 점으로 시작하는 파일을 숨긴다. 그래서 판정을 OS 에 맡긴다(`create_new` —
+/// O_EXCL · CREATE_NEW): 로컬 파일시스템에서는 확인과 생성이 한 호출이라 그 사이에 끼어드는
+/// 쓰기도 없다(오래된 NFS 처럼 O_EXCL 을 보장하지 않는 원격 파일시스템은 이 범위 밖이다).
+///
+/// §3.6 의 원자적 쓰기(tmp → rename)를 쓰지 않는 것은 rename 이 곧 덮어쓰기이기 때문이다.
+/// 그 규칙이 지키려는 것 — 실패한 쓰기가 반쪽 파일을 남기지 않는 것 — 은 다르게 지킨다:
+/// 내용을 쓰다 실패하면 방금 `create_new` 로 만든(그래서 이 호출의 것인) 파일을 지운다.
+/// 프로세스가 쓰는 도중 죽는 경우는 남는다 — 그때 남는 것은 새 파일이고, 잃는 이전 내용은 없다.
+pub async fn create_file(path: &str, content: &str) -> Result<(), FsError> {
+    use tokio::io::AsyncWriteExt;
+    let mut file = tokio::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+        .await
+        .map_err(|e| {
+            if e.kind() == std::io::ErrorKind::AlreadyExists {
+                FsError::AlreadyExists(path.to_string())
+            } else {
+                FsError::ReadError(e)
+            }
+        })?;
+    // tokio 의 `File` 은 쓰기를 블로킹 스레드에 넘긴다 — flush 를 기다려야 쓰기 오류가 여기서
+    // 드러나고, 아래에서 읽는 mtime 도 마지막 쓰기 뒤의 것이 된다.
+    let written = match file.write_all(content.as_bytes()).await {
+        Ok(()) => file.flush().await,
+        Err(e) => Err(e),
+    };
+    if let Err(e) = written {
+        drop(file);
+        let _ = tokio::fs::remove_file(path).await;
+        return Err(FsError::ReadError(e));
+    }
+    // 기록은 핸들을 닫은 뒤에 — NTFS 는 핸들이 닫힐 때 마지막 수정 시각을 확정할 수 있어서,
+    // 열린 채로 읽은 mtime 은 워처가 보는 것과 다를 수 있다(`write_file` 도 rename 전에 닫는다).
+    drop(file);
     note_app_write(Path::new(path));
     Ok(())
 }
@@ -182,9 +258,10 @@ const APP_WRITE_TTL: std::time::Duration = std::time::Duration::from_secs(60);
 /// §313 앱이 마지막으로 한 쓰기의 기록 — 경로별 한 칸.
 ///
 /// 워처는 자기 프로세스가 쓴 파일도 남이 쓴 파일과 똑같은 `Modify(Data(Content))`로
-/// 본다. 그래서 판정을 **이벤트를 받는 자리가 아니라 쓰는 자리**에 둔다: 앱 안의 모든
-/// 문서 쓰기가 `write_file` 하나를 지나므로, 새 호출자가 스스로를 "이건 내 쓰기다"라고
-/// 신고할 필요가 없다 — 신고를 잊을 수 있는 자리를 아예 만들지 않는 것이 요점이다.
+/// 본다. 그래서 판정을 **이벤트를 받는 자리가 아니라 쓰는 자리**에 둔다: 기록을 남기는 것은
+/// 쓰는 함수 쪽(`write_file`, `create_file`)이라, 그 위의 호출자가 스스로를 "이건 내 쓰기다"
+/// 라고 신고할 필요가 없다 — 신고를 잊을 수 있는 자리를 호출자마다 만들지 않는 것이 요점이다.
+/// 그 대신 문서를 쓰는 Rust 함수를 새로 더하면 그 함수가 `note_app_write` 를 불러야 한다.
 fn app_writes() -> &'static std::sync::Mutex<std::collections::HashMap<String, AppWrite>> {
     static APP_WRITES: std::sync::OnceLock<
         std::sync::Mutex<std::collections::HashMap<String, AppWrite>>,
@@ -852,6 +929,76 @@ mod tests {
             .starts_with("파일을 찾을 수 없습니다:"));
     }
 
+    /// §4.3 Same coupling as the prefix above: `createFile` (`src/ipc/fs.ts`) turns a
+    /// rejection starting with this into `FileExistsError`, and the file tree's "New file"
+    /// tells the user the name is taken. Reworded, the refusal reaches the user as a
+    /// generic failure and only the log says why.
+    #[test]
+    fn already_exists_display_prefix_is_what_the_frontend_parses() {
+        assert!(FsError::AlreadyExists("x".into())
+            .to_string()
+            .starts_with("ALREADY_EXISTS:"));
+    }
+
+    /// §4.3 `create_file` makes a new file, and records it as the app's own write the way
+    /// `write_file` does — otherwise the watcher's echo of the creation reads as an
+    /// external change to the tab the file tree just opened on it.
+    #[tokio::test]
+    async fn create_file_creates_a_new_file_and_records_the_write() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("new.md");
+        create_file(p.to_str().unwrap(), "# new\n").await.unwrap();
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), "# new\n");
+        assert!(is_app_write(&p, mtime_ms(&p)));
+    }
+
+    /// §4.3 …and never replaces one. The file tree's "New file" used `write_file`, which
+    /// emptied an existing file of the same name.
+    #[tokio::test]
+    async fn create_file_refuses_a_taken_path_and_leaves_it_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("taken.md");
+        std::fs::write(&p, "keep me\n").unwrap();
+        let err = create_file(p.to_str().unwrap(), "").await.unwrap_err();
+        assert!(matches!(err, FsError::AlreadyExists(_)), "got: {err}");
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), "keep me\n");
+    }
+
+    /// Anything at the path counts — a directory too, not only a file. Unix only, because
+    /// that is where it has run: no workflow runs `cargo test` on Windows (the release
+    /// build does not test), and what `CREATE_NEW` reports there for a directory was not
+    /// checked. The open fails either way, so nothing is
+    /// written — only which variant the caller sees is unverified.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn create_file_refuses_a_directory_at_the_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("folder.md");
+        std::fs::create_dir(&p).unwrap();
+        let err = create_file(p.to_str().unwrap(), "").await.unwrap_err();
+        assert!(matches!(err, FsError::AlreadyExists(_)), "got: {err}");
+        assert!(p.is_dir());
+    }
+
+    /// The reason the check is the OS's and not the file tree's: on a volume that compares
+    /// names case-insensitively (macOS and Windows by default) `readme.md` IS `README.md`.
+    /// Skipped where the volume is case-sensitive — there the two names are two files and
+    /// creating the second is correct, which is exactly what a name comparison in the
+    /// frontend could not tell apart.
+    #[tokio::test]
+    async fn create_file_refuses_a_case_variant_where_the_volume_ignores_case() {
+        let dir = tempfile::tempdir().unwrap();
+        let upper = dir.path().join("README.md");
+        std::fs::write(&upper, "keep me\n").unwrap();
+        let lower = dir.path().join("readme.md");
+        if !lower.exists() {
+            return;
+        }
+        let err = create_file(lower.to_str().unwrap(), "").await.unwrap_err();
+        assert!(matches!(err, FsError::AlreadyExists(_)), "got: {err}");
+        assert_eq!(std::fs::read_to_string(&upper).unwrap(), "keep me\n");
+    }
+
     #[test]
     fn validate_path_rejects_null_byte() {
         assert!(validate_path("/tmp/a\0b.md").is_err());
@@ -960,6 +1107,40 @@ mod tests {
             std::fs::read_dir(&out).unwrap().next().is_none(),
             "nothing should have been extracted"
         );
+    }
+
+    /// §387 A walk fails as a whole on the first directory it cannot list; the error
+    /// has to say which one. Unix only: the fixture is a permission bit.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_walk_that_fails_names_the_directory_it_could_not_read() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::TempDir::new().unwrap();
+        let locked = dir.path().join("notes").join("locked");
+        std::fs::create_dir_all(&locked).unwrap();
+        std::fs::write(dir.path().join("notes").join("a.md"), "x").unwrap();
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+        // Running as a user the permission bits do not bind (root): nothing to test.
+        if std::fs::read_dir(&locked).is_ok() {
+            std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+            eprintln!("skipped: this user can read a 000 directory");
+            return;
+        }
+
+        let mut files = Vec::new();
+        let md = collect_md_files(dir.path(), &mut files).await;
+        let mut files = Vec::new();
+        let all = collect_all_files(dir.path(), &mut files).await;
+        // Restored before any assertion, so a failure still lets the temp dir be removed.
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        for (walker, result) in [("collect_md_files", md), ("collect_all_files", all)] {
+            match result {
+                Err(FsError::ReadDir { path, .. }) => assert_eq!(path, locked, "{walker}"),
+                other => panic!("{walker}: expected ReadDir for {locked:?}, got {other:?}"),
+            }
+        }
     }
 }
 

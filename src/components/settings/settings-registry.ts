@@ -965,6 +965,17 @@ export function useSettingsRegistry(): SearchableSetting[] {
       keywords: ["theme", "export", "package", "share", "backup"],
       control: NAVIGATE_CONTROL,
     },
+    // §386 모드 설정(스펙 0064). 행은 `tabs/color-mode-row.tsx` 에 있고 지금 입은 테마가 설정을
+    // 따를 때만 보인다 — 그래서 검색은 컨트롤을 직접 그리지 않고 외관 탭으로 보낸다(계획 0114 P8).
+    {
+      id: "colorModeSetting",
+      label: "settings.appearance.colorMode",
+      description: "settings.appearance.colorMode.desc",
+      category: "appearance",
+      section: "settings.appearance.theme",
+      keywords: ["dark", "light", "mode", "system", "night", "appearance"],
+      control: NAVIGATE_CONTROL,
+    },
     // §367 — 강조색 다이얼 둘. 행은 AppearanceTab.tsx 에 있고, 여기 있는 것은
     // **검색**이다. 둘이 갈리면 검색해서 찾은 설정이 아무 데도 데려가지 않는
     // 구멍이 된다 — 0093 이 `editorPadding` 에서 정확히 그 구멍을 냈고 0094 가

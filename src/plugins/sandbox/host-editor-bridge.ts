@@ -14,16 +14,20 @@ import type { PluginCapability } from "../types";
 import type { SandboxHostRequest } from "./protocol";
 
 import { pluginSandboxStage } from "../../ipc/plugin-invoke";
-import { markdownToProsemirrorAsync } from "../../pipeline/md-to-pm";
 import { serializeEditorState } from "../../utils/editor/serialize-live-doc";
 import { documentProseText } from "../../utils/word-count";
 import {
-  editorRefusalMessage,
+  insertMarkdownAt,
+  insertTextAt,
+  liveEditor,
+  readSelectionForPlugin,
+  replaceDocument,
+} from "../editor-ops";
+import { refuse } from "../editor-refusal";
+import {
   editorSurfaceBlocked,
   getEditorInstance,
-  NO_EDITOR_OPEN,
   type PluginEditorHandle,
-  readSelection,
 } from "../plugin-host-registry";
 import { EDITOR_READ_CAPABILITIES, EDITOR_WRITE_CAPABILITIES } from "../types";
 import { createCapabilityGate } from "./capability-gate";
@@ -90,12 +94,14 @@ export const DOCUMENT_BUDGET_REFILL_PER_SECOND = 512 * 1024;
  * ‼️ Those rates are for ONE transaction, i.e. `insertText`. A successful `setMarkdown`
  * spends payload AND transaction separately (see the M1 split there), so at 500 KB it
  * costs ~1 MB — about 0.5/s, not the ~1/s a reader would carry over from this line.
+ * `insertMarkdown` (§388) splits the same way; its payload is capped at 64 KiB by the frame
+ * check, so the transaction term dominates on a large document.
  *
  * ‼️ Streaming, stated because the natural composition hits it: `ctx.ai.stream` +
  * `insertText` per token runs at 20-80/s, which this admits on a small note and refuses on
  * a large document. That is deliberate — per-token insertion is already wrong there, since
- * ProseMirror groups undo by TRANSACTION, so a thousand tokens would be a thousand Cmd+Z
- * presses. Buffer and insert in batches. `SandboxEditorAPI.insertText` says so too.
+ * each insert is its own undo step (§388 spec 0067 §5), so a thousand tokens would be a
+ * thousand Cmd+Z presses. Buffer and insert in batches.
  */
 export const WRITE_TRANSACTION_FLOOR = 8 * 1024;
 
@@ -143,30 +149,33 @@ export function createEditorRequestHandler(
     limits.refillPerSecond,
     "document budget",
   );
-  const requireCapability = createCapabilityGate(
-    pluginId,
-    capabilities,
-    "editor",
-  );
-
-  /** The live editor, or a refusal the plugin can act on. */
-  const live = (method: string): PluginEditorHandle => {
-    // Surface FIRST: an editor instance stays mounted in source mode and on a
-    // non-markdown tab, but it does not hold the tab's content there, so answering from it
-    // would return a stale document and accept a write that the next save discards
-    // (security review LOW-3). Distinguishable from "no editor is open" for the same
-    // reason that one is distinguishable from an empty document.
-    const blocked = surfaceBlocked();
-    if (blocked) throw new Error(editorRefusalMessage(method, blocked));
-    const instance = editor();
-    if (!instance) {
-      // Wording shared with the trusted tier (#322), so the two cannot come to describe the same
-      // refusal differently. Only the wording — the decision stays here, because this tier
-      // injects `surfaceBlocked`/`editor` for its tests.
-      throw new Error(editorRefusalMessage(method, NO_EDITOR_OPEN));
+  const gate = createCapabilityGate(pluginId, capabilities, "editor");
+  /**
+   * The shared capability gate, its refusal coded `not-permitted` and worded like every
+   * other editor refusal (spec 0067 §9 · §10). The gate's sentence is kept whole as the
+   * reason: it names the grant to declare, and plugins and fixtures match on it.
+   */
+  const requireCapability = (
+    accepted: readonly PluginCapability[],
+    method: string,
+  ): void => {
+    try {
+      gate(accepted, method);
+    } catch (err) {
+      refuse("not-permitted", method, (err as Error).message);
     }
-    return instance;
   };
+
+  /**
+   * The live editor, or a coded refusal — `liveEditor`, the gate both tiers share, fed this
+   * tier's injected `surfaceBlocked` and `editor`. Surface FIRST: an editor instance stays
+   * mounted in source mode and on a non-markdown tab, but it does not hold the tab's content
+   * there, so answering from it would return a stale document and accept a write that the
+   * next save discards (security review LOW-3).
+   */
+  const live = (method: string): PluginEditorHandle =>
+    liveEditor(method, surfaceBlocked, editor);
+  const ops = { live, owner: pluginId };
 
   return async (request: EditorRequest) => {
     switch (request.kind) {
@@ -208,17 +217,28 @@ export function createEditorRequestHandler(
         // rather than deleted: the composition it describes is the reason both calls are
         // shaped the way they are.
         budget.spend(to - from, "getSelection");
+        // The read and the ref through the core the trusted tier uses, so neither the
+        // position/offset rule nor what a ref records can diverge between the tiers. Only a
+        // plugin that can write gets a ref that names something (spec 0067 §7.1).
+        const selection = readSelectionForPlugin(ops, "getSelection", {
+          record: EDITOR_WRITE_CAPABILITIES.some((c) =>
+            capabilities.includes(c),
+          ),
+        });
         // A bare caret is the common case and its text is `""`. Staging that would buy a
         // Rust slot write and a broker pull to deliver nothing, and would occupy the ONE
         // shared slot, serialising an empty read against an in-flight `getMarkdown` (code
         // review N1). Not a size judgement — empty or not is exact — so it keeps the
-        // "no threshold to get wrong" property.
-        if (from === to) return { from, staged: false, to };
-        // `readSelection` is shared with the trusted tier so the position/offset rule
-        // cannot diverge between them.
-        const selection = readSelection(instance);
+        // "no threshold to get wrong" property. The ref rides inline either way: 32 hex
+        // digits, nowhere near the 8 KiB threshold (spec 0067 §8).
+        if (from === to) return { from, ref: selection.ref, staged: false, to };
         await stage(pluginId, selection.text);
-        return { from: selection.from, staged: true, to: selection.to };
+        return {
+          from: selection.from,
+          ref: selection.ref,
+          staged: true,
+          to: selection.to,
+        };
       }
       case "editor_get_text": {
         requireCapability(EDITOR_READ_CAPABILITIES, "getText");
@@ -233,107 +253,129 @@ export function createEditorRequestHandler(
         await stage(pluginId, text);
         return undefined;
       }
+      case "editor_insert_markdown": {
+        requireCapability(EDITOR_WRITE_CAPABILITIES, "insertMarkdown");
+        // SPLIT like `setMarkdown` (spec 0067 §8): the payload before the parse, because the
+        // worker parse really happens; the transaction once every check has passed. The core
+        // calls `beforeParse` after its surface gate and ref check, and `beforeDispatch` right
+        // before it sends.
+        //
+        // A write also does work before that charge, and a refusal would leave it unpaid: the
+        // payload charge does not cover it — it is zero for `""` — and a refused ref stays usable
+        // for the next try (plan 0117 Rulings 24 · 26 · 28).
+        // - The shadow check walks the ref's range (`verifyAnchor` → `textBetween`; the whole
+        //   document for an "all" ref), and a write with no `replace` first walks the user's
+        //   selection, when `issueAnchor` records it.
+        // - When an expansion touches the range, the collapse's shadow `apply` runs the plugins'
+        //   state `apply` and `appendTransaction` hooks, and some of them walk the whole document
+        //   — measured 2026-10-05 on `createBaramExtensions`: `buildTaskFieldDecorations`
+        //   (`task-field-chips.ts`) and, after an image collapse, `findFoldableListItems`
+        //   (`fold-ranges.ts`).
+        // The core calls `beforeWalk` before each with the range's `to - from`, the measure
+        // `getSelection` charges for reading it. Besides its payload — paid once `beforeParse`
+        // has run, so a write refused earlier pays none — a write pays one charge: the
+        // transaction if it lands; the larger of the transaction and that length if it is refused
+        // once the shadow `apply` has begun, as spec §8 prices the collapse inside the
+        // transaction; that length if it is refused after the range's walk alone; nothing if it
+        // is refused before either. So in `send`, `beforeWalk` refuses `budget` unless the meter
+        // covers the larger of transaction and length — not their sum — and spends nothing. A
+        // plugin that cannot afford the work is refused before it, and one retrying a stale ref
+        // pays on every try.
+        //
+        // The `setMarkdown` note below turns down a peek for its TOCTOU: that peek would sit
+        // before the async parse, while other requests can spend. `beforeWalk` decides no charge
+        // — each charge spends for itself — and in `send` the core runs it, the shadow work and
+        // the charge that follows in one synchronous pass, so a check that passed there leaves
+        // room for whichever charge follows. A write with no `replace` walks before its parse
+        // and pays its payload right after that walk, so the check there asks for the payload
+        // still due and the length, and not the transaction: `send` asks for that after the
+        // parse, when the refill during it counts (plan 0117 Ruling 27). Two things can still
+        // leave that walk's charge refused: payload and length together above the burst, where
+        // the check can ask for no more than a full bucket, and other requests spending during
+        // the parse. The write is then refused `budget` with that walk unpaid, and its next try
+        // meets `beforeWalk` again.
+        const payload = request.markdown.length;
+        let paid = false; // the payload, which `beforeParse` charges
+        const transaction = () =>
+          transactionCost(live("insertMarkdown"), limits);
+        await insertMarkdownAt(ops, {
+          beforeDispatch: () => budget.spend(transaction(), "insertMarkdown"),
+          beforeParse: () => {
+            budget.spend(payload, "insertMarkdown");
+            paid = true;
+          },
+          beforeWalk: (walk) =>
+            budget.afford(
+              paid ? Math.max(transaction(), walk) : payload + walk,
+              "insertMarkdown",
+            ),
+          markdown: request.markdown,
+          ref: request.replace,
+          refusedAfterWalk: (walk, collapsed) =>
+            budget.spend(
+              collapsed ? Math.max(transaction(), walk) : walk,
+              "insertMarkdown",
+            ),
+        });
+        return undefined;
+      }
       case "editor_insert_text": {
         requireCapability(EDITOR_WRITE_CAPABILITIES, "insertText");
-        const instance = live("insertText");
-        const { from, to } = instance.state.selection;
-        budget.spend(
-          insertCost(request.text.length, instance, limits),
-          "insertText",
-        );
-        // ONE transaction: ProseMirror's history groups by transaction, so this is a
-        // single Cmd+Z for the user. `insertText` over the selection range is what makes
-        // it behave like typing — replacing a selection rather than appending beside it.
-        instance.view.dispatch(
-          instance.state.tr.insertText(request.text, from, to),
-        );
+        // Charged right before the send, after the core's checks: there is no parse, so the
+        // charge on success is `insertCost` — the payload or the document it re-renders. Its
+        // walks are priced as on `editor_insert_markdown`, with `insertCost` in the
+        // transaction's place. With no parse the whole write is one synchronous pass, so a
+        // `beforeWalk` that passed leaves room for whichever charge follows, and the implicit
+        // anchor's check asks for what `send`'s will: with nothing between them that spends or
+        // waits, asking less there would only let a write walk the selection and then be refused.
+        const cost = () =>
+          insertCost(request.text.length, live("insertText"), limits);
+        insertTextAt(ops, {
+          beforeDispatch: () => budget.spend(cost(), "insertText"),
+          beforeWalk: (walk) =>
+            budget.afford(Math.max(cost(), walk), "insertText"),
+          ref: request.replace,
+          refusedAfterWalk: (walk, collapsed) =>
+            budget.spend(
+              collapsed ? Math.max(cost(), walk) : walk,
+              "insertText",
+            ),
+          text: request.text,
+        });
         return undefined;
       }
       case "editor_set_markdown": {
         requireCapability(EDITOR_WRITE_CAPABILITIES, "setMarkdown");
-        const instance = live("setMarkdown");
+        // The parse, the identity guard and the replace live in `replaceDocument`
+        // (`editor-ops.ts`), with their §260 Phase 4b notes.
+        //
         // SPLIT along the two costs (§260 Phase 4b code review, M1). The payload is
-        // charged now, because the worker parse and the transfer really happen; the
-        // TRANSACTION is charged after the identity guard, because a lost race dispatches
-        // nothing. Charging both up front meant a user keystroke during the parse — which
-        // the guard refuses by design, and which is likeliest on the large documents where
-        // the parse is slowest — burned a full document-sized charge per attempt, so a
-        // plugin obeying the error's "retry" advice exhausted its burst and was then told
-        // "document budget is exhausted": a diagnostic pointing away from the cause.
+        // charged before the parse, because the worker parse and the transfer really happen;
+        // the TRANSACTION after the identity guard, because a lost race dispatches nothing.
+        // Charging both up front meant a user keystroke during the parse — which the guard
+        // refuses by design, and which is likeliest on the large documents where the parse
+        // is slowest — burned a full document-sized charge per attempt, so a plugin obeying
+        // the error's "retry" advice exhausted its burst and was then told "document budget
+        // is exhausted": a diagnostic pointing away from the cause.
         //
         // ‼️ The SUM is intended, and it is a real increase: this used to charge
         // `max(payload, transaction)`, so replacing a 500 KB document with 500 KB of
         // markdown went from ~500K to ~1M. Both costs are genuinely incurred on the
         // success path, and the direction is conservative — the trade is that a lost race
         // got much cheaper while a completed write got somewhat dearer.
-        budget.spend(request.markdown.length, "setMarkdown");
-        // The ASYNC pipeline, which parses in the app's own Web Worker (security review
-        // MEDIUM-2): the synchronous form put an attacker-sized remark parse on the thread
-        // this tier exists to protect.
         //
-        // Node construction and the replace still run HERE, in one transaction —
-        // deliberately not the progressive/windowed path the app uses to open a large file
-        // (`mdastBlocksToPmNodes` + `appendChunksProgressively`). That path exists because
-        // construction dominates the ~38 s load floor, so a large `setMarkdown` pays it
-        // (code review P4). It is not adopted because progressive fill has its own
-        // hazards — a mid-fill tab switch blessing a truncated document as the save
-        // baseline — which are the app's to own for a user action, not something to
-        // inherit for a plugin write. The frame validator's 2 MiB cap and the budget
-        // above are what bound it instead.
-        //
-        // Parsed with the LIVE schema, not a fresh one: a node built against a different
-        // Schema instance fails ProseMirror's identity-based validation on insert (the
-        // keep-alive lesson from the large-file work).
-        // ‼️ Captured BEFORE the await, into a local. `handle.state` is a live getter (it
-        // reads `view.state`), so comparing `instance.state.doc` afterwards would compare
-        // the new document with ITSELF and the guard below could never fire. The first
-        // version of that guard did exactly this; the tab-switch test is what caught it.
-        const parsedFrom = instance.state.doc;
-        const next = await markdownToProsemirrorAsync(
-          request.markdown,
-          instance.schema,
-        );
-        // ‼️ The DOCUMENT must still be the one we parsed against, by identity.
-        //
-        // §260 Phase 4b security review, NEW HIGH — an earlier version compared schemas,
-        // which catches only a keep-alive handover. The ordinary tab switch installs a
-        // different document into the SAME editor with the SAME schema
-        // (`editor.view.updateState(cachedState)`, `use-tab-switching.ts`), so the schema
-        // check passed and this replaced ANOTHER FILE's document with content parsed for
-        // this one — then marked it dirty, so autosave could write it to disk. No hostile
-        // plugin required; an ordinary `setMarkdown` racing a tab switch was enough. The
-        // synchronous version could not do this: making the parse async introduced it.
-        //
-        // Identity, not a change signal, because a signal can be missed: there are at
-        // least five paths that install a document via `updateState`, and two of them
-        // (external file reload and the §72 properties refresh, `use-editor-effects.ts`)
-        // do not call `markContentLoaded`. Comparing the node we hold is the only form
-        // that cannot be outrun by a path nobody enumerated.
-        //
-        // The cost is that a user keystroke during the parse also refuses. That is the
-        // right trade for a WHOLE-DOCUMENT replace: the plugin gets an error it can retry,
-        // where the alternative is discarding an edit the user just made — the same
-        // silent-loss class as LOW-3. Identity also subsumes the schema case, since nodes
-        // built against different Schema instances are never the same object.
-        const target = live("setMarkdown");
-        if (target.state.doc !== parsedFrom) {
-          throw new Error(
-            "editor.setMarkdown: the document changed while this one was parsing — retry",
-          );
-        }
-        // RESIDUAL, accepted (re-review Q1): this can refuse after the guard has already
-        // passed, so a budget-exhausted plugin can force a worker parse plus the transfer
-        // back per attempt and get nothing. Bounded — the validator's 2 MiB cap means two
-        // attempts on a full burst, then one per ~4 s — and the parse is off the main
-        // thread. The alternative, peeking then spending, puts a TOCTOU on the budget.
-        budget.spend(transactionCost(target, limits), "setMarkdown");
-        target.view.dispatch(
-          target.state.tr.replaceWith(
-            0,
-            target.state.doc.content.size,
-            next.content,
-          ),
-        );
+        // RESIDUAL, accepted (re-review Q1): the transaction charge can refuse after the
+        // guard has passed, so a budget-exhausted plugin can force a worker parse plus the
+        // transfer back per attempt and get nothing. Bounded — the validator's 2 MiB cap
+        // means two attempts on a full burst, then one per ~4 s — and the parse is off the
+        // main thread. The alternative, peeking then spending, puts a TOCTOU on the budget.
+        await replaceDocument(ops, {
+          beforeDispatch: (target) =>
+            budget.spend(transactionCost(target, limits), "setMarkdown"),
+          beforeParse: () =>
+            budget.spend(request.markdown.length, "setMarkdown"),
+          markdown: request.markdown,
+        });
         return undefined;
       }
       default: {
@@ -349,7 +391,7 @@ export function createEditorRequestHandler(
 /**
  * A token bucket — the same shape as Rust's `PluginRateLimiter`, and for the same reason:
  * a burst lets ordinary use through in one go, while a runaway loop settles to the refill
- * rate instead of pinning the main thread.
+ * rate instead of pinning the main thread. Its refusal is coded `budget` (spec 0067 §10).
  */
 export function createMeter(
   now: () => number,
@@ -359,27 +401,54 @@ export function createMeter(
 ) {
   let tokens = burst;
   let updated = now();
+  /**
+   * Refill up to now, then refuse unless `cost` fits; returns the charge `cost` takes. Shared
+   * by both methods, so `afford` answers with `spend`'s own arithmetic. Refilling early is not
+   * spending: while the refill rate is not negative, a refill never lowers `tokens` — it adds
+   * `elapsed * perSecond` with `elapsed` clamped at 0, and the clamp to `burst` cannot cut below
+   * a `tokens` that is never above it. `fit` WRITES `tokens` (the refill), so a caller that
+   * subtracts the charge must read `tokens` after `fit` returns, not before it is called.
+   */
+  const fit = (cost: number, method: string): number => {
+    const at = now();
+    // `max(0, …)`: a clock that goes backwards must neither mint tokens nor, by rewinding
+    // `updated`, hand the NEXT call a larger elapsed to mint from.
+    const elapsed = Math.max(0, at - updated) / 1000;
+    tokens = Math.min(burst, tokens + elapsed * perSecond);
+    if (at > updated) updated = at;
+    // ‼️ CLAMPED to the burst (§260 Phase 4b security review, Q4). `tokens` can never
+    // exceed `burst`, so an uncapped charge above it would make the call fail FOREVER —
+    // a document larger than the burst would be permanently unreadable, while the error
+    // told the plugin to try less often, which could not possibly help. Reachable: a user
+    // can open a 5 MB note, and Rust stages up to 8 MiB. Clamping costs one full burst
+    // for such a document, i.e. one read per refill cycle, which is a throttle rather
+    // than a wall.
+    const charge = Math.min(cost, burst);
+    if (tokens < charge) {
+      refuse(
+        "budget",
+        method,
+        `this plugin's ${what} is exhausted; slow down and retry.`,
+      );
+    }
+    return charge;
+  };
   return {
+    /**
+     * Refuse exactly when `spend(cost, method)` would, with the same refusal, and spend
+     * nothing — an early answer for work that is charged later (plan 0117 Rulings 24 · 26).
+     */
+    afford(cost: number, method: string): void {
+      fit(cost, method);
+    },
+    /**
+     * `fit` first, then the subtraction from the refilled `tokens`. A compound `tokens -= fit(…)`
+     * reads `tokens` before `fit` runs and subtracts from the stale value, which discards the
+     * refill since the previous call on every success (plan 0117 Ruling 24 introduced that,
+     * and its fix is this split).
+     */
     spend(cost: number, method: string): void {
-      const at = now();
-      // `max(0, …)`: a clock that goes backwards must neither mint tokens nor, by rewinding
-      // `updated`, hand the NEXT call a larger elapsed to mint from.
-      const elapsed = Math.max(0, at - updated) / 1000;
-      tokens = Math.min(burst, tokens + elapsed * perSecond);
-      if (at > updated) updated = at;
-      // ‼️ CLAMPED to the burst (§260 Phase 4b security review, Q4). `tokens` can never
-      // exceed `burst`, so an uncapped charge above it would make the call fail FOREVER —
-      // a document larger than the burst would be permanently unreadable, while the error
-      // told the plugin to try less often, which could not possibly help. Reachable: a user
-      // can open a 5 MB note, and Rust stages up to 8 MiB. Clamping costs one full burst
-      // for such a document, i.e. one read per refill cycle, which is a throttle rather
-      // than a wall.
-      const charge = Math.min(cost, burst);
-      if (tokens < charge) {
-        throw new Error(
-          `editor.${method}: this plugin's ${what} is exhausted; slow down and retry.`,
-        );
-      }
+      const charge = fit(cost, method);
       tokens -= charge;
     },
   };
@@ -388,9 +457,9 @@ export function createMeter(
 /**
  * What ONE `insertText` costs: its payload, or the document it re-renders.
  *
- * Named for its single caller (§260 Phase 4b re-review, N2). `setMarkdown` does not use
- * it — it composes the same two terms itself, but charges them at different moments; see
- * the M1 note there.
+ * Named for its single caller (§260 Phase 4b re-review, N2). `setMarkdown` and
+ * `insertMarkdown` do not use it — they charge the same two terms separately, at different
+ * moments; see the M1 note on `setMarkdown`.
  */
 export function insertCost(
   payloadLength: number,

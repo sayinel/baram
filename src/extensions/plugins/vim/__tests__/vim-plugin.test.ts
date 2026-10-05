@@ -471,6 +471,31 @@ describe("insert-Esc arbitration (§4, S6)", () => {
   });
 });
 
+describe("insert-Esc over a real expansion (§384, spec 0067 §11-1)", () => {
+  it("one Esc collapses the expansion and it stays collapsed; the caret keeps its offset", () => {
+    const editor = makeEditor("<p>a <strong>word</strong> b</p>");
+    enable(editor);
+    editor.view.dispatch(
+      editor.state.tr.setMeta(vimPluginKey, {
+        mode: "insert",
+        type: "setMode",
+      }),
+    );
+    editor.commands.setTextSelection(5); // "a wo|rd b" → expands to "a **wo|rd** b"
+    expect(syntaxRevealKey.getState(editor.state)?.expanded).not.toBeNull();
+
+    key(editor, "Escape");
+
+    expect(vim(editor).mode).toBe("insert"); // the reveal owned this Esc
+    expect(syntaxRevealKey.getState(editor.state)?.expanded).toBeNull();
+    expect(editor.state.selection.from).toBe(5);
+    expect(syntaxRevealKey.getState(editor.state)?.suppressed).toEqual({
+      from: 3,
+      to: 7,
+    });
+  });
+});
+
 describe("Korean input source (device report)", () => {
   function koreanKey(editor: Editor, key: string, code: string): void {
     editor.view.dom.dispatchEvent(

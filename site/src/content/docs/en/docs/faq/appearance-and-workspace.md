@@ -6,7 +6,7 @@ title: "Appearance and workspace"
 
 ### How do I change the theme?
 
-Open **Settings > Appearance** (`Cmd+,`). You'll see a gallery of theme cards — click any card to apply it. Select **System (Auto)** to follow your OS light/dark mode setting.
+Open **Settings > Appearance** (`Cmd+,`). You'll see a gallery of theme cards — click any card to apply it. **Baram Default** is the default palette in light and dark; while a theme that has both modes is applied, **Mode** under the gallery chooses **System** (follows your OS), **Light**, or **Dark**.
 
 ### What built-in themes are available?
 

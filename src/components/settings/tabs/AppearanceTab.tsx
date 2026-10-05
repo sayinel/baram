@@ -16,6 +16,7 @@ import { AppearanceDialRow } from "../appearance-dial-row";
 import { AppearanceExport } from "../appearance-export";
 import { SettingsSectionHeader } from "../settings-shared";
 import { ThemeEditor } from "../ThemeEditor";
+import { ColorModeRow } from "./color-mode-row";
 import { ThemeGallery } from "./theme-gallery";
 import { ThemeBrowser } from "./ThemeBrowser";
 
@@ -43,9 +44,12 @@ export function AppearanceTab() {
         onCustomize={() => setSubScreen("editor")}
         onExportLook={() => setSubScreen("export")}
       />
+      {/* §386 모드(스펙 0064 D3) — 갤러리 **아래**다. 한 모드짜리 테마로 바꿔 이 행이
+          사라져도 카드 위치가 그대로라, 누르던 자리가 움직이지 않는다. */}
+      <ColorModeRow />
       {/* §367 — 강조색 다이얼은 앱 전체의 겉모습을 바꾸므로 에디터 탭이 아니라
-          여기다(§365.4: 색 스킴·강조색·밀도·모서리는 외관). 갤러리 바로 아래에
-          두는 이유는 이 둘이 **고른 테마의 강조색을 옮기는** 조정이라, 무엇을
+          여기다(§365.4: 색 스킴·강조색·밀도·모서리는 외관). 갤러리 가까이(모드 행
+          바로 아래) 두는 이유는 이 둘이 **고른 테마의 강조색을 옮기는** 조정이라, 무엇을
           옮기는지가 바로 위에 보여야 하기 때문이다. */}
       <AppearanceDialRow
         dialId="accentHueShift"

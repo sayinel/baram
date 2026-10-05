@@ -117,6 +117,43 @@ describe("§56b Journal workspace preset update", () => {
       path: journalDir,
     });
   });
+
+  it("switches to the journal even when today's entry cannot be read, and writes nothing", async () => {
+    // `ensureJournalFile` now RAISES for an entry that exists but cannot be read
+    // (invalid UTF-8, a refused permission) instead of writing the template over it.
+    // The preset opens today's entry and THEN loads the journal's tree, so a raise
+    // there must not cost the switch: `ensureJournalContext` has already moved
+    // `rootPath` to the journal, and without `switchContext` the Files panel would keep
+    // showing the previous vault — the split the test above guards.
+    const journalDir = "/tmp/baram-journal-scope";
+    useSettingsStore.setState({
+      journalDirectory: journalDir,
+      journalEnabled: true,
+    });
+    const unreadable = "파일 읽기 실패: stream did not contain valid UTF-8";
+    const stub = vi.mocked(invoke).getMockImplementation();
+    vi.mocked(invoke).mockClear();
+    vi.mocked(invoke).mockImplementation(async (command, args) => {
+      if (command === "read_file") throw unreadable;
+      return stub?.(command, args);
+    });
+    try {
+      useWorkspaceStore.getState().applyPreset("journal");
+      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((r) => setTimeout(r, 0));
+
+      const commands = vi.mocked(invoke).mock.calls.map(([command]) => command);
+      // The read was reached — without this the two lines below pass for a preset
+      // that never tried to open the entry at all.
+      expect(commands).toContain("read_file");
+      expect(commands).not.toContain("write_file");
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("set_vault_root", {
+        path: journalDir,
+      });
+    } finally {
+      vi.mocked(invoke).mockImplementation(stub!);
+    }
+  });
 });
 
 describe("§85 M2b isActiveContextJournal", () => {
