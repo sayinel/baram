@@ -31,13 +31,24 @@ import { prevUnitBoundary } from "./graphemes";
  * — the one before the head, on the previous line when the head sits at a
  * line start (Shift+Down ends a range there) — a backward one on the unit at
  * the head. A NodeSelection stays — it is how normal mode stands on a block
- * atom line.
+ * atom line. A code-block landing moves toward the anchor to the nearest
+ * selectable position outside the block. The search gives up if that found
+ * selection is outside the range; the bound is checked before a backward
+ * caret boundary is turned into the last unit's start. If no outside landing
+ * exists in the range, the range stays. Esc does not hand off to the island.
  */
 export function insertEscTarget(state: EditorState): null | number {
   const sel = state.selection;
   if (!sel.empty && !(sel instanceof NodeSelection)) {
-    if (sel.head < sel.anchor) return sel.head;
-    return forwardRangeEscTarget(state, sel.head) ?? sel.head;
+    const backward = sel.head < sel.anchor;
+    const target = backward
+      ? sel.head
+      : (forwardRangeEscTarget(state, sel) ?? sel.head);
+    if (!isCodeBlockLanding(state, target)) return target;
+    const $target = state.doc.resolve(target);
+    return backward
+      ? findOutsideCodeBlocks(state, $target.after(), 1, sel)
+      : findOutsideCodeBlocks(state, $target.before(), -1, sel);
   }
   // A caret in a code block is CodeMirror's: stepping it here would also hand
   // focus to the island (dispatchCursor). Off a textblock there is no line.
@@ -77,20 +88,21 @@ export function terminalClampTarget(state: EditorState): null | number {
   return prev < sel.head ? prev : null;
 }
 
-/** Where Esc lands a FORWARD insert range whose head is `head`: the start
- *  of the last cursor unit before it — on its own line, or —
+/** Where Esc lands a FORWARD insert range: the start of the last cursor
+ *  unit before its head — on the head's own line, or — when the head is
  *  at a line start — the end of the line before it, found locally (no
  *  document-wide line list: Esc on a huge document must stay cheap). Across a
  *  hard break that is the previous segment; across a block boundary it is the
  *  nearest selectable position before the block — the last cell's text of a
- *  table, a block atom's own position, an empty paragraph's caret. A code
- *  block is skipped (the search goes on before it): CodeMirror owns that
- *  caret, and landing there would hand focus to the island, which Esc never
- *  does. null when nothing precedes. */
+ *  table, a block atom's own position, an empty paragraph's caret. The block
+ *  search skips code blocks and gives up outside the range. An in-block unit
+ *  is returned to insertEscTarget for the same bounded search toward the
+ *  anchor. null when no selectable position precedes within the range. */
 function forwardRangeEscTarget(
   state: EditorState,
-  head: number,
+  sel: Selection,
 ): null | number {
+  const head = sel.head;
   const span = sourceLineSpan(state, head);
   const onLine = span ? unitBeforeOnLine(state, head, span.from) : null;
   if (onLine !== null) return onLine;
@@ -101,17 +113,7 @@ function forwardRangeEscTarget(
     return lastUnitOfLineEndingAt(state, span.from - 1);
   }
   const before = $head.parent.isTextblock ? $head.before() : head;
-  let found = Selection.findFrom(state.doc.resolve(before), -1);
-  while (
-    found &&
-    !(found instanceof NodeSelection) &&
-    isCodeBlockLanding(state, found.head)
-  ) {
-    found = Selection.findFrom(state.doc.resolve(found.$head.before()), -1);
-  }
-  if (!found) return null;
-  if (found instanceof NodeSelection) return found.from;
-  return lastUnitOfLineEndingAt(state, found.head);
+  return findOutsideCodeBlocks(state, before, -1, sel);
 }
 
 /** The last unit of the line that ends at `end`, or that line's end
@@ -143,4 +145,29 @@ function endsAfterYamlNewline($head: ResolvedPos): boolean {
   if ($head.parent.type.name !== "frontmatter") return false;
   const before = $head.nodeBefore;
   return before?.isText === true && before.text?.endsWith("\n") === true;
+}
+
+/** Find the nearest selectable position outside code blocks in `direction`.
+ *  Give up when the found selection is outside `range`. Bound that selection
+ *  before converting a backward caret boundary to the line's last unit: a
+ *  boundary at the anchor is in range even if its preceding unit starts before
+ *  the anchor. */
+function findOutsideCodeBlocks(
+  state: EditorState,
+  from: number,
+  direction: -1 | 1,
+  range: Selection,
+): null | number {
+  let found = Selection.findFrom(state.doc.resolve(from), direction);
+  while (
+    found &&
+    !(found instanceof NodeSelection) &&
+    isCodeBlockLanding(state, found.head)
+  ) {
+    const edge = direction < 0 ? found.$head.before() : found.$head.after();
+    found = Selection.findFrom(state.doc.resolve(edge), direction);
+  }
+  if (!found || found.to < range.from || found.from > range.to) return null;
+  if (found instanceof NodeSelection) return found.from;
+  return direction < 0 ? lastUnitOfLineEndingAt(state, found.head) : found.head;
 }

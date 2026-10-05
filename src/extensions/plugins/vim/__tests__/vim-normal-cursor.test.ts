@@ -9,9 +9,10 @@ import type { DecorationSet } from "@tiptap/pm/view";
 import { Editor } from "@tiptap/core";
 import { AllSelection, NodeSelection, TextSelection } from "@tiptap/pm/state";
 import { CellSelection } from "@tiptap/pm/tables";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createBaramExtensions } from "../../../index";
+import * as cmRegistry from "../../../nodes/views/code-block-cm-registry";
 import {
   insertEscTarget,
   terminalClampTarget,
@@ -23,6 +24,7 @@ import { type VimPluginState } from "../vim-plugin-state";
 const editors: Editor[] = [];
 
 afterEach(() => {
+  vi.restoreAllMocks();
   resetVimRegister();
   for (const e of editors.splice(0)) e.destroy();
 });
@@ -262,6 +264,199 @@ describe("the normal cursor on an empty hard-break segment", () => {
 });
 
 describe("insert Esc collapses a range made while inserting", () => {
+  it("a forward range starting inside a text cluster still lands on the whole unit", () => {
+    // Fails if: forwardRangeEscTarget bounds onLine by sel.from: head stays 4, not 1.
+    const editor = makeVimEditor("<p>한x</p>");
+    place(editor, 1);
+    key(editor, "i");
+    editor.view.dispatch(
+      editor.state.tr.setSelection(
+        TextSelection.create(editor.state.doc, 2, 4),
+      ),
+    );
+    key(editor, "Escape");
+    expect(head(editor)).toBe(1);
+    expect(editor.state.selection.empty).toBe(true);
+  });
+
+  it("a backward range whose head is inside a code block lands after the block", () => {
+    // Fails if: insertEscTarget returns target without the code-block detour: head stays 7, not 12.
+    const editor = makeVimEditor(
+      "<p>para</p><pre><code>xyz</code></pre><p>after</p>",
+    );
+    place(editor, 1);
+    key(editor, "i");
+    const doc = editor.state.doc;
+    editor.view.dispatch(
+      editor.state.tr.setSelection(
+        TextSelection.between(doc.resolve(15), doc.resolve(6)),
+      ),
+    );
+    const landings: string[] = [];
+    const enter = cmRegistry.enterCodeBlockSelection;
+    const handoff = vi
+      .spyOn(cmRegistry, "enterCodeBlockSelection")
+      .mockImplementation((view, ...args) => {
+        landings.push(view.state.selection.$head.parent.type.name);
+        return enter(view, ...args);
+      });
+    key(editor, "Escape");
+    expect(mode(editor)).toBe("normal");
+    expect(head(editor)).toBe(12);
+    expect(landings).toEqual(["paragraph"]);
+    expect(handoff).toHaveBeenCalledTimes(1);
+    expect(editor.state.selection.empty).toBe(true);
+    expect(editor.state.selection.$head.parent.type.name).toBe("paragraph");
+    handoff.mockRestore();
+  });
+
+  it("a forward range whose head is at a code block's content end lands before the block", () => {
+    // Fails if: insertEscTarget returns target without the code-block detour: head is 9, not 4.
+    const editor = makeVimEditor(
+      "<p>para</p><pre><code>xyz</code></pre><p>after</p>",
+    );
+    place(editor, 2);
+    key(editor, "i");
+    const doc = editor.state.doc;
+    editor.view.dispatch(
+      editor.state.tr.setSelection(TextSelection.create(doc, 2, 10)),
+    );
+    const landings: string[] = [];
+    const enter = cmRegistry.enterCodeBlockSelection;
+    const handoff = vi
+      .spyOn(cmRegistry, "enterCodeBlockSelection")
+      .mockImplementation((view, ...args) => {
+        landings.push(view.state.selection.$head.parent.type.name);
+        return enter(view, ...args);
+      });
+    key(editor, "Escape");
+    expect(mode(editor)).toBe("normal");
+    expect(head(editor)).toBe(4);
+    expect(landings).toEqual(["paragraph"]);
+    expect(handoff).toHaveBeenCalledTimes(1);
+    expect(editor.state.selection.empty).toBe(true);
+    expect(editor.state.selection.$head.parent.type.name).toBe("paragraph");
+    handoff.mockRestore();
+  });
+
+  it("a range up to the start of a document that opens with a code block lands after the block", () => {
+    // Fails if: insertEscTarget returns target without the code-block detour: head stays 1, not 6.
+    const editor = makeVimEditor("<pre><code>xyz</code></pre><p>after</p>");
+    place(editor, 9);
+    key(editor, "i");
+    const doc = editor.state.doc;
+    editor.view.dispatch(
+      editor.state.tr.setSelection(
+        TextSelection.between(doc.resolve(9), doc.resolve(0)),
+      ),
+    );
+    const landings: string[] = [];
+    const enter = cmRegistry.enterCodeBlockSelection;
+    const handoff = vi
+      .spyOn(cmRegistry, "enterCodeBlockSelection")
+      .mockImplementation((view, ...args) => {
+        landings.push(view.state.selection.$head.parent.type.name);
+        return enter(view, ...args);
+      });
+    key(editor, "Escape");
+    expect(mode(editor)).toBe("normal");
+    expect(head(editor)).toBe(6);
+    expect(landings).toEqual(["paragraph"]);
+    expect(handoff).toHaveBeenCalledTimes(1);
+    expect(editor.state.selection.empty).toBe(true);
+    expect(editor.state.selection.$head.parent.type.name).toBe("paragraph");
+    handoff.mockRestore();
+  });
+
+  it("a backward range wholly inside one code block is left as it is", () => {
+    // Fails if: findOutsideCodeBlocks drops found.from > range.to: the handoff predicate is called.
+    const editor = makeVimEditor(
+      "<p>para</p><pre><code>xyz</code></pre><p>after</p>",
+    );
+    place(editor, 1);
+    key(editor, "i");
+    const doc = editor.state.doc;
+    editor.view.dispatch(
+      editor.state.tr.setSelection(TextSelection.create(doc, 9, 7)),
+    );
+    const handoff = vi.spyOn(cmRegistry, "enterCodeBlockSelection");
+    key(editor, "Escape");
+    expect(handoff).not.toHaveBeenCalled();
+    expect(mode(editor)).toBe("normal");
+    expect([
+      editor.state.selection.anchor,
+      editor.state.selection.head,
+    ]).toEqual([9, 7]);
+    handoff.mockRestore();
+  });
+
+  it("a forward range wholly inside one code block is left as it is", () => {
+    // Fails if: findOutsideCodeBlocks drops found.to < range.from: the handoff predicate is called.
+    const editor = makeVimEditor(
+      "<p>para</p><pre><code>xyz</code></pre><p>after</p>",
+    );
+    place(editor, 1);
+    key(editor, "i");
+    editor.view.dispatch(
+      editor.state.tr.setSelection(
+        TextSelection.create(editor.state.doc, 7, 9),
+      ),
+    );
+    const handoff = vi.spyOn(cmRegistry, "enterCodeBlockSelection");
+    key(editor, "Escape");
+    expect(handoff).not.toHaveBeenCalled();
+    expect(mode(editor)).toBe("normal");
+    expect([editor.state.selection.anchor, head(editor)]).toEqual([7, 9]);
+    handoff.mockRestore();
+  });
+
+  it("a forward range from a paragraph's end into a code block lands on the paragraph's last unit", () => {
+    // Fails if: findOutsideCodeBlocks bounds the returned unit start: head stays 9, not 4.
+    const editor = makeVimEditor(
+      "<p>para</p><pre><code>xyz</code></pre><p>after</p>",
+    );
+    place(editor, 1);
+    key(editor, "i");
+    editor.view.dispatch(
+      editor.state.tr.setSelection(
+        TextSelection.create(editor.state.doc, 5, 9),
+      ),
+    );
+    const landings: string[] = [];
+    const enter = cmRegistry.enterCodeBlockSelection;
+    const handoff = vi
+      .spyOn(cmRegistry, "enterCodeBlockSelection")
+      .mockImplementation((view, ...args) => {
+        landings.push(view.state.selection.$head.parent.type.name);
+        return enter(view, ...args);
+      });
+    key(editor, "Escape");
+    expect(head(editor)).toBe(4);
+    expect(mode(editor)).toBe("normal");
+    expect(editor.state.selection.empty).toBe(true);
+    expect(landings).toEqual(["paragraph"]);
+    handoff.mockRestore();
+  });
+
+  it("a forward range from a code block to the next paragraph's start lands at its head", () => {
+    // Fails if: findOutsideCodeBlocks drops its range bounds: head is 4, not 12.
+    const editor = makeVimEditor(
+      "<p>para</p><pre><code>xyz</code></pre><p>after</p>",
+    );
+    place(editor, 1);
+    key(editor, "i");
+    editor.view.dispatch(
+      editor.state.tr.setSelection(
+        TextSelection.create(editor.state.doc, 8, 12),
+      ),
+    );
+    key(editor, "Escape");
+    expect(head(editor)).toBe(12);
+    expect(mode(editor)).toBe("normal");
+    expect(editor.state.selection.empty).toBe(true);
+    expect(editor.state.selection.$head.parent.type.name).toBe("paragraph");
+  });
+
   function selectThenEscape(editor: Editor, anchor: number, to: number): void {
     place(editor, 1);
     key(editor, "i");
