@@ -16,7 +16,10 @@
 // that pandoc can only read as words; the policy edits the `<img>` tags of a
 // supported node and leaves every other node alone whole, telling the user
 // that block could not be read. The rules are the shapes pandoc 3.11 was
-// measured on (`--from markdown`, default extensions). Inside a paragraph
+// measured on (`--from markdown`, default extensions). The export now reads
+// with three extensions off (`PANDOC_READER` in src-tauri's pandoc.rs) —
+// citations, inline notes, implicit header references — which change how
+// pandoc reads `[`, `^[` and `@`, not how it reads a tag. Inside a paragraph
 // the parser has already separated an inline tag from code spans, escapes
 // and math, so such a node is a single tag and trivially supported; the
 // grammar is what an HTML BLOCK gets — and its caption text never holds a
