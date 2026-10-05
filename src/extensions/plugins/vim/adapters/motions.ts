@@ -26,7 +26,11 @@ import {
   segmentSpanAt,
   sourceLineSpan,
 } from "./cursor-line-columns";
-import { nextUnitBoundary, prevUnitBoundary } from "./graphemes";
+import {
+  nextUnitBoundary,
+  prevUnitBoundary,
+  prevUnitBoundaryIndexed,
+} from "./graphemes";
 import {
   collectLines,
   firstTextblockIn,
@@ -61,9 +65,13 @@ export function resolveMotion(
 ): number {
   switch (motion) {
     case "charLeft": {
+      // A plain h asks for the one cluster before the cursor; only a counted
+      // walk indexes the text node (graphemes.ts), so an h after an edit
+      // does not pay a pass over a long line.
+      const step = count === 1 ? prevUnitBoundary : prevUnitBoundaryIndexed;
       let p = pos;
       for (let i = 0; i < count; i++) {
-        const prev = prevUnitBoundary(state, p);
+        const prev = step(state, p);
         if (prev !== p) {
           p = prev;
           continue;

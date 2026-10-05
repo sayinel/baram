@@ -53,7 +53,8 @@ export function insertEscTarget(state: EditorState): null | number {
  *
  * This runs from appendTransaction on EVERY normal-mode transaction, so it
  * rejects with an O(depth) look at the resolved position before any unit
- * work: a line ends only at the textblock's end or right before a hard break
+ * work. The one-unit step uses containing(), without iterating the text node
+ * or building an index. A line ends at the textblock's end or before a hard break
  * (splitSegments' only separator). No segment list is built.
  */
 export function terminalClampTarget(state: EditorState): null | number {

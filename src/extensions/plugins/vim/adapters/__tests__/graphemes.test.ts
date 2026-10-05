@@ -6,7 +6,11 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { createBaramExtensions } from "../../../../index";
 import { lineUnitStarts, segmentSpanAt } from "../cursor-line-columns";
-import { nextUnitBoundary, prevUnitBoundary } from "../graphemes";
+import {
+  nextUnitBoundary,
+  prevUnitBoundary,
+  prevUnitBoundaryIndexed,
+} from "../graphemes";
 
 const editors: Editor[] = [];
 
@@ -26,7 +30,7 @@ function walk(editor: Editor, pos: number, count: number, dir: -1 | 1): number {
   for (let i = 0; i < count; i++) {
     const next =
       dir < 0
-        ? prevUnitBoundary(editor.state, at)
+        ? prevUnitBoundaryIndexed(editor.state, at)
         : nextUnitBoundary(editor.state, at);
     if (next === at) break;
     at = next;
@@ -168,5 +172,34 @@ describe("counted motion segments each text node once", () => {
     }
     expect(landed).toBe(1501); // the walk itself still works
     expect(calls).toBeLessThanOrEqual(2); // the defect cost 500
+  });
+});
+
+describe("one unit back without an index", () => {
+  it("one unit back without the index agrees with the indexed walk at every position", () => {
+    // Fails if: containing(inNode) replaces containing(inNode - 1): "abc" @2 returns 2, not 1.
+    const corpus = [
+      "abc",
+      "한글 text",
+      "한글",
+      "a👨‍👩‍👧‍👦b",
+      "🇰🇷🇯🇵x",
+      "éé",
+      "a\r\nb",
+      "𝒳y",
+    ];
+    for (const text of corpus) {
+      const editor = makeEditor("<p></p>");
+      editor.commands.setContent({
+        type: "doc",
+        content: [{ type: "paragraph", content: [{ type: "text", text }] }],
+      });
+      for (let pos = 1; pos <= 1 + text.length; pos++) {
+        expect(
+          prevUnitBoundary(editor.state, pos),
+          `${JSON.stringify(text)} @${pos}`,
+        ).toBe(prevUnitBoundaryIndexed(editor.state, pos));
+      }
+    }
   });
 });

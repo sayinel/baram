@@ -15,7 +15,9 @@ const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
  * times, and segmenting (or even slicing) the prefix per step made `9999h`
  * on a long line quadratic — seconds of frozen renderer on a crafted
  * 100k-character line (dedicated security review). One pass per string,
- * then a binary search per step.
+ * then a binary search per step — prevUnitBoundaryIndexed. A single step
+ * (prevUnitBoundary) asks the segmenter for one cluster and leaves this
+ * index alone, so an edit does not make the next h, $ or Esc rebuild it.
  *
  * Keyed by string VALUE, so an edit (a different string) misses and two
  * nodes with identical text share correctly — no invalidation needed.
@@ -52,7 +54,8 @@ export function nextUnitBoundary(state: EditorState, pos: number): number {
   // LAZY on purpose: this runs on every normal-mode cursor decoration, so a
   // long single-line document must not pay a full segmentation (measured:
   // indexing 1M characters cost ~81ms and retained ~11MB, against ~1.6ms
-  // here). Only the leftward walk — which was quadratic — indexes.
+  // here). prevUnitBoundary is lazy the same way; only the step of a
+  // counted leftward walk, prevUnitBoundaryIndexed, builds the index.
   const first = segmenter.segment(text.slice(inNode))[Symbol.iterator]().next();
   return first.done ? pos : pos + first.value.segment.length;
 }
@@ -60,26 +63,31 @@ export function nextUnitBoundary(state: EditorState, pos: number): number {
 /**
  * The position one cursor unit to the LEFT of `pos`, or `pos` itself at the
  * start of the textblock. Mirror of nextUnitBoundary: one grapheme cluster,
- * or one inline atom.
+ * or one inline atom — and lazy like it. The segmenter is asked for the one
+ * cluster holding the character before `pos`, so the text node is neither
+ * iterated nor indexed. A walk of many steps uses prevUnitBoundaryIndexed.
  */
 export function prevUnitBoundary(state: EditorState, pos: number): number {
-  const $pos = state.doc.resolve(pos);
-  if (!$pos.parent.isTextblock) return pos;
+  return unitBefore(state, pos, (text, inNode) => {
+    const cluster = segmenter.segment(text).containing(inNode - 1);
+    return cluster ? cluster.index : inNode;
+  });
+}
 
-  const offset = $pos.parentOffset;
-  if (offset === 0) return pos;
-
-  const child = $pos.parent.childBefore(offset);
-  if (!child.node) return pos;
-
-  if (!child.node.isText) {
-    return pos - child.node.nodeSize; // inline atom — one unit (§6)
-  }
-
-  const text = child.node.text ?? "";
-  const inNode = offset - child.offset;
-  const prev = boundaryBelow(graphemeStarts(text), inNode);
-  return prev >= inNode ? pos : pos - (inNode - prev);
+/**
+ * prevUnitBoundary as the step of a COUNTED walk: the same position for
+ * every `pos` (graphemes.test.ts compares the two), read from an index of
+ * the whole text node — one segmentation pass, then a binary search per
+ * step. A single call pays that full pass, so only a walk of several steps
+ * over one node should use it.
+ */
+export function prevUnitBoundaryIndexed(
+  state: EditorState,
+  pos: number,
+): number {
+  return unitBefore(state, pos, (text, inNode) =>
+    boundaryBelow(graphemeStarts(text), inNode),
+  );
 }
 
 /** Release the index — a closed editor, or one where vim just went off,
@@ -110,4 +118,28 @@ function graphemeStarts(text: string): number[] {
   indexedText = text;
   indexedStarts = starts;
   return starts;
+}
+
+function unitBefore(
+  state: EditorState,
+  pos: number,
+  startBefore: (text: string, inNode: number) => number,
+): number {
+  const $pos = state.doc.resolve(pos);
+  if (!$pos.parent.isTextblock) return pos;
+
+  const offset = $pos.parentOffset;
+  if (offset === 0) return pos;
+
+  const child = $pos.parent.childBefore(offset);
+  if (!child.node) return pos;
+
+  if (!child.node.isText) {
+    return pos - child.node.nodeSize; // inline atom — one unit (§6)
+  }
+
+  const text = child.node.text ?? "";
+  const inNode = offset - child.offset;
+  const prev = startBefore(text, inNode);
+  return prev >= inNode ? pos : pos - (inNode - prev);
 }

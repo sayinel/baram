@@ -8,10 +8,11 @@ import { Editor } from "@tiptap/core";
 import { TextSelection } from "@tiptap/pm/state";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { markdownToProsemirror } from "../../../../pipeline/md-to-pm";
 import { useUIStore } from "../../../../stores/ui/ui";
 import { createBaramExtensions } from "../../../index";
 import { columnAt } from "../adapters/cursor-line-columns";
-import { graphemeIndexSize } from "../adapters/graphemes";
+import { graphemeIndexSize, releaseGraphemeIndex } from "../adapters/graphemes";
 import { resolveMotion } from "../adapters/motions";
 import { terminalClampTarget } from "../adapters/normal-cursor";
 import { scrollCursorIntoView } from "../adapters/scroll";
@@ -183,7 +184,8 @@ describe("the grapheme index is released when vim stops owning the surface", () 
     const editor = makeEditor("<p>abcdef</p>");
     editor.commands.setTextSelection(4);
     enable(editor);
-    key(editor, "h"); // builds the index for this text node
+    key(editor, "2"); // only a counted walk builds the index
+    key(editor, "h");
     expect(graphemeIndexSize()).toBeGreaterThan(0);
     editor.view.dispatch(
       editor.state.tr.setMeta(vimPluginKey, {
@@ -308,5 +310,136 @@ describe("terminal clamp cost (issue 776)", () => {
     } finally {
       spy.mockRestore();
     }
+  });
+});
+
+// Counts yielded segments; containing() does not advance the iterator.
+function spyYield(): { restore: () => void; segs: () => number } {
+  const proto = Intl.Segmenter.prototype;
+  const orig = proto.segment;
+  let segs = 0;
+  proto.segment = function (this: Intl.Segmenter, input: string) {
+    const real = orig.call(this, input);
+    return {
+      containing: real.containing.bind(real),
+      [Symbol.iterator]() {
+        const it = real[Symbol.iterator]();
+        return {
+          next() {
+            const r = it.next();
+            if (!r.done) segs++;
+            return r;
+          },
+          [Symbol.iterator]() {
+            return this;
+          },
+        };
+      },
+    } as unknown as Intl.Segments;
+  };
+  return { restore: () => (proto.segment = orig), segs: () => segs };
+}
+
+describe("one unit back does not index the text node (issue 776)", () => {
+  const longMd = Array.from(
+    { length: 300 },
+    (_, i) => `log line ${i} some words here`,
+  ).join("\n");
+
+  function longEditor(): Editor {
+    const editor = makeEditor("<p></p>");
+    editor.commands.setContent(
+      markdownToProsemirror(longMd, editor.schema).toJSON(),
+    );
+    enable(editor);
+    return editor;
+  }
+
+  it("insert Esc after typing in the middle does not index the text node", () => {
+    // Fails if: unitBeforeOnLine uses prevUnitBoundaryIndexed: 8591 segments exceed the bound.
+    const editor = longEditor();
+    editor.commands.setTextSelection(Math.floor(longMd.length / 2));
+    key(editor, "i");
+    editor.view.dispatch(editor.state.tr.insertText("X"));
+    releaseGraphemeIndex();
+    const spy = spyYield();
+    try {
+      key(editor, "Escape");
+      expect(spy.segs()).toBeLessThanOrEqual(8); // Measured: 1 yielded segment.
+      expect(graphemeIndexSize()).toBe(0);
+    } finally {
+      spy.restore();
+    }
+  });
+
+  it("a selection at the terminal boundary does not index the text node", () => {
+    // Fails if: terminalClampTarget uses prevUnitBoundaryIndexed: 8590 segments exceed the bound.
+    const editor = longEditor();
+    releaseGraphemeIndex();
+    const spy = spyYield();
+    try {
+      editor.commands.setTextSelection(1 + longMd.length);
+      expect(spy.segs()).toBeLessThanOrEqual(8); // Measured: 1 yielded segment.
+      expect(graphemeIndexSize()).toBe(0);
+    } finally {
+      spy.restore();
+    }
+  });
+
+  it("three deletions at the line end do not index the text node", () => {
+    // Fails if: terminalClampTarget uses prevUnitBoundaryIndexed: 25770 segments exceed the bound.
+    const editor = longEditor();
+    editor.commands.setTextSelection(longMd.length);
+    releaseGraphemeIndex();
+    const spy = spyYield();
+    try {
+      key(editor, "x");
+      key(editor, "x");
+      key(editor, "x");
+      expect(spy.segs()).toBeLessThanOrEqual(12); // Measured: 9 across three x commands.
+      expect(graphemeIndexSize()).toBe(0);
+    } finally {
+      spy.restore();
+    }
+  });
+
+  it("a plain h does not index the text node", () => {
+    // Fails if: charLeft takes the indexed step for count 1: 8590 segments exceed the bound.
+    const editor = longEditor();
+    editor.commands.setTextSelection(Math.floor(longMd.length / 2));
+    releaseGraphemeIndex();
+    const spy = spyYield();
+    try {
+      key(editor, "h");
+      expect(spy.segs()).toBeLessThanOrEqual(8); // Measured: 1 yielded segment.
+      expect(graphemeIndexSize()).toBe(0);
+    } finally {
+      spy.restore();
+    }
+  });
+
+  it("$ does not index the text node", () => {
+    // Fails if: lineEnd uses prevUnitBoundaryIndexed: 8590 segments exceed the bound.
+    const editor = longEditor();
+    editor.commands.setTextSelection(Math.floor(longMd.length / 2));
+    releaseGraphemeIndex();
+    const spy = spyYield();
+    try {
+      key(editor, "$");
+      expect(spy.segs()).toBeLessThanOrEqual(8); // Measured: 1 yielded segment.
+      expect(graphemeIndexSize()).toBe(0);
+    } finally {
+      spy.restore();
+    }
+  });
+
+  it("a counted leftward walk still builds the index", () => {
+    // Fails if: charLeft takes the lazy step for a counted walk: the index size stays 0.
+    const editor = longEditor();
+    editor.commands.setTextSelection(20);
+    releaseGraphemeIndex();
+    key(editor, "5");
+    key(editor, "h");
+    expect(graphemeIndexSize()).toBeGreaterThan(0);
   });
 });
