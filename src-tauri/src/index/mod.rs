@@ -35,7 +35,7 @@ pub use rewriter::{
 pub use types::{BacklinkResult, IndexStats, LinkEdge, LinkEntry, LinkGraph};
 
 use extractor::{extract_file_tags, extract_links};
-use normalizer::normalize_file_path;
+use normalizer::{normalize_file_path, normalize_target};
 
 #[cfg(test)]
 thread_local! {
@@ -121,6 +121,21 @@ pub enum RewritePass {
     Wikilinks,
     /// `replace_block_reference_target`: `((stem#^id))`, and the embed around one.
     BlockReferences,
+}
+
+/// §387 How `baram links` reports one outgoing link: resolved by the graph's resolver
+/// (`resolve_target_from_map`), except a cross-vault link, which is reported by alias.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum LinkResolution {
+    /// A file under this index's root, the one `resolve_target_from_map` answers.
+    Resolved(String),
+    /// `[[alias::note]]` — the link names another vault (§87). Not looked up here;
+    /// `get_link_graph` does look it up, and draws it to a local note of that name, or to
+    /// a placeholder path when there is none.
+    OtherVault(String),
+    /// `resolve_target_from_map` finds no file. `get_link_graph` draws such a link to the
+    /// placeholder path `resolve_target` builds.
+    Unresolved,
 }
 
 /// The in-memory link index
@@ -451,6 +466,50 @@ impl LinkIndex {
             (a.source_path.as_str(), a.line).cmp(&(b.source_path.as_str(), b.line))
         });
         results
+    }
+
+    /// §387 The links `file_path` holds, each with how `baram links` reports it: the file
+    /// the graph's resolver (`resolve_target_from_map`) finds for the target, or, for a
+    /// cross-vault link, its alias.
+    ///
+    /// `None` when `outgoing` holds nothing under that exact string: the file is not
+    /// markdown, the walk skips it, it could not be read, it is a symlink (the walkers do
+    /// not follow one), or the path is spelled under another root string than the one
+    /// `build` received. A note with no links is `Some(vec![])` — `build` files every
+    /// markdown file it reads under `outgoing`, linked or not.
+    ///
+    /// ONE method rather than three exposed pieces, because the ORDER is the contract.
+    /// A cross-vault link is decided first: its `target` is the bare note name, so
+    /// asking the maps would resolve `[[journal::x]]` to a local `x.md`. Then the target
+    /// is normalized, and only then are the maps asked. So for a cross-vault link this
+    /// is NOT what `get_link_graph` does: the graph asks the maps for every entry, alias
+    /// or not, and only marks the edge `cross_vault`.
+    ///
+    /// Otherwise it is the GRAPH's resolution, not the editor's click-through: no
+    /// `[[./x]]` relative to the source, no journal dates, and a path-qualified target
+    /// that misses falls back to its stem.
+    pub(crate) fn outgoing_resolved(
+        &self,
+        file_path: &str,
+    ) -> Option<Vec<(LinkEntry, LinkResolution)>> {
+        let entries = self.outgoing.get(file_path)?;
+        Some(
+            entries
+                .iter()
+                .map(|entry| {
+                    let resolution = match &entry.target_vault_alias {
+                        Some(alias) => LinkResolution::OtherVault(alias.clone()),
+                        None => {
+                            match self.resolve_target_from_map(&normalize_target(&entry.target)) {
+                                Some(path) => LinkResolution::Resolved(path),
+                                None => LinkResolution::Unresolved,
+                            }
+                        }
+                    };
+                    (entry.clone(), resolution)
+                })
+                .collect(),
+        )
     }
 
     /// Update index for a single file using already-read content (sync, no I/O)
@@ -982,5 +1041,279 @@ mod tests {
                 ("/v/z.md".to_string(), 2),
             ]
         );
+    }
+}
+
+/// 스펙 0066 §5 — `baram backlinks` · `baram links` 는 호출마다 인덱스를 새로 만든다.
+/// 그 비용을 잰다. 평소에는 건너뛴다.
+///
+/// ‼️ 반드시 릴리스로 잴 것(디버그는 정규식 · 문자열 처리가 한 자릿수 배 느리다):
+/// cargo test --release --manifest-path src-tauri/Cargo.toml --lib \
+///   -- --ignored --nocapture build_10k_files_timing
+///
+/// 픽스처에 링크가 있어야 한다. `extract_links` 는 `[[` · `((` 후보가 있는 파일에서만
+/// literal 분석(pulldown-cmark)을 돌리므로, 링크 없는 본문으로 재면 그 비용이 통째로 빠진다
+/// — 태스크 쪽 `scan_10k_files_timing` 의 본문이 그렇다. 방금 쓴 파일을 재므로 웜 캐시다.
+#[cfg(test)]
+mod build_bench {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[tokio::test]
+    #[ignore]
+    async fn build_10k_files_timing() {
+        const FILES: usize = 10_000;
+        let d = TempDir::new().unwrap();
+        for i in 0..FILES {
+            let next = (i + 1) % FILES;
+            let far = (i * 7 + 13) % FILES;
+            let body = format!(
+                "---\ntags: [t{}]\n---\n# 문서 {i}\n\n[[f{next}]] 과 [[d{}/f{far}|먼 문서]] 를 본다. #tag{}\n\n((f{next}#^blk{next}))\n\n본문 한 줄. ^blk{i}\n\n```md\n[[코드 안의 링크 f{far}]]\n```\n",
+                i % 50,
+                far % 100,
+                i % 20
+            );
+            let p = d.path().join(format!("d{}/f{}.md", i % 100, i));
+            tokio::fs::create_dir_all(p.parent().unwrap())
+                .await
+                .unwrap();
+            tokio::fs::write(&p, body).await.unwrap();
+        }
+        let root = d.path().to_string_lossy().to_string();
+
+        for round in 0..3 {
+            let mut index = LinkIndex::new();
+            let started = std::time::Instant::now();
+            let stats = index.build(&root).await.unwrap();
+            println!(
+                "round {round}: built index over {} files, {} links, in {:?}",
+                stats.files_indexed,
+                stats.links_found,
+                started.elapsed()
+            );
+            assert_eq!(stats.files_indexed as usize, FILES);
+            // 파일마다 위키링크 둘과 블록 참조 하나. 코드 펜스 안의 `[[…]]` 는 세지 않는다 —
+            // 이 숫자가 4만이면 literal 분석이 돌지 않은 것이다.
+            assert_eq!(stats.links_found as usize, FILES * 3);
+
+            let probe = d.path().join("d1/f1.md").to_string_lossy().to_string();
+            let started = std::time::Instant::now();
+            let backlinks = index.get_backlinks(&probe, &[]);
+            println!(
+                "round {round}: get_backlinks -> {} in {:?}",
+                backlinks.len(),
+                started.elapsed()
+            );
+        }
+
+        let started = std::time::Instant::now();
+        let md = collect_md_files(&root).await.unwrap();
+        println!(
+            "collect_md_files -> {} in {:?}",
+            md.len(),
+            started.elapsed()
+        );
+        let started = std::time::Instant::now();
+        let all = collect_all_files(&root).await.unwrap();
+        println!(
+            "collect_all_files -> {} in {:?}",
+            all.len(),
+            started.elapsed()
+        );
+    }
+}
+
+#[cfg(test)]
+mod outgoing_tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    async fn index_over(files: &[(&str, &str)]) -> (TempDir, String, LinkIndex) {
+        let dir = TempDir::new().unwrap();
+        for (name, body) in files {
+            let path = dir.path().join(name);
+            tokio::fs::create_dir_all(path.parent().unwrap())
+                .await
+                .unwrap();
+            tokio::fs::write(&path, body).await.unwrap();
+        }
+        let root = dir.path().to_string_lossy().to_string();
+        let mut index = LinkIndex::new();
+        index.build(&root).await.unwrap();
+        (dir, root, index)
+    }
+
+    fn path_in(root: &str, name: &str) -> String {
+        std::path::Path::new(root)
+            .join(name)
+            .to_string_lossy()
+            .to_string()
+    }
+
+    #[tokio::test]
+    async fn outgoing_links_resolve_as_the_graph_resolves_them_except_cross_vault_ones() {
+        let (_dir, root, index) = index_over(&[
+            (
+                "notes/a.md",
+                "[[b]] and [[missing]]\n((b#^x1))\n[[journal::b]]\n[[B]]\n",
+            ),
+            ("notes/b.md", "# B\n"),
+        ])
+        .await;
+        let b = path_in(&root, "notes/b.md");
+
+        let links = index
+            .outgoing_resolved(&path_in(&root, "notes/a.md"))
+            .expect("a.md is indexed");
+        let seen: Vec<(&str, u32, &LinkResolution)> = links
+            .iter()
+            .map(|(entry, resolution)| (entry.target.as_str(), entry.line, resolution))
+            .collect();
+        assert_eq!(
+            seen,
+            vec![
+                ("b", 1, &LinkResolution::Resolved(b.clone())),
+                ("missing", 1, &LinkResolution::Unresolved),
+                ("b", 2, &LinkResolution::Resolved(b.clone())),
+                // The target is the bare name `b`, and a local b.md exists — it must
+                // still not be resolved here: the link names another vault.
+                ("b", 3, &LinkResolution::OtherVault("journal".to_string())),
+                // Written with another case: the target is normalized before the maps
+                // are asked.
+                ("B", 4, &LinkResolution::Resolved(b)),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_note_without_links_is_indexed_and_a_file_outside_the_index_is_not() {
+        let (_dir, root, index) =
+            index_over(&[("a.md", "no links\n"), ("data.txt", "[[a]]\n")]).await;
+        // `LinkEntry` has no `PartialEq`, so the three answers are told apart by shape.
+        assert!(index
+            .outgoing_resolved(&path_in(&root, "a.md"))
+            .is_some_and(|links| links.is_empty()));
+        assert!(index
+            .outgoing_resolved(&path_in(&root, "data.txt"))
+            .is_none());
+        assert!(index
+            .outgoing_resolved(&path_in(&root, "nope.md"))
+            .is_none());
+    }
+
+    /// One link per branch of the resolver, each on a line of its own. Two notes share
+    /// the stem `b`, so a lookup by stem alone answers the same file for `[[notes/b]]` and
+    /// `[[x/b]]` whichever the walk met first, and one of the two is wrong; `c` is the
+    /// only note of that stem, so `[[wrong/c]]` can only get there by falling back to it.
+    /// The second half asks `get_link_graph` about the same links: every resolved link
+    /// is the graph's edge, and the two kinds of link this method does not resolve are
+    /// the ones the graph still draws somewhere.
+    #[tokio::test]
+    async fn every_branch_of_the_resolver_is_reached_and_agrees_with_the_graph() {
+        let (_dir, root, index) = index_over(&[
+            (
+                "a.md",
+                "[[notes/b]]\n[[x/b]]\n[[Notes/B]]\n[[wrong/c]]\n[[Paper.pdf]]\n\
+                 [[papers/Paper.pdf]]\n[[202607051530]]\n[[nothing]]\n((#^self1))\n\
+                 [[journal::c]]\n",
+            ),
+            ("notes/b.md", "# B\n"),
+            ("x/b.md", "# other B\n"),
+            ("deep/er/c.md", "# C\n"),
+            ("papers/Paper.pdf", "not markdown\n"),
+            ("z/202607051530 idea.md", "# idea\n"),
+        ])
+        .await;
+        let at = |name: &str| path_in(&root, name);
+        let a = at("a.md");
+
+        let links = index.outgoing_resolved(&a).expect("a.md is indexed");
+        let seen: Vec<(&str, u32, LinkResolution)> = links
+            .iter()
+            .map(|(entry, resolution)| (entry.target.as_str(), entry.line, resolution.clone()))
+            .collect();
+        assert_eq!(
+            seen,
+            vec![
+                // The relative path, then the same with another case.
+                ("notes/b", 1, LinkResolution::Resolved(at("notes/b.md"))),
+                ("x/b", 2, LinkResolution::Resolved(at("x/b.md"))),
+                ("Notes/B", 3, LinkResolution::Resolved(at("notes/b.md"))),
+                // No `wrong/c.md`: the stem is tried next.
+                ("wrong/c", 4, LinkResolution::Resolved(at("deep/er/c.md"))),
+                // A file that is not a note: by its name, and by its relative path.
+                (
+                    "Paper.pdf",
+                    5,
+                    LinkResolution::Resolved(at("papers/Paper.pdf"))
+                ),
+                (
+                    "papers/Paper.pdf",
+                    6,
+                    LinkResolution::Resolved(at("papers/Paper.pdf")),
+                ),
+                // A Zettel id, in a folder of its own.
+                (
+                    "202607051530",
+                    7,
+                    LinkResolution::Resolved(at("z/202607051530 idea.md")),
+                ),
+                ("nothing", 8, LinkResolution::Unresolved),
+                // `((#^id))` names no note: the target the index files is the note's own
+                // file stem.
+                ("a", 9, LinkResolution::Resolved(a.clone())),
+                ("c", 10, LinkResolution::OtherVault("journal".to_string())),
+            ]
+        );
+
+        let graph = index.get_link_graph();
+        let edges: Vec<&LinkEdge> = graph
+            .edges
+            .iter()
+            .filter(|edge| edge.from == a && !edge.to.starts_with("tag:"))
+            .collect();
+        assert_eq!(edges.len(), links.len());
+        for ((entry, resolution), edge) in links.iter().zip(&edges) {
+            match resolution {
+                LinkResolution::Resolved(path) => {
+                    assert_eq!(
+                        (&edge.to, edge.cross_vault),
+                        (path, false),
+                        "{}",
+                        entry.target
+                    )
+                }
+                // The graph asks the maps for it too, and draws it to the local note.
+                LinkResolution::OtherVault(_) => {
+                    assert_eq!(
+                        (edge.to.as_str(), edge.cross_vault),
+                        (at("deep/er/c.md").as_str(), true)
+                    )
+                }
+                LinkResolution::Unresolved => {
+                    assert_eq!(edge.to, format!("{root}/nothing.md"), "{}", entry.target)
+                }
+            }
+        }
+    }
+
+    /// `outgoing` is keyed by the strings the walk produced: the same note under another
+    /// spelling of the root is not found, and neither is a symlink to a note — the
+    /// walkers do not follow one. The first assertion is the control: the note itself.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn only_the_walked_spelling_of_a_note_is_in_the_index() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("a.md"), "[[a]]\n").unwrap();
+        std::os::unix::fs::symlink(dir.path().join("a.md"), dir.path().join("link.md")).unwrap();
+        let root = dir.path().to_string_lossy().to_string();
+        let mut index = LinkIndex::new();
+        index.build(&root).await.unwrap();
+
+        assert!(index.outgoing_resolved(&path_in(&root, "a.md")).is_some());
+        assert!(index.outgoing_resolved(&path_in(&root, "./a.md")).is_none());
+        assert!(index
+            .outgoing_resolved(&path_in(&root, "link.md"))
+            .is_none());
     }
 }

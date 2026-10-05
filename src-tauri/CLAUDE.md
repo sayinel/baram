@@ -15,6 +15,7 @@ search/       ← regex 기반 전문 검색 — 파일 워킹 (§5.11)
 index/        ← 인메모리 링크/블록 인덱스 — HashMap (§29)
 context/      ← 컨텍스트 관리자 — Vault 시스템 (§88)
 approval/     ← vault 경계 승인 저장소 — 웹뷰가 못 건드리는 인가 기록 (§331)
+cli/          ← 명령줄 도구 — `baram <command>`, tauri 를 시작하지 않고 vault 를 읽는다 (§387)
 task/         ← 태스크 인덱스/필드 파싱 (§302~§318)
 embedding/    ← 임베딩 — Knowledge Q&A (§11.4)
 plugin/       ← 플러그인 **및 테마** 설치/레지스트리 (§69 · §360 — 같은 staging·swap 기계, InstallKind 로 트리만 가른다)
@@ -45,6 +46,24 @@ logging/      ← 파일 로깅 (회전·상한)       menu.rs   ← 네이티�
   있어도 로컬은 초록이고 hook·CI만 빨간불이 된다.
 
 PR이 Rust 경로를 건드리지 않으면 rust 잡 skip이 정상이고, 그 외 skip은 빨간불(`.claude/docs/ci-contract.md`).
+
+## 명령줄 도구 규칙 (§387)
+
+`cli/` 는 IPC 커맨드가 아니다 — `main()` 이 `cli::mode_for(argv)` 로 갈라 `cli::run` 을 부르고, tauri 는 시작하지 않는다.
+설계는 `dev/design/specs/0066-cli-read-only-design.md`.
+
+- **읽기 전용이다.** 명령을 더할 때 vault · 앱의 `config.json` · 앱 로그에 쓰는 것을 넣지 않는다 — `tests/cli.rs` 의
+  `no_command_writes_into_the_vault_the_config_or_the_logs` 가 아홉 명령(텍스트 · `--json`) 전후로 vault 와 `HOME` · `XDG_DATA_HOME`
+  을 담은 샌드박스 전체를 비교한다 — 그래서 vault 와 `config.json`, 앱 로그 디렉터리에 쓰는 것이 함께 잡힌다. 쓰는 명령은 열린 탭과
+  충돌하므로 앱을 거쳐야 하고, 그것은 다른 설계다(스펙 §8-3).
+- **명령을 더하면** `args.rs` 의 `Command` 와 `mod.rs` 의 `execute` 뿐 아니라 `tests/cli.rs` 의 `NINE` 과 기대 JSON 에도 더한다 —
+  `the_nine_commands_are_the_ones_the_binary_knows` 가 `--help` 의 목록과 `NINE` 을 맞춘다.
+- **출력 구조체는 CLI 의 것이다.** IPC 구조체(`TaskEntry` 등)를 그대로 직렬화하지 않는다 — CLI 의 JSON 은 사용자 스크립트가 읽는
+  공개 계약이고, IPC 구조체는 프런트엔드 필요로 바뀐다.
+- **`-` 플래그로 앱을 다시 띄우는 플러그인**(자동 시작 · single-instance)을 더하면 그 플래그를 `cli::mode_for` 의 GUI 쪽에 넣는다.
+  넣지 않으면 그 실행이 CLI 사용법 오류로 끝난다.
+- **`config.json` 의 모양**(`baram:context` · `baram:settings`)을 CLI 가 Rust 에서 직접 읽는다. 프런트 스토어의 `partialize` 에서
+  CLI 가 읽는 필드의 이름을 바꾸면 `src/stores/__tests__/cli-persisted-config-contract.test.ts` 가 깨진다.
 
 ## IPC 커맨드 규칙
 

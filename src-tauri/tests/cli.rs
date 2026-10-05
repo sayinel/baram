@@ -1,0 +1,1667 @@
+//! §387 `baram <command>` end to end: the real binary, a throwaway HOME, a vault in a
+//! temp dir. Spec: dev/design/specs/0066-cli-read-only-design.md §7.
+//!
+//! Unix only. The child finds config.json through `dirs::data_dir()`, which reads HOME
+//! and XDG_DATA_HOME there; Windows asks the Known Folder API and ignores both, so the
+//! child would read the developer's real config. CI runs ubuntu and macOS.
+#![cfg(unix)]
+
+use std::io::Read;
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command, ExitStatus, Stdio};
+use std::time::{Duration, Instant};
+
+/// Longer than any command here takes, far shorter than a window opened by mistake
+/// would stay up. The timeout is what catches a CLI invocation routed to the GUI.
+const TIMEOUT: Duration = Duration::from_secs(30);
+
+struct Sandbox {
+    _dir: tempfile::TempDir,
+    base: PathBuf,
+    home: PathBuf,
+    xdg: PathBuf,
+    vault: PathBuf,
+}
+
+struct Ran {
+    code: i32,
+    stdout: String,
+    stderr: String,
+}
+
+fn sandbox() -> Sandbox {
+    let dir = tempfile::tempdir().expect("tempdir");
+    // Canonical: macOS hands out /var/… and resolves it to /private/var/…, and the CLI
+    // prints the canonical root.
+    let base = dir.path().canonicalize().expect("canonicalize");
+    let home = base.join("home");
+    let xdg = base.join("xdg");
+    let vault = base.join("vault");
+    for created in [&home, &xdg, &vault] {
+        std::fs::create_dir_all(created).expect("mkdir");
+    }
+    Sandbox {
+        _dir: dir,
+        base,
+        home,
+        xdg,
+        vault,
+    }
+}
+
+fn write(root: &Path, rel: &str, body: &str) {
+    let path = root.join(rel);
+    std::fs::create_dir_all(path.parent().expect("parent")).expect("mkdir");
+    std::fs::write(path, body).expect("write");
+}
+
+/// Writes config.json where `dirs::data_dir()` points on macOS (under HOME) and on Linux
+/// (XDG_DATA_HOME). Each value is what zustand persist would have written, stored as a
+/// JSON STRING — the way `set_config` stores it.
+fn write_config(sb: &Sandbox, values: &[(&str, serde_json::Value)]) {
+    let mut map = serde_json::Map::new();
+    for (key, value) in values {
+        map.insert(
+            (*key).to_string(),
+            serde_json::Value::String(value.to_string()),
+        );
+    }
+    let text = serde_json::Value::Object(map).to_string();
+    for dir in [
+        sb.home.join("Library/Application Support/com.inel.baram"),
+        sb.xdg.join("com.inel.baram"),
+    ] {
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        std::fs::write(dir.join("config.json"), &text).expect("write config");
+    }
+}
+
+/// `baram:context` as the app persists it: the sandbox vault registered as the vault
+/// "Fixture" (alias `fx`), a folder context whose directory is gone and is the active
+/// one, and a file context.
+fn registered(sb: &Sandbox) -> serde_json::Value {
+    serde_json::json!({
+        "state": {
+            "contexts": [
+                { "id": "ctx-1", "contextType": "vault", "path": sb.vault, "label": "Fixture",
+                  "color": "#4f8cff", "alias": "fx", "vaultType": "general", "addedAt": 1 },
+                { "id": "ctx-2", "contextType": "folder", "path": sb.base.join("gone"),
+                  "label": "Gone", "color": "#ff8c4f", "addedAt": 2 },
+                { "id": "ctx-3", "contextType": "file", "path": sb.base.join("one.md"),
+                  "label": "one.md", "color": "#8c4fff", "addedAt": 3 }
+            ],
+            "activeContextId": "ctx-2"
+        },
+        "version": 1
+    })
+}
+
+fn baram(sb: &Sandbox, cwd: &Path, args: &[&str]) -> Ran {
+    baram_env(sb, cwd, args, &[])
+}
+
+fn baram_env(sb: &Sandbox, cwd: &Path, args: &[&str], env: &[(&str, &str)]) -> Ran {
+    let mut command = isolated(sb, env!("CARGO_BIN_EXE_baram"));
+    command.args(args).current_dir(cwd);
+    for (key, value) in env {
+        command.env(key, value);
+    }
+    finish(command, &args.join(" "))
+}
+
+/// Runs `baram` from a directory that is deleted under it, so the child starts with a
+/// current directory it cannot read. A child cannot be spawned INTO a missing directory:
+/// `sh` makes one under `parent`, enters it, removes it and `exec`s the binary in place.
+fn baram_from_a_deleted_directory(sb: &Sandbox, parent: &Path, args: &[&str]) -> Ran {
+    let mut command = isolated(sb, "sh");
+    command
+        .arg("-c")
+        .arg(r#"d=$(mktemp -d "$1/cwd.XXXXXX") && cd "$d" && rmdir "$d" && shift && exec "$@""#)
+        .arg("sh")
+        .arg(parent)
+        .arg(env!("CARGO_BIN_EXE_baram"))
+        .args(args);
+    finish(
+        command,
+        &format!("{} (from a deleted directory)", args.join(" ")),
+    )
+}
+
+/// `program` with what every run here gets: the sandbox's HOME and data directory, no
+/// `BARAM_LOG`, no stdin, both outputs captured.
+fn isolated(sb: &Sandbox, program: &str) -> Command {
+    let mut command = Command::new(program);
+    command
+        // `dirs` reads these. Without them the child reads the developer's real
+        // config.json — `logging_install_unwritable.rs` isolates the same way.
+        .env("HOME", &sb.home)
+        .env("XDG_DATA_HOME", &sb.xdg)
+        .env_remove("BARAM_LOG")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    command
+}
+
+/// Waits for `command` to exit and collects what it printed. `label` names the run if
+/// it has to be killed.
+fn finish(mut command: Command, label: &str) -> Ran {
+    let mut child = command.spawn().expect("spawn baram");
+    let mut stdout = child.stdout.take().expect("stdout");
+    let mut stderr = child.stderr.take().expect("stderr");
+    let out = std::thread::spawn(move || {
+        let mut text = String::new();
+        let _ = stdout.read_to_string(&mut text);
+        text
+    });
+    let err = std::thread::spawn(move || {
+        let mut text = String::new();
+        let _ = stderr.read_to_string(&mut text);
+        text
+    });
+    let status = wait_for_exit(&mut child, label);
+    Ran {
+        code: status.code().expect("exit code"),
+        stdout: out.join().expect("stdout thread"),
+        stderr: err.join().expect("stderr thread"),
+    }
+}
+
+/// Polls `child` until it exits and kills it when it outlives `TIMEOUT`. `label` names
+/// the run in that failure.
+fn wait_for_exit(child: &mut Child, label: &str) -> ExitStatus {
+    let started = Instant::now();
+    loop {
+        if let Some(status) = child.try_wait().expect("try_wait") {
+            return status;
+        }
+        if started.elapsed() > TIMEOUT {
+            kill_and_panic(
+                child,
+                &format!("`baram {label}` did not exit within {TIMEOUT:?}"),
+            );
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// Reads one byte of `child`'s stdout and closes the pipe. The read waits on the child, so
+/// it runs on a thread: a child that never writes is killed once `TIMEOUT` is up instead of
+/// being waited on for good. `label` names the run in that failure.
+fn read_one_byte_and_close(child: &mut Child, label: &str) -> u8 {
+    let mut stdout = child.stdout.take().expect("stdout");
+    let (sent, received) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut byte = [0u8; 1];
+        let read = stdout.read_exact(&mut byte).map(|()| byte[0]);
+        drop(stdout);
+        let _ = sent.send(read);
+    });
+    match received.recv_timeout(TIMEOUT) {
+        Ok(read) => read.expect("one byte"),
+        Err(_) => kill_and_panic(
+            child,
+            &format!("`baram {label}` wrote no byte within {TIMEOUT:?}"),
+        ),
+    }
+}
+
+fn kill_and_panic(child: &mut Child, message: &str) -> ! {
+    let _ = child.kill();
+    let _ = child.wait();
+    panic!("{message}");
+}
+
+fn json(text: &str) -> serde_json::Value {
+    serde_json::from_str(text).unwrap_or_else(|e| panic!("not JSON ({e}): {text:?}"))
+}
+
+fn vault_arg(sb: &Sandbox) -> String {
+    sb.vault.to_string_lossy().into_owned()
+}
+
+/// Whether `text` holds a Hangul syllable or jamo. The app's own error enums say their
+/// piece in Korean, so this is how a test sees one of them leak into CLI output.
+fn has_hangul(text: &str) -> bool {
+    text.chars().any(|c| {
+        matches!(c, '\u{1100}'..='\u{11FF}' | '\u{3130}'..='\u{318F}' | '\u{AC00}'..='\u{D7A3}')
+    })
+}
+
+/// Sets a directory's mode back to `0o755` when dropped. Declared after the `Sandbox`, it
+/// runs first, so the tempdir can be removed even when an assertion unwinds.
+struct Unlock(PathBuf);
+
+impl Drop for Unlock {
+    fn drop(&mut self) {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&self.0, std::fs::Permissions::from_mode(0o755));
+    }
+}
+
+// ── the two modes ─────────────────────────────────────────────────────────────────
+
+#[test]
+fn version_exits_without_a_window() {
+    let sb = sandbox();
+    let ran = baram(&sb, &sb.home, &["--version"]);
+    assert_eq!(ran.code, 0, "stderr: {}", ran.stderr);
+    assert_eq!(ran.stdout, format!("baram {}\n", env!("CARGO_PKG_VERSION")));
+}
+
+#[test]
+fn a_typo_is_a_usage_error_not_a_window() {
+    let sb = sandbox();
+    let ran = baram(&sb, &sb.home, &["serch", "x"]);
+    assert_eq!(ran.code, 2);
+    assert!(ran.stdout.is_empty(), "stdout: {}", ran.stdout);
+    assert!(ran.stderr.contains("serch"), "stderr: {}", ran.stderr);
+}
+
+// ── vaults ────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn vaults_lists_what_the_app_registered_and_marks_where_we_are() {
+    let sb = sandbox();
+    write_config(&sb, &[("baram:context", registered(&sb))]);
+    write(&sb.vault, "sub/note.md", "x\n");
+    let ran = baram(&sb, &sb.vault.join("sub"), &["--json", "vaults"]);
+    assert_eq!(ran.code, 0, "stderr: {}", ran.stderr);
+    assert!(ran.stderr.is_empty(), "stderr: {}", ran.stderr);
+    // Exactly the sandbox's two roots: the child read THIS config, not the developer's,
+    // and the file context is not listed.
+    assert_eq!(
+        json(&ran.stdout),
+        serde_json::json!({
+            "vault": { "name": "Fixture", "path": sb.vault },
+            "truncated": false,
+            "items": [
+                { "name": "Fixture", "path": sb.vault, "alias": "fx", "type": "vault",
+                  "current": true, "active": false, "exists": true },
+                { "name": "Gone", "path": sb.base.join("gone"), "alias": null, "type": "folder",
+                  "current": false, "active": true, "exists": false }
+            ]
+        })
+    );
+}
+
+#[test]
+fn vaults_text_puts_a_star_on_the_current_one() {
+    let sb = sandbox();
+    write_config(&sb, &[("baram:context", registered(&sb))]);
+    let ran = baram(&sb, &sb.home, &["--vault", "FX", "vaults"]);
+    assert_eq!(ran.code, 0, "stderr: {}", ran.stderr);
+    assert_eq!(
+        ran.stdout,
+        format!(
+            "*\tFixture\tvault\t{}\n\tGone\tfolder\t{}\n",
+            sb.vault.display(),
+            sb.base.join("gone").display()
+        )
+    );
+}
+
+#[test]
+fn vaults_does_not_fail_where_no_vault_resolves() {
+    let sb = sandbox();
+    // No config.json at all, and a current directory that is in no vault.
+    let ran = baram(&sb, &sb.home, &["--json", "vaults"]);
+    assert_eq!(ran.code, 0, "stderr: {}", ran.stderr);
+    assert!(ran.stderr.is_empty(), "stderr: {}", ran.stderr);
+    assert_eq!(
+        json(&ran.stdout),
+        serde_json::json!({ "vault": null, "truncated": false, "items": [] })
+    );
+}
+
+/// The deleted directory is made INSIDE the registered vault: a child that could read it
+/// would resolve "Fixture", so `"vault": null` shows the directory really was unreadable.
+#[test]
+fn vaults_runs_from_a_current_directory_that_was_deleted() {
+    let sb = sandbox();
+    write_config(&sb, &[("baram:context", registered(&sb))]);
+    let listed = baram_from_a_deleted_directory(&sb, &sb.vault, &["--json", "vaults"]);
+    assert_eq!(listed.code, 0, "stderr: {}", listed.stderr);
+    assert!(listed.stderr.is_empty(), "stderr: {}", listed.stderr);
+    assert_eq!(
+        json(&listed.stdout),
+        serde_json::json!({
+            "vault": null,
+            "truncated": false,
+            "items": [
+                { "name": "Fixture", "path": sb.vault, "alias": "fx", "type": "vault",
+                  "current": false, "active": false, "exists": true },
+                { "name": "Gone", "path": sb.base.join("gone"), "alias": null, "type": "folder",
+                  "current": false, "active": true, "exists": false }
+            ]
+        })
+    );
+
+    // An absolute --vault does not read the current directory, so it still resolves.
+    let vault = sb.vault.to_string_lossy().into_owned();
+    let named = baram_from_a_deleted_directory(
+        &sb,
+        &sb.vault,
+        &["--vault", vault.as_str(), "--json", "vaults"],
+    );
+    assert_eq!(named.code, 0, "stderr: {}", named.stderr);
+    assert!(named.stderr.is_empty(), "stderr: {}", named.stderr);
+    assert_eq!(
+        json(&named.stdout)["vault"],
+        serde_json::json!({ "name": "Fixture", "path": sb.vault })
+    );
+}
+
+#[test]
+fn a_config_that_cannot_be_read_is_a_warning_and_the_command_still_runs() {
+    let sb = sandbox();
+    write_config(
+        &sb,
+        &[("baram:context", serde_json::json!({ "version": 1 }))],
+    );
+    let text = baram(&sb, &sb.home, &["vaults"]);
+    assert_eq!(text.code, 0);
+    assert!(text.stdout.is_empty(), "stdout: {}", text.stdout);
+    assert_eq!(text.stderr, "warning: baram:context: no `state` object\n");
+
+    let as_json = baram(&sb, &sb.home, &["--json", "vaults"]);
+    assert_eq!(as_json.code, 0);
+    assert_eq!(
+        json(&as_json.stderr),
+        serde_json::json!({ "warning": { "message": "baram:context: no `state` object" } })
+    );
+}
+
+#[test]
+fn baram_log_sends_diagnostics_to_stderr_and_only_when_asked() {
+    let sb = sandbox();
+    let quiet = baram(&sb, &sb.home, &["vaults"]);
+    assert!(quiet.stderr.is_empty(), "stderr: {}", quiet.stderr);
+    let loud = baram_env(&sb, &sb.home, &["vaults"], &[("BARAM_LOG", "1")]);
+    assert_eq!(loud.code, 0);
+    assert!(
+        loud.stderr.contains("cli: 0 registered roots"),
+        "stderr: {}",
+        loud.stderr
+    );
+}
+
+// ── read ──────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn read_prints_the_file_as_it_is() {
+    let sb = sandbox();
+    let body = "line one\n\ttabbed \\ back\nno trailing newline";
+    write(&sb.vault, "notes/a.md", body);
+    let vault = vault_arg(&sb);
+    let ran = baram(&sb, &sb.home, &["--vault", &vault, "read", "notes/a.md"]);
+    assert_eq!(ran.code, 0, "stderr: {}", ran.stderr);
+    assert_eq!(ran.stdout, body);
+    assert!(ran.stderr.is_empty(), "stderr: {}", ran.stderr);
+}
+
+#[test]
+fn read_json_is_one_envelope() {
+    let sb = sandbox();
+    write(&sb.vault, "notes/a.md", "hello\n");
+    let vault = vault_arg(&sb);
+    let ran = baram(
+        &sb,
+        &sb.home,
+        &["--json", "--vault", &vault, "read", "notes/a.md"],
+    );
+    assert_eq!(ran.code, 0, "stderr: {}", ran.stderr);
+    // An unregistered path is named after its folder.
+    assert_eq!(
+        json(&ran.stdout),
+        serde_json::json!({
+            "vault": { "name": "vault", "path": vault },
+            "truncated": false,
+            "items": [{ "path": "notes/a.md", "content": "hello\n" }]
+        })
+    );
+}
+
+#[test]
+fn the_vault_comes_from_a_registered_name_or_from_where_we_stand() {
+    let sb = sandbox();
+    write_config(&sb, &[("baram:context", registered(&sb))]);
+    write(&sb.vault, "notes/a.md", "hello\n");
+    let by_name = baram(&sb, &sb.home, &["--vault", "fixture", "read", "notes/a.md"]);
+    assert_eq!((by_name.code, by_name.stdout.as_str()), (0, "hello\n"));
+    // From a subfolder, the path is still relative to the vault ROOT.
+    let by_cwd = baram(&sb, &sb.vault.join("notes"), &["read", "notes/a.md"]);
+    assert_eq!((by_cwd.code, by_cwd.stdout.as_str()), (0, "hello\n"));
+}
+
+#[test]
+fn an_absolute_path_inside_the_vault_is_accepted() {
+    let sb = sandbox();
+    write(&sb.vault, "notes/a.md", "hello\n");
+    let absolute = sb.vault.join("notes/a.md").to_string_lossy().into_owned();
+    let vault = vault_arg(&sb);
+    let ran = baram(&sb, &sb.home, &["--vault", &vault, "read", &absolute]);
+    assert_eq!((ran.code, ran.stdout.as_str()), (0, "hello\n"));
+}
+
+#[test]
+fn a_path_outside_the_vault_is_refused() {
+    let sb = sandbox();
+    write(&sb.home, "secret.md", "secret\n");
+    let absolute = sb.home.join("secret.md").to_string_lossy().into_owned();
+    let vault = vault_arg(&sb);
+    for outside in ["../home/secret.md", absolute.as_str()] {
+        let ran = baram(
+            &sb,
+            &sb.home,
+            &["--json", "--vault", &vault, "read", outside],
+        );
+        assert_eq!(ran.code, 1, "{outside}");
+        assert!(ran.stdout.is_empty(), "{outside}: {}", ran.stdout);
+        assert_eq!(
+            json(&ran.stderr)["error"]["code"],
+            "PATH_OUTSIDE_VAULT",
+            "{outside}"
+        );
+    }
+}
+
+#[test]
+fn a_missing_file_is_file_not_found_on_stderr() {
+    let sb = sandbox();
+    let vault = vault_arg(&sb);
+    let ran = baram(&sb, &sb.home, &["--vault", &vault, "read", "nope.md"]);
+    assert_eq!(ran.code, 1);
+    assert!(ran.stdout.is_empty());
+    assert!(
+        ran.stderr.starts_with("error[FILE_NOT_FOUND]: "),
+        "stderr: {}",
+        ran.stderr
+    );
+}
+
+#[test]
+fn outside_any_vault_the_command_fails_instead_of_guessing() {
+    let sb = sandbox();
+    // A vault IS registered and was active in the app — and still is not used, because
+    // the current directory is not inside it.
+    let mut persisted = registered(&sb);
+    persisted["state"]["activeContextId"] = serde_json::json!("ctx-1");
+    write_config(&sb, &[("baram:context", persisted)]);
+    write(&sb.vault, "a.md", "x");
+    let ran = baram(&sb, &sb.home, &["--json", "read", "a.md"]);
+    assert_eq!(ran.code, 1);
+    assert!(ran.stdout.is_empty());
+    let error = json(&ran.stderr);
+    assert_eq!(error["error"]["code"], "VAULT_NOT_FOUND");
+    assert_eq!(
+        error["error"]["candidates"].as_array().map(Vec::len),
+        Some(2)
+    );
+}
+
+#[test]
+fn the_hangul_check_sees_what_it_looks_for() {
+    // \u{D30C}\u{C77C} is a Hangul syllable pair, \u{1100} a jamo, \u{3131} a compatibility jamo.
+    for text in ["\u{D30C}\u{C77C}", "a\u{1100}b", "\u{3131}"] {
+        assert!(has_hangul(text), "{text:?}");
+    }
+    assert!(!has_hangul(
+        "cannot read notes/b.bin: stream did not contain valid UTF-8"
+    ));
+}
+
+#[test]
+fn a_directory_is_not_a_file() {
+    let sb = sandbox();
+    write(&sb.vault, "notes/a.md", "x");
+    let vault = vault_arg(&sb);
+    let ran = baram(&sb, &sb.home, &["--vault", &vault, "read", "notes"]);
+    assert_eq!(ran.code, 1);
+    assert!(ran.stdout.is_empty(), "stdout: {}", ran.stdout);
+    assert!(
+        ran.stderr.starts_with("error[FILE_NOT_FOUND]: "),
+        "stderr: {}",
+        ran.stderr
+    );
+}
+
+#[test]
+fn a_file_that_is_not_text_is_io_in_english() {
+    let sb = sandbox();
+    write(&sb.vault, "notes/a.md", "x");
+    std::fs::write(sb.vault.join("notes/b.bin"), [0xff, 0xfe]).expect("write");
+    let vault = vault_arg(&sb);
+    let ran = baram(&sb, &sb.home, &["--vault", &vault, "read", "notes/b.bin"]);
+    assert_eq!(ran.code, 1);
+    assert!(ran.stdout.is_empty(), "stdout: {}", ran.stdout);
+    assert!(
+        ran.stderr.starts_with("error[IO]: cannot read notes/b.bin"),
+        "stderr: {}",
+        ran.stderr
+    );
+    assert!(!has_hangul(&ran.stderr), "stderr: {}", ran.stderr);
+}
+
+#[test]
+fn a_path_below_a_file_is_file_not_found() {
+    let sb = sandbox();
+    write(&sb.vault, "notes/a.md", "x");
+    let vault = vault_arg(&sb);
+    let ran = baram(
+        &sb,
+        &sb.home,
+        &["--vault", &vault, "read", "notes/a.md/b.md"],
+    );
+    assert_eq!(ran.code, 1);
+    assert!(ran.stdout.is_empty(), "stdout: {}", ran.stdout);
+    assert!(
+        ran.stderr.starts_with("error[FILE_NOT_FOUND]: "),
+        "stderr: {}",
+        ran.stderr
+    );
+}
+
+/// `v/locked/a.md` exists; `v/locked` cannot be entered. That is not "no such file": the
+/// reason is the OS's, and the exit code says the run failed.
+#[test]
+fn a_file_in_a_directory_that_cannot_be_entered_is_io_not_file_not_found() {
+    use std::os::unix::fs::PermissionsExt;
+    let sb = sandbox();
+    write(&sb.vault, "locked/a.md", "x");
+    let locked = sb.vault.join("locked");
+    let _unlock = Unlock(locked.clone());
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).expect("chmod");
+    let vault = vault_arg(&sb);
+    let ran = baram(&sb, &sb.home, &["--vault", &vault, "read", "locked/a.md"]);
+    assert_eq!(ran.code, 1, "stderr: {}", ran.stderr);
+    assert!(ran.stdout.is_empty(), "stdout: {}", ran.stdout);
+    assert!(
+        ran.stderr
+            .starts_with("error[IO]: cannot read locked/a.md: "),
+        "stderr: {}",
+        ran.stderr
+    );
+    assert!(!has_hangul(&ran.stderr), "stderr: {}", ran.stderr);
+}
+
+// ── files · search ────────────────────────────────────────────────────────────────
+
+/// What `files` and `search` are run over: two folders whose names share a prefix, a
+/// hidden folder and a non-markdown file the walk must not report.
+fn search_vault(sb: &Sandbox) {
+    write(&sb.vault, "docs/guide.md", "needle in the guide\n");
+    write(&sb.vault, "docs-old/a.md", "needle one\nneedle two\n");
+    write(&sb.vault, "notes/b.md", "nothing here\n");
+    write(&sb.vault, ".obsidian/app.md", "hidden needle\n");
+    write(&sb.vault, "plain.txt", "needle in a text file\n");
+}
+
+#[test]
+fn files_lists_markdown_sorted_and_skips_what_the_app_skips() {
+    let sb = sandbox();
+    search_vault(&sb);
+    let vault = vault_arg(&sb);
+    let all = baram(&sb, &sb.home, &["--vault", &vault, "files"]);
+    assert_eq!(all.code, 0, "stderr: {}", all.stderr);
+    assert_eq!(all.stdout, "docs-old/a.md\ndocs/guide.md\nnotes/b.md\n");
+    let one = baram(
+        &sb,
+        &sb.home,
+        &["--vault", &vault, "files", "--folder", "docs"],
+    );
+    assert_eq!(one.stdout, "docs/guide.md\n");
+}
+
+#[test]
+fn a_folder_argument_is_checked_before_anything_is_walked() {
+    let sb = sandbox();
+    search_vault(&sb);
+    let vault = vault_arg(&sb);
+    for (folder, code, exit) in [
+        (".obsidian", "INVALID_ARGUMENT", 2),
+        ("docs/guide.md", "INVALID_ARGUMENT", 2),
+        ("nope", "FILE_NOT_FOUND", 1),
+        ("../home", "PATH_OUTSIDE_VAULT", 1),
+    ] {
+        for command in [&["files"][..], &["search", "needle"][..]] {
+            let mut args = vec!["--json", "--vault", vault.as_str()];
+            args.extend_from_slice(command);
+            args.extend_from_slice(&["--folder", folder]);
+            let ran = baram(&sb, &sb.home, &args);
+            assert_eq!(ran.code, exit, "{command:?} --folder {folder}");
+            assert_eq!(
+                json(&ran.stderr)["error"]["code"],
+                code,
+                "{command:?} --folder {folder}"
+            );
+        }
+    }
+}
+
+#[test]
+fn search_finds_md_only_and_reports_line_numbers_from_one() {
+    let sb = sandbox();
+    search_vault(&sb);
+    let vault = vault_arg(&sb);
+    let ran = baram(
+        &sb,
+        &sb.home,
+        &["--json", "--vault", &vault, "search", "needle"],
+    );
+    assert_eq!(ran.code, 0, "stderr: {}", ran.stderr);
+    assert_eq!(
+        json(&ran.stdout),
+        serde_json::json!({
+            "vault": { "name": "vault", "path": vault },
+            "truncated": false,
+            "items": [
+                { "path": "docs-old/a.md", "line": 1, "snippet": "needle one" },
+                { "path": "docs-old/a.md", "line": 2, "snippet": "needle two" },
+                { "path": "docs/guide.md", "line": 1, "snippet": "needle in the guide" }
+            ]
+        })
+    );
+}
+
+#[test]
+fn search_says_when_it_stopped_early() {
+    let sb = sandbox();
+    search_vault(&sb);
+    let vault = vault_arg(&sb);
+    let cut = json(
+        &baram(
+            &sb,
+            &sb.home,
+            &[
+                "--json", "--vault", &vault, "search", "needle", "--limit", "2",
+            ],
+        )
+        .stdout,
+    );
+    assert_eq!(cut["truncated"], true);
+    assert_eq!(cut["items"].as_array().map(Vec::len), Some(2));
+    // Exactly as many matches as the limit is NOT truncated.
+    let exact = json(
+        &baram(
+            &sb,
+            &sb.home,
+            &[
+                "--json", "--vault", &vault, "search", "needle", "--limit", "3",
+            ],
+        )
+        .stdout,
+    );
+    assert_eq!(exact["truncated"], false);
+    assert_eq!(exact["items"].as_array().map(Vec::len), Some(3));
+}
+
+/// `docs-old/` sorts before `docs/` (`-` is 0x2D, `/` is 0x2F) and holds limit + 1
+/// matches. An implementation that searched the whole vault and filtered afterwards
+/// would fill its (limit + 1) hits from `docs-old/` and print nothing.
+#[test]
+fn a_folder_with_a_limit_is_not_starved_by_a_neighbour_that_sorts_first() {
+    let sb = sandbox();
+    search_vault(&sb);
+    let vault = vault_arg(&sb);
+    let ran = baram(
+        &sb,
+        &sb.home,
+        &[
+            "--vault", &vault, "search", "needle", "--folder", "docs", "--limit", "1",
+        ],
+    );
+    assert_eq!(ran.code, 0, "stderr: {}", ran.stderr);
+    assert_eq!(ran.stdout, "docs/guide.md\t1\tneedle in the guide\n");
+}
+
+#[test]
+fn no_match_is_success_and_a_bad_pattern_is_a_usage_error() {
+    let sb = sandbox();
+    search_vault(&sb);
+    let vault = vault_arg(&sb);
+    let none = baram(
+        &sb,
+        &sb.home,
+        &["--vault", &vault, "search", "zzz-not-there"],
+    );
+    assert_eq!((none.code, none.stdout.as_str()), (0, ""));
+    assert!(none.stderr.is_empty(), "stderr: {}", none.stderr);
+
+    let bad = baram(
+        &sb,
+        &sb.home,
+        &["--json", "--vault", &vault, "search", "--regex", "("],
+    );
+    assert_eq!(bad.code, 2);
+    assert_eq!(json(&bad.stderr)["error"]["code"], "INVALID_ARGUMENT");
+    // The same text without --regex is an ordinary query.
+    let plain = baram(&sb, &sb.home, &["--vault", &vault, "search", "("]);
+    assert_eq!(plain.code, 0, "stderr: {}", plain.stderr);
+}
+
+/// The regex crate's message for `(` spans several lines, and its last one reads
+/// `error: unclosed group` — like a line of its own. In text mode the message is escaped
+/// so the error stays one line; the JSON form carries it as the crate wrote it.
+#[test]
+fn a_bad_pattern_is_one_error_line_in_text_mode() {
+    let sb = sandbox();
+    search_vault(&sb);
+    let vault = vault_arg(&sb);
+    let text = baram(
+        &sb,
+        &sb.home,
+        &["--vault", &vault, "search", "(", "--regex"],
+    );
+    assert_eq!(text.code, 2, "stderr: {}", text.stderr);
+    assert!(text.stdout.is_empty(), "stdout: {}", text.stdout);
+    assert_eq!(text.stderr.lines().count(), 1, "stderr: {}", text.stderr);
+    assert!(
+        text.stderr
+            .starts_with("error[INVALID_ARGUMENT]: invalid regular expression:"),
+        "stderr: {}",
+        text.stderr
+    );
+
+    let structured = baram(
+        &sb,
+        &sb.home,
+        &["--json", "--vault", &vault, "search", "(", "--regex"],
+    );
+    assert_eq!(structured.code, 2, "stderr: {}", structured.stderr);
+    let message = json(&structured.stderr)["error"]["message"]
+        .as_str()
+        .map(str::to_string)
+        .unwrap_or_default();
+    assert!(message.contains('\n'), "message: {message:?}");
+}
+
+/// One note whose occurrences each fall to a different flag: `needle` (kept by both),
+/// `Needle` and `NEEDLE` (dropped by --case-sensitive), and `needles` three times (dropped
+/// by --word). The four counts differ pairwise, so exchanging the two flags, or losing
+/// either on the way to the search, changes at least one of them.
+#[test]
+fn case_sensitive_and_word_each_narrow_the_search_their_own_way() {
+    let sb = sandbox();
+    write(
+        &sb.vault,
+        "case.md",
+        "needle on its own\nNeedle, then NEEDLE\nneedles, needles and more needles\n",
+    );
+    let vault = vault_arg(&sb);
+    for (flags, query, lines) in [
+        (&[][..], "needle", &[1_u64, 2, 2, 3, 3, 3][..]),
+        (&["--case-sensitive"][..], "needle", &[1_u64, 3, 3, 3][..]),
+        (&["--word"][..], "needle", &[1_u64, 2, 2][..]),
+        (&["--case-sensitive"][..], "Needle", &[2_u64][..]),
+    ] {
+        let mut args = vec!["--json", "--vault", vault.as_str(), "search", query];
+        args.extend_from_slice(flags);
+        let ran = baram(&sb, &sb.home, &args);
+        assert_eq!(ran.code, 0, "{flags:?} {query}: stderr: {}", ran.stderr);
+        let found: Vec<u64> = json(&ran.stdout)["items"]
+            .as_array()
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(|item| item["line"].as_u64())
+                    .collect()
+            })
+            .unwrap_or_default();
+        assert_eq!(found, lines, "{flags:?} {query}");
+    }
+}
+
+/// `v/locked/sub/a.md` exists; `v/locked` cannot be entered, so `--folder locked/sub`
+/// names a folder that is there and cannot be told so. Same reasoning as for `read`: the
+/// reason is the OS's, and the exit code says the run failed.
+#[test]
+fn a_folder_in_a_directory_that_cannot_be_entered_is_io_not_file_not_found() {
+    use std::os::unix::fs::PermissionsExt;
+    let sb = sandbox();
+    write(&sb.vault, "locked/sub/a.md", "needle\n");
+    let locked = sb.vault.join("locked");
+    let _unlock = Unlock(locked.clone());
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).expect("chmod");
+    let vault = vault_arg(&sb);
+    for command in [&["files"][..], &["search", "needle"][..]] {
+        let mut args = vec!["--vault", vault.as_str()];
+        args.extend_from_slice(command);
+        args.extend_from_slice(&["--folder", "locked/sub"]);
+        let ran = baram(&sb, &sb.home, &args);
+        assert_eq!(ran.code, 1, "{command:?}: stderr: {}", ran.stderr);
+        assert!(ran.stdout.is_empty(), "{command:?}: stdout: {}", ran.stdout);
+        assert!(
+            ran.stderr
+                .starts_with("error[IO]: cannot read locked/sub: "),
+            "{command:?}: stderr: {}",
+            ran.stderr
+        );
+        assert!(
+            !has_hangul(&ran.stderr),
+            "{command:?}: stderr: {}",
+            ran.stderr
+        );
+    }
+}
+
+// ── tags · tag · tasks ────────────────────────────────────────────────────────────
+
+/// `baram:settings` as the app persists it, excluding `archive/` from tasks.
+fn settings() -> serde_json::Value {
+    serde_json::json!({
+        "state": { "tasksEnabled": true, "tasksExcludePaths": ["archive"] },
+        "version": 28
+    })
+}
+
+fn notes_vault(sb: &Sandbox) {
+    write(
+        &sb.vault,
+        "notes/alpha.md",
+        "---\ntags: [project]\n---\n# Alpha\n\n- [ ] write the report #work\n- [x] file the receipt\n- [/] review the draft #work\n",
+    );
+    write(&sb.vault, "notes/beta.md", "# Beta\n\n- [-] dropped idea\n");
+    write(&sb.vault, "archive/old.md", "- [ ] archived task\n");
+}
+
+#[test]
+fn tags_counts_occurrences_and_tag_lists_the_files() {
+    let sb = sandbox();
+    notes_vault(&sb);
+    let vault = vault_arg(&sb);
+    let tags = baram(&sb, &sb.home, &["--vault", &vault, "tags"]);
+    assert_eq!(tags.code, 0, "stderr: {}", tags.stderr);
+    // `work` occurs twice in ONE file: the count is occurrences, not files.
+    assert_eq!(tags.stdout, "work\t2\nproject\t1\n");
+
+    for name in ["work", "#work", "WORK"] {
+        let files = baram(&sb, &sb.home, &["--vault", &vault, "tag", name]);
+        assert_eq!(
+            (files.code, files.stdout.as_str()),
+            (0, "notes/alpha.md\n"),
+            "{name}"
+        );
+    }
+    let none = baram(&sb, &sb.home, &["--vault", &vault, "tag", "nope"]);
+    assert_eq!((none.code, none.stdout.as_str()), (0, ""));
+    let empty = baram(&sb, &sb.home, &["--json", "--vault", &vault, "tag", "#"]);
+    assert_eq!(empty.code, 2);
+    assert_eq!(json(&empty.stderr)["error"]["code"], "INVALID_ARGUMENT");
+}
+
+#[test]
+fn tasks_default_to_the_open_ones_minus_what_the_app_excludes() {
+    let sb = sandbox();
+    notes_vault(&sb);
+    write_config(
+        &sb,
+        &[
+            ("baram:context", registered(&sb)),
+            ("baram:settings", settings()),
+        ],
+    );
+    let open = baram(&sb, &sb.vault, &["tasks"]);
+    assert_eq!(open.code, 0, "stderr: {}", open.stderr);
+    assert_eq!(
+        open.stdout,
+        "notes/alpha.md\t6\ttodo\twrite the report #work\nnotes/alpha.md\t8\tdoing\treview the draft #work\n"
+    );
+
+    let all = baram(&sb, &sb.vault, &["tasks", "--status", "all"]);
+    assert_eq!(
+        all.stdout,
+        "notes/alpha.md\t6\ttodo\twrite the report #work\n\
+         notes/alpha.md\t7\tdone\tfile the receipt\n\
+         notes/alpha.md\t8\tdoing\treview the draft #work\n\
+         notes/beta.md\t3\tcancelled\tdropped idea\n"
+    );
+
+    // Without the settings, nothing is excluded — the exclusion comes from the app.
+    write_config(&sb, &[("baram:context", registered(&sb))]);
+    let unfiltered = baram(&sb, &sb.vault, &["tasks"]);
+    assert!(
+        unfiltered
+            .stdout
+            .starts_with("archive/old.md\t1\ttodo\tarchived task\n"),
+        "stdout: {}",
+        unfiltered.stdout
+    );
+}
+
+#[test]
+fn tasks_of_one_file_and_the_json_shape() {
+    let sb = sandbox();
+    notes_vault(&sb);
+    let vault = vault_arg(&sb);
+    let ran = baram(
+        &sb,
+        &sb.home,
+        &[
+            "--json",
+            "--vault",
+            &vault,
+            "tasks",
+            "--file",
+            "notes/beta.md",
+            "--status",
+            "cancelled",
+        ],
+    );
+    assert_eq!(ran.code, 0, "stderr: {}", ran.stderr);
+    assert_eq!(
+        json(&ran.stdout),
+        serde_json::json!({
+            "vault": { "name": "vault", "path": vault },
+            "truncated": false,
+            "items": [{
+                "path": "notes/beta.md", "line": 3, "state": "cancelled", "text": "dropped idea",
+                "priority": 0, "created": null, "start": null, "scheduled": null, "due": null,
+                "done": null, "cancelled": null, "recurrence": null, "tags": [], "links": []
+            }]
+        })
+    );
+    let missing = baram(
+        &sb,
+        &sb.home,
+        &["--json", "--vault", &vault, "tasks", "--file", "nope.md"],
+    );
+    assert_eq!(missing.code, 1);
+    assert_eq!(json(&missing.stderr)["error"]["code"], "FILE_NOT_FOUND");
+}
+
+/// `--file` goes through the same exclusion as the whole-vault scan, the way the app's
+/// incremental refresh of one file does.
+#[test]
+fn tasks_of_an_excluded_file_are_none_like_in_the_panel() {
+    let sb = sandbox();
+    notes_vault(&sb);
+    let vault = vault_arg(&sb);
+    let listed = baram(
+        &sb,
+        &sb.home,
+        &["--vault", &vault, "tasks", "--file", "archive/old.md"],
+    );
+    assert_eq!(
+        (listed.code, listed.stdout.as_str()),
+        (0, "archive/old.md\t1\ttodo\tarchived task\n"),
+        "without the settings the file is not excluded"
+    );
+
+    write_config(
+        &sb,
+        &[
+            ("baram:context", registered(&sb)),
+            ("baram:settings", settings()),
+        ],
+    );
+    let excluded = baram(&sb, &sb.vault, &["tasks", "--file", "archive/old.md"]);
+    assert_eq!((excluded.code, excluded.stdout.as_str()), (0, ""));
+}
+
+/// A directory is not a file, and `--file` says so the way `read` does.
+#[test]
+fn tasks_of_a_directory_is_file_not_found() {
+    let sb = sandbox();
+    notes_vault(&sb);
+    let vault = vault_arg(&sb);
+    let ran = baram(
+        &sb,
+        &sb.home,
+        &["--json", "--vault", &vault, "tasks", "--file", "notes"],
+    );
+    assert_eq!(ran.code, 1, "stderr: {}", ran.stderr);
+    assert!(ran.stdout.is_empty(), "stdout: {}", ran.stdout);
+    assert_eq!(json(&ran.stderr)["error"]["code"], "FILE_NOT_FOUND");
+}
+
+/// `v/locked/a.md` exists; `v/locked` cannot be entered. Same reasoning as for `read`:
+/// that is not "no such file" — the reason is the OS's and the exit code says the run
+/// failed.
+#[test]
+fn a_task_file_in_a_directory_that_cannot_be_entered_is_io_not_file_not_found() {
+    use std::os::unix::fs::PermissionsExt;
+    let sb = sandbox();
+    write(&sb.vault, "locked/a.md", "- [ ] hidden\n");
+    let locked = sb.vault.join("locked");
+    let _unlock = Unlock(locked.clone());
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).expect("chmod");
+    let vault = vault_arg(&sb);
+    let ran = baram(
+        &sb,
+        &sb.home,
+        &["--vault", &vault, "tasks", "--file", "locked/a.md"],
+    );
+    assert_eq!(ran.code, 1, "stderr: {}", ran.stderr);
+    assert!(ran.stdout.is_empty(), "stdout: {}", ran.stdout);
+    assert!(
+        ran.stderr
+            .starts_with("error[IO]: cannot read locked/a.md: "),
+        "stderr: {}",
+        ran.stderr
+    );
+    assert!(!has_hangul(&ran.stderr), "stderr: {}", ran.stderr);
+}
+
+#[test]
+fn a_task_file_that_is_not_text_is_io_in_english() {
+    let sb = sandbox();
+    write(&sb.vault, "notes/a.md", "- [ ] x\n");
+    std::fs::write(sb.vault.join("notes/b.md"), [0xff, 0xfe]).expect("write");
+    let vault = vault_arg(&sb);
+    let ran = baram(
+        &sb,
+        &sb.home,
+        &["--vault", &vault, "tasks", "--file", "notes/b.md"],
+    );
+    assert_eq!(ran.code, 1, "stderr: {}", ran.stderr);
+    assert!(ran.stdout.is_empty(), "stdout: {}", ran.stdout);
+    assert!(
+        ran.stderr
+            .starts_with("error[IO]: cannot read notes/b.md: "),
+        "stderr: {}",
+        ran.stderr
+    );
+    assert!(!has_hangul(&ran.stderr), "stderr: {}", ran.stderr);
+}
+
+/// Each file holds a task, so a missing check would print it. The walk lists `.md` and
+/// `.markdown` files outside hidden and `SKIP_DIRS` folders; `tasks --file` refuses what it
+/// would not list, the way `--folder` refuses a skipped folder.
+#[test]
+fn tasks_of_a_file_the_vault_walk_never_shows_is_refused() {
+    let sb = sandbox();
+    write(&sb.vault, ".hidden/x.md", "- [ ] in a hidden folder\n");
+    write(
+        &sb.vault,
+        "node_modules/m.md",
+        "- [ ] in a skipped folder\n",
+    );
+    write(&sb.vault, "a.txt", "- [ ] in a text file\n");
+    let vault = vault_arg(&sb);
+    for (file, message) in [
+        (
+            ".hidden/x.md",
+            ".hidden/x.md is where the vault walk does not go",
+        ),
+        (
+            "node_modules/m.md",
+            "node_modules/m.md is where the vault walk does not go",
+        ),
+        ("a.txt", "a.txt is not a markdown note"),
+    ] {
+        let ran = baram(&sb, &sb.home, &["--vault", &vault, "tasks", "--file", file]);
+        assert_eq!(ran.code, 2, "{file}: stderr: {}", ran.stderr);
+        assert!(ran.stdout.is_empty(), "{file}: stdout: {}", ran.stdout);
+        assert_eq!(
+            ran.stderr,
+            format!("error[INVALID_ARGUMENT]: {message}\n"),
+            "{file}"
+        );
+    }
+}
+
+/// `home/secret.md` holds a task, so a `--file` that reached it would print it.
+#[test]
+fn tasks_of_a_file_outside_the_vault_is_refused() {
+    let sb = sandbox();
+    write(&sb.home, "secret.md", "- [ ] secret\n");
+    write(&sb.vault, "notes/a.md", "- [ ] inside\n");
+    let vault = vault_arg(&sb);
+    let outside = sb.home.join("secret.md").to_string_lossy().into_owned();
+    for file in ["../home/secret.md", outside.as_str()] {
+        let ran = baram(
+            &sb,
+            &sb.home,
+            &["--json", "--vault", &vault, "tasks", "--file", file],
+        );
+        assert_eq!(ran.code, 1, "{file}: stderr: {}", ran.stderr);
+        assert!(ran.stdout.is_empty(), "{file}: stdout: {}", ran.stdout);
+        assert_eq!(
+            json(&ran.stderr)["error"]["code"],
+            "PATH_OUTSIDE_VAULT",
+            "{file}"
+        );
+    }
+    // The mechanism works at all: an absolute path inside the vault is accepted.
+    let inside = sb.vault.join("notes/a.md").to_string_lossy().into_owned();
+    let ran = baram(
+        &sb,
+        &sb.home,
+        &["--vault", &vault, "tasks", "--file", &inside],
+    );
+    assert_eq!(
+        (ran.code, ran.stdout.as_str()),
+        (0, "notes/a.md\t1\ttodo\tinside\n"),
+        "stderr: {}",
+        ran.stderr
+    );
+}
+
+// ── a folder that cannot be read ──────────────────────────────────────────────────
+
+#[test]
+fn a_walk_that_fails_says_which_folder() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let sb = sandbox();
+    write(&sb.vault, "notes/a.md", "#tag and needle\n- [ ] task\n");
+    let locked = sb.vault.join("notes/locked");
+    std::fs::create_dir_all(&locked).expect("mkdir");
+    let _unlock = Unlock(locked.clone());
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).expect("chmod");
+    // Running as a user the permission bits do not bind (root): nothing to test.
+    if std::fs::read_dir(&locked).is_ok() {
+        eprintln!("skipped: this user can read a 000 directory");
+        return;
+    }
+
+    let vault = vault_arg(&sb);
+    let ran: Vec<(&str, Ran)> = [
+        &["files"][..],
+        &["tags"][..],
+        &["tag", "tag"][..],
+        &["tasks"][..],
+        &["backlinks", "notes/a.md"][..],
+        &["links", "notes/a.md"][..],
+    ]
+    .into_iter()
+    .map(|command| {
+        let mut args = vec!["--json", "--vault", vault.as_str()];
+        args.extend_from_slice(command);
+        (command[0], baram(&sb, &sb.home, &args))
+    })
+    .collect();
+    // `search` walks on its own and steps over what it cannot read.
+    let search = baram(&sb, &sb.home, &["--vault", &vault, "search", "needle"]);
+
+    for (command, ran) in &ran {
+        assert_eq!(ran.code, 1, "{command}: {}", ran.stderr);
+        let error = json(&ran.stderr);
+        assert_eq!(error["error"]["code"], "IO", "{command}");
+        let message = error["error"]["message"].as_str().unwrap_or_default();
+        assert!(
+            message.contains(&locked.to_string_lossy().into_owned()),
+            "{command}: the message must name the folder: {message}"
+        );
+        assert!(!has_hangul(message), "{command}: {message}");
+    }
+    assert_eq!(search.code, 0, "stderr: {}", search.stderr);
+    assert_eq!(search.stdout, "notes/a.md\t1\t#tag and needle\n");
+}
+
+// ── backlinks · links ─────────────────────────────────────────────────────────────
+
+fn linked_vault(sb: &Sandbox) {
+    write(
+        &sb.vault,
+        "notes/alpha.md",
+        "# Alpha\n\nSee [[beta]] and [[missing-note]] and [[journal::remote]].\n",
+    );
+    write(
+        &sb.vault,
+        "notes/beta.md",
+        "# Beta\n\nBack to [[alpha]].\nSee ((alpha#^blk1)) too.\n",
+    );
+    write(&sb.vault, "plain.txt", "[[alpha]]\n");
+}
+
+#[test]
+fn backlinks_are_what_points_at_the_note() {
+    let sb = sandbox();
+    linked_vault(&sb);
+    let vault = vault_arg(&sb);
+    let ran = baram(
+        &sb,
+        &sb.home,
+        &["--json", "--vault", &vault, "backlinks", "notes/alpha.md"],
+    );
+    assert_eq!(ran.code, 0, "stderr: {}", ran.stderr);
+    assert_eq!(
+        json(&ran.stdout),
+        serde_json::json!({
+            "vault": { "name": "vault", "path": vault },
+            "truncated": false,
+            "items": [
+                { "path": "notes/beta.md", "line": 3, "type": "wikilink",
+                  "context": "Back to [[alpha]].", "blockId": null },
+                { "path": "notes/beta.md", "line": 4, "type": "blockRef",
+                  "context": "See ((alpha#^blk1)) too.", "blockId": "blk1" }
+            ]
+        })
+    );
+    // A note that is not written yet can still be asked about.
+    let future = baram(
+        &sb,
+        &sb.home,
+        &["--vault", &vault, "backlinks", "notes/missing-note.md"],
+    );
+    assert_eq!(future.code, 0, "stderr: {}", future.stderr);
+    assert_eq!(
+        future.stdout,
+        "notes/alpha.md\t3\twikilink\tSee [[beta]] and [[missing-note]] and [[journal::remote]].\n"
+    );
+}
+
+#[test]
+fn links_say_where_each_one_leads() {
+    let sb = sandbox();
+    linked_vault(&sb);
+    let vault = vault_arg(&sb);
+    let ran = baram(
+        &sb,
+        &sb.home,
+        &["--json", "--vault", &vault, "links", "notes/alpha.md"],
+    );
+    assert_eq!(ran.code, 0, "stderr: {}", ran.stderr);
+    assert_eq!(
+        json(&ran.stdout)["items"],
+        serde_json::json!([
+            { "line": 3, "type": "wikilink", "target": "beta", "blockId": null,
+              "resolution": "resolved", "path": "notes/beta.md", "vault": null },
+            { "line": 3, "type": "wikilink", "target": "missing-note", "blockId": null,
+              "resolution": "unresolved", "path": null, "vault": null },
+            { "line": 3, "type": "wikilink", "target": "remote", "blockId": null,
+              "resolution": "otherVault", "path": null, "vault": "journal" }
+        ])
+    );
+    let text = baram(
+        &sb,
+        &sb.home,
+        &["--vault", &vault, "links", "notes/beta.md"],
+    );
+    assert_eq!(
+        text.stdout,
+        "3\twikilink\talpha\tresolved\tnotes/alpha.md\n4\tblockRef\talpha\tresolved\tnotes/alpha.md\n"
+    );
+    // The last field is the file for a resolved link, the alias for another vault's, and
+    // empty (a trailing tab) for one that resolves to nothing.
+    let text = baram(
+        &sb,
+        &sb.home,
+        &["--vault", &vault, "links", "notes/alpha.md"],
+    );
+    assert_eq!(
+        text.stdout,
+        "3\twikilink\tbeta\tresolved\tnotes/beta.md\n\
+         3\twikilink\tmissing-note\tunresolved\t\n\
+         3\twikilink\tremote\totherVault\tjournal\n"
+    );
+}
+
+#[test]
+fn links_of_something_the_index_does_not_read() {
+    let sb = sandbox();
+    linked_vault(&sb);
+    let vault = vault_arg(&sb);
+    // Not a note, or a note where the walk never goes: the caller's mistake. A note the
+    // index could not read (here: not UTF-8) is not.
+    write(&sb.vault, ".obsidian/hidden.md", "[[alpha]]\n");
+    std::fs::write(sb.vault.join("notes/binary.md"), [0xffu8, 0xfe, 0xfd]).expect("write");
+    for (path, code, exit) in [
+        ("plain.txt", "INVALID_ARGUMENT", 2),
+        (".obsidian/hidden.md", "INVALID_ARGUMENT", 2),
+        ("notes/binary.md", "IO", 1),
+        ("notes/nope.md", "FILE_NOT_FOUND", 1),
+    ] {
+        let ran = baram(&sb, &sb.home, &["--json", "--vault", &vault, "links", path]);
+        assert_eq!(ran.code, exit, "{path}");
+        assert_eq!(json(&ran.stderr)["error"]["code"], code, "{path}");
+    }
+}
+
+/// `notes` and `.` (the vault itself) are named like notes some link points at, so a
+/// command that took them for one would answer with those links.
+#[test]
+fn backlinks_of_a_directory_is_file_not_found() {
+    let sb = sandbox();
+    linked_vault(&sb);
+    write(&sb.vault, "ref.md", "[[notes]] and [[vault]]\n");
+    let vault = vault_arg(&sb);
+    for path in ["notes", ".", ""] {
+        let ran = baram(&sb, &sb.home, &["--vault", &vault, "backlinks", path]);
+        assert_eq!(
+            (ran.code, ran.stdout.as_str(), ran.stderr.as_str()),
+            (
+                1,
+                "",
+                format!("error[FILE_NOT_FOUND]: no file at {path}\n").as_str()
+            ),
+            "{path:?}"
+        );
+    }
+}
+
+/// `home/secret.md` holds a link and a note inside the vault links to `[[secret]]`, so a
+/// command that reached the file would print something.
+#[test]
+fn links_and_backlinks_of_a_file_outside_the_vault_are_refused() {
+    let sb = sandbox();
+    linked_vault(&sb);
+    write(&sb.home, "secret.md", "[[alpha]]\n");
+    write(&sb.vault, "notes/mentions.md", "[[secret]]\n");
+    let vault = vault_arg(&sb);
+    let outside = sb.home.join("secret.md").to_string_lossy().into_owned();
+    for command in ["links", "backlinks"] {
+        for file in ["../home/secret.md", outside.as_str()] {
+            let ran = baram(&sb, &sb.home, &["--json", "--vault", &vault, command, file]);
+            assert_eq!(ran.code, 1, "{command} {file}: stderr: {}", ran.stderr);
+            assert!(ran.stdout.is_empty(), "{command} {file}: {}", ran.stdout);
+            assert_eq!(
+                json(&ran.stderr)["error"]["code"],
+                "PATH_OUTSIDE_VAULT",
+                "{command} {file}"
+            );
+        }
+        // The mechanism works at all: an absolute path inside the vault is accepted.
+        let inside = sb
+            .vault
+            .join("notes/alpha.md")
+            .to_string_lossy()
+            .into_owned();
+        let ran = baram(&sb, &sb.home, &["--vault", &vault, command, &inside]);
+        assert_eq!(ran.code, 0, "{command}: stderr: {}", ran.stderr);
+        assert!(!ran.stdout.is_empty(), "{command}");
+    }
+}
+
+// ── the contract, end to end ──────────────────────────────────────────────────────
+
+/// One vault every command is run over: tags, tasks in each state, links that resolve,
+/// dangle and leave the vault, a folder the app excludes from tasks, and files the walk
+/// must never report (a hidden folder, a non-markdown file).
+fn contract_vault(sb: &Sandbox) {
+    write(
+        &sb.vault,
+        "notes/alpha.md",
+        "---\ntags: [project]\n---\n# Alpha\n\nSee [[beta]] and [[missing-note]] and [[journal::remote]].\n- [ ] write the report #work\n- [x] file the receipt\n- [/] review the draft #work\n",
+    );
+    write(
+        &sb.vault,
+        "notes/beta.md",
+        "# Beta\n\nBack to [[alpha]].\nSee ((alpha#^blk1)) too.\n- [-] dropped idea\n",
+    );
+    write(&sb.vault, "docs/guide.md", "needle in the guide\n");
+    write(&sb.vault, "docs-old/a.md", "needle one\nneedle two\n");
+    write(&sb.vault, "archive/old.md", "- [ ] archived task\n");
+    write(
+        &sb.vault,
+        ".obsidian/app.md",
+        "hidden needle #secret\n- [ ] hidden task\n",
+    );
+    write(&sb.vault, "plain.txt", "needle in a text file\n");
+    write_config(
+        sb,
+        &[
+            ("baram:context", registered(sb)),
+            ("baram:settings", settings()),
+        ],
+    );
+}
+
+/// The nine commands, as they are run in the contract tests.
+const NINE: &[&[&str]] = &[
+    &["vaults"],
+    &["files"],
+    &["read", "notes/beta.md"],
+    &["search", "needle"],
+    &["tags"],
+    &["tag", "work"],
+    &["tasks"],
+    &["backlinks", "notes/alpha.md"],
+    &["links", "notes/alpha.md"],
+];
+
+fn run_json(sb: &Sandbox, command: &[&str]) -> serde_json::Value {
+    let mut args = vec!["--json"];
+    args.extend_from_slice(command);
+    let ran = baram(sb, &sb.vault, &args);
+    assert_eq!(ran.code, 0, "{command:?}: {}", ran.stderr);
+    assert!(ran.stderr.is_empty(), "{command:?}: {}", ran.stderr);
+    json(&ran.stdout)
+}
+
+/// `Value` equality compares objects key by key, so a key the output leaves out (or adds)
+/// makes the two differ — a field that is `null` here and absent there is caught.
+#[test]
+fn every_command_prints_the_envelope_it_promises() {
+    let sb = sandbox();
+    contract_vault(&sb);
+    let vault = serde_json::json!({ "name": "Fixture", "path": sb.vault });
+
+    let expected: Vec<serde_json::Value> = vec![
+        // vaults
+        serde_json::json!([
+            { "name": "Fixture", "path": sb.vault, "alias": "fx", "type": "vault",
+              "current": true, "active": false, "exists": true },
+            { "name": "Gone", "path": sb.base.join("gone"), "alias": null, "type": "folder",
+              "current": false, "active": true, "exists": false }
+        ]),
+        // files
+        serde_json::json!([
+            { "path": "archive/old.md" },
+            { "path": "docs-old/a.md" },
+            { "path": "docs/guide.md" },
+            { "path": "notes/alpha.md" },
+            { "path": "notes/beta.md" }
+        ]),
+        // read notes/beta.md
+        serde_json::json!([{
+            "path": "notes/beta.md",
+            "content": "# Beta\n\nBack to [[alpha]].\nSee ((alpha#^blk1)) too.\n- [-] dropped idea\n"
+        }]),
+        // search needle
+        serde_json::json!([
+            { "path": "docs-old/a.md", "line": 1, "snippet": "needle one" },
+            { "path": "docs-old/a.md", "line": 2, "snippet": "needle two" },
+            { "path": "docs/guide.md", "line": 1, "snippet": "needle in the guide" }
+        ]),
+        // tags
+        serde_json::json!([
+            { "tag": "work", "count": 2 },
+            { "tag": "project", "count": 1 }
+        ]),
+        // tag work
+        serde_json::json!([{ "path": "notes/alpha.md" }]),
+        // tasks (open, `archive/` excluded by the app's settings)
+        serde_json::json!([
+            { "path": "notes/alpha.md", "line": 7, "state": "todo",
+              "text": "write the report #work", "priority": 0,
+              "created": null, "start": null, "scheduled": null, "due": null,
+              "done": null, "cancelled": null, "recurrence": null,
+              "tags": ["work"], "links": [] },
+            { "path": "notes/alpha.md", "line": 9, "state": "doing",
+              "text": "review the draft #work", "priority": 0,
+              "created": null, "start": null, "scheduled": null, "due": null,
+              "done": null, "cancelled": null, "recurrence": null,
+              "tags": ["work"], "links": [] }
+        ]),
+        // backlinks notes/alpha.md
+        serde_json::json!([
+            { "path": "notes/beta.md", "line": 3, "type": "wikilink",
+              "context": "Back to [[alpha]].", "blockId": null },
+            { "path": "notes/beta.md", "line": 4, "type": "blockRef",
+              "context": "See ((alpha#^blk1)) too.", "blockId": "blk1" }
+        ]),
+        // links notes/alpha.md
+        serde_json::json!([
+            { "line": 6, "type": "wikilink", "target": "beta", "blockId": null,
+              "resolution": "resolved", "path": "notes/beta.md", "vault": null },
+            { "line": 6, "type": "wikilink", "target": "missing-note", "blockId": null,
+              "resolution": "unresolved", "path": null, "vault": null },
+            { "line": 6, "type": "wikilink", "target": "remote", "blockId": null,
+              "resolution": "otherVault", "path": null, "vault": "journal" }
+        ]),
+    ];
+    assert_eq!(NINE.len(), expected.len());
+
+    for (command, items) in NINE.iter().zip(expected) {
+        assert_eq!(
+            run_json(&sb, command),
+            serde_json::json!({ "vault": vault, "truncated": false, "items": items }),
+            "{command:?}"
+        );
+    }
+}
+
+/// `--help` lists exactly the nine commands this file exercises — a tenth visible command
+/// added to the grammar without a contract here fails this test. A hidden one
+/// (`#[command(hide = true)]`) is not listed, so it does not.
+#[test]
+fn the_nine_commands_are_the_ones_the_binary_knows() {
+    let sb = sandbox();
+    let help = baram(&sb, &sb.home, &["--help"]);
+    assert_eq!(help.code, 0);
+    // Under `Commands:` each command is a line that opens with two spaces; the block ends
+    // at the next blank line.
+    let mut listed: Vec<&str> = help
+        .stdout
+        .lines()
+        .skip_while(|line| !line.starts_with("Commands:"))
+        .skip(1)
+        .take_while(|line| line.starts_with("  "))
+        .filter_map(|line| line.split_whitespace().next())
+        .filter(|name| *name != "help")
+        .collect();
+    let mut tested: Vec<&str> = NINE.iter().map(|command| command[0]).collect();
+    listed.sort_unstable();
+    tested.sort_unstable();
+    assert_eq!(listed, tested, "help printed: {}", help.stdout);
+}
+
+/// Every path under `root` — hidden ones included — with its size and modification
+/// time. What "the CLI wrote nothing" is measured against. A directory's entry carries
+/// its own modification time, which a child created or removed moves, so a file written
+/// and deleted again leaves a trace there. `root`'s own entry is not recorded: the root
+/// belongs one level above whatever must stay untouched.
+fn snapshot(root: &Path) -> Vec<(PathBuf, u64, std::time::SystemTime)> {
+    let mut seen = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(&dir).expect("read_dir") {
+            let entry = entry.expect("entry");
+            let meta = entry.metadata().expect("metadata");
+            seen.push((entry.path(), meta.len(), meta.modified().expect("mtime")));
+            if meta.is_dir() {
+                stack.push(entry.path());
+            }
+        }
+    }
+    seen.sort();
+    seen
+}
+
+/// The CLI reads: it writes nothing into the vault (`.baram/` included), nothing to the
+/// app's `config.json` and nothing to the app's log files (spec 0066 §3.7). The snapshot
+/// root is the sandbox, which holds the vault and the HOME and XDG_DATA_HOME the config
+/// is read from; tauri's `app_log_dir` is under HOME on macOS (`Library/Logs/<id>`) and
+/// under XDG_DATA_HOME on Linux (`<id>/logs`).
+#[test]
+fn no_command_writes_into_the_vault_the_config_or_the_logs() {
+    let sb = sandbox();
+    contract_vault(&sb);
+    let before = snapshot(&sb.base);
+    let in_vault = before
+        .iter()
+        .filter(|(path, ..)| path.starts_with(&sb.vault) && *path != sb.vault)
+        .count();
+    assert!(in_vault >= 12, "the fixture is there: {before:?}");
+    let configs = [
+        sb.home
+            .join("Library/Application Support/com.inel.baram/config.json"),
+        sb.xdg.join("com.inel.baram/config.json"),
+    ];
+    for config in &configs {
+        assert!(
+            before.iter().any(|(path, ..)| path == config),
+            "{config:?} is in the snapshot: {before:?}"
+        );
+    }
+    // Whole-second modification times cannot show a rewrite made in the fixture's second.
+    std::thread::sleep(Duration::from_millis(1100));
+
+    for command in NINE {
+        for json in [false, true] {
+            let mut args: Vec<&str> = if json { vec!["--json"] } else { Vec::new() };
+            args.extend_from_slice(command);
+            let ran = baram(&sb, &sb.vault, &args);
+            assert_eq!(ran.code, 0, "{command:?}: {}", ran.stderr);
+        }
+    }
+    assert_eq!(
+        snapshot(&sb.base),
+        before,
+        "a command wrote into the vault, the app's config or its logs"
+    );
+
+    // The snapshot is able to see each kind of write. Each is compared with the snapshot
+    // before it; the targets that already exist (the vault root, `docs/guide.md`, the
+    // `config.json` files) were last written before the sleep above.
+    let mut seen = before;
+    let mut shows = |what: &str, change: &dyn Fn()| {
+        change();
+        let now = snapshot(&sb.base);
+        assert_ne!(now, seen, "{what} must show");
+        seen = now;
+    };
+    shows("a file created and removed at the vault root", &|| {
+        let temp = sb.vault.join(".lock");
+        std::fs::write(&temp, "x").expect("write");
+        std::fs::remove_file(&temp).expect("remove");
+    });
+    shows("a new file", &|| {
+        write(&sb.vault, ".baram/config.json", "{}")
+    });
+    shows("a rewrite of a note with identical bytes", &|| {
+        write(&sb.vault, "docs/guide.md", "needle in the guide\n");
+    });
+    shows("a rewrite of config.json with identical bytes", &|| {
+        for config in &configs {
+            let text = std::fs::read(config).expect("read");
+            std::fs::write(config, text).expect("write");
+        }
+    });
+}
+
+/// The reader takes one byte and closes. More than a pipe holds is left unwritten (64 KiB:
+/// pipe(7) for Linux, and a non-blocking fill took 65536 bytes on macOS), so the child is
+/// blocked in `write` when the pipe closes and MUST meet the broken pipe — a smaller file
+/// would be fully written before the close and prove nothing. Text mode writes the file's
+/// own bytes and `--json` writes the envelope through another writer, so both are run.
+#[test]
+fn a_reader_that_stops_early_is_not_an_error() {
+    let sb = sandbox();
+    let line = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde\n";
+    let body = line.repeat(4096); // 256 KiB
+    assert!(body.len() >= 4 * 64 * 1024);
+    write(&sb.vault, "big.md", &body);
+    let vault = vault_arg(&sb);
+
+    for (flags, first) in [(Vec::new(), b'0'), (vec!["--json"], b'{')] {
+        let mut args = flags;
+        args.extend(["--vault", vault.as_str(), "read", "big.md"]);
+        let label = format!("{} (reader closed early)", args.join(" "));
+        let mut child = isolated(&sb, env!("CARGO_BIN_EXE_baram"))
+            .args(&args)
+            .current_dir(&sb.home)
+            .spawn()
+            .expect("spawn baram");
+        assert_eq!(
+            read_one_byte_and_close(&mut child, &label),
+            first,
+            "{label}"
+        );
+
+        let status = wait_for_exit(&mut child, &label);
+        let mut stderr = String::new();
+        child
+            .stderr
+            .take()
+            .expect("stderr")
+            .read_to_string(&mut stderr)
+            .expect("read stderr");
+        // Exit 0, and not by a signal: `code()` is None when a signal ended the process.
+        assert_eq!(status.code(), Some(0), "{label}: stderr: {stderr}");
+        assert!(stderr.is_empty(), "{label}: stderr: {stderr}");
+    }
+}
