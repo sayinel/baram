@@ -78,9 +78,11 @@ Three things worth designing around:
 
 In the sandboxed tier, editor calls are metered by the work they cost, not by how often you
 call them: reading a scratch note is nearly free, reading a 10,000-line file repeatedly is
-not. If a call is refused with `code: "budget"`, look for a read you are polling that
-`ctx.events` could hand you instead, or for inserts you could batch. The trusted tier has no
-such budget.
+not. A write refused after its range was checked — a `ref` whose text changed, say — still
+pays that range's length, so retrying a stale `ref` in a loop runs the budget down; read the
+selection again instead. If a call is refused with `code: "budget"`, look for a read you are
+polling that `ctx.events` could hand you instead, or for inserts you could batch. The trusted
+tier has no such budget.
 
 ## The sandboxed tier's API differs
 

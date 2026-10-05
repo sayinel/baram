@@ -71,8 +71,9 @@ so formatting in the range survives a rewrite only if your markdown carries it.
   node you selected changed, or another document is in the editor (switching to source mode
   and back counts), the write is refused and you read the selection again.
 - A `ref` works only for the plugin that read it. A successful write spends it; a refused one
-  leaves it, so you can retry. Each plugin keeps its 16 most recent unspent refs — reading a
-  17th drops the oldest.
+  leaves it, so you can retry. In the sandboxed tier, though, a write refused after its range
+  was checked — a `ref` whose text changed, say — pays that range's length from the budget. Each
+  plugin keeps its 16 most recent unspent refs — reading a 17th drops the oldest.
 - With only `editor:readonly` you still get a `ref`, but nothing is kept for it: a write is
   refused with `not-permitted` before the `ref` is looked at.
 - Without `replace`, an insert goes to the selection as it is when you call. `insertMarkdown()`
@@ -112,10 +113,10 @@ And by `insertMarkdown()` alone:
 - anything but a single paragraph in place of a selected node in a table cell (one paragraph
   is accepted there);
 - frontmatter anywhere but as the first block of a result that starts at the document's start;
-- a line holding an image and text as a paragraph of the result that would join the text at the
-  range, where it cannot be joined: as the last of several blocks; as the first block, or the
-  only one, if text separates two images in it; as the first block, if the line does not start
-  with the image and the blocks replace a whole paragraph;
+- a line that holds an image or a video along with text or another image or video, placed as
+  the last of several blocks; as the first block, or the only one, if text separates two images
+  or videos in it; or as the first of several blocks, if the line does not start with an image
+  or video and the blocks replace a whole paragraph;
 - anything that would split a node above the place it goes into.
 
 If the user's selection is inside the target when the write lands (ends included) — as it is
