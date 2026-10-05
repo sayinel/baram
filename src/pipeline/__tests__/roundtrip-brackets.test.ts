@@ -157,3 +157,41 @@ describe("a text holding a bare URL keeps every bracket escaped", () => {
     expect(linkHrefs(load(saved)).filter((h) => h.startsWith("("))).toEqual([]);
   });
 });
+
+// §56l — a `#` that starts a line is a heading marker only when a space, a tab
+// or the line end follows it, so `#tag` there is written raw. That used to be a
+// regex over the whole saved string, which also took the backslash off `\#`
+// inside code, math, and after a literal backslash.
+describe("a `#` at the start of a line", () => {
+  // Built as documents: loading `#tag` makes a tag node, which is written
+  // verbatim. A `#tag` stays text only when it arrived some other way — pasted
+  // as plain text, say — and then it is saved for the loader to turn into a tag.
+  it.each([
+    ["a tag", "#tag 앞머리"],
+    ["a Korean tag", "#태그 앞머리"],
+  ])("is written raw before %s", (_label, text) => {
+    const doc = schema.nodeFromJSON({
+      content: [{ content: [{ text, type: "text" }], type: "paragraph" }],
+      type: "doc",
+    });
+    expect(prosemirrorToMarkdown(doc)).toBe(`${text}\n`);
+  });
+
+  it("stays escaped when it would start a heading", () => {
+    expectSameDocumentAfterSave("\\# not a heading\n");
+    expect(roundtrip("\\# not a heading\n")).toBe("\\# not a heading\n");
+  });
+
+  it.each([
+    ["a code block", "```\n\\#define X\n```\n"],
+    ["inline code", "inline `\\#x` here\n"],
+    ["inline math", "math $\\#y$ here\n"],
+    ["a block of math", "$$\n\\#z\n$$\n"],
+  ])("keeps the backslash in %s", (_label, md) => {
+    expect(roundtrip(md)).toBe(md);
+  });
+
+  it("keeps a literal backslash before a tag", () => {
+    expectSameDocumentAfterSave("a \\\\#tag\n");
+  });
+});

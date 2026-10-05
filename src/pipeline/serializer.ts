@@ -58,7 +58,7 @@ function remarkWikiLink(this: any) {
 }
 
 /**
- * §7.1 Body text — remark's own escaping, except for the `[` and `!` that
+ * §7.1 Body text — remark's own escaping, except for the `[`, `!` and `#` that
  * {@link rawPositions} shows start nothing; those are written as typed.
  *
  * remark escapes every `[` in phrasing (`unsafe.js` in mdast-util-to-markdown,
@@ -137,6 +137,10 @@ const TASK_CHECK = new Set(["\t", "\n", "\r", " ", "X", "x"]);
  *  change what Baram reads — the rest keep files saved before byte-identical. */
 const LABEL_FOLLOWERS = new Set(["(", ":", "[", "{"]);
 
+/** §56l — remark escapes a `#` only where it could open a heading, at a line
+ *  start; a `#` opens one only before a space, a tab or the line end. */
+const TAG_CHARACTER = /[\w가-힣]/;
+
 /**
  * Indices of the characters in `value` to write raw, ascending.
  *
@@ -171,7 +175,7 @@ const LABEL_FOLLOWERS = new Set(["(", ":", "[", "{"]);
  *   would close there into a link. The whole text keeps its escapes.
  *
  * A `!` right before a raw `[` is raw too: the image it would start has the same
- * label.
+ * label. A `#` before a {@link TAG_CHARACTER} is raw (§56l).
  */
 function rawPositions(value: string, state: State, info: Info): number[] {
   // `info.after` can be longer than one character; the next one is its first.
@@ -187,7 +191,9 @@ function rawPositions(value: string, state: State, info: Info): number[] {
   const waiting: number[] = [];
   for (let index = 0; index < value.length; index++) {
     const character = value[index];
-    if (character === "[" && bracketsMayBeRaw) {
+    if (character === "#") {
+      if (TAG_CHARACTER.test(following(index))) raw.push(index);
+    } else if (character === "[" && bracketsMayBeRaw) {
       if (following(index) === "^") continue;
       // The second label of `[a][b]` — the first one stays escaped (`[` follows
       // its `]`), and so did this one before.
@@ -258,9 +264,6 @@ const serializer = unified()
 /** Serialize mdast tree to markdown string */
 export function mdastToMarkdown(root: Root): string {
   let result = serializer.stringify(root);
-  // §56l: remark-stringify escapes # at line start (atBreak), but #tag (no space)
-  // is never heading syntax — unescape when followed by word characters.
-  result = result.replace(/\\#(?=[\w가-힣])/g, "#");
   // §56m: remark-stringify encodes trailing spaces as &#x20; when the last inline
   // node is a tagNode followed by a whitespace-only text node.  Strip at end of lines.
   result = result.replace(/&#x20;(?=\n|$)/g, "");
