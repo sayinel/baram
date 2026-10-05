@@ -154,18 +154,25 @@ pub(crate) async fn rename_file_with_links_inner(
         |content, ref_path, covering| rewrite(content, ref_path, &keys_of(covering)),
     )
     .await;
+    //    Judge the renamed note's references under the owning roots. A standalone File
+    //    context (§89) has none, so use the note's own folder as spelled:
+    //    bare keys do not depend on a root, and relative links resolve from
+    //    the referrer's folder. No enclosing vault root is inferred.
+    let own_roots: Vec<String> = if scope.keys.is_empty() {
+        own_folder(old_path).into_iter().collect()
+    } else {
+        scope.keys.clone()
+    };
     //    Then the renamed note itself, which rewrite_referrers skips. Its
     //    destination passes the gate every referrer passes right before it is
     //    written: resolved again NOW — after the move and every referrer
     //    write, not before them — it must still lie inside the file's
     //    contexts. It is stale news on a referrer's terms: the index named it
     //    under the old key for more than its own `((#^id))` references.
-    //    Every owning root covers the renamed note, so its references are
-    //    judged under all of them.
     let renamed_content = rewrite_renamed_note(
         new_path,
         renamed_content,
-        |content, ref_path| rewrite(content, ref_path, &scope.keys),
+        |content, ref_path| rewrite(content, ref_path, &own_roots),
         || confined_both_ways(new_path, &scope.dirs, source.parent.as_deref()),
         |content| {
             matches!(unchanged, Unchanged::Report { .. })
@@ -207,4 +214,12 @@ pub(crate) async fn rename_file_with_links_inner(
         updated_files: rewritten.updated,
         skipped_files: rewritten.skipped,
     })
+}
+
+/// The folder `path` is in, as spelled — not resolved.
+fn own_folder(path: &str) -> Option<String> {
+    std::path::Path::new(path)
+        .parent()?
+        .to_str()
+        .map(str::to_string)
 }

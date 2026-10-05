@@ -34,10 +34,10 @@ impl RenameScope {
     /// `Err` when no registered context holds `path` (nothing is known about
     /// references) or an index cannot be built. A standalone File context
     /// (§89) has no directory index and no other file to update, so `dirs`
-    /// and `keys` are empty; a file rename then simply renames the file, and
-    /// a block ID rename finds no referrer to rewrite. `plain_absolute` is the
-    /// caller's check, made before this — the file rename checks both of its
-    /// paths.
+    /// and `keys` are empty. A file rename judges the note's own links under
+    /// its folder as spelled; a block ID rename finds no referrer to rewrite.
+    /// `plain_absolute` is the caller's check, made before this — the file
+    /// rename checks both of its paths.
     pub(super) async fn holding(
         state: &LinkIndexState,
         ctx_mgr: &ContextManager,

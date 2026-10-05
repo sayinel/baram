@@ -295,7 +295,8 @@ async fn a_standalone_file_context_renames_with_no_cross_file_updates() {
     // §89: a file opened on its own, outside every folder. Its key is the
     // file path, which no build can fill — and there is no other file whose
     // references could need updating. The renames go through, the
-    // backlinks are empty; none of it is an error.
+    // backlinks are empty; none of it is an error. This note has no links
+    // to its own name.
     let dir = tempfile::tempdir().unwrap();
     let note = format!("{}/note.md", dir.path().to_str().unwrap());
     std::fs::write(&note, "block ^b1").unwrap();
@@ -321,6 +322,91 @@ async fn a_standalone_file_context_renames_with_no_cross_file_updates() {
     assert!(std::path::Path::new(&renamed).exists());
     // No index was built for a file key.
     assert!(state.with_index(&note, |idx| idx.is_none()).await);
+}
+
+/// A note opened on its own (§89) in a fresh directory, holding `content`:
+/// the manager, the directory, and the note's path.
+async fn standalone_note(content: &str) -> (ContextManager, tempfile::TempDir, String) {
+    let dir = tempfile::tempdir().unwrap();
+    let note = format!("{}/note.md", dir.path().to_str().unwrap());
+    std::fs::write(&note, content).unwrap();
+    let ctx = ContextManager::new();
+    ctx.add(info("ctx-file", &note, ContextType::File))
+        .await
+        .unwrap();
+    (ctx, dir, note)
+}
+
+#[tokio::test]
+async fn a_standalone_file_context_rename_rewrites_the_notes_own_links() {
+    // What fails this: passing `scope.keys` instead of `own_roots` to
+    // `rewrite_renamed_note` — the content still names `note` in both links.
+    let (ctx, dir, note) = standalone_note("see [[note]] and ((note#^b1))\n\nblock ^b1\n").await;
+    let state = LinkIndexState::new();
+    let renamed = format!("{}/renamed.md", dir.path().to_str().unwrap());
+    let result = rename_file_with_links_inner(&state, &ctx, &note, &renamed)
+        .await
+        .unwrap();
+    assert_eq!(
+        std::fs::read_to_string(&renamed).unwrap(),
+        "see [[renamed]] and ((renamed#^b1))\n\nblock ^b1\n"
+    );
+    assert_eq!(result.updated_files, vec![renamed]);
+    assert!(
+        result.skipped_files.is_empty(),
+        "{:?}",
+        result.skipped_files
+    );
+}
+
+#[tokio::test]
+async fn a_standalone_file_context_rename_reads_the_notes_own_links_under_its_folder() {
+    // `[[./note]]` resolves against the note's folder. With that folder as
+    // root, `[[x/note]]` and `[[<folder>/note]]` do not name this note and stay.
+    // What fails this: a second `.parent()?` in `own_folder` — the content
+    // assertion gets `[[<folder>/renamed]]` instead of `[[<folder>/note]]`.
+    let (ctx, dir, note) = standalone_note("").await;
+    let folder = dir.path().file_name().unwrap().to_str().unwrap();
+    std::fs::write(
+        &note,
+        format!("[[./note]] and [[x/note]] and [[{folder}/note]]\n"),
+    )
+    .unwrap();
+    let state = LinkIndexState::new();
+    let renamed = format!("{}/renamed.md", dir.path().to_str().unwrap());
+    let result = rename_file_with_links_inner(&state, &ctx, &note, &renamed)
+        .await
+        .unwrap();
+    assert_eq!(
+        std::fs::read_to_string(&renamed).unwrap(),
+        format!("[[./renamed]] and [[x/note]] and [[{folder}/note]]\n")
+    );
+    assert_eq!(result.updated_files, vec![renamed]);
+    assert!(
+        result.skipped_files.is_empty(),
+        "{:?}",
+        result.skipped_files
+    );
+}
+
+#[tokio::test]
+async fn a_standalone_file_context_rename_reports_a_link_the_new_name_cannot_be_spelled_in() {
+    // A wikilink cannot spell `a^b` (`[[a^b]]` names the note `a`); a block
+    // reference can. The wikilink is left, and the note is reported.
+    // What fails this: passing `scope.keys` instead of `own_roots` to
+    // `rewrite_renamed_note` — the block target stays `note`, not `a^b`.
+    let (ctx, dir, note) = standalone_note("see [[note]] and ((note#^b1))\n\nblock ^b1\n").await;
+    let state = LinkIndexState::new();
+    let renamed = format!("{}/a^b.md", dir.path().to_str().unwrap());
+    let result = rename_file_with_links_inner(&state, &ctx, &note, &renamed)
+        .await
+        .unwrap();
+    assert_eq!(
+        std::fs::read_to_string(&renamed).unwrap(),
+        "see [[note]] and ((a^b#^b1))\n\nblock ^b1\n"
+    );
+    assert_eq!(result.updated_files, vec![renamed.clone()]);
+    assert_eq!(result.skipped_files, vec![renamed]);
 }
 
 #[tokio::test]

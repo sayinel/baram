@@ -45,8 +45,9 @@ impl<'a> LinkPasses<'a> {
 
     /// Wikilinks, then block references and embeds — each pass reads the
     /// content the other produced, so offsets and literal regions are its own.
-    /// `covering_roots` are the roots whose index covers `ref_path`. Each
-    /// pass reads the referrer once and counts, in that same visit, the
+    /// `covering_roots` are the roots used to judge `ref_path`: its covering
+    /// index roots, or its own folder for a standalone File context (§89).
+    /// Each pass reads the referrer once and counts, in that same visit, the
     /// references it matched and the ones it found ambiguous.
     pub(super) fn rewrite(
         &self,

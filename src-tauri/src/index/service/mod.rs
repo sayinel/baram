@@ -25,9 +25,10 @@
 // empty and a save is a no-op (the panel would render an error as one), a
 // rename refuses (nothing is known about its references). A standalone File
 // context (§89) has no directory index and no other file to update: its file
-// is renamed, nothing else. Only the whole-graph query without an explicit
-// root and knowledge search are inherently about the active context, and
-// knowledge search degrades to an empty graph term when nothing is active.
+// is renamed and its own links are judged under its folder as spelled.
+// Only the whole-graph query without an explicit root and knowledge search
+// are inherently about the active context, and knowledge search degrades to
+// an empty graph term when nothing is active.
 //
 // The lock is never held across an await — by construction, not by review: the
 // map is private to state.rs (a scan test keeps every other file in this tree
