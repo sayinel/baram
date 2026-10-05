@@ -4,6 +4,7 @@
 
 use super::error::{Candidate, CliError, ErrorCode};
 use crate::context::manager::resolve_canonical;
+use crate::context::VaultType;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -18,8 +19,15 @@ pub(crate) struct Registered {
     pub id: String,
     pub label: String,
     pub alias: Option<String>,
+    /// What the vault is for. Only the alias rule reads it: a journal or zettelkasten
+    /// space also answers to its space name (`aliases`).
+    pub vault_type: Option<VaultType>,
     pub path: String,
     pub kind: RootKind,
+    /// Whether the entry reads as the app's `ContextInfo`, the type the app's
+    /// `add_context` receives it as. An entry that does not is never registered in the
+    /// app, so only the alias rule reads this (`aliases`).
+    pub registrable: bool,
 }
 
 /// The vault a command reads. `root` is canonical, and it is the ONE spelling of the
@@ -248,8 +256,10 @@ mod tests {
             id: format!("ctx-{label}"),
             label: label.to_string(),
             alias: alias.map(str::to_string),
+            vault_type: None,
             path: path.to_string_lossy().into_owned(),
             kind,
+            registrable: true,
         }
     }
 

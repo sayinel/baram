@@ -12,7 +12,7 @@ pub enum ContextType {
 }
 
 /// The purpose/flavour of a vault.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum VaultType {
     General,

@@ -1365,6 +1365,182 @@ fn links_and_backlinks_of_a_file_outside_the_vault_are_refused() {
     }
 }
 
+/// The source paths of a `--json backlinks` run, in the order printed.
+fn sources(ran: &Ran) -> Vec<String> {
+    assert_eq!(ran.code, 0, "stderr: {}", ran.stderr);
+    json(&ran.stdout)["items"]
+        .as_array()
+        .expect("items")
+        .iter()
+        .map(|item| item["path"].as_str().expect("path").to_string())
+        .collect()
+}
+
+#[test]
+fn backlinks_count_the_name_and_the_path_however_the_link_reaches_the_note() {
+    // Five ways to write a link to the note without an alias, and two links that do not
+    // reach it. A link is filed under one key — a name, or a path from the vault root —
+    // and backlinks reads the note under both, so the first five name `notes/plan.md`.
+    // What fails this: dropping the `Path` key from `keys_for`, so the note answers to its
+    // name alone — `path.md`, `notes/relative.md` and `blockref.md` drop out.
+    let sb = sandbox();
+    write(&sb.vault, "notes/plan.md", "# Plan\n\nbody ^b1\n");
+    for (rel, body) in [
+        ("stem.md", "[[plan]]\n"),
+        ("path.md", "[[notes/plan]]\n"),
+        ("notes/relative.md", "[[./plan]]\n"),
+        ("blockref.md", "((notes/plan#^b1))\n"),
+        ("extension.md", "[[plan.markdown]]\n"),
+        ("foreign.md", "[[journal::plan]]\n"),
+        ("nowhere.md", "[[./plan]]\n"),
+    ] {
+        write(&sb.vault, rel, body);
+    }
+    let vault = vault_arg(&sb);
+    let ran = baram(
+        &sb,
+        &sb.home,
+        &["--json", "--vault", &vault, "backlinks", "notes/plan.md"],
+    );
+    assert_eq!(
+        sources(&ran),
+        [
+            "blockref.md",
+            "extension.md",
+            "notes/relative.md",
+            "path.md",
+            "stem.md"
+        ]
+    );
+    // Not counted: `[[journal::plan]]` names another vault, and `[[./plan]]` in the vault
+    // root names a `plan.md` there, which does not exist. `links` reports the first as
+    // `otherVault` and resolves the second by its last name — differences the
+    // command-line page states.
+    let foreign = baram(&sb, &sb.home, &["--vault", &vault, "links", "foreign.md"]);
+    assert_eq!(foreign.stdout, "1\twikilink\tplan\totherVault\tjournal\n");
+    let nowhere = baram(&sb, &sb.home, &["--vault", &vault, "links", "nowhere.md"]);
+    assert_eq!(
+        nowhere.stdout,
+        "1\twikilink\t./plan\tresolved\tnotes/plan.md\n"
+    );
+}
+
+/// One registered vault for `baram:context`: `(id, alias, vaultType, path)`.
+fn vault_context(id: &str, alias: &str, vault_type: &str, path: &Path) -> serde_json::Value {
+    serde_json::json!({ "id": id, "contextType": "vault", "path": path, "label": id,
+                        "color": "#4f8cff", "alias": alias, "vaultType": vault_type,
+                        "addedAt": 1 })
+}
+
+fn contexts(list: &[serde_json::Value]) -> serde_json::Value {
+    serde_json::json!({ "state": { "contexts": list, "activeContextId": null }, "version": 1 })
+}
+
+/// Writes `approved-roots.json` beside each config.json `write_config` writes, approving
+/// each of `dirs` as a folder — what the app records when you allow it in.
+fn write_approvals(sb: &Sandbox, dirs: &[&Path]) {
+    let entries: Vec<_> = dirs
+        .iter()
+        .map(|dir| serde_json::json!({ "path": dir, "kind": "dir", "approvedAt": 1 }))
+        .collect();
+    let text = serde_json::json!({ "version": 1, "entries": entries }).to_string();
+    for dir in [
+        sb.home.join("Library/Application Support/com.inel.baram"),
+        sb.xdg.join("com.inel.baram"),
+    ] {
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        std::fs::write(dir.join("approved-roots.json"), &text).expect("write approvals");
+    }
+}
+
+#[test]
+fn backlinks_count_links_behind_the_notes_own_vault_names() {
+    let sb = sandbox();
+    write(&sb.vault, "notes/plan.md", "# Plan\n");
+    write(&sb.vault, "alias.md", "[[FX::plan]]\n");
+    write(&sb.vault, "alias-path.md", "[[fx::notes/plan]]\n");
+    write(&sb.vault, "space.md", "[[Journal::plan]]\n");
+    write(&sb.vault, "other.md", "[[elsewhere::plan]]\n");
+    let vault = vault_arg(&sb);
+    let ask = |sb: &Sandbox| {
+        sources(&baram(
+            sb,
+            &sb.home,
+            &["--json", "--vault", &vault, "backlinks", "notes/plan.md"],
+        ))
+    };
+
+    // Not registered: no name is this vault's own, so none of the four counts.
+    assert_eq!(ask(&sb), Vec::<String>::new());
+
+    // Registered as the journal space `Fx` and approved: its alias and its space name are
+    // its own, in any case. It is registered through `home/../vault`, so the alias's path
+    // key matches only if its root is the canonical path the note is asked by. A
+    // registration whose directory is gone does not share `fx` — the app never holds it.
+    // What fails this: passing no aliases to `get_backlinks` — empty; rooting an alias at
+    // the registered spelling — `alias-path.md` drops out.
+    let spelled = sb.base.join("home/../vault");
+    write_approvals(&sb, &[&sb.vault]);
+    let other = sb.base.join("other");
+    std::fs::create_dir_all(&other).expect("mkdir");
+    let with = |second: serde_json::Value| {
+        write_config(
+            &sb,
+            &[(
+                "baram:context",
+                contexts(&[vault_context("ctx-1", "Fx", "journal", &spelled), second]),
+            )],
+        );
+    };
+    with(vault_context(
+        "ctx-2",
+        "fx",
+        "general",
+        &sb.base.join("gone"),
+    ));
+    assert_eq!(ask(&sb), ["alias-path.md", "alias.md", "space.md"]);
+
+    // A second vault that exists and answers to `fx` but was never approved is not one the
+    // app registers, so it does not share the name either.
+    with(vault_context("ctx-3", "FX", "general", &other));
+    assert_eq!(ask(&sb), ["alias-path.md", "alias.md", "space.md"]);
+
+    // Approved, it makes the alias name two vaults: the panel claims neither link, and
+    // neither does this. The space name is still its own.
+    write_approvals(&sb, &[&sb.vault, &other]);
+    assert_eq!(ask(&sb), ["space.md"]);
+}
+
+#[test]
+fn backlinks_of_an_attachment_go_by_its_path_and_its_name_without_the_extension() {
+    // Pins what the command-line page states. A file's name key is its name without its
+    // last extension, whatever it is (`paper`), while a link's name drops a note extension
+    // only, so `[[Paper.pdf]]` is filed under `paper.pdf`, which is not this file's name
+    // key, and `[[Paper]]` under `paper`. A path key drops a note extension only on both
+    // sides, so `[[papers/Paper.pdf]]` meets the file. What fails this: a link's name
+    // dropping any extension — `bare.md` then counts.
+    let sb = sandbox();
+    write(&sb.vault, "papers/Paper.pdf", "%PDF-1.4\n");
+    write(&sb.vault, "path.md", "[[papers/Paper.pdf]]\n");
+    write(&sb.vault, "bare.md", "[[Paper.pdf]]\n");
+    write(&sb.vault, "stem.md", "[[Paper]]\n");
+    let vault = vault_arg(&sb);
+    let ran = baram(
+        &sb,
+        &sb.home,
+        &["--json", "--vault", &vault, "backlinks", "papers/Paper.pdf"],
+    );
+    assert_eq!(sources(&ran), ["path.md", "stem.md"]);
+    // `links` reads the two bare ones the other way round.
+    let bare = baram(&sb, &sb.home, &["--vault", &vault, "links", "bare.md"]);
+    assert_eq!(
+        bare.stdout,
+        "1\twikilink\tPaper.pdf\tresolved\tpapers/Paper.pdf\n"
+    );
+    let stem = baram(&sb, &sb.home, &["--vault", &vault, "links", "stem.md"]);
+    assert_eq!(stem.stdout, "1\twikilink\tPaper\tunresolved\t\n");
+}
+
 // ── the contract, end to end ──────────────────────────────────────────────────────
 
 /// One vault every command is run over: tags, tasks in each state, links that resolve,

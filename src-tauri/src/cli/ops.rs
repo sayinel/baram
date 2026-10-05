@@ -332,8 +332,10 @@ mod tests {
             id: format!("ctx-{name}{path}"),
             label: name.to_string(),
             alias: None,
+            vault_type: None,
             path: path.to_string(),
             kind: RootKind::Vault,
+            registrable: true,
         }
     }
 

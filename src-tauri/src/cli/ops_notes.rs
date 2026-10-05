@@ -2,6 +2,8 @@
 // Split from `ops.rs` by size; the contract is the same: return the envelope, write
 // nothing.
 
+use super::aliases;
+use super::app_config::AppConfig;
 use super::args::TaskStatus;
 use super::error::{CliError, ErrorCode};
 use super::ops::{index_failure, sort_by_path_and_line, vault_info, walk_failure, PathRow};
@@ -247,15 +249,20 @@ impl Row for BacklinkRow {
 /// whose root contains the file (`get_backlinks_inner` in `index/service/query.rs`) and
 /// merges the answers, so with nested registered roots it can list more.
 ///
-/// By STEM, as the index files them: `[[a]]` anywhere counts for every `a.md`, a link
-/// into another vault (`[[journal::a]]`) counts too, and a path-qualified `[[notes/a]]`
-/// does not. Two links on one line of one note are reported once. The note need not
-/// exist — links to a note not written yet are a fair question — but a directory is
-/// refused: `get_backlinks` keys on the last path component, so a folder would be asked
-/// about as a note named like it.
+/// Under every key the index files a link to the note (`LinkIndex::backlink_keys`): its
+/// name — `[[a]]` anywhere counts for every `a.md` — the zettel id its name starts with,
+/// and its path under the vault root, as in `[[notes/a]]`, `((notes/a#^id))`, or a
+/// `[[./a]]` written in `notes/`; and again behind each alias of a registered vault or
+/// folder that holds the note (`aliases::of_note`, the panel's rule), its name, id, and
+/// path under that context's root. A link behind any other name (`[[journal::a]]`, unless
+/// `journal` names a context that holds the note) does not count. Two links on one line of
+/// one note are reported once. The note need not exist — links to a note not written yet
+/// are a fair question — but a directory is refused: a folder would be asked about as a
+/// note named like it.
 pub(crate) async fn backlinks(
     vault: &Vault,
     path: &str,
+    config: &AppConfig,
 ) -> Result<Envelope<BacklinkRow>, CliError> {
     let target = paths::locate(vault, path)?;
     // Only a directory is refused. Any other metadata error passes, as a missing file
@@ -267,10 +274,11 @@ pub(crate) async fn backlinks(
         ));
     }
     let index = build_index(vault).await?;
+    let own = aliases::of_note(config, &target);
     Ok(Envelope {
         vault: Some(vault_info(vault)),
         truncated: false,
-        items: backlink_rows(vault, index.get_backlinks(&target.to_string_lossy(), &[])),
+        items: backlink_rows(vault, index.get_backlinks(&target.to_string_lossy(), &own)),
     })
 }
 
