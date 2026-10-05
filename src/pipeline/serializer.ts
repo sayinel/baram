@@ -58,8 +58,9 @@ function remarkWikiLink(this: any) {
 }
 
 /**
- * §7.1 Body text — remark's own escaping, except for the `[`, `!` and `#` that
- * {@link rawPositions} shows start nothing; those are written as typed.
+ * §7.1 Body text — remark's own escaping, except for the characters
+ * {@link writtenPositions} decides itself: the `[`, `!` and `#` that start
+ * nothing are written as typed, and every `$` is written `\$`.
  *
  * remark escapes every `[` in phrasing (`unsafe.js` in mdast-util-to-markdown,
  * and once more in mdast-util-gfm-footnote) because `[x]` would be a shortcut
@@ -67,12 +68,12 @@ function remarkWikiLink(this: any) {
  * serializer cannot know. Baram's output can: the schema has no node for a
  * definition (the loader turns references into inline links and drops the
  * definitions, `reference-links.ts`), so a definition exists only if text spells
- * one — and {@link rawPositions} keeps that `[` escaped. remark separately
+ * one — and {@link writtenPositions} keeps that `[` escaped. remark separately
  * escapes a `(` right after `]` in text, which keeps an inline link from forming.
  *
- * The text is cut at each raw character and every piece goes through `safe` with
- * the raw character as its neighbour, so every other escape is decided exactly as
- * remark would decide it for the whole string.
+ * The text is cut at each of those characters and every piece goes through
+ * `safe` with that character as its neighbour, so remark decides every other
+ * escape with the same neighbours it would see in the whole string.
  */
 function text(
   node: Text,
@@ -81,13 +82,13 @@ function text(
   info: Info,
 ): string {
   const value = node.value;
-  const raw = rawPositions(value, state, info);
-  if (raw.length === 0) return state.safe(value, info);
+  const written = writtenPositions(value, state, info);
+  if (written.length === 0) return state.safe(value, info);
 
   const pieces: string[] = [];
   let start = 0;
   let before = info.before;
-  for (const index of raw) {
+  for (const [index, output] of written) {
     if (index > start) {
       pieces.push(
         state.safe(value.slice(start, index), {
@@ -97,7 +98,7 @@ function text(
         }),
       );
     }
-    pieces.push(value[index]);
+    pieces.push(output);
     before = value[index];
     start = index + 1;
   }
@@ -107,26 +108,24 @@ function text(
   return pieces.join("");
 }
 
-/** remark constructs inside which every `[` stays escaped, as remark escapes it:
- *  link text (`label`), a reference, and the spots inside an autolink or a
- *  link's destination or title. */
-const LITERAL_CONSTRUCTS: ReadonlySet<ConstructName> = new Set([
+/** remark's `fullPhrasingSpans` (`unsafe.js`): an autolink, a reference, and
+ *  the spots inside a link's destination or title. remark keeps its own escapes
+ *  there, and so does this handler. */
+const FULL_PHRASING_SPANS: ReadonlySet<ConstructName> = new Set([
   "autolink",
   "destinationLiteral",
   "destinationRaw",
-  "label",
   "reference",
   "titleApostrophe",
   "titleQuote",
 ]);
 
-/** A GFM autolink literal can take a `]` into its URL (`trail` in
- *  micromark-extension-gfm-autolink-literal): one followed by anything but
- *  whitespace, `(` or `[`. Then the `]` this handler paired a `[` with is not the
- *  one the parser closes it with, so a text that can hold such a URL keeps every
- *  `[` escaped. The literal starts with a protocol or `www.`; an e-mail literal
- *  cannot hold a `]`. */
-const AUTOLINK_LITERAL_START = /https?:\/\/|www\./i;
+/** Inside these every `[` stays escaped, as remark escapes it — the spans
+ *  above and link text (`label`). */
+const LITERAL_CONSTRUCTS: ReadonlySet<ConstructName> = new Set([
+  ...FULL_PHRASING_SPANS,
+  "label",
+]);
 
 /** The characters a GFM task list check can hold between its brackets. */
 const TASK_CHECK = new Set(["\t", "\n", "\r", " ", "X", "x"]);
@@ -142,25 +141,34 @@ const LABEL_FOLLOWERS = new Set(["(", ":", "[", "{"]);
 const TAG_CHARACTER = /[\w가-힣]/;
 
 /**
- * Indices of the characters in `value` to write raw, ascending.
+ * The characters of `value` this handler writes itself, as `[index, output]`
+ * in ascending index order.
  *
- * Where a `[` stops being literal: the parser stack is `markdown-parser.ts`, and
- * the micromark constructs it triggers on `[` or `]` (the code-91/93 entries of
- * micromark's `constructs.js` and of the GFM extensions) are a link or image
- * label and its end, a link reference definition, a GFM footnote call and
- * definition, and a GFM task list check. Of the constructs that could swallow a
- * `]` before it closes anything, code, math, HTML and `<…>` autolinks start with
- * a character remark escapes in text (every backtick and `$`, a `<` before a
- * letter, `!`, `/` or `?`); the GFM autolink literal is the exception
- * ({@link AUTOLINK_LITERAL_START}). Wikilinks,
- * mentions, callouts, `[TOC]` and the `[/]` · `[-]` task states are read from
- * the text AFTER the parser has removed escapes, so a backslash never kept any
- * of them literal.
+ * Every `$` outside {@link FULL_PHRASING_SPANS} is written `\$`. remark means
+ * to escape every `$` in text (mdast-util-math's pattern for single-dollar
+ * math), but its `safe` skips the escape on a character whose pattern has an
+ * `after` key when the next character is escaped anyway — and that pattern has
+ * the key even when its value is undefined. So `$_GET … $_POST` was written
+ * `$\_GET … $\_POST` and read back as inline math, and math opened that way
+ * could hide the `]` a raw `[` was paired with below.
+ *
+ * Where a `[` stops being literal: the parser stack is `markdown-parser.ts`. The
+ * micromark constructs it starts on `[` (code 91 in micromark's `constructs.js`
+ * and in the GFM extensions) are a link label, a link reference definition, a
+ * GFM footnote call and definition, and a GFM task list check; an image label
+ * starts on `!` (code 33) and goes on with the same `[`; a label ends on `]`
+ * (code 93). The constructs that could swallow a `]` before it closes anything —
+ * code, math, HTML and `<…>` autolinks — start with a character escaped in text:
+ * every backtick (remark), every `$` (above), a `<` before a letter, `!`, `/` or
+ * `?` (remark). A GFM autolink literal does not start while a `[` is open
+ * (`previousUnbalanced` in micromark-extension-gfm-autolink-literal), so it
+ * cannot take the `]` either. Wikilinks, mentions, callouts, `[TOC]` and the
+ * `[/]` · `[-]` task states are read from the text AFTER the parser has removed
+ * escapes, so in the editor a backslash never kept any of them literal.
  *
  * A `[` is raw unless one of these holds — then remark escapes it as it always
  * did:
- * - it sits inside one of {@link LITERAL_CONSTRUCTS}, or the text could hold an
- *   autolink literal ({@link AUTOLINK_LITERAL_START});
+ * - it sits inside one of {@link LITERAL_CONSTRUCTS};
  * - `^` follows it — a footnote call, or a definition at a line start;
  * - `]` comes right before it — the second label of a reference shape;
  * - at a line start, it is a task check: `[`, one of {@link TASK_CHECK}, `]`;
@@ -177,22 +185,28 @@ const TAG_CHARACTER = /[\w가-힣]/;
  * A `!` right before a raw `[` is raw too: the image it would start has the same
  * label. A `#` before a {@link TAG_CHARACTER} is raw (§56l).
  */
-function rawPositions(value: string, state: State, info: Info): number[] {
+function writtenPositions(
+  value: string,
+  state: State,
+  info: Info,
+): [number, string][] {
   // `info.after` can be longer than one character; the next one is its first.
   const following = (index: number): string =>
     index + 1 < value.length ? value[index + 1] : info.after.charAt(0);
-  const raw: number[] = [];
+  const written: [number, string][] = [];
+  const inSpan = state.stack.some((name) => FULL_PHRASING_SPANS.has(name));
 
   const bracketsMayBeRaw =
     !state.stack.some((name) => LITERAL_CONSTRUCTS.has(name)) &&
-    !AUTOLINK_LITERAL_START.test(value) &&
     !(value.endsWith("]") && following(value.length - 1) === "(");
 
   const waiting: number[] = [];
   for (let index = 0; index < value.length; index++) {
     const character = value[index];
-    if (character === "#") {
-      if (TAG_CHARACTER.test(following(index))) raw.push(index);
+    if (character === "$") {
+      if (!inSpan) written.push([index, "\\$"]);
+    } else if (character === "#") {
+      if (TAG_CHARACTER.test(following(index))) written.push([index, "#"]);
     } else if (character === "[" && bracketsMayBeRaw) {
       if (following(index) === "^") continue;
       // The second label of `[a][b]` — the first one stays escaped (`[` follows
@@ -213,12 +227,14 @@ function rawPositions(value: string, state: State, info: Info): number[] {
         waiting.length = 0;
       } else {
         const opener = waiting.pop() as number;
-        if (opener > 0 && value[opener - 1] === "!") raw.push(opener - 1);
-        raw.push(opener);
+        if (opener > 0 && value[opener - 1] === "!") {
+          written.push([opener - 1, "!"]);
+        }
+        written.push([opener, "["]);
       }
     }
   }
-  return raw.sort((a, b) => a - b);
+  return written.sort((a, b) => a[0] - b[0]);
 }
 
 /** remark's `atBreak`: only spaces or tabs between `index` and a line ending,

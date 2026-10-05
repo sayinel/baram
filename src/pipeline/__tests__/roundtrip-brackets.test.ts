@@ -28,6 +28,20 @@ function expectSameDocumentAfterSave(md: string): void {
   expect(after.toJSON()).toEqual(before.toJSON());
 }
 
+/** A one-paragraph document — for text no markdown loads into (a typed or
+ *  pasted `$_GET`, a bare `#tag`). */
+function paragraphOf(...content: Record<string, unknown>[]): PmNode {
+  return schema.nodeFromJSON({
+    content: [{ content, type: "paragraph" }],
+    type: "doc",
+  });
+}
+
+/** `doc` saved and loaded again is `doc`. */
+function expectSameAfterSave(doc: PmNode): void {
+  expect(load(prosemirrorToMarkdown(doc)).toJSON()).toEqual(doc.toJSON());
+}
+
 /** Every link mark's href in the document. */
 function linkHrefs(doc: PmNode): string[] {
   const hrefs: string[] = [];
@@ -127,34 +141,54 @@ describe("a closing bracket right before a block reference", () => {
   });
 });
 
-describe("a text holding a bare URL keeps every bracket escaped", () => {
-  // A GFM autolink literal takes a `]` that is followed by anything other than
-  // whitespace, `(` or `[` into its URL (`trail` in
-  // micromark-extension-gfm-autolink-literal), so the `]` that pairs with the
-  // `[` inside the text is not the one the parser closes it with.
-  // Built as a document, not loaded: loading markdown links the URL, and a
-  // bare URL stays text only when it was typed.
-  it("does not let the bracket close on a block reference", () => {
-    const doc = schema.nodeFromJSON({
-      content: [
-        {
-          content: [
-            { text: "[a http://x.com/]b", type: "text" },
-            { marks: [{ type: "bold" }], text: "c", type: "text" },
-            { text: "]", type: "text" },
-            {
-              attrs: { blockId: "abc", target: "note" },
-              type: "blockReference",
-            },
-          ],
-          type: "paragraph",
-        },
-      ],
-      type: "doc",
+describe("every `$` in text is escaped", () => {
+  // remark skips the escape on a `$` whose next character it escapes anyway
+  // (mdast-util-math's pattern carries an `after` key even when it is
+  // undefined), so `$_GET … $_POST` was saved as inline math. The handler
+  // writes every `$` as `\$`.
+  it("keeps text that names variables text", () => {
+    const doc = paragraphOf({
+      text: "price $_GET and $_POST here",
+      type: "text",
     });
-    const saved = prosemirrorToMarkdown(doc);
-    expect(saved.startsWith("\\[a http")).toBe(true);
-    expect(linkHrefs(load(saved)).filter((h) => h.startsWith("("))).toEqual([]);
+    expect(prosemirrorToMarkdown(doc)).toBe(
+      "price \\$\\_GET and \\$\\_POST here\n",
+    );
+    expectSameAfterSave(doc);
+  });
+
+  it("escapes a `$` before a raw bracket", () => {
+    expect(
+      prosemirrorToMarkdown(paragraphOf({ text: "$[a] b", type: "text" })),
+    ).toBe("\\$[a] b\n");
+  });
+
+  it("escapes a `$` in link text", () => {
+    const md = "[a \\$\\_x](https://example.com)\n";
+    expectSameDocumentAfterSave(md);
+    expect(roundtrip(md)).toBe(md);
+  });
+
+  // A backslash inside `<…>` is a character of the URL, not an escape.
+  it.each([
+    ["a URL", "<http://a.com/$x>\n"],
+    ["an e-mail address", "see <mailto:a$b@c.com> here\n"],
+  ])("leaves a `$` in %s autolink alone", (_label, md) => {
+    expect(roundtrip(md)).toBe(md);
+  });
+
+  // The `]` a `[` pairs with in its own text must be one the parser sees. Math
+  // opened by a raw `$` hid it, the `[` stayed open, and a `]` in a later text
+  // closed it on a block reference — which became the link's destination.
+  it("does not let math hide the bracket a block reference then closes", () => {
+    const doc = paragraphOf(
+      { text: "[$_GET 값] 과 $_POST 비교 ", type: "text" },
+      { marks: [{ type: "bold" }], text: "중요", type: "text" },
+      { text: " [링크]", type: "text" },
+      { attrs: { blockId: "abc", target: "note" }, type: "blockReference" },
+    );
+    expectSameAfterSave(doc);
+    expect(linkHrefs(load(prosemirrorToMarkdown(doc)))).toEqual([]);
   });
 });
 
