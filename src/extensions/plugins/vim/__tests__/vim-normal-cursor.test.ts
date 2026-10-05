@@ -4,6 +4,7 @@
 // terminal boundary of a non-empty line is clamped onto the last unit. Each
 // pin names the mutation that turns it red.
 
+import type { VimPluginState } from "../vim-plugin-state";
 import type { DecorationSet } from "@tiptap/pm/view";
 
 import { Editor } from "@tiptap/core";
@@ -19,7 +20,6 @@ import {
 } from "../adapters/normal-cursor";
 import { resetVimRegister } from "../adapters/register";
 import { vimPluginKey } from "../vim-keys";
-import { type VimPluginState } from "../vim-plugin-state";
 
 const editors: Editor[] = [];
 
@@ -100,8 +100,8 @@ describe("insert Esc steps one unit back (vim ins_esc)", () => {
 
 describe("insert Esc leaves a code block's caret alone", () => {
   it("a caret inside a code block does not step back", () => {
-    // Fails if: insertEscTarget drops its isCodeBlockLanding check — the
-    // caret steps back to 2 and dispatchCursor hands focus to the island.
+    // Fails if: escapeInsertCursor sends a null target through dispatchCursor:
+    // enterCodeBlockSelection is called for the unchanged code-block caret.
     const editor = makeVimEditor("<pre><code>abc</code></pre><p>x</p>");
     editor.view.dispatch(
       editor.state.tr
@@ -109,7 +109,9 @@ describe("insert Esc leaves a code block's caret alone", () => {
         .setMeta(vimPluginKey, { mode: "insert", type: "setMode" }),
     );
     expect(mode(editor)).toBe("insert");
+    const handoff = vi.spyOn(cmRegistry, "enterCodeBlockSelection");
     key(editor, "Escape");
+    expect(handoff).not.toHaveBeenCalled();
     expect(mode(editor)).toBe("normal");
     expect(head(editor)).toBe(3);
   });
@@ -631,5 +633,31 @@ describe("insert Esc collapses a range made while inserting", () => {
         ),
       ),
     ).toBeNull();
+  });
+});
+
+describe("insert Esc cursor dispatch", () => {
+  it("a moving Esc suppresses DOM selection updates through dispatchCursor", () => {
+    // Fails if: escapeInsertCursor uses view.dispatch directly: suppression is called zero times.
+    const editor = makeVimEditor("<p>abcd</p>");
+    place(editor, 3);
+    key(editor, "i");
+    const observer = (
+      editor.view as unknown as {
+        domObserver: { suppressSelectionUpdates: () => void };
+      }
+    ).domObserver;
+    const suppress = vi.spyOn(observer, "suppressSelectionUpdates");
+    key(editor, "Escape");
+    expect(head(editor)).toBe(2);
+    expect(suppress).toHaveBeenCalledTimes(1);
+  });
+
+  it("Esc steps back onto the first character typed at a line start", () => {
+    // Fails if: unitBeforeOnLine uses prev > lineStart: head stays 2 instead of 1.
+    const editor = makeVimEditor("<p>abc</p>");
+    insertThenEscape(editor, 1, "X");
+    expect(editor.state.doc.textContent).toBe("Xabc");
+    expect(head(editor)).toBe(1);
   });
 });

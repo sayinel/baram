@@ -5,9 +5,10 @@
 // "keep" and a "re-measure" cannot look alike.
 
 import type { GoalColumn, VimCoreState } from "../core/types";
+import type { VimPluginState } from "../vim-plugin-state";
 
 import { Editor } from "@tiptap/core";
-import { TextSelection } from "@tiptap/pm/state";
+import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createBaramExtensions } from "../../../index";
@@ -17,8 +18,8 @@ import {
   resetVimRegister,
   writeVimRegister,
 } from "../adapters/register";
+import { activateEditorForDocument } from "../vim-activation";
 import { vimPluginKey, withVimExternalEdit } from "../vim-keys";
-import { type VimPluginState } from "../vim-plugin-state";
 import { submitSearchLine } from "../vim-search-line";
 
 const LONG = "abcdefghij";
@@ -289,12 +290,23 @@ describe("transactions outside vim", () => {
   it("a press that moves nothing keeps it — a right-click, a Cmd-click on a link", () => {
     // Fails if: the press itself clears the goal (the old mousedown handler)
     // instead of arming a watch that waits for the cursor to move.
-    const editor = seeded();
-    editor.view.dom.dispatchEvent(
-      new MouseEvent("mousedown", { bubbles: true, cancelable: true }),
-    );
-    editor.view.dispatch(editor.state.tr.setMeta("noop", true)); // a view update
-    expect(goal(editor)).toBe(6);
+    for (const options of [{ button: 2 }, { metaKey: true }]) {
+      const editor = makeVimEditor(
+        '<p>text</p><p><a href="https://example.com">link</a></p>',
+      );
+      seed(editor, 1, 6);
+      const link = editor.view.dom.querySelector("a");
+      expect(link).not.toBeNull();
+      link?.dispatchEvent(
+        new MouseEvent("mousedown", {
+          bubbles: true,
+          cancelable: true,
+          ...options,
+        }),
+      );
+      editor.view.dispatch(editor.state.tr.setMeta("noop", true));
+      expect(goal(editor)).toBe(6);
+    }
   });
 
   it("a press whose cursor move is tagged ephemeral (a click syntax reveal expands) forgets it", () => {
@@ -565,6 +577,83 @@ describe("an operator its motion cancelled keeps the goal column (issue 776)", (
     keys(editor, "d", "G");
     expect(editor.state.doc.textContent).toBe("abcdefghijxy");
     expect(editor.state.doc.childCount).toBe(2);
+    expect(goal(editor)).toBeNull();
+  });
+});
+
+describe("goal column across selections and mode changes", () => {
+  it("a foreign selection in visual mode forgets the goal", () => {
+    // Fails if: priority 4 preserves the visual branch's goal: it remains 9.
+    const editor = makeVimEditor("<p>abcdef</p>");
+    seed(editor, 2, 9);
+    keys(editor, "v");
+    editor.view.dispatch(
+      editor.state.tr.setSelection(TextSelection.create(editor.state.doc, 4)),
+    );
+    expect(core(editor).mode).toBe("normal");
+    expect(goal(editor)).toBeNull();
+  });
+
+  it("visual f forgets the goal on a match and keeps it on a miss", () => {
+    // Fails if: the visual branch discards goalAfterFind: z keeps 9; forcing null loses Q's 9.
+    for (const [char, expected] of [
+      ["z", null],
+      ["Q", 9],
+    ] as const) {
+      const editor = makeVimEditor("<p>xyz</p>");
+      seed(editor, 1, 9);
+      keys(editor, "v", "f", char);
+      expect(core(editor).mode).toBe("visual");
+      expect(goal(editor), char).toBe(expected);
+    }
+  });
+
+  it("setMode without a boundary forgets the goal", () => {
+    // Fails if: setMode clears the goal only on a boundary: it remains 9.
+    const editor = makeVimEditor("<p>xyz</p>");
+    seed(editor, 1, 9);
+    editor.view.dispatch(
+      editor.state.tr.setMeta(vimPluginKey, {
+        mode: "normal",
+        type: "setMode",
+      }),
+    );
+    expect(goal(editor)).toBeNull();
+  });
+
+  it("a block-atom press keeps the goal until the vim cursor moves", () => {
+    // Fails if: takeMovedPress compares selection.head: a stationary atom press clears 9.
+    const editor = makeVimEditor("<p>up</p><hr><p>after</p>");
+    editor.view.dispatch(
+      editor.state.tr
+        .setSelection(NodeSelection.create(editor.state.doc, 4))
+        .setMeta(vimPluginKey, {
+          core: { ...core(editor), goalColumn: 9 },
+          type: "core",
+        }),
+    );
+    expect(editor.state.selection).toBeInstanceOf(NodeSelection);
+    editor.view.dom.dispatchEvent(
+      new MouseEvent("mousedown", { bubbles: true, cancelable: true }),
+    );
+    editor.view.dispatch(editor.state.tr.setMeta("noop", true));
+    expect(goal(editor)).toBe(9);
+    // Fails if: appendTransaction omits takeMovedPress: the goal stays 9.
+    const move = editor.state.tr.insertText("!", 1);
+    move.setSelection(TextSelection.create(move.doc, move.mapping.map(6)));
+    tagSyntaxRevealEphemeral(move);
+    editor.view.dispatch(move);
+    expect(goal(editor)).toBeNull();
+  });
+
+  it("document activation clears the goal with transient vim state", () => {
+    // Fails if: activation retains core.goalColumn: it remains 9.
+    const editor = makeVimEditor("<p>xyz</p>");
+    seed(editor, 1, 9);
+    keys(editor, "d");
+    expect(goal(editor)).toBe(9);
+    activateEditorForDocument(editor.view);
+    expect(core(editor).pending).toBeNull();
     expect(goal(editor)).toBeNull();
   });
 });

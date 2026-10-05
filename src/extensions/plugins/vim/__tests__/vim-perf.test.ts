@@ -251,7 +251,7 @@ describe("an insert-mode keystroke leaves the plugin state object alone", () => 
 
 // issue 776 — the first non-blank (gg, G, :N, ^) is found in ONE traversal.
 describe("first non-blank cost (issue 776)", () => {
-  it("a line of many marked blank text nodes is not walked once per unit", () => {
+  it("a line of many marked blank text nodes never calls textBetween", () => {
     // Fails if: lineFirstNonBlank calls textBetween per cursor unit — each
     // call restarts the range walk at the first child, quadratic here.
     // Relies on ProseMirror internals (Node.prototype.textBetween): a PM
@@ -441,5 +441,17 @@ describe("one unit back does not index the text node (issue 776)", () => {
     key(editor, "5");
     key(editor, "h");
     expect(graphemeIndexSize()).toBeGreaterThan(0);
+  });
+});
+
+describe("external selection state identity (issue 776)", () => {
+  it("a foreign selection with no goal or visual range keeps the state object", () => {
+    // Fails if: priority 4 drops the non-null goal gate: toBe sees a new state object.
+    const editor = makeEditor("<p>abcd</p>");
+    enable(editor);
+    const before = vimPluginKey.getState(editor.state);
+    editor.commands.setTextSelection(2);
+    expect(editor.state.selection.head).toBe(2);
+    expect(vimPluginKey.getState(editor.state)).toBe(before);
   });
 });

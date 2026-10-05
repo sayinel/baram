@@ -781,3 +781,35 @@ describe("issue 776 — the first non-blank is a whole cursor unit", () => {
     ).toBe(1); // the cluster's start
   });
 });
+
+describe("first non-blank space handling", () => {
+  it.each([
+    ["U+3000", "\u3000"],
+    ["NBSP", "\u00a0"],
+  ])("^ skips a leading %s blank", (_name, blank) => {
+    // Fails if: NON_BLANK becomes /[^ \t]/: the motion lands at 1 instead of 2.
+    const editor = makeEditor("<p>x</p>");
+    editor.commands.setContent({
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: blank + "abc" }] },
+      ],
+      type: "doc",
+    });
+    expect(resolveMotion(editor.state, 4, "lineFirstNonBlank", 1)).toBe(2);
+  });
+
+  it("gg to an all-blank line falls back to its start", () => {
+    // Fails if: lineFirstNonBlank falls back to span.to - 1: gg lands at 3, not 1.
+    const editor = makeEditor("<p>x</p>");
+    editor.commands.setContent({
+      content: ["   ", "tail"].map((text) => ({
+        content: [{ text, type: "text" }],
+        type: "paragraph",
+      })),
+      type: "doc",
+    });
+    expect(
+      resolveMotion(editor.state, posOfText(editor, "tail"), "docStart", 1),
+    ).toBe(1);
+  });
+});
