@@ -60,7 +60,8 @@ function remarkWikiLink(this: any) {
 /**
  * §7.1 Body text — remark's own escaping, except for the characters
  * {@link writtenPositions} decides itself: the `[`, `!` and `#` that start
- * nothing are written as typed, and every `$` is written `\$`.
+ * nothing are written as typed, every `$` is written `\$`, and a space right
+ * before a line ending is dropped.
  *
  * remark escapes every `[` in phrasing (`unsafe.js` in mdast-util-to-markdown,
  * and once more in mdast-util-gfm-footnote) because `[x]` would be a shortcut
@@ -159,6 +160,12 @@ const TAG_CHARACTER = /[\w가-힣]/;
  * `$\_GET … $\_POST` and read back as inline math, and math opened that way
  * could hide the `]` a raw `[` was paired with below.
  *
+ * A space right before a line ending is dropped (§56m). remark writes that
+ * space as `&#x20;` — a tag followed by a space saved as `#tag&#x20;` — and a
+ * pass over the whole saved string used to take exactly those out, in code,
+ * math and HTML blocks too. Only the space next to the line ending goes; spaces
+ * before it stay, as they did.
+ *
  * Where a `[` stops being literal: the parser stack is `markdown-parser.ts`. The
  * micromark constructs it starts on `[` (code 91 in micromark's `constructs.js`
  * and in the GFM extensions) are a link label, a link reference definition, a
@@ -216,6 +223,8 @@ function writtenPositions(
     const character = value[index];
     if (character === "$") {
       if (!inSpan) written.push([index, "\\$"]);
+    } else if (character === " ") {
+      if (following(index) === "\n") written.push([index, ""]);
     } else if (character === "#") {
       if (TAG_CHARACTER.test(following(index))) written.push([index, "#"]);
     } else if (character === "[" && bracketsMayBeRaw) {
@@ -293,9 +302,5 @@ const serializer = unified()
 
 /** Serialize mdast tree to markdown string */
 export function mdastToMarkdown(root: Root): string {
-  let result = serializer.stringify(root);
-  // §56m: remark-stringify encodes trailing spaces as &#x20; when the last inline
-  // node is a tagNode followed by a whitespace-only text node.  Strip at end of lines.
-  result = result.replace(/&#x20;(?=\n|$)/g, "");
-  return result;
+  return serializer.stringify(root);
 }

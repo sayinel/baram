@@ -302,3 +302,33 @@ describe("a `#` at the start of a line", () => {
     expectSameDocumentAfterSave("a \\\\#tag\n");
   });
 });
+
+// §56m — remark writes a space right before a line ending as `&#x20;`, and the
+// serializer drops that one space instead (a tag followed by a space used to
+// save as `#tag&#x20;`). That used to be a regex over the whole saved string,
+// which also deleted a literal `&#x20;` at a line end in code, math and HTML,
+// and left the backslash of an escaped `\&#x20;` in text dangling.
+describe("a space right before a line ending", () => {
+  it("is dropped after a tag", () => {
+    const doc = paragraphOf(
+      { attrs: { tag: "tag" }, type: "tagNode" },
+      { text: " ", type: "text" },
+    );
+    expect(prosemirrorToMarkdown(doc)).toBe("#tag\n");
+  });
+
+  it("is dropped at the end of a paragraph", () => {
+    expect(
+      prosemirrorToMarkdown(paragraphOf({ text: "끝 ", type: "text" })),
+    ).toBe("끝\n");
+  });
+
+  it.each([
+    ["a code block", "```\na&#x20;\nb\n```\n"],
+    ["a block of math", "$$\na&#x20;\n$$\n"],
+    ["an HTML block", "<div>a&#x20;\n</div>\n"],
+    ["text, escaped", "a \\&#x20;\n"],
+  ])("leaves a literal `&#x20;` in %s alone", (_label, md) => {
+    expect(roundtrip(md)).toBe(md);
+  });
+});
