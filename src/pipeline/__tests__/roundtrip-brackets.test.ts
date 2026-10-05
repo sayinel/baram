@@ -324,6 +324,14 @@ describe("a space right before a line ending", () => {
     ).toBe("끝\n");
   });
 
+  // A text holding a character the handler writes itself is cut into pieces;
+  // the drop runs on the joined output.
+  it("is dropped from a text the handler cuts into pieces", () => {
+    expect(
+      prosemirrorToMarkdown(paragraphOf({ text: "가격 $5 ", type: "text" })),
+    ).toBe("가격 \\$5\n");
+  });
+
   it.each([
     ["a code block", "```\na&#x20;\nb\n```\n"],
     ["a block of math", "$$\na&#x20;\n$$\n"],
@@ -333,8 +341,9 @@ describe("a space right before a line ending", () => {
     expect(roundtrip(md)).toBe(md);
   });
 
-  // Built as documents: these texts hold a line ending the loader never puts
-  // there, and they are the shapes a drop decided from the text alone broke.
+  // Built as documents: these are the shapes a drop decided from the text
+  // alone broke. A table cell and an ATX heading load such a text back from the
+  // `&#xA;` Baram writes there; the other two are typed or pasted.
   const text = (value: string, marks: string[] = []) => ({
     marks: marks.map((type) => ({ type })),
     text: value,
